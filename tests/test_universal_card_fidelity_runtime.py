@@ -1138,3 +1138,189 @@ def test_card_consumer_contract_field_lineage_vocabulary_v1(ucf):
     assert "mhap_rows" in minimum
     assert "fusion_triplets" in minimum
 
+
+# ── HARNESS_CLASSIFIER_OPERATOR_MIRROR_ALIGNMENT_V1 — operator-mirror scoring ──
+
+
+def _mirror_payload(*, actionable: bool, reason=None, codes=None, trust_state=None, bias="WAIT") -> dict:
+    """Ticker-agnostic fresh-analytics payload with S2B operator mirror fields."""
+    return {
+        "ticker": "ZZTKR",
+        "analytics_stale": False,
+        "analytics_pending_shell": False,
+        "fusion_available": True,
+        "final_bias": bias,
+        "final_tradeable": False,
+        "entry_state": "no_setup",
+        "mhap_rows": [
+            {"horizon": h, "call": "WAIT", "confidence": 0.34}
+            for h in ("1c", "5c", "15c", "60c")
+        ],
+        "operator_card_actionable": actionable,
+        "operator_actionability_reason": reason,
+        "operator_stale_reason_codes": codes or [],
+        "operator_card_trust_state": trust_state,
+    }
+
+
+def _veto_dom_cards() -> dict:
+    """DOM matching the UI preserveRawContext veto render: values + veto marker."""
+    card = {
+        "class": "tf-signal-card tf-state-dim tf-signal-card--non-actionable "
+                 "tf-signal-card--operator-actionability-veto",
+        "dir": "NEUTRAL",
+        "pct": "34%",
+        "cardTrustWithhold": "quote_newer_than_signal",
+    }
+    return {
+        "1c": dict(card), "5c": dict(card), "15c": dict(card), "60c": dict(card),
+        "consolidated": {
+            "class": "tf-signal-card tf-state-dim tf-signal-card--non-actionable "
+                     "tf-signal-card--operator-actionability-veto",
+            "dir": "NEUTRAL",
+            "cardTrustWithhold": "quote_newer_than_signal",
+        },
+        "plan_state": "STALE",
+    }
+
+
+def test_case_a_quote_newer_veto_expected_stale_not_no_setup(ucf):
+    payload = _mirror_payload(
+        actionable=False,
+        reason="quote_newer_than_signal",
+        codes=["quote_newer_than_signal", "mhap_older_than_quote"],
+        trust_state="REFRESHING",
+    )
+    trust = ucf.resolve_card_trust_gate(payload, active_ticker="ZZTKR")
+    assert trust["trusted"] is False
+    assert trust["authority"] == ucf.SCORING_AUTHORITY_OPERATOR_MIRROR
+    assert ucf.operator_mirror_withhold_label(trust) == "STALE"
+    exp = ucf.derive_card_parity_expectations(payload)
+    rows = ucf.compare_dom_to_expectations(exp, _veto_dom_cards(), payload=payload, active_ticker="ZZTKR")
+    plan = next(r for r in rows if r["field"] == "PLAN_entry_state")
+    assert plan["expected_withheld_plan_state"] == "STALE"
+    assert plan["parity_status"] == ucf.PARITY_STATUS_QUOTE_VETO_WITHHELD
+
+
+def test_case_b_actionable_true_preserves_trusted_scoring(ucf):
+    payload = _mirror_payload(actionable=True)
+    trust = ucf.resolve_card_trust_gate(payload, active_ticker="ZZTKR")
+    assert trust["trusted"] is True
+    exp = ucf.derive_card_parity_expectations(payload)
+    cards = _veto_dom_cards()
+    for k in ("1c", "5c", "15c", "60c", "consolidated"):
+        cards[k]["class"] = "tf-signal-card tf-state-dim"
+        cards[k]["cardTrustWithhold"] = ""
+    cards["plan_state"] = "NO SETUP"
+    rows = ucf.compare_dom_to_expectations(exp, cards, payload=payload, active_ticker="ZZTKR")
+    assert all(r["parity_status"] == ucf.PARITY_STATUS_PARITY for r in rows)
+
+
+def test_case_c_refreshing_without_veto_no_false_stale(ucf):
+    payload = _mirror_payload(actionable=True, trust_state="REFRESHING")
+    trust = ucf.resolve_card_trust_gate(payload, active_ticker="ZZTKR")
+    assert trust["trusted"] is True
+    assert trust["reason"] is None
+
+
+def test_case_d_missing_mirror_fields_labeled_legacy_fallback(ucf):
+    payload = _mirror_payload(actionable=True)
+    for k in ("operator_card_actionable", "operator_actionability_reason",
+              "operator_stale_reason_codes", "operator_card_trust_state"):
+        payload.pop(k)
+    trust = ucf.resolve_card_trust_gate(payload, active_ticker="ZZTKR")
+    assert trust["authority"] == ucf.SCORING_AUTHORITY_LEGACY_DEGRADED
+    assert trust["trusted"] is True  # legacy gate on a fresh payload
+
+
+def test_case_e_payload_and_dom_stale_under_quote_veto_scores_pass(ucf):
+    payload = _mirror_payload(
+        actionable=False, reason="quote_newer_than_signal",
+        codes=["quote_newer_than_signal"], trust_state="REFRESHING",
+    )
+    exp = ucf.derive_card_parity_expectations(payload)
+    rows = ucf.compare_dom_to_expectations(exp, _veto_dom_cards(), payload=payload, active_ticker="ZZTKR")
+    assert all(r["parity_status"] != ucf.PARITY_STATUS_DOM_MISMATCH for r in rows)
+    assert all(ucf.parity_status_passes_ui_fidelity(r["parity_status"]) for r in rows)
+    assert all(r.get("scoring_authority") == ucf.SCORING_AUTHORITY_OPERATOR_MIRROR for r in rows)
+
+
+def test_case_f_same_scoring_path_across_base_style_payloads(ucf):
+    outcomes = []
+    for tkr in ("SPY", "QQQ", "IWM"):  # fixture data only — never conditional logic
+        payload = _mirror_payload(
+            actionable=False, reason="quote_newer_than_signal",
+            codes=["quote_newer_than_signal"], trust_state="REFRESHING",
+        )
+        payload["ticker"] = tkr
+        exp = ucf.derive_card_parity_expectations(payload)
+        rows = ucf.compare_dom_to_expectations(exp, _veto_dom_cards(), payload=payload, active_ticker=tkr)
+        outcomes.append([r["parity_status"] for r in rows])
+    assert outcomes[0] == outcomes[1] == outcomes[2]
+
+
+def test_case_g_guest_style_payload_uses_identical_path(ucf):
+    payload = _mirror_payload(
+        actionable=False, reason="quote_newer_than_signal",
+        codes=["quote_newer_than_signal"], trust_state="REFRESHING",
+    )
+    payload["ticker"] = "NVDA"  # guest fixture data only
+    exp = ucf.derive_card_parity_expectations(payload)
+    rows = ucf.compare_dom_to_expectations(exp, _veto_dom_cards(), payload=payload, active_ticker="NVDA")
+    assert all(r["parity_status"] == ucf.PARITY_STATUS_QUOTE_VETO_WITHHELD or
+               r["parity_status"] == ucf.PARITY_STATUS_PARITY for r in rows)
+
+
+def test_reason_code_table_decides_not_actionable_boolean(ucf):
+    """SPY-like vs QQQ-like: same actionable=false, DIFFERENT expected card state —
+    the reason-code → label table decides, never the boolean, never the ticker."""
+    spy_like = _mirror_payload(
+        actionable=False, reason="quote_newer_than_signal",
+        codes=["quote_newer_than_signal", "mhap_older_than_quote"], trust_state="REFRESHING",
+    )
+    qqq_like = _mirror_payload(
+        actionable=False, reason="missing_quote_ts",
+        codes=["missing_quote_ts"], trust_state="REFRESHING",
+    )
+    t_spy = ucf.resolve_card_trust_gate(spy_like, active_ticker="ZZTKR")
+    t_qqq = ucf.resolve_card_trust_gate(qqq_like, active_ticker="ZZTKR")
+    assert t_spy["trusted"] is False and t_qqq["trusted"] is False  # same boolean...
+    assert ucf.operator_mirror_withhold_label(t_spy) == "STALE"      # ...different labels
+    assert ucf.operator_mirror_withhold_label(t_qqq) == "WITHHELD"
+    assert ucf.expected_plan_state_for_withheld_label("STALE") == "STALE"
+    assert ucf.expected_plan_state_for_withheld_label("WITHHELD") == "NO SETUP"
+    # Parity statuses diverge accordingly; both pass UI fidelity.
+    s_spy = ucf.trust_reason_to_withheld_parity_status("quote_newer_than_signal")
+    s_qqq = ucf.trust_reason_to_withheld_parity_status("missing_quote_ts")
+    assert s_spy == ucf.PARITY_STATUS_QUOTE_VETO_WITHHELD
+    assert s_qqq == ucf.PARITY_STATUS_TRUST_WITHHELD
+    assert ucf.parity_status_passes_ui_fidelity(s_spy) and ucf.parity_status_passes_ui_fidelity(s_qqq)
+    # End-to-end: QQQ-like PLAN expectation is NO SETUP through the same path.
+    exp = ucf.derive_card_parity_expectations(qqq_like)
+    cards = _veto_dom_cards()
+    cards["plan_state"] = "NO SETUP"
+    rows = ucf.compare_dom_to_expectations(exp, cards, payload=qqq_like, active_ticker="ZZTKR")
+    plan = next(r for r in rows if r["field"] == "PLAN_entry_state")
+    assert plan["expected_withheld_plan_state"] == "NO SETUP"
+    assert plan["parity_status"] == ucf.PARITY_STATUS_TRUST_WITHHELD
+
+
+def test_classifier_functions_have_no_ticker_conditional_branches():
+    """Ticker-agnostic construction lock: scoring functions contain no ticker literals."""
+    import ast as _ast
+
+    src = _harness_source()
+    tree = _ast.parse(src)
+    scoring_fns = {
+        "resolve_card_trust_gate", "operator_mirror_withhold_label",
+        "card_trust_operator_label", "trust_reason_to_withheld_parity_status",
+        "compare_dom_to_expectations", "has_operator_card_mirror_fields",
+    }
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.FunctionDef) and node.name in scoring_fns:
+            seg = _ast.get_source_segment(src, node) or ""
+            for lit in ("SPY", "QQQ", "IWM", "NVDA", "AAPL", "MSFT"):
+                assert f'"{lit}"' not in seg and f"'{lit}'" not in seg, (
+                    f"ticker literal {lit} inside scoring function {node.name}"
+                )
+

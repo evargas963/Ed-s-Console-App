@@ -86,7 +86,18 @@ DISPLAY_TRUST_GATE: str = "analyticsCardTrustGate"
 CARD_TRUST_REQUIRED_HORIZONS: tuple[str, ...] = HORIZON_SLUGS
 CARD_TRUST_REQUIRED_HORIZON_COUNT: int = 4
 
-# Trust-aware DOM parity / withhold statuses (mirror static/index.html analyticsCardTrustGate).
+# HARNESS_CLASSIFIER_OPERATOR_MIRROR_ALIGNMENT_V1 — scoring contract note:
+# This harness scores against the OPERATOR MIRROR / S2B card-trust contract
+# (resolve_card_trust_gate below, mirroring static/index.html
+# resolveCardTrustGate): when operator_card_* mirror fields are present on the
+# payload they are the authority, including quote-age/operator veto codes such
+# as quote_newer_than_signal. Analytics-only trust (analytics_card_trust_gate)
+# is insufficient when those fields exist and remains ONLY as an explicitly
+# labeled legacy fallback for artifacts that predate the mirrors. Ticker
+# identity must never affect expected card state — the same scoring path runs
+# for every ticker (TICKER_AGNOSTIC_CONSTRUCTION_REQUIRED).
+#
+# Trust-aware DOM parity / withhold statuses (mirror static/index.html contract).
 PARITY_STATUS_PARITY: str = "PARITY"
 PARITY_STATUS_DOM_MISMATCH: str = "DOM_MISMATCH"
 PARITY_STATUS_TRUST_WITHHELD: str = "TRUST_WITHHELD"
@@ -95,6 +106,13 @@ PARITY_STATUS_PENDING_WITHHELD: str = "PENDING_WITHHELD"
 PARITY_STATUS_DEGRADED_WITHHELD: str = "DEGRADED_WITHHELD"
 PARITY_STATUS_TICKER_MISMATCH_WITHHELD: str = "TICKER_MISMATCH_WITHHELD"
 PARITY_STATUS_MISSING_MHAP_WITHHELD: str = "MISSING_MHAP_WITHHELD"
+# Operator-mirror veto on a FRESH bundle (e.g. quote_newer_than_signal): the UI
+# withholds actionability while preserving values — UI-fidelity PASS, distinct
+# from analytics staleness so RTH-freshness accounting stays honest.
+PARITY_STATUS_QUOTE_VETO_WITHHELD: str = "QUOTE_VETO_WITHHELD"
+
+SCORING_AUTHORITY_OPERATOR_MIRROR: str = "operator_mirror"
+SCORING_AUTHORITY_LEGACY_DEGRADED: str = "legacy_analytics_gate_degraded"
 
 UI_FIDELITY_PASS_PARITY_STATUSES: frozenset[str] = frozenset(
     {
@@ -105,6 +123,7 @@ UI_FIDELITY_PASS_PARITY_STATUSES: frozenset[str] = frozenset(
         PARITY_STATUS_DEGRADED_WITHHELD,
         PARITY_STATUS_TICKER_MISMATCH_WITHHELD,
         PARITY_STATUS_MISSING_MHAP_WITHHELD,
+        PARITY_STATUS_QUOTE_VETO_WITHHELD,
     }
 )
 
@@ -231,7 +250,7 @@ def analytics_card_trust_gate(
 
 
 def card_trust_operator_label(reason: Optional[str]) -> str:
-    """Mirror cardTrustOperatorLabel in static/index.html."""
+    """Mirror cardTrustOperatorLabel in static/index.html (incl. operator veto codes)."""
     r = str(reason or "").lower()
     if r in ("analytics_stale", "cache_refresh_in_progress"):
         return "STALE"
@@ -248,11 +267,84 @@ def card_trust_operator_label(reason: Optional[str]) -> str:
         return "DEGRADED"
     if r in ("state_error", "token_invalid"):
         return "UNAVAILABLE"
+    if r in ("quote_newer_than_signal", "quote_carried_forward"):
+        return "STALE"
+    if r == "revalidate_quarantine":
+        return "WITHHELD"
+    return "WITHHELD"
+
+
+def has_operator_card_mirror_fields(payload: Optional[dict[str, Any]]) -> bool:
+    """Mirror hasOperatorCardMirrorFields in static/index.html (S2B-1 mirrors present)."""
+    return isinstance(payload, dict) and isinstance(payload.get("operator_card_actionable"), bool)
+
+
+def resolve_card_trust_gate(
+    payload: Optional[dict[str, Any]],
+    *,
+    active_ticker: Optional[str] = None,
+    check_ticker: bool = True,
+) -> dict[str, Any]:
+    """Mirror resolveCardTrustGate in static/index.html — operator mirrors are the
+    authority when present; otherwise the legacy analytics-only gate applies and is
+    explicitly labeled as degraded scoring. Ticker-agnostic: expected state derives
+    from payload fields only.
+    """
+    if has_operator_card_mirror_fields(payload):
+        actionable = payload.get("operator_card_actionable") is True
+        reason: Optional[str] = None
+        if not actionable:
+            oar = payload.get("operator_actionability_reason")
+            codes = payload.get("operator_stale_reason_codes")
+            if oar is not None and str(oar).strip() != "":
+                reason = str(oar).strip()
+            elif isinstance(codes, list) and codes:
+                reason = str(codes[0])
+            elif payload.get("operator_card_trust_state") is not None:
+                reason = str(payload.get("operator_card_trust_state"))
+            else:
+                reason = "not_actionable"
+        return {
+            "trusted": actionable,
+            "reason": reason,
+            "authority": SCORING_AUTHORITY_OPERATOR_MIRROR,
+            "trust_state": (
+                str(payload.get("operator_card_trust_state"))
+                if payload.get("operator_card_trust_state") is not None
+                else None
+            ),
+            "stale_reason_codes": [
+                str(c) for c in (payload.get("operator_stale_reason_codes") or [])
+            ],
+        }
+    legacy = analytics_card_trust_gate(
+        payload, active_ticker=active_ticker, check_ticker=check_ticker
+    )
+    return {
+        "trusted": legacy["trusted"],
+        "reason": legacy["reason"],
+        "authority": SCORING_AUTHORITY_LEGACY_DEGRADED,
+        "trust_state": None,
+        "stale_reason_codes": [],
+    }
+
+
+def operator_mirror_withhold_label(trust: dict[str, Any]) -> str:
+    """Mirror operatorMirrorWithholdLabel in static/index.html."""
+    ts = str(trust.get("trust_state") or "").upper()
+    if "STALE" in ts:
+        return "STALE"
+    if "PENDING" in ts:
+        return "PENDING"
+    if "DEGRADED" in ts:
+        return "DEGRADED"
+    if trust.get("reason"):
+        return card_trust_operator_label(str(trust.get("reason")))
     return "WITHHELD"
 
 
 def trust_reason_to_withheld_parity_status(reason: Optional[str]) -> str:
-    """Map analyticsCardTrustGate reason → harness parity_status for correct withhold."""
+    """Map trust-gate reason → harness parity_status for correct withhold."""
     r = str(reason or "").lower()
     if r in ("analytics_stale", "cache_refresh_in_progress"):
         return PARITY_STATUS_STALE_WITHHELD
@@ -271,6 +363,17 @@ def trust_reason_to_withheld_parity_status(reason: Optional[str]) -> str:
         "stack_invalid",
     ):
         return PARITY_STATUS_DEGRADED_WITHHELD
+    if r in (
+        "quote_newer_than_signal",
+        "quote_carried_forward",
+        "quote_age_exceeded",
+        "auth_degraded",
+        "auth_fallback",
+    ):
+        return PARITY_STATUS_QUOTE_VETO_WITHHELD
+    # missing_quote_ts and all unmapped operator codes take the default WITHHELD
+    # path (label WITHHELD → expected PLAN "NO SETUP"), per the reason-code table —
+    # the actionable boolean alone never decides expected card state.
     return PARITY_STATUS_TRUST_WITHHELD
 
 
@@ -523,11 +626,32 @@ def compare_dom_to_expectations(
     trust: Optional[dict[str, Any]] = None
     withheld_label: Optional[str] = None
     withheld_status: Optional[str] = None
+    preserve_raw = False
+    scoring_authority: Optional[str] = None
     if payload is not None:
-        trust = analytics_card_trust_gate(payload, active_ticker=active_ticker, check_ticker=True)
+        # Operator mirror / S2B card-trust contract is the scoring authority when
+        # present (same contract the DOM renders from); legacy gate = labeled fallback.
+        trust = resolve_card_trust_gate(payload, active_ticker=active_ticker, check_ticker=True)
+        scoring_authority = trust.get("authority")
         if not trust.get("trusted"):
-            withheld_label = card_trust_operator_label(str(trust.get("reason")))
+            if scoring_authority == SCORING_AUTHORITY_OPERATOR_MIRROR:
+                withheld_label = operator_mirror_withhold_label(trust)
+            else:
+                withheld_label = card_trust_operator_label(str(trust.get("reason")))
             withheld_status = trust_reason_to_withheld_parity_status(str(trust.get("reason")))
+            # UI preserveRawContext: under operator-mirror veto with mhap rows,
+            # horizon/ALL cards keep VALUES + veto markers (never dim to label text).
+            preserve_raw = (
+                scoring_authority == SCORING_AUTHORITY_OPERATOR_MIRROR
+                and bool(payload.get("mhap_rows"))
+            )
+
+    def _has_veto_marker(card: dict[str, Any]) -> bool:
+        cls = str(card.get("class") or "")
+        return (
+            "--operator-actionability-veto" in cls
+            or str(card.get("cardTrustWithhold") or "") != ""
+        )
 
     for exp in expectations:
         field = exp.get("field", "")
@@ -538,6 +662,27 @@ def compare_dom_to_expectations(
             cls = str(card.get("class") or "")
             exp_state = exp.get("expected_state")
             exp_pct = exp.get("expected_pct")
+            if withheld_status and preserve_raw:
+                parity = f"tf-state-{exp_state}" in cls if exp_state else False
+                pct = card.get("pct")
+                pct_ok = exp_pct is None or pct == f"{exp_pct}%" or pct == str(exp_pct)
+                status = (
+                    withheld_status
+                    if parity and pct_ok and _has_veto_marker(card)
+                    else PARITY_STATUS_DOM_MISMATCH
+                )
+                rows.append(
+                    {
+                        "field": field,
+                        "payload_value": f"{exp.get('payload_call')}@{exp_pct}%",
+                        "dom_value": f"{cls} dir={card.get('dir')} pct={pct}",
+                        "parity_status": status,
+                        "trust_gate_reason": trust_reason,
+                        "expected_withheld_label": withheld_label,
+                        "scoring_authority": scoring_authority,
+                    }
+                )
+                continue
             if withheld_status:
                 if dom_horizon_card_matches_withheld(card, withheld_label or ""):
                     status = withheld_status
@@ -551,6 +696,7 @@ def compare_dom_to_expectations(
                         "parity_status": status,
                         "trust_gate_reason": trust_reason,
                         "expected_withheld_label": withheld_label,
+                        "scoring_authority": scoring_authority,
                     }
                 )
                 continue
@@ -571,6 +717,28 @@ def compare_dom_to_expectations(
             card = dom_cards.get("consolidated") or {}
             cls = str(card.get("class") or "")
             exp_state = exp.get("expected_state")
+            if withheld_status and preserve_raw:
+                # UI operatorMirrorVeto branch keeps direction from final_bias on ALL.
+                _bias = str((payload or {}).get("final_bias") or "WAIT").upper()
+                exp_state_veto = "up" if _bias == "LONG" else ("down" if _bias == "SHORT" else "dim")
+                parity = f"tf-state-{exp_state_veto}" in cls
+                status = (
+                    withheld_status
+                    if parity and _has_veto_marker(card)
+                    else PARITY_STATUS_DOM_MISMATCH
+                )
+                rows.append(
+                    {
+                        "field": field,
+                        "payload_value": exp.get("payload_value"),
+                        "dom_value": f"{cls} dir={card.get('dir')}",
+                        "parity_status": status,
+                        "trust_gate_reason": trust_reason,
+                        "expected_withheld_label": withheld_label,
+                        "scoring_authority": scoring_authority,
+                    }
+                )
+                continue
             if withheld_status:
                 if dom_horizon_card_matches_withheld(card, withheld_label or ""):
                     status = withheld_status
@@ -584,6 +752,7 @@ def compare_dom_to_expectations(
                         "parity_status": status,
                         "trust_gate_reason": trust_reason,
                         "expected_withheld_label": withheld_label,
+                        "scoring_authority": scoring_authority,
                     }
                 )
                 continue
@@ -615,6 +784,7 @@ def compare_dom_to_expectations(
                         "parity_status": status,
                         "trust_gate_reason": trust_reason,
                         "expected_withheld_plan_state": expected_plan,
+                        "scoring_authority": scoring_authority,
                     }
                 )
                 continue
@@ -652,6 +822,10 @@ def _institutional_proof_parity_failure(
                 blockers.append(f"{ticker}_stale_withheld_rth_freshness_expected")
             else:
                 blockers.append(f"{ticker}_stale_withheld_non_rth_not_admissible")
+        elif status == PARITY_STATUS_QUOTE_VETO_WITHHELD:
+            # UI-fidelity PASS (contract-correct withhold on a fresh bundle), but the
+            # actionability veto keeps institutional proof honest — informational blocker.
+            blockers.append(f"{ticker}_quote_veto_withheld")
     return blockers
 
 
@@ -1079,9 +1253,10 @@ def run_harness(args: argparse.Namespace) -> dict[str, Any]:
                     payload=render_payload,
                     active_ticker=ticker,
                 )
-                trust = analytics_card_trust_gate(render_payload, active_ticker=ticker, check_ticker=True)
+                trust = resolve_card_trust_gate(render_payload, active_ticker=ticker, check_ticker=True)
                 browser["parity_rows"] = parity_rows
                 browser["card_trust"] = trust
+                browser["scoring_authority"] = trust.get("authority")
                 browser["trust_gate_reason"] = trust.get("reason")
                 browser["session_label"] = render_payload.get("session_label")
                 browser["ui_fidelity_pass"] = all(
