@@ -485,8 +485,23 @@ def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=
         raise
 
 def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, period_days: int = 1):
-    """Fetch intraday price history from Schwab. Returns response or None."""
+    """Fetch intraday price history from Schwab. Returns response or None.
+
+    BAR_PERSISTENCE_GAP_TRACE_AND_FIX_V1 (2026-07-06): the request window is
+    anchored explicitly to now. With no end anchor, Schwab served a session
+    stale by two trading days for the whole 2026-07-06 RTH (390-bar July-2
+    payloads on every reseed, still July-2 after the close), starving
+    price_bars_1m and the governed outcome labels for every ticker.
+    Schwab CSV authority checked: yes
+    CSV row(s): pricehistory.candles[].* — same leaf, same period/frequency;
+      only the window anchor (end date = now) is made explicit.
+    Derived-field disposition: none required (no derived field touched).
+    All consumers checked: yes — _seed_candles / _CandleAccumulator.seed
+      consume the identical candles payload shape.
+    SCHWAB_CSV_CHECKED
+    """
     _block_live_schwab_in_ci_offline()
+    _end_anchor = datetime.now()
     try:
         import schwab as _schwab
         PH = _schwab.client.Client.PriceHistory
@@ -510,6 +525,7 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
             period=period,
             frequency_type=PH.FrequencyType.MINUTE,
             frequency=freq,
+            end_datetime=_end_anchor,
             need_extended_hours_data=False,
         )
     except Exception as e_enum:
@@ -524,6 +540,7 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
                 period=period_days,
                 frequencyType="minute",
                 frequency=frequency_minutes,
+                endDate=int(_end_anchor.timestamp() * 1000),
                 needExtendedHoursData=False,
             )
         except Exception as e_raw:

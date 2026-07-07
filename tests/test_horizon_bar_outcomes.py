@@ -288,3 +288,73 @@ def test_outcome_fill_uses_per_horizon_threshold_all_horizons(tmp_db: EdDB):
     # directional label (guards against an all-flat regression / classifier wired to a bad scale).
     assert directional_seen
     assert row["outcome_60c"] == "up"
+
+
+# ── BAR_PERSISTENCE_GAP_TRACE_AND_FIX_V1 — stale-seed guard + explicit window locks ──
+
+
+def test_candle_accumulator_seed_refuses_stale_payload():
+    """A pricehistory payload OLDER than the existing grid must not erase newer bars."""
+    from server import _CandleAccumulator
+
+    acc = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    base = 1_800_000_000.0
+    acc.tick("ZZT", 100.0, base)
+    acc.tick("ZZT", 101.0, base + 60.0)  # completes the first tick-built bar
+    newest_ts = acc.get_bars("ZZT")[-1].ts
+
+    def _payload(ts_epoch: float) -> list[dict]:
+        return [{
+            "datetime": ts_epoch * 1000.0,
+            "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10.0,
+        }]
+
+    acc.seed("ZZT", _payload(base - 86_400.0))  # two-sessions-stale seed
+    assert acc.get_bars("ZZT")[-1].ts == newest_ts, "stale seed replaced newer bars"
+
+    acc.seed("ZZT", _payload(base + 3_600.0))  # newer seed still refreshes
+    assert acc.get_bars("ZZT")[-1].ts == base + 3_600.0
+
+
+def test_candle_accumulator_seed_refresh_allowed_at_equal_ts():
+    """Equal-newest-ts payloads refresh (pricehistory OHLCV beats sparse tick bars)."""
+    from server import _CandleAccumulator
+
+    acc = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    base = 1_800_000_000.0
+    acc.tick("ZZE", 100.0, base)
+    acc.tick("ZZE", 101.0, base + 60.0)
+    bar_ts = acc.get_bars("ZZE")[-1].ts
+    acc.seed("ZZE", [{
+        "datetime": bar_ts * 1000.0,
+        "open": 99.0, "high": 105.0, "low": 98.0, "close": 104.0, "volume": 500.0,
+    }])
+    got = acc.get_bars("ZZE")[-1]
+    assert got.ts == bar_ts and got.high == 105.0  # refreshed from payload
+
+
+def test_safe_get_price_history_passes_explicit_end_anchor(monkeypatch):
+    """The seed request must anchor its window to now (endDate explicit, not implicit)."""
+    import time as _time
+
+    import schwab_client as sc
+
+    monkeypatch.setattr(sc, "_block_live_schwab_in_ci_offline", lambda: None)
+    captured: dict = {}
+
+    class _FakeClient:
+        def get_price_history(self, symbol, **kw):
+            captured.update(kw)
+            captured["symbol"] = symbol
+
+            class _R:
+                status_code = 200
+
+            return _R()
+
+    t0 = _time.time()
+    sc.safe_get_price_history(_FakeClient(), "ZZT", frequency_minutes=1, period_days=1)
+    end_dt = captured.get("end_datetime")
+    assert end_dt is not None, "end_datetime anchor missing from pricehistory request"
+    assert abs(end_dt.timestamp() - t0) < 60.0
+    assert captured["symbol"] == "ZZT"

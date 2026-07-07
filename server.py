@@ -2588,6 +2588,21 @@ class _CandleAccumulator:
                 except (KeyError, ValueError, TypeError):
                     continue
         if candles:
+            # BAR_PERSISTENCE_GAP_TRACE_AND_FIX_V1 (2026-07-06): stale-seed guard —
+            # never replace a strictly NEWER completed-bar grid with an older
+            # pricehistory payload. A two-session-stale Schwab response erased
+            # tick-built same-day bars on every reseed, so price_bars_1m gained
+            # zero rows for the day. Equal-or-newer payloads still refresh
+            # (pricehistory OHLCV beats sparse tick-built bars for the same span).
+            existing = self._bars.get(ticker)
+            if existing and float(existing[-1].ts) > float(candles[-1].ts):
+                log.info(
+                    "seed_stale_ignored ticker=%s seed_last_ts=%.0f existing_last_ts=%.0f",
+                    ticker,
+                    float(candles[-1].ts),
+                    float(existing[-1].ts),
+                )
+                return
             self._bars[ticker] = candles[-self.max_bars:]
             self._bars_source[ticker] = "schwab_pricehistory"
             # Set current bar from last candle so ticks extend properly
