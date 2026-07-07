@@ -69,6 +69,71 @@ UNIVERSALITY_CLASSIFICATIONS: tuple[str, ...] = (
     "INSUFFICIENT_UNIVERSE_EVIDENCE",
 )
 
+# ── REPO_WIDE_UNIVERSALITY_HARDGATE_V1 (operator P0, 2026-07-07) ─────────────
+# Universality is repo-wide, not ticker-only. Universal means: not one ticker,
+# route, card, horizon, timeframe, session state, expiry/cache key, data
+# source, DB table, model path, UI surface, happy-path fixture, or
+# representative sample. A lane may close only if it proves universal behavior
+# across the affected universe, or explicitly classifies itself as
+# partial/subset/not-proven.
+REPO_UNIVERSALITY_CLASSIFICATIONS: tuple[str, ...] = (
+    "UNIVERSAL_BEHAVIOR_PROVEN",
+    "UNIVERSAL_BY_CONSTRUCTION_WITH_MECHANICAL_LOCK",
+    "SUBSET_EVIDENCED_ONLY",
+    "REPRESENTATIVE_ONLY_NOT_PROVEN",
+    "PARTIAL_UNIVERSE_PROVEN",
+    "INSUFFICIENT_UNIVERSE_EVIDENCE",
+    "EXCEPTION_APPROVED_WITH_SCOPE",
+)
+
+REPO_REQUIRED_PACKET_FIELDS: tuple[str, ...] = (
+    "AFFECTED_UNIVERSE_ENUMERATED",
+    "SUBSET_TESTED",
+    "UNIVERSAL_CONSTRUCTION_PROOF",
+    "MECHANICAL_LOCK_OR_TEST_PROOF",
+    "EXCEPTIONS_AND_LIMITATIONS",
+    "REPRESENTATIVE_ONLY_STATUS",
+    "PARENT_LANE_CLOSURE_STATUS",
+    "UNIVERSALITY_CLASSIFICATION",
+)
+
+# Universe dimensions a packet's AFFECTED_UNIVERSE_ENUMERATED should draw from
+# (documentation vocabulary — the mechanical check enforces field presence).
+UNIVERSE_DIMENSIONS: tuple[str, ...] = (
+    "tickers",
+    "routes/endpoints",
+    "ui_cards/surfaces",
+    "horizons",
+    "timeframes",
+    "session_states",
+    "expiries/cache_keys",
+    "data_sources",
+    "db_tables/columns",
+    "model_paths/horizons/features",
+    "operator_trust_states",
+    "failure_modes",
+    "user_roles/modes",
+)
+
+# Repo classification values that assert universality and therefore demand the
+# full repo-wide packet.
+_REPO_PROVEN_CLASSIFICATIONS = (
+    "UNIVERSAL_BEHAVIOR_PROVEN",
+    "UNIVERSAL_BY_CONSTRUCTION_WITH_MECHANICAL_LOCK",
+)
+
+# Forbidden universal language when used as a claim: any of these tokens in a
+# packet demands a repo-proven classification with every required field.
+_UNIVERSAL_CLAIM_RE = re.compile(
+    r"(?i)\buniversal(?:ly)?\s+(?:closure|closed|proven)\b"
+    r"|=\s*UNIVERSAL_BEHAVIOR_PROVEN\b"
+    r"|=\s*UNIVERSAL_BY_CONSTRUCTION_WITH_MECHANICAL_LOCK\b"
+    r"|\b(?:route|card|horizon|session|timeframe)-universal\b"
+    r"|\ball-session\s+closure\b"
+    r"|\bdata-layer\s+closure\b"
+    r"|\bmodel-stack\s+closure\b"
+)
+
 REQUIRED_PACKET_FIELDS: tuple[str, ...] = (
     "TICKER_UNIVERSE_ENUMERATED",
     "BASE_ANCHOR_MATRIX_SPY_QQQ_IWM",
@@ -325,16 +390,29 @@ def _mentioned_locked_tickers(text: str) -> set[str]:
     return found
 
 
+def _has_full_ticker_packet(text: str, classification: Optional[str]) -> bool:
+    return classification == "UNIVERSAL_TICKER_AGNOSTIC_PROVEN" and all(
+        f in text for f in REQUIRED_PACKET_FIELDS
+    )
+
+
+def _has_full_repo_packet(text: str, classification: Optional[str]) -> bool:
+    return classification in _REPO_PROVEN_CLASSIFICATIONS and all(
+        f in text for f in REPO_REQUIRED_PACKET_FIELDS
+    )
+
+
 def check_packet_text(text: str, relpath: str) -> list[str]:
-    """Universality packet rules for one markdown document."""
+    """Universality packet rules (ticker contract + repo-wide hardgate)."""
     errors: list[str] = []
     m = _CLASSIFICATION_RE.search(text)
     classification = m.group("value") if m else None
+    allowed = set(UNIVERSALITY_CLASSIFICATIONS) | set(REPO_UNIVERSALITY_CLASSIFICATIONS)
 
-    if classification is not None and classification not in UNIVERSALITY_CLASSIFICATIONS:
+    if classification is not None and classification not in allowed:
         errors.append(
             f"{relpath}: UNIVERSALITY_CLASSIFICATION {classification!r} not in "
-            f"{list(UNIVERSALITY_CLASSIFICATIONS)}"
+            f"{sorted(allowed)}"
         )
         return errors
 
@@ -354,6 +432,42 @@ def check_packet_text(text: str, relpath: str) -> list[str]:
                     f"or reason — BASE_TICKER_ONLY_CLOSURE is FORBIDDEN"
                 )
 
+    # REPO_WIDE_UNIVERSALITY_HARDGATE_V1: proven-universal classifications
+    # demand the full repo packet; approved exceptions demand documented scope
+    # plus explicit operator approval.
+    if classification in _REPO_PROVEN_CLASSIFICATIONS:
+        missing = [f for f in REPO_REQUIRED_PACKET_FIELDS if f not in text]
+        if missing:
+            errors.append(
+                f"{relpath}: {classification} requires every repo-wide packet "
+                f"field — missing {missing}"
+            )
+    if classification == "EXCEPTION_APPROVED_WITH_SCOPE":
+        for req in ("EXCEPTIONS_AND_LIMITATIONS", "PARENT_LANE_CLOSURE_STATUS"):
+            if req not in text:
+                errors.append(
+                    f"{relpath}: EXCEPTION_APPROVED_WITH_SCOPE requires {req}"
+                )
+        if not re.search(r"(?i)operator[-_ ]approved", text):
+            errors.append(
+                f"{relpath}: EXCEPTION_APPROVED_WITH_SCOPE requires explicit "
+                f"operator approval language ('operator approved')"
+            )
+
+    # Forbidden universal language with subset evidence: any universal-claim
+    # token demands a proven repo classification with every required field.
+    for i, line in enumerate(text.splitlines(), 1):
+        if _UNIVERSAL_CLAIM_RE.search(line):
+            if not _has_full_repo_packet(text, classification):
+                errors.append(
+                    f"{relpath}:{i} universal claim {line.strip()[:80]!r} "
+                    f"without a fully-fielded repo-universality packet "
+                    f"(UNIVERSAL_BEHAVIOR_PROVEN or UNIVERSAL_BY_CONSTRUCTION_"
+                    f"WITH_MECHANICAL_LOCK + all repo fields) — subset/"
+                    f"representative evidence cannot make universal claims"
+                )
+            break
+
     # Representative-only proof must carry downgrade language.
     for i, line in enumerate(text.splitlines(), 1):
         low = line.lower()
@@ -365,7 +479,7 @@ def check_packet_text(text: str, relpath: str) -> list[str]:
                 )
 
     # Guarded parent lanes: closed-class assignment demands a fully-fielded
-    # UNIVERSAL_TICKER_AGNOSTIC_PROVEN packet in the same document.
+    # universal packet (ticker or repo-wide contract) in the same document.
     for i, line in enumerate(text.splitlines(), 1):
         for lane_m in _CLOSED_CLASS_RE.finditer(line):
             value = lane_m.group("value")
@@ -373,14 +487,15 @@ def check_packet_text(text: str, relpath: str) -> list[str]:
                 continue
             if not any(value.startswith(cv) for cv in _CLOSED_CLASS_VALUES):
                 continue
-            if classification != "UNIVERSAL_TICKER_AGNOSTIC_PROVEN" or any(
-                f not in text for f in REQUIRED_PACKET_FIELDS
+            if not (
+                _has_full_ticker_packet(text, classification)
+                or _has_full_repo_packet(text, classification)
             ):
                 errors.append(
                     f"{relpath}:{i} parent lane {lane_m.group('lane')} assigned "
                     f"closed-class value {value!r} without a fully-fielded "
-                    f"UNIVERSAL_TICKER_AGNOSTIC_PROVEN packet — base/partial "
-                    f"evidence cannot close universal parents"
+                    f"universal packet — child/slice/base/partial evidence "
+                    f"cannot close universal parents"
                 )
     return errors
 

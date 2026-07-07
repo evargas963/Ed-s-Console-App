@@ -401,6 +401,24 @@ Pre-commit runs static locks on every commit; `--code-quality` is the explicit f
 
 ---
 
+## Repo-wide universality hardgate `[PROMOTED]` (2026-07-07 — operator P0 binding; REPO_WIDE_UNIVERSALITY_HARDGATE_V1)
+
+**Universality is repo-wide, not ticker-only.** Ticker universality (§Ticker universality contract) is one instance of this rule. Universal means: not one ticker, not one route, not one card, not one horizon, not one timeframe, not one session state, not one expiry/cache key, not one data source, not one DB table, not one model path, not one UI surface, not one happy-path fixture, not one representative sample.
+
+**Closure standard:** a lane may close only if it proves universal behavior across the affected universe, or explicitly classifies itself as partial/subset/not-proven. `REPRESENTATIVE_ONLY_CLOSURE = FORBIDDEN`. `SUBSET_ONLY_PARENT_CLOSURE = FORBIDDEN`.
+
+**Affected-universe enumeration** draws from (as applicable to the lane): tickers · routes/endpoints · UI cards/surfaces · horizons · timeframes · session states (premarket/RTH/postmarket/closed) · expiries/cache keys · data sources (Schwab/Barchart/fallback/synthetic) · DB tables/columns · model paths/horizons/features · operator trust states · failure modes · user roles/modes.
+
+**Required final-packet fields for all non-trivial lanes:** `AFFECTED_UNIVERSE_ENUMERATED`, `SUBSET_TESTED`, `UNIVERSAL_CONSTRUCTION_PROOF`, `MECHANICAL_LOCK_OR_TEST_PROOF`, `EXCEPTIONS_AND_LIMITATIONS`, `REPRESENTATIVE_ONLY_STATUS`, `PARENT_LANE_CLOSURE_STATUS`, `UNIVERSALITY_CLASSIFICATION`.
+
+**Allowed classifications:** `UNIVERSAL_BEHAVIOR_PROVEN` · `UNIVERSAL_BY_CONSTRUCTION_WITH_MECHANICAL_LOCK` · `SUBSET_EVIDENCED_ONLY` · `REPRESENTATIVE_ONLY_NOT_PROVEN` · `PARTIAL_UNIVERSE_PROVEN` · `INSUFFICIENT_UNIVERSE_EVIDENCE` · `EXCEPTION_APPROVED_WITH_SCOPE` (requires documented scope + explicit operator-approved language).
+
+**Hard failure cases (mechanically enforced):** universal/closed/proven claims without affected-universe enumeration; representative examples as universal proof; parent-lane closure from child/slice proof; base-ticker proof claiming ticker-universal closure; one-route proof claiming route-universal closure; one-card/one-horizon proof claiming card/horizon-universal closure; RTH-only proof claiming all-session closure; one-table proof claiming data-layer closure; one-model proof claiming model-stack closure; undocumented/unapproved exceptions.
+
+**Mechanical lock:** `tools/check_universal_ticker_lock.py::run_check` (repo-wide packet rules layered with the ticker contract; universal-claim token scan; guarded parent lanes accept only fully-fielded universal packets) — wired into `enforce_all_rules --objective-audit`. Paired: `tests/test_check_universal_ticker_lock.py` (hardgate fail/pass matrix).
+
+---
+
 ## Fusion-only horizon cards `[PROMOTED]` (2026-06-06 — operator binding)
 
 **One door out:** horizon product triplets on cards come from **per-horizon stack fusion only**. Empirical histograms stay on the signal rail for context — they do **not** fill product triplets unless the operator explicitly opts in.

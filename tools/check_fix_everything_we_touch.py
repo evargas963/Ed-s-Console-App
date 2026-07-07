@@ -3215,6 +3215,13 @@ _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "external:tests/test_check_universal_ticker_lock.py",
         ),
     ),
+    (
+        "Repo-wide universality hardgate",
+        (
+            "external:tools/check_universal_ticker_lock.py",
+            "external:tests/test_check_universal_ticker_lock.py",
+        ),
+    ),
     ("Ablation grid", ("check_ablation_seven_model_four_horizon_grid", "check_ablation_full_stack_non_negotiable", "check_ablation_denominator_vocabulary")),
     (
         "GraphRAG fidelity-first",

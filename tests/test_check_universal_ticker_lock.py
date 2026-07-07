@@ -150,3 +150,122 @@ def test_lock_constants_shape():
     assert BASE_ANCHOR_TICKERS == ("SPY", "QQQ", "IWM")
     assert len(UNIVERSALITY_CLASSIFICATIONS) == 5
     assert len(REQUIRED_PACKET_FIELDS) == 8
+
+
+# ── REPO_WIDE_UNIVERSALITY_HARDGATE_V1 ────────────────────────────────────────
+
+from tools.check_universal_ticker_lock import (  # noqa: E402
+    REPO_REQUIRED_PACKET_FIELDS,
+    REPO_UNIVERSALITY_CLASSIFICATIONS,
+    UNIVERSE_DIMENSIONS,
+)
+
+
+def _repo_packet(classification: str, extra: str = "",
+                 fields: tuple[str, ...] = REPO_REQUIRED_PACKET_FIELDS) -> str:
+    body = "\n".join(f"- {f}: provided" for f in fields if f != "UNIVERSALITY_CLASSIFICATION")
+    return f"# Packet\n{body}\n- UNIVERSALITY_CLASSIFICATION: {classification}\n{extra}\n"
+
+
+# FAIL cases (mission item 7) ------------------------------------------------
+
+
+def test_hardgate_base_ticker_proof_claiming_universal_closure_fails():
+    text = "# Packet\nEvidence: SPY QQQ IWM.\nDeclaring universal closure of the quote lane.\n"
+    errs = check_packet_text(text, "reports/fixture.md")
+    assert any("universal claim" in e for e in errs)
+
+
+def test_hardgate_one_route_proof_claiming_route_universal_fails():
+    text = "# Packet\nProved /api/analytics/state only; claiming route-universal behavior.\n"
+    errs = check_packet_text(text, "reports/fixture.md")
+    assert any("universal claim" in e for e in errs)
+
+
+def test_hardgate_one_card_horizon_proof_claiming_universal_fails():
+    text = "# Packet\n1c card green; claiming horizon-universal card fidelity.\n"
+    errs = check_packet_text(text, "reports/fixture.md")
+    assert any("universal claim" in e for e in errs)
+
+
+def test_hardgate_rth_only_proof_claiming_all_session_fails():
+    text = "# Packet\nRTH sample only; asserting all-session closure.\n"
+    errs = check_packet_text(text, "reports/fixture.md")
+    assert any("universal claim" in e for e in errs)
+
+
+def test_hardgate_child_slice_proof_closing_parent_lane_fails():
+    text = (
+        "# Packet\nChild slice ANCHOR_QUOTE_LANE_REFRESHER_V1 green.\n"
+        "REAL_MONEY_READINESS = PROVEN\n"
+    )
+    errs = check_packet_text(text, "reports/fixture.md")
+    assert any("REAL_MONEY_READINESS" in e and "closed-class" in e for e in errs)
+
+
+def test_hardgate_missing_affected_universe_field_fails():
+    fields = tuple(f for f in REPO_REQUIRED_PACKET_FIELDS if f != "AFFECTED_UNIVERSE_ENUMERATED")
+    errs = check_packet_text(
+        _repo_packet("UNIVERSAL_BEHAVIOR_PROVEN", fields=fields), "reports/fixture.md"
+    )
+    assert any("AFFECTED_UNIVERSE_ENUMERATED" in e for e in errs)
+
+
+def test_hardgate_representative_only_without_downgrade_fails():
+    text = "# Packet\nRepresentative route sample stands as universal proof.\n"
+    errs = check_packet_text(text, "reports/fixture.md")
+    assert any("REPRESENTATIVE_ONLY_NOT_PROVEN" in e for e in errs)
+
+
+def test_hardgate_exception_without_operator_approval_fails():
+    errs = check_packet_text(
+        _repo_packet("EXCEPTION_APPROVED_WITH_SCOPE"), "reports/fixture.md"
+    )
+    assert any("operator approval" in e for e in errs)
+
+
+# PASS cases (mission item 7) ------------------------------------------------
+
+
+def test_hardgate_proper_subset_classification_passes():
+    text = (
+        "# Packet\nEvidence: one route, RTH only.\n"
+        "- UNIVERSALITY_CLASSIFICATION: SUBSET_EVIDENCED_ONLY\n"
+        "CARD_FIDELITY_OVERALL = NOT_PROVEN\n"
+    )
+    assert check_packet_text(text, "reports/fixture.md") == []
+
+
+def test_hardgate_universal_by_construction_with_lock_passes():
+    text = _repo_packet(
+        "UNIVERSAL_BY_CONSTRUCTION_WITH_MECHANICAL_LOCK",
+        extra="Universal closure holds by construction: keyed loop over the config roster.",
+    )
+    assert check_packet_text(text, "reports/fixture.md") == []
+
+
+def test_hardgate_approved_exception_with_scope_passes():
+    text = _repo_packet(
+        "EXCEPTION_APPROVED_WITH_SCOPE",
+        extra="Operator approved exception: $SPX chain excluded, scope limited to equities.",
+    )
+    assert check_packet_text(text, "reports/fixture.md") == []
+
+
+def test_hardgate_complete_universe_matrix_passes():
+    text = _repo_packet(
+        "UNIVERSAL_BEHAVIOR_PROVEN",
+        extra=(
+            "AFFECTED_UNIVERSE_ENUMERATED covers tickers, routes, horizons, "
+            "timeframes, session_states, cache keys, data sources, DB tables, "
+            "model paths, trust states, failure modes.\n"
+            "Universal closure proven across the enumerated matrix."
+        ),
+    )
+    assert check_packet_text(text, "reports/fixture.md") == []
+
+
+def test_hardgate_constants_shape():
+    assert len(REPO_UNIVERSALITY_CLASSIFICATIONS) == 7
+    assert len(REPO_REQUIRED_PACKET_FIELDS) == 8
+    assert len(UNIVERSE_DIMENSIONS) == 13
