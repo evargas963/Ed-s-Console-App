@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 406  # inventory sync @ ANCHOR_QUOTE_LANE_REFRESHER_V1: +3 anchor-quote-lane refresh defs (prior sync @ TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1: 403)
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 408  # inventory sync @ ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1: +2 log-only clobber-guard defs (prior sync @ ANCHOR_QUOTE_LANE_REFRESHER_V1: 406)
 
 
 def test_mega1_row_schema_valid():

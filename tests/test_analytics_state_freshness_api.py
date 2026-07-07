@@ -972,3 +972,201 @@ def test_anchor_lane_refresh_constants_inside_trust_threshold():
     assert srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC < srv._CARD_FRESHNESS_V1_QUOTE_STALE_SEC == 30.0
     assert srv.CACHE_TTL == 5
     assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
+
+
+# ── ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 ────────────────────────────────
+
+
+def _full_bundle_entry(version: int, gen_ts: float) -> dict:
+    """Fixture: cache entry shaped like a full Tier C publish (server.py full-write site)."""
+    return {
+        "ts": gen_ts,
+        "generated_at": gen_ts,
+        "analytics_version": version,
+        "ms_dict": {"mhap_rows": [{"h": "1c"}], "fusion_available": True, "spot": 100.0},
+        "pcr_val": 0.9,
+        "spot_f": 100.0,
+        "vix": 15.0,
+        "price_levels": {"lvl": 1},
+        "pl_date": "2026-07-07",
+        "pl_mono": 123.0,
+    }
+
+
+def _clear_fixture_cache_keys(srv, ticker: str) -> None:
+    for k in [k for k in list(srv._state_cache) if k[0] == ticker]:
+        del srv._state_cache[k]
+
+
+def test_analytics_cache_entry_is_full_bundle_predicate():
+    """Shape predicate: bundle ⇔ non-empty ms_dict AND generated_at; shells/minimal excluded."""
+    import server as srv
+
+    assert srv._analytics_cache_entry_is_full_bundle(None) is False
+    assert srv._analytics_cache_entry_is_full_bundle({}) is False
+    assert srv._analytics_cache_entry_is_full_bundle({"ms_dict": {}, "generated_at": 1.0}) is False
+    assert srv._analytics_cache_entry_is_full_bundle({"ms_dict": {"spot": 1}}) is False
+    assert srv._analytics_cache_entry_is_full_bundle(_full_bundle_entry(3, 1000.0)) is True
+
+
+def test_log_only_touch_preserves_full_bundle():
+    """Logger touch on a full bundle: ms_dict/generated_at/version/ts intact, scalars refreshed."""
+    import server as srv
+
+    tkr = "ZZLA"
+    key = (tkr, "2026-07-07")
+    try:
+        seeded = _full_bundle_entry(version=7, gen_ts=1000.0)
+        srv._state_cache[key] = seeded
+        action = srv._log_only_cache_touch(key, tkr, "2026-07-07", 1.1, 101.5, 16.5)
+        assert action == "preserved_full_bundle"
+        ent = srv._state_cache[key]
+        assert ent is seeded
+        assert ent["ms_dict"] == {"mhap_rows": [{"h": "1c"}], "fusion_available": True, "spot": 100.0}
+        assert ent["generated_at"] == 1000.0
+        assert ent["ts"] == 1000.0
+        assert ent["analytics_version"] == 7
+        assert ent["pcr_val"] == 1.1
+        assert ent["spot_f"] == 101.5
+        assert ent["vix"] == 16.5
+        # None scalars never degrade existing observations.
+        srv._log_only_cache_touch(key, tkr, "2026-07-07", None, None, None)
+        assert ent["pcr_val"] == 1.1 and ent["spot_f"] == 101.5 and ent["vix"] == 16.5
+    finally:
+        _clear_fixture_cache_keys(srv, tkr)
+
+
+def test_log_only_touch_version_monotonic_across_logger_interleave():
+    """full v7 → logger touch → next full write increments to 8 (no reset to 1)."""
+    import server as srv
+
+    tkr = "ZZLB"
+    key = (tkr, "2026-07-07")
+    try:
+        srv._state_cache[key] = _full_bundle_entry(version=7, gen_ts=1000.0)
+        srv._log_only_cache_touch(key, tkr, "2026-07-07", 1.0, 100.0, 15.0)
+        prev_ent = srv._state_cache.get(key) or {}
+        # Same expression as the full-publish site (_next_ver).
+        assert int(prev_ent.get("analytics_version", 0)) + 1 == 8
+        assert srv._analytics_cache_entry_is_full_bundle(prev_ent) is True
+    finally:
+        _clear_fixture_cache_keys(srv, tkr)
+
+
+def test_log_only_touch_legacy_minimal_write_when_no_bundle():
+    """No entry (or empty-ms_dict entry): legacy minimal write, never masquerading as a bundle."""
+    import server as srv
+
+    tkr = "ZZLC"
+    key = (tkr, "2026-07-07")
+    try:
+        assert srv._state_cache.get(key) is None
+        action = srv._log_only_cache_touch(key, tkr, "2026-07-07", 0.8, 55.0, 14.0)
+        assert action == "legacy_minimal_write"
+        ent = srv._state_cache[key]
+        assert ent["ms_dict"] == {}
+        assert "generated_at" not in ent
+        assert "analytics_version" not in ent
+        assert srv._analytics_cache_entry_is_full_bundle(ent) is False
+        # Repeat touch on the minimal entry stays minimal (does not get worse or better).
+        action2 = srv._log_only_cache_touch(key, tkr, "2026-07-07", 0.9, 56.0, 14.5)
+        assert action2 == "legacy_minimal_write"
+        assert srv._state_cache[key]["ms_dict"] == {}
+    finally:
+        _clear_fixture_cache_keys(srv, tkr)
+
+
+def test_log_only_touch_preserves_partial_and_error_shells():
+    """Progressive partials and error shells (bundle-shaped) survive logger touches."""
+    import server as srv
+
+    tkr = "ZZLD"
+    key = (tkr, "2026-07-07")
+    try:
+        partial = {
+            "ts": 2000.0,
+            "generated_at": 2000.0,
+            "analytics_version": 0,
+            "ms_dict": {"analytics_partial_tier_c": True, "mhap_rows": [], "spot": 50.0},
+            "pcr_val": None,
+            "spot_f": 50.0,
+            "vix": None,
+        }
+        srv._state_cache[key] = partial
+        assert srv._log_only_cache_touch(key, tkr, "2026-07-07", 0.7, 51.0, 13.0) == "preserved_full_bundle"
+        assert srv._state_cache[key] is partial
+        assert srv._state_cache[key]["ms_dict"]["analytics_partial_tier_c"] is True
+        assert srv._state_cache[key]["generated_at"] == 2000.0
+
+        error_shell = {
+            "ts": 3000.0,
+            "generated_at": 3000.0,
+            "analytics_version": 0,
+            "ms_dict": {"state_error": "analytics_refresh_failed", "mhap_rows": []},
+            "pcr_val": None,
+            "spot_f": None,
+            "vix": None,
+        }
+        srv._state_cache[key] = error_shell
+        assert srv._log_only_cache_touch(key, tkr, "2026-07-07", None, None, None) == "preserved_full_bundle"
+        assert srv._state_cache[key]["ms_dict"]["state_error"] == "analytics_refresh_failed"
+    finally:
+        _clear_fixture_cache_keys(srv, tkr)
+
+
+def test_log_only_touch_still_evicts_other_expiry_keys():
+    """The guard keeps the pre-existing other-expiry eviction on both paths."""
+    import server as srv
+
+    tkr = "ZZLE"
+    try:
+        srv._state_cache[(tkr, "2026-07-08")] = {"ms_dict": {}, "ts": 1.0}
+        srv._state_cache[(tkr, "2026-07-07")] = _full_bundle_entry(version=2, gen_ts=1000.0)
+        srv._log_only_cache_touch((tkr, "2026-07-07"), tkr, "2026-07-07", 1.0, 100.0, 15.0)
+        assert (tkr, "2026-07-08") not in srv._state_cache
+        assert (tkr, "2026-07-07") in srv._state_cache
+    finally:
+        _clear_fixture_cache_keys(srv, tkr)
+
+
+def test_log_only_branch_routes_through_guard_source_lock():
+    """Source lock: the log_only branch calls _log_only_cache_touch; no inline clobber remains."""
+    import ast
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    assert "_log_only_cache_touch(" in src
+    # The old inline clobber wrote ms_dict {} directly at the log_only branch;
+    # the only remaining empty-ms_dict cache write lives inside the guarded helper.
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")
+    for sub in ast.walk(fn):
+        if isinstance(sub, ast.Assign):
+            for tgt in sub.targets:
+                if (isinstance(tgt, ast.Subscript) and isinstance(tgt.value, ast.Name)
+                        and tgt.value.id == "_state_cache" and isinstance(sub.value, ast.Dict)):
+                    dict_keys = {k.value for k in sub.value.keys if isinstance(k, ast.Constant)}
+                    assert "generated_at" in dict_keys, (
+                        "_fetch_state writes a _state_cache dict without generated_at "
+                        "(log_only clobber shape) — must route through _log_only_cache_touch"
+                    )
+
+
+def test_log_only_guard_ticker_agnostic_no_literals():
+    """AST lock: no uppercase ticker literals in the guard functions."""
+    import ast
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    targets = {"_analytics_cache_entry_is_full_bundle", "_log_only_cache_touch"}
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in targets:
+            found.add(node.name)
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                    assert not (sub.value.isalpha() and sub.value.isupper()), (
+                        f"ticker-literal-shaped constant {sub.value!r} in {node.name}"
+                    )
+    assert found == targets

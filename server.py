@@ -905,6 +905,80 @@ def _analytics_generated_ts(entry: dict) -> float:
     return float(entry.get("generated_at") or entry.get("ts") or 0.0)
 
 
+# ── ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 ────────────────────────────────
+# Root cause (ANALYTICS_BUNDLE_AGE_CADENCE_TRACE_V1, 2026-07-07): the background
+# logger calls _fetch_state(ticker, expiry=None, log_only=True) each rotation and
+# the log_only branch overwrote _state_cache[(ticker, selected_exp)] with
+# {"ms_dict": {}} — destroying the full Tier C bundle's ms_dict / generated_at /
+# analytics_version at the SAME key the UI reads. Freshness then took the
+# no-bundle branch (stale=True, version 0) and the next full publish restarted
+# analytics_version at 1 (observed live: version resets to 1, vanished QQQ/IWM
+# entries, pending_shell_builds churn). The guard below preserves any entry that
+# carries a publishable bundle (full, progressive-partial, or error shell — all
+# have non-empty ms_dict + generated_at) and only refreshes the scalar
+# observation fields the recompute diff path consumes (pcr_val / spot_f / vix).
+# Entries without a bundle (legacy log-only minimal entries: ms_dict {}) keep
+# the pre-existing minimal-write behavior, which never masquerades as a full
+# bundle (no generated_at / no analytics_version → freshness no-bundle branch).
+# Ticker-agnostic: keyed purely on cache-entry shape.
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — cache-slot lifecycle guard only; no market
+#   field read, derivation, or emission changed (pcr_val/spot_f/vix pass through
+#   unchanged from the existing pipeline values).
+# Derived-field disposition: none required (no derived field touched).
+# All consumers checked: yes — _state_cache readers (_fetch_state prev_* diff
+#   reads, freshness contract, progressive publish, /api/analytics/state serve
+#   path) see either the preserved bundle or the unchanged legacy minimal entry.
+# SCHWAB_CSV_CHECKED
+def _analytics_cache_entry_is_full_bundle(entry: Optional[dict]) -> bool:
+    """True when a Tier C cache entry carries a publishable bundle (non-empty
+    ms_dict + generated_at) whose freshness state must never be degraded by a
+    log-only write. Progressive partials and error shells qualify on purpose —
+    replacing either with an empty-ms_dict minimal entry would lose state."""
+    if not entry or not isinstance(entry, dict):
+        return False
+    return bool(entry.get("ms_dict")) and bool(entry.get("generated_at"))
+
+
+def _log_only_cache_touch(
+    cache_key: tuple,
+    ticker: str,
+    selected_exp: Optional[str],
+    pcr_val,
+    spot_f,
+    vix,
+) -> str:
+    """Log-only cache write with the full-bundle clobber guard; returns action.
+
+    preserved_full_bundle — entry has a publishable bundle: ms_dict /
+    generated_at / analytics_version / ts untouched (version monotonicity and
+    freshness state survive logger rotations); only non-None scalar
+    observations (pcr_val, spot_f, vix) are refreshed in place.
+    legacy_minimal_write — no bundle present: pre-guard minimal entry written
+    unchanged (empty ms_dict; renders as no-bundle, never as a stale bundle).
+    """
+    existing = _state_cache.get(cache_key)
+    if _analytics_cache_entry_is_full_bundle(existing):
+        if pcr_val is not None:
+            existing["pcr_val"] = pcr_val
+        if spot_f is not None:
+            existing["spot_f"] = spot_f
+        if vix is not None:
+            existing["vix"] = vix
+        action = "preserved_full_bundle"
+    else:
+        _state_cache[cache_key] = {
+            "ts": time.time(), "ms_dict": {}, "pcr_val": pcr_val, "spot_f": spot_f,
+            "vix": vix,
+            "price_levels": (existing or {}).get("price_levels"),
+            "pl_date":      (existing or {}).get("pl_date", ""),
+            "pl_mono":      (existing or {}).get("pl_mono"),
+        }
+        action = "legacy_minimal_write"
+    _evict_old_expiry_entries(ticker, selected_exp)
+    return action
+
+
 def _attach_analytics_freshness_contract(
     md: dict,
     *,
@@ -6931,16 +7005,18 @@ def _fetch_state(
         log.warning("live v2 calibration logging failed: %s", _v2_log_e)
     _stage_marks.append(("v2_calibration_logging", time.perf_counter()))
 
-    # ── If log_only, cache minimal state and return early ─────────────────────
+    # ── If log_only, touch cache (clobber-guarded) and return early ───────────
+    # ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1: never replace a publishable
+    # bundle with an empty-ms_dict minimal entry (see _log_only_cache_touch).
     if log_only:
-        _state_cache[_cache_key] = {
-            "ts": time.time(), "ms_dict": {}, "pcr_val": pcr_val, "spot_f": spot_f,
-            "vix": mkt_ctx.vix if mkt_ctx else None,
-            "price_levels": _state_cache.get(_cache_key, {}).get("price_levels"),
-            "pl_date":      _state_cache.get(_cache_key, {}).get("pl_date", ""),
-            "pl_mono":      _state_cache.get(_cache_key, {}).get("pl_mono"),
-        }
-        _evict_old_expiry_entries(ticker, selected_exp)
+        _log_only_cache_touch(
+            _cache_key,
+            ticker,
+            selected_exp,
+            pcr_val,
+            spot_f,
+            mkt_ctx.vix if mkt_ctx else None,
+        )
         return {}
 
     # ── Build full API response dict ──────────────────────────────────────────
