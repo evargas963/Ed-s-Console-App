@@ -1977,6 +1977,83 @@ def _session_open_anchor_warm_loop() -> None:
             log.warning("session-open anchor warm loop error: %s", e)
 
 
+# ── ANCHOR_QUOTE_LANE_REFRESHER_V1 — keep panel-anchor quote lanes fresh ──────
+# Root cause (ANCHOR_QUOTE_LANE_QQQ_FROZEN_TIMESTAMP_TRACE_V1, 2026-07-07):
+# live_market_plane lanes update only for the currently streamed / actively
+# REST-polled ticker and rows never expire — switched-away anchors freeze
+# (QQQ quote_ts frozen 7,120s across three captures), never-polled anchors have
+# no lane at all (IWM missing_quote_ts), and even SPY drifts when unpolled.
+# The frozen/missing quote_ts drives the operator-mirror quote veto and blocks
+# card trust continuously. This loop refreshes stale/missing lanes for the
+# panel roster through the SAME REST fast-quote path the /api/fast-quote
+# endpoint uses (_record_rest_fast_quote_with_auth_fallback → record_quote;
+# auth-latch carry-forward preserved). Ticker-agnostic by construction: the
+# roster is config (UI_MAXIMIZE_PANEL_WARM_TICKERS) and the staleness predicate
+# reads lane fields only. A freshly streamed lane is younger than the threshold
+# and is skipped — streaming behavior is untouched.
+# Schwab CSV authority checked: yes
+# CSV row(s): quotes.*.lastPrice / quotes.*.mark et al via the EXISTING
+#   _build_rest_fast_quote_payload (schwab_client.safe_get_quote) — scheduling
+#   only; no market field read, derivation, or emission changed.
+# Derived-field disposition: none required (no derived field touched).
+# All consumers checked: yes — record_quote rows carry quote_ingestion
+#   "rest_anchor_lane_refresher" (no consumer branches on that value);
+#   card_freshness quote ages simply read fresher fast_server_ts.
+# SCHWAB_CSV_CHECKED
+ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC: float = 20.0
+ANCHOR_QUOTE_LANE_MAX_AGE_SEC: float = 20.0
+_anchor_quote_lane_refresh_stop = threading.Event()
+_anchor_quote_lane_refresh_counts: dict[str, int] = {
+    "refreshes": 0,
+    "bootstraps": 0,
+    "errors": 0,
+}
+
+
+def _anchor_quote_lane_needs_refresh(row: Optional[dict], now: float) -> bool:
+    """Ticker-agnostic lane-staleness predicate: absent row, missing ts, or old ts."""
+    if not row:
+        return True
+    fts = row.get("fast_server_ts")
+    if fts is None:
+        return True
+    try:
+        return (now - float(fts)) > ANCHOR_QUOTE_LANE_MAX_AGE_SEC
+    except (TypeError, ValueError):
+        return True
+
+
+def _run_anchor_quote_lane_refresh_once(now: Optional[float] = None) -> int:
+    """Refresh stale/missing plane lanes for the panel roster; returns refresh count."""
+    ts = time.time() if now is None else float(now)
+    done = 0
+    for t in UI_MAXIMIZE_PANEL_WARM_TICKERS:
+        try:
+            prev = _lmp.get_quote(t)
+            if not _anchor_quote_lane_needs_refresh(prev, ts):
+                continue
+            _anchor_quote_lane_refresh_counts["bootstraps" if not prev else "refreshes"] += 1
+            _record_rest_fast_quote_with_auth_fallback(t, prev, "rest_anchor_lane_refresher")
+            done += 1
+        except Exception as e:
+            _anchor_quote_lane_refresh_counts["errors"] += 1
+            log.warning("anchor quote lane refresh failed ticker=%s: %s", t, e)
+    return done
+
+
+def _anchor_quote_lane_refresh_loop() -> None:
+    """Daemon: keep anchor quote lanes inside the trust threshold during sessions."""
+    while not _anchor_quote_lane_refresh_stop.wait(ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC):
+        if _analytics_bg_shutdown:
+            continue
+        try:
+            if now_et().weekday() >= 5 or not _is_loggable_session():
+                continue
+            _run_anchor_quote_lane_refresh_once()
+        except Exception as e:
+            log.warning("anchor quote lane refresh loop error: %s", e)
+
+
 def _sse_viewer_cache_ttl(ticker: str, expiry: Optional[str]) -> float:
     """REST /api/state cache TTL: short while a client is SSE-subscribed to this (ticker, expiry)."""
     if expiry is None:
@@ -7822,10 +7899,23 @@ async def _app_lifespan(app):
     ).start()
     log.info("session-open anchor warm loop started (poll=%ss)", SESSION_OPEN_ANCHOR_WARM_POLL_SEC)
 
+    _anchor_quote_lane_refresh_stop.clear()
+    threading.Thread(
+        target=_anchor_quote_lane_refresh_loop,
+        name="ed_anchor_quote_lane_refresh",
+        daemon=True,
+    ).start()
+    log.info(
+        "anchor quote lane refresh loop started (poll=%ss max_age=%ss)",
+        ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC,
+        ANCHOR_QUOTE_LANE_MAX_AGE_SEC,
+    )
+
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
     _session_open_anchor_warm_stop.set()
+    _anchor_quote_lane_refresh_stop.set()
     _shutdown_analytics_executor(wait=True)
     # Schwab stream thread + websocket: must close before loop/thread teardown
     # (avoids pending websockets tasks destroyed with the event loop).

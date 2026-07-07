@@ -821,3 +821,154 @@ def test_chain_fetch_call_shape_and_gated_site_source_lock():
     assert "_gated_safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT" in src
     assert 'ms_dict["chain_gate_wait_sec"]' in src
     assert '_stage_ms["chain_gate_wait_ms"]' in src
+
+
+# ── ANCHOR_QUOTE_LANE_REFRESHER_V1 ────────────────────────────────────────────
+
+
+class _FakePlane:
+    """Minimal live_market_plane stand-in: per-ticker rows, read-only for the refresher."""
+
+    def __init__(self, rows: dict):
+        self.rows = rows
+
+    def get_quote(self, ticker: str):
+        return self.rows.get(ticker)
+
+
+def test_anchor_quote_lane_needs_refresh_predicate():
+    """Absent row, missing/garbled fast_server_ts, or age > max-age ⇒ refresh; fresh ⇒ skip."""
+    import server as srv
+
+    now = 1_000_000.0
+    max_age = srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC
+    assert srv._anchor_quote_lane_needs_refresh(None, now) is True
+    assert srv._anchor_quote_lane_needs_refresh({}, now) is True
+    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": None}, now) is True
+    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": "bogus"}, now) is True
+    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": now - max_age - 0.1}, now) is True
+    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": now - max_age + 0.1}, now) is False
+    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": now}, now) is False
+
+
+def test_anchor_lane_refresh_bootstraps_missing_lane(monkeypatch):
+    """Missing-lane case (IWM shape): absent plane row is bootstrapped with prev=None."""
+    import server as srv
+
+    now = 2_000_000.0
+    monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQA",))
+    monkeypatch.setattr(srv, "_lmp", _FakePlane({}))
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        srv,
+        "_record_rest_fast_quote_with_auth_fallback",
+        lambda tkr, prev, ing: calls.append((tkr, prev, ing)),
+    )
+    boots_before = srv._anchor_quote_lane_refresh_counts["bootstraps"]
+    assert srv._run_anchor_quote_lane_refresh_once(now) == 1
+    assert calls == [("ZZQA", None, "rest_anchor_lane_refresher")]
+    assert srv._anchor_quote_lane_refresh_counts["bootstraps"] == boots_before + 1
+
+
+def test_anchor_lane_refresh_recovers_frozen_lane(monkeypatch):
+    """Frozen-lane case (QQQ shape): old fast_server_ts is refreshed, prev row passed through."""
+    import server as srv
+
+    now = 3_000_000.0
+    frozen = {"fast_server_ts": now - 7_120.0, "spot": 500.0}
+    monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQB",))
+    monkeypatch.setattr(srv, "_lmp", _FakePlane({"ZZQB": frozen}))
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        srv,
+        "_record_rest_fast_quote_with_auth_fallback",
+        lambda tkr, prev, ing: calls.append((tkr, prev, ing)),
+    )
+    refreshes_before = srv._anchor_quote_lane_refresh_counts["refreshes"]
+    assert srv._run_anchor_quote_lane_refresh_once(now) == 1
+    assert calls == [("ZZQB", frozen, "rest_anchor_lane_refresher")]
+    assert srv._anchor_quote_lane_refresh_counts["refreshes"] == refreshes_before + 1
+
+
+def test_anchor_lane_refresh_skips_fresh_lane_no_stream_interference(monkeypatch):
+    """A lane younger than max-age (e.g. actively streamed ticker) is left alone entirely."""
+    import server as srv
+
+    now = 4_000_000.0
+    fresh = {"fast_server_ts": now - 1.0, "spot": 600.0}
+    monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQC",))
+    monkeypatch.setattr(srv, "_lmp", _FakePlane({"ZZQC": fresh}))
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        srv,
+        "_record_rest_fast_quote_with_auth_fallback",
+        lambda tkr, prev, ing: calls.append((tkr, prev, ing)),
+    )
+    assert srv._run_anchor_quote_lane_refresh_once(now) == 0
+    assert calls == []
+
+
+def test_anchor_lane_refresh_error_isolated_per_ticker(monkeypatch):
+    """One ticker's REST failure is counted and does not block the rest of the roster."""
+    import server as srv
+
+    now = 5_000_000.0
+    monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQD", "ZZQE"))
+    monkeypatch.setattr(srv, "_lmp", _FakePlane({}))
+    calls: list[str] = []
+
+    def _boom_then_ok(tkr, prev, ing):
+        calls.append(tkr)
+        if tkr == "ZZQD":
+            raise RuntimeError("rest failure")
+
+    monkeypatch.setattr(srv, "_record_rest_fast_quote_with_auth_fallback", _boom_then_ok)
+    errors_before = srv._anchor_quote_lane_refresh_counts["errors"]
+    assert srv._run_anchor_quote_lane_refresh_once(now) == 1
+    assert calls == ["ZZQD", "ZZQE"]
+    assert srv._anchor_quote_lane_refresh_counts["errors"] == errors_before + 1
+
+
+def test_anchor_lane_refresh_ticker_agnostic_no_literals():
+    """AST lock: the refresher functions carry no uppercase ticker string literals."""
+    import ast
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    targets = {
+        "_anchor_quote_lane_needs_refresh",
+        "_run_anchor_quote_lane_refresh_once",
+        "_anchor_quote_lane_refresh_loop",
+    }
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in targets:
+            found.add(node.name)
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                    assert not (sub.value.isalpha() and sub.value.isupper()), (
+                        f"ticker-literal-shaped constant {sub.value!r} in {node.name}"
+                    )
+    assert found == targets
+
+
+def test_anchor_lane_refresh_lifespan_wiring_source_lock():
+    """Lifespan starts the refresher daemon and stops it on shutdown."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    assert "target=_anchor_quote_lane_refresh_loop" in src
+    assert src.count("_anchor_quote_lane_refresh_stop.set()") == 1
+    assert src.count("_anchor_quote_lane_refresh_stop.clear()") == 1
+
+
+def test_anchor_lane_refresh_constants_inside_trust_threshold():
+    """Lane max-age + poll stay under the 30s quote-trust threshold; TTL/grace untouched."""
+    import server as srv
+
+    assert srv.ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC == 20.0
+    assert srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC == 20.0
+    assert srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC < srv._CARD_FRESHNESS_V1_QUOTE_STALE_SEC == 30.0
+    assert srv.CACHE_TTL == 5
+    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
