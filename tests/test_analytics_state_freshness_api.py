@@ -1316,6 +1316,64 @@ def test_fix_b_no_new_ticker_special_casing():
         assert ("server.py", "_post_publish_persistence_tail", lit) in TICKER_LITERAL_ALLOWLIST
 
 
+# ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1 ───────────────────────────────
+
+
+def test_step1_log_only_inline_source_lock():
+    """log_only joins the shutdown inline path for chain/quote and gets a
+    sequential inline arm for candle seeds; operator-facing submits remain."""
+    src = _fetch_state_source()
+    assert "if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):" in src
+    i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
+    i_pool_seed = src.index("_seed_pool = _get_route_offload_executor()")
+    assert i_inline_seed < i_pool_seed, "inline seed arm must precede the pooled arm"
+    # Operator-facing bounded parallelism intact (submits still present).
+    assert "_cq_pool.submit(" in src or "_chain_fut = _cq_pool.submit(" in src
+    assert "_f5 = _seed_pool.submit(_seed_candles, 5)" in src
+    assert "_f1 = _seed_pool.submit(_seed_candles, 1)" in src
+
+
+def test_step1_discriminator_universal_by_signature():
+    """The discriminator structurally cannot special-case anything: its only
+    parameter is log_only; no ticker/roster/session/horizon/expiry input exists."""
+    import ast
+    import inspect
+
+    import server as srv
+
+    sig = inspect.signature(srv._log_only_inline_leaf_fetches)
+    assert list(sig.parameters) == ["log_only"]
+    assert srv._log_only_inline_leaf_fetches(True) is True
+    assert srv._log_only_inline_leaf_fetches(False) is False
+    tree = ast.parse(_fetch_state_source())
+    fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_log_only_inline_leaf_fetches"
+    )
+    for sub in ast.walk(fn):
+        if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+            assert not (sub.value.isalpha() and sub.value.isupper()), (
+                f"ticker/session-literal-shaped constant {sub.value!r} in discriminator"
+            )
+
+
+def test_step1_ticker_matrix_invariance():
+    """Anchors + non-anchor universe symbols: the inline decision is invariant
+    because the discriminator has no ticker channel at all."""
+    import server as srv
+
+    for _ticker in ("SPY", "QQQ", "IWM", "NVDA", "PLTR"):
+        # No ticker argument EXISTS to pass — the invariance is structural.
+        assert srv._log_only_inline_leaf_fetches(True) is True
+        assert srv._log_only_inline_leaf_fetches(False) is False
+
+
+def test_step1_shutdown_inline_branch_preserved():
+    """Shutdown keeps its pre-existing inline behavior via the call-site or."""
+    src = _fetch_state_source()
+    assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
+
+
 def test_fix_b_constants_unchanged():
     """TTL / grace / executor sizing untouched by the reorder."""
     import server as srv

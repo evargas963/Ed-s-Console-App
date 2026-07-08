@@ -813,6 +813,32 @@ def _tier_c_inflight_key(ticker: str, expiry: Optional[str]) -> tuple:
     return (ticker.upper().strip(), expiry if expiry is not None else "__auto__")
 
 
+# ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1 ───────────────────────────────
+# Root cause (ROUTE_OFFLOAD_EXECUTOR_SATURATION_TRACE, 2026-07-08): background
+# log_only pipelines and operator-facing card recomputes submit their nested
+# leaf Schwab fetches (chain, quote, candle seeds) into the SAME 8-worker FIFO
+# route-offload pool, so logger work queues ahead of card recomputes (measured
+# 8-17s route-pool queue wait inside heavy cycles, pure Schwab fetch 0.6-3.2s).
+# Step 1: log_only pipelines run those leaf fetches INLINE on the caller
+# thread — logger latency is acceptable, operator-facing latency is not.
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — executor-pool scheduling only; the Schwab
+#   chain/quote/pricehistory reads themselves are byte-identical (same
+#   functions, same arguments, joined synchronously on both paths).
+# Derived-field disposition: none required (no derived field touched).
+# All consumers checked: yes — c_resp/q_resp/seeded candles consumed
+#   identically downstream on both paths.
+# SCHWAB_CSV_CHECKED
+def _log_only_inline_leaf_fetches(log_only: bool) -> bool:
+    """Universal-by-construction discriminator: background log_only pipelines
+    run leaf Schwab fetches inline instead of submitting nested futures into
+    the shared route-offload pool. The signature deliberately carries ONLY
+    log_only — no ticker, roster, session, horizon, or expiry parameter exists
+    for a special case to branch on. Shutdown keeps its existing inline
+    behavior via the call-site `or`."""
+    return bool(log_only)
+
+
 def _invalidate_analytics_cache_after_bg_failures(
     inflight_key: tuple,
     ticker: str,
@@ -5181,7 +5207,10 @@ def _fetch_state(
     _chain_gate_wait_sec: float = 0.0
     _chain_fetch_pure_sec: Optional[float] = None
     try:
-        if _analytics_bg_shutdown:
+        # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1: log_only joins the
+        # shutdown inline path — background pipelines stay out of the shared
+        # route pool; operator-facing recomputes keep bounded parallelism.
+        if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
                 client, ticker, strike_count=CHAIN_STRIKE_COUNT
             )
@@ -5467,13 +5496,20 @@ def _fetch_state(
 
         try:
             client = get_client()
-            # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
-            # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
-            _seed_pool = _get_route_offload_executor()
-            _f5 = _seed_pool.submit(_seed_candles, 5)
-            _f1 = _seed_pool.submit(_seed_candles, 1)
-            _f5.result(timeout=45)
-            _f1.result(timeout=45)
+            if _log_only_inline_leaf_fetches(log_only):
+                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1: background
+                # log_only seeds run sequentially inline — identical calls,
+                # identical consumption, no shared-pool occupancy.
+                _seed_candles(5)
+                _seed_candles(1)
+            else:
+                # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
+                # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
+                _seed_pool = _get_route_offload_executor()
+                _f5 = _seed_pool.submit(_seed_candles, 5)
+                _f1 = _seed_pool.submit(_seed_candles, 1)
+                _f5.result(timeout=45)
+                _f1.result(timeout=45)
         except Exception as e:
             log.debug("Candle seeding failed for %s: %s", ticker, e)
 
