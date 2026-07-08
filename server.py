@@ -1453,6 +1453,10 @@ _analytics_cache_observability: dict[str, int] = {
     "bg_failure_stale_marks": 0,
     "expiry_evictions": 0,
     "cold_entry_writes": 0,
+    # FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 — audit-trail-only visibility for
+    # post-publish persistence failures (served payload is never degraded).
+    "post_publish_snapshot_failures": 0,
+    "post_publish_calibration_failures": 0,
 }
 
 
@@ -6372,612 +6376,10 @@ def _fetch_state(
         ms.news_context = None
     _stage_marks.append(("context_news", time.perf_counter()))
 
-    # ── DB snapshot logging ───────────────────────────────────────────────────
-    if _ed_db:  # snapshot INSERT, bars persist + outcome backfill all throttled (see ED_DB_SNAPSHOT_THROTTLE)
-        if _diag_on():
-            _diag_step("pre_db_snapshot", ticker)
-        # Reservation lifecycle: released in the except below iff the insert never
-        # landed (failure between reserve and insert must not burn the minute;
-        # releasing after a landed insert would re-open it). Initialized before
-        # the try so the handler can never NameError.
-        _snap_ts = _refresh_ts_utc
-        _do_insert = False
-        _snap_insert_landed = False
-        try:
-            from db import SnapshotRow, build_ts_et
-            from math_exposure import _f as _mf
-            _do_insert = _snapshot_row_insert_allowed(ticker, _snap_ts, db=_ed_db)
-            if not _do_insert:
-                log.debug(
-                    "DB snapshot insert skipped (throttle: max 1 insert/ticker/UTC minute; set ED_DB_SNAPSHOT_THROTTLE=0 to disable): %s",
-                    ticker,
-                )
-            if _do_insert:
-                _et_now = now_et
-                from base_money_path_capture import resolve_logger_source_from_update_source
-
-                _resolved_logger_source = logger_source or resolve_logger_source_from_update_source(
-                    update_source
-                )
-
-                # DTE is Schwab-native. Missing daysToExpiration fails closed for snapshot persistence.
-                _dte = _selected_schwab_days_to_expiration(
-                    contracts_use,
-                    selected_exp,
-                    preferred_strike=getattr(ms, "rec_strike", None),
-                    preferred_side=getattr(ms, "call_option_right", None),
-                )
-                _hours_to_expiry = _snapshot_expiry_hours_from_schwab_dte(_dte, _et_now)
-    
-                # ── Compute fields from available data ─────────────────────────────
-    
-                # Candle OHLC from canonical (1m) accumulator's current bar
-                _cur_bar = _candles_1m._current.get(ticker)
-                _c_open  = _cur_bar["o"] if _cur_bar else None
-                _c_high  = _cur_bar["h"] if _cur_bar else None
-                _c_low   = _cur_bar["l"] if _cur_bar else None
-                _c_close = _cur_bar["c"] if _cur_bar else None
-                _c_range = round(_c_high - _c_low, 4) if (_c_high and _c_low) else None
-                # _c_vol computed above before build_market_state
-    
-                # VWAP distance
-                _vwap = getattr(price_levels, "vwap", None)
-                _vwap_f = float(_vwap) if _vwap is not None else None
-                # Fallback: compute VWAP from seeded candle bars when price_levels has none.
-                # This fixes ~87% NaN rate for individual equities whose price_levels.vwap
-                # comes back empty because the API call fails or returns no intraday data.
-                if _vwap_f is None:
-                    _bars_for_vwap = _candles_1m.get_bars(ticker)
-                    if _bars_for_vwap:
-                        _vwap_f, _vwap_source_bars = _compute_vwap_from_bars(
-                            _bars_for_vwap,
-                            source_bars=_candles_1m.get_bars_source(ticker),
-                        )
-                        if _vwap_f is not None:
-                            log.debug(
-                                "VWAP: %s computed from %s bars: %.4f",
-                                ticker,
-                                _vwap_source_bars,
-                                _vwap_f,
-                            )
-                if _vwap_f is None:
-                    _pl_vwap = getattr(price_levels, "vwap", None)
-                    _n_bars = len(_bars_for_vwap) if _bars_for_vwap else 0
-                    # Schwab index symbols ($SPX, $VIX, $NDX, etc.) don't carry intraday
-                    # volume data; VWAP (price × volume sum) cannot compute by definition.
-                    # Steady-state DEBUG for those; WARNING for real tickers where bars
-                    # present + VWAP failed indicates a data-quality issue.
-                    _is_index_symbol = isinstance(ticker, str) and ticker.startswith("$")
-                    _vwap_log = log.debug if _is_index_symbol else log.warning
-                    _vwap_log(
-                        "VWAP failed for %s: price_levels=%s bars=%s — writing NULL",
-                        ticker, _pl_vwap, _n_bars,
-                    )
-                _vwap_dist = round(spot_f - _vwap_f, 4) if _vwap_f else None
-    
-                # VWAP side must follow the same vwap we persist (API VWAP or bar-derived fallback).
-                _row_vwap_side = getattr(ms, "vwap_side", None)
-                if _row_vwap_side is None:
-                    _row_vwap_side = derive_vwap_side(spot_f, _vwap_f)
-    
-                global _dpi_normalized_prev_by_ticker
-                _prev_dn = _dpi_normalized_prev_by_ticker.get(ticker)
-                _cur_raw = _dpi.get("normalized") if _dpi else None
-                try:
-                    _cur_dn_f = float(_cur_raw) if _cur_raw is not None else None
-                except (TypeError, ValueError):
-                    _cur_dn_f = None
-                _pressure_trend_live = derive_pressure_trend(_prev_dn, _cur_dn_f)
-                _dpi_normalized_prev_by_ticker[ticker] = _cur_dn_f
-                _pressure_label_live = None
-                if _dpi:
-                    _pressure_label_live = _dpi.get("direction")
-                if not _pressure_label_live and _hedging_flow:
-                    _pressure_label_live = _hedging_flow.get("direction")
-                if not _pressure_label_live:
-                    _pressure_label_live = "unavailable_no_dpi_or_hedging_flow_direction"
-    
-                # Wall absolute values
-                _cgw = _mf(getattr(walls[0], "call_gamma_wall", None)) if walls else None
-                _pgw = _mf(getattr(walls[0], "put_gamma_wall",  None)) if walls else None
-                _cdw = _mf(getattr(walls[0], "call_delta_wall", None)) if walls else None
-                _pdw = _mf(getattr(walls[0], "put_delta_wall",  None)) if walls else None
-                _cow = _mf(getattr(walls[0], "call_oi_wall",    None)) if walls else None
-                _pow = _mf(getattr(walls[0], "put_oi_wall",     None)) if walls else None
-                _cvw = _mf(getattr(walls[0], "call_vanna_wall", None)) if walls else None
-                _pvw = _mf(getattr(walls[0], "put_vanna_wall",  None)) if walls else None
-                # Inflection points live on ExposureRow (consensus), NOT WallsRow
-                _gi  = _mf(getattr(consensus_summary, "gamma_inflection", None)) if consensus_summary else None
-                _di  = _mf(getattr(consensus_summary, "delta_inflection", None)) if consensus_summary else None
-    
-                # Distance = wall_level - spot (positive = above, negative = below)
-                _d = lambda lvl: round(lvl - spot_f, 4) if lvl is not None else None
-                _dist_cgw = _d(_cgw)
-                _dist_pgw = _d(_pgw)
-                _dist_cdw = _d(_cdw)
-                _dist_pdw = _d(_pdw)
-                _dist_cow = _d(_cow)
-                _dist_pow = _d(_pow)
-                _dist_cvw = _d(_cvw)
-                _dist_pvw = _d(_pvw)
-                _dist_gi  = _d(_gi)
-                _dist_di  = _d(_di)
-    
-                # Pin width (call gamma wall - put gamma wall)
-                _pin_w = round(_cgw - _pgw, 4) if (_cgw and _pgw) else None
-    
-                # Constituents from market context — wrap each fetch independently for partial results
-                mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)
-                _const_map = {}
-                if hasattr(mkt_ctx, "constituents"):
-                    for cq in mkt_ctx.constituents:
-                        try:
-                            if cq.chg_pct is not None:
-                                _const_map[cq.symbol.upper()] = round(float(cq.chg_pct), 4)
-                        except Exception as e:
-                            log.warning(f"Constituent {getattr(cq, 'symbol', '?')} chg_pct fetch failed: {e}")
-                try:
-                    _spw = getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None)
-                except Exception as e:
-                    log.warning(f"spy_weighted_push (confluence) failed: {e}")
-                    _spw = None
-                try:
-                    _qqqw = getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None)
-                except Exception as e:
-                    log.warning(f"qqq_weighted_push (qqq_confluence) failed: {e}")
-                    _qqqw = None
-
-                # IWM sectors from market context — wrap each fetch independently for partial results
-                _sect_map = {}
-                if hasattr(mkt_ctx, "iwm_sectors"):
-                    for sq in mkt_ctx.iwm_sectors:
-                        try:
-                            if sq.chg_pct is not None:
-                                _sect_map[sq.symbol.upper()] = round(float(sq.chg_pct), 4)
-                        except Exception as e:
-                            log.warning(f"Sector {getattr(sq, 'symbol', '?')} chg_pct fetch failed: {e}")
-                try:
-                    from market_context import iwm_blended_participation_push
-                    _iwp = iwm_blended_participation_push(mkt_ctx)
-                except Exception as e:
-                    log.warning(f"iwm_weighted_push (blended participation) failed: {e}")
-                    _iwp = None
-    
-                # VIX vs previous
-                _prev_vix = _state_cache.get(_cache_key, {}).get("vix")
-                _vix_vs_prev = None
-                if mkt_ctx.vix is not None and _prev_vix is not None:
-                    _vix_vs_prev = round(mkt_ctx.vix - _prev_vix, 4)
-    
-                # Track VIX direction across refreshes
-                _vix_tracker.tick(mkt_ctx.vix)
-                _vix_dir = _vix_tracker.direction
-    
-                # ETF zone helper: derive bullish/bearish/neutral from chg_pct.
-                # Used for spy_zone / qqq_zone / iwm_zone in snapshot row.
-                def _etf_zone(chg):
-                    if chg is None: return None
-                    if float(chg) >  ETF_ZONE_THRESHOLD_PCT: return "bullish_trend"
-                    if float(chg) < -ETF_ZONE_THRESHOLD_PCT: return "bearish_trend"
-                    return "neutral"
-
-                # Price-action cone (operator 2026-06-11): persist bar-derived
-                # momentum/structure primitives from the in-memory 1m accumulator
-                # (completed bars only; bar_end <= ts_utc — leak-free). Honest
-                # nulls when history is short; never fabricated fills.
-                _pa_cols: dict[str, Any] = {}
-                try:
-                    from types import SimpleNamespace as _PA_NS
-                    from features.signal_layer_v1 import compute_price_action_snapshot_columns
-                    _pa_bars = [
-                        {
-                            "bar_start_ts_utc": float(_cb.ts),
-                            "bar_end_ts_utc": float(_cb.ts) + float(CANDLE_1M_SECONDS),
-                            "open": _cb.open, "high": _cb.high, "low": _cb.low,
-                            "close": _cb.close, "volume": _cb.volume,
-                        }
-                        for _cb in (_candles_1m.get_bars(ticker) or [])
-                    ]
-                    _pa_cols = compute_price_action_snapshot_columns(
-                        _pa_bars, decision_ts_utc=float(_snap_ts), inp=_PA_NS(vwap=_vwap_f),
-                    )
-                except Exception as e:
-                    log.warning("price-action snapshot columns failed (%s): %s", ticker, e)
-                    _pa_cols = {}
-
-                _snapshot_kwargs = dict(
-                    **_pa_cols,
-                    ticker=ticker,
-                    timeframe=CANONICAL_TIMEFRAME,
-                    expiry=selected_exp,
-                    dte=_dte,
-                    hours_to_expiry=_hours_to_expiry,
-                    ts_utc=_snap_ts,
-                    ts_et=build_ts_et(_et_now),
-                    et_hour=et_h,
-                    et_minute=et_m,
-                    market_session=(session_label or "unknown").lower().replace("-", ""),
-                    session_bucket=_session_bucket(et_h, et_m),
-                    spot=spot_f,
-                    spread=_quote_spread,
-                    # Raw Schwab quote primitives (same parsed node as bid/ask/spread):
-                    # quotes.{SYM}.bidPrice/askPrice/bidSize/askSize/lastSize/totalVolume.
-                    bid_price=parsed_bid,
-                    ask_price=parsed_ask,
-                    bid_size=_session_q.get("bid_size"),
-                    ask_size=_session_q.get("ask_size"),
-                    last_size=_session_q.get("last_size"),
-                    total_volume=(_total_vol if _total_vol is not None else _session_q.get("total_volume")),
-                    candle_open=_c_open, candle_high=_c_high, candle_low=_c_low,
-                    candle_close=_c_close, candle_volume=_c_vol, candle_direction=_candle_dir,
-                    candle_body_pts=_candle_body, candle_range_pts=_c_range,
-                    vwap=_vwap_f,
-                    vwap_side=_row_vwap_side,
-                    vwap_dist_pts=_vwap_dist,
-                    pressure_label=_pressure_label_live,
-                    pressure_trend=_pressure_trend_live,
-                    pdh=getattr(price_levels, "pdh", None),
-                    pdl=getattr(price_levels, "pdl", None),
-                    pdc=getattr(price_levels, "pdc", None),
-                    orb_high=getattr(price_levels, "orb_high", None),
-                    orb_low=getattr(price_levels, "orb_low", None),
-                    zone=ms.zone,
-                    zone_since_bars=zt["since_bars_1m"],
-                    zone_since_bars_1m=zt["since_bars_1m"],
-                    zone_since_bars_5m=zt["since_bars_5m"],
-                    prev_zone=zt["prev_zone"],
-                    dist_call_gamma_wall=_dist_cgw, dist_put_gamma_wall=_dist_pgw,
-                    dist_call_delta_wall=_dist_cdw, dist_put_delta_wall=_dist_pdw,
-                    dist_gamma_inflection=_dist_gi, dist_delta_inflection=_dist_di,
-                    dist_call_oi_wall=_dist_cow, dist_put_oi_wall=_dist_pow,
-                    dist_call_vanna_wall=_dist_cvw, dist_put_vanna_wall=_dist_pvw,
-                    call_gamma_wall=_cgw, put_gamma_wall=_pgw,
-                    call_delta_wall=_cdw, put_delta_wall=_pdw,
-                    gamma_inflection=_gi, delta_inflection=_di,
-                    call_oi_wall=_cow, put_oi_wall=_pow,
-                    call_vanna_wall=_cvw, put_vanna_wall=_pvw,
-                    pin_width_pts=_pin_w,
-                    nearest_above_name=ms.nearest_above_name if hasattr(ms, "nearest_above_name") else None,
-                    nearest_above_val=ms.nearest_above_val if hasattr(ms, "nearest_above_val") else None,
-                    nearest_above_dist=ms.nearest_above_dist if hasattr(ms, "nearest_above_dist") else None,
-                    nearest_below_name=ms.nearest_below_name if hasattr(ms, "nearest_below_name") else None,
-                    nearest_below_val=ms.nearest_below_val if hasattr(ms, "nearest_below_val") else None,
-                    nearest_below_dist=ms.nearest_below_dist if hasattr(ms, "nearest_below_dist") else None,
-                    net_gamma=ms.net_gamma, net_delta=ms.net_delta,
-                    net_vanna=getattr(ms, "net_vanna", None),
-                    charm_net=_charm_net, charm_direction=_charm_dir, charm_drift_toward=_charm_toward,
-                    charm_magnitude=_charm_mag,
-                    iv_level=(float(getattr(totals[0], "atm_iv")) if totals and getattr(totals[0], "atm_iv", None) is not None else None),  # percent for DB / iv_rank history
-                    iv_direction=getattr(ms, "iv_direction", None),
-                    put_call_oi_ratio=pcr_val,
-                    oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
-                    gamma_pin=getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None,
-                    spy_spot=mkt_ctx.spy_last, spy_chg_pct=mkt_ctx.spy_chg_pct,
-                    spy_zone=_etf_zone(mkt_ctx.spy_chg_pct), spy_vwap_side=None, spy_net_delta=None,
-                    qqq_spot=mkt_ctx.qqq_last, qqq_chg_pct=mkt_ctx.qqq_chg_pct,
-                    qqq_zone=_etf_zone(mkt_ctx.qqq_chg_pct), qqq_vwap_side=None, qqq_net_delta=None,
-                    qqq_vs_spy=(round(float(mkt_ctx.qqq_chg_pct) - float(mkt_ctx.spy_chg_pct), 4)
-                                if mkt_ctx.qqq_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
-                    qqq_vs_spy_delta=None,
-                    iwm_spot=mkt_ctx.iwm_last, iwm_chg_pct=mkt_ctx.iwm_chg_pct,
-                    iwm_zone=_etf_zone(mkt_ctx.iwm_chg_pct), iwm_vwap_side=None, iwm_net_delta=None,
-                    iwm_vs_spy=(round(float(mkt_ctx.iwm_chg_pct) - float(mkt_ctx.spy_chg_pct), 4)
-                                if mkt_ctx.iwm_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
-                    iwm_risk_signal=None,
-                    nvda_chg_pct=_const_map.get("NVDA"),
-                    aapl_chg_pct=_const_map.get("AAPL"),
-                    msft_chg_pct=_const_map.get("MSFT"),
-                    amzn_chg_pct=_const_map.get("AMZN"),
-                    googl_chg_pct=_const_map.get("GOOGL"),
-                    avgo_chg_pct=_const_map.get("AVGO"),
-                    meta_chg_pct=_const_map.get("META"),
-                    tsla_chg_pct=_const_map.get("TSLA"),
-                    spy_weighted_push=round(float(_spw), 4) if _spw is not None else None,
-                    qqq_weighted_push=round(float(_qqqw), 4) if _qqqw is not None else None,
-                    kre_chg_pct=_sect_map.get("KRE"),
-                    xbi_chg_pct=_sect_map.get("XBI"),
-                    psci_chg_pct=_sect_map.get("PSCI"),
-                    xrt_chg_pct=_sect_map.get("XRT"),
-                    iwm_weighted_push=round(float(_iwp), 4) if _iwp is not None else None,
-                    vix_level=mkt_ctx.vix,
-                    vix_direction=_vix_dir,
-                    vix_vs_prev=_vix_vs_prev,
-                    vix_bucket=_vix_bucket(mkt_ctx.vix) if mkt_ctx.vix is not None else None,
-                    rules_signal=ms.rules_signal,
-                    rules_conviction=ms.rules_conviction,
-                    rules_entry=ms.entry, rules_stop=ms.stop, rules_target=ms.target,
-                    call_target2=ms.target2,
-                    reward_risk=ms.reward_risk,
-                    reward_risk2=ms.reward_risk2,
-                    rules_summary=ms.rules_headline,
-                    pred_1c_up_prob=ms.up_prob_1c, pred_1c_down_prob=ms.down_prob_1c,
-                    pred_1c_flat_prob=ms.flat_prob_1c,
-                    pred_5c_up_prob=ms.up_prob_5c, pred_5c_down_prob=ms.down_prob_5c,
-                    pred_5c_flat_prob=ms.flat_prob_5c,
-                    pred_15c_up_prob=ms.up_prob_15c, pred_15c_down_prob=ms.down_prob_15c,
-                    pred_15c_flat_prob=ms.flat_prob_15c,
-                    pred_60c_up_prob=getattr(ms, "up_prob_60c", None),
-                    pred_60c_down_prob=getattr(ms, "down_prob_60c", None),
-                    pred_60c_flat_prob=getattr(ms, "flat_prob_60c", None),
-                    pred_model_version=ms.model_version or "rules_v1",
-                    pred_model_source=getattr(ms, 'pred_model_source', None),
-                    pred_override_source=getattr(ms, 'pred_override_source', None),
-                    logger_source=_resolved_logger_source,
-                    pred_confidence=ms.confidence,
-                    pred_samples_used=ms.samples_used,
-                    prediction_direction=getattr(ms, 'dominant_dir', None),
-                    prediction_dominant_prob=getattr(ms, 'dominant_prob', None),
-                    combined_signal=ms.call_signal,
-                    combined_conviction=ms.call_conviction,
-                    rules_pred_agree=ms.rules_pred_agree,
-                    # ── Model stack (regime, fusion, MC, individual models) ────
-                    regime_primary=getattr(ms, 'regime_primary', None),
-                    regime_confidence=getattr(ms, 'regime_confidence', None),
-                    regime_score=getattr(ms, 'regime_score', None),
-                    fusion_dominant=getattr(ms, 'fusion_dominant', None),
-                    fusion_dominant_prob=getattr(ms, 'fusion_dominant_prob', None),
-                    fusion_confidence=getattr(ms, 'fusion_confidence', None),
-                    fusion_breakout=getattr(ms, 'fusion_breakout', None),
-                    fusion_pinning=getattr(ms, 'fusion_pinning', None),
-                    fusion_continuation=getattr(ms, 'fusion_continuation', None),
-                    fusion_reversal=getattr(ms, 'fusion_reversal', None),
-                    fusion_vol_expansion=getattr(ms, 'fusion_vol_expansion', None),
-                    fusion_mean_reversion=getattr(ms, 'fusion_mean_reversion', None),
-                    fusion_model_agreement=getattr(ms, 'fusion_model_agreement', None),
-                    fusion_n_models_active=getattr(ms, 'fusion_n_models_active', None),
-                    fusion_prob_up=getattr(ms, 'fusion_prob_up', None),
-                    fusion_prob_down=getattr(ms, 'fusion_prob_down', None),
-                    fusion_prob_flat=getattr(ms, 'fusion_prob_flat', None),
-                    fusion_dominant_direction=getattr(ms, 'fusion_dominant_direction', None),
-                    mc_efe=getattr(ms, 'mc_efe', None),
-                    mc_eae=getattr(ms, 'mc_eae', None),
-                    mc_containment=getattr(ms, 'mc_containment', None),
-                    mc_expansion=getattr(ms, 'mc_expansion', None),
-                    mc_upper_50=getattr(ms, 'mc_upper_50', None),
-                    mc_lower_50=getattr(ms, 'mc_lower_50', None),
-                    mc_paths=getattr(ms, 'mc_paths', None),
-                    mc_horizon=getattr(ms, 'mc_horizon', None),
-                    mc_vol_source=getattr(ms, 'mc_vol_source', None),
-                    mc_sigma_value=getattr(ms, 'mc_sigma_value', None),
-                    # ── Individual model outputs (stack visibility) ─────────────────
-                    xgb_available=getattr(ms, 'xgb_available', None),
-                    xgb_dominant=getattr(ms, 'xgb_dominant', None),
-                    xgb_confidence=getattr(ms, 'xgb_confidence', None),
-                    xgb_approved=getattr(ms, 'xgb_approved', None),
-                    lstm_available=getattr(ms, 'lstm_available', None),
-                    lstm_dominant=getattr(ms, 'lstm_dominant', None),
-                    lstm_confidence=getattr(ms, 'lstm_confidence', None),
-                    lstm_approved=getattr(ms, 'lstm_approved', None),
-                    transformer_available=getattr(ms, 'transformer_available', None),
-                    transformer_dominant=getattr(ms, 'transformer_dominant', None),
-                    transformer_confidence=getattr(ms, 'transformer_confidence', None),
-                    transformer_approved=getattr(ms, 'transformer_approved', None),
-                    # ── Volatility signals ─────────────────────────────────
-                    iv_skew=_iv_skew.get("skew"),
-                    realized_vol=_realized_vol,
-                    atr=_atr,
-                    iv_rank=_iv_rank,
-                    iv_percentile=_iv_percentile,
-                    # ── Section 8 predictive signals ───────────────────────
-                    dpi_raw=_dpi.get("raw"),
-                    dpi_normalized=_dpi.get("normalized"),
-                    dpi_direction=_dpi.get("direction"),
-                    hedging_flow_score=_hedging_flow.get("normalized"),
-                    hedging_flow_direction=_hedging_flow.get("direction"),
-                    gamma_gradient=_gamma_gradient,
-                    breakout_score=_breakout_score.get("normalized"),
-                    pin_score=_pin_score_val.get("normalized"),
-                    vol_expansion_score=_vol_expansion.get("normalized"),
-                    sweep_score=_sweep_score.get("normalized"),
-                    # ── Session levels + sweeps ────────────────────────────
-                    session_high=getattr(ms, 'session_high', None),
-                    session_low=getattr(ms, 'session_low', None),
-                    last_sweep_type=getattr(ms, 'last_sweep_type', None),
-                    last_sweep_level=getattr(ms, 'last_sweep_level', None),
-                    last_sweep_held=getattr(ms, 'last_sweep_held', None),
-                    n_sweeps_today=getattr(ms, 'n_sweeps_today', 0),
-                    # ── Trade Validation Gate ──────────────────────────
-                    validation_passed=getattr(ms, 'validation_passed', None),
-                    structure_valid=getattr(ms, 'structure_valid', None),
-                    probability_valid=getattr(ms, 'probability_valid', None),
-                    risk_valid=getattr(ms, 'risk_valid', None),
-                    validation_summary=getattr(ms, 'validation_summary', ''),
-                    # ── Position Sizing ────────────────────────────────────
-                    r_units=getattr(ms, 'r_units', None),
-                    execution_mode=getattr(ms, 'execution_mode', 'NO_TRADE'),
-                    # ── Catalog signals ────────────────────────────────────
-                    vol_env_upper=_vol_envelope.get("upper"),
-                    vol_env_lower=_vol_envelope.get("lower"),
-                    level_density_count=_level_density.get("count"),
-                    level_density_label=_level_density.get("density_label"),
-                    sector_leader=_sector_strength.get("leader"),
-                    sector_laggard=_sector_strength.get("laggard"),
-                    sector_breadth=_sector_strength.get("breadth"),
-                    sector_risk_signal=_sector_strength.get("risk_signal"),
-                    index_leader=_index_strength.get("leader"),
-                    index_laggard=_index_strength.get("laggard"),
-                    index_breadth=_index_strength.get("breadth"),
-                    index_risk_signal=_index_strength.get("risk_signal"),
-                    spy_holdings_leader=_spy_strength.get("leader"),
-                    spy_holdings_laggard=_spy_strength.get("laggard"),
-                    spy_holdings_breadth=_spy_strength.get("breadth"),
-                    spy_holdings_risk=_spy_strength.get("risk_signal"),
-                    # ── IWM Deep Confluence ────────────────────────────────
-                    iwm_risk_regime=_iwm_deep.get("risk_regime"),
-                    iwm_risk_score=_iwm_deep.get("risk_score"),
-                    spy_iwm_divergence=_iwm_deep.get("spy_iwm_divergence"),
-                    spy_iwm_fragile=_iwm_deep.get("spy_iwm_fragile"),
-                    iwm_early_warning=_iwm_deep.get("early_warning"),
-                    rotation_signal=_iwm_deep.get("rotation_signal"),
-                    # ── Bond Yields ────────────────────────────────────────
-                    tnx_yield=getattr(mkt_ctx, 'tnx_yield', None),
-                    tnx_chg=getattr(mkt_ctx, 'tnx_chg', None),
-                    bond_signal=getattr(mkt_ctx, 'bond_signal', None),
-                    # ── Order Flow Signals ─────────────────────────────────
-                    vol_oi_ratio=_vol_oi_ratio.get("ratio"),
-                    flow_imbalance=_flow_imbalance.get("normalized"),
-                    smart_money_score=_smart_money.get("score"),
-                    smart_money_direction=_smart_money.get("direction"),
-                    iv_model_spread=_iv_model_spread.get("spread"),
-                    option_chain_json=serialize_option_chain_for_eval(contracts_use, selected_exp),
-                    replay_context_json=build_replay_context_payload(
-                        walls=walls,
-                        totals=totals,
-                        option_chain_selection_proof=getattr(ms, "option_chain_selection_proof", None),
-                        regime_primary=getattr(ms, "regime_primary", None),
-                        regime_confidence=getattr(ms, "regime_confidence", None),
-                        zone=getattr(ms, "zone", None),
-                        vol_regime=getattr(ms, "vol_regime", None),
-                        trade_type=getattr(ms, "trade_type", None),
-                        time_qualifier=getattr(ms, "time_qualifier", None),
-                        replay_max_hold_bars_live=getattr(ms, "replay_max_hold_bars", None),
-                        vwap=_vwap_f,
-                        vwap_side=_row_vwap_side,
-                    ),
-                    absorption_score=(getattr(ms, "liquidity_behavior", None) or {}).get("absorption_score"),
-                    continuation_score=(getattr(ms, "liquidity_behavior", None) or {}).get("continuation_score"),
-                    liquidity_behavior_label=(getattr(ms, "liquidity_behavior", None) or {}).get("behavior_label"),
-                    sentiment_composite=(getattr(ms, "news_context", None) or {}).get("sentiment_composite"),
-                    sentiment_buzz=(getattr(ms, "news_context", None) or {}).get("sentiment_buzz"),
-                    sentiment_finnhub=(getattr(ms, "news_context", None) or {}).get("sentiment_finnhub"),
-                    sentiment_av=(getattr(ms, "news_context", None) or {}).get("sentiment_av"),
-                    breaking_news_flag=(1 if (getattr(ms, "news_context", None) or {}).get("breaking_news_flag") else 0),
-                    breaking_news_headline=(getattr(ms, "news_context", None) or {}).get("breaking_news_headline"),
-                    pre_market_sentiment=(getattr(ms, "news_context", None) or {}).get("pre_market_sentiment"),
-                )
-                _mh_live = getattr(ms, "movement_head_probs", None)
-                if isinstance(_mh_live, dict):
-                    for _k, _v in _mh_live.items():
-                        if not isinstance(_k, str) or _v is None:
-                            continue
-                        try:
-                            _fv = float(_v)
-                        except (TypeError, ValueError):
-                            continue
-                        if _fv == _fv and abs(_fv) != float("inf"):
-                            _snapshot_kwargs[_k] = _fv
-                _fp_live = getattr(ms, "fusion_policy_snapshot_cols", None)
-                if isinstance(_fp_live, dict):
-                    for _k, _v in _fp_live.items():
-                        if not isinstance(_k, str) or _v is None:
-                            continue
-                        if _k.startswith("fused_contributing_models_") or _k.startswith("fused_stack_status_"):
-                            if isinstance(_v, str):
-                                _snapshot_kwargs[_k] = _v[:8000]
-                            continue
-                        try:
-                            _fv = float(_v)
-                        except (TypeError, ValueError):
-                            continue
-                        if _fv == _fv and abs(_fv) != float("inf"):
-                            _snapshot_kwargs[_k] = _fv
-                _snapshotrow_field_names = set(getattr(SnapshotRow, "__annotations__", {}).keys())
-                _dropped_snapshot_fields = sorted(k for k in _snapshot_kwargs if k not in _snapshotrow_field_names)
-                if _dropped_snapshot_fields:
-                    log.warning("SnapshotRow field drift detected; dropping unsupported fields: %s", _dropped_snapshot_fields)
-                _snap = SnapshotRow(**{k: v for k, v in _snapshot_kwargs.items() if k in _snapshotrow_field_names})
-                _ed_db.insert_snapshot(_snap)
-                _snapshot_row_insert_committed(ticker, _snap_ts)
-                _snap_insert_landed = True
-            # LIVE_OPERATOR_MODE_RESET_V1 Step 3 — bars persist + outcome backfill ride
-            # the snapshot throttle (1/min/ticker): per-refresh writes contended with the
-            # live path; bars re-seed from Schwab pricehistory after any gap and labels
-            # only advance when new rows exist.
-            #
-            # Lane-4 (2026-07-05): the bars upsert measured 8,090.8ms of the 10,760ms
-            # db_snapshot_write_accuracy stage (sqlite_tier1_ok op=upsert_1m_bars
-            # ticker=SPY exec_ms=8090.8; warm ~0.5s) while its return value is never
-            # read by the live payload. Bars persist + outcome backfill now run as ONE
-            # ordered task on the single-worker fill-outcomes executor: bars are durable
-            # before labels advance (same relative order as the previous synchronous
-            # form), the Tier C payload no longer blocks on persistence, and a dropped
-            # write self-heals via the re-seed contract above. _bars_persist is a fresh
-            # list copy (get_bars) of immutable completed Candles — race-free handoff.
-            # Schwab CSV authority checked: yes
-            # CSV row(s): pricehistory.candles[].open/high/low/close/volume — persistence
-            #   scheduling only; no market field read, derivation, emission, or
-            #   actionability logic changed; bar values and their Schwab leaf unchanged.
-            # Derived-field disposition: none required.
-            # All consumers checked: yes — upsert return value unread at this call site;
-            #   fill_outcomes ordering preserved by the max_workers=1 executor.
-            # SCHWAB_CSV_CHECKED
-            if _do_insert:
-                _bars_persist = _candles_1m.get_bars(ticker)
-
-                def _bg_persist_bars_then_fill_outcomes() -> None:
-                    try:
-                        if _bars_persist:
-                            get_db().upsert_1m_bars(ticker, _bars_persist)
-                    except Exception as _pe:
-                        log.warning("upsert_1m_bars %s: %s", ticker, _pe)
-                    try:
-                        get_db().fill_outcomes(ticker, CANONICAL_TIMEFRAME, _snap_ts)
-                    except Exception as ex:
-                        log.warning(
-                            "fill_outcomes_bg failed ticker=%s thread=%s: %s",
-                            ticker,
-                            threading.current_thread().name,
-                            ex,
-                        )
-
-                _get_db_fill_outcomes_executor().submit(_bg_persist_bars_then_fill_outcomes)
-            # Heavy normalized-table materialize must not run from every snapshot by default;
-            # set ED_LIVE_SNAPSHOT_MATERIALIZE=1 to re-enable debounced refresh on this path, or use ml_scheduler/CLI.
-            if os.environ.get("ED_LIVE_SNAPSHOT_MATERIALIZE", "0").strip().lower() in (
-                "1",
-                "true",
-                "yes",
-                "on",
-            ):
-                try:
-                    from normalized_training_sync import schedule_debounced_normalized_refresh
-
-                    schedule_debounced_normalized_refresh(_ed_db.db_path, logger=log)
-                except Exception as _nz:
-                    log.warning("schedule normalized refresh: %s", _nz)
-            db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)
-            if _do_insert:
-                log.info(f"DB snapshot logged: {ticker} total={db_counts['total']} filled={db_counts['filled']} signal={ms.rules_signal}")
-
-            # ── Periodic accuracy tracking (~every 10 min per ticker) ─────────
-            _last_acc = _accuracy_cache.get(ticker, {}).get("ts", 0)
-            if time.time() - _last_acc > ACCURACY_INTERVAL and db_counts["filled"] >= 50:
-                try:
-                    # RTH-scoped accuracy is the trading-relevance primary
-                    # (operator decision 2026-07-06); all-hours kept as audit
-                    # context only. Fail-closed: an empty RTH scope yields
-                    # accuracy None — never silently widened to all-hours.
-                    _acc_version = _current_pred_model_version(ticker)
-                    acc = _ed_db.compute_accuracy(
-                        ticker, CANONICAL_TIMEFRAME,
-                        model_version=_acc_version, rth_only=True,
-                    )
-                    _acc_all_hours = _ed_db.compute_accuracy(
-                        ticker, CANONICAL_TIMEFRAME,
-                        model_version=_acc_version, rth_only=False,
-                    )
-                    _accuracy_cache[ticker] = {
-                        "ts": time.time(), "results": acc, "all_hours": _acc_all_hours,
-                    }
-                    _acc_5c = acc.get("5c", {}).get("accuracy")
-                    _acc_n  = acc.get("5c", {}).get("total", 0)
-                    _acc_edge = acc.get("5c", {}).get("edge_vs_baseline_pp")
-                    log.info(
-                        f"Accuracy computed (RTH scope): {ticker} 5c={_acc_5c}% "
-                        f"({_acc_n} predictions, edge_vs_baseline={_acc_edge}pp)"
-                    )
-                except Exception as _ae:
-                    log.warning(f"Accuracy computation failed: {_ae}")
-        except Exception as e:
-            if _do_insert and not _snap_insert_landed:
-                _snapshot_row_insert_release(ticker, _snap_ts)
-            _diag_crash("db_snapshot", e, ticker)
-            import traceback as _tb
-            log.warning(f"Snapshot log failed: {e}\n{_tb.format_exc()}")
-        if _diag_on():
-            _diag_done("db_snapshot", ticker)
-    _stage_marks.append(("db_snapshot_write_accuracy", time.perf_counter()))
-
+    # ── V2 decision build (pre-publish) ──────────────────────────────────────
+    # FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1: the decision is computed BEFORE the
+    # bundle publish and the SAME object is served (ms_dict["v2_decision"]) and
+    # logged by the post-publish calibration append — no served/logged drift.
     _v2_decision_for_response = None
     try:
         _v2_logging_ms_dict = _ms_to_dict(ms)
@@ -6990,25 +6392,682 @@ def _fetch_state(
         attach_a1_conformal_artifact_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)
         attach_a1_isotonic_calibration_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)
         _v2_decision_for_response = build_module_a_a1_decision(_v2_logging_ms_dict)
+    except Exception as _v2_build_e:
+        log.warning("v2 decision build failed: %s", _v2_build_e)
 
-        from calibration.v2_live_logging import append_live_v2_calibration_decision
-        from db import DB_PATH as _calibration_db_path
+    # ── FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 — post-publish persistence tail ──
+    # Root cause (FIX_B read-only trace, 2026-07-08): the DB snapshot/accuracy
+    # block and the calibration append ran BEFORE the full-bundle cache write
+    # that stamps generated_at, delaying freshness by 3.5-13.5s per cycle while
+    # contributing nothing the served payload consumes. This tail now runs
+    # synchronously in the same worker AFTER the publish (full path) and before
+    # the early return (log_only path — the logger's persistence purpose is the
+    # write itself, so its order is unchanged). Failure semantics are
+    # audit-trail-only: the served bundle is never degraded or unpublished by a
+    # telemetry write failure; failures are visible via warnings carrying the
+    # published analytics_version and via the two post_publish_* counters. The
+    # tail never touches _state_cache. Payload counters (total_snapshots /
+    # filled_snapshots) and the accuracy block read the pre-publish count/cache
+    # and tolerate a one-cycle lag.
+    # Schwab CSV authority checked: yes
+    # CSV row(s): NO_SCHWAB_EQUIVALENT — publish/persistence ORDER change only;
+    #   no market field read, derivation, or emission changed (snapshot row,
+    #   bars persist, outcome backfill, accuracy scans, calibration append all
+    #   run with identical inputs and once-per-cycle semantics).
+    # Derived-field disposition: none required (no derived field touched).
+    # All consumers checked: yes — served payload assembly reads the pre-read
+    #   db_counts and module accuracy cache; calibration/snapshot consumers
+    #   receive identical rows, later in the same cycle.
+    # SCHWAB_CSV_CHECKED
+    # Captured PRE-publish: the snapshot row's vix_vs_prev must diff against the
+    # PREVIOUS cycle's published vix; after the reorder the cache entry already
+    # holds THIS cycle's vix by the time the tail runs.
+    _pre_publish_prev_vix = _state_cache.get(_cache_key, {}).get("vix")
 
-        _v2_log_result = append_live_v2_calibration_decision(
-            db_path=_calibration_db_path,
-            calibration_payload=getattr(ms, "_calibration_payload", None),
-            v2_decision=_v2_decision_for_response,
-        )
-        if _v2_log_result and _v2_log_result.get("status") != "ok":
-            log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
-    except Exception as _v2_log_e:
-        log.warning("live v2 calibration logging failed: %s", _v2_log_e)
-    _stage_marks.append(("v2_calibration_logging", time.perf_counter()))
+    def _post_publish_persistence_tail(published_version, v2_decision_for_log):
+        """Persistence/telemetry tail: DB snapshot + accuracy + calibration append.
 
-    # ── If log_only, touch cache (clobber-guarded) and return early ───────────
+        Runs post-publish on the full path, pre-return on the log_only path.
+        Never mutates _state_cache; never raises (per-section try/except).
+        """
+        # ── DB snapshot logging ───────────────────────────────────────────────────
+        if _ed_db:  # snapshot INSERT, bars persist + outcome backfill all throttled (see ED_DB_SNAPSHOT_THROTTLE)
+            if _diag_on():
+                _diag_step("pre_db_snapshot", ticker)
+            # Reservation lifecycle: released in the except below iff the insert never
+            # landed (failure between reserve and insert must not burn the minute;
+            # releasing after a landed insert would re-open it). Initialized before
+            # the try so the handler can never NameError.
+            _snap_ts = _refresh_ts_utc
+            _do_insert = False
+            _snap_insert_landed = False
+            try:
+                from db import SnapshotRow, build_ts_et
+                from math_exposure import _f as _mf
+                _do_insert = _snapshot_row_insert_allowed(ticker, _snap_ts, db=_ed_db)
+                if not _do_insert:
+                    log.debug(
+                        "DB snapshot insert skipped (throttle: max 1 insert/ticker/UTC minute; set ED_DB_SNAPSHOT_THROTTLE=0 to disable): %s",
+                        ticker,
+                    )
+                if _do_insert:
+                    _et_now = now_et
+                    from base_money_path_capture import resolve_logger_source_from_update_source
+
+                    _resolved_logger_source = logger_source or resolve_logger_source_from_update_source(
+                        update_source
+                    )
+
+                    # DTE is Schwab-native. Missing daysToExpiration fails closed for snapshot persistence.
+                    _dte = _selected_schwab_days_to_expiration(
+                        contracts_use,
+                        selected_exp,
+                        preferred_strike=getattr(ms, "rec_strike", None),
+                        preferred_side=getattr(ms, "call_option_right", None),
+                    )
+                    _hours_to_expiry = _snapshot_expiry_hours_from_schwab_dte(_dte, _et_now)
+    
+                    # ── Compute fields from available data ─────────────────────────────
+    
+                    # Candle OHLC from canonical (1m) accumulator's current bar
+                    _cur_bar = _candles_1m._current.get(ticker)
+                    _c_open  = _cur_bar["o"] if _cur_bar else None
+                    _c_high  = _cur_bar["h"] if _cur_bar else None
+                    _c_low   = _cur_bar["l"] if _cur_bar else None
+                    _c_close = _cur_bar["c"] if _cur_bar else None
+                    _c_range = round(_c_high - _c_low, 4) if (_c_high and _c_low) else None
+                    # _c_vol computed above before build_market_state
+    
+                    # VWAP distance
+                    _vwap = getattr(price_levels, "vwap", None)
+                    _vwap_f = float(_vwap) if _vwap is not None else None
+                    # Fallback: compute VWAP from seeded candle bars when price_levels has none.
+                    # This fixes ~87% NaN rate for individual equities whose price_levels.vwap
+                    # comes back empty because the API call fails or returns no intraday data.
+                    if _vwap_f is None:
+                        _bars_for_vwap = _candles_1m.get_bars(ticker)
+                        if _bars_for_vwap:
+                            _vwap_f, _vwap_source_bars = _compute_vwap_from_bars(
+                                _bars_for_vwap,
+                                source_bars=_candles_1m.get_bars_source(ticker),
+                            )
+                            if _vwap_f is not None:
+                                log.debug(
+                                    "VWAP: %s computed from %s bars: %.4f",
+                                    ticker,
+                                    _vwap_source_bars,
+                                    _vwap_f,
+                                )
+                    if _vwap_f is None:
+                        _pl_vwap = getattr(price_levels, "vwap", None)
+                        _n_bars = len(_bars_for_vwap) if _bars_for_vwap else 0
+                        # Schwab index symbols ($SPX, $VIX, $NDX, etc.) don't carry intraday
+                        # volume data; VWAP (price × volume sum) cannot compute by definition.
+                        # Steady-state DEBUG for those; WARNING for real tickers where bars
+                        # present + VWAP failed indicates a data-quality issue.
+                        _is_index_symbol = isinstance(ticker, str) and ticker.startswith("$")
+                        _vwap_log = log.debug if _is_index_symbol else log.warning
+                        _vwap_log(
+                            "VWAP failed for %s: price_levels=%s bars=%s — writing NULL",
+                            ticker, _pl_vwap, _n_bars,
+                        )
+                    _vwap_dist = round(spot_f - _vwap_f, 4) if _vwap_f else None
+    
+                    # VWAP side must follow the same vwap we persist (API VWAP or bar-derived fallback).
+                    _row_vwap_side = getattr(ms, "vwap_side", None)
+                    if _row_vwap_side is None:
+                        _row_vwap_side = derive_vwap_side(spot_f, _vwap_f)
+    
+                    global _dpi_normalized_prev_by_ticker
+                    _prev_dn = _dpi_normalized_prev_by_ticker.get(ticker)
+                    _cur_raw = _dpi.get("normalized") if _dpi else None
+                    try:
+                        _cur_dn_f = float(_cur_raw) if _cur_raw is not None else None
+                    except (TypeError, ValueError):
+                        _cur_dn_f = None
+                    _pressure_trend_live = derive_pressure_trend(_prev_dn, _cur_dn_f)
+                    _dpi_normalized_prev_by_ticker[ticker] = _cur_dn_f
+                    _pressure_label_live = None
+                    if _dpi:
+                        _pressure_label_live = _dpi.get("direction")
+                    if not _pressure_label_live and _hedging_flow:
+                        _pressure_label_live = _hedging_flow.get("direction")
+                    if not _pressure_label_live:
+                        _pressure_label_live = "unavailable_no_dpi_or_hedging_flow_direction"
+    
+                    # Wall absolute values
+                    _cgw = _mf(getattr(walls[0], "call_gamma_wall", None)) if walls else None
+                    _pgw = _mf(getattr(walls[0], "put_gamma_wall",  None)) if walls else None
+                    _cdw = _mf(getattr(walls[0], "call_delta_wall", None)) if walls else None
+                    _pdw = _mf(getattr(walls[0], "put_delta_wall",  None)) if walls else None
+                    _cow = _mf(getattr(walls[0], "call_oi_wall",    None)) if walls else None
+                    _pow = _mf(getattr(walls[0], "put_oi_wall",     None)) if walls else None
+                    _cvw = _mf(getattr(walls[0], "call_vanna_wall", None)) if walls else None
+                    _pvw = _mf(getattr(walls[0], "put_vanna_wall",  None)) if walls else None
+                    # Inflection points live on ExposureRow (consensus), NOT WallsRow
+                    _gi  = _mf(getattr(consensus_summary, "gamma_inflection", None)) if consensus_summary else None
+                    _di  = _mf(getattr(consensus_summary, "delta_inflection", None)) if consensus_summary else None
+    
+                    # Distance = wall_level - spot (positive = above, negative = below)
+                    _d = lambda lvl: round(lvl - spot_f, 4) if lvl is not None else None
+                    _dist_cgw = _d(_cgw)
+                    _dist_pgw = _d(_pgw)
+                    _dist_cdw = _d(_cdw)
+                    _dist_pdw = _d(_pdw)
+                    _dist_cow = _d(_cow)
+                    _dist_pow = _d(_pow)
+                    _dist_cvw = _d(_cvw)
+                    _dist_pvw = _d(_pvw)
+                    _dist_gi  = _d(_gi)
+                    _dist_di  = _d(_di)
+    
+                    # Pin width (call gamma wall - put gamma wall)
+                    _pin_w = round(_cgw - _pgw, 4) if (_cgw and _pgw) else None
+    
+                    # Constituents from market context — wrap each fetch independently for partial results
+                    mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)
+                    _const_map = {}
+                    if hasattr(mkt_ctx, "constituents"):
+                        for cq in mkt_ctx.constituents:
+                            try:
+                                if cq.chg_pct is not None:
+                                    _const_map[cq.symbol.upper()] = round(float(cq.chg_pct), 4)
+                            except Exception as e:
+                                log.warning(f"Constituent {getattr(cq, 'symbol', '?')} chg_pct fetch failed: {e}")
+                    try:
+                        _spw = getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None)
+                    except Exception as e:
+                        log.warning(f"spy_weighted_push (confluence) failed: {e}")
+                        _spw = None
+                    try:
+                        _qqqw = getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None)
+                    except Exception as e:
+                        log.warning(f"qqq_weighted_push (qqq_confluence) failed: {e}")
+                        _qqqw = None
+
+                    # IWM sectors from market context — wrap each fetch independently for partial results
+                    _sect_map = {}
+                    if hasattr(mkt_ctx, "iwm_sectors"):
+                        for sq in mkt_ctx.iwm_sectors:
+                            try:
+                                if sq.chg_pct is not None:
+                                    _sect_map[sq.symbol.upper()] = round(float(sq.chg_pct), 4)
+                            except Exception as e:
+                                log.warning(f"Sector {getattr(sq, 'symbol', '?')} chg_pct fetch failed: {e}")
+                    try:
+                        from market_context import iwm_blended_participation_push
+                        _iwp = iwm_blended_participation_push(mkt_ctx)
+                    except Exception as e:
+                        log.warning(f"iwm_weighted_push (blended participation) failed: {e}")
+                        _iwp = None
+    
+                    # VIX vs previous (captured pre-publish — see _pre_publish_prev_vix)
+                    _prev_vix = _pre_publish_prev_vix
+                    _vix_vs_prev = None
+                    if mkt_ctx.vix is not None and _prev_vix is not None:
+                        _vix_vs_prev = round(mkt_ctx.vix - _prev_vix, 4)
+    
+                    # Track VIX direction across refreshes
+                    _vix_tracker.tick(mkt_ctx.vix)
+                    _vix_dir = _vix_tracker.direction
+    
+                    # ETF zone helper: derive bullish/bearish/neutral from chg_pct.
+                    # Used for spy_zone / qqq_zone / iwm_zone in snapshot row.
+                    def _etf_zone(chg):
+                        if chg is None: return None
+                        if float(chg) >  ETF_ZONE_THRESHOLD_PCT: return "bullish_trend"
+                        if float(chg) < -ETF_ZONE_THRESHOLD_PCT: return "bearish_trend"
+                        return "neutral"
+
+                    # Price-action cone (operator 2026-06-11): persist bar-derived
+                    # momentum/structure primitives from the in-memory 1m accumulator
+                    # (completed bars only; bar_end <= ts_utc — leak-free). Honest
+                    # nulls when history is short; never fabricated fills.
+                    _pa_cols: dict[str, Any] = {}
+                    try:
+                        from types import SimpleNamespace as _PA_NS
+                        from features.signal_layer_v1 import compute_price_action_snapshot_columns
+                        _pa_bars = [
+                            {
+                                "bar_start_ts_utc": float(_cb.ts),
+                                "bar_end_ts_utc": float(_cb.ts) + float(CANDLE_1M_SECONDS),
+                                "open": _cb.open, "high": _cb.high, "low": _cb.low,
+                                "close": _cb.close, "volume": _cb.volume,
+                            }
+                            for _cb in (_candles_1m.get_bars(ticker) or [])
+                        ]
+                        _pa_cols = compute_price_action_snapshot_columns(
+                            _pa_bars, decision_ts_utc=float(_snap_ts), inp=_PA_NS(vwap=_vwap_f),
+                        )
+                    except Exception as e:
+                        log.warning("price-action snapshot columns failed (%s): %s", ticker, e)
+                        _pa_cols = {}
+
+                    _snapshot_kwargs = dict(
+                        **_pa_cols,
+                        ticker=ticker,
+                        timeframe=CANONICAL_TIMEFRAME,
+                        expiry=selected_exp,
+                        dte=_dte,
+                        hours_to_expiry=_hours_to_expiry,
+                        ts_utc=_snap_ts,
+                        ts_et=build_ts_et(_et_now),
+                        et_hour=et_h,
+                        et_minute=et_m,
+                        market_session=(session_label or "unknown").lower().replace("-", ""),
+                        session_bucket=_session_bucket(et_h, et_m),
+                        spot=spot_f,
+                        spread=_quote_spread,
+                        # Raw Schwab quote primitives (same parsed node as bid/ask/spread):
+                        # quotes.{SYM}.bidPrice/askPrice/bidSize/askSize/lastSize/totalVolume.
+                        bid_price=parsed_bid,
+                        ask_price=parsed_ask,
+                        bid_size=_session_q.get("bid_size"),
+                        ask_size=_session_q.get("ask_size"),
+                        last_size=_session_q.get("last_size"),
+                        total_volume=(_total_vol if _total_vol is not None else _session_q.get("total_volume")),
+                        candle_open=_c_open, candle_high=_c_high, candle_low=_c_low,
+                        candle_close=_c_close, candle_volume=_c_vol, candle_direction=_candle_dir,
+                        candle_body_pts=_candle_body, candle_range_pts=_c_range,
+                        vwap=_vwap_f,
+                        vwap_side=_row_vwap_side,
+                        vwap_dist_pts=_vwap_dist,
+                        pressure_label=_pressure_label_live,
+                        pressure_trend=_pressure_trend_live,
+                        pdh=getattr(price_levels, "pdh", None),
+                        pdl=getattr(price_levels, "pdl", None),
+                        pdc=getattr(price_levels, "pdc", None),
+                        orb_high=getattr(price_levels, "orb_high", None),
+                        orb_low=getattr(price_levels, "orb_low", None),
+                        zone=ms.zone,
+                        zone_since_bars=zt["since_bars_1m"],
+                        zone_since_bars_1m=zt["since_bars_1m"],
+                        zone_since_bars_5m=zt["since_bars_5m"],
+                        prev_zone=zt["prev_zone"],
+                        dist_call_gamma_wall=_dist_cgw, dist_put_gamma_wall=_dist_pgw,
+                        dist_call_delta_wall=_dist_cdw, dist_put_delta_wall=_dist_pdw,
+                        dist_gamma_inflection=_dist_gi, dist_delta_inflection=_dist_di,
+                        dist_call_oi_wall=_dist_cow, dist_put_oi_wall=_dist_pow,
+                        dist_call_vanna_wall=_dist_cvw, dist_put_vanna_wall=_dist_pvw,
+                        call_gamma_wall=_cgw, put_gamma_wall=_pgw,
+                        call_delta_wall=_cdw, put_delta_wall=_pdw,
+                        gamma_inflection=_gi, delta_inflection=_di,
+                        call_oi_wall=_cow, put_oi_wall=_pow,
+                        call_vanna_wall=_cvw, put_vanna_wall=_pvw,
+                        pin_width_pts=_pin_w,
+                        nearest_above_name=ms.nearest_above_name if hasattr(ms, "nearest_above_name") else None,
+                        nearest_above_val=ms.nearest_above_val if hasattr(ms, "nearest_above_val") else None,
+                        nearest_above_dist=ms.nearest_above_dist if hasattr(ms, "nearest_above_dist") else None,
+                        nearest_below_name=ms.nearest_below_name if hasattr(ms, "nearest_below_name") else None,
+                        nearest_below_val=ms.nearest_below_val if hasattr(ms, "nearest_below_val") else None,
+                        nearest_below_dist=ms.nearest_below_dist if hasattr(ms, "nearest_below_dist") else None,
+                        net_gamma=ms.net_gamma, net_delta=ms.net_delta,
+                        net_vanna=getattr(ms, "net_vanna", None),
+                        charm_net=_charm_net, charm_direction=_charm_dir, charm_drift_toward=_charm_toward,
+                        charm_magnitude=_charm_mag,
+                        iv_level=(float(getattr(totals[0], "atm_iv")) if totals and getattr(totals[0], "atm_iv", None) is not None else None),  # percent for DB / iv_rank history
+                        iv_direction=getattr(ms, "iv_direction", None),
+                        put_call_oi_ratio=pcr_val,
+                        oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
+                        gamma_pin=getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None,
+                        spy_spot=mkt_ctx.spy_last, spy_chg_pct=mkt_ctx.spy_chg_pct,
+                        spy_zone=_etf_zone(mkt_ctx.spy_chg_pct), spy_vwap_side=None, spy_net_delta=None,
+                        qqq_spot=mkt_ctx.qqq_last, qqq_chg_pct=mkt_ctx.qqq_chg_pct,
+                        qqq_zone=_etf_zone(mkt_ctx.qqq_chg_pct), qqq_vwap_side=None, qqq_net_delta=None,
+                        qqq_vs_spy=(round(float(mkt_ctx.qqq_chg_pct) - float(mkt_ctx.spy_chg_pct), 4)
+                                    if mkt_ctx.qqq_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
+                        qqq_vs_spy_delta=None,
+                        iwm_spot=mkt_ctx.iwm_last, iwm_chg_pct=mkt_ctx.iwm_chg_pct,
+                        iwm_zone=_etf_zone(mkt_ctx.iwm_chg_pct), iwm_vwap_side=None, iwm_net_delta=None,
+                        iwm_vs_spy=(round(float(mkt_ctx.iwm_chg_pct) - float(mkt_ctx.spy_chg_pct), 4)
+                                    if mkt_ctx.iwm_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
+                        iwm_risk_signal=None,
+                        nvda_chg_pct=_const_map.get("NVDA"),
+                        aapl_chg_pct=_const_map.get("AAPL"),
+                        msft_chg_pct=_const_map.get("MSFT"),
+                        amzn_chg_pct=_const_map.get("AMZN"),
+                        googl_chg_pct=_const_map.get("GOOGL"),
+                        avgo_chg_pct=_const_map.get("AVGO"),
+                        meta_chg_pct=_const_map.get("META"),
+                        tsla_chg_pct=_const_map.get("TSLA"),
+                        spy_weighted_push=round(float(_spw), 4) if _spw is not None else None,
+                        qqq_weighted_push=round(float(_qqqw), 4) if _qqqw is not None else None,
+                        kre_chg_pct=_sect_map.get("KRE"),
+                        xbi_chg_pct=_sect_map.get("XBI"),
+                        psci_chg_pct=_sect_map.get("PSCI"),
+                        xrt_chg_pct=_sect_map.get("XRT"),
+                        iwm_weighted_push=round(float(_iwp), 4) if _iwp is not None else None,
+                        vix_level=mkt_ctx.vix,
+                        vix_direction=_vix_dir,
+                        vix_vs_prev=_vix_vs_prev,
+                        vix_bucket=_vix_bucket(mkt_ctx.vix) if mkt_ctx.vix is not None else None,
+                        rules_signal=ms.rules_signal,
+                        rules_conviction=ms.rules_conviction,
+                        rules_entry=ms.entry, rules_stop=ms.stop, rules_target=ms.target,
+                        call_target2=ms.target2,
+                        reward_risk=ms.reward_risk,
+                        reward_risk2=ms.reward_risk2,
+                        rules_summary=ms.rules_headline,
+                        pred_1c_up_prob=ms.up_prob_1c, pred_1c_down_prob=ms.down_prob_1c,
+                        pred_1c_flat_prob=ms.flat_prob_1c,
+                        pred_5c_up_prob=ms.up_prob_5c, pred_5c_down_prob=ms.down_prob_5c,
+                        pred_5c_flat_prob=ms.flat_prob_5c,
+                        pred_15c_up_prob=ms.up_prob_15c, pred_15c_down_prob=ms.down_prob_15c,
+                        pred_15c_flat_prob=ms.flat_prob_15c,
+                        pred_60c_up_prob=getattr(ms, "up_prob_60c", None),
+                        pred_60c_down_prob=getattr(ms, "down_prob_60c", None),
+                        pred_60c_flat_prob=getattr(ms, "flat_prob_60c", None),
+                        pred_model_version=ms.model_version or "rules_v1",
+                        pred_model_source=getattr(ms, 'pred_model_source', None),
+                        pred_override_source=getattr(ms, 'pred_override_source', None),
+                        logger_source=_resolved_logger_source,
+                        pred_confidence=ms.confidence,
+                        pred_samples_used=ms.samples_used,
+                        prediction_direction=getattr(ms, 'dominant_dir', None),
+                        prediction_dominant_prob=getattr(ms, 'dominant_prob', None),
+                        combined_signal=ms.call_signal,
+                        combined_conviction=ms.call_conviction,
+                        rules_pred_agree=ms.rules_pred_agree,
+                        # ── Model stack (regime, fusion, MC, individual models) ────
+                        regime_primary=getattr(ms, 'regime_primary', None),
+                        regime_confidence=getattr(ms, 'regime_confidence', None),
+                        regime_score=getattr(ms, 'regime_score', None),
+                        fusion_dominant=getattr(ms, 'fusion_dominant', None),
+                        fusion_dominant_prob=getattr(ms, 'fusion_dominant_prob', None),
+                        fusion_confidence=getattr(ms, 'fusion_confidence', None),
+                        fusion_breakout=getattr(ms, 'fusion_breakout', None),
+                        fusion_pinning=getattr(ms, 'fusion_pinning', None),
+                        fusion_continuation=getattr(ms, 'fusion_continuation', None),
+                        fusion_reversal=getattr(ms, 'fusion_reversal', None),
+                        fusion_vol_expansion=getattr(ms, 'fusion_vol_expansion', None),
+                        fusion_mean_reversion=getattr(ms, 'fusion_mean_reversion', None),
+                        fusion_model_agreement=getattr(ms, 'fusion_model_agreement', None),
+                        fusion_n_models_active=getattr(ms, 'fusion_n_models_active', None),
+                        fusion_prob_up=getattr(ms, 'fusion_prob_up', None),
+                        fusion_prob_down=getattr(ms, 'fusion_prob_down', None),
+                        fusion_prob_flat=getattr(ms, 'fusion_prob_flat', None),
+                        fusion_dominant_direction=getattr(ms, 'fusion_dominant_direction', None),
+                        mc_efe=getattr(ms, 'mc_efe', None),
+                        mc_eae=getattr(ms, 'mc_eae', None),
+                        mc_containment=getattr(ms, 'mc_containment', None),
+                        mc_expansion=getattr(ms, 'mc_expansion', None),
+                        mc_upper_50=getattr(ms, 'mc_upper_50', None),
+                        mc_lower_50=getattr(ms, 'mc_lower_50', None),
+                        mc_paths=getattr(ms, 'mc_paths', None),
+                        mc_horizon=getattr(ms, 'mc_horizon', None),
+                        mc_vol_source=getattr(ms, 'mc_vol_source', None),
+                        mc_sigma_value=getattr(ms, 'mc_sigma_value', None),
+                        # ── Individual model outputs (stack visibility) ─────────────────
+                        xgb_available=getattr(ms, 'xgb_available', None),
+                        xgb_dominant=getattr(ms, 'xgb_dominant', None),
+                        xgb_confidence=getattr(ms, 'xgb_confidence', None),
+                        xgb_approved=getattr(ms, 'xgb_approved', None),
+                        lstm_available=getattr(ms, 'lstm_available', None),
+                        lstm_dominant=getattr(ms, 'lstm_dominant', None),
+                        lstm_confidence=getattr(ms, 'lstm_confidence', None),
+                        lstm_approved=getattr(ms, 'lstm_approved', None),
+                        transformer_available=getattr(ms, 'transformer_available', None),
+                        transformer_dominant=getattr(ms, 'transformer_dominant', None),
+                        transformer_confidence=getattr(ms, 'transformer_confidence', None),
+                        transformer_approved=getattr(ms, 'transformer_approved', None),
+                        # ── Volatility signals ─────────────────────────────────
+                        iv_skew=_iv_skew.get("skew"),
+                        realized_vol=_realized_vol,
+                        atr=_atr,
+                        iv_rank=_iv_rank,
+                        iv_percentile=_iv_percentile,
+                        # ── Section 8 predictive signals ───────────────────────
+                        dpi_raw=_dpi.get("raw"),
+                        dpi_normalized=_dpi.get("normalized"),
+                        dpi_direction=_dpi.get("direction"),
+                        hedging_flow_score=_hedging_flow.get("normalized"),
+                        hedging_flow_direction=_hedging_flow.get("direction"),
+                        gamma_gradient=_gamma_gradient,
+                        breakout_score=_breakout_score.get("normalized"),
+                        pin_score=_pin_score_val.get("normalized"),
+                        vol_expansion_score=_vol_expansion.get("normalized"),
+                        sweep_score=_sweep_score.get("normalized"),
+                        # ── Session levels + sweeps ────────────────────────────
+                        session_high=getattr(ms, 'session_high', None),
+                        session_low=getattr(ms, 'session_low', None),
+                        last_sweep_type=getattr(ms, 'last_sweep_type', None),
+                        last_sweep_level=getattr(ms, 'last_sweep_level', None),
+                        last_sweep_held=getattr(ms, 'last_sweep_held', None),
+                        n_sweeps_today=getattr(ms, 'n_sweeps_today', 0),
+                        # ── Trade Validation Gate ──────────────────────────
+                        validation_passed=getattr(ms, 'validation_passed', None),
+                        structure_valid=getattr(ms, 'structure_valid', None),
+                        probability_valid=getattr(ms, 'probability_valid', None),
+                        risk_valid=getattr(ms, 'risk_valid', None),
+                        validation_summary=getattr(ms, 'validation_summary', ''),
+                        # ── Position Sizing ────────────────────────────────────
+                        r_units=getattr(ms, 'r_units', None),
+                        execution_mode=getattr(ms, 'execution_mode', 'NO_TRADE'),
+                        # ── Catalog signals ────────────────────────────────────
+                        vol_env_upper=_vol_envelope.get("upper"),
+                        vol_env_lower=_vol_envelope.get("lower"),
+                        level_density_count=_level_density.get("count"),
+                        level_density_label=_level_density.get("density_label"),
+                        sector_leader=_sector_strength.get("leader"),
+                        sector_laggard=_sector_strength.get("laggard"),
+                        sector_breadth=_sector_strength.get("breadth"),
+                        sector_risk_signal=_sector_strength.get("risk_signal"),
+                        index_leader=_index_strength.get("leader"),
+                        index_laggard=_index_strength.get("laggard"),
+                        index_breadth=_index_strength.get("breadth"),
+                        index_risk_signal=_index_strength.get("risk_signal"),
+                        spy_holdings_leader=_spy_strength.get("leader"),
+                        spy_holdings_laggard=_spy_strength.get("laggard"),
+                        spy_holdings_breadth=_spy_strength.get("breadth"),
+                        spy_holdings_risk=_spy_strength.get("risk_signal"),
+                        # ── IWM Deep Confluence ────────────────────────────────
+                        iwm_risk_regime=_iwm_deep.get("risk_regime"),
+                        iwm_risk_score=_iwm_deep.get("risk_score"),
+                        spy_iwm_divergence=_iwm_deep.get("spy_iwm_divergence"),
+                        spy_iwm_fragile=_iwm_deep.get("spy_iwm_fragile"),
+                        iwm_early_warning=_iwm_deep.get("early_warning"),
+                        rotation_signal=_iwm_deep.get("rotation_signal"),
+                        # ── Bond Yields ────────────────────────────────────────
+                        tnx_yield=getattr(mkt_ctx, 'tnx_yield', None),
+                        tnx_chg=getattr(mkt_ctx, 'tnx_chg', None),
+                        bond_signal=getattr(mkt_ctx, 'bond_signal', None),
+                        # ── Order Flow Signals ─────────────────────────────────
+                        vol_oi_ratio=_vol_oi_ratio.get("ratio"),
+                        flow_imbalance=_flow_imbalance.get("normalized"),
+                        smart_money_score=_smart_money.get("score"),
+                        smart_money_direction=_smart_money.get("direction"),
+                        iv_model_spread=_iv_model_spread.get("spread"),
+                        option_chain_json=serialize_option_chain_for_eval(contracts_use, selected_exp),
+                        replay_context_json=build_replay_context_payload(
+                            walls=walls,
+                            totals=totals,
+                            option_chain_selection_proof=getattr(ms, "option_chain_selection_proof", None),
+                            regime_primary=getattr(ms, "regime_primary", None),
+                            regime_confidence=getattr(ms, "regime_confidence", None),
+                            zone=getattr(ms, "zone", None),
+                            vol_regime=getattr(ms, "vol_regime", None),
+                            trade_type=getattr(ms, "trade_type", None),
+                            time_qualifier=getattr(ms, "time_qualifier", None),
+                            replay_max_hold_bars_live=getattr(ms, "replay_max_hold_bars", None),
+                            vwap=_vwap_f,
+                            vwap_side=_row_vwap_side,
+                        ),
+                        absorption_score=(getattr(ms, "liquidity_behavior", None) or {}).get("absorption_score"),
+                        continuation_score=(getattr(ms, "liquidity_behavior", None) or {}).get("continuation_score"),
+                        liquidity_behavior_label=(getattr(ms, "liquidity_behavior", None) or {}).get("behavior_label"),
+                        sentiment_composite=(getattr(ms, "news_context", None) or {}).get("sentiment_composite"),
+                        sentiment_buzz=(getattr(ms, "news_context", None) or {}).get("sentiment_buzz"),
+                        sentiment_finnhub=(getattr(ms, "news_context", None) or {}).get("sentiment_finnhub"),
+                        sentiment_av=(getattr(ms, "news_context", None) or {}).get("sentiment_av"),
+                        breaking_news_flag=(1 if (getattr(ms, "news_context", None) or {}).get("breaking_news_flag") else 0),
+                        breaking_news_headline=(getattr(ms, "news_context", None) or {}).get("breaking_news_headline"),
+                        pre_market_sentiment=(getattr(ms, "news_context", None) or {}).get("pre_market_sentiment"),
+                    )
+                    _mh_live = getattr(ms, "movement_head_probs", None)
+                    if isinstance(_mh_live, dict):
+                        for _k, _v in _mh_live.items():
+                            if not isinstance(_k, str) or _v is None:
+                                continue
+                            try:
+                                _fv = float(_v)
+                            except (TypeError, ValueError):
+                                continue
+                            if _fv == _fv and abs(_fv) != float("inf"):
+                                _snapshot_kwargs[_k] = _fv
+                    _fp_live = getattr(ms, "fusion_policy_snapshot_cols", None)
+                    if isinstance(_fp_live, dict):
+                        for _k, _v in _fp_live.items():
+                            if not isinstance(_k, str) or _v is None:
+                                continue
+                            if _k.startswith("fused_contributing_models_") or _k.startswith("fused_stack_status_"):
+                                if isinstance(_v, str):
+                                    _snapshot_kwargs[_k] = _v[:8000]
+                                continue
+                            try:
+                                _fv = float(_v)
+                            except (TypeError, ValueError):
+                                continue
+                            if _fv == _fv and abs(_fv) != float("inf"):
+                                _snapshot_kwargs[_k] = _fv
+                    _snapshotrow_field_names = set(getattr(SnapshotRow, "__annotations__", {}).keys())
+                    _dropped_snapshot_fields = sorted(k for k in _snapshot_kwargs if k not in _snapshotrow_field_names)
+                    if _dropped_snapshot_fields:
+                        log.warning("SnapshotRow field drift detected; dropping unsupported fields: %s", _dropped_snapshot_fields)
+                    _snap = SnapshotRow(**{k: v for k, v in _snapshot_kwargs.items() if k in _snapshotrow_field_names})
+                    _ed_db.insert_snapshot(_snap)
+                    _snapshot_row_insert_committed(ticker, _snap_ts)
+                    _snap_insert_landed = True
+                # LIVE_OPERATOR_MODE_RESET_V1 Step 3 — bars persist + outcome backfill ride
+                # the snapshot throttle (1/min/ticker): per-refresh writes contended with the
+                # live path; bars re-seed from Schwab pricehistory after any gap and labels
+                # only advance when new rows exist.
+                #
+                # Lane-4 (2026-07-05): the bars upsert measured 8,090.8ms of the 10,760ms
+                # db_snapshot_write_accuracy stage (sqlite_tier1_ok op=upsert_1m_bars
+                # ticker=SPY exec_ms=8090.8; warm ~0.5s) while its return value is never
+                # read by the live payload. Bars persist + outcome backfill now run as ONE
+                # ordered task on the single-worker fill-outcomes executor: bars are durable
+                # before labels advance (same relative order as the previous synchronous
+                # form), the Tier C payload no longer blocks on persistence, and a dropped
+                # write self-heals via the re-seed contract above. _bars_persist is a fresh
+                # list copy (get_bars) of immutable completed Candles — race-free handoff.
+                # Schwab CSV authority checked: yes
+                # CSV row(s): pricehistory.candles[].open/high/low/close/volume — persistence
+                #   scheduling only; no market field read, derivation, emission, or
+                #   actionability logic changed; bar values and their Schwab leaf unchanged.
+                # Derived-field disposition: none required.
+                # All consumers checked: yes — upsert return value unread at this call site;
+                #   fill_outcomes ordering preserved by the max_workers=1 executor.
+                # SCHWAB_CSV_CHECKED
+                if _do_insert:
+                    _bars_persist = _candles_1m.get_bars(ticker)
+
+                    def _bg_persist_bars_then_fill_outcomes() -> None:
+                        try:
+                            if _bars_persist:
+                                get_db().upsert_1m_bars(ticker, _bars_persist)
+                        except Exception as _pe:
+                            log.warning("upsert_1m_bars %s: %s", ticker, _pe)
+                        try:
+                            get_db().fill_outcomes(ticker, CANONICAL_TIMEFRAME, _snap_ts)
+                        except Exception as ex:
+                            log.warning(
+                                "fill_outcomes_bg failed ticker=%s thread=%s: %s",
+                                ticker,
+                                threading.current_thread().name,
+                                ex,
+                            )
+
+                    _get_db_fill_outcomes_executor().submit(_bg_persist_bars_then_fill_outcomes)
+                # Heavy normalized-table materialize must not run from every snapshot by default;
+                # set ED_LIVE_SNAPSHOT_MATERIALIZE=1 to re-enable debounced refresh on this path, or use ml_scheduler/CLI.
+                if os.environ.get("ED_LIVE_SNAPSHOT_MATERIALIZE", "0").strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                ):
+                    try:
+                        from normalized_training_sync import schedule_debounced_normalized_refresh
+
+                        schedule_debounced_normalized_refresh(_ed_db.db_path, logger=log)
+                    except Exception as _nz:
+                        log.warning("schedule normalized refresh: %s", _nz)
+                db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)
+                if _do_insert:
+                    log.info(f"DB snapshot logged: {ticker} total={db_counts['total']} filled={db_counts['filled']} signal={ms.rules_signal}")
+
+                # ── Periodic accuracy tracking (~every 10 min per ticker) ─────────
+                _last_acc = _accuracy_cache.get(ticker, {}).get("ts", 0)
+                if time.time() - _last_acc > ACCURACY_INTERVAL and db_counts["filled"] >= 50:
+                    try:
+                        # RTH-scoped accuracy is the trading-relevance primary
+                        # (operator decision 2026-07-06); all-hours kept as audit
+                        # context only. Fail-closed: an empty RTH scope yields
+                        # accuracy None — never silently widened to all-hours.
+                        _acc_version = _current_pred_model_version(ticker)
+                        acc = _ed_db.compute_accuracy(
+                            ticker, CANONICAL_TIMEFRAME,
+                            model_version=_acc_version, rth_only=True,
+                        )
+                        _acc_all_hours = _ed_db.compute_accuracy(
+                            ticker, CANONICAL_TIMEFRAME,
+                            model_version=_acc_version, rth_only=False,
+                        )
+                        _accuracy_cache[ticker] = {
+                            "ts": time.time(), "results": acc, "all_hours": _acc_all_hours,
+                        }
+                        _acc_5c = acc.get("5c", {}).get("accuracy")
+                        _acc_n  = acc.get("5c", {}).get("total", 0)
+                        _acc_edge = acc.get("5c", {}).get("edge_vs_baseline_pp")
+                        log.info(
+                            f"Accuracy computed (RTH scope): {ticker} 5c={_acc_5c}% "
+                            f"({_acc_n} predictions, edge_vs_baseline={_acc_edge}pp)"
+                        )
+                    except Exception as _ae:
+                        log.warning(f"Accuracy computation failed: {_ae}")
+            except Exception as e:
+                if _do_insert and not _snap_insert_landed:
+                    _snapshot_row_insert_release(ticker, _snap_ts)
+                _diag_crash("db_snapshot", e, ticker)
+                import traceback as _tb
+                _analytics_cache_observability["post_publish_snapshot_failures"] += 1
+                log.warning(
+                    f"post-publish snapshot persistence failed ticker={ticker} "
+                    f"published_version={published_version}: {e}\n{_tb.format_exc()}"
+                )
+            if _diag_on():
+                _diag_done("db_snapshot", ticker)
+        _stage_marks.append(("db_snapshot_write_accuracy", time.perf_counter()))
+
+        try:
+            from calibration.v2_live_logging import append_live_v2_calibration_decision
+            from db import DB_PATH as _calibration_db_path
+
+            _v2_log_result = append_live_v2_calibration_decision(
+                db_path=_calibration_db_path,
+                calibration_payload=getattr(ms, "_calibration_payload", None),
+                v2_decision=v2_decision_for_log,
+            )
+            if _v2_log_result and _v2_log_result.get("status") != "ok":
+                log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
+        except Exception as _v2_log_e:
+            _analytics_cache_observability["post_publish_calibration_failures"] += 1
+            log.warning(
+                "post-publish calibration append failed ticker=%s published_version=%s: %s",
+                ticker,
+                published_version,
+                _v2_log_e,
+            )
+        _stage_marks.append(("v2_calibration_logging", time.perf_counter()))
+
+    # ── If log_only, persist then touch cache (clobber-guarded) and return ────
     # ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1: never replace a publishable
     # bundle with an empty-ms_dict minimal entry (see _log_only_cache_touch).
+    # FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1: the log_only path has no publish, so
+    # its persistence order is unchanged — tail first, exactly as before.
     if log_only:
+        _post_publish_persistence_tail(None, _v2_decision_for_response)
         _log_only_cache_touch(
             _cache_key,
             ticker,
@@ -7794,6 +7853,10 @@ def _fetch_state(
     # stops; time it separately so cycle totals attribute fully. Passive observation.
     ms_dict["_finalize_tail_ms"] = round((time.monotonic() - _t_pipeline_end_mono) * 1000)
     ms_dict["analytics_cache_observability_v1"] = dict(_analytics_cache_observability)
+    # FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1: persistence/telemetry runs AFTER the
+    # generated_at-stamping publish above, same worker, same cycle; the SERVED
+    # decision object (ms_dict["v2_decision"]) is the logged object.
+    _post_publish_persistence_tail(_next_ver, ms_dict["v2_decision"])
     return ms_dict
 
 

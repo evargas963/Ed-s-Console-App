@@ -1170,3 +1170,159 @@ def test_log_only_guard_ticker_agnostic_no_literals():
                         f"ticker-literal-shaped constant {sub.value!r} in {node.name}"
                     )
     assert found == targets
+
+
+# ── FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 ──────────────────────────────────────
+
+
+def _fetch_state_source() -> str:
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+
+
+def _fetch_state_ast():
+    import ast
+
+    tree = ast.parse(_fetch_state_source())
+    fetch = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state"
+    )
+    tail = next(
+        n for n in ast.walk(fetch)
+        if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
+    )
+    return fetch, tail
+
+
+def test_fix_b_publish_precedes_persistence_tail_source_lock():
+    """Stage-order lock: the generated_at-stamping publish precedes the full-path
+    tail call; the persistence stage marks live inside the tail def, which is
+    defined before but executed after the publish."""
+    src = _fetch_state_source()
+    i_pub = src.index('"generated_at": _gen_ts')
+    i_full_call = src.index("_post_publish_persistence_tail(_next_ver")
+    i_tail_def = src.index("def _post_publish_persistence_tail(")
+    i_snap_mark = src.index('_stage_marks.append(("db_snapshot_write_accuracy"')
+    i_cal_mark = src.index('_stage_marks.append(("v2_calibration_logging"')
+    assert i_pub < i_full_call, "full-path tail call must come AFTER the publish"
+    assert i_tail_def < i_snap_mark < i_cal_mark < i_pub, (
+        "persistence stage marks must live inside the tail def, "
+        "which is defined before (but executed after) the publish"
+    )
+
+
+def test_fix_b_payload_shape_keys_still_served():
+    """Payload-shape regression: counters/accuracy keys still assembled pre-publish
+    (documented one-cycle lag; values come from the pre-read count + module cache)."""
+    src = _fetch_state_source()
+    assert 'ms_dict["total_snapshots"]  = db_counts.get("total", 0)' in src
+    assert 'ms_dict["filled_snapshots"] = db_counts.get("filled", 0)' in src
+    assert 'ms_dict["accuracy_scope"] = "rth_0930_1600_et"' in src
+    # The pre-read count SELECT (read-only) still precedes the block.
+    assert "db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)" in src
+
+
+def test_fix_b_once_per_cycle_call_sites():
+    """Once-per-cycle: exactly one tail def; exactly two mutually-exclusive call
+    sites (log_only pre-return, full-path post-publish); exactly one calibration
+    append inside the tail."""
+    import ast
+
+    fetch, tail = _fetch_state_ast()
+    defs = [
+        n for n in ast.walk(fetch)
+        if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
+    ]
+    assert len(defs) == 1
+    calls = [
+        n for n in ast.walk(fetch)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        and n.func.id == "_post_publish_persistence_tail"
+    ]
+    assert len(calls) == 2, "exactly log_only pre-return + full-path post-publish"
+    appends = [
+        n for n in ast.walk(tail)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        and n.func.id == "append_live_v2_calibration_decision"
+    ]
+    assert len(appends) == 1
+    # The log_only branch returns before the full path can reach the second call.
+    src = _fetch_state_source()
+    i_log_only_call = src.index("_post_publish_persistence_tail(None, _v2_decision_for_response)")
+    i_log_only_return = src.index("return {}", i_log_only_call)
+    i_full_call = src.index("_post_publish_persistence_tail(_next_ver")
+    assert i_log_only_call < i_log_only_return < i_full_call
+
+
+def test_fix_b_failure_visibility_counters_wired():
+    """Failure-visibility: both post_publish_* counters exist in the observability
+    dict and each tail except-handler increments its counter and warns with the
+    published version."""
+    import server as srv
+
+    assert "post_publish_snapshot_failures" in srv._analytics_cache_observability
+    assert "post_publish_calibration_failures" in srv._analytics_cache_observability
+    src = _fetch_state_source()
+    assert '_analytics_cache_observability["post_publish_snapshot_failures"] += 1' in src
+    assert '_analytics_cache_observability["post_publish_calibration_failures"] += 1' in src
+    assert "post-publish snapshot persistence failed ticker=" in src
+    assert "post-publish calibration append failed ticker=" in src
+    assert src.count("published_version") >= 4  # def params + both warnings
+
+
+def test_fix_b_v2_decision_parity_served_equals_logged():
+    """v2_decision parity: the full-path tail call passes the SERVED object
+    (ms_dict['v2_decision']); the log_only path passes the built decision."""
+    src = _fetch_state_source()
+    assert '_post_publish_persistence_tail(_next_ver, ms_dict["v2_decision"])' in src
+    assert "_post_publish_persistence_tail(None, _v2_decision_for_response)" in src
+    assert "v2_decision=v2_decision_for_log," in src
+
+
+def test_fix_b_tail_never_touches_state_cache():
+    """Isolation lock: the tail never references _state_cache (the pre-publish
+    prev-vix capture happens outside the tail)."""
+    import ast
+
+    _fetch, tail = _fetch_state_ast()
+    names = {s.id for s in ast.walk(tail) if isinstance(s, ast.Name)}
+    assert "_state_cache" not in names
+    src = _fetch_state_source()
+    assert '_pre_publish_prev_vix = _state_cache.get(_cache_key, {}).get("vix")' in src
+
+
+def test_fix_b_no_new_ticker_special_casing():
+    """AST lock: the tail carries no locked-ticker CONDITIONAL branches — every
+    uppercase literal inside it must be a dict-key/kwarg mapping already
+    allowlisted in the universality lock, never an if-comparison."""
+    import ast
+
+    from tools.check_universal_ticker_lock import (
+        LOCKED_TICKER_LITERALS,
+        TICKER_LITERAL_ALLOWLIST,
+    )
+
+    _fetch, tail = _fetch_state_ast()
+    for sub in ast.walk(tail):
+        if isinstance(sub, ast.Compare):
+            for cmp_node in ast.walk(sub):
+                if isinstance(cmp_node, ast.Constant) and cmp_node.value in LOCKED_TICKER_LITERALS:
+                    raise AssertionError(
+                        f"ticker-conditional comparison on {cmp_node.value!r} in tail"
+                    )
+    for lit in ("NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "AVGO", "META", "TSLA"):
+        assert ("server.py", "_post_publish_persistence_tail", lit) in TICKER_LITERAL_ALLOWLIST
+
+
+def test_fix_b_constants_unchanged():
+    """TTL / grace / executor sizing untouched by the reorder."""
+    import server as srv
+
+    assert srv.CACHE_TTL == 5
+    assert srv.VIEWER_STATE_CACHE_TTL_SEC == 5.0
+    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
+    src = _fetch_state_source()
+    assert src.count("max_workers=8,\n            thread_name_prefix=\"ed_route_offload\"") == 1
+    assert src.count("max_workers=4,\n            thread_name_prefix=\"ed_analytics_bg\"") == 1

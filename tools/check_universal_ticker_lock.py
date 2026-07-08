@@ -273,6 +273,35 @@ TICKER_LITERAL_ALLOWLIST: dict[tuple[str, str, str], str] = {
         "Snapshot persistence column mapping (nvda_chg_pct ← constituent map); "
         "schema-fixed context columns, not decision logic."
     ),
+    # FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 (2026-07-08): the snapshot persistence
+    # block moved verbatim into the nested _post_publish_persistence_tail inside
+    # _fetch_state. Same eight schema-fixed context-column literals, same
+    # rationale; the scanner attributes nested-def constants to both the outer
+    # and the nested FunctionDef, so both key shapes carry rows.
+    ("server.py", "_post_publish_persistence_tail", "NVDA"): (
+        "Relocated snapshot context-column mapping (see _fetch_state NVDA row)."
+    ),
+    ("server.py", "_post_publish_persistence_tail", "AAPL"): (
+        "Relocated snapshot context-column mapping (see _fetch_state NVDA row)."
+    ),
+    ("server.py", "_post_publish_persistence_tail", "MSFT"): (
+        "Relocated snapshot context-column mapping (see _fetch_state NVDA row)."
+    ),
+    ("server.py", "_post_publish_persistence_tail", "AMZN"): (
+        "Relocated snapshot context-column mapping (see _fetch_state NVDA row)."
+    ),
+    ("server.py", "_post_publish_persistence_tail", "GOOGL"): (
+        "Relocated snapshot context-column mapping (see _fetch_state NVDA row)."
+    ),
+    ("server.py", "_post_publish_persistence_tail", "AVGO"): (
+        "Relocated snapshot context-column mapping (see _fetch_state NVDA row)."
+    ),
+    ("server.py", "_post_publish_persistence_tail", "META"): (
+        "Relocated snapshot context-column mapping (see _fetch_state NVDA row)."
+    ),
+    ("server.py", "_post_publish_persistence_tail", "TSLA"): (
+        "Relocated snapshot context-column mapping (see _fetch_state NVDA row)."
+    ),
     ("server.py", "_fetch_state", "AAPL"): ("Snapshot context column mapping (see NVDA row)."),
     ("server.py", "_fetch_state", "MSFT"): ("Snapshot context column mapping (see NVDA row)."),
     ("server.py", "_fetch_state", "AMZN"): ("Snapshot context column mapping (see NVDA row)."),
