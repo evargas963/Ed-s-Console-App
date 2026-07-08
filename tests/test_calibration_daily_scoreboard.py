@@ -324,3 +324,190 @@ def test_backfill_uses_bar_alignment_tolerance(tmp_path, monkeypatch):
     ds.build_daily_scoreboard(db, ET_DATE, run_backfill=True)
     assert seen["tol_sec"] == ds.BACKFILL_JOIN_TOL_SEC
     assert 0.0 < ds.BACKFILL_JOIN_TOL_SEC < 30.0
+
+
+# ── SCOREBOARD_ACTIONABILITY_JOIN_V1 (Phase 1 — report-only) ─────────────────
+
+from calibration.daily_scoreboard import (  # noqa: E402
+    ACTIONABILITY_STATES,
+    build_actionability_report,
+    classify_actionability_rows,
+    read_freshness_budget_sec,
+    write_actionability_report,
+)
+
+
+def _act_row(ticker: str, ts: float, expiry: str = "2026-06-09") -> dict:
+    return {
+        "ticker": ticker,
+        "decision_ts_utc": ts,
+        "expiry": expiry,
+        "session_label": "RTH",
+        "decision_source": "test",
+    }
+
+
+def test_actionability_state_enum_lock():
+    assert ACTIONABILITY_STATES == (
+        "ACTIONABLE",
+        "STALE",
+        "PENDING_NO_BUNDLE",
+        "PENDING_KEY_MISMATCH",
+        "VETO_WITHHELD",
+        "UI_MISMATCH",
+        "RUNTIME_ERROR",
+        "UNKNOWN",
+    )
+
+
+def test_actionability_reads_live_freshness_budget():
+    """Budget = ttl x grace READ from server.py (10.0 today) — never redefined."""
+    assert read_freshness_budget_sec() == 10.0
+    # Unreadable source fails closed to None.
+    assert read_freshness_budget_sec("Z:/definitely/missing/server.py") is None
+
+
+def test_actionability_gap_arithmetic():
+    """8s gap => ACTIONABLE frac 1.0; 40s gap => STALE frac 0.25; tail => UNKNOWN."""
+    rows = [_act_row("AAA", 1000.0), _act_row("AAA", 1008.0), _act_row("AAA", 1048.0)]
+    out = classify_actionability_rows(rows, 10.0)
+    assert [r["state"] for r in out] == ["ACTIONABLE", "STALE", "UNKNOWN"]
+    assert out[0]["actionable_fraction"] == 1.0
+    assert out[0]["gap_to_next_decision_sec"] == 8.0
+    assert out[1]["actionable_fraction"] == 0.25
+    assert out[1]["gap_to_next_decision_sec"] == 40.0
+    assert out[2]["actionable_fraction"] is None
+    assert out[2]["provenance"] == "unknown_no_next_row"
+    assert {r["provenance"] for r in out[:2]} == {"gap_arithmetic_inferred"}
+
+
+def test_actionability_partition_per_ticker_and_expiry():
+    """Rows never gap across (ticker, expiry) partitions."""
+    rows = [
+        _act_row("AAA", 1000.0, "2026-06-09"),
+        _act_row("AAA", 1005.0, "2026-06-16"),  # different expiry — separate chain
+        _act_row("BBB", 1002.0, "2026-06-09"),  # different ticker — separate chain
+    ]
+    out = classify_actionability_rows(rows, 10.0)
+    assert all(r["state"] == "UNKNOWN" for r in out), "each partition has one row => no gaps"
+
+
+def test_actionability_unknown_fail_closed_without_budget():
+    rows = [_act_row("AAA", 1000.0), _act_row("AAA", 1008.0)]
+    out = classify_actionability_rows(rows, None)
+    assert all(r["state"] == "UNKNOWN" for r in out)
+    assert all(r["provenance"] == "unknown_no_budget" for r in out)
+
+
+def test_actionability_harness_absence_is_not_ui_proof(tmp_path):
+    """No harness artifacts => zero UI/VETO rows AND the report says zero files
+    were loaded — absence never proves UI match or veto absence."""
+    db = _fixture_db(tmp_path)
+    rep = build_actionability_report(
+        db, ET_DATE, ui_transport_dir=tmp_path / "no_such_dir"
+    )
+    assert rep["harness_evidence_files_loaded"] == 0
+    assert rep["summary"]["by_state"]["UI_MISMATCH"] == 0
+    assert rep["summary"]["by_state"]["VETO_WITHHELD"] == 0
+    assert "harness_annotation" not in rep["summary"]["by_provenance"]
+
+
+def test_actionability_harness_annotation_and_runtime_overlay():
+    """Precedence: runtime window > harness annotation > gap arithmetic."""
+    rows = [_act_row("AAA", 1000.0), _act_row("AAA", 1008.0), _act_row("AAA", 1016.0)]
+    out = classify_actionability_rows(
+        rows,
+        10.0,
+        runtime_error_windows=((1015.0, 1020.0),),
+        harness_annotations=(
+            {"ticker": "AAA", "ts_lo": 1005.0, "ts_hi": 1010.0, "state": "VETO_WITHHELD"},
+        ),
+    )
+    assert out[0]["state"] == "ACTIONABLE"
+    assert out[1]["state"] == "VETO_WITHHELD" and out[1]["provenance"] == "harness_annotation"
+    assert out[2]["state"] == "RUNTIME_ERROR" and out[2]["provenance"] == "runtime_window_overlay"
+
+
+def test_actionability_report_schema_and_write(tmp_path):
+    """Golden schema + artifact write (actionability_<date>.json + latest)."""
+    db = _fixture_db(tmp_path)
+    rep = build_actionability_report(db, ET_DATE, ui_transport_dir=tmp_path / "none")
+    assert rep["schema_version"] == "1"
+    assert rep["freshness_budget_sec"] == 10.0
+    assert rep["states_supported"] == list(ACTIONABILITY_STATES)
+    assert set(rep["summary"]) == {"n_rows", "by_state", "by_provenance", "unknown_share", "by_ticker"}
+    assert rep["summary"]["n_rows"] == len(rep["rows"]) > 0
+    for r in rep["rows"]:
+        assert set(r) == {
+            "ticker", "decision_ts_utc", "expiry", "session_label", "decision_source",
+            "state", "actionable_fraction", "gap_to_next_decision_sec", "provenance",
+        }
+        assert r["state"] in ACTIONABILITY_STATES
+    out = tmp_path / "reports"
+    path = write_actionability_report(rep, out)
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    assert data["et_date"] == ET_DATE
+    assert (out / "latest_actionability.json").is_file()
+
+
+def test_scoreboard_core_schema_unchanged(tmp_path):
+    """Existing scoreboard output keys are untouched by the actionability join."""
+    db = _fixture_db(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    assert set(sb) == {
+        "schema_version", "generated_utc", "et_date", "db_path",
+        "tickers_filter", "backfill_stats", "by_horizon", "by_ticker",
+    }
+    assert sb["schema_version"] == "2"
+
+
+def test_live_skill_weight_path_untouched_by_actionability():
+    """AST lock: rolling_horizon_log_loss and horizon_skill_weights reference no
+    actionability code — the live weighting path is provably unchanged."""
+    import ast
+
+    src = Path(__file__).resolve().parent.parent.joinpath(
+        "calibration", "daily_scoreboard.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    banned = {
+        "classify_actionability_rows", "build_actionability_report",
+        "read_freshness_budget_sec", "load_harness_annotations",
+        "ACTIONABILITY_STATES",
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in (
+            "rolling_horizon_log_loss", "horizon_skill_weights",
+        ):
+            names = {s.id for s in ast.walk(node) if isinstance(s, ast.Name)}
+            assert not (names & banned), f"{node.name} touches actionability: {names & banned}"
+
+
+def test_actionability_classifier_no_ticker_literals():
+    """AST lock: no uppercase ticker/session literals in the classifier cone."""
+    import ast
+
+    src = Path(__file__).resolve().parent.parent.joinpath(
+        "calibration", "daily_scoreboard.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    targets = {
+        "classify_actionability_rows", "_actionability_decision_rows",
+        "read_freshness_budget_sec", "build_actionability_report",
+    }
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in targets:
+            found.add(node.name)
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                    v = sub.value
+                    # Uppercase state names / SQL keywords are fine; ticker-shaped
+                    # 2-5 char uppercase alpha OUTSIDE the state enum is not.
+                    if (
+                        v.isalpha() and v.isupper() and 2 <= len(v) <= 5
+                        and v not in ("RTH", "UTC", "SELECT", "FROM", "WHERE", "AND", "IN")
+                        and v not in ACTIONABILITY_STATES
+                    ):
+                        raise AssertionError(f"ticker-literal-shaped {v!r} in {node.name}")
+    assert found == targets
