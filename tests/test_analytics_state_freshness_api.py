@@ -1325,7 +1325,9 @@ def test_step1_log_only_inline_source_lock():
     src = _fetch_state_source()
     assert "if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):" in src
     i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
-    i_pool_seed = src.index("_seed_pool = _get_route_offload_executor()")
+    # Step 2 rebinds the pooled arm to the dedicated leaf pool; the Step 1
+    # invariant (inline arm precedes the pooled arm) is pool-independent.
+    i_pool_seed = src.index("_seed_pool = _get_recompute_leaf_executor()")
     assert i_inline_seed < i_pool_seed, "inline seed arm must precede the pooled arm"
     # Operator-facing bounded parallelism intact (submits still present).
     assert "_cq_pool.submit(" in src or "_chain_fut = _cq_pool.submit(" in src
@@ -1372,6 +1374,146 @@ def test_step1_shutdown_inline_branch_preserved():
     """Shutdown keeps its pre-existing inline behavior via the call-site or."""
     src = _fetch_state_source()
     assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
+
+
+# ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 ───────────────────────────────
+
+
+def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
+    """AST lock: _get_recompute_leaf_executor is called only inside _fetch_state
+    (the chain/quote and seed submit blocks) — never by handlers or other code."""
+    import ast
+
+    tree = ast.parse(_fetch_state_source())
+    callers = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+                        and sub.func.id == "_get_recompute_leaf_executor"
+                        and node.name != "_get_recompute_leaf_executor"):
+                    callers.append(node.name)
+    # Nested walk double-counts under enclosing defs; the set must be exactly
+    # _fetch_state (call sites live directly in its body, not in nested defs).
+    assert set(callers) == {"_fetch_state"}, f"unexpected callers: {sorted(set(callers))}"
+    src = _fetch_state_source()
+    # Call sites only (the bare substring also matches the def line).
+    assert src.count("= _get_recompute_leaf_executor()") == 2  # chain/quote + seeds
+
+
+def test_step2_leaf_functions_have_no_nested_submit():
+    """AST leaf lock: leaf functions, schwab_client, and accumulator methods
+    contain no .submit() anywhere — the nested-submit deadlock class cannot form."""
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+
+    def submit_sites(path, names=None):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        out = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if names and node.name not in names:
+                    continue
+                for sub in ast.walk(node):
+                    if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                            and sub.func.attr == "submit"):
+                        out.append((node.name, sub.lineno))
+        return out
+
+    assert submit_sites(root / "server.py",
+                        {"_gated_safe_get_chain", "_safe_get_quote_with_retry",
+                         "_seed_candles", "seed", "tick", "get_bars", "grid_stale"}) == []
+    assert submit_sites(root / "schwab_client.py") == []
+
+
+def test_step2_concurrent_recomputes_do_not_deadlock():
+    """6 concurrent submit+join waves through the leaf pool complete under deadline."""
+    import threading
+    import time as _time
+
+    import server as srv
+
+    pool = srv._get_recompute_leaf_executor()
+    done = []
+
+    def _recompute_like(i):
+        f1 = pool.submit(_time.sleep, 0.2)
+        f2 = pool.submit(_time.sleep, 0.2)
+        f1.result(timeout=10)
+        f2.result(timeout=10)
+        done.append(i)
+
+    threads = [threading.Thread(target=_recompute_like, args=(i,)) for i in range(6)]
+    t0 = _time.monotonic()
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join(timeout=15)
+    elapsed = _time.monotonic() - t0
+    assert len(done) == 6, f"only {len(done)}/6 completed"
+    assert elapsed < 5.0, f"took {elapsed:.1f}s — queueing/deadlock suspected"
+
+
+def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
+    """Source lock: both nested-submit sites bind the leaf pool; the route pool
+    is no longer referenced by either block."""
+    src = _fetch_state_source()
+    assert "_cq_pool = _get_recompute_leaf_executor()" in src
+    assert "_seed_pool = _get_recompute_leaf_executor()" in src
+    assert "_cq_pool = _get_route_offload_executor()" not in src
+    assert "_seed_pool = _get_route_offload_executor()" not in src
+
+
+def test_step2_log_only_uses_neither_pool_for_nested_work():
+    """Step 1 preserved: the inline arms precede both submit blocks, so log_only
+    reaches neither the route pool nor the leaf pool for nested work."""
+    src = _fetch_state_source()
+    i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
+    i_pool_cq = src.index("_cq_pool = _get_recompute_leaf_executor()")
+    i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
+    i_pool_seed = src.index("_seed_pool = _get_recompute_leaf_executor()")
+    assert i_inline_cq < i_pool_cq
+    assert i_inline_seed < i_pool_seed
+
+
+def test_step2_shutdown_order_and_inline_branch():
+    """Leaf-pool teardown comes after the analytics executor shutdown, and the
+    _analytics_bg_shutdown condition still forces inline leaf fetches."""
+    src = _fetch_state_source()
+    i_analytics_shutdown = src.index("_shutdown_analytics_executor(wait=True)")
+    i_leaf_teardown = src.index("_recompute_leaf_executor.shutdown(wait=True, cancel_futures=True)")
+    assert i_analytics_shutdown < i_leaf_teardown
+    assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
+
+
+def test_step2_no_ticker_session_horizon_literals():
+    """AST lock on the new getter: no uppercase ticker/session literal constants."""
+    import ast
+
+    tree = ast.parse(_fetch_state_source())
+    fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_get_recompute_leaf_executor"
+    )
+    for sub in ast.walk(fn):
+        if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+            assert not (sub.value.isalpha() and sub.value.isupper()), (
+                f"literal-shaped constant {sub.value!r} in leaf-pool getter"
+            )
+
+
+def test_step2_executor_constants_unchanged_plus_new_leaf_constant():
+    """Existing pool sizes untouched; new leaf pool pinned at 8."""
+    import server as srv
+
+    assert srv.RECOMPUTE_LEAF_EXECUTOR_MAX_WORKERS == 8
+    src = _fetch_state_source()
+    assert src.count('max_workers=8,\n            thread_name_prefix="ed_route_offload"') == 1
+    assert src.count('max_workers=4,\n            thread_name_prefix="ed_analytics_bg"') == 1
+    assert src.count('max_workers=4,\n            thread_name_prefix="ed_quote_hot"') == 1
+    assert src.count('thread_name_prefix="ed_recompute_leaf"') == 1
 
 
 def test_fix_b_constants_unchanged():

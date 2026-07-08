@@ -707,6 +707,27 @@ _fast_quote_executor: Optional[ThreadPoolExecutor] = None
 # Single worker: outcome backfill scans snapshots + bars — must not run on the hot _fetch_state path.
 _db_fill_outcomes_executor: Optional[ThreadPoolExecutor] = None
 
+# OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 — dedicated pool for
+# recompute-internal LEAF Schwab fetches only (chain, quote, candle seeds), so
+# operator-facing card recomputes never queue behind HTTP serve bodies or each
+# other's nested route-pool work (measured 8.3-12.6s route-pool queue waits at
+# organic load with pure Schwab fetches under 3.2s). Sizing: the analytics pool
+# caps concurrent recomputes at 4 and each recompute joins at most 2 leaf
+# futures at a time (chain+quote resolve before the seeds run), so 8 workers
+# give zero internal queueing by construction. Leaf-ness is AST-locked in
+# tests: none of the leaf functions submit anywhere, so the 2026-07-04
+# nested-submit deadlock class cannot form.
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — executor-pool scheduling only; the Schwab
+#   chain/quote/pricehistory reads themselves are byte-identical (same leaf
+#   functions, same arguments, same joins — only the pool they run on changes).
+# Derived-field disposition: none required (no derived field touched).
+# All consumers checked: yes — c_resp/q_resp/seeded candles consumed
+#   identically downstream; HTTP serve bodies keep the route pool unchanged.
+# SCHWAB_CSV_CHECKED
+RECOMPUTE_LEAF_EXECUTOR_MAX_WORKERS = 8
+_recompute_leaf_executor: Optional[ThreadPoolExecutor] = None
+
 
 def _get_quote_hot_executor() -> ThreadPoolExecutor:
     """Tier A + fast-quote only — never queue behind Tier C JSON or L1 rebuilds."""
@@ -732,6 +753,21 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
 def _get_fast_quote_executor() -> ThreadPoolExecutor:
     """Route-touch pool (Tier B/C JSON, streaming POST touch, L1 SSE subscribe)."""
     return _get_route_offload_executor()
+
+
+def _get_recompute_leaf_executor() -> ThreadPoolExecutor:
+    """Recompute-internal leaf fetches ONLY (chain, quote, candle seeds).
+
+    Universal by construction: used generically by every non-log_only
+    _fetch_state recompute regardless of ticker/roster/session/horizon.
+    log_only pipelines stay inline (Step 1) and never touch this pool."""
+    global _recompute_leaf_executor
+    if _recompute_leaf_executor is None:
+        _recompute_leaf_executor = ThreadPoolExecutor(
+            max_workers=RECOMPUTE_LEAF_EXECUTOR_MAX_WORKERS,
+            thread_name_prefix="ed_recompute_leaf",
+        )
+    return _recompute_leaf_executor
 
 
 def _get_db_fill_outcomes_executor() -> ThreadPoolExecutor:
@@ -5216,7 +5252,9 @@ def _fetch_state(
             )
             q_resp = _safe_get_quote_with_retry(client, ticker)
         else:
-            _cq_pool = _get_route_offload_executor()
+            # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf futures run on
+            # the dedicated recompute-leaf pool — never behind serve bodies.
+            _cq_pool = _get_recompute_leaf_executor()
             _chain_fut = _cq_pool.submit(
                 _gated_safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
             )
@@ -5505,7 +5543,8 @@ def _fetch_state(
             else:
                 # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
                 # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
-                _seed_pool = _get_route_offload_executor()
+                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: dedicated leaf pool.
+                _seed_pool = _get_recompute_leaf_executor()
                 _f5 = _seed_pool.submit(_seed_candles, 5)
                 _f1 = _seed_pool.submit(_seed_candles, 1)
                 _f5.result(timeout=45)
@@ -8102,6 +8141,13 @@ async def _app_lifespan(app):
         log.warning("Order flow streaming shutdown: %s", e)
 
     stop_logger()
+    # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf pool shuts down AFTER
+    # the analytics executor above — no new leaf submits can arrive first (the
+    # _analytics_bg_shutdown branch also forces inline leaf fetches).
+    global _recompute_leaf_executor
+    if _recompute_leaf_executor is not None:
+        _recompute_leaf_executor.shutdown(wait=True, cancel_futures=True)
+        _recompute_leaf_executor = None
     global _quote_hot_executor, _route_offload_executor, _fast_quote_executor, _db_fill_outcomes_executor
     if _quote_hot_executor is not None:
         _quote_hot_executor.shutdown(wait=True)
