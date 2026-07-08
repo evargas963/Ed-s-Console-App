@@ -350,12 +350,15 @@ def test_api_build_exposes_ui_maximize_sla():
 
 
 def test_candle_seed_does_not_nest_analytics_executor():
-    """Regression: parallel candle seed on _analytics_executor deadlocked Tier C (UI-MAXIMIZE)."""
+    """Regression: parallel candle seed on _analytics_executor deadlocked Tier C
+    (UI-MAXIMIZE). OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 moved the seed
+    futures to the dedicated recompute-leaf pool — the invariant is unchanged:
+    seeds never nest into the analytics pool."""
     text = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
     idx = text.find("UI-MAXIMIZE: parallel seed")
     assert idx != -1
-    block = text[idx : idx + 400]
-    assert "_get_route_offload_executor()" in block
+    block = text[idx : idx + 500]
+    assert "_get_recompute_leaf_executor()" in block
     assert "_analytics_executor.submit(_seed_candles" not in text
 
 

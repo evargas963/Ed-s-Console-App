@@ -57,9 +57,15 @@ def test_fetch_state_never_submits_to_analytics_pool() -> None:
         "nested submit+.result() self-deadlock class fixed at 3a0d338 (py-spy proof "
         "2026-07-04: all four ed_analytics_bg workers parked at .result())."
     )
-    assert "_get_route_offload_executor" in calls, (
-        "_fetch_state chain/quote parallel fetch must run on the route-offload pool "
-        "(leaf HTTP tasks; no wait cycle back into the analytics pool)."
+    # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: the nested chain/quote/seed
+    # futures moved from the shared route pool to the dedicated recompute-leaf
+    # pool. The deadlock invariant is pool-agnostic: the pool used must never
+    # wait back into the analytics pool (leaf-ness AST-locked in
+    # tests/test_analytics_state_freshness_api.py).
+    assert "_get_recompute_leaf_executor" in calls, (
+        "_fetch_state chain/quote parallel fetch must run on the dedicated "
+        "recompute-leaf pool (true leaf tasks; no wait cycle back into the "
+        "analytics pool)."
     )
 
 
