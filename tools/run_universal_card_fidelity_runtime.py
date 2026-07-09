@@ -1330,7 +1330,17 @@ def write_reports(report: dict[str, Any], out_dir: Path, audit_date: str) -> tup
     md_path = out_dir / f"universal_card_fidelity_{audit_date}.md"
     json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
+    # Governance scope header — tests/test_governance_consolidation.py
+    # (test_phase2_all_md_have_scope_headers) requires every committed MD to
+    # open with a Classification/Scope line; prior artifacts got it prepended
+    # by hand, which the 2026-07-09 CI failure showed is a recurring trap.
+    head_sha = str(report.get("head_sha") or "unknown")[:12]
     lines = [
+        (
+            f"> **Classification:** Evidence Artifact | **Scope:** universal card "
+            f"fidelity runtime harness {audit_date} @ runtime `{head_sha}`"
+        ),
+        "",
         f"# Universal card fidelity runtime — {audit_date}",
         "",
         f"- harness_result: **{report.get('harness_result')}**",

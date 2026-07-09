@@ -1,3 +1,5 @@
+> **Classification:** Evidence Artifact | **Scope:** universal card fidelity runtime harness 2026-07-09-rth-autonomous-day RTH slice 10:36–10:39 CT @ runtime `2e4bc096ad27` (PID 36980)
+
 # Universal card fidelity runtime — 2026-07-09-rth-autonomous-day
 
 - harness_result: **FAIL**
