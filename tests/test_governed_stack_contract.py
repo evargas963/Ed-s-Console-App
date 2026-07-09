@@ -40,6 +40,58 @@ def test_wall_clock_minutes_to_mc_bars_rejects_non_multiple_and_nonpositive():
             wall_clock_minutes_to_mc_bars(1)
 
 
+# ── BAR_MINUTES sizing alignment (minimal-guidance lane, 2026-07-08) ─────────
+
+
+def test_bar_minutes_aligns_slug_horizon_to_wall_clock_minutes():
+    """FIX lock: for EVERY governed horizon slug (authority list, no literals),
+    the MC bars requested by the live stack path equal the slug's wall-clock
+    minutes — simulated forward time == 1-minute label horizon. Pre-fix
+    (BAR_MINUTES=5) this was 5x over-horizon: 5c requested 5 bars = 25 minutes,
+    and those over-horizon mc_eae/mc_efe fed compute_position_size."""
+    from governed_stack_contract import GOVERNED_STACK_HORIZONS, horizon_slug_to_mc_bars
+    from monte_carlo import BAR_MINUTES
+
+    assert int(BAR_MINUTES) == 1
+    for slug in GOVERNED_STACK_HORIZONS:
+        minutes = int(str(slug).rstrip("c"))
+        assert horizon_slug_to_mc_bars(slug) * int(BAR_MINUTES) == minutes, slug
+
+
+def test_bar_minutes_one_makes_slug_and_wall_clock_maps_converge():
+    """With BAR_MINUTES=1 the slug map and the wall-clock map agree for every
+    governed horizon — the two code paths can no longer diverge in units."""
+    from governed_stack_contract import (
+        GOVERNED_STACK_HORIZONS,
+        horizon_slug_to_mc_bars,
+    )
+
+    for slug in GOVERNED_STACK_HORIZONS:
+        minutes = int(str(slug).rstrip("c"))
+        assert horizon_slug_to_mc_bars(slug) == wall_clock_minutes_to_mc_bars(minutes), slug
+
+
+def test_one_minute_wall_clock_now_representable():
+    """Pre-fix this raised ValueError ('not representable while BAR_MINUTES=5')."""
+    assert wall_clock_minutes_to_mc_bars(1) == 1
+
+
+def test_default_horizon_removed_and_horizon_bars_required():
+    """DEFAULT_HORIZON=13 was dead (every live caller passes horizon_bars) and
+    misleading (commented '~1hr' under the 5-minute reading; 13 minutes under
+    the aligned reading). Removed: a silent default cannot reintroduce a unit
+    mistake — omitting horizon_bars is now a loud TypeError."""
+    import inspect
+
+    import monte_carlo
+
+    assert not hasattr(monte_carlo, "DEFAULT_HORIZON")
+    sig = inspect.signature(monte_carlo.simulate)
+    assert sig.parameters["horizon_bars"].default is inspect.Parameter.empty
+    with pytest.raises(TypeError):
+        monte_carlo.simulate(spot=500.0, iv=0.2)  # no horizon_bars -> loud failure
+
+
 def test_mc_inputs_from_stack_probs():
     x = SimpleNamespace(available=True, prob_up=0.6, prob_down=0.2, prob_flat=0.2)
     u, d, c, avail, src = mc_model_direction_inputs(
@@ -107,8 +159,12 @@ def test_display_wall_clock_mc_excursions_populates_5m_15m():
         transformer_out=fb,
         ml_bundle={},
     )
-    assert wall_clock_minutes_to_mc_bars(5) == 1
-    assert wall_clock_minutes_to_mc_bars(15) == 3
+    # Wall-clock invariant is unit-independent: N minutes -> N / BAR_MINUTES bars
+    # (was 5->1, 15->3 under BAR_MINUTES=5; identity under the =1 alignment).
+    from monte_carlo import BAR_MINUTES
+
+    assert wall_clock_minutes_to_mc_bars(5) == 5 // int(BAR_MINUTES)
+    assert wall_clock_minutes_to_mc_bars(15) == 15 // int(BAR_MINUTES)
     assert out["mc_efe_5m"] is not None and out["mc_eae_5m"] is not None
     assert out["mc_efe_15m"] is not None and out["mc_eae_15m"] is not None
     assert out["mc_efe_15m"] >= out["mc_efe_5m"]

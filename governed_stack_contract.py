@@ -385,12 +385,12 @@ assert GOVERNED_STACK_HORIZONS == ML_HORIZON_SLUGS
 def horizon_slug_to_mc_bars(slug: str) -> int:
     """Monte Carlo `horizon_bars` aligned to governed horizon slug (e.g. 13c → 13).
 
-    NOTE (2026-06-01): this maps slug INTEGER → bar COUNT (5c→5 bars). Because the MC
-    engine steps ``monte_carlo.BAR_MINUTES`` (currently 5) per bar, the resulting WALL-CLOCK
-    forward time is ``bars × BAR_MINUTES`` — i.e. 5c → 25 minutes, NOT 5 minutes. That is a
-    known misalignment vs the 1-minute `outcome_Nc` training labels (tracked in the feature
-    matrix as a BLOCKING precondition before efe/eae feature-wiring). For TRUE wall-clock
-    forward time, use ``wall_clock_minutes_to_mc_bars`` below.
+    ALIGNMENT RESOLVED (2026-07-08, BAR_MINUTES sizing alignment): with
+    ``monte_carlo.BAR_MINUTES = 1`` a slug's bar COUNT equals its wall-clock
+    MINUTES (5c → 5 bars → 5 minutes), matching the 1-minute ``outcome_Nc``
+    training labels. The pre-fix misalignment (BAR_MINUTES=5 made 5c simulate
+    25 minutes and fed 5x over-horizon mc_eae/mc_efe into position sizing) is
+    locked against in tests/test_governed_stack_contract.py.
     """
     su = str(slug or "").strip().lower()
     if not su.endswith("c"):
@@ -405,14 +405,14 @@ def wall_clock_minutes_to_mc_bars(minutes: int) -> int:
     """Convert a TRUE wall-clock horizon (in minutes) to MC ``horizon_bars``.
 
     The MC engine advances ``monte_carlo.BAR_MINUTES`` minutes per simulated bar. To get a
-    genuine N-minute forward forecast, request ``N / BAR_MINUTES`` bars — e.g. with
-    BAR_MINUTES=5: 5 min → 1 bar, 15 min → 3 bars. Used by the Key Levels display-only
-    5m/15m EFE/EAE so the rows are labeled by real wall-clock minutes (NOT by the slug-integer
-    path, which would over-simulate: horizon_bars=5 would be 25 minutes, the bug to avoid).
+    genuine N-minute forward forecast, request ``N / BAR_MINUTES`` bars. With the
+    BAR_MINUTES=1 alignment (2026-07-08) this is the identity map — 5 min → 5 bars,
+    15 min → 15 bars — and every positive whole minute (including 1) is representable.
+    Used by the Key Levels display-only 5m/15m EFE/EAE rows.
 
-    Raises ValueError if ``minutes`` is not a positive whole multiple of BAR_MINUTES (e.g. a
-    true 1-minute forecast is NOT representable while BAR_MINUTES=5 — that requires the
-    BAR_MINUTES=1 alignment fix, tracked separately).
+    Raises ValueError if ``minutes`` is not a positive whole multiple of BAR_MINUTES
+    (vacuously never for whole positive minutes while BAR_MINUTES=1; the guard stays so
+    any future BAR_MINUTES change fails loudly instead of silently mis-scaling).
     """
     from monte_carlo import BAR_MINUTES
 

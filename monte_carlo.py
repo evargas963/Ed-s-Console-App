@@ -27,9 +27,33 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 DEFAULT_N_PATHS     = 10000
-DEFAULT_HORIZON     = 13
 ANNUALIZED_HOURS    = 252 * 6.5
-BAR_MINUTES         = 5
+# BAR_MINUTES sizing alignment (operator minimal-guidance lane, 2026-07-08):
+# one simulated bar = ONE minute, matching the 1-minute price bars, the
+# 1-minute outcome_Nc training labels, AND the GARCH producer (the server
+# fits compute_garch_forecast on 1-minute closes, so garch_sigma_bars are
+# per-1-MINUTE sigmas — previously consumed here as if they were 5-minute
+# bars). With BAR_MINUTES=1, horizon_slug_to_mc_bars("Nc") -> N bars now
+# equals N wall-clock minutes, so the mc_eae/mc_efe/containment that flow
+# into compute_position_size are simulated over the SAME horizon the trade
+# plan and labels use (previously 5x over-horizon: 5c simulated 25 minutes).
+# dt = BAR_MINUTES / minutes_per_year keeps per-step variance wall-clock
+# consistent automatically. DEFAULT_HORIZON (13) was removed with this
+# change: every live caller passes horizon_bars explicitly, and a silent
+# 13-bar default (commented "~1hr" under the 5-minute reading, actually
+# neither unit) invited exactly this class of mistake.
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — simulation time-step constant only; no
+#   Schwab market field read, derivation, or emission changed (spot/iv/wall
+#   inputs are passed in by callers unchanged).
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — MC outputs stay
+#   the governed simulation derivations; only the bar<->minute unit aligns.
+# All consumers checked: yes — signals.py stack leg (horizon_slug_to_mc_bars)
+#   and display leg (wall_clock_minutes_to_mc_bars) pass explicit
+#   horizon_bars; sizing consumes mc_eae/mc_efe via fusion (call_engine);
+#   volatility_regime/market_state are pass-throughs of garch_sigma_bars.
+# SCHWAB_CSV_CHECKED
+BAR_MINUTES         = 1
 SEED                = None
 
 # Regime sigma multipliers
@@ -152,7 +176,7 @@ def simulate(
     spot: float,
     iv: float,
     *,
-    horizon_bars: int = DEFAULT_HORIZON,
+    horizon_bars: int,
     n_paths: int = DEFAULT_N_PATHS,
     drift: float = 0.0,
     call_gamma_wall: Optional[float] = None,
