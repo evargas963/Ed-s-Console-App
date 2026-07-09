@@ -1527,6 +1527,19 @@ _analytics_cache_observability: dict[str, int] = {
 # is already published when the tail runs, so a failure recorded here appears
 # in the NEXT publish's payload copy. Ticker is runtime data — the capture
 # path is identical for every ticker (no ticker-conditional behavior).
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — exception metadata (exc_type, detail,
+#   traceback tail) around existing persistence calls; the companion nonlocal
+#   mkt_ctx repair restores the pre-relocation confluence-completion binding
+#   (existing chains/quotes leaf consumption unchanged); no market field read,
+#   derivation, or emission changed.
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (observability only).
+# All consumers checked: yes — post_publish_last_errors_v1 is an additive
+#   diagnostics surface beside analytics_cache_observability_v1; trust,
+#   freshness, actionability, sizing, and synthesis unchanged (locks:
+#   test_post_publish_last_error_recorder_is_passive,
+#   test_tail_mkt_ctx_nonlocal_rebind_restored).
+# SCHWAB_CSV_CHECKED
 _post_publish_last_errors: dict[str, dict] = {}
 
 
