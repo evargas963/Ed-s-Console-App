@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-06T01:07:30Z",
+  "generated_at": "stable",
   "persistence_files": [
     "db.py",
     "calibration/writer.py"
@@ -95,6 +95,7 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/daily_scoreboard.py",
           "calibration/writer.py",
           "db.py",
           "scheduler_user_tickers.py",
@@ -115,6 +116,7 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/daily_scoreboard.py",
           "calibration/writer.py",
           "db.py",
           "scheduler_user_tickers.py",
@@ -136,6 +138,7 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/daily_scoreboard.py",
           "calibration/writer.py",
           "db.py",
           "scheduler_user_tickers.py",
@@ -156,6 +159,7 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/daily_scoreboard.py",
           "calibration/writer.py",
           "db.py",
           "scheduler_user_tickers.py",
@@ -210,6 +214,7 @@
       "production_callers": [],
       "read_consumers": {
         "logging_universe": [
+          "calibration/daily_scoreboard.py",
           "calibration/writer.py",
           "db.py",
           "scheduler_user_tickers.py",
@@ -231,6 +236,7 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/daily_scoreboard.py",
           "calibration/writer.py",
           "db.py",
           "scheduler_user_tickers.py",
@@ -255,6 +261,7 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/daily_scoreboard.py",
           "calibration/writer.py",
           "db.py",
           "scheduler_user_tickers.py",

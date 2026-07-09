@@ -2,6 +2,18 @@
 """
 End-of-day signal scoreboard: logged per-horizon fusion predictions vs realized outcomes.
 
+QUALITY CIRCLE PURPOSE (operator 2026-07-09): this scoreboard is part of the
+Quality Circle / continuous signal-refinement loop. Its purpose is not merely
+to display daily stats — it measures signal quality across the ELIGIBLE
+ticker x horizon grid so weak signals, missing coverage, horizon failures,
+ticker gaps, calibration issues, and outcome-attachment gaps can be identified
+and fed back into future refinement. It must therefore never be
+viewer/activity biased: every eligible cell is represented (SCORED or
+NOT_SCORED with a reason), row-weighted aggregates are labeled as such, an
+equal-weight rollup prevents high-activity dominance, and the quality_circle
+section ranks worst tickers/horizons, coverage laggards, missing-outcome
+cells, and splits cells by sample-size trust.
+
 Data flow (all existing surfaces — no new persistence):
   1. calibration.backfill_outcomes.backfill() attaches snapshot outcome labels
      (outcome_1c/5c/15c/60c) to calibration_decision_log rows (exact ts join).
@@ -46,7 +58,31 @@ HORIZON_SLUGS = ("1c", "5c", "15c", "60c")
 # scored against the outcome label of the logged primary (trade-plan) horizon.
 ALL_CARD_SLUG = "all"
 _FINAL_BIAS_TO_LABEL = {"LONG": "up", "SHORT": "down", "WAIT": "flat"}
-SCHEMA_VERSION = "2"
+# v3 (DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1, operator-approved 2026-07-09): the
+# eligible governed ticker x horizon grid is enumerated BEFORE scoring; every
+# eligible cell is emitted as SCORED or NOT_SCORED with an explicit reason; an
+# equal-weight-per-ticker rollup rides beside the existing pooled rollup, which
+# is now labeled row_weighted_pooled so activity volume cannot masquerade as
+# equal ticker performance. All v2 keys/fields are preserved (additive).
+SCHEMA_VERSION = "3"
+NOT_SCORED_REASONS = (
+    "NO_ROWS_PRODUCED",
+    "NOT_IN_ACTIVE_LOGGER",
+    "FUSION_UNAVAILABLE",
+    "OUTCOME_PENDING",
+    "NON_RTH",
+    "UNTRUSTED_CALIBRATION",
+    "UNPARSEABLE_BUNDLE",
+    "UNSUPPORTED_TICKER_OR_HORIZON",
+)
+# Quality-circle per-cell sample-size trust floor: below ~30 scored rows the
+# binomial normal approximation for an accuracy estimate is unreliable (classic
+# np>=5 / n(1-p)>=5 rule at p~0.5), so cells under this floor are reported as
+# UNDER_SAMPLED and must not drive refinement decisions on their own.
+QC_MIN_SCORED_CELL_N = 30
+# Ranked quality-circle lists are truncated for readability; every list carries
+# its untruncated n_total so truncation is never silent.
+QC_LIST_LIMIT = 10
 DEFAULT_REPORT_DIR = Path(__file__).resolve().parents[1] / "reports" / "daily_scoreboard"
 
 # Live writer stamps decision_ts_utc at wall-clock (sub-second) while snapshots_1m_normalized
@@ -280,6 +316,379 @@ def _finalize_cell(c: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ── DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1 (v3 grid — operator-approved) ──────
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — denominator-first accounting over rows the
+#   scoreboard already logs; no market field is read, derived, renamed, or
+#   emitted here beyond counts/statuses of existing logged decisions.
+# Derived-field disposition: none required (no derived market field touched);
+#   hit math and the live skill-weight paths are byte-identical (locked by tests).
+# All consumers checked: yes — additive JSON keys + HTML sections only; v2 keys
+#   and per-cell fields unchanged (tests/test_calibration_daily_scoreboard.py).
+# SCHWAB_CSV_CHECKED
+def _eligible_roster(conn: sqlite3.Connection) -> tuple[list[str], str]:
+    """Governed eligibility roster: the logging_universe enrollment authority
+    (core + pinned + panel_auto + user_persisted — db.logging_universe_authoritative_tickers
+    semantics). Falls back, labeled, when the table is absent (fixture DBs)."""
+    try:
+        rows = conn.execute(
+            "SELECT ticker FROM logging_universe"
+            " WHERE category IN ('core','pinned','panel_auto','user_persisted')"
+            " ORDER BY ticker COLLATE NOCASE"
+        ).fetchall()
+        if rows:
+            return [str(r[0]).upper() for r in rows], "logging_universe"
+    except sqlite3.Error:
+        pass
+    return [], "logging_universe_unavailable"
+
+
+def _production_tallies(
+    conn: sqlite3.Connection, et_date: str, tickers: Optional[list[str]]
+) -> tuple[dict[str, dict[str, Any]], Optional[set[str]]]:
+    """Per-ticker exclusion/production tallies over ALL of today's calibration rows
+    (including untrusted and non-RTH, which the scoring pass never sees), plus
+    snapshot-presence evidence used to distinguish NOT_IN_ACTIVE_LOGGER from
+    NO_ROWS_PRODUCED. Never mutates anything."""
+    from time_et import is_rth_ts_utc
+
+    lo, hi = et_day_utc_bounds(et_date)
+    sql = (
+        "SELECT ticker, decision_ts_utc, calibration_trust, model_outputs_json,"
+        " multi_horizon_json,"
+        " outcome_1c, outcome_5c, outcome_15c, outcome_60c"
+        " FROM calibration_decision_log"
+        " WHERE decision_ts_utc >= ? AND decision_ts_utc < ?"
+    )
+    params: list[Any] = [lo, hi]
+    if tickers:
+        sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
+        params.extend(tickers)
+
+    def _new_t() -> dict[str, Any]:
+        return {
+            "n_rows_total": 0,
+            "n_non_rth": 0,
+            "n_untrusted": 0,
+            "n_unparseable": 0,
+            "hz": {
+                hz: {"n_pred": 0, "n_outcome_pending": 0, "n_fusion_unavailable": 0}
+                for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG)
+            },
+        }
+
+    out: dict[str, dict[str, Any]] = {}
+    for row in conn.execute(sql, params):
+        t = out.setdefault(str(row["ticker"]).upper(), _new_t())
+        t["n_rows_total"] += 1
+        if not is_rth_ts_utc(float(row["decision_ts_utc"])):
+            t["n_non_rth"] += 1
+            continue
+        if str(row["calibration_trust"]) != "trusted":
+            t["n_untrusted"] += 1
+            continue
+        try:
+            bundle = json.loads(row["model_outputs_json"] or "{}")
+        except (TypeError, ValueError):
+            t["n_unparseable"] += 1
+            continue
+        by_hz = (
+            (bundle.get("stack_probs_bundle") or {}).get("multi_horizon_ml_fusion_bundle") or {}
+        ).get("by_horizon") or {}
+        for hz in HORIZON_SLUGS:
+            blk = by_hz.get(hz)
+            cell = t["hz"][hz]
+            if (
+                not isinstance(blk, dict)
+                or not blk.get("horizon_fusion_available")
+                or blk.get("dominant_direction") not in ("up", "down", "flat")
+            ):
+                cell["n_fusion_unavailable"] += 1
+                continue
+            cell["n_pred"] += 1
+            if row[f"outcome_{hz}"] not in ("up", "down", "flat"):
+                cell["n_outcome_pending"] += 1
+        all_cell = t["hz"][ALL_CARD_SLUG]
+        all_row = _all_card_row(row)
+        if all_row is None:
+            all_cell["n_fusion_unavailable"] += 1
+        else:
+            all_cell["n_pred"] += 1
+            if all_row["truth"] not in ("up", "down", "flat"):
+                all_cell["n_outcome_pending"] += 1
+
+    snaps: Optional[set[str]] = None
+    try:
+        from db import get_snapshot_sql
+
+        snaps = {
+            str(r[0]).upper()
+            for r in conn.execute(
+                get_snapshot_sql("calibration/daily_scoreboard.py:active_logger_tickers_day"),
+                (lo, hi),
+            )
+        }
+    except (sqlite3.Error, ImportError, KeyError, FileNotFoundError):
+        snaps = None
+    return out, snaps
+
+
+def _cell_not_scored_reason(
+    tallies: Optional[dict[str, Any]],
+    hz: str,
+    snapshot_tickers: Optional[set[str]],
+    ticker: str,
+) -> str:
+    """Explicit reason ladder for an eligible cell with n_scored == 0."""
+    if tallies is None or tallies["n_rows_total"] == 0:
+        if snapshot_tickers is not None and ticker not in snapshot_tickers:
+            return "NOT_IN_ACTIVE_LOGGER"
+        return "NO_ROWS_PRODUCED"
+    cell = tallies["hz"][hz]
+    if cell["n_pred"] > 0:
+        return "OUTCOME_PENDING"
+    if cell["n_fusion_unavailable"] > 0:
+        return "FUSION_UNAVAILABLE"
+    if tallies["n_untrusted"] > 0 and tallies["n_untrusted"] + tallies["n_non_rth"] >= tallies["n_rows_total"]:
+        return "UNTRUSTED_CALIBRATION"
+    if tallies["n_non_rth"] >= tallies["n_rows_total"]:
+        return "NON_RTH"
+    if tallies["n_unparseable"] > 0:
+        return "UNPARSEABLE_BUNDLE"
+    return "NO_ROWS_PRODUCED"
+
+
+def _build_eligible_grid(
+    roster: list[str],
+    roster_source: str,
+    tallies: dict[str, dict[str, Any]],
+    snapshot_tickers: Optional[set[str]],
+    by_ticker_scored: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Denominator-first grid: every eligible (ticker, horizon) cell is emitted as
+    SCORED or NOT_SCORED with a reason — zero-row tickers are never hidden."""
+    grid: dict[str, dict[str, Any]] = {}
+    tickers = sorted(set(roster) | set(tallies) | set(by_ticker_scored))
+    for tk in tickers:
+        t_tal = tallies.get(tk)
+        rows_today = t_tal["n_rows_total"] if t_tal else 0
+        cells: dict[str, Any] = {}
+        for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG):
+            scored_cell = (by_ticker_scored.get(tk) or {}).get(hz)
+            n_pred = scored_cell["n_pred"] if scored_cell else 0
+            n_scored = scored_cell["n_scored"] if scored_cell else 0
+            rec: dict[str, Any] = {
+                "eligibility": "ELIGIBLE" if tk in roster or roster_source != "logging_universe" else "OBSERVED_ONLY",
+                "n_pred": n_pred,
+                "n_scored": n_scored,
+                "n_unscored": n_pred - n_scored,
+                "n_outcome_pending": (t_tal["hz"][hz]["n_outcome_pending"] if t_tal else 0),
+                "n_fusion_unavailable": (t_tal["hz"][hz]["n_fusion_unavailable"] if t_tal else 0),
+                "rows_today": rows_today,
+            }
+            if n_scored > 0:
+                rec["score_status"] = "SCORED"
+                rec["accuracy"] = scored_cell["accuracy"]
+            else:
+                rec["score_status"] = "NOT_SCORED"
+                rec["not_scored_reason"] = _cell_not_scored_reason(
+                    t_tal, hz, snapshot_tickers, tk
+                )
+            cells[hz] = rec
+        grid[tk] = cells
+    return grid
+
+
+def _equal_weight_rollup(by_ticker_scored: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Equal-weight-per-ticker accuracy: each ticker contributes its own accuracy
+    once per horizon, so a high-row-volume ticker cannot dominate the mean."""
+    out: dict[str, Any] = {}
+    for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG):
+        accs = [
+            cells[hz]["accuracy"]
+            for cells in by_ticker_scored.values()
+            if hz in cells and cells[hz]["accuracy"] is not None
+        ]
+        out[hz] = {
+            "n_tickers": len(accs),
+            "mean_accuracy_equal_weight": (sum(accs) / len(accs)) if accs else None,
+        }
+    return out
+
+
+def _coverage_diagnostics(
+    roster: list[str],
+    roster_source: str,
+    tallies: dict[str, dict[str, Any]],
+    grid: dict[str, Any],
+) -> dict[str, Any]:
+    tickers_with_rows = sorted(t for t, v in tallies.items() if v["n_rows_total"] > 0)
+    zero = sorted(t for t in roster if t not in tickers_with_rows)
+    hz_cov: dict[str, Any] = {}
+    denom = len(grid) or 1
+    for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG):
+        scored = sum(1 for cells in grid.values() if cells[hz]["score_status"] == "SCORED")
+        hz_cov[hz] = {"tickers_scored": scored, "pct_of_grid": scored / denom}
+    return {
+        "roster_source": roster_source,
+        "eligible_tickers": len(roster),
+        "tickers_with_rows": len(tickers_with_rows),
+        "tickers_zero_rows": len(zero),
+        "zero_row_tickers": zero,
+        "ticker_coverage_pct": (len(tickers_with_rows) / len(roster)) if roster else None,
+        "horizon_coverage": hz_cov,
+        "rows_per_ticker": {t: v["n_rows_total"] for t, v in sorted(tallies.items())},
+    }
+
+
+def _quality_circle_summary(
+    grid: dict[str, Any], by_ticker_scored: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Continuous-improvement rankings over the eligible grid (contract item 8):
+    worst tickers/horizons by accuracy, lowest-coverage tickers, highest
+    missing-outcome cells, and the sample-size trust split. Pure function of
+    already-computed grid/score data — no extra DB reads, no ticker literals."""
+    # Worst tickers: mean accuracy across the ticker's TRUSTED true-horizon
+    # cells only (n_scored >= QC_MIN_SCORED_CELL_N; ALL-card excluded — it is
+    # the consolidated trade signal, not a horizon). Operator safeguard: a
+    # low-sample cell is never ranked as "bad" — tickers with scored rows but
+    # no trusted cell are listed separately as under-sampled/not-trustworthy.
+    ticker_acc: list[dict[str, Any]] = []
+    under_tickers: list[dict[str, Any]] = []
+    for tk, cells in by_ticker_scored.items():
+        trusted_accs = [
+            cells[hz]["accuracy"]
+            for hz in HORIZON_SLUGS
+            if hz in cells
+            and cells[hz]["accuracy"] is not None
+            and cells[hz]["n_scored"] >= QC_MIN_SCORED_CELL_N
+        ]
+        n_scored_total = sum(
+            cells[hz]["n_scored"] for hz in HORIZON_SLUGS if hz in cells
+        )
+        if trusted_accs:
+            ticker_acc.append(
+                {
+                    "ticker": tk,
+                    "mean_accuracy_trusted": sum(trusted_accs) / len(trusted_accs),
+                    "n_trusted_horizons": len(trusted_accs),
+                    "n_scored_total": n_scored_total,
+                }
+            )
+        elif n_scored_total > 0:
+            under_tickers.append(
+                {
+                    "ticker": tk,
+                    "n_scored_total": n_scored_total,
+                    "trust": "UNDER_SAMPLED_NOT_TRUSTWORTHY",
+                }
+            )
+    ticker_acc.sort(key=lambda r: (r["mean_accuracy_trusted"], r["ticker"]))
+    under_tickers.sort(key=lambda r: r["ticker"])  # alphabetical — never a badness rank
+
+    # Worst horizons: equal-weight mean accuracy per horizon over TRUSTED cells
+    # only, ascending; horizons with no trusted cell are flagged
+    # insufficient_sample and rank last, not best/worst.
+    hz_rank: list[dict[str, Any]] = []
+    for hz in HORIZON_SLUGS:
+        trusted_accs = []
+        n_under = 0
+        for cells in by_ticker_scored.values():
+            if hz not in cells or cells[hz]["accuracy"] is None:
+                continue
+            if cells[hz]["n_scored"] >= QC_MIN_SCORED_CELL_N:
+                trusted_accs.append(cells[hz]["accuracy"])
+            else:
+                n_under += 1
+        hz_rank.append(
+            {
+                "horizon": hz,
+                "mean_accuracy_equal_weight": (
+                    sum(trusted_accs) / len(trusted_accs) if trusted_accs else None
+                ),
+                "n_tickers_trusted": len(trusted_accs),
+                "n_tickers_under_sampled": n_under,
+                "insufficient_sample": not trusted_accs,
+            }
+        )
+    hz_rank.sort(
+        key=lambda r: (
+            r["insufficient_sample"],
+            r["mean_accuracy_equal_weight"]
+            if r["mean_accuracy_equal_weight"] is not None
+            else 0.0,
+        )
+    )
+
+    # Lowest-coverage tickers: fewest scored true-horizon cells first, then
+    # fewest rows — zero-row eligible tickers rank first by construction.
+    cov_rank = sorted(
+        (
+            {
+                "ticker": tk,
+                "n_horizons_scored": sum(
+                    1 for hz in HORIZON_SLUGS if cells[hz]["score_status"] == "SCORED"
+                ),
+                "rows_today": cells[HORIZON_SLUGS[0]]["rows_today"],
+            }
+            for tk, cells in grid.items()
+        ),
+        key=lambda r: (r["n_horizons_scored"], r["rows_today"], r["ticker"]),
+    )
+
+    # Highest missing-outcome cells: predictions made, outcomes not yet attached.
+    pending = sorted(
+        (
+            {
+                "ticker": tk,
+                "horizon": hz,
+                "n_outcome_pending": cells[hz]["n_outcome_pending"],
+            }
+            for tk, cells in grid.items()
+            for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG)
+            if cells[hz]["n_outcome_pending"] > 0
+        ),
+        key=lambda r: (-r["n_outcome_pending"], r["ticker"], r["horizon"]),
+    )
+
+    # Sample-size trust split over scored cells.
+    trusted: list[dict[str, Any]] = []
+    under: list[dict[str, Any]] = []
+    for tk, cells in grid.items():
+        for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG):
+            n = cells[hz]["n_scored"]
+            if n <= 0:
+                continue
+            rec = {
+                "ticker": tk,
+                "horizon": hz,
+                "n_scored": n,
+                "accuracy": cells[hz].get("accuracy"),
+            }
+            (trusted if n >= QC_MIN_SCORED_CELL_N else under).append(rec)
+    trusted.sort(key=lambda r: (-r["n_scored"], r["ticker"], r["horizon"]))
+    under.sort(key=lambda r: (-r["n_scored"], r["ticker"], r["horizon"]))
+
+    def _bounded(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        return {"n_total": len(rows), "list_limit": QC_LIST_LIMIT, "rows": rows[:QC_LIST_LIMIT]}
+
+    return {
+        "purpose": (
+            "quality-circle signal-refinement inputs: rankings over the eligible"
+            " grid so weak signals, coverage gaps, horizon failures, and"
+            " outcome-attachment gaps feed back into refinement"
+        ),
+        "min_scored_for_trust": QC_MIN_SCORED_CELL_N,
+        "worst_tickers_by_accuracy": _bounded(ticker_acc),
+        "under_sampled_tickers": _bounded(under_tickers),
+        "worst_horizons_by_accuracy": hz_rank,
+        "lowest_coverage_tickers": _bounded(cov_rank),
+        "highest_missing_outcome_cells": _bounded(pending),
+        "trusted_cells": _bounded(trusted),
+        "under_sampled_cells": _bounded(under),
+    }
+
+
 def build_daily_scoreboard(
     db_path: Path | str,
     et_date: str,
@@ -294,6 +703,13 @@ def build_daily_scoreboard(
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     ensure_calibration_schema(conn)
+
+    # DENOMINATOR-FIRST (v3): enumerate the eligible governed grid and the
+    # per-ticker production/exclusion tallies BEFORE any scoring pass runs.
+    roster, roster_source = _eligible_roster(conn)
+    tallies, snapshot_tickers = _production_tallies(conn, et_date, tickers)
+    if tickers:
+        roster = [t for t in roster if t in {x.upper() for x in tickers}]
 
     cells: dict[tuple[str, str], dict[str, Any]] = {}
     rollup: dict[str, dict[str, Any]] = {
@@ -327,6 +743,9 @@ def build_daily_scoreboard(
     for (ticker, hz), cell in sorted(cells.items()):
         by_ticker.setdefault(ticker, {})[hz] = _finalize_cell(cell)
 
+    eligible_grid = _build_eligible_grid(
+        roster, roster_source, tallies, snapshot_tickers, by_ticker
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_utc": datetime.now(tz=ZoneInfo("UTC")).isoformat(),
@@ -334,10 +753,19 @@ def build_daily_scoreboard(
         "db_path": str(Path(db_path).resolve()),
         "tickers_filter": tickers,
         "backfill_stats": backfill_stats,
+        # Pooled rollup: raw scored rows across all tickers — activity volume
+        # weights this aggregate (a high-row ticker dominates it by construction).
+        "by_horizon_aggregation": "row_weighted_pooled",
         "by_horizon": {
             hz: _finalize_cell(rollup[hz]) for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG)
         },
+        # Equal-weight rollup: one vote per scored ticker per horizon.
+        "by_horizon_equal_weight": _equal_weight_rollup(by_ticker),
         "by_ticker": by_ticker,
+        "eligible_grid": eligible_grid,
+        "coverage": _coverage_diagnostics(roster, roster_source, tallies, eligible_grid),
+        # Quality Circle (operator contract 2026-07-09 item 8): refinement inputs.
+        "quality_circle": _quality_circle_summary(eligible_grid, by_ticker),
     }
 
 
@@ -633,9 +1061,89 @@ def render_html(scoreboard: dict[str, Any]) -> str:
             f"<td>{_fmt_pct(cell['directional_accuracy'])}</td></tr>"
         )
 
-    sections = ["<h2>All tickers — by horizon</h2>", f"<table><tr><th>horizon</th>{head_cells}</tr>"]
+    sections = [
+        "<h2>All tickers — by horizon (row-weighted pooled)</h2>",
+        f"<table><tr><th>horizon</th>{head_cells}</tr>",
+    ]
     sections += [_row(hz, c) for hz, c in scoreboard["by_horizon"].items()]
     sections.append("</table>")
+
+    # v3 denominator-first sections (coverage + equal-weight + eligible grid).
+    ew = scoreboard.get("by_horizon_equal_weight") or {}
+    if ew:
+        sections.append("<h2>All tickers — by horizon (equal weight per ticker)</h2>")
+        sections.append("<table><tr><th>horizon</th><th>tickers scored</th><th>mean accuracy</th></tr>")
+        for hz, c in ew.items():
+            sections.append(
+                f"<tr><td>{hz}</td><td>{c['n_tickers']}</td>"
+                f"<td>{_fmt_pct(c['mean_accuracy_equal_weight'])}</td></tr>"
+            )
+        sections.append("</table>")
+    cov = scoreboard.get("coverage") or {}
+    if cov:
+        zero = ", ".join(cov.get("zero_row_tickers") or []) or "none"
+        sections.append(
+            f"<p><b>Coverage:</b> {cov.get('tickers_with_rows')}/{cov.get('eligible_tickers')} eligible"
+            f" tickers produced rows ({_fmt_pct(cov.get('ticker_coverage_pct'))});"
+            f" roster source: {cov.get('roster_source')};"
+            f" zero-row tickers: {zero}.</p>"
+        )
+    grid = scoreboard.get("eligible_grid") or {}
+    if grid:
+        hz_order = list(next(iter(grid.values())).keys())
+        sections.append("<h2>Eligible grid — every governed ticker × horizon</h2>")
+        sections.append(
+            "<table><tr><th>ticker</th>" + "".join(f"<th>{hz}</th>" for hz in hz_order) + "</tr>"
+        )
+        for tkr, cells_by_hz in grid.items():
+            tds = []
+            for hz in hz_order:
+                cell = cells_by_hz[hz]
+                if cell["score_status"] == "SCORED":
+                    tds.append(f"<td>{_fmt_pct(cell.get('accuracy'))} (n={cell['n_scored']})</td>")
+                else:
+                    tds.append(f"<td>{cell['not_scored_reason']}</td>")
+            sections.append(f"<tr><td>{tkr}</td>" + "".join(tds) + "</tr>")
+        sections.append("</table>")
+
+    qc = scoreboard.get("quality_circle") or {}
+    if qc:
+        sections.append("<h2>Quality circle — refinement inputs</h2>")
+        wt = qc["worst_tickers_by_accuracy"]
+        us = qc["under_sampled_tickers"]
+        sections.append(
+            f"<p>Worst tickers by mean accuracy over trusted cells"
+            f" (n_scored &gt;= {qc['min_scored_for_trust']}; {wt['n_total']} rankable,"
+            f" {us['n_total']} under-sampled/not-trustworthy — listed, not ranked):</p>"
+            "<table><tr><th>ticker</th><th>mean accuracy (trusted)</th>"
+            "<th>trusted horizons</th><th>n scored</th></tr>"
+        )
+        for r in wt["rows"]:
+            sections.append(
+                f"<tr><td>{r['ticker']}</td><td>{_fmt_pct(r['mean_accuracy_trusted'])}</td>"
+                f"<td>{r['n_trusted_horizons']}</td><td>{r['n_scored_total']}</td></tr>"
+            )
+        sections.append("</table>")
+        if us["rows"]:
+            sections.append(
+                "<p>Under-sampled tickers (alphabetical): "
+                + ", ".join(f"{r['ticker']} (n={r['n_scored_total']})" for r in us["rows"])
+                + ".</p>"
+            )
+        hz_bits = ", ".join(
+            f"{r['horizon']}={_fmt_pct(r['mean_accuracy_equal_weight'])}"
+            f" (trusted n={r['n_tickers_trusted']}, under-sampled n={r['n_tickers_under_sampled']})"
+            for r in qc["worst_horizons_by_accuracy"]
+        )
+        sections.append(
+            f"<p>Worst horizons (equal weight): {hz_bits}.</p>"
+            f"<p>Trusted cells (n_scored &gt;= {qc['min_scored_for_trust']}):"
+            f" {qc['trusted_cells']['n_total']};"
+            f" under-sampled: {qc['under_sampled_cells']['n_total']};"
+            f" cells with pending outcomes:"
+            f" {qc['highest_missing_outcome_cells']['n_total']}.</p>"
+        )
+
     for ticker, by_hz in scoreboard["by_ticker"].items():
         sections.append(f"<h2>{ticker}</h2>")
         sections.append(f"<table><tr><th>horizon</th>{head_cells}</tr>")

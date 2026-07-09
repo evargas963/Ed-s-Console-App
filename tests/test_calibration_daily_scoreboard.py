@@ -450,15 +450,22 @@ def test_actionability_report_schema_and_write(tmp_path):
     assert (out / "latest_actionability.json").is_file()
 
 
-def test_scoreboard_core_schema_unchanged(tmp_path):
-    """Existing scoreboard output keys are untouched by the actionability join."""
+def test_scoreboard_core_schema_v3_contract(tmp_path):
+    """v3 (DENOMINATOR_FIRST): all v2 keys preserved; additive denominator-first
+    sections present; version bumped."""
     db = _fixture_db(tmp_path)
     sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
-    assert set(sb) == {
+    v2_keys = {
         "schema_version", "generated_utc", "et_date", "db_path",
         "tickers_filter", "backfill_stats", "by_horizon", "by_ticker",
     }
-    assert sb["schema_version"] == "2"
+    assert v2_keys <= set(sb)
+    assert set(sb) == v2_keys | {
+        "by_horizon_aggregation", "by_horizon_equal_weight", "eligible_grid", "coverage",
+        "quality_circle",
+    }
+    assert sb["schema_version"] == "3"
+    assert sb["by_horizon_aggregation"] == "row_weighted_pooled"
 
 
 def test_live_skill_weight_path_untouched_by_actionability():
@@ -511,3 +518,417 @@ def test_actionability_classifier_no_ticker_literals():
                     ):
                         raise AssertionError(f"ticker-literal-shaped {v!r} in {node.name}")
     assert found == targets
+
+
+# ── DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1 (operator-approved 2026-07-09) ──────
+
+
+def _add_universe(db: Path, tickers: dict[str, str]) -> None:
+    """tickers: {ticker: category}. Creates a minimal logging_universe table."""
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS logging_universe (ticker TEXT PRIMARY KEY, category TEXT)"
+    )
+    for t, cat in tickers.items():
+        conn.execute("INSERT OR REPLACE INTO logging_universe VALUES (?, ?)", (t, cat))
+    conn.commit()
+    conn.close()
+
+
+def _add_snapshots(db: Path, tickers: list[str], ts_utc: float) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS snapshots (ticker TEXT, ts_utc REAL)"
+    )
+    for t in tickers:
+        conn.execute("INSERT INTO snapshots VALUES (?, ?)", (t, ts_utc))
+    conn.commit()
+    conn.close()
+
+
+def _denominator_fixture(tmp_path: Path) -> Path:
+    """Base fixture + roster of 4: SPY (rows), ZLOG (snapshots only, no calib rows),
+    ZOFF (no producer contact at all), ZGUEST (guest-style with rows)."""
+    db = _fixture_db(tmp_path)
+    _add_universe(db, {"SPY": "core", "ZLOG": "panel_auto", "ZOFF": "panel_auto", "ZGUEST": "user_persisted"})
+    ts0 = datetime(2026, 6, 9, 10, 0, tzinfo=ET).timestamp()
+    _add_snapshots(db, ["SPY", "ZLOG", "ZGUEST"], ts0)
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    # guest ticker with a scored row (required test 10)
+    _insert_decision(
+        conn, "ZGUEST", ts0 + 30,
+        _mh_bundle({"1c": "up"}), {"1c": "up"},
+    )
+    conn.commit()
+    conn.close()
+    return db
+
+
+def test_denominator_grid_emitted_for_zero_row_tickers(tmp_path):
+    """Required 1+2: eligible grid appears even with no rows; zero-row eligible
+    ticker carries an explicit reason."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    grid = sb["eligible_grid"]
+    assert "ZLOG" in grid and "ZOFF" in grid  # never hidden
+    assert grid["ZLOG"]["1c"]["score_status"] == "NOT_SCORED"
+    assert grid["ZLOG"]["1c"]["not_scored_reason"] == "NO_ROWS_PRODUCED"
+
+
+def test_denominator_not_in_active_logger_label(tmp_path):
+    """Required 3: eligible ticker with zero producer contact (no snapshots, no
+    calibration rows) is labeled NOT_IN_ACTIVE_LOGGER."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    cell = sb["eligible_grid"]["ZOFF"]["5c"]
+    assert cell["score_status"] == "NOT_SCORED"
+    assert cell["not_scored_reason"] == "NOT_IN_ACTIVE_LOGGER"
+
+
+def test_denominator_fusion_unavailable_label(tmp_path):
+    """Required 4: a horizon whose logged bundles never had fusion is labeled."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    # ZGUEST logged only a 1c block: 5c/15c/60c never had fusion available.
+    cell = sb["eligible_grid"]["ZGUEST"]["5c"]
+    assert cell["score_status"] == "NOT_SCORED"
+    assert cell["not_scored_reason"] == "FUSION_UNAVAILABLE"
+
+
+def test_denominator_outcome_pending_label(tmp_path):
+    """Required 5+8: predictions without attached outcomes are OUTCOME_PENDING,
+    visible with counts — not silently discarded (fixture SPY 60c row)."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    cell = sb["eligible_grid"]["SPY"]["60c"]
+    assert cell["n_pred"] == 1 and cell["n_scored"] == 0
+    assert cell["score_status"] == "NOT_SCORED"
+    assert cell["not_scored_reason"] == "OUTCOME_PENDING"
+    assert cell["n_outcome_pending"] == 1
+
+
+def test_denominator_non_rth_counted_not_scored(tmp_path):
+    """Required 6: non-RTH rows excluded from scoring but counted in tallies
+    (fixture has an after-hours SPY row; rows_today includes it while n_pred
+    reflects RTH-only scoring)."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    rows_today = sb["coverage"]["rows_per_ticker"]["SPY"]
+    scored_1c = sb["eligible_grid"]["SPY"]["1c"]["n_pred"]
+    assert rows_today > scored_1c  # after-hours + untrusted rows counted, not scored
+
+
+def test_denominator_existing_hit_math_preserved(tmp_path):
+    """Required 7: v2 scoring numbers are unchanged for scored rows."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    spy = sb["by_ticker"]["SPY"]
+    assert spy["1c"]["n_scored"] == 2 and spy["1c"]["hits"] == 1 and spy["1c"]["accuracy"] == 0.5
+
+
+def test_denominator_equal_weight_differs_from_pooled(tmp_path):
+    """Required 8+9: with unequal row counts (SPY 2 scored, ZGUEST 1 scored on 1c)
+    the pooled rollup and the equal-weight rollup differ, and SPY volume cannot
+    dominate the equal-weight mean."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    pooled = sb["by_horizon"]["1c"]["accuracy"]           # (1+1 hits)/(2+1 scored) = 2/3
+    ew = sb["by_horizon_equal_weight"]["1c"]
+    assert ew["n_tickers"] == 2
+    assert ew["mean_accuracy_equal_weight"] == (0.5 + 1.0) / 2   # 0.75
+    assert pooled != ew["mean_accuracy_equal_weight"]
+    assert sb["by_horizon_aggregation"] == "row_weighted_pooled"
+
+
+def test_denominator_guest_ticker_scored_identically(tmp_path):
+    """Required 10: guest-style roster ticker with valid rows scores through the
+    same path with the same cell shape as base tickers."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    g = sb["eligible_grid"]["ZGUEST"]["1c"]
+    assert g["score_status"] == "SCORED" and g["accuracy"] == 1.0
+    assert set(g) == set(sb["eligible_grid"]["SPY"]["1c"]) - {"not_scored_reason"} | set(
+        k for k in ("not_scored_reason",) if "not_scored_reason" in g
+    )
+
+
+def test_denominator_no_ticker_literals_in_grid_code():
+    """Required 11: no ticker literals drive grid/reason/rollup behavior."""
+    import ast as _ast
+
+    src_text = Path(__file__).resolve().parent.parent.joinpath(
+        "calibration", "daily_scoreboard.py"
+    ).read_text(encoding="utf-8")
+    tree = _ast.parse(src_text)
+    for fname in (
+        "_eligible_roster", "_production_tallies", "_cell_not_scored_reason",
+        "_build_eligible_grid", "_equal_weight_rollup", "_coverage_diagnostics",
+        "_quality_circle_summary",
+    ):
+        fn = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef) and n.name == fname)
+        doc = fn.body[0].value if isinstance(fn.body[0], _ast.Expr) else None
+        for node in _ast.walk(fn):
+            if node is doc:
+                continue  # prose docstring, not behavior
+            if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+                assert not (node.value.isalpha() and node.value.isupper() and len(node.value) <= 5), (
+                    f"ticker-literal-shaped constant {node.value!r} in {fname}"
+                )
+
+
+def test_denominator_coverage_diagnostics_exposed(tmp_path):
+    """Required 12: coverage block with eligible/with-rows/zero-row/percentages."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    cov = sb["coverage"]
+    assert cov["roster_source"] == "logging_universe"
+    assert cov["eligible_tickers"] == 4
+    assert cov["tickers_with_rows"] == 2          # SPY + ZGUEST have calib rows
+    assert set(cov["zero_row_tickers"]) == {"ZLOG", "ZOFF"}
+    assert cov["ticker_coverage_pct"] == 0.5
+    assert "1c" in cov["horizon_coverage"] and "rows_per_ticker" in cov
+
+
+def test_denominator_grid_built_before_scoring_source_lock():
+    """Required local proof: the eligible grid/tallies are constructed BEFORE the
+    scoring pass inside build_daily_scoreboard."""
+    src_text = Path(__file__).resolve().parent.parent.joinpath(
+        "calibration", "daily_scoreboard.py"
+    ).read_text(encoding="utf-8")
+    body = src_text[src_text.index("def build_daily_scoreboard(") :]
+    i_roster = body.index("_eligible_roster(conn)")
+    i_tallies = body.index("_production_tallies(conn")
+    i_scoring = body.index("_per_horizon_prediction_rows(conn")
+    assert i_roster < i_scoring and i_tallies < i_scoring
+
+
+def test_denominator_reasons_enum_complete():
+    """Contract: the reasons enum carries all operator-specified labels."""
+    from calibration.daily_scoreboard import NOT_SCORED_REASONS
+
+    assert set(NOT_SCORED_REASONS) == {
+        "NO_ROWS_PRODUCED", "NOT_IN_ACTIVE_LOGGER", "FUSION_UNAVAILABLE",
+        "OUTCOME_PENDING", "NON_RTH", "UNTRUSTED_CALIBRATION",
+        "UNPARSEABLE_BUNDLE", "UNSUPPORTED_TICKER_OR_HORIZON",
+    }
+
+
+def test_denominator_untrusted_only_ticker_labeled(tmp_path):
+    """A ticker whose only rows today are untrusted -> UNTRUSTED_CALIBRATION."""
+    db = _denominator_fixture(tmp_path)
+    _add_universe(db, {"ZBAD": "core"})
+    ts0 = datetime(2026, 6, 9, 10, 0, tzinfo=ET).timestamp()
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        INSERT INTO calibration_decision_log (
+            decision_ts_utc, ticker, canonical_timeframe, model_outputs_json,
+            outcome_1c, calibration_trust
+        ) VALUES (?, 'ZBAD', '1m', ?, 'up', 'legacy')
+        """,
+        (ts0 + 15, _mh_bundle({"1c": "up"})),
+    )
+    conn.commit()
+    conn.close()
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    cell = sb["eligible_grid"]["ZBAD"]["1c"]
+    assert cell["score_status"] == "NOT_SCORED"
+    assert cell["not_scored_reason"] == "UNTRUSTED_CALIBRATION"
+
+
+def test_denominator_unparseable_only_ticker_labeled(tmp_path):
+    """A ticker whose only trusted RTH row has garbage JSON -> UNPARSEABLE_BUNDLE."""
+    db = _denominator_fixture(tmp_path)
+    _add_universe(db, {"ZJSON": "core"})
+    ts0 = datetime(2026, 6, 9, 10, 0, tzinfo=ET).timestamp()
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    _insert_decision(conn, "ZJSON", ts0 + 20, "{not json", {})
+    conn.commit()
+    conn.close()
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    cell = sb["eligible_grid"]["ZJSON"]["1c"]
+    assert cell["score_status"] == "NOT_SCORED"
+    assert cell["not_scored_reason"] == "UNPARSEABLE_BUNDLE"
+
+
+def test_denominator_non_rth_only_ticker_labeled(tmp_path):
+    """A ticker whose only rows today are outside RTH -> NON_RTH."""
+    db = _denominator_fixture(tmp_path)
+    _add_universe(db, {"ZNIGHT": "core"})
+    after_hours = datetime(2026, 6, 9, 20, 30, tzinfo=ET).timestamp()
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    _insert_decision(conn, "ZNIGHT", after_hours, _mh_bundle({"1c": "up"}), {"1c": "up"})
+    conn.commit()
+    conn.close()
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    cell = sb["eligible_grid"]["ZNIGHT"]["1c"]
+    assert cell["score_status"] == "NOT_SCORED"
+    assert cell["not_scored_reason"] == "NON_RTH"
+
+
+def test_denominator_html_renders_grid_and_zero_row_tickers(tmp_path):
+    """Operator-facing HTML must not hide zero-row eligible tickers."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    html = render_html(sb)
+    assert "Eligible grid" in html and "equal weight per ticker" in html
+    assert "ZOFF" in html and "NOT_IN_ACTIVE_LOGGER" in html
+    assert "ZLOG" in html and "NO_ROWS_PRODUCED" in html
+
+
+# ── Quality-circle contract (operator 2026-07-09, item 8) ────────────────────
+
+
+def test_qc_section_contract(tmp_path):
+    """quality_circle carries all item-8 refinement inputs with bounded lists."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    qc = sb["quality_circle"]
+    assert set(qc) == {
+        "purpose", "min_scored_for_trust", "worst_tickers_by_accuracy",
+        "under_sampled_tickers", "worst_horizons_by_accuracy",
+        "lowest_coverage_tickers", "highest_missing_outcome_cells",
+        "trusted_cells", "under_sampled_cells",
+    }
+    for key in (
+        "worst_tickers_by_accuracy", "under_sampled_tickers",
+        "lowest_coverage_tickers", "highest_missing_outcome_cells",
+        "trusted_cells", "under_sampled_cells",
+    ):
+        blk = qc[key]
+        assert {"n_total", "list_limit", "rows"} <= set(blk)
+        assert len(blk["rows"]) <= blk["list_limit"]  # truncation never silent
+
+
+def _qc_trusted_fixture(tmp_path):
+    """_denominator_fixture + ZBIG: 30 trusted scored 1c rows (18 hits -> 0.6),
+    enough to clear the QC_MIN_SCORED_CELL_N trust floor."""
+    from calibration.daily_scoreboard import QC_MIN_SCORED_CELL_N
+
+    db = _denominator_fixture(tmp_path)
+    _add_universe(db, {"ZBIG": "core"})
+    ts0 = datetime(2026, 6, 9, 10, 30, tzinfo=ET).timestamp()
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    n = max(30, QC_MIN_SCORED_CELL_N)
+    n_hits = int(round(n * 0.6))
+    for i in range(n):
+        outcome = "up" if i < n_hits else "down"
+        _insert_decision(
+            conn, "ZBIG", ts0 + 60 * i, _mh_bundle({"1c": "up"}), {"1c": outcome}
+        )
+    conn.commit()
+    conn.close()
+    return db, n, n_hits
+
+
+def test_qc_worst_ticker_ranking_gated_by_sample_size(tmp_path):
+    """Required 2: worst-ticker ranking contains ONLY tickers with trusted cells;
+    under-sampled tickers are separated (listed alphabetically, never ranked)."""
+    db, n, n_hits = _qc_trusted_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    qc = sb["quality_circle"]
+    rows = qc["worst_tickers_by_accuracy"]["rows"]
+    assert [r["ticker"] for r in rows] == ["ZBIG"]
+    assert abs(rows[0]["mean_accuracy_trusted"] - n_hits / n) < 1e-9
+    under = qc["under_sampled_tickers"]["rows"]
+    under_tickers = {r["ticker"] for r in under}
+    assert {"SPY", "ZGUEST"} <= under_tickers and "ZBIG" not in under_tickers
+    assert all(r["trust"] == "UNDER_SAMPLED_NOT_TRUSTWORTHY" for r in under)
+    assert [r["ticker"] for r in under] == sorted(r["ticker"] for r in under)
+
+
+def test_qc_worst_horizon_ranking_gated_by_sample_size(tmp_path):
+    """Required 3: horizon ranking uses trusted cells only; horizons with no
+    trusted cell are flagged insufficient_sample and rank last, not worst."""
+    db, n, n_hits = _qc_trusted_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    hz_rank = sb["quality_circle"]["worst_horizons_by_accuracy"]
+    first = hz_rank[0]
+    assert first["horizon"] == "1c" and not first["insufficient_sample"]
+    assert first["n_tickers_trusted"] == 1
+    assert abs(first["mean_accuracy_equal_weight"] - n_hits / n) < 1e-9
+    assert first["n_tickers_under_sampled"] >= 2  # SPY + ZGUEST 1c cells separated
+    for r in hz_rank[1:]:
+        assert r["insufficient_sample"] and r["mean_accuracy_equal_weight"] is None
+
+
+def test_qc_trusted_cells_populated_over_floor(tmp_path):
+    """Required 6 (positive side): a cell at/over the floor lands in trusted_cells."""
+    db, n, _ = _qc_trusted_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    qc = sb["quality_circle"]
+    trusted = qc["trusted_cells"]["rows"]
+    assert any(
+        r["ticker"] == "ZBIG" and r["horizon"] == "1c" and r["n_scored"] == n for r in trusted
+    )
+    assert all(r["n_scored"] < sb["quality_circle"]["min_scored_for_trust"] for r in qc["under_sampled_cells"]["rows"])
+
+
+def test_qc_does_not_change_scored_math(tmp_path):
+    """Required 7: quality_circle is pure post-processing — by_ticker/by_horizon
+    values are identical to what the scoring pass produces for the same rows."""
+    db, n, n_hits = _qc_trusted_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    spy = sb["by_ticker"]["SPY"]
+    assert spy["1c"]["n_scored"] == 2 and spy["1c"]["hits"] == 1 and spy["1c"]["accuracy"] == 0.5
+    zbig = sb["by_ticker"]["ZBIG"]["1c"]
+    assert zbig["n_scored"] == n and zbig["hits"] == n_hits
+
+
+def test_qc_board_and_purpose_linkage_present():
+    """Required 8: purpose statement + QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1
+    dependency linkage exist in the module docstring and OPEN_ITEMS.md."""
+    import calibration.daily_scoreboard as ds
+
+    assert "QUALITY CIRCLE PURPOSE" in (ds.__doc__ or "")
+    board = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(
+        encoding="utf-8"
+    )
+    assert "QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1" in board
+    assert "DEPENDS ON DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1" in board
+
+
+def test_qc_trust_split_threshold(tmp_path):
+    """Every scored cell lands in exactly one trust bucket; fixture cells
+    (n_scored <= 3) all fall under the QC_MIN_SCORED_CELL_N floor."""
+    from calibration.daily_scoreboard import QC_MIN_SCORED_CELL_N
+
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    qc = sb["quality_circle"]
+    assert QC_MIN_SCORED_CELL_N > 3
+    assert qc["trusted_cells"]["n_total"] == 0
+    n_scored_cells = sum(
+        1
+        for cells in sb["eligible_grid"].values()
+        for hz, cell in cells.items()
+        if cell["n_scored"] > 0
+    )
+    assert qc["under_sampled_cells"]["n_total"] == n_scored_cells > 0
+    assert all(r["n_scored"] < QC_MIN_SCORED_CELL_N for r in qc["under_sampled_cells"]["rows"])
+
+
+def test_qc_missing_outcome_and_coverage_rankings(tmp_path):
+    """SPY 60c (prediction logged, outcome unattached) tops the missing-outcome
+    list; zero-row eligible tickers top the lowest-coverage list."""
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    qc = sb["quality_circle"]
+    pending = qc["highest_missing_outcome_cells"]["rows"]
+    assert {"ticker": "SPY", "horizon": "60c", "n_outcome_pending": 1} in pending
+    cov = qc["lowest_coverage_tickers"]["rows"]
+    worst_two = {cov[0]["ticker"], cov[1]["ticker"]}
+    assert worst_two == {"ZLOG", "ZOFF"}
+    assert cov[0]["n_horizons_scored"] == 0 and cov[0]["rows_today"] == 0
+
+
+def test_qc_html_renders_refinement_inputs(tmp_path):
+    db = _denominator_fixture(tmp_path)
+    sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    html = render_html(sb)
+    assert "Quality circle" in html and "Worst tickers by mean accuracy" in html
+    assert "under-sampled" in html
