@@ -1271,6 +1271,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     from features.fusion_policy_contract import fusion_payload_to_policy_columns
     from features.monte_carlo_stack_input import MonteCarloStackInputError, resolve_monte_carlo_stack_inputs
     from ml_predict import (
+        build_model_serving_provenance,
         build_xgb_pre_engineering_snapshot_for_tick,
         get_ml_infer_horizon_slug,
         ml_bundle_ticker_scope,
@@ -1361,6 +1362,9 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     with guest_anchor_context_scope(_guest_anchor), ml_bundle_ticker_scope(
         _guest_anchor.anchor_ticker if _guest_anchor else None
     ):
+        # MODEL_SERVING_PROVENANCE_SURFACE_V1 — built inside both scopes so the
+        # bundle/guest contextvars reflect this exact serve; read-only.
+        model_serving_provenance = build_model_serving_provenance(ticker)
         shared_sequence_context = None
         _seq_ctx_err: Optional[str] = None
         if db is not None:
@@ -1754,4 +1758,5 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         guest_anchor_rationale=(
             _guest_anchor.rationale if _guest_anchor is not None else None
         ),
+        model_serving_provenance=model_serving_provenance,
     )

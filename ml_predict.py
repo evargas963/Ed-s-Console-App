@@ -134,6 +134,118 @@ def get_ml_infer_horizon_slug() -> str:
     return normalize_ml_horizon_slug(_ml_infer_horizon_cv.get())
 
 
+# MODEL_SERVING_PROVENANCE_SURFACE_V1 — universal, read-only serving provenance.
+# Reports which bundle a serve resolves to and why (guest routing, strict gate,
+# relaxation, contract match, vintage) without touching loaders, registries,
+# routing, or gates. Ticker is runtime data; the build path is identical for
+# every ticker (no ticker-conditional behavior).
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — model-artifact metadata (bundle paths,
+#   trained_at, schema/preprocessing versions, gate states); no market field
+#   read, derivation, or emission changed.
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (observability only).
+# All consumers checked: yes — model_serving_provenance_v1 is an additive
+#   diagnostics surface (SignalOutput -> MarketState -> _ms_to_dict); trust,
+#   freshness, actionability, sizing, and synthesis unchanged (locks in
+#   tests/test_model_contract_enforcement.py provenance section).
+# SCHWAB_CSV_CHECKED
+def build_model_serving_provenance(requested_ticker: str) -> dict:
+    """Read-only provenance for the bundle this serve resolves to. Never raises."""
+    try:
+        from arch_competition.stack_bundle_eval_v1 import (
+            unified_stack_bundle_relaxation_active,
+        )
+        from active_bundle_contract import (
+            active_bundle_dir,
+            bundle_artifact_paths,
+            check_active_bundle_complete,
+        )
+        from governed_stack_contract import active_guest_anchor_context
+        from model_contract import meta_matches_system_contract
+
+        rt = (requested_ticker or "").upper().strip()
+        bt = _bundle_ticker_for_artifacts(rt)
+        hz = get_ml_infer_horizon_slug()
+        ctx = active_guest_anchor_context()
+        strict_active_only = os.environ.get(
+            "ED_XGB_STRICT_ACTIVE_ONLY", "1"
+        ).strip().lower() not in ("0", "false", "no")
+        relaxation_active = unified_stack_bundle_relaxation_active()
+
+        bd = active_bundle_dir(bt, hz, models_dir=MODEL_DIR)
+        comp = check_active_bundle_complete(bt, hz, bundle_dir=bd, models_dir=MODEL_DIR)
+        missing = list(comp.get("issues", []))
+        for art in (comp.get("artifacts") or {}).values():
+            missing.extend(art.get("issues", []))
+
+        trained_at = feature_schema_version = preprocessing_version = None
+        contract_match = None
+        contract_mismatch_reason = None
+        for kind, _model_path, meta_path in bundle_artifact_paths(bt, hz, bd):
+            if kind != "xgb" or not meta_path.is_file():
+                continue
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception as ex:
+                contract_mismatch_reason = f"meta unreadable: {type(ex).__name__}"
+                break
+            trained_at = meta.get("trained_at") or None
+            feature_schema_version = meta.get("feature_schema_version") or None
+            preprocessing_version = meta.get("preprocessing_version") or None
+            ok, reason = meta_matches_system_contract(meta)
+            contract_match = bool(ok)
+            contract_mismatch_reason = reason or None
+            break
+
+        # Probe the REAL resolver for its fail-closed verdict (read-only call).
+        model_load_status = "dir_resolved"
+        fail_closed_reason = None
+        try:
+            _model_dir_for_ticker(rt)
+        except Exception as ex:
+            model_load_status = "fail_closed"
+            fail_closed_reason = f"{type(ex).__name__}: {str(ex)[:300]}"
+
+        if relaxation_active:
+            runtime_class = "RELAXATION_ACTIVE"
+        elif not strict_active_only:
+            runtime_class = "RELAXED_RESOLUTION"
+        elif comp.get("compliant") and contract_match:
+            runtime_class = "STRICT_ACTIVE_SERVABLE"
+        else:
+            runtime_class = "STRICT_ACTIVE_FAIL_CLOSED"
+
+        return {
+            "requested_ticker": rt,
+            "bundle_ticker": bt,
+            "guest_anchor": ctx is not None or bt != rt,
+            "guest_anchor_ticker": (
+                ctx.anchor_ticker if ctx is not None else (bt if bt != rt else None)
+            ),
+            "horizon": hz,
+            "bundle_dir": str(bd),
+            "bundle_complete": bool(comp.get("compliant")),
+            "missing_artifacts": missing[:12],
+            "trained_at": trained_at,
+            "feature_schema_version": feature_schema_version,
+            "preprocessing_version": preprocessing_version,
+            "contract_match": contract_match,
+            "contract_mismatch_reason": contract_mismatch_reason,
+            "strict_active_only": strict_active_only,
+            "relaxation_active": relaxation_active,
+            "runtime_class": runtime_class,
+            "model_load_status": model_load_status,
+            "fail_closed_reason": fail_closed_reason,
+        }
+    except Exception as ex:
+        # Provenance must never disturb the serve path.
+        return {
+            "requested_ticker": (requested_ticker or "").upper().strip(),
+            "provenance_error": f"{type(ex).__name__}: {str(ex)[:200]}",
+            "runtime_class": "PROVENANCE_ERROR",
+        }
+
+
 def set_ml_infer_horizon_slug(slug: str) -> Token:
     return _ml_infer_horizon_cv.set(normalize_ml_horizon_slug(slug))
 

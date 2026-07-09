@@ -417,3 +417,6 @@ class SignalOutput:
     guest_anchor_weights_ticker: Optional[str] = None
     guest_anchor_affiliation: Optional[str] = None
     guest_anchor_rationale: Optional[str] = None
+    # MODEL_SERVING_PROVENANCE_SURFACE_V1 — read-only bundle provenance for this
+    # serve (built inside the guest/bundle scopes; visibility only, no behavior).
+    model_serving_provenance: Optional[dict] = None

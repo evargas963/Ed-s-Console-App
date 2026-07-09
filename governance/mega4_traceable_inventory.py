@@ -858,6 +858,7 @@ MEGA4_TRACEABLE_INVENTORY: tuple[Mega4TraceableDerivation, ...] = (
     Mega4TraceableDerivation("ml_predict.py", 108, "set_ml_infer_horizon_slug", "NONE", None, (), None, "No market-field derivation: Horizon slug / scheduler bookkeeping."),
     Mega4TraceableDerivation("ml_predict.py", 112, "reset_ml_infer_horizon_slug", "NONE", None, (), None, "No market-field derivation: Horizon slug / scheduler bookkeeping."),
     Mega4TraceableDerivation("ml_predict.py", 114, "ml_bundle_ticker_scope", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
+    Mega4TraceableDerivation("ml_predict.py", 152, "build_model_serving_provenance", "NONE", None, (), None, "No market-field derivation: read-only model-serving provenance (MODEL_SERVING_PROVENANCE_SURFACE_V1) — bundle path/vintage/gate states from artifact metadata; no Schwab wire read."),
     Mega4TraceableDerivation("ml_predict.py", 116, "stack_probs_bundle_key", "DERIVED", None, ("market_state.py:build_market_state",), None, "Inference on canonical features; no Schwab wire ingest."),
     Mega4TraceableDerivation("ml_predict.py", 126, "_bundle_ticker_for_artifacts", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega4TraceableDerivation("ml_predict.py", 126, "_snap_dict", "NONE", None, (), None, "Pure coercion: row to dict, returns None on failure. No DB read, no market-field derivation."),

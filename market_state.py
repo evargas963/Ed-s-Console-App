@@ -306,6 +306,9 @@ class MarketState:
     guest_anchor_weights_ticker: Optional[str] = None
     guest_anchor_affiliation: Optional[str] = None
     guest_anchor_rationale: Optional[str] = None
+    # MODEL_SERVING_PROVENANCE_SURFACE_V1 — which bundle produced this serve
+    # (read-only visibility; flows to the payload via _ms_to_dict).
+    model_serving_provenance_v1: Optional[dict] = None
     mhap_legend:         dict            = field(default_factory=lambda: {
         "primary": "Blue = Primary horizon",
         "aligned": "Green = Aligned/supportive",
@@ -1464,6 +1467,10 @@ def build_market_state(
             ms.put_readiness_reasons = list(getattr(_call, 'put_readiness_reasons', []) or [])
             ms.put_missing_conditions = list(getattr(_call, 'put_missing_conditions', []) or [])
             ms.put_readiness_component_scores = dict(getattr(_call, 'put_readiness_component_scores', {}) or {})
+
+        # MODEL_SERVING_PROVENANCE_SURFACE_V1 — ungated copy (provenance must be
+        # visible on every serve, not only when a multi-horizon decision exists).
+        ms.model_serving_provenance_v1 = getattr(_sig_out, "model_serving_provenance", None)
 
         # Multi-horizon decision payload (authoritative call synthesis + MHAP rows)
         _mhb = getattr(_sig_out, "multi_horizon_bundle", None)
