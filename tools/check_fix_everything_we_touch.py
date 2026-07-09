@@ -377,6 +377,124 @@ def check_v4_memo(memo_path: Path, staged: set[str]) -> list[str]:
     return errors
 
 
+# ── FULL_FIXES_ONLY_V1 (AGENTS § FULL_FIXES_ONLY_V1, 2026-07-09 operator binding) ──
+# Closure language in a commit message requires the five-field FULL_FIX proof
+# template with acceptance values; patch/workaround framing is rejection-grade
+# unless the line carries FULL_FIX_EXCEPTION_APPROVED: <ref>.
+FULL_FIX_TEMPLATE_FIELDS: tuple[str, ...] = (
+    "FULL_FIX_PROVEN",
+    "ROOT_CAUSE_PROVEN",
+    "UNIVERSAL_SCOPE_PROVEN",
+    "MECHANICAL_LOCK_ADDED",
+    "PATCH_OR_WORKAROUND",
+)
+FULL_FIX_EXCEPTION_MARKER = "FULL_FIX_EXCEPTION_APPROVED:"
+_FULL_FIX_FIELD_RE = re.compile(
+    r"^\s*(FULL_FIX_PROVEN|ROOT_CAUSE_PROVEN|UNIVERSAL_SCOPE_PROVEN|"
+    r"MECHANICAL_LOCK_ADDED|PATCH_OR_WORKAROUND)\s*=\s*(YES|NO)\b(.*)$",
+    re.MULTILINE,
+)
+# Closure language: uppercase status token CLOSED, or "<lane|blocker|gate|find> closed",
+# or an explicit closure claim/complete phrase. Case-sensitive CLOSED keeps prose like
+# "closed the file handle" out of scope.
+_FULL_FIX_CLOSURE_LANGUAGE_RE = re.compile(
+    r"\bCLOSED\b"
+    r"|(?i:\b(?:lane|blocker|gate|find|item)\s+closed\b)"
+    r"|(?i:\bclosure\s+(?:claim(?:ed)?|complete)\b)"
+)
+_FULL_FIX_WORKAROUND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("workaround framing", re.compile(r"\bwork-?around\b", re.IGNORECASE)),
+    (
+        "temporary/stopgap fix",
+        re.compile(
+            r"\b(?:temporary|interim|stopgap|band-?aid)\s+(?:fix|patch|solution)\b"
+            r"|\bstopgap\b|\bband-?aid\b",
+            re.IGNORECASE,
+        ),
+    ),
+    ("quick/hacky fix", re.compile(r"\bquick\s+fix\b|\bhacky?\s+(?:fix|patch)\b", re.IGNORECASE)),
+    (
+        "symptom masking",
+        re.compile(
+            r"\bsymptom[- ]?(?:fix|mask(?:ing)?)\b|\bmask(?:s|ed|ing)?\s+the\s+(?:symptom|stale|error)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "ticker-specific special case",
+        re.compile(r"\b(?:ticker|symbol)-specific\s+(?:fix|patch|hack|special[- ]?case)\b", re.IGNORECASE),
+    ),
+    ("representative-only fix", re.compile(r"\brepresentative[- ]only\s+(?:fix|proof)\b", re.IGNORECASE)),
+    (
+        "stale-threshold hand-wave",
+        re.compile(r"\b(?:loosen|bump|raise)\s+the\s+(?:stale\s+)?threshold\b", re.IGNORECASE),
+    ),
+)
+
+
+def check_full_fixes_only(path: Path) -> list[str]:
+    """FULL_FIXES_ONLY_V1 commit-message gate (AGENTS § FULL_FIXES_ONLY_V1)."""
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    errors: list[str] = []
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        if FULL_FIX_EXCEPTION_MARKER in line:
+            continue
+        if META_COMMIT_LINE.search(line) or RULE_DRIFT_META_LINE.search(line):
+            continue
+        for label, pat in _FULL_FIX_WORKAROUND_PATTERNS:
+            if pat.search(line):
+                errors.append(
+                    f"{path}:{line_no}: FULL_FIXES_ONLY_V1 banned framing ({label}): "
+                    f"{line.strip()[:200]!r} (AGENTS § FULL_FIXES_ONLY_V1 — land the root-cause fix "
+                    f"or carry {FULL_FIX_EXCEPTION_MARKER} <ref> on this line)"
+                )
+    fields: dict[str, tuple[str, str]] = {}
+    for m in _FULL_FIX_FIELD_RE.finditer(text):
+        fields[m.group(1)] = (m.group(2), m.group(3))
+    closure_claimed = bool(_FULL_FIX_CLOSURE_LANGUAGE_RE.search(text)) or bool(fields)
+    if not closure_claimed:
+        return errors
+    missing = [f for f in FULL_FIX_TEMPLATE_FIELDS if f not in fields]
+    if missing:
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V1 closure language without complete FULL_FIX proof "
+            f"template — missing {missing} (AGENTS § FULL_FIXES_ONLY_V1; all five fields required)"
+        )
+        return errors
+    val = {k: v[0] for k, v in fields.items()}
+    tail = {k: v[1] for k, v in fields.items()}
+    if val["PATCH_OR_WORKAROUND"] != "NO":
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V1 non-closure — PATCH_OR_WORKAROUND must be NO "
+            f"(got {val['PATCH_OR_WORKAROUND']})"
+        )
+    if val["ROOT_CAUSE_PROVEN"] != "YES":
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V1 non-closure — ROOT_CAUSE_PROVEN must be YES "
+            f"(got {val['ROOT_CAUSE_PROVEN']})"
+        )
+    if val["UNIVERSAL_SCOPE_PROVEN"] != "YES" and FULL_FIX_EXCEPTION_MARKER not in tail["UNIVERSAL_SCOPE_PROVEN"]:
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V1 non-closure — UNIVERSAL_SCOPE_PROVEN must be YES or the "
+            f"line must carry {FULL_FIX_EXCEPTION_MARKER} <operator ref>"
+        )
+    if val["MECHANICAL_LOCK_ADDED"] != "YES" and "infeasible" not in tail["MECHANICAL_LOCK_ADDED"].lower():
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V1 non-closure — MECHANICAL_LOCK_ADDED must be YES or state "
+            f"infeasible with the reason on the same line"
+        )
+    if val["FULL_FIX_PROVEN"] != "YES":
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V1 non-closure — FULL_FIX_PROVEN must be YES (got {val['FULL_FIX_PROVEN']})"
+        )
+    return errors
+
+
 def check_commit_message(path: Path) -> list[str]:
     if _path_is_allowlisted_commit_msg(path):
         return []
@@ -410,6 +528,7 @@ def check_commit_message(path: Path) -> list[str]:
                 )
         hits.extend(_line_rule_drift_hits(path, line_no, line))
     hits.extend(check_meet_or_exceed_signoff(path))
+    hits.extend(check_full_fixes_only(path))
     if path.name == "COMMIT_EDITMSG":
         try:
             from tools.check_repo_hygiene_policy import check_hygiene_touch_disposition
@@ -3190,10 +3309,18 @@ _STAGED_COMMIT_CHECK_FUNCS: tuple[str, ...] = (
     "check_persistence_writer_has_reader",
     "check_commit_message",
     "check_meet_or_exceed_signoff",
+    "check_full_fixes_only",
 )
 
 # Every AGENTS.md `[PROMOTED]` section → mechanical lock(s). Prose-only promotion is rejection-grade.
 _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "FULL_FIXES_ONLY_V1",
+        (
+            "check_full_fixes_only",
+            "external:tests/test_check_fix_everything_we_touch.py",
+        ),
+    ),
     (
         "World-class / institutional code gate",
         (

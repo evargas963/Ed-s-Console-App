@@ -1933,3 +1933,113 @@ def test_objective_audit_ci_full_static_documented_in_prepush_policy():
     wf = REPO_ROOT / ".github" / "workflows" / "objective-audit.yml"
     assert wf.is_file()
     assert "--objective-audit" in wf.read_text(encoding="utf-8")
+
+
+# ── FULL_FIXES_ONLY_V1 (AGENTS § FULL_FIXES_ONLY_V1, 2026-07-09 operator binding) ──
+
+
+_FULL_FIX_TEMPLATE_OK = (
+    "FULL_FIX_PROVEN = YES\n"
+    "ROOT_CAUSE_PROVEN = YES\n"
+    "UNIVERSAL_SCOPE_PROVEN = YES\n"
+    "MECHANICAL_LOCK_ADDED = YES\n"
+    "PATCH_OR_WORKAROUND = NO\n"
+)
+
+
+def _full_fix_msg(tmp_path: Path, body: str) -> Path:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(body, encoding="utf-8")
+    return msg
+
+
+def test_full_fixes_closure_language_without_template_fails(tmp_path: Path) -> None:
+    msg = _full_fix_msg(tmp_path, "EXEC-99: CLOSED — root cause repaired.\n")
+    hits = mod.check_full_fixes_only(msg)
+    assert hits and "FULL_FIX proof" in hits[0]
+
+
+def test_full_fixes_closure_with_complete_template_passes(tmp_path: Path) -> None:
+    msg = _full_fix_msg(tmp_path, "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK)
+    assert mod.check_full_fixes_only(msg) == []
+
+
+def test_full_fixes_patch_or_workaround_yes_is_nonclosure(tmp_path: Path) -> None:
+    body = "Lane closed.\n\n" + _FULL_FIX_TEMPLATE_OK.replace(
+        "PATCH_OR_WORKAROUND = NO", "PATCH_OR_WORKAROUND = YES"
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("PATCH_OR_WORKAROUND must be NO" in h for h in hits)
+
+
+def test_full_fixes_root_cause_no_is_nonclosure(tmp_path: Path) -> None:
+    body = "Lane closed.\n\n" + _FULL_FIX_TEMPLATE_OK.replace(
+        "ROOT_CAUSE_PROVEN = YES", "ROOT_CAUSE_PROVEN = NO"
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("ROOT_CAUSE_PROVEN must be YES" in h for h in hits)
+
+
+def test_full_fixes_universal_scope_no_requires_exception_marker(tmp_path: Path) -> None:
+    bare = "Lane closed.\n\n" + _FULL_FIX_TEMPLATE_OK.replace(
+        "UNIVERSAL_SCOPE_PROVEN = YES", "UNIVERSAL_SCOPE_PROVEN = NO"
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, bare))
+    assert any("UNIVERSAL_SCOPE_PROVEN" in h for h in hits)
+    excepted = "Lane closed.\n\n" + _FULL_FIX_TEMPLATE_OK.replace(
+        "UNIVERSAL_SCOPE_PROVEN = YES",
+        "UNIVERSAL_SCOPE_PROVEN = NO FULL_FIX_EXCEPTION_APPROVED: operator 2026-07-09",
+    )
+    assert mod.check_full_fixes_only(_full_fix_msg(tmp_path, excepted)) == []
+
+
+def test_full_fixes_mechanical_lock_no_requires_infeasible_reason(tmp_path: Path) -> None:
+    bare = "Lane closed.\n\n" + _FULL_FIX_TEMPLATE_OK.replace(
+        "MECHANICAL_LOCK_ADDED = YES", "MECHANICAL_LOCK_ADDED = NO"
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, bare))
+    assert any("MECHANICAL_LOCK_ADDED" in h for h in hits)
+    reasoned = "Lane closed.\n\n" + _FULL_FIX_TEMPLATE_OK.replace(
+        "MECHANICAL_LOCK_ADDED = YES",
+        "MECHANICAL_LOCK_ADDED = NO (infeasible: pure runtime observation, no code surface)",
+    )
+    assert mod.check_full_fixes_only(_full_fix_msg(tmp_path, reasoned)) == []
+
+
+def test_full_fixes_workaround_framing_fails_and_exception_marker_exempts(tmp_path: Path) -> None:
+    hits = mod.check_full_fixes_only(
+        _full_fix_msg(tmp_path, "Ship a quick fix for the stale cards.\n")
+    )
+    assert any("banned framing" in h for h in hits)
+    assert mod.check_full_fixes_only(
+        _full_fix_msg(
+            tmp_path,
+            "Ship a quick fix for the stale cards. FULL_FIX_EXCEPTION_APPROVED: operator 2026-07-09\n",
+        )
+    ) == []
+
+
+def test_full_fixes_prose_lowercase_closed_is_not_closure_language(tmp_path: Path) -> None:
+    assert mod.check_full_fixes_only(
+        _full_fix_msg(tmp_path, "Refactor: closed the file handle before returning.\n")
+    ) == []
+
+
+def test_full_fixes_wired_into_commit_message_check(tmp_path: Path) -> None:
+    msg = _full_fix_msg(tmp_path, "EXEC-99: CLOSED — see board.\n")
+    hits = mod.check_commit_message(msg)
+    assert any("FULL_FIX" in h for h in hits)
+
+
+def test_full_fixes_agents_section_and_checklist_row_present() -> None:
+    agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "## FULL_FIXES_ONLY_V1" in agents
+    for field in mod.FULL_FIX_TEMPLATE_FIELDS:
+        assert field in agents
+    checklist = (REPO_ROOT / "governance" / "docs" / "INSTITUTIONAL_MASTER_CHECKLIST.md").read_text(
+        encoding="utf-8"
+    )
+    assert "FULL_FIXES_ONLY_V1" in checklist
+    open_items = (REPO_ROOT / "OPEN_ITEMS.md").read_text(encoding="utf-8")
+    assert "FULL_FIXES_ONLY_V1" in open_items
+    assert "IDLE_SENTINEL_FRESHNESS_V1" in open_items

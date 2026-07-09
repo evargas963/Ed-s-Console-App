@@ -685,6 +685,40 @@ Maturity changes rejected:
 
 ---
 
+## FULL_FIXES_ONLY_V1 `[PROMOTED]` (2026-07-09 — operator binding; hard governance lock)
+
+<a id="full-fixes-only-v1"></a>
+
+**Every Ed Console fix must be a root-cause, universal, mechanically protected fix.** The following fix shapes are rejection-grade on sight: narrow patches, symptom masks, ticker-specific special cases, UI-only disguises of upstream defects, stale-threshold hand-waving (loosening a threshold instead of fixing the producer), fallback masking (serving fabricated/older data as fresh), and representative-only fixes (proven on one ticker/path and declared done).
+
+**Required closure template (verbatim fields — any lane/FIND/blocker closure claim must carry all five):**
+
+```
+FULL_FIX_PROVEN = YES/NO
+ROOT_CAUSE_PROVEN = YES/NO
+UNIVERSAL_SCOPE_PROVEN = YES/NO
+MECHANICAL_LOCK_ADDED = YES/NO
+PATCH_OR_WORKAROUND = YES/NO
+```
+
+**Acceptance (all required; no closure if any proof is missing):**
+
+| Field | Required value |
+|-------|----------------|
+| `PATCH_OR_WORKAROUND` | **NO** — a YES is an automatic non-closure |
+| `ROOT_CAUSE_PROVEN` | **YES** — cite the evidence (traceback, AST scan, runtime capture) |
+| `UNIVERSAL_SCOPE_PROVEN` | **YES**, or the same line carries `FULL_FIX_EXCEPTION_APPROVED: <operator ref>` |
+| `MECHANICAL_LOCK_ADDED` | **YES** when feasible; a NO must state `infeasible` with the reason on the same line |
+| `FULL_FIX_PROVEN` | **YES** — only when the four above hold |
+
+**Evidence fields (required in the closure body):** root cause (what actually failed and why), affected path (producer→consumer cone named), universal scope (why every ticker/session/horizon is covered by construction), mechanical lock (test/checker path that prevents recurrence).
+
+**Mechanical lock:** `check_full_fixes_only()` in `tools/check_fix_everything_we_touch.py` — commit-message closure language without the five-field template fails the commit; patch/workaround framing in commit messages fails the commit unless the line carries `FULL_FIX_EXCEPTION_APPROVED: <ref>`. Paired tests: `tests/test_check_fix_everything_we_touch.py` (FULL_FIXES_ONLY_V1 section). Tracker rows: `governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` + `OPEN_ITEMS.md`.
+
+**Relationship:** Hardens [§Definition of Done for Fixes](#definition-of-done-for-fixes) (root-cause step) and [§No carried residuals](#no-carried-residuals--done-means-zero-residuals) (two end-states only) with a commit-time gate; the fix-shape ban restates §Banned patterns for the closure surface with mechanical teeth.
+
+---
+
 ## Agent preload enforcement `[PROMOTED]` (2026-06-11 — operator binding; Phase 3A)
 
 **Every session (Cursor + Claude):** load [`governance/docs/AGENT_OPERATING_CONTRACT.md`](governance/docs/AGENT_OPERATING_CONTRACT.md) before any edit. Cursor: `.cursor/rules/000-agent-operating-contract.mdc` through `040-testing-and-artifacts.mdc` (`alwaysApply: true`). If preload cannot be verified → **stop** and report preload failure.

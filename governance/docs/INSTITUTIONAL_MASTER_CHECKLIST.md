@@ -155,6 +155,7 @@ Execute in phase order unless operator explicitly preempts. Non-RTH live parity 
 | GitHub branch protection API proof | **NOT_PROVEN** | 0 | P1 | Authenticated `gh` | External enforcement gap | NO |
 | Live Schwab traffic proof | **NOT_PROVEN** | 0 | P2 | Operator host + auth | Cannot claim live wire proof from simulation | NO |
 | Mechanical rules / no prose-only promotions | **ENFORCED** | 0 | P1 | — | Rules must have checkers | YES (`INST-PROGRAM-MECH-RULES`) |
+| FULL_FIXES_ONLY_V1 (root-cause/universal/mechanically-locked fixes only; five-field closure template; commit-msg gate `check_full_fixes_only`) | **NOT_PROVEN** until repo artifact + mechanical check + tests are committed and remote CI is green at that SHA | 0 | P0 | — | Bans patches, symptom masks, ticker special-cases, threshold hand-waves, fallback masking, representative-only fixes | YES (`FULL_FIXES_ONLY_V1`) |
 
 ### PHASE 1 — Current card-fidelity closure
 
