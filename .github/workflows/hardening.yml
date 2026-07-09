@@ -16,6 +16,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # FULL_FIXES_ONLY_V2: FINAL_SHA verification needs full history
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

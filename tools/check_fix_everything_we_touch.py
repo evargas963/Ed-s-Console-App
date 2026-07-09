@@ -495,7 +495,13 @@ def _full_fix_repo_path_exists(raw: str) -> bool:
 
 
 def _full_fix_sha_exists_in_repo(sha: str) -> bool:
-    """Concrete SHA in an artifact must resolve to a real commit (FINAL_SHA tie)."""
+    """Concrete SHA in an artifact must resolve to a real commit (FINAL_SHA tie).
+
+    Strict everywhere: a FINAL_SHA that does not resolve is a violation. CI
+    checkouts for the four gates fetch full history (fetch-depth: 0) so the
+    verification is real there; evidence SHAs are recent by nature, so shallow
+    developer clones resolve them within their fetched depth.
+    """
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],

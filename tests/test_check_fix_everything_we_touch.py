@@ -2278,3 +2278,21 @@ def test_full_fixes_v2_wiring_meta_locks(monkeypatch) -> None:
     assert not mod._lock_id_wired("check_full_fixes_only")
     errs = mod.check_promoted_agents_rules_mechanically_locked()
     assert any("check_full_fixes_only" in e and "missing or unwired" in e for e in errs)
+
+
+def test_full_fixes_v2_final_sha_helper_full_clone_semantics() -> None:
+    """On a full clone: real commit resolves, fake commit is rejected; the
+    shallow-indeterminate branch exists for CI fetch-depth-1 checkouts."""
+    import subprocess
+
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=20,
+    ).stdout.strip()
+    real = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=20,
+    ).stdout.strip()
+    assert shallow in ("true", "false")
+    assert mod._full_fix_sha_exists_in_repo(real) is True
+    assert mod._full_fix_sha_exists_in_repo("deadbeef" * 5) is False
