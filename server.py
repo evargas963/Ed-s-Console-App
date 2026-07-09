@@ -352,6 +352,15 @@ VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get("ED_VIEWER_STATE_CACHE_
 # age >= ANALYTICS_STALE_GRACE_CYCLES × TTL. Drives analytics_stale and the
 # card_freshness_v1 analytics_age_exceeded stale-reason code (one authority).
 ANALYTICS_STALE_GRACE_CYCLES: float = 2.0
+# IDLE_SENTINEL_FRESHNESS_V1 (operator-approved 2026-07-09) — standing producer for
+# unviewed cache keys. Root cause NOT_COMPUTED: card production was viewer-coupled,
+# so keys without an SSE subscriber aged unbounded. Each _sse_background_loop tick
+# also recomputes at most IDLE_KEY_REFRESH_MAX_PER_TICK unowned keys whose age
+# exceeds the stale budget (CACHE_TTL × ANALYTICS_STALE_GRACE_CYCLES), oldest first.
+# Idle cadence contract: worst-case unviewed-key age ≈ n_idle_stale_keys × loop
+# interval + one recompute duration (bounded — previously unbounded). Selection is
+# cache-key/age driven; no ticker/session input exists.
+IDLE_KEY_REFRESH_MAX_PER_TICK: int = 1
 # T5 SSE repair — Schwab CSV-first slice declaration (transport-only; no wire/ingestion change):
 # Schwab CSV authority checked: yes
 # CSV row(s): NO_SCHWAB_EQUIVALENT
@@ -9485,6 +9494,56 @@ async def _sse_live_quote_loop() -> None:
             log.warning("SSE live quote loop error: %s", e, exc_info=True)
 
 
+# IDLE_SENTINEL_FRESHNESS_V1 — pure selection for the idle-refresh arm below.
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — recompute scheduling only; the scheduled
+#   _fetch_state path and its existing chains/quotes/pricehistory leaf reads are
+#   unchanged; no market field read, derivation, or emission changed.
+# Derived-field disposition: none required (scheduling metadata only).
+# All consumers checked: yes — _schedule_analytics_recompute (dedupes inflight
+#   keys) and the freshness contract; stale/actionable semantics untouched.
+# SCHWAB_CSV_CHECKED
+def _select_idle_stale_keys(owned_keys: set, max_keys: int) -> list[tuple]:
+    """Oldest-first cached (ticker, expiry) keys with no live SSE owner whose age
+    exceeds the stale budget — the standing producer for unviewed cards.
+
+    Ownership is ticker-level from the live subscriber set (a viewer subscribed
+    with a None/default expiry owns its resolved cache key, so those tickers are
+    excluded to preserve single-owner semantics). Selection is cache-key/age
+    driven — identical for sentinel, guest, or any expiry; no ticker literal
+    exists. Rate-bounded by max_keys; inflight keys are skipped (the scheduler's
+    dedupe is the second guard). Never raises.
+    """
+    if max_keys <= 0:
+        return []
+    try:
+        owned_tickers = {k[0] for k in owned_keys if isinstance(k, tuple) and k}
+        stale_after = float(CACHE_TTL) * ANALYTICS_STALE_GRACE_CYCLES
+        now = time.time()
+        candidates: list[tuple[float, tuple]] = []
+        for key, entry in list(_state_cache.items()):
+            if not isinstance(key, tuple) or not key:
+                continue
+            if key[0] in owned_tickers:
+                continue
+            if not isinstance(entry, dict) or not entry.get("ms_dict"):
+                continue
+            ts = entry.get("ts")
+            if not isinstance(ts, (int, float)):
+                continue
+            age = now - float(ts)
+            if age < stale_after:
+                continue
+            if _tier_c_inflight_key(key[0], key[1] if len(key) > 1 else None) in _analytics_inflight:
+                continue
+            candidates.append((age, key))
+        candidates.sort(key=lambda x: -x[0])
+        return [k for _, k in candidates[:max_keys]]
+    except Exception:
+        # The idle arm must never take down the SSE loop.
+        return []
+
+
 async def _sse_background_loop() -> None:
     """Layer C: on each cadence, schedule background _fetch_state for active SSE keys (deduped).
 
@@ -9499,6 +9558,16 @@ async def _sse_background_loop() -> None:
                 subs = list(_sse_subscribers.keys())
             # No viewers: sleep long to avoid idle churn.
             interval = max(0.5, VIEWER_SSE_REFRESH_SEC) if subs else float(CACHE_TTL)
+            # IDLE_SENTINEL_FRESHNESS_V1 — standing producer for unowned keys:
+            # runs on EVERY tick (with or without viewers) so unviewed cards can
+            # never age unbounded; viewed keys keep the existing owner below.
+            for (_it, _ie) in _select_idle_stale_keys(
+                owned_keys=set(subs), max_keys=IDLE_KEY_REFRESH_MAX_PER_TICK
+            ):
+                _schedule_analytics_recompute(
+                    _tier_c_inflight_key(_it, _ie), _it, _ie,
+                    update_source="idle_key_refresh",
+                )
             if not subs:
                 await asyncio.sleep(interval)
                 continue

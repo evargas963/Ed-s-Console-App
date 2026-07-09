@@ -1672,3 +1672,129 @@ def test_post_publish_last_error_no_ticker_literals():
             assert not (sub.value.isalpha() and sub.value.isupper()), (
                 f"ticker-literal-shaped constant {sub.value!r} in recorder"
             )
+
+
+# ── IDLE_SENTINEL_FRESHNESS_V1 — idle-refresh standing producer locks ─────────
+
+
+def _idle_seed_cache(srv, monkeypatch, entries):
+    """entries: {(ticker, expiry): age_sec | None-for-shell}."""
+    import time as _t
+
+    now = _t.time()
+    cache = {}
+    for key, age in entries.items():
+        if age is None:
+            cache[key] = {"ts": now, "ms_dict": {}}  # pending-shell-like: empty body
+        else:
+            cache[key] = {"ts": now - age, "ms_dict": {"ticker": key[0]}}
+    monkeypatch.setattr(srv, "_state_cache", cache)
+    monkeypatch.setattr(srv, "_analytics_inflight", set())
+
+
+def test_idle_refresh_selects_nonviewed_stale_key(monkeypatch):
+    """Required 1: a non-viewed stale cache key is selected for recompute."""
+    import server as srv
+
+    _idle_seed_cache(srv, monkeypatch, {("AAA1", "2026-08-01"): 60.0})
+    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=1) == [("AAA1", "2026-08-01")]
+
+
+def test_idle_refresh_never_double_owns_viewed_ticker(monkeypatch):
+    """Required 2: a subscriber-owned ticker is excluded even when the viewer
+    subscribed with a None/default expiry and the cache key carries the
+    resolved expiry (single-owner semantics preserved)."""
+    import server as srv
+
+    _idle_seed_cache(srv, monkeypatch, {("AAA1", "2026-08-01"): 60.0, ("BBB2", "2026-08-01"): 30.0})
+    picked = srv._select_idle_stale_keys(owned_keys={("AAA1", None)}, max_keys=5)
+    assert ("AAA1", "2026-08-01") not in picked
+    assert picked == [("BBB2", "2026-08-01")]
+
+
+def test_idle_refresh_oldest_first(monkeypatch):
+    """Required 3: oldest stale key drains first."""
+    import server as srv
+
+    _idle_seed_cache(
+        srv, monkeypatch,
+        {("AAA1", "e"): 30.0, ("BBB2", "e"): 300.0, ("CCC3", "e"): 90.0},
+    )
+    picked = srv._select_idle_stale_keys(owned_keys=set(), max_keys=3)
+    assert picked == [("BBB2", "e"), ("CCC3", "e"), ("AAA1", "e")]
+
+
+def test_idle_refresh_rate_bound_enforced(monkeypatch):
+    """Required 4: at most max_keys per tick; constant pinned at 1."""
+    import server as srv
+
+    _idle_seed_cache(
+        srv, monkeypatch,
+        {("AAA1", "e"): 30.0, ("BBB2", "e"): 300.0, ("CCC3", "e"): 90.0},
+    )
+    assert len(srv._select_idle_stale_keys(owned_keys=set(), max_keys=1)) == 1
+    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=0) == []
+    assert srv.IDLE_KEY_REFRESH_MAX_PER_TICK == 1
+
+
+def test_idle_refresh_ticker_agnostic_guest_style_keys(monkeypatch):
+    """Required 5: selection works identically for guest-style keys."""
+    import server as srv
+
+    _idle_seed_cache(srv, monkeypatch, {("ZZGUEST9", "2026-09-19"): 45.0})
+    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=1) == [("ZZGUEST9", "2026-09-19")]
+
+
+def test_idle_refresh_no_ticker_literals_in_selection():
+    """Required 6: no ticker-literal-shaped constants drive selection."""
+    import ast
+
+    tree = ast.parse(_fetch_state_source())
+    fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_select_idle_stale_keys"
+    )
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            assert not (node.value.isalpha() and node.value.isupper()), (
+                f"ticker-literal-shaped constant {node.value!r} in idle selection"
+            )
+
+
+def test_idle_refresh_fresh_keys_not_selected(monkeypatch):
+    """Required 7: keys inside the stale budget are never recomputed by the arm."""
+    import server as srv
+
+    _idle_seed_cache(srv, monkeypatch, {("AAA1", "e"): 3.0, ("BBB2", "e"): 9.9})
+    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=5) == []
+
+
+def test_idle_refresh_inflight_keys_skipped(monkeypatch):
+    """Required 8: pending/in-progress keys are not duplicated — selection skips
+    inflight keys AND the arm schedules only through the deduping scheduler."""
+    import server as srv
+
+    _idle_seed_cache(srv, monkeypatch, {("AAA1", "e"): 60.0})
+    monkeypatch.setattr(
+        srv, "_analytics_inflight", {srv._tier_c_inflight_key("AAA1", "e")}
+    )
+    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=1) == []
+    src = _fetch_state_source()
+    i_loop = src.index("async def _sse_background_loop")
+    i_call = src.index("_select_idle_stale_keys(", i_loop)
+    i_sched = src.index('update_source="idle_key_refresh"', i_call)
+    assert i_loop < i_call < i_sched, "idle arm must schedule via _schedule_analytics_recompute"
+
+
+def test_idle_refresh_veto_and_budget_untouched(monkeypatch):
+    """Required 9: the stale/actionability veto and the 10s budget are intact;
+    empty-body (shell) entries are never selected (clobber-guard alignment)."""
+    import server as srv
+
+    assert srv.CACHE_TTL == 5
+    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
+    _idle_seed_cache(srv, monkeypatch, {("AAA1", "e"): None})
+    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=5) == []
+    src = _fetch_state_source()
+    assert 'update_source="sse_loop"' in src  # viewed-key owner unchanged
+    assert "IDLE_KEY_REFRESH_MAX_PER_TICK" in src
