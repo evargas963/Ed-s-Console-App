@@ -81,7 +81,24 @@ Current high-priority future lanes preserved in the master checklist:
 
 ### Open lanes (active execution board — approval held per lane)
 
-- [ ] **FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK** — corrective lane (operator 2026-07-09): V1 (`1873ce4`, 4/4 CI green — runs 29032794575/29032794265/29032794299/29032794473) = **NOT_PROVEN_AS_EFFECTIVE** (template/wiring lock only; admits false YES). V2 adds the machine-readable `FULL_FIX_EVIDENCE` block (root-cause artifact path, failing-before/passing-after regression test, affected paths, recurrence guard, universal-scope statement, EVIDENCE_SHA) with real-path resolution, retroactive-only `CLOSED_WITH_EVIDENCE` (concrete SHA + 4 CI run ids on the line), UI-only-fix guard, and adversarial fake-YES tests. **NOT_PROVEN** until local + CI green at the V2 SHA.
+- [x] **FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK** — CLOSED_WITH_EVIDENCE @ e7eb002a446215f57c364efa13d3f423ff796cbd CI_RUNS = 29043650128, 29043650133, 29043650233, 29043650121
+  FULL_FIX_PROVEN = YES
+  ROOT_CAUSE_PROVEN = YES
+  EFFECTIVE_FIX_PROVEN = YES
+  UNIVERSAL_SCOPE_PROVEN = YES
+  REGRESSION_TEST_ADDED = YES
+  MECHANICAL_LOCK_ADDED = YES
+  PATCH_OR_WORKAROUND = NO
+  FULL_FIX_EVIDENCE:
+  ROOT_CAUSE_ARTIFACT = tools/check_fix_everything_we_touch.py
+  EVIDENCE_ARTIFACT = tests/test_check_fix_everything_we_touch.py
+  REGRESSION_TEST = tests/test_check_fix_everything_we_touch.py::test_full_fixes_fake_yes_template_without_evidence_fails
+  AFFECTED_PATHS = tools/check_fix_everything_we_touch.py, tests/test_check_fix_everything_we_touch.py, AGENTS.md
+  RECURRENCE_GUARD = tests/test_check_fix_everything_we_touch.py
+  UNIVERSAL_SCOPE_STATEMENT = gate runs on every commit message and every tracked closure artifact repo-wide; no ticker/session input exists
+  FINAL_SHA = e7eb002a446215f57c364efa13d3f423ff796cbd
+  CI_GREEN = YES
+  (V1 superseded lane record (operator 2026-07-09): V1 (`1873ce4`, 4/4 CI green — runs 29032794575/29032794265/29032794299/29032794473) = **NOT_PROVEN_AS_EFFECTIVE** (template/wiring lock only; admits false YES). V2 adds the machine-readable `FULL_FIX_EVIDENCE` block (root-cause artifact path, failing-before/passing-after regression test, affected paths, recurrence guard, universal-scope statement, EVIDENCE_SHA) with real-path resolution, retroactive-only `CLOSED_WITH_EVIDENCE` (concrete SHA + 4 CI run ids on the line), UI-only-fix guard, and adversarial fake-YES tests — all landed across 37adc76 / e8ba89a / e7eb002.)
 - [ ] **IDLE_SENTINEL_FRESHNESS_V1** — truth audit COMPLETE 2026-07-09 (read-only): primary class **NOT_COMPUTED** — no standing producer for non-viewed sentinel keys (`_sse_background_loop` walks only `_sse_subscribers`; REST is pull-based one-shot; `tick_coherent` retired); observed QQQ/IWM ages 889s/897s midday, 4,035s/4,082s at bell, version=1 between consumer reads. Secondary **SCHEDULER_DELAY** — viewed key effective cadence ~15.3s vs 5s target under RTH load (SPY stale 10/20 bell cycles vs 10s budget). UI withholding proven CORRECT (`operator_card_actionable=false`, trust_state=STALE while source genuinely old). Proposed fix location: rate-bounded idle-key refresh arm in `_sse_background_loop` (server.py:9496-9514), age-driven, universal by construction. **IDLE_SENTINEL_FRESHNESS_V1 = BLOCKED until FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK is CI-green with evidence (operator gate 2026-07-09).**
 - [x] **EXEC-01 STEP_1+2_SENTINEL_REPROOF** — DONE 2026-07-09 bell capture: UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / **RTH_SENTINEL_RUNTIME_NOT_PROVEN** — streaming sentinel (SPY) queue wait 52–91ms typical vs 8.3–12.6s baseline (leaf pool works for served lane); idle sentinels remain ~9–11s on viewer-triggered recomputes → residual re-homed to IDLE_SENTINEL_FRESHNESS_V1.
 - [x] **EXEC-03 DB_POST_PUBLISH_PERSISTENCE_TRACEBACK** — CLOSED 2026-07-09: cause captured by POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 first live cycle (`UnboundLocalError: mkt_ctx` — Fix B tail-extraction scoping defect killing every snapshot persist); `nonlocal` repair `1f71104` + relocation-class AST lock; counters 0/0 across 5.5h RTH (415 SPY publishes) + 445 snapshot rows landed universe-wide. closure packet:
