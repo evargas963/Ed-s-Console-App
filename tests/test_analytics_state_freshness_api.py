@@ -1526,3 +1526,84 @@ def test_fix_b_constants_unchanged():
     src = _fetch_state_source()
     assert src.count("max_workers=8,\n            thread_name_prefix=\"ed_route_offload\"") == 1
     assert src.count("max_workers=4,\n            thread_name_prefix=\"ed_analytics_bg\"") == 1
+
+
+# ── EXEC-03 POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 ─────────────────────────
+
+
+def test_post_publish_last_error_recorder_shape_and_truncation():
+    """The recorder captures a fixed-schema dict from inside an except handler:
+    exc_type, bounded detail, bounded traceback tail, ticker as runtime data."""
+    import server as srv
+
+    srv._post_publish_last_errors.pop("snapshot", None)
+    try:
+        raise ValueError("boom-" + "x" * 900)
+    except ValueError as e:
+        srv._record_post_publish_failure("snapshot", "TESTX", 41, e)
+    rec = srv._post_publish_last_errors["snapshot"]
+    assert set(rec) == {
+        "ts_epoch", "ticker", "published_version", "exc_type", "detail", "traceback_tail",
+    }
+    assert rec["ticker"] == "TESTX"
+    assert rec["published_version"] == 41
+    assert rec["exc_type"] == "ValueError"
+    assert len(rec["detail"]) <= 400
+    assert isinstance(rec["traceback_tail"], list) and len(rec["traceback_tail"]) <= 12
+    assert any("ValueError" in ln for ln in rec["traceback_tail"])
+    srv._post_publish_last_errors.pop("snapshot", None)
+
+
+def test_post_publish_last_error_recorder_is_passive():
+    """Recorder never raises (even outside an except context) and never touches
+    the counter dict or _state_cache — counters stay at the call sites."""
+    import ast
+
+    import server as srv
+
+    before = dict(srv._analytics_cache_observability)
+    srv._record_post_publish_failure("calibration", "TESTX", None, RuntimeError("q"))
+    assert dict(srv._analytics_cache_observability) == before
+    srv._post_publish_last_errors.pop("calibration", None)
+
+    tree = ast.parse(_fetch_state_source())
+    rec = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_record_post_publish_failure"
+    )
+    names = {s.id for s in ast.walk(rec) if isinstance(s, ast.Name)}
+    assert "_state_cache" not in names
+    assert "_analytics_cache_observability" not in names
+
+
+def test_post_publish_last_error_wired_at_both_failure_branches():
+    """Both tail except-handlers record cause detail right after their counter
+    increment; the payload attaches a copy adjacent to the observability block."""
+    src = _fetch_state_source()
+    i_snap_inc = src.index('_analytics_cache_observability["post_publish_snapshot_failures"] += 1')
+    i_snap_rec = src.index('_record_post_publish_failure("snapshot", ticker, published_version, e)')
+    i_cal_inc = src.index('_analytics_cache_observability["post_publish_calibration_failures"] += 1')
+    i_cal_rec = src.index(
+        '_record_post_publish_failure("calibration", ticker, published_version, _v2_log_e)'
+    )
+    assert i_snap_inc < i_snap_rec < i_cal_inc < i_cal_rec
+    i_obs_attach = src.index('ms_dict["analytics_cache_observability_v1"] = dict(')
+    i_err_attach = src.index('ms_dict["post_publish_last_errors_v1"] = {')
+    assert i_obs_attach < i_err_attach
+
+
+def test_post_publish_last_error_no_ticker_literals():
+    """Universality: the recorder body carries no ticker-literal-shaped constants
+    (its dict keys are lowercase kinds; ticker arrives as runtime data)."""
+    import ast
+
+    tree = ast.parse(_fetch_state_source())
+    rec = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_record_post_publish_failure"
+    )
+    for sub in ast.walk(rec):
+        if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+            assert not (sub.value.isalpha() and sub.value.isupper()), (
+                f"ticker-literal-shaped constant {sub.value!r} in recorder"
+            )

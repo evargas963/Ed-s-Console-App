@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 411  # inventory sync @ OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: +1 _get_recompute_leaf_executor (prior sync @ STEP_1: 410)
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 412  # inventory sync @ POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1: +1 _record_post_publish_failure (prior sync @ STEP_2: 411)
 
 
 def test_mega1_row_schema_valid():

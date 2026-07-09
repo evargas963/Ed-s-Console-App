@@ -1521,6 +1521,38 @@ _analytics_cache_observability: dict[str, int] = {
     "post_publish_calibration_failures": 0,
 }
 
+# EXEC-03 POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 — most recent post-publish
+# persistence failure per kind ("snapshot" | "calibration"), REST-visible via
+# ms_dict["post_publish_last_errors_v1"]. Audit-trail-only: the served payload
+# is already published when the tail runs, so a failure recorded here appears
+# in the NEXT publish's payload copy. Ticker is runtime data — the capture
+# path is identical for every ticker (no ticker-conditional behavior).
+_post_publish_last_errors: dict[str, dict] = {}
+
+
+def _record_post_publish_failure(kind, ticker, published_version, exc):
+    """Record last post-publish persistence failure detail (cause visibility).
+
+    Counters stay at the call sites (locked by the failure-counter source
+    tests); this captures cause detail only. Must be called from inside the
+    except handler so format_exc() sees the active exception. Never raises;
+    never touches _state_cache or the counter dict.
+    """
+    import traceback as _tb
+
+    try:
+        _post_publish_last_errors[kind] = {
+            "ts_epoch": round(time.time(), 3),
+            "ticker": str(ticker),
+            "published_version": published_version,
+            "exc_type": type(exc).__name__,
+            "detail": str(exc)[:400],
+            "traceback_tail": _tb.format_exc().splitlines()[-12:],
+        }
+    except Exception:
+        # Observability must never disturb the persistence tail.
+        pass
+
 
 def _schedule_analytics_recompute(
     inflight_key: tuple,
@@ -7107,6 +7139,7 @@ def _fetch_state(
                 _diag_crash("db_snapshot", e, ticker)
                 import traceback as _tb
                 _analytics_cache_observability["post_publish_snapshot_failures"] += 1
+                _record_post_publish_failure("snapshot", ticker, published_version, e)
                 log.warning(
                     f"post-publish snapshot persistence failed ticker={ticker} "
                     f"published_version={published_version}: {e}\n{_tb.format_exc()}"
@@ -7128,6 +7161,7 @@ def _fetch_state(
                 log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
         except Exception as _v2_log_e:
             _analytics_cache_observability["post_publish_calibration_failures"] += 1
+            _record_post_publish_failure("calibration", ticker, published_version, _v2_log_e)
             log.warning(
                 "post-publish calibration append failed ticker=%s published_version=%s: %s",
                 ticker,
@@ -7928,6 +7962,12 @@ def _fetch_state(
     # stops; time it separately so cycle totals attribute fully. Passive observation.
     ms_dict["_finalize_tail_ms"] = round((time.monotonic() - _t_pipeline_end_mono) * 1000)
     ms_dict["analytics_cache_observability_v1"] = dict(_analytics_cache_observability)
+    # EXEC-03 POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 — failure cause detail for
+    # the counters above; recorded by the tail, so it reflects failures up to the
+    # PREVIOUS cycle (publish-before-persistence ordering).
+    ms_dict["post_publish_last_errors_v1"] = {
+        k: dict(v) for k, v in _post_publish_last_errors.items()
+    }
     # FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1: persistence/telemetry runs AFTER the
     # generated_at-stamping publish above, same worker, same cycle; the SERVED
     # decision object (ms_dict["v2_decision"]) is the logged object.
