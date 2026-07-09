@@ -99,7 +99,27 @@ Current high-priority future lanes preserved in the master checklist:
   FINAL_SHA = e7eb002a446215f57c364efa13d3f423ff796cbd
   CI_GREEN = YES
   (V1 superseded lane record (operator 2026-07-09): V1 (`1873ce4`, 4/4 CI green — runs 29032794575/29032794265/29032794299/29032794473) = **NOT_PROVEN_AS_EFFECTIVE** (template/wiring lock only; admits false YES). V2 adds the machine-readable `FULL_FIX_EVIDENCE` block (root-cause artifact path, failing-before/passing-after regression test, affected paths, recurrence guard, universal-scope statement, EVIDENCE_SHA) with real-path resolution, retroactive-only `CLOSED_WITH_EVIDENCE` (concrete SHA + 4 CI run ids on the line), UI-only-fix guard, and adversarial fake-YES tests — all landed across 37adc76 / e8ba89a / e7eb002.)
-- [ ] **IDLE_SENTINEL_FRESHNESS_V1** — truth audit COMPLETE 2026-07-09 (read-only): primary class **NOT_COMPUTED** — no standing producer for non-viewed sentinel keys (`_sse_background_loop` walks only `_sse_subscribers`; REST is pull-based one-shot; `tick_coherent` retired); observed QQQ/IWM ages 889s/897s midday, 4,035s/4,082s at bell, version=1 between consumer reads. Secondary **SCHEDULER_DELAY** — viewed key effective cadence ~15.3s vs 5s target under RTH load (SPY stale 10/20 bell cycles vs 10s budget). UI withholding proven CORRECT (`operator_card_actionable=false`, trust_state=STALE while source genuinely old). Proposed fix location: rate-bounded idle-key refresh arm in `_sse_background_loop` (server.py:9496-9514), age-driven, universal by construction. **IDLE_SENTINEL_FRESHNESS_V1 = BLOCKED until FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK is CI-green with evidence (operator gate 2026-07-09).**
+- [x] **IDLE_SENTINEL_FRESHNESS_V1** — CLOSED_WITH_EVIDENCE @ 4036858286839694a201e42834bb7a859f144c18 CI_RUNS = 29047252282, 29047252214, 29047252208, 29047252267
+  FULL_FIX_PROVEN = YES
+  ROOT_CAUSE_PROVEN = YES
+  EFFECTIVE_FIX_PROVEN = YES
+  UNIVERSAL_SCOPE_PROVEN = YES
+  REGRESSION_TEST_ADDED = YES
+  MECHANICAL_LOCK_ADDED = YES
+  PATCH_OR_WORKAROUND = NO
+  FULL_FIX_EVIDENCE:
+  ROOT_CAUSE_ARTIFACT = server.py
+  EVIDENCE_ARTIFACT = tests/test_analytics_state_freshness_api.py
+  REGRESSION_TEST = tests/test_analytics_state_freshness_api.py::test_idle_refresh_selects_nonviewed_stale_key
+  AFFECTED_PATHS = server.py, tests/test_analytics_state_freshness_api.py
+  RECURRENCE_GUARD = tests/test_analytics_state_freshness_api.py
+  UNIVERSAL_SCOPE_STATEMENT = idle selection is cache-key/age driven with ticker-level ownership from the live subscriber set; no ticker/session input exists; guest key proven on the identical path
+  FINAL_SHA = 4036858286839694a201e42834bb7a859f144c18
+  CI_GREEN = YES
+  Runtime proof: canonical restart PID 57084; silence-window production QQQ +15 / IWM +17 / NVDA +16 all `idle_key_refresh`; SPY viewer-owned `sse_loop` +31; counters 0/0; veto intact. Disclosure: After-Hours live-equivalent window (fix session-agnostic by design).
+- [ ] **IDLE_SENTINEL_NEXT_RTH_OBSERVATION** — optional follow-up (not blocking closure): observe idle-arm cadence + card ages on sentinels/guests during next RTH open burst.
+- [ ] **BUILD_IDENTITY_PROCESS_DRIFT** — OPEN / NOT_STARTED: `/api/build.git_sha` reads repo HEAD at request time, not the running process's code (proven 2026-07-09: PID 57076 booted @ `930c678` reported `9664be4` after later commits); identity proofs must use PID/start-time + behavior fingerprint until fixed.
+- [ ] **DAILY_SCOREBOARD_TRUTH_AUDIT_V1** — NEXT CANDIDATE LANE (operator 2026-07-09): read-only audit — persistence, horizon triggers, ticker coverage, scoreboard character, bias profile; no fixes until packet delivered.
 - [x] **EXEC-01 STEP_1+2_SENTINEL_REPROOF** — DONE 2026-07-09 bell capture: UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / **RTH_SENTINEL_RUNTIME_NOT_PROVEN** — streaming sentinel (SPY) queue wait 52–91ms typical vs 8.3–12.6s baseline (leaf pool works for served lane); idle sentinels remain ~9–11s on viewer-triggered recomputes → residual re-homed to IDLE_SENTINEL_FRESHNESS_V1.
 - [x] **EXEC-03 DB_POST_PUBLISH_PERSISTENCE_TRACEBACK** — CLOSED 2026-07-09: cause captured by POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 first live cycle (`UnboundLocalError: mkt_ctx` — Fix B tail-extraction scoping defect killing every snapshot persist); `nonlocal` repair `1f71104` + relocation-class AST lock; counters 0/0 across 5.5h RTH (415 SPY publishes) + 445 snapshot rows landed universe-wide. closure packet:
   FULL_FIX_PROVEN = YES
