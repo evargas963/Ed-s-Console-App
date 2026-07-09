@@ -152,6 +152,73 @@ def test_lock_constants_shape():
     assert len(REQUIRED_PACKET_FIELDS) == 8
 
 
+# ── UNIVERSAL_SENTINEL_PROOF_LANGUAGE_LOCK_V1 ────────────────────────────────
+
+from tools.check_universal_ticker_lock import (  # noqa: E402
+    FORBIDDEN_CLOSURE_PHRASES_PROSE,
+    FORBIDDEN_CLOSURE_TOKENS,
+    RTH_SENTINEL_LADDER,
+    check_sentinel_closure_language,
+)
+
+
+def test_sentinel_lock_rejects_every_forbidden_prose_phrase():
+    """Each prose closure phrase is rejected, case-insensitively."""
+    for ph in FORBIDDEN_CLOSURE_PHRASES_PROSE:
+        errs = check_packet_text(f"# Packet\nLane X: {ph}.\n", "reports/fixture.md")
+        assert any("forbidden sentinel-closure phrase" in e for e in errs), ph
+        errs_upper = check_packet_text(
+            f"# Packet\nLane X: {ph.upper()}.\n", "reports/fixture.md"
+        )
+        assert any("forbidden sentinel-closure phrase" in e for e in errs_upper), ph
+
+
+def test_sentinel_lock_rejects_every_forbidden_token():
+    """Each ALL-CAPS closure token is rejected exactly."""
+    for tok in FORBIDDEN_CLOSURE_TOKENS:
+        errs = check_packet_text(f"# Packet\nLANE_X = {tok}\n", "reports/fixture.md")
+        assert any("forbidden sentinel-closure token" in e for e in errs), tok
+
+
+def test_sentinel_ladder_language_is_accepted():
+    """The required RTH sentinel ladder passes both before and after sentinel success."""
+    before = (
+        "# Board\n"
+        "LANE_X = UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / "
+        "RTH_SENTINEL_REPROOF_PENDING\n"
+        "CARD_FIDELITY_OVERALL = NOT_PROVEN\n"
+    )
+    after = (
+        "# Board\n"
+        "LANE_X = UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / "
+        "RTH_SENTINEL_OBSERVED / FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED\n"
+        "REAL_MONEY_READINESS = NOT_PROVEN\n"
+    )
+    assert check_packet_text(before, "reports/fixture.md") == []
+    assert check_packet_text(after, "reports/fixture.md") == []
+    # Every ladder token individually survives the checker.
+    for tok in RTH_SENTINEL_LADDER:
+        assert check_sentinel_closure_language(f"LANE_X = {tok}\n", "r.md") == []
+
+
+def test_sentinel_lock_existing_downgrade_label_still_allowed():
+    """BASE_ANCHOR_EVIDENCED_ONLY (a downgrade, claims less than universal)
+    remains allowed — it is not a closure token."""
+    text = (
+        "# Packet\nEvidence: SPY QQQ IWM.\n"
+        "- UNIVERSALITY_CLASSIFICATION: BASE_ANCHOR_EVIDENCED_ONLY\n"
+    )
+    assert check_packet_text(text, "reports/fixture.md") == []
+
+
+def test_sentinel_lock_constants_shape():
+    assert len(FORBIDDEN_CLOSURE_PHRASES_PROSE) == 5
+    assert len(FORBIDDEN_CLOSURE_TOKENS) == 6
+    assert len(RTH_SENTINEL_LADDER) == 7
+    assert "RTH_SENTINEL_OBSERVED" in RTH_SENTINEL_LADDER
+    assert "FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED" in RTH_SENTINEL_LADDER
+
+
 # ── REPO_WIDE_UNIVERSALITY_HARDGATE_V1 ────────────────────────────────────────
 
 from tools.check_universal_ticker_lock import (  # noqa: E402

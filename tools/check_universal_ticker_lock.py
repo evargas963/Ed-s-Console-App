@@ -69,6 +69,61 @@ UNIVERSALITY_CLASSIFICATIONS: tuple[str, ...] = (
     "INSUFFICIENT_UNIVERSE_EVIDENCE",
 )
 
+# ── UNIVERSAL_SENTINEL_PROOF_LANGUAGE_LOCK_V1 (operator-approved 2026-07-08) ──
+# SPY/QQQ/IWM are RTH sentinel anchors ONLY — live money-path observation under
+# real market load, never the proof boundary. Sentinel/base-anchor/
+# representative runtime evidence may NEVER be used as universal closure.
+# Required lane ladder instead:
+#   <LANE> = UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN /
+#            RTH_SENTINEL_REPROOF_PENDING
+#   ...after sentinel success...
+#   <LANE> = ... / RTH_SENTINEL_OBSERVED / FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED
+# Prose phrases match case-insensitively; ALL-CAPS tokens match exactly.
+FORBIDDEN_CLOSURE_PHRASES_PROSE: tuple[str, ...] = (
+    "base-anchor runtime proven",
+    "representative runtime proven",
+    "SPY/QQQ/IWM proven therefore universal",
+    "money-path proven therefore closed",
+    "full runtime proven from sentinel-only observation",
+)
+FORBIDDEN_CLOSURE_TOKENS: tuple[str, ...] = (
+    "BASE_ANCHOR_RUNTIME_PROVEN",
+    "RUNTIME_PROVEN_BASE_ANCHOR",
+    "REPRESENTATIVE_RUNTIME_PROVEN",
+    "BASE_ANCHOR_PROVEN",
+    "SPY_QQQ_IWM_PROVEN_THEREFORE_UNIVERSAL",
+    "SENTINEL_PROVEN_THEREFORE_UNIVERSAL",
+)
+RTH_SENTINEL_LADDER: tuple[str, ...] = (
+    "UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN",
+    "REMOTE_CI_PROVEN",
+    "RTH_SENTINEL_REPROOF_PENDING",
+    "RTH_SENTINEL_OBSERVED",
+    "FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED",
+    "CARD_FIDELITY_OVERALL_NOT_PROVEN",
+    "REAL_MONEY_READINESS_NOT_PROVEN",
+)
+
+
+def check_sentinel_closure_language(text: str, relpath: str) -> list[str]:
+    """Reject sentinel/base-anchor/representative evidence used as closure."""
+    errors: list[str] = []
+    low = text.lower()
+    for ph in FORBIDDEN_CLOSURE_PHRASES_PROSE:
+        if ph.lower() in low:
+            errors.append(
+                f"{relpath}: forbidden sentinel-closure phrase {ph!r} — "
+                f"SPY/QQQ/IWM are RTH sentinels, never the proof boundary; "
+                f"use the RTH_SENTINEL ladder ({' / '.join(RTH_SENTINEL_LADDER[:3])} ...)"
+            )
+    for tok in FORBIDDEN_CLOSURE_TOKENS:
+        if tok in text:
+            errors.append(
+                f"{relpath}: forbidden sentinel-closure token {tok!r} — "
+                f"use RTH_SENTINEL_OBSERVED / FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED"
+            )
+    return errors
+
 # ── REPO_WIDE_UNIVERSALITY_HARDGATE_V1 (operator P0, 2026-07-07) ─────────────
 # Universality is repo-wide, not ticker-only. Universal means: not one ticker,
 # route, card, horizon, timeframe, session state, expiry/cache key, data
@@ -434,6 +489,7 @@ def _has_full_repo_packet(text: str, classification: Optional[str]) -> bool:
 def check_packet_text(text: str, relpath: str) -> list[str]:
     """Universality packet rules (ticker contract + repo-wide hardgate)."""
     errors: list[str] = []
+    errors += check_sentinel_closure_language(text, relpath)
     m = _CLASSIFICATION_RE.search(text)
     classification = m.group("value") if m else None
     allowed = set(UNIVERSALITY_CLASSIFICATIONS) | set(REPO_UNIVERSALITY_CLASSIFICATIONS)
