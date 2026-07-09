@@ -703,19 +703,40 @@ def check_full_fixes_only(path: Path) -> list[str]:
     fields: dict[str, tuple[str, str]] = {}
     for m in _FULL_FIX_FIELD_RE.finditer(text):
         fields[m.group(1)] = (m.group(2), m.group(3))
-    closure_claimed = bool(_FULL_FIX_CLOSURE_LANGUAGE_RE.search(text)) or bool(fields)
-    if not closure_claimed:
+    has_closure_language = bool(
+        _FULL_FIX_CLOSURE_LANGUAGE_RE.search(_full_fix_strip_code_spans(text))
+    )
+    if not has_closure_language and not fields:
         return errors
-    errors.extend(_check_full_fix_evidence(text, path))
     missing = [f for f in FULL_FIX_TEMPLATE_FIELDS if f not in fields]
     if missing:
         errors.append(
-            f"{path}: FULL_FIXES_ONLY_V2 closure language without complete FULL_FIX proof "
-            f"template — missing {missing} (AGENTS § FULL_FIXES_ONLY_V2; all five fields required)"
+            f"{path}: FULL_FIXES_ONLY_V2 closure/status language without complete FULL_FIX "
+            f"template — missing {missing} (AGENTS § FULL_FIXES_ONLY_V2; all seven fields required)"
         )
+        errors.extend(_check_full_fix_evidence(text, path))
         return errors
     val = {k: v[0] for k, v in fields.items()}
     tail = {k: v[1] for k, v in fields.items()}
+    # Declaration semantics (operator 2026-07-09): a complete template with
+    # FULL_FIX_PROVEN = NO and no closure language is an honest NON-closure
+    # status declaration — structural rules still apply (a confessed workaround
+    # or a YES-implication violation fails), but the all-YES acceptance and the
+    # evidence block are demanded only on an actual closure claim.
+    closure_claimed = has_closure_language or val.get("FULL_FIX_PROVEN") == "YES"
+    if not closure_claimed:
+        if val["PATCH_OR_WORKAROUND"] != "NO":
+            errors.append(
+                f"{path}: FULL_FIXES_ONLY_V2 — PATCH_OR_WORKAROUND must be NO even in a "
+                f"status declaration (got {val['PATCH_OR_WORKAROUND']})"
+            )
+        if val["FULL_FIX_PROVEN"] == "YES" and val["EFFECTIVE_FIX_PROVEN"] != "YES":
+            errors.append(
+                f"{path}: FULL_FIXES_ONLY_V2 — FULL_FIX_PROVEN = YES is forbidden unless "
+                f"EFFECTIVE_FIX_PROVEN = YES"
+            )
+        return errors
+    errors.extend(_check_full_fix_evidence(text, path))
     if val["PATCH_OR_WORKAROUND"] != "NO":
         errors.append(
             f"{path}: FULL_FIXES_ONLY_V2 non-closure — PATCH_OR_WORKAROUND must be NO "

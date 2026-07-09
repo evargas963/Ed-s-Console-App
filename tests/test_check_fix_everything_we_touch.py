@@ -1971,7 +1971,7 @@ def _full_fix_msg(tmp_path: Path, body: str) -> Path:
 def test_full_fixes_closure_language_without_template_fails(tmp_path: Path) -> None:
     msg = _full_fix_msg(tmp_path, "EXEC-99: CLOSED — root cause repaired.\n")
     hits = mod.check_full_fixes_only(msg)
-    assert any("FULL_FIX proof" in h for h in hits)
+    assert any("complete FULL_FIX template" in h for h in hits)
     assert any("FULL_FIX_EVIDENCE" in h for h in hits)
 
 
@@ -2296,3 +2296,40 @@ def test_full_fixes_v2_final_sha_helper_full_clone_semantics() -> None:
     assert shallow in ("true", "false")
     assert mod._full_fix_sha_exists_in_repo(real) is True
     assert mod._full_fix_sha_exists_in_repo("deadbeef" * 5) is False
+
+
+_FULL_FIX_DECLARATION_NO = (
+    "FULL_FIX_PROVEN = NO\n"
+    "EFFECTIVE_FIX_PROVEN = NO\n"
+    "ROOT_CAUSE_PROVEN = YES\n"
+    "UNIVERSAL_SCOPE_PROVEN = YES\n"
+    "REGRESSION_TEST_ADDED = YES\n"
+    "MECHANICAL_LOCK_ADDED = YES\n"
+    "PATCH_OR_WORKAROUND = NO\n"
+)
+
+
+def test_full_fixes_v2_non_closure_declaration_passes(tmp_path: Path) -> None:
+    """Operator 2026-07-09: a complete template with FULL_FIX_PROVEN = NO and no
+    closure language is an honest status declaration — allowed without the
+    evidence block or all-YES acceptance."""
+    msg = _full_fix_msg(
+        tmp_path,
+        "lock implemented; not closed until CI green\n\n" + _FULL_FIX_DECLARATION_NO,
+    )
+    assert mod.check_full_fixes_only(msg) == []
+
+
+def test_full_fixes_v2_declaration_with_workaround_yes_fails(tmp_path: Path) -> None:
+    body = "status declaration\n\n" + _FULL_FIX_DECLARATION_NO.replace(
+        "PATCH_OR_WORKAROUND = NO", "PATCH_OR_WORKAROUND = YES"
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("PATCH_OR_WORKAROUND must be NO" in h for h in hits)
+
+
+def test_full_fixes_v2_closure_language_with_no_template_still_demands_all_yes(tmp_path: Path) -> None:
+    body = "EXEC-99: CLOSED.\n\n" + _FULL_FIX_DECLARATION_NO
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("EFFECTIVE_FIX_PROVEN must be YES" in h for h in hits)
+    assert any("FULL_FIX_PROVEN must be YES" in h for h in hits)

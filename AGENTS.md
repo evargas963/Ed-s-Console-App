@@ -726,6 +726,8 @@ PATCH_OR_WORKAROUND = YES/NO
 
 **Core rule:** `FULL_FIX_PROVEN = YES` is forbidden unless `EFFECTIVE_FIX_PROVEN = YES` — a full fix must equal an effective fix proven against the actual failure mode, and the repo must be able to verify the evidence mechanically.
 
+**Declaration semantics (operator 2026-07-09):** a complete template with `FULL_FIX_PROVEN = NO` and no closure language is an honest NON-closure status declaration — permitted without the evidence block; `PATCH_OR_WORKAROUND` must still be NO and the YES-implication rule still applies. Closure acceptance (all-YES + evidence block) fires on closure language or `FULL_FIX_PROVEN = YES`.
+
 **Acceptance (all required; no closure if any proof is missing):**
 
 | Field | Required value |
