@@ -377,21 +377,23 @@ def check_v4_memo(memo_path: Path, staged: set[str]) -> list[str]:
     return errors
 
 
-# ── FULL_FIXES_ONLY_V1 (AGENTS § FULL_FIXES_ONLY_V1, 2026-07-09 operator binding) ──
+# ── FULL_FIXES_ONLY V1→V2 template constants (AGENTS § FULL_FIXES_ONLY_V2) ──
 # Closure language in a commit message requires the five-field FULL_FIX proof
 # template with acceptance values; patch/workaround framing is rejection-grade
 # unless the line carries FULL_FIX_EXCEPTION_APPROVED: <ref>.
 FULL_FIX_TEMPLATE_FIELDS: tuple[str, ...] = (
     "FULL_FIX_PROVEN",
     "ROOT_CAUSE_PROVEN",
+    "EFFECTIVE_FIX_PROVEN",
     "UNIVERSAL_SCOPE_PROVEN",
+    "REGRESSION_TEST_ADDED",
     "MECHANICAL_LOCK_ADDED",
     "PATCH_OR_WORKAROUND",
 )
 FULL_FIX_EXCEPTION_MARKER = "FULL_FIX_EXCEPTION_APPROVED:"
 _FULL_FIX_FIELD_RE = re.compile(
-    r"^\s*(FULL_FIX_PROVEN|ROOT_CAUSE_PROVEN|UNIVERSAL_SCOPE_PROVEN|"
-    r"MECHANICAL_LOCK_ADDED|PATCH_OR_WORKAROUND)\s*=\s*(YES|NO)\b(.*)$",
+    r"^\s*(FULL_FIX_PROVEN|ROOT_CAUSE_PROVEN|EFFECTIVE_FIX_PROVEN|UNIVERSAL_SCOPE_PROVEN|"
+    r"REGRESSION_TEST_ADDED|MECHANICAL_LOCK_ADDED|PATCH_OR_WORKAROUND)\s*=\s*(YES|NO)\b(.*)$",
     re.MULTILINE,
 )
 # Closure language: uppercase status token CLOSED, or "<lane|blocker|gate|find> closed",
@@ -432,8 +434,247 @@ _FULL_FIX_WORKAROUND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+# ── FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK (2026-07-09 operator corrective lane) ──
+# V1 proved field presence + wiring only → NOT_PROVEN_AS_EFFECTIVE. V2 requires a
+# machine-readable evidence block whose artifact paths resolve to real repo files,
+# forbids FULL_FIX_PROVEN=YES without EFFECTIVE_FIX_PROVEN=YES, forbids the
+# CLOSED_WITH_EVIDENCE label unless CI_GREEN=YES with a concrete SHA + four CI run
+# ids on the line, and scans REPO-WIDE (commit messages via the staged path AND
+# every tracked closure artifact via the repo-wide static audit → enforce-all + CI).
+FULL_FIX_EVIDENCE_HEADER = "FULL_FIX_EVIDENCE:"
+FULL_FIX_EVIDENCE_FIELDS: tuple[str, ...] = (
+    "ROOT_CAUSE_ARTIFACT",
+    "EVIDENCE_ARTIFACT",
+    "REGRESSION_TEST",
+    "AFFECTED_PATHS",
+    "RECURRENCE_GUARD",
+    "UNIVERSAL_SCOPE_STATEMENT",
+    "FINAL_SHA",
+    "CI_GREEN",
+)
+_FULL_FIX_EVIDENCE_FIELD_RE = re.compile(
+    r"^\s*(ROOT_CAUSE_ARTIFACT|EVIDENCE_ARTIFACT|REGRESSION_TEST|AFFECTED_PATHS|"
+    r"RECURRENCE_GUARD|UNIVERSAL_SCOPE_STATEMENT|FINAL_SHA|CI_GREEN)\s*=\s*(.+?)\s*$",
+    re.MULTILINE,
+)
+_FULL_FIX_CLAIM_TOKEN_RE = re.compile(r"\bFULL_FIX_PROVEN\s*=\s*YES\b|\bCLOSED_WITH_EVIDENCE\b")
+_FULL_FIX_TEMPLATE_CLAIM_RE = re.compile(r"\bFULL_FIX_PROVEN\s*=\s*YES\b")
+# Historical migration marker (operator-approved 2026-07-09): exempts ONLY the legacy
+# CLOSED_WITH_EVIDENCE vocabulary written before V2 existed. FULL_FIX_PROVEN = YES
+# (the V2 template) is NEVER exempt. Adding this marker to a new artifact to dodge
+# the gate is rejection-grade and diff-visible.
+FULL_FIX_GRANDFATHER_MARKER = "FULL_FIX_GRANDFATHERED_PRE_V2:"
+_FULL_FIX_CODE_SPAN_RE = re.compile(r"`[^`]*`")
+
+
+def _full_fix_strip_code_spans(text: str) -> str:
+    """Backtick-wrapped tokens are documentation references, not closure claims."""
+    return _FULL_FIX_CODE_SPAN_RE.sub("", text)
+# Repo-wide closure-artifact scan scope (root ledger + governance + evidence reports).
+_FULL_FIX_ARTIFACT_SCAN_PREFIXES = ("governance/", "reports/", "docs/governance/")
+_FULL_FIX_ARTIFACT_SCAN_EXACT = ("OPEN_ITEMS.md", "ACTIVE_PROGRAM.md")
+_FULL_FIX_ARTIFACT_SCAN_SUFFIXES = (".md", ".txt")
+_FULL_FIX_CLOSED_WITH_EVIDENCE_RE = re.compile(r"\bCLOSED_WITH_EVIDENCE\b")
+_FULL_FIX_CI_RUNS_RE = re.compile(r"\bCI_RUNS\s*=\s*\d{6,}\s*,\s*\d{6,}\s*,\s*\d{6,}\s*,\s*\d{6,}\b")
+_FULL_FIX_SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+_FULL_FIX_UI_ONLY_PREFIXES = ("static/", "templates/")
+
+
+def _full_fix_repo_path_exists(raw: str) -> bool:
+    """Repo-relative artifact reference: strip ::node / :line suffixes, require the file."""
+    val = raw.strip().strip("`").split("::", 1)[0]
+    # keep windows-drive-free repo-relative form only; strip a single :line suffix
+    if ":" in val:
+        head, _, tail = val.rpartition(":")
+        if tail.isdigit():
+            val = head
+    if not val or val.startswith(("/", "\\")) or (len(val) > 1 and val[1] == ":"):
+        return False
+    p = REPO_ROOT / val
+    return p.is_file() or p.is_dir()
+
+
+def _full_fix_sha_exists_in_repo(sha: str) -> bool:
+    """Concrete SHA in an artifact must resolve to a real commit (FINAL_SHA tie)."""
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _check_full_fix_evidence(
+    text: str, path: Path, *, artifact_mode: bool = False, skip_cwe_checks: bool = False
+) -> list[str]:
+    """V2 evidence enforcement: block presence, real artifact paths, SHA tie, CI_GREEN,
+    UI-only guard. artifact_mode=True (repo-wide scan) forbids FINAL_SHA=HEAD and
+    verifies the concrete SHA resolves to a real commit. skip_cwe_checks=True only for
+    grandfathered pre-V2 artifacts (legacy CLOSED_WITH_EVIDENCE vocabulary)."""
+    errors: list[str] = []
+    if FULL_FIX_EVIDENCE_HEADER not in text:
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — closure claim without machine-readable "
+            f"{FULL_FIX_EVIDENCE_HEADER} block ({', '.join(FULL_FIX_EVIDENCE_FIELDS)})"
+        )
+        return errors
+    ev: dict[str, str] = {}
+    for m in _FULL_FIX_EVIDENCE_FIELD_RE.finditer(text):
+        ev[m.group(1)] = m.group(2)
+    missing = [f for f in FULL_FIX_EVIDENCE_FIELDS if f not in ev or not ev[f].strip()]
+    if missing:
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — evidence block missing field(s) {missing}"
+        )
+        return errors
+    if not _full_fix_repo_path_exists(ev["ROOT_CAUSE_ARTIFACT"]):
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — ROOT_CAUSE_ARTIFACT "
+            f"{ev['ROOT_CAUSE_ARTIFACT']!r} does not resolve to a repo file/dir"
+        )
+    if not _full_fix_repo_path_exists(ev["EVIDENCE_ARTIFACT"]):
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — EVIDENCE_ARTIFACT "
+            f"{ev['EVIDENCE_ARTIFACT']!r} does not resolve to a repo file"
+        )
+    rt = ev["REGRESSION_TEST"]
+    if FULL_FIX_EXCEPTION_MARKER in rt:
+        pass  # documented + approved exception replaces the regression test
+    elif not (rt.split("::", 1)[0].strip().startswith("tests/") and _full_fix_repo_path_exists(rt)):
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — REGRESSION_TEST {rt!r} must cite an "
+            f"existing tests/ file (:: node id allowed) or carry {FULL_FIX_EXCEPTION_MARKER} <ref>"
+        )
+    affected = [a.strip() for a in ev["AFFECTED_PATHS"].split(",") if a.strip()]
+    if not affected:
+        errors.append(f"{path}: FULL_FIXES_ONLY_V2 non-closure — AFFECTED_PATHS is empty")
+    else:
+        bad = [a for a in affected if not _full_fix_repo_path_exists(a)]
+        if bad:
+            errors.append(
+                f"{path}: FULL_FIXES_ONLY_V2 non-closure — AFFECTED_PATHS entries do not resolve "
+                f"to repo files: {bad}"
+            )
+    if not _full_fix_repo_path_exists(ev["RECURRENCE_GUARD"]):
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — RECURRENCE_GUARD "
+            f"{ev['RECURRENCE_GUARD']!r} does not resolve to a repo file"
+        )
+    scope_stmt = ev["UNIVERSAL_SCOPE_STATEMENT"]
+    if "representative" in scope_stmt.lower() and FULL_FIX_EXCEPTION_MARKER not in scope_stmt:
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — representative-only scope statement "
+            f"requires {FULL_FIX_EXCEPTION_MARKER} <ref> on the same line"
+        )
+    sha_val = ev["FINAL_SHA"].strip()
+    if artifact_mode:
+        if not re.fullmatch(r"[0-9a-f]{7,40}", sha_val):
+            errors.append(
+                f"{path}: FULL_FIXES_ONLY_V2 non-closure — artifact FINAL_SHA must be a concrete "
+                f"7-40 char hex SHA (got {sha_val!r}; HEAD is commit-message-only)"
+            )
+        elif not _full_fix_sha_exists_in_repo(sha_val):
+            errors.append(
+                f"{path}: FULL_FIXES_ONLY_V2 non-closure — FINAL_SHA {sha_val!r} does not resolve "
+                f"to a real commit (closure not tied to the final SHA)"
+            )
+    elif sha_val != "HEAD" and not re.fullmatch(r"[0-9a-f]{7,40}", sha_val):
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — FINAL_SHA must be HEAD (this commit) "
+            f"or a concrete 7-40 char hex SHA (got {sha_val!r})"
+        )
+    ci_green = ev["CI_GREEN"].strip().upper()
+    if ci_green not in ("YES", "NO", "PENDING"):
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — CI_GREEN must be YES/NO/PENDING "
+            f"(got {ev['CI_GREEN']!r})"
+        )
+    stripped_text = _full_fix_strip_code_spans(text)
+    has_cwe = (not skip_cwe_checks) and bool(
+        _FULL_FIX_CLOSED_WITH_EVIDENCE_RE.search(stripped_text)
+    )
+    if has_cwe and ci_green != "YES":
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — CLOSED_WITH_EVIDENCE with "
+            f"CI_GREEN = {ci_green or 'missing'} (required CI must be green before closure)"
+        )
+    # CLOSED_WITH_EVIDENCE is retroactive-only: needs a concrete SHA + four CI run ids.
+    for line_no, line in enumerate(stripped_text.splitlines(), start=1):
+        if skip_cwe_checks:
+            break
+        if not _FULL_FIX_CLOSED_WITH_EVIDENCE_RE.search(line):
+            continue
+        if not _FULL_FIX_CI_RUNS_RE.search(line) or not _FULL_FIX_SHA_RE.search(line):
+            errors.append(
+                f"{path}:{line_no}: FULL_FIXES_ONLY_V2 non-closure — CLOSED_WITH_EVIDENCE requires "
+                f"a concrete SHA and CI_RUNS = <4 run ids> on the same line (CI pending/red/missing "
+                f"cannot be closed; the commit being made has no CI yet)"
+            )
+    # UI-only fix guard: staged files all UI/display while root cause is upstream.
+    if path.name == "COMMIT_EDITMSG" and FULL_FIX_EXCEPTION_MARKER not in text:
+        try:
+            staged = sorted(_git_staged_paths())
+        except Exception:
+            staged = []
+        if staged and all(s.startswith(_FULL_FIX_UI_ONLY_PREFIXES) for s in staged):
+            rc_path = ev["ROOT_CAUSE_ARTIFACT"].split("::", 1)[0].split(":", 1)[0]
+            if not rc_path.startswith(_FULL_FIX_UI_ONLY_PREFIXES):
+                errors.append(
+                    f"{path}: FULL_FIXES_ONLY_V2 non-closure — staged files are UI/display-only "
+                    f"({staged[:4]}…) while ROOT_CAUSE_ARTIFACT is upstream ({rc_path!r}); prove "
+                    f"the UI is the root cause or carry {FULL_FIX_EXCEPTION_MARKER} <ref>"
+                )
+    return errors
+
+
+def check_full_fix_closure_artifacts() -> list[str]:
+    """FULL_FIXES_ONLY_V2 repo-wide scan (runs in the static audit → enforce-all + CI):
+    every tracked artifact claiming FULL_FIX_PROVEN = YES or CLOSED_WITH_EVIDENCE must
+    carry a complete, path-resolving evidence block tied to a real FINAL_SHA."""
+    errors: list[str] = []
+    try:
+        r = subprocess.run(
+            ["git", "ls-files", *_FULL_FIX_ARTIFACT_SCAN_EXACT, *_FULL_FIX_ARTIFACT_SCAN_PREFIXES],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        tracked = [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
+    except Exception as exc:
+        return [f"FULL_FIXES_ONLY_V2 repo-wide scan: git ls-files failed ({exc})"]
+    for rel in tracked:
+        if not rel.endswith(_FULL_FIX_ARTIFACT_SCAN_SUFFIXES):
+            continue
+        p = REPO_ROOT / rel
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        stripped = _full_fix_strip_code_spans(text)
+        grandfathered = FULL_FIX_GRANDFATHER_MARKER in text
+        if grandfathered:
+            # Legacy CWE vocabulary exempted; the V2 template claim is never exempt.
+            if not _FULL_FIX_TEMPLATE_CLAIM_RE.search(stripped):
+                continue
+        elif not _FULL_FIX_CLAIM_TOKEN_RE.search(stripped):
+            continue
+        errors.extend(
+            _check_full_fix_evidence(
+                text, Path(rel), artifact_mode=True, skip_cwe_checks=grandfathered
+            )
+        )
+    return errors
+
+
 def check_full_fixes_only(path: Path) -> list[str]:
-    """FULL_FIXES_ONLY_V1 commit-message gate (AGENTS § FULL_FIXES_ONLY_V1)."""
+    """FULL_FIXES_ONLY commit-message gate — V1 template + V2 evidence enforcement
+    (AGENTS § FULL_FIXES_ONLY_V2)."""
     if not path.is_file():
         return []
     try:
@@ -449,8 +690,8 @@ def check_full_fixes_only(path: Path) -> list[str]:
         for label, pat in _FULL_FIX_WORKAROUND_PATTERNS:
             if pat.search(line):
                 errors.append(
-                    f"{path}:{line_no}: FULL_FIXES_ONLY_V1 banned framing ({label}): "
-                    f"{line.strip()[:200]!r} (AGENTS § FULL_FIXES_ONLY_V1 — land the root-cause fix "
+                    f"{path}:{line_no}: FULL_FIXES_ONLY_V2 banned framing ({label}): "
+                    f"{line.strip()[:200]!r} (AGENTS § FULL_FIXES_ONLY_V2 — land the root-cause fix "
                     f"or carry {FULL_FIX_EXCEPTION_MARKER} <ref> on this line)"
                 )
     fields: dict[str, tuple[str, str]] = {}
@@ -459,38 +700,55 @@ def check_full_fixes_only(path: Path) -> list[str]:
     closure_claimed = bool(_FULL_FIX_CLOSURE_LANGUAGE_RE.search(text)) or bool(fields)
     if not closure_claimed:
         return errors
+    errors.extend(_check_full_fix_evidence(text, path))
     missing = [f for f in FULL_FIX_TEMPLATE_FIELDS if f not in fields]
     if missing:
         errors.append(
-            f"{path}: FULL_FIXES_ONLY_V1 closure language without complete FULL_FIX proof "
-            f"template — missing {missing} (AGENTS § FULL_FIXES_ONLY_V1; all five fields required)"
+            f"{path}: FULL_FIXES_ONLY_V2 closure language without complete FULL_FIX proof "
+            f"template — missing {missing} (AGENTS § FULL_FIXES_ONLY_V2; all five fields required)"
         )
         return errors
     val = {k: v[0] for k, v in fields.items()}
     tail = {k: v[1] for k, v in fields.items()}
     if val["PATCH_OR_WORKAROUND"] != "NO":
         errors.append(
-            f"{path}: FULL_FIXES_ONLY_V1 non-closure — PATCH_OR_WORKAROUND must be NO "
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — PATCH_OR_WORKAROUND must be NO "
             f"(got {val['PATCH_OR_WORKAROUND']})"
         )
     if val["ROOT_CAUSE_PROVEN"] != "YES":
         errors.append(
-            f"{path}: FULL_FIXES_ONLY_V1 non-closure — ROOT_CAUSE_PROVEN must be YES "
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — ROOT_CAUSE_PROVEN must be YES "
             f"(got {val['ROOT_CAUSE_PROVEN']})"
+        )
+    if val["EFFECTIVE_FIX_PROVEN"] != "YES":
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — EFFECTIVE_FIX_PROVEN must be YES "
+            f"(got {val['EFFECTIVE_FIX_PROVEN']}); a full fix must equal an effective fix "
+            f"proven against the actual failure mode"
+        )
+    if val["FULL_FIX_PROVEN"] == "YES" and val["EFFECTIVE_FIX_PROVEN"] != "YES":
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — FULL_FIX_PROVEN = YES is forbidden "
+            f"unless EFFECTIVE_FIX_PROVEN = YES"
+        )
+    if val["REGRESSION_TEST_ADDED"] != "YES" and FULL_FIX_EXCEPTION_MARKER not in tail["REGRESSION_TEST_ADDED"]:
+        errors.append(
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — REGRESSION_TEST_ADDED must be YES or the "
+            f"line must carry {FULL_FIX_EXCEPTION_MARKER} <operator ref>"
         )
     if val["UNIVERSAL_SCOPE_PROVEN"] != "YES" and FULL_FIX_EXCEPTION_MARKER not in tail["UNIVERSAL_SCOPE_PROVEN"]:
         errors.append(
-            f"{path}: FULL_FIXES_ONLY_V1 non-closure — UNIVERSAL_SCOPE_PROVEN must be YES or the "
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — UNIVERSAL_SCOPE_PROVEN must be YES or the "
             f"line must carry {FULL_FIX_EXCEPTION_MARKER} <operator ref>"
         )
     if val["MECHANICAL_LOCK_ADDED"] != "YES" and "infeasible" not in tail["MECHANICAL_LOCK_ADDED"].lower():
         errors.append(
-            f"{path}: FULL_FIXES_ONLY_V1 non-closure — MECHANICAL_LOCK_ADDED must be YES or state "
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — MECHANICAL_LOCK_ADDED must be YES or state "
             f"infeasible with the reason on the same line"
         )
     if val["FULL_FIX_PROVEN"] != "YES":
         errors.append(
-            f"{path}: FULL_FIXES_ONLY_V1 non-closure — FULL_FIX_PROVEN must be YES (got {val['FULL_FIX_PROVEN']})"
+            f"{path}: FULL_FIXES_ONLY_V2 non-closure — FULL_FIX_PROVEN must be YES (got {val['FULL_FIX_PROVEN']})"
         )
     return errors
 
@@ -3245,6 +3503,7 @@ def check_live_ablation_experiment_wiring() -> list[str]:
 # ── Repo-wide static audit — single source of truth (no whack-a-mole drift) ──
 _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_mvp_dataframe_ingress",
+    "check_full_fix_closure_artifacts",
     "check_institutional_contract",
     "check_fusion_only_card_contract",
     "check_four_horizon_promotion_contract",
@@ -3315,9 +3574,10 @@ _STAGED_COMMIT_CHECK_FUNCS: tuple[str, ...] = (
 # Every AGENTS.md `[PROMOTED]` section → mechanical lock(s). Prose-only promotion is rejection-grade.
 _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
-        "FULL_FIXES_ONLY_V1",
+        "FULL_FIXES_ONLY_V2",
         (
             "check_full_fixes_only",
+            "check_full_fix_closure_artifacts",
             "external:tests/test_check_fix_everything_we_touch.py",
         ),
     ),

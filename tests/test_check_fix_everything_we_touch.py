@@ -1935,15 +1935,30 @@ def test_objective_audit_ci_full_static_documented_in_prepush_policy():
     assert "--objective-audit" in wf.read_text(encoding="utf-8")
 
 
-# ── FULL_FIXES_ONLY_V1 (AGENTS § FULL_FIXES_ONLY_V1, 2026-07-09 operator binding) ──
+# ── FULL_FIXES_ONLY V1+V2 (AGENTS § FULL_FIXES_ONLY_V2, 2026-07-09 operator binding) ──
 
 
 _FULL_FIX_TEMPLATE_OK = (
     "FULL_FIX_PROVEN = YES\n"
     "ROOT_CAUSE_PROVEN = YES\n"
+    "EFFECTIVE_FIX_PROVEN = YES\n"
     "UNIVERSAL_SCOPE_PROVEN = YES\n"
+    "REGRESSION_TEST_ADDED = YES\n"
     "MECHANICAL_LOCK_ADDED = YES\n"
     "PATCH_OR_WORKAROUND = NO\n"
+)
+
+# V2 evidence block with real repo paths (resolved against REPO_ROOT by the checker).
+_FULL_FIX_EVIDENCE_OK = (
+    "FULL_FIX_EVIDENCE:\n"
+    "ROOT_CAUSE_ARTIFACT = tools/check_fix_everything_we_touch.py:1\n"
+    "REGRESSION_TEST = tests/test_check_fix_everything_we_touch.py::test_full_fixes_closure_language_without_template_fails\n"
+    "AFFECTED_PATHS = tools/check_fix_everything_we_touch.py, tests/test_check_fix_everything_we_touch.py\n"
+    "RECURRENCE_GUARD = tests/test_check_fix_everything_we_touch.py\n"
+    "UNIVERSAL_SCOPE_STATEMENT = gate applies to every commit message repo-wide; no ticker/session input exists\n"
+    "EVIDENCE_ARTIFACT = tools/check_fix_everything_we_touch.py\n"
+    "FINAL_SHA = HEAD\n"
+    "CI_GREEN = PENDING\n"
 )
 
 
@@ -1956,11 +1971,21 @@ def _full_fix_msg(tmp_path: Path, body: str) -> Path:
 def test_full_fixes_closure_language_without_template_fails(tmp_path: Path) -> None:
     msg = _full_fix_msg(tmp_path, "EXEC-99: CLOSED — root cause repaired.\n")
     hits = mod.check_full_fixes_only(msg)
-    assert hits and "FULL_FIX proof" in hits[0]
+    assert any("FULL_FIX proof" in h for h in hits)
+    assert any("FULL_FIX_EVIDENCE" in h for h in hits)
 
 
-def test_full_fixes_closure_with_complete_template_passes(tmp_path: Path) -> None:
+def test_full_fixes_fake_yes_template_without_evidence_fails(tmp_path: Path) -> None:
+    """V2 adversarial: five YES fields alone (fake YES) must NOT close."""
     msg = _full_fix_msg(tmp_path, "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK)
+    hits = mod.check_full_fixes_only(msg)
+    assert any("FULL_FIX_EVIDENCE" in h for h in hits)
+
+
+def test_full_fixes_closure_with_template_and_evidence_passes(tmp_path: Path) -> None:
+    msg = _full_fix_msg(
+        tmp_path, "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n" + _FULL_FIX_EVIDENCE_OK
+    )
     assert mod.check_full_fixes_only(msg) == []
 
 
@@ -1986,9 +2011,14 @@ def test_full_fixes_universal_scope_no_requires_exception_marker(tmp_path: Path)
     )
     hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, bare))
     assert any("UNIVERSAL_SCOPE_PROVEN" in h for h in hits)
-    excepted = "Lane closed.\n\n" + _FULL_FIX_TEMPLATE_OK.replace(
-        "UNIVERSAL_SCOPE_PROVEN = YES",
-        "UNIVERSAL_SCOPE_PROVEN = NO FULL_FIX_EXCEPTION_APPROVED: operator 2026-07-09",
+    excepted = (
+        "Lane closed.\n\n"
+        + _FULL_FIX_TEMPLATE_OK.replace(
+            "UNIVERSAL_SCOPE_PROVEN = YES",
+            "UNIVERSAL_SCOPE_PROVEN = NO FULL_FIX_EXCEPTION_APPROVED: operator 2026-07-09",
+        )
+        + "\n"
+        + _FULL_FIX_EVIDENCE_OK
     )
     assert mod.check_full_fixes_only(_full_fix_msg(tmp_path, excepted)) == []
 
@@ -1999,9 +2029,14 @@ def test_full_fixes_mechanical_lock_no_requires_infeasible_reason(tmp_path: Path
     )
     hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, bare))
     assert any("MECHANICAL_LOCK_ADDED" in h for h in hits)
-    reasoned = "Lane closed.\n\n" + _FULL_FIX_TEMPLATE_OK.replace(
-        "MECHANICAL_LOCK_ADDED = YES",
-        "MECHANICAL_LOCK_ADDED = NO (infeasible: pure runtime observation, no code surface)",
+    reasoned = (
+        "Lane closed.\n\n"
+        + _FULL_FIX_TEMPLATE_OK.replace(
+            "MECHANICAL_LOCK_ADDED = YES",
+            "MECHANICAL_LOCK_ADDED = NO (infeasible: pure runtime observation, no code surface)",
+        )
+        + "\n"
+        + _FULL_FIX_EVIDENCE_OK
     )
     assert mod.check_full_fixes_only(_full_fix_msg(tmp_path, reasoned)) == []
 
@@ -2033,13 +2068,213 @@ def test_full_fixes_wired_into_commit_message_check(tmp_path: Path) -> None:
 
 def test_full_fixes_agents_section_and_checklist_row_present() -> None:
     agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    assert "## FULL_FIXES_ONLY_V1" in agents
+    assert "## FULL_FIXES_ONLY_V2" in agents
     for field in mod.FULL_FIX_TEMPLATE_FIELDS:
         assert field in agents
+    for field in mod.FULL_FIX_EVIDENCE_FIELDS:
+        assert field in agents
+    assert "NOT_PROVEN_AS_EFFECTIVE" in agents
     checklist = (REPO_ROOT / "governance" / "docs" / "INSTITUTIONAL_MASTER_CHECKLIST.md").read_text(
         encoding="utf-8"
     )
-    assert "FULL_FIXES_ONLY_V1" in checklist
+    assert "FULL_FIXES_ONLY" in checklist and "NOT_PROVEN_AS_EFFECTIVE" in checklist
     open_items = (REPO_ROOT / "OPEN_ITEMS.md").read_text(encoding="utf-8")
-    assert "FULL_FIXES_ONLY_V1" in open_items
+    assert "FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK" in open_items
     assert "IDLE_SENTINEL_FRESHNESS_V1" in open_items
+
+
+# ── FULL_FIXES_ONLY_V2 adversarial evidence battery ──────────────────────────
+
+
+def test_full_fixes_v2_missing_root_cause_artifact_fails(tmp_path: Path) -> None:
+    body = (
+        "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace(
+            "ROOT_CAUSE_ARTIFACT = tools/check_fix_everything_we_touch.py:1",
+            "ROOT_CAUSE_ARTIFACT = tools/does_not_exist_ever.py:42",
+        )
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("ROOT_CAUSE_ARTIFACT" in h for h in hits)
+
+
+def test_full_fixes_v2_missing_regression_test_fails_and_exception_passes(tmp_path: Path) -> None:
+    bad = (
+        "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace(
+            "REGRESSION_TEST = tests/test_check_fix_everything_we_touch.py::test_full_fixes_closure_language_without_template_fails",
+            "REGRESSION_TEST = tests/test_no_such_file_at_all.py::test_x",
+        )
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, bad))
+    assert any("REGRESSION_TEST" in h for h in hits)
+    excepted = (
+        "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace(
+            "REGRESSION_TEST = tests/test_check_fix_everything_we_touch.py::test_full_fixes_closure_language_without_template_fails",
+            "REGRESSION_TEST = FULL_FIX_EXCEPTION_APPROVED: operator 2026-07-09 (runtime-only observation)",
+        )
+    )
+    assert mod.check_full_fixes_only(_full_fix_msg(tmp_path, excepted)) == []
+
+
+def test_full_fixes_v2_representative_only_scope_fails_without_exception(tmp_path: Path) -> None:
+    bad = (
+        "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace(
+            "UNIVERSAL_SCOPE_STATEMENT = gate applies to every commit message repo-wide; no ticker/session input exists",
+            "UNIVERSAL_SCOPE_STATEMENT = representative proof on one sentinel only",
+        )
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, bad))
+    assert any("representative" in h.lower() for h in hits)
+    excepted = (
+        "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace(
+            "UNIVERSAL_SCOPE_STATEMENT = gate applies to every commit message repo-wide; no ticker/session input exists",
+            "UNIVERSAL_SCOPE_STATEMENT = representative slice FULL_FIX_EXCEPTION_APPROVED: operator 2026-07-09",
+        )
+    )
+    assert mod.check_full_fixes_only(_full_fix_msg(tmp_path, excepted)) == []
+
+
+def test_full_fixes_v2_closed_with_evidence_requires_sha_and_ci_runs(tmp_path: Path) -> None:
+    premature = (
+        "EXEC-99: CLOSED_WITH_EVIDENCE.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n" + _FULL_FIX_EVIDENCE_OK
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, premature))
+    assert any("CLOSED_WITH_EVIDENCE" in h for h in hits)
+    retroactive = (
+        "EXEC-99: CLOSED_WITH_EVIDENCE @ 1873ce435abae064d80215d871bb30cd74a33f67 "
+        "CI_RUNS = 29032794575, 29032794265, 29032794299, 29032794473\n\n"
+        + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace("CI_GREEN = PENDING", "CI_GREEN = YES")
+    )
+    assert mod.check_full_fixes_only(_full_fix_msg(tmp_path, retroactive)) == []
+
+
+def test_full_fixes_v2_bad_evidence_sha_fails(tmp_path: Path) -> None:
+    body = (
+        "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace("FINAL_SHA = HEAD", "FINAL_SHA = tomorrow-probably")
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("FINAL_SHA" in h for h in hits)
+
+
+def test_full_fixes_v2_missing_evidence_field_fails(tmp_path: Path) -> None:
+    body = (
+        "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace(
+            "RECURRENCE_GUARD = tests/test_check_fix_everything_we_touch.py\n", ""
+        )
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("missing field" in h for h in hits)
+
+
+# ── FULL_FIXES_ONLY_V2 repo-wide effective-fix lock — extended adversarial battery ──
+
+
+def test_full_fixes_v2_effective_fix_missing_fails(tmp_path: Path) -> None:
+    body = (
+        "EXEC-99: CLOSED.\n\n"
+        + _FULL_FIX_TEMPLATE_OK.replace("EFFECTIVE_FIX_PROVEN = YES\n", "")
+        + "\n" + _FULL_FIX_EVIDENCE_OK
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("missing" in h and "EFFECTIVE_FIX_PROVEN" in h for h in hits)
+
+
+def test_full_fixes_v2_effective_fix_no_fails(tmp_path: Path) -> None:
+    body = (
+        "EXEC-99: CLOSED.\n\n"
+        + _FULL_FIX_TEMPLATE_OK.replace("EFFECTIVE_FIX_PROVEN = YES", "EFFECTIVE_FIX_PROVEN = NO")
+        + "\n" + _FULL_FIX_EVIDENCE_OK
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("EFFECTIVE_FIX_PROVEN must be YES" in h for h in hits)
+    assert any("forbidden" in h and "FULL_FIX_PROVEN" in h for h in hits)
+
+
+def test_full_fixes_v2_closed_with_evidence_ci_pending_fails(tmp_path: Path) -> None:
+    body = (
+        "EXEC-99: CLOSED_WITH_EVIDENCE @ 1873ce435abae064d80215d871bb30cd74a33f67 "
+        "CI_RUNS = 29032794575, 29032794265, 29032794299, 29032794473\n\n"
+        + _FULL_FIX_TEMPLATE_OK + "\n" + _FULL_FIX_EVIDENCE_OK  # CI_GREEN = PENDING
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("CI_GREEN = PENDING" in h for h in hits)
+
+
+def test_full_fixes_v2_regression_test_added_no_requires_exception(tmp_path: Path) -> None:
+    bare = (
+        "EXEC-99: CLOSED.\n\n"
+        + _FULL_FIX_TEMPLATE_OK.replace("REGRESSION_TEST_ADDED = YES", "REGRESSION_TEST_ADDED = NO")
+        + "\n" + _FULL_FIX_EVIDENCE_OK
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, bare))
+    assert any("REGRESSION_TEST_ADDED" in h for h in hits)
+
+
+def test_full_fixes_v2_missing_evidence_artifact_fails(tmp_path: Path) -> None:
+    body = (
+        "EXEC-99: CLOSED.\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace(
+            "EVIDENCE_ARTIFACT = tools/check_fix_everything_we_touch.py",
+            "EVIDENCE_ARTIFACT = reports/never/was_here.md",
+        )
+    )
+    hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
+    assert any("EVIDENCE_ARTIFACT" in h for h in hits)
+
+
+def test_full_fixes_v2_artifact_mode_head_sha_rejected(tmp_path: Path) -> None:
+    text = (
+        "Lane row: FULL_FIX_PROVEN = YES\n\n" + _FULL_FIX_TEMPLATE_OK + "\n" + _FULL_FIX_EVIDENCE_OK
+    )
+    hits = mod._check_full_fix_evidence(text, Path("reports/example.md"), artifact_mode=True)
+    assert any("FINAL_SHA" in h and "HEAD is commit-message-only" in h for h in hits)
+
+
+def test_full_fixes_v2_artifact_mode_fake_sha_not_a_commit_fails(tmp_path: Path) -> None:
+    text = (
+        "Lane row: FULL_FIX_PROVEN = YES\n\n" + _FULL_FIX_TEMPLATE_OK + "\n"
+        + _FULL_FIX_EVIDENCE_OK.replace(
+            "FINAL_SHA = HEAD", "FINAL_SHA = deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+        )
+    )
+    hits = mod._check_full_fix_evidence(text, Path("reports/example.md"), artifact_mode=True)
+    assert any("does not resolve to a real commit" in h for h in hits)
+
+
+def test_full_fixes_v2_backticked_tokens_are_documentation_not_claims() -> None:
+    doc = "The rule forbids `FULL_FIX_PROVEN = YES` and `CLOSED_WITH_EVIDENCE` without evidence.\n"
+    assert not mod._FULL_FIX_CLAIM_TOKEN_RE.search(mod._full_fix_strip_code_spans(doc))
+
+
+def test_full_fixes_v2_repo_wide_scan_runs_and_current_repo_is_clean() -> None:
+    errs = mod.check_full_fix_closure_artifacts()
+    assert errs == [], f"repo-wide FULL_FIX closure artifacts non-compliant: {errs[:5]}"
+
+
+def test_full_fixes_v2_wiring_meta_locks(monkeypatch) -> None:
+    """Adversarial wiring battery: staged-func membership, lock-id resolution, and
+    repo-wide (non-manual) registration are each load-bearing — removing any one
+    is detected by the promoted-rule audit or the lock resolver."""
+    assert "check_full_fixes_only" in mod._STAGED_COMMIT_CHECK_FUNCS
+    assert "check_full_fix_closure_artifacts" in mod._REPO_WIDE_STATIC_CHECK_FUNCS
+    assert mod._lock_id_wired("check_full_fixes_only")
+    assert mod._lock_id_wired("check_full_fix_closure_artifacts")
+    row = [r for r in mod._PROMOTED_AGENTS_RULE_LOCKS if r[0] == "FULL_FIXES_ONLY_V2"]
+    assert row and "check_full_fixes_only" in row[0][1]
+    assert "check_full_fix_closure_artifacts" in row[0][1]
+    monkeypatch.setattr(mod, "_STAGED_COMMIT_CHECK_FUNCS", tuple(
+        f for f in mod._STAGED_COMMIT_CHECK_FUNCS if f != "check_full_fixes_only"
+    ))
+    monkeypatch.setattr(mod, "_REPO_WIDE_STATIC_CHECK_FUNCS", tuple(
+        f for f in mod._REPO_WIDE_STATIC_CHECK_FUNCS if f != "check_full_fixes_only"
+    ))
+    assert not mod._lock_id_wired("check_full_fixes_only")
+    errs = mod.check_promoted_agents_rules_mechanically_locked()
+    assert any("check_full_fixes_only" in e and "missing or unwired" in e for e in errs)

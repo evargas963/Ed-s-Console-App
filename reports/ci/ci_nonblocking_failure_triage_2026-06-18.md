@@ -1,4 +1,5 @@
 > **Classification:** CI Triage | **Scope:** Non-blocking failures — triage and fixes (audit/ci-nonblocking-failures-triage)
+<!-- FULL_FIX_GRANDFATHERED_PRE_V2: operator-approved migration 2026-07-09 — legacy CLOSED_WITH_EVIDENCE vocabulary in this artifact predates the V2 evidence gate; new closures must use the FULL_FIX template + FULL_FIX_EVIDENCE block (AGENTS § FULL_FIXES_ONLY_V2). -->
 
 # CI non-blocking failure triage (2026-06-18)
 

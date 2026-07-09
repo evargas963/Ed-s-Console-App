@@ -1,4 +1,5 @@
 > **Classification:** Inventory / Read-only audit artifact | **Scope:** D17 Schwab V4 register slice state @ pinned register SHA
+<!-- FULL_FIX_GRANDFATHERED_PRE_V2: operator-approved migration 2026-07-09 — legacy CLOSED_WITH_EVIDENCE vocabulary in this artifact predates the V2 evidence gate; new closures must use the FULL_FIX template + FULL_FIX_EVIDENCE block (AGENTS § FULL_FIXES_ONLY_V2). -->
 >
 > **Status:** Inventory only — **does not** close D17, Schwab V4 Register Closure, card fidelity, or real-money readiness.
 >

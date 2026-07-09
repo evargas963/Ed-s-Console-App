@@ -1,4 +1,5 @@
 > **Classification:** Operational Ledger | **Scope:** Institutional master checklist — MIT / Bloomberg / world-class trading-app bar; program backlog and status tracker (not mechanical enforcement).
+<!-- FULL_FIX_GRANDFATHERED_PRE_V2: operator-approved migration 2026-07-09 — legacy CLOSED_WITH_EVIDENCE vocabulary in this artifact predates the V2 evidence gate; new closures must use the FULL_FIX template + FULL_FIX_EVIDENCE block (AGENTS § FULL_FIXES_ONLY_V2). -->
 
 # Institutional Master Checklist
 
@@ -155,7 +156,7 @@ Execute in phase order unless operator explicitly preempts. Non-RTH live parity 
 | GitHub branch protection API proof | **NOT_PROVEN** | 0 | P1 | Authenticated `gh` | External enforcement gap | NO |
 | Live Schwab traffic proof | **NOT_PROVEN** | 0 | P2 | Operator host + auth | Cannot claim live wire proof from simulation | NO |
 | Mechanical rules / no prose-only promotions | **ENFORCED** | 0 | P1 | — | Rules must have checkers | YES (`INST-PROGRAM-MECH-RULES`) |
-| FULL_FIXES_ONLY_V1 (root-cause/universal/mechanically-locked fixes only; five-field closure template; commit-msg gate `check_full_fixes_only`) | **NOT_PROVEN** until repo artifact + mechanical check + tests are committed and remote CI is green at that SHA | 0 | P0 | — | Bans patches, symptom masks, ticker special-cases, threshold hand-waves, fallback masking, representative-only fixes | YES (`FULL_FIXES_ONLY_V1`) |
+| FULL_FIXES_ONLY V1→V2 (V1 template lock @ `1873ce4` 4/4 CI = **NOT_PROVEN_AS_EFFECTIVE**; V2 = evidence-backed closure gate: `FULL_FIX_EVIDENCE` block with real-path resolution + retroactive-only `CLOSED_WITH_EVIDENCE` + adversarial fake-YES tests) | **NOT_PROVEN** until V2 local + remote CI green at the V2 SHA | 0 | P0 | — | Bans patches, symptom masks, ticker special-cases, threshold hand-waves, fallback masking, representative-only fixes — with evidence, not form | YES (`FULL_FIXES_ONLY_V2_EVIDENCE_ENFORCEMENT`) |
 
 ### PHASE 1 — Current card-fidelity closure
 

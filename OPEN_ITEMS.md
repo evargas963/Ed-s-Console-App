@@ -1,4 +1,5 @@
 > **Classification:** Operational Ledger | **Scope:** Canonical open-work registry; closes require SHA.
+<!-- FULL_FIX_GRANDFATHERED_PRE_V2: operator-approved migration 2026-07-09 — legacy CLOSED_WITH_EVIDENCE vocabulary in this artifact predates the V2 evidence gate; new closures must use the FULL_FIX template + FULL_FIX_EVIDENCE block (AGENTS § FULL_FIXES_ONLY_V2). -->
 
 # Open items — horizon, stack, UI consistency
 
@@ -80,10 +81,26 @@ Current high-priority future lanes preserved in the master checklist:
 
 ### Open lanes (active execution board — approval held per lane)
 
-- [ ] **FULL_FIXES_ONLY_V1** — governance hard lock (operator 2026-07-09): root-cause/universal/mechanically-locked fixes only; five-field closure template (`FULL_FIX_PROVEN` / `ROOT_CAUSE_PROVEN` / `UNIVERSAL_SCOPE_PROVEN` / `MECHANICAL_LOCK_ADDED` / `PATCH_OR_WORKAROUND`); commit-msg gate `check_full_fixes_only` in `tools/check_fix_everything_we_touch.py` + AGENTS.md §FULL_FIXES_ONLY_V1 + checklist PHASE 0 row. **NOT_PROVEN** until this SHA's four remote CI gates are green.
-- [ ] **IDLE_SENTINEL_FRESHNESS_V1** — truth audit COMPLETE 2026-07-09 (read-only): primary class **NOT_COMPUTED** — no standing producer for non-viewed sentinel keys (`_sse_background_loop` walks only `_sse_subscribers`; REST is pull-based one-shot; `tick_coherent` retired); observed QQQ/IWM ages 889s/897s midday, 4,035s/4,082s at bell, version=1 between consumer reads. Secondary **SCHEDULER_DELAY** — viewed key effective cadence ~15.3s vs 5s target under RTH load (SPY stale 10/20 bell cycles vs 10s budget). UI withholding proven CORRECT (`operator_card_actionable=false`, trust_state=STALE while source genuinely old). Proposed fix location: rate-bounded idle-key refresh arm in `_sse_background_loop` (server.py:9496-9514), age-driven, universal by construction. **IMPLEMENTATION BLOCKED until FULL_FIXES_ONLY_V1 is PROVEN (operator gate 2026-07-09).**
+- [ ] **FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK** — corrective lane (operator 2026-07-09): V1 (`1873ce4`, 4/4 CI green — runs 29032794575/29032794265/29032794299/29032794473) = **NOT_PROVEN_AS_EFFECTIVE** (template/wiring lock only; admits false YES). V2 adds the machine-readable `FULL_FIX_EVIDENCE` block (root-cause artifact path, failing-before/passing-after regression test, affected paths, recurrence guard, universal-scope statement, EVIDENCE_SHA) with real-path resolution, retroactive-only `CLOSED_WITH_EVIDENCE` (concrete SHA + 4 CI run ids on the line), UI-only-fix guard, and adversarial fake-YES tests. **NOT_PROVEN** until local + CI green at the V2 SHA.
+- [ ] **IDLE_SENTINEL_FRESHNESS_V1** — truth audit COMPLETE 2026-07-09 (read-only): primary class **NOT_COMPUTED** — no standing producer for non-viewed sentinel keys (`_sse_background_loop` walks only `_sse_subscribers`; REST is pull-based one-shot; `tick_coherent` retired); observed QQQ/IWM ages 889s/897s midday, 4,035s/4,082s at bell, version=1 between consumer reads. Secondary **SCHEDULER_DELAY** — viewed key effective cadence ~15.3s vs 5s target under RTH load (SPY stale 10/20 bell cycles vs 10s budget). UI withholding proven CORRECT (`operator_card_actionable=false`, trust_state=STALE while source genuinely old). Proposed fix location: rate-bounded idle-key refresh arm in `_sse_background_loop` (server.py:9496-9514), age-driven, universal by construction. **IDLE_SENTINEL_FRESHNESS_V1 = BLOCKED until FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK is CI-green with evidence (operator gate 2026-07-09).**
 - [x] **EXEC-01 STEP_1+2_SENTINEL_REPROOF** — DONE 2026-07-09 bell capture: UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / **RTH_SENTINEL_RUNTIME_NOT_PROVEN** — streaming sentinel (SPY) queue wait 52–91ms typical vs 8.3–12.6s baseline (leaf pool works for served lane); idle sentinels remain ~9–11s on viewer-triggered recomputes → residual re-homed to IDLE_SENTINEL_FRESHNESS_V1.
-- [x] **EXEC-03 DB_POST_PUBLISH_PERSISTENCE_TRACEBACK** — CLOSED 2026-07-09: cause captured by POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 first live cycle (`UnboundLocalError: mkt_ctx` — Fix B tail-extraction scoping defect killing every snapshot persist); `nonlocal` repair `1f71104` + relocation-class AST lock; counters 0/0 across 5.5h RTH (415 SPY publishes) + 445 snapshot rows landed universe-wide. FULL_FIX_PROVEN = YES · ROOT_CAUSE_PROVEN = YES · UNIVERSAL_SCOPE_PROVEN = YES · MECHANICAL_LOCK_ADDED = YES · PATCH_OR_WORKAROUND = NO.
+- [x] **EXEC-03 DB_POST_PUBLISH_PERSISTENCE_TRACEBACK** — CLOSED 2026-07-09: cause captured by POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 first live cycle (`UnboundLocalError: mkt_ctx` — Fix B tail-extraction scoping defect killing every snapshot persist); `nonlocal` repair `1f71104` + relocation-class AST lock; counters 0/0 across 5.5h RTH (415 SPY publishes) + 445 snapshot rows landed universe-wide. closure packet:
+  FULL_FIX_PROVEN = YES
+  ROOT_CAUSE_PROVEN = YES
+  EFFECTIVE_FIX_PROVEN = YES
+  UNIVERSAL_SCOPE_PROVEN = YES
+  REGRESSION_TEST_ADDED = YES
+  MECHANICAL_LOCK_ADDED = YES
+  PATCH_OR_WORKAROUND = NO
+  FULL_FIX_EVIDENCE:
+  ROOT_CAUSE_ARTIFACT = server.py
+  EVIDENCE_ARTIFACT = tests/test_analytics_state_freshness_api.py
+  REGRESSION_TEST = tests/test_analytics_state_freshness_api.py::test_tail_no_unbound_shadow_of_fetch_state_locals
+  AFFECTED_PATHS = server.py, tests/test_analytics_state_freshness_api.py
+  RECURRENCE_GUARD = tests/test_analytics_state_freshness_api.py
+  UNIVERSAL_SCOPE_STATEMENT = nonlocal binding repairs the tail for every ticker/session; the tail carries no ticker-conditional input
+  FINAL_SHA = 2e4bc096ad27f0b0a52adfc835fd3f44967ba7ae
+  CI_GREEN = YES
 - [ ] **UI-01 UI_ANALYTICS_KEY_IDENTITY_HARDGATE_V1** — DESIGN_RECOMMENDED_FOR_APPROVAL / IMPLEMENTATION_NOT_STARTED. Root cause of the 2026-07-08 frozen-cards incident: client-retained `activeExpiry` diverges → silent SSE rejection (`expiryMatchesStream`) + exact-key GET misses → pending-shell churn; Ctrl+F5 recovery proved the mechanism. Fix: adopt server-resolved `selected_exp` (resync, generation-guarded), single client key-builder, `analytics_cache_key` payload echo.
 - [ ] **UI-04 KEY_LEVELS_DISPLAY_HONESTY P1B/P1C/P1D** — AUDIT_COMPLETE / IMPLEMENTATION_NOT_STARTED (previously RTH-held): P1B vanna is a vega/(S·iv) proxy displayed as vanna (label or replace); P1C charm analytic sign unproven while feeding the call-engine "Greeks" vote (prove or gate); P1D PDH weekend walk-back defect (`liquidity_value_engine.py:279-286`).
 - [ ] **MODEL-04 STALE_MODEL_SERVING_POLICY** — NOT_PROVEN / trace required: 17 of 22 `models/active/*` bundles frozen at 2026-04-30 (pre-correctness vintage; trained before leakage closure + label fixes) yet still served for guest tickers; SPY-60c bundle gap (existing REAL-GATE row). Needs per-ticker vintage table → operator serve/unserve/retrain policy.

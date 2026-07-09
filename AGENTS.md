@@ -685,21 +685,46 @@ Maturity changes rejected:
 
 ---
 
-## FULL_FIXES_ONLY_V1 `[PROMOTED]` (2026-07-09 — operator binding; hard governance lock)
+## FULL_FIXES_ONLY_V2 `[PROMOTED]` (2026-07-09 — operator binding; evidence enforcement, supersedes V1)
 
 <a id="full-fixes-only-v1"></a>
+<a id="full-fixes-only-v2"></a>
+
+**V1 → V2 (operator downgrade 2026-07-09):** V1 proved field presence and wiring only — `FULL_FIXES_ONLY_V1 = NOT_PROVEN_AS_EFFECTIVE` (a template lock still admits false YES values). V2 converts the gate into an **evidence-backed closure gate**: every closure claim must carry a machine-readable evidence block whose artifact paths resolve to real repo files, and `CLOSED_WITH_EVIDENCE` is retroactive-only (requires a concrete SHA plus four CI run ids on the same line — never claimable for the commit being made, whose CI cannot exist yet).
+
+**Required machine-readable evidence block (with the five-field template, on any closure claim):**
+
+```
+FULL_FIX_EVIDENCE:
+ROOT_CAUSE_ARTIFACT = <repo path[:line] proving the root cause>
+EVIDENCE_ARTIFACT = <repo file carrying the closure evidence>
+REGRESSION_TEST = <tests/...py[::node] failing-before/passing-after> (or FULL_FIX_EXCEPTION_APPROVED: <ref>)
+AFFECTED_PATHS = <comma-separated repo files/functions/endpoints>
+RECURRENCE_GUARD = <checker/test path that mechanically prevents recurrence>
+UNIVERSAL_SCOPE_STATEMENT = <why every ticker/session/horizon is covered by construction>
+FINAL_SHA = HEAD (commit message) | <concrete 7-40 hex SHA resolving to a real commit (artifacts)>
+CI_GREEN = YES/NO/PENDING
+```
+
+**Repo-wide scope:** the gate is enforced on every commit message (staged path) AND on every tracked closure artifact (`OPEN_ITEMS.md`, `ACTIVE_PROGRAM.md`, `governance/**`, `docs/governance/**`, `reports/**`) via `check_full_fix_closure_artifacts()` in the repo-wide static audit — it runs in `enforce_all_rules --enforce-all` and the objective-audit CI gate, never manually-only. Backtick-wrapped tokens are documentation references, not claims. `FULL_FIX_GRANDFATHERED_PRE_V2:` marks the 2026-07-09 migration set (legacy `CLOSED_WITH_EVIDENCE` vocabulary only); the V2 template claim is never grandfathered, and adding the marker to new artifacts is rejection-grade.
+
+**Mechanical fail conditions (checker-enforced):** missing evidence block or field; `ROOT_CAUSE_ARTIFACT` / `AFFECTED_PATHS` / `RECURRENCE_GUARD` not resolving to real repo files; `REGRESSION_TEST` not an existing `tests/` file (absent an approved exception); representative-only scope statement without an approved exception; `CLOSED_WITH_EVIDENCE` without concrete SHA + `CI_RUNS = <4 ids>` on the same line; staged files UI/display-only while the root-cause artifact is upstream (absent an approved exception).
 
 **Every Ed Console fix must be a root-cause, universal, mechanically protected fix.** The following fix shapes are rejection-grade on sight: narrow patches, symptom masks, ticker-specific special cases, UI-only disguises of upstream defects, stale-threshold hand-waving (loosening a threshold instead of fixing the producer), fallback masking (serving fabricated/older data as fresh), and representative-only fixes (proven on one ticker/path and declared done).
 
-**Required closure template (verbatim fields — any lane/FIND/blocker closure claim must carry all five):**
+**Required closure template (verbatim fields — any lane/FIND/blocker closure claim must carry all seven):**
 
 ```
 FULL_FIX_PROVEN = YES/NO
 ROOT_CAUSE_PROVEN = YES/NO
+EFFECTIVE_FIX_PROVEN = YES/NO
 UNIVERSAL_SCOPE_PROVEN = YES/NO
+REGRESSION_TEST_ADDED = YES/NO
 MECHANICAL_LOCK_ADDED = YES/NO
 PATCH_OR_WORKAROUND = YES/NO
 ```
+
+**Core rule:** `FULL_FIX_PROVEN = YES` is forbidden unless `EFFECTIVE_FIX_PROVEN = YES` — a full fix must equal an effective fix proven against the actual failure mode, and the repo must be able to verify the evidence mechanically.
 
 **Acceptance (all required; no closure if any proof is missing):**
 
@@ -713,7 +738,7 @@ PATCH_OR_WORKAROUND = YES/NO
 
 **Evidence fields (required in the closure body):** root cause (what actually failed and why), affected path (producer→consumer cone named), universal scope (why every ticker/session/horizon is covered by construction), mechanical lock (test/checker path that prevents recurrence).
 
-**Mechanical lock:** `check_full_fixes_only()` in `tools/check_fix_everything_we_touch.py` — commit-message closure language without the five-field template fails the commit; patch/workaround framing in commit messages fails the commit unless the line carries `FULL_FIX_EXCEPTION_APPROVED: <ref>`. Paired tests: `tests/test_check_fix_everything_we_touch.py` (FULL_FIXES_ONLY_V1 section). Tracker rows: `governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` + `OPEN_ITEMS.md`.
+**Mechanical lock:** `check_full_fixes_only()` + `_check_full_fix_evidence()` in `tools/check_fix_everything_we_touch.py` — commit-message closure language without the five-field template **and** the evidence block fails the commit; patch/workaround framing fails unless the line carries `FULL_FIX_EXCEPTION_APPROVED: <ref>`. Paired adversarial tests: `tests/test_check_fix_everything_we_touch.py` (FULL_FIXES_ONLY section — fake YES fields, missing artifacts, missing regression test, representative-only scope, premature CLOSED_WITH_EVIDENCE all proven to fail). Tracker rows: `governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` + `OPEN_ITEMS.md`.
 
 **Relationship:** Hardens [§Definition of Done for Fixes](#definition-of-done-for-fixes) (root-cause step) and [§No carried residuals](#no-carried-residuals--done-means-zero-residuals) (two end-states only) with a commit-time gate; the fix-shape ban restates §Banned patterns for the closure surface with mechanical teeth.
 
