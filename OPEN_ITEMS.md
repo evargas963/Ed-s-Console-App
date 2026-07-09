@@ -17,7 +17,7 @@
 
 > **[O-56 SURVIVOR CONSUMER — FIXED + remaining slice] (2026-06-03, Claude):** the train/serve survivor consumer was applying a WRONG flat 22-group rollup (or a fabricated 12-group DEFAULT that dropped volume/vwap/iv) when a complete report existed. **FIXED:** `resolve_ablation_drop_group_ids()` now (a) requires the full 828-cell matrix (not 276), (b) **fails closed to the full feature set** unless drops are confirm-verified, (c) uses the **intersection** of confirm-verified per-cell drops for the shared snapshot, (d) DEFAULT tuple removed. New per-cell API `confirmed_drop_group_ids_by_model_horizon()` + `globally_safe_drop_group_ids()`; serve-side silent `except: pass` now logs (train/serve-skew visible). Mask test rewritten + 2 new locks; O-56 row added to AGENTS enforcement table. **Net: production retrain is READY on the FULL feature set today (survivors correctly OFF/fail-closed).** REMAINING to actually APPLY O-56 survivors in training: (1) run `--ablation-confirm` (drop-and-refit; populates confirm_pass — currently a status string, confirm_drop_cells=0); (2) per-model feature-assembly masking (each model trains on its own survivor set) — the shared snapshot mask can only do the conservative global intersection. Neither blocks the full-feature retrain.
 
-**Last reviewed:** 2026-06-29 — checklist reconciliation aligned through `caf15635` (card-freshness / proof-drift). Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **Multi-month program (2026-06-11):** large tails (Schwab register, ablation grid, stack phases) close **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + rows `INST-PROGRAM-*` below. **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. **Pinned register truth @ `77675a6` (local read-only):** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — rows = **83,587**; `unreviewed_count` = **52,237**; `closure_admissible` = **false**; `bare_governed_exception_count` = **0**; `replaced_count` = **50**; content SHA = `2017b18f24870bdf8fa1c9153c4aca4b3e137ebd1167a9b260ed766fd455303e`. Build meta numeric `register_rows_written: 83587` is authoritative; `operator_note` prose citing "311893 rows" is **HISTORICAL/SUPERSEDED** stale prose until a separately approved register regen lane. **HISTORICAL/SUPERSEDED:** prior scoped-register snapshot citing 174,459 rows / 0 UNREVIEWED / `closure_admissible: true` @ `25cb2e3` era is **not** current pinned truth. Wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation. **D17 wording (2026-06-27):** pinned register `closure_admissible: false` with `unreviewed_count > 0` — **D17 full closure** = **NOT_CLOSED**; **Schwab V4 Register Closure** = **NOT_CLOSED**; register repin = **NOT_APPROVED**; production semantic-key merge = **NOT_APPROVED** — full program closure remains **NOT_CLOSED** until wire-true disposition + bare GOVERNED_EXCEPTION closure across the epic (`governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts).
+**Last reviewed:** 2026-07-08 — OPEN_ITEMS_RECONCILIATION_V1 aligned through tip **`5869081`** on **`main`** (current branch truth: all July program work lands on `main`; the feature-branch/frozen-main state described in the GitHub backup section history is superseded). Proof vocabulary in force: RTH_SENTINEL ladder (UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / RTH_SENTINEL_REPROOF_PENDING / RTH_SENTINEL_OBSERVED / FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED / NOT_PROVEN); SPY/QQQ/IWM are RTH sentinels only, never the proof boundary. Prior alignment (2026-06-29 @ `caf15635`) is historical. Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **Multi-month program (2026-06-11):** large tails (Schwab register, ablation grid, stack phases) close **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + rows `INST-PROGRAM-*` below. **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. **Pinned register truth @ `77675a6` (local read-only):** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — rows = **83,587**; `unreviewed_count` = **52,237**; `closure_admissible` = **false**; `bare_governed_exception_count` = **0**; `replaced_count` = **50**; content SHA = `2017b18f24870bdf8fa1c9153c4aca4b3e137ebd1167a9b260ed766fd455303e`. Build meta numeric `register_rows_written: 83587` is authoritative; `operator_note` prose citing "311893 rows" is **HISTORICAL/SUPERSEDED** stale prose until a separately approved register regen lane. **HISTORICAL/SUPERSEDED:** prior scoped-register snapshot citing 174,459 rows / 0 UNREVIEWED / `closure_admissible: true` @ `25cb2e3` era is **not** current pinned truth. Wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation. **D17 wording (2026-06-27):** pinned register `closure_admissible: false` with `unreviewed_count > 0` — **D17 full closure** = **NOT_CLOSED**; **Schwab V4 Register Closure** = **NOT_CLOSED**; register repin = **NOT_APPROVED**; production semantic-key merge = **NOT_APPROVED** — full program closure remains **NOT_CLOSED** until wire-true disposition + bare GOVERNED_EXCEPTION closure across the epic (`governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts).
 
 ---
 
@@ -51,6 +51,52 @@ Current high-priority future lanes preserved in the master checklist:
 
 ---
 
+## July 2026 program — landed lanes + active execution board (2026-07-08 @ `5869081`)
+
+**Vocabulary:** RTH_SENTINEL ladder only. SPY/QQQ/IWM = RTH sentinels, never the proof boundary; sentinel evidence never claims full universal runtime.
+
+### Landed lanes (each 4/4 remote CI at its SHA)
+
+| Lane | SHA | Status |
+|---|---|---|
+| TIER_C stage timers + chain-fetch gate | `7fa1002` / `4b94029` | UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / RTH_SENTINEL_OBSERVED (chain 10.7–21.8s → 0.7–3.0s at bell) |
+| BAR_PERSISTENCE_GAP fix (explicit pricehistory window + stale-seed guard) | `e6d138a` | ... / REMOTE_CI_PROVEN / RTH_SENTINEL_OBSERVED (same-day bars growing live) |
+| FORMULA_P1A realized-vol timeframe-aware annualization | `92d734d` (+`4cc26c4`) | ... / REMOTE_CI_PROVEN / RTH_SENTINEL_OBSERVED |
+| HARNESS_CLASSIFIER_OPERATOR_MIRROR_ALIGNMENT_V1 | `ab85b27` | ... / REMOTE_CI_PROVEN (supersedes CARD-FIDELITY-TRUST-AWARE-HARNESS) |
+| ANCHOR_QUOTE_LANE_REFRESHER_V1 | `a98512b` | ... / REMOTE_CI_PROVEN / RTH_SENTINEL_OBSERVED / FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED (QQQ frozen-lane, IWM missing-lane, SPY drift all fixed on sentinels) |
+| UNIVERSAL_TICKER_MECHANICAL_LOCK_V1 | `8a1dbce` | UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN (machine-enforced in `--objective-audit`) |
+| REPO_WIDE_UNIVERSALITY_HARDGATE_V1 | `f456fa3` | ... / REMOTE_CI_PROVEN |
+| ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 | `0a17e14` (+evidence `a758c53`) | ... / REMOTE_CI_PROVEN / RTH_SENTINEL_OBSERVED / FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED (zero version resets across 333 RTH samples) |
+| FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 (publish before persistence tail) | `8408405` | ... / REMOTE_CI_PROVEN / RTH_SENTINEL_OBSERVED / FULL_UNIVERSAL_RUNTIME_PROVEN_NOT_CLAIMED |
+| OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1 (log_only inline leaf fetches) | `9287bdd` | UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / **RTH_SENTINEL_REPROOF_PENDING** |
+| OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 (dedicated recompute-leaf pool) | `806056c` (+lock rebind `93202d8`) | UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN / **RTH_SENTINEL_REPROOF_PENDING** (leaf pool activates on next canonical start; joint Step 1+2 sentinel sample = next bell mission) |
+| SCOREBOARD_ACTIONABILITY_JOIN_V1 (report-only) | `1ab899a` | REPORT_ONLY_REMOTE_CI_PROVEN / FIRST_REPORT_GENERATED (2026-07-08: 2,335 rows — ACTIONABLE 1,004 / STALE 1,289 / VETO 35 / UNKNOWN 7) |
+| UNIVERSAL_SENTINEL_PROOF_LANGUAGE_LOCK_V1 | `c9a3fea` | UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN (forbidden closure phrases machine-rejected) |
+| BAR_MINUTES=1 sizing alignment + DEFAULT_HORIZON removal (ECON-02) | `5869081` | UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN / REMOTE_CI_PROVEN |
+
+### Open lanes (active execution board — approval held per lane)
+
+- [ ] **EXEC-01 STEP_1+2_SENTINEL_REPROOF** — RTH_SENTINEL_REPROOF_PENDING. Next bell: restart onto tip, 30s low-load sampler ≥5 min; PASS = SPY/IWM implied route-pool queue wait 8.3–12.6s → ≤2.2s class; ceiling RTH_SENTINEL_OBSERVED.
+- [ ] **EXEC-03 DB_POST_PUBLISH_PERSISTENCE_TRACEBACK** — TRACEBACK_PENDING: `post_publish_snapshot_failures` climbs load-correlated (~103 in 15 min post-restart windows; rows still land at throttle; calibration failures 0). Needs one operator console line (`post-publish snapshot persistence failed ticker=...` + traceback) to classify.
+- [ ] **UI-01 UI_ANALYTICS_KEY_IDENTITY_HARDGATE_V1** — DESIGN_RECOMMENDED_FOR_APPROVAL / IMPLEMENTATION_NOT_STARTED. Root cause of the 2026-07-08 frozen-cards incident: client-retained `activeExpiry` diverges → silent SSE rejection (`expiryMatchesStream`) + exact-key GET misses → pending-shell churn; Ctrl+F5 recovery proved the mechanism. Fix: adopt server-resolved `selected_exp` (resync, generation-guarded), single client key-builder, `analytics_cache_key` payload echo.
+- [ ] **UI-04 KEY_LEVELS_DISPLAY_HONESTY P1B/P1C/P1D** — AUDIT_COMPLETE / IMPLEMENTATION_NOT_STARTED (previously RTH-held): P1B vanna is a vega/(S·iv) proxy displayed as vanna (label or replace); P1C charm analytic sign unproven while feeding the call-engine "Greeks" vote (prove or gate); P1D PDH weekend walk-back defect (`liquidity_value_engine.py:279-286`).
+- [ ] **MODEL-04 STALE_MODEL_SERVING_POLICY** — NOT_PROVEN / trace required: 17 of 22 `models/active/*` bundles frozen at 2026-04-30 (pre-correctness vintage; trained before leakage closure + label fixes) yet still served for guest tickers; SPY-60c bundle gap (existing REAL-GATE row). Needs per-ticker vintage table → operator serve/unserve/retrain policy.
+- [ ] **ECON-01 REPLAY_CONTEXT_STARVATION_TRACE** — NOT_STARTED: realized-contract replay skips 744/744 signals (89% `missing_replay_context`) — execution economics unmeasurable until traced/repaired.
+- [ ] **GOV-ROOT-LEDGER-SCAN** — governance lock candidate (design only): the sentinel-language scanner covers `reports/` + `governance/` markdown; this root ledger is outside the mechanical scan. Candidate: extend scan scope or add a ledger-specific check.
+- [ ] **SIG-01 SCOREBOARD/ACTIONABILITY ACCRUAL** — sessions 2–5 toward SIGNAL_OUTCOME_VALIDATION_V1 (NOT_PROVEN; the 2026-06-01 gate verdict — no horizon beats chance — stands until segmented multi-day evidence says otherwise).
+
+### Parent lanes (unchanged)
+
+| Lane | Status |
+|---|---|
+| CARD_FIDELITY_OVERALL | **NOT_PROVEN** |
+| UNIVERSAL_RUNTIME_LIVE_PROOF | **NOT_PROVEN** |
+| SIGNAL_OUTCOME_VALIDATION_V1 | **NOT_PROVEN** |
+| REAL_MONEY_READINESS | **NOT_PROVEN** |
+| D17 full closure | **NOT_CLOSED** |
+
+---
+
 ## Active card-freshness / drift-recovery queue (2026-06-29)
 
 **Alignment SHA:** `caf15635d67939a012114cde47ac0f500b66e30d` (master checklist + this block). **Authority:** `governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts @ `caf15635`.
@@ -67,7 +113,7 @@ Current high-priority future lanes preserved in the master checklist:
 | S3 design review | **REPORTED_COMPLETE_READ_ONLY** |
 | S3A local diff | **NOT_APPROVED** |
 | S3 implementation | **NOT_APPROVED** |
-| `DRIFT_RECOVERY_AND_PROOF_STANDARD_REPAIR_V1` | **PUSHED_PROVEN** @ `caf15635d67939a012114cde47ac0f500b66e30d` · **REMOTE_CI_NOT_PROVEN** · **NOT_CLOSED** |
+| `DRIFT_RECOVERY_AND_PROOF_STANDARD_REPAIR_V1` | **REMOTE_CI_PROVEN** @ `caf15635d67939a012114cde47ac0f500b66e30d` (verified 2026-07-08: Schwab CSV First Guard / Objective Audit / Hardening Gates / Pytest Full Suite all `success` at that SHA) — lane's own close condition met |
 
 **Composite non-closure (explicit):**
 
@@ -81,7 +127,7 @@ Current high-priority future lanes preserved in the master checklist:
 
 **Stale mechanism vs runtime (cross-reference):** Closed stale/fallback **mechanism** lanes prove the withhold/trust-gate mechanism only. They **do not** close runtime freshness. The **2026-06-29 RTH observation** remains **FAIL** / **SAMPLE_OBSERVED_NOT_UNIVERSAL**: analytics/card bundle stale while quote was current; cards are **not** safe as live parity when stale/quote-ahead warning is present.
 
-- [ ] **DRIFT-RECOVERY-PROOF-V1** — **PUSHED_PROVEN** @ `caf15635` · **REMOTE_CI_NOT_PROVEN** · **NOT_CLOSED**. Proof-label ladder in `AGENT_OPERATING_CONTRACT.md` + preload markers. **Closes when:** all four required GitHub checks **success** at exact SHA `caf15635` → `REMOTE_CI_PROVEN` → operator may record `CLOSED_WITH_EVIDENCE` for this lane only.
+- [x] **DRIFT-RECOVERY-PROOF-V1** — **REMOTE_CI_PROVEN** @ `caf15635` (close condition met; verified 2026-07-08: all four required GitHub checks `success` at exact SHA `caf15635` — CSV First Guard / Objective Audit / Hardening Gates / Pytest Full Suite). Proof-label ladder in `AGENT_OPERATING_CONTRACT.md` + preload markers. Operator may record `CLOSED_WITH_EVIDENCE` for this lane only.
 
 - [ ] **STALE-CARD-S3A-UI-FAIL-CLOSED** — **NOT_APPROVED**. S3 design review complete (read-only). UI must consume `operator_card_actionable` / `operator_card_trust_state` on Tier C payload — **no** `static/index.html` work until operator authorizes S3A. **Does not** close card fidelity overall or RTH runtime FAIL.
 
@@ -101,7 +147,7 @@ Current high-priority future lanes preserved in the master checklist:
 
 - [ ] **UNIVERSAL_RUNTIME_LIVE_PROOF** — **Phase 2 · P0 · NOT_PROVEN.** RTH harness: all enrolled tickers, `--require-browser-dom`, `--require-live-transport`, stable reads. **Dependencies:** RTH_ALL_SUPPORTED_TICKER_AUDIT unblocked. **Closes when:** universal runtime report + operator sign-off @ SHA.
 
-- [ ] **CARD-FIDELITY-TRUST-AWARE-HARNESS** — **Phase 2 · P1 · locally proven (harness-only, uncommitted).** Trust-aware classification implemented in `tools/run_universal_card_fidelity_runtime.py`: mirrors `analyticsCardTrustGate`, emits `STALE_WITHHELD` / `PENDING_WITHHELD` / `DEGRADED_WITHHELD` / `TICKER_MISMATCH_WITHHELD` / `MISSING_MHAP_WITHHELD` / `TRUST_WITHHELD` instead of `DOM_MISMATCH` when withheld DOM matches UI contract. **Does not** close card fidelity overall, universal runtime live proof, or RTH DOM parity. **RTH blocked** (`session_gate.loggable_now:false`). **Closes when:** operator commit review + RTH re-run with trust-aware report @ SHA.
+- [x] **CARD-FIDELITY-TRUST-AWARE-HARNESS** — **SUPERSEDED @ `ab85b27`** (2026-07-07, `HARNESS_CLASSIFIER_OPERATOR_MIRROR_ALIGNMENT_V1`): the committed operator-mirror harness classifier scores against the S2B operator mirrors with the reason-code → label table (quote-veto family, STALE/WITHHELD/PLAN mapping) and landed with 4/4 remote CI plus multiple RTH evidence artifacts (`734221e`, `ac1776c`, `a758c53`). **Does not** close card fidelity overall, universal runtime live proof, or RTH DOM parity.
 
 - [ ] **CARD-FIDELITY-LIVE-UI-F-STACK-WIRE-6-RECONCILIATION** — **Docs + scope hygiene · P1.** `[x] STACK-WIRE-6` @ `9d4c8a4` closed **ms_dict reconstruction parity** (6a/6b/6c). Legacy `[ ] LIVE-UI-F` row (COHERENCE-AUDIT block) still lists open — **reconciled status:** ms_dict replay reconstruction **CLOSED_WITH_EVIDENCE**; any remaining LIVE-UI-F scope = **runtime A2/module parity beyond reconstruction** (OBS-A2OE1 class) — **separate lane**, not a duplicate open STACK-WIRE-6 item. **Action:** treat STACK-WIRE-6 as closed; narrow LIVE-UI-F to A2 runtime parity or close with REAL-GATE when operator accepts reconstruction-only closure.
 
@@ -196,7 +242,11 @@ Current high-priority future lanes preserved in the master checklist:
 
 ---
 
-## ⭐ SESSION BOOKMARK — RESUME HERE (2026-05-31; both agents + operator)
+## MODEL TRUTH — critical path (re-homed 2026-07-08; content below remains the live feature-epic/D2 spec)
+
+> **CURRENT-TRUTH BANNER (2026-07-08 @ `5869081`):** the section below is the **2026-05-31/06-03 session bookmark**, kept because its D2 triple-barrier + feature-epic content (Slice A free-four, ΔGEX, per-anchor ablation, D1/D2 decisions) is still the **live model-truth critical path** — the only path off the at-chance verdict for which the repo holds affirmative evidence (D2 pilot 2026-07-06: TB MCC 0.296–0.485 vs fixed-label unlearnable). **Historical details inside are STALE:** tip citations (`f73365c`, `f74740e`), "uncommitted working tree" states, and restart instructions are superseded — current tip truth is the July 2026 program section above. Do NOT act on the bookmark's tip/branch/restart mechanics; DO act on its D2/feature-epic specs when the operator green-lights MODEL-01/MODEL-02.
+
+## ⭐ SESSION BOOKMARK — HISTORICAL (2026-05-31; both agents + operator) — see CURRENT-TRUTH BANNER above
 
 ### ⭐⭐ O-56 ABLATED RETRAIN — COHERENCE FIX (operator restart bookmark 2026-06-03; Cursor audit)
 
@@ -250,9 +300,9 @@ Current high-priority future lanes preserved in the master checklist:
 - **D1 — independent 12-model stack vs joint shared-encoder (TFT/N-HiTS) + per-horizon heads.** Research: joint likely wins for the NETS (XGB stays independent), but intraday evidence is tick/LOB not 1m bars → joint is a CHALLENGER that must beat the 12-independent baseline on held-out per-horizon MCC. Operator leans keep-12-independent (emergent coherence via the shared-feature ladder: 1c∩5c=17/17, 5c∩15c=21/21). NOT decided.
 - **D2 — triple-barrier vs fixed-horizon labels.** Operator concern: triple-barrier may "miss a move" exiting on first barrier. Resolve via dual-label backtest (disagreement rate + realized edge), not opinion. NOT decided. **STATUS 2026-07-06 (scratch-scoped research executed; adoption STILL not decided/approved):** dual-label backtest built + pilot run @ `dbe6f99`/`623e088f` — TB vs fixed disagreement 49.8–54.3%/horizon; XGB learnability A/B on identical rows/features/splits: fixed MCC −0.074…+0.040 (unlearnable) vs TB 0.296–0.485, 3/3 base tickers at 5c+15c (pre-registered ADOPT_SIGNAL); production-fidelity confirmation through unchanged `train_ticker`: SPY 5c balanced-acc 0.3357 (fixed) vs 0.5215 (TB). Full xgb matrix READY_FOR_OPERATOR_POWERSHELL (`data/research/d2_models/d2_matrix_commands.ps1`); lstm/transformer BLOCKED_PENDING_LABEL_THREADING_APPROVAL. Production labels/normalizer/model tree untouched (locked). TRIPLE_BARRIER_ADOPTION = NOT_APPROVED_FOR_PRODUCTION.
 
-**2 MONEY-PATH ITEMS STILL OPEN (tracked, NOT this display slice):**
-- **BAR_MINUTES=5 vs 1m-outcome misalignment** — sizing (`compute_position_size`) consumes live-horizon MC = slug_bars×5min while labels are 1-min. Model-risk; fix = BAR_MINUTES alignment / slug→minutes map. Blocks efe/eae-as-ML-feature.
-- **`monte_carlo.DEFAULT_HORIZON=13`** dead-but-misleading — remove (hygiene).
+**2 MONEY-PATH ITEMS — CLOSED @ `5869081` (2026-07-08, minimal-guidance lane; 4/4 remote CI):**
+- [x] **BAR_MINUTES=5 vs 1m-outcome misalignment** — CLOSED: `monte_carlo.BAR_MINUTES = 1`; slug map and wall-clock map converge (Nc → N bars = N minutes, locked across all governed slugs in `tests/test_governed_stack_contract.py`); GARCH per-1-minute sigma cadence now matches its producer; sizing consumes horizon-true `mc_eae`/`mc_efe`. Unblocks efe/eae-as-ML-feature (feature-epic candidate below).
+- [x] **`monte_carlo.DEFAULT_HORIZON=13`** — CLOSED: removed; `simulate(horizon_bars=...)` is required (omission = loud TypeError).
 
 **BUNDLE before restart (one commit, no partial ship):** `governed_stack_contract.py`, `signals.py`, `signal_types.py`, `market_state.py`, `static/index.html`, `tests/test_governed_stack_contract.py`. Commit is Cursor's lane.
 
@@ -1252,18 +1302,11 @@ Categorical inventories (`DerivationRecord` with free-text `schwab_leaf` like `"
 
 **Reality:** operator runs from local launch folder; GitHub is backup only (no other puller). **What belongs in Git vs on disk:** [`docs/host/BACKUP_AND_MIRROR.md`](docs/host/BACKUP_AND_MIRROR.md). **Env template:** [`.env.example`](.env.example) → local `.env` (never commit).
 
-| Location | Branch | Tip | Status |
-|---|---|---|---|
-| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | `e8512be` | Source of truth |
-| origin/feature/institutional-key-levels | (same branch on GitHub) | `e8512be` — **in sync** (pushed 2026-05-21; bulk push `1c0ec96`..`d40e317`) | Backup synced |
-| origin/main | `main` | `4b8ba2d` (frozen) | Stale by 82+ commits |
+**Current truth (2026-07-08):** all work lands on **`main`**; local `main` == `origin/main` == tip **`5869081`**. The 2026-05-21 feature-branch state (local/origin `feature/institutional-key-levels` @ `e8512be`, origin/main frozen @ `4b8ba2d`) is **HISTORICAL** — main became canonical and carries the full program. Every mission pushes same-day with the four required status checks (Objective Audit / Pytest Full Suite / Hardening Gates / Schwab CSV First Guard) green per commit.
 
-**Action items:**
-- [x] **TRAINING-PIPELINE-PUSH-REVIEW** @ 2026-05-21 — see **NEXT** section.
-- [x] **Backup sync** @ 2026-05-21 — `git push origin feature/institutional-key-levels` (133 commits).
-- [ ] **Main merge (deferred)** — when audit is complete (Layer 3+ done, all Action 10.x closed), open PR `feature → main` so main becomes canonical. No urgency since no other puller; durability concern only.
+- [x] **Main merge** — RESOLVED: main is canonical (July 2026 program lands directly on main with per-commit 4-gate CI).
 
-**Rule going forward:** every commit on this branch should be pushed to origin same day. Local-only commits = single point of failure.
+**Rule going forward:** every commit is pushed to origin same day. Local-only commits = single point of failure.
 
 ---
 
