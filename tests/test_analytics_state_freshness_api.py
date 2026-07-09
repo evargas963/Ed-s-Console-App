@@ -1592,6 +1592,71 @@ def test_post_publish_last_error_wired_at_both_failure_branches():
     assert i_obs_attach < i_err_attach
 
 
+def test_tail_mkt_ctx_nonlocal_rebind_restored():
+    """The confluence-completion rebind targets _fetch_state's mkt_ctx (nonlocal),
+    matching the pre-relocation inline binding; the completion call remains."""
+    import ast
+
+    _fetch, tail = _fetch_state_ast()
+    declared = set()
+    for node in ast.walk(tail):
+        if isinstance(node, ast.Nonlocal):
+            declared.update(node.names)
+    assert "mkt_ctx" in declared
+    src = _fetch_state_source()
+    assert "mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)" in src
+
+
+def test_tail_no_unbound_shadow_of_fetch_state_locals():
+    """Relocation-class lock: no name stored in the tail may shadow a
+    _fetch_state-level binding AND be read at-or-before its first tail store
+    without a nonlocal declaration (the mkt_ctx UnboundLocalError class).
+    Comprehension targets are scope-isolated in py3 and excluded."""
+    import ast
+
+    fetch, tail = _fetch_state_ast()
+
+    comp_targets: set[str] = set()
+    for node in ast.walk(tail):
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            for gen in node.generators:
+                for t in ast.walk(gen.target):
+                    if isinstance(t, ast.Name):
+                        comp_targets.add(t.id)
+
+    nonlocals: set[str] = set()
+    for node in ast.walk(tail):
+        if isinstance(node, ast.Nonlocal):
+            nonlocals.update(node.names)
+
+    def _stores_and_loads(fn):
+        stores: dict[str, int] = {}
+        loads: dict[str, list[int]] = {}
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name):
+                if isinstance(node.ctx, ast.Store):
+                    stores.setdefault(node.id, node.lineno)
+                    stores[node.id] = min(stores[node.id], node.lineno)
+                elif isinstance(node.ctx, ast.Load):
+                    loads.setdefault(node.id, []).append(node.lineno)
+        return stores, loads
+
+    fetch_stores, _ = _stores_and_loads(fetch)
+    fetch_params = {a.arg for a in fetch.args.args + fetch.args.kwonlyargs}
+    tail_stores, tail_loads = _stores_and_loads(tail)
+
+    offenders = []
+    for name, first_store in tail_stores.items():
+        if name in nonlocals or name in comp_targets:
+            continue
+        if name not in fetch_stores and name not in fetch_params:
+            continue
+        early = [ln for ln in tail_loads.get(name, []) if ln <= first_store]
+        if early:
+            offenders.append((name, first_store, early))
+    assert not offenders, f"unbound tail shadows of _fetch_state locals: {offenders}"
+
+
 def test_post_publish_last_error_no_ticker_literals():
     """Universality: the recorder body carries no ticker-literal-shaped constants
     (its dict keys are lowercase kinds; ticker arrives as runtime data)."""

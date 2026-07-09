@@ -6537,6 +6537,12 @@ def _fetch_state(
         Runs post-publish on the full path, pre-return on the log_only path.
         Never mutates _state_cache; never raises (per-section try/except).
         """
+        # FIX_B relocation repair: the confluence-completion rebind
+        # (mkt_ctx = _ensure_mkt_ctx_confluence_complete(...)) was owned by
+        # _fetch_state before the tail extraction; without this declaration the
+        # assignment makes mkt_ctx tail-local and its own RHS read raises
+        # UnboundLocalError, killing every snapshot persist at that line.
+        nonlocal mkt_ctx
         # ── DB snapshot logging ───────────────────────────────────────────────────
         if _ed_db:  # snapshot INSERT, bars persist + outcome backfill all throttled (see ED_DB_SNAPSHOT_THROTTLE)
             if _diag_on():
