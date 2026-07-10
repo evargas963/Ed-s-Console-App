@@ -1964,7 +1964,7 @@ def test_ui05_priority_gate_priority_waiter_acquires_first():
     gate.release()
 
 
-def test_ui05_admission_sla_gate_not_blocked_by_saturated_background_pool():
+def test_ui05_admission_sla_gate_not_blocked_by_saturated_background_pool(monkeypatch):
     """SLA regression gate (deterministic): with the 4-worker analytics pool
     fully saturated by background jobs, a priority submission still completes
     fast — cold-guest admission no longer queues behind background cycles."""
@@ -1973,6 +1973,7 @@ def test_ui05_admission_sla_gate_not_blocked_by_saturated_background_pool():
 
     import server as srv
 
+    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
     release_bg = th.Event()
     started = th.Barrier(5, timeout=10)
 

@@ -81,6 +81,9 @@ def test_t5_sse_recompute_timeout_does_not_starve_broadcast(srv_module, monkeypa
 
     monkeypatch.setattr(srv, "_maybe_broadcast_sse_cache_fanout", _capture_fanout)
     monkeypatch.setattr(srv._analytics_executor, "submit", lambda fn: fn())
+    # UI_05: sse_loop is operator-class and routes to the priority pool — pin
+    # it to the same inline-submit executor so this test stays synchronous.
+    monkeypatch.setattr(srv, "_get_operator_priority_executor", lambda: srv._analytics_executor)
     srv._schedule_analytics_recompute(inflight_key, ticker, expiry, "sse_loop")
     assert "fetch_timeout" in fanouts
 

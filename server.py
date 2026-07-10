@@ -187,6 +187,7 @@ from market_context import (
     _derive_session,
 )
 from market_state import MarketVolContextV1, build_market_state, derive_zone
+from vol_observability import record_market_vol_observation, vol_observability_payload
 from ml_horizon import PRIMARY_DECISION_HORIZONS, SECONDARY_SUPPORT_HORIZONS
 from realized_contract_eval import serialize_option_chain_for_eval, build_replay_context_payload
 from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh, persist_stamped_decision
@@ -6227,6 +6228,10 @@ def _fetch_state(
         quality_status=("VALID" if _vol_vix_now is not None else "UNAVAILABLE"),
         as_of_ts=time.time(),
     )
+    # VOL_OBSERVABILITY_V1 (V2 prerequisite, read-only): record the per-cycle
+    # vol-index observations. Statement-only, never assigned, never consumed
+    # by this pipeline — native-index consumption stays NOT_APPROVED.
+    record_market_vol_observation(mkt_ctx, vol_ctx)
     try:
         _vol_envelope = compute_volatility_envelope(spot_f, _atr)
 
@@ -10232,6 +10237,14 @@ def api_build():
         "process_identity": asdict(PROCESS_IDENTITY_V1),
         "repository_state_now": {"repo_head_now": repo_head_now},
     }
+
+
+@app.get("/api/vol-observability")
+def api_vol_observability(ticker: Optional[str] = Query(default=None)):
+    """VOL_OBSERVABILITY_V1: read-only projection of the per-cycle vol-index
+    observations ($VIX consumed; $VXN/$RVX FETCHED_UNCONSUMED) plus the
+    ratified ticker-class mapping candidate. Never feeds the money path."""
+    return vol_observability_payload(ticker)
 
 
 @app.get("/api/price-levels")
