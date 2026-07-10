@@ -1287,7 +1287,11 @@ def build_market_state(
                 if et_hour is not None and et_minute is not None
                 else None
             )
-            _vix_bkt     = _vb_fn(mkt_ctx.vix) if mkt_ctx.vix is not None else None
+            # VOL_INPUT_CONTRACT 1.0.0 single-source: the bucket derives from the
+            # per-cycle context level (vol_ctx=None rollback falls back to the
+            # raw quote, mirroring the vix_level stamp fallback below).
+            _vix_bkt_src = (vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix)
+            _vix_bkt     = _vb_fn(_vix_bkt_src) if _vix_bkt_src is not None else None
 
             sig_inp = SignalInput(
                 ticker=ticker, timeframe=CANONICAL_TIMEFRAME,

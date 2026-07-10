@@ -193,6 +193,33 @@ def test_three_surfaces_consume_the_one_context():
     assert "vol_ctx=vol_ctx" in server_src                           # build_market_state call
     assert "vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None)" in ms_src
     assert "vix_direction=(vol_ctx.market_iv_direction if vol_ctx is not None else None)" in ms_src
+    # [REAL-GATE:VOL-CTX-SINGLE-SOURCE] closure lock: zero raw mkt_ctx.vix
+    # attribute reads outside the canonical conversion site. server.py may
+    # read mkt_ctx.vix exactly ONCE (the float() conversion feeding vol_ctx);
+    # market_state.py exactly TWICE, both as the ratified vol_ctx=None
+    # rollback fallbacks (vix_level stamp + vix_bucket source).
+    def _raw_vix_reads(src: str) -> list[int]:
+        tree = _ast.parse(src)
+        return sorted(
+            n.lineno for n in _ast.walk(tree)
+            if isinstance(n, _ast.Attribute) and n.attr == "vix"
+            and isinstance(n.value, _ast.Name) and n.value.id == "mkt_ctx"
+        )
+    server_reads = _raw_vix_reads(server_src)
+    assert len(server_reads) == 1, (
+        f"raw mkt_ctx.vix reads in server.py at {server_reads} — only the "
+        f"canonical vol_ctx conversion site may read the raw quote"
+    )
+    ms_reads = _raw_vix_reads(ms_src)
+    assert len(ms_reads) == 2, (
+        f"raw mkt_ctx.vix reads in market_state.py at {ms_reads} — only the "
+        f"two vol_ctx=None rollback fallbacks may read the raw quote"
+    )
+    ms_lines = ms_src.splitlines()
+    for ln in ms_reads:
+        assert "vol_ctx is not None else mkt_ctx.vix" in ms_lines[ln - 1], (
+            f"market_state.py:{ln} raw read is not a vol_ctx=None fallback"
+        )
 
 
 def test_vol_context_bound_outside_any_try():

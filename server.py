@@ -7249,7 +7249,17 @@ def _fetch_state(
             selected_exp,
             pcr_val,
             spot_f,
-            mkt_ctx.vix if mkt_ctx else None,
+            # VOL_INPUT_CONTRACT 1.0.0 single-source: the published "vix"
+            # (next cycle's prev source) comes from the per-cycle context.
+            # Schwab CSV authority checked: yes
+            # CSV row(s): quotes.$VIX.lastPrice (same primitive; vol_ctx.market_iv_level
+            #   IS the converted quote — no new derivation, no NO_SCHWAB_EQUIVALENT change)
+            # Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE
+            # All consumers checked: yes — cache "vix" publishes + SignalInput vix_bucket
+            #   now consume vol_ctx; zero raw reads outside the canonical conversion
+            #   (AST lock in tests/test_market_context_fetch_fail_closed.py).
+            # SCHWAB_CSV_CHECKED
+            vol_ctx.market_iv_level,
         )
         return {}
 
@@ -8003,7 +8013,9 @@ def _fetch_state(
         "generated_at": _gen_ts,
         "analytics_version": _next_ver,
         "ms_dict": ms_dict, "pcr_val": pcr_val, "spot_f": spot_f,
-        "vix": mkt_ctx.vix if mkt_ctx else None,
+        # VOL_INPUT_CONTRACT 1.0.0 single-source: publish the context level —
+        # this is the value the next cycle's market_iv_change diffs against.
+        "vix": vol_ctx.market_iv_level,
         "price_levels": _prev_ent.get("price_levels"),
         "pl_date":      _prev_ent.get("pl_date", ""),
         "pl_mono":      _prev_ent.get("pl_mono"),
