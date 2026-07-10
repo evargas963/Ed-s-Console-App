@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 415  # inventory sync @ BUILD_IDENTITY_PROCESS_DRIFT_V1: +2 _capture_process_identity + _is_full_git_sha (prior sync @ IDLE_SENTINEL_FRESHNESS_V1: 413)
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 421  # inventory sync @ UI_05 priority admission + VOL_OBSERVABILITY_V1: +6 server.py defs
 
 
 def test_mega1_row_schema_valid():

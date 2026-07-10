@@ -77,12 +77,18 @@ def record_market_vol_observation(mkt_ctx: Any, vol_ctx: Any) -> None:
     (observability must not break the serve cycle)."""
     try:
         now = time.time()
-        as_of = getattr(vol_ctx, "as_of_ts", None)
-        values = {
-            "$VIX": getattr(mkt_ctx, "vix", None),
-            "$VXN": getattr(mkt_ctx, "vxn", None),
-            "$RVX": getattr(mkt_ctx, "rvx", None),
-        }
+        # Direct attribute access on purpose (no silent getattr defaults):
+        # a malformed context is an explicit AttributeError handled by the
+        # observability-only except below — absence stays UNAVAILABLE.
+        as_of = vol_ctx.as_of_ts if vol_ctx is not None else None
+        if mkt_ctx is None:
+            values = {"$VIX": None, "$VXN": None, "$RVX": None}
+        else:
+            values = {
+                "$VIX": mkt_ctx.vix,
+                "$VXN": mkt_ctx.vxn,
+                "$RVX": mkt_ctx.rvx,
+            }
         with _lock:
             for sym, raw in values.items():
                 try:
