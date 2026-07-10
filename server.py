@@ -186,7 +186,7 @@ from market_context import (
     PriceLevels,
     _derive_session,
 )
-from market_state import build_market_state, derive_zone
+from market_state import MarketVolContextV1, build_market_state, derive_zone
 from ml_horizon import PRIMARY_DECISION_HORIZONS, SECONDARY_SUPPORT_HORIZONS
 from realized_contract_eval import serialize_option_chain_for_eval, build_replay_context_payload
 from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh, persist_stamped_decision
@@ -6094,6 +6094,35 @@ def _fetch_state(
     _index_strength = {}
     _spy_strength = {}
     _iwm_deep = {}
+    # VOL_INPUT_CONTRACT 1.0.0 (lane V1): compute the market-vol context
+    # ONCE per cycle. The tracker ticks exactly once here — the previous
+    # per-surface ticks (confluence / snapshot / ms_dict) re-ticked the
+    # SAME value, forcing direction to "flat" after the first tick, and
+    # each surface recomputed vs-prev independently (MSD-001 divergence).
+    # All downstream surfaces consume this one frozen struct. Deliberately
+    # OUTSIDE the envelope/density/sector try: vol_ctx must be bound on every
+    # path that reaches build_market_state / the persistence tail / ms_dict —
+    # a swallowed envelope exception must degrade envelope fields only, never
+    # unbind the vol context (NameError = broken serve cycle).
+    _vol_prev_published_vix = _state_cache.get(_cache_key, {}).get("vix")
+    _vol_vix_now = None
+    if getattr(mkt_ctx, "vix", None) is not None:
+        try:
+            _vol_vix_now = float(mkt_ctx.vix)
+            _vix_tracker.tick(_vol_vix_now)
+        except (TypeError, ValueError):
+            _vol_vix_now = None
+    vol_ctx = MarketVolContextV1(
+        market_iv_level=_vol_vix_now,
+        market_iv_change=(
+            round(_vol_vix_now - float(_vol_prev_published_vix), 4)
+            if _vol_vix_now is not None and _vol_prev_published_vix is not None
+            else None
+        ),
+        market_iv_direction=(_vix_tracker.direction if _vol_vix_now is not None else None),
+        quality_status=("VALID" if _vol_vix_now is not None else "UNAVAILABLE"),
+        as_of_ts=time.time(),
+    )
     try:
         _vol_envelope = compute_volatility_envelope(spot_f, _atr)
 
@@ -6142,15 +6171,9 @@ def _fetch_state(
                 _sector_data[_sym] = float(_chg)
         _sector_strength = compute_sector_strength(_sector_data)
 
-        # IWM deep confluence analysis (VIX direction from $VIX tracker, not IV tracker)
-        if getattr(mkt_ctx, "vix", None) is not None:
-            try:
-                _vix_tracker.tick(float(mkt_ctx.vix))
-            except (TypeError, ValueError):
-                pass
-        _vix_dir_for_confluence = (
-            _vix_tracker.direction if getattr(mkt_ctx, "vix", None) is not None else None
-        )
+        # VOL_INPUT_CONTRACT 1.0.0: confluence consumes the same per-cycle
+        # context as every other surface (computed above, outside this try).
+        _vix_dir_for_confluence = vol_ctx.market_iv_direction
         _iwm_deep = compute_iwm_confluence(
             spy_chg=mkt_ctx.spy_chg_pct,
             qqq_chg=mkt_ctx.qqq_chg_pct,
@@ -6159,7 +6182,7 @@ def _fetch_state(
             xbi_chg=_sector_data.get('XBI'),
             psci_chg=_sector_data.get('PSCI'),
             xrt_chg=_sector_data.get('XRT'),
-            vix_level=mkt_ctx.vix,
+            vix_level=vol_ctx.market_iv_level,
             vix_direction=_vix_dir_for_confluence,
         )
     except Exception as e:
@@ -6394,6 +6417,7 @@ def _fetch_state(
         totals=totals,
         price_levels=price_levels,
         mkt_ctx=mkt_ctx,
+        vol_ctx=vol_ctx,
         live_on=True,
         zone_since_bars=zt["since_bars_1m"],
         zone_since_bars_5m=zt["since_bars_5m"],
@@ -6551,7 +6575,8 @@ def _fetch_state(
     # Captured PRE-publish: the snapshot row's vix_vs_prev must diff against the
     # PREVIOUS cycle's published vix; after the reorder the cache entry already
     # holds THIS cycle's vix by the time the tail runs.
-    _pre_publish_prev_vix = _state_cache.get(_cache_key, {}).get("vix")
+    # VOL_INPUT_CONTRACT 1.0.0: prev-published VIX is captured once inside
+    # vol_ctx (market_iv_change); no per-surface recapture.
 
     def _post_publish_persistence_tail(published_version, v2_decision_for_log):
         """Persistence/telemetry tail: DB snapshot + accuracy + calibration append.
@@ -6736,15 +6761,10 @@ def _fetch_state(
                         log.warning(f"iwm_weighted_push (blended participation) failed: {e}")
                         _iwp = None
     
-                    # VIX vs previous (captured pre-publish — see _pre_publish_prev_vix)
-                    _prev_vix = _pre_publish_prev_vix
-                    _vix_vs_prev = None
-                    if mkt_ctx.vix is not None and _prev_vix is not None:
-                        _vix_vs_prev = round(mkt_ctx.vix - _prev_vix, 4)
-    
-                    # Track VIX direction across refreshes
-                    _vix_tracker.tick(mkt_ctx.vix)
-                    _vix_dir = _vix_tracker.direction
+                    # VOL_INPUT_CONTRACT 1.0.0: snapshot row consumes the one
+                    # per-cycle context (no re-tick, no independent vs-prev).
+                    _vix_vs_prev = vol_ctx.market_iv_change
+                    _vix_dir = vol_ctx.market_iv_direction
     
                     # ETF zone helper: derive bullish/bearish/neutral from chg_pct.
                     # Used for spy_zone / qqq_zone / iwm_zone in snapshot row.
@@ -6872,10 +6892,13 @@ def _fetch_state(
                         psci_chg_pct=_sect_map.get("PSCI"),
                         xrt_chg_pct=_sect_map.get("XRT"),
                         iwm_weighted_push=round(float(_iwp), 4) if _iwp is not None else None,
-                        vix_level=mkt_ctx.vix,
+                        vix_level=vol_ctx.market_iv_level,
                         vix_direction=_vix_dir,
                         vix_vs_prev=_vix_vs_prev,
-                        vix_bucket=_vix_bucket(mkt_ctx.vix) if mkt_ctx.vix is not None else None,
+                        vix_bucket=(
+                            _vix_bucket(vol_ctx.market_iv_level)
+                            if vol_ctx.market_iv_level is not None else None
+                        ),
                         rules_signal=ms.rules_signal,
                         rules_conviction=ms.rules_conviction,
                         rules_entry=ms.entry, rules_stop=ms.stop, rules_target=ms.target,
@@ -7237,21 +7260,11 @@ def _fetch_state(
         "derived_bid_ask_pts_schwab_quote" if _quote_spread_pts is not None else None
     )
     ms_dict["spread_age_ms"] = _quote_spread_age_ms
-    if mkt_ctx is not None and getattr(mkt_ctx, "vix", None) is not None:
-        try:
-            _vix_tracker.tick(float(mkt_ctx.vix))
-        except (TypeError, ValueError):
-            pass
-    _prev_vix_live = _state_cache.get(_cache_key, {}).get("vix")
-    ms_dict["vix"] = float(mkt_ctx.vix) if mkt_ctx and mkt_ctx.vix is not None else None
-    ms_dict["vix_direction"] = (
-        _vix_tracker.direction if mkt_ctx and mkt_ctx.vix is not None else None
-    )
-    ms_dict["vix_vs_prev"] = (
-        round(float(mkt_ctx.vix) - float(_prev_vix_live), 4)
-        if mkt_ctx and mkt_ctx.vix is not None and _prev_vix_live is not None
-        else None
-    )
+    # VOL_INPUT_CONTRACT 1.0.0: ms_dict consumes the one per-cycle context —
+    # identical values to the SignalInput stamp and the snapshot row (MSD-001).
+    ms_dict["vix"] = vol_ctx.market_iv_level
+    ms_dict["vix_direction"] = vol_ctx.market_iv_direction
+    ms_dict["vix_vs_prev"] = vol_ctx.market_iv_change
     ms_dict["server_ts"]    = time.time()
     # Client diagnostics: when a tab has SSE open for this (ticker, expiry), full pipeline re-runs about this often.
     ms_dict["sse_viewer_refresh_sec"] = round(VIEWER_SSE_REFRESH_SEC, 3)

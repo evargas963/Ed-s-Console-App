@@ -12,6 +12,38 @@ from typing import Any
 from signal_types import SignalInput
 from timeframe_config import CANONICAL_TIMEFRAME
 from time_et import RTH_END_MINS
+from volatility_regime import vol_percent_to_decimal
+
+# VOL_INPUT_CONTRACT 1.0.0 (lane V1 - closes VOL-UNIT-001): the snapshots table
+# persists iv_level / realized_vol in PERCENT (server.py snapshot stamp,
+# db.py column comments) while the SignalInput contract is DECIMAL
+# (signal_types.py:86-88). This builder is the replay-route conversion
+# boundary and uses the SAME function as the live boundary
+# (market_state vol_percent_to_decimal stamp) so both routes convert exactly
+# once. Missing stays None (never 0); invalid (negative/non-finite) becomes
+# None - explicitly unavailable, never directional evidence.
+REPLAY_ROUTE_IDENTITY = "replay"
+VOL_INPUT_CONTRACT_VERSION = "1.0.0"
+_PERCENT_PERSISTED_VOL_FIELDS = ("iv_level", "realized_vol")
+
+
+def _replay_vol_decimal(value):
+    """Percent-persisted vol column -> canonical decimal, exactly once.
+
+    vol_percent_to_decimal is idempotent for already-decimal values
+    (<= VOL_DECIMAL_PERCENT_HEURISTIC passthrough), so a value that is somehow
+    already decimal is not divided again (no double conversion). Negative or
+    non-finite values violate the ratified range (0, 5.0] and are classified
+    unavailable (None) rather than passed through as fake evidence."""
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v in (float("inf"), float("-inf")) or v < 0:
+        return None
+    return vol_percent_to_decimal(v)
 
 
 def _positive_float_required(row: dict[str, Any], field: str) -> float:
@@ -69,4 +101,9 @@ def signal_input_from_snapshot_row_dict(row: dict[str, Any]) -> SignalInput:
                 kw["mins_to_close"] = max(0.0, float(RTH_END_MINS) - (int(eh) * 60 + int(em)))
             except (TypeError, ValueError):
                 pass
+    # VOL_INPUT_CONTRACT 1.0.0 replay unit boundary (VOL-UNIT-001): convert the
+    # percent-persisted vol columns to the decimal SignalInput contract using
+    # the same canonical function as the live builder.
+    for _vf in _PERCENT_PERSISTED_VOL_FIELDS:
+        kw[_vf] = _replay_vol_decimal(kw.get(_vf))
     return SignalInput(**kw)

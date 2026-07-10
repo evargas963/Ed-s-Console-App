@@ -937,6 +937,38 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# VOL_INPUT_CONTRACT 1.0.0 (lane V1 — ratified 2026-07-09) — per-cycle market
+# volatility context. Computed ONCE per serve cycle in server._fetch_state and
+# consumed by ALL THREE surfaces (SignalInput stamp here, snapshot row, ms_dict)
+# so live-route parity is by construction (closes MSD-001: the live route used
+# to stamp vix_direction=None and omit vix_vs_prev while DB/API carried them).
+# Units: market IV level/change are VOL POINTS (never percent-of-decimal
+# converted); absence is None + UNAVAILABLE status — never 0, never "flat".
+# ─────────────────────────────────────────────────────────────────────────────
+VOL_INPUT_CONTRACT_VERSION = "1.0.0"
+
+
+@dataclass(frozen=True)
+class MarketVolContextV1:
+    """Frozen per-cycle market-volatility context (VOL_INPUT_CONTRACT 1.0.0).
+
+    market_iv_change is the signed vol-point delta vs the previous PUBLISHED
+    cycle (None when no previous cycle exists — never 0). market_iv_direction
+    is the tracker enum rising|falling|flat, None when the level is missing.
+    quality_status uses the ratified nine-state enumeration (V1 emits
+    VALID | UNAVAILABLE)."""
+
+    market_iv_level: Optional[float]
+    market_iv_change: Optional[float]
+    market_iv_direction: Optional[str]
+    quality_status: str
+    as_of_ts: Optional[float] = None
+    source_symbol: str = "$VIX"
+    route_identity: str = "live"
+    contract_version: str = VOL_INPUT_CONTRACT_VERSION
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # BUILDER — the one function that populates MarketState
 # ─────────────────────────────────────────────────────────────────────────────
 def build_market_state(
@@ -975,6 +1007,9 @@ def build_market_state(
     charm_top_drivers: list | None = None,
     # IV direction — computed by server from _IVTracker
     iv_direction: Optional[str] = None,
+    # VOL_INPUT_CONTRACT 1.0.0 (lane V1): per-cycle market-vol context computed
+    # once in server._fetch_state; None preserves pre-contract behavior (rollback).
+    vol_ctx: Optional[MarketVolContextV1] = None,
     # Candle momentum — derived from prev_spot in server.py
     candle_direction: str | None = None,  # 'up', 'down', 'flat'
     candle_body_pts: float | None = None, # absolute point move since last refresh
@@ -1309,7 +1344,11 @@ def build_market_state(
                 iwm_weighted_push=iwm_blended_participation_push(mkt_ctx),
                 event_risk_level=ms.event_risk_level,
                 event_risk_detail=ms.event_risk_detail or "",
-                vix_level=mkt_ctx.vix, vix_direction=None,
+                # VOL_INPUT_CONTRACT 1.0.0: live stamp mirrors the per-cycle
+                # context so SignalInput == snapshot row == ms_dict (MSD-001).
+                vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix),
+                vix_direction=(vol_ctx.market_iv_direction if vol_ctx is not None else None),
+                vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None),
                 et_hour=et_hour, et_minute=et_minute,
                 mins_to_close=mins_to_close,
                 session_bucket=_session_bkt,

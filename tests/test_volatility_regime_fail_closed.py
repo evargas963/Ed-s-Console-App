@@ -184,3 +184,30 @@ def test_server_realized_vol_call_site_passes_1m_interval():
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
     assert "compute_realized_vol(_closes, bar_minutes=1.0)" in src
     assert "compute_realized_vol(_closes)\n" not in src
+
+
+# ── VOL_INPUT_CONTRACT 1.0.0 (lane V1) — MSD-001 rapid-branch restoration ────
+
+
+def test_rapid_vix_change_branch_fires_with_stamped_vix_vs_prev():
+    """Pre-fix the live route stamped vix_vs_prev=None (market_state.py stamp),
+    making this branch unreachable live. With the per-cycle vol context stamped,
+    a governed |change| > rapid_vix_change_abs at vix > min_level fires it."""
+    t = VOL_REGIME_THRESHOLDS
+    inp = _inp(
+        vix_level=t.rapid_vix_change_min_level + 6.0,   # 26.0 — below extreme_vix
+        vix_vs_prev=t.rapid_vix_change_abs + 0.5,        # 3.5
+        iv_direction="flat",
+    )
+    assert inp.vix_level < t.extreme_vix
+    out = classify_volatility_regime(inp, mvp_features=minimal_mvp_features())
+    assert out.vol_regime == "unstable"
+    assert "rising fast" in out.summary.lower()
+
+
+def test_rapid_vix_change_branch_never_fires_from_missing_change():
+    """Missing change stays None and is never treated as a rapid move —
+    absence is not directional evidence (contract missing-state rule)."""
+    inp = _inp(vix_level=26.0, vix_vs_prev=None, iv_direction="flat")
+    out = classify_volatility_regime(inp, mvp_features=minimal_mvp_features())
+    assert "rising fast" not in out.summary.lower()

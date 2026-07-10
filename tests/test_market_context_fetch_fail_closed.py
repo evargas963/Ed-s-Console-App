@@ -125,9 +125,135 @@ def test_vol_index_lane_v1_no_consumer_wiring() -> None:
 
 
 def test_signalinput_vix_still_macro_vix_only() -> None:
+    """SignalInput vix stays macro $VIX only. Post VOL_INPUT_CONTRACT 1.0.0 the
+    stamp routes through the per-cycle context (whose market_iv_level IS the
+    macro $VIX quote), with mkt_ctx.vix as the vol_ctx=None fallback — the
+    macro-only intent of this lock is unchanged; no native VXN/RVX routing."""
     from market_state import build_market_state
 
     src = inspect.getsource(build_market_state)
-    assert "vix_level=mkt_ctx.vix" in src
+    assert "vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix)" in src
     assert "vxn_level" not in src
     assert "rvx_level" not in src
+
+
+# ── VOL_INPUT_CONTRACT 1.0.0 (lane V1) — per-cycle context + stamp parity ────
+
+import ast as _ast
+import dataclasses as _dc
+from pathlib import Path as _Path
+
+import pytest as _pytest
+
+from market_state import MarketVolContextV1, VOL_INPUT_CONTRACT_VERSION
+
+_REPO = _Path(__file__).resolve().parent.parent
+
+
+def test_vol_context_struct_contract():
+    ctx = MarketVolContextV1(
+        market_iv_level=26.0, market_iv_change=3.5,
+        market_iv_direction="rising", quality_status="VALID", as_of_ts=1.0,
+    )
+    assert ctx.contract_version == VOL_INPUT_CONTRACT_VERSION == "1.0.0"
+    assert ctx.route_identity == "live"
+    assert ctx.source_symbol == "$VIX"
+    with _pytest.raises(_dc.FrozenInstanceError):
+        ctx.market_iv_level = 30.0  # type: ignore[misc]
+
+
+def test_vol_context_absence_is_explicit_not_directional():
+    ctx = MarketVolContextV1(
+        market_iv_level=None, market_iv_change=None,
+        market_iv_direction=None, quality_status="UNAVAILABLE",
+    )
+    assert ctx.market_iv_change is None      # never 0
+    assert ctx.market_iv_direction is None   # never "flat" by default
+
+
+def test_single_tracker_tick_site_lock():
+    """Exactly ONE _vix_tracker.tick site may exist in server.py — the
+    per-cycle vol-context computation. Extra per-surface ticks re-tick the
+    same value and force direction to flat (pre-fix defect class)."""
+    server_src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    assert server_src.count("_vix_tracker.tick(") == 1
+
+
+def test_three_surfaces_consume_the_one_context():
+    """SignalInput stamp, snapshot row, and ms_dict must all read
+    vol_ctx.market_iv_* — no surface recomputes vs-prev or re-reads the
+    tracker independently (MSD-001 route parity by construction)."""
+    server_src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    ms_src = (_REPO / "market_state.py").read_text(encoding="utf-8", errors="replace")
+    assert 'ms_dict["vix"] = vol_ctx.market_iv_level' in server_src
+    assert 'ms_dict["vix_direction"] = vol_ctx.market_iv_direction' in server_src
+    assert 'ms_dict["vix_vs_prev"] = vol_ctx.market_iv_change' in server_src
+    assert "_vix_vs_prev = vol_ctx.market_iv_change" in server_src   # snapshot row
+    assert "vix_level=vol_ctx.market_iv_level" in server_src         # snapshot row
+    assert "vol_ctx=vol_ctx" in server_src                           # build_market_state call
+    assert "vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None)" in ms_src
+    assert "vix_direction=(vol_ctx.market_iv_direction if vol_ctx is not None else None)" in ms_src
+
+
+def test_vol_context_bound_outside_any_try():
+    """vol_ctx must be bound unconditionally in _fetch_state — never inside a
+    try whose handler swallows and continues. Caught 2026-07-10: the binding
+    lived inside the envelope/density/sector try (except Exception:
+    log.debug), so any swallowed exception there left vol_ctx unbound and the
+    later build_market_state(vol_ctx=vol_ctx) call died with NameError."""
+    tree = _ast.parse((_REPO / "server.py").read_text(encoding="utf-8", errors="replace"))
+    parents: dict[_ast.AST, _ast.AST] = {}
+    for node in _ast.walk(tree):
+        for child in _ast.iter_child_nodes(node):
+            parents[child] = node
+    bindings = [
+        n for n in _ast.walk(tree)
+        if isinstance(n, _ast.Name) and n.id == "vol_ctx" and isinstance(n.ctx, _ast.Store)
+    ]
+    assert len(bindings) == 1, f"expected exactly one vol_ctx binding, got {len(bindings)}"
+    cur: _ast.AST = bindings[0]
+    enclosing: list[str] = []
+    while cur in parents:
+        cur = parents[cur]
+        if isinstance(cur, (_ast.Try, _ast.If, _ast.For, _ast.While)):
+            enclosing.append(f"{type(cur).__name__}@{cur.lineno}")
+    assert enclosing == [], (
+        f"vol_ctx binding is conditional/swallowable (inside {enclosing}) — "
+        f"it must execute on every path that reaches its consumers"
+    )
+
+
+def test_canonical_signal_input_construction_lock():
+    """Money-path SignalInput construction happens only in the two canonical
+    builders (market_state live stamp; replay builder). Production code must
+    not bypass the vol boundary with an independent SignalInput(...)."""
+    allowed = {"market_state.py", "features/replay_signal_input_v1.py", "signal_types.py"}
+    offenders: list[str] = []
+    for path in _REPO.glob("*.py"):
+        rel = path.name
+        if rel in allowed or rel.startswith("test_"):
+            continue
+        tree = _ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Call):
+                fn = node.func
+                name = fn.id if isinstance(fn, _ast.Name) else (
+                    fn.attr if isinstance(fn, _ast.Attribute) else ""
+                )
+                if name == "SignalInput":
+                    offenders.append(f"{rel}:{node.lineno}")
+    fdir = _REPO / "features"
+    for path in fdir.glob("*.py"):
+        rel = f"features/{path.name}"
+        if rel in allowed:
+            continue
+        tree = _ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Call):
+                fn = node.func
+                name = fn.id if isinstance(fn, _ast.Name) else (
+                    fn.attr if isinstance(fn, _ast.Attribute) else ""
+                )
+                if name == "SignalInput":
+                    offenders.append(f"{rel}:{node.lineno}")
+    assert offenders == [], f"SignalInput constructed outside canonical builders: {offenders}"
