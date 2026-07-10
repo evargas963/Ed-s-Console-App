@@ -49,7 +49,7 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
-MEGA3_ROW_COUNT = 152  # inventory sync @ Lane A CI fix: +4 operator field_lineage defs (inference_snapshot.py)
+MEGA3_ROW_COUNT = 153  # inventory sync @ VOL_INPUT_CONTRACT 1.0.0 V1: +1 _replay_vol_decimal (replay_signal_input_v1.py)
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES
 
 

@@ -1282,15 +1282,60 @@ def test_fix_b_v2_decision_parity_served_equals_logged():
 
 
 def test_fix_b_tail_never_touches_state_cache():
-    """Isolation lock: the tail never references _state_cache (the pre-publish
-    prev-vix capture happens outside the tail)."""
+    """Isolation lock: the tail never references _state_cache, and the prev-vix
+    capture holds structurally (VOL_INPUT_CONTRACT 1.0.0 renamed it to
+    _vol_prev_published_vix; the old exact-string anchor was brittle):
+    (a) exactly one capture binding exists in _fetch_state;
+    (b) it reads _state_cache.get(_cache_key, ...).get("vix") — the prior
+        published cache entry under the exact cycle key, no other source;
+    (c) it precedes every dict-literal _state_cache[_cache_key] publish that
+        carries a "vix" key, so this cycle's publish can never contaminate
+        the previous-value calculation."""
     import ast
 
-    _fetch, tail = _fetch_state_ast()
+    fetch, tail = _fetch_state_ast()
     names = {s.id for s in ast.walk(tail) if isinstance(s, ast.Name)}
     assert "_state_cache" not in names
-    src = _fetch_state_source()
-    assert '_pre_publish_prev_vix = _state_cache.get(_cache_key, {}).get("vix")' in src
+
+    captures = [
+        node for node in ast.walk(fetch)
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "_vol_prev_published_vix"
+            for t in node.targets
+        )
+    ]
+    assert len(captures) == 1, "exactly one pre-publish prev-vix capture"
+    cap = captures[0]
+    outer = cap.value
+    assert isinstance(outer, ast.Call) and isinstance(outer.func, ast.Attribute)
+    assert outer.func.attr == "get"
+    assert [a.value for a in outer.args if isinstance(a, ast.Constant)] == ["vix"]
+    inner = outer.func.value
+    assert isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
+    assert inner.func.attr == "get"
+    assert isinstance(inner.func.value, ast.Name)
+    assert inner.func.value.id == "_state_cache", "prev vix must come from the state cache"
+    assert any(
+        isinstance(a, ast.Name) and a.id == "_cache_key" for a in inner.args
+    ), "prev vix must read the exact per-cycle cache key"
+
+    publishes = [
+        node for node in ast.walk(fetch)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Dict)
+        and any(
+            isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
+            and t.value.id == "_state_cache"
+            for t in node.targets
+        )
+        and "vix" in {
+            k.value for k in node.value.keys if isinstance(k, ast.Constant)
+        }
+    ]
+    assert publishes, "expected a vix-carrying _state_cache publish in _fetch_state"
+    assert all(cap.lineno < p.lineno for p in publishes), (
+        "the prev-vix capture must precede every vix-carrying publish"
+    )
 
 
 def test_fix_b_no_new_ticker_special_casing():

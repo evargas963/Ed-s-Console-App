@@ -6104,6 +6104,21 @@ def _fetch_state(
     # path that reaches build_market_state / the persistence tail / ms_dict —
     # a swallowed envelope exception must degrade envelope fields only, never
     # unbind the vol context (NameError = broken serve cycle).
+    #
+    # Schwab CSV authority checked: yes
+    # CSV row(s): quotes.$VIX.lastPrice — market_iv_level source primitive: the
+    #   macro $VIX quote fetched in market_context.fetch_market_context via
+    #   safe_get_quote and carried here as mkt_ctx.vix (no substitute source).
+    # market_iv_change / market_iv_direction: NO_SCHWAB_EQUIVALENT — derived as
+    #   the signed vol-point delta vs the previous PUBLISHED $VIX observation
+    #   and the tracker enum over the same quote series; Schwab provides no
+    #   primitive for either; absence stays None (never 0/"flat"), no synthetic
+    #   value is represented as a Schwab field.
+    # Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE
+    # All consumers checked: yes — SignalInput stamp, snapshot row, ms_dict,
+    #   confluence, vix_bucket all consume this one frozen vol_ctx (MSD-001
+    #   parity locks in tests/test_market_context_fetch_fail_closed.py).
+    # SCHWAB_CSV_CHECKED
     _vol_prev_published_vix = _state_cache.get(_cache_key, {}).get("vix")
     _vol_vix_now = None
     if getattr(mkt_ctx, "vix", None) is not None:
