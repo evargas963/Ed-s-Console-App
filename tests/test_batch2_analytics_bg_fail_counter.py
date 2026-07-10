@@ -205,6 +205,9 @@ def test_api_state_symbol_alias_routes_to_symbol(monkeypatch):
 
 
 def test_api_build_exposes_git_sha(monkeypatch):
+    """BUILD_IDENTITY semantics (operator-approved 2026-07-10): git_sha is the
+    STARTUP process identity; request-time repo state lives only under
+    repository_state_now.repo_head_now."""
     import server as srv
     from starlette.testclient import TestClient
 
@@ -213,7 +216,9 @@ def test_api_build_exposes_git_sha(monkeypatch):
         r = client.get("/api/build")
         assert r.status_code == 200
         body = r.json()
-        assert body["git_sha"] == "abc123deadbeef"
+        assert body["git_sha"] == body["process_identity"]["startup_git_sha"]
+        assert body["repository_state_now"]["repo_head_now"] == "abc123deadbeef"
+        assert body["git_sha_semantics"] == "startup_process_identity"
         assert body["contract"] == "meet_or_exceed_v1"
 
 

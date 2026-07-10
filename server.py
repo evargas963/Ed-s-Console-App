@@ -10214,28 +10214,39 @@ PROCESS_IDENTITY_V1: ProcessIdentityV1 = _capture_process_identity()
 
 @app.get("/api/build")
 def api_build():
-    """Build/identity surface.
+    """Build/identity surface (BUILD_IDENTITY consumer semantics, operator-
+    approved 2026-07-10).
 
-    ``process_identity`` is the IMMUTABLE identity captured once at process
-    start — the only block that proves which code this process loaded.
-    ``repository_state_now`` is a request-time diagnostic of the repository on
-    disk: it drifts when HEAD moves and is NOT process identity. The legacy
-    top-level ``git_sha`` mirrors repository_state_now.repo_head_now for
-    compatibility with existing consumers and must not be read as proof of
-    the running process's code.
+    ``git_sha`` == ``process_identity.startup_git_sha``: the code identity the
+    RUNNING process loaded, stable for the process lifetime. Request-time
+    repository state lives ONLY under ``repository_state_now.repo_head_now``
+    (it drifts when HEAD moves and is never process identity). ``code_drift``
+    reports explicitly when the checkout has moved past the running process.
+    Mechanical lock: tests/test_build_identity_semantics.py forbids new code
+    from sourcing process identity from request-time git.
     """
     from release_object import get_current_release
 
     release = get_current_release(required=False)
     repo_head_now = _repo_git_head_sha()
+    identity = asdict(PROCESS_IDENTITY_V1)
+    startup_sha = identity.get("startup_git_sha")
     return {
-        "git_sha": repo_head_now,  # LEGACY-COMPAT: dynamic repo read, not process identity
+        "git_sha": startup_sha,  # PROCESS IDENTITY (startup capture) — never request-time git
         "contract": "meet_or_exceed_v1",
         "release_id": release.get("release_id") if release else None,
         "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
         "ui_maximize_panel_warm_tickers": list(UI_MAXIMIZE_PANEL_WARM_TICKERS),
-        "process_identity": asdict(PROCESS_IDENTITY_V1),
+        "process_identity": identity,
         "repository_state_now": {"repo_head_now": repo_head_now},
+        "code_drift": {
+            "repo_moved_past_process": bool(
+                startup_sha and repo_head_now and startup_sha != repo_head_now
+            ),
+            "running_code": startup_sha,
+            "checked_out_code": repo_head_now,
+        },
+        "git_sha_semantics": "startup_process_identity",  # deprecation notice for request-time readers
     }
 
 
