@@ -36,6 +36,8 @@ def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str, *, encoder_sch
             "target_column": f"outcome_{hz}",
             "target_definition": f"outcome ~{hz}",
             "rows_used": 500,
+            # MODEL-04 serve policy: honest provenance (approved base vintage)
+            "trained_at": "2026-06-04 04:29:57",
         }
         if kind == "xgb":
             meta["category_maps"] = {}

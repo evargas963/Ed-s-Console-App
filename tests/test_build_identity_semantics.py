@@ -21,8 +21,6 @@ def _api_build(monkeypatch, repo_head: str):
 
 
 def test_git_sha_is_startup_process_identity(monkeypatch):
-    import server as srv
-
     body = _api_build(monkeypatch, "f" * 40)
     startup = body["process_identity"]["startup_git_sha"]
     assert body["git_sha"] == startup
