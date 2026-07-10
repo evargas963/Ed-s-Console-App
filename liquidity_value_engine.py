@@ -267,22 +267,37 @@ def get_previous_day_levels(
     if not bars_norm:
         return {}
 
-    session_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    prev_rth_start = session_dt - timedelta(days=1)
-    prev_rth_end = datetime.combine(session_date - timedelta(days=1), RTH_CLOSE, tzinfo=ET)
-
-    prev_bars = []
+    # UI-04 P1D (2026-07-10): previous TRADING day, not calendar-day-minus-one.
+    # The old window (session_date-1 .. session_date) was empty on Mondays and
+    # post-holiday sessions, and its fallback swept EVERY prior bar in the
+    # buffer (multi-day, extended-hours included) into PDH/PDL/PDC — wrong
+    # levels displayed as prior-day truth. Now: the most recent prior date
+    # that actually has RTH bars is authoritative, single-day, RTH-only; if
+    # none exists the levels stay absent (honest missing, never fabricated).
+    # Schwab CSV authority checked: yes
+    # CSV row(s): pricehistory.candles[].high/low/close/volume — same bar
+    #   inputs, unchanged; this corrects the prior-day WINDOW selection only.
+    # Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (PDH/PDL/PDC
+    #   are derivations over Schwab candles; NO_SCHWAB_EQUIVALENT for the
+    #   prior-day aggregates themselves).
+    # All consumers checked: yes — same dict shape; absent keys were already
+    #   a legal output (empty-bars path) handled by every consumer.
+    # SCHWAB_CSV_CHECKED
+    prior_rth_dates = set()
     for b in bars_norm:
         dt = _bar_dt_et(b)
         if dt is None:
             continue
-        if prev_rth_end.date() <= dt.date() < session_date:
-            if RTH_OPEN <= dt.time() < RTH_CLOSE:
-                prev_bars.append(b)
-    if not prev_bars:
+        if dt.date() < session_date and RTH_OPEN <= dt.time() < RTH_CLOSE:
+            prior_rth_dates.add(dt.date())
+    prev_bars = []
+    if prior_rth_dates:
+        prev_trading_day = max(prior_rth_dates)
         for b in bars_norm:
             dt = _bar_dt_et(b)
-            if dt and dt.date() < session_date:
+            if dt is None:
+                continue
+            if dt.date() == prev_trading_day and RTH_OPEN <= dt.time() < RTH_CLOSE:
                 prev_bars.append(b)
 
     out = {}
