@@ -102,7 +102,7 @@ A task may not close unless its evidence packet answers every applicable questio
 - accumulating green tests as a goal in itself
 - cosmetic completion of checklist items
 - downstream symptom patches over defective upstream truth
-- representative-only proof presented as universality
+- representative-only proof presented as universality — such evidence must be classified REPRESENTATIVE_ONLY_NOT_PROVEN
 - relabeling incorrect quantities
 - fabricating unavailable values
 - converting unknown states into clean states
