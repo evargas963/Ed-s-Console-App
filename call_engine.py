@@ -8,6 +8,14 @@ The Call — implements STACK ORDER 8, 9, 10 (enforced in compute_call):
 
 from __future__ import annotations
 
+# UI-04 P1C (operator-approved 2026-07-10): charm is quant-unvalidated -
+# sign convention, dealer-vs-holder perspective, units, DTE behavior and
+# predictive validity are unproven. Until a quant-validation lane flips this
+# to "APPROVED", charm contributes no trade-determinative vote (the compute
+# path passes charm_direction=None into greek_bias). Mechanical lock:
+# tests/test_charm_vote_gate.py.
+CHARM_VOTE_VALIDATION_STATUS = "UNAPPROVED"
+
 import logging
 import math
 from typing import Optional
@@ -1488,7 +1496,17 @@ def compute_call(
     # ══════════════════════════════════════════════════════════════════════════
     _fusion_available = fusion_is_authoritative(fusion)
     _regime_label = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
-    greek_b = greek_bias(inp.net_delta, inp.charm_direction, inp.put_call_oi_ratio,
+    # UI-04 P1C charm vote gate (operator-approved 2026-07-10): charm's
+    # analytic sign convention / units / horizon semantics / predictive
+    # validity are UNPROVEN. Charm stays computed, logged, and displayed on
+    # research surfaces with status - but contributes ZERO trade-determinative
+    # vote until CHARM_VOTE_VALIDATION_STATUS == "APPROVED". No substitute
+    # impersonates it; the gate status is a module constant observable in
+    # diagnostics.
+    _charm_vote_direction = (
+        inp.charm_direction if CHARM_VOTE_VALIDATION_STATUS == "APPROVED" else None
+    )
+    greek_b = greek_bias(inp.net_delta, _charm_vote_direction, inp.put_call_oi_ratio,
                          dex_magnitude=inp.dex_magnitude or "moderate",
                          charm_magnitude=inp.charm_magnitude or "moderate")
     cross_sig = _cross_instrument_signal(inp)
