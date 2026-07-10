@@ -421,6 +421,8 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 7844, "get_sqlite_contention_diagnostics", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 7882, "fast_quote._reg_and_fetch", "NONE", None, (), None, "No market-field derivation: Nested helper; parent row owns derivation semantics."),
     Mega1TraceableDerivation("server.py", 8349, "_repo_git_head_sha", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
+    Mega1TraceableDerivation("server.py", 9955, "_capture_process_identity", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
+    Mega1TraceableDerivation("server.py", 9955, "_is_full_git_sha", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 8369, "api_release_current", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 8381, "api_decision_by_id", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 8402, "api_build", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),

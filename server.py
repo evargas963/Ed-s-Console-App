@@ -44,7 +44,7 @@ from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
 from typing import Any, Dict, Optional
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 
 from time_et import now_et, RTH_OPEN_MINS, RTH_END_MINS
 
@@ -9927,18 +9927,174 @@ def api_decision_by_id(decision_id: str):
     }
 
 
+# ── BUILD_IDENTITY_PROCESS_DRIFT_V1 — immutable process-start identity ───────
+# Root cause fixed here: /api/build used to serve _repo_git_head_sha() (a
+# request-time repo read) as the only identity, so a HEAD move after launch
+# made the endpoint report code the process never loaded (proven 2026-07-09:
+# PID 57076 booted @ 930c678 reported 9664be4). The identity below is captured
+# exactly ONCE at module import — before any request is served — and is a
+# frozen dataclass: normal code paths cannot mutate it. Request-time repo reads
+# feed only the separately named repository_state_now diagnostic (and the
+# legacy top-level git_sha compatibility field).
+_IDENTITY_SHA_HEX_CHARS = frozenset("0123456789abcdef")
+
+
+def _is_full_git_sha(value: str) -> bool:
+    """True only for a 40-char lowercase-hex string — malformed git output is
+    rejected rather than represented as a valid identity."""
+    return len(value) == 40 and set(value) <= _IDENTITY_SHA_HEX_CHARS
+
+
+@dataclass(frozen=True)
+class ProcessIdentityV1:
+    """Immutable process-start identity (schema v1). Captured once; never
+    recomputed per request. identity_capture_error carries a sanitized fixed
+    classification only — never raw subprocess output or stack traces."""
+
+    schema_version: str
+    startup_git_sha: Optional[str]
+    startup_git_sha_short: Optional[str]
+    startup_git_dirty: Optional[bool]
+    startup_git_available: bool
+    startup_identity_captured_at_utc: float
+    process_started_at_utc: Optional[float]
+    process_id: int
+    package_build_id: Optional[str]
+    identity_source: str
+    identity_capture_error: Optional[str]
+
+
+def _capture_process_identity() -> ProcessIdentityV1:
+    """Build the process-start identity. Called once at module import for the
+    production singleton; kept callable so tests can exercise every capture
+    state deterministically against temp repos / mocked subprocess layers.
+
+    Dirty semantics: ``git status --porcelain`` with ANY output (tracked
+    changes OR untracked files) = dirty — matching the repo's clean-tree
+    policy used by the commit gates. A failed dirty probe yields None
+    (unknown), never a fabricated clean=False->false claim of cleanliness.
+
+    process_started_at_utc: OS process creation time via optional psutil;
+    None when that support is unavailable — startup_identity_captured_at_utc
+    (module-import wall clock, UTC) is the honestly named capture instant.
+    """
+    import subprocess
+
+    captured_at = datetime.now(tz=timezone.utc).timestamp()
+    pid = os.getpid()
+
+    started_at: Optional[float] = None
+    try:
+        import psutil  # optional process-metadata support — NOT a governed runtime dependency
+
+        started_at = float(psutil.Process(pid).create_time())
+    except Exception:  # noqa: BLE001 — identity capture must never kill startup
+        started_at = None
+
+    sha: Optional[str] = None
+    sha_short: Optional[str] = None
+    dirty: Optional[bool] = None
+    git_available = False
+    capture_error: Optional[str] = None
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=APP_DIR,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5.0,
+        )
+        raw = (proc.stdout or "").strip().lower()
+        if _is_full_git_sha(raw):
+            sha = raw
+            sha_short = raw[:12]  # derived from the captured full SHA — no second git call
+            git_available = True
+        else:
+            capture_error = "git_output_not_a_sha"
+    except FileNotFoundError:
+        capture_error = "git_executable_unavailable"
+    except subprocess.TimeoutExpired:
+        capture_error = "git_timeout"
+    except (OSError, subprocess.SubprocessError):
+        capture_error = "git_command_failed"
+
+    if git_available:
+        try:
+            st = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=APP_DIR,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10.0,
+            )
+            dirty = bool((st.stdout or "").strip())
+        except (OSError, subprocess.SubprocessError):
+            dirty = None  # unknown dirty state is NOT clean
+            if capture_error is None:
+                capture_error = "git_dirty_state_unavailable"
+
+    package_build_id: Optional[str] = None
+    try:
+        from release_object import get_current_release
+
+        _rel = get_current_release(required=False)
+        package_build_id = _rel.get("release_id") if _rel else None
+    except Exception:  # noqa: BLE001 — identity capture must never kill startup
+        package_build_id = None
+
+    if git_available:
+        identity_source = "git_startup_capture"
+    elif package_build_id is not None:
+        identity_source = "release_object_package"
+    else:
+        identity_source = "unavailable"
+
+    return ProcessIdentityV1(
+        schema_version="1",
+        startup_git_sha=sha,
+        startup_git_sha_short=sha_short,
+        startup_git_dirty=dirty,
+        startup_git_available=git_available,
+        startup_identity_captured_at_utc=captured_at,
+        process_started_at_utc=started_at,
+        process_id=pid,
+        package_build_id=package_build_id,
+        identity_source=identity_source,
+        identity_capture_error=capture_error,
+    )
+
+
+# Captured exactly once, at module import, before uvicorn serves any request
+# (single-process, single-worker, no --reload per start_ed_console.bat).
+PROCESS_IDENTITY_V1: ProcessIdentityV1 = _capture_process_identity()
+
+
 @app.get("/api/build")
 def api_build():
-    """Runtime tip fingerprint — compare ``git_sha`` to ``git rev-parse HEAD`` after deploy/restart."""
+    """Build/identity surface.
+
+    ``process_identity`` is the IMMUTABLE identity captured once at process
+    start — the only block that proves which code this process loaded.
+    ``repository_state_now`` is a request-time diagnostic of the repository on
+    disk: it drifts when HEAD moves and is NOT process identity. The legacy
+    top-level ``git_sha`` mirrors repository_state_now.repo_head_now for
+    compatibility with existing consumers and must not be read as proof of
+    the running process's code.
+    """
     from release_object import get_current_release
 
     release = get_current_release(required=False)
+    repo_head_now = _repo_git_head_sha()
     return {
-        "git_sha": _repo_git_head_sha(),
+        "git_sha": repo_head_now,  # LEGACY-COMPAT: dynamic repo read, not process identity
         "contract": "meet_or_exceed_v1",
         "release_id": release.get("release_id") if release else None,
         "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
         "ui_maximize_panel_warm_tickers": list(UI_MAXIMIZE_PANEL_WARM_TICKERS),
+        "process_identity": asdict(PROCESS_IDENTITY_V1),
+        "repository_state_now": {"repo_head_now": repo_head_now},
     }
 
 
