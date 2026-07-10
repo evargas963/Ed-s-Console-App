@@ -3527,6 +3527,19 @@ def check_live_ablation_experiment_wiring() -> list[str]:
     return errors
 
 
+def check_universal_standard() -> list[str]:
+    """UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1 — registry delegator.
+    The single checker implementation lives in tools/check_universal_standard.py
+    (canonical artifact: governance/standard/universal_institutional_engineering_standard_v1.json).
+    Do not duplicate that logic here."""
+    tools_dir = Path(__file__).resolve().parent
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+    from check_universal_standard import check_universal_standard as _impl
+
+    return _impl()
+
+
 # ── Repo-wide static audit — single source of truth (no whack-a-mole drift) ──
 _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_mvp_dataframe_ingress",
@@ -3583,6 +3596,7 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_ci_tooling_dependencies",
     "check_check_stack_rightsizing",
     "check_operator_trust_governance",
+    "check_universal_standard",
 )
 
 # Pre-commit staged / commit-msg locks (cannot run repo-wide without staged paths).

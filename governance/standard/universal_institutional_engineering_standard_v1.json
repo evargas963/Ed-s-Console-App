@@ -1,0 +1,188 @@
+{
+  "artifact_id": "UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1",
+  "schema_version": "1",
+  "standard_version": "1.0.0",
+  "classification": "canonical_engineering_standard",
+  "canonical": true,
+  "answers": "HOW MUST ALL WORK BE DONE AND PROVEN?",
+  "does_not_answer": "WHAT SHOULD WE WORK ON NEXT?",
+  "applicability": "Every Ed Console repository task: data, database, calculations, features, models, signals, risk, execution, APIs, transport, UI, infrastructure, testing, governance, documentation, refactoring, and production operations.",
+  "primary_objective": {
+    "id": "UIES-OBJ",
+    "text": "Every task must materially advance Ed Console toward institutional-grade standards comparable in rigor, reliability, transparency, and operator trust to systems used by professional trading firms, institutional market-data and analytics platforms, Bloomberg Terminal-class operator systems, Reuters/LSEG Workspace-class financial platforms, regulated production financial software, and serious quantitative research environments. The objective is not to accumulate green tests, close small checklist items, or make the application look more complete. The objective is to build a system whose: market data is trustworthy; calculations are correct; database history is temporally valid; features are free from look-ahead contamination; models are empirically justified; confidence values mean what the UI says they mean; signals have measured outcome validity; risk and sizing are controlled; live behavior matches tested and backtested behavior; failures are visible and fail closed; operator surfaces are truthful; runtime identity and evidence are reproducible; and real-money decisions can be reconstructed and audited."
+  },
+  "universal_principles": [
+    {
+      "id": "UIES-P01",
+      "name": "material_institutional_advancement",
+      "text": "Every task must identify the concrete institutional capability it improves (e.g., data truth, temporal integrity, calculation correctness, empirical validity, calibration, risk control, execution realism, production reliability, observability, explainability, reproducibility, operator trust, regression prevention). A task may be small when it removes a foundational blocker. A task may not be accepted merely because it is easy, cosmetic, or produces green tests."
+    },
+    {
+      "id": "UIES-P02",
+      "name": "root_cause_correction",
+      "text": "Every defect must be traced to the earliest defensible root cause. Where applicable, analysis follows: SOURCE -> INGESTION -> STORAGE -> TIMESTAMPING -> NORMALIZATION -> FEATURE/CALCULATION -> MODEL -> FUSION/POLICY -> DECISION -> API -> TRANSPORT -> UI -> OPERATOR ACTION -> OUTCOME. Do not patch downstream symptoms while upstream truth remains defective."
+    },
+    {
+      "id": "UIES-P03",
+      "name": "universal_design",
+      "text": "Fixes must be universal by construction across the supported dimensions relevant to the task, including as applicable: tickers, horizons, sessions, roster sizes, data states, missing/stale conditions, deployment modes, process lifecycles, concurrency, and runtime environments. Representative examples do not by themselves prove universality."
+    },
+    {
+      "id": "UIES-P04",
+      "name": "truthful_semantics",
+      "text": "Names, labels, payloads, displays, metrics, probabilities, statuses, and evidence must mean exactly what they claim. Do not: relabel an incorrect quantity; fabricate unavailable values; convert unknown states into false or clean states; present stale data as current; present diagnostics as process identity; or imply proof that has not been obtained."
+    },
+    {
+      "id": "UIES-P05",
+      "name": "empirical_and_mathematical_validity",
+      "text": "Trade-determinative calculations, models, probabilities, confidence values, signal logic, thresholds, and policies must be supported by: defined semantics, traceable inputs, valid mathematics, appropriate holdout or out-of-sample evidence, outcome validation, and explicit failure behavior. Passing code tests does not prove trading validity."
+    },
+    {
+      "id": "UIES-P06",
+      "name": "fail_closed_behavior",
+      "text": "When required truth, provenance, freshness, capacity, calibration, validation, or safety conditions are unavailable, the system must fail closed where money-path behavior is affected. Failure must be explicit, observable, attributable, and testable."
+    },
+    {
+      "id": "UIES-P07",
+      "name": "mechanical_regression_prevention",
+      "text": "Every material fix must add or strengthen an appropriate mechanical lock: deterministic tests, schema validation, invariant checks, static analysis, runtime assertions, contract tests, mutation detection, CI enforcement, or governed artifact validation. A prose statement alone is not a mechanical lock."
+    },
+    {
+      "id": "UIES-P08",
+      "name": "complete_proof",
+      "text": "Acceptance must be based on the evidence appropriate to the task: code-path evidence, deterministic tests, adversarial tests, runtime proof, data proof, browser/transport proof, model or statistical validation, exact diff scope, remote CI, and committed-SHA identity. The absence of an observed failure is not proof."
+    },
+    {
+      "id": "UIES-P09",
+      "name": "honest_binary_status",
+      "text": "Use explicit statuses: `PROVEN` / `NOT_PROVEN`; `APPROVED` / `NOT_APPROVED`; `PASS` / `FAIL`; `CLOSED_WITH_EVIDENCE` / `NOT_CLOSED`; `AUTHORIZED` / `NOT_AUTHORIZED`. Do not use ambiguous closure language."
+    },
+    {
+      "id": "UIES-P10",
+      "name": "controlled_change_scope",
+      "text": "Each task must identify its mission-owned scope. No unrelated ride-along changes are permitted. Implementation, commit, push, and merge authorization remain separate decisions unless explicitly combined by policy."
+    },
+    {
+      "id": "UIES-P11",
+      "name": "engineering_autonomy_within_the_standard",
+      "text": "The standard governs outcomes, truth, scope, universality, evidence, and acceptance. It must not over-prescribe ordinary implementation details such as helper names, class names, line count, test fixture style, internal decomposition, or one specific algorithm when multiple approaches satisfy the standard. The standard prevents drift without causing continuous approval churn."
+    },
+    {
+      "id": "UIES-P12",
+      "name": "explicit_exceptions",
+      "text": "Any exception to the universal standard must be explicit, narrowly scoped, justified, approved, time-bounded or review-bounded where appropriate, recorded, and mechanically detectable. Silent exceptions are prohibited."
+    }
+  ],
+  "required_task_declarations": [
+    "STANDARD_VERSION",
+    "INSTITUTIONAL_CAPABILITY_ADVANCED",
+    "ROOT_CAUSE_TARGET",
+    "MONEY_PATH_IMPACT",
+    "UNIVERSALITY_DIMENSIONS",
+    "TRUTH_SEMANTICS",
+    "FAIL_CLOSED_REQUIREMENT",
+    "MECHANICAL_REGRESSION_LOCK",
+    "REQUIRED_PROOF",
+    "MISSION_OWNED_SCOPE",
+    "EXCEPTIONS",
+    "BINARY_ACCEPTANCE_CRITERIA"
+  ],
+  "task_declaration_rules": {
+    "trigger": "Any governed artifact block that declares STANDARD_VERSION invokes full task-contract validation.",
+    "priority_exclusion": "These declarations describe the standard of execution. They must not dictate which task should be selected next. Priority lives in queue files, mission packets, operator decisions, and evidence artifacts - never in this standard.",
+    "vague_capability_rejection": "INSTITUTIONAL_CAPABILITY_ADVANCED must name a concrete technical outcome; entries consisting only of generic quality words are rejected."
+  },
+  "closure_contract": {
+    "id": "UIES-CLOSURE",
+    "questions": [
+      "What institutional weakness existed?",
+      "What root cause created it?",
+      "What concrete capability was improved?",
+      "Which universal dimensions were covered?",
+      "What semantics are now truthful?",
+      "What failure behavior was proven?",
+      "What tests and runtime/data evidence support the result?",
+      "What mechanical lock prevents regression?",
+      "What remains not proven?",
+      "What exact code identity and diff were tested?",
+      "What is the binary status?"
+    ],
+    "rule": "A task may not close unless its evidence packet answers every applicable question. The closure checker must reject unsupported closure. The FULL_FIXES_ONLY_V2 evidence gate remains the mechanical closure vocabulary; this contract defines what its evidence must answer."
+  },
+  "prohibited_practices": [
+    "accumulating green tests as a goal in itself",
+    "cosmetic completion of checklist items",
+    "downstream symptom patches over defective upstream truth",
+    "representative-only proof presented as universality",
+    "relabeling incorrect quantities",
+    "fabricating unavailable values",
+    "converting unknown states into clean states",
+    "presenting stale data as current",
+    "presenting diagnostics as process identity",
+    "prose-only regression prevention",
+    "ambiguous closure language in governed status fields",
+    "silent exceptions",
+    "unrelated ride-along changes",
+    "embedding current priority, active lanes, SHAs, PIDs, or CI state into this standard"
+  ],
+  "exception_rules": {
+    "marker": "UIES_EXCEPTION_APPROVED",
+    "required_fields": [
+      "scope",
+      "justification",
+      "approved_by",
+      "bound"
+    ],
+    "format": "UIES_EXCEPTION_APPROVED: scope=<narrow-scope> justification=<why> approved_by=<operator-ref> bound=<time-or-review-bound>",
+    "rule": "Silent exceptions are prohibited. An exception line missing any required field is invalid."
+  },
+  "domain_profiles": [
+    {
+      "id": "INSTITUTIONAL_STANDARD_V3",
+      "path": "governance/INSTITUTIONAL_STANDARD_V3.md",
+      "scope": "Production ML trading decision systems (Tier-5 spec vault; own Section 20 amendment path).",
+      "relationship": "Domain profile under this universal standard; it does not define a competing repository-wide objective."
+    },
+    {
+      "id": "SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4",
+      "path": "governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md",
+      "scope": "Schwab market-field program law (CLAUDE.md directive).",
+      "relationship": "Domain program under this universal standard; market-field disposition law is unchanged by this artifact."
+    }
+  ],
+  "reference_contract": {
+    "required_reference_token": "UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1 @ governance/standard/universal_institutional_engineering_standard_v1.json (STANDARD_VERSION=1.0.0)",
+    "reference_only_consumers": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      ".cursor/rules/00-always.mdc",
+      "governance/docs/AGENT_OPERATING_CONTRACT.md"
+    ],
+    "rule": "Governed agent/operating files carry the reference token and must not restate the primary objective or redefine principle IDs. A generated human-readable rendering is derived from this artifact and byte-verified against it."
+  },
+  "enforcement": {
+    "checker": "tools/check_universal_standard.py",
+    "invoked_from": [
+      "tools/check_fix_everything_we_touch.py::_REPO_WIDE_STATIC_CHECK_FUNCS (enforce-all + objective-audit + CI hardening/objective gates)"
+    ],
+    "generated_rendering": "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md",
+    "tests": "tests/test_universal_institutional_standard.py",
+    "fail_conditions": [
+      "more than one independently editable canonical objective",
+      "governed file duplicates the objective instead of referencing the canonical source",
+      "required task declaration missing when STANDARD_VERSION is declared",
+      "vague capability language without concrete technical outcome",
+      "root-cause target absent for a defect-fix declaration",
+      "universality dimensions omitted",
+      "material fix without a named mechanical regression lock",
+      "required proof undefined",
+      "closure claimed without the closure contract",
+      "ambiguous status language in a governed status field",
+      "silent or unapproved exception",
+      "generated rendering differs from canonical source",
+      "reference points to missing or wrong standard version",
+      "mission redefines the universal standard locally",
+      "agent instruction weakens or contradicts the canonical standard"
+    ]
+  }
+}

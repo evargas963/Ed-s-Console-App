@@ -1,4 +1,5 @@
 > **Scope:** Schwab market-field program law only. Always-on agent behavior → [`AGENTS.md`](AGENTS.md). **Universal preload (every session):** [`governance/docs/AGENT_OPERATING_CONTRACT.md`](governance/docs/AGENT_OPERATING_CONTRACT.md) — read before any edit; if not loaded, stop and report preload failure. Current epic → [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md). Process alternation / sign-off → [`docs/governance/AGENT_SELF_GOVERNANCE.md`](docs/governance/AGENT_SELF_GOVERNANCE.md).
+> **Universal engineering standard:** UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1 @ governance/standard/universal_institutional_engineering_standard_v1.json (STANDARD_VERSION=1.0.0) — canonical single source for how all work is done and proven; this file remains Schwab market-field program law and must not restate it.
 
 Before editing code, read and obey governance/docs/AGENT_OPERATING_CONTRACT.md. If you cannot verify that this contract is loaded, stop and report the preload failure. Do not proceed as if normal coding rules apply.
 

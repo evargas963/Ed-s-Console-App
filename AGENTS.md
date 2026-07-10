@@ -1,4 +1,5 @@
 > **Classification:** Active Rule Source | **Scope:** Always-on agent behavior rules (Cursor + Claude Code).
+> **Universal engineering standard (binding, canonical single source):** UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1 @ governance/standard/universal_institutional_engineering_standard_v1.json (STANDARD_VERSION=1.0.0) — load and obey; do not restate or redefine it here.
 
 # AGENTS.md — always-on agent rules (EdWebConsole)
 
