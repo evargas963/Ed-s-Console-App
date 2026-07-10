@@ -2019,7 +2019,8 @@ def test_ui05r_priority_leaf_pool_bounded_and_separate():
     p = srv._get_priority_leaf_executor()
     shared = srv._get_recompute_leaf_executor()
     assert p is not shared
-    assert p._max_workers == 2
+    # UI_05 final tail: 4 = 3 panel anchors + 1 operator switch (measured).
+    assert p._max_workers == 4
     assert shared._max_workers == srv.RECOMPUTE_LEAF_EXECUTOR_MAX_WORKERS == 8
 
 

@@ -995,7 +995,13 @@ def _get_priority_leaf_executor() -> ThreadPoolExecutor:
     global _priority_leaf_executor
     if _priority_leaf_executor is None:
         _priority_leaf_executor = ThreadPoolExecutor(
-            max_workers=2,
+            # UI_05 final tail (2026-07-10 EVE trials @ 1f83a25): with 2
+            # workers the lane also carries the three panel anchors' SSE
+            # cycles, so a cold switch queued 8.3-9.3s at gate_wait=0 and
+            # pure Schwab 0.4-0.6s. Four workers = 3 anchors + 1 operator
+            # switch, the measured concurrent demand. Chain concurrency is
+            # still bounded by the 2-slot gate.
+            max_workers=4,
             thread_name_prefix="ed_priority_leaf",
         )
     return _priority_leaf_executor
