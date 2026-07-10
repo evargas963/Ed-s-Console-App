@@ -343,6 +343,13 @@ def test_guest_anchor_bundle_scope_loads_anchor_artifacts(tmp_path, monkeypatch)
     monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: "1c")
     spy_dir = active_bundle_dir("SPY", "1c", models_dir=tmp_path / "models")
     spy_dir.mkdir(parents=True)
+    # MODEL-04 serve policy: bundles must carry honest provenance; the fixture
+    # mirrors the approved SPY vintage (trained_at 2026-06-04).
+    import json as _json
+
+    (spy_dir / "xgb_SPY_1c_meta.json").write_text(
+        _json.dumps({"trained_at": "2026-06-04 04:29:57"}), encoding="utf-8"
+    )
     import active_bundle_contract as abc
 
     monkeypatch.setattr(

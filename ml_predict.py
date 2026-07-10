@@ -518,6 +518,19 @@ def _model_dir_for_ticker(ticker: str) -> Path:
                 f"ED_XGB_STRICT_ACTIVE_ONLY=1: no complete active model bundle for {bt} hz={hz} "
                 f"at canonical {canonical} (requires xgb+lstm+transformer+meta_stack per active_bundle_contract)"
             )
+        # MODEL-04 serve policy (operator-approved 2026-07-10): a complete
+        # bundle must ALSO be serve-eligible by manifest vintage. Withheld or
+        # unproven provenance fails closed with the explicit policy reason —
+        # never a silent substitute (anchor routing resolves upstream via
+        # _bundle_ticker_for_artifacts and is unchanged by this gate).
+        from model_serve_policy import bundle_serve_eligibility
+
+        _elig = bundle_serve_eligibility(bt, hz, canonical)
+        if _elig["direct_serve_blocked"]:
+            raise FileNotFoundError(
+                f"MODEL_SERVE_POLICY {_elig['status']} for {bt} hz={hz} at {canonical}: "
+                f"{_elig['reason']}"
+            )
         return canonical
     return _model_dir_for_ticker_relaxed(bt, hz)
 
