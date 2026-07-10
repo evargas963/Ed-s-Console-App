@@ -827,6 +827,22 @@ def _get_recompute_leaf_executor() -> ThreadPoolExecutor:
     return _recompute_leaf_executor
 
 
+def _get_priority_leaf_executor() -> ThreadPoolExecutor:
+    """UI_05 residual (2026-07-10 PM): leaf fetches for OPERATOR-PRIORITY
+    recomputes only. Measured cause: the shared 8-worker leaf pool is FIFO
+    across background idle-refresh leaf bursts, so a cold guest's chain leg
+    waited 13.7-21s in-queue while the pure Schwab fetch was 0.5-0.8s. This
+    bounded 2-worker lane gives priority recomputes their own leaf admission;
+    Schwab chain concurrency is still single-slot via the priority gate."""
+    global _priority_leaf_executor
+    if _priority_leaf_executor is None:
+        _priority_leaf_executor = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="ed_priority_leaf",
+        )
+    return _priority_leaf_executor
+
+
 def _get_db_fill_outcomes_executor() -> ThreadPoolExecutor:
     global _db_fill_outcomes_executor
     if _db_fill_outcomes_executor is None:
@@ -846,6 +862,7 @@ _analytics_bg_lock = threading.Lock()
 _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 _sse_fetch_timeout_executor: Optional[ThreadPoolExecutor] = None
 _operator_priority_executor: Optional[ThreadPoolExecutor] = None
+_priority_leaf_executor: Optional[ThreadPoolExecutor] = None
 ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
     os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")
 )
@@ -2191,6 +2208,53 @@ def _schedule_startup_analytics_warm() -> None:
         except RuntimeError:
             break
     log.info("UI-MAXIMIZE startup warm queue: %s stagger=%ss", tickers, stagger)
+    _schedule_startup_model_prewarm_sweep()
+
+
+def _startup_model_prewarm_roster() -> list[str]:
+    """Own-bundle tickers under models/active, panel-warm anchors first.
+
+    UI_05 residual: a guest whose bundle is its OWN ticker pays 4-horizon
+    torch loads (~12s measured, NFLX-class) on first touch. Sweeping those
+    loads sequentially at boot moves the cost off the operator request path.
+    Serve-policy withholding still applies inside the load path (a withheld
+    bundle logs and stays unloaded - the sweep never bypasses MODEL-04)."""
+    try:
+        from ml_predict import MODEL_DIR as _model_dir
+
+        base = _model_dir / "active"
+        roster = sorted(
+            p.name for p in base.iterdir()
+            if p.is_dir() and p.name.upper() == p.name and not p.name.startswith(".")
+        )
+    except OSError:
+        return list(UI_MAXIMIZE_PANEL_WARM_TICKERS)
+    anchors = [t for t in UI_MAXIMIZE_PANEL_WARM_TICKERS if t in roster]
+    rest = [t for t in roster if t not in anchors]
+    return anchors + rest
+
+
+def _startup_model_prewarm_sweep_worker() -> None:
+    roster = _startup_model_prewarm_roster()
+    log.info("UI_05 startup model prewarm sweep: %d bundle dirs", len(roster))
+    for t in roster:
+        if _analytics_bg_shutdown:
+            return
+        _prewarm_inference_models_worker(t)
+
+
+def _schedule_startup_model_prewarm_sweep() -> None:
+    """One sequential background thread — never floods CPU, never touches the
+    request path, fail-open per ticker (prewarm worker swallows and logs)."""
+    if os.environ.get("ED_DISABLE_STARTUP_MODEL_PREWARM", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    ):
+        return
+    threading.Thread(
+        target=_startup_model_prewarm_sweep_worker,
+        name="ed_model_prewarm_sweep",
+        daemon=True,
+    ).start()
 
 
 # ── SESSION_OPEN_ANCHOR_WARM_SLICE_V1 — RTH-open anchor bundle warm ──────────
@@ -5397,7 +5461,15 @@ def _fetch_state(
         else:
             # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf futures run on
             # the dedicated recompute-leaf pool — never behind serve bodies.
-            _cq_pool = _get_recompute_leaf_executor()
+            # UI_05 residual: PRIORITY recomputes use their own bounded leaf
+            # lane so cold-guest chain/quote legs never queue behind
+            # background idle-refresh leaf bursts (measured 13.7-21s FIFO
+            # wait at pure-fetch 0.5-0.8s).
+            _cq_pool = (
+                _get_priority_leaf_executor()
+                if _chain_priority
+                else _get_recompute_leaf_executor()
+            )
             _chain_fut = _cq_pool.submit(
                 _gated_safe_get_chain, client, ticker,
                 strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority,
@@ -5688,7 +5760,13 @@ def _fetch_state(
                 # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
                 # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
                 # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: dedicated leaf pool.
-                _seed_pool = _get_recompute_leaf_executor()
+                # UI_05 residual: priority recomputes seed on the priority
+                # leaf lane (same selection as the chain/quote leg).
+                _seed_pool = (
+                    _get_priority_leaf_executor()
+                    if _chain_priority
+                    else _get_recompute_leaf_executor()
+                )
                 _f5 = _seed_pool.submit(_seed_candles, 5)
                 _f1 = _seed_pool.submit(_seed_candles, 1)
                 _f5.result(timeout=45)
@@ -8357,6 +8435,10 @@ async def _app_lifespan(app):
     if _operator_priority_executor is not None:
         _operator_priority_executor.shutdown(wait=True, cancel_futures=True)
         _operator_priority_executor = None
+    global _priority_leaf_executor
+    if _priority_leaf_executor is not None:
+        _priority_leaf_executor.shutdown(wait=True, cancel_futures=True)
+        _priority_leaf_executor = None
     global _quote_hot_executor, _route_offload_executor, _fast_quote_executor, _db_fill_outcomes_executor
     if _quote_hot_executor is not None:
         _quote_hot_executor.shutdown(wait=True)

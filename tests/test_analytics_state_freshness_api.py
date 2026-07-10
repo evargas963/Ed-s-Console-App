@@ -1376,7 +1376,7 @@ def test_step1_log_only_inline_source_lock():
     i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
     # Step 2 rebinds the pooled arm to the dedicated leaf pool; the Step 1
     # invariant (inline arm precedes the pooled arm) is pool-independent.
-    i_pool_seed = src.index("_seed_pool = _get_recompute_leaf_executor()")
+    i_pool_seed = src.index("_seed_pool = (")
     assert i_inline_seed < i_pool_seed, "inline seed arm must precede the pooled arm"
     # Operator-facing bounded parallelism intact (submits still present).
     assert "_cq_pool.submit(" in src or "_chain_fut = _cq_pool.submit(" in src
@@ -1447,7 +1447,9 @@ def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
     assert set(callers) == {"_fetch_state"}, f"unexpected callers: {sorted(set(callers))}"
     src = _fetch_state_source()
     # Call sites only (the bare substring also matches the def line).
-    assert src.count("= _get_recompute_leaf_executor()") == 2  # chain/quote + seeds
+    # UI_05 residual: both sites are now conditional expressions selecting the
+    # priority lane vs the shared leaf pool.
+    assert src.count("else _get_recompute_leaf_executor()") == 2  # chain/quote + seeds
 
 
 def test_step2_leaf_functions_have_no_nested_submit():
@@ -1509,8 +1511,12 @@ def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
     """Source lock: both nested-submit sites bind the leaf pool; the route pool
     is no longer referenced by either block."""
     src = _fetch_state_source()
-    assert "_cq_pool = _get_recompute_leaf_executor()" in src
-    assert "_seed_pool = _get_recompute_leaf_executor()" in src
+    # UI_05 residual: both leaf sites select the bounded PRIORITY leaf lane
+    # for operator-priority recomputes and the shared leaf pool otherwise —
+    # the route pool stays banned at both sites.
+    assert src.count("if _chain_priority") >= 2
+    assert src.count("else _get_recompute_leaf_executor()") == 2
+    assert src.count("_get_priority_leaf_executor()") >= 2
     assert "_cq_pool = _get_route_offload_executor()" not in src
     assert "_seed_pool = _get_route_offload_executor()" not in src
 
@@ -1520,9 +1526,9 @@ def test_step2_log_only_uses_neither_pool_for_nested_work():
     reaches neither the route pool nor the leaf pool for nested work."""
     src = _fetch_state_source()
     i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
-    i_pool_cq = src.index("_cq_pool = _get_recompute_leaf_executor()")
+    i_pool_cq = src.index("_cq_pool = (")
     i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
-    i_pool_seed = src.index("_seed_pool = _get_recompute_leaf_executor()")
+    i_pool_seed = src.index("_seed_pool = (")
     assert i_inline_cq < i_pool_cq
     assert i_inline_seed < i_pool_seed
 
@@ -1993,3 +1999,78 @@ def test_ui05_admission_sla_gate_not_blocked_by_saturated_background_pool(monkey
         release_bg.set()
         for f in futs:
             f.result(timeout=20)
+
+
+# ── UI_05 residual — priority leaf lane + startup model prewarm sweep ────────
+
+
+def test_ui05r_priority_leaf_pool_bounded_and_separate():
+    import server as srv
+
+    p = srv._get_priority_leaf_executor()
+    shared = srv._get_recompute_leaf_executor()
+    assert p is not shared
+    assert p._max_workers == 2
+    assert shared._max_workers == srv.RECOMPUTE_LEAF_EXECUTOR_MAX_WORKERS == 8
+
+
+def test_ui05r_leaf_pool_selection_source_lock():
+    """Chain/quote and seed legs select the priority lane exactly when the
+    recompute is operator-priority (the _chain_priority classifier)."""
+    src = _fetch_state_source()
+    i_cq = src.index("_cq_pool = (")
+    assert "_get_priority_leaf_executor()" in src[i_cq:i_cq + 200]
+    assert "else _get_recompute_leaf_executor()" in src[i_cq:i_cq + 260]
+    i_seed = src.index("_seed_pool = (")
+    assert "_get_priority_leaf_executor()" in src[i_seed:i_seed + 220]
+    assert "else _get_recompute_leaf_executor()" in src[i_seed:i_seed + 280]
+
+
+def test_ui05r_priority_leaf_teardown_present():
+    src = _fetch_state_source()
+    assert src.count("_priority_leaf_executor.shutdown(wait=True, cancel_futures=True)") == 1
+
+
+def test_ui05r_prewarm_roster_anchors_first(tmp_path, monkeypatch):
+    import server as srv
+    import ml_predict as mp
+
+    base = tmp_path / "active"
+    for t in ("ZZB", "SPY", "QQQ", "AAA1", "IWM"):
+        (base / t).mkdir(parents=True)
+    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
+    roster = srv._startup_model_prewarm_roster()
+    assert roster[:3] == ["SPY", "QQQ", "IWM"]
+    assert set(roster) == {"SPY", "QQQ", "IWM", "ZZB", "AAA1"}
+
+
+def test_ui05r_prewarm_sweep_sequential_and_kill_switch(monkeypatch):
+    """The sweep runs tickers one at a time on a single named daemon thread,
+    honors the env kill switch, and stops on shutdown."""
+    import server as srv
+
+    calls: list[str] = []
+    monkeypatch.setattr(srv, "_startup_model_prewarm_roster", lambda: ["T1", "T2"])
+    monkeypatch.setattr(srv, "_prewarm_inference_models_worker", lambda t: calls.append(t))
+    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
+    srv._startup_model_prewarm_sweep_worker()
+    assert calls == ["T1", "T2"]
+
+    monkeypatch.setenv("ED_DISABLE_STARTUP_MODEL_PREWARM", "1")
+    started: list[str] = []
+    monkeypatch.setattr(
+        srv.threading, "Thread",
+        lambda *a, **k: started.append(k.get("name")) or type("T", (), {"start": lambda self: None})(),
+    )
+    srv._schedule_startup_model_prewarm_sweep()
+    assert started == []  # kill switch respected
+
+
+def test_ui05r_sweep_never_bypasses_serve_policy():
+    """The sweep loads via the same prewarm worker → same strict load path →
+    MODEL-04 withholding still applies (source lock)."""
+    src = _fetch_state_source()
+    i = src.index("def _startup_model_prewarm_sweep_worker")
+    seg = src[i:i + 500]
+    assert "_prewarm_inference_models_worker(t)" in seg
+    assert "pickle" not in seg and "torch" not in seg  # no direct artifact loads
