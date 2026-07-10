@@ -317,53 +317,177 @@ def _safe_get_quote_with_retry(client, ticker: str, *, attempt_hook=None):
 # still exactly one chain fetch at a time; only the ORDER of waiters changes.
 # Measured cause (2026-07-10 RTH): cold-guest wall-to-chain 11–48s behind
 # background chains while pure Schwab fetch is 0.8–2.6s.
-class _PriorityGate:
-    """Semaphore(1)-compatible single-slot gate with priority-first handoff.
+CHAIN_GATE_GLOBAL_SLOTS_MAX: int = 2
+CHAIN_GATE_DEGRADED_SLOTS: int = 1
+CHAIN_GATE_BREAKER_FAILURE_THRESHOLD: int = 3
+CHAIN_GATE_BREAKER_COOLDOWN_SEC: float = 120.0
 
-    acquire(timeout=None, priority=False) / release() mirror
-    threading.Semaphore so existing chain-gate tests and fail-open handling
-    are unchanged. While any priority waiter is queued, background acquirers
-    stand down; priority pressure is finite (operator-facing requests only),
-    so background lanes resume as soon as the priority queue drains."""
+
+class _ChainGateV2:
+    """Bounded TWO-slot chain gate (operator-approved 2026-07-10 EVE).
+
+    Controls (mechanically tested in tests/test_chain_gate_v2.py):
+      - global max CHAIN_GATE_GLOBAL_SLOTS_MAX (2) concurrent chain requests;
+      - priority-first handoff: while any priority waiter is queued,
+        background acquirers stand down (the discipline the single-slot
+        gate proved);
+      - automatic degradation to CHAIN_GATE_DEGRADED_SLOTS (1) for
+        CHAIN_GATE_BREAKER_COOLDOWN_SEC when the source degrades: HTTP
+        throttling, auth instability, or
+        CHAIN_GATE_BREAKER_FAILURE_THRESHOLD consecutive failures;
+        recovery is automatic at cooldown expiry;
+      - complete metrics (slot assignment, queue waits, coalescing,
+        timeouts, breaker state, fallback reason) via snapshot() ->
+        /api/diagnostics/chain-gate.
+
+    Per-ticker max 1 + duplicate coalescing live in _gated_safe_get_chain
+    (the request layer); the gate owns global capacity only.
+    acquire(timeout=None, priority=False)/release() stay Semaphore-shaped.
+    """
 
     def __init__(self) -> None:
         self._cond = threading.Condition()
-        self._slots = 1
+        self._in_use = 0
         self._priority_waiting = 0
+        self._degraded_until = 0.0
+        self._consecutive_failures = 0
+        self.metrics: dict = {
+            "acquisitions": 0,
+            "priority_acquisitions": 0,
+            "timeouts": 0,
+            "queue_wait_max_ms": 0.0,
+            "coalesced_hits": 0,
+            "degraded_entries": 0,
+            "degraded_reason_last": None,
+            "last_result_ok": None,
+        }
+
+    def _capacity(self) -> int:
+        return (
+            CHAIN_GATE_DEGRADED_SLOTS
+            if time.monotonic() < self._degraded_until
+            else CHAIN_GATE_GLOBAL_SLOTS_MAX
+        )
+
+    def degraded(self) -> bool:
+        return time.monotonic() < self._degraded_until
 
     def acquire(self, timeout: float | None = None, priority: bool = False) -> bool:
-        deadline = None if timeout is None else time.monotonic() + timeout
+        started = time.monotonic()
+        deadline = None if timeout is None else started + timeout
         with self._cond:
             if priority:
                 self._priority_waiting += 1
             try:
                 while True:
-                    if self._slots > 0 and (priority or self._priority_waiting == 0):
-                        self._slots -= 1
+                    if self._in_use < self._capacity() and (
+                        priority or self._priority_waiting == 0
+                    ):
+                        self._in_use += 1
+                        waited_ms = round((time.monotonic() - started) * 1000.0, 1)
+                        self.metrics["acquisitions"] += 1
+                        if priority:
+                            self.metrics["priority_acquisitions"] += 1
+                        if waited_ms > self.metrics["queue_wait_max_ms"]:
+                            self.metrics["queue_wait_max_ms"] = waited_ms
                         return True
                     remaining = None if deadline is None else deadline - time.monotonic()
                     if remaining is not None and remaining <= 0:
+                        self.metrics["timeouts"] += 1
                         return False
-                    self._cond.wait(remaining)
+                    self._cond.wait(min(remaining, 1.0) if remaining is not None else 1.0)
             finally:
                 if priority:
                     self._priority_waiting -= 1
 
     def release(self) -> None:
         with self._cond:
-            self._slots += 1
+            self._in_use = max(0, self._in_use - 1)
             self._cond.notify_all()
 
+    def record_result(self, ok: bool, *, throttled: bool = False, auth_error: bool = False) -> None:
+        """Source-health input driving the breaker. Never raises; callers
+        re-raise their own exceptions (nothing is swallowed here)."""
+        with self._cond:
+            self.metrics["last_result_ok"] = bool(ok)
+            if ok and not throttled and not auth_error:
+                self._consecutive_failures = 0
+                return
+            self._consecutive_failures += 1
+            reason = (
+                "http_throttled" if throttled
+                else "auth_unstable" if auth_error
+                else "consecutive_failures"
+                if self._consecutive_failures >= CHAIN_GATE_BREAKER_FAILURE_THRESHOLD
+                else None
+            )
+            if reason is not None:
+                self._degraded_until = time.monotonic() + CHAIN_GATE_BREAKER_COOLDOWN_SEC
+                self.metrics["degraded_entries"] += 1
+                self.metrics["degraded_reason_last"] = reason
+                self._cond.notify_all()
 
-_schwab_chain_fetch_gate = _PriorityGate()
+    def snapshot(self) -> dict:
+        with self._cond:
+            return {
+                **self.metrics,
+                "in_use": self._in_use,
+                "capacity_now": self._capacity(),
+                "global_slots_max": CHAIN_GATE_GLOBAL_SLOTS_MAX,
+                "degraded": time.monotonic() < self._degraded_until,
+                "priority_waiting": self._priority_waiting,
+                "consecutive_failures": self._consecutive_failures,
+            }
+
+
+_schwab_chain_fetch_gate = _ChainGateV2()
 CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC: float = 30.0
 _chain_fetch_gate_timeout_count: int = 0
 
+# Per-ticker single-flight + duplicate coalescing (max ONE active chain
+# request per ticker; duplicate same-ticker callers wait on the owner
+# result: same response object, same ticker, so no cross-ticker delivery
+# and no provenance change).
+_chain_inflight_lock = threading.Lock()
+_chain_inflight: dict = {}
+
 
 def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False):
-    """safe_get_chain serialized behind the chain gate → (resp, gate_wait_sec, fetch_sec)."""
+    """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
+
+    Schwab CSV authority checked: yes
+    CSV row(s): chains.* via schwab_client.safe_get_chain - call shape
+      unchanged (safe_get_chain(client, ticker, strike_count=...)); this is
+      scheduling (bounded 2-slot gate + per-ticker single-flight coalescing),
+      no field read/derivation/emission change.
+    Derived-field disposition: none required.
+    All consumers checked: yes - c_resp consumed identically downstream;
+      coalesced callers receive the owner response for the SAME ticker only.
+    SCHWAB_CSV_CHECKED
+    """
     global _chain_fetch_gate_timeout_count
+    key = (ticker or "").strip().upper()
     wait_started = time.monotonic()
+    with _chain_inflight_lock:
+        holder = _chain_inflight.get(key)
+        if holder is None:
+            holder = {"event": threading.Event(), "result": None, "exc": None}
+            _chain_inflight[key] = holder
+            is_owner = True
+        else:
+            is_owner = False
+    if not is_owner:
+        _schwab_chain_fetch_gate.metrics["coalesced_hits"] += 1
+        done = holder["event"].wait(CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC + 60.0)
+        waited = round(time.monotonic() - wait_started, 3)
+        if done:
+            if holder["exc"] is not None:
+                raise holder["exc"]  # source exceptions propagate, never swallowed
+            resp, _own_wait, fetch_sec = holder["result"]
+            return resp, waited, fetch_sec
+        log.warning("chain coalesce wait timed out ticker=%s - issuing own fetch", key)
+        # fail-open to an owned fetch WITHOUT registry (the stuck owner still
+        # holds the key; never double-register)
     acquired = _schwab_chain_fetch_gate.acquire(
         timeout=CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC, priority=priority
     )
@@ -371,18 +495,41 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     if not acquired:
         _chain_fetch_gate_timeout_count += 1
         log.warning(
-            "chain_gate_timeout ticker=%s waited=%.3fs count=%s — proceeding ungated (fail-open)",
+            "chain_gate_timeout ticker=%s waited=%.3fs count=%s - proceeding ungated (fail-open)",
             ticker,
             gate_wait_sec,
             _chain_fetch_gate_timeout_count,
         )
     fetch_started = time.monotonic()
+    resp = None
+    exc = None
     try:
         resp = safe_get_chain(client, ticker, strike_count=strike_count)
+        return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
+    except SchwabAuthError as e:
+        exc = e
+        _schwab_chain_fetch_gate.record_result(False, auth_error=True)
+        raise
+    except Exception as e:
+        exc = e
+        _schwab_chain_fetch_gate.record_result(False)
+        raise
     finally:
+        if exc is None:
+            status = getattr(resp, "status_code", None)
+            throttled = status == 429
+            ok = status is None or int(status) < 500
+            _schwab_chain_fetch_gate.record_result(ok and not throttled, throttled=throttled)
         if acquired:
             _schwab_chain_fetch_gate.release()
-    return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
+        if is_owner:
+            with _chain_inflight_lock:
+                _chain_inflight.pop(key, None)
+            if exc is not None:
+                holder["exc"] = exc
+            else:
+                holder["result"] = (resp, 0.0, round(time.monotonic() - fetch_started, 3))
+            holder["event"].set()
 
 # ── Server-side state cache (avoids re-fetching everything on each poll) ─────
 _state_cache: dict = {}           # (ticker, expiry) -> {ts, ms_dict}
@@ -10349,6 +10496,21 @@ def api_vol_observability(ticker: Optional[str] = Query(default=None)):
     observations ($VIX consumed; $VXN/$RVX FETCHED_UNCONSUMED) plus the
     ratified ticker-class mapping candidate. Never feeds the money path."""
     return vol_observability_payload(ticker)
+
+
+@app.get("/api/diagnostics/chain-gate")
+def api_chain_gate_diagnostics():
+    """Read-only chain-gate observability: slots, waits, coalescing, breaker."""
+    with _chain_inflight_lock:
+        inflight = sorted(_chain_inflight.keys())
+    return {
+        "gate": _schwab_chain_fetch_gate.snapshot(),
+        "inflight_tickers": inflight,
+        "acquire_timeout_sec": CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC,
+        "fail_open_timeout_count": _chain_fetch_gate_timeout_count,
+        "breaker_cooldown_sec": CHAIN_GATE_BREAKER_COOLDOWN_SEC,
+        "breaker_failure_threshold": CHAIN_GATE_BREAKER_FAILURE_THRESHOLD,
+    }
 
 
 @app.get("/api/price-levels")

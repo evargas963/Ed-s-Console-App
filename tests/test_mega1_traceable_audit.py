@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 425  # inventory sync @ UI_05 residual: +4 server.py defs (priority leaf lane + prewarm sweep)
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 430  # inventory sync @ CHAIN_GATE_V2: -3 _PriorityGate +7 _ChainGateV2 +1 diagnostics endpoint
 
 
 def test_mega1_row_schema_valid():

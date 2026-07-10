@@ -741,19 +741,25 @@ def test_stage_timer_surfaces_present_in_fetch_state_source():
 
 
 def test_chain_fetch_gate_serializes_concurrent_fetches(monkeypatch):
-    """Three threads through _gated_safe_get_chain never overlap inside safe_get_chain."""
+    """CHAIN_GATE_V2 (operator-approved 2026-07-10 EVE): concurrency is
+    BOUNDED at two global slots — three distinct-ticker threads never exceed
+    two inside safe_get_chain."""
     import threading as th
 
     import server as srv
 
-    windows: list[tuple[float, float]] = []
-    win_lock = th.Lock()
+    monkeypatch.setattr(srv, "_schwab_chain_fetch_gate", srv._ChainGateV2())
+    monkeypatch.setattr(srv, "_chain_inflight", {})
+    active = {"n": 0, "max": 0}
+    lk = th.Lock()
 
     def _slow_chain(client, ticker, *, strike_count):
-        entered = time.monotonic()
+        with lk:
+            active["n"] += 1
+            active["max"] = max(active["max"], active["n"])
         time.sleep(0.15)
-        with win_lock:
-            windows.append((entered, time.monotonic()))
+        with lk:
+            active["n"] -= 1
         return f"RESP_{ticker}"
 
     monkeypatch.setattr(srv, "safe_get_chain", _slow_chain)
@@ -765,10 +771,7 @@ def test_chain_fetch_gate_serializes_concurrent_fetches(monkeypatch):
         t.start()
     for t in threads:
         t.join(timeout=10)
-    assert len(windows) == 3
-    ordered = sorted(windows)
-    for (_, a_end), (b_start, _) in zip(ordered, ordered[1:]):
-        assert b_start >= a_end - 0.01, "chain fetches overlapped — gate did not serialize"
+    assert active["max"] <= srv.CHAIN_GATE_GLOBAL_SLOTS_MAX == 2
 
 
 def test_chain_fetch_gate_fail_open_on_timeout(monkeypatch):
@@ -782,6 +785,8 @@ def test_chain_fetch_gate_fail_open_on_timeout(monkeypatch):
         "safe_get_chain",
         lambda client, ticker, *, strike_count: (calls.append(ticker), "RESP")[1],
     )
+    # CHAIN_GATE_V2: two slots — saturate both to force the timeout path.
+    assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
     assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
     try:
         before = srv._chain_fetch_gate_timeout_count
@@ -793,8 +798,11 @@ def test_chain_fetch_gate_fail_open_on_timeout(monkeypatch):
         assert fetch_sec >= 0.0
     finally:
         srv._schwab_chain_fetch_gate.release()
-    # Timeout path must not double-release: gate is acquirable exactly once now.
+        srv._schwab_chain_fetch_gate.release()
+    # Timeout path must not double-release: exactly two slots acquirable now.
     assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
+    assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
+    srv._schwab_chain_fetch_gate.release()
     srv._schwab_chain_fetch_gate.release()
 
 
@@ -1933,7 +1941,8 @@ def test_ui05_priority_gate_priority_waiter_acquires_first():
 
     import server as srv
 
-    gate = srv._PriorityGate()
+    gate = srv._ChainGateV2()
+    gate.record_result(False, throttled=True)  # degrade to capacity 1
     assert gate.acquire(timeout=1)  # hold the slot
     order = []
     bg_started = th.Event()
