@@ -833,7 +833,18 @@ def _get_priority_leaf_executor() -> ThreadPoolExecutor:
     across background idle-refresh leaf bursts, so a cold guest's chain leg
     waited 13.7-21s in-queue while the pure Schwab fetch was 0.5-0.8s. This
     bounded 2-worker lane gives priority recomputes their own leaf admission;
-    Schwab chain concurrency is still single-slot via the priority gate."""
+    Schwab chain concurrency is still single-slot via the priority gate.
+
+    Schwab CSV authority checked: yes
+    CSV row(s): NO_SCHWAB_EQUIVALENT — executor-pool scheduling and startup
+      model prewarm only; the Schwab chain/quote/pricehistory reads themselves
+      are byte-identical (same helpers, same call shapes, same single-slot
+      chain gate).
+    Derived-field disposition: none required (no derived field touched).
+    All consumers checked: yes — c_resp/q_resp/seed results consumed
+      identically downstream; prewarm loads via the same strict MODEL-04
+      gated path.
+    SCHWAB_CSV_CHECKED"""
     global _priority_leaf_executor
     if _priority_leaf_executor is None:
         _priority_leaf_executor = ThreadPoolExecutor(

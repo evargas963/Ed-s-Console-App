@@ -368,7 +368,7 @@ def test_candle_seed_does_not_nest_analytics_executor():
     text = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
     idx = text.find("UI-MAXIMIZE: parallel seed")
     assert idx != -1
-    block = text[idx : idx + 500]
+    block = text[idx : idx + 800]  # UI_05 residual: window covers the priority-lane selection comment
     assert "_get_recompute_leaf_executor()" in block
     assert "_analytics_executor.submit(_seed_candles" not in text
 
