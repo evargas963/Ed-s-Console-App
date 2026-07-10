@@ -495,7 +495,7 @@ def test_session_open_anchor_warm_uses_existing_recompute_path_and_mutates_no_ca
     import server as srv
 
     scheduled: list[tuple] = []
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a))
     monkeypatch.setattr(srv, "_prewarm_inference_models_worker", lambda t: None)
     monkeypatch.setattr(
         srv,
@@ -585,7 +585,7 @@ def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
     ticker = "ZZZ_WARMDUR"
     stamped: dict = {}
     monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a))
     monkeypatch.setattr(
         srv,
         "_fetch_state",
@@ -617,7 +617,7 @@ def test_executor_queue_wait_recorded_on_completed_recompute(monkeypatch):
     ticker = "ZZZ_QWAIT"
     stamped: dict = {}
     monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a))
     monkeypatch.setattr(
         srv,
         "_fetch_state",
@@ -813,12 +813,16 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
 
 
 def test_chain_fetch_call_shape_and_gated_site_source_lock():
-    """Fidelity lock: helper preserves the exact Schwab call shape; _fetch_state routes through it."""
+    """Fidelity lock: helper preserves the exact Schwab call shape; _fetch_state routes through it.
+
+    UI_05_OPERATOR_PRIORITY_ADMISSION_V1 threads a priority flag into the
+    gated call — the Schwab call shape inside the helper is unchanged."""
     from pathlib import Path
 
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
     assert "resp = safe_get_chain(client, ticker, strike_count=strike_count)" in src
-    assert "_gated_safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT" in src
+    assert "_gated_safe_get_chain, client, ticker," in src
+    assert "strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority," in src
     assert 'ms_dict["chain_gate_wait_sec"]' in src
     assert '_stage_ms["chain_gate_wait_ms"]' in src
 
@@ -1843,3 +1847,148 @@ def test_idle_refresh_veto_and_budget_untouched(monkeypatch):
     src = _fetch_state_source()
     assert 'update_source="sse_loop"' in src  # viewed-key owner unchanged
     assert "IDLE_KEY_REFRESH_MAX_PER_TICK" in src
+
+
+# ── UI_05_OPERATOR_PRIORITY_ADMISSION_V1 — priority admission + gate locks ────
+
+
+def test_ui05_update_source_classification():
+    """Background sources opt in; everything else (incl. unknown/None) is operator-facing."""
+    import server as srv
+
+    for bg in ("idle_key_refresh", "startup_warm", "session_open_anchor_warm"):
+        assert srv._is_operator_priority_update_source(bg) is False
+    for op in ("sse_loop", "rest_poll_legacy", "tick_coherent", "debug_endpoint", None, "future_source"):
+        assert srv._is_operator_priority_update_source(op) is True
+
+
+def test_ui05_priority_pool_bounded_and_separate():
+    """Priority lane is a bounded 2-worker pool distinct from the 4-worker analytics pool."""
+    import server as srv
+
+    p = srv._get_operator_priority_executor()
+    a = srv._get_analytics_executor()
+    assert p is not a
+    assert p._max_workers == 2
+    assert a._max_workers == 4
+
+
+def test_ui05_submit_routing_by_priority_flag(monkeypatch):
+    """_submit_analytics_task routes priority=True to the priority pool, else analytics pool."""
+    import server as srv
+
+    class _Rec:
+        def __init__(self):
+            self.calls = []
+
+        def submit(self, fn, *a, **k):
+            self.calls.append(fn)
+
+            class _F:
+                pass
+
+            return _F()
+
+    prio, bg = _Rec(), _Rec()
+    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
+    monkeypatch.setattr(srv, "_get_operator_priority_executor", lambda: prio)
+    monkeypatch.setattr(srv, "_get_analytics_executor", lambda: bg)
+    srv._submit_analytics_task(lambda: None)
+    srv._submit_analytics_task(lambda: None, priority=True)
+    assert len(bg.calls) == 1 and len(prio.calls) == 1
+
+
+def test_ui05_scheduler_passes_priority_from_update_source(monkeypatch):
+    """_schedule_analytics_recompute classifies its update_source into the priority flag."""
+    import server as srv
+
+    captured = []
+    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
+    monkeypatch.setattr(
+        srv, "_submit_analytics_task",
+        lambda fn, *a, **k: captured.append(k.get("priority")),
+    )
+    key1 = srv._tier_c_inflight_key("ZZU5A", None)
+    srv._schedule_analytics_recompute(key1, "ZZU5A", None, "idle_key_refresh")
+    key2 = srv._tier_c_inflight_key("ZZU5B", None)
+    srv._schedule_analytics_recompute(key2, "ZZU5B", None, "rest_poll_legacy")
+    try:
+        assert captured == [False, True]
+    finally:
+        with srv._analytics_bg_lock:
+            srv._analytics_inflight.discard(key1)
+            srv._analytics_inflight.discard(key2)
+
+
+def test_ui05_priority_gate_priority_waiter_acquires_first():
+    """With the slot held and one background + one priority waiter queued, the
+    priority waiter gets the slot on release."""
+    import threading as th
+
+    import server as srv
+
+    gate = srv._PriorityGate()
+    assert gate.acquire(timeout=1)  # hold the slot
+    order = []
+    bg_started = th.Event()
+    prio_started = th.Event()
+
+    def bg():
+        bg_started.set()
+        assert gate.acquire(timeout=10)
+        order.append("background")
+        gate.release()
+
+    def prio():
+        prio_started.set()
+        assert gate.acquire(timeout=10, priority=True)
+        order.append("priority")
+        gate.release()
+
+    t_bg = th.Thread(target=bg)
+    t_bg.start()
+    bg_started.wait(2)
+    import time as _t
+
+    _t.sleep(0.15)  # background waiter is queued first
+    t_prio = th.Thread(target=prio)
+    t_prio.start()
+    prio_started.wait(2)
+    _t.sleep(0.15)
+    gate.release()
+    t_prio.join(5)
+    t_bg.join(5)
+    assert order == ["priority", "background"]
+    # slot fully restored
+    assert gate.acquire(timeout=1)
+    gate.release()
+
+
+def test_ui05_admission_sla_gate_not_blocked_by_saturated_background_pool():
+    """SLA regression gate (deterministic): with the 4-worker analytics pool
+    fully saturated by background jobs, a priority submission still completes
+    fast — cold-guest admission no longer queues behind background cycles."""
+    import threading as th
+    import time as _t
+
+    import server as srv
+
+    release_bg = th.Event()
+    started = th.Barrier(5, timeout=10)
+
+    def _bg_job():
+        started.wait()
+        release_bg.wait(20)
+
+    futs = [srv._submit_analytics_task(_bg_job) for _ in range(4)]
+    try:
+        started.wait()  # all 4 analytics workers busy
+        t0 = _t.perf_counter()
+        done = th.Event()
+        srv._submit_analytics_task(lambda: done.set(), priority=True)
+        assert done.wait(2.0), "priority job blocked behind saturated background pool"
+        assert _t.perf_counter() - t0 < 2.0
+    finally:
+        release_bg.set()
+        for f in futs:
+            f.result(timeout=20)

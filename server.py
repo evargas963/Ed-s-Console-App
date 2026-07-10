@@ -309,16 +309,63 @@ def _safe_get_quote_with_retry(client, ticker: str, *, attempt_hook=None):
 #   _fetch_state; other safe_get_chain call sites intentionally not gated
 #   (approved scope: _fetch_state site only).
 # SCHWAB_CSV_CHECKED
-_schwab_chain_fetch_gate = threading.Semaphore(1)
+# UI_05_OPERATOR_PRIORITY_ADMISSION_V1 (2026-07-10): single-slot gate with a
+# two-class wait discipline. Operator-facing chain fetches (viewer switch /
+# SSE / REST poll) acquire the slot before queued background acquirers
+# (logger / idle refresh / warm). Total Schwab concurrency is UNCHANGED —
+# still exactly one chain fetch at a time; only the ORDER of waiters changes.
+# Measured cause (2026-07-10 RTH): cold-guest wall-to-chain 11–48s behind
+# background chains while pure Schwab fetch is 0.8–2.6s.
+class _PriorityGate:
+    """Semaphore(1)-compatible single-slot gate with priority-first handoff.
+
+    acquire(timeout=None, priority=False) / release() mirror
+    threading.Semaphore so existing chain-gate tests and fail-open handling
+    are unchanged. While any priority waiter is queued, background acquirers
+    stand down; priority pressure is finite (operator-facing requests only),
+    so background lanes resume as soon as the priority queue drains."""
+
+    def __init__(self) -> None:
+        self._cond = threading.Condition()
+        self._slots = 1
+        self._priority_waiting = 0
+
+    def acquire(self, timeout: float | None = None, priority: bool = False) -> bool:
+        deadline = None if timeout is None else time.monotonic() + timeout
+        with self._cond:
+            if priority:
+                self._priority_waiting += 1
+            try:
+                while True:
+                    if self._slots > 0 and (priority or self._priority_waiting == 0):
+                        self._slots -= 1
+                        return True
+                    remaining = None if deadline is None else deadline - time.monotonic()
+                    if remaining is not None and remaining <= 0:
+                        return False
+                    self._cond.wait(remaining)
+            finally:
+                if priority:
+                    self._priority_waiting -= 1
+
+    def release(self) -> None:
+        with self._cond:
+            self._slots += 1
+            self._cond.notify_all()
+
+
+_schwab_chain_fetch_gate = _PriorityGate()
 CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC: float = 30.0
 _chain_fetch_gate_timeout_count: int = 0
 
 
-def _gated_safe_get_chain(client, ticker: str, *, strike_count):
+def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False):
     """safe_get_chain serialized behind the chain gate → (resp, gate_wait_sec, fetch_sec)."""
     global _chain_fetch_gate_timeout_count
     wait_started = time.monotonic()
-    acquired = _schwab_chain_fetch_gate.acquire(timeout=CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC)
+    acquired = _schwab_chain_fetch_gate.acquire(
+        timeout=CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC, priority=priority
+    )
     gate_wait_sec = round(time.monotonic() - wait_started, 3)
     if not acquired:
         _chain_fetch_gate_timeout_count += 1
@@ -797,6 +844,7 @@ _analytics_bg_last_error: dict[tuple, str] = {}
 _analytics_bg_lock = threading.Lock()
 _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 _sse_fetch_timeout_executor: Optional[ThreadPoolExecutor] = None
+_operator_priority_executor: Optional[ThreadPoolExecutor] = None
 ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
     os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")
 )
@@ -847,10 +895,42 @@ def _analytics_executor_shutting_down() -> bool:
     return _analytics_bg_shutdown
 
 
-def _submit_analytics_task(fn, *args, **kwargs):
+# UI_05_OPERATOR_PRIORITY_ADMISSION_V1: background update sources opt IN to
+# the background class; anything else (viewer SSE, REST poll, tick refresh,
+# ticker switch, unknown) is operator-facing by default — universal by
+# construction, no ticker/session input.
+_BACKGROUND_UPDATE_SOURCES: frozenset[str] = frozenset(
+    {"idle_key_refresh", "startup_warm", "session_open_anchor_warm"}
+)
+
+
+def _is_operator_priority_update_source(update_source) -> bool:
+    return str(update_source or "") not in _BACKGROUND_UPDATE_SOURCES
+
+
+def _get_operator_priority_executor() -> ThreadPoolExecutor:
+    """Bounded 2-worker pool for operator-facing recomputes ONLY.
+
+    UI_05 root cause (measured 2026-07-10 open burst): the 4-worker analytics
+    pool is FIFO-shared with logger/idle background cycles (~50s each at the
+    bell), so a cold guest waited 44.5s just for admission. This pool gives
+    operator-facing requests their own bounded admission lane; background
+    keeps the analytics pool. Chain fetches remain single-slot gated, so
+    Schwab concurrency and call volume are unchanged."""
+    global _operator_priority_executor
+    if _operator_priority_executor is None:
+        _operator_priority_executor = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="ed_operator_priority",
+        )
+    return _operator_priority_executor
+
+
+def _submit_analytics_task(fn, *args, priority: bool = False, **kwargs):
     if _analytics_bg_shutdown:
         raise RuntimeError("analytics executor shutting down")
-    return _get_analytics_executor().submit(fn, *args, **kwargs)
+    pool = _get_operator_priority_executor() if priority else _get_analytics_executor()
+    return pool.submit(fn, *args, **kwargs)
 
 
 def _tier_c_inflight_key(ticker: str, expiry: Optional[str]) -> tuple:
@@ -1738,7 +1818,11 @@ def _schedule_analytics_recompute(
 
     _submitted_monotonic = time.monotonic()
     try:
-        _submit_analytics_task(_work)
+        # UI_05_OPERATOR_PRIORITY_ADMISSION_V1: operator-facing sources get the
+        # bounded priority lane; background sources keep the analytics pool.
+        _submit_analytics_task(
+            _work, priority=_is_operator_priority_update_source(update_source)
+        )
     except RuntimeError:
         with _analytics_bg_lock:
             _analytics_inflight.discard(inflight_key)
@@ -5296,13 +5380,17 @@ def _fetch_state(
     # _gated_safe_get_chain (same call shape, serialized cross-ticker; fail-open).
     _chain_gate_wait_sec: float = 0.0
     _chain_fetch_pure_sec: Optional[float] = None
+    # UI_05_OPERATOR_PRIORITY_ADMISSION_V1: operator-facing recomputes acquire
+    # the (still single-slot) chain gate ahead of queued background acquirers.
+    # log_only pipelines are background by definition.
+    _chain_priority = (not log_only) and _is_operator_priority_update_source(update_source)
     try:
         # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1: log_only joins the
         # shutdown inline path — background pipelines stay out of the shared
         # route pool; operator-facing recomputes keep bounded parallelism.
         if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
-                client, ticker, strike_count=CHAIN_STRIKE_COUNT
+                client, ticker, strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority
             )
             q_resp = _safe_get_quote_with_retry(client, ticker)
         else:
@@ -5310,7 +5398,8 @@ def _fetch_state(
             # the dedicated recompute-leaf pool — never behind serve bodies.
             _cq_pool = _get_recompute_leaf_executor()
             _chain_fut = _cq_pool.submit(
-                _gated_safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
+                _gated_safe_get_chain, client, ticker,
+                strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority,
             )
             _quote_fut = _cq_pool.submit(_safe_get_quote_with_retry, client, ticker)
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _chain_fut.result()
@@ -8256,6 +8345,13 @@ async def _app_lifespan(app):
     if _recompute_leaf_executor is not None:
         _recompute_leaf_executor.shutdown(wait=True, cancel_futures=True)
         _recompute_leaf_executor = None
+    # UI_05_OPERATOR_PRIORITY_ADMISSION_V1: priority lane tears down with the
+    # same discipline (after the analytics executor; _analytics_bg_shutdown
+    # already rejects new submits at the wrapper).
+    global _operator_priority_executor
+    if _operator_priority_executor is not None:
+        _operator_priority_executor.shutdown(wait=True, cancel_futures=True)
+        _operator_priority_executor = None
     global _quote_hot_executor, _route_offload_executor, _fast_quote_executor, _db_fill_outcomes_executor
     if _quote_hot_executor is not None:
         _quote_hot_executor.shutdown(wait=True)
