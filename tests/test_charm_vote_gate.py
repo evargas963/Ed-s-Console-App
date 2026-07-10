@@ -63,7 +63,7 @@ def test_charm_research_surfaces_preserved():
 def test_vanna_proxy_labeled_honestly_in_ui():
     """P1B: every user-facing vanna wall label discloses the proxy formula."""
     ui = (_REPO / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "Vanna Wall Call (vega/S\\u00b7IV proxy)" in ui
-    assert "Vanna Wall Put (vega/S\\u00b7IV proxy)" in ui
+    assert "Vanna Wall Call (vega/S·IV proxy)" in ui
+    assert "Vanna Wall Put (vega/S·IV proxy)" in ui
     assert "label: 'Vanna Wall Call'" not in ui
     assert "label: 'Vanna Wall Put'" not in ui

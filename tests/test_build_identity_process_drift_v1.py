@@ -80,7 +80,10 @@ def test_t1_startup_sha_immutable_across_repo_drift(tmp_path, monkeypatch):
         body = client.get("/api/build").json()
     assert body["process_identity"]["startup_git_sha"] == sha_a
     assert body["repository_state_now"]["repo_head_now"] == sha_b
-    assert body["git_sha"] == sha_b  # legacy field stays dynamic by contract
+    # BUILD_IDENTITY semantics (operator-approved 2026-07-10): git_sha IS the
+    # startup process identity; drift is reported explicitly instead.
+    assert body["git_sha"] == sha_a
+    assert body["code_drift"]["repo_moved_past_process"] is True
 
 
 # ── T2: repeated calls never recapture/replace process identity ──────────────
