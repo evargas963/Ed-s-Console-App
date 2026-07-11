@@ -1,0 +1,177 @@
+{
+  "schema": "ML_CORRECTNESS_NOT_PROVEN_MATRIX",
+  "version": "2.0.0",
+  "mission": "ML_PIPELINE_CORRECTNESS_INTERNAL_PROOF_AND_FIX_CONTINUATION_V2",
+  "base_head": "3009ae1cabe240aebef77e2e209863a23fb797b3",
+  "governing_note": "Tests existing is execution evidence, not semantic proof. FINAL_STATUS may move to PROVEN only via the institutional closure gate discipline.",
+  "labels": [
+    {
+      "label": "POINT_IN_TIME_FEATURE_CORRECTNESS",
+      "exact_code_paths": [
+        "features/inference_snapshot.py::build_inference_snapshot_v1_from_db_row (single-row pure: consumes ONE db_row dict, no DB/live access — verified by read 2026-07-11)",
+        "features/db_feature_adapter.py::build_db_mvp_feature_row",
+        "ml_scheduler.py::_evaluate_parallel_on_full_rth / _evaluate_cascade_on_full_rth (row selection + as_of_ts)",
+        "train_all.py::preload_historical_db_for_eval (history window bounds)",
+        "ml_predict.py::_predict_lstm / _predict_transformer (sequence slicing vs as-of)"
+      ],
+      "existing_tests": ["tests/test_ml_feature_provenance.py", "tests/test_training_cache_layer5.py"],
+      "what_existing_tests_prove": "feature lineage/provenance shape and cache walk-forward mechanics; NOT sequence-window as-of slicing under future-row mutation",
+      "unproven_failure_modes": [
+        "LSTM/Transformer history sequence includes bars with ts_utc > row as_of_ts",
+        "hist_db preload upper bound is max over ALL eval rows, so per-row slicing must clamp (unverified adversarially)"
+      ],
+      "locally_executable_proof": "adversarial: build fixture hist db, run _predict_lstm at early as_of with and without appended/mutated future rows; outputs must be identical",
+      "external_proof_required": "none for correctness (production runs only for validity)",
+      "root_cause_if_defective": "sequence builders slicing by row count instead of as-of timestamp",
+      "fix_status": "NOT_STARTED",
+      "mechanical_lock": "planned: as-of slicing invariance test in required CI",
+      "final_status": "NOT_PROVEN"
+    },
+    {
+      "label": "NO_LOOKAHEAD_BIAS",
+      "exact_code_paths": [
+        "features/* rolling stats (pa_* columns are produced live, replayed from archive)",
+        "ml_train.py / lstm_data.py label + window construction",
+        "realized_contract_eval.py (exit-only forward use — PROVEN for that path @ e400570)"
+      ],
+      "existing_tests": ["tests/test_realized_contract_eval_layer5.py (future-row invariance, replay path only)"],
+      "what_existing_tests_prove": "realized-contract replay decision inputs are archive-only; forward bars affect exit only",
+      "unproven_failure_modes": [
+        "label windows overlapping feature windows in training dataset construction",
+        "centered rolling calculations anywhere in the training feature build"
+      ],
+      "locally_executable_proof": "injection tests: centered-rolling and label-overlap injections must be caught by a governance scan; dataset-construction boundary test per horizon",
+      "external_proof_required": "none",
+      "root_cause_if_defective": "unknown until audit",
+      "fix_status": "NOT_STARTED",
+      "mechanical_lock": "planned: lookahead injection detector test",
+      "final_status": "NOT_PROVEN"
+    },
+    {
+      "label": "NO_META_LEARNER_LEAKAGE",
+      "exact_code_paths": [
+        "arch_competition/stack_bundle_eval_v1.py (meta/fusion stack eval)",
+        "train_compare.py meta paths",
+        "5C-META / 5C-CAL lanes (see AGENTS ablation contract)"
+      ],
+      "existing_tests": ["tests/test_arch_competition_eval_runner.py"],
+      "what_existing_tests_prove": "runner mechanics; NOT out-of-fold discipline for meta training inputs",
+      "unproven_failure_modes": [
+        "in-sample base predictions training the meta learner (prior CASCADE-STACKING-LEAKAGE residual class)",
+        "missing base outputs silently neutral"
+      ],
+      "locally_executable_proof": "overfit-base leakage trap per mission Phase 3; missing-base fail-closed test",
+      "external_proof_required": "none",
+      "root_cause_if_defective": "B-series residual class (see project_ml_pipeline_correctness_workstream)",
+      "fix_status": "NOT_STARTED",
+      "mechanical_lock": "planned: OOF-only meta assembly lock",
+      "final_status": "NOT_PROVEN"
+    },
+    {
+      "label": "MODEL_VERSION_PINNING",
+      "exact_code_paths": [
+        "ml_scheduler.py::_evaluate_* (explicit mp.MODEL_DIR pin + restore + horizon slug — source-locked @ 54f8a34)",
+        "ml_predict.py::_model_dir_for_ticker (MODEL-04 strict serve gate)",
+        "models/active/* current pointers (live serving)"
+      ],
+      "existing_tests": ["tests/test_realized_contract_eval_layer5.py::test_scheduler_eval_pins_and_restores_model_dir"],
+      "what_existing_tests_prove": "source-level pin/restore presence; NOT artifact-identity manifests nor mutate-production-then-replay invariance",
+      "unproven_failure_modes": [
+        "historical eval consuming a mutated models/active bundle between fixture creation and replay",
+        "cache keys lacking model identity"
+      ],
+      "locally_executable_proof": "mutate-artifact adversarial test with pinned candidate dir; cache-key identity audit",
+      "external_proof_required": "none",
+      "root_cause_if_defective": "no immutable per-eval manifest (bundle_hash absent)",
+      "fix_status": "NOT_STARTED",
+      "mechanical_lock": "planned: manifest fail-closed loader",
+      "final_status": "NOT_PROVEN"
+    },
+    {
+      "label": "CALIBRATION_VERSION_PINNING",
+      "exact_code_paths": [
+        "calibration/a1_conformal_artifact_production.py / a1_isotonic_artifact_production.py (versioned artifacts: calibration_run_id + lineage_id + eligibility-gated current pointers — verified by read)",
+        "server.py attach_a1_* (live serve only; scheduler historical eval carries a no-current-pointer lock @ 54f8a34)"
+      ],
+      "existing_tests": [
+        "tests/test_a1_conformal_artifact_loader.py",
+        "tests/test_v2_a1_calibration.py",
+        "tests/test_shuffled_label_control_v1.py::test_scheduler_historical_eval_never_reads_current_calibration_pointers"
+      ],
+      "what_existing_tests_prove": "artifact lifecycle + loader mechanics + historical-eval isolation from current pointers; NOT mutate-current-artifact replay invariance nor calibrated-output replay identity",
+      "unproven_failure_modes": ["any future path that applies calibration during historical eval without run-id pinning"],
+      "locally_executable_proof": "mutate current pointer after fixture; pinned artifact load by run_id unchanged",
+      "external_proof_required": "none",
+      "root_cause_if_defective": "n/a on audited paths so far",
+      "fix_status": "PARTIAL (isolation lock landed)",
+      "mechanical_lock": "landed: no-current-pointer-in-historical-eval test; planned: run-id pinned load test",
+      "final_status": "NOT_PROVEN"
+    },
+    {
+      "label": "FEATURE_SCHEMA_PARITY",
+      "exact_code_paths": [
+        "features/canonical_contract.py (contract version + validate_feature_contract_row)",
+        "features/db_feature_adapter.py vs features/live_feature_adapter.py (train/live parity surface)",
+        "feature_contracts.py / feature_contract_validation.py / model_contract.py"
+      ],
+      "existing_tests": ["tests/test_ml_feature_provenance.py"],
+      "what_existing_tests_prove": "contract validation runs; NOT byte-level golden parity of raw->engineered->matrix across adapters",
+      "unproven_failure_modes": ["dtype/order drift between db and live adapters", "silent optional-field semantics divergence"],
+      "locally_executable_proof": "golden fixtures RAW_INPUT/ENGINEERED/MATRIX + schema hash + dtype/order locks",
+      "external_proof_required": "none",
+      "root_cause_if_defective": "unknown until golden diff",
+      "fix_status": "NOT_STARTED",
+      "mechanical_lock": "planned: golden regeneration requires governance review marker",
+      "final_status": "NOT_PROVEN"
+    },
+    {
+      "label": "PURGED_TEMPORAL_VALIDATION + EMBARGO_ENFORCEMENT",
+      "exact_code_paths": [
+        "calibration/v2_a1_calibration.py (WalkForwardSplit with explicit train/calibration/holdout windows; purge/embargo terms present)",
+        "training_cache.py walk-forward",
+        "tools/build_feature_assignment_matrix_v2.py (ablation splits)"
+      ],
+      "existing_tests": ["tests/test_v2_a1_calibration.py", "tests/test_v2_advisory_backfill.py", "tests/test_training_cache_layer5.py"],
+      "what_existing_tests_prove": "split implementations behave as specified in isolation; NOT that every production/eval entry point routes through the governed splitter, and NOT overlap-leak adversarial removal per horizon",
+      "unproven_failure_modes": [
+        "an eval entry point using ad hoc splits",
+        "label-window overlap surviving at 15c/60c horizons",
+        "shared fitted state across folds"
+      ],
+      "locally_executable_proof": "entry-point registry test (all split call sites -> governed splitter); adversarial overlap fixture per horizon; walk-forward-vs-purged equivalence proof for the overlap classes actually present",
+      "external_proof_required": "none",
+      "root_cause_if_defective": "unknown until registry audit",
+      "fix_status": "NOT_STARTED",
+      "mechanical_lock": "planned: split entry-point registry lock",
+      "final_status": "NOT_PROVEN"
+    },
+    {
+      "label": "GOLDEN_FILE_PARITY + INVARIANT_ENFORCEMENT + CACHE_AND_FOLD_ISOLATION",
+      "exact_code_paths": [
+        "ml_predict.py probability outputs; training_cache.py cache keys; fusion/meta output surfaces"
+      ],
+      "existing_tests": ["tests/test_market_state_numeric_contract_v1.py (numeric contract, serving surface)"],
+      "what_existing_tests_prove": "serve-side numeric contract; NOT end-to-end golden chain nor mutation-negative invariant coverage nor cache-key identity completeness",
+      "unproven_failure_modes": ["cache keys missing fold/schema/calibration identity", "NaN-to-zero on required features in any path"],
+      "locally_executable_proof": "golden chain fixtures + mutation-style negative tests per invariant + cache-key audit",
+      "external_proof_required": "none",
+      "root_cause_if_defective": "unknown until audit",
+      "fix_status": "NOT_STARTED",
+      "mechanical_lock": "planned",
+      "final_status": "NOT_PROVEN"
+    },
+    {
+      "label": "PRODUCTION_SHUFFLED_LABEL_CONTROL / BEATS_BASELINE / PREDICTIVE_VALIDITY",
+      "exact_code_paths": ["operator-host execution per Phase 8 packet"],
+      "existing_tests": ["tests/test_shuffled_label_control_v1.py (LOCAL control harness: PASS)"],
+      "what_existing_tests_prove": "control machinery sensitivity + collapse on fixture; NOT production-model behavior",
+      "unproven_failure_modes": ["n/a — externally gated execution"],
+      "locally_executable_proof": "none beyond harness (done)",
+      "external_proof_required": "operator-host runs; clean retrain sequence; OOS baseline comparison",
+      "root_cause_if_defective": "n/a",
+      "fix_status": "HARNESS_LANDED",
+      "mechanical_lock": "landed in required CI",
+      "final_status": "NOT_PROVEN"
+    }
+  ]
+}
