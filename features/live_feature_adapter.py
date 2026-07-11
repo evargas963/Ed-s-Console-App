@@ -34,9 +34,17 @@ def build_live_mvp_feature_row(l1_payload: dict[str, Any]) -> dict[str, Any]:
     """
     liq = read_liquidity_summary_subdict(l1_payload)
 
+    spread_pts = read_optional_float(l1_payload, "spread_pts", "price.spread_pts")
+    # TRAIN/SERVE PARITY (ML-PIPE-V2 2026-07-11): the DB adapter withholds
+    # crossed/stale negative spreads (canonical contract: spread_pts >= 0 when
+    # present). The live path must apply the IDENTICAL missingness semantics —
+    # otherwise the same market instant trains as None but serves negative.
+    if spread_pts is not None and spread_pts < 0.0:
+        spread_pts = None
+
     out = {
         "price.spot": read_optional_float(l1_payload, "spot", "price.spot"),
-        "price.spread_pts": read_optional_float(l1_payload, "spread_pts", "price.spread_pts"),
+        "price.spread_pts": spread_pts,
         "structure.zone": read_optional_zone(l1_payload, "zone", "structure.zone"),
         "structure.nearest_above_dist": read_optional_float(
             l1_payload, "nearest_above_dist", "structure.nearest_above_dist"

@@ -526,3 +526,88 @@ def test_meta_manifest_reader_legacy_absence_never_upgrades(tmp_path):
     # corrupted manifest reads as None (never as governed)
     (tmp_path / "meta_SPY_5c_training_manifest.json").write_text("{broken", encoding="utf-8")
     assert read_meta_training_basis_manifest(tmp_path, "SPY", "5c") is None
+
+
+# ── ML-PIPE-V2 Phase 5: feature-schema golden chain + train/serve parity locks ──
+
+# Golden schema identity: names+order+contract version. Changing the contract
+# REQUIRES regenerating this constant in the same governance-reviewed diff.
+MVP_SCHEMA_GOLDEN_SHA256 = "e2c132ed09390c5a5a531ebeda6a9c58811a942d782f60d0cab33e71f27fd5d3"
+
+_GOLDEN_DB_ROW = {
+    "spot": 512.34, "spread": 0.02, "zone": "breakout",
+    "nearest_above_dist": 1.25, "nearest_below_dist": 0.75, "net_gamma": -1234.5,
+    "vwap_side": "above", "vwap_dist_pts": 0.6,
+    "absorption_score": 0.41, "continuation_score": 0.59,
+}
+_GOLDEN_L1_PAYLOAD = {
+    "spot": 512.34, "spread_pts": 0.02, "zone": "breakout",
+    "nearest_above_dist": 1.25, "nearest_below_dist": 0.75, "net_gamma": -1234.5,
+    "vwap_side": "above", "dist_to_vwap_pts": 0.6,
+    "liquidity_summary": {"absorption_score": 0.41, "continuation_score": 0.59},
+}
+_GOLDEN_EXPECTED = {
+    "price.spot": 512.34, "price.spread_pts": 0.02, "structure.zone": "breakout",
+    "structure.nearest_above_dist": 1.25, "structure.nearest_below_dist": 0.75,
+    "structure.net_gamma": -1234.5, "anchor.vwap_side": "above",
+    "anchor.vwap_dist_pts": 0.6, "liquidity.absorption_score": 0.41,
+    "liquidity.continuation_score": 0.59,
+}
+
+
+def test_mvp_schema_hash_golden_locked():
+    import hashlib
+    import json as _json
+
+    from features.canonical_contract import (
+        CANONICAL_FEATURE_CONTRACT_VERSION,
+        get_mvp_feature_names,
+    )
+
+    blob = _json.dumps(
+        {"version": CANONICAL_FEATURE_CONTRACT_VERSION, "names": list(get_mvp_feature_names())},
+        sort_keys=True,
+    ).encode("utf-8")
+    assert hashlib.sha256(blob).hexdigest() == MVP_SCHEMA_GOLDEN_SHA256, (
+        "feature schema changed — regenerate MVP_SCHEMA_GOLDEN_SHA256 in the same "
+        "governance-reviewed diff and prove train/infer consumers moved together"
+    )
+
+
+def test_db_and_live_adapters_produce_identical_golden_row():
+    from features.db_feature_adapter import build_db_mvp_feature_row
+    from features.live_feature_adapter import build_live_mvp_feature_row
+
+    db_row = build_db_mvp_feature_row(dict(_GOLDEN_DB_ROW))
+    live_row = build_live_mvp_feature_row(dict(_GOLDEN_L1_PAYLOAD))
+    assert db_row == live_row == _GOLDEN_EXPECTED
+    # column order identical and contract-ordered on both paths
+    assert list(db_row) == list(live_row)
+    # dtype expectations: floats stay float, categoricals stay str, no numpy leakage
+    for k, v in db_row.items():
+        assert v is None or isinstance(v, (float, str)), (k, type(v))
+
+
+def test_negative_spread_missingness_parity_between_train_and_serve():
+    """The 2026-07-11 parity defect: DB adapter withheld negative spread, live
+    adapter served it. Both paths must yield None for the same crossed-quote
+    instant — identical missingness semantics train vs serve."""
+    from features.db_feature_adapter import build_db_mvp_feature_row
+    from features.live_feature_adapter import build_live_mvp_feature_row
+
+    db_row = build_db_mvp_feature_row({**_GOLDEN_DB_ROW, "spread": -0.01})
+    live_row = build_live_mvp_feature_row({**_GOLDEN_L1_PAYLOAD, "spread_pts": -0.01})
+    assert db_row["price.spread_pts"] is None
+    assert live_row["price.spread_pts"] is None
+    assert db_row == live_row
+
+
+def test_golden_row_survives_inference_snapshot_envelope():
+    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+
+    snap = build_inference_snapshot_v1_from_db_row(
+        ticker="SPY", expiry=None, as_of_ts=1_780_000_000.0, db_row=dict(_GOLDEN_DB_ROW),
+    )
+    assert snap["features"] == _GOLDEN_EXPECTED
+    assert snap["feature_contract_version"] == "v1_1m_mvp"
+    assert snap["feature_quality"]["missing_count"] == 0
