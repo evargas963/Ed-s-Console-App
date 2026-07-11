@@ -15,6 +15,19 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
+      # GOV-GATE-PARITY-01 (2026-07-11, operator-directed): local twins of the
+      # remote fast-fail checks, derived from the canonical workflow files at
+      # runtime. Evidence: five local-green->CI-red escapes on 2026-07-11
+      # (check-stack staleness, mega4 coverage, ruff x2, CSV-first x2). This
+      # supersedes the Phase 2B "two fast gates only" pre-push budget BY
+      # OPERATOR DIRECTION; remote CI remains the unchanged authority.
+      - id: prepush-parity-gate
+        name: prepush parity gate (ruff + enforce-static + csv-first + owner suites)
+        entry: python tools/check_prepush_parity.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
       # Phase 2B (2026-06-26): the repo-wide governance consolidation pytest suite
       # (test_governance_consolidation.py, test_check_fix_everything_we_touch.py,
       # test_ml_feature_schema_parity.py, test_check_schwab_csv_first.py,

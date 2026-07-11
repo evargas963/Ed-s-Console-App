@@ -4261,6 +4261,21 @@ def check_precommit_performance_contract() -> list[str]:
                 ".pre-commit-config.yaml: pre-push hook order must be "
                 "prepush-fast-gate → generated-artifacts-clean-check"
             )
+    # GOV-GATE-PARITY-01 (operator-directed 2026-07-11): the parity gate is the
+    # MANDATORY third pre-push stage — local twins of remote ruff /
+    # enforce-static / CSV-first / owner suites (fast gates stay first). This
+    # amends the Phase 2B lightweight-only budget for the pre-push tier; the
+    # remote required checks are unchanged.
+    idx_par = pc.find("id: prepush-parity-gate")
+    if idx_par < 0:
+        errors.append(
+            ".pre-commit-config.yaml: missing prepush-parity-gate hook "
+            "(GOV-GATE-PARITY-01 mandatory local/remote fast-fail parity)"
+        )
+    elif idx_art >= 0 and not (idx_art < idx_par):
+        errors.append(
+            ".pre-commit-config.yaml: prepush-parity-gate must run AFTER the fast gates"
+        )
     wf = REPO_ROOT / ".github" / "workflows" / "objective-audit.yml"
     if not wf.is_file():
         errors.append(".github/workflows/objective-audit.yml: missing (CI full-static authority)")

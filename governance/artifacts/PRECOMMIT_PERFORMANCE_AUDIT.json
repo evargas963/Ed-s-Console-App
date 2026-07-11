@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-06-26T11:34:10+00:00",
+  "generated_at_utc": "2026-07-11T23:35:32+00:00",
   "measurement_mode": "declared_policy_only",
   "total_measured_seconds": null,
   "slowest_hook": null,
@@ -109,6 +109,20 @@
       "recommendation": "Non-mutating compare vs sources \u2014 fail before long pytest when artifacts stale.",
       "keep_in_precommit": false,
       "proposed_location": "prepush"
+    },
+    {
+      "name": "prepush parity gate (ruff + enforce-static + csv-first + owner suites)",
+      "id": "prepush-parity-gate",
+      "command": "python tools/check_prepush_parity.py",
+      "stages": [
+        "pre-push"
+      ],
+      "runtime_seconds": null,
+      "scope": "unspecified",
+      "tier": 1,
+      "recommendation": "Review \u2014 no tier policy entry in audit_precommit_performance.py",
+      "keep_in_precommit": true,
+      "proposed_location": "precommit"
     },
     {
       "name": "no grep/rg subprocess in staged Python",
