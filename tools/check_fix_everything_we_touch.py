@@ -470,6 +470,77 @@ _FULL_FIX_CODE_SPAN_RE = re.compile(r"`[^`]*`")
 def _full_fix_strip_code_spans(text: str) -> str:
     """Backtick-wrapped tokens are documentation references, not closure claims."""
     return _FULL_FIX_CODE_SPAN_RE.sub("", text)
+
+
+# ── Context-aware closure-assertion classification (2026-07-11 root-cause fix) ──
+# The prior scanner flagged EVERY bare CLOSED_WITH_EVIDENCE token, so vocabulary
+# definitions, schema enums, negative/prohibition rules, and quoted historical
+# packets scanned as claims (false positive proven on the operating contract's
+# closure-authority clause: "is CLOSED_WITH_EVIDENCE only when <gate> passes" is
+# a conditional rule, not a status assertion). An ACTUAL closure assertion now
+# requires STRUCTURAL status syntax; detection of genuine assertions is
+# preserved and extended (semantic prose assertions are also caught).
+#
+# Accepted syntax for an actual closure assertion (documented contract):
+#   - checked board row:            - [x] **LANE** ... CLOSED_WITH_EVIDENCE
+#   - status field:                 STATUS = CLOSED_WITH_EVIDENCE   (any *_STATUS; = or :)
+#   - JSON ledger field:            "status": "CLOSED_WITH_EVIDENCE"
+#   - table status cell:            | CLOSED_WITH_EVIDENCE: ... |
+#   - board-row dash status:        **LANE** — CLOSED_WITH_EVIDENCE
+#   - semantic prose assertion:     "<lane> is/now/hereby CLOSED_WITH_EVIDENCE"
+#     UNLESS the same line continues with a conditional/prohibition marker
+#     (only when/only if/unless/requires/must not/may not/cannot/never), which
+#     makes it a rule about closure, not an assertion of closure.
+_FULL_FIX_ASSERTION_STRUCTURAL_RES: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^\s*[-*]\s*\[x\]\s.*\bCLOSED_WITH_EVIDENCE\b", re.IGNORECASE),
+    re.compile(r"\b[A-Z0-9_]*STATUS\s*[:=]\s*CLOSED_WITH_EVIDENCE\b"),
+    re.compile(r"\"status\"\s*:\s*\"CLOSED_WITH_EVIDENCE\""),
+    re.compile(r"\|\s*CLOSED_WITH_EVIDENCE\b"),
+    re.compile(r"\*\*\s*[—–-]?\s*CLOSED_WITH_EVIDENCE\b"),
+    re.compile(r"[—–]\s*CLOSED_WITH_EVIDENCE\b"),
+    re.compile(r"=\s*CLOSED_WITH_EVIDENCE\b"),
+    # lane-id colon assertion (commit-message form): "EXEC-99: CLOSED_WITH_EVIDENCE"
+    # — a single caps/digit identifier token before the colon; prose phrases with
+    # spaces ("Prior packet record:") do not match.
+    re.compile(r"^\s*[-*]?\s*[A-Z][A-Z0-9_-]*\s*:\s*CLOSED_WITH_EVIDENCE\b"),
+)
+_FULL_FIX_PROSE_ASSERTION_RE = re.compile(
+    r"\b(?:is|are|now|hereby|marked|stamped|declared)\s+(?:now\s+)?CLOSED_WITH_EVIDENCE\b",
+    re.IGNORECASE,
+)
+_FULL_FIX_CONDITIONAL_RULE_RE = re.compile(
+    r"\b(?:only\s+when|only\s+if|only\s+once|unless|requires|require|must\s+not|"
+    r"may\s+not|cannot|can\s+never|never|prohibited|forbidden|may\s+carry)\b",
+    re.IGNORECASE,
+)
+
+
+def _full_fix_line_is_closure_assertion(line: str) -> bool:
+    """True only for structural or semantic status ASSERTIONS of the current lane.
+
+    Vocabulary definitions, schema enums, negative rules, and quoted history do
+    not assert a status: a bare token in prose is not a claim; a conditional
+    marker on the same line converts would-be prose assertions into rules.
+    """
+    if "CLOSED_WITH_EVIDENCE" not in line:
+        return False
+    stripped = _full_fix_strip_code_spans(line)
+    if "CLOSED_WITH_EVIDENCE" not in stripped:
+        return False  # backticked reference only
+    for pat in _FULL_FIX_ASSERTION_STRUCTURAL_RES:
+        if pat.search(stripped):
+            return True
+    if _FULL_FIX_PROSE_ASSERTION_RE.search(stripped):
+        # A conditional/prohibition marker ANYWHERE on the line ("must not be
+        # marked ...", "... only when the gate passes") makes it a rule about
+        # closure, not an assertion of closure.
+        if not _FULL_FIX_CONDITIONAL_RULE_RE.search(stripped):
+            return True
+    return False
+
+
+def _full_fix_text_has_closure_assertion(text: str) -> bool:
+    return any(_full_fix_line_is_closure_assertion(ln) for ln in text.splitlines())
 # Repo-wide closure-artifact scan scope (root ledger + governance + evidence reports).
 _FULL_FIX_ARTIFACT_SCAN_PREFIXES = ("governance/", "reports/", "docs/governance/")
 _FULL_FIX_ARTIFACT_SCAN_EXACT = ("OPEN_ITEMS.md", "ACTIVE_PROGRAM.md")
@@ -601,20 +672,19 @@ def _check_full_fix_evidence(
             f"(got {ev['CI_GREEN']!r})"
         )
     stripped_text = _full_fix_strip_code_spans(text)
-    has_cwe = (not skip_cwe_checks) and bool(
-        _FULL_FIX_CLOSED_WITH_EVIDENCE_RE.search(stripped_text)
-    )
+    has_cwe = (not skip_cwe_checks) and _full_fix_text_has_closure_assertion(text)
     if has_cwe and ci_green != "YES":
         errors.append(
             f"{path}: FULL_FIXES_ONLY_V2 non-closure — CLOSED_WITH_EVIDENCE with "
             f"CI_GREEN = {ci_green or 'missing'} (required CI must be green before closure)"
         )
     # CLOSED_WITH_EVIDENCE is retroactive-only: needs a concrete SHA + four CI run ids.
-    for line_no, line in enumerate(stripped_text.splitlines(), start=1):
+    for line_no, raw_line in enumerate(text.splitlines(), start=1):
         if skip_cwe_checks:
             break
-        if not _FULL_FIX_CLOSED_WITH_EVIDENCE_RE.search(line):
+        if not _full_fix_line_is_closure_assertion(raw_line):
             continue
+        line = _full_fix_strip_code_spans(raw_line)
         if not _FULL_FIX_CI_RUNS_RE.search(line) or not _FULL_FIX_SHA_RE.search(line):
             errors.append(
                 f"{path}:{line_no}: FULL_FIXES_ONLY_V2 non-closure — CLOSED_WITH_EVIDENCE requires "
@@ -668,7 +738,10 @@ def check_full_fix_closure_artifacts() -> list[str]:
             # Legacy CWE vocabulary exempted; the V2 template claim is never exempt.
             if not _FULL_FIX_TEMPLATE_CLAIM_RE.search(stripped):
                 continue
-        elif not _FULL_FIX_CLAIM_TOKEN_RE.search(stripped):
+        elif not (
+            _FULL_FIX_TEMPLATE_CLAIM_RE.search(stripped)
+            or _full_fix_text_has_closure_assertion(text)
+        ):
             continue
         errors.extend(
             _check_full_fix_evidence(

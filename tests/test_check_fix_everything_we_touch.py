@@ -2365,3 +2365,108 @@ def test_commit_msg_hygiene_import_bootstraps_repo_root(tmp_path):
     )
     assert out.returncode == 0, out.stderr + out.stdout
     assert "HYGIENE_IMPORT_OK" in out.stdout
+
+
+# ── FULL_FIXES_ONLY_V2 context-aware closure-assertion classifier (2026-07-11) ──
+# Root cause fixed: bare-token matching flagged vocabulary definitions, schema
+# enums, negative rules, and quoted history as claims (false positive proven on
+# the operating-contract closure-authority clause). These adversarial fixtures
+# prove the classifier is MORE ACCURATE, not merely more permissive.
+
+
+def _cls():
+    import tools.check_fix_everything_we_touch as m
+    return m._full_fix_line_is_closure_assertion
+
+
+def test_cwe_classifier_accepts_vocabulary_definition():
+    f = _cls()
+    assert f("A parent board lane is CLOSED_WITH_EVIDENCE only when the gate passes.") is False
+
+
+def test_cwe_classifier_accepts_schema_enum():
+    f = _cls()
+    assert f('closure vocabulary: CLOSED_WITH_EVIDENCE, NOT_CLOSED (schema enum, no lane named)') is False
+
+
+def test_cwe_classifier_accepts_negative_rule():
+    f = _cls()
+    assert f("This lane must not be marked CLOSED_WITH_EVIDENCE while RTH proof is pending.") is False
+    assert f("A sub-lane can never make its parent CLOSED_WITH_EVIDENCE.") is False
+
+
+def test_cwe_classifier_accepts_quoted_historical_packet():
+    f = _cls()
+    assert f("Prior packet record: CLOSED_WITH_EVIDENCE 2026-07-10 EVE at that tip (superseded).") is False
+
+
+def test_cwe_classifier_accepts_documentation_example():
+    f = _cls()
+    assert f("Example forbidden syntax includes the CLOSED_WITH_EVIDENCE token in a status field.") is False
+    assert f("backticked reference: `STATUS = CLOSED_WITH_EVIDENCE` is documentation") is False
+
+
+def test_cwe_classifier_rejects_board_row_assertion():
+    f = _cls()
+    assert f("- [x] **LANE-X** — CLOSED_WITH_EVIDENCE @ deadbeef1234567") is True
+
+
+def test_cwe_classifier_rejects_status_field_assertion():
+    f = _cls()
+    assert f("LANE_STATUS = CLOSED_WITH_EVIDENCE") is True
+    assert f("STATUS: CLOSED_WITH_EVIDENCE") is True
+    assert f('"status": "CLOSED_WITH_EVIDENCE",') is True
+
+
+def test_cwe_classifier_rejects_table_cell_assertion():
+    f = _cls()
+    assert f("| Lane Foo | `abc1234` | CLOSED_WITH_EVIDENCE: all dims proven |") is True
+
+
+def test_cwe_classifier_rejects_disguised_assertion_formatting():
+    f = _cls()
+    assert f("MY_LANE_STATUS   =    CLOSED_WITH_EVIDENCE") is True
+    assert f("sub-lane FOO = CLOSED_WITH_EVIDENCE preserved") is True
+
+
+def test_cwe_classifier_rejects_semantic_prose_assertion():
+    f = _cls()
+    assert f("LANE-X is now CLOSED_WITH_EVIDENCE.") is True
+    assert f("The sentinel is hereby CLOSED_WITH_EVIDENCE per this packet.") is True
+
+
+def test_cwe_assertion_still_requires_evidence_block():
+    from pathlib import Path
+
+    import tools.check_fix_everything_we_touch as m
+
+    text = "- [x] **LANE-Z** — CLOSED_WITH_EVIDENCE @ 0123abc no evidence block here\n"
+    errs = m._check_full_fix_evidence(text, Path("governance/FIXTURE.md"), artifact_mode=True)
+    assert any("closure claim without machine-readable" in e for e in errs)
+
+
+def test_cwe_definition_only_file_passes_without_evidence_block():
+    from pathlib import Path
+
+    import tools.check_fix_everything_we_touch as m
+
+    text = (
+        "Closure vocabulary definition: a lane is CLOSED_WITH_EVIDENCE only when the "
+        "institutional gate passes; otherwise it must not be marked CLOSED_WITH_EVIDENCE.\n"
+    )
+    assert m._full_fix_text_has_closure_assertion(text) is False
+
+
+def test_operating_contract_clause_is_classified_as_rule_not_claim():
+    """The exact false-positive reproduction: the committed contract clause must
+    classify as a conditional rule while keeping the canonical token."""
+    from pathlib import Path
+
+    src2 = Path("governance/docs/AGENT_OPERATING_CONTRACT.md").read_text(encoding="utf-8")
+    assert "is CLOSED_WITH_EVIDENCE only when" in src2, "canonical token must be restored"
+    import tools.check_fix_everything_we_touch as m
+
+    clause_lines = [ln for ln in src2.splitlines() if "is CLOSED_WITH_EVIDENCE only when" in ln]
+    assert clause_lines
+    for ln in clause_lines:
+        assert m._full_fix_line_is_closure_assertion(ln) is False
