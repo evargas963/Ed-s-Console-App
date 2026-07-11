@@ -27,6 +27,9 @@ def deps(tmp_path, monkeypatch):
     import tools.governance_gate_cache as gc
 
     monkeypatch.setattr(gc, "CACHE_DIR", tmp_path / "cache")
+    # conftest force-disables the cache for the whole suite (tests must exercise
+    # real compute); THIS suite tests the cache itself, so re-enable it here.
+    monkeypatch.setenv("ED_GATE_CACHE_DISABLE", "")
     src = tmp_path / "checker.py"
     src.write_text("v1", encoding="utf-8")
     cfg = tmp_path / "manifest.json"
