@@ -9,7 +9,6 @@ Exit 0 = ledger coherent; exit 1 = closure contradiction(s).
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

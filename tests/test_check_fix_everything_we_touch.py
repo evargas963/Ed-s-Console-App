@@ -2446,8 +2446,6 @@ def test_cwe_assertion_still_requires_evidence_block():
 
 
 def test_cwe_definition_only_file_passes_without_evidence_block():
-    from pathlib import Path
-
     import tools.check_fix_everything_we_touch as m
 
     text = (
