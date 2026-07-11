@@ -1001,10 +1001,40 @@ def _get_priority_leaf_executor() -> ThreadPoolExecutor:
             # pure Schwab 0.4-0.6s. Four workers = 3 anchors + 1 operator
             # switch, the measured concurrent demand. Chain concurrency is
             # still bounded by the 2-slot gate.
+            # SCHWAB_CSV_CHECKED — Schwab CSV authority checked: yes.
+            # CSV row(s): NO_SCHWAB_EQUIVALENT (thread-pool sizing only; no
+            # market field read, derived, or displayed by this change).
+            # Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (n/a —
+            # no derivation touched). All consumers checked: yes — chain,
+            # quote, and seed legs submit here unchanged; Schwab reads remain
+            # in safe_get_chain/safe_get_quote behind the 2-slot gate.
             max_workers=4,
             thread_name_prefix="ed_priority_leaf",
         )
     return _priority_leaf_executor
+
+
+def _get_mkt_ctx_refresh_executor() -> ThreadPoolExecutor:
+    """UI_05 tail closure (2026-07-10 EVE): single-worker lane for the
+    market-context sweep so exactly one refresh runs at a time and NO
+    recompute thread ever pays the 17-call sweep inline once a context
+    exists. Sized 1 so a second sweep can never start concurrently.
+
+    Schwab CSV authority checked: yes
+    CSV row(s): NO_SCHWAB_EQUIVALENT — executor scheduling only; the sweep
+      itself (fetch_market_context) is byte-identical.
+    Derived-field disposition: none required (no derived field touched).
+    All consumers checked: yes — _get_mkt_ctx callers receive the same
+      MarketContext object semantics (fresh, or previous-within-grace while
+      one refresh is in flight).
+    SCHWAB_CSV_CHECKED"""
+    global _mkt_ctx_refresh_executor
+    if _mkt_ctx_refresh_executor is None:
+        _mkt_ctx_refresh_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="ed_mkt_ctx_refresh",
+        )
+    return _mkt_ctx_refresh_executor
 
 
 def _get_db_fill_outcomes_executor() -> ThreadPoolExecutor:
@@ -1027,6 +1057,7 @@ _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 _sse_fetch_timeout_executor: Optional[ThreadPoolExecutor] = None
 _operator_priority_executor: Optional[ThreadPoolExecutor] = None
 _priority_leaf_executor: Optional[ThreadPoolExecutor] = None
+_mkt_ctx_refresh_executor: Optional[ThreadPoolExecutor] = None
 ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
     os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")
 )
@@ -3540,6 +3571,15 @@ _cached_mkt_ctx       = None     # MarketContext object
 _cached_mkt_ctx_ts    = 0.0      # epoch when last fetched
 _cached_mkt_ctx_lock  = threading.Lock()
 MKT_CTX_TTL           = 25.0     # seconds — refresh once per cycle (LOG_INTERVAL=30s)
+# UI_05 tail closure (2026-07-10 EVE, measured @ f478208 trials): when the TTL
+# lapsed, EVERY concurrent recompute independently ran the 17-call sweep inline
+# (no single-flight on the fetch — the lock only guarded check + store), putting
+# 8.3-10.5s inside the cold-switch chain window at pure chain <=1.8s and gate
+# wait 0. Refresh is now single-flight and stale-while-refresh: one background
+# sweep at a time; callers holding a previous context are served immediately.
+_mkt_ctx_refresh_inflight = False   # guarded by _cached_mkt_ctx_lock
+_mkt_ctx_refresh_cond = threading.Condition(_cached_mkt_ctx_lock)
+MKT_CTX_SYNC_JOIN_TIMEOUT_SEC = 30.0   # boot/force_sync bounded join on an in-flight sweep
 
 
 def _is_loggable_session() -> bool:
@@ -3691,27 +3731,20 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
         log.debug("view touch_seen failed ticker=%s: %s", t, e, exc_info=True)
 
 
-def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
-    """Return cached global market context, refreshing if stale.
+def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
+    """One full market-context sweep (17 Schwab quote calls) + cache store +
+    confluence-tick persist. Extracted verbatim from the pre-2026-07-10 body
+    of _get_mkt_ctx; call ONLY under the single-flight discipline in
+    _get_mkt_ctx / _mkt_ctx_background_refresh.
 
-    This is the KEY optimization: VIX + SPY/QQQ/IWM + 9 constituents +
-    4 IWM sectors = 17 API calls. Previously called per-ticker (3+ tickers
-    = 51+ duplicate calls). Now called ONCE per cycle.
-    """
+    Schwab CSV authority checked: yes
+    CSV row(s): quotes.$VIX.*, quotes.SPY.*, quotes.QQQ.*, quotes.IWM.* and
+      panel constituents via fetch_market_context (unchanged call shape).
+    Derived-field disposition: none required — sweep body byte-identical.
+    All consumers checked: yes — same MarketContext object stored/returned.
+    SCHWAB_CSV_CHECKED"""
     global _cached_mkt_ctx, _cached_mkt_ctx_ts
-    mkt_ctx_cache_eval_wall_ts = time.time()
-    with _cached_mkt_ctx_lock:
-        if (
-            _cached_mkt_ctx is not None
-            and (mkt_ctx_cache_eval_wall_ts - _cached_mkt_ctx_ts) < MKT_CTX_TTL
-        ):
-            # Cache is fresh — update PCR values on the cached object
-            # (PCR is per-ticker, comes from the chain, not from market context)
-            if pcr is not None:
-                _cached_mkt_ctx.pcr = pcr
-            return _cached_mkt_ctx
-
-    # Cache is stale — fetch fresh
+    mkt_ctx_fetch_started_wall_ts = time.time()
     _stream_chg_fn = None
     try:
         from order_flow_live_state import get_stream_chg_pct
@@ -3726,7 +3759,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
             prev_pcr=prev_pcr,
             stream_chg_pct_fn=_stream_chg_fn,
         )
-        if getattr(ctx, "error", None):
+        if ctx.error:
             log.warning(f"fetch_market_context returned error: {ctx.error}")
     except Exception as e:
         log.warning(f"fetch_market_context failed: {e}")
@@ -3734,7 +3767,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
         ctx = MarketContext()
     with _cached_mkt_ctx_lock:
         _cached_mkt_ctx = ctx
-        _cached_mkt_ctx_ts = mkt_ctx_cache_eval_wall_ts
+        _cached_mkt_ctx_ts = mkt_ctx_fetch_started_wall_ts
     if _HAS_SIGNALS:
         try:
             from db import build_ts_et
@@ -3743,7 +3776,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
 
             _qrows = confluence_quote_rows_from_context(
                 ctx,
-                ts_utc=mkt_ctx_cache_eval_wall_ts,
+                ts_utc=mkt_ctx_fetch_started_wall_ts,
                 ts_et=build_ts_et(now_et()),
             )
             if _qrows:
@@ -3751,6 +3784,86 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
         except Exception as e:
             log.debug("confluence_quote_ticks persist: %s", e, exc_info=True)
     return ctx
+
+
+def _mkt_ctx_background_refresh(client, pcr=None, prev_pcr=None):
+    """Single-flight worker body for the stale-while-refresh path."""
+    global _mkt_ctx_refresh_inflight
+    try:
+        _fetch_and_store_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr)
+    except Exception as e:
+        # _fetch_and_store_mkt_ctx is internally fail-soft; this guard only
+        # protects the inflight flag from an unexpected escape (never silent).
+        log.warning("mkt_ctx background refresh failed: %s", e, exc_info=True)
+    finally:
+        with _cached_mkt_ctx_lock:
+            _mkt_ctx_refresh_inflight = False
+            _mkt_ctx_refresh_cond.notify_all()
+
+
+def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
+    """Return cached global market context; the sweep is single-flight.
+
+    Fresh cache: served directly. Stale cache while a PREVIOUS context
+    exists (and force_sync is False): serve the previous context
+    immediately and kick at most ONE background sweep — UI_05 measured
+    tail cause was every concurrent recompute paying the 17-call sweep
+    inline on TTL lapse (8.3-10.5s inside the cold-switch chain window at
+    pure chain <=1.8s, gate wait 0; trials @ 1f83a25 and f478208). No
+    context yet (boot) or force_sync=True (_ensure_mkt_ctx_confluence_complete):
+    join an in-flight sweep bounded, else perform it synchronously.
+
+    Schwab CSV authority checked: yes
+    CSV row(s): NO_SCHWAB_EQUIVALENT — refresh scheduling only; the Schwab
+      sweep itself lives unchanged in _fetch_and_store_mkt_ctx.
+    Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — served context
+      is at most TTL + one sweep old, disclosed here; no fabricated values.
+    All consumers checked: yes — _fetch_state (stale-while-refresh) and
+      _ensure_mkt_ctx_confluence_complete (force_sync=True) both audited.
+    SCHWAB_CSV_CHECKED"""
+    global _mkt_ctx_refresh_inflight
+    mkt_ctx_cache_eval_wall_ts = time.time()
+    with _cached_mkt_ctx_lock:
+        if (
+            _cached_mkt_ctx is not None
+            and (mkt_ctx_cache_eval_wall_ts - _cached_mkt_ctx_ts) < MKT_CTX_TTL
+        ):
+            # Cache is fresh — update PCR values on the cached object
+            # (PCR is per-ticker, comes from the chain, not from market context)
+            if pcr is not None:
+                _cached_mkt_ctx.pcr = pcr
+            return _cached_mkt_ctx
+        if _cached_mkt_ctx is not None and not force_sync:
+            if not _mkt_ctx_refresh_inflight:
+                _mkt_ctx_refresh_inflight = True
+                try:
+                    _get_mkt_ctx_refresh_executor().submit(
+                        _mkt_ctx_background_refresh, client, pcr, prev_pcr
+                    )
+                except RuntimeError:
+                    _mkt_ctx_refresh_inflight = False
+            if pcr is not None:
+                _cached_mkt_ctx.pcr = pcr
+            return _cached_mkt_ctx
+        # Boot (no context yet) or force_sync: bounded join on any in-flight
+        # sweep; take over the sweep if none is running (or the join expires).
+        _join_deadline = time.monotonic() + MKT_CTX_SYNC_JOIN_TIMEOUT_SEC
+        while _mkt_ctx_refresh_inflight and time.monotonic() < _join_deadline:
+            _mkt_ctx_refresh_cond.wait(timeout=1.0)
+            if (
+                _cached_mkt_ctx is not None
+                and (time.time() - _cached_mkt_ctx_ts) < MKT_CTX_TTL
+            ):
+                if pcr is not None:
+                    _cached_mkt_ctx.pcr = pcr
+                return _cached_mkt_ctx
+        _mkt_ctx_refresh_inflight = True
+    try:
+        return _fetch_and_store_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr)
+    finally:
+        with _cached_mkt_ctx_lock:
+            _mkt_ctx_refresh_inflight = False
+            _mkt_ctx_refresh_cond.notify_all()
 
 
 def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=None):
@@ -3764,7 +3877,10 @@ def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=N
     global _cached_mkt_ctx_ts
     with _cached_mkt_ctx_lock:
         _cached_mkt_ctx_ts = 0.0
-    fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr)
+    # force_sync: this path just zeroed the cache ts because required
+    # confluence fields are MISSING — a stale-while-refresh serve would
+    # hand back the same incomplete object.
+    fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr, force_sync=True)
     still = missing_confluence_weighted_pushes(fresh)
     if still:
         try:
@@ -5570,6 +5686,9 @@ def _fetch_state(
     logger_source: Optional[str] = None,
 ) -> dict:
     _fetch_start_mono = time.monotonic()
+    # UI_05 tail attribution (def-free marks, same pattern as _stage_marks):
+    # splits _chain_ms so an untraced gap can never hide again.
+    _chain_window_marks: list[tuple[str, float]] = []
     # LIVE_OPERATOR_MODE_RESET_V1 Step 3 — TICKER-PREVIEW-NO-ENROLL applies here too:
     # a Tier C recompute for a viewed symbol refreshes last-seen only. Enrollment into
     # logging_universe is explicit (/api/logger/add | /api/logger/pin).
@@ -5586,11 +5705,13 @@ def _fetch_state(
     from time_et import now_et as _eastern_now
 
     now_et = _eastern_now()
+    _chain_window_marks.append(("chain_window_preamble_ms", time.monotonic()))
 
     # ── Global market context — session_label before quote parse (shared across tickers) ──
     if mkt_ctx is None:
         mkt_ctx = _get_mkt_ctx(client)
     session_label = mkt_ctx.session_label   # "RTH" | "Pre-Market" | "After-Hours" | "Closed"
+    _chain_window_marks.append(("chain_window_mkt_ctx_ms", time.monotonic()))
 
     # ── Chain + quote in parallel (independent Schwab calls — saves one RTT on cold Tier C) ──
     # These futures must NOT run on _analytics_executor: _fetch_state itself occupies an
@@ -5650,6 +5771,7 @@ def _fetch_state(
                 "message": str(e),
             },
         ) from e
+    _chain_window_marks.append(("chain_window_leaf_wall_ms", time.monotonic()))
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Chain fetch failed")
     c_json = c_resp.json()
@@ -5669,6 +5791,7 @@ def _fetch_state(
                         contracts_raw.append(_ct)
     contracts     = [dict(ct) for ct in contracts_raw]
     _t_after_chain_mono = time.monotonic()
+    _chain_window_marks.append(("chain_window_contracts_parse_ms", _t_after_chain_mono))
 
     # totalVolume: WebSocket TOTAL_VOLUME preferred; else chain underlying (include_underlying_quote)
     _total_vol = None
@@ -8288,6 +8411,12 @@ def _fetch_state(
     )
     _stage_ms["chain_gate_wait_ms"] = round(_chain_gate_wait_sec * 1000.0, 1)
     _stage_ms["schwab_quote_ms"] = float(ms_dict["_quote_ms"])
+    # UI_05 tail attribution: consecutive deltas across the _chain_ms window
+    # (preamble | mkt_ctx | leaf submit->result wall | contracts parse).
+    _cw_prev_mono = _fetch_start_mono
+    for _cw_name, _cw_mono in _chain_window_marks:
+        _stage_ms[_cw_name] = round((_cw_mono - _cw_prev_mono) * 1000.0, 1)
+        _cw_prev_mono = _cw_mono
     ms_dict["chain_gate_wait_sec"] = _chain_gate_wait_sec
     ms_dict["_compute_breakdown"] = dict(_stage_ms)
     log.info(
@@ -8603,6 +8732,10 @@ async def _app_lifespan(app):
     if _priority_leaf_executor is not None:
         _priority_leaf_executor.shutdown(wait=True, cancel_futures=True)
         _priority_leaf_executor = None
+    global _mkt_ctx_refresh_executor
+    if _mkt_ctx_refresh_executor is not None:
+        _mkt_ctx_refresh_executor.shutdown(wait=True, cancel_futures=True)
+        _mkt_ctx_refresh_executor = None
     global _quote_hot_executor, _route_offload_executor, _fast_quote_executor, _db_fill_outcomes_executor
     if _quote_hot_executor is not None:
         _quote_hot_executor.shutdown(wait=True)

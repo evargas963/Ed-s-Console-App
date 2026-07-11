@@ -2084,3 +2084,181 @@ def test_ui05r_sweep_never_bypasses_serve_policy():
     seg = src[i:i + 500]
     assert "_prewarm_inference_models_worker(t)" in seg
     assert "pickle" not in seg and "torch" not in seg  # no direct artifact loads
+
+
+# ── UI_05 tail closure: market-context single-flight + stale-while-refresh ────
+
+
+def _mkt_ctx_test_reset(srv, ctx=None, age_sec=0.0):
+    with srv._cached_mkt_ctx_lock:
+        srv._cached_mkt_ctx = ctx
+        srv._cached_mkt_ctx_ts = (time.time() - age_sec) if ctx is not None else 0.0
+        srv._mkt_ctx_refresh_inflight = False
+
+
+def test_mkt_ctx_stale_serve_never_pays_sweep_inline(monkeypatch):
+    """Stale cache + previous context: callers get the previous context
+    immediately; exactly ONE background sweep runs and lands the new one."""
+    import threading as th
+
+    import server as srv
+    from market_context import MarketContext
+
+    old_ctx = MarketContext()
+    _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
+    calls = {"n": 0}
+    done = th.Event()
+
+    def _fake_sweep(client, **kwargs):
+        calls["n"] += 1
+        time.sleep(0.2)
+        done.set()
+        return MarketContext()
+
+    monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
+    t0 = time.perf_counter()
+    served = [srv._get_mkt_ctx(None) for _ in range(5)]
+    inline_elapsed = time.perf_counter() - t0
+    assert all(s is old_ctx for s in served)
+    assert inline_elapsed < 0.15, "a caller paid the sweep inline"
+    assert done.wait(5)
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        with srv._cached_mkt_ctx_lock:
+            if srv._cached_mkt_ctx is not old_ctx and not srv._mkt_ctx_refresh_inflight:
+                break
+        time.sleep(0.02)
+    with srv._cached_mkt_ctx_lock:
+        assert srv._cached_mkt_ctx is not old_ctx
+        assert srv._mkt_ctx_refresh_inflight is False
+    assert calls["n"] == 1
+    _mkt_ctx_test_reset(srv)
+
+
+def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
+    """Eight concurrent stale-path callers trigger exactly one sweep."""
+    import threading as th
+
+    import server as srv
+    from market_context import MarketContext
+
+    old_ctx = MarketContext()
+    _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
+    calls = {"n": 0}
+    lk = th.Lock()
+    done = th.Event()
+
+    def _fake_sweep(client, **kwargs):
+        with lk:
+            calls["n"] += 1
+        time.sleep(0.3)
+        done.set()
+        return MarketContext()
+
+    monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
+    served: list = []
+    slock = th.Lock()
+
+    def _call():
+        out = srv._get_mkt_ctx(None)
+        with slock:
+            served.append(out)
+
+    threads = [th.Thread(target=_call) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert len(served) == 8
+    assert all(s is old_ctx for s in served)
+    assert done.wait(5)
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        with srv._cached_mkt_ctx_lock:
+            if not srv._mkt_ctx_refresh_inflight:
+                break
+        time.sleep(0.02)
+    assert calls["n"] == 1, f"thundering herd: {calls['n']} sweeps for one TTL lapse"
+    _mkt_ctx_test_reset(srv)
+
+
+def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
+    """No context yet (boot): concurrent callers block, exactly one sweep
+    runs, and every caller returns the context it stored."""
+    import threading as th
+
+    import server as srv
+    from market_context import MarketContext
+
+    _mkt_ctx_test_reset(srv, None)
+    calls = {"n": 0}
+    lk = th.Lock()
+
+    def _fake_sweep(client, **kwargs):
+        with lk:
+            calls["n"] += 1
+        time.sleep(0.3)
+        return MarketContext()
+
+    monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
+    served: list = []
+    slock = th.Lock()
+
+    def _call():
+        out = srv._get_mkt_ctx(None)
+        with slock:
+            served.append(out)
+
+    threads = [th.Thread(target=_call) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert len(served) == 6
+    assert calls["n"] == 1
+    assert all(s is served[0] for s in served), "boot joiners got different contexts"
+    _mkt_ctx_test_reset(srv)
+
+
+def test_mkt_ctx_force_sync_performs_fresh_sweep(monkeypatch):
+    """force_sync (confluence-completion path) must NOT be served the stale
+    object — it fetches (or joins) a real sweep and returns the new context."""
+    import server as srv
+    from market_context import MarketContext
+
+    old_ctx = MarketContext()
+    _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
+    calls = {"n": 0}
+
+    def _fake_sweep(client, **kwargs):
+        calls["n"] += 1
+        return MarketContext()
+
+    monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
+    out = srv._get_mkt_ctx(None, force_sync=True)
+    assert out is not old_ctx
+    assert calls["n"] == 1
+    with srv._cached_mkt_ctx_lock:
+        assert srv._cached_mkt_ctx is out
+        assert srv._mkt_ctx_refresh_inflight is False
+    _mkt_ctx_test_reset(srv)
+
+
+def test_mkt_ctx_refresh_executor_single_worker_and_chain_window_marks():
+    """Sizing lock (1 worker = single-flight by construction) + source lock:
+    the _chain_ms window carries the four attribution marks so an untraced
+    gap cannot reappear silently."""
+    import inspect
+
+    import server as srv
+
+    ex = srv._get_mkt_ctx_refresh_executor()
+    assert ex._max_workers == 1
+    fetch_src = inspect.getsource(srv._fetch_state)
+    for mark in (
+        "chain_window_preamble_ms",
+        "chain_window_mkt_ctx_ms",
+        "chain_window_leaf_wall_ms",
+        "chain_window_contracts_parse_ms",
+    ):
+        assert mark in fetch_src, f"chain-window mark {mark} missing from _fetch_state"
