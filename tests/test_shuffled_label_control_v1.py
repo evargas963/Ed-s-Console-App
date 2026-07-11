@@ -341,3 +341,26 @@ def test_slc_run_routes_control_db_to_trainer_and_true_db_to_evaluator(tmp_path,
     doc = _json.loads(ev_path.read_text(encoding="utf-8"))
     assert doc["verdict"]["collapsed_to_chance"] is True
     assert doc["permutation"]["label_multiset_preserved"] is True
+
+def test_meta_assembly_reads_no_calibration_artifacts():
+    """ML-PIPE-V3 item 3 (calibration fold-correctness): the meta training
+    matrix is assembled from raw base probabilities + snapshot overlay columns
+    ONLY — no calibration attach, no current pointers, no calibrated outputs
+    can enter meta features. Fold correctness for calibration inputs is
+    therefore vacuously safe on this path, and this lock keeps it that way."""
+    import inspect
+
+    import ml_scheduler
+
+    s2 = inspect.getsource(ml_scheduler._assemble_meta_ml_layer_prob_vectors)
+    for tok in (
+        "attach_a1_isotonic_calibration_to_ms_dict",
+        "attach_a1_conformal_artifact_to_ms_dict",
+        "current_pointer_path",
+        "fusion_temperature",
+        "calibration.",
+    ):
+        assert tok not in s2, (
+            f"meta assembly must not consume calibration artifacts ({tok}) — "
+            "calibrated inputs would need fold-scoped artifacts before use"
+        )

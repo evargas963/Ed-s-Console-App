@@ -371,3 +371,122 @@ def test_train_lstm_b3_no_holdout_when_too_few_rows(tmp_path, monkeypatch):
     meta = json.loads((tmp_path / "models" / "lstm_XXT_1c_meta.json").read_text(encoding="utf-8"))
     assert meta["val_basis"] == "in_sample_no_holdout"
     assert int(meta["n_val"]) == 0
+
+
+# ── ML-PIPE-V3 item 2: merged-window point-in-time invariance (as-of chain) ──
+# Proof target: the EXACT history chain _predict_lstm uses —
+# EdDB.get_recent_snapshots(as_of_ts_utc) → reversed → window slice →
+# build_lstm_merged_windows. Rows at/after the as-of instant must be unable to
+# change the merged windows by append OR aggressive mutation; other tickers and
+# other horizons must be isolated; no full-series state may leak in.
+
+
+def _mw_seed_db(tmp_path, *, ticker="SPY", n=90):
+    import datetime as _dt
+
+    from db import EdDB
+
+    db = EdDB(tmp_path / "mw_asof.db", allow_noncanonical=True)
+    base = _dt.datetime(2026, 6, 1, 14, 0, tzinfo=_dt.timezone.utc).timestamp()
+    with db._connect() as con:
+        for i in range(n):
+            con.execute(
+                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, "
+                "candle_open, candle_high, candle_low, candle_close, et_hour, et_minute) "
+                "VALUES (?, '1m', ?, ?, ?, ?, ?, ?, ?, 10, ?)",
+                (
+                    ticker, base + i * 60, f"2026-06-01 10:{i % 60:02d}:00 ET",
+                    500.0 + i * 0.1, 500.0 + i * 0.1, 500.2 + i * 0.1,
+                    499.8 + i * 0.1, 500.1 + i * 0.1, i % 60,
+                ),
+            )
+        con.commit()
+    return db, base
+
+
+def _mw_build(db, as_of_ts, ticker="SPY"):
+    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+    from features.lstm_sequence_input import build_lstm_merged_windows
+    from lstm_data import STREAM_5M_LOOKBACK
+
+    recent = db.get_recent_snapshots(
+        ticker, "1m", n=STREAM_5M_LOOKBACK + 5, filled_only=False, as_of_ts_utc=as_of_ts
+    )
+    assert recent and len(recent) >= STREAM_5M_LOOKBACK, "fixture too small for lookback"
+    recent = list(reversed(recent))
+    window = recent[-STREAM_5M_LOOKBACK:]
+    day_snaps = list(
+        reversed(
+            db.get_recent_snapshots(ticker, "1m", n=100, filled_only=False, as_of_ts_utc=as_of_ts)
+        )
+    )
+    inf_v1 = build_inference_snapshot_v1_from_db_row(
+        ticker=ticker, expiry=None, as_of_ts=as_of_ts, db_row=dict(window[-1]),
+    )
+    merged_window, merged_days = build_lstm_merged_windows(
+        window, day_snaps, inference_snapshot_v1=inf_v1
+    )
+    return merged_window, merged_days
+
+
+def test_merged_windows_invariant_under_future_append_and_mutation(tmp_path):
+    db, base = _mw_seed_db(tmp_path)
+    as_of = base + 70 * 60  # decision instant: row 70's timestamp (exclusive)
+    before_w, before_d = _mw_build(db, as_of)
+    with db._connect() as con:
+        # aggressive future mutation + new future rows + a row AT the as-of instant
+        con.execute("UPDATE snapshots SET spot = -999, candle_close = -999 WHERE ts_utc >= ?", (as_of,))
+        for i in range(200, 206):
+            con.execute(
+                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, "
+                "candle_open, candle_high, candle_low, candle_close, et_hour, et_minute) "
+                "VALUES ('SPY', '1m', ?, 'future', 1.0, 1.0, 1.0, 1.0, 1.0, 10, 0)",
+                (base + i * 60,),
+            )
+        con.commit()
+    after_w, after_d = _mw_build(db, as_of)
+    assert after_w == before_w, "merged 5m window changed after future append/mutation"
+    assert after_d == before_d, "merged day window changed after future append/mutation"
+
+
+def test_merged_windows_exact_as_of_cutoff_excludes_boundary_row(tmp_path):
+    db, base = _mw_seed_db(tmp_path)
+    as_of = base + 70 * 60
+    w, d = _mw_build(db, as_of)
+    max_ts = max(float(b["ts_utc"]) for b in w if isinstance(b, dict) and b.get("ts_utc") is not None)
+    assert max_ts < as_of, "a bar at/after the as-of instant entered the merged window"
+    max_ts_d = max(float(b["ts_utc"]) for b in d if isinstance(b, dict) and b.get("ts_utc") is not None)
+    assert max_ts_d < as_of
+
+
+def test_merged_windows_ticker_isolation(tmp_path):
+    db, base = _mw_seed_db(tmp_path)
+    as_of = base + 70 * 60
+    before_w, before_d = _mw_build(db, as_of)
+    with db._connect() as con:
+        for i in range(90):
+            con.execute(
+                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, "
+                "candle_open, candle_high, candle_low, candle_close, et_hour, et_minute) "
+                "VALUES ('QQQ', '1m', ?, 'other', 400.0, 400.0, 400.2, 399.8, 400.1, 10, 0)",
+                (base + i * 60,),
+            )
+        con.commit()
+    after_w, after_d = _mw_build(db, as_of)
+    assert after_w == before_w and after_d == before_d, "foreign-ticker rows leaked into windows"
+
+
+def test_merged_windows_no_full_series_state_between_builds(tmp_path):
+    """Two consecutive builds at the same as-of must be identical (no cross-call
+    normalization/caching state), and a build at an EARLIER as-of must not be
+    influenced by having built a later one first."""
+    db, base = _mw_seed_db(tmp_path)
+    late = base + 80 * 60
+    early = base + 70 * 60
+    w_late1, _ = _mw_build(db, late)
+    w_early_after_late, d_early_after_late = _mw_build(db, early)
+    w_late2, _ = _mw_build(db, late)
+    w_early_fresh, d_early_fresh = _mw_build(db, early)
+    assert w_late1 == w_late2, "same as-of rebuild differs — hidden state"
+    assert w_early_after_late == w_early_fresh
+    assert d_early_after_late == d_early_fresh
