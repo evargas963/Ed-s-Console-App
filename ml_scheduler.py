@@ -892,6 +892,24 @@ def _write_meta_training_basis_manifest(
     return out_path
 
 
+def read_meta_training_basis_manifest(
+    out_dir: Path, ticker: str, hz: str
+) -> Optional[dict]:
+    """Read META_TRAINING_BASIS_MANIFEST_V1 for a bundle's meta artifact.
+
+    Returns None when absent (pre-manifest legacy bundle). Downstream promotion
+    / predictive-validity surfaces MUST treat ``oof_governed is not True`` as
+    not-OOF-governed evidence (legacy absence never upgrades to governed)."""
+    p = Path(out_dir) / f"meta_{ticker.upper()}_{hz}_training_manifest.json"
+    if not p.is_file():
+        return None
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
 def _train_parallel_meta_oof(
     out_dir: Path,
     ticker: str,

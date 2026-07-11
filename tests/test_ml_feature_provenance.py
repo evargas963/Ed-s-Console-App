@@ -410,3 +410,119 @@ def test_meta_oof_trainer_returns_labeled_basis():
         s = inspect.getsource(fn)
         assert '"expanding_window_oof"' in s
         assert '"in_sample_no_folds"' in s or '"in_sample_fallback"' in s
+
+
+# ── ML-PIPE-V2 Phase 3 completion: OOF strictness, routing trap, base semantics ──
+
+
+def test_expanding_window_oof_folds_strict_temporal_order():
+    from training_cache import expanding_window_oof_folds
+
+    days = [f"2026-06-{d:02d}" for d in range(1, 26)]
+    folds = expanding_window_oof_folds(days)
+    assert folds, "25 sessions must form folds"
+    seen_oof: set = set()
+    for train_days, oof_days in folds:
+        assert train_days and oof_days
+        assert max(train_days) < min(oof_days), "train block must be strictly earlier"
+        assert not (set(train_days[: len(folds[0][0])]) & set(oof_days))
+        seen_oof.update(oof_days)
+    # seed block never appears as OOF
+    assert folds[0][0][0] == "2026-06-01"
+    assert "2026-06-01" not in seen_oof
+    # too few sessions → no folds (caller must label in-sample, never claim OOF)
+    assert expanding_window_oof_folds(days[:3]) == []
+
+
+def _routing_trap(monkeypatch, tmp_path, *, n_days, oof_rows_per_fold):
+    """Monkeypatched routing harness: records which model_dir scores which rows.
+    An overfit deployed base in out_dir can only contaminate the meta if out_dir
+    is ever used for assembly while folds exist — the trap asserts it never is."""
+    import ml_scheduler as ms
+
+    calls: list = []
+
+    def _fake_train_layers(fold_dir, ticker, db_path, tr_days, *, data_fp, hz):
+        fold_dir.mkdir(parents=True, exist_ok=True)
+        return True
+
+    def _fake_load_data(db_path, ticker=None, allowed_et_dates=None, ml_horizon_slug=None, **kw):
+        return list(allowed_et_dates or [])  # len() drives the flow only
+
+    def _fake_assemble(model_dir, ticker, db_path, rows_df, target_column, hz):
+        calls.append(str(model_dir))
+        n = oof_rows_per_fold if "fold" in str(model_dir) else 99
+        return [[0.5] * 3] * n, [0] * n
+
+    monkeypatch.setattr(ms, "_train_parallel_ml_stack_layers_into", _fake_train_layers)
+    monkeypatch.setattr(ms, "_assemble_meta_ml_layer_prob_vectors", _fake_assemble)
+    import ml_train
+
+    monkeypatch.setattr(ml_train, "load_data", _fake_load_data)
+    days = [f"2026-06-{d:02d}" for d in range(1, 1 + n_days)]
+    out_dir = tmp_path / "deployed"
+    out_dir.mkdir()
+    X, y, basis = ms._train_parallel_meta_oof(
+        out_dir, "SPY", "unused.db", ["row"] * 50, days, "outcome_dir_5c", "5c", data_fp=None,
+    )
+    return calls, basis, out_dir
+
+
+def test_oof_routing_never_scores_deployed_dir_when_folds_exist(monkeypatch, tmp_path):
+    calls, basis, out_dir = _routing_trap(monkeypatch, tmp_path, n_days=25, oof_rows_per_fold=8)
+    assert basis == "expanding_window_oof"
+    assert str(out_dir) not in calls, (
+        "deployed (potentially overfit, full-data) bases were scored for meta training "
+        "while OOF folds existed — in-sample leakage channel"
+    )
+    assert all("fold" in c for c in calls)
+
+
+def test_oof_infeasibility_routes_to_labeled_in_sample_no_folds(monkeypatch, tmp_path):
+    calls, basis, out_dir = _routing_trap(monkeypatch, tmp_path, n_days=3, oof_rows_per_fold=8)
+    assert basis == "in_sample_no_folds"
+    assert calls == [str(out_dir)], "no-folds fallback must use the deployed dir, labeled"
+
+
+def test_oof_starvation_routes_to_labeled_in_sample_fallback(monkeypatch, tmp_path):
+    calls, basis, out_dir = _routing_trap(monkeypatch, tmp_path, n_days=25, oof_rows_per_fold=1)
+    assert basis == "in_sample_fallback"
+    assert calls[-1] == str(out_dir), "starvation fallback must be the LAST assembly, labeled"
+
+
+def test_meta_missing_base_semantics_locked():
+    """xgb (anchor) missing → row dropped (source lock); lstm/transformer missing
+    or collapse-flagged → EXACT neutral filler (governed B3+ design, provenance
+    tracked via the basis manifest — not silent zeros)."""
+    import inspect
+
+    import ml_scheduler as ms
+
+    assert ms._meta_ml_layer_triplet("lstm", None, set()) == [0.333, 0.333, 0.334]
+    assert ms._meta_ml_layer_triplet("lstm", {"up": 0.8, "down": 0.1, "flat": 0.1}, {"lstm"}) == [
+        0.333, 0.333, 0.334,
+    ]
+    assert ms._meta_ml_layer_triplet("xgb", {"up": 0.7, "down": 0.2, "flat": 0.1}, set()) == [
+        0.7, 0.2, 0.1,
+    ]
+    s = inspect.getsource(ms._assemble_meta_ml_layer_prob_vectors)
+    assert "if xgb_p is None:" in s and "continue" in s.split("if xgb_p is None:")[1][:40], (
+        "xgb-anchor missing must DROP the row (fail-closed), never neutral-fill"
+    )
+
+
+def test_meta_manifest_reader_legacy_absence_never_upgrades(tmp_path):
+    from ml_scheduler import (
+        _write_meta_training_basis_manifest,
+        read_meta_training_basis_manifest,
+    )
+
+    assert read_meta_training_basis_manifest(tmp_path, "SPY", "5c") is None
+    _write_meta_training_basis_manifest(
+        tmp_path, "SPY", "5c", architecture="parallel", basis="in_sample_fallback", n_rows=12,
+    )
+    doc = read_meta_training_basis_manifest(tmp_path, "SPY", "5c")
+    assert doc is not None and doc["oof_governed"] is False
+    # corrupted manifest reads as None (never as governed)
+    (tmp_path / "meta_SPY_5c_training_manifest.json").write_text("{broken", encoding="utf-8")
+    assert read_meta_training_basis_manifest(tmp_path, "SPY", "5c") is None
