@@ -184,3 +184,16 @@ def test_parity_hook_wired_mandatory_at_pre_push():
 def test_remote_full_suite_workflows_unchanged_by_this_lane():
     wf = (REPO / ".github" / "workflows" / "pytest.yml").read_text(encoding="utf-8")
     assert "npm run test:all" in wf, "remote full suite must remain the authority"
+
+def test_children_never_inherit_git_context_env(monkeypatch):
+    """The proven push-time corruption channel: pre-commit's exported GIT_DIR /
+    GIT_INDEX_FILE must never reach parity children (nested-git tests would
+    operate on the PARENT repo; shared-config normalization flips core.bare)."""
+    from tools.check_prepush_parity import _GIT_CONTEXT_ENV_KEYS, _sanitized_env
+
+    for k in _GIT_CONTEXT_ENV_KEYS:
+        monkeypatch.setenv(k, "POISON")
+    env = _sanitized_env()
+    for k in _GIT_CONTEXT_ENV_KEYS:
+        assert k not in env, f"{k} leaked into parity child environment"
+    assert "PATH" in env

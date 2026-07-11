@@ -113,9 +113,31 @@ def write_outgoing_diff(base_ref: str = "origin/main") -> Path:
     return tmp
 
 
+# pre-commit exports GIT_DIR / GIT_INDEX_FILE etc. into pre-push hook children.
+# Inherited by grandchildren (pytest tests that spawn nested `git init` repos,
+# any tool shelling to git), those vars redirect git AT THE PARENT REPO — the
+# proven mechanism behind the push-time-only test failure AND the shared-config
+# core.bare corruption observed 2026-07-11. Every parity child runs with the
+# GIT context stripped; children discover the repo from cwd=REPO_ROOT.
+_GIT_CONTEXT_ENV_KEYS = (
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+    "GIT_PREFIX", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
+
+
+def _sanitized_env() -> dict:
+    import os as _os
+
+    env = dict(_os.environ)
+    for k in _GIT_CONTEXT_ENV_KEYS:
+        env.pop(k, None)
+    return env
+
+
 def _run(cmd: list[str] | str, *, shell: bool = False) -> tuple[int, str]:
     r = subprocess.run(
-        cmd, cwd=REPO_ROOT, capture_output=True, text=True, shell=shell, timeout=3600
+        cmd, cwd=REPO_ROOT, capture_output=True, text=True, shell=shell,
+        timeout=3600, env=_sanitized_env(),
     )
     return r.returncode, (r.stdout + r.stderr)[-4000:]
 
