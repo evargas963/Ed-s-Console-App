@@ -252,3 +252,105 @@ def test_inference_snapshot_parent_missing_lineage_fails():
     }
     with pytest.raises(ValueError, match="feature_lineage"):
         _assert_inference_snapshot_v1(snap)
+
+
+# ── ML-PIPE-V2 Phase 2: point-in-time causal boundary (as-of) adversarial locks ──
+# Matrix ref: governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json →
+# POINT_IN_TIME_FEATURE_CORRECTNESS. The LSTM/Transformer history reads route
+# through EdDB.get_recent_snapshots(as_of_ts_utc=...) (strict ts_utc < as_of) and
+# ml_predict._require_as_of_ts_utc_for_sequence_db fails closed without as_of_ts.
+# These tests prove the boundary adversarially: appending or MUTATING rows at or
+# after the as-of instant can never change the historical sequence input set.
+
+
+def _asof_seed_db(tmp_path):
+    from db import EdDB
+
+    db = EdDB(tmp_path / "asof_boundary.db", allow_noncanonical=True)
+    t0 = 1_780_000_000.0
+    with db._connect() as con:
+        for i in range(10):
+            con.execute(
+                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot) "
+                "VALUES (?, '1m', ?, ?, ?)",
+                ("SPY", t0 + 60 * i, f"row{i}", 500.0 + i),
+            )
+        con.commit()
+    return db, t0
+
+
+def test_get_recent_snapshots_as_of_excludes_future_rows(tmp_path):
+    db, t0 = _asof_seed_db(tmp_path)
+    as_of = t0 + 60 * 5  # decision instant = row 5's timestamp
+    rows = db.get_recent_snapshots("SPY", "1m", n=100, as_of_ts_utc=as_of)
+    got = sorted(float(r["ts_utc"]) for r in rows)
+    # STRICT boundary: rows 0..4 only — the as-of instant itself is excluded.
+    assert got == [t0 + 60 * i for i in range(5)]
+
+
+def test_get_recent_snapshots_invariant_under_future_append_and_mutation(tmp_path):
+    db, t0 = _asof_seed_db(tmp_path)
+    as_of = t0 + 60 * 5
+    before = db.get_recent_snapshots("SPY", "1m", n=100, as_of_ts_utc=as_of)
+    with db._connect() as con:
+        # append new future rows AND mutate existing post-as-of rows aggressively
+        for i in range(20, 25):
+            con.execute(
+                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot) "
+                "VALUES (?, '1m', ?, ?, ?)",
+                ("SPY", t0 + 60 * i, f"future{i}", 999.0),
+            )
+        con.execute(
+            "UPDATE snapshots SET spot = -1.0 WHERE ts_utc >= ?", (as_of,)
+        )
+        con.commit()
+    after = db.get_recent_snapshots("SPY", "1m", n=100, as_of_ts_utc=as_of)
+    key = lambda rs: [(float(r["ts_utc"]), r["spot"]) for r in rs]  # noqa: E731
+    assert key(after) == key(before), (
+        "historical as-of sequence input changed after future-row append/mutation"
+    )
+
+
+def test_get_recent_snapshots_as_of_is_ticker_scoped(tmp_path):
+    db, t0 = _asof_seed_db(tmp_path)
+    with db._connect() as con:
+        con.execute(
+            "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot) "
+            "VALUES ('QQQ', '1m', ?, 'other', 400.0)",
+            (t0 + 60,),
+        )
+        con.commit()
+    rows = db.get_recent_snapshots("SPY", "1m", n=100, as_of_ts_utc=t0 + 60 * 5)
+    assert all(str(r["ticker"]) == "SPY" for r in rows)
+
+
+def test_sequence_db_as_of_is_fail_closed():
+    """No as_of → LOUD refusal (never an unbounded latest-row history read)."""
+    import pytest as _pytest
+
+    from ml_predict import LstmSequenceInputError, _require_as_of_ts_utc_for_sequence_db
+
+    with _pytest.raises(LstmSequenceInputError):
+        _require_as_of_ts_utc_for_sequence_db(None)
+    with _pytest.raises(LstmSequenceInputError):
+        _require_as_of_ts_utc_for_sequence_db({"as_of_ts": None})
+    assert _require_as_of_ts_utc_for_sequence_db({"as_of_ts": 123.0}) == 123.0
+
+
+def test_inference_snapshot_constructor_is_single_row_pure():
+    """build_inference_snapshot_v1_from_db_row consumes exactly one row dict —
+    no DB, live-state, or wall-clock access (AST import lock)."""
+    import ast
+
+    import features.inference_snapshot as mod
+
+    tree = ast.parse(open(mod.__file__, encoding="utf-8").read())
+    banned = {"db", "server", "live_market_plane", "order_flow_live_state", "sqlite3"}
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    hits = imported & banned
+    assert not hits, f"inference snapshot constructor must stay single-row pure: {hits}"
