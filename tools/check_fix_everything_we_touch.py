@@ -1905,6 +1905,10 @@ def check_ablation_seven_model_four_horizon_grid() -> list[str]:
     .db/-wal/-shm stat triple, python version, invocation mode); any dependency
     change or gate failure recomputes. ED_GATE_CACHE_DISABLE=1 forces no-cache.
     """
+    # Script invocation puts tools/ (not the repo root) at sys.path[0] — same
+    # class as the commit-msg hygiene import fix; bootstrap before importing.
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
     from tools.governance_gate_cache import cached_check
 
     errors, _prov = cached_check(
