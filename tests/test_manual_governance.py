@@ -58,6 +58,14 @@ def _write_horizon_bundle(bundle_dir: Path, ticker: str, hz: str, *, xgb_payload
             meta["impute_medians"] = {"f1": 0.0}
         bundle_dir.joinpath(f"{kind}_{t}_{hz}_meta.json").write_text(json.dumps(meta), encoding="utf-8")
     bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(b"meta-stack-test-stub")
+    # ML-PIPE-V2: production candidates always carry the OOF-governed training
+    # basis manifest (written by both trainers since 99fabd4); the auto-promote
+    # meta-basis gate blocks bundles without it, so fixtures mirror that truth.
+    from ml_scheduler import _write_meta_training_basis_manifest
+
+    _write_meta_training_basis_manifest(
+        bundle_dir, t, hz, architecture="parallel", basis="expanding_window_oof", n_rows=500,
+    )
 
 
 def _write_candidate_manifests(parallel_dir: Path, cascade_dir: Path):

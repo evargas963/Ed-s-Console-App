@@ -705,3 +705,54 @@ def test_reconcile_write_outside_governed_scope_raises(tmp_path: Path):
     # calling the writer outside governed_active_write_scope must fail closed
     with pytest.raises(ManualGovernanceError):
         _reset_pre_b_incumbent_meta(meta, 0.8079)
+
+
+# ── ML-PIPE-V2 Phase 3: meta training-basis gate on scheduler auto-promotion ──
+
+
+def test_meta_basis_gate_blocks_in_sample_and_absent_manifest(tmp_path):
+    import pickle
+
+    from arch_competition.promotion_execution import meta_basis_blocks_auto_promotion
+    from ml_scheduler import _write_meta_training_basis_manifest
+
+    d = tmp_path / "cand"
+    d.mkdir()
+    # no meta artifact at all → nothing to gate
+    assert meta_basis_blocks_auto_promotion(d, "SPY", "5c") is None
+    (d / "meta_SPY_5c.pkl").write_bytes(pickle.dumps({"stub": True}))
+    # meta present, manifest ABSENT (legacy) → blocked, never upgrades
+    assert meta_basis_blocks_auto_promotion(d, "SPY", "5c") == (
+        "meta_basis_manifest_absent_or_unreadable"
+    )
+    # in-sample bases → blocked with the basis named
+    for basis in ("in_sample_no_folds", "in_sample_fallback"):
+        _write_meta_training_basis_manifest(
+            d, "SPY", "5c", architecture="parallel", basis=basis, n_rows=25,
+        )
+        block = meta_basis_blocks_auto_promotion(d, "SPY", "5c")
+        assert block == f"meta_basis_not_oof_governed:{basis}"
+    # OOF-governed → clean
+    _write_meta_training_basis_manifest(
+        d, "SPY", "5c", architecture="parallel", basis="expanding_window_oof", n_rows=250,
+    )
+    assert meta_basis_blocks_auto_promotion(d, "SPY", "5c") is None
+    # corrupted manifest → blocked (reader fails closed)
+    (d / "meta_SPY_5c_training_manifest.json").write_text("{broken", encoding="utf-8")
+    assert meta_basis_blocks_auto_promotion(d, "SPY", "5c") == (
+        "meta_basis_manifest_absent_or_unreadable"
+    )
+
+
+def test_meta_basis_gate_wired_before_active_copy_auto_path_only():
+    import inspect
+
+    from arch_competition import promotion_execution as pe
+
+    s = inspect.getsource(pe.execute_promotion_if_eligible)
+    gate_at = s.find("meta_basis_blocks_auto_promotion(")
+    copy_at = s.find("scheduler_active_root(")
+    assert gate_at > 0, "meta basis gate missing from promotion execution"
+    guard = s[:gate_at].rfind("if not is_manual:")
+    assert guard > 0, "meta basis gate must be scheduler/auto-path only"
+    assert "meta_basis_not_promotion_clean" in s

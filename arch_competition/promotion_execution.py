@@ -331,6 +331,30 @@ def ensure_survivor_retrain_incumbent_reset_at_run_start(
     return {**result, "skipped": False, "reason": "run_start_reset"}
 
 
+def meta_basis_blocks_auto_promotion(src_dir, ticker: str, hz: str):
+    """ML-PIPE-V2 Phase 3 (2026-07-11): a candidate whose meta learner was
+    trained on an IN-SAMPLE basis (or whose training-basis manifest is absent
+    — legacy absence never upgrades to governed) cannot support scheduler
+    auto-promotion. Returns the block reason string, or None when the meta is
+    OOF-governed or the bundle simply has no meta artifact.
+
+    Manual operator promotions are NOT gated here (operator judgment path)."""
+    from pathlib import Path as _P
+
+    from ml_scheduler import read_meta_training_basis_manifest
+
+    d = _P(src_dir)
+    if not (d / f"meta_{str(ticker).upper()}_{hz}.pkl").is_file():
+        return None  # no meta artifact in the bundle — nothing to gate
+    doc = read_meta_training_basis_manifest(d, ticker, hz)
+    if doc is None:
+        return "meta_basis_manifest_absent_or_unreadable"
+    if doc.get("oof_governed") is not True:
+        basis = str(doc.get("meta_training_basis") or "unknown")
+        return f"meta_basis_not_oof_governed:{basis}"
+    return None
+
+
 def _auto_promote_score_row_gate(
     manifest: dict[str, Any],
     target_architecture: str,
@@ -580,6 +604,38 @@ def execute_promotion_if_eligible(
     parallel_dir_r = parallel_dir.resolve()
     cascade_dir_r = cascade_dir.resolve()
     src = cascade_dir_r if target_architecture == "cascade" else parallel_dir_r
+
+    # ML-PIPE-V2 Phase 3 — meta training-basis gate (scheduler/auto path only):
+    # an in-sample-fallback-trained meta (or a meta without its basis manifest)
+    # is not promotion-clean evidence; fail closed before any copy to active.
+    if not is_manual:
+        _meta_block = meta_basis_blocks_auto_promotion(src, tku, hz)
+        if _meta_block:
+            append_audit_record(
+                model_dir,
+                build_audit_record(
+                    action="scheduler_auto_promote_skipped",
+                    outcome="meta_basis_not_promotion_clean",
+                    operator_id=SCHEDULER_AUTO_OPERATOR_ID,
+                    ticker=tku,
+                    ml_horizon_suffix=hz,
+                    prior_active_architecture=None,
+                    target_architecture=target_architecture,
+                    new_active_architecture=None,
+                    evaluation_manifest_path=None,
+                    promotion_decision_path=None,
+                    checkpoint_id=None,
+                    detail=f"meta_basis_gate: {_meta_block}",
+                ),
+            )
+            log.warning(
+                "auto-promote skipped %s/%s: meta basis gate (%s)", tku, hz, _meta_block
+            )
+            return _skip_result(
+                "meta_basis_not_promotion_clean",
+                target_architecture=target_architecture,
+                meta_basis_block_reason=_meta_block,
+            )
 
     # Workstream A2 — candidate score + rows_used gate (scheduler/auto path only).
     if not is_manual:
