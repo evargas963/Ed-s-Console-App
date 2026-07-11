@@ -34,6 +34,7 @@ MEGA4_FILES = frozenset(
         "arch_competition/operational_policy.py",
         "arch_competition/promotion_engine.py",
         "arch_competition/promotion_execution.py",
+    Mega4TraceableDerivation("arch_competition/promotion_execution.py", 334, "meta_basis_blocks_auto_promotion", "NONE", None, (), None, "No market-field derivation: reads META_TRAINING_BASIS_MANIFEST_V1 to block auto-promotion of in-sample-fallback or manifest-absent meta artifacts."),
         "arch_competition/scheduler_auto_promote_policy.py",
         "arch_competition/scheduler_integration.py",
         "arch_competition/stack_bundle_eval_v1.py",

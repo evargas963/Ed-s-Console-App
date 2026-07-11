@@ -53,7 +53,7 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
-MEGA4_ROW_COUNT = 1017  # inventory sync @ MODEL_SERVING_PROVENANCE_SURFACE_V1: +1 build_model_serving_provenance (prior: 1014)
+MEGA4_ROW_COUNT = 1018  # inventory sync @ MODEL_SERVING_PROVENANCE_SURFACE_V1: +1 build_model_serving_provenance (prior: 1014)
 MEGA4_FILE_COUNT = 88  # +3 arch_competition PR4 modules
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES | MEGA3_FILES
 
