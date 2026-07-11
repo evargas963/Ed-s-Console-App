@@ -875,7 +875,16 @@ def _write_meta_training_basis_manifest(
     an expanding-window-OOF one for every downstream consumer (serving, eval,
     promotion), so base-model overfit inherited via the fallback could never be
     distinguished from governed OOF evidence. ``oof_governed`` is the
-    machine-readable gate field: False for every in-sample basis."""
+    machine-readable gate field: False for every in-sample basis.
+
+    Schwab CSV authority checked: yes
+    CSV row(s): NO_SCHWAB_EQUIVALENT — training-provenance manifest only; no
+      market field read, derived, or emitted by this lane (meta inputs are the
+      already-persisted stack probabilities and snapshot overlay columns).
+    Derived-field disposition: none required (no derivation touched).
+    All consumers checked: yes — read_meta_training_basis_manifest is the only
+      reader; meta pickle contents and serving paths are byte-identical.
+    SCHWAB_CSV_CHECKED"""
     manifest = {
         "artifact": f"meta_{ticker.upper()}_{hz}.pkl",
         "ticker": ticker.upper(),
