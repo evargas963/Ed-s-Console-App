@@ -7561,6 +7561,34 @@ def _fetch_state(
                                 continue
                             if _fv == _fv and abs(_fv) != float("inf"):
                                 _snapshot_kwargs[_k] = _fv
+                    # ECON-01 producer guard (fail-LOUD, 2026-07-11): a tradeable
+                    # decision row persisting without execution-replay context is
+                    # starvation at the source — replay can never recover it later
+                    # without fabricating history. Coverage at audit was 100%
+                    # (1,263/1,263 trailing-30d long/short rows); this guard keeps
+                    # any regression visible on the day it happens.
+                    # Schwab CSV authority checked: yes
+                    # CSV row(s): NO_SCHWAB_EQUIVALENT — observability guard only;
+                    #   no market field read, derived, or emitted by this block.
+                    # Derived-field disposition: none required.
+                    # All consumers checked: yes — log line only; snapshot insert
+                    #   proceeds unchanged (history is never dropped).
+                    # SCHWAB_CSV_CHECKED
+                    from realized_contract_eval import decision_row_context_starvation_reason
+
+                    _starve_reason = decision_row_context_starvation_reason(
+                        combined_signal=_snapshot_kwargs.get("combined_signal"),
+                        replay_context_json=_snapshot_kwargs.get("replay_context_json"),
+                        option_chain_json=_snapshot_kwargs.get("option_chain_json"),
+                    )
+                    if _starve_reason:
+                        log.error(
+                            "REPLAY_CONTEXT_STARVATION ticker=%s signal=%s reason=%s "
+                            "(ECON-01 producer guard: tradeable row missing execution context)",
+                            ticker,
+                            _snapshot_kwargs.get("combined_signal"),
+                            _starve_reason,
+                        )
                     _snapshotrow_field_names = set(getattr(SnapshotRow, "__annotations__", {}).keys())
                     _dropped_snapshot_fields = sorted(k for k in _snapshot_kwargs if k not in _snapshotrow_field_names)
                     if _dropped_snapshot_fields:

@@ -350,7 +350,9 @@ def _load_rth_rows_for_ticker(
 def _empty_realized_metrics(n_rows: int) -> dict[str, Any]:
     from realized_contract_eval import SKIP_RATE_FAIL_THRESHOLD, SKIP_RATE_WARNING_THRESHOLD
 
-    sr = 1.0 if n_rows else 0.0
+    # ECON-01 (2026-07-11): the empty shape mirrors the denominator-first
+    # aggregate — no tradeable rows were evaluated, so execution economics are
+    # unmeasurable (skip_rate None), not "100% skipped".
     return {
         "eval_pnl_realized_contract": None,
         "total_pnl_dollars": None,
@@ -360,18 +362,23 @@ def _empty_realized_metrics(n_rows: int) -> dict[str, Any]:
         "avg_win": None,
         "avg_loss": None,
         "expectancy": None,
-        "total_signals": n_rows,
-        "skipped_trade_count": n_rows,
+        "total_signals": 0,
+        "skipped_trade_count": 0,
         "valid_trade_count": 0,
-        "skip_rate": sr,
+        "skip_rate": None,
+        "universe_rows_total": n_rows,
+        "non_decision_row_counts": {},
+        "decision_no_trade_rows": 0,
+        "tradeable_signal_rows": 0,
+        "execution_economics_measurable": False,
         "skip_reason_counts": {},
         "skip_reason_counts_coarse": {},
         "skip_rate_by_reason": {},
         "skip_rate_warning_threshold": SKIP_RATE_WARNING_THRESHOLD,
         "skip_rate_fail_threshold": SKIP_RATE_FAIL_THRESHOLD,
-        "skip_rate_warning_flag": bool(sr >= SKIP_RATE_WARNING_THRESHOLD),
-        "skip_rate_fail_flag": bool(sr >= SKIP_RATE_FAIL_THRESHOLD),
-        "evaluation_quality_degraded": bool(sr >= SKIP_RATE_WARNING_THRESHOLD),
+        "skip_rate_warning_flag": False,
+        "skip_rate_fail_flag": False,
+        "evaluation_quality_degraded": False,
         "same_bar_conflict_trade_count": 0,
         "chain_selection_quality": {},
     }

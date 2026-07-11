@@ -118,6 +118,66 @@ _COARSE_BUCKETS = (
     "other",
 )
 
+# ── ECON-01 replay evaluation universe tiers (2026-07-11) ────────────────────
+# Measured root cause of "89% missing_replay_context / 744-of-744 skipped":
+# the evaluation universe (labeled RTH training rows) includes rows that never
+# carried a decision — quote-only logger_source=base_money_path capture rows
+# (combined_signal NULL, no chain, no plan; SPY 3,292 / QQQ 4,322 labeled RTH
+# rows at audit) and legacy pre-context-era rows — and the eval counted every
+# one as a skipped "signal". Meanwhile 100% of true long/short signals in the
+# trailing 30 days (1,263/1,263) carried full replay context (walls + chain +
+# selection proof + max-hold + plan). Denominator-first: classify the universe
+# BEFORE scoring so execution economics are measured over rows that can carry
+# them (same ratified principle as DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1).
+TRADEABLE_SIGNALS: frozenset[str] = frozenset({"long", "short"})
+ROW_TIER_NON_DECISION_QUOTE_ONLY = "non_decision_quote_only"
+ROW_TIER_NON_DECISION_NO_SIGNAL = "non_decision_no_signal"
+ROW_TIER_DECISION_NO_TRADE = "decision_no_trade"
+ROW_TIER_TRADEABLE = "tradeable"
+_QUOTE_ONLY_LOGGER_SOURCE = "base_money_path"
+
+
+def classify_replay_row_tier(row: dict) -> str:
+    """Canonical replay-universe tier for one snapshot row (ticker/horizon/session
+    agnostic by construction: reads ONLY combined_signal + logger_source — never
+    outcome labels, horizon columns, ticker names, or timestamps).
+
+    - tradeable: combined_signal is long/short — the ONLY rows whose execution
+      economics exist; missing context here is REAL starvation (fail-closed skip).
+    - decision_no_trade: a signal was computed and it is not tradeable (wait etc.)
+      — a genuine decision with no trade to replay; never demands replay context.
+    - non_decision_quote_only: deliberate lightweight capture lane
+      (logger_source=base_money_path) — quote-only rows with no decision stack.
+    - non_decision_no_signal: no signal was computed (legacy / partial rows).
+    """
+    sig = str(row.get("combined_signal") or "").strip().lower()
+    if sig in TRADEABLE_SIGNALS:
+        return ROW_TIER_TRADEABLE
+    if sig:
+        return ROW_TIER_DECISION_NO_TRADE
+    if str(row.get("logger_source") or "").strip().lower() == _QUOTE_ONLY_LOGGER_SOURCE:
+        return ROW_TIER_NON_DECISION_QUOTE_ONLY
+    return ROW_TIER_NON_DECISION_NO_SIGNAL
+
+
+def decision_row_context_starvation_reason(
+    *,
+    combined_signal: str | None,
+    replay_context_json: str | None,
+    option_chain_json: str | None,
+) -> str | None:
+    """Producer-side guard (fail-LOUD, ECON-01): a tradeable decision row about to
+    persist without its execution-replay context is a starvation defect at the
+    source — the only place it can be fixed without fabricating history."""
+    sig = str(combined_signal or "").strip().lower()
+    if sig not in TRADEABLE_SIGNALS:
+        return None
+    if not replay_context_json or len(str(replay_context_json)) <= REPLAY_BUNDLE_MIN_JSON_LENGTH:
+        return "tradeable_missing_replay_context"
+    if not option_chain_json or len(str(option_chain_json)) <= REPLAY_BUNDLE_MIN_JSON_LENGTH:
+        return "tradeable_missing_option_chain"
+    return None
+
 
 def trade_log_path_for_architecture(architecture_type: str) -> Path:
     u = (architecture_type or "").strip().lower()
@@ -755,7 +815,14 @@ def evaluate_realized_contract_trades_for_rows(
     snapshot_table: str | None = None,
 ) -> dict[str, Any]:
     """
-    Build one trade row per evaluation row in rows_used.
+    Build one trade row per DECISION row in rows_used; classify the universe first.
+
+    ECON-01 (2026-07-11): total_signals / skip_rate are measured over the
+    TRADEABLE tier (combined_signal long/short) — the only rows whose execution
+    economics exist. Non-decision rows (quote-only base capture, legacy rows
+    with no signal) are reported in non_decision_row_counts and excluded from
+    the trade log; wait/no-trade decisions are counted in
+    decision_no_trade_rows. universe_rows_total preserves the raw input count.
     Appends to arch-specific realized_contract_trade_log_*.csv.
     """
     table = snapshot_table or SNAPSHOT_TABLE_1M
@@ -776,7 +843,17 @@ def evaluate_realized_contract_trades_for_rows(
     total_signals = len(rows_used)
     same_bar_conflict_trades = 0
 
+    non_decision_counts: Counter[str] = Counter()
+    decision_no_trade_rows = 0
+
     for row in rows_used:
+        # ECON-01: classify BEFORE any skip accounting — non-decision rows are
+        # not signals and must not poison the execution-economics denominator.
+        row_tier = classify_replay_row_tier(row)
+        if row_tier in (ROW_TIER_NON_DECISION_QUOTE_ONLY, ROW_TIER_NON_DECISION_NO_SIGNAL):
+            non_decision_counts[row_tier] += 1
+            continue
+
         snap_id = row.get("snapshot_id")
         ts_utc = row.get("ts_utc")
         ts_et = row.get("ts_et")
@@ -827,6 +904,15 @@ def evaluate_realized_contract_trades_for_rows(
             skip_reason_counts[reason] += 1
             base["skipped_reason"] = reason
             trades_out.append(dict(base))
+
+        if row_tier == ROW_TIER_DECISION_NO_TRADE:
+            # Genuine no-trade decision: recorded in the trade log for audit
+            # continuity, but NOT a tradeable-signal skip and never a context
+            # demand — there is no execution to replay.
+            decision_no_trade_rows += 1
+            base["skipped_reason"] = "call_no_trade_or_wait"
+            trades_out.append(dict(base))
+            continue
 
         if ts_utc is None or spot is None:
             skip("missing_ts_or_spot")
@@ -1061,11 +1147,19 @@ def evaluate_realized_contract_trades_for_rows(
     for r, c in skip_reason_counts.items():
         coarse_counts[_coarse_skip(r)] += c
 
-    skip_rate = (skipped / total_signals) if total_signals else 0.0
+    # ECON-01 denominator-first: skip accounting is over TRADEABLE signals only.
+    # universe_rows_total keeps the raw input-row count for audit continuity.
+    universe_rows_total = total_signals
+    tradeable_signal_rows = valid + skipped
+    total_signals = tradeable_signal_rows
+    execution_economics_measurable = bool(tradeable_signal_rows > 0)
+    skip_rate = (
+        (skipped / tradeable_signal_rows) if tradeable_signal_rows else None
+    )
 
     skip_by_reason_rate = {
-        k: round(v / total_signals, 6) for k, v in skip_reason_counts.items()
-    } if total_signals else {}
+        k: round(v / tradeable_signal_rows, 6) for k, v in skip_reason_counts.items()
+    } if tradeable_signal_rows else {}
 
     _q = quality_entries
     _best = sum(
@@ -1100,15 +1194,26 @@ def evaluate_realized_contract_trades_for_rows(
         "total_signals": total_signals,
         "skipped_trade_count": skipped,
         "valid_trade_count": valid,
-        "skip_rate": round(skip_rate, 6),
+        "skip_rate": round(skip_rate, 6) if skip_rate is not None else None,
+        "universe_rows_total": universe_rows_total,
+        "non_decision_row_counts": dict(non_decision_counts),
+        "decision_no_trade_rows": decision_no_trade_rows,
+        "tradeable_signal_rows": tradeable_signal_rows,
+        "execution_economics_measurable": execution_economics_measurable,
         "skip_reason_counts": dict(skip_reason_counts),
         "skip_reason_counts_coarse": dict(coarse_counts),
         "skip_rate_by_reason": skip_by_reason_rate,
         "skip_rate_warning_threshold": SKIP_RATE_WARNING_THRESHOLD,
         "skip_rate_fail_threshold": SKIP_RATE_FAIL_THRESHOLD,
-        "skip_rate_warning_flag": bool(skip_rate >= SKIP_RATE_WARNING_THRESHOLD),
-        "skip_rate_fail_flag": bool(skip_rate >= SKIP_RATE_FAIL_THRESHOLD),
-        "evaluation_quality_degraded": bool(skip_rate >= SKIP_RATE_WARNING_THRESHOLD),
+        "skip_rate_warning_flag": bool(
+            skip_rate is not None and skip_rate >= SKIP_RATE_WARNING_THRESHOLD
+        ),
+        "skip_rate_fail_flag": bool(
+            skip_rate is not None and skip_rate >= SKIP_RATE_FAIL_THRESHOLD
+        ),
+        "evaluation_quality_degraded": bool(
+            skip_rate is not None and skip_rate >= SKIP_RATE_WARNING_THRESHOLD
+        ),
         "same_bar_conflict_trade_count": same_bar_conflict_trades,
         "same_bar_conflict_share_of_valid": round(same_bar_conflict_trades / n_v, 6) if n_v else 0.0,
         "chain_selection_quality": {
