@@ -1,0 +1,451 @@
+{
+  "schema": "INSTITUTIONAL_CLOSURE_SCHEMA",
+  "version": "1.0.0",
+  "governing_standard": "A parent board lane may be CLOSED_WITH_EVIDENCE only when every applicable material proof dimension is PROVEN. Any blocked-vocabulary dimension status forces the parent to NOT_CLOSED. Sub-lane closure never closes a parent. Green CI is execution evidence, not semantic proof. Evidence must cite the declared final SHA. Agents recommend closure; closure is established only by this gate passing over the ledger.",
+  "required_dimensions": [
+    "ROOT_CAUSE",
+    "END_TO_END_CORRECTNESS",
+    "UPSTREAM_INPUT_CORRECTNESS",
+    "DOWNSTREAM_CONSUMER_CORRECTNESS",
+    "TICKER_UNIVERSALITY",
+    "HORIZON_UNIVERSALITY",
+    "POINT_IN_TIME_CORRECTNESS",
+    "NO_CURRENT_STATE_LEAKAGE",
+    "NO_FUTURE_DATA_LEAKAGE",
+    "MODEL_VERSION_PINNING",
+    "CALIBRATION_VERSION_PINNING",
+    "FEATURE_SCHEMA_PARITY",
+    "RUNTIME_PROOF",
+    "RTH_PROOF",
+    "OBSERVABILITY",
+    "PROVENANCE",
+    "REPRODUCIBILITY",
+    "MECHANICAL_ENFORCEMENT",
+    "FINAL_SHA_CI"
+  ],
+  "blocked_status_vocabulary": [
+    "NOT_PROVEN",
+    "FAIL",
+    "PENDING",
+    "PARTIAL",
+    "UNKNOWN",
+    "NOT_AUDITED",
+    "RTH_REPROOF_PENDING"
+  ],
+  "lanes": [
+    {
+      "lane": "ECON-01",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "PROVEN",
+        "HORIZON_UNIVERSALITY": "PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": "PARTIAL",
+        "NO_CURRENT_STATE_LEAKAGE": "PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": "PROVEN",
+        "MODEL_VERSION_PINNING": "PROVEN",
+        "CALIBRATION_VERSION_PINNING": "NOT_PROVEN",
+        "FEATURE_SCHEMA_PARITY": "NOT_AUDITED",
+        "RUNTIME_PROOF": "PENDING",
+        "RTH_PROOF": "RTH_REPROOF_PENDING",
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "PROVEN",
+        "MECHANICAL_ENFORCEMENT": "PROVEN",
+        "FINAL_SHA_CI": "PROVEN"
+      },
+      "material_limitations": [
+        "scoped proof = realized-contract replay path only; LSTM/Transformer as-of windowing outside boundary",
+        "no purged temporal-validation harness executed; embargo enforcement not proven",
+        "producer guard awaits first applicable RTH observation"
+      ],
+      "final_sha": "e400570c50d5f9a2e6c4890f9ca97f7755e7a6ac",
+      "remote_ci_status": "4/4 success at cited tips",
+      "next_blocker": "calibration-version pinning across wider eval surface + purged/embargo execution + RTH producer-guard observation",
+      "sub_lanes": [
+        {
+          "sub_lane": "ECON-01-DENOMINATOR-DEFECT",
+          "status": "CLOSED_WITH_EVIDENCE",
+          "preserved_facts": [
+            "ECON_01_DENOMINATOR_ROOT_CAUSE = PROVEN",
+            "ECON_01_DENOMINATOR_FIX = PROVEN",
+            "TRADEABLE_TIER_SKIP_ACCOUNTING = PROVEN"
+          ]
+        }
+      ],
+      "drift_recovery": {
+        "prior_status": "CLOSED_WITH_EVIDENCE",
+        "corrected_status": "NOT_CLOSED",
+        "reason": "packet left material NOT_PROVEN dimensions (calibration pinning, purged/embargo, broader point-in-time, RTH producer-guard observation); scoped sub-proof was inflated to parent closure",
+        "proven_sub_results_preserved": true,
+        "remaining_requirements": "see next_blocker",
+        "correction_sha": "amendment commit INSTITUTIONAL_CLOSURE_GATE_AND_DRIFT_RECOVERY_V1 (subject: governance(closure-gate))"
+      }
+    },
+    {
+      "lane": "DOM_GUEST_SWITCH_SENTINEL",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "PARTIAL",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "PROVEN",
+        "HORIZON_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "switch events are horizon-free transport records"
+        },
+        "POINT_IN_TIME_CORRECTNESS": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "live transport surface; generation guards cover ordering"
+        },
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no historical replay in switch path"
+        },
+        "MODEL_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no model artifact in the DOM switch path (evidence: harness validates transport/identity only)"
+        },
+        "CALIBRATION_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no calibration artifact in the DOM switch path"
+        },
+        "FEATURE_SCHEMA_PARITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no feature construction in switch path"
+        },
+        "RUNTIME_PROOF": "PARTIAL",
+        "RTH_PROOF": "RTH_REPROOF_PENDING",
+        "OBSERVABILITY": "PARTIAL",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "NOT_PROVEN",
+        "MECHANICAL_ENFORCEMENT": "NOT_PROVEN",
+        "FINAL_SHA_CI": "PROVEN"
+      },
+      "material_limitations": [
+        "cards_first_render_ms / tier_c_first_seen_ms never stamped post-commit (instrumentation gap)",
+        "observed contamination NONE is observation, not mechanical prevention proof"
+      ],
+      "final_sha": "8fd229d4fdeca0eba4dfb6cd0146569eb0f482ab",
+      "remote_ci_status": "4/4 success at cited tip",
+      "next_blocker": "render-milestone beacon stamping + prevention lock + RTH matrix coverage",
+      "sub_lanes": [
+        {
+          "sub_lane": "DOM-CROSS-TICKER-IDENTITY-PARITY",
+          "status": "CLOSED_WITH_EVIDENCE",
+          "preserved_facts": [
+            "CROSS_TICKER_IDENTITY_PARITY = PROVEN",
+            "CROSS_TICKER_CONTAMINATION_OBSERVED = NONE"
+          ]
+        }
+      ],
+      "drift_recovery": {
+        "prior_status": "CLOSED_WITH_EVIDENCE",
+        "corrected_status": "NOT_CLOSED",
+        "reason": "sentinel pass rules tolerated missing render milestones; identity sub-proof inflated to parent closure",
+        "proven_sub_results_preserved": true,
+        "remaining_requirements": "see next_blocker",
+        "correction_sha": "amendment commit INSTITUTIONAL_CLOSURE_GATE_AND_DRIFT_RECOVERY_V1 (subject: governance(closure-gate))"
+      }
+    },
+    {
+      "lane": "UI-05_GUEST_COLD_FUSION_SLA",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "PARTIAL",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "PARTIAL",
+        "HORIZON_UNIVERSALITY": "NOT_AUDITED",
+        "POINT_IN_TIME_CORRECTNESS": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "live path; freshness contract governs staleness"
+        },
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_AUDITED",
+        "NO_FUTURE_DATA_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no historical replay in the latency path"
+        },
+        "MODEL_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "latency lane; model serving identity governed by MODEL-04"
+        },
+        "CALIBRATION_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no calibration artifact in the latency path"
+        },
+        "FEATURE_SCHEMA_PARITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no feature construction in the latency path"
+        },
+        "RUNTIME_PROOF": "PARTIAL",
+        "RTH_PROOF": "RTH_REPROOF_PENDING",
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "PARTIAL",
+        "MECHANICAL_ENFORCEMENT": "PROVEN",
+        "FINAL_SHA_CI": "PROVEN"
+      },
+      "material_limitations": [
+        "measured sample = 6 cold + 6 warm trials on one after-hours runtime; open-burst RTH repeatability not established",
+        "no enforcement behavior for future SLA regressions beyond chain_window_* attribution marks"
+      ],
+      "final_sha": "6a743314f8d50e75301e39c5ffb6e9de4019c234",
+      "remote_ci_status": "4/4 success at cited tips",
+      "next_blocker": "RTH open-burst reproof + guest-universe repeatability + SLA regression enforcement",
+      "sub_lanes": [
+        {
+          "sub_lane": "UI-05-MEASURED-SLA-AT-TESTED-RUNTIME",
+          "status": "CLOSED_WITH_EVIDENCE",
+          "preserved_facts": [
+            "UI_05_MEASURED_SLA_AT_TESTED_RUNTIME = PROVEN (cold P50 8.79s / P95 10.21s / MAX 10.21s vs 15s)",
+            "FOUR_CHECK_CI_AT_REPORTED_TIPS = PROVEN"
+          ]
+        }
+      ],
+      "drift_recovery": {
+        "prior_status": "CLOSED_WITH_EVIDENCE",
+        "corrected_status": "NOT_CLOSED",
+        "reason": "tested-sample SLA proof inflated to parent closure; RTH/open-burst repeatability and regression enforcement unproven",
+        "proven_sub_results_preserved": true,
+        "remaining_requirements": "see next_blocker",
+        "correction_sha": "amendment commit INSTITUTIONAL_CLOSURE_GATE_AND_DRIFT_RECOVERY_V1 (subject: governance(closure-gate))"
+      }
+    },
+    {
+      "lane": "ML_PIPELINE_CORRECTNESS",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "PARTIAL",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "NOT_PROVEN",
+        "HORIZON_UNIVERSALITY": "NOT_PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": "NOT_PROVEN",
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": "NOT_PROVEN",
+        "MODEL_VERSION_PINNING": "PARTIAL",
+        "CALIBRATION_VERSION_PINNING": "PARTIAL",
+        "FEATURE_SCHEMA_PARITY": "NOT_PROVEN",
+        "RUNTIME_PROOF": "NOT_PROVEN",
+        "RTH_PROOF": "RTH_REPROOF_PENDING",
+        "OBSERVABILITY": "PARTIAL",
+        "PROVENANCE": "PARTIAL",
+        "REPRODUCIBILITY": "PARTIAL",
+        "MECHANICAL_ENFORCEMENT": "PROVEN",
+        "FINAL_SHA_CI": "PENDING"
+      },
+      "material_limitations": [
+        "ACTIVE mission; shuffled-label control harness landed (session scope); production-family shuffled runs operator-host gated",
+        "predictive validity NOT_PROVEN per standing 2026-06-01 chance-level verdict"
+      ],
+      "final_sha": null,
+      "remote_ci_status": "pending at mission final tip",
+      "next_blocker": "operator-host shuffled-label production runs + purged/embargo execution + clean retrain sequence"
+    },
+    {
+      "lane": "SIG-01",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "NOT_PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "NOT_PROVEN",
+        "HORIZON_UNIVERSALITY": "NOT_PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": "NOT_PROVEN",
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": "NOT_PROVEN",
+        "MODEL_VERSION_PINNING": "NOT_PROVEN",
+        "CALIBRATION_VERSION_PINNING": "NOT_PROVEN",
+        "FEATURE_SCHEMA_PARITY": "NOT_PROVEN",
+        "RUNTIME_PROOF": "PENDING",
+        "RTH_PROOF": "PENDING",
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "NOT_PROVEN",
+        "MECHANICAL_ENFORCEMENT": "NOT_PROVEN",
+        "FINAL_SHA_CI": "NOT_PROVEN"
+      },
+      "material_limitations": [
+        "2 of 5 accrual sessions"
+      ],
+      "final_sha": null,
+      "remote_ci_status": null,
+      "next_blocker": "three more RTH accrual sessions (calendar-bound)"
+    },
+    {
+      "lane": "RAPID_VIX_SENTINEL",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "NOT_PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "NOT_PROVEN",
+        "HORIZON_UNIVERSALITY": "NOT_PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": "NOT_PROVEN",
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": "NOT_PROVEN",
+        "MODEL_VERSION_PINNING": "NOT_PROVEN",
+        "CALIBRATION_VERSION_PINNING": "NOT_PROVEN",
+        "FEATURE_SCHEMA_PARITY": "NOT_PROVEN",
+        "RUNTIME_PROOF": "NOT_PROVEN",
+        "RTH_PROOF": "RTH_REPROOF_PENDING",
+        "OBSERVABILITY": "NOT_PROVEN",
+        "PROVENANCE": "NOT_PROVEN",
+        "REPRODUCIBILITY": "NOT_PROVEN",
+        "MECHANICAL_ENFORCEMENT": "NOT_PROVEN",
+        "FINAL_SHA_CI": "NOT_PROVEN"
+      },
+      "material_limitations": [
+        "requires live |dVIX|>3.0 at VIX>20; never simulated"
+      ],
+      "final_sha": null,
+      "remote_ci_status": null,
+      "next_blocker": "qualifying live RTH volatility event"
+    },
+    {
+      "lane": "UI-01",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "NOT_PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "NOT_PROVEN",
+        "HORIZON_UNIVERSALITY": "NOT_PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": "NOT_PROVEN",
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": "NOT_PROVEN",
+        "MODEL_VERSION_PINNING": "NOT_PROVEN",
+        "CALIBRATION_VERSION_PINNING": "NOT_PROVEN",
+        "FEATURE_SCHEMA_PARITY": "NOT_PROVEN",
+        "RUNTIME_PROOF": "NOT_PROVEN",
+        "RTH_PROOF": "NOT_PROVEN",
+        "OBSERVABILITY": "NOT_PROVEN",
+        "PROVENANCE": "NOT_PROVEN",
+        "REPRODUCIBILITY": "NOT_PROVEN",
+        "MECHANICAL_ENFORCEMENT": "NOT_PROVEN",
+        "FINAL_SHA_CI": "NOT_PROVEN"
+      },
+      "material_limitations": [
+        "design approved; implementation not started"
+      ],
+      "final_sha": null,
+      "remote_ci_status": null,
+      "next_blocker": "implementation"
+    },
+    {
+      "lane": "UI-04",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "NOT_PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "NOT_PROVEN",
+        "HORIZON_UNIVERSALITY": "NOT_PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": "NOT_PROVEN",
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": "NOT_PROVEN",
+        "MODEL_VERSION_PINNING": "NOT_PROVEN",
+        "CALIBRATION_VERSION_PINNING": "NOT_PROVEN",
+        "FEATURE_SCHEMA_PARITY": "NOT_PROVEN",
+        "RUNTIME_PROOF": "NOT_PROVEN",
+        "RTH_PROOF": "NOT_PROVEN",
+        "OBSERVABILITY": "NOT_PROVEN",
+        "PROVENANCE": "NOT_PROVEN",
+        "REPRODUCIBILITY": "NOT_PROVEN",
+        "MECHANICAL_ENFORCEMENT": "NOT_PROVEN",
+        "FINAL_SHA_CI": "NOT_PROVEN"
+      },
+      "material_limitations": [
+        "P1B/P1C/P1D rails operator-held"
+      ],
+      "final_sha": null,
+      "remote_ci_status": null,
+      "next_blocker": "operator design decisions"
+    },
+    {
+      "lane": "MODEL-04",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "NOT_PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "NOT_PROVEN",
+        "HORIZON_UNIVERSALITY": "NOT_PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": "NOT_PROVEN",
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": "NOT_PROVEN",
+        "MODEL_VERSION_PINNING": "NOT_PROVEN",
+        "CALIBRATION_VERSION_PINNING": "NOT_PROVEN",
+        "FEATURE_SCHEMA_PARITY": "NOT_PROVEN",
+        "RUNTIME_PROOF": "NOT_PROVEN",
+        "RTH_PROOF": "NOT_PROVEN",
+        "OBSERVABILITY": "NOT_PROVEN",
+        "PROVENANCE": "NOT_PROVEN",
+        "REPRODUCIBILITY": "NOT_PROVEN",
+        "MECHANICAL_ENFORCEMENT": "NOT_PROVEN",
+        "FINAL_SHA_CI": "NOT_PROVEN"
+      },
+      "material_limitations": [
+        "serve policy landed; retrain/unserve policy = operator decision"
+      ],
+      "final_sha": null,
+      "remote_ci_status": null,
+      "next_blocker": "operator policy decision"
+    },
+    {
+      "lane": "GOV-ROOT-LEDGER-SCAN",
+      "parent_lane": null,
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "NOT_PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": "NOT_PROVEN",
+        "HORIZON_UNIVERSALITY": "NOT_PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": "NOT_PROVEN",
+        "NO_CURRENT_STATE_LEAKAGE": "NOT_PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": "NOT_PROVEN",
+        "MODEL_VERSION_PINNING": "NOT_PROVEN",
+        "CALIBRATION_VERSION_PINNING": "NOT_PROVEN",
+        "FEATURE_SCHEMA_PARITY": "NOT_PROVEN",
+        "RUNTIME_PROOF": "NOT_PROVEN",
+        "RTH_PROOF": "NOT_PROVEN",
+        "OBSERVABILITY": "NOT_PROVEN",
+        "PROVENANCE": "NOT_PROVEN",
+        "REPRODUCIBILITY": "NOT_PROVEN",
+        "MECHANICAL_ENFORCEMENT": "NOT_PROVEN",
+        "FINAL_SHA_CI": "NOT_PROVEN"
+      },
+      "material_limitations": [
+        "design only"
+      ],
+      "final_sha": null,
+      "remote_ci_status": null,
+      "next_blocker": "scanner scope extension"
+    }
+  ],
+  "real_money_approval": "NOT_APPROVED"
+}

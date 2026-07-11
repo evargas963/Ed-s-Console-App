@@ -39,6 +39,9 @@ jobs:
           ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
         run: python tools/enforce_all_rules.py --objective-audit
 
+      - name: Institutional closure gate (no inflated parent closures)
+        run: python tools/check_institutional_closure_gate.py
+
       - name: Adversarial tests
         run: python -m pytest tests/adversarial/ -q
 

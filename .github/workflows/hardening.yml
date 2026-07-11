@@ -44,6 +44,9 @@ jobs:
         run: python tools/check_fix_everything_we_touch.py
       - name: enforce-static (repo-wide static locks — Tier C CI gate)
         run: python tools/enforce_all_rules.py --enforce-static
+
+      - name: institutional closure gate (no inflated parent closures)
+        run: python tools/check_institutional_closure_gate.py
       - name: no-grep subprocess
         run: python tools/check_no_grep_subprocess.py
 

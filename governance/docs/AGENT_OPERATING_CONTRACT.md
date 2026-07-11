@@ -127,3 +127,7 @@ Maturity changes rejected:
 ## Mechanical lock
 
 `tools/check_agent_preload_contract.py` — wired into `python tools/enforce_all_rules.py --objective-audit`. Paired: `tests/test_agent_preload_contract.py`.
+
+## Closure authority (INSTITUTIONAL_CLOSURE_GATE_AND_DRIFT_RECOVERY_V1, 2026-07-11)
+
+Agents (Claude, Cursor, and any future agent) may RECOMMEND closure with evidence, but packet wording never ESTABLISHES closure. A parent board lane may carry the closed-with-evidence status only when `tools/check_institutional_closure_gate.py` passes over `governance/INSTITUTIONAL_CLOSURE_SCHEMA.json` with every applicable material dimension PROVEN (blocked vocabulary: NOT_PROVEN, FAIL, PENDING, PARTIAL, UNKNOWN, NOT_AUDITED, RTH_REPROOF_PENDING). Sub-lane closure never closes a parent. Green CI is execution evidence, not semantic proof. Evidence must cite the declared final SHA. Component closure never implies real-money readiness.
