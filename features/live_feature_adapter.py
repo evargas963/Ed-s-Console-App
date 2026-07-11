@@ -39,6 +39,15 @@ def build_live_mvp_feature_row(l1_payload: dict[str, Any]) -> dict[str, Any]:
     # crossed/stale negative spreads (canonical contract: spread_pts >= 0 when
     # present). The live path must apply the IDENTICAL missingness semantics —
     # otherwise the same market instant trains as None but serves negative.
+    # Schwab CSV authority checked: yes
+    # CSV row(s): quotes.<symbol>.bidPrice / quotes.<symbol>.askPrice (spread is
+    #   the governed ask-bid derivation upstream; this block only aligns the
+    #   invalid-value withhold semantics with the DB adapter).
+    # Derived-field disposition: GATE_FAIL_CLOSED (crossed-quote artifact reads
+    #   as missing on BOTH train and serve paths; never a fabricated value).
+    # All consumers checked: yes - price.spread_pts consumers (xgb impute path,
+    #   feature_quality lineage) already handle None identically to DB rows.
+    # SCHWAB_CSV_CHECKED
     if spread_pts is not None and spread_pts < 0.0:
         spread_pts = None
 
