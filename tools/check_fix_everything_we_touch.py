@@ -1896,6 +1896,38 @@ def check_no_ablation_gate_bypass_in_money_path() -> list[str]:
 
 
 def check_ablation_seven_model_four_horizon_grid() -> list[str]:
+    """Cached wrapper — GOV-GATE-PERF-V1 Phase 4.
+
+    Measured: this subcheck is ~205s of the ~212s repo-wide static gate and the
+    gate runs in up to five cold processes per commit cycle. The cross-process
+    cache stores SUCCESSFUL results only, keyed on the full dependency identity
+    (checker/module sources, manifest + registry content hashes, live-DB
+    .db/-wal/-shm stat triple, python version, invocation mode); any dependency
+    change or gate failure recomputes. ED_GATE_CACHE_DISABLE=1 forces no-cache.
+    """
+    from tools.governance_gate_cache import cached_check
+
+    errors, _prov = cached_check(
+        check_name="ablation_seven_model_four_horizon_grid",
+        source_deps=[
+            REPO_ROOT / "AGENTS.md",
+            REPO_ROOT / "tools" / "check_fix_everything_we_touch.py",
+            REPO_ROOT / "tools" / "feature_curation_gate.py",
+            REPO_ROOT / "tools" / "ablation_static_lock_index.py",
+            REPO_ROOT / "tools" / "build_feature_assignment_matrix_v2.py",
+            REPO_ROOT / "tools" / "governance_gate_cache.py",
+            REPO_ROOT / "governed_stack_contract.py",
+            REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json",
+            REPO_ROOT / "governance" / "artifacts" / "schwab_ablation_field_registry.json",
+        ],
+        db_deps=[REPO_ROOT / "data" / "ed_console.db"],
+        invocation={"mode": "repo_wide_static"},
+        compute=_check_ablation_seven_model_four_horizon_grid_impl,
+    )
+    return errors
+
+
+def _check_ablation_seven_model_four_horizon_grid_impl() -> list[str]:
     """AGENTS § Ablation grid — all seven stack models × all four horizons (operator binding).
 
     Rejects partial grids (feature×horizon-only, base-3-only, missing horizons/models).
