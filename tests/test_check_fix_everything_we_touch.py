@@ -2333,3 +2333,35 @@ def test_full_fixes_v2_closure_language_with_no_template_still_demands_all_yes(t
     hits = mod.check_full_fixes_only(_full_fix_msg(tmp_path, body))
     assert any("EFFECTIVE_FIX_PROVEN must be YES" in h for h in hits)
     assert any("FULL_FIX_PROVEN must be YES" in h for h in hits)
+
+
+def test_commit_msg_hygiene_import_bootstraps_repo_root(tmp_path):
+    """check_commit_message must reach check_hygiene_touch_disposition even when
+    the repo root is absent from sys.path (script invocation: sys.path[0] is
+    tools/, not the root) — the 2026-07-10 ledger commit failed the commit-msg
+    hook with "No module named 'tools'" instead of running the check."""
+    import subprocess
+    import sys as _sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text("board(test): hygiene import bootstrap probe" + chr(10), encoding="utf-8")
+    checker = repo_root / "tools" / "check_fix_everything_we_touch.py"
+    code = (
+        "import sys\n"
+        "sys.path = [p for p in sys.path if p != " + repr(str(repo_root)) + "]\n"
+        "import importlib.util\n"
+        "spec = importlib.util.spec_from_file_location('cfewt_probe', " + repr(str(checker)) + ")\n"
+        "mod = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(mod)\n"
+        "hits = mod.check_commit_message(__import__('pathlib').Path(" + repr(str(msg)) + "))\n"
+        "bad = [h for h in hits if 'repo hygiene touch disposition check failed' in h]\n"
+        "assert not bad, bad\n"
+        "print('HYGIENE_IMPORT_OK')\n"
+    )
+    out = subprocess.run(
+        [_sys.executable, "-c", code], capture_output=True, text=True, cwd=str(repo_root)
+    )
+    assert out.returncode == 0, out.stderr + out.stdout
+    assert "HYGIENE_IMPORT_OK" in out.stdout

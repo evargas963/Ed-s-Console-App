@@ -816,6 +816,11 @@ def check_commit_message(path: Path) -> list[str]:
     hits.extend(check_full_fixes_only(path))
     if path.name == "COMMIT_EDITMSG":
         try:
+            # Script invocation puts tools/ (not the repo root) at sys.path[0],
+            # so the package-form import below fails unless the environment
+            # happens to add the root. Bootstrap it explicitly.
+            if str(REPO_ROOT) not in sys.path:
+                sys.path.insert(0, str(REPO_ROOT))
             from tools.check_repo_hygiene_policy import check_hygiene_touch_disposition
 
             hits.extend(
