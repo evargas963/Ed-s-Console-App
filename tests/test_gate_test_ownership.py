@@ -5,10 +5,6 @@ self-protection, separator + deletion handling, and map-rot detection."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
 from tools.gate_test_ownership import (
     FULL_BUNDLE,
     OWNERSHIP_MAP,
