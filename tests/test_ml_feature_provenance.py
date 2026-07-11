@@ -354,3 +354,59 @@ def test_inference_snapshot_constructor_is_single_row_pure():
             imported.add(node.module.split(".")[0])
     hits = imported & banned
     assert not hits, f"inference snapshot constructor must stay single-row pure: {hits}"
+
+
+# ── ML-PIPE-V2 Phase 3: meta training basis must travel with the artifact ──
+
+
+def test_meta_training_basis_manifest_written_and_machine_readable(tmp_path):
+    import json as _json
+
+    from ml_scheduler import _write_meta_training_basis_manifest
+
+    for basis, governed in (
+        ("expanding_window_oof", True),
+        ("in_sample_no_folds", False),
+        ("in_sample_fallback", False),
+    ):
+        out = _write_meta_training_basis_manifest(
+            tmp_path, "SPY", "5c", architecture="parallel", basis=basis, n_rows=42,
+        )
+        doc = _json.loads(out.read_text(encoding="utf-8"))
+        assert doc["schema"] == "META_TRAINING_BASIS_MANIFEST_V1"
+        assert doc["meta_training_basis"] == basis
+        assert doc["oof_governed"] is governed
+        assert doc["artifact"] == "meta_SPY_5c.pkl"
+        assert doc["n_training_rows"] == 42
+        assert doc["ticker"] == "SPY" and doc["horizon_slug"] == "5c"
+
+
+def test_meta_basis_manifest_wired_at_both_meta_train_sites():
+    """Source lock: every meta pickle dump is immediately followed by the basis
+    manifest write — an in-sample-fallback meta can never ship without its
+    machine-readable oof_governed=False provenance."""
+    import inspect
+
+    import ml_scheduler
+
+    src = inspect.getsource(ml_scheduler)
+    dumps = src.count('pickle.dump(meta_mdl, f)')
+    manifests = src.count('_write_meta_training_basis_manifest(')
+    # def + 2 call sites
+    assert dumps == 2, f"expected exactly 2 meta pickle dumps, found {dumps}"
+    assert manifests >= 3, "both meta dump sites must write the basis manifest"
+    for arch in ("parallel", "cascade"):
+        seg = src[src.find(f'architecture="{arch}", basis=meta_basis'):]
+        assert seg, f"{arch} meta site missing manifest call"
+
+
+def test_meta_oof_trainer_returns_labeled_basis():
+    """The OOF trainers' basis vocabulary is the provenance contract — locked."""
+    import inspect
+
+    import ml_scheduler
+
+    for fn in (ml_scheduler._train_parallel_meta_oof, ml_scheduler._train_cascade_meta_oof):
+        s = inspect.getsource(fn)
+        assert '"expanding_window_oof"' in s
+        assert '"in_sample_no_folds"' in s or '"in_sample_fallback"' in s

@@ -860,6 +860,38 @@ def _train_parallel_ml_stack_layers_into(
     return (temp_dir / f"xgb_{ticker.upper()}_{hz}.pkl").exists()
 
 
+def _write_meta_training_basis_manifest(
+    out_dir: Path,
+    ticker: str,
+    hz: str,
+    *,
+    architecture: str,
+    basis: str,
+    n_rows: int,
+) -> Path:
+    """ML-PIPE-V2 Phase 3 (2026-07-11): the meta learner's training BASIS must
+    travel with the artifact. Before this manifest, ``meta_basis`` was only a
+    log line — an in-sample-fallback-trained meta pickle was byte-identical to
+    an expanding-window-OOF one for every downstream consumer (serving, eval,
+    promotion), so base-model overfit inherited via the fallback could never be
+    distinguished from governed OOF evidence. ``oof_governed`` is the
+    machine-readable gate field: False for every in-sample basis."""
+    manifest = {
+        "artifact": f"meta_{ticker.upper()}_{hz}.pkl",
+        "ticker": ticker.upper(),
+        "horizon_slug": hz,
+        "architecture": architecture,
+        "meta_training_basis": basis,
+        "oof_governed": basis == "expanding_window_oof",
+        "n_training_rows": int(n_rows),
+        "written_at_epoch": time.time(),
+        "schema": "META_TRAINING_BASIS_MANIFEST_V1",
+    }
+    out_path = out_dir / f"meta_{ticker.upper()}_{hz}_training_manifest.json"
+    out_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    return out_path
+
+
 def _train_parallel_meta_oof(
     out_dir: Path,
     ticker: str,
@@ -1207,6 +1239,9 @@ def train_parallel_candidate(
         meta_mdl.fit(np.array(X_meta), np.array(y_meta))
         with open(out_dir / f"meta_{ticker.upper()}_{hz}.pkl", "wb") as f:
             pickle.dump(meta_mdl, f)
+        _write_meta_training_basis_manifest(
+            out_dir, ticker, hz, architecture="parallel", basis=meta_basis, n_rows=len(X_meta),
+        )
         log.info(
             "%s parallel meta trained on %d rows (basis=%s)", ticker, len(X_meta), meta_basis,
         )
@@ -2342,6 +2377,9 @@ def train_cascade_candidate(
         meta_mdl.fit(np.array(X_meta), np.array(y_meta))
         with open(out_dir / f"meta_{ticker.upper()}_{hz}.pkl", "wb") as f:
             pickle.dump(meta_mdl, f)
+        _write_meta_training_basis_manifest(
+            out_dir, ticker, hz, architecture="cascade", basis=meta_basis, n_rows=len(X_meta),
+        )
         log.info(
             "%s cascade meta trained on %d rows (basis=%s)", ticker, len(X_meta), meta_basis,
         )
