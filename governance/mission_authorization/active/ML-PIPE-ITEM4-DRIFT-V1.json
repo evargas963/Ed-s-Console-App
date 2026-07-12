@@ -1,0 +1,68 @@
+{
+  "schema_version": "1",
+  "mission_id": "ML-PIPE-ITEM4-DRIFT-V1",
+  "agent": "Claude",
+  "mission_type": "feature_implementation",
+  "authorized_branch": "ml-pipe-item-4-drift-recovery-v1",
+  "authorized_worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole-item4",
+  "base_sha": "ad79c1873955887f0a7c7dc130b75d2357874d5c",
+  "authorized_push_target": "origin/ml-pipe-item-4-drift-recovery-v1",
+  "target_branch": "ml-pipe-item-4-drift-recovery-v1",
+  "direct_main_permission": false,
+  "pr_required": true,
+  "integration_owner": "OPERATOR",
+  "authorized_scope": {
+    "files": [
+      "OPEN_ITEMS.md",
+      "active_bundle_contract.py",
+      "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
+      "governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json",
+      "governance/ML_ITEM4_MIGRATION_POLICY.json",
+      "governance/artifacts/CHECK_STACK_INVENTORY.json",
+      "governance/artifacts/ML_ITEM4_DRIFT_RECOVERY_RECORD.json",
+      "governance/artifacts/ML_ITEM4_MIGRATION_STATE.json",
+      "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json",
+      "governance/artifacts/schwab_v4_register_build_meta.json",
+      "governance/artifacts/schwab_v4_scoreboard.json",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md",
+      "governance/docs/PRECOMMIT_PERFORMANCE_AUDIT.md",
+      "governance/mission_authorization/active/ML-PIPE-ITEM4-DRIFT-V1.json",
+      "governance/mission_authorization/active/ML-PIPE-ITEM4-V1.json",
+      "governance/mission_authorization/consumed/GOV-BRANCH-AUTH-V1.retired.json",
+      "governance/mission_authorization/consumed/ML-PIPE-ITEM4-V1.retired.json",
+      "ml_predict.py",
+      "models/active/TSLA/lstm_TSLA_1c.pt",
+      "models/active/TSLA/lstm_TSLA_1c_meta.json",
+      "models/active/TSLA/transformer_TSLA_1c.pt",
+      "models/active/TSLA/transformer_TSLA_1c_meta.json",
+      "tests/test_active_bundle_contract_v1.py",
+      "tests/test_active_horizon_layout_pr3.py",
+      "tests/test_ml_item4_fleet_migration.py",
+      "tests/test_model_contract_enforcement.py",
+      "tools/ml_item4_fleet_migration.py"
+    ],
+    "semantic_domains": [
+      "model_loading",
+      "model_promotion"
+    ]
+  },
+  "shared_file_policy": "none",
+  "lease_state": "active",
+  "created_at_epoch": 1783871258.1247149,
+  "expires_at_epoch": 1784476058.1247149,
+  "operator_authorization": "MISSION = ML_PIPE_ITEM_4_POST_MERGE_DRIFT_RECOVERY_AND_REPRODUCIBLE_REPAIR_V1 (operator packet 2026-07-12): reproducible recovery tooling, state reconciliation, TSLA disposition, truthful labels; PR path only",
+  "allowed_integration_method": "PR opened by Claude, integration owned by OPERATOR-authorized PR path; no direct main push",
+  "required_checks": [
+    "objective-audit",
+    "pytest-full",
+    "hardening",
+    "schwab-csv-first"
+  ],
+  "stop_conditions": [
+    "material fleet provenance unresolvable without operator decision",
+    "destructive deletion without rollback",
+    "strict activation creating unbounded outage",
+    "red required PR/main check",
+    "main advances incompatibly"
+  ]
+}

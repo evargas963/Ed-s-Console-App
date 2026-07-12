@@ -104,12 +104,17 @@ def outgoing_changed_files(base_ref: str = "origin/main") -> list[str]:
 
 
 def write_outgoing_diff(base_ref: str = "origin/main") -> Path:
-    diff = subprocess.run(
+    # Binary-safe: an outgoing diff containing binary artifacts (e.g. governed
+    # model replacements under models/active/**) is not valid text in the
+    # locale codec — text=True made stdout undecodable/None and crashed the
+    # gate at push time. Capture bytes and decode with replacement; the
+    # CSV-first guard only inspects text hunks.
+    raw = subprocess.run(
         ["git", "diff", f"{base_ref}...HEAD"],
-        cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
-    ).stdout
+        cwd=REPO_ROOT, capture_output=True, timeout=120,
+    ).stdout or b""
     tmp = Path(tempfile.gettempdir()) / "prepush_parity_csv_first.diff"
-    tmp.write_text(diff, encoding="utf-8")
+    tmp.write_text(raw.decode("utf-8", errors="replace"), encoding="utf-8")
     return tmp
 
 

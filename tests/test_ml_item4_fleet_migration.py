@@ -172,6 +172,191 @@ def test_unknown_provenance_never_silently_recoverable(tmp_path):
     assert inv2["bundles"]["ZZZ:1c"]["classification"] != CLASS_RECONSTRUCTABLE
 
 
+def test_archive_evidence_never_authorizes_byte_changing_repromotion(tmp_path):
+    """DRIFT-RECOVERY LOCK (2026-07-12): active bytes proven via an ARCHIVE
+    source while the live candidate dir holds DIFFERENT bytes must classify
+    RECONSTRUCTABLE — never REPROMOTE, which would silently change serving
+    bytes (29 production bundles hit this before the lock)."""
+    models = tmp_path / "models"
+    bd = _mk_bundle(models, "active", "ARC", "1c", seed=b"served")
+    # archive snapshot holds the EXACT serving bytes (provenance evidence)
+    arch = models / "_artifact_archive" / "parallel" / "ARC" / "20260101T000000Z"
+    arch.mkdir(parents=True)
+    for f in bd.iterdir():
+        (arch / f.name).write_bytes(f.read_bytes())
+    # live candidate dir is COMPLETE with run manifest but DIFFERENT bytes
+    cand = _mk_candidate(models, "parallel", "ARC", "1c",
+                         from_bundle=_mk_bundle(models, "staging2", "ARC", "1c", seed=b"newer"))
+    assert _sha(cand / "lstm_ARC_1c.pt") != _sha(bd / "lstm_ARC_1c.pt")
+    inv = build_fleet_inventory(models, repo_root=tmp_path)
+    b = inv["bundles"]["ARC:1c"]
+    assert b["classification"] == CLASS_RECONSTRUCTABLE, b["classification"]
+    plan = plan_migration(inv)
+    assert plan["actions"]["ARC:1c"]["action"] == ACTION_RECONSTRUCT_MANIFEST
+    # apply: serving bytes must be untouched
+    before = {f.name: _sha(f) for f in bd.iterdir()}
+    execution = execute_migration(inv, plan, models, apply=True)
+    assert execution["results"]["ARC:1c"]["errors"] == []
+    after = {f.name: _sha(f) for f in bd.iterdir() if f.name != "bundle_integrity_manifest.json"}
+    assert after == before, "reconstruction must never change serving bytes"
+
+
+def test_git_evidence_never_authorizes_byte_changing_repromotion(tmp_path, monkeypatch):
+    """GIT-blob evidence proves provenance of the ACTIVE bytes — it must never
+    authorize copying DIFFERENT candidate-dir bytes over them."""
+    import tools.ml_item4_fleet_migration as mig
+
+    models = tmp_path / "models"
+    bd = _mk_bundle(models, "active", "GIT", "1c", seed=b"served-git")
+    _mk_candidate(models, "parallel", "GIT", "1c",
+                  from_bundle=_mk_bundle(models, "staging3", "GIT", "1c", seed=b"different"))
+    # inject git-blob evidence for every active file
+    import hashlib as _h
+    blobs = {}
+    for f in bd.iterdir():
+        raw = f.read_bytes()
+        blobs[f"models/active/GIT/{f.name}"] = _h.sha1(
+            f"blob {len(raw)}\0".encode() + raw
+        ).hexdigest()
+    monkeypatch.setattr(mig, "git_tracked_blobs", lambda repo_root: blobs)
+    inv = mig.build_fleet_inventory(models, repo_root=tmp_path)
+    b = inv["bundles"]["GIT:1c"]
+    # binaries (differing from candidate) are proven via GIT blobs; identical
+    # JSON metas may legitimately match the candidate — the LOCK is that the
+    # bundle still may not be repromoted because candidate BINARY bytes differ.
+    binaries = [r for r, v in b["files"].items()
+                if v.get("present") and v["filename"].endswith((".pt", ".pkl"))]
+    assert binaries and all(b["files"][r]["evidence"] == "GIT" for r in binaries)
+    assert b["classification"] == CLASS_RECONSTRUCTABLE
+    assert plan_migration(inv)["actions"]["GIT:1c"]["action"] == ACTION_RECONSTRUCT_MANIFEST
+
+
+# ── drift-recovery record engine (committed, deterministic, fail-closed) ────
+
+
+def _recovery_fixture(tmp_path):
+    """Backup + active pair with one keep-file replacement and one unauthorized addition."""
+    from tools.ml_item4_fleet_migration import QUARANTINE_DIRNAME
+
+    models = tmp_path / "models"
+    bd = _mk_bundle(models, "active", "RCV", "1c", seed=b"pre")
+    backup = models / QUARANTINE_DIRNAME / "STAMP1" / "active" / "RCV"
+    backup.mkdir(parents=True)
+    for f in bd.iterdir():
+        (backup / f.name).write_bytes(f.read_bytes())
+    # authorized replacement: xgb pair now carries different (candidate) bytes
+    with (bd / "xgb_RCV_1c.pkl").open("wb") as fh:
+        pickle.dump({"replacement": True}, fh)
+    # unauthorized addition: extra pkl with no backup source
+    (bd / "meta_RCV_1c.pkl").write_bytes(b"added-by-defective-migration")
+    record = {
+        "schema_version": 1,
+        "mission": "TEST",
+        "backup_dir": f"{QUARANTINE_DIRNAME}/STAMP1",
+        "bundles": {
+            "RCV:1c": {
+                "ticker": "RCV", "horizon": "1c", "root": "active",
+                "restore_files": {
+                    n: _sha(backup / n) for n in
+                    ("lstm_RCV_1c.pt", "lstm_RCV_1c_meta.json", "transformer_RCV_1c.pt",
+                     "transformer_RCV_1c_meta.json", "xgb_RCV_1c_meta.json")
+                },
+                "keep_files": {"xgb_RCV_1c.pkl": _sha(bd / "xgb_RCV_1c.pkl")},
+                "remove_files": {"meta_RCV_1c.pkl": _sha(bd / "meta_RCV_1c.pkl")},
+                "evidence": {"xgb": {"evidence": "CANDIDATE", "source": "parallel/RCV"}},
+            }
+        },
+    }
+    return models, bd, backup, record
+
+
+def test_recovery_engine_restores_removes_and_is_idempotent(tmp_path):
+    from tools.ml_item4_fleet_migration import execute_recovery, verify_recovery
+
+    models, bd, backup, record = _recovery_fixture(tmp_path)
+    # drift a restore-file so there is something to restore
+    (bd / "lstm_RCV_1c.pt").write_bytes(b"drifted")
+    res = execute_recovery(record, models, apply=True)
+    assert res["ok"], res
+    r = res["results"]["RCV:1c"]
+    assert "lstm_RCV_1c.pt" in r["restored"]
+    assert r["removed"] == ["meta_RCV_1c.pkl"]
+    assert not (bd / "meta_RCV_1c.pkl").is_file()
+    assert _sha(bd / "lstm_RCV_1c.pt") == _sha(backup / "lstm_RCV_1c.pt")
+    ver = verify_recovery(record, models)
+    assert ver["ok"], ver["errors"]
+    # idempotent second run: zero restores, still ok, manifests still verify
+    res2 = execute_recovery(record, models, apply=True)
+    assert res2["ok"] and res2["results"]["RCV:1c"]["restored"] == []
+    assert verify_recovery(record, models)["ok"]
+
+
+def test_recovery_refuses_file_absent_from_backup_inventory(tmp_path):
+    from tools.ml_item4_fleet_migration import execute_recovery
+
+    models, bd, backup, record = _recovery_fixture(tmp_path)
+    record["bundles"]["RCV:1c"]["restore_files"]["ghost_RCV_1c.pkl"] = "0" * 64
+    res = execute_recovery(record, models, apply=True)
+    assert res["ok"] is False
+    assert any("NOT IN BACKUP INVENTORY" in e for e in res["results"]["RCV:1c"]["errors"])
+
+
+def test_recovery_refuses_unrecorded_replacement_bytes(tmp_path):
+    """A keep-file (authorized replacement) whose disk bytes do not match the
+    record is a fail-closed error — replacements without recorded authorized
+    source evidence can never pass."""
+    from tools.ml_item4_fleet_migration import execute_recovery
+
+    models, bd, backup, record = _recovery_fixture(tmp_path)
+    with (bd / "xgb_RCV_1c.pkl").open("wb") as fh:
+        pickle.dump({"tampered-replacement": True}, fh)
+    res = execute_recovery(record, models, apply=True)
+    assert res["ok"] is False
+    assert any("authorized replacement bytes" in e for e in res["results"]["RCV:1c"]["errors"])
+
+
+def test_verify_recovery_flags_provenance_and_byte_mismatches(tmp_path):
+    from tools.ml_item4_fleet_migration import (
+        execute_recovery,
+        verify_recovery,
+    )
+
+    models, bd, backup, record = _recovery_fixture(tmp_path)
+    assert execute_recovery(record, models, apply=True)["ok"]
+    # byte drift after recovery -> flagged
+    (bd / "transformer_RCV_1c.pt").write_bytes(b"post-recovery-mutation")
+    ver = verify_recovery(record, models)
+    assert ver["ok"] is False
+    assert any("differ from recovery record" in e or "ARTIFACT_HASH_MISMATCH" in e
+               for e in ver["errors"])
+    # unauthorized addition reappearing -> flagged
+    execute_recovery(record, models, apply=True)  # repair bytes
+    (bd / "meta_RCV_1c.pkl").write_bytes(b"reintroduced")
+    ver2 = verify_recovery(record, models)
+    assert ver2["ok"] is False
+    assert any("still present on disk" in e for e in ver2["errors"])
+
+
+def test_migration_state_regeneration_reflects_filesystem_not_counters(tmp_path):
+    from tools.ml_item4_fleet_migration import (
+        regenerate_migration_state_from_disk,
+        write_bundle_integrity_manifest as _w,  # noqa: F401 (imported for clarity)
+    )
+
+    models = tmp_path / "models"
+    bd = _mk_bundle(models, "active", "STA", "1c")
+    write_bundle_integrity_manifest(bd, "STA", "1c")
+    out = tmp_path / "state.json"
+    doc = regenerate_migration_state_from_disk(models, out_path=out)
+    assert doc["fleet_verification"]["ok"] is True
+    assert doc["manifest_method_counts"] == {"NO_PROVENANCE_FIELD": 1}
+    # filesystem change -> regeneration reflects it (no stored counter survives)
+    (bd / "xgb_STA_1c.pkl").write_bytes(b"tampered")
+    doc2 = regenerate_migration_state_from_disk(models, out_path=out)
+    assert doc2["fleet_verification"]["ok"] is False
+    assert doc2["fleet_verification"]["failed_count"] == 1
+
+
 def test_dry_run_makes_no_filesystem_changes(tmp_path):
     models = tmp_path / "models"
     bd = _mk_bundle(models, "active", "DRY", "1c")
