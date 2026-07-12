@@ -1,0 +1,82 @@
+{
+  "schema": "PUSH_ROUTE_INVENTORY",
+  "version": "1.0.0",
+  "mission": "GOV_BRANCH_AUTHORIZATION_AND_MULTI_AGENT_OWNERSHIP_V1",
+  "remote_protection_evidence": {
+    "source": "gh api repos/.../branches/main/protection (captured 2026-07-12)",
+    "required_status_checks": {
+      "strict": true,
+      "contexts": [
+        "objective-audit",
+        "pytest-full",
+        "hardening",
+        "schwab-csv-first"
+      ]
+    },
+    "required_pull_request_reviews": {
+      "required_approving_review_count": 0
+    },
+    "enforce_admins": {
+      "enabled": false
+    },
+    "allow_force_pushes": {
+      "enabled": false
+    },
+    "allow_deletions": {
+      "enabled": false
+    }
+  },
+  "routes": [
+    {
+      "route": "ordinary git push (hooked clone)",
+      "classification": "locally_and_remotely_enforceable",
+      "controls": "mission-auth pre-push (destination refs) + parity gate + remote protection"
+    },
+    {
+      "route": "git push --no-verify",
+      "classification": "remotely_enforceable_only",
+      "controls": "local hooks skipped BY DESIGN of git; remote PR+checks still apply to non-admin; policy: no-verify can never obtain closure evidence (recurrence lock)"
+    },
+    {
+      "route": "direct push to main (admin credentials)",
+      "classification": "observable_not_preventable_with_current_permissions",
+      "controls": "enforce_admins=false \u2014 the 2026-07-12 incident channel; local mission-auth blocks agent-driven attempts from hooked worktrees; RECOMMENDATION: operator enable enforce_admins"
+    },
+    {
+      "route": "force push",
+      "classification": "remotely_enforceable",
+      "controls": "allow_force_pushes=false (captured evidence)"
+    },
+    {
+      "route": "git update-ref / plumbing (local)",
+      "classification": "observable_not_preventable",
+      "controls": "local-only until push; push routes then apply"
+    },
+    {
+      "route": "GitHub API ref update (PAT/admin)",
+      "classification": "not_prevented_not_proven",
+      "controls": "outside local hooks; bounded only by remote protection incl. admin gap"
+    },
+    {
+      "route": "GitHub UI merge / PR merge",
+      "classification": "remotely_enforceable",
+      "controls": "required checks strict at merge"
+    },
+    {
+      "route": "automation/bot credentials",
+      "classification": "not_proven",
+      "controls": "no bot tokens known in-repo; cannot prove absence externally"
+    },
+    {
+      "route": "alternate clone/worktree without hooks",
+      "classification": "remotely_enforceable_only",
+      "controls": "pre-commit not installed there; remote protection (with admin gap) is the only control"
+    },
+    {
+      "route": "repository administrator bypass",
+      "classification": "observable_not_preventable_with_current_permissions",
+      "controls": "enforce_admins=false; bypass warnings classified as POLICY_VIOLATION by mission-auth when run through governed tooling"
+    }
+  ],
+  "honest_limits": "Local machinery binds hooked-worktree agent operations only. Universal prevention requires operator action: enable enforce_admins and/or restrict admin tokens. No claim of universal enforcement is made."
+}

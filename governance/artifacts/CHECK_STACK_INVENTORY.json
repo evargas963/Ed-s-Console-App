@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "phase": "3I-CheckStack",
-  "generated_at_utc": "2026-07-12T05:00:39+00:00",
+  "generated_at_utc": "2026-07-12T10:43:43+00:00",
   "policy": "governance/docs/CHECK_STACK_RIGHTSIZING.md",
   "runtime_budgets_seconds": {
     "precommit_normal": 60,
@@ -28,11 +28,17 @@
       "recommendation": "required_ci_owned \u2014 keep off local pre-push (pytest-full backs it)"
     }
   ],
-  "check_count": 67,
+  "check_count": 69,
   "duplication_analysis": [
     {
       "check_a": "prepush-fast-gate",
       "check_b": "generated-artifacts-clean-check",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "prepush-fast-gate",
+      "check_b": "mission-authorization-prepush",
       "classification": "candidate_for_merge",
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
@@ -44,7 +50,49 @@
     },
     {
       "check_a": "generated-artifacts-clean-check",
+      "check_b": "mission-authorization-prepush",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "generated-artifacts-clean-check",
       "check_b": "prepush-parity-gate",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "mission-authorization-prepush",
+      "check_b": "prepush-parity-gate",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "mission-authorization-precommit",
+      "check_b": "no-grep-subprocess",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "mission-authorization-precommit",
+      "check_b": "no-deferral-language-msg",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "mission-authorization-precommit",
+      "check_b": "no-deferral-language-files",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "mission-authorization-precommit",
+      "check_b": "fix-everything-we-touch-msg",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "mission-authorization-precommit",
+      "check_b": "fix-everything-we-touch",
       "classification": "candidate_for_merge",
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
@@ -117,6 +165,7 @@
   ],
   "recommendations": {
     "keep_in_precommit": [
+      "mission-authorization-precommit",
       "no-grep-subprocess",
       "no-deferral-language-msg",
       "no-deferral-language-files",
@@ -126,6 +175,7 @@
     "move_to_prepush": [
       "prepush-fast-gate",
       "generated-artifacts-clean-check",
+      "mission-authorization-prepush",
       "prepush-parity-gate"
     ],
     "move_to_ci_only": [
@@ -227,12 +277,36 @@
       "recommendation": "move_to_prepush",
       "overlap_with_other_checks": [
         "generated-artifacts-clean-check",
+        "mission-authorization-prepush",
         "prepush-parity-gate"
       ]
     },
     {
       "check_id": "generated-artifacts-clean-check",
       "command": "python tools/check_governance_generated_artifacts_clean.py",
+      "tier": 2,
+      "runtime_seconds": null,
+      "scope": "pre-commit hook",
+      "files_or_modules_covered": "staged or repo per hook",
+      "risk_addressed": "governance enforcement",
+      "evidence_artifact": "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json",
+      "must_run_precommit": false,
+      "must_run_prepush": true,
+      "must_run_ci": false,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "move_to_prepush",
+      "overlap_with_other_checks": [
+        "mission-authorization-prepush",
+        "prepush-parity-gate"
+      ]
+    },
+    {
+      "check_id": "mission-authorization-prepush",
+      "command": "python tools/check_mission_authorization.py --pre-push",
       "tier": 2,
       "runtime_seconds": null,
       "scope": "pre-commit hook",
@@ -271,6 +345,32 @@
       "removal_risk": "high",
       "recommendation": "move_to_prepush",
       "overlap_with_other_checks": []
+    },
+    {
+      "check_id": "mission-authorization-precommit",
+      "command": "python tools/check_mission_authorization.py --pre-commit",
+      "tier": 1,
+      "runtime_seconds": null,
+      "scope": "pre-commit hook",
+      "files_or_modules_covered": "staged or repo per hook",
+      "risk_addressed": "governance enforcement",
+      "evidence_artifact": "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json",
+      "must_run_precommit": true,
+      "must_run_prepush": false,
+      "must_run_ci": false,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "keep_in_precommit",
+      "overlap_with_other_checks": [
+        "no-grep-subprocess",
+        "no-deferral-language-msg",
+        "no-deferral-language-files",
+        "fix-everything-we-touch-msg",
+        "fix-everything-we-touch"
+      ]
     },
     {
       "check_id": "no-grep-subprocess",

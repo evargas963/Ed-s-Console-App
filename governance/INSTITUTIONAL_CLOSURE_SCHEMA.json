@@ -516,7 +516,128 @@
           ]
         }
       ],
-      "drift_recovery": null
+      "drift_recovery": null,
+      "final_closure_sha": "fbc13718d9aa68561261b57c23c11aef01f3dd10",
+      "final_closure_remote_ci": "4/4 success at cited tip fbc13718d9aa (runs 29184738395, 29184738374, 29184738373, 29184738411)",
+      "sha_semantics": "final_sha = integrated code SHA (fast-forward object, own 4/4 CI); final_closure_sha = ledger commit carrying this record, own 4/4 CI"
+    },
+    {
+      "lane": "GOV-BRANCH-AUTHORIZATION-V1",
+      "parent_lane": "FULL_GOVERNANCE_GATE_SYSTEM",
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "PENDING",
+        "UPSTREAM_INPUT_CORRECTNESS": "PENDING",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PENDING",
+        "TICKER_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "governance tooling; no per-ticker behavior"
+        },
+        "HORIZON_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no horizon-dependent path"
+        },
+        "POINT_IN_TIME_CORRECTNESS": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no market data consumed"
+        },
+        "NO_CURRENT_STATE_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no replay surface"
+        },
+        "NO_FUTURE_DATA_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no time-series evaluation"
+        },
+        "MODEL_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no model artifact"
+        },
+        "CALIBRATION_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no calibration artifact"
+        },
+        "FEATURE_SCHEMA_PARITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no feature construction"
+        },
+        "RUNTIME_PROOF": "PENDING",
+        "RTH_PROOF": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no session-dependent behavior"
+        },
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "PROVEN",
+        "MECHANICAL_ENFORCEMENT": "PROVEN",
+        "FINAL_SHA_CI": "PENDING"
+      },
+      "material_limitations": [
+        "closure requires branch CI green + operator PR integration per contract"
+      ],
+      "final_sha": null,
+      "remote_ci_status": "pending at feature-branch tip",
+      "next_blocker": "branch CI + operator PR integration"
+    },
+    {
+      "lane": "GOV-REMOTE-ENFORCEMENT",
+      "parent_lane": "FULL_GOVERNANCE_GATE_SYSTEM",
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "NOT_PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
+        "TICKER_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "governance tooling; no per-ticker behavior"
+        },
+        "HORIZON_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no horizon-dependent path"
+        },
+        "POINT_IN_TIME_CORRECTNESS": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no market data consumed"
+        },
+        "NO_CURRENT_STATE_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no replay surface"
+        },
+        "NO_FUTURE_DATA_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no time-series evaluation"
+        },
+        "MODEL_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no model artifact"
+        },
+        "CALIBRATION_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no calibration artifact"
+        },
+        "FEATURE_SCHEMA_PARITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no feature construction"
+        },
+        "RUNTIME_PROOF": "NOT_PROVEN",
+        "RTH_PROOF": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no session-dependent behavior"
+        },
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "NOT_PROVEN",
+        "MECHANICAL_ENFORCEMENT": "NOT_PROVEN",
+        "FINAL_SHA_CI": "NOT_PROVEN"
+      },
+      "material_limitations": [
+        "enforce_admins=false leaves the admin direct-push channel open (captured evidence in PUSH_ROUTE_INVENTORY.json); operator settings decision required"
+      ],
+      "final_sha": null,
+      "remote_ci_status": null,
+      "next_blocker": "operator decision: enable enforce_admins / restrict admin tokens"
     }
   ],
   "real_money_approval": "NOT_APPROVED"
