@@ -445,6 +445,78 @@
       "final_sha": null,
       "remote_ci_status": null,
       "next_blocker": "scanner scope extension"
+    },
+    {
+      "lane": "GOV-GATE-PARITY-01",
+      "parent_lane": "FULL_GOVERNANCE_GATE_SYSTEM",
+      "status": "CLOSED_WITH_EVIDENCE",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
+        "TICKER_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "governance gate tooling; no per-ticker behavior exists (evidence: tools/check_prepush_parity.py reads workflows/diff/selector only)"
+        },
+        "HORIZON_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no horizon-dependent code path in the gate"
+        },
+        "POINT_IN_TIME_CORRECTNESS": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no historical/market data consumed; gate operates on the working tree and workflow files"
+        },
+        "NO_CURRENT_STATE_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no replay surface; children run with sanitized env (poison-env test)"
+        },
+        "NO_FUTURE_DATA_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no time-series evaluation in the gate"
+        },
+        "MODEL_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no model artifact consumed by the gate"
+        },
+        "CALIBRATION_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no calibration artifact consumed by the gate"
+        },
+        "FEATURE_SCHEMA_PARITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no feature construction in the gate"
+        },
+        "RUNTIME_PROOF": "PROVEN",
+        "RTH_PROOF": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "gate has no market-session-dependent behavior; runs identically in and out of RTH (evidence: no session/clock reads in tools/check_prepush_parity.py)"
+        },
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "PROVEN",
+        "MECHANICAL_ENFORCEMENT": "PROVEN",
+        "FINAL_SHA_CI": "PROVEN"
+      },
+      "material_limitations": [],
+      "preserved_notes": [
+        "cold canonical-main gate 1719s / warm 1600s (full safe bundle + cold static cache; hook-infra diff class)",
+        "cache dependency derivation, board/ledger reconciliation, session-evidence lifecycle remain open parents (separate lanes)",
+        "one-time manual core.bare=false worktree-config repairs were session operations; committed code performs no config writes"
+      ],
+      "final_sha": "26ca627def84b580a4d71cd650ba3bfc4cc249bc",
+      "remote_ci_status": "4/4 success at cited tip 26ca627def84 (runs 29180989044, 29180988975, 29180989009, 29180989003)",
+      "next_blocker": null,
+      "sub_lanes": [
+        {
+          "sub_lane": "GOV-GATE-PARITY-01-ENV-SANITIZATION",
+          "status": "CLOSED_WITH_EVIDENCE",
+          "preserved_facts": [
+            "hook-exported GIT_DIR/GIT_INDEX_FILE contamination root-caused; two pre-fix pushes flipped shared core.bare, both post-fix pushes did not"
+          ]
+        }
+      ],
+      "drift_recovery": null
     }
   ],
   "real_money_approval": "NOT_APPROVED"
