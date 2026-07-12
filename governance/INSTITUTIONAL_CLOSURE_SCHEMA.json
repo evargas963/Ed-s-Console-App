@@ -524,12 +524,12 @@
     {
       "lane": "GOV-BRANCH-AUTHORIZATION-V1",
       "parent_lane": "FULL_GOVERNANCE_GATE_SYSTEM",
-      "status": "NOT_CLOSED",
+      "status": "CLOSED_WITH_EVIDENCE",
       "dimensions": {
         "ROOT_CAUSE": "PROVEN",
-        "END_TO_END_CORRECTNESS": "PENDING",
-        "UPSTREAM_INPUT_CORRECTNESS": "PENDING",
-        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PENDING",
+        "END_TO_END_CORRECTNESS": "PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
         "TICKER_UNIVERSALITY": {
           "status": "NOT_APPLICABLE",
           "rationale": "governance tooling; no per-ticker behavior"
@@ -562,7 +562,7 @@
           "status": "NOT_APPLICABLE",
           "rationale": "no feature construction"
         },
-        "RUNTIME_PROOF": "PENDING",
+        "RUNTIME_PROOF": "PROVEN",
         "RTH_PROOF": {
           "status": "NOT_APPLICABLE",
           "rationale": "no session-dependent behavior"
@@ -571,14 +571,22 @@
         "PROVENANCE": "PROVEN",
         "REPRODUCIBILITY": "PROVEN",
         "MECHANICAL_ENFORCEMENT": "PROVEN",
-        "FINAL_SHA_CI": "PENDING"
+        "FINAL_SHA_CI": "PROVEN"
       },
-      "material_limitations": [
-        "closure requires branch CI green + operator PR integration per contract"
+      "material_limitations": [],
+      "final_sha": "53b4081beeece0bd0325b5266b520f14d44d93ad",
+      "remote_ci_status": "4/4 success at PR head c6e5c687e867 pull_request-event runs 29191830922, 29191830929, 29191830939, 29191830950 (push-event runs 29191829408, 29191829416, 29191829430, 29191829459 also 4/4); merged via PR #27 merge commit 53b4081beeece",
+      "next_blocker": null,
+      "preserved_notes": [
+        "live fail-closed field proof: gate refused its own first push (no pre-push stdin), passed after PRE_COMMIT_* env-channel destination reconstruction; both-channels-absent still refuses",
+        "post-merge canonical-main probe: --pre-commit on checked-out main REFUSED exit 1 (a checked-out main is never permission), 47 combined tests green at merged main",
+        "admin/API bypass prevention is NOT this lane: enforce_admins=false and remote-token routes live in GOV-REMOTE-ENFORCEMENT (NOT_CLOSED); local machinery binds hooked-worktree agents only",
+        "V4 register repin (meta+scoreboard register_build) was an operator-authorized coherence remediation for PR source expansion, adopted verbatim from the run-29190833466 pin-authority artifact"
       ],
-      "final_sha": null,
-      "remote_ci_status": "pending at feature-branch tip",
-      "next_blocker": "branch CI + operator PR integration"
+      "implementation_sha": "2b7e3214128dd01f5e4126de5765f614a5b6a480",
+      "repin_sha": "c6e5c687e8672fe8b26d5d7521e57610b94bb828",
+      "merge_sha": "53b4081beeece0bd0325b5266b520f14d44d93ad",
+      "sha_semantics": "implementation_sha = feature work tip; repin_sha = authorized coherence remediation tip = PR head; final_sha/merge_sha = PR #27 merge commit on main; final_closure_sha = ledger commit carrying this record (backfilled by the next ledger amendment with its own 4/4 CI, per GOV-GATE-PARITY-01 precedent)"
     },
     {
       "lane": "GOV-REMOTE-ENFORCEMENT",
