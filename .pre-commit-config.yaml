@@ -21,6 +21,15 @@ repos:
       # (check-stack staleness, mega4 coverage, ruff x2, CSV-first x2). This
       # supersedes the Phase 2B "two fast gates only" pre-push budget BY
       # OPERATOR DIRECTION; remote CI remains the unchanged authority.
+      # GOV-BRANCH-AUTH-V1: mission authorization gate — a checked-out branch is
+      # never authorization; destination refs validated from pre-push stdin.
+      - id: mission-authorization-prepush
+        name: mission authorization (destination-ref + registry + breaker)
+        entry: python tools/check_mission_authorization.py --pre-push
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
       - id: prepush-parity-gate
         name: prepush parity gate (ruff + enforce-static + csv-first + owner suites)
         entry: python tools/check_prepush_parity.py
@@ -42,6 +51,12 @@ repos:
       # no-deferral-language-files, fix-everything-we-touch on staged files). Locked by
       # tools/check_prepush_fast_gate.py (lightweight-only + budget) and
       # check_fix_everything_we_touch.check_precommit_performance_contract.
+      - id: mission-authorization-precommit
+        name: mission authorization (branch/worktree/scope ownership)
+        entry: python tools/check_mission_authorization.py --pre-commit
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: no-grep-subprocess
         name: no grep/rg subprocess in staged Python
         entry: python tools/check_no_grep_subprocess.py

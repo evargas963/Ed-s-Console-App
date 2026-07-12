@@ -1,0 +1,45 @@
+{
+  "schema_version": "1",
+  "mission_id": "GOV-BRANCH-AUTH-V1",
+  "agent": "Claude",
+  "mission_type": "feature_implementation",
+  "authorized_branch": "gov-branch-authorization-v1",
+  "authorized_worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole-authv1",
+  "base_sha": "fbc13718d9aa68561261b57c23c11aef01f3dd10",
+  "authorized_push_target": "origin/gov-branch-authorization-v1",
+  "target_branch": "gov-branch-authorization-v1",
+  "direct_main_permission": false,
+  "pr_required": true,
+  "integration_owner": "OPERATOR",
+  "authorized_scope": {
+    "files": [
+      "tools/mission_authorization.py",
+      "tools/check_mission_authorization.py",
+      "tests/test_mission_authorization.py",
+      ".pre-commit-config.yaml",
+      "governance/mission_authorization/",
+      "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
+      "OPEN_ITEMS.md",
+      "governance/artifacts/CHECK_STACK_INVENTORY.json",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md",
+      "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json",
+      "governance/docs/PRECOMMIT_PERFORMANCE_AUDIT.md",
+      "tools/check_fix_everything_we_touch.py"
+    ],
+    "semantic_domains": ["governance_gates", "board_state", "closure_schema"]
+  },
+  "shared_file_policy": "board/closure/generated artifacts editable only for this mission's own records; regenerate generated artifacts from source",
+  "lease_state": "active",
+  "created_at_epoch": 1783900000.0,
+  "expires_at_epoch": 1784100000.0,
+  "operator_authorization": "operator mission text GOV_BRANCH_AUTHORIZATION_AND_MULTI_AGENT_OWNERSHIP_V1 (2026-07-12): AUTHORIZED_AGENT=Claude, DIRECT_MAIN_PUSH=FORBIDDEN, PR_REQUIRED=YES, MAIN_INTEGRATION_OWNER=OPERATOR, BYPASS_PERMISSION=NONE",
+  "allowed_integration_method": "PR by operator only",
+  "required_checks": ["objective-audit", "pytest-full", "hardening", "schwab-csv-first"],
+  "stop_conditions": [
+    "main differs from expected base unexpectedly",
+    "active mission collision",
+    "any push destination other than origin/gov-branch-authorization-v1",
+    "bypass warning observed",
+    "red main"
+  ]
+}
