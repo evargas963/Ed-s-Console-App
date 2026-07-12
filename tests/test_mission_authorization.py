@@ -341,3 +341,33 @@ def test_live_mission_contract_is_valid_and_loadable():
     assert c["direct_main_permission"] is False
     assert c["pr_required"] is True
     assert c["integration_owner"] == "OPERATOR"
+
+def test_precommit_env_channel_reconstructs_destination(monkeypatch, authdirs, capsys):
+    """pre-commit consumes git's pre-push stdin; the CLI must reconstruct the
+    destination from PRE_COMMIT_* env vars — and still refuse when BOTH
+    channels are absent (fail-closed, proven live on the first push attempt)."""
+    import io as _io
+    import sys as _sys
+
+    import tools.check_mission_authorization as cli
+
+    _write(authdirs, _contract(mission_id="ENVTEST", authorized_branch="feat-x"))
+    monkeypatch.setenv("ED_MISSION_ID", "ENVTEST")
+    monkeypatch.setattr(cli, "validate_workspace", lambda c, cwd: [])
+    monkeypatch.setattr(cli, "detect_mission_overlap", lambda c: [])
+    monkeypatch.setattr(cli, "red_main_breaker_engaged", lambda: (False, ""))
+    monkeypatch.setattr(cli, "load_contract", lambda mid: ma.load_contract(mid))
+    # env channel present: wrong destination refused
+    monkeypatch.setenv("PRE_COMMIT_LOCAL_BRANCH", "refs/heads/feat-x")
+    monkeypatch.setenv("PRE_COMMIT_REMOTE_BRANCH", "refs/heads/main")
+    monkeypatch.setattr(_sys, "stdin", _io.StringIO(""))
+    assert cli.main(["--pre-push"]) == 1
+    # env channel present: authorized destination passes
+    monkeypatch.setenv("PRE_COMMIT_REMOTE_BRANCH", "refs/heads/feat-x")
+    monkeypatch.setattr(_sys, "stdin", _io.StringIO(""))
+    assert cli.main(["--pre-push"]) == 0
+    # both channels absent: refuse
+    monkeypatch.delenv("PRE_COMMIT_LOCAL_BRANCH")
+    monkeypatch.delenv("PRE_COMMIT_REMOTE_BRANCH")
+    monkeypatch.setattr(_sys, "stdin", _io.StringIO(""))
+    assert cli.main(["--pre-push"]) == 1

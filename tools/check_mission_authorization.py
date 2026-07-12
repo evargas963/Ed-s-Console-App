@@ -87,6 +87,17 @@ def main(argv: list[str]) -> int:
 
     if "--pre-push" in argv:
         stdin_lines = [ln.strip() for ln in sys.stdin.read().splitlines() if ln.strip()]
+        if not stdin_lines:
+            # pre-commit consumes git's pre-push stdin and re-exposes the refs
+            # as env vars (PRE_COMMIT_LOCAL_BRANCH / PRE_COMMIT_REMOTE_BRANCH /
+            # PRE_COMMIT_FROM_REF / PRE_COMMIT_TO_REF). Reconstruct the ref
+            # line from that channel; absence of BOTH channels still refuses.
+            lref = os.environ.get("PRE_COMMIT_LOCAL_BRANCH", "").strip()
+            rref = os.environ.get("PRE_COMMIT_REMOTE_BRANCH", "").strip()
+            lsha = os.environ.get("PRE_COMMIT_FROM_REF", "").strip() or "0" * 40
+            rsha = os.environ.get("PRE_COMMIT_TO_REF", "").strip() or "0" * 40
+            if lref and rref:
+                stdin_lines = [f"{lref} {lsha} {rref} {rsha}"]
         errors += validate_push_destination(
             contract,
             stdin_lines=stdin_lines,
