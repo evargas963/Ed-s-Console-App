@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "harness": "guest_switch_sla",
+  "pass": true,
+  "dry_run": false,
+  "classifications": [
+    "CORE_SWITCH_SLA_PASS",
+    "GUEST_SWITCH_SLA_PASS"
+  ],
+  "failures": [],
+  "switch_matrix_required": [
+    [
+      "SPY",
+      "QQQ"
+    ],
+    [
+      "QQQ",
+      "IWM"
+    ],
+    [
+      "SPY",
+      "NVDA"
+    ],
+    [
+      "NVDA",
+      "IWM"
+    ],
+    [
+      "PLTR",
+      "AAPL"
+    ],
+    [
+      "SPY",
+      "SPX"
+    ],
+    [
+      "SPY",
+      "$VIX"
+    ]
+  ],
+  "switch_matrix_results": [
+    {
+      "pair": "SPY->QQQ",
+      "events": 0,
+      "failures": []
+    },
+    {
+      "pair": "QQQ->IWM",
+      "events": 0,
+      "failures": []
+    },
+    {
+      "pair": "SPY->NVDA",
+      "events": 1,
+      "failures": []
+    },
+    {
+      "pair": "NVDA->IWM",
+      "events": 0,
+      "failures": []
+    },
+    {
+      "pair": "PLTR->AAPL",
+      "events": 0,
+      "failures": []
+    },
+    {
+      "pair": "SPY->SPX",
+      "events": 0,
+      "failures": []
+    },
+    {
+      "pair": "SPY->$VIX",
+      "events": 0,
+      "failures": []
+    }
+  ],
+  "events_sample": [
+    {
+      "schema_version": 2,
+      "switch_id": "ec551da3-26bc-42e3-810d-5f2c1179dc69",
+      "old_ticker": "NVDA",
+      "new_ticker": "QQQ",
+      "selected_ticker": "QQQ",
+      "previous_ticker": "NVDA",
+      "old_expiry": null,
+      "new_expiry": null,
+      "is_core": true,
+      "is_guest": false,
+      "is_special_index": false,
+      "request_generation": 2,
+      "switch_started_at": 1783735274814,
+      "client_wall_start_ms": 1783735274814,
+      "ui_committed_ms": 0.9000000059604645,
+      "fast_quote_first_seen_ms": null,
+      "first_quote_ms": null,
+      "analytics_light_first_seen_ms": null,
+      "tier_c_first_seen_ms": null,
+      "cards_first_render_ms": null,
+      "first_quote_source": "other",
+      "first_full_state_ms": null,
+      "complete_ms": 2,
+      "full_complete_ms": 2,
+      "aborted_prior_fetch_count": 1,
+      "stale_cache_restored": false,
+      "guest_incomplete_reason": null,
+      "db_contention_state_at_switch": "OK",
+      "wrong_ticker_payload_rejected_count": 0,
+      "stale_generation_payload_rejected_count": 0,
+      "schwab_streaming_connected_at_first_quote": null,
+      "plane_quote_authority_at_first_quote": null,
+      "rest_fallback_used": null,
+      "active_ticker_streaming_owned": null,
+      "generation_superseded": false,
+      "ticker_mismatch_discarded": false,
+      "fetch_aborted": false,
+      "server_plane_snapshot_at_first_quote": null,
+      "tradeability_sla_first_quote_ms": 500,
+      "tradeability_sla_full_state_ms": 2000,
+      "visibly_tradeable_quick_enough": false,
+      "tradeability_not_met_reason": "no_first_quote",
+      "first_quote_ui_delivery": "none",
+      "first_quote_schwab_plane": "none",
+      "first_quote_delivered_via_sse_app_path": false,
+      "first_quote_delivered_via_http_fast_lane": false,
+      "first_quote_schwab_quotes_from_l1_streaming": false,
+      "first_quote_schwab_used_rest_fallback_for_quotes": false,
+      "first_quote_streaming_vs_fallback_summary": "none",
+      "tradeability_questions_answered": "NO: no_first_quote. First quote path: not observed. Schwab quote plane at first quote: unknown (no first quote).",
+      "final_switch_state": "SWITCHING",
+      "switch_operator": {
+        "state": "SWITCHING",
+        "show": true,
+        "label": "SWITCHING",
+        "operator_message": "Data/transport timing \u2014 not a model verdict."
+      },
+      "storage_key": "QQQ",
+      "pair_kind": "guest_to_core",
+      "server_received_ts": 1783735274.8228567
+    },
+    {
+      "schema_version": 2,
+      "switch_id": "0362dd98-f0e8-4129-b9ba-b4704f77fd56",
+      "old_ticker": "SPY",
+      "new_ticker": "NVDA",
+      "selected_ticker": "NVDA",
+      "previous_ticker": "SPY",
+      "old_expiry": null,
+      "new_expiry": null,
+      "is_core": false,
+      "is_guest": true,
+      "is_special_index": false,
+      "request_generation": 1,
+      "switch_started_at": 1783735258094,
+      "client_wall_start_ms": 1783735258094,
+      "ui_committed_ms": 0.6999999955296516,
+      "fast_quote_first_seen_ms": null,
+      "first_quote_ms": null,
+      "analytics_light_first_seen_ms": null,
+      "tier_c_first_seen_ms": null,
+      "cards_first_render_ms": null,
+      "first_quote_source": "other",
+      "first_full_state_ms": null,
+      "complete_ms": 2,
+      "full_complete_ms": 2,
+      "aborted_prior_fetch_count": 1,
+      "stale_cache_restored": false,
+      "guest_incomplete_reason": "guest_analytics_pending_shell",
+      "db_contention_state_at_switch": "OK",
+      "wrong_ticker_payload_rejected_count": 0,
+      "stale_generation_payload_rejected_count": 0,
+      "schwab_streaming_connected_at_first_quote": null,
+      "plane_quote_authority_at_first_quote": null,
+      "rest_fallback_used": null,
+      "active_ticker_streaming_owned": null,
+      "generation_superseded": false,
+      "ticker_mismatch_discarded": false,
+      "fetch_aborted": false,
+      "server_plane_snapshot_at_first_quote": null,
+      "tradeability_sla_first_quote_ms": 500,
+      "tradeability_sla_full_state_ms": 2000,
+      "visibly_tradeable_quick_enough": false,
+      "tradeability_not_met_reason": "no_first_quote",
+      "first_quote_ui_delivery": "none",
+      "first_quote_schwab_plane": "none",
+      "first_quote_delivered_via_sse_app_path": false,
+      "first_quote_delivered_via_http_fast_lane": false,
+      "first_quote_schwab_quotes_from_l1_streaming": false,
+      "first_quote_schwab_used_rest_fallback_for_quotes": false,
+      "first_quote_streaming_vs_fallback_summary": "none",
+      "tradeability_questions_answered": "NO: no_first_quote. First quote path: not observed. Schwab quote plane at first quote: unknown (no first quote).",
+      "final_switch_state": "GUEST DATA INCOMPLETE",
+      "switch_operator": {
+        "state": "GUEST DATA INCOMPLETE",
+        "show": true,
+        "label": "GUEST DATA INCOMPLETE",
+        "operator_message": "Data/transport timing \u2014 not a model verdict."
+      },
+      "storage_key": "NVDA",
+      "pair_kind": "core_to_guest",
+      "server_received_ts": 1783735258.6552386
+    }
+  ],
+  "required_metrics": [
+    "selected_ticker",
+    "previous_ticker",
+    "is_core",
+    "is_guest",
+    "is_special_index",
+    "request_generation",
+    "switch_started_at",
+    "fast_quote_first_seen_ms",
+    "analytics_light_first_seen_ms",
+    "tier_c_first_seen_ms",
+    "cards_first_render_ms",
+    "stale_cache_restored",
+    "guest_incomplete_reason",
+    "db_contention_state_at_switch",
+    "wrong_ticker_payload_rejected_count",
+    "stale_generation_payload_rejected_count",
+    "final_switch_state"
+  ],
+  "runtime_env": {
+    "git_commit": "5506185dc45ebd180e757f7bd5f36fb984a58192",
+    "branch": "",
+    "captured_at_utc": "2026-07-11T02:02:52.903533+00:00",
+    "market_session_mode": "unknown",
+    "ED_CALIBRATION_LOG": "1",
+    "ED_CALIBRATION_LOG_enabled": true,
+    "schwab_mode": "unknown",
+    "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+    "server_pid": 20760,
+    "ticker_universe_note": "operator-selected during RTH matrix"
+  },
+  "endpoints": {
+    "ticker_switch": "/api/diagnostics/ticker-switch",
+    "sqlite_contention": "/api/diagnostics/sqlite-contention"
+  }
+}

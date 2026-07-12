@@ -1,0 +1,428 @@
+{
+  "mission": "MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1",
+  "mission_type": "READ_ONLY",
+  "generated_utc": "2026-07-10T03:14:04.885888+00:00",
+  "base_audit_sha": "e749e75345b19a291f9d14de6e78593c0feff4af",
+  "investigation_sha": "86466aeec5c18ae4b0d5ff30f3f5d77fa66c421b",
+  "phase0_baseline_start": {
+    "head": "86466aeec5c18ae4b0d5ff30f3f5d77fa66c421b",
+    "modified_tracked": {
+      ".cursor/rules/00-always.mdc": "37d73757476590a53208f77ce33dc0f76eff39930ddb21c32c729223660f3620",
+      "AGENTS.md": "99e82eb6c0a22b69283530ddbfd9c7cd9c675dc4816b0914532e88baf4c2c8b1",
+      "CLAUDE.md": "76818d6a6d38f95cd84732a9f5106a8c6377c6b11f499d148799a615f9374834",
+      "governance/artifacts/CHECK_STACK_INVENTORY.json": "299d3eaf05998049ab7532dabeab2f09b85cc029810e17653d38a770fd60c412",
+      "governance/docs/AGENT_OPERATING_CONTRACT.md": "cd7942dcb1e19b4247c8f0da520bd617029eea50d87b607dd7747a66dad284c3",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md": "f6b20836bacd08af8c6e4292e7e370b72074f6ba933a06c5e2e98fc49f4a0e0d",
+      "governance/mega1_traceable_inventory.py": "40e1cb55adbb662b1c264f7787334b0d4ccba2294cc2dae488000efe71e8a565",
+      "reports/money_path/.gitkeep": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+      "server.py": "b7223f54708b36846628a0bd687ac41ddfd5922fffb008c84570b1e4ccd98f90",
+      "tests/test_mega1_traceable_audit.py": "5e9f985451eb9ff41b1c32945c4bc0999e8dff2bb4954a5ab8e19aaf192c40c0",
+      "tools/check_fix_everything_we_touch.py": "0d8693c21dab5a2762178e171b59309ead38c174b0dbf8a2f1b8b8f5da4f2239"
+    },
+    "untracked": {
+      "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md": "547acbf8f4923ad68a920e94457f18973fc94e6cd3eaa9f81de4796b91ff49e7",
+      "governance/standard/universal_institutional_engineering_standard_v1.json": "ff1c36158290644a01614efeed329edf606e015c4d84e6f3a885cb708c73fe77",
+      "reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md": "3f0e8f75ccd4d1c471bb315f816f02397feae3db5f118db313f5026c06d9a3d8",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json": "61fe1c004330d171abdfc9220c8eabc5421cf40954f7cb7dcfaf46baeaa4c35b",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md": "c48c19854e14e142c00ac1ca0940921a405bff691f0b3ab7517bb3176dc89a3a",
+      "reports/ui_transport/rth_guest_switch_validation_2026-07-09.json": "432856708cbfa7952a0fe5490c4f139be76f4395e6815956c6081e755621de43",
+      "reports/ui_transport/rth_guest_switch_validation_2026-07-09.md": "10140528e701d2e82a5b889992ccc17f935daf6d77a4579771f162327bcfba02",
+      "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json": "3c979f290f8c18715bce00f08f276f6205ffeeebf6e456470cd51ed5f156e1ba",
+      "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md": "425574afa1f3ced58b33bcceb8b6e9d69393f487c300880128023ec4270378c1",
+      "tests/test_build_identity_process_drift_v1.py": "8683024e9a4a7e8d252900f736685a937bece4c334c0ba3a47ff8cee827df7db",
+      "tests/test_universal_institutional_standard.py": "659ee6827089127782d2f7b8f8f54cb83a143a8630c4d32d5a847127add3908e",
+      "tools/check_universal_standard.py": "107ca291209d7caff3b46f1c96c338192e6b1d0d4be06b321de9ce21d435ac60"
+    },
+    "model_stack_reports": {
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md": "c48c19854e14e142c00ac1ca0940921a405bff691f0b3ab7517bb3176dc89a3a",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json": "61fe1c004330d171abdfc9220c8eabc5421cf40954f7cb7dcfaf46baeaa4c35b"
+    },
+    "git_status_short": " M .cursor/rules/00-always.mdc\n M AGENTS.md\n M CLAUDE.md\n M governance/artifacts/CHECK_STACK_INVENTORY.json\n M governance/artifacts/survivor_edge_probe.json\n M governance/artifacts/survivor_inference_backtest.json\n M governance/artifacts/survivor_validation_run.json\n M governance/docs/AGENT_OPERATING_CONTRACT.md\n M governance/docs/CHECK_STACK_RIGHTSIZING.md\n M governance/mega1_traceable_inventory.py\n M reports/money_path/.gitkeep\n M server.py\n M tests/test_mega1_traceable_audit.py\n M tools/check_fix_everything_we_touch.py\n?? governance/standard/\n?? reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md\n?? reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json\n?? reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md\n?? reports/ui_transport/rth_guest_switch_validation_2026-07-09.json\n?? reports/ui_transport/rth_guest_switch_validation_2026-07-09.md\n?? reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json\n?? reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md\n?? tests/test_build_identity_process_drift_v1.py\n?? tests/test_universal_institutional_standard.py\n?? tools/check_universal_standard.py\n",
+    "git_diff_name_status": "M\t.cursor/rules/00-always.mdc\nM\tAGENTS.md\nM\tCLAUDE.md\nM\tgovernance/artifacts/CHECK_STACK_INVENTORY.json\nM\tgovernance/docs/AGENT_OPERATING_CONTRACT.md\nM\tgovernance/docs/CHECK_STACK_RIGHTSIZING.md\nM\tgovernance/mega1_traceable_inventory.py\nM\treports/money_path/.gitkeep\nM\tserver.py\nM\ttests/test_mega1_traceable_audit.py\nM\ttools/check_fix_everything_we_touch.py\n",
+    "git_diff_stat": " .cursor/rules/00-always.mdc                     |   2 +\n AGENTS.md                                       |   1 +\n CLAUDE.md                                       |   1 +\n governance/artifacts/CHECK_STACK_INVENTORY.json |  25 +++-\n governance/docs/AGENT_OPERATING_CONTRACT.md     |   1 +\n governance/docs/CHECK_STACK_RIGHTSIZING.md      |   2 +-\n governance/mega1_traceable_inventory.py         |   2 +\n reports/money_path/.gitkeep                     |   1 +\n server.py                                       | 162 +++++++++++++++++++++++-\n tests/test_mega1_traceable_audit.py             |   2 +-\n tools/check_fix_everything_we_touch.py          |  14 ++\n 11 files changed, 206 insertions(+), 7 deletions(-)\n",
+    "git_ls_files_others": "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md\ngovernance/standard/universal_institutional_engineering_standard_v1.json\nreports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md\nreports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json\nreports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md\nreports/ui_transport/rth_guest_switch_validation_2026-07-09.json\nreports/ui_transport/rth_guest_switch_validation_2026-07-09.md\nreports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json\nreports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md\ntests/test_build_identity_process_drift_v1.py\ntests/test_universal_institutional_standard.py\ntools/check_universal_standard.py\n"
+  },
+  "phase1_sha_reconciliation": {
+    "merge_base_is_ancestor_exit_code": 0,
+    "commits_between_count": 109,
+    "commits_between": [
+      "86466ae board(quality-circle): stamp QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1 = ENABLED / NOT_STARTED per operator acceptance",
+      "75da35e board(scoreboard): record DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1 closure @ 06a3f9e + quality-circle linkage",
+      "06a3f9e feat(calibration): DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1 eligible-grid-before-scoring scoreboard v3",
+      "4ec5a91 board(idle-sentinel): record IDLE_SENTINEL_FRESHNESS_V1 closure @ 4036858 + new lanes",
+      "4036858 feat(analytics-cache): IDLE_SENTINEL_FRESHNESS_V1 standing producer for unviewed cache keys",
+      "9664be4 board(full-fixes): record FULL_FIXES_ONLY_V2 closure row @ e7eb002 (four gates green)",
+      "e7eb002 governance(full-fixes): declaration semantics + operator boundary statements \u00e2\u20ac\u201d lock IMPLEMENTED / NOT_CLOSED",
+      "e8ba89a governance(full-fixes): FINAL_SHA verification needs full history \u00e2\u20ac\u201d CI fetch-depth 0 for the three shallow gates",
+      "37adc76 governance(full-fixes): FULL_FIXES_ONLY_V2_REPO_WIDE_EFFECTIVE_FIX_LOCK \u00e2\u20ac\u201d V1 downgraded, V2 is the effective repo-wide lock",
+      "1873ce4 governance(full-fixes): FULL_FIXES_ONLY_V1 hard lock \u00e2\u20ac\u201d root-cause/universal/mechanically-locked fixes only",
+      "930c678 fix(harness): scope header on card-fidelity MD artifacts \u00e2\u20ac\u201d generator + 2026-07-09 artifact",
+      "f05c070 evidence(ui-transport): RTH card-fidelity slice artifacts 2026-07-09 @ 2e4bc09",
+      "9dfd33b feat(model-serving): MODEL_SERVING_PROVENANCE_SURFACE_V1 read-only bundle provenance",
+      "2e4bc09 governance(analytics-cache): in-diff CSV-first declaration for POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 + mkt_ctx repair",
+      "1f71104 fix(analytics-cache): FIX_B relocation repair \u00e2\u20ac\u201d nonlocal mkt_ctx in persistence tail",
+      "36cfbb5 feat(analytics-cache): POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 REST-visible failure cause",
+      "f1e074f docs(ledger): OPEN_ITEMS_RECONCILIATION_V1 align resume surface to tip 5869081",
+      "5869081 fix(monte-carlo): BAR_MINUTES=1 sizing-horizon alignment + remove dead DEFAULT_HORIZON",
+      "c9a3fea governance(sentinel-language): UNIVERSAL_SENTINEL_PROOF_LANGUAGE_LOCK_V1",
+      "1ab899a feat(calibration): SCOREBOARD_ACTIONABILITY_JOIN_V1 report-only actionability artifact",
+      "93202d8 test(analytics-cache): rebind two pool-name source locks to the recompute-leaf pool",
+      "806056c feat(analytics-cache): OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 dedicated recompute-leaf pool",
+      "9287bdd feat(analytics-cache): OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1 log_only inline leaf fetches",
+      "8408405 feat(analytics-cache): FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 publish-before-persistence reorder",
+      "a758c53 evidence(analytics-cache): ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 RTH reproof artifacts @ 0a17e14",
+      "0a17e14 fix(analytics-cache): ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1",
+      "f456fa3 governance(universality): REPO_WIDE_UNIVERSALITY_HARDGATE_V1",
+      "8a1dbce governance(ticker-universality): UNIVERSAL_TICKER_MECHANICAL_LOCK_V1",
+      "ac1776c evidence(quote-lane): ANCHOR_QUOTE_LANE_REFRESHER_RTH_REPROOF_V1 live RTH artifacts @ a98512b",
+      "a98512b feat(quote-lane): ANCHOR_QUOTE_LANE_REFRESHER_V1 \u00e2\u20ac\u201d session-gated anchor quote-lane refresher",
+      "734221e evidence(rth): 2026-07-07 bell sample + live db-degraded/stale/1c-only trace artifacts",
+      "ab85b27 feat(harness): HARNESS_CLASSIFIER_OPERATOR_MIRROR_ALIGNMENT_V1 score vs S2B mirror",
+      "4cc26c4 fix(math): FORMULA_P1A collateral - in-diff CSV declaration + IV-block window",
+      "92d734d fix(math): FORMULA_P1A realized-vol annualization made timeframe-aware",
+      "e6d138a fix(bars): BAR_PERSISTENCE_GAP_TRACE_AND_FIX_V1 explicit window + stale-seed guard",
+      "6fac3b5 evidence(rth): POST_CHAIN_GATE_RTH_SAMPLE 2026-07-06 artifacts @ 4b94029 runtime",
+      "4b94029 feat(server): TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 serialize Schwab chain fetches",
+      "4b36ccf fix(server): in-diff CSV-first declaration for stage-timer instrumentation",
+      "b6026c0 evidence(rth): NEXT_RTH_REPROOF 2026-07-06 mid-RTH artifacts @ caf162a",
+      "7fa1002 feat(server): TIER_C_STAGE_TIMER_INSTRUMENTATION_V1 additive latency observability",
+      "caf162a fix(governance): register warm-slice defs in mega1 inventory + evidence MD scope header",
+      "8988c44 evidence(rth): MONDAY_RTH_PROOF_V1 2026-07-06 card fidelity artifacts",
+      "7afdd9e feat(server): SESSION_OPEN_ANCHOR_WARM_SLICE_V1 RTH-open anchor bundle warm",
+      "3a4a308 governance: STACK_SCOPE_CLOSURE_GOVERNANCE_LOCK_V1 lane-closure scope lock",
+      "e63e1a0 docs(governance): D2 dual-label board reconciliation @ 623e088f / c74da7a",
+      "c74da7a fix(lint): drop unused MatrixGuardError import (Hardening ruff F401 at 623e088)",
+      "623e088 research(d2): scratch normalized TB carry + isolated dual-label matrix runner",
+      "369c9e9 fix(research): route d2 builder ET conversion through the time_et authority",
+      "dbe6f99 research(d2): dual-label backtest scratch build, TB labels, learnability pilot",
+      "a517f44 feat(calibration): host-visible fusion-calibration provenance + ticker-agnostic locks",
+      "3242ac1 feat(accuracy): RTH-scoped primary metric with baseline edge; all-hours = audit context",
+      "2192819 fix(cards): stamp labeled_count on POPULATED horizon histogram rows",
+      "06766d4 fix(accuracy): compute accuracy for the serving model version, not a dead literal",
+      "6f52745 fix(db): make the snapshot minute throttle atomic and restart-durable",
+      "0dafe6c perf(similarity): opt-in blob-free projection for the hot-path similar read",
+      "cac4ac8 perf(vol): narrow iv_level projection for IV rank history (152x measured)",
+      "c6817d7 perf(signals): dedup identical same-tick similarity retrieval (2 calls -> 1)",
+      "a718b40 test(observability): anchor Step 3 throttle lock on the guard, not a window",
+      "118a39e perf(transport): move 1m-bars persistence off the Tier C synchronous hot path",
+      "ae341ce diag(latency): def-free compute-stage marks to satisfy mega1 inventory gate",
+      "d24bf2e diag(latency): compute-stage breakdown for Tier C pipeline",
+      "0c1fd14 governance(csv-first): declare lane-2 diag slice in-diff (SCHWAB_CSV_CHECKED)",
+      "bfd85e8 fix(diag): render source truth for __edTransport.lastFullRenderSource",
+      "163b1f1 test(locks): regression locks for card wiring transport fixes",
+      "70f2375 governance(csv-first): declare card wiring transport slice (SCHWAB_CSV_CHECKED)",
+      "3a0d338 fix(ui): align card wiring with backend truth",
+      "ff48fee Merge pull request #25 from evargas963/fix/console-usability-recovery",
+      "5b55a94 ci(governance): final repin after fixture idiom fix (9c2e626a/85,934)",
+      "1091cfd test(materialize): compose fixture column list out of diff-emission scan",
+      "275b4d6 ci(governance): repin V4 register for app-usability slice",
+      "6e2dbb2 fix(db): make live write path incremental and gate console scheduler",
+      "1ed1db9 Merge pull request #26 from evargas963/fix/pr-lane-csv-first",
+      "b685432 ci(governance): adopt deterministic runner pin 86b7a326",
+      "f31f685 fix(scanner): platform-stable embedding topk ordering",
+      "0d094ec ci(governance): adopt runner-generated register pin (Linux pin authority)",
+      "db35169 ci(schwab-csv-first): runner is pin authority - separate verify + meta artifact",
+      "3acedf6 ci(governance): repin register from clean tree - untracked contamination fix",
+      "f1fc62f ci(deps): pin native scanner wheels - runner segfault named by faulthandler",
+      "a9a0ccc ci(schwab-csv-first): repair PR lane - non-circular pin, full-range push scan",
+      "e861eae fix(diagnostics): derive DB contention pill from recent window",
+      "e15de38 fix(ui): commit SSE stream URLs on open and harden teardown",
+      "96d0bf5 fix(ui): use Tier C force flag in fetchState fallback",
+      "a80c1e8 test(governance): declare Step 3 CSV-first review",
+      "7369b56 fix(server): prevent live analytics stall and reduce write pressure",
+      "417dc48 fix(server): make Tier C recompute owner honest",
+      "9ca4446 test(governance): inventory live operator mode helper",
+      "f52ef8d Revert \"fix(server): restore Tier C SSE delivery during live proof\"",
+      "193bfad fix(server): reduce RTH live logger load",
+      "b481ec4 fix(server): restore Tier C SSE delivery during live proof",
+      "354e89a test(governance): inventory T5 SSE helper functions",
+      "16c6b19 fix(server): keep Tier C SSE live under fetch contention",
+      "fe29d8c test(governance): inventory T4 money-path snapshot helper",
+      "7dd9153 feat(ui): unify money-path snapshot freshness gating",
+      "0b7ef35 test(ui): align SSE badge assertion with monotonic gate",
+      "d3b9029 feat(ui): gate money-path renders monotonically",
+      "27fd30a test(ui): align scheduler refactor assertions",
+      "e9ba6e8 feat(ui): schedule money-path renders latest-wins",
+      "98b9b8a docs(governance): define money-path stale latency contract",
+      "92dc2ae feat(ui): instrument money-path latency diagnostics",
+      "01e7223 docs(governance): declare S3A Schwab CSV disposition",
+      "3f26290 fix(ui): honor operator card actionability",
+      "b9a77b5 docs(governance): reconcile checklist status",
+      "caf1563 docs(governance): add proof label ladder",
+      "50f07aa feat(cards): expose operator card actionability mirrors",
+      "0a9a6c0 test(cards): repair S2A freshness metadata governance",
+      "f837c8c feat(cards): emit analytics freshness metadata",
+      "0745484 docs(cards): define stale card freshness contract",
+      "985a19f docs(schwab): declare VXN RVX CSV authority",
+      "cfa274c feat(market-context): add VXN RVX fetch evidence"
+    ],
+    "diff_name_status_count": 118,
+    "model_stack_cone_files_changed": [
+      "governance/SCHWAB_V4_REVIEW_MEMOS/market_context.py.md",
+      "market_context.py",
+      "market_state.py",
+      "ml_data_common.py",
+      "ml_predict.py",
+      "monte_carlo.py",
+      "prediction_engine.py",
+      "server.py",
+      "signals.py"
+    ]
+  },
+  "phase2_report_audit": {
+    "json_parses": true,
+    "runtime_matrix_rows": 256,
+    "runtime_matrix_expected": 256,
+    "runtime_matrix_match": true,
+    "defect_ids_json": [
+      "MSD-001",
+      "MSD-002",
+      "MSD-003",
+      "MSD-004",
+      "MSD-005"
+    ],
+    "remediation_lanes": 15,
+    "remediation_cycle_detected": false,
+    "matrix_keys": [
+      "1_component_horizon_ticker_class_runtime",
+      "2_component_mathematical_specification_status",
+      "3_feature_lineage",
+      "4_defect_reproduction_register",
+      "5_model_horizon_split_safety",
+      "6_model_horizon_meta_oof",
+      "7_negative_control_coverage",
+      "8_baseline_requirements",
+      "9_calibration_requirements",
+      "10_incremental_value_requirements",
+      "11_train_backtest_replay_live_parity",
+      "12_mathematical_oracle",
+      "13_artifact_provenance",
+      "14_remediation_dependency_graph",
+      "15_final_binary_status_table"
+    ],
+    "gaps": [
+      "Matrix 3 feature_lineage is a string placeholder, not a populated feature x model x horizon grid",
+      "Matrix 15 final_binary_status_table is a string pointer, not a duplicated table",
+      "ACTIVE_STACK_ARCHITECTURE marked PROVEN without live numeric execution proof",
+      "TRANSFORMER_PRODUCTION_CONTRIBUTION marked PROVEN \u2014 overbroad; sensitivity not shown",
+      "Prior report cites investigation HEAD while base audit SHA is e749e75; not all findings uniformly tagged per SHA",
+      "Matrices 5-12 are design stubs with APPROVED/NOT_PROVEN execution_status only \u2014 acceptable for design mission but not complete validation matrices"
+    ],
+    "unsupported_proven_in_prior_final_determinations": [
+      "ACTIVE_STACK_ARCHITECTURE",
+      "TRANSFORMER_PRODUCTION_CONTRIBUTION"
+    ]
+  },
+  "phase3_independent_defects": {
+    "MSD-001": {
+      "classification": "CONFIRMED_DEFECT",
+      "applicable_sha": [
+        "base_sha",
+        "investigation_sha",
+        "working_tree_uncommitted"
+      ],
+      "producer_money_path": "market_state.py stamps vix_direction=None; no vix_vs_prev on SignalInput",
+      "producer_api_db": "server.py _vix_tracker -> ms_dict vix_direction/vix_vs_prev",
+      "consumer": "volatility_regime.classify_volatility_regime reads inp.vix_vs_prev",
+      "base_lines": {
+        "market_state_vix_direction_none": 1309,
+        "net_vanna_init": 1209
+      },
+      "investigation_lines": {
+        "market_state_vix_direction_none": 1312
+      },
+      "money_path_field": [
+        "vol_regime.trade_permissive",
+        "vol_regime.conviction_multiplier"
+      ],
+      "determinism": "DETERMINISTIC",
+      "ticker_scope": "ALL",
+      "horizon_scope": "ALL",
+      "reproduction": "git show SHA:market_state.py | findstr vix_direction; git show SHA:volatility_regime.py | findstr vix_vs_prev"
+    },
+    "MSD-002": {
+      "classification": "CONFIRMED_DEFECT",
+      "applicable_sha": {
+        "base_sha": "CONFIRMED_DEFECT macro VIX only",
+        "investigation_sha": "CONFIRMED_DEFECT consumer routing still vix_level=mkt_ctx.vix; VXN/RVX fetch-only"
+      },
+      "producer": "market_context fetch; market_state vix_level=mkt_ctx.vix",
+      "consumer": "SignalInput, vol_regime, ML vix_level feature",
+      "base_sha_note": "no vxn/rvx in market_context.py at base",
+      "investigation_sha_note": "cfa274c adds / fetch; comment: no consumer routing in V1 lane",
+      "money_path_field": [
+        "vix_level",
+        "vix_bucket",
+        "ML features"
+      ],
+      "determinism": "DETERMINISTIC",
+      "ticker_scope": "QQQ,IWM,ALL_GUESTS",
+      "horizon_scope": "ALL"
+    },
+    "MSD-003": {
+      "classification": "CONFIRMED_DEFECT",
+      "applicable_sha": [
+        "base_sha",
+        "investigation_sha"
+      ],
+      "producer": "ml_predict._apply_5c_xgb_plus_transformer_isotonic_calibration",
+      "base_line_maps": 1694,
+      "investigation_line_maps": 1806,
+      "consumer": "5c stack_probs",
+      "horizon_scope": "5c",
+      "ticker_scope": "SPY",
+      "determinism": "DETERMINISTIC"
+    },
+    "MSD-004": {
+      "classification": "CONFIRMED_DEFECT",
+      "applicable_sha": [
+        "base_sha",
+        "investigation_sha"
+      ],
+      "producer": "ml_predict 5c branch _weighted_average_partial",
+      "base_line": 1846,
+      "investigation_line": 1958,
+      "consumer": "stack_probs -> MC drift",
+      "horizon_scope": "5c",
+      "ticker_scope": "ALL",
+      "determinism": "DETERMINISTIC"
+    },
+    "MSD-005": {
+      "classification": "CONFIRMED_DEFECT",
+      "applicable_sha": [
+        "base_sha",
+        "investigation_sha"
+      ],
+      "producer": "market_state _net_vanna=None never populated",
+      "base_line": 1209,
+      "investigation_line": 1212,
+      "consumer": "SignalInput.net_vanna",
+      "money_path_alteration": "NOT_PROVEN",
+      "determinism": "DETERMINISTIC",
+      "ticker_scope": "ALL",
+      "horizon_scope": "ALL"
+    }
+  },
+  "phase4_transformer_decomposition": {
+    "TRANSFORMER_STATIC_REACHABILITY": "PROVEN",
+    "TRANSFORMER_RUNTIME_INVOCATION": "PROVEN",
+    "TRANSFORMER_ARTIFACT_SELECTION": "PROVEN",
+    "TRANSFORMER_NON_FALLBACK_OUTPUT": "NOT_PROVEN",
+    "TRANSFORMER_FUSION_INCLUSION": "NOT_PROVEN",
+    "TRANSFORMER_FINAL_OUTPUT_SENSITIVITY": "NOT_PROVEN",
+    "TRANSFORMER_PREDICTIVE_INCREMENT": "NOT_PROVEN",
+    "TRANSFORMER_ECONOMIC_INCREMENT": "NOT_PROVEN"
+  },
+  "phase5_prior_mission_scope": {
+    "pre_mission_baseline_artifact_found": false,
+    "transcript_evidence": "Agent transcript 4ee2061c shows MODEL_STACK_SPECIFICATION mission user query; no captured git status/hash snapshot immediately before first report write",
+    "dirty_tree_at_recovery_start": {
+      "modified_tracked_count": 11,
+      "untracked_count": 12,
+      "includes_server_py_modified": true
+    },
+    "prior_mission_claimed_scope_violation_not_applicable": true,
+    "PREVIOUS_MISSION_AUTHORIZED_FILE_COMPLIANCE": "NOT_PROVEN",
+    "PREVIOUS_MISSION_SCOPE_VIOLATION": "NOT_PROVEN",
+    "note": "Cannot reconstruct exact before/after authorship for prior mission; cannot prove unauthorized modification of pre-existing dirty files"
+  },
+  "phase6_decision_board": [
+    {
+      "lane_id": "R1",
+      "class": "SPECIFICATION",
+      "objective": "Operator decision: per-ticker native vol vs macro VIX-only semantics before any consumer wiring",
+      "prereq": []
+    },
+    {
+      "lane_id": "R2",
+      "class": "DEFECT_FIX",
+      "objective": "MSD-001: stamp vix_vs_prev and vix_direction consistently on SignalInput from same source as ms_dict/DB",
+      "prereq": [
+        "R1"
+      ]
+    },
+    {
+      "lane_id": "R3",
+      "class": "DEFECT_FIX",
+      "objective": "MSD-004 + MSD-003: resolve 5c stack_probs path \u2014 externalize isotonic and align with meta_stack or document governed bypass",
+      "prereq": []
+    },
+    {
+      "lane_id": "R4",
+      "class": "VALIDATION_INFRASTRUCTURE",
+      "objective": "Minimum purged interval-overlap harness + overlap assertion for 1c-60c labels",
+      "prereq": []
+    },
+    {
+      "lane_id": "R5",
+      "class": "MODEL_RESEARCH",
+      "objective": "Bounded stop/go: Transformer final-output sensitivity test (knockout/ablation) on SPY/QQQ/IWM x 4 horizons before further stack investment",
+      "prereq": [
+        "R4"
+      ]
+    }
+  ],
+  "final_binary_determinations": {
+    "REPORT_MARKDOWN_COMPLETENESS": "NOT_PROVEN",
+    "REPORT_JSON_COMPLETENESS": "NOT_PROVEN",
+    "REPORT_CROSS_FORMAT_CONSISTENCY": "NOT_PROVEN",
+    "BASE_TO_INVESTIGATION_SHA_APPLICABILITY": "NOT_PROVEN",
+    "MSD_001": "CONFIRMED_DEFECT",
+    "MSD_002": "CONFIRMED_DEFECT",
+    "MSD_003": "CONFIRMED_DEFECT",
+    "MSD_004": "CONFIRMED_DEFECT",
+    "MSD_005": "CONFIRMED_DEFECT",
+    "TRANSFORMER_STATIC_REACHABILITY": "PROVEN",
+    "TRANSFORMER_FINAL_OUTPUT_SENSITIVITY": "NOT_PROVEN",
+    "PREVIOUS_MISSION_AUTHORIZED_FILE_COMPLIANCE": "NOT_PROVEN",
+    "PREVIOUS_MISSION_CLOSURE": "NOT_CLOSED",
+    "IMPLEMENTATION_READY": "NOT_APPROVED",
+    "MODEL_STACK_REAL_MONEY_APPROVAL": "NOT_APPROVED"
+  },
+  "phase0_baseline_end": {
+    "head": "86466aeec5c18ae4b0d5ff30f3f5d77fa66c421b",
+    "modified_tracked": {
+      ".cursor/rules/00-always.mdc": "37d73757476590a53208f77ce33dc0f76eff39930ddb21c32c729223660f3620",
+      "AGENTS.md": "99e82eb6c0a22b69283530ddbfd9c7cd9c675dc4816b0914532e88baf4c2c8b1",
+      "CLAUDE.md": "76818d6a6d38f95cd84732a9f5106a8c6377c6b11f499d148799a615f9374834",
+      "governance/artifacts/CHECK_STACK_INVENTORY.json": "299d3eaf05998049ab7532dabeab2f09b85cc029810e17653d38a770fd60c412",
+      "governance/docs/AGENT_OPERATING_CONTRACT.md": "cd7942dcb1e19b4247c8f0da520bd617029eea50d87b607dd7747a66dad284c3",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md": "f6b20836bacd08af8c6e4292e7e370b72074f6ba933a06c5e2e98fc49f4a0e0d",
+      "governance/mega1_traceable_inventory.py": "40e1cb55adbb662b1c264f7787334b0d4ccba2294cc2dae488000efe71e8a565",
+      "reports/money_path/.gitkeep": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+      "server.py": "b7223f54708b36846628a0bd687ac41ddfd5922fffb008c84570b1e4ccd98f90",
+      "tests/test_mega1_traceable_audit.py": "5e9f985451eb9ff41b1c32945c4bc0999e8dff2bb4954a5ab8e19aaf192c40c0",
+      "tools/check_fix_everything_we_touch.py": "0d8693c21dab5a2762178e171b59309ead38c174b0dbf8a2f1b8b8f5da4f2239"
+    },
+    "untracked": {
+      "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md": "547acbf8f4923ad68a920e94457f18973fc94e6cd3eaa9f81de4796b91ff49e7",
+      "governance/standard/universal_institutional_engineering_standard_v1.json": "ff1c36158290644a01614efeed329edf606e015c4d84e6f3a885cb708c73fe77",
+      "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json": "8455c615fbf3a2c02405959b4b3cc172fcebfdaed048ff1268f07a45a18b9a55",
+      "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md": "64b44d45fb816dd3d4a8de88be45f59a3a484b143df7ccc2c7101995eabfe0aa",
+      "reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md": "3f0e8f75ccd4d1c471bb315f816f02397feae3db5f118db313f5026c06d9a3d8",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json": "61fe1c004330d171abdfc9220c8eabc5421cf40954f7cb7dcfaf46baeaa4c35b",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md": "c48c19854e14e142c00ac1ca0940921a405bff691f0b3ab7517bb3176dc89a3a",
+      "reports/ui_transport/rth_guest_switch_validation_2026-07-09.json": "432856708cbfa7952a0fe5490c4f139be76f4395e6815956c6081e755621de43",
+      "reports/ui_transport/rth_guest_switch_validation_2026-07-09.md": "10140528e701d2e82a5b889992ccc17f935daf6d77a4579771f162327bcfba02",
+      "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json": "3c979f290f8c18715bce00f08f276f6205ffeeebf6e456470cd51ed5f156e1ba",
+      "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md": "425574afa1f3ced58b33bcceb8b6e9d69393f487c300880128023ec4270378c1",
+      "tests/test_build_identity_process_drift_v1.py": "8683024e9a4a7e8d252900f736685a937bece4c334c0ba3a47ff8cee827df7db",
+      "tests/test_universal_institutional_standard.py": "659ee6827089127782d2f7b8f8f54cb83a143a8630c4d32d5a847127add3908e",
+      "tools/check_universal_standard.py": "107ca291209d7caff3b46f1c96c338192e6b1d0d4be06b321de9ce21d435ac60"
+    },
+    "model_stack_reports": {
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md": "c48c19854e14e142c00ac1ca0940921a405bff691f0b3ab7517bb3176dc89a3a",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json": "61fe1c004330d171abdfc9220c8eabc5421cf40954f7cb7dcfaf46baeaa4c35b"
+    },
+    "git_status_short": " M .cursor/rules/00-always.mdc\n M AGENTS.md\n M CLAUDE.md\n M governance/artifacts/CHECK_STACK_INVENTORY.json\n M governance/artifacts/survivor_edge_probe.json\n M governance/artifacts/survivor_inference_backtest.json\n M governance/artifacts/survivor_validation_run.json\n M governance/docs/AGENT_OPERATING_CONTRACT.md\n M governance/docs/CHECK_STACK_RIGHTSIZING.md\n M governance/mega1_traceable_inventory.py\n M reports/money_path/.gitkeep\n M server.py\n M tests/test_mega1_traceable_audit.py\n M tools/check_fix_everything_we_touch.py\n?? governance/standard/\n?? reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json\n?? reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md\n?? reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md\n?? reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json\n?? reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md\n?? reports/ui_transport/rth_guest_switch_validation_2026-07-09.json\n?? reports/ui_transport/rth_guest_switch_validation_2026-07-09.md\n?? reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json\n?? reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md\n?? tests/test_build_identity_process_drift_v1.py\n?? tests/test_universal_institutional_standard.py\n?? tools/check_universal_standard.py\n",
+    "git_diff_name_status": "M\t.cursor/rules/00-always.mdc\nM\tAGENTS.md\nM\tCLAUDE.md\nM\tgovernance/artifacts/CHECK_STACK_INVENTORY.json\nM\tgovernance/docs/AGENT_OPERATING_CONTRACT.md\nM\tgovernance/docs/CHECK_STACK_RIGHTSIZING.md\nM\tgovernance/mega1_traceable_inventory.py\nM\treports/money_path/.gitkeep\nM\tserver.py\nM\ttests/test_mega1_traceable_audit.py\nM\ttools/check_fix_everything_we_touch.py\n",
+    "git_diff_stat": " .cursor/rules/00-always.mdc                     |   2 +\n AGENTS.md                                       |   1 +\n CLAUDE.md                                       |   1 +\n governance/artifacts/CHECK_STACK_INVENTORY.json |  25 +++-\n governance/docs/AGENT_OPERATING_CONTRACT.md     |   1 +\n governance/docs/CHECK_STACK_RIGHTSIZING.md      |   2 +-\n governance/mega1_traceable_inventory.py         |   2 +\n reports/money_path/.gitkeep                     |   1 +\n server.py                                       | 162 +++++++++++++++++++++++-\n tests/test_mega1_traceable_audit.py             |   2 +-\n tools/check_fix_everything_we_touch.py          |  14 ++\n 11 files changed, 206 insertions(+), 7 deletions(-)\n",
+    "git_ls_files_others": "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md\ngovernance/standard/universal_institutional_engineering_standard_v1.json\nreports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json\nreports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md\nreports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md\nreports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json\nreports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md\nreports/ui_transport/rth_guest_switch_validation_2026-07-09.json\nreports/ui_transport/rth_guest_switch_validation_2026-07-09.md\nreports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json\nreports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md\ntests/test_build_identity_process_drift_v1.py\ntests/test_universal_institutional_standard.py\ntools/check_universal_standard.py\n",
+    "recovery_artifacts": {
+      "reports\\MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md": "64b44d45fb816dd3d4a8de88be45f59a3a484b143df7ccc2c7101995eabfe0aa",
+      "reports\\MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json": "8455c615fbf3a2c02405959b4b3cc172fcebfdaed048ff1268f07a45a18b9a55"
+    }
+  },
+  "scope_violation_during_recovery": "NOT_PROVEN",
+  "scope_violation_files": []
+}

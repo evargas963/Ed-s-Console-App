@@ -1,0 +1,539 @@
+{
+ "mission": "VOLATILITY_V1_CRASH_RECOVERY_SCOPE_RECONSTRUCTION_AND_ACCEPTANCE_REPROOF",
+ "mode": "READ_ONLY_RECOVERY_AND_PROOF",
+ "head_sha": "d1d13261bdf607f9b2ab6fa40f538c86812176b4",
+ "proof_label": "REPORTED_PROVEN_NOT_INDEPENDENTLY_VERIFIED",
+ "phase0_baseline_start": {
+  "head": "d1d13261bdf607f9b2ab6fa40f538c86812176b4",
+  "index_empty": true,
+  "modified_tracked": {
+   "features/replay_signal_input_v1.py": {
+    "worktree_sha256": "6709f27a548d28c7910b260f6829cdece469853705a5ce095de58e1ca94f2428",
+    "size": 4591
+   },
+   "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md": {
+    "worktree_sha256": "9a63fa6c3f765033763495b53c17f1d01ba498598de6af92d21a66edc0cb5c41",
+    "size": 9408
+   },
+   "governance/standard/universal_institutional_engineering_standard_v1.json": {
+    "worktree_sha256": "1b6ac01b70179aa43eac078dcb169da5ece8999d4e6e1917acaffa5627fb2152",
+    "size": 12392
+   },
+   "market_state.py": {
+    "worktree_sha256": "4204f43ffeb2546e558b6cc042dec9cc35a233299ca666176204bae76cc622e3",
+    "size": 98384
+   },
+   "server.py": {
+    "worktree_sha256": "38d8ba066f299ec395f9db13ff8291a84a3748d02a89fdfdc096b993c53867a1",
+    "size": 498637
+   },
+   "tests/test_market_context_fetch_fail_closed.py": {
+    "worktree_sha256": "22b3b8c5c1e2247c222baf9b2f5551c3ccfc3adc35d5fbe8ad5ac9bf3494e618",
+    "size": 10490
+   },
+   "tests/test_replay_signal_input_v1.py": {
+    "worktree_sha256": "2a191e43b3ba39de7d4f30cb0f215cbcd5b518fb79ffd8e6cb3cb71e97689505",
+    "size": 3947
+   },
+   "tests/test_volatility_regime_fail_closed.py": {
+    "worktree_sha256": "7ef6f2f17bef819103bf0ce77f09f1f70e3d9cd5bf384cb0ba0f5956757f7f7b",
+    "size": 8057
+   }
+  },
+  "head_blob_sha256": {
+   "features/replay_signal_input_v1.py": "20c7298c8463b4b54c170ca6d9bfee3811d1c6eef0ba70eefae0ea2375016768",
+   "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md": "5dd41a3b588bdd63cc05fb88ea9999578dd024b065fd6535bdeff9e2be1315ad",
+   "governance/standard/universal_institutional_engineering_standard_v1.json": "c12e3c81ea09a9270f350909c606d54027e64c3b297da7bca741f7941c0d7cf1",
+   "market_state.py": "24e30c123e7727b319065d6b671f3fd40dc013dd4daa2027a9466c4dbd982bca",
+   "server.py": "0566461a32ef8d4094f550ad450b9ab16905d5ada59f0785a98054a83e533f82",
+   "tests/test_market_context_fetch_fail_closed.py": "ee74af06c9aa863a905e736a808c7281dba4f0817697e6955bcdf84380dcb341",
+   "tests/test_replay_signal_input_v1.py": "1b66ed089d06607472669e42fdbc9967be0d49d8b36b48f56993f3365c288ff9",
+   "tests/test_volatility_regime_fail_closed.py": "8f895483c37707bbe1691509d0041a0697f2e5b006c78bf43eb2eabaf1d41bfd"
+  },
+  "gitkeep_reverted_matches_head": true,
+  "untracked": {
+   "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json": {
+    "sha256": "f43918aefb52c16317d43154d4b722d3f60c557aba6e31b4d766172c8cf5d077",
+    "size": 33605
+   },
+   "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md": {
+    "sha256": "64b44d45fb816dd3d4a8de88be45f59a3a484b143df7ccc2c7101995eabfe0aa",
+    "size": 9766
+   },
+   "reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md": {
+    "sha256": "3f0e8f75ccd4d1c471bb315f816f02397feae3db5f118db313f5026c06d9a3d8",
+    "size": 18943
+   },
+   "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json": {
+    "sha256": "61fe1c004330d171abdfc9220c8eabc5421cf40954f7cb7dcfaf46baeaa4c35b",
+    "size": 286964
+   },
+   "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md": {
+    "sha256": "c48c19854e14e142c00ac1ca0940921a405bff691f0b3ab7517bb3176dc89a3a",
+    "size": 25501
+   },
+   "reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.json": {
+    "sha256": "1bbb795a48189cf48d627b164fdc32adafc86f330060dedd47a742cc9b4a157d",
+    "size": 55832
+   },
+   "reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.md": {
+    "sha256": "b7c3c545ab496c6ed353fa68f1e236e64b86720689714995a470d4931a0ae433",
+    "size": 18585
+   },
+   "reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.json": {
+    "sha256": "db0f25c139703e106c7a7c125cc8f2470bbc15617a0b79a963e5bb0ff3319253",
+    "size": 42194
+   },
+   "reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.md": {
+    "sha256": "d69a958f4292a28f1999d48545caa6043fec1e159243bc66273e2665485ea0f2",
+    "size": 16565
+   },
+   "reports/VOLATILITY_V1_CRASH_RECOVERY_SCOPE_RECONSTRUCTION_AND_ACCEPTANCE_REPROOF.md": {
+    "sha256": "64233d4055d4023dc9748f74d81ac855824888bdddf5cf0d7b6ff2821c98ccd1",
+    "size": 19429
+   },
+   "reports/ui_transport/rth_guest_switch_validation_2026-07-09.json": {
+    "sha256": "432856708cbfa7952a0fe5490c4f139be76f4395e6815956c6081e755621de43",
+    "size": 1690
+   },
+   "reports/ui_transport/rth_guest_switch_validation_2026-07-09.md": {
+    "sha256": "10140528e701d2e82a5b889992ccc17f935daf6d77a4579771f162327bcfba02",
+    "size": 597
+   },
+   "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json": {
+    "sha256": "3c979f290f8c18715bce00f08f276f6205ffeeebf6e456470cd51ed5f156e1ba",
+    "size": 1214144
+   },
+   "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md": {
+    "sha256": "425574afa1f3ced58b33bcceb8b6e9d69393f487c300880128023ec4270378c1",
+    "size": 682
+   }
+  },
+  "numstat": "37\t0\tfeatures/replay_signal_input_v1.py\n1\t1\tgovernance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md\n1\t1\tgovernance/standard/universal_institutional_engineering_standard_v1.json\n40\t1\tmarket_state.py\n51\t38\tserver.py\n127\t1\ttests/test_market_context_fetch_fail_closed.py\n75\t0\ttests/test_replay_signal_input_v1.py\n27\t0\ttests/test_volatility_regime_fail_closed.py"
+ },
+ "phase1_reconstruction": {
+  "crashed_session_transcript": "~/.claude/projects/C--Users-evarg-Documents-Trading-EdWebConsole/142cb7ad-ff5d-47a5-a2ad-623d45d45d49.jsonl",
+  "resumed_session_id": "98365f68-0f55-4521-83cb-c5849332fdc8",
+  "patch_script_writes": [
+   {
+    "line": 8904,
+    "ts": "2026-07-10T05:06:36Z",
+    "file": "patch_vol_v1.py"
+   },
+   {
+    "line": 8913,
+    "ts": "2026-07-10T05:07:20Z",
+    "file": "patch_vol_v1_server.py"
+   },
+   {
+    "line": 8928,
+    "ts": "2026-07-10T05:09:10Z",
+    "file": "patch_vol_tests.py"
+   }
+  ],
+  "background_pytest_never_completed": {
+   "line": 8954,
+   "ts": "2026-07-10T05:13:38Z",
+   "task_id": "bfb14pm4v"
+  },
+  "enforce_all_pass": {
+   "line": 8970,
+   "ts": "2026-07-10T05:19:52Z",
+   "note": "--enforce-all, not --objective-audit"
+  },
+  "crash_time_diffstat": {
+   "line": 8975,
+   "ts": "2026-07-10T05:20:05Z",
+   "summary": "7 files, 315 insertions, 34 deletions, includes .gitkeep +1, NO governance files"
+  },
+  "last_transcript_ts": "2026-07-10T05:23:31Z",
+  "governance_commits": [
+   {
+    "sha": "00829c9",
+    "ts": "2026-07-09T23:43:31-05:00"
+   },
+   {
+    "sha": "d1d1326",
+    "ts": "2026-07-09T23:55:25-05:00"
+   }
+  ],
+  "post_resume_edits": [
+   "server.py vol_ctx hoist out of swallowing try",
+   "server.py confluence vix_level -> vol_ctx",
+   "server.py vix_bucket -> vol_ctx",
+   "tests/test_market_context_fetch_fail_closed.py +test_vol_context_bound_outside_any_try",
+   "governance JSON prohibited_practices amendment + MD --render",
+   "reports/money_path/.gitkeep reverted"
+  ],
+  "verdicts": {
+   "PRE_CRASH_V1_FILE_SET": "PROVEN",
+   "POST_RESUME_CHANGE_SET": "PROVEN",
+   "CRASH_RECOVERY_AUTHORSHIP": "PROVEN"
+  }
+ },
+ "phase2_roster": {
+  "AUTHORIZED_V1_PRODUCTION_FILES": [
+   "server.py",
+   "market_state.py",
+   "features/replay_signal_input_v1.py"
+  ],
+  "AUTHORIZED_V1_TEST_FILES": [
+   "tests/test_volatility_regime_fail_closed.py",
+   "tests/test_replay_signal_input_v1.py",
+   "tests/test_market_context_fetch_fail_closed.py"
+  ],
+  "AUTHORIZED_V1_FUNCTIONS": [
+   "server.py:_fetch_state",
+   "market_state.py:build_market_state",
+   "features/replay_signal_input_v1.py:signal_input_from_snapshot_row_dict"
+  ],
+  "FORBIDDEN_V1_FILES": [
+   "ml_predict.py",
+   "ml_train.py",
+   "models/**",
+   "calibration/**",
+   "bayesian_fusion.py",
+   "static/**",
+   "templates/**",
+   "db.py schema",
+   ".github/**"
+  ],
+  "AUTHORIZED_V1_ROSTER": "PROVEN",
+  "V1_EXTRA_CHANGED_FILES": [
+   "governance/standard/universal_institutional_engineering_standard_v1.json",
+   "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md"
+  ],
+  "V1_MISSING_REQUIRED_FILES": "NONE"
+ },
+ "phase3_governance": {
+  "PRIOR_UNIVERSAL_STANDARD_BYTE_PROOF": "INVALIDATED",
+  "GOVERNANCE_CHANGE_BELONGS_TO_V1": "NOT_APPLICABLE",
+  "GOVERNANCE_CHANGE_REQUIRES_SEPARATE_LANE": "APPROVED",
+  "amendment": "prohibited_practices entry gains REPRESENTATIVE_ONLY_NOT_PROVEN token; MD regenerated via checker --render; motive: pre-existing check_universal_ticker_lock FAIL at HEAD d1d1326 blocking V1 acceptance"
+ },
+ "phase4_production_diff": {
+  "V1_PRODUCTION_DIFF": "APPROVED",
+  "SILENT_SWALLOW_FIX": "PROVEN",
+  "SINGLE_PER_CYCLE_VOL_CONTEXT": "PROVEN",
+  "SINGLE_UNIT_CONVERSION_BOUNDARY": "PROVEN",
+  "V2_RIDE_ALONG": "NONE",
+  "ast_evidence": {
+   "vol_ctx_binding_line": 6115,
+   "enclosing_control_flow": [],
+   "build_market_state_call_line": 6407,
+   "vix_tracker_tick_sites": [
+    6112
+   ],
+   "prev_vix_capture_line": 6107,
+   "publish_vix_write_lines": [
+    7237,
+    7991
+   ]
+  },
+  "real_gate_registered": {
+   "tag": "[REAL-GATE:VOL-CTX-SINGLE-SOURCE]",
+   "surface": "OPEN_ITEMS.md",
+   "reason_not_landed_in_mission": "mission operator order READ_ONLY: no file correction authorized",
+   "items": [
+    {
+     "id": "R-1",
+     "site": "market_state.py:1290",
+     "desc": "SignalInput vix_bucket from raw mkt_ctx.vix (equal under float|None producer contract); route through vol_ctx in follow-up lane"
+    },
+    {
+     "id": "R-2",
+     "site": "server.py:7237,7991",
+     "desc": "published cache vix writes raw mkt_ctx.vix; strict single-source would use vol_ctx.market_iv_level"
+    }
+   ]
+  }
+ },
+ "phase5_contract": {
+  "CANONICAL_DECIMAL_UNIT_IMPLEMENTATION": "PROVEN",
+  "QUALITY_PROVENANCE_ENVELOPE": "NOT_PROVEN",
+  "LEGACY_ALIAS_MIGRATION": "NOT_PROVEN",
+  "CONTRACT_VERSION_STAMP": "PROVEN",
+  "not_in_v1_by_ratified_sequencing": [
+   "20-field vol_input_quality envelope + 9 states",
+   "canonical market_iv_* serialized names + consumer mechanical block",
+   "training-row version stamp + scheduler preflight",
+   "native VXN/RVX fields (V2)"
+  ]
+ },
+ "phase6_golden_records": {
+  "GR_1": "PROVEN",
+  "GR_2": "PROVEN",
+  "GR_3": "PROVEN",
+  "GR_4": "NOT_PROVEN",
+  "GR_5": "NOT_PROVEN",
+  "GR_6": "NOT_PROVEN",
+  "gr2_prefix_execution": {
+   "head_builder_output": {
+    "iv_level": 18.5,
+    "realized_vol": 18.5
+   },
+   "current_builder_output": {
+    "iv_level": 0.185,
+    "realized_vol": 0.185
+   },
+   "heuristic": 5.0
+  },
+  "live_route_classification": [
+   "UNIVERSAL_BY_CONSTRUCTION_STATIC_PROVEN",
+   "RTH_SENTINEL_REPROOF_PENDING"
+  ]
+ },
+ "phase7_tests": {
+  "AUTHORIZED_TEST_SET": "PROVEN",
+  "TEST_GATE_STRENGTH": "PROVEN",
+  "TEST_RELAXATION": "NONE",
+  "related_group_count": 69,
+  "test_enumeration": [
+   "tests/test_replay_signal_input_v1.py::test_signal_input_from_snapshot_row_uses_positive_spot",
+   "tests/test_replay_signal_input_v1.py::test_signal_input_from_snapshot_row_fails_closed_on_missing_or_invalid_spot[None]",
+   "tests/test_replay_signal_input_v1.py::test_signal_input_from_snapshot_row_fails_closed_on_missing_or_invalid_spot[]",
+   "tests/test_replay_signal_input_v1.py::test_signal_input_from_snapshot_row_fails_closed_on_missing_or_invalid_spot[0]",
+   "tests/test_replay_signal_input_v1.py::test_signal_input_from_snapshot_row_fails_closed_on_missing_or_invalid_spot[-1]",
+   "tests/test_replay_signal_input_v1.py::test_signal_input_from_snapshot_row_fails_closed_on_missing_or_invalid_spot[not-a-number]",
+   "tests/test_replay_signal_input_v1.py::test_gr2_percent_row_converts_to_decimal_both_fields",
+   "tests/test_replay_signal_input_v1.py::test_gr1_replay_equals_live_conversion_boundary",
+   "tests/test_replay_signal_input_v1.py::test_gr3_missing_vol_fields_stay_missing_never_zero",
+   "tests/test_replay_signal_input_v1.py::test_replay_zero_stays_zero_where_valid",
+   "tests/test_replay_signal_input_v1.py::test_replay_invalid_negative_becomes_unavailable",
+   "tests/test_replay_signal_input_v1.py::test_replay_no_double_conversion_for_already_decimal",
+   "tests/test_replay_signal_input_v1.py::test_replay_route_identity_and_contract_version_constants",
+   "tests/test_replay_signal_input_v1.py::test_replay_msd001_fields_still_carried_from_row",
+   "tests/test_volatility_regime_fail_closed.py::test_normalize_vol_decimal_warns_above_heuristic",
+   "tests/test_volatility_regime_fail_closed.py::test_schwab_iv_percent_to_decimal_silent",
+   "tests/test_volatility_regime_fail_closed.py::test_classify_volatility_regime_no_warn_on_decimal_iv_rv",
+   "tests/test_volatility_regime_fail_closed.py::test_blend_garch_sigma_realized_vol_must_be_decimal",
+   "tests/test_volatility_regime_fail_closed.py::test_garch_trend_warns_on_non_float_entries",
+   "tests/test_volatility_regime_fail_closed.py::test_compression_via_thresholds",
+   "tests/test_volatility_regime_fail_closed.py::test_vol_regime_payload_is_frozen",
+   "tests/test_volatility_regime_fail_closed.py::test_unknown_default_not_trade_permissive",
+   "tests/test_volatility_regime_fail_closed.py::test_realized_vol_1m_annualizes_with_252x390",
+   "tests/test_volatility_regime_fail_closed.py::test_realized_vol_5m_preserves_252x78",
+   "tests/test_volatility_regime_fail_closed.py::test_realized_vol_sqrt5_underscale_regression_lock",
+   "tests/test_volatility_regime_fail_closed.py::test_realized_vol_invalid_bar_minutes_fails_closed",
+   "tests/test_volatility_regime_fail_closed.py::test_server_realized_vol_call_site_passes_1m_interval",
+   "tests/test_volatility_regime_fail_closed.py::test_rapid_vix_change_branch_fires_with_stamped_vix_vs_prev",
+   "tests/test_volatility_regime_fail_closed.py::test_rapid_vix_change_branch_never_fires_from_missing_change",
+   "tests/test_market_context_fetch_fail_closed.py::test_fetch_market_context_quote_failure_returns_partial_context",
+   "tests/test_market_context_fetch_fail_closed.py::test_extract_quote_returns_none_on_bad_payload",
+   "tests/test_market_context_fetch_fail_closed.py::test_fetch_price_levels_uses_rth_open_mins_authority",
+   "tests/test_market_context_fetch_fail_closed.py::test_fetch_market_context_vol_indices_all_present",
+   "tests/test_market_context_fetch_fail_closed.py::test_fetch_market_context_vxn_failure_vix_unchanged",
+   "tests/test_market_context_fetch_fail_closed.py::test_fetch_market_context_rvx_failure_vix_unchanged",
+   "tests/test_market_context_fetch_fail_closed.py::test_fetch_market_context_missing_vol_index_leaves_none_no_exception",
+   "tests/test_market_context_fetch_fail_closed.py::test_vol_index_lane_v1_no_consumer_wiring",
+   "tests/test_market_context_fetch_fail_closed.py::test_signalinput_vix_still_macro_vix_only",
+   "tests/test_market_context_fetch_fail_closed.py::test_vol_context_struct_contract",
+   "tests/test_market_context_fetch_fail_closed.py::test_vol_context_absence_is_explicit_not_directional",
+   "tests/test_market_context_fetch_fail_closed.py::test_single_tracker_tick_site_lock",
+   "tests/test_market_context_fetch_fail_closed.py::test_three_surfaces_consume_the_one_context",
+   "tests/test_market_context_fetch_fail_closed.py::test_vol_context_bound_outside_any_try",
+   "tests/test_market_context_fetch_fail_closed.py::test_canonical_signal_input_construction_lock",
+   "tests/test_market_state_numeric_contract_v1.py::test_nan_spot_degraded_no_signals_and_disp_em_dash",
+   "tests/test_market_state_numeric_contract_v1.py::test_mc_iv_level_nan_skips_positive_gate",
+   "tests/test_market_state_numeric_contract_v1.py::test_forward_prob_nan_surfaces_none_on_ms",
+   "tests/test_market_state_numeric_contract_v1.py::test_fusion_prob_nan_surfaces_none",
+   "tests/test_market_state_numeric_contract_v1.py::test_ml_layer_probs_nan_returns_none",
+   "tests/test_market_state_numeric_contract_v1.py::test_vol_regime_nan_multipliers_none",
+   "tests/test_market_state_numeric_contract_v1.py::test_call_display_nan_entry_em_dash",
+   "tests/test_market_state_numeric_contract_v1.py::test_rec_strike_non_finite_sets_no_trade",
+   "tests/test_market_state_numeric_contract_v1.py::test_final_confidence_nan_none",
+   "tests/test_market_state_numeric_contract_v1.py::test_f_ms_and_price_disp_helpers",
+   "tests/test_market_state_final_confidence_none_preserved.py::test_final_confidence_none_without_multi_horizon_bundle",
+   "tests/test_market_state_final_confidence_none_preserved.py::test_final_confidence_none_without_final_decision",
+   "tests/test_market_state_final_confidence_none_preserved.py::test_final_confidence_populated_from_producer",
+   "tests/test_market_state_final_confidence_none_preserved.py::test_final_confidence_none_when_producer_value_none",
+   "tests/test_signals_fail_closed.py::test_unavailable_model_namespace_has_none_probs",
+   "tests/test_signals_fail_closed.py::test_unavailable_model_namespace_consistent_across_callers",
+   "tests/test_signals_fail_closed.py::test_model_stage_inactive_when_unavailable_namespace",
+   "tests/test_signals_fail_closed.py::test_model_stage_malformed_namespace_probability_none",
+   "tests/test_action11_8_signals_mc_fusion_fail_closed.py::test_signals_file_has_no_fail_open_mc_fusion_patterns",
+   "tests/test_action11_8_signals_mc_fusion_fail_closed.py::test_support_note_none_when_directional_bias_absent",
+   "tests/test_action11_8_signals_mc_fusion_fail_closed.py::test_skew_none_when_mc_directional_bias_absent",
+   "tests/test_action11_8_signals_mc_fusion_fail_closed.py::test_skew_none_when_mc_out_missing",
+   "tests/test_action11_8_signals_mc_fusion_fail_closed.py::test_expansion_containment_skipped_when_both_none",
+   "tests/test_action11_8_signals_mc_fusion_fail_closed.py::test_dominant_none_when_fusion_absent",
+   "tests/test_action11_8_signals_mc_fusion_fail_closed.py::test_fusion_probability_none_when_attribute_missing"
+  ]
+ },
+ "phase8_acceptance": {
+  "TESTS": "PROVEN",
+  "OBJECTIVE_AUDIT": "PROVEN",
+  "TREE_UNCHANGED_BY_REPROOF": "PROVEN",
+  "exits": {
+   "py_compile": 0,
+   "v1_tests_44": 0,
+   "gr_tests_3": 0,
+   "related_25": 0,
+   "mc_similar_signalinput_15": 0,
+   "ast_callsites": 0,
+   "check_universal_standard": 0,
+   "check_universal_ticker_lock": 0,
+   "objective_audit": 0,
+   "git_diff_check": 0
+  }
+ },
+ "phase9_impact_register": {
+  "PRIOR_VOLATILITY_DEPENDENT_EVALUATION_VALIDITY": "NOT_PROVEN",
+  "artifact_families": [
+   "reports/money_path/** (tools/replay_money_path_probe.py outputs)",
+   "arch_competition/** stack-bundle eval (stack_bundle_eval_v1.py:482)",
+   "arch_competition/** ablation inference (ablation_bundle_inference.py:591)",
+   "DB fusion-policy backfills (tools/backfill_fusion_policy_columns_expanded_v1.py, tools/backfill_fusion_policy_complete_v1.py, tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py)",
+   "model/calibration evaluation artifacts derived from replay SignalInputs",
+   "economic backtests + card replay evidence embedding replay vol-regime/MC outputs (reports/ui_transport/** where vol-derived)"
+  ]
+ },
+ "final_packet": {
+  "HEAD_SHA": "d1d13261bdf607f9b2ab6fa40f538c86812176b4",
+  "PRE_CRASH_V1_FILE_SET": "PROVEN",
+  "POST_RESUME_CHANGE_SET": "PROVEN",
+  "CRASH_RECOVERY_AUTHORSHIP": "PROVEN",
+  "PRIOR_UNIVERSAL_STANDARD_BYTE_PROOF": "INVALIDATED",
+  "MSD_001_PRE_FIX_REPRODUCTION": "PROVEN",
+  "VOL_UNIT_001_PRE_FIX_REPRODUCTION": "PROVEN",
+  "SILENT_SWALLOW_FIX": "PROVEN",
+  "SINGLE_PER_CYCLE_VOL_CONTEXT": "PROVEN",
+  "SINGLE_UNIT_CONVERSION_BOUNDARY": "PROVEN",
+  "CANONICAL_DECIMAL_UNIT_IMPLEMENTATION": "PROVEN",
+  "QUALITY_PROVENANCE_ENVELOPE": "NOT_PROVEN",
+  "LEGACY_ALIAS_MIGRATION": "NOT_PROVEN",
+  "CONTRACT_VERSION_STAMP": "PROVEN",
+  "GR_1": "PROVEN",
+  "GR_2": "PROVEN",
+  "GR_3": "PROVEN",
+  "GR_4": "NOT_PROVEN",
+  "GR_5": "NOT_PROVEN",
+  "GR_6": "NOT_PROVEN",
+  "AUTHORIZED_TEST_SET": "PROVEN",
+  "TEST_GATE_STRENGTH": "PROVEN",
+  "TEST_RELAXATION": "NONE",
+  "V2_RIDE_ALONG": "NONE",
+  "PRIOR_VOLATILITY_DEPENDENT_EVALUATION_VALIDITY": "NOT_PROVEN",
+  "V1_PRODUCTION_DIFF": "APPROVED",
+  "V1_SCOPE_COMPLIANCE": "PROVEN",
+  "TESTS": "PROVEN",
+  "OBJECTIVE_AUDIT": "PROVEN",
+  "TREE_UNCHANGED_BY_REPROOF": "PROVEN",
+  "V1_IMPLEMENTATION_STATUS": "IMPLEMENTED_AWAITING_SCOPE_SEPARATION",
+  "IMPLEMENTATION_READY_FOR_COMMIT": "APPROVED",
+  "PUSH_APPROVAL": "NOT_APPROVED",
+  "REAL_MONEY_APPROVAL": "NOT_APPROVED",
+  "VOLATILITY_INPUT_PARITY_AND_UNIT_CONTRACT_V1": "REPROOF_COMPLETE",
+  "MSD_001": "FIXED_WITH_EVIDENCE",
+  "VOL_UNIT_001": "FIXED_WITH_EVIDENCE",
+  "MISSION_CLOSURE": "NOT_CLOSED"
+ },
+ "phase0_baseline_end": {
+  "head": "d1d13261bdf607f9b2ab6fa40f538c86812176b4",
+  "index_empty": true,
+  "modified_tracked": {
+   "features/replay_signal_input_v1.py": {
+    "worktree_sha256": "6709f27a548d28c7910b260f6829cdece469853705a5ce095de58e1ca94f2428",
+    "size": 4591
+   },
+   "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md": {
+    "worktree_sha256": "9a63fa6c3f765033763495b53c17f1d01ba498598de6af92d21a66edc0cb5c41",
+    "size": 9408
+   },
+   "governance/standard/universal_institutional_engineering_standard_v1.json": {
+    "worktree_sha256": "1b6ac01b70179aa43eac078dcb169da5ece8999d4e6e1917acaffa5627fb2152",
+    "size": 12392
+   },
+   "market_state.py": {
+    "worktree_sha256": "4204f43ffeb2546e558b6cc042dec9cc35a233299ca666176204bae76cc622e3",
+    "size": 98384
+   },
+   "server.py": {
+    "worktree_sha256": "38d8ba066f299ec395f9db13ff8291a84a3748d02a89fdfdc096b993c53867a1",
+    "size": 498637
+   },
+   "tests/test_market_context_fetch_fail_closed.py": {
+    "worktree_sha256": "22b3b8c5c1e2247c222baf9b2f5551c3ccfc3adc35d5fbe8ad5ac9bf3494e618",
+    "size": 10490
+   },
+   "tests/test_replay_signal_input_v1.py": {
+    "worktree_sha256": "2a191e43b3ba39de7d4f30cb0f215cbcd5b518fb79ffd8e6cb3cb71e97689505",
+    "size": 3947
+   },
+   "tests/test_volatility_regime_fail_closed.py": {
+    "worktree_sha256": "7ef6f2f17bef819103bf0ce77f09f1f70e3d9cd5bf384cb0ba0f5956757f7f7b",
+    "size": 8057
+   }
+  },
+  "head_blob_sha256": {
+   "features/replay_signal_input_v1.py": "20c7298c8463b4b54c170ca6d9bfee3811d1c6eef0ba70eefae0ea2375016768",
+   "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md": "5dd41a3b588bdd63cc05fb88ea9999578dd024b065fd6535bdeff9e2be1315ad",
+   "governance/standard/universal_institutional_engineering_standard_v1.json": "c12e3c81ea09a9270f350909c606d54027e64c3b297da7bca741f7941c0d7cf1",
+   "market_state.py": "24e30c123e7727b319065d6b671f3fd40dc013dd4daa2027a9466c4dbd982bca",
+   "server.py": "0566461a32ef8d4094f550ad450b9ab16905d5ada59f0785a98054a83e533f82",
+   "tests/test_market_context_fetch_fail_closed.py": "ee74af06c9aa863a905e736a808c7281dba4f0817697e6955bcdf84380dcb341",
+   "tests/test_replay_signal_input_v1.py": "1b66ed089d06607472669e42fdbc9967be0d49d8b36b48f56993f3365c288ff9",
+   "tests/test_volatility_regime_fail_closed.py": "8f895483c37707bbe1691509d0041a0697f2e5b006c78bf43eb2eabaf1d41bfd"
+  },
+  "gitkeep_reverted_matches_head": true,
+  "untracked": {
+   "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json": {
+    "sha256": "f43918aefb52c16317d43154d4b722d3f60c557aba6e31b4d766172c8cf5d077",
+    "size": 33605
+   },
+   "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md": {
+    "sha256": "64b44d45fb816dd3d4a8de88be45f59a3a484b143df7ccc2c7101995eabfe0aa",
+    "size": 9766
+   },
+   "reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md": {
+    "sha256": "3f0e8f75ccd4d1c471bb315f816f02397feae3db5f118db313f5026c06d9a3d8",
+    "size": 18943
+   },
+   "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json": {
+    "sha256": "61fe1c004330d171abdfc9220c8eabc5421cf40954f7cb7dcfaf46baeaa4c35b",
+    "size": 286964
+   },
+   "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md": {
+    "sha256": "c48c19854e14e142c00ac1ca0940921a405bff691f0b3ab7517bb3176dc89a3a",
+    "size": 25501
+   },
+   "reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.json": {
+    "sha256": "1bbb795a48189cf48d627b164fdc32adafc86f330060dedd47a742cc9b4a157d",
+    "size": 55832
+   },
+   "reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.md": {
+    "sha256": "b7c3c545ab496c6ed353fa68f1e236e64b86720689714995a470d4931a0ae433",
+    "size": 18585
+   },
+   "reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.json": {
+    "sha256": "db0f25c139703e106c7a7c125cc8f2470bbc15617a0b79a963e5bb0ff3319253",
+    "size": 42194
+   },
+   "reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.md": {
+    "sha256": "d69a958f4292a28f1999d48545caa6043fec1e159243bc66273e2665485ea0f2",
+    "size": 16565
+   },
+   "reports/VOLATILITY_V1_CRASH_RECOVERY_SCOPE_RECONSTRUCTION_AND_ACCEPTANCE_REPROOF.md": {
+    "sha256": "64233d4055d4023dc9748f74d81ac855824888bdddf5cf0d7b6ff2821c98ccd1",
+    "size": 19429
+   },
+   "reports/ui_transport/rth_guest_switch_validation_2026-07-09.json": {
+    "sha256": "432856708cbfa7952a0fe5490c4f139be76f4395e6815956c6081e755621de43",
+    "size": 1690
+   },
+   "reports/ui_transport/rth_guest_switch_validation_2026-07-09.md": {
+    "sha256": "10140528e701d2e82a5b889992ccc17f935daf6d77a4579771f162327bcfba02",
+    "size": 597
+   },
+   "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json": {
+    "sha256": "3c979f290f8c18715bce00f08f276f6205ffeeebf6e456470cd51ed5f156e1ba",
+    "size": 1214144
+   },
+   "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md": {
+    "sha256": "425574afa1f3ced58b33bcceb8b6e9d69393f487c300880128023ec4270378c1",
+    "size": 682
+   }
+  },
+  "numstat": "37\t0\tfeatures/replay_signal_input_v1.py\n1\t1\tgovernance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md\n1\t1\tgovernance/standard/universal_institutional_engineering_standard_v1.json\n40\t1\tmarket_state.py\n51\t38\tserver.py\n127\t1\ttests/test_market_context_fetch_fail_closed.py\n75\t0\ttests/test_replay_signal_input_v1.py\n27\t0\ttests/test_volatility_regime_fail_closed.py"
+ }
+}

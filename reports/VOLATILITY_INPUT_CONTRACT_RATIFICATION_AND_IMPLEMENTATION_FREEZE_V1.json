@@ -1,0 +1,1102 @@
+{
+  "phase0_baseline_start": {
+    "head": "86466aeec5c18ae4b0d5ff30f3f5d77fa66c421b",
+    "status_short": "M  .cursor/rules/00-always.mdc\nM  AGENTS.md\nM  CLAUDE.md\nM  governance/artifacts/CHECK_STACK_INVENTORY.json\n M governance/artifacts/survivor_edge_probe.json\n M governance/artifacts/survivor_inference_backtest.json\n M governance/artifacts/survivor_validation_run.json\nM  governance/docs/AGENT_OPERATING_CONTRACT.md\nM  governance/docs/CHECK_STACK_RIGHTSIZING.md\nM  governance/mega1_traceable_inventory.py\nA  governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md\nA  governance/standard/universal_institutional_engineering_standard_v1.json\n M reports/money_path/.gitkeep\nM  server.py\nA  tests/test_build_identity_process_drift_v1.py\nM  tests/test_mega1_traceable_audit.py\nA  tests/test_universal_institutional_standard.py\nM  tools/check_fix_everything_we_touch.py\nA  tools/check_universal_standard.py\n?? reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json\n?? reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md\n?? reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md\n?? reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json\n?? reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md\n?? reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.json\n?? reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.md\n?? reports/ui_transport/rth_guest_switch_validation_2026-07-09.json\n?? reports/ui_transport/rth_guest_switch_validation_2026-07-09.md\n?? reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json\n?? reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md\n",
+    "diff_name_status": "M\treports/money_path/.gitkeep\n",
+    "diff_stat": " reports/money_path/.gitkeep | 1 +\n 1 file changed, 1 insertion(+)\n",
+    "others": "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json\nreports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md\nreports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md\nreports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json\nreports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md\nreports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.json\nreports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.md\nreports/ui_transport/rth_guest_switch_validation_2026-07-09.json\nreports/ui_transport/rth_guest_switch_validation_2026-07-09.md\nreports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json\nreports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md\n",
+    "hashes": {
+      ".cursor/rules/00-always.mdc": "37d73757476590a53208f77ce33dc0f76eff39930ddb21c32c729223660f3620",
+      "AGENTS.md": "99e82eb6c0a22b69283530ddbfd9c7cd9c675dc4816b0914532e88baf4c2c8b1",
+      "CLAUDE.md": "76818d6a6d38f95cd84732a9f5106a8c6377c6b11f499d148799a615f9374834",
+      "governance/artifacts/CHECK_STACK_INVENTORY.json": "299d3eaf05998049ab7532dabeab2f09b85cc029810e17653d38a770fd60c412",
+      "governance/docs/AGENT_OPERATING_CONTRACT.md": "cd7942dcb1e19b4247c8f0da520bd617029eea50d87b607dd7747a66dad284c3",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md": "f6b20836bacd08af8c6e4292e7e370b72074f6ba933a06c5e2e98fc49f4a0e0d",
+      "governance/mega1_traceable_inventory.py": "40e1cb55adbb662b1c264f7787334b0d4ccba2294cc2dae488000efe71e8a565",
+      "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md": "9202f565b119a64f5e7aa69adb4f18a553bead2362512d366c7e1da213f49c4d",
+      "governance/standard/universal_institutional_engineering_standard_v1.json": "e9b181da2a8ccb47069670aa688c28083144f499c00e2f7e11f1eeac86ea99c9",
+      "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json": "f43918aefb52c16317d43154d4b722d3f60c557aba6e31b4d766172c8cf5d077",
+      "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md": "64b44d45fb816dd3d4a8de88be45f59a3a484b143df7ccc2c7101995eabfe0aa",
+      "reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md": "3f0e8f75ccd4d1c471bb315f816f02397feae3db5f118db313f5026c06d9a3d8",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json": "61fe1c004330d171abdfc9220c8eabc5421cf40954f7cb7dcfaf46baeaa4c35b",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md": "c48c19854e14e142c00ac1ca0940921a405bff691f0b3ab7517bb3176dc89a3a",
+      "reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.json": "db0f25c139703e106c7a7c125cc8f2470bbc15617a0b79a963e5bb0ff3319253",
+      "reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.md": "d69a958f4292a28f1999d48545caa6043fec1e159243bc66273e2665485ea0f2",
+      "reports/money_path/.gitkeep": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+      "reports/ui_transport/rth_guest_switch_validation_2026-07-09.json": "432856708cbfa7952a0fe5490c4f139be76f4395e6815956c6081e755621de43",
+      "reports/ui_transport/rth_guest_switch_validation_2026-07-09.md": "10140528e701d2e82a5b889992ccc17f935daf6d77a4579771f162327bcfba02",
+      "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json": "3c979f290f8c18715bce00f08f276f6205ffeeebf6e456470cd51ed5f156e1ba",
+      "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md": "425574afa1f3ced58b33bcceb8b6e9d69393f487c300880128023ec4270378c1",
+      "server.py": "b7223f54708b36846628a0bd687ac41ddfd5922fffb008c84570b1e4ccd98f90",
+      "tests/test_build_identity_process_drift_v1.py": "8683024e9a4a7e8d252900f736685a937bece4c334c0ba3a47ff8cee827df7db",
+      "tests/test_mega1_traceable_audit.py": "5e9f985451eb9ff41b1c32945c4bc0999e8dff2bb4954a5ab8e19aaf192c40c0",
+      "tests/test_universal_institutional_standard.py": "06c65ba5914d75d1ef956b6e4af2368c18d208894e62715ffd34acce1e9cec90",
+      "tools/check_fix_everything_we_touch.py": "0d8693c21dab5a2762178e171b59309ead38c174b0dbf8a2f1b8b8f5da4f2239",
+      "tools/check_universal_standard.py": "63f32f5815013cf7b377a04ccca7a29fe1238294622d733ad371792a9bf24369"
+    }
+  },
+  "phase1_source_validation": {
+    "json_parses": true,
+    "concept_count": 11,
+    "concepts_match_expected": true,
+    "concepts_all_in_md": true,
+    "producer_consumer_rows": 9,
+    "classes": [
+      "spx_cone",
+      "ndx_cone",
+      "rut_cone",
+      "single_equity_guest"
+    ],
+    "classes_all_in_md": true,
+    "parity_rows": 5,
+    "fallback_rows": 11,
+    "msd_keys": [
+      "MSD_001",
+      "MSD_002"
+    ],
+    "locks": 8,
+    "final_table_values": {
+      "VOLATILITY_CONSUMER_INVENTORY": "PROVEN",
+      "CURRENT_VOLATILITY_SEMANTICS": "CONFIRMED_DEFECT",
+      "MSD_001": "CONFIRMED_DEFECT",
+      "MSD_002": "CONFIRMED_DEFECT",
+      "TICKER_VOLATILITY_MAPPING_SPECIFICATION": "PROVEN",
+      "GUEST_TICKER_MAPPING_SPECIFICATION": "PROVEN",
+      "TRAIN_BACKTEST_REPLAY_LIVE_VOLATILITY_PARITY": "CONFIRMED_DEFECT",
+      "CANONICAL_VOLATILITY_INPUT_CONTRACT": "APPROVED",
+      "MSD_001_FULL_FIX_DESIGN": "APPROVED",
+      "MSD_002_FULL_FIX_DESIGN": "APPROVED",
+      "MECHANICAL_ENFORCEMENT_DESIGN": "APPROVED",
+      "IMPLEMENTATION_READY": "NOT_APPROVED",
+      "REAL_MONEY_APPROVAL": "NOT_APPROVED"
+    },
+    "md_final_values_match": true,
+    "no_placeholder_approved": true,
+    "concept_field_gaps": [],
+    "fix_lanes": [
+      "dependency_order",
+      "lane_V1_msd001",
+      "lane_V2_msd002"
+    ],
+    "determinations": {
+      "SOURCE_MARKDOWN_COMPLETE": "PROVEN",
+      "SOURCE_JSON_COMPLETE": "PROVEN",
+      "SOURCE_CROSS_FORMAT_CONSISTENCY": "PROVEN"
+    }
+  },
+  "mission": "VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1",
+  "mode": "READ_ONLY",
+  "generated_utc": "2026-07-10T04:28:14.471842+00:00",
+  "matrices": {
+    "1_source_report_completeness": {
+      "json_parses": true,
+      "concept_count": 11,
+      "concepts_match_expected": true,
+      "concepts_all_in_md": true,
+      "producer_consumer_rows": 9,
+      "classes": [
+        "spx_cone",
+        "ndx_cone",
+        "rut_cone",
+        "single_equity_guest"
+      ],
+      "classes_all_in_md": true,
+      "parity_rows": 5,
+      "fallback_rows": 11,
+      "msd_keys": [
+        "MSD_001",
+        "MSD_002"
+      ],
+      "locks": 8,
+      "final_table_values": {
+        "VOLATILITY_CONSUMER_INVENTORY": "PROVEN",
+        "CURRENT_VOLATILITY_SEMANTICS": "CONFIRMED_DEFECT",
+        "MSD_001": "CONFIRMED_DEFECT",
+        "MSD_002": "CONFIRMED_DEFECT",
+        "TICKER_VOLATILITY_MAPPING_SPECIFICATION": "PROVEN",
+        "GUEST_TICKER_MAPPING_SPECIFICATION": "PROVEN",
+        "TRAIN_BACKTEST_REPLAY_LIVE_VOLATILITY_PARITY": "CONFIRMED_DEFECT",
+        "CANONICAL_VOLATILITY_INPUT_CONTRACT": "APPROVED",
+        "MSD_001_FULL_FIX_DESIGN": "APPROVED",
+        "MSD_002_FULL_FIX_DESIGN": "APPROVED",
+        "MECHANICAL_ENFORCEMENT_DESIGN": "APPROVED",
+        "IMPLEMENTATION_READY": "NOT_APPROVED",
+        "REAL_MONEY_APPROVAL": "NOT_APPROVED"
+      },
+      "md_final_values_match": true,
+      "no_placeholder_approved": true,
+      "concept_field_gaps": [],
+      "fix_lanes": [
+        "dependency_order",
+        "lane_V1_msd001",
+        "lane_V2_msd002"
+      ],
+      "determinations": {
+        "SOURCE_MARKDOWN_COMPLETE": "PROVEN",
+        "SOURCE_JSON_COMPLETE": "PROVEN",
+        "SOURCE_CROSS_FORMAT_CONSISTENCY": "PROVEN"
+      }
+    },
+    "2_canonical_unit_matrix": [
+      {
+        "field": "market_iv_level (legacy vix_level)",
+        "canonical_internal_unit": "annualized vol points (18.5)",
+        "accepted_source_unit": "vol points (Schwab $VIX lastPrice)",
+        "conversion": "none",
+        "valid_range": "(0,200]",
+        "impossible_range": "<=0 or >200",
+        "serialization_unit": "vol points (ms_dict.vix, DB vix_level)",
+        "display_unit": "vol points",
+        "artifact_schema_unit": "vol points (ml_train numeric)",
+        "compat": "identical unit all routes",
+        "unit_assertion": "0<v<=200"
+      },
+      {
+        "field": "native_iv_level (VXN/RVX)",
+        "canonical_internal_unit": "annualized vol points",
+        "accepted_source_unit": "vol points",
+        "conversion": "none",
+        "valid_range": "(0,200]",
+        "impossible_range": "<=0 or >200",
+        "serialization_unit": "vol points",
+        "display_unit": "vol points",
+        "artifact_schema_unit": "vol points (future, ablation-gated)",
+        "compat": "new columns; historical NULL",
+        "unit_assertion": "0<v<=200"
+      },
+      {
+        "field": "ticker_atm_iv (legacy iv_level)",
+        "canonical_internal_unit": "DECIMAL at SignalInput (0.185)",
+        "accepted_source_unit": "percent from chain atm_iv / mc_iv_level",
+        "conversion": "vol_percent_to_decimal at canonical builder ONLY (market_state.py:1219-1224)",
+        "valid_range": "decimal (0,5.0]",
+        "impossible_range": ">5.0 at SignalInput",
+        "serialization_unit": "PERCENT in DB (server.py:6843) and ms_dict",
+        "display_unit": "percent",
+        "artifact_schema_unit": "percent (DB training rows)",
+        "compat": "legacy percent frozen in DB/API; decimal frozen at SignalInput",
+        "unit_assertion": "SignalInput: 0<v<=5.0; DB: 0<v<=500"
+      },
+      {
+        "field": "realized_vol",
+        "canonical_internal_unit": "DECIMAL at SignalInput",
+        "accepted_source_unit": "percent from compute_realized_vol",
+        "conversion": "vol_percent_to_decimal at builder (market_state.py:1224)",
+        "valid_range": "decimal (0,5.0]",
+        "impossible_range": ">5.0 at SignalInput",
+        "serialization_unit": "PERCENT in DB (db.py:599)",
+        "display_unit": "percent",
+        "artifact_schema_unit": "percent (DB)",
+        "compat": "as ticker_atm_iv",
+        "unit_assertion": "same split assertion"
+      },
+      {
+        "field": "forecast_vol_bars (garch_sigma_bars)",
+        "canonical_internal_unit": "per-bar sigma, price-relative decimal",
+        "accepted_source_unit": "same (math_volatility producer)",
+        "conversion": "none",
+        "valid_range": "each s in (0,0.5]",
+        "impossible_range": "<=0",
+        "serialization_unit": "not persisted per-bar",
+        "display_unit": "n/a",
+        "artifact_schema_unit": "n/a",
+        "compat": "n/a",
+        "unit_assertion": "all(0<s<=0.5)"
+      },
+      {
+        "field": "atr",
+        "canonical_internal_unit": "price points",
+        "accepted_source_unit": "price points",
+        "conversion": "none; atr_pct = atr/spot derived at consumer",
+        "valid_range": "(0, 0.2*spot]",
+        "impossible_range": "<=0",
+        "serialization_unit": "price points",
+        "display_unit": "points",
+        "artifact_schema_unit": "points",
+        "compat": "unchanged",
+        "unit_assertion": "0<atr<=0.2*spot"
+      },
+      {
+        "field": "market_iv_change (legacy vix_vs_prev)",
+        "canonical_internal_unit": "signed vol points",
+        "accepted_source_unit": "derived",
+        "conversion": "none",
+        "valid_range": "[-50,50]",
+        "impossible_range": "abs>50",
+        "serialization_unit": "signed vol points",
+        "display_unit": "signed vol points",
+        "artifact_schema_unit": "signed vol points",
+        "compat": "identical all routes",
+        "unit_assertion": "abs(v)<=50"
+      },
+      {
+        "field": "native_vs_market_iv_spread",
+        "canonical_internal_unit": "signed vol points",
+        "accepted_source_unit": "derived",
+        "conversion": "none",
+        "valid_range": "[-100,100]",
+        "impossible_range": "abs>100",
+        "serialization_unit": "signed vol points",
+        "display_unit": "signed vol points",
+        "artifact_schema_unit": "ablation-gated",
+        "compat": "new field",
+        "unit_assertion": "abs(v)<=100"
+      },
+      {
+        "field": "z-scores / ratios (rv_iv_ratio, iv_rank)",
+        "canonical_internal_unit": "dimensionless (iv_rank 0-100)",
+        "accepted_source_unit": "same-unit operands only",
+        "conversion": "operands must share unit BEFORE ratio",
+        "valid_range": "ratio (0,10]; rank [0,100]",
+        "impossible_range": "ratio<=0",
+        "serialization_unit": "dimensionless",
+        "display_unit": "dimensionless / percent-rank",
+        "artifact_schema_unit": "dimensionless",
+        "compat": "unchanged",
+        "unit_assertion": "operand-unit-equality precondition"
+      }
+    ],
+    "2b_replay_unit_parity_register": {
+      "determination": "CONFIRMED_DEFECT",
+      "defect_id": "VOL-UNIT-001",
+      "statement": "Replay/backfill/eval routes copy percent-form DB values into SignalInput fields whose frozen contract is decimal, with no conversion and no consumer-side re-normalization.",
+      "evidence_chain": [
+        "db.py:420 iv_level comment avg IV across chain; db.py:599 realized_vol comment annualized realized vol percent",
+        "server.py:6843 stamps snapshot iv_level as percent for DB / iv_rank history (explicit in-code comment); server.py:6950 realized_vol=_realized_vol (percent producer)",
+        "signal_types.py:86-88 SignalInput contract: iv_level/realized_vol decimal; ms_dict/DB stay percent",
+        "market_state.py:1219-1224 live builder converts via vol_percent_to_decimal \u2014 decimal enters SignalInput on live route",
+        "features/replay_signal_input_v1.py:40-46 copies row values VERBATIM for every matching SignalInput field name \u2014 iv_level and realized_vol match; no conversion",
+        "volatility_regime.py:189-194 comment no re-normalize; _f (volatility_regime.py:84-86) is plain finite-float \u2014 no scaling",
+        "signals.py:458 MC path: iv = float_finite_or_none(inp.iv_level) \u2014 no scaling before Monte Carlo blend",
+        "volatility_regime.py:89-105 normalize_vol_decimal (the percent heuristic guard) has ZERO production call sites \u2014 only tests/test_volatility_regime_fail_closed.py and governance inventories reference it",
+        "Replay routes execute the real money path: tools/replay_money_path_probe.py:251-252 (compute_signals), arch_competition/stack_bundle_eval_v1.py:482, arch_competition/ablation_bundle_inference.py:591, tools/backfill_fusion_policy_*.py"
+      ],
+      "determinism": "DETERMINISTIC by construction for any DB row with percent-form iv_level/realized_vol > 5.0",
+      "downstream": "MC _blend_sigma receives ~100x IV; vol-regime compression/expansion thresholds compare percent values to decimal cutoffs; rv/iv ratio survives (same-unit operands) but level checks do not",
+      "unexecuted_coverage": "numeric downstream magnitudes not executed in this read-only mission \u2014 divergence itself proven statically at the field contract boundary",
+      "designed_reproduction": "read-only: SELECT one snapshots row WHERE iv_level > 5; call signal_input_from_snapshot_row_dict; assert inp.iv_level > VOL_DECIMAL_PERCENT_HEURISTIC \u2014 violates frozen SignalInput decimal contract"
+    },
+    "3_volatility_concept_registry_ratification": {
+      "verdict": "APPROVED_WITH_AMENDMENTS",
+      "amendments": [
+        {
+          "id": "A1",
+          "concept": "ALL",
+          "change": "Every concept gains explicit canonical_internal_unit + serialization_unit + unit_assertion columns (unit matrix above is now part of the contract)."
+        },
+        {
+          "id": "A2",
+          "concept": "ticker_atm_iv / realized_vol",
+          "change": "Dual-unit boundary is FROZEN: decimal at SignalInput, percent at DB/API. Conversion permitted in exactly one place: the canonical builder. Replay builder must route through the same conversion (closes VOL-UNIT-001)."
+        },
+        {
+          "id": "A3",
+          "concept": "vol_input_quality",
+          "change": "Envelope schema expanded to the Phase 7 enumerated form (below); free-text statuses prohibited."
+        },
+        {
+          "id": "A4",
+          "concept": "forecast_vol_bars",
+          "change": "Documented fail-open to MC flat blend retained but must stamp fallback_used=true + fallback_reason=GARCH_UNAVAILABLE in vol_input_quality."
+        }
+      ],
+      "name_overload_check": "PASS \u2014 no ratified name carries two meanings; legacy vix_*/iv_level overloads resolved by alias table",
+      "observational_vs_derived": {
+        "observational": [
+          "market_iv_level",
+          "native_iv_level",
+          "ticker_atm_iv"
+        ],
+        "derived": [
+          "market_iv_change",
+          "market_iv_direction",
+          "native_iv_change",
+          "native_iv_direction",
+          "realized_vol",
+          "forecast_vol_bars",
+          "native_vs_market_iv_spread",
+          "vol_input_quality"
+        ]
+      }
+    },
+    "4_ticker_class_mapping_ratification": {
+      "verdict": "APPROVED_WITH_AMENDMENTS",
+      "registry": "versioned instrument-class registry owned by instrument_identity.py (already owns VIX/VXN/RVX broker roots at instrument_identity.py:22)",
+      "classes": [
+        {
+          "class": "spx_cone",
+          "rule": "SPX-tracking index products and broad SP500 ETFs",
+          "members": [
+            "SPY",
+            "$SPX"
+          ],
+          "market_iv": "VIX",
+          "native_iv": "VIX (status NATIVE_EQUALS_MARKET)",
+          "chain_required": true,
+          "rv_source": "own 1m bars",
+          "fallback": "market always present or fail-closed",
+          "replay": true,
+          "live": true,
+          "operator_explanation": "VIX is both macro and native for SP500 cone"
+        },
+        {
+          "class": "ndx_cone",
+          "rule": "NDX-tracking products",
+          "members": [
+            "QQQ"
+          ],
+          "market_iv": "VIX",
+          "native_iv": "VXN",
+          "chain_required": true,
+          "rv_source": "own 1m bars",
+          "fallback": "native UNAVAILABLE -> macro overlay remains; no substitution into native field",
+          "replay": true,
+          "live": true,
+          "operator_explanation": "VXN is Nasdaq-100 native vol; VIX kept as macro overlay"
+        },
+        {
+          "class": "rut_cone",
+          "rule": "RUT-tracking products",
+          "members": [
+            "IWM"
+          ],
+          "market_iv": "VIX",
+          "native_iv": "RVX",
+          "chain_required": true,
+          "rv_source": "own 1m bars",
+          "fallback": "as ndx_cone",
+          "replay": true,
+          "live": true,
+          "operator_explanation": "RVX is Russell-2000 native vol"
+        },
+        {
+          "class": "single_equity_guest",
+          "rule": "DEFAULT class: any symbol not matching an index-cone rule (equities, sector ETFs, thematic ETFs)",
+          "members": "all current/future guests",
+          "market_iv": "VIX (macro overlay only)",
+          "native_iv": "ticker_atm_iv with status CHAIN_DERIVED",
+          "chain_required": "preferred",
+          "rv_source": "own 1m bars",
+          "fallback": "no chain -> native_iv_status=UNAVAILABLE; realized_vol NEVER copied into native_iv field",
+          "replay": true,
+          "live": true,
+          "operator_explanation": "no listed vol index; chain ATM IV is the native measure"
+        }
+      ],
+      "amendments": [
+        {
+          "id": "A5",
+          "change": "single_equity_guest is the governed DEFAULT class \u2014 classification is total by construction; leveraged/inverse ETFs and no-chain symbols fall here with chain_required=False handling (native UNAVAILABLE), no ad hoc exceptions."
+        },
+        {
+          "id": "A6",
+          "change": "SPX aliases (SPX, $SPX, bare roots) resolve through instrument_identity broker-root normalization BEFORE classification; the registry keys on normalized roots."
+        },
+        {
+          "id": "A7",
+          "change": "Insufficient-liquidity chains classify normally but emit native_iv_status=INSUFFICIENT_LIQUIDITY (quality gate, not class change)."
+        }
+      ],
+      "determinations": {
+        "TICKER_CLASSIFICATION": "APPROVED",
+        "BASE_TICKER_MAPPING": "APPROVED",
+        "GUEST_TICKER_MAPPING": "APPROVED"
+      }
+    },
+    "5_chain_derived_quality_matrix": {
+      "verdict": "APPROVED",
+      "parameters": {
+        "target_maturity": "nearest listed expiry with DTE in [7,45]; prefer closest to 30 DTE",
+        "interpolation": "none in v1 \u2014 single-expiry ATM read (matches existing atm_iv usage); variance-interpolated 30d is a versioned future upgrade",
+        "atm_definition": "strike nearest spot; if tie, lower strike",
+        "strike_selection": "ATM call+put pair",
+        "quote_basis": "midpoint of bid/ask; theoretical/last prohibited as IV basis",
+        "crossed_or_locked": "discard pair -> quality PARTIAL or UNAVAILABLE",
+        "min_quote_count": "both legs present with positive bid",
+        "max_spread": "(ask-bid)/mid <= 0.25 else INSUFFICIENT_LIQUIDITY",
+        "min_oi_or_volume": "not required in v1 (spread gate is the liquidity gate); revisit with data",
+        "timestamp_alignment": "chain snapshot ts within one refresh cycle of spot ts else STALE",
+        "staleness_threshold": "one chain refresh cycle (existing cadence)",
+        "corporate_events": "chain replaced by adjusted chain post-event; no smoothing across event boundary",
+        "premarket": "previous RTH close chain marked STALE; permitted for display only",
+        "rth": "full",
+        "after_hours": "as premarket",
+        "replay": "reconstruct from persisted percent iv_level column with builder conversion; provenance route=replay",
+        "missing_chain": "native_iv_status=UNAVAILABLE",
+        "insufficient_quality": "INSUFFICIENT_LIQUIDITY",
+        "macro_substitution": "PROHIBITED \u2014 macro never impersonates native/chain IV",
+        "rv_substitution": "PROHIBITED into native_iv field; RV remains its own concept",
+        "substitution_provenance": "any permitted fallback changes provenance status, never silently"
+      }
+    },
+    "6_legacy_alias_migration_matrix": {
+      "aliases": [
+        {
+          "legacy": "vix_level",
+          "canonical": "market_iv_level",
+          "disposition": "retained as read-only compatibility alias at SignalInput/DB/API",
+          "allowed_producers": [
+            "canonical builder only"
+          ],
+          "allowed_consumers": [
+            "existing consumers frozen at ratification list; NEW money-path code must use canonical name"
+          ],
+          "deprecation": "VOL_INPUT_CONTRACT 1.1.0",
+          "removal_condition": "all consumers migrated + one full retrain cycle on canonical columns",
+          "test": "checker rejects new vix_level reads outside allowlist",
+          "provenance": "alias reads carry same vol_input_quality",
+          "serialization": "DB/API column names unchanged during alias window"
+        },
+        {
+          "legacy": "vix_direction",
+          "canonical": "market_iv_direction",
+          "disposition": "same as vix_level",
+          "allowed_producers": [
+            "canonical builder"
+          ],
+          "allowed_consumers": [
+            "frozen list"
+          ],
+          "deprecation": "1.1.0",
+          "removal_condition": "same",
+          "test": "same checker",
+          "provenance": "same",
+          "serialization": "unchanged"
+        },
+        {
+          "legacy": "vix_vs_prev",
+          "canonical": "market_iv_change",
+          "disposition": "same",
+          "allowed_producers": [
+            "canonical builder"
+          ],
+          "allowed_consumers": [
+            "frozen list"
+          ],
+          "deprecation": "1.1.0",
+          "removal_condition": "same",
+          "test": "same checker",
+          "provenance": "same",
+          "serialization": "unchanged"
+        },
+        {
+          "legacy": "iv_level (SignalInput)",
+          "canonical": "ticker_atm_iv",
+          "disposition": "alias; dual-unit boundary frozen (decimal internal / percent serialized)",
+          "allowed_producers": [
+            "canonical builder"
+          ],
+          "allowed_consumers": [
+            "MC",
+            "vol_regime",
+            "ml features (percent DB form)"
+          ],
+          "deprecation": "1.1.0",
+          "removal_condition": "schema migration + retrain",
+          "test": "unit guard + allowlist",
+          "provenance": "conversion_applied recorded",
+          "serialization": "percent"
+        },
+        {
+          "legacy": "vix_bucket",
+          "canonical": "market_iv_bucket (rename-only alias)",
+          "disposition": "retained; single producer math_volatility.vix_bucket",
+          "allowed_producers": [
+            "math_volatility"
+          ],
+          "allowed_consumers": [
+            "ml categorical",
+            "similar-setups"
+          ],
+          "deprecation": "1.1.0",
+          "removal_condition": "categorical retrain",
+          "test": "producer-single-source test exists",
+          "provenance": "derived-from market_iv_level",
+          "serialization": "unchanged"
+        }
+      ],
+      "rules": [
+        "No legacy alias may be written by any code other than the canonical builder",
+        "No NEW consumer may read a legacy alias (mechanical allowlist)",
+        "Aliases are translation-at-boundary only \u2014 one adapter, not an alternate input path",
+        "Model artifacts trained during the alias window record which names they consumed in artifact metadata"
+      ]
+    },
+    "7_quality_provenance_state_matrix": {
+      "envelope_fields": [
+        "contract_version",
+        "source_symbol",
+        "source_type",
+        "raw_event_ts",
+        "availability_ts",
+        "observation_ts",
+        "as_of_ts",
+        "age_seconds",
+        "staleness_status",
+        "quality_status",
+        "conversion_applied",
+        "original_unit",
+        "canonical_unit",
+        "fallback_used",
+        "fallback_reason",
+        "native_value_available",
+        "chain_quality_status",
+        "route_identity",
+        "replay_or_live",
+        "missing_reason"
+      ],
+      "states": [
+        "VALID",
+        "STALE",
+        "UNAVAILABLE",
+        "INSUFFICIENT_LIQUIDITY",
+        "PARTIAL",
+        "FALLBACK",
+        "UNIT_INVALID",
+        "TIMESTAMP_INVALID",
+        "SEMANTIC_VERSION_MISMATCH"
+      ],
+      "permissions": {
+        "VALID": {
+          "model_inference": true,
+          "monte_carlo": true,
+          "vol_regime": true,
+          "card_display": true,
+          "fail_closed": false,
+          "operator_warning": false
+        },
+        "STALE": {
+          "model_inference": false,
+          "monte_carlo": false,
+          "vol_regime": "degraded (unknown-with-reason)",
+          "card_display": "with STALE badge",
+          "fail_closed": "for trading decisions",
+          "operator_warning": true
+        },
+        "UNAVAILABLE": {
+          "model_inference": false,
+          "monte_carlo": "only via documented GARCH/blend fallback path with fallback_used stamp",
+          "vol_regime": "unknown-with-reason",
+          "card_display": "explicit unavailable state",
+          "fail_closed": true,
+          "operator_warning": true
+        },
+        "INSUFFICIENT_LIQUIDITY": {
+          "model_inference": false,
+          "monte_carlo": false,
+          "vol_regime": "unknown-with-reason",
+          "card_display": "badge",
+          "fail_closed": true,
+          "operator_warning": true
+        },
+        "PARTIAL": {
+          "model_inference": false,
+          "monte_carlo": false,
+          "vol_regime": "only fields with VALID sub-status",
+          "card_display": "badge",
+          "fail_closed": "per-field",
+          "operator_warning": true
+        },
+        "FALLBACK": {
+          "model_inference": "only if fallback is in training distribution (same fallback active in training rows)",
+          "monte_carlo": true,
+          "vol_regime": true,
+          "card_display": "with FALLBACK badge",
+          "fail_closed": false,
+          "operator_warning": true
+        },
+        "UNIT_INVALID": {
+          "model_inference": false,
+          "monte_carlo": false,
+          "vol_regime": false,
+          "card_display": false,
+          "fail_closed": true,
+          "operator_warning": true
+        },
+        "TIMESTAMP_INVALID": {
+          "model_inference": false,
+          "monte_carlo": false,
+          "vol_regime": false,
+          "card_display": false,
+          "fail_closed": true,
+          "operator_warning": true
+        },
+        "SEMANTIC_VERSION_MISMATCH": {
+          "model_inference": false,
+          "monte_carlo": false,
+          "vol_regime": false,
+          "card_display": false,
+          "fail_closed": true,
+          "operator_warning": true
+        }
+      }
+    },
+    "8_route_parity_matrix": {
+      "routes": [
+        "training",
+        "validation",
+        "backtest",
+        "replay",
+        "live",
+        "api_serialization",
+        "db_persistence",
+        "card_explanation"
+      ],
+      "identity_classes": {
+        "byte_identical": [
+          "quality_status enums",
+          "direction enums",
+          "contract_version",
+          "class-map resolution"
+        ],
+        "numerically_identical": [
+          "market_iv_level",
+          "market_iv_change",
+          "native_iv_level",
+          "ticker_atm_iv (decimal form)",
+          "realized_vol (decimal form)",
+          "native_vs_market_iv_spread"
+        ],
+        "semantically_equivalent": [
+          "serialized percent forms (exact conversion function, tolerance 0 \u2014 conversion is deterministic *100/100)",
+          "card text rendered from same enum"
+        ]
+      },
+      "explicit_rules": [
+        "unit conversion exclusively in canonical builder; replay uses THE SAME builder",
+        "timestamp normalization: all routes stamp as_of_ts from source cycle, never wall-clock at read time",
+        "missing values: None + status on every route \u2014 a route may not invent presence",
+        "unavailable native vol: identical UNAVAILABLE status across routes for same as-of input",
+        "stale macro: identical STALE classification given same age at as-of",
+        "chain-derived: same chain snapshot -> same ATM read on live and replay",
+        "alias translation at one boundary adapter",
+        "consumer views are projections of one envelope \u2014 never re-derivations",
+        "semantic version equality asserted train vs live at scheduler preflight"
+      ],
+      "golden_record_assertions": [
+        "GR-1: immutable golden snapshot row -> live builder vs replay builder produce field-identical SignalInput vol fields (decimal) and identical vol_input_quality",
+        "GR-2: golden row with percent iv_level=18.5 -> both builders emit 0.185 (kills VOL-UNIT-001)",
+        "GR-3: golden row missing vix prev -> both emit market_iv_change=None + UNAVAILABLE",
+        "GR-4: golden VXN-missing row for QQQ -> native UNAVAILABLE; market fields unaffected",
+        "GR-5: same golden row serialized to API and DB -> percent forms equal round-trip via exact conversion",
+        "GR-6: contract_version mismatch fixture -> scheduler preflight fails"
+      ],
+      "verdict": "APPROVED"
+    },
+    "9_final_field_level_contract": {
+      "semver": "1.0.0",
+      "fields": [
+        {
+          "name": "market_iv_level",
+          "type": "float",
+          "unit": "vol points",
+          "range": "(0,200]",
+          "nullable": true,
+          "required": "required (quality-gated)",
+          "producer": "canonical builder <- $VIX quote",
+          "consumers": [
+            "vol_regime",
+            "call_engine",
+            "ml (frozen alias)",
+            "cards",
+            "similar-setups"
+          ],
+          "classes": "ALL",
+          "fallback": "None+UNAVAILABLE",
+          "timestamps": "quote ts + as_of",
+          "quality": "full envelope",
+          "parity": "numerically identical all routes",
+          "legacy_alias": "vix_level",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "market_iv_change",
+          "type": "float",
+          "unit": "signed vol points",
+          "range": "[-50,50]",
+          "nullable": true,
+          "required": "required",
+          "producer": "canonical builder (prev published cycle diff)",
+          "consumers": [
+            "vol_regime rapid branch",
+            "ml (alias vix_vs_prev)",
+            "similar-setups",
+            "api"
+          ],
+          "classes": "ALL",
+          "fallback": "None when prev missing",
+          "timestamps": "cycle pair",
+          "quality": "envelope",
+          "parity": "numerically identical",
+          "legacy_alias": "vix_vs_prev",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "market_iv_direction",
+          "type": "enum rising|falling|flat|None",
+          "unit": "enum",
+          "range": "enum",
+          "nullable": true,
+          "required": "required",
+          "producer": "canonical builder (tracker)",
+          "consumers": [
+            "confluence",
+            "api",
+            "cards"
+          ],
+          "classes": "ALL",
+          "fallback": "None",
+          "timestamps": "tracker window",
+          "quality": "envelope",
+          "parity": "byte identical",
+          "legacy_alias": "vix_direction",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "native_iv_level",
+          "type": "float",
+          "unit": "vol points",
+          "range": "(0,200]",
+          "nullable": true,
+          "required": "conditional (index cones)",
+          "producer": "canonical builder <- VXN/RVX quote or chain ATM",
+          "consumers": [
+            "future vol_regime",
+            "future ml (ablation-gated)",
+            "UI chip"
+          ],
+          "classes": "ndx_cone,rut_cone (index); guests CHAIN_DERIVED",
+          "fallback": "None+status",
+          "timestamps": "quote/chain ts",
+          "quality": "envelope incl chain_quality",
+          "parity": "numerically identical",
+          "legacy_alias": "none",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "native_iv_change",
+          "type": "float",
+          "unit": "signed vol points",
+          "range": "[-50,50]",
+          "nullable": true,
+          "required": "optional",
+          "producer": "canonical builder",
+          "consumers": [
+            "future"
+          ],
+          "classes": "as level",
+          "fallback": "None",
+          "timestamps": "cycle pair",
+          "quality": "envelope",
+          "parity": "numerically identical",
+          "legacy_alias": "none",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "native_iv_direction",
+          "type": "enum",
+          "unit": "enum",
+          "range": "enum",
+          "nullable": true,
+          "required": "optional",
+          "producer": "canonical builder",
+          "consumers": [
+            "UI",
+            "future"
+          ],
+          "classes": "as level",
+          "fallback": "None",
+          "timestamps": "tracker window",
+          "quality": "envelope",
+          "parity": "byte identical",
+          "legacy_alias": "none",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "ticker_atm_iv",
+          "type": "float",
+          "unit": "DECIMAL internal / percent serialized",
+          "range": "(0,5.0] internal",
+          "nullable": true,
+          "required": "required where chain exists",
+          "producer": "canonical builder (vol_percent_to_decimal)",
+          "consumers": [
+            "monte_carlo",
+            "vol_regime",
+            "ml (percent DB)"
+          ],
+          "classes": "ALL with chains",
+          "fallback": "None+UNAVAILABLE",
+          "timestamps": "chain ts",
+          "quality": "envelope + conversion_applied",
+          "parity": "GR-2 assertion",
+          "legacy_alias": "iv_level",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "realized_vol",
+          "type": "float",
+          "unit": "DECIMAL internal / percent serialized",
+          "range": "(0,5.0] internal",
+          "nullable": true,
+          "required": "required",
+          "producer": "canonical builder",
+          "consumers": [
+            "monte_carlo",
+            "vol_regime",
+            "ml"
+          ],
+          "classes": "ALL",
+          "fallback": "None+UNAVAILABLE",
+          "timestamps": "bar window end",
+          "quality": "envelope",
+          "parity": "GR-2",
+          "legacy_alias": "realized_vol (same name, unit boundary frozen)",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "forecast_vol_bars",
+          "type": "list[float]",
+          "unit": "per-bar sigma decimal",
+          "range": "each (0,0.5]",
+          "nullable": true,
+          "required": "optional",
+          "producer": "GARCH fit (server) via builder",
+          "consumers": [
+            "monte_carlo",
+            "vol_regime garch trend"
+          ],
+          "classes": "ALL",
+          "fallback": "None -> MC flat blend + FALLBACK stamp",
+          "timestamps": "fit window end",
+          "quality": "envelope",
+          "parity": "numerically identical under fixed inputs",
+          "legacy_alias": "garch_sigma_bars",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "native_vs_market_iv_spread",
+          "type": "float",
+          "unit": "signed vol points",
+          "range": "[-100,100]",
+          "nullable": true,
+          "required": "optional",
+          "producer": "canonical builder",
+          "consumers": [
+            "future regime/ml"
+          ],
+          "classes": "index cones",
+          "fallback": "None when either missing",
+          "timestamps": "max cycle ts",
+          "quality": "envelope",
+          "parity": "numerically identical",
+          "legacy_alias": "none",
+          "semver": "1.0.0"
+        },
+        {
+          "name": "vol_input_quality",
+          "type": "struct",
+          "unit": "n/a",
+          "range": "enums per state table",
+          "nullable": false,
+          "required": "REQUIRED always",
+          "producer": "canonical builder",
+          "consumers": [
+            "ALL consumers gate on it",
+            "UI"
+          ],
+          "classes": "ALL",
+          "fallback": "cannot be missing",
+          "timestamps": "cycle",
+          "quality": "is the envelope",
+          "parity": "byte identical",
+          "legacy_alias": "none",
+          "semver": "1.0.0"
+        }
+      ]
+    },
+    "10_implementation_dependency_matrix": [
+      "1 canonical types + contract module",
+      "2 canonical builder (single conversion boundary)",
+      "3 source adapters (VIX tracker, VXN/RVX, chain ATM)",
+      "4 route migration (live, replay through same builder)",
+      "5 legacy boundary adapters (alias table)",
+      "6 DB/API compatibility (additive columns, percent frozen)",
+      "7 unit guards (range assertions at builder + consumers)",
+      "8 golden replay parity (GR-1..GR-6)",
+      "9 consumer migration (allowlists)",
+      "10 mechanical governance enforcement (checker locks)"
+    ],
+    "11_v1_implementation_authorization": {
+      "V1": {
+        "decision": "APPROVED",
+        "preconditions_check": {
+          "canonical_fields_frozen": true,
+          "units_frozen": true,
+          "missing_state_frozen": true,
+          "alias_behavior_frozen": true,
+          "consumer_allowlists_frozen": true,
+          "canonical_builder_contract_frozen": true,
+          "golden_parity_requirements_frozen": true,
+          "unresolved_contract_decisions": "none affecting V1"
+        },
+        "authorized_files": [
+          "server.py (per-cycle vol context struct: tracker direction + pre-publish change computed once)",
+          "market_state.py (build_market_state accepts vol context; stamps vix_direction/vix_vs_prev from it)",
+          "features/replay_signal_input_v1.py (route iv_level/realized_vol through vol_percent_to_decimal \u2014 closes VOL-UNIT-001; stamp route_identity=replay)",
+          "tests/test_volatility_regime_fail_closed.py (extend: rapid branch reachability)",
+          "tests/test_replay_signal_input_v1.py (extend: unit conversion + golden parity GR-1/GR-2/GR-3)",
+          "tests/test_market_context_fetch_fail_closed.py or existing market_state test owner (extend: stamp parity)"
+        ],
+        "functions": [
+          "server: snapshot/publish cycle around server.py:6739-6878 and 7245-7252 \u2014 single computation consumed by all three surfaces",
+          "market_state.build_market_state signature + SignalInput stamp block market_state.py:1290-1312",
+          "replay_signal_input_v1.signal_input_from_snapshot_row_dict unit boundary"
+        ],
+        "intended_changes": [
+          "compute market_iv_change/direction ONCE per cycle in server; pass into build_market_state; stamp identical values on SignalInput, snapshot row, ms_dict",
+          "replay builder converts percent columns to decimal via the same vol_percent_to_decimal",
+          "no new fields; no DB schema change; no ML feature change"
+        ],
+        "forbidden_files": [
+          "ml_predict.py",
+          "ml_train.py",
+          "models/**",
+          "calibration/**",
+          "bayesian_fusion.py",
+          "static/**",
+          "templates/**",
+          "db.py schema",
+          ".github/**"
+        ],
+        "tests": [
+          "route-parity unit: one fake cycle -> SignalInput.vix_direction/vix_vs_prev == snapshot row == ms_dict",
+          "vol_regime rapid branch fires with stamped vix_vs_prev fixture",
+          "replay golden: percent row 18.5 -> 0.185 both fields",
+          "replay golden: live-built vs replay-built SignalInput vol fields identical for same row",
+          "negative: missing prev -> None (never 0)"
+        ],
+        "golden_records": [
+          "GR-1 golden snapshot row fixture (checked-in dict, no DB dependency)",
+          "GR-2 percent-form row",
+          "GR-3 missing-prev row"
+        ],
+        "ticker_coverage": "universal by construction \u2014 no ticker literals in changed paths; fixture tickers arbitrary",
+        "route_coverage": [
+          "live",
+          "replay",
+          "db",
+          "api"
+        ],
+        "acceptance": [
+          "all listed tests green",
+          "Tier A objective-audit exit 0",
+          "no training column change (schema diff empty)",
+          "vol_regime rapid branch reachable live (test-proven)",
+          "VOL-UNIT-001 closed with regression test"
+        ],
+        "rollback": "vol context param defaults None (current behavior); replay conversion behind same commit revert"
+      },
+      "V2": {
+        "decision": "NOT_APPROVED",
+        "reasons": [
+          "sequencing: V1 must land and prove golden parity first (dependency order frozen above)",
+          "V2 DB migration (native_iv columns) should not land while replay route still violates unit contract",
+          "live VXN/RVX RTH wire proof required as part of V2 acceptance, not available in this read-only mission"
+        ],
+        "unblock_conditions": [
+          "V1 merged + golden parity green",
+          "operator confirms chain-derived spread gate 0.25 and DTE window [7,45] defaults"
+        ]
+      }
+    },
+    "12_final_binary_determination_table": {
+      "SOURCE_MARKDOWN_COMPLETE": "PROVEN",
+      "SOURCE_JSON_COMPLETE": "PROVEN",
+      "SOURCE_CROSS_FORMAT_CONSISTENCY": "PROVEN",
+      "REPLAY_IV_REALIZED_VOL_UNIT_PARITY": "CONFIRMED_DEFECT",
+      "VOLATILITY_CONCEPT_REGISTRY": "APPROVED",
+      "TICKER_CLASSIFICATION": "APPROVED",
+      "BASE_TICKER_MAPPING": "APPROVED",
+      "GUEST_TICKER_MAPPING": "APPROVED",
+      "CHAIN_DERIVED_POLICY": "APPROVED",
+      "LEGACY_ALIAS_MIGRATION": "APPROVED",
+      "QUALITY_PROVENANCE_ENVELOPE": "APPROVED",
+      "TRAIN_BACKTEST_REPLAY_LIVE_CONTRACT": "APPROVED",
+      "CANONICAL_VOLATILITY_INPUT_CONTRACT": "APPROVED",
+      "V1_IMPLEMENTATION_READY": "APPROVED",
+      "V2_IMPLEMENTATION_READY": "NOT_APPROVED",
+      "MODEL_STACK_REAL_MONEY_APPROVAL": "NOT_APPROVED",
+      "MISSION_CLOSURE": "NOT_CLOSED"
+    }
+  },
+  "final_binary_determinations": {
+    "SOURCE_MARKDOWN_COMPLETE": "PROVEN",
+    "SOURCE_JSON_COMPLETE": "PROVEN",
+    "SOURCE_CROSS_FORMAT_CONSISTENCY": "PROVEN",
+    "REPLAY_IV_REALIZED_VOL_UNIT_PARITY": "CONFIRMED_DEFECT",
+    "VOLATILITY_CONCEPT_REGISTRY": "APPROVED",
+    "TICKER_CLASSIFICATION": "APPROVED",
+    "BASE_TICKER_MAPPING": "APPROVED",
+    "GUEST_TICKER_MAPPING": "APPROVED",
+    "CHAIN_DERIVED_POLICY": "APPROVED",
+    "LEGACY_ALIAS_MIGRATION": "APPROVED",
+    "QUALITY_PROVENANCE_ENVELOPE": "APPROVED",
+    "TRAIN_BACKTEST_REPLAY_LIVE_CONTRACT": "APPROVED",
+    "CANONICAL_VOLATILITY_INPUT_CONTRACT": "APPROVED",
+    "V1_IMPLEMENTATION_READY": "APPROVED",
+    "V2_IMPLEMENTATION_READY": "NOT_APPROVED",
+    "MODEL_STACK_REAL_MONEY_APPROVAL": "NOT_APPROVED",
+    "MISSION_CLOSURE": "NOT_CLOSED"
+  },
+  "mission_closure_note": "MISSION_CLOSURE reported NOT_CLOSED at the proof-label ladder level: the CLOSED_WITH_EVIDENCE label is retroactive-only under FULL_FIXES_ONLY_V2 (requires a concrete commit SHA plus CI run ids, which an uncommitted read-only mission cannot possess). All mission deliverables are complete; ladder label for this packet: REPORTED_PROVEN_NOT_INDEPENDENTLY_VERIFIED.",
+  "phase0_baseline_end": {
+    "head": "86466aeec5c18ae4b0d5ff30f3f5d77fa66c421b",
+    "status_short": "M  .cursor/rules/00-always.mdc\nM  AGENTS.md\nM  CLAUDE.md\nM  governance/artifacts/CHECK_STACK_INVENTORY.json\n M governance/artifacts/survivor_edge_probe.json\n M governance/artifacts/survivor_inference_backtest.json\n M governance/artifacts/survivor_validation_run.json\nM  governance/docs/AGENT_OPERATING_CONTRACT.md\nM  governance/docs/CHECK_STACK_RIGHTSIZING.md\nM  governance/mega1_traceable_inventory.py\nA  governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md\nA  governance/standard/universal_institutional_engineering_standard_v1.json\n M reports/money_path/.gitkeep\nM  server.py\nA  tests/test_build_identity_process_drift_v1.py\nM  tests/test_mega1_traceable_audit.py\nA  tests/test_universal_institutional_standard.py\nM  tools/check_fix_everything_we_touch.py\nA  tools/check_universal_standard.py\n?? reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json\n?? reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md\n?? reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md\n?? reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json\n?? reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md\n?? reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.json\n?? reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.md\n?? reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.json\n?? reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.md\n?? reports/ui_transport/rth_guest_switch_validation_2026-07-09.json\n?? reports/ui_transport/rth_guest_switch_validation_2026-07-09.md\n?? reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json\n?? reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md\n",
+    "diff_name_status": "M\treports/money_path/.gitkeep\n",
+    "diff_stat": " reports/money_path/.gitkeep | 1 +\n 1 file changed, 1 insertion(+)\n",
+    "others": "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json\nreports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md\nreports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md\nreports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json\nreports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md\nreports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.json\nreports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.md\nreports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.json\nreports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.md\nreports/ui_transport/rth_guest_switch_validation_2026-07-09.json\nreports/ui_transport/rth_guest_switch_validation_2026-07-09.md\nreports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json\nreports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md\n",
+    "hashes": {
+      ".cursor/rules/00-always.mdc": "37d73757476590a53208f77ce33dc0f76eff39930ddb21c32c729223660f3620",
+      "AGENTS.md": "99e82eb6c0a22b69283530ddbfd9c7cd9c675dc4816b0914532e88baf4c2c8b1",
+      "CLAUDE.md": "76818d6a6d38f95cd84732a9f5106a8c6377c6b11f499d148799a615f9374834",
+      "governance/artifacts/CHECK_STACK_INVENTORY.json": "299d3eaf05998049ab7532dabeab2f09b85cc029810e17653d38a770fd60c412",
+      "governance/docs/AGENT_OPERATING_CONTRACT.md": "cd7942dcb1e19b4247c8f0da520bd617029eea50d87b607dd7747a66dad284c3",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md": "f6b20836bacd08af8c6e4292e7e370b72074f6ba933a06c5e2e98fc49f4a0e0d",
+      "governance/mega1_traceable_inventory.py": "40e1cb55adbb662b1c264f7787334b0d4ccba2294cc2dae488000efe71e8a565",
+      "governance/standard/UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1.md": "9202f565b119a64f5e7aa69adb4f18a553bead2362512d366c7e1da213f49c4d",
+      "governance/standard/universal_institutional_engineering_standard_v1.json": "e9b181da2a8ccb47069670aa688c28083144f499c00e2f7e11f1eeac86ea99c9",
+      "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json": "f43918aefb52c16317d43154d4b722d3f60c557aba6e31b4d766172c8cf5d077",
+      "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.md": "64b44d45fb816dd3d4a8de88be45f59a3a484b143df7ccc2c7101995eabfe0aa",
+      "reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md": "3f0e8f75ccd4d1c471bb315f816f02397feae3db5f118db313f5026c06d9a3d8",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.json": "61fe1c004330d171abdfc9220c8eabc5421cf40954f7cb7dcfaf46baeaa4c35b",
+      "reports/MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1.md": "c48c19854e14e142c00ac1ca0940921a405bff691f0b3ab7517bb3176dc89a3a",
+      "reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.json": "418ef1bacb56589539bbc97b70e77f6713e00fe126294dd883d73ca61cb58a93",
+      "reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.md": "b7c3c545ab496c6ed353fa68f1e236e64b86720689714995a470d4931a0ae433",
+      "reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.json": "db0f25c139703e106c7a7c125cc8f2470bbc15617a0b79a963e5bb0ff3319253",
+      "reports/VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1.md": "d69a958f4292a28f1999d48545caa6043fec1e159243bc66273e2665485ea0f2",
+      "reports/money_path/.gitkeep": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+      "reports/ui_transport/rth_guest_switch_validation_2026-07-09.json": "432856708cbfa7952a0fe5490c4f139be76f4395e6815956c6081e755621de43",
+      "reports/ui_transport/rth_guest_switch_validation_2026-07-09.md": "10140528e701d2e82a5b889992ccc17f935daf6d77a4579771f162327bcfba02",
+      "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.json": "3c979f290f8c18715bce00f08f276f6205ffeeebf6e456470cd51ed5f156e1ba",
+      "reports/ui_transport/universal_card_fidelity_2026-07-09-after-hours-reproof-d2.md": "425574afa1f3ced58b33bcceb8b6e9d69393f487c300880128023ec4270378c1",
+      "server.py": "b7223f54708b36846628a0bd687ac41ddfd5922fffb008c84570b1e4ccd98f90",
+      "tests/test_build_identity_process_drift_v1.py": "8683024e9a4a7e8d252900f736685a937bece4c334c0ba3a47ff8cee827df7db",
+      "tests/test_mega1_traceable_audit.py": "5e9f985451eb9ff41b1c32945c4bc0999e8dff2bb4954a5ab8e19aaf192c40c0",
+      "tests/test_universal_institutional_standard.py": "06c65ba5914d75d1ef956b6e4af2368c18d208894e62715ffd34acce1e9cec90",
+      "tools/check_fix_everything_we_touch.py": "0d8693c21dab5a2762178e171b59309ead38c174b0dbf8a2f1b8b8f5da4f2239",
+      "tools/check_universal_standard.py": "63f32f5815013cf7b377a04ccca7a29fe1238294622d733ad371792a9bf24369"
+    }
+  },
+  "scope_proof": {
+    "head_unchanged": true,
+    "pre_existing_hash_changes": [],
+    "pre_existing_removed": [],
+    "new_files": [
+      "reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.json",
+      "reports/VOLATILITY_INPUT_CONTRACT_RATIFICATION_AND_IMPLEMENTATION_FREEZE_V1.md"
+    ],
+    "unauthorized_new_files": [],
+    "SCOPE_VIOLATION": "NOT_DETECTED"
+  }
+}
