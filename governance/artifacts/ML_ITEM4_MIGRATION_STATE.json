@@ -1,22 +1,11 @@
 {
-  "schema_version": 1,
-  "mission": "ML_PIPE_ITEM_4_LEGACY_FLEET_MIGRATION_AND_STRICT_ENFORCEMENT_V1",
-  "generated_at_utc": "2026-07-12T13:39:01.603417+00:00",
-  "classification_counts": {
-    "PROVEN_SOURCE_MANIFEST_RECONSTRUCTABLE": 48,
-    "UNPROVEN_LINEAGE_QUARANTINE_REQUIRED": 4,
-    "PROVEN_SOURCE_REPROMOTABLE": 36
-  },
-  "bundle_count": 88,
-  "execution": {
-    "stamp": "20260712T133855Z",
-    "applied": true,
-    "action_counts": {
-      "RECONSTRUCT_MANIFEST": 48,
-      "REPROMOTE": 36,
-      "REPROMOTE_REPLACING_UNPROVEN": 4
-    },
-    "errors": {}
+  "schema_version": 2,
+  "mission": "ML_PIPE_ITEM_4_POST_MERGE_DRIFT_RECOVERY_AND_REPRODUCIBLE_REPAIR_V1",
+  "generated_at_utc": "2026-07-12T15:51:02.346728+00:00",
+  "source_of_truth": "filesystem recompute (manifest provenance methods + verify_fleet)",
+  "manifest_method_counts": {
+    "RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE": 77,
+    "REPROMOTED_FROM_GOVERNED_CANDIDATE": 11
   },
   "fleet_verification": {
     "total_active_bundles": 88,
@@ -25,5 +14,6 @@
     "failed_count": 0,
     "ok": true
   },
-  "note": "counters here are a report; verify_fleet() recomputes from the filesystem every run and is the only trusted source"
+  "recovery_record": "ML_ITEM4_DRIFT_RECOVERY_RECORD.json",
+  "historical_note": "schema_version 1 recorded the ORIGINAL 2026-07-12 migration counts (36 REPROMOTE / 48 RECONSTRUCT / 4 REPLACE-UNPROVEN); the same-day drift recovery restored 171 unintended byte changes and re-stamped 29 bundles as RECONSTRUCTED \u2014 this schema_version 2 document is regenerated from disk truth and supersedes those counters"
 }

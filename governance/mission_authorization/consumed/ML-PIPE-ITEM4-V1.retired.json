@@ -40,7 +40,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_superseded_by_drift_recovery",
   "created_at_epoch": 1783863614.58197,
   "expires_at_epoch": 1784468414.58197,
   "operator_authorization": "MISSION = ML_PIPE_ITEM_4_LEGACY_FLEET_MIGRATION_AND_STRICT_ENFORCEMENT_V1 (operator packet 2026-07-12): migrate active fleet to governed manifest verification; strict fail-closed default; PR path only",

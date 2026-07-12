@@ -429,6 +429,202 @@ def verify_fleet(models_dir: Path) -> dict[str, Any]:
     }
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Drift recovery (ML_PIPE_ITEM_4_POST_MERGE_DRIFT_RECOVERY_AND_REPRODUCIBLE_REPAIR_V1)
+#
+# The 2026-07-12 integration proof found 29 bundles whose serving bytes had been
+# replaced by live candidate-dir bytes although their classification evidence
+# came from OTHER governed sources. The recovery (restore pre-migration bytes,
+# keep only operator-authorized replacement role-pairs, re-stamp manifests with
+# the original evidence) is driven by a COMMITTED record so it is deterministic,
+# reviewable, and idempotently re-runnable — never a session-local script.
+# ══════════════════════════════════════════════════════════════════════════════
+
+RECOVERY_RECORD_PATH = REPO_ROOT / "governance" / "artifacts" / "ML_ITEM4_DRIFT_RECOVERY_RECORD.json"
+
+
+def load_recovery_record(path: Path = RECOVERY_RECORD_PATH) -> dict[str, Any]:
+    """Fail-closed load of the committed drift-recovery record."""
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(doc, dict) or not isinstance(doc.get("bundles"), dict):
+        raise ValueError("recovery record malformed: missing bundles map")
+    for key in ("schema_version", "backup_dir", "mission"):
+        if key not in doc:
+            raise ValueError(f"recovery record malformed: missing {key!r}")
+    return doc
+
+
+def execute_recovery(
+    record: dict[str, Any], models_dir: Path, *, apply: bool = False
+) -> dict[str, Any]:
+    """Deterministically (re)apply the committed recovery record.
+
+    Per bundle: every restore-file's bytes must come from the named quarantine
+    backup and hash-match the record (a file absent from the backup inventory
+    is a fail-closed error, never skipped); keep-files (operator-authorized
+    replacements) must already hash-match the record; the manifest is
+    re-stamped pinning current bytes with the record's evidence. Idempotent:
+    a second run restores zero bytes and reproduces identical manifests
+    (modulo stamp timestamps).
+    """
+    backup_root = models_dir / record["backup_dir"]
+    results: dict[str, Any] = {}
+    for key, entry in sorted(record["bundles"].items()):
+        t, hz, root = entry["ticker"], entry["horizon"], entry["root"]
+        active = models_dir / root / t
+        rec: dict[str, Any] = {"restored": [], "kept_verified": [], "errors": []}
+        for name, expected_sha in sorted((entry.get("restore_files") or {}).items()):
+            src = backup_root / root / t / name
+            if not src.is_file():
+                rec["errors"].append(f"{name}: NOT IN BACKUP INVENTORY — fail closed")
+                continue
+            if _sha256_file(src) != expected_sha:
+                rec["errors"].append(f"{name}: backup bytes do not match the record hash")
+                continue
+            cur = active / name
+            if not cur.is_file() or _sha256_file(cur) != expected_sha:
+                if apply:
+                    active.mkdir(parents=True, exist_ok=True)
+                    cur.write_bytes(src.read_bytes())
+                rec["restored"].append(name)
+        for name, expected_sha in sorted((entry.get("keep_files") or {}).items()):
+            cur = active / name
+            if not cur.is_file() or _sha256_file(cur) != expected_sha:
+                rec["errors"].append(
+                    f"{name}: authorized replacement bytes missing or changed on disk"
+                )
+            else:
+                rec["kept_verified"].append(name)
+        # migration-ADDED files (no pre-migration backup source, not operator-
+        # authorized) return to the pre-migration state by removal — the bytes
+        # remain in the governed candidate dirs, so this is non-destructive.
+        rec["removed"] = []
+        for name, added_sha in sorted((entry.get("remove_files") or {}).items()):
+            cur = active / name
+            if cur.is_file():
+                if _sha256_file(cur) != added_sha:
+                    rec["errors"].append(
+                        f"{name}: unauthorized-addition bytes differ from record — refusing removal"
+                    )
+                elif apply:
+                    cur.unlink()
+                    rec["removed"].append(name)
+                else:
+                    rec["removed"].append(name)
+        if apply and not rec["errors"]:
+            manifest = write_bundle_integrity_manifest(
+                active, t, hz, allow_missing_required=True
+            )
+            manifest["provenance"] = {
+                "method": "RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE",
+                "drift_recovery": {
+                    "record": str(RECOVERY_RECORD_PATH.name),
+                    "mission": record["mission"],
+                    "backup_dir": record["backup_dir"],
+                },
+                "original_classification_evidence": entry.get("evidence") or {},
+                "authorized_replacements_kept": sorted(entry.get("keep_files") or {}),
+            }
+            bundle_integrity_manifest_path(active).write_text(
+                json.dumps(manifest, indent=2, default=str), encoding="utf-8"
+            )
+            rec["errors"].extend(_verify_bundle_now(active, t, hz))
+        results[key] = rec
+    ok = not any(r["errors"] for r in results.values())
+    return {"applied": apply, "ok": ok, "results": results}
+
+
+def verify_recovery(record: dict[str, Any], models_dir: Path) -> dict[str, Any]:
+    """Prove current disk state matches the committed recovery record.
+
+    Every restore-file and keep-file must hash-match the record; every touched
+    bundle's manifest must carry the record-driven provenance (method, evidence,
+    authorized keeps) and verify. Runs read-only.
+    """
+    errors: list[str] = []
+    for key, entry in sorted(record["bundles"].items()):
+        t, hz, root = entry["ticker"], entry["horizon"], entry["root"]
+        active = models_dir / root / t
+        for name, expected_sha in {**(entry.get("restore_files") or {}),
+                                   **(entry.get("keep_files") or {})}.items():
+            cur = active / name
+            if not cur.is_file():
+                errors.append(f"{key}/{name}: missing on disk")
+            elif _sha256_file(cur) != expected_sha:
+                errors.append(f"{key}/{name}: disk bytes differ from recovery record")
+        for name in (entry.get("remove_files") or {}):
+            if (active / name).is_file():
+                errors.append(f"{key}/{name}: unauthorized addition still present on disk")
+        try:
+            manifest = load_bundle_integrity_manifest(active)
+        except ArtifactVerificationError as exc:
+            errors.append(f"{key}: manifest {exc.reason_code}")
+            continue
+        prov = (manifest or {}).get("provenance") or {}
+        if prov.get("method") != "RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE":
+            errors.append(f"{key}: manifest provenance method {prov.get('method')!r}")
+        if sorted(prov.get("authorized_replacements_kept") or []) != sorted(
+            entry.get("keep_files") or {}
+        ):
+            errors.append(f"{key}: manifest authorized_replacements_kept != record")
+        if (prov.get("original_classification_evidence") or {}) != (entry.get("evidence") or {}):
+            errors.append(f"{key}: manifest evidence != record evidence")
+        verrs = _verify_bundle_now(active, t, hz)
+        errors.extend(f"{key}: {e}" for e in verrs)
+    return {"ok": not errors, "errors": errors, "bundles_checked": len(record["bundles"])}
+
+
+def regenerate_migration_state_from_disk(
+    models_dir: Path, out_path: Path = MIGRATION_STATE_PATH
+) -> dict[str, Any]:
+    """Reconcile the committed migration-state artifact with FILESYSTEM truth.
+
+    Counts come from the manifests actually on disk (provenance method), never
+    from prior stored counters; fleet verification is recomputed.
+    """
+    method_counts: dict[str, int] = {}
+    for root_name, hz in HORIZON_ROOTS:
+        root = models_dir / root_name
+        if not root.is_dir():
+            continue
+        for tdir in sorted(root.iterdir()):
+            if not tdir.is_dir():
+                continue
+            mp = bundle_integrity_manifest_path(tdir)
+            if not mp.is_file():
+                method_counts["NO_MANIFEST"] = method_counts.get("NO_MANIFEST", 0) + 1
+                continue
+            doc = json.loads(mp.read_text(encoding="utf-8"))
+            m = (doc.get("provenance") or {}).get("method", "NO_PROVENANCE_FIELD")
+            method_counts[m] = method_counts.get(m, 0) + 1
+    fleet = verify_fleet(models_dir)
+    doc = {
+        "schema_version": 2,
+        "mission": "ML_PIPE_ITEM_4_POST_MERGE_DRIFT_RECOVERY_AND_REPRODUCIBLE_REPAIR_V1",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "source_of_truth": "filesystem recompute (manifest provenance methods + verify_fleet)",
+        "manifest_method_counts": method_counts,
+        "fleet_verification": {
+            "total_active_bundles": fleet["total_active_bundles"],
+            "verified": fleet["verified"],
+            "legacy_unmanifested_count": len(fleet["legacy_unmanifested"]),
+            "failed_count": len(fleet["failed"]),
+            "ok": fleet["ok"],
+        },
+        "recovery_record": RECOVERY_RECORD_PATH.name,
+        "historical_note": (
+            "schema_version 1 recorded the ORIGINAL 2026-07-12 migration counts "
+            "(36 REPROMOTE / 48 RECONSTRUCT / 4 REPLACE-UNPROVEN); the same-day "
+            "drift recovery restored 171 unintended byte changes and re-stamped "
+            "29 bundles as RECONSTRUCTED — this schema_version 2 document is "
+            "regenerated from disk truth and supersedes those counters"
+        ),
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    return doc
+
+
 def write_migration_state(
     inventory: dict[str, Any],
     execution: dict[str, Any] | None,
@@ -483,9 +679,40 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--plan", action="store_true", help="print migration plan (dry-run)")
     ap.add_argument("--apply", action="store_true", help="EXECUTE the migration plan")
     ap.add_argument("--verify-fleet", action="store_true", help="recompute fleet verification")
+    ap.add_argument("--recover", action="store_true",
+                    help="(re)apply the committed drift-recovery record (idempotent)")
+    ap.add_argument("--verify-recovery", action="store_true",
+                    help="prove disk state matches the committed drift-recovery record")
+    ap.add_argument("--regen-state", action="store_true",
+                    help="regenerate the migration-state artifact from filesystem truth")
     ap.add_argument("--json-out", default=None)
     args = ap.parse_args(argv)
     models_dir = Path(args.models_dir)
+
+    if args.recover or args.verify_recovery:
+        record = load_recovery_record()
+        if args.recover:
+            res = execute_recovery(record, models_dir, apply=True)
+            restored = sum(len(r["restored"]) for r in res["results"].values())
+            print(f"recovery applied: bundles={len(res['results'])} bytes_restored_files={restored} ok={res['ok']}")
+            for k, r in res["results"].items():
+                for e in r["errors"]:
+                    print("ERROR", k, e)
+            if not res["ok"]:
+                return 1
+        ver = verify_recovery(record, models_dir)
+        print(f"recovery verification: bundles={ver['bundles_checked']} ok={ver['ok']}")
+        for e in ver["errors"][:20]:
+            print("MISMATCH", e)
+        if not ver["ok"]:
+            return 1
+        if not args.regen_state:
+            return 0
+    if args.regen_state:
+        doc = regenerate_migration_state_from_disk(models_dir)
+        print("state regenerated:", json.dumps(doc["manifest_method_counts"]))
+        print("fleet:", json.dumps(doc["fleet_verification"]))
+        return 0 if doc["fleet_verification"]["ok"] else 1
 
     if args.verify_fleet and not (args.inventory or args.plan or args.apply):
         fleet = verify_fleet(models_dir)
