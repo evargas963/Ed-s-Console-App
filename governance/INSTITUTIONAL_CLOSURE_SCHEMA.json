@@ -653,7 +653,7 @@
       "status": "NOT_CLOSED",
       "dimensions": {
         "ROOT_CAUSE": "PROVEN",
-        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
+        "END_TO_END_CORRECTNESS": "PROVEN",
         "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
         "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
         "TICKER_UNIVERSALITY": "PROVEN",
@@ -679,7 +679,7 @@
           "status": "NOT_APPLICABLE",
           "rationale": "no feature construction"
         },
-        "RUNTIME_PROOF": "NOT_PROVEN",
+        "RUNTIME_PROOF": "PROVEN",
         "RTH_PROOF": {
           "status": "NOT_APPLICABLE",
           "rationale": "no session-dependent behavior; fleet mutation executed with no listener on port 8000"
@@ -688,11 +688,10 @@
         "PROVENANCE": "PROVEN",
         "REPRODUCIBILITY": "PROVEN",
         "MECHANICAL_ENFORCEMENT": "PROVEN",
-        "FINAL_SHA_CI": "NOT_PROVEN"
+        "FINAL_SHA_CI": "PROVEN"
       },
       "material_limitations": [
-        "per-row artifact-hash persistence into snapshot rows does not exist (db.py insert_snapshot); historical replay byte identity per decision row remains NOT_PROVEN - operator DB-schema decision",
-        "ML_PIPE_ITEM_4_IMPLEMENTATION = NOT_PROVEN and ML_PIPE_ITEM_4 = NOT_CLOSED until the drift-recovery PR reaches final-main with 4/4 CI and the operator integrates"
+        "per-row artifact-hash persistence into snapshot rows does not exist (db.py insert_snapshot); historical replay byte identity per decision row remains NOT_PROVEN - the exact operator gate below"
       ],
       "evidence": {
         "fleet": "88/88 active bundles manifest-verified (36 REPROMOTE / 48 RECONSTRUCT / 4 REPROMOTE_REPLACING_UNPROVEN, 0 quarantined); rollback backups models/_item4_quarantine/20260712T133855Z",
@@ -700,11 +699,11 @@
         "cache": "TTL rehash bounds size+mtime_ns-preserving mutation to ED_ARTIFACT_REVERIFY_TTL_SECONDS (default 900s)",
         "tests": "tests/test_ml_item4_fleet_migration.py (21) + tests/test_model_contract_enforcement.py Item-4 section + consumer suites (205 green at implementation)"
       },
-      "final_sha": "ad79c1873955887f0a7c7dc130b75d2357874d5c",
-      "remote_ci_status": "PR #29 8/8 success at exact head 04c13e920cd3 (pull_request runs 29197257941, 29197257943, 29197257955, 29197257959; push runs 29197256119, 29197256123, 29197256128, 29197256138); merged via PR path at ad79c1873955; final-main CI recorded at the drift-recovery tip",
-      "next_blocker": "operator PR integration of ml-pipe-item-4-drift-recovery-v1, then [REAL-GATE:OPERATOR-DB-SCHEMA-DECISION-PER-ROW-ARTIFACT-HASH]",
+      "final_sha": "68c316c11923001dab367a9f882431454bbb08dc",
+      "remote_ci_status": "4/4 required success at final main 68c316c11923 (objective-audit 29211309515, pytest-full 29211309533, hardening 29211309530, schwab-csv-first 29211309521)",
+      "next_blocker": "[REAL-GATE:OPERATOR-DB-SCHEMA-DECISION-PER-ROW-ARTIFACT-HASH]",
       "implementation_sha": "04c13e920cd33543f24286c094553b2d60129e9a",
-      "merge_sha": "ad79c1873955887f0a7c7dc130b75d2357874d5c",
+      "merge_sha": "68c316c11923001dab367a9f882431454bbb08dc",
       "drift_recovery": {
         "found_at": "2026-07-12 integration canonical-main proof",
         "finding": "29 bundles had serving bytes replaced by live candidate-dir bytes although their byte-identity evidence came from OTHER governed sources (archive snapshots / git blobs) \u2014 REPROMOTE classification proved provenance, not promotion byte-safety; MODEL-04 serving-vintage ownership belongs to the operator",
@@ -722,7 +721,17 @@
           "new_finding_beyond_audit": "24 bundles carried migration-ADDED meta_*.pkl files with no pre-migration backup source (defective REPROMOTE silently COMPLETED previously incomplete 6-file bundles, a serving-enablement change): removed by the committed recovery engine (non-destructive; candidate copies remain), bundles returned to their pre-migration fail-closed completeness state",
           "committed_tooling": "tools/ml_item4_fleet_migration.py --recover/--verify-recovery/--regen-state driven by governance/artifacts/ML_ITEM4_DRIFT_RECOVERY_RECORD.json (29 bundles: 182 restore-file hashes, 9 authorized keep-file hashes, 24 remove-file hashes; idempotent; fail-closed on missing backup source, record-hash mismatch, or unrecorded replacement bytes)"
         }
-      }
+      },
+      "acceptance_labels": {
+        "ML_PIPE_ITEM_4_IMPLEMENTATION": "PROVEN",
+        "ACTIVE_FLEET_INTEGRITY": "PROVEN",
+        "RECOVERY_REPRODUCIBILITY": "PROVEN",
+        "BYTE_EXACT_GIT_ROUND_TRIP": "PROVEN",
+        "CANONICAL_WORKTREE_CLEAN": "PROVEN",
+        "HISTORICAL_REPLAY_BYTE_PINNING": "NOT_PROVEN",
+        "ML_PIPE_ITEM_4": "NOT_CLOSED"
+      },
+      "fleet_semantics": "88 active bundle directories are INTEGRITY-verified (manifest-pinned bytes, 77 RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE / 11 REPROMOTED_FROM_GOVERNED_CANDIDATE); only 12 are serving-complete under the full bundle contract (SPY/QQQ/IWM x 1c/5c/15c/60c, recounted from disk via check_active_bundle_complete) and 76 are explicitly fail-closed for serving - fleet integrity is NOT universal serving availability"
     }
   ],
   "real_money_approval": "NOT_APPROVED"
