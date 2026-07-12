@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "policy": "ML_PIPE_ITEM_4_ARTIFACT_INTEGRITY_MIGRATION_POLICY_V1",
+  "strict_default": true,
+  "legacy_allowance": {
+    "enabled": false,
+    "expires_at_utc": "2026-07-12T00:00:00+00:00",
+    "note": "Legacy (manifest-less) serving allowance is DISABLED and expired. ED_ARTIFACT_INTEGRITY_STRICT=0 is honored ONLY while this allowance is enabled AND unexpired; afterwards the environment cannot reopen legacy serving (no indefinite grandfathering, no reopen after strict activation)."
+  },
+  "migration_deadline_utc": "2026-07-12T00:00:00+00:00",
+  "fleet_completion_threshold": 1.0,
+  "strict_activation_condition": "verify_fleet(models_dir).ok == true (every active bundle manifest-verified or quarantined out of serving); enforced at runtime by artifact_integrity_strict_absence() reading THIS committed policy \u2014 the environment flag is never the only mechanism",
+  "evidence_rules": {
+    "REPROMOTED_FROM_GOVERNED_CANDIDATE": "complete 7-file candidate bundle + scheduler_run_manifest.json in a governed training-output dir; promotion through promote_horizon_bundle_from_candidate (atomic replace + manifest stamp + lineage)",
+    "RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE": "every artifact byte-identical to a governed candidate file (sha256) or to the git-HEAD tracked blob (git object id; CRLF-normalized equality admitted only for tracked *_meta.json text files whose divergence is checkout smudge)",
+    "FORBIDDEN": "hashing whatever bytes exist in an active directory and declaring them trusted without independent source evidence"
+  },
+  "quarantine": {
+    "dir": "models/_item4_quarantine",
+    "rule": "bytes replaced or removed by migration are copied there FIRST (full bundle, timestamped); unproven bundles with no governed candidate are quarantined out of serving, never blessed",
+    "rollback": "restore the timestamped bundle copy into the active dir and delete the stamped manifest (returns the bundle to explicit legacy state, which strict mode then refuses \u2014 rollback restores bytes, not trust)"
+  },
+  "runtime_behavior_when_bundle_unavailable": "fail closed per ml_predict strict resolution (STRICT_ACTIVE_FAIL_CLOSED; no cross-ticker or cross-horizon substitution; guest tickers route only through the governed anchor path)",
+  "reverify_ttl_seconds_default": 900,
+  "operator_visibility": [
+    "build_model_serving_provenance.artifact_integrity per serve (VERIFIED_AGAINST_BUNDLE_MANIFEST / LEGACY_UNVERIFIED_NO_BUNDLE_MANIFEST / VERIFICATION_FAILED_CLOSED / NOT_LOADED) on the serve payload surface (MarketState.model_serving_provenance_v1 -> _ms_to_dict); NOT persisted per snapshot row (db.py insert_snapshot has no provenance column - operator DB-schema decision, see OPEN_ITEMS REAL-GATE)",
+    "python tools/ml_item4_fleet_migration.py --verify-fleet (exit 1 on any unverified active bundle)",
+    "governance/artifacts/ML_ITEM4_MIGRATION_STATE.json (report only; filesystem recompute is the trusted source)"
+  ],
+  "csv_first_declaration": {
+    "Schwab CSV authority checked": "yes",
+    "csv_rows": "NO_SCHWAB_EQUIVALENT (no market-data field added, removed, or rederived by this change set; ml_predict.py edits are artifact-integrity verification TTL + provenance timestamps only)",
+    "derived_field_disposition": "KEEP_DERIVED_WITH_PROVENANCE",
+    "all_consumers_checked": "yes \u2014 loaders (_load_xgb/_load_lstm/_load_transformer/_load_meta/_predict_xgb_movement_heads), completeness contract, promotion path, scheduler candidate checks, provenance surface; dispositions in tests/test_ml_item4_fleet_migration.py + tests/test_model_contract_enforcement.py"
+  }
+}

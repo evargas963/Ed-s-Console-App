@@ -26,20 +26,30 @@
       "governance/docs/PRECOMMIT_PERFORMANCE_AUDIT.md",
       "tools/check_fix_everything_we_touch.py"
     ],
-    "semantic_domains": ["governance_gates", "board_state", "closure_schema"]
+    "semantic_domains": [
+      "governance_gates",
+      "board_state",
+      "closure_schema"
+    ]
   },
   "shared_file_policy": "board/closure/generated artifacts editable only for this mission's own records; regenerate generated artifacts from source",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783900000.0,
   "expires_at_epoch": 1784100000.0,
   "operator_authorization": "operator mission text GOV_BRANCH_AUTHORIZATION_AND_MULTI_AGENT_OWNERSHIP_V1 (2026-07-12): AUTHORIZED_AGENT=Claude, DIRECT_MAIN_PUSH=FORBIDDEN, PR_REQUIRED=YES, MAIN_INTEGRATION_OWNER=OPERATOR, BYPASS_PERMISSION=NONE",
   "allowed_integration_method": "PR by operator only",
-  "required_checks": ["objective-audit", "pytest-full", "hardening", "schwab-csv-first"],
+  "required_checks": [
+    "objective-audit",
+    "pytest-full",
+    "hardening",
+    "schwab-csv-first"
+  ],
   "stop_conditions": [
     "main differs from expected base unexpectedly",
     "active mission collision",
     "any push destination other than origin/gov-branch-authorization-v1",
     "bypass warning observed",
     "red main"
-  ]
+  ],
+  "retired_note": "mission CLOSED_WITH_EVIDENCE at final main 079811eeb486; retired per residual item in the integration packet"
 }

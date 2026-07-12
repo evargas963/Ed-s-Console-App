@@ -117,9 +117,56 @@ class ArtifactVerificationError(ValueError):
         self.identity = dict(identity or {})
 
 
+MIGRATION_POLICY_PATH = Path(__file__).resolve().parent / "governance" / "ML_ITEM4_MIGRATION_POLICY.json"
+
+
+def _load_migration_policy() -> dict[str, Any] | None:
+    """Committed Item-4 migration policy; None on missing/malformed (callers fail closed)."""
+    try:
+        doc = json.loads(MIGRATION_POLICY_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def _legacy_allowance_open(policy: dict[str, Any] | None) -> bool:
+    """True only while the committed policy's legacy allowance is enabled AND unexpired."""
+    if not policy:
+        return False
+    allowance = policy.get("legacy_allowance")
+    if not isinstance(allowance, dict) or allowance.get("enabled") is not True:
+        return False
+    expires = allowance.get("expires_at_utc")
+    if not isinstance(expires, str):
+        return False
+    try:
+        exp = datetime.fromisoformat(expires)
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) < exp
+
+
 def artifact_integrity_strict_absence() -> bool:
-    """True when manifest absence must fail closed (operator lever, default off)."""
-    return os.environ.get(ARTIFACT_INTEGRITY_STRICT_ENV, "0").strip().lower() in ("1", "true", "yes")
+    """True when manifest absence must fail closed (ML-PIPE Item 4 strict mode).
+
+    The environment flag is NOT the only mechanism — the committed migration
+    policy is the repository-side default:
+      * ED_ARTIFACT_INTEGRITY_STRICT=1 -> always strict (operator hard lever).
+      * ED_ARTIFACT_INTEGRITY_STRICT=0 -> honored ONLY while the committed
+        policy's legacy allowance is enabled and unexpired; once the allowance
+        is disabled or expired the environment cannot reopen legacy serving.
+      * unset -> policy strict_default; a missing or malformed policy file is
+        strict (fail closed), never permissive.
+    """
+    env = os.environ.get(ARTIFACT_INTEGRITY_STRICT_ENV, "").strip().lower()
+    if env in ("1", "true", "yes"):
+        return True
+    policy = _load_migration_policy()
+    if env in ("0", "false", "no"):
+        return not _legacy_allowance_open(policy)
+    if policy is None:
+        return True
+    return policy.get("strict_default") is not False
 
 
 def bundle_integrity_manifest_path(bundle_dir: Path) -> Path:
@@ -165,6 +212,7 @@ def write_bundle_integrity_manifest(
     hz: str,
     *,
     source_run_manifest: dict | None = None,
+    allow_missing_required: bool = False,
 ) -> dict[str, Any]:
     """
     Stamp the bundle integrity manifest for one promoted (ticker, horizon) bundle.
@@ -172,6 +220,11 @@ def write_bundle_integrity_manifest(
     Hashes the artifact bytes that live in ``bundle_dir`` (what will be served is
     what is hashed) and binds ticker/horizon/role identity plus the training-run
     lineage from the candidate ``scheduler_run_manifest.json`` when available.
+
+    ``allow_missing_required`` exists ONLY for the Item-4 fleet migration's
+    reconstruction of INCOMPLETE legacy bundles: present files get pinned while
+    the missing files stay visible to the completeness contract, which keeps the
+    bundle fail-closed for serving. Promotion stamping never sets this.
     """
     from training_cache import file_sha256_hex
 
@@ -181,11 +234,15 @@ def write_bundle_integrity_manifest(
     required = bundle_role_filenames(t, su)
     optional_roles = set(bundle_role_filenames(t, su, include_optional=True)) - set(required)
     artifacts: dict[str, dict[str, Any]] = {}
+    missing_required: list[str] = []
     for role, name in bundle_role_filenames(t, su, include_optional=True).items():
         p = bd / name
         if not p.is_file():
             if role in optional_roles:
                 continue  # movement heads are optional bundle members
+            if allow_missing_required:
+                missing_required.append(name)
+                continue
             raise ArtifactVerificationError(
                 "ARTIFACT_FILE_MISSING",
                 f"cannot stamp integrity manifest: {name} missing in {bd}",
@@ -196,6 +253,12 @@ def write_bundle_integrity_manifest(
             "sha256": file_sha256_hex(p),
             "bytes": p.stat().st_size,
         }
+    if allow_missing_required and not artifacts:
+        raise ArtifactVerificationError(
+            "ARTIFACT_FILE_MISSING",
+            f"cannot stamp integrity manifest: no governed artifacts present in {bd}",
+            identity={"ticker": t, "horizon": su, "artifact_role": "*"},
+        )
 
     src = source_run_manifest if isinstance(source_run_manifest, dict) else None
     lineage_keys = (
@@ -227,6 +290,10 @@ def write_bundle_integrity_manifest(
         "artifacts": artifacts,
         "source_lineage": source_lineage,
     }
+    if allow_missing_required and missing_required:
+        # Visible record of the incompleteness: present files are pinned, the
+        # bundle stays non-servable via the completeness contract.
+        manifest["missing_required_artifacts"] = sorted(missing_required)
     bundle_integrity_manifest_path(bd).write_text(
         json.dumps(manifest, indent=2, default=str), encoding="utf-8"
     )
@@ -247,9 +314,23 @@ def refresh_bundle_integrity_manifest(bundle_dir: Path) -> dict[str, Any] | None
     if existing is None:
         return None
     lineage = existing.get("source_lineage")
-    manifest = write_bundle_integrity_manifest(bd, existing["ticker"], existing["ml_horizon_slug"])
+    provenance = existing.get("provenance")
+    manifest = write_bundle_integrity_manifest(
+        bd,
+        existing["ticker"],
+        existing["ml_horizon_slug"],
+        allow_missing_required=bool(existing.get("missing_required_artifacts")),
+    )
+    rewrite = False
     if isinstance(lineage, dict):
         manifest["source_lineage"] = lineage
+        rewrite = True
+    if isinstance(provenance, dict):
+        # Migration provenance (repromotion/reconstruction evidence) survives
+        # governed in-place refreshes — it names how trust was established.
+        manifest["provenance"] = provenance
+        rewrite = True
+    if rewrite:
         bundle_integrity_manifest_path(bd).write_text(
             json.dumps(manifest, indent=2, default=str), encoding="utf-8"
         )
@@ -484,7 +565,8 @@ def classify_legacy_absent_manifest(
     if artifact_integrity_strict_absence():
         raise ArtifactVerificationError(
             "MANIFEST_MISSING",
-            f"{ARTIFACT_INTEGRITY_STRICT_ENV}=1: no {BUNDLE_INTEGRITY_MANIFEST_FILENAME} in {bd}",
+            f"strict mode (committed policy or {ARTIFACT_INTEGRITY_STRICT_ENV}=1): "
+            f"no {BUNDLE_INTEGRITY_MANIFEST_FILENAME} in {bd}",
             identity=identity,
         )
     resolved = _contained_artifact_path(bd, artifact_filename, identity)
@@ -612,11 +694,18 @@ def check_active_bundle_complete(
     *,
     bundle_dir: Path | None = None,
     models_dir: Path | None = None,
+    require_integrity_manifest: bool | None = None,
 ) -> dict[str, Any]:
     """
     Return completeness for one (ticker, horizon) active bundle.
 
     Keys: compliant (bool), bundle_dir, artifacts (dict), issues (list).
+
+    ``require_integrity_manifest``: None (default) applies the Item-4 strict
+    policy (``artifact_integrity_strict_absence``) — SERVING bundles without a
+    manifest fail closed once strict mode is the repository default. Candidate
+    completeness checks pass False explicitly: candidates are pre-promotion by
+    definition and gain their manifest at the governed promotion stamp.
     """
     bd = bundle_dir or active_bundle_dir(ticker, hz, models_dir=models_dir)
     result: dict[str, Any] = {
@@ -642,10 +731,16 @@ def check_active_bundle_complete(
         result["compliant"] = False
         result["issues"].append(f"artifact integrity: {exc.reason_code}: {exc.detail}")
         return result
-    if integrity_manifest is None and artifact_integrity_strict_absence():
+    manifest_required = (
+        artifact_integrity_strict_absence()
+        if require_integrity_manifest is None
+        else require_integrity_manifest
+    )
+    if integrity_manifest is None and manifest_required:
         result["compliant"] = False
         result["issues"].append(
-            f"artifact integrity: MANIFEST_MISSING ({ARTIFACT_INTEGRITY_STRICT_ENV}=1)"
+            "artifact integrity: MANIFEST_MISSING (strict mode — committed policy "
+            f"or {ARTIFACT_INTEGRITY_STRICT_ENV}=1)"
         )
         return result
     if integrity_manifest is not None:
@@ -724,8 +819,16 @@ def check_candidate_bundle_complete(
     hz: str,
     candidate_dir: Path,
 ) -> dict[str, Any]:
-    """Same 7-file contract as active bundles, applied to parallel/cascade candidate dirs."""
-    return check_active_bundle_complete(ticker, hz, bundle_dir=candidate_dir)
+    """Same 7-file contract as active bundles, applied to parallel/cascade candidate dirs.
+
+    Candidates are explicitly exempt from the strict manifest-absence policy:
+    they are pre-promotion by definition and receive their integrity manifest at
+    the governed promotion stamp. A candidate that ALREADY carries a manifest is
+    still fully hash-verified above.
+    """
+    return check_active_bundle_complete(
+        ticker, hz, bundle_dir=candidate_dir, require_integrity_manifest=False
+    )
 
 
 def candidate_bundles_complete(

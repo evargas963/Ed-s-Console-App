@@ -646,6 +646,63 @@
       "final_sha": null,
       "remote_ci_status": null,
       "next_blocker": "operator decision: enable enforce_admins / restrict admin tokens"
+    },
+    {
+      "lane": "ML-PIPE-ITEM4-FLEET-MIGRATION-V1",
+      "parent_lane": "MODEL_VERSION_PINNING",
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
+        "TICKER_UNIVERSALITY": "PROVEN",
+        "HORIZON_UNIVERSALITY": "PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no market data consumed by the migration engine"
+        },
+        "NO_CURRENT_STATE_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no replay surface in the migration engine"
+        },
+        "NO_FUTURE_DATA_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no time-series evaluation"
+        },
+        "MODEL_VERSION_PINNING": "PROVEN",
+        "CALIBRATION_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "calibration artifacts governed by run-id pinned a1 loaders (separate lane)"
+        },
+        "FEATURE_SCHEMA_PARITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no feature construction"
+        },
+        "RUNTIME_PROOF": "PROVEN",
+        "RTH_PROOF": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no session-dependent behavior; fleet mutation executed with no listener on port 8000"
+        },
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "PROVEN",
+        "MECHANICAL_ENFORCEMENT": "PROVEN",
+        "FINAL_SHA_CI": "PENDING"
+      },
+      "material_limitations": [
+        "per-row artifact-hash persistence into snapshot rows does not exist (db.py insert_snapshot); historical replay byte identity per decision row remains NOT_PROVEN \u2014 operator DB-schema decision",
+        "closure requires branch CI green + operator PR integration"
+      ],
+      "evidence": {
+        "fleet": "88/88 active bundles manifest-verified (36 REPROMOTE / 48 RECONSTRUCT / 4 REPROMOTE_REPLACING_UNPROVEN, 0 quarantined); rollback backups models/_item4_quarantine/20260712T133855Z",
+        "strict_default": "governance/ML_ITEM4_MIGRATION_POLICY.json strict_default=true, legacy allowance disabled+expired, env cannot reopen (tested)",
+        "cache": "TTL rehash bounds size+mtime_ns-preserving mutation to ED_ARTIFACT_REVERIFY_TTL_SECONDS (default 900s)",
+        "tests": "tests/test_ml_item4_fleet_migration.py (21) + tests/test_model_contract_enforcement.py Item-4 section + consumer suites (205 green at implementation)"
+      },
+      "final_sha": null,
+      "remote_ci_status": "pending at feature-branch tip",
+      "next_blocker": "branch CI + operator PR integration [REAL-GATE:OPERATOR-PR-INTEGRATION-ML-PIPE-ITEM4-V1]"
     }
   ],
   "real_money_approval": "NOT_APPROVED"

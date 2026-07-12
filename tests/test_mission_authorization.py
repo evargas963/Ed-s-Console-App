@@ -335,12 +335,24 @@ def test_worktree_comparison_normalizes_separators(authdirs, monkeypatch):
     assert not any("worktree" in e for e in errs)
 
 
-def test_live_mission_contract_is_valid_and_loadable():
-    c, reason = ma.load_contract("GOV-BRANCH-AUTH-V1")
-    assert c is not None, reason
-    assert c["direct_main_permission"] is False
-    assert c["pr_required"] is True
-    assert c["integration_owner"] == "OPERATOR"
+def test_live_mission_contracts_are_valid_and_loadable():
+    """Dogfood: EVERY contract in the live active registry must load through the
+    fail-closed loader, and no feature mission may carry main powers. Retired
+    contracts (moved to consumed/) must refuse to load. Generic over mission ids
+    so completing one mission never breaks this lock."""
+    live = sorted(ma.ACTIVE_DIR.glob("*.json")) if ma.ACTIVE_DIR.is_dir() else []
+    for p in live:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        c, reason = ma.load_contract(doc["mission_id"])
+        assert c is not None, f"{p.name}: {reason}"
+        if c["mission_type"] != "controlled_integration":
+            assert c["direct_main_permission"] is False, p.name
+            assert c["pr_required"] is True, p.name
+    consumed_dir = ma.ACTIVE_DIR.parent / "consumed"
+    for p in sorted(consumed_dir.glob("*.json")) if consumed_dir.is_dir() else []:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        c, reason = ma.load_contract(doc["mission_id"])
+        assert c is None, f"retired contract {p.name} must refuse to load"
 
 def test_mission_authorization_hooks_stay_wired():
     """Recurrence lock (Phase 12): removing either mission-authorization hook

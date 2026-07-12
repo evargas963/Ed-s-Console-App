@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "mission": "ML_PIPE_ITEM_4_LEGACY_FLEET_MIGRATION_AND_STRICT_ENFORCEMENT_V1",
+  "generated_at_utc": "2026-07-12T13:39:01.603417+00:00",
+  "classification_counts": {
+    "PROVEN_SOURCE_MANIFEST_RECONSTRUCTABLE": 48,
+    "UNPROVEN_LINEAGE_QUARANTINE_REQUIRED": 4,
+    "PROVEN_SOURCE_REPROMOTABLE": 36
+  },
+  "bundle_count": 88,
+  "execution": {
+    "stamp": "20260712T133855Z",
+    "applied": true,
+    "action_counts": {
+      "RECONSTRUCT_MANIFEST": 48,
+      "REPROMOTE": 36,
+      "REPROMOTE_REPLACING_UNPROVEN": 4
+    },
+    "errors": {}
+  },
+  "fleet_verification": {
+    "total_active_bundles": 88,
+    "verified": 88,
+    "legacy_unmanifested_count": 0,
+    "failed_count": 0,
+    "ok": true
+  },
+  "note": "counters here are a report; verify_fleet() recomputes from the filesystem every run and is the only trusted source"
+}
