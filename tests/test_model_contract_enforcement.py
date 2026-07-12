@@ -169,7 +169,12 @@ def test_provenance_block_authoritative_ticker(tmp_path, monkeypatch):
     # inspector is stubbed to isolate that surface.
     monkeypatch.setattr("lstm_data.sequence_encoder_checkpoint_issues", lambda p: ())
     t = "ZZOWN"
-    _make_complete_bundle(tmp_path, t)
+    bd = _make_complete_bundle(tmp_path, t)
+    # Item-4 strict default (committed policy): a SERVABLE bundle carries an
+    # integrity manifest — stamp it the way the governed promotion path does.
+    from active_bundle_contract import write_bundle_integrity_manifest
+
+    write_bundle_integrity_manifest(bd, t, "1c")
     prov = mp.build_model_serving_provenance(t)
     assert set(prov) == _PROVENANCE_KEYS
     assert prov["requested_ticker"] == t
@@ -428,11 +433,26 @@ def test_item4_manifest_expected_hash_mutation_fails(tmp_path):
     assert ei.value.reason_code == "ARTIFACT_HASH_MISMATCH"
 
 
+def _open_legacy_allowance(tmp_path, monkeypatch):
+    """Point the module at a policy whose legacy allowance is OPEN (tests of the
+    historical pre-migration behavior; the COMMITTED policy is strict)."""
+    import active_bundle_contract as abc_mod
+
+    pol = tmp_path / "policy_open_allowance.json"
+    pol.write_text(json.dumps({
+        "schema_version": 1,
+        "strict_default": False,
+        "legacy_allowance": {"enabled": True, "expires_at_utc": "2099-01-01T00:00:00+00:00"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(abc_mod, "MIGRATION_POLICY_PATH", pol)
+
+
 def test_item4_absent_manifest_explicit_legacy_never_verified(tmp_path, monkeypatch):
     t, hz = "ZZLEG", "1c"
     bd = _make_complete_bundle(tmp_path, t, hz)  # NO integrity manifest
     name = f"xgb_{t}_{hz}.pkl"
     monkeypatch.delenv(ARTIFACT_INTEGRITY_STRICT_ENV, raising=False)
+    _open_legacy_allowance(tmp_path, monkeypatch)
     assert load_bundle_integrity_manifest(bd) is None
     with pytest.raises(ArtifactVerificationError) as ei:
         verify_artifact_against_manifest(bd, t, hz, "xgb", name)
@@ -681,6 +701,7 @@ def test_item4_legacy_bundle_gaining_manifest_reverifies(tmp_path, monkeypatch):
     monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
     monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: bd)
     monkeypatch.delenv(ARTIFACT_INTEGRITY_STRICT_ENV, raising=False)
+    _open_legacy_allowance(tmp_path, monkeypatch)
     _reset_ml_predict_state(mp)
     try:
         assert mp._load_xgb(t) is True

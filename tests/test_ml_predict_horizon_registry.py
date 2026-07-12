@@ -37,8 +37,6 @@ def test_distinct_xgb_models_per_horizon(tmp_path, monkeypatch):
 
     mp.reset_caches()
     tkr = "ZZHZ"
-    base = tmp_path / tkr
-    base.mkdir(parents=True)
 
     def clf_for(hz: str) -> DummyClassifier:
         y = np.array([0, 1, 2, 0, 1], dtype=int)
@@ -47,14 +45,25 @@ def test_distinct_xgb_models_per_horizon(tmp_path, monkeypatch):
         c.fit(np.zeros((5, 1)), y)
         return c
 
-    for hz in ("1c", "5c"):
-        mp_path = base / f"xgb_{tkr}_{hz}.pkl"
-        meta_path = base / f"xgb_{tkr}_{hz}_meta.json"
-        with open(mp_path, "wb") as f:
-            pickle.dump(clf_for(hz), f)
-        meta_path.write_text(json.dumps(_valid_xgb_meta(["a"])), encoding="utf-8")
+    # Canonical layout: one bundle dir per horizon, each with its own integrity
+    # manifest (Item-4 strict default — a manifest binds ONE (ticker, horizon)).
+    from active_bundle_contract import write_bundle_integrity_manifest
 
-    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: base)
+    bases: dict[str, object] = {}
+    for hz in ("1c", "5c"):
+        base = tmp_path / f"active_{hz}" / tkr
+        base.mkdir(parents=True)
+        with open(base / f"xgb_{tkr}_{hz}.pkl", "wb") as f:
+            pickle.dump(clf_for(hz), f)
+        (base / f"xgb_{tkr}_{hz}_meta.json").write_text(
+            json.dumps(_valid_xgb_meta(["a"])), encoding="utf-8"
+        )
+        write_bundle_integrity_manifest(base, tkr, hz, allow_missing_required=True)
+        bases[hz] = base
+
+    monkeypatch.setattr(
+        mp, "_model_dir_for_ticker", lambda _t: bases[mp.get_ml_infer_horizon_slug()]
+    )
 
     tok1 = mp.set_ml_infer_horizon_slug("1c")
     try:
@@ -99,6 +108,11 @@ def test_missing_xgb_for_1c_does_not_block_5c_load(tmp_path, monkeypatch):
     with open(mp_path, "wb") as f:
         pickle.dump(c, f)
     meta_path.write_text(json.dumps(_valid_xgb_meta(["a"])), encoding="utf-8")
+    # Item-4 strict default: pin the present artifacts (5c); the 1c file stays
+    # absent, which is the condition under test.
+    from active_bundle_contract import write_bundle_integrity_manifest
+
+    write_bundle_integrity_manifest(base, tkr, hz3, allow_missing_required=True)
 
     monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: base)
 

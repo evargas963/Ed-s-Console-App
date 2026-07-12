@@ -32,6 +32,7 @@ import pickle
 import logging
 import numpy as np
 import os
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from pathlib import Path
@@ -444,7 +445,25 @@ _strict_bundle_warned: set[str] = set()
 _artifact_verification_registry: dict[str, dict] = {}
 
 
+# ML-PIPE Item 4 §6: stat (size+mtime_ns) invalidation cannot detect a mutation
+# that preserves both fields. Cached verification therefore expires after this
+# TTL and the next access performs a FULL re-hash against the manifest, bounding
+# the undetected-mutation window to the TTL instead of process lifetime.
+ARTIFACT_REVERIFY_TTL_ENV = "ED_ARTIFACT_REVERIFY_TTL_SECONDS"
+_ARTIFACT_REVERIFY_TTL_DEFAULT = 900.0
+
+
+def _artifact_reverify_ttl_seconds() -> float:
+    raw = os.environ.get(ARTIFACT_REVERIFY_TTL_ENV, "").strip()
+    try:
+        val = float(raw)
+    except ValueError:
+        return _ARTIFACT_REVERIFY_TTL_DEFAULT
+    return val if val > 0 else _ARTIFACT_REVERIFY_TTL_DEFAULT
+
+
 def _record_artifact_verification(rk: str, role: str, prov: dict) -> None:
+    prov["verified_at_epoch"] = time.time()
     _artifact_verification_registry[f"{rk}|{role}"] = prov
 
 
@@ -535,17 +554,25 @@ def _artifact_registry_entry_stale(rk: str) -> bool:
     A cached in-memory model (verified, legacy-classified, or fail-closed
     negative) is evicted when its artifact bytes, its integrity manifest, or
     the bundle directory identity changed on disk (stat: size + mtime_ns), or
-    when a legacy bundle gained a manifest. Eviction triggers a full re-verify;
-    a negative entry never flips positive without recomputing the hash. Honest
-    limit: a mutation preserving both size and mtime_ns is not detected without
-    a full rehash.
+    when a legacy bundle gained a manifest, or when the verification is older
+    than the re-verify TTL (Item 4 §6: a mutation preserving both size and
+    mtime_ns escapes stat detection, so cached trust expires and the next
+    access re-hashes — the undetected-mutation window is bounded by the TTL,
+    not the process lifetime). Eviction triggers a full re-verify; a negative
+    entry never flips positive without recomputing the hash.
     """
     prefix = f"{rk}|"
     provs = [p for k, p in _artifact_verification_registry.items() if k.startswith(prefix)]
     if not provs:
         return False
     stale = False
+    now = time.time()
+    ttl = _artifact_reverify_ttl_seconds()
     for prov in provs:
+        verified_at = prov.get("verified_at_epoch")
+        if not isinstance(verified_at, (int, float)) or now - verified_at >= ttl:
+            stale = True  # TTL expiry (or missing timestamp) -> full re-hash
+            break
         if _stat_changed(prov.get("artifact_path"), prov.get("artifact_bytes"), prov.get("artifact_mtime_ns")):
             stale = True
             break

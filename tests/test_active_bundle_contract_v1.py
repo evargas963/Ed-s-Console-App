@@ -49,6 +49,11 @@ def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str, *, encoder_sch
     bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(
         pickle.dumps({"meta_stack_test_stub": True}, protocol=pickle.HIGHEST_PROTOCOL)
     )
+    # Item-4 strict default (committed policy): a servable bundle carries an
+    # integrity manifest — stamp it the way the governed promotion path does.
+    from active_bundle_contract import write_bundle_integrity_manifest
+
+    write_bundle_integrity_manifest(bundle_dir, t, hz)
 
 
 def test_check_active_bundle_complete_all_present(tmp_path: Path):
