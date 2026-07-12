@@ -215,6 +215,21 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
         else:
             runtime_class = "STRICT_ACTIVE_FAIL_CLOSED"
 
+        # ML-PIPE Item 4 — artifact integrity identity of every governed load
+        # already performed for this bundle (empty until first load).
+        integrity_prov = get_artifact_verification_provenance(bt, hz)
+        if not integrity_prov:
+            artifact_integrity = "NOT_LOADED"
+        elif any(
+            p.get("integrity_class") == "VERIFICATION_FAILED_CLOSED"
+            for p in integrity_prov.values()
+        ):
+            artifact_integrity = "VERIFICATION_FAILED_CLOSED"
+        elif any(p.get("legacy") for p in integrity_prov.values()):
+            artifact_integrity = "LEGACY_UNVERIFIED_NO_BUNDLE_MANIFEST"
+        else:
+            artifact_integrity = "VERIFIED_AGAINST_BUNDLE_MANIFEST"
+
         return {
             "requested_ticker": rt,
             "bundle_ticker": bt,
@@ -236,6 +251,18 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
             "runtime_class": runtime_class,
             "model_load_status": model_load_status,
             "fail_closed_reason": fail_closed_reason,
+            "artifact_integrity": artifact_integrity,
+            "artifact_verification": {
+                role: {
+                    k: p.get(k)
+                    for k in (
+                        "verified", "legacy", "integrity_class", "reason_code",
+                        "manifest_sha256", "artifact_sha256", "artifact_filename",
+                        "verified_at_utc",
+                    )
+                }
+                for role, p in sorted(integrity_prov.items())
+            },
         }
     except Exception as ex:
         # Provenance must never disturb the serve path.
@@ -410,6 +437,157 @@ _collapse_flag_registry: dict[str, set] = {}  # _model_registry_key -> {collapse
 # Strict-active bundle resolution — cache blocked/ok per (ticker, hz); warn once per key.
 _active_bundle_dir_cache: dict[str, Path | None] = {}
 _strict_bundle_warned: set[str] = set()
+# ML-PIPE Item 4 — verification provenance per f"{registry_key}|{artifact_role}".
+# Records the exact manifest + artifact identity every governed load was verified
+# against (or the fail-closed reason), and the stat identity used by the
+# staleness guard so a cached model cannot outlive artifact/manifest mutation.
+_artifact_verification_registry: dict[str, dict] = {}
+
+
+def _record_artifact_verification(rk: str, role: str, prov: dict) -> None:
+    _artifact_verification_registry[f"{rk}|{role}"] = prov
+
+
+def _verify_governed_artifact(base: Path, bt: str, hz: str, role: str, filename: str) -> dict | None:
+    """
+    Canonical pre-deserialization integrity boundary for serve-path model loads.
+
+    Verifies artifact bytes against the bundle integrity manifest BEFORE any
+    pickle/torch deserialization. Absent manifest -> explicit legacy provenance
+    (pre-Item-4 bundles; production authorization stays the MODEL-04 strict serve
+    gate upstream) unless ED_ARTIFACT_INTEGRITY_STRICT=1. Every governed failure
+    fails closed and is recorded with a stable reason code. Returns provenance on
+    success, None when the load must be refused.
+    """
+    from active_bundle_contract import (
+        ArtifactVerificationError,
+        classify_legacy_absent_manifest,
+        load_bundle_integrity_manifest,
+        verify_artifact_against_manifest,
+    )
+
+    rk = _model_registry_key(bt, hz)
+    try:
+        manifest = load_bundle_integrity_manifest(base)
+        if manifest is None:
+            prov = classify_legacy_absent_manifest(base, bt, hz, role, filename)
+        else:
+            prov = verify_artifact_against_manifest(base, bt, hz, role, filename, manifest=manifest)
+    except ArtifactVerificationError as exc:
+        logger.error(
+            "Artifact integrity fail-closed for %s %s hz=%s (%s): %s",
+            role, bt, hz, filename, exc,
+        )
+        # Record stat identity of the failing artifact + manifest so the
+        # staleness guard re-verifies (never silently flips positive) once
+        # either file changes on disk — no process restart required.
+        from active_bundle_contract import bundle_integrity_manifest_path
+
+        art_sig = _stat_signature(str(base / filename))
+        man_path = str(bundle_integrity_manifest_path(base))
+        man_sig = _stat_signature(man_path)
+        _record_artifact_verification(rk, role, {
+            "verified": False,
+            "legacy": False,
+            "integrity_class": "VERIFICATION_FAILED_CLOSED",
+            "reason_code": exc.reason_code,
+            "detail": exc.detail,
+            "inference_blocked": True,
+            "fallback_attempted": False,
+            "artifact_path": str(base / filename),
+            "artifact_bytes": art_sig[0] if art_sig else None,
+            "artifact_mtime_ns": art_sig[1] if art_sig else None,
+            "manifest_path": man_path,
+            "manifest_bytes": man_sig[0] if man_sig else None,
+            "manifest_mtime_ns": man_sig[1] if man_sig else None,
+            **exc.identity,
+        })
+        return None
+    _record_artifact_verification(rk, role, prov)
+    if prov.get("legacy"):
+        logger.warning(
+            "LEGACY_UNVERIFIED artifact load (no bundle integrity manifest) for %s %s hz=%s (%s)",
+            role, bt, hz, filename,
+        )
+    return prov
+
+
+def _stat_signature(path_str: str | None) -> tuple[int, int] | None:
+    """(size, mtime_ns) of a path, or None when absent/unreadable."""
+    if not path_str:
+        return None
+    try:
+        st = os.stat(path_str)
+    except OSError:
+        return None
+    return (st.st_size, st.st_mtime_ns)
+
+
+def _stat_changed(path_str: str | None, size: int | None, mtime_ns: int | None) -> bool:
+    recorded = None if size is None and mtime_ns is None else (size, mtime_ns)
+    return _stat_signature(path_str) != recorded
+
+
+def _artifact_registry_entry_stale(rk: str) -> bool:
+    """
+    Staleness guard for cached model registry entries (ML-PIPE Item 4).
+
+    A cached in-memory model (verified, legacy-classified, or fail-closed
+    negative) is evicted when its artifact bytes, its integrity manifest, or
+    the bundle directory identity changed on disk (stat: size + mtime_ns), or
+    when a legacy bundle gained a manifest. Eviction triggers a full re-verify;
+    a negative entry never flips positive without recomputing the hash. Honest
+    limit: a mutation preserving both size and mtime_ns is not detected without
+    a full rehash.
+    """
+    prefix = f"{rk}|"
+    provs = [p for k, p in _artifact_verification_registry.items() if k.startswith(prefix)]
+    if not provs:
+        return False
+    stale = False
+    for prov in provs:
+        if _stat_changed(prov.get("artifact_path"), prov.get("artifact_bytes"), prov.get("artifact_mtime_ns")):
+            stale = True
+            break
+        manifest_path = prov.get("manifest_path")
+        if prov.get("legacy"):
+            if manifest_path and Path(manifest_path).is_file():
+                stale = True  # legacy bundle gained an integrity manifest — re-verify
+                break
+        elif _stat_changed(manifest_path, prov.get("manifest_bytes"), prov.get("manifest_mtime_ns")):
+            stale = True
+            break
+    if stale:
+        logger.info("ml_predict: artifact identity changed on disk — evicting registry for %s", rk)
+        invalidate_model_registry_key(rk)
+    return stale
+
+
+def invalidate_model_registry_key(rk: str) -> None:
+    """Evict every registry + provenance entry for one registry key (bundle identity)."""
+    for reg in (_xgb_registry, _meta_registry, _lstm_registry, _trans_registry, _collapse_flag_registry):
+        reg.pop(rk, None)
+    movehead_prefix = f"{rk}:"
+    for key in list(_xgb_movehead_registry):
+        if key == rk or key.startswith(movehead_prefix):
+            del _xgb_movehead_registry[key]
+    prov_prefix = f"{rk}|"
+    for key in list(_artifact_verification_registry):
+        if key.startswith(prov_prefix):
+            del _artifact_verification_registry[key]
+    _active_bundle_dir_cache.pop(rk, None)
+    _strict_bundle_warned.discard(rk)
+
+
+def get_artifact_verification_provenance(ticker: str, hz: str | None = None) -> dict[str, dict]:
+    """{artifact_role: verification provenance} recorded for (ticker, horizon) loads."""
+    rk = _model_registry_key(ticker, hz)
+    prefix = f"{rk}|"
+    return {
+        k[len(prefix):]: dict(p)
+        for k, p in _artifact_verification_registry.items()
+        if k.startswith(prefix)
+    }
 
 CLASS_NAMES = ["up", "down", "flat"]
 # Visible uniform when no base is trustworthy (all single-class-collapsed). Distinct from a
@@ -674,7 +852,7 @@ def _load_xgb(ticker: str) -> bool:
     bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
     rk = _model_registry_key(bt, hz)
-    if rk in _xgb_registry:
+    if rk in _xgb_registry and not _artifact_registry_entry_stale(rk):
         return _xgb_registry[rk] is not None
 
     base = _active_bundle_dir_for_load(bt)
@@ -686,6 +864,15 @@ def _load_xgb(ticker: str) -> bool:
 
     if not mp.exists():
         logger.debug("XGBoost model not found for %s (bundle=%s)", ticker, bt)
+        _xgb_registry[rk] = None
+        return False
+
+    # Item 4: verify artifact bytes against the bundle integrity manifest
+    # BEFORE pickle deserialization (fail closed on any governed failure).
+    if (
+        _verify_governed_artifact(base, bt, hz, "xgb", mp.name) is None
+        or _verify_governed_artifact(base, bt, hz, "xgb_meta", mtp.name) is None
+    ):
         _xgb_registry[rk] = None
         return False
 
@@ -844,6 +1031,7 @@ def _predict_xgb_movement_heads(
     bt = _bundle_ticker_for_artifacts(ticker)
     out: dict[str, float] = {}
     _m5_snap_cached: dict | None = xgb_pre_engineering_snapshot
+    _artifact_registry_entry_stale(_model_registry_key(bt, hz))
     for suffix, names_default in (("dir", ["up", "down"]), ("move", ["move", "no_move"])):
         reg_key = f"{_model_registry_key(bt, hz)}:{suffix}"
         if reg_key not in _xgb_movehead_registry:
@@ -854,6 +1042,12 @@ def _predict_xgb_movement_heads(
             mp = base / f"xgb_{bt}_{hz}_{suffix}.pkl"
             mtp = base / f"xgb_{bt}_{hz}_{suffix}_meta.json"
             if not mp.is_file() or not mtp.is_file():
+                _xgb_movehead_registry[reg_key] = None
+            elif (
+                # Item 4: verify bytes vs bundle integrity manifest before pickle.load.
+                _verify_governed_artifact(base, bt, hz, f"xgb_{suffix}", mp.name) is None
+                or _verify_governed_artifact(base, bt, hz, f"xgb_{suffix}_meta", mtp.name) is None
+            ):
                 _xgb_movehead_registry[reg_key] = None
             else:
                 try:
@@ -961,7 +1155,7 @@ def _load_lstm(ticker: str) -> bool:
     bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
     rk = _model_registry_key(bt, hz)
-    if rk in _lstm_registry:
+    if rk in _lstm_registry and not _artifact_registry_entry_stale(rk):
         return _lstm_registry[rk] is not None
 
     base = _active_bundle_dir_for_load(bt)
@@ -971,6 +1165,11 @@ def _load_lstm(ticker: str) -> bool:
     mp = base / f"lstm_{bt}_{hz}.pt"
     if not mp.exists():
         logger.debug("LSTM model not found for %s (bundle=%s) at %s", ticker, bt, mp)
+        _lstm_registry[rk] = None
+        return False
+
+    # Item 4: verify checkpoint bytes vs bundle integrity manifest before torch.load.
+    if _verify_governed_artifact(base, bt, hz, "lstm", mp.name) is None:
         _lstm_registry[rk] = None
         return False
 
@@ -1253,7 +1452,7 @@ def _load_transformer(ticker: str) -> bool:
     bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
     rk = _model_registry_key(bt, hz)
-    if rk in _trans_registry:
+    if rk in _trans_registry and not _artifact_registry_entry_stale(rk):
         return _trans_registry[rk] is not None
 
     base = _active_bundle_dir_for_load(bt)
@@ -1268,6 +1467,14 @@ def _load_transformer(ticker: str) -> bool:
         return False
     if not mtp.exists():
         logger.error("Transformer %s: missing meta %s; refusing load.", ticker, mtp.name)
+        _trans_registry[rk] = None
+        return False
+
+    # Item 4: verify checkpoint + meta bytes vs bundle integrity manifest before torch.load.
+    if (
+        _verify_governed_artifact(base, bt, hz, "transformer", mp.name) is None
+        or _verify_governed_artifact(base, bt, hz, "transformer_meta", mtp.name) is None
+    ):
         _trans_registry[rk] = None
         return False
 
@@ -1527,7 +1734,7 @@ def _load_meta(ticker: str) -> bool:
     bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
     rk = _model_registry_key(bt, hz)
-    if rk in _meta_registry:
+    if rk in _meta_registry and not _artifact_registry_entry_stale(rk):
         return _meta_registry[rk] is not None
 
     base = _active_bundle_dir_for_load(bt)
@@ -1536,6 +1743,11 @@ def _load_meta(ticker: str) -> bool:
         return False
     mp = base / f"meta_{bt}_{hz}.pkl"
     if not mp.exists():
+        _meta_registry[rk] = None
+        return False
+
+    # Item 4: verify pickle bytes vs bundle integrity manifest before pickle.load.
+    if _verify_governed_artifact(base, bt, hz, "meta", mp.name) is None:
         _meta_registry[rk] = None
         return False
 

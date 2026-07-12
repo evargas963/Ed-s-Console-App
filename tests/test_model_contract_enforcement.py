@@ -127,6 +127,8 @@ _PROVENANCE_KEYS = {
     "contract_match", "contract_mismatch_reason", "strict_active_only",
     "relaxation_active", "runtime_class", "model_load_status",
     "fail_closed_reason",
+    # ML-PIPE Item 4 — artifact integrity identity (additive)
+    "artifact_integrity", "artifact_verification",
 }
 
 
@@ -315,6 +317,552 @@ def test_provenance_no_ticker_literals():
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             assert not (node.value.isalpha() and node.value.isupper() and len(node.value) <= 5), (
                 f"ticker-literal-shaped constant {node.value!r} in provenance builder"
+            )
+
+
+# ── ML-PIPE Item 4 — artifact-manifest load verification (adversarial) ───────
+#
+# Independent reference: expected hashes are recomputed here with hashlib
+# directly — never through the implementation under test.
+
+import hashlib
+import os
+import pickle as _pickle
+
+import pytest
+
+from active_bundle_contract import (
+    ARTIFACT_INTEGRITY_STRICT_ENV,
+    ARTIFACT_VERIFICATION_FAILURE_REASONS,
+    ArtifactVerificationError,
+    BUNDLE_INTEGRITY_MANIFEST_FILENAME,
+    bundle_integrity_manifest_path,
+    classify_legacy_absent_manifest,
+    load_bundle_integrity_manifest,
+    refresh_bundle_integrity_manifest,
+    verify_artifact_against_manifest,
+    write_bundle_integrity_manifest,
+)
+
+
+def _sha256_independent(path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _stamped_bundle(models_root, ticker, hz="1c"):
+    """Complete bundle with a loadable xgb pickle + integrity manifest."""
+    bd = _make_complete_bundle(models_root, ticker, hz)
+    with (bd / f"xgb_{ticker}_{hz}.pkl").open("wb") as fh:
+        _pickle.dump({"kind": "xgb_stub", "ticker": ticker}, fh)
+    write_bundle_integrity_manifest(bd, ticker, hz)
+    return bd
+
+
+def _reset_ml_predict_state(mp):
+    for reg in (
+        mp._xgb_registry, mp._meta_registry, mp._lstm_registry,
+        mp._trans_registry, mp._xgb_movehead_registry,
+    ):
+        reg.clear()
+    mp._artifact_verification_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
+
+
+@pytest.fixture()
+def mp_bundle(tmp_path, monkeypatch):
+    """ml_predict module wired to a stamped tmp bundle for ZZIN4 (hz=1c)."""
+    import ml_predict as mp
+
+    t = "ZZIN4"
+    bd = _stamped_bundle(tmp_path, t)
+    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: bd)
+    monkeypatch.delenv(ARTIFACT_INTEGRITY_STRICT_ENV, raising=False)
+    _reset_ml_predict_state(mp)
+    yield mp, t, bd
+    _reset_ml_predict_state(mp)
+
+
+def test_item4_valid_manifest_and_artifact_verify(tmp_path):
+    t, hz = "ZZOK", "1c"
+    bd = _stamped_bundle(tmp_path, t)
+    name = f"xgb_{t}_{hz}.pkl"
+    prov = verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    assert prov["verified"] is True
+    assert prov["legacy"] is False
+    assert prov["integrity_class"] == "VERIFIED_AGAINST_BUNDLE_MANIFEST"
+    # Independent hash reference (hashlib, not the implementation).
+    assert prov["actual_sha256"] == _sha256_independent(bd / name)
+    assert prov["expected_sha256"] == prov["actual_sha256"]
+    assert prov["manifest_sha256"] == _sha256_independent(
+        bd / BUNDLE_INTEGRITY_MANIFEST_FILENAME
+    )
+    assert prov["ticker"] == t and prov["horizon"] == hz
+    assert prov["artifact_role"] == "xgb"
+
+
+def test_item4_one_byte_artifact_mutation_fails(tmp_path):
+    t, hz = "ZZMUT", "1c"
+    bd = _stamped_bundle(tmp_path, t)
+    name = f"xgb_{t}_{hz}.pkl"
+    p = bd / name
+    raw = bytearray(p.read_bytes())
+    raw[0] ^= 0xFF
+    p.write_bytes(bytes(raw))
+    with pytest.raises(ArtifactVerificationError) as ei:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    assert ei.value.reason_code == "ARTIFACT_HASH_MISMATCH"
+
+
+def test_item4_manifest_expected_hash_mutation_fails(tmp_path):
+    t, hz = "ZZMH", "1c"
+    bd = _stamped_bundle(tmp_path, t)
+    name = f"xgb_{t}_{hz}.pkl"
+    mf_path = bundle_integrity_manifest_path(bd)
+    mf = json.loads(mf_path.read_text(encoding="utf-8"))
+    mf["artifacts"][name]["sha256"] = "0" * 64
+    mf_path.write_text(json.dumps(mf), encoding="utf-8")
+    with pytest.raises(ArtifactVerificationError) as ei:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    assert ei.value.reason_code == "ARTIFACT_HASH_MISMATCH"
+
+
+def test_item4_absent_manifest_explicit_legacy_never_verified(tmp_path, monkeypatch):
+    t, hz = "ZZLEG", "1c"
+    bd = _make_complete_bundle(tmp_path, t, hz)  # NO integrity manifest
+    name = f"xgb_{t}_{hz}.pkl"
+    monkeypatch.delenv(ARTIFACT_INTEGRITY_STRICT_ENV, raising=False)
+    assert load_bundle_integrity_manifest(bd) is None
+    with pytest.raises(ArtifactVerificationError) as ei:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    assert ei.value.reason_code == "MANIFEST_MISSING"
+    prov = classify_legacy_absent_manifest(bd, t, hz, "xgb", name)
+    # Legacy can never masquerade as verified.
+    assert prov["verified"] is False
+    assert prov["legacy"] is True
+    assert prov["integrity_class"] == "LEGACY_UNVERIFIED_NO_BUNDLE_MANIFEST"
+    assert prov["reason_code"] == "MANIFEST_MISSING"
+    # Operator strict lever: absence fails closed.
+    monkeypatch.setenv(ARTIFACT_INTEGRITY_STRICT_ENV, "1")
+    with pytest.raises(ArtifactVerificationError) as ei2:
+        classify_legacy_absent_manifest(bd, t, hz, "xgb", name)
+    assert ei2.value.reason_code == "MANIFEST_MISSING"
+
+
+def test_item4_malformed_and_unsupported_manifest_fail(tmp_path):
+    t, hz = "ZZBAD", "1c"
+    bd = _stamped_bundle(tmp_path, t)
+    mf_path = bundle_integrity_manifest_path(bd)
+    original = mf_path.read_text(encoding="utf-8")
+
+    mf_path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(ArtifactVerificationError) as ei:
+        load_bundle_integrity_manifest(bd)
+    assert ei.value.reason_code == "MANIFEST_MALFORMED"
+
+    mf_path.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
+    with pytest.raises(ArtifactVerificationError) as ei2:
+        load_bundle_integrity_manifest(bd)
+    assert ei2.value.reason_code == "MANIFEST_MALFORMED"
+
+    mf = json.loads(original)
+    mf["schema_version"] = 999
+    mf_path.write_text(json.dumps(mf), encoding="utf-8")
+    with pytest.raises(ArtifactVerificationError) as ei3:
+        load_bundle_integrity_manifest(bd)
+    assert ei3.value.reason_code == "MANIFEST_VERSION_UNSUPPORTED"
+
+
+def test_item4_missing_entry_missing_file_invalid_hash(tmp_path):
+    t, hz = "ZZENT", "1c"
+    bd = _stamped_bundle(tmp_path, t)
+    name = f"xgb_{t}_{hz}.pkl"
+    mf_path = bundle_integrity_manifest_path(bd)
+    mf = json.loads(mf_path.read_text(encoding="utf-8"))
+
+    # Missing artifact entry.
+    entry = mf["artifacts"].pop(name)
+    mf_path.write_text(json.dumps(mf), encoding="utf-8")
+    with pytest.raises(ArtifactVerificationError) as ei:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    assert ei.value.reason_code == "ARTIFACT_ENTRY_MISSING"
+
+    # Invalid expected-hash syntax.
+    entry["sha256"] = "NOT-A-HASH"
+    mf["artifacts"][name] = entry
+    mf_path.write_text(json.dumps(mf), encoding="utf-8")
+    with pytest.raises(ArtifactVerificationError) as ei2:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    assert ei2.value.reason_code == "EXPECTED_HASH_INVALID"
+
+    # Missing artifact file.
+    entry["sha256"] = "a" * 64
+    mf_path.write_text(json.dumps(mf), encoding="utf-8")
+    (bd / name).unlink()
+    with pytest.raises(ArtifactVerificationError) as ei3:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    assert ei3.value.reason_code == "ARTIFACT_FILE_MISSING"
+
+
+def test_item4_identity_substitution_fails(tmp_path):
+    t, hz = "ZZIDA", "1c"
+    bd = _stamped_bundle(tmp_path, t)
+
+    # Cross-ticker substitution at request level.
+    with pytest.raises(ArtifactVerificationError) as ei:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", "xgb_ZZIDB_1c.pkl")
+    assert ei.value.reason_code == "TICKER_IDENTITY_MISMATCH"
+
+    # Cross-horizon substitution.
+    with pytest.raises(ArtifactVerificationError) as ei2:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", f"xgb_{t}_5c.pkl")
+    assert ei2.value.reason_code == "HORIZON_IDENTITY_MISMATCH"
+
+    # Cross-model substitution (lstm file requested under the xgb role).
+    with pytest.raises(ArtifactVerificationError) as ei3:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", f"lstm_{t}_{hz}.pt")
+    assert ei3.value.reason_code == "MODEL_IDENTITY_MISMATCH"
+
+    # Unknown / wrong artifact role.
+    with pytest.raises(ArtifactVerificationError) as ei4:
+        verify_artifact_against_manifest(bd, t, hz, "nonsense_role", f"xgb_{t}_{hz}.pkl")
+    assert ei4.value.reason_code == "ARTIFACT_ROLE_MISMATCH"
+
+    # Manifest role mismatch (entry role edited).
+    name = f"xgb_{t}_{hz}.pkl"
+    mf_path = bundle_integrity_manifest_path(bd)
+    mf = json.loads(mf_path.read_text(encoding="utf-8"))
+    mf["artifacts"][name]["role"] = "lstm"
+    mf_path.write_text(json.dumps(mf), encoding="utf-8")
+    with pytest.raises(ArtifactVerificationError) as ei5:
+        verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    assert ei5.value.reason_code == "ARTIFACT_ROLE_MISMATCH"
+
+
+def test_item4_ticker_horizon_bundle_identity_of_manifest(tmp_path):
+    t, hz = "ZZIDC", "1c"
+    bd = _stamped_bundle(tmp_path, t)
+    name = f"xgb_{t}_{hz}.pkl"
+    mf_path = bundle_integrity_manifest_path(bd)
+    original = json.loads(mf_path.read_text(encoding="utf-8"))
+
+    for field, value, reason in (
+        ("ticker", "ZZOTH", "TICKER_IDENTITY_MISMATCH"),
+        ("ml_horizon_slug", "5c", "HORIZON_IDENTITY_MISMATCH"),
+        ("bundle_key", f"{t}:60c", "BUNDLE_IDENTITY_MISMATCH"),
+    ):
+        mf = dict(original)
+        mf[field] = value
+        mf_path.write_text(json.dumps(mf), encoding="utf-8")
+        with pytest.raises(ArtifactVerificationError) as ei:
+            verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+        assert ei.value.reason_code == reason, field
+
+
+def test_item4_path_traversal_and_bundle_escape_fail(tmp_path):
+    t, hz = "ZZTRV", "1c"
+    bd = _stamped_bundle(tmp_path, t)
+    outside = tmp_path / f"xgb_{t}_{hz}.pkl"
+    outside.write_bytes(b"outside")
+    for evil in (f"..\\{outside.name}", f"../{outside.name}", str(outside), ""):
+        with pytest.raises(ArtifactVerificationError) as ei:
+            verify_artifact_against_manifest(bd, t, hz, "xgb", evil)
+        assert ei.value.reason_code in (
+            "ARTIFACT_PATH_OUTSIDE_BUNDLE",
+            # request-level filename identity fires first for non-basename shapes
+            "TICKER_IDENTITY_MISMATCH",
+            "MODEL_IDENTITY_MISMATCH",
+        )
+    # The pure containment helper rejects traversal outright.
+    from active_bundle_contract import _contained_artifact_path
+
+    with pytest.raises(ArtifactVerificationError) as ei2:
+        _contained_artifact_path(bd, f"..\\{outside.name}", {})
+    assert ei2.value.reason_code == "ARTIFACT_PATH_OUTSIDE_BUNDLE"
+
+
+def test_item4_duplicate_filenames_in_separate_bundles_do_not_cross_resolve(tmp_path):
+    """Same filename in two bundle dirs: each dir verifies only its own bytes."""
+    t, hz = "ZZDUP", "1c"
+    bd_a = _stamped_bundle(tmp_path / "rootA", t)
+    bd_b = _stamped_bundle(tmp_path / "rootB", t)
+    name = f"xgb_{t}_{hz}.pkl"
+    # Divergent bytes in B under the same filename, manifest copied from A.
+    with (bd_b / name).open("wb") as fh:
+        _pickle.dump({"kind": "divergent"}, fh)
+    (bd_b / BUNDLE_INTEGRITY_MANIFEST_FILENAME).write_text(
+        (bd_a / BUNDLE_INTEGRITY_MANIFEST_FILENAME).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    assert verify_artifact_against_manifest(bd_a, t, hz, "xgb", name)["verified"] is True
+    with pytest.raises(ArtifactVerificationError) as ei:
+        verify_artifact_against_manifest(bd_b, t, hz, "xgb", name)
+    assert ei.value.reason_code == "ARTIFACT_HASH_MISMATCH"
+
+
+def test_item4_reason_codes_are_the_governed_enum():
+    """Every raise site uses the single governed vocabulary (constructor-enforced)."""
+    with pytest.raises(ValueError):
+        ArtifactVerificationError("NOT_A_GOVERNED_REASON", "x")
+    assert "ARTIFACT_HASH_MISMATCH" in ARTIFACT_VERIFICATION_FAILURE_REASONS
+    assert "MANIFEST_MISSING" in ARTIFACT_VERIFICATION_FAILURE_REASONS
+    assert len(set(ARTIFACT_VERIFICATION_FAILURE_REASONS)) == len(
+        ARTIFACT_VERIFICATION_FAILURE_REASONS
+    )
+
+
+def test_item4_load_xgb_verifies_before_pickle_load(mp_bundle, monkeypatch):
+    """PRE-deserialization proof: with a corrupted artifact, pickle.load is never reached."""
+    mp, t, bd = mp_bundle
+    hz = "1c"
+    name = f"xgb_{t}_{hz}.pkl"
+    (bd / name).write_bytes(b"corrupted-bytes")
+
+    def _poison(*a, **k):
+        raise AssertionError("pickle.load reached with unverified artifact bytes")
+
+    monkeypatch.setattr(mp.pickle, "load", _poison)
+    assert mp._load_xgb(t) is False
+    prov = mp.get_artifact_verification_provenance(t, hz)
+    assert prov["xgb"]["integrity_class"] == "VERIFICATION_FAILED_CLOSED"
+    assert prov["xgb"]["reason_code"] == "ARTIFACT_HASH_MISMATCH"
+    assert prov["xgb"]["inference_blocked"] is True
+
+
+def test_item4_load_xgb_success_records_provenance(mp_bundle):
+    mp, t, bd = mp_bundle
+    assert mp._load_xgb(t) is True
+    prov = mp.get_artifact_verification_provenance(t, "1c")
+    assert prov["xgb"]["verified"] is True
+    assert prov["xgb"]["integrity_class"] == "VERIFIED_AGAINST_BUNDLE_MANIFEST"
+    assert prov["xgb_meta"]["verified"] is True
+    # Independent recompute of the recorded hash.
+    assert prov["xgb"]["actual_sha256"] == _sha256_independent(bd / f"xgb_{t}_1c.pkl")
+
+
+def test_item4_cache_invalidates_on_artifact_mutation(mp_bundle):
+    """A verified cached model cannot outlive artifact-byte mutation."""
+    mp, t, bd = mp_bundle
+    name = f"xgb_{t}_1c.pkl"
+    assert mp._load_xgb(t) is True
+    # Mutate artifact bytes on disk (stat identity changes).
+    p = bd / name
+    with p.open("wb") as fh:
+        _pickle.dump({"kind": "tampered"}, fh)
+    os.utime(p, ns=(p.stat().st_atime_ns, p.stat().st_mtime_ns + 1_000_000))
+    assert mp._load_xgb(t) is False  # evicted + re-verified -> hash mismatch
+    prov = mp.get_artifact_verification_provenance(t, "1c")
+    assert prov["xgb"]["reason_code"] == "ARTIFACT_HASH_MISMATCH"
+    # Negative result is sticky (not replaced by the older positive entry).
+    assert mp._load_xgb(t) is False
+
+
+def test_item4_cache_invalidates_on_manifest_mutation(mp_bundle):
+    mp, t, bd = mp_bundle
+    assert mp._load_xgb(t) is True
+    mf_path = bundle_integrity_manifest_path(bd)
+    mf = json.loads(mf_path.read_text(encoding="utf-8"))
+    mf["artifacts"][f"xgb_{t}_1c.pkl"]["sha256"] = "f" * 64
+    mf_path.write_text(json.dumps(mf), encoding="utf-8")
+    os.utime(mf_path, ns=(mf_path.stat().st_atime_ns, mf_path.stat().st_mtime_ns + 1_000_000))
+    assert mp._load_xgb(t) is False
+    prov = mp.get_artifact_verification_provenance(t, "1c")
+    assert prov["xgb"]["reason_code"] == "ARTIFACT_HASH_MISMATCH"
+
+
+def test_item4_legacy_bundle_gaining_manifest_reverifies(tmp_path, monkeypatch):
+    import ml_predict as mp
+
+    t = "ZZLG2"
+    bd = _make_complete_bundle(tmp_path, t)  # legacy: no manifest
+    with (bd / f"xgb_{t}_1c.pkl").open("wb") as fh:
+        _pickle.dump({"kind": "legacy"}, fh)
+    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: bd)
+    monkeypatch.delenv(ARTIFACT_INTEGRITY_STRICT_ENV, raising=False)
+    _reset_ml_predict_state(mp)
+    try:
+        assert mp._load_xgb(t) is True
+        prov = mp.get_artifact_verification_provenance(t, "1c")
+        assert prov["xgb"]["legacy"] is True
+        assert prov["xgb"]["integrity_class"] == "LEGACY_UNVERIFIED_NO_BUNDLE_MANIFEST"
+        # Bundle gains an integrity manifest -> cached legacy entry re-verifies.
+        write_bundle_integrity_manifest(bd, t, "1c")
+        assert mp._load_xgb(t) is True
+        prov2 = mp.get_artifact_verification_provenance(t, "1c")
+        assert prov2["xgb"]["verified"] is True
+        assert prov2["xgb"]["legacy"] is False
+    finally:
+        _reset_ml_predict_state(mp)
+
+
+def test_item4_cross_ticker_and_cross_horizon_cache_isolation(mp_bundle):
+    """Registry keys carry (ticker, horizon) identity by construction."""
+    mp, t, _bd = mp_bundle
+    k1 = mp._model_registry_key(t, "1c")
+    # Key embeds ticker + horizon identity (arch prefix included).
+    assert f"{t}:1c" in k1
+    k_hz = mp._model_registry_key(t, "5c")
+    k_tk = mp._model_registry_key("ZZOTH", "1c")
+    assert k_hz != k1 and f"{t}:5c" in k_hz
+    assert k_tk != k1 and "ZZOTH:1c" in k_tk
+    # Eviction of one key never touches another ticker's entries.
+    mp._xgb_registry[k_tk] = {"model": "other"}
+    mp.invalidate_model_registry_key(k1)
+    assert mp._xgb_registry[k_tk] == {"model": "other"}
+    del mp._xgb_registry[k_tk]
+
+
+def test_item4_strict_absence_blocks_serving(tmp_path, monkeypatch):
+    """ED_ARTIFACT_INTEGRITY_STRICT=1: manifest-absent bundle refuses to load."""
+    import ml_predict as mp
+
+    t = "ZZSTRICT"[:5]
+    bd = _make_complete_bundle(tmp_path, t)
+    with (bd / f"xgb_{t}_1c.pkl").open("wb") as fh:
+        _pickle.dump({"kind": "legacy"}, fh)
+    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: bd)
+    monkeypatch.setenv(ARTIFACT_INTEGRITY_STRICT_ENV, "1")
+    _reset_ml_predict_state(mp)
+    try:
+        assert mp._load_xgb(t) is False
+        prov = mp.get_artifact_verification_provenance(t, "1c")
+        assert prov["xgb"]["reason_code"] == "MANIFEST_MISSING"
+        assert prov["xgb"]["integrity_class"] == "VERIFICATION_FAILED_CLOSED"
+    finally:
+        _reset_ml_predict_state(mp)
+
+
+def test_item4_promotion_stamps_manifest(tmp_path):
+    """promote_horizon_bundle_from_candidate writes the integrity manifest with lineage."""
+    from active_bundle_contract import promote_horizon_bundle_from_candidate
+
+    t, hz = "ZZPRM", "1c"
+    src = tmp_path / "candidate"
+    src.mkdir()
+    _make_complete_bundle(tmp_path / "candidate_root", t)  # shape only
+    # Build candidate files directly in src (flat candidate dir layout).
+    from active_bundle_contract import horizon_bundle_filenames
+
+    for name in horizon_bundle_filenames(t, hz):
+        if name.endswith(".json"):
+            (src / name).write_text(json.dumps({**contract_metadata_dict(), "features": ["a"], "impute_medians": {"a": 0.0}}), encoding="utf-8")
+        else:
+            with (src / name).open("wb") as fh:
+                _pickle.dump({"n": name}, fh)
+    (src / "scheduler_run_manifest.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "trained_at": "2026-07-11T00:00:00Z",
+            "data_end": "2026-07-10",
+            "scheduler_cache_key": "cachekey123",
+        }),
+        encoding="utf-8",
+    )
+    active = promote_horizon_bundle_from_candidate(
+        src, ticker=t, hz=hz, models_dir=tmp_path / "models"
+    )
+    mf = load_bundle_integrity_manifest(active)
+    assert mf is not None
+    assert mf["ticker"] == t and mf["ml_horizon_slug"] == hz
+    assert mf["source_lineage"].get("trained_at") == "2026-07-11T00:00:00Z"
+    assert mf["source_lineage"].get("scheduler_cache_key") == "cachekey123"
+    # Every promoted artifact byte-verifies immediately (independent hashlib check).
+    for name, entry in mf["artifacts"].items():
+        assert entry["sha256"] == _sha256_independent(active / name), name
+        verify_artifact_against_manifest(active, t, hz, entry["role"], name)
+
+
+def test_item4_refresh_preserves_lineage_and_is_noop_for_legacy(tmp_path):
+    t, hz = "ZZRF", "1c"
+    # Legacy bundle: refresh is a no-op (never launders unverified artifacts).
+    legacy = _make_complete_bundle(tmp_path / "legacy_root", t)
+    assert refresh_bundle_integrity_manifest(legacy) is None
+    assert not bundle_integrity_manifest_path(legacy).is_file()
+    # Stamped bundle: in-place write then refresh -> re-verifies, lineage kept.
+    bd = _stamped_bundle(tmp_path, t)
+    original_lineage = load_bundle_integrity_manifest(bd)["source_lineage"]
+    name = f"xgb_{t}_{hz}.pkl"
+    with (bd / name).open("wb") as fh:
+        _pickle.dump({"kind": "retrained-in-place"}, fh)
+    with pytest.raises(ArtifactVerificationError):
+        verify_artifact_against_manifest(bd, t, hz, "xgb", name)
+    refreshed = refresh_bundle_integrity_manifest(bd)
+    assert refreshed is not None
+    assert refreshed["source_lineage"] == original_lineage
+    assert verify_artifact_against_manifest(bd, t, hz, "xgb", name)["verified"] is True
+
+
+def test_item4_provenance_surface_reports_integrity(mp_bundle):
+    mp, t, _bd = mp_bundle
+    prov0 = mp.build_model_serving_provenance(t)
+    assert prov0["artifact_integrity"] == "NOT_LOADED"
+    assert mp._load_xgb(t) is True
+    prov1 = mp.build_model_serving_provenance(t)
+    assert prov1["artifact_integrity"] == "VERIFIED_AGAINST_BUNDLE_MANIFEST"
+    assert prov1["artifact_verification"]["xgb"]["verified"] is True
+    assert prov1["artifact_verification"]["xgb"]["artifact_sha256"] is None or isinstance(
+        prov1["artifact_verification"]["xgb"]["artifact_sha256"], str
+    )
+
+
+@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM", "ZZGST"])
+@pytest.mark.parametrize("hz", ["1c", "5c", "15c", "60c"])
+def test_item4_universal_ticker_horizon_matrix(tmp_path, ticker, hz):
+    """Universality: verify + fail-closed mutation across anchors, a guest
+    fixture, and all four governed horizons (verifier is parameterized —
+    ticker/horizon enter only as identity inputs)."""
+    bd = _make_complete_bundle(tmp_path, ticker, hz)
+    name = f"xgb_{ticker}_{hz}.pkl"
+    with (bd / name).open("wb") as fh:
+        _pickle.dump({"t": ticker, "hz": hz}, fh)
+    write_bundle_integrity_manifest(bd, ticker, hz)
+    prov = verify_artifact_against_manifest(bd, ticker, hz, "xgb", name)
+    assert prov["verified"] is True
+    assert prov["ticker"] == ticker and prov["horizon"] == hz
+    raw = bytearray((bd / name).read_bytes())
+    raw[-1] ^= 0x01
+    (bd / name).write_bytes(bytes(raw))
+    with pytest.raises(ArtifactVerificationError) as ei:
+        verify_artifact_against_manifest(bd, ticker, hz, "xgb", name)
+    assert ei.value.reason_code == "ARTIFACT_HASH_MISMATCH"
+
+
+def test_item4_all_governed_loaders_call_verifier_before_deserialization():
+    """AST lock: every pickle.load/torch.load in ml_predict serve loaders is
+    preceded by a _verify_governed_artifact call in the same function."""
+    import ast
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "ml_predict.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    governed = {
+        "_load_xgb", "_load_meta", "_load_transformer", "_load_lstm",
+        "_predict_xgb_movement_heads",
+    }
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef) or fn.name not in governed:
+            continue
+        verify_line = None
+        deser_line = None
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Call):
+                f = node.func
+                if isinstance(f, ast.Name) and f.id == "_verify_governed_artifact":
+                    if verify_line is None or node.lineno < verify_line:
+                        verify_line = node.lineno
+                if isinstance(f, ast.Attribute) and f.attr == "load" and isinstance(
+                    f.value, ast.Name
+                ) and f.value.id in ("pickle", "torch"):
+                    if deser_line is None or node.lineno < deser_line:
+                        deser_line = node.lineno
+        assert verify_line is not None, f"{fn.name}: no _verify_governed_artifact call"
+        if deser_line is not None:
+            assert verify_line < deser_line, (
+                f"{fn.name}: deserialization at line {deser_line} precedes "
+                f"verification at line {verify_line}"
             )
 
 

@@ -3695,6 +3695,7 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_objective_code_audit_documentation",
     "check_objective_code_audit_contract",
     "check_ablated_training_only",
+    "check_artifact_load_verification_boundary",
     "check_encoder_cone_mechanical_lock",
     "check_governance_binding_contract",
     "check_tier1_engineering_standard",
@@ -3908,6 +3909,211 @@ def _lock_id_wired(lock_id: str) -> bool:
         text = checker.read_text(encoding="utf-8", errors="replace")
         return f"def {lock_id}(" in text
     return False
+
+
+# ── ML-PIPE Item 4 — artifact-load verification boundary (recurrence lock) ───
+#
+# Every model-artifact deserialization site in production Python must either
+# route through the canonical pre-deserialization verification boundary
+# (active_bundle_contract.verify_artifact_against_manifest, wired in ml_predict
+# via _verify_governed_artifact) or carry a Read-verified classification row
+# below. A new pickle.load / torch.load / joblib.load / dill / cloudpickle /
+# pd.read_pickle / np.load(allow_pickle=True) site that is not inventoried
+# fails this lock — no silent new deserialization path can bypass Item 4.
+#
+# Classifications:
+#   serve_verified_pre_deserialization — governed serve loader; the lock ALSO
+#       asserts a _verify_governed_artifact call precedes deserialization.
+#   verified_in_function — integrity verification runs earlier in the same
+#       function body (active_bundle_contract.check_active_bundle_complete).
+#   training_internal   — reads artifacts the same process just wrote inside a
+#       training/eval workspace (not the serve boundary).
+#   evaluation_offline  — governed offline eval/ablation loader (candidate or
+#       experiment dirs; MODEL_DIR pinned by eval harness).
+#   validation_probe    — structural checkpoint inspection used by bundle
+#       completeness checks (post-integrity when a manifest exists).
+_GOVERNED_DESERIALIZATION_SITES: dict[tuple[str, str], str] = {
+    ("active_bundle_contract.py", "check_active_bundle_complete"): "verified_in_function",
+    ("arch_competition/ablation_bundle_inference.py", "try_load_lstm_offline"): "evaluation_offline",
+    ("arch_competition/ablation_bundle_inference.py", "try_load_transformer_offline"): "evaluation_offline",
+    ("arch_competition/stack_bundle_eval_v1.py", "_load_sequence_checkpoint_meta"): "evaluation_offline",
+    ("lstm_data.py", "sequence_encoder_checkpoint_issues"): "validation_probe",
+    ("lstm_model.py", "load_lstm"): "serve_verified_pre_deserialization",
+    ("lstm_model.py", "train_lstm"): "training_internal",
+    ("ml_predict.py", "_load_meta"): "serve_verified_pre_deserialization",
+    ("ml_predict.py", "_load_transformer"): "serve_verified_pre_deserialization",
+    ("ml_predict.py", "_load_xgb"): "serve_verified_pre_deserialization",
+    ("ml_predict.py", "_predict_xgb_movement_heads"): "serve_verified_pre_deserialization",
+    ("ml_scheduler.py", "_build_in_sample_cascade_xgb_lstm_tensor"): "training_internal",
+    ("ml_scheduler.py", "_train_cascade_xgb_lstm_into"): "training_internal",
+    ("ml_scheduler.py", "train_cascade_candidate"): "training_internal",
+    ("ml_scheduler.py", "train_parallel_candidate"): "training_internal",
+    ("ml_train.py", "train_ticker"): "training_internal",
+    ("transformer_train.py", "train_transformer"): "training_internal",
+}
+
+# ml_predict serve loaders that verify pre-call inside ml_predict before
+# delegating deserialization to another module (lstm_model.load_lstm).
+_SERVE_VERIFIED_BY_CALLER: frozenset[tuple[str, str]] = frozenset(
+    {("lstm_model.py", "load_lstm")}
+)
+
+_DESERIALIZATION_CALLS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("pickle", "load"), ("pickle", "loads"),
+        ("torch", "load"),
+        ("joblib", "load"),
+        ("dill", "load"), ("dill", "loads"),
+        ("cloudpickle", "load"), ("cloudpickle", "loads"),
+        ("pd", "read_pickle"), ("pandas", "read_pickle"),
+    }
+)
+
+_DESERIALIZATION_SCAN_EXCLUDE_PREFIXES: tuple[str, ...] = (
+    "tests/", "governance/archive/", ".claude/",
+)
+
+
+def _iter_production_python_files() -> list[Path]:
+    """Git-tracked .py files outside the excluded prefixes."""
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "--", "*.py"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+        ).stdout
+    except (subprocess.CalledProcessError, OSError):
+        return []
+    files: list[Path] = []
+    for rel in out.splitlines():
+        rel = rel.strip().replace("\\", "/")
+        if not rel or any(rel.startswith(p) for p in _DESERIALIZATION_SCAN_EXCLUDE_PREFIXES):
+            continue
+        p = REPO_ROOT / rel
+        if p.is_file():
+            files.append(p)
+    return files
+
+
+def _deserialization_sites_in_source(rel: str, source: str) -> list[tuple[str, str, int, str]]:
+    """(rel, qualified_fn, lineno, call) for every deserialization call in one file."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    func_of: dict[int, str] = {}
+
+    def _walk(node: ast.AST, qual: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            q = qual
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                q = f"{qual}.{child.name}" if qual else child.name
+            _walk(child, q)
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for n in ast.walk(child):
+                    if hasattr(n, "lineno"):
+                        func_of.setdefault(n.lineno, q)
+
+    _walk(tree, "")
+    sites: list[tuple[str, str, int, str]] = []
+    for n in ast.walk(tree):
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)):
+            continue
+        f = n.func
+        if not isinstance(f.value, ast.Name):
+            continue
+        key = (f.value.id, f.attr)
+        if key in _DESERIALIZATION_CALLS:
+            sites.append((rel, func_of.get(n.lineno, "<module>"), n.lineno, f"{key[0]}.{key[1]}"))
+            continue
+        # np.load only matters with allow_pickle=True (default is fail-safe).
+        if f.attr == "load" and f.value.id in ("np", "numpy"):
+            for kw in n.keywords:
+                if kw.arg == "allow_pickle" and not (
+                    isinstance(kw.value, ast.Constant) and kw.value.value is False
+                ):
+                    sites.append(
+                        (rel, func_of.get(n.lineno, "<module>"), n.lineno, "np.load(allow_pickle)")
+                    )
+    return sites
+
+
+def check_artifact_load_verification_boundary() -> list[str]:
+    """ML-PIPE Item 4 — no ungoverned deserialization site may exist or bypass verification."""
+    import ast
+
+    errors: list[str] = []
+    found: set[tuple[str, str]] = set()
+    serve_sources: dict[str, str] = {}
+    for path in _iter_production_python_files():
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for site_rel, qual, lineno, call in _deserialization_sites_in_source(rel, source):
+            found.add((site_rel, qual))
+            if (site_rel, qual) not in _GOVERNED_DESERIALIZATION_SITES:
+                errors.append(
+                    f"{site_rel}:{lineno} ({qual}): ungoverned {call} — route the load through "
+                    "active_bundle_contract.verify_artifact_against_manifest (pre-deserialization) "
+                    "or add a Read-verified classification row to _GOVERNED_DESERIALIZATION_SITES "
+                    "(tools/check_fix_everything_we_touch.py, ML-PIPE Item 4)"
+                )
+            if _GOVERNED_DESERIALIZATION_SITES.get((site_rel, qual)) == (
+                "serve_verified_pre_deserialization"
+            ) and (site_rel, qual) not in _SERVE_VERIFIED_BY_CALLER:
+                serve_sources.setdefault(site_rel, source)
+
+    # Stale inventory rows keep the register honest.
+    for (rel, qual), cls in sorted(_GOVERNED_DESERIALIZATION_SITES.items()):
+        if (rel, qual) not in found:
+            errors.append(
+                f"_GOVERNED_DESERIALIZATION_SITES stale row: {rel}:{qual} ({cls}) — "
+                "site no longer deserializes; remove the row"
+            )
+
+    # Serve loaders must call _verify_governed_artifact BEFORE deserialization.
+    for rel, source in serve_sources.items():
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        serve_fns = {
+            qual for (r, qual), cls in _GOVERNED_DESERIALIZATION_SITES.items()
+            if r == rel and cls == "serve_verified_pre_deserialization"
+            and (r, qual) not in _SERVE_VERIFIED_BY_CALLER
+        }
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef) or fn.name not in serve_fns:
+                continue
+            verify_line = deser_line = None
+            for node in ast.walk(fn):
+                if not isinstance(node, ast.Call):
+                    continue
+                f = node.func
+                if isinstance(f, ast.Name) and f.id == "_verify_governed_artifact":
+                    if verify_line is None or node.lineno < verify_line:
+                        verify_line = node.lineno
+                if (
+                    isinstance(f, ast.Attribute)
+                    and isinstance(f.value, ast.Name)
+                    and (f.value.id, f.attr) in _DESERIALIZATION_CALLS
+                ):
+                    if deser_line is None or node.lineno < deser_line:
+                        deser_line = node.lineno
+            if verify_line is None:
+                errors.append(
+                    f"{rel} ({fn.name}): serve loader has no _verify_governed_artifact call "
+                    "(ML-PIPE Item 4 pre-deserialization boundary)"
+                )
+            elif deser_line is not None and verify_line > deser_line:
+                errors.append(
+                    f"{rel} ({fn.name}): deserialization at line {deser_line} precedes "
+                    f"verification at line {verify_line} (ML-PIPE Item 4)"
+                )
+    return errors
 
 
 def check_encoder_cone_mechanical_lock() -> list[str]:

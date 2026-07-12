@@ -99,6 +99,12 @@ def main() -> int:
                         ml_horizon_slug=hz,
                         target_mode=tm,
                     )
+                    # ML-PIPE Item 4: in-place write to an active bundle must
+                    # re-stamp the integrity manifest or moveheads fail closed
+                    # (ARTIFACT_ENTRY_MISSING) at next verified load.
+                    from active_bundle_contract import refresh_bundle_integrity_manifest
+
+                    refresh_bundle_integrity_manifest(out_dir)
                     report["results"].append(
                         {"ticker": tkr, "horizon": hz, "mode": mode, "status": "OK", "n": len(df)}
                     )

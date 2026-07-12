@@ -2,11 +2,22 @@
 
 Single definition used by verify_active_models and ml_predict strict resolution.
 PR3 (P2-1): canonical active root = scheduler_active_root(hz) only.
+
+ML-PIPE Item 4 (artifact-manifest load verification): this module is also the
+single owner of the bundle integrity manifest written at promotion time and the
+canonical pre-deserialization verification boundary
+(``verify_artifact_against_manifest``). Loaders must verify artifact bytes
+against the bundle integrity manifest BEFORE ``pickle.load`` / ``torch.load``.
+Hash verification proves integrity relative to the trusted manifest and identity
+contract only — it does not make arbitrary pickle files generically safe.
 """
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +34,496 @@ BUNDLE_ARTIFACT_TRIPLE = (
 )
 META_STACK_KIND = "meta_stack"
 META_STACK_MODEL_PATTERN = "meta_{ticker}_{hz}.pkl"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ML-PIPE Item 4 — bundle integrity manifest + canonical verification boundary
+# ══════════════════════════════════════════════════════════════════════════════
+
+BUNDLE_INTEGRITY_MANIFEST_FILENAME = "bundle_integrity_manifest.json"
+BUNDLE_INTEGRITY_SCHEMA_VERSION = 1
+# Operator lever: 1 = manifest absence fails closed even for MODEL-04-authorized
+# legacy bundles (default 0 preserves the operator-approved MODEL-04 serve set,
+# with explicit LEGACY_UNVERIFIED provenance instead of silence).
+ARTIFACT_INTEGRITY_STRICT_ENV = "ED_ARTIFACT_INTEGRITY_STRICT"
+
+# Stable machine-readable verification failure reasons (single owner — do not
+# duplicate this vocabulary elsewhere). Codes marked (owner: X) are part of the
+# governed vocabulary but raised/enforced by the named existing authority to
+# avoid a duplicate truth source:
+#   FEATURE_SCHEMA_MISMATCH        (owner: model_contract.validate_artifact_contract)
+#   TRAINING_CUTOFF_MISMATCH       (owner: model_serve_policy MODEL-04 vintage gate)
+#   CALIBRATION_IDENTITY_MISMATCH  (owner: calibration a1 artifact loaders, run-id pinned)
+#   CURRENT_POINTER_FOR_HISTORICAL_REPLAY (owner: scheduler eval MODEL_DIR pin +
+#       no-current-pointer lock @ tests/test_shuffled_label_control_v1.py)
+ARTIFACT_VERIFICATION_FAILURE_REASONS: tuple[str, ...] = (
+    "MANIFEST_MISSING",
+    "MANIFEST_UNREADABLE",
+    "MANIFEST_MALFORMED",
+    "MANIFEST_VERSION_UNSUPPORTED",
+    "ARTIFACT_ENTRY_MISSING",
+    "ARTIFACT_FILE_MISSING",
+    "ARTIFACT_UNREADABLE",
+    "EXPECTED_HASH_INVALID",
+    "ARTIFACT_HASH_MISMATCH",
+    "ARTIFACT_PATH_OUTSIDE_BUNDLE",
+    "TICKER_IDENTITY_MISMATCH",
+    "HORIZON_IDENTITY_MISMATCH",
+    "MODEL_IDENTITY_MISMATCH",
+    "ARTIFACT_ROLE_MISMATCH",
+    "FEATURE_SCHEMA_MISMATCH",
+    "TRAINING_CUTOFF_MISMATCH",
+    "CALIBRATION_IDENTITY_MISMATCH",
+    "BUNDLE_IDENTITY_MISMATCH",
+    "FOLD_IDENTITY_MISMATCH",
+    "LEGACY_ARTIFACT_NOT_GOVERNED",
+    "CURRENT_POINTER_FOR_HISTORICAL_REPLAY",
+    "VERIFICATION_CACHE_STALE",
+    "VERIFICATION_PROVENANCE_MISSING",
+)
+
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+
+# role -> filename pattern for one (ticker, hz) bundle; single source of the
+# governed artifact-role vocabulary (derived from BUNDLE_ARTIFACT_TRIPLE).
+_BUNDLE_ROLE_PATTERNS: dict[str, str] = {
+    "xgb": "xgb_{ticker}_{hz}.pkl",
+    "xgb_meta": "xgb_{ticker}_{hz}_meta.json",
+    "lstm": "lstm_{ticker}_{hz}.pt",
+    "lstm_meta": "lstm_{ticker}_{hz}_meta.json",
+    "transformer": "transformer_{ticker}_{hz}.pt",
+    "transformer_meta": "transformer_{ticker}_{hz}_meta.json",
+    META_STACK_KIND: META_STACK_MODEL_PATTERN,
+}
+# Optional governed artifacts (XGB movement heads) — not part of the required
+# 7-file bundle contract; hashed into the integrity manifest when present at
+# stamping time and verified with the same fail-closed boundary when loaded.
+_OPTIONAL_BUNDLE_ROLE_PATTERNS: dict[str, str] = {
+    "xgb_dir": "xgb_{ticker}_{hz}_dir.pkl",
+    "xgb_dir_meta": "xgb_{ticker}_{hz}_dir_meta.json",
+    "xgb_move": "xgb_{ticker}_{hz}_move.pkl",
+    "xgb_move_meta": "xgb_{ticker}_{hz}_move_meta.json",
+}
+
+
+class ArtifactVerificationError(ValueError):
+    """Fail-closed artifact-integrity violation with a stable machine-readable reason."""
+
+    def __init__(self, reason_code: str, detail: str, *, identity: dict[str, Any] | None = None):
+        if reason_code not in ARTIFACT_VERIFICATION_FAILURE_REASONS:
+            raise ValueError(f"unknown artifact verification reason code: {reason_code!r}")
+        super().__init__(f"{reason_code}: {detail}")
+        self.reason_code = reason_code
+        self.detail = detail
+        self.identity = dict(identity or {})
+
+
+def artifact_integrity_strict_absence() -> bool:
+    """True when manifest absence must fail closed (operator lever, default off)."""
+    return os.environ.get(ARTIFACT_INTEGRITY_STRICT_ENV, "0").strip().lower() in ("1", "true", "yes")
+
+
+def bundle_integrity_manifest_path(bundle_dir: Path) -> Path:
+    return Path(bundle_dir) / BUNDLE_INTEGRITY_MANIFEST_FILENAME
+
+
+def bundle_role_filenames(ticker: str, hz: str, *, include_optional: bool = False) -> dict[str, str]:
+    """{artifact_role: canonical filename} for one (ticker, horizon) bundle."""
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    patterns: dict[str, str] = dict(_BUNDLE_ROLE_PATTERNS)
+    if include_optional:
+        patterns.update(_OPTIONAL_BUNDLE_ROLE_PATTERNS)
+    return {role: pat.format(ticker=t, hz=su) for role, pat in patterns.items()}
+
+
+def _contained_artifact_path(bundle_dir: Path, artifact_filename: str, identity: dict[str, Any]) -> Path:
+    """Resolve artifact_filename inside bundle_dir; reject traversal/substitution."""
+    name = str(artifact_filename)
+    if not name or Path(name).name != name or name in (".", ".."):
+        raise ArtifactVerificationError(
+            "ARTIFACT_PATH_OUTSIDE_BUNDLE",
+            f"artifact filename must be a bare basename inside the bundle (got {name!r})",
+            identity=identity,
+        )
+    bd = Path(bundle_dir).resolve()
+    resolved = (bd / name).resolve()
+    if resolved.parent != bd:
+        raise ArtifactVerificationError(
+            "ARTIFACT_PATH_OUTSIDE_BUNDLE",
+            f"{name!r} escapes bundle dir {bd}",
+            identity=identity,
+        )
+    return resolved
+
+
+def write_bundle_integrity_manifest(
+    bundle_dir: Path,
+    ticker: str,
+    hz: str,
+    *,
+    source_run_manifest: dict | None = None,
+) -> dict[str, Any]:
+    """
+    Stamp the bundle integrity manifest for one promoted (ticker, horizon) bundle.
+
+    Hashes the artifact bytes that live in ``bundle_dir`` (what will be served is
+    what is hashed) and binds ticker/horizon/role identity plus the training-run
+    lineage from the candidate ``scheduler_run_manifest.json`` when available.
+    """
+    from training_cache import file_sha256_hex
+
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    bd = Path(bundle_dir)
+    required = bundle_role_filenames(t, su)
+    optional_roles = set(bundle_role_filenames(t, su, include_optional=True)) - set(required)
+    artifacts: dict[str, dict[str, Any]] = {}
+    for role, name in bundle_role_filenames(t, su, include_optional=True).items():
+        p = bd / name
+        if not p.is_file():
+            if role in optional_roles:
+                continue  # movement heads are optional bundle members
+            raise ArtifactVerificationError(
+                "ARTIFACT_FILE_MISSING",
+                f"cannot stamp integrity manifest: {name} missing in {bd}",
+                identity={"ticker": t, "horizon": su, "artifact_role": role},
+            )
+        artifacts[name] = {
+            "role": role,
+            "sha256": file_sha256_hex(p),
+            "bytes": p.stat().st_size,
+        }
+
+    src = source_run_manifest if isinstance(source_run_manifest, dict) else None
+    lineage_keys = (
+        "scheduler_cache_key",
+        "feature_cache_key",
+        "training_code_fingerprint",
+        "trained_at",
+        "feature_version",
+        "feature_schema_version",
+        "label_version",
+        "label_config_version",
+        "pipeline_version",
+        "data_start",
+        "data_end",
+        "row_count",
+    )
+    source_lineage: dict[str, Any] = (
+        {k: src.get(k) for k in lineage_keys if src.get(k) is not None}
+        if src
+        else {"source_manifest_absent": True}
+    )
+
+    manifest: dict[str, Any] = {
+        "schema_version": BUNDLE_INTEGRITY_SCHEMA_VERSION,
+        "ticker": t,
+        "ml_horizon_slug": su,
+        "bundle_key": f"{t}:{su}",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "artifacts": artifacts,
+        "source_lineage": source_lineage,
+    }
+    bundle_integrity_manifest_path(bd).write_text(
+        json.dumps(manifest, indent=2, default=str), encoding="utf-8"
+    )
+    return manifest
+
+
+def refresh_bundle_integrity_manifest(bundle_dir: Path) -> dict[str, Any] | None:
+    """
+    Re-stamp the integrity manifest after a governed in-place write to an active
+    bundle (e.g. movement-head training tools). Identity (ticker/horizon) comes
+    from the existing manifest; its source lineage is preserved. No-op (returns
+    None) when the bundle has no integrity manifest — legacy bundles stay
+    explicitly legacy rather than gaining a manifest that would launder
+    unpromoted artifacts as verified.
+    """
+    bd = Path(bundle_dir)
+    existing = load_bundle_integrity_manifest(bd)
+    if existing is None:
+        return None
+    lineage = existing.get("source_lineage")
+    manifest = write_bundle_integrity_manifest(bd, existing["ticker"], existing["ml_horizon_slug"])
+    if isinstance(lineage, dict):
+        manifest["source_lineage"] = lineage
+        bundle_integrity_manifest_path(bd).write_text(
+            json.dumps(manifest, indent=2, default=str), encoding="utf-8"
+        )
+    return manifest
+
+
+def load_bundle_integrity_manifest(bundle_dir: Path) -> dict[str, Any] | None:
+    """
+    Strict integrity-manifest read: absent -> None (caller applies absence policy);
+    unreadable / malformed / unsupported schema -> fail closed (never legacy).
+    """
+    p = bundle_integrity_manifest_path(bundle_dir)
+    if not p.is_file():
+        return None
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ArtifactVerificationError(
+            "MANIFEST_UNREADABLE", f"{p}: {exc}", identity={"manifest_path": str(p)}
+        ) from exc
+    try:
+        manifest = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ArtifactVerificationError(
+            "MANIFEST_MALFORMED", f"{p}: invalid JSON ({exc})", identity={"manifest_path": str(p)}
+        ) from exc
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("artifacts"), dict):
+        raise ArtifactVerificationError(
+            "MANIFEST_MALFORMED",
+            f"{p}: manifest must be an object with an 'artifacts' map",
+            identity={"manifest_path": str(p)},
+        )
+    sv = manifest.get("schema_version")
+    if sv != BUNDLE_INTEGRITY_SCHEMA_VERSION:
+        raise ArtifactVerificationError(
+            "MANIFEST_VERSION_UNSUPPORTED",
+            f"{p}: schema_version={sv!r} (supported: {BUNDLE_INTEGRITY_SCHEMA_VERSION})",
+            identity={"manifest_path": str(p)},
+        )
+    for key in ("ticker", "ml_horizon_slug", "bundle_key"):
+        if not isinstance(manifest.get(key), str) or not manifest[key].strip():
+            raise ArtifactVerificationError(
+                "MANIFEST_MALFORMED",
+                f"{p}: required identity field {key!r} missing or empty",
+                identity={"manifest_path": str(p)},
+            )
+    return manifest
+
+
+def verify_artifact_against_manifest(
+    bundle_dir: Path,
+    ticker: str,
+    hz: str,
+    artifact_role: str,
+    artifact_filename: str,
+    *,
+    manifest: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Canonical pre-deserialization verification boundary (ML-PIPE Item 4).
+
+    Verifies artifact bytes against the bundle integrity manifest in the SAME
+    bundle directory (artifact and manifest cannot be selected through different
+    paths) and enforces ticker/horizon/role/bundle identity coherence. Raises
+    :class:`ArtifactVerificationError` (fail closed) on every governed failure;
+    returns structured verification provenance on success.
+    """
+    from training_cache import file_sha256_hex
+
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    bd = Path(bundle_dir)
+    identity: dict[str, Any] = {
+        "ticker": t,
+        "horizon": su,
+        "artifact_role": artifact_role,
+        "artifact_filename": artifact_filename,
+        "bundle_dir": str(bd),
+    }
+
+    expected_name = bundle_role_filenames(t, su, include_optional=True).get(artifact_role)
+    if expected_name is None:
+        raise ArtifactVerificationError(
+            "ARTIFACT_ROLE_MISMATCH",
+            f"unknown governed artifact role {artifact_role!r}",
+            identity=identity,
+        )
+    if artifact_filename != expected_name:
+        # Cross-ticker / cross-horizon / cross-model substitution at request level.
+        reason = "MODEL_IDENTITY_MISMATCH"
+        if f"_{t}_" not in artifact_filename:
+            reason = "TICKER_IDENTITY_MISMATCH"
+        elif f"_{su}." not in artifact_filename and f"_{su}_" not in artifact_filename:
+            reason = "HORIZON_IDENTITY_MISMATCH"
+        raise ArtifactVerificationError(
+            reason,
+            f"requested {artifact_role!r} for {t}/{su} must be {expected_name!r} (got {artifact_filename!r})",
+            identity=identity,
+        )
+
+    resolved = _contained_artifact_path(bd, artifact_filename, identity)
+
+    mf = manifest if manifest is not None else load_bundle_integrity_manifest(bd)
+    if mf is None:
+        raise ArtifactVerificationError(
+            "MANIFEST_MISSING",
+            f"no {BUNDLE_INTEGRITY_MANIFEST_FILENAME} in {bd}",
+            identity=identity,
+        )
+
+    if mf.get("ticker") != t:
+        raise ArtifactVerificationError(
+            "TICKER_IDENTITY_MISMATCH",
+            f"manifest ticker {mf.get('ticker')!r} != requested {t!r}",
+            identity=identity,
+        )
+    if mf.get("ml_horizon_slug") != su:
+        raise ArtifactVerificationError(
+            "HORIZON_IDENTITY_MISMATCH",
+            f"manifest horizon {mf.get('ml_horizon_slug')!r} != requested {su!r}",
+            identity=identity,
+        )
+    if mf.get("bundle_key") != f"{t}:{su}":
+        raise ArtifactVerificationError(
+            "BUNDLE_IDENTITY_MISMATCH",
+            f"manifest bundle_key {mf.get('bundle_key')!r} != {t}:{su}",
+            identity=identity,
+        )
+
+    entry = mf["artifacts"].get(artifact_filename)
+    if not isinstance(entry, dict):
+        raise ArtifactVerificationError(
+            "ARTIFACT_ENTRY_MISSING",
+            f"{artifact_filename!r} has no entry in the bundle integrity manifest",
+            identity=identity,
+        )
+    if entry.get("role") != artifact_role:
+        raise ArtifactVerificationError(
+            "ARTIFACT_ROLE_MISMATCH",
+            f"manifest role {entry.get('role')!r} != requested {artifact_role!r}",
+            identity=identity,
+        )
+    if not resolved.is_file():
+        raise ArtifactVerificationError(
+            "ARTIFACT_FILE_MISSING", f"{resolved} does not exist", identity=identity
+        )
+    expected_sha = str(entry.get("sha256") or "").strip().lower()
+    if not _SHA256_HEX_RE.match(expected_sha):
+        raise ArtifactVerificationError(
+            "EXPECTED_HASH_INVALID",
+            f"manifest sha256 for {artifact_filename!r} is not 64 lowercase hex chars",
+            identity=identity,
+        )
+    try:
+        st = resolved.stat()
+        actual_sha = file_sha256_hex(resolved)
+    except OSError as exc:
+        raise ArtifactVerificationError(
+            "ARTIFACT_UNREADABLE", f"{resolved}: {exc}", identity=identity
+        ) from exc
+    if actual_sha != expected_sha:
+        raise ArtifactVerificationError(
+            "ARTIFACT_HASH_MISMATCH",
+            f"{artifact_filename}: expected {expected_sha} actual {actual_sha}",
+            identity=identity,
+        )
+
+    manifest_path = bundle_integrity_manifest_path(bd)
+    try:
+        mstat = manifest_path.stat()
+        manifest_sha = file_sha256_hex(manifest_path)
+    except OSError as exc:
+        raise ArtifactVerificationError(
+            "MANIFEST_UNREADABLE", f"{manifest_path}: {exc}", identity=identity
+        ) from exc
+
+    lineage = mf.get("source_lineage") or {}
+    return {
+        "verified": True,
+        "integrity_class": "VERIFIED_AGAINST_BUNDLE_MANIFEST",
+        "reason_code": None,
+        "ticker": t,
+        "horizon": su,
+        "artifact_role": artifact_role,
+        "artifact_filename": artifact_filename,
+        "artifact_path": str(resolved),
+        "artifact_bytes": st.st_size,
+        "artifact_mtime_ns": st.st_mtime_ns,
+        "expected_sha256": expected_sha,
+        "actual_sha256": actual_sha,
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": manifest_sha,
+        "manifest_bytes": mstat.st_size,
+        "manifest_mtime_ns": mstat.st_mtime_ns,
+        "bundle_key": mf.get("bundle_key"),
+        "trained_at": lineage.get("trained_at"),
+        "feature_schema_version": lineage.get("feature_version") or lineage.get("feature_schema_version"),
+        "training_cutoff": lineage.get("data_end"),
+        "scheduler_cache_key": lineage.get("scheduler_cache_key"),
+        "training_code_fingerprint": lineage.get("training_code_fingerprint"),
+        "legacy": False,
+        "verified_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def classify_legacy_absent_manifest(
+    bundle_dir: Path,
+    ticker: str,
+    hz: str,
+    artifact_role: str,
+    artifact_filename: str,
+) -> dict[str, Any]:
+    """
+    Explicit legacy classification for pre-Item-4 bundles with NO integrity manifest.
+
+    Production authorization for these bundles remains the MODEL-04 strict serve
+    gate (model_serve_policy.bundle_serve_eligibility, enforced upstream in
+    ml_predict._model_dir_for_ticker). This function never invents permissive
+    behavior: absence is recorded as MANIFEST_MISSING provenance, and the
+    ED_ARTIFACT_INTEGRITY_STRICT=1 operator lever fails closed instead.
+    """
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    bd = Path(bundle_dir)
+    identity = {
+        "ticker": t,
+        "horizon": su,
+        "artifact_role": artifact_role,
+        "artifact_filename": artifact_filename,
+        "bundle_dir": str(bd),
+    }
+    if artifact_integrity_strict_absence():
+        raise ArtifactVerificationError(
+            "MANIFEST_MISSING",
+            f"{ARTIFACT_INTEGRITY_STRICT_ENV}=1: no {BUNDLE_INTEGRITY_MANIFEST_FILENAME} in {bd}",
+            identity=identity,
+        )
+    resolved = _contained_artifact_path(bd, artifact_filename, identity)
+    if not resolved.is_file():
+        raise ArtifactVerificationError(
+            "ARTIFACT_FILE_MISSING", f"{resolved} does not exist", identity=identity
+        )
+    from training_cache import file_sha256_hex
+
+    try:
+        st = resolved.stat()
+        actual_sha = file_sha256_hex(resolved)
+    except OSError as exc:
+        raise ArtifactVerificationError(
+            "ARTIFACT_UNREADABLE", f"{resolved}: {exc}", identity=identity
+        ) from exc
+    return {
+        "verified": False,
+        "integrity_class": "LEGACY_UNVERIFIED_NO_BUNDLE_MANIFEST",
+        "reason_code": "MANIFEST_MISSING",
+        "ticker": t,
+        "horizon": su,
+        "artifact_role": artifact_role,
+        "artifact_filename": artifact_filename,
+        "artifact_path": str(resolved),
+        "artifact_bytes": st.st_size,
+        "artifact_mtime_ns": st.st_mtime_ns,
+        "expected_sha256": None,
+        "actual_sha256": actual_sha,
+        "manifest_path": str(bundle_integrity_manifest_path(bd)),
+        "manifest_sha256": None,
+        "manifest_bytes": None,
+        "manifest_mtime_ns": None,
+        "bundle_key": f"{t}:{su}",
+        "trained_at": None,
+        "feature_schema_version": None,
+        "training_cutoff": None,
+        "scheduler_cache_key": None,
+        "training_code_fingerprint": None,
+        "legacy": True,
+        "verified_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def scheduler_active_root(models_dir: Path, ml_horizon_slug: str) -> Path:
@@ -127,6 +628,38 @@ def check_active_bundle_complete(
         result["compliant"] = False
         result["issues"].append(f"missing bundle dir: {bd}")
         return result
+
+    # ML-PIPE Item 4: integrity verification BEFORE the deserialization probes
+    # below (torch checkpoint inspection / meta_stack pickle probe). When the
+    # bundle carries an integrity manifest, any hash/identity failure fails the
+    # bundle closed here and no artifact byte is deserialized.
+    try:
+        integrity_manifest = load_bundle_integrity_manifest(bd)
+    except ArtifactVerificationError as exc:
+        result["compliant"] = False
+        result["issues"].append(f"artifact integrity: {exc.reason_code}: {exc.detail}")
+        return result
+    if integrity_manifest is None and artifact_integrity_strict_absence():
+        result["compliant"] = False
+        result["issues"].append(
+            f"artifact integrity: MANIFEST_MISSING ({ARTIFACT_INTEGRITY_STRICT_ENV}=1)"
+        )
+        return result
+    if integrity_manifest is not None:
+        for role, name in bundle_role_filenames(ticker, hz).items():
+            if not (bd / name).is_file():
+                continue  # presence failures reported by the completeness loop below
+            try:
+                verify_artifact_against_manifest(
+                    bd, ticker, hz, role, name, manifest=integrity_manifest
+                )
+            except ArtifactVerificationError as exc:
+                result["compliant"] = False
+                result["issues"].append(
+                    f"artifact integrity: {exc.reason_code}: {exc.detail}"
+                )
+        if result["issues"]:
+            return result
 
     for kind, model_path, meta_path in bundle_artifact_paths(ticker, hz, bd):
         art = {"exists": model_path.is_file(), "meta_exists": meta_path.is_file(), "issues": []}
@@ -234,6 +767,18 @@ def promote_horizon_bundle_from_candidate(
     from arch_competition.manual_control import _replace_active_dir_from_source
 
     _replace_active_dir_from_source(src_dir, active_ticker_dir, include_names=include)
+    # ML-PIPE Item 4 root cause: promotion copied artifact files and dropped the
+    # run manifest, so nothing bound active-serving bytes to any manifest. Stamp
+    # the bundle integrity manifest from the bytes just placed in the active dir
+    # plus the candidate run-manifest lineage.
+    from training_cache import load_run_manifest
+
+    write_bundle_integrity_manifest(
+        active_ticker_dir,
+        ticker,
+        hz,
+        source_run_manifest=load_run_manifest(src_dir),
+    )
     return active_ticker_dir
 
 

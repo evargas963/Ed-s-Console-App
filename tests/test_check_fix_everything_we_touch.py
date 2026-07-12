@@ -2468,3 +2468,107 @@ def test_operating_contract_clause_is_classified_as_rule_not_claim():
     assert clause_lines
     for ln in clause_lines:
         assert m._full_fix_line_is_closure_assertion(ln) is False
+
+
+# ── ML-PIPE Item 4 — artifact-load verification boundary recurrence lock ─────
+
+
+def test_artifact_load_boundary_passes_on_current_repo():
+    errs = mod.check_artifact_load_verification_boundary()
+    assert errs == [], "\n".join(errs)
+
+
+def test_artifact_load_boundary_detects_ungoverned_site(tmp_path, monkeypatch):
+    """Mission adversarial test 31: a deliberately introduced unverified
+    deserialization site causes a mechanical governance failure."""
+    rogue = tmp_path / "rogue_loader.py"
+    rogue.write_text(
+        "import pickle\n\n\ndef sneak_load(path):\n    with open(path, 'rb') as fh:\n"
+        "        return pickle.load(fh)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_iter_production_python_files", lambda: [rogue])
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(mod, "_GOVERNED_DESERIALIZATION_SITES", {})
+    errs = mod.check_artifact_load_verification_boundary()
+    assert any("rogue_loader.py" in e and "ungoverned pickle.load" in e for e in errs), errs
+
+
+def test_artifact_load_boundary_detects_semantic_equivalents(tmp_path, monkeypatch):
+    """torch.load, joblib.load, dill, cloudpickle, pd.read_pickle and
+    np.load(allow_pickle=True) are all governed — not only literal pickle.load."""
+    rogue = tmp_path / "many_loaders.py"
+    rogue.write_text(
+        "import torch, joblib, dill, cloudpickle, pandas as pd, numpy as np\n\n\n"
+        "def a(p):\n    return torch.load(p)\n\n\n"
+        "def b(p):\n    return joblib.load(p)\n\n\n"
+        "def c(p):\n    return dill.loads(p)\n\n\n"
+        "def d(p):\n    return cloudpickle.load(p)\n\n\n"
+        "def e(p):\n    return pd.read_pickle(p)\n\n\n"
+        "def f(p):\n    return np.load(p, allow_pickle=True)\n\n\n"
+        "def safe(p):\n    return np.load(p)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_iter_production_python_files", lambda: [rogue])
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(mod, "_GOVERNED_DESERIALIZATION_SITES", {})
+    errs = mod.check_artifact_load_verification_boundary()
+    flagged = {e.split("(")[1].split(")")[0] for e in errs if "ungoverned" in e}
+    assert flagged == {"a", "b", "c", "d", "e", "f"}, errs  # 'safe' np.load not flagged
+
+
+def test_artifact_load_boundary_detects_stale_inventory_row(tmp_path, monkeypatch):
+    clean = tmp_path / "clean.py"
+    clean.write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(mod, "_iter_production_python_files", lambda: [clean])
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        mod,
+        "_GOVERNED_DESERIALIZATION_SITES",
+        {("gone.py", "vanished_fn"): "training_internal"},
+    )
+    errs = mod.check_artifact_load_verification_boundary()
+    assert any("stale row" in e and "gone.py:vanished_fn" in e for e in errs), errs
+
+
+def test_artifact_load_boundary_detects_verification_after_deserialization(tmp_path, monkeypatch):
+    """A serve loader that deserializes before verifying fails the lock."""
+    bad = tmp_path / "bad_serve.py"
+    bad.write_text(
+        "import pickle\n\n\ndef _load_backwards(path):\n"
+        "    with open(path, 'rb') as fh:\n        model = pickle.load(fh)\n"
+        "    _verify_governed_artifact(path.parent, 'T', '1c', 'xgb', path.name)\n"
+        "    return model\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_iter_production_python_files", lambda: [bad])
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        mod,
+        "_GOVERNED_DESERIALIZATION_SITES",
+        {("bad_serve.py", "_load_backwards"): "serve_verified_pre_deserialization"},
+    )
+    errs = mod.check_artifact_load_verification_boundary()
+    assert any("precedes verification" in e for e in errs), errs
+
+
+def test_artifact_load_boundary_serve_loader_without_verifier_fails(tmp_path, monkeypatch):
+    bad = tmp_path / "no_verify.py"
+    bad.write_text(
+        "import pickle\n\n\ndef _load_naked(path):\n"
+        "    with open(path, 'rb') as fh:\n        return pickle.load(fh)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_iter_production_python_files", lambda: [bad])
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        mod,
+        "_GOVERNED_DESERIALIZATION_SITES",
+        {("no_verify.py", "_load_naked"): "serve_verified_pre_deserialization"},
+    )
+    errs = mod.check_artifact_load_verification_boundary()
+    assert any("no _verify_governed_artifact call" in e for e in errs), errs
+
+
+def test_artifact_load_boundary_registered_repo_wide():
+    assert "check_artifact_load_verification_boundary" in mod._REPO_WIDE_STATIC_CHECK_FUNCS

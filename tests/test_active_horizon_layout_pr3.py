@@ -97,7 +97,18 @@ def test_promote_horizon_bundle_copies_seven_files_only(tmp_path: Path):
     )
     assert dest_root == active_bundle_dir("SPY", "5c", models_dir=tmp_path)
     names = {p.name for p in dest_root.iterdir()}
-    assert names == set(horizon_bundle_filenames("SPY", "5c"))
+    # ML-PIPE Item 4: promotion stamps the bundle integrity manifest alongside
+    # the seven bundle files (binding served bytes to a verifiable record).
+    from active_bundle_contract import (
+        BUNDLE_INTEGRITY_MANIFEST_FILENAME,
+        load_bundle_integrity_manifest,
+    )
+
+    assert names == set(horizon_bundle_filenames("SPY", "5c")) | {
+        BUNDLE_INTEGRITY_MANIFEST_FILENAME
+    }
+    mf = load_bundle_integrity_manifest(dest_root)
+    assert mf is not None and mf["ticker"] == "SPY" and mf["ml_horizon_slug"] == "5c"
 
 
 def test_consolidate_plan_moves_from_legacy_active(tmp_path: Path):

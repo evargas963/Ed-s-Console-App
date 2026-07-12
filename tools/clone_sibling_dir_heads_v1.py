@@ -31,6 +31,10 @@ def clone(tkr: str, hz_from: str, hz_to: str) -> None:
     meta["cloned_from_horizon"] = hz_from
     meta["clone_note"] = "Sibling clone: zero RTH rows with valid_dir for target horizon in snapshots_1m_normalized."
     tm.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    # ML-PIPE Item 4: re-stamp integrity manifest after in-place bundle write.
+    from active_bundle_contract import refresh_bundle_integrity_manifest
+
+    refresh_bundle_integrity_manifest(base)
     print("OK", tkr, hz_from, "->", hz_to)
 
 

@@ -72,19 +72,27 @@
       "exact_code_paths": [
         "ml_scheduler.py::_evaluate_* (explicit mp.MODEL_DIR pin + restore + horizon slug — source-locked @ 54f8a34)",
         "ml_predict.py::_model_dir_for_ticker (MODEL-04 strict serve gate)",
-        "models/active/* current pointers (live serving)"
+        "models/active/* current pointers (live serving)",
+        "active_bundle_contract.py::verify_artifact_against_manifest (ML-PIPE Item 4 canonical pre-deserialization boundary)",
+        "active_bundle_contract.py::write_bundle_integrity_manifest (promotion-time stamp)",
+        "ml_predict.py::_verify_governed_artifact + _artifact_registry_entry_stale (serve wiring + cache staleness guard)"
       ],
-      "existing_tests": ["tests/test_realized_contract_eval_layer5.py::test_scheduler_eval_pins_and_restores_model_dir"],
-      "what_existing_tests_prove": "source-level pin/restore presence; NOT artifact-identity manifests nor mutate-production-then-replay invariance",
+      "existing_tests": [
+        "tests/test_realized_contract_eval_layer5.py::test_scheduler_eval_pins_and_restores_model_dir",
+        "tests/test_model_contract_enforcement.py (ML-PIPE Item 4 adversarial section: hash mutation, manifest mutation, identity substitution, path traversal, cache invalidation, strict-absence, universality matrix)",
+        "tests/test_check_fix_everything_we_touch.py (artifact_load_boundary recurrence lock: ungoverned-site detection, semantic equivalents, ordering)"
+      ],
+      "what_existing_tests_prove": "ML-PIPE Item 4 sub-lane: serve loaders verify artifact bytes against the bundle integrity manifest BEFORE pickle/torch deserialization, fail closed with stable reason codes, cache invalidates on artifact/manifest mutation, and an AST recurrence lock blocks new ungoverned deserialization sites. NOT yet proven: legacy bundles (no manifest) remain LEGACY_UNVERIFIED under MODEL-04 authorization; historical-replay mutate-then-replay invariance across the full eval path; end-to-end version pinning parent.",
       "unproven_failure_modes": [
-        "historical eval consuming a mutated models/active bundle between fixture creation and replay",
-        "cache keys lacking model identity"
+        "legacy manifest-absent bundles served under MODEL-04 with explicit LEGACY_UNVERIFIED provenance (operator lever ED_ARTIFACT_INTEGRITY_STRICT=1 fails closed; migration = re-promotion stamps manifests)",
+        "artifact mutation preserving both size and mtime_ns is not detected without a full rehash (stat-based staleness guard limit)",
+        "historical eval consuming a mutated models/active bundle between fixture creation and replay (scheduler eval pin is source-locked; byte-level replay invariance not adversarially proven)"
       ],
-      "locally_executable_proof": "mutate-artifact adversarial test with pinned candidate dir; cache-key identity audit",
+      "locally_executable_proof": "python -m pytest tests/test_model_contract_enforcement.py tests/test_check_fix_everything_we_touch.py -q (Item 4 sections)",
       "external_proof_required": "none",
-      "root_cause_if_defective": "no immutable per-eval manifest (bundle_hash absent)",
-      "fix_status": "NOT_STARTED",
-      "mechanical_lock": "planned: manifest fail-closed loader",
+      "root_cause_if_defective": "ROOT CAUSE FIXED (Item 4): promotion copied artifact files and dropped the run manifest, so no manifest existed in active bundle dirs and loaders had nothing to verify against; loaders deserialized without hash verification",
+      "fix_status": "ITEM_4_LOAD_BOUNDARY_LANDED (2026-07-11): canonical verifier + promotion stamping + serve wiring + cache staleness guard + AST recurrence lock + adversarial tests; parent lane remains open (legacy migration + replay invariance)",
+      "mechanical_lock": "landed: check_artifact_load_verification_boundary() in tools/check_fix_everything_we_touch.py (repo-wide static audit) + tests/test_model_contract_enforcement.py::test_item4_all_governed_loaders_call_verifier_before_deserialization",
       "final_status": "NOT_PROVEN"
     },
     {
