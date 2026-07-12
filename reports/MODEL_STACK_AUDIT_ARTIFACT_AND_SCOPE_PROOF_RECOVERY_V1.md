@@ -1,3 +1,5 @@
+> **Classification:** Evidence Artifact | **Scope:** MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1 session-evidence packet (read-only mission report)
+
 # MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1
 
 **Mission type:** READ_ONLY  

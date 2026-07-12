@@ -1,3 +1,5 @@
+> **Classification:** Evidence Artifact | **Scope:** VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1 session-evidence packet (read-only mission report)
+
 # VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1
 
 **Mission:** VOLATILITY_SEMANTICS_AND_INPUT_CONTRACT_V1

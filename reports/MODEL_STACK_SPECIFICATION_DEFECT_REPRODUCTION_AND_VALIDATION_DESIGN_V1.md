@@ -1,3 +1,5 @@
+> **Classification:** Evidence Artifact | **Scope:** MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1 session-evidence packet (read-only mission report)
+
 # MODEL_STACK_SPECIFICATION_DEFECT_REPRODUCTION_AND_VALIDATION_DESIGN_V1
 
 **Mission type:** READ_ONLY_INVESTIGATION_AND_DESIGN  

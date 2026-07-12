@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "phase": "3I-CheckStack",
-  "generated_at_utc": "2026-07-11T22:04:04+00:00",
+  "generated_at_utc": "2026-07-12T01:36:32+00:00",
   "policy": "governance/docs/CHECK_STACK_RIGHTSIZING.md",
   "runtime_budgets_seconds": {
     "precommit_normal": 60,
@@ -28,7 +28,7 @@
       "recommendation": "required_ci_owned \u2014 keep off local pre-push (pytest-full backs it)"
     }
   ],
-  "check_count": 65,
+  "check_count": 66,
   "duplication_analysis": [
     {
       "check_a": "prepush-fast-gate",
@@ -157,6 +157,7 @@
       "check_objective_code_audit_documentation",
       "check_objective_code_audit_contract",
       "check_ablated_training_only",
+      "check_artifact_load_verification_boundary",
       "check_encoder_cone_mechanical_lock",
       "check_governance_binding_contract",
       "check_tier1_engineering_standard",
@@ -1160,6 +1161,26 @@
       "scope": "repo-wide static",
       "files_or_modules_covered": "full repo",
       "risk_addressed": "ablated training only",
+      "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
+      "must_run_precommit": false,
+      "must_run_prepush": false,
+      "must_run_ci": true,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "keep_ci_only",
+      "overlap_with_other_checks": []
+    },
+    {
+      "check_id": "check_artifact_load_verification_boundary",
+      "command": "check_fix_everything_we_touch.py::check_artifact_load_verification_boundary",
+      "tier": 2,
+      "runtime_seconds": null,
+      "scope": "repo-wide static",
+      "files_or_modules_covered": "full repo",
+      "risk_addressed": "artifact load verification boundary",
       "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
       "must_run_precommit": false,
       "must_run_prepush": false,

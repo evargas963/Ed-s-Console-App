@@ -1,3 +1,5 @@
+> **Classification:** Evidence Artifact | **Scope:** MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1 session-evidence packet (read-only mission report)
+
 # MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1
 
 **Mission type:** READ_ONLY_REPOSITORY_WIDE_AUDIT  

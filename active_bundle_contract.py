@@ -139,7 +139,10 @@ def bundle_role_filenames(ticker: str, hz: str, *, include_optional: bool = Fals
 def _contained_artifact_path(bundle_dir: Path, artifact_filename: str, identity: dict[str, Any]) -> Path:
     """Resolve artifact_filename inside bundle_dir; reject traversal/substitution."""
     name = str(artifact_filename)
-    if not name or Path(name).name != name or name in (".", ".."):
+    # Reject both separator styles explicitly: on POSIX a backslash is a legal
+    # filename character, so Path(name).name alone would let "..\\evil.pkl"
+    # through on Linux CI while Windows treats it as traversal.
+    if not name or "/" in name or "\\" in name or Path(name).name != name or name in (".", ".."):
         raise ArtifactVerificationError(
             "ARTIFACT_PATH_OUTSIDE_BUNDLE",
             f"artifact filename must be a bare basename inside the bundle (got {name!r})",
