@@ -342,6 +342,19 @@ def test_live_mission_contract_is_valid_and_loadable():
     assert c["pr_required"] is True
     assert c["integration_owner"] == "OPERATOR"
 
+def test_mission_authorization_hooks_stay_wired():
+    """Recurrence lock (Phase 12): removing either mission-authorization hook
+    from .pre-commit-config.yaml, or the breaker/single-use surface from the
+    module, must turn this suite red — silent de-wiring is the incident class
+    this mission exists to prevent."""
+    cfg = (ma.REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "mission-authorization-precommit" in cfg
+    assert "mission-authorization-prepush" in cfg
+    assert "tools/check_mission_authorization.py" in cfg
+    assert callable(ma.red_main_breaker_engaged)
+    assert callable(ma.consume_integration_authorization)
+
+
 def test_precommit_env_channel_reconstructs_destination(monkeypatch, authdirs, capsys):
     """pre-commit consumes git's pre-push stdin; the CLI must reconstruct the
     destination from PRE_COMMIT_* env vars — and still refuse when BOTH
