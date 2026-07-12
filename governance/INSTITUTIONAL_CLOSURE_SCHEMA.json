@@ -688,11 +688,11 @@
         "PROVENANCE": "PROVEN",
         "REPRODUCIBILITY": "PROVEN",
         "MECHANICAL_ENFORCEMENT": "PROVEN",
-        "FINAL_SHA_CI": "PENDING"
+        "FINAL_SHA_CI": "PROVEN"
       },
       "material_limitations": [
-        "per-row artifact-hash persistence into snapshot rows does not exist (db.py insert_snapshot); historical replay byte identity per decision row remains NOT_PROVEN \u2014 operator DB-schema decision",
-        "closure requires branch CI green + operator PR integration"
+        "per-row artifact-hash persistence into snapshot rows does not exist (db.py insert_snapshot); historical replay byte identity per decision row remains NOT_PROVEN - operator DB-schema decision",
+        "ML_PIPE_ITEM_4 parent remains NOT_CLOSED per operator status discipline (per-row historical artifact identity is an operator-gated material field)"
       ],
       "evidence": {
         "fleet": "88/88 active bundles manifest-verified (36 REPROMOTE / 48 RECONSTRUCT / 4 REPROMOTE_REPLACING_UNPROVEN, 0 quarantined); rollback backups models/_item4_quarantine/20260712T133855Z",
@@ -700,9 +700,17 @@
         "cache": "TTL rehash bounds size+mtime_ns-preserving mutation to ED_ARTIFACT_REVERIFY_TTL_SECONDS (default 900s)",
         "tests": "tests/test_ml_item4_fleet_migration.py (21) + tests/test_model_contract_enforcement.py Item-4 section + consumer suites (205 green at implementation)"
       },
-      "final_sha": null,
-      "remote_ci_status": "pending at feature-branch tip",
-      "next_blocker": "branch CI + operator PR integration [REAL-GATE:OPERATOR-PR-INTEGRATION-ML-PIPE-ITEM4-V1]"
+      "final_sha": "ad79c1873955887f0a7c7dc130b75d2357874d5c",
+      "remote_ci_status": "PR #29 8/8 success at exact head 04c13e920cd3 (pull_request runs 29197257941, 29197257943, 29197257955, 29197257959; push runs 29197256119, 29197256123, 29197256128, 29197256138); merged via PR path at ad79c1873955; final-main CI recorded at the drift-recovery tip",
+      "next_blocker": "[REAL-GATE:OPERATOR-DB-SCHEMA-DECISION-PER-ROW-ARTIFACT-HASH]",
+      "implementation_sha": "04c13e920cd33543f24286c094553b2d60129e9a",
+      "merge_sha": "ad79c1873955887f0a7c7dc130b75d2357874d5c",
+      "drift_recovery": {
+        "found_at": "2026-07-12 integration canonical-main proof",
+        "finding": "29 bundles had serving bytes replaced by live candidate-dir bytes although their byte-identity evidence came from OTHER governed sources (archive snapshots / git blobs) \u2014 REPROMOTE classification proved provenance, not promotion byte-safety; MODEL-04 serving-vintage ownership belongs to the operator",
+        "recovery": "pre-migration bytes restored from models/_item4_quarantine/20260712T133855Z for all 171 unintended file changes; the four operator-authorized unproven-replacement role-pairs kept (GOOG:1c xgb pair, MRVL:1c xgb pair, IWM:15c meta_stack, TSLA:1c lstm+transformer pairs); manifests re-stamped pinning restored bytes with original classification evidence; fleet recompute 88/88 ok after recovery",
+        "mechanical_lock": "tools/ml_item4_fleet_migration.py REPROMOTE now requires per-file byte identity against the candidate dir ITSELF; regression test tests/test_ml_item4_fleet_migration.py::test_archive_evidence_never_authorizes_byte_changing_repromotion"
+      }
     }
   ],
   "real_money_approval": "NOT_APPROVED"

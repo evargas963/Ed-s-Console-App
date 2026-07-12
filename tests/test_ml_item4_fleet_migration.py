@@ -172,6 +172,35 @@ def test_unknown_provenance_never_silently_recoverable(tmp_path):
     assert inv2["bundles"]["ZZZ:1c"]["classification"] != CLASS_RECONSTRUCTABLE
 
 
+def test_archive_evidence_never_authorizes_byte_changing_repromotion(tmp_path):
+    """DRIFT-RECOVERY LOCK (2026-07-12): active bytes proven via an ARCHIVE
+    source while the live candidate dir holds DIFFERENT bytes must classify
+    RECONSTRUCTABLE — never REPROMOTE, which would silently change serving
+    bytes (29 production bundles hit this before the lock)."""
+    models = tmp_path / "models"
+    bd = _mk_bundle(models, "active", "ARC", "1c", seed=b"served")
+    # archive snapshot holds the EXACT serving bytes (provenance evidence)
+    arch = models / "_artifact_archive" / "parallel" / "ARC" / "20260101T000000Z"
+    arch.mkdir(parents=True)
+    for f in bd.iterdir():
+        (arch / f.name).write_bytes(f.read_bytes())
+    # live candidate dir is COMPLETE with run manifest but DIFFERENT bytes
+    cand = _mk_candidate(models, "parallel", "ARC", "1c",
+                         from_bundle=_mk_bundle(models, "staging2", "ARC", "1c", seed=b"newer"))
+    assert _sha(cand / "lstm_ARC_1c.pt") != _sha(bd / "lstm_ARC_1c.pt")
+    inv = build_fleet_inventory(models, repo_root=tmp_path)
+    b = inv["bundles"]["ARC:1c"]
+    assert b["classification"] == CLASS_RECONSTRUCTABLE, b["classification"]
+    plan = plan_migration(inv)
+    assert plan["actions"]["ARC:1c"]["action"] == ACTION_RECONSTRUCT_MANIFEST
+    # apply: serving bytes must be untouched
+    before = {f.name: _sha(f) for f in bd.iterdir()}
+    execution = execute_migration(inv, plan, models, apply=True)
+    assert execution["results"]["ARC:1c"]["errors"] == []
+    after = {f.name: _sha(f) for f in bd.iterdir() if f.name != "bundle_integrity_manifest.json"}
+    assert after == before, "reconstruction must never change serving bytes"
+
+
 def test_dry_run_makes_no_filesystem_changes(tmp_path):
     models = tmp_path / "models"
     bd = _mk_bundle(models, "active", "DRY", "1c")

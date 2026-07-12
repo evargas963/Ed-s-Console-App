@@ -195,6 +195,19 @@ def build_fleet_inventory(models_dir: Path, repo_root: Path | None = None) -> di
             manifest_present = bundle_integrity_manifest_path(tdir).is_file()
             evidences = {files[r]["evidence"] for r in present}
             candidate_dir = _complete_candidate_dir(models_dir, t, hz)
+            # DRIFT-RECOVERY LOCK (2026-07-12 integration finding): re-promotion
+            # copies bytes FROM candidate_dir, so REPROMOTE is byte-preserving
+            # ONLY when every present active file equals the candidate_dir file
+            # ITSELF — evidence matched against other governed sources (archive
+            # snapshots, git blobs) proves provenance but NOT promotion safety.
+            # 29 bundles had serving bytes silently replaced under the old rule.
+            candidate_byte_identical = False
+            if candidate_dir is not None and present:
+                candidate_byte_identical = all(
+                    (candidate_dir / files[r]["filename"]).is_file()
+                    and _sha256_file(candidate_dir / files[r]["filename"]) == files[r]["sha256"]
+                    for r in present
+                )
             if not present:
                 cls = CLASS_NOT_ACTIVE
             elif manifest_present:
@@ -204,10 +217,10 @@ def build_fleet_inventory(models_dir: Path, repo_root: Path | None = None) -> di
                     cls = CLASS_UNPROVEN  # replaceable through governed re-promotion
                 else:
                     cls = CLASS_RETRAIN
-            elif evidences == {"CANDIDATE"} and candidate_dir is not None:
+            elif candidate_byte_identical:
                 for r in present:
-                    src_dirs.add(str(Path(files[r]["source"]).parent))
-                cls = CLASS_REPROMOTABLE if len(src_dirs) <= 2 else CLASS_RECONSTRUCTABLE
+                    src_dirs.add(str(candidate_dir))
+                cls = CLASS_REPROMOTABLE
             else:
                 cls = CLASS_RECONSTRUCTABLE
             bundles[f"{t}:{hz}"] = {
