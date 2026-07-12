@@ -1,2 +1,8 @@
 # Governance JSON artifacts: canonical LF in git and on Linux CI (manifest SHA256 pins).
 governance/artifacts/*.json text eol=lf
+# Model artifacts (ML-PIPE Item 4): byte-exact round-trip is mandatory - the
+# bundle integrity manifests and the drift-recovery record pin EXACT bytes,
+# so git must never EOL-normalize anything under models/ (the CRLF smudge on
+# tracked *_meta.json was the GIT_EOL evidence complication AND left the
+# canonical worktree permanently dirty after the TSLA disposition merge).
+models/** -text
