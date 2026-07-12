@@ -47,7 +47,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783871258.1247149,
   "expires_at_epoch": 1784476058.1247149,
   "operator_authorization": "MISSION = ML_PIPE_ITEM_4_POST_MERGE_DRIFT_RECOVERY_AND_REPRODUCIBLE_REPAIR_V1 (operator packet 2026-07-12): reproducible recovery tooling, state reconciliation, TSLA disposition, truthful labels; PR path only",
@@ -64,5 +64,6 @@
     "strict activation creating unbounded outage",
     "red required PR/main check",
     "main advances incompatibly"
-  ]
+  ],
+  "retired_note": "drift recovery PROVEN at final main 68c316c11923 (4/4 required CI: 29211309515/29211309533/29211309530/29211309521); retired per ML_PIPE_ITEM_4_FINAL_LEDGER_RECONCILIATION_V1"
 }
