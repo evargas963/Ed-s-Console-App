@@ -23,6 +23,12 @@ LIVE_ADVISORY_V2_SKIP_NO_PAYLOAD = "v2_advisory_log_skipped_no_signal_payload"
 LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS = (
     "v2_advisory_log_skipped_missing_decision_ts"
 )
+# execution_identity_v1: a LIVE model-derived calibration row must carry the
+# exact production decision identity - a live write without it is REFUSED
+# (fail closed), never silently unlinked. Backfill/reconstruction paths call
+# calibration.writer directly with decision_source markers; they never use
+# this live entry point.
+LIVE_ADVISORY_V2_REFUSED_NO_IDENTITY = "v2_live_log_refused_missing_execution_identity"
 
 
 def build_live_v2_advisory_snapshot(
@@ -47,6 +53,8 @@ def append_live_v2_calibration_decision(
     db_path: Path | str,
     calibration_payload: dict[str, Any] | None,
     v2_decision: dict[str, Any],
+    decision_id: str | None = None,
+    execution_identity_sha256: str | None = None,
 ) -> dict[str, Any] | None:
     """Insert one calibration row after both v1 signal data and v2 metadata exist.
 
@@ -67,6 +75,18 @@ def append_live_v2_calibration_decision(
             "status": "skipped",
             "reason": LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS,
         }
+    if not decision_id or not execution_identity_sha256:
+        # Live model-derived row without its governed execution identity:
+        # REFUSED, loud, mechanically visible (never a linked-looking row
+        # that is not actually linked, never a second identity).
+        import logging as _logging
+
+        _logging.getLogger(__name__).error(
+            "EXECUTION_IDENTITY_REFUSED live v2 calibration write for %s: "
+            "missing decision_id/execution_identity_sha256 (fail closed)",
+            calibration_payload.get("ticker"),
+        )
+        return {"status": "refused", "reason": LIVE_ADVISORY_V2_REFUSED_NO_IDENTITY}
 
     inp = calibration_payload["inp"]
     ticker = calibration_payload["ticker"]
@@ -95,6 +115,8 @@ def append_live_v2_calibration_decision(
         db_path=db_path,
         signal_layer_v1=calibration_payload["signal_layer_v1"],
         advisory_v2_decision_snapshot=advisory_snapshot,
+        decision_id=decision_id,
+        execution_identity_sha256=execution_identity_sha256,
     )
     if row_id is None:
         return {"status": "skipped", "reason": "calibration_writer_returned_none"}

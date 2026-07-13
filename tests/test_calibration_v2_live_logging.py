@@ -63,10 +63,23 @@ def test_live_v2_logging_inserts_single_row_with_v1_and_v2_metadata(tmp_path, mo
     conn.close()
     signal_output = _signal_output()
 
+    # execution_identity_v1: a live write WITHOUT identity is refused (fail closed)
+    refused = append_live_v2_calibration_decision(
+        db_path=db_path,
+        calibration_payload=signal_output.calibration_payload,
+        v2_decision=_v2_decision(),
+    )
+    assert refused == {
+        "status": "refused",
+        "reason": "v2_live_log_refused_missing_execution_identity",
+    }
+
     result = append_live_v2_calibration_decision(
         db_path=db_path,
         calibration_payload=signal_output.calibration_payload,
         v2_decision=_v2_decision(),
+        decision_id="d-live-test",
+        execution_identity_sha256="e" * 64,
     )
 
     conn = sqlite3.connect(str(db_path))
@@ -87,6 +100,8 @@ def test_live_v2_logging_inserts_single_row_with_v1_and_v2_metadata(tmp_path, mo
     assert payload["source"] == "live_tier_c_advisory"
     assert payload["adapter_version"] == ADVISORY_V2_ADAPTER_VERSION
     assert payload["v2_decision"]["authority"]["mode"] == "advisory_non_authoritative"
+    assert row["decision_id"] == "d-live-test"
+    assert row["execution_identity_sha256"] == "e" * 64
 
 
 def test_live_v2_logging_skips_when_refresh_ts_utc_missing(tmp_path, monkeypatch):

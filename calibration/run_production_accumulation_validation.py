@@ -217,9 +217,23 @@ def run() -> dict[str, Any]:
             from v2_decision import build_module_a_a1_decision
 
             canonical = out.canonical_forecast
+            # Schwab CSV authority checked: yes
+            # CSV row(s): NO_SCHWAB_EQUIVALENT — execution-identity registration
+            #   for the validation harness only; no market field read or derived.
+            # Derived-field disposition: none required.
+            # All consumers checked: yes — harness-local identity plumbing.
+            # SCHWAB_CSV_CHECKED
+            _val_did = f"accumdid-{name}-{ts}"
+            from tests.test_calibration_logging_production_path import (
+                _register_execution_identity_for_test as _reg_xid,
+            )
+
+            _val_sha = _reg_xid(OUT_DB, _val_did)
             append_live_v2_calibration_decision(
                 db_path=OUT_DB,
                 calibration_payload=out.calibration_payload,
+                decision_id=_val_did,
+                execution_identity_sha256=_val_sha,
                 v2_decision=build_module_a_a1_decision(
                     {
                         "ticker": name,

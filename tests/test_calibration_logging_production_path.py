@@ -44,12 +44,58 @@ def _v2_for_output(out, ticker: str = "SPY") -> dict:
     )
 
 
+
+
+def _register_execution_identity_for_test(db_path, decision_id: str) -> str:
+    """Register a minimal REAL execution identity + ledger binding so the
+    linkage triggers accept the calibration row (execution_identity_v1)."""
+    import sqlite3 as _sq
+
+    import execution_identity as _xi
+
+    env = _xi.build_execution_envelope(
+        release={"release_id": "rel-test", "git_sha": "a" * 40,
+                 "config_hash": "c" * 64, "build_generation": "g"},
+        requested_ticker="SPY",
+        bundle_ticker="SPY",
+        guest_anchor=False,
+        guest_anchor_ticker=None,
+        horizons_attempted=["1c"],
+        bundles_by_horizon={},
+        calibration_by_horizon=None,
+        calibration_logging_enabled=True,
+        stack_pins={"test": decision_id},
+        runtime_class="TEST",
+        degradation=None,
+        tradeable_policy=None,
+        executed_at_utc=1.0,
+    )
+    conn = _sq.connect(str(db_path), timeout=30.0)
+    try:
+        _xi.ensure_execution_identity_schema(conn)
+        return _xi.insert_execution_identity(
+            conn, env, decision_id=decision_id, expected_surfaces=["calibration"]
+        )
+    finally:
+        conn.close()
+
+
 def _compute_then_log(inp, *, db_path: Path, edb: EdDB):
     out = compute_signals(inp, db=edb)
+    # execution_identity_v1: the live path always carries the governed
+    # per-decision identity, REGISTERED so the linkage triggers accept the row
+    # (deterministic per refresh_ts so idempotent duplicate-key semantics stay
+    # observable across threads/retries — same decision -> same identity).
+    _ts = getattr(inp, "refresh_ts_utc", 0.0)
+    _did = f"testdid-{getattr(inp, 'ticker', 'SPY')}-{_ts}"
+    _sha = _register_execution_identity_for_test(db_path, _did)
+
     append_live_v2_calibration_decision(
         db_path=db_path,
         calibration_payload=out.calibration_payload,
         v2_decision=_v2_for_output(out, getattr(inp, "ticker", "SPY")),
+        decision_id=_did,
+        execution_identity_sha256=_sha,
     )
     return out
 
