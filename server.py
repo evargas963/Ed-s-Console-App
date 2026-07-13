@@ -7065,10 +7065,11 @@ def _fetch_state(
             )
         except Exception as _thr_e:
             log.warning("snapshot throttle reservation failed ticker=%s: %s", ticker, _thr_e)
-    _xid_model_derived = bool(
-        isinstance(_v2_logging_ms_dict, dict)
-        and _v2_logging_ms_dict.get("combined_signal") is not None
-    )
+    # Model-derived predicate reads the SAME source the snapshot writer uses
+    # (the tail sets combined_signal=ms.call_signal) — noncanonical runtime
+    # proof 2026-07-13 caught the v2-dict projection lacking this key, which
+    # skipped the anchor and fail-closed every model-derived surface.
+    _xid_model_derived = getattr(ms, "call_signal", None) is not None
     if _ed_db and _xid_model_derived:
         from decision_record import new_decision_id as _new_did
         from execution_identity import ExecutionIdentityError as _XidErr

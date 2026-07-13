@@ -2851,10 +2851,20 @@ class EdDB:
         # additive — identity tables + (decision_id, execution_identity_sha256,
         # execution_identity_class) columns + linkage triggers.  Legacy rows keep
         # NULL identity forever (no backfill of any kind).
+        # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: the dependent tables MUST
+        # exist BEFORE the identity schema runs, or a FRESH database gets no
+        # linkage triggers on production_decision_records / calibration_decision_log
+        # and identity-less governed rows can land ungoverned (caught by the
+        # 2026-07-13 noncanonical runtime proof: 2 pdr rows persisted with a
+        # decision_id and no identity on a fresh proof DB).
         try:
+            from calibration.schema import ensure_calibration_schema
+            from decision_record import ensure_production_decision_schema
             from execution_identity import ensure_execution_identity_schema
 
             with self._connect() as conn:
+                ensure_production_decision_schema(conn)
+                ensure_calibration_schema(conn)
                 ensure_execution_identity_schema(conn)
         except sqlite3.OperationalError as exc:
             log.error("execution identity schema migration failed: %s", exc)

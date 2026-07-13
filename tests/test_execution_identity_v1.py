@@ -773,3 +773,27 @@ def test_v2_live_logging_non_model_skip_reason_exists():
 
     assert LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE != LIVE_ADVISORY_V2_REFUSED_NO_IDENTITY
     assert "skip" in LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE
+
+
+def test_fresh_database_gets_all_linkage_triggers(tmp_path, monkeypatch):
+    """Fresh-DB regression (noncanonical runtime proof 2026-07-13): EdDB init
+    must create production_decision_records + calibration_decision_log BEFORE
+    the identity schema so ALL THREE linkage triggers exist — an identity-less
+    governed write on a brand-new database must be refused, never ungoverned."""
+    monkeypatch.setenv("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
+    from db import EdDB
+
+    db = EdDB(db_path=str(tmp_path / "fresh.db"))
+    with db._connect() as conn:
+        trigs = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger'").fetchall()}
+        for table in ("snapshots", "production_decision_records", "calibration_decision_log"):
+            assert f"trg_{table}_exec_identity_link" in trigs, table
+        # and the trigger actually bites on a fresh DB:
+        import pytest as _pytest
+        with _pytest.raises(sqlite3.IntegrityError, match="IDENTITY_MISMATCH"):
+            conn.execute(
+                "INSERT INTO production_decision_records (decision_id, decision_ts_utc,"
+                " ticker, route, release_id, created_at_utc) VALUES (?,?,?,?,?,?)",
+                ("fresh-did", 1.0, "SPY", "r", "rel", 1.0),
+            )

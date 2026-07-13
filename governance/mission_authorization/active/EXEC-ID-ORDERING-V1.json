@@ -14,16 +14,18 @@
   "authorized_scope": {
     "files": [
       "OPEN_ITEMS.md",
-      "server.py",
       "calibration/v2_live_logging.py",
-      "tests/test_execution_identity_v1.py",
-      "reports/exec_identity/rth_2026-07-13_decision_surface_contradiction.json",
+      "db.py",
       "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
       "governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json",
+      "governance/artifacts/persistence_consumer_map.json",
+      "governance/artifacts/schwab_v4_register_build_meta.json",
+      "governance/artifacts/schwab_v4_scoreboard.json",
       "governance/mission_authorization/active/EXEC-ID-ORDERING-V1.json",
       "governance/mission_authorization/consumed/ML-PIPE-ITEM4-RECORDS-V1.retired.json",
-      "governance/artifacts/schwab_v4_register_build_meta.json",
-      "governance/artifacts/schwab_v4_scoreboard.json"
+      "reports/exec_identity/rth_2026-07-13_decision_surface_contradiction.json",
+      "server.py",
+      "tests/test_execution_identity_v1.py"
     ],
     "semantic_domains": [
       "model_loading",
