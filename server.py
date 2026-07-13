@@ -7008,6 +7008,7 @@ def _fetch_state(
     # bundle publish and the SAME object is served (ms_dict["v2_decision"]) and
     # logged by the post-publish calibration append — no served/logged drift.
     _v2_decision_for_response = None
+    _v2_logging_ms_dict = None  # bound before the try: the identity anchor reads it
     try:
         _v2_logging_ms_dict = _ms_to_dict(ms)
         _v2_logging_ms_dict["selected_exp"] = selected_exp
@@ -7610,17 +7611,54 @@ def _fetch_state(
                             anchor_production_execution as _xid_anchor,
                         )
 
-                        _xid_did = _new_did()
+                        # ONE cycle = ONE decision: reuse the v2 decision
+                        # build's stamped decision_id (same MarketState, same
+                        # refresh) so calibration log, snapshot, and decision
+                        # record can never fork identities.
+                        # Schwab CSV authority checked: yes
+                        # CSV row(s): NO_SCHWAB_EQUIVALENT — identity linkage
+                        #   only; no market field read, derived, or emitted.
+                        # Derived-field disposition: none required.
+                        # All consumers checked: yes — additive identity fields.
+                        # SCHWAB_CSV_CHECKED
+                        _v2md = _v2_logging_ms_dict if isinstance(_v2_logging_ms_dict, dict) else {}
+                        _xid_did = str(_v2md.get("decision_id") or "") or _new_did()
+                        # Exact calibration state USED by this cycle's decision:
+                        # attached at the v2 build (BEFORE this anchor); absent
+                        # calibration is recorded explicitly, never silent.
+                        _cal_info = None
+                        _conf = _v2md.get("a1_conformal_artifact")
+                        _iso_lineage = _v2md.get("a1_calibrated_probability_lineage_id")
+                        if isinstance(_conf, dict) or _iso_lineage:
+                            _cal_info = {
+                                str(_v2md.get("primary_horizon") or "1c"): {
+                                    "conformal": (
+                                        {
+                                            k: _conf.get(k)
+                                            for k in ("run_id", "lineage_id", "artifact_id",
+                                                       "created_at", "horizon", "ticker")
+                                            if _conf.get(k) is not None
+                                        }
+                                        if isinstance(_conf, dict) else None
+                                    ),
+                                    "isotonic_lineage_id": _iso_lineage,
+                                }
+                            }
+                        from calibration.writer import calibration_logging_enabled as _cal_on
+
+                        _xid_surfaces = ["decision", "snapshot"]
+                        if _cal_on():
+                            _xid_surfaces.append("calibration")
                         try:
                             with _ed_db._connect() as _xconn:
                                 _xid_sha = _xid_anchor(
                                     requested_ticker=ticker,
                                     serving_provenance=getattr(ms, "model_serving_provenance_v1", None),
-                                    calibration_info=None,
+                                    calibration_info=_cal_info,
                                     db_conn=_xconn,
                                     decision_id=_xid_did,
                                     executed_at_utc=float(_snap_ts),
-                                    expected_surfaces=["decision", "snapshot"],
+                                    expected_surfaces=_xid_surfaces,
                                 )
                         except _XidErr as _x_exc:
                             log.error(
@@ -7634,6 +7672,9 @@ def _fetch_state(
                             _snapshot_kwargs["execution_identity_sha256"] = _xid_sha
                             _snapshot_kwargs["execution_identity_class"] = "MODEL_DERIVED"
                             setattr(ms, "_execution_identity_pair", (_xid_did, _xid_sha))
+                            if isinstance(_v2_logging_ms_dict, dict):
+                                _v2_logging_ms_dict["decision_id"] = _xid_did
+                                _v2_logging_ms_dict["execution_identity_sha256"] = _xid_sha
                     _snapshotrow_field_names = set(getattr(SnapshotRow, "__annotations__", {}).keys())
                     _dropped_snapshot_fields = sorted(k for k in _snapshot_kwargs if k not in _snapshotrow_field_names)
                     if _dropped_snapshot_fields:
@@ -7758,13 +7799,21 @@ def _fetch_state(
             from calibration.v2_live_logging import append_live_v2_calibration_decision
             from db import DB_PATH as _calibration_db_path
 
+            _xid_pair_cal = getattr(ms, "_execution_identity_pair", None)
             _v2_log_result = append_live_v2_calibration_decision(
                 db_path=_calibration_db_path,
                 calibration_payload=getattr(ms, "_calibration_payload", None),
                 v2_decision=v2_decision_for_log,
+                decision_id=_xid_pair_cal[0] if _xid_pair_cal else None,
+                execution_identity_sha256=_xid_pair_cal[1] if _xid_pair_cal else None,
             )
             if _v2_log_result and _v2_log_result.get("status") != "ok":
                 log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
+            if _v2_log_result and _v2_log_result.get("status") == "ok" and _xid_pair_cal:
+                from execution_identity import mark_surface_landed as _xid_mark_cal
+
+                with get_db()._connect() as _xconn_cal:
+                    _xid_mark_cal(_xconn_cal, _xid_pair_cal[0], "calibration")
         except Exception as _v2_log_e:
             _analytics_cache_observability["post_publish_calibration_failures"] += 1
             _record_post_publish_failure("calibration", ticker, published_version, _v2_log_e)

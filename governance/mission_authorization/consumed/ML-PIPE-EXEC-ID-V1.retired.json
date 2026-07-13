@@ -41,7 +41,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783902936.7743459,
   "expires_at_epoch": 1785112536.7743459,
   "operator_authorization": "MISSION = PER_ROW_HISTORICAL_MODEL_ARTIFACT_IDENTITY_V1 + autonomy amendment (operator packets 2026-07-12): execution_identity_v1 architecture, independent design authority; PR path; operator integrates",
@@ -58,5 +58,6 @@
     "strict activation creating unbounded outage",
     "red required PR/main check",
     "main advances incompatibly"
-  ]
+  ],
+  "retired_note": "principal implementation merged via PR #34 at 2928dcb1aa04 (8/8 checks at head 6a0f9ca44e45)"
 }
