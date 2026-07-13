@@ -1,0 +1,61 @@
+{
+  "schema_version": "1",
+  "mission_id": "UNIVERSAL-FIX-IMPACT-GATE-V1",
+  "agent": "Cursor",
+  "mission_type": "feature_implementation",
+  "authorized_branch": "universal-fix-impact-gate-v1",
+  "authorized_worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole",
+  "base_sha": "5947f79020bc60eb01a6ccd846745b82630ff5e9",
+  "authorized_push_target": "origin/universal-fix-impact-gate-v1",
+  "target_branch": "universal-fix-impact-gate-v1",
+  "direct_main_permission": false,
+  "pr_required": true,
+  "integration_owner": "OPERATOR",
+  "lease_state": "active",
+  "authorized_scope": {
+    "files": [
+      "tools/check_universal_fix_impact_gate.py",
+      "tools/build_universal_repository_inventory.py",
+      "tools/check_fix_everything_we_touch.py",
+      "tools/check_prepush_parity.py",
+      "tools/fix_everything_we_touch_scope.py",
+      "tools/enforce_all_rules.py",
+      "governance/artifacts/universal_repository_inventory.json",
+      "governance/artifacts/universal_fix_exception_register.json",
+      "governance/universal_fix_impact_manifest.json",
+      "governance/mission_authorization/active/UNIVERSAL-FIX-IMPACT-GATE-V1.json",
+      "governance/README.md",
+      "tests/test_universal_fix_impact_gate.py",
+      ".github/workflows/objective-audit.yml"
+    ],
+    "semantic_domains": [
+      "governance_gates",
+      "generated_inventories"
+    ],
+    "forbidden_overlap": [
+      "OPEN_ITEMS.md",
+      "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
+      "governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json",
+      "governance/ML_ITEM4_MIGRATION_POLICY.json",
+      "governance/artifacts/schwab_v4_register_build_meta.json",
+      "governance/artifacts/schwab_v4_scoreboard.json",
+      "governance/mission_authorization/active/ML-PIPE-ITEM4-RECORDS-V1.json"
+    ]
+  },
+  "shared_file_policy": "disjoint from PR #36 Item-4 records reconciliation; no Item-4 lane status edits",
+  "created_at_epoch": 1784100000.0,
+  "expires_at_epoch": 1784500000.0,
+  "operator_authorization": "operator mission UNIVERSAL_FIX_IMPACT_GATE_V1_IMPLEMENTATION (2026-07-13): AUTHORIZED_AGENT=Cursor, DIRECT_MAIN_PUSH=FORBIDDEN, PR_REQUIRED=YES, MERGE_AUTHORIZATION=NONE",
+  "allowed_integration_method": "PR after PR #36 merge and rebase",
+  "required_checks": [
+    "objective-audit",
+    "pytest-full",
+    "hardening",
+    "schwab-csv-first"
+  ],
+  "stop_conditions": [
+    "PR #36 file overlap",
+    "main advances incompatibly",
+    "bypass warning observed"
+  ]
+}

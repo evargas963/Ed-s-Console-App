@@ -38,6 +38,7 @@ python tools/_build_institutional_audit_phase1.py
 python tools/_build_institutional_audit_phase2.py
 python tools/_build_institutional_audit_phase3.py   # after I-31/I-25 code lands
 python tools/_build_governance_coverage_matrix.py
+python tools/build_universal_repository_inventory.py
 ```
 
 ## Run governance tests

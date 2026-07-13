@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "change_id": "UNIVERSAL_FIX_IMPACT_GATE_V1_IMPLEMENTATION",
+  "claimed_scope": "UNIVERSAL_BY_CONSTRUCTION_WITH_MECHANICAL_LOCK",
+  "root_cause_artifact": "tools/check_universal_fix_impact_gate.py",
+  "affected_production_paths": [
+    "tools/check_universal_fix_impact_gate.py",
+    "tools/build_universal_repository_inventory.py",
+    "tools/check_fix_everything_we_touch.py",
+    "tools/check_prepush_parity.py",
+    "tools/fix_everything_we_touch_scope.py",
+    "governance/artifacts/universal_repository_inventory.json",
+    "governance/artifacts/universal_fix_exception_register.json",
+    "tests/test_universal_fix_impact_gate.py"
+  ],
+  "connected_consumers": {
+    "tools/check_fix_everything_we_touch.py": [
+      "tools/enforce_all_rules.py",
+      "tools/check_prepush_parity.py",
+      ".github/workflows/objective-audit.yml"
+    ],
+    "tools/check_prepush_parity.py": [
+      "tools/enforce_all_rules.py",
+      ".pre-commit-config.yaml"
+    ]
+  },
+  "ticker_classes": ["all_enrolled", "training_anchors", "guest"],
+  "horizons": ["1c", "5c", "15c", "60c"],
+  "runtime_classes": ["full", "reduced", "degraded", "fail_closed", "quote_only"],
+  "proof_matrix": {
+    "static_audit": "check_universal_fix_impact_gate in _REPO_WIDE_STATIC_CHECK_FUNCS",
+    "prepush": "check_prepush_parity universal_fix_gate stage",
+    "adversarial": "tests/test_universal_fix_impact_gate.py mutations A-O"
+  },
+  "recurrence_guard": "tests/test_universal_fix_impact_gate.py",
+  "representative_only_limitations": null,
+  "lanes_not_closed": [
+    "CARD_FIDELITY_OVERALL",
+    "ML-PIPE-ITEM4-FLEET-MIGRATION-V1",
+    "MODEL_VERSION_PINNING_PARENT",
+    "FULL_MODEL_STACK",
+    "REAL_MONEY_READINESS"
+  ],
+  "parent_lanes_affected": [],
+  "governed_exceptions": []
+}

@@ -121,6 +121,13 @@ CHECK_ESCALATION: dict[str, tuple[str, ...]] = {
         "arch_competition/",
         "tools/check_fix_everything_we_touch.py",
     ),
+    "check_universal_fix_impact_gate": (
+        "tools/check_universal_fix_impact_gate.py",
+        "tools/build_universal_repository_inventory.py",
+        "governance/artifacts/universal_repository_inventory.json",
+        "governance/universal_fix_impact_manifest.json",
+        "tools/check_prepush_parity.py",
+    ),
     "check_governance_archive_batch2_contract": ("governance/archive/", "governance/REPO_CLEANUP"),
     "check_ablation_denominator_vocabulary": ("AGENTS.md", "tools/feature_curation_gate.py"),
     "check_institutional_signoff_contract": ("AGENTS.md", "tools/check_fix_everything_we_touch.py"),
