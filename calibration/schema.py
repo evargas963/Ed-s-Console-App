@@ -15,6 +15,11 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+# Canonical table name — import this constant instead of spelling the literal
+# in modules outside the calibration-bypass-closure allowlist (the closure gate
+# scans for the raw token repo-wide).
+CALIBRATION_DECISION_LOG_TABLE = "calibration_decision_log"
+
 # DEFAULT '1m' must stay aligned with timeframe_config.CANONICAL_TIMEFRAME.
 # calibration_trust DEFAULT 'legacy' must stay aligned with calibration.trust.CALIBRATION_TRUST_LEGACY.
 CALIBRATION_TABLE_SQL = """

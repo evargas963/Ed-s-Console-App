@@ -15,6 +15,7 @@
     "files": [
       ".gitignore",
       "OPEN_ITEMS.md",
+      "calibration/schema.py",
       "calibration/v2_live_logging.py",
       "db.py",
       "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
@@ -26,6 +27,7 @@
       "governance/mission_authorization/consumed/ML-PIPE-ITEM4-RECORDS-V1.retired.json",
       "reports/exec_identity/rth_2026-07-13_decision_surface_contradiction.json",
       "server.py",
+      "tests/test_card_wiring_transport_locks.py",
       "tests/test_execution_identity_v1.py"
     ],
     "semantic_domains": [

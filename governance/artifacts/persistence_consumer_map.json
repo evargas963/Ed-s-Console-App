@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-13T15:38:03Z",
+  "generated_at": "2026-07-13T16:11:30Z",
   "persistence_files": [
     "db.py",
     "calibration/writer.py"
@@ -276,7 +276,7 @@
     {
       "writer_fn": "EdDB._migrate_horizon_bar_contract_v1",
       "file": "db.py",
-      "line": 2878,
+      "line": 2891,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -295,7 +295,7 @@
     {
       "writer_fn": "EdDB._migrate_outcome_anchor_bar_canonical",
       "file": "db.py",
-      "line": 2948,
+      "line": 2961,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -314,7 +314,7 @@
     {
       "writer_fn": "EdDB.insert_snapshot",
       "file": "db.py",
-      "line": 3071,
+      "line": 3084,
       "tables_written": [
         "snapshots"
       ],
@@ -348,7 +348,7 @@
     {
       "writer_fn": "EdDB.upsert_1m_bars",
       "file": "db.py",
-      "line": 3130,
+      "line": 3143,
       "tables_written": [
         "price_bars_1m"
       ],
@@ -383,7 +383,7 @@
     {
       "writer_fn": "EdDB.log_level_cross",
       "file": "db.py",
-      "line": 4216,
+      "line": 4229,
       "tables_written": [
         "level_crosses"
       ],
@@ -401,7 +401,7 @@
     {
       "writer_fn": "EdDB.log_model_accuracy",
       "file": "db.py",
-      "line": 4471,
+      "line": 4484,
       "tables_written": [
         "model_accuracy"
       ],
@@ -439,7 +439,7 @@
     {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 4380,
+      "line": 4393,
       "production_callers": [
         "server.py"
       ],
