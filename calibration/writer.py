@@ -143,6 +143,8 @@ def append_calibration_decision(
     db_path: Optional[Path | str] = None,
     signal_layer_v1: Optional[dict[str, Any]] = None,
     advisory_v2_decision_snapshot: Optional[dict[str, Any]] = None,
+    decision_id: Optional[str] = None,
+    execution_identity_sha256: Optional[str] = None,
 ) -> Optional[int]:
     """
     Insert one analysis-ready row per (ticker_storage_key(ticker), decision_ts_utc).
@@ -320,7 +322,11 @@ def append_calibration_decision(
         advisory_v2_backfill_status,
         None,
         CALIBRATION_TRUST_TRUSTED,
+        decision_id,
+        execution_identity_sha256,
     )
+    # execution_identity_v1: identity travels IN the insert so the linkage
+    # trigger (registration + same-identity-per-decision) applies to this row.
     insert_sql = """
             INSERT INTO calibration_decision_log (
                 decision_ts_utc, ticker, canonical_timeframe, session_label, expiry, build_generation,
@@ -336,7 +342,9 @@ def append_calibration_decision(
                 advisory_v2_backfilled_ts_utc,
                 advisory_v2_backfill_status,
                 advisory_v2_backfill_reason,
-                calibration_trust
+                calibration_trust,
+                decision_id,
+                execution_identity_sha256
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
@@ -344,7 +352,8 @@ def append_calibration_decision(
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?
             )
             ON CONFLICT(ticker, decision_ts_utc) DO NOTHING
             """

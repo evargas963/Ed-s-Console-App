@@ -138,8 +138,15 @@ def persist_production_decision(
     route: str,
     release: dict[str, Any],
     db_path: Path | str,
+    execution_identity_sha256: Optional[str] = None,
 ) -> Optional[str]:
-    """Insert immutable decision row. Returns decision_id or None on skip."""
+    """Insert immutable decision row. Returns decision_id or None on skip.
+
+    execution_identity_v1: when the decision cycle registered an execution
+    identity, the row carries it (the linkage trigger enforces registration +
+    the ledger binding); a re-persist of the same decision must agree with the
+    stored identity — one decision can never diverge across persists silently.
+    """
     decision_id = str(ms_dict.get("decision_id") or "").strip()
     if not decision_id:
         log.warning("persist_production_decision: missing decision_id route=%s", route)
@@ -176,32 +183,72 @@ def persist_production_decision(
         "quarantine_json": _json_dumps(_extract_quarantine(ms_dict)),
         "reconstruction_json": _json_dumps(reconstruction),
         "created_at_utc": time.time(),
+        "execution_identity_sha256": (str(execution_identity_sha256).lower()
+                                       if execution_identity_sha256 else None),
     }
 
     path = Path(db_path)
     conn = sqlite3.connect(str(path), timeout=30.0)
     try:
         ensure_production_decision_schema(conn)
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO production_decision_records (
-                decision_id, decision_generation_id, decision_ts_utc, ticker, route,
-                release_id, release_json, git_sha,
-                market_inputs_json, risk_state_json, validation_summary,
-                model_outputs_json, fusion_json, final_signal, call_conviction,
-                overrides_json, staleness_json, quarantine_json,
-                reconstruction_json, created_at_utc
-            ) VALUES (
-                :decision_id, :decision_generation_id, :decision_ts_utc, :ticker, :route,
-                :release_id, :release_json, :git_sha,
-                :market_inputs_json, :risk_state_json, :validation_summary,
-                :model_outputs_json, :fusion_json, :final_signal, :call_conviction,
-                :overrides_json, :staleness_json, :quarantine_json,
-                :reconstruction_json, :created_at_utc
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(production_decision_records)")}
+        has_identity_cols = "execution_identity_sha256" in cols
+        if has_identity_cols:
+            conn.execute(
+                """
+                INSERT INTO production_decision_records (
+                    decision_id, decision_generation_id, decision_ts_utc, ticker, route,
+                    release_id, release_json, git_sha,
+                    market_inputs_json, risk_state_json, validation_summary,
+                    model_outputs_json, fusion_json, final_signal, call_conviction,
+                    overrides_json, staleness_json, quarantine_json,
+                    reconstruction_json, created_at_utc, execution_identity_sha256
+                ) VALUES (
+                    :decision_id, :decision_generation_id, :decision_ts_utc, :ticker, :route,
+                    :release_id, :release_json, :git_sha,
+                    :market_inputs_json, :risk_state_json, :validation_summary,
+                    :model_outputs_json, :fusion_json, :final_signal, :call_conviction,
+                    :overrides_json, :staleness_json, :quarantine_json,
+                    :reconstruction_json, :created_at_utc, :execution_identity_sha256
+                )
+                ON CONFLICT(decision_id) DO NOTHING
+                """,
+                row,
             )
-            """,
-            row,
-        )
+            # NEVER a silent divergence: an existing row for this decision must
+            # carry the SAME execution identity we hold now.
+            existing = conn.execute(
+                "SELECT execution_identity_sha256 FROM production_decision_records WHERE decision_id=?",
+                (decision_id,),
+            ).fetchone()
+            if existing is not None and (existing[0] or None) != row["execution_identity_sha256"]:
+                conn.rollback()
+                raise ValueError(
+                    f"IDENTITY_MISMATCH: decision {decision_id} already persisted with a "
+                    f"different execution identity ({existing[0]!r})"
+                )
+        else:
+            row_legacy = {k: v for k, v in row.items() if k != "execution_identity_sha256"}
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO production_decision_records (
+                    decision_id, decision_generation_id, decision_ts_utc, ticker, route,
+                    release_id, release_json, git_sha,
+                    market_inputs_json, risk_state_json, validation_summary,
+                    model_outputs_json, fusion_json, final_signal, call_conviction,
+                    overrides_json, staleness_json, quarantine_json,
+                    reconstruction_json, created_at_utc
+                ) VALUES (
+                    :decision_id, :decision_generation_id, :decision_ts_utc, :ticker, :route,
+                    :release_id, :release_json, :git_sha,
+                    :market_inputs_json, :risk_state_json, :validation_summary,
+                    :model_outputs_json, :fusion_json, :final_signal, :call_conviction,
+                    :overrides_json, :staleness_json, :quarantine_json,
+                    :reconstruction_json, :created_at_utc
+                )
+                """,
+                row_legacy,
+            )
         conn.commit()
     finally:
         conn.close()

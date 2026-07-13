@@ -347,6 +347,15 @@ class SnapshotRow:
     candle_range_pts:   Optional[float] = None  # high - low
     spread:             Optional[float] = None   # bid-ask spread (pts)
 
+    # ── execution_identity_v1 (PER_ROW_HISTORICAL_MODEL_ARTIFACT_IDENTITY) ────
+    # MODEL_DERIVED rows carry the immutable decision-cycle identity; quote-only
+    # rows are explicitly NOT_APPLICABLE with NULL identity.  Linkage integrity
+    # is trigger-enforced against model_execution_identities + the persistence
+    # ledger (see execution_identity.py).
+    decision_id:                Optional[str] = None
+    execution_identity_sha256:  Optional[str] = None
+    execution_identity_class:   Optional[str] = None  # 'MODEL_DERIVED' | 'NOT_APPLICABLE'
+
     # ── Raw Schwab quote primitives (CSV-first leaves; not derived) ────────────
     # quotes.{SYM}.bidPrice / askPrice / bidSize / askSize / lastSize / totalVolume.
     # Logged so ablation can judge the primitives that spread / vol_oi_ratio were
@@ -2838,6 +2847,19 @@ class EdDB:
         self._migrate_drop_confluence_log_v1()
         self._migrate_drop_news_events_v1()
 
+        # execution_identity_v1 (PER_ROW_HISTORICAL_MODEL_ARTIFACT_IDENTITY_V1):
+        # additive — identity tables + (decision_id, execution_identity_sha256,
+        # execution_identity_class) columns + linkage triggers.  Legacy rows keep
+        # NULL identity forever (no backfill of any kind).
+        try:
+            from execution_identity import ensure_execution_identity_schema
+
+            with self._connect() as conn:
+                ensure_execution_identity_schema(conn)
+        except sqlite3.OperationalError as exc:
+            log.error("execution identity schema migration failed: %s", exc)
+            raise
+
         if _counts_before and is_canonical_db_path(self.db_path) and not skip_automatic_backup():
             with self._connect() as _c1:
                 _after = critical_table_row_counts(_c1)
@@ -3045,6 +3067,32 @@ class EdDB:
         """
         d = asdict(snap)
         d.pop("snapshot_id", None)  # let DB assign
+
+        # execution_identity_v1 fail-closed coherence: a MODEL_DERIVED row must
+        # carry its identity pair; a NOT_APPLICABLE (quote-only) row must not.
+        # When identity fields arrive without a class, the row IS model-derived.
+        # (Trigger-level linkage against the identity table + ledger enforces
+        # registration and same-identity-per-decision below the Python layer.)
+        # Schwab CSV authority checked: yes
+        # CSV row(s): NO_SCHWAB_EQUIVALENT — execution-identity provenance
+        #   linkage only; no market field read, derived, or emitted here.
+        # Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (n/a — no
+        #   derivation in this block).
+        # All consumers checked: yes — identity columns are additive; every
+        #   existing snapshot reader ignores unknown columns by name.
+        # SCHWAB_CSV_CHECKED
+        _xid_class = d.get("execution_identity_class")
+        _xid = d.get("execution_identity_sha256")
+        _did = d.get("decision_id")
+        if _xid_class or _xid or _did:
+            from execution_identity import require_identity_for_model_derived_write
+
+            d["execution_identity_class"] = require_identity_for_model_derived_write(
+                is_model_derived=(_xid_class != "NOT_APPLICABLE"),
+                decision_id=_did,
+                execution_identity_sha256=_xid,
+                surface="snapshots",
+            )
 
         # Enforce canonical 1m — fail loudly if caller passed wrong timeframe
         incoming_tf = d.get("timeframe", "")

@@ -105,6 +105,12 @@ _CALIBRATION_OPTIONAL_COLUMNS: dict[str, str] = {
     # leave it NULL (default). Used by training-skew analysis to optionally
     # exclude reconstructed rows from model calibration.
     "decision_source": "TEXT",
+    # execution_identity_v1 (PER_ROW_HISTORICAL_MODEL_ARTIFACT_IDENTITY_V1):
+    # immutable decision-cycle linkage; enforced against
+    # model_execution_identities + decision_persistence_ledger by triggers on
+    # the production DB (see execution_identity.py). Legacy rows stay NULL.
+    "decision_id": "TEXT",
+    "execution_identity_sha256": "TEXT",
 }
 
 

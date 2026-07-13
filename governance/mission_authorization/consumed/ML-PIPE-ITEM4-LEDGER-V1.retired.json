@@ -26,7 +26,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783896599.510503,
   "expires_at_epoch": 1784501399.510503,
   "operator_authorization": "MISSION = ML_PIPE_ITEM_4_FINAL_LEDGER_RECONCILIATION_V1 (operator packet): governance-record and contract-lifecycle only; PR path; operator integrates",
@@ -43,5 +43,6 @@
     "strict activation creating unbounded outage",
     "red required PR/main check",
     "main advances incompatibly"
-  ]
+  ],
+  "retired_note": "ledger reconciliation CLOSED_WITH_EVIDENCE at merge a1a7732492fd (4/4 CI 29214249183/29214249206/29214249188/29214249200)"
 }
