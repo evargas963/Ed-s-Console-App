@@ -30,7 +30,7 @@ from tools.check_universal_ticker_lock import (  # noqa: E402
 
 def _manifest(**overrides) -> dict:
     base = {
-        "change_id": "test-change",
+        "change_id": "UNIVERSAL_FIX_IMPACT_GATE_V1_TEST",
         "claimed_scope": "SCOPED_AND_HONEST",
         "root_cause_artifact": "signals.py:100",
         "affected_production_paths": ["signals.py"],
@@ -48,6 +48,19 @@ def _manifest(**overrides) -> dict:
         "proof_matrix": {"unit": "tests/test_universal_fix_impact_gate.py"},
         "recurrence_guard": "tests/test_universal_fix_impact_gate.py",
         "lanes_not_closed": ["CARD_FIDELITY_OVERALL"],
+        "impact_proof_matrix": {
+            d: {"status": "ANALYZED_NOT_AFFECTED", "evidence": "scoped test fixture"}
+            for d in (
+                "tickers", "horizons", "runtime_classes", "model_roles", "route_families",
+                "persistence_writers", "replay_resolvers", "calibration_paths", "decision_paths",
+                "api_consumers", "ui_card_consumers", "failure_paths", "governance_closure_parents",
+            )
+        },
+        "superseded_path_analysis": {
+            "superseded_paths": [],
+            "retained_compatibility_paths": [],
+            "removal_decision": "none",
+        },
     }
     base.update(overrides)
     return base

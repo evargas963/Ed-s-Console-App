@@ -16,7 +16,6 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +31,7 @@ from tools.check_universal_ticker_lock import (  # noqa: E402
     LOCKED_TICKER_LITERALS,
     is_production_python,
 )
+from tools.universal_gate_ast import collect_routing_symbols_from_source  # noqa: E402
 
 _DESERIALIZATION_CALLS = {
     ("pickle", "load"),
@@ -141,10 +141,43 @@ def _scan_ui_cards() -> list[str]:
     return sorted(cards)
 
 
+def _scan_known_routing_symbols() -> list[str]:
+    symbols: set[str] = set(LOCKED_TICKER_LITERALS)
+    for rel, src in _iter_production_py():
+        symbols.update(collect_routing_symbols_from_source(src, rel))
+    return sorted(symbols)
+
+
+def _scan_replay_resolvers() -> list[dict[str, str]]:
+    patterns = (
+        re.compile(r"def\s+(resolve_\w*replay\w*|load_\w*replay\w*)\s*\(", re.I),
+        re.compile(r"def\s+(resolve_\w*artifact\w*)\s*\(", re.I),
+    )
+    rows: list[dict[str, str]] = []
+    for rel, src in _iter_production_py():
+        for pat in patterns:
+            for m in pat.finditer(src):
+                rows.append({"file": rel, "symbol": m.group(1)})
+    return sorted(rows, key=lambda r: (r["file"], r["symbol"]))
+
+
+def _scan_calibration_paths() -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for rel, src in _iter_production_py():
+        if "calibration" not in rel and "calibration" not in src[:800].lower():
+            continue
+        for m in re.finditer(
+            r"def\s+(log_\w*calibration\w*|write_\w*calibration\w*)\s*\(", src, re.I
+        ):
+            rows.append({"file": rel, "symbol": m.group(1)})
+    return sorted(rows, key=lambda r: (r["file"], r["symbol"]))
+
+
 def build_inventory() -> dict:
     tickers = {
         "training_anchors": list(TRAINING_ANCHOR_TICKERS),
         "locked_literals": sorted(LOCKED_TICKER_LITERALS),
+        "known_routing_symbols": _scan_known_routing_symbols(),
         "ticker_like_pattern": r"^[A-Z]{1,5}$|^\$[A-Z]{1,5}$",
     }
     horizons = {
@@ -166,7 +199,6 @@ def build_inventory() -> dict:
     payload = {
         "schema_version": 1,
         "artifact": "governance/artifacts/universal_repository_inventory.json",
-        "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "regen_command": "python tools/build_universal_repository_inventory.py",
         "tickers": tickers,
         "horizons": horizons,
@@ -176,6 +208,8 @@ def build_inventory() -> dict:
         "persistence_writers": _scan_writers(),
         "model_loaders": _scan_loaders(),
         "ui_card_ids": _scan_ui_cards(),
+        "replay_resolvers": _scan_replay_resolvers(),
+        "calibration_paths": _scan_calibration_paths(),
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     payload["content_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()

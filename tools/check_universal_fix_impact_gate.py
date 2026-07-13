@@ -39,6 +39,10 @@ from tools.check_universal_ticker_lock import (  # noqa: E402
     check_production_ticker_literals,
     is_production_python,
 )
+from tools.universal_gate_ast import (  # noqa: E402
+    is_routing_context_symbol,
+    scan_ticker_routing_violations,
+)
 
 # ── Stable failure codes ─────────────────────────────────────────────────────
 FC_MANIFEST_MISSING = "UNIVERSAL_IMPACT_MANIFEST_MISSING"
@@ -56,10 +60,44 @@ FC_NOT_PROVEN = "MATERIAL_ACCEPTANCE_NOT_PROVEN"
 FC_INVENTORY = "FUTURE_ENTITY_INVENTORY_DRIFT"
 FC_EXCEPTION = "UNIVERSAL_EXCEPTION_MISSING_OR_EXPIRED"
 FC_PREPUSH = "PREPUSH_TIER_PARITY_FAILURE"
+FC_SUPERSEDED = "SUPERSEDED_PATH_NOT_RECONCILED"
+FC_MATRIX = "IMPACT_PROOF_MATRIX_INCOMPLETE"
+FC_GRAPH = "CONNECTED_PATH_GRAPH_DRIFT"
 
 INVENTORY_PATH = ROOT / "governance" / "artifacts" / "universal_repository_inventory.json"
+GRAPH_PATH = ROOT / "governance" / "artifacts" / "universal_connected_path_graph.json"
 MANIFEST_PATH = ROOT / "governance" / "universal_fix_impact_manifest.json"
 EXCEPTION_REGISTER = ROOT / "governance" / "artifacts" / "universal_fix_exception_register.json"
+
+PROOF_MATRIX_DIMENSIONS: tuple[str, ...] = (
+    "tickers",
+    "horizons",
+    "runtime_classes",
+    "model_roles",
+    "route_families",
+    "persistence_writers",
+    "replay_resolvers",
+    "calibration_paths",
+    "decision_paths",
+    "api_consumers",
+    "ui_card_consumers",
+    "failure_paths",
+    "governance_closure_parents",
+)
+
+VALID_MATRIX_STATUSES: frozenset[str] = frozenset(
+    {
+        "AFFECTED_AND_PROVEN",
+        "AFFECTED_NOT_PROVEN",
+        "ANALYZED_NOT_AFFECTED",
+        "NOT_APPLICABLE_WITH_REASON",
+        "REPRESENTATIVE_ONLY",
+    }
+)
+
+BLOCKING_MATRIX_STATUSES: frozenset[str] = frozenset(
+    {"AFFECTED_NOT_PROVEN", "REPRESENTATIVE_ONLY"}
+)
 
 CONTROL_RECORDS: tuple[str, ...] = (
     "OPEN_ITEMS.md",
@@ -78,6 +116,8 @@ MANIFEST_REQUIRED_FIELDS: tuple[str, ...] = (
     "proof_matrix",
     "recurrence_guard",
     "lanes_not_closed",
+    "impact_proof_matrix",
+    "superseded_path_analysis",
 )
 
 SCOPED_HONEST_VALUES: frozenset[str] = frozenset(
@@ -263,9 +303,12 @@ def scan_conditional_universality_violations(src: str, relpath: str) -> list[str
             low = var_name.lower()
             if any(tok in low for tok in _TICKER_VAR_NAMES) or low.endswith("_ticker"):
                 if lit in LOCKED_TICKER_LITERALS or (
-                    _TICKER_LIKE_RE.match(lit)
-                    and lit not in _COMMON_NON_TICKERS
-                    and len(lit) >= 2
+                    is_routing_context_symbol(lit)
+                    or (
+                        _TICKER_LIKE_RE.match(lit)
+                        and lit not in _COMMON_NON_TICKERS
+                        and len(lit) >= 2
+                    )
                 ):
                     key = (rel_norm, node.name, lit)
                     if key in TICKER_LITERAL_ALLOWLIST:
@@ -294,6 +337,18 @@ def scan_conditional_universality_violations(src: str, relpath: str) -> list[str
                     f"explicit horizon exclusions",
                 )
             )
+    # Unknown routing symbols (FAKEAUDIT / future ticker gap).
+    if INVENTORY_PATH.is_file():
+        try:
+            inv = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+            known = frozenset(inv.get("tickers", {}).get("known_routing_symbols") or [])
+        except json.JSONDecodeError:
+            known = frozenset()
+        for code, _lineno, msg in scan_ticker_routing_violations(
+            src, relpath, known_symbols=known, allowlist=TICKER_LITERAL_ALLOWLIST
+        ):
+            if code == "FUTURE_ENTITY_INVENTORY_DRIFT":
+                errors.append(_err(FC_INVENTORY, msg))
     return errors
 
 
@@ -308,6 +363,7 @@ def check_production_universality_scans(root: Path = ROOT) -> list[str]:
             continue
         src = p.read_text(encoding="utf-8", errors="replace")
         errors.extend(scan_conditional_universality_violations(src, rel))
+    errors.extend(check_routing_symbol_registry(root))
     return errors
 
 
@@ -343,7 +399,11 @@ def check_control_record_closures(root: Path = ROOT) -> list[str]:
 
 
 def _load_manifest(root: Path = ROOT) -> Optional[dict[str, Any]]:
-    p = root / MANIFEST_PATH.relative_to(ROOT)
+    try:
+        rel = MANIFEST_PATH.relative_to(ROOT)
+        p = root / rel
+    except ValueError:
+        p = MANIFEST_PATH
     if not p.is_file():
         return None
     try:
@@ -383,6 +443,8 @@ def check_manifest_schema(manifest: dict[str, Any]) -> list[str]:
                     "REPRESENTATIVE_ONLY_NOT_PROVEN requires representative_only_limitations",
                 )
             )
+    errors.extend(check_impact_proof_matrix(manifest))
+    errors.extend(check_superseded_path_analysis(manifest))
     return errors
 
 
@@ -417,13 +479,14 @@ def check_manifest_connected_paths(
         for req in family:
             if req not in declared and not any(d.endswith(req) for d in declared):
                 scope = str(manifest.get("claimed_scope") or "")
-                if scope == "SCOPED_AND_HONEST":
-                    consumer_check_required = True
-                elif scope in SCOPED_HONEST_VALUES:
-                    consumer_check_required = False
-                else:
-                    consumer_check_required = True
-                if consumer_check_required:
+                skip_consumer = scope in frozenset(
+                    {
+                        "BASE_ANCHOR_EVIDENCED_ONLY",
+                        "REPRESENTATIVE_ONLY_NOT_PROVEN",
+                        "SUBSET_EVIDENCED_ONLY",
+                    }
+                )
+                if not skip_consumer:
                     errors.append(
                         _err(
                             FC_CONSUMER,
@@ -449,6 +512,8 @@ def check_manifest_for_changes(changed_files: list[str], root: Path = ROOT) -> l
         ]
     errors = check_manifest_schema(manifest)
     errors.extend(check_manifest_connected_paths(manifest, material))
+    errors.extend(check_manifest_graph_consumers(manifest, material, root))
+    errors.extend(check_manifest_bypass_resistance(manifest, changed_files, root))
     return errors
 
 
@@ -488,7 +553,15 @@ def check_inventory_freshness(root: Path = ROOT) -> list[str]:
         from tools.build_universal_repository_inventory import build_inventory
 
         rebuilt = build_inventory()
-        for key in ("routes", "persistence_writers", "model_loaders", "ui_card_ids"):
+        for key in (
+            "routes",
+            "persistence_writers",
+            "model_loaders",
+            "ui_card_ids",
+            "replay_resolvers",
+            "calibration_paths",
+            "tickers",
+        ):
             if rebuilt.get(key) != on_disk.get(key):
                 errors.append(
                     _err(
@@ -546,6 +619,170 @@ def check_exception_register(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def check_routing_symbol_registry(root: Path = ROOT) -> list[str]:
+    """Unknown routing symbols vs pinned inventory (FAKEAUDIT gap)."""
+    errors: list[str] = []
+    if not INVENTORY_PATH.is_file():
+        return errors
+    try:
+        inv = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return errors
+    known = frozenset(inv.get("tickers", {}).get("known_routing_symbols") or [])
+    for rel in _git_tracked(root):
+        if not is_production_python(rel):
+            continue
+        src = (root / rel).read_text(encoding="utf-8", errors="replace")
+        for code, lineno, msg in scan_ticker_routing_violations(
+            src, rel, known_symbols=known, allowlist=TICKER_LITERAL_ALLOWLIST
+        ):
+            errors.append(_err(code, msg))
+    return errors
+
+
+def check_graph_freshness(root: Path = ROOT) -> list[str]:
+    errors: list[str] = []
+    if not GRAPH_PATH.is_file():
+        return [
+            _err(
+                FC_GRAPH,
+                f"missing {GRAPH_PATH.relative_to(root)} — run "
+                "python tools/build_universal_connected_path_graph.py",
+            )
+        ]
+    try:
+        on_disk = json.loads(GRAPH_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        return [_err(FC_GRAPH, f"graph unreadable: {e}")]
+    try:
+        from tools.build_universal_connected_path_graph import build_graph
+
+        rebuilt = build_graph()
+        if rebuilt.get("edges") != on_disk.get("edges"):
+            errors.append(
+                _err(
+                    FC_GRAPH,
+                    "connected-path graph drift — run "
+                    "python tools/build_universal_connected_path_graph.py",
+                )
+            )
+    except Exception as exc:
+        errors.append(_err(FC_GRAPH, f"graph rebuild failed: {exc}"))
+    return errors
+
+
+def _load_graph_edges(root: Path = ROOT) -> dict[str, list[str]]:
+    if not GRAPH_PATH.is_file():
+        return {}
+    doc = json.loads(GRAPH_PATH.read_text(encoding="utf-8"))
+    out: dict[str, list[str]] = {}
+    for e in doc.get("edges") or []:
+        src = str(e.get("source", "")).replace("\\", "/")
+        tgt = str(e.get("target", "")).replace("\\", "/")
+        out.setdefault(src, []).append(tgt)
+        base = src.rsplit("/", 1)[-1]
+        out.setdefault(base, []).append(tgt)
+    return out
+
+
+def check_manifest_graph_consumers(
+    manifest: dict[str, Any],
+    changed_material: list[str],
+    root: Path = ROOT,
+) -> list[str]:
+    errors: list[str] = []
+    graph = _load_graph_edges(root)
+    consumers = manifest.get("connected_consumers") or {}
+    declared: set[str] = set()
+    for v in consumers.values():
+        if isinstance(v, list):
+            declared.update(x.replace("\\", "/") for x in v)
+    for ch in changed_material:
+        ch = ch.replace("\\", "/")
+        base = ch.rsplit("/", 1)[-1]
+        for tgt in graph.get(ch, []) + graph.get(base, []):
+            if not any(d == tgt or d.endswith("/" + tgt) or d.endswith(tgt) for d in declared):
+                scope = str(manifest.get("claimed_scope") or "")
+                if scope in UNIVERSAL_CLAIM_VALUES or scope == "SCOPED_AND_HONEST":
+                    errors.append(
+                        _err(
+                            FC_CONSUMER,
+                            f"manifest omits graph consumer {tgt!r} for {ch!r}",
+                        )
+                    )
+    return errors
+
+
+def check_impact_proof_matrix(manifest: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    matrix = manifest.get("impact_proof_matrix")
+    if not isinstance(matrix, dict):
+        return [_err(FC_MATRIX, "impact_proof_matrix must be an object")]
+    scope = str(manifest.get("claimed_scope") or "")
+    for dim in PROOF_MATRIX_DIMENSIONS:
+        if dim not in matrix:
+            errors.append(_err(FC_MATRIX, f"impact_proof_matrix missing dimension {dim!r}"))
+            continue
+        entry = matrix[dim]
+        if isinstance(entry, str):
+            status = entry
+            evidence = ""
+        elif isinstance(entry, dict):
+            status = str(entry.get("status") or "")
+            evidence = str(entry.get("evidence") or entry.get("reason") or "")
+        else:
+            errors.append(_err(FC_MATRIX, f"{dim}: invalid entry type"))
+            continue
+        if status not in VALID_MATRIX_STATUSES:
+            errors.append(_err(FC_MATRIX, f"{dim}: invalid status {status!r}"))
+        elif status == "REPRESENTATIVE_ONLY" and scope in UNIVERSAL_CLAIM_VALUES:
+            errors.append(
+                _err(FC_REPRESENTATIVE, f"{dim}: REPRESENTATIVE_ONLY blocks universal scope")
+            )
+        elif status in BLOCKING_MATRIX_STATUSES:
+            errors.append(_err(FC_MATRIX, f"{dim}: blocking status {status!r}"))
+        elif status in ("ANALYZED_NOT_AFFECTED", "NOT_APPLICABLE_WITH_REASON") and not evidence:
+            errors.append(_err(FC_MATRIX, f"{dim}: {status} requires evidence/reason"))
+    return errors
+
+
+def check_superseded_path_analysis(manifest: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    spa = manifest.get("superseded_path_analysis")
+    if not isinstance(spa, dict):
+        return [_err(FC_SUPERSEDED, "superseded_path_analysis must be an object")]
+    for req in ("superseded_paths", "retained_compatibility_paths", "removal_decision"):
+        if req not in spa:
+            errors.append(_err(FC_SUPERSEDED, f"superseded_path_analysis missing {req!r}"))
+    superseded = spa.get("superseded_paths") or []
+    if superseded and spa.get("removal_decision") == "omitted":
+        errors.append(
+            _err(FC_SUPERSEDED, "superseded paths listed but removal_decision=omitted")
+        )
+    return errors
+
+
+def check_manifest_bypass_resistance(
+    manifest: dict[str, Any],
+    changed_files: list[str],
+    root: Path = ROOT,
+) -> list[str]:
+    errors: list[str] = []
+    mid = str(manifest.get("change_id") or "")
+    if mid and "UNIVERSAL_FIX_IMPACT" not in mid.replace("-", "_") and changed_files:
+        errors.append(_err(FC_MANIFEST_MISSING, f"manifest change_id {mid!r} mismatches mission"))
+    affected = manifest.get("affected_production_paths") or []
+    if isinstance(affected, list) and affected == [] and any(is_material_path(f) for f in changed_files):
+        errors.append(_err(FC_MANIFEST_MISSING, "empty affected_production_paths with material diff"))
+    exc_id = manifest.get("governed_exception_id")
+    if exc_id:
+        reg = json.loads(EXCEPTION_REGISTER.read_text(encoding="utf-8")) if EXCEPTION_REGISTER.is_file() else {}
+        ids = {r.get("exception_id") for r in reg.get("exceptions") or []}
+        if exc_id not in ids:
+            errors.append(_err(FC_EXCEPTION, f"governed_exception_id {exc_id!r} not in register"))
+    return errors
+
+
 def run_static_checks(
     *,
     changed_files: Optional[list[str]] = None,
@@ -556,6 +793,7 @@ def run_static_checks(
     errors.extend(check_production_universality_scans(root))
     errors.extend(check_control_record_closures(root))
     errors.extend(check_inventory_freshness(root))
+    errors.extend(check_graph_freshness(root))
     errors.extend(check_exception_register(root))
     if changed_files:
         errors.extend(check_manifest_for_changes(changed_files, root))

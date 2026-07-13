@@ -1,0 +1,5199 @@
+{
+  "schema_version": 1,
+  "artifact": "governance/artifacts/universal_connected_path_graph.json",
+  "regen_command": "python tools/build_universal_connected_path_graph.py",
+  "money_path_modules": [
+    "active_bundle_contract.py",
+    "bayesian_fusion.py",
+    "calibration/writer.py",
+    "call_engine.py",
+    "db.py",
+    "execution_identity.py",
+    "features/fusion_policy_contract.py",
+    "features/inference_snapshot.py",
+    "features/signal_layer_v1.py",
+    "live_decision_bundle.py",
+    "market_state.py",
+    "mc_fusion_adjustment.py",
+    "ml_predict.py",
+    "multi_horizon_decision.py",
+    "prediction_engine.py",
+    "realized_contract_eval.py",
+    "server.py",
+    "signals.py"
+  ],
+  "edge_count": 861,
+  "edges": [
+    {
+      "source": "active_bundle_contract.py",
+      "target": "arch_competition/manual_control.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "active_bundle_contract.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "active_bundle_contract.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "active_bundle_contract.py",
+      "target": "model_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "active_bundle_contract.py",
+      "target": "training_cache.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_shadow_v2_calibration.py",
+      "target": "adaptive_similarity_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_shadow_v2_calibration.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_shadow_v2_calibration.py",
+      "target": "similarity_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_shadow_v2_calibration.py",
+      "target": "similarity_feature_search.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_shadow_v2_calibration.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_similarity_engine.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_similarity_engine.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_similarity_engine.py",
+      "target": "similarity_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_similarity_engine.py",
+      "target": "similarity_feature_search.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "adaptive_similarity_engine.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_flow_imbalance.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_flow_imbalance.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_flow_imbalance.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_flow_imbalance.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_flow_imbalance.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_flow_imbalance.py",
+      "target": "normalized_training_sync.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_flow_imbalance.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_flow_imbalance.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_snapshot_derived.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_snapshot_derived.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_snapshot_derived.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_snapshot_derived.py",
+      "target": "market_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_snapshot_derived.py",
+      "target": "math_snapshot_derive.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_snapshot_derived.py",
+      "target": "math_volatility.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_snapshot_derived.py",
+      "target": "normalized_training_sync.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "backfill_snapshot_derived.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "distance_option_a_backfill_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "market_data_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "pin_neutral_outcome_repair_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "server.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bar_rehydration_issue19_v1.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "base_money_path_capture.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "base_money_path_capture.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "base_money_path_capture.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bayesian_fusion.py",
+      "target": "features/signal_layer_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "bayesian_fusion.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/__init__.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/a1_conformal_artifact_production.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/a1_conformal_artifact_production.py",
+      "target": "calibration/v2_a1_conformal.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/a1_conformal_artifact_production.py",
+      "target": "v2_decision/a1_conformal_artifact_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/a1_isotonic_artifact_production.py",
+      "target": "calibration/a1_conformal_artifact_production.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/a1_isotonic_artifact_production.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/a1_isotonic_artifact_production.py",
+      "target": "v2_decision/a1_conformal_artifact_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "arch_competition/atomic_io.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "calibration/anchor_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase3.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "arch_competition/atomic_io.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "calibration/analyze_phase3.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "calibration/anchor_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/analyze_phase4.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/anchor_audit.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_et_clock_from_ts_utc_v1.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_et_clock_from_ts_utc_v1.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_outcomes.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_outcomes.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_outcomes.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_outcomes.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_outcomes.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_outcomes.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_signal_layer_v1_bundle.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_signal_layer_v1_bundle.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_signal_layer_v1_bundle.py",
+      "target": "calibration/json_utils.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_signal_layer_v1_bundle.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_signal_layer_v1_bundle.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_signal_layer_v1_bundle.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_signal_layer_v1_bundle.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/backfill_signal_layer_v1_bundle.py",
+      "target": "features/signal_layer_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_1m_grid.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_1m_grid_scan.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_1m_grid_scan.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_1m_grid_scan.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_1m_grid_scan.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_enforcement.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_enforcement.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_enforcement.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_enforcement.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/canonical_enforcement.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/daily_scoreboard.py",
+      "target": "arch_competition/atomic_io.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/daily_scoreboard.py",
+      "target": "calibration/backfill_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/daily_scoreboard.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/daily_scoreboard.py",
+      "target": "calibration/fusion_temperature.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/daily_scoreboard.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/daily_scoreboard.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/daily_scoreboard.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/daily_scoreboard.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/db_guard.py",
+      "target": "db_authority.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "arch_competition/atomic_io.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/analyze_phase3.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/analyze_phase4.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/anchor_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/edge_validation.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/json_utils.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_discovery.py",
+      "target": "db_authority.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "arch_competition/atomic_io.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/analyze_phase3.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/analyze_phase4.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/anchor_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/edge_validation.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/eval_movement_targets_phase_style_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/eval_movement_targets_phase_style_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/eval_movement_targets_phase_style_v1.py",
+      "target": "calibration/phase6_edge_discovery_governed_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/eval_movement_targets_phase_style_v1.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/fusion_temperature.py",
+      "target": "arch_competition/atomic_io.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/fusion_temperature.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/fusion_temperature.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/fusion_temperature.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/legacy_report.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/legacy_report.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/legacy_report.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/legacy_report.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/legacy_report.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/legacy_report.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase5_discrimination_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase5_discrimination_v1.py",
+      "target": "calibration/movement_target_eval_common_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase5_discrimination_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase5_discrimination_v1.py",
+      "target": "calibration/phase6_edge_discovery_governed_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase65_isolation_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase65_isolation_v1.py",
+      "target": "calibration/movement_target_eval_common_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase65_isolation_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase65_isolation_v1.py",
+      "target": "calibration/phase6_edge_discovery_governed_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase6_edge_v1.py",
+      "target": "calibration/analyze_phase4.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase6_edge_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase6_edge_v1.py",
+      "target": "calibration/movement_target_eval_common_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase6_edge_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/movement_target_phase6_edge_v1.py",
+      "target": "calibration/phase6_edge_discovery_governed_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/paths.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/paths.py",
+      "target": "db_authority.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "calibration/json_utils.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/payload_audit.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase65_edge_isolation_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase65_edge_isolation_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase65_edge_isolation_v1.py",
+      "target": "calibration/phase6_edge_discovery_governed_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase6_edge_discovery_governed_v1.py",
+      "target": "calibration/analyze_phase4.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase6_edge_discovery_governed_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase6_edge_discovery_governed_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase6_edge_discovery_governed_v1.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase6_edge_discovery_governed_v1.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/phase6_edge_discovery_governed_v1.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_anchor_coverage_pad_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_anchor_coverage_pad_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_anchor_coverage_pad_v1.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_anchor_coverage_pad_v1.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_anchor_coverage_pad_v1.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_bars_for_outcomes.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_bars_for_outcomes.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_bars_for_outcomes.py",
+      "target": "calibration/repair_canonical_1m_shared.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_bars_for_outcomes.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_bars_for_outcomes.py",
+      "target": "db_authority.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_bars_for_outcomes.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_bars_for_outcomes.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "target": "calibration/canonical_1m_grid_scan.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "target": "calibration/repair_canonical_1m_shared.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "target": "calibration/canonical_1m_grid_scan.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "target": "calibration/repair_canonical_1m_shared.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_shared.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_shared.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/repair_canonical_1m_shared.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_engineering.py",
+      "target": "arch_competition/atomic_io.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_engineering.py",
+      "target": "calibration/analyze_phase4.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_engineering.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_engineering.py",
+      "target": "calibration/edge_discovery.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_engineering.py",
+      "target": "calibration/edge_validation.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_engineering.py",
+      "target": "calibration/json_utils.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_engineering.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_engineering.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_layer_discrimination.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_layer_discrimination.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_layer_discrimination.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_layer_discrimination.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/signal_layer_discrimination.py",
+      "target": "features/signal_layer_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/statistical_integrity.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "arch_competition/atomic_io.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "calibration/json_utils.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "calibration/v2_advisory_backfill.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_calibration.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_conformal.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_conformal.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_conformal.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_ev_bounds.py",
+      "target": "calibration/statistical_integrity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_ev_bounds.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_ev_bounds.py",
+      "target": "calibration/v2_a1_conformal.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_ev_bounds.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_a1_execution_ev.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "calibration/backfill_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "calibration/canonical_enforcement.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "calibration/json_utils.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_advisory_backfill.py",
+      "target": "v2_decision/__init__.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_live_logging.py",
+      "target": "calibration/v2_advisory_backfill.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_live_logging.py",
+      "target": "calibration/writer.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_live_logging.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/v2_live_logging.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/writer.py",
+      "target": "calibration/json_utils.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/writer.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/writer.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/writer.py",
+      "target": "calibration/trust.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/writer.py",
+      "target": "calibration/v2_advisory_backfill.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/writer.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/writer.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "calibration/writer.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "features/regime_mvp_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "lifecycle_rule_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "micro_structure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "multi_horizon_decision.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "position_sizing_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "replay_hold_bars.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "setup_readiness.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "call_engine.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "clean_db.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "clean_db.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "calibration/writer.py",
+      "kind": "persistence",
+      "discovery": "governed",
+      "rationale": "snapshot and decision writers share persistence cone"
+    },
+    {
+      "source": "db.py",
+      "target": "db_authority.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "db_safety.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "execution_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "movement_target_threshold.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "production_universe.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "similarity_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "snapshot_access.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_health_audit.py",
+      "target": "backfill_flow_imbalance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_health_audit.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_health_audit.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_health_audit.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_health_audit.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_health_audit.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_health_audit.py",
+      "target": "snapshot_normalizer.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_health_audit.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db_safety.py",
+      "target": "db_authority.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "debug_flow_snapshot.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "debug_flow_snapshot.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "debug_flow_snapshot.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "debug_flow_snapshot.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "debug_flow_snapshot.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "debug_flow_snapshot.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "decision_record.py",
+      "target": "db.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "decision_record.py",
+      "target": "live_decision_bundle.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "decision_record.py",
+      "target": "release_object.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "decision_record.py",
+      "target": "server.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "distance_option_a_backfill_v1.py",
+      "target": "adaptive_shadow_v2_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "distance_option_a_backfill_v1.py",
+      "target": "adaptive_similarity_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "distance_option_a_backfill_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "distance_option_a_backfill_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "distance_option_a_backfill_v1.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "event_risk.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "execution_identity.py",
+      "target": "calibration/writer.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "execution_identity.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "execution_identity.py",
+      "target": "ml_predict.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "execution_identity.py",
+      "target": "model_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "execution_identity.py",
+      "target": "release_object.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "feature_contract_validation.py",
+      "target": "feature_contracts.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "feature_contract_validation.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "feature_contract_validation.py",
+      "target": "ml_train.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "feature_contract_validation.py",
+      "target": "transformer_train.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "feature_contracts.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "feature_contracts.py",
+      "target": "ml_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/__init__.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/__init__.py",
+      "target": "features/mvp_source_coercion.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/cascade_stack_contract.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/cascade_stack_contract.py",
+      "target": "features/xgb_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/cascade_stack_schema.py",
+      "target": "features/cascade_stack_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/db_feature_adapter.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/db_feature_adapter.py",
+      "target": "features/mvp_source_coercion.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/fusion_model_input.py",
+      "target": "canonical_distances.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/fusion_model_input.py",
+      "target": "features/db_feature_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/fusion_model_input.py",
+      "target": "features/mvp_source_coercion.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/fusion_model_input.py",
+      "target": "features/xgb_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/fusion_model_input.py",
+      "target": "governed_stack_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/fusion_model_input.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/fusion_policy_contract.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/fusion_replay_grade_v1.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/inference_snapshot.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/inference_snapshot.py",
+      "target": "features/db_feature_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/inference_snapshot.py",
+      "target": "features/live_feature_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/live_feature_adapter.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/live_feature_adapter.py",
+      "target": "features/mvp_source_coercion.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/lstm_sequence_input.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/lstm_sequence_input.py",
+      "target": "features/db_feature_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/lstm_sequence_input.py",
+      "target": "features/fusion_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/lstm_sequence_input.py",
+      "target": "features/mvp_source_coercion.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/lstm_sequence_input.py",
+      "target": "features/xgb_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/lstm_sequence_input.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/monte_carlo_stack_input.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/mvp_source_coercion.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/regime_mvp_context.py",
+      "target": "canonical_distances.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/replay_signal_input_v1.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/replay_signal_input_v1.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/replay_signal_input_v1.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/replay_signal_input_v1.py",
+      "target": "volatility_regime.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/semantic_parity.py",
+      "target": "features/db_feature_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/semantic_parity.py",
+      "target": "features/live_feature_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/shared_sequence_context.py",
+      "target": "arch_competition/ablation_bundle_inference.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/shared_sequence_context.py",
+      "target": "features/lstm_sequence_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/shared_sequence_context.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/shared_sequence_context.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/shared_sequence_context.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/signal_layer_v1.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/signal_layer_v1.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/training_canonical_input.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/training_canonical_input.py",
+      "target": "features/db_feature_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/training_canonical_input.py",
+      "target": "features/lstm_sequence_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/training_canonical_input.py",
+      "target": "features/mvp_source_coercion.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/xgb_model_input.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "features/xgb_model_input.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "fusion_contract.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "governed_stack_contract.py",
+      "target": "features/lstm_sequence_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "governed_stack_contract.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "governed_stack_contract.py",
+      "target": "market_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "governed_stack_contract.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "governed_stack_contract.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "governed_stack_contract.py",
+      "target": "monte_carlo.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "governed_stack_contract.py",
+      "target": "tools/build_feature_assignment_matrix_v2.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "levels.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lifecycle_rule_core.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lifecycle_rule_core.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "liquidity_value_engine.py",
+      "target": "liquidity_models.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "liquidity_value_engine.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "liquidity_value_engine.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "canonical_distances.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "decision_record.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "market_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "market_state.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "math_snapshot_derive.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "math_volatility.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "release_object.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_decision_bundle.py",
+      "target": "trade_impacting_gate.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_market_plane.py",
+      "target": "planes/l1_events.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_pipeline_diag.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_vs_replay_validation.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_vs_replay_validation.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_vs_replay_validation.py",
+      "target": "market_state.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_vs_replay_validation.py",
+      "target": "realized_contract_eval.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_vs_replay_validation.py",
+      "target": "replay_bundle_coverage.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "live_vs_replay_validation.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "arch_competition/stack_bundle_eval_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "features/lstm_sequence_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "features/training_canonical_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "ml_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "normalized_training_sync.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "scheduler_user_tickers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_data.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "arch_competition/stack_bundle_eval_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "model_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "training_cache.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "training_cache_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "lstm_model.py",
+      "target": "training_provenance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_context.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_context.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "canonical_distances.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "crash_trace.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "event_risk.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "features/inference_snapshot.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "features/stack_integrity_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "market_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "multi_horizon_decision.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "order_flow_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "server.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "signals.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "market_state.py",
+      "target": "volatility_regime.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_exposure.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_exposure.py",
+      "target": "math_levels.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_exposure.py",
+      "target": "math_probabilities.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_exposure.py",
+      "target": "math_volatility.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_exposure_core.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_exposure_core.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_levels.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_levels.py",
+      "target": "math_volatility.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_probabilities.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "math_volatility.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "mc_fusion_adjustment.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "mc_fusion_adjustment.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_data_common.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_data_common.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_data_common.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_data_common.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_data_common.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_data_common.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_horizon.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "active_bundle_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "arch_competition/ablation_bundle_inference.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "arch_competition/stack_bundle_eval_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "features/cascade_stack_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "features/cascade_stack_schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "features/fusion_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "features/lstm_sequence_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "features/parallel_stack_schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "features/shared_sequence_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "features/xgb_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "governed_stack_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "lstm_model.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "ml_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "model_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "model_serve_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "transformer_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "active_bundle_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "arch_competition/live_model_reload.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "arch_competition/promotion_execution.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "arch_competition/scheduler_auto_promote_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "arch_competition/scheduler_integration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "arch_competition/stack_bundle_eval_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "audit_model_readiness.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "db_health_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "eval_metrics_store.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "features/fusion_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "features/inference_snapshot.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "features/training_canonical_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "lstm_model.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "ml_predict.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "ml_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "normalized_training_sync.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "realized_contract_eval.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "scheduler_user_tickers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "tools/feature_curation_gate.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "train_all.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "training_cache.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "training_cache_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "training_outcome.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "training_pipeline_status.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "training_provenance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "transformer_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_scheduler.py",
+      "target": "verify_active_models.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "arch_competition/stack_bundle_eval_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "canonical_distances.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "features/training_canonical_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "model_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "normalized_training_sync.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "scheduler_user_tickers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "training_cache.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "training_cache_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ml_train.py",
+      "target": "training_provenance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "model_contract.py",
+      "target": "training_provenance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "money_path_ticker_tiers.py",
+      "target": "scheduler_user_tickers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_decision.py",
+      "target": "calibration/daily_scoreboard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_decision.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_decision.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_decision.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_decision.py",
+      "target": "multi_horizon_ml_bundle.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_decision.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_ml_bundle.py",
+      "target": "calibration/fusion_temperature.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_ml_bundle.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_ml_bundle.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "multi_horizon_ml_bundle.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "news_sentiment.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "normalized_training_sync.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "normalized_training_sync.py",
+      "target": "horizon_outcomes.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "normalized_training_sync.py",
+      "target": "money_path_ticker_tiers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "normalized_training_sync.py",
+      "target": "snapshot_normalizer.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "normalized_training_sync.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "normalized_training_sync.py",
+      "target": "training_provenance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "order_flow_engine.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "order_flow_live_state.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "order_flow_streaming.py",
+      "target": "live_market_plane.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "order_flow_streaming.py",
+      "target": "order_flow_live_state.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "patch_active_artifact_provenance.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "patch_active_artifact_provenance.py",
+      "target": "training_provenance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "pin_neutral_outcome_repair_v1.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "pin_neutral_outcome_repair_v1.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "pin_neutral_outcome_repair_v1.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "pin_neutral_outcome_repair_v1.py",
+      "target": "distance_option_a_backfill_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/__init__.py",
+      "target": "planes/context_light.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/context_light.py",
+      "target": "order_flow_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/context_light.py",
+      "target": "order_flow_live_state.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/l1_decision_dependencies.py",
+      "target": "planes/context_light.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/l1_events.py",
+      "target": "server.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/l1_fingerprint_material.py",
+      "target": "planes/context_light.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/l1_runtime.py",
+      "target": "planes/l1_thresholds.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/l1_thresholds.py",
+      "target": "math_volatility.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/l1_thresholds.py",
+      "target": "planes/l1_runtime.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "planes/l1_thresholds.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "polling_adapter.py",
+      "target": "market_data_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "polling_adapter.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "bayesian_fusion.py",
+      "kind": "fusion_stack",
+      "discovery": "governed",
+      "rationale": "horizon product triplets from fusion layer"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "eval_metrics_store.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "features/fusion_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "features/regime_mvp_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "features/stack_integrity_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_liquidity_value_snapshot.py",
+      "target": "config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_liquidity_value_snapshot.py",
+      "target": "liquidity_models.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_liquidity_value_snapshot.py",
+      "target": "liquidity_value_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_liquidity_value_snapshot.py",
+      "target": "polling_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_liquidity_value_snapshot.py",
+      "target": "schwab_client.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_liquidity_value_snapshot.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_price_levels.py",
+      "target": "config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_price_levels.py",
+      "target": "market_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_price_levels.py",
+      "target": "schwab_client.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "print_price_levels.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "production_universe.py",
+      "target": "instrument_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "production_universe.py",
+      "target": "schwab_field_dictionary_builder.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "realized_contract_eval.py",
+      "target": "lifecycle_rule_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "realized_contract_eval.py",
+      "target": "market_state.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "realized_contract_eval.py",
+      "target": "math_levels.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "realized_contract_eval.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "realized_contract_eval.py",
+      "target": "replay_bundle_coverage.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "realized_contract_eval.py",
+      "target": "replay_hold_bars.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "realized_contract_eval.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "reauth_schwab.py",
+      "target": "config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "reauth_schwab.py",
+      "target": "schwab_client.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "regime_engine.py",
+      "target": "features/regime_mvp_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "regime_engine.py",
+      "target": "math_levels.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "regime_engine.py",
+      "target": "micro_structure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "regime_engine.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "replay_bundle_coverage.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "replay_bundle_coverage.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "replay_bundle_coverage.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "replay_hold_bars.py",
+      "target": "micro_structure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "replay_hold_bars.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "rules_engine.py",
+      "target": "features/regime_mvp_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "rules_engine.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "rules_engine.py",
+      "target": "micro_structure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "rules_engine.py",
+      "target": "signal_helpers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "rules_engine.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "scheduler_user_tickers.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "scheduler_user_tickers.py",
+      "target": "production_universe.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "schwab_client.py",
+      "target": "api_pressure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "schwab_client.py",
+      "target": "config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "api_pressure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "arch_competition/exceptions.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "arch_competition/governance_visibility.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "arch_competition/live_model_reload.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "arch_competition/manual_control.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "arch_competition/scheduler_auto_promote_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "base_money_path_capture.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "calibration/v2_live_logging.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "calibration/writer.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "crash_trace.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "decision_record.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "execution_identity.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "features/signal_layer_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "features/stack_integrity_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "governed_stack_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "institutional_behavior.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "liquidity_models.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "liquidity_value_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "live_decision_bundle.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "live_market_plane.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "live_pipeline_diag.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "market_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "market_state.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "math_exposure_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "math_snapshot_derive.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "math_volatility.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "micro_structure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "ml_scheduler.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "money_path_ticker_tiers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "multi_horizon_ml_bundle.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "news_sentiment.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "normalized_training_sync.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "ops_runner.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "order_flow_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "order_flow_live_state.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "order_flow_streaming.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "planes/context_light.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "planes/l1_cache_lifecycle.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "planes/l1_decision_dependencies.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "planes/l1_events.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "planes/l1_fingerprint_material.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "planes/l1_operational.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "planes/l1_runtime.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "planes/l1_thresholds.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "polling_adapter.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "production_universe.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "realized_contract_eval.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "release_object.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "scheduler_user_tickers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "schwab_client.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "static/index.html",
+      "kind": "ui_transport",
+      "discovery": "governed",
+      "rationale": "API state fields bind to horizon card DOM consumers"
+    },
+    {
+      "source": "server.py",
+      "target": "ticker_switch_diagnostics.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "trade_impacting_gate.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "v2_decision/__init__.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "v2_decision/a1_conformal_artifact_attachment.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "v2_decision/a1_isotonic_calibration_attachment.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "verification/db_sqlite_contention_impact_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "verify_active_models.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "vol_observability.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "server.py",
+      "target": "volatility_regime.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "bayesian_fusion.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "call_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "crash_trace.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/fusion_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/fusion_policy_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/inference_snapshot.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/lstm_sequence_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/monte_carlo_stack_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/shared_sequence_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/signal_layer_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/stack_integrity_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "features/xgb_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "governed_stack_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "live_pipeline_diag.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "mc_fusion_adjustment.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "monte_carlo.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "multi_horizon_decision.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "multi_horizon_ml_bundle.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "override_registry.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "prediction_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "regime_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "release_object.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "rules_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "server.py",
+      "kind": "api_publisher",
+      "discovery": "governed",
+      "rationale": "_fetch_state publishes mhap_rows from signals stack"
+    },
+    {
+      "source": "signals.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "signals.py",
+      "target": "volatility_regime.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_audit.py",
+      "target": "canonical_distances.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_audit.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_audit.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_search.py",
+      "target": "adaptive_similarity_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_search.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_search.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_search.py",
+      "target": "snapshot_access.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_survivorship.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_survivorship.py",
+      "target": "similarity_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_survivorship.py",
+      "target": "similarity_feature_search.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_survivorship.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_universe.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_universe.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_universe.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_universe.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "similarity_feature_universe.py",
+      "target": "similarity_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "smoke_predict_active.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "smoke_predict_active.py",
+      "target": "calibration/paths.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "smoke_predict_active.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "smoke_predict_active.py",
+      "target": "features/inference_snapshot.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "smoke_predict_active.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "smoke_predict_active.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "smoke_predict_active.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "snapshot_access.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "snapshot_normalizer.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "snapshot_normalizer.py",
+      "target": "features/signal_layer_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "snapshot_normalizer.py",
+      "target": "math_snapshot_derive.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "snapshot_normalizer.py",
+      "target": "normalized_training_sync.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "snapshot_normalizer.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "ticker_switch_diagnostics.py",
+      "target": "verification/ui_realtime_transport_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "tier3_design.py",
+      "target": "adaptive_similarity_engine.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "tier3_design.py",
+      "target": "similarity_audit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "tier3_design.py",
+      "target": "similarity_feature_search.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "timeframe_config.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "trade_impacting_gate.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "features/fusion_model_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "features/inference_snapshot.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "features/training_canonical_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "lstm_model.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "ml_predict.py",
+      "kind": "import",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "ml_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "scheduler_user_tickers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_all.py",
+      "target": "transformer_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_compare.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_compare.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_compare.py",
+      "target": "ml_scheduler.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_compare.py",
+      "target": "ml_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_compare.py",
+      "target": "training_cache.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "train_compare.py",
+      "target": "training_cache_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "arch_competition/stack_bundle_eval_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "features/canonical_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "features/training_canonical_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "training_cache_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_cache.py",
+      "target": "training_provenance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_outcome.py",
+      "target": "arch_competition/scheduler_auto_promote_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_outcome.py",
+      "target": "scheduler_user_tickers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_outcome.py",
+      "target": "server.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_pipeline_status.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_pipeline_status.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_provenance.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "training_provenance.py",
+      "target": "timeframe_config.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_model.py",
+      "target": "features/inference_snapshot.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_model.py",
+      "target": "features/lstm_sequence_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_model.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_model.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_model.py",
+      "target": "transformer_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "arch_competition/stack_bundle_eval_v1.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "calibration/db_guard.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "db.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "features/lstm_sequence_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "features/training_canonical_input.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "lstm_data.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "ml_data_common.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "ml_horizon.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "model_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "scheduler_user_tickers.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "training_cache.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "training_cache_policy.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "transformer_train.py",
+      "target": "training_provenance.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_conformal_artifact_attachment.py",
+      "target": "v2_decision/a1_conformal_artifact_loader.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_conformal_artifact_contract.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_conformal_artifact_contract.py",
+      "target": "calibration/v2_a1_conformal.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_conformal_artifact_contract.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_conformal_promotion.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_conformal_promotion.py",
+      "target": "calibration/v2_a1_conformal.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_conformal_promotion.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_isotonic_calibration_attachment.py",
+      "target": "v2_decision/a1_isotonic_artifact_loader.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_isotonic_calibration_attachment.py",
+      "target": "v2_decision/a1_isotonic_runtime.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_isotonic_calibration_attachment.py",
+      "target": "v2_decision/a1_raw_probability.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_isotonic_runtime.py",
+      "target": "calibration/a1_conformal_artifact_production.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_isotonic_runtime.py",
+      "target": "calibration/v2_a1_calibration.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_raw_probability.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a1_raw_probability.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_eod_force_exit.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_eod_force_exit.py",
+      "target": "v2_decision/a2_session_calendar.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_lifecycle_health.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_lifecycle_sidecar.py",
+      "target": "lifecycle_rule_core.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_lifecycle_sidecar.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_lifecycle_sidecar.py",
+      "target": "v2_decision/a2_eod_force_exit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_lifecycle_sidecar.py",
+      "target": "v2_decision/a2_lifecycle_health.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_lifecycle_sidecar.py",
+      "target": "v2_decision/a2_session_calendar.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_option_expression.py",
+      "target": "math_exposure.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_option_expression.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_option_expression.py",
+      "target": "v2_decision/a2_eod_force_exit.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_price_precedence.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_replay_labels.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/a2_session_calendar.py",
+      "target": "time_et.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/module_a_adapter.py",
+      "target": "fusion_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "v2_decision/module_a_adapter.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "volatility_regime.py",
+      "target": "features/regime_mvp_context.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "volatility_regime.py",
+      "target": "numeric_contract.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "volatility_regime.py",
+      "target": "signal_types.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "xgboost_model.py",
+      "target": "features/inference_snapshot.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "xgboost_model.py",
+      "target": "ml_predict.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "xgboost_model.py",
+      "target": "ml_train.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    }
+  ],
+  "content_sha256": "c076d4dd2c769617cfa0ad6c3285c4a78910c35310c6f29f9fef4968db6e97dd"
+}

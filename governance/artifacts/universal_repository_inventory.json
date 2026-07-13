@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "artifact": "governance/artifacts/universal_repository_inventory.json",
-  "generated_utc": "2026-07-13T11:47:33Z",
   "regen_command": "python tools/build_universal_repository_inventory.py",
   "tickers": {
     "training_anchors": [
@@ -21,6 +20,25 @@
       "MRVL",
       "MSFT",
       "NVDA",
+      "PLTR",
+      "QQQ",
+      "SPX",
+      "SPY",
+      "TSLA"
+    ],
+    "known_routing_symbols": [
+      "$SPX",
+      "AAPL",
+      "AMZN",
+      "AVGO",
+      "CIFR",
+      "GOOGL",
+      "IWM",
+      "META",
+      "MRVL",
+      "MSFT",
+      "NVDA",
+      "PHASE2VERIFY",
       "PLTR",
       "QQQ",
       "SPX",
@@ -495,5 +513,21 @@
     "tf-signal-consolidated",
     "tf-signal-plan"
   ],
-  "content_sha256": "6517952fcb0c2690fc50364a6bb327d3c3bcc66c1194979b6de52ee506a5b0bb"
+  "replay_resolvers": [
+    {
+      "file": "execution_identity.py",
+      "symbol": "resolve_execution_for_replay"
+    },
+    {
+      "file": "replay_hold_bars.py",
+      "symbol": "resolve_replay_max_hold_bars_for_payload"
+    }
+  ],
+  "calibration_paths": [
+    {
+      "file": "calibration/v2_a1_calibration.py",
+      "symbol": "write_a1_calibration_artifact"
+    }
+  ],
+  "content_sha256": "8954fb5a5e2769f18c5811ce339c154aecbcef687398c32bcca369b1f7eca65e"
 }

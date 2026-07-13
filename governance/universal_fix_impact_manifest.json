@@ -1,17 +1,20 @@
 {
   "schema_version": 1,
-  "change_id": "UNIVERSAL_FIX_IMPACT_GATE_V1_IMPLEMENTATION",
+  "change_id": "UNIVERSAL_FIX_IMPACT_GATE_V1_COMPLETION",
   "claimed_scope": "UNIVERSAL_BY_CONSTRUCTION_WITH_MECHANICAL_LOCK",
   "root_cause_artifact": "tools/check_universal_fix_impact_gate.py",
   "affected_production_paths": [
     "tools/check_universal_fix_impact_gate.py",
     "tools/build_universal_repository_inventory.py",
+    "tools/build_universal_connected_path_graph.py",
+    "tools/universal_gate_ast.py",
     "tools/check_fix_everything_we_touch.py",
     "tools/check_prepush_parity.py",
-    "tools/fix_everything_we_touch_scope.py",
     "governance/artifacts/universal_repository_inventory.json",
-    "governance/artifacts/universal_fix_exception_register.json",
-    "tests/test_universal_fix_impact_gate.py"
+    "governance/artifacts/universal_connected_path_graph.json",
+    "governance/artifacts/universal_connected_path_governed_edges.json",
+    "tests/test_universal_fix_impact_gate.py",
+    "tests/test_universal_fix_impact_gate_adversarial.py"
   ],
   "connected_consumers": {
     "tools/check_fix_everything_we_touch.py": [
@@ -27,20 +30,42 @@
   "ticker_classes": ["all_enrolled", "training_anchors", "guest"],
   "horizons": ["1c", "5c", "15c", "60c"],
   "runtime_classes": ["full", "reduced", "degraded", "fail_closed", "quote_only"],
+  "impact_proof_matrix": {
+    "tickers": {"status": "AFFECTED_AND_PROVEN", "evidence": "tests/test_universal_fix_impact_gate_adversarial.py::test_mutation_a"},
+    "horizons": {"status": "AFFECTED_AND_PROVEN", "evidence": "tests/test_universal_fix_impact_gate_adversarial.py::test_mutation_c"},
+    "runtime_classes": {"status": "NOT_APPLICABLE_WITH_REASON", "reason": "governance gate only; no runtime class behavior change"},
+    "model_roles": {"status": "NOT_APPLICABLE_WITH_REASON", "reason": "no model artifact or inference path change"},
+    "route_families": {"status": "AFFECTED_AND_PROVEN", "evidence": "governance/artifacts/universal_repository_inventory.json routes scan"},
+    "persistence_writers": {"status": "AFFECTED_AND_PROVEN", "evidence": "inventory persistence_writers + graph edges"},
+    "replay_resolvers": {"status": "AFFECTED_AND_PROVEN", "evidence": "inventory replay_resolvers scan"},
+    "calibration_paths": {"status": "AFFECTED_AND_PROVEN", "evidence": "inventory calibration_paths scan"},
+    "decision_paths": {"status": "ANALYZED_NOT_AFFECTED", "evidence": "no money-path module logic changed"},
+    "api_consumers": {"status": "ANALYZED_NOT_AFFECTED", "evidence": "no server.py route handler changes"},
+    "ui_card_consumers": {"status": "ANALYZED_NOT_AFFECTED", "evidence": "no static/index.html changes"},
+    "failure_paths": {"status": "AFFECTED_AND_PROVEN", "evidence": "adversarial fail-closed mutation tests"},
+    "governance_closure_parents": {"status": "AFFECTED_AND_PROVEN", "evidence": "OPEN_ITEMS control record scan post-PR36"}
+  },
   "proof_matrix": {
     "static_audit": "check_universal_fix_impact_gate in _REPO_WIDE_STATIC_CHECK_FUNCS",
     "prepush": "check_prepush_parity universal_fix_gate stage",
-    "adversarial": "tests/test_universal_fix_impact_gate.py mutations A-O"
+    "adversarial": "tests/test_universal_fix_impact_gate_adversarial.py"
   },
-  "recurrence_guard": "tests/test_universal_fix_impact_gate.py",
+  "recurrence_guard": "tests/test_universal_fix_impact_gate_adversarial.py",
   "representative_only_limitations": null,
   "lanes_not_closed": [
-    "CARD_FIDELITY_OVERALL",
-    "ML-PIPE-ITEM4-FLEET-MIGRATION-V1",
     "MODEL_VERSION_PINNING_PARENT",
     "FULL_MODEL_STACK",
-    "REAL_MONEY_READINESS"
+    "PREDICTIVE_VALIDITY",
+    "REAL_MONEY_READINESS",
+    "REAL_MONEY_APPROVAL"
   ],
+  "superseded_path_analysis": {
+    "superseded_paths": [],
+    "retained_compatibility_paths": ["tools/check_universal_ticker_lock.py"],
+    "removal_decision": "none",
+    "dead_code_candidates": [],
+    "follow_up_lane": null
+  },
   "parent_lanes_affected": [],
   "governed_exceptions": []
 }
