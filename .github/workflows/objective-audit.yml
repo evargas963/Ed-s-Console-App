@@ -55,7 +55,7 @@ jobs:
         run: python tools/check_agent_preload_contract.py
 
       - name: Universal fix impact gate tests
-        run: python -m pytest tests/test_universal_fix_impact_gate.py -q
+        run: python -m pytest tests/test_universal_fix_impact_gate.py tests/test_universal_fix_impact_gate_adversarial.py -q
 
       - name: Phase 3D external enforcement checkers
         run: |
