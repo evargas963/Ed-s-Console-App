@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "phase": "3I-CheckStack",
-  "generated_at_utc": "2026-07-13T16:41:04+00:00",
+  "generated_at_utc": "2026-07-13T20:17:54+00:00",
   "policy": "governance/docs/CHECK_STACK_RIGHTSIZING.md",
   "runtime_budgets_seconds": {
     "precommit_normal": 60,

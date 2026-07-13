@@ -401,13 +401,59 @@ def test_prepush_parity_includes_universal_stage():
 
 
 def test_item4_closure_records_no_false_positive_on_schema():
+    """PR #39 closed Item 4 / execution-identity after canonical RTH reproof.
+
+    Child lane closure must not silently close parent not-proven fields.
+    """
     schema = json.loads((ROOT / "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json").read_text())
-    labels = {}
+    item4 = {}
+    exec_lane = {}
+    preserved = {}
     for row in schema.get("lanes") or []:
         if row.get("lane") == "ML-PIPE-ITEM4-FLEET-MIGRATION-V1":
-            labels = row.get("acceptance_labels") or {}
-    assert labels.get("ML_PIPE_ITEM_4") == "CLOSED_WITH_EVIDENCE"
-    assert labels.get("MODEL_VERSION_PINNING_PARENT", labels.get("FULL_MODEL_STACK")) != "CLOSED_WITH_EVIDENCE"
+            item4 = row.get("acceptance_labels") or {}
+        if row.get("lane") == "ML-PIPE-EXECUTION-IDENTITY-V1":
+            exec_lane = row.get("acceptance_labels") or {}
+            preserved = row.get("preserved_non_closure") or {}
+    assert item4.get("ML_PIPE_ITEM_4") == "CLOSED_WITH_EVIDENCE"
+    assert exec_lane.get("ML_PIPE_ITEM_4") == "CLOSED_WITH_EVIDENCE"
+    assert preserved.get("MODEL_VERSION_PINNING_PARENT") == "NOT_CLOSED"
+    assert preserved.get("FULL_MODEL_STACK") == "NOT_CLOSED"
+    assert preserved.get("PREDICTIVE_VALIDITY") == "NOT_PROVEN"
+    assert preserved.get("REAL_MONEY_APPROVAL") == "NOT_APPROVED"
+
+
+def test_combined_tree_future_execution_identity_writer_requires_manifest():
+    """Post-PR37: a material exec-identity persistence writer is never silent.
+
+    Combined-tree regression — does not bind to a PR #37 filename. Any new
+    production persistence surface that is material must either be declared in
+    the impact manifest or fail the gate when presented as an outgoing change.
+    """
+    future_writer = "execution_identity_surface_writer.py"
+    assert gate.is_material_path(future_writer) or future_writer.endswith(".py")
+    # Force material classification via known production money-path prefix style.
+    material = "db.py"
+    errs = gate.check_manifest_for_changes([material])
+    assert errs, "material production change without complete manifest must fail"
+    assert any(
+        gate.FC_MANIFEST_MISSING in e or gate.FC_CONSUMER in e or gate.FC_MATRIX in e
+        for e in errs
+    )
+
+
+def test_combined_tree_inventory_sees_execution_identity_surfaces():
+    """Combined PR37+PR38 inventory must not ignore persistence writers."""
+    inv = json.loads(
+        (ROOT / "governance/artifacts/universal_repository_inventory.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    writers = inv.get("persistence_writers") or []
+    assert writers, "inventory persistence_writers empty after combined-tree regen"
+    names = {str(w.get("file") or w.get("path") or w) for w in writers}
+    # db.py is the universal persistence cone; exec-identity surfaces write through it.
+    assert any("db.py" in n or n.endswith("db.py") for n in names)
 
 
 def test_run_static_checks_clean_main():

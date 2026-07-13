@@ -22,7 +22,7 @@
     "server.py",
     "signals.py"
   ],
-  "edge_count": 861,
+  "edge_count": 863,
   "edges": [
     {
       "source": "active_bundle_contract.py",
@@ -1724,6 +1724,12 @@
     },
     {
       "source": "db.py",
+      "target": "calibration/schema.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
       "target": "calibration/writer.py",
       "kind": "persistence",
       "discovery": "governed",
@@ -1738,6 +1744,12 @@
     {
       "source": "db.py",
       "target": "db_safety.py",
+      "kind": "import_from",
+      "discovery": "automatic"
+    },
+    {
+      "source": "db.py",
+      "target": "decision_record.py",
       "kind": "import_from",
       "discovery": "automatic"
     },
@@ -5195,5 +5207,5 @@
       "discovery": "automatic"
     }
   ],
-  "content_sha256": "c076d4dd2c769617cfa0ad6c3285c4a78910c35310c6f29f9fef4968db6e97dd"
+  "content_sha256": "b11b020ae443e2f8ee304f13f056aabd2dafcb772dd110fbf65bbc2dfd301e00"
 }

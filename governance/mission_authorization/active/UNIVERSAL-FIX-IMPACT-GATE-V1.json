@@ -4,8 +4,8 @@
   "agent": "Cursor",
   "mission_type": "feature_implementation",
   "authorized_branch": "universal-fix-impact-gate-v1",
-  "authorized_worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole",
-  "base_sha": "6311393bef5271116df80c6390f5c392a6db037e",
+  "authorized_worktree": "C:/Users/evarg/AppData/Local/Temp/EdWebConsole-pr38-rebase",
+  "base_sha": "9d2baf410bf42b9d64714209aefd0cb3a7b21ba7",
   "authorized_push_target": "origin/universal-fix-impact-gate-v1",
   "target_branch": "universal-fix-impact-gate-v1",
   "direct_main_permission": false,
@@ -37,7 +37,8 @@
       ".github/workflows/objective-audit.yml",
       "governance/artifacts/schwab_v4_register_build_meta.json",
       "governance/artifacts/schwab_v4_scoreboard.json",
-      "governance/mission_authorization/consumed/ML-PIPE-ITEM4-RECORDS-V1.retired.json"
+      "governance/mission_authorization/consumed/ML-PIPE-ITEM4-RECORDS-V1.retired.json",
+      "governance/mission_authorization/consumed/EXEC-ID-ORDERING-V1.retired.json"
     ],
     "semantic_domains": [
       "governance_gates",
@@ -50,7 +51,7 @@
       "governance/ML_ITEM4_MIGRATION_POLICY.json"
     ]
   },
-  "shared_file_policy": "narrow exception 2026-07-13: runner-authoritative V4 pin adopt for PR38 Schwab CI; Item4 RECORDS released schwab_v4_* ownership post-PR36 merge; no Item-4 acceptance label edits",
+  "shared_file_policy": "post-PR37 rebase: combined-tree V4 pin regen; EXEC-ID and Item4 RECORDS leases retired after merge; no acceptance-label edits",
   "created_at_epoch": 1784100000.0,
   "expires_at_epoch": 1784500000.0,
   "operator_authorization": "operator mission UNIVERSAL_FIX_IMPACT_GATE_V1_IMPLEMENTATION (2026-07-13): AUTHORIZED_AGENT=Cursor, DIRECT_MAIN_PUSH=FORBIDDEN, PR_REQUIRED=YES, MERGE_AUTHORIZATION=NONE",
