@@ -39,7 +39,8 @@
       "governance/artifacts/schwab_v4_scoreboard.json",
       "governance/mission_authorization/consumed/ML-PIPE-ITEM4-RECORDS-V1.retired.json",
       "governance/mission_authorization/consumed/EXEC-ID-ORDERING-V1.retired.json",
-      "governance/mission_authorization/consumed/EXEC-ID-RTH-REPROOF-RECORDS-V1.retired.json"
+      "governance/mission_authorization/consumed/EXEC-ID-RTH-REPROOF-RECORDS-V1.retired.json",
+      "tools/check_schwab_csv_first.py"
     ],
     "semantic_domains": [
       "governance_gates",

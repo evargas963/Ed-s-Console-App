@@ -423,6 +423,25 @@ def test_diff_emission_ignores_homonym_catalog_definition():
     assert sites == []
 
 
+def test_diff_emission_ignores_multiline_non_ticker_catalog_members():
+    """Frozenset catalog continuation lines are not market-fact emissions."""
+    diff = "\n".join(
+        [
+            "+++ b/tools/universal_gate_ast.py",
+            "+COMMON_NON_TICKERS: frozenset[str] = frozenset(",
+            "+    {",
+            '+        "ETF", "USD", "EPS", "PE", "IV", "ATR", "VIX", "MACD", "RSI", "EMA",',
+            '+        "SMA", "OHLC", "TRUE", "FALSE", "NONE", "NULL", "NAN", "ALL", "ANY",',
+            '+        "EST", "PST", "CST", "MST", "EDT", "PDT", "CDT", "MDT", "HIGH", "LOW",',
+            '+        "XGB", "DIR", "LIVE", "MARK", "ABOVE", "BELOW", "FIXED", "MIXED",',
+            "+    }",
+            "+)",
+        ]
+    )
+    sites = guard._extract_emission_sites(diff)
+    assert sites == []
+
+
 def test_diff_emission_skips_mega_traceable_inventory_paths():
     diff = "\n".join(
         [
