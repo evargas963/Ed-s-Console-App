@@ -44,7 +44,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783912770.973087,
   "expires_at_epoch": 1785122370.973087,
   "operator_authorization": "MISSION = EXECUTION_IDENTITY_V1_CONTROLLED_INTEGRATION_AND_RESIDUAL_COMPLETION Phase 2 (operator packet): calibration identity at anchor time + v2_live_logging passthrough, root-cause; PR path; operator integrates the residual PR",
@@ -61,5 +61,6 @@
     "strict activation creating unbounded outage",
     "red required PR/main check",
     "main advances incompatibly"
-  ]
+  ],
+  "retired_note": "residuals merged via PR #35 at final main 5947f79020bc (4/4: 29227579363/29227579306/29227579292/29227579294)"
 }

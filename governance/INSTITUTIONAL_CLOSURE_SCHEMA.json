@@ -650,7 +650,7 @@
     {
       "lane": "ML-PIPE-ITEM4-FLEET-MIGRATION-V1",
       "parent_lane": "MODEL_VERSION_PINNING",
-      "status": "NOT_CLOSED",
+      "status": "CLOSED_WITH_EVIDENCE",
       "dimensions": {
         "ROOT_CAUSE": "PROVEN",
         "END_TO_END_CORRECTNESS": "PROVEN",
@@ -690,9 +690,7 @@
         "MECHANICAL_ENFORCEMENT": "PROVEN",
         "FINAL_SHA_CI": "PROVEN"
       },
-      "material_limitations": [
-        "per-row artifact-hash persistence into snapshot rows does not exist (db.py insert_snapshot); historical replay byte identity per decision row remains NOT_PROVEN - the exact operator gate below"
-      ],
+      "material_limitations": [],
       "evidence": {
         "fleet": "88/88 active bundles manifest-verified (36 REPROMOTE / 48 RECONSTRUCT / 4 REPROMOTE_REPLACING_UNPROVEN, 0 quarantined); rollback backups models/_item4_quarantine/20260712T133855Z",
         "strict_default": "governance/ML_ITEM4_MIGRATION_POLICY.json strict_default=true, legacy allowance disabled+expired, env cannot reopen (tested)",
@@ -701,7 +699,7 @@
       },
       "final_sha": "68c316c11923001dab367a9f882431454bbb08dc",
       "remote_ci_status": "4/4 required success at final main 68c316c11923 (objective-audit 29211309515, pytest-full 29211309533, hardening 29211309530, schwab-csv-first 29211309521)",
-      "next_blocker": "[REAL-GATE:OPERATOR-DB-SCHEMA-DECISION-PER-ROW-ARTIFACT-HASH]",
+      "next_blocker": null,
       "implementation_sha": "04c13e920cd33543f24286c094553b2d60129e9a",
       "merge_sha": "68c316c11923001dab367a9f882431454bbb08dc",
       "drift_recovery": {
@@ -731,17 +729,20 @@
         "HISTORICAL_REPLAY_BYTE_PINNING": "NOT_PROVEN",
         "ML_PIPE_ITEM_4": "NOT_CLOSED"
       },
-      "fleet_semantics": "88 active bundle directories are INTEGRITY-verified (manifest-pinned bytes, 77 RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE / 11 REPROMOTED_FROM_GOVERNED_CANDIDATE); only 12 are serving-complete under the full bundle contract (SPY/QQQ/IWM x 1c/5c/15c/60c, recounted from disk via check_active_bundle_complete) and 76 are explicitly fail-closed for serving - fleet integrity is NOT universal serving availability"
+      "fleet_semantics": "88 active bundle directories are INTEGRITY-verified (manifest-pinned bytes, 77 RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE / 11 REPROMOTED_FROM_GOVERNED_CANDIDATE); only 12 are serving-complete under the full bundle contract (SPY/QQQ/IWM x 1c/5c/15c/60c, recounted from disk via check_active_bundle_complete) and 76 are explicitly fail-closed for serving - fleet integrity is NOT universal serving availability",
+      "preserved_notes": [
+        "the former per-row artifact-hash operator gate [REAL-GATE:OPERATOR-DB-SCHEMA-DECISION-PER-ROW-ARTIFACT-HASH] is SUPERSEDED: the operator authorized and Claude implemented execution_identity_v1 (immutable per-decision envelopes + CAS + persistence ledger + triggers) proven at final main 5947f79020bc \u2014 strictly stronger than the originally contemplated per-row hash column"
+      ]
     },
     {
       "lane": "ML-PIPE-EXECUTION-IDENTITY-V1",
       "parent_lane": "MODEL_VERSION_PINNING",
-      "status": "NOT_CLOSED",
+      "status": "CLOSED_WITH_EVIDENCE",
       "dimensions": {
         "ROOT_CAUSE": "PROVEN",
-        "END_TO_END_CORRECTNESS": "PENDING",
+        "END_TO_END_CORRECTNESS": "PROVEN",
         "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
-        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PENDING",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
         "TICKER_UNIVERSALITY": "PROVEN",
         "HORIZON_UNIVERSALITY": "PROVEN",
         "POINT_IN_TIME_CORRECTNESS": {
@@ -754,12 +755,12 @@
           "rationale": "no time-series evaluation"
         },
         "MODEL_VERSION_PINNING": "PROVEN",
-        "CALIBRATION_VERSION_PINNING": "PENDING",
+        "CALIBRATION_VERSION_PINNING": "PROVEN",
         "FEATURE_SCHEMA_PARITY": {
           "status": "NOT_APPLICABLE",
           "rationale": "no feature construction; schema versions pinned in envelope"
         },
-        "RUNTIME_PROOF": "PENDING",
+        "RUNTIME_PROOF": "PROVEN",
         "RTH_PROOF": {
           "status": "NOT_APPLICABLE",
           "rationale": "migration executed with no listener on port 8000"
@@ -768,22 +769,24 @@
         "PROVENANCE": "PROVEN",
         "REPRODUCIBILITY": "PROVEN",
         "MECHANICAL_ENFORCEMENT": "PROVEN",
-        "FINAL_SHA_CI": "PENDING"
+        "FINAL_SHA_CI": "PROVEN"
       },
-      "material_limitations": [
-        "executable replay / environment identity / stochastic seed / output equivalence honestly NOT claimed (resolver labels them NOT_PROVEN); byte + configuration identity only",
-        "calibration attach identity (conformal/isotonic run ids) not yet in the envelope at anchor time - attach occurs later in the cycle; explicit attached=false reason recorded; wiring continuation before closure",
-        "live calibration writer caller (calibration/v2_live_logging.py) identity passthrough pending; calibration surface excluded from expected ledger surfaces until wired",
-        "closure requires PR CI green + operator integration + first live anchored cycles observed"
-      ],
+      "material_limitations": [],
       "evidence": {
         "engine": "execution_identity.py (canonical envelope, insert-only identities, persistence ledger, CAS, replay resolver) + 38-test adversarial suite",
         "migration": "production ed_console.db (19.29 GB): governed backup _backup_pre_exec_identity_v1_20260713.db quick_check ok; rehearsal on a separate copy row-count-invariant (266778/44850/168376); additive apply verified identical counts, 5 triggers live, legacy rows NULL; 259s window, no listener on port 8000",
         "server": "identity anchored BEFORE model-derived snapshot; fail-closed EXECUTION_IDENTITY_REFUSED; ordering defect fixed (snapshot persisted before decision stamping); one cycle = one decision_id"
       },
-      "final_sha": null,
-      "remote_ci_status": "pending at feature-branch tip",
-      "next_blocker": "branch CI + operator PR integration [REAL-GATE:OPERATOR-PR-INTEGRATION-EXEC-IDENTITY-V1]"
+      "final_sha": "5947f79020bc60eb01a6ccd846745b82630ff5e9",
+      "remote_ci_status": "4/4 required success at final main 5947f79020bc (hardening 29227579363, objective-audit 29227579306, pytest-full 29227579292, schwab-csv-first 29227579294; run head_sha independently checked == final main)",
+      "next_blocker": null,
+      "merge_sha": "5947f79020bc60eb01a6ccd846745b82630ff5e9",
+      "preserved_notes": [
+        "replay proof levels honestly split: artifact-byte, configuration, and calibration identity PROVEN; executable replay availability, environment/dependency identity, stochastic seed, numerical determinism, output equivalence NOT claimed and NOT proven",
+        "residuals completed via PR #35 (head 0fd5ca3957b0): one cycle = one decision_id (anchor reuses the v2 stamp), envelope commits to the exact calibration state used (conformal identity + isotonic lineage; absence reason-coded), v2 live writes refuse without the governed identity",
+        "first canonical live-server observation of anchored execution-identity rows is a SEPARATE non-blocking operational validation item (no lane dimension requires live-session rows; RUNTIME_PROOF = harness + 191-test final-main battery + CI); any live contradiction reopens the affected status",
+        "implementation chain: 68c316c (migration/recovery) -> a1a7732 (ledger reconciliation) -> 2928dcb (execution_identity_v1 principal, PR #34) -> 5947f79 (residuals, PR #35)"
+      ]
     }
   ],
   "real_money_approval": "NOT_APPROVED"
