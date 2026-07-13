@@ -195,7 +195,12 @@ def test_exec_identity_lane_recloses_on_rth_reproof_with_history_and_open_parent
     assert pnc["MODEL_VERSION_PINNING_PARENT"] == "NOT_CLOSED"
     assert pnc["FULL_MODEL_STACK"] == "NOT_CLOSED"
     assert pnc["PREDICTIVE_VALIDITY"] == "NOT_PROVEN"
-    assert pnc["REPO_WIDE_UNIVERSAL_FIX_LOCK"] == "NOT_PROVEN"
+    # The universal-fix lock was NOT closed by the Item 4 lane; it was reconciled
+    # to PROVEN only after PR #38 merged with final-main proof, and the entry must
+    # keep that pre-merge history scoped in place.
+    assert pnc["REPO_WIDE_UNIVERSAL_FIX_LOCK"].startswith("PROVEN (not by this lane")
+    assert "NOT_PROVEN when this lane closed" in pnc["REPO_WIDE_UNIVERSAL_FIX_LOCK"]
+    assert "87213d3692bd" in pnc["REPO_WIDE_UNIVERSAL_FIX_LOCK"]
     assert pnc["REAL_MONEY_APPROVAL"] == "NOT_APPROVED"
     assert doc["real_money_approval"] == "NOT_APPROVED"
     # NOT_PROVEN matrix: the MODEL_VERSION_PINNING parent label stays open while
@@ -207,3 +212,56 @@ def test_exec_identity_lane_recloses_on_rth_reproof_with_history_and_open_parent
     assert mvp["final_status"] == "NOT_PROVEN"
     assert "ITEM_4_RECLOSED_WITH_EVIDENCE" in mvp["fix_status"]
     assert "ITEM_4_REOPENED" in mvp["fix_status"]
+
+
+def test_universal_fix_lock_closes_only_after_final_main_proof_with_open_parents():
+    """Records regression (UNIVERSAL_FIX_LOCK_RECORDS_CLOSURE_AND_MISSION_RETIREMENT_V1):
+    the universal-fix lock is PROVEN only against the PR #38 merge SHA with final-main
+    CI cited; implementation-only or PR-only proof never suffices; no broader parent
+    closes with it; the pre-merge NOT_PROVEN period stays recorded as history."""
+    repo = SCHEMA_PATH.parent.parent
+    doc = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    by = {r["lane"]: r for r in doc["lanes"]}
+    lane = by["UNIVERSAL-FIX-IMPACT-GATE-V1"]
+    assert lane["status"] == CLOSED
+    # Closure is bound to the MERGE SHA (final main), not the PR head: PR-only or
+    # implementation-only proof is structurally insufficient.
+    assert lane["final_sha"] == "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c"
+    assert lane["final_sha"] == lane["merge_sha"]
+    assert lane["implementation_pr_head"] != lane["final_sha"]
+    assert lane["final_sha"][:7] in lane["remote_ci_status"]
+    assert "push-event" in lane["remote_ci_status"]
+    labels = lane["acceptance_labels"]
+    for k in (
+        "STATIC_UNIVERSAL_FIX_ENFORCEMENT",
+        "PREPUSH_UNIVERSAL_FIX_ENFORCEMENT",
+        "CI_UNIVERSAL_FIX_ENFORCEMENT",
+        "NARROW_FIX_REJECTION",
+        "REPRESENTATIVE_ONLY_CLOSURE_REJECTION",
+        "PARENT_FROM_CHILD_CLOSURE_REJECTION",
+        "CONNECTED_PATH_INVENTORY",
+        "FUTURE_OMISSION_LOCK",
+        "PREPUSH_TIER_PARITY",
+        "REPO_WIDE_UNIVERSAL_FIX_LOCK",
+    ):
+        assert labels[k] == "PROVEN", k
+    # Broader parents stay open; unrelated closures stay unchanged.
+    pnc = lane["preserved_non_closure"]
+    assert pnc["MODEL_VERSION_PINNING_PARENT"] == "NOT_CLOSED"
+    assert pnc["FULL_MODEL_STACK"] == "NOT_CLOSED"
+    assert pnc["PREDICTIVE_VALIDITY"] == "NOT_PROVEN"
+    assert pnc["REAL_MONEY_APPROVAL"] == "NOT_APPROVED"
+    assert pnc["SCHWAB_V4_REGISTER_CLOSURE_PARENT"] == "NOT_CLOSED"
+    assert by["ML-PIPE-EXECUTION-IDENTITY-V1"]["status"] == CLOSED
+    assert by["ML-PIPE-EXECUTION-IDENTITY-V1"]["acceptance_labels"]["ML_PIPE_ITEM_4"] == CLOSED
+    assert doc["real_money_approval"] == "NOT_APPROVED"
+    # Pre-merge NOT_PROVEN history is preserved, scoped, and not rewritten.
+    notes = " ".join(lane["preserved_notes"])
+    assert "NOT_PROVEN throughout the pre-merge period" in notes
+    assert "closure earned only after final-main proof" in notes
+    # CRLF/LF determinism disclosure stays honest.
+    det = lane["determinism_disclosure"]
+    assert det["cross_platform_raw_byte_determinism"].startswith("NOT_PROVEN")
+    # Mission lifecycle: implementation contract retired, not deleted; no active copy.
+    assert (repo / "governance/mission_authorization/consumed/UNIVERSAL-FIX-IMPACT-GATE-V1.retired.json").is_file()
+    assert not (repo / "governance/mission_authorization/active/UNIVERSAL-FIX-IMPACT-GATE-V1.json").exists()

@@ -633,7 +633,9 @@ def test_universal_fix_gate_sources_require_runner_authoritative_v4_pin():
         "tests/test_universal_fix_impact_gate.py",
         "tests/test_universal_fix_impact_gate_adversarial.py",
         "governance/universal_fix_impact_manifest.json",
-        "governance/mission_authorization/active/UNIVERSAL-FIX-IMPACT-GATE-V1.json",
+        # Mission retired 2026-07-13 (implementation merged via PR #38 at final main
+        # 87213d3692bd); the retired contract remains a tracked, scanned source.
+        "governance/mission_authorization/consumed/UNIVERSAL-FIX-IMPACT-GATE-V1.retired.json",
     ]
     for rel in scannable:
         assert (ROOT / rel).is_file(), rel

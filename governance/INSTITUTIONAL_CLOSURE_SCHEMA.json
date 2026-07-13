@@ -812,7 +812,7 @@
         "MODEL_VERSION_PINNING_PARENT": "NOT_CLOSED",
         "FULL_MODEL_STACK": "NOT_CLOSED",
         "PREDICTIVE_VALIDITY": "NOT_PROVEN",
-        "REPO_WIDE_UNIVERSAL_FIX_LOCK": "NOT_PROVEN",
+        "REPO_WIDE_UNIVERSAL_FIX_LOCK": "PROVEN (not by this lane: was NOT_PROVEN when this lane closed 2026-07-13 at d64bce2; reconciled after PR #38 merged at final main 87213d3692bd with 4/4 final-main CI - see the UNIVERSAL-FIX-IMPACT-GATE-V1 lane)",
         "REAL_MONEY_APPROVAL": "NOT_APPROVED",
         "note": "Item 4 closure is artifact-byte + configuration + calibration identity for model-derived production rows plus complete identity-linked decision-cycle persistence at canonical RTH; it is NOT proof of predictive correctness, predictive validity, full deterministic reproduction, model quality, complete runtime-class live coverage, cache-isolation/universal-runtime parents, or real-money readiness; child closure closes no parent"
       },
@@ -847,6 +847,104 @@
           "history_retained": "the contradiction record above is permanent; closure was re-earned, not restored by deletion"
         }
       }
+    },
+    {
+      "lane": "UNIVERSAL-FIX-IMPACT-GATE-V1",
+      "parent_lane": "FULL_GOVERNANCE_GATE_SYSTEM",
+      "status": "CLOSED_WITH_EVIDENCE",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "PROVEN",
+        "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
+        "TICKER_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "governance gate tooling; the gate itself has no per-ticker behavior (it ENFORCES ticker-class declarations in impact manifests)"
+        },
+        "HORIZON_UNIVERSALITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no horizon-dependent path in the gate; horizon coverage is an enforced manifest dimension, not gate behavior"
+        },
+        "POINT_IN_TIME_CORRECTNESS": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no market data consumed; gate operates on the working tree, AST graph, and generated inventories"
+        },
+        "NO_CURRENT_STATE_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no replay surface in the gate"
+        },
+        "NO_FUTURE_DATA_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no time-series evaluation in the gate"
+        },
+        "MODEL_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no model artifact consumed by the gate"
+        },
+        "CALIBRATION_VERSION_PINNING": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no calibration artifact consumed by the gate"
+        },
+        "FEATURE_SCHEMA_PARITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no feature construction in the gate"
+        },
+        "RUNTIME_PROOF": "PROVEN",
+        "RTH_PROOF": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no market-session-dependent behavior; the gate runs identically in and out of RTH"
+        },
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "PROVEN",
+        "MECHANICAL_ENFORCEMENT": "PROVEN",
+        "FINAL_SHA_CI": "PROVEN"
+      },
+      "material_limitations": [],
+      "closure_scope": "this lane proves repository governance mechanically rejects falsely universal fixes and unsupported closure claims (static + pre-push + CI enforcement; narrow-fix, representative-only, and parent-from-child rejection; connected-path inventory of routes/writers/loaders/replay/calibration/API/UI consumers; future-omission lock; governed-exception register; deterministic generated artifacts; mechanically enforced mission ownership). It governs the honesty and breadth of FUTURE work. It does NOT assert production calculations are correct, model outputs are accurate, predictive validity, feature correctness, absence of leakage, calibration quality, backtest validity, profitability, real-money readiness, complete dead-code retirement, or complete directory cleanup",
+      "evidence": {
+        "engine": "tools/check_universal_fix_impact_gate.py + tools/universal_gate_ast.py + tools/build_universal_repository_inventory.py + tools/build_universal_connected_path_graph.py; generated artifacts governance/artifacts/universal_repository_inventory.json + universal_connected_path_graph.json + universal_connected_path_governed_edges.json + universal_fix_exception_register.json; manifest governance/universal_fix_impact_manifest.json",
+        "enforcement_tiers": "static (enforce_all_rules stack), governed pre-push (tools/check_prepush_parity.py tier parity), CI (.github/workflows/objective-audit.yml required step)",
+        "tests": "tests/test_universal_fix_impact_gate.py + tests/test_universal_fix_impact_gate_adversarial.py (adversarial A-O + controls P-U) + tests/test_check_schwab_csv_first.py integration section - 98 combined tests green at final main in-turn; tools/check_universal_fix_impact_gate.py exit 0 at final main in-turn",
+        "integration": "PR #38 approved head 07abf497695c; merge = final main 87213d3692bd (2026-07-13T23:19:52Z); merge tree == approved head tree; PR #37 execution-identity implementation and PR #39 Item 4 closure records preserved through multiple rebases and runner-authoritative Schwab repins"
+      },
+      "final_sha": "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c",
+      "remote_ci_status": "4/4 required push-event success at final main 87213d3692bd (hardening 29292715833, objective-audit 29292715830, schwab-csv-first 29292715866, pytest-full 29292715887; run head_sha independently checked == final main)",
+      "next_blocker": null,
+      "merge_sha": "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c",
+      "implementation_pr": 38,
+      "implementation_pr_head": "07abf497695c2a4a7b4e626a3287af2c96736d36",
+      "acceptance_labels": {
+        "STATIC_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
+        "PREPUSH_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
+        "CI_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
+        "NARROW_FIX_REJECTION": "PROVEN",
+        "REPRESENTATIVE_ONLY_CLOSURE_REJECTION": "PROVEN",
+        "PARENT_FROM_CHILD_CLOSURE_REJECTION": "PROVEN",
+        "CONNECTED_PATH_INVENTORY": "PROVEN",
+        "FUTURE_OMISSION_LOCK": "PROVEN",
+        "PREPUSH_TIER_PARITY": "PROVEN",
+        "REPO_WIDE_UNIVERSAL_FIX_LOCK": "PROVEN"
+      },
+      "determinism_disclosure": {
+        "same_platform_deterministic_generation": "PROVEN (dual regenerations byte-identical to each other on the same platform)",
+        "normalized_content_determinism": "PROVEN (regenerated content matched committed inventory/graph after LF normalization; content hashes and semantic data stable; no graph or inventory data differed)",
+        "cross_platform_raw_byte_determinism": "NOT_PROVEN - the only observed discrepancy was CRLF vs LF output encoding on Windows regeneration; not claimed unless the canonical builder mechanically normalizes line endings; builders unmodified in the records-only closure; repository acceptance criteria do not require cross-platform raw-byte identity, so this scoped limitation does not reopen the lane"
+      },
+      "preserved_non_closure": {
+        "ML_PIPE_EXECUTION_IDENTITY_LANE": "CLOSED_WITH_EVIDENCE (unchanged by this lane)",
+        "ML_PIPE_ITEM_4": "CLOSED_WITH_EVIDENCE (unchanged by this lane)",
+        "MODEL_VERSION_PINNING_PARENT": "NOT_CLOSED",
+        "FULL_MODEL_STACK": "NOT_CLOSED",
+        "PREDICTIVE_VALIDITY": "NOT_PROVEN",
+        "REAL_MONEY_APPROVAL": "NOT_APPROVED",
+        "SCHWAB_V4_REGISTER_CLOSURE_PARENT": "NOT_CLOSED",
+        "note": "the universal-fix lock is a governance honesty/breadth lock; it closes no correctness, validity, cleanup, or Schwab-register parent"
+      },
+      "preserved_notes": [
+        "history: lane opened -> static/pre-push/CI/AST-graph/dynamic-inventory/impact-matrix/omission locks implemented -> PR #38 required multiple rebases and runner-authoritative Schwab repins -> PR #37 and PR #39 states preserved during conflict resolution -> exact-head CI green -> merged 2026-07-13T23:19:52Z -> exact final-main local + remote proof -> closure earned only after final-main proof; REPO_WIDE_UNIVERSAL_FIX_LOCK was NOT_PROVEN throughout the pre-merge period and those historical entries are retained as history",
+        "standing parent blocker retained: Schwab V4 Register Closure push workflow fails at final main (run 29292715898) with the same seven pp_v4b register_link error lines byte-identical to earlier main runs (29270710784, 29284727000) - a separate governed parent, not caused by PR #38 and not resolved by this lane; its existence does not reopen this lock"
+      ]
     }
   ],
   "real_money_approval": "NOT_APPROVED"
