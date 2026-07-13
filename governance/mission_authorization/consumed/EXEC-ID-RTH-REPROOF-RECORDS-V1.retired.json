@@ -28,7 +28,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783972396.0,
   "expires_at_epoch": 1785181996.0,
   "operator_authorization": "MISSION = EXEC_IDENTITY_RTH_REPROOF_RECORDS_CLOSURE_V1 (operator packet 2026-07-13): records-only closure of ML-PIPE-EXECUTION-IDENTITY-V1 and ML_PIPE_ITEM_4 after the canonical RTH reproof at final main 9d2baf410bf4; PR path; operator integrates; no production code, no database, no runtime changes",
@@ -45,5 +45,7 @@
     "any closure would require weakening a gate",
     "red required PR/main check",
     "main advances incompatibly"
-  ]
+  ],
+  "consumed_at_epoch": 1783976709.5311491,
+  "retired_note": "PR39 MERGED at final main d64bce21fbbeb3d6dc487e48eadb6d17af6776e4; schwab_v4_* ownership released for PR38 post-PR39 rebase combined-tree pin regen; Item4/execution-identity CLOSED_WITH_EVIDENCE labels from PR39 preserved"
 }

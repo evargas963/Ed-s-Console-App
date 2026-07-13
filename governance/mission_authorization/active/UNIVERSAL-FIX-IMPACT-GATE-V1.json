@@ -5,7 +5,7 @@
   "mission_type": "feature_implementation",
   "authorized_branch": "universal-fix-impact-gate-v1",
   "authorized_worktree": "C:/Users/evarg/AppData/Local/Temp/EdWebConsole-pr38-rebase",
-  "base_sha": "9d2baf410bf42b9d64714209aefd0cb3a7b21ba7",
+  "base_sha": "d64bce21fbbeb3d6dc487e48eadb6d17af6776e4",
   "authorized_push_target": "origin/universal-fix-impact-gate-v1",
   "target_branch": "universal-fix-impact-gate-v1",
   "direct_main_permission": false,
@@ -38,7 +38,8 @@
       "governance/artifacts/schwab_v4_register_build_meta.json",
       "governance/artifacts/schwab_v4_scoreboard.json",
       "governance/mission_authorization/consumed/ML-PIPE-ITEM4-RECORDS-V1.retired.json",
-      "governance/mission_authorization/consumed/EXEC-ID-ORDERING-V1.retired.json"
+      "governance/mission_authorization/consumed/EXEC-ID-ORDERING-V1.retired.json",
+      "governance/mission_authorization/consumed/EXEC-ID-RTH-REPROOF-RECORDS-V1.retired.json"
     ],
     "semantic_domains": [
       "governance_gates",
@@ -51,7 +52,7 @@
       "governance/ML_ITEM4_MIGRATION_POLICY.json"
     ]
   },
-  "shared_file_policy": "post-PR37 rebase: combined-tree V4 pin regen; EXEC-ID and Item4 RECORDS leases retired after merge; no acceptance-label edits",
+  "shared_file_policy": "post-PR39 rebase: combined-tree V4 pin regen; EXEC-ID-RTH-REPROOF and prior EXEC-ID leases retired after merge; preserve PR39 Item4 CLOSED_WITH_EVIDENCE and parent non-closures",
   "created_at_epoch": 1784100000.0,
   "expires_at_epoch": 1784500000.0,
   "operator_authorization": "operator mission UNIVERSAL_FIX_IMPACT_GATE_V1_IMPLEMENTATION (2026-07-13): AUTHORIZED_AGENT=Cursor, DIRECT_MAIN_PUSH=FORBIDDEN, PR_REQUIRED=YES, MERGE_AUTHORIZATION=NONE",
