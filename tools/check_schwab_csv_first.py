@@ -299,19 +299,19 @@ def _is_emission_scannable_path(path: str) -> bool:
 
 
 def _ambiguous_token_is_quoted_market_key(line: str, start: int, end: int) -> bool:
-    """True when open/close/high/low/vix appear as quoted dict/JSON keys, not English or methods.
+    """True when ambiguous tokens appear as quoted dict/JSON keys, not English or methods.
 
-    Quoted tokens inside frozenset / list catalogs (\"VIX\", \"OHLC\") are NOT keys.
+    Quoted tokens inside frozenset / list catalogs are NOT keys.
     """
     before = line[:start]
     after = line[end:]
-    # ms_dict.close() / conn.close() method calls
+    # method calls (e.g. connection close)
     if after.startswith("("):
         return False
-    # JSON / dict-literal key: "vix": ...
+    # JSON / dict-literal key shape
     if before.endswith(("'", '"')) and after.lstrip().startswith(":"):
         return True
-    # subscript key: ms_dict["open"] / row['vix']
+    # subscript key shape
     if before.endswith(("['", '["')) and after.startswith(("']", '"]')):
         return True
     return False
@@ -364,7 +364,7 @@ def _is_token_catalog_definition_line(line: str) -> bool:
         return True
     if re.match(r"^\w+\s*=\s*frozenset\s*\(", stripped):
         return True
-    # Multi-line frozenset members: "VIX", "OHLC", "TRUE", ...
+    # Multi-line frozenset member continuation lines (quoted token catalogs only).
     if _TOKEN_CATALOG_MEMBER_LINE.match(stripped):
         return True
     return False
