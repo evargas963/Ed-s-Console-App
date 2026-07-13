@@ -13,6 +13,7 @@
   "integration_owner": "OPERATOR",
   "authorized_scope": {
     "files": [
+      ".gitignore",
       "OPEN_ITEMS.md",
       "calibration/v2_live_logging.py",
       "db.py",

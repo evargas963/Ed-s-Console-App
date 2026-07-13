@@ -125,3 +125,6 @@ static/redesign_mockup.html
 models/**
 # GOV-GATE-PERF-V1: cross-process governance gate cache (success-only, full-identity keys)
 governance/artifacts/.gate_cache/
+
+# EXEC_IDENTITY noncanonical runtime-proof scratch databases (local evidence only)
+data_proof/
