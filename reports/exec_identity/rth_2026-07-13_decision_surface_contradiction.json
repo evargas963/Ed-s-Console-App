@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "evidence": "EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 - RTH contradiction packet",
+  "session_date": "2026-07-13",
+  "market_timezone": "America/Chicago",
+  "canonical_server_window": {
+    "pid": 5992,
+    "git_sha": "6311393bef5271116df80c6390f5c392a6db037e",
+    "started_ct": "07:59:02",
+    "ended_ct": "08:31:46",
+    "superseded_by": {
+      "pid": 29796,
+      "git_sha": "8b0214acd11f6d80e03948c6a9bd4c78cb7be9cd",
+      "launcher": "start_ed_console.bat (operator)",
+      "runtime_delta_vs_main": "governance/tooling only - zero production runtime files (git diff 6311393..8b0214a)"
+    }
+  },
+  "database": {
+    "path": "data/ed_console.db",
+    "size_bytes": 19288576000,
+    "pre_session_watermarks": {
+      "snapshots": 266778,
+      "production_decision_records": 44850,
+      "calibration_decision_log": 168376,
+      "model_execution_identities": 0,
+      "decision_persistence_ledger": 0
+    }
+  },
+  "observed": {
+    "identities_total": 344,
+    "identities_first_utc": 1783945211.109558,
+    "identities_last_utc": 1783951952.5967855,
+    "identities_by_git_sha": {
+      "6311393bef52": 252,
+      "8b0214acd11f": 92
+    },
+    "ledger_status_landed_counts": [
+      {
+        "status": "OPEN",
+        "landed": "[\"calibration\",\"snapshot\"]",
+        "count": 344
+      }
+    ],
+    "new_production_decision_records": 0,
+    "new_calibration_rows": 344,
+    "new_snapshot_rows": 519,
+    "sample_ledger_rows": [
+      {
+        "decision_id": "e46d8e79d5654689b4853406b05acdc3",
+        "execution_identity_sha256": "efe6817f6fa45900e32536069b553d3d5fc024d94b423ea69178e21ab60c6674",
+        "expected": "[\"calibration\",\"decision\",\"snapshot\"]",
+        "landed": "[\"calibration\",\"snapshot\"]",
+        "status": "OPEN",
+        "created_at_utc": 1783945211.109558
+      },
+      {
+        "decision_id": "29b4c6e43a8f41fcac88ca5641b0a409",
+        "execution_identity_sha256": "55b96b8419754682ec1220402f4bcde7bf211fb02327378b085388d9ce688fa0",
+        "expected": "[\"calibration\",\"decision\",\"snapshot\"]",
+        "landed": "[\"calibration\",\"snapshot\"]",
+        "status": "OPEN",
+        "created_at_utc": 1783945211.8939466
+      }
+    ],
+    "guest_anchor_routing_counts": [
+      {
+        "requested": "NET",
+        "bundle": "SPY",
+        "count": 38
+      },
+      {
+        "requested": "NVDA",
+        "bundle": "SPY",
+        "count": 35
+      },
+      {
+        "requested": "$SPX",
+        "bundle": "SPY",
+        "count": 5
+      },
+      {
+        "requested": "AVGO",
+        "bundle": "SPY",
+        "count": 5
+      },
+      {
+        "requested": "GOOGL",
+        "bundle": "SPY",
+        "count": 5
+      },
+      {
+        "requested": "TSLA",
+        "bundle": "SPY",
+        "count": 5
+      }
+    ]
+  },
+  "failure_signatures": [
+    "WARNING:ed_server:production decision persist failed route=server._fetch_state: IDENTITY_MISMATCH: decision_id and execution_identity_sha256 must be set together",
+    "ERROR:calibration.v2_live_logging:EXECUTION_IDENTITY_REFUSED live v2 calibration write for QQQ: missing decision_id/execution_identity_sha256 (fail closed)"
+  ],
+  "root_cause": "the execution-identity anchor lived inside _post_publish_persistence_tail (runs AFTER _finalize_production_decision on the full path; the log_only path never finalizes at all) - stamping minted a decision_id with no identity and the production_decision_records linkage trigger correctly refused every write; expected_surfaces also unconditionally included 'decision' for log_only cycles that never write decision records",
+  "fail_closed_integrity": "no fabricated or identity-less model-derived row was accepted; ledger honestly OPEN; snapshot + calibration surfaces landed 1:1 with registered identities"
+}

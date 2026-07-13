@@ -568,3 +568,208 @@ def test_write_path_universe_inventory():
         f"NEW production write path(s) {sorted(unknown)} must be wired into "
         "execution_identity_v1 (anchor + linkage) before landing"
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — 2026-07-13 RTH contradiction
+# (255/258 ledgers OPEN missing "decision"; every production-decision persist
+# refused IDENTITY_MISMATCH because the anchor lived in the post-publish tail
+# while _finalize_production_decision ran earlier in the same cycle).
+# ══════════════════════════════════════════════════════════════════════════════
+
+_SERVER_PY = Path(__file__).resolve().parent.parent / "server.py"
+
+
+def _server_text() -> str:
+    return _SERVER_PY.read_text(encoding="utf-8", errors="replace")
+
+
+def test_server_anchor_precedes_finalize_and_log_only_tail():
+    """Source-ordering lock (RED on pre-fix main): the ONE identity anchor site
+    must execute before the log_only early return AND the production-decision
+    finalize; the post-publish tail must only consume the anchored pair."""
+    text = _server_text()
+    anchor_at = text.index(
+        "EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor"
+    )
+    log_only_tail_at = text.index(
+        "_post_publish_persistence_tail(None, _v2_decision_for_response)"
+    )
+    finalize_at = text.index("_finalize_production_decision(ms_dict, _decision_route)")
+    assert anchor_at < log_only_tail_at, "anchor must precede the log_only tail call"
+    assert anchor_at < finalize_at, "anchor must precede the production-decision finalize"
+    # Exactly one anchor call site, and it is NOT inside the persistence tail.
+    assert text.count("anchor_production_execution as _xid_anchor") == 1
+    tail_start = text.index("def _post_publish_persistence_tail(")
+    tail_end = text.index("def _fv(v):", tail_start)
+    assert "anchor_production_execution" not in text[tail_start:tail_end], (
+        "the persistence tail must consume the pre-anchored pair, never anchor"
+    )
+    # The tail consumes the hoisted throttle reservation (single reservation/cycle).
+    assert "_do_insert = _xid_do_snapshot_insert" in text[tail_start:tail_end]
+    # The decision surface is marked landed only on a persist that actually landed.
+    assert "_decision_persist_landed" in text
+    mark_at = text.index('_xid_mark_dec(_xconn3, _xid_pair[0], "decision")')
+    guard_at = text.rindex('ms_dict.get("_decision_persist_landed")', 0, mark_at)
+    assert mark_at - guard_at < 600, "decision-surface marking must be guarded by persist success"
+    # Idle/non-model calibration contract: expected non-write, not a refusal.
+    assert "_xid_pair_cal is None and not _xid_model_derived" in text
+    assert "LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE" in text
+
+
+def _dependent_tables(conn):
+    """Production-shaped dependent tables + real linkage triggers."""
+    from decision_record import ensure_production_decision_schema
+
+    conn.executescript(
+        """
+        CREATE TABLE snapshots (snapshot_id INTEGER PRIMARY KEY, ticker TEXT, ts_utc REAL);
+        CREATE TABLE calibration_decision_log (id INTEGER PRIMARY KEY, ticker TEXT);
+        """
+    )
+    ensure_production_decision_schema(conn)
+    xi.ensure_execution_identity_schema(conn)
+
+
+def _minimal_release():
+    return {"release_id": "rel-ord", "git_sha": "b" * 40, "config_hash": "d" * 64,
+            "build_generation": "g-ord"}
+
+
+def _persist_decision(conn_path, decision_id, identity_sha):
+    from decision_record import persist_production_decision
+
+    ms = {
+        "decision_id": decision_id,
+        "decision_generation_id": 1,
+        "decision_timestamp_utc": 1_784_000_100.0,
+        "ticker": "SPY",
+        "call_signal": "wait",
+        "call_conviction": "low",
+        "fusion_available": True,
+        "dominant_dir": "up",
+    }
+    return persist_production_decision(
+        ms, route="server._fetch_state", release=_minimal_release(),
+        db_path=conn_path, execution_identity_sha256=identity_sha,
+    )
+
+
+def test_prefix_ordering_reproduction_decision_surface_refused(tmp_path):
+    """Reproduces the exact 2026-07-13 live failure order with the REAL
+    writers + REAL linkage triggers: finalize-persist BEFORE the anchor is
+    refused IDENTITY_MISMATCH; snapshot + calibration then land; the ledger
+    stays OPEN missing exactly the decision surface."""
+    dbp = tmp_path / "ord.db"
+    c = sqlite3.connect(str(dbp))
+    _dependent_tables(c)
+
+    # 1) pre-fix order: decision persist runs first, identity not yet anchored.
+    #    The linkage trigger ABORTs the insert; live, _finalize_production_decision
+    #    catches this and emits the observed "production decision persist failed
+    #    route=server._fetch_state: IDENTITY_MISMATCH" warning.
+    stamped_only_id = "cycle-did-1"
+    with pytest.raises(sqlite3.IntegrityError, match="IDENTITY_MISMATCH"):
+        _persist_decision(dbp, stamped_only_id, None)
+    assert c.execute("SELECT COUNT(*) FROM production_decision_records").fetchone()[0] == 0
+
+    # 2) the tail then anchors and lands snapshot + calibration (as observed live).
+    env = _envelope(requested_ticker="SPY", bundle_ticker="SPY", guest_anchor=False,
+                    guest_anchor_ticker=None)
+    sha = xi.insert_execution_identity(
+        c, env, decision_id=stamped_only_id,
+        expected_surfaces=["decision", "snapshot", "calibration"],
+    )
+    c.execute(
+        "INSERT INTO snapshots (ticker, ts_utc, decision_id, execution_identity_sha256,"
+        " execution_identity_class) VALUES (?,?,?,?,?)",
+        ("SPY", 1_784_000_100.0, stamped_only_id, sha, xi.ROW_CLASS_MODEL_DERIVED),
+    )
+    xi.mark_surface_landed(c, stamped_only_id, "snapshot")
+    c.execute(
+        "INSERT INTO calibration_decision_log (ticker, decision_id,"
+        " execution_identity_sha256) VALUES (?,?,?)",
+        ("SPY", stamped_only_id, sha),
+    )
+    xi.mark_surface_landed(c, stamped_only_id, "calibration")
+
+    row = c.execute(
+        "SELECT status, landed_surfaces FROM decision_persistence_ledger WHERE decision_id=?",
+        (stamped_only_id,),
+    ).fetchone()
+    assert row[0] == xi.LEDGER_OPEN
+    assert json.loads(row[1]) == ["calibration", "snapshot"], (
+        "exact live signature: decision surface missing"
+    )
+    c.close()
+
+
+def test_fixed_ordering_full_cycle_completes_ledger(tmp_path):
+    """Anchor-first order: one decision_id, one identity, all three surfaces
+    land with the SAME pair, ledger COMPLETE, no identity mismatch."""
+    dbp = tmp_path / "fix.db"
+    c = sqlite3.connect(str(dbp))
+    _dependent_tables(c)
+
+    did = "cycle-did-2"
+    env = _envelope(requested_ticker="SPY", bundle_ticker="SPY", guest_anchor=False,
+                    guest_anchor_ticker=None)
+    sha = xi.insert_execution_identity(
+        c, env, decision_id=did,
+        expected_surfaces=["decision", "snapshot", "calibration"],
+    )
+    persisted = _persist_decision(dbp, did, sha)
+    assert persisted == did, "anchored production-decision write must land"
+    xi.mark_surface_landed(c, did, "decision")
+    c.execute(
+        "INSERT INTO snapshots (ticker, ts_utc, decision_id, execution_identity_sha256,"
+        " execution_identity_class) VALUES (?,?,?,?,?)",
+        ("SPY", 1_784_000_200.0, did, sha, xi.ROW_CLASS_MODEL_DERIVED),
+    )
+    xi.mark_surface_landed(c, did, "snapshot")
+    c.execute(
+        "INSERT INTO calibration_decision_log (ticker, decision_id,"
+        " execution_identity_sha256) VALUES (?,?,?)",
+        ("SPY", did, sha),
+    )
+    status = xi.mark_surface_landed(c, did, "calibration")
+    assert status == xi.LEDGER_COMPLETE
+    got = c.execute(
+        "SELECT execution_identity_sha256 FROM production_decision_records WHERE decision_id=?",
+        (did,),
+    ).fetchone()
+    assert got and got[0] == sha, "decision row must carry the ONE anchored identity"
+    c.close()
+
+
+def test_ledger_expected_surfaces_adapt_to_cycle_shape(tmp_path):
+    """log_only / throttled / calibration-off cycles complete on exactly the
+    surfaces they actually write — no permanent-OPEN false alarms."""
+    dbp = tmp_path / "shape.db"
+    c = sqlite3.connect(str(dbp))
+    _dependent_tables(c)
+
+    # log_only + calibration off: snapshot is the only expected surface.
+    env1 = _envelope(requested_ticker="QQQ", bundle_ticker="QQQ", guest_anchor=False,
+                     guest_anchor_ticker=None)
+    xi.insert_execution_identity(c, env1, decision_id="d-snap-only",
+                                 expected_surfaces=["snapshot"])
+    assert xi.mark_surface_landed(c, "d-snap-only", "snapshot") == xi.LEDGER_COMPLETE
+
+    # snapshot throttled + calibration on: calibration completes the cycle.
+    env2 = _envelope(requested_ticker="IWM", bundle_ticker="IWM", guest_anchor=False,
+                     guest_anchor_ticker=None)
+    xi.insert_execution_identity(c, env2, decision_id="d-cal-only",
+                                 expected_surfaces=["calibration"])
+    assert xi.mark_surface_landed(c, "d-cal-only", "calibration") == xi.LEDGER_COMPLETE
+    c.close()
+
+
+def test_v2_live_logging_non_model_skip_reason_exists():
+    from calibration.v2_live_logging import (
+        LIVE_ADVISORY_V2_REFUSED_NO_IDENTITY,
+        LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
+    )
+
+    assert LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE != LIVE_ADVISORY_V2_REFUSED_NO_IDENTITY
+    assert "skip" in LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE

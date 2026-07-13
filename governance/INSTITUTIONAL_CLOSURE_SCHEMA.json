@@ -704,7 +704,7 @@
       "merge_sha": "68c316c11923001dab367a9f882431454bbb08dc",
       "drift_recovery": {
         "found_at": "2026-07-12 integration canonical-main proof",
-        "finding": "29 bundles had serving bytes replaced by live candidate-dir bytes although their byte-identity evidence came from OTHER governed sources (archive snapshots / git blobs) \u2014 REPROMOTE classification proved provenance, not promotion byte-safety; MODEL-04 serving-vintage ownership belongs to the operator",
+        "finding": "29 bundles had serving bytes replaced by live candidate-dir bytes although their byte-identity evidence came from OTHER governed sources (archive snapshots / git blobs) — REPROMOTE classification proved provenance, not promotion byte-safety; MODEL-04 serving-vintage ownership belongs to the operator",
         "recovery": "pre-migration bytes restored from models/_item4_quarantine/20260712T133855Z for all 171 unintended file changes; the four operator-authorized unproven-replacement role-pairs kept (GOOG:1c xgb pair, MRVL:1c xgb pair, IWM:15c meta_stack, TSLA:1c lstm+transformer pairs); manifests re-stamped pinning restored bytes with original classification evidence; fleet recompute 88/88 ok after recovery",
         "mechanical_lock": "tools/ml_item4_fleet_migration.py REPROMOTE now requires per-file byte identity against the candidate dir ITSELF; regression test tests/test_ml_item4_fleet_migration.py::test_archive_evidence_never_authorizes_byte_changing_repromotion",
         "v2_reproducible_repair": {
@@ -727,23 +727,23 @@
         "BYTE_EXACT_GIT_ROUND_TRIP": "PROVEN",
         "CANONICAL_WORKTREE_CLEAN": "PROVEN",
         "HISTORICAL_REPLAY_BYTE_PINNING": "PROVEN",
-        "ML_PIPE_ITEM_4": "CLOSED_WITH_EVIDENCE"
+        "ML_PIPE_ITEM_4": "NOT_CLOSED"
       },
-      "acceptance_labels_note": "HISTORICAL_REPLAY_BYTE_PINNING and ML_PIPE_ITEM_4 updated 2026-07-13: proven/closed via execution_identity_v1 at final main 5947f79020bc (closure evidence carried by the ML-PIPE-EXECUTION-IDENTITY-V1 lane record); their prior NOT_PROVEN/NOT_CLOSED values reflected the retired per-row operator gate",
+      "acceptance_labels_note": "ML_PIPE_ITEM_4 reopened 2026-07-13 (RTH decision-surface contradiction - see the ML-PIPE-EXECUTION-IDENTITY-V1 lane drift_recovery); this fleet-migration lane's own scope (artifact integrity, byte pinning, recovery reproducibility) is uncontradicted and stays CLOSED_WITH_EVIDENCE; HISTORICAL_REPLAY_BYTE_PINNING remains PROVEN at the byte/config level",
       "fleet_semantics": "88 active bundle directories are INTEGRITY-verified (manifest-pinned bytes, 77 RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE / 11 REPROMOTED_FROM_GOVERNED_CANDIDATE); only 12 are serving-complete under the full bundle contract (SPY/QQQ/IWM x 1c/5c/15c/60c, recounted from disk via check_active_bundle_complete) and 76 are explicitly fail-closed for serving - fleet integrity is NOT universal serving availability",
       "preserved_notes": [
-        "the former per-row artifact-hash operator gate [REAL-GATE:OPERATOR-DB-SCHEMA-DECISION-PER-ROW-ARTIFACT-HASH] is SUPERSEDED: the operator authorized and Claude implemented execution_identity_v1 (immutable per-decision envelopes + CAS + persistence ledger + triggers) proven at final main 5947f79020bc \u2014 strictly stronger than the originally contemplated per-row hash column"
+        "the former per-row artifact-hash operator gate [REAL-GATE:OPERATOR-DB-SCHEMA-DECISION-PER-ROW-ARTIFACT-HASH] is SUPERSEDED: the operator authorized and Claude implemented execution_identity_v1 (immutable per-decision envelopes + CAS + persistence ledger + triggers) proven at final main 5947f79020bc — strictly stronger than the originally contemplated per-row hash column"
       ]
     },
     {
       "lane": "ML-PIPE-EXECUTION-IDENTITY-V1",
       "parent_lane": "MODEL_VERSION_PINNING",
-      "status": "CLOSED_WITH_EVIDENCE",
+      "status": "NOT_CLOSED",
       "dimensions": {
         "ROOT_CAUSE": "PROVEN",
-        "END_TO_END_CORRECTNESS": "PROVEN",
+        "END_TO_END_CORRECTNESS": "NOT_PROVEN",
         "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
-        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "NOT_PROVEN",
         "TICKER_UNIVERSALITY": "PROVEN",
         "HORIZON_UNIVERSALITY": "PROVEN",
         "POINT_IN_TIME_CORRECTNESS": {
@@ -761,7 +761,7 @@
           "status": "NOT_APPLICABLE",
           "rationale": "no feature construction; schema versions pinned in envelope"
         },
-        "RUNTIME_PROOF": "PROVEN",
+        "RUNTIME_PROOF": "NOT_PROVEN",
         "RTH_PROOF": {
           "status": "NOT_APPLICABLE",
           "rationale": "migration executed with no listener on port 8000"
@@ -772,7 +772,9 @@
         "MECHANICAL_ENFORCEMENT": "PROVEN",
         "FINAL_SHA_CI": "PROVEN"
       },
-      "material_limitations": [],
+      "material_limitations": [
+        "2026-07-13 RTH live contradiction: every production-decision persist refused IDENTITY_MISMATCH (anchor ran in the post-publish tail AFTER decision finalize; log_only cycles expected a decision surface they never write) - 255/258 ledgers OPEN missing 'decision'; fix branch exec-identity-decision-surface-ordering-v1; closure requires merged fix + canonical RTH reproof with COMPLETE ledgers"
+      ],
       "evidence": {
         "engine": "execution_identity.py (canonical envelope, insert-only identities, persistence ledger, CAS, replay resolver) + 38-test adversarial suite",
         "migration": "production ed_console.db (19.29 GB): governed backup _backup_pre_exec_identity_v1_20260713.db quick_check ok; rehearsal on a separate copy row-count-invariant (266778/44850/168376); additive apply verified identical counts, 5 triggers live, legacy rows NULL; 259s window, no listener on port 8000",
@@ -780,7 +782,7 @@
       },
       "final_sha": "5947f79020bc60eb01a6ccd846745b82630ff5e9",
       "remote_ci_status": "4/4 required success at final main 5947f79020bc (hardening 29227579363, objective-audit 29227579306, pytest-full 29227579292, schwab-csv-first 29227579294; run head_sha independently checked == final main)",
-      "next_blocker": null,
+      "next_blocker": "[REAL-GATE:RTH-REPROOF-EXEC-IDENTITY-DECISION-SURFACE] merged ordering fix + new canonical RTH session with production decision records landed, ledgers COMPLETE, one pair across every surface",
       "merge_sha": "5947f79020bc60eb01a6ccd846745b82630ff5e9",
       "acceptance_labels": {
         "ML_PIPE_ITEM_4_IMPLEMENTATION": "PROVEN",
@@ -792,13 +794,13 @@
         "HISTORICAL_REPLAY_BYTE_PINNING": "PROVEN",
         "CALIBRATION_ATTACH_IDENTITY_AT_ANCHOR_TIME": "PROVEN",
         "V2_LIVE_LOGGING_IDENTITY_PASSTHROUGH": "PROVEN",
-        "ONE_CYCLE_ONE_DECISION": "PROVEN",
+        "ONE_CYCLE_ONE_DECISION": "NOT_PROVEN",
         "DATABASE_TRIGGER_ENFORCEMENT": "PROVEN",
         "PERSISTENCE_LEDGER_CONSISTENCY": "PROVEN",
         "ARTIFACT_BYTE_RETENTION": "PROVEN",
         "CURRENT_POINTER_FREE_REPLAY": "PROVEN",
         "LEGACY_NONFABRICATION": "PROVEN",
-        "ML_PIPE_ITEM_4": "CLOSED_WITH_EVIDENCE"
+        "ML_PIPE_ITEM_4": "NOT_CLOSED"
       },
       "preserved_non_closure": {
         "MODEL_VERSION_PINNING_PARENT": "NOT_CLOSED",
@@ -812,7 +814,24 @@
         "residuals completed via PR #35 (head 0fd5ca3957b0): one cycle = one decision_id (anchor reuses the v2 stamp), envelope commits to the exact calibration state used (conformal identity + isotonic lineage; absence reason-coded), v2 live writes refuse without the governed identity",
         "first canonical live-server observation of anchored execution-identity rows is a SEPARATE non-blocking operational validation item (no lane dimension requires live-session rows; RUNTIME_PROOF = harness + 191-test final-main battery + CI); any live contradiction reopens the affected status",
         "implementation chain: 68c316c (migration/recovery) -> a1a7732 (ledger reconciliation) -> 2928dcb (execution_identity_v1 principal, PR #34) -> 5947f79 (residuals, PR #35)"
-      ]
+      ],
+      "drift_recovery": {
+        "found_at": "2026-07-13 first canonical RTH live session (UNIVERSAL_RTH_PREPARATION_AND_LIVE_VALIDATION_V1)",
+        "prior_status": "CLOSED_WITH_EVIDENCE",
+        "corrected_status": "NOT_CLOSED",
+        "reason": "live evidence contradicted complete decision-cycle persistence: identities 0->258 and ledgers 0->258 but production_decision_records +0; anchor ordering defect (post-publish tail vs synchronous finalize) plus unconditional 'decision' expected-surface on log_only cycles; the landed test suites exercised the persistence path synchronously and never the real _fetch_state ordering",
+        "proven_sub_results_preserved": true,
+        "preserved_sub_proofs": [
+          "identity registration + envelope canonicalization (258 rows, exact git_sha, canonical envelopes)",
+          "snapshot identity linkage + calibration identity linkage (landed 1:1 with registered identities)",
+          "linkage-trigger enforcement + fail-closed refusal of unregistered writes (the refusals ARE the trigger working)",
+          "ledger partial-persistence honesty (OPEN, never falsely complete)",
+          "guest-anchor routing disclosure (requested vs bundle ticker on live rows)",
+          "artifact-byte identity / CAS retention / historical byte-pinned resolution (uncontradicted)"
+        ],
+        "evidence_packet": "reports/exec_identity/rth_2026-07-13_decision_surface_contradiction.json",
+        "correction_sha": "branch exec-identity-decision-surface-ordering-v1 (this commit)"
+      }
     }
   ],
   "real_money_approval": "NOT_APPROVED"

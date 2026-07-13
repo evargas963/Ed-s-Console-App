@@ -29,7 +29,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783937322.8331063,
   "expires_at_epoch": 1784542122.8331063,
   "operator_authorization": "MISSION = ML_PIPE_ITEM_4_FINAL_RECORDS_CLOSURE_V1 (operator packet): records and governance-coherence only; PR path; operator integrates",
@@ -46,5 +46,6 @@
     "strict activation creating unbounded outage",
     "red required PR/main check",
     "main advances incompatibly"
-  ]
+  ],
+  "retired_note": "records PR #36 merged at final main 6311393bef52 (4/4 push-event CI: hardening 29248047560, objective-audit 29248047459, pytest-full 29248047449, schwab-csv-first 29248047520)"
 }
