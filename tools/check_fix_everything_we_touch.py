@@ -3712,6 +3712,7 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_check_stack_rightsizing",
     "check_operator_trust_governance",
     "check_universal_standard",
+    "check_universal_fix_impact_gate",
 )
 
 # Pre-commit staged / commit-msg locks (cannot run repo-wide without staged paths).
@@ -3763,6 +3764,8 @@ _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "external:tools/check_universal_ticker_lock.py",
             "external:tests/test_check_universal_ticker_lock.py",
+            "check_universal_fix_impact_gate",
+            "external:tests/test_universal_fix_impact_gate.py",
         ),
     ),
     ("Ablation grid", ("check_ablation_seven_model_four_horizon_grid", "check_ablation_full_stack_non_negotiable", "check_ablation_denominator_vocabulary")),
@@ -3866,6 +3869,8 @@ _EXTERNAL_TOOL_LOCKS: tuple[str, ...] = (
     "tools/check_prepush_fast_gate.py",
     "tools/check_governance_generated_artifacts_clean.py",
     "tools/check_ci_tooling_dependencies.py",
+    "tools/check_universal_fix_impact_gate.py",
+    "tools/build_universal_repository_inventory.py",
 )
 
 
@@ -4114,6 +4119,13 @@ def check_artifact_load_verification_boundary() -> list[str]:
                     f"verification at line {verify_line} (ML-PIPE Item 4)"
                 )
     return errors
+
+
+def check_universal_fix_impact_gate() -> list[str]:
+    """UNIVERSAL_FIX_IMPACT_GATE_V1 — reject falsely universal fixes repo-wide."""
+    from tools.check_universal_fix_impact_gate import run_static_checks
+
+    return run_static_checks()
 
 
 def check_encoder_cone_mechanical_lock() -> list[str]:

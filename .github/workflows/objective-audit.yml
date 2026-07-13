@@ -54,6 +54,9 @@ jobs:
       - name: Agent preload contract checker
         run: python tools/check_agent_preload_contract.py
 
+      - name: Universal fix impact gate tests
+        run: python -m pytest tests/test_universal_fix_impact_gate.py tests/test_universal_fix_impact_gate_adversarial.py -q
+
       - name: Phase 3D external enforcement checkers
         run: |
           python -m pytest tests/test_branch_protection_proof.py tests/test_required_status_checks.py tests/test_governance_critical_files.py tests/test_no_verify_resistance.py tests/test_governance_self_protection.py tests/test_remote_enforcement_evidence.py -q

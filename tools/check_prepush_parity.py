@@ -53,6 +53,8 @@ HARDENING_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "hardening.yml"
 FULL_SAFE_BUNDLE: tuple[str, ...] = (
     "tests/test_governance_consolidation.py",
     "tests/test_check_fix_everything_we_touch.py",
+    "tests/test_universal_fix_impact_gate.py",
+    "tests/test_check_universal_ticker_lock.py",
     "tests/test_ml_feature_schema_parity.py",
     "tests/test_check_schwab_csv_first.py",
     "tests/test_forbidden_phrases.py",
@@ -172,6 +174,13 @@ def run_parity_gate(*, base_ref: str = "origin/main", emit=print) -> int:
     stage_results["static"] = rc
     if rc != 0:
         emit(f"[parity:static] FAIL\n{out}")
+
+    rc, out = _run(
+        [sys.executable, "tools/check_universal_fix_impact_gate.py", "--prepush", f"--base-ref={base_ref}"]
+    )
+    stage_results["universal_fix_gate"] = rc
+    if rc != 0:
+        emit(f"[parity:universal_fix_gate] FAIL\n{out}")
 
     diff_file = write_outgoing_diff(base_ref)
     rc, out = _run(

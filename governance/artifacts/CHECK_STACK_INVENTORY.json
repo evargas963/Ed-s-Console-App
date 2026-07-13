@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "phase": "3I-CheckStack",
-  "generated_at_utc": "2026-07-13T00:47:13+00:00",
+  "generated_at_utc": "2026-07-13T21:14:08+00:00",
   "policy": "governance/docs/CHECK_STACK_RIGHTSIZING.md",
   "runtime_budgets_seconds": {
     "precommit_normal": 60,
@@ -28,7 +28,7 @@
       "recommendation": "required_ci_owned \u2014 keep off local pre-push (pytest-full backs it)"
     }
   ],
-  "check_count": 69,
+  "check_count": 70,
   "duplication_analysis": [
     {
       "check_a": "prepush-fast-gate",
@@ -237,6 +237,7 @@
       "check_check_stack_rightsizing",
       "check_operator_trust_governance",
       "check_universal_standard",
+      "check_universal_fix_impact_gate",
       "enforce_all_rules_objective_audit"
     ],
     "merge_with_existing_check": [],
@@ -1637,6 +1638,26 @@
       "scope": "repo-wide static",
       "files_or_modules_covered": "full repo",
       "risk_addressed": "universal standard",
+      "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
+      "must_run_precommit": false,
+      "must_run_prepush": false,
+      "must_run_ci": true,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "keep_ci_only",
+      "overlap_with_other_checks": []
+    },
+    {
+      "check_id": "check_universal_fix_impact_gate",
+      "command": "check_fix_everything_we_touch.py::check_universal_fix_impact_gate",
+      "tier": 2,
+      "runtime_seconds": null,
+      "scope": "repo-wide static",
+      "files_or_modules_covered": "full repo",
+      "risk_addressed": "universal fix impact gate",
       "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
       "must_run_precommit": false,
       "must_run_prepush": false,
