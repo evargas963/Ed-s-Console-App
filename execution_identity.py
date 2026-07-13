@@ -699,3 +699,139 @@ def require_identity_for_model_derived_write(
             f"{surface}: model-derived production write requires decision_id + execution_identity_sha256",
         )
     return ROW_CLASS_MODEL_DERIVED
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Live-cycle anchor (server persist tail)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def anchor_production_execution(
+    *,
+    requested_ticker: str,
+    serving_provenance: dict[str, Any] | None,
+    calibration_info: dict[str, Any] | None,
+    db_conn: sqlite3.Connection,
+    decision_id: str,
+    executed_at_utc: float,
+    expected_surfaces: list[str],
+    cas_root: Path | None = None,
+) -> str:
+    """Create the identity anchor for one live decision cycle BEFORE any
+    model-derived persistence.  Assembles the envelope from the ACTUAL
+    execution surfaces (release object, Item-4 verification provenance
+    registry, serving provenance, calibration attach identity), archives every
+    referenced artifact byte into the CAS, and registers identity + ledger.
+
+    Raises ExecutionIdentityError on any unresolvable component — the caller
+    must then REFUSE the model-derived write (fail closed), never persist a
+    model-derived row without identity.
+    """
+    from release_object import get_current_release, validate_release_for_emission
+
+    release = get_current_release(required=False)
+    ok, reason = validate_release_for_emission(release)
+    if not ok or not isinstance(release, dict):
+        raise ExecutionIdentityError(
+            "WRITE_WITHOUT_IDENTITY", f"release unavailable for identity anchor: {reason}"
+        )
+
+    prov = serving_provenance or {}
+    bundle_ticker = str(prov.get("bundle_ticker") or requested_ticker).upper()
+    runtime_class = str(prov.get("runtime_class") or "UNKNOWN")
+
+    import ml_predict as mp
+    from ml_horizon import ML_HORIZON_SLUGS
+
+    bundles: dict[str, dict[str, Any]] = {}
+    sources: dict[str, Path] = {}
+    for hz in ML_HORIZON_SLUGS:
+        roles = mp.get_artifact_verification_provenance(bundle_ticker, hz)
+        verified = {r: p for r, p in roles.items() if p.get("verified")}
+        if not verified:
+            continue
+        artifacts: dict[str, str] = {}
+        manifest_sha = None
+        bundle_dir = None
+        for role, rp in sorted(verified.items()):
+            sha = str(rp.get("actual_sha256") or "").lower()
+            if len(sha) != 64:
+                raise ExecutionIdentityError(
+                    "WRITE_WITHOUT_IDENTITY",
+                    f"verified role {role} for {bundle_ticker}/{hz} lacks an artifact sha256",
+                )
+            artifacts[role] = sha
+            ap = rp.get("artifact_path")
+            if ap:
+                sources[sha] = Path(ap)
+            m_sha = str(rp.get("manifest_sha256") or "").lower()
+            if len(m_sha) == 64:
+                manifest_sha = m_sha
+                mpth = rp.get("manifest_path")
+                if mpth:
+                    sources[m_sha] = Path(mpth)
+            bundle_dir = bundle_dir or rp.get("bundle_dir") or str(Path(str(ap)).parent if ap else "")
+        bundles[hz] = {
+            "bundle_dir_identity": str(bundle_dir or ""),
+            "manifest_sha256": manifest_sha,
+            "artifacts": artifacts,
+            "source_lineage": {
+                "trained_at": next((v.get("trained_at") for v in verified.values()
+                                     if v.get("trained_at")), None),
+                "scheduler_cache_key": next((v.get("scheduler_cache_key") for v in verified.values()
+                                              if v.get("scheduler_cache_key")), None),
+            },
+            "integrity_class": "VERIFIED_AGAINST_BUNDLE_MANIFEST",
+            "serving_complete": bool(prov.get("bundle_complete")),
+        }
+
+    from calibration.writer import calibration_logging_enabled
+
+    cal_enabled = calibration_logging_enabled()
+    cal_by_hz = None
+    if isinstance(calibration_info, dict) and calibration_info:
+        cal_by_hz = calibration_info
+
+    import model_contract as mc_mod
+
+    stack_pins = {
+        "feature_schema_version": getattr(mc_mod, "CURRENT_FEATURE_SCHEMA_VERSION", None),
+        "preprocessing_version": getattr(mc_mod, "CURRENT_PREPROCESSING_VERSION", None),
+        "contract_fields": sorted(getattr(mc_mod, "CONTRACT_FIELDS", ()) or ()),
+        "env_controlled_behavior": {
+            k: os.environ.get(k)
+            for k in (
+                "ED_APPLY_ABLATION_SURVIVORS", "ED_ARTIFACT_INTEGRITY_STRICT",
+                "ED_CALIBRATION_LOG", "ED_XGB_STRICT_ACTIVE_ONLY",
+                "ED_ARTIFACT_REVERIFY_TTL_SECONDS",
+            )
+            if os.environ.get(k) is not None
+        },
+    }
+
+    degraded_reasons = []
+    if prov.get("relaxation_active"):
+        degraded_reasons.append("relaxation_active")
+    if prov.get("fail_closed_reason"):
+        degraded_reasons.append(str(prov.get("fail_closed_reason")))
+    envelope = build_execution_envelope(
+        release=release,
+        requested_ticker=requested_ticker,
+        bundle_ticker=bundle_ticker,
+        guest_anchor=bool(prov.get("guest_anchor")),
+        guest_anchor_ticker=prov.get("guest_anchor_ticker"),
+        horizons_attempted=list(ML_HORIZON_SLUGS),
+        bundles_by_horizon=bundles,
+        calibration_by_horizon=cal_by_hz,
+        calibration_logging_enabled=cal_enabled,
+        stack_pins=stack_pins,
+        runtime_class=runtime_class,
+        degradation=({"degraded": True, "reasons": degraded_reasons}
+                     if degraded_reasons else None),
+        tradeable_policy={"evaluated": True,
+                          "model_load_status": prov.get("model_load_status")},
+        executed_at_utc=executed_at_utc,
+    )
+    archive_envelope_artifacts(envelope, sources, cas_root=cas_root)
+    return insert_execution_identity(
+        db_conn, envelope, decision_id=decision_id, expected_surfaces=expected_surfaces
+    )

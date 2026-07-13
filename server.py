@@ -7589,14 +7589,67 @@ def _fetch_state(
                             _snapshot_kwargs.get("combined_signal"),
                             _starve_reason,
                         )
+                    # execution_identity_v1 anchor — identity BEFORE any model-
+                    # derived persistence. Fail-closed: on any identity error the
+                    # MODEL-DERIVED snapshot write is REFUSED (loud ERROR + skip),
+                    # never persisted without its immutable execution identity.
+                    # Quote-only rows (no combined_signal) stay NOT_APPLICABLE.
+                    # Schwab CSV authority checked: yes
+                    # CSV row(s): NO_SCHWAB_EQUIVALENT — provenance anchor only;
+                    #   no market field read, derived, or emitted by this block.
+                    # Derived-field disposition: none required.
+                    # All consumers checked: yes — additive identity fields.
+                    # SCHWAB_CSV_CHECKED
+                    _xid_refused = False
+                    if _snapshot_kwargs.get("combined_signal") is not None:
+                        from decision_record import new_decision_id as _new_did
+                        from execution_identity import (
+                            ExecutionIdentityError as _XidErr,
+                        )
+                        from execution_identity import (
+                            anchor_production_execution as _xid_anchor,
+                        )
+
+                        _xid_did = _new_did()
+                        try:
+                            with _ed_db._connect() as _xconn:
+                                _xid_sha = _xid_anchor(
+                                    requested_ticker=ticker,
+                                    serving_provenance=getattr(ms, "model_serving_provenance_v1", None),
+                                    calibration_info=None,
+                                    db_conn=_xconn,
+                                    decision_id=_xid_did,
+                                    executed_at_utc=float(_snap_ts),
+                                    expected_surfaces=["decision", "snapshot"],
+                                )
+                        except _XidErr as _x_exc:
+                            log.error(
+                                "EXECUTION_IDENTITY_REFUSED ticker=%s reason=%s — "
+                                "model-derived snapshot write REFUSED (fail closed)",
+                                ticker, _x_exc,
+                            )
+                            _xid_refused = True
+                        else:
+                            _snapshot_kwargs["decision_id"] = _xid_did
+                            _snapshot_kwargs["execution_identity_sha256"] = _xid_sha
+                            _snapshot_kwargs["execution_identity_class"] = "MODEL_DERIVED"
+                            setattr(ms, "_execution_identity_pair", (_xid_did, _xid_sha))
                     _snapshotrow_field_names = set(getattr(SnapshotRow, "__annotations__", {}).keys())
                     _dropped_snapshot_fields = sorted(k for k in _snapshot_kwargs if k not in _snapshotrow_field_names)
                     if _dropped_snapshot_fields:
                         log.warning("SnapshotRow field drift detected; dropping unsupported fields: %s", _dropped_snapshot_fields)
-                    _snap = SnapshotRow(**{k: v for k, v in _snapshot_kwargs.items() if k in _snapshotrow_field_names})
-                    _ed_db.insert_snapshot(_snap)
-                    _snapshot_row_insert_committed(ticker, _snap_ts)
-                    _snap_insert_landed = True
+                    if _xid_refused:
+                        _snapshot_row_insert_release(ticker, _snap_ts)
+                    else:
+                        _snap = SnapshotRow(**{k: v for k, v in _snapshot_kwargs.items() if k in _snapshotrow_field_names})
+                        _ed_db.insert_snapshot(_snap)
+                        _snapshot_row_insert_committed(ticker, _snap_ts)
+                        _snap_insert_landed = True
+                        if _snapshot_kwargs.get("execution_identity_sha256"):
+                            from execution_identity import mark_surface_landed as _xid_mark
+
+                            with _ed_db._connect() as _xconn2:
+                                _xid_mark(_xconn2, _snapshot_kwargs["decision_id"], "snapshot")
                 # LIVE_OPERATOR_MODE_RESET_V1 Step 3 — bars persist + outcome backfill ride
                 # the snapshot throttle (1/min/ticker): per-refresh writes contended with the
                 # live path; bars re-seed from Schwab pricehistory after any gap and labels
@@ -8416,7 +8469,25 @@ def _fetch_state(
     from trade_impacting_gate import resolve_fetch_state_decision_route
 
     _decision_route = resolve_fetch_state_decision_route(update_source)
+    # execution_identity_v1: one cycle = one decision_id = one identity. Seed
+    # the anchored pair so stamping binds the SAME decision the snapshot carries.
+    _xid_pair = getattr(ms, "_execution_identity_pair", None)
+    if _xid_pair:
+        ms_dict["decision_id"] = _xid_pair[0]
+        ms_dict["execution_identity_sha256"] = _xid_pair[1]
     _finalize_production_decision(ms_dict, _decision_route)
+    if (
+        _xid_pair
+        and ms_dict.get("decision_id") == _xid_pair[0]
+        and not ms_dict.get("decision_generation_skipped")
+    ):
+        try:
+            from execution_identity import mark_surface_landed as _xid_mark_dec
+
+            with get_db()._connect() as _xconn3:
+                _xid_mark_dec(_xconn3, _xid_pair[0], "decision")
+        except Exception as _x_exc2:
+            log.error("execution identity decision-surface landing failed: %s", _x_exc2)
     _stage_marks.append(("payload_assembly_model_health_finalize", time.perf_counter()))
     _t_pipeline_end_mono = time.monotonic()
     ms_dict["_server_build_ts"] = time.time()

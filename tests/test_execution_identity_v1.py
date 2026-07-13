@@ -491,3 +491,80 @@ def test_calibration_disabled_is_explicit_never_silent():
     assert "disabled" in cal["reason"]
     # and it changes the identity relative to attached calibration
     assert xi.execution_identity_sha256(env) != xi.execution_identity_sha256(_envelope())
+
+
+# ── live-cycle wiring locks (server persist tail) ───────────────────────────
+
+
+def test_stamp_decision_bundle_respects_anchored_decision_id(monkeypatch):
+    import live_decision_bundle as ldb
+
+    ms = {"ticker": "SPY", "signals_engine_failed": False}
+    monkeypatch.setattr("trade_impacting_gate.apply_trade_impacting_gate",
+                        lambda m, route: type("G", (), {"quarantined": False,
+                                                         "production_emission_allowed": True,
+                                                         "reasons": [], "route_class": "production"})())
+    monkeypatch.setattr("release_object.get_current_release", lambda required=False: {"release_id": "r1"})
+    monkeypatch.setattr("release_object.validate_release_for_emission", lambda r: (True, "ok"))
+    ms["decision_id"] = "anchored-decision-id"
+    ldb.stamp_decision_bundle(ms, route="server._fetch_state")
+    assert ms["decision_id"] == "anchored-decision-id", (
+        "one cycle = one decision_id; stamping must never regenerate over the anchor"
+    )
+
+
+def test_server_model_derived_snapshot_write_is_anchor_guarded():
+    """Recurrence lock: the server's model-derived snapshot insert must sit
+    behind the execution-identity anchor (refused-write skip path present),
+    and the quote-only lightweight path must NOT create identities."""
+    src = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    i_anchor = src.index("anchor_production_execution as _xid_anchor")
+    i_refuse = src.index("if _xid_refused:")
+    i_model_insert = src.index("_ed_db.insert_snapshot(_snap)")
+    assert i_anchor < i_refuse < i_model_insert
+    assert "EXECUTION_IDENTITY_REFUSED" in src
+    # quote-only path (lightweight builder) carries no identity wiring
+    i_light = src.index("build_lightweight_snapshot_row_from_quote")
+    seg = src[i_light : i_light + 600]
+    assert "execution_identity" not in seg
+    # decision surface lands only when stamping bound the SAME decision
+    assert 'ms_dict.get("decision_id") == _xid_pair[0]' in src
+
+
+def test_write_path_universe_inventory():
+    """Recurrence lock: every repo-root production writer to the three linked
+    tables is known.  A NEW writer file appearing in this scan means the
+    identity system must be extended — this test fails until it is."""
+    root = Path(__file__).resolve().parent.parent
+    writers: set[str] = set()
+    for p in sorted(root.glob("*.py")) + sorted((root / "calibration").glob("*.py")):
+        text = p.read_text(encoding="utf-8", errors="replace")
+        if ("INSERT INTO snapshots" in text or "insert_snapshot(" in text
+                or "INSERT INTO production_decision_records" in text
+                or "INSERT INTO calibration_decision_log" in text):
+            if p.name.startswith("test_") or "backfill" in p.name or "analyze" in p.name:
+                continue
+            writers.add(p.name if p.parent == root else f"calibration/{p.name}")
+    known = {
+        "db.py",                      # insert_snapshot (guarded; quote-only N/A)
+        "server.py",                  # anchored model-derived + quote-only paths
+        "decision_record.py",         # identity-carrying decision records
+        "live_decision_bundle.py",    # stamp + persist passthrough
+        "calibration/writer.py",      # identity-carrying calibration rows
+        "calibration/schema.py",      # schema DDL only (appears via table token)
+        "calibration/v2_live_logging.py",  # live calibration caller (passthrough site)
+        "execution_identity.py",      # the identity system itself
+        "snapshot_normalizer.py",     # derives snapshots_1m_normalized FROM existing
+                                       # snapshot rows (identity travels with the source
+                                       # row; no new model execution occurs)
+        # Offline validation/proof harnesses writing to NON-production copies —
+        # not live decision cycles; identities are neither created nor faked:
+        "calibration/build_trusted_anchor_proof_dataset.py",
+        "calibration/run_production_accumulation_validation.py",
+        "calibration/validate_logging_e2e.py",
+    }
+    unknown = writers - known
+    assert not unknown, (
+        f"NEW production write path(s) {sorted(unknown)} must be wired into "
+        "execution_identity_v1 (anchor + linkage) before landing"
+    )
