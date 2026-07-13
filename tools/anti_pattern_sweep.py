@@ -370,8 +370,8 @@ CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     # ANTI_PATTERN_CAPS_VIOLATIONS bucket — exact line+variant exemptions for reviewed
     # non-market-leaf hits (no whole-file prefix; any future hit on another line/variant
     # in these files is still caught). Reasons state the reviewed category.
-    ("decision_record.py", 305, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
-    ("decision_record.py", 375, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
+    ("decision_record.py", 352, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
+    ("decision_record.py", 422, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
     ("money_path_ticker_tiers.py", 66, "GET_WITH_DEFAULT", "env config only"),
     ("override_registry.py", 85, "IF_TRUTHY_ELSE", "SQL COUNT(*) aggregate coercion"),
     ("release_object.py", 35, "GET_WITH_DEFAULT", "env config only"),

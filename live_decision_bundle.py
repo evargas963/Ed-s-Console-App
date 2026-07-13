@@ -114,7 +114,10 @@ def stamp_decision_bundle(ms_dict: dict, *, route: str = "unknown") -> dict:
         _next_generation_id += 1
         gid = _next_generation_id
 
-    ms_dict["decision_id"] = new_decision_id()
+    # execution_identity_v1: the identity anchor may have generated the
+    # decision_id earlier in the same cycle (before the model-derived snapshot
+    # insert). One cycle = one decision_id — never regenerate over it.
+    ms_dict["decision_id"] = ms_dict.get("decision_id") or new_decision_id()
     ms_dict["decision_generation_id"] = int(gid)
     ms_dict["decision_timestamp_utc"] = float(time.time())
     ms_dict["decision_tick_kind"] = "live"
@@ -147,7 +150,13 @@ def persist_stamped_decision(ms_dict: dict, *, route: str, db_path) -> Optional[
         return None
     from decision_record import persist_production_decision
 
-    return persist_production_decision(ms_dict, route=route, release=release, db_path=db_path)
+    return persist_production_decision(
+        ms_dict,
+        route=route,
+        release=release,
+        db_path=db_path,
+        execution_identity_sha256=ms_dict.get("execution_identity_sha256"),
+    )
 
 
 

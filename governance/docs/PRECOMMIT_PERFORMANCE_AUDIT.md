@@ -2,7 +2,7 @@
 
 **Scope:** Institutional governance — pre-commit tiering, profiling, and cache policy (Phase 3F-Perf1). Does not weaken objective-audit or repo-wide locks on pre-push/CI.
 
-Generated: `2026-07-12T13:43:40+00:00`
+Generated: `2026-07-13T00:47:13+00:00`
 Mode: `declared_policy_only`
 
 ## Tier model
