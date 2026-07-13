@@ -582,3 +582,42 @@ def test_main_still_fails_runtime_time_time_without_csv_marker(monkeypatch, caps
     assert rc == 1
     assert "Schwab CSV-first guard FAILED" in out
     assert "schwab_client.py" in out
+
+
+def test_universal_fix_gate_sources_require_runner_authoritative_v4_pin():
+    """Non-excluded mission sources must keep meta pin coherent with scoreboard.
+
+    tools/ and governance/artifacts/ are scanner-excluded; tests/, governance/*.json
+    mission surfaces, and workflow docs are scanned. Adding those without adopting
+    the runner-authoritative meta fails Schwab CSV First on PR event. This lock
+    proves committed meta/scoreboard pin coherence and that the mission scannable
+    surfaces exist as tracked files.
+    """
+    import json
+
+    meta = json.loads(
+        (ROOT / "governance/artifacts/schwab_v4_register_build_meta.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    sb = json.loads(
+        (ROOT / "governance/artifacts/schwab_v4_scoreboard.json").read_text(encoding="utf-8")
+    )
+    assert meta["register_content_sha256"]
+    assert meta["register_content_sha256"] == sb["register_build"]["register_content_sha256"]
+    assert meta["register_rows_written"] == sb["register_build"]["register_rows_written"]
+    assert meta.get("partial_scan") is False
+    excludes = set(meta["scanner_flags"]["scope_exclude_prefixes"])
+    assert "tools" in excludes
+    assert "governance/artifacts" in excludes
+    scannable = [
+        "tests/test_universal_fix_impact_gate.py",
+        "tests/test_universal_fix_impact_gate_adversarial.py",
+        "governance/universal_fix_impact_manifest.json",
+        "governance/mission_authorization/active/UNIVERSAL-FIX-IMPACT-GATE-V1.json",
+    ]
+    for rel in scannable:
+        assert (ROOT / rel).is_file(), rel
+        assert not any(rel.startswith(p + "/") or rel.startswith(p) and False for p in excludes)
+        # Explicit: none of these live under a scanner exclude prefix.
+        assert not any(rel.replace("\\", "/").startswith(p.rstrip("/") + "/") for p in excludes)

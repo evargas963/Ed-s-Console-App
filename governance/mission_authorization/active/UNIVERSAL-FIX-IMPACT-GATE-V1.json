@@ -33,7 +33,11 @@
       "governance/README.md",
       "tests/test_universal_fix_impact_gate.py",
       "tests/test_universal_fix_impact_gate_adversarial.py",
-      ".github/workflows/objective-audit.yml"
+      "tests/test_check_schwab_csv_first.py",
+      ".github/workflows/objective-audit.yml",
+      "governance/artifacts/schwab_v4_register_build_meta.json",
+      "governance/artifacts/schwab_v4_scoreboard.json",
+      "governance/mission_authorization/consumed/ML-PIPE-ITEM4-RECORDS-V1.retired.json"
     ],
     "semantic_domains": [
       "governance_gates",
@@ -43,13 +47,10 @@
       "OPEN_ITEMS.md",
       "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
       "governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json",
-      "governance/ML_ITEM4_MIGRATION_POLICY.json",
-      "governance/artifacts/schwab_v4_register_build_meta.json",
-      "governance/artifacts/schwab_v4_scoreboard.json",
-      "governance/mission_authorization/active/ML-PIPE-ITEM4-RECORDS-V1.json"
+      "governance/ML_ITEM4_MIGRATION_POLICY.json"
     ]
   },
-  "shared_file_policy": "disjoint from PR #36 Item-4 records reconciliation; no Item-4 lane status edits",
+  "shared_file_policy": "narrow exception 2026-07-13: runner-authoritative V4 pin adopt for PR38 Schwab CI; Item4 RECORDS released schwab_v4_* ownership post-PR36 merge; no Item-4 acceptance label edits",
   "created_at_epoch": 1784100000.0,
   "expires_at_epoch": 1784500000.0,
   "operator_authorization": "operator mission UNIVERSAL_FIX_IMPACT_GATE_V1_IMPLEMENTATION (2026-07-13): AUTHORIZED_AGENT=Cursor, DIRECT_MAIN_PUSH=FORBIDDEN, PR_REQUIRED=YES, MERGE_AUTHORIZATION=NONE",
