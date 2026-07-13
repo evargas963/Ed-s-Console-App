@@ -29,6 +29,11 @@ LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS = (
 # calibration.writer directly with decision_source markers; they never use
 # this live entry point.
 LIVE_ADVISORY_V2_REFUSED_NO_IDENTITY = "v2_live_log_refused_missing_execution_identity"
+# EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: a cycle that is NOT model-derived
+# (no combined signal, so the anchor contract creates no identity for it)
+# performs no governed calibration write at all — an EXPECTED non-write recorded
+# with this reason, distinct from the fail-closed identity refusal above.
+LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE = "v2_live_log_skipped_non_model_cycle"
 
 
 def build_live_v2_advisory_snapshot(

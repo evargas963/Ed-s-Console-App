@@ -1,0 +1,58 @@
+{
+  "schema_version": "1",
+  "mission_id": "EXEC-ID-ORDERING-V1",
+  "agent": "Claude",
+  "mission_type": "feature_implementation",
+  "authorized_branch": "exec-identity-decision-surface-ordering-v1",
+  "authorized_worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole-execid",
+  "base_sha": "6311393bef5271116df80c6390f5c392a6db037e",
+  "authorized_push_target": "origin/exec-identity-decision-surface-ordering-v1",
+  "target_branch": "exec-identity-decision-surface-ordering-v1",
+  "direct_main_permission": false,
+  "pr_required": true,
+  "integration_owner": "OPERATOR",
+  "authorized_scope": {
+    "files": [
+      ".gitignore",
+      "OPEN_ITEMS.md",
+      "calibration/schema.py",
+      "calibration/v2_live_logging.py",
+      "db.py",
+      "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
+      "governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json",
+      "governance/artifacts/persistence_consumer_map.json",
+      "governance/artifacts/schwab_v4_register_build_meta.json",
+      "governance/artifacts/schwab_v4_scoreboard.json",
+      "governance/mission_authorization/active/EXEC-ID-ORDERING-V1.json",
+      "governance/mission_authorization/consumed/ML-PIPE-ITEM4-RECORDS-V1.retired.json",
+      "reports/exec_identity/rth_2026-07-13_decision_surface_contradiction.json",
+      "server.py",
+      "tests/test_card_wiring_transport_locks.py",
+      "tests/test_execution_identity_v1.py"
+    ],
+    "semantic_domains": [
+      "model_loading",
+      "shared_runtime_infrastructure",
+      "closure_schema"
+    ]
+  },
+  "shared_file_policy": "none",
+  "lease_state": "active",
+  "created_at_epoch": 1783952083.3482084,
+  "expires_at_epoch": 1785161683.3482084,
+  "operator_authorization": "MISSION = EXEC_IDENTITY_DECISION_SURFACE_ORDERING_FIX_V1 (operator packet 2026-07-13): anchor execution identity before universal decision persistence; PR path; operator integrates; RTH reproof required before closure",
+  "allowed_integration_method": "PR opened by Claude, integration owned by OPERATOR-authorized PR path; no direct main push",
+  "required_checks": [
+    "objective-audit",
+    "pytest-full",
+    "hardening",
+    "schwab-csv-first"
+  ],
+  "stop_conditions": [
+    "safe separation from Cursor's universal-fix-gate work cannot be maintained",
+    "fix requires production database mutation",
+    "red required PR/main check",
+    "main advances incompatibly",
+    "bypass or direct-main push would be required"
+  ]
+}

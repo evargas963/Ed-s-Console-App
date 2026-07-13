@@ -5664,13 +5664,21 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
 # a minimal dict (saves serialization overhead for background tickers).
 # ─────────────────────────────────────────────────────────────────────────────
 def _finalize_production_decision(ms_dict: dict, route: str) -> dict:
-    """Stamp immutable decision_id + release_id and persist for I-31 reconstruction."""
+    """Stamp immutable decision_id + release_id and persist for I-31 reconstruction.
+
+    EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: records the persist OUTCOME on
+    ms_dict["_decision_persist_landed"] so the ledger "decision" surface is
+    marked landed only when the row actually inserted — a refused or skipped
+    write leaves the ledger honestly OPEN/INCOMPLETE, never falsely complete.
+    """
     stamp_decision_bundle(ms_dict, route=route)
+    ms_dict["_decision_persist_landed"] = False
     if _HAS_SIGNALS and ms_dict.get("decision_id"):
         try:
             from db import DB_PATH
 
-            persist_stamped_decision(ms_dict, route=route, db_path=DB_PATH)
+            _persisted_id = persist_stamped_decision(ms_dict, route=route, db_path=DB_PATH)
+            ms_dict["_decision_persist_landed"] = bool(_persisted_id)
         except Exception as exc:
             log.warning("production decision persist failed route=%s: %s", route, exc)
     return ms_dict
@@ -7023,6 +7031,122 @@ def _fetch_state(
     except Exception as _v2_build_e:
         log.warning("v2 decision build failed: %s", _v2_build_e)
 
+    # ── EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor ─────────
+    # Anchor the ONE (decision_id, execution_identity) pair for this cycle
+    # BEFORE every governed consumer: the production-decision finalize (full
+    # path), the log_only early return, and the post-publish persistence tail
+    # (snapshot + calibration writes). Root cause of the 2026-07-13 RTH
+    # contradiction: the anchor lived inside the tail, which runs AFTER
+    # _finalize_production_decision on the full path — stamping minted a
+    # decision_id with no identity and the linkage trigger refused every
+    # production-decision write (255/258 ledgers OPEN missing "decision").
+    # expected_surfaces mirror the cycle's REAL writers: "decision" only when
+    # this cycle finalizes on a production route (never on log_only),
+    # "snapshot" only when the per-minute throttle reservation admits this
+    # cycle, "calibration" only when logging is enabled and the payload +
+    # served v2 decision exist. A writer-side divergence after anchoring
+    # leaves the ledger OPEN → INCOMPLETE (honest, mechanically visible).
+    # Schwab CSV authority checked: yes
+    # CSV row(s): NO_SCHWAB_EQUIVALENT — provenance anchor ordering only;
+    #   no market field read, derived, or emitted by this block.
+    # Derived-field disposition: none required.
+    # All consumers checked: yes — finalize (ms_dict pair seed), tail snapshot
+    #   kwargs, tail calibration append, v2 logging dict; all consume the one
+    #   anchored pair below.
+    # SCHWAB_CSV_CHECKED
+    _xid_do_snapshot_insert = False
+    if _ed_db:
+        try:
+            # Reservation hoisted from the tail (same key: ticker + refresh ts;
+            # still exactly one reservation per cycle). The tail releases it on
+            # a failed insert exactly as before.
+            _xid_do_snapshot_insert = bool(
+                _snapshot_row_insert_allowed(ticker, _refresh_ts_utc, db=_ed_db)
+            )
+        except Exception as _thr_e:
+            log.warning("snapshot throttle reservation failed ticker=%s: %s", ticker, _thr_e)
+    # Model-derived predicate reads the SAME source the snapshot writer uses
+    # (the tail sets combined_signal=ms.call_signal) — noncanonical runtime
+    # proof 2026-07-13 caught the v2-dict projection lacking this key, which
+    # skipped the anchor and fail-closed every model-derived surface.
+    _xid_model_derived = getattr(ms, "call_signal", None) is not None
+    if _ed_db and _xid_model_derived:
+        from decision_record import new_decision_id as _new_did
+        from execution_identity import ExecutionIdentityError as _XidErr
+        from execution_identity import anchor_production_execution as _xid_anchor
+        from trade_impacting_gate import (
+            classify_route as _xid_classify_route,
+            resolve_fetch_state_decision_route as _xid_resolve_route,
+        )
+        from calibration.writer import calibration_logging_enabled as _cal_on
+
+        _v2md = _v2_logging_ms_dict
+        # ONE cycle = ONE decision: the v2 build's stamped decision_id (same
+        # MarketState, same refresh, gate-checked) is the single owner; every
+        # downstream writer consumes it and stamp_decision_bundle reuses it.
+        _xid_did = str(_v2md.get("decision_id") or "") or _new_did()
+        _xid_route = _xid_resolve_route(update_source)
+        _xid_expected_decision = (
+            (not log_only)
+            and bool(_v2md.get("decision_id"))
+            and _xid_classify_route(_xid_route) == "production"
+        )
+        _xid_expected_cal = bool(
+            _cal_on()
+            and getattr(ms, "_calibration_payload", None)
+            and _v2_decision_for_response is not None
+        )
+        _xid_surfaces = []
+        if _xid_expected_decision:
+            _xid_surfaces.append("decision")
+        if _xid_do_snapshot_insert:
+            _xid_surfaces.append("snapshot")
+        if _xid_expected_cal:
+            _xid_surfaces.append("calibration")
+        # Exact calibration state USED by this cycle's decision: attached at
+        # the v2 build (BEFORE this anchor); absence recorded explicitly.
+        _cal_info = None
+        _conf = _v2md.get("a1_conformal_artifact")
+        _iso_lineage = _v2md.get("a1_calibrated_probability_lineage_id")
+        if isinstance(_conf, dict) or _iso_lineage:
+            _cal_info = {
+                str(_v2md.get("primary_horizon") or "1c"): {
+                    "conformal": (
+                        {
+                            k: _conf.get(k)
+                            for k in ("run_id", "lineage_id", "artifact_id",
+                                       "created_at", "horizon", "ticker")
+                            if _conf.get(k) is not None
+                        }
+                        if isinstance(_conf, dict) else None
+                    ),
+                    "isotonic_lineage_id": _iso_lineage,
+                }
+            }
+        if _xid_surfaces:
+            try:
+                with _ed_db._connect() as _xconn0:
+                    _xid_sha0 = _xid_anchor(
+                        requested_ticker=ticker,
+                        serving_provenance=getattr(ms, "model_serving_provenance_v1", None),
+                        calibration_info=_cal_info,
+                        db_conn=_xconn0,
+                        decision_id=_xid_did,
+                        executed_at_utc=float(_refresh_ts_utc),
+                        expected_surfaces=_xid_surfaces,
+                    )
+            except _XidErr as _x_exc0:
+                log.error(
+                    "EXECUTION_IDENTITY_REFUSED ticker=%s reason=%s — every "
+                    "model-derived persistence surface REFUSED this cycle (fail closed)",
+                    ticker, _x_exc0,
+                )
+            else:
+                setattr(ms, "_execution_identity_pair", (_xid_did, _xid_sha0))
+                _v2_logging_ms_dict["decision_id"] = _xid_did
+                _v2_logging_ms_dict["execution_identity_sha256"] = _xid_sha0
+    _stage_marks.append(("execution_identity_anchor", time.perf_counter()))
+
     # ── FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 — post-publish persistence tail ──
     # Root cause (FIX_B read-only trace, 2026-07-08): the DB snapshot/accuracy
     # block and the calibration append ran BEFORE the full-bundle cache write
@@ -7079,7 +7203,12 @@ def _fetch_state(
             try:
                 from db import SnapshotRow, build_ts_et
                 from math_exposure import _f as _mf
-                _do_insert = _snapshot_row_insert_allowed(ticker, _snap_ts, db=_ed_db)
+                # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: the throttle
+                # reservation was taken at the pre-publish identity anchor so
+                # expected_surfaces could include "snapshot" truthfully; this
+                # tail consumes that single reservation (release-on-failure
+                # semantics below are unchanged).
+                _do_insert = _xid_do_snapshot_insert
                 if not _do_insert:
                     log.debug(
                         "DB snapshot insert skipped (throttle: max 1 insert/ticker/UTC minute; set ED_DB_SNAPSHOT_THROTTLE=0 to disable): %s",
@@ -7590,91 +7719,35 @@ def _fetch_state(
                             _snapshot_kwargs.get("combined_signal"),
                             _starve_reason,
                         )
-                    # execution_identity_v1 anchor — identity BEFORE any model-
-                    # derived persistence. Fail-closed: on any identity error the
-                    # MODEL-DERIVED snapshot write is REFUSED (loud ERROR + skip),
-                    # never persisted without its immutable execution identity.
+                    # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: the identity
+                    # anchor now lives at the pre-publish site (before the
+                    # decision finalize AND this tail); the tail only CONSUMES
+                    # the anchored pair. Fail-closed unchanged: a MODEL-DERIVED
+                    # snapshot with no anchored identity is REFUSED (loud ERROR
+                    # + skip) — never persisted without its immutable identity.
                     # Quote-only rows (no combined_signal) stay NOT_APPLICABLE.
                     # Schwab CSV authority checked: yes
-                    # CSV row(s): NO_SCHWAB_EQUIVALENT — provenance anchor only;
+                    # CSV row(s): NO_SCHWAB_EQUIVALENT — provenance linkage only;
                     #   no market field read, derived, or emitted by this block.
                     # Derived-field disposition: none required.
                     # All consumers checked: yes — additive identity fields.
                     # SCHWAB_CSV_CHECKED
                     _xid_refused = False
                     if _snapshot_kwargs.get("combined_signal") is not None:
-                        from decision_record import new_decision_id as _new_did
-                        from execution_identity import (
-                            ExecutionIdentityError as _XidErr,
-                        )
-                        from execution_identity import (
-                            anchor_production_execution as _xid_anchor,
-                        )
-
-                        # ONE cycle = ONE decision: reuse the v2 decision
-                        # build's stamped decision_id (same MarketState, same
-                        # refresh) so calibration log, snapshot, and decision
-                        # record can never fork identities.
-                        # Schwab CSV authority checked: yes
-                        # CSV row(s): NO_SCHWAB_EQUIVALENT — identity linkage
-                        #   only; no market field read, derived, or emitted.
-                        # Derived-field disposition: none required.
-                        # All consumers checked: yes — additive identity fields.
-                        # SCHWAB_CSV_CHECKED
-                        _v2md = _v2_logging_ms_dict if isinstance(_v2_logging_ms_dict, dict) else {}
-                        _xid_did = str(_v2md.get("decision_id") or "") or _new_did()
-                        # Exact calibration state USED by this cycle's decision:
-                        # attached at the v2 build (BEFORE this anchor); absent
-                        # calibration is recorded explicitly, never silent.
-                        _cal_info = None
-                        _conf = _v2md.get("a1_conformal_artifact")
-                        _iso_lineage = _v2md.get("a1_calibrated_probability_lineage_id")
-                        if isinstance(_conf, dict) or _iso_lineage:
-                            _cal_info = {
-                                str(_v2md.get("primary_horizon") or "1c"): {
-                                    "conformal": (
-                                        {
-                                            k: _conf.get(k)
-                                            for k in ("run_id", "lineage_id", "artifact_id",
-                                                       "created_at", "horizon", "ticker")
-                                            if _conf.get(k) is not None
-                                        }
-                                        if isinstance(_conf, dict) else None
-                                    ),
-                                    "isotonic_lineage_id": _iso_lineage,
-                                }
-                            }
-                        from calibration.writer import calibration_logging_enabled as _cal_on
-
-                        _xid_surfaces = ["decision", "snapshot"]
-                        if _cal_on():
-                            _xid_surfaces.append("calibration")
-                        try:
-                            with _ed_db._connect() as _xconn:
-                                _xid_sha = _xid_anchor(
-                                    requested_ticker=ticker,
-                                    serving_provenance=getattr(ms, "model_serving_provenance_v1", None),
-                                    calibration_info=_cal_info,
-                                    db_conn=_xconn,
-                                    decision_id=_xid_did,
-                                    executed_at_utc=float(_snap_ts),
-                                    expected_surfaces=_xid_surfaces,
-                                )
-                        except _XidErr as _x_exc:
+                        _xid_pair_snap = getattr(ms, "_execution_identity_pair", None)
+                        if _xid_pair_snap:
+                            _snapshot_kwargs["decision_id"] = _xid_pair_snap[0]
+                            _snapshot_kwargs["execution_identity_sha256"] = _xid_pair_snap[1]
+                            _snapshot_kwargs["execution_identity_class"] = "MODEL_DERIVED"
+                        else:
                             log.error(
                                 "EXECUTION_IDENTITY_REFUSED ticker=%s reason=%s — "
                                 "model-derived snapshot write REFUSED (fail closed)",
-                                ticker, _x_exc,
+                                ticker,
+                                "no anchored execution identity for this cycle "
+                                "(pre-publish anchor missing or refused)",
                             )
                             _xid_refused = True
-                        else:
-                            _snapshot_kwargs["decision_id"] = _xid_did
-                            _snapshot_kwargs["execution_identity_sha256"] = _xid_sha
-                            _snapshot_kwargs["execution_identity_class"] = "MODEL_DERIVED"
-                            setattr(ms, "_execution_identity_pair", (_xid_did, _xid_sha))
-                            if isinstance(_v2_logging_ms_dict, dict):
-                                _v2_logging_ms_dict["decision_id"] = _xid_did
-                                _v2_logging_ms_dict["execution_identity_sha256"] = _xid_sha
                     _snapshotrow_field_names = set(getattr(SnapshotRow, "__annotations__", {}).keys())
                     _dropped_snapshot_fields = sorted(k for k in _snapshot_kwargs if k not in _snapshotrow_field_names)
                     if _dropped_snapshot_fields:
@@ -7800,13 +7873,28 @@ def _fetch_state(
             from db import DB_PATH as _calibration_db_path
 
             _xid_pair_cal = getattr(ms, "_execution_identity_pair", None)
-            _v2_log_result = append_live_v2_calibration_decision(
-                db_path=_calibration_db_path,
-                calibration_payload=getattr(ms, "_calibration_payload", None),
-                v2_decision=v2_decision_for_log,
-                decision_id=_xid_pair_cal[0] if _xid_pair_cal else None,
-                execution_identity_sha256=_xid_pair_cal[1] if _xid_pair_cal else None,
-            )
+            if _xid_pair_cal is None and not _xid_model_derived:
+                # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 (idle/non-model
+                # contract): a cycle that is not model-derived performs NO
+                # governed calibration write — an EXPECTED non-write, not a
+                # refused defect (the writer's identity refusal remains the
+                # fail-closed backstop for model-derived cycles).
+                from calibration.v2_live_logging import (
+                    LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
+                )
+
+                _v2_log_result = {
+                    "status": "skipped",
+                    "reason": LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
+                }
+            else:
+                _v2_log_result = append_live_v2_calibration_decision(
+                    db_path=_calibration_db_path,
+                    calibration_payload=getattr(ms, "_calibration_payload", None),
+                    v2_decision=v2_decision_for_log,
+                    decision_id=_xid_pair_cal[0] if _xid_pair_cal else None,
+                    execution_identity_sha256=_xid_pair_cal[1] if _xid_pair_cal else None,
+                )
             if _v2_log_result and _v2_log_result.get("status") != "ok":
                 log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
             if _v2_log_result and _v2_log_result.get("status") == "ok" and _xid_pair_cal:
@@ -8529,6 +8617,10 @@ def _fetch_state(
         _xid_pair
         and ms_dict.get("decision_id") == _xid_pair[0]
         and not ms_dict.get("decision_generation_skipped")
+        # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: only a write that
+        # actually landed marks the "decision" surface — a refused/skipped
+        # persist leaves the ledger honestly OPEN.
+        and ms_dict.get("_decision_persist_landed")
     ):
         try:
             from execution_identity import mark_surface_landed as _xid_mark_dec
