@@ -26,6 +26,8 @@
       "governance/artifacts/universal_connected_path_graph.json",
       "governance/artifacts/universal_connected_path_governed_edges.json",
       "governance/artifacts/universal_fix_exception_register.json",
+      "governance/artifacts/CHECK_STACK_INVENTORY.json",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md",
       "governance/universal_fix_impact_manifest.json",
       "governance/mission_authorization/active/UNIVERSAL-FIX-IMPACT-GATE-V1.json",
       "governance/README.md",
