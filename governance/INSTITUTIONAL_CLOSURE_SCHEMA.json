@@ -732,6 +732,58 @@
         "ML_PIPE_ITEM_4": "NOT_CLOSED"
       },
       "fleet_semantics": "88 active bundle directories are INTEGRITY-verified (manifest-pinned bytes, 77 RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE / 11 REPROMOTED_FROM_GOVERNED_CANDIDATE); only 12 are serving-complete under the full bundle contract (SPY/QQQ/IWM x 1c/5c/15c/60c, recounted from disk via check_active_bundle_complete) and 76 are explicitly fail-closed for serving - fleet integrity is NOT universal serving availability"
+    },
+    {
+      "lane": "ML-PIPE-EXECUTION-IDENTITY-V1",
+      "parent_lane": "MODEL_VERSION_PINNING",
+      "status": "NOT_CLOSED",
+      "dimensions": {
+        "ROOT_CAUSE": "PROVEN",
+        "END_TO_END_CORRECTNESS": "PENDING",
+        "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
+        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PENDING",
+        "TICKER_UNIVERSALITY": "PROVEN",
+        "HORIZON_UNIVERSALITY": "PROVEN",
+        "POINT_IN_TIME_CORRECTNESS": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "identity infrastructure; no market data consumed"
+        },
+        "NO_CURRENT_STATE_LEAKAGE": "PROVEN",
+        "NO_FUTURE_DATA_LEAKAGE": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no time-series evaluation"
+        },
+        "MODEL_VERSION_PINNING": "PROVEN",
+        "CALIBRATION_VERSION_PINNING": "PENDING",
+        "FEATURE_SCHEMA_PARITY": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "no feature construction; schema versions pinned in envelope"
+        },
+        "RUNTIME_PROOF": "PENDING",
+        "RTH_PROOF": {
+          "status": "NOT_APPLICABLE",
+          "rationale": "migration executed with no listener on port 8000"
+        },
+        "OBSERVABILITY": "PROVEN",
+        "PROVENANCE": "PROVEN",
+        "REPRODUCIBILITY": "PROVEN",
+        "MECHANICAL_ENFORCEMENT": "PROVEN",
+        "FINAL_SHA_CI": "PENDING"
+      },
+      "material_limitations": [
+        "executable replay / environment identity / stochastic seed / output equivalence honestly NOT claimed (resolver labels them NOT_PROVEN); byte + configuration identity only",
+        "calibration attach identity (conformal/isotonic run ids) not yet in the envelope at anchor time - attach occurs later in the cycle; explicit attached=false reason recorded; wiring continuation before closure",
+        "live calibration writer caller (calibration/v2_live_logging.py) identity passthrough pending; calibration surface excluded from expected ledger surfaces until wired",
+        "closure requires PR CI green + operator integration + first live anchored cycles observed"
+      ],
+      "evidence": {
+        "engine": "execution_identity.py (canonical envelope, insert-only identities, persistence ledger, CAS, replay resolver) + 38-test adversarial suite",
+        "migration": "production ed_console.db (19.29 GB): governed backup _backup_pre_exec_identity_v1_20260713.db quick_check ok; rehearsal on a separate copy row-count-invariant (266778/44850/168376); additive apply verified identical counts, 5 triggers live, legacy rows NULL; 259s window, no listener on port 8000",
+        "server": "identity anchored BEFORE model-derived snapshot; fail-closed EXECUTION_IDENTITY_REFUSED; ordering defect fixed (snapshot persisted before decision stamping); one cycle = one decision_id"
+      },
+      "final_sha": null,
+      "remote_ci_status": "pending at feature-branch tip",
+      "next_blocker": "branch CI + operator PR integration [REAL-GATE:OPERATOR-PR-INTEGRATION-EXEC-IDENTITY-V1]"
     }
   ],
   "real_money_approval": "NOT_APPROVED"
