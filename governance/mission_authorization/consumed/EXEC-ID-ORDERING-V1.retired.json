@@ -37,7 +37,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783952083.3482084,
   "expires_at_epoch": 1785161683.3482084,
   "operator_authorization": "MISSION = EXEC_IDENTITY_DECISION_SURFACE_ORDERING_FIX_V1 (operator packet 2026-07-13): anchor execution identity before universal decision persistence; PR path; operator integrates; RTH reproof required before closure",
@@ -54,5 +54,6 @@
     "red required PR/main check",
     "main advances incompatibly",
     "bypass or direct-main push would be required"
-  ]
+  ],
+  "retired_note": "ordering fix merged via PR #37 at final main 9d2baf410bf4 (4/4 push CI: 29270711637/29270712167/29270711258/29270710639); canonical RTH reproof passed 2026-07-13 (PID 29076, +101 identities, 101/101 COMPLETE ledgers, +92 production decisions, 0 one-pair violations); records closure carried by EXEC-ID-RTH-REPROOF-RECORDS-V1"
 }

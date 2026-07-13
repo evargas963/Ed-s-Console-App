@@ -152,3 +152,58 @@ def test_checker_wired_into_objective_audit_and_hardening():
     for wf in (".github/workflows/objective-audit.yml", ".github/workflows/hardening.yml"):
         src = Path(wf).read_text(encoding="utf-8")
         assert "check_institutional_closure_gate.py" in src, f"gate not wired into {wf}"
+
+
+def test_exec_identity_lane_recloses_on_rth_reproof_with_history_and_open_parents():
+    """Records regression (EXEC_IDENTITY_RTH_REPROOF_RECORDS_CLOSURE_V1): the
+    execution-identity lane and Item 4 close ONLY with the canonical RTH reproof
+    evidence, the contradiction history stays permanent, and no parent closes."""
+    repo = SCHEMA_PATH.parent.parent
+    doc = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    by = {r["lane"]: r for r in doc["lanes"]}
+    lane = by["ML-PIPE-EXECUTION-IDENTITY-V1"]
+    assert lane["status"] == CLOSED
+    assert lane["dimensions"]["RTH_PROOF"] == "PROVEN"
+    assert lane["dimensions"]["RUNTIME_PROOF"] == "PROVEN"
+    assert lane["final_sha"] == "9d2baf410bf42b9d64714209aefd0cb3a7b21ba7"
+    assert lane["final_sha"][:7] in lane["remote_ci_status"]
+    assert "rth_2026-07-13_canonical_reproof.json" in lane["evidence"]["rth_reproof"]
+    labels = lane["acceptance_labels"]
+    for k in (
+        "PRODUCTION_DECISION_IDENTITY_LINKAGE",
+        "COMPLETE_DECISION_CYCLE_PERSISTENCE",
+        "DECISION_ID_SINGLE_OWNERSHIP",
+        "ONE_CYCLE_ONE_DECISION",
+        "ASYNC_RUNTIME_ORDERING",
+        "RTH_PERSISTENCE_COHERENCE",
+        "RTH_REPLAY_LINKAGE",
+    ):
+        assert labels[k] == "PROVEN", k
+    assert labels["ML_PIPE_ITEM_4"] == CLOSED
+    assert by["ML-PIPE-ITEM4-FLEET-MIGRATION-V1"]["acceptance_labels"]["ML_PIPE_ITEM_4"] == CLOSED
+    # Contradiction history is permanent: reopen record + resolution both present.
+    drift = lane["drift_recovery"]
+    assert drift["prior_status"] == CLOSED
+    assert drift["corrected_status"] == "NOT_CLOSED"
+    assert drift["proven_sub_results_preserved"] is True
+    assert drift["evidence_packet"].endswith("rth_2026-07-13_decision_surface_contradiction.json")
+    assert (repo / drift["evidence_packet"]).is_file()
+    assert drift["resolution"]["restored_status"] == CLOSED
+    assert (repo / "reports/exec_identity/rth_2026-07-13_canonical_reproof.json").is_file()
+    # Child closure closes no parent.
+    pnc = lane["preserved_non_closure"]
+    assert pnc["MODEL_VERSION_PINNING_PARENT"] == "NOT_CLOSED"
+    assert pnc["FULL_MODEL_STACK"] == "NOT_CLOSED"
+    assert pnc["PREDICTIVE_VALIDITY"] == "NOT_PROVEN"
+    assert pnc["REPO_WIDE_UNIVERSAL_FIX_LOCK"] == "NOT_PROVEN"
+    assert pnc["REAL_MONEY_APPROVAL"] == "NOT_APPROVED"
+    assert doc["real_money_approval"] == "NOT_APPROVED"
+    # NOT_PROVEN matrix: the MODEL_VERSION_PINNING parent label stays open while
+    # recording the Item 4 reclosure in its history chain.
+    matrix = json.loads(
+        (repo / "governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json").read_text(encoding="utf-8")
+    )
+    mvp = next(l for l in matrix["labels"] if l["label"] == "MODEL_VERSION_PINNING")
+    assert mvp["final_status"] == "NOT_PROVEN"
+    assert "ITEM_4_RECLOSED_WITH_EVIDENCE" in mvp["fix_status"]
+    assert "ITEM_4_REOPENED" in mvp["fix_status"]

@@ -1,0 +1,106 @@
+{
+  "schema": "EXEC_IDENTITY_RTH_EVIDENCE_PACKET",
+  "packet": "canonical_rth_reproof_after_ordering_fix",
+  "pairs_with": "reports/exec_identity/rth_2026-07-13_decision_surface_contradiction.json",
+  "session_date_ct": "2026-07-13",
+  "mission": "PR37_CANONICAL_RTH_REPROOF_RESUME_AFTER_SCHWAB_REAUTH_V1",
+  "fix_integration": {
+    "fix_pr": 37,
+    "fix_pr_title": "fix(runtime): anchor execution identity before universal decision persistence",
+    "pr_head_sha": "a645cf3c8a6f38f0532e33a988a34c9a2637fac8",
+    "merge_sha_final_main": "9d2baf410bf42b9d64714209aefd0cb3a7b21ba7",
+    "final_main_push_ci": {
+      "hardening": 29270711637,
+      "objective_audit": 29270712167,
+      "pytest_full": 29270711258,
+      "schwab_csv_first": 29270710639,
+      "all_conclusions": "success",
+      "note": "Schwab V4 Register Closure (run 29270710784) failure is the standing D17 register-closure tracker, red on every main push while unreviewed_count > 0 (also failed at 5947f79 run 29227579305 and 6311393 run 29248047429); not a final-main regression"
+    }
+  },
+  "schwab_reauth": {
+    "revocation_root_cause": "OAuth refresh-token contention (second live client class); invalid_grant from ~10:14 CT",
+    "reauth_flow": "operator interactive python reauth_schwab.py; credentials operator-only, never handled by agent",
+    "token_rewritten_ct": "2026-07-13 14:15:47",
+    "post_reauth_validation": "refreshable=True scope=api; canonical-path SPY quote 200; server startup line 'Schwab auth validated at startup'; zero token-endpoint 400s in the reproof window"
+  },
+  "canonical_server": {
+    "pid": 29076,
+    "start_epoch_utc": 1783970615,
+    "start_ct": "2026-07-13 14:23:35",
+    "launch": "python -m uvicorn server:app --host 0.0.0.0 --port 8000 with ED_CALIBRATION_LOG=1 ED_OPS_RUNNER=1 from clean main worktree (models/data junctions to canonical, disclosed)",
+    "api_build_startup_git_sha": "9d2baf410bf42b9d64714209aefd0cb3a7b21ba7",
+    "code_drift_repo_moved_past_process": false,
+    "database": "canonical data/ed_console.db"
+  },
+  "watermarks_pre_reproof_exclusive": {
+    "model_execution_identities": 526,
+    "decision_persistence_ledger": 526,
+    "production_decision_records_max_rowid": 44850,
+    "calibration_decision_log_max_id": 168902,
+    "snapshots_max_id": 277313
+  },
+  "proof_window": {
+    "lower_bound_epoch_exclusive": 1783970615,
+    "upper_bound_epoch_inclusive": 1783971253,
+    "upper_bound_ct": "2026-07-13 14:34:13 (reconciliation query time)",
+    "driver": "six spaced /api/state cycles SPY, QQQ, IWM, $SPX, SPY, QQQ (22s gaps, 45s warm-up, 90s settle) over the idle-refresh runtime; all six HTTP 200"
+  },
+  "results": {
+    "new_identities": 101,
+    "new_ledger_rows": 101,
+    "ledger_status": "101/101 COMPLETE (100 COMPLETE at first query; the single OPEN row was an in-flight cycle whose calibration append raced the query and read COMPLETE with landed=[calibration,decision,snapshot] on recheck)",
+    "cycle_shapes_at_first_query": {
+      "calibration+decision": 58,
+      "calibration+decision+snapshot": 33,
+      "calibration_only": 7,
+      "calibration+snapshot_log_only": 2,
+      "in_flight_then_complete_full_shape": 1
+    },
+    "new_production_decision_records": 92,
+    "production_decisions_by_ticker": {"SPY": 35, "QQQ": 21, "IWM": 20, "$SPX": 16},
+    "guest_anchor": "$SPX routed to bundle SPY with guest_anchor=true and requested_ticker!=bundle_ticker disclosed in the envelope; 16 guest production decisions landed identity-linked",
+    "routing_pairs_observed": [["$SPX", "SPY"], ["IWM", "IWM"], ["QQQ", "QQQ"], ["SPY", "SPY"]],
+    "horizons_in_every_envelope": ["1c", "5c", "15c", "60c"],
+    "one_pair_violations": 0,
+    "duplicate_ledger_decision_ids": 0,
+    "expected_vs_landed": "expected_surfaces == landed_surfaces for all 101 cycles after the in-flight recheck",
+    "freshness_seconds_at_check": {"SPY": 28.3, "QQQ": 42.5, "IWM": 24.2, "$SPX": 35.4}
+  },
+  "failure_scan_post_reauth_window": {
+    "IDENTITY_MISMATCH": 0,
+    "EXECUTION_IDENTITY_REFUSED": 0,
+    "production_decision_persist_failed": 0,
+    "LEDGER_CONFLICT": 0,
+    "database_is_locked": 0,
+    "schwab_400s": "22, all https://api.schwabapi.com/marketdata/v1/SATS/quotes (known-benign symbol rejection, handled without crash)",
+    "fetch_state_cycles_in_log": 98
+  },
+  "replay_reproof": {
+    "cycle": "347419bcd9 (COMPLETE, full [calibration,decision,snapshot] shape)",
+    "cas_artifacts_resolved": 20,
+    "proof_levels": {
+      "ARTIFACT_BYTE_IDENTITY": "PROVEN",
+      "CONFIGURATION_IDENTITY": "PROVEN",
+      "EXECUTABLE_REPLAY_AVAILABILITY": "NOT_PROVEN",
+      "ENVIRONMENT_IDENTITY": "NOT_PROVEN",
+      "STOCHASTIC_SEED_IDENTITY": "NOT_PROVEN",
+      "OUTPUT_EQUIVALENCE": "NOT_PROVEN"
+    }
+  },
+  "idle_refresh_disclosure": "NON_MODEL_IDLE_NO_WRITE = PROVEN_BY_CONSTRUCTION_AND_TEST; NOT_LIVE_OBSERVED_IN_THIS_WINDOW. Governed model-derived idle cycles were live observed with zero identity refusals; the explicit non-model no-write micro-class (LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE) did not occur naturally in the window (log count 0) and is explicitly non-writing, creating no governed persistence obligation",
+  "contradiction_reversed": "same canonical runtime class that produced production_decision_records +0 with 255/258 OPEN ledgers in the morning window produced +92 with 101/101 COMPLETE after the PR #37 ordering fix",
+  "closure_scope_not_asserted": [
+    "deterministic executable replay",
+    "numerical output equivalence",
+    "environment/dependency identity",
+    "stochastic seed identity",
+    "predictive correctness or validity",
+    "calibration quality",
+    "feature correctness",
+    "absence of lookahead leakage",
+    "beat-the-baseline",
+    "profitability",
+    "real-money readiness"
+  ]
+}
