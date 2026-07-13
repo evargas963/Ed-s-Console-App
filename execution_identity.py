@@ -791,12 +791,20 @@ def anchor_production_execution(
     if isinstance(calibration_info, dict) and calibration_info:
         cal_by_hz = calibration_info
 
-    import model_contract as mc_mod
+    # fail-loud pins: a missing contract constant is an ImportError, never a
+    # silently-None envelope field
+    from model_contract import (
+        CONTRACT_FIELDS,
+        CURRENT_FEATURE_SCHEMA_VERSION,
+        CURRENT_LABEL_CONFIG_VERSION,
+        CURRENT_PREPROCESSING_VERSION,
+    )
 
     stack_pins = {
-        "feature_schema_version": getattr(mc_mod, "CURRENT_FEATURE_SCHEMA_VERSION", None),
-        "preprocessing_version": getattr(mc_mod, "CURRENT_PREPROCESSING_VERSION", None),
-        "contract_fields": sorted(getattr(mc_mod, "CONTRACT_FIELDS", ()) or ()),
+        "feature_schema_version": CURRENT_FEATURE_SCHEMA_VERSION,
+        "preprocessing_version": CURRENT_PREPROCESSING_VERSION,
+        "label_config_version": CURRENT_LABEL_CONFIG_VERSION,
+        "contract_fields": sorted(CONTRACT_FIELDS),
         "env_controlled_behavior": {
             k: os.environ.get(k)
             for k in (

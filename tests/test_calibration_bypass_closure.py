@@ -27,6 +27,13 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "signals.py":
         return True
+    # execution_identity_v1 (PER_ROW_HISTORICAL_MODEL_ARTIFACT_IDENTITY_V1):
+    # single owner of the identity linkage triggers on calibration_decision_log
+    # + its adversarial suite (tmp-DB fixtures only; never the production DB).
+    if s == "execution_identity.py":
+        return True
+    if s == "tests/test_execution_identity_v1.py":
+        return True
     # Approved read-only probes / tooling (controlled SELECT surface).
     if s == "tools/_phase4_prod_probe.py":
         return True
@@ -119,6 +126,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             or rel.startswith("tests/test_calibration")
             or rel == "tests/test_v2_advisory_backfill.py"
             or rel == "tests/test_v2_a1_calibration.py"
+            or rel == "tests/test_execution_identity_v1.py"  # scan TOKEN in the write-path inventory lock; no INSERT executed
             or rel == "tests/test_action12_14_signal_layer_discrimination_fail_closed.py"
             or rel == "tests/test_payload_audit.py"
             or rel == "tests/test_validate_outcome_join_fail_closed.py"
