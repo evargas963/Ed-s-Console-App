@@ -16,6 +16,7 @@
       "OPEN_ITEMS.md",
       "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
       "governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json",
+      "governance/ML_ITEM4_MIGRATION_POLICY.json",
       "governance/mission_authorization/active/ML-PIPE-ITEM4-RECORDS-V1.json",
       "governance/mission_authorization/consumed/ML-PIPE-EXEC-ID-RESIDUALS-V1.retired.json",
       "governance/artifacts/schwab_v4_register_build_meta.json",

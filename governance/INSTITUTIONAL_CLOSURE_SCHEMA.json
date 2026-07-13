@@ -726,9 +726,10 @@
         "RECOVERY_REPRODUCIBILITY": "PROVEN",
         "BYTE_EXACT_GIT_ROUND_TRIP": "PROVEN",
         "CANONICAL_WORKTREE_CLEAN": "PROVEN",
-        "HISTORICAL_REPLAY_BYTE_PINNING": "NOT_PROVEN",
-        "ML_PIPE_ITEM_4": "NOT_CLOSED"
+        "HISTORICAL_REPLAY_BYTE_PINNING": "PROVEN",
+        "ML_PIPE_ITEM_4": "CLOSED_WITH_EVIDENCE"
       },
+      "acceptance_labels_note": "HISTORICAL_REPLAY_BYTE_PINNING and ML_PIPE_ITEM_4 updated 2026-07-13: proven/closed via execution_identity_v1 at final main 5947f79020bc (closure evidence carried by the ML-PIPE-EXECUTION-IDENTITY-V1 lane record); their prior NOT_PROVEN/NOT_CLOSED values reflected the retired per-row operator gate",
       "fleet_semantics": "88 active bundle directories are INTEGRITY-verified (manifest-pinned bytes, 77 RECONSTRUCTED_FROM_INDEPENDENT_EVIDENCE / 11 REPROMOTED_FROM_GOVERNED_CANDIDATE); only 12 are serving-complete under the full bundle contract (SPY/QQQ/IWM x 1c/5c/15c/60c, recounted from disk via check_active_bundle_complete) and 76 are explicitly fail-closed for serving - fleet integrity is NOT universal serving availability",
       "preserved_notes": [
         "the former per-row artifact-hash operator gate [REAL-GATE:OPERATOR-DB-SCHEMA-DECISION-PER-ROW-ARTIFACT-HASH] is SUPERSEDED: the operator authorized and Claude implemented execution_identity_v1 (immutable per-decision envelopes + CAS + persistence ledger + triggers) proven at final main 5947f79020bc \u2014 strictly stronger than the originally contemplated per-row hash column"
@@ -781,6 +782,31 @@
       "remote_ci_status": "4/4 required success at final main 5947f79020bc (hardening 29227579363, objective-audit 29227579306, pytest-full 29227579292, schwab-csv-first 29227579294; run head_sha independently checked == final main)",
       "next_blocker": null,
       "merge_sha": "5947f79020bc60eb01a6ccd846745b82630ff5e9",
+      "acceptance_labels": {
+        "ML_PIPE_ITEM_4_IMPLEMENTATION": "PROVEN",
+        "ACTIVE_FLEET_INTEGRITY": "PROVEN",
+        "RECOVERY_REPRODUCIBILITY": "PROVEN",
+        "BYTE_EXACT_GIT_ROUND_TRIP": "PROVEN",
+        "CANONICAL_WORKTREE_CLEAN": "PROVEN",
+        "PER_ROW_HISTORICAL_MODEL_ARTIFACT_IDENTITY": "PROVEN",
+        "HISTORICAL_REPLAY_BYTE_PINNING": "PROVEN",
+        "CALIBRATION_ATTACH_IDENTITY_AT_ANCHOR_TIME": "PROVEN",
+        "V2_LIVE_LOGGING_IDENTITY_PASSTHROUGH": "PROVEN",
+        "ONE_CYCLE_ONE_DECISION": "PROVEN",
+        "DATABASE_TRIGGER_ENFORCEMENT": "PROVEN",
+        "PERSISTENCE_LEDGER_CONSISTENCY": "PROVEN",
+        "ARTIFACT_BYTE_RETENTION": "PROVEN",
+        "CURRENT_POINTER_FREE_REPLAY": "PROVEN",
+        "LEGACY_NONFABRICATION": "PROVEN",
+        "ML_PIPE_ITEM_4": "CLOSED_WITH_EVIDENCE"
+      },
+      "preserved_non_closure": {
+        "MODEL_VERSION_PINNING_PARENT": "NOT_CLOSED",
+        "FULL_MODEL_STACK": "NOT_CLOSED",
+        "PREDICTIVE_VALIDITY": "NOT_PROVEN",
+        "REAL_MONEY_APPROVAL": "NOT_APPROVED",
+        "note": "Item 4 closure is artifact-byte + configuration + calibration identity for model-derived production rows; it is NOT proof of predictive correctness, predictive validity, full deterministic reproduction, model quality, or real-money readiness"
+      },
       "preserved_notes": [
         "replay proof levels honestly split: artifact-byte, configuration, and calibration identity PROVEN; executable replay availability, environment/dependency identity, stochastic seed, numerical determinism, output equivalence NOT claimed and NOT proven",
         "residuals completed via PR #35 (head 0fd5ca3957b0): one cycle = one decision_id (anchor reuses the v2 stamp), envelope commits to the exact calibration state used (conformal identity + isotonic lineage; absence reason-coded), v2 live writes refuse without the governed identity",
