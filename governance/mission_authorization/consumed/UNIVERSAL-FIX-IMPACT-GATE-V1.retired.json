@@ -11,7 +11,7 @@
   "direct_main_permission": false,
   "pr_required": true,
   "integration_owner": "OPERATOR",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "authorized_scope": {
     "files": [
       "tools/check_universal_fix_impact_gate.py",
@@ -68,5 +68,6 @@
     "PR #36 file overlap",
     "main advances incompatibly",
     "bypass warning observed"
-  ]
+  ],
+  "retired_note": "implementation merged via PR #38 (approved head 07abf497695c, merge = final main 87213d3692bd, 2026-07-13T23:19:52Z; merge tree == approved head tree); 4/4 required final-main push CI: hardening 29292715833, objective-audit 29292715830, schwab-csv-first 29292715866, pytest-full 29292715887; closure result: REPO_WIDE_UNIVERSAL_FIX_LOCK = PROVEN, UNIVERSAL-FIX-IMPACT-GATE-V1 lane CLOSED_WITH_EVIDENCE (records carried by UNIVERSAL-FIX-LOCK-RECORDS-V1); file ownership released"
 }

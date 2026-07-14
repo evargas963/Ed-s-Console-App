@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "mission_id": "UNIVERSAL-FIX-LOCK-RECORDS-V1",
+  "agent": "Claude",
+  "mission_type": "feature_implementation",
+  "authorized_branch": "universal-fix-lock-records-closure-v1",
+  "authorized_worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole-execid",
+  "base_sha": "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c",
+  "authorized_push_target": "origin/universal-fix-lock-records-closure-v1",
+  "target_branch": "universal-fix-lock-records-closure-v1",
+  "direct_main_permission": false,
+  "pr_required": true,
+  "integration_owner": "OPERATOR",
+  "authorized_scope": {
+    "files": [
+      "OPEN_ITEMS.md",
+      "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
+      "governance/artifacts/schwab_v4_register_build_meta.json",
+      "governance/artifacts/schwab_v4_scoreboard.json",
+      "governance/mission_authorization/active/UNIVERSAL-FIX-LOCK-RECORDS-V1.json",
+      "governance/mission_authorization/consumed/UNIVERSAL-FIX-IMPACT-GATE-V1.retired.json",
+      "tests/test_check_schwab_csv_first.py",
+      "tests/test_institutional_closure_gate.py"
+    ],
+    "semantic_domains": [
+      "closure_schema"
+    ]
+  },
+  "shared_file_policy": "none",
+  "lease_state": "active",
+  "created_at_epoch": 1783986415.0,
+  "expires_at_epoch": 1785196015.0,
+  "operator_authorization": "MISSION = UNIVERSAL_FIX_LOCK_RECORDS_CLOSURE_AND_MISSION_RETIREMENT_V1 (operator packet 2026-07-13): records-only reconciliation of REPO_WIDE_UNIVERSAL_FIX_LOCK = PROVEN + UNIVERSAL-FIX-IMPACT-GATE-V1 lane closure after PR #38 merged at final main 87213d3692bd with 4/4 final-main CI; retire the completed implementation mission; PR path; operator integrates; no production code, no runtime, no cleanup, no predictive-validity work",
+  "allowed_integration_method": "PR opened by Claude, integration owned by OPERATOR-authorized PR path; no direct main push",
+  "required_checks": [
+    "objective-audit",
+    "pytest-full",
+    "hardening",
+    "schwab-csv-first"
+  ],
+  "stop_conditions": [
+    "final-main universal-fix proof cannot be located or reproduced",
+    "any closure would require weakening a gate",
+    "red required PR/main check",
+    "main advances incompatibly",
+    "bypass or direct-main push would be required"
+  ]
+}
