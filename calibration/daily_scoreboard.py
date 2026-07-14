@@ -183,9 +183,9 @@ def _join_identity_cohort(row: sqlite3.Row) -> str:
     if method == "nearest_within_tol":
         m_ts = row["matched_snapshot_ts_utc"]
         if m_ts is not None:
-            # REGISTER_SCOPE_EXCLUDED: prefix=calibration token=delta id=ds-join-delta-assign class=timestamp_difference impact=NO_REGISTER_IMPACT trace="epoch-seconds difference between internal decision-log timestamps (matched_snapshot_ts_utc minus decision_ts_utc); units are seconds; feeds only the nearest_earlier/nearest_later report cohort label; not the options greek; no Schwab primitive read; no V4 register field emitted; no persistence or trade-determinative effect"
+            # REGISTER_SCOPE_EXCLUDED: prefix=calibration token=delta id=ds-join-delta-assign class=timestamp_difference impact=NO_REGISTER_IMPACT trace="epoch-seconds difference between internal decision-log timestamps (matched_snapshot_ts_utc minus decision_ts_utc); units are seconds; feeds only the nearest_earlier/nearest_later report cohort label; not the options greek; no Schwab primitive read; no V4 register field emitted; no persistence or trade-determinative effect; leaf disposition NO_SCHWAB_EQUIVALENT"
             delta = float(m_ts) - float(row["decision_ts_utc"])
-            # REGISTER_SCOPE_EXCLUDED: prefix=calibration token=delta id=ds-join-delta-sign class=timestamp_difference impact=NO_REGISTER_IMPACT trace="sign test on the epoch-seconds timestamp difference above, selecting the nearest_earlier or nearest_later join cohort label for the scoreboard report; not the options greek; no Schwab primitive read; no V4 register field emitted; no persistence or trade-determinative effect"
+            # REGISTER_SCOPE_EXCLUDED: prefix=calibration token=delta id=ds-join-delta-sign class=timestamp_difference impact=NO_REGISTER_IMPACT trace="sign test on the epoch-seconds timestamp difference above, selecting the nearest_earlier or nearest_later join cohort label for the scoreboard report; not the options greek; no Schwab primitive read; no V4 register field emitted; no persistence or trade-determinative effect; leaf disposition NO_SCHWAB_EQUIVALENT"
             return "nearest_earlier" if delta < 0 else "nearest_later"
         return "unknown_join"
     return "unknown_join"
@@ -1223,7 +1223,7 @@ def _v4_metric_definitions() -> dict[str, Any]:
         },
         "standing_not_proven_disclosures": [
             "OUTCOME_LINEAGE_NOT_PROVEN: snapshot outcome columns carry no writer/mutation lineage; bar-mutation refresh recomputes labels in place",
-            # REGISTER_SCOPE_EXCLUDED: prefix=calibration token=confidence id=ds-calnp-confidence-text class=static_disclosure_text impact=NO_REGISTER_IMPACT trace="static fail-closed operator disclosure string (CALIBRATION_NOT_PROVEN) that denies any calibration-validity claim; no numeric confidence computation at this site; no Schwab primitive read; no V4 register field emitted; no model or policy behavior change"
+            # REGISTER_SCOPE_EXCLUDED: prefix=calibration token=confidence id=ds-calnp-confidence-text class=static_disclosure_text impact=NO_REGISTER_IMPACT trace="static fail-closed operator disclosure string (CALIBRATION_NOT_PROVEN) that denies any calibration-validity claim; no numeric confidence computation at this site; no Schwab primitive read; no V4 register field emitted; no model or policy behavior change; leaf disposition NO_SCHWAB_EQUIVALENT"
             "CALIBRATION_NOT_PROVEN: descriptive confidence only; no calibration-validity claim",
             "TRAIN_LIVE_PARITY_NOT_PROVEN: training/live feature identity not proven by this report",
             "LEAKAGE_ABSENCE_NOT_PROVEN: no leakage-control claim is made by this report",
