@@ -1,0 +1,93 @@
+.FF....................F..............F................................. [ 86%]
+F..........                                                              [100%]
+================================== FAILURES ===================================
+__________ test_build_daily_scoreboard_scores_per_ticker_and_horizon __________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-932/test_build_daily_scoreboard_sc0')
+
+    def test_build_daily_scoreboard_scores_per_ticker_and_horizon(tmp_path):
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    
+        spy = sb["by_ticker"]["SPY"]
+        # 1c: two scored predictions (up/up hit, down/flat miss) — untrusted row excluded.
+        assert spy["1c"]["n_scored"] == 2
+>       assert spy["1c"]["hits"] == 1
+E       assert 2 == 1
+
+tests\test_calibration_daily_scoreboard.py:149: AssertionError
+___________ test_all_card_row_scores_final_bias_at_primary_horizon ____________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-932/test_all_card_row_scores_final0')
+
+    def test_all_card_row_scores_final_bias_at_primary_horizon(tmp_path):
+        """ALL card (trade-entry signal): final_bias vs the logged primary-horizon outcome."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    
+        spy_all = sb["by_ticker"]["SPY"]["all"]
+        # Row 1 LONG@5c vs down = miss; row 2 SHORT@5c vs down = hit; row 3 WAIT@15c vs flat = hit.
+        assert spy_all["n_scored"] == 3
+>       assert spy_all["hits"] == 2
+E       assert 3 == 2
+
+tests\test_calibration_daily_scoreboard.py:179: AssertionError
+________________ test_denominator_existing_hit_math_preserved _________________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-932/test_denominator_existing_hit_0')
+
+    def test_denominator_existing_hit_math_preserved(tmp_path):
+        """Required 7: v2 scoring numbers are unchanged for scored rows."""
+        db = _denominator_fixture(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        spy = sb["by_ticker"]["SPY"]
+>       assert spy["1c"]["n_scored"] == 2 and spy["1c"]["hits"] == 1 and spy["1c"]["accuracy"] == 0.5
+E       assert (2 == 2 and 2 == 1)
+
+tests\test_calibration_daily_scoreboard.py:637: AssertionError
+_____________________ test_qc_does_not_change_scored_math _____________________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-932/test_qc_does_not_change_scored0')
+
+    def test_qc_does_not_change_scored_math(tmp_path):
+        """Required 7: quality_circle is pure post-processing — by_ticker/by_horizon
+        values are identical to what the scoring pass produces for the same rows."""
+        db, n, n_hits = _qc_trusted_fixture(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        spy = sb["by_ticker"]["SPY"]
+>       assert spy["1c"]["n_scored"] == 2 and spy["1c"]["hits"] == 1 and spy["1c"]["accuracy"] == 0.5
+E       assert (2 == 2 and 2 == 1)
+
+tests\test_calibration_daily_scoreboard.py:887: AssertionError
+________________ test_legacy_differential_artifact_reproduces _________________
+
+    def test_legacy_differential_artifact_reproduces():
+        """Packaged, independently executable legacy differential (Lane-A evidence):
+        the program reruns old-vs-new on the canonical fixture and must prove the
+        numeric-subset and field-value identities with a deterministic fixture id."""
+        import subprocess
+    
+        root = Path(__file__).resolve().parent.parent
+        prog = root / "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py"
+        base = subprocess.run(["git", "merge-base", "HEAD", "HEAD"], capture_output=True, text=True, cwd=root).stdout.strip()
+        r = subprocess.run([sys.executable, str(prog), base], capture_output=True, text=True, cwd=root)
+>       assert r.returncode == 0, r.stdout + r.stderr
+E       AssertionError: {
+E          "fixture_content_sha256": "2a24dd2cd045eaaad4b423cda3143094a1aece154fd266f25f6ffe0718328c84",
+E          "numeric_fields_compared": 168,
+E          "all_fields_compared": 224,
+E          "LEGACY_NUMERIC_SUBSET_IDENTITY": "NOT_PROVEN",
+E          "LEGACY_FIELD_VALUE_IDENTITY": "NOT_PROVEN"
+E         }
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe', 'C:\\Users\\evarg\... 224,\n "LEGACY_NUMERIC_SUBSET_IDENTITY": "NOT_PROVEN",\n "LEGACY_FIELD_VALUE_IDENTITY": "NOT_PROVEN"\n}\n', stderr='').returncode
+
+tests\test_calibration_daily_scoreboard.py:1576: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_build_daily_scoreboard_scores_per_ticker_and_horizon
+FAILED tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon
+FAILED tests/test_calibration_daily_scoreboard.py::test_denominator_existing_hit_math_preserved
+FAILED tests/test_calibration_daily_scoreboard.py::test_qc_does_not_change_scored_math
+FAILED tests/test_calibration_daily_scoreboard.py::test_legacy_differential_artifact_reproduces
+5 failed, 78 passed in 20.30s

@@ -1,0 +1,29 @@
+........................................................................ [ 86%]
+......F....                                                              [100%]
+================================== FAILURES ===================================
+________________ test_v2_every_table_labels_the_legacy_all_row ________________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-940/test_v2_every_table_labels_the0')
+
+    def test_v2_every_table_labels_the_legacy_all_row(tmp_path):
+        """E7 lock: EVERY table that renders an 'all' row/column carries the legacy
+        qualification inside that table segment — pooled, equal-weight, per-ticker,
+        and eligible grid alike (no unqualified 'all' cell anywhere in the HTML)."""
+        db = _fixture_db(tmp_path)
+        html = render_html(build_daily_scoreboard(db, ET_DATE, run_backfill=False))
+        tables = html.split("<table>")[1:]
+        for i, seg in enumerate(tables):
+            seg = seg.split("</table>")[0]
+            has_all_cell = _re.search(r"<t[dh][^>]*>all\b", seg) is not None
+            if has_all_cell or ">all —" in seg:
+                assert "Legacy ALL triclass accuracy" in seg, f"table {i} renders 'all' unqualified"
+        # And no bare 'all' cell exists anywhere (every occurrence is the qualified form).
+>       assert not _re.search(r"<t[dh][^>]*>all</t[dh]>", html)
+E       assert not <re.Match object; span=(4233, 4245), match='<td>all</td>'>
+E        +  where <re.Match object; span=(4233, 4245), match='<td>all</td>'> = <function search at 0x000001AC7B3785E0>('<t[dh][^>]*>all</t[dh]>', '<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Daily signal scoreboard — 2026-06-09</title>\n<style>\n bod... (LEGACY_INVALID_FOR_TRADE_EDGE)</td><td>3</td><td>66.7%</td><td>2</td><td>50.0%</td></tr>\n</table>\n</body></html>\n')
+E        +    where <function search at 0x000001AC7B3785E0> = _re.search
+
+tests\test_calibration_daily_scoreboard.py:1727: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row
+1 failed, 82 passed in 19.19s

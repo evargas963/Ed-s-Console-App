@@ -27,7 +27,7 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired_mission_complete",
   "created_at_epoch": 1783986415.0,
   "expires_at_epoch": 1785196015.0,
   "operator_authorization": "MISSION = UNIVERSAL_FIX_LOCK_RECORDS_CLOSURE_AND_MISSION_RETIREMENT_V1 (operator packet 2026-07-13): records-only reconciliation of REPO_WIDE_UNIVERSAL_FIX_LOCK = PROVEN + UNIVERSAL-FIX-IMPACT-GATE-V1 lane closure after PR #38 merged at final main 87213d3692bd with 4/4 final-main CI; retire the completed implementation mission; PR path; operator integrates; no production code, no runtime, no cleanup, no predictive-validity work",
@@ -44,5 +44,6 @@
     "red required PR/main check",
     "main advances incompatibly",
     "bypass or direct-main push would be required"
-  ]
+  ],
+  "retired_note": "records merged via PR #40 at final main a0d5e3b9a5f9731357465f93fe2375f9a4672338 (2026-07-14T01:06:29Z; merge tree == PR head tree); 4/4 required final-main push CI: hardening 29297725851, objective-audit 29297725823, schwab-csv-first 29297725793, pytest-full 29297725815; REPO_WIDE_UNIVERSAL_FIX_LOCK = PROVEN and UNIVERSAL-FIX-IMPACT-GATE-V1 lane CLOSED_WITH_EVIDENCE are repository-authoritative; ownership released (retirement carried by SCOREBOARD-TARGET-TRUTH-60C-V1 per the PR #40 handoff packet)"
 }

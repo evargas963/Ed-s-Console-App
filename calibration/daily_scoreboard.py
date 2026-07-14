@@ -64,7 +64,16 @@ _FINAL_BIAS_TO_LABEL = {"LONG": "up", "SHORT": "down", "WAIT": "flat"}
 # equal-weight-per-ticker rollup rides beside the existing pooled rollup, which
 # is now labeled row_weighted_pooled so activity volume cannot masquerade as
 # equal ticker performance. All v2 keys/fields are preserved (additive).
-SCHEMA_VERSION = "3"
+# v4 (SCOREBOARD_TARGET_TRUTH_V1, operator packet 2026-07-13): ALL card scored as
+# a TRADE-DECISION surface (LONG/SHORT = directional trade calls, WAIT = abstention
+# — never a flat-price prediction); per-horizon confusion matrices, balanced
+# accuracy, macro F1, MCC, prediction/truth distributions, always-flat + majority
+# baselines, both-nonflat directional accuracy; mechanically derived warnings
+# (collapse, baseline failure, sample size, identity cohorts, placeholder
+# thresholds); embedded metric definitions + source identity. The v2/v3 fields are
+# preserved byte-identically; the legacy ALL triclass metric is retained ONLY for
+# reproducibility and labeled LEGACY_INVALID_FOR_TRADE_EDGE.
+SCHEMA_VERSION = "4"
 NOT_SCORED_REASONS = (
     "NO_ROWS_PRODUCED",
     "NOT_IN_ACTIVE_LOGGER",
@@ -105,7 +114,8 @@ def _per_horizon_prediction_rows(
     lo, hi = et_day_utc_bounds(et_date)
     sql = (
         "SELECT ticker, decision_ts_utc, model_outputs_json, multi_horizon_json,"
-        " outcome_1c, outcome_5c, outcome_15c, outcome_60c"
+        " outcome_1c, outcome_5c, outcome_15c, outcome_60c,"
+        " outcome_join_method, matched_snapshot_ts_utc, execution_identity_sha256"
         " FROM calibration_decision_log"
         " WHERE calibration_trust='trusted' AND decision_ts_utc >= ? AND decision_ts_utc < ?"
     )
@@ -125,6 +135,8 @@ def _per_horizon_prediction_rows(
         sb = bundle.get("stack_probs_bundle")
         mh = (sb or {}).get("multi_horizon_ml_fusion_bundle") or {}
         by_hz = mh.get("by_horizon") or {}
+        cohort = _join_identity_cohort(row)
+        bundle_identity_proven = bool(row["execution_identity_sha256"])
         for hz in HORIZON_SLUGS:
             hz_blk = by_hz.get(hz)
             if not isinstance(hz_blk, dict) or not hz_blk.get("horizon_fusion_available"):
@@ -139,10 +151,42 @@ def _per_horizon_prediction_rows(
                 "pred": pred,
                 "top_probability": hz_blk.get("top_probability"),
                 "truth": row[f"outcome_{hz}"],
+                "join_cohort": cohort,
+                "bundle_identity_proven": bundle_identity_proven,
             }
         all_row = _all_card_row(row)
         if all_row is not None:
+            all_row["join_cohort"] = cohort
+            all_row["bundle_identity_proven"] = bundle_identity_proven
             yield all_row
+
+
+# ── SCOREBOARD_TARGET_TRUTH_V1 (v4) — identity cohorts ───────────────────────
+# Explicit identity outranks time inference; approximate historical joins are
+# disclosed as separate cohorts, never silently pooled as trusted alignment.
+JOIN_COHORTS = (
+    "identity",
+    "exact_timestamp",
+    "nearest_earlier",
+    "nearest_later",
+    "unknown_join",
+)
+
+
+def _join_identity_cohort(row: sqlite3.Row) -> str:
+    """Cohort of the row's decision→snapshot outcome join (Phase 12 taxonomy)."""
+    method = str(row["outcome_join_method"] or "")
+    if method == "identity":
+        return "identity"
+    if method == "exact":
+        return "exact_timestamp"
+    if method == "nearest_within_tol":
+        m_ts = row["matched_snapshot_ts_utc"]
+        if m_ts is not None:
+            delta = float(m_ts) - float(row["decision_ts_utc"])
+            return "nearest_earlier" if delta < 0 else "nearest_later"
+        return "unknown_join"
+    return "unknown_join"
 
 
 def _all_card_row(row: sqlite3.Row) -> Optional[dict[str, Any]]:
@@ -689,6 +733,532 @@ def _quality_circle_summary(
     }
 
 
+# ── SCOREBOARD_TARGET_TRUTH_V1 (v4) — institutional descriptive metrics ──────
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — descriptive statistics over rows the
+#   scoreboard already logs; no market field is read, derived, renamed, or
+#   emitted here beyond counts/rates of existing logged decisions/outcomes.
+# Derived-field disposition: none required (no derived market field touched);
+#   the v2/v3 hit math and live skill-weight paths are byte-identical.
+# All consumers checked: yes — additive JSON keys only; legacy keys unchanged.
+# SCHWAB_CSV_CHECKED
+_CLASSES = ("up", "down", "flat")
+# Collapse/baseline warnings require a governed minimum sample so a two-row cell
+# cannot fire NEAR_CONSTANT; the directional floor mirrors QC_MIN_SCORED_CELL_N.
+WARN_MIN_N = 10
+NEAR_CONSTANT_SHARE = 0.90
+DIRECTIONAL_MIN_N = 30
+# Operator display policy (documented, descriptive-only): trade-call coverage
+# below this share is flagged for prominence so a selective-call accuracy can
+# never present as broad performance. Statistical sample gating is separately
+# governed by DIRECTIONAL_MIN_N/QC_MIN_SCORED_CELL_N (binomial floor); this
+# constant is a DISPLAY prominence rule, not a money-path threshold.
+LOW_COVERAGE_DISPLAY_POLICY = 0.05
+ACCURACY_PRESENTATION_STATUSES = (
+    "NO_SCORED_CALLS",
+    "SINGLE_CALL",
+    "SAMPLE_BELOW_GOVERNED_MINIMUM",
+    "ONE_SIDED_CALLS",
+    "LOW_COVERAGE",
+    "SUFFICIENT",
+)
+SCOREBOARD_WARNINGS = (
+    "LOSES_TO_ALWAYS_FLAT",
+    "LOSES_TO_MAJORITY",
+    "ALWAYS_FLAT_CLASSIFIER",
+    "NEAR_CONSTANT_CLASSIFIER",
+    "DIRECTIONAL_SAMPLE_TOO_SMALL",
+    "UNDER_SAMPLED",
+    "EFFECTIVE_SAMPLE_NOT_PROVEN",
+    "PRIMARY_HORIZON_IDENTITY_NOT_PROVEN",
+    "BUNDLE_IDENTITY_NOT_PROVEN",
+    "TIMESTAMP_IDENTITY_NOT_PROVEN",
+    "PLACEHOLDER_THRESHOLD_IN_USE",
+    "INVALID_THRESHOLD_FALLBACK_RISK",
+    "OUTCOME_LINEAGE_NOT_PROVEN",
+    "CALIBRATION_NOT_PROVEN",
+    "TRAIN_LIVE_PARITY_NOT_PROVEN",
+    "LEAKAGE_ABSENCE_NOT_PROVEN",
+)
+_HZ_MINUTES = {"1c": 1, "5c": 5, "15c": 15, "60c": 60}
+
+# ── Canonical display contracts (DEFECT-1 root cause fix) ────────────────────
+# Single governed semantic-definition source for EVERY human-facing renderer of
+# scoreboard metrics (HTML + console). Renderers must consume these constants —
+# never hard-code their own explanatory text — so a future renderer cannot
+# silently present the legacy triclass ALL metric as the governed trade-call
+# metric. Embedded in metric_definitions for machine readability.
+LEGACY_ALL_DISPLAY_CONTRACT = {
+    "display_name": "Legacy ALL triclass accuracy (LEGACY_INVALID_FOR_TRADE_EDGE)",
+    "semantic_version": "v2-legacy",
+    "classification": "legacy",
+    "prediction_class_treatment": "triclass (up/down/flat over LONG/SHORT/WAIT)",
+    "wait_treatment": "WAIT scored as a flat-price class under this LEGACY metric",
+    "intended_use": "historical reproduction and comparison only",
+    "comparison_restriction": "NOT comparable to governed v4 trade-call accuracy; not valid for evaluating trade edge",
+}
+TRADE_CALL_DISPLAY_CONTRACT = {
+    "display_name": "Governed trade-call accuracy (schema v4)",
+    "semantic_version": "v4",
+    "classification": "governed",
+    "prediction_class_treatment": "LONG/SHORT directional trade calls only",
+    "wait_treatment": "WAIT excluded as abstention (no trade call) — never scored as a flat prediction",
+    "intended_use": "descriptive trade-call quality with mandatory coverage and cohort context",
+    "comparison_restriction": "high conditional accuracy with low coverage is NOT sufficient evidence of predictive edge",
+    "coverage_requirement": "trade-call coverage and eligible call counts must be displayed adjacent to accuracy",
+}
+
+
+def _new_v4_cell() -> dict[str, Any]:
+    return {
+        "confusion": {p: {t: 0 for t in _CLASSES} for p in _CLASSES},
+        "cohorts": {c: 0 for c in JOIN_COHORTS},
+        "bundle_identity_unproven": 0,
+        "windows": set(),
+        "n_pred": 0,
+    }
+
+
+def _v4_accumulate(cell: dict[str, Any], r: dict[str, Any]) -> None:
+    cell["n_pred"] += 1
+    hz_min = _HZ_MINUTES.get(r["horizon"])
+    if hz_min:
+        cell["windows"].add(int(r["decision_ts_utc"] // (hz_min * 60.0)))
+    if r["truth"] in _CLASSES:
+        cell["confusion"][r["pred"]][r["truth"]] += 1
+        cell["cohorts"][r.get("join_cohort") or "unknown_join"] += 1
+        if not r.get("bundle_identity_proven"):
+            cell["bundle_identity_unproven"] += 1
+
+
+def _wilson_ci(hits: int, n: int) -> Optional[tuple[float, float]]:
+    """95% Wilson score interval — sample-size honesty for small trade-call counts."""
+    import math
+
+    if n <= 0:
+        return None
+    z = 1.959963984540054
+    p = hits / n
+    denom = 1.0 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = (z / denom) * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return (max(0.0, center - half), min(1.0, center + half))
+
+
+def _finalize_v4_cell(cell: dict[str, Any]) -> dict[str, Any]:
+    cm = cell["confusion"]
+    n_scored = sum(cm[p][t] for p in _CLASSES for t in _CLASSES)
+    pred_dist = {p: sum(cm[p][t] for t in _CLASSES) for p in _CLASSES}
+    truth_dist = {t: sum(cm[p][t] for p in _CLASSES) for t in _CLASSES}
+    hits = sum(cm[c][c] for c in _CLASSES)
+    # Per-class recall/precision -> balanced accuracy / macro F1 (absent classes excluded).
+    recalls, f1s = [], []
+    per_class = {}
+    for c in _CLASSES:
+        tp = cm[c][c]
+        prec = (tp / pred_dist[c]) if pred_dist[c] else None
+        rec = (tp / truth_dist[c]) if truth_dist[c] else None
+        f1 = (
+            (2 * prec * rec / (prec + rec))
+            if prec is not None and rec is not None and (prec + rec) > 0
+            else (0.0 if (prec is not None and rec is not None) else None)
+        )
+        per_class[c] = {"precision": prec, "recall": rec, "f1": f1}
+        if rec is not None:
+            recalls.append(rec)
+        if f1 is not None:
+            f1s.append(f1)
+    # Multiclass MCC (Gorodkin) — None when degenerate.
+    mcc = None
+    if n_scored:
+        import math
+
+        s = n_scored
+        corr = hits * s - sum(pred_dist[c] * truth_dist[c] for c in _CLASSES)
+        den_p = s * s - sum(pred_dist[c] ** 2 for c in _CLASSES)
+        den_t = s * s - sum(truth_dist[c] ** 2 for c in _CLASSES)
+        if den_p > 0 and den_t > 0:
+            mcc = corr / math.sqrt(den_p * den_t)
+    dir_called_n = sum(pred_dist[p] for p in ("up", "down"))
+    dir_called_hits = cm["up"]["up"] + cm["down"]["down"]
+    both_n = sum(cm[p][t] for p in ("up", "down") for t in ("up", "down"))
+    both_hits = cm["up"]["up"] + cm["down"]["down"]
+    accuracy = (hits / n_scored) if n_scored else None
+    always_flat = (truth_dist["flat"] / n_scored) if n_scored else None
+    majority = (max(truth_dist.values()) / n_scored) if n_scored else None
+    return {
+        "n_pred": cell["n_pred"],
+        "n_scored": n_scored,
+        "accuracy": accuracy,
+        "balanced_accuracy": (sum(recalls) / len(recalls)) if recalls else None,
+        "macro_f1": (sum(f1s) / len(f1s)) if f1s else None,
+        "mcc": mcc,
+        "confusion_matrix": cm,
+        "per_class": per_class,
+        "pred_distribution": pred_dist,
+        "truth_distribution": truth_dist,
+        "baselines": {"always_flat": always_flat, "majority_class": majority},
+        "directional_called": {
+            "n": dir_called_n,
+            "hits": dir_called_hits,
+            "accuracy": (dir_called_hits / dir_called_n) if dir_called_n else None,
+            "definition": "prediction is up/down; truth may be flat",
+        },
+        "both_nonflat_directional": {
+            "n": both_n,
+            "hits": both_hits,
+            "accuracy": (both_hits / both_n) if both_n else None,
+            "definition": "prediction AND truth are both up/down",
+        },
+        "flat_pred_rate": (pred_dist["flat"] / n_scored) if n_scored else None,
+        "flat_truth_rate": always_flat,
+        "identity_cohorts": dict(cell["cohorts"]),
+        "n_bundle_identity_unproven": cell["bundle_identity_unproven"],
+        "n_independent_windows": len(cell["windows"]),
+    }
+
+
+def _v4_cell_warnings(fin: dict[str, Any], threshold_flags: list[str]) -> list[str]:
+    w: list[str] = []
+    n = fin["n_scored"]
+    acc = fin["accuracy"]
+    if n >= WARN_MIN_N and acc is not None:
+        if fin["baselines"]["always_flat"] is not None and acc < fin["baselines"]["always_flat"]:
+            w.append("LOSES_TO_ALWAYS_FLAT")
+        if fin["baselines"]["majority_class"] is not None and acc < fin["baselines"]["majority_class"]:
+            w.append("LOSES_TO_MAJORITY")
+    if fin["n_pred"] >= WARN_MIN_N:
+        pd = fin["pred_distribution"]
+        total_pred_scored = sum(pd.values())
+        if total_pred_scored:
+            top_share = max(pd.values()) / total_pred_scored
+            if pd["flat"] == total_pred_scored:
+                w.append("ALWAYS_FLAT_CLASSIFIER")
+            elif top_share >= NEAR_CONSTANT_SHARE:
+                w.append("NEAR_CONSTANT_CLASSIFIER")
+    if fin["directional_called"]["n"] < DIRECTIONAL_MIN_N:
+        w.append("DIRECTIONAL_SAMPLE_TOO_SMALL")
+    if n and n < QC_MIN_SCORED_CELL_N:
+        w.append("UNDER_SAMPLED")
+    if n > fin["n_independent_windows"]:
+        w.append("EFFECTIVE_SAMPLE_NOT_PROVEN")
+    coh = fin["identity_cohorts"]
+    if n and (coh["nearest_earlier"] + coh["nearest_later"] + coh["unknown_join"]) > 0:
+        w.append("TIMESTAMP_IDENTITY_NOT_PROVEN")
+    if fin["n_bundle_identity_unproven"] > 0:
+        w.append("BUNDLE_IDENTITY_NOT_PROVEN")
+    w.extend(threshold_flags)
+    return w
+
+
+def _threshold_source_identity() -> dict[str, Any]:
+    """Threshold provenance embedded in every v4 report: file, hash, placeholder
+    status per governed horizon, fallback-risk detection. Never hand-entered."""
+    import hashlib
+
+    from movement_target_threshold import (
+        BY_HORIZON_PATH,
+        load_movement_thresholds_by_horizon_v1,
+    )
+
+    cfg = load_movement_thresholds_by_horizon_v1()
+    try:
+        sha = hashlib.sha256(Path(BY_HORIZON_PATH).read_bytes()).hexdigest()
+    except OSError:
+        sha = None
+    horizons = cfg.get("horizons") or {}
+    notes = str(cfg.get("notes") or "")
+    per_hz: dict[str, Any] = {}
+    flags: list[str] = []
+    placeholder = "placeholder" in notes.lower()
+    invalid_horizons: list[str] = []
+    for hz in HORIZON_SLUGS:
+        blk = horizons.get(hz) or {}
+        raw = blk.get("threshold_move_pts")
+        ratified = blk.get("selected_percentile") is not None
+        try:
+            invalid = raw is None or float(raw) <= 0.0
+        except (TypeError, ValueError):
+            invalid = True
+        per_hz[hz] = {
+            "threshold_move_pts": raw,
+            "selected_percentile": blk.get("selected_percentile"),
+            "ratified": ratified,
+            "invalid": invalid,
+        }
+        if invalid:
+            invalid_horizons.append(hz)
+        if not ratified:
+            placeholder = True
+    if placeholder:
+        flags.append("PLACEHOLDER_THRESHOLD_IN_USE")
+    if invalid_horizons:
+        flags.append("INVALID_THRESHOLD_FALLBACK_RISK")
+    return {
+        "source_path": str(BY_HORIZON_PATH),
+        "source_sha256": sha,
+        "source_notes": notes,
+        "per_horizon": per_hz,
+        # Horizons whose governed threshold is missing/non-positive: the truth
+        # writer would resolve a row-wise ungoverned fallback there, so their
+        # labels are NOT trusted-scoreable in v4 (excluded, disclosed, warned).
+        "invalid_horizons": invalid_horizons,
+        "units": "price points (|forward_close - anchor_close|)",
+        "warning_flags": flags,
+        "attribution": (
+            "current-configuration resolution; historical per-row applied VALUES"
+            " are persisted (snapshots.threshold_move_*) but source-file identity"
+            " for historical rows is INFERRED, not proven"
+        ),
+    }
+
+
+def _all_card_trade_metrics(all_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """ALL card as a TRADE-DECISION surface: LONG/SHORT are directional trade
+    calls scored against the decision-time primary-horizon outcome; WAIT is
+    abstention and is NEVER scored as a flat-price prediction."""
+    n_long = sum(1 for r in all_rows if r["pred"] == "up")
+    n_short = sum(1 for r in all_rows if r["pred"] == "down")
+    n_wait = sum(1 for r in all_rows if r["pred"] == "flat")
+    n_total = len(all_rows)
+
+    def _side(side_pred: str) -> dict[str, Any]:
+        scored = [r for r in all_rows if r["pred"] == side_pred and r["truth"] in _CLASSES]
+        hits = sum(1 for r in scored if r["truth"] == side_pred)
+        ci = _wilson_ci(hits, len(scored))
+        return {
+            "n_calls": n_long if side_pred == "up" else n_short,
+            "n_scored": len(scored),
+            "hits": hits,
+            "accuracy": (hits / len(scored)) if scored else None,
+            "precision": (hits / len(scored)) if scored else None,
+            "wilson_95ci": list(ci) if ci else None,
+        }
+
+    long_m = _side("up")
+    short_m = _side("down")
+    comb_n = long_m["n_scored"] + short_m["n_scored"]
+    comb_hits = long_m["hits"] + short_m["hits"]
+    ci = _wilson_ci(comb_hits, comb_n)
+    # Fail-closed presentation status (DEFECT-C): the insufficiency status leads
+    # and accuracy is descriptive-only unless sample AND coverage support it.
+    coverage = ((n_long + n_short) / n_total) if n_total else None
+    if comb_n == 0:
+        pres_status = "NO_SCORED_CALLS"
+    elif comb_n == 1:
+        pres_status = "SINGLE_CALL"
+    elif comb_n < DIRECTIONAL_MIN_N:
+        pres_status = "SAMPLE_BELOW_GOVERNED_MINIMUM"
+    elif long_m["n_scored"] == 0 or short_m["n_scored"] == 0:
+        pres_status = "ONE_SIDED_CALLS"
+    elif coverage is not None and coverage < LOW_COVERAGE_DISPLAY_POLICY:
+        pres_status = "LOW_COVERAGE"
+    else:
+        pres_status = "SUFFICIENT"
+    decision_valid = pres_status == "SUFFICIENT"
+    if pres_status == "NO_SCORED_CALLS":
+        leading = "no scored trade calls — accuracy not applicable"
+    elif decision_valid:
+        leading = (
+            f"sample status SUFFICIENT ({comb_n} scored calls,"
+            f" coverage {coverage:.1%}) — descriptive metric; not predictive validation"
+        )
+    else:
+        leading = (
+            f"sample status {pres_status} ({comb_n} scored call(s) of {n_total} eligible,"
+            f" coverage {coverage:.1%}) — accuracy is descriptive only and NOT decision-valid"
+        )
+    accuracy_presentation = {
+        "status": pres_status,
+        "decision_valid": decision_valid,
+        "leading_text": leading,
+        "policy_sources": {
+            "sample_floor": f"DIRECTIONAL_MIN_N={DIRECTIONAL_MIN_N} (statistical rule, binomial normal-approx floor)",
+            "coverage_prominence": f"LOW_COVERAGE_DISPLAY_POLICY={LOW_COVERAGE_DISPLAY_POLICY} (documented operator display policy, descriptive-only)",
+        },
+    }
+    wait_scored = [r for r in all_rows if r["pred"] == "flat" and r["truth"] in _CLASSES]
+    wait_dist = {c: sum(1 for r in wait_scored if r["truth"] == c) for c in _CLASSES}
+    warnings: list[str] = []
+    if comb_n < DIRECTIONAL_MIN_N:
+        warnings.append("DIRECTIONAL_SAMPLE_TOO_SMALL")
+    if comb_n and comb_n < QC_MIN_SCORED_CELL_N:
+        warnings.append("UNDER_SAMPLED")
+    return {
+        "contract": (
+            "LONG/SHORT are trade-entry directional calls scored against the logged"
+            " decision-time primary-horizon outcome; WAIT is trade abstention and is"
+            " excluded from trade-call accuracy (it is NOT a flat-price prediction)"
+        ),
+        "n_eligible_decisions": n_total,
+        "n_long": n_long,
+        "n_short": n_short,
+        "n_wait": n_wait,
+        "trade_call_coverage": ((n_long + n_short) / n_total) if n_total else None,
+        "abstention_rate": (n_wait / n_total) if n_total else None,
+        "long": long_m,
+        "short": short_m,
+        "combined_trade_calls": {
+            "n_scored": comb_n,
+            "hits": comb_hits,
+            "accuracy": (comb_hits / comb_n) if comb_n else None,
+            "wilson_95ci": list(ci) if ci else None,
+        },
+        "accuracy_presentation": accuracy_presentation,
+        "outcome_distribution_during_wait": {
+            "n_scored": len(wait_scored),
+            "distribution": wait_dist,
+            "note": "descriptive opportunity analysis only — WAIT rows carry no trade",
+        },
+        "n_primary_horizon_identity_not_proven": 0,  # filled by caller from tallies
+        "warnings": warnings,
+        "legacy_triclass_reference": {
+            "location": "by_horizon['all'] / by_ticker[<t>]['all']",
+            "label": "LEGACY_INVALID_FOR_TRADE_EDGE",
+            "reason": (
+                "legacy metric maps WAIT to a flat-price prediction and mixes"
+                " abstention with price-state classification; retained only for"
+                " historical reproducibility"
+            ),
+        },
+    }
+
+
+class DisplayContractViolationError(RuntimeError):
+    """Raised fail-closed when display contracts and executable metric behavior
+    disagree — no report may be emitted, written, or printed in that state."""
+
+
+def _require_display_contracts_bound() -> None:
+    errs = validate_display_contracts()
+    if errs:
+        raise DisplayContractViolationError(
+            "scoreboard display contracts violated — report emission refused: "
+            + "; ".join(errs)
+        )
+
+
+def validate_display_contracts() -> list[str]:
+    """DEFECT-G: bidirectional binding between the hand-authored display
+    contracts and EXECUTABLE metric behavior. Runs canonical micro-fixtures
+    through the production formulas and cross-checks the contract text.
+    Returns a list of mismatch errors (empty = contracts bound to behavior)."""
+    errors: list[str] = []
+    # Executable behavior probes.
+    rows = [
+        {"ticker": "Z", "decision_ts_utc": 1.0, "horizon": "all", "pred": "up",
+         "truth": "up", "top_probability": 0.9, "join_cohort": "identity",
+         "bundle_identity_proven": True},
+        {"ticker": "Z", "decision_ts_utc": 2.0, "horizon": "all", "pred": "down",
+         "truth": "up", "top_probability": 0.9, "join_cohort": "identity",
+         "bundle_identity_proven": True},
+        {"ticker": "Z", "decision_ts_utc": 3.0, "horizon": "all", "pred": "flat",
+         "truth": "down", "top_probability": 0.5, "join_cohort": "identity",
+         "bundle_identity_proven": True},
+    ]
+    m = _all_card_trade_metrics(rows)
+    wait_excluded = m["combined_trade_calls"]["n_scored"] == 2 and m["n_wait"] == 1
+    if not wait_excluded:
+        errors.append("behavior: WAIT not excluded from trade-call scoring")
+    if "excluded as abstention" not in TRADE_CALL_DISPLAY_CONTRACT["wait_treatment"]:
+        errors.append("governed contract text does not state WAIT abstention exclusion")
+    if wait_excluded and "scored as a flat-price class" not in LEGACY_ALL_DISPLAY_CONTRACT["wait_treatment"]:
+        errors.append("legacy contract text does not state WAIT-as-scored-class")
+    # Legacy mapping binds to the executable map.
+    if _FINAL_BIAS_TO_LABEL != {"LONG": "up", "SHORT": "down", "WAIT": "flat"}:
+        errors.append("legacy _FINAL_BIAS_TO_LABEL diverged from the documented triclass mapping")
+    # Coverage denominator = eligible decisions; scored = LONG+SHORT eligible.
+    if m["trade_call_coverage"] != (m["n_long"] + m["n_short"]) / m["n_eligible_decisions"]:
+        errors.append("behavior: coverage denominator is not eligible decisions")
+    if "coverage" not in TRADE_CALL_DISPLAY_CONTRACT.get("coverage_requirement", ""):
+        errors.append("governed contract text lacks the coverage requirement")
+    # Zero scored calls -> no accuracy, fail-closed presentation.
+    z = _all_card_trade_metrics([dict(rows[2])])
+    if z["combined_trade_calls"]["accuracy"] is not None:
+        errors.append("behavior: zero-call accuracy is not None")
+    if z["accuracy_presentation"]["status"] != "NO_SCORED_CALLS" or z["accuracy_presentation"]["decision_valid"]:
+        errors.append("behavior: zero-call presentation is not fail-closed")
+    # Low-sample presentation fail-closed.
+    if m["accuracy_presentation"]["decision_valid"]:
+        errors.append("behavior: 2-call sample presented as decision-valid")
+    # Historical-only + trade-edge restriction present in legacy contract.
+    if "historical" not in LEGACY_ALL_DISPLAY_CONTRACT["intended_use"]:
+        errors.append("legacy contract lacks historical-only purpose")
+    if "not valid for evaluating trade edge" not in LEGACY_ALL_DISPLAY_CONTRACT["comparison_restriction"]:
+        errors.append("legacy contract lacks trade-edge restriction")
+    return errors
+
+
+def _v4_metric_definitions() -> dict[str, Any]:
+    return {
+        "accuracy": "3-class hits/n_scored (pred == truth over up/down/flat)",
+        "balanced_accuracy": "mean per-class recall over classes present in truth",
+        "macro_f1": "mean per-class F1 over classes with defined precision+recall",
+        "mcc": "multiclass Matthews correlation (Gorodkin); None when degenerate",
+        "always_flat_baseline": "accuracy of predicting flat for every scored row",
+        "majority_class_baseline": "accuracy of predicting the day's majority truth class",
+        "directional_called_accuracy": "prediction is up/down (truth may be flat)",
+        "both_nonflat_directional_accuracy": "prediction AND truth are both up/down",
+        "identity_cohorts": (
+            "outcome-join provenance per scored row: identity (persisted decision_id"
+            " link) > exact_timestamp > nearest_earlier/nearest_later (inferred,"
+            " approximate) > unknown_join; inferred cohorts are disclosed, never"
+            " silently trusted"
+        ),
+        "n_independent_windows": (
+            "distinct non-overlapping horizon windows covered by scored rows;"
+            " n_scored above this count means overlapping labels — rows are NOT"
+            " independent trials (EFFECTIVE_SAMPLE_NOT_PROVEN)"
+        ),
+        "legacy_invalid_for_trade_edge": [
+            "by_horizon['all'] (triclass ALL accuracy: WAIT scored as flat prediction)",
+            "by_ticker[<t>]['all'] (same defect at ticker level)",
+            "directional_accuracy in v2 cells (prediction-only condition; kept as directional_called)",
+        ],
+        "display_contracts": {
+            "legacy_all": LEGACY_ALL_DISPLAY_CONTRACT,
+            "trade_call": TRADE_CALL_DISPLAY_CONTRACT,
+        },
+        "standing_not_proven_disclosures": [
+            "OUTCOME_LINEAGE_NOT_PROVEN: snapshot outcome columns carry no writer/mutation lineage; bar-mutation refresh recomputes labels in place",
+            "CALIBRATION_NOT_PROVEN: descriptive confidence only; no calibration-validity claim",
+            "TRAIN_LIVE_PARITY_NOT_PROVEN: training/live feature identity not proven by this report",
+            "LEAKAGE_ABSENCE_NOT_PROVEN: no leakage-control claim is made by this report",
+        ],
+        "warnings_supported": list(SCOREBOARD_WARNINGS),
+        "warning_thresholds": {
+            "WARN_MIN_N": WARN_MIN_N,
+            "NEAR_CONSTANT_SHARE": NEAR_CONSTANT_SHARE,
+            "DIRECTIONAL_MIN_N": DIRECTIONAL_MIN_N,
+            "QC_MIN_SCORED_CELL_N": QC_MIN_SCORED_CELL_N,
+        },
+    }
+
+
+def _v4_source_identity(db_path: Path | str) -> dict[str, Any]:
+    import subprocess
+
+    from horizon_outcomes import HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1
+
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).resolve().parents[1]),
+            timeout=10,
+        ).stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        sha = None
+    return {
+        "repository_sha": sha,
+        "db_path": str(Path(db_path).resolve()),
+        "horizon_outcome_schema_version": HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+        "threshold_source": _threshold_source_identity(),
+        "generator": f"calibration.daily_scoreboard schema_version={SCHEMA_VERSION}",
+    }
+
+
 def build_daily_scoreboard(
     db_path: Path | str,
     et_date: str,
@@ -715,8 +1285,28 @@ def build_daily_scoreboard(
     rollup: dict[str, dict[str, Any]] = {
         hz: _new_cell() for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG)
     }
+    # v4 accumulators ride BESIDE the legacy cells — legacy hit math is untouched.
+    # Invalid-threshold horizons are mechanically excluded from EVERY trusted v4
+    # metric (mandatory pre-proof correction): their rows land in an
+    # invalid-target cohort instead of n_scored/accuracy/baselines/confusion.
+    source_identity = _v4_source_identity(db_path)
+    threshold_flags = list(source_identity["threshold_source"]["warning_flags"])
+    invalid_horizons = set(source_identity["threshold_source"]["invalid_horizons"])
+    invalid_target_cohort: dict[str, int] = {hz: 0 for hz in sorted(invalid_horizons)}
+    v4_cells: dict[tuple[str, str], dict[str, Any]] = {}
+    v4_rollup: dict[str, dict[str, Any]] = {hz: _new_v4_cell() for hz in HORIZON_SLUGS}
+    all_rows_v4: list[dict[str, Any]] = []
     try:
         for r in _per_horizon_prediction_rows(conn, et_date, tickers):
+            if r["horizon"] == ALL_CARD_SLUG:
+                all_rows_v4.append(r)
+            elif r["horizon"] in invalid_horizons:
+                invalid_target_cohort[r["horizon"]] += 1
+            else:
+                _v4_accumulate(
+                    v4_cells.setdefault((r["ticker"], r["horizon"]), _new_v4_cell()), r
+                )
+                _v4_accumulate(v4_rollup[r["horizon"]], r)
             for cell in (
                 cells.setdefault((r["ticker"], r["horizon"]), _new_cell()),
                 rollup[r["horizon"]],
@@ -743,6 +1333,80 @@ def build_daily_scoreboard(
     for (ticker, hz), cell in sorted(cells.items()):
         by_ticker.setdefault(ticker, {})[hz] = _finalize_cell(cell)
 
+    def _v4_final(cell: dict[str, Any]) -> dict[str, Any]:
+        fin = _finalize_v4_cell(cell)
+        fin["warnings"] = _v4_cell_warnings(fin, threshold_flags)
+        return fin
+
+    by_horizon_extended = {hz: _v4_final(v4_rollup[hz]) for hz in HORIZON_SLUGS}
+    for hz in invalid_horizons:
+        by_horizon_extended[hz]["invalid_target_cohort"] = {
+            "n_rows_excluded_from_trusted_scoring": invalid_target_cohort[hz],
+            "reason": (
+                "governed threshold for this horizon is missing/non-positive —"
+                " labels are untrusted; rows are excluded from every trusted"
+                " metric denominator and reported here instead"
+            ),
+        }
+    by_ticker_extended: dict[str, dict[str, Any]] = {}
+    for (ticker, hz), cell in sorted(v4_cells.items()):
+        by_ticker_extended.setdefault(ticker, {})[hz] = _v4_final(cell)
+
+    all_card = _all_card_trade_metrics(all_rows_v4)
+    # ALL rows rejected fail-closed for a missing/invalid persisted primary
+    # horizon are counted by the production tallies (they never reach scoring).
+    all_card["n_primary_horizon_identity_not_proven"] = sum(
+        t["hz"][ALL_CARD_SLUG]["n_fusion_unavailable"] for t in tallies.values()
+    )
+    if all_card["n_primary_horizon_identity_not_proven"]:
+        all_card["warnings"].append("PRIMARY_HORIZON_IDENTITY_NOT_PROVEN")
+    # DEFECT-B: target/threshold validity is part of the governed semantic UNIT —
+    # a copied all_card must carry its own validity context, not rely on a
+    # distant section. Placeholder/invalid targets ⇒ never trusted trade-edge
+    # evidence, stated inside the unit.
+    ts_src = source_identity["threshold_source"]
+    cfg_governed = not ts_src["warning_flags"] and not ts_src["invalid_horizons"]
+    # Phase-8 language safety: CONFIGURATION status and TARGET VALIDITY are
+    # different axes — a ratified configuration NEVER implies economic target
+    # validity, label-contract correctness, trade edge, or predictive validity.
+    all_card["target_threshold_validity"] = {
+        "threshold_source_sha256": ts_src["source_sha256"],
+        "per_horizon": {
+            hz: {"ratified": blk["ratified"], "invalid": blk["invalid"]}
+            for hz, blk in ts_src["per_horizon"].items()
+        },
+        "warning_flags": list(ts_src["warning_flags"]),
+        "configuration_status": (
+            "GOVERNED_RATIFIED" if cfg_governed
+            else ("INVALID_PRESENT" if ts_src["invalid_horizons"] else "PLACEHOLDER")
+        ),
+        "metric_scoring_eligibility": not ts_src["invalid_horizons"],
+        "target_economic_validity": (
+            "NOT_PROVEN (parent status — configuration ratification alone never"
+            " proves economic target validity)"
+        ),
+        "label_contract_validity": "NOT_PROVEN (parent status)",
+        "trade_edge_validity": (
+            "NOT_PROVEN (never derivable from configuration status)"
+        ),
+        "statement": (
+            (
+                "governed threshold configuration present (ratified) — this is a"
+                " CONFIGURATION status only and is NOT a claim of target economic"
+                " validity, label-contract correctness, or trade edge (parent"
+                " statuses remain NOT_PROVEN)"
+            )
+            if cfg_governed
+            else (
+                "target/threshold configuration NOT governed (placeholder/invalid"
+                " thresholds) — this metric is NOT trusted trade-edge evidence"
+            )
+        ),
+    }
+    all_card["warnings"].extend(
+        f for f in ts_src["warning_flags"] if f not in all_card["warnings"]
+    )
+
     eligible_grid = _build_eligible_grid(
         roster, roster_source, tallies, snapshot_tickers, by_ticker
     )
@@ -766,6 +1430,12 @@ def build_daily_scoreboard(
         "coverage": _coverage_diagnostics(roster, roster_source, tallies, eligible_grid),
         # Quality Circle (operator contract 2026-07-09 item 8): refinement inputs.
         "quality_circle": _quality_circle_summary(eligible_grid, by_ticker),
+        # v4 (SCOREBOARD_TARGET_TRUTH_V1): institutional descriptive metrics.
+        "by_horizon_extended": by_horizon_extended,
+        "by_ticker_extended": by_ticker_extended,
+        "all_card": all_card,
+        "metric_definitions": _v4_metric_definitions(),
+        "source_identity": source_identity,
     }
 
 
@@ -1047,35 +1717,117 @@ def _fmt_pct(v: Optional[float]) -> str:
 
 
 def render_html(scoreboard: dict[str, Any]) -> str:
-    """Self-contained HTML report (opened by the scheduled task at end of day)."""
+    """Self-contained HTML report (opened by the scheduled task at end of day).
+
+    Fail-closed: display-contract validation runs before ANY markup is built, so
+    a direct render_html call can never emit semantics that contradict the
+    executable metric behavior."""
+    _require_display_contracts_bound()
     date = scoreboard["et_date"]
     head_cells = "".join(
-        f"<th>{h}</th>" for h in ("n scored", "accuracy", "directional n", "directional acc")
+        f'<th scope="col">{h}</th>'
+        for h in ("n scored", "accuracy", "directional n", "directional acc")
     )
 
     def _row(label: str, cell: dict[str, Any]) -> str:
+        # DEFECT-1: the 'all' row is the LEGACY triclass metric — it must never
+        # render as an unqualified horizon row (contract text, not styling).
+        shown = f"all — {LEGACY_ALL_DISPLAY_CONTRACT['display_name']}" if label == "all" else label
         return (
-            f"<tr><td>{label}</td><td>{cell['n_scored']}</td>"
+            f"<tr><td>{shown}</td><td>{cell['n_scored']}</td>"
             f"<td>{_fmt_pct(cell['accuracy'])}</td>"
             f"<td>{cell['n_directional']}</td>"
             f"<td>{_fmt_pct(cell['directional_accuracy'])}</td></tr>"
         )
 
+    lac = LEGACY_ALL_DISPLAY_CONTRACT
+    tcc = TRADE_CALL_DISPLAY_CONTRACT
     sections = [
-        "<h2>All tickers — by horizon (row-weighted pooled)</h2>",
-        f"<table><tr><th>horizon</th>{head_cells}</tr>",
+        "<h2>All tickers — by horizon (row-weighted pooled; legacy metric semantics)</h2>",
+        f"<p><b>{lac['display_name']}</b>: {lac['prediction_class_treatment']};"
+        f" {lac['wait_treatment']}. Purpose: {lac['intended_use']}."
+        f" {lac['comparison_restriction']}.</p>",
+        "<table><caption>Pooled per-horizon accuracy (row-weighted); the 'all' row"
+        f" is the {lac['display_name']}.</caption>"
+        f"<tr><th scope=\"col\">horizon</th>{head_cells}</tr>",
     ]
     sections += [_row(hz, c) for hz, c in scoreboard["by_horizon"].items()]
     sections.append("</table>")
 
+    # Governed v4 trade-call section — coverage and call counts render in the
+    # SAME section as accuracy; zero calls never display a misleading number.
+    ac = scoreboard.get("all_card") or {}
+    if ac:
+        comb = ac.get("combined_trade_calls") or {}
+        n_calls = int(comb.get("n_scored") or 0)
+        pres = ac.get("accuracy_presentation") or {}
+        validity = ac.get("target_threshold_validity") or {}
+        # DEFECT-C: the sample/coverage status LEADS; a bare percentage never
+        # opens the governed unit. DEFECT-B: target/threshold validity renders
+        # INSIDE the same unit, prominently, before any accuracy number.
+        if n_calls > 0 and pres.get("decision_valid"):
+            acc_txt = (
+                f"accuracy {_fmt_pct(comb.get('accuracy'))} (95% CI"
+                f" {_fmt_pct((comb.get('wilson_95ci') or [None, None])[0])}–"
+                f"{_fmt_pct((comb.get('wilson_95ci') or [None, None])[1])})"
+            )
+        elif n_calls > 0:
+            acc_txt = (
+                f"descriptive-only accuracy {_fmt_pct(comb.get('accuracy'))} (95% CI"
+                f" {_fmt_pct((comb.get('wilson_95ci') or [None, None])[0])}–"
+                f"{_fmt_pct((comb.get('wilson_95ci') or [None, None])[1])}) — NOT decision-valid"
+            )
+        else:
+            acc_txt = "no scored trade calls — accuracy not applicable"
+        warn_txt = ", ".join(ac.get("warnings") or []) or "none"
+        sections.append(f"<h2>{tcc['display_name']}</h2>")
+        sections.append(
+            f"<p><b>Target/threshold validity:</b> {validity.get('statement', 'validity unknown')}.</p>"
+            f"<p><b>{pres.get('leading_text', 'sample status unknown')}.</b></p>"
+            f"<p>{tcc['wait_treatment']}. {tcc['comparison_restriction']}.</p>"
+            f"<p>Eligible decisions: {ac.get('n_eligible_decisions')};"
+            f" LONG {ac.get('n_long')} / SHORT {ac.get('n_short')} / WAIT {ac.get('n_wait')};"
+            f" trade-call coverage {_fmt_pct(ac.get('trade_call_coverage'))};"
+            f" abstention rate {_fmt_pct(ac.get('abstention_rate'))};"
+            f" scored trade calls: {n_calls}; {acc_txt}.</p>"
+            f"<p>Warnings: {warn_txt}.</p>"
+        )
+    # Invalid-target cohorts and per-horizon v4 warnings stay visible.
+    ext = scoreboard.get("by_horizon_extended") or {}
+    inv_bits = []
+    warn_bits = []
+    for hz, cell in ext.items():
+        cohort = cell.get("invalid_target_cohort")
+        if cohort:
+            inv_bits.append(
+                f"{hz}: {cohort['n_rows_excluded_from_trusted_scoring']} row(s) excluded"
+                " (invalid governed threshold — labels untrusted)"
+            )
+        if cell.get("warnings"):
+            warn_bits.append(f"{hz}: {', '.join(cell['warnings'])}")
+    if inv_bits:
+        sections.append("<p><b>Invalid-target cohorts:</b> " + "; ".join(inv_bits) + ".</p>")
+    if warn_bits:
+        sections.append("<p><b>Per-horizon v4 warnings:</b> " + "; ".join(warn_bits) + ".</p>")
+
     # v3 denominator-first sections (coverage + equal-weight + eligible grid).
     ew = scoreboard.get("by_horizon_equal_weight") or {}
     if ew:
-        sections.append("<h2>All tickers — by horizon (equal weight per ticker)</h2>")
-        sections.append("<table><tr><th>horizon</th><th>tickers scored</th><th>mean accuracy</th></tr>")
+        sections.append(
+            "<h2>All tickers — by horizon (equal weight per ticker; legacy metric semantics)</h2>"
+        )
+        sections.append(
+            "<table><caption>Equal-weight per-horizon accuracy; the 'all' row is the"
+            f" {LEGACY_ALL_DISPLAY_CONTRACT['display_name']}.</caption>"
+            "<tr><th scope=\"col\">horizon</th><th scope=\"col\">tickers scored</th>"
+            "<th scope=\"col\">mean accuracy</th></tr>"
+        )
         for hz, c in ew.items():
+            shown_hz = (
+                f"all — {LEGACY_ALL_DISPLAY_CONTRACT['display_name']}" if hz == "all" else hz
+            )
             sections.append(
-                f"<tr><td>{hz}</td><td>{c['n_tickers']}</td>"
+                f"<tr><td>{shown_hz}</td><td>{c['n_tickers']}</td>"
                 f"<td>{_fmt_pct(c['mean_accuracy_equal_weight'])}</td></tr>"
             )
         sections.append("</table>")
@@ -1091,16 +1843,31 @@ def render_html(scoreboard: dict[str, Any]) -> str:
     grid = scoreboard.get("eligible_grid") or {}
     if grid:
         hz_order = list(next(iter(grid.values())).keys())
-        sections.append("<h2>Eligible grid — every governed ticker × horizon</h2>")
+
+        def _grid_th(hz: str) -> str:
+            # DEFECT-A: the 'all' column heading is structurally qualified so a
+            # copied column/row can never read as governed accuracy.
+            if hz == "all":
+                return f"<th scope=\"col\">all — {LEGACY_ALL_DISPLAY_CONTRACT['display_name']}</th>"
+            return f"<th scope=\"col\">{hz}</th>"
+
+        sections.append("<h2>Eligible grid — every governed ticker × horizon (legacy metric semantics)</h2>")
         sections.append(
-            "<table><tr><th>ticker</th>" + "".join(f"<th>{hz}</th>" for hz in hz_order) + "</tr>"
+            "<table><caption>Eligible grid: per-cell LEGACY triclass accuracy —"
+            f" {lac['wait_treatment']}; {lac['comparison_restriction']}.</caption>"
+            "<tr><th scope=\"col\">ticker</th>" + "".join(_grid_th(hz) for hz in hz_order) + "</tr>"
         )
         for tkr, cells_by_hz in grid.items():
             tds = []
             for hz in hz_order:
                 cell = cells_by_hz[hz]
                 if cell["score_status"] == "SCORED":
-                    tds.append(f"<td>{_fmt_pct(cell.get('accuracy'))} (n={cell['n_scored']})</td>")
+                    # Cell-level binding for the legacy ALL metric: survives
+                    # copying a single row without its heading.
+                    suffix = " — legacy triclass, not trade-call accuracy" if hz == "all" else ""
+                    tds.append(
+                        f"<td>{_fmt_pct(cell.get('accuracy'))} (n={cell['n_scored']}){suffix}</td>"
+                    )
                 else:
                     tds.append(f"<td>{cell['not_scored_reason']}</td>")
             sections.append(f"<tr><td>{tkr}</td>" + "".join(tds) + "</tr>")
@@ -1115,8 +1882,11 @@ def render_html(scoreboard: dict[str, Any]) -> str:
             f"<p>Worst tickers by mean accuracy over trusted cells"
             f" (n_scored &gt;= {qc['min_scored_for_trust']}; {wt['n_total']} rankable,"
             f" {us['n_total']} under-sampled/not-trustworthy — listed, not ranked):</p>"
-            "<table><tr><th>ticker</th><th>mean accuracy (trusted)</th>"
-            "<th>trusted horizons</th><th>n scored</th></tr>"
+            "<table><caption>Quality-circle ranking: worst tickers by mean accuracy"
+            " over trusted true-horizon cells (legacy ALL metric excluded from this"
+            " ranking).</caption>"
+            "<tr><th scope=\"col\">ticker</th><th scope=\"col\">mean accuracy (trusted)</th>"
+            "<th scope=\"col\">trusted horizons</th><th scope=\"col\">n scored</th></tr>"
         )
         for r in wt["rows"]:
             sections.append(
@@ -1146,7 +1916,11 @@ def render_html(scoreboard: dict[str, Any]) -> str:
 
     for ticker, by_hz in scoreboard["by_ticker"].items():
         sections.append(f"<h2>{ticker}</h2>")
-        sections.append(f"<table><tr><th>horizon</th>{head_cells}</tr>")
+        sections.append(
+            f"<table><caption>{ticker} per-horizon accuracy; the 'all' row is the"
+            f" {LEGACY_ALL_DISPLAY_CONTRACT['display_name']}.</caption>"
+            f"<tr><th scope=\"col\">horizon</th>{head_cells}</tr>"
+        )
         sections += [_row(hz, c) for hz, c in by_hz.items()]
         sections.append("</table>")
     body = "\n".join(sections)
@@ -1159,16 +1933,22 @@ def render_html(scoreboard: dict[str, Any]) -> str:
  th {{ background: #20242b; }} td:first-child, th:first-child {{ text-align: left; }}
 </style></head>
 <body><h1>Daily signal scoreboard — {date}</h1>
-<p>Accuracy = dominant fusion direction vs realized outcome label (same labels training uses).
-Directional = rows where the model called up/down (not flat).
-The <b>all</b> row is the consolidated ALL card (trade-entry signal): final_bias scored
-against the logged primary-horizon outcome; LONG/SHORT map to up/down, WAIT to flat.</p>
+<p>Horizon rows (1c/5c/15c/60c): accuracy = dominant fusion direction vs realized outcome
+label (same labels training uses); "directional" counts rows where the model called up/down
+(truth may still be flat). The <b>all</b> row is the
+{LEGACY_ALL_DISPLAY_CONTRACT["display_name"]}: {LEGACY_ALL_DISPLAY_CONTRACT["wait_treatment"]};
+retained for {LEGACY_ALL_DISPLAY_CONTRACT["intended_use"]} —
+{LEGACY_ALL_DISPLAY_CONTRACT["comparison_restriction"]}. The governed trade-call view
+(WAIT excluded as abstention) is the separate "{TRADE_CALL_DISPLAY_CONTRACT["display_name"]}" section below.</p>
 {body}
 </body></html>
 """
 
 
 def write_reports(scoreboard: dict[str, Any], out_dir: Path | str = DEFAULT_REPORT_DIR) -> dict[str, str]:
+    # Fail-closed BEFORE any filesystem effect: a contract violation writes
+    # nothing (no partial report, no stale 'latest' overwrite).
+    _require_display_contracts_bound()
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     date = scoreboard["et_date"]
@@ -1199,6 +1979,10 @@ def main() -> int:
 
     et_date = args.date or datetime.now(tz=ET).strftime("%Y-%m-%d")
     tickers = [t.strip().upper() for t in args.tickers if t.strip()] or None
+    # Fail-closed for the whole production entrypoint: contract violation aborts
+    # before computation, emission, or console output (non-zero exit for the
+    # scheduled task; error is explicit in its log).
+    _require_display_contracts_bound()
     scoreboard = build_daily_scoreboard(
         args.db, et_date, tickers=tickers, run_backfill=not args.no_backfill
     )
@@ -1210,7 +1994,30 @@ def main() -> int:
         paths["actionability"] = write_actionability_report(act, args.out_dir)
     except Exception as _act_e:  # noqa: BLE001 — report-only tail
         log.warning("actionability report failed (scoreboard unaffected): %s", _act_e)
-    print(json.dumps({"et_date": et_date, "by_horizon": scoreboard["by_horizon"], "reports": paths}, indent=2))
+    print(
+        json.dumps(
+            {
+                "et_date": et_date,
+                # Console/log renderer (operator-facing): the legacy summary must
+                # carry the same canonical semantic contracts as the HTML report.
+                "by_horizon_legacy_semantics": LEGACY_ALL_DISPLAY_CONTRACT,
+                "by_horizon": scoreboard["by_horizon"],
+                "governed_trade_call": {
+                    "contract": TRADE_CALL_DISPLAY_CONTRACT,
+                    "summary": {
+                        k: scoreboard["all_card"].get(k)
+                        for k in (
+                            "n_eligible_decisions", "n_long", "n_short", "n_wait",
+                            "trade_call_coverage", "abstention_rate",
+                            "combined_trade_calls", "warnings",
+                        )
+                    },
+                },
+                "reports": paths,
+            },
+            indent=2,
+        )
+    )
     if args.open:
         os.startfile(paths["html"])  # noqa: S606 — operator-facing Windows report open
     return 0

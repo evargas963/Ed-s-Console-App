@@ -1,0 +1,37 @@
+........................................................................ [ 86%]
+.........F.                                                              [100%]
+================================== FAILURES ===================================
+_______ test_defect1_renderers_consume_canonical_contracts_source_lock ________
+
+    def test_defect1_renderers_consume_canonical_contracts_source_lock():
+        """Test 17 (mechanical recurrence lock): both renderers reference the canonical
+        display contracts; the legacy explanatory text is not independently hard-coded
+        (single governed semantic-definition source)."""
+        import ast
+    
+        src = Path(__file__).resolve().parent.parent.joinpath(
+            "calibration", "daily_scoreboard.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        for fname in ("render_html", "main"):
+            fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == fname)
+            names = {x.id for x in ast.walk(fn) if isinstance(x, ast.Name)}
+            assert "LEGACY_ALL_DISPLAY_CONTRACT" in names, f"{fname} does not consume the canonical legacy contract"
+            assert "TRADE_CALL_DISPLAY_CONTRACT" in names, f"{fname} does not consume the canonical governed contract"
+        # The load-bearing legacy phrase exists exactly once (in the contract), never
+        # duplicated as renderer-local literals that could drift.
+        assert src.count("WAIT scored as a flat-price class") == 1
+        # Machine-readable copy is embedded in the JSON output definitions.
+        from calibration.daily_scoreboard import _v4_metric_definitions
+    
+        md = _v4_metric_definitions()
+>       assert md["display_contracts"]["legacy_all"]["classification"] == "legacy"
+E       AssertionError: assert 'current' == 'legacy'
+E         
+E         - legacy
+E         + current
+
+tests\test_calibration_daily_scoreboard.py:1793: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_renderers_consume_canonical_contracts_source_lock
+1 failed, 82 passed in 20.76s

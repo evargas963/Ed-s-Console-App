@@ -1,0 +1,28 @@
+...............................................................F........ [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+___________________ test_defect1_zero_call_safety_in_render ___________________
+
+    def test_defect1_zero_call_safety_in_render():
+        """Test 8: zero eligible trade calls must not display a misleading accuracy."""
+        from calibration.daily_scoreboard import _all_card_trade_metrics, render_html as _rh
+    
+        sb_min = {
+            "et_date": "2026-06-09",
+            "by_horizon": {},
+            "by_ticker": {},
+            "all_card": _all_card_trade_metrics(
+                [{"ticker": "Z", "decision_ts_utc": 1.0, "horizon": "all", "pred": "flat",
+                  "truth": "flat", "top_probability": 0.5, "join_cohort": "identity",
+                  "bundle_identity_proven": True}]
+            ),
+            "by_horizon_extended": {},
+        }
+        text = _plain_text(_rh(sb_min)).lower()
+>       assert "no scored trade calls" in text
+E       AssertionError: assert 'no scored trade calls' in ' \n    daily signal scoreboard — 2026-06-09 \n \n body { font-family: segoe ui, sans-serif; background: #14161a; colo...-call coverage 0.0%; abstention rate 100.0%; scored trade calls: 0; —.  warnings: directional_sample_too_small. \n  \n'
+
+tests\test_calibration_daily_scoreboard.py:1391: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render
+1 failed, 82 passed in 17.54s

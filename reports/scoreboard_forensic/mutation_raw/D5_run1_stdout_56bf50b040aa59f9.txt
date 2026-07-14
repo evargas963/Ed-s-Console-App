@@ -1,0 +1,21 @@
+..............................................................F......... [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+______________ test_defect1_governed_trade_call_display_contract ______________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-899/test_defect1_governed_trade_ca0')
+
+    def test_defect1_governed_trade_call_display_contract(tmp_path):
+        """Tests 5-7: governed v4 accuracy renders under its OWN heading with coverage
+        and eligible call counts in the same section."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        text = _plain_text(render_html(sb)).lower()
+        assert "governed trade-call accuracy (schema v4)" in text
+>       assert "trade-call coverage" in text
+E       AssertionError: assert 'trade-call coverage' in ' \n    daily signal scoreboard — 2026-06-09 \n \n body { font-family: segoe ui, sans-serif; background: #14161a; colo...60c  0  —  0  —  \n  all — legacy all triclass accuracy (legacy_invalid_for_trade_edge)  3  66.7%  2  50.0%  \n \n  \n'
+
+tests\test_calibration_daily_scoreboard.py:1369: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract
+1 failed, 82 passed in 19.87s

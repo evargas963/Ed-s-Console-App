@@ -1,0 +1,66 @@
+...................................................................F.... [ 86%]
+...F.......                                                              [100%]
+================================== FAILURES ===================================
+_______ test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy _______
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-908/test_v2_eligible_grid_all_cell0')
+
+    def test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy(tmp_path):
+        """DEFECT-A regression (Cursor case: 66.7% (n=3) under <th>all</th>): the grid
+        'all' column heading AND every scored 'all' cell are structurally qualified;
+        the numeric value is preserved; a copied single row keeps the qualification."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        assert sb["by_ticker"]["SPY"]["all"]["accuracy"] == pytest.approx(2 / 3)  # numeric preserved
+        html = render_html(sb)
+        assert "<th scope=\"col\">all — Legacy ALL triclass accuracy" in html
+        assert "<th scope=\"col\">all</th>" not in html
+        grid_rows = [seg for seg in html.split("<tr>") if seg.startswith("<td>SPY</td>")]
+        grid_row = next(seg for seg in grid_rows if "legacy triclass, not trade-call accuracy" in seg)
+        assert "66.7%" in grid_row and "(n=3)" in grid_row
+        # Caption binds the semantics to the table structure itself.
+>       assert "<caption>Eligible grid: per-cell LEGACY triclass accuracy" in html
+E       assert '<caption>Eligible grid: per-cell LEGACY triclass accuracy' in '<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Daily signal scoreboard — 2026-06-09</title>\n<style>\n bod... (LEGACY_INVALID_FOR_TRADE_EDGE)</td><td>3</td><td>66.7%</td><td>2</td><td>50.0%</td></tr>\n</table>\n</body></html>\n'
+
+tests\test_calibration_daily_scoreboard.py:1466: AssertionError
+_________________ test_v3_metric_tables_structural_semantics __________________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-908/test_v3_metric_tables_structur0')
+
+    def test_v3_metric_tables_structural_semantics(tmp_path):
+        """Phase-9: every scoreboard metric table carries a caption and scoped column
+        headers — checked structurally via the stdlib HTML parser, not substrings."""
+        from html.parser import HTMLParser
+    
+        class _T(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.tables = []
+                self._cur = None
+    
+            def handle_starttag(self, tag, attrs):
+                if tag == "table":
+                    self._cur = {"caption": False, "th": 0, "th_scoped": 0}
+                    self.tables.append(self._cur)
+                elif self._cur is not None and tag == "caption":
+                    self._cur["caption"] = True
+                elif self._cur is not None and tag == "th":
+                    self._cur["th"] += 1
+                    if dict(attrs).get("scope") in ("col", "row"):
+                        self._cur["th_scoped"] += 1
+    
+        db = _fixture_db(tmp_path)
+        html = render_html(build_daily_scoreboard(db, ET_DATE, run_backfill=False))
+        p = _T()
+        p.feed(html)
+        assert p.tables, "no tables parsed"
+        for i, t in enumerate(p.tables):
+>           assert t["caption"], f"table {i} lacks a caption"
+E           AssertionError: table 2 lacks a caption
+E           assert False
+
+tests\test_calibration_daily_scoreboard.py:1640: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy
+FAILED tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics
+2 failed, 81 passed in 16.96s

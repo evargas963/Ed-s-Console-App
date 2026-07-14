@@ -1,0 +1,45 @@
+.................................................FF..................... [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+___________________ test_v4_baselines_and_directional_split ___________________
+
+    def test_v4_baselines_and_directional_split():
+        """Required 23-26: always-flat + majority baselines; directional-called vs
+        both-nonflat directional accuracy are distinct metrics."""
+        rows = [
+            _v4_row("up", "flat"), _v4_row("up", "up"), _v4_row("down", "flat"),
+            _v4_row("flat", "flat"),
+        ]
+        fin = _v4_fin(rows)
+>       assert fin["baselines"]["always_flat"] == pytest.approx(3 / 4)
+E       assert 0.25 == 0.75 ± 7.5e-07
+E         
+E         comparison failed
+E         Obtained: 0.25
+E         Expected: 0.75 ± 7.5e-07
+
+tests\test_calibration_daily_scoreboard.py:1093: AssertionError
+___________________ test_v4_collapse_and_baseline_warnings ____________________
+
+    def test_v4_collapse_and_baseline_warnings():
+        """Required 25+27+28: LOSES_TO_ALWAYS_FLAT, ALWAYS_FLAT_CLASSIFIER and
+        NEAR_CONSTANT_CLASSIFIER fire mechanically from the data."""
+        flat_rows = [_v4_row("flat", "flat" if i % 3 else "up") for i in range(WARN_MIN_N + 2)]
+        fin = _v4_fin(flat_rows)
+        w = _v4_cell_warnings(fin, [])
+        assert "ALWAYS_FLAT_CLASSIFIER" in w
+        near = [_v4_row("up", "down") for _ in range(19)] + [_v4_row("down", "down")]
+        fin2 = _v4_fin(near)
+        w2 = _v4_cell_warnings(fin2, [])
+        assert "NEAR_CONSTANT_CLASSIFIER" in w2
+        assert "LOSES_TO_ALWAYS_FLAT" not in w2 or fin2["baselines"]["always_flat"] > fin2["accuracy"]
+        lose = [_v4_row("up", "flat") for _ in range(WARN_MIN_N)]
+        w3 = _v4_cell_warnings(_v4_fin(lose), [])
+>       assert "LOSES_TO_ALWAYS_FLAT" in w3 and "LOSES_TO_MAJORITY" in w3
+E       AssertionError: assert ('LOSES_TO_ALWAYS_FLAT' in ['LOSES_TO_MAJORITY', 'NEAR_CONSTANT_CLASSIFIER', 'DIRECTIONAL_SAMPLE_TOO_SMALL', 'UNDER_SAMPLED', 'EFFECTIVE_SAMPLE_NOT_PROVEN'])
+
+tests\test_calibration_daily_scoreboard.py:1115: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_v4_baselines_and_directional_split
+FAILED tests/test_calibration_daily_scoreboard.py::test_v4_collapse_and_baseline_warnings
+2 failed, 81 passed in 18.85s

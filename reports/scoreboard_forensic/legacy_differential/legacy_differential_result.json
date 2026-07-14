@@ -1,0 +1,30 @@
+{
+ "schema": "LANE_A_LEGACY_DIFFERENTIAL_RESULT",
+ "base_sha": "a0d5e3b9a5f9731357465f93fe2375f9a4672338",
+ "fixture_content_sha256": "2a24dd2cd045eaaad4b423cda3143094a1aece154fd266f25f6ffe0718328c84",
+ "old_source_sha256": "5e78798da30988079bb09ab1df03ba8840fcd44b3f89bf015ea5bdcbbebfbd5f",
+ "new_source_sha256": "b9d5c7643f3cf1b71d93a4c96468b7421f0df836765efe0bd383880176b8de2b",
+ "comparison_program_sha256": "0a4ea2baf703795cdaf84f8d9c0442940cd74427d6ad165177fb01b73478d1bc",
+ "field_allowlist": [
+  "et_date",
+  "tickers_filter",
+  "backfill_stats",
+  "by_horizon",
+  "by_ticker",
+  "by_horizon_aggregation",
+  "by_horizon_equal_weight",
+  "eligible_grid",
+  "coverage",
+  "quality_circle"
+ ],
+ "numeric_fields_compared": 168,
+ "numeric_mismatches": [],
+ "all_fields_compared": 224,
+ "field_value_mismatches": [],
+ "legacy_subset_json_sha256_old": "5abcfe1878303c8ef05206176a48de424ea871fb3703b9beb0c6f5b95130e6aa",
+ "legacy_subset_json_sha256_new": "5abcfe1878303c8ef05206176a48de424ea871fb3703b9beb0c6f5b95130e6aa",
+ "LEGACY_NUMERIC_SUBSET_IDENTITY": "PROVEN",
+ "LEGACY_FIELD_VALUE_IDENTITY": "PROVEN",
+ "LEGACY_COMPLETE_JSON_BYTE_IDENTITY": "NOT_PROVEN (schema v4 intentionally adds keys)",
+ "LEGACY_COMPLETE_OUTPUT_BYTE_IDENTITY": "NOT_PROVEN (HTML semantics are the Lane-A fix)"
+}

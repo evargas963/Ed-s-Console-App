@@ -1,0 +1,23 @@
+.............................................................F.......... [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+__________ test_defect1_legacy_all_display_is_semantically_qualified __________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-896/test_defect1_legacy_all_displa0')
+
+    def test_defect1_legacy_all_display_is_semantically_qualified(tmp_path):
+        """Tests 1-4+12: the rendered LEGACY ALL metric states legacy status, triclass
+        treatment, WAIT-as-scored-class, and historical-only purpose — surviving
+        plain-text extraction (no reliance on CSS/color/position)."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        text = _plain_text(render_html(sb)).lower()
+        assert "legacy" in text
+>       assert "triclass (up/down/flat" in text  # explicit treatment phrase, not just the name
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 'triclass (up/down/flat' in ' \n    daily signal scoreboard — 2026-06-09 \n \n body { font-family: segoe ui, sans-serif; background: #14161a; colo...60c  0  —  0  —  \n  all — legacy all triclass accuracy (legacy_invalid_for_trade_edge)  3  66.7%  2  50.0%  \n \n  \n'
+
+tests\test_calibration_daily_scoreboard.py:1354: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified
+1 failed, 82 passed in 20.81s

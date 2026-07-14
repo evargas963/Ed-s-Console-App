@@ -1,0 +1,44 @@
+........................................................................ [ 86%]
+...F.......                                                              [100%]
+================================== FAILURES ===================================
+_________________ test_v3_metric_tables_structural_semantics __________________
+
+tmp_path = WindowsPath('C:/Users/evarg/AppData/Local/Temp/pytest-of-evarg/pytest-915/test_v3_metric_tables_structur0')
+
+    def test_v3_metric_tables_structural_semantics(tmp_path):
+        """Phase-9: every scoreboard metric table carries a caption and scoped column
+        headers — checked structurally via the stdlib HTML parser, not substrings."""
+        from html.parser import HTMLParser
+    
+        class _T(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.tables = []
+                self._cur = None
+    
+            def handle_starttag(self, tag, attrs):
+                if tag == "table":
+                    self._cur = {"caption": False, "th": 0, "th_scoped": 0}
+                    self.tables.append(self._cur)
+                elif self._cur is not None and tag == "caption":
+                    self._cur["caption"] = True
+                elif self._cur is not None and tag == "th":
+                    self._cur["th"] += 1
+                    if dict(attrs).get("scope") in ("col", "row"):
+                        self._cur["th_scoped"] += 1
+    
+        db = _fixture_db(tmp_path)
+        html = render_html(build_daily_scoreboard(db, ET_DATE, run_backfill=False))
+        p = _T()
+        p.feed(html)
+        assert p.tables, "no tables parsed"
+        for i, t in enumerate(p.tables):
+            assert t["caption"], f"table {i} lacks a caption"
+>           assert t["th"] > 0 and t["th"] == t["th_scoped"], f"table {i} has unscoped <th>"
+E           AssertionError: table 0 has unscoped <th>
+E           assert (5 > 0 and 5 == 4)
+
+tests\test_calibration_daily_scoreboard.py:1641: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics
+1 failed, 82 passed in 17.05s
