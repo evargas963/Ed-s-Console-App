@@ -642,3 +642,266 @@ def test_universal_fix_gate_sources_require_runner_authoritative_v4_pin():
         assert not any(rel.startswith(p + "/") or rel.startswith(p) and False for p in excludes)
         # Explicit: none of these live under a scanner exclude prefix.
         assert not any(rel.replace("\\", "/").startswith(p.rstrip("/") + "/") for p in excludes)
+
+
+# ── Scope-coherent excluded-path disposition markers (PR #41 root cause) ─────
+# The register walk excludes whole subtrees (scanner paths.SCAN_SCOPE_EXCLUDE_
+# PREFIXES), so excluded-path emission sites require an exact-site
+# REGISTER_SCOPE_EXCLUDED comment marker; scanner-in-scope paths keep the
+# REGISTER_ROW / register-row contract unchanged. Every marker defect class is
+# fail-closed and each protection has a mutation-sensitivity twin below.
+
+_EXCLUDED_FILE = "calibration/daily_scoreboard.py"
+_NESTED_EXCLUDED_FILE = "calibration/sub/deep_report.py"
+_DELTA_SITE = '+            delta = float(m_ts) - float(row["decision_ts_utc"])'
+_CONFIDENCE_SITE = '+            "CALIBRATION_NOT_PROVEN: descriptive confidence only; no calibration-validity claim",'
+
+
+def _scope_marker(
+    prefix: str = "calibration",
+    token: str = "delta",
+    mid: str = "t-delta-a",
+    cls: str = "timestamp_difference",
+    trace: str = "epoch-seconds difference between internal decision-log timestamps",
+) -> str:
+    return (
+        f"+# REGISTER_SCOPE_EXCLUDED: prefix={prefix} token={token} id={mid} "
+        f'class={cls} impact=NO_REGISTER_IMPACT trace="{trace}"'
+    )
+
+
+def _empty_register(tmp_path: Path) -> Path:
+    p = tmp_path / "reg.csv"
+    p.write_text(",".join(guard.REGISTER_COLUMNS_FALLBACK) + "\n", encoding="utf-8")
+    return p
+
+
+def _register_with_row(tmp_path: Path, *, path: str, line: int, surface: str) -> Path:
+    p = tmp_path / "reg.csv"
+    rid = "ab12cd34ef56ab78cd90"
+    row = f"{rid},py,{path},{line},0,TEXT_LINE_MARKET_TOKEN,{surface},{surface},,,,UNREVIEWED,,,"
+    p.write_text(",".join(guard.REGISTER_COLUMNS_FALLBACK) + "\n" + row + "\n", encoding="utf-8")
+    return p
+
+
+def test_scope_marker_covers_excluded_site(tmp_path: Path):
+    diff = "\n".join([f"+++ b/{_EXCLUDED_FILE}", _scope_marker(), _DELTA_SITE])
+    assert guard.check_diff_emission_gate(diff, _empty_register(tmp_path)) == []
+
+
+def test_scope_marker_covers_nested_excluded_prefix(tmp_path: Path):
+    diff = "\n".join([f"+++ b/{_NESTED_EXCLUDED_FILE}", _scope_marker(), _DELTA_SITE])
+    assert guard.check_diff_emission_gate(diff, _empty_register(tmp_path)) == []
+
+
+def test_scope_marker_covers_confidence_disclosure_homonym(tmp_path: Path):
+    diff = "\n".join(
+        [
+            f"+++ b/{_EXCLUDED_FILE}",
+            _scope_marker(token="confidence", mid="t-conf-a", cls="static_disclosure_text",
+                          trace="static fail-closed operator disclosure string only"),
+            _CONFIDENCE_SITE,
+        ]
+    )
+    assert guard.check_diff_emission_gate(diff, _empty_register(tmp_path)) == []
+
+
+def test_scope_marker_each_site_needs_its_own_marker(tmp_path: Path):
+    covered = "\n".join(
+        [
+            f"+++ b/{_EXCLUDED_FILE}",
+            _scope_marker(mid="t-delta-1"),
+            _DELTA_SITE,
+            _scope_marker(mid="t-delta-2"),
+            '+            return "nearest_earlier" if delta < 0 else "nearest_later"',
+        ]
+    )
+    assert guard.check_diff_emission_gate(covered, _empty_register(tmp_path)) == []
+    one_marker = "\n".join(
+        [
+            f"+++ b/{_EXCLUDED_FILE}",
+            _scope_marker(mid="t-delta-1"),
+            _DELTA_SITE,
+            '+            return "nearest_earlier" if delta < 0 else "nearest_later"',
+        ]
+    )
+    v = guard.check_diff_emission_gate(one_marker, _empty_register(tmp_path))
+    assert len(v) == 1 and "no exact-site" in v[0]
+
+
+def test_scope_marker_excluded_site_without_marker_fails(tmp_path: Path):
+    diff = "\n".join([f"+++ b/{_EXCLUDED_FILE}", _DELTA_SITE])
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert len(v) == 1 and "scanner-scope-excluded path" in v[0]
+
+
+def test_scope_marker_rejected_on_in_scope_path(tmp_path: Path):
+    diff = "\n".join(
+        [
+            "+++ b/server.py",
+            _scope_marker(prefix="calibration", mid="t-inscope"),
+            '+    ms_dict["delta"] = row.get("delta")',
+        ]
+    )
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("scanner-IN-scope path" in x for x in v)
+    assert any("no matching" in x and "server.py" in x for x in v)
+
+
+def test_scope_marker_wrong_token_is_orphan_and_site_uncovered(tmp_path: Path):
+    diff = "\n".join([f"+++ b/{_EXCLUDED_FILE}", _scope_marker(token="gamma", mid="t-gamma"), _DELTA_SITE])
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("orphan" in x for x in v)
+    assert any("no exact-site" in x for x in v)
+
+
+def test_scope_marker_outside_line_adjacency_is_orphan(tmp_path: Path):
+    diff = "\n".join(
+        [
+            f"+++ b/{_EXCLUDED_FILE}",
+            _scope_marker(),
+            "+            method_note = str(1)",
+            "+            method_note2 = str(2)",
+            _DELTA_SITE,
+        ]
+    )
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("orphan" in x for x in v)
+    assert any("no exact-site" in x for x in v)
+
+
+def test_scope_marker_cross_file_cannot_cover(tmp_path: Path):
+    # The site line sits INSIDE the marker's line window and matches its token —
+    # path equality must be the protection that rejects the cross-file bind.
+    diff = "\n".join(
+        [
+            "+++ b/calibration/other_module.py",
+            _scope_marker(mid="t-crossfile"),
+            f"+++ b/{_EXCLUDED_FILE}",
+            "+import json",
+            _DELTA_SITE,
+        ]
+    )
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("orphan" in x for x in v)
+    assert any("no exact-site" in x for x in v)
+
+
+def test_scope_marker_malformed_fails_closed(tmp_path: Path):
+    diff = "\n".join(
+        [
+            f"+++ b/{_EXCLUDED_FILE}",
+            "+# REGISTER_SCOPE_EXCLUDED: prefix=calibration token=delta",
+            _DELTA_SITE,
+        ]
+    )
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("malformed" in x for x in v)
+    assert any("no exact-site" in x for x in v)
+
+
+def test_scope_marker_missing_trace_field_is_malformed(tmp_path: Path):
+    line = _scope_marker().replace(
+        ' trace="epoch-seconds difference between internal decision-log timestamps"', ""
+    )
+    diff = "\n".join([f"+++ b/{_EXCLUDED_FILE}", line, _DELTA_SITE])
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("malformed" in x for x in v)
+
+
+def test_scope_marker_duplicate_id_fails(tmp_path: Path):
+    diff = "\n".join(
+        [
+            f"+++ b/{_EXCLUDED_FILE}",
+            _scope_marker(mid="t-dup-marker"),
+            _DELTA_SITE,
+            _scope_marker(mid="t-dup-marker"),
+            '+            return "nearest_earlier" if delta < 0 else "nearest_later"',
+        ]
+    )
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("duplicate" in x for x in v)
+
+
+def test_scope_marker_one_marker_cannot_cover_two_sites(tmp_path: Path):
+    diff = "\n".join(
+        [
+            f"+++ b/{_EXCLUDED_FILE}",
+            _scope_marker(mid="t-one-marker"),
+            _DELTA_SITE,
+            '+            return "nearest_earlier" if delta < 0 else "nearest_later"',
+        ]
+    )
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert len(v) == 1 and "no exact-site" in v[0]
+
+
+def test_scope_marker_orphan_without_any_site_fails(tmp_path: Path):
+    diff = "\n".join([f"+++ b/{_EXCLUDED_FILE}", _scope_marker(mid="t-orphan")])
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert len(v) == 1 and "orphan" in v[0]
+
+
+def test_scope_marker_prefix_not_covering_path_fails(tmp_path: Path):
+    diff = "\n".join(
+        [f"+++ b/{_EXCLUDED_FILE}", _scope_marker(prefix="reports", mid="t-wrongpfx"), _DELTA_SITE]
+    )
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("does not cover this path" in x for x in v)
+    assert any("no exact-site" in x for x in v)
+
+
+def test_scope_marker_non_canonical_prefix_fails(tmp_path: Path):
+    diff = "\n".join(
+        [f"+++ b/{_EXCLUDED_FILE}", _scope_marker(prefix="not-a-real-prefix", mid="t-badpfx"), _DELTA_SITE]
+    )
+    v = guard.check_diff_emission_gate(diff, _empty_register(tmp_path))
+    assert any("not a canonical" in x for x in v)
+
+
+def test_scope_marker_tag_in_code_line_is_not_marker_intent(tmp_path: Path):
+    diff = "\n".join(
+        [
+            "+++ b/tools/check_schwab_csv_first.py",
+            '+SCOPE_EXCLUDED_MARKER_TAG = "REGISTER_SCOPE_EXCLUDED"',
+        ]
+    )
+    assert guard.check_diff_emission_gate(diff, _empty_register(tmp_path)) == []
+
+
+def test_scope_marker_does_not_weaken_register_row_wrong_path(tmp_path: Path):
+    reg = _register_with_row(tmp_path, path="market_context.py", line=10, surface="delta")
+    diff = "\n".join(
+        [
+            "+++ b/server.py",
+            "+# REGISTER_ROW: ab12cd34ef56ab78cd90",
+            '+    ms_dict["delta"] = row.get("delta")',
+        ]
+    )
+    v = guard.check_diff_emission_gate(diff, reg)
+    assert any("no matching" in x for x in v)
+
+
+def test_scope_marker_register_row_citation_cannot_cover_excluded_site(tmp_path: Path):
+    reg = _register_with_row(tmp_path, path=_EXCLUDED_FILE, line=186, surface="delta")
+    diff = "\n".join(
+        [
+            f"+++ b/{_EXCLUDED_FILE}",
+            "+# REGISTER_ROW: ab12cd34ef56ab78cd90",
+            _DELTA_SITE,
+        ]
+    )
+    v = guard.check_diff_emission_gate(diff, reg)
+    assert len(v) == 1 and "no exact-site" in v[0]
+
+
+def test_scope_marker_in_scope_register_row_contract_unchanged(tmp_path: Path):
+    reg = _register_with_row(tmp_path, path="server.py", line=2, surface="delta")
+    diff = "\n".join(
+        [
+            "+++ b/server.py",
+            "+# REGISTER_ROW: ab12cd34ef56ab78cd90",
+            '+    ms_dict["delta"] = row.get("delta")',
+        ]
+    )
+    assert guard.check_diff_emission_gate(diff, reg) == []
