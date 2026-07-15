@@ -3,12 +3,12 @@
   "mission_id": "POST-MERGE-MAIN-RECOVERY-V1",
   "agent": "Claude",
   "mission_type": "feature_implementation",
-  "authorized_branch": "post-merge-main-recovery-v1",
+  "authorized_branch": "post-merge-main-recovery-v2",
   "authorization_binding_sha256": "3e47f9fd0a48d21eb01eec30c98d28d0fc2d5ae17c51a1dbd8ef651b58684161",
   "authorized_remote": "https://github.com/evargas963/Ed-s-Console-App.git",
   "base_sha": "f7de7b3b168f444a6fc7693922b57d6d8265a561",
-  "authorized_push_target": "origin/post-merge-main-recovery-v1",
-  "target_branch": "post-merge-main-recovery-v1",
+  "authorized_push_target": "origin/post-merge-main-recovery-v2",
+  "target_branch": "post-merge-main-recovery-v2",
   "direct_main_permission": false,
   "pr_required": true,
   "integration_owner": "OPERATOR",
@@ -48,5 +48,21 @@
     "runtime trading behavior would change",
     "a test would be weakened or deleted merely to pass CI",
     "push/PR/merge would be required"
-  ]
+  ],
+  "branch_amendments": "2026-07-15 V2: continuation branch post-merge-main-recovery-v2 stacked on c0ca01e \u2014 the v1 branch is checked out in the sibling review worktree (EdWebConsole-postmerge-review), and git forbids a second checkout; POST_MERGE_MAIN_RECOVERY_UNIVERSAL_CLOSURE_V2 operator packet authorizes continued local commits; binding/lease unchanged (branch is validated separately from the possession binding)",
+  "coverage_downgrade_disclosure": {
+    "measured_at": "POST_MERGE_MAIN_RECOVERY_UNIVERSAL_CLOSURE_V2 clean-scan reconciliation (governance/artifacts/register_reconciliation/reconciliation_run1.json)",
+    "register_rows_total": 95432,
+    "content_match_applied": 25241,
+    "content_mismatch_refused": 4682,
+    "conflict_refused": 0,
+    "empty_surface_refused": 0,
+    "no_historical_claimant": 65509,
+    "money_path_content_match_applied": 618,
+    "money_path_content_mismatch_refused": 1009,
+    "replaced_rows_resolving": "52 of 52",
+    "downgrade_meaning": "4,682 register rows (1,009 on money-path files) previously LOOKED covered because coordinate-hash identity let reviewed dispositions apply to shifted code; under content binding they are truthfully UNREVIEWED until re-reviewed or uniquely rekeyed \u2014 coverage was never real for these rows, the accounting now says so",
+    "unsafe_bulk_rekey_rejected_because": "the d17 rekey tool's own safety verdict is False (non-unique target register_ids from duplicate slice rows); 11,119 reviewed slice rows are content-AMBIGUOUS (same surface at multiple sites) and can never be auto-rekeyed; per-row proof is required (see OPEN_ITEMS D17 lane)",
+    "trade_determinative_status": "money-path rows are enumerated per category above; no trading calculation changed \u2014 the downgrade affects governance coverage accounting only"
+  }
 }

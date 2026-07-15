@@ -319,6 +319,11 @@ def _surface_bound(row: dict[str, str], srcs: list[dict[str, str]]) -> dict[str,
     surface_form; content-matching claimants with CONFLICTING dispositions fail
     closed to UNREVIEWED."""
     sf = (row.get("surface_form") or "").strip()
+    if not sf:
+        # No content identity exists for this row — an empty surface can never
+        # prove the reviewed code is the current code (fail closed; a pair of
+        # empty surfaces would otherwise degrade to coordinate-only identity).
+        return None
     matching = [s for s in srcs if (s.get("surface_form") or "").strip() == sf]
     if not matching:
         return None
@@ -408,6 +413,15 @@ def merge_register_slices(
     report["rows_updated"] = n_up
     report["register_content_sha256"] = sha256_hex
     report["register_size_bytes"] = size_b
+    # UNIVERSAL SYNC (2026-07-15): performance-proof register_link arrays are
+    # DERIVED from the register's REPLACED rows; every canonical-register merge
+    # re-derives them so no supported path can leave stale links behind (the
+    # PR-#41 incident class: repin landed, links never resynced, main went red).
+    if is_canonical_v4_register(register):
+        _n_rows_sync, by_proof = _collect_replaced_by_proof(register)
+        _write_perf_json(by_proof)
+        report["perf_links_synced"] = True
+        report["replaced_by_proof_counts"] = {k: len(v) for k, v in sorted(by_proof.items())}
     return report
 
 

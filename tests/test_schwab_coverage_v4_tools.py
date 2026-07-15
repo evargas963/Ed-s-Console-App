@@ -597,6 +597,133 @@ def test_slice_merge_id_collision_resolved_by_content(tmp_path: Path) -> None:
     assert row["canonical_field_citation"] == "quotes.quote.bidPrice"
 
 
+@pytest.mark.parametrize("order", ["rekeyed_first", "stale_first"])
+def test_conflicting_same_surface_dispositions_fail_closed(tmp_path: Path, order: str) -> None:
+    """Conflict lock: two claimants with the SAME reviewed surface but CONFLICTING
+    dispositions must fail closed to UNREVIEWED — and claimant load order (slice
+    file name sort) must not change the result."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid_c",
+        language="py",
+        path="server.py",
+        line=100,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form="ask = q.get('askPrice')",
+        tokens="ask",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    claim_a = RegisterRow(**{**current.as_csv_dict(), "disposition": "REPLACED",
+                             "governed_ref": "governance/artifacts/perf_proof/replacements/pp_a.json"})
+    claim_b = RegisterRow(**{**current.as_csv_dict(), "disposition": "NOT_MARKET_DATA"})
+    first, second = (claim_a, claim_b) if order == "rekeyed_first" else (claim_b, claim_a)
+    for name, row in (("a_first.csv", first), ("z_second.csv", second)):
+        with (slice_dir / name).open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+            w.writeheader()
+            w.writerow(row.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 0
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    assert row["disposition"] == "UNREVIEWED", (
+        "conflicting same-surface reviewed claims must never silently apply"
+    )
+
+
+def test_empty_surface_claims_never_inherit(tmp_path: Path) -> None:
+    """Empty-surface lock: a historical claimant with an EMPTY surface_form has no
+    content identity — even a register_id + coordinate + empty-vs-empty match must
+    fail closed (otherwise identity degrades to coordinates, the PR-#41 class)."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid_e",
+        language="py",
+        path="server.py",
+        line=7,
+        col=0,
+        pattern_kind="T",
+        surface_form="",
+        tokens="",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    claim = RegisterRow(**{**current.as_csv_dict(), "disposition": "NOT_MARKET_DATA"})
+    with (slice_dir / "s.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(claim.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 0
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    assert row["disposition"] == "UNREVIEWED"
+
+
+def test_merge_slices_auto_syncs_perf_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Universal-sync lock: merging slices into the CANONICAL register must
+    re-derive every pp_*.json register_link in the same operation — no supported
+    path may leave stale links behind (the PR-#41 incident class)."""
+    import tools.stream_revert_v4_register_and_sync_perf as srv
+
+    reg = tmp_path / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+    perf_dir = tmp_path / "perf"
+    perf_dir.mkdir()
+    meta = tmp_path / "meta.json"
+    meta.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(srv, "DEFAULT_REGISTER", reg)
+    monkeypatch.setattr(srv, "PERF_DIR", perf_dir)
+    monkeypatch.setattr(srv, "META_PATH", meta)
+    proof_name = "pp_v4b_autosync_test.json"
+    (perf_dir / proof_name).write_text(
+        json.dumps({"register_link": {"status": "unbound", "replaced_register_ids": []}}),
+        encoding="utf-8",
+    )
+    gov_ref = f"governance/artifacts/perf_proof/replacements/{proof_name}"
+    current = RegisterRow(
+        register_id="rid_s",
+        language="py",
+        path="server.py",
+        line=5,
+        col=0,
+        pattern_kind="T",
+        surface_form="bid = q.get('bidPrice')",
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    claim = RegisterRow(**{**current.as_csv_dict(), "disposition": "REPLACED",
+                           "canonical_field_citation": "quotes.quote.bidPrice",
+                           "governed_ref": gov_ref})
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    with (slice_dir / "s.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(claim.as_csv_dict())
+    rep = srv.merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 1
+    assert rep.get("perf_links_synced") is True
+    doc = json.loads((perf_dir / proof_name).read_text(encoding="utf-8"))
+    assert doc["register_link"]["status"] == "bound"
+    assert doc["register_link"]["replaced_register_ids"] == ["rid_s"]
+
+
 def test_oxx_validator_replaced_perf_only_flag(tmp_path: Path) -> None:
     """--replaced-perf-only validates ONLY the pp binding (PR-time gate): a bare
     GOVERNED_EXCEPTION row that fails full mode must not fail this mode, while a
@@ -647,5 +774,6 @@ def test_oxx_validator_replaced_perf_only_flag(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert _run("--replaced-perf-only").returncode == 1
-    # mutually exclusive flags refuse
-    assert _run("--replaced-perf-only", "--skip-replaced-perf").returncode == 2
+    # the legacy --skip-replaced-perf escape is removed: an unknown flag must
+    # refuse loudly (argparse exit 2), never silently narrow validation
+    assert _run("--skip-replaced-perf").returncode == 2
