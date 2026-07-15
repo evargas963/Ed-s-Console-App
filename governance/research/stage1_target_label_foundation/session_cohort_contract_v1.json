@@ -2,23 +2,30 @@
   "schema": "STAGE1_SESSION_COHORT_CONTRACT",
   "schema_version": 1,
   "authority": "RESEARCH FOUNDATION ONLY. Defines the cohort dimensions and cross-cohort transfer policy for a future Stage 2 competition and mechanically documents the current RTH-integrity contradiction. Does NOT change production session classification, accuracy surfaces, or training behavior in Stage 1.",
+  "canonical_time_binding": {
+    "reference": "governance/research/stage1_target_label_foundation/time_session_contract_v1.json",
+    "storage_timezone": "UTC (immutable join/order/causal authority)",
+    "application_timezone": "America/Chicago (canonical research/cohort/display timezone)",
+    "rth_label_ct": "08:30-15:00 Central Time (equivalent UTC instants to the exchange's 09:30-16:00 ET)"
+  },
   "canonical_session_authority": {
-    "function": "time_et.is_rth_ts_utc",
-    "rule": "derive DST-aware ET from ts_utc (America/New_York); RTH = 570 <= et_minutes < 960 (09:30-16:00)",
-    "principle": "a bar's session MUST be derived from ts_utc, never from stored et_hour/et_minute/market_session (those were EST-fixed for rows before COH_I_A_ET_AUTHORITY_TS_UTC=1779237069.0 and are DST-skewed)"
+    "function": "research/stage1_target_foundation/ct_session.py::classify_session",
+    "rule": "classify each ts_utc into a Central-Time session using America/Chicago (zoneinfo, DST-resolved) AND the exchange calendar (data/trading_calendar/us_equities.json) for full closures and half-days; RTH = 08:30-15:00 CT",
+    "principle": "a bar's session MUST be derived from ts_utc via the CT+calendar authority, NEVER from stored et_hour/et_minute/market_session (those were EST-fixed for rows before COH_I_A_ET_AUTHORITY_TS_UTC=1779237069.0 and are DST-skewed)",
+    "helper_sufficiency": "time_et.is_rth_ts_utc is DST-aware for RTH MEMBERSHIP but has NO holiday/half-day awareness -> INSUFFICIENT as the institutional cohort authority; ct_session.classify_session (calendar + DST) is sufficient within the calendar validity window (valid_through 2026-12-31)"
   },
   "cohort_dimensions": [
-    {"dim": "session", "values": ["rth", "premarket", "afterhours", "overnight", "closed"], "source": "ts_utc->ET; note market_session stored col exists (premarket/rth/afterhours/closed) but must be recomputed from ts_utc"},
-    {"dim": "opening_window", "values": ["first_5m", "first_15m", "first_30m"], "source": "ts_utc offset from 09:30 ET"},
-    {"dim": "closing_window", "values": ["last_30m", "last_15m", "last_5m"], "source": "ts_utc offset to 16:00 ET"},
+    {"dim": "session", "values": ["rth", "premarket", "afterhours", "closed"], "source": "ts_utc->CT via ct_session.classify_session; note market_session stored col exists but must be recomputed from ts_utc; RTH is 08:30-15:00 CT"},
+    {"dim": "opening_window", "values": ["first_5m", "first_15m", "first_30m"], "source": "ts_utc offset from 08:30 CT (09:30 ET) RTH open"},
+    {"dim": "closing_window", "values": ["last_30m", "last_15m", "last_5m"], "source": "ts_utc offset to 15:00 CT (16:00 ET) RTH close; on early-close days the close moves to 12:00 CT (13:00 ET) per the calendar"},
     {"dim": "intraday_bucket", "values": ["open", "morning", "midday", "afternoon", "close"], "source": "math_volatility.session_bucket — CURRENTLY computed from stored clock (skew-prone) and buckets out-of-session minutes to 'morning' (defect)"},
     {"dim": "day_of_week", "values": ["Mon", "Tue", "Wed", "Thu", "Fri"], "source": "weekday_where_clause via strftime on ts_utc (correct)"},
-    {"dim": "half_day_early_close", "values": ["normal_rth", "early_close", "full_closure"], "source": "NOT IMPLEMENTED in any cohort path; A2 calendar contract (data/trading_calendar/us_equities.json) is advisory/future only"},
+    {"dim": "half_day_early_close", "values": ["normal_rth", "early_close", "full_closure"], "source": "authoritative in Stage 1 RESEARCH via ct_session (reads early_closes/full_closures from the exchange calendar); NOT yet implemented in any PRODUCTION cohort path"},
     {"dim": "volatility_regime", "values": ["low", "mid", "high"], "source": "math_volatility.vix_tier_token cuts 15/20/30 (value-derived, not time-skewed)"},
     {"dim": "liquidity_regime", "values": ["NOT_IMPLEMENTED"], "source": "no dedicated liquidity-regime tagging exists; Stage 1 gap"}
   ],
   "cross_cohort_transfer_policy": {
-    "session": "FORBIDDEN to pool rth with premarket/afterhours/overnight in a single training/eval cohort silently; session may be a MODEL FEATURE only when derived from ts_utc; cross-session generalization is an EXPLICIT EXPERIMENT, never a default",
+    "session": "FORBIDDEN to pool rth with premarket/afterhours/closed in a single training/eval cohort silently; session may be a MODEL FEATURE only when derived from ts_utc via the CT+calendar authority; cross-session generalization is an EXPLICIT EXPERIMENT, never a default",
     "half_day_early_close": "CONDITIONALLY_TESTABLE — excluded from the primary cohort until the calendar classifier is authoritative; early_close/full_closure rows FORBIDDEN in RTH cohorts",
     "opening_closing_window": "PERMITTED_AS_FEATURE and PERMITTED_AS_EXPERIMENT (open/close microstructure differs materially); never silently pooled with midday",
     "volatility_regime": "PERMITTED_AS_FEATURE; regime-conditional calibration required (arch_competition.metrics supports it)",

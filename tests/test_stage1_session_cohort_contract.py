@@ -16,11 +16,21 @@ def _load(name: str) -> dict:
 def test_session_cohort_contract_wellformed():
     c = _load("session_cohort_contract_v1.json")
     assert c["schema"] == "STAGE1_SESSION_COHORT_CONTRACT"
-    assert c["canonical_session_authority"]["function"] == "time_et.is_rth_ts_utc"
+    # canonical authority is the CT + calendar module, not the ET helper
+    assert c["canonical_session_authority"]["function"] == \
+        "research/stage1_target_foundation/ct_session.py::classify_session"
+    assert c["canonical_time_binding"]["application_timezone"].startswith("America/Chicago")
+    assert "08:30-15:00 Central" in c["canonical_time_binding"]["rth_label_ct"]
     dims = {d["dim"] for d in c["cohort_dimensions"]}
     for required in ("session", "opening_window", "closing_window", "day_of_week",
                      "half_day_early_close", "volatility_regime", "liquidity_regime"):
         assert required in dims
+
+
+def test_session_cohort_contract_marks_et_helper_insufficient():
+    """time_et.is_rth_ts_utc must be disclosed as INSUFFICIENT (no holiday/half-day)."""
+    c = _load("session_cohort_contract_v1.json")
+    assert "INSUFFICIENT" in c["canonical_session_authority"]["helper_sufficiency"]
 
 
 def test_rth_integrity_contradiction_is_detected_and_disclosed():
@@ -62,9 +72,61 @@ def test_stage2_contract_design_only_and_names_missing_pieces():
     assert any("after costs" in s.lower() for s in c["stop_conditions"])
 
 
-def test_stage2_eligible_targets_match_registry_valid_for_experiment():
-    from research.stage1_target_foundation.target_registry import load_registry, targets_by_status
+def test_stage2_embargo_uses_true_61_minute_span():
+    """Objective E: embargo must use the true (N+1)-minute span, 61 min for 60c."""
+    c = _load("stage2_experiment_contract_v1.json")
+    assert c["label_span_semantics"]["realized_span_minutes_by_horizon"]["60c"] == 61
+    assert "61" in c["splits_and_leakage_control"]["embargo"]
+    assert "NOT 60 bars" in c["splits_and_leakage_control"]["embargo"]
+
+
+def test_stage2_multiple_comparison_controls_present():
+    """Objective F: FWER/FDR, White/Hansen SPA, deflated Sharpe, seeds, MCC,
+    class-imbalance policy, model-selection log, no post-hoc switching."""
+    c = _load("stage2_experiment_contract_v1.json")
+    mcc = c["multiple_comparison_control"]
+    assert "Holm" in mcc["fwer_or_fdr"] or "Benjamini" in mcc["fwer_or_fdr"]
+    assert "Reality Check" in mcc["data_snooping_tests"] or "SPA" in mcc["data_snooping_tests"]
+    assert "Deflated Sharpe" in mcc["deflated_sharpe"]
+    assert "seeds" in mcc and "SMOTE" in mcc["class_imbalance_policy"]
+    assert "model_selection_log" in mcc
+    pm = c["preregistered_primary_metric"]
+    assert "MCC" in pm["classification"]
+    assert "FORBIDDEN" in pm["no_post_hoc_switching"]
+    # nested walk-forward + untouched final holdout
+    assert "NESTED" in c["splits_and_leakage_control"]["temporal_split"].upper()
+    assert "final_holdout" in c["splits_and_leakage_control"]
+    assert "ONCE" in c["splits_and_leakage_control"]["final_holdout"].upper()
+
+
+def test_stage2_eligibility_is_experiment_eligible_and_empty(monkeypatch):
+    """Objective I: Stage 2 eligibility == registry EXPERIMENT_ELIGIBLE via the
+    fail-closed selection function; currently empty; contract agrees."""
+    from research.stage1_target_foundation.target_registry import (
+        load_registry, stage2_eligible_targets, targets_by_status,
+    )
     reg = load_registry()
-    vfe = set(targets_by_status(reg).get("VALID_FOR_EXPERIMENT", []))
+    eligible = stage2_eligible_targets(reg)
+    assert eligible == []
+    assert targets_by_status(reg).get("EXPERIMENT_ELIGIBLE", []) == []
     contract = _load("stage2_experiment_contract_v1.json")
-    assert set(contract["eligible_targets"]["currently_eligible"]) == vfe
+    assert contract["eligible_targets"]["currently_eligible"] == eligible
+    # the rule must name the fail-closed selection function
+    assert "stage2_eligible_targets" in contract["eligible_targets"]["selection_function"]
+
+
+def test_stage2_forbids_non_eligible_entrant_mechanically():
+    """A causally-proven-but-not-eligible target must be rejected by the selection
+    function even if a caller tries to force it in (fail-closed)."""
+    import copy
+    from research.stage1_target_foundation.target_registry import (
+        load_registry, stage2_eligible_targets,
+    )
+    reg = copy.deepcopy(load_registry())
+    # promote a CAUSAL_CONTRACT_PROVEN target's STATUS only (gates still fail)
+    for t in reg["targets"]:
+        if t["target_id"] == "outcome_H_pts_raw":
+            t["promotion_status"] = "EXPERIMENT_ELIGIBLE"
+            break
+    # selection recomputes eligibility from gates -> still excluded
+    assert "outcome_H_pts_raw" not in stage2_eligible_targets(reg)

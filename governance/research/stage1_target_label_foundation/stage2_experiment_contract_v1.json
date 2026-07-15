@@ -1,40 +1,69 @@
 {
   "schema": "STAGE1_STAGE2_EXPERIMENT_CONTRACT",
-  "schema_version": 1,
-  "authority": "DESIGN ONLY — NOT EXECUTED in Stage 1. Specifies how a future Stage 2 baseline competition would compare candidate targets fairly and leakage-free. Reuses existing infrastructure (arch_competition eval manifest + lineage) and names the missing temporal-discipline pieces that MUST be built before Stage 2 runs.",
+  "schema_version": 2,
+  "authority": "DESIGN ONLY — NOT EXECUTED in Stage 1. Specifies how a future Stage 2 baseline competition would compare candidate targets fairly and leakage-free. Reuses existing infrastructure (arch_competition eval manifest + lineage) and names the missing temporal-discipline + multiple-comparison pieces that MUST be built before Stage 2 runs.",
   "eligible_targets": {
-    "rule": "only target_registry_v1 entries with promotion_status == VALID_FOR_EXPERIMENT are eligible as target definitions; CANDIDATE targets require implementation + causal-contract proof (a passing tests/test_stage1_causal_label_contract.py case) to become eligible",
-    "currently_eligible": ["outcome_H_ternary_legacy", "outcome_H_pts_raw", "outcome_dir_H_conditional", "outcome_move_H_binary"]
+    "rule": "A target may enter Stage 2 ONLY if target_registry_v1 gives it promotion_status == EXPERIMENT_ELIGIBLE AND its experiment_readiness independently computes eligible (causal_contract_proven AND every applicable readiness gate .ok). This is enforced mechanically by research.stage1_target_foundation.target_registry.stage2_eligible_targets(reg), which is fail-closed: a merely CAUSAL_CONTRACT_PROVEN or DATA_QUALITY_PROVEN target is NOT returned.",
+    "selection_function": "research/stage1_target_foundation/target_registry.py::stage2_eligible_targets",
+    "currently_eligible": [],
+    "currently_eligible_note": "ZERO targets are EXPERIMENT_ELIGIBLE in this Stage 1 foundation. outcome_H_ternary_legacy is LEGACY_BASELINE_ONLY (a baseline to beat, never an entrant on its own merit). outcome_H_pts_raw / outcome_dir_H_conditional / outcome_move_H_binary are CAUSAL_CONTRACT_PROVEN but blocked by data-quality/overlap gates. Stage 2 CANNOT run until at least one target is promoted to EXPERIMENT_ELIGIBLE by closing its gates.",
+    "causal_proven_is_not_eligible": "Being reconstructable from immutable rows (CAUSAL_CONTRACT_PROVEN) is a causality statement ONLY and does NOT confer eligibility."
+  },
+  "label_span_semantics": {
+    "rule": "the nominal 'Nc' horizon realizes an anchor_close->forward_close span of (N+1) whole minutes, NOT N (see target_registry_v1.horizon_span_semantics).",
+    "realized_span_minutes_by_horizon": {"1c": 2, "5c": 6, "15c": 16, "60c": 61},
+    "binding": "purge, embargo, and horizon alignment MUST use the true (N+1)-minute span. The nominal 60c target MUST be treated as a span of at least 61 minutes."
   },
   "target_specific_metrics": {
-    "directional_ternary": ["multiclass log loss", "balanced accuracy", "ECE/MCE", "per-class reliability"],
-    "conditional_direction_binary": ["binary log loss on valid_dir=1", "conditional balanced accuracy", "reliability"],
-    "movement_gate_binary": ["binary log loss", "Brier", "reliability"],
+    "directional_ternary": ["multiclass log loss", "MCC", "balanced accuracy", "ECE/MCE", "per-class reliability"],
+    "conditional_direction_binary": ["binary log loss on valid_dir=1", "MCC", "conditional balanced accuracy", "reliability"],
+    "movement_gate_binary": ["binary log loss", "MCC", "Brier", "reliability"],
     "raw_forward_point_move_regression": ["pinball/quantile loss", "MAE/RMSE", "quantile calibration"],
-    "economic_targets": ["mean post-cost return (must be > 0 after costs)", "sign accuracy after cost", "selective risk-coverage"]
+    "economic_targets": ["mean post-cost return (must be > 0 after costs)", "sign accuracy after cost", "deflated Sharpe", "selective risk-coverage"]
+  },
+  "preregistered_primary_metric": {
+    "classification": "MCC (Matthews correlation coefficient) is the PREREGISTERED primary metric for every classification target — chosen because it is robust to the flat-majority / conditional class imbalance that degenerate accuracy hides. Secondary metrics are reported but do not decide advancement.",
+    "regression": "pinball loss at preregistered quantiles is the primary metric for regression/excursion targets.",
+    "no_post_hoc_switching": "The primary metric and the target definition are FROZEN before any test-window evaluation. Switching the primary metric, the target, or the horizon after seeing test results is FORBIDDEN and is a stop condition."
   },
   "splits_and_leakage_control": {
-    "temporal_split": "walk-forward, out-of-time; train windows strictly precede test windows by ts_utc",
-    "purge": "REQUIRED — drop training rows whose label window overlaps any test anchor (overlapping 1m horizon labels leak without purge)",
-    "embargo": "REQUIRED — embargo gap >= max horizon (60 bars) between train and test to remove serial-correlation leakage",
+    "temporal_split": "NESTED walk-forward, out-of-time; train windows strictly precede validation windows which strictly precede test windows by ts_utc. Inner folds select hyperparameters/models; the outer fold estimates generalization.",
+    "final_holdout": "a single, UNTOUCHED final holdout window (latest ts_utc block) is reserved and evaluated EXACTLY ONCE for the preregistered winner. It is never used for selection, tuning, or metric choice.",
+    "purge": "REQUIRED — drop training rows whose (N+1)-minute label window overlaps any validation/test anchor (overlapping 1m horizon labels leak without purge).",
+    "embargo": "REQUIRED — embargo gap >= the true max realized label span = 61 minutes (61 one-minute bars) for a book spanning up to 60c, NOT 60 bars, between train and test to remove serial-correlation leakage.",
     "ticker_splits": "leave-one-ticker-out AND pooled, reported separately",
-    "session_splits": "rth-only primary; premarket/afterhours as explicit transfer experiments (never silently pooled)",
+    "session_splits": "rth-only primary (RTH = 08:30-15:00 CT via ct_session); premarket/afterhours as explicit transfer experiments (never silently pooled)",
     "time_of_day_splits": "open / midday / close cohorts reported separately (microstructure differs)",
-    "MISSING_TODAY": "arch_competition/ implements single-window OOS + half-split stability only; purge/embargo/walk-forward are NOT implemented and MUST be built before Stage 2"
+    "MISSING_TODAY": "arch_competition/ implements single-window OOS + half-split stability only; NESTED walk-forward, purge, embargo, and the untouched final holdout are NOT implemented and MUST be built before Stage 2"
+  },
+  "multiple_comparison_control": {
+    "why": "Stage 2 compares many targets x horizons x models x cohorts. Without family-wise control, a false 'winner' is near-certain by chance.",
+    "family_definition": "the comparison family is the full grid of {eligible target} x {horizon} x {model} x {cohort} evaluated in a run; it MUST be declared before the run.",
+    "fwer_or_fdr": "control either FWER (Holm-Bonferroni) or FDR (Benjamini-Hochberg) across the declared family; the chosen procedure and alpha are preregistered.",
+    "data_snooping_tests": "apply White's Reality Check AND/OR Hansen's SPA test across the model/target set to test whether the best performer beats the benchmark after accounting for the search; report the SPA p-value.",
+    "deflated_sharpe": "for any economic/return target, report the Deflated Sharpe Ratio (Bailey & Lopez de Prado) accounting for the number of trials, skew, kurtosis, and sample length; a positive raw Sharpe that is not DSR-significant does NOT advance.",
+    "seeds": "every stochastic model is run over a preregistered set of >= 5 seeds; report mean and dispersion; a result that is not stable across seeds does not advance.",
+    "class_imbalance_policy": "class imbalance is handled by class weighting and threshold selection reported on the validation fold ONLY; NO oversampling/SMOTE on overlapping financial series (it fabricates leakage); the imbalance handling is frozen before test evaluation.",
+    "model_selection_log": "every model/target/hyperparameter/metric considered is written to an append-only model-selection log with its fold results, so the true number of trials feeding FWER/FDR/DSR is auditable and cannot be understated."
   },
   "costs": "every economic comparison names a cost_model_registry_v1 id; a target that cannot beat baselines AFTER costs is not advanced",
-  "baselines_required": ["always_WAIT", "majority/prior class", "persistence (last move sign)", "mean_reversion", "momentum", "VWAP-only", "logistic/ridge", "XGB-only", "empirical_analog_only", "current_production_stack (parallel)", "shuffle_control (labels permuted — must score at chance)"],
+  "baselines_required": ["always_WAIT", "majority/prior class", "persistence (last move sign)", "mean_reversion", "momentum", "VWAP-only", "logistic/ridge", "XGB-only", "empirical_analog_only", "current_production_stack (parallel)", "legacy_ternary_label (LEGACY_BASELINE_ONLY entrant — must be beaten, not judged on its own merit)", "shuffle_control (labels permuted — must score at chance)"],
   "calibration": "reliability + ECE per cohort; regime-conditional calibration (arch_competition.metrics supports climatology-baseline Brier skill, ECE/MCE, regime-conditional bins)",
-  "confidence_intervals": "bootstrap CIs on the primary metric; report CI overlap vs baselines",
+  "confidence_intervals": "bootstrap CIs on the primary metric; report CI overlap vs baselines AND the multiple-comparison-adjusted significance (FWER/FDR/SPA)",
   "sample_requirements": "MIN_SAMPLES_STATISTICAL floor per cell (arch_competition eval_runner:190); movement labels currently cover ~9.1% of governed rows -> insufficient until backfilled",
   "latency_budget": "any target whose live scoring path exceeds the production inference budget is disqualified regardless of offline lift",
-  "reproducibility": "each run pins scheduler_run_manifest lineage (feature_cache_key / data_fingerprint / training_code_fingerprint / ml_horizon_suffix / schema_version) per arch_competition/lineage.py; evaluation_manifest schema v1",
-  "simplicity_penalty": "ties broken toward the simpler model; a complex model must beat a simple baseline by more than the CI to be preferred",
+  "reproducibility": "each run pins scheduler_run_manifest lineage (feature_cache_key / data_fingerprint / training_code_fingerprint / ml_horizon_suffix / schema_version) per arch_competition/lineage.py; evaluation_manifest schema v1; plus the preregistration record (family, primary metric, alpha, procedure, seeds) and the model-selection log",
+  "simplicity_penalty": "ties broken toward the simpler model; a complex model must beat a simple baseline by more than the multiple-comparison-adjusted CI to be preferred",
   "stop_conditions": [
-    "no candidate target beats the simple baselines AFTER costs -> STOP (do not advance any target)",
+    "no target is EXPERIMENT_ELIGIBLE (stage2_eligible_targets == []) -> Stage 2 MUST NOT run",
+    "any proposed entrant is not EXPERIMENT_ELIGIBLE per the registry selection function -> reject that entrant (fail-closed)",
+    "the preregistered primary metric (MCC for classification) is absent from a comparison -> STOP",
+    "post-hoc switching of target, horizon, or primary metric after test evaluation -> INVALIDATE the run",
+    "no candidate target beats the simple baselines AND the legacy baseline AFTER costs and multiple-comparison adjustment -> STOP (do not advance any target)",
+    "the best performer is not significant under White's Reality Check / Hansen SPA (or DSR for economic targets) -> STOP (likely data-snooping)",
     "shuffle_control scores above chance -> STOP (leakage present, fix before continuing)",
     "movement/economic label coverage below the sample floor -> STOP pending backfill",
-    "purge/embargo/walk-forward not implemented -> Stage 2 MUST NOT run"
+    "nested walk-forward / purge / embargo (>=61 min) / untouched final holdout not implemented -> Stage 2 MUST NOT run"
   ],
   "explicitly_not_in_scope": ["promotion", "real-money", "production wiring", "predictive-validity or winner claims", "SVR / zero-shot / foundation-model production inference (foundation-model is a recorded exclusion)"]
 }

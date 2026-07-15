@@ -135,3 +135,75 @@ def test_threshold_zero_fails_closed_to_flat():
     got = reconstruct_fixed_horizon_label(bars, "SPY", 1767623700, "1c", 0.0,
                                           now_ts_utc=1767630000)
     assert got["outcome"] == "flat"
+
+
+# ---- Objective B: session crossover is ADVISORY, never a silent guard ----
+
+# 2026-01-05 (CST). RTH close 15:00 CT = 21:00 UTC. A 14:59 CT anchor bar with a
+# 1c forward bar at 15:01 CT crosses RTH -> afterhours.
+_ANCHOR_1459_CT = 1767646740   # 20:59 UTC = 14:59 CT bar start (RTH)
+_T_1500_CT = 1767646800        # 21:00 UTC = observation just past anchor close
+_FWD_1501_CT = 1767646860      # 21:01 UTC = 15:01 CT forward bar (afterhours)
+
+
+def _crossover_bars():
+    return [
+        Bar("SPY", _ANCHOR_1459_CT, 500.0, 500.2, 499.9, 500.00),
+        Bar("SPY", _FWD_1501_CT, 500.1, 500.6, 500.0, 500.50),
+    ]
+
+
+def test_session_crossover_reported_but_label_formula_unchanged():
+    """A forward bar in after-hours must STILL produce the production label
+    (forward_close - anchor_close), and the crossover is reported advisory-only."""
+    bars = _crossover_bars()
+    got = reconstruct_fixed_horizon_label(bars, "SPY", _T_1500_CT, "1c", 0.10,
+                                          now_ts_utc=1767650000)
+    # production formula is untouched by session: pts = 500.50 - 500.00
+    assert got["pts"] == 0.50
+    assert got["outcome"] == "up"
+    # advisory crossover is surfaced, not guarded
+    assert got["anchor_session"] == "rth"
+    assert got["forward_session"] == "afterhours"
+    assert got["session_crossover"] is True
+
+
+def test_advisory_crossover_never_nulls_the_label():
+    """The advisory must not change reconstructability or null the outcome."""
+    bars = _crossover_bars()
+    got = reconstruct_fixed_horizon_label(bars, "SPY", _T_1500_CT, "1c", 0.10,
+                                          now_ts_utc=1767650000)
+    assert got["reconstructable"] is True
+    assert got["outcome"] is not None
+
+
+# ---- Objective H: MFE/MAE fails closed on an incomplete path ----
+
+_A = 1767623700  # aligned anchor bar start (RTH)
+
+
+def _contiguous_path(drop: int | None = None):
+    """Anchor bar at _A plus 6 contiguous 1m bars (covers a 5c window)."""
+    out = [Bar("SPY", _A, 500.0, 500.0, 500.0, 500.00)]
+    for k in range(1, 7):
+        s = _A + k * 60
+        if s == drop:
+            continue
+        out.append(Bar("SPY", s, 500.0, 500.0 + 0.1 * k, 500.0 - 0.05 * k, 500.0 + 0.02 * k))
+    return out
+
+
+def test_mfe_mae_complete_path_reconstructs():
+    got = realized_mfe_mae(_contiguous_path(), "SPY", _A + 60, "5c", now_ts_utc=_A + 3600)
+    assert got["reconstructable"] is True
+    assert got["mfe"] is not None and got["mae"] is not None
+    assert got["window_bars"] == 6
+
+
+def test_mfe_mae_fails_closed_on_missing_interior_bar():
+    """Dropping an interior 1m bar must NULL the excursion (no partial path)."""
+    got = realized_mfe_mae(_contiguous_path(drop=_A + 180), "SPY", _A + 60, "5c",
+                           now_ts_utc=_A + 3600)
+    assert got["mfe"] is None and got["mae"] is None
+    assert got["reconstructable"] is False
+    assert got["missing_bar_count"] >= 1
