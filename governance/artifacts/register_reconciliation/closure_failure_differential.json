@@ -1,0 +1,48 @@
+{
+ "schema": "SCHWAB_V4_CLOSURE_FAILURE_DIFFERENTIAL",
+ "schema_version": 1,
+ "workflow": "Schwab V4 Register Closure (.github/workflows/schwab-v4-closure.yml)",
+ "normalized_failure_sets": {
+  "run_29284727000_head_d64bce21_pre_merge": {
+   "failed_step": "Schwab V4 register O-XX validation",
+   "register_link_line_count": 6,
+   "classification": "REGISTER_LINK_DRIFT (same 7-message signature as the merge head)"
+  },
+  "run_29292715898_head_87213d36_pre_merge": {
+   "failed_step": "Schwab V4 register O-XX validation",
+   "register_link_line_count": 6,
+   "signature": [
+    "pp_v4b_market_context_quote_pricehistory_leaf_provenance.json: register_link lists 1 id(s) not REPLACED in register",
+    "pp_v4b_market_state_chunk6_chain_leaf_provenance.json: register_link lists 4 id(s) not REPLACED in register",
+    "pp_v4b_schwab_gate_eleven_test_bundle.json: composite replaced_register_ids must equal union of wrapped proofs (44 expected, 46 linked)",
+    "pp_v4b_schwab_gate_eleven_test_bundle.json: register_link lists 3 id(s) not REPLACED in register",
+    "pp_v4b_server_fast_quote_leaf_provenance.json: register has 1 REPLACED row(s) citing this proof but register_link omits them",
+    "pp_v4b_server_quote_session_fallbacks_dedupe.json: register_link lists 2 id(s) not REPLACED in register",
+    "pp_v4b_server_tier_a_quote_leaf_provenance.json: 1 REPLACED register row(s) cite this proof but register_link is empty/stale"
+   ],
+   "classification": "REGISTER_LINK_DRIFT"
+  },
+  "run_29297725798_head_a0d5e3b9_pre_merge_base": {
+   "failed_step": "Schwab V4 register O-XX validation",
+   "register_link_line_count": 0,
+   "classification": "SUB_SIGNATURE_NOT_PROVEN (gh returned an anomalous full-job log containing an ablation-field-registry style dump; register_link lines absent from the retrieved text)"
+  },
+  "run_29424003152_head_f7de7b3b_merge_head": {
+   "failed_step": "Schwab V4 register O-XX validation",
+   "register_link_line_count": 7,
+   "signature_identical_to": "run_29292715898_head_87213d36_pre_merge",
+   "classification": "REGISTER_LINK_DRIFT (byte-identical message set to the pre-merge runs)"
+  },
+  "repaired_tree_local_reproduction": {
+   "oxx_validator_exit": 0,
+   "register_link_line_count": 0,
+   "classification": "ELIMINATED"
+  }
+ },
+ "attribution": {
+  "historical_oxx_failures": "the register_link drift signature is present unchanged on pre-merge main runs d64bce21 and 87213d36 - it is HISTORICAL DEBT, not a PR-#41 consequence; the earlier recovery packet's claim that the drift was newly exposed at the merge head is CORRECTED by this differential",
+  "eliminated_by_content_binding": "stale coordinate inheritance (reviewed dispositions applying to code that moved) can no longer occur; drifted reviewed rows fail closed to UNREVIEWED",
+  "eliminated_by_resynchronization": "the 7 orphan/omitted/empty register_link messages: bundles are re-derived from the register's REPLACED rows on every canonical merge and by --sync-only/--revert-ids",
+  "remaining_long_tail": "reviewed slice rows whose sites drifted without a unique byte-identical candidate stay truthfully UNREVIEWED pending the D17 rekey lane (see OPEN_ITEMS)"
+ }
+}

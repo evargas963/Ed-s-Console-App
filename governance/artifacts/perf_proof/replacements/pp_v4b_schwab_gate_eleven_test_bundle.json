@@ -66,6 +66,8 @@
       "5705329be00c39ccb749",
       "586c234040379f8c6193",
       "6169cd689ab54eb3fb87",
+      "64c55b89aa5e311c07aa",
+      "6deb2b194000df13fc2d",
       "6fe4c8273e3e11c1b218",
       "74bd9c8d87672d2cdb4c",
       "7a6274103d391e209a50",
@@ -74,6 +76,7 @@
       "823c46bedc24b0b9ca38",
       "862ba7fda0abddccdd92",
       "8b652342bdf9df9730d9",
+      "931edd108d0b483df165",
       "986872e3a95197a8c3a1",
       "a7d28e0af9ec13cc406a",
       "b59779b440899bb05cd5",
@@ -97,7 +100,8 @@
       "pp_v4b_market_context_quote_pricehistory_leaf_provenance.json",
       "pp_v4b_market_state_chunk6_chain_leaf_provenance.json",
       "pp_v4b_server_fast_quote_leaf_provenance.json",
-      "pp_v4b_server_quote_session_fallbacks_dedupe.json"
+      "pp_v4b_server_quote_session_fallbacks_dedupe.json",
+      "pp_v4b_server_tier_a_quote_leaf_provenance.json"
     ]
   }
 }

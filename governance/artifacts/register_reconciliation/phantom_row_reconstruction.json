@@ -1,0 +1,93 @@
+{
+ "phantoms": {
+  "17e2ac66597ca6c69c8d": {
+   "claimant": {
+    "disposition": "REPLACED",
+    "line": "1014",
+    "path": "server.py",
+    "slice": "server_py_1_1500.csv",
+    "surface_form": "                    v = float(item[\"LAST_PRICE\"])"
+   },
+   "claimant_fate": {
+    "action": "REKEY",
+    "new_line": "2967",
+    "new_register_id": "64c55b89aa5e311c07aa"
+   },
+   "clean_scan_state": {
+    "disposition": "UNREVIEWED",
+    "line": "1014",
+    "path": "server.py",
+    "surface_form": "    return _priority_leaf_executor"
+   },
+   "origin": {
+    "claimant_surface_equals_current_row_surface": false,
+    "clean_pipeline_reproduces_phantom": false,
+    "content_bound_resolver_applies": false,
+    "mechanism": "pre-content-binding coordinate resolution (register_id hash equality)",
+    "old_resolver_would_apply": true
+   },
+   "register_id": "17e2ac66597ca6c69c8d",
+   "slice_claimants": 1
+  },
+  "20183e35cde0e1391f0f": {
+   "claimant": {
+    "disposition": "REPLACED",
+    "line": "2388",
+    "path": "server.py",
+    "slice": "server_py_1501_3000.csv",
+    "surface_form": "    ask_price = _safe_float_quote(quote.get(\"askPrice\"))"
+   },
+   "claimant_fate": {
+    "action": "REKEY",
+    "new_line": "4898",
+    "new_register_id": "931edd108d0b483df165"
+   },
+   "clean_scan_state": {
+    "disposition": "UNREVIEWED",
+    "line": "2388",
+    "path": "server.py",
+    "surface_form": "    \"\"\"Cold start: warm SPY/QQQ/IWM Tier C (+ model prewarm) before logger hamme"
+   },
+   "origin": {
+    "claimant_surface_equals_current_row_surface": false,
+    "clean_pipeline_reproduces_phantom": false,
+    "content_bound_resolver_applies": false,
+    "mechanism": "pre-content-binding coordinate resolution (register_id hash equality)",
+    "old_resolver_would_apply": true
+   },
+   "register_id": "20183e35cde0e1391f0f",
+   "slice_claimants": 1
+  },
+  "c59835a70ece78bccdd3": {
+   "claimant": {
+    "disposition": "REPLACED",
+    "line": "1003",
+    "path": "server.py",
+    "slice": "server_py_1_1500.csv",
+    "surface_form": "                v = float(top[\"LAST_PRICE\"])"
+   },
+   "claimant_fate": {
+    "action": "REKEY",
+    "new_line": "2956",
+    "new_register_id": "6deb2b194000df13fc2d"
+   },
+   "clean_scan_state": {
+    "disposition": "UNREVIEWED",
+    "line": "1003",
+    "path": "server.py",
+    "surface_form": "            # still bounded by the 2-slot gate."
+   },
+   "origin": {
+    "claimant_surface_equals_current_row_surface": false,
+    "clean_pipeline_reproduces_phantom": false,
+    "content_bound_resolver_applies": false,
+    "mechanism": "pre-content-binding coordinate resolution (register_id hash equality)",
+    "old_resolver_would_apply": true
+   },
+   "register_id": "c59835a70ece78bccdd3",
+   "slice_claimants": 1
+  }
+ },
+ "schema": "PHANTOM_ROW_RECONSTRUCTION",
+ "schema_version": 1
+}
