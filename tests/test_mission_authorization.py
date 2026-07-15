@@ -713,3 +713,31 @@ def test_final_composition_map_matches_committed_tree():
             "update composition_input_paths_sha256 + correction_history in the same "
             "change set (byte_form_policy: staged-blob canonical)"
         )
+
+
+def test_authorization_mutation_campaign_evidence_current():
+    """Drift lock for the canonical mutation campaign: the retained evidence must
+    match the CURRENT mutation definitions + detector map (edit either without
+    regenerating the other and this turns red), declare all mutations materially
+    detected under the predeclared rule, byte-exact restoration, green baselines,
+    unchanged local secrets, and no Lane-B target."""
+    import tools.run_authorization_mutation_campaign as camp
+
+    ev = json.loads(
+        (ma.REPO_ROOT / "reports" / "scoreboard_forensic" /
+         "authorization_mutation_campaign.json").read_text(encoding="utf-8")
+    )
+    assert ev["definitions_sha256"] == camp.definitions_sha256(), (
+        "mutation definitions/detector map drifted from retained evidence — rerun "
+        "python tools/run_authorization_mutation_campaign.py --run"
+    )
+    assert ev["mutation_total"] == len(camp.MUTATIONS) == 22
+    assert ev["summary"]["SURVIVED"] == 0 and ev["summary"]["INVALID_MUTATION"] == 0
+    for r in ev["mutations"]:
+        assert r["classification"].startswith("DETECTED"), r["id"]
+        assert r["material"] is True and r["restoration_exact"] is True, r["id"]
+        assert r["file"] in ("tools/mission_authorization.py",
+                             "tools/check_private_paths.py"), r["id"]
+    assert ev["baseline"]["before"]["exit_code"] == 0
+    assert ev["baseline"]["after"]["exit_code"] == 0
+    assert ev["local_secret_preservation"]["unchanged"] is True
