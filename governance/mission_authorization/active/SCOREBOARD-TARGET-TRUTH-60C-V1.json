@@ -45,7 +45,10 @@
       "tests/test_mission_authorization.py",
       "tests/test_operator_path_privacy.py",
       ".pre-commit-config.yaml",
-      "reports/scoreboard_forensic/authorization_mutation_campaign.json"
+      "reports/scoreboard_forensic/authorization_mutation_campaign.json",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md",
+      "governance/docs/PRECOMMIT_PERFORMANCE_AUDIT.md",
+      "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json"
     ],
     "scope_model": "DECLARATIVE overlap-disclosure for sibling-mission conflict detection (detect_mission_overlap); this list is NOT a mechanical changed-file allowlist and no gate enforces it as one",
     "semantic_domains": [
@@ -57,7 +60,7 @@
   "lease_state": "active",
   "created_at_epoch": 1783995501.0,
   "expires_at_epoch": 1785205101.0,
-  "scope_amendments": "2026-07-13: +4 generated universal-graph/inventory artifacts (CONNECTED_PATH_GRAPH_DRIFT gate demanded canonical regeneration; operator packet Phase 4 generated-artifact protocol); 2026-07-14: +reports/scoreboard_forensic/mutation_evidence_manifest.json (DEFECT-D durable mutation evidence required by SCOREBOARD_OPERATOR_SEMANTIC_SAFETY_CURSOR_FINDINGS_ROOT_CAUSE_CORRECTION_V2 Phase 8/14); 2026-07-15: +mission-authorization runtime/CLI, privacy guard, their test suites, hook config and the authorization mutation-campaign runner+evidence (truthful disclosure of the PR41 privacy/authorization root-cause and hardening missions per PR41_FINAL_AUTHORIZATION_LINEAGE_AND_MUTATION_CLOSURE_V1 Phase 9 — these files were already modified under explicit operator packets; this amendment discloses, it does not retroactively authorize)",
+  "scope_amendments": "2026-07-13: +4 generated universal-graph/inventory artifacts (CONNECTED_PATH_GRAPH_DRIFT gate demanded canonical regeneration; operator packet Phase 4 generated-artifact protocol); 2026-07-14: +reports/scoreboard_forensic/mutation_evidence_manifest.json (DEFECT-D durable mutation evidence required by SCOREBOARD_OPERATOR_SEMANTIC_SAFETY_CURSOR_FINDINGS_ROOT_CAUSE_CORRECTION_V2 Phase 8/14); 2026-07-15: +mission-authorization runtime/CLI, privacy guard, their test suites, hook config and the authorization mutation-campaign runner+evidence (truthful disclosure of the PR41 privacy/authorization root-cause and hardening missions per PR41_FINAL_AUTHORIZATION_LINEAGE_AND_MUTATION_CLOSURE_V1 Phase 9 — these files were already modified under explicit operator packets; this amendment discloses, it does not retroactively authorize); 2026-07-15 (closure): +3 generated hook-inventory paths regenerated when the no-private-paths hook landed (CHECK_STACK_RIGHTSIZING.md, PRECOMMIT_PERFORMANCE_AUDIT.md/.json) — completes the declarative overlap disclosure per PR41_FINAL_DECLARATIVE_SCOPE_DISCLOSURE_CLOSURE_V1; records connected mission scope only, does not retroactively authorize edits",
   "operator_authorization": "MISSION = SCOREBOARD_SEMANTICS_TARGET_TRUTH_AND_60C_ROOT_CAUSE_FORENSIC_V1 (operator packet 2026-07-13): forensic + universal correction of scoreboard semantics (ALL WAIT abstention, baselines, warnings, identity-first outcome join), target-truth forensic (placeholder thresholds, anchor/horizon contracts, flat decomposition), 60c root cause; NO retrain/promotion/sign-reversal/threshold-replacement/historical-outcome-rewrite; PR path; operator integrates",
   "production_database_truth": {
     "PRODUCTION_DB_WRITTEN_DURING_MISSION": "NO (mission execution used read-only mode=ro queries and tmp fixtures only)",

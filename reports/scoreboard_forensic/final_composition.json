@@ -9,7 +9,7 @@
   "OPEN_ITEMS.md": "15656a60d7f40842d1b8c20781668c62ddd4a9bfc5a39e43470870eb3208d60b",
   "calibration/daily_scoreboard.py": "454cab6f0ccbf2e4e85a12221f043359ab76d15e5f5156da89215008d22c81d1",
   "governance/artifacts/universal_connected_path_graph.json": "70885815e5d5b7b9771cf961e1504830464045ab5d19aabcbe419c70b3a8fd75",
-  "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": "74d24f8a4fd1a53975c7e06c0c8872d38677993ced16b7d1134390461ffd4980",
+  "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": "17cfb0037d396b7a2cd2a04811b2a9bebd6c14a2104da37b56c5d9031738f953",
   "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json": "4e37d33a01574de80763b10f7832f5abb2c52837bc4fefbd063388252fceebd9",
   "reports/scoreboard_forensic/july13_2026_target_truth_forensic.json": "44817113f25caa16e3d886d5c02beeb91b0c082d95da009d5114815ea863ae41",
   "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py": "0a4ea2baf703795cdaf84f8d9c0442940cd74427d6ad165177fb01b73478d1bc",
@@ -129,6 +129,18 @@
    },
    "interim_contract_tip_sha256": "5149390441f1739330b375bdac8123f6600d470a5c3cd16b5c5761a9eae2ab90 \u2014 the contract bytes at commit 32fb8c4 (correction_history[4].new_sha256); superseded within this change set by the scope-disclosure amendment before the map was corrected, so it never appears as a map entry",
    "campaign_impact": "NONE \u2014 no mutation input's committed CONTENT changed; the map value change for calibration/daily_scoreboard.py and the detecting test file is a byte-form convention change (render->blob) over identical committed blobs; sig-v2 signatures derive from JUnit-structured failures and are unaffected"
+  },
+  {
+   "mission": "PR41_FINAL_DECLARATIVE_SCOPE_DISCLOSURE_CLOSURE_V1",
+   "date": "2026-07-15",
+   "nature": "declarative scope disclosure completed: the active contract's authorized_scope.files gains the 3 generated hook-inventory paths the local series regenerated (governance/docs/CHECK_STACK_RIGHTSIZING.md, governance/docs/PRECOMMIT_PERFORMANCE_AUDIT.md, governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json) plus a dated scope_amendments note stating the amendment records connected mission scope and does not retroactively authorize edits; scope remains DECLARATIVE overlap-disclosure (scope_model unchanged); authorization binding, branch, remote and every authorization-strength field unchanged",
+   "changes": {
+    "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": {
+     "old_sha256": "74d24f8a4fd1a53975c7e06c0c8872d38677993ced16b7d1134390461ffd4980",
+     "new_sha256": "17cfb0037d396b7a2cd2a04811b2a9bebd6c14a2104da37b56c5d9031738f953"
+    }
+   },
+   "campaign_impact": "NONE \u2014 the contract is not a mutation input; mutation definitions, detector map, retained campaign evidence and sig-v2 signatures are byte-identical"
   }
  ],
  "mutation_runner_sha256": "b60e6811256c0ff32a5ce13a36c2d857e1b1ba97adf1c607c2c949038cf254df",
