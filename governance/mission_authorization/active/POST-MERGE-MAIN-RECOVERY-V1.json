@@ -1,0 +1,52 @@
+{
+  "schema_version": "1",
+  "mission_id": "POST-MERGE-MAIN-RECOVERY-V1",
+  "agent": "Claude",
+  "mission_type": "feature_implementation",
+  "authorized_branch": "post-merge-main-recovery-v1",
+  "authorization_binding_sha256": "3e47f9fd0a48d21eb01eec30c98d28d0fc2d5ae17c51a1dbd8ef651b58684161",
+  "authorized_remote": "https://github.com/evargas963/Ed-s-Console-App.git",
+  "base_sha": "f7de7b3b168f444a6fc7693922b57d6d8265a561",
+  "authorized_push_target": "origin/post-merge-main-recovery-v1",
+  "target_branch": "post-merge-main-recovery-v1",
+  "direct_main_permission": false,
+  "pr_required": true,
+  "integration_owner": "OPERATOR",
+  "authorized_scope": {
+    "files": [
+      "arch_competition/governance_visibility.py",
+      "tests/test_governance_dashboard.py",
+      "tools/stream_revert_v4_register_and_sync_perf.py",
+      "tools/schwab_oxx_validator.py",
+      "tests/test_schwab_coverage_v4_tools.py",
+      ".github/workflows/schwab-csv-first.yml",
+      ".github/workflows/schwab-v4-closure.yml",
+      "governance/register_slices/",
+      "governance/artifacts/perf_proof/replacements/",
+      "governance/mission_authorization/active/POST-MERGE-MAIN-RECOVERY-V1.json"
+    ],
+    "scope_model": "DECLARATIVE overlap-disclosure for sibling-mission conflict detection (detect_mission_overlap); NOT a mechanical changed-file allowlist",
+    "semantic_domains": [
+      "governance_gates",
+      "generated_inventories"
+    ]
+  },
+  "shared_file_policy": "none",
+  "lease_state": "active",
+  "created_at_epoch": 1784130000.0,
+  "expires_at_epoch": 1785340000.0,
+  "operator_authorization": "MISSION = POST_MERGE_MAIN_ROOT_CAUSE_RECOVERY_V1 (operator packet 2026-07-15): broad connected root-cause investigation and fix of the two post-merge main failures (governance-dashboard rollback test nondeterminism; Schwab V4 register-closure register_link/REPLACED reconciliation); local commits authorized after connected solution complete; NO push/PR/merge; Lane-B files untouchable",
+  "allowed_integration_method": "local commits only this mission; push/PR by separate operator authorization",
+  "required_checks": [
+    "objective-audit",
+    "pytest-full",
+    "hardening",
+    "schwab-csv-first"
+  ],
+  "stop_conditions": [
+    "Lane-B files would change",
+    "runtime trading behavior would change",
+    "a test would be weakened or deleted merely to pass CI",
+    "push/PR/merge would be required"
+  ]
+}
