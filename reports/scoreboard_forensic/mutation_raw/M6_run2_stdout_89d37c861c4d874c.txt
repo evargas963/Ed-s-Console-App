@@ -1,0 +1,42 @@
+.........................................................F.............. [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+______ test_v4_invalid_threshold_rows_excluded_from_every_trusted_metric ______
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-920/test_v4_invalid_threshold_rows0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F84B7C9C50>
+
+    def test_v4_invalid_threshold_rows_excluded_from_every_trusted_metric(tmp_path, monkeypatch):
+        """Mandatory pre-proof correction (adversarial): a horizon whose governed
+        threshold is invalid contributes to NO trusted v4 metric — not n_scored, not
+        accuracy/balanced/F1/MCC, not confusion, not directional metrics, not
+        baselines. Rows land in a disclosed invalid-target cohort; the historical
+        legacy cell stays reproducible."""
+        import movement_target_threshold as mtt
+    
+        crippled = {
+            "version": 2, "notes": "test",
+            "horizons": {
+                "1c": {"threshold_move_pts": 0.04, "selected_percentile": 5},
+                "5c": {"threshold_move_pts": 0.12, "selected_percentile": 5},
+                "15c": {"threshold_move_pts": 0.26, "selected_percentile": 5},
+                "60c": {"threshold_move_pts": -1.0, "selected_percentile": None},  # invalid
+            },
+        }
+        monkeypatch.setattr(mtt, "load_movement_thresholds_by_horizon_v1", lambda path=None: crippled)
+        db = _fixture_db(tmp_path)
+        ts0 = datetime(2026, 6, 9, 12, 0, tzinfo=ET).timestamp()
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        _insert_decision(conn, "SPY", ts0, _mh_bundle({"60c": "flat"}), {"60c": "flat"})
+        conn.commit()
+        conn.close()
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        ext = sb["by_horizon_extended"]["60c"]
+>       assert ext["n_scored"] == 0 and ext["n_pred"] == 0
+E       assert (1 == 0)
+
+tests\test_calibration_daily_scoreboard.py:1268: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_v4_invalid_threshold_rows_excluded_from_every_trusted_metric
+1 failed, 82 passed in 17.02s

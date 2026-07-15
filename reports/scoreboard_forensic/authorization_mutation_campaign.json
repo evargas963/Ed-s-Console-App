@@ -1,0 +1,735 @@
+{
+ "base_sha": "2db957f997795cff88fdcdbdbe3a6156bc10223a",
+ "baseline": {
+  "after": {
+   "auth_exit": 0,
+   "exit_code": 0,
+   "priv_exit": 0
+  },
+  "before": {
+   "auth_exit": 0,
+   "exit_code": 0,
+   "failed": [],
+   "priv_exit": 0
+  }
+ },
+ "definitions_sha256": "61097e3504525ee0f2d81e868c6741a0ee334bab178bec0e690bad9913e08a33",
+ "detection_rule": "a mutation is DETECTED only when a predeclared detector test fails; primary beats approved-earlier-layer; failures outside the predeclared map are recorded as unrelated and never count; restoration must be byte-exact; baseline green before and after",
+ "local_secret_preservation": {
+  "after": {
+   "clone_identity_sha256": "02d800c05933ca79841b3f704c93355fd3cbb102948335547b874ee112d6e0c5",
+   "leases": {
+    "ed_mission_lease_SCOREBOARD-TARGET-TRUTH-60C-V1": "1c9c186fb00dd793b78bea5a5cad602b3c7f4d1f141988aec627846c17c8f7dc"
+   }
+  },
+  "before": {
+   "clone_identity_sha256": "02d800c05933ca79841b3f704c93355fd3cbb102948335547b874ee112d6e0c5",
+   "leases": {
+    "ed_mission_lease_SCOREBOARD-TARGET-TRUTH-60C-V1": "1c9c186fb00dd793b78bea5a5cad602b3c7f4d1f141988aec627846c17c8f7dc"
+   }
+  },
+  "unchanged": true
+ },
+ "mutation_total": 22,
+ "mutations": [
+  {
+   "actual_failed_tests": [
+    "test_detached_head_fails_branch_binding"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_detached_head_fails_branch_binding"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A1-branch-check-removed",
+   "invariant": "a checked-out branch is never authorization; wrong/detached branch refuses",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "f7fc50ed03dcbc69b08923ac1b86863ad4c40876756c1857d38f0cfdef233d98",
+   "pairs": [
+    [
+     "if branch != contract[\"authorized_branch\"]:",
+     "if False and branch != contract[\"authorized_branch\"]:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_lookalike_host_and_wrong_owner_fail",
+    "test_wrong_repository_remote_fails_closed"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_wrong_repository_remote_fails_closed",
+    "test_lookalike_host_and_wrong_owner_fail"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A2-remote-identity-comparison-removed",
+   "invariant": "origin must canonicalize to the authorized repository identity",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "ded579dc5f074be82fcceaf9a2c1cb7d253919c6e11a0445d86437a4ddaecbeb",
+   "pairs": [
+    [
+     "elif origin_canon != auth_canon:",
+     "elif False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_copied_contract_in_another_clone_fails_closed",
+    "test_copied_lease_only_fails_closed",
+    "test_environment_override_cannot_replace_lease",
+    "test_missing_clone_identity_fails_closed",
+    "test_missing_local_secrets_fail_closed",
+    "test_second_worktree_of_same_clone_fails_without_own_authorization"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_missing_local_secrets_fail_closed",
+    "test_copied_contract_in_another_clone_fails_closed",
+    "test_copied_lease_only_fails_closed",
+    "test_second_worktree_of_same_clone_fails_without_own_authorization",
+    "test_missing_clone_identity_fails_closed",
+    "test_environment_override_cannot_replace_lease"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A3-binding-missing-accepted",
+   "invariant": "absent clone identity or lease fails closed (MISSING)",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "6c9472ec700a4fe18839fc9d5fd3ad5fd936cf1abd64db4eb73d05c1b5e7c41d",
+   "pairs": [
+    [
+     "if binding is None:",
+     "if False and binding is None:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_copied_contract_AND_lease_in_another_clone_fails_closed",
+    "test_wrong_binding_sha_fails_closed"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_wrong_binding_sha_fails_closed",
+    "test_copied_contract_AND_lease_in_another_clone_fails_closed"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A4-binding-mismatch-accepted",
+   "invariant": "a binding digest differing from the tracked pin fails closed (MISMATCH)",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "85004d6c6edc412d45391f94cd81e65d3eb3633bda1719038de4f22b4c2661ad",
+   "pairs": [
+    [
+     "elif binding != contract[\"authorization_binding_sha256\"]:",
+     "elif False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_legacy_private_path_contract_refused"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_legacy_private_path_contract_refused"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A5-legacy-private-path-field-accepted",
+   "invariant": "contracts carrying authorized_worktree are refused at load",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "983618c76a31ffcae4fcb1a833ade16d5d370334b77972b92a1ff851c7cec052",
+   "pairs": [
+    [
+     "if LEGACY_PRIVATE_PATH_FIELD in doc:",
+     "if False and LEGACY_PRIVATE_PATH_FIELD in doc:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_expired_authorization_fails"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_expired_authorization_fails"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A6-expiry-check-removed",
+   "invariant": "expired authorizations refuse",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "6b0c6ddf963c08d84c2681486fc504fcb6fac0e3770b4a035d8a598cb2e89756",
+   "pairs": [
+    [
+     "if float(doc[\"expires_at_epoch\"]) < time.time():",
+     "if False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_branch_and_worktree_collision_detected"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_branch_and_worktree_collision_detected"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A7-overlap-binding-collision-removed",
+   "invariant": "two active contracts sharing one binding digest collide",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "fa45e76d7065bc03487919fcb4ab852dbd7950364cd674d8be24434b48c8cc68",
+   "pairs": [
+    [
+     "errors.append(f\"authorization binding collision with {other.get('mission_id')}\")",
+     "pass",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_legacy_weak_lease_only_contract_refused"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_legacy_weak_lease_only_contract_refused"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A8-legacy-weak-lease-field-accepted",
+   "invariant": "contracts carrying the copyable lease-only pin are refused at load",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "b4554140e8e61841af1c6d62d6f6b2d04bd9bb63cb27aa86ee2833abd924bc64",
+   "pairs": [
+    [
+     "if LEGACY_WEAK_BINDING_FIELD in doc:",
+     "if False and LEGACY_WEAK_BINDING_FIELD in doc:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_copied_contract_AND_lease_in_another_clone_fails_closed"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_copied_contract_AND_lease_in_another_clone_fails_closed"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A9-clone-identity-dropped-from-binding",
+   "invariant": "the binding digest must include the clone identity nonce, else a copied lease authorizes another clone",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "a3d287d0ff2b48adcfd3346ca810b2889ba4dcace4f4d5fd6a98fd9e5a9d3dcb",
+   "pairs": [
+    [
+     "ip.read_bytes() + b\"|\" + mission_id.encode(\"utf-8\") + b\"|\" + lp.read_bytes()",
+     "mission_id.encode(\"utf-8\") + b\"|\" + lp.read_bytes()",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific",
+    "test_contract_with_credential_remote_refused_at_load",
+    "test_credential_bearing_origin_refused_without_leaking_it"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_credential_bearing_origin_refused_without_leaking_it",
+    "test_contract_with_credential_remote_refused_at_load",
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A10-credential-rejection-removed",
+   "invariant": "credential-bearing remotes refuse (both userinfo layers)",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "fbdfa7e0a603c1228c39d8041b160e8fd995def77f25659094470ddbd787c38c",
+   "pairs": [
+    [
+     "if password:",
+     "if False:",
+     0
+    ],
+    [
+     "if scheme == \"https\" and username:",
+     "if False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A11-file-scheme-check-removed",
+   "invariant": "file:// remotes refuse with the file:// reason",
+   "layered_defense_note": "test_file_and_local_path_remotes_refused stays green: the scheme allowlist and host-required layers still refuse file:/// inputs with a different reason; the layer-specific reason battery is the predeclared detector",
+   "material": true,
+   "mutated_sha256": "e05599ead8d815cbe6eeb24bc7486bcb57f0494002242fb4a411d4057d45cb42",
+   "pairs": [
+    [
+     "if u.lower().startswith(\"file://\"):",
+     "if False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A12-scheme-allowlist-removed",
+   "invariant": "only https/ssh schemes canonicalize",
+   "layered_defense_note": "http:// then canonicalizes (no other layer refuses it); only the reason battery exercises an http input",
+   "material": true,
+   "mutated_sha256": "fc4c27b62586fa7125983327fa8b597c05d64edd40045917775582be651d787e",
+   "pairs": [
+    [
+     "if scheme not in (\"https\", \"ssh\"):",
+     "if False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A13-local-path-check-removed",
+   "invariant": "local filesystem remotes refuse with the local-filesystem reason",
+   "layered_defense_note": "relative-path inputs still refuse via the SCP-form parser (different reason); the reason battery is the predeclared detector for the layer-specific message",
+   "material": true,
+   "mutated_sha256": "1c5f3b05bac3d363d0ddf0f83b62bbc377ee237de71e143720e8429f40c458e5",
+   "pairs": [
+    [
+     "if re.match(r\"^[A-Za-z]:[\\\\/]\", u) or u.startswith((\"/\", \"\\\\\", \"./\", \"../\", \"~\")):",
+     "if False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_canonicalize_remote_rejection_reasons_are_layer_specific"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A14-port-check-removed",
+   "invariant": "non-default ports refuse",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "d0b75dde0aba0435ec7d9d7523a2133a1c1977b1e1bcf0cbd52b9a1b93e61099",
+   "pairs": [
+    [
+     "if port not in (None, 443 if scheme == \"https\" else 22):",
+     "if False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_canonicalize_remote_equivalences",
+    "test_remote_normalization_tolerates_git_suffix_slash_and_case"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_canonicalize_remote_equivalences",
+    "test_remote_normalization_tolerates_git_suffix_slash_and_case"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A15-git-suffix-strip-removed",
+   "invariant": ".git-suffixed and bare forms canonicalize identically",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "6c8e1d4dde6252e010939d2900d80998177870214226b0139338c37782b91427",
+   "pairs": [
+    [
+     "if p.lower().endswith(\".git\"):",
+     "if False:",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_canonicalize_remote_equivalences",
+    "test_https_ssh_and_scp_forms_are_equivalent",
+    "test_remote_normalization_tolerates_git_suffix_slash_and_case"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_canonicalize_remote_equivalences",
+    "test_remote_normalization_tolerates_git_suffix_slash_and_case",
+    "test_https_ssh_and_scp_forms_are_equivalent"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A16-owner-repo-lowercase-removed",
+   "invariant": "owner/repo case never splits repository identity",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "04b5fe5e18a052c247692096d2744ae4f669e2e47a3babbdaaaf5081f002ed0d",
+   "pairs": [
+    [
+     "return f\"{host}/{owner.lower()}/{repo.lower()}\", \"ok\"",
+     "return f\"{host}/{owner}/{repo}\", \"ok\"",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_credential_bearing_origin_refused_without_leaking_it"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_credential_bearing_origin_refused_without_leaking_it"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A17-refusal-echoes-raw-remote",
+   "invariant": "refusal messages never echo the raw remote URL (credential privacy)",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "4ff148336ce6a0d769cd14819d7fa26b21f62991ac28a27ba4faacabfd28e1d7",
+   "pairs": [
+    [
+     "errors.append(f\"origin remote refused: {origin_why} (fail closed)\")",
+     "errors.append(f\"origin remote refused: {remote}: {origin_why} (fail closed)\")",
+     0
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_clone_identity_is_stable_across_ceremonies"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_clone_identity_is_stable_across_ceremonies"
+   ],
+   "file": "tools/mission_authorization.py",
+   "id": "A18-clone-identity-silently-replaced",
+   "invariant": "an existing clone identity is never silently replaced",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "53efd29ae0fcd19a8f6e7b66b13c562f91d9c91cf0f1e7ee3b04876fd7923cb9",
+   "pairs": [
+    [
+     "    if not p.is_file():",
+     "    if True:",
+     1
+    ]
+   ],
+   "preimage_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "restoration_exact": true,
+   "restored_sha256": "a31eb1c5044cf84e2315fff86a0d19a14fa531486201525e20b1c647913fed44",
+   "selector": "tests/test_mission_authorization.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_guard_reports_synthetic_violation",
+    "test_private_path_patterns_catch_all_required_forms"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_private_path_patterns_catch_all_required_forms",
+    "test_guard_reports_synthetic_violation"
+   ],
+   "file": "tools/check_private_paths.py",
+   "id": "G1-windows-pattern-removed",
+   "invariant": "windows operator-home paths are always detected",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "691d15fbad054c0ed38ade481347bb622471754ec6299dffddb6d1b1806d1472",
+   "pairs": [
+    [
+     "(\"windows_user_home\", re.compile(r\"[A-Za-z]:[\\\\/]+Users[\\\\/]+[A-Za-z0-9_.-]+\", re.IGNORECASE)),",
+     "",
+     0
+    ]
+   ],
+   "preimage_sha256": "f5592ca77322f698f937c9f7348d81ca655ecc128d2afe36546251ba217766ac",
+   "restoration_exact": true,
+   "restored_sha256": "f5592ca77322f698f937c9f7348d81ca655ecc128d2afe36546251ba217766ac",
+   "selector": "tests/test_operator_path_privacy.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_allowlist_binds_line_and_file"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_allowlist_binds_line_and_file"
+   ],
+   "file": "tools/check_private_paths.py",
+   "id": "G2-allowlist-line-binding-removed",
+   "invariant": "an allowlist row only excuses its exact marker line",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "219bb471df5bc820cba01801a098c8958b65b0307359f3d35116ea539ab3518b",
+   "pairs": [
+    [
+     "return any(rel.startswith(prefix) and marker in line",
+     "return any(rel.startswith(prefix)",
+     0
+    ]
+   ],
+   "preimage_sha256": "f5592ca77322f698f937c9f7348d81ca655ecc128d2afe36546251ba217766ac",
+   "restoration_exact": true,
+   "restored_sha256": "f5592ca77322f698f937c9f7348d81ca655ecc128d2afe36546251ba217766ac",
+   "selector": "tests/test_operator_path_privacy.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_allowlist_binds_line_and_file"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_allowlist_binds_line_and_file"
+   ],
+   "file": "tools/check_private_paths.py",
+   "id": "G3-allowlist-file-binding-removed",
+   "invariant": "an allowlist row only excuses files under its prefix",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "d2ebdd6012749b5d8ca65913b6ed985057588c4a52aea0b8e8b800d9aad66c74",
+   "pairs": [
+    [
+     "return any(rel.startswith(prefix) and marker in line",
+     "return any(marker in line",
+     0
+    ]
+   ],
+   "preimage_sha256": "f5592ca77322f698f937c9f7348d81ca655ecc128d2afe36546251ba217766ac",
+   "restoration_exact": true,
+   "restored_sha256": "f5592ca77322f698f937c9f7348d81ca655ecc128d2afe36546251ba217766ac",
+   "selector": "tests/test_operator_path_privacy.py",
+   "unrelated_failures": []
+  },
+  {
+   "actual_failed_tests": [
+    "test_guard_reports_synthetic_violation"
+   ],
+   "approved_earlier_layer": [],
+   "classification": "DETECTED_BY_PRIMARY_LAYER",
+   "exact_match_to_expected": true,
+   "exit_code": 1,
+   "expected_primary": [
+    "test_guard_reports_synthetic_violation"
+   ],
+   "file": "tools/check_private_paths.py",
+   "id": "G4-fail-open-empty-violations",
+   "invariant": "the detector must REPORT hits; a silenced reporter fails adversarial coverage",
+   "layered_defense_note": "",
+   "material": true,
+   "mutated_sha256": "1cd8a72c2e692ca4ab98bff3d8fec515e2ac3560f5e140b53ce27cd6de118bb9",
+   "pairs": [
+    [
+     "violations.append(f\"{rel}:{i}: {label}: {line.strip()[:160]}\")",
+     "pass",
+     0
+    ]
+   ],
+   "preimage_sha256": "f5592ca77322f698f937c9f7348d81ca655ecc128d2afe36546251ba217766ac",
+   "restoration_exact": true,
+   "restored_sha256": "f5592ca77322f698f937c9f7348d81ca655ecc128d2afe36546251ba217766ac",
+   "selector": "tests/test_operator_path_privacy.py",
+   "unrelated_failures": []
+  }
+ ],
+ "schema": "AUTHORIZATION_MUTATION_CAMPAIGN",
+ "schema_version": 1,
+ "summary": {
+  "DETECTED_BY_APPROVED_EARLIER_LAYER": 0,
+  "DETECTED_BY_PRIMARY_LAYER": 22,
+  "INVALID_MUTATION": 0,
+  "SURVIVED": 0
+ }
+}

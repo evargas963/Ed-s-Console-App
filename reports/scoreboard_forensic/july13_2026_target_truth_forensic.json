@@ -1,0 +1,143 @@
+{
+  "schema": "SCOREBOARD_TARGET_TRUTH_FORENSIC_PACKET",
+  "lane_decomposition": {
+    "implementation_lanes": {
+      "LANE_A": "scoreboard schema v4 + operator semantic safety (calibration/daily_scoreboard.py + its tests) — included_in_lane_a_patch: true",
+      "LANE_B": "identity-first outcome attachment (calibration/backfill_outcomes.py + its tests) — included_in_lane_a_patch: FALSE; included_in_lane_b_uncommitted_worktree: true"
+    },
+    "reader_rule": "sections tagged implementation_lane=B describe UNCOMMITTED worktree design, are evidence_only for Lane A, and are not_commit_evidence_for_lane_a; the Lane-A patch ships HEAD backfill behavior unchanged",
+    "section_tags": {
+      "join_identity_forensic": {"implementation_lane": "B", "included_in_lane_a_patch": false, "evidence_only": true, "not_commit_evidence_for_lane_a": true},
+      "population_reconciliation": {"implementation_lane": "none", "classification": "historical observation (read-only)"},
+      "threshold_forensic": {"implementation_lane": "none", "classification": "historical observation + parent finding"},
+      "truth_generation_contract": {"implementation_lane": "none", "classification": "historical observation (code reads at base)"},
+      "sixty_c_forensic": {"implementation_lane": "none", "classification": "historical observation"},
+      "collapse_probe": {"implementation_lane": "A (detector only)", "classification": "observation + Lane-A warning detectors"},
+      "all_card_legacy_scoring_defect": {"implementation_lane": "A", "included_in_lane_a_patch": true}
+    }
+  },
+  "mission": "SCOREBOARD_SEMANTICS_TARGET_TRUTH_AND_60C_ROOT_CAUSE_FORENSIC_V1",
+  "base_sha": "a0d5e3b9a5f9731357465f93fe2375f9a4672338",
+  "session_date_ct": "2026-07-13",
+  "source_scoreboard": {
+    "path": "reports/daily_scoreboard/scoreboard_2026-07-13.json (canonical repo, gitignored artifact)",
+    "sha256": "4a501944ea6f799d7b532725953d82d033df8c0febb8e4d723fb793bf5156226",
+    "bytes": 106294,
+    "schema_version": "3",
+    "generated_utc": "2026-07-13T20:38:44.339055+00:00",
+    "db_identity": {"path": "canonical data/ed_console.db", "size_bytes": 19911151616, "mtime_epoch": 1783995237.75},
+    "generation_command": "python -m calibration.daily_scoreboard --open (scheduled task, tools/run_daily_scoreboard.ps1)"
+  },
+  "published_metrics_reproduced_exactly": {
+    "1c": {"n_scored": 571, "accuracy": 0.4886, "n_directional": 524, "directional_accuracy": 0.4943},
+    "5c": {"n_scored": 574, "accuracy": 0.4599, "n_directional": 518, "directional_accuracy": 0.4788},
+    "15c": {"n_scored": 566, "accuracy": 0.4081, "n_directional": 310, "directional_accuracy": 0.4548},
+    "60c": {"n_scored": 370, "accuracy": 0.2973, "n_directional": 215, "directional_accuracy": 0.1116},
+    "all": {"n_scored": 571, "accuracy": 0.1699, "n_directional": 15, "directional_accuracy": 0.8667},
+    "coverage": {"eligible": 49, "with_rows": 30, "zero_rows": 19},
+    "verdict": "SCOREBOARD_REPRODUCIBILITY = PROVEN (values match the operator/Cursor packet exactly)"
+  },
+  "all_card_legacy_scoring_defect": {
+    "code": "calibration/daily_scoreboard.py:60 _FINAL_BIAS_TO_LABEL maps WAIT->flat into 3-class accuracy; ~600/615 evaluated ALL rows were WAIT",
+    "verdict": "ALL_CARD_LEGACY_TRICLASS_SCORING = CONTRADICTED (WAIT is trade abstention, not a flat-price prediction)",
+    "correction": "schema v4 all_card trade-call contract: LONG/SHORT scored vs decision-time primary-horizon outcome; WAIT excluded from trade-call accuracy and reported as abstention with descriptive wait-outcome distribution; legacy metric retained + labeled LEGACY_INVALID_FOR_TRADE_EDGE"
+  },
+  "truth_generation_contract": {
+    "call_graph": "db.py:3315 fill_outcomes -> db.py:4764 _apply_bar_based_outcome_updates (alias _classify_direction_per_horizon = math_probabilities.classify_direction_pts, db.py:74); refresh paths: upsert_1m_bars -> db.py:4920 _refresh_governed_outcomes_after_bar_mutation (force_refresh=True), db.py:3427 refresh_all_governed_bar_anchor_outcomes_v1; pin-neutral repair db.py:3539 (incremental, zone='pin_neutral' unfilled 1m only, never overwrites non-NULL)",
+    "anchor": "close of last completed price_bars_1m bar with bar_end_ts_utc <= decision T (bisect); available at decision time; no bar -> row stays pending. ANCHOR_ASOF_CORRECTNESS = PROVEN at the code-contract level",
+    "forward": "close of bar starting floor((T+N*60)/60)*60; labeled only when that bar is complete AND present; wall-clock minutes on the 60s grid (not N completed bars, not RTH-only); session-tail 60c rows honestly pending (July 13 base tickers: 60c labeled 334-382 vs 1c 393-439). HORIZON_ALIGNMENT = PROVEN as a contract; elapsed-time coherence depends on bar presence (synthetic repair sources can occupy the grid - price_bars_1m.source discloses)",
+    "mutability": "outcomes recomputed in place on bar mutation (same-txn refresh) and by the bulk refresh tool; NO per-row lineage columns. OUTCOME_IMMUTABILITY = NOT_PROVEN; OUTCOME_LINEAGE = NOT_PROVEN; forward-only lineage fix is a designed follow-up (additive filled/refreshed provenance columns)",
+    "threshold_at_fill": "threshold_move_pts_for_slug(slug, anchor_close, snapshots.atr, cfg) with the applied value persisted per row in threshold_move_{hz}; ATR fallback unreachable while the JSON covers all horizons; invalid-threshold branch (classify_direction_pts thr<=0 -> flat) unreachable on July 13"
+  },
+  "threshold_forensic": {
+    "source": "calibration/movement_target_thresholds_by_horizon_v1.json",
+    "source_self_description": "Placeholder thresholds (points) until percentile search runs on governed DB",
+    "selected_percentile": "null on every horizon",
+    "verdict": "LEGACY_PLACEHOLDER_THRESHOLD = CONFIRMED; THRESHOLD_SOURCE_GOVERNANCE = NOT_PROVEN",
+    "july13_rows_using_placeholder": "100% of labeled 1m snapshot rows (2502 rows scanned; every ticker x horizon threshold_move_{hz} == exactly the placeholder constant)",
+    "scale_distortion_60c_threshold_bps_of_spot": {
+      "$SPX": 0.86, "MU": 7.0, "SPY": 8.67, "QQQ": 9.12, "META": 9.84, "TSLA": 16.34,
+      "AVGO": 16.67, "MSFT": 16.73, "GOOGL": 18.33, "IWM": 22.15, "NET": 24.06,
+      "AMZN": 26.46, "MRVL": 29.13, "NVDA": 31.22, "CRWD": 34.79, "ORCL": 47.62,
+      "XOM": 45.79, "SPCX": 45.77, "PLTR": 50.72, "MET": 70.23, "RKLB": 82.3,
+      "NFLX": 88.03, "ASTS": 92.79, "SMCI": 235.08, "CIFR": 309.23, "PCG": 375.85, "TSL": 416.1
+    },
+    "flat_truth_rate_60c_by_ticker": {
+      "$SPX": 0.0, "SPY": 0.623, "QQQ": 0.448, "IWM": 0.841, "NVDA": 0.306,
+      "TSLA": 0.132, "NET": 0.137, "PCG": 1.0, "TSL": 1.0, "SMCI": 1.0, "MET": 1.0
+    },
+    "verdict_scale": "TICKER_SCALE_DISTORTION_SUPPORTED (~480x spread in economic meaning of the same 60c label); HORIZON scale also distorted (1c 0.53-14+ bps); TARGET_SCALE_COHERENCE = CONTRADICTED; UNIVERSAL_THRESHOLD_SUITABILITY = NOT_PROVEN; TARGET_ECONOMIC_MEANING = NOT_PROVEN; LABEL_CONTRACT_CORRECTNESS = NOT_PROVEN (reproducible arbitrary targets are not institutionally valid targets)",
+    "historical_threshold_source_classification": "per-row applied threshold VALUE is persisted (snapshots.threshold_move_{hz} == placeholder constants on every examined July-13 row) = persisted historical evidence of the VALUE; the source FILE/version is not persisted per row, so the placeholder-file attribution is HISTORICAL_THRESHOLD_SOURCE_INFERRED (current-config resolution + persisted-value equality), not HISTORICAL_THRESHOLD_SOURCE_PROVEN",
+    "flat_truth_cause_matrix": "all labeled flats = genuine-move-inside-PLACEHOLDER-threshold; invalid-threshold flats = 0 (branch unreachable); incomplete-horizon rows = NULL (pending, excluded honestly); pin-neutral repair = separate zone, incremental only",
+    "no_threshold_change_made": "per mission authorization - replacement requires the preregistered target-research protocol"
+  },
+  "join_identity_forensic": {
+    "population_note": "live DB - counts move as the session logs; first pass (5270 trusted rows) saw 987 attached (563 exact + 424 nearest [223 earlier/201 later]) and 2129 identity links; the reconciliation pass (5515 trusted rows) produced the definitive cross-tab below",
+    "cross_tab_identity_link_x_join_cohort_n5515": {
+      "IDENTITY_LINKED::exact_timestamp": 563,
+      "IDENTITY_LINKED::unattached": 1651,
+      "NO_IDENTITY_LINK::nearest_earlier": 223,
+      "NO_IDENTITY_LINK::nearest_later": 201,
+      "NO_IDENTITY_LINK::unattached": 2877,
+      "multi_snapshot_identity_links": 0,
+      "identity_vs_matched_snapshot_contradictions": 0,
+      "identity_links_whose_snapshot_lacks_outcomes": "1101 of 2214 links (session-tail horizons pending)"
+    },
+    "cross_tab_reading": "every exact-timestamp attachment is ALSO identity-linked and points to the SAME snapshot (563/563; CONTRADICTED_MATCH cohort = 0); all nearest-inferred rows are pre-identity-era (no link exists); 1651 identity-linked rows were left unattached by the legacy time join - ~550 attachable now (outcome-filled) and the rest as session-tail outcomes fill",
+    "identity_category_definitions": "EXPLICIT_OUTCOME_SOURCE_IDENTITY = decision_id link to the exact snapshot whose outcomes are copied (563 attached today; growing forward); DECISION_ID_ONLY = link exists, outcomes not yet filled or not yet attached (1651); EXECUTION_IDENTITY_ONLY = execution_identity_sha256 without snapshot link (throttled-snapshot cycles); EXACT/EARLIER/LATER inference and UNATTACHED as in the cross-tab; CONTRADICTED = 0 observed",
+    "verdicts": {
+      "TIMESTAMP_IDENTITY": "NOT_PROVEN (historical attachment is inference for 424 rows and absent for 4283+; a decision_id alone is not outcome-source identity)",
+      "HISTORICAL_OUTCOME_ATTACHMENT": "NOT_PROVEN (81% of first-pass trusted rows unattached under the time join)",
+      "OUTCOME_SOURCE_IDENTITY": "NOT_PROVEN historically; the 563-row exact cohort is identity-corroborated with zero contradictions",
+      "FORWARD_IDENTITY_FIRST_DESIGN": "LANE_B_UNCOMMITTED_DESIGN — EXCLUDED from the Lane-A patch (Lane A ships HEAD backfill behavior unchanged); the identity > exact > unique-nearest ladder + ambiguity fail-closed exist only in the uncommitted Lane-B worktree with its own tests; not_commit_evidence_for_lane_a; proof requires the Lane-B data-impact mission + merge + live operation"
+    },
+    "trust_qualifier": "inference-only and unattached rows never enter identity-proven metrics; v4 cells expose identity_cohorts and warn TIMESTAMP_IDENTITY_NOT_PROVEN whenever any scored row is inference-joined"
+  },
+  "population_reconciliation": {
+    "definitions": "PUBLISHED/SCORED cohort = trusted + RTH-gated + outcome-attached rows in the ET day (what scoreboard v3 scored); BROAD cohort = ALL trusted rows in the ET day (incl. non-RTH afternoon reproof rows and unattached predictions); counts drift upward on a live DB between queries",
+    "rows": [
+      {"prior_claim": "QQQ 15c 100% flat", "prior_cohort": "SCORED+RTH (n=82, all flat - reproduced exactly)", "current_cohort": "ALL-preds full day n=1283: flat 1192/up 73/down 18 (92.5% flat)", "both_correct": true, "explanation": "same collapse, different denominators; scored subset is the fully-flat tail"},
+      {"prior_claim": "QQQ 60c down-dominant 1150/1221", "prior_cohort": "broad full-day 60c preds", "current_cohort": "distinct horizon from QQQ 15c flat claim", "both_correct": true, "explanation": "15c collapses to flat, 60c collapses to down - different horizons, not a contradiction"},
+      {"prior_claim": "IWM 60c 58/58 flat", "prior_cohort": "SCORED+RTH (n=58, all flat - reproduced exactly)", "current_cohort": "ALL-preds full day 1280/1280 flat", "both_correct": true, "explanation": "always-flat at every cohort size"},
+      {"prior_claim": "60c n=370", "prior_cohort": "published scoreboard scored (RTH+attached)", "current_cohort": "broad trusted-day scored = 517", "both_correct": true, "explanation": "+147 rows are non-RTH-gated afternoon decisions whose outcomes attached later"},
+      {"prior_claim": "~9 tickers contributed scored horizon cells", "prior_cohort": "published grid SCORED cells", "current_cohort": "19 tickers appear in the broad 60c table (many 1-8 rows)", "both_correct": true, "explanation": "published cells require attached outcomes in RTH window; broad table includes sparse/late tickers"}
+    ]
+  },
+  "sixty_c_forensic": {
+    "uniqueness": {"$SPX": "1032 unique fusion vectors / 1171 rows", "SPY": "1042/1306", "QQQ": "664/1221", "IWM": "749/1219"},
+    "staleness_verdict": "predictions recompute most cycles (not stale copies) BUT ~20s cadence over 60-minute windows makes rows ~60:1 overlapped; independent windows ~6-7 per ticker per day; EFFECTIVE_SAMPLE_NOT_PROVEN applies to every July-13 60c conclusion",
+    "per_ticker_prediction_collapse": {
+      "$SPX": "1156/1171 up (98.7%) - NEAR_CONSTANT up",
+      "IWM": "1219/1219 flat (100%) - ALWAYS_FLAT (truth 84.1% flat under placeholder threshold; consistent with label imbalance)",
+      "QQQ": "1150/1221 down (94%) - NEAR_CONSTANT down",
+      "SPY": "1165/1306 up (89%) - NEAR_CONSTANT up"
+    },
+    "pooled_recompute_full_trusted_day": {"scored": 517, "accuracy": 0.3327, "always_flat_baseline": 0.5261, "dir_n": 312, "dir_acc": 0.1506, "inverted_dir_acc": 0.3782, "both_nonflat_n": 165, "both_acc": 0.2848, "both_inverted_acc": 0.7152},
+    "inversion_by_ticker_both_nonflat": {"SPY": "0.655 original vs 0.345 inverted (n=29) - inversion HURTS SPY", "NVDA": "0.0 vs 1.0 (n=25)", "NET": "0.314 vs 0.686 (n=35)", "TSLA": "0.231 vs 0.769 (n=26)", "QQQ": "0.186 vs 0.814 (n=43)"},
+    "inversion_classification": "MIXED - per-ticker constant-class collapse with opposite signs across tickers ($SPX up, QQQ down, IWM flat, SPY up); a global mapping/channel defect would invert uniformly and SPY contradicts it; CLASS_IMBALANCE_ARTIFACT + THRESHOLD_TARGET_ARTIFACT supported; MAPPING_DEFECT not supported globally; NO live inversion authorized or performed",
+    "baseline_verdict": "60C_BASELINE_EDGE = CONTRADICTED_FOR_JULY13_COHORT (loses materially to always-flat on the observed cohort); 60C_PREDICTIVE_VALIDITY = NOT_PROVEN (global contradiction would require multiple versions/sessions/regimes/artifact identities/forward periods); 60C_LIVE_REVERSAL_AUTHORIZATION = NONE",
+    "per_row_bundle_identity": "PARTIAL_ARTIFACT_IDENTITY - rows in the execution-identity era carry execution_identity_sha256 -> envelope (bundle paths, artifact hashes, calibration state) via model_execution_identities; earlier July-13 rows are LEGACY_UNPROVEN (identity registration began mid-day at 5947f79/9d2baf4 runtimes); scoreboard v4 discloses n_bundle_identity_unproven per cell; no aggregate hides the split"
+  },
+  "collapse_probe": {
+    "qqq_15c": {"n": 1221, "pred": {"flat": 1130, "up": 73, "down": 18}, "mean_prob_flat_raw": 0.4571, "mean_prob_flat_served": 0.3408, "finding": "temperature calibration REDUCES flat probability yet flat still dominates - collapse originates AT/BEFORE the raw fusion triplet (pre-calibration); QQQ_15C_COLLAPSE first appears upstream of calibration"},
+    "iwm_60c": {"pred": "100% flat", "truth_flat_rate": 0.841, "finding": "always-flat output mirrors 84% flat training labels under the placeholder threshold - consistent with label-imbalance-driven collapse (IWM_60C_COLLAPSE)"},
+    "universal_detector_landed": "v4 warnings ALWAYS_FLAT_CLASSIFIER / NEAR_CONSTANT_CLASSIFIER (>=90% one-class share, min n) fire mechanically for ANY ticker/horizon - no ticker-specific logic"
+  },
+  "class_channel_status": "CLASS_ORDER_CORRECTNESS = NOT_PROVEN in this packet - artifact-level golden fixtures (XGB/LSTM/meta channel order vs training encoding up=0/down=1/flat=2) require model artifacts (models/** host-local, gitignored) and are specified as the first step of the follow-up protocol; the fusion->persistence->scoreboard channel path is fixture-tested (dominant_direction from post-temperature triplet, raw preserved); no production mapping was reversed",
+  "coverage_truth": {
+    "eligible_49_definition": "logging_universe categories core+pinned+panel_auto+user_persisted",
+    "with_rows_30": "tickers with any calibration row in the ET day",
+    "scored_cells": "~9 tickers contributed scored horizon cells; 19 zero-row eligible tickers carry per-cell NOT_SCORED reasons in the v3 grid (NOT_IN_ACTIVE_LOGGER vs NO_ROWS_PRODUCED distinguished by snapshot evidence)",
+    "unattached_81pct": "dominant scored-row limiter was the time-join (see join_identity_forensic), not prediction absence",
+    "no_roster_change": "TSL vs TSLA and all symbol distinctions preserved; no deletion/normalization performed"
+  },
+  "target_research_protocol": {
+    "status": "REQUIRED - current fixed-point placeholder target is not institutionally justified",
+    "preregistered_candidates": ["current fixed points (control)", "basis points", "percentage return", "tick-normalized", "spread-normalized", "ATR-normalized", "realized-volatility-normalized", "per-ticker absolute-move percentiles", "pooled percentiles", "volatility-regime-conditional", "liquidity-regime-conditional", "transaction-cost-aware movement", "regression target", "ordinal movement buckets", "dynamic abstention thresholds"],
+    "methodology": "define economic purpose + decision/holding period + entry/outcome timing + cost relevance per horizon FIRST; fit target parameters on training data only; time-ordered purged validation with embargo for overlapping labels; untouched holdout sessions; measure label stability, class balance, baseline difficulty, model performance, calibration, turnover/abstention, regime stability, ticker-scale coherence; LOCK the target version before final evaluation; confirm prospectively in live forward data",
+    "guardrails": "no evaluation-set mining; no selection by historical accuracy alone; selection weighs economic meaning, robustness, calibration, baseline edge, stability, costs, implementability, live reproducibility",
+    "recommended_mission": "TARGET_TRUTH_RESEARCH_PROTOCOL_V1 (operator-host execution for >5-min runs)"
+  },
+  "not_asserted": ["predictive validity", "calibration validity", "leakage absence", "train/live parity", "model correctness", "profitability", "real-money readiness", "complete cleanup"],
+  "standing_preserved": {"PREDICTIVE_VALIDITY": "NOT_PROVEN", "FULL_MODEL_STACK": "NOT_CLOSED", "MODEL_VERSION_PINNING_PARENT": "NOT_CLOSED", "REAL_MONEY_APPROVAL": "NOT_APPROVED", "SCHWAB_V4_REGISTER_CLOSURE_PARENT": "NOT_CLOSED"}
+}

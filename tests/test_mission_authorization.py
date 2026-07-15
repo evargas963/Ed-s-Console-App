@@ -25,7 +25,8 @@ def _contract(**over) -> dict:
         "agent": "Claude",
         "mission_type": "feature_implementation",
         "authorized_branch": "feat-x",
-        "authorized_worktree": "C:/wt/feat-x",
+        "authorization_binding_sha256": "ab" * 32,
+        "authorized_remote": "https://github.com/example-org/example-repo.git",
         "base_sha": "a" * 40,
         "authorized_push_target": "origin/feat-x",
         "target_branch": "feat-x",
@@ -252,13 +253,13 @@ def test_branch_and_worktree_collision_detected(authdirs):
     mine = _contract(mission_id="M-2")
     errs = ma.detect_mission_overlap(mine)
     joined = " ".join(errs)
-    assert "branch collision" in joined and "worktree collision" in joined
+    assert "branch collision" in joined and "authorization binding collision" in joined
 
 
 def test_file_and_semantic_overlap_detected(authdirs):
     _write(authdirs, _contract())
     mine = _contract(
-        mission_id="M-2", authorized_branch="feat-y", authorized_worktree="C:/wt/feat-y"
+        mission_id="M-2", authorized_branch="feat-y", authorization_binding_sha256="cd" * 32
     )
     errs = ma.detect_mission_overlap(mine)
     joined = " ".join(errs)
@@ -267,10 +268,10 @@ def test_file_and_semantic_overlap_detected(authdirs):
 
 def test_sibling_with_undeclared_scope_stops(authdirs):
     other = _contract(mission_id="M-OLD", authorized_branch="feat-z",
-                      authorized_worktree="C:/wt/z", authorized_scope={})
+                      authorization_binding_sha256="ee" * 32, authorized_scope={})
     (authdirs / "active" / "M-OLD.json").write_text(json.dumps(other), encoding="utf-8")
     mine = _contract(mission_id="M-2", authorized_branch="feat-y",
-                     authorized_worktree="C:/wt/y",
+                     authorization_binding_sha256="ff" * 32,
                      authorized_scope={"files": ["a.py"], "semantic_domains": []})
     errs = ma.detect_mission_overlap(mine)
     assert any("UNDECLARED scope" in e for e in errs)
@@ -320,19 +321,258 @@ def test_complete_mission_document_passes():
     assert ma.validate_mission_document_text(text) == []
 
 
-# ── Windows/POSIX + this mission's own live contract (dogfood) ──
+# ── Path-free worktree lease binding (PR41 privacy root cause) ──
+# The contract must never carry an absolute worktree path; identity is proven
+# by POSSESSION of the untracked lease nonce in the worktree's private git dir
+# plus the public authorized_remote repository binding. Fictional paths only.
+
+_TEST_REMOTE = "https://github.com/example-org/example-repo.git"
 
 
-def test_worktree_comparison_normalizes_separators(authdirs, monkeypatch):
-    c = _contract(authorized_worktree="C:\\wt\\feat-x")
-    monkeypatch.setattr(ma, "_git", lambda args, cwd=None: {
-        ("branch", "--show-current"): "feat-x",
-        ("rev-parse", "--show-toplevel"): "C:/wt/feat-x",
-        ("rev-parse", "HEAD"): "b" * 40,
-    }.get(tuple(args), ""))
-    monkeypatch.setattr(ma.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0})())
-    errs = ma.validate_workspace(c, cwd=Path("."))
-    assert not any("worktree" in e for e in errs)
+def _tmp_repo(base: Path, name: str = "repo", branch: str = "feat-x",
+              remote: str | None = _TEST_REMOTE) -> Path:
+    import subprocess as sp
+
+    repo = base / name
+    repo.mkdir()
+
+    def run(*a):
+        sp.run(["git", *a], cwd=repo, capture_output=True, text=True, check=True)
+
+    run("init", "-q", "-b", branch)
+    run("config", "user.email", "t@example.com")
+    run("config", "user.name", "t")
+    (repo / "x.txt").write_text("x", encoding="utf-8")
+    run("add", "x.txt")
+    run("commit", "-q", "-m", "seed")
+    if remote:
+        run("remote", "add", "origin", remote)
+    return repo
+
+
+def _head(repo: Path) -> str:
+    import subprocess as sp
+
+    return sp.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                  capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _bound_contract(repo: Path, **over) -> dict:
+    sha = ma.mint_worktree_authorization("M-TEST", repo)
+    return _contract(authorization_binding_sha256=sha, base_sha=_head(repo), **over)
+
+
+def test_lease_happy_path_authorizes_exact_worktree(tmp_path):
+    repo = _tmp_repo(tmp_path)
+    c = _bound_contract(repo)
+    assert ma.validate_workspace(c, cwd=repo) == []
+
+
+def test_missing_local_secrets_fail_closed(tmp_path):
+    repo = _tmp_repo(tmp_path)
+    c = _contract(base_sha=_head(repo))  # nothing minted here
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("MISSING" in e for e in errs)
+
+
+def test_wrong_binding_sha_fails_closed(tmp_path):
+    repo = _tmp_repo(tmp_path)
+    ma.mint_worktree_authorization("M-TEST", repo)
+    c = _contract(authorization_binding_sha256="12" * 32, base_sha=_head(repo))
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("MISMATCH" in e for e in errs)
+
+
+def test_copied_contract_in_another_clone_fails_closed(tmp_path):
+    repo_a = _tmp_repo(tmp_path, "a")
+    repo_b = _tmp_repo(tmp_path, "b")
+    c = _bound_contract(repo_a)
+    c["base_sha"] = _head(repo_b)
+    errs = ma.validate_workspace(c, cwd=repo_b)
+    assert any("MISSING" in e for e in errs)
+
+
+def test_copied_contract_AND_lease_in_another_clone_fails_closed(tmp_path):
+    """THE hardening threat: even copying the untracked lease file alongside the
+    contract cannot authorize another clone — its clone identity differs."""
+    import shutil
+
+    repo_a = _tmp_repo(tmp_path, "a")
+    repo_b = _tmp_repo(tmp_path, "b")
+    c = _bound_contract(repo_a)
+    c["base_sha"] = _head(repo_b)
+    ma.ensure_clone_identity(repo_b)  # victim clone has its own identity
+    shutil.copy(ma.lease_path("M-TEST", repo_a), ma.lease_path("M-TEST", repo_b))
+    errs = ma.validate_workspace(c, cwd=repo_b)
+    assert any("MISMATCH" in e for e in errs)
+
+
+def test_copied_lease_only_fails_closed(tmp_path):
+    import shutil
+
+    repo_a = _tmp_repo(tmp_path, "a")
+    repo_b = _tmp_repo(tmp_path, "b")
+    c = _bound_contract(repo_a)
+    c["base_sha"] = _head(repo_b)
+    shutil.copy(ma.lease_path("M-TEST", repo_a), ma.lease_path("M-TEST", repo_b))
+    # no clone identity minted in B at all
+    errs = ma.validate_workspace(c, cwd=repo_b)
+    assert any("MISSING" in e for e in errs)
+
+
+def test_second_worktree_of_same_clone_fails_without_own_authorization(tmp_path):
+    import subprocess as sp
+
+    repo = _tmp_repo(tmp_path)
+    c = _bound_contract(repo)
+    wt = tmp_path / "wt2"
+    sp.run(["git", "worktree", "add", "-q", "-b", "feat-x-wt2", str(wt), "HEAD"],
+           cwd=repo, capture_output=True, check=True)
+    c2 = dict(c)
+    c2["authorized_branch"] = "feat-x-wt2"
+    errs = ma.validate_workspace(c2, cwd=wt)
+    assert any("MISSING" in e for e in errs)
+
+
+def test_second_worktree_authorizes_after_explicit_repin(tmp_path):
+    import subprocess as sp
+
+    repo = _tmp_repo(tmp_path)
+    wt = tmp_path / "wt2"
+    sp.run(["git", "worktree", "add", "-q", "-b", "feat-x-wt2", str(wt), "HEAD"],
+           cwd=repo, capture_output=True, check=True)
+    sha = ma.mint_worktree_authorization("M-TEST", wt)
+    c = _contract(authorization_binding_sha256=sha, base_sha=_head(repo),
+                  authorized_branch="feat-x-wt2")
+    assert ma.validate_workspace(c, cwd=wt) == []
+
+
+def test_missing_clone_identity_fails_closed(tmp_path):
+    repo = _tmp_repo(tmp_path)
+    c = _bound_contract(repo)
+    ma.clone_identity_path(repo).unlink()
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("MISSING" in e for e in errs)
+
+
+def test_wrong_repository_remote_fails_closed(tmp_path):
+    repo = _tmp_repo(tmp_path, remote="https://github.com/example-org/OTHER-repo.git")
+    c = _bound_contract(repo)
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("wrong repository" in e for e in errs)
+
+
+def test_missing_remote_fails_closed(tmp_path):
+    repo = _tmp_repo(tmp_path, remote=None)
+    c = _bound_contract(repo)
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("cannot be proven" in e for e in errs)
+
+
+def test_remote_normalization_tolerates_git_suffix_slash_and_case(tmp_path):
+    repo = _tmp_repo(tmp_path, remote="https://github.com/Example-Org/Example-Repo")
+    c = _bound_contract(repo, authorized_remote="https://github.com/example-org/example-repo.git/")
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert not any("repository" in e for e in errs)
+
+
+def test_https_ssh_and_scp_forms_are_equivalent(tmp_path):
+    for origin in ("ssh://git@github.com/Example-Org/Example-Repo.git",
+                   "git@github.com:example-org/example-repo.git"):
+        repo = _tmp_repo(tmp_path, name=f"r{abs(hash(origin)) % 10_000}", remote=origin)
+        c = _bound_contract(repo)  # contract uses the https form
+        errs = ma.validate_workspace(c, cwd=repo)
+        assert not any("repository" in e or "refused" in e for e in errs), (origin, errs)
+
+
+def test_credential_bearing_origin_refused_without_leaking_it(tmp_path):
+    repo = _tmp_repo(tmp_path, remote="https://someone:s3cret-tok3n@github.com/example-org/example-repo.git")
+    c = _bound_contract(repo)
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("refused" in e for e in errs)
+    assert not any("s3cret-tok3n" in e for e in errs)
+
+
+def test_file_and_local_path_remotes_refused(tmp_path):
+    for origin in ("file:///some/repo.git", "../elsewhere/repo"):
+        repo = _tmp_repo(tmp_path, name=f"l{abs(hash(origin)) % 10_000}", remote=origin)
+        c = _bound_contract(repo)
+        errs = ma.validate_workspace(c, cwd=repo)
+        assert any("refused" in e for e in errs), (origin, errs)
+
+
+def test_lookalike_host_and_wrong_owner_fail(tmp_path):
+    for origin in ("https://github.com.evil.example/example-org/example-repo.git",
+                   "https://github.com/other-org/example-repo.git",
+                   "https://github.com/example-org/other-repo.git"):
+        repo = _tmp_repo(tmp_path, name=f"k{abs(hash(origin)) % 10_000}", remote=origin)
+        c = _bound_contract(repo)
+        errs = ma.validate_workspace(c, cwd=repo)
+        assert any("wrong repository" in e for e in errs), (origin, errs)
+
+
+def test_legacy_weak_lease_only_contract_refused(authdirs):
+    doc = _contract()
+    doc.pop("authorization_binding_sha256")
+    doc["worktree_lease_sha256"] = "ab" * 32
+    _write(authdirs, doc)
+    c, reason = ma.load_contract("M-TEST")
+    assert c is None and "weak lease-only" in reason
+
+
+def test_detached_head_fails_branch_binding(tmp_path):
+    import subprocess as sp
+
+    repo = _tmp_repo(tmp_path)
+    c = _bound_contract(repo)
+    sp.run(["git", "checkout", "-q", "--detach"], cwd=repo, capture_output=True, check=True)
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("authorized" in e and "branch" in e for e in errs)
+
+
+def test_relocated_worktree_keeps_authorization(tmp_path):
+    """No path is compared, so a legitimate relocation keeps working: the lease
+    travels with the repository's private git dir."""
+    repo = _tmp_repo(tmp_path)
+    c = _bound_contract(repo)
+    moved = tmp_path / "moved-elsewhere"
+    repo.rename(moved)
+    assert ma.validate_workspace(c, cwd=moved) == []
+
+
+def test_environment_override_cannot_replace_lease(tmp_path, monkeypatch):
+    repo = _tmp_repo(tmp_path)
+    c = _contract(base_sha=_head(repo))
+    monkeypatch.setenv("ED_MISSION_ID", "M-TEST")
+    monkeypatch.setenv("AUTHORIZED_WORKTREE", str(repo))
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("lease MISSING" in e for e in errs)
+
+
+def test_legacy_private_path_contract_refused(authdirs):
+    doc = _contract()
+    doc["authorized_worktree"] = "C:/wt/feat-x"
+    _write(authdirs, doc)
+    c, reason = ma.load_contract("M-TEST")
+    assert c is None and "legacy private-path field" in reason
+
+
+def test_malformed_binding_pin_refused(authdirs):
+    _write(authdirs, _contract(authorization_binding_sha256="not-a-sha"))
+    c, reason = ma.load_contract("M-TEST")
+    assert c is None and "64-hex" in reason
+
+
+def test_missing_authorized_remote_refused(authdirs):
+    _write(authdirs, _contract(authorized_remote=""))
+    c, reason = ma.load_contract("M-TEST")
+    assert c is None and "authorized_remote" in reason
+
+
+def test_contract_with_credential_remote_refused_at_load(authdirs):
+    _write(authdirs, _contract(authorized_remote="https://u:tok3n@github.com/o/r.git"))
+    c, reason = ma.load_contract("M-TEST")
+    assert c is None and "refused" in reason and "tok3n" not in reason
 
 
 def test_live_mission_contracts_are_valid_and_loadable():
@@ -396,3 +636,108 @@ def test_precommit_env_channel_reconstructs_destination(monkeypatch, authdirs, c
     monkeypatch.delenv("PRE_COMMIT_REMOTE_BRANCH")
     monkeypatch.setattr(_sys, "stdin", _io.StringIO(""))
     assert cli.main(["--pre-push"]) == 1
+
+
+# ── Canonical remote parser: layer-specific reasons (mutation-matrix anchors) ──
+
+
+def test_canonicalize_remote_equivalences():
+    forms = (
+        "https://github.com/Example-Org/Example-Repo.git",
+        "https://github.com/example-org/example-repo",
+        "https://github.com/example-org/example-repo.git/",
+        "ssh://git@github.com/Example-Org/Example-Repo.git",
+        "git@github.com:Example-Org/Example-Repo.git",
+    )
+    canons = {ma.canonicalize_remote(f)[0] for f in forms}
+    assert canons == {"github.com/example-org/example-repo"}
+
+
+def test_canonicalize_remote_rejection_reasons_are_layer_specific():
+    cases = {
+        "file:///some/repo.git": "file://",
+        "C:\\repos\\x": "local filesystem",
+        "../elsewhere/repo": "local filesystem",
+        "http://github.com/o/r.git": "unsupported remote scheme",
+        "https://github.com:8443/o/r.git": "non-default remote port",
+        "https://u:tok3nX@github.com/o/r.git": "credential-bearing",
+        "https://tok3nX@github.com/o/r.git": "credential-bearing",
+        "https://github.com/o/r/sub.git": "host/owner/repo",
+        "https://github.com/onlyowner": "host/owner/repo",
+        "": "empty remote",
+    }
+    for url, frag in cases.items():
+        canon, why = ma.canonicalize_remote(url)
+        assert canon is None and frag in why, (url, canon, why)
+        assert "tok3nX" not in why, "refusal reason must never echo a credential"
+
+
+def test_lookalike_hosts_do_not_canonicalize_equal():
+    real, _ = ma.canonicalize_remote("https://github.com/o/r.git")
+    fake, _ = ma.canonicalize_remote("https://github.com.evil.example/o/r.git")
+    assert real is not None and fake is not None and real != fake
+
+
+def test_clone_identity_is_stable_across_ceremonies(tmp_path):
+    repo = _tmp_repo(tmp_path)
+    a = ma.ensure_clone_identity(repo)
+    b = ma.ensure_clone_identity(repo)
+    assert a is not None and a == b, "an existing clone identity must never be replaced"
+
+
+# ── Composition lineage lock (PR41 final closure) ──
+
+
+def test_final_composition_map_matches_committed_tree():
+    """Mechanical lineage validator: every composition_input_paths_sha256 entry
+    must equal the sha256 of the git staged-blob bytes of that path (index form,
+    == HEAD in CI). A mapped file changing without a map correction turns this
+    red — the silent-staleness class closed by correction_history[5]."""
+    import hashlib
+    import subprocess
+
+    comp = json.loads(
+        (ma.REPO_ROOT / "reports" / "scoreboard_forensic" / "final_composition.json"
+         ).read_text(encoding="utf-8")
+    )
+    entries = comp["composition_input_paths_sha256"]
+    assert len(entries) == 9
+    for rel, recorded in entries.items():
+        blob = subprocess.run(
+            ["git", "cat-file", "blob", f":{rel}"],
+            cwd=ma.REPO_ROOT, capture_output=True, check=True,
+        ).stdout
+        actual = hashlib.sha256(blob).hexdigest()
+        assert actual == recorded, (
+            f"{rel}: staged-blob {actual[:16]} != composition map {recorded[:16]} — "
+            "update composition_input_paths_sha256 + correction_history in the same "
+            "change set (byte_form_policy: staged-blob canonical)"
+        )
+
+
+def test_authorization_mutation_campaign_evidence_current():
+    """Drift lock for the canonical mutation campaign: the retained evidence must
+    match the CURRENT mutation definitions + detector map (edit either without
+    regenerating the other and this turns red), declare all mutations materially
+    detected under the predeclared rule, byte-exact restoration, green baselines,
+    unchanged local secrets, and no Lane-B target."""
+    import tools.run_authorization_mutation_campaign as camp
+
+    ev = json.loads(
+        (ma.REPO_ROOT / "reports" / "scoreboard_forensic" /
+         "authorization_mutation_campaign.json").read_text(encoding="utf-8")
+    )
+    assert ev["definitions_sha256"] == camp.definitions_sha256(), (
+        "mutation definitions/detector map drifted from retained evidence — rerun "
+        "python tools/run_authorization_mutation_campaign.py --run"
+    )
+    assert ev["mutation_total"] == len(camp.MUTATIONS) == 22
+    assert ev["summary"]["SURVIVED"] == 0 and ev["summary"]["INVALID_MUTATION"] == 0
+    for r in ev["mutations"]:
+        assert r["classification"].startswith("DETECTED"), r["id"]
+        assert r["material"] is True and r["restoration_exact"] is True, r["id"]
+        assert r["file"] in ("tools/mission_authorization.py",
+                             "tools/check_private_paths.py"), r["id"]
+    assert ev["baseline"]["before"]["exit_code"] == 0
+    assert ev["baseline"]["after"]["exit_code"] == 0
+    assert ev["local_secret_preservation"]["unchanged"] is True

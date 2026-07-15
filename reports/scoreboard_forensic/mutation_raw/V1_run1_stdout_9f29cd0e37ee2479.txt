@@ -1,0 +1,42 @@
+.....................................................................F.. [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+___________ test_v3_ratified_config_never_inflates_target_validity ____________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-913/test_v3_ratified_config_never_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001FE988C88A0>
+
+    def test_v3_ratified_config_never_inflates_target_validity(tmp_path, monkeypatch):
+        """Phase-8 mutation: a fully ratified threshold config must NOT let the
+        display claim proven target validity — configuration status and target
+        validity are separate axes; parents stay NOT_PROVEN."""
+        import movement_target_threshold as mtt
+    
+        ratified = {
+            "version": 2, "notes": "governed",
+            "horizons": {
+                hz: {"threshold_move_pts": pts, "selected_percentile": 60, "invalid_for_dir_target": False}
+                for hz, pts in (("1c", 0.04), ("5c", 0.12), ("15c", 0.26), ("60c", 0.65))
+            },
+        }
+        monkeypatch.setattr(mtt, "load_movement_thresholds_by_horizon_v1", lambda path=None: ratified)
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        v = sb["all_card"]["target_threshold_validity"]
+        assert v["configuration_status"] == "GOVERNED_RATIFIED"
+        assert v["target_economic_validity"].startswith("NOT_PROVEN")
+        assert v["trade_edge_validity"].startswith("NOT_PROVEN")
+        assert "NOT a claim of target economic validity" in v["statement"]
+        text = _plain_text(render_html(sb))
+>       assert "validity PROVEN" not in text
+E       AssertionError: assert 'validity PROVEN' not in ' \n    Dail...%  \n \n  \n'
+E         
+E         'validity PROVEN' is contained here:
+E           threshold validity PROVEN — this is a CONFIGURATION status only and is NOT a claim of target economic validity, label-contract correctness, or trade edge (parent statuses remain NOT_PROVEN).   sample status SAMPLE_BELOW_GOVERNED_MINIMUM (2 scored call(s) of 3 eligible, coverage 66.7%) — accuracy is descriptive only and NOT decision-valid.   WAIT excluded as abstention (no trade call) — never scored as a flat prediction. high conditional accuracy with low coverage is NOT sufficient evidence of predictive edge.  Eligible decisions: 3; LONG 1 / S...
+E         
+E         ...Full output truncated (30 lines hidden), use '-vv' to show
+
+tests\test_calibration_daily_scoreboard.py:1510: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity
+1 failed, 82 passed in 16.92s

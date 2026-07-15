@@ -21,6 +21,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+# Single scope source (PR #41 root cause): the canonical register walk excludes whole
+# subtrees, so a diff-emission site inside an excluded path can NEVER be covered by a
+# same-path register row, a register-diff row, or a REGISTER_ROW citation. The gate
+# must share the scanner's exact scope; a second hard-coded list would drift.
+from tools.schwab_universal_coverage_scanner_v3.paths import (  # noqa: E402
+    SCAN_SCOPE_EXCLUDE_PREFIXES,
+    rel_is_scope_excluded_file,
+    rel_matches_prefix,
+)
+
 CSV_PATH = ROOT / "schwab_field_inventory" / "schwab_field_dictionary.csv"
 DEFAULT_REGISTER = ROOT / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
 REGISTER_CSV_NAME = "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
@@ -471,6 +484,170 @@ def _register_ids_cited_in_diff(diff_text: str) -> set[str]:
     return {m.group(1).lower() for m in REGISTER_ID_IN_DIFF.finditer(diff_text)}
 
 
+# ── Scope-coherent excluded-path dispositions (PR #41 root cause, 2026-07-14) ──
+# For sites on scanner-scope-excluded paths ONLY, an exact-site marker is the
+# required coverage mechanism. Fail-closed everywhere: malformed, orphan,
+# duplicate-id, duplicate-coverage, cross-file (structurally impossible: binding
+# is per-path), wrong-token, wrong-line, scanner-in-scope, and no-longer-excluded
+# markers are all violations — never silent acceptance. Scanner-in-scope paths
+# keep the unchanged REGISTER_ROW / register-row contract.
+
+SCOPE_EXCLUDED_MARKER_TAG = "REGISTER_SCOPE_EXCLUDED"
+SCOPE_EXCLUDED_MARKER_RE = re.compile(
+    r"REGISTER_SCOPE_EXCLUDED:\s*"
+    r"prefix=(?P<prefix>\S+)\s+"
+    r"token=(?P<token>[A-Za-z_]\w*)\s+"
+    r"id=(?P<mid>[a-z0-9][a-z0-9\-]{5,39})\s+"
+    r"class=(?P<cls>[a-z_]{3,40})\s+"
+    r"impact=NO_REGISTER_IMPACT\s+"
+    r"trace=\"(?P<trace>[^\"]{20,400})\""
+)
+# A site is bound to the marker directly above it: marker.line < site.line <= marker.line + 2.
+_MARKER_SITE_LINE_SLACK = 2
+
+
+@dataclass(frozen=True)
+class ScopeExcludedMarker:
+    path: str
+    line: int
+    prefix: str
+    token: str
+    marker_id: str
+    classification: str
+    trace: str
+
+
+def _parse_diff_added_all_lines(diff_text: str) -> list[tuple[str, int, str]]:
+    """(path, new_file_line, content) for EVERY added line, comments included.
+
+    Markers live in comment lines, which _parse_diff_added_with_lines deliberately
+    drops from emission-site extraction — marker parsing needs its own walker."""
+    out: list[tuple[str, int, str]] = []
+    current = ""
+    new_line = 0
+    for raw in diff_text.splitlines():
+        if raw.startswith("+++ b/"):
+            current = raw.removeprefix("+++ b/")
+            new_line = 0
+            continue
+        if raw.startswith("@@"):
+            m = re.search(r"\+(\d+)(?:,(\d+))?", raw)
+            if m:
+                new_line = int(m.group(1))
+            continue
+        if not current:
+            continue
+        if raw.startswith("+") and not raw.startswith("+++"):
+            out.append((current, new_line, raw[1:]))
+            new_line += 1
+            continue
+        if raw.startswith("-") and not raw.startswith("---"):
+            continue
+        if raw.startswith(" "):
+            new_line += 1
+    return out
+
+
+def _scope_excluded_markers_in_diff(
+    diff_text: str,
+) -> tuple[list[ScopeExcludedMarker], list[str]]:
+    """Parse added-line markers; malformed marker text is a violation, never skipped."""
+    markers: list[ScopeExcludedMarker] = []
+    errors: list[str] = []
+    for path, line_no, content in _parse_diff_added_all_lines(diff_text):
+        stripped = content.strip()
+        # Markers are '#' comment lines by contract, identified by the canonical
+        # head: the tag name immediately followed by a colon. Code/string literals
+        # and prose comments that merely mention the tag are not marker-intent; a
+        # comment carrying the canonical head MUST parse fully (fail closed), and
+        # an intent-less pseudo-marker still fails at the uncovered-site level.
+        if not stripped.startswith("#") or (SCOPE_EXCLUDED_MARKER_TAG + ":") not in stripped:
+            continue
+        m = SCOPE_EXCLUDED_MARKER_RE.search(stripped)
+        if not m:
+            errors.append(
+                f"{path}:{line_no}: malformed {SCOPE_EXCLUDED_MARKER_TAG} marker "
+                f"(fail closed; required form: {SCOPE_EXCLUDED_MARKER_TAG}: prefix=<scanner-exclusion> "
+                f"token=<surface> id=<slug> class=<semantic_class> impact=NO_REGISTER_IMPACT "
+                f'trace="<canopy-to-leaf trace>"): {content.strip()[:160]!r}'
+            )
+            continue
+        markers.append(
+            ScopeExcludedMarker(
+                path=path.replace("\\", "/"),
+                line=line_no,
+                prefix=m.group("prefix"),
+                token=m.group("token"),
+                marker_id=m.group("mid"),
+                classification=m.group("cls"),
+                trace=m.group("trace"),
+            )
+        )
+    return markers, errors
+
+
+def _bind_scope_excluded_markers(
+    markers: list[ScopeExcludedMarker],
+    excluded_sites: list[EmissionSite],
+) -> tuple[dict[EmissionSite, ScopeExcludedMarker], list[str]]:
+    """Bind each marker to exactly one excluded-path site; every defect is a violation."""
+    errors: list[str] = []
+    seen_ids: dict[str, ScopeExcludedMarker] = {}
+    bound: dict[EmissionSite, ScopeExcludedMarker] = {}
+    for mk in markers:
+        if mk.marker_id in seen_ids:
+            errors.append(
+                f"{mk.path}:{mk.line}: duplicate {SCOPE_EXCLUDED_MARKER_TAG} id "
+                f"{mk.marker_id!r} (first at {seen_ids[mk.marker_id].path}:{seen_ids[mk.marker_id].line})"
+            )
+            continue
+        seen_ids[mk.marker_id] = mk
+        if not rel_is_scope_excluded_file(mk.path, SCAN_SCOPE_EXCLUDE_PREFIXES):
+            errors.append(
+                f"{mk.path}:{mk.line}: {SCOPE_EXCLUDED_MARKER_TAG} marker on a "
+                f"scanner-IN-scope path — in-scope sites require a V4 register row "
+                f"or REGISTER_ROW:<id> citation, never an excluded-scope marker"
+            )
+            continue
+        if mk.prefix not in SCAN_SCOPE_EXCLUDE_PREFIXES:
+            errors.append(
+                f"{mk.path}:{mk.line}: marker prefix {mk.prefix!r} is not a canonical "
+                f"scanner scope exclusion (scanner paths.SCAN_SCOPE_EXCLUDE_PREFIXES)"
+            )
+            continue
+        if not rel_matches_prefix(mk.path, mk.prefix):
+            errors.append(
+                f"{mk.path}:{mk.line}: marker prefix {mk.prefix!r} does not cover this path"
+            )
+            continue
+        candidates = sorted(
+            (
+                s
+                for s in excluded_sites
+                if s.path == mk.path
+                and mk.line < s.line <= mk.line + _MARKER_SITE_LINE_SLACK
+                and any(mk.token.lower() == surf.lower() for surf in s.surfaces)
+            ),
+            key=lambda s: s.line,
+        )
+        if not candidates:
+            errors.append(
+                f"{mk.path}:{mk.line}: orphan {SCOPE_EXCLUDED_MARKER_TAG} marker "
+                f"id={mk.marker_id!r} token={mk.token!r} — no matching emission site "
+                f"within the next {_MARKER_SITE_LINE_SLACK} added line(s) (stale or misplaced)"
+            )
+            continue
+        site = candidates[0]
+        if site in bound:
+            errors.append(
+                f"{mk.path}:{mk.line}: duplicate coverage — site {site.path}:{site.line} "
+                f"already dispositioned by marker id={bound[site].marker_id!r}"
+            )
+            continue
+        bound[site] = mk
+    return bound, errors
+
+
 def _row_covers_site(row: dict[str, str], site: EmissionSite, *, line_slack: int = 3) -> bool:
     rp = (row.get("path") or "").strip().replace("\\", "/")
     if rp != site.path:
@@ -516,21 +693,44 @@ def _site_covered(
 
 
 def check_diff_emission_gate(diff_text: str, register_path: Path) -> list[str]:
-    """Return human-readable violations (empty list = pass)."""
+    """Return human-readable violations (empty list = pass).
+
+    Scope-coherent coverage: sites on scanner-in-scope paths require a V4 register
+    row (on disk / in the register diff / via REGISTER_ROW citation, unchanged);
+    sites on scanner-scope-excluded paths require exactly one exact-site
+    REGISTER_SCOPE_EXCLUDED marker — no blanket or cross-file dispositions."""
     sites = _extract_emission_sites(diff_text)
-    if not sites:
+    markers, violations = _scope_excluded_markers_in_diff(diff_text)
+    if not sites and not markers and not violations:
         return []
-    index = _load_register_index(register_path)
-    diff_rows = _parse_register_rows_from_diff(diff_text)
-    cited = _register_ids_cited_in_diff(diff_text)
-    violations: list[str] = []
-    for site in sites:
-        if _site_covered(site, index, diff_rows, cited):
+    excluded_sites = [
+        s for s in sites if rel_is_scope_excluded_file(s.path, SCAN_SCOPE_EXCLUDE_PREFIXES)
+    ]
+    excluded_set = set(excluded_sites)
+    in_scope_sites = [s for s in sites if s not in excluded_set]
+    bound, bind_errors = _bind_scope_excluded_markers(markers, excluded_sites)
+    violations.extend(bind_errors)
+    if in_scope_sites:
+        index = _load_register_index(register_path)
+        diff_rows = _parse_register_rows_from_diff(diff_text)
+        cited = _register_ids_cited_in_diff(diff_text)
+        for site in in_scope_sites:
+            if _site_covered(site, index, diff_rows, cited):
+                continue
+            surf = ", ".join(site.surfaces)
+            violations.append(
+                f"{site.path}:{site.line}: market-fact emission ({surf}) has no matching "
+                f"V4 register row in {register_path.name} or register diff; excerpt: {site.excerpt!r}"
+            )
+    for site in excluded_sites:
+        if site in bound:
             continue
         surf = ", ".join(site.surfaces)
         violations.append(
-            f"{site.path}:{site.line}: market-fact emission ({surf}) has no matching "
-            f"V4 register row in {register_path.name} or register diff; excerpt: {site.excerpt!r}"
+            f"{site.path}:{site.line}: market-fact emission ({surf}) on a scanner-scope-"
+            f"excluded path has no exact-site {SCOPE_EXCLUDED_MARKER_TAG} marker "
+            f"(the register walk excludes this path, so a register row cannot cover it); "
+            f"excerpt: {site.excerpt!r}"
         )
     return violations
 

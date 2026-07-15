@@ -1,0 +1,93 @@
+{
+  "schema_version": "1",
+  "mission_id": "SCOREBOARD-TARGET-TRUTH-60C-V1",
+  "agent": "Claude",
+  "mission_type": "feature_implementation",
+  "authorized_branch": "scoreboard-target-truth-60c-forensic-v1",
+  "authorization_binding_sha256": "33e17fa61d4c659948a3e5382e735be6b797bf066c2285cfd8c2339ae19c0103",
+  "authorized_remote": "https://github.com/evargas963/Ed-s-Console-App.git",
+  "base_sha": "a0d5e3b9a5f9731357465f93fe2375f9a4672338",
+  "authorized_push_target": "origin/scoreboard-target-truth-60c-forensic-v1",
+  "target_branch": "scoreboard-target-truth-60c-forensic-v1",
+  "direct_main_permission": false,
+  "pr_required": true,
+  "integration_owner": "OPERATOR",
+  "authorized_scope": {
+    "files": [
+      "OPEN_ITEMS.md",
+      "calibration/backfill_outcomes.py",
+      "calibration/daily_scoreboard.py",
+      "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json",
+      "governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json",
+      "governance/artifacts/persistence_consumer_map.json",
+      "governance/artifacts/schwab_v4_register_build_meta.json",
+      "governance/artifacts/schwab_v4_scoreboard.json",
+      "governance/artifacts/universal_connected_path_graph.json",
+      "governance/artifacts/universal_connected_path_governed_edges.json",
+      "governance/artifacts/universal_repository_inventory.json",
+      "governance/artifacts/CHECK_STACK_INVENTORY.json",
+      "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json",
+      "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json",
+      "reports/scoreboard_forensic/july13_2026_target_truth_forensic.json",
+      "reports/scoreboard_forensic/mutation_evidence_manifest.json",
+      "reports/scoreboard_forensic/mutation_evidence_lane_b_uncommitted.json",
+      "reports/scoreboard_forensic/mutation_raw/",
+      "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py",
+      "reports/scoreboard_forensic/legacy_differential/legacy_differential_result.json",
+      "reports/scoreboard_forensic/final_composition.json",
+      "tests/test_calibration_daily_scoreboard.py",
+      "tests/test_backfill_outcomes.py",
+      "tests/test_institutional_closure_gate.py",
+      "tools/mission_authorization.py",
+      "tools/check_mission_authorization.py",
+      "tools/check_private_paths.py",
+      "tools/run_authorization_mutation_campaign.py",
+      "tests/test_mission_authorization.py",
+      "tests/test_operator_path_privacy.py",
+      ".pre-commit-config.yaml",
+      "reports/scoreboard_forensic/authorization_mutation_campaign.json",
+      "governance/docs/CHECK_STACK_RIGHTSIZING.md",
+      "governance/docs/PRECOMMIT_PERFORMANCE_AUDIT.md",
+      "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json"
+    ],
+    "scope_model": "DECLARATIVE overlap-disclosure for sibling-mission conflict detection (detect_mission_overlap); this list is NOT a mechanical changed-file allowlist and no gate enforces it as one",
+    "semantic_domains": [
+      "closure_schema",
+      "shared_runtime_infrastructure"
+    ]
+  },
+  "shared_file_policy": "none",
+  "lease_state": "active",
+  "created_at_epoch": 1783995501.0,
+  "expires_at_epoch": 1785205101.0,
+  "scope_amendments": "2026-07-13: +4 generated universal-graph/inventory artifacts (CONNECTED_PATH_GRAPH_DRIFT gate demanded canonical regeneration; operator packet Phase 4 generated-artifact protocol); 2026-07-14: +reports/scoreboard_forensic/mutation_evidence_manifest.json (DEFECT-D durable mutation evidence required by SCOREBOARD_OPERATOR_SEMANTIC_SAFETY_CURSOR_FINDINGS_ROOT_CAUSE_CORRECTION_V2 Phase 8/14); 2026-07-15: +mission-authorization runtime/CLI, privacy guard, their test suites, hook config and the authorization mutation-campaign runner+evidence (truthful disclosure of the PR41 privacy/authorization root-cause and hardening missions per PR41_FINAL_AUTHORIZATION_LINEAGE_AND_MUTATION_CLOSURE_V1 Phase 9 — these files were already modified under explicit operator packets; this amendment discloses, it does not retroactively authorize); 2026-07-15 (closure): +3 generated hook-inventory paths regenerated when the no-private-paths hook landed (CHECK_STACK_RIGHTSIZING.md, PRECOMMIT_PERFORMANCE_AUDIT.md/.json) — completes the declarative overlap disclosure per PR41_FINAL_DECLARATIVE_SCOPE_DISCLOSURE_CLOSURE_V1; records connected mission scope only, does not retroactively authorize edits",
+  "operator_authorization": "MISSION = SCOREBOARD_SEMANTICS_TARGET_TRUTH_AND_60C_ROOT_CAUSE_FORENSIC_V1 (operator packet 2026-07-13): forensic + universal correction of scoreboard semantics (ALL WAIT abstention, baselines, warnings, identity-first outcome join), target-truth forensic (placeholder thresholds, anchor/horizon contracts, flat decomposition), 60c root cause; NO retrain/promotion/sign-reversal/threshold-replacement/historical-outcome-rewrite; PR path; operator integrates",
+  "production_database_truth": {
+    "PRODUCTION_DB_WRITTEN_DURING_MISSION": "NO (mission execution used read-only mode=ro queries and tmp fixtures only)",
+    "PRODUCTION_DB_WRITE_PATH_PRESENT": "CONFIRMED (calibration.backfill_outcomes / daily_scoreboard write the canonical DB BY DESIGN when the operator or the scheduled task runs them; the Lane-B identity-first change alters WHICH rows attach)",
+    "FUTURE_DEPLOYED_DATA_IMPACT": "NOT_PROVEN (deployed identity-first attachment changes persisted outcome-attachment rows that feed horizon_skill_weights)",
+    "LIVE_DECISION_IMPACT": "NOT_PROVEN (skill weights feed multi_horizon_decision ALL-card pooling; magnitude unquantified on production data)"
+  },
+  "lane_decomposition": {
+    "LANE_A": "scoreboard schema v4 + operator semantic safety (calibration/daily_scoreboard.py, tests/test_calibration_daily_scoreboard.py, board/evidence records, graph consequence)",
+    "LANE_B": "identity-first outcome attachment (calibration/backfill_outcomes.py, tests/test_backfill_outcomes.py identity tests) — NOT AUTHORIZED FOR COMMIT; requires the separate Lane-B data-impact mission before any commit consideration"
+  },
+  "allowed_integration_method": "PR opened by Claude, integration owned by OPERATOR-authorized PR path; no direct main push",
+  "required_checks": [
+    "objective-audit",
+    "pytest-full",
+    "hardening",
+    "schwab-csv-first"
+  ],
+  "stop_conditions": [
+    "anchor semantics found to use future information",
+    "class order differs across artifacts",
+    "leakage discovered or train/live parity contradicted",
+    "historical outcome rewrite would be required",
+    "production signal reversal or retrain would be required",
+    "target winner selection would require outcome mining",
+    "red required PR/main check",
+    "main advances incompatibly",
+    "bypass or direct-main push would be required"
+  ]
+}

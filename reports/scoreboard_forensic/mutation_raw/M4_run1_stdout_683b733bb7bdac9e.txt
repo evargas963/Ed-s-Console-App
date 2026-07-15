@@ -1,0 +1,53 @@
+................................................FFF..................... [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+_________________ test_v4_confusion_matrix_and_class_metrics __________________
+
+    def test_v4_confusion_matrix_and_class_metrics():
+        """Required 19-22: 3x3 confusion, balanced accuracy, macro F1, distributions."""
+        rows = [
+            _v4_row("up", "up"), _v4_row("up", "down"),
+            _v4_row("down", "down"), _v4_row("flat", "flat"),
+            _v4_row("flat", "up"),
+        ]
+        fin = _v4_fin(rows)
+        assert fin["n_scored"] == 5
+>       assert fin["confusion_matrix"]["up"]["down"] == 1
+E       assert 0 == 1
+
+tests\test_calibration_daily_scoreboard.py:1075: AssertionError
+___________________ test_v4_baselines_and_directional_split ___________________
+
+    def test_v4_baselines_and_directional_split():
+        """Required 23-26: always-flat + majority baselines; directional-called vs
+        both-nonflat directional accuracy are distinct metrics."""
+        rows = [
+            _v4_row("up", "flat"), _v4_row("up", "up"), _v4_row("down", "flat"),
+            _v4_row("flat", "flat"),
+        ]
+        fin = _v4_fin(rows)
+>       assert fin["baselines"]["always_flat"] == pytest.approx(3 / 4)
+E       assert 0.25 == 0.75 ± 7.5e-07
+E         
+E         comparison failed
+E         Obtained: 0.25
+E         Expected: 0.75 ± 7.5e-07
+
+tests\test_calibration_daily_scoreboard.py:1093: AssertionError
+___________________ test_v4_collapse_and_baseline_warnings ____________________
+
+    def test_v4_collapse_and_baseline_warnings():
+        """Required 25+27+28: LOSES_TO_ALWAYS_FLAT, ALWAYS_FLAT_CLASSIFIER and
+        NEAR_CONSTANT_CLASSIFIER fire mechanically from the data."""
+        flat_rows = [_v4_row("flat", "flat" if i % 3 else "up") for i in range(WARN_MIN_N + 2)]
+        fin = _v4_fin(flat_rows)
+        w = _v4_cell_warnings(fin, [])
+>       assert "ALWAYS_FLAT_CLASSIFIER" in w
+E       AssertionError: assert 'ALWAYS_FLAT_CLASSIFIER' in ['LOSES_TO_ALWAYS_FLAT', 'LOSES_TO_MAJORITY', 'DIRECTIONAL_SAMPLE_TOO_SMALL', 'UNDER_SAMPLED', 'EFFECTIVE_SAMPLE_NOT_PROVEN']
+
+tests\test_calibration_daily_scoreboard.py:1107: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_v4_confusion_matrix_and_class_metrics
+FAILED tests/test_calibration_daily_scoreboard.py::test_v4_baselines_and_directional_split
+FAILED tests/test_calibration_daily_scoreboard.py::test_v4_collapse_and_baseline_warnings
+3 failed, 80 passed in 19.91s

@@ -1,0 +1,169 @@
+{
+ "schema": "LANE_A_FINAL_COMPOSITION_RECORD",
+ "schema_version": 2,
+ "base_sha": "a0d5e3b9a5f9731357465f93fe2375f9a4672338",
+ "byte_form_policy": "canonical byte form (2026-07-15, correction_history[5]): every hash below is the sha256 of the GIT STAGED-BLOB bytes of the file at the final committed tip ('git cat-file blob <tip>:<path>' | sha256) \u2014 platform-independent, reproducible by any auditor on any OS, and immune to worktree line-ending renders; the pre-2026-07-15 convention recorded platform renders (Windows core.autocrlf=true worktree bytes) for four entries, one of which (calibration/daily_scoreboard.py) hashed original mixed-line-ending worktree bytes that were never committed and are therefore not reproducible from the repository \u2014 the full render->blob provenance table is preserved in correction_history[5]",
+ "verification_procedure": "for every entry: git cat-file blob <final-tip>:<path> | sha256 must equal the recorded value; no worktree materialization, patch application or platform line-ending behavior participates; mechanically enforced by tests/test_mission_authorization.py::test_final_composition_map_matches_committed_tree",
+ "procedure_variance_disclosure": "RESOLVED 2026-07-15: the historical worktree-render vs staged-blob split (recorded by the 2026-07-14 corrections) is superseded by the blob-canonical policy above; the historical render values remain available in correction_history[5].changes as old_sha256 provenance",
+ "composition_input_paths_sha256": {
+  "OPEN_ITEMS.md": "15656a60d7f40842d1b8c20781668c62ddd4a9bfc5a39e43470870eb3208d60b",
+  "calibration/daily_scoreboard.py": "454cab6f0ccbf2e4e85a12221f043359ab76d15e5f5156da89215008d22c81d1",
+  "governance/artifacts/universal_connected_path_graph.json": "70885815e5d5b7b9771cf961e1504830464045ab5d19aabcbe419c70b3a8fd75",
+  "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": "17cfb0037d396b7a2cd2a04811b2a9bebd6c14a2104da37b56c5d9031738f953",
+  "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json": "4e37d33a01574de80763b10f7832f5abb2c52837bc4fefbd063388252fceebd9",
+  "reports/scoreboard_forensic/july13_2026_target_truth_forensic.json": "44817113f25caa16e3d886d5c02beeb91b0c082d95da009d5114815ea863ae41",
+  "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py": "0a4ea2baf703795cdaf84f8d9c0442940cd74427d6ad165177fb01b73478d1bc",
+  "reports/scoreboard_forensic/legacy_differential/legacy_differential_result.json": "16f32d08b4064bba774d8e2338d5adac89b6929635feaaeecdd22cb2714144bf",
+  "tests/test_calibration_daily_scoreboard.py": "a9a2e51e8c749769d872225f2c558e9bdc4c22da39f135ba8ad2f1a4fc7fdab9"
+ },
+ "self_referential_hash_boundary": {
+  "composition_input_paths": "the 9 paths in composition_input_paths_sha256 are hash-frozen inside this artifact",
+  "self_referential_evidence_paths_not_hashed_here": [
+   "reports/scoreboard_forensic/final_composition.json",
+   "reports/scoreboard_forensic/mutation_evidence_manifest.json"
+  ],
+  "reason": "this artifact cannot embed its own final hash, and the manifest is regenerated FROM the campaign this artifact freezes; their identities are carried externally by the Lane-A patch sha256 recorded in the mission return packet and the operator/Cursor digest confirmation",
+  "external_patch_identity": "the Lane-A patch sha256 (single external identity covering ALL 119 paths including both self-referential files) lives outside self-hashed content: mission return packets + Cursor digest confirmation",
+  "boundary_claim": "no claim is made that all non-raw patch paths are internally hash-pinned; exactly 9 of the 11 non-raw paths are (the two self-referential evidence files above are excluded by design)"
+ },
+ "correction_history": [
+  {
+   "mission": "LANE_A_FINAL_COMPOSITION_GRAPH_HASH_CORRECTION_V1",
+   "date": "2026-07-14",
+   "field": "composition_input_paths_sha256['governance/artifacts/universal_connected_path_graph.json']",
+   "stale_value_sha256": "378c9a6247b3aef2f8edf95557918b17c68a684b665669b36f2890bad1b61a23",
+   "corrected_value_sha256": "70885815e5d5b7b9771cf961e1504830464045ab5d19aabcbe419c70b3a8fd75",
+   "root_cause": "the graph is .gitattributes-pinned text eol=lf; the mission worktree's regenerated copy carried transient CRLF line endings (5223 pairs, Windows writer), and the stale hash was taken over those worktree bytes; git normalizes the file to LF on stage/apply, so the clean-applied final tip materializes the LF form \u2014 identical JSON content, different byte form; the graph CONTENT was never changed by this correction",
+   "field_rename": "non_raw_paths_sha256 -> composition_input_paths_sha256 (the old name overclaimed: the table covers 9 of the 11 non-raw patch paths; see self_referential_hash_boundary)",
+   "campaign_impact": "NONE \u2014 the graph is not a mutation input and appears in no mutation's failure set; composition_id names the mutation-campaign composition (calibration/daily_scoreboard.py + detecting tests), which is byte-identical before and after this metadata correction; campaign re-run NOT_REQUIRED and NOT_APPROVED per operator packet",
+   "full_table_reconciliation": "all 9 entries were recomputed from the final worktree AND from a fresh clean plain-apply of the rebuilt patch: the 8 non-graph entries match their recorded values under both measurements (only the graph's worktree copy violated its own eol attribute); the --index-apply CRLF smudge variance on 4 newly-added files was discovered during this correction and is disclosed in procedure_variance_disclosure rather than silently convention-switched"
+  },
+  {
+   "mission": "LANE_A_COMMIT_HOOK_COMPLIANCE_CORRECTION_V1",
+   "date": "2026-07-14",
+   "trigger": "the repository pre-commit hook fix-everything-we-touch (governance.forbidden_phrases context-aware by-design detector) rejected the staged compare_legacy_differential.py at three lines; the first commit attempt correctly stopped without committing and without bypassing hooks",
+   "changes": {
+    "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py": {
+     "old_sha256": "ec6916efdb8027ebac91f67283e75405b191e655a748f43e4cf8897d4a8d4144",
+     "new_sha256": "0a4ea2baf703795cdaf84f8d9c0442940cd74427d6ad165177fb01b73478d1bc",
+     "nature": "wording-only: three prohibited-vocabulary phrases replaced (module docstring, one comment, one result-status string constant); AST proof: executable structure identical ignoring string constants; exactly 2 string constants differ; comment change is not in the AST"
+    },
+    "reports/scoreboard_forensic/legacy_differential/legacy_differential_result.json": {
+     "old_sha256": "d7b81da8c88290aa4aa7a3b997fd4cda9022df6bd3e9c034075f0480fcd81159",
+     "new_sha256": "b3780636557496d8449253981062812ffbdf3f5537848ba118dd5a8eaf9c547a",
+     "nature": "regenerated by the packaged CLI on the same base/fixture: exactly 2 of 17 fields changed (comparison_program_sha256 provenance + the reworded LEGACY_COMPLETE_JSON_BYTE_IDENTITY status string); fixture sha, 168/168 numeric identity, 224/224 field identity, subset hashes and exit 0 all identical"
+    }
+   },
+   "campaign_impact": "NONE \u2014 composition_id names the mutation-campaign composition (calibration/daily_scoreboard.py + the detecting test file), both byte-identical before and after this correction; the differential program and its result are inputs read at runtime by test_legacy_differential_artifact_reproduces, whose pass/fail behavior under every mutation is unchanged by wording constants (the test regenerates with the CURRENT program and compares); composition_id is therefore retained and denotes mutation inputs, not every evidence byte \u2014 the every-byte package identity is the external Lane-A patch sha256 in the mission return packet"
+  },
+  {
+   "mission": "PR41_OPERATOR_PATH_PRIVACY_SCRUB_V1",
+   "date": "2026-07-14",
+   "nature": "privacy normalization: operator-home absolute path prefixes replaced with stable abstractions in raw stdout evidence (44 files re-content-addressed), manifest worktree_path fields, and the consumed retired contract's authorized_worktree; the ACTIVE mission contract's authorized_worktree is retained as machine-binding configuration required by the mission-authorization gate (validate_workspace string-compares it to the live worktree)",
+   "changes": {
+    "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json": {
+     "old_sha256": "9480e0308b38778454522638a9fee2bbf9dca17264c967cadfa211d2c2bdb82d",
+     "new_sha256": "4e37d33a01574de80763b10f7832f5abb2c52837bc4fefbd063388252fceebd9"
+    },
+    "reports/scoreboard_forensic/mutation_evidence_manifest.json": {
+     "old_sha256": "10e35802acfb94a03b079cb559412ddd9281c5c2e95bb3b1cd403b6fcf1b7211",
+     "new_sha256": "da223633ce171514c1acdbd1670a1dc3dfeaed3b1f3227664967ada37030a82e"
+    }
+   },
+   "campaign_impact": "NONE \u2014 sig-v2 signatures derive from JUnit-structured failures, not raw bytes; no mutation input (calibration/daily_scoreboard.py + detecting tests) changed; numeric evidence, exit codes and detection results are byte-level provable as unchanged apart from path prefixes"
+  },
+  {
+   "mission": "PR41_MISSION_AUTHORIZATION_PRIVATE_PATH_ROOT_CAUSE_FIX_V1",
+   "date": "2026-07-14",
+   "nature": "path-free mission authorization: the active contract's absolute-path authorized_worktree field was replaced by worktree_lease_sha256 (sha256 of an untracked random lease nonce minted in the authorized worktree's private git dir) plus authorized_remote (public repository URL binding); tools/mission_authorization.py now REFUSES any contract carrying the legacy absolute-path field and validate_workspace proves worktree identity by lease possession, never by path comparison; additionally normalized assertion-diff-elided pytest-of-<username> tmpdir fragments in the D9 raw stdout pair (re-content-addressed; manifest refs/index updated; sig-v2 signatures unaffected)",
+   "changes": {
+    "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": {
+     "old_sha256": "b198201a143db848067bb6565f40e41f1640640f12786893158c2be8babc7761",
+     "new_sha256": "247833a21490faeb2e71fe957dc5c78229b0f78b3e2874d48f55841c1a5517e7"
+    }
+   },
+   "campaign_impact": "NONE \u2014 the contract is not a mutation input; calibration/daily_scoreboard.py and the detecting tests are byte-identical; sig-v2 signatures unaffected"
+  },
+  {
+   "mission": "PR41_MISSION_AUTHORIZATION_CLONE_AND_REMOTE_HARDENING_V1",
+   "date": "2026-07-15",
+   "nature": "clone-identity binding + canonical remote: the contract's weak worktree_lease_sha256 pin (a copied lease file could authorize another clone) was replaced by authorization_binding_sha256 = sha256(clone_nonce | mission_id | lease_nonce) where the clone nonce lives untracked in the clone's common git dir and the lease in the worktree's private git dir; tools/mission_authorization.py now REFUSES contracts carrying either legacy field (authorized_worktree, worktree_lease_sha256) and canonicalize_remote unifies https/ssh/scp forms of authorized_remote while rejecting credential-bearing, file://, local-path, lookalike-host, non-default-port and subpath remotes with reasons that never echo the raw URL; full-.git byte copies remain indistinguishable from the original clone (declared boundary of file-based identity)",
+   "changes": {
+    "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": {
+     "old_sha256": "247833a21490faeb2e71fe957dc5c78229b0f78b3e2874d48f55841c1a5517e7",
+     "new_sha256": "5149390441f1739330b375bdac8123f6600d470a5c3cd16b5c5761a9eae2ab90"
+    }
+   },
+   "campaign_impact": "NONE \u2014 the contract is not a mutation input; calibration/daily_scoreboard.py and the detecting tests are byte-identical; sig-v2 signatures unaffected"
+  },
+  {
+   "mission": "PR41_FINAL_AUTHORIZATION_LINEAGE_AND_MUTATION_CLOSURE_V1",
+   "date": "2026-07-15",
+   "defects_closed": [
+    "STALE-MAP-ENTRY: the active contract's map entry still recorded 247833a2... while the committed tip bytes hashed 5149390441f1... \u2014 the CLONE_AND_REMOTE_HARDENING mission updated correction_history[4] but not the map itself, contradicting byte_form_policy's final-tree claim",
+    "IRREPRODUCIBLE-RENDER: calibration/daily_scoreboard.py's recorded value b9d5c764... hashed campaign-era worktree bytes with mixed line endings that were normalized away at commit; no transformation of the committed blob reproduces it, so the recorded identity was not independently verifiable",
+    "NO-MECHANICAL-VALIDATOR: nothing recomputed the map against the tree, which is how both defects persisted silently"
+   ],
+   "nature": "map canonicalized on git staged-blob sha256 for all 9 entries (policy, procedure and variance-disclosure fields rewritten accordingly; post_campaign_delta final_sha256 values aligned); the active contract entry additionally advances because this same change set amends the contract's authorized_scope with truthful disclosure of the mission-authorization tooling/tests/evidence files modified by the PR41 root-cause and hardening missions (declarative overlap-disclosure, NOT a mechanical allowlist \u2014 scope_model field added); mechanical validator added: tests/test_mission_authorization.py::test_final_composition_map_matches_committed_tree",
+   "changes": {
+    "OPEN_ITEMS.md": {
+     "old_sha256": "954fd59a6b7c7899663d3425bc47625e3ffa19a7dacdc2b0eda55c6f266060df",
+     "new_sha256": "15656a60d7f40842d1b8c20781668c62ddd4a9bfc5a39e43470870eb3208d60b"
+    },
+    "calibration/daily_scoreboard.py": {
+     "old_sha256": "b9d5c7643f3cf1b71d93a4c96468b7421f0df836765efe0bd383880176b8de2b",
+     "new_sha256": "454cab6f0ccbf2e4e85a12221f043359ab76d15e5f5156da89215008d22c81d1"
+    },
+    "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": {
+     "old_sha256": "247833a21490faeb2e71fe957dc5c78229b0f78b3e2874d48f55841c1a5517e7",
+     "new_sha256": "74d24f8a4fd1a53975c7e06c0c8872d38677993ced16b7d1134390461ffd4980"
+    },
+    "reports/scoreboard_forensic/legacy_differential/legacy_differential_result.json": {
+     "old_sha256": "b3780636557496d8449253981062812ffbdf3f5537848ba118dd5a8eaf9c547a",
+     "new_sha256": "16f32d08b4064bba774d8e2338d5adac89b6929635feaaeecdd22cb2714144bf"
+    },
+    "tests/test_calibration_daily_scoreboard.py": {
+     "old_sha256": "bea980070a82bbcc516a4365965d13887c668ae144ccaff7a046ee10f0a1e9ee",
+     "new_sha256": "a9a2e51e8c749769d872225f2c558e9bdc4c22da39f135ba8ad2f1a4fc7fdab9"
+    }
+   },
+   "interim_contract_tip_sha256": "5149390441f1739330b375bdac8123f6600d470a5c3cd16b5c5761a9eae2ab90 \u2014 the contract bytes at commit 32fb8c4 (correction_history[4].new_sha256); superseded within this change set by the scope-disclosure amendment before the map was corrected, so it never appears as a map entry",
+   "campaign_impact": "NONE \u2014 no mutation input's committed CONTENT changed; the map value change for calibration/daily_scoreboard.py and the detecting test file is a byte-form convention change (render->blob) over identical committed blobs; sig-v2 signatures derive from JUnit-structured failures and are unaffected"
+  },
+  {
+   "mission": "PR41_FINAL_DECLARATIVE_SCOPE_DISCLOSURE_CLOSURE_V1",
+   "date": "2026-07-15",
+   "nature": "declarative scope disclosure completed: the active contract's authorized_scope.files gains the 3 generated hook-inventory paths the local series regenerated (governance/docs/CHECK_STACK_RIGHTSIZING.md, governance/docs/PRECOMMIT_PERFORMANCE_AUDIT.md, governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json) plus a dated scope_amendments note stating the amendment records connected mission scope and does not retroactively authorize edits; scope remains DECLARATIVE overlap-disclosure (scope_model unchanged); authorization binding, branch, remote and every authorization-strength field unchanged",
+   "changes": {
+    "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": {
+     "old_sha256": "74d24f8a4fd1a53975c7e06c0c8872d38677993ced16b7d1134390461ffd4980",
+     "new_sha256": "17cfb0037d396b7a2cd2a04811b2a9bebd6c14a2104da37b56c5d9031738f953"
+    }
+   },
+   "campaign_impact": "NONE \u2014 the contract is not a mutation input; mutation definitions, detector map, retained campaign evidence and sig-v2 signatures are byte-identical"
+  }
+ ],
+ "mutation_runner_sha256": "b60e6811256c0ff32a5ce13a36c2d857e1b1ba97adf1c607c2c949038cf254df",
+ "manifest_schema_version": 5,
+ "expected_ladder_counts": {
+  "lane_a_suite": "82 scoreboard + 1 HEAD backfill smoke = 83",
+  "mission": 33
+ },
+ "manifest_note": "the mutation manifest itself is regenerated FROM this campaign; its structural invariants (lane=A, 27 ids, field presence, summary/footprint format) are what the purity test reads and are identical between the placeholder present during the campaign and the final install \u2014 no test was added or changed after the campaign",
+ "composition_id": "final-comp-3645d957a724dbe6",
+ "post_campaign_delta": {
+  "changed_after_campaign": {
+   "tests/test_calibration_daily_scoreboard.py": {
+    "campaign_sha256_prefix": "0c58cca074f49d2d",
+    "final_sha256": "a9a2e51e8c749769d872225f2c558e9bdc4c22da39f135ba8ad2f1a4fc7fdab9",
+    "change": "test_lane_a_mutation_manifest_purity field expectations updated to the manifest v5 per-run schema (evidence-validation defect; no new test added)"
+   },
+   "reports/scoreboard_forensic/mutation_evidence_manifest.json": {
+    "change": "regenerated FROM this campaign (v5 merged-run schema)",
+    "final_sha256": "128908ee4c6b835bfbf46352500061ade7a46a0dad17f4912328d2438f484a4b"
+   }
+  },
+  "signature_validity_proof": "neither changed file participates in ANY mutation's failure set: all 27 mutations target calibration/daily_scoreboard.py; the purity test reads only the manifest JSON (passes under every DS mutation) and the manifest is not read by any detecting test; therefore every recorded sig-v2 signature is exactly valid for the final package",
+  "byte_form": "final_sha256 values are staged-blob sha256 per byte_form_policy; campaign_sha256_prefix values are campaign-time measurements (historical)"
+ }
+}
