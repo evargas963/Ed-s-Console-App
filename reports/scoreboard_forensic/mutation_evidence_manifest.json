@@ -1247,10 +1247,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "66f8e137c3cb9eb739571949298d91d36cdbf0311b89d2556467b816eaf4ccdf",
+    "raw_stdout_sha256": "303aeab778ebe907bf85a995a421b7268ecd18144e07d94fd1f3e60818497b2d",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D9_run1_stdout_66f8e137c3cb9eb7.txt",
+     "stdout_file": "D9_run1_stdout_303aeab778ebe907.txt",
      "stderr_file": "D9_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_renderers_consume_canonical_contracts_source_lock\",\"phase\":\"call\"}],\"mutation_id\":\"D9\",\"schema_version\":\"sig-v2\"}",
@@ -1273,10 +1273,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "30a68185a98e8a12e4fdb21a1f7e740c052b8a8cf21ba516c81b2b07cb139246",
+    "raw_stdout_sha256": "8e60779b716fe8d43e8ec685e4efa5f4082bf7c6e22e427c999e7c6f87f0ca09",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D9_run2_stdout_30a68185a98e8a12.txt",
+     "stdout_file": "D9_run2_stdout_8e60779b716fe8d4.txt",
      "stderr_file": "D9_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_renderers_consume_canonical_contracts_source_lock\",\"phase\":\"call\"}],\"mutation_id\":\"D9\",\"schema_version\":\"sig-v2\"}",
@@ -2605,12 +2605,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D9_run1_stdout_66f8e137c3cb9eb7.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D9_run1_stdout_303aeab778ebe907.txt",
     "run": "run1",
     "mutation_id": "D9",
     "stream": "stdout",
-    "sha256": "66f8e137c3cb9eb739571949298d91d36cdbf0311b89d2556467b816eaf4ccdf",
-    "bytes": 3218,
+    "sha256": "303aeab778ebe907bf85a995a421b7268ecd18144e07d94fd1f3e60818497b2d",
+    "bytes": 3219,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3199,12 +3199,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D9_run2_stdout_30a68185a98e8a12.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D9_run2_stdout_8e60779b716fe8d4.txt",
     "run": "run2",
     "mutation_id": "D9",
     "stream": "stdout",
-    "sha256": "30a68185a98e8a12e4fdb21a1f7e740c052b8a8cf21ba516c81b2b07cb139246",
-    "bytes": 3218,
+    "sha256": "8e60779b716fe8d43e8ec685e4efa5f4082bf7c6e22e427c999e7c6f87f0ca09",
+    "bytes": 3219,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3563,5 +3563,5 @@
    }
   ]
  },
- "privacy_normalization": "operator-specific absolute path prefixes in worktree_path fields and raw stdout evidence were normalized post-campaign to stable abstractions (<TEMP_WORKTREE_ROOT>, <PYTEST_TMP>, <WORKTREE_ROOT>, <TEMP>, <USER_HOME>); affected raw files were re-content-addressed (filename sha16 + index sha256/bytes updated); numeric evidence, exit codes, structured failures and sig-v2 signature digests are UNCHANGED because signatures derive from JUnit-structured failures, never from raw byte hashes"
+ "privacy_normalization": "operator-specific absolute path prefixes in worktree_path fields and raw stdout evidence were normalized post-campaign to stable abstractions (<TEMP_WORKTREE_ROOT>, <PYTEST_TMP>, <WORKTREE_ROOT>, <TEMP>, <USER_HOME>); affected raw files were re-content-addressed (filename sha16 + index sha256/bytes updated); numeric evidence, exit codes, structured failures and sig-v2 signature digests are UNCHANGED because signatures derive from JUnit-structured failures, never from raw byte hashes; residual assertion-diff-elided pytest-of-<username> tmpdir fragments were additionally normalized to pytest-of-<USER> (D9 stdout pair re-content-addressed)"
 }

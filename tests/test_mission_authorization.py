@@ -25,7 +25,8 @@ def _contract(**over) -> dict:
         "agent": "Claude",
         "mission_type": "feature_implementation",
         "authorized_branch": "feat-x",
-        "authorized_worktree": "C:/wt/feat-x",
+        "worktree_lease_sha256": "ab" * 32,
+        "authorized_remote": "https://github.com/example-org/example-repo.git",
         "base_sha": "a" * 40,
         "authorized_push_target": "origin/feat-x",
         "target_branch": "feat-x",
@@ -252,13 +253,13 @@ def test_branch_and_worktree_collision_detected(authdirs):
     mine = _contract(mission_id="M-2")
     errs = ma.detect_mission_overlap(mine)
     joined = " ".join(errs)
-    assert "branch collision" in joined and "worktree collision" in joined
+    assert "branch collision" in joined and "worktree lease collision" in joined
 
 
 def test_file_and_semantic_overlap_detected(authdirs):
     _write(authdirs, _contract())
     mine = _contract(
-        mission_id="M-2", authorized_branch="feat-y", authorized_worktree="C:/wt/feat-y"
+        mission_id="M-2", authorized_branch="feat-y", worktree_lease_sha256="cd" * 32
     )
     errs = ma.detect_mission_overlap(mine)
     joined = " ".join(errs)
@@ -267,10 +268,10 @@ def test_file_and_semantic_overlap_detected(authdirs):
 
 def test_sibling_with_undeclared_scope_stops(authdirs):
     other = _contract(mission_id="M-OLD", authorized_branch="feat-z",
-                      authorized_worktree="C:/wt/z", authorized_scope={})
+                      worktree_lease_sha256="ee" * 32, authorized_scope={})
     (authdirs / "active" / "M-OLD.json").write_text(json.dumps(other), encoding="utf-8")
     mine = _contract(mission_id="M-2", authorized_branch="feat-y",
-                     authorized_worktree="C:/wt/y",
+                     worktree_lease_sha256="ff" * 32,
                      authorized_scope={"files": ["a.py"], "semantic_domains": []})
     errs = ma.detect_mission_overlap(mine)
     assert any("UNDECLARED scope" in e for e in errs)
@@ -320,19 +321,147 @@ def test_complete_mission_document_passes():
     assert ma.validate_mission_document_text(text) == []
 
 
-# ── Windows/POSIX + this mission's own live contract (dogfood) ──
+# ── Path-free worktree lease binding (PR41 privacy root cause) ──
+# The contract must never carry an absolute worktree path; identity is proven
+# by POSSESSION of the untracked lease nonce in the worktree's private git dir
+# plus the public authorized_remote repository binding. Fictional paths only.
+
+_TEST_REMOTE = "https://github.com/example-org/example-repo.git"
 
 
-def test_worktree_comparison_normalizes_separators(authdirs, monkeypatch):
-    c = _contract(authorized_worktree="C:\\wt\\feat-x")
-    monkeypatch.setattr(ma, "_git", lambda args, cwd=None: {
-        ("branch", "--show-current"): "feat-x",
-        ("rev-parse", "--show-toplevel"): "C:/wt/feat-x",
-        ("rev-parse", "HEAD"): "b" * 40,
-    }.get(tuple(args), ""))
-    monkeypatch.setattr(ma.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0})())
-    errs = ma.validate_workspace(c, cwd=Path("."))
-    assert not any("worktree" in e for e in errs)
+def _tmp_repo(base: Path, name: str = "repo", branch: str = "feat-x",
+              remote: str | None = _TEST_REMOTE) -> Path:
+    import subprocess as sp
+
+    repo = base / name
+    repo.mkdir()
+
+    def run(*a):
+        sp.run(["git", *a], cwd=repo, capture_output=True, text=True, check=True)
+
+    run("init", "-q", "-b", branch)
+    run("config", "user.email", "t@example.com")
+    run("config", "user.name", "t")
+    (repo / "x.txt").write_text("x", encoding="utf-8")
+    run("add", "x.txt")
+    run("commit", "-q", "-m", "seed")
+    if remote:
+        run("remote", "add", "origin", remote)
+    return repo
+
+
+def _head(repo: Path) -> str:
+    import subprocess as sp
+
+    return sp.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                  capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _leased_contract(repo: Path, **over) -> dict:
+    sha = ma.create_worktree_lease("M-TEST", repo)
+    return _contract(worktree_lease_sha256=sha, base_sha=_head(repo), **over)
+
+
+def test_lease_happy_path_authorizes_exact_worktree(tmp_path):
+    repo = _tmp_repo(tmp_path)
+    c = _leased_contract(repo)
+    assert ma.validate_workspace(c, cwd=repo) == []
+
+
+def test_missing_lease_fails_closed(tmp_path):
+    repo = _tmp_repo(tmp_path)
+    c = _contract(base_sha=_head(repo))  # pin never minted here
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("lease MISSING" in e for e in errs)
+
+
+def test_wrong_lease_sha_fails_closed(tmp_path):
+    repo = _tmp_repo(tmp_path)
+    ma.create_worktree_lease("M-TEST", repo)
+    c = _contract(worktree_lease_sha256="12" * 32, base_sha=_head(repo))
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("MISMATCH" in e for e in errs)
+
+
+def test_copied_contract_in_another_clone_fails_closed(tmp_path):
+    """The core threat: same branch, same remote, but the second clone cannot
+    present the lease nonce minted in the authorized worktree."""
+    repo_a = _tmp_repo(tmp_path, "a")
+    repo_b = _tmp_repo(tmp_path, "b")
+    c = _leased_contract(repo_a)
+    c["base_sha"] = _head(repo_b)
+    errs = ma.validate_workspace(c, cwd=repo_b)
+    assert any("lease MISSING" in e for e in errs)
+
+
+def test_wrong_repository_remote_fails_closed(tmp_path):
+    repo = _tmp_repo(tmp_path, remote="https://github.com/example-org/OTHER-repo.git")
+    c = _leased_contract(repo)
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("wrong repository" in e for e in errs)
+
+
+def test_missing_remote_fails_closed(tmp_path):
+    repo = _tmp_repo(tmp_path, remote=None)
+    c = _leased_contract(repo)
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("cannot be proven" in e for e in errs)
+
+
+def test_remote_normalization_tolerates_git_suffix_slash_and_case(tmp_path):
+    repo = _tmp_repo(tmp_path, remote="https://github.com/Example-Org/Example-Repo")
+    c = _leased_contract(repo, authorized_remote="https://github.com/example-org/example-repo.git/")
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert not any("repository" in e for e in errs)
+
+
+def test_detached_head_fails_branch_binding(tmp_path):
+    import subprocess as sp
+
+    repo = _tmp_repo(tmp_path)
+    c = _leased_contract(repo)
+    sp.run(["git", "checkout", "-q", "--detach"], cwd=repo, capture_output=True, check=True)
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("authorized" in e and "branch" in e for e in errs)
+
+
+def test_relocated_worktree_keeps_authorization(tmp_path):
+    """No path is compared, so a legitimate relocation keeps working: the lease
+    travels with the repository's private git dir."""
+    repo = _tmp_repo(tmp_path)
+    c = _leased_contract(repo)
+    moved = tmp_path / "moved-elsewhere"
+    repo.rename(moved)
+    assert ma.validate_workspace(c, cwd=moved) == []
+
+
+def test_environment_override_cannot_replace_lease(tmp_path, monkeypatch):
+    repo = _tmp_repo(tmp_path)
+    c = _contract(base_sha=_head(repo))
+    monkeypatch.setenv("ED_MISSION_ID", "M-TEST")
+    monkeypatch.setenv("AUTHORIZED_WORKTREE", str(repo))
+    errs = ma.validate_workspace(c, cwd=repo)
+    assert any("lease MISSING" in e for e in errs)
+
+
+def test_legacy_private_path_contract_refused(authdirs):
+    doc = _contract()
+    doc["authorized_worktree"] = "C:/wt/feat-x"
+    _write(authdirs, doc)
+    c, reason = ma.load_contract("M-TEST")
+    assert c is None and "legacy private-path field" in reason
+
+
+def test_malformed_lease_pin_refused(authdirs):
+    _write(authdirs, _contract(worktree_lease_sha256="not-a-sha"))
+    c, reason = ma.load_contract("M-TEST")
+    assert c is None and "64-hex" in reason
+
+
+def test_missing_authorized_remote_refused(authdirs):
+    _write(authdirs, _contract(authorized_remote=""))
+    c, reason = ma.load_contract("M-TEST")
+    assert c is None and "authorized_remote" in reason
 
 
 def test_live_mission_contracts_are_valid_and_loadable():

@@ -57,13 +57,25 @@ SEMANTIC_DOMAINS = (
 )
 REQUIRED_FIELDS = (
     "schema_version", "mission_id", "agent", "mission_type",
-    "authorized_branch", "authorized_worktree", "base_sha",
+    "authorized_branch", "worktree_lease_sha256", "authorized_remote",
+    "base_sha",
     "authorized_push_target", "target_branch", "direct_main_permission",
     "pr_required", "integration_owner", "authorized_scope",
     "shared_file_policy", "lease_state", "created_at_epoch",
     "expires_at_epoch", "operator_authorization", "allowed_integration_method",
     "required_checks", "stop_conditions",
 )
+
+# PR41 privacy root cause (2026-07-14): contracts previously committed the
+# operator's absolute worktree path (authorized_worktree) and validate_workspace
+# string-compared it. The committed absolute home path identified the operator;
+# path comparison was also weaker than possession (aliases, relocation, case).
+# Replacement: a random lease nonce minted into THIS worktree's private git dir
+# (untracked, never committed) whose sha256 is pinned in the tracked contract,
+# plus a public remote-URL repository binding. A copied contract in another
+# clone/worktree cannot present the nonce — fail closed, no path ever tracked.
+LEGACY_PRIVATE_PATH_FIELD = "authorized_worktree"
+_SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 BYPASS_WARNING_PATTERNS = (
     re.compile(r"bypass", re.IGNORECASE),
     re.compile(r"protected branch", re.IGNORECASE),
@@ -115,11 +127,72 @@ def load_contract(mission_id: str) -> tuple[dict | None, str]:
             return None, "feature/audit missions may not target or work on main"
     if doc.get("authorized_scope") in ("*", "", None, "all"):
         return None, "authorized_scope must be explicit (broad defaults refused)"
+    if LEGACY_PRIVATE_PATH_FIELD in doc:
+        return None, (
+            f"authorization {mission_id} carries the legacy private-path field "
+            f"{LEGACY_PRIVATE_PATH_FIELD!r} — absolute worktree paths are refused; "
+            "migrate to worktree_lease_sha256 + authorized_remote "
+            "(mint: python tools/check_mission_authorization.py --mint-lease --mission <ID>)"
+        )
+    if not _SHA256_RE.fullmatch(str(doc.get("worktree_lease_sha256") or "")):
+        return None, f"authorization {mission_id} worktree_lease_sha256 must be 64-hex sha256"
+    if not str(doc.get("authorized_remote") or "").strip():
+        return None, f"authorization {mission_id} authorized_remote must be an explicit remote URL"
     return doc, "ok"
 
 
+# ── Worktree lease: possession-based, path-free worktree binding ─────────────
+
+def _worktree_git_dir(cwd: Path) -> Path | None:
+    out = _git(["rev-parse", "--absolute-git-dir"], cwd=cwd)
+    return Path(out) if out else None
+
+
+def lease_path(mission_id: str, cwd: Path) -> Path | None:
+    """The lease lives in the worktree's PRIVATE git administrative directory
+    (never inside the tracked tree; unique per worktree; survives relocation)."""
+    gd = _worktree_git_dir(cwd)
+    if gd is None:
+        return None
+    return gd / f"ed_mission_lease_{mission_id}"
+
+
+def create_worktree_lease(mission_id: str, cwd: Path) -> str:
+    """Mint a fresh random lease nonce for THIS worktree; return its sha256 for
+    the tracked contract. Overwrites any prior lease for the mission."""
+    import hashlib
+    import secrets
+
+    p = lease_path(mission_id, cwd)
+    if p is None:
+        raise RuntimeError("not inside a git worktree — cannot mint a mission lease")
+    data = (secrets.token_hex(32) + "\n").encode("utf-8")
+    p.write_bytes(data)  # exact bytes: no platform newline translation
+    return hashlib.sha256(data).hexdigest()
+
+
+def current_lease_sha(mission_id: str, cwd: Path) -> str | None:
+    import hashlib
+
+    p = lease_path(mission_id, cwd)
+    if p is None or not p.is_file():
+        return None
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def _normalize_remote(url: str) -> str:
+    u = str(url or "").strip().rstrip("/")
+    if u.endswith(".git"):
+        u = u[: -len(".git")]
+    return u.lower()
+
+
 def validate_workspace(contract: dict, *, cwd: Path) -> list[str]:
-    """Pre-edit gate: branch, worktree, ancestry. Nonzero errors on ambiguity."""
+    """Pre-edit gate: branch, repository remote, worktree lease, ancestry.
+
+    Path-free by construction (PR41 privacy root cause): worktree identity is
+    proven by POSSESSION of the untracked lease nonce in this worktree's private
+    git dir, never by comparing absolute paths. Every ambiguity fails closed."""
     errors: list[str] = []
     branch = _git(["branch", "--show-current"], cwd=cwd)
     if branch != contract["authorized_branch"]:
@@ -127,10 +200,27 @@ def validate_workspace(contract: dict, *, cwd: Path) -> list[str]:
             f"current branch {branch!r} != authorized {contract['authorized_branch']!r} "
             "(a checked-out branch is NEVER authorization)"
         )
-    wt = _git(["rev-parse", "--show-toplevel"], cwd=cwd).replace("\\", "/").rstrip("/")
-    auth_wt = str(contract["authorized_worktree"]).replace("\\", "/").rstrip("/")
-    if wt.lower() != auth_wt.lower():
-        errors.append(f"worktree {wt!r} != authorized {auth_wt!r}")
+    remote = _git(["remote", "get-url", "origin"], cwd=cwd)
+    if not remote:
+        errors.append("no 'origin' remote — repository identity cannot be proven (fail closed)")
+    elif _normalize_remote(remote) != _normalize_remote(contract["authorized_remote"]):
+        errors.append(
+            f"origin remote {remote!r} != authorized_remote "
+            f"{contract['authorized_remote']!r} — wrong repository (fail closed)"
+        )
+    lease = current_lease_sha(str(contract["mission_id"]), cwd)
+    if lease is None:
+        errors.append(
+            "worktree mission lease MISSING in this worktree's git dir — a copied "
+            "contract, another clone, or another worktree cannot present the lease "
+            "(mint in the authorized worktree: python tools/check_mission_authorization.py "
+            "--mint-lease --mission <ID>; fail closed)"
+        )
+    elif lease != contract["worktree_lease_sha256"]:
+        errors.append(
+            "worktree mission lease sha256 MISMATCH vs contract worktree_lease_sha256 "
+            "(stale or foreign lease — fail closed)"
+        )
     base = contract["base_sha"]
     head = _git(["rev-parse", "HEAD"], cwd=cwd)
     anc = subprocess.run(
@@ -235,6 +325,9 @@ def consume_integration_authorization(mission_id: str) -> tuple[bool, str]:
     CONSUMED_DIR.mkdir(parents=True, exist_ok=True)
     dst.write_text(json.dumps(doc, indent=2, sort_keys=True, default=str), encoding="utf-8")
     src.unlink()
+    lp = lease_path(mission_id, REPO_ROOT)
+    if lp is not None and lp.is_file():
+        lp.unlink()  # single-use: the worktree lease dies with the authorization
     return True, "consumed"
 
 
@@ -261,10 +354,10 @@ def detect_mission_overlap(contract: dict) -> list[str]:
             continue
         if other.get("authorized_branch") == contract.get("authorized_branch"):
             errors.append(f"branch collision with {other.get('mission_id')}")
-        if str(other.get("authorized_worktree", "")).lower() == str(
-            contract.get("authorized_worktree", "")
-        ).lower():
-            errors.append(f"worktree collision with {other.get('mission_id')}")
+        if other.get("worktree_lease_sha256") and other.get(
+            "worktree_lease_sha256"
+        ) == contract.get("worktree_lease_sha256"):
+            errors.append(f"worktree lease collision with {other.get('mission_id')}")
         oscope = other.get("authorized_scope") or {}
         ofiles = set(oscope.get("files", []))
         odomains = set(oscope.get("semantic_domains", []))

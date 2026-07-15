@@ -6,6 +6,10 @@ Usage:
   python tools/check_mission_authorization.py --pre-push   (git pre-push stdin)
   python tools/check_mission_authorization.py --pre-edit --mission <ID>
   python tools/check_mission_authorization.py --classify-push-output <file>
+  python tools/check_mission_authorization.py --mint-lease --mission <ID>
+      Mint the untracked worktree lease nonce for <ID> in THIS worktree's
+      private git dir and print the sha256 to pin as the contract's
+      worktree_lease_sha256 (path-free worktree binding; PR41 privacy fix).
 
 Mission selection: the ED_MISSION_ID environment variable names the active
 contract. Absence of ED_MISSION_ID is fail-open ONLY for commits/pushes whose
@@ -27,6 +31,7 @@ if str(REPO_ROOT) not in sys.path:
 from tools.mission_authorization import (  # noqa: E402
     ACTIVE_DIR,
     classify_push_output,
+    create_worktree_lease,
     detect_mission_overlap,
     load_contract,
     record_policy_violation,
@@ -71,6 +76,15 @@ def _resolve_contract() -> tuple[dict | None, str]:
 
 
 def main(argv: list[str]) -> int:
+    if "--mint-lease" in argv:
+        if "--mission" not in argv:
+            print("--mint-lease requires --mission <ID>", file=sys.stderr)
+            return 2
+        mid = argv[argv.index("--mission") + 1]
+        sha = create_worktree_lease(mid, REPO_ROOT)
+        print(f"worktree lease minted for {mid}; pin worktree_lease_sha256={sha}")
+        return 0
+
     engaged, why = red_main_breaker_engaged()
     if engaged:
         print(f"mission-authorization: RED-MAIN CIRCUIT BREAKER — {why}")

@@ -22,7 +22,7 @@ capsys = <_pytest.capture.CaptureFixture object at 0x0000024549CFA270>
         assert ds.main() == 0
         out = capsys.readouterr().out.lower()
 >       assert "by_horizon_legacy_semantics" in out
-E       assert 'by_horizon_legacy_semantics' in '{\n  "et_date": "2026-06-09",\n  "note": "summary",\n  "by_horizon": {\n    "1c": {\n      "n_pred": 2,\n      "n_sco...\\\pytest-of-evarg\\\\pytest-931\\\\test_defect1_console_renderer_0\\\\out\\\\actionability_2026-06-09.json"\n  }\n}\n'
+E       assert 'by_horizon_legacy_semantics' in '{\n  "et_date": "2026-06-09",\n  "note": "summary",\n  "by_horizon": {\n    "1c": {\n      "n_pred": 2,\n      "n_sco...\\\pytest-of-<USER>\\\\pytest-931\\\\test_defect1_console_renderer_0\\\\out\\\\actionability_2026-06-09.json"\n  }\n}\n'
 
 tests\test_calibration_daily_scoreboard.py:1444: AssertionError
 _______ test_defect1_renderers_consume_canonical_contracts_source_lock ________

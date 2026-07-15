@@ -84,3 +84,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      # PR41 privacy root cause: operator-home absolute paths must never land in
+      # tracked evidence or mission-authorization content (early lock; the same
+      # module is exercised by required-CI pytest-full via its adversarial tests).
+      - id: no-private-paths
+        name: no operator-home paths in tracked evidence
+        entry: python tools/check_private_paths.py
+        language: system
+        pass_filenames: false
+        always_run: true

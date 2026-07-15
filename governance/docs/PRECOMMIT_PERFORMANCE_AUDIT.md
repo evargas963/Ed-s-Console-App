@@ -2,7 +2,7 @@
 
 **Scope:** Institutional governance — pre-commit tiering, profiling, and cache policy (Phase 3F-Perf1). Does not weaken objective-audit or repo-wide locks on pre-push/CI.
 
-Generated: `2026-07-13T00:47:13+00:00`
+Generated: `2026-07-15T01:45:16+00:00`
 Mode: `declared_policy_only`
 
 ## Tier model
@@ -27,6 +27,7 @@ Mode: `declared_policy_only`
 | no-deferral-language-files | 1 | pre-commit | — | True | precommit |
 | fix-everything-we-touch-msg | 1 | commit-msg | — | True | precommit |
 | fix-everything-we-touch | 1 | pre-commit | — | True | precommit |
+| no-private-paths | 1 | pre-commit | — | True | precommit |
 
 ## Phase 3K — governance pre-push optimization
 

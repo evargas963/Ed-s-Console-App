@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "phase": "3I-CheckStack",
-  "generated_at_utc": "2026-07-13T21:14:08+00:00",
+  "generated_at_utc": "2026-07-15T01:45:26+00:00",
   "policy": "governance/docs/CHECK_STACK_RIGHTSIZING.md",
   "runtime_budgets_seconds": {
     "precommit_normal": 60,
@@ -28,7 +28,7 @@
       "recommendation": "required_ci_owned \u2014 keep off local pre-push (pytest-full backs it)"
     }
   ],
-  "check_count": 70,
+  "check_count": 71,
   "duplication_analysis": [
     {
       "check_a": "prepush-fast-gate",
@@ -97,6 +97,12 @@
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
     {
+      "check_a": "mission-authorization-precommit",
+      "check_b": "no-private-paths",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
       "check_a": "no-grep-subprocess",
       "check_b": "no-deferral-language-msg",
       "classification": "candidate_for_merge",
@@ -121,6 +127,12 @@
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
     {
+      "check_a": "no-grep-subprocess",
+      "check_b": "no-private-paths",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
       "check_a": "no-deferral-language-msg",
       "check_b": "no-deferral-language-files",
       "classification": "unintentional_duplicate",
@@ -139,6 +151,12 @@
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
     {
+      "check_a": "no-deferral-language-msg",
+      "check_b": "no-private-paths",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
       "check_a": "no-deferral-language-files",
       "check_b": "fix-everything-we-touch-msg",
       "classification": "candidate_for_merge",
@@ -151,9 +169,27 @@
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
     {
+      "check_a": "no-deferral-language-files",
+      "check_b": "no-private-paths",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
       "check_a": "fix-everything-we-touch-msg",
       "check_b": "fix-everything-we-touch",
       "classification": "unintentional_duplicate",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "fix-everything-we-touch-msg",
+      "check_b": "no-private-paths",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "fix-everything-we-touch",
+      "check_b": "no-private-paths",
+      "classification": "candidate_for_merge",
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
     {
@@ -170,7 +206,8 @@
       "no-deferral-language-msg",
       "no-deferral-language-files",
       "fix-everything-we-touch-msg",
-      "fix-everything-we-touch"
+      "fix-everything-we-touch",
+      "no-private-paths"
     ],
     "move_to_prepush": [
       "prepush-fast-gate",
@@ -370,7 +407,8 @@
         "no-deferral-language-msg",
         "no-deferral-language-files",
         "fix-everything-we-touch-msg",
-        "fix-everything-we-touch"
+        "fix-everything-we-touch",
+        "no-private-paths"
       ]
     },
     {
@@ -395,7 +433,8 @@
         "no-deferral-language-msg",
         "no-deferral-language-files",
         "fix-everything-we-touch-msg",
-        "fix-everything-we-touch"
+        "fix-everything-we-touch",
+        "no-private-paths"
       ]
     },
     {
@@ -419,7 +458,8 @@
       "overlap_with_other_checks": [
         "no-deferral-language-files",
         "fix-everything-we-touch-msg",
-        "fix-everything-we-touch"
+        "fix-everything-we-touch",
+        "no-private-paths"
       ]
     },
     {
@@ -442,7 +482,8 @@
       "recommendation": "keep_in_precommit",
       "overlap_with_other_checks": [
         "fix-everything-we-touch-msg",
-        "fix-everything-we-touch"
+        "fix-everything-we-touch",
+        "no-private-paths"
       ]
     },
     {
@@ -464,7 +505,8 @@
       "removal_risk": "high",
       "recommendation": "keep_in_precommit",
       "overlap_with_other_checks": [
-        "fix-everything-we-touch"
+        "fix-everything-we-touch",
+        "no-private-paths"
       ]
     },
     {
@@ -481,6 +523,28 @@
       "must_run_ci": false,
       "can_be_cached": true,
       "can_be_incremental": true,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "keep_in_precommit",
+      "overlap_with_other_checks": [
+        "no-private-paths"
+      ]
+    },
+    {
+      "check_id": "no-private-paths",
+      "command": "python tools/check_private_paths.py",
+      "tier": 1,
+      "runtime_seconds": null,
+      "scope": "pre-commit hook",
+      "files_or_modules_covered": "staged or repo per hook",
+      "risk_addressed": "governance enforcement",
+      "evidence_artifact": "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json",
+      "must_run_precommit": true,
+      "must_run_prepush": false,
+      "must_run_ci": false,
+      "can_be_cached": false,
+      "can_be_incremental": false,
       "can_be_parallelized": false,
       "can_be_removed": false,
       "removal_risk": "high",

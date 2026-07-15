@@ -9,7 +9,7 @@
   "OPEN_ITEMS.md": "954fd59a6b7c7899663d3425bc47625e3ffa19a7dacdc2b0eda55c6f266060df",
   "calibration/daily_scoreboard.py": "b9d5c7643f3cf1b71d93a4c96468b7421f0df836765efe0bd383880176b8de2b",
   "governance/artifacts/universal_connected_path_graph.json": "70885815e5d5b7b9771cf961e1504830464045ab5d19aabcbe419c70b3a8fd75",
-  "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": "b198201a143db848067bb6565f40e41f1640640f12786893158c2be8babc7761",
+  "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": "247833a21490faeb2e71fe957dc5c78229b0f78b3e2874d48f55841c1a5517e7",
   "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json": "4e37d33a01574de80763b10f7832f5abb2c52837bc4fefbd063388252fceebd9",
   "reports/scoreboard_forensic/july13_2026_target_truth_forensic.json": "44817113f25caa16e3d886d5c02beeb91b0c082d95da009d5114815ea863ae41",
   "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py": "0a4ea2baf703795cdaf84f8d9c0442940cd74427d6ad165177fb01b73478d1bc",
@@ -71,6 +71,18 @@
     }
    },
    "campaign_impact": "NONE \u2014 sig-v2 signatures derive from JUnit-structured failures, not raw bytes; no mutation input (calibration/daily_scoreboard.py + detecting tests) changed; numeric evidence, exit codes and detection results are byte-level provable as unchanged apart from path prefixes"
+  },
+  {
+   "mission": "PR41_MISSION_AUTHORIZATION_PRIVATE_PATH_ROOT_CAUSE_FIX_V1",
+   "date": "2026-07-14",
+   "nature": "path-free mission authorization: the active contract's absolute-path authorized_worktree field was replaced by worktree_lease_sha256 (sha256 of an untracked random lease nonce minted in the authorized worktree's private git dir) plus authorized_remote (public repository URL binding); tools/mission_authorization.py now REFUSES any contract carrying the legacy absolute-path field and validate_workspace proves worktree identity by lease possession, never by path comparison; additionally normalized assertion-diff-elided pytest-of-<username> tmpdir fragments in the D9 raw stdout pair (re-content-addressed; manifest refs/index updated; sig-v2 signatures unaffected)",
+   "changes": {
+    "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": {
+     "old_sha256": "b198201a143db848067bb6565f40e41f1640640f12786893158c2be8babc7761",
+     "new_sha256": "247833a21490faeb2e71fe957dc5c78229b0f78b3e2874d48f55841c1a5517e7"
+    }
+   },
+   "campaign_impact": "NONE \u2014 the contract is not a mutation input; calibration/daily_scoreboard.py and the detecting tests are byte-identical; sig-v2 signatures unaffected"
   }
  ],
  "mutation_runner_sha256": "b60e6811256c0ff32a5ce13a36c2d857e1b1ba97adf1c607c2c949038cf254df",
@@ -90,7 +102,7 @@
    },
    "reports/scoreboard_forensic/mutation_evidence_manifest.json": {
     "change": "regenerated FROM this campaign (v5 merged-run schema)",
-    "final_sha256": "da223633ce171514c1acdbd1670a1dc3dfeaed3b1f3227664967ada37030a82e"
+    "final_sha256": "128908ee4c6b835bfbf46352500061ade7a46a0dad17f4912328d2438f484a4b"
    }
   },
   "signature_validity_proof": "neither changed file participates in ANY mutation's failure set: all 27 mutations target calibration/daily_scoreboard.py; the purity test reads only the manifest JSON (passes under every DS mutation) and the manifest is not read by any detecting test; therefore every recorded sig-v2 signature is exactly valid for the final package"
