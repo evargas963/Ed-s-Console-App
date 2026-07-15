@@ -1,0 +1,601 @@
+..FF.............................F........F..................FFFFFFFFF.. [ 86%]
+...FFFFF...                                                              [100%]
+================================== FAILURES ===================================
+___________ test_all_card_row_scores_final_bias_at_primary_horizon ____________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_all_card_row_scores_final0')
+
+    def test_all_card_row_scores_final_bias_at_primary_horizon(tmp_path):
+        """ALL card (trade-entry signal): final_bias vs the logged primary-horizon outcome."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+    
+        spy_all = sb["by_ticker"]["SPY"]["all"]
+        # Row 1 LONG@5c vs down = miss; row 2 SHORT@5c vs down = hit; row 3 WAIT@15c vs flat = hit.
+        assert spy_all["n_scored"] == 3
+        assert spy_all["hits"] == 2
+        assert spy_all["n_directional"] == 2
+        assert spy_all["directional_hits"] == 1
+        assert spy_all["directional_accuracy"] == 0.5
+        # Rollup carries the ALL pseudo-horizon alongside the four product horizons.
+        assert sb["by_horizon"]["all"]["n_scored"] == 3
+        # final_confidence flows into the mean-confidence diagnostics.
+        assert sb["by_horizon"]["all"]["mean_top_prob_on_hits"] == 0.61
+        # Rendered report includes the ALL row.
+>       assert ">all<" in render_html(sb)
+                          ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:188: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+________________ test_write_reports_emit_json_html_and_latest _________________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_write_reports_emit_json_h0')
+
+    def test_write_reports_emit_json_html_and_latest(tmp_path):
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        out = tmp_path / "reports"
+>       paths = write_reports(sb, out)
+                ^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:195: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1951: in write_reports
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+___________ test_denominator_html_renders_grid_and_zero_row_tickers ___________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_denominator_html_renders_0')
+
+    def test_denominator_html_renders_grid_and_zero_row_tickers(tmp_path):
+        """Operator-facing HTML must not hide zero-row eligible tickers."""
+        db = _denominator_fixture(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+>       html = render_html(sb)
+               ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:786: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+___________________ test_qc_html_renders_refinement_inputs ____________________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_qc_html_renders_refinemen0')
+
+    def test_qc_html_renders_refinement_inputs(tmp_path):
+        db = _denominator_fixture(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+>       html = render_html(sb)
+               ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:942: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+__________ test_defect1_legacy_all_display_is_semantically_qualified __________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_defect1_legacy_all_displa0')
+
+    def test_defect1_legacy_all_display_is_semantically_qualified(tmp_path):
+        """Tests 1-4+12: the rendered LEGACY ALL metric states legacy status, triclass
+        treatment, WAIT-as-scored-class, and historical-only purpose — surviving
+        plain-text extraction (no reliance on CSS/color/position)."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+>       text = _plain_text(render_html(sb)).lower()
+                           ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1352: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+______________ test_defect1_governed_trade_call_display_contract ______________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_defect1_governed_trade_ca0')
+
+    def test_defect1_governed_trade_call_display_contract(tmp_path):
+        """Tests 5-7: governed v4 accuracy renders under its OWN heading with coverage
+        and eligible call counts in the same section."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+>       text = _plain_text(render_html(sb)).lower()
+                           ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1367: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+___________________ test_defect1_zero_call_safety_in_render ___________________
+
+    def test_defect1_zero_call_safety_in_render():
+        """Test 8: zero eligible trade calls must not display a misleading accuracy."""
+        from calibration.daily_scoreboard import _all_card_trade_metrics, render_html as _rh
+    
+        sb_min = {
+            "et_date": "2026-06-09",
+            "by_horizon": {},
+            "by_ticker": {},
+            "all_card": _all_card_trade_metrics(
+                [{"ticker": "Z", "decision_ts_utc": 1.0, "horizon": "all", "pred": "flat",
+                  "truth": "flat", "top_probability": 0.5, "join_cohort": "identity",
+                  "bundle_identity_proven": True}]
+            ),
+            "by_horizon_extended": {},
+        }
+>       text = _plain_text(_rh(sb_min)).lower()
+                           ^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1390: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+______________ test_defect1_warnings_and_invalid_cohorts_render _______________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_defect1_warnings_and_inva0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024D75813620>
+
+    def test_defect1_warnings_and_invalid_cohorts_render(tmp_path, monkeypatch):
+        """Tests 9-10: v4 warnings and invalid-target cohorts reach the operator."""
+        import movement_target_threshold as mtt
+    
+        crippled = {
+            "version": 2, "notes": "test",
+            "horizons": {
+                "1c": {"threshold_move_pts": 0.04, "selected_percentile": 5},
+                "5c": {"threshold_move_pts": 0.12, "selected_percentile": 5},
+                "15c": {"threshold_move_pts": 0.26, "selected_percentile": 5},
+                "60c": {"threshold_move_pts": None, "selected_percentile": None},
+            },
+        }
+        monkeypatch.setattr(mtt, "load_movement_thresholds_by_horizon_v1", lambda path=None: crippled)
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+>       text = _plain_text(render_html(sb))
+                           ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1411: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+_________________ test_defect1_no_shared_unqualified_heading __________________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_defect1_no_shared_unquali0')
+
+    def test_defect1_no_shared_unqualified_heading(tmp_path):
+        """Test 11: legacy and governed metrics never share one unqualified 'accuracy'
+        heading — every h2 that mentions the pooled table carries legacy semantics."""
+        db = _fixture_db(tmp_path)
+>       html = render_html(build_daily_scoreboard(db, ET_DATE, run_backfill=False))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1422: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+_______________ test_defect1_console_renderer_carries_contracts _______________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_defect1_console_renderer_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024D757DC360>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000024D754FABA0>
+
+    def test_defect1_console_renderer_carries_contracts(tmp_path, monkeypatch, capsys):
+        """The console/log summary (second operator surface found in discovery) must
+        carry the same canonical semantic contracts."""
+        import calibration.daily_scoreboard as ds
+    
+        db = _fixture_db(tmp_path)
+        monkeypatch.setattr(
+            sys, "argv",
+            ["daily_scoreboard", "--db", str(db), "--date", ET_DATE, "--no-backfill",
+             "--out-dir", str(tmp_path / "out"), "--allow-noncanonical-db"],
+        )
+        monkeypatch.setattr(ds, "require_canonical_db_target", lambda *a, **k: None)
+>       assert ds.main() == 0
+               ^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1442: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1985: in main
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+_______ test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy _______
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_v2_eligible_grid_all_cell0')
+
+    def test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy(tmp_path):
+        """DEFECT-A regression (Cursor case: 66.7% (n=3) under <th>all</th>): the grid
+        'all' column heading AND every scored 'all' cell are structurally qualified;
+        the numeric value is preserved; a copied single row keeps the qualification."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        assert sb["by_ticker"]["SPY"]["all"]["accuracy"] == pytest.approx(2 / 3)  # numeric preserved
+>       html = render_html(sb)
+               ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1459: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+__________ test_v2_governed_unit_colocates_target_threshold_validity __________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_v2_governed_unit_colocate0')
+
+    def test_v2_governed_unit_colocates_target_threshold_validity(tmp_path):
+        """DEFECT-B: the all_card JSON unit and its rendered section both carry
+        target/threshold validity; placeholder targets read as untrusted evidence."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        v = sb["all_card"]["target_threshold_validity"]
+        assert v["configuration_status"] == "PLACEHOLDER"  # committed placeholder config
+        assert "NOT trusted trade-edge evidence" in v["statement"]
+        assert v["trade_edge_validity"].startswith("NOT_PROVEN")
+        assert v["target_economic_validity"].startswith("NOT_PROVEN")
+        assert v["per_horizon"]["60c"]["ratified"] is False
+        assert "PLACEHOLDER_THRESHOLD_IN_USE" in sb["all_card"]["warnings"]
+>       text = _plain_text(render_html(sb))
+                           ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1483: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+___________ test_v3_ratified_config_never_inflates_target_validity ____________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_v3_ratified_config_never_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024D757DD4E0>
+
+    def test_v3_ratified_config_never_inflates_target_validity(tmp_path, monkeypatch):
+        """Phase-8 mutation: a fully ratified threshold config must NOT let the
+        display claim proven target validity — configuration status and target
+        validity are separate axes; parents stay NOT_PROVEN."""
+        import movement_target_threshold as mtt
+    
+        ratified = {
+            "version": 2, "notes": "governed",
+            "horizons": {
+                hz: {"threshold_move_pts": pts, "selected_percentile": 60, "invalid_for_dir_target": False}
+                for hz, pts in (("1c", 0.04), ("5c", 0.12), ("15c", 0.26), ("60c", 0.65))
+            },
+        }
+        monkeypatch.setattr(mtt, "load_movement_thresholds_by_horizon_v1", lambda path=None: ratified)
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        v = sb["all_card"]["target_threshold_validity"]
+        assert v["configuration_status"] == "GOVERNED_RATIFIED"
+        assert v["target_economic_validity"].startswith("NOT_PROVEN")
+        assert v["trade_edge_validity"].startswith("NOT_PROVEN")
+        assert "NOT a claim of target economic validity" in v["statement"]
+>       text = _plain_text(render_html(sb))
+                           ^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1509: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+_________________ test_v3_metric_tables_structural_semantics __________________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_v3_metric_tables_structur0')
+
+    def test_v3_metric_tables_structural_semantics(tmp_path):
+        """Phase-9: every scoreboard metric table carries a caption and scoped column
+        headers — checked structurally via the stdlib HTML parser, not substrings."""
+        from html.parser import HTMLParser
+    
+        class _T(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.tables = []
+                self._cur = None
+    
+            def handle_starttag(self, tag, attrs):
+                if tag == "table":
+                    self._cur = {"caption": False, "th": 0, "th_scoped": 0}
+                    self.tables.append(self._cur)
+                elif self._cur is not None and tag == "caption":
+                    self._cur["caption"] = True
+                elif self._cur is not None and tag == "th":
+                    self._cur["th"] += 1
+                    if dict(attrs).get("scope") in ("col", "row"):
+                        self._cur["th_scoped"] += 1
+    
+        db = _fixture_db(tmp_path)
+>       html = render_html(build_daily_scoreboard(db, ET_DATE, run_backfill=False))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1635: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+___________________ test_v2_low_coverage_fail_closed_matrix ___________________
+
+    def test_v2_low_coverage_fail_closed_matrix():
+        """DEFECT-C: the presentation status LEADS and accuracy is never decision-
+        valid on insufficient sample/coverage; the 1/1000 case cannot lead with 100%."""
+        from calibration.daily_scoreboard import _all_card_trade_metrics
+    
+        def _mk(n_long_hit, n_long_miss, n_short_hit, n_short_miss, n_wait):
+            rows = []
+            i = 0
+            for _ in range(n_long_hit):
+                rows.append(_v4_row("up", "up", ts=float(i))); i += 1
+            for _ in range(n_long_miss):
+                rows.append(_v4_row("up", "down", ts=float(i))); i += 1
+            for _ in range(n_short_hit):
+                rows.append(_v4_row("down", "down", ts=float(i))); i += 1
+            for _ in range(n_short_miss):
+                rows.append(_v4_row("down", "up", ts=float(i))); i += 1
+            for _ in range(n_wait):
+                rows.append(_v4_row("flat", "flat", ts=float(i))); i += 1
+            return _all_card_trade_metrics(rows)
+    
+        # 1) 0 calls / 1000 eligible
+        m = _mk(0, 0, 0, 0, 1000)
+>       assert m["accuracy_presentation"]["status"] == "NO_SCORED_CALLS"
+E       AssertionError: assert 'SUFFICIENT' == 'NO_SCORED_CALLS'
+E         
+E         - NO_SCORED_CALLS
+E         + SUFFICIENT
+
+tests\test_calibration_daily_scoreboard.py:1666: AssertionError
+________________ test_v2_low_coverage_render_leads_with_status ________________
+
+    def test_v2_low_coverage_render_leads_with_status():
+        """The rendered governed section opens with validity + sample status; the
+        percentage appears only inside the qualified sentence."""
+        from calibration.daily_scoreboard import _all_card_trade_metrics, render_html as _rh
+    
+        rows = [_v4_row("up", "up", ts=1.0)] + [
+            _v4_row("flat", "flat", ts=float(i + 2)) for i in range(999)
+        ]
+        sb_min = {
+            "et_date": "2026-06-09", "by_horizon": {}, "by_ticker": {},
+            "all_card": _all_card_trade_metrics(rows), "by_horizon_extended": {},
+        }
+>       html = _rh(sb_min)
+               ^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1705: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+________________ test_v2_every_table_labels_the_legacy_all_row ________________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-938/test_v2_every_table_labels_the0')
+
+    def test_v2_every_table_labels_the_legacy_all_row(tmp_path):
+        """E7 lock: EVERY table that renders an 'all' row/column carries the legacy
+        qualification inside that table segment — pooled, equal-weight, per-ticker,
+        and eligible grid alike (no unqualified 'all' cell anywhere in the HTML)."""
+        db = _fixture_db(tmp_path)
+>       html = render_html(build_daily_scoreboard(db, ET_DATE, run_backfill=False))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_calibration_daily_scoreboard.py:1719: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+calibration\daily_scoreboard.py:1725: in render_html
+    _require_display_contracts_bound()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def _require_display_contracts_bound() -> None:
+        errs = validate_display_contracts()
+        if errs:
+>           raise DisplayContractViolationError(
+                "scoreboard display contracts violated — report emission refused: "
+                + "; ".join(errs)
+            )
+E           calibration.daily_scoreboard.DisplayContractViolationError: scoreboard display contracts violated — report emission refused: behavior: zero-call presentation is not fail-closed
+
+calibration\daily_scoreboard.py:1135: DisplayContractViolationError
+________________ test_v2_display_contracts_behaviorally_bound _________________
+
+    def test_v2_display_contracts_behaviorally_bound():
+        """DEFECT-G: the executable binding validator passes on the committed code."""
+        from calibration.daily_scoreboard import validate_display_contracts
+    
+>       assert validate_display_contracts() == []
+E       AssertionError: assert ['behavior: z... fail-closed'] == []
+E         
+E         Left contains one more item: 'behavior: zero-call presentation is not fail-closed'
+E         Use -v to get more diff
+
+tests\test_calibration_daily_scoreboard.py:1734: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon
+FAILED tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest
+FAILED tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers
+FAILED tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity
+FAILED tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity
+FAILED tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_fail_closed_matrix
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound
+18 failed, 65 passed in 21.89s

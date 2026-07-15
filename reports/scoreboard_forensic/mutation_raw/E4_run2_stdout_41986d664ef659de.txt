@@ -1,0 +1,60 @@
+....................................................................FF.. [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+__________ test_v2_governed_unit_colocates_target_threshold_validity __________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-937/test_v2_governed_unit_colocate0')
+
+    def test_v2_governed_unit_colocates_target_threshold_validity(tmp_path):
+        """DEFECT-B: the all_card JSON unit and its rendered section both carry
+        target/threshold validity; placeholder targets read as untrusted evidence."""
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        v = sb["all_card"]["target_threshold_validity"]
+        assert v["configuration_status"] == "PLACEHOLDER"  # committed placeholder config
+        assert "NOT trusted trade-edge evidence" in v["statement"]
+        assert v["trade_edge_validity"].startswith("NOT_PROVEN")
+        assert v["target_economic_validity"].startswith("NOT_PROVEN")
+        assert v["per_horizon"]["60c"]["ratified"] is False
+        assert "PLACEHOLDER_THRESHOLD_IN_USE" in sb["all_card"]["warnings"]
+        text = _plain_text(render_html(sb))
+>       assert "Target/threshold validity:" in text
+E       AssertionError: assert 'Target/threshold validity:' in ' \n    Daily signal scoreboard — 2026-06-09 \n \n body { font-family: Segoe UI, sans-serif; background: #14161a; colo...60c  0  —  0  —  \n  all — Legacy ALL triclass accuracy (LEGACY_INVALID_FOR_TRADE_EDGE)  3  66.7%  2  50.0%  \n \n  \n'
+
+tests\test_calibration_daily_scoreboard.py:1484: AssertionError
+___________ test_v3_ratified_config_never_inflates_target_validity ____________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-937/test_v3_ratified_config_never_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028A54A46F20>
+
+    def test_v3_ratified_config_never_inflates_target_validity(tmp_path, monkeypatch):
+        """Phase-8 mutation: a fully ratified threshold config must NOT let the
+        display claim proven target validity — configuration status and target
+        validity are separate axes; parents stay NOT_PROVEN."""
+        import movement_target_threshold as mtt
+    
+        ratified = {
+            "version": 2, "notes": "governed",
+            "horizons": {
+                hz: {"threshold_move_pts": pts, "selected_percentile": 60, "invalid_for_dir_target": False}
+                for hz, pts in (("1c", 0.04), ("5c", 0.12), ("15c", 0.26), ("60c", 0.65))
+            },
+        }
+        monkeypatch.setattr(mtt, "load_movement_thresholds_by_horizon_v1", lambda path=None: ratified)
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        v = sb["all_card"]["target_threshold_validity"]
+        assert v["configuration_status"] == "GOVERNED_RATIFIED"
+        assert v["target_economic_validity"].startswith("NOT_PROVEN")
+        assert v["trade_edge_validity"].startswith("NOT_PROVEN")
+        assert "NOT a claim of target economic validity" in v["statement"]
+        text = _plain_text(render_html(sb))
+        assert "validity PROVEN" not in text
+>       assert "NOT a claim of target economic validity" in text
+E       AssertionError: assert 'NOT a claim of target economic validity' in ' \n    Daily signal scoreboard — 2026-06-09 \n \n body { font-family: Segoe UI, sans-serif; background: #14161a; colo...60c  0  —  0  —  \n  all — Legacy ALL triclass accuracy (LEGACY_INVALID_FOR_TRADE_EDGE)  3  66.7%  2  50.0%  \n \n  \n'
+
+tests\test_calibration_daily_scoreboard.py:1511: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity
+FAILED tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity
+2 failed, 81 passed in 19.05s

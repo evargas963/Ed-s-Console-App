@@ -1,0 +1,22 @@
+.................................................................F...... [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+_________________ test_defect1_no_shared_unqualified_heading __________________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-930/test_defect1_no_shared_unquali0')
+
+    def test_defect1_no_shared_unqualified_heading(tmp_path):
+        """Test 11: legacy and governed metrics never share one unqualified 'accuracy'
+        heading — every h2 that mentions the pooled table carries legacy semantics."""
+        db = _fixture_db(tmp_path)
+        html = render_html(build_daily_scoreboard(db, ET_DATE, run_backfill=False))
+        headings = _re.findall(r"<h2>(.*?)</h2>", html)
+        pooled = [h for h in headings if "by horizon" in h.lower()]
+>       assert pooled and all("legacy metric semantics" in h.lower() for h in pooled)
+E       AssertionError: assert (['All tickers — by horizon (row-weighted pooled)', 'All tickers — by horizon (equal weight per ticker; legacy metric semantics)'] and False)
+E        +  where False = all(<generator object test_defect1_no_shared_unqualified_heading.<locals>.<genexpr> at 0x000001A06CE1E810>)
+
+tests\test_calibration_daily_scoreboard.py:1425: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading
+1 failed, 82 passed in 16.94s

@@ -4,7 +4,7 @@
   "agent": "Claude",
   "mission_type": "feature_implementation",
   "authorized_branch": "universal-fix-lock-records-closure-v1",
-  "authorized_worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole-execid",
+  "authorized_worktree": "<WORKTREE_ROOT>",
   "base_sha": "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c",
   "authorized_push_target": "origin/universal-fix-lock-records-closure-v1",
   "target_branch": "universal-fix-lock-records-closure-v1",

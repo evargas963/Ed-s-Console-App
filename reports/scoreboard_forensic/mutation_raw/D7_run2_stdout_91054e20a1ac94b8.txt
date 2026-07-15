@@ -1,0 +1,32 @@
+................................................................F....... [ 86%]
+...........                                                              [100%]
+================================== FAILURES ===================================
+______________ test_defect1_warnings_and_invalid_cohorts_render _______________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-929/test_defect1_warnings_and_inva0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001FC1ECA9710>
+
+    def test_defect1_warnings_and_invalid_cohorts_render(tmp_path, monkeypatch):
+        """Tests 9-10: v4 warnings and invalid-target cohorts reach the operator."""
+        import movement_target_threshold as mtt
+    
+        crippled = {
+            "version": 2, "notes": "test",
+            "horizons": {
+                "1c": {"threshold_move_pts": 0.04, "selected_percentile": 5},
+                "5c": {"threshold_move_pts": 0.12, "selected_percentile": 5},
+                "15c": {"threshold_move_pts": 0.26, "selected_percentile": 5},
+                "60c": {"threshold_move_pts": None, "selected_percentile": None},
+            },
+        }
+        monkeypatch.setattr(mtt, "load_movement_thresholds_by_horizon_v1", lambda path=None: crippled)
+        db = _fixture_db(tmp_path)
+        sb = build_daily_scoreboard(db, ET_DATE, run_backfill=False)
+        text = _plain_text(render_html(sb))
+>       assert "Invalid-target cohorts" in text
+E       AssertionError: assert 'Invalid-target cohorts' in ' \n    Daily signal scoreboard — 2026-06-09 \n \n body { font-family: Segoe UI, sans-serif; background: #14161a; colo...60c  0  —  0  —  \n  all — Legacy ALL triclass accuracy (LEGACY_INVALID_FOR_TRADE_EDGE)  3  66.7%  2  50.0%  \n \n  \n'
+
+tests\test_calibration_daily_scoreboard.py:1412: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render
+1 failed, 82 passed in 18.27s

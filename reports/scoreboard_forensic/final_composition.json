@@ -2,15 +2,15 @@
  "schema": "LANE_A_FINAL_COMPOSITION_RECORD",
  "schema_version": 2,
  "base_sha": "a0d5e3b9a5f9731357465f93fe2375f9a4672338",
- "byte_form_policy": "each hash below is the sha256 of the file bytes in the final deliverable tree (the audited mission worktree in its gitattributes-normalized state, Windows, core.autocrlf=true): pre-existing tracked auto-text files render CRLF on this platform (OPEN_ITEMS.md, calibration/daily_scoreboard.py, tests/test_calibration_daily_scoreboard.py, legacy_differential_result.json); files authored LF in this mission chain carry their LF bytes, for which the byte hash EQUALS the git-canonical staged-blob sha256 (the two mission-authorization contracts, july13 packet, compare_legacy_differential.py); governance/artifacts/universal_connected_path_graph.json is .gitattributes-pinned text eol=lf, so its only package form is LF under EVERY measurement — a transient CRLF copy in a writer's worktree is never package content (git normalizes it on stage/apply), which is exactly the defect the correction_history entry records",
- "verification_procedure": "git worktree add --detach <dir> a0d5e3b9a5f9731357465f93fe2375f9a4672338; cd <dir>; git apply --check <lane_a.patch>; git apply --index <lane_a.patch>; then EVERY entry below must equal the fresh-apply worktree byte sha256 OR the git-canonical staged blob sha256 ('git cat-file blob :<path>' | sha256) — the graph entry must equal BOTH",
+ "byte_form_policy": "each hash below is the sha256 of the file bytes in the final deliverable tree (the audited mission worktree in its gitattributes-normalized state, Windows, core.autocrlf=true): pre-existing tracked auto-text files render CRLF on this platform (OPEN_ITEMS.md, calibration/daily_scoreboard.py, tests/test_calibration_daily_scoreboard.py, legacy_differential_result.json); files authored LF in this mission chain carry their LF bytes, for which the byte hash EQUALS the git-canonical staged-blob sha256 (the two mission-authorization contracts, july13 packet, compare_legacy_differential.py); governance/artifacts/universal_connected_path_graph.json is .gitattributes-pinned text eol=lf, so its only package form is LF under EVERY measurement \u2014 a transient CRLF copy in a writer's worktree is never package content (git normalizes it on stage/apply), which is exactly the defect the correction_history entry records",
+ "verification_procedure": "git worktree add --detach <dir> a0d5e3b9a5f9731357465f93fe2375f9a4672338; cd <dir>; git apply --check <lane_a.patch>; git apply --index <lane_a.patch>; then EVERY entry below must equal the fresh-apply worktree byte sha256 OR the git-canonical staged blob sha256 ('git cat-file blob :<path>' | sha256) \u2014 the graph entry must equal BOTH",
  "procedure_variance_disclosure": "on core.autocrlf=true platforms 'git apply' (with or without --index) smudges NEWLY-ADDED auto-text files to CRLF in the working tree, so the 4 LF-authored entries verify against their staged-blob hashes (== the recorded values) rather than the smudged worktree rendering; the 4 CRLF-rendered entries verify against worktree bytes (their LF blob forms differ and are NOT the recorded convention); this split is disclosed rather than silently convention-switched because the CRLF renderings are what the audited platform materializes for pre-existing files and the recorded values are what Cursor's digest audit confirmed",
  "composition_input_paths_sha256": {
   "OPEN_ITEMS.md": "954fd59a6b7c7899663d3425bc47625e3ffa19a7dacdc2b0eda55c6f266060df",
   "calibration/daily_scoreboard.py": "b9d5c7643f3cf1b71d93a4c96468b7421f0df836765efe0bd383880176b8de2b",
   "governance/artifacts/universal_connected_path_graph.json": "70885815e5d5b7b9771cf961e1504830464045ab5d19aabcbe419c70b3a8fd75",
   "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": "b198201a143db848067bb6565f40e41f1640640f12786893158c2be8babc7761",
-  "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json": "9480e0308b38778454522638a9fee2bbf9dca17264c967cadfa211d2c2bdb82d",
+  "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json": "4e37d33a01574de80763b10f7832f5abb2c52837bc4fefbd063388252fceebd9",
   "reports/scoreboard_forensic/july13_2026_target_truth_forensic.json": "44817113f25caa16e3d886d5c02beeb91b0c082d95da009d5114815ea863ae41",
   "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py": "0a4ea2baf703795cdaf84f8d9c0442940cd74427d6ad165177fb01b73478d1bc",
   "reports/scoreboard_forensic/legacy_differential/legacy_differential_result.json": "b3780636557496d8449253981062812ffbdf3f5537848ba118dd5a8eaf9c547a",
@@ -33,9 +33,9 @@
    "field": "composition_input_paths_sha256['governance/artifacts/universal_connected_path_graph.json']",
    "stale_value_sha256": "378c9a6247b3aef2f8edf95557918b17c68a684b665669b36f2890bad1b61a23",
    "corrected_value_sha256": "70885815e5d5b7b9771cf961e1504830464045ab5d19aabcbe419c70b3a8fd75",
-   "root_cause": "the graph is .gitattributes-pinned text eol=lf; the mission worktree's regenerated copy carried transient CRLF line endings (5223 pairs, Windows writer), and the stale hash was taken over those worktree bytes; git normalizes the file to LF on stage/apply, so the clean-applied final tip materializes the LF form — identical JSON content, different byte form; the graph CONTENT was never changed by this correction",
+   "root_cause": "the graph is .gitattributes-pinned text eol=lf; the mission worktree's regenerated copy carried transient CRLF line endings (5223 pairs, Windows writer), and the stale hash was taken over those worktree bytes; git normalizes the file to LF on stage/apply, so the clean-applied final tip materializes the LF form \u2014 identical JSON content, different byte form; the graph CONTENT was never changed by this correction",
    "field_rename": "non_raw_paths_sha256 -> composition_input_paths_sha256 (the old name overclaimed: the table covers 9 of the 11 non-raw patch paths; see self_referential_hash_boundary)",
-   "campaign_impact": "NONE — the graph is not a mutation input and appears in no mutation's failure set; composition_id names the mutation-campaign composition (calibration/daily_scoreboard.py + detecting tests), which is byte-identical before and after this metadata correction; campaign re-run NOT_REQUIRED and NOT_APPROVED per operator packet",
+   "campaign_impact": "NONE \u2014 the graph is not a mutation input and appears in no mutation's failure set; composition_id names the mutation-campaign composition (calibration/daily_scoreboard.py + detecting tests), which is byte-identical before and after this metadata correction; campaign re-run NOT_REQUIRED and NOT_APPROVED per operator packet",
    "full_table_reconciliation": "all 9 entries were recomputed from the final worktree AND from a fresh clean plain-apply of the rebuilt patch: the 8 non-graph entries match their recorded values under both measurements (only the graph's worktree copy violated its own eol attribute); the --index-apply CRLF smudge variance on 4 newly-added files was discovered during this correction and is disclosed in procedure_variance_disclosure rather than silently convention-switched"
   },
   {
@@ -54,7 +54,23 @@
      "nature": "regenerated by the packaged CLI on the same base/fixture: exactly 2 of 17 fields changed (comparison_program_sha256 provenance + the reworded LEGACY_COMPLETE_JSON_BYTE_IDENTITY status string); fixture sha, 168/168 numeric identity, 224/224 field identity, subset hashes and exit 0 all identical"
     }
    },
-   "campaign_impact": "NONE — composition_id names the mutation-campaign composition (calibration/daily_scoreboard.py + the detecting test file), both byte-identical before and after this correction; the differential program and its result are inputs read at runtime by test_legacy_differential_artifact_reproduces, whose pass/fail behavior under every mutation is unchanged by wording constants (the test regenerates with the CURRENT program and compares); composition_id is therefore retained and denotes mutation inputs, not every evidence byte — the every-byte package identity is the external Lane-A patch sha256 in the mission return packet"
+   "campaign_impact": "NONE \u2014 composition_id names the mutation-campaign composition (calibration/daily_scoreboard.py + the detecting test file), both byte-identical before and after this correction; the differential program and its result are inputs read at runtime by test_legacy_differential_artifact_reproduces, whose pass/fail behavior under every mutation is unchanged by wording constants (the test regenerates with the CURRENT program and compares); composition_id is therefore retained and denotes mutation inputs, not every evidence byte \u2014 the every-byte package identity is the external Lane-A patch sha256 in the mission return packet"
+  },
+  {
+   "mission": "PR41_OPERATOR_PATH_PRIVACY_SCRUB_V1",
+   "date": "2026-07-14",
+   "nature": "privacy normalization: operator-home absolute path prefixes replaced with stable abstractions in raw stdout evidence (44 files re-content-addressed), manifest worktree_path fields, and the consumed retired contract's authorized_worktree; the ACTIVE mission contract's authorized_worktree is retained as machine-binding configuration required by the mission-authorization gate (validate_workspace string-compares it to the live worktree)",
+   "changes": {
+    "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json": {
+     "old_sha256": "9480e0308b38778454522638a9fee2bbf9dca17264c967cadfa211d2c2bdb82d",
+     "new_sha256": "4e37d33a01574de80763b10f7832f5abb2c52837bc4fefbd063388252fceebd9"
+    },
+    "reports/scoreboard_forensic/mutation_evidence_manifest.json": {
+     "old_sha256": "10e35802acfb94a03b079cb559412ddd9281c5c2e95bb3b1cd403b6fcf1b7211",
+     "new_sha256": "da223633ce171514c1acdbd1670a1dc3dfeaed3b1f3227664967ada37030a82e"
+    }
+   },
+   "campaign_impact": "NONE \u2014 sig-v2 signatures derive from JUnit-structured failures, not raw bytes; no mutation input (calibration/daily_scoreboard.py + detecting tests) changed; numeric evidence, exit codes and detection results are byte-level provable as unchanged apart from path prefixes"
   }
  ],
  "mutation_runner_sha256": "b60e6811256c0ff32a5ce13a36c2d857e1b1ba97adf1c607c2c949038cf254df",
@@ -74,7 +90,7 @@
    },
    "reports/scoreboard_forensic/mutation_evidence_manifest.json": {
     "change": "regenerated FROM this campaign (v5 merged-run schema)",
-    "final_sha256": "10e35802acfb94a03b079cb559412ddd9281c5c2e95bb3b1cd403b6fcf1b7211"
+    "final_sha256": "da223633ce171514c1acdbd1670a1dc3dfeaed3b1f3227664967ada37030a82e"
    }
   },
   "signature_validity_proof": "neither changed file participates in ANY mutation's failure set: all 27 mutations target calibration/daily_scoreboard.py; the purity test reads only the manifest JSON (passes under every DS mutation) and the manifest is not read by any detecting test; therefore every recorded sig-v2 signature is exactly valid for the final package"

@@ -1,0 +1,51 @@
+..................................................................F..... [ 86%]
+.........F.                                                              [100%]
+================================== FAILURES ===================================
+_______________ test_defect1_console_renderer_carries_contracts _______________
+
+tmp_path = WindowsPath('<PYTEST_TMP>/pytest-903/test_defect1_console_renderer_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000145E0589710>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000014582C06270>
+
+    def test_defect1_console_renderer_carries_contracts(tmp_path, monkeypatch, capsys):
+        """The console/log summary (second operator surface found in discovery) must
+        carry the same canonical semantic contracts."""
+        import calibration.daily_scoreboard as ds
+    
+        db = _fixture_db(tmp_path)
+        monkeypatch.setattr(
+            sys, "argv",
+            ["daily_scoreboard", "--db", str(db), "--date", ET_DATE, "--no-backfill",
+             "--out-dir", str(tmp_path / "out"), "--allow-noncanonical-db"],
+        )
+        monkeypatch.setattr(ds, "require_canonical_db_target", lambda *a, **k: None)
+        assert ds.main() == 0
+        out = capsys.readouterr().out.lower()
+>       assert "by_horizon_legacy_semantics" in out
+E       assert 'by_horizon_legacy_semantics' in '{\n  "et_date": "2026-06-09",\n  "note": "summary",\n  "by_horizon": {\n    "1c": {\n      "n_pred": 2,\n      "n_sco...\\\pytest-of-evarg\\\\pytest-903\\\\test_defect1_console_renderer_0\\\\out\\\\actionability_2026-06-09.json"\n  }\n}\n'
+
+tests\test_calibration_daily_scoreboard.py:1444: AssertionError
+_______ test_defect1_renderers_consume_canonical_contracts_source_lock ________
+
+    def test_defect1_renderers_consume_canonical_contracts_source_lock():
+        """Test 17 (mechanical recurrence lock): both renderers reference the canonical
+        display contracts; the legacy explanatory text is not independently hard-coded
+        (single governed semantic-definition source)."""
+        import ast
+    
+        src = Path(__file__).resolve().parent.parent.joinpath(
+            "calibration", "daily_scoreboard.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        for fname in ("render_html", "main"):
+            fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == fname)
+            names = {x.id for x in ast.walk(fn) if isinstance(x, ast.Name)}
+>           assert "LEGACY_ALL_DISPLAY_CONTRACT" in names, f"{fname} does not consume the canonical legacy contract"
+E           AssertionError: main does not consume the canonical legacy contract
+E           assert 'LEGACY_ALL_DISPLAY_CONTRACT' in {'DEFAULT_DB', 'DEFAULT_REPORT_DIR', 'ET', 'Exception', 'Path', 'TRADE_CALL_DISPLAY_CONTRACT', ...}
+
+tests\test_calibration_daily_scoreboard.py:1784: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts
+FAILED tests/test_calibration_daily_scoreboard.py::test_defect1_renderers_consume_canonical_contracts_source_lock
+2 failed, 81 passed in 19.09s

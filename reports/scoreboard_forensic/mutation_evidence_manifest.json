@@ -36,7 +36,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "29fcc330892c36266fea405a10b5283e6db38f8628df1f1fc6f759c899e69378",
     "structured_failures": [
@@ -125,10 +125,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "c7ce787f27fc838aa3ff22be153779bf7d0409f9c7b3f383a4c8553d2297f54a",
+    "raw_stdout_sha256": "6ffe52f887d875d879e9f90f30d2ad7cf01973aa939824c36a43c196c4cb99d8",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "M1_run1_stdout_c7ce787f27fc838a.txt",
+     "stdout_file": "M1_run1_stdout_6ffe52f887d875d8.txt",
      "stderr_file": "M1_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_legacy_triclass_retained_and_deprecated\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_long_short_mapping_for_trade_calls\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_wait_is_abstention_not_flat_prediction\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_fail_closed_matrix\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest\",\"phase\":\"call\"}],\"mutation_id\":\"M1\",\"schema_version\":\"sig-v2\"}",
@@ -138,7 +138,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "a7cac12c66bef0c7ec8fb158cdb169eb5d298a166734048510966b5561b1d510",
     "structured_failures": [
@@ -227,10 +227,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "25ebc23c3fe4e25e666c1abc5ee65157cb887a920d94359f5d88d7dc574e46ac",
+    "raw_stdout_sha256": "982197ee39c45d2cea900a7c8cd9c0c8e1abd5ed5775dc40cffabb4a220a3a5e",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "M1_run2_stdout_25ebc23c3fe4e25e.txt",
+     "stdout_file": "M1_run2_stdout_982197ee39c45d2c.txt",
      "stderr_file": "M1_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_legacy_triclass_retained_and_deprecated\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_long_short_mapping_for_trade_calls\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_wait_is_abstention_not_flat_prediction\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_fail_closed_matrix\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest\",\"phase\":\"call\"}],\"mutation_id\":\"M1\",\"schema_version\":\"sig-v2\"}",
@@ -257,7 +257,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "03cd6c4ffa373b30421a4656581a07b551c7c29488c682be16208d5fe81a1add",
     "structured_failures": [
@@ -287,7 +287,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "95f34fc3d4733142340af1ea42788e6d1784c936a2777fc6191c11f2f13e5653",
     "structured_failures": [
@@ -334,7 +334,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "3561ed9877d56ee323a2a875f054a240cd9ecc9d46abbbf495b6db3e73321feb",
     "structured_failures": [
@@ -360,7 +360,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "2615f3693acb060161cd4eb181e0d97a41d155df90eb897f7a8edeb8daa62f32",
     "structured_failures": [
@@ -403,7 +403,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "ccc5bdb8df678283a6f2099cfcb7a02256fc3fc11e019551142f062ff0c8d06e",
     "structured_failures": [
@@ -412,10 +412,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "2ced78ea49a0552a69daef44c1e2260e95034db019c3dedb032d72911ac2ed2f",
+    "raw_stdout_sha256": "45411f2fcc10d9afffb0bae4db130711549224ce1f3ec237d0dac95ea047053f",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "M6_run1_stdout_2ced78ea49a0552a.txt",
+     "stdout_file": "M6_run1_stdout_45411f2fcc10d9af.txt",
      "stderr_file": "M6_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v4_invalid_threshold_rows_excluded_from_every_trusted_metric\",\"phase\":\"call\"}],\"mutation_id\":\"M6\",\"schema_version\":\"sig-v2\"}",
@@ -425,7 +425,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "66b3e95d2a313cc752fc9eec839f73f7819cfdb25da337eaa961a5f83ec03a87",
     "structured_failures": [
@@ -434,10 +434,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "bc826293cf0ff54ae8024150baae72508839eaf788b7aa2abb8db11a5abf066f",
+    "raw_stdout_sha256": "89d37c861c4d874cc49638c10d8176d23b7601d55e38dd184549cf06c5ef48ee",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "M6_run2_stdout_bc826293cf0ff54a.txt",
+     "stdout_file": "M6_run2_stdout_89d37c861c4d874c.txt",
      "stderr_file": "M6_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v4_invalid_threshold_rows_excluded_from_every_trusted_metric\",\"phase\":\"call\"}],\"mutation_id\":\"M6\",\"schema_version\":\"sig-v2\"}",
@@ -464,7 +464,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "c185345fc708088a140801cf2898bd01b06bd1b038c6daeda1c4df6d43b3e7e1",
     "structured_failures": [
@@ -477,10 +477,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "b5cc5d1204e0898ae519e51fb7468406aa2fa9a6903b9b9b04711241d294f7ec",
+    "raw_stdout_sha256": "e680e8666b3c148fedb79bbfe2a503e092a28d39597b3f6937c2d839be8cfc5a",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "M7_run1_stdout_b5cc5d1204e0898a.txt",
+     "stdout_file": "M7_run1_stdout_e680e8666b3c148f.txt",
      "stderr_file": "M7_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_build_daily_scoreboard_scores_per_ticker_and_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_legacy_differential_artifact_reproduces\",\"phase\":\"call\"}],\"mutation_id\":\"M7\",\"schema_version\":\"sig-v2\"}",
@@ -490,7 +490,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "c5d7afbdcb9cfd40b851515f41336d275b8c92f2d232630e4bd87e68cde5c62d",
     "structured_failures": [
@@ -503,10 +503,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "c76da51341c2fff8f22d5b5bbd70a2a286f06635911e03d492fd134425b07740",
+    "raw_stdout_sha256": "18887c6f702efda9ec018f3c40af435e1af7f40e02f37ff1b25427524182e4c2",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "M7_run2_stdout_c76da51341c2fff8.txt",
+     "stdout_file": "M7_run2_stdout_18887c6f702efda9.txt",
      "stderr_file": "M7_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_build_daily_scoreboard_scores_per_ticker_and_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_legacy_differential_artifact_reproduces\",\"phase\":\"call\"}],\"mutation_id\":\"M7\",\"schema_version\":\"sig-v2\"}",
@@ -533,7 +533,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "9fea79c5b786b05da7b5c3c4a0ef86c8249ef1d02527a1c7ee4f2f10e69c67db",
     "structured_failures": [
@@ -555,7 +555,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "ccade0f5ee7ab91716d33a8526c634211514bd5c1a4efaa5b6e6be440114af8b",
     "structured_failures": [
@@ -594,7 +594,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "1a9e2dcec0fdc28c77ad38b0e892937fb496b71852befb2373e863dd8cdfa1bd",
     "structured_failures": [
@@ -616,7 +616,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "cd3cdf975793d1c6d86939395f68528183dc70e37e9234151e35f3a28147ed0d",
     "structured_failures": [
@@ -655,7 +655,7 @@
    "iteration_history": "initial variant SURVIVED via display_name redundancy; test strengthened to pin the explicit treatment phrase; DETECTED thereafter",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "2773e5bc6793db3e09e4e986326efcb135f8e3711fc5adc5b7e732e8ef5bd214",
     "structured_failures": [
@@ -664,10 +664,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "12f5efa48d91a2300ce1ea71969ea374013a9f705f0e9bf31b278bf01601265c",
+    "raw_stdout_sha256": "8d813ff29344cad42a74df25e1457a93d406cbbfc38e42f843e8ff62a2822846",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D2_run1_stdout_12f5efa48d91a230.txt",
+     "stdout_file": "D2_run1_stdout_8d813ff29344cad4.txt",
      "stderr_file": "D2_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"}],\"mutation_id\":\"D2\",\"schema_version\":\"sig-v2\"}",
@@ -677,7 +677,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "22dfa3ff3400b67c05e4f51a856c1901039deffa2ff8a89346eba36aac26f9cc",
     "structured_failures": [
@@ -686,10 +686,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "e083d8e02ce9590d5c0aaa7b994d7e0fa71cc68201349393a076853c30d5db68",
+    "raw_stdout_sha256": "886baa689a71561e01875bf521455c779fb6010062466e4c3e0789c9ddcd5ad1",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D2_run2_stdout_e083d8e02ce9590d.txt",
+     "stdout_file": "D2_run2_stdout_886baa689a71561e.txt",
      "stderr_file": "D2_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"}],\"mutation_id\":\"D2\",\"schema_version\":\"sig-v2\"}",
@@ -716,7 +716,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "e53644d79599f2d28f2391f029cd51daa5cf1a14f677436f9841b0a77e7750ab",
     "structured_failures": [
@@ -793,10 +793,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "20207005f77aad44958009108cccfb2ddfb59e62d0c13053025c08e5177b7747",
+    "raw_stdout_sha256": "0459624c65cd207971eb7e17ed581c7a7e3a19570c0774de4adeb4cb925c7285",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D3_run1_stdout_20207005f77aad44.txt",
+     "stdout_file": "D3_run1_stdout_0459624c65cd2079.txt",
      "stderr_file": "D3_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_renderers_consume_canonical_contracts_source_lock\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest\",\"phase\":\"call\"}],\"mutation_id\":\"D3\",\"schema_version\":\"sig-v2\"}",
@@ -806,7 +806,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "2c4c896da873d9aa67c318ebfee3f739ed2c851153e15a0aa87f3adb1f7e5d1c",
     "structured_failures": [
@@ -883,10 +883,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "3a8053d55cbdccd8f44f0fe6d4da0ef8335f1f41b8ecac9d14566f8ef3247190",
+    "raw_stdout_sha256": "042b4c5b2202c054c074fb1aba0ecc74b13d3c14910d7cd2c8973e867f798ff7",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D3_run2_stdout_3a8053d55cbdccd8.txt",
+     "stdout_file": "D3_run2_stdout_042b4c5b2202c054.txt",
      "stderr_file": "D3_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_renderers_consume_canonical_contracts_source_lock\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest\",\"phase\":\"call\"}],\"mutation_id\":\"D3\",\"schema_version\":\"sig-v2\"}",
@@ -913,7 +913,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "8f631828f87be42422484875598022c708179b165d115a5bdc5fb73c65ab68cf",
     "structured_failures": [
@@ -930,10 +930,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "b0fb1bc86c1cbc6c5fdccfe2a53df2dfc47343229d8d6d004ff1406f53825744",
+    "raw_stdout_sha256": "1024ed05b37f6aa7c08afc79269ce4e4b67228892e289be3e4a3343fa10faf83",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D4_run1_stdout_b0fb1bc86c1cbc6c.txt",
+     "stdout_file": "D4_run1_stdout_1024ed05b37f6aa7.txt",
      "stderr_file": "D4_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"}],\"mutation_id\":\"D4\",\"schema_version\":\"sig-v2\"}",
@@ -943,7 +943,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "7f46709d32e58f05ded7d359fcc34a8681ae40a62b06afd6c1d6eb466fa4c6e7",
     "structured_failures": [
@@ -960,10 +960,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "fb554b92b3777bcb5669c831af1459b8caec839fa8face001011e87921cc68d1",
+    "raw_stdout_sha256": "f39848e8beffd0385d406926aff8e452d00b60e016194d1f47ee1b2e7c7b69e0",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D4_run2_stdout_fb554b92b3777bcb.txt",
+     "stdout_file": "D4_run2_stdout_f39848e8beffd038.txt",
      "stderr_file": "D4_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"}],\"mutation_id\":\"D4\",\"schema_version\":\"sig-v2\"}",
@@ -990,7 +990,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "733963c369ad7475195a6db78aed8fef6eb69a7a8d5ed42753ee1091bfd80a1d",
     "structured_failures": [
@@ -999,10 +999,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "56bf50b040aa59f9d55df076f855bda1ba0d059f118094ef55291fbc140f7c29",
+    "raw_stdout_sha256": "8185d7f85eb8ea77245f758ab22766a7bdf16ab1be9b70ce61931fc39ef61db8",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D5_run1_stdout_56bf50b040aa59f9.txt",
+     "stdout_file": "D5_run1_stdout_8185d7f85eb8ea77.txt",
      "stderr_file": "D5_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"}],\"mutation_id\":\"D5\",\"schema_version\":\"sig-v2\"}",
@@ -1012,7 +1012,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "cf84ca7d36823a00a95f0089bdcdb6ce193776c9a7fd98048051be1f87dc3cb4",
     "structured_failures": [
@@ -1021,10 +1021,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "bfc677409bfab6a70d8e4b072ee25f099883de09603653b8ee56577b0f33d710",
+    "raw_stdout_sha256": "8420be8bc2c2f14be962af4ba8d42d6d834520018a846e0c335e918268aff771",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D5_run2_stdout_bfc677409bfab6a7.txt",
+     "stdout_file": "D5_run2_stdout_8420be8bc2c2f14b.txt",
      "stderr_file": "D5_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"}],\"mutation_id\":\"D5\",\"schema_version\":\"sig-v2\"}",
@@ -1051,7 +1051,7 @@
    "iteration_history": "V2 campaign initially skipped a D6 id (defect covered by E5/E6); a first D6 probe SURVIVED because the zero-call phrase exists redundantly in presentation AND render; probe corrected to mutate every occurrence; DETECTED thereafter",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "becf5709bc44d035c57fc849ae7fa080344e8e802d8abdea73f93ca83a1fbeeb",
     "structured_failures": [
@@ -1073,7 +1073,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "77219a1821d4aeeffedcf0f815d99498d80d6b0bf641271ef4f337f0e326e42b",
     "structured_failures": [
@@ -1112,7 +1112,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "a344add579a9150b0f67faf30ba027983a2ce96cb8c7d569f91aa410c7d3bb1d",
     "structured_failures": [
@@ -1121,10 +1121,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "b00970ccf814a09cb225d1cd62cac447bd9391dc506b12a24c2d554368c567c6",
+    "raw_stdout_sha256": "67c9e04763778601092d18647d9f664b5a0331d2b5380ebbdfb30d895984249a",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D7_run1_stdout_b00970ccf814a09c.txt",
+     "stdout_file": "D7_run1_stdout_67c9e04763778601.txt",
      "stderr_file": "D7_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"}],\"mutation_id\":\"D7\",\"schema_version\":\"sig-v2\"}",
@@ -1134,7 +1134,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "197a7d6c693e8fc29dad29f60966301a8ca6e085311c5cf7396d65f156748f03",
     "structured_failures": [
@@ -1143,10 +1143,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "4a7624241dc4d3ee6fba9651731bf6000c03d90fa54eb95a47b5278056e00d32",
+    "raw_stdout_sha256": "91054e20a1ac94b8e984e24d9a67a5f4681ab739915baff890e26d7305495a3b",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D7_run2_stdout_4a7624241dc4d3ee.txt",
+     "stdout_file": "D7_run2_stdout_91054e20a1ac94b8.txt",
      "stderr_file": "D7_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"}],\"mutation_id\":\"D7\",\"schema_version\":\"sig-v2\"}",
@@ -1173,7 +1173,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "3d34435997d58cb8847c94f170a278027d03bf1f85aa4d9e35ee156d8cf68ded",
     "structured_failures": [
@@ -1182,10 +1182,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "87f017a8cde77948669a93cfcf3c6e7dc6b3c549ccff6b03b8399489678dfce4",
+    "raw_stdout_sha256": "7455905653501808b42fb2f7e8067fd7887d558e0aa21c4ddf9348ef551eae22",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D8_run1_stdout_87f017a8cde77948.txt",
+     "stdout_file": "D8_run1_stdout_7455905653501808.txt",
      "stderr_file": "D8_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"}],\"mutation_id\":\"D8\",\"schema_version\":\"sig-v2\"}",
@@ -1195,7 +1195,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "155641532fba5ebdc83f1f5b3f83892c6d207ff72156f9033879b64b00c632a1",
     "structured_failures": [
@@ -1204,10 +1204,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "187e085cdfff9562c114eb78e635f0c51216613d2e30cfcfd2a8e5149b5ef319",
+    "raw_stdout_sha256": "52bd3fdcd38e00190123957e6fcd12595c8a35ddb6ebce91a14894f5b4ba6e03",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D8_run2_stdout_187e085cdfff9562.txt",
+     "stdout_file": "D8_run2_stdout_52bd3fdcd38e0019.txt",
      "stderr_file": "D8_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"}],\"mutation_id\":\"D8\",\"schema_version\":\"sig-v2\"}",
@@ -1234,7 +1234,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "653912d7fdbb7335e59737ff8eb9ff53ba54bdcc3aed4970a6d760043d941e13",
     "structured_failures": [
@@ -1247,10 +1247,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "786e1d15fd99afc7f70362f55e168815607de9544dbcc49afe2de2dcec21ece1",
+    "raw_stdout_sha256": "66f8e137c3cb9eb739571949298d91d36cdbf0311b89d2556467b816eaf4ccdf",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D9_run1_stdout_786e1d15fd99afc7.txt",
+     "stdout_file": "D9_run1_stdout_66f8e137c3cb9eb7.txt",
      "stderr_file": "D9_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_renderers_consume_canonical_contracts_source_lock\",\"phase\":\"call\"}],\"mutation_id\":\"D9\",\"schema_version\":\"sig-v2\"}",
@@ -1260,7 +1260,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "cdaf5e378c4fd08ed5ea9134bbc7d90376d9c52bd584ad36262967f8c216a0b9",
     "structured_failures": [
@@ -1273,10 +1273,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "dd1866b829830fc191fecff44e27c094ae7444242b07775df353aa46131f01a3",
+    "raw_stdout_sha256": "30a68185a98e8a12e4fdb21a1f7e740c052b8a8cf21ba516c81b2b07cb139246",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D9_run2_stdout_dd1866b829830fc1.txt",
+     "stdout_file": "D9_run2_stdout_30a68185a98e8a12.txt",
      "stderr_file": "D9_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_renderers_consume_canonical_contracts_source_lock\",\"phase\":\"call\"}],\"mutation_id\":\"D9\",\"schema_version\":\"sig-v2\"}",
@@ -1303,7 +1303,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "0a456bfb39a0fbe223e5cb61455367d20e2089ed7627fb685a14dd3b704155bb",
     "structured_failures": [
@@ -1328,10 +1328,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "a81becd0d3132de17a1d84fe90723416bc6b53d2d0f84c599d8682b4808d4fec",
+    "raw_stdout_sha256": "980d10e29429c7aa4753ada7f2cf411db1431aecfd6a4855a6c1fde0d0ca95e9",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D10_run1_stdout_a81becd0d3132de1.txt",
+     "stdout_file": "D10_run1_stdout_980d10e29429c7aa.txt",
      "stderr_file": "D10_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_build_daily_scoreboard_scores_per_ticker_and_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_existing_hit_math_preserved\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_legacy_differential_artifact_reproduces\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_does_not_change_scored_math\",\"phase\":\"call\"}],\"mutation_id\":\"D10\",\"schema_version\":\"sig-v2\"}",
@@ -1341,7 +1341,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "9bccd6e5e26f785e069ef90aadd93e596578d83b14a3829fb54131426ab5576a",
     "structured_failures": [
@@ -1366,10 +1366,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "281361502cfeb9307e7f2d8958c7d7f59e6a4c79dd3e9098836da937e69a7251",
+    "raw_stdout_sha256": "96dc7b156eaf3cd61b5d2a0e77f5bf1c75ee9aa9fe70b8a6b81ba02e616c5b7f",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D10_run2_stdout_281361502cfeb930.txt",
+     "stdout_file": "D10_run2_stdout_96dc7b156eaf3cd6.txt",
      "stderr_file": "D10_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_build_daily_scoreboard_scores_per_ticker_and_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_existing_hit_math_preserved\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_legacy_differential_artifact_reproduces\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_does_not_change_scored_math\",\"phase\":\"call\"}],\"mutation_id\":\"D10\",\"schema_version\":\"sig-v2\"}",
@@ -1396,7 +1396,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "6158730b7a2163e1e6771b6237b77a42c92bed5443dcb26f8fce163dd3d1d63d",
     "structured_failures": [
@@ -1405,10 +1405,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "b0b8e869413979c05cb39fe71ef7e68067513493ff941c91632d25cc2bd144a5",
+    "raw_stdout_sha256": "ea44c2812b29b29007c4bb985c1c3418b5703bbe8bee1a0c91fdcc429d68012a",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D11_run1_stdout_b0b8e869413979c0.txt",
+     "stdout_file": "D11_run1_stdout_ea44c2812b29b290.txt",
      "stderr_file": "D11_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_rolling_horizon_log_loss_and_skill_weights\",\"phase\":\"call\"}],\"mutation_id\":\"D11\",\"schema_version\":\"sig-v2\"}",
@@ -1418,7 +1418,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "d9ed0ee6226a8a97c5d183fc0812040e9d126674a4f4fba09d487cde4d9d4653",
     "structured_failures": [
@@ -1427,10 +1427,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "d7b359631cccd842734854a039f610c8ef14ff1b5e5629c6b331968b07c53c8d",
+    "raw_stdout_sha256": "a9bf34229077040509bb3756bc69c088eba50cfebc1d0f81dfc6cb8c31c02780",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "D11_run2_stdout_d7b359631cccd842.txt",
+     "stdout_file": "D11_run2_stdout_a9bf342290770405.txt",
      "stderr_file": "D11_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_rolling_horizon_log_loss_and_skill_weights\",\"phase\":\"call\"}],\"mutation_id\":\"D11\",\"schema_version\":\"sig-v2\"}",
@@ -1457,7 +1457,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "f3e1bfe74d93fed5cccab9ea6102679cab63b058471c98ca181a0040f788c67c",
     "structured_failures": [
@@ -1470,10 +1470,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "98a4a09579aa0a8dbf57d60f548f50f2100dd55a3b0374188b1f40fec4392ba6",
+    "raw_stdout_sha256": "0881d251affebd63a138a50e769c25ce6ff3314dd331d6fe3ed46b10b39bb923",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E1_run1_stdout_98a4a09579aa0a8d.txt",
+     "stdout_file": "E1_run1_stdout_0881d251affebd63.txt",
      "stderr_file": "E1_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"}],\"mutation_id\":\"E1\",\"schema_version\":\"sig-v2\"}",
@@ -1483,7 +1483,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "cb5704507b0f25b85e0c936a99090c000a0be355d99adeb2bb519e31ea7f210d",
     "structured_failures": [
@@ -1496,10 +1496,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "be91f60b036af55d7e3acc3933031b6af060f9e9554557707f2ff67dfb97700f",
+    "raw_stdout_sha256": "4ce48b0682501b1c401c947d45f0b11c55c3feaff580e9392548e23c6afaeb54",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E1_run2_stdout_be91f60b036af55d.txt",
+     "stdout_file": "E1_run2_stdout_4ce48b0682501b1c.txt",
      "stderr_file": "E1_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"}],\"mutation_id\":\"E1\",\"schema_version\":\"sig-v2\"}",
@@ -1526,7 +1526,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "3b335dce8cd35d1247cfaa5c37fb08f5e9686e1df54161d00ce88a7d9dbc73b3",
     "structured_failures": [
@@ -1535,10 +1535,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "cf33a6dba489090cf588f49c2a4088dc36c80c723b21785d1ef612483984e016",
+    "raw_stdout_sha256": "53bfeca223584e5ad37863ca24b5b680861e89aa5c8c998b9aaa7d5b00afba8b",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E2_run1_stdout_cf33a6dba489090c.txt",
+     "stdout_file": "E2_run1_stdout_53bfeca223584e5a.txt",
      "stderr_file": "E2_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"}],\"mutation_id\":\"E2\",\"schema_version\":\"sig-v2\"}",
@@ -1548,7 +1548,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "a92374db4a671292a8897a53681f062ba2f080ef4ed2213e94470989c9f148e5",
     "structured_failures": [
@@ -1557,10 +1557,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "adf68ef271d225ba7ce9ecaedcba122770a85616de9ede59cff9b4c12c419ba8",
+    "raw_stdout_sha256": "4a39c634c17b46a9092d7507c27ce069b6ce9ac8464d0e09e578e5647c5c357c",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E2_run2_stdout_adf68ef271d225ba.txt",
+     "stdout_file": "E2_run2_stdout_4a39c634c17b46a9.txt",
      "stderr_file": "E2_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"}],\"mutation_id\":\"E2\",\"schema_version\":\"sig-v2\"}",
@@ -1587,7 +1587,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "20fb0141dae3027fdcb6189ac8692dac23337440d92d4c516bfe1ef8a914cc75",
     "structured_failures": [
@@ -1600,10 +1600,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "a52a938b84e31fa591c8f0602e884acddfa9eb56b2123e043d2390bcdaf21c69",
+    "raw_stdout_sha256": "c62d089aee28bb7442f980f3ba9b3c50c307646517508e108028e37b3b093a2b",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E3_run1_stdout_a52a938b84e31fa5.txt",
+     "stdout_file": "E3_run1_stdout_c62d089aee28bb74.txt",
      "stderr_file": "E3_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"}],\"mutation_id\":\"E3\",\"schema_version\":\"sig-v2\"}",
@@ -1613,7 +1613,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "f1df1c3c928ba77fcdc3703e35a00cea969d78db37352cfa92e8ade7795ac413",
     "structured_failures": [
@@ -1626,10 +1626,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "d44e00b0084b083c45360fac2a6e62deaf86513e45aa2a161d61f4f8ff521112",
+    "raw_stdout_sha256": "fe74453b220afc8e2e70f1cea5f24be0e43481619e43209b9010a01e3e8a3de9",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E3_run2_stdout_d44e00b0084b083c.txt",
+     "stdout_file": "E3_run2_stdout_fe74453b220afc8e.txt",
      "stderr_file": "E3_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"}],\"mutation_id\":\"E3\",\"schema_version\":\"sig-v2\"}",
@@ -1656,7 +1656,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "01f3a5a12f7f2ee93a9485bdc937f05fafe7b5181bc6d5d1afabe12594ec2be6",
     "structured_failures": [
@@ -1669,10 +1669,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "d924b7ef525ac9255270fa6e8a2f705c24c2d50bd49ffffb281a8141d68d1ae0",
+    "raw_stdout_sha256": "d98ec3943602b991b427fc7e4891c1af54c755d4d8df042a48d828ffda00349b",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E4_run1_stdout_d924b7ef525ac925.txt",
+     "stdout_file": "E4_run1_stdout_d98ec3943602b991.txt",
      "stderr_file": "E4_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"}],\"mutation_id\":\"E4\",\"schema_version\":\"sig-v2\"}",
@@ -1682,7 +1682,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "5916963fd7fbb6ad308d6d85e7c1080d0129656699b1ca251efad47c205378a8",
     "structured_failures": [
@@ -1695,10 +1695,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "3d4416806744c138df5c24ee951a30d5a4a251bb4dfe3d966b226c8ac26e40c7",
+    "raw_stdout_sha256": "41986d664ef659dec99c9a7cb4c63af974d7d1a7d4dd111368097ea35df16c65",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E4_run2_stdout_3d4416806744c138.txt",
+     "stdout_file": "E4_run2_stdout_41986d664ef659de.txt",
      "stderr_file": "E4_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"}],\"mutation_id\":\"E4\",\"schema_version\":\"sig-v2\"}",
@@ -1725,7 +1725,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "fdfcf309c9a7565da12bbc4a130e97a9943beb12b2b457b6068ef5c94298b087",
     "structured_failures": [
@@ -1802,10 +1802,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "15d680e0833fa4f26066491fd318652b31033d52e92df7c686bf0d7189902ef1",
+    "raw_stdout_sha256": "a672f4de8e36ba5d4be6f6b0701ad916729f79b4af8e4ef91cd4ac6f7b750722",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E5_run1_stdout_15d680e0833fa4f2.txt",
+     "stdout_file": "E5_run1_stdout_a672f4de8e36ba5d.txt",
      "stderr_file": "E5_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_fail_closed_matrix\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest\",\"phase\":\"call\"}],\"mutation_id\":\"E5\",\"schema_version\":\"sig-v2\"}",
@@ -1815,7 +1815,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "1fa39109bf02c0e8a7230f0494a2c34984e1f06e91109a8baf1fb7e56aa67d6b",
     "structured_failures": [
@@ -1892,10 +1892,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "f3eaf25e1dc48ebb465f002dc0b183e93e6fce0c299aa648cb31e9914c1115d5",
+    "raw_stdout_sha256": "d56084bf0b3657d01bb28723ebb553f4592dec9d62d3a8b13b95b32a432cf7c1",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E5_run2_stdout_f3eaf25e1dc48ebb.txt",
+     "stdout_file": "E5_run2_stdout_d56084bf0b3657d0.txt",
      "stderr_file": "E5_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_fail_closed_matrix\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest\",\"phase\":\"call\"}],\"mutation_id\":\"E5\",\"schema_version\":\"sig-v2\"}",
@@ -1922,7 +1922,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "292516e5523eda01072abfa21398069a340deef95de954667c44351ce7b80c16",
     "structured_failures": [
@@ -1999,10 +1999,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "83c921c0defcb8d74b5d00477a4956d7d46ebaa63661ffe65ed79648f2c84806",
+    "raw_stdout_sha256": "501a8f889f105f0fd92b0ab53266882df0261580dc49fbd760b6f080693a8afc",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E6_run1_stdout_83c921c0defcb8d7.txt",
+     "stdout_file": "E6_run1_stdout_501a8f889f105f0f.txt",
      "stderr_file": "E6_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_fail_closed_matrix\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest\",\"phase\":\"call\"}],\"mutation_id\":\"E6\",\"schema_version\":\"sig-v2\"}",
@@ -2012,7 +2012,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "2761deee1187d5923d904a889eeed691b2ceeafa73e19b685d688660196b9c4a",
     "structured_failures": [
@@ -2089,10 +2089,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "4f57be30fca63d2bd044f3ff2c5aa32c8062ff002353241c855c625c33438657",
+    "raw_stdout_sha256": "4bee2ef67247993609b2b3680fb2c9bf23de9d81c25e1a79d983691777a7d33a",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E6_run2_stdout_4f57be30fca63d2b.txt",
+     "stdout_file": "E6_run2_stdout_4bee2ef672479936.txt",
      "stderr_file": "E6_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_all_card_row_scores_final_bias_at_primary_horizon\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_console_renderer_carries_contracts\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_governed_trade_call_display_contract\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_legacy_all_display_is_semantically_qualified\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_no_shared_unqualified_heading\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_warnings_and_invalid_cohorts_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_defect1_zero_call_safety_in_render\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_denominator_html_renders_grid_and_zero_row_tickers\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_qc_html_renders_refinement_inputs\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_display_contracts_behaviorally_bound\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_governed_unit_colocates_target_threshold_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_fail_closed_matrix\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_low_coverage_render_leads_with_status\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"},{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_write_reports_emit_json_html_and_latest\",\"phase\":\"call\"}],\"mutation_id\":\"E6\",\"schema_version\":\"sig-v2\"}",
@@ -2119,7 +2119,7 @@
    "iteration_history": "initially SURVIVED (no equal-weight all-row lock); test_v2_every_table_labels_the_legacy_all_row added; DETECTED thereafter",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "fd5e5e70aa2bb8c88e4e7272bb27e93573ba1588b16f9ca7b666d92df480e7e9",
     "structured_failures": [
@@ -2128,10 +2128,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "7d95b08f3395b594413c89741722ed67f598cf3c79c63106af2bac72d451ea97",
+    "raw_stdout_sha256": "011f4748b74adf1904ae050058aa8251504a94f311584c8a319bc8b8cd94f3b1",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E7_run1_stdout_7d95b08f3395b594.txt",
+     "stdout_file": "E7_run1_stdout_011f4748b74adf19.txt",
      "stderr_file": "E7_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"}],\"mutation_id\":\"E7\",\"schema_version\":\"sig-v2\"}",
@@ -2141,7 +2141,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "0a8c46625333c80e31a48806aaa7ac5d2377b54b0695cbb9dd29c2505cec4ed6",
     "structured_failures": [
@@ -2150,10 +2150,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "e37424789e791a4238205d7d0dba28b5446063839ca9cd36e33bad07784e0639",
+    "raw_stdout_sha256": "19b29160cbb1488e9bf73a040af4eb91eb9c08c460901640ea90fc3ec2dee83e",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "E7_run2_stdout_e37424789e791a42.txt",
+     "stdout_file": "E7_run2_stdout_19b29160cbb1488e.txt",
      "stderr_file": "E7_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v2_every_table_labels_the_legacy_all_row\",\"phase\":\"call\"}],\"mutation_id\":\"E7\",\"schema_version\":\"sig-v2\"}",
@@ -2180,7 +2180,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "b09da108f280dd2b9c133f68aea32738986eb896a96f7a33f8e5282d83cb9b3b",
     "structured_failures": [
@@ -2189,10 +2189,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "75a94854de63706cabe5a86875d055235609c06d2544a93d28a546b350c5f642",
+    "raw_stdout_sha256": "9f29cd0e37ee2479708f3b55f9f39c303d5022f20088040bc63f1f3ecb7e604f",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "V1_run1_stdout_75a94854de63706c.txt",
+     "stdout_file": "V1_run1_stdout_9f29cd0e37ee2479.txt",
      "stderr_file": "V1_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"}],\"mutation_id\":\"V1\",\"schema_version\":\"sig-v2\"}",
@@ -2202,7 +2202,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "7cb07a5487763009e05f3bb926739b4bb4d102139dffe5c750a3664d5e249762",
     "structured_failures": [
@@ -2211,10 +2211,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "9ea8a9ac4bc43cb741caa5f5bac6265d4f2386c6963ba1da7ee60ef46174d1a8",
+    "raw_stdout_sha256": "c16d3a231be2b81deb52c101af9291a9e2633d0a46cdde0364c73976f9b1332b",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "V1_run2_stdout_9ea8a9ac4bc43cb7.txt",
+     "stdout_file": "V1_run2_stdout_c16d3a231be2b81d.txt",
      "stderr_file": "V1_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_ratified_config_never_inflates_target_validity\",\"phase\":\"call\"}],\"mutation_id\":\"V1\",\"schema_version\":\"sig-v2\"}",
@@ -2241,7 +2241,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "f151dca22de6aed1916a6df58408c12cef9a1b53615b3ec2a6bd7fcdc64c25ce",
     "structured_failures": [
@@ -2250,10 +2250,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "1b28add01882a2c6fcf7d2a206af5ad986c85d46399f3e6d118ee8fd8bb5e9d6",
+    "raw_stdout_sha256": "1376d40a4547e26c0cf29fed327aea2fb989f4e4ceee0f8891cebbb7a01144f4",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "V2_run1_stdout_1b28add01882a2c6.txt",
+     "stdout_file": "V2_run1_stdout_1376d40a4547e26c.txt",
      "stderr_file": "V2_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_production_paths_fail_closed_on_contract_violation\",\"phase\":\"call\"}],\"mutation_id\":\"V2\",\"schema_version\":\"sig-v2\"}",
@@ -2263,7 +2263,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "1152fe6065267730a43e15f09c24f77cf911fac25adff84d0e70ae4a6d273d4f",
     "structured_failures": [
@@ -2272,10 +2272,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "20ac6b081358084a551eebe39a840cc0e41dd3cf5e999d99899fffa0c49a6b5a",
+    "raw_stdout_sha256": "4aeb749316b91a351a7bcd932647b5e980eadaa170180646c40407acb04dbb9c",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "V2_run2_stdout_20ac6b081358084a.txt",
+     "stdout_file": "V2_run2_stdout_4aeb749316b91a35.txt",
      "stderr_file": "V2_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_production_paths_fail_closed_on_contract_violation\",\"phase\":\"call\"}],\"mutation_id\":\"V2\",\"schema_version\":\"sig-v2\"}",
@@ -2302,7 +2302,7 @@
    "iteration_history": "detected on first probe of this design",
    "run1": {
     "worktree_id": "laneA-run1",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run1",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run1",
     "exit_code": 1,
     "junit_xml_sha256": "416389afa5afe259427e70522738bc02864e6a25d593b82d1da4e0970045455e",
     "structured_failures": [
@@ -2311,10 +2311,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "c5ad13163cf845dcd994719e454ccd0290b782c6a85bce6f4428e43ed561ae63",
+    "raw_stdout_sha256": "eeaaf5e499637f1ee1ed8e8080ca16d9f411006df6e8f4d1adf59cf134b9e763",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "V3_run1_stdout_c5ad13163cf845dc.txt",
+     "stdout_file": "V3_run1_stdout_eeaaf5e499637f1e.txt",
      "stderr_file": "V3_run1_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"}],\"mutation_id\":\"V3\",\"schema_version\":\"sig-v2\"}",
@@ -2324,7 +2324,7 @@
    },
    "run2": {
     "worktree_id": "laneA-run2",
-    "worktree_path": "C:\\Users\\evarg\\AppData\\Local\\Temp\\claude\\C--Users-evarg-Documents-Trading-EdWebConsole\\e557ab9e-707f-4dc6-9916-d14401545f2a\\scratchpad\\mA_run2",
+    "worktree_path": "<TEMP_WORKTREE_ROOT>\\mA_run2",
     "exit_code": 1,
     "junit_xml_sha256": "80bbfd33beda38a10a59b6001262a3765cc0a4c426e50b950152ccd117977403",
     "structured_failures": [
@@ -2333,10 +2333,10 @@
       "phase": "call"
      }
     ],
-    "raw_stdout_sha256": "d43264d97af096b61a84043d0e052b5b7d099d7f9c48632c301713a2137ba404",
+    "raw_stdout_sha256": "80c2d1684ed0429b37423f0029e7afe2aa1a7be1e86649bc85e5b555fd9b5fdc",
     "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "raw_evidence_files": {
-     "stdout_file": "V3_run2_stdout_d43264d97af096b6.txt",
+     "stdout_file": "V3_run2_stdout_80c2d1684ed0429b.txt",
      "stderr_file": "V3_run2_stderr_e3b0c44298fc1c14.txt"
     },
     "canonical_signature": "{\"exit_code\":1,\"failed\":[{\"nodeid\":\"tests/test_calibration_daily_scoreboard.py::test_v3_metric_tables_structural_semantics\",\"phase\":\"call\"}],\"mutation_id\":\"V3\",\"schema_version\":\"sig-v2\"}",
@@ -2385,12 +2385,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D10_run1_stdout_a81becd0d3132de1.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D10_run1_stdout_980d10e29429c7aa.txt",
     "run": "run1",
     "mutation_id": "D10",
     "stream": "stdout",
-    "sha256": "be691666e4b1d9eff0139b9bfb2caaa301c154753fb970b56ccbafca65fa34af",
-    "bytes": 5463,
+    "sha256": "980d10e29429c7aa4753ada7f2cf411db1431aecfd6a4855a6c1fde0d0ca95e9",
+    "bytes": 5212,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2407,12 +2407,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D11_run1_stdout_b0b8e869413979c0.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D11_run1_stdout_ea44c2812b29b290.txt",
     "run": "run1",
     "mutation_id": "D11",
     "stream": "stdout",
-    "sha256": "993c5c60872c6864fc1dd587a230adad0e5a1c6072ef49926527205df1af3f70",
-    "bytes": 3321,
+    "sha256": "ea44c2812b29b29007c4bb985c1c3418b5703bbe8bee1a0c91fdcc429d68012a",
+    "bytes": 3219,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2451,12 +2451,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D2_run1_stdout_12f5efa48d91a230.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D2_run1_stdout_8d813ff29344cad4.txt",
     "run": "run1",
     "mutation_id": "D2",
     "stream": "stdout",
-    "sha256": "42a36bbecac95e3d651624ef9540db4ee773d1385dcb0bd86daff91be22bfab0",
-    "bytes": 1705,
+    "sha256": "8d813ff29344cad42a74df25e1457a93d406cbbfc38e42f843e8ff62a2822846",
+    "bytes": 1645,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2473,12 +2473,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D3_run1_stdout_20207005f77aad44.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D3_run1_stdout_0459624c65cd2079.txt",
     "run": "run1",
     "mutation_id": "D3",
     "stream": "stdout",
-    "sha256": "00e5ced1e5713aae81dac67b2c2409f28cac28edff23277a78e7c58196c77871",
-    "bytes": 33235,
+    "sha256": "0459624c65cd207971eb7e17ed581c7a7e3a19570c0774de4adeb4cb925c7285",
+    "bytes": 32122,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2495,12 +2495,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D4_run1_stdout_b0fb1bc86c1cbc6c.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D4_run1_stdout_1024ed05b37f6aa7.txt",
     "run": "run1",
     "mutation_id": "D4",
     "stream": "stdout",
-    "sha256": "bb2cd759755e80225b356f3fc93025e1e97bebbf05c6750981ead8a5dc442880",
-    "bytes": 4938,
+    "sha256": "1024ed05b37f6aa7c08afc79269ce4e4b67228892e289be3e4a3343fa10faf83",
+    "bytes": 4762,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2517,12 +2517,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D5_run1_stdout_56bf50b040aa59f9.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D5_run1_stdout_8185d7f85eb8ea77.txt",
     "run": "run1",
     "mutation_id": "D5",
     "stream": "stdout",
-    "sha256": "bfc15160925385958cb055d8e37c0c5fdd0d256e96134b4c90ed9e9d7799f186",
-    "bytes": 1523,
+    "sha256": "8185d7f85eb8ea77245f758ab22766a7bdf16ab1be9b70ce61931fc39ef61db8",
+    "bytes": 1465,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2561,12 +2561,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D7_run1_stdout_b00970ccf814a09c.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D7_run1_stdout_67c9e04763778601.txt",
     "run": "run1",
     "mutation_id": "D7",
     "stream": "stdout",
-    "sha256": "618bf3e2a6128aacbadece5432b954a4eec131f28209db32f98b24bbed6ead01",
-    "bytes": 2083,
+    "sha256": "67c9e04763778601092d18647d9f664b5a0331d2b5380ebbdfb30d895984249a",
+    "bytes": 2014,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2583,12 +2583,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D8_run1_stdout_87f017a8cde77948.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D8_run1_stdout_7455905653501808.txt",
     "run": "run1",
     "mutation_id": "D8",
     "stream": "stdout",
-    "sha256": "986d69091db7299b2f650da4bf39a7b470ec9398edc8d0d737d668b1a2f3dc6e",
-    "bytes": 1610,
+    "sha256": "7455905653501808b42fb2f7e8067fd7887d558e0aa21c4ddf9348ef551eae22",
+    "bytes": 1551,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2605,12 +2605,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D9_run1_stdout_786e1d15fd99afc7.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D9_run1_stdout_66f8e137c3cb9eb7.txt",
     "run": "run1",
     "mutation_id": "D9",
     "stream": "stdout",
-    "sha256": "4799026fe96f4a5349ac32367719c4ae0965dd0d271e2f0651a9cf9449ace9a4",
-    "bytes": 3306,
+    "sha256": "66f8e137c3cb9eb739571949298d91d36cdbf0311b89d2556467b816eaf4ccdf",
+    "bytes": 3218,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2627,12 +2627,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E1_run1_stdout_98a4a09579aa0a8d.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E1_run1_stdout_0881d251affebd63.txt",
     "run": "run1",
     "mutation_id": "E1",
     "stream": "stdout",
-    "sha256": "1dc8c2ae84dc2a6accce2f5885cf7a0bb229ab2eba8fd2403b9782c66e85e19c",
-    "bytes": 3275,
+    "sha256": "0881d251affebd63a138a50e769c25ce6ff3314dd331d6fe3ed46b10b39bb923",
+    "bytes": 3158,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2649,12 +2649,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E2_run1_stdout_cf33a6dba489090c.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E2_run1_stdout_53bfeca223584e5a.txt",
     "run": "run1",
     "mutation_id": "E2",
     "stream": "stdout",
-    "sha256": "ecbb7aab14e8fedb3c5a3d313419756f900227a61a89f997f0074965facde39d",
-    "bytes": 1790,
+    "sha256": "53bfeca223584e5ad37863ca24b5b680861e89aa5c8c998b9aaa7d5b00afba8b",
+    "bytes": 1727,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2671,12 +2671,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E3_run1_stdout_a52a938b84e31fa5.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E3_run1_stdout_c62d089aee28bb74.txt",
     "run": "run1",
     "mutation_id": "E3",
     "stream": "stdout",
-    "sha256": "2e342d5ac60801cd51fbc5ddba6587bf43c7c5c96c2b614758608072e31a1130",
-    "bytes": 3981,
+    "sha256": "c62d089aee28bb7442f980f3ba9b3c50c307646517508e108028e37b3b093a2b",
+    "bytes": 3841,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2693,12 +2693,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E4_run1_stdout_d924b7ef525ac925.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E4_run1_stdout_d98ec3943602b991.txt",
     "run": "run1",
     "mutation_id": "E4",
     "stream": "stdout",
-    "sha256": "361d34b70b9b0b0a3c83583a29c3fbcdfb061c41039d6557e738e4225ac499dd",
-    "bytes": 4171,
+    "sha256": "d98ec3943602b991b427fc7e4891c1af54c755d4d8df042a48d828ffda00349b",
+    "bytes": 4037,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2715,12 +2715,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E5_run1_stdout_15d680e0833fa4f2.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E5_run1_stdout_a672f4de8e36ba5d.txt",
     "run": "run1",
     "mutation_id": "E5",
     "stream": "stdout",
-    "sha256": "1ebe19eda889b201339fa6e2c3dc4b5b5c6ae7b1d891f38ec54cb6130f074ce5",
-    "bytes": 32776,
+    "sha256": "a672f4de8e36ba5d4be6f6b0701ad916729f79b4af8e4ef91cd4ac6f7b750722",
+    "bytes": 31657,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2737,12 +2737,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E6_run1_stdout_83c921c0defcb8d7.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E6_run1_stdout_501a8f889f105f0f.txt",
     "run": "run1",
     "mutation_id": "E6",
     "stream": "stdout",
-    "sha256": "f02f6617b8044395d7fa1a326d179f613c5c35920338ef24bb9638e0b628045a",
-    "bytes": 33995,
+    "sha256": "501a8f889f105f0fd92b0ab53266882df0261580dc49fbd760b6f080693a8afc",
+    "bytes": 32871,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2759,12 +2759,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E7_run1_stdout_7d95b08f3395b594.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E7_run1_stdout_011f4748b74adf19.txt",
     "run": "run1",
     "mutation_id": "E7",
     "stream": "stdout",
-    "sha256": "bfc05b14a1d3022cea3f5cf30cabca18ba15292c38788d12d68d80de40da9f39",
-    "bytes": 2232,
+    "sha256": "011f4748b74adf1904ae050058aa8251504a94f311584c8a319bc8b8cd94f3b1",
+    "bytes": 2166,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2781,12 +2781,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/M1_run1_stdout_c7ce787f27fc838a.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/M1_run1_stdout_6ffe52f887d875d8.txt",
     "run": "run1",
     "mutation_id": "M1",
     "stream": "stdout",
-    "sha256": "1cf06f91cb069b0eb5fc8b691b4ca05c449a97e820697290166b8f44923cc895",
-    "bytes": 37457,
+    "sha256": "6ffe52f887d875d879e9f90f30d2ad7cf01973aa939824c36a43c196c4cb99d8",
+    "bytes": 36211,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2847,12 +2847,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/M6_run1_stdout_2ced78ea49a0552a.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/M6_run1_stdout_45411f2fcc10d9af.txt",
     "run": "run1",
     "mutation_id": "M6",
     "stream": "stdout",
-    "sha256": "deb4e45e818eab6424b615ca8da5080d77ce0c4302051127d2ccb99fc683d456",
-    "bytes": 2426,
+    "sha256": "45411f2fcc10d9afffb0bae4db130711549224ce1f3ec237d0dac95ea047053f",
+    "bytes": 2347,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2869,12 +2869,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/M7_run1_stdout_b5cc5d1204e0898a.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/M7_run1_stdout_e680e8666b3c148f.txt",
     "run": "run1",
     "mutation_id": "M7",
     "stream": "stdout",
-    "sha256": "4cd02eb80535bc673878688cf867eaecadff26319bae6850817a54bf42f4e137",
-    "bytes": 2951,
+    "sha256": "e680e8666b3c148fedb79bbfe2a503e092a28d39597b3f6937c2d839be8cfc5a",
+    "bytes": 2855,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2913,12 +2913,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/V1_run1_stdout_75a94854de63706c.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/V1_run1_stdout_9f29cd0e37ee2479.txt",
     "run": "run1",
     "mutation_id": "V1",
     "stream": "stdout",
-    "sha256": "cf0d3968b8f8ac7c43d8a1f1ea60ca4918b3fd4d93e0e15fae55770a10a982d3",
-    "bytes": 2946,
+    "sha256": "9f29cd0e37ee2479708f3b55f9f39c303d5022f20088040bc63f1f3ecb7e604f",
+    "bytes": 2867,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2935,12 +2935,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/V2_run1_stdout_1b28add01882a2c6.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/V2_run1_stdout_1376d40a4547e26c.txt",
     "run": "run1",
     "mutation_id": "V2",
     "stream": "stdout",
-    "sha256": "f0bb7cc4c7a1eec054c5eb87817d271ebdde66b221c3c113231e6936c38b62ec",
-    "bytes": 2507,
+    "sha256": "1376d40a4547e26c0cf29fed327aea2fb989f4e4ceee0f8891cebbb7a01144f4",
+    "bytes": 2358,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2957,12 +2957,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/V3_run1_stdout_c5ad13163cf845dc.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/V3_run1_stdout_eeaaf5e499637f1e.txt",
     "run": "run1",
     "mutation_id": "V3",
     "stream": "stdout",
-    "sha256": "d3c209002d78cac86b5c2c487c3c10a3a6b5236204024a94e82f4f71d789a1ad",
-    "bytes": 2245,
+    "sha256": "eeaaf5e499637f1ee1ed8e8080ca16d9f411006df6e8f4d1adf59cf134b9e763",
+    "bytes": 2164,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -2979,12 +2979,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D10_run2_stdout_281361502cfeb930.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D10_run2_stdout_96dc7b156eaf3cd6.txt",
     "run": "run2",
     "mutation_id": "D10",
     "stream": "stdout",
-    "sha256": "7d3dc56af8ec7c60e64d651e3f0f74bb0fe268684127ff07cfca4f98a9bf1f20",
-    "bytes": 5463,
+    "sha256": "96dc7b156eaf3cd61b5d2a0e77f5bf1c75ee9aa9fe70b8a6b81ba02e616c5b7f",
+    "bytes": 5212,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3001,12 +3001,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D11_run2_stdout_d7b359631cccd842.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D11_run2_stdout_a9bf342290770405.txt",
     "run": "run2",
     "mutation_id": "D11",
     "stream": "stdout",
-    "sha256": "70f85e25ddf9fab03eb337adb7bc506cc4c7cbada08204fdc25f3081f00c4c85",
-    "bytes": 3321,
+    "sha256": "a9bf34229077040509bb3756bc69c088eba50cfebc1d0f81dfc6cb8c31c02780",
+    "bytes": 3219,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3045,12 +3045,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D2_run2_stdout_e083d8e02ce9590d.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D2_run2_stdout_886baa689a71561e.txt",
     "run": "run2",
     "mutation_id": "D2",
     "stream": "stdout",
-    "sha256": "384762025a2d1328d369400cc16cf85f2fb2786f9a72c39c5a75b6e2a1819a68",
-    "bytes": 1705,
+    "sha256": "886baa689a71561e01875bf521455c779fb6010062466e4c3e0789c9ddcd5ad1",
+    "bytes": 1645,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3067,12 +3067,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D3_run2_stdout_3a8053d55cbdccd8.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D3_run2_stdout_042b4c5b2202c054.txt",
     "run": "run2",
     "mutation_id": "D3",
     "stream": "stdout",
-    "sha256": "f51ec91154b445de6c8bec559aa510bc17fd1aa39064ed89b3bbf3c66fb9a886",
-    "bytes": 33235,
+    "sha256": "042b4c5b2202c054c074fb1aba0ecc74b13d3c14910d7cd2c8973e867f798ff7",
+    "bytes": 32122,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3089,12 +3089,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D4_run2_stdout_fb554b92b3777bcb.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D4_run2_stdout_f39848e8beffd038.txt",
     "run": "run2",
     "mutation_id": "D4",
     "stream": "stdout",
-    "sha256": "47e34810236a62b0a6e353447979f292bb15f8e1b1ff95199877595787f88b81",
-    "bytes": 4938,
+    "sha256": "f39848e8beffd0385d406926aff8e452d00b60e016194d1f47ee1b2e7c7b69e0",
+    "bytes": 4762,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3111,12 +3111,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D5_run2_stdout_bfc677409bfab6a7.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D5_run2_stdout_8420be8bc2c2f14b.txt",
     "run": "run2",
     "mutation_id": "D5",
     "stream": "stdout",
-    "sha256": "d4ec21d1fb658d9c97dc7e54b6f1968631e5de8b8fc33828808b2c2421ababb6",
-    "bytes": 1523,
+    "sha256": "8420be8bc2c2f14be962af4ba8d42d6d834520018a846e0c335e918268aff771",
+    "bytes": 1465,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3155,12 +3155,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D7_run2_stdout_4a7624241dc4d3ee.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D7_run2_stdout_91054e20a1ac94b8.txt",
     "run": "run2",
     "mutation_id": "D7",
     "stream": "stdout",
-    "sha256": "65a86e2328839832c0051d32335c19c3a832c08e555fa3c82914f33adbb2ec19",
-    "bytes": 2083,
+    "sha256": "91054e20a1ac94b8e984e24d9a67a5f4681ab739915baff890e26d7305495a3b",
+    "bytes": 2014,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3177,12 +3177,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D8_run2_stdout_187e085cdfff9562.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D8_run2_stdout_52bd3fdcd38e0019.txt",
     "run": "run2",
     "mutation_id": "D8",
     "stream": "stdout",
-    "sha256": "c08a18fd803dfcb7babbe7cb6f4caeef2b33950a6d322ea0ce2d5bb0580173aa",
-    "bytes": 1610,
+    "sha256": "52bd3fdcd38e00190123957e6fcd12595c8a35ddb6ebce91a14894f5b4ba6e03",
+    "bytes": 1551,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3199,12 +3199,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/D9_run2_stdout_dd1866b829830fc1.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/D9_run2_stdout_30a68185a98e8a12.txt",
     "run": "run2",
     "mutation_id": "D9",
     "stream": "stdout",
-    "sha256": "45dd0f377d808b2aa597e2f4c2cbe15202398c683ee332153cd29355343723b3",
-    "bytes": 3306,
+    "sha256": "30a68185a98e8a12e4fdb21a1f7e740c052b8a8cf21ba516c81b2b07cb139246",
+    "bytes": 3218,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3221,12 +3221,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E1_run2_stdout_be91f60b036af55d.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E1_run2_stdout_4ce48b0682501b1c.txt",
     "run": "run2",
     "mutation_id": "E1",
     "stream": "stdout",
-    "sha256": "ef7b61ddb234c3d9e6b24a1af36473e1ace7fc63e4886f14702ab3a4374ca69b",
-    "bytes": 3275,
+    "sha256": "4ce48b0682501b1c401c947d45f0b11c55c3feaff580e9392548e23c6afaeb54",
+    "bytes": 3158,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3243,12 +3243,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E2_run2_stdout_adf68ef271d225ba.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E2_run2_stdout_4a39c634c17b46a9.txt",
     "run": "run2",
     "mutation_id": "E2",
     "stream": "stdout",
-    "sha256": "657a8b9e2fb4d692c44d5cf094fc8309f611799cfaa41b2a894d8358cc607190",
-    "bytes": 1790,
+    "sha256": "4a39c634c17b46a9092d7507c27ce069b6ce9ac8464d0e09e578e5647c5c357c",
+    "bytes": 1727,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3265,12 +3265,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E3_run2_stdout_d44e00b0084b083c.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E3_run2_stdout_fe74453b220afc8e.txt",
     "run": "run2",
     "mutation_id": "E3",
     "stream": "stdout",
-    "sha256": "f3ec290fa1ee95c9a6cf59a7be1b2e33c758c48c34ae591fe2dbe49b3ad388bd",
-    "bytes": 3981,
+    "sha256": "fe74453b220afc8e2e70f1cea5f24be0e43481619e43209b9010a01e3e8a3de9",
+    "bytes": 3841,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3287,12 +3287,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E4_run2_stdout_3d4416806744c138.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E4_run2_stdout_41986d664ef659de.txt",
     "run": "run2",
     "mutation_id": "E4",
     "stream": "stdout",
-    "sha256": "0b6a5a2f25ebbafe4a20b2e346c7844513ebf4915ea93b420c00e36f50f209cf",
-    "bytes": 4171,
+    "sha256": "41986d664ef659dec99c9a7cb4c63af974d7d1a7d4dd111368097ea35df16c65",
+    "bytes": 4037,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3309,12 +3309,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E5_run2_stdout_f3eaf25e1dc48ebb.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E5_run2_stdout_d56084bf0b3657d0.txt",
     "run": "run2",
     "mutation_id": "E5",
     "stream": "stdout",
-    "sha256": "4211904f2bc9e9baddfa59464500d37a67eda288e37370eeba130051d6f2fff6",
-    "bytes": 32776,
+    "sha256": "d56084bf0b3657d01bb28723ebb553f4592dec9d62d3a8b13b95b32a432cf7c1",
+    "bytes": 31657,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3331,12 +3331,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E6_run2_stdout_4f57be30fca63d2b.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E6_run2_stdout_4bee2ef672479936.txt",
     "run": "run2",
     "mutation_id": "E6",
     "stream": "stdout",
-    "sha256": "6de4cc75c21afe1d9edb36b09f1938ccc7389d4dd4cb8503bd49dbdd80a20da6",
-    "bytes": 33995,
+    "sha256": "4bee2ef67247993609b2b3680fb2c9bf23de9d81c25e1a79d983691777a7d33a",
+    "bytes": 32871,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3353,12 +3353,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/E7_run2_stdout_e37424789e791a42.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/E7_run2_stdout_19b29160cbb1488e.txt",
     "run": "run2",
     "mutation_id": "E7",
     "stream": "stdout",
-    "sha256": "9d983617ec621081d098d02c192a86a457fb2fbe9ecfd1ef70c94753a51bf52d",
-    "bytes": 2232,
+    "sha256": "19b29160cbb1488e9bf73a040af4eb91eb9c08c460901640ea90fc3ec2dee83e",
+    "bytes": 2166,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3375,12 +3375,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/M1_run2_stdout_25ebc23c3fe4e25e.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/M1_run2_stdout_982197ee39c45d2c.txt",
     "run": "run2",
     "mutation_id": "M1",
     "stream": "stdout",
-    "sha256": "db0512cf79ca4b0be163d221a3160a6d49204916351df3152a0a81cb2c35e496",
-    "bytes": 37457,
+    "sha256": "982197ee39c45d2cea900a7c8cd9c0c8e1abd5ed5775dc40cffabb4a220a3a5e",
+    "bytes": 36211,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3441,12 +3441,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/M6_run2_stdout_bc826293cf0ff54a.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/M6_run2_stdout_89d37c861c4d874c.txt",
     "run": "run2",
     "mutation_id": "M6",
     "stream": "stdout",
-    "sha256": "f4935ba51e819a13a5fdb43ecd9bf5612cd15c94e1485da3a2c8b4ff4f9364a0",
-    "bytes": 2426,
+    "sha256": "89d37c861c4d874cc49638c10d8176d23b7601d55e38dd184549cf06c5ef48ee",
+    "bytes": 2347,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3463,12 +3463,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/M7_run2_stdout_c76da51341c2fff8.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/M7_run2_stdout_18887c6f702efda9.txt",
     "run": "run2",
     "mutation_id": "M7",
     "stream": "stdout",
-    "sha256": "389cea721b8161b1876aef4c9541d9e1cf85370b09fc8c84cff7322e0070dc17",
-    "bytes": 2951,
+    "sha256": "18887c6f702efda9ec018f3c40af435e1af7f40e02f37ff1b25427524182e4c2",
+    "bytes": 2855,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3507,12 +3507,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/V1_run2_stdout_9ea8a9ac4bc43cb7.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/V1_run2_stdout_c16d3a231be2b81d.txt",
     "run": "run2",
     "mutation_id": "V1",
     "stream": "stdout",
-    "sha256": "a6997f4301b399543725911399129924cafdc0b35303b9add5c838f13e9e6a2d",
-    "bytes": 2946,
+    "sha256": "c16d3a231be2b81deb52c101af9291a9e2633d0a46cdde0364c73976f9b1332b",
+    "bytes": 2867,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3529,12 +3529,12 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/V2_run2_stdout_20ac6b081358084a.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/V2_run2_stdout_4aeb749316b91a35.txt",
     "run": "run2",
     "mutation_id": "V2",
     "stream": "stdout",
-    "sha256": "aebd5b672298218b54663566746442a9b8002979b9e5e7817bc1a82105e43ede",
-    "bytes": 2507,
+    "sha256": "4aeb749316b91a351a7bcd932647b5e980eadaa170180646c40407acb04dbb9c",
+    "bytes": 2358,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
@@ -3551,16 +3551,17 @@
     "sensitive_data_scan": "CLEAN"
    },
    {
-    "path": "reports/scoreboard_forensic/mutation_raw/V3_run2_stdout_d43264d97af096b6.txt",
+    "path": "reports/scoreboard_forensic/mutation_raw/V3_run2_stdout_80c2d1684ed0429b.txt",
     "run": "run2",
     "mutation_id": "V3",
     "stream": "stdout",
-    "sha256": "94acac25bb7f804ce667410f7d380347155383319bdcec7324a6d4c892b7f6c3",
-    "bytes": 2245,
+    "sha256": "80c2d1684ed0429b37423f0029e7afe2aa1a7be1e86649bc85e5b555fd9b5fdc",
+    "bytes": 2164,
     "encoding": "utf-8",
     "line_ending_policy": "as-emitted by pytest (LF); git eol normalization applies",
     "sensitive_data_scan": "CLEAN"
    }
   ]
- }
+ },
+ "privacy_normalization": "operator-specific absolute path prefixes in worktree_path fields and raw stdout evidence were normalized post-campaign to stable abstractions (<TEMP_WORKTREE_ROOT>, <PYTEST_TMP>, <WORKTREE_ROOT>, <TEMP>, <USER_HOME>); affected raw files were re-content-addressed (filename sha16 + index sha256/bytes updated); numeric evidence, exit codes, structured failures and sig-v2 signature digests are UNCHANGED because signatures derive from JUnit-structured failures, never from raw byte hashes"
 }
