@@ -7,9 +7,11 @@ Usage:
   python tools/check_mission_authorization.py --pre-edit --mission <ID>
   python tools/check_mission_authorization.py --classify-push-output <file>
   python tools/check_mission_authorization.py --mint-lease --mission <ID>
-      Mint the untracked worktree lease nonce for <ID> in THIS worktree's
-      private git dir and print the sha256 to pin as the contract's
-      worktree_lease_sha256 (path-free worktree binding; PR41 privacy fix).
+      Explicit authorization ceremony: ensure this CLONE's untracked identity
+      nonce (common git dir), mint a fresh untracked worktree lease for <ID>
+      (worktree git dir), and print the binding digest to pin as the contract's
+      authorization_binding_sha256. Path-free and clone-copy resistant: the
+      pinned value is sha256(clone_nonce | mission_id | lease_nonce).
 
 Mission selection: the ED_MISSION_ID environment variable names the active
 contract. Absence of ED_MISSION_ID is fail-open ONLY for commits/pushes whose
@@ -31,9 +33,9 @@ if str(REPO_ROOT) not in sys.path:
 from tools.mission_authorization import (  # noqa: E402
     ACTIVE_DIR,
     classify_push_output,
-    create_worktree_lease,
     detect_mission_overlap,
     load_contract,
+    mint_worktree_authorization,
     record_policy_violation,
     red_main_breaker_engaged,
     validate_push_destination,
@@ -81,8 +83,8 @@ def main(argv: list[str]) -> int:
             print("--mint-lease requires --mission <ID>", file=sys.stderr)
             return 2
         mid = argv[argv.index("--mission") + 1]
-        sha = create_worktree_lease(mid, REPO_ROOT)
-        print(f"worktree lease minted for {mid}; pin worktree_lease_sha256={sha}")
+        sha = mint_worktree_authorization(mid, REPO_ROOT)
+        print(f"authorization minted for {mid}; pin authorization_binding_sha256={sha}")
         return 0
 
     engaged, why = red_main_breaker_engaged()

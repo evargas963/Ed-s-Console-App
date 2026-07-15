@@ -57,7 +57,7 @@ SEMANTIC_DOMAINS = (
 )
 REQUIRED_FIELDS = (
     "schema_version", "mission_id", "agent", "mission_type",
-    "authorized_branch", "worktree_lease_sha256", "authorized_remote",
+    "authorized_branch", "authorization_binding_sha256", "authorized_remote",
     "base_sha",
     "authorized_push_target", "target_branch", "direct_main_permission",
     "pr_required", "integration_owner", "authorized_scope",
@@ -68,13 +68,19 @@ REQUIRED_FIELDS = (
 
 # PR41 privacy root cause (2026-07-14): contracts previously committed the
 # operator's absolute worktree path (authorized_worktree) and validate_workspace
-# string-compared it. The committed absolute home path identified the operator;
-# path comparison was also weaker than possession (aliases, relocation, case).
-# Replacement: a random lease nonce minted into THIS worktree's private git dir
-# (untracked, never committed) whose sha256 is pinned in the tracked contract,
-# plus a public remote-URL repository binding. A copied contract in another
-# clone/worktree cannot present the nonce — fail closed, no path ever tracked.
+# string-compared it. First replacement pinned a per-worktree lease nonce; the
+# hardening pass closed the copied-lease hole: the tracked pin is now a BINDING
+# digest sha256(clone_nonce | mission_id | lease_nonce) where the clone nonce
+# lives in the clone's COMMON git dir and the lease in the worktree's private
+# git dir (both untracked). Copying the contract and even the lease file into
+# another clone still mismatches (that clone's identity differs); a fresh clone
+# or second worktree requires an explicit re-mint ceremony and a visible tracked
+# re-pin. Full byte-copies of the entire .git directory are indistinguishable
+# from the original clone BY DEFINITION of file-based identity — that boundary
+# is declared, not hidden. No path and no raw secret is ever tracked.
 LEGACY_PRIVATE_PATH_FIELD = "authorized_worktree"
+LEGACY_WEAK_BINDING_FIELD = "worktree_lease_sha256"
+CLONE_IDENTITY_FILENAME = "ed_clone_identity"
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 BYPASS_WARNING_PATTERNS = (
     re.compile(r"bypass", re.IGNORECASE),
@@ -105,6 +111,23 @@ def load_contract(mission_id: str) -> tuple[dict | None, str]:
         doc = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return None, f"authorization {mission_id} malformed: {exc}"
+    # Legacy-format detection precedes the completeness check so a
+    # pre-hardening contract gets the migration ceremony message rather than a
+    # generic missing-fields refusal (both refuse; neither is silently accepted).
+    if LEGACY_PRIVATE_PATH_FIELD in doc:
+        return None, (
+            f"authorization {mission_id} carries the legacy private-path field "
+            f"{LEGACY_PRIVATE_PATH_FIELD!r} — absolute worktree paths are refused; "
+            "migrate to authorization_binding_sha256 + authorized_remote "
+            "(mint: python tools/check_mission_authorization.py --mint-lease --mission <ID>)"
+        )
+    if LEGACY_WEAK_BINDING_FIELD in doc:
+        return None, (
+            f"authorization {mission_id} carries the legacy weak lease-only field "
+            f"{LEGACY_WEAK_BINDING_FIELD!r} — a copied lease file could authorize "
+            "another clone; migrate to authorization_binding_sha256 "
+            "(mint: python tools/check_mission_authorization.py --mint-lease --mission <ID>)"
+        )
     missing = [f for f in REQUIRED_FIELDS if f not in doc]
     if missing:
         return None, f"authorization {mission_id} missing fields {missing} (no defaults)"
@@ -127,25 +150,117 @@ def load_contract(mission_id: str) -> tuple[dict | None, str]:
             return None, "feature/audit missions may not target or work on main"
     if doc.get("authorized_scope") in ("*", "", None, "all"):
         return None, "authorized_scope must be explicit (broad defaults refused)"
-    if LEGACY_PRIVATE_PATH_FIELD in doc:
-        return None, (
-            f"authorization {mission_id} carries the legacy private-path field "
-            f"{LEGACY_PRIVATE_PATH_FIELD!r} — absolute worktree paths are refused; "
-            "migrate to worktree_lease_sha256 + authorized_remote "
-            "(mint: python tools/check_mission_authorization.py --mint-lease --mission <ID>)"
-        )
-    if not _SHA256_RE.fullmatch(str(doc.get("worktree_lease_sha256") or "")):
-        return None, f"authorization {mission_id} worktree_lease_sha256 must be 64-hex sha256"
-    if not str(doc.get("authorized_remote") or "").strip():
-        return None, f"authorization {mission_id} authorized_remote must be an explicit remote URL"
+    if not _SHA256_RE.fullmatch(str(doc.get("authorization_binding_sha256") or "")):
+        return None, f"authorization {mission_id} authorization_binding_sha256 must be 64-hex sha256"
+    canon, why = canonicalize_remote(doc.get("authorized_remote"))
+    if canon is None:
+        return None, f"authorization {mission_id} authorized_remote refused: {why}"
     return doc, "ok"
 
 
-# ── Worktree lease: possession-based, path-free worktree binding ─────────────
+# ── Canonical repository identity (remote) ───────────────────────────────────
+# HTTPS, ssh:// and SCP-style forms of the same repository canonicalize to one
+# structured identity host/owner/repo (host+owner+repo lowercased; .git and
+# trailing slashes stripped). Fail closed on: credentials, file:// and local
+# filesystem remotes, unsupported schemes, non-default ports, subpaths, and
+# missing owner/repo. Refusal reasons NEVER echo the raw URL (it may carry a
+# credential); lookalike hosts fail exact canonical-host equality.
+
+_SCP_REMOTE_RE = re.compile(
+    r"^(?P<user>[A-Za-z0-9_.\-]+)@(?P<host>[A-Za-z0-9_.\-]+):(?P<path>[^/:][^:]*)$"
+)
+
+
+def canonicalize_remote(url) -> tuple[str | None, str]:
+    u = str(url or "").strip()
+    if not u:
+        return None, "empty remote"
+    if u.lower().startswith("file://"):
+        return None, "file:// remotes are refused"
+    if re.match(r"^[A-Za-z]:[\\/]", u) or u.startswith(("/", "\\", "./", "../", "~")):
+        return None, "local filesystem remotes are refused"
+    if "://" not in u:
+        m = _SCP_REMOTE_RE.match(u)
+        if not m:
+            return None, "unrecognized remote form (expect https://, ssh:// or git@host:owner/repo)"
+        return _canonical_host_path(m.group("host"), m.group("path"))
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(u)
+    except ValueError:
+        return None, "malformed remote URL"
+    scheme = (parts.scheme or "").lower()
+    if scheme not in ("https", "ssh"):
+        return None, f"unsupported remote scheme {scheme or '<none>'!r}"
+    try:
+        password = parts.password
+        username = parts.username
+        hostname = parts.hostname
+        port = parts.port
+    except ValueError:
+        return None, "malformed remote URL"
+    if password:
+        return None, "credential-bearing remote refused (password/token present)"
+    if scheme == "https" and username:
+        return None, "credential-bearing remote refused (userinfo present on https)"
+    if port not in (None, 443 if scheme == "https" else 22):
+        return None, "non-default remote port refused"
+    if not hostname:
+        return None, "remote host missing"
+    return _canonical_host_path(hostname, parts.path)
+
+
+def _canonical_host_path(host: str, path: str) -> tuple[str | None, str]:
+    host = host.lower().strip().strip(".")
+    p = path.strip().strip("/")
+    if p.lower().endswith(".git"):
+        p = p[: -len(".git")]
+    segs = [s for s in p.split("/") if s]
+    if len(segs) != 2:
+        return None, "remote must resolve to host/owner/repo (subpaths and bare hosts refused)"
+    owner, repo = segs
+    return f"{host}/{owner.lower()}/{repo.lower()}", "ok"
+
+
+# ── Clone identity + worktree lease → one pinned binding digest ──────────────
 
 def _worktree_git_dir(cwd: Path) -> Path | None:
     out = _git(["rev-parse", "--absolute-git-dir"], cwd=cwd)
     return Path(out) if out else None
+
+
+def _common_git_dir(cwd: Path) -> Path | None:
+    out = _git(["rev-parse", "--git-common-dir"], cwd=cwd)
+    if not out:
+        return None
+    p = Path(out)
+    if not p.is_absolute():
+        top = _git(["rev-parse", "--show-toplevel"], cwd=cwd)
+        p = (Path(top) / p) if top else p
+    return p.resolve()
+
+
+def clone_identity_path(cwd: Path) -> Path | None:
+    """One random identity per CLONE, in the COMMON git dir (shared by all of
+    the clone's worktrees; untracked; travels with the clone on relocation)."""
+    cd = _common_git_dir(cwd)
+    if cd is None:
+        return None
+    return cd / CLONE_IDENTITY_FILENAME
+
+
+def ensure_clone_identity(cwd: Path) -> bytes | None:
+    """Mint the clone identity nonce once per clone (explicit ceremony); a
+    pre-existing identity is NEVER silently replaced."""
+    import secrets
+
+    p = clone_identity_path(cwd)
+    if p is None:
+        return None
+    if not p.is_file():
+        p.write_bytes((secrets.token_hex(32) + "\n").encode("utf-8"))
+    return p.read_bytes()
 
 
 def lease_path(mission_id: str, cwd: Path) -> Path | None:
@@ -157,34 +272,35 @@ def lease_path(mission_id: str, cwd: Path) -> Path | None:
     return gd / f"ed_mission_lease_{mission_id}"
 
 
-def create_worktree_lease(mission_id: str, cwd: Path) -> str:
-    """Mint a fresh random lease nonce for THIS worktree; return its sha256 for
-    the tracked contract. Overwrites any prior lease for the mission."""
+def compute_authorization_binding(mission_id: str, cwd: Path) -> str | None:
+    """sha256(clone_nonce | mission_id | lease_nonce). None when either local
+    secret is absent — the caller fails closed. A contract+lease copied into a
+    different clone mismatches because THAT clone's identity nonce differs."""
     import hashlib
+
+    ip = clone_identity_path(cwd)
+    lp = lease_path(mission_id, cwd)
+    if ip is None or lp is None or not ip.is_file() or not lp.is_file():
+        return None
+    return hashlib.sha256(
+        ip.read_bytes() + b"|" + mission_id.encode("utf-8") + b"|" + lp.read_bytes()
+    ).hexdigest()
+
+
+def mint_worktree_authorization(mission_id: str, cwd: Path) -> str:
+    """Explicit ceremony: ensure the clone identity, mint a fresh worktree lease,
+    return the binding digest to pin as the contract's authorization_binding_sha256."""
     import secrets
 
-    p = lease_path(mission_id, cwd)
-    if p is None:
+    if ensure_clone_identity(cwd) is None:
+        raise RuntimeError("not inside a git repository — cannot mint clone identity")
+    lp = lease_path(mission_id, cwd)
+    if lp is None:
         raise RuntimeError("not inside a git worktree — cannot mint a mission lease")
-    data = (secrets.token_hex(32) + "\n").encode("utf-8")
-    p.write_bytes(data)  # exact bytes: no platform newline translation
-    return hashlib.sha256(data).hexdigest()
-
-
-def current_lease_sha(mission_id: str, cwd: Path) -> str | None:
-    import hashlib
-
-    p = lease_path(mission_id, cwd)
-    if p is None or not p.is_file():
-        return None
-    return hashlib.sha256(p.read_bytes()).hexdigest()
-
-
-def _normalize_remote(url: str) -> str:
-    u = str(url or "").strip().rstrip("/")
-    if u.endswith(".git"):
-        u = u[: -len(".git")]
-    return u.lower()
+    lp.write_bytes((secrets.token_hex(32) + "\n").encode("utf-8"))
+    binding = compute_authorization_binding(mission_id, cwd)
+    assert binding is not None
+    return binding
 
 
 def validate_workspace(contract: dict, *, cwd: Path) -> list[str]:
@@ -203,23 +319,30 @@ def validate_workspace(contract: dict, *, cwd: Path) -> list[str]:
     remote = _git(["remote", "get-url", "origin"], cwd=cwd)
     if not remote:
         errors.append("no 'origin' remote — repository identity cannot be proven (fail closed)")
-    elif _normalize_remote(remote) != _normalize_remote(contract["authorized_remote"]):
+    else:
+        origin_canon, origin_why = canonicalize_remote(remote)
+        auth_canon, _ = canonicalize_remote(contract["authorized_remote"])
+        if origin_canon is None:
+            # NEVER echo the raw URL: it may carry a credential.
+            errors.append(f"origin remote refused: {origin_why} (fail closed)")
+        elif origin_canon != auth_canon:
+            errors.append(
+                f"origin repository identity {origin_canon!r} != authorized "
+                f"{auth_canon!r} — wrong repository (fail closed)"
+            )
+    binding = compute_authorization_binding(str(contract["mission_id"]), cwd)
+    if binding is None:
         errors.append(
-            f"origin remote {remote!r} != authorized_remote "
-            f"{contract['authorized_remote']!r} — wrong repository (fail closed)"
-        )
-    lease = current_lease_sha(str(contract["mission_id"]), cwd)
-    if lease is None:
-        errors.append(
-            "worktree mission lease MISSING in this worktree's git dir — a copied "
-            "contract, another clone, or another worktree cannot present the lease "
+            "clone identity or worktree mission lease MISSING — a copied contract, "
+            "another clone, or another worktree cannot present the local secrets "
             "(mint in the authorized worktree: python tools/check_mission_authorization.py "
             "--mint-lease --mission <ID>; fail closed)"
         )
-    elif lease != contract["worktree_lease_sha256"]:
+    elif binding != contract["authorization_binding_sha256"]:
         errors.append(
-            "worktree mission lease sha256 MISMATCH vs contract worktree_lease_sha256 "
-            "(stale or foreign lease — fail closed)"
+            "authorization binding MISMATCH vs contract authorization_binding_sha256 — "
+            "the contract/lease was copied into a different clone or worktree, or the "
+            "local secrets are stale (fail closed; re-mint requires a visible tracked re-pin)"
         )
     base = contract["base_sha"]
     head = _git(["rev-parse", "HEAD"], cwd=cwd)
@@ -354,10 +477,10 @@ def detect_mission_overlap(contract: dict) -> list[str]:
             continue
         if other.get("authorized_branch") == contract.get("authorized_branch"):
             errors.append(f"branch collision with {other.get('mission_id')}")
-        if other.get("worktree_lease_sha256") and other.get(
-            "worktree_lease_sha256"
-        ) == contract.get("worktree_lease_sha256"):
-            errors.append(f"worktree lease collision with {other.get('mission_id')}")
+        if other.get("authorization_binding_sha256") and other.get(
+            "authorization_binding_sha256"
+        ) == contract.get("authorization_binding_sha256"):
+            errors.append(f"authorization binding collision with {other.get('mission_id')}")
         oscope = other.get("authorized_scope") or {}
         ofiles = set(oscope.get("files", []))
         odomains = set(oscope.get("semantic_domains", []))

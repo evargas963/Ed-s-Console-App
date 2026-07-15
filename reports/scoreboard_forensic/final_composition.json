@@ -83,6 +83,18 @@
     }
    },
    "campaign_impact": "NONE \u2014 the contract is not a mutation input; calibration/daily_scoreboard.py and the detecting tests are byte-identical; sig-v2 signatures unaffected"
+  },
+  {
+   "mission": "PR41_MISSION_AUTHORIZATION_CLONE_AND_REMOTE_HARDENING_V1",
+   "date": "2026-07-15",
+   "nature": "clone-identity binding + canonical remote: the contract's weak worktree_lease_sha256 pin (a copied lease file could authorize another clone) was replaced by authorization_binding_sha256 = sha256(clone_nonce | mission_id | lease_nonce) where the clone nonce lives untracked in the clone's common git dir and the lease in the worktree's private git dir; tools/mission_authorization.py now REFUSES contracts carrying either legacy field (authorized_worktree, worktree_lease_sha256) and canonicalize_remote unifies https/ssh/scp forms of authorized_remote while rejecting credential-bearing, file://, local-path, lookalike-host, non-default-port and subpath remotes with reasons that never echo the raw URL; full-.git byte copies remain indistinguishable from the original clone (declared boundary of file-based identity)",
+   "changes": {
+    "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": {
+     "old_sha256": "247833a21490faeb2e71fe957dc5c78229b0f78b3e2874d48f55841c1a5517e7",
+     "new_sha256": "5149390441f1739330b375bdac8123f6600d470a5c3cd16b5c5761a9eae2ab90"
+    }
+   },
+   "campaign_impact": "NONE \u2014 the contract is not a mutation input; calibration/daily_scoreboard.py and the detecting tests are byte-identical; sig-v2 signatures unaffected"
   }
  ],
  "mutation_runner_sha256": "b60e6811256c0ff32a5ce13a36c2d857e1b1ba97adf1c607c2c949038cf254df",
