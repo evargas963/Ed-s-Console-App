@@ -7,14 +7,12 @@ confusion, and source-row mutation. Research-only; no production effect.
 """
 from __future__ import annotations
 
-import copy
 import json
 from pathlib import Path
 
 import pytest
 
 from research.stage1_target_foundation.causal_label_contract import (
-    BAR_SECONDS,
     Bar,
     CausalLabelError,
     anchor_bar_for,
