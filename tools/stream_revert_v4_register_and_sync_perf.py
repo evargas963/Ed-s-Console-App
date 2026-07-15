@@ -318,13 +318,19 @@ def _surface_bound(row: dict[str, str], srcs: list[dict[str, str]]) -> dict[str,
     applies ONLY when the reviewed surface_form byte-equals the current row's
     surface_form; content-matching claimants with CONFLICTING dispositions fail
     closed to UNREVIEWED."""
-    sf = (row.get("surface_form") or "").strip()
-    if not sf:
-        # No content identity exists for this row — an empty surface can never
-        # prove the reviewed code is the current code (fail closed; a pair of
-        # empty surfaces would otherwise degrade to coordinate-only identity).
+    sf = row.get("surface_form") or ""
+    if not sf.strip():
+        # No content identity exists for this row — an empty/whitespace-only
+        # surface can never prove the reviewed code is the current code (fail
+        # closed; a pair of empty surfaces would otherwise degrade to
+        # coordinate-only identity).
         return None
-    matching = [s for s in srcs if (s.get("surface_form") or "").strip() == sf]
+    # EXACT-BYTE equality (2026-07-15 adversarial finding): .strip() equivalence
+    # let token-identical trivial statements (return "", return None) inherit
+    # dispositions across DIFFERENT indentation contexts — 8 live rows were
+    # inheriting reviews of code in other blocks. Indentation is part of the
+    # reviewed content's identity; any whitespace difference fails closed.
+    matching = [s for s in srcs if (s.get("surface_form") or "") == sf]
     if not matching:
         return None
     disps = {(s.get("disposition") or "").strip() for s in matching}

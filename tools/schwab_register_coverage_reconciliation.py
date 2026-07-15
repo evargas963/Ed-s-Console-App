@@ -93,10 +93,11 @@ def classify_register_row(
         claimants.append(pl)
     if not claimants:
         return "NO_HISTORICAL_CLAIMANT"
-    sf = (row.get("surface_form") or "").strip()
-    if not sf or all(not (c.get("surface_form") or "").strip() for c in claimants):
+    sf = row.get("surface_form") or ""
+    if not sf.strip() or all(not (c.get("surface_form") or "").strip() for c in claimants):
         return "EMPTY_SURFACE_REFUSED"
-    matching = [c for c in claimants if (c.get("surface_form") or "").strip() == sf]
+    # mirror of _surface_bound: EXACT-BYTE content identity (indentation included)
+    matching = [c for c in claimants if (c.get("surface_form") or "") == sf]
     if not matching:
         return "CONTENT_MISMATCH_REFUSED"
     disps = {(c.get("disposition") or "").strip() for c in matching}

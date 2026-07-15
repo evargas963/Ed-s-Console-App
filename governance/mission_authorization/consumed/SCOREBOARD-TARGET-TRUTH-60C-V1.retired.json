@@ -57,10 +57,10 @@
     ]
   },
   "shared_file_policy": "none",
-  "lease_state": "active",
+  "lease_state": "retired",
   "created_at_epoch": 1783995501.0,
   "expires_at_epoch": 1785205101.0,
-  "scope_amendments": "2026-07-13: +4 generated universal-graph/inventory artifacts (CONNECTED_PATH_GRAPH_DRIFT gate demanded canonical regeneration; operator packet Phase 4 generated-artifact protocol); 2026-07-14: +reports/scoreboard_forensic/mutation_evidence_manifest.json (DEFECT-D durable mutation evidence required by SCOREBOARD_OPERATOR_SEMANTIC_SAFETY_CURSOR_FINDINGS_ROOT_CAUSE_CORRECTION_V2 Phase 8/14); 2026-07-15: +mission-authorization runtime/CLI, privacy guard, their test suites, hook config and the authorization mutation-campaign runner+evidence (truthful disclosure of the PR41 privacy/authorization root-cause and hardening missions per PR41_FINAL_AUTHORIZATION_LINEAGE_AND_MUTATION_CLOSURE_V1 Phase 9 — these files were already modified under explicit operator packets; this amendment discloses, it does not retroactively authorize); 2026-07-15 (closure): +3 generated hook-inventory paths regenerated when the no-private-paths hook landed (CHECK_STACK_RIGHTSIZING.md, PRECOMMIT_PERFORMANCE_AUDIT.md/.json) — completes the declarative overlap disclosure per PR41_FINAL_DECLARATIVE_SCOPE_DISCLOSURE_CLOSURE_V1; records connected mission scope only, does not retroactively authorize edits",
+  "scope_amendments": "2026-07-13: +4 generated universal-graph/inventory artifacts (CONNECTED_PATH_GRAPH_DRIFT gate demanded canonical regeneration; operator packet Phase 4 generated-artifact protocol); 2026-07-14: +reports/scoreboard_forensic/mutation_evidence_manifest.json (DEFECT-D durable mutation evidence required by SCOREBOARD_OPERATOR_SEMANTIC_SAFETY_CURSOR_FINDINGS_ROOT_CAUSE_CORRECTION_V2 Phase 8/14); 2026-07-15: +mission-authorization runtime/CLI, privacy guard, their test suites, hook config and the authorization mutation-campaign runner+evidence (truthful disclosure of the PR41 privacy/authorization root-cause and hardening missions per PR41_FINAL_AUTHORIZATION_LINEAGE_AND_MUTATION_CLOSURE_V1 Phase 9 \u2014 these files were already modified under explicit operator packets; this amendment discloses, it does not retroactively authorize); 2026-07-15 (closure): +3 generated hook-inventory paths regenerated when the no-private-paths hook landed (CHECK_STACK_RIGHTSIZING.md, PRECOMMIT_PERFORMANCE_AUDIT.md/.json) \u2014 completes the declarative overlap disclosure per PR41_FINAL_DECLARATIVE_SCOPE_DISCLOSURE_CLOSURE_V1; records connected mission scope only, does not retroactively authorize edits",
   "operator_authorization": "MISSION = SCOREBOARD_SEMANTICS_TARGET_TRUTH_AND_60C_ROOT_CAUSE_FORENSIC_V1 (operator packet 2026-07-13): forensic + universal correction of scoreboard semantics (ALL WAIT abstention, baselines, warnings, identity-first outcome join), target-truth forensic (placeholder thresholds, anchor/horizon contracts, flat decomposition), 60c root cause; NO retrain/promotion/sign-reversal/threshold-replacement/historical-outcome-rewrite; PR path; operator integrates",
   "production_database_truth": {
     "PRODUCTION_DB_WRITTEN_DURING_MISSION": "NO (mission execution used read-only mode=ro queries and tmp fixtures only)",
@@ -70,7 +70,7 @@
   },
   "lane_decomposition": {
     "LANE_A": "scoreboard schema v4 + operator semantic safety (calibration/daily_scoreboard.py, tests/test_calibration_daily_scoreboard.py, board/evidence records, graph consequence)",
-    "LANE_B": "identity-first outcome attachment (calibration/backfill_outcomes.py, tests/test_backfill_outcomes.py identity tests) — NOT AUTHORIZED FOR COMMIT; requires the separate Lane-B data-impact mission before any commit consideration"
+    "LANE_B": "identity-first outcome attachment (calibration/backfill_outcomes.py, tests/test_backfill_outcomes.py identity tests) \u2014 NOT AUTHORIZED FOR COMMIT; requires the separate Lane-B data-impact mission before any commit consideration"
   },
   "allowed_integration_method": "PR opened by Claude, integration owned by OPERATOR-authorized PR path; no direct main push",
   "required_checks": [
@@ -89,5 +89,6 @@
     "red required PR/main check",
     "main advances incompatibly",
     "bypass or direct-main push would be required"
-  ]
+  ],
+  "retirement": "2026-07-15: mission complete \u2014 PR #41 merged to main as f7de7b3b (exact-head merge commit, 12 reviewed commits preserved); retired during POST_MERGE_MAIN_RECOVERY_FINALIZE_PUSH_AND_OPEN_PR_V1 to clear the stale active registration (declarative-scope overlap with the recovery mission on OPEN_ITEMS.md); Lane-B obligations transferred to the standing Lane-B quarantine and its future data-impact mission"
 }

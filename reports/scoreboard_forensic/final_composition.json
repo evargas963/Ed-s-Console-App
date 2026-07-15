@@ -6,10 +6,10 @@
  "verification_procedure": "for every entry: git cat-file blob <final-tip>:<path> | sha256 must equal the recorded value; no worktree materialization, patch application or platform line-ending behavior participates; mechanically enforced by tests/test_mission_authorization.py::test_final_composition_map_matches_committed_tree",
  "procedure_variance_disclosure": "RESOLVED 2026-07-15: the historical worktree-render vs staged-blob split (recorded by the 2026-07-14 corrections) is superseded by the blob-canonical policy above; the historical render values remain available in correction_history[5].changes as old_sha256 provenance",
  "composition_input_paths_sha256": {
-  "OPEN_ITEMS.md": "15656a60d7f40842d1b8c20781668c62ddd4a9bfc5a39e43470870eb3208d60b",
+  "OPEN_ITEMS.md": "34093d96e573bf5709749897c3292696501d1c67d867c8392937a4eacf70feb0",
   "calibration/daily_scoreboard.py": "454cab6f0ccbf2e4e85a12221f043359ab76d15e5f5156da89215008d22c81d1",
   "governance/artifacts/universal_connected_path_graph.json": "70885815e5d5b7b9771cf961e1504830464045ab5d19aabcbe419c70b3a8fd75",
-  "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json": "17cfb0037d396b7a2cd2a04811b2a9bebd6c14a2104da37b56c5d9031738f953",
+  "governance/mission_authorization/consumed/SCOREBOARD-TARGET-TRUTH-60C-V1.retired.json": "4601d2defe830f40568d1f451a9a44eeffb2523e010747289bc4b54c7fb57e96",
   "governance/mission_authorization/consumed/UNIVERSAL-FIX-LOCK-RECORDS-V1.retired.json": "4e37d33a01574de80763b10f7832f5abb2c52837bc4fefbd063388252fceebd9",
   "reports/scoreboard_forensic/july13_2026_target_truth_forensic.json": "44817113f25caa16e3d886d5c02beeb91b0c082d95da009d5114815ea863ae41",
   "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py": "0a4ea2baf703795cdaf84f8d9c0442940cd74427d6ad165177fb01b73478d1bc",
@@ -141,6 +141,30 @@
     }
    },
    "campaign_impact": "NONE \u2014 the contract is not a mutation input; mutation definitions, detector map, retained campaign evidence and sig-v2 signatures are byte-identical"
+  },
+  {
+   "mission": "POST_MERGE_MAIN_RECOVERY_FINALIZE_PUSH_AND_OPEN_PR_V1",
+   "date": "2026-07-15",
+   "nature": "mission-lifecycle retirement: the Lane-A mission contract moved from the active registry to governance/mission_authorization/consumed/ with lease_state=retired and a retirement narrative (PR #41 merged to main as f7de7b3b; the stale active registration collided with the recovery mission's declarative scope); the map entry follows the file to its retired path under the blob-canonical policy",
+   "changes": {
+    "governance/mission_authorization/active/SCOREBOARD-TARGET-TRUTH-60C-V1.json -> governance/mission_authorization/consumed/SCOREBOARD-TARGET-TRUTH-60C-V1.retired.json": {
+     "old_sha256": "17cfb0037d396b7a2cd2a04811b2a9bebd6c14a2104da37b56c5d9031738f953",
+     "new_sha256": "4601d2defe830f40568d1f451a9a44eeffb2523e010747289bc4b54c7fb57e96"
+    }
+   },
+   "campaign_impact": "NONE - the contract is not a mutation input; calibration/daily_scoreboard.py and the detecting tests are byte-identical; sig-v2 signatures unaffected"
+  },
+  {
+   "mission": "POST_MERGE_MAIN_RECOVERY_FINALIZE_PUSH_AND_OPEN_PR_V1",
+   "date": "2026-07-15",
+   "nature": "lineage-lock catch: OPEN_ITEMS.md gained the [REAL-GATE:D17-LONG-TAIL-REKEY] lane in recovery commit 32ef29c without a same-change-set map correction; test_final_composition_map_matches_committed_tree turned red exactly as designed and the map entry is corrected here to the staged-blob identity; the same finalization change set also refreshes the lane's machine counts to the exact-byte reconciliation (4,690 / 1,013), so the map entry pins the refreshed bytes",
+   "changes": {
+    "OPEN_ITEMS.md": {
+     "old_sha256": "15656a60d7f40842d1b8c20781668c62ddd4a9bfc5a39e43470870eb3208d60b",
+     "new_sha256": "9cc3bbf4077c7871961e3377b51984ae87a719ff2f06ab3f616363fb324dabd9"
+    }
+   },
+   "campaign_impact": "NONE - OPEN_ITEMS.md is not a mutation input; calibration/daily_scoreboard.py and the detecting tests are byte-identical; sig-v2 signatures unaffected"
   }
  ],
  "mutation_runner_sha256": "b60e6811256c0ff32a5ce13a36c2d857e1b1ba97adf1c607c2c949038cf254df",

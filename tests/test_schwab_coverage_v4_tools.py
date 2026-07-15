@@ -670,6 +670,71 @@ def test_empty_surface_claims_never_inherit(tmp_path: Path) -> None:
     assert row["disposition"] == "UNREVIEWED"
 
 
+@pytest.mark.parametrize(
+    ("current_surface", "reviewed_surface", "should_apply"),
+    [
+        # exact-byte identity applies
+        ('    bid = q.get("bidPrice")', '    bid = q.get("bidPrice")', True),
+        # indentation-only difference: token-identical trivial code at a
+        # DIFFERENT nesting context must never inherit (observed live: return
+        # statements inheriting reviews of other blocks under .strip())
+        ('    return ""', '        return ""', False),
+        # leading whitespace difference
+        ('bid = q.get("bidPrice")', ' bid = q.get("bidPrice")', False),
+        # trailing whitespace difference
+        ('bid = q.get("bidPrice")', 'bid = q.get("bidPrice") ', False),
+        # internal whitespace difference
+        ('bid = q.get("bidPrice")', 'bid =  q.get("bidPrice")', False),
+        # whitespace-only historical surface: no content identity
+        ('   ', '   ', False),
+    ],
+)
+def test_surface_identity_is_exact_byte(
+    tmp_path: Path, current_surface: str, reviewed_surface: str, should_apply: bool
+) -> None:
+    """Normalization lock: reviewed-content identity is EXACT-BYTE equality —
+    any whitespace normalization (strip or otherwise) creates unsafe ambiguity
+    for token-identical code at semantically different sites and must fail
+    closed."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid_w",
+        language="py",
+        path="server.py",
+        line=42,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form=current_surface,
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    reviewed = RegisterRow(
+        **{
+            **current.as_csv_dict(),
+            "surface_form": reviewed_surface,
+            "disposition": "NOT_MARKET_DATA",
+        }
+    )
+    with (slice_dir / "s.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(reviewed.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    if should_apply:
+        assert rep["rows_updated"] == 1
+        assert row["disposition"] == "NOT_MARKET_DATA"
+    else:
+        assert rep["rows_updated"] == 0
+        assert row["disposition"] == "UNREVIEWED"
+
+
 def test_merge_slices_auto_syncs_perf_links(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

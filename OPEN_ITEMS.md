@@ -79,7 +79,9 @@ now apply only where the reviewed `surface_form` byte-equals the current code. T
 machine reconciliation (`governance/artifacts/register_reconciliation/reconciliation_run1.json`,
 zero arithmetic remainder on both denominators) leaves this OPEN lane:
 
-- **4,682 register rows** (1,009 on money-path files) carry a historical claimant whose
+- **4,690 register rows** (1,013 on money-path files; refreshed under EXACT-BYTE surface
+  identity in the FINALIZE mission - 8 rows previously matched only via .strip()
+  normalization across different indentation contexts) carry a historical claimant whose
   reviewed content no longer matches — truthfully `UNREVIEWED` until re-reviewed or rekeyed.
 - **Reviewed slice rows not resolving (slice denominator 54,186):** 16,554 site-content-absent,
   **11,119 content-ambiguous** (same surface at multiple sites — can NEVER be auto-rekeyed),
