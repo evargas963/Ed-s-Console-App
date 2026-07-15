@@ -2,7 +2,7 @@
 
 # Stage 1 — institutional target & label foundation report
 
-**Base:** `main @ f7de7b3b168f444a6fc7693922b57d6d8265a561`. **Branch:** `institutional-target-label-foundation-stage1-v1`.
+**Base:** `main @ a0f1a0eff4f02e3b5544db397ae5ee05516c9fd6` (finalized foundation, transplanted from original base `f7de7b3b`). **Branch:** `institutional-target-label-foundation-stage1-v1`.
 
 ## A. Canonical architecture delta (vs audit tip 27b9520)
 
@@ -78,6 +78,10 @@ Existing governance already states the required containment, verified this missi
 - `STAGE1_COST_MODEL_CONTRACT = PROVEN` — every economic target names a versioned cost model (validator-enforced).
 - `STAGE1_GOLDEN_LABEL_RECONSTRUCTION = PROVEN (synthetic)` — golden rows reconstruct; **real-governed-DB reconstruction NOT_PROVEN (no governed DB present)**.
 - `DATA_FOUNDATION_READY_FOR_STAGE2_BASELINES = NO` — blocked on: real governed-DB golden reconstruction, movement/economic label coverage (~9.1%), the OPEN RTH cohort-integrity fix, and the missing purge/embargo/walk-forward machinery.
+
+## N. Finalization & main transplant
+
+The finalization corrected all independently-identified Stage 1 defects (status conflation, false session-crossover claim, ET-oriented session vocabulary, N-vs-N+1 span, absent multiple-comparison controls, MFE/MAE partial-path, bypassable Stage 2 entry) and transplanted the branch onto current canonical main by `git rebase --onto origin/main f7de7b3b` — clean, linear, no merge commit. Old→new commit map: `8e3476a → bebffa7`, `774cb1d → 16a3484`, `2d6c824 → b93d66f`. Lane-B (`calibration/backfill_outcomes.py`, `tests/test_backfill_outcomes.py`) was parked across the rebase and restored byte-exact (pins `84b080ac` / `383594a4`); it is not part of this branch. No push, PR, or merge was performed.
 
 ## Mandatory statuses
 
