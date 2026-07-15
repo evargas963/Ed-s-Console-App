@@ -1,0 +1,55 @@
+{
+ "schema": "STAGE1_GOLDEN_LABELS",
+ "schema_version": 1,
+ "computed_by": "independent inline formula (scratch generator); asserted equal to module-under-test",
+ "fixed_horizon_cases": [
+  {
+   "ticker": "SPY",
+   "anchor_ts_utc": 1767623700,
+   "horizon": "1c",
+   "threshold_pts": 0.1,
+   "now_ts_utc": 1767630000,
+   "expected_outcome": "up",
+   "expected_pts": 0.2,
+   "expected_forward_bar_start": 1767623760
+  },
+  {
+   "ticker": "SPY",
+   "anchor_ts_utc": 1767623700,
+   "horizon": "5c",
+   "threshold_pts": 0.12,
+   "now_ts_utc": 1767630000,
+   "expected_outcome": "down",
+   "expected_pts": -0.3,
+   "expected_forward_bar_start": 1767624000
+  },
+  {
+   "ticker": "SPY",
+   "anchor_ts_utc": 1767623700,
+   "horizon": "15c",
+   "threshold_pts": 0.26,
+   "now_ts_utc": 1767630000,
+   "expected_outcome": "flat",
+   "expected_pts": 0.05,
+   "expected_forward_bar_start": 1767624600
+  },
+  {
+   "ticker": "SPY",
+   "anchor_ts_utc": 1767623700,
+   "horizon": "60c",
+   "threshold_pts": 0.65,
+   "now_ts_utc": 1767630000,
+   "expected_outcome": "up",
+   "expected_pts": 0.9,
+   "expected_forward_bar_start": 1767627300
+  }
+ ],
+ "mfe_mae_case": {
+  "ticker": "SPY",
+  "anchor_ts_utc": 1767623700,
+  "horizon": "5c",
+  "now_ts_utc": 1767630000,
+  "expected_mfe": 0.3,
+  "expected_mae": 0.4
+ }
+}
