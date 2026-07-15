@@ -683,3 +683,33 @@ def test_clone_identity_is_stable_across_ceremonies(tmp_path):
     a = ma.ensure_clone_identity(repo)
     b = ma.ensure_clone_identity(repo)
     assert a is not None and a == b, "an existing clone identity must never be replaced"
+
+
+# ── Composition lineage lock (PR41 final closure) ──
+
+
+def test_final_composition_map_matches_committed_tree():
+    """Mechanical lineage validator: every composition_input_paths_sha256 entry
+    must equal the sha256 of the git staged-blob bytes of that path (index form,
+    == HEAD in CI). A mapped file changing without a map correction turns this
+    red — the silent-staleness class closed by correction_history[5]."""
+    import hashlib
+    import subprocess
+
+    comp = json.loads(
+        (ma.REPO_ROOT / "reports" / "scoreboard_forensic" / "final_composition.json"
+         ).read_text(encoding="utf-8")
+    )
+    entries = comp["composition_input_paths_sha256"]
+    assert len(entries) == 9
+    for rel, recorded in entries.items():
+        blob = subprocess.run(
+            ["git", "cat-file", "blob", f":{rel}"],
+            cwd=ma.REPO_ROOT, capture_output=True, check=True,
+        ).stdout
+        actual = hashlib.sha256(blob).hexdigest()
+        assert actual == recorded, (
+            f"{rel}: staged-blob {actual[:16]} != composition map {recorded[:16]} — "
+            "update composition_input_paths_sha256 + correction_history in the same "
+            "change set (byte_form_policy: staged-blob canonical)"
+        )
