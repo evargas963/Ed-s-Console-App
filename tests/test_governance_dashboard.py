@@ -288,6 +288,54 @@ def test_rollback_checkpoint_skips_corrupt_manifest_uses_valid_remaining(
     assert any("corrupt checkpoint manifest" in r.message for r in caplog.records)
 
 
+def test_rollback_checkpoint_corrupt_manifest_warned_regardless_of_scan_order(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    """Determinism lock: the corrupt-manifest warning must fire even when the VALID
+    checkpoint sorts first — an early return on the first valid checkpoint (or raw
+    filesystem enumeration order) silently skips the corrupt sibling's diagnostic,
+    which is exactly the nondeterministic failure this fixture kills."""
+    from arch_competition.manual_control import rollback_checkpoints_dir
+
+    base = rollback_checkpoints_dir(tmp_path, "1c", "SPY")
+    base.mkdir(parents=True)
+    good = base / "a_good_sorts_first"
+    good.mkdir()
+    (good / "checkpoint_manifest.json").write_text(
+        json.dumps({"snapshot_empty": False}),
+        encoding="utf-8",
+    )
+    bad = base / "z_bad_sorts_last"
+    bad.mkdir()
+    (bad / "checkpoint_manifest.json").write_text("{not-json", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="arch_competition.governance_visibility"):
+        assert _rollback_checkpoint_available(tmp_path, "1c", "SPY") is True
+    assert any(
+        "corrupt checkpoint manifest" in r.message and "z_bad_sorts_last" in r.message
+        for r in caplog.records
+    )
+
+
+def test_rollback_checkpoint_all_corrupt_or_empty_is_unavailable(tmp_path: Path):
+    """Fail-closed: corrupt-only and empty-snapshot-only checkpoint sets never
+    report availability."""
+    from arch_competition.manual_control import rollback_checkpoints_dir
+
+    base = rollback_checkpoints_dir(tmp_path, "1c", "SPY")
+    base.mkdir(parents=True)
+    bad = base / "ck_bad"
+    bad.mkdir()
+    (bad / "checkpoint_manifest.json").write_text("{not-json", encoding="utf-8")
+    empty = base / "ck_empty"
+    empty.mkdir()
+    (empty / "checkpoint_manifest.json").write_text(
+        json.dumps({"snapshot_empty": True}),
+        encoding="utf-8",
+    )
+    assert _rollback_checkpoint_available(tmp_path, "1c", "SPY") is False
+
+
 def test_manual_promote_endpoint_invokes_only_manual_control(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("ED_GOVERNANCE_UI_ACTIONS", "1")
     monkeypatch.setenv("ED_GOVERNANCE_ALLOW_REMOTE", "1")

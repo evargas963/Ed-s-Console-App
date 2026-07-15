@@ -95,10 +95,16 @@ def _load_arch_state_ticker(
 
 
 def _rollback_checkpoint_available(model_dir: Path, ml_horizon_slug: str, ticker: str) -> bool:
+    """Deterministic on every filesystem: checkpoints are scanned in sorted order
+    and EVERY manifest is read — a corrupt manifest is always warned about, never
+    silently skipped because a valid sibling happened to enumerate first (raw
+    iterdir order is readdir/inode-order dependent and differs across platforms,
+    which made the corrupt-manifest diagnostic nondeterministic)."""
     base = rollback_checkpoints_dir(model_dir, ml_horizon_slug, ticker)
     if not base.is_dir():
         return False
-    for p in base.iterdir():
+    available = False
+    for p in sorted(base.iterdir()):
         if not p.is_dir():
             continue
         cm = p / "checkpoint_manifest.json"
@@ -106,8 +112,6 @@ def _rollback_checkpoint_available(model_dir: Path, ml_horizon_slug: str, ticker
             continue
         try:
             m = json.loads(cm.read_text(encoding="utf-8"))
-            if not m.get("snapshot_empty"):
-                return True
         except (OSError, json.JSONDecodeError) as e:
             log.warning(
                 "governance_visibility: skipping corrupt checkpoint manifest %s: %s",
@@ -115,7 +119,9 @@ def _rollback_checkpoint_available(model_dir: Path, ml_horizon_slug: str, ticker
                 e,
             )
             continue
-    return False
+        if not m.get("snapshot_empty"):
+            available = True
+    return available
 
 
 def _attach_notification_delivery_visibility(

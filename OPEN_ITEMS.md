@@ -71,6 +71,35 @@ Current high-priority future lanes preserved in the master checklist:
 
 ---
 
+## D17 long-tail rekey lane (raised 2026-07-15, POST_MERGE_MAIN_RECOVERY_UNIVERSAL_CLOSURE_V2)
+
+**[REAL-GATE:D17-LONG-TAIL-REKEY]** Content-bound slice resolution (recovery branch
+post-merge-main-recovery-v2) ended coordinate-hash inheritance: reviewed dispositions
+now apply only where the reviewed `surface_form` byte-equals the current code. The
+machine reconciliation (`governance/artifacts/register_reconciliation/reconciliation_run1.json`,
+zero arithmetic remainder on both denominators) leaves this OPEN lane:
+
+- **4,690 register rows** (1,013 on money-path files; refreshed under EXACT-BYTE surface
+  identity in the FINALIZE mission - 8 rows previously matched only via .strip()
+  normalization across different indentation contexts) carry a historical claimant whose
+  reviewed content no longer matches — truthfully `UNREVIEWED` until re-reviewed or rekeyed.
+- **Reviewed slice rows not resolving (slice denominator 54,186):** 16,554 site-content-absent,
+  **11,119 content-ambiguous** (same surface at multiple sites — can NEVER be auto-rekeyed),
+  **1,485 unique-content rekey candidates** (exactly one byte-identical site; eligible for
+  per-row rekey with cited evidence, the procedure used for the 7+3 recovery rekeys).
+- **Why bulk rekey is rejected:** the d17 tool's own safety verdict is False
+  (non-unique target ids from duplicate slice rows); ambiguity cannot be resolved by
+  path/line proximity (that proximity IS the defect class).
+- **Required proof per future rekey:** unique byte-identical `surface_form` on the reviewed
+  path + preserved disposition/citation/governed_ref + rekey provenance note (see the
+  c0ca01e / V2 rekey notes format).
+- **Closure bar:** no broader D17 closure claim until this lane is either re-reviewed row
+  by row or explicitly governed as unreviewed; `unreviewed_count` (64,881 at the V2
+  reconciliation) is the only closure number; the Schwab V4 Register Closure workflow's
+  final metrics step stays red BY DESIGN until it reaches zero.
+- **Trade-determinative status:** money-path counts enumerated above; no trading
+  calculation changed — governance coverage accounting only.
+
 ## July 2026 program — landed lanes + active execution board (2026-07-08 @ `5869081`)
 
 **Vocabulary:** RTH_SENTINEL ladder only. SPY/QQQ/IWM = RTH sentinels, never the proof boundary; sentinel evidence never claims full universal runtime.

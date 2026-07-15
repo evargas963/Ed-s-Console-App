@@ -223,12 +223,17 @@ def run_slice_builders(*, dry_run: bool) -> list[dict]:
 
 
 def load_slice_disposition_maps(slice_dir: Path) -> tuple[
-    dict[tuple[str, int, int, str, str], dict[str, str]],
-    dict[str, dict[str, str]],
+    dict[tuple[str, int, int, str, str], list[dict[str, str]]],
+    dict[str, list[dict[str, str]]],
     dict[tuple[str, int], dict[str, str]],
 ]:
-    by_site: dict[tuple[str, int, int, str, str], dict[str, str]] = {}
-    by_id: dict[str, dict[str, str]] = {}
+    """by_site / by_id hold EVERY claimant row for an identity (identities can
+    legitimately collide across slice generations after sites shift and rows are
+    rekeyed); the content-bound resolver picks the claimant whose reviewed
+    surface_form matches the current code, so a stale claimant can never shadow
+    a rekeyed one by file-load order."""
+    by_site: dict[tuple[str, int, int, str, str], list[dict[str, str]]] = {}
+    by_id: dict[str, list[dict[str, str]]] = {}
     by_path_line: dict[tuple[str, int], dict[str, str]] = {}
     if not slice_dir.is_dir():
         return by_site, by_id, by_path_line
@@ -241,10 +246,10 @@ def load_slice_disposition_maps(slice_dir: Path) -> tuple[
                 disp = (row.get("disposition") or "").strip()
                 if not disp or disp == "UNREVIEWED":
                     continue
-                by_site[site_key(row)] = row
+                by_site.setdefault(site_key(row), []).append(row)
                 rid = (row.get("register_id") or "").strip()
                 if rid:
-                    by_id[rid] = row
+                    by_id.setdefault(rid, []).append(row)
                 # register_id rows merge exactly via by_id / by_site; path+line would
                 # collateral-disposition co-located wire/BINOP rows on mixed lines.
                 if rid:
@@ -280,36 +285,80 @@ def line_scope_production_merge_blocked(
 
 def resolve_slice_row_prototype(
     row: dict[str, str],
-    by_id: dict[str, dict[str, str]],
-    by_site: dict[tuple[str, int, int, str, str], dict[str, str]],
+    by_id: dict[str, list[dict[str, str]]],
+    by_site: dict[tuple[str, int, int, str, str], list[dict[str, str]]],
     by_stable_key: dict[str, dict[str, str]],
 ) -> tuple[dict[str, str] | None, str]:
-    """Prototype resolver: register_id → site_key → stable_semantic_key (never path+line-only)."""
+    """Prototype resolver: register_id -> site_key -> stable_semantic_key (never
+    path+line-only); content-bound like production so a stale claimant is never
+    reported as the match for code it did not review."""
     rid = (row.get("register_id") or "").strip()
     if rid and rid in by_id:
-        return by_id[rid], "register_id"
+        src = _surface_bound(row, by_id[rid])
+        if src is not None:
+            return src, "register_id"
     sk = site_key(row)
     if sk in by_site:
-        return by_site[sk], "site_key"
+        src = _surface_bound(row, by_site[sk])
+        if src is not None:
+            return src, "site_key"
     ssk = (row.get("_stable_semantic_key") or "").strip()
     if ssk and ssk in by_stable_key:
         return by_stable_key[ssk], "stable_semantic_key"
     return None, "none"
 
 
+def _surface_bound(row: dict[str, str], srcs: list[dict[str, str]]) -> dict[str, str] | None:
+    """CONTENT BINDING (2026-07-15 root cause): register_id and site_key both hash
+    coordinates (path|line|col|kind|language), never content — after source files
+    shift, DIFFERENT code can occupy reviewed coordinates and silently inherit the
+    reviewed disposition (observed at scale: 4,903 register rows carried slice
+    dispositions whose reviewed surface_form no longer matched the code, including
+    a live quote-field read mis-classified NOT_MARKET_DATA). A slice disposition therefore
+    applies ONLY when the reviewed surface_form byte-equals the current row's
+    surface_form; content-matching claimants with CONFLICTING dispositions fail
+    closed to UNREVIEWED."""
+    sf = row.get("surface_form") or ""
+    if not sf.strip():
+        # No content identity exists for this row — an empty/whitespace-only
+        # surface can never prove the reviewed code is the current code (fail
+        # closed; a pair of empty surfaces would otherwise degrade to
+        # coordinate-only identity).
+        return None
+    # EXACT-BYTE equality (2026-07-15 adversarial finding): .strip() equivalence
+    # let token-identical trivial statements (return "", return None) inherit
+    # dispositions across DIFFERENT indentation contexts — 8 live rows were
+    # inheriting reviews of code in other blocks. Indentation is part of the
+    # reviewed content's identity; any whitespace difference fails closed.
+    matching = [s for s in srcs if (s.get("surface_form") or "") == sf]
+    if not matching:
+        return None
+    disps = {(s.get("disposition") or "").strip() for s in matching}
+    if len(disps) != 1:
+        return None
+    return matching[0]
+
+
 def _resolve_slice_row(
     row: dict[str, str],
-    by_id: dict[str, dict[str, str]],
-    by_site: dict[tuple[str, int, int, str, str], dict[str, str]],
+    by_id: dict[str, list[dict[str, str]]],
+    by_site: dict[tuple[str, int, int, str, str], list[dict[str, str]]],
     by_path_line: dict[tuple[str, int], dict[str, str]],
 ) -> dict[str, str] | None:
     rid = (row.get("register_id") or "").strip()
     if rid and rid in by_id:
-        return by_id[rid]
+        src = _surface_bound(row, by_id[rid])
+        if src is not None:
+            return src
     sk = site_key(row)
     if sk in by_site:
-        return by_site[sk]
-    return by_path_line.get(path_line_key(row))
+        src = _surface_bound(row, by_site[sk])
+        if src is not None:
+            return src
+    src = by_path_line.get(path_line_key(row))
+    if src is not None:
+        return _surface_bound(row, [src])
+    return None
 
 
 def merge_register_slices(
@@ -370,6 +419,15 @@ def merge_register_slices(
     report["rows_updated"] = n_up
     report["register_content_sha256"] = sha256_hex
     report["register_size_bytes"] = size_b
+    # UNIVERSAL SYNC (2026-07-15): performance-proof register_link arrays are
+    # DERIVED from the register's REPLACED rows; every canonical-register merge
+    # re-derives them so no supported path can leave stale links behind (the
+    # PR-#41 incident class: repin landed, links never resynced, main went red).
+    if is_canonical_v4_register(register):
+        _n_rows_sync, by_proof = _collect_replaced_by_proof(register)
+        _write_perf_json(by_proof)
+        report["perf_links_synced"] = True
+        report["replaced_by_proof_counts"] = {k: len(v) for k, v in sorted(by_proof.items())}
     return report
 
 

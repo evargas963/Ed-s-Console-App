@@ -285,9 +285,9 @@ def test_stable_key_collision_blocks_site_merge(tmp_path: Path) -> None:
 def test_register_id_site_key_unchanged_in_production_resolver() -> None:
     reg = _row(register_id="exact_id", disposition="UNREVIEWED")
     slice_row = _row(register_id="exact_id", disposition="NOT_MARKET_DATA")
-    by_id = {"exact_id": slice_row}
+    by_id = {"exact_id": [slice_row]}  # claimant-list shape (content-bound resolver)
     sk = site_key(reg)
-    by_site = {sk: slice_row}
+    by_site = {sk: [slice_row]}
     matched, tier = resolve_slice_row_prototype(reg, by_id, by_site, {})
     assert tier == "register_id"
     assert matched is slice_row

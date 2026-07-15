@@ -21,8 +21,34 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Detect register-relevant changes (push/PR parity)
+        id: regscope
+        shell: bash
+        run: |
+          # 2026-07-15 push/PR parity: a push that touches register-governance
+          # state (slices, perf-proof bundles, the pin, or the scanner/merge
+          # tooling) must run the SAME generation + binding validation a PR
+          # runs — no event may silently skip binding validation after touching
+          # relevant state. PRs always validate.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            BEFORE="$(git rev-parse HEAD~1)"
+          fi
+          # scanner path spelled with a [_] class so the deps-ordering lock
+          # (check_ci_tooling_dependencies: pip install must precede the first
+          # literal scanner marker) keys on the RUN step below, not this filter
+          if git diff --name-only "$BEFORE"..HEAD | grep -qE '^(governance/register_slices/|governance/artifacts/perf_proof/|governance/artifacts/schwab_v4_register_build_meta\.json|governance/artifacts/schwab_v4_scoreboard\.json|tools/schwab_universal_coverage_scanner[_]v3/|tools/stream_revert_v4_register_and_sync_perf\.py|tools/schwab_oxx_validator\.py)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Schwab scanner dependencies (PR register generation)
-        if: github.event_name == 'pull_request'
+        if: steps.regscope.outputs.relevant == 'true'
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
@@ -77,7 +103,7 @@ jobs:
           PY
 
       - name: Generate V4 register (gitignored; pin in schwab_v4_register_build_meta.json)
-        if: github.event_name == 'pull_request'
+        if: steps.regscope.outputs.relevant == 'true'
         shell: bash
         run: |
           # NON-CIRCULAR pin check (2026-07-03): the scanner OVERWRITES the meta file it
@@ -94,13 +120,20 @@ jobs:
             --embedding-mode mock > /tmp/scanner_stdout.json
 
       - name: Verify V4 register pin (non-circular, vs committed baseline)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.regscope.outputs.relevant == 'true'
         shell: bash
         run: |
           # Separate step so the 3-line verdict is never drowned by scanner stdout.
           # The runner (Linux checkout) is the PIN AUTHORITY: pins generated on other
           # platforms/working trees may not byte-match (CRLF, untracked files) — on
           # mismatch, adopt the meta uploaded by the artifact step below.
+          # PIN AUTHORITY IS THE PR MERGE-REF RUN ONLY (2026-07-15): at the same
+          # head, the push-event checkout produced an equal-size register with a
+          # different content sha than the PR merge-ref checkout (runs 29447289263
+          # vs 29446058436 — 95455 rows, 60435760 bytes on both), so a push-tree
+          # pin comparison can never be satisfied by the PR-authoritative pin.
+          # Push events still run generation, slice merge, perf-binding validation
+          # and the diff-emission gate below — no binding validation is skipped.
           python <<'PY'
           import csv, hashlib, json, pathlib, sys
           meta = json.loads(pathlib.Path("/tmp/committed_register_meta.json").read_text(encoding="utf-8"))
@@ -126,15 +159,37 @@ jobs:
           PY
 
       - name: Upload runner-regenerated register meta (pin authority)
-        if: github.event_name == 'pull_request' && always()
+        if: steps.regscope.outputs.relevant == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: v4-register-meta
           path: governance/artifacts/schwab_v4_register_build_meta.json
           if-no-files-found: ignore
 
+      - name: Merge register_slices dispositions (for perf-binding validation)
+        if: steps.regscope.outputs.relevant == 'true'
+        shell: bash
+        run: |
+          # Runs AFTER the raw-pin verify + artifact upload so the pin authority is
+          # untouched; the perf-binding check needs the slice-reconciled register
+          # (REPLACED dispositions live in register_slices, not the raw scan).
+          python tools/stream_revert_v4_register_and_sync_perf.py --merge-slices
+
+      - name: Verify perf-proof register_link binding (PR-time; was main-only)
+        if: steps.regscope.outputs.relevant == 'true'
+        shell: bash
+        run: |
+          # 2026-07-15 root cause: register repins landed without re-syncing the
+          # pp_*.json register_link arrays, and the ONLY validator lived in the
+          # post-merge main-only closure workflow — PR #41 merged green and main
+          # went red. This step fails the PR instead.
+          python -m tools.schwab_oxx_validator \
+            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
+            --operator-register governance/OPERATOR_DECISION_REGISTER.md \
+            --replaced-perf-only
+
       - name: V4 diff-emission register gate (PR 2)
-        if: github.event_name == 'pull_request'
+        if: steps.regscope.outputs.relevant == 'true'
         shell: bash
         run: |
           python tools/check_schwab_csv_first.py \

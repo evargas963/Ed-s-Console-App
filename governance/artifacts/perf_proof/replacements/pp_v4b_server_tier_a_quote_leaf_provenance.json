@@ -29,7 +29,9 @@
     "platform_note": "Windows; Python 3.13; chunk-2 2026-05-24"
   },
   "register_link": {
-    "status": "unbound",
-    "replaced_register_ids": []
+    "status": "bound",
+    "replaced_register_ids": [
+      "931edd108d0b483df165"
+    ]
   }
 }

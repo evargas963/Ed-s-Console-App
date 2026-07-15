@@ -448,3 +448,397 @@ def test_site_key_normalizes_path() -> None:
         }
     )
     assert k == ("server.py", 1, 0, "T", "python")
+
+
+def _write_reg(path: Path, rows: list[RegisterRow]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        for r in rows:
+            w.writerow(r.as_csv_dict())
+
+
+def test_slice_merge_refuses_on_surface_form_mismatch(tmp_path: Path) -> None:
+    """CONTENT-BINDING lock (2026-07-15 root cause): register_id and site_key hash
+    coordinates, never content — after source lines shift, DIFFERENT code occupies
+    reviewed coordinates. A slice disposition must apply only when the reviewed
+    surface_form byte-equals the current row's; observed at scale pre-fix: 4,903
+    register rows carried dispositions for code that was never reviewed, including
+    a live quote-field read mis-classified NOT_MARKET_DATA from an old _vix_tracker row."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid1",
+        language="python",
+        path="server.py",
+        line=10,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form='bid = _safe_float_quote(_q.get("bidPrice"))',
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    # same register_id AND same site coordinates, but the REVIEWED content differs
+    reviewed_other_code = RegisterRow(
+        **{
+            **current.as_csv_dict(),
+            "surface_form": "_vix_tracker.tick(float(mkt_ctx.vix))",
+            "disposition": "NOT_MARKET_DATA",
+            "notes": "reviewed when different code occupied this line",
+        }
+    )
+    with (slice_dir / "server_py.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(reviewed_other_code.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 0
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    assert row["disposition"] == "UNREVIEWED", (
+        "a coordinate-matched slice row with different reviewed content must never "
+        "disposition the current code (fail closed to UNREVIEWED)"
+    )
+
+
+def test_slice_merge_applies_on_exact_surface_match(tmp_path: Path) -> None:
+    """Complement lock: identical reviewed content at the same identity still merges."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid1",
+        language="python",
+        path="server.py",
+        line=10,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form='bid = _safe_float_quote(_q.get("bidPrice"))',
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    reviewed_same = RegisterRow(
+        **{
+            **current.as_csv_dict(),
+            "disposition": "REPLACED",
+            "canonical_field_citation": "quotes.quote.bidPrice",
+        }
+    )
+    with (slice_dir / "server_py.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(reviewed_same.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 1
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    assert row["disposition"] == "REPLACED"
+
+
+def test_slice_merge_id_collision_resolved_by_content(tmp_path: Path) -> None:
+    """Identity-collision lock: when two slice generations claim the SAME
+    register_id (a stale row reviewed for code that used to occupy the
+    coordinates + a rekeyed row for the current code), the content-matching
+    claimant applies and the stale one can never shadow it by load order."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid_shared",
+        language="py",
+        path="server.py",
+        line=4810,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form='bid = _safe_float_quote(_q.get("bidPrice"))',
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    rekeyed = RegisterRow(
+        **{
+            **current.as_csv_dict(),
+            "disposition": "REPLACED",
+            "canonical_field_citation": "quotes.quote.bidPrice",
+            "governed_ref": "governance/artifacts/perf_proof/replacements/pp_x.json",
+        }
+    )
+    stale_other_code = RegisterRow(
+        **{
+            **current.as_csv_dict(),
+            "surface_form": "_vix_tracker.tick(float(mkt_ctx.vix))",
+            "disposition": "NOT_MARKET_DATA",
+        }
+    )
+    # the stale claimant lives in a slice file that sorts AFTER the rekeyed one:
+    # last-writer-wins map semantics would shadow the rekeyed row
+    with (slice_dir / "a_rekeyed.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(rekeyed.as_csv_dict())
+    with (slice_dir / "z_stale.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(stale_other_code.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 1
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    assert row["disposition"] == "REPLACED"
+    assert row["canonical_field_citation"] == "quotes.quote.bidPrice"
+
+
+@pytest.mark.parametrize("order", ["rekeyed_first", "stale_first"])
+def test_conflicting_same_surface_dispositions_fail_closed(tmp_path: Path, order: str) -> None:
+    """Conflict lock: two claimants with the SAME reviewed surface but CONFLICTING
+    dispositions must fail closed to UNREVIEWED — and claimant load order (slice
+    file name sort) must not change the result."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid_c",
+        language="py",
+        path="server.py",
+        line=100,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form="ask = q.get('askPrice')",
+        tokens="ask",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    claim_a = RegisterRow(**{**current.as_csv_dict(), "disposition": "REPLACED",
+                             "governed_ref": "governance/artifacts/perf_proof/replacements/pp_a.json"})
+    claim_b = RegisterRow(**{**current.as_csv_dict(), "disposition": "NOT_MARKET_DATA"})
+    first, second = (claim_a, claim_b) if order == "rekeyed_first" else (claim_b, claim_a)
+    for name, row in (("a_first.csv", first), ("z_second.csv", second)):
+        with (slice_dir / name).open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+            w.writeheader()
+            w.writerow(row.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 0
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    assert row["disposition"] == "UNREVIEWED", (
+        "conflicting same-surface reviewed claims must never silently apply"
+    )
+
+
+def test_empty_surface_claims_never_inherit(tmp_path: Path) -> None:
+    """Empty-surface lock: a historical claimant with an EMPTY surface_form has no
+    content identity — even a register_id + coordinate + empty-vs-empty match must
+    fail closed (otherwise identity degrades to coordinates, the PR-#41 class)."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid_e",
+        language="py",
+        path="server.py",
+        line=7,
+        col=0,
+        pattern_kind="T",
+        surface_form="",
+        tokens="",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    claim = RegisterRow(**{**current.as_csv_dict(), "disposition": "NOT_MARKET_DATA"})
+    with (slice_dir / "s.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(claim.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 0
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    assert row["disposition"] == "UNREVIEWED"
+
+
+@pytest.mark.parametrize(
+    ("current_surface", "reviewed_surface", "should_apply"),
+    [
+        # exact-byte identity applies
+        ('    bid = q.get("bidPrice")', '    bid = q.get("bidPrice")', True),
+        # indentation-only difference: token-identical trivial code at a
+        # DIFFERENT nesting context must never inherit (observed live: return
+        # statements inheriting reviews of other blocks under .strip())
+        ('    return ""', '        return ""', False),
+        # leading whitespace difference
+        ('bid = q.get("bidPrice")', ' bid = q.get("bidPrice")', False),
+        # trailing whitespace difference
+        ('bid = q.get("bidPrice")', 'bid = q.get("bidPrice") ', False),
+        # internal whitespace difference
+        ('bid = q.get("bidPrice")', 'bid =  q.get("bidPrice")', False),
+        # whitespace-only historical surface: no content identity
+        ('   ', '   ', False),
+    ],
+)
+def test_surface_identity_is_exact_byte(
+    tmp_path: Path, current_surface: str, reviewed_surface: str, should_apply: bool
+) -> None:
+    """Normalization lock: reviewed-content identity is EXACT-BYTE equality —
+    any whitespace normalization (strip or otherwise) creates unsafe ambiguity
+    for token-identical code at semantically different sites and must fail
+    closed."""
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    current = RegisterRow(
+        register_id="rid_w",
+        language="py",
+        path="server.py",
+        line=42,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form=current_surface,
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    reviewed = RegisterRow(
+        **{
+            **current.as_csv_dict(),
+            "surface_form": reviewed_surface,
+            "disposition": "NOT_MARKET_DATA",
+        }
+    )
+    with (slice_dir / "s.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(reviewed.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    if should_apply:
+        assert rep["rows_updated"] == 1
+        assert row["disposition"] == "NOT_MARKET_DATA"
+    else:
+        assert rep["rows_updated"] == 0
+        assert row["disposition"] == "UNREVIEWED"
+
+
+def test_merge_slices_auto_syncs_perf_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Universal-sync lock: merging slices into the CANONICAL register must
+    re-derive every pp_*.json register_link in the same operation — no supported
+    path may leave stale links behind (the PR-#41 incident class)."""
+    import tools.stream_revert_v4_register_and_sync_perf as srv
+
+    reg = tmp_path / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+    perf_dir = tmp_path / "perf"
+    perf_dir.mkdir()
+    meta = tmp_path / "meta.json"
+    meta.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(srv, "DEFAULT_REGISTER", reg)
+    monkeypatch.setattr(srv, "PERF_DIR", perf_dir)
+    monkeypatch.setattr(srv, "META_PATH", meta)
+    proof_name = "pp_v4b_autosync_test.json"
+    (perf_dir / proof_name).write_text(
+        json.dumps({"register_link": {"status": "unbound", "replaced_register_ids": []}}),
+        encoding="utf-8",
+    )
+    gov_ref = f"governance/artifacts/perf_proof/replacements/{proof_name}"
+    current = RegisterRow(
+        register_id="rid_s",
+        language="py",
+        path="server.py",
+        line=5,
+        col=0,
+        pattern_kind="T",
+        surface_form="bid = q.get('bidPrice')",
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    _write_reg(reg, [current])
+    claim = RegisterRow(**{**current.as_csv_dict(), "disposition": "REPLACED",
+                           "canonical_field_citation": "quotes.quote.bidPrice",
+                           "governed_ref": gov_ref})
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    with (slice_dir / "s.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(claim.as_csv_dict())
+    rep = srv.merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 1
+    assert rep.get("perf_links_synced") is True
+    doc = json.loads((perf_dir / proof_name).read_text(encoding="utf-8"))
+    assert doc["register_link"]["status"] == "bound"
+    assert doc["register_link"]["replaced_register_ids"] == ["rid_s"]
+
+
+def test_oxx_validator_replaced_perf_only_flag(tmp_path: Path) -> None:
+    """--replaced-perf-only validates ONLY the pp binding (PR-time gate): a bare
+    GOVERNED_EXCEPTION row that fails full mode must not fail this mode, while a
+    stale register_link still must."""
+    op = tmp_path / "op.md"
+    op.write_text(_op_with_narrative("O-94"), encoding="utf-8")
+    perf_dir = tmp_path / "perf"
+    perf_dir.mkdir()
+    proof_name = "pp_v4b_flag_test.json"
+    (perf_dir / proof_name).write_text(
+        json.dumps({"register_link": {"status": "bound", "replaced_register_ids": ["rid_ok"]}}),
+        encoding="utf-8",
+    )
+    gov_ref = f"governance/artifacts/perf_proof/replacements/{proof_name}"
+    rows = [
+        RegisterRow(
+            register_id="rid_ok", language="python", path="p.py", line=1, col=0,
+            pattern_kind="T", surface_form="", tokens="", csv_candidates="",
+            csv_lexical_topk_note="", v2_trace="",
+            disposition="REPLACED", canonical_field_citation="quotes.quote.lastPrice",
+            governed_ref=gov_ref,
+        ),
+        RegisterRow(
+            register_id="rid_bare", language="python", path="p.py", line=2, col=0,
+            pattern_kind="T", surface_form="", tokens="", csv_candidates="",
+            csv_lexical_topk_note="", v2_trace="",
+            disposition="GOVERNED_EXCEPTION", governed_ref="",
+        ),
+    ]
+    reg = tmp_path / "r.csv"
+    _write_reg(reg, rows)
+    root = Path(__file__).resolve().parents[1]
+
+    def _run(*extra: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, "-m", "tools.schwab_oxx_validator",
+             "--register", str(reg), "--operator-register", str(op),
+             "--perf-dir", str(perf_dir), *extra],
+            cwd=root, capture_output=True, text=True, check=False,
+        )
+
+    assert _run().returncode == 1  # full mode: bare GOVERNED_EXCEPTION fails
+    assert _run("--replaced-perf-only").returncode == 0  # binding coherent
+    # now break the binding: link cites an id that is not REPLACED
+    (perf_dir / proof_name).write_text(
+        json.dumps({"register_link": {"status": "bound",
+                                      "replaced_register_ids": ["rid_ok", "rid_stale"]}}),
+        encoding="utf-8",
+    )
+    assert _run("--replaced-perf-only").returncode == 1
+    # the legacy --skip-replaced-perf escape is removed: an unknown flag must
+    # refuse loudly (argparse exit 2), never silently narrow validation
+    assert _run("--skip-replaced-perf").returncode == 2

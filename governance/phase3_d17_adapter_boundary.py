@@ -131,12 +131,12 @@ PHASE3_ADAPTER_WIRE_DENYLIST: frozenset[str] = frozenset(
         "c4d49d94982bea534845",
         "707587b873e07d0df79b",
         "7c5df428881f49d9b5e5",
-        "d851f9da478c468ac505",
+        "156ae82138d8a9cc17ac",
         "c074d1ebf74c5f61bf1b",
-        "987eafc3688833ed87b8",
-        "ed514964d625ac27d90b",
-        "2e4a9afa89d73f43d796",
-        "c51b40b24d6c6d7839f4",
+        "294eff14d75df99bc536",
+        "bbe6040933cc6d26b06e",
+        "8b652342bdf9df9730d9",
+        "b7cd21eedac2c238fa2d",
     }
 )
 
@@ -498,11 +498,11 @@ PHASE3_WIRE_DISPOSITIONS: dict[str, WireDisposition] = {
         "",
         "OAuth2Client.create_authorization_url attr start | schwab_client.py L59",
     ),
-    "d851f9da478c468ac505": WireDisposition(
+    "156ae82138d8a9cc17ac": WireDisposition(
         "REPLACED",
         "pricehistory.candles",
         _PP_PRICEHISTORY,
-        "safe_get_price_history Client.PriceHistory API | schwab_client.py L492",
+        "safe_get_price_history Client.PriceHistory API | schwab_client.py L507 (rekeyed 2026-07-15: site shifted, content identical)",
     ),
     "c074d1ebf74c5f61bf1b": WireDisposition(
         "NOT_MARKET_DATA",
@@ -510,29 +510,29 @@ PHASE3_WIRE_DISPOSITIONS: dict[str, WireDisposition] = {
         "",
         "PriceHistory.Period.DAY API enum constant | schwab_client.py L509",
     ),
-    "987eafc3688833ed87b8": WireDisposition(
+    "294eff14d75df99bc536": WireDisposition(
         "REPLACED",
         "chains.strikeCount",
         _PP_MARKET_STATE_CHAIN,
-        "safe_get_chain strike_count kwarg | schwab_client.py L544",
+        "safe_get_chain strike_count kwarg | schwab_client.py L561 (rekeyed 2026-07-15: site shifted, content identical)",
     ),
-    "ed514964d625ac27d90b": WireDisposition(
+    "bbe6040933cc6d26b06e": WireDisposition(
         "REPLACED",
         "chains.includeUnderlyingQuote",
         _PP_MARKET_STATE_CHAIN,
-        "safe_get_chain include_underlying_quote | schwab_client.py L544",
+        "safe_get_chain include_underlying_quote | schwab_client.py L561 (rekeyed 2026-07-15: site shifted, content identical)",
     ),
-    "2e4a9afa89d73f43d796": WireDisposition(
+    "8b652342bdf9df9730d9": WireDisposition(
         "REPLACED",
         "chains.fromDate",
         _PP_MARKET_STATE_CHAIN,
-        "safe_get_chain from_date | schwab_client.py L546",
+        "safe_get_chain from_date | schwab_client.py L563 (rekeyed 2026-07-15: site shifted, content identical)",
     ),
-    "c51b40b24d6c6d7839f4": WireDisposition(
+    "b7cd21eedac2c238fa2d": WireDisposition(
         "REPLACED",
         "chains.toDate",
         _PP_MARKET_STATE_CHAIN,
-        "safe_get_chain to_date | schwab_client.py L548",
+        "safe_get_chain to_date | schwab_client.py L565 (rekeyed 2026-07-15: site shifted, content identical)",
     ),
 }
 

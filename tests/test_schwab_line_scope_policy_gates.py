@@ -286,7 +286,7 @@ def test_stable_semantic_key_remains_prototype_tier() -> None:
     slice_row = _row(register_id="other", disposition="NOT_MARKET_DATA")
     sk = site_key(reg)
     by_id: dict = {}
-    by_site = {sk: slice_row}
+    by_site = {sk: [slice_row]}  # claimant-list shape (content-bound resolver)
     by_stable = {"stable_only": slice_row}
     matched, tier = resolve_slice_row_prototype(reg, by_id, by_site, by_stable)
     assert tier == "site_key"
