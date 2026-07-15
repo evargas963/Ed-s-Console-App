@@ -120,13 +120,20 @@ jobs:
             --embedding-mode mock > /tmp/scanner_stdout.json
 
       - name: Verify V4 register pin (non-circular, vs committed baseline)
-        if: steps.regscope.outputs.relevant == 'true'
+        if: github.event_name == 'pull_request' && steps.regscope.outputs.relevant == 'true'
         shell: bash
         run: |
           # Separate step so the 3-line verdict is never drowned by scanner stdout.
           # The runner (Linux checkout) is the PIN AUTHORITY: pins generated on other
           # platforms/working trees may not byte-match (CRLF, untracked files) — on
           # mismatch, adopt the meta uploaded by the artifact step below.
+          # PIN AUTHORITY IS THE PR MERGE-REF RUN ONLY (2026-07-15): at the same
+          # head, the push-event checkout produced an equal-size register with a
+          # different content sha than the PR merge-ref checkout (runs 29447289263
+          # vs 29446058436 — 95455 rows, 60435760 bytes on both), so a push-tree
+          # pin comparison can never be satisfied by the PR-authoritative pin.
+          # Push events still run generation, slice merge, perf-binding validation
+          # and the diff-emission gate below — no binding validation is skipped.
           python <<'PY'
           import csv, hashlib, json, pathlib, sys
           meta = json.loads(pathlib.Path("/tmp/committed_register_meta.json").read_text(encoding="utf-8"))
