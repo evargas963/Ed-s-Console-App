@@ -464,7 +464,7 @@ def test_slice_merge_refuses_on_surface_form_mismatch(tmp_path: Path) -> None:
     reviewed coordinates. A slice disposition must apply only when the reviewed
     surface_form byte-equals the current row's; observed at scale pre-fix: 4,903
     register rows carried dispositions for code that was never reviewed, including
-    a bid-price quote read classified NOT_MARKET_DATA from an old _vix_tracker row."""
+    a live quote-field read mis-classified NOT_MARKET_DATA from an old _vix_tracker row."""
     reg = tmp_path / "reg.csv"
     slice_dir = tmp_path / "slices"
     slice_dir.mkdir()

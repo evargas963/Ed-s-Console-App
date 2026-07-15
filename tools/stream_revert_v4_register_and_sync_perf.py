@@ -314,7 +314,7 @@ def _surface_bound(row: dict[str, str], srcs: list[dict[str, str]]) -> dict[str,
     shift, DIFFERENT code can occupy reviewed coordinates and silently inherit the
     reviewed disposition (observed at scale: 4,903 register rows carried slice
     dispositions whose reviewed surface_form no longer matched the code, including
-    a bid-price quote read classified NOT_MARKET_DATA). A slice disposition therefore
+    a live quote-field read mis-classified NOT_MARKET_DATA). A slice disposition therefore
     applies ONLY when the reviewed surface_form byte-equals the current row's
     surface_form; content-matching claimants with CONFLICTING dispositions fail
     closed to UNREVIEWED."""
