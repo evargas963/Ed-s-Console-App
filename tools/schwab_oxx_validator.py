@@ -285,11 +285,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Only validate GOVERNED_EXCEPTION O-XX rows (legacy mode).",
     )
+    p.add_argument(
+        "--replaced-perf-only",
+        action="store_true",
+        help="Only validate REPLACED governed_ref <-> pp_*.json register_link binding "
+             "(PR-time enforcement in schwab-csv-first.yml).",
+    )
     args = p.parse_args(argv)
+    if args.skip_replaced_perf and args.replaced_perf_only:
+        print("--skip-replaced-perf and --replaced-perf-only are mutually exclusive", file=sys.stderr)
+        return 2
     if not args.operator_register.is_file():
         print(f"Missing {args.operator_register}", file=sys.stderr)
         return 2
-    msgs = validate_register_messages(args.register, args.operator_register)
+    msgs = []
+    if not args.replaced_perf_only:
+        msgs.extend(validate_register_messages(args.register, args.operator_register))
     if not args.skip_replaced_perf:
         msgs.extend(validate_replaced_perf_bindings(args.register, args.perf_dir))
     for m in msgs:

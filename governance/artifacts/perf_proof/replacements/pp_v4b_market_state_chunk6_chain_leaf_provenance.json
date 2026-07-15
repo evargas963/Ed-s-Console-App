@@ -31,10 +31,10 @@
   "register_link": {
     "status": "bound",
     "replaced_register_ids": [
-      "2e4a9afa89d73f43d796",
-      "987eafc3688833ed87b8",
-      "c51b40b24d6c6d7839f4",
-      "ed514964d625ac27d90b"
+      "294eff14d75df99bc536",
+      "8b652342bdf9df9730d9",
+      "b7cd21eedac2c238fa2d",
+      "bbe6040933cc6d26b06e"
     ],
     "producer_note": "contracts from server safe_get_chain flatten"
   }

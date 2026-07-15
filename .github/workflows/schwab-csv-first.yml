@@ -133,6 +133,28 @@ jobs:
           path: governance/artifacts/schwab_v4_register_build_meta.json
           if-no-files-found: ignore
 
+      - name: Merge register_slices dispositions (for perf-binding validation)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          # Runs AFTER the raw-pin verify + artifact upload so the pin authority is
+          # untouched; the perf-binding check needs the slice-reconciled register
+          # (REPLACED dispositions live in register_slices, not the raw scan).
+          python tools/stream_revert_v4_register_and_sync_perf.py --merge-slices
+
+      - name: Verify perf-proof register_link binding (PR-time; was main-only)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          # 2026-07-15 root cause: register repins landed without re-syncing the
+          # pp_*.json register_link arrays, and the ONLY validator lived in the
+          # post-merge main-only closure workflow — PR #41 merged green and main
+          # went red. This step fails the PR instead.
+          python -m tools.schwab_oxx_validator \
+            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
+            --operator-register governance/OPERATOR_DECISION_REGISTER.md \
+            --replaced-perf-only
+
       - name: V4 diff-emission register gate (PR 2)
         if: github.event_name == 'pull_request'
         shell: bash
