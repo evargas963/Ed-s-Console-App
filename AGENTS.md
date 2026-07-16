@@ -1,14 +1,18 @@
 # Ed Console — Governing Charter
 
-Ed Console is a clean, institutional-grade trading intelligence system built on one governing rule: **nothing earns a place in the decision path until it proves real predictive edge — out of sample, net of realistic costs, against trivial baselines.**
+Ed Console is a clean, institutional-grade trading intelligence system built on two convictions:
+
+**Edge exists — and it is found, not revealed.** Markets carry real, recurring inefficiencies: in structure, in order flow, in dealer positioning and hedging pressure, in volatility behavior, in regime persistence, in patterns that repeat because the participants creating them don't change. None of it announces itself. Edge yields only to deliberate search — the right systems, in place at the right time, applying every tool available to us: market structure, order flow, volatility, dealer positioning, regime analysis, statistical learning, deep learning, simulation, and historical analogs.
+
+**Nothing is trusted until proven.** No technique, signal, or model earns a place in the decision path until it proves real predictive edge — out of sample, net of realistic costs, against trivial baselines.
 
 It does three things, in order:
 
-- **Collect** — preserve high-fidelity, causally honest market data (storage timestamps UTC; sessions from the exchange calendar in exchange timezone; Schwab wire fields consumed directly, CSV-first; no fabricated defaults, no silent fallbacks).
-- **Prove** — pre-registered experiments (purged/embargoed walk-forward, cost-aware, baseline-compared); techniques are candidates, not residents; failed candidates are removed.
-- **Decide** — combine only admitted edge into calibrated TRADE/WAIT/AVOID; abstain by default; every decision logged and scored against realized outcomes.
+- **Collect** — preserve high-fidelity, causally honest market data (storage timestamps UTC; sessions from the exchange calendar in exchange timezone; Schwab wire fields consumed directly, CSV-first; no fabricated defaults, no silent fallbacks). The data we capture today is the search space we mine tomorrow — collection is the system that has to be in place before the edge can be found.
+- **Find & Prove** — run a standing search program, not a review board. Generate candidate hypotheses across every tool listed above; subject each to pre-registered experiments (purged/embargoed walk-forward, cost-aware, baseline-compared); kill what fails and keep hunting. Techniques are candidates, not residents. A high kill rate is the sign the search is honest, not that the search is failing.
+- **Decide** — combine only proven edge into calibrated TRADE/WAIT/AVOID; abstain by default; every decision logged and scored against realized outcomes, so the decision layer itself generates the evidence for the next round of search.
 
-**Removal rule:** every file materially serves Collect, Prove, or Decide, or is a supporting control that directly protects one — anything else is removed.
+**Removal rule:** every file materially serves Collect, Find & Prove, or Decide, or is a supporting control that directly protects one — anything else is removed.
 
 **Before any work, answer in chat:** MISSION_CLASS / GAP / SMALLEST_COMPLETE_CHANGE / MINIMUM_SUFFICIENT_EVIDENCE / DECISION_PATH_EFFECT / WHY_NOW / TASK_ADMISSION.
 
