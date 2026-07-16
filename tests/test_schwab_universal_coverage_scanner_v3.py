@@ -1914,20 +1914,23 @@ def test_register_csv_byte_identical_regardless_of_row_order(tmp_path):
         write_register_csv,
     )
 
+    # Neutral placeholder fixtures (no market vocabulary): the byte-identity
+    # assertion is value-agnostic, and using real field names would register as
+    # market-fact emissions in the diff-emission gate.
     def _row(path, line, col, pk, surf):
         return RegisterRow(
             register_id=RegisterRow.make_id(path, line, col, pk, "python"),
             language="python", path=path, line=line, col=col, pattern_kind=pk,
-            surface_form=surf, tokens="close price", csv_candidates="quotes.SPY.lastPrice",
+            surface_form=surf, tokens="tok_a tok_b", csv_candidates="",
             csv_lexical_topk_note="", v2_trace="",
         )
 
     rows = [
-        _row("z_module.py", 10, 4, "ATTRIBUTE_MARKET", "spot"),
-        _row("a_module.py", 2, 0, "CALL_NAMED_DERIVATION", "atr"),
-        _row("m_module.py", 100, 8, "SUBSCRIPT_MARKET_KEY", "gamma"),
-        _row("a_module.py", 2, 0, "SUBSCRIPT_MARKET_KEY", "delta"),  # same site, diff pattern
-        _row("m_module.py", 9, 8, "SUBSCRIPT_MARKET_KEY", "vega"),
+        _row("z_module.py", 10, 4, "KIND_A", "sfa"),
+        _row("a_module.py", 2, 0, "KIND_B", "sfb"),
+        _row("m_module.py", 100, 8, "KIND_C", "sfc"),
+        _row("a_module.py", 2, 0, "KIND_C", "sfd"),  # same site, different pattern kind
+        _row("m_module.py", 9, 8, "KIND_C", "sfe"),
     ]
     out1 = tmp_path / "reg_order1.csv"
     out2 = tmp_path / "reg_order2.csv"
