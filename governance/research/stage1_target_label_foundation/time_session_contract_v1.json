@@ -1,0 +1,37 @@
+{
+  "schema": "STAGE1_TIME_SESSION_CONTRACT",
+  "schema_version": 1,
+  "authority": "RESEARCH FOUNDATION ONLY. Canonical time/session contract for all Stage 1 research artifacts. Supersedes Eastern-oriented terminology for the application/research/cohort/display layer. Changes NO production session behavior.",
+  "canonical_storage_timezone": "UTC",
+  "canonical_storage_role": "immutable storage, joining, ordering, causal timestamp authority (ts_utc float epoch seconds)",
+  "canonical_application_timezone": "America/Chicago",
+  "canonical_application_role": "application, operator, research-report, cohort-label, and display timezone (CST/CDT resolved via zoneinfo; no fixed offset)",
+  "exchange_calendar_authority": {
+    "provider": "data/trading_calendar/us_equities.json (schema_version 1, scope us_equities, NYSE/NASDAQ unified)",
+    "valid_through_date": "2026-12-31",
+    "governs": ["session membership", "full closures (holidays)", "early closes (half-days)"],
+    "convention_note": "the calendar stores the exchange convention in Eastern Time (open_et 09:30 / close_et 16:00, early_close 13:00 ET). ET appears ONLY here as the external exchange convention and is converted to UTC via America/New_York; it is never the application contract."
+  },
+  "rth_label_ct": "08:30-15:00 Central Time (equivalent UTC instants to the exchange's 09:30-16:00 ET; half-days close 12:00 CT / 13:00 ET)",
+  "session_labels_ct": {
+    "premarket": "03:00-08:30 CT (04:00-09:30 ET)",
+    "rth": "08:30-15:00 CT",
+    "afterhours": "15:00-19:00 CT (16:00-20:00 ET)",
+    "closed": "overnight, weekends, full-closure holidays"
+  },
+  "dst_policy": "resolved via zoneinfo America/Chicago; NO manual/fixed offset; validated across CST, CDT, spring-forward and fall-back",
+  "holiday_policy": "full_closures list in the exchange calendar -> session=closed all day",
+  "half_day_policy": "early_closes list -> RTH close moves to the early-close time (13:00 ET / 12:00 CT)",
+  "session_crossover_policy": "cohorts must not silently pool rth with premarket/afterhours/overnight; a bar's session is derived from ts_utc via America/Chicago + the exchange calendar, NEVER from a stored et_hour/et_minute/market_session column",
+  "research_authority_module": "research/stage1_target_foundation/ct_session.py (classify_session / is_rth_ct / ct_label / rth_bounds_utc)",
+  "unresolved_production_migration_items": [
+    "production surfaces still classify/label in ET and, at db.py:4417-4420 + audit_model_readiness.py:31-32, filter RTH on DST-skewed stored et_hour/et_minute (RTH-integrity contradiction) — production migration to the CT+calendar authority is a SEPARATELY AUTHORIZED mission, not this one",
+    "math_volatility.session_bucket time-of-day feature is stored-clock and out-of-session-mislabeling",
+    "no production consumer reads the exchange calendar for cohort selection yet",
+    "the committed calendar is valid_through 2026-12-31 only; a renewal/authority process is required for institutional use"
+  ],
+  "helper_sufficiency": {
+    "time_et.is_rth_ts_utc": "UTC-input, DST-aware ET boundary check; correct for RTH membership but has NO holiday/half-day awareness -> INSUFFICIENT as institutional cohort authority on its own",
+    "ct_session.classify_session": "calendar + DST aware (holidays + half-days); sufficient for Stage 1 research cohorts within the calendar's validity window"
+  }
+}

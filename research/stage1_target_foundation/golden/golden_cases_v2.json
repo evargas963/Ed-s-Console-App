@@ -1,0 +1,38 @@
+{
+  "schema": "STAGE1_GOLDEN_CASES",
+  "schema_version": 2,
+  "note": "Expanded golden dataset (Objective G). Expectations are hand-specified and implementation-independent: each Central-Time wall time is materialized to a UTC instant by the Python tz database (zoneinfo) in the test, then asserted against ct_session / causal_label_contract. Extends golden_bars_v1 + golden_labels_v1 with DST, session-boundary, holiday, half-day, missing-minute, duplicate, synthetic-provenance, and barrier research-assumption cases.",
+  "session_cases": [
+    {"label": "ordinary_CST_rth",          "ct": "2026-01-05T08:35", "expected_session": "rth",        "expected_tz": "CST"},
+    {"label": "ordinary_CDT_rth",          "ct": "2026-07-06T08:35", "expected_session": "rth",        "expected_tz": "CDT"},
+    {"label": "spring_forward_monday_cdt", "ct": "2026-03-09T08:35", "expected_session": "rth",        "expected_tz": "CDT"},
+    {"label": "fall_back_monday_cst",      "ct": "2026-11-02T08:35", "expected_session": "rth",        "expected_tz": "CST"},
+    {"label": "rth_open_boundary",         "ct": "2026-01-05T08:30", "expected_session": "rth"},
+    {"label": "rth_last_minute",           "ct": "2026-01-05T14:59", "expected_session": "rth"},
+    {"label": "rth_close_boundary",        "ct": "2026-01-05T15:00", "expected_session": "afterhours"},
+    {"label": "premarket_boundary",        "ct": "2026-01-05T08:29", "expected_session": "premarket"},
+    {"label": "afterhours_evening",        "ct": "2026-01-05T16:00", "expected_session": "afterhours"},
+    {"label": "holiday_new_years_closed",  "ct": "2026-01-01T08:35", "expected_session": "closed"},
+    {"label": "half_day_pre_close_rth",    "ct": "2026-11-27T11:00", "expected_session": "rth"},
+    {"label": "half_day_post_close_ah",    "ct": "2026-11-27T12:30", "expected_session": "afterhours"},
+    {"label": "weekend_saturday_closed",   "ct": "2026-01-03T10:00", "expected_session": "closed"}
+  ],
+  "half_day_note": "2026-11-27 early close 13:00 ET == 12:00 CT; a bar at 12:30 CT is after-hours on that day but would be RTH on a normal day.",
+  "label_edge_cases_note": "Constructed inline in tests/test_stage1_golden_expansion.py from a self-contained contiguous bar set (aligned to the 60s grid). Expectations: missing forward bar -> outcome NULL with reconstructable True; missing interior bar -> MFE/MAE fail-closed (reconstructable False); duplicate anchor -> CausalLabelError; threshold 0 -> flat.",
+  "synthetic_provenance_case": {
+    "description": "A forward bar flagged synthetic must still produce the label (formula unchanged) AND report synthetic_involved=True so Stage 2 can stratify.",
+    "anchor_close": 500.0,
+    "forward_close": 500.5,
+    "forward_synthetic": true,
+    "threshold_pts": 0.1,
+    "expected_outcome": "up",
+    "expected_pts": 0.5,
+    "expected_synthetic_involved": true
+  },
+  "barrier_research_assumption": {
+    "description": "The triple-barrier target's idealized fill at the exact barrier price (no slippage, guaranteed touch fill) is a RESEARCH ASSUMPTION, not an execution-modeled fill. It must be labelled as such and never treated as tradeable realism in Stage 1.",
+    "registry_target_id": "outcome_tb_H_triple_barrier",
+    "expected_registry_status": "CANDIDATE",
+    "expected_limitation_substring": "idealized fills"
+  }
+}

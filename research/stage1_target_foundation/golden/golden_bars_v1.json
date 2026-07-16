@@ -1,0 +1,567 @@
+{
+ "schema": "STAGE1_GOLDEN_BARS",
+ "schema_version": 1,
+ "note": "immutable 1m bars; identity=(ticker,bar_start_ts_utc); independently reconstructable",
+ "bars": [
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623400,
+   "open": 500.0,
+   "high": 500.1,
+   "low": 499.9,
+   "close": 500.0
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623460,
+   "open": 500.001,
+   "high": 500.101,
+   "low": 499.901,
+   "close": 500.001
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623520,
+   "open": 500.002,
+   "high": 500.102,
+   "low": 499.902,
+   "close": 500.002
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623580,
+   "open": 500.003,
+   "high": 500.103,
+   "low": 499.903,
+   "close": 500.003
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623640,
+   "open": 500.0,
+   "high": 500.1,
+   "low": 499.9,
+   "close": 500.0
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623700,
+   "open": 500.005,
+   "high": 500.105,
+   "low": 499.905,
+   "close": 500.005
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623760,
+   "open": 500.2,
+   "high": 500.3,
+   "low": 500.1,
+   "close": 500.2
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623820,
+   "open": 500.007,
+   "high": 500.107,
+   "low": 499.907,
+   "close": 500.007
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623880,
+   "open": 500.008,
+   "high": 500.108,
+   "low": 499.908,
+   "close": 500.008
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767623940,
+   "open": 500.009,
+   "high": 500.109,
+   "low": 499.909,
+   "close": 500.009
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624000,
+   "open": 499.7,
+   "high": 499.8,
+   "low": 499.6,
+   "close": 499.7
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624060,
+   "open": 500.011,
+   "high": 500.111,
+   "low": 499.911,
+   "close": 500.011
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624120,
+   "open": 500.012,
+   "high": 500.112,
+   "low": 499.912,
+   "close": 500.012
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624180,
+   "open": 500.013,
+   "high": 500.113,
+   "low": 499.913,
+   "close": 500.013
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624240,
+   "open": 500.014,
+   "high": 500.114,
+   "low": 499.914,
+   "close": 500.014
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624300,
+   "open": 500.015,
+   "high": 500.115,
+   "low": 499.915,
+   "close": 500.015
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624360,
+   "open": 500.016,
+   "high": 500.116,
+   "low": 499.916,
+   "close": 500.016
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624420,
+   "open": 500.017,
+   "high": 500.117,
+   "low": 499.917,
+   "close": 500.017
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624480,
+   "open": 500.018,
+   "high": 500.118,
+   "low": 499.918,
+   "close": 500.018
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624540,
+   "open": 500.019,
+   "high": 500.119,
+   "low": 499.919,
+   "close": 500.019
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624600,
+   "open": 500.05,
+   "high": 500.15,
+   "low": 499.95,
+   "close": 500.05
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624660,
+   "open": 500.021,
+   "high": 500.121,
+   "low": 499.921,
+   "close": 500.021
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624720,
+   "open": 500.022,
+   "high": 500.122,
+   "low": 499.922,
+   "close": 500.022
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624780,
+   "open": 500.023,
+   "high": 500.123,
+   "low": 499.923,
+   "close": 500.023
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624840,
+   "open": 500.024,
+   "high": 500.124,
+   "low": 499.924,
+   "close": 500.024
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624900,
+   "open": 500.025,
+   "high": 500.125,
+   "low": 499.925,
+   "close": 500.025
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767624960,
+   "open": 500.026,
+   "high": 500.126,
+   "low": 499.926,
+   "close": 500.026
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625020,
+   "open": 500.027,
+   "high": 500.127,
+   "low": 499.927,
+   "close": 500.027
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625080,
+   "open": 500.028,
+   "high": 500.128,
+   "low": 499.928,
+   "close": 500.028
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625140,
+   "open": 500.029,
+   "high": 500.129,
+   "low": 499.929,
+   "close": 500.029
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625200,
+   "open": 500.03,
+   "high": 500.13,
+   "low": 499.93,
+   "close": 500.03
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625260,
+   "open": 500.031,
+   "high": 500.131,
+   "low": 499.931,
+   "close": 500.031
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625320,
+   "open": 500.032,
+   "high": 500.132,
+   "low": 499.932,
+   "close": 500.032
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625380,
+   "open": 500.033,
+   "high": 500.133,
+   "low": 499.933,
+   "close": 500.033
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625440,
+   "open": 500.034,
+   "high": 500.134,
+   "low": 499.934,
+   "close": 500.034
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625500,
+   "open": 500.035,
+   "high": 500.135,
+   "low": 499.935,
+   "close": 500.035
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625560,
+   "open": 500.036,
+   "high": 500.136,
+   "low": 499.936,
+   "close": 500.036
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625620,
+   "open": 500.037,
+   "high": 500.137,
+   "low": 499.937,
+   "close": 500.037
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625680,
+   "open": 500.038,
+   "high": 500.138,
+   "low": 499.938,
+   "close": 500.038
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625740,
+   "open": 500.039,
+   "high": 500.139,
+   "low": 499.939,
+   "close": 500.039
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625800,
+   "open": 500.04,
+   "high": 500.14,
+   "low": 499.94,
+   "close": 500.04
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625860,
+   "open": 500.041,
+   "high": 500.141,
+   "low": 499.941,
+   "close": 500.041
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625920,
+   "open": 500.042,
+   "high": 500.142,
+   "low": 499.942,
+   "close": 500.042
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767625980,
+   "open": 500.043,
+   "high": 500.143,
+   "low": 499.943,
+   "close": 500.043
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626040,
+   "open": 500.044,
+   "high": 500.144,
+   "low": 499.944,
+   "close": 500.044
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626100,
+   "open": 500.045,
+   "high": 500.145,
+   "low": 499.945,
+   "close": 500.045
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626160,
+   "open": 500.046,
+   "high": 500.146,
+   "low": 499.946,
+   "close": 500.046
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626220,
+   "open": 500.047,
+   "high": 500.147,
+   "low": 499.947,
+   "close": 500.047
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626280,
+   "open": 500.048,
+   "high": 500.148,
+   "low": 499.948,
+   "close": 500.048
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626340,
+   "open": 500.049,
+   "high": 500.149,
+   "low": 499.949,
+   "close": 500.049
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626400,
+   "open": 500.05,
+   "high": 500.15,
+   "low": 499.95,
+   "close": 500.05
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626460,
+   "open": 500.051,
+   "high": 500.151,
+   "low": 499.951,
+   "close": 500.051
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626520,
+   "open": 500.052,
+   "high": 500.152,
+   "low": 499.952,
+   "close": 500.052
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626580,
+   "open": 500.053,
+   "high": 500.153,
+   "low": 499.953,
+   "close": 500.053
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626640,
+   "open": 500.054,
+   "high": 500.154,
+   "low": 499.954,
+   "close": 500.054
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626700,
+   "open": 500.055,
+   "high": 500.155,
+   "low": 499.955,
+   "close": 500.055
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626760,
+   "open": 500.056,
+   "high": 500.156,
+   "low": 499.956,
+   "close": 500.056
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626820,
+   "open": 500.057,
+   "high": 500.157,
+   "low": 499.957,
+   "close": 500.057
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626880,
+   "open": 500.058,
+   "high": 500.158,
+   "low": 499.958,
+   "close": 500.058
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767626940,
+   "open": 500.059,
+   "high": 500.159,
+   "low": 499.959,
+   "close": 500.059
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767627000,
+   "open": 500.06,
+   "high": 500.16,
+   "low": 499.96,
+   "close": 500.06
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767627060,
+   "open": 500.061,
+   "high": 500.161,
+   "low": 499.961,
+   "close": 500.061
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767627120,
+   "open": 500.062,
+   "high": 500.162,
+   "low": 499.962,
+   "close": 500.062
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767627180,
+   "open": 500.063,
+   "high": 500.163,
+   "low": 499.963,
+   "close": 500.063
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767627240,
+   "open": 500.064,
+   "high": 500.164,
+   "low": 499.964,
+   "close": 500.064
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767627300,
+   "open": 500.9,
+   "high": 501.0,
+   "low": 500.8,
+   "close": 500.9
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767627360,
+   "open": 500.066,
+   "high": 500.166,
+   "low": 499.966,
+   "close": 500.066
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767618000,
+   "open": 499.5,
+   "high": 499.6,
+   "low": 499.4,
+   "close": 499.5
+  },
+  {
+   "ticker": "SPY",
+   "bar_start_ts_utc": 1767618060,
+   "open": 499.5,
+   "high": 499.7,
+   "low": 499.4,
+   "close": 499.6
+  },
+  {
+   "ticker": "QQQ",
+   "bar_start_ts_utc": 1767623640,
+   "open": 400.0,
+   "high": 400.1,
+   "low": 399.9,
+   "close": 400.0
+  }
+ ]
+}

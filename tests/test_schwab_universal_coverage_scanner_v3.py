@@ -1903,3 +1903,37 @@ def test_oxx_perf_proof_reconciliation_slice_and_composite_union() -> None:
             linked = set(doc["register_link"]["replaced_register_ids"])
             assert linked == replaced_by_proof.get(name, set())
         assert collect_replaced_perf_violations(reg, perf_dir) == []
+
+
+def test_register_csv_byte_identical_regardless_of_row_order(tmp_path):
+    """Regression (PR #43 register nondeterminism): the same logical row set,
+    supplied in different orders, must serialize to byte-identical CSV so the
+    register SHA-256 pin is independent of filesystem traversal order."""
+    from tools.schwab_universal_coverage_scanner_v3.register import (
+        RegisterRow,
+        write_register_csv,
+    )
+
+    # Neutral placeholder fixtures (no market vocabulary): the byte-identity
+    # assertion is value-agnostic, and using real field names would register as
+    # market-fact emissions in the diff-emission gate.
+    def _row(path, line, col, pk, surf):
+        return RegisterRow(
+            register_id=RegisterRow.make_id(path, line, col, pk, "python"),
+            language="python", path=path, line=line, col=col, pattern_kind=pk,
+            surface_form=surf, tokens="tok_a tok_b", csv_candidates="",
+            csv_lexical_topk_note="", v2_trace="",
+        )
+
+    rows = [
+        _row("z_module.py", 10, 4, "KIND_A", "sfa"),
+        _row("a_module.py", 2, 0, "KIND_B", "sfb"),
+        _row("m_module.py", 100, 8, "KIND_C", "sfc"),
+        _row("a_module.py", 2, 0, "KIND_C", "sfd"),  # same site, different pattern kind
+        _row("m_module.py", 9, 8, "KIND_C", "sfe"),
+    ]
+    out1 = tmp_path / "reg_order1.csv"
+    out2 = tmp_path / "reg_order2.csv"
+    write_register_csv(out1, list(rows))
+    write_register_csv(out2, list(reversed(rows)))
+    assert out1.read_bytes() == out2.read_bytes(), "register CSV byte content depends on input row order"

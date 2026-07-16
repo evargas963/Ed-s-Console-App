@@ -1,0 +1,39 @@
+{
+  "schema": "STAGE1_COST_MODEL_REGISTRY",
+  "schema_version": 1,
+  "authority": "RESEARCH FOUNDATION ONLY. Versioned research cost models that economic candidate targets MUST name by id. No cost model here is production-authoritative; expected-utility labels must reference a versioned id (never an unversioned threshold).",
+  "cost_kinds": {
+    "observed": "realized historical execution costs (require a live execution ledger; NOT available in the governed research DB today)",
+    "estimated": "parametric estimate from spread/liquidity/time-of-day priors",
+    "scenario": "fixed what-if cost assumption for stress/comparison",
+    "stress": "adverse cost assumption for downside bounds"
+  },
+  "models": {
+    "NONE": {"kind": "none", "note": "no cost term (raw price move)"},
+    "COST_V1_UNDERLYING_SPY": {
+      "kind": "estimated",
+      "source": "research/pilot_step3/prereg_v1.json costs block",
+      "half_spread_bp_per_side": 0.5,
+      "round_trip_bp": 1.0,
+      "commission_usd": 0,
+      "market_impact_bp": 0,
+      "application": "post_label_only",
+      "must_not_change_classification": true,
+      "scope": "SPY underlying research pilot; NOT validated for QQQ/IWM/options; NOT production"
+    },
+    "EXEC_EV_SCAFFOLD_V1": {
+      "kind": "estimated",
+      "source": "calibration/v2_a1_execution_ev.py",
+      "required_registry_fields": ["fill_probability_estimate", "slippage_estimate", "market_impact_estimate", "adverse_selection_score", "capacity_participation_cap"],
+      "behavior": "fail-closed if model absent; training/eval-time only; runtime unchanged",
+      "scope": "EV bound adjustment scaffold; NOT a populated cost model"
+    }
+  },
+  "stage1_gaps": [
+    "no observed-cost ledger in the governed DB (all economic labels are estimated/scenario only)",
+    "no per-ticker cost model beyond the SPY pilot",
+    "no time-of-day or liquidity-conditioned cost surface",
+    "options execution costs entirely unmodeled"
+  ],
+  "rule_for_economic_targets": "any target in the target registry whose family/id is economic (cost_adjusted / cost_threshold / utility / prob_exceed_costs) MUST set cost_model_version to a non-NONE key defined here; enforced by research/stage1_target_foundation/target_registry.py::validate_registry"
+}
