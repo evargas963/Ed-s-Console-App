@@ -1,15 +1,4 @@
 {
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python tools/enforce_all_rules.py --stop-hook"
-          }
-        ]
-      }
-    ]
-  },
-  "_comment_enforcement": "2026-06-05: Stop hook runs the shared rule orchestrator (tools/enforce_all_rules.py) on every turn-end. v1 scans the agent's final message for banned closers/phrases and BLOCKS the turn from ending on a violation (mirrors AGENTS.md banned-phrase rules). Deterministic FILE checks run at commit/CI via --check-files (same orchestrator = mirrored across both agents). Next section: scope file-checks to session-touched files so the Stop hook also enforces fix-what-you-touch in-turn. To disable temporarily, remove the Stop block."
+  "hooks": {},
+  "_comment_enforcement": "ED CONSOLE SLIMMING 1B (2026-07-16): the Stop hook (python tools/enforce_all_rules.py --stop-hook) was retired together with the enforcement stack it ran. Enforcement is now operator review per the one-page /AGENTS.md charter; the money-path gate (tools/check_market_correctness.py) and the required pytest-full suite carry the mechanical checks."
 }

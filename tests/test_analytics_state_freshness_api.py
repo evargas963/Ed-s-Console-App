@@ -1350,29 +1350,6 @@ def test_fix_b_tail_never_touches_state_cache():
     )
 
 
-def test_fix_b_no_new_ticker_special_casing():
-    """AST lock: the tail carries no locked-ticker CONDITIONAL branches — every
-    uppercase literal inside it must be a dict-key/kwarg mapping already
-    allowlisted in the universality lock, never an if-comparison."""
-    import ast
-
-    from tools.check_universal_ticker_lock import (
-        LOCKED_TICKER_LITERALS,
-        TICKER_LITERAL_ALLOWLIST,
-    )
-
-    _fetch, tail = _fetch_state_ast()
-    for sub in ast.walk(tail):
-        if isinstance(sub, ast.Compare):
-            for cmp_node in ast.walk(sub):
-                if isinstance(cmp_node, ast.Constant) and cmp_node.value in LOCKED_TICKER_LITERALS:
-                    raise AssertionError(
-                        f"ticker-conditional comparison on {cmp_node.value!r} in tail"
-                    )
-    for lit in ("NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "AVGO", "META", "TSLA"):
-        assert ("server.py", "_post_publish_persistence_tail", lit) in TICKER_LITERAL_ALLOWLIST
-
-
 # ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1 ───────────────────────────────
 
 

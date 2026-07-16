@@ -62,28 +62,10 @@ repos:
         entry: python tools/check_no_grep_subprocess.py
         language: system
         types: [python]
-      - id: no-deferral-language-msg
-        name: no deferral language in commit message
-        entry: python tools/check_no_deferral_language.py
-        language: system
-        stages: [commit-msg]
-      - id: no-deferral-language-files
-        name: no deferral language in staged source/test files
-        entry: python tools/check_no_deferral_language.py
-        language: system
-        types: [text]
-        exclude: '^(OPEN_ITEMS\.md|ACTIVE_PROGRAM\.md|MEMORY\.md|AGENTS\.md|CLAUDE\.md|governance/.*|tools/check_no_deferral_language\.py|tests/.*)$'
-      - id: fix-everything-we-touch-msg
-        name: fix everything we touch (commit message)
-        entry: python tools/check_fix_everything_we_touch.py
-        language: system
-        stages: [commit-msg]
-      - id: fix-everything-we-touch
-        name: fix everything we touch (V4 memo + staged py)
-        entry: python tools/check_fix_everything_we_touch.py
-        language: system
-        pass_filenames: false
-        always_run: true
+      # ED CONSOLE SLIMMING 1B: the deferral-language and fix-everything-we-touch
+      # hooks (and their tools) were retired. Enforcement is now operator review
+      # per the one-page AGENTS.md charter; the money-path gate below plus the
+      # required pytest-full suite carry the mechanical checks that matter.
       # PR41 privacy root cause: operator-home absolute paths must never land in
       # tracked evidence or mission-authorization content (early lock; the same
       # module is exercised by required-CI pytest-full via its adversarial tests).

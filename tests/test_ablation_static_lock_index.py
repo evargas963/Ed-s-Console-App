@@ -14,7 +14,7 @@ if str(TOOLS) not in sys.path:
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-import check_fix_everything_we_touch as fe  # noqa: E402
+import ablation_integrity as fe  # noqa: E402
 from tools.ablation_static_lock_index import (  # noqa: E402
     AblationStaticLockIndex,
     get_ablation_static_lock_index,
@@ -83,11 +83,6 @@ print(get_ablation_static_lock_index_build_count())
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "1"
-
-
-def test_objective_audit_repo_wide_includes_both_ablation_checks():
-    assert "check_ablation_seven_model_four_horizon_grid" in fe._REPO_WIDE_STATIC_CHECK_FUNCS
-    assert "check_ablation_equal_layer_consumers" in fe._REPO_WIDE_STATIC_CHECK_FUNCS
 
 
 def test_failure_in_one_check_does_not_hide_failure_in_the_other(monkeypatch, fresh_ablation_static_lock_index):
