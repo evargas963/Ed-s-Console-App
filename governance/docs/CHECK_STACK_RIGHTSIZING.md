@@ -2,7 +2,7 @@
 
 **Scope:** Phase 3I — inventory, tier policy, duplication analysis, runtime budgets. No check removal in this phase.
 
-Generated: `2026-07-15T01:45:26+00:00`
+Generated: `2026-07-16T05:07:23+00:00`
 
 ## Runtime budget targets (seconds)
 
@@ -38,21 +38,28 @@ Generated: `2026-07-15T01:45:26+00:00`
 - `mission-authorization-precommit` ↔ `fix-everything-we-touch-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `mission-authorization-precommit` ↔ `fix-everything-we-touch`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `mission-authorization-precommit` ↔ `no-private-paths`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `mission-authorization-precommit` ↔ `market-correctness`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `no-deferral-language-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `no-deferral-language-files`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `fix-everything-we-touch-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `fix-everything-we-touch`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `no-private-paths`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `no-grep-subprocess` ↔ `market-correctness`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-deferral-language-msg` ↔ `no-deferral-language-files`: **unintentional_duplicate** — Review before merge/remove — slowness alone is not removal grounds
 - `no-deferral-language-msg` ↔ `fix-everything-we-touch-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-deferral-language-msg` ↔ `fix-everything-we-touch`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-deferral-language-msg` ↔ `no-private-paths`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `no-deferral-language-msg` ↔ `market-correctness`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-deferral-language-files` ↔ `fix-everything-we-touch-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-deferral-language-files` ↔ `fix-everything-we-touch`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-deferral-language-files` ↔ `no-private-paths`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `no-deferral-language-files` ↔ `market-correctness`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `fix-everything-we-touch-msg` ↔ `fix-everything-we-touch`: **unintentional_duplicate** — Review before merge/remove — slowness alone is not removal grounds
 - `fix-everything-we-touch-msg` ↔ `no-private-paths`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `fix-everything-we-touch-msg` ↔ `market-correctness`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `fix-everything-we-touch` ↔ `no-private-paths`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `fix-everything-we-touch` ↔ `market-correctness`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `no-private-paths` ↔ `market-correctness`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `fix-everything-we-touch-full-static` ↔ `governance-consolidation-tests`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 
 Regenerate: `python tools/build_check_stack_inventory.py`

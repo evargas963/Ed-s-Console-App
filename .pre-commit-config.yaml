@@ -93,3 +93,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      # SLIMMING Phase 1 (Commit 1A): the single fast money-path correctness gate
+      # that replaces the retired enforcement stack. Installed alongside the old
+      # hooks here; Commit 1B removes the old machine and this becomes the gate.
+      - id: market-correctness
+        name: market correctness (money-path static gate)
+        entry: python tools/check_market_correctness.py
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-07-15T01:45:16+00:00",
+  "generated_at_utc": "2026-07-16T05:07:23+00:00",
   "measurement_mode": "declared_policy_only",
   "total_measured_seconds": null,
   "slowest_hook": null,
@@ -226,6 +226,20 @@
       "name": "no operator-home paths in tracked evidence",
       "id": "no-private-paths",
       "command": "python tools/check_private_paths.py",
+      "stages": [
+        "pre-commit"
+      ],
+      "runtime_seconds": null,
+      "scope": "unspecified",
+      "tier": 1,
+      "recommendation": "Review \u2014 no tier policy entry in audit_precommit_performance.py",
+      "keep_in_precommit": true,
+      "proposed_location": "precommit"
+    },
+    {
+      "name": "market correctness (money-path static gate)",
+      "id": "market-correctness",
+      "command": "python tools/check_market_correctness.py",
       "stages": [
         "pre-commit"
       ],
