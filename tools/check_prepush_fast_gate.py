@@ -55,11 +55,11 @@ _PREPUSH_FORBIDDEN_ENTRY_SUBSTRINGS: tuple[str, ...] = (
 )
 
 # Required-CI checks that back the heavy coverage moved off local pre-push.
+# ED CONSOLE SLIMMING: objective-audit and schwab-csv-first were retired (1C/2a-reg);
+# the Hardening quality job and pytest-full are the surviving required backing.
 _REQUIRED_CI_BACKING_CHECKS: tuple[str, ...] = (
-    "objective-audit",
     "pytest-full",
     "hardening",
-    "schwab-csv-first",
 )
 
 _DIRTY_TREE_BUDGET_SEC = 5.0
@@ -121,7 +121,7 @@ def _prepush_hook_entries(cfg_text: str) -> list[tuple[str, str]]:
 
 
 def check_prepush_no_full_static_hook() -> list[str]:
-    """Local pre-push must not run repo-wide --full-static (CI objective-audit owns it)."""
+    """Local pre-push must not run heavy repo-wide hooks (required CI owns them)."""
     errors: list[str] = []
     if not PRE_COMMIT_CFG.is_file():
         return errors
@@ -131,18 +131,8 @@ def check_prepush_no_full_static_hook() -> list[str]:
         if forbidden in order:
             errors.append(
                 f".pre-commit-config.yaml: {forbidden!r} must not run on pre-push "
-                f"(repo-wide static → required CI objective-audit)"
+                f"(repo-wide → required CI Hardening / pytest-full)"
             )
-    wf = REPO / ".github" / "workflows" / "objective-audit.yml"
-    if wf.is_file():
-        wf_text = wf.read_text(encoding="utf-8", errors="replace")
-        if "--objective-audit" not in wf_text:
-            errors.append(
-                ".github/workflows/objective-audit.yml: missing --objective-audit "
-                "(required CI full-repo static authority)"
-            )
-    else:
-        errors.append(".github/workflows/objective-audit.yml: missing")
     return errors
 
 
@@ -182,7 +172,7 @@ def check_prepush_lightweight_only() -> list[str]:
                 errors.append(
                     f"{hid}: pre-push entry contains heavy/repo-wide token {bad!r} — "
                     "local pre-push is lightweight-only; move it to required CI "
-                    "(pytest-full / objective-audit)"
+                    "(pytest-full / Hardening)"
                 )
     return errors
 
@@ -190,10 +180,11 @@ def check_prepush_lightweight_only() -> list[str]:
 def check_required_ci_backing() -> list[str]:
     """The heavy coverage moved off local pre-push must be backed by required CI.
 
-    pytest-full (.github/workflows/pytest.yml) owns the governance consolidation suite;
-    objective-audit owns repo-wide static. Both workflow files must exist and declare
-    their job so the required-status-check stack on main keeps catching what local
-    pre-push no longer runs.
+    pytest-full (.github/workflows/pytest.yml) owns the full runtime suite; the
+    Hardening quality job (.github/workflows/hardening.yml) owns ruff + the money-path
+    gate + structural checks. Both workflow files must exist and declare their job so
+    the required-status-check stack on main keeps catching what local pre-push no
+    longer runs. (objective-audit was retired under the ED CONSOLE SLIMMING charter.)
     """
     errors: list[str] = []
     wf_dir = REPO / ".github" / "workflows"
@@ -204,11 +195,11 @@ def check_required_ci_backing() -> list[str]:
         text = pytest_wf.read_text(encoding="utf-8", errors="replace")
         if "pytest" not in text:
             errors.append(".github/workflows/pytest.yml: does not invoke pytest")
-    objective_wf = wf_dir / "objective-audit.yml"
-    if not objective_wf.is_file():
-        errors.append(".github/workflows/objective-audit.yml: missing (required-CI static backing)")
-    elif "--objective-audit" not in objective_wf.read_text(encoding="utf-8", errors="replace"):
-        errors.append(".github/workflows/objective-audit.yml: missing --objective-audit")
+    hardening_wf = wf_dir / "hardening.yml"
+    if not hardening_wf.is_file():
+        errors.append(".github/workflows/hardening.yml: missing (required-CI Hardening quality backing)")
+    elif "ruff" not in hardening_wf.read_text(encoding="utf-8", errors="replace"):
+        errors.append(".github/workflows/hardening.yml: missing the ruff quality gate")
     return errors
 
 

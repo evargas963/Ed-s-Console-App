@@ -147,11 +147,12 @@ def test_every_blocked_status_blocks_closure():
         assert validate_ledger(_doc(lane)), f"{bad} must block CLOSED_WITH_EVIDENCE"
 
 
-def test_checker_wired_into_objective_audit_and_hardening():
-    """Wiring lock: the gate must run in both required governance workflows."""
-    for wf in (".github/workflows/objective-audit.yml", ".github/workflows/hardening.yml"):
-        src = Path(wf).read_text(encoding="utf-8")
-        assert "check_institutional_closure_gate.py" in src, f"gate not wired into {wf}"
+def test_checker_wired_into_hardening():
+    """Wiring lock: the gate must run in the required Hardening quality workflow.
+    (objective-audit.yml was retired under the ED CONSOLE SLIMMING charter; the
+    Hardening quality job is the surviving required governance workflow.)"""
+    src = Path(".github/workflows/hardening.yml").read_text(encoding="utf-8")
+    assert "check_institutional_closure_gate.py" in src, "gate not wired into hardening.yml"
 
 
 def test_exec_identity_lane_recloses_on_rth_reproof_with_history_and_open_parents():

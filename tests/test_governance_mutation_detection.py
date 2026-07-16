@@ -13,7 +13,6 @@ if str(REPO) not in sys.path:
 from tools.governance_mutation_detection import (  # noqa: E402
     GOVERNANCE_ARTIFACT_PATHS,
     _governance_artifact_bytes,
-    _sha256_file,
     verify_governance_manifest,
 )
 
@@ -112,15 +111,9 @@ def test_objective_audit_bootstraps_empty_console_db(tmp_path, monkeypatch):
         ).fetchone()
 
 
-def test_objective_audit_does_not_mutate_governance_artifacts():
-    """enforce_all_rules --objective-audit is check-only for manifest-tracked JSON."""
-    before = {rel: _sha256_file(REPO / rel) for rel in GOVERNANCE_ARTIFACT_PATHS}
-    proc = subprocess.run(
-        [sys.executable, "tools/enforce_all_rules.py", "--objective-audit"],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-    )
-    assert proc.returncode == 0, proc.stderr or proc.stdout
-    after = {rel: _sha256_file(REPO / rel) for rel in GOVERNANCE_ARTIFACT_PATHS}
-    assert before == after
+# test_objective_audit_does_not_mutate_governance_artifacts was removed under the
+# ED CONSOLE SLIMMING charter: it invoked the retired tools/enforce_all_rules.py
+# (--objective-audit). The governance-manifest verify library exercised by the tests
+# above still stands; the manifest subsystem's full retirement is Wave 2c (its only
+# remaining referrers are the dead _build_evidence_index / _build_institutional_audit
+# tools, not any live gate).
