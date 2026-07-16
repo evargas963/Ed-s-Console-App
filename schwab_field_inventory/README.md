@@ -26,7 +26,7 @@ These files are the versioned data-plane reference cited by:
 docs/SCHWAB_FIELD_REFERENCE.md
 docs/FIELD_SOURCE_AUDIT.md
 docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md
-governance/Framework-ED-Decision-Engine-v2.0-DRAFT.md
+(retired under ED CONSOLE SLIMMING)
 ```
 
 ---

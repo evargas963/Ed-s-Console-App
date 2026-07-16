@@ -55,7 +55,7 @@ After preconditions:
 
 ```text
 python -m pytest tests/test_governed_outcome_refresh_after_bar_mutation_v1.py
-python tools/check_schwab_csv_first.py --whole-repo
+python `(retired)` --whole-repo
 ```
 
 Expected: outcome refresh and bar-mutation tests pass on **repaired** DB shape only; no test requires `UPDATE ... WHERE rowid = ?` for snapshots.

@@ -68,7 +68,7 @@ Realized MFE/MAE are implemented as causal research labels in `causal_label_cont
 
 ## L. Production containment (verified, already correct)
 
-Existing governance already states the required containment, verified this mission: `the institutional master checklist (retired under ED CONSOLE SLIMMING):82` (TRIPLE_BARRIER_ADOPTION NOT_APPROVED_FOR_PRODUCTION, MODEL_PROMOTION NOT_APPROVED, REAL_MONEY_READINESS NOT_PROVEN); `CARD_TRUST_CONTRACT.md` (cards research telemetry; foundation-model excluded); `calibration_phase5_adaptive_weighting_foundation.md:21` (static fusion weights only); `promotion_engine.py:106-107` (auto-promote forbidden, raises). No false containment claim required correction.
+Existing governance already states the required containment, verified this mission: `the institutional master checklist (retired under ED CONSOLE SLIMMING)` (TRIPLE_BARRIER_ADOPTION NOT_APPROVED_FOR_PRODUCTION, MODEL_PROMOTION NOT_APPROVED, REAL_MONEY_READINESS NOT_PROVEN); `CARD_TRUST_CONTRACT.md` (cards research telemetry; foundation-model excluded); `calibration_phase5_adaptive_weighting_foundation.md:21` (static fusion weights only); `promotion_engine.py:106-107` (auto-promote forbidden, raises). No false containment claim required correction.
 
 ## M. Readiness determinations
 

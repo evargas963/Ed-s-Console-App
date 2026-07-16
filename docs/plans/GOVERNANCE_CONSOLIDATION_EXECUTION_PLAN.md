@@ -126,10 +126,10 @@ Archive `~/.claude/projects/.../memory/` → `governance/archive/2026-Q2/memory_
 
 - Slim AGENT_SELF_GOVERNANCE (~60 lines, numbered stubs)
 - Rules #17, #20, #22 grep-free
-- CLAUDE scope header; 3 rules from ENGINEERING_GATEKEEPING_POLICY
+- CLAUDE scope header; 3 rules from (retired under ED CONSOLE SLIMMING)
 - V4 register authority per operator #2
 - `PROMOTION_POLICY.md` → Historical
-- `tests/test_forbidden_phrases.py`, money-path roster test
+- `tests/test_(retired)`, money-path roster test
 
 **Gate:** One OPEN_ITEMS row end-to-end via new structure; zero drift incidents; tests pass.
 
