@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-PHASE3C = REPO / "governance" / "artifacts" / "INSTITUTIONAL_AUDIT_PHASE3C_EVIDENCE.json"
 
 
 @pytest.fixture

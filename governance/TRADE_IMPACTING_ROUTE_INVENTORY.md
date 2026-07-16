@@ -76,7 +76,7 @@
 ## Summary / risks / next step
 
 - **Risks:** R-005 synthetic bundle vs R-004 full stack; Tier C stale cache; debug R-011; calibration R-033 trust boundary.  
-- **Next step:** Operator review + bind each Route ID to INF enforcement rows in `PHASE_PLAN_INFRASTRUCTURE.md` when locking.
+- **Next step:** Operator review + bind each Route ID to its enforcement rows when locking.
 
 ---
 

@@ -1,19 +1,16 @@
 """Build Institutional Audit Phase 2 — proof artifacts (not inventory).
 
-Run after Phase 1:
-  python tools/_build_institutional_audit_phase1.py
-  python tools/_build_institutional_audit_phase2.py
+Reads the tracked SEVERITY_1_CONTROL_VALIDATION_REGISTER.json. The Phase-1 builder
+was retired under the ED CONSOLE SLIMMING directive; the register is a tracked artifact.
 
 Outputs:
   governance/artifacts/UNIVERSAL_BYPASS_REGISTER.json
   governance/artifacts/DECISION_PATH_REGISTRY.json
   governance/artifacts/RUNTIME_MUTATION_REGISTER.json
-  governance/artifacts/GOVERNANCE_MUTATION_AUDIT.json
   governance/artifacts/RELEASE_OBJECT_SCHEMA.json
   governance/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json
   governance/artifacts/GOVERNANCE_ADVERSARIAL_TEST_SPEC.json
   governance/artifacts/MATURITY_PROMOTION_RULES.json
-  governance/GOVERNANCE_MUTATION_AUDIT.md
 """
 from __future__ import annotations
 
@@ -39,7 +36,8 @@ def _load_phase1_register() -> dict:
     path = ART / "SEVERITY_1_CONTROL_VALIDATION_REGISTER.json"
     if not path.is_file():
         raise SystemExit(
-            "missing SEVERITY_1_CONTROL_VALIDATION_REGISTER.json — run _build_institutional_audit_phase1.py"
+            "missing SEVERITY_1_CONTROL_VALIDATION_REGISTER.json (tracked artifact; the "
+            "_build_institutional_audit_phase1 builder was retired under ED CONSOLE SLIMMING)"
         )
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -462,7 +460,6 @@ def build_decision_path_registry() -> dict:
 
     bypass_routes = [r["route_id"] for r in routes if r["gaps"]]
     ti_routes = [r for r in routes if r["trade_impacting"]]
-    universal = all(r["passes_mandatory_controls"] for r in ti_routes)
 
     return {
         "schema_version": 1,
@@ -581,121 +578,6 @@ def build_runtime_mutation_register() -> dict:
         },
         "mutations": mutations,
     }
-
-
-# ── D. Governance Mutation Audit ────────────────────────────────────────
-
-
-def build_governance_mutation_audit() -> dict:
-    surfaces = [
-        {
-            "surface": "AGENTS.md",
-            "codeowners": "@evargas963",
-            "who_can_change": "anyone with repo write",
-            "who_approves": "CODEOWNERS review if branch protection enabled",
-            "in_repo_block_proof": False,
-            "detection": "git diff post-hoc",
-            "audit_type": "mutable",
-            "same_actor_can_author_and_approve": True,
-        },
-        {
-            "surface": "governance/artifacts/governance_coverage_matrix.json",
-            "codeowners": "@evargas963 via governance/",
-            "who_can_change": "anyone with repo write",
-            "who_approves": "same — checker validates schema only",
-            "in_repo_block_proof": False,
-            "detection": "pre-commit schema check",
-            "audit_type": "mutable",
-            "same_actor_can_author_and_approve": True,
-        },
-        {
-            "surface": "tools/check_fix_everything_we_touch.py",
-            "codeowners": "not explicitly listed",
-            "who_can_change": "anyone with repo write",
-            "who_approves": "none in-repo",
-            "in_repo_block_proof": False,
-            "detection": "git diff; other checkers may fail",
-            "audit_type": "mutable",
-            "same_actor_can_author_and_approve": True,
-        },
-        {
-            "surface": ".pre-commit-config.yaml",
-            "codeowners": "@evargas963",
-            "who_can_change": "anyone with repo write",
-            "who_approves": "optional PR",
-            "in_repo_block_proof": False,
-            "detection": "none at commit if --no-verify",
-            "audit_type": "none",
-            "same_actor_can_author_and_approve": True,
-        },
-        {
-            "surface": ".github/workflows/*",
-            "codeowners": "@evargas963",
-            "who_can_change": "anyone with repo write",
-            "who_approves": "optional PR",
-            "in_repo_block_proof": False,
-            "detection": "CI on PR only",
-            "audit_type": "mutable",
-            "same_actor_can_author_and_approve": True,
-        },
-        {
-            "surface": "tools/_build_institutional_audit_phase*.py",
-            "codeowners": "via governance/",
-            "who_can_change": "anyone with repo write",
-            "who_approves": "none",
-            "in_repo_block_proof": False,
-            "detection": "paired pytest on artifact shape",
-            "audit_type": "mutable",
-            "same_actor_can_author_and_approve": True,
-        },
-    ]
-    return {
-        "schema_version": 1,
-        "artifact": "governance/artifacts/GOVERNANCE_MUTATION_AUDIT.json",
-        "generated": TODAY,
-        "institutional_answer_required": "No — same actor must not author, approve, and deploy governance",
-        "current_answer": "Yes — single actor can change, commit (--no-verify), and deploy",
-        "in_repo_branch_protection_proof": False,
-        "four_eyes_on_governance_changes": False,
-        "surfaces": surfaces,
-        "required_upgrades": [
-            "GitHub branch protection + required reviews (verify on host)",
-            "CODEOWNERS on tools/check_fix_everything_we_touch.py",
-            "CI fail when governance files change without validation register regen",
-            "Immutable governance event log or signed governance release tags",
-            "Block --no-verify on protected branches via server-side hooks",
-        ],
-    }
-
-
-def build_governance_mutation_md(audit: dict) -> str:
-    lines = [
-        "# Governance Mutation Audit",
-        "",
-        f"**Classification:** Institutional Audit Phase 2 | **Date:** {TODAY}",
-        "**Machine source:** `governance/artifacts/GOVERNANCE_MUTATION_AUDIT.json`",
-        "",
-        "## Verdict",
-        "",
-        f"- **Institutional answer required:** {audit['institutional_answer_required']}",
-        f"- **Current answer:** {audit['current_answer']}",
-        f"- **In-repo branch protection proof:** {audit['in_repo_branch_protection_proof']}",
-        "",
-        "## Surfaces",
-        "",
-        "| Surface | Detection | Audit | Same actor author+approve? |",
-        "|---------|-----------|-------|----------------------------|",
-    ]
-    for s in audit["surfaces"]:
-        lines.append(
-            f"| {s['surface']} | {s['detection']} | {s['audit_type']} | "
-            f"{s['same_actor_can_author_and_approve']} |"
-        )
-    lines.extend(["", "## Required upgrades", ""])
-    for u in audit["required_upgrades"]:
-        lines.append(f"- {u}")
-    lines.append("")
-    return "\n".join(lines)
 
 
 # ── E. Release Object ───────────────────────────────────────────────────
@@ -960,7 +842,6 @@ def main() -> int:
     bypass = build_universal_bypass_register(reg)
     routes = build_decision_path_registry()
     runtime = build_runtime_mutation_register()
-    gov_mut = build_governance_mutation_audit()
     release = build_release_object_schema()
     blind = run_blind_reconstruction_test()
     adversarial = build_adversarial_test_spec(reg)
@@ -970,7 +851,6 @@ def main() -> int:
         "UNIVERSAL_BYPASS_REGISTER.json": bypass,
         "DECISION_PATH_REGISTRY.json": routes,
         "RUNTIME_MUTATION_REGISTER.json": runtime,
-        "GOVERNANCE_MUTATION_AUDIT.json": gov_mut,
         "RELEASE_OBJECT_SCHEMA.json": release,
         "BLIND_RECONSTRUCTION_TEST_RESULT.json": blind,
         "GOVERNANCE_ADVERSARIAL_TEST_SPEC.json": adversarial,
@@ -979,9 +859,6 @@ def main() -> int:
     for name, doc in writes.items():
         (ART / name).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
-    (REPO / "governance" / "GOVERNANCE_MUTATION_AUDIT.md").write_text(
-        build_governance_mutation_md(gov_mut), encoding="utf-8"
-    )
 
     print(
         f"wrote Phase 2 artifacts: bypass={bypass['summary']['severity_1_controls']} "

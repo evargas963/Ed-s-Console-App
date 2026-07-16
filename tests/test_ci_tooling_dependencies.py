@@ -1,4 +1,11 @@
-"""CI dependency coverage — governance tooling and runtime app imports required by objective audit."""
+"""CI dependency coverage — the tooling / runtime / governance / app imports the
+required CI jobs (Hardening quality + pytest-full) need must be pinned and importable,
+so CI never fails on a missing dependency.
+
+Self-contained after the ED CONSOLE SLIMMING register retirement: the Schwab-scanner
+dependency + workflow-ordering checks (and their tool, tools/check_ci_tooling_dependencies.py)
+were removed with the scanner. The generic import coverage is inlined here.
+"""
 from __future__ import annotations
 
 import importlib
@@ -11,15 +18,18 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from tools.check_ci_tooling_dependencies import (  # noqa: E402
-    CI_APP_IMPORT_MODULES,
-    CI_GOVERNANCE_IMPORT_MODULES,
-    CI_RUNTIME_DEPENDENCIES,
-    CI_SCHWAB_SCANNER_IMPORT_MODULES,
-    CI_TOOLING_DEPENDENCIES,
-    check_ci_tooling_dependencies,
-    check_schwab_csv_first_workflow_installs_scanner_deps,
+# (requirements-dev.txt package substring, import module) — CI tooling deps.
+CI_TOOLING_DEPENDENCIES = (
+    ("openpyxl", "openpyxl"),
+    ("pytest", "pytest"),
+    ("pyyaml", "yaml"),
 )
+# Runtime deps from requirements.txt (server / Schwab client path).
+CI_RUNTIME_DEPENDENCIES = (("schwab-py", "schwab"),)
+# Governance modules imported by CI jobs.
+CI_GOVERNANCE_IMPORT_MODULES = ("tools.build_feature_assignment_matrix_v2",)
+# App modules CI jobs import without live Schwab credentials.
+CI_APP_IMPORT_MODULES = ("schwab_client", "server")
 
 
 @pytest.mark.parametrize("pkg_name,import_name", CI_TOOLING_DEPENDENCIES)
@@ -66,21 +76,3 @@ def test_pytest_conftest_sets_ci_schwab_placeholders() -> None:
     assert schwab_credentials_are_ci_placeholders(
         "ci-not-live-placeholder", "ci-not-live-placeholder"
     )
-
-
-def test_check_ci_tooling_dependencies_passes_on_current_repo() -> None:
-    errs = check_ci_tooling_dependencies()
-    assert errs == [], errs
-
-
-def test_schwab_csv_first_workflow_installs_scanner_deps_before_register_gen() -> None:
-    wf = REPO / ".github/workflows/schwab-csv-first.yml"
-    text = wf.read_text(encoding="utf-8")
-    scanner_idx = text.index("schwab_universal_coverage_scanner_v3")
-    assert "pip install -r requirements-dev.txt" in text[:scanner_idx]
-    assert check_schwab_csv_first_workflow_installs_scanner_deps() == []
-
-
-@pytest.mark.parametrize("module", CI_SCHWAB_SCANNER_IMPORT_MODULES)
-def test_schwab_scanner_module_importable(module: str) -> None:
-    importlib.import_module(module)

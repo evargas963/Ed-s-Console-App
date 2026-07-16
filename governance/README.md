@@ -2,7 +2,7 @@
 
 > **Classification:** Operational Ledger | **Scope:** Governance map, truth sources, regeneration commands, maturity vocabulary.
 
-**External reviewers:** start at [`REVIEWER_README.md`](REVIEWER_README.md) — evidence index, limitations, and one-command audit.
+**External reviewers:** start at [(retired under ED CONSOLE SLIMMING)]((retired under ED CONSOLE SLIMMING)) — evidence index, limitations, and one-command audit.
 
 **Purpose:** Institutional-quality controls for trading decisions, releases, and platform governance.
 
@@ -10,7 +10,7 @@
 
 | Priority | Artifact | Authority |
 |----------|----------|-----------|
-| 0 | `docs/AGENT_OPERATING_CONTRACT.md` | **Agent preload** — session-start contract (Cursor + Claude) |
+| 0 | `docs/(retired under ED CONSOLE SLIMMING)` | **Agent preload** — session-start contract (Cursor + Claude) |
 | 1 | `artifacts/SEVERITY_1_CONTROL_VALIDATION_REGISTER.json` | **Maturity truth** — supersedes matrix labels |
 | 2 | `artifacts/UNIVERSAL_BYPASS_REGISTER.json` | Bypass paths per Severity-1 control |
 | 3 | `artifacts/DECISION_PATH_REGISTRY.json` | Route universality proof gaps |
@@ -34,28 +34,28 @@ Do **not** treat matrix `ENFORCED` as institutional enforcement without validati
 ## Regenerate artifacts
 
 ```bash
-python tools/_build_institutional_audit_phase1.py
-python tools/_build_institutional_audit_phase2.py
-python tools/_build_institutional_audit_phase3.py   # after I-31/I-25 code lands
-python tools/_build_governance_coverage_matrix.py
-python tools/build_universal_repository_inventory.py
+python `(retired tool)`
+python `(retired tool)`
+python `(retired tool)`   # after I-31/I-25 code lands
+python `(retired tool)`
+python `(retired tool)`
 ```
 
 ## Run governance tests
 
 ```bash
-python tools/check_agent_preload_contract.py
+python `(retired tool)`
 python -m pytest tests/test_agent_preload_contract.py tests/test_governance_consolidation.py -q
 python -m pytest tests/decision_reconstruction/ tests/release_object/ -q
-python tools/enforce_all_rules.py --objective-audit
-python tools/check_fix_everything_we_touch.py
+python `(retired tool)` --objective-audit
+python `(retired tool)`
 ```
 
 ## Institutional governance phases (3A–3D)
 
 | Phase | Name | Status |
 |-------|------|--------|
-| **3A** | Agent preload contract + repo operating discipline | **LANDED** — `governance/docs/AGENT_OPERATING_CONTRACT.md`, `.cursor/rules/000–040`, `check_agent_preload_contract.py` |
+| **3A** | Agent preload contract + repo operating discipline | **LANDED** — (retired under ED CONSOLE SLIMMING), `.cursor/rules/000–040`, `(retired tool)` |
 | **3B** | Runtime enforcement: I-28 / I-29 / I-31 hardening | **LANDED** (working tree) — `trade_impacting_gate.py`, `tests/adversarial/`, R-005/R-010/R-017 partial |
 | **3C** | Adversarial governance tests | **OPEN** — `tests/adversarial/` empty |
 | **3D** | External self-protection: CI, branch protection, required reviews | **OPEN** — doc only |
@@ -73,7 +73,7 @@ Production decisions persist to `production_decision_records` in the console DB.
 
 - No control at **L5**
 - `--no-verify` bypasses pre-commit
-- Branch protection not proven in-repo — see `docs/BRANCH_PROTECTION_REQUIRED.md`
+- Branch protection not proven in-repo — see `docs/(retired)`
 - Route universality **not proven** (R-005, R-010, R-017)
 - Wrong-but-finite price quarantine not wired
 - Adversarial bypass-detection suite mostly unimplemented
@@ -84,14 +84,13 @@ Production decisions persist to `production_decision_records` in the console DB.
 governance/
   README.md                 ← this file
   artifacts/                ← generated evidence (regenerate commands above)
-  docs/                     ← operator runbooks + AGENT_OPERATING_CONTRACT.md
-  GOVERNANCE_MUTATION_AUDIT.md
+  docs/                     ← operator runbooks + (retired under ED CONSOLE SLIMMING)
   TRADE_IMPACTING_ROUTE_INVENTORY.md
 tools/
-  check_agent_preload_contract.py
-  _build_institutional_audit_phase1.py
-  _build_institutional_audit_phase2.py
-  _build_institutional_audit_phase3.py
+  (retired tool)
+  (retired tool)
+  (retired tool)
+  (retired tool)
 tests/
   test_agent_preload_contract.py
   test_governance_consolidation.py

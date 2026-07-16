@@ -147,11 +147,12 @@ def test_every_blocked_status_blocks_closure():
         assert validate_ledger(_doc(lane)), f"{bad} must block CLOSED_WITH_EVIDENCE"
 
 
-def test_checker_wired_into_objective_audit_and_hardening():
-    """Wiring lock: the gate must run in both required governance workflows."""
-    for wf in (".github/workflows/objective-audit.yml", ".github/workflows/hardening.yml"):
-        src = Path(wf).read_text(encoding="utf-8")
-        assert "check_institutional_closure_gate.py" in src, f"gate not wired into {wf}"
+def test_checker_wired_into_hardening():
+    """Wiring lock: the gate must run in the required Hardening quality workflow.
+    (objective-audit.yml was retired under the ED CONSOLE SLIMMING charter; the
+    Hardening quality job is the surviving required governance workflow.)"""
+    src = Path(".github/workflows/hardening.yml").read_text(encoding="utf-8")
+    assert "check_institutional_closure_gate.py" in src, "gate not wired into hardening.yml"
 
 
 def test_exec_identity_lane_recloses_on_rth_reproof_with_history_and_open_parents():
@@ -262,6 +263,7 @@ def test_universal_fix_lock_closes_only_after_final_main_proof_with_open_parents
     # CRLF/LF determinism disclosure stays honest.
     det = lane["determinism_disclosure"]
     assert det["cross_platform_raw_byte_determinism"].startswith("NOT_PROVEN")
-    # Mission lifecycle: implementation contract retired, not deleted; no active copy.
-    assert (repo / "governance/mission_authorization/consumed/UNIVERSAL-FIX-IMPACT-GATE-V1.retired.json").is_file()
-    assert not (repo / "governance/mission_authorization/active/UNIVERSAL-FIX-IMPACT-GATE-V1.json").exists()
+    # Mission-lifecycle assertions removed: the mission-authorization system
+    # (governance/mission_authorization/**) was retired under the ED CONSOLE
+    # SLIMMING charter (2a-mission-auth); the closure-ledger truths above stand
+    # independent of that process machinery.

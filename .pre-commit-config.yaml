@@ -1,95 +1,47 @@
 repos:
   - repo: local
     hooks:
-      - id: prepush-fast-gate
-        name: prepush fast gate (clean working tree)
-        entry: python tools/check_prepush_fast_gate.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-      - id: generated-artifacts-clean-check
-        name: generated governance artifacts clean (check-only)
-        entry: python tools/check_governance_generated_artifacts_clean.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-      # GOV-GATE-PARITY-01 (2026-07-11, operator-directed): local twins of the
-      # remote fast-fail checks, derived from the canonical workflow files at
-      # runtime. Evidence: five local-green->CI-red escapes on 2026-07-11
-      # (check-stack staleness, mega4 coverage, ruff x2, CSV-first x2). This
-      # supersedes the Phase 2B "two fast gates only" pre-push budget BY
-      # OPERATOR DIRECTION; remote CI remains the unchanged authority.
-      # GOV-BRANCH-AUTH-V1: mission authorization gate — a checked-out branch is
-      # never authorization; destination refs validated from pre-push stdin.
-      - id: mission-authorization-prepush
-        name: mission authorization (destination-ref + registry + breaker)
-        entry: python tools/check_mission_authorization.py --pre-push
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-      - id: prepush-parity-gate
-        name: prepush parity gate (ruff + enforce-static + csv-first + owner suites)
-        entry: python tools/check_prepush_parity.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-      # Phase 2B (2026-06-26): the repo-wide governance consolidation pytest suite
-      # (test_governance_consolidation.py, test_check_fix_everything_we_touch.py,
-      # test_ml_feature_schema_parity.py, test_check_schwab_csv_first.py,
-      # test_forbidden_phrases.py, test_money_path_roster.py,
-      # test_check_no_deferral_language.py) is intentionally NOT a local pre-push hook.
-      # Measured: each candidate file alone is 54-64s and the full suite ~18-26 min
-      # because the test bodies do repo-wide / app-importing scans (pytest startup
-      # itself is only ~1.2s). Local pre-push must stay <=60s (target <=30s), so this
-      # suite is owned by REQUIRED CI: the "pytest-full" check in
-      # .github/workflows/pytest.yml (required + green on main). Fast local governance
-      # string/AST/config checks run at the pre-commit stage (no-grep-subprocess,
-      # no-deferral-language-files, fix-everything-we-touch on staged files). Locked by
-      # tools/check_prepush_fast_gate.py (lightweight-only + budget) and
-      # check_fix_everything_we_touch.check_precommit_performance_contract.
-      - id: mission-authorization-precommit
-        name: mission authorization (branch/worktree/scope ownership)
-        entry: python tools/check_mission_authorization.py --pre-commit
-        language: system
-        pass_filenames: false
-        always_run: true
+      # ED CONSOLE SLIMMING: the pre-push stage has no hooks. Every pre-push
+      # governance-meta gate was retired as the charter's "enforcement is operator
+      # review" superseded it: the mission-authorization hooks (2a), the prepush-parity
+      # gate (1C), and — final — the prepush-fast-gate (meta-governance about the hook
+      # stack) + generated-artifacts-clean-check (freshness of generated governance-
+      # hygiene JSON) subsystems (2b). Required CI (pytest-full + the Hardening quality
+      # job) is the authority; the pre-commit hooks below carry the mission-critical
+      # fast checks (ruff, money-path gate, no-grep, no-private-paths).
       - id: no-grep-subprocess
         name: no grep/rg subprocess in staged Python
         entry: python tools/check_no_grep_subprocess.py
         language: system
         types: [python]
-      - id: no-deferral-language-msg
-        name: no deferral language in commit message
-        entry: python tools/check_no_deferral_language.py
-        language: system
-        stages: [commit-msg]
-      - id: no-deferral-language-files
-        name: no deferral language in staged source/test files
-        entry: python tools/check_no_deferral_language.py
-        language: system
-        types: [text]
-        exclude: '^(OPEN_ITEMS\.md|ACTIVE_PROGRAM\.md|MEMORY\.md|AGENTS\.md|CLAUDE\.md|governance/.*|tools/check_no_deferral_language\.py|tests/.*)$'
-      - id: fix-everything-we-touch-msg
-        name: fix everything we touch (commit message)
-        entry: python tools/check_fix_everything_we_touch.py
-        language: system
-        stages: [commit-msg]
-      - id: fix-everything-we-touch
-        name: fix everything we touch (V4 memo + staged py)
-        entry: python tools/check_fix_everything_we_touch.py
-        language: system
-        pass_filenames: false
-        always_run: true
+      # ED CONSOLE SLIMMING 1B: the deferral-language and fix-everything-we-touch
+      # hooks (and their tools) were retired. Enforcement is now operator review
+      # per the one-page AGENTS.md charter; the money-path gate below plus the
+      # required pytest-full suite carry the mechanical checks that matter.
       # PR41 privacy root cause: operator-home absolute paths must never land in
       # tracked evidence or mission-authorization content (early lock; the same
       # module is exercised by required-CI pytest-full via its adversarial tests).
       - id: no-private-paths
         name: no operator-home paths in tracked evidence
         entry: python tools/check_private_paths.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      # SLIMMING 1C: fast local ruff correctness, parity with the Hardening CI
+      # quality job (F401 unused import, F821 undefined name, E9 syntax). Replaces
+      # the ruff stage of the retired pre-push parity gate.
+      - id: ruff-correctness
+        name: ruff (correctness — F401,F821,E9)
+        entry: python -m ruff check . --select F401,F821,E9
+        language: system
+        pass_filenames: false
+        always_run: true
+      # SLIMMING Phase 1 (Commit 1A): the single fast money-path correctness gate
+      # that replaces the retired enforcement stack. Installed alongside the old
+      # hooks here; Commit 1B removes the old machine and this becomes the gate.
+      - id: market-correctness
+        name: market correctness (money-path static gate)
+        entry: python tools/check_market_correctness.py
         language: system
         pass_filenames: false
         always_run: true

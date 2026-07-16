@@ -76,23 +76,6 @@ def _ensure_console_db_schema_before_each_test():
     ensure_console_db_training_schema()
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _phase3k_governance_perf_session():
-    """Phase 3K — warm ablation static index once; reuse repo-wide static audit in pytest."""
-    os.environ["ED_PYTEST_REUSE_STATIC_AUDIT"] = "1"
-    from tools.ablation_static_lock_index import get_ablation_static_lock_index
-
-    get_ablation_static_lock_index()
-    yield
-    os.environ.pop("ED_PYTEST_REUSE_STATIC_AUDIT", None)
-    from tools import check_fix_everything_we_touch as fe
-
-    fe.reset_session_static_audit_cache_for_tests()
-    from tools.ablation_static_lock_index import reset_ablation_static_lock_index_for_tests
-
-    reset_ablation_static_lock_index_for_tests()
-
-
 @pytest.fixture
 def fresh_ablation_static_lock_index():
     """Opt-in reset for tests that mutate manifest/DB/spec inputs or fake the index builder."""

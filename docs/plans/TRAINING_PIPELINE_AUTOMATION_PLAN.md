@@ -93,7 +93,7 @@ live: ml_predict strict active only → console stack
 | P0-4 | **G3-R3** lineage horizon fix | `arch_competition/lineage.py`, `eval_runner.py`, `ml_scheduler.py` | Governed pass succeeds 1c/5c/15c/60c on SPY dev run |
 | P0-5 | **G3-R1** verify vs `ml_predict` completeness | `verify_active_models.py`, `ml_predict.py` | Single “complete bundle” contract |
 
-**P0-0 inventory seed (from `governance/G1_DIAGNOSIS.md` Direct-Active Writer Inventory — re-grep before PR4):**
+**P0-0 inventory seed (from (retired under ED CONSOLE SLIMMING) Direct-Active Writer Inventory — re-grep before PR4):**
 
 | # | Writer | File | Governance | Phase action |
 |---|--------|------|------------|--------------|
@@ -524,7 +524,7 @@ OPEN_ITEMS push-review rows: signed off 2026-05-21 (2619 pytest at tip). Phase 3
 | **Guard (P3-1b)** | `arch_competition/manual_control.py:554-559` |
 | Dormant writer | `ml_scheduler.py:1783-1804` |
 | Writer inventory (deliverable) | `governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md` |
-| Writer inventory source | `governance/G1_DIAGNOSIS.md` § Direct-Active Writer Inventory |
+| Writer inventory source | (retired under ED CONSOLE SLIMMING) § Direct-Active Writer Inventory |
 | Pre-flip harness | `tools/validate_autopromote_preflip.py`, `models/arch_competition/_preflip_decisions_{run_id}.json` |
 | OPEN_ITEMS | `OPEN_ITEMS.md` G3 Reconciliation Queue, G4 queue |
 | Inference / reload | `ml_predict.py` (~194–199 registries), `server.py` `POST /api/internal/reload_models`, `ml_scheduler.py` reload client |
@@ -780,7 +780,7 @@ Integration golden path (P6): ≥500 row SPY fixture, `@pytest.mark.integration`
 |-----|-----|
 | `PROMOTION_POLICY.md` | Legacy scheduler promotion thresholds |
 | `TRAINING_AND_MAINTENANCE.md` | Operator cadence; update in P5 |
-| `governance/G1_DIAGNOSIS.md` | Writer inventory source |
+| (retired under ED CONSOLE SLIMMING) | Writer inventory source |
 | `OPEN_ITEMS.md` | G3-R1..R3, G4-1..4, TRACK 4 |
 | `ops_runner.py` | `pre_train_gate` sequence for P4-1 |
 

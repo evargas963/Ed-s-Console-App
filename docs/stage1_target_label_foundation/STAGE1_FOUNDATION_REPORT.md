@@ -44,7 +44,7 @@ Fifteen candidate families are defined in the registry without selecting a winne
 
 `session_cohort_contract_v1.json` enumerates cohort dimensions (session, opening/closing window, intraday bucket, day-of-week, half-day/early-close, volatility regime, liquidity regime) with CT semantics and cross-cohort transfer policy (session pooling FORBIDDEN by default; half-day authoritative in Stage 1 research via the calendar; open/close windows PERMITTED_AS_FEATURE/EXPERIMENT). It documents — and `rth_integrity_audit.py` mechanically detects — the **OPEN RTH cohort-integrity contradiction**: `db.py:4417-4420` (operator accuracy) and `audit_model_readiness.py:29-34` still filter RTH on the DST-skewed stored `et_hour/et_minute` (the deprecated `ml_data_common.rth_where_clause` pattern), and `math_volatility.session_bucket` feeds the skewed session label back as a feature. **Not fixed in Stage 1** — the fix changes production accuracy/audit surfaces and requires separate authorization.
 
-**Open-world blast radius (finalization).** `session_blast_radius.py` sweeps the whole repo (gitignore-class DATA exclusions only) and classifies every session/RTH site into `governance/research/stage1_target_label_foundation/session_blast_radius_v1.json` (`partial_scan=false`): STORED_CLOCK_AUTHORITY / TS_UTC_ET_AUTHORITY / CT_CALENDAR_AUTHORITY / EXCHANGE_CONVENTION / SESSION_REFERENCE. Every production site carries `do_not_fix_in_this_mission=true`; the three targeted contradiction sites are a subset of the swept stored-clock production inventory (`tests/test_stage1_session_blast_radius.py`).
+**Open-world blast radius (finalization).** The one-time open-world session/RTH blast-radius sweep and its artifact were retired under the ED CONSOLE SLIMMING directive (research tooling, not substance); the OPEN RTH cohort-integrity contradiction above remains mechanically detected by the retained `rth_integrity_audit.py`.
 
 ## G. Cost & utility foundation
 
@@ -68,7 +68,7 @@ Realized MFE/MAE are implemented as causal research labels in `causal_label_cont
 
 ## L. Production containment (verified, already correct)
 
-Existing governance already states the required containment, verified this mission: `INSTITUTIONAL_MASTER_CHECKLIST.md:82` (TRIPLE_BARRIER_ADOPTION NOT_APPROVED_FOR_PRODUCTION, MODEL_PROMOTION NOT_APPROVED, REAL_MONEY_READINESS NOT_PROVEN); `CARD_TRUST_CONTRACT.md` (cards research telemetry; foundation-model excluded); `calibration_phase5_adaptive_weighting_foundation.md:21` (static fusion weights only); `promotion_engine.py:106-107` (auto-promote forbidden, raises). No false containment claim required correction.
+Existing governance already states the required containment, verified this mission: `the institutional master checklist (retired under ED CONSOLE SLIMMING)` (TRIPLE_BARRIER_ADOPTION NOT_APPROVED_FOR_PRODUCTION, MODEL_PROMOTION NOT_APPROVED, REAL_MONEY_READINESS NOT_PROVEN); `CARD_TRUST_CONTRACT.md` (cards research telemetry; foundation-model excluded); `calibration_phase5_adaptive_weighting_foundation.md:21` (static fusion weights only); `promotion_engine.py:106-107` (auto-promote forbidden, raises). No false containment claim required correction.
 
 ## M. Readiness determinations
 

@@ -1415,7 +1415,7 @@ def run_ablation_preflight(
 
     if str(Path(__file__).resolve().parent.parent) not in sys.path:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from tools.check_fix_everything_we_touch import audit_ablation_placement_validity
+    from tools.ablation_integrity import audit_ablation_placement_validity
 
     placement = audit_ablation_placement_validity()
     result["placement_validity"] = placement
@@ -5364,7 +5364,7 @@ def main():
         raise SystemExit(0 if integrity.get("verdict") in ("PASS", "INVESTIGATE") else 1)
 
     if a.ablation_audit:
-        from tools.check_fix_everything_we_touch import run_ablation_integrity_audit
+        from tools.ablation_integrity import run_ablation_integrity_audit
 
         tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
         result = run_ablation_integrity_audit(

@@ -1,8 +1,7 @@
 name: Pytest Full Suite
 
-# Full Python suite + Playwright E2E (npm run test:all). Closes GOVERNANCE-CONSOLIDATION
-# PYTEST-TO-CI — separate from schwab-csv-first.yml (Schwab diff guards) and
-# schwab-v4-closure.yml (D17 register closure metrics).
+# Full Python suite + Playwright E2E (npm run test:all): the required runtime-correctness
+# gate under the ED CONSOLE SLIMMING charter (AGENTS.md), alongside the Hardening quality job.
 
 on:
   pull_request:

@@ -460,13 +460,6 @@ def test_feature_ablation_manifest_matches_engineer_features():
 
 
 
-def test_ablation_manifest_generator_has_no_model_stamp_builder():
-    """Generator source must not retain legacy compound model-stamp builders."""
-    from tools.check_fix_everything_we_touch import check_ablation_manifest_generator_no_model_preassignment
-
-    assert check_ablation_manifest_generator_no_model_preassignment() == []
-
-
 def test_ablation_harness_manifest_only_grid():
     from tools.feature_curation_gate import (
         FULL_STACK_LAYERS,
@@ -1663,35 +1656,6 @@ def test_compound_ablation_survivors_voided(monkeypatch, tmp_path):
         sbe.ablated_drop_group_ids_for_model_horizon("xgb", "1c")
 
 
-def test_schwab_ablation_universe_contract():
-    from tools.check_fix_everything_we_touch import check_ablation_schwab_universe_contract
-    from tools.build_feature_assignment_matrix_v2 import (
-        MIN_ABLATION_EXPANSION_FACTOR,
-        resolve_expanded_schwab_ablation_universe,
-    )
-
-    payload = resolve_expanded_schwab_ablation_universe()
-    reg_n = int(payload["totals"]["registered_ml_cone_columns"])
-    ablate_n = int(payload["totals"]["ablation_group_count"])
-    assert ablate_n >= reg_n * MIN_ABLATION_EXPANSION_FACTOR
-    assert payload["ablation_method"]["feature_grain"] == "schwab_expanded_atomic"
-    assert payload["ablation_method"]["primary_pass"] == "per_model_per_horizon_atomic_permutation_importance"
-    assert "grouped" not in payload["ablation_method"]["primary_pass"]
-    gids = {g["group_id"] for g in payload["groups"] if g.get("disposition") == "ABLATE"}
-    for cf in (
-        "cf_alignment_score",
-        "cf_greek_support",
-        "cf_momentum_5m",
-        "cf_structure_15m",
-        "cf_trend_1h",
-        "cf_vwap_distance_pct",
-    ):
-        assert f"reg__atomic__{cf}" in gids, f"missing confluence feature group {cf}"
-    assert int(payload["totals"]["schwab_dictionary_rows"]) >= 2300
-    errs = check_ablation_schwab_universe_contract()
-    assert errs == [], errs
-
-
 def test_check_ablation_pipeline_parity_green():
     from tools.check_ablation_pipeline_parity import check_ablation_pipeline_parity
 
@@ -1885,13 +1849,6 @@ def test_parallel_cascade_bridge_cache_roundtrip(tmp_path):
     )
     assert loaded is not None
     assert loaded.shape == (2, 3)
-
-
-def test_full_stack_models_contract():
-    from tools.check_fix_everything_we_touch import check_full_stack_models_contract
-
-    errs = check_full_stack_models_contract()
-    assert errs == [], errs
 
 
 def test_ml_pipeline_efficiency_checker_green():

@@ -10,7 +10,7 @@
 **Classified output:** `governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_CLASSIFIED.csv`  
 **Disposition output:** `governance/SCHWAB_CSV_DERIVED_FIELD_DISPOSITION_REGISTER.csv`  
 **Residual output:** `governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv`
-**Remediation roadmap:** `governance/SCHWAB_REMEDIATION_SLICE_PLAN_V1.md`
+**Remediation roadmap:** retired under the ED CONSOLE SLIMMING directive; this file's live value is the field crosswalk below (read by the v2_decision A2 modules).
 
 This document answers the repo-wide question:
 
@@ -86,9 +86,9 @@ manual_residual_rows = 50
 
 The disposition register assigns an automated first-pass disposition to every mechanical candidate row. The residual file is the remaining human-review queue. This document is evidence, not final proof, until `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv` is dispositioned to zero or each remaining row is explicitly registered/governed.
 
-**Status vocabulary:** GOVERNANCE vs SYSTEM axes — canonical definitions: `governance/ENGINEERING_GATEKEEPING_POLICY.md` § Status Language; do not read this document’s **remediation OPEN** header as SYSTEM PASS.
+**Status vocabulary:** GOVERNANCE vs SYSTEM axes — canonical definitions: the gatekeeping policy (now in AGENTS.md) § Status Language; do not read this document’s **remediation OPEN** header as SYSTEM PASS.
 
-The active closure roadmap is `SCHWAB_REMEDIATION_SLICE_PLAN_V1.md`.
+The Schwab remediation program was retired under the ED CONSOLE SLIMMING directive.
 
 ---
 
@@ -235,7 +235,6 @@ full_disposition_register_status = GENERATED
 manual_residual_rows_requiring_disposition = 50
 runtime_remediation_status = OPEN
 all_consumer_closure_status = OPEN
-remediation_slice_plan = SCHWAB_REMEDIATION_SLICE_PLAN_V1.md
 ```
 
 This document is the CSV-backed crosswalk baseline. It does not claim remediation closure.

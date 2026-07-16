@@ -1,28 +1,5 @@
 ---
-description: EdWebConsole always-on pointers — AGENTS.md is the rule source
+description: EdWebConsole — AGENTS.md is the single governing law
 alwaysApply: true
 ---
-
-# EdWebConsole — always apply (pointers only)
-
-**Preload (mandatory):** [`governance/docs/AGENT_OPERATING_CONTRACT.md`](governance/docs/AGENT_OPERATING_CONTRACT.md) — verify loaded before any edit; `python tools/check_agent_preload_contract.py`.
-
-**Read order:** `ACTIVE_PROGRAM.md` → `AGENT_OPERATING_CONTRACT.md` → `AGENTS.md` (§ **Tier-1 Quantitative Engineering Standard** + § **World-class / institutional code gate** + § **Institutional sign-off contract** + § **Definition of Done for Fixes** — always on; ML/ablation also § **ZERO-BIAS** + § **Ablation contract**) → `CLAUDE.md` (Schwab market-field work).
-
-**Cursor preload rules:** `.cursor/rules/000-agent-operating-contract.mdc` through `040-testing-and-artifacts.mdc` (alwaysApply).
-
-**Quality above product:** Tier-1 Quality Standard + V3 invariant registry **override** product-law convenience. Product law = promoted domain rules in AGENTS (stack, fusion, ablation, Schwab, money-path) — not generic craft.
-
-**Conflicts:** ACTIVE_PROGRAM names the epic; **AGENTS.md is the single source for agent behavior** (banned tools, banned phrases, no permission asks, fix-as-we-find, closure bundle, no new files); CLAUDE.md owns Schwab market-field law; project rules beat user rules.
-
-**Binding scope:** do not treat `governance/*.md` or `docs/plans/*.md` as binding unless ACTIVE_PROGRAM or AGENTS cites them — full hierarchy: `AGENTS.md` § Governance document hierarchy.
-
-**Sign-off (uniform Cursor + Claude):** **Tier 0 (before first edit):** `python tools/enforce_all_rules.py --upfront-gate` (exit 0) — pre-commit blocks production-path commits without fresh stamp. Implementation turns → **Tier A:** `--objective-audit` (exit 0). Repository hard gate → **Tier B:** `--enforce-all`. **Tier C (`--enforce-static` / `--code-quality`) never admits `AUDIT: CLEAN`.** Canonical block: AGENTS § Institutional sign-off contract.
-
-**Do not duplicate AGENTS rules here.** Pointer surface only — behavior law lives in `AGENTS.md`; mechanical enforcement in `tools/check_*.py` + paired tests + `.pre-commit-config.yaml`.
-
-**Workspace:** if not in EdWebConsole, call `move_agent_to_root` before project edits.
-
-**Enforcement (binding — rules are not memos):** Every commit runs `tools/check_fix_everything_we_touch.py` via pre-commit (Tier 0 stamp fast-fail + full static locks). Claude Code Stop hook runs output + session file checks. **Honest limit:** Cursor chat has no Stop hook; Tier 0 + pre-commit block violations at commit time.
-
-- Universal engineering standard (canonical single source, load and obey): UNIVERSAL_INSTITUTIONAL_ENGINEERING_STANDARD_V1 @ governance/standard/universal_institutional_engineering_standard_v1.json (STANDARD_VERSION=1.0.0)
+Read and follow /AGENTS.md before repository work.

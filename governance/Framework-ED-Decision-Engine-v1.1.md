@@ -211,16 +211,16 @@ Architecture, features, OOF training, and calibration for the **meta layer** liv
 
 | Source | Normative role |
 |--------|----------------|
-| `governance/INSTITUTIONAL_STANDARD_V3.md` §1.5 | Controlled vocabulary for governance and runtime terms. |
-| `governance/INSTITUTIONAL_STANDARD_V3.md` §2 | Institutional invariants **I-01** through **I-20**. |
-| `governance/INSTITUTIONAL_STANDARD_V3.md` §§3–16 | Architecture, validation, enforcement, lifecycle, output, observability, operational, and boundary standards. |
-| `governance/G1_DIAGNOSIS.md` and addenda | Current model-lifecycle gap evidence and reconciliation queue. |
-| `governance/V3_LOCK_RECORD.md` | V3 lock scope, amendment path, and deferred-item record. |
-| `governance/G2_PLAN.md` | Alignment work in progress for artifact contracts, unless superseded by a later governed plan. |
+| the institutional standard (superseded under ED CONSOLE SLIMMING) §1.5 | Controlled vocabulary for governance and runtime terms. |
+| the institutional standard (superseded under ED CONSOLE SLIMMING) §2 | Institutional invariants **I-01** through **I-20**. |
+| the institutional standard (superseded under ED CONSOLE SLIMMING) §§3–16 | Architecture, validation, enforcement, lifecycle, output, observability, operational, and boundary standards. |
+| the G1 diagnosis (retired under ED CONSOLE SLIMMING) | Current model-lifecycle gap evidence and reconciliation queue. |
+| the V3 lock record (retired under ED CONSOLE SLIMMING) | V3 lock scope, amendment path, and deferred-item record. |
+| the G2 plan (retired under ED CONSOLE SLIMMING) | Alignment work in progress for artifact contracts, unless superseded by a later governed plan. |
 
 The former B–H layer shorthand is non-authoritative in this v1.1 document. If a layered taxonomy is needed, it must be defined in a future governed standard/framework version rather than inferred from this appendix.
 
-**Repository pointers:** `governance/INSTITUTIONAL_STANDARD_V3.md`, `governance/G1_DIAGNOSIS.md`, `governance/V3_LOCK_RECORD.md`, `governance/G2_PLAN.md` (alignment work in progress).
+**Repository pointers:** the institutional standard (superseded under ED CONSOLE SLIMMING), the G1 diagnosis (retired under ED CONSOLE SLIMMING), the V3 lock record (retired under ED CONSOLE SLIMMING), the G2 plan (retired under ED CONSOLE SLIMMING) (alignment work in progress).
 
 ---
 

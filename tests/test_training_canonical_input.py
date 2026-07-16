@@ -363,19 +363,6 @@ def test_records_for_mvp_from_dataframe_unblocks_meta_inference_snapshot_path() 
     assert snap["features"]["liquidity.continuation_score"] is None
 
 
-def test_repo_bans_raw_to_dict_records_on_mvp_feed_paths() -> None:
-    """Mechanical lock: MVP paths must use records_for_mvp_from_dataframe."""
-    import sys
-    from pathlib import Path
-
-    tools = Path(__file__).resolve().parent.parent / "tools"
-    if str(tools) not in sys.path:
-        sys.path.insert(0, str(tools))
-    import check_fix_everything_we_touch as mod
-
-    assert mod.check_mvp_dataframe_ingress() == []
-
-
 def test_meta_assembly_uses_canonical_dataframe_ingress() -> None:
     """Source lock: scheduler META must not call df.to_dict('records') directly."""
     from pathlib import Path

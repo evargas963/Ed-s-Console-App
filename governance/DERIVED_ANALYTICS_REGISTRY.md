@@ -4,7 +4,7 @@
 
 **Status:** Initial v2 data-plane governance registry  
 **Created:** 2026-05-05  
-**Framework reference:** `governance/Framework-ED-Decision-Engine-v2.0-DRAFT.md` §2.22 and §4  
+**Framework reference:** the ED Decision Engine framework (superseded under the ED CONSOLE SLIMMING directive).
 **Source classification:** `derived_because_schwab_does_not_provide`
 
 ---
@@ -30,8 +30,8 @@ provenance_contract
 | Analytic | Schwab inputs consumed | Why derivation is legitimate | Provenance contract |
 | --- | --- | --- | --- |
 | `GEX` / `DEX` / dollarized exposure | `delta`, `gamma`, `openInterest`, `multiplier`; underlying price from governed quote (e.g. **`quotes.regular.regularMarketLastPrice`**) | Schwab provides per-contract Greeks and OI, not dealer exposure aggregates. | `math_exposure_core.compute_exposures_by_strike` |
-| `gamma_wall`, `delta_wall`, `pin_rail` | Exposure buckets derived from option chain Greeks, **`openInterest`**, and governed underlying quote | Schwab provides contracts, not structural wall selection. | `math_levels.py` wall builders; see `governance/INSTITUTIONAL_STANDARD_V3.md` §8.2 |
-| `gamma_pin` / `HVL` / `max_pain` / `gamma_flip` / `net_gex` | Same as GEX/DEX inputs | Structural levels not provided by Schwab; must use dollar GEX when spot is known. | `math_exposure_core` pickers + `math_levels.compute_*`; see `governance/INSTITUTIONAL_STANDARD_V3.md` §8.2 |
+| `gamma_wall`, `delta_wall`, `pin_rail` | Exposure buckets derived from option chain Greeks, **`openInterest`**, and governed underlying quote | Schwab provides contracts, not structural wall selection. | `math_levels.py` wall builders; see the institutional standard (superseded under ED CONSOLE SLIMMING) §8.2 |
+| `gamma_pin` / `HVL` / `max_pain` / `gamma_flip` / `net_gex` | Same as GEX/DEX inputs | Structural levels not provided by Schwab; must use dollar GEX when spot is known. | `math_exposure_core` pickers + `math_levels.compute_*`; see the institutional standard (superseded under ED CONSOLE SLIMMING) §8.2 |
 | `vanna_proxy` | `vega`, `volatility`, `openInterest`, `multiplier`; underlying price from governed quote | Schwab provides primitive Greeks and **`volatility`**, not app-specific aggregate vanna proxy. | `math_exposure_core.compute_exposures_by_strike` |
 | `net_charm_daily` | `gamma`, `delta`, `volatility`, `openInterest`, strike, expiry; underlying price from governed quote | Schwab does not provide dealer net charm exposure. | `math_exposure_core.compute_net_charm` |
 | `expected_move` | underlying quote price, `volatility`, ATM option marks, time remaining | Schwab provides prices and **`volatility`**, not this strategy-specific expected-move transform. | `math_volatility.compute_expected_move_*` |

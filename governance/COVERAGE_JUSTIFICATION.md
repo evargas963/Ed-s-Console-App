@@ -42,7 +42,7 @@ No control may claim maturity above what evidence justifies. Matrix `ENFORCED` l
 
 Many checkers are **presence/marker scans**, not behavioral proofs:
 
-- `check_fusion_only_card_contract` — verifies strings exist in source files (`tools/check_fix_everything_we_touch.py:2638`)
+- `check_fusion_only_card_contract` — verifies strings exist in source files (`(retired)`:2638`)
 - `test_fusion_only_card_contract_passes_on_current_repo` — asserts checker returns `[]` on current repo only
 - **No test proves `--no-verify` is detected or blocked**
 
