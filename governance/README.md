@@ -85,7 +85,6 @@ governance/
   README.md                 ← this file
   artifacts/                ← generated evidence (regenerate commands above)
   docs/                     ← operator runbooks + AGENT_OPERATING_CONTRACT.md
-  GOVERNANCE_MUTATION_AUDIT.md
   TRADE_IMPACTING_ROUTE_INVENTORY.md
 tools/
   check_agent_preload_contract.py

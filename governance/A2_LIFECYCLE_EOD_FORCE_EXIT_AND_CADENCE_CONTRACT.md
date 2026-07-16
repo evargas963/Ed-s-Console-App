@@ -46,7 +46,7 @@ Resolved (originally listed out-of-scope; now landed):
 - code implementation: landed at `20a1c14`;
 - trading-calendar dependency: landed via `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` (`cac88a6`);
 - shortened-session, holiday, and out-of-session handling: resolved per §Session Handling below;
-- `a2_option_expression.py:383` cleanup for unpropagated `mins_to_close`: resolved per `governance/REPO_CLEANUP_QUEUE.md` resolution log.
+- `a2_option_expression.py:383` cleanup for unpropagated `mins_to_close`: resolved.
 
 ---
 
