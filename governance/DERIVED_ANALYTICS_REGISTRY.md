@@ -4,7 +4,7 @@
 
 **Status:** Initial v2 data-plane governance registry  
 **Created:** 2026-05-05  
-**Framework reference:** `governance/Framework-ED-Decision-Engine-v2.0-DRAFT.md` §2.22 and §4  
+**Framework reference:** the ED Decision Engine framework (superseded under the ED CONSOLE SLIMMING directive).
 **Source classification:** `derived_because_schwab_does_not_provide`
 
 ---

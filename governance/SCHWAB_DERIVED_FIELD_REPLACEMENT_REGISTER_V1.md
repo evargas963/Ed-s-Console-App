@@ -13,7 +13,7 @@ If Schwab provides the primitive directly, are we using Schwab first?
 
 If not, the item must be fixed, failed closed, or explicitly governed as a derived analytic. This is a V3 I-01 control: no silent substitution and no silent quality degradation.
 
-Per `ENGINEERING_GATEKEEPING_POLICY.md` §Schwab Same-or-Better Rule, derived fields stay only when Schwab does not provide the primitive at the appropriate site or when an investigation produced a governed exception. "Schwab looked worse" is not a standing exception.
+Per the gatekeeping policy (now in AGENTS.md) §Schwab Same-or-Better Rule, derived fields stay only when Schwab does not provide the primitive at the appropriate site or when an investigation produced a governed exception. "Schwab looked worse" is not a standing exception.
 
 ---
 

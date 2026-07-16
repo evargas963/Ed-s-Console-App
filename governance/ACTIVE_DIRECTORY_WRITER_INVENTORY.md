@@ -4,7 +4,7 @@
 
 **Audit date:** 2026-05-21 (post-PR4 refresh)  
 **Slice:** PR1 / P0-0 + PR4 governed auto-promote (`OPEN_ITEM_FIX` — training pipeline automation)  
-**Method:** Repo grep for `models/active`, `active_{`, `_replace_active_dir`, `shutil.copy` into active trees; reconciled with `governance/G1_DIAGNOSIS.md` § Direct-Active Writer Inventory.
+**Method:** Repo grep for `models/active`, `active_{`, `_replace_active_dir`, `shutil.copy` into active trees § Direct-Active Writer Inventory.
 
 ## Summary
 
