@@ -82,13 +82,31 @@ class RegisterRow:
         return {k: d[k] for k in REGISTER_COLUMNS}
 
 
+def canonicalize_register_rows(rows: list[RegisterRow]) -> list[dict[str, Any]]:
+    """Return the serialized rows in a stable total order.
+
+    File-traversal order (os.walk directory order) is filesystem/checkout
+    dependent, so an unsorted register emits the same logical row set in
+    different byte order across CI checkouts, producing a different SHA-256 for
+    identical content. Sorting the SERIALIZED register-schema fields immediately
+    before writing makes the byte content — and its pin — independent of
+    traversal order. Row discovery, inclusion, schema, and values are unchanged;
+    only the emission order is canonicalized.
+    """
+    serialized = [r.as_csv_dict() for r in rows]
+    serialized.sort(
+        key=lambda d: tuple("" if d[c] is None else str(d[c]) for c in REGISTER_COLUMNS)
+    )
+    return serialized
+
+
 def write_register_csv(path: Path, rows: list[RegisterRow]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
         w.writeheader()
-        for r in rows:
-            w.writerow(r.as_csv_dict())
+        for d in canonicalize_register_rows(rows):
+            w.writerow(d)
 
 
 def normalize_register_path(path: str) -> str:
