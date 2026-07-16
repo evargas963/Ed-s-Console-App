@@ -1,38 +1,14 @@
 repos:
   - repo: local
     hooks:
-      - id: prepush-fast-gate
-        name: prepush fast gate (clean working tree)
-        entry: python tools/check_prepush_fast_gate.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-      - id: generated-artifacts-clean-check
-        name: generated governance artifacts clean (check-only)
-        entry: python tools/check_governance_generated_artifacts_clean.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-      # GOV-GATE-PARITY-01 (2026-07-11, operator-directed): local twins of the
-      # remote fast-fail checks, derived from the canonical workflow files at
-      # runtime. Evidence: five local-green->CI-red escapes on 2026-07-11
-      # (check-stack staleness, mega4 coverage, ruff x2, CSV-first x2). This
-      # supersedes the Phase 2B "two fast gates only" pre-push budget BY
-      # OPERATOR DIRECTION; remote CI remains the unchanged authority.
-      # ED CONSOLE SLIMMING 1C: the prepush-parity-gate hook and
-      # tools/check_prepush_parity.py were retired with the enforcement stack they
-      # mirrored (enforce-static + the universal-fix / governance-consolidation
-      # suites, all deleted in 1B). Full runtime coverage is the required
-      # "pytest-full" CI job (.github/workflows/pytest.yml); fast local correctness
-      # is ruff + the money-path gate at the pre-commit stage (below).
-      # ED CONSOLE SLIMMING 2a-mission-auth: the mission-authorization hooks (and
-      # tools/check_mission_authorization.py + tools/mission_authorization.py +
-      # governance/mission_authorization/**) were retired. Mission-auth was process
-      # machinery — it gated which agent could commit on which branch lane; it never
-      # guarded market correctness, money-path behavior, or data honesty. Those guards
-      # survive it (money-path gate + pytest-full + operator review per the charter).
+      # ED CONSOLE SLIMMING: the pre-push stage has no hooks. Every pre-push
+      # governance-meta gate was retired as the charter's "enforcement is operator
+      # review" superseded it: the mission-authorization hooks (2a), the prepush-parity
+      # gate (1C), and — final — the prepush-fast-gate (meta-governance about the hook
+      # stack) + generated-artifacts-clean-check (freshness of generated governance-
+      # hygiene JSON) subsystems (2b). Required CI (pytest-full + the Hardening quality
+      # job) is the authority; the pre-commit hooks below carry the mission-critical
+      # fast checks (ruff, money-path gate, no-grep, no-private-paths).
       - id: no-grep-subprocess
         name: no grep/rg subprocess in staged Python
         entry: python tools/check_no_grep_subprocess.py
