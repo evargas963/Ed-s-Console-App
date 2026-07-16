@@ -21,27 +21,18 @@ repos:
       # (check-stack staleness, mega4 coverage, ruff x2, CSV-first x2). This
       # supersedes the Phase 2B "two fast gates only" pre-push budget BY
       # OPERATOR DIRECTION; remote CI remains the unchanged authority.
-      # GOV-BRANCH-AUTH-V1: mission authorization gate — a checked-out branch is
-      # never authorization; destination refs validated from pre-push stdin.
-      - id: mission-authorization-prepush
-        name: mission authorization (destination-ref + registry + breaker)
-        entry: python tools/check_mission_authorization.py --pre-push
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
       # ED CONSOLE SLIMMING 1C: the prepush-parity-gate hook and
       # tools/check_prepush_parity.py were retired with the enforcement stack they
       # mirrored (enforce-static + the universal-fix / governance-consolidation
       # suites, all deleted in 1B). Full runtime coverage is the required
       # "pytest-full" CI job (.github/workflows/pytest.yml); fast local correctness
       # is ruff + the money-path gate at the pre-commit stage (below).
-      - id: mission-authorization-precommit
-        name: mission authorization (branch/worktree/scope ownership)
-        entry: python tools/check_mission_authorization.py --pre-commit
-        language: system
-        pass_filenames: false
-        always_run: true
+      # ED CONSOLE SLIMMING 2a-mission-auth: the mission-authorization hooks (and
+      # tools/check_mission_authorization.py + tools/mission_authorization.py +
+      # governance/mission_authorization/**) were retired. Mission-auth was process
+      # machinery — it gated which agent could commit on which branch lane; it never
+      # guarded market correctness, money-path behavior, or data honesty. Those guards
+      # survive it (money-path gate + pytest-full + operator review per the charter).
       - id: no-grep-subprocess
         name: no grep/rg subprocess in staged Python
         entry: python tools/check_no_grep_subprocess.py

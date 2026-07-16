@@ -1,31 +1,21 @@
 #!/usr/bin/env python3
 """Fail-closed privacy guard: no operator-home absolute paths in tracked evidence.
 
-PR41_OPERATOR_PATH_PRIVACY_SCRUB_V1 + PR41 root-cause fix: mission contracts are
-path-free (worktree_lease_sha256 + authorized_remote), and evidence must use
-stable abstractions (<WORKTREE_ROOT>, <TEMP_WORKTREE_ROOT>, <PYTEST_TMP>, <TEMP>,
-<USER_HOME>, <EXTERNAL_EVIDENCE_ROOT>) or repository-relative paths.
+PR41_OPERATOR_PATH_PRIVACY_SCRUB_V1: evidence must use stable abstractions
+(<WORKTREE_ROOT>, <TEMP_WORKTREE_ROOT>, <PYTEST_TMP>, <TEMP>, <USER_HOME>,
+<EXTERNAL_EVIDENCE_ROOT>) or repository-relative paths.
 
 Enforcement layers: pre-commit hook (early lock, this CLI) + required-CI
 pytest-full (tests/test_operator_path_privacy.py imports this module — single
 pattern source, no duplicated regex list).
 
-Scope: git-tracked files under reports/scoreboard_forensic/ and
-governance/mission_authorization/, plus the two Schwab V4 pin artifacts.
-Base-era reports/** outside scoreboard_forensic carry pre-existing machine
-paths (1016 lines measured 2026-07-14) not attributable to Lane-A; widening
-the scope is a separate normalization mission.
+Scope: git-tracked files under reports/scoreboard_forensic/. Base-era reports/**
+outside scoreboard_forensic carry pre-existing machine paths (1016 lines measured
+2026-07-14) not attributable to Lane-A; widening the scope is a separate mission.
 
-Allowlist (narrow, per-line, documented):
-  * consumed contracts are immutable historical mission records; base-era ones
-    predate the path-free contract schema (active contracts are now REFUSED if
-    they carry any absolute-path field — tools/mission_authorization.py);
-  * schwab_v4_scoreboard.json register_path/perf_proof_dir are pre-existing
-    base-branch values (future regeneration may normalize them).
-
-Schwab CSV authority checked: yes
-CSV row(s): NO_SCHWAB_EQUIVALENT — governance privacy enforcement only.
-SCHWAB_CSV_CHECKED
+Allowlist: empty (ED CONSOLE SLIMMING) — the mission-authorization consumed
+contracts and Schwab V4 artifacts it covered were retired; the guard now fails
+closed on any private path in scope.
 """
 from __future__ import annotations
 
@@ -47,17 +37,14 @@ PRIVATE_PATH_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 # (path-prefix, required-substring-on-line) — an allowlisted line must carry the
 # substring AND sit under the prefix; anything else in the file still fails.
-PRIVATE_PATH_ALLOWLIST: tuple[tuple[str, str], ...] = (
-    ("governance/mission_authorization/consumed/", '"authorized_worktree"'),
-    ("governance/artifacts/schwab_v4_scoreboard.json", '"register_path"'),
-    ("governance/artifacts/schwab_v4_scoreboard.json", '"perf_proof_dir"'),
-)
+# ED CONSOLE SLIMMING: the mission-authorization consumed contracts and the two
+# Schwab V4 pin artifacts that populated this allowlist were retired (2a-reg /
+# 2a-mission-auth). With nothing tracked needing an exception, the allowlist is
+# empty and the guard fails closed on ANY private path in scope.
+PRIVATE_PATH_ALLOWLIST: tuple[tuple[str, str], ...] = ()
 
-SCAN_PREFIXES = ("reports/scoreboard_forensic/", "governance/mission_authorization/")
-SCAN_EXTRA_FILES = (
-    "governance/artifacts/schwab_v4_scoreboard.json",
-    "governance/artifacts/schwab_v4_register_build_meta.json",
-)
+SCAN_PREFIXES = ("reports/scoreboard_forensic/",)
+SCAN_EXTRA_FILES: tuple[str, ...] = ()
 
 
 def tracked_scan_targets() -> list[str]:

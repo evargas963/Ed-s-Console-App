@@ -263,6 +263,7 @@ def test_universal_fix_lock_closes_only_after_final_main_proof_with_open_parents
     # CRLF/LF determinism disclosure stays honest.
     det = lane["determinism_disclosure"]
     assert det["cross_platform_raw_byte_determinism"].startswith("NOT_PROVEN")
-    # Mission lifecycle: implementation contract retired, not deleted; no active copy.
-    assert (repo / "governance/mission_authorization/consumed/UNIVERSAL-FIX-IMPACT-GATE-V1.retired.json").is_file()
-    assert not (repo / "governance/mission_authorization/active/UNIVERSAL-FIX-IMPACT-GATE-V1.json").exists()
+    # Mission-lifecycle assertions removed: the mission-authorization system
+    # (governance/mission_authorization/**) was retired under the ED CONSOLE
+    # SLIMMING charter (2a-mission-auth); the closure-ledger truths above stand
+    # independent of that process machinery.
