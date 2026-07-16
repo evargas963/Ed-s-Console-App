@@ -88,10 +88,6 @@ host_manifest.*.json
 !.cursor/rules/
 !.cursor/rules/**
 
-# Full-repo Schwab scanner dumps (multi-GB; keep partial register in git or store offline)
-governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.mock_build.csv
-# V4 register CSV — generated locally / in CI; audit pins in schwab_v4_register_build_meta.json
-governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv
 
 # Operator/tool dry-run audits (local only)
 governance/audits/backfill_et_clock_from_ts_utc_v1_*.json
