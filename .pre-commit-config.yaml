@@ -30,27 +30,12 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
-      - id: prepush-parity-gate
-        name: prepush parity gate (ruff + enforce-static + csv-first + owner suites)
-        entry: python tools/check_prepush_parity.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-      # Phase 2B (2026-06-26): the repo-wide governance consolidation pytest suite
-      # (test_governance_consolidation.py, test_check_fix_everything_we_touch.py,
-      # test_ml_feature_schema_parity.py, test_check_schwab_csv_first.py,
-      # test_forbidden_phrases.py, test_money_path_roster.py,
-      # test_check_no_deferral_language.py) is intentionally NOT a local pre-push hook.
-      # Measured: each candidate file alone is 54-64s and the full suite ~18-26 min
-      # because the test bodies do repo-wide / app-importing scans (pytest startup
-      # itself is only ~1.2s). Local pre-push must stay <=60s (target <=30s), so this
-      # suite is owned by REQUIRED CI: the "pytest-full" check in
-      # .github/workflows/pytest.yml (required + green on main). Fast local governance
-      # string/AST/config checks run at the pre-commit stage (no-grep-subprocess,
-      # no-deferral-language-files, fix-everything-we-touch on staged files). Locked by
-      # tools/check_prepush_fast_gate.py (lightweight-only + budget) and
-      # check_fix_everything_we_touch.check_precommit_performance_contract.
+      # ED CONSOLE SLIMMING 1C: the prepush-parity-gate hook and
+      # tools/check_prepush_parity.py were retired with the enforcement stack they
+      # mirrored (enforce-static + the universal-fix / governance-consolidation
+      # suites, all deleted in 1B). Full runtime coverage is the required
+      # "pytest-full" CI job (.github/workflows/pytest.yml); fast local correctness
+      # is ruff + the money-path gate at the pre-commit stage (below).
       - id: mission-authorization-precommit
         name: mission authorization (branch/worktree/scope ownership)
         entry: python tools/check_mission_authorization.py --pre-commit
@@ -72,6 +57,15 @@ repos:
       - id: no-private-paths
         name: no operator-home paths in tracked evidence
         entry: python tools/check_private_paths.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      # SLIMMING 1C: fast local ruff correctness, parity with the Hardening CI
+      # quality job (F401 unused import, F821 undefined name, E9 syntax). Replaces
+      # the ruff stage of the retired pre-push parity gate.
+      - id: ruff-correctness
+        name: ruff (correctness — F401,F821,E9)
+        entry: python -m ruff check . --select F401,F821,E9
         language: system
         pass_filenames: false
         always_run: true

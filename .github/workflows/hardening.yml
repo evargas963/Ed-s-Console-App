@@ -37,13 +37,14 @@ jobs:
       - name: compileall (no unparseable files — blocking)
         run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
 
-      # --- BLOCKING: governance gates (the rules that must be enforced, not remembered) ---
-      - name: no-deferral language
-        run: python tools/check_no_deferral_language.py
-      - name: fix-everything-we-touch
-        run: python tools/check_fix_everything_we_touch.py
-      - name: enforce-static (repo-wide static locks — Tier C CI gate)
-        run: python tools/enforce_all_rules.py --enforce-static
+      # --- BLOCKING: money-path correctness gate. Replaces the retired enforcement
+      #     stack (no-deferral / fix-everything-we-touch / enforce-static, all
+      #     deleted in the ED CONSOLE SLIMMING wave). Enforcement is now operator
+      #     review + this gate + the required pytest-full suite. ---
+      - name: market correctness (money-path static gate + self-test)
+        run: |
+          python tools/check_market_correctness.py --self-test
+          python tools/check_market_correctness.py
 
       - name: institutional closure gate (no inflated parent closures)
         run: python tools/check_institutional_closure_gate.py
