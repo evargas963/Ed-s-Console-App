@@ -2,8 +2,7 @@
 """
 Post-fix Schwab theta / timestamp coverage on archived `snapshots.option_chain_json`.
 
-Read-only. Intended for S008 closure evidence (see `governance/SCHWAB_REMEDIATION_SLICE_PLAN_V1.md`
-S008 row and `governance/SCHWAB_REMEDIATION_SLICE_CLOSURE_AUDIT_V1.md`). Filter snapshots by
+Read-only. Intended for S008 theta / timestamp coverage evidence. Filter snapshots by
 `created_at` cut (deployment / schema-repair conservative window); aggregate contract-level
 metrics grouped by ticker × UTC calendar date (from `ts_utc` by default).
 

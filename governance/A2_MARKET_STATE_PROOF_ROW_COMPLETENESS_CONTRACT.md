@@ -233,5 +233,4 @@ This contract intentionally does not solve:
 - stale quote carry-forward in `live_market_plane`;
 - mark-vs-**derived**-mid global price precedence (`mid` is not a Schwab dictionary leaf).
 
-Those are registered separately in `SCHWAB_CONSISTENCY_AUDIT_REGISTER_V1.md`.
 

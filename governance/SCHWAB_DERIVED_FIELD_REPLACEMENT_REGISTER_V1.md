@@ -73,7 +73,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | DFR-003 | ADDRESSED | `a03e5ba` — REST fast-quote / Tier A paths; fail-closed spot + source metadata (see S005 `d4b2f1a` for related consumers). |
 | DFR-004 | ADDRESSED | `a03e5ba` + `569af08` (S009) — spread pts vs fraction + spread age / non-tradeable gating; re-audit sticky cache if residuals return. |
 | DFR-010 / MT-001 | CLOSED | `d4b2f1a` (S005) — `features/replay_signal_input_v1` spot fail-closed. |
-| DFR-021 | CLOSED | `df58fe9` — `build_inference_snapshot_v1_from_signal_input` no `time.time()` fallback (`SCHWAB_REMEDIATION_S017_INFERENCE_SNAPSHOT_TIME_CONTRACT.md`). |
+| DFR-021 | CLOSED | `df58fe9` — `build_inference_snapshot_v1_from_signal_input` no `time.time()` fallback. |
 | DFR-017-REG-MAX-PAIN | CLOSED | `9850a86` — max-pain mult fail-closed; see `math_levels.compute_max_pain`. |
 | DFR-017 | CLOSED | `0ee94b8` — repo-wide `multiplier` consumers fail-closed. |
 | DFR-008 / DFR-022 | CLOSED | EM path: no synthetic 6.5h fallback; IV EM requires `_hours_rem > 0`. |
