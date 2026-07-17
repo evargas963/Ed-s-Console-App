@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "Decision-path admission registry (AGENTS.md charter). No component may influence TRADE or any exposure-shaping output unless recorded here as ADMITTED with complete evidence (preregistration, oos_results, costs, baselines, scope, leakage_review) and an operator_decision. Consumed fail-closed by decision_gate.evaluate_decision_path_admission inside call_engine.compute_call: while this list is empty the final Call is forced to WAIT. Registry starts empty by design — admissions are earned through the Find & Prove program, never pre-granted.",
+  "admissions": []
+}

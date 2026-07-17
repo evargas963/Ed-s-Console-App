@@ -28,6 +28,7 @@ from math_exposure import (
     CONTINUATION_BLOCK_THRESHOLD,
     BREAKOUT_BLOCK_THRESHOLD,
 )
+from decision_gate import evaluate_decision_path_admission
 from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
 from time_et import RTH_OPEN_MINS
 from position_sizing_policy import regime_size_multiplier
@@ -168,6 +169,7 @@ WAIT_BLOCKER_REASON_STACK = "stack"
 WAIT_BLOCKER_REASON_VOL_REGIME = "vol_regime"
 WAIT_BLOCKER_REASON_GATES = "gates"
 WAIT_BLOCKER_REASON_TIME = "time"
+WAIT_BLOCKER_REASON_ADMISSION = "decision_path_admission"
 
 
 def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[str, float]:
@@ -358,7 +360,8 @@ def _build_call_headlines(final_signal, conviction, trade_type,
                            fusion=None, wait_blocker: dict = None,
                            *, mh_promoted_directional: bool = False) -> tuple[str, str]:
     """Build headline and reasoning for The Call card. Driven by full stack result.
-    wait_blocker: when final_signal=wait, dict with reason ('stack'|'vol_regime'|'gates'|'time'),
+    wait_blocker: when final_signal=wait, dict with reason
+    ('stack'|'vol_regime'|'gates'|'time'|'decision_path_admission'),
     and optional long_count, short_count, threshold, gate_reasons, vol_detail, detail, full_detail.
     """
     type_label = TRADE_TYPE_LABELS.get(trade_type, trade_type)
@@ -392,6 +395,15 @@ def _build_call_headlines(final_signal, conviction, trade_type,
             detail = blocker.get("detail", "≤30 min to close")
             headline = f"WAIT — {detail}."
             reasoning = blocker.get("full_detail", f"Only {detail} — no new entries.")
+        elif reason == WAIT_BLOCKER_REASON_ADMISSION:
+            gated = blocker.get("gated_signal")
+            suffix = f" (stack read: {gated})" if gated in ("long", "short") else ""
+            headline = f"WAIT — decision path not admitted{suffix}."
+            reasoning = blocker.get(
+                "full_detail",
+                "No component is ADMITTED in governance/decision_path_admissions.json — "
+                "the system abstains until edge is proven and admitted.",
+            )
         else:
             headline = "WAIT — insufficient confirmation."
             reasoning = confluence_detail or "Await stronger stack consensus or key level."
@@ -1691,6 +1703,29 @@ def compute_call(
                 detail = f"compression + breakout needs {confluence_count}/4 confluence"
                 confluence_detail = (confluence_detail or "") + " [vol: breakout needs stronger confirmation]"
                 wait_blocker = {"reason": WAIT_BLOCKER_REASON_VOL_REGIME, "detail": detail, "full_detail": confluence_detail}
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # DECISION-PATH ADMISSION GATE (charter, AGENTS.md) — last directional
+    # authority. A long/short may leave compute_call only if the decision path
+    # is ADMITTED in governance/decision_path_admissions.json (fail-closed:
+    # missing/invalid/empty registry admits nothing). Runs before the Risk
+    # Engine so trade_type, levels, sizing, and headlines all see the gated
+    # signal. The would-be direction is preserved in wait_blocker.gated_signal
+    # so the Find & Prove scoring loop keeps its evidence while exposure waits.
+    # ══════════════════════════════════════════════════════════════════════════
+    if final_signal in ("long", "short"):
+        _admission = evaluate_decision_path_admission()
+        if not _admission.admitted:
+            wait_blocker = {
+                "reason": WAIT_BLOCKER_REASON_ADMISSION,
+                "detail": "decision path not admitted",
+                "full_detail": _admission.detail,
+                "registry_state": _admission.registry_state,
+                "gated_signal": final_signal,
+                "gated_conviction": conviction,
+            }
+            final_signal = "wait"
+            conviction = "low"
 
     # ══════════════════════════════════════════════════════════════════════════
     # STACK ORDER 9: Risk Engine ────────────────────────────────────────────────

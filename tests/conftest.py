@@ -76,6 +76,43 @@ def _ensure_console_db_schema_before_each_test():
     ensure_console_db_training_schema()
 
 
+@pytest.fixture(scope="session")
+def _admitted_decision_registry_path(tmp_path_factory):
+    """Session-scoped registry file that admits the decision path (test default)."""
+    import json
+
+    from decision_gate import (
+        DECISION_PATH_COMPONENT,
+        REQUIRED_EVIDENCE_FIELDS,
+        SCHEMA_VERSION,
+    )
+
+    doc = {
+        "schema_version": SCHEMA_VERSION,
+        "admissions": [
+            {
+                "component": DECISION_PATH_COMPONENT,
+                "status": "ADMITTED",
+                "evidence": {f: f"pytest-fixture:{f}" for f in REQUIRED_EVIDENCE_FIELDS},
+                "operator_decision": {"date": "2026-01-01", "decided_by": "pytest-fixture"},
+            }
+        ],
+    }
+    p = tmp_path_factory.mktemp("decision_gate") / "decision_path_admissions.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    return p
+
+
+@pytest.fixture(autouse=True)
+def _decision_path_admitted_by_default(monkeypatch, _admitted_decision_registry_path):
+    """Hermetic tests: stack/policy tests exercise compute_call behavior, not the
+    charter admission gate — run them with an admitted registry so a directional
+    call is reachable. Production default (committed registry is EMPTY → forced
+    WAIT) is locked explicitly by tests/test_decision_gate.py, which overrides
+    ED_DECISION_ADMISSIONS_PATH / passes explicit paths (its setenv wins)."""
+    monkeypatch.setenv("ED_DECISION_ADMISSIONS_PATH", str(_admitted_decision_registry_path))
+
+
 @pytest.fixture
 def fresh_ablation_static_lock_index():
     """Opt-in reset for tests that mutate manifest/DB/spec inputs or fake the index builder."""

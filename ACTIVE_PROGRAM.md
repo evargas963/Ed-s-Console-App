@@ -1,13 +1,13 @@
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-07-16 — post-slimming reconciliation (slimming PR #44 merged @ `8f4c922`).
+**Updated:** 2026-07-16 — Phase 4 decision-path gate (branch `decision-path-gate-v1`); reconciliation PR #45 merged @ `5c5f239`.
 **Charter:** `AGENTS.md` (Collect / Find & Prove / Decide). **Ledger:** `OPEN_ITEMS.md`.
 
 ## Sequence
 
-1. **Reconciliation (this PR)** — operator docs rebuilt against the charter; stale register pointers fixed.
+1. **Reconciliation** — done (PR #45 @ `5c5f239`).
 2. **Quarantine purge** — after one clean trading session + operator purge word (`OPEN_ITEMS.md` RECON-02).
-3. **Phase 4 — decision-path gate** — `decision_gate.py` + `governance/decision_path_admissions.json` + `tests/test_decision_gate.py`. Mechanical form of the charter's admission clause; registry starts empty, unadmitted influence → WAIT.
+3. **Phase 4 — decision-path gate (this PR)** — `decision_gate.py` + empty `governance/decision_path_admissions.json` + gate block in `call_engine.compute_call` + `tests/test_decision_gate.py`. Mechanical form of the charter's admission clause: unadmitted influence → WAIT; would-be direction preserved in `wait_blocker.gated_signal` for the scoring loop. Activates on live-server restart.
 4. **Phase 5 — restructure** — deliberate directory reorganization; no functional changes mixed in.
 5. **Find & Prove resumes** — label-integrity forensics ($SPX/UNH/60c anomalies), then Stage 2 of the target/label foundation (`docs/stage1_target_label_foundation/`). Predictive validity is **NOT_PROVEN** until a preregistered experiment says otherwise.
 
@@ -27,6 +27,7 @@ Lock: `tools/check_ml_pipeline_efficiency.py` via `tests/test_ml_feature_schema_
 | Training anchors SPY/QQQ/IWM only (`resolve_ml_training_roster`) | `tests/test_scheduler_user_tickers_return_type.py` |
 | Fusion-only horizon cards; six-pill UI design lock (removed surfaces stay removed) | `tests/test_issue18_ui_contract.py` |
 | Money-path correctness gate | `tools/check_market_correctness.py` (pre-commit) |
+| Decision-path admission — unadmitted influence → WAIT (`decision_gate.py`) | `tests/test_decision_gate.py` |
 | Scoreboard denominator-first + quality-circle contract | `tests/test_calibration_daily_scoreboard.py` |
 
 ## Known risks

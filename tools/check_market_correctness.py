@@ -41,6 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # is live_decision_bundle.apply_trade_impacting_gate.)
 MONEY_PATH_FILES = (
     "call_engine.py",
+    "decision_gate.py",
     "signals.py",
     "live_decision_bundle.py",
     "trade_impacting_gate.py",
