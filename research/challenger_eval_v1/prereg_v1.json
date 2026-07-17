@@ -1,0 +1,84 @@
+{
+  "prereg_id": "challenger_eval_v1_prereg_v1",
+  "sibling_precedent": "research/incumbent_eval_v1/prereg_v1.json (Study #1 — same track, same discipline)",
+  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
+  "study_question": "Can trivially simple, strictly causal price rules (momentum / mean-reversion computed from completed 1m bars) predict the same attached outcome labels on the same rows where the incumbent stack was scored in Study #1 — and how do they compare to the incumbent head-to-head on identical row sets?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS here is NOT evidence for decision-path admission. Admission additionally requires an economic study (entry/exit simulation, costs per cost_model_registry_v1, deflated performance) per AGENTS.md decision-path admission.",
+    "not_training": "No parameters are fit. Every challenger is a fixed rule declared below; lookbacks are preregistered, not searched.",
+    "not_production_wiring": "Report-only. No decision-path effect. governance/decision_path_admissions.json is untouched."
+  },
+  "data": {
+    "decision_rows": "calibration_decision_log (read-only) — identical row gates to Study #1 (trusted, RTH, fusion available, outcome attached)",
+    "price_bars": "price_bars_1m (read-only) — challenger inputs use ONLY bars with bar_end_ts_utc <= decision_ts_utc (completed strictly at/before the decision instant)",
+    "causality_rule": "a challenger prediction at decision_ts_utc may consume no information later than decision_ts_utc; the most recent completed bar must end within max_bar_age_sec of the decision or the row is skipped (BAR_GAP) for that challenger",
+    "max_bar_age_sec": 120,
+    "row_alignment": "incumbent-vs-challenger comparisons are computed on the intersection of rows both scored (identical row sets) — never on mismatched denominators"
+  },
+  "challengers": {
+    "momentum_5": "sign(close[j] - close[j-5]) -> up/down (j = last completed bar); zero move or insufficient history -> row skipped",
+    "momentum_15": "sign(close[j] - close[j-15]) -> up/down",
+    "momentum_60": "sign(close[j] - close[j-60]) -> up/down",
+    "mean_reversion_5": "opposite of momentum_5",
+    "never_flat_note": "challengers never predict flat; MCC and the baseline comparisons handle abstention-free predictors honestly"
+  },
+  "family": {
+    "tickers": ["SPY", "QQQ", "IWM"],
+    "horizons": ["1c", "5c", "15c", "60c"],
+    "challengers": ["momentum_5", "momentum_15", "momentum_60", "mean_reversion_5"],
+    "n_tests": 48,
+    "declared_before_run": true,
+    "multiple_comparison_scope": "Holm-Bonferroni across ALL 48 (ticker x horizon x challenger) tests in one declared family"
+  },
+  "primary_metric": {
+    "name": "MCC (multiclass Matthews correlation, Gorodkin)",
+    "advancement_screen_per_test": [
+      "day-block bootstrap 95% CI of MCC excludes 0 (B=1000, resample ET dates with replacement)",
+      "Holm-Bonferroni adjusted bootstrap p < 0.05 across the declared 48-test family",
+      "accuracy >= always_flat baseline AND accuracy >= majority_class baseline AND accuracy >= persistence baseline",
+      "shuffle control null centered at zero (else STOP: artifact — investigate before any claim)"
+    ],
+    "no_post_hoc_switching": "metric, family, challenger definitions, lookbacks, gates, and thresholds are frozen by this file before the run"
+  },
+  "secondary_metrics": ["balanced_accuracy", "accuracy", "confusion_matrix", "incumbent_mcc_on_identical_rows", "mcc_delta_vs_incumbent"],
+  "baselines": {
+    "always_flat": "predict flat every row",
+    "majority_class": "predict the cell's majority truth class",
+    "persistence": "predict the previous scored row's truth label (look-ahead-advantaged, deliberately hard bar — same honesty note as Study #1)",
+    "shuffle_control": "truth labels permuted within test (K=200, fixed seed) — must score at chance",
+    "incumbent_reference": "the recorded stack dominant_direction rescored on the identical row subset (context metric, not a screen gate)"
+  },
+  "serial_dependence_honesty": {
+    "issue": "identical to Study #1 — ~1-minute decision cadence vs (N+1)-minute label spans; rows are not independent trials",
+    "mitigations": [
+      "day-block bootstrap (resamples whole ET dates)",
+      "n_independent_windows reported per test",
+      "EFFECTIVE_SAMPLE_NOT_PROVEN warning whenever n_scored > n_independent_windows"
+    ]
+  },
+  "randomness": {
+    "seed": 20260717,
+    "bootstrap_B": 1000,
+    "shuffle_K": 200
+  },
+  "sample_floors": {
+    "min_scored_rows_per_test": 300,
+    "min_distinct_days_per_test": 10,
+    "below_floor_action": "test reported as UNDER_SAMPLED; excluded from PASS/FAIL claims"
+  },
+  "stop_conditions": [
+    "shuffle control significantly off-center in any test -> STOP (artifact) before interpreting anything else",
+    "zero tests meet sample floors -> report INSUFFICIENT_DATA; no claims",
+    "post-hoc metric/family/challenger/lookback changes -> run invalid"
+  ],
+  "outcome_interpretation": {
+    "test_PASS": "a trivial causal rule carries real information at that cell — it becomes a candidate for the economic study AND the minimum bar any complex model must clear there",
+    "test_FAIL": "that rule carries no detectable signal there — a real finding that narrows the search",
+    "incumbent_comparison": "mcc_delta_vs_incumbent > 0 on identical rows means a 3-line rule beat the seven-layer stack on its own recorded decisions — a direct, preregistered complexity audit"
+  },
+  "outputs": {
+    "report_json": "reports/challenger_eval/challenger_eval_<et_date>_<runid>.json",
+    "authoritative": "JSON report; console summary is convenience only"
+  }
+}
