@@ -84,6 +84,16 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "tests/test_track_b_calibration_backfill_insert.py":
         return True
+    # incumbent_eval_v1 (Study #1 racetrack): read-only SELECT via sqlite
+    # mode=ro URI against recorded rows; never INSERT/UPDATE. Its test seeds a
+    # throwaway fixture table in a tmp-path DB (same controlled-fixture class
+    # as the test_backfill_* / test_v2_* tests above).
+    if s == "research/incumbent_eval_v1/runner.py":
+        return True
+    if s == "research/incumbent_eval_v1/__init__.py":
+        return True
+    if s == "tests/test_incumbent_eval_v1.py":
+        return True
     return False
 
 
@@ -135,6 +145,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             or rel == "tests/test_base_ticker_observability.py"
             or rel == "tests/test_fusion_temperature_calibration.py"
             or rel == "tests/test_track_b_calibration_backfill_insert.py"
+            or rel == "tests/test_incumbent_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
         )
         if not ok:
             bad.append(rel)
