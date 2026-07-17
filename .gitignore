@@ -124,3 +124,6 @@ governance/artifacts/.gate_cache/
 
 # EXEC_IDENTITY noncanonical runtime-proof scratch databases (local evidence only)
 data_proof/
+
+# Study #1 run artifacts (evidence lives in the PR/report JSON kept locally)
+reports/incumbent_eval/

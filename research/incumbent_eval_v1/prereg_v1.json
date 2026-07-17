@@ -1,0 +1,80 @@
+{
+  "prereg_id": "incumbent_eval_v1_prereg_v1",
+  "sibling_precedent": "research/pilot_step3/prereg_v1.json (closest-shape preregistration in this repo)",
+  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json (frozen primary metric, baseline roster, stop-condition discipline)",
+  "study_question": "Do the incumbent seven-layer stack's RECORDED live per-horizon fusion probability triplets carry any predictive information about their attached outcome labels, beyond trivial baselines and chance?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS here is NOT evidence for decision-path admission. Admission additionally requires an economic study (entry/exit simulation, costs per cost_model_registry_v1, deflated performance) per AGENTS.md decision-path admission.",
+    "not_training": "No model is trained, tuned, or selected. The predictions were produced live by the production stack before their outcomes existed (true out-of-sample by construction).",
+    "not_production_wiring": "Report-only. No decision-path effect. governance/decision_path_admissions.json is untouched."
+  },
+  "data": {
+    "source_table": "calibration_decision_log (read-only)",
+    "prediction_field": "model_outputs_json -> stack_probs_bundle -> multi_horizon_ml_fusion_bundle.by_horizon[hz] (prob_up/prob_down/prob_flat, horizon_fusion_available only)",
+    "truth_field": "outcome_{hz} (up/down/flat labels attached by calibration.backfill_outcomes)",
+    "row_gates": "calibration_trust='trusted' AND RTH (time_et.is_rth_ts_utc) AND outcome attached AND fusion available — same gates as calibration.daily_scoreboard",
+    "known_lineage_limits": [
+      "OUTCOME_LINEAGE_NOT_PROVEN: outcome columns carry no writer/mutation lineage (scoreboard v4 standing disclosure)",
+      "TIMESTAMP joins for historical rows may be nearest-within-tolerance, not identity; cohorts are reported, never silently pooled",
+      "threshold-invalid horizons (per movement_target_threshold) are excluded from trusted scoring and reported as excluded"
+    ]
+  },
+  "family": {
+    "tickers": ["SPY", "QQQ", "IWM"],
+    "ticker_rule": "training-anchor tickers only — guests have thin, heterogeneous coverage and enter later studies explicitly",
+    "horizons": ["1c", "5c", "15c", "60c"],
+    "n_cells": 12,
+    "declared_before_run": true
+  },
+  "primary_metric": {
+    "name": "MCC (multiclass Matthews correlation, Gorodkin)",
+    "why": "frozen by stage2_experiment_contract_v1 for classification targets; robust to flat-majority imbalance that degenerate accuracy hides",
+    "advancement_screen_per_cell": [
+      "day-block bootstrap 95% CI of MCC excludes 0 (B=1000, resample ET dates with replacement)",
+      "Holm-Bonferroni adjusted bootstrap p < 0.05 across the declared 12-cell family",
+      "accuracy >= always_flat baseline AND accuracy >= majority_class baseline AND accuracy >= persistence baseline",
+      "shuffle control MCC CI includes 0 (else STOP: leakage/artifact — investigate before any claim)"
+    ],
+    "no_post_hoc_switching": "metric, family, gates, and thresholds are frozen by this file before the run; changing any of them after seeing results invalidates the run"
+  },
+  "secondary_metrics": ["balanced_accuracy", "accuracy", "multiclass_log_loss", "confusion_matrix", "per_class_precision_recall_f1"],
+  "baselines": {
+    "always_flat": "predict flat every row",
+    "majority_class": "predict the cell's majority truth class",
+    "persistence": "predict the previous scored row's truth label (per ticker x horizon, time-ordered)",
+    "shuffle_control": "truth labels permuted within cell (K=200, fixed seed) — must score at chance"
+  },
+  "serial_dependence_honesty": {
+    "issue": "decision rows arrive at ~1-minute cadence while label spans are (N+1) minutes (1c=2m, 5c=6m, 15c=16m, 60c=61m) — adjacent rows share outcome windows and are NOT independent trials",
+    "mitigations": [
+      "day-block bootstrap (resamples whole ET dates, preserving intra-day dependence)",
+      "n_independent_windows reported per cell (distinct non-overlapping horizon windows)",
+      "EFFECTIVE_SAMPLE_NOT_PROVEN warning carried whenever n_scored > n_independent_windows"
+    ]
+  },
+  "randomness": {
+    "seed": 20260717,
+    "bootstrap_B": 1000,
+    "shuffle_K": 200
+  },
+  "sample_floors": {
+    "min_scored_rows_per_cell": 300,
+    "min_distinct_days_per_cell": 10,
+    "below_floor_action": "cell reported as UNDER_SAMPLED; excluded from PASS/FAIL claims"
+  },
+  "stop_conditions": [
+    "shuffle control significantly above chance in any cell -> STOP (leakage/artifact) before interpreting anything else",
+    "zero cells meet sample floors -> report INSUFFICIENT_DATA; no claims",
+    "post-hoc metric/family/threshold changes -> run invalid"
+  ],
+  "outcome_interpretation": {
+    "cell_PASS": "evidence the recorded fusion signal carries information at that (ticker, horizon) — promotes that cell to the economic study (Study 2: entry/exit + costs)",
+    "cell_FAIL": "no detectable signal in the recorded predictions for that cell — a real finding that directs search elsewhere (features, horizons, regimes)",
+    "global_FAIL": "the incumbent stack's recorded outputs carry no detectable edge — the baseline every future challenger must at least reach is chance, and the search moves to new candidates"
+  },
+  "outputs": {
+    "report_json": "reports/incumbent_eval/incumbent_eval_<et_date>_<runid>.json",
+    "authoritative": "JSON report; console summary is convenience only"
+  }
+}
