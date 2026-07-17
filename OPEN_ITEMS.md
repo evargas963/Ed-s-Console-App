@@ -15,16 +15,16 @@ are removed, not accumulated; the pre-slimming ledger is preserved at tag-time i
 |---|---|
 | Predictive validity (any horizon beats chance, OOS, net of costs) | **NOT_PROVEN** — 2026-06-01 gate verdict stands |
 | Real-money readiness | **NOT_APPROVED** |
-| Decision-path admission registry (`governance/decision_path_admissions.json`) | **NOT_BUILT** — starts empty; unadmitted influence → WAIT |
+| Decision-path admission registry (`governance/decision_path_admissions.json`) | **BUILT_EMPTY** — gate live in `call_engine.compute_call` via `decision_gate.py`; nothing admitted; directional calls force WAIT (running server picks this up on its next restart) |
 | Card fidelity overall / universal runtime live proof | **NOT_PROVEN** |
 
 ---
 
 ## Now — post-slimming sequence
 
-- [ ] **RECON-01 Operator-doc reconciliation** — this rewrite: `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closes with the merge SHA of the reconciliation PR.
+- [x] **RECON-01 Operator-doc reconciliation** — `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closed @ `5c5f239` (PR #45).
 - [ ] **RECON-02 Disk-cleanup purge** — ~53.3 GB quarantined (moved, not deleted) 2026-07-15/16. Purge only after one clean trading session AND the operator gives the purge word. Separately: `_backup_pre_exec_identity_v1_20260713.db` (18.4 GB) holds until ~5 clean trading days after the slimming merge.
-- [ ] **PHASE-4 Decision-path gate (mechanical)** — build `decision_gate.py` + `governance/decision_path_admissions.json` + `tests/test_decision_gate.py`: no component influences TRADE (or any exposure-shaping output) unless the registry records it ADMITTED with evidence. Registry starts empty. This is the charter's admission clause getting teeth.
+- [ ] **PHASE-4 Decision-path gate (mechanical)** — `decision_gate.py` (fail-closed admission verdict) + empty `governance/decision_path_admissions.json` + gate block in `call_engine.compute_call` (last directional authority; would-be direction preserved in `wait_blocker.gated_signal` for the scoring loop) + `tests/test_decision_gate.py`. Landed on branch `decision-path-gate-v1`; closes with the merge SHA. Runtime activation: on the next live-server restart every directional call shows `WAIT — decision path not admitted` until the Find & Prove program earns the first admission.
 - [ ] **PHASE-5 Restructure** — deliberate directory reorganization for a legible repo. After Phase 4; no functional changes mixed in.
 
 ## Post-slimming FINDs (host + ops)

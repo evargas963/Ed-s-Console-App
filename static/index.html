@@ -3976,6 +3976,15 @@ function briefWhyWait(d) {
       const short = raw.length > 36 ? raw.slice(0, 33) + '…' : raw;
       return { line: `Wait: ${short}`, tip: String(wb.full_detail || wb.detail || raw) };
     }
+    if (r === 'decision_path_admission') {
+      const tip = String(wb.full_detail ||
+        'No component is ADMITTED in governance/decision_path_admissions.json — the system abstains until edge is proven and admitted.');
+      const gs = String(wb.gated_signal || '').toLowerCase();
+      const line = (gs === 'long' || gs === 'short')
+        ? `Wait: not admitted (stack read: ${gs})`
+        : 'Wait: decision path not admitted';
+      return { line, tip };
+    }
     if (r === 'gates') {
       const gr = wb.gate_reasons;
       let g = Array.isArray(gr) && gr.length ? String(gr[0]) : '';
