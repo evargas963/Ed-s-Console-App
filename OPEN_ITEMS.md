@@ -43,6 +43,8 @@ are removed, not accumulated; the pre-slimming ledger is preserved at tag-time i
 
 ## Defects and held decisions
 
+- [ ] **ML-META-JSON-VERIFICATION-ASYMMETRY** — `_load_lstm` verifies only the `.pt` checkpoint; its `lstm_*_meta.json` is consumed inside `lstm_model.load_lstm` without the Item-4 pre-deserialization verification that xgb/transformer metas get. Found 2026-07-16 while fixing the meta-stack role regression. Fix direction: verify `lstm_meta` in `_load_lstm` before `load_lstm` reads it (same pattern as `transformer_meta` at `ml_predict.py::_load_transformer`).
+
 - [ ] **UI-01 analytics key identity** — root cause of the 2026-07-08 frozen-cards incident: client-retained `activeExpiry` diverges → silent SSE rejection + exact-key GET misses → pending-shell churn. Fix design approved, not started: server-resolved `selected_exp` (generation-guarded), single client key-builder, `analytics_cache_key` payload echo.
 - [ ] **UI-04 key-levels display honesty** — P1B: vanna shown is a vega/(S·iv) proxy (label or replace); P1C: charm analytic sign unproven while feeding the call-engine Greeks vote (prove or gate); P1D: PDH weekend walk-back defect (`liquidity_value_engine.py:279-286`).
 - [ ] **UI-05 guest cold-fusion SLA at the open burst** — mechanism fixes landed (priority pools, chain gate, mkt-ctx single-flight); remaining: RTH open-burst reproof, guest-universe repeatability, SLA regression enforcement.

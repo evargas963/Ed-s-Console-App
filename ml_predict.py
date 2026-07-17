@@ -1774,7 +1774,13 @@ def _load_meta(ticker: str) -> bool:
         return False
 
     # Item 4: verify pickle bytes vs bundle integrity manifest before pickle.load.
-    if _verify_governed_artifact(base, bt, hz, "meta", mp.name) is None:
+    # Role must be the governed META_STACK_KIND ("meta_stack") — the role the
+    # manifest stamper records for meta_{ticker}_{hz}.pkl. Requesting "meta"
+    # was rejected as an unknown role and failed the meta layer closed
+    # fleet-wide (2026-07-16 regression).
+    from active_bundle_contract import META_STACK_KIND
+
+    if _verify_governed_artifact(base, bt, hz, META_STACK_KIND, mp.name) is None:
         _meta_registry[rk] = None
         return False
 
