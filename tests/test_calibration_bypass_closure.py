@@ -94,6 +94,13 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "tests/test_incumbent_eval_v1.py":
         return True
+    # challenger_eval_v1 (Study #2 racetrack): same controlled read-only class.
+    if s == "research/challenger_eval_v1/runner.py":
+        return True
+    if s == "research/challenger_eval_v1/__init__.py":
+        return True
+    if s == "tests/test_challenger_eval_v1.py":
+        return True
     return False
 
 
@@ -146,6 +153,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             or rel == "tests/test_fusion_temperature_calibration.py"
             or rel == "tests/test_track_b_calibration_backfill_insert.py"
             or rel == "tests/test_incumbent_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
+            or rel == "tests/test_challenger_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
         )
         if not ok:
             bad.append(rel)
