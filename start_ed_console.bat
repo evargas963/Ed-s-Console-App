@@ -41,7 +41,9 @@ if not exist "%EDGE_EXE%" set "EDGE_EXE=%ProgramFiles%\Microsoft\Edge\Applicatio
 REM Original working pattern: delayed open in background subprocess (Edge only, not Chrome)
 start "" cmd /c "timeout /t 2 /nobreak >nul & "%EDGE_EXE%" http://localhost:8000"
 
-python -m uvicorn server:app --host 0.0.0.0 --port 8000
+REM --timeout-graceful-shutdown: Ctrl+C must terminate even while browser tabs
+REM hold SSE streams open (uvicorn's default waits forever for them to close).
+python -m uvicorn server:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 10
 
 echo.
 echo  Server stopped.
