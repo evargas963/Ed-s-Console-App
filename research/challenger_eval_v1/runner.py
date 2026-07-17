@@ -314,7 +314,9 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
     )
     n_beat_incumbent = sum(
         1 for t in tests.values()
-        if not t["under_sampled"] and (t.get("mcc_delta_vs_incumbent") or 0.0) > 0.0
+        if not t["under_sampled"]
+        and t["mcc_delta_vs_incumbent"] is not None
+        and t["mcc_delta_vs_incumbent"] > 0.0
     )
     return {
         "schema_version": "1",
