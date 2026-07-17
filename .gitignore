@@ -128,3 +128,4 @@ data_proof/
 # Study #1 run artifacts (evidence lives in the PR/report JSON kept locally)
 reports/incumbent_eval/
 reports/challenger_eval/
+reports/structural_eval/
