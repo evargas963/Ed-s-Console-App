@@ -661,6 +661,21 @@ def test_item4_load_xgb_success_records_provenance(mp_bundle):
     assert prov["xgb"]["actual_sha256"] == _sha256_independent(bd / f"xgb_{t}_1c.pkl")
 
 
+def test_item4_load_meta_verifies_with_governed_meta_stack_role(mp_bundle):
+    """Regression (2026-07-16): _load_meta must request the governed
+    META_STACK_KIND role ('meta_stack') — the role the manifest stamper writes
+    for meta_{t}_{hz}.pkl. Requesting 'meta' was rejected as an unknown role
+    (ARTIFACT_ROLE_MISMATCH) and failed the meta layer closed fleet-wide."""
+    from active_bundle_contract import META_STACK_KIND
+
+    mp, t, _bd = mp_bundle
+    assert mp._load_meta(t) is True
+    prov = mp.get_artifact_verification_provenance(t, "1c")
+    assert prov[META_STACK_KIND]["verified"] is True
+    assert prov[META_STACK_KIND]["integrity_class"] == "VERIFIED_AGAINST_BUNDLE_MANIFEST"
+    assert "meta" not in prov  # the ungoverned role string must never be recorded
+
+
 def test_item4_cache_invalidates_on_artifact_mutation(mp_bundle):
     """A verified cached model cannot outlive artifact-byte mutation."""
     mp, t, bd = mp_bundle
