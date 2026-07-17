@@ -1,0 +1,82 @@
+{
+  "prereg_id": "structural_eval_v1_prereg_v1",
+  "sibling_precedent": "research/challenger_eval_v1/prereg_v1.json (Study #2 — same track, same discipline)",
+  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
+  "study_question": "Do the structural / dealer-positioning states the app records live at decision time (zone, gamma-wall proximity, regime) carry predictive information about the attached outcome labels — as fixed, semantically motivated rules with no fitting?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS here is NOT evidence for decision-path admission. Admission additionally requires an economic study (entry/exit simulation, costs per cost_model_registry_v1, deflated performance) per AGENTS.md decision-path admission.",
+    "not_training": "No parameters are fit. Every rule below is a fixed semantic mapping declared before the run; abstentions are honest (no fabricated direction).",
+    "not_production_wiring": "Report-only. No decision-path effect. governance/decision_path_admissions.json is untouched."
+  },
+  "data": {
+    "decision_rows": "calibration_decision_log (read-only) — identical row gates to Studies #1/#2 (trusted, RTH, fusion available, outcome attached)",
+    "structural_fields": "zone, regime_primary, nearest_above_dist, nearest_below_dist — recorded live at decision time (pre-outcome by construction)",
+    "price_bars": "price_bars_1m (read-only) for the regime-gated momentum rule — bar_end_ts_utc <= decision_ts_utc, 120s staleness gate (Study #2 join)",
+    "row_alignment": "incumbent rescored on the identical row subset each rule scored — never mismatched denominators"
+  },
+  "rules": {
+    "zone_direction": "pin_bull -> up; pin_bear -> down; breakout -> up; breakdown -> down; pin_chaos or missing -> abstain. Tests whether the app's own zone classification is directionally informative.",
+    "wall_attraction": "predict toward the NEARER wall: nearest_above_dist < nearest_below_dist -> up; nearest_below_dist < nearest_above_dist -> down; equal or missing -> abstain. Tests pin-to-the-closest-gamma-wall dynamics.",
+    "wall_repulsion": "mirror of wall_attraction (toward the FARTHER wall). Symmetry control — at most one of the pair can carry positive signal.",
+    "regime_gated_momentum_15": "momentum_15 (Study #2 rule) ONLY when regime_primary is trend_continuation, acceleration, or breakout; abstain otherwise. Tests whether regime conditioning rescues momentum."
+  },
+  "family": {
+    "tickers": ["SPY", "QQQ", "IWM"],
+    "horizons": ["1c", "5c", "15c", "60c"],
+    "rules": ["zone_direction", "wall_attraction", "wall_repulsion", "regime_gated_momentum_15"],
+    "n_tests": 48,
+    "declared_before_run": true,
+    "multiple_comparison_scope": "Holm-Bonferroni across ALL 48 (ticker x horizon x rule) tests in one declared family"
+  },
+  "primary_metric": {
+    "name": "MCC (multiclass Matthews correlation, Gorodkin)",
+    "advancement_screen_per_test": [
+      "day-block bootstrap 95% CI of MCC excludes 0 (B=1000, resample ET dates with replacement)",
+      "Holm-Bonferroni adjusted bootstrap p < 0.05 across the declared 48-test family",
+      "accuracy >= always_flat baseline AND accuracy >= majority_class baseline AND accuracy >= persistence baseline",
+      "shuffle control null centered at zero (else STOP: artifact — investigate before any claim)"
+    ],
+    "no_post_hoc_switching": "metric, family, rule definitions, gates, and thresholds are frozen by this file before the run"
+  },
+  "secondary_metrics": ["balanced_accuracy", "accuracy", "confusion_matrix", "incumbent_mcc_on_identical_rows", "mcc_delta_vs_incumbent", "abstention_rate"],
+  "baselines": {
+    "always_flat": "predict flat every row",
+    "majority_class": "predict the cell's majority truth class",
+    "persistence": "predict the previous scored row's truth label (look-ahead-advantaged, deliberately hard bar)",
+    "shuffle_control": "truth labels permuted within test (K=200, fixed seed) — must score at chance",
+    "incumbent_reference": "the recorded stack dominant_direction rescored on the identical row subset (context metric, not a screen gate)"
+  },
+  "serial_dependence_honesty": {
+    "issue": "identical to Studies #1/#2 — ~1-minute decision cadence vs (N+1)-minute label spans; rows are not independent trials; structural states persist for many consecutive rows",
+    "mitigations": [
+      "day-block bootstrap (resamples whole ET dates)",
+      "n_independent_windows reported per test",
+      "EFFECTIVE_SAMPLE_NOT_PROVEN warning whenever n_scored > n_independent_windows"
+    ]
+  },
+  "randomness": {
+    "seed": 20260717,
+    "bootstrap_B": 1000,
+    "shuffle_K": 200
+  },
+  "sample_floors": {
+    "min_scored_rows_per_test": 300,
+    "min_distinct_days_per_test": 10,
+    "below_floor_action": "test reported as UNDER_SAMPLED; excluded from PASS/FAIL claims"
+  },
+  "stop_conditions": [
+    "shuffle control significantly off-center in any test -> STOP (artifact) before interpreting anything else",
+    "zero tests meet sample floors -> report INSUFFICIENT_DATA; no claims",
+    "post-hoc metric/family/rule changes -> run invalid"
+  ],
+  "outcome_interpretation": {
+    "test_PASS": "the recorded structural state carries real information at that cell — it becomes a candidate for the economic study and a conditioning variable for future model candidates",
+    "test_FAIL": "that structural rule carries no detectable signal there — narrows the search",
+    "wall_pair_note": "wall_attraction and wall_repulsion are mirrors; a PASS on one with the other near its negative is coherent physics, both near zero means wall proximity is uninformative"
+  },
+  "outputs": {
+    "report_json": "reports/structural_eval/structural_eval_<et_date>_<runid>.json",
+    "authoritative": "JSON report; console summary is convenience only"
+  }
+}
