@@ -1,0 +1,70 @@
+{
+  "generated_utc": "2026-07-17T19:56:00Z",
+  "verdict": "DO_NOT_DELETE",
+  "confidence": "HIGH — conditions for purge not met; live canonical must stay",
+  "live_canonical": {
+    "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+    "size_gb": 21.95,
+    "DB_PATH_matches_canonical": true,
+    "ED_CONSOLE_DB_env": null,
+    "delete": "NEVER without explicit disaster recovery plan"
+  },
+  "recon_02_law": {
+    "source": "OPEN_ITEMS.md RECON-02",
+    "requires": [
+      "one clean trading session",
+      "operator purge word"
+    ],
+    "operator_purge_word_given": false,
+    "clean_session_claim": "NOT asserted — mid-day clock debt + restart occurred; G1-G4 passed only as point-in-time operable-surface gates"
+  },
+  "classes": {
+    "NEVER_DELETE_now": [
+      "data/ed_console.db (+ -wal/-shm if present)"
+    ],
+    "HOLD_per_RECON_02": [
+      {
+        "path": "data/_backup_pre_exec_identity_v1_20260713.db",
+        "size_gb": 17.96,
+        "reason": "holds until ~5 clean trading days after slimming merge"
+      },
+      {
+        "path": "C:/Users/evarg/Documents/Trading/_disk_cleanup_quarantine_20260716",
+        "size_gb": 52.52,
+        "reason": "quarantined moved bytes; purge only after clean session + purge word"
+      }
+    ],
+    "HOLD_as_recovery_until_purge_word": [
+      {
+        "path": "backups/db/20260717_130401_ed_console.db",
+        "size_gb": 21.54,
+        "reason": "same-day full backup of live DB"
+      },
+      {
+        "path": "C:/Users/evarg/Documents/Trading/ed_console_backup_20260716_9b124b3.db",
+        "size_gb": 20.7,
+        "reason": "parent-folder full backup dated 2026-07-16"
+      }
+    ],
+    "CANDIDATE_after_purge_word_only": [
+      "data/backups/ed_console.pre_* (April 2026 pre-migration snapshots, ~10.9 GB total)",
+      "data/calibration_accumulation_validation.db (harness)",
+      "data/calibration_anchor_proof.db (proof)",
+      "data/research/d2_dual_label.db (research)",
+      "data/_phase3c_prod_like.db",
+      "data/market_snapshots.db / data/trading.db / calibration/trading_data.db (empty/near-empty unknowns — classify before delete)"
+    ]
+  },
+  "triple_sure_checks": {
+    "T1_live_is_only_canonical": "PASS — db.DB_PATH == canonical_console_db_path()",
+    "T2_no_uvicorn_holding_other_db": "PASS — no uvicorn process observed at inventory time (end of day)",
+    "T3_recon02_purge_word": "FAIL — operator has not given purge word",
+    "T4_five_clean_days_for_pre_exec_backup": "FAIL — not evidenced",
+    "T5_claude_cross_audit": "REQUIRED before any irreversible delete"
+  },
+  "find_prove_honesty": {
+    "existence_PASS_cells": 0,
+    "interpretation": "High kill rate under honest screen is expected; does not by itself prove Collect is worthless. Does prove no admission-ready edge yet. Money-path stays WAIT.",
+    "recommendation": "PAUSE/HANG IT UP for Claude triangulation before more model churn; do not delete DBs as a substitute for that audit"
+  }
+}

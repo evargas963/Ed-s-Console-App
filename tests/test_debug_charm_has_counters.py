@@ -19,6 +19,8 @@ from math_exposure import MISSING_GREEK_SENTINEL
 
 
 def _row(**overrides):
+    # institutional-synthetic-ok: greek-presence counter tests inject sentinel/None/NaN
+    # greeks to prove has_gamma/has_delta/... classification; controlled input required.
     base = {
         "putCall": "CALL",
         "strikePrice": 500.0,
@@ -163,6 +165,8 @@ def test_counters_match_total_when_all_clean():
 
 
 def test_counters_zero_when_all_sentinels_or_missing():
+    # institutional-synthetic-ok: missing-greek-key test needs a bare contract with no
+    # greek fields to prove has_X counters report 0.
     contracts = [
         _row(
             delta=MISSING_GREEK_SENTINEL,

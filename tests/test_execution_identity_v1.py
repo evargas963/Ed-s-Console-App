@@ -613,8 +613,30 @@ def test_server_anchor_precedes_finalize_and_log_only_tail():
     guard_at = text.rindex('ms_dict.get("_decision_persist_landed")', 0, mark_at)
     assert mark_at - guard_at < 600, "decision-surface marking must be guarded by persist success"
     # Idle/non-model calibration contract: expected non-write, not a refusal.
-    assert "_xid_pair_cal is None and not _xid_model_derived" in text
-    assert "LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE" in text
+    # The condition was inline in server.py until 2026-07-19; it now lives in
+    # calibration.v2_live_logging.resolve_live_v2_calibration_tail_action. Assert the
+    # CONTRACT (server delegates the decision, and the resolver still encodes the
+    # idle skip) rather than a literal source string that a refactor can move.
+    assert "resolve_live_v2_calibration_tail_action(" in text
+    assert "has_execution_identity=_xid_pair_cal is not None" in text
+    from calibration.v2_live_logging import (
+        LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
+        LIVE_ADVISORY_V2_TAIL_APPEND,
+        resolve_live_v2_calibration_tail_action,
+    )
+
+    assert (
+        resolve_live_v2_calibration_tail_action(
+            model_derived_cycle=False, has_execution_identity=False, snap_insert_landed=True
+        )
+        == LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE
+    ), "idle non-model cycle must skip, not write"
+    assert (
+        resolve_live_v2_calibration_tail_action(
+            model_derived_cycle=True, has_execution_identity=True, snap_insert_landed=True
+        )
+        == LIVE_ADVISORY_V2_TAIL_APPEND
+    ), "a model cycle with identity and a landed snapshot must append"
 
 
 def _dependent_tables(conn):

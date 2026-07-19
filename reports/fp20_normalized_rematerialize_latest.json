@@ -1,0 +1,365 @@
+{
+  "schema": "fp20_normalized_rematerialize_v1",
+  "generated_utc": "2026-07-17T14:07:59Z",
+  "before": {
+    "snapshots_1m_normalized": 175799,
+    "snapshots_outcome_5c": 175725,
+    "spy_bars": 101729,
+    "qqq_bars": 89689,
+    "iwm_bars": 76801
+  },
+  "ensure_result": {
+    "ok": true,
+    "skipped": false,
+    "materialized": true,
+    "fingerprint": "1m:176027|288883|175247|1705.8103|175198|2497.7241|175078|3507.0406000000003|174698|6655.3233|107577|175247|175247|7009.88|7009.88|93806|175198|175198|21023.76|21023.76|83904|175078|175078|45520.28|45520.28|73368|174698|174698|113553.7|113553.7|95810869.0368|111742363.206857|-3332.665|8706992.2|3|174693::5m:103109|103663|609|21.7421|609|55.9385|610|142.2154|609|715.3048|0|0|0|0.0|0.0|0|0|0|0.0|0.0|0|0|0|0.0|0.0|0|0|0|0.0|0.0|83093309.07460426|82772051.950281|0.0|0.0|3|607::label_cfg=outcome_perhorizon_volthr_v2",
+    "stored_fingerprint": "1m:175736|288592|174972|1611.1301|174929|2339.2181|174837|3161.417|174500|5539.0675|100780|174972|174972|6998.88|6998.88|88067|174929|174929|20991.48|20991.48|79982|174837|174837|45457.62|45457.62|70832|174500|174500|113425.0|113425.0|95718508.465|111469628.168857|-3331.789|8698599.5|3|174500::5m:103109|103663|609|21.7421|609|55.9385|610|142.2154|609|715.3048|0|0|0|0.0|0.0|0|0|0|0.0|0.0|0|0|0|0.0|0.0|0|0|0|0.0|0.0|83093309.07460426|82772051.950281|0.0|0.0|3|607::label_cfg=outcome_perhorizon_volthr_v2",
+    "materialize": {
+      "raw_rows": 175969,
+      "normalized_rows": 175961,
+      "by_ticker": {
+        "$SPX": {
+          "raw": 5869,
+          "normalized": 5869,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "$VIX": {
+          "raw": 707,
+          "normalized": 707,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "AAPL": {
+          "raw": 4807,
+          "normalized": 4807,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "AEIS": {
+          "raw": 660,
+          "normalized": 660,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "AMZN": {
+          "raw": 4491,
+          "normalized": 4491,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "ASTS": {
+          "raw": 1475,
+          "normalized": 1475,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "AVGO": {
+          "raw": 4352,
+          "normalized": 4352,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "BBIO": {
+          "raw": 659,
+          "normalized": 659,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "BE": {
+          "raw": 661,
+          "normalized": 661,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "CDE": {
+          "raw": 658,
+          "normalized": 658,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "CIFR": {
+          "raw": 4308,
+          "normalized": 4308,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "COP": {
+          "raw": 1,
+          "normalized": 0,
+          "source_timeframe": "5m",
+          "mode": "full"
+        },
+        "CRDO": {
+          "raw": 656,
+          "normalized": 656,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "CRWD": {
+          "raw": 1535,
+          "normalized": 1535,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "FN": {
+          "raw": 658,
+          "normalized": 658,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "GOOG": {
+          "raw": 4275,
+          "normalized": 4275,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "GOOGL": {
+          "raw": 4428,
+          "normalized": 4428,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "IWM": {
+          "raw": 16000,
+          "normalized": 16000,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "KO": {
+          "raw": 1,
+          "normalized": 0,
+          "source_timeframe": "5m",
+          "mode": "full"
+        },
+        "KRE": {
+          "raw": 654,
+          "normalized": 654,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "KTOS": {
+          "raw": 656,
+          "normalized": 656,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "MET": {
+          "raw": 2595,
+          "normalized": 2595,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "META": {
+          "raw": 5611,
+          "normalized": 5611,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "MRVL": {
+          "raw": 4295,
+          "normalized": 4295,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "MSFT": {
+          "raw": 4698,
+          "normalized": 4698,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "MU": {
+          "raw": 1458,
+          "normalized": 1458,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "NBIS": {
+          "raw": 251,
+          "normalized": 251,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "NBIX": {
+          "raw": 254,
+          "normalized": 254,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "NET": {
+          "raw": 392,
+          "normalized": 392,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "NFLX": {
+          "raw": 2604,
+          "normalized": 2604,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "NVDA": {
+          "raw": 5094,
+          "normalized": 5094,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "NXT": {
+          "raw": 652,
+          "normalized": 652,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "ORCL": {
+          "raw": 367,
+          "normalized": 367,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "PCG": {
+          "raw": 4004,
+          "normalized": 4004,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "PLTR": {
+          "raw": 4479,
+          "normalized": 4479,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "PSCI": {
+          "raw": 653,
+          "normalized": 653,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "QQQ": {
+          "raw": 17660,
+          "normalized": 17660,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "RKLB": {
+          "raw": 1457,
+          "normalized": 1457,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "SATS": {
+          "raw": 657,
+          "normalized": 657,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "SKHY": {
+          "raw": 571,
+          "normalized": 571,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "SMCI": {
+          "raw": 3992,
+          "normalized": 3992,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "SPCX": {
+          "raw": 310,
+          "normalized": 310,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "SPY": {
+          "raw": 43046,
+          "normalized": 43042,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "STRL": {
+          "raw": 653,
+          "normalized": 653,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "TSL": {
+          "raw": 3526,
+          "normalized": 3526,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "TSLA": {
+          "raw": 6805,
+          "normalized": 6805,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "TSM": {
+          "raw": 2,
+          "normalized": 2,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "UNH": {
+          "raw": 24,
+          "normalized": 24,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "UUUU": {
+          "raw": 1,
+          "normalized": 0,
+          "source_timeframe": "5m",
+          "mode": "full"
+        },
+        "VZ": {
+          "raw": 1,
+          "normalized": 0,
+          "source_timeframe": "5m",
+          "mode": "full"
+        },
+        "WMT": {
+          "raw": 654,
+          "normalized": 654,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "XBI": {
+          "raw": 656,
+          "normalized": 656,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "XLE": {
+          "raw": 56,
+          "normalized": 56,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "XOM": {
+          "raw": 323,
+          "normalized": 323,
+          "source_timeframe": "1m",
+          "mode": "full"
+        },
+        "XRT": {
+          "raw": 657,
+          "normalized": 657,
+          "source_timeframe": "1m",
+          "mode": "full"
+        }
+      },
+      "errors": []
+    },
+    "errors": [],
+    "wal_checkpoint_truncated": true
+  },
+  "after": {
+    "snapshots_1m_normalized": 175961,
+    "snapshots_outcome_5c": 175812,
+    "spy_bars": 101747,
+    "qqq_bars": 89706,
+    "iwm_bars": 76804
+  },
+  "delta_normalized": 162
+}

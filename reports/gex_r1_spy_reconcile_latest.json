@@ -1,0 +1,37 @@
+{
+  "per_ticker": {
+    "IWM": {
+      "er_gex_neg": 0.14748503922776604,
+      "er_gex_pos": 0.15057261233320574,
+      "n": 66,
+      "note": "+GEX should have LOWER ER (choppier). Cursor screen used regime_score not ER.",
+      "pearson_approx_corr": -0.3574180040391827,
+      "sign_orientation_vs_ER": "inverted_or_null",
+      "spearman_gex_er": -0.2082672233608813
+    },
+    "QQQ": {
+      "er_gex_neg": 0.27803798004275476,
+      "er_gex_pos": 0.12264030978131198,
+      "n": 65,
+      "note": "+GEX should have LOWER ER (choppier). Cursor screen used regime_score not ER.",
+      "pearson_approx_corr": -0.3314270742957193,
+      "sign_orientation_vs_ER": "as_assumed",
+      "spearman_gex_er": -0.22595542476882782
+    },
+    "SPY": {
+      "er_gex_neg": 0.35793865219485244,
+      "er_gex_pos": 0.0914048443182016,
+      "n": 69,
+      "note": "+GEX should have LOWER ER (choppier). Cursor screen used regime_score not ER.",
+      "pearson_approx_corr": -0.3320962958621929,
+      "sign_orientation_vs_ER": "as_assumed",
+      "spearman_gex_er": -0.22809092903567488
+    }
+  },
+  "schema": "gex_r1_spy_reconcile_v1",
+  "spy_detail": {
+    "n_neg": 19,
+    "n_pos": 50,
+    "net_gamma_agree_rate": 0.9420289855072463
+  }
+}

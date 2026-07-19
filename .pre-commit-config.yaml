@@ -45,3 +45,15 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      # Institutional Correctness gate — the ONE lock (GOVERNING LAW, OPEN_ITEMS).
+      # The repo is institutional in nature; new correctness requirements register as
+      # CHECKS inside this one gate, never as new separate locks. Check 1: no synthetic
+      # option-chain fixtures in tests — correctness is proven on REAL data
+      # (tests/fixtures/); fail-closed/edge tests declare themselves with
+      # '# institutional-synthetic-ok: <reason>'.
+      - id: institutional-correctness
+        name: institutional correctness (one gate — no fake tests, single source of truth)
+        entry: python tools/check_institutional_correctness.py
+        language: system
+        pass_filenames: false
+        always_run: true

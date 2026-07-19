@@ -155,6 +155,7 @@ def main() -> int:
             db_path=DB_PATH,
             calibration_payload=out.calibration_payload,
             v2_decision=v2_decision,
+            colocated_snapshot_ts_utc=float(rts),
         )
         t1 = time.time()
         snap = SnapshotRow(

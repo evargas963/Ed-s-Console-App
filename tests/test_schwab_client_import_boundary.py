@@ -62,10 +62,17 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
 
 
 def test_server_imports_in_ci_without_live_credentials() -> None:
-    import server
+    """Importing server in a CI env must not build a client.
 
-    assert server._client is None
-    assert server.app is not None
+    Uses a fresh module load rather than whatever `server` the suite already imported:
+    `_client` is a module-level global, so asserting on the shared instance made this
+    test depend on suite order (observed 2026-07-19 inside the full run only). The
+    reload tests the actual intent - a clean import builds no client.
+    """
+    srv = _reload_server_module()
+
+    assert srv._client is None
+    assert srv.app is not None
 
 
 def test_server_import_does_not_build_client_or_run_login_flow() -> None:

@@ -1,0 +1,312 @@
+{
+  "generated_utc": "2026-07-17T17:42:52Z",
+  "refresh": {
+    "schema": "refresh_all_governed_bar_anchor_outcomes_v1",
+    "ts_eval_utc": 1784310174.0696158,
+    "updates_executed": 177341,
+    "tickers": [
+      {
+        "ticker": "$SPX",
+        "updates": 6060,
+        "snapshots": 6060
+      },
+      {
+        "ticker": "$VIX",
+        "updates": 707,
+        "snapshots": 707
+      },
+      {
+        "ticker": "AAPL",
+        "updates": 4993,
+        "snapshots": 4993
+      },
+      {
+        "ticker": "AEIS",
+        "updates": 660,
+        "snapshots": 660
+      },
+      {
+        "ticker": "AMZN",
+        "updates": 4491,
+        "snapshots": 4491
+      },
+      {
+        "ticker": "ASTS",
+        "updates": 1474,
+        "snapshots": 1475
+      },
+      {
+        "ticker": "AVGO",
+        "updates": 4352,
+        "snapshots": 4352
+      },
+      {
+        "ticker": "BBIO",
+        "updates": 659,
+        "snapshots": 659
+      },
+      {
+        "ticker": "BE",
+        "updates": 661,
+        "snapshots": 661
+      },
+      {
+        "ticker": "CDE",
+        "updates": 658,
+        "snapshots": 658
+      },
+      {
+        "ticker": "CIFR",
+        "updates": 4309,
+        "snapshots": 4309
+      },
+      {
+        "ticker": "CRDO",
+        "updates": 656,
+        "snapshots": 656
+      },
+      {
+        "ticker": "CRWD",
+        "updates": 1535,
+        "snapshots": 1535
+      },
+      {
+        "ticker": "FN",
+        "updates": 658,
+        "snapshots": 658
+      },
+      {
+        "ticker": "GOOG",
+        "updates": 4275,
+        "snapshots": 4275
+      },
+      {
+        "ticker": "GOOGL",
+        "updates": 4428,
+        "snapshots": 4428
+      },
+      {
+        "ticker": "IWM",
+        "updates": 16221,
+        "snapshots": 16221
+      },
+      {
+        "ticker": "KRE",
+        "updates": 654,
+        "snapshots": 654
+      },
+      {
+        "ticker": "KTOS",
+        "updates": 656,
+        "snapshots": 656
+      },
+      {
+        "ticker": "MET",
+        "updates": 2595,
+        "snapshots": 2595
+      },
+      {
+        "ticker": "META",
+        "updates": 5611,
+        "snapshots": 5611
+      },
+      {
+        "ticker": "MRVL",
+        "updates": 4295,
+        "snapshots": 4295
+      },
+      {
+        "ticker": "MSFT",
+        "updates": 4698,
+        "snapshots": 4698
+      },
+      {
+        "ticker": "MU",
+        "updates": 1457,
+        "snapshots": 1458
+      },
+      {
+        "ticker": "NBIS",
+        "updates": 251,
+        "snapshots": 251
+      },
+      {
+        "ticker": "NBIX",
+        "updates": 254,
+        "snapshots": 254
+      },
+      {
+        "ticker": "NET",
+        "updates": 391,
+        "snapshots": 392
+      },
+      {
+        "ticker": "NFLX",
+        "updates": 2604,
+        "snapshots": 2604
+      },
+      {
+        "ticker": "NVDA",
+        "updates": 5094,
+        "snapshots": 5094
+      },
+      {
+        "ticker": "NXT",
+        "updates": 652,
+        "snapshots": 652
+      },
+      {
+        "ticker": "ORCL",
+        "updates": 367,
+        "snapshots": 367
+      },
+      {
+        "ticker": "PCG",
+        "updates": 4004,
+        "snapshots": 4004
+      },
+      {
+        "ticker": "PLTR",
+        "updates": 4479,
+        "snapshots": 4479
+      },
+      {
+        "ticker": "PSCI",
+        "updates": 653,
+        "snapshots": 653
+      },
+      {
+        "ticker": "QQQ",
+        "updates": 17876,
+        "snapshots": 17876
+      },
+      {
+        "ticker": "RKLB",
+        "updates": 1456,
+        "snapshots": 1457
+      },
+      {
+        "ticker": "SATS",
+        "updates": 657,
+        "snapshots": 657
+      },
+      {
+        "ticker": "SKHY",
+        "updates": 749,
+        "snapshots": 749
+      },
+      {
+        "ticker": "SMCI",
+        "updates": 3992,
+        "snapshots": 3992
+      },
+      {
+        "ticker": "SPCX",
+        "updates": 310,
+        "snapshots": 310
+      },
+      {
+        "ticker": "SPY",
+        "updates": 43260,
+        "snapshots": 43260
+      },
+      {
+        "ticker": "STRL",
+        "updates": 653,
+        "snapshots": 653
+      },
+      {
+        "ticker": "TSL",
+        "updates": 3526,
+        "snapshots": 3526
+      },
+      {
+        "ticker": "TSLA",
+        "updates": 6981,
+        "snapshots": 6981
+      },
+      {
+        "ticker": "TSM",
+        "updates": 2,
+        "snapshots": 2
+      },
+      {
+        "ticker": "UNH",
+        "updates": 24,
+        "snapshots": 24
+      },
+      {
+        "ticker": "WMT",
+        "updates": 654,
+        "snapshots": 654
+      },
+      {
+        "ticker": "XBI",
+        "updates": 656,
+        "snapshots": 656
+      },
+      {
+        "ticker": "XLE",
+        "updates": 55,
+        "snapshots": 56
+      },
+      {
+        "ticker": "XOM",
+        "updates": 321,
+        "snapshots": 323
+      },
+      {
+        "ticker": "XRT",
+        "updates": 657,
+        "snapshots": 657
+      }
+    ]
+  },
+  "backfill_29": {
+    "candidates": 1499,
+    "updated": 48,
+    "tol_sec": 29.0,
+    "skipped_ambiguous_duplicate_snapshots": 0,
+    "skipped_ambiguous_nearest_tie": 0,
+    "skipped_no_exact_match": 0,
+    "skipped_no_candidate_in_tol": 1319,
+    "skipped_snapshot_outcomes_not_filled": 132,
+    "skipped_internal_inconsistent": 0,
+    "skipped_unknown": 0,
+    "resynced": 114575,
+    "resync_skipped_no_snapshot": 176,
+    "resync_skipped_duplicate_snapshots": 0,
+    "resync_skipped_snapshot_outcomes_not_filled": 0
+  },
+  "backfill_59": {
+    "candidates": 1456,
+    "updated": 7,
+    "tol_sec": 59.0,
+    "skipped_ambiguous_duplicate_snapshots": 0,
+    "skipped_ambiguous_nearest_tie": 0,
+    "skipped_no_exact_match": 0,
+    "skipped_no_candidate_in_tol": 1305,
+    "skipped_snapshot_outcomes_not_filled": 144,
+    "skipped_internal_inconsistent": 0,
+    "skipped_unknown": 0,
+    "resynced": 114582,
+    "resync_skipped_no_snapshot": 176,
+    "resync_skipped_duplicate_snapshots": 0,
+    "resync_skipped_snapshot_outcomes_not_filled": 0
+  },
+  "quarantine": {
+    "operable_old_missing_before": 0,
+    "newly_quarantined": 0,
+    "operable_old_missing_after": 0,
+    "total_research_excluded": 1190,
+    "operable_attached": 81093,
+    "operable_trusted_total": 81116,
+    "attach_rate": 0.9997,
+    "young_unattached_lt_70m_not_quarantined": 25
+  },
+  "last6h_after": {
+    "attached": 1365,
+    "exact": 405
+  },
+  "operator_action_required": "RESTART live server process to load FP-24/FP-32 colocated calibration code; until restart, non-colocated decision rows will keep accumulating."
+}

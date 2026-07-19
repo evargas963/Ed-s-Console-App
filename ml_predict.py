@@ -254,13 +254,24 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
             "fail_closed_reason": fail_closed_reason,
             "artifact_integrity": artifact_integrity,
             "artifact_verification": {
+                # `artifact_sha256` is projected from `actual_sha256` -- the digest actually
+                # computed off disk during verification. The verifier
+                # (active_bundle_contract) emits expected_sha256/actual_sha256 and has never
+                # emitted a key named artifact_sha256, so this surface reported None for
+                # every VERIFIED artifact: a provenance record claiming
+                # VERIFIED_AGAINST_BUNDLE_MANIFEST while exposing nothing that was verified.
+                # Found 2026-07-19 by replacing a vacuous `is None or isinstance(...)`
+                # assertion with one that could fail.
                 role: {
-                    k: p.get(k)
-                    for k in (
-                        "verified", "legacy", "integrity_class", "reason_code",
-                        "manifest_sha256", "artifact_sha256", "artifact_filename",
-                        "verified_at_utc",
-                    )
+                    **{
+                        k: p.get(k)
+                        for k in (
+                            "verified", "legacy", "integrity_class", "reason_code",
+                            "manifest_sha256", "artifact_filename", "verified_at_utc",
+                            "expected_sha256", "actual_sha256",
+                        )
+                    },
+                    "artifact_sha256": p.get("actual_sha256"),
                 }
                 for role, p in sorted(integrity_prov.items())
             },

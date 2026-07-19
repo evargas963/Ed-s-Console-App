@@ -1,0 +1,37 @@
+{
+  "counts": {
+    "attach_gap_gt_59": 0,
+    "future_decisions": 0,
+    "future_snapshots": 0,
+    "live_30m_colocated": 16,
+    "live_30m_n": 16,
+    "live_30m_rate": 1.0,
+    "max_attach_gap_sec": 58.91130542755127,
+    "nearest_band_29_59": 10452,
+    "old_missing_all_ticker": 0,
+    "old_missing_sentinel": 0,
+    "research_excluded": 1422,
+    "signed_gap_max_neg": -58.91130542755127,
+    "signed_gap_max_pos": 58.67053294181824
+  },
+  "db_path": "data\\ed_console.db",
+  "definitions": {
+    "G4": "live last-30m decisions with a snapshots row at the same ts_utc",
+    "historical_attach_cap_sec": 59.0,
+    "old_missing": "operable AND decision_ts_utc < now-70m AND matched_snapshot_ts_utc IS NULL",
+    "operable": "calibration_trust='trusted' AND COALESCE(research_excluded,0)=0",
+    "production_join_tol_sec": 29.0,
+    "scope": "all tickers (not sentinel-only)"
+  },
+  "gates": {
+    "G1_operable_old_missing_zero_all_ticker": true,
+    "G2_no_clock_anomalies": true,
+    "G3_no_attach_gap_gt_59": true,
+    "G4_live_colocated_ge_95pct": true,
+    "sentinel_old_missing_zero": true
+  },
+  "generated_utc": "2026-07-17T20:16:27Z",
+  "label_law": "OPERABLE_SURFACE_CLEAN requires all-ticker G1. SENTINEL_SURFACE_CLEAN is allowed when only SPY/QQQ/IWM G1 holds; never call that OPERABLE_SURFACE_CLEAN.",
+  "schema": "operable_surface_gate_v1",
+  "verdict": "OPERABLE_SURFACE_CLEAN"
+}

@@ -6,6 +6,8 @@ from math_probabilities import compute_pin_score
 
 
 def _charm_contract(**overrides) -> dict:
+    # institutional-synthetic-ok: fail-closed charm tests remove openInterest/volatility
+    # to prove the contract is skipped (not silently zeroed); needs controlled input.
     base = {
         "expirationDate": "2099-05-05",
         "putCall": "CALL",

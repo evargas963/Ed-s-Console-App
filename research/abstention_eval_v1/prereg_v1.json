@@ -1,0 +1,24 @@
+{
+  "prereg_id": "abstention_eval_v1_prereg_v1",
+  "sibling_precedent": "research/har_rv_eval_v1/prereg_v1.json",
+  "study_question": "Does abstaining when HAR→logistic max predicted probability is below a train-fold-chosen threshold improve selective MCC (on traded rows) and beat always-predict / always-abstain baselines under a minimum coverage floor?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only."
+  },
+  "model": {
+    "features": "HAR rv_1/5/15",
+    "classifier": "LogisticRegression elasticnet saga",
+    "abstain_rule": "predict only if max(predicted_proba) >= tau; tau chosen on train fold to maximize MCC among taus in {0.40,0.45,0.50,0.55,0.60} with coverage>=0.20 on train"
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {
+    "name": "selective_MCC_on_traded_rows",
+    "screen": "same advancement screen applied to traded-row preds vs truths; FAIL if coverage < 0.10 on OOS or under-sampled"
+  },
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10, "min_oos_coverage": 0.10},
+  "outputs": {"report_json": "reports/abstention_eval/abstention_eval_<date>_<runid>.json"}
+}

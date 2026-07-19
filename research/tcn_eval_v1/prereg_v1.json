@@ -1,0 +1,47 @@
+{
+  "prereg_id": "tcn_eval_v1_prereg_v1",
+  "sibling_precedent": "research/elastic_net_eval_v1/prereg_v1.json",
+  "study_question": "Does a small causal TCN on 1m return sequences predict production ternary outcome_{hz} walk-forward on SPY (primary; QQQ/IWM if sample floors met) beyond trivial baselines and chance?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only."
+  },
+  "data": {
+    "sequence": "log-returns of price_bars_1m close, lookback=64, strictly causal (no future bars)",
+    "labels": "aligned from snapshots via nearest bar_end<=decision; prefer snapshots_1m_normalized outcome_{hz} at ts_utc",
+    "primary_ticker": "SPY"
+  },
+  "model": {
+    "name": "CausalTCN",
+    "lookback": 64,
+    "channels": [16, 16],
+    "kernel_size": 3,
+    "dropout": 0.1,
+    "epochs": 8,
+    "batch_size": 256,
+    "lr": 0.001,
+    "no_hyperparameter_search": true
+  },
+  "walk_forward": {
+    "splitter": "training_cache.expanding_window_oof_folds",
+    "n_folds": 3
+  },
+  "family": {
+    "tickers": ["SPY", "QQQ", "IWM"],
+    "horizons": ["1c", "5c", "15c", "60c"],
+    "n_cells": 12
+  },
+  "primary_metric": {
+    "name": "MCC",
+    "advancement_screen_per_cell": [
+      "day-block bootstrap CI excludes 0",
+      "Holm p<0.05 across 12",
+      "beats always_flat/majority/persistence",
+      "shuffle control centered at 0"
+    ]
+  },
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/tcn_eval/tcn_eval_<date>_<runid>.json"}
+}

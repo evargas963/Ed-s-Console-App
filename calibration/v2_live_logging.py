@@ -34,6 +34,41 @@ LIVE_ADVISORY_V2_REFUSED_NO_IDENTITY = "v2_live_log_refused_missing_execution_id
 # performs no governed calibration write at all — an EXPECTED non-write recorded
 # with this reason, distinct from the fail-closed identity refusal above.
 LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE = "v2_live_log_skipped_non_model_cycle"
+# FP-24: calibration rows must share the snapshot clock (1 insert/ticker/UTC minute).
+# Logging without a colocated snapshot is the dominant source of residual
+# skipped_no_candidate_in_tol near ±29–30s. Skip rather than widen join tol.
+LIVE_ADVISORY_V2_SKIP_NO_COLOCATED_SNAPSHOT = (
+    "v2_live_log_skipped_no_colocated_snapshot"
+)
+# FP-32: live write must carry the landed snapshot ts and it must equal
+# SignalInput.refresh_ts_utc — otherwise decision/snapshot clocks diverge and
+# outcome join falls back to nearest_within_tol (historical debt class).
+LIVE_ADVISORY_V2_REFUSED_SNAPSHOT_TS_MISMATCH = (
+    "v2_live_log_refused_snapshot_ts_mismatch"
+)
+LIVE_ADVISORY_V2_REFUSED_MISSING_COLOCATED_SNAPSHOT_TS = (
+    "v2_live_log_refused_missing_colocated_snapshot_ts"
+)
+LIVE_ADVISORY_V2_TAIL_APPEND = "append"
+
+
+def resolve_live_v2_calibration_tail_action(
+    *,
+    model_derived_cycle: bool,
+    has_execution_identity: bool,
+    snap_insert_landed: bool,
+) -> str:
+    """Decide server calibration-tail action before any DB write.
+
+    Returns ``LIVE_ADVISORY_V2_TAIL_APPEND`` or a ``LIVE_ADVISORY_V2_SKIP_*`` reason.
+    Preserves production order: non-model idle skip, then colocated-snapshot skip,
+    else append (writer still fail-closes on identity / clock).
+    """
+    if not has_execution_identity and not model_derived_cycle:
+        return LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE
+    if not snap_insert_landed:
+        return LIVE_ADVISORY_V2_SKIP_NO_COLOCATED_SNAPSHOT
+    return LIVE_ADVISORY_V2_TAIL_APPEND
 
 
 def build_live_v2_advisory_snapshot(
@@ -60,11 +95,16 @@ def append_live_v2_calibration_decision(
     v2_decision: dict[str, Any],
     decision_id: str | None = None,
     execution_identity_sha256: str | None = None,
+    colocated_snapshot_ts_utc: float | None = None,
 ) -> dict[str, Any] | None:
     """Insert one calibration row after both v1 signal data and v2 metadata exist.
 
     This is intentionally single-phase: no prior v1 row is required, and there
     is no second writer that updates the same row later.
+
+    ``colocated_snapshot_ts_utc`` is required on the live path: it must be the
+    ts just written to ``snapshots`` for this cycle and must equal
+    ``inp.refresh_ts_utc``.
     """
     if not calibration_logging_enabled():
         return None
@@ -79,6 +119,33 @@ def append_live_v2_calibration_decision(
         return {
             "status": "skipped",
             "reason": LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS,
+        }
+    if colocated_snapshot_ts_utc is None:
+        import logging as _logging
+
+        _logging.getLogger(__name__).error(
+            "EXECUTION_CLOCK_REFUSED live v2 calibration write for %s: "
+            "missing colocated_snapshot_ts_utc (fail closed)",
+            calibration_payload.get("ticker"),
+        )
+        return {
+            "status": "refused",
+            "reason": LIVE_ADVISORY_V2_REFUSED_MISSING_COLOCATED_SNAPSHOT_TS,
+        }
+    snap_ts = float(colocated_snapshot_ts_utc)
+    if abs(decision_ts_utc - snap_ts) > 1e-9:
+        import logging as _logging
+
+        _logging.getLogger(__name__).error(
+            "EXECUTION_CLOCK_REFUSED live v2 calibration write for %s: "
+            "decision_ts=%s != colocated_snapshot_ts=%s (fail closed)",
+            calibration_payload.get("ticker"),
+            decision_ts_utc,
+            snap_ts,
+        )
+        return {
+            "status": "refused",
+            "reason": LIVE_ADVISORY_V2_REFUSED_SNAPSHOT_TS_MISMATCH,
         }
     if not decision_id or not execution_identity_sha256:
         # Live model-derived row without its governed execution identity:

@@ -1,10 +1,10 @@
 {
  "schema": "LANE_A_LEGACY_DIFFERENTIAL_RESULT",
- "base_sha": "a0d5e3b9a5f9731357465f93fe2375f9a4672338",
- "fixture_content_sha256": "2a24dd2cd045eaaad4b423cda3143094a1aece154fd266f25f6ffe0718328c84",
- "old_source_sha256": "5e78798da30988079bb09ab1df03ba8840fcd44b3f89bf015ea5bdcbbebfbd5f",
- "new_source_sha256": "b9d5c7643f3cf1b71d93a4c96468b7421f0df836765efe0bd383880176b8de2b",
- "comparison_program_sha256": "0a4ea2baf703795cdaf84f8d9c0442940cd74427d6ad165177fb01b73478d1bc",
+ "base_sha": "8e5949000c0984c4d64361e355432615d4384045",
+ "fixture_content_sha256": "fcf6e68f4f3537833f94cad2ab44100a6066fc7ca0f1cddc05c443a0b7b9593f",
+ "old_source_sha256": "c6e13e64a099c3aec3c3ee0d36e085f1f26864004662064e632ed0d122f2780b",
+ "new_source_sha256": "d764e6f8bdb033030ffb239730e1a0188c5421a378a9c7bdb0ca599ad9ec3f1a",
+ "comparison_program_sha256": "7b37527581200e6a542127b45eb12368fd200b8b27c236a8fef5dd6863177fb2",
  "field_allowlist": [
   "et_date",
   "tickers_filter",

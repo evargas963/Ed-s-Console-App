@@ -13,6 +13,8 @@ import server
 
 
 def test_filter_contracts_by_selected_expiry_matches_schwab_leaf():
+    # institutional-synthetic-ok: expiry-slice behavior needs controlled expirationDates
+    # (assert exactly one match for a specific expiry) — not a greek/GEX correctness test.
     contracts = [
         {"expirationDate": "2099-05-05T20:00:00.000+00:00", "putCall": "CALL", "strikePrice": 500.0},
         {"expirationDate": "2099-06-05", "putCall": "PUT", "strikePrice": 500.0},

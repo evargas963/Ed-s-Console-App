@@ -1,0 +1,27 @@
+{
+  "prereg_id": "mlp_micro_eval_v1_prereg_v1",
+  "sibling_precedent": "research/micro_stack_eval_v1/prereg_v1.json",
+  "study_question": "Does a small MLP on the Study #28 microstructure stack beat trivial baselines walk-forward?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only."
+  },
+  "model": {
+    "name": "sklearn.neural_network.MLPClassifier",
+    "features": [
+      "spread",
+      "flow_imbalance",
+      "pin_score",
+      "vwap_dist_pts",
+      "hedging_flow_score"
+    ],
+    "hyperparams": {"hidden_layer_sizes": [32, 16], "max_iter": 400, "alpha": 0.0001}
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {"name": "MCC", "screen": "same advancement screen as elastic_net_eval_v1"},
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/mlp_micro_eval/mlp_micro_eval_<date>_<runid>.json"}
+}

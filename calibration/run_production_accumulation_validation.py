@@ -234,6 +234,7 @@ def run() -> dict[str, Any]:
                 calibration_payload=out.calibration_payload,
                 decision_id=_val_did,
                 execution_identity_sha256=_val_sha,
+                colocated_snapshot_ts_utc=float(ts),
                 v2_decision=build_module_a_a1_decision(
                     {
                         "ticker": name,

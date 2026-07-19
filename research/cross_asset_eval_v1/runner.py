@@ -1,0 +1,164 @@
+"""Study #17: causal SPY features → QQQ/IWM direction."""
+
+from __future__ import annotations
+
+import argparse
+import bisect
+import json
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+
+from research.elastic_net_eval_v1.runner import apply_advancement_screen, evaluate_cell
+from research.har_rv_eval_v1.runner import har_features
+from research.incumbent_eval_v1.runner import invalid_threshold_horizons
+from research.tcn_eval_v1.runner import _et_date, _load_closes, _load_labeled_rows
+
+PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
+
+
+def load_prereg() -> dict[str, Any]:
+    return json.loads(PREREG_PATH.read_text(encoding="utf-8"))
+
+
+def run_study(db_path: Path | str) -> dict[str, Any]:
+    from training_cache import expanding_window_oof_folds
+
+    prereg = load_prereg()
+    seed = int(prereg["randomness"]["seed"])
+    n_folds = int(prereg["walk_forward"]["n_folds"])
+    invalid_hz = set(invalid_threshold_horizons())
+    spy_ends, spy_closes = _load_closes(Path(db_path), "SPY")
+    spy_har = har_features(spy_closes)
+    spy_logp = np.log(np.clip(spy_closes, 1e-12, None))
+    spy_rets = np.diff(spy_logp, prepend=spy_logp[0])
+    cells: dict[str, dict[str, Any]] = {}
+    for ticker in prereg["family"]["tickers"]:
+        for hz in prereg["family"]["horizons"]:
+            if hz in invalid_hz:
+                continue
+            key = f"{ticker}:{hz}"
+            labeled = _load_labeled_rows(Path(db_path), str(ticker), f"outcome_{hz}")
+            xs, ys, dates = [], [], []
+            for ts, y in labeled:
+                # join SPY bar strictly before decision (causal lag≥1 via end<=ts then -1)
+                j = bisect.bisect_right(spy_ends, ts) - 2
+                if j < 15:
+                    continue
+                xs.append(np.concatenate([spy_har[j], spy_rets[j - 4 : j + 1]]))
+                ys.append(y)
+                dates.append(_et_date(ts))
+            X = np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 8))
+            day_list = sorted(set(dates))
+            folds = expanding_window_oof_folds(day_list, n_folds=n_folds)
+            if X.shape[0] == 0 or not folds:
+                cells[key] = {
+                    "under_sampled": True,
+                    "n_scored": 0,
+                    "n_distinct_days": 0,
+                    "warnings": ["NO_ROWS"],
+                    "verdict": "UNDER_SAMPLED",
+                    "mcc": None,
+                    "accuracy": None,
+                    "baselines": {},
+                    "bootstrap": None,
+                    "shuffle_control": None,
+                }
+                continue
+            date_arr = np.asarray(dates)
+            y_arr = np.asarray(ys)
+            all_preds: list[str] = []
+            all_truths: list[str] = []
+            all_dates: list[str] = []
+            for train_days, test_days in folds:
+                tr = np.isin(date_arr, train_days)
+                te = np.isin(date_arr, test_days)
+                if tr.sum() < 50 or te.sum() < 1:
+                    continue
+                if len(set(y_arr[tr].tolist())) < 2:
+                    continue
+                sc = StandardScaler()
+                Xtr = sc.fit_transform(X[tr])
+                Xte = sc.transform(X[te])
+                mdl = LogisticRegression(
+                    penalty="elasticnet",
+                    solver="saga",
+                    l1_ratio=0.5,
+                    C=1.0,
+                    max_iter=2000,
+                    random_state=seed,
+                )
+                mdl.fit(Xtr, y_arr[tr])
+                all_preds.extend(str(p) for p in mdl.predict(Xte))
+                all_truths.extend(y_arr[te].tolist())
+                all_dates.extend(date_arr[te].tolist())
+            cells[key] = evaluate_cell(all_preds, all_truths, all_dates, prereg)
+    apply_advancement_screen(cells)
+    verdicts = [t["verdict"] for t in cells.values()]
+    n_pass = verdicts.count("PASS")
+    summary = (
+        "STOP_SHUFFLE_CONTROL_FAILED"
+        if "STOP_SHUFFLE_CONTROL_FAILED" in verdicts
+        else "INSUFFICIENT_DATA"
+        if all(v == "UNDER_SAMPLED" for v in verdicts)
+        else "SIGNAL_DETECTED_IN_SOME_CELLS"
+        if n_pass
+        else "NO_SIGNAL_DETECTED"
+    )
+    return {
+        "schema_version": "1",
+        "prereg_id": prereg["prereg_id"],
+        "generated_utc": datetime.now(tz=timezone.utc).isoformat(),
+        "run_id": uuid.uuid4().hex[:12],
+        "db_path": str(Path(db_path).resolve()),
+        "cells": cells,
+        "summary": {
+            "verdict": summary,
+            "n_pass": n_pass,
+            "n_fail": verdicts.count("FAIL"),
+            "n_under_sampled": verdicts.count("UNDER_SAMPLED"),
+            "n_cells": len(cells),
+        },
+    }
+
+
+def write_report(report, out_dir):
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"cross_asset_eval_{report['generated_utc'][:10]}_{report['run_id']}.json"
+    path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (out / "latest.json").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    return path
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--db", type=Path, default=None)
+    ap.add_argument(
+        "--out-dir",
+        type=Path,
+        default=Path(__file__).resolve().parents[2] / "reports" / "cross_asset_eval",
+    )
+    args = ap.parse_args()
+    db = args.db or Path(__import__("db").DB_PATH)
+    report = run_study(db)
+    path = write_report(report, args.out_dir)
+    s = report["summary"]
+    print(
+        f"cross_asset_eval_v1 — {s['verdict']} "
+        f"({s['n_pass']} PASS / {s['n_fail']} FAIL / {s['n_under_sampled']} under-sampled)"
+    )
+    for k, t in report["cells"].items():
+        print(f"  {k}: n={t.get('n_scored')} mcc={t.get('mcc')} -> {t.get('verdict')}")
+    print("report:", path)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

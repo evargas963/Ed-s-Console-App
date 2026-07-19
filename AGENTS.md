@@ -20,6 +20,8 @@ It does three things, in order:
 
 **Conduct:** never present unverified claims as verified; name limits in the same sentence as the tool; do not leave the changed path internally inconsistent, and do not expand into unrelated cleanup; extend existing files over creating new ones; run the smallest relevant tests during development and the required suite before code sign-off, showing output.
 
+**Agent truth lock (mechanical, lean):** `.cursor/rules/01-find-prove-no-soft-stop.mdc` + `ACTIVE_PROGRAM.md` queue. No false completion, no promise-without-execution, no approximate counts presented as exact, no model-family bait-and-switch. Do not grow extra gate scripts for this. Operator halt words: `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
+
 **Decision-path admission (mechanical):** no component may influence TRADE — or any output that authorizes or shapes exposure — unless `governance/decision_path_admissions.json` records it ADMITTED with evidence (preregistration, OOS results, costs, baselines, scope, leakage review) and an operator admission decision. Registry starts empty; unadmitted influence → WAIT.
 
 **Immune rule:** any proposed new mechanism must prove it protects a real trading-system failure the page, the question, or the gate cannot already handle.

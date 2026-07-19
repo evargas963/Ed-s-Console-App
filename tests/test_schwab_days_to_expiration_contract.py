@@ -18,6 +18,8 @@ class _MarketStateStub:
 
 
 def _contract(**overrides) -> dict:
+    # institutional-synthetic-ok: DTE/mark field-handling + fail-closed tests set/remove
+    # specific Schwab fields (daysToExpiration, mark) to prove exact behavior; controlled input.
     base = {
         "putCall": "CALL",
         "strikePrice": 500.0,

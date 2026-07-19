@@ -1,0 +1,24 @@
+{
+  "schema": "fp24_clock_align_v1",
+  "generated_utc": "2026-07-17T14:45:00Z",
+  "status": "DONE_FORWARD_FIX",
+  "root_cause_corrected": "Not primarily bar-grid vs wall clock on the same write. Live path writes at most one snapshot per ticker per UTC minute (ED_DB_SNAPSHOT_THROTTLE) while calibration logged every model-derived cycle with wall-clock decision_ts. Mid-minute decisions sit ~30s from the minute snapshot → skipped_no_candidate_in_tol under BACKFILL_JOIN_TOL_SEC=29.",
+  "change": {
+    "server.py": [
+      "_xid_expected_cal requires _xid_do_snapshot_insert",
+      "calibration append skipped unless _snap_insert_landed (LIVE_ADVISORY_V2_SKIP_NO_COLOCATED_SNAPSHOT)"
+    ],
+    "calibration/v2_live_logging.py": "added LIVE_ADVISORY_V2_SKIP_NO_COLOCATED_SNAPSHOT",
+    "tests": "tests/test_fp24_calibration_colocated_snapshot.py"
+  },
+  "must_not_done": [
+    "Did not widen BACKFILL_JOIN_TOL_SEC",
+    "Did not fabricate snapshots",
+    "Did not touch decision-path admissions"
+  ],
+  "limits": {
+    "historical_residual": "Existing ~10,571 trusted_old_missing rows are unchanged; this stops new debt of the same class.",
+    "calibration_rate": "Forward calibration density drops to ≤1 row/ticker/UTC minute (colocated with snapshot)."
+  },
+  "tests_run": "pytest tests/test_fp24_calibration_colocated_snapshot.py + related locks — 5 passed"
+}

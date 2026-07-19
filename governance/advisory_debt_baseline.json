@@ -1,0 +1,9 @@
+{
+  "file_length": 38,
+  "function_complexity": 455,
+  "function_length": 392,
+  "mypy_types": 758,
+  "no_fake_defaults": 10,
+  "ruff_quality": 1144,
+  "tests_missing_explicit_assert": 14
+}

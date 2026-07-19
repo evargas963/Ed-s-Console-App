@@ -6,6 +6,8 @@ from math_exposure_core import compute_net_charm
 
 
 def _charm_contract(**overrides) -> dict:
+    # institutional-synthetic-ok: fail-closed charm test needs controlled contracts to
+    # prove "unavailable when no contracts contribute".
     base = {
         "expirationDate": "2099-05-05",
         "putCall": "CALL",

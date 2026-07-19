@@ -116,6 +116,10 @@ _CALIBRATION_OPTIONAL_COLUMNS: dict[str, str] = {
     # the production DB (see execution_identity.py). Legacy rows stay NULL.
     "decision_id": "TEXT",
     "execution_identity_sha256": "TEXT",
+    # Research operable-surface quarantine (Collect): exclude irrecoverable
+    # join orphans from Find & Prove loaders without deleting rows.
+    "research_excluded": "INTEGER NOT NULL DEFAULT 0",
+    "research_exclude_reason": "TEXT",
 }
 
 

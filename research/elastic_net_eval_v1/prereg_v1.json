@@ -1,0 +1,67 @@
+{
+  "prereg_id": "elastic_net_eval_v1_prereg_v1",
+  "sibling_precedent": "research/incumbent_eval_v1/prereg_v1.json",
+  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
+  "study_question": "Does a mandatory trivial learner (multinomial logistic / Elastic Net) trained walk-forward on production engineered features from snapshots_1m_normalized predict production ternary outcome_{hz} labels out of sample beyond always_flat / majority / persistence and chance (shuffle control), on SPY/QQQ/IWM x {1c,5c,15c,60c}?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission. Admission still requires economic study + costs + operator admission.",
+    "not_production_wiring": "Report-only. governance/decision_path_admissions.json untouched.",
+    "not_stack_enlargement": "This is a baseline challenger. It does not join the live stack unless later admitted."
+  },
+  "data": {
+    "features": "snapshots_1m_normalized via ml_train.load_data + ml_train.engineer_features(fit_end=train_end) — train-only fit for medians/category maps",
+    "labels": "outcome_{1c,5c,15c,60c} production ternary (BAR_ANCHOR_V1) on the same rows",
+    "row_gates": "RTH + weekday filters from load_data; label IS NOT NULL per horizon; training anchors SPY/QQQ/IWM only",
+    "synthetic_bar_disclosure": "Labels may depend on synthetic_interior_grid_repair_v1 bars inserted in FP-01; report n_labels_touching_synthetic_bars when detectable"
+  },
+  "model": {
+    "name": "sklearn.linear_model.LogisticRegression",
+    "penalty": "elasticnet",
+    "solver": "saga",
+    "l1_ratio": 0.5,
+    "C": 1.0,
+    "max_iter": 2000,
+    "multiclass_note": "sklearn>=1.5: multinomial path is implicit for saga+elasticnet multiclass; no multi_class kw",
+    "preprocessing": "StandardScaler fit on train fold only, applied to test (saga numerical requirement)",
+    "class_weight": null,
+    "no_hyperparameter_search": "C and l1_ratio frozen; changing after seeing results invalidates the run"
+  },
+  "walk_forward": {
+    "splitter": "training_cache.expanding_window_oof_folds (n_folds=3) — concatenate OOS folds; single terminal holdout is insufficient for sample floors",
+    "n_folds": 3,
+    "min_train_sessions": 10,
+    "embargo_minutes": 61,
+    "honesty": "embargo = longest label span (60c); not a full nested purged CV — Stage-2-grade nested purge remains a known limit named in the report"
+  },
+  "family": {
+    "tickers": ["SPY", "QQQ", "IWM"],
+    "horizons": ["1c", "5c", "15c", "60c"],
+    "n_cells": 12,
+    "declared_before_run": true
+  },
+  "primary_metric": {
+    "name": "MCC (multiclass Matthews correlation, Gorodkin)",
+    "advancement_screen_per_cell": [
+      "day-block bootstrap 95% CI of MCC excludes 0 (B=1000)",
+      "Holm-Bonferroni adjusted bootstrap p < 0.05 across 12 cells",
+      "accuracy >= always_flat AND majority_class AND persistence",
+      "shuffle control null centered at 0"
+    ]
+  },
+  "baselines": {
+    "always_flat": "predict flat",
+    "majority_class": "predict train-fold majority (for OOS rows use expanding train majority — never test-fold majority)",
+    "persistence": "previous row truth (look-ahead-advantaged hard bar — same honesty note as Study #1)",
+    "shuffle_control": "K=200 label shuffles within cell"
+  },
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {
+    "min_scored_rows_per_cell": 300,
+    "min_distinct_days_per_cell": 10,
+    "below_floor_action": "UNDER_SAMPLED; excluded from PASS/FAIL"
+  },
+  "outputs": {
+    "report_json": "reports/elastic_net_eval/elastic_net_eval_<et_date>_<runid>.json"
+  }
+}

@@ -7,6 +7,9 @@ from math_exposure_core import compute_exposures_by_strike
 
 
 def _contract(**overrides):
+    # institutional-synthetic-ok: fail-closed tests deliberately remove/alter single
+    # fields (multiplier, openInterest, bidSize, totalVolume) to prove no-silent-default
+    # behavior; such malformed contracts cannot be sourced from real data.
     base = {
         "strikePrice": 500.0,
         "putCall": "CALL",

@@ -19,8 +19,59 @@ log = logging.getLogger(__name__)
 # Schwab options API missing-greek sentinel (documented wire value).
 MISSING_GREEK_SENTINEL: float = -999.0
 
+# Per-share vanilla equity-option gamma is always ≥ 0 and rarely above ~1.0.
+# Schwab occasionally returns finite garbage on 0DTE deep-ITM (e.g. gamma=-91965)
+# that would otherwise dominate OI-weighted net_gamma / GEX / walls.
+GAMMA_PLAUSIBLE_MAX: float = 1.0
+# Deep ITM/OTM: true gamma ≈ 0; reject non-near-zero gamma when |delta| is extreme.
+DELTA_DEEP_ABS_FOR_GAMMA: float = 0.98
+GAMMA_DEEP_DELTA_MAX: float = 1e-4
+
 # compute_net_charm zero-used error when contracts matched expiry but failed OI/gamma/IV gates.
 CHARM_QUALITY_GATE_ERROR_MARKER = "quality gates"
+
+
+def schwab_iv_to_sigma(iv: float | None) -> float | None:
+    """The ONE conversion from Schwab's `volatility` field to a decimal sigma.
+
+    Schwab reports implied volatility in PERCENT. Verified 2026-07-19 on 1,600 contract
+    greeks from the 40 most recent chain snapshots: min 23.7550, median 50.4315, max
+    174.2260 — 1,600 of 1,600 above 3.0, none at or below it.
+
+    The `> 3.0` test is a defensive guard against a silent vendor unit change (a 300%
+    IV is possible but vanishingly rare; a 3.0 decimal sigma is not). It is kept because
+    a units flip would otherwise corrupt every gamma silently rather than loudly.
+
+    This existed as two different inline expressions — `iv / 100.0` unconditionally in
+    compute_net_charm and the guarded form in math_levels._contract_inputs — i.e. two
+    modules encoding different assumptions about one vendor field. One definition now.
+    """
+    if iv is None or iv <= 0:
+        return None
+    return iv / 100.0 if iv > 3.0 else iv
+
+
+def gamma_is_plausible(gamma: float | None, delta: float | None = None) -> bool:
+    """True when ``gamma`` is usable in OI-weighted gamma aggregation.
+
+    Rejects: None, MISSING_GREEK_SENTINEL, non-finite, negative, above
+    ``GAMMA_PLAUSIBLE_MAX``, and non-near-zero gamma when ``|delta|`` is deep
+    ITM/OTM (``>= DELTA_DEEP_ABS_FOR_GAMMA``). OI-only metrics should still
+    include the contract when gamma is rejected.
+    """
+    if gamma is None or gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
+        return False
+    if gamma < 0.0 or gamma > GAMMA_PLAUSIBLE_MAX:
+        return False
+    if (
+        delta is not None
+        and delta != MISSING_GREEK_SENTINEL
+        and math.isfinite(delta)
+        and abs(delta) >= DELTA_DEEP_ABS_FOR_GAMMA
+        and gamma > GAMMA_DEEP_DELTA_MAX
+    ):
+        return False
+    return True
 
 
 def charm_compute_unavailable_log_level(error: str | None) -> int:
@@ -198,7 +249,7 @@ def compute_exposures_by_strike(
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
         delta_ok = delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
-        gamma_ok = gamma is not None and gamma != MISSING_GREEK_SENTINEL and math.isfinite(gamma)
+        gamma_ok = gamma_is_plausible(gamma, delta)
 
         if not delta_ok or not gamma_ok:
             missing += 1
@@ -625,12 +676,33 @@ def compute_net_charm(
     As expiry approaches, dealers must unwind their delta hedges. The NET direction
     of that unwind creates mechanical buying or selling pressure independent of price.
 
-    Formula (Black-Scholes):
-        For calls:  charm = -phi(d1) * [d2/(2*S*iv*sqrt(T)) + r/(iv*sqrt(T))]
-        For puts:   charm_put = charm_call - phi(d1) (by put-call parity)
-        phi = standard normal PDF
-        d1 = [ln(S/K) + (r + iv²/2)*T] / (iv*sqrt(T))
+    Formula ACTUALLY IMPLEMENTED (see line ~788) — corrected 2026-07-19 to match the code:
+
+        charm_unit = -phi(d1) * d2 / (2*T)          # delta per YEAR
+        d1 = [ln(S/K) + (iv^2/2)*T] / (iv*sqrt(T))
         d2 = d1 - iv*sqrt(T)
+        phi = standard normal PDF
+
+    Relation to the textbook (Haug) charm, dDelta/dT for a call with q=0:
+
+        dDelta/dT = -phi(d1) * [ r/(iv*sqrt(T)) - d2/(2T) ]
+
+    Ours is dDelta/dt (calendar time) = -dDelta/dT, with the r/(iv*sqrt(T)) term
+    DELIBERATELY OMITTED because it explodes as T->0 (0DTE: 0.05/0.005 -> billions).
+    VERIFIED 2026-07-19: at r=0 ours equals -(textbook) EXACTLY, so the retained
+    algebra is right. The omission costs accuracy that grows with T and rate --
+    measured error vs textbook: ~6% at 0DTE ATM, ~17% at 7d, ~71% at 3-month ATM
+    (r=0.05). Acceptable for the 0DTE/near-expiry use this feeds; NOT acceptable if
+    charm is ever extended to longer-dated expiries. Tracked in the unproven register.
+
+    NOTE: the ``rate`` parameter is therefore NOT used in the charm computation.
+
+    Put charm: with q=0, Delta_put = Delta_call - 1, and the constant vanishes under
+    d/dt, so charm_put == charm_call. That identity is why both sides use one formula.
+    They are then summed with the SAME sign (no +call/-put dealer convention, unlike
+    net GEX) -- so ``net_charm_daily`` is an OI-weighted magnitude of hedge decay, NOT
+    a dealer-signed directional flow. Registered as an open question, do not read the
+    sign of net_charm as dealer direction without resolving it.
 
     Dealer position: market makers are typically SHORT options (sold to retail).
     SHORT call → delta hedge = SHORT stock. As charm decays, they BUY back stock.
@@ -697,6 +769,7 @@ def compute_net_charm(
 
         strike  = _f(ct.get("strikePrice"))
         gamma   = _f(ct.get("gamma"))
+        delta   = _f(ct.get("delta"))
         iv      = _f(ct.get("volatility"))
         oi      = _f(ct.get("openInterest"))
         mult    = _f(ct.get("multiplier"))
@@ -711,7 +784,7 @@ def compute_net_charm(
         if mult is None or mult <= 0:
             _skip_mult += 1
             continue
-        if gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
+        if not gamma_is_plausible(gamma, delta):
             _skip_gamma += 1
             continue
         if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):
@@ -723,7 +796,10 @@ def compute_net_charm(
             _skip_T += 1
             continue
 
-        iv_dec = iv / 100.0
+        iv_dec = schwab_iv_to_sigma(iv)
+        if iv_dec is None or iv_dec <= 0:
+            _skip_iv += 1
+            continue
         S      = float(spot)
         K      = float(strike)
         r      = rate
@@ -767,6 +843,7 @@ def compute_net_charm(
             call_charm += weighted
         else:
             put_charm  += weighted
+        del weighted  # summed with the dealer convention below, never here
 
         used += 1
 
@@ -794,7 +871,19 @@ def compute_net_charm(
             "error": _err,
         }
 
-    net = call_charm + put_charm
+    # DEALER SIGN CONVENTION (fixed 2026-07-19 — was `call_charm + put_charm`).
+    #
+    # charm_put == charm_call per contract (q=0), so summing the two sides produced an
+    # OI-WEIGHTED MAGNITUDE with no dealer direction in it, while `charm_direction`
+    # below labelled its sign "buying"/"selling" and fed that to the signals engine.
+    # A prior comment claimed the sign difference was "captured in net_delta" — net_delta
+    # is never referenced in this function, so no such compensation occurred.
+    #
+    # Charm exposure must use the SAME dealer book assumption as net GEX (+call / -put;
+    # see math_levels.compute_gamma_profile). Per-strike charm exposure with this
+    # convention is standard institutional practice (SpotGamma / Unusual Whales publish
+    # it, and attribute the end-of-day pin to charm pressure).
+    net = call_charm - put_charm
 
     # Direction: positive net = dealers net buying delta (bullish), negative = selling (bearish)
     direction = "neutral" if abs(net) < 1.0 else ("buying" if net > 0 else "selling")

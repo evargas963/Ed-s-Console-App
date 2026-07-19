@@ -1,0 +1,27 @@
+{
+  "schema": "fp15_intol_unfilled_repair_v1",
+  "generated_utc": "2026-07-17T13:26:21Z",
+  "before": {
+    "trusted_anchor_attached": 70349,
+    "trusted_old_missing_attached": 10571,
+    "snapshots_outcome_filled": 175632
+  },
+  "refresh_updates_executed": 175798,
+  "backfill": {
+    "updated": 54,
+    "skipped_no_candidate_in_tol": 11449,
+    "skipped_snapshot_outcomes_not_filled": 1884,
+    "candidates": 13387
+  },
+  "after": {
+    "trusted_anchor_attached": 70403,
+    "trusted_old_missing_attached": 10571,
+    "snapshots_outcome_filled": 175646
+  },
+  "delta": {
+    "trusted_anchor_attached": 54,
+    "trusted_old_missing_attached": 0
+  },
+  "fp14_target_slice": 1657,
+  "note": "Targets FP-14 nearest_le_29s_but_unattached (outcomes unfilled). Does not widen tol."
+}

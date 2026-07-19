@@ -60,6 +60,14 @@ def _allowed_path(rel: Path) -> bool:
     # calibration.writer.compute_calibration_rate_health (no SQL in server.py).
     if s == "server.py":
         return True
+    # operable_surface_gate: G1-G4 reporting tool. READ-ONLY by construction as of
+    # 2026-07-19 — its ALTER/UPDATE quarantine writer was moved into
+    # calibration/operable_surface_quarantine.py so every write to this table stays inside
+    # the audited surface. Its test seeds fixtures in tmp_path only, never production.
+    if s == "tools/operable_surface_gate.py":
+        return True
+    if s == "tests/test_operable_surface_gate.py":
+        return True
     # Read-only audit / observability tooling and probes (SELECT/COUNT, sqlite_master,
     # or table name in help/provenance/audit strings — never INSERT/UPDATE).
     if s == "tools/check_base_ticker_observability.py":
@@ -162,6 +170,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             or rel == "tests/test_incumbent_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
             or rel == "tests/test_challenger_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
             or rel == "tests/test_structural_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
+            or rel == "tests/test_operable_surface_gate.py"  # tmp-path fixture DB only; the gate tool itself is SELECT-only
         )
         if not ok:
             bad.append(rel)
@@ -181,11 +190,13 @@ def test_update_calibration_decision_log_only_backfill_and_tests() -> None:
             continue
         rel = p.relative_to(_ROOT).as_posix()
         ok = (
-            rel == "calibration/backfill_outcomes.py"
+            rel == "calibration/operable_surface_quarantine.py"  # sole writer of research_excluded; moved here 2026-07-19 out of tools/
+            or rel == "calibration/backfill_outcomes.py"
             or rel == "calibration/backfill_signal_layer_v1_bundle.py"
             or rel == "calibration/v2_advisory_backfill.py"
             or rel == "calibration/v2_live_logging.py"
             or rel.startswith("tests/test_calibration")
+            or rel == "tests/test_operable_surface_gate.py"  # tmp-path fixture DB only
         )
         if not ok:
             bad.append(rel)

@@ -839,8 +839,11 @@ def test_item4_provenance_surface_reports_integrity(mp_bundle):
     prov1 = mp.build_model_serving_provenance(t)
     assert prov1["artifact_integrity"] == "VERIFIED_AGAINST_BUNDLE_MANIFEST"
     assert prov1["artifact_verification"]["xgb"]["verified"] is True
-    assert prov1["artifact_verification"]["xgb"]["artifact_sha256"] is None or isinstance(
-        prov1["artifact_verification"]["xgb"]["artifact_sha256"], str
+    # A VERIFIED artifact must carry a real digest. Allowing None here made the assertion
+    # true for every possible value, including the failure it was meant to catch.
+    _sha = prov1["artifact_verification"]["xgb"]["artifact_sha256"]
+    assert isinstance(_sha, str) and len(_sha) == 64, (
+        f"verified artifact must expose a 64-char sha256, got {_sha!r}"
     )
 
 

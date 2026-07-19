@@ -1,0 +1,70 @@
+{
+  "schema": "fp13_economic_survivor_stress_v1",
+  "generated_utc": "2026-07-17T13:18:34.961228+00:00",
+  "run_id": "69808e864c04",
+  "target": "har_rv_eval_v1 QQQ:60c",
+  "existence_screen": {
+    "verdict": "FAIL",
+    "mcc": 0.06387482831904043,
+    "beats_all_baselines": false,
+    "note": "Existence FAIL stands; economic survivor is not admission."
+  },
+  "cost_stress": {
+    "1bp": {
+      "cost_round_trip_bp": 1.0,
+      "n_scored": 13498,
+      "n_trades": 358,
+      "mean_net_bp_all_rows": 0.3471030771660101,
+      "mean_net_bp_trades_only": 13.087143395493863,
+      "bootstrap_ci95_mean_net_bp_all_rows": [
+        0.024423523804947975,
+        0.7998633078337483
+      ],
+      "verdict": "SURVIVE",
+      "kill_reasons": []
+    },
+    "2bp": {
+      "cost_round_trip_bp": 2.0,
+      "n_scored": 13498,
+      "n_trades": 358,
+      "mean_net_bp_all_rows": 0.3205806293959701,
+      "mean_net_bp_trades_only": 12.087143395493863,
+      "bootstrap_ci95_mean_net_bp_all_rows": [
+        0.0018458450926470693,
+        0.7621049526772659
+      ],
+      "verdict": "SURVIVE",
+      "kill_reasons": []
+    },
+    "5bp": {
+      "cost_round_trip_bp": 5.0,
+      "n_scored": 13498,
+      "n_trades": 358,
+      "mean_net_bp_all_rows": 0.24101328608585001,
+      "mean_net_bp_trades_only": 9.087143395493865,
+      "bootstrap_ci95_mean_net_bp_all_rows": [
+        -0.0509199952653344,
+        0.6477467562391036
+      ],
+      "verdict": "KILL",
+      "kill_reasons": [
+        "bootstrap_ci_includes_0"
+      ]
+    }
+  },
+  "sign_shuffle_control_1bp": {
+    "observed_mean_net_bp": 0.3471030771660101,
+    "null_mean": -0.02777361296475345,
+    "null_q975": 0.11568344625858477,
+    "p_ge_observed": 0.0,
+    "n_shuffles": 200,
+    "fails_if_p_ge_0_05": false
+  },
+  "summary": {
+    "survives_1bp": true,
+    "survives_2bp": true,
+    "survives_5bp": false,
+    "shuffle_fails": false,
+    "verdict": "STRESS_KILL"
+  }
+}

@@ -118,6 +118,7 @@ def main() -> int:
         append_live_v2_calibration_decision(
             db_path=PROOF_DB,
             calibration_payload=out.calibration_payload,
+            colocated_snapshot_ts_utc=float(ts),
             v2_decision=build_module_a_a1_decision(
                 {
                     "ticker": name,

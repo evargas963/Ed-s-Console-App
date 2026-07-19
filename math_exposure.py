@@ -264,6 +264,7 @@ from math_probabilities import *                                               #
 # Underscore names are excluded from import * — re-export explicitly
 from math_exposure_core import (                                               # noqa: F401
     MISSING_GREEK_SENTINEL,
+    gamma_is_plausible,
     _f,
     _nearest_strike,
     _window_strikes,

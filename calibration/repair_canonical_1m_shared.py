@@ -47,6 +47,9 @@ def apply_repair_1m_bar_batch_writes(
 
     conn = sqlite3.connect(str(db_path), timeout=120.0)
     configure_sqlite_connection(conn)
+    # Row factory required: _refresh_governed_outcomes_after_bar_mutation indexes
+    # snapshot/bar rows by column name (r["ts_utc"], r["bar_start_ts_utc"]).
+    conn.row_factory = sqlite3.Row
     changed_by_ticker: dict[str, set[float]] = {}
     n_written = 0
     try:

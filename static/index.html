@@ -2561,6 +2561,149 @@
     top: 3px;
     right: 5px;
   }
+
+/* ── TERRAIN VIEW ─────────────────────────────────────────────────────────── */
+.ed-viewtabs { display:flex; gap:4px; }
+.ed-viewtab { background:transparent; border:1px solid rgba(255,255,255,0.18); color:var(--muted);
+  font-size:11px; font-weight:800; letter-spacing:0.10em; padding:5px 12px; border-radius:6px; cursor:pointer; }
+.ed-viewtab:hover { border-color:rgba(255,255,255,0.42); color:#fff; }
+.ed-viewtab.is-active { background:rgba(84,200,255,0.16); border-color:#54c8ff; color:#7dd3fc; }
+body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view) { display:none !important; }
+
+#terrain-view { --tv-pan:#0e141c; --tv-line:#1e2937; --tv-tx:#eef4fb; --tv-mu:#93a6bd; --tv-dim:#63768f;
+  --tv-red:#ff6060; --tv-grn:#3ee089; --tv-blu:#54c8ff; --tv-pur:#c68cff; --tv-amb:#ffc94d;
+  padding:20px; color:var(--tv-tx); }
+#terrain-view * { box-sizing:border-box; }
+.tv-card { max-width:900px; margin:0 auto; background:#080c11; border:1px solid var(--tv-line);
+  border-radius:16px; overflow:hidden; }
+
+.tv-head { display:flex; align-items:center; gap:14px; padding:18px 20px 14px; flex-wrap:wrap;
+  border-bottom:1px solid var(--tv-line); }
+.tv-sym { font:900 24px/1 var(--font-mono,monospace); letter-spacing:.03em; }
+.tv-px { font:800 32px/1 var(--font-mono,monospace); letter-spacing:-.02em; }
+.tv-chg { font:800 13px/1 var(--font-mono,monospace); color:var(--tv-grn); padding-bottom:3px; }
+.tv-badge { margin-left:auto; display:flex; align-items:center; gap:9px; }
+.tv-dot { width:7px; height:7px; border-radius:50%; background:var(--tv-grn); box-shadow:0 0 0 3px rgba(62,224,137,.18); }
+.tv-dot.bad { background:var(--tv-amb); box-shadow:0 0 0 3px rgba(255,201,77,.18); }
+.tv-trust { font:800 10px/1 var(--font-sans,sans-serif); letter-spacing:.14em; color:var(--tv-grn); }
+.tv-trust.bad { color:var(--tv-amb); }
+.tv-stamp { font:600 10px/1.5 var(--font-mono,monospace); color:var(--tv-dim); text-align:right; }
+
+.tv-regime { margin:16px 20px 0; border-radius:12px; padding:16px 18px; border:1px solid var(--tv-line); border-left:4px solid var(--tv-dim); }
+.tv-regime.short { background:linear-gradient(100deg,rgba(255,96,96,.20),rgba(255,96,96,.05) 55%,transparent);
+  border-color:rgba(255,96,96,.32); border-left-color:var(--tv-red); }
+.tv-regime.long { background:linear-gradient(100deg,rgba(84,200,255,.20),rgba(84,200,255,.05) 55%,transparent);
+  border-color:rgba(84,200,255,.32); border-left-color:var(--tv-blu); }
+.tv-kicker { font:800 9.5px/1 var(--font-sans,sans-serif); letter-spacing:.18em; color:var(--tv-dim); }
+.tv-title { font:900 24px/1.1 var(--font-sans,sans-serif); letter-spacing:-.01em; margin-top:7px; color:var(--tv-mu); }
+.tv-regime.short .tv-title { color:var(--tv-red); } .tv-regime.long .tv-title { color:var(--tv-blu); }
+.tv-sub { font:800 15px/1.35 var(--font-sans,sans-serif); margin-top:7px; }
+.tv-mech { font:400 12.5px/1.6 var(--font-sans,sans-serif); color:var(--tv-mu); margin-top:8px; max-width:56ch; }
+
+.tv-ldwrap { margin:16px 20px 0; border:1px solid var(--tv-line); border-radius:12px; overflow:hidden; background:var(--tv-pan); }
+.tv-ld { position:relative; height:430px; }
+.tv-zone { position:absolute; left:0; right:0; }
+.tv-zone.chop { background:linear-gradient(180deg,rgba(84,200,255,.22),rgba(84,200,255,.07)); }
+.tv-zone.trend { background:linear-gradient(180deg,rgba(255,96,96,.07),rgba(255,96,96,.26)); }
+.tv-zbar { position:absolute; left:0; width:4px; opacity:.85; }
+.tv-zbar.chop { background:var(--tv-blu); } .tv-zbar.trend { background:var(--tv-red); }
+.tv-ztag { position:absolute; left:16px; display:flex; align-items:center; gap:7px;
+  font:800 10px/1 var(--font-sans,sans-serif); letter-spacing:.16em; }
+.tv-ztag.chop { top:14px; color:var(--tv-blu); } .tv-ztag.trend { bottom:14px; color:var(--tv-red); }
+.tv-ztag small { font:600 9.5px/1 var(--font-sans,sans-serif); letter-spacing:.06em; opacity:.7; }
+
+.tv-lv { position:absolute; left:0; right:0; height:0; }
+.tv-lv .tv-rule { position:absolute; left:16px; right:0; top:0; border-top:1.5px solid currentColor; opacity:.40; }
+.tv-lv .tv-info { position:absolute; right:18px; top:-15px; display:flex; align-items:center; gap:9px; }
+.tv-tags { display:flex; gap:5px; }
+.tv-tag { font:800 9.5px/1 var(--font-sans,sans-serif); letter-spacing:.08em; padding:5px 7px; border-radius:5px;
+  border:1px solid currentColor; background:rgba(8,12,17,.86); white-space:nowrap; }
+.tv-price { font:800 16px/1 var(--font-mono,monospace); min-width:74px; text-align:right; letter-spacing:-.01em; }
+.tv-delta { font:700 11px/1 var(--font-mono,monospace); color:var(--tv-dim); min-width:56px; text-align:right; }
+.tv-c-call{color:var(--tv-red)} .tv-c-put{color:var(--tv-grn)} .tv-c-flip{color:#fff}
+.tv-c-pin{color:var(--tv-pur)} .tv-c-charm{color:var(--tv-amb)} .tv-c-spot{color:var(--tv-blu)}
+.tv-lv.flipline .tv-rule { border-top:2px dashed rgba(255,255,255,.75); opacity:1; }
+.tv-lv.spotline .tv-rule { border-top:3px solid var(--tv-blu); opacity:1; box-shadow:0 0 14px rgba(84,200,255,.55); }
+.tv-lv.spotline .tv-price { font-size:19px; color:var(--tv-blu); }
+.tv-lv.spotline .tv-tag { background:var(--tv-blu); color:#04121c; border-color:var(--tv-blu); }
+
+.tv-ds { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--tv-line);
+  margin:16px 20px 0; border:1px solid var(--tv-line); border-radius:12px; overflow:hidden; }
+.tv-dcell { background:var(--tv-pan); padding:13px 14px; }
+.tv-dcell .l { font:800 9px/1 var(--font-sans,sans-serif); letter-spacing:.15em; color:var(--tv-dim); }
+.tv-dcell .v { font:800 19px/1 var(--font-mono,monospace); margin-top:8px; letter-spacing:-.02em; }
+.tv-dcell .s { font:700 10px/1 var(--font-mono,monospace); color:var(--tv-mu); margin-top:5px; }
+.tv-meter { height:3px; border-radius:2px; background:rgba(255,255,255,.08); margin-top:10px; overflow:hidden; }
+.tv-meter i { display:block; height:100%; border-radius:2px; }
+
+.tv-act { margin:16px 20px 0; border-radius:12px; padding:15px 18px;
+  background:linear-gradient(100deg,rgba(255,201,77,.11),transparent 70%);
+  border:1px solid rgba(255,201,77,.28); border-left:4px solid var(--tv-amb); }
+.tv-act .l { font:800 9.5px/1 var(--font-sans,sans-serif); letter-spacing:.18em; color:var(--tv-amb); }
+.tv-act .t { font:700 15px/1.55 var(--font-sans,sans-serif); margin-top:9px; }
+.tv-act .n { font:400 12px/1.5 var(--font-sans,sans-serif); color:var(--tv-mu); margin-top:8px; }
+
+.tv-prov { display:flex; gap:16px; flex-wrap:wrap; padding:15px 20px 18px; margin-top:14px;
+  border-top:1px solid var(--tv-line); font:600 10px/1 var(--font-mono,monospace); color:var(--tv-dim); }
+.tv-prov b { color:var(--tv-mu); font-weight:800; }
+
+/* ── TERRAIN ALERTS ──────────────────────────────────────────────────────── */
+.tv-alert { display:none; margin:14px 20px 0; border-radius:10px; padding:12px 15px;
+  font:800 13px/1.4 var(--font-sans,sans-serif); letter-spacing:.01em; border:1px solid; }
+.tv-alert.on { display:block; }
+.tv-alert.warn   { color:#ffc94d; border-color:rgba(255,201,77,.5);  background:rgba(255,201,77,.10); }
+.tv-alert.break  { color:#ff6060; border-color:rgba(255,96,96,.5);   background:rgba(255,96,96,.10); }
+.tv-alert.regime { color:#54c8ff; border-color:rgba(84,200,255,.5);  background:rgba(84,200,255,.12); }
+.tv-alert.lost   { color:#93a6bd; border-color:rgba(147,166,189,.5); background:rgba(147,166,189,.10); }
+@keyframes tvFlashWarn   { 0%,100%{box-shadow:0 0 0 0 rgba(255,201,77,0)} 30%{box-shadow:0 0 0 4px rgba(255,201,77,.55)} }
+@keyframes tvFlashBreak  { 0%,100%{box-shadow:0 0 0 0 rgba(255,96,96,0)}  30%{box-shadow:0 0 0 4px rgba(255,96,96,.60)} }
+@keyframes tvFlashRegime { 0%,100%{box-shadow:0 0 0 0 rgba(84,200,255,0)} 30%{box-shadow:0 0 0 5px rgba(84,200,255,.60)} }
+@keyframes tvFlashLost   { 0%,100%{box-shadow:0 0 0 0 rgba(147,166,189,0)} 30%{box-shadow:0 0 0 4px rgba(147,166,189,.5)} }
+.tv-flash-warn   { animation:tvFlashWarn 900ms ease-out 3; }
+.tv-flash-break  { animation:tvFlashBreak 900ms ease-out 3; }
+.tv-flash-regime { animation:tvFlashRegime 1000ms ease-out 3; }
+.tv-flash-lost   { animation:tvFlashLost 900ms ease-out 2; }
+@media (prefers-reduced-motion: reduce) {
+  .tv-flash-warn,.tv-flash-break,.tv-flash-regime,.tv-flash-lost { animation:none; }
+}
+.tv-alertbar { display:flex; align-items:center; gap:14px; padding:11px 20px 0; }
+.tv-alertbar label { display:flex; align-items:center; gap:6px; cursor:pointer;
+  font:700 10px/1 var(--font-sans,sans-serif); letter-spacing:.10em; color:var(--tv-dim); }
+.tv-alertbar input { cursor:pointer; }
+
+/* ── RADAR (beside the card) ──────────────────────────────────────────────── */
+.tv-shell { max-width:1280px; margin:0 auto; display:grid; gap:16px;
+  grid-template-columns:minmax(0,1fr) 296px; align-items:start; }
+@media (max-width:1100px) { .tv-shell { grid-template-columns:minmax(0,1fr); } }
+.tv-shell > .tv-card { max-width:none; width:100%; min-width:0; }
+.tv-radar { position:sticky; top:14px; background:#080c11; border:1px solid var(--tv-line);
+  border-radius:16px; overflow:hidden; }
+.tv-radar-head { display:flex; align-items:baseline; gap:9px; padding:14px 15px 11px;
+  border-bottom:1px solid var(--tv-line); }
+.tv-radar-title { font:900 11px/1 var(--font-sans,sans-serif); letter-spacing:.20em; color:var(--tv-tx); }
+.tv-radar-meta { margin-left:auto; font:600 9.5px/1 var(--font-mono,monospace); color:var(--tv-dim); }
+.tv-radar-list { display:flex; flex-direction:column; max-height:620px; overflow-y:auto; }
+.tv-radar-row { position:relative; text-align:left; width:100%; cursor:pointer;
+  background:#0e141c; border:0; border-bottom:1px solid var(--tv-line);
+  padding:10px 13px 11px 16px; color:var(--tv-tx); font-family:inherit; }
+.tv-radar-row:hover { background:#131b25; }
+.tv-radar-row::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
+.tv-radar-row.sh::before { background:var(--tv-red); }
+.tv-radar-row.lg::before { background:var(--tv-blu); }
+.tv-radar-row.hot { background:rgba(255,201,77,.09); }
+.tv-radar-row.hot:hover { background:rgba(255,201,77,.14); }
+.tv-radar-top { display:flex; align-items:center; gap:8px; }
+.tv-radar-tk { font:900 13px/1 var(--font-mono,monospace); letter-spacing:.02em; }
+.tv-radar-st { margin-left:auto; font:800 8px/1 var(--font-sans,sans-serif); letter-spacing:.10em;
+  color:var(--tv-dim); border:1px solid var(--tv-line); border-radius:3px; padding:3px 5px; }
+.tv-radar-st.at { color:var(--tv-amb); border-color:rgba(255,201,77,.55); background:rgba(255,201,77,.12); }
+.tv-radar-rg { font:800 8.5px/1 var(--font-sans,sans-serif); letter-spacing:.08em; margin-top:7px; }
+.tv-radar-row.sh .tv-radar-rg { color:var(--tv-red); }
+.tv-radar-row.lg .tv-radar-rg { color:var(--tv-blu); }
+.tv-radar-d { font:700 10px/1 var(--font-mono,monospace); color:var(--tv-mu); margin-top:6px; }
+.tv-radar-quiet { padding:20px 15px; font:600 11px/1.5 var(--font-sans,sans-serif); color:var(--tv-dim); }
+.tv-radar-foot { padding:11px 14px 13px; border-top:1px solid var(--tv-line);
+  font:400 9.5px/1.5 var(--font-sans,sans-serif); color:var(--tv-dim); }
 </style>
 </head>
 <body class="layout-classic">
@@ -2687,6 +2830,14 @@
 
     <div class="ub-spacer" aria-hidden="true"></div>
 
+    <div class="ed-viewtabs" role="tablist" aria-label="View">
+      <button type="button" class="ed-viewtab is-active" id="tab-console" role="tab"
+              aria-selected="true" onclick="edSwitchView('console')">CONSOLE</button>
+      <button type="button" class="ed-viewtab" id="tab-terrain" role="tab"
+              aria-selected="false" onclick="edSwitchView('terrain')">TERRAIN</button>
+    </div>
+    <span class="ub-vdiv" aria-hidden="true"></span>
+
     <button type="button" id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark">☀️ LIGHT</button>
     <span class="ub-vdiv" aria-hidden="true"></span>
 
@@ -2700,6 +2851,62 @@
       </label>
     </div>
   </div>
+
+  <!-- ── TERRAIN VIEW — levels only, no model stack (terrain_engine.py) ── -->
+  <section id="terrain-view" hidden aria-label="Terrain">
+   <div class="tv-shell">
+    <div class="tv-card">
+      <div class="tv-head">
+        <div class="tv-sym" id="tv-sym">—</div>
+        <div class="tv-px" id="tv-px">—</div>
+        <div class="tv-chg" id="tv-chg"></div>
+        <div class="tv-badge">
+          <span class="tv-dot" id="tv-dot"></span>
+          <span class="tv-trust" id="tv-trust">—</span>
+          <div class="tv-stamp" id="tv-stamp">—</div>
+        </div>
+      </div>
+
+      <div class="tv-alertbar">
+        <label><input type="checkbox" id="tv-alerts-on" checked
+               onchange="edAlertsToggle('all', this.checked)"> ALERTS</label>
+        <label><input type="checkbox" id="tv-alerts-voice" checked
+               onchange="edAlertsToggle('voice', this.checked)"> VOICE</label>
+      </div>
+
+      <div class="tv-alert" id="tv-alert"></div>
+
+      <div class="tv-regime" id="tv-regime">
+        <div class="tv-kicker">DEALER POSITIONING</div>
+        <div class="tv-title" id="tv-title">—</div>
+        <div class="tv-sub" id="tv-subline">—</div>
+        <div class="tv-mech" id="tv-mech"></div>
+      </div>
+
+      <div class="tv-ldwrap"><div class="tv-ld" id="tv-ld"></div></div>
+
+      <div class="tv-ds" id="tv-ds"></div>
+
+      <div class="tv-act">
+        <div class="l" id="tv-act-label">POSITION</div>
+        <div class="t" id="tv-act-text">—</div>
+        <div class="n" id="tv-act-note"></div>
+      </div>
+
+      <div class="tv-prov" id="tv-prov"></div>
+    </div>
+
+    <aside class="tv-radar" aria-label="Radar">
+      <div class="tv-radar-head">
+        <span class="tv-radar-title">RADAR</span>
+        <span class="tv-radar-meta" id="tv-radar-meta">—</span>
+      </div>
+      <div class="tv-radar-list" id="tv-radar-list"></div>
+      <div class="tv-radar-foot">Only symbols at or approaching a wall appear.
+        Click a contact to make it active.</div>
+    </aside>
+   </div>
+  </section>
 
   <div class="ub-sse-legacy" aria-hidden="true">
     <span class="sse-dot" id="sse-dot"></span>
@@ -7444,29 +7651,29 @@ function _renderMoneyPathCore(d, fullRenderSource) {
 
   // Level definitions organized into groups
   const KL_PRIMARY = [
-    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444' },
-    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e' },
-    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7' },
-    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9' },
-    { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef' },
-    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316' },
-    { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6' },
-    { key: 'kl_em_lower', strKey: null, label: 'EM Lower', sr: 'em', srLabel: 'EM Floor', proxColor: '#3b82f6' },
+    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444', tip: 'Strike with the largest call gamma. Dealer hedging tends to cap rallies here, acting as resistance.' },
+    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e', tip: 'Strike with the largest put gamma. Dealer hedging tends to cushion selloffs here, acting as support.' },
+    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'Strike of maximum net gamma. Price tends to get pulled toward it into expiration when dealers are long gamma.' },
+    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9', tip: 'High-Volatility Level: the strike with the most total gamma, where dealer hedging activity peaks.' },
+    { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
+    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level. Above it dealers dampen moves (choppy). Below it dealers amplify moves (trending).' },
+    { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6', tip: 'Expected-move ceiling: the options-implied top of the range.' },
+    { key: 'kl_em_lower', strKey: null, label: 'EM Lower', sr: 'em', srLabel: 'EM Floor', proxColor: '#3b82f6', tip: 'Expected-move floor: the options-implied bottom of the range.' },
   ];
 
   const KL_CONDITIONAL = [
-    { key: 'kl_gamma_inflection', strKey: null, label: 'Gamma Inflection', proxColor: '#a78bfa' },
-    { key: 'kl_delta_inflection', strKey: null, label: 'Delta Inflection', proxColor: '#a78bfa' },
-    { key: 'kl_call_delta_wall', strKey: 'kl_call_delta_str', label: 'Delta Wall Call', proxColor: '#f87171' },
-    { key: 'kl_put_delta_wall', strKey: 'kl_put_delta_str', label: 'Delta Wall Put', proxColor: '#4ade80' },
+    { key: 'kl_gamma_inflection', strKey: null, label: 'Gamma Inflection', proxColor: '#a78bfa', tip: 'Strike where per-strike gamma changes fastest, a transition in hedging pressure.' },
+    { key: 'kl_delta_inflection', strKey: null, label: 'Delta Inflection', proxColor: '#a78bfa', tip: 'Strike where dealer delta changes fastest.' },
+    { key: 'kl_call_delta_wall', strKey: 'kl_call_delta_str', label: 'Delta Wall Call', proxColor: '#f87171', tip: 'Strike with the largest call delta exposure.' },
+    { key: 'kl_put_delta_wall', strKey: 'kl_put_delta_str', label: 'Delta Wall Put', proxColor: '#4ade80', tip: 'Strike with the largest put delta exposure.' },
   ];
 
   const KL_REFERENCE = [
-    { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', label: 'OI Wall Call', proxColor: '#aaaaaa' },
-    { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', label: 'OI Wall Put', proxColor: '#aaaaaa' },
-    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Vanna Wall Call (vega/S·IV proxy)', proxColor: '#aaaaaa' },
-    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Vanna Wall Put (vega/S·IV proxy)', proxColor: '#aaaaaa' },
-    { key: 'kl_oi_center', strKey: null, label: 'OI Center', sr: 'pin', srLabel: 'Pin', proxColor: '#aaaaaa' },
+    { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', label: 'OI Wall Call', proxColor: '#aaaaaa', tip: 'Strike with the most call open interest, positioning concentration above.' },
+    { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', label: 'OI Wall Put', proxColor: '#aaaaaa', tip: 'Strike with the most put open interest, positioning concentration below.' },
+    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Vanna Wall Call (vega/S·IV proxy)', proxColor: '#aaaaaa', tip: 'Strike with the largest call vanna: how dealer delta shifts when IV moves. Matters on IV spikes.' },
+    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Vanna Wall Put (vega/S·IV proxy)', proxColor: '#aaaaaa', tip: 'Strike with the largest put vanna. Matters on IV spikes.' },
+    { key: 'kl_oi_center', strKey: null, label: 'OI Center', sr: 'pin', srLabel: 'Pin', proxColor: '#aaaaaa', tip: 'Open-interest-weighted center strike.' },
   ];
 
   function renderKeyLevels(d) {
@@ -7520,7 +7727,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       const sr = level.sr || (isNull ? 'net' : v > (spot||0) ? 'res' : 'sup');
       const srLbl = level.srLabel || (isNull ? '—' : v > (spot||0) ? 'Resistance' : 'Support');
       const pColor = proxColor(v, level);
-      return `<div class="kl-grid">
+      return `<div class="kl-grid" title="${level.tip || ''}">
         <div class="kl-prox" style="background:${pColor}"></div>
         <div class="kl-name${dimmed ? ' dimmed' : ''}">${level.label}</div>
         <div class="kl-price">${isNull ? '—' : v.toFixed(2)}</div>
@@ -7548,7 +7755,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       const regimeSr = regime === 'positive' ? 'bull' : regime === 'negative' ? 'bear' : 'net';
       const mag = d.kl_net_gex_mag || 'negligible';
       const magLbl = mag.charAt(0).toUpperCase() + mag.slice(1);
-      html += `<div class="kl-grid">
+      html += `<div class="kl-grid" title="Aggregate dealer gamma across all strikes. Positive means dealers stabilize (choppy days); negative means they amplify (trending days). Not a price level.">
         <div class="kl-prox" style="background:${regime === 'negative' ? '#ef4444' : regime === 'positive' ? '#22c55e' : 'transparent'}"></div>
         <div class="kl-name">Net GEX</div>
         <div class="kl-price">${gexDisp}</div>
@@ -8080,6 +8287,17 @@ function render(d, fullRenderSource) {
 try { window.render = render; window._renderMoneyPathCore = _renderMoneyPathCore; } catch (e) {}
 
 // ── Liquidity Map ─────────────────────────────────────────────────────────────
+// DISPLAY helper: convert an ET wall-time "HH:MM" to Central "HH:MM".
+// US Eastern is always Central + 1h (both observe DST on the same dates), so the
+// offset is a constant 1h. Used only for operator-facing time labels; the ET
+// session LOGIC below (getETMinutes and the RTH-close countdown) is unchanged.
+function etHHMMtoCT(hhmm) {
+  if (typeof hhmm !== 'string' || hhmm.indexOf(':') < 0) return hhmm;
+  const p = hhmm.split(':');
+  const h = Number(p[0]), m = Number(p[1]);
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+  return String((h + 23) % 24).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
 function getETMinutes() {
   const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hour12: false });
   const parts = formatter.formatToParts(new Date());
@@ -8106,10 +8324,10 @@ function getActiveStageFromET() {
 function getNextCheckpointFromET() {
   const m = getETMinutes();
   const stages = [
-    { name: 'Pre-Market', time: 'Before 09:30', bullets: ['Overnight high/low vs PDH/PDL', 'Fair value from prior POC', 'Key liquidity zones above/below'] },
-    { name: 'Opening Auction', time: '09:45', bullets: ['ORB high/low established', 'VWAP at 09:45', 'Breakout/breakdown triggers'] },
-    { name: 'Value Formation', time: '10:30–11:30', bullets: ['POC/VAH/VAL developing', 'Value migration detection', 'VWAP supply/demand zones'] },
-    { name: 'Positioning', time: '14:00–15:00', bullets: ['Updated daily profile', 'New value area check', 'Afternoon fair value zone'] },
+    { name: 'Pre-Market', time: 'Before 08:30', bullets: ['Overnight high/low vs PDH/PDL', 'Fair value from prior POC', 'Key liquidity zones above/below'] },
+    { name: 'Opening Auction', time: '08:45', bullets: ['ORB high/low established', 'VWAP at 08:45', 'Breakout/breakdown triggers'] },
+    { name: 'Value Formation', time: '09:30–10:30', bullets: ['POC/VAH/VAL developing', 'Value migration detection', 'VWAP supply/demand zones'] },
+    { name: 'Positioning', time: '13:00–14:00', bullets: ['Updated daily profile', 'New value area check', 'Afternoon fair value zone'] },
   ];
   if (m < 570) return stages[0];
   if (m < 630) return stages[1];
@@ -8135,15 +8353,16 @@ function renderLiquidityMap(lm) {
   domIf('lm-snapshot-badge', el => { el.textContent = snapshotType; });
   domIf('lm-session-date', el => { el.textContent = sessionDate; });
   domIf('lm-time-badge', el => {
-    // Operator-facing "now" badge — browser-local display (auto). The market-session
-    // cutoff label (as_of_cutoff_et, below) stays ET.
-    el.textContent = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    // Operator-facing "now" badge — Central Time (operator 2026-07-17, matches the
+    // main wall clock). The as-of cutoff label below is also shown in CT (its source
+    // field as_of_cutoff_et is ET; etHHMMtoCT converts it for display only).
+    el.textContent = new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false, hour: '2-digit', minute: '2-digit' });
   });
   const lmMeta = $('lm-live-meta');
   if (lmMeta) {
     const fusion = lm.fusion != null ? `fusion: ${lm.fusion}` : '';
     const bars = lm.bar_merge != null ? `bars: ${lm.bar_merge}` : '';
-    const asOf = lm.as_of_cutoff_et ? `as-of ${lm.as_of_cutoff_et.slice(11, 16)} ET` : '';
+    const asOf = lm.as_of_cutoff_et ? `as-of ${etHHMMtoCT(lm.as_of_cutoff_et.slice(11, 16))} CT` : '';
     const spotSc = lm.spot_used_for_scoring != null ? `spot ${Number(lm.spot_used_for_scoring).toFixed(2)}` : '';
     lmMeta.textContent = [fusion, bars, asOf, spotSc].filter(Boolean).join(' · ') || 'Live snapshot — load ticker (main refresh) so 1m overlay + cache populate';
   }
@@ -10829,7 +11048,7 @@ function markHardStaleUi() {
 // ── Live clock + stale check ───────────────────────────────────────────────────
 function updateClock() {
   const now = new Date();
-  const tStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const tStr = now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const el = $('sse-clock');
   if (el) el.textContent = tStr;
   const ubT = $('ub-clock-time');
@@ -10837,11 +11056,13 @@ function updateClock() {
   const ubD = $('ub-clock-date');
   if (ubD) {
     try {
-      // DISPLAY clock follows the browser-local timezone (operator preference: auto).
-      // Market-alignment times (RTH session boundaries, candle/outcome data, the
-      // close-countdown voice clock, server-side ts_et) stay ET via time_et.py /
-      // server.py — this is the operator-facing wall clock only, no timeZone override.
+      // DISPLAY clock hardwired to Central Time (operator 2026-07-17: match
+      // ThinkOrSwim / TradingView, both CT). Market-alignment times (RTH session
+      // boundaries, candle/outcome data, the close-countdown voice clock,
+      // server-side ts_et) stay ET via time_et.py / server.py — this is the
+      // operator-facing wall clock only.
       const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Chicago',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -11041,7 +11262,21 @@ setTimeout(() => {
 fetchLoggerStatus();
 setInterval(fetchLoggerStatus, 15000);
 
-/** Voice clock (opt-in): top of each ET hour speaks the time; RTH last minute counts 60…0 (no “seconds”). */
+/** Single speech source for the whole console — voice clock AND terrain alerts.
+ *  `cancel` interrupts whatever is speaking (correct for the close countdown);
+ *  terrain alerts pass cancel=false so a level warning never truncates the clock. */
+window.edSpeak = function edSpeak(text, cancel = true) {
+  if (typeof window.speechSynthesis === 'undefined' || !text) return;
+  try {
+    if (cancel) window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.lang = 'en-US';
+    u.rate = 1.0;
+    window.speechSynthesis.speak(u);
+  } catch (e) { /* speech unavailable — silent, never blocks the UI */ }
+};
+
+/** Voice clock (opt-in): top of each hour speaks the time in CT (operator 2026-07-17); RTH last minute counts 60…0 to the 16:00 ET / 15:00 CT close (countdown math stays ET). */
 (function edVoiceClock() {
   const CB_ID = 'ed-voice-rth-close-countdown';
   const LS_KEY = 'ed_voice_rth_close_last_min';
@@ -11078,23 +11313,19 @@ setInterval(fetchLoggerStatus, 15000);
   }
 
   function formatTopOfHourSpeech() {
+    // Spoken hour in Central (operator preference). The close-countdown timing
+    // (secondsUntilRthCloseEt) stays ET so it still targets the real 16:00 ET close.
     return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
+      timeZone: 'America/Chicago',
       hour: 'numeric',
       hour12: true,
     }).format(new Date());
   }
 
-  function speakVoice(text) {
-    if (typeof window.speechSynthesis === 'undefined' || !text) return;
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'en-US';
-      u.rate = 1.0;
-      window.speechSynthesis.speak(u);
-    } catch (e) { /* ignore */ }
-  }
+  // Speech is shared: the voice clock and the terrain alert engine must never build
+  // two speech paths that can talk over each other. edSpeak() is the single source;
+  // this local alias is kept so the clock code below reads unchanged.
+  const speakVoice = (text) => window.edSpeak(text);
 
   function tickHourlyVoice() {
     if (String(window.__edSessionLabel || '').trim() !== 'RTH') {
@@ -11144,6 +11375,429 @@ setInterval(fetchLoggerStatus, 15000);
   }
   setInterval(tickVoiceClock, 250);
 })();
+
+// ── TERRAIN VIEW ────────────────────────────────────────────────────────────
+// Reads /api/terrain — the levels-only pipeline (terrain_engine.py). Deliberately
+// does NOT touch /api/state: that path runs the full model stack and is why background
+// collection had to be throttled. Terrain must never inherit that cost.
+let edTerrainTimer = null;
+
+function edSwitchView(view) {
+  const isTerrain = view === 'terrain';
+  document.body.classList.toggle('ed-terrain-mode', isTerrain);
+  const tv = document.getElementById('terrain-view');
+  if (tv) tv.hidden = !isTerrain;
+  const tc = document.getElementById('tab-console'), tt = document.getElementById('tab-terrain');
+  if (tc) { tc.classList.toggle('is-active', !isTerrain); tc.setAttribute('aria-selected', String(!isTerrain)); }
+  if (tt) { tt.classList.toggle('is-active', isTerrain);  tt.setAttribute('aria-selected', String(isTerrain)); }
+  if (edTerrainTimer) { clearInterval(edTerrainTimer); edTerrainTimer = null; }
+  if (isTerrain) { edLoadTerrain(); edTerrainTimer = setInterval(edLoadTerrain, 15000); }
+  edStartRadar(isTerrain);
+}
+
+function edPct(lvl, spot) {
+  if (lvl == null || !spot) return '';
+  const p = (lvl - spot) / spot * 100;
+  return (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
+}
+
+async function edLoadTerrain() {
+  const tk = (typeof activeTicker === 'string' && activeTicker) ? activeTicker : 'SPY';
+  let d;
+  try {
+    const r = await fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' });
+    d = await r.json();
+  } catch (e) {
+    const t = document.getElementById('tv-title');
+    if (t) t.textContent = 'TERRAIN UNREACHABLE — STAND ASIDE';
+    return;
+  }
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+  set('tv-sym', d.ticker || tk);
+  set('tv-px', d.spot != null ? Number(d.spot).toFixed(2) : '—');
+  set('tv-chg', '');
+
+  const trusted = d.confidence === 'TRUSTED';
+  const dot = document.getElementById('tv-dot'), tr = document.getElementById('tv-trust');
+  if (dot) dot.className = 'tv-dot' + (trusted ? '' : ' bad');
+  if (tr) { tr.className = 'tv-trust' + (trusted ? '' : ' bad'); tr.textContent = d.confidence || '—'; }
+  const clock = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
+  set('tv-stamp', clock + ' CT · ' + (d.contracts_used || 0).toLocaleString() + ' contracts');
+
+  const isLong = d.regime === 'LONG_GAMMA_CHOP', isShort = d.regime === 'SHORT_GAMMA_TREND';
+  const rg = document.getElementById('tv-regime');
+  if (rg) rg.className = 'tv-regime' + (isLong ? ' long' : isShort ? ' short' : '');
+  set('tv-title', isLong ? 'LONG GAMMA · CHOP' : isShort ? 'SHORT GAMMA · TREND' : 'TERRAIN UNAVAILABLE');
+  set('tv-subline', d.headline || '—');
+  set('tv-mech', (d.lines && d.lines[0]) ? d.lines[0] : '');
+  set('tv-act-text', (d.lines && d.lines.length) ? d.lines[d.lines.length - 1] : '—');
+  const midbox = (d.lines || []).some(l => /mid-box/i.test(l));
+  set('tv-act-label', midbox ? 'POSITION · MID-BOX' : 'POSITION');
+  set('tv-act-note', trusted ? '' : 'Levels are not trustworthy — no posture is issued.');
+
+  edRenderLadder(d);
+  edRenderDist(d);
+  edCheckTerrainAlerts(d);
+
+  const pv = document.getElementById('tv-prov');
+  if (pv) {
+    let span = '—';
+    const fd = d.flip_diag || {};
+    if (fd.span_below_pct != null && fd.span_above_pct != null) {
+      span = '±' + ((Math.abs(fd.span_below_pct) + Math.abs(fd.span_above_pct)) / 2 * 100).toFixed(1) + '%';
+    }
+    pv.innerHTML =
+      '<span><b>' + (d.strikes_used || 0) + '</b> strikes</span>' +
+      '<span><b>' + (d.contracts_used || 0).toLocaleString() + '</b> contracts</span>' +
+      '<span>dollarized <b>' + (d.dollarized ? 'yes' : 'no') + '</b></span>' +
+      '<span>chain span <b>' + span + '</b></span>' +
+      '<span>schema <b>v' + (d.schema_version != null ? d.schema_version : '?') + '</b></span>' +
+      '<span>refresh <b>60s</b></span>';
+  }
+}
+
+function edRenderLadder(d) {
+  const el = document.getElementById('tv-ld');
+  if (!el) return;
+  el.textContent = '';
+  const spot = d.spot;
+
+  // Group levels that share a strike so labels can never collide (the 755.00
+  // CALL WALL / CALL CHARM overlap reported 2026-07-19).
+  const raw = [
+    { t: 'CALL WALL',  v: d.call_wall,       c: 'tv-c-call'  },
+    { t: 'CALL CHARM', v: d.call_charm_wall, c: 'tv-c-charm' },
+    { t: 'GAMMA FLIP · REGIME LINE', v: d.gamma_flip, c: 'tv-c-flip', flip: true },
+    { t: 'HVL',        v: d.hvl,             c: 'tv-c-charm' },
+    { t: 'MAX PAIN',   v: d.max_pain,        c: 'tv-c-pin'   },
+    { t: 'GAMMA PIN',  v: d.gamma_pin,       c: 'tv-c-pin'   },
+    { t: 'PUT WALL',   v: d.put_wall,        c: 'tv-c-put'   },
+    { t: 'PUT CHARM',  v: d.put_charm_wall,  c: 'tv-c-charm' }
+  ].filter(m => m.v != null && isFinite(m.v));
+  if (spot != null) raw.push({ t: '◆ SPOT', v: spot, c: 'tv-c-spot', spot: true });
+
+  if (!raw.length || !spot) {
+    const p = document.createElement('div');
+    p.style.cssText = 'padding:22px;color:#63768f;font:600 13px/1.5 sans-serif';
+    p.textContent = 'No trustworthy levels to plot. Stand aside.';
+    el.appendChild(p);
+    return;
+  }
+
+  const groups = new Map();
+  for (const m of raw) {
+    const k = Number(m.v).toFixed(2);
+    if (!groups.has(k)) groups.set(k, { v: Number(m.v), items: [] });
+    groups.get(k).items.push(m);
+  }
+
+  const vals = Array.from(groups.values()).map(g => g.v);
+  let lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  const pad = Math.max((hi - lo) * 0.14, spot * 0.001);
+  lo -= pad; hi += pad;
+  const H = el.clientHeight || 430;
+  const y = v => Math.round(((hi - v) / (hi - lo)) * (H - 40)) + 20;
+
+  if (d.gamma_flip != null) {
+    const fy = y(d.gamma_flip);
+    const zones = [['chop', 'top:0;height:' + fy + 'px'], ['trend', 'top:' + fy + 'px;bottom:0']];
+    for (const z of zones) {
+      const zone = document.createElement('div');
+      zone.className = 'tv-zone ' + z[0]; zone.style.cssText = z[1]; el.appendChild(zone);
+      const bar = document.createElement('div');
+      bar.className = 'tv-zbar ' + z[0]; bar.style.cssText = z[1]; el.appendChild(bar);
+    }
+    const up = document.createElement('div');
+    up.className = 'tv-ztag chop';
+    up.innerHTML = '▲ ABOVE FLIP <small>· dealers dampen · chop · fade edges</small>';
+    el.appendChild(up);
+    const dn = document.createElement('div');
+    dn.className = 'tv-ztag trend';
+    dn.innerHTML = '▼ BELOW FLIP <small>· dealers amplify · trend · follow breaks</small>';
+    el.appendChild(dn);
+  }
+
+  const ordered = Array.from(groups.values()).sort((a, b) => b.v - a.v);
+  for (const g of ordered) {
+    const isSpot = g.items.some(i => i.spot), isFlip = g.items.some(i => i.flip);
+    const lead = g.items.find(i => i.spot) || g.items.find(i => i.flip) || g.items[0];
+    const row = document.createElement('div');
+    row.className = 'tv-lv ' + lead.c + (isSpot ? ' spotline' : '') + (isFlip ? ' flipline' : '');
+    row.style.top = y(g.v) + 'px';
+    const rule = document.createElement('div'); rule.className = 'tv-rule';
+    const info = document.createElement('div'); info.className = 'tv-info';
+    const tags = document.createElement('div'); tags.className = 'tv-tags';
+    for (const it of g.items) {
+      const chip = document.createElement('span');
+      chip.className = 'tv-tag ' + it.c;
+      chip.textContent = it.t;
+      tags.appendChild(chip);
+    }
+    const pr = document.createElement('div'); pr.className = 'tv-price'; pr.textContent = g.v.toFixed(2);
+    const dl = document.createElement('div'); dl.className = 'tv-delta';
+    dl.textContent = isSpot ? 'mid-box' : edPct(g.v, spot);
+    info.appendChild(tags); info.appendChild(pr); info.appendChild(dl);
+    row.appendChild(rule); row.appendChild(info);
+    el.appendChild(row);
+  }
+}
+
+function edRenderDist(d) {
+  const el = document.getElementById('tv-ds');
+  if (!el) return;
+  el.textContent = '';
+  const spot = d.spot;
+  const cell = (label, val, sub, colour, pct) => {
+    const c = document.createElement('div');
+    c.className = 'tv-dcell';
+    c.innerHTML = '<div class="l">' + label + '</div>' +
+      '<div class="v" style="color:' + colour + '">' + val + '</div>' +
+      '<div class="s">' + sub + '</div>' +
+      '<div class="tv-meter"><i style="width:' + pct + '%;background:' + colour + '"></i></div>';
+    el.appendChild(c);
+  };
+  const dist = v => (v == null || spot == null) ? null : v - spot;
+  const pw = dist(d.put_wall), cw = dist(d.call_wall), fl = dist(d.gamma_flip);
+  const box = (d.call_wall != null && d.put_wall != null) ? d.call_wall - d.put_wall : null;
+  const norm = v => v == null ? 0 : Math.min(100, Math.abs(v / spot * 100) / 2 * 100);
+
+  cell('TO PUT WALL', pw != null ? pw.toFixed(2) : '—',
+       pw != null ? edPct(d.put_wall, spot) : '—', '#3ee089', norm(pw));
+  cell('TO CALL WALL', cw != null ? '+' + cw.toFixed(2) : '—',
+       cw != null ? edPct(d.call_wall, spot) : '—', '#ff6060', norm(cw));
+  cell('TO FLIP', fl != null ? (fl >= 0 ? '+' : '') + fl.toFixed(2) : '—',
+       'regime line', '#eef4fb', norm(fl));
+  cell('BOX WIDTH', box != null ? box.toFixed(2) : '—',
+       box != null ? (box / spot * 100).toFixed(2) + '%' : '—', '#63768f',
+       box != null ? Math.min(100, box / spot * 100 / 3 * 100) : 0);
+}
+
+
+// ── TERRAIN ALERTS ──────────────────────────────────────────────────────────
+// Flash + speech for the active ticker AND the radar.
+//
+// Discipline (operator 2026-07-19): the terrain NEVER speaks mid-box. An alert that
+// fires while you have no edge trains you to ignore alerts. Only four events talk:
+//   approaching a wall · wall broken with acceptance · regime flip · confidence lost
+//
+// Every alert is edge-triggered and de-duplicated: a state must CHANGE to fire, and the
+// same state cannot re-fire inside the cooldown. Speech goes through window.edSpeak —
+// the same single source the voice clock uses, so nothing talks over anything else.
+
+const ED_ALERT_EDGE_PCT = 0.0015;    // within 0.15% of a wall = "at the edge"
+const ED_ALERT_BREAK_PCT = 0.0010;   // 0.10% beyond a wall = acceptance, not a wick
+const ED_ALERT_COOLDOWN_MS = 120000; // same alert cannot repeat inside 2 minutes
+
+const edAlertState = {};   // ticker -> { key: lastFiredMs }
+let edAlertsEnabled = true;
+let edAlertsVoice = true;
+
+function edAlertsToggle(kind, on) {
+  if (kind === 'all') edAlertsEnabled = on;
+  if (kind === 'voice') edAlertsVoice = on;
+}
+
+function edAlertShouldFire(ticker, key) {
+  const now = Date.now();
+  const st = edAlertState[ticker] || (edAlertState[ticker] = {});
+  if (st[key] && (now - st[key]) < ED_ALERT_COOLDOWN_MS) return false;
+  st[key] = now;
+  return true;
+}
+
+function edFlash(kind) {
+  const card = document.querySelector('#terrain-view .tv-card');
+  if (!card) return;
+  card.classList.remove('tv-flash-warn', 'tv-flash-break', 'tv-flash-regime', 'tv-flash-lost');
+  void card.offsetWidth;                       // restart the animation
+  card.classList.add('tv-flash-' + kind);
+  setTimeout(() => card.classList.remove('tv-flash-' + kind), 2600);
+}
+
+function edAlertBanner(text, kind) {
+  const el = document.getElementById('tv-alert');
+  if (!el) return;
+  el.className = 'tv-alert on ' + kind;
+  el.textContent = text;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = 'tv-alert'; }, 12000);
+}
+
+function edFireAlert(ticker, key, kind, spoken, banner) {
+  if (!edAlertsEnabled) return;
+  if (!edAlertShouldFire(ticker, key)) return;
+  edFlash(kind);
+  edAlertBanner(banner, kind);
+  if (edAlertsVoice && window.edSpeak) window.edSpeak(spoken, false);
+}
+
+/** Active-ticker alerts. `d` is the /api/terrain payload. */
+function edCheckTerrainAlerts(d) {
+  if (!d || !d.ticker) return;
+  const tk = d.ticker, spot = d.spot;
+  const prev = edAlertState[tk] || (edAlertState[tk] = {});
+
+  // 1. confidence lost — the most important alert we have
+  if (prev._conf && prev._conf === 'TRUSTED' && d.confidence !== 'TRUSTED') {
+    edFireAlert(tk, 'lost', 'lost',
+      `${tk}. Terrain no longer trustworthy. Stand aside.`,
+      `⚠ ${tk} — terrain no longer trustworthy (${d.confidence}). Stand aside.`);
+  }
+  prev._conf = d.confidence;
+
+  // 2. regime flip
+  if (prev._regime && prev._regime !== d.regime &&
+      (d.regime === 'LONG_GAMMA_CHOP' || d.regime === 'SHORT_GAMMA_TREND')) {
+    const isLong = d.regime === 'LONG_GAMMA_CHOP';
+    edFireAlert(tk, 'regime:' + d.regime, 'regime',
+      `${tk}. Regime change. Now ${isLong ? 'long gamma. Fades work, breakouts fail.'
+                                          : 'short gamma. Breaks run, fading gets run over.'} Reverse your posture.`,
+      `⟳ ${tk} REGIME CHANGE → ${isLong ? 'LONG GAMMA · fade the edges' : 'SHORT GAMMA · follow breaks'}`);
+  }
+  prev._regime = d.regime;
+
+  // Everything below requires trustworthy levels — never alert off a level we distrust.
+  if (d.confidence !== 'TRUSTED' || spot == null) return;
+
+  const walls = [
+    { name: 'call wall', v: d.call_wall, side: 'up' },
+    { name: 'put wall',  v: d.put_wall,  side: 'down' }
+  ].filter(w => w.v != null && isFinite(w.v));
+
+  for (const w of walls) {
+    const dist = (w.v - spot) / spot;
+    const beyond = w.side === 'up' ? dist < -ED_ALERT_BREAK_PCT : dist > ED_ALERT_BREAK_PCT;
+    const near = Math.abs(dist) <= ED_ALERT_EDGE_PCT;
+    const shortGamma = d.regime === 'SHORT_GAMMA_TREND';
+
+    // 3. break with acceptance
+    if (beyond) {
+      edFireAlert(tk, 'break:' + w.name, 'break',
+        `${tk}. ${w.name} ${w.v.toFixed(2)} broken. ${shortGamma
+          ? 'Short gamma. Expect it to run.' : 'Long gamma. Expect it to be sold back.'}`,
+        `▲ ${tk} — ${w.name.toUpperCase()} ${w.v.toFixed(2)} BROKEN · ${shortGamma
+          ? 'short gamma: expect continuation' : 'long gamma: expect rejection'}`);
+      continue;
+    }
+
+    // 4. approaching a wall — the only "get ready" alert
+    if (near) {
+      edFireAlert(tk, 'near:' + w.name, 'warn',
+        `${tk} approaching ${w.name} ${w.v.toFixed(2)}. ${shortGamma
+          ? 'Short gamma. Expect the break to run, not reverse.'
+          : 'Long gamma. Expect the fade to hold.'}`,
+        `● ${tk} — approaching ${w.name.toUpperCase()} ${w.v.toFixed(2)} · wait for the reaction, do not anticipate`);
+    }
+  }
+}
+
+/** Radar alerts across every ticker. `rows` is the /api/terrain/radar payload. */
+function edCheckRadarAlerts(rows) {
+  if (!edAlertsEnabled || !Array.isArray(rows)) return;
+  for (const r of rows) {
+    if (!r || r.confidence !== 'TRUSTED' || r.spot == null) continue;
+    const tk = r.ticker;
+    const prev = edAlertState[tk] || (edAlertState[tk] = {});
+    if (prev._rregime && prev._rregime !== r.regime &&
+        (r.regime === 'LONG_GAMMA_CHOP' || r.regime === 'SHORT_GAMMA_TREND')) {
+      edFireAlert(tk, 'radar:regime:' + r.regime, 'regime',
+        `${tk} flipped to ${r.regime === 'LONG_GAMMA_CHOP' ? 'long gamma' : 'short gamma'}.`,
+        `⟳ RADAR — ${tk} flipped to ${r.regime === 'LONG_GAMMA_CHOP' ? 'LONG GAMMA' : 'SHORT GAMMA'}`);
+    }
+    prev._rregime = r.regime;
+
+    // Radar speaks ONLY for a ticker arriving at a wall. It is a scanner, not a narrator.
+    const near = [r.call_wall, r.put_wall]
+      .filter(v => v != null && isFinite(v))
+      .some(v => Math.abs((v - r.spot) / r.spot) <= ED_ALERT_EDGE_PCT);
+    if (near) {
+      edFireAlert(tk, 'radar:wall', 'warn',
+        `${tk} is at a wall.`,
+        `● RADAR — ${tk} arrived at a wall`);
+    }
+  }
+}
+
+
+// ── RADAR ───────────────────────────────────────────────────────────────────
+// Air-traffic control, not a watchlist: a ticker earns a slot on the scope only by
+// doing something (at a wall / approaching one). Quiet mid-box symbols stay invisible.
+// Untrusted tickers are never ranked as if their levels were real — they are counted as
+// blind spots, which is information in itself.
+let edRadarTimer = null;
+
+async function edLoadRadar() {
+  const el = document.getElementById('tv-radar-list');
+  const meta = document.getElementById('tv-radar-meta');
+  if (!el) return;
+  let d;
+  try {
+    const r = await fetch('/api/terrain/radar?limit=14', { cache: 'no-store' });
+    d = await r.json();
+  } catch (e) {
+    if (meta) meta.textContent = 'radar unreachable';
+    return;
+  }
+
+  if (meta) {
+    meta.textContent = d.tracked + ' tracked · ' + d.scanned + ' scanned' +
+      (d.blind_spots ? ' · ' + d.blind_spots + ' blind' : '');
+  }
+
+  el.textContent = '';
+  if (!d.rows || !d.rows.length) {
+    const q = document.createElement('div');
+    q.className = 'tv-radar-quiet';
+    q.textContent = 'Airspace clear — nothing at a wall.';
+    el.appendChild(q);
+  }
+
+  for (const r of (d.rows || [])) {
+    const isLong = r.regime === 'LONG_GAMMA_CHOP';
+    const atWall = r.status === 'AT WALL';
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'tv-radar-row ' + (isLong ? 'lg' : 'sh') + (atWall ? ' hot' : '');
+    row.title = r.ticker + ' — ' + r.status + ' ' + r.wall_name + ' ' + r.wall.toFixed(2);
+    // clicking a contact makes it the active ticker
+    row.onclick = () => {
+      if (typeof setActiveTicker === 'function') setActiveTicker(r.ticker);
+      else if (typeof activeTicker !== 'undefined') { window.activeTicker = r.ticker; }
+      edLoadTerrain();
+    };
+
+    const top = document.createElement('div');
+    top.className = 'tv-radar-top';
+    const tk = document.createElement('span'); tk.className = 'tv-radar-tk'; tk.textContent = r.ticker;
+    const st = document.createElement('span');
+    st.className = 'tv-radar-st' + (atWall ? ' at' : '');
+    st.textContent = atWall ? 'AT WALL' : 'APPROACH';
+    top.appendChild(tk); top.appendChild(st);
+
+    const mid = document.createElement('div');
+    mid.className = 'tv-radar-rg';
+    mid.textContent = isLong ? 'LONG · fade edges' : 'SHORT · follow breaks';
+
+    const bot = document.createElement('div');
+    bot.className = 'tv-radar-d';
+    const sign = r.distance_pct >= 0 ? '+' : '';
+    bot.textContent = r.wall_name.toUpperCase() + ' ' + r.wall.toFixed(2) +
+                      '  ' + sign + r.distance_pct.toFixed(2) + '%';
+
+    row.appendChild(top); row.appendChild(mid); row.appendChild(bot);
+    el.appendChild(row);
+  }
+
+  // radar alerts run off the same payload the scope draws from
+  if (typeof edCheckRadarAlerts === 'function') edCheckRadarAlerts(d.rows || []);
+}
+
+function edStartRadar(on) {
+  if (edRadarTimer) { clearInterval(edRadarTimer); edRadarTimer = null; }
+  if (on) { edLoadRadar(); edRadarTimer = setInterval(edLoadRadar, 20000); }
+}
+
 </script>
 </body>
 </html>

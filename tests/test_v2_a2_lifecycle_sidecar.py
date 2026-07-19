@@ -13,6 +13,7 @@ def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int
 
 
 def _winner() -> dict:
+    # institutional-synthetic-ok: v2 lifecycle-sidecar test needs a controlled winner row.
     return {
         "expression": "500 CALL",
         "strike": 500.0,

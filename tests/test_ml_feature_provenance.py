@@ -583,9 +583,12 @@ def test_db_and_live_adapters_produce_identical_golden_row():
     assert db_row == live_row == _GOLDEN_EXPECTED
     # column order identical and contract-ordered on both paths
     assert list(db_row) == list(live_row)
-    # dtype expectations: floats stay float, categoricals stay str, no numpy leakage
+    # dtype expectations: floats stay float, categoricals stay str, no numpy leakage.
+    # EXACT type, not isinstance: numpy.float64 SUBCLASSES float, so isinstance() returns
+    # True for exactly the leakage this assertion exists to catch (verified 2026-07-19:
+    # isinstance(np.float64(1.0), float) is True, type(...) is float is False).
     for k, v in db_row.items():
-        assert v is None or isinstance(v, (float, str)), (k, type(v))
+        assert v is None or type(v) in (float, str), (k, type(v))
 
 
 def test_negative_spread_missingness_parity_between_train_and_serve():

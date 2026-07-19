@@ -7,6 +7,7 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Dict, List
 
@@ -667,81 +668,244 @@ def parity_f_minus_spot_from_contracts(
     return float(sum(resids) / len(resids))
 
 
-# ── Gamma Flip — zero-crossing of cumulative net GEX ─────────────────────────
+# ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
+# CANONICAL method (FIND-GAMMA-FLIP-METHOD-V1). Proven 2026-07-19 against a real SPY
+# reference chain: the cumulative-sum approach does NOT reproduce the profile
+# (corr 0.086, never crosses zero, 2.19e9 divergence). Only recomputing every contract's
+# gamma at each candidate price reproduces the published flip (SPY 745.61, SKHY 124.44).
 
-def compute_gamma_flip(exposures_by_strike: Dict[float, dict], spot: float) -> float | None:
+_SQRT_2PI = math.sqrt(2.0 * math.pi)
+
+
+def _norm_pdf(x: float) -> float:
+    return math.exp(-0.5 * x * x) / _SQRT_2PI
+
+
+def bs_gamma(spot: float, strike: float, t_years: float, sigma: float,
+             rate: float = 0.0, div: float = 0.0) -> float | None:
+    """Black-Scholes gamma per share (identical for calls and puts)."""
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    try:
+        vt = sigma * math.sqrt(t_years)
+        d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
+        g = _norm_pdf(d1) / (spot * vt)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return g if math.isfinite(g) else None
+
+
+def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
+             rate: float = 0.0) -> float | None:
+    """Black-Scholes charm (dDelta/dt, calendar time) per share, q=0.
+
+    Textbook (Haug) charm is dDelta/dT = -phi(d1) * [ r/(sigma*sqrt(T)) - d2/(2T) ].
+    Calendar-time charm is the negative of that. The r/(sigma*sqrt(T)) term is retained
+    here (unlike compute_net_charm, which drops it for 0DTE stability) and guarded
+    instead by the t_years floor applied upstream, so per-strike charm stays exact.
+
+    Identical for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant
+    vanishes under differentiation with respect to time.
     """
-    Find the price level where net gamma exposure crosses zero.
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    try:
+        vt = sigma * math.sqrt(t_years)
+        d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / vt
+        d2 = d1 - vt
+        # dDelta/dt (calendar time). Sign verified against a finite-difference
+        # derivative of the BS delta -- an earlier draft returned the negation and was
+        # caught by that check (exact magnitude, inverted sign) before shipping.
+        c = -_norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return c if math.isfinite(c) else None
 
-    Above gamma flip → positive gamma → dealers dampen movement (mean reversion).
-    Below gamma flip → negative gamma → dealers amplify movement (acceleration).
 
-    Method: Walk strikes near spot. Per-strike net_gamma = call_gamma - put_gamma.
-    Below spot, puts dominate (negative). Above spot, calls dominate (positive).
-    Find the zero-crossing and interpolate.
+def compute_charm_by_strike(contracts: List[dict], spot: float) -> Dict[float, dict]:
+    """Per-strike dealer CHARM exposure, in delta-shares per day.
 
-    Falls back to dollarized net_gex_1pct if net_gamma has no crossing.
+    Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
+    VannaCharm all publish charm-by-strike alongside GEX), and charm pressure is the
+    mechanism attributed to the end-of-day pin: dealers bleeding delta into the close.
 
-    Returns strike price of the flip, or None if no crossing found.
+    Convention matches net GEX exactly (+call / -put), so a positive net value means the
+    dealer book's delta decay creates BUYING pressure at that strike.
+
+    Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
     """
-    if not exposures_by_strike or not spot:
-        return None
-
-    strikes = sorted(float(k) for k in exposures_by_strike.keys())
-    if len(strikes) < 3:
-        return None
-
-    # Try per-strike net_gamma first (always available, no spot dependency)
-    def _find_crossing(field: str) -> float | None:
-        prev_strike = None
-        prev_val = None
-        for strike in strikes:
-            bucket = exposures_by_strike.get(strike, {})
-            val = bucket_metric(bucket, field)
-            if val is None:
-                continue
-            if val == 0:
-                continue
-            if prev_val is not None and prev_val * val < 0:
-                denom = abs(val - prev_val)
-                if denom > 0:
-                    frac = abs(prev_val) / denom
-                    flip = prev_strike + frac * (strike - prev_strike)
-                    return round(flip, 2)
-            prev_strike = strike
-            prev_val = val
-        return None
-
-    # Institutional: prefer per-strike net_gex_1pct (dollar GEX) when populated.
-    if exposures_have_dollar_gex(exposures_by_strike):
-        result = _find_crossing("net_gex_1pct")
-        if result is not None:
-            return result
-
-    # Fallback: per-strike net_gamma (γ×OI×mult)
-    result = _find_crossing("net_gamma")
-    if result is not None:
-        return result
-
-    # Last resort: cumulative net_gex_1pct along strike chain
-    cum_gex = 0.0
-    prev_strike = None
-    prev_cum = None
-    for strike in strikes:
-        bucket = exposures_by_strike.get(strike, {})
-        net_gex = bucket_metric(bucket, "net_gex_1pct")
-        if net_gex is None:
+    out: Dict[float, dict] = {}
+    if not contracts or not spot or spot <= 0:
+        return out
+    for ct in contracts:
+        parsed = _contract_inputs(ct)
+        if parsed is None:
             continue
-        cum_gex += net_gex
-        if prev_cum is not None and prev_cum * cum_gex < 0:
-            if abs(cum_gex - prev_cum) > 0:
-                frac = abs(prev_cum) / abs(cum_gex - prev_cum)
-                flip = prev_strike + frac * (strike - prev_strike)
-                return round(flip, 2)
-        prev_strike = strike
-        prev_cum = cum_gex
+        strike, oi, mult, t_years, sigma, sign = parsed
+        c = bs_charm(float(spot), strike, t_years, sigma)
+        if c is None:
+            continue
+        exposure = c * oi * mult / 365.0
+        b = out.setdefault(strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
+        if sign > 0:
+            b["call_charm"] += exposure
+        else:
+            b["put_charm"] += exposure
+        b["net_charm"] = b["call_charm"] - b["put_charm"]
+    return out
 
+
+def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
+                            ) -> tuple[float | None, float | None]:
+    """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side
+    charm exposure. These are the strikes whose delta decay exerts the most mechanical
+    pressure into the close."""
+    if not charm_by_strike:
+        return None, None
+    call_k = max(charm_by_strike, key=lambda k: abs(charm_by_strike[k]["call_charm"]))
+    put_k = max(charm_by_strike, key=lambda k: abs(charm_by_strike[k]["put_charm"]))
+    cw = call_k if abs(charm_by_strike[call_k]["call_charm"]) > 0 else None
+    pw = put_k if abs(charm_by_strike[put_k]["put_charm"]) > 0 else None
+    return (round(cw, 2) if cw is not None else None,
+            round(pw, 2) if pw is not None else None)
+
+
+def _contract_inputs(ct: dict) -> tuple[float, float, float, float, float, int] | None:
+    """(strike, oi, mult, t_years, sigma, sign) or None when unusable."""
+    from math_exposure_core import _f, schwab_iv_to_sigma
+
+    strike = _f(ct.get("strikePrice"))
+    oi = _f(ct.get("openInterest"))
+    mult = _f(ct.get("multiplier"))
+    side = str(ct.get("putCall") or "").upper()
+    if strike is None or strike <= 0 or oi is None or oi <= 0:
+        return None
+    if mult is None or mult <= 0 or side not in ("CALL", "PUT"):
+        return None
+    # schwab_iv_to_sigma already rejects None/non-positive, so no separate iv guard.
+    sigma = schwab_iv_to_sigma(_f(ct.get("volatility")))  # single source: math_exposure_core
+    if sigma is None or sigma <= 0:
+        return None
+    dte = _f(ct.get("daysToExpiration"))
+    if dte is None or dte < 0:
+        return None
+    t_years = max(float(dte), 0.5) / 365.0  # intraday floor so 0DTE stays finite
+    return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
+
+
+def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float = 0.15,
+                          steps: int = 240) -> List[tuple[float, float]]:
+    """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
+
+    Dealer convention +call/-put. Returns [(price, total_gex)] ascending. The zero
+    crossing of this curve is the gamma flip.
+    """
+    if not contracts or spot is None or spot <= 0:
+        return []
+    parsed = [p for p in (_contract_inputs(c) for c in contracts if isinstance(c, dict)) if p]
+    if not parsed:
+        return []
+    lo, hi = spot * (1.0 - span_pct), spot * (1.0 + span_pct)
+    steps = max(int(steps), 2)
+    out: List[tuple[float, float]] = []
+    for i in range(steps + 1):
+        s = lo + (hi - lo) * i / steps
+        total = 0.0
+        for strike, oi, mult, t_years, sigma, sign in parsed:
+            g = bs_gamma(s, strike, t_years, sigma)
+            if g is None:
+                continue
+            total += sign * g * oi * mult * s * s * 0.01
+        out.append((round(s, 4), total))
+    return out
+
+
+def gamma_flip_from_profile(profile: List[tuple[float, float]]) -> float | None:
+    """Interpolated price where the profile crosses from negative to positive."""
+    for i in range(1, len(profile)):
+        (p0, v0), (p1, v1) = profile[i - 1], profile[i]
+        if v0 < 0 <= v1 and v1 != v0:
+            return round(p0 + (p1 - p0) * (-v0) / (v1 - v0), 2)
     return None
+
+
+GAMMA_FLIP_TRUSTED = "TRUSTED"
+GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
+GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
+GAMMA_FLIP_MIN_SPAN_PCT = 0.05  # chain must reach +/-5% around spot before the flip is trusted
+
+
+def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | None:
+    """Net dealer gamma at `price`, linearly interpolated from the profile.
+
+    This -- not the flip -- is what determines the regime: positive means dealers are net
+    long gamma there and will dampen moves; negative means they amplify. The flip is
+    simply where this value crosses zero, and a chain need not contain such a crossing.
+    """
+    if not profile or price is None:
+        return None
+    pts = sorted(profile)
+    if price <= pts[0][0]:
+        return pts[0][1]
+    if price >= pts[-1][0]:
+        return pts[-1][1]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if x0 <= price <= x1:
+            if x1 == x0:
+                return y0
+            t = (price - x0) / (x1 - x0)
+            return y0 + t * (y1 - y0)
+    return None
+
+
+def compute_gamma_flip_v2(
+    contracts: List[dict], spot: float, *, min_span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT
+) -> tuple[float | None, str, dict]:
+    """Canonical gamma flip (profile zero-crossing) plus an honest confidence verdict.
+
+    Returns (flip | None, confidence, diagnostics). A chain that does not span at least
+    +/-min_span_pct around spot is reported LOW_CONFIDENCE_NARROW_CHAIN: a narrow chain
+    provably misplaces the flip (measured 2026-07-19 - a 40-contract chain returned 770.35
+    against a full-chain reference of 745.61, a 3.6% error). Never present a narrow-chain
+    flip as if it were trustworthy.
+    """
+    if not contracts or not spot or spot <= 0:
+        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
+    strikes = [k for k in (_f(c.get("strikePrice")) for c in contracts if isinstance(c, dict)) if k]
+    if not strikes:
+        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_strikes"}
+    lo, hi = min(strikes), max(strikes)
+    diag = {
+        "strike_lo": lo,
+        "strike_hi": hi,
+        "n_strikes": len(set(strikes)),
+        "span_below_pct": round((spot - lo) / spot, 4),
+        "span_above_pct": round((hi - spot) / spot, 4),
+        "min_span_pct": min_span_pct,
+    }
+    covers = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
+    profile = compute_gamma_profile(contracts, spot)
+    flip = gamma_flip_from_profile(profile)
+
+    # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where
+    # that sign changes -- it is a landmark, not a prerequisite.
+    #
+    # Corrected 2026-07-19 (RC-11): a profile that never crosses zero inside the window
+    # used to return UNAVAILABLE, so 20 of 51 tickers displayed "TERRAIN UNAVAILABLE --
+    # STAND ASIDE" while their dealer gamma was unambiguously one-signed at every price
+    # (e.g. TSM all-negative, MET all-positive across a wide chain). No crossing nearby
+    # means there is no regime boundary to worry about, which is MORE certain than a flip
+    # sitting next to spot -- not less. Only the flip level is unknown, never the regime.
+    at_spot = gamma_at_price(profile, spot)
+    diag = {**diag, "gamma_at_spot": at_spot,
+            "no_crossing_in_window": flip is None and at_spot is not None}
+
+    if at_spot is None:
+        return None, GAMMA_FLIP_UNAVAILABLE, {**diag, "reason": "empty_profile"}
+    if flip is None:
+        # regime is knowable; the flip level is not
+        return None, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW),                {**diag, "reason": "no_zero_crossing_regime_still_defined"}
+    return flip, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW), diag
 
 
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────

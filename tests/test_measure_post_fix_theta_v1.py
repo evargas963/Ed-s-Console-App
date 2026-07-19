@@ -12,6 +12,8 @@ from tools.measure_post_fix_theta_v1 import run_measure
 
 
 def _mk_db(path: Path) -> None:
+    # institutional-synthetic-ok: theta-classification measurement needs a chain with
+    # controlled theta states (numeric / null / missing key) to assert exact bucket rates.
     conn = sqlite3.connect(str(path))
     conn.execute(
         """
@@ -104,6 +106,8 @@ def test_classify_theta_buckets_minus_999_as_present_sentinel() -> None:
 
 def test_run_measure_separates_sentinel_from_numeric_theta(tmp_path: Path) -> None:
     """Mixed chain (real, sentinel, null, missing) must report distinct rates per bucket."""
+    # institutional-synthetic-ok: needs one contract per theta state (numeric/-999
+    # sentinel/null/missing) to assert 1/4 each — not sourceable from real data.
     db = tmp_path / "t_sentinel.db"
     conn = sqlite3.connect(str(db))
     conn.execute(

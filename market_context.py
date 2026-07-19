@@ -270,6 +270,28 @@ def _dot_color(chg_pct: Optional[float]) -> str:
     return "#dc2626"                          # strong red
 
 
+def _last_traded_price(quote: dict, ext: dict, reg: dict) -> Optional[float]:
+    """Most recent actual TRADE, or the regular close only when no trade exists.
+
+    SPOT SEMANTICS (RC-16, 2026-07-19). A "last" ladder may only contain fields that are a
+    real trade. Verified on the wire after hours: `quote.mark` and
+    `reg.regularMarketLastPrice` both read 743.29 (Friday's regular CLOSE) while
+    `quote.lastPrice` read 742.4861 (the true post-market trade). Ranking a close inside a
+    "last" ladder silently reports the previous session's number as the current price.
+
+    `or` chaining was also wrong here: a legitimate 0.0 falls through as falsy.
+    """
+    for candidate in (quote.get("lastPrice"), ext.get("lastPrice")):
+        if candidate is not None and float(candidate) > 0:
+            return candidate
+    # Nothing traded in either session -- the regular close is a DIFFERENT quantity and is
+    # acceptable only because nothing newer exists.
+    close = reg.get("regularMarketLastPrice")
+    if close is not None and float(close) > 0:
+        return close
+    return None
+
+
 def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional[float]]:
     """Return (last, chg_pct) from a single-ticker Schwab quote payload."""
     try:
@@ -277,13 +299,7 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
         quote = data.get("quote", {}) or {}
         ext = data.get("extended", {}) or {}
         reg = data.get("regular", {}) or {}
-        # Wire-first: quotes.quote.*, then extended/regular session fields (no synthetic last).
-        last = (
-            quote.get("lastPrice")
-            or ext.get("lastPrice")
-            or reg.get("regularMarketLastPrice")
-            or quote.get("mark")
-        )
+        last = _last_traded_price(quote, ext, reg)
         pct_chg = quote.get("netPercentChange")
         if pct_chg is None:
             pct_chg = reg.get("regularMarketPercentChange")

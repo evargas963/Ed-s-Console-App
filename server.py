@@ -37,6 +37,7 @@ import sys
 import time
 import asyncio
 import logging
+import concurrent.futures
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -153,6 +154,7 @@ from schwab_client import (
 )
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
+    gamma_is_plausible,
     _f,
     compute_exposures_by_strike,
     build_summary_rows,
@@ -166,7 +168,7 @@ from math_exposure import (
     compute_iv_rank, compute_iv_percentile, compute_volatility_envelope,
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
-    compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
+    compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density,
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
     pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
@@ -194,6 +196,8 @@ from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_r
 from v2_decision import build_module_a_a1_decision
 from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
 from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
+from terrain_read import build_terrain_read
+from terrain_engine import compute_terrain
 
 try:
     from db import get_db
@@ -450,6 +454,160 @@ _chain_fetch_gate_timeout_count: int = 0
 # and no provenance change).
 _chain_inflight_lock = threading.Lock()
 _chain_inflight: dict = {}
+
+
+def flatten_chain_contracts(c_json: dict) -> list[dict]:
+    """Flatten a Schwab chain response into a flat contract list.
+
+    Single source: this was inline inside _fetch_state and is now shared with the
+    terrain loop, so both consume the chain identically. Schwab CSV authority: reads
+    chains.callExpDateMap.* / chains.putExpDateMap.* only; no derivation.
+    """
+    out: list[dict] = []
+    if not isinstance(c_json, dict):
+        return out
+    for side_key in ("callExpDateMap", "putExpDateMap"):
+        side_map = c_json.get(side_key) or {}
+        if not isinstance(side_map, dict):
+            continue
+        for exp_map in side_map.values():
+            if not isinstance(exp_map, dict):
+                continue
+            for strike_list in exp_map.values():
+                if not isinstance(strike_list, list):
+                    continue
+                for ct in strike_list:
+                    if isinstance(ct, dict):
+                        out.append(dict(ct))
+    return out
+
+
+def chain_underlying_spot(c_json: dict) -> float | None:
+    """Underlying last price from the chain payload (include_underlying_quote).
+
+    Fails closed: returns None rather than inventing a spot, so terrain refuses to
+    publish levels priced off a missing underlying.
+    """
+    if not isinstance(c_json, dict):
+        return None
+    u = c_json.get("underlying")
+    if not isinstance(u, dict):
+        return None
+    for key in ("last", "mark", "close"):
+        v = _safe_float_quote(u.get(key))
+        if v is not None and v > 0:
+            return v
+    return None
+
+
+#: Precedence for the ONE spot authority. Highest wins; every entry records where the
+#: number came from so a caller can never silently accept a lower-confidence source.
+SPOT_SOURCE_QUOTE = "schwab_quote_last"        # quotes.{SYM}.quote.lastPrice - a real trade
+SPOT_SOURCE_REGULAR_CLOSE = "regular_close"    # regularMarketLastPrice - a CLOSE, not a spot
+SPOT_SOURCE_CHAIN = "chain_underlying"         # chains.underlying.last (== close after hours)
+SPOT_SOURCE_SNAPSHOT = "stored_snapshot"       # last persisted snapshot (may be minutes old)
+
+#: Sources that are a SESSION CLOSE rather than a live trade. Verified against the wire
+#: 2026-07-19 after hours: quote.closePrice, quote.mark, regular.regularMarketLastPrice,
+#: chains.underlying.last and chains.underlyingPrice ALL read 743.29 (Friday's regular
+#: close) while quote.lastPrice read 742.4861 (the true last trade, postMarketChange
+#: -0.8039). `chain.underlying.last` is therefore NOT a last price -- treating it as one
+#: silently serves the prior session's close as though it were spot.
+SPOT_CLOSE_SOURCES = frozenset({SPOT_SOURCE_REGULAR_CLOSE, SPOT_SOURCE_CHAIN})
+
+
+def _spot_from_quote(ticker: str) -> tuple[float | None, float | None]:
+    """Live Schwab quote leg of the spot authority. Returns (spot, trade_time)."""
+    try:
+        q_resp = safe_get_quote(get_client(), ticker)
+    except Exception as e:
+        log.debug("resolve_spot quote leg failed for %s: %s", ticker, e, exc_info=True)
+        return None, None
+    if q_resp is None or getattr(q_resp, "status_code", None) != 200:
+        return None, None
+    try:
+        node = (q_resp.json() or {}).get(ticker) or {}
+        parsed = _parse_quote_node_session_fields(node)
+    except Exception as e:
+        log.debug("resolve_spot quote parse failed for %s: %s", ticker, e, exc_info=True)
+        return None, None
+    # KEY NAME IS "spot" -- `_parse_quote_node_session_fields` returns spot/last/mark, NOT
+    # "spot_f" (that is the local variable name inside it). Reading the wrong key returned
+    # None on every call, so the authority silently fell through to a stale stored
+    # snapshot and the card kept disagreeing with the header. Locked by
+    # tests/test_spot_authority_v1.py::test_quote_parser_key_contract.
+    spot = parsed.get("spot")
+    if spot and spot > 0:
+        return float(spot), parsed.get("trade_time")
+    log.warning("resolve_spot: quote leg produced no usable spot for %s "
+                "(last=%s mark=%s) - falling back to a lower-precedence source",
+                ticker, parsed.get("last"), parsed.get("mark"))
+    return None, None
+
+
+def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
+    """Last persisted snapshot leg. Explicitly stale — lowest precedence."""
+    import sqlite3 as _sq
+
+    try:
+        con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=30.0)
+    except Exception as e:
+        log.debug("resolve_spot stored leg failed for %s: %s", ticker, e, exc_info=True)
+        return None, None
+    try:
+        con.row_factory = _sq.Row
+        row = con.execute(
+            "SELECT spot, ts_utc FROM snapshots WHERE ticker=? AND spot IS NOT NULL "
+            "ORDER BY ts_utc DESC LIMIT 1", (ticker,)).fetchone()
+    except Exception:
+        return None, None
+    finally:
+        con.close()
+    return (float(row["spot"]), row["ts_utc"]) if row and row["spot"] else (None, None)
+
+
+def resolve_spot(ticker: str, *, chain_json: dict | None = None,
+                 allow_stored: bool = True) -> tuple[float | None, str, float | None]:
+    """THE single spot authority. Returns (spot, source, as_of_ts_utc).
+
+    RC-14: four independent spot sources existed and each consumer picked one, so the
+    terrain card and the console header displayed different prices for the same ticker at
+    the same instant (743.29 vs 742.49). Every consumer now calls this, and every payload
+    carries the source, so a divergence is impossible to hide.
+
+    Precedence is by freshness and by matching what the operator SEES:
+      1. live Schwab quote (lastPrice -> mark) -- the console header's number
+      2. the chain's own underlying node -- as fresh as the chain, no extra call
+      3. the last stored snapshot -- explicitly stale, only when nothing better exists
+    """
+    tk = (ticker or "").upper().strip()
+    if not tk:
+        return None, "none", None
+
+    # 1. the only source that is a REAL TRADE
+    spot, ts = _spot_from_quote(tk)
+    if spot is not None:
+        return spot, SPOT_SOURCE_QUOTE, ts
+
+    # 2. stored snapshot BEFORE the chain: a persisted snapshot was itself captured from
+    #    quote.lastPrice, so it is a stale TRADE. The chain underlying is a session CLOSE
+    #    masquerading as "last", which is worse than a slightly old real price.
+    if allow_stored:
+        spot, ts = _spot_from_stored(tk)
+        if spot is not None:
+            return spot, SPOT_SOURCE_SNAPSHOT, ts
+
+    # 3. last resort, explicitly labelled as a CLOSE so no caller can mistake it for spot
+    if chain_json is not None:
+        spot = chain_underlying_spot(chain_json)
+        if spot and spot > 0:
+            return float(spot), SPOT_SOURCE_CHAIN, None
+    return None, "none", None
+
+
+def spot_is_a_close(source: str) -> bool:
+    """True when the value is a session CLOSE, not a live trade — the UI must say so."""
+    return source in SPOT_CLOSE_SOURCES
 
 
 def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False):
@@ -1865,7 +2023,8 @@ def _record_post_publish_failure(kind, ticker, published_version, exc):
             "traceback_tail": _tb.format_exc().splitlines()[-12:],
         }
     except Exception:
-        # Observability must never disturb the persistence tail.
+        # institutional-swallow-ok: recording error diagnostics is best-effort and must
+        # never disturb the persistence tail; the underlying error is handled upstream.
         pass
 
 
@@ -3058,7 +3217,9 @@ VIX_DIRECTION_THRESHOLD: float = 0.3   # ±0.3 pts tick-to-tick to call rising/f
 ETF_ZONE_THRESHOLD_PCT:  float = 0.3   # chg_pct beyond ±0.3% → bullish/bearish_trend
 
 # Chain fetch
-CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab
+CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab (live UI — keep fast)
+# FIND-GAMMA-FULLCHAIN-STRIKES-V1: dedicated morning GEX capture only (not live UI).
+GEX_FULL_CHAIN_STRIKE_COUNT: int = 150
 
 # Exposure windows
 EXPOSURE_WINDOWS:    list  = [5, 10, 15, 20]   # window sizes passed to build_*_rows
@@ -5783,21 +5944,7 @@ def _fetch_state(
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Chain fetch failed")
     c_json = c_resp.json()
-    contracts_raw: list[dict] = []
-    for _side_key in ("callExpDateMap", "putExpDateMap"):
-        _side_map = c_json.get(_side_key) or {}
-        if not isinstance(_side_map, dict):
-            continue
-        for _exp_map in _side_map.values():
-            if not isinstance(_exp_map, dict):
-                continue
-            for _strike_list in _exp_map.values():
-                if not isinstance(_strike_list, list):
-                    continue
-                for _ct in _strike_list:
-                    if isinstance(_ct, dict):
-                        contracts_raw.append(_ct)
-    contracts     = [dict(ct) for ct in contracts_raw]
+    contracts     = flatten_chain_contracts(c_json)
     _t_after_chain_mono = time.monotonic()
     _chain_window_marks.append(("chain_window_contracts_parse_ms", _t_after_chain_mono))
 
@@ -6092,7 +6239,11 @@ def _fetch_state(
     totals    = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
 
     # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
-    _gamma_flip = compute_gamma_flip(exposures, spot_f)
+    # FIND-GAMMA-FLIP-METHOD-V1: canonical profile (gamma recomputed at hypothetical spot).
+    # The old cumulative-sum method was DISPROVED 2026-07-19 on a real SPY reference chain
+    # (corr 0.086, never crossed zero). The confidence flag is mandatory: a narrow chain
+    # misplaces the flip by ~3.6%, so it must never be presented as trustworthy.
+    _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
     _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
     _hvl = compute_hvl(exposures)
     _max_pain = compute_max_pain(exposures)
@@ -7091,10 +7242,14 @@ def _fetch_state(
             and bool(_v2md.get("decision_id"))
             and _xid_classify_route(_xid_route) == "production"
         )
+        # FP-24: expect calibration only when this cycle reserved a snapshot
+        # slot — otherwise decision_ts (wall clock) drifts past tol=29 from the
+        # minute's single snapshot and outcome join debt accumulates.
         _xid_expected_cal = bool(
             _cal_on()
             and getattr(ms, "_calibration_payload", None)
             and _v2_decision_for_response is not None
+            and _xid_do_snapshot_insert
         )
         _xid_surfaces = []
         if _xid_expected_decision:
@@ -7190,6 +7345,8 @@ def _fetch_state(
         # UnboundLocalError, killing every snapshot persist at that line.
         nonlocal mkt_ctx
         # ── DB snapshot logging ───────────────────────────────────────────────────
+        # Initialized outside `if _ed_db` so the calibration gate below can read it.
+        _snap_insert_landed = False
         if _ed_db:  # snapshot INSERT, bars persist + outcome backfill all throttled (see ED_DB_SNAPSHOT_THROTTLE)
             if _diag_on():
                 _diag_step("pre_db_snapshot", ticker)
@@ -7199,7 +7356,6 @@ def _fetch_state(
             # the try so the handler can never NameError.
             _snap_ts = _refresh_ts_utc
             _do_insert = False
-            _snap_insert_landed = False
             try:
                 from db import SnapshotRow, build_ts_et
                 from math_exposure import _f as _mf
@@ -7665,6 +7821,69 @@ def _fetch_state(
                         breaking_news_headline=(getattr(ms, "news_context", None) or {}).get("breaking_news_headline"),
                         pre_market_sentiment=(getattr(ms, "news_context", None) or {}).get("pre_market_sentiment"),
                     )
+                    # FIND-GAMMA-FULLCHAIN-STRIKES-V1: once/day morning *wide*
+                    # near-term chain (strike_count=GEX_FULL_CHAIN_STRIKE_COUNT).
+                    # Does NOT reuse the live UI 20-strike ``contracts`` list.
+                    # Idempotent before fetch; never widens option_chain_json;
+                    # try/except so live path is untouched on any failure.
+                    try:
+                        _gex_tk = str(ticker).upper()
+                        if _gex_tk in ("SPY", "QQQ", "IWM"):
+                            from calibration.option_chain_morning_full import (
+                                GEX_FULL_CHAIN_STRIKE_COUNT as _GEX_STRIKES,
+                                MORNING_END_MINS as _GEX_END,
+                                MORNING_START_MINS as _GEX_START,
+                                SOURCE_WIDE as _GEX_SRC,
+                                et_date_and_mins as _gex_et,
+                                has_morning_full_capture,
+                                maybe_persist_morning_full_chain,
+                            )
+                            from db import DB_PATH as _gex_db_path
+
+                            _gex_date, _gex_mins = _gex_et(float(_snap_ts))
+                            if _GEX_START <= _gex_mins <= _GEX_END and not has_morning_full_capture(
+                                _gex_db_path, _gex_tk, _gex_date
+                            ):
+                                _wide_resp, _, _ = _gated_safe_get_chain(
+                                    client,
+                                    ticker,
+                                    strike_count=_GEX_STRIKES,
+                                    priority=False,
+                                )
+                                _wide_contracts: list = []
+                                if (
+                                    _wide_resp is not None
+                                    and getattr(_wide_resp, "status_code", None) == 200
+                                ):
+                                    _wj = _wide_resp.json()
+                                    for _side_key in ("callExpDateMap", "putExpDateMap"):
+                                        _side_map = _wj.get(_side_key) or {}
+                                        if not isinstance(_side_map, dict):
+                                            continue
+                                        for _exp_map in _side_map.values():
+                                            if not isinstance(_exp_map, dict):
+                                                continue
+                                            for _strike_list in _exp_map.values():
+                                                if not isinstance(_strike_list, list):
+                                                    continue
+                                                for _ct in _strike_list:
+                                                    if isinstance(_ct, dict):
+                                                        _wide_contracts.append(dict(_ct))
+                                if _wide_contracts:
+                                    maybe_persist_morning_full_chain(
+                                        _gex_db_path,
+                                        ticker=_gex_tk,
+                                        contracts=_wide_contracts,
+                                        spot=float(spot) if spot is not None else None,
+                                        ts_utc=float(_snap_ts),
+                                        source=_GEX_SRC,
+                                    )
+                    except Exception as _gex_chain_e:
+                        log.warning(
+                            "option_chain_morning_full persist failed ticker=%s: %s",
+                            ticker,
+                            _gex_chain_e,
+                        )
                     _mh_live = getattr(ms, "movement_head_probs", None)
                     if isinstance(_mh_live, dict):
                         for _k, _v in _mh_live.items():
@@ -7869,24 +8088,22 @@ def _fetch_state(
         _stage_marks.append(("db_snapshot_write_accuracy", time.perf_counter()))
 
         try:
-            from calibration.v2_live_logging import append_live_v2_calibration_decision
+            from calibration.v2_live_logging import (
+                LIVE_ADVISORY_V2_TAIL_APPEND,
+                append_live_v2_calibration_decision,
+                resolve_live_v2_calibration_tail_action,
+            )
             from db import DB_PATH as _calibration_db_path
 
             _xid_pair_cal = getattr(ms, "_execution_identity_pair", None)
-            if _xid_pair_cal is None and not _xid_model_derived:
-                # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 (idle/non-model
-                # contract): a cycle that is not model-derived performs NO
-                # governed calibration write — an EXPECTED non-write, not a
-                # refused defect (the writer's identity refusal remains the
-                # fail-closed backstop for model-derived cycles).
-                from calibration.v2_live_logging import (
-                    LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
-                )
-
-                _v2_log_result = {
-                    "status": "skipped",
-                    "reason": LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
-                }
+            _tail_action = resolve_live_v2_calibration_tail_action(
+                model_derived_cycle=bool(_xid_model_derived),
+                has_execution_identity=_xid_pair_cal is not None,
+                snap_insert_landed=bool(_snap_insert_landed),
+            )
+            if _tail_action != LIVE_ADVISORY_V2_TAIL_APPEND:
+                # Idle/non-model skip or FP-24 no-colocated-snapshot skip.
+                _v2_log_result = {"status": "skipped", "reason": _tail_action}
             else:
                 _v2_log_result = append_live_v2_calibration_decision(
                     db_path=_calibration_db_path,
@@ -7894,6 +8111,7 @@ def _fetch_state(
                     v2_decision=v2_decision_for_log,
                     decision_id=_xid_pair_cal[0] if _xid_pair_cal else None,
                     execution_identity_sha256=_xid_pair_cal[1] if _xid_pair_cal else None,
+                    colocated_snapshot_ts_utc=float(_snap_ts),
                 )
             if _v2_log_result and _v2_log_result.get("status") != "ok":
                 log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
@@ -8048,6 +8266,27 @@ def _fetch_state(
     ms_dict["kl_max_pain_str"] = _foi(max_pain_oi_strength(exposures, _max_pain))
     ms_dict["kl_oi_center"]    = _fv(getattr(cs, "oi_center", None))
     ms_dict["kl_gamma_flip"]   = _fv(_gamma_flip)
+    # Confidence is served alongside the level so the UI can never show a narrow-chain
+    # flip as if it were trustworthy (FIND-GAMMA-FLIP-METHOD-V1).
+    ms_dict["kl_gamma_flip_confidence"] = _gamma_flip_conf
+    ms_dict["kl_gamma_flip_diag"] = _gamma_flip_diag
+
+    # ── Terrain read ──────────────────────────────────────────────────────────
+    # Deterministic plain-English regime summary built from the levels above. Rules-based,
+    # no model in the path, and fail-closed: an untrusted flip yields STAND_ASIDE with the
+    # reason, never a posture derived from a level we know is unreliable.
+    _terrain = build_terrain_read(
+        spot=spot_f,
+        flip=_gamma_flip,
+        flip_confidence=_gamma_flip_conf,
+        put_wall=ms_dict.get("kl_put_gamma_wall"),
+        call_wall=ms_dict.get("kl_call_gamma_wall"),
+    )
+    ms_dict["terrain_regime"] = _terrain.regime
+    ms_dict["terrain_posture"] = _terrain.posture
+    ms_dict["terrain_headline"] = _terrain.headline
+    ms_dict["terrain_lines"] = _terrain.lines
+
     _net_gex_raw = getattr(cs, "net_gamma", None) if cs else None
     try:
         _net_gex_f = float(_net_gex_raw) if _net_gex_raw is not None else None
@@ -8849,6 +9088,14 @@ async def _app_lifespan(app):
     start_logger()
     log.info(f"Background logger started — core tickers: {CORE_TICKERS}")
 
+    # Terrain collection — its OWN loop, never gated on operator mode. The background
+    # logger runs the full model stack and therefore had to be throttled while a viewer
+    # is connected; terrain is ~5 ms of math plus one chain call per ticker, so it keeps
+    # every ticker's levels fresh regardless of what the model stack is doing.
+    start_terrain_loop()
+    log.info("Terrain loop started — %.0fs cadence, %d workers, %d-strike chains",
+             TERRAIN_REFRESH_SEC, TERRAIN_WORKERS, TERRAIN_CHAIN_STRIKE_COUNT)
+
     # ML scheduler is OPT-IN for the operator console (2026-07-03): the unconditional
     # nightly 16:15 ET run trained/promoted models from whatever console instance was
     # open — an ungoverned writer into models/active (operator ruling: BLESS_RUN=NO,
@@ -8953,6 +9200,7 @@ async def _app_lifespan(app):
     except Exception as e:
         log.warning("Order flow streaming shutdown: %s", e)
 
+    stop_terrain_loop()
     stop_logger()
     # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf pool shuts down AFTER
     # the analytics executor above — no new leaf submits can arrive first (the
@@ -9697,6 +9945,295 @@ async def get_live_state(
     loop = asyncio.get_event_loop()
     payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
     return JSONResponse(payload)
+
+
+# ── TERRAIN COLLECTION LOOP ──────────────────────────────────────────────────
+# 5-whys root cause (2026-07-19): 24 of 31 tickers refreshed only every ~11 minutes
+# because `_live_operator_mode_active()` HARD-SKIPS non-SPY/QQQ/IWM background rotation
+# whenever a viewer is connected -- a gate that exists because `_fetch_state` runs the
+# full model stack and would otherwise compete with the live UI.
+#
+# Terrain does not run the model stack. Measured: ~5 ms of math per ticker plus one chain
+# call each, i.e. ~31 req/min against a ~120 req/min Schwab budget. So terrain gets its
+# OWN loop, is never gated on operator mode, and cannot be starved by inference work.
+TERRAIN_REFRESH_SEC: float = 60.0
+TERRAIN_WORKERS: int = 4
+RADAR_NEAR_PCT: float = 0.0020   # at the wall
+RADAR_WATCH_PCT: float = 0.0075  # in the sector, worth watching
+TERRAIN_CHAIN_STRIKE_COUNT: int = 200  # see below -- 60 was too few for $1-increment names
+# The flip is only TRUSTED when the chain spans at least +/-5% of spot. That bar is a
+# STRIKE-COUNT problem, and the required count depends on the strike increment:
+#   SPY  ~742 with $1 strikes  -> +/-5% is +/-37 points -> ~75 strikes minimum
+#   QQQ  ~694 with $1 strikes  -> +/-35 points          -> ~70 strikes minimum
+# 60 strikes therefore produced only ~+/-4% on exactly the names the operator watches
+# most, so SPY/QQQ showed LOW_CONFIDENCE while wider-increment names passed. 200 clears
+# the bar for $1-increment names with margin; cost is one larger payload per ticker per
+# minute, well inside the ~120 req/min Schwab budget.
+
+_terrain_cache: dict[str, dict] = {}
+_terrain_cache_lock = threading.Lock()
+_terrain_loop_running: bool = False
+_terrain_loop_thread: threading.Thread | None = None
+
+
+def terrain_cache_get(ticker: str) -> dict | None:
+    with _terrain_cache_lock:
+        return _terrain_cache.get((ticker or "").upper())
+
+
+def terrain_cache_size() -> int:
+    with _terrain_cache_lock:
+        return len(_terrain_cache)
+
+
+def _terrain_refresh_one(ticker: str) -> str:
+    """Fetch one chain and compute terrain into the cache. Never raises."""
+    tk = (ticker or "").upper().strip()
+    if not tk:
+        return "skip:empty"
+    try:
+        client = get_client()
+        resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
+            client, tk, strike_count=TERRAIN_CHAIN_STRIKE_COUNT
+        )
+        if resp is None or getattr(resp, "status_code", None) != 200:
+            return "error:chain_http"
+        c_json = resp.json()
+        contracts = flatten_chain_contracts(c_json)
+        # ONE spot authority (RC-14) — never the chain underlying on its own.
+        spot, spot_source, spot_ts = resolve_spot(tk, chain_json=c_json)
+        snap = compute_terrain(tk, contracts, spot)
+        payload = snap.to_dict()
+        payload["computed_ts_utc"] = time.time()
+        payload["spot_source"] = spot_source
+        payload["spot_as_of_ts_utc"] = spot_ts
+        with _terrain_cache_lock:
+            _terrain_cache[tk] = payload
+        return f"ok:{snap.confidence}"
+    except Exception as e:
+        log.debug("terrain refresh %s failed: %s", tk, e, exc_info=True)
+        return f"error:{type(e).__name__}"
+
+
+def _terrain_loop() -> None:
+    log.info("Terrain loop started (levels only, no model stack)")
+    while _terrain_loop_running:
+        cycle_start = time.monotonic()
+        tickers: list[str] = []
+        try:
+            with _logger_lock:
+                tickers = list(_logger_tickers)
+        except Exception:
+            tickers = list(CORE_TICKERS)
+        if tickers and _is_loggable_session():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
+                list(pool.map(_terrain_refresh_one, tickers))
+        elapsed = time.monotonic() - cycle_start
+        log.info("Terrain cycle: %d tickers in %.1fs", len(tickers), elapsed)
+        sleep_end = time.monotonic() + max(0.0, TERRAIN_REFRESH_SEC - elapsed)
+        while _terrain_loop_running and time.monotonic() < sleep_end:
+            time.sleep(0.5)
+    log.info("Terrain loop stopped")
+
+
+def start_terrain_loop() -> None:
+    """Start the terrain collection thread.
+
+    Refuses to start under pytest. A production background thread inside the test
+    process fetches chains and consumes the shared 2-slot chain gate for the rest of
+    the session, which silently breaks any test asserting on gate concurrency -- the
+    same shared-mutable-state failure class as RC-5 in governance/root_cause_log.md.
+    Tests that need the loop call _terrain_loop / _terrain_refresh_one directly.
+    """
+    global _terrain_loop_running, _terrain_loop_thread
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        log.debug("terrain loop not started: running under pytest")
+        return
+    if _terrain_loop_running:
+        return
+    _terrain_loop_running = True
+    _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
+    _terrain_loop_thread.start()
+
+
+def stop_terrain_loop() -> None:
+    global _terrain_loop_running
+    _terrain_loop_running = False
+
+
+_radar_fallback_cache: tuple[float, list[dict]] = (0.0, [])
+RADAR_FALLBACK_TTL_SEC: float = 60.0
+
+
+def _terrain_snapshots_for_radar() -> list[dict]:
+    """Terrain for every tracked ticker: live cache first, stored chains as fallback.
+
+    Without the fallback the radar is blank until the first loop cycle completes, so a
+    freshly started console shows an empty scope and looks broken. The fallback reads the
+    most recent stored chain per ticker (read-only, no Schwab call) and is superseded the
+    moment the loop caches a fresher one.
+    """
+    with _terrain_cache_lock:
+        cached = {t.get("ticker"): t for t in _terrain_cache.values() if t.get("ticker")}
+
+    # MERGE, never choose. Returning only the cache meant that as soon as the loop had
+    # cached its first ticker the stored-chain fallback was skipped entirely, so a warming
+    # console showed an almost-empty scope. Live cache wins per ticker; everything not yet
+    # refreshed still appears from its most recent stored chain.
+    # The fallback reads and recomputes every stored chain, which measured 5-10 s against
+    # a 23 GB snapshots table -- far too slow for a 20 s poll. Memoised for one loop
+    # cycle; the live cache above always takes precedence per ticker, so a fresh terrain
+    # value is never masked by a stale fallback entry.
+    global _radar_fallback_cache
+    now = time.time()
+    ts, memo = _radar_fallback_cache
+    if memo and (now - ts) < RADAR_FALLBACK_TTL_SEC:
+        return list(cached.values()) + [m for m in memo if m.get("ticker") not in cached]
+
+    out: list[dict] = []
+    try:
+        db = get_db()
+    except Exception:
+        return list(cached.values())
+    import sqlite3 as _sq
+    try:
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=30.0)
+    except Exception:
+        return out
+    try:
+        con.row_factory = _sq.Row
+        rows = con.execute(
+            "SELECT ticker, MAX(ts_utc) AS ts FROM snapshots "
+            "WHERE option_chain_json IS NOT NULL AND spot IS NOT NULL GROUP BY ticker"
+        ).fetchall()
+        for r in rows:
+            row = con.execute(
+                "SELECT spot, option_chain_json FROM snapshots "
+                "WHERE ticker=? AND ts_utc=? LIMIT 1", (r["ticker"], r["ts"])
+            ).fetchone()
+            if not row:
+                continue
+            try:
+                contracts = json.loads(row["option_chain_json"])
+                spot, spot_source, _ts = resolve_spot(r["ticker"], allow_stored=False)
+                if spot is None:
+                    spot, spot_source = float(row["spot"]), SPOT_SOURCE_SNAPSHOT
+                snap = compute_terrain(r["ticker"], contracts, spot)
+            except (ValueError, TypeError):
+                continue
+            if r["ticker"] not in cached:
+                out.append(snap.to_dict() | {"spot_source": spot_source})
+    finally:
+        con.close()
+    _radar_fallback_cache = (now, out)
+    return list(cached.values()) + out
+
+
+@app.get("/api/terrain/radar")
+def get_terrain_radar(limit: int = Query(default=12, ge=1, le=60)):
+    """Air-traffic radar: ONLY tickers currently in the operator's airspace.
+
+    A 51-row grid is a list, not a radar. A controller tracks the aircraft that are
+    actually in the sector, so a ticker earns a slot only by doing something:
+      * sitting at a wall (within RADAR_NEAR_PCT)
+      * having broken a wall with acceptance
+      * an unambiguous regime with a wall within RADAR_WATCH_PCT
+    Everything mid-box and quiet is deliberately invisible. Untrusted tickers are never
+    ranked as if their levels were real -- they are reported separately as blind spots.
+    """
+    # Coerced so the handler is callable directly in tests, not only over HTTP
+    # (FastAPI passes a Query object when the default is used outside a request).
+    try:
+        max_rows = int(limit)
+    except (TypeError, ValueError):
+        max_rows = 12
+
+    rows: list[dict] = []
+    blind = 0
+    cached = _terrain_snapshots_for_radar()
+    for t in cached:
+        spot = t.get("spot")
+        if t.get("confidence") != "TRUSTED" or not spot:
+            blind += 1
+            continue
+        walls = [("call wall", t.get("call_wall")), ("put wall", t.get("put_wall"))]
+        best = None
+        for name, v in walls:
+            if v is None:
+                continue
+            rel = (v - spot) / spot
+            if best is None or abs(rel) < abs(best[1]):
+                best = (name, rel, v)
+        if best is None:
+            continue
+        name, rel, level = best
+        dist = abs(rel)
+        if dist <= RADAR_NEAR_PCT:
+            status = "AT WALL"
+        elif dist <= RADAR_WATCH_PCT:
+            status = "APPROACHING"
+        else:
+            continue                      # quiet — stays off the scope
+        rows.append({
+            "ticker": t.get("ticker"), "spot": spot, "regime": t.get("regime"),
+            "posture": t.get("posture"), "status": status, "wall_name": name,
+            "wall": level, "distance_pct": round(rel * 100, 3),
+            "call_wall": t.get("call_wall"), "put_wall": t.get("put_wall"),
+            "gamma_flip": t.get("gamma_flip"), "confidence": t.get("confidence"),
+        })
+    rows.sort(key=lambda r: abs(r["distance_pct"]))
+    return {"rows": rows[:max_rows], "tracked": len(rows), "scanned": len(cached),
+            "blind_spots": blind, "near_pct": RADAR_NEAR_PCT, "watch_pct": RADAR_WATCH_PCT}
+
+
+@app.get("/api/terrain")
+def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Terrain payload — levels only, NO model stack.
+
+    Deliberately separate from /api/state: that path runs the full pipeline (chain +
+    greeks + xgb/lstm/transformer x 4 horizons + fusion + decision bundle), which is why
+    background collection had to be throttled to keep it responsive. Terrain is ~5 ms of
+    math on the same chain, so it never needs to compete for that budget.
+    """
+    tk = (ticker or DEFAULT_TICKER).upper().strip()
+    cached = terrain_cache_get(tk)
+    if cached is not None:
+        return cached
+    try:
+        contracts, _stored_spot = _latest_chain_and_spot(tk)
+        spot, spot_source, spot_ts = resolve_spot(tk)
+        snap = compute_terrain(tk, contracts, spot)
+        return snap.to_dict() | {"spot_source": spot_source, "spot_as_of_ts_utc": spot_ts}
+    except Exception as e:
+        log.warning("terrain endpoint failed for %s: %s", tk, e, exc_info=True)
+        return compute_terrain(tk, None, None).to_dict() | {"error": f"{type(e).__name__}: {e}"}
+
+
+def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:
+    """Most recent stored chain + spot for a ticker (read-only, no Schwab call)."""
+    import sqlite3 as _sqlite3
+
+    try:
+        db = get_db()
+    except Exception:
+        return None, None
+    con = _sqlite3.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=30.0)
+    try:
+        con.row_factory = _sqlite3.Row
+        row = con.execute(
+            "SELECT spot, option_chain_json FROM snapshots "
+            "WHERE ticker=? AND option_chain_json IS NOT NULL AND spot IS NOT NULL "
+            "ORDER BY ts_utc DESC LIMIT 1",
+            (ticker,),
+        ).fetchone()
+    finally:
+        con.close()
+    if not row:
+        return None, None
+    try:
+        return json.loads(row["option_chain_json"]), float(row["spot"])
+    except (ValueError, TypeError):
+        return None, None
 
 
 @app.get("/api/analytics/light")
@@ -11325,14 +11862,14 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
                 _g = float(ct.get("gamma")) if ct.get("gamma") is not None else None
             except (TypeError, ValueError):
                 _g = None
-            if _g is not None and _g != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_g):
-                usable_gamma += 1
-            if ct.get("gamma") == MISSING_GREEK_SENTINEL:
-                sentinel_gamma += 1
             try:
                 _d = float(ct.get("delta")) if ct.get("delta") is not None else None
             except (TypeError, ValueError):
                 _d = None
+            if gamma_is_plausible(_g, _d):
+                usable_gamma += 1
+            if ct.get("gamma") == MISSING_GREEK_SENTINEL:
+                sentinel_gamma += 1
             if _d is not None and _d != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_d):
                 usable_delta += 1
             try:

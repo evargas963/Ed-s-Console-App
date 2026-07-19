@@ -36,6 +36,7 @@ def _sample_a1() -> dict:
 
 
 def _winner() -> dict:
+    # institutional-synthetic-ok: v2 option-expression test needs a controlled winner row.
     return {
         "expression": "500 CALL",
         "strike": 500.0,

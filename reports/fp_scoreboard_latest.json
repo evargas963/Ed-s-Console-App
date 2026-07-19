@@ -1,0 +1,185 @@
+{
+  "schema": "fp_scoreboard_v1",
+  "generated_utc": "2026-07-17T14:10:43Z",
+  "money_path": "WAIT (admissions empty; no existence PASS admitted)",
+  "studies": {
+    "FP-00a_incumbent": {
+      "status": "MISSING",
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\incumbent_eval\\latest.json"
+    },
+    "FP-00b_challenger": {
+      "status": "MISSING",
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\challenger_eval\\latest.json"
+    },
+    "FP-00c_structural": {
+      "status": "MISSING",
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\structural_eval\\latest.json"
+    },
+    "FP-03_elastic_net": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\elastic_net_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 4,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-04_lightgbm": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\lightgbm_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 12,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-05_tcn": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\tcn_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 1,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-06_kalman": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\kalman_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 12,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-07_har_rv": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\har_rv_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 12,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-08_quantile": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\quantile_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 12,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-11_survival": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\survival_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 12,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-12_cost_aware": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\cost_aware_eval\\latest.json",
+      "verdict": "ECONOMIC_SURVIVOR",
+      "n_pass": null,
+      "n_fail": null,
+      "n_cells": 5,
+      "extra": {
+        "n_survive": 1,
+        "n_kill": 4,
+        "verdict": "ECONOMIC_SURVIVOR"
+      }
+    },
+    "FP-13_survivor_stress": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\fp13_survivor_stress_latest.json",
+      "verdict": "STRESS_KILL",
+      "n_pass": null,
+      "n_fail": null,
+      "n_cells": null,
+      "extra": {
+        "survives_1bp": true,
+        "verdict": "STRESS_KILL"
+      }
+    },
+    "FP-16_order_flow": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\order_flow_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 12,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-17_l1_book": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\l1_book_eval\\latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 12,
+      "n_cells": 12,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    },
+    "FP-19_faint_lead_kill": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\fp19_faint_lead_kill_latest.json",
+      "verdict": "ECONOMIC_KILL",
+      "n_pass": null,
+      "n_fail": null,
+      "n_cells": null,
+      "extra": {
+        "n_survive": 0,
+        "n_kill": 2,
+        "verdict": "ECONOMIC_KILL"
+      }
+    },
+    "FP-20_har_qqq_rescore": {
+      "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\fp20_har_qqq_rescore_latest.json",
+      "verdict": "NO_SIGNAL_DETECTED",
+      "n_pass": 0,
+      "n_fail": 4,
+      "n_cells": 4,
+      "extra": {
+        "verdict": "NO_SIGNAL_DETECTED"
+      }
+    }
+  },
+  "collect": {
+    "FP-01": "reports/fp01_outcome_repair_latest.json",
+    "FP-10": "reports/fp10_rehydration_latest.json",
+    "FP-14": "reports/fp14_residual_debt_taxonomy_latest.json",
+    "FP-15": "reports/fp15_intol_unfilled_repair_latest.json",
+    "FP-18": "reports/fp18_clock_gap_latest.json",
+    "FP-20_norm": "reports/fp20_normalized_rematerialize_latest.json"
+  },
+  "totals": {
+    "existence_pass_cells_sum": 0,
+    "note": "Sum of per-study n_pass where present; economic survivors without existence PASS are not admissions."
+  },
+  "economic_note": {
+    "har_rv_QQQ_60c": {
+      "n_scored": 13498,
+      "mean_net_bp": 0.3471030771660101,
+      "median_net_bp": 0.0,
+      "sum_net_bp": 4685.197335586804,
+      "bootstrap_ci95_mean_net_bp": [
+        0.024423523804947975,
+        0.7998633078337483
+      ],
+      "always_abstain_mean_bp": 0.0,
+      "cost_round_trip_bp": 1.0,
+      "verdict": "SURVIVE_ECONOMIC",
+      "kill_reasons": [],
+      "n_trades": 358,
+      "trade_rate": 0.026522447770040005
+    },
+    "stress": "STRESS_KILL at 5bp (fp13)"
+  }
+}

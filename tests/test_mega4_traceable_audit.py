@@ -53,7 +53,7 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
-MEGA4_ROW_COUNT = 1038  # inventory sync @ ML_PIPE_ITEM_4 fleet migration: +2 active_bundle_contract policy fns (_load_migration_policy/_legacy_allowance_open) + 1 ml_predict TTL fn (_artifact_reverify_ttl_seconds) (prior: 1035)
+MEGA4_ROW_COUNT = 1039  # +1 resolve_live_v2_calibration_tail_action (calibration/v2_live_logging.py) — pre-existing inventory gap in uncommitted live-logging work, closed 2026-07-19 (prior: 1038)
 MEGA4_FILE_COUNT = 88  # +3 arch_competition PR4 modules
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES | MEGA3_FILES
 

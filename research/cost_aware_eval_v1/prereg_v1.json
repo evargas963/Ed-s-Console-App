@@ -1,0 +1,32 @@
+{
+  "prereg_id": "cost_aware_eval_v1_prereg_v1",
+  "sibling_precedent": "research/har_rv_eval_v1/prereg_v1.json",
+  "study_question": "Does the best faint lead that failed signal-existence (QQQ HAR-RV direction cells; secondary: QQQ survival:60c) produce positive mean net return after COST_V1_UNDERLYING_SPY round-trip costs on expanding OOF, vs always-abstain?",
+  "study_class": "ECONOMIC_KILL_SCREEN",
+  "explicitly_not": {
+    "not_an_admission_packet": "Even PASS here would still require operator admission; this run expects KILL.",
+    "not_production_wiring": "Report-only.",
+    "cost_scope_limit": "COST_V1_UNDERLYING_SPY is SPY-pilot scoped; applied here as a disclosed scenario to QQQ — not a validated QQQ cost surface."
+  },
+  "cost_model": {
+    "id": "COST_V1_UNDERLYING_SPY",
+    "round_trip_bp": 1.0,
+    "application": "subtract round_trip_bp from each non-abstain trade's signed forward return in bp; abstain earns 0"
+  },
+  "policy": {
+    "trade_when": "model predicts up or down",
+    "abstain_when": "flat / neither",
+    "signed_return": "sign(+1 up / -1 down) * 10000 * (close_H - close_0) / close_0"
+  },
+  "targets": [
+    {"source": "har_rv_eval_v1", "ticker": "QQQ", "horizons": ["1c", "5c", "15c", "60c"]},
+    {"source": "survival_eval_v1", "ticker": "QQQ", "horizons": ["60c"], "note": "strongest MCC among residual leads (still FAIL existence)"}
+  ],
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "primary_metric": {
+    "name": "mean_net_bp",
+    "kill_if": "mean_net_bp <= 0 OR day-block bootstrap 95% CI includes 0 OR mean_net_bp <= always_abstain (0)"
+  },
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000},
+  "outputs": {"report_json": "reports/cost_aware_eval/cost_aware_eval_<date>_<runid>.json"}
+}

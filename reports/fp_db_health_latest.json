@@ -1,0 +1,48 @@
+{
+  "generated_utc": "2026-07-17T15:52:29Z",
+  "bars": {
+    "total": 1357313,
+    "SPY": 101836,
+    "QQQ": 89812,
+    "IWM": 76907,
+    "synthetic_interior": 108201
+  },
+  "snapshots": {
+    "total": 279822,
+    "outcome_5c_filled": 176474,
+    "outcome_5c_null": 103349,
+    "normalized_1m": 175961
+  },
+  "decisions_trusted_spy_qqq_iwm": {
+    "total": 81830,
+    "attached": 78840,
+    "missing_any_age": 2993,
+    "old_missing_gt_70min": 2938
+  },
+  "model_outputs": {
+    "trusted_empty_model_outputs_json": 0,
+    "trusted_empty_and_attached": 0
+  },
+  "join_methods_attached": {
+    "nearest_within_tol": 51762,
+    "exact": 27078
+  },
+  "remaining_old_missing_taxonomy": {
+    "n": 2938,
+    "le29_out_null": 1269,
+    "le29_out_filled_unattached": 396,
+    "gt29_le59": 83,
+    "gt59": 1190,
+    "no_snap": 0
+  },
+  "verdict": {
+    "end_to_end_healthy": false,
+    "healthy_enough_for_honest_research": true,
+    "attach_rate_trusted_anchor": 0.963461,
+    "open_debt_classes": [
+      "trusted_outcome_join_residual",
+      "synthetic_interior_bars_disclosed",
+      "legacy_empty_model_outputs_irrecoverable_if_nonzero"
+    ]
+  }
+}

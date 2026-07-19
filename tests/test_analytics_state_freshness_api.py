@@ -778,6 +778,13 @@ def test_chain_fetch_gate_fail_open_on_timeout(monkeypatch):
     """Gate held elsewhere + short timeout: fetch still executes; timeout counter increments."""
     import server as srv
 
+    # Order-independence: use a FRESH gate, never the process-global one. This test
+    # asserts the gate starts fully free; any earlier test that leaks a slot on the
+    # shared instance would otherwise fail it (observed 2026-07-19 only inside the
+    # full 301-file run, never standalone). Same construction as the sibling
+    # concurrency test above.
+    monkeypatch.setattr(srv, "_schwab_chain_fetch_gate", srv._ChainGateV2())
+    monkeypatch.setattr(srv, "_chain_inflight", {})
     monkeypatch.setattr(srv, "CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC", 0.05)
     calls: list[str] = []
     monkeypatch.setattr(
@@ -810,6 +817,10 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
     """Uncontended gate: response + non-negative gate wait + fetch duration."""
     import server as srv
 
+    # Order-independence: fresh gate (see the timeout test above). The final
+    # "immediately acquirable" assertion requires a gate no other test has touched.
+    monkeypatch.setattr(srv, "_schwab_chain_fetch_gate", srv._ChainGateV2())
+    monkeypatch.setattr(srv, "_chain_inflight", {})
     monkeypatch.setattr(srv, "safe_get_chain", lambda client, ticker, *, strike_count: "OK")
     resp, gate_wait_sec, fetch_sec = srv._gated_safe_get_chain(None, "ZZZ_NORM", strike_count=5)
     assert resp == "OK"

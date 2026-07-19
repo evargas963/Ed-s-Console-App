@@ -1,0 +1,22 @@
+{
+  "prereg_id": "regime_har_eval_v1_prereg_v1",
+  "sibling_precedent": "research/har_rv_eval_v1/prereg_v1.json",
+  "study_question": "Does fitting HAR→logistic separately within each regime_primary bucket (when train n≥200 and ≥2 classes; else pooled fallback) improve walk-forward ternary MCC beyond baselines?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only."
+  },
+  "model": {
+    "features": "HAR rv_1/5/15 as har_rv_eval_v1",
+    "conditioning": "regime_primary from snapshots_1m_normalized at decision row",
+    "min_train_per_regime": 200,
+    "classifier": "LogisticRegression elasticnet saga (frozen as Study #4)"
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {"name": "MCC", "screen": "same advancement screen as elastic_net_eval_v1"},
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/regime_har_eval/regime_har_eval_<date>_<runid>.json"}
+}
