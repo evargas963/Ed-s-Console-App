@@ -1068,3 +1068,53 @@ def test_client_ticker_cache_refresh_fail_closed_vs_syncing_non_cache():
         _update_source="sse_tier_c",
     )
     assert analytics_card_trust_gate(syncing, active_ticker="SPY")["trusted"] is True
+
+
+# ── TERRAIN COMMAND DECK — layout contract ──────────────────────────────────
+# Caught by Cursor's audit 2026-07-20: `grid-template-rows: minmax(0,1fr) minmax(0,auto)`
+# collapsed the row-2 context tiles to ~40px — header visible, every value clipped.
+# `.tv-z` carries `overflow:auto`, whose min-content contribution is zero, so a
+# content-sized row resolves to nothing. The page then reports "no scroll" while the
+# content is simply cut off, which reads as fitted when it is truncated.
+#
+# These assert the CONTRACT (row 2 is explicitly sized), not the pixel outcome, which
+# only a browser can measure.
+
+def _tv_deck_rule() -> str:
+    html = _html()
+    i = html.find(".tv-deck { display:grid;")
+    assert i != -1, ".tv-deck grid rule not found in static/index.html"
+    return html[i : html.find("}", i)]
+
+
+def test_terrain_deck_row2_is_explicitly_sized_not_content_sized():
+    """A content-sized row 2 collapses because .tv-z is overflow:auto (min-content 0)."""
+    rule = _tv_deck_rule()
+    assert "grid-template-rows" in rule
+    rows = rule.split("grid-template-rows:")[1].split(";")[0]
+    assert "auto" not in rows, (
+        "row 2 must not be content-sized — it collapses the context tiles to header height: "
+        + rows.strip()
+    )
+    assert "min-content" not in rows, rows.strip()
+    assert "--tv-row2-h" in rows, "row 2 should come from the explicit --tv-row2-h token"
+
+
+def test_terrain_deck_is_twelve_columns():
+    """Concept A's tile weighting depends on a 12-track grid."""
+    assert "repeat(12,minmax(0,1fr))" in _tv_deck_rule()
+
+
+def test_terrain_zone_spans_match_concept_a():
+    html = _html()
+    for cls, span in (
+        ("tv-z-radar", "span 2"), ("tv-z-ladder", "span 6"), ("tv-z-levels", "span 4"),
+        ("tv-z-session", "span 3"), ("tv-z-dealer", "span 3"),
+        ("tv-z-tape", "span 2"), ("tv-z-posture", "span 2"),
+    ):
+        i = html.find("." + cls + " ")
+        assert i != -1, cls + " rule missing"
+        assert span in html[i : html.find("}", i)], cls + " should be grid-column:" + span
+    # the radar tile is the only one spanning both rows
+    i = html.find(".tv-z-radar ")
+    assert "grid-row:span 2" in html[i : html.find("}", i)]

@@ -2562,90 +2562,142 @@
     right: 5px;
   }
 
-/* ── TERRAIN VIEW ─────────────────────────────────────────────────────────── */
+/* ── TERRAIN VIEW — full-screen focus + periphery ─────────────────────────── */
 .ed-viewtabs { display:flex; gap:4px; }
 .ed-viewtab { background:transparent; border:1px solid rgba(255,255,255,0.18); color:var(--muted);
   font-size:11px; font-weight:800; letter-spacing:0.10em; padding:5px 12px; border-radius:6px; cursor:pointer; }
 .ed-viewtab:hover { border-color:rgba(255,255,255,0.42); color:#fff; }
-.ed-viewtab.is-active { background:rgba(84,200,255,0.16); border-color:#54c8ff; color:#7dd3fc; }
+.ed-viewtab.is-active { background:rgba(79,198,255,0.16); border-color:#4fc6ff; color:#7dd3fc; }
 body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view) { display:none !important; }
+body.ed-terrain-mode { overflow:hidden; }
 
-#terrain-view { --tv-pan:#0e141c; --tv-line:#1e2937; --tv-tx:#eef4fb; --tv-mu:#93a6bd; --tv-dim:#63768f;
-  --tv-red:#ff6060; --tv-grn:#3ee089; --tv-blu:#54c8ff; --tv-pur:#c68cff; --tv-amb:#ffc94d;
-  padding:20px; color:var(--tv-tx); }
+#terrain-view { --tv-bg:#06090d; --tv-pan:#0d131a; --tv-pan2:#111922; --tv-ln:#1c2530; --tv-ln2:#2a3644;
+  --tv-tx:#f2f7fc; --tv-mu:#dceaf7; --tv-dim:#cfe3f5;
+  --tv-red:#ff5f5f; --tv-grn:#3fdd88; --tv-blu:#4fc6ff; --tv-pur:#c187ff; --tv-amb:#ffc247;
+  background:var(--tv-bg); color:var(--tv-tx); padding:0; }
 #terrain-view * { box-sizing:border-box; }
-.tv-card { max-width:900px; margin:0 auto; background:#080c11; border:1px solid var(--tv-line);
-  border-radius:16px; overflow:hidden; }
 
-.tv-head { display:flex; align-items:center; gap:14px; padding:18px 20px 14px; flex-wrap:wrap;
-  border-bottom:1px solid var(--tv-line); }
-.tv-sym { font:900 24px/1 var(--font-mono,monospace); letter-spacing:.03em; }
-.tv-px { font:800 32px/1 var(--font-mono,monospace); letter-spacing:-.02em; }
-.tv-chg { font:800 13px/1 var(--font-mono,monospace); color:var(--tv-grn); padding-bottom:3px; }
-.tv-badge { margin-left:auto; display:flex; align-items:center; gap:9px; }
-.tv-dot { width:7px; height:7px; border-radius:50%; background:var(--tv-grn); box-shadow:0 0 0 3px rgba(62,224,137,.18); }
-.tv-dot.bad { background:var(--tv-amb); box-shadow:0 0 0 3px rgba(255,201,77,.18); }
-.tv-trust { font:800 10px/1 var(--font-sans,sans-serif); letter-spacing:.14em; color:var(--tv-grn); }
-.tv-trust.bad { color:var(--tv-amb); }
-.tv-stamp { font:600 10px/1.5 var(--font-mono,monospace); color:var(--tv-dim); text-align:right; }
+/* COMMAND DECK (concept A) — 12 columns, tile size == data priority.
+   Row 1 is the answer (ladder 6 + levels 4) and takes all remaining height; row 2 is
+   context and is sized by its content. The radar spans both rows on the left. */
+/* Row 2 is an EXPLICIT height, not `auto`. With `auto`, the context tiles collapsed to
+   ~40px — header only, every value clipped — because `.tv-z` carries overflow:auto, whose
+   min-content contribution is zero. The page then reported "no scroll" while the content
+   was simply cut off, which reads as fitted when it is truncated. A fixed row height means
+   the tiles are legible by construction and the ladder takes whatever remains. */
+.tv-deck { display:grid; grid-template-columns:repeat(12,minmax(0,1fr));
+  grid-template-rows:minmax(0,1fr) var(--tv-row2-h,200px); gap:1px;
+  background:var(--tv-ln); height:var(--tv-deck-h, 70vh); }
+/* 194, not 176: at 176 the DEALER POSITIONING tile clipped 14px (content 190, measured
+   by Cursor's audit at 1440x810 — scrollHeight 190 vs clientHeight 176). The tallest
+   row-2 tile sets the floor; clipping is the row-2 defect all over again at a
+   different viewport. */
+@media (max-height:900px) { .tv-deck { --tv-row2-h:194px; } }
+.tv-z { background:var(--tv-pan); overflow:auto; min-height:0; padding:10px 12px; }
+.tv-z::-webkit-scrollbar { width:6px; }
+.tv-z::-webkit-scrollbar-thumb { background:var(--tv-ln2); border-radius:3px; }
+.tv-z-radar   { grid-column:span 2; grid-row:span 2; }
+.tv-z-ladder  { grid-column:span 6; }
+.tv-z-levels  { grid-column:span 4; }
+.tv-z-session { grid-column:span 3; }
+.tv-z-dealer  { grid-column:span 3; }
+.tv-z-tape    { grid-column:span 2; }
+.tv-z-posture { grid-column:span 2; }
+@media (max-width:1280px) {
+  .tv-z-radar { grid-column:span 2; } .tv-z-ladder { grid-column:span 5; } .tv-z-levels { grid-column:span 5; }
+}
+.tv-col { background:var(--tv-pan); overflow:auto; min-height:0; padding:10px 11px; }
+.tv-hero { background:var(--tv-pan); display:flex; flex-direction:column; min-height:0; padding:0; }
 
-.tv-regime { margin:16px 20px 0; border-radius:12px; padding:16px 18px; border:1px solid var(--tv-line); border-left:4px solid var(--tv-dim); }
-.tv-regime.short { background:linear-gradient(100deg,rgba(255,96,96,.20),rgba(255,96,96,.05) 55%,transparent);
-  border-color:rgba(255,96,96,.32); border-left-color:var(--tv-red); }
-.tv-regime.long { background:linear-gradient(100deg,rgba(84,200,255,.20),rgba(84,200,255,.05) 55%,transparent);
-  border-color:rgba(84,200,255,.32); border-left-color:var(--tv-blu); }
-.tv-kicker { font:800 9.5px/1 var(--font-sans,sans-serif); letter-spacing:.18em; color:var(--tv-dim); }
-.tv-title { font:900 24px/1.1 var(--font-sans,sans-serif); letter-spacing:-.01em; margin-top:7px; color:var(--tv-mu); }
-.tv-regime.short .tv-title { color:var(--tv-red); } .tv-regime.long .tv-title { color:var(--tv-blu); }
-.tv-sub { font:800 15px/1.35 var(--font-sans,sans-serif); margin-top:7px; }
-.tv-mech { font:400 12.5px/1.6 var(--font-sans,sans-serif); color:var(--tv-mu); margin-top:8px; max-width:56ch; }
+/* LEVELS TABLE — every level as a row, sorted high to low, spot inline in place */
+.tv-tbl { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.tv-tbl th { font:800 10px/1 var(--font-sans,sans-serif); letter-spacing:.11em; color:var(--tv-blu);
+  text-align:right; padding:5px 6px; border-bottom:1px solid var(--tv-ln2); white-space:nowrap; }
+.tv-tbl th:first-child, .tv-tbl td:first-child { text-align:left; }
+.tv-tbl td { font:800 13px/1 var(--font-mono,monospace); padding:7px 6px;
+  border-bottom:1px solid rgba(28,37,48,.55); white-space:nowrap; }
+.tv-tbl tr.now td { background:rgba(79,198,255,.14); }
+.tv-tbl .nm { font:800 12px/1 var(--font-sans,sans-serif); letter-spacing:.03em; }
+.tv-tbl .note { font:700 11px/1 var(--font-sans,sans-serif); color:var(--tv-mu); }
 
-.tv-ldwrap { margin:16px 20px 0; border:1px solid var(--tv-line); border-radius:12px; overflow:hidden; background:var(--tv-pan); }
-.tv-ld { position:relative; height:430px; }
+/* ALERT TAPE — most recent first, newest at top */
+.tv-tape { display:flex; flex-direction:column; gap:5px; }
+.tv-ev { font:800 11px/1.3 var(--font-mono,monospace); padding:5px 7px; border-radius:4px;
+  border-left:3px solid currentColor; background:var(--tv-pan2); }
+.tv-postbig { font:900 15px/1.3 var(--font-sans,sans-serif); color:var(--tv-amb); }
+.tv-postsub { font:700 11px/1.45 var(--font-sans,sans-serif); color:var(--tv-tx); margin-top:6px; }
+
+.tv-h { font:800 12px/1 var(--font-sans,sans-serif); letter-spacing:.14em; color:var(--tv-blu);
+  margin:0 0 8px; display:flex; align-items:center; gap:6px; }
+.tv-h span { margin-left:auto; font:800 11px/1 var(--font-mono,monospace); color:var(--tv-mu); }
+
+.tv-top { display:flex; align-items:center; gap:11px; padding:9px 16px; background:#080c11;
+  border-bottom:1px solid var(--tv-ln); flex-wrap:wrap; }
+.tv-sym { font:900 17px/1 var(--font-mono,monospace); }
+.tv-px { font:800 24px/1 var(--font-mono,monospace); letter-spacing:-.02em; }
+.tv-chg { font:800 11px/1 var(--font-mono,monospace); }
+.tv-chip { font:800 8px/1 var(--font-sans,sans-serif); letter-spacing:.1em; padding:4px 7px;
+  border-radius:3px; border:1px solid var(--tv-ln2); color:var(--tv-tx); }
+.tv-chip.ok { color:var(--tv-grn); border-color:rgba(63,221,136,.5); background:rgba(63,221,136,.10); }
+.tv-chip.bad { color:var(--tv-amb); border-color:rgba(255,194,71,.5); background:rgba(255,194,71,.10); }
+.tv-sp { margin-left:auto; display:flex; align-items:center; gap:12px;
+  font:800 11px/1 var(--font-mono,monospace); color:var(--tv-tx); }
+.tv-sp label { display:flex; align-items:center; gap:5px; cursor:pointer;
+  font:800 11px/1 var(--font-sans,sans-serif); letter-spacing:.09em; color:var(--tv-tx); }
+.tv-sp label input { cursor:pointer; }
+
+.tv-band { border-radius:8px; padding:11px 14px; border:1px solid var(--tv-ln); border-left:3px solid var(--tv-dim); }
+.tv-band.short { background:linear-gradient(100deg,rgba(255,95,95,.20),transparent 72%);
+  border-color:rgba(255,95,95,.30); border-left-color:var(--tv-red); }
+.tv-band.long { background:linear-gradient(100deg,rgba(79,198,255,.20),transparent 72%);
+  border-color:rgba(79,198,255,.30); border-left-color:var(--tv-blu); }
+.tv-band .t { font:900 19px/1.1 var(--font-sans,sans-serif); color:var(--tv-mu); }
+.tv-band.short .t { color:var(--tv-red); }
+.tv-band.long .t { color:var(--tv-blu); }
+.tv-band .s { font:700 12px/1.35 var(--font-sans,sans-serif); margin-top:4px; }
+.tv-band .m { font:500 12px/1.5 var(--font-sans,sans-serif); color:var(--tv-mu); margin-top:5px; }
+
+.tv-lad { position:relative; flex:1 1 auto; min-height:180px; margin-top:10px;
+  border:1px solid var(--tv-ln); border-radius:8px; overflow:hidden; background:var(--tv-pan2); }
 .tv-zone { position:absolute; left:0; right:0; }
-.tv-zone.chop { background:linear-gradient(180deg,rgba(84,200,255,.22),rgba(84,200,255,.07)); }
-.tv-zone.trend { background:linear-gradient(180deg,rgba(255,96,96,.07),rgba(255,96,96,.26)); }
-.tv-zbar { position:absolute; left:0; width:4px; opacity:.85; }
-.tv-zbar.chop { background:var(--tv-blu); } .tv-zbar.trend { background:var(--tv-red); }
-.tv-ztag { position:absolute; left:16px; display:flex; align-items:center; gap:7px;
-  font:800 10px/1 var(--font-sans,sans-serif); letter-spacing:.16em; }
-.tv-ztag.chop { top:14px; color:var(--tv-blu); } .tv-ztag.trend { bottom:14px; color:var(--tv-red); }
-.tv-ztag small { font:600 9.5px/1 var(--font-sans,sans-serif); letter-spacing:.06em; opacity:.7; }
-
-.tv-lv { position:absolute; left:0; right:0; height:0; }
-.tv-lv .tv-rule { position:absolute; left:16px; right:0; top:0; border-top:1.5px solid currentColor; opacity:.40; }
-.tv-lv .tv-info { position:absolute; right:18px; top:-15px; display:flex; align-items:center; gap:9px; }
-.tv-tags { display:flex; gap:5px; }
-.tv-tag { font:800 9.5px/1 var(--font-sans,sans-serif); letter-spacing:.08em; padding:5px 7px; border-radius:5px;
-  border:1px solid currentColor; background:rgba(8,12,17,.86); white-space:nowrap; }
-.tv-price { font:800 16px/1 var(--font-mono,monospace); min-width:74px; text-align:right; letter-spacing:-.01em; }
-.tv-delta { font:700 11px/1 var(--font-mono,monospace); color:var(--tv-dim); min-width:56px; text-align:right; }
+.tv-zone.chop { background:linear-gradient(180deg,rgba(79,198,255,.20),rgba(79,198,255,.05)); }
+.tv-zone.trend { background:linear-gradient(180deg,rgba(255,95,95,.05),rgba(255,95,95,.22)); }
+.tv-ztag { position:absolute; left:12px; font:800 11px/1 var(--font-sans,sans-serif); letter-spacing:.13em; }
+.tv-ztag.chop { top:9px; color:var(--tv-blu); }
+.tv-ztag.trend { bottom:9px; color:var(--tv-red); }
+.tv-lv { position:absolute; left:0; right:0; display:flex; align-items:center; gap:7px; padding:0 12px; }
+.tv-lv .ln { flex:1; border-top:2.5px solid currentColor; opacity:.55; }
+.tv-tag { font:800 11px/1 var(--font-sans,sans-serif); letter-spacing:.05em; padding:5px 8px;
+  border-radius:3px; border:1px solid currentColor; background:rgba(6,9,13,.86); white-space:nowrap; }
+.tv-pr { font:800 15px/1 var(--font-mono,monospace); min-width:74px; text-align:right; }
+.tv-dl { font:800 11px/1 var(--font-mono,monospace); color:var(--tv-mu); min-width:58px; text-align:right; }
 .tv-c-call{color:var(--tv-red)} .tv-c-put{color:var(--tv-grn)} .tv-c-flip{color:#fff}
 .tv-c-pin{color:var(--tv-pur)} .tv-c-charm{color:var(--tv-amb)} .tv-c-spot{color:var(--tv-blu)}
-.tv-lv.flipline .tv-rule { border-top:2px dashed rgba(255,255,255,.75); opacity:1; }
-.tv-lv.spotline .tv-rule { border-top:3px solid var(--tv-blu); opacity:1; box-shadow:0 0 14px rgba(84,200,255,.55); }
-.tv-lv.spotline .tv-price { font-size:19px; color:var(--tv-blu); }
+.tv-lv.flipline .ln { border-top:3px dashed rgba(255,255,255,.8); opacity:1; }
+.tv-lv.spotline .ln { border-top:4px solid var(--tv-blu); opacity:1; box-shadow:0 0 14px rgba(79,198,255,.55); }
+.tv-lv.spotline .tv-pr { font-size:17px; color:var(--tv-blu); }
 .tv-lv.spotline .tv-tag { background:var(--tv-blu); color:#04121c; border-color:var(--tv-blu); }
 
-.tv-ds { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--tv-line);
-  margin:16px 20px 0; border:1px solid var(--tv-line); border-radius:12px; overflow:hidden; }
-.tv-dcell { background:var(--tv-pan); padding:13px 14px; }
-.tv-dcell .l { font:800 9px/1 var(--font-sans,sans-serif); letter-spacing:.15em; color:var(--tv-dim); }
-.tv-dcell .v { font:800 19px/1 var(--font-mono,monospace); margin-top:8px; letter-spacing:-.02em; }
-.tv-dcell .s { font:700 10px/1 var(--font-mono,monospace); color:var(--tv-mu); margin-top:5px; }
-.tv-meter { height:3px; border-radius:2px; background:rgba(255,255,255,.08); margin-top:10px; overflow:hidden; }
-.tv-meter i { display:block; height:100%; border-radius:2px; }
+.tv-grp { font:800 11px/1 var(--font-sans,sans-serif); letter-spacing:.12em; margin:14px 0 6px; }
+.tv-rrow { position:relative; display:flex; align-items:center; gap:6px; width:100%; text-align:left;
+  background:transparent; border:0; border-bottom:1px solid rgba(28,37,48,.6); color:var(--tv-tx);
+  padding:9px 3px 9px 10px; cursor:pointer; font-family:inherit; flex-wrap:wrap; }
+.tv-rrow:hover { background:var(--tv-pan2); }
+.tv-rrow::before { content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; border-radius:1px; }
+.tv-rrow.sh::before { background:var(--tv-red); }
+.tv-rrow.lg::before { background:var(--tv-blu); }
+.tv-rrow.rg::before { background:var(--tv-pur); }
+.tv-rgl { font:800 13px/1; min-width:15px; }
+.tv-rtk { font:900 14px/1 var(--font-mono,monospace); }
+.tv-ratr { margin-left:auto; font:800 14px/1 var(--font-mono,monospace); }
+.tv-rlv { font:700 11px/1.25 var(--font-mono,monospace); color:var(--tv-mu); width:100%;
+  margin-top:5px; padding-left:23px; }
+.tv-quiet { font:700 12px/1.55 var(--font-sans,sans-serif); color:var(--tv-mu); padding:12px 2px; }
 
-.tv-act { margin:16px 20px 0; border-radius:12px; padding:15px 18px;
-  background:linear-gradient(100deg,rgba(255,201,77,.11),transparent 70%);
-  border:1px solid rgba(255,201,77,.28); border-left:4px solid var(--tv-amb); }
-.tv-act .l { font:800 9.5px/1 var(--font-sans,sans-serif); letter-spacing:.18em; color:var(--tv-amb); }
-.tv-act .t { font:700 15px/1.55 var(--font-sans,sans-serif); margin-top:9px; }
-.tv-act .n { font:400 12px/1.5 var(--font-sans,sans-serif); color:var(--tv-mu); margin-top:8px; }
-
-.tv-prov { display:flex; gap:16px; flex-wrap:wrap; padding:15px 20px 18px; margin-top:14px;
-  border-top:1px solid var(--tv-line); font:600 10px/1 var(--font-mono,monospace); color:var(--tv-dim); }
-.tv-prov b { color:var(--tv-mu); font-weight:800; }
+.tv-kv { display:grid; grid-template-columns:1fr auto; gap:5px 10px; font-variant-numeric:tabular-nums; }
+.tv-kv .k { font:700 11px/1.6 var(--font-sans,sans-serif); color:var(--tv-dim); letter-spacing:.04em; }
+.tv-kv .v { font:800 13px/1.6 var(--font-mono,monospace); text-align:right; }
+.tv-last { font:700 11px/1.55 var(--font-mono,monospace); color:var(--tv-pur); }
 
 /* ── TERRAIN ALERTS ──────────────────────────────────────────────────────── */
 .tv-alert { display:none; margin:14px 20px 0; border-radius:10px; padding:12px 15px;
@@ -2864,61 +2916,72 @@ body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view) { display:non
     </div>
   </div>
 
-  <!-- ── TERRAIN VIEW — levels only, no model stack (terrain_engine.py) ── -->
+  <!-- ── TERRAIN VIEW — full-screen focus + periphery (terrain_engine.py) ── -->
   <section id="terrain-view" hidden aria-label="Terrain">
-   <div class="tv-shell">
-    <div class="tv-card">
-      <div class="tv-head">
-        <div class="tv-sym" id="tv-sym">—</div>
-        <div class="tv-px" id="tv-px">—</div>
-        <div class="tv-chg" id="tv-chg"></div>
-        <div class="tv-badge">
-          <span class="tv-dot" id="tv-dot"></span>
-          <span class="tv-trust" id="tv-trust">—</span>
-          <div class="tv-stamp" id="tv-stamp">—</div>
-        </div>
+
+    <div class="tv-top">
+      <div class="tv-sym" id="tv-sym">&mdash;</div>
+      <div class="tv-px" id="tv-px">&mdash;</div>
+      <div class="tv-chg" id="tv-chg"></div>
+      <span class="tv-chip" id="tv-trust">&mdash;</span>
+      <span class="tv-chip" id="tv-contracts">&mdash;</span>
+      <div class="tv-sp">
+        <label title="Master mute: silences terrain alerts AND the voice clock">
+          <input type="checkbox" id="tv-alerts-voice" checked
+                 onchange="edAlertsToggle('voice', this.checked)"> VOICE</label>
+        <label title="Alert tone + flash on wall contact, break, regime change">
+          <input type="checkbox" id="tv-alerts-sound" checked
+                 onchange="edAlertsToggle('sound', this.checked)"> SOUND</label>
+        <label title="All alerts: flash, tone and speech">
+          <input type="checkbox" id="tv-alerts-on" checked
+                 onchange="edAlertsToggle('all', this.checked)"> ALERTS</label>
+        <span id="tv-stamp">&mdash;</span>
       </div>
-
-      <div class="tv-alertbar">
-        <label><input type="checkbox" id="tv-alerts-on" checked
-               onchange="edAlertsToggle('all', this.checked)"> ALERTS</label>
-        <label><input type="checkbox" id="tv-alerts-voice" checked
-               onchange="edAlertsToggle('voice', this.checked)"> VOICE</label>
-      </div>
-
-      <div class="tv-alert" id="tv-alert"></div>
-
-      <div class="tv-regime" id="tv-regime">
-        <div class="tv-kicker">DEALER POSITIONING</div>
-        <div class="tv-title" id="tv-title">—</div>
-        <div class="tv-sub" id="tv-subline">—</div>
-        <div class="tv-mech" id="tv-mech"></div>
-      </div>
-
-      <div class="tv-ldwrap"><div class="tv-ld" id="tv-ld"></div></div>
-
-      <div class="tv-ds" id="tv-ds"></div>
-
-      <div class="tv-act">
-        <div class="l" id="tv-act-label">POSITION</div>
-        <div class="t" id="tv-act-text">—</div>
-        <div class="n" id="tv-act-note"></div>
-      </div>
-
-      <div class="tv-prov" id="tv-prov"></div>
     </div>
 
-    <aside class="tv-radar" aria-label="Radar">
-      <div class="tv-radar-head">
-        <span class="tv-radar-title">RADAR</span>
-        <span class="tv-radar-meta" id="tv-radar-meta">—</span>
+    <div class="tv-alert" id="tv-alert"></div>
+
+    <div class="tv-deck">
+      <!-- RADAR — spans both rows, ordered by ring -->
+      <div class="tv-z tv-z-radar">
+        <div class="tv-h">RADAR <span id="tv-radar-meta">&mdash;</span></div>
+        <div id="tv-radar-list"></div>
       </div>
-      <div class="tv-radar-list" id="tv-radar-list"></div>
-      <div class="tv-radar-foot">Distance in <b>daily ATR</b> — what price can actually
-        travel today. <b>⟳ FLIP</b> ranks first: a regime change alters every other level.
-        Hover for 15-minute ATR. Click a contact to make it active.</div>
-    </aside>
-   </div>
+
+      <!-- LADDER — the answer, largest tile -->
+      <div class="tv-z tv-z-ladder tv-hero">
+        <div class="tv-band" id="tv-regime">
+          <div class="t" id="tv-title">&mdash;</div>
+          <div class="s" id="tv-subline">&mdash;</div>
+          <div class="m" id="tv-mech"></div>
+        </div>
+        <div class="tv-lad" id="tv-ld"></div>
+      </div>
+
+      <!-- LEVELS — every level as a row, with distance in ATR -->
+      <div class="tv-z tv-z-levels">
+        <div class="tv-h">LEVELS <span id="tv-levels-meta">&Delta; from spot</span></div>
+        <table class="tv-tbl" id="tv-levels"></table>
+      </div>
+
+      <!-- row 2 — context -->
+      <div class="tv-z tv-z-session">
+        <div class="tv-h">SESSION</div>
+        <div class="tv-kv" id="tv-session"></div>
+      </div>
+      <div class="tv-z tv-z-dealer">
+        <div class="tv-h">DEALER POSITIONING</div>
+        <div class="tv-kv" id="tv-dealers"></div>
+      </div>
+      <div class="tv-z tv-z-tape">
+        <div class="tv-h">ALERT TAPE</div>
+        <div class="tv-tape" id="tv-tape"></div>
+      </div>
+      <div class="tv-z tv-z-posture">
+        <div class="tv-h">POSTURE</div>
+        <div id="tv-posture"></div>
+      </div>
+    </div>
   </section>
 
   <div class="ub-sse-legacy" aria-hidden="true">
@@ -11278,7 +11341,14 @@ setInterval(fetchLoggerStatus, 15000);
 /** Single speech source for the whole console — voice clock AND terrain alerts.
  *  `cancel` interrupts whatever is speaking (correct for the close countdown);
  *  terrain alerts pass cancel=false so a level warning never truncates the clock. */
+window.edVoiceMuted = (localStorage.getItem('ed_voice_muted') === '1');
+
 window.edSpeak = function edSpeak(text, cancel = true) {
+  // MASTER MUTE (operator 2026-07-19). The VOICE checkbox previously gated only terrain
+  // alerts, so unchecking it left the voice clock talking and the control looked broken.
+  // Every speech consumer in the console routes through this function, so muting here
+  // silences all of them.
+  if (window.edVoiceMuted) return;
   if (typeof window.speechSynthesis === 'undefined' || !text) return;
   try {
     if (cancel) window.speechSynthesis.cancel();
@@ -11389,11 +11459,20 @@ window.edSpeak = function edSpeak(text, cancel = true) {
   setInterval(tickVoiceClock, 250);
 })();
 
-// ── TERRAIN VIEW ────────────────────────────────────────────────────────────
-// Reads /api/terrain — the levels-only pipeline (terrain_engine.py). Deliberately
-// does NOT touch /api/state: that path runs the full model stack and is why background
-// collection had to be throttled. Terrain must never inherit that cost.
+// ── TERRAIN VIEW — full-screen focus + periphery ────────────────────────────
+// Reads /api/terrain and /api/terrain/radar (terrain_engine.py + terrain_atr.py).
+// Deliberately never touches /api/state: that path runs the full model stack and is why
+// background collection had to be throttled. Terrain must not inherit that cost.
 let edTerrainTimer = null;
+let edRadarTimer = null;
+
+function edSizeDeck() {
+  // Fit the deck to the viewport so the page never scrolls (operator 2026-07-19).
+  const deck = document.querySelector('.tv-deck');
+  if (!deck) return;
+  const top = deck.getBoundingClientRect().top;
+  deck.style.setProperty('--tv-deck-h', Math.max(320, window.innerHeight - top - 4) + 'px');
+}
 
 function edSwitchView(view) {
   const isTerrain = view === 'terrain';
@@ -11402,17 +11481,35 @@ function edSwitchView(view) {
   if (tv) tv.hidden = !isTerrain;
   const tc = document.getElementById('tab-console'), tt = document.getElementById('tab-terrain');
   if (tc) { tc.classList.toggle('is-active', !isTerrain); tc.setAttribute('aria-selected', String(!isTerrain)); }
-  if (tt) { tt.classList.toggle('is-active', isTerrain);  tt.setAttribute('aria-selected', String(isTerrain)); }
+  if (tt) { tt.classList.toggle('is-active', isTerrain); tt.setAttribute('aria-selected', String(isTerrain)); }
+
   if (edTerrainTimer) { clearInterval(edTerrainTimer); edTerrainTimer = null; }
-  if (isTerrain) { edLoadTerrain(); edTerrainTimer = setInterval(edLoadTerrain, 15000); }
-  edStartRadar(isTerrain);
+  if (edRadarTimer) { clearInterval(edRadarTimer); edRadarTimer = null; }
+  edStartSpotPaint(false);
+  if (!isTerrain) return;
+
+  edRestoreAlertPrefs();
+  edSizeDeck();
+  edLoadTerrain();
+  edLoadRadar();
+  // 5 s, not 15: a cache hit is one quote call (~0.3 s), so the residual gap between
+  // the card and the sub-second header is the poll interval itself (RC-28).
+  edTerrainTimer = setInterval(edLoadTerrain, 5000);
+  edStartSpotPaint(true);
+  edRadarTimer = setInterval(edLoadRadar, 20000);
 }
+
+window.addEventListener('resize', () => {
+  if (document.body.classList.contains('ed-terrain-mode')) edSizeDeck();
+});
 
 function edPct(lvl, spot) {
   if (lvl == null || !spot) return '';
   const p = (lvl - spot) / spot * 100;
   return (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
 }
+
+const edNum = (v, d) => (v == null || !isFinite(v)) ? '—' : Number(v).toFixed(d == null ? 2 : d);
 
 async function edLoadTerrain() {
   const tk = (typeof activeTicker === 'string' && activeTicker) ? activeTicker : 'SPY';
@@ -11427,47 +11524,38 @@ async function edLoadTerrain() {
   }
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
+  // ONE FAUCET: the browser already holds the live price the header renders. Prefer it
+  // over the server's copy so the card and the header can never show different numbers.
+  // The server's own spot is KEPT — regime/posture were computed at it, and the flip-
+  // crossing reconciliation below needs to know which side that spot was on (Bugbot
+  // 2026-07-20: overwriting it silently paired a live price with a regime from another).
+  d._srvSpot = d.spot;
+  const liveSpot = edLiveSpot();
+  if (liveSpot != null) d.spot = liveSpot;
+  edLastTerrain = d;
+
   set('tv-sym', d.ticker || tk);
   set('tv-px', d.spot != null ? Number(d.spot).toFixed(2) : '—');
-  set('tv-chg', '');
 
   const trusted = d.confidence === 'TRUSTED';
-  const dot = document.getElementById('tv-dot'), tr = document.getElementById('tv-trust');
-  if (dot) dot.className = 'tv-dot' + (trusted ? '' : ' bad');
-  if (tr) { tr.className = 'tv-trust' + (trusted ? '' : ' bad'); tr.textContent = d.confidence || '—'; }
-  const clock = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
-  set('tv-stamp', clock + ' CT · ' + (d.contracts_used || 0).toLocaleString() + ' contracts');
+  const tr = document.getElementById('tv-trust');
+  if (tr) { tr.className = 'tv-chip ' + (trusted ? 'ok' : 'bad'); tr.textContent = (trusted ? '● ' : '⚠ ') + (d.confidence || '—'); }
+  set('tv-contracts', (d.contracts_used || 0).toLocaleString() + ' CT · ' + (d.strikes_used || 0) + ' STRIKES');
+  set('tv-stamp', new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' }) + ' CT');
 
   const isLong = d.regime === 'LONG_GAMMA_CHOP', isShort = d.regime === 'SHORT_GAMMA_TREND';
   const rg = document.getElementById('tv-regime');
-  if (rg) rg.className = 'tv-regime' + (isLong ? ' long' : isShort ? ' short' : '');
-  set('tv-title', isLong ? 'LONG GAMMA · CHOP' : isShort ? 'SHORT GAMMA · TREND' : 'TERRAIN UNAVAILABLE');
+  if (rg) rg.className = 'tv-band' + (isLong ? ' long' : isShort ? ' short' : '');
+  // Glyph as a second channel: colour alone fails ~8% of men (Bloomberg accessibility).
+  set('tv-title', isLong ? '▲ LONG GAMMA · CHOP' : isShort ? '▼ SHORT GAMMA · TREND' : '— TERRAIN UNAVAILABLE');
   set('tv-subline', d.headline || '—');
   set('tv-mech', (d.lines && d.lines[0]) ? d.lines[0] : '');
-  set('tv-act-text', (d.lines && d.lines.length) ? d.lines[d.lines.length - 1] : '—');
-  const midbox = (d.lines || []).some(l => /mid-box/i.test(l));
-  set('tv-act-label', midbox ? 'POSITION · MID-BOX' : 'POSITION');
-  set('tv-act-note', trusted ? '' : 'Levels are not trustworthy — no posture is issued.');
 
   edRenderLadder(d);
-  edRenderDist(d);
+  edRenderLevels(d);
+  edRenderPeriphery(d, trusted);
   edCheckTerrainAlerts(d);
-
-  const pv = document.getElementById('tv-prov');
-  if (pv) {
-    let span = '—';
-    const fd = d.flip_diag || {};
-    if (fd.span_below_pct != null && fd.span_above_pct != null) {
-      span = '±' + ((Math.abs(fd.span_below_pct) + Math.abs(fd.span_above_pct)) / 2 * 100).toFixed(1) + '%';
-    }
-    pv.innerHTML =
-      '<span><b>' + (d.strikes_used || 0) + '</b> strikes</span>' +
-      '<span><b>' + (d.contracts_used || 0).toLocaleString() + '</b> contracts</span>' +
-      '<span>dollarized <b>' + (d.dollarized ? 'yes' : 'no') + '</b></span>' +
-      '<span>chain span <b>' + span + '</b></span>' +
-      '<span>schema <b>v' + (d.schema_version != null ? d.schema_version : '?') + '</b></span>' +
-      '<span>refresh <b>60s</b></span>';
-  }
+  edSizeDeck();
 }
 
 function edRenderLadder(d) {
@@ -11476,23 +11564,14 @@ function edRenderLadder(d) {
   el.textContent = '';
   const spot = d.spot;
 
-  // Group levels that share a strike so labels can never collide (the 755.00
-  // CALL WALL / CALL CHARM overlap reported 2026-07-19).
-  const raw = [
-    { t: 'CALL WALL',  v: d.call_wall,       c: 'tv-c-call'  },
-    { t: 'CALL CHARM', v: d.call_charm_wall, c: 'tv-c-charm' },
-    { t: 'GAMMA FLIP · REGIME LINE', v: d.gamma_flip, c: 'tv-c-flip', flip: true },
-    { t: 'HVL',        v: d.hvl,             c: 'tv-c-charm' },
-    { t: 'MAX PAIN',   v: d.max_pain,        c: 'tv-c-pin'   },
-    { t: 'GAMMA PIN',  v: d.gamma_pin,       c: 'tv-c-pin'   },
-    { t: 'PUT WALL',   v: d.put_wall,        c: 'tv-c-put'   },
-    { t: 'PUT CHARM',  v: d.put_charm_wall,  c: 'tv-c-charm' }
-  ].filter(m => m.v != null && isFinite(m.v));
+  // Group levels sharing a strike so labels can never collide (RC-8).
+  // Same source as the levels table, so the two panels cannot disagree about what exists.
+  const raw = edLevelSet(d);
   if (spot != null) raw.push({ t: '◆ SPOT', v: spot, c: 'tv-c-spot', spot: true });
 
   if (!raw.length || !spot) {
     const p = document.createElement('div');
-    p.style.cssText = 'padding:22px;color:#63768f;font:600 13px/1.5 sans-serif';
+    p.className = 'tv-quiet';
     p.textContent = 'No trustworthy levels to plot. Stand aside.';
     el.appendChild(p);
     return;
@@ -11504,88 +11583,427 @@ function edRenderLadder(d) {
     if (!groups.has(k)) groups.set(k, { v: Number(m.v), items: [] });
     groups.get(k).items.push(m);
   }
-
   const vals = Array.from(groups.values()).map(g => g.v);
   let lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
   const pad = Math.max((hi - lo) * 0.14, spot * 0.001);
   lo -= pad; hi += pad;
-  const H = el.clientHeight || 430;
-  const y = v => Math.round(((hi - v) / (hi - lo)) * (H - 40)) + 20;
+  const H = el.clientHeight || 300;
+  const y = v => Math.round(((hi - v) / (hi - lo)) * (H - 36)) + 18;
+  el._scale = { lo, hi, H };   // reused by edPaintLadderSpot between polls
 
   if (d.gamma_flip != null) {
+    // ORIENTATION IS DERIVED, NOT ASSUMED. The old code hardcoded chop-above/trend-below,
+    // which is only true for the common neg-below/pos-above profile. A chain that is
+    // long-gamma BELOW and short-gamma ABOVE (the pos->neg crossing the flip detector now
+    // finds) has exactly the opposite meaning on each side. The regime IS the sign at
+    // spot (RC-11), so which side of the flip spot sits on tells us the orientation.
+    const isLongHere = d.regime === 'LONG_GAMMA_CHOP';
+    const spotAbove = spot != null && spot > d.gamma_flip;
+    const inverted = (isLongHere && !spotAbove) || (!isLongHere && d.regime === 'SHORT_GAMMA_TREND' && spotAbove);
     const fy = y(d.gamma_flip);
-    const zones = [['chop', 'top:0;height:' + fy + 'px'], ['trend', 'top:' + fy + 'px;bottom:0']];
-    for (const z of zones) {
+    const topKind = inverted ? 'trend' : 'chop', botKind = inverted ? 'chop' : 'trend';
+    for (const z of [[topKind, 'top:0;height:' + fy + 'px'], [botKind, 'top:' + fy + 'px;bottom:0']]) {
       const zone = document.createElement('div');
-      zone.className = 'tv-zone ' + z[0]; zone.style.cssText = z[1]; el.appendChild(zone);
-      const bar = document.createElement('div');
-      bar.className = 'tv-zbar ' + z[0]; bar.style.cssText = z[1]; el.appendChild(bar);
+      zone.className = 'tv-zone ' + z[0];
+      zone.style.cssText = z[1];
+      el.appendChild(zone);
     }
+    // Position pinned INLINE: the chop/trend classes also position the tags via CSS
+    // (chop=top, trend=bottom), so swapping meaning without pinning would stack both
+    // labels on the same edge in the inverted case.
     const up = document.createElement('div');
-    up.className = 'tv-ztag chop';
-    up.innerHTML = '▲ ABOVE FLIP <small>· dealers dampen · chop · fade edges</small>';
+    up.className = 'tv-ztag ' + topKind;
+    up.style.top = '9px'; up.style.bottom = 'auto';
+    up.textContent = inverted ? '▲ ABOVE FLIP · DEALERS AMPLIFY · TREND'
+                              : '▲ ABOVE FLIP · DEALERS DAMPEN · CHOP';
     el.appendChild(up);
     const dn = document.createElement('div');
-    dn.className = 'tv-ztag trend';
-    dn.innerHTML = '▼ BELOW FLIP <small>· dealers amplify · trend · follow breaks</small>';
+    dn.className = 'tv-ztag ' + botKind;
+    dn.style.bottom = '9px'; dn.style.top = 'auto';
+    dn.textContent = inverted ? '▼ BELOW FLIP · DEALERS DAMPEN · CHOP'
+                              : '▼ BELOW FLIP · DEALERS AMPLIFY · TREND';
     el.appendChild(dn);
   }
 
-  const ordered = Array.from(groups.values()).sort((a, b) => b.v - a.v);
-  for (const g of ordered) {
+  for (const g of Array.from(groups.values()).sort((a, b) => b.v - a.v)) {
     const isSpot = g.items.some(i => i.spot), isFlip = g.items.some(i => i.flip);
     const lead = g.items.find(i => i.spot) || g.items.find(i => i.flip) || g.items[0];
     const row = document.createElement('div');
     row.className = 'tv-lv ' + lead.c + (isSpot ? ' spotline' : '') + (isFlip ? ' flipline' : '');
     row.style.top = y(g.v) + 'px';
-    const rule = document.createElement('div'); rule.className = 'tv-rule';
-    const info = document.createElement('div'); info.className = 'tv-info';
-    const tags = document.createElement('div'); tags.className = 'tv-tags';
+    const ln = document.createElement('div'); ln.className = 'ln';
+    row.appendChild(ln);
     for (const it of g.items) {
       const chip = document.createElement('span');
       chip.className = 'tv-tag ' + it.c;
       chip.textContent = it.t;
-      tags.appendChild(chip);
+      row.appendChild(chip);
     }
-    const pr = document.createElement('div'); pr.className = 'tv-price'; pr.textContent = g.v.toFixed(2);
-    const dl = document.createElement('div'); dl.className = 'tv-delta';
+    const pr = document.createElement('span'); pr.className = 'tv-pr'; pr.textContent = g.v.toFixed(2);
+    const dl = document.createElement('span'); dl.className = 'tv-dl';
     dl.textContent = isSpot ? 'mid-box' : edPct(g.v, spot);
-    info.appendChild(tags); info.appendChild(pr); info.appendChild(dl);
-    row.appendChild(rule); row.appendChild(info);
+    row.appendChild(pr); row.appendChild(dl);
     el.appendChild(row);
   }
 }
 
-function edRenderDist(d) {
-  const el = document.getElementById('tv-ds');
-  if (!el) return;
-  el.textContent = '';
-  const spot = d.spot;
-  const cell = (label, val, sub, colour, pct) => {
-    const c = document.createElement('div');
-    c.className = 'tv-dcell';
-    c.innerHTML = '<div class="l">' + label + '</div>' +
-      '<div class="v" style="color:' + colour + '">' + val + '</div>' +
-      '<div class="s">' + sub + '</div>' +
-      '<div class="tv-meter"><i style="width:' + pct + '%;background:' + colour + '"></i></div>';
-    el.appendChild(c);
-  };
-  const dist = v => (v == null || spot == null) ? null : v - spot;
-  const pw = dist(d.put_wall), cw = dist(d.call_wall), fl = dist(d.gamma_flip);
-  const box = (d.call_wall != null && d.put_wall != null) ? d.call_wall - d.put_wall : null;
-  const norm = v => v == null ? 0 : Math.min(100, Math.abs(v / spot * 100) / 2 * 100);
-
-  cell('TO PUT WALL', pw != null ? pw.toFixed(2) : '—',
-       pw != null ? edPct(d.put_wall, spot) : '—', '#3ee089', norm(pw));
-  cell('TO CALL WALL', cw != null ? '+' + cw.toFixed(2) : '—',
-       cw != null ? edPct(d.call_wall, spot) : '—', '#ff6060', norm(cw));
-  cell('TO FLIP', fl != null ? (fl >= 0 ? '+' : '') + fl.toFixed(2) : '—',
-       'regime line', '#eef4fb', norm(fl));
-  cell('BOX WIDTH', box != null ? box.toFixed(2) : '—',
-       box != null ? (box / spot * 100).toFixed(2) + '%' : '—', '#63768f',
-       box != null ? Math.min(100, box / spot * 100 / 3 * 100) : 0);
+// The level set, in one place. Both the ladder and the levels table read this, so a level
+// can never appear in one and be missing from the other.
+function edLevelSet(d) {
+  return [
+    { t: 'CALL WALL',  v: d.call_wall,       c: 'tv-c-call',  g: '▲', note: 'dealer supply' },
+    { t: 'CALL CHARM', v: d.call_charm_wall, c: 'tv-c-charm', g: '◇', note: 'charm wall' },
+    { t: 'GAMMA FLIP', v: d.gamma_flip,      c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true },
+    { t: 'HVL',        v: d.hvl,             c: 'tv-c-charm', g: '◇', note: 'high-volume level' },
+    { t: 'MAX PAIN',   v: d.max_pain,        c: 'tv-c-pin',   g: '·', note: 'advisory' },
+    { t: 'GAMMA PIN',  v: d.gamma_pin,       c: 'tv-c-pin',   g: '◆', note: 'pin' },
+    { t: 'PUT WALL',   v: d.put_wall,        c: 'tv-c-put',   g: '▼', note: 'dealer support' },
+    { t: 'PUT CHARM',  v: d.put_charm_wall,  c: 'tv-c-charm', g: '◇', note: 'charm wall' }
+  ].filter(m => m.v != null && isFinite(m.v));
 }
 
+// LEVELS TABLE (concept A). Columns are only what the engine actually computes.
+// The mockup showed TOUCH % and EXPOSURE $/pt; neither is computed anywhere in the
+// terrain payload, so they are NOT rendered — an invented number here would be read as
+// a probability and traded on.
+function edRenderLevels(d) {
+  const el = document.getElementById('tv-levels');
+  if (!el) return;
+  const spot = d.spot;
+  const atr = d.atr_daily || edRadarAtrFor(d.ticker);
+  const rows = edLevelSet(d);
+  if (spot != null) rows.push({ t: 'SPOT', v: spot, c: 'tv-c-spot', g: '◆', note: 'now', spot: true });
+  rows.sort((a, b) => b.v - a.v);
+
+  const meta = document.getElementById('tv-levels-meta');
+  if (meta) meta.textContent = atr ? 'ATR ' + edNum(atr) : 'ATR unavailable';
+
+  if (!rows.length) {
+    el.innerHTML = '<tbody><tr><td class="note">No trustworthy levels. Stand aside.</td></tr></tbody>';
+    return;
+  }
+  const head = '<thead><tr><th>LEVEL</th><th>PRICE</th><th>&Delta;</th><th>ATR</th><th>NOTE</th></tr></thead>';
+  const body = rows.map(r => {
+    const dist = (spot != null && r.v != null) ? Math.abs(r.v - spot) : null;
+    const inAtr = (dist != null && atr) ? edNum(dist / atr) : '—';
+    return '<tr' + (r.spot ? ' class="now"' : '') + '>' +
+      '<td><span class="nm ' + r.c + '">' + r.g + ' ' + r.t + '</span></td>' +
+      '<td class="' + r.c + '">' + edNum(r.v) + '</td>' +
+      '<td>' + (r.spot ? '—' : edPct(r.v, spot)) + '</td>' +
+      '<td>' + (r.spot ? '—' : inAtr) + '</td>' +
+      '<td class="note">' + r.note + '</td></tr>';
+  }).join('');
+  el.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function edRenderPeriphery(d, trusted) {
+  const kv = (id, rows) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = rows.map(r =>
+      '<span class="k">' + r[0] + '</span><span class="v"' +
+      (r[2] ? ' style="color:' + r[2] + '"' : '') + '>' + r[1] + '</span>').join('');
+  };
+  const atr = d.atr_daily || edRadarAtrFor(d.ticker);
+  const box = (d.call_wall != null && d.put_wall != null) ? d.call_wall - d.put_wall : null;
+  const fd = d.flip_diag || {};
+  let span = '—';
+  if (fd.span_below_pct != null && fd.span_above_pct != null) {
+    span = '±' + ((Math.abs(fd.span_below_pct) + Math.abs(fd.span_above_pct)) / 2 * 100).toFixed(1) + '%';
+  }
+
+  kv('tv-session', [
+    ['TO CLOSE', edMinutesToClose()],
+    ['DAILY ATR', atr ? edNum(atr) : '—'],
+    ['15-MIN ATR', d.atr_15m != null ? edNum(d.atr_15m) : '—'],
+    ['BOX WIDTH', box != null ? edNum(box) + (d.spot ? '  ' + (box / d.spot * 100).toFixed(2) + '%' : '') : '—'],
+    ['SPOT SOURCE', (d.spot_source || '—').replace('schwab_quote_last', 'quote.last'),
+     d.spot_source === 'schwab_quote_last' ? 'var(--tv-grn)' : 'var(--tv-amb)']
+  ]);
+
+  // Dealer positioning: gamma AT SPOT is the regime (RC-11), not spot-vs-flip.
+  const gas = fd.gamma_at_spot;
+  kv('tv-dealers', [
+    ['REGIME', d.regime === 'LONG_GAMMA_CHOP' ? '▲ LONG' : d.regime === 'SHORT_GAMMA_TREND' ? '▼ SHORT' : '—',
+     d.regime === 'LONG_GAMMA_CHOP' ? 'var(--tv-blu)' : d.regime === 'SHORT_GAMMA_TREND' ? 'var(--tv-red)' : ''],
+    ['γ AT SPOT', gas != null && isFinite(gas) ? (gas > 0 ? '+' : '') + Number(gas).toExponential(2) : '—',
+     gas == null ? '' : (gas > 0 ? 'var(--tv-blu)' : 'var(--tv-red)')],
+    ['CONFIDENCE', trusted ? 'TRUSTED' : (d.confidence || '—'),
+     trusted ? 'var(--tv-grn)' : 'var(--tv-amb)'],
+    ['CHAIN SPAN', span],
+    ['STRIKES / CT', (d.strikes_used || 0) + ' / ' + (d.contracts_used || 0).toLocaleString()],
+    ['DOLLARIZED', d.dollarized ? 'yes' : 'no', d.dollarized ? 'var(--tv-grn)' : 'var(--tv-amb)']
+  ]);
+
+  const po = document.getElementById('tv-posture');
+  if (po) {
+    const action = (d.lines && d.lines.length) ? d.lines[d.lines.length - 1] : '—';
+    const midbox = (d.lines || []).some(l => /mid-box/i.test(l));
+    po.innerHTML = '<div class="tv-postbig">' + (d.posture || '—').replace(/_/g, ' ') +
+      (midbox ? ' · MID-BOX' : '') + '</div><div class="tv-postsub">' + action + '</div>';
+  }
+  edRenderTape();
+}
+
+// ALERT TAPE — newest first. Fed by edAlertBanner, so what fired is what shows.
+const edTape = [];
+function edRenderTape() {
+  const el = document.getElementById('tv-tape');
+  if (!el) return;
+  if (!edTape.length) {
+    el.innerHTML = '<div class="tv-ev" style="color:var(--tv-mu)">no alerts this session</div>';
+    return;
+  }
+  const colour = { warn: 'var(--tv-amb)', break: 'var(--tv-red)',
+                   regime: 'var(--tv-pur)', lost: 'var(--tv-blu)' };
+  el.innerHTML = edTape.slice(0, 6).map(e =>
+    '<div class="tv-ev" style="color:' + (colour[e.kind] || 'var(--tv-tx)') + '">' +
+    e.at + '  ' + e.text + '</div>').join('');
+}
+
+function edMinutesToClose() {
+  const now = new Date();
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const mins = (16 * 60) - (et.getHours() * 60 + et.getMinutes());
+  if (mins <= 0) return 'closed';
+  return Math.floor(mins / 60) + ':' + String(mins % 60).padStart(2, '0');
+}
+
+// ── LIVE SPOT PAINT ─────────────────────────────────────────────────────────
+// ONE FAUCET (RC-29). The header renders `window._fastLaneSpot`, a live value the browser
+// already holds and repaints sub-second off the quote stream. The terrain card was making
+// its OWN server round-trip for a second copy of the same number, so it could only ever be
+// as fresh as its poll interval — the card visibly trailed the header.
+//
+// The card now renders THE SAME VARIABLE. Not the same source, not the same field: the
+// same value in the same browser at the same instant, so a divergence is impossible.
+//
+// Levels still come from the server on a slow poll (they move slowly). Everything that
+// depends on spot — the price, the ladder's spot line, and the ATR distances — repaints
+// from the live value between polls.
+let edLastTerrain = null;
+let edSpotPaintTimer = null;
+
+function edLiveSpot() {
+  const fs = window._fastLaneSpot;
+  return (Number.isFinite(fs) && fs > 0) ? fs : null;
+}
+
+function edPaintSpot() {
+  const d = edLastTerrain;
+  if (!d) return;
+  const spot = edLiveSpot();
+  if (spot == null) return;
+
+  const px = document.getElementById('tv-px');
+  if (px) px.textContent = spot.toFixed(2);
+
+  // keep the payload's own copy in step so every downstream render agrees
+  d.spot = spot;
+
+  edReconcileRegime(d, spot);
+  edPaintLadderSpot(d, spot);
+  edRenderLevels(d);   // Δ and ATR columns are spot-dependent, so they repaint live too
+}
+
+// Regime is the SIGN of dealer gamma at spot, and the flip is exactly where that sign
+// changes. The server computed regime at ITS spot; between polls the live spot can cross
+// the flip, leaving a live price paired with the other side's regime for up to 5 s
+// (Bugbot 2026-07-20). Crossing the boundary flips the sign by definition, so this
+// reconciliation is locally exact — the server payload re-anchors it on the next poll.
+function edReconcileRegime(d, liveSpot) {
+  if (d.gamma_flip == null || d._srvSpot == null || liveSpot == null) return;
+  if (d._srvRegime == null) d._srvRegime = d.regime;
+  const base = d._srvRegime;
+  if (base !== 'LONG_GAMMA_CHOP' && base !== 'SHORT_GAMMA_TREND') return;
+  const crossed = (d._srvSpot > d.gamma_flip) !== (liveSpot > d.gamma_flip);
+  const want = !crossed ? base
+    : (base === 'LONG_GAMMA_CHOP' ? 'SHORT_GAMMA_TREND' : 'LONG_GAMMA_CHOP');
+  if (want === d.regime) return;
+  d.regime = want;
+  const isLong = want === 'LONG_GAMMA_CHOP';
+  const rg = document.getElementById('tv-regime');
+  if (rg) rg.className = 'tv-band' + (isLong ? ' long' : ' short');
+  const t = document.getElementById('tv-title');
+  if (t) t.textContent = (isLong ? '▲ LONG GAMMA · CHOP' : '▼ SHORT GAMMA · TREND') +
+    (crossed ? ' · CROSSED FLIP' : '');
+  edRenderLadder(d);   // zones re-orient for the new side of the boundary
+}
+
+function edPaintLadderSpot(d, spot) {
+  const el = document.getElementById('tv-ld');
+  if (!el || !el._scale) return;
+  const row = el.querySelector('.tv-lv.spotline');
+  if (!row) return;
+  const { lo, hi, H } = el._scale;
+  if (!(hi > lo)) return;
+  // clamp: a spot outside the plotted band pins to the edge rather than escaping the panel
+  const y = Math.round(((hi - Math.min(hi, Math.max(lo, spot))) / (hi - lo)) * (H - 36)) + 18;
+  row.style.top = y + 'px';
+  const pr = row.querySelector('.tv-pr');
+  if (pr) pr.textContent = spot.toFixed(2);
+}
+
+function edStartSpotPaint(on) {
+  if (typeof window.refreshUtilityBar !== 'function' && typeof refreshUtilityBar === 'function') {
+    window.refreshUtilityBar = refreshUtilityBar;   // hoisted declaration -> window
+  }
+  if (edSpotPaintTimer) { clearInterval(edSpotPaintTimer); edSpotPaintTimer = null; }
+  if (!on) return;
+
+  // SAME TICK, not just the same value (RC-29). An independent 400 ms timer still showed
+  // 2 mismatches in 24 samples -- always one quote apart, because the header repaints on
+  // the stream tick and the card repainted on its own clock. Hooking refreshUtilityBar
+  // means both numbers are written in the same call, so they cannot disagree at any
+  // instant. The interval below is only a safety net for ticks that never arrive.
+  if (!window._edHookedUtilityBar && typeof window.refreshUtilityBar === 'function') {
+    const original = window.refreshUtilityBar;
+    window.refreshUtilityBar = function (...args) {
+      const r = original.apply(this, args);
+      try { edPaintSpot(); } catch (e) { /* never break the header */ }
+      return r;
+    };
+    window._edHookedUtilityBar = true;
+  }
+  edSpotPaintTimer = setInterval(edPaintSpot, 1000);
+}
+
+// ── radar ───────────────────────────────────────────────────────────────────
+const edRadarAtr = {};
+function edRadarAtrFor(ticker) { return edRadarAtr[(ticker || '').toUpperCase()] || null; }
+
+const ED_RING_GROUPS = [
+  { key: 'REGIME CHANGE', label: '⟳ REGIME', colour: 'var(--tv-pur)' },
+  { key: 'AT WALL', label: '◉ CONTACT', colour: 'var(--tv-amb)' },
+  { key: 'APPROACHING', label: '▲ CLOSING', colour: 'var(--tv-grn)' },
+  { key: 'IN SECTOR', label: '◇ IN SECTOR', colour: 'var(--tv-blu)' }
+];
+
+async function edLoadRadar() {
+  const el = document.getElementById('tv-radar-list');
+  const meta = document.getElementById('tv-radar-meta');
+  if (!el) return;
+  if (!el.children.length) {
+    // A warming cache takes ~20 s on first boot; an empty rail reads as broken.
+    const w = document.createElement('div');
+    w.className = 'tv-quiet';
+    w.textContent = 'Scanning airspace…';
+    el.appendChild(w);
+  }
+  let d;
+  try {
+    const r = await fetch('/api/terrain/radar?limit=30', { cache: 'no-store' });
+    d = await r.json();
+  } catch (e) {
+    if (meta) meta.textContent = 'unreachable';
+    return;
+  }
+  if (meta) meta.textContent = d.tracked + '/' + d.scanned + (d.blind_spots ? ' · ' + d.blind_spots + ' blind' : '');
+
+  for (const r of (d.rows || [])) {
+    if (r.atr_daily) edRadarAtr[(r.ticker || '').toUpperCase()] = r.atr_daily;
+  }
+
+  // ACTIVE-TICKER RECONCILIATION (Bugbot 2026-07-20): radar rows carry the loop-time
+  // spot (≤60 s old, by design — repricing all ~51 via live quotes is the 40 s cold
+  // sweep RC-26 removed). But the ACTIVE ticker's live spot is already in this browser,
+  // so its rail row is repriced from it — the rail and the card can never disagree about
+  // the one ticker the operator is actually looking at. Other rows stay loop-time.
+  const activeTk = (typeof activeTicker === 'string' ? activeTicker : '').toUpperCase();
+  const live = edLiveSpot();
+  if (activeTk && live != null) {
+    for (const r of (d.rows || [])) {
+      if ((r.ticker || '').toUpperCase() !== activeTk) continue;
+      if (r.wall != null && r.atr_daily) {
+        r.distance_atr = Math.abs(r.wall - live) / r.atr_daily;
+        if (r.atr_15m) r.distance_atr_15m = Math.abs(r.wall - live) / r.atr_15m;
+        r.spot = live;
+      }
+    }
+  }
+
+  el.textContent = '';
+  if (!d.rows || !d.rows.length) {
+    const q = document.createElement('div');
+    q.className = 'tv-quiet';
+    q.textContent = 'Airspace clear — nothing at a wall.';
+    el.appendChild(q);
+  }
+
+  for (const grp of ED_RING_GROUPS) {
+    const inGroup = (d.rows || []).filter(r => r.status === grp.key);
+    if (!inGroup.length) continue;
+    const h = document.createElement('div');
+    h.className = 'tv-grp';
+    h.style.color = grp.colour;
+    h.textContent = grp.label;
+    el.appendChild(h);
+    for (const r of inGroup) el.appendChild(edRadarRow(r, grp));
+  }
+  if (typeof edCheckRadarAlerts === 'function') edCheckRadarAlerts(d.rows || []);
+}
+
+function edRadarRow(r, grp) {
+  const isLong = r.regime === 'LONG_GAMMA_CHOP';
+  const isRegime = r.status === 'REGIME CHANGE';
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'tv-rrow ' + (isRegime ? 'rg' : isLong ? 'lg' : 'sh');
+  const NL = String.fromCharCode(10);
+  row.title = r.ticker + ' — ' + r.status + NL +
+    (r.distance_atr != null ? r.distance_atr.toFixed(2) + ' daily ATR' : '') +
+    (r.distance_atr_15m != null ? '  |  ' + r.distance_atr_15m.toFixed(1) + 'x 15m ATR' : '') + NL +
+    (r.atr_daily != null ? 'ATR daily ' + r.atr_daily.toFixed(2) : '') +
+    (r.atr_15m != null ? '  |  15m ' + r.atr_15m.toFixed(2) : '');
+  row.onclick = () => {
+    if (typeof setActiveTicker === 'function') setActiveTicker(r.ticker);
+    else window.activeTicker = r.ticker;
+    edLoadTerrain();
+  };
+  const gl = document.createElement('span');
+  gl.className = 'tv-rgl';
+  gl.style.color = grp.colour;
+  gl.textContent = isRegime ? '⟳' : isLong ? '▲' : '▼';
+  const tk = document.createElement('span'); tk.className = 'tv-rtk'; tk.textContent = r.ticker;
+  const at = document.createElement('span'); at.className = 'tv-ratr';
+  at.style.color = grp.colour;
+  at.textContent = r.distance_atr != null ? r.distance_atr.toFixed(2) : '—';
+  const lv = document.createElement('span'); lv.className = 'tv-rlv';
+  lv.textContent = (r.wall_name || '').toUpperCase() + ' ' + edNum(r.wall);
+  row.appendChild(gl); row.appendChild(tk); row.appendChild(at); row.appendChild(lv);
+  return row;
+}
+
+
+// ── ALERT TONE ──────────────────────────────────────────────────────────────
+// There was previously NO sound: alerts only flashed and spoke, so the operator could
+// not tell what an alert "sounded like". Three short tones, distinguishable without
+// looking: rising = approaching, falling = break, two-tone = regime change.
+let edAudioCtx = null;
+function edTone(kind) {
+  if (!edAlertsEnabled || !edAlertsSound) return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    edAudioCtx = edAudioCtx || new AC();
+    if (edAudioCtx.state === 'suspended') edAudioCtx.resume();
+    const seq = kind === 'break'  ? [[880, 0], [520, 0.11]]
+              : kind === 'regime' ? [[660, 0], [990, 0.10], [660, 0.20]]
+              : kind === 'lost'   ? [[400, 0], [300, 0.14]]
+              :                     [[620, 0], [880, 0.10]];   // warn: rising
+    for (const [freq, at] of seq) {
+      const osc = edAudioCtx.createOscillator(), gain = edAudioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t0 = edAudioCtx.currentTime + at;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.10);
+      osc.connect(gain).connect(edAudioCtx.destination);
+      osc.start(t0); osc.stop(t0 + 0.12);
+    }
+  } catch (e) { /* audio unavailable — never block the UI */ }
+}
 
 // ── TERRAIN ALERTS ──────────────────────────────────────────────────────────
 // Flash + speech for the active ticker AND the radar.
@@ -11603,12 +12021,36 @@ const ED_ALERT_BREAK_PCT = 0.0010;   // 0.10% beyond a wall = acceptance, not a 
 const ED_ALERT_COOLDOWN_MS = 120000; // same alert cannot repeat inside 2 minutes
 
 const edAlertState = {};   // ticker -> { key: lastFiredMs }
-let edAlertsEnabled = true;
-let edAlertsVoice = true;
+let edAlertsEnabled = (localStorage.getItem('ed_alerts_on') !== '0');
+let edAlertsVoice = (localStorage.getItem('ed_voice_muted') !== '1');
+let edAlertsSound = (localStorage.getItem('ed_alerts_sound') !== '0');
 
 function edAlertsToggle(kind, on) {
-  if (kind === 'all') edAlertsEnabled = on;
-  if (kind === 'voice') edAlertsVoice = on;
+  if (kind === 'all') {
+    edAlertsEnabled = on;
+    localStorage.setItem('ed_alerts_on', on ? '1' : '0');
+  }
+  if (kind === 'voice') {
+    edAlertsVoice = on;
+    window.edVoiceMuted = !on;                       // master mute: clock included
+    localStorage.setItem('ed_voice_muted', on ? '0' : '1');
+    if (!on && typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
+  }
+  if (kind === 'sound') {
+    edAlertsSound = on;
+    localStorage.setItem('ed_alerts_sound', on ? '1' : '0');
+    if (on) edTone('warn');                          // audible confirmation of the toggle
+  }
+}
+
+function edRestoreAlertPrefs() {
+  const map = { 'tv-alerts-on': edAlertsEnabled, 'tv-alerts-voice': edAlertsVoice,
+                'tv-alerts-sound': edAlertsSound };
+  for (const id in map) {
+    const el = document.getElementById(id);
+    if (el) el.checked = map[id];
+  }
+  window.edVoiceMuted = !edAlertsVoice;
 }
 
 function edAlertShouldFire(ticker, key) {
@@ -11620,7 +12062,10 @@ function edAlertShouldFire(ticker, key) {
 }
 
 function edFlash(kind) {
-  const card = document.querySelector('#terrain-view .tv-card');
+  // Was `#terrain-view .tv-card` — an element that does not exist in this view, so every
+  // flash silently did nothing. The regime band is the right target: it is the largest
+  // always-present tile and it is already where the eye goes.
+  const card = document.getElementById('tv-regime');
   if (!card) return;
   card.classList.remove('tv-flash-warn', 'tv-flash-break', 'tv-flash-regime', 'tv-flash-lost');
   void card.offsetWidth;                       // restart the animation
@@ -11629,6 +12074,14 @@ function edFlash(kind) {
 }
 
 function edAlertBanner(text, kind) {
+  // The tape records what actually FIRED, so it cannot drift from the alerts you heard.
+  edTape.unshift({
+    at: new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' }).slice(0, 5),
+    text: text, kind: kind
+  });
+  if (edTape.length > 24) edTape.length = 24;
+  edRenderTape();
+
   const el = document.getElementById('tv-alert');
   if (!el) return;
   el.className = 'tv-alert on ' + kind;
@@ -11642,6 +12095,7 @@ function edFireAlert(ticker, key, kind, spoken, banner) {
   if (!edAlertShouldFire(ticker, key)) return;
   edFlash(kind);
   edAlertBanner(banner, kind);
+  edTone(kind);
   if (edAlertsVoice && window.edSpeak) window.edSpeak(spoken, false);
 }
 
@@ -11733,103 +12187,6 @@ function edCheckRadarAlerts(rows) {
 }
 
 
-// ── RADAR ───────────────────────────────────────────────────────────────────
-// Air-traffic control, not a watchlist: a ticker earns a slot on the scope only by
-// doing something (at a wall / approaching one). Quiet mid-box symbols stay invisible.
-// Untrusted tickers are never ranked as if their levels were real — they are counted as
-// blind spots, which is information in itself.
-let edRadarTimer = null;
-
-async function edLoadRadar() {
-  const el = document.getElementById('tv-radar-list');
-  const meta = document.getElementById('tv-radar-meta');
-  if (!el) return;
-  let d;
-  try {
-    const r = await fetch('/api/terrain/radar?limit=14', { cache: 'no-store' });
-    d = await r.json();
-  } catch (e) {
-    if (meta) meta.textContent = 'radar unreachable';
-    return;
-  }
-
-  if (meta) {
-    meta.textContent = d.tracked + ' tracked · ' + d.scanned + ' scanned' +
-      (d.blind_spots ? ' · ' + d.blind_spots + ' blind' : '');
-  }
-
-  el.textContent = '';
-  if (!d.rows || !d.rows.length) {
-    const q = document.createElement('div');
-    q.className = 'tv-radar-quiet';
-    q.textContent = 'Airspace clear — nothing at a wall.';
-    el.appendChild(q);
-  }
-
-  for (const r of (d.rows || [])) {
-    const isLong = r.regime === 'LONG_GAMMA_CHOP';
-    const isRegime = r.status === 'REGIME CHANGE';
-    const atWall = r.status === 'AT WALL';
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'tv-radar-row ' + (isLong ? 'lg' : 'sh')
-                  + (isRegime ? ' regime' : atWall ? ' hot' : '');
-    // 15m ATR lives in the tooltip and on the focused row only — the scope stays readable
-    // 15m ATR lives in the tooltip and on the focused row only - the scope stays readable.
-    // NL via fromCharCode: escaped newlines inside this file have been mangled repeatedly
-    // by the edit tooling, producing a literal line break that breaks the whole script.
-    const NL = String.fromCharCode(10);
-    const atrLine = r.distance_atr != null
-      ? NL + r.distance_atr.toFixed(2) + ' daily ATR'
-        + (r.distance_atr_15m != null ? ' | ' + r.distance_atr_15m.toFixed(1) + 'x 15m ATR' : '')
-      : '';
-    const atrAbs = r.atr_daily != null
-      ? NL + 'ATR  daily ' + r.atr_daily.toFixed(2)
-        + (r.atr_15m != null ? ' | 15m ' + r.atr_15m.toFixed(2) : '')
-      : '';
-    row.title = r.ticker + ' - ' + r.status + ' ' + r.wall_name + ' '
-              + r.wall.toFixed(2) + atrLine + atrAbs;
-    // clicking a contact makes it the active ticker
-    row.onclick = () => {
-      if (typeof setActiveTicker === 'function') setActiveTicker(r.ticker);
-      else if (typeof activeTicker !== 'undefined') { window.activeTicker = r.ticker; }
-      edLoadTerrain();
-    };
-
-    const top = document.createElement('div');
-    top.className = 'tv-radar-top';
-    const tk = document.createElement('span'); tk.className = 'tv-radar-tk'; tk.textContent = r.ticker;
-    const st = document.createElement('span');
-    st.className = 'tv-radar-st' + (isRegime ? ' rg' : atWall ? ' at' : '');
-    st.textContent = isRegime ? '⟳ FLIP' : atWall ? 'AT WALL'
-                   : r.status === 'IN SECTOR' ? 'SECTOR' : 'APPROACH';
-    top.appendChild(tk); top.appendChild(st);
-
-    const mid = document.createElement('div');
-    mid.className = 'tv-radar-rg';
-    mid.textContent = isLong ? 'LONG · fade edges' : 'SHORT · follow breaks';
-
-    const bot = document.createElement('div');
-    bot.className = 'tv-radar-d';
-    const sign = r.distance_pct >= 0 ? '+' : '';
-    const atr = r.distance_atr != null ? r.distance_atr.toFixed(2) + ' ATR' : '—';
-    bot.innerHTML = '<span class="tv-radar-atr">' + atr + '</span>'
-                  + '<span class="tv-radar-lv">' + r.wall_name.toUpperCase() + ' '
-                  + r.wall.toFixed(2) + '</span>'
-                  + '<span class="tv-radar-pc">' + sign + r.distance_pct.toFixed(2) + '%</span>';
-
-    row.appendChild(top); row.appendChild(mid); row.appendChild(bot);
-    el.appendChild(row);
-  }
-
-  // radar alerts run off the same payload the scope draws from
-  if (typeof edCheckRadarAlerts === 'function') edCheckRadarAlerts(d.rows || []);
-}
-
-function edStartRadar(on) {
-  if (edRadarTimer) { clearInterval(edRadarTimer); edRadarTimer = null; }
-  if (on) { edLoadRadar(); edRadarTimer = setInterval(edLoadRadar, 20000); }
-}
 
 </script>
 </body>
