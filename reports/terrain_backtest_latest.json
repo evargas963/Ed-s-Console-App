@@ -1,7 +1,7 @@
 {
-  "generated_utc": "2026-07-20T20:37:03+00:00",
+  "generated_utc": "2026-07-20T21:58:03+00:00",
   "since": null,
-  "runtime_sec": 124.5,
+  "runtime_sec": 68.6,
   "observations": 1533,
   "scored_ticker_days": 1054,
   "tickers": 38,
@@ -39,5 +39,14 @@
     "hit_pct": 53.8
   },
   "median_trendiness_short": 0.544,
-  "median_trendiness_long": 0.491
+  "median_trendiness_long": 0.491,
+  "pdca": {
+    "coverage": 3,
+    "window_sessions": 1,
+    "rolling_gap_pts": -1.7,
+    "verdict": [
+      "YELLOW",
+      "ACCUMULATE \u2014 1/20 sessions in window; no ACT decision until it fills (Deming: don't tamper on common-cause noise)"
+    ]
+  }
 }

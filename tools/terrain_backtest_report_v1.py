@@ -231,16 +231,128 @@ def render_md(rep: dict) -> str:
     return "\n".join(L) + "\n"
 
 
+
+
+# ── PDCA: the decision rules live HERE, so the card treats itself ────────────
+# TQM's heart (operator 2026-07-20): a thermometer nobody treats is not a quality loop.
+# Every daily run appends one line of history, computes the rolling window, and prints a
+# VERDICT with the rule that fired. Thresholds are operator policy — change them here,
+# with a comment, never ad-hoc.
+HISTORY = ROOT / "reports" / "terrain_scorecard_history.jsonl"
+PDCA_WINDOW_SESSIONS = 20          # rolling window before ACT decisions have footing
+PDCA_PROMOTE_PTS = 5.0             # gap >= +5pts  -> promote toward the economic test
+PDCA_ADJUST_PTS = -5.0             # gap <= -5pts  -> input change via registered tests
+
+
+def pdca_verdict(gap_pts: float | None, sessions: int) -> tuple[str, str]:
+    """(colour, action) from the rolling TRUSTED-minus-placebo gap. Pure; unit-tested."""
+    if sessions < PDCA_WINDOW_SESSIONS:
+        return ("YELLOW", f"ACCUMULATE — {sessions}/{PDCA_WINDOW_SESSIONS} sessions in "
+                          f"window; no ACT decision until it fills (Deming: don't tamper "
+                          f"on common-cause noise)")
+    if gap_pts is None:
+        return ("RED", "CHECK BROKEN — window full but no TRUSTED rows scored; "
+                       "capture/coverage is the defect, fix DO before judging the signal")
+    if gap_pts >= PDCA_PROMOTE_PTS:
+        return ("GREEN", f"PROMOTE — signal beats placebo by {gap_pts:+.1f}pts over "
+                         f"{PDCA_WINDOW_SESSIONS} sessions; advance to the FP-64 "
+                         f"economic/sizing test")
+    if gap_pts <= PDCA_ADJUST_PTS:
+        return ("RED", f"ADJUST INPUTS — {gap_pts:+.1f}pts below placebo; run the "
+                       f"registered input tests (volume-weighting, single-name sign "
+                       f"split) — never ad-hoc tweaks")
+    return ("YELLOW", f"REFINE MEASUREMENT — gap {gap_pts:+.1f}pts is inside the noise "
+                      f"band; next registered refinement is tail-quantile scoring "
+                      f"(the literature says this signal lives in tails)")
+
+
+def _todays_coverage() -> int:
+    """How many tickers got their wide capture today — the DO-step health number."""
+    from calibration.option_chain_morning_full import et_date_and_mins
+    day, _ = et_date_and_mins()
+    try:
+        con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30)
+        n = con.execute("SELECT COUNT(*) FROM option_chain_morning_full WHERE et_date=?",
+                        (day,)).fetchone()[0]
+        con.close()
+        return int(n)
+    except sqlite3.Error:
+        return 0
+
+
+def _append_history(rep: dict, day: str, coverage: int) -> list[dict]:
+    """One line per ET day (rerun overwrites that day); returns full history."""
+    hist: list[dict] = []
+    if HISTORY.exists():
+        for ln in HISTORY.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(ln)
+            except ValueError:
+                continue
+            if row.get("day") != day:
+                hist.append(row)
+    t = rep["trusted_only"]
+    hist.append({"day": day, "coverage": coverage,
+                 "trusted_n": t["n"], "trusted_hit_pct": t["hit_pct"],
+                 "placebo_n": rep["placebo_persistence"]["n"],
+                 "placebo_hit_pct": rep["placebo_persistence"]["hit_pct"]})
+    hist.sort(key=lambda r: r.get("day", ""))
+    HISTORY.parent.mkdir(parents=True, exist_ok=True)
+    HISTORY.write_text("\n".join(json.dumps(r) for r in hist) + "\n", encoding="utf-8")
+    return hist
+
+
+def rolling_gap(hist: list[dict], window: int = PDCA_WINDOW_SESSIONS
+                ) -> tuple[float | None, int]:
+    """Aggregate TRUSTED-vs-placebo gap over the last `window` sessions (hit-weighted)."""
+    tail = hist[-window:]
+    th = tn = ph = pn = 0.0
+    for r in tail:
+        if r.get("trusted_hit_pct") is not None and r.get("trusted_n"):
+            th += r["trusted_hit_pct"] * r["trusted_n"] / 100.0
+            tn += r["trusted_n"]
+        if r.get("placebo_hit_pct") is not None and r.get("placebo_n"):
+            ph += r["placebo_hit_pct"] * r["placebo_n"] / 100.0
+            pn += r["placebo_n"]
+    if tn == 0 or pn == 0:
+        return None, len(tail)
+    return 100.0 * th / tn - 100.0 * ph / pn, len(tail)
+
+
+def render_pdca(coverage: int, gap: float | None, sessions: int) -> str:
+    colour, action = pdca_verdict(gap, sessions)
+    return "\n".join([
+        "", "## PDCA — the loop, self-treating", "",
+        f"- **DO (coverage)**: {coverage} tickers wide-captured today "
+        f"({'healthy' if coverage >= 40 else 'DEGRADED — expect ~50; the capture is the defect today'})",
+        f"- **CHECK (window)**: {sessions}/{PDCA_WINDOW_SESSIONS} sessions accumulated; "
+        f"rolling TRUSTED−placebo gap: {f'{gap:+.1f}pts' if gap is not None else '—'}",
+        f"- **ACT** → **{colour}**: {action}", "",
+        "_Rules: ≥+5pts promote · −5..+5 refine measurement · ≤−5 adjust inputs via "
+        "register · window unfilled = accumulate. Single days never trigger ACT "
+        "(special-vs-common cause)._",
+    ]) + "\n"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default=None, help="YYYY-MM-DD lower bound (ET days)")
     args = ap.parse_args()
     rep = run(args.since)
+    from calibration.option_chain_morning_full import et_date_and_mins
+    day, _ = et_date_and_mins()
+    coverage = _todays_coverage()
+    hist = _append_history(rep, day, coverage)
+    gap, sessions = rolling_gap(hist)
+    md = render_md(rep) + render_pdca(coverage, gap, sessions)
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    rep["pdca"] = {"coverage": coverage, "window_sessions": sessions,
+                   "rolling_gap_pts": round(gap, 2) if gap is not None else None,
+                   "verdict": pdca_verdict(gap, sessions)}
     OUT_JSON.write_text(json.dumps(rep, indent=2), encoding="utf-8")
-    OUT_MD.write_text(render_md(rep), encoding="utf-8")
-    print(render_md(rep))
-    print("wrote", OUT_MD, "and", OUT_JSON)
+    OUT_MD.write_text(md, encoding="utf-8")
+    print(md)
+    print("wrote", OUT_MD, "and", OUT_JSON, "and", HISTORY)
     return 0
 
 
