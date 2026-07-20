@@ -43,6 +43,17 @@ MORNING_END_MINS = 600    # 10:00 ET — capture window for first write
 # Cap 100: Schwab 502'd strikeCount=200 on SPY/QQQ at the 2026-07-20 open.
 GEX_FULL_CHAIN_STRIKE_COUNT = 100
 SOURCE_WIDE = "schwab_chain_wide_gex"
+#: FULL-UNIVERSE capture rides the terrain loop AFTER the money-path window closes
+#: (operator 2026-07-20: "q4.2 lets do it"). Sentinels keep their in-window capture via
+#: the logger path; every other ticker is picked up between 10:00 and this bound —
+#: deliberately outside 09:30-10:00 so ~48 wide fetches never contend with the open.
+#: The backtest observes at ~10:00 ET, so a 10:0x capture is the same terrain epoch.
+UNIVERSAL_CAPTURE_END_MINS = 690  # 11:30 ET
+
+
+def universal_capture_window(mins: int) -> bool:
+    """True when the terrain loop may spend budget on universe wide captures."""
+    return MORNING_END_MINS < mins <= UNIVERSAL_CAPTURE_END_MINS
 
 
 def ensure_morning_full_schema(conn: sqlite3.Connection) -> None:

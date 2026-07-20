@@ -3323,8 +3323,10 @@ ETF_ZONE_THRESHOLD_PCT:  float = 0.3   # chg_pct beyond ±0.3% → bullish/beari
 
 # Chain fetch
 CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab (live UI — keep fast)
-# FIND-GAMMA-FULLCHAIN-STRIKES-V1: dedicated morning GEX capture only (not live UI).
-GEX_FULL_CHAIN_STRIKE_COUNT: int = 100  # aligned with calibration; Schwab 502 at 200
+# FIND-GAMMA-FULLCHAIN-STRIKES-V1: the wide-capture strike count is imported from
+# calibration.option_chain_morning_full below — it was ALSO defined here as a literal
+# ("aligned with calibration" by hand), i.e. two faucets for one constant. The import is
+# the single source; ruff F811 caught the duplicate the moment both were in scope.
 
 # Exposure windows
 EXPOSURE_WINDOWS:    list  = [5, 10, 15, 20]   # window sizes passed to build_*_rows
@@ -3364,9 +3366,14 @@ from timeframe_config import CANONICAL_TIMEFRAME
 # also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
 # path now has no failure mode to pick a policy for.
 from calibration.option_chain_morning_full import (
+    GEX_FULL_CHAIN_STRIKE_COUNT,
     MORNING_END_MINS as GEX_MORNING_END_MINS,
     MORNING_START_MINS as GEX_MORNING_START_MINS,
+    SOURCE_WIDE as GEX_SOURCE_WIDE,
     et_date_and_mins as gex_et_date_and_mins,
+    has_morning_full_capture,
+    maybe_persist_morning_full_chain,
+    universal_capture_window,
 )
 
 #: Timeframes to try, in order, when reading stored snapshot rows. The timeframe MUST be
@@ -10179,6 +10186,54 @@ def terrain_cache_size() -> int:
         return len(_terrain_cache)
 
 
+#: (ticker, et_date) pairs whose morning wide capture is already persisted — in-process
+#: memo so the loop does not hit the DB with has_morning_full_capture every 60s.
+_morning_capture_done: set[tuple[str, str]] = set()
+_morning_capture_lock = threading.Lock()
+
+
+def _universal_capture_wanted(tk: str) -> tuple[bool, tuple[str, str]]:
+    """Does `tk` still need today's wide morning capture?
+
+    UNIVERSAL MORNING CAPTURE (operator 2026-07-20). The sentinel-only capture rides the
+    money-path logger, which RC-1's operator-mode gate skips for non-sentinels whenever a
+    viewer is connected — measured result: 3 of ~51 tickers captured today. The terrain
+    loop touches EVERY ticker each cycle, so it closes the gap in the post-window span
+    (10:00-11:30 ET, deliberately AFTER the money-path window): one wide fetch serves
+    both terrain and the archive. Idempotent per (ticker, ET day); DB checked once per
+    day per ticker, then memoised in-process.
+    """
+    cap_date, cap_mins = gex_et_date_and_mins()
+    key = (tk, cap_date)
+    if not universal_capture_window(cap_mins):
+        return False, key
+    with _morning_capture_lock:
+        if key in _morning_capture_done:
+            return False, key
+    if has_morning_full_capture(get_db().db_path, tk, cap_date):
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+        return False, key
+    return True, key
+
+
+def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
+                               contracts: list, spot: float | None) -> None:
+    """Persist the wide chain just fetched. Archive concern — terrain must still serve."""
+    try:
+        maybe_persist_morning_full_chain(
+            get_db().db_path, ticker=tk, contracts=contracts,
+            spot=float(spot) if spot is not None else None,
+            ts_utc=time.time(), source=GEX_SOURCE_WIDE,
+        )
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+        log.info("morning wide capture persisted ticker=%s width=%d n=%d",
+                 tk, width, len(contracts))
+    except Exception as e:
+        log.warning("morning wide capture persist failed ticker=%s: %s", tk, e)
+
+
 def _terrain_refresh_one(ticker: str) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises."""
     tk = (ticker or "").upper().strip()
@@ -10186,8 +10241,12 @@ def _terrain_refresh_one(ticker: str) -> str:
         return "skip:empty"
     try:
         client = get_client()
+        want_capture, cap_key = _universal_capture_wanted(tk)
+        _width = _terrain_strike_count(tk)
+        if want_capture:
+            _width = max(_width, GEX_FULL_CHAIN_STRIKE_COUNT)
         resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-            client, tk, strike_count=_terrain_strike_count(tk), priority=False,
+            client, tk, strike_count=_width, priority=False,
         )
         if resp is None or getattr(resp, "status_code", None) != 200:
             return "error:chain_http"
@@ -10195,6 +10254,8 @@ def _terrain_refresh_one(ticker: str) -> str:
         contracts = flatten_chain_contracts(c_json)
         # ONE spot authority (RC-14) — never the chain underlying on its own.
         spot, spot_source, spot_ts = resolve_spot(tk, chain_json=c_json)
+        if want_capture and contracts:
+            _persist_universal_capture(tk, cap_key, _width, contracts, spot)
         # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
         # requests the width its +/-5% span actually needs instead of a tabulated guess.
         _learn_strike_geometry(tk, contracts, spot)
