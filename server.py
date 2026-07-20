@@ -10210,6 +10210,15 @@ def _universal_capture_wanted(tk: str) -> tuple[bool, tuple[str, str]]:
     with _morning_capture_lock:
         if key in _morning_capture_done:
             return False, key
+        attempts = _morning_capture_attempts.get(key, 0)
+        if attempts >= _MORNING_CAPTURE_MAX_ATTEMPTS:
+            # Three wide fetches produced nothing persistable — stop paying for wide
+            # width every cycle; the day is a miss for this ticker, said out loud once.
+            _morning_capture_done.add(key)
+            log.warning("morning wide capture GIVEN UP ticker=%s after %d attempts",
+                        tk, attempts)
+            return False, key
+        _morning_capture_attempts[key] = attempts + 1
     if has_morning_full_capture(get_db().db_path, tk, cap_date):
         with _morning_capture_lock:
             _morning_capture_done.add(key)
@@ -10217,21 +10226,52 @@ def _universal_capture_wanted(tk: str) -> tuple[bool, tuple[str, str]]:
     return True, key
 
 
+#: Per-(ticker, et_date) persist attempts. Bugbot MEDIUM (confirmed): an empty flatten
+#: skipped persist WITHOUT memoising, so the loop re-forced the wide width every ~60s for
+#: the entire 90-minute span. Three strikes and the day is done for that ticker.
+_morning_capture_attempts: dict[tuple[str, str], int] = {}
+_MORNING_CAPTURE_MAX_ATTEMPTS = 3
+
+
 def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
                                contracts: list, spot: float | None) -> None:
-    """Persist the wide chain just fetched. Archive concern — terrain must still serve."""
+    """Persist the wide chain just fetched. Archive concern — terrain must still serve.
+
+    Bugbot 2026-07-20 (HIGH — confirmed): the first version ignored the persist RETURN
+    DICT and memoised + logged success on any non-exception — including the status
+    dicts that mean "nothing was written". A silently-discarded capture then read as
+    captured for the rest of the ET day. The dict is now the arbiter:
+      ok / idempotent_skip            -> memoise (done for the day), log accordingly
+      too_few_near_term_contracts    -> memoise WITH WARNING (a thin chain will not
+                                         thicken intraday; retrying burns wide fetches)
+      anything else                  -> warn, do NOT memoise, bounded by the attempt cap
+    """
     try:
-        maybe_persist_morning_full_chain(
+        result = maybe_persist_morning_full_chain(
             get_db().db_path, ticker=tk, contracts=contracts,
             spot=float(spot) if spot is not None else None,
             ts_utc=time.time(), source=GEX_SOURCE_WIDE,
         )
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-        log.info("morning wide capture persisted ticker=%s width=%d n=%d",
-                 tk, width, len(contracts))
     except Exception as e:
         log.warning("morning wide capture persist failed ticker=%s: %s", tk, e)
+        return
+    status = str(result.get("status", ""))
+    if status == "ok":
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+        log.info("morning wide capture persisted ticker=%s width=%d n=%s",
+                 tk, width, result.get("n_contracts"))
+    elif status == "idempotent_skip":
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+    elif result.get("reason") == "too_few_near_term_contracts":
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+        log.warning("morning wide capture SKIPPED for the day ticker=%s: only %s "
+                    "near-term contracts", tk, result.get("n"))
+    else:
+        log.warning("morning wide capture not persisted ticker=%s status=%s reason=%s",
+                    tk, status, result.get("reason"))
 
 
 def _terrain_refresh_one(ticker: str) -> str:

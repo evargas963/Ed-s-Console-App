@@ -144,11 +144,16 @@ def maybe_persist_morning_full_chain(
     ts_utc: float | None = None,
     source: str = SOURCE_WIDE,
 ) -> dict[str, Any]:
-    """Idempotent: one row per (ticker, et_date) in the morning window."""
+    """Idempotent: one row per (ticker, et_date) in the capture span 09:30-11:30 ET.
+
+    Accept bound is the FULL span (Bugbot 2026-07-20 HIGH: it rejected everything after
+    MORNING_END_MINS while the universal path calls only after it — every universal
+    capture was a silent no-op). Sentinel in-window path is a subset, unchanged.
+    """
     et_date, mins = et_date_and_mins(ts_utc)
     ticker_u = str(ticker).upper()
-    if mins < MORNING_START_MINS or mins > MORNING_END_MINS:
-        return {"status": "skipped", "reason": "outside_morning_window", "et_date": et_date, "mins": mins}
+    if mins < MORNING_START_MINS or mins > UNIVERSAL_CAPTURE_END_MINS:
+        return {"status": "skipped", "reason": "outside_capture_span", "et_date": et_date, "mins": mins}
     if has_morning_full_capture(db_path, ticker_u, et_date):
         return {"status": "idempotent_skip", "ticker": ticker_u, "et_date": et_date}
     near = filter_near_term_contracts(contracts)
