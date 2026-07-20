@@ -1,0 +1,43 @@
+{
+  "generated_utc": "2026-07-20T20:37:03+00:00",
+  "since": null,
+  "runtime_sec": 124.5,
+  "observations": 1533,
+  "scored_ticker_days": 1054,
+  "tickers": 38,
+  "claim": "SHORT_GAMMA_TREND -> above-own-median range; LONG_GAMMA_CHOP -> below",
+  "overall": {
+    "n": 1054,
+    "hit_pct": 52.1
+  },
+  "trusted_only": {
+    "n": 1054,
+    "hit_pct": 52.1
+  },
+  "narrow_chain_only": {
+    "n": 0,
+    "hit_pct": null
+  },
+  "sentinels": {
+    "n": 0,
+    "hit_pct": null
+  },
+  "single_names": {
+    "n": 1054,
+    "hit_pct": 52.1
+  },
+  "long_gamma_days": {
+    "n": 760,
+    "hit_pct": 51.8
+  },
+  "short_gamma_days": {
+    "n": 294,
+    "hit_pct": 52.7
+  },
+  "placebo_persistence": {
+    "n": 1016,
+    "hit_pct": 53.8
+  },
+  "median_trendiness_short": 0.544,
+  "median_trendiness_long": 0.491
+}
