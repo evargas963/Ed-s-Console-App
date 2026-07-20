@@ -33,7 +33,14 @@ RING_SECTOR = 0.75        # on the scope, silent
 RING_REGIME = 0.15
 
 ATR_PERIOD = 14
-_MAX_1M_BARS = 40_000     # ~100 sessions, enough for a 14-day ATR with margin
+#: ATR(14) daily needs 15 daily candles. MEASURED, not estimated: `price_bars_1m` carries
+#: extended-hours bars (~960/day, not the 390 RTH minutes), so the bar-to-session ratio is
+#: about 1,000:1 --
+#:     6,000 bars -> 6 sessions   12,000 -> 12   20,000 -> 19   40,000 -> 38
+#: 12,000 was tried first on a bad estimate of 390 bars/session and produced daily ATR of
+#: None across the board. 24,000 gives ~23 sessions, comfortably past the 15 required,
+#: while halving the 40,000 that made the cold radar sweep 40 s and time out the UI.
+_MAX_1M_BARS = 24_000
 
 
 @dataclass(frozen=True)

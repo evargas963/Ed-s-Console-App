@@ -35,6 +35,7 @@ from math_exposure_core import (
 from math_levels import (
     compute_charm_by_strike,
     compute_gamma_flip_v2,
+    compute_gamma_profile,
     compute_max_pain,
     key_level_strikes_with_gamma,
     pick_charm_wall_strikes,
@@ -77,8 +78,16 @@ class TerrainSnapshot:
     flip_diag: dict[str, Any] = field(default_factory=dict)
     error: str = ""
 
+    #: (price, net dealer gamma) samples. Kept OUT of to_dict(): it is ~240 pairs, far too
+    #: heavy for every poll, but it is what lets a cached payload be re-priced against a
+    #: fresh spot without refetching the chain (RC-28). The levels are slow-moving; spot
+    #: is not; the regime is the sign of this curve AT spot.
+    profile: list[tuple[float, float]] = field(default_factory=list, repr=False)
+
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("profile", None)
+        return d
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
@@ -109,6 +118,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     )
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot)
+    profile = compute_gamma_profile(contracts, spot)
     charm_by_strike = compute_charm_by_strike(contracts, spot)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
@@ -134,8 +144,12 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         max_pain=compute_max_pain(exposures),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,
-        contracts_used=int(getattr(diag, "contracts_used", 0) or 0),
+        # ExposureDiagnostics is a frozen dataclass; contracts_used is ALWAYS an int.
+        # The old getattr(...,0) or 0 fabricated a neutral where absence is impossible —
+        # a broken diag would silently report "0 contracts" instead of failing (CAPS).
+        contracts_used=diag.contracts_used,
         strikes_used=len(exposures),
         dollarized=exposures_have_dollar_gex(exposures),
         flip_diag=dict(flip_diag or {}),
+        profile=profile,
     )

@@ -33,11 +33,13 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import sys
 import time
 import asyncio
 import logging
 import concurrent.futures
+import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -168,7 +170,8 @@ from math_exposure import (
     compute_iv_rank, compute_iv_percentile, compute_volatility_envelope,
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
-    compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density,
+    compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
+    infer_strike_increment, required_strike_count,
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
     pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
@@ -546,6 +549,83 @@ def _spot_from_quote(ticker: str) -> tuple[float | None, float | None]:
     return None, None
 
 
+#: Seconds the graceful shutdown gets before the process is killed outright. Generous
+#: enough for real teardown (the executors above cancel queued work immediately), short
+#: enough that the operator is never held hostage by one wedged vendor call.
+SHUTDOWN_DEADLINE_SEC: float = 12.0
+_shutdown_watchdog_armed = threading.Event()
+
+
+def _hard_exit(reason: str) -> None:
+    """Terminate NOW, bypassing atexit. The only thing that beats a stuck join.
+
+    `os._exit` is deliberate: `sys.exit` unwinds through the concurrent.futures atexit
+    hook, which is one of the things that hangs. Nothing here needs atexit for durability
+    -- DB writes commit inline, and every background pool is a cache/refresh whose work is
+    disposable by design.
+    """
+    try:
+        log.warning("HARD EXIT: %s", reason)
+        for h in list(getattr(log, "handlers", []) or []):
+            # A handler that cannot flush must not stop the exit — that would reintroduce
+            # exactly the hang this function exists to end.
+            with contextlib.suppress(Exception):
+                h.flush()
+        sys.stderr.write(f"\nHARD EXIT: {reason}\n")
+        sys.stderr.flush()
+    finally:
+        os._exit(0)
+
+
+def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
+    """Kill the process if graceful shutdown has not finished within the deadline.
+
+    REFUSES under pytest (RC-10 class). TestClient runs the lifespan inside the TEST
+    process; arming here left a daemon thread that outlived the test and os._exit(0)'d
+    PYTEST ITSELF 12 s later -- mid-suite, silently, exit code 0, all captured output
+    lost. OBSERVED 2026-07-20: tests/adversarial/test_remaining_route_inventory.py
+    "passed" with zero output; Cursor's full-suite run died the same way and read as a
+    hang. A watchdog that can kill the test runner is worse than the hang it prevents.
+    """
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    if _shutdown_watchdog_armed.is_set():
+        return
+    _shutdown_watchdog_armed.set()
+
+    def _watch() -> None:
+        time.sleep(deadline_sec)
+        _hard_exit(
+            f"graceful shutdown exceeded {deadline_sec:.0f}s - a background worker is "
+            f"blocked (slow vendor call or long query) and cannot be interrupted"
+        )
+
+    threading.Thread(target=_watch, name="shutdown-watchdog", daemon=True).start()
+
+
+def _install_signal_handlers() -> None:
+    """First Ctrl+C asks politely; a second one is not a request.
+
+    Without this the operator's only recourse was killing the process from another
+    window, because uvicorn's graceful path was blocked downstream of the signal.
+    """
+    def _on_signal(signum, _frame):
+        if _shutdown_watchdog_armed.is_set():
+            _hard_exit(f"second interrupt (signal {signum}) - exiting immediately")
+        log.warning("signal %s received - shutting down (press Ctrl+C again to force)", signum)
+        sys.stderr.write("\nShutting down… press Ctrl+C again to force immediate exit.\n")
+        sys.stderr.flush()
+        _arm_shutdown_watchdog()
+        raise KeyboardInterrupt
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _on_signal)
+        except (ValueError, OSError, AttributeError) as e:
+            # Not the main thread, or the platform lacks it — never fatal.
+            log.debug("could not install handler for %s: %s", sig, e)
+
+
 def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
     """Last persisted snapshot leg. Explicitly stale — lowest precedence."""
     import sqlite3 as _sq
@@ -555,11 +635,21 @@ def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
     except Exception as e:
         log.debug("resolve_spot stored leg failed for %s: %s", ticker, e, exc_info=True)
         return None, None
+    row = None
     try:
         con.row_factory = _sq.Row
-        row = con.execute(
-            "SELECT spot, ts_utc FROM snapshots WHERE ticker=? AND spot IS NOT NULL "
-            "ORDER BY ts_utc DESC LIMIT 1", (ticker,)).fetchone()
+        # `timeframe` MUST be named: idx_snap_ticker_tf_ts is (ticker, timeframe, ts_utc),
+        # so skipping the middle column makes the ts_utc ordering unusable and forces a
+        # full read of every row for this ticker into a temp B-tree. On a table whose rows
+        # carry ~50 KB inline chain blobs that is catastrophic -- the identical omission in
+        # _latest_chain_and_spot did not finish inside 300 s (MEASURED 2026-07-20).
+        for tf in _STORED_CHAIN_TIMEFRAMES:
+            row = con.execute(
+                "SELECT spot, ts_utc FROM snapshots "
+                "WHERE ticker=? AND timeframe=? AND spot IS NOT NULL "
+                "ORDER BY ts_utc DESC LIMIT 1", (ticker, tf)).fetchone()
+            if row:
+                break
     except Exception:
         return None, None
     finally:
@@ -624,8 +714,19 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
       coalesced callers receive the owner response for the SAME ticker only.
     SCHWAB_CSV_CHECKED
     """
+    # institutional-length-ok: 85 lines, 13 of them the mandated SCHWAB_CSV_CHECKED
+    # docstring. This is ONE protocol for a single chain fetch - coalesce, gate, fetch,
+    # then bookkeep - and its stages share key/holder/is_owner/acquired/exc across a
+    # try/finally. Extracting any stage means threading five mutable variables through a
+    # boundary and splitting the lock/release and event-set bookkeeping away from the
+    # code that establishes them, which makes the concurrency harder to verify rather
+    # than easier. RC-19: a length ceiling must prompt a judgement, not a reflex split.
     global _chain_fetch_gate_timeout_count
-    key = (ticker or "").strip().upper()
+    # Coalesce key MUST include strike_count. Observed 2026-07-20: terrain's
+    # SPY strikeCount=200 got Schwab 502; UI/analytics coalesced onto that same
+    # ticker key (wanting strikeCount=20) and inherited the failure as
+    # "Chain fetch failed". Same-ticker different widths are different fetches.
+    key = ((ticker or "").strip().upper(), int(strike_count))
     wait_started = time.monotonic()
     with _chain_inflight_lock:
         holder = _chain_inflight.get(key)
@@ -644,7 +745,10 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
                 raise holder["exc"]  # source exceptions propagate, never swallowed
             resp, _own_wait, fetch_sec = holder["result"]
             return resp, waited, fetch_sec
-        log.warning("chain coalesce wait timed out ticker=%s - issuing own fetch", key)
+        log.warning(
+            "chain coalesce wait timed out ticker=%s strike_count=%s - issuing own fetch",
+            key[0], key[1],
+        )
         # fail-open to an owned fetch WITHOUT registry (the stuck owner still
         # holds the key; never double-register)
     acquired = _schwab_chain_fetch_gate.acquire(
@@ -3220,7 +3324,7 @@ ETF_ZONE_THRESHOLD_PCT:  float = 0.3   # chg_pct beyond ±0.3% → bullish/beari
 # Chain fetch
 CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab (live UI — keep fast)
 # FIND-GAMMA-FULLCHAIN-STRIKES-V1: dedicated morning GEX capture only (not live UI).
-GEX_FULL_CHAIN_STRIKE_COUNT: int = 150
+GEX_FULL_CHAIN_STRIKE_COUNT: int = 100  # aligned with calibration; Schwab 502 at 200
 
 # Exposure windows
 EXPOSURE_WINDOWS:    list  = [5, 10, 15, 20]   # window sizes passed to build_*_rows
@@ -3253,6 +3357,25 @@ PRICE_LEVELS_CACHE_SEC: int = 15  # intraday VWAP refresh (process-local)
 from math_exposure import CANDLE_5M_MAX_BARS, CANDLE_1M_MAX_BARS
 from micro_structure import Candle
 from timeframe_config import CANONICAL_TIMEFRAME
+# Imported at MODULE LEVEL deliberately: the terrain loop's morning-window guard depends
+# on these, and a runtime import inside the loop meant a missing module silently removed
+# the guard during the exact 30 minutes it protects. At top level, a broken module stops
+# the server AT BOOT -- loud, immediate, and impossible to trade through unnoticed. This
+# also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
+# path now has no failure mode to pick a policy for.
+from calibration.option_chain_morning_full import (
+    MORNING_END_MINS as GEX_MORNING_END_MINS,
+    MORNING_START_MINS as GEX_MORNING_START_MINS,
+    et_date_and_mins as gex_et_date_and_mins,
+)
+
+#: Timeframes to try, in order, when reading stored snapshot rows. The timeframe MUST be
+#: named in any query that orders by ts_utc: the only usable index is
+#: idx_snap_ticker_tf_ts (ticker, timeframe, ts_utc), and omitting the MIDDLE column makes
+#: the ordering unusable, forcing a full read of every row for that ticker (MEASURED
+#: 2026-07-20: >300 s vs 0.002 s). Defined beside the import it depends on; both readers
+#: resolve it at call time, long after module load.
+_STORED_CHAIN_TIMEFRAMES: tuple[str, ...] = (CANONICAL_TIMEFRAME, "5m")
 
 class _CandleAccumulator:
     """Accumulate spot ticks into OHLCV candle bars."""
@@ -8282,6 +8405,11 @@ def _fetch_state(
         flip_confidence=_gamma_flip_conf,
         put_wall=ms_dict.get("kl_put_gamma_wall"),
         call_wall=ms_dict.get("kl_call_gamma_wall"),
+        # RC-11: regime is the SIGN OF DEALER GAMMA AT SPOT; spot-vs-flip is only the
+        # fallback. This call omitted gamma_at_spot, so the MONEY PATH still ran the
+        # pre-RC-11 model while /api/terrain ran the corrected one — the two surfaces
+        # could state opposite regimes for the same ticker (Cursor audit 2026-07-20).
+        gamma_at_spot=(_gamma_flip_diag or {}).get("gamma_at_spot"),
     )
     ms_dict["terrain_regime"] = _terrain.regime
     ms_dict["terrain_posture"] = _terrain.posture
@@ -8998,6 +9126,9 @@ from contextlib import asynccontextmanager
 async def _app_lifespan(app):
     """Startup and shutdown: logger, order flow, SSE, ML scheduler."""
     # ── Startup ─────────────────────────────────────────────────────────────
+    # Installed FIRST: until these exist, Ctrl+C depends on uvicorn's graceful path
+    # completing, and that path joins background workers which may be blocked.
+    _install_signal_handlers()
     _startup_analytics_executor()
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
@@ -9094,8 +9225,11 @@ async def _app_lifespan(app):
     # is connected; terrain is ~5 ms of math plus one chain call per ticker, so it keeps
     # every ticker's levels fresh regardless of what the model stack is doing.
     start_terrain_loop()
-    log.info("Terrain loop started — %.0fs cadence, %d workers, %d-strike chains",
-             TERRAIN_REFRESH_SEC, TERRAIN_WORKERS, TERRAIN_CHAIN_STRIKE_COUNT)
+    start_terrain_prewarm()
+    log.info("Terrain loop started — %.0fs cadence, %d workers, per-ticker strike width "
+             "derived from measured geometry (%d..%d, cold start %d)",
+             TERRAIN_REFRESH_SEC, TERRAIN_WORKERS, TERRAIN_STRIKE_COUNT_MIN,
+             TERRAIN_STRIKE_COUNT_MAX, TERRAIN_STRIKE_COUNT_COLD_START)
 
     # ML scheduler is OPT-IN for the operator console (2026-07-03): the unconditional
     # nightly 16:15 ET run trained/promoted models from whatever console instance was
@@ -9189,6 +9323,15 @@ async def _app_lifespan(app):
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
+    # BOUNDED BY CONSTRUCTION. Everything below joins background workers
+    # (`shutdown(wait=True)`, `join_timeout=40`), and `cancel_futures=True` only drops
+    # QUEUED work -- it cannot interrupt a RUNNING one. A single worker inside a slow
+    # Schwab call or a long query therefore blocked the whole chain, so Ctrl+C was
+    # accepted and the console never exited (operator, 2026-07-20). Python then makes it
+    # worse: concurrent.futures registers an atexit hook that joins every executor's
+    # non-daemon workers, so even abandoning the lifespan would not free the interpreter.
+    # The watchdog guarantees the process dies whether or not the joins below return.
+    _arm_shutdown_watchdog()
     _session_open_anchor_warm_stop.set()
     _anchor_quote_lane_refresh_stop.set()
     _shutdown_analytics_executor(wait=True)
@@ -9958,18 +10101,67 @@ async def get_live_state(
 # call each, i.e. ~31 req/min against a ~120 req/min Schwab budget. So terrain gets its
 # OWN loop, is never gated on operator mode, and cannot be starved by inference work.
 TERRAIN_REFRESH_SEC: float = 60.0
-TERRAIN_WORKERS: int = 4
+# Match the 2-slot Schwab chain gate. 4 workers × 200-strike payloads queued ~51 tickers
+# and starved the operator card (gate timeouts, Tier-C partial/STALE) at the open.
+TERRAIN_WORKERS: int = 2
 RADAR_NEAR_PCT: float = 0.0020   # at the wall
 RADAR_WATCH_PCT: float = 0.0075  # in the sector, worth watching
-TERRAIN_CHAIN_STRIKE_COUNT: int = 200  # see below -- 60 was too few for $1-increment names
-# The flip is only TRUSTED when the chain spans at least +/-5% of spot. That bar is a
-# STRIKE-COUNT problem, and the required count depends on the strike increment:
-#   SPY  ~742 with $1 strikes  -> +/-5% is +/-37 points -> ~75 strikes minimum
-#   QQQ  ~694 with $1 strikes  -> +/-35 points          -> ~70 strikes minimum
-# 60 strikes therefore produced only ~+/-4% on exactly the names the operator watches
-# most, so SPY/QQQ showed LOW_CONFIDENCE while wider-increment names passed. 200 clears
-# the bar for $1-increment names with margin; cost is one larger payload per ticker per
-# minute, well inside the ~120 req/min Schwab budget.
+# Strike count is DERIVED per instrument, never tabulated — see math_levels.
+# required_strike_count(). The bar is the flip's +/-5% span requirement
+# (GAMMA_FLIP_MIN_SPAN_PCT); how many strikes that takes depends on the instrument's own
+# strike spacing, so it is computed from measured geometry rather than assumed.
+#
+# MEASURED 2026-07-20 across 52 stored chains: the previous hardcoded table was wrong in
+# BOTH directions — $SPX needed 150 and got 40; IWM needed 30 and got 80; ~48 equities
+# needed under 20 and got 40. Over-fetching is not free: it saturates the 2-slot chain
+# gate (observed starving the operator card at the open) and every payload is persisted
+# twice (RC-6).
+#: Floor. Below this, wall/pin selection has too few strikes to be meaningful regardless
+#: of what the span arithmetic asks for; it is also the live UI's own chain width.
+TERRAIN_STRIKE_COUNT_MIN: int = 20
+#: Ceiling, set by the VENDOR not by us. Schwab returned HTTP 502 for SPY/QQQ at
+#: strikeCount=200 at the 2026-07-20 open; 100 was observed working the same session.
+#: A ticker whose requirement exceeds this (e.g. $SPX needs ~180) is fetched at the
+#: ceiling and honestly reports LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
+TERRAIN_STRIKE_COUNT_MAX: int = 100
+#: Used only until this ticker's geometry is known. The prewarm seeds geometry from
+#: stored chains, so this normally applies to a ticker we have never seen.
+TERRAIN_STRIKE_COUNT_COLD_START: int = 40
+
+#: ticker -> (spot, strike_increment), learned from chains we have already fetched.
+_strike_geometry: dict[str, tuple[float, float]] = {}
+_strike_geometry_lock = threading.Lock()
+
+
+def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | None) -> bool:
+    """Remember this instrument's spot and strike spacing from a chain we just read.
+
+    Returns True when a geometry was stored, so callers can count outcomes without
+    reading the shared dict outside the lock (Cursor audit 2026-07-20: the seed loop
+    compared len() across calls unlocked while workers mutate under the lock).
+    """
+    tk = (ticker or "").upper().strip()
+    if not tk or not contracts or spot is None or spot <= 0:
+        return False
+    incr = infer_strike_increment(contracts)
+    if incr is None:
+        return False
+    with _strike_geometry_lock:
+        _strike_geometry[tk] = (float(spot), float(incr))
+    return True
+
+
+def _terrain_strike_count(ticker: str) -> int:
+    """Strikes to request for `ticker`, derived from its measured geometry."""
+    tk = (ticker or "").upper().strip()
+    with _strike_geometry_lock:
+        geom = _strike_geometry.get(tk)
+    if geom is None:
+        return TERRAIN_STRIKE_COUNT_COLD_START
+    need = required_strike_count(geom[0], geom[1])
+    if need is None:
+        return TERRAIN_STRIKE_COUNT_COLD_START
+    return max(TERRAIN_STRIKE_COUNT_MIN, min(TERRAIN_STRIKE_COUNT_MAX, need))
 
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()
@@ -9995,7 +10187,7 @@ def _terrain_refresh_one(ticker: str) -> str:
     try:
         client = get_client()
         resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-            client, tk, strike_count=TERRAIN_CHAIN_STRIKE_COUNT
+            client, tk, strike_count=_terrain_strike_count(tk), priority=False,
         )
         if resp is None or getattr(resp, "status_code", None) != 200:
             return "error:chain_http"
@@ -10003,13 +10195,20 @@ def _terrain_refresh_one(ticker: str) -> str:
         contracts = flatten_chain_contracts(c_json)
         # ONE spot authority (RC-14) — never the chain underlying on its own.
         spot, spot_source, spot_ts = resolve_spot(tk, chain_json=c_json)
+        # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
+        # requests the width its +/-5% span actually needs instead of a tabulated guess.
+        _learn_strike_geometry(tk, contracts, spot)
         snap = compute_terrain(tk, contracts, spot)
         payload = snap.to_dict()
         payload["computed_ts_utc"] = time.time()
         payload["spot_source"] = spot_source
         payload["spot_as_of_ts_utc"] = spot_ts
+        _atr = _radar_atr(tk)
+        payload["atr_daily"] = round(_atr.daily, 3) if _atr.daily else None
+        payload["atr_15m"] = round(_atr.m15, 3) if _atr.m15 else None
         with _terrain_cache_lock:
             _terrain_cache[tk] = payload
+            _terrain_profile_cache[tk] = snap.profile
         return f"ok:{snap.confidence}"
     except Exception as e:
         log.debug("terrain refresh %s failed: %s", tk, e, exc_info=True)
@@ -10018,6 +10217,16 @@ def _terrain_refresh_one(ticker: str) -> str:
 
 def _terrain_loop() -> None:
     log.info("Terrain loop started (levels only, no model stack)")
+    # Seed strike geometry BEFORE the first fetch cycle, in THIS thread. The seed
+    # previously lived only in the prewarm worker, and _app_lifespan starts the loop
+    # first -- so the first cycle raced the seed and could fetch every ticker at the
+    # cold-start width (Cursor audit 2026-07-20: "race remains"). With the timeframe-
+    # indexed read this is ~2 ms per ticker, so doing it inline is cheap and makes the
+    # ordering deterministic instead of a race that usually goes our way.
+    try:
+        _seed_strike_geometry_from_storage()
+    except Exception as e:
+        log.warning("strike-geometry seed failed - first cycle uses cold-start width: %s", e)
     while _terrain_loop_running:
         cycle_start = time.monotonic()
         tickers: list[str] = []
@@ -10027,6 +10236,14 @@ def _terrain_loop() -> None:
         except Exception:
             tickers = list(CORE_TICKERS)
         if tickers and _is_loggable_session():
+            # During the morning wide-chain window (09:30-10:00 ET) SPY/QQQ/IWM already
+            # take 100-strike gated fetches on the money path. Do not pile a full-universe
+            # terrain sweep on top of that — refresh sentinels only until the window ends.
+            # No try/except: the imports are module-level, so this path cannot fail at
+            # runtime — a missing module stops the server at boot instead.
+            _d, _mins = gex_et_date_and_mins()
+            if GEX_MORNING_START_MINS <= _mins <= GEX_MORNING_END_MINS:
+                tickers = [t for t in tickers if str(t).upper() in ("SPY", "QQQ", "IWM")]
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
         elapsed = time.monotonic() - cycle_start
@@ -10035,6 +10252,57 @@ def _terrain_loop() -> None:
         while _terrain_loop_running and time.monotonic() < sleep_end:
             time.sleep(0.5)
     log.info("Terrain loop stopped")
+
+
+def _terrain_prewarm_worker() -> None:
+    """Warm the radar caches off the request path.
+
+    MEASURED: a cold radar sweep costs ~22.5 s -- ~11.5 s computing ATR for 51 tickers and
+    the rest reading 51 chain payloads out of a 23 GB snapshots table (RC-6). Paying that
+    on the operator's first click leaves the scope empty long enough to look broken. The
+    app already prewarms model bundles at boot for the same reason; this is the same move
+    for terrain. Failures are logged and ignored: a cold cache is slow, never wrong.
+    """
+    try:
+        _seed_strike_geometry_from_storage()
+    except Exception as e:
+        log.warning("strike-geometry seed failed (first cycle uses the cold-start width): %s", e)
+    try:
+        get_terrain_radar(limit=60)
+        log.info("terrain radar prewarm complete: %d cached", terrain_cache_size())
+    except Exception as e:
+        log.warning("terrain radar prewarm failed (cache stays cold): %s", e)
+
+
+def _seed_strike_geometry_from_storage() -> None:
+    """Learn every ticker's strike spacing from its last stored chain, at boot.
+
+    Without this the first cycle after a restart fetches TERRAIN_STRIKE_COUNT_COLD_START
+    for every ticker -- too narrow for SPY/QQQ, so they would report
+    LOW_CONFIDENCE_NARROW_CHAIN for one cycle on every restart. The geometry is already
+    on disk; reading it once off the request path removes that window entirely.
+    """
+    try:
+        with _logger_lock:
+            tickers = list(_logger_tickers)
+    except Exception:
+        tickers = list(CORE_TICKERS)
+    seeded = 0
+    for tk in tickers:
+        try:
+            contracts, stored_spot = _latest_chain_and_spot(tk)
+        except Exception:
+            continue
+        if _learn_strike_geometry(tk, contracts, stored_spot):
+            seeded += 1
+    log.info("strike geometry seeded for %d/%d tickers", seeded, len(tickers))
+
+
+def start_terrain_prewarm() -> None:
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    threading.Thread(target=_terrain_prewarm_worker, name="terrain-prewarm",
+                     daemon=True).start()
 
 
 def start_terrain_loop() -> None:
@@ -10070,22 +10338,76 @@ RADAR_FALLBACK_TTL_SEC: float = 60.0
 #: per radar poll would re-read the bar table for every ticker every 20 seconds.
 _radar_atr_cache: dict[str, tuple[float, "AtrPair"]] = {}
 RADAR_ATR_TTL_SEC: float = 900.0
+#: Tickers whose ATR is being computed right now, so N concurrent requests trigger ONE
+#: computation instead of N. Guards the cache fill, not the cache read.
+_radar_atr_inflight: set[str] = set()
+_radar_atr_lock = threading.Lock()
+_radar_atr_refresh_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ed_atr_refresh")
 
 
-def _radar_atr(ticker: str | None) -> "AtrPair":
-    """Cached ATR pair for a radar row. Never raises."""
-    tk = (ticker or "").upper().strip()
-    now = time.time()
-    hit = _radar_atr_cache.get(tk)
-    if hit and (now - hit[0]) < RADAR_ATR_TTL_SEC:
-        return hit[1]
+def _radar_atr_compute_into_cache(tk: str) -> "AtrPair":
+    """Compute one ticker's ATR and publish it. Always clears the in-flight marker."""
     try:
         pair = compute_atr_pair(str(get_db().db_path), tk)
     except Exception as e:
         log.debug("radar ATR failed for %s: %s", tk, e, exc_info=True)
         pair = AtrPair(None, None)
-    _radar_atr_cache[tk] = (now, pair)
+    with _radar_atr_lock:
+        _radar_atr_cache[tk] = (time.time(), pair)
+        _radar_atr_inflight.discard(tk)
     return pair
+
+
+def _radar_atr(ticker: str | None) -> "AtrPair":
+    """Cached ATR pair for a radar row. NEVER blocks on a recomputation. Never raises.
+
+    OBSERVED 2026-07-20 (py-spy dump of the live console, PID 33156): eleven AnyIO worker
+    threads were simultaneously inside compute_atr_pair via _radar_atr <- get_terrain_radar.
+
+    `get_terrain_radar` is a SYNC endpoint, so FastAPI runs it in the AnyIO threadpool.
+    The old body checked the cache and, on a miss, computed inline with NO single-flight
+    guard -- so every concurrent request that missed recomputed ATR for all 51 tickers,
+    each a 24,000-row read of price_bars_1m. That is a cache stampede, and because those
+    are the SHARED threadpool workers, exhausting them blocks every other sync endpoint in
+    the app. The operator saw the whole console hang, not just the terrain tab.
+
+    Two changes make a request incapable of causing it:
+      * SINGLE FLIGHT -- one computation per ticker at a time; concurrent callers do not
+        queue behind it.
+      * STALE WHILE REVALIDATE -- an expired entry is returned IMMEDIATELY and refreshed
+        on a small dedicated pool. ATR over ~100 sessions does not change meaningfully in
+        the seconds a refresh takes, so serving a slightly old value is correct, and it is
+        strictly better than blocking a request thread to avoid it.
+
+    Only a ticker with NO cached value at all can still compute inline; the boot prewarm
+    fills those, and the dedicated pool bounds it at 2 threads regardless.
+    """
+    tk = (ticker or "").upper().strip()
+    if not tk:
+        return AtrPair(None, None)
+    now = time.time()
+    with _radar_atr_lock:
+        hit = _radar_atr_cache.get(tk)
+        if hit is not None and (now - hit[0]) < RADAR_ATR_TTL_SEC:
+            return hit[1]
+        already_running = tk in _radar_atr_inflight
+        if not already_running:
+            _radar_atr_inflight.add(tk)
+    if hit is not None:
+        # STALE-WHILE-REVALIDATE: hand back the old value now, refresh off the request path.
+        if not already_running:
+            try:
+                _radar_atr_refresh_pool.submit(_radar_atr_compute_into_cache, tk)
+            except RuntimeError:  # pool shut down during teardown
+                with _radar_atr_lock:
+                    _radar_atr_inflight.discard(tk)
+        return hit[1]
+    if already_running:
+        # First-ever value for this ticker and someone else is computing it. Report
+        # absence rather than block a shared worker; ring_for() treats None as "no ring"
+        # and the contact simply does not appear until the value lands.
+        return AtrPair(None, None)
+    return _radar_atr_compute_into_cache(tk)
 
 
 def _radar_row(t: dict, spot: float, atr: "AtrPair", status: str, level_name: str,
@@ -10166,38 +10488,51 @@ def _terrain_snapshots_for_radar() -> list[dict]:
     out: list[dict] = []
     try:
         db = get_db()
-    except Exception:
+    except Exception as e:
+        # Degrading to live-cache-only is correct, but doing it SILENTLY made a DB outage
+        # indistinguishable from a quiet market on the radar (Cursor audit 2026-07-20:
+        # empty return with no note). The scope shrinks to loop-cached tickers; say so.
+        log.warning("radar fallback: DB unavailable (%s: %s) — scope limited to %d "
+                    "loop-cached tickers", type(e).__name__, e, len(cached))
         return list(cached.values())
     import sqlite3 as _sq
     try:
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=30.0)
-    except Exception:
-        return out
+    except Exception as e:
+        log.warning("radar fallback: DB open failed (%s: %s) — scope limited to %d "
+                    "loop-cached tickers", type(e).__name__, e, len(cached))
+        return list(cached.values())
     try:
         con.row_factory = _sq.Row
-        rows = con.execute(
-            "SELECT ticker, MAX(ts_utc) AS ts FROM snapshots "
-            "WHERE option_chain_json IS NOT NULL AND spot IS NOT NULL GROUP BY ticker"
-        ).fetchall()
-        for r in rows:
-            row = con.execute(
-                "SELECT spot, option_chain_json FROM snapshots "
-                "WHERE ticker=? AND ts_utc=? LIMIT 1", (r["ticker"], r["ts"])
-            ).fetchone()
-            if not row:
-                continue
-            try:
-                contracts = json.loads(row["option_chain_json"])
-                spot, spot_source, _ts = resolve_spot(r["ticker"], allow_stored=False)
-                if spot is None:
-                    spot, spot_source = float(row["spot"]), SPOT_SOURCE_SNAPSHOT
-                snap = compute_terrain(r["ticker"], contracts, spot)
-            except (ValueError, TypeError):
-                continue
-            if r["ticker"] not in cached:
-                out.append(snap.to_dict() | {"spot_source": spot_source})
+        # Ticker LIST only — index-only aggregate, no blob touched. The per-ticker chain
+        # read goes through _latest_chain_and_spot, NOT hand-rolled SQL here: the old
+        # inline query took MAX(ts_utc) across BOTH timeframes, so a legacy 5m row could
+        # shadow a newer-in-kind canonical 1m row (Bugbot 2026-07-20, confirmed).
+        # _latest_chain_and_spot already encodes canonical-then-legacy, index-served.
+        tickers = [r["ticker"] for r in con.execute(
+            "SELECT DISTINCT ticker FROM snapshots "
+            "WHERE option_chain_json IS NOT NULL AND spot IS NOT NULL"
+        )]
     finally:
         con.close()
+    for tk in tickers:
+        if tk in cached:
+            continue
+        try:
+            contracts, spot = _latest_chain_and_spot(tk)
+            if not contracts or not spot:
+                continue
+            # NO live quote per ticker here. The radar sweeps ~51 symbols; calling
+            # resolve_spot on each made 51 Schwab round-trips and the cold sweep
+            # measured 40.5 s, so the first render always timed out and the scope
+            # came up empty. `snapshots.spot` is itself persisted from
+            # quote.lastPrice, i.e. a real trade, just older. Any ticker the terrain
+            # loop has refreshed already wins via the cache above, so the live value
+            # reaches the scope through the loop rather than through 51 fetches.
+            snap = compute_terrain(tk, contracts, spot)
+        except (ValueError, TypeError):
+            continue
+        out.append(snap.to_dict() | {"spot_source": SPOT_SOURCE_SNAPSHOT})
     _radar_fallback_cache = (now, out)
     return list(cached.values()) + out
 
@@ -10244,6 +10579,56 @@ def get_terrain_radar(limit: int = Query(default=12, ge=1, le=60)):
             "blind_spots": blind, "near_pct": RADAR_NEAR_PCT, "watch_pct": RADAR_WATCH_PCT}
 
 
+#: Gamma profiles for cached tickers, keyed by ticker. Kept beside the payload cache so a
+#: cached payload can be re-priced without refetching the chain (RC-28).
+_terrain_profile_cache: dict[str, list] = {}
+
+
+def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
+    """Serve CACHED LEVELS against a LIVE SPOT.
+
+    RC-28: levels move slowly (a 60 s loop is right for them) but spot moves continuously,
+    and spot was frozen into the cached payload. The card therefore ran up to 75 s behind
+    the header -- observed 745.10 on the card against 744.88 live.
+
+    Levels, walls and the profile stay as cached. Spot is re-resolved every request, and
+    the REGIME is recomputed as the sign of the cached profile at that fresh spot, so the
+    regime can never disagree with the price shown beside it.
+    """
+    spot, spot_source, spot_ts = resolve_spot(ticker)
+    if spot is None:
+        return payload
+
+    out = dict(payload)
+    out["spot"] = spot
+    out["spot_source"] = spot_source
+    out["spot_as_of_ts_utc"] = spot_ts
+
+    profile = _terrain_profile_cache.get(ticker)
+    if not profile:
+        return out                      # levels stand; regime left as cached
+
+    fresh_gamma = gamma_at_price(profile, spot)
+    read = build_terrain_read(
+        spot=spot,
+        flip=payload.get("gamma_flip"),
+        flip_confidence=payload.get("confidence") or "UNAVAILABLE",
+        put_wall=payload.get("put_wall"),
+        call_wall=payload.get("call_wall"),
+        gamma_at_spot=fresh_gamma,
+    )
+    out["regime"] = read.regime
+    out["posture"] = read.posture
+    out["headline"] = read.headline
+    out["lines"] = read.lines
+    # flip_diag travels WITH the regime it justified. The regime above was recomputed at
+    # the fresh spot but flip_diag still carried the loop-time gamma_at_spot, so the
+    # dealer tile printed a stale γ beside a live regime — the two could even disagree in
+    # sign (Bugbot 2026-07-20, confirmed: the UI renders flip_diag.gamma_at_spot).
+    out["flip_diag"] = {**(payload.get("flip_diag") or {}), "gamma_at_spot": fresh_gamma}
+    return out
+
+
 @app.get("/api/terrain")
 def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     """Terrain payload — levels only, NO model stack.
@@ -10256,19 +10641,48 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     tk = (ticker or DEFAULT_TICKER).upper().strip()
     cached = terrain_cache_get(tk)
     if cached is not None:
-        return cached
+        # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
+        return _reprice_cached_terrain(cached, tk)
     try:
         contracts, _stored_spot = _latest_chain_and_spot(tk)
         spot, spot_source, spot_ts = resolve_spot(tk)
         snap = compute_terrain(tk, contracts, spot)
-        return snap.to_dict() | {"spot_source": spot_source, "spot_as_of_ts_utc": spot_ts}
+        # ATR travels WITH the terrain payload. The stats row previously read it out of the
+        # radar response, so a slow or failed radar poll left every ATR figure blank even
+        # though terrain itself was fine. One payload, one set of numbers.
+        atr = _radar_atr(tk)
+        return snap.to_dict() | {
+            "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
+            "atr_daily": round(atr.daily, 3) if atr.daily else None,
+            "atr_15m": round(atr.m15, 3) if atr.m15 else None,
+        }
     except Exception as e:
         log.warning("terrain endpoint failed for %s: %s", tk, e, exc_info=True)
         return compute_terrain(tk, None, None).to_dict() | {"error": f"{type(e).__name__}: {e}"}
 
 
 def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:
-    """Most recent stored chain + spot for a ticker (read-only, no Schwab call)."""
+    """Most recent stored chain + spot for a ticker (read-only, no Schwab call).
+
+    MEASURED 2026-07-20 — this query was the single worst latency in the app.
+
+    Without `timeframe` in the predicate the plan was:
+        SEARCH snapshots USING INDEX idx_snap_ticker_tf_ts (ticker=?)
+        USE TEMP B-TREE FOR ORDER BY
+    SQLite could seek to the ticker but not use the index's ts_utc ordering, because
+    timeframe sits between them in the composite key. Satisfying ORDER BY ts_utc DESC
+    therefore meant reading EVERY row for that ticker -- 70,556 for SPY, each carrying an
+    inline ~50 KB option_chain_json -- into a temp B-tree to sort, to return one row. It
+    did not complete inside a 300 s timeout.
+
+    Naming the timeframe closes the index gap:
+        SEARCH snapshots USING INDEX idx_snap_ticker_tf_ts (ticker=? AND timeframe=?)
+    No temp B-tree, no scan. MEASURED after: SPY 0.002 s, QQQ 0.005 s, NVDA 0.002 s.
+
+    This is RC-6's root cause made concrete -- an archival blob sharing a table with the
+    operational query surface is paid for on every read that touches the rows. The index
+    fix removes the cost here; it does not remove the cause.
+    """
     import sqlite3 as _sqlite3
 
     try:
@@ -10276,14 +10690,22 @@ def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:
     except Exception:
         return None, None
     con = _sqlite3.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=30.0)
+    row = None
     try:
         con.row_factory = _sqlite3.Row
-        row = con.execute(
-            "SELECT spot, option_chain_json FROM snapshots "
-            "WHERE ticker=? AND option_chain_json IS NOT NULL AND spot IS NOT NULL "
-            "ORDER BY ts_utc DESC LIMIT 1",
-            (ticker,),
-        ).fetchone()
+        # Canonical first, legacy second. Two index-served lookups are still orders of
+        # magnitude cheaper than one unbounded scan, and a ticker whose history is all
+        # legacy 5m rows still resolves instead of silently returning nothing.
+        for tf in _STORED_CHAIN_TIMEFRAMES:
+            row = con.execute(
+                "SELECT spot, option_chain_json FROM snapshots "
+                "WHERE ticker=? AND timeframe=? "
+                "AND option_chain_json IS NOT NULL AND spot IS NOT NULL "
+                "ORDER BY ts_utc DESC LIMIT 1",
+                (ticker, tf),
+            ).fetchone()
+            if row:
+                break
     finally:
         con.close()
     if not row:
@@ -11476,7 +11898,11 @@ def api_vol_observability(ticker: Optional[str] = Query(default=None)):
 def api_chain_gate_diagnostics():
     """Read-only chain-gate observability: slots, waits, coalescing, breaker."""
     with _chain_inflight_lock:
-        inflight = sorted(_chain_inflight.keys())
+        # Keys are (ticker, strike_count); render as SPY@20 for operators.
+        inflight = sorted(
+            f"{k[0]}@{k[1]}" if isinstance(k, tuple) and len(k) == 2 else str(k)
+            for k in _chain_inflight
+        )
     return {
         "gate": _schwab_chain_fetch_gate.snapshot(),
         "inflight_tickers": inflight,

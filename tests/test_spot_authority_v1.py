@@ -159,3 +159,170 @@ def test_chain_close_is_used_last_and_flagged_as_a_close(monkeypatch) -> None:
     assert spot == 743.29
     assert source == server.SPOT_SOURCE_CHAIN
     assert server.spot_is_a_close(source), "a close must be flagged so the UI can say so"
+
+
+def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
+    """RC-28: cached LEVELS, live SPOT — the card must never lag the header.
+
+    The terrain loop caches a payload every 60 s and the UI polls it, so spot was frozen
+    into that payload and the card ran up to 75 s behind the sub-second header (observed
+    745.10 on the card against 744.88 live). Levels are slow-moving and stay cached; spot
+    is re-resolved per request and the regime is recomputed as the sign of the cached
+    gamma profile AT that fresh spot, so the regime can never disagree with the price
+    printed beside it.
+    """
+    monkeypatch.setattr(server, "get_client", lambda: object())
+    monkeypatch.setattr(server, "safe_get_quote",
+                        lambda _c, tk: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
+
+    cached = {
+        "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
+        "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
+        "gamma_flip": 745.00, "call_wall": 750.0, "put_wall": 740.0,
+        "headline": "stale", "lines": ["stale"],
+    }
+    # profile negative at 744.93 -> dealers short gamma there
+    profile = [(700.0, -5.0), (745.00, 0.0), (760.0, 5.0)]
+    monkeypatch.setitem(server._terrain_profile_cache, "SPY", profile)
+
+    out = server._reprice_cached_terrain(cached, "SPY")
+
+    assert out["spot"] == 744.93, "spot must be the live quote, not the cached one"
+    assert out["spot_source"] == server.SPOT_SOURCE_QUOTE
+    # levels are untouched — they are the slow-moving part
+    assert out["call_wall"] == 750.0 and out["put_wall"] == 740.0
+    assert out["gamma_flip"] == 745.00
+    # regime recomputed BELOW the flip -> short gamma, not the cached long-gamma value
+    assert out["regime"] == "SHORT_GAMMA_TREND", "regime must track the live spot"
+    assert out["headline"] != "stale"
+
+
+def test_reprice_keeps_cached_payload_when_spot_is_unavailable(monkeypatch) -> None:
+    """No live spot means serve the cache unchanged — never blank the card."""
+    monkeypatch.setattr(server, "resolve_spot", lambda _tk, **_kw: (None, "none", None))
+    cached = {"ticker": "SPY", "spot": 745.10, "regime": "LONG_GAMMA_CHOP"}
+    assert server._reprice_cached_terrain(cached, "SPY") == cached
+
+
+def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) -> None:
+    """RC-28 regression at the level that actually broke: the ENDPOINT, not the helper.
+
+    The first test written for this called `_reprice_cached_terrain` directly and passed
+    even with the endpoint reverted to `return cached` — a test that cannot fail where the
+    bug lives. This drives `get_terrain()` with a warm cache, which is the exact path the
+    UI polls.
+    """
+    monkeypatch.setattr(server, "get_client", lambda: object())
+    monkeypatch.setattr(server, "safe_get_quote",
+                        lambda _c, tk: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
+    monkeypatch.setitem(server._terrain_cache, "SPY", {
+        "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
+        "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
+        "gamma_flip": 745.00, "call_wall": 750.0, "put_wall": 740.0,
+        "headline": "stale", "lines": ["stale"],
+    })
+    monkeypatch.setitem(server._terrain_profile_cache, "SPY",
+                        [(700.0, -5.0), (745.00, 0.0), (760.0, 5.0)])
+
+    served = server.get_terrain(ticker="SPY")
+
+    assert served["spot"] == 744.93, (
+        "the endpoint served a frozen cached spot; the card would lag the header"
+    )
+    assert served["spot_source"] == server.SPOT_SOURCE_QUOTE
+    assert served["call_wall"] == 750.0, "levels must still come from the cache"
+    assert served["regime"] == "SHORT_GAMMA_TREND", "regime must track the live spot"
+    # Bugbot 2026-07-20 (confirmed): flip_diag.gamma_at_spot is RENDERED by the dealer
+    # tile, and the reprice used to leave the loop-time value beside the live regime —
+    # they could disagree in sign. At 744.93 on this profile gamma is negative.
+    served_gamma = (served.get("flip_diag") or {}).get("gamma_at_spot")
+    assert served_gamma is not None and served_gamma < 0, (
+        f"flip_diag.gamma_at_spot must be recomputed at the live spot, got {served_gamma}"
+    )
+
+
+# ── STORED-SNAPSHOT READS MUST BE INDEX-SERVED ──────────────────────────────
+# MEASURED 2026-07-20: omitting `timeframe` from a snapshots query that orders by ts_utc
+# made idx_snap_ticker_tf_ts (ticker, timeframe, ts_utc) unusable for ordering, because
+# timeframe sits between the two columns the query did use. SQLite fell back to reading
+# EVERY row for the ticker (70,556 for SPY, each carrying a ~50 KB inline chain blob) into
+# a temp B-tree. `_latest_chain_and_spot` did not complete inside a 300 s timeout; naming
+# the timeframe took it to 0.002 s.
+#
+# Asserting the PLAN, not the wall clock: a timing test would be flaky and would pass on a
+# small database. A temp B-tree in the plan is the defect itself.
+
+import sqlite3
+
+
+def _snapshots_fixture() -> sqlite3.Connection:
+    """Minimal table + the real production index, so the plan is the production plan."""
+    con = sqlite3.connect(":memory:")
+    con.execute(
+        "CREATE TABLE snapshots (snapshot_id INTEGER PRIMARY KEY, ticker TEXT, "
+        "timeframe TEXT, ts_utc REAL, spot REAL, option_chain_json TEXT)"
+    )
+    con.execute(
+        "CREATE INDEX idx_snap_ticker_tf_ts ON snapshots(ticker, timeframe, ts_utc)"
+    )
+    return con
+
+
+def _plan(con: sqlite3.Connection, sql: str, params: tuple) -> str:
+    return " | ".join(str(r[3]) for r in con.execute("EXPLAIN QUERY PLAN " + sql, params))
+
+
+def test_omitting_timeframe_forces_a_temp_btree_sort():
+    """Proves the defect is real and that this test can see it."""
+    con = _snapshots_fixture()
+    try:
+        plan = _plan(
+            con,
+            "SELECT spot FROM snapshots WHERE ticker=? AND spot IS NOT NULL "
+            "ORDER BY ts_utc DESC LIMIT 1",
+            ("SPY",),
+        )
+        assert "TEMP B-TREE" in plan.upper(), plan
+    finally:
+        con.close()
+
+
+def test_stored_spot_and_chain_reads_name_the_timeframe():
+    """The shipped queries must be fully index-served — no sort, no scan."""
+    con = _snapshots_fixture()
+    try:
+        for sql in (
+            "SELECT spot, ts_utc FROM snapshots "
+            "WHERE ticker=? AND timeframe=? AND spot IS NOT NULL "
+            "ORDER BY ts_utc DESC LIMIT 1",
+            "SELECT spot, option_chain_json FROM snapshots "
+            "WHERE ticker=? AND timeframe=? "
+            "AND option_chain_json IS NOT NULL AND spot IS NOT NULL "
+            "ORDER BY ts_utc DESC LIMIT 1",
+        ):
+            plan = _plan(con, sql, ("SPY", "1m"))
+            assert "TEMP B-TREE" not in plan.upper(), plan
+            assert "idx_snap_ticker_tf_ts" in plan, plan
+            assert "timeframe=?" in plan, plan
+    finally:
+        con.close()
+
+
+def test_server_queries_actually_carry_the_timeframe_predicate():
+    """Guards the real call sites, not just a query string written in this test."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parent.parent / "server.py"
+    text = src.read_text(encoding="utf-8", errors="replace")
+    for marker in ("def _spot_from_stored", "def _latest_chain_and_spot"):
+        i = text.index(marker)
+        body = text[i : i + 3000]
+        # Match the EXECUTED sql, not prose: these functions document the defect in their
+        # docstrings, which quotes both the bad query and "ORDER BY ts_utc". An earlier
+        # version of this test scanned for the first "ORDER BY ts_utc" and matched the
+        # docstring, failing on correct code.
+        executed = body[body.index("con.execute") :]
+        assert "AND timeframe=?" in executed[: executed.index("ORDER BY ts_utc")], (
+            marker + " orders by ts_utc without naming timeframe — that plan degrades to a "
+            "full read of every row for the ticker"
+        )

@@ -120,3 +120,110 @@ def test_gamma_at_price_clamps_outside_the_profile() -> None:
     assert gamma_at_price(prof, 500.0) == 4.0     # above -> last value
     assert gamma_at_price([], 100.0) is None
     assert gamma_at_price(prof, None) is None
+
+
+# ── STRIKE WIDTH IS DERIVED, NOT TABULATED (root fix for RC-12) ─────────────
+# RC-12 found the cause -- "a fixed strike count cannot satisfy a percentage-based span
+# requirement across instruments with different strike spacing" -- then answered it with a
+# hardcoded table for three tickers, leaving every other ticker on a fixed 40. MEASURED
+# across 52 stored chains 2026-07-20: that table was wrong in BOTH directions. $SPX needed
+# 150 and got 40; IWM needed 30 and got 80; ~48 equities needed under 20 and got 40.
+
+from math_levels import (
+    GAMMA_FLIP_MIN_SPAN_PCT,
+    infer_strike_increment,
+    required_strike_count,
+)
+
+
+def test_required_count_actually_spans_the_trust_bar():
+    """The whole point: the derived count must COVER +/-5%, measured, not asserted."""
+    for spot, incr in ((742.49, 1.0), (701.69, 1.0), (294.32, 1.0),
+                       (7457.69, 5.0), (205.20, 2.5), (17.84, 0.5)):
+        n = required_strike_count(spot, incr)
+        half_span_points = (n - 1) / 2.0 * incr      # strikes centred on spot
+        assert half_span_points >= GAMMA_FLIP_MIN_SPAN_PCT * spot, (
+            f"spot={spot} incr={incr}: {n} strikes reaches only "
+            f"{half_span_points / spot:.3%}, under the {GAMMA_FLIP_MIN_SPAN_PCT:.0%} bar")
+
+
+def test_same_price_different_spacing_needs_different_counts():
+    """This is the RC-12 root cause in one assertion: spacing drives the count."""
+    tight = required_strike_count(700.0, 1.0)
+    wide = required_strike_count(700.0, 5.0)
+    assert tight > wide, (tight, wide)
+    assert required_strike_count(700.0, 1.0) > required_strike_count(70.0, 1.0)
+
+
+def test_measured_real_instruments_against_the_replaced_table():
+    """Values MEASURED from stored chains 2026-07-20, not invented for the test."""
+    assert required_strike_count(7457.69, 5.0) > 100      # $SPX: table gave 40
+    assert required_strike_count(294.32, 1.0) < 80        # IWM: table gave 80
+    assert required_strike_count(205.20, 2.5) < 40        # NVDA: table gave 40
+    assert required_strike_count(742.49, 1.0) > 40        # SPY: a flat 40 is too narrow
+
+
+def test_unknown_geometry_returns_none_never_a_guess():
+    """A fabricated width would be silently wrong; absence must read as absence."""
+    assert required_strike_count(None, 1.0) is None
+    assert required_strike_count(742.0, None) is None
+    for bad in (0, -1.0):
+        assert required_strike_count(bad, 1.0) is None
+        assert required_strike_count(742.0, bad) is None
+
+
+def test_increment_inferred_by_median_resists_gaps():
+    """Illiquid far strikes leave wide gaps; a mean would understate the count needed."""
+    even = [{"strikePrice": p} for p in (100, 102.5, 105, 107.5, 110)]
+    assert infer_strike_increment(even) == 2.5
+    gapped = [{"strikePrice": p} for p in (100, 102.5, 105, 107.5, 110, 160)]
+    assert infer_strike_increment(gapped) == 2.5          # the 50-point gap is ignored
+    assert infer_strike_increment([{"strikePrice": 100}, {"strikePrice": 105}]) is None
+    assert infer_strike_increment([]) is None
+
+
+# ── FLIP DETECTION IS DIRECTION-BLIND (Bugbot 2026-07-20, HIGH — confirmed) ──
+# `v0 < 0 <= v1` found only rising neg->pos crossings. A profile that is long-gamma below
+# and short-gamma above (pos->neg) has a real regime boundary that returned None — the
+# flip vanished and the verdict claimed "no crossing" on a chain that crosses.
+# (gamma_flip_from_profile is imported at the top of this file.)
+
+
+def test_flip_detects_positive_to_negative_crossing():
+    prof = [(90.0, 5.0), (95.0, 2.0), (100.0, -1.0), (105.0, -4.0)]
+    flip = gamma_flip_from_profile(prof)
+    assert flip is not None, "pos->neg crossing missed — the direction-blind defect"
+    assert 95.0 < flip < 100.0, flip
+
+
+def test_flip_still_detects_negative_to_positive():
+    prof = [(90.0, -4.0), (95.0, -1.0), (100.0, 2.0), (105.0, 5.0)]
+    flip = gamma_flip_from_profile(prof)
+    assert flip is not None and 95.0 < flip < 100.0, flip
+
+
+def test_flip_picks_the_crossing_nearest_spot():
+    """Multi-cross profile: the boundary that governs the trade is the one beside spot."""
+    prof = [(80.0, -2.0), (90.0, 3.0), (100.0, 1.0), (110.0, -2.0), (120.0, -5.0)]
+    near_low = gamma_flip_from_profile(prof, spot=85.0)
+    near_high = gamma_flip_from_profile(prof, spot=108.0)
+    assert near_low is not None and 80.0 < near_low < 90.0, near_low
+    assert near_high is not None and 100.0 < near_high < 110.0, near_high
+    assert near_low != near_high
+
+
+def test_flip_none_when_one_signed():
+    assert gamma_flip_from_profile([(90.0, -1.0), (100.0, -2.0)]) is None
+    assert gamma_flip_from_profile([(90.0, 1.0), (100.0, 2.0)]) is None
+    assert gamma_flip_from_profile([]) is None
+
+
+def test_flip_zero_touching_profile_start_is_the_boundary():
+    """Cursor audit 2026-07-20: a profile STARTING at exactly zero returned None —
+    both strict-sign conditions are false at v0==0, so the boundary vanished."""
+    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 1.0), (120.0, 2.0)]) == 100.0
+    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, -1.0)]) == 100.0
+    # flat zero segments are not crossings
+    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 0.0)]) is None
+    # segment ENDING at zero still interpolates to the zero point
+    assert gamma_flip_from_profile([(100.0, -1.0), (110.0, 0.0), (120.0, 1.0)]) == 110.0

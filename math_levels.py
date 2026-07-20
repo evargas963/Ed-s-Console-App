@@ -820,19 +820,116 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
     return out
 
 
-def gamma_flip_from_profile(profile: List[tuple[float, float]]) -> float | None:
-    """Interpolated price where the profile crosses from negative to positive."""
+def gamma_flip_from_profile(
+    profile: List[tuple[float, float]], spot: float | None = None
+) -> float | None:
+    """Interpolated price where net dealer gamma changes SIGN — in either direction.
+
+    Bugbot 2026-07-20 (HIGH, confirmed): the original condition `v0 < 0 <= v1` detected
+    only negative->positive crossings as price rises. A chain that is long-gamma BELOW
+    and short-gamma ABOVE (positive->negative) has a real regime boundary that this
+    returned None for — the flip vanished and the verdict read "no crossing" on a chain
+    that crosses. Both directions are boundaries; the direction only changes what lies on
+    each side, which the caller derives from gamma_at_price at spot (RC-11).
+
+    When `spot` is given and several crossings exist, the one NEAREST SPOT is returned:
+    regime is the sign AT spot, so the closest sign change is the boundary that governs
+    the move the operator is actually trading.
+    """
+    crossings: list[float] = []
     for i in range(1, len(profile)):
         (p0, v0), (p1, v1) = profile[i - 1], profile[i]
-        if v0 < 0 <= v1 and v1 != v0:
-            return round(p0 + (p1 - p0) * (-v0) / (v1 - v0), 2)
-    return None
+        if v1 == v0:
+            continue
+        # v0 == 0 is itself the boundary (Cursor audit 2026-07-20: a profile STARTING at
+        # exactly zero returned None — both strict-sign conditions are false when v0==0,
+        # so a zero-touching profile dropped its flip). The v1==0 side was already
+        # handled: v0<0<=v1 / v0>0>=v1 interpolate to p1 when the segment ENDS at zero.
+        if v0 == 0:
+            crossings.append(round(p0, 2))
+        elif (v0 < 0 <= v1) or (v0 > 0 >= v1):
+            crossings.append(round(p0 + (p1 - p0) * (-v0) / (v1 - v0), 2))
+    if not crossings:
+        return None
+    if spot is None:
+        return crossings[0]
+    return min(crossings, key=lambda c: abs(c - spot))
 
 
 GAMMA_FLIP_TRUSTED = "TRUSTED"
 GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
 GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
 GAMMA_FLIP_MIN_SPAN_PCT = 0.05  # chain must reach +/-5% around spot before the flip is trusted
+
+#: Overshoot on the derived count. Schwab centres `strikeCount` strikes near ATM but not
+#: exactly on it, so a count that exactly equals the span requirement can land asymmetric
+#: and miss the bar on one side. 1.2 buys that tolerance without a second round trip.
+STRIKE_COUNT_MARGIN = 1.2
+
+
+def infer_strike_increment(contracts: List[dict]) -> float | None:
+    """The strike spacing this instrument actually uses, from its own chain.
+
+    MEDIAN of adjacent differences, not mean: real chains carry occasional wide gaps
+    (illiquid far strikes, split-adjusted odd strikes) that drag a mean upward and would
+    understate the count needed. Returns None when the chain is too thin to tell.
+    """
+    if not contracts:
+        return None
+    strikes_set: set[float] = set()
+    for c in contracts:
+        if not isinstance(c, dict):
+            continue
+        try:
+            strikes_set.add(float(c.get("strikePrice")))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue  # vendor rows occasionally carry junk; one bad strike must not kill the whole read (audit 2026-07-20: strikePrice='x' raised)
+    strikes = sorted(strikes_set)
+    if len(strikes) < 3:
+        return None
+    # strict=False is the intent: strikes[1:] is deliberately one shorter, so the pairing
+    # of each strike with its successor must stop at the last pair rather than raise.
+    diffs = sorted(
+        round(b - a, 4) for a, b in zip(strikes, strikes[1:], strict=False) if b > a
+    )
+    if not diffs:
+        return None
+    mid = len(diffs) // 2
+    incr = diffs[mid] if len(diffs) % 2 else (diffs[mid - 1] + diffs[mid]) / 2.0
+    return float(incr) if incr > 0 else None
+
+
+def required_strike_count(spot: float | None, increment: float | None, *,
+                          span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT,
+                          margin: float = STRIKE_COUNT_MARGIN) -> int | None:
+    """How many strikes it takes to span +/-`span_pct` around spot at this spacing.
+
+    ROOT FIX for RC-12. That entry found the cause -- "a fixed strike count cannot satisfy
+    a percentage-based span requirement across instruments with different strike spacing"
+    -- and then answered it with a hardcoded table for three tickers, which is the same
+    defect one layer down: every other ticker still got a fixed 40.
+
+    MEASURED across 52 stored chains 2026-07-20
+    (`SELECT spot, option_chain_json FROM snapshots ... ORDER BY ts_utc DESC LIMIT 1`):
+    the fixed table is wrong in BOTH directions. $SPX at 7457.69 with $5 strikes needs 150
+    and was given 40; IWM at 294.32 with $1 strikes needs 30 and was given 80; ~48 equities
+    need under 20 and were given 40. Over-fetching is not free -- it saturates the 2-slot
+    chain gate, and every payload is persisted twice (RC-6).
+
+    The count is a function of the span bar, spot, and the instrument's own spacing, so it
+    is derived here rather than tabulated anywhere. Returns None when spot or increment is
+    unknown; the caller decides the cold-start default rather than getting a fabricated one.
+    """
+    if spot is None or increment is None:
+        return None
+    try:
+        s, inc = float(spot), float(increment)
+    except (TypeError, ValueError):
+        return None
+    if s <= 0 or inc <= 0 or span_pct <= 0:
+        return None
+    span_points = 2.0 * span_pct * s          # full width: spot-5% .. spot+5%
+    return int(math.ceil(span_points / inc * margin)) + 1
 
 
 def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | None:
@@ -885,7 +982,7 @@ def compute_gamma_flip_v2(
     }
     covers = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
     profile = compute_gamma_profile(contracts, spot)
-    flip = gamma_flip_from_profile(profile)
+    flip = gamma_flip_from_profile(profile, spot)   # nearest crossing, EITHER direction
 
     # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where
     # that sign changes -- it is a landmark, not a prerequisite.
