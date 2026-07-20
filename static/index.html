@@ -2704,6 +2704,18 @@ body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view) { display:non
 .tv-radar-quiet { padding:20px 15px; font:600 11px/1.5 var(--font-sans,sans-serif); color:var(--tv-dim); }
 .tv-radar-foot { padding:11px 14px 13px; border-top:1px solid var(--tv-line);
   font:400 9.5px/1.5 var(--font-sans,sans-serif); color:var(--tv-dim); }
+
+/* radar: ATR rings (RING_CONTACT/CLOSING/SECTOR in terrain_atr.py) */
+.tv-radar-row.regime::before { background:var(--tv-pur); width:4px; }
+.tv-radar-row.regime { background:rgba(198,140,255,.10); }
+.tv-radar-row.regime:hover { background:rgba(198,140,255,.16); }
+.tv-radar-st.rg { color:var(--tv-pur); border-color:rgba(198,140,255,.55);
+  background:rgba(198,140,255,.12); }
+.tv-radar-d { display:flex; align-items:baseline; gap:7px; flex-wrap:wrap; }
+.tv-radar-atr { font:800 12px/1 var(--font-mono,monospace); color:var(--tv-tx); }
+.tv-radar-lv { font:600 9.5px/1 var(--font-mono,monospace); color:var(--tv-mu); }
+.tv-radar-pc { font:600 9.5px/1 var(--font-mono,monospace); color:var(--tv-dim); }
+.tv-radar-foot b { color:var(--tv-mu); font-weight:800; }
 </style>
 </head>
 <body class="layout-classic">
@@ -2902,8 +2914,9 @@ body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view) { display:non
         <span class="tv-radar-meta" id="tv-radar-meta">—</span>
       </div>
       <div class="tv-radar-list" id="tv-radar-list"></div>
-      <div class="tv-radar-foot">Only symbols at or approaching a wall appear.
-        Click a contact to make it active.</div>
+      <div class="tv-radar-foot">Distance in <b>daily ATR</b> — what price can actually
+        travel today. <b>⟳ FLIP</b> ranks first: a regime change alters every other level.
+        Hover for 15-minute ATR. Click a contact to make it active.</div>
     </aside>
    </div>
   </section>
@@ -11755,11 +11768,27 @@ async function edLoadRadar() {
 
   for (const r of (d.rows || [])) {
     const isLong = r.regime === 'LONG_GAMMA_CHOP';
+    const isRegime = r.status === 'REGIME CHANGE';
     const atWall = r.status === 'AT WALL';
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'tv-radar-row ' + (isLong ? 'lg' : 'sh') + (atWall ? ' hot' : '');
-    row.title = r.ticker + ' — ' + r.status + ' ' + r.wall_name + ' ' + r.wall.toFixed(2);
+    row.className = 'tv-radar-row ' + (isLong ? 'lg' : 'sh')
+                  + (isRegime ? ' regime' : atWall ? ' hot' : '');
+    // 15m ATR lives in the tooltip and on the focused row only — the scope stays readable
+    // 15m ATR lives in the tooltip and on the focused row only - the scope stays readable.
+    // NL via fromCharCode: escaped newlines inside this file have been mangled repeatedly
+    // by the edit tooling, producing a literal line break that breaks the whole script.
+    const NL = String.fromCharCode(10);
+    const atrLine = r.distance_atr != null
+      ? NL + r.distance_atr.toFixed(2) + ' daily ATR'
+        + (r.distance_atr_15m != null ? ' | ' + r.distance_atr_15m.toFixed(1) + 'x 15m ATR' : '')
+      : '';
+    const atrAbs = r.atr_daily != null
+      ? NL + 'ATR  daily ' + r.atr_daily.toFixed(2)
+        + (r.atr_15m != null ? ' | 15m ' + r.atr_15m.toFixed(2) : '')
+      : '';
+    row.title = r.ticker + ' - ' + r.status + ' ' + r.wall_name + ' '
+              + r.wall.toFixed(2) + atrLine + atrAbs;
     // clicking a contact makes it the active ticker
     row.onclick = () => {
       if (typeof setActiveTicker === 'function') setActiveTicker(r.ticker);
@@ -11771,8 +11800,9 @@ async function edLoadRadar() {
     top.className = 'tv-radar-top';
     const tk = document.createElement('span'); tk.className = 'tv-radar-tk'; tk.textContent = r.ticker;
     const st = document.createElement('span');
-    st.className = 'tv-radar-st' + (atWall ? ' at' : '');
-    st.textContent = atWall ? 'AT WALL' : 'APPROACH';
+    st.className = 'tv-radar-st' + (isRegime ? ' rg' : atWall ? ' at' : '');
+    st.textContent = isRegime ? '⟳ FLIP' : atWall ? 'AT WALL'
+                   : r.status === 'IN SECTOR' ? 'SECTOR' : 'APPROACH';
     top.appendChild(tk); top.appendChild(st);
 
     const mid = document.createElement('div');
@@ -11782,8 +11812,11 @@ async function edLoadRadar() {
     const bot = document.createElement('div');
     bot.className = 'tv-radar-d';
     const sign = r.distance_pct >= 0 ? '+' : '';
-    bot.textContent = r.wall_name.toUpperCase() + ' ' + r.wall.toFixed(2) +
-                      '  ' + sign + r.distance_pct.toFixed(2) + '%';
+    const atr = r.distance_atr != null ? r.distance_atr.toFixed(2) + ' ATR' : '—';
+    bot.innerHTML = '<span class="tv-radar-atr">' + atr + '</span>'
+                  + '<span class="tv-radar-lv">' + r.wall_name.toUpperCase() + ' '
+                  + r.wall.toFixed(2) + '</span>'
+                  + '<span class="tv-radar-pc">' + sign + r.distance_pct.toFixed(2) + '%</span>';
 
     row.appendChild(top); row.appendChild(mid); row.appendChild(bot);
     el.appendChild(row);

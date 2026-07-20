@@ -198,6 +198,7 @@ from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_art
 from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
 from terrain_read import build_terrain_read
 from terrain_engine import compute_terrain
+from terrain_atr import RING_REGIME, AtrPair, atr_distance, compute_atr_pair, ring_for
 
 try:
     from db import get_db
@@ -10065,6 +10066,78 @@ _radar_fallback_cache: tuple[float, list[dict]] = (0.0, [])
 RADAR_FALLBACK_TTL_SEC: float = 60.0
 
 
+#: ATR is derived from ~100 sessions of 1-minute bars, so it moves slowly. Recomputing it
+#: per radar poll would re-read the bar table for every ticker every 20 seconds.
+_radar_atr_cache: dict[str, tuple[float, "AtrPair"]] = {}
+RADAR_ATR_TTL_SEC: float = 900.0
+
+
+def _radar_atr(ticker: str | None) -> "AtrPair":
+    """Cached ATR pair for a radar row. Never raises."""
+    tk = (ticker or "").upper().strip()
+    now = time.time()
+    hit = _radar_atr_cache.get(tk)
+    if hit and (now - hit[0]) < RADAR_ATR_TTL_SEC:
+        return hit[1]
+    try:
+        pair = compute_atr_pair(str(get_db().db_path), tk)
+    except Exception as e:
+        log.debug("radar ATR failed for %s: %s", tk, e, exc_info=True)
+        pair = AtrPair(None, None)
+    _radar_atr_cache[tk] = (now, pair)
+    return pair
+
+
+def _radar_row(t: dict, spot: float, atr: "AtrPair", status: str, level_name: str,
+               level: float, gap: float | None, gap_atr: float | None,
+               sort_key: float | None) -> dict:
+    """One radar contact. `_sort` puts regime changes ahead of every wall."""
+    return {
+        "ticker": t.get("ticker"), "spot": spot, "regime": t.get("regime"),
+        "posture": t.get("posture"), "status": status,
+        "wall_name": level_name, "wall": level,
+        "distance_pct": round(gap / spot * 100, 3) if gap is not None else None,
+        "distance_atr": round(gap_atr, 3) if gap_atr is not None else None,
+        "distance_atr_15m": (round(abs(gap) / atr.m15, 2)
+                             if (atr.m15 and gap is not None) else None),
+        "atr_daily": round(atr.daily, 3) if atr.daily else None,
+        "atr_15m": round(atr.m15, 3) if atr.m15 else None,
+        "call_wall": t.get("call_wall"), "put_wall": t.get("put_wall"),
+        "gamma_flip": t.get("gamma_flip"), "confidence": t.get("confidence"),
+        "_sort": sort_key if sort_key is not None else (gap_atr if gap_atr is not None else 9e9),
+    }
+
+
+def _radar_contact(t: dict, spot: float, atr: "AtrPair") -> dict | None:
+    """The one contact this ticker earns on the scope, or None if it stays invisible.
+
+    A ticker about to cross its FLIP outranks every wall: a regime change alters what all
+    the other levels mean, so it sorts first regardless of wall distance.
+    """
+    flip_raw = t.get("gamma_flip")
+    if flip_raw is not None:
+        flip = float(flip_raw)
+        flip_atr = atr_distance(flip - spot, atr.daily)
+        if flip_atr is not None and flip_atr <= RING_REGIME:
+            return _radar_row(t, spot, atr, "REGIME CHANGE", "gamma flip", flip,
+                              flip - spot, flip_atr, sort_key=-1.0)
+
+    best = None
+    for name, v in (("call wall", t.get("call_wall")), ("put wall", t.get("put_wall"))):
+        if v is not None and (best is None or abs(v - spot) < abs(best[1] - spot)):
+            best = (name, v)
+    if best is None:
+        return None
+    name, level = best[0], float(best[1])
+    gap = level - spot
+    ring = ring_for(gap, atr.daily)
+    if ring is None:
+        return None                       # beyond the scope — deliberately invisible
+    status = {"CONTACT": "AT WALL", "CLOSING": "APPROACHING", "SECTOR": "IN SECTOR"}[ring]
+    return _radar_row(t, spot, atr, status, name, level, gap,
+                      atr_distance(gap, atr.daily), sort_key=None)
+
+
 def _terrain_snapshots_for_radar() -> list[dict]:
     """Terrain for every tracked ticker: live cache first, stored chains as fallback.
 
@@ -10156,32 +10229,17 @@ def get_terrain_radar(limit: int = Query(default=12, ge=1, le=60)):
         if t.get("confidence") != "TRUSTED" or not spot:
             blind += 1
             continue
-        walls = [("call wall", t.get("call_wall")), ("put wall", t.get("put_wall"))]
-        best = None
-        for name, v in walls:
-            if v is None:
-                continue
-            rel = (v - spot) / spot
-            if best is None or abs(rel) < abs(best[1]):
-                best = (name, rel, v)
-        if best is None:
+        atr = _radar_atr(t.get("ticker"))
+        if not atr.daily:
+            blind += 1                    # no scale means no ring; never guess one
             continue
-        name, rel, level = best
-        dist = abs(rel)
-        if dist <= RADAR_NEAR_PCT:
-            status = "AT WALL"
-        elif dist <= RADAR_WATCH_PCT:
-            status = "APPROACHING"
-        else:
-            continue                      # quiet — stays off the scope
-        rows.append({
-            "ticker": t.get("ticker"), "spot": spot, "regime": t.get("regime"),
-            "posture": t.get("posture"), "status": status, "wall_name": name,
-            "wall": level, "distance_pct": round(rel * 100, 3),
-            "call_wall": t.get("call_wall"), "put_wall": t.get("put_wall"),
-            "gamma_flip": t.get("gamma_flip"), "confidence": t.get("confidence"),
-        })
-    rows.sort(key=lambda r: abs(r["distance_pct"]))
+        contact = _radar_contact(t, spot, atr)
+        if contact is not None:
+            rows.append(contact)
+
+    rows.sort(key=lambda r: r["_sort"])
+    for r in rows:
+        r.pop("_sort", None)
     return {"rows": rows[:max_rows], "tracked": len(rows), "scanned": len(cached),
             "blind_spots": blind, "near_pct": RADAR_NEAR_PCT, "watch_pct": RADAR_WATCH_PCT}
 

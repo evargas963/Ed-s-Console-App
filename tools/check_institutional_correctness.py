@@ -209,6 +209,11 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
 def check_root_cause_log() -> list[Violation]:
     """Every defect gets five whys, and finding a cause RESTARTS the count.
 
+    OBSERVED: RC-14 was closed on code shape with a shallow chain and the underlying bug
+    survived into RC-15 and RC-16 -- three rows for one defect. VALIDATED by prototype
+    against the log: the depth rule flagged RC-6 (4 levels) and RC-7 (2 levels), both
+    genuinely half-traced, and no complete chain was falsely flagged.
+
     Operator law 2026-07-19: a cause found at why-2 is not the root -- it is a new defect
     that gets its own five whys. An entry stays OPEN until the chain terminates with no new
     defect AND the fix is verified. This blocks commits on any OPEN entry past its due date,
@@ -488,6 +493,159 @@ def check_open_item_cap() -> list[Violation]:
     return out
 
 
+#: Receivers whose .get() is not a dict read we can reason about (routes, env, vendor libs).
+_ORPHAN_KEY_SKIP_RECEIVERS = frozenset({
+    "app", "router", "api", "client", "session", "requests", "httpx", "self",
+    "environ", "os", "sys", "kwargs", "headers", "params", "cookies", "query",
+})
+
+
+def check_no_orphan_dict_keys() -> list[Violation]:
+    """A string key read from a dict that NOTHING in this repo ever writes.
+
+    WHY THIS EXISTS — two production defects in one session, same failure:
+      RC-15  `parsed.get("spot_f")` -- the producer emits "spot". Returned None on every
+             call, so the spot authority silently served a stale snapshot and the terrain
+             card disagreed with the console header.
+      RC-20  `p.get("artifact_sha256")` -- the verifier emits "actual_sha256". Every
+             VERIFIED artifact reported a null digest, so provenance claimed
+             VERIFIED_AGAINST_BUNDLE_MANIFEST while exposing nothing verified.
+
+    Neither was caught by mypy (dict[str, Any] accepts any key), by ruff, or by tests
+    (both were guarded by assertions that could not fail). A misspelled or stale key is
+    not an error in Python -- it is a silent None. This is the only check that sees it.
+
+    ADVISORY, deliberately: keys arriving in VENDOR payloads (Schwab quote/chain nodes,
+    news APIs) are legitimately never written by us, so a zero-tolerance rule would be
+    false. It is a ratcheted lead list -- every entry is a candidate silent-None.
+    """
+    reads: dict[str, tuple] = {}
+    writes: set[str] = set()
+
+    for path in _production_py_files():
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        decorated = {
+            id(d) for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            for d in n.decorator_list if isinstance(d, ast.Call)
+        }
+        for n in ast.walk(tree):
+            _collect_dict_writes(n, writes)
+            if not isinstance(n, ast.Call):
+                continue
+            key = _dict_read_key(n, decorated)
+            if key is not None and key not in reads:
+                reads[key] = (path, n.lineno)
+
+    return [
+        Violation(path, line,
+                  f"key {key!r} is read from a dict but never written anywhere in the repo "
+                  f"- a stale or misspelled key is a silent None, not an error (RC-15/RC-20). "
+                  f"Confirm it comes from a vendor payload, or fix the name.")
+        for key, (path, line) in sorted(reads.items()) if key not in writes
+    ]
+
+
+def _collect_dict_writes(node: ast.AST, writes: set[str]) -> None:
+    if isinstance(node, ast.Dict):
+        writes.update(k.value for k in node.keys
+                      if isinstance(k, ast.Constant) and isinstance(k.value, str))
+    elif isinstance(node, ast.Assign):
+        for t in node.targets:
+            if isinstance(t, ast.Subscript) and isinstance(t.slice, ast.Constant)                     and isinstance(t.slice.value, str):
+                writes.add(t.slice.value)
+    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)             and node.func.attr in ("setdefault", "pop") and node.args:
+        a0 = node.args[0]
+        if isinstance(a0, ast.Constant) and isinstance(a0.value, str):
+            writes.add(a0.value)
+
+
+def _dict_read_key(node: ast.Call, decorated: set[int]) -> str | None:
+    """The literal key of a `something.get("k")` dict read, or None if not one."""
+    if not isinstance(node.func, ast.Attribute):
+        return None
+    if node.func.attr != "get" or not node.args or id(node) in decorated:
+        return None
+    recv = node.func.value
+    name = recv.id if isinstance(recv, ast.Name) else (
+        recv.attr if isinstance(recv, ast.Attribute) else None)
+    if name in _ORPHAN_KEY_SKIP_RECEIVERS:
+        return None
+    a0 = node.args[0]
+    if not (isinstance(a0, ast.Constant) and isinstance(a0.value, str)):
+        return None
+    key = a0.value
+    if key.startswith(("/", "http")) or key.isupper():
+        return None                      # routes and environment variables
+    return key
+
+
+#: Checks that predate the justification rule. Their warrant is that they delegate to an
+#: industry-standard tool or encode a self-evident quality bar (ruff, mypy, complexity,
+#: file/function length, TODO tracking). FROZEN -- nothing may be added to this set; a new
+#: check must justify itself in its docstring instead.
+_GRANDFATHERED_CHECKS = frozenset({
+    "check_no_synthetic_domain_fixtures_in_tests", "check_no_silent_swallow",
+    "check_function_complexity", "check_function_length", "check_file_length",
+    "check_todo_without_tracking_id", "check_ruff_quality", "check_no_fake_defaults",
+    "check_mypy_types", "check_unproven_register", "check_single_spot_authority",
+    "check_debt_ratchet", "check_no_governance_duplication",
+    "check_no_tautological_assertions",
+})
+
+_CAUSE_RE = re.compile(r"(RC-\d+|observed|measured|found \d)", re.I)
+_VALIDATION_RE = re.compile(r"(prototyp|validated|proven|deliberately|ADVISORY)", re.I)
+
+
+def check_checks_are_justified() -> list[Violation]:
+    """Every NEW gate check must state what was observed and how the rule was validated.
+
+    OBSERVED (this repo, 2026-07-19): two checks were shipped on plausibility alone and
+    both were wrong. `tests_must_assert` flagged 14 legitimate tests because "a test needs
+    an assertion" sounds right but ignores the call-production-code-that-raises idiom. An
+    invented 800-line ceiling with no justification path caused a split that added five
+    circular imports to save seven lines (RC-19). A rule that sounds correct is not a rule
+    that IS correct.
+
+    So a new check must answer two questions in its docstring:
+      1. WHAT WAS OBSERVED that makes it necessary -- an RC id, or measured evidence.
+      2. HOW THE RULE WAS VALIDATED -- prototyped against the repo before enforcing, or
+         explicitly shipped ADVISORY because the rule cannot be zero-tolerance.
+
+    VALIDATED BY PROTOTYPE before shipping: run against all 19 existing checks, 14 would
+    have failed -- all of them pre-existing tool-delegating checks. Enforcing retroactively
+    would have forced invented justifications onto ruff and mypy, which is the exact
+    failure this rule exists to stop. Hence the frozen grandfather set above: the rule
+    binds new checks only.
+    """
+    out: list[Violation] = []
+    me = Path(__file__)
+    try:
+        tree = ast.parse(me.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return out
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef) and node.name.startswith("check_")):
+            continue
+        if node.name in _GRANDFATHERED_CHECKS:
+            continue
+        doc = ast.get_docstring(node) or ""
+        missing = []
+        if not _CAUSE_RE.search(doc):
+            missing.append("what was OBSERVED (cite an RC id or measured evidence)")
+        if not _VALIDATION_RE.search(doc):
+            missing.append("how the rule was VALIDATED (prototyped, or ADVISORY by design)")
+        if missing:
+            out.append(Violation(
+                me, node.lineno,
+                f"{node.name} is not justified: missing {' and '.join(missing)}. "
+                f"A rule that sounds correct is not a rule that is correct."))
+    return out
+
+
 def check_no_swallowed_test_failures() -> list[Violation]:
     """Fail a test helper that REPORTS a failure without causing one.
 
@@ -523,6 +681,10 @@ def check_no_swallowed_test_failures() -> list[Violation]:
 
 def check_tests_missing_explicit_assert() -> list[Violation]:
     """ADVISORY: test functions with no explicit assertion of their own.
+
+    OBSERVED: shipped first as an ENFORCED rule and it flagged 14 tests; reading all 14
+    showed every one was the legitimate call-production-code-that-raises idiom. Demoted to
+    ADVISORY rather than forcing noise edits into working tests.
 
     Many are the legitimate 'call production code that raises on invalid input' idiom
     and DO fail on regression - verified 2026-07-19 across all 14 hits. Kept advisory,
@@ -933,6 +1095,7 @@ CHECKS = [
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home
+    ("checks_are_justified", check_checks_are_justified, True),  # observed + validated, or no ship
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
     ("open_item_cap", check_open_item_cap, True),   # ledgers burn down, never accumulate  # 5 whys, restarted on every new cause
     ("debt_ratchet", check_debt_ratchet, True),      # advisory debt may never rise
@@ -942,6 +1105,7 @@ CHECKS = [
     ("unproven_register", check_unproven_register, True),  # claims: evidenced or registered
     # ADVISORY (visible debt, driven to zero, then flipped to enforced — the ratchet):
     ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, False),  # review each
+    ("orphan_dict_keys", check_no_orphan_dict_keys, False),   # silent-None leads (RC-15/RC-20)
     ("function_complexity", check_function_complexity, False),      # too-branchy functions
     ("function_length", check_function_length, False),             # over-long functions
     ("file_length", check_file_length, False),                     # over-long files (split them)
