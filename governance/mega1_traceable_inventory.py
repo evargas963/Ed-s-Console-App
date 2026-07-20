@@ -491,6 +491,24 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("websocket_adapter.py", 29, "WebSocketBarStream.disconnect", "NONE", None, (), None, "No market-field derivation: Abstract transport contract; no Schwab read."),
     Mega1TraceableDerivation("websocket_adapter.py", 34, "WebSocketBarStream.set_bar_callback", "NONE", None, (), None, "No market-field derivation: Abstract transport contract; no Schwab read."),
     Mega1TraceableDerivation("websocket_adapter.py", 39, "WebSocketBarStream.is_connected", "NONE", None, (), None, "No market-field derivation: Abstract transport contract; no Schwab read."),
-    Mega1TraceableDerivation("websocket_adapter.py", 44, "websocket_bars_stub", "NONE", None, (), None, "No market-field derivation: Unimplemented transport stub."),
+    Mega1TraceableDerivation("websocket_adapter.py", 44, "websocket_bars_stub", "NONE", None, (), None, "No market-field derivation: Unimplemented transport stub."),    # Terrain/shutdown infra added 2026-07-20 (strike-geometry derivation, ATR cache,
+    # bounded shutdown). None derive Schwab market fields: geometry/ATR consume values
+    # already persisted by traced producers; shutdown/signal paths touch no market data.
+    Mega1TraceableDerivation("server.py", 559, "_hard_exit", "NONE", None, (), None, "No market-field derivation: process hard-exit (os._exit) used only when graceful shutdown is blocked."),
+    Mega1TraceableDerivation("server.py", 580, "_arm_shutdown_watchdog", "NONE", None, (), None, "No market-field derivation: shutdown deadline watchdog; refuses under pytest."),
+    Mega1TraceableDerivation("server.py", 596, "_arm_shutdown_watchdog._watch", "NONE", None, (), None, "No market-field derivation: watchdog sleeper thread body."),
+    Mega1TraceableDerivation("server.py", 606, "_install_signal_handlers", "NONE", None, (), None, "No market-field derivation: SIGINT/SIGTERM two-stage handler installation."),
+    Mega1TraceableDerivation("server.py", 612, "_install_signal_handlers._on_signal", "NONE", None, (), None, "No market-field derivation: signal callback (second interrupt forces exit)."),
+    Mega1TraceableDerivation("server.py", 10131, "_learn_strike_geometry", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Caches (spot, strike increment) per ticker from a chain already fetched by the traced terrain path; no new Schwab field read."),
+    Mega1TraceableDerivation("server.py", 10149, "_terrain_strike_count", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Strike-count REQUEST parameter derived from learned geometry and the +/-5%% span bar; consumes no Schwab response field."),
+    Mega1TraceableDerivation("server.py", 10252, "_terrain_prewarm_worker", "NONE", None, (), None, "No market-field derivation: boot-time cache warmer calling already-traced readers."),
+    Mega1TraceableDerivation("server.py", 10272, "_seed_strike_geometry_from_storage", "DERIVED", None, ("server.py:_latest_chain_and_spot",), None, "Replays stored chains through _learn_strike_geometry at boot; stored rows were produced by traced writers."),
+    Mega1TraceableDerivation("server.py", 10296, "start_terrain_prewarm", "NONE", None, (), None, "No market-field derivation: thread starter."),
+    Mega1TraceableDerivation("server.py", 10343, "_radar_atr_compute_into_cache", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "ATR from persisted price_bars_1m (traced collector output); single-flight cache fill."),
+    Mega1TraceableDerivation("server.py", 10356, "_radar_atr", "DERIVED", None, ("server.py:_radar_atr_compute_into_cache",), None, "Cache front for ATR: stale-while-revalidate; no direct Schwab read."),
+    Mega1TraceableDerivation("server.py", 10408, "_radar_row", "DERIVED", None, ("server.py:get_terrain_radar",), None, "Projects already-computed terrain fields + ATR distances into a radar row; no new field read."),
+    Mega1TraceableDerivation("server.py", 10428, "_radar_contact", "DERIVED", None, ("server.py:_radar_row",), None, "Ring classification from existing levels/ATR; thresholds are terrain_atr constants."),
+    Mega1TraceableDerivation("server.py", 10575, "_reprice_cached_terrain", "DERIVED", None, ("server.py:resolve_spot",), None, "Re-evaluates cached gamma profile at the fresh authoritative spot (RC-28); both inputs from traced producers."),
+
 )
 

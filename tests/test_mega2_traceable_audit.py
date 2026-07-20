@@ -53,7 +53,7 @@ CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 #   206 — +1 big-audit inventory sync: _weighted_mean_present (order_flow_engine.py)
 #   208 — +2 streaming disconnect/cache gate: streaming_l1_cache_usable, _is_stream_disconnect_error
 #   211 — +1 classify_direction_pts (math_probabilities.py)
-MEGA2_ROW_COUNT = 224  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
+MEGA2_ROW_COUNT = 226  # +2 strike-width derivation (infer_strike_increment, required_strike_count) 2026-07-20  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
 #         _contract_inputs, compute_gamma_profile, gamma_flip_from_profile; compute_gamma_flip
 #         removed and its row reused by compute_gamma_flip_v2)
 #         +1 gamma_is_plausible (math_exposure_core.py) — pre-existing inventory gap from the

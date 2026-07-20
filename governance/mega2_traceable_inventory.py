@@ -260,6 +260,9 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("order_flow_streaming.py", 544, "get_stream_thread", "ALLOWLISTED", None, (), 'mega2_schwab_stream_l1', "Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (get_stream_thread)."),
     Mega2TraceableDerivation("terrain_engine.py", 80, "TerrainSnapshot.to_dict", "NONE", None, (), None, "No market-field derivation: dataclass-to-dict serialization for the API response."),
     Mega2TraceableDerivation("terrain_engine.py", 84, "_unavailable", "NONE", None, (), None, "No market-field derivation: builds the fail-closed terrain payload from caller-supplied ticker/spot only."),
-    Mega2TraceableDerivation("terrain_engine.py", 93, "compute_terrain", "DERIVED", None, ("server.py:_latest_chain_and_spot",), None, "Assembles the terrain payload (regime, walls, pin, HVL, max pain, charm walls) from one chain; no model stack."),
+    Mega2TraceableDerivation("terrain_engine.py", 93, "compute_terrain", "DERIVED", None, ("server.py:_latest_chain_and_spot",), None, "Assembles the terrain payload (regime, walls, pin, HVL, max pain, charm walls) from one chain; no model stack."),    # Strike-width derivation added 2026-07-20 (RC-12 root fix).
+    Mega2TraceableDerivation("math_levels.py", 870, "infer_strike_increment", "SCHWAB_LEAF", 'chains.callExpDateMap.*.strikePrice', (), None, "Median adjacent difference of strikePrice values from an already-fetched chain; junk rows skipped, thin chains return None."),
+    Mega2TraceableDerivation("math_levels.py", 902, "required_strike_count", "NONE", None, (), None, "No market-field derivation: pure arithmetic from spot, strike increment and GAMMA_FLIP_MIN_SPAN_PCT; sizes the NEXT fetch request."),
+
 )
 

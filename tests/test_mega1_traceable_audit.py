@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 450  # +1 _last_traded_price (RC-18) 2026-07-19  # +1 spot_is_a_close (RC-16) 2026-07-19  # +3 spot authority (RC-14) 2026-07-19  # +2 radar handler + snapshot merge 2026-07-19  # +8 terrain loop + chain helpers 2026-07-19  # +2 /api/terrain handler + _latest_chain_and_spot 2026-07-19 (prior: 433)  # inventory sync @ CHAIN_GATE_V2: -3 _PriorityGate +7 _ChainGateV2 +1 diagnostics endpoint
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 465  # +15 terrain/shutdown infra 2026-07-20 (watchdog, signals, strike geometry, ATR cache, radar rows, reprice)  # +1 _last_traded_price (RC-18) 2026-07-19  # +1 spot_is_a_close (RC-16) 2026-07-19  # +3 spot authority (RC-14) 2026-07-19  # +2 radar handler + snapshot merge 2026-07-19  # +8 terrain loop + chain helpers 2026-07-19  # +2 /api/terrain handler + _latest_chain_and_spot 2026-07-19 (prior: 433)  # inventory sync @ CHAIN_GATE_V2: -3 _PriorityGate +7 _ChainGateV2 +1 diagnostics endpoint
 
 
 def test_mega1_row_schema_valid():

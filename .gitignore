@@ -158,3 +158,8 @@ reports/lgbm_micro_eval/
 reports/mlp_micro_eval/
 
 reports/quantile_eval/
+
+# Local agent/tooling state — machine-specific, never shared (2026-07-20).
+# settings.local.json is already ignored at the top of this file but is still TRACKED,
+# so gitignore cannot apply to it — the commit must `git rm --cached` it once.
+.claude/launch.json

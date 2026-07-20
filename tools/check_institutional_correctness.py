@@ -468,6 +468,21 @@ def check_open_item_cap() -> list[Violation]:
     rc = REPO / "governance" / "root_cause_log.md"
     open_items = _open_root_causes(rc) + _open_register_claims(
         REPO / "governance" / "unproven_register.md")
+    # OPEN_ITEMS.md joined the ratchet 2026-07-20. WHAT WAS OBSERVED: the cap covered
+    # only the two governance ledgers, so OPEN_ITEMS.md was an UNGATED parking lot --
+    # a "flagged, not fixed" disposition could sit there forever, which is exactly the
+    # banned third state (operator: Fixed / Allowlisted-with-reason / Registered-with-
+    # due-date, nothing else). Counting its unchecked rows puts the same only-down
+    # pressure on it. VALIDATED BY PROTOTYPE: 39 unchecked rows at adoption (33 pre-existing + 6
+    # registered from the 2026-07-20 audit remainder); the ceiling was re-baselined
+    # 10 -> 49 IN THE SAME CHANGE (scope expansion, not backsliding) and
+    # may only fall from there.
+    open_items += [
+        f"OPEN_ITEMS:{m.group(1)[:60]}"
+        for m in re.finditer(r"^- \[ \] \*\*([^*]+)\*\*",
+                             (REPO / "OPEN_ITEMS.md").read_text(encoding="utf-8"),
+                             re.M)
+    ] if (REPO / "OPEN_ITEMS.md").exists() else []
 
     ceiling_path = REPO / "governance" / "open_item_ceiling.json"
     count = len(open_items)
@@ -1086,6 +1101,195 @@ def check_unproven_register() -> list[Violation]:
     return out
 
 
+#: RC rows that predate the citation rule. Frozen, exactly like the CHECKS grandfather set:
+#: PROTOTYPED against the log before shipping — 20 of 29 rows carry 3+ numeric claims and
+#: ZERO reproducible citations, so enforcing retroactively would block every commit and
+#: force fabricated citations onto numbers whose commands are long gone. The rule binds
+#: rows opened from here forward.
+_RC_CITATION_GRANDFATHERED = frozenset(f"RC-{i}" for i in range(1, 30))
+
+#: A citation is a backticked fragment that could be RE-RUN to reproduce the number.
+_RC_CITATION_RE = re.compile(
+    r"`[^`]*(SELECT |COUNT\(|SUM\(|PRAGMA |pytest|python |node |tools/|\.py)[^`]*`", re.I
+)
+#: A numeric CLAIM — a bare digit run, optionally with a unit. Dates and RC ids are excluded
+#: by the callers stripping them, so "2026-07-20" does not read as three claims.
+_RC_NUMBER_RE = re.compile(r"\b\d[\d,.]*\s*(?:GB|MB|KB|s|ms|%|x|rows|files|strikes|tests)?\b")
+_RC_CITATION_MIN_NUMBERS = 3
+
+
+def check_rc_numeric_claims_cite_a_command() -> list[Violation]:
+    """A row that asserts numbers must say how to reproduce them.
+
+    WHAT WAS OBSERVED (2026-07-20): RC-6's why-chain quoted 5.96 / 5.78 / 1.03 / 0.92 GB
+    and a "~7.7 GB second copy" as MEASURED. They were SAMPLED — 1,500 rows per table,
+    extrapolated — and every one was wrong; exact SUM(LENGTH(...)) gives 5.10 / 4.88 /
+    1.38 / 1.34 and a 6.22 GB second copy. Cursor's audit refuted all four.
+
+    WHY THE EXISTING LOCK DID NOT FIRE. `_rc_row_violations` already demands "observed
+    evidence", but (a) only `if status == "CLOSED"`, and RC-6 is OPEN, and (b) its test is
+    `has_number = any(ch.isdigit())` AND the text containing the WORD "MEASURED". The RC-6
+    entry opened with "MEASURED:" beside extrapolated figures, so it satisfied both. The
+    check verified that the word was typed, not that a measurement happened — the RC-3
+    failure class (a comment accepted in place of an assertion) rebuilt as governance.
+
+    Sampling cannot be detected by reading prose: an extrapolated number and an exact one
+    are the same characters. What IS checkable is provenance. Requiring the command means
+    re-running it exposes the shortcut — the sampled query carried `LIMIT 1500` in plain
+    sight — and it turns "trust the word MEASURED" into something the operator or Cursor
+    can independently reproduce.
+
+    HOW THE RULE WAS VALIDATED: prototyped against the log BEFORE enforcing. 20 of 29 rows
+    would fail, which is why the grandfather set above is frozen and the rule binds only
+    new rows — the same design already used for `checks_are_justified`.
+    """
+    out: list[Violation] = []
+    log_path = REPO / "governance" / "root_cause_log.md"
+    if not log_path.exists():
+        return out
+    for n, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 7:
+            continue
+        rc_id = cells[0]
+        if rc_id in _RC_CITATION_GRANDFATHERED:
+            continue
+        body = " ".join(cells[5:])
+        if _RC_CITATION_RE.search(body):
+            continue
+        # strip ISO dates and RC ids so they are not counted as numeric claims
+        stripped = re.sub(r"\d{4}-\d{2}-\d{2}|RC-\d+", "", body)
+        if len(_RC_NUMBER_RE.findall(stripped)) >= _RC_CITATION_MIN_NUMBERS:
+            out.append(Violation(
+                log_path, n,
+                f"{rc_id} asserts numbers but cites no reproducible command. Put the query "
+                f"or command in backticks so the figure can be re-run — a sampled number "
+                f"and an exact one read identically, and only the command tells them apart."))
+    return out
+
+
+#: A snapshots read that orders by ts_utc must name `timeframe`. Frozen grandfather set of
+#: OFFLINE sites (tools / verification / research / the normalizer's full-history rebuild).
+#: PROTOTYPED before shipping: 9 sites match, 7 of them here. The severity of this defect
+#: is a function of whether it sits on the request path, which is why server.py is NOT
+#: grandfathered -- a regression there blocks the commit.
+_SNAPSHOT_TF_GRANDFATHERED = frozenset({
+    "snapshot_normalizer.py",                      # deliberate full-history rebuild
+    "research/gex_r1_screen_v1/signal.py",
+    "tools/check_card_direction_integrity.py",
+    "verification/base_ticker_observability.py",
+    "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",   # frozen legacy backfill
+})
+_SNAPSHOTS_ORDER_RE = re.compile(
+    r"FROM\s+snapshots\b(?:(?!;|\"\"\"|').){0,400}?ORDER\s+BY\s+ts_utc",
+    re.I | re.S,
+)
+
+
+def check_snapshots_read_names_the_timeframe() -> list[Violation]:
+    """A snapshots read ordered by ts_utc must filter `timeframe`, or it scans the table.
+
+    WHAT WAS OBSERVED (2026-07-20, operator-reported: "the entire terrain tab is slow",
+    then the console would not respond to Ctrl+C). The only index able to order these
+    reads is idx_snap_ticker_tf_ts (ticker, timeframe, ts_utc). `_latest_chain_and_spot`
+    and `_spot_from_stored` filtered ticker and ordered by ts_utc while SKIPPING timeframe
+    -- the middle column -- so the ordering could not be index-served:
+
+        SEARCH snapshots USING INDEX idx_snap_ticker_tf_ts (ticker=?)
+        USE TEMP B-TREE FOR ORDER BY
+
+    SQLite read every row for the ticker (70,556 for SPY, each carrying a ~50 KB inline
+    option_chain_json) into a temp B-tree to return ONE row. MEASURED: did not complete
+    inside a 300 s timeout. Naming the timeframe removes the sort entirely -- 0.002 s.
+    That wedged a request worker, which froze the price lane and blocked shutdown.
+
+    Neither the test suite nor any existing gate check could see it: every test passed,
+    ruff and mypy were clean, and the defect lives in a query PLAN, not in code shape.
+
+    HOW THE RULE WAS VALIDATED: prototyped against the repo before enforcing. 9 sites
+    match; 7 are offline (grandfathered above), 1 is a deliberate negative control in
+    tests/, and server.py -- the request path -- is clean. Tests are excluded because a
+    test that PROVES the bad plan must contain the bad query.
+    """
+    out: list[Violation] = []
+    for p in _production_py_files():
+        rel = p.relative_to(REPO).as_posix()
+        if rel in _SNAPSHOT_TF_GRANDFATHERED:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in _SNAPSHOTS_ORDER_RE.finditer(text):
+            frag = " ".join(m.group(0).split())
+            low = frag.lower()
+            if "ticker" not in low or "timeframe" in low:
+                continue
+            out.append(Violation(
+                p, text[: m.start()].count("\n") + 1,
+                "snapshots read orders by ts_utc without naming `timeframe` — "
+                "idx_snap_ticker_tf_ts cannot serve the ordering, so this degrades to a "
+                "full read of every row for the ticker (MEASURED >300s vs 0.002s)"))
+    return out
+
+
+def check_shutdown_is_bounded() -> list[Violation]:
+    """A shutdown path that joins workers must be bounded by the watchdog.
+
+    WHAT WAS OBSERVED (operator, 2026-07-20): "when i press control plus c the console
+    doesn't shut down". CONFIRMED on the live process -- uvicorn PID 34780 had closed its
+    listening socket (shutdown had begun) yet stayed resident with 2,488 CPU-seconds. The
+    lifespan teardown is a serial chain of `shutdown(wait=True)` and a 40 s stream join;
+    `cancel_futures=True` drops only QUEUED work and cannot interrupt a RUNNING worker, so
+    one blocked vendor call or long query stalls the whole chain. Python compounds it:
+    concurrent.futures registers an atexit hook that joins every executor's non-daemon
+    workers, so abandoning the lifespan does not free the interpreter either.
+
+    REPRODUCED in isolation: a process with one wedged non-daemon thread never exits
+    (>15 s, killed); with the watchdog armed it exits in 2.4 s.
+
+    HOW THE RULE WAS VALIDATED: prototyped against the current file -- the lifespan does
+    arm the watchdog, so this check is 0 today and only fires on regression.
+    """
+    out: list[Violation] = []
+    server = REPO / "server.py"
+    if not server.exists():
+        return out
+    text = server.read_text(encoding="utf-8", errors="replace")
+    marker = "async def _app_lifespan"
+    if marker not in text:
+        return out
+    body = text[text.index(marker):]
+    end = body.find("\n@app.")
+    if end > 0:
+        body = body[:end]
+    if "wait=True" in body and "_arm_shutdown_watchdog" not in body:
+        out.append(Violation(
+            server, text[: text.index(marker)].count("\n") + 1,
+            "the lifespan joins background workers (wait=True) without arming "
+            "_arm_shutdown_watchdog — one blocked worker makes the console unkillable "
+            "by Ctrl+C (OBSERVED 2026-07-20)"))
+    # The watchdog itself must refuse under pytest. OBSERVED 2026-07-20: TestClient runs
+    # the lifespan inside the TEST process; an unguarded watchdog os._exit(0)'d PYTEST
+    # 12 s later, mid-suite, silently, exit code 0 — tests/adversarial "passed" with zero
+    # output and the full suite read as a hang (Cursor audit). RC-10 class.
+    wd = "def _arm_shutdown_watchdog"
+    if wd in text:
+        wd_body = text[text.index(wd):]
+        wd_end = wd_body.find("\ndef ")
+        if wd_end > 0:
+            wd_body = wd_body[:wd_end]
+        if "PYTEST_CURRENT_TEST" not in wd_body:
+            out.append(Violation(
+                server, text[: text.index(wd)].count("\n") + 1,
+                "_arm_shutdown_watchdog does not refuse under pytest — armed inside the "
+                "test process it os._exit(0)'s the RUNNER mid-suite with a success code "
+                "(OBSERVED 2026-07-20: silent zero-output 'pass')"))
+    return out
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -1102,6 +1306,9 @@ CHECKS = [
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
+    ("rc_numeric_claims_cite_a_command", check_rc_numeric_claims_cite_a_command, True),  # provenance, not the word "MEASURED" (RC-6)
+    ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
+    ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
     ("unproven_register", check_unproven_register, True),  # claims: evidenced or registered
     # ADVISORY (visible debt, driven to zero, then flipped to enforced — the ratchet):
     ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, False),  # review each
