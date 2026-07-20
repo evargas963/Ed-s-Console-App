@@ -40,7 +40,8 @@ MAX_DTE_DAYS = 37.0
 MORNING_START_MINS = 570  # 09:30 ET
 MORNING_END_MINS = 600    # 10:00 ET — capture window for first write
 # Dedicated morning wide fetch (UI live path stays at CHAIN_STRIKE_COUNT=20).
-GEX_FULL_CHAIN_STRIKE_COUNT = 150
+# Cap 100: Schwab 502'd strikeCount=200 on SPY/QQQ at the 2026-07-20 open.
+GEX_FULL_CHAIN_STRIKE_COUNT = 100
 SOURCE_WIDE = "schwab_chain_wide_gex"
 
 

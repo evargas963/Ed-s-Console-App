@@ -1,6 +1,6 @@
 {
  "schema": "LANE_A_LEGACY_DIFFERENTIAL_RESULT",
- "base_sha": "8e5949000c0984c4d64361e355432615d4384045",
+ "base_sha": "237281c3041f7b3a69ff2230eec5d2480d845c45",
  "fixture_content_sha256": "fcf6e68f4f3537833f94cad2ab44100a6066fc7ca0f1cddc05c443a0b7b9593f",
  "old_source_sha256": "c6e13e64a099c3aec3c3ee0d36e085f1f26864004662064e632ed0d122f2780b",
  "new_source_sha256": "d764e6f8bdb033030ffb239730e1a0188c5421a378a9c7bdb0ca599ad9ec3f1a",

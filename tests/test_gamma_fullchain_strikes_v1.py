@@ -17,11 +17,11 @@ from time_et import ET
 
 
 def test_gex_full_chain_strike_count_is_wide_not_ui_20() -> None:
-    assert GEX_FULL_CHAIN_STRIKE_COUNT == 150
+    assert GEX_FULL_CHAIN_STRIKE_COUNT == 100
     import server as srv
 
     assert srv.CHAIN_STRIKE_COUNT == 20
-    assert srv.GEX_FULL_CHAIN_STRIKE_COUNT == 150
+    assert srv.GEX_FULL_CHAIN_STRIKE_COUNT == 100
 
 
 def test_has_morning_full_capture_false_then_true(tmp_path: Path) -> None:
