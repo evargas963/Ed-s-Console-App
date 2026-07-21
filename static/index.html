@@ -11535,6 +11535,27 @@ function edNetGexOf(d) {
   return (g != null && isFinite(g)) ? Number(g) : null;
 }
 
+// ONE painter for BOTH NET GEX surfaces (header chip + dealer tile row), driven by
+// d._gexCrossed. Bugbot 2026-07-21: two call sites split on a flip-cross (header ≈0,
+// dealer tile stale sign) and the chip stuck on CROSSED FLIP after an uncross.
+// Across the flip the sign is wrong and the magnitude unknowable client-side (no
+// profile in the payload); just across zero net gamma ≈ 0 by continuity — say that,
+// never a fabricated number.
+function edPaintNetGex(d) {
+  const crossed = !!d._gexCrossed;
+  const g = crossed ? null : edNetGexOf(d);
+  const chip = document.getElementById('tv-gex');
+  if (chip) {
+    chip.className = 'tv-chip' + (crossed || g == null ? '' : g >= 0 ? ' gpos' : ' gneg');
+    chip.textContent = crossed ? 'NET GEX ≈0 · CROSSED FLIP' : 'NET GEX ' + edFmtGex(g);
+  }
+  const v = document.getElementById('tv-dealer-gex');
+  if (v) {
+    v.textContent = crossed ? '≈0 · crossed flip' : edFmtGex(g);
+    v.style.color = (crossed || g == null) ? '' : (g > 0 ? 'var(--tv-blu)' : 'var(--tv-red)');
+  }
+}
+
 async function edLoadTerrain() {
   const tk = (typeof activeTicker === 'string' && activeTicker) ? activeTicker : 'SPY';
   let d;
@@ -11565,12 +11586,8 @@ async function edLoadTerrain() {
   const tr = document.getElementById('tv-trust');
   if (tr) { tr.className = 'tv-chip ' + (trusted ? 'ok' : 'bad'); tr.textContent = (trusted ? '● ' : '⚠ ') + (d.confidence || '—'); }
   set('tv-contracts', (d.contracts_used || 0).toLocaleString() + ' CT · ' + (d.strikes_used || 0) + ' STRIKES');
-  const gexEl = document.getElementById('tv-gex');
-  if (gexEl) {
-    const g = edNetGexOf(d);
-    gexEl.className = 'tv-chip' + (g == null ? '' : g >= 0 ? ' gpos' : ' gneg');
-    gexEl.textContent = 'NET GEX ' + edFmtGex(g);
-  }
+  d._gexCrossed = false;   // fresh payload re-anchors: server regime and net GEX agree
+  edPaintNetGex(d);
   set('tv-stamp', new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' }) + ' CT');
 
   const isLong = d.regime === 'LONG_GAMMA_CHOP', isShort = d.regime === 'SHORT_GAMMA_TREND';
@@ -11746,13 +11763,14 @@ function edRenderLevels(d) {
 }
 
 function edRenderPeriphery(d, trusted) {
-  // rows: [key, value, colour?, tip?] — tip renders as a native tooltip on the key.
+  // rows: [key, value, colour?, tip?, valueId?] — tip renders as a native tooltip on
+  // the key; valueId lets a targeted painter (edPaintNetGex) update one cell in place.
   const kv = (id, rows) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.innerHTML = rows.map(r =>
       '<span class="k"' + (r[3] ? ' title="' + r[3] + '"' : '') + '>' + r[0] +
-      '</span><span class="v"' +
+      '</span><span class="v"' + (r[4] ? ' id="' + r[4] + '"' : '') +
       (r[2] ? ' style="color:' + r[2] + '"' : '') + '>' + r[1] + '</span>').join('');
   };
   const atr = d.atr_daily || edRadarAtrFor(d.ticker);
@@ -11785,7 +11803,8 @@ function edRenderPeriphery(d, trusted) {
      'Sign of net dealer gamma AT SPOT. LONG: dealers dampen (chop). SHORT: dealers amplify (trend). Weakens near the flip.'],
     ['NET GEX (1%)', edFmtGex(gas),
      gas == null ? '' : (gas > 0 ? 'var(--tv-blu)' : 'var(--tv-red)'),
-     'Signed net dealer gamma in dollars per 1% move, repriced to the live spot each poll. This number IS the regime; it also breaks the tie when call and put gamma stack on the same strike.'],
+     'Signed net dealer gamma in dollars per 1% move, repriced to the live spot each poll. This number IS the regime; it also breaks the tie when call and put gamma stack on the same strike.',
+     'tv-dealer-gex'],
     ['CONFIDENCE', trusted ? 'TRUSTED' : (d.confidence || '—'),
      trusted ? 'var(--tv-grn)' : 'var(--tv-amb)',
      'TRUSTED requires a wide chain covering the required strike span; narrow chains can truncate walls and fake flips.'],
@@ -11796,6 +11815,7 @@ function edRenderPeriphery(d, trusted) {
     ['DOLLARIZED', d.dollarized ? 'yes' : 'no', d.dollarized ? 'var(--tv-grn)' : 'var(--tv-amb)',
      'Whether levels are computed in dollar terms (needs spot). Raw-gamma fallbacks are never ranked against dollar levels.']
   ]);
+  edPaintNetGex(d);   // kv() just rebuilt the raw value — re-apply crossed state if any
 
   const po = document.getElementById('tv-posture');
   if (po) {
@@ -11879,6 +11899,14 @@ function edReconcileRegime(d, liveSpot) {
   const base = d._srvRegime;
   if (base !== 'LONG_GAMMA_CHOP' && base !== 'SHORT_GAMMA_TREND') return;
   const crossed = (d._srvSpot > d.gamma_flip) !== (liveSpot > d.gamma_flip);
+  // NET GEX repaints on every cross-state CHANGE — both directions. Handling it before
+  // the regime early-return below is the fix for Bugbot 2026-07-21: an uncross restores
+  // the regime label via `want === d.regime` short-circuit, which previously skipped the
+  // chip and left it stuck on CROSSED FLIP; the dealer tile row never updated at all.
+  if (!!d._gexCrossed !== crossed) {
+    d._gexCrossed = crossed;
+    edPaintNetGex(d);
+  }
   const want = !crossed ? base
     : (base === 'LONG_GAMMA_CHOP' ? 'SHORT_GAMMA_TREND' : 'LONG_GAMMA_CHOP');
   if (want === d.regime) return;
@@ -11889,11 +11917,6 @@ function edReconcileRegime(d, liveSpot) {
   const t = document.getElementById('tv-title');
   if (t) t.textContent = (isLong ? '▲ LONG GAMMA · CHOP' : '▼ SHORT GAMMA · TREND') +
     (crossed ? ' · CROSSED FLIP' : '');
-  // The NET GEX chip carries the server-spot value; across the flip its SIGN is wrong
-  // and its magnitude is unknowable client-side (no profile in the payload). Just across
-  // zero, net gamma ≈ 0 by continuity — say exactly that, never a fabricated number.
-  const gexEl = document.getElementById('tv-gex');
-  if (gexEl && crossed) { gexEl.className = 'tv-chip'; gexEl.textContent = 'NET GEX ≈0 · CROSSED FLIP'; }
   edRenderLadder(d);   // zones re-orient for the new side of the boundary
 }
 
