@@ -10727,6 +10727,9 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     # dealer tile printed a stale γ beside a live regime — the two could even disagree in
     # sign (Bugbot 2026-07-20, confirmed: the UI renders flip_diag.gamma_at_spot).
     out["flip_diag"] = {**(payload.get("flip_diag") or {}), "gamma_at_spot": fresh_gamma}
+    # net_gex_at_spot IS gamma_at_spot (schema v2) — reprice both or the NET GEX chip
+    # would show loop-time gamma beside a live-spot regime (same defect class as above).
+    out["net_gex_at_spot"] = fresh_gamma
     return out
 
 

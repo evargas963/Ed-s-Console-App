@@ -2640,6 +2640,9 @@ body.ed-terrain-mode { overflow:hidden; }
   border-radius:3px; border:1px solid var(--tv-ln2); color:var(--tv-tx); }
 .tv-chip.ok { color:var(--tv-grn); border-color:rgba(63,221,136,.5); background:rgba(63,221,136,.10); }
 .tv-chip.bad { color:var(--tv-amb); border-color:rgba(255,194,71,.5); background:rgba(255,194,71,.10); }
+/* Net-GEX chip: sign carries the regime, so the chip wears the regime colours. */
+.tv-chip.gpos { color:var(--tv-blu); border-color:rgba(79,198,255,.5); background:rgba(79,198,255,.10); }
+.tv-chip.gneg { color:var(--tv-red); border-color:rgba(255,95,95,.5); background:rgba(255,95,95,.10); }
 .tv-sp { margin-left:auto; display:flex; align-items:center; gap:12px;
   font:800 11px/1 var(--font-mono,monospace); color:var(--tv-tx); }
 .tv-sp label { display:flex; align-items:center; gap:5px; cursor:pointer;
@@ -2673,6 +2676,7 @@ body.ed-terrain-mode { overflow:hidden; }
 .tv-dl { font:800 11px/1 var(--font-mono,monospace); color:var(--tv-mu); min-width:58px; text-align:right; }
 .tv-c-call{color:var(--tv-red)} .tv-c-put{color:var(--tv-grn)} .tv-c-flip{color:#fff}
 .tv-c-pin{color:var(--tv-pur)} .tv-c-charm{color:var(--tv-amb)} .tv-c-spot{color:var(--tv-blu)}
+.tv-c-kds{color:#c792ea} .tv-c-hvp{color:#ff9e64} .tv-c-lvp{color:#7ee08a}
 .tv-lv.flipline .ln { border-top:3px dashed rgba(255,255,255,.8); opacity:1; }
 .tv-lv.spotline .ln { border-top:4px solid var(--tv-blu); opacity:1; box-shadow:0 0 14px rgba(79,198,255,.55); }
 .tv-lv.spotline .tv-pr { font-size:17px; color:var(--tv-blu); }
@@ -2923,8 +2927,12 @@ body.ed-terrain-mode { overflow:hidden; }
       <div class="tv-sym" id="tv-sym">&mdash;</div>
       <div class="tv-px" id="tv-px">&mdash;</div>
       <div class="tv-chg" id="tv-chg"></div>
-      <span class="tv-chip" id="tv-trust">&mdash;</span>
-      <span class="tv-chip" id="tv-contracts">&mdash;</span>
+      <span class="tv-chip" id="tv-trust"
+            title="Level trust. TRUSTED = wide chain covering the full required strike span. Anything else = narrow-chain levels that may be truncated — stand aside from them.">&mdash;</span>
+      <span class="tv-chip" id="tv-contracts"
+            title="Contracts and strikes the engine actually used after fail-closed filtering (OI &gt; 0, plausible greeks). Low counts weaken every level.">&mdash;</span>
+      <span class="tv-chip" id="tv-gex"
+            title="Net dealer gamma exposure at spot, dollars per 1% move. POSITIVE: dealers dampen moves (buy dips, sell rips). NEGATIVE: dealers amplify moves. Its sign IS the regime; magnitude is conviction.">&mdash;</span>
       <div class="tv-sp">
         <label title="Master mute: silences terrain alerts AND the voice clock">
           <input type="checkbox" id="tv-alerts-voice" checked
@@ -11511,6 +11519,22 @@ function edPct(lvl, spot) {
 
 const edNum = (v, d) => (v == null || !isFinite(v)) ? '—' : Number(v).toFixed(d == null ? 2 : d);
 
+// Signed dollars-per-1%-move formatter for net dealer GEX (same quantity the console
+// tab shows as NET GEX; here it is repriced to the live spot on every poll).
+function edFmtGex(v) {
+  if (v == null || !isFinite(v)) return '—';
+  const sign = v < 0 ? '−' : '+', a = Math.abs(v);
+  const u = a >= 1e9 ? [1e9, 'B'] : a >= 1e6 ? [1e6, 'M'] : a >= 1e3 ? [1e3, 'K'] : [1, ''];
+  return sign + '$' + (a / u[0]).toFixed(a >= 1e9 ? 2 : 1) + u[1] + '/1%';
+}
+
+// The one number the operator asked to see IN terrain (2026-07-21): signed net GEX.
+// Falls back to flip_diag.gamma_at_spot so a v1 cached payload still renders.
+function edNetGexOf(d) {
+  const g = (d.net_gex_at_spot != null) ? d.net_gex_at_spot : ((d.flip_diag || {}).gamma_at_spot);
+  return (g != null && isFinite(g)) ? Number(g) : null;
+}
+
 async function edLoadTerrain() {
   const tk = (typeof activeTicker === 'string' && activeTicker) ? activeTicker : 'SPY';
   let d;
@@ -11541,6 +11565,12 @@ async function edLoadTerrain() {
   const tr = document.getElementById('tv-trust');
   if (tr) { tr.className = 'tv-chip ' + (trusted ? 'ok' : 'bad'); tr.textContent = (trusted ? '● ' : '⚠ ') + (d.confidence || '—'); }
   set('tv-contracts', (d.contracts_used || 0).toLocaleString() + ' CT · ' + (d.strikes_used || 0) + ' STRIKES');
+  const gexEl = document.getElementById('tv-gex');
+  if (gexEl) {
+    const g = edNetGexOf(d);
+    gexEl.className = 'tv-chip' + (g == null ? '' : g >= 0 ? ' gpos' : ' gneg');
+    gexEl.textContent = 'NET GEX ' + edFmtGex(g);
+  }
   set('tv-stamp', new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' }) + ' CT');
 
   const isLong = d.regime === 'LONG_GAMMA_CHOP', isShort = d.regime === 'SHORT_GAMMA_TREND';
@@ -11567,7 +11597,8 @@ function edRenderLadder(d) {
   // Group levels sharing a strike so labels can never collide (RC-8).
   // Same source as the levels table, so the two panels cannot disagree about what exists.
   const raw = edLevelSet(d);
-  if (spot != null) raw.push({ t: '◆ SPOT', v: spot, c: 'tv-c-spot', spot: true });
+  if (spot != null) raw.push({ t: '◆ SPOT', v: spot, c: 'tv-c-spot', spot: true,
+                               tip: 'Live price (browser header faucet — same number as the header).' });
 
   if (!raw.length || !spot) {
     const p = document.createElement('div');
@@ -11637,6 +11668,7 @@ function edRenderLadder(d) {
       const chip = document.createElement('span');
       chip.className = 'tv-tag ' + it.c;
       chip.textContent = it.t;
+      if (it.tip) chip.title = it.tip;
       row.appendChild(chip);
     }
     const pr = document.createElement('span'); pr.className = 'tv-pr'; pr.textContent = g.v.toFixed(2);
@@ -11648,17 +11680,32 @@ function edRenderLadder(d) {
 }
 
 // The level set, in one place. Both the ladder and the levels table read this, so a level
-// can never appear in one and be missing from the other.
+// can never appear in one and be missing from the other. `tip` feeds the tooltip in BOTH
+// surfaces — mechanism only, no numbers that go stale.
 function edLevelSet(d) {
   return [
-    { t: 'CALL WALL',  v: d.call_wall,       c: 'tv-c-call',  g: '▲', note: 'dealer supply' },
-    { t: 'CALL CHARM', v: d.call_charm_wall, c: 'tv-c-charm', g: '◇', note: 'charm wall' },
-    { t: 'GAMMA FLIP', v: d.gamma_flip,      c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true },
-    { t: 'HVL',        v: d.hvl,             c: 'tv-c-charm', g: '◇', note: 'high-volume level' },
-    { t: 'MAX PAIN',   v: d.max_pain,        c: 'tv-c-pin',   g: '·', note: 'advisory' },
-    { t: 'GAMMA PIN',  v: d.gamma_pin,       c: 'tv-c-pin',   g: '◆', note: 'pin' },
-    { t: 'PUT WALL',   v: d.put_wall,        c: 'tv-c-put',   g: '▼', note: 'dealer support' },
-    { t: 'PUT CHARM',  v: d.put_charm_wall,  c: 'tv-c-charm', g: '◇', note: 'charm wall' }
+    { t: 'CALL WALL',  v: d.call_wall,       c: 'tv-c-call',  g: '▲', note: 'dealer supply',
+      tip: 'Largest call-side gamma strike. Dealer hedging tends to cap rallies here — resistance. Hold rate is measured daily in the scorecard.' },
+    { t: 'CALL CHARM', v: d.call_charm_wall, c: 'tv-c-charm', g: '◇', note: 'charm wall',
+      tip: 'Call-side delta-decay (charm) concentration. Hedge flow from time decay, strongest in the final two hours.' },
+    { t: 'GAMMA FLIP', v: d.gamma_flip,      c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true,
+      tip: 'Where net dealer gamma crosses zero. A regime boundary, NOT support/resistance — dealer effects weaken near it (eye of the storm).' },
+    { t: 'HVL',        v: d.hvl,             c: 'tv-c-charm', g: '◇', note: 'abs-γ magnet',
+      tip: 'Highest TOTAL gamma concentration (calls + puts). Stickiest strike — a price magnet in calm tape.' },
+    { t: 'LVP',        v: d.lvp,             c: 'tv-c-lvp',   g: '▣', note: 'most +γ · dampens',
+      tip: 'Low-Volatility Point: strike holding the most POSITIVE net dealer gamma. Dealers dampen moves around it — chop pocket.' },
+    { t: 'MAX PAIN',   v: d.max_pain,        c: 'tv-c-pin',   g: '·', note: 'advisory',
+      tip: 'OI-implied expiry magnet. Evidence supports pinning only ON expiration day — advisory the rest of the time.' },
+    { t: 'GAMMA PIN',  v: d.gamma_pin,       c: 'tv-c-pin',   g: '◆', note: 'pin',
+      tip: 'Largest |net gamma| strike — the strongest single pinning candidate into expiry.' },
+    { t: 'KEY DELTA',  v: d.key_delta_strike, c: 'tv-c-kds',  g: '◈', note: 'delta magnet',
+      tip: 'Largest total delta notional on the board. The biggest hedge inventory — crossing it forces the most dealer rebalancing.' },
+    { t: 'HVP',        v: d.hvp,             c: 'tv-c-hvp',   g: '▣', note: 'most −γ · amplifies',
+      tip: 'High-Volatility Point: strike holding the most NEGATIVE net dealer gamma. Dealers amplify moves around it — expansion pocket.' },
+    { t: 'PUT WALL',   v: d.put_wall,        c: 'tv-c-put',   g: '▼', note: 'dealer support',
+      tip: 'Largest put-side gamma strike. Dealer hedging tends to support dips here — support. Hold rate is measured daily in the scorecard.' },
+    { t: 'PUT CHARM',  v: d.put_charm_wall,  c: 'tv-c-charm', g: '◇', note: 'charm wall',
+      tip: 'Put-side delta-decay (charm) concentration. Hedge flow from time decay, strongest in the final two hours.' }
   ].filter(m => m.v != null && isFinite(m.v));
 }
 
@@ -11672,7 +11719,8 @@ function edRenderLevels(d) {
   const spot = d.spot;
   const atr = d.atr_daily || edRadarAtrFor(d.ticker);
   const rows = edLevelSet(d);
-  if (spot != null) rows.push({ t: 'SPOT', v: spot, c: 'tv-c-spot', g: '◆', note: 'now', spot: true });
+  if (spot != null) rows.push({ t: 'SPOT', v: spot, c: 'tv-c-spot', g: '◆', note: 'now', spot: true,
+                                tip: 'Live price (browser header faucet — same number as the header).' });
   rows.sort((a, b) => b.v - a.v);
 
   const meta = document.getElementById('tv-levels-meta');
@@ -11687,7 +11735,8 @@ function edRenderLevels(d) {
     const dist = (spot != null && r.v != null) ? Math.abs(r.v - spot) : null;
     const inAtr = (dist != null && atr) ? edNum(dist / atr) : '—';
     return '<tr' + (r.spot ? ' class="now"' : '') + '>' +
-      '<td><span class="nm ' + r.c + '">' + r.g + ' ' + r.t + '</span></td>' +
+      '<td' + (r.tip ? ' title="' + r.tip + '"' : '') + '>' +
+      '<span class="nm ' + r.c + '">' + r.g + ' ' + r.t + '</span></td>' +
       '<td class="' + r.c + '">' + edNum(r.v) + '</td>' +
       '<td>' + (r.spot ? '—' : edPct(r.v, spot)) + '</td>' +
       '<td>' + (r.spot ? '—' : inAtr) + '</td>' +
@@ -11697,11 +11746,13 @@ function edRenderLevels(d) {
 }
 
 function edRenderPeriphery(d, trusted) {
+  // rows: [key, value, colour?, tip?] — tip renders as a native tooltip on the key.
   const kv = (id, rows) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.innerHTML = rows.map(r =>
-      '<span class="k">' + r[0] + '</span><span class="v"' +
+      '<span class="k"' + (r[3] ? ' title="' + r[3] + '"' : '') + '>' + r[0] +
+      '</span><span class="v"' +
       (r[2] ? ' style="color:' + r[2] + '"' : '') + '>' + r[1] + '</span>').join('');
   };
   const atr = d.atr_daily || edRadarAtrFor(d.ticker);
@@ -11713,26 +11764,37 @@ function edRenderPeriphery(d, trusted) {
   }
 
   kv('tv-session', [
-    ['TO CLOSE', edMinutesToClose()],
-    ['DAILY ATR', atr ? edNum(atr) : '—'],
-    ['15-MIN ATR', d.atr_15m != null ? edNum(d.atr_15m) : '—'],
-    ['BOX WIDTH', box != null ? edNum(box) + (d.spot ? '  ' + (box / d.spot * 100).toFixed(2) + '%' : '') : '—'],
+    ['TO CLOSE', edMinutesToClose(), null,
+     'Minutes to the 4:00 PM ET regular-session close (shown on the Central-Time clock elsewhere).'],
+    ['DAILY ATR', atr ? edNum(atr) : '—', null,
+     'Average daily true range — the yardstick for every distance in the LEVELS table.'],
+    ['15-MIN ATR', d.atr_15m != null ? edNum(d.atr_15m) : '—', null,
+     'Average 15-minute true range — intraday noise scale.'],
+    ['BOX WIDTH', box != null ? edNum(box) + (d.spot ? '  ' + (box / d.spot * 100).toFixed(2) + '%' : '') : '—', null,
+     'Call wall minus put wall — the dealer-defined trading box.'],
     ['SPOT SOURCE', (d.spot_source || '—').replace('schwab_quote_last', 'quote.last'),
-     d.spot_source === 'schwab_quote_last' ? 'var(--tv-grn)' : 'var(--tv-amb)']
+     d.spot_source === 'schwab_quote_last' ? 'var(--tv-grn)' : 'var(--tv-amb)',
+     'quote.last = live Schwab trade print. Anything else is a stored-snapshot fallback — treat distances as stale.']
   ]);
 
-  // Dealer positioning: gamma AT SPOT is the regime (RC-11), not spot-vs-flip.
-  const gas = fd.gamma_at_spot;
+  // Dealer positioning: NET GEX AT SPOT is the regime (RC-11), not spot-vs-flip.
+  const gas = edNetGexOf(d);
   kv('tv-dealers', [
     ['REGIME', d.regime === 'LONG_GAMMA_CHOP' ? '▲ LONG' : d.regime === 'SHORT_GAMMA_TREND' ? '▼ SHORT' : '—',
-     d.regime === 'LONG_GAMMA_CHOP' ? 'var(--tv-blu)' : d.regime === 'SHORT_GAMMA_TREND' ? 'var(--tv-red)' : ''],
-    ['γ AT SPOT', gas != null && isFinite(gas) ? (gas > 0 ? '+' : '') + Number(gas).toExponential(2) : '—',
-     gas == null ? '' : (gas > 0 ? 'var(--tv-blu)' : 'var(--tv-red)')],
+     d.regime === 'LONG_GAMMA_CHOP' ? 'var(--tv-blu)' : d.regime === 'SHORT_GAMMA_TREND' ? 'var(--tv-red)' : '',
+     'Sign of net dealer gamma AT SPOT. LONG: dealers dampen (chop). SHORT: dealers amplify (trend). Weakens near the flip.'],
+    ['NET GEX (1%)', edFmtGex(gas),
+     gas == null ? '' : (gas > 0 ? 'var(--tv-blu)' : 'var(--tv-red)'),
+     'Signed net dealer gamma in dollars per 1% move, repriced to the live spot each poll. This number IS the regime; it also breaks the tie when call and put gamma stack on the same strike.'],
     ['CONFIDENCE', trusted ? 'TRUSTED' : (d.confidence || '—'),
-     trusted ? 'var(--tv-grn)' : 'var(--tv-amb)'],
-    ['CHAIN SPAN', span],
-    ['STRIKES / CT', (d.strikes_used || 0) + ' / ' + (d.contracts_used || 0).toLocaleString()],
-    ['DOLLARIZED', d.dollarized ? 'yes' : 'no', d.dollarized ? 'var(--tv-grn)' : 'var(--tv-amb)']
+     trusted ? 'var(--tv-grn)' : 'var(--tv-amb)',
+     'TRUSTED requires a wide chain covering the required strike span; narrow chains can truncate walls and fake flips.'],
+    ['CHAIN SPAN', span, null,
+     'Strike coverage each side of spot. The flip needs roughly ±5% to be trustworthy.'],
+    ['STRIKES / CT', (d.strikes_used || 0) + ' / ' + (d.contracts_used || 0).toLocaleString(), null,
+     'Strikes and contracts used after fail-closed filtering.'],
+    ['DOLLARIZED', d.dollarized ? 'yes' : 'no', d.dollarized ? 'var(--tv-grn)' : 'var(--tv-amb)',
+     'Whether levels are computed in dollar terms (needs spot). Raw-gamma fallbacks are never ranked against dollar levels.']
   ]);
 
   const po = document.getElementById('tv-posture');
@@ -11827,6 +11889,11 @@ function edReconcileRegime(d, liveSpot) {
   const t = document.getElementById('tv-title');
   if (t) t.textContent = (isLong ? '▲ LONG GAMMA · CHOP' : '▼ SHORT GAMMA · TREND') +
     (crossed ? ' · CROSSED FLIP' : '');
+  // The NET GEX chip carries the server-spot value; across the flip its SIGN is wrong
+  // and its magnitude is unknowable client-side (no profile in the payload). Just across
+  // zero, net gamma ≈ 0 by continuity — say exactly that, never a fabricated number.
+  const gexEl = document.getElementById('tv-gex');
+  if (gexEl && crossed) { gexEl.className = 'tv-chip'; gexEl.textContent = 'NET GEX ≈0 · CROSSED FLIP'; }
   edRenderLadder(d);   // zones re-orient for the new side of the boundary
 }
 

@@ -1105,6 +1105,61 @@ def test_terrain_deck_is_twelve_columns():
     assert "repeat(12,minmax(0,1fr))" in _tv_deck_rule()
 
 
+# ── TERRAIN v2 — NET GEX chip, pill tooltips, KDS/HVP/LVP (operator 2026-07-21:
+# "insert the gamma exposure whether it is positive or negative … tooltips at the
+# pills") ────────────────────────────────────────────────────────────────────
+
+def test_terrain_net_gex_chip_dom_and_render_wiring():
+    html = _html()
+    assert 'id="tv-gex"' in html
+    assert "function edFmtGex(" in html
+    assert "function edNetGexOf(" in html
+    # The chip is fed from the payload helper, sign selects the regime colours.
+    assert "gexEl.textContent = 'NET GEX ' + edFmtGex(g)" in html
+    assert ".tv-chip.gpos" in html and ".tv-chip.gneg" in html
+    # The dealer tile renders the same number formatted, not raw exponent.
+    assert "'NET GEX (1%)', edFmtGex(gas)" in html
+
+
+def test_terrain_net_gex_never_keeps_wrong_sign_across_flip():
+    """edReconcileRegime flips the regime when live spot crosses the flip; the chip
+    must not keep advertising the other side's sign, and must never fabricate a
+    magnitude the client cannot know (no profile in the payload)."""
+    html = _html()
+    body = html.split("function edReconcileRegime(")[1].split("function edPaintLadderSpot(")[0]
+    assert "NET GEX ≈0 · CROSSED FLIP" in body
+
+
+def test_terrain_level_set_includes_new_levels_each_with_tooltip():
+    html = _html()
+    body = html.split("function edLevelSet(")[1].split("function edRenderLevels(")[0]
+    for token in ("d.key_delta_strike", "d.hvp", "d.lvp",
+                  "'KEY DELTA'", "'HVP'", "'LVP'"):
+        assert token in body, token + " missing from edLevelSet"
+    # Every level entry carries a tip — the single source both surfaces render.
+    assert body.count("tip:") >= 11, "every edLevelSet entry needs a tip"
+
+
+def test_terrain_tooltips_reach_both_surfaces_and_periphery():
+    html = _html()
+    # Ladder chips
+    assert "if (it.tip) chip.title = it.tip;" in html
+    # Levels table cell
+    assert "(r.tip ? ' title=\"' + r.tip + '\"' : '')" in html
+    # Periphery kv rows accept a 4th element rendered as a title on the key
+    assert "(r[3] ? ' title=\"' + r[3] + '\"' : '')" in html
+
+
+def test_terrain_header_pills_carry_static_tooltips():
+    html = _html()
+    i = html.find('id="tv-trust"')
+    assert i != -1 and 'title=' in html[html.rfind('<span', 0, i):html.find('>', i)]
+    j = html.find('id="tv-contracts"')
+    assert j != -1 and 'title=' in html[html.rfind('<span', 0, j):html.find('>', j)]
+    k = html.find('id="tv-gex"')
+    assert k != -1 and 'title=' in html[html.rfind('<span', 0, k):html.find('>', k)]
+
+
 def test_terrain_zone_spans_match_concept_a():
     html = _html()
     for cls, span in (

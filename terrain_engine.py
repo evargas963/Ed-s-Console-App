@@ -31,6 +31,8 @@ from math_exposure_core import (
     pick_gamma_pin_strike,
     pick_gamma_wall_strikes,
     pick_hvl_strike,
+    pick_key_delta_strike,
+    pick_volatility_point_strikes,
 )
 from math_levels import (
     compute_charm_by_strike,
@@ -43,7 +45,8 @@ from math_levels import (
 from terrain_read import build_terrain_read
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
-TERRAIN_SCHEMA_VERSION = 1
+#: v2 (2026-07-21): + net_gex_at_spot, key_delta_strike, hvp, lvp.
+TERRAIN_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,13 @@ class TerrainSnapshot:
     max_pain: float | None = None
     call_charm_wall: float | None = None
     put_charm_wall: float | None = None
+    key_delta_strike: float | None = None
+    hvp: float | None = None   # most NEGATIVE net GEX$ strike (amplification pocket)
+    lvp: float | None = None   # most POSITIVE net GEX$ strike (damping pocket)
+
+    #: Signed net dealer GEX$ per 1% move AT SPOT — the regime's own number
+    #: (regime = its sign). Disambiguates walls that share a strike.
+    net_gex_at_spot: float | None = None
 
     # provenance — never render a level without knowing where it came from
     contracts_used: int = 0
@@ -117,6 +127,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         float(k) for k in exposures
     )
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
+    hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot)
     profile = compute_gamma_profile(contracts, spot)
     charm_by_strike = compute_charm_by_strike(contracts, spot)
@@ -141,6 +152,10 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         put_wall=put_wall,
         gamma_pin=pick_gamma_pin_strike(exposures, strikes, institutional=True),
         hvl=pick_hvl_strike(exposures, strikes),
+        key_delta_strike=pick_key_delta_strike(exposures, strikes),
+        hvp=hvp,
+        lvp=lvp,
+        net_gex_at_spot=flip_diag.get("gamma_at_spot"),
         max_pain=compute_max_pain(exposures),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,
