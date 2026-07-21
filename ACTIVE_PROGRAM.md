@@ -109,7 +109,16 @@ max-pain-as-target (expiry-day pinning only — NPP 2005); BKM risk-neutral-skew
 (documented sparse-strike bias; RR25 first); paid Cboe Open-Close (only if TU-07's free OCC
 signal proves decision-critical).
 
-## Console rebuild program — CR (2026-07-21 research synthesis; AWAITING OPERATOR GO)
+## Console rebuild program — CR (2026-07-21 research synthesis; v1.1 after Cursor review — AWAITING OPERATOR GO)
+
+Cursor architectural review 2026-07-21: **CONDITIONAL APPROVE / BLOCK GO until v1.1** —
+all findings incorporated in `governance/CONSOLE_REBUILD_PLAN_CR_V1.md` (v1.1): separate
+`stream_capture.db` (RC-6 lesson, was blocking), bounded-queue + parse-p99 + contention
+matrix in CR-01 acceptance, mechanical CR-CAP capture gate, CR-03 rescoped (registry and
+volume profile deferred; ML demote-not-delete), pre-registered arming thresholds, UI-copy
+law (no paper rates in tiles), CR-06 trust labels gated on CR-08, sentinel-first book
+subscriptions, canonical-1m stays sole bar authority, decision-path admission for any
+TRADE-shaping tile.
 
 Verdict: REBUILD the console's decision layer (ML-stack surfaces retire per the demotion
 decision); KEEP the data spine (Schwab ingest, canonical 1m, SQLite, terrain). Free
@@ -123,14 +132,15 @@ standalone directional oracle.
 
 | ID | Status | Work item |
 |---|---|---|
-| CR-01 | QUEUED | **Streaming spine**: Schwab streamer client (LEVELONE_EQUITIES QOS-Express + CHART_EQUITY + NYSE/NASDAQ_BOOK), in-process topic bus + last-value cache (Nautilus pattern), single batched SQLite writer (WAL, drain-per-txn), per-feed health states (RUNNING/DEGRADED/STALE) surfaced in UI. |
-| CR-02 | QUEUED | **Trade prints + CVD**: Alpaca free IEX websocket (operator opens free account), 30-symbol print tape, quote-rule signing, cumulative delta; cross-check Schwab snapshot-signed imbalance vs exact IEX signing on overlap. |
-| CR-03 | QUEUED | **Console shell**: one typed-message websocket (freqtrade pattern, coalesce-to-latest per client) replacing polling; `panels.json` widget registry (OpenBB pattern) to retire the 12k-line index.html incrementally; lightweight-charts v5 main chart with levels-on-chart, VWAP reference line (fair-value only — magnet is folklore), session volume profile + POC/VA (py-market-profile VA algorithm). |
-| CR-04 | QUEUED | **Regime internals (self-computed, register rows)**: U-shape-normalized RVOL per name (evidenced: range/vol forecast, NOT direction); cross-sectional dispersion + tick-breadth/A-D over ~500 streamed constituents (dispersion = the one evidenced internal, vol/regime only; TICK thresholds = folklore, self-validate vs $TICK). |
-| CR-05 | QUEUED | **Evidence tiles** (each shows regime state + mechanical-flow condition, no naked buy/sell): (a) gamma-conditioned late-day continuation (Baltussen JFE 2021 — fires only when net dealer gamma < 0 + large 3:30 move; ties to terrain); (b) conditional first→last half-hour momentum (Gao JFE 2018, high-RV/news days only — unconditional version decayed); (c) closing price-pressure overnight reversion (Bogousslavsky-Muravyev JFM 2023: ~85% of close-vs-3:59-mid deviation reverts by open; L1-computable). |
-| CR-06 | QUEUED | **Flow instrumentation pane**: snapshot-OFI + signed-volume imbalance + depth imbalance, displayed with the literal label "explains, does not predict"; live impact-coefficient tile. |
-| CR-07 | QUEUED | **Validation gate**: every CR-04/05 construct gets an unproven-register row + PDCA scorecard integration; no tile may render a directional prompt until its own hold-rate/hit-rate history clears its placebo. ORB-on-RVOL = validation candidate only (practitioner-grade evidence). |
-| CR-08 | QUEUED | **One-time calibration study**: Databento $125 free credits — measure what 500ms conflation destroys vs full tape for OFI/signing on SPY (informs how much to trust CR-06 numbers). |
+| CR-01 | QUEUED | **Streaming spine**: Schwab streamer client (LEVELONE_EQUITIES QOS-Express + CHART_EQUITY + sentinel-first books), topic bus + last-value cache, single batched writer into dedicated **`stream_capture.db`** (ed_console.db grows by ZERO bytes), per-feed health states. Acceptance: bounded queues w/ recorded max depth + drop count + parse p99; REST/streamer/terrain contention matrix; measured key accounting. |
+| CR-02 | QUEUED | **Trade prints + CVD (capture)**: Alpaca free IEX websocket (operator opens free account), 30-symbol prints, quote-rule signing, CVD; Schwab-signed vs IEX-signed correlation recorded ≥3 sessions. |
+| CR-CAP | QUEUED | **Mechanical capture gate**: ≥3 full RTH sessions in stream_capture.db before ANY UI consumes stream topics — display paths refuse to mount pre-gate (fail-closed test). |
+| CR-03 | QUEUED | **Console shell**: typed-message websocket replaces polling loops; main chart panel (lightweight-charts, levels-on-chart, VWAP as fair-value reference only); **demote/hide chance-level ML DOM (hard-delete only per §8.3)**. Panels registry + volume profile deferred to CR-03b. |
+| CR-04 | QUEUED | **Regime internals (self-computed, register rows)**: U-shape-normalized RVOL ("range/vol conditioning" copy, never "forecast" pre-CR-07); cross-sectional dispersion + tick-breadth/A-D over streamed constituents (universe sized by CR-01's measured key budget; TICK thresholds = folklore, self-validate vs $TICK). |
+| CR-05 | QUEUED | **Evidence tiles** (mechanism words only — NO paper rates in UI, §9 UI-copy law; arming thresholds PRE-REGISTERED in unproven register before first arming): (a) gamma-conditioned late-day continuation (Baltussen JFE 2021; ties to terrain); (b) conditional first→last half-hour momentum (Gao JFE 2018, high-RV/news days only); (c) closing price-pressure overnight reversion (Bogousslavsky-Muravyev JFM 2023; computes close-vs-3:59-mid deviation; our reversion rate is measured, not quoted). |
+| CR-06 | QUEUED | **Flow instrumentation pane**: snapshot-OFI + signed-volume + depth imbalance with the literal label "explains, does not predict"; impact coefficient on an explicit trailing window with written leakage rules; **trust labels gated on CR-08's conflation numbers**. |
+| CR-07 | QUEUED | **Promotion gate (mechanical)**: unproven-register row + PDCA scorecard per construct; no directional prompt before beating its placebo; **TRADE-shaping tiles additionally pass decision-path admission (`decision_gate.py`)**. ORB-on-RVOL = validation candidate only. |
+| CR-08 | QUEUED | **One-time calibration study**: Databento $125 credits — measure what 500ms conflation destroys vs full tape for OFI/signing on SPY; gates CR-06 trust labels. |
 
 **Kills (do not build as predictors)**: VPIN (Andersen-Bondarenko: zero incremental power
 vs volume+RV), TICK-extreme rules, VWAP-magnet, unconditional intraday momentum,
