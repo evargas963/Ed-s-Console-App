@@ -109,6 +109,37 @@ max-pain-as-target (expiry-day pinning only — NPP 2005); BKM risk-neutral-skew
 (documented sparse-strike bias; RR25 first); paid Cboe Open-Close (only if TU-07's free OCC
 signal proves decision-critical).
 
+## Console rebuild program — CR (2026-07-21 research synthesis; AWAITING OPERATOR GO)
+
+Verdict: REBUILD the console's decision layer (ML-stack surfaces retire per the demotion
+decision); KEEP the data spine (Schwab ingest, canonical 1m, SQLite, terrain). Free
+order-flow stack verified live: Schwab Streamer (L1 bid/ask/sizes conflated ~500ms +
+NYSE/NASDAQ_BOOK depth + CHART_EQUITY 1m, 500 keys; NO trade prints — TIMESALE dropped
+from the new API) + Alpaca free IEX websocket (true trade prints, 30 symbols). Evidence
+law from the four-track review: every surviving intraday effect is flow-MECHANICAL and
+tail-concentrated; OFI/flow EXPLAINS (contemporaneous OOS R² 65-84%) but does NOT predict
+minutes ahead (forward R² negative) — flow is instrumentation and regime, never a
+standalone directional oracle.
+
+| ID | Status | Work item |
+|---|---|---|
+| CR-01 | QUEUED | **Streaming spine**: Schwab streamer client (LEVELONE_EQUITIES QOS-Express + CHART_EQUITY + NYSE/NASDAQ_BOOK), in-process topic bus + last-value cache (Nautilus pattern), single batched SQLite writer (WAL, drain-per-txn), per-feed health states (RUNNING/DEGRADED/STALE) surfaced in UI. |
+| CR-02 | QUEUED | **Trade prints + CVD**: Alpaca free IEX websocket (operator opens free account), 30-symbol print tape, quote-rule signing, cumulative delta; cross-check Schwab snapshot-signed imbalance vs exact IEX signing on overlap. |
+| CR-03 | QUEUED | **Console shell**: one typed-message websocket (freqtrade pattern, coalesce-to-latest per client) replacing polling; `panels.json` widget registry (OpenBB pattern) to retire the 12k-line index.html incrementally; lightweight-charts v5 main chart with levels-on-chart, VWAP reference line (fair-value only — magnet is folklore), session volume profile + POC/VA (py-market-profile VA algorithm). |
+| CR-04 | QUEUED | **Regime internals (self-computed, register rows)**: U-shape-normalized RVOL per name (evidenced: range/vol forecast, NOT direction); cross-sectional dispersion + tick-breadth/A-D over ~500 streamed constituents (dispersion = the one evidenced internal, vol/regime only; TICK thresholds = folklore, self-validate vs $TICK). |
+| CR-05 | QUEUED | **Evidence tiles** (each shows regime state + mechanical-flow condition, no naked buy/sell): (a) gamma-conditioned late-day continuation (Baltussen JFE 2021 — fires only when net dealer gamma < 0 + large 3:30 move; ties to terrain); (b) conditional first→last half-hour momentum (Gao JFE 2018, high-RV/news days only — unconditional version decayed); (c) closing price-pressure overnight reversion (Bogousslavsky-Muravyev JFM 2023: ~85% of close-vs-3:59-mid deviation reverts by open; L1-computable). |
+| CR-06 | QUEUED | **Flow instrumentation pane**: snapshot-OFI + signed-volume imbalance + depth imbalance, displayed with the literal label "explains, does not predict"; live impact-coefficient tile. |
+| CR-07 | QUEUED | **Validation gate**: every CR-04/05 construct gets an unproven-register row + PDCA scorecard integration; no tile may render a directional prompt until its own hold-rate/hit-rate history clears its placebo. ORB-on-RVOL = validation candidate only (practitioner-grade evidence). |
+| CR-08 | QUEUED | **One-time calibration study**: Databento $125 free credits — measure what 500ms conflation destroys vs full tape for OFI/signing on SPY (informs how much to trust CR-06 numbers). |
+
+**Kills (do not build as predictors)**: VPIN (Andersen-Bondarenko: zero incremental power
+vs volume+RV), TICK-extreme rules, VWAP-magnet, unconditional intraday momentum,
+overnight-drift harvest (NightShares liquidated), minutes cross-asset lead-lag (ES/VIX/
+bond→equity all HFT-arbed), DIX thresholds (vendor-only evidence; replicate in-house from
+FINRA inputs before any use), naive FINRA short-ratio reads (FINRA's own notice), 0DTE
+net-flow direction (retail lottery demand), gap-fill percentages, book heatmap/footprint/
+DOM eye-candy at minutes horizons.
+
 ## Sequence (ops / repo)
 
 1. **Reconciliation** — done (PR #45 @ `5c5f239`).
