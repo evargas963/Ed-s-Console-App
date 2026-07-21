@@ -123,8 +123,10 @@ TRADE-shaping tile.
 Verdict: REBUILD the console's decision layer (ML-stack surfaces retire per the demotion
 decision); KEEP the data spine (Schwab ingest, canonical 1m, SQLite, terrain). Free
 order-flow stack verified live: Schwab Streamer (L1 bid/ask/sizes conflated ~500ms +
-NYSE/NASDAQ_BOOK depth + CHART_EQUITY 1m, 500 keys; NO trade prints — TIMESALE dropped
-from the new API) + Alpaca free IEX websocket (true trade prints, 30 symbols). Evidence
+NYSE/NASDAQ_BOOK depth + CHART_EQUITY 1m; ≤500 keys/connection — assume OVER budget for
+L1+dual-books+internals until CR-01 measures the real key accounting, sentinel-first
+books; NO trade prints — TIMESALE dropped from the new API) + Alpaca free IEX websocket
+(true trade prints, 30 symbols). Evidence
 law from the four-track review: every surviving intraday effect is flow-MECHANICAL and
 tail-concentrated; OFI/flow EXPLAINS (contemporaneous OOS R² 65-84%) but does NOT predict
 minutes ahead (forward R² negative) — flow is instrumentation and regime, never a

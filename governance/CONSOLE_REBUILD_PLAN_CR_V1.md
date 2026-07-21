@@ -1,8 +1,9 @@
-# Console Rebuild Plan — CR v1.1 (2026-07-21)
+# Console Rebuild Plan — CR v1.2 (2026-07-21)
 
-**Status: PLAN v1.1 — Cursor architectural review (2026-07-21, verdict CONDITIONAL
-APPROVE / BLOCK GO until v1.1) incorporated in full below. No code written.
-Implementation awaits operator GO.**
+**Status: PLAN v1.2 — consensus round 2 objections (P1, P4, P5, P9, P10 — all stale
+prose contradicting v1.1 laws) resolved with Cursor's exact conversion edits.
+Round 3 = co-sign request. No code written. Implementation awaits operator GO on a
+consensus-stamped version.**
 Program ledger: `ACTIVE_PROGRAM.md` §CR. Research provenance: four-track deep review
 2026-07-21 (free order-flow sources / intraday signal evidence / OSS console architecture /
 options + cross-asset evidence), every load-bearing claim fetch-verified same day.
@@ -31,11 +32,11 @@ TRADE goes through decision-path admission (`decision_gate.py`).
 
 - **Retires** (already demotion-approved by operator 2026-07-20, measured at chance):
   the 7-layer ML stack surfaces — horizon cards, fusion verdicts, decision bundle UI.
-  Retirement is *by replacement*: each old surface stays until its replacement panel is live
-  and validated; no big-bang cutover on a trading day.
+  They are **demoted/hidden at CR-03**; **hard-deleted only after their replacement
+  panels clear CR-07 plus a live week (§8.3)**. No big-bang cutover on a trading day.
 - **Keeps**: Schwab ingest, canonical 1m machinery, SQLite, snapshots/chains, terrain module
-  (TU program continues in parallel and CR-05a consumes its gamma sign), calibration
-  logging, the operable-surface gate, world_* collectors.
+  (TU program continues in parallel and CR-05's late-day tile consumes its gamma sign),
+  calibration logging, the operable-surface gate, world_* collectors.
 - **Adds**: a streaming spine (bus + cache + writer), free order-flow feeds, an
   evidence-gated cockpit UI.
 
@@ -119,12 +120,15 @@ chain poller ────┘   (asyncio pub/sub,   ├─ aggregators (RVOL, dis
   consume both.
 - **WS contract**: `{"type":"bar_1m","sym":"SPY","data":{...}}`; client sends a
   subscription list; server coalesces quotes to 250–500ms UI frames. Existing SSE folds in;
-  polling loops go to zero over CR-03.
+  polling loops retire incrementally from CR-03 onward (CR-03 acceptance requires ≥1;
+  zero-polling is the CR-03b/CR-06 end state, not a CR-03 claim).
 - **Health first-class**: every feed publishes RUNNING/DEGRADED/STALE with
   last-message age; the UI renders feed state distinctly from market quiet. (Terrain's
   existing watchdog/fail-closed philosophy, applied to streams.)
-- **Frontend**: grid shell + `panels.json` registry (panel = ES module + endpoint/topic +
-  grid slot). index.html shrinks by subtraction as panels migrate; no build tooling.
+- **Frontend (v1.2, per consensus P5)**: CR-03 ships a plain grid shell + the main chart
+  module WITHOUT `panels.json` — no registry indirection before capture is proven. The
+  registry (panel = ES module + endpoint/topic + grid slot) lands in **CR-03b**, matching
+  §6. index.html shrinks by subtraction as panels migrate; no build tooling.
 
 ## 5. Cockpit information architecture (sparse by design)
 
@@ -133,10 +137,10 @@ plus one or two live confirmation streams.
 
 | Zone | Content | Source |
 |---|---|---|
-| Main chart | candles + levels ON the chart (prior H/L/C, ON H/L, terrain walls/flip/KDS/HVP/LVP), VWAP as fair-value reference line, session volume profile + POC/VA right-margin | CHART_EQUITY + terrain + 1m history |
+| Main chart | candles + levels ON the chart (prior H/L/C, ON H/L, terrain walls/flip/KDS/HVP/LVP), VWAP as fair-value reference line; session volume profile + POC/VA right-margin **(CR-03b, deferred per §6)** | CHART_EQUITY (display-only until reconciled) + terrain levels + canonical 1m history (sole computation authority) |
 | Flow pane | CVD (Alpaca prints), snapshot-OFI + depth imbalance, live impact tile — labeled "explains, does not predict" | CR-02/CR-06 |
 | Regime strip | NET GEX chip (exists), RVOL gauge (U-shape normalized), dispersion + breadth sparklines, VIX term-structure state | CR-04 + terrain + world_vol_index |
-| Evidence tiles | late-day gamma-conditioned card (arms ≥15:15 ET when net gamma < 0 AND |move| large); conditional AM→PM momentum card (arms only high-RV/news days); closing-pressure reversion card (computes 3:59-mid vs close, states overnight expectation) | CR-05 |
+| Evidence tiles | late-day gamma-conditioned card (arms ≥15:15 ET when net gamma < 0 AND move exceeds the pre-registered bound — constant lives in the unproven register per CR-05, never post-hoc); conditional AM→PM momentum card (arms only high-RV/news days, thresholds likewise pre-registered); closing-pressure reversion card (computes 3:59-mid vs close; mechanism words only per §9) | CR-05 |
 | Tape | large-prints-only filter, auto-armed near marked levels | CR-02 |
 | Health | per-feed state + ages | CR-01 |
 
@@ -215,7 +219,12 @@ The plan reaches CONSENSUS status only through this loop:
    **"CR PLAN vN — NO CONFIRMED DAYLIGHT — CONSENSUS"** in the commit body. Only a
    consensus-stamped version may receive the operator's GO.
 
-### Consensus positions for round 2 (v1.1)
+**Round-2 record (v1.1 → v1.2):** Cursor marked P2/P3/P6/P7/P8 AGREE; objected P1
+(§1 retire wording), P4 (§5 chart source authority), P5 (§4 frontend still led with the
+registry), and raised P9 (§5 volume profile untagged vs §6 deferral) and P10
+(ACTIVE_PROGRAM "500 keys" blurb). All five converted with Cursor's exact edits in v1.2.
+
+### Consensus positions (P1–P8 as listed; P9 folded into P5/§5; P10 into P3/ledger)
 
 P1. Rebuild-not-rehabilitate scope (§1): decision layer replaced, spine kept, retire by
     replacement.
