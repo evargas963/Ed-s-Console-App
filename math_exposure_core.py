@@ -493,6 +493,57 @@ def pick_hvl_strike(exposures: Dict[float, dict], strikes: List[float]) -> float
     return round(s, 2) if s is not None else None
 
 
+def pick_key_delta_strike(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> float | None:
+    """Key Delta Strike: largest total delta notional (|call DEX$| + |put DEX$|).
+
+    Institutional only — no raw-delta fallback: delta notional needs spot, and a
+    unit mix here would rank strikes on incomparable numbers.
+    """
+    if not exposures_have_dollar_gex(exposures):
+        return None
+
+    def _total_dex(b: dict) -> float | None:
+        c = bucket_metric_abs(b, "call_dex_dollars")
+        p = bucket_metric_abs(b, "put_dex_dollars")
+        if c is None and p is None:
+            return None
+        return (c or 0.0) + (p or 0.0)
+
+    s, _ = _pick_strike_max_metric(exposures, strikes, _total_dex)
+    return round(s, 2) if s is not None else None
+
+
+def pick_volatility_point_strikes(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> tuple[float | None, float | None]:
+    """(HVP, LVP): strike holding the most NEGATIVE / most POSITIVE net GEX$.
+
+    Signed extremes, not magnitudes: HVP exists only where net dealer gamma is
+    actually negative at some strike (amplification pocket), LVP only where
+    positive (damping pocket). A one-sided chain returns None for the absent side.
+    """
+    if not exposures_have_dollar_gex(exposures):
+        return None, None
+    hvp_s: float | None = None
+    hvp_v: float | None = None
+    lvp_s: float | None = None
+    lvp_v: float | None = None
+    for s in strikes:
+        v = net_gex_dollars_at_strike(exposures.get(s, {}))
+        if v is None:
+            continue
+        if v < 0 and (hvp_v is None or v < hvp_v):
+            hvp_s, hvp_v = float(s), float(v)
+        if v > 0 and (lvp_v is None or v > lvp_v):
+            lvp_s, lvp_v = float(s), float(v)
+    return (
+        round(hvp_s, 2) if hvp_s is not None else None,
+        round(lvp_s, 2) if lvp_s is not None else None,
+    )
+
+
 def pick_gamma_wall_strikes(
     exposures: Dict[float, dict], strikes: List[float]
 ) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
@@ -802,7 +853,6 @@ def compute_net_charm(
             continue
         S      = float(spot)
         K      = float(strike)
-        r      = rate
 
         # charm = dDelta/dt using the standard dealer-positioning form:
         #   charm = -phi(d1) * d2 / (2*T)

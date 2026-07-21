@@ -11,6 +11,7 @@ from tools.terrain_backtest_report_v1 import (
     PDCA_WINDOW_SESSIONS,
     pdca_verdict,
     rolling_gap,
+    wall_hold_stats,
 )
 
 
@@ -47,3 +48,38 @@ def test_rolling_gap_is_hit_weighted_not_pct_averaged():
 
 def test_rolling_gap_none_when_empty():
     assert rolling_gap([], window=20) == (None, 0)
+
+
+def _wall_row(**kw):
+    base = {"spot": 100.0, "call_wall": 105.0, "put_wall": 95.0,
+            "high": 104.0, "low": 96.0, "close": 101.0}
+    base.update(kw)
+    return base
+
+
+def test_wall_hold_counts_hold_and_breach_both_ways():
+    held = _wall_row()                                    # inside both walls all day
+    call_breach = _wall_row(high=106.0, close=106.5)      # through CW, closed above it
+    put_breach = _wall_row(low=94.0, close=94.5)          # through PW, closed below it
+    w = wall_hold_stats([held, call_breach, put_breach])
+    assert w["call_n"] == 3 and w["put_n"] == 3
+    assert w["call_held_pct"] == round(100 * 2 / 3, 1)
+    assert w["call_close_below_pct"] == round(100 * 2 / 3, 1)
+    assert w["put_held_pct"] == round(100 * 2 / 3, 1)
+    assert w["put_close_above_pct"] == round(100 * 2 / 3, 1)
+
+
+def test_wall_hold_excludes_wrong_side_and_missing_walls():
+    # Call wall already below spot at 10:00 -> 'held' is meaningless, excluded.
+    wrong_side = _wall_row(call_wall=99.0)
+    no_walls = _wall_row(call_wall=None, put_wall=None)
+    w = wall_hold_stats([wrong_side, no_walls])
+    assert w["call_n"] == 0 and w["call_held_pct"] is None
+    assert w["put_n"] == 1  # wrong_side's put wall is still valid
+
+
+def test_wall_hold_touch_exactly_at_wall_counts_as_held():
+    # SpotGamma wording: high did not EXCEED the wall — touching it is a hold.
+    touch = _wall_row(high=105.0, low=95.0)
+    w = wall_hold_stats([touch])
+    assert w["call_held_pct"] == 100.0 and w["put_held_pct"] == 100.0

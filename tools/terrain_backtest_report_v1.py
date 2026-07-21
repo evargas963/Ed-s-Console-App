@@ -107,7 +107,8 @@ def _load_realized(con: sqlite3.Connection, tickers: set[str], since: str | None
             rng = (a["hi"] - a["lo"]) / a["o"] * 100.0
             width = a["hi"] - a["lo"]
             trend = abs(a["c"] - a["o"]) / width if width > 0 else 0.0
-            out[(tk, day)] = {"range_pct": rng, "trendiness": trend}
+            out[(tk, day)] = {"range_pct": rng, "trendiness": trend,
+                              "high": a["hi"], "low": a["lo"], "close": a["c"]}
     return out
 
 
@@ -145,6 +146,38 @@ def _classify_and_hit(scored: list[dict]) -> tuple[list[dict], dict[str, float]]
         r["range_class_high"] = r["range_pct"] > med[r["ticker"]]
         r["hit"] = (r["regime"] == "SHORT_GAMMA_TREND") == r["range_class_high"]
     return rows, med
+
+
+#: SpotGamma's published SPX stats (2019-05-10..2024-05-28) — EXTERNAL benchmark only,
+#: never a pass bar: https://support.spotgamma.com/hc/en-us/articles/31209900542867
+SG_BENCH = {"call_held": 83.0, "call_close_below": 88.0,
+            "put_held": 89.0, "put_close_above": 93.0}
+
+
+def wall_hold_stats(rows: list[dict]) -> dict:
+    """Hold/close-side rates for 10:00-ET walls vs the rest-of-session extremes.
+
+    Counts only walls on the working side of spot at observation (call wall above,
+    put wall below) — a wall already breached at 10:00 makes 'held' meaningless.
+    """
+    cn = ch = ccb = pn = ph = pca = 0
+    for r in rows:
+        cw, pw, spot = r.get("call_wall"), r.get("put_wall"), r.get("spot")
+        hi, lo, close = r.get("high"), r.get("low"), r.get("close")
+        if None in (spot, hi, lo, close):
+            continue
+        if cw is not None and cw > spot:
+            cn += 1
+            ch += hi <= cw
+            ccb += close <= cw
+        if pw is not None and pw < spot:
+            pn += 1
+            ph += lo >= pw
+            pca += close >= pw
+    pct = lambda h, n: round(100.0 * h / n, 1) if n else None  # noqa: E731
+    return {"call_n": cn, "call_held_pct": pct(ch, cn), "call_close_below_pct": pct(ccb, cn),
+            "put_n": pn, "put_held_pct": pct(ph, pn), "put_close_above_pct": pct(pca, pn),
+            "spotgamma_spx_benchmark": SG_BENCH}
 
 
 def _placebo_persistence(rows: list[dict]) -> tuple[int, int]:
@@ -192,6 +225,11 @@ def run(since: str | None) -> dict:
         "short_gamma_days": bucket(lambda r: r["regime"] == "SHORT_GAMMA_TREND"),
         "placebo_persistence": {"n": p_n,
                                 "hit_pct": round(100 * p_hit / p_n, 1) if p_n else None},
+        # Wall stats use ALL scored rows (no median filter needed) — TRUSTED split is
+        # the honest one: narrow-chain walls are strike-truncated by construction.
+        "wall_hold_all": wall_hold_stats(scored),
+        "wall_hold_trusted": wall_hold_stats(
+            [r for r in scored if r["confidence"] == "TRUSTED"]),
         "median_trendiness_short": round(median([r["trendiness"] for r in rows
                                                  if r["regime"] == "SHORT_GAMMA_TREND"]), 3)
         if any(r["regime"] == "SHORT_GAMMA_TREND" for r in rows) else None,
@@ -199,6 +237,14 @@ def run(since: str | None) -> dict:
                                                 if r["regime"] == "LONG_GAMMA_CHOP"]), 3)
         if any(r["regime"] == "LONG_GAMMA_CHOP" for r in rows) else None,
     }
+
+
+def _wall_line(name: str, w: dict) -> str:
+    def v(x):
+        return "—" if x is None else f"{x}%"
+    return (f"| {name} | {w['call_n']} | {v(w['call_held_pct'])} | "
+            f"{v(w['call_close_below_pct'])} | {w['put_n']} | {v(w['put_held_pct'])} | "
+            f"{v(w['put_close_above_pct'])} |")
 
 
 def render_md(rep: dict) -> str:
@@ -224,6 +270,18 @@ def render_md(rep: dict) -> str:
         f"Trendiness (|close-open|/range) median — short-gamma days: "
         f"{rep['median_trendiness_short']}, long-gamma days: {rep['median_trendiness_long']} "
         "(mechanism check: short-gamma days should trend more).",
+        "",
+        "## Wall hold rates (10:00 ET walls vs rest-of-session)",
+        "",
+        "| slice | call n | call held% | close≤CW% | put n | put held% | close≥PW% |",
+        "|---|---|---|---|---|---|---|",
+        _wall_line("ALL rows", rep["wall_hold_all"]),
+        _wall_line("TRUSTED only", rep["wall_hold_trusted"]),
+        "",
+        f"_External benchmark (SpotGamma SPX 2019-2024, different walls/market — context, "
+        f"not a pass bar): call held {SG_BENCH['call_held']}% / close below "
+        f"{SG_BENCH['call_close_below']}%; put held {SG_BENCH['put_held']}% / close above "
+        f"{SG_BENCH['put_close_above']}%._",
         "",
         "_Bar to clear: beat the placebo, not 50%. Narrow-chain rows are structurally "
         "LOW_CONFIDENCE (20-strike history) — the TRUSTED row is the honest one._",
@@ -335,6 +393,9 @@ def render_pdca(coverage: int, gap: float | None, sessions: int) -> str:
 
 
 def main() -> int:
+    # Windows consoles default to cp1252; the report legitimately uses ≤/≥/−.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default=None, help="YYYY-MM-DD lower bound (ET days)")
     args = ap.parse_args()

@@ -80,6 +80,35 @@ Status values: `DONE` | `NEXT` | `QUEUED` | `BLOCKED`.
 
 **Agent rule:** while any row above is `NEXT`/`QUEUED` and operator has not said STOP/PAUSE, do not end a work turn with prose-only wrap-up. Execute the `NEXT` item. FP-09 scoreboard is not a stop. Under operator `PAUSE`, do not start Find & Prove studies.
 
+## Terrain upgrade program — TU (2026-07-21 research synthesis)
+
+Source: four-track deep research (positioning inference / beyond-GEX exposures / vol-surface
+fields / world data), full citations in the 2026-07-21 session. Operator mechanical lock:
+world data is always in scope; "not adoptable with our data" is a banned disposition.
+Verified already-held (no work): per-contract-IV (skew-adjusted) gamma profile;
+hypothetical-spot flip recompute (the method SqueezeMetrics/Perfiliev/FlashAlpha document);
+`pick_hvl_strike` ≡ SpotGamma Absolute Gamma Strike.
+
+| ID | Status | Work item |
+|---|---|---|
+| TU-01 | DONE | **World-data collectors** `tools/world_data_ingest.py` + tests. Tables populated 2026-07-21: `world_dix` 3,826 (2011→), `world_vol_index` 28,438 (VIX/VIX9D/VIX1D/VVIX/SKEW full history), `world_finra_short_volume` 48,565 (4 days), `world_occ_volume` 1,509 (account-type-classified C/F/M — the free open-close proxy), `world_cftc_tff` 189. FINRA 403=not-published-yet handled. Needs: daily cron + retention policy. |
+| TU-02 | DONE | **New levels** `pick_key_delta_strike` (total DEX$ magnet) + `pick_volatility_point_strikes` (HVP/LVP signed net-GEX$ extremes), fail-closed without dollarization. Tests in `tests/test_institutional_key_levels.py` (8 pass). Server/UI wiring = next commit (import from `math_exposure_core`). |
+| TU-03 | DONE | **Wall hold-rate scorecard** in `tools/terrain_backtest_report_v1.py`. Baseline 2026-07-21 (1,054 ticker-days): call walls held 70.6% / close≤CW 83.2% (n=802); put walls held 72.3% / close≥PW 85.6% (n=776). External context: SpotGamma SPX 83/88/89/93. This metric replaces the median-split as the primary wall KPI. |
+| TU-04 | QUEUED | **Single-name dealer-sign A/B.** Garleanu-Pedersen-Poteshman Table 1: single-name puts are dealer-LONG on average — naive −putOI is backwards for equities. Build `sign_model=empirical_prior` as a PARALLEL profile (never silent swap; index/ETF keeps naive — validated by Baltussen JFE 2021), score both in the scorecard, promote on evidence. Merges with registered single-name row due 2026-08-03. |
+| TU-05 | QUEUED | **VEX/CEX**: closed-form BS vanna aggregation (charm exists); publish per-vol-pt and spot-vol-beta-coupled units. Capture-side: persist chain top-level `interestRate`, `dividendYield`, `isChainTruncated` (currently dropped before storage). |
+| TU-06 | QUEUED | **Cremers-Weinbaum call−put IV spread** (matched-strike, OI-weighted; ~50bps/wk JFQA 2010) + **implied 1-day move** (total-variance interpolation, VIX-style) + own containment stats per ticker. |
+| TU-07 | QUEUED | **ΔOI flow signals** (Fodor 2011 call/put ΔOI ratio — the only published signed daily-data signal). Backfillable from 103 days × 52 tickers already in `snapshots`. Join OCC account-type volume (MM share, customer P/C split) as conditioning fields. |
+| TU-08 | QUEUED | **Regime dead-zone**: NEUTRAL band + N-close persistence around the flip (SpotGamma ZG-vs-VT architecture; SqueezeMetrics near-zero = no interference). Thresholds backtested in-house, placebo-anchored. |
+| TU-09 | QUEUED | **GEX$/ADV$ normalization** (Barbon-Buraschi — only peer-reviewed cross-ticker scaling) using our own 1m-bar ADV; add cross-ticker rank to terrain. |
+| TU-10 | QUEUED | **External GEX benchmark**: reconcile our SPY dealer-gamma series against SqueezeMetrics 15y `world_dix.gex` (SPX). Divergence = investigation, not silent trust. |
+| TU-11 | QUEUED | **Skew/term fields**: XZZ smirk (10.9%/yr JFQA 2010), Vasquez term-slope, delta-interpolated 25Δ RR — into daily per-ticker logging for later admission testing. |
+| TU-12 | QUEUED | **DDOI-lite** intraday snapshot-signing reconciled vs nightly ΔOI (SqueezeMetrics worked example). UNPROVEN at snapshot frequency — register on build; validation design = reproduce Baltussen conditional-momentum split on our own history. |
+
+**Won't build** (dispositioned, not deferred): unsigned net-premium (direction-blind folklore);
+max-pain-as-target (expiry-day pinning only — NPP 2005); BKM risk-neutral-skew quadrature
+(documented sparse-strike bias; RR25 first); paid Cboe Open-Close (only if TU-07's free OCC
+signal proves decision-critical).
+
 ## Sequence (ops / repo)
 
 1. **Reconciliation** — done (PR #45 @ `5c5f239`).
