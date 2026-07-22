@@ -11593,10 +11593,15 @@ async function edLoadTerrain() {
   set('tv-stamp', new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' }) + ' CT');
 
   const isLong = d.regime === 'LONG_GAMMA_CHOP', isShort = d.regime === 'SHORT_GAMMA_TREND';
+  const signWithheld = d.regime === 'SIGN_UNPROVEN';
   const rg = document.getElementById('tv-regime');
   if (rg) rg.className = 'tv-band' + (isLong ? ' long' : isShort ? ' short' : '');
   // Glyph as a second channel: colour alone fails ~8% of men (Bloomberg accessibility).
-  set('tv-title', isLong ? '▲ LONG GAMMA · CHOP' : isShort ? '▼ SHORT GAMMA · TREND' : '— TERRAIN UNAVAILABLE');
+  // SIGN_UNPROVEN is NOT unavailable — walls/levels stand; only the trend/chop verdict is withheld.
+  set('tv-title', isLong ? '▲ LONG GAMMA · CHOP'
+    : isShort ? '▼ SHORT GAMMA · TREND'
+    : signWithheld ? '◌ REGIME WITHHELD · LEVELS STAND'
+    : '— TERRAIN UNAVAILABLE');
   set('tv-subline', d.headline || '—');
   set('tv-mech', (d.lines && d.lines[0]) ? d.lines[0] : '');
 
@@ -11800,9 +11805,13 @@ function edRenderPeriphery(d, trusted) {
   // Dealer positioning: NET GEX AT SPOT is the regime (RC-11), not spot-vs-flip.
   const gas = edNetGexOf(d);
   kv('tv-dealers', [
-    ['REGIME', d.regime === 'LONG_GAMMA_CHOP' ? '▲ LONG' : d.regime === 'SHORT_GAMMA_TREND' ? '▼ SHORT' : '—',
-     d.regime === 'LONG_GAMMA_CHOP' ? 'var(--tv-blu)' : d.regime === 'SHORT_GAMMA_TREND' ? 'var(--tv-red)' : '',
-     'Sign of net dealer gamma AT SPOT. LONG: dealers dampen (chop). SHORT: dealers amplify (trend). Weakens near the flip.'],
+    ['REGIME', d.regime === 'LONG_GAMMA_CHOP' ? '▲ LONG'
+      : d.regime === 'SHORT_GAMMA_TREND' ? '▼ SHORT'
+      : d.regime === 'SIGN_UNPROVEN' ? '◌ WITHHELD' : '—',
+     d.regime === 'LONG_GAMMA_CHOP' ? 'var(--tv-blu)'
+      : d.regime === 'SHORT_GAMMA_TREND' ? 'var(--tv-red)'
+      : d.regime === 'SIGN_UNPROVEN' ? 'var(--tv-amb)' : '',
+     'Sign of net dealer gamma AT SPOT. LONG: dealers dampen (chop). SHORT: dealers amplify (trend). WITHHELD: dealer-sign unproven for this ticker (single names) — levels still stand.'],
     ['NET GEX (1%)', edFmtGex(gas),
      gas == null ? '' : (gas > 0 ? 'var(--tv-blu)' : 'var(--tv-red)'),
      'Signed net dealer gamma in dollars per 1% move, repriced to the live spot each poll. This number IS the regime; it also breaks the tie when call and put gamma stack on the same strike.',
@@ -12037,10 +12046,12 @@ async function edLoadRadar() {
 
 function edRadarRow(r, grp) {
   const isLong = r.regime === 'LONG_GAMMA_CHOP';
+  const isShort = r.regime === 'SHORT_GAMMA_TREND';
   const isRegime = r.status === 'REGIME CHANGE';
   const row = document.createElement('button');
   row.type = 'button';
-  row.className = 'tv-rrow ' + (isRegime ? 'rg' : isLong ? 'lg' : 'sh');
+  // SIGN_UNPROVEN / UNAVAILABLE: neutral row class — never paint as short (▼) by fallthrough.
+  row.className = 'tv-rrow ' + (isRegime ? 'rg' : isLong ? 'lg' : isShort ? 'sh' : '');
   const NL = String.fromCharCode(10);
   row.title = r.ticker + ' — ' + r.status + NL +
     (r.distance_atr != null ? r.distance_atr.toFixed(2) + ' daily ATR' : '') +
@@ -12055,7 +12066,7 @@ function edRadarRow(r, grp) {
   const gl = document.createElement('span');
   gl.className = 'tv-rgl';
   gl.style.color = grp.colour;
-  gl.textContent = isRegime ? '⟳' : isLong ? '▲' : '▼';
+  gl.textContent = isRegime ? '⟳' : isLong ? '▲' : isShort ? '▼' : '◌';
   const tk = document.createElement('span'); tk.className = 'tv-rtk'; tk.textContent = r.ticker;
   const at = document.createElement('span'); at.className = 'tv-ratr';
   at.style.color = grp.colour;
@@ -12229,23 +12240,32 @@ function edCheckTerrainAlerts(d) {
     const beyond = w.side === 'up' ? dist < -ED_ALERT_BREAK_PCT : dist > ED_ALERT_BREAK_PCT;
     const near = Math.abs(dist) <= ED_ALERT_EDGE_PCT;
     const shortGamma = d.regime === 'SHORT_GAMMA_TREND';
+    const longGamma = d.regime === 'LONG_GAMMA_CHOP';
+    // SIGN_UNPROVEN: walls still alert, but never attach a trend/chop posture tip.
+    const postureTip = shortGamma
+      ? { break: 'Short gamma. Expect it to run.',
+          breakChip: 'short gamma: expect continuation',
+          near: 'Short gamma. Expect the break to run, not reverse.' }
+      : longGamma
+        ? { break: 'Long gamma. Expect it to be sold back.',
+            breakChip: 'long gamma: expect rejection',
+            near: 'Long gamma. Expect the fade to hold.' }
+        : { break: 'Dealer-sign withheld for this ticker — no posture tip.',
+            breakChip: 'regime withheld: watch the reaction, no posture',
+            near: 'Dealer-sign withheld — wait for the reaction, do not anticipate.' };
 
     // 3. break with acceptance
     if (beyond) {
       edFireAlert(tk, 'break:' + w.name, 'break',
-        `${tk}. ${w.name} ${w.v.toFixed(2)} broken. ${shortGamma
-          ? 'Short gamma. Expect it to run.' : 'Long gamma. Expect it to be sold back.'}`,
-        `▲ ${tk} — ${w.name.toUpperCase()} ${w.v.toFixed(2)} BROKEN · ${shortGamma
-          ? 'short gamma: expect continuation' : 'long gamma: expect rejection'}`);
+        `${tk}. ${w.name} ${w.v.toFixed(2)} broken. ${postureTip.break}`,
+        `▲ ${tk} — ${w.name.toUpperCase()} ${w.v.toFixed(2)} BROKEN · ${postureTip.breakChip}`);
       continue;
     }
 
     // 4. approaching a wall — the only "get ready" alert
     if (near) {
       edFireAlert(tk, 'near:' + w.name, 'warn',
-        `${tk} approaching ${w.name} ${w.v.toFixed(2)}. ${shortGamma
-          ? 'Short gamma. Expect the break to run, not reverse.'
-          : 'Long gamma. Expect the fade to hold.'}`,
+        `${tk} approaching ${w.name} ${w.v.toFixed(2)}. ${postureTip.near}`,
         `● ${tk} — approaching ${w.name.toUpperCase()} ${w.v.toFixed(2)} · wait for the reaction, do not anticipate`);
     }
   }

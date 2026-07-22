@@ -101,7 +101,10 @@ class TerrainSnapshot:
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
-    read = build_terrain_read(spot=spot, flip=None, flip_confidence="UNAVAILABLE")
+    # Pass ticker even on the unavailable path so SIGN-DEMOTION's fail-closed
+    # contract stays visible at every call site (AST-audited 2026-07-22).
+    read = build_terrain_read(spot=spot, flip=None, flip_confidence="UNAVAILABLE",
+                              ticker=ticker)
     return TerrainSnapshot(
         ticker=ticker, spot=spot, regime=read.regime, posture=read.posture,
         confidence=read.confidence, headline=read.headline, lines=read.lines,
