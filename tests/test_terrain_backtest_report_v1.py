@@ -24,8 +24,11 @@ def test_demoted_display_regime_still_scores_from_raw_sign():
     assert _regime_for_scoring("SIGN_UNPROVEN", 2.5e8) == "LONG_GAMMA_CHOP"
     assert _regime_for_scoring("LONG_GAMMA_CHOP", None) == "LONG_GAMMA_CHOP"
     assert _regime_for_scoring("SHORT_GAMMA_TREND", 1.0) == "SHORT_GAMMA_TREND"
-    assert _regime_for_scoring("SIGN_UNPROVEN", None) is None   # no sign -> no row
-    assert _regime_for_scoring("SIGN_UNPROVEN", 0.0) is None
+    assert _regime_for_scoring("SIGN_UNPROVEN", None) is None   # no sign, no flip
+    assert _regime_for_scoring("SIGN_UNPROVEN", 0.0) is None    # zero, no flip
+    # RC-11 parity: gamma_at_spot 0/None falls through to spot-vs-flip (bit-identity)
+    assert _regime_for_scoring("SIGN_UNPROVEN", 0.0, spot=100.0, flip=99.0) == "LONG_GAMMA_CHOP"
+    assert _regime_for_scoring("SIGN_UNPROVEN", None, spot=100.0, flip=101.0) == "SHORT_GAMMA_TREND"
     assert _regime_for_scoring("UNAVAILABLE", -1.0) is None     # untrusted stays out
 
 

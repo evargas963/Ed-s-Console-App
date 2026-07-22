@@ -117,7 +117,13 @@ def _load_realized(con: sqlite3.Connection, tickers: set[str], since: str | None
     return out
 
 
-def _regime_for_scoring(regime: str, net_gex_at_spot: float | None) -> str | None:
+def _regime_for_scoring(
+    regime: str,
+    net_gex_at_spot: float | None,
+    *,
+    spot: float | None = None,
+    flip: float | None = None,
+) -> str | None:
     """The regime this RESEARCH tool scores — raw naive sign, independent of display.
 
     SIGN-DEMOTION (2026-07-22) withholds the single-name regime LABEL from the UI,
@@ -127,11 +133,19 @@ def _regime_for_scoring(regime: str, net_gex_at_spot: float | None) -> str | Non
     test that gates restoration — impossible to run (a self-locking door, caught by
     adversarial review the same day the demotion shipped). Research measures the
     raw hypothesis; only the display withholds the verdict.
+
+    Sign source mirrors terrain_read._regime_for (RC-11): net_gex_at_spot IS
+    flip_diag.gamma_at_spot; when it is None/0, fall through to spot-vs-flip so
+    pre/post-demotion scoring stays bit-identical for previously-scored rows.
     """
     if regime in ("LONG_GAMMA_CHOP", "SHORT_GAMMA_TREND"):
         return regime
-    if regime == "SIGN_UNPROVEN" and net_gex_at_spot is not None and net_gex_at_spot != 0:
+    if regime != "SIGN_UNPROVEN":
+        return None
+    if net_gex_at_spot is not None and net_gex_at_spot != 0:
         return "LONG_GAMMA_CHOP" if net_gex_at_spot > 0 else "SHORT_GAMMA_TREND"
+    if flip is not None and spot is not None:
+        return "LONG_GAMMA_CHOP" if spot > flip else "SHORT_GAMMA_TREND"
     return None
 
 
@@ -147,7 +161,10 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
         except ValueError:
             continue
         snap = compute_terrain(tk, contracts, float(spot))
-        scoring_regime = _regime_for_scoring(snap.regime, snap.net_gex_at_spot)
+        scoring_regime = _regime_for_scoring(
+            snap.regime, snap.net_gex_at_spot,
+            spot=float(spot), flip=snap.gamma_flip,
+        )
         if scoring_regime is None:
             continue
         # TU-04 A/B: the GPO empirical prior (+call/+put) for single names. Net gamma
