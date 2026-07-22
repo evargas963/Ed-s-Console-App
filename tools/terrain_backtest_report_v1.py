@@ -117,6 +117,24 @@ def _load_realized(con: sqlite3.Connection, tickers: set[str], since: str | None
     return out
 
 
+def _regime_for_scoring(regime: str, net_gex_at_spot: float | None) -> str | None:
+    """The regime this RESEARCH tool scores — raw naive sign, independent of display.
+
+    SIGN-DEMOTION (2026-07-22) withholds the single-name regime LABEL from the UI,
+    and compute_terrain now returns SIGN_UNPROVEN for those rows. But this tool IS
+    the restoration test: dropping demoted rows would empty the single-name buckets,
+    halt the TU-04 A/B accrual, and make the sentinel-vs-single split — the very
+    test that gates restoration — impossible to run (a self-locking door, caught by
+    adversarial review the same day the demotion shipped). Research measures the
+    raw hypothesis; only the display withholds the verdict.
+    """
+    if regime in ("LONG_GAMMA_CHOP", "SHORT_GAMMA_TREND"):
+        return regime
+    if regime == "SIGN_UNPROVEN" and net_gex_at_spot is not None and net_gex_at_spot != 0:
+        return "LONG_GAMMA_CHOP" if net_gex_at_spot > 0 else "SHORT_GAMMA_TREND"
+    return None
+
+
 def _score_observations(obs: dict, realized: dict) -> list[dict]:
     """Recompute terrain per observation; keep only rows with a definite regime."""
     scored = []
@@ -129,7 +147,8 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
         except ValueError:
             continue
         snap = compute_terrain(tk, contracts, float(spot))
-        if snap.regime not in ("LONG_GAMMA_CHOP", "SHORT_GAMMA_TREND"):
+        scoring_regime = _regime_for_scoring(snap.regime, snap.net_gex_at_spot)
+        if scoring_regime is None:
             continue
         # TU-04 A/B: the GPO empirical prior (+call/+put) for single names. Net gamma
         # under it is C+P > 0 ALWAYS, so it is a CONSTANT LONG_GAMMA classifier — the
@@ -146,7 +165,7 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
             if gp is not None and gp != 0:
                 regime_prior = "LONG_GAMMA_CHOP" if gp > 0 else "SHORT_GAMMA_TREND"
         scored.append({
-            "ticker": tk, "day": day, "regime": snap.regime,
+            "ticker": tk, "day": day, "regime": scoring_regime,
             "regime_prior": regime_prior,
             "confidence": snap.confidence, "spot": float(spot),
             "gamma_flip": snap.gamma_flip, "call_wall": snap.call_wall,

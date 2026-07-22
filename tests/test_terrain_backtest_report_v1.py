@@ -6,6 +6,7 @@ something real?") — so they are pure functions with boundary tests, not prose.
 from __future__ import annotations
 
 from tools.terrain_backtest_report_v1 import (
+    _regime_for_scoring,
     _sign_ab,
     PDCA_ADJUST_PTS,
     PDCA_PROMOTE_PTS,
@@ -14,6 +15,18 @@ from tools.terrain_backtest_report_v1 import (
     rolling_gap,
     wall_hold_stats,
 )
+
+
+def test_demoted_display_regime_still_scores_from_raw_sign():
+    """SIGN-DEMOTION must not starve its own restoration gate: SIGN_UNPROVEN rows
+    keep scoring from the raw naive sign (this tool IS the restoration test)."""
+    assert _regime_for_scoring("SIGN_UNPROVEN", -3.9e9) == "SHORT_GAMMA_TREND"
+    assert _regime_for_scoring("SIGN_UNPROVEN", 2.5e8) == "LONG_GAMMA_CHOP"
+    assert _regime_for_scoring("LONG_GAMMA_CHOP", None) == "LONG_GAMMA_CHOP"
+    assert _regime_for_scoring("SHORT_GAMMA_TREND", 1.0) == "SHORT_GAMMA_TREND"
+    assert _regime_for_scoring("SIGN_UNPROVEN", None) is None   # no sign -> no row
+    assert _regime_for_scoring("SIGN_UNPROVEN", 0.0) is None
+    assert _regime_for_scoring("UNAVAILABLE", -1.0) is None     # untrusted stays out
 
 
 def test_verdict_accumulates_until_window_fills():
