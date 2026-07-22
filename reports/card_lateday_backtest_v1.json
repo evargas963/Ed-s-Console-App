@@ -1,0 +1,28 @@
+{
+  "preregistered": {
+    "arm_mult": 0.75,
+    "roll_days": 20,
+    "window": "15:30->16:00 ET"
+  },
+  "rows_scored": 630,
+  "CARD_short_gamma_AND_big_move": {
+    "n": 53,
+    "hit_pct": 49.1
+  },
+  "BOTHWAYS_long_gamma_AND_big_move": {
+    "n": 155,
+    "hit_pct": 45.8
+  },
+  "PLACEBO_big_move_any_gamma": {
+    "n": 208,
+    "hit_pct": 46.6
+  },
+  "PLACEBO_all_days_unconditional": {
+    "n": 630,
+    "hit_pct": 53.2
+  },
+  "small_move_short_gamma": {
+    "n": 104,
+    "hit_pct": 63.5
+  }
+}

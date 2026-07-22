@@ -1,0 +1,43 @@
+{
+  "spec": "Gemini 2026-07-21 \u2014 Parkinson RV(30x1m bars), 80th/50th pct, perm seed 20260722",
+  "SENTINELS": {
+    "HIGH_RV_card": {
+      "n": 38,
+      "hit_pct": 39.5
+    },
+    "LOW_RV_placebo": {
+      "n": 109,
+      "hit_pct": 57.8
+    },
+    "mid_excluded": {
+      "n": 59,
+      "hit_pct": 55.9
+    },
+    "verdict_gate": "UNDERPOWERED_PENDING",
+    "permutation_high_vs_low": {
+      "observed_margin_pts": -18.3,
+      "p_one_sided": 0.9829
+    }
+  },
+  "SINGLE_NAMES": {
+    "HIGH_RV_card": {
+      "n": 295,
+      "hit_pct": 48.1
+    },
+    "LOW_RV_placebo": {
+      "n": 645,
+      "hit_pct": 50.2
+    },
+    "mid_excluded": {
+      "n": 394,
+      "hit_pct": 47.7
+    },
+    "verdict_gate": "POWERED",
+    "permutation_high_vs_low": {
+      "observed_margin_pts": -2.1,
+      "p_one_sided": 0.7524
+    }
+  },
+  "note_earnings_exclusion": "NOT applied \u2014 calendar not yet held; same disclosed deviation as card #1",
+  "note_am_bar_gate": ">=15/30 AM bars; >=10/20 prior RV days; quantiles(n=100). Strict 30/30+20/20 infeasible (hist20\u22487 on this feed) \u2014 disclosed deviation."
+}

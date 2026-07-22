@@ -1,0 +1,39 @@
+{
+  "spec": "Gemini Time-Slice Reversal Test 2026-07-22, trigger 1.0x 20d median intraday range, earnings INCLUDED per spec",
+  "A_morning_1100": {
+    "SENTINELS": {
+      "n": 7,
+      "reversal_hit_pct": 28.6,
+      "binom_p_vs_50": 0.4531
+    },
+    "SINGLE_NAMES": {
+      "n": 128,
+      "reversal_hit_pct": 45.3,
+      "binom_p_vs_50": 0.3309
+    }
+  },
+  "B_midday_1300": {
+    "SENTINELS": {
+      "n": 19,
+      "reversal_hit_pct": 57.9,
+      "binom_p_vs_50": 0.6476
+    },
+    "SINGLE_NAMES": {
+      "n": 193,
+      "reversal_hit_pct": 54.4,
+      "binom_p_vs_50": 0.2494
+    }
+  },
+  "C_late_1530_CONTAMINATED_REF": {
+    "SENTINELS": {
+      "n": 29,
+      "reversal_hit_pct": 72.4,
+      "binom_p_vs_50": 0.0241
+    },
+    "SINGLE_NAMES": {
+      "n": 227,
+      "reversal_hit_pct": 51.5,
+      "binom_p_vs_50": 0.6905
+    }
+  }
+}
