@@ -2013,9 +2013,65 @@ def _build_sse_cache_fanout_payload(
     return md
 
 
+# ── T5.1 SSE FANOUT DEDUP (2026-07-22) ───────────────────────────────────────
+# Measured live (RTH open, one browser tab): the 5s cadence fanout and the
+# fetch-in-flight fanout each re-broadcast the SAME cached bundle every tick —
+# identical _server_build_ts, ~161 KB apiece — and the client's monotonic gate
+# rejected every one as "duplicate" (177 rejects vs 40 accepts in ~18 min).
+# Only completed-fetch broadcasts ever carry a new identity. The fanout now
+# skips when the (build_ts, analytics_version) it would send is the identity
+# already broadcast to the current audience. _sse_conn_epoch is part of the
+# identity so a newly connected client still receives the current bundle on
+# the next tick. fetch_timeout fanouts share the same suppression: a payload
+# the client provably discards is not "keeping SSE alive".
+_sse_conn_epoch: int = 0
+_last_tier_c_broadcast_identity: dict[tuple, tuple] = {}
+
+
+def _record_tier_c_broadcast_identity(payload: dict) -> None:
+    """Record what was just broadcast so the cache fanout never re-sends it.
+
+    Called synchronously at schedule time (not inside the coroutine): the SSE
+    loop fires the cadence fanout and the in-flight fanout in the same event-
+    loop turn, so a deferred record would let the second one through.
+    """
+    try:
+        t = payload.get("ticker")
+        if not t:
+            return
+        key = (str(t).upper().strip(), payload.get("selected_exp"))
+        _last_tier_c_broadcast_identity[key] = (
+            float(payload.get("_server_build_ts") or 0.0),
+            int(payload.get("analytics_version") or 0),
+            _sse_conn_epoch,
+        )
+    except Exception as e:
+        # Identity tracking is a suppression hint: a failed record degrades to
+        # the pre-fix behavior (one extra broadcast the client dedups), never a
+        # lost payload.
+        log.debug("tier C broadcast identity record failed: %s", e)
+
+
+def _tier_c_fanout_is_duplicate(ticker: str, expiry: Optional[str]) -> bool:
+    """True when the cached bundle the fanout would send is already on the wire
+    for the current connection epoch (client would reject it as a duplicate)."""
+    data_cache_key, entry = _resolve_tier_c_cache_entry_for_sse(ticker, expiry)
+    if not entry or not entry.get("ms_dict"):
+        return False
+    md = entry["ms_dict"]
+    ck = data_cache_key or (ticker.upper().strip(), md.get("selected_exp"))
+    ident = (
+        float(md.get("_server_build_ts") or 0.0),
+        int(entry.get("analytics_version") or 0),
+        _sse_conn_epoch,
+    )
+    return _last_tier_c_broadcast_identity.get(ck) == ident
+
+
 def _schedule_sse_broadcast(payload: dict) -> None:
     if not payload or _main_event_loop is None or _main_event_loop.is_closed():
         return
+    _record_tier_c_broadcast_identity(payload)
     asyncio.run_coroutine_threadsafe(_broadcast_snapshot(payload), _main_event_loop)
 
 
@@ -2026,6 +2082,12 @@ def _maybe_broadcast_sse_cache_fanout(
     inflight_key: tuple,
     fanout_reason: str,
 ) -> bool:
+    # T5.1: never re-send a bundle identity the current audience already has —
+    # the client's monotonic gate rejects it, so it is pure encode/wire waste
+    # (checked BEFORE the payload build, which clones + re-attaches contracts).
+    if _tier_c_fanout_is_duplicate(ticker, expiry):
+        _analytics_cache_observability["sse_fanout_suppressed_duplicate"] += 1
+        return False
     payload = _build_sse_cache_fanout_payload(
         ticker,
         expiry,
@@ -2084,6 +2146,9 @@ _analytics_cache_observability: dict[str, int] = {
     # post-publish persistence failures (served payload is never degraded).
     "post_publish_snapshot_failures": 0,
     "post_publish_calibration_failures": 0,
+    # T5.1 — cadence/in-flight fanouts skipped because the identical bundle
+    # identity was already broadcast to the current connection epoch.
+    "sse_fanout_suppressed_duplicate": 0,
 }
 
 # EXEC-03 POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 — most recent post-publish
@@ -2596,7 +2661,10 @@ def _publish_progressive_tier_c_cache(
             inflight_key=inflight_key,
         )
         try:
-            asyncio.run_coroutine_threadsafe(_broadcast_snapshot(payload), _main_event_loop)
+            # T5.1: routed through _schedule_sse_broadcast so the identity
+            # record covers the progressive partial too (same suppression law
+            # as the completed-fetch and fanout broadcasts).
+            _schedule_sse_broadcast(payload)
         except Exception as e:
             log.debug("progressive tier C broadcast failed ticker=%s: %s", t, e, exc_info=True)
 
@@ -5616,11 +5684,25 @@ def _l1_on_quote_updated(ticker: str) -> None:
         return
     for k in keys:
         _l1_maybe_rebuild_quote_scope(k[0], k[1], of_sig=of_sig)
+    # L1-SSE-SCOPE-FIX: stream subscribers live on the __auto__ scope, which the
+    # resolved-expiry rebuilds above never touch — keep it fresh too while
+    # subscribed (same materiality gate; ~ms-scale build, no chain/DB/ML).
+    if _l1_auto_scope_has_subscribers(t):
+        _l1_maybe_rebuild_quote_scope(t, None, of_sig=of_sig)
+
+
+def _l1_on_l2_snapshot_ready_auto_scope(ticker: str) -> None:
+    """L1-SSE-SCOPE-FIX companion for the L2-ready hook: refresh the __auto__
+    scope after a resolved-expiry Tier C build when stream subscribers exist."""
+    if _l1_auto_scope_has_subscribers(ticker):
+        _project_l1(ticker, None, reason="l2_snapshot_ready")
 
 
 def _l1_on_l2_snapshot_ready(ticker: str, expiry: Optional[str]) -> None:
     """L2 acknowledged snapshot available — refresh L1 merge against new version."""
     _project_l1(ticker, expiry, reason="l2_snapshot_ready")
+    if expiry is not None:
+        _l1_on_l2_snapshot_ready_auto_scope(ticker)
 
 
 def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool = False) -> dict:
@@ -5675,6 +5757,25 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
 def _l1_scope_key(ticker: str, expiry: Optional[str]) -> tuple[str, str | None]:
     t = ticker.upper().strip()
     return (t, expiry if expiry is not None else "__auto__")
+
+
+def _l1_auto_scope_has_subscribers(ticker: str) -> bool:
+    """True when an /api/analytics/light/stream client is subscribed to this
+    ticker's __auto__ scope (no explicit expiry — "whatever is current").
+
+    L1-SSE-SCOPE-FIX (2026-07-22, measured live): stream clients subscribe with
+    no expiry → scope (T, "__auto__"), but once the Tier C cache warms, every
+    quote/L2-driven rebuild runs under the RESOLVED expiry scope — so the
+    exact-scope notify in _l1_notify_sse_after_authoritative_build matched
+    nothing and the light stream went silent for the rest of the session
+    (14 boot-window deliveries, then 0 across 1,194 builds). The hooks below
+    now also maintain the __auto__ scope while it has subscribers; each scope
+    keeps its own cache entry, generation counter, throttle, and identity, so
+    per-scope monotonicity is untouched.
+    """
+    auto_sk = (ticker.upper().strip(), "__auto__")
+    with _l1_light_sse_lock:
+        return any(csk == auto_sk for _, csk in _l1_light_sse_clients)
 
 
 def _l1_notify_sse_after_authoritative_build(ticker: str, expiry: Optional[str]) -> None:
@@ -5804,7 +5905,6 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             spot_source = pq["spot_source"]
             spot = pq["spot"]
             bid, ask = pq["bid"], pq["ask"]
-            pq_mark = pq["mark"]
             if spot and float(spot) > 0:
                 sf = float(spot)
                 quote_ts = pq["quote_ts"]
@@ -11282,10 +11382,15 @@ async def sse_stream(
     stream_route_t0 = time.perf_counter()
 
     async def event_generator():
+        global _sse_conn_epoch
         q = asyncio.Queue(maxsize=10)
         with _sse_lock:
             _sse_clients.append(q)
             _sse_subscribers[key] = _sse_subscribers.get(key, 0) + 1
+            # T5.1: a new connection changes the audience — the epoch bump makes
+            # the next cadence fanout deliver the current bundle to this client
+            # even when its identity is otherwise already-broadcast.
+            _sse_conn_epoch += 1
         # Immediate SSE comment chunk: first body bytes must not wait on q.get() (up to 30s) or
         # some proxies/clients defer visible connection until first chunk — CONNECTING sticks.
         yield ": ok\n\n"

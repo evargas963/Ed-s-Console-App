@@ -123,3 +123,83 @@ def test_light_stream_route_registered():
 
     paths = [getattr(r, "path", "") for r in srv.app.routes if hasattr(r, "path")]
     assert "/api/analytics/light/stream" in paths
+
+
+def _drain_l1_thread_queue(srv):
+    while not srv._l1_sse_thread_queue.empty():
+        try:
+            srv._l1_sse_thread_queue.get_nowait()
+        except Exception:
+            break
+
+
+def test_l2_ready_hook_reaches_auto_scope_subscriber_end_to_end():
+    """L1-SSE-SCOPE-FIX seam test — REAL callee chain, no monkeypatching:
+    a client subscribed under (T, "__auto__") must receive an envelope when a
+    RESOLVED-expiry Tier C build fires the L2-ready hook (the live-session
+    silence: builds ran under resolved scopes, subscribers under __auto__)."""
+    import server as srv
+
+    q = asyncio.Queue(maxsize=10)
+    key = ("SPY", "__auto__")
+    srv._l1_light_sse_clients.append((q, key))
+    _drain_l1_thread_queue(srv)
+    # earlier tests emit on this scope; clear the 50ms throttle window so this
+    # test exercises scope routing, not emit cadence
+    srv._l1_sse_last_emit_mono.pop(key, None)
+    try:
+        srv._l1_on_l2_snapshot_ready("SPY", "2099-01-01")
+        envs = []
+        while not srv._l1_sse_thread_queue.empty():
+            envs.append(srv._l1_sse_thread_queue.get_nowait())
+        auto_envs = [e for sk, e in envs if sk == key]
+        assert auto_envs, (
+            "resolved-expiry L2-ready build produced no envelope for the "
+            "__auto__ subscriber — the pre-fix silent-stream shape"
+        )
+        env = auto_envs[-1]
+        assert env["l1_sse_schema"] == 1
+        assert env["scope"] == {"ticker": "SPY", "expiry": "__auto__"}
+        assert isinstance(env.get("payload"), dict)
+    finally:
+        srv._l1_light_sse_clients.clear()
+        srv._l1_sse_last_emit_mono.pop(key, None)
+        _drain_l1_thread_queue(srv)
+
+
+def test_l2_ready_hook_skips_auto_scope_without_subscribers(monkeypatch):
+    """No __auto__ subscriber → no extra __auto__ build (cost guard)."""
+    import server as srv
+
+    srv._l1_light_sse_clients.clear()
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        srv, "_project_l1", lambda t, e, *, reason="unknown": calls.append((t, e, reason))
+    )
+    srv._l1_on_l2_snapshot_ready("SPY", "2099-01-01")
+    assert calls == [("SPY", "2099-01-01", "l2_snapshot_ready")]
+
+
+def test_quote_hook_maintains_auto_scope_for_subscribers(monkeypatch):
+    """Quote-path hook rebuilds the __auto__ scope too while it has subscribers."""
+    import server as srv
+
+    q = asyncio.Queue(maxsize=10)
+    key = ("SPY", "__auto__")
+    ck = ("SPY", "2099-01-01")
+    calls: list[tuple] = []
+    monkeypatch.setattr(srv, "_l1_quote_hook_order_flow_signature", lambda _t: ("sig",))
+    monkeypatch.setattr(
+        srv,
+        "_l1_maybe_rebuild_quote_scope",
+        lambda t, e, *, of_sig: calls.append((t, e, of_sig)),
+    )
+    srv._state_cache[ck] = {"ts": 1.0, "ms_dict": {"ticker": "SPY"}}
+    srv._l1_light_sse_clients.append((q, key))
+    try:
+        srv._l1_on_quote_updated("SPY")
+        assert ("SPY", "2099-01-01", ("sig",)) in calls
+        assert ("SPY", None, ("sig",)) in calls, "__auto__ scope not maintained for subscriber"
+    finally:
+        srv._l1_light_sse_clients.clear()
+        srv._state_cache.pop(ck, None)

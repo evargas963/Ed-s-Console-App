@@ -1,0 +1,29 @@
+{
+  "days": [
+    {
+      "et_date": "2026-07-22",
+      "verdict": "PASS",
+      "process": {
+        "pid": 34932,
+        "cmdline": "python -m uvicorn server:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 10",
+        "start_time_local_ct": "2026-07-22T08:25:47",
+        "env": "ED_OPS_RUNNER=1 ED_CALIBRATION_LOG=1 (set by start_ed_console.bat)"
+      },
+      "code_identity": {
+        "server_py_mtime": "2026-07-21T09:07:51",
+        "option_chain_morning_full_py_mtime": "2026-07-20T16:03:14",
+        "process_start_after_both": true
+      },
+      "capture_proof": {
+        "query": "SELECT ticker, et_date, ts_utc, n_contracts, n_expiries, max_dte, source FROM option_chain_morning_full WHERE et_date='2026-07-22' ORDER BY ticker",
+        "rows": [
+          {"ticker": "IWM", "ts_utc": 1784727016.7046385, "n_contracts": 2398, "n_expiries": 15, "max_dte": 37.0, "source": "schwab_chain_wide_gex"},
+          {"ticker": "QQQ", "ts_utc": 1784727018.6867385, "n_contracts": 2860, "n_expiries": 15, "max_dte": 37.0, "source": "schwab_chain_wide_gex"},
+          {"ticker": "SPY", "ts_utc": 1784727016.8274643, "n_contracts": 2860, "n_expiries": 15, "max_dte": 37.0, "source": "schwab_chain_wide_gex"}
+        ],
+        "pass_criteria": "one row per sentinel; n_contracts >> 40; n_expiries >= 2; source schwab_chain_wide_gex"
+      },
+      "notes": "First gate day actually recorded (FP-63 was written for Mon 2026-07-20; no result file existed before today). Forward GEX accrual counter starts 2026-07-22. Capture landed ~08:30 CT, earlier than the checklist's ~10:00 ET expectation."
+    }
+  ]
+}
