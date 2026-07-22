@@ -793,12 +793,32 @@ def _contract_inputs(ct: dict) -> tuple[float, float, float, float, float, int] 
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
+#: TU-04 sign models. NAIVE (+call/−put) is validated at INDEX level (Baltussen JFE 2021
+#: reproduced the SqueezeMetrics convention on OptionMetrics data). EMPIRICAL_PRIOR
+#: encodes Garleanu-Pedersen-Poteshman Table 1 for SINGLE NAMES: end users net-WRITE
+#: both calls and puts on equities, so dealers are net LONG both sides (+call/+put).
+#: A/B ONLY — production stays naive until the scorecard promotes (never a silent swap).
+SIGN_MODEL_NAIVE = "naive"
+SIGN_MODEL_EMPIRICAL_PRIOR = "empirical_prior"
+
+
+def _dealer_sign(side_sign: int, sign_model: str) -> int:
+    """side_sign is +1 CALL / −1 PUT from _contract_inputs (the naive convention)."""
+    if sign_model == SIGN_MODEL_EMPIRICAL_PRIOR:
+        return 1                     # dealers long BOTH legs on single names (GPO Table 1)
+    if sign_model == SIGN_MODEL_NAIVE:
+        return side_sign
+    raise ValueError(f"unknown sign_model: {sign_model!r}")
+
+
 def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float = 0.15,
-                          steps: int = 240) -> List[tuple[float, float]]:
+                          steps: int = 240,
+                          sign_model: str = SIGN_MODEL_NAIVE) -> List[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
-    Dealer convention +call/-put. Returns [(price, total_gex)] ascending. The zero
-    crossing of this curve is the gamma flip.
+    Dealer convention per `sign_model` (default naive +call/−put — the only model in
+    production; empirical_prior exists for the TU-04 A/B scorecard). Returns
+    [(price, total_gex)] ascending. The zero crossing of this curve is the gamma flip.
     """
     if not contracts or spot is None or spot <= 0:
         return []
@@ -815,7 +835,7 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
             g = bs_gamma(s, strike, t_years, sigma)
             if g is None:
                 continue
-            total += sign * g * oi * mult * s * s * 0.01
+            total += _dealer_sign(sign, sign_model) * g * oi * mult * s * s * 0.01
         out.append((round(s, 4), total))
     return out
 

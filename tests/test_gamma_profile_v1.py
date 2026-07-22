@@ -227,3 +227,34 @@ def test_flip_zero_touching_profile_start_is_the_boundary():
     assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 0.0)]) is None
     # segment ENDING at zero still interpolates to the zero point
     assert gamma_flip_from_profile([(100.0, -1.0), (110.0, 0.0), (120.0, 1.0)]) == 110.0
+
+
+# ── TU-04: sign-model A/B (parallel profile, never a silent swap) ────────────
+
+def test_sign_model_default_is_naive_and_unknown_raises():
+    import pytest
+    from math_levels import SIGN_MODEL_NAIVE, compute_gamma_profile
+    chain, spot = _load_real_chain()
+    assert compute_gamma_profile(chain, spot) == compute_gamma_profile(
+        chain, spot, sign_model=SIGN_MODEL_NAIVE)
+    with pytest.raises(ValueError):
+        compute_gamma_profile(chain, spot, sign_model="vibes")
+
+
+def test_empirical_prior_flips_puts_to_dealer_long_on_real_chain():
+    from math_levels import SIGN_MODEL_EMPIRICAL_PRIOR, compute_gamma_profile
+    chain, spot = _load_real_chain()
+    calls = [c for c in chain if str(c.get("putCall")).upper() == "CALL"]
+    naive = compute_gamma_profile(chain, spot)
+    prior = compute_gamma_profile(chain, spot, sign_model=SIGN_MODEL_EMPIRICAL_PRIOR)
+    calls_only = compute_gamma_profile(calls, spot)
+    assert naive and len(naive) == len(prior) == len(calls_only)
+    for (_px, v_n), (_, v_p), (_, v_c) in zip(naive, prior, calls_only, strict=True):
+        put_leg = v_c - v_n              # the put gamma naive SUBTRACTED at this price
+        assert v_p >= v_n                # flipping puts positive can only raise the curve
+        import math as _m
+        assert _m.isclose(v_p, v_c + put_leg, rel_tol=1e-9, abs_tol=1e-3), (
+            "empirical_prior must ADD exactly the put gamma naive subtracted")
+    # calls-only chain: the models agree exactly (the flip only touches puts)
+    co_prior = compute_gamma_profile(calls, spot, sign_model=SIGN_MODEL_EMPIRICAL_PRIOR)
+    assert co_prior == calls_only
