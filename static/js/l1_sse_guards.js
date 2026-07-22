@@ -49,6 +49,28 @@
   }
 
   /**
+   * Tier B PAYLOAD vs active (ticker, expiry) — the auto-scope acceptance rule.
+   *
+   * L1-SSE-AUTO-ACCEPT (2026-07-22, measured live): with no explicit expiry the
+   * client subscribes "__auto__" ("whatever is current"), but every L1 payload
+   * that merged L2 data carries the RESOLVED selected_exp (e.g. "2026-07-22").
+   * The old inline matcher required strict key equality, so in auto mode it
+   * rejected 100% of delivered payloads (rejectedTierBRender=2076, accepted=0
+   * on a live tab) and the Tier B light lane never painted. Auto accepts any
+   * payload expiry for the active ticker; an explicitly pinned expiry stays
+   * strict — same semantics as the server's __auto__ scope maintenance.
+   */
+  function l1PayloadMatchesActiveScope(payloadTicker, payloadSelectedExp, activeTicker, activeExpiry) {
+    const pt = payloadTicker != null ? String(payloadTicker).trim().toUpperCase() : '';
+    if (!pt) return false;
+    const at = (activeTicker || '').trim().toUpperCase() || 'SPY';
+    if (pt !== at) return false;
+    const ck = normL1ExpiryKey(activeExpiry);
+    if (ck === '__auto__') return true;
+    return normL1ExpiryKey(payloadSelectedExp) === ck;
+  }
+
+  /**
    * Server envelope scope: { ticker, expiry } where expiry is "__auto__" or a date key.
    */
   function l1EnvelopeScopeMatches(scope, activeTicker, activeExpiry) {
@@ -67,5 +89,6 @@
     l1ApplyGenerationMonotonic: l1ApplyGenerationMonotonic,
     l1ApplyTierBLightMonotonic: l1ApplyTierBLightMonotonic,
     l1EnvelopeScopeMatches: l1EnvelopeScopeMatches,
+    l1PayloadMatchesActiveScope: l1PayloadMatchesActiveScope,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

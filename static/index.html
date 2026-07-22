@@ -6288,17 +6288,19 @@ function l1MarkFreshnessPainted(sig, gen, scopeKey) {
 /**
  * Issue 51 — Tier B payload must match active (ticker, expiry) using same norms as SSE envelope / l1_scope_key.
  * Rejects cross-scope and late payloads before monotonic, authority, or dedupe.
+ * L1-SSE-AUTO-ACCEPT (2026-07-22): delegates to the shared guard — auto expiry accepts the
+ * payload's RESOLVED selected_exp (strict equality here rejected 100% of delivered payloads
+ * in auto mode: rejectedTierBRender=2076 / accepted=0 measured live; the light lane never painted).
  */
 function l1TierBPayloadMatchesActiveScope(d) {
   const guards = window.EdL1SseGuards;
-  if (!guards) return false;
-  const pt = d.ticker != null ? String(d.ticker).trim().toUpperCase() : '';
-  if (!pt) return false;
-  const at = (activeTicker || '').trim().toUpperCase() || 'SPY';
-  if (pt !== at) return false;
-  const pk = guards.normL1ExpiryKey(d.selected_exp != null ? d.selected_exp : null);
-  const ck = guards.normL1ExpiryKey(typeof activeExpiry !== 'undefined' ? activeExpiry : null);
-  return pk === ck;
+  if (!guards || typeof guards.l1PayloadMatchesActiveScope !== 'function') return false;
+  return guards.l1PayloadMatchesActiveScope(
+    d.ticker,
+    d.selected_exp != null ? d.selected_exp : null,
+    activeTicker,
+    typeof activeExpiry !== 'undefined' ? activeExpiry : null,
+  );
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
