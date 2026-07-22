@@ -137,6 +137,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         spot=spot, flip=flip, flip_confidence=confidence,
         put_wall=put_wall, call_wall=call_wall,
         gamma_at_spot=flip_diag.get("gamma_at_spot"),
+        ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
     )
 
     return TerrainSnapshot(

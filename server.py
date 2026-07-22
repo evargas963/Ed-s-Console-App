@@ -8517,6 +8517,7 @@ def _fetch_state(
         # pre-RC-11 model while /api/terrain ran the corrected one — the two surfaces
         # could state opposite regimes for the same ticker (Cursor audit 2026-07-20).
         gamma_at_spot=(_gamma_flip_diag or {}).get("gamma_at_spot"),
+        ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
     )
     ms_dict["terrain_regime"] = _terrain.regime
     ms_dict["terrain_posture"] = _terrain.posture
@@ -10817,6 +10818,7 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
         put_wall=payload.get("put_wall"),
         call_wall=payload.get("call_wall"),
         gamma_at_spot=fresh_gamma,
+        ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
     )
     out["regime"] = read.regime
     out["posture"] = read.posture
