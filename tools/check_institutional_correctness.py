@@ -782,7 +782,12 @@ def check_no_synthetic_domain_fixtures_in_tests() -> list[Violation]:
 
 
 # ── Production-code checks (no-silent-swallow, simplicity) ───────────────────
-_SKIP_DIR_PARTS = {".git", "__pycache__", ".venv", "venv", "node_modules", "reports"}
+# ".claude" (2026-07-22): agent worktrees (.claude/worktrees/<name>/) are full
+# ISOLATED COPIES of the repo — scanning one as production doubled every AST-walked
+# debt count (file_length 37->75, complexity 455->881) and hard-blocked all commits
+# the moment a task chip existed. Gitignored tooling state is never production code.
+_SKIP_DIR_PARTS = {".git", "__pycache__", ".venv", "venv", "node_modules", "reports",
+                   ".claude"}
 _SWALLOW_MARKER = "institutional-swallow-ok"
 _COMPLEXITY_MARKER = "institutional-complexity-ok"
 MAX_COMPLEXITY = 15  # cyclomatic; above this a function is too hard to understand/fix safely

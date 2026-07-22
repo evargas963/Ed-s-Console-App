@@ -36,6 +36,7 @@ from stream_spine import (  # noqa: E402
     HealthRegistry,
     MessageBus,
     bar_msg,
+    print_msg,
     quote_msg,
 )
 
@@ -104,6 +105,186 @@ def parse_stream_item(item: dict, field_map: dict[str, str]) -> dict:
         if k in item:
             out[name] = item[k]
     return out
+
+
+# ── CR-02: Alpaca IEX prints + NBBO quotes (capture half) ────────────────────
+# Schwab's streamer REFUSES trade prints — proven live 2026-07-22 by differential
+# probe on one authenticated session: LEVELONE_EQUITIES SUBS -> code 0 "SUBS command
+# succeeded"; TIMESALE_EQUITY SUBS (identical framing via schwab-py _make_request)
+# -> code 11 "Service not available or temporary down." Alpaca's free IEX websocket
+# supplies real executions (verified same day: REST latest trade + WS auth OK with
+# the operator's paper keys). This leg records RAW prints and RAW NBBO quotes into
+# stream_capture.db via the same bus/writer; SIGNING is computed by the CR-02
+# correlation study, never here (capture stays raw). Optional by design: no keys ->
+# one printed line, Schwab capture unaffected.
+ALPACA_WS_URL = "wss://stream.data.alpaca.markets/v2/iex"
+ALPACA_ENV_PATH = ROOT / ".env"
+#: IEX slice scale, MEASURED on-roster 2026-07-22: SPY IEX daily volume 1,223,790 vs
+#: Schwab consolidated TOTAL_VOLUME 24,067,157 (~5.1%). Coverage is a sample, not the
+#: tape — the pre-registered CR-02 study decides whether the sample is trustworthy.
+ALPACA_SRC = "alpaca_iex"
+
+
+def alpaca_keys_from_env() -> tuple[str, str] | None:
+    """Paper keys from .env (ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY) or process env.
+
+    Values are never logged. Missing keys are a SKIP, not an error — the Schwab
+    capture must never be hostage to the optional prints leg."""
+    kv: dict[str, str] = {}
+    try:
+        for line in ALPACA_ENV_PATH.read_text(encoding="utf-8-sig").splitlines():
+            s = line.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            k, _, v = s.partition("=")
+            kv[k.strip()] = v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    import os
+    kid = kv.get("ALPACA_API_KEY_ID") or os.environ.get("ALPACA_API_KEY_ID")
+    sec = kv.get("ALPACA_API_SECRET_KEY") or os.environ.get("ALPACA_API_SECRET_KEY")
+    return (kid, sec) if kid and sec else None
+
+
+def alpaca_rfc3339_to_ms(t) -> int | None:
+    """Alpaca timestamps are RFC-3339 with NANOSECOND fractions (9 digits) —
+    datetime.fromisoformat accepts at most 6, so the fraction is trimmed. Capture
+    stores milliseconds (matches stream schema *_ms columns)."""
+    if not t or not isinstance(t, str):
+        return None
+    from datetime import datetime
+    s = t.rstrip("Z")
+    if "." in s:
+        head, frac = s.split(".", 1)
+        s = f"{head}.{frac[:6]}"
+    try:
+        return int(datetime.fromisoformat(s + "+00:00").timestamp() * 1000)
+    except ValueError:
+        return None
+
+
+#: Alpaca stream field dictionary (schema verified live 2026-07-22 with the operator's
+#: keys — see the roster snapshot + docs). NAMED here once, the same single-source
+#: discipline as LEVELONE_FIELDS/CHART_FIELDS above and the Schwab field CSV.
+ALPACA_TYPE_KEY = "T"      #: message type: "t" trade, "q" NBBO quote, control/bars other
+ALPACA_SYMBOL_KEY = "S"
+ALPACA_STAMP_KEY = "t"     #: RFC-3339 with NANOSECOND fraction
+ALPACA_TRADE_FIELDS = {"p": "price", "s": "size", "x": "exchange", "c": "conditions",
+                       "i": "trade_id", "z": "tape"}
+#: `bs`/`as` are ROUND LOTS per Alpaca's schema — recorded AS GIVEN; src
+#: distinguishes them from Schwab's share-denominated sizes (no raw-layer conversion).
+ALPACA_QUOTE_FIELDS = {"bp": "bid", "ap": "ask", "bs": "bid_size", "as": "ask_size",
+                       "bx": "bid_exchange", "ax": "ask_exchange", "z": "tape"}
+
+
+def alpaca_item_to_topic_msg(item: dict) -> tuple[str, dict] | None:
+    """One Alpaca stream item -> (topic, spine message) or None for non-capture types.
+
+    Trades -> print.SYM; NBBO -> quote.SYM. Bars/status/control frames return None:
+    canonical 1m bars remain Schwab's (sole-bar-authority law); statuses are a later,
+    separately-argued addition.
+    """
+    kind = item.get(ALPACA_TYPE_KEY)
+    sym = str(item.get(ALPACA_SYMBOL_KEY) or "").upper()
+    if not sym:
+        return None
+    if kind == "t":
+        f = parse_stream_item({**item, "key": sym}, ALPACA_TRADE_FIELDS)
+        conds = f.get("conditions")
+        return (f"print.{sym}", print_msg(
+            symbol=sym, price=f.get("price"), size=f.get("size"),
+            exchange=f.get("exchange"),
+            conditions=",".join(str(x) for x in conds) if isinstance(conds, list) else conds,
+            trade_ts_ms=alpaca_rfc3339_to_ms(item.get(ALPACA_STAMP_KEY)), src=ALPACA_SRC))
+    if kind == "q":
+        f = parse_stream_item({**item, "key": sym}, ALPACA_QUOTE_FIELDS)
+        return (f"quote.{sym}", quote_msg(
+            symbol=sym, bid=f.get("bid"), ask=f.get("ask"),
+            bid_size=f.get("bid_size"), ask_size=f.get("ask_size"),
+            quote_time_ms=alpaca_rfc3339_to_ms(item.get(ALPACA_STAMP_KEY)), src=ALPACA_SRC))
+    return None
+
+
+def alpaca_handle_frame(raw: str, bus: MessageBus, health: HealthRegistry,
+                        stats: CaptureStats) -> None:
+    """One websocket frame (JSON array of items) -> bus publishes + health beats."""
+    t0 = time.perf_counter()
+    frame = json.loads(raw)
+    items = frame if isinstance(frame, list) else [frame]
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get(ALPACA_TYPE_KEY) == "error":
+            print(f"alpaca: stream error frame: {item}")
+            continue
+        out = alpaca_item_to_topic_msg(item)
+        if out is None:
+            continue
+        save_raw_sample(f"ALPACA_{item.get(ALPACA_TYPE_KEY)}", item, stats)
+        bus.publish(out[0], out[1])
+        health.beat("ALPACA_IEX")
+    stats.record("ALPACA_IEX", (time.perf_counter() - t0) * 1000.0)
+
+
+async def _alpaca_session(ws, symbols: list[str], kid: str, sec: str, bus: MessageBus,
+                          health: HealthRegistry, stats: CaptureStats,
+                          stop: asyncio.Event) -> bool:
+    """Auth + subscribe + receive loop on an open socket. Returns False on auth
+    refusal (permanent for this run), True when the loop ends via `stop`."""
+    await asyncio.wait_for(ws.recv(), 10)              # {"T":"success","msg":"connected"}
+    await ws.send(json.dumps({"action": "auth", "key": kid, "secret": sec}))
+    auth = json.loads(await asyncio.wait_for(ws.recv(), 10))
+    a0 = auth[0] if isinstance(auth, list) and auth else auth
+    if not (isinstance(a0, dict) and a0.get(ALPACA_TYPE_KEY) == "success"):
+        print(f"alpaca: auth REFUSED: {a0} — prints leg stopped for this run")
+        return False
+    await ws.send(json.dumps({"action": "subscribe",
+                              "trades": symbols, "quotes": symbols}))
+    print(f"alpaca: subscribed trades+quotes for {len(symbols)} symbols "
+          f"(free tier cap 30; separate from Schwab key budget)")
+    while not stop.is_set():
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
+        except asyncio.TimeoutError:
+            continue
+        alpaca_handle_frame(raw, bus, health, stats)
+    return True
+
+
+async def alpaca_pump(symbols: list[str], bus: MessageBus, health: HealthRegistry,
+                      stats: CaptureStats, stop: asyncio.Event) -> None:
+    """Hold the Alpaca IEX socket open; publish prints/quotes onto the bus.
+
+    Reconnects with bounded backoff (5s..60s) until `stop`; every disconnect is
+    printed and the feed's health state degrades honestly in the interim (a dead
+    socket must never look like a quiet market — spine law)."""
+    keys = alpaca_keys_from_env()
+    if keys is None:
+        print("alpaca: no ALPACA_API_KEY_ID/ALPACA_API_SECRET_KEY in .env — "
+              "prints leg skipped (Schwab capture unaffected)")
+        return
+    import websockets
+    kid, sec = keys
+    backoff = 5.0
+    while not stop.is_set():
+        try:
+            async with websockets.connect(ALPACA_WS_URL, open_timeout=15) as ws:
+                backoff = 5.0
+                if not await _alpaca_session(ws, symbols, kid, sec, bus, health,
+                                             stats, stop):
+                    return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — reconnect loop; every drop is printed
+            if stop.is_set():
+                return
+            print(f"alpaca: connection lost ({type(exc).__name__}: {exc}) — "
+                  f"reconnect in {backoff:.0f}s")
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=backoff)
+                return
+            except asyncio.TimeoutError:
+                backoff = min(backoff * 2, 60.0)
 
 
 class CaptureStats:
@@ -195,7 +376,8 @@ async def run(symbols: list[str], duration_min: float, db_path: str | None) -> i
         release_owner_lock(lock_fd)
 
 
-async def _shutdown_sequence(pump_task, writer_task, stop, wsub) -> None:
+async def _shutdown_sequence(pump_task, writer_task, stop, wsub,
+                             extra_producers: tuple = ()) -> None:
     """SHUTDOWN ORDER IS THE CONTRACT (Cursor round-2 HIGHs).
 
     1) Quiesce the PRODUCER first — after this await nothing can publish, so the
@@ -204,13 +386,17 @@ async def _shutdown_sequence(pump_task, writer_task, stop, wsub) -> None:
     2) THEN stop the writer with drain time sized to worst-case depth (8192 rows is
        seconds; 60s is generous) — and a timeout is REPORTED as loss, never silent.
     """
-    pump_task.cancel()
-    try:
-        await pump_task
-    except asyncio.CancelledError:
-        pass  # expected: we cancelled it
-    except Exception as exc:  # noqa: BLE001 — bounded shutdown; report, never hang
-        print(f"shutdown: pump ended with {type(exc).__name__}: {exc}")
+    # ALL producers quiesce together — the Alpaca leg is a producer exactly like the
+    # Schwab pump, so it must be dead before the writer drain starts (same law).
+    for task in (pump_task, *extra_producers):
+        task.cancel()
+    for task in (pump_task, *extra_producers):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass  # expected: we cancelled it
+        except Exception as exc:  # noqa: BLE001 — bounded shutdown; report, never hang
+            print(f"shutdown: producer ended with {type(exc).__name__}: {exc}")
     stop.set()
     try:
         await asyncio.wait_for(writer_task, timeout=60)
@@ -270,6 +456,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             await stream.handle_message()
 
     pump_task = asyncio.create_task(pump())
+    # CR-02 prints leg — optional co-producer on the SAME bus/writer/health.
+    alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
     try:
         while not stop.is_set():
@@ -281,7 +469,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
-        await _shutdown_sequence(pump_task, writer_task, stop, wsub)
+        await _shutdown_sequence(pump_task, writer_task, stop, wsub,
+                                 extra_producers=(alpaca_task,))
         writer.close()
         write_status(bus, health, writer, stats, max_qdepth)
         print(json.dumps({
