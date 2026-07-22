@@ -109,7 +109,17 @@ max-pain-as-target (expiry-day pinning only — NPP 2005); BKM risk-neutral-skew
 (documented sparse-strike bias; RR25 first); paid Cboe Open-Close (only if TU-07's free OCC
 signal proves decision-critical).
 
-## Console rebuild program — CR (2026-07-21 research synthesis; v1.1 after Cursor review — AWAITING OPERATOR GO)
+## Console rebuild program — CR (v1.2 CONSENSUS-STAMPED; operator GO 2026-07-21 "lets build it")
+
+**GO given on the v1.2 spine. CR-01 IN PROGRESS** — `stream_spine.py` landed (bus with
+cache-then-publish + bounded queues w/ drop counters, HealthRegistry RUNNING/DEGRADED/
+STALE/DOWN, CaptureWriter into dedicated stream_capture.db with a construction-time
+refusal of ed_console.db; 6 contract tests). Next unit: the capture daemon
+(`tools/run_stream_capture.py`, schwab-py StreamClient → bus), live-acceptance at the
+next market open per CR-01's measured criteria. v1.3 delta (15 agreed items incl. Kimi
+round: CR-08 three-way MBP/MBO redesign, CR-07 statistical spec + pre-registered N,
+measure-then-freeze numeric bounds, MM-share chip, market_stress_index candidate, three
+pre-registered ML paths) rides OFF the GO-critical path — next consensus round folds it in.
 
 Cursor architectural review 2026-07-21: **CONDITIONAL APPROVE / BLOCK GO until v1.1** —
 all findings incorporated in `governance/CONSOLE_REBUILD_PLAN_CR_V1.md` (v1.1): separate
@@ -134,7 +144,7 @@ standalone directional oracle.
 
 | ID | Status | Work item |
 |---|---|---|
-| CR-01 | QUEUED | **Streaming spine**: Schwab streamer client (LEVELONE_EQUITIES QOS-Express + CHART_EQUITY + sentinel-first books), topic bus + last-value cache, single batched writer into dedicated **`stream_capture.db`** (ed_console.db grows by ZERO bytes), per-feed health states. Acceptance: bounded queues w/ recorded max depth + drop count + parse p99; REST/streamer/terrain contention matrix; measured key accounting. |
+| CR-01 | IN PROGRESS | **Streaming spine**: Schwab streamer client (LEVELONE_EQUITIES QOS-Express + CHART_EQUITY + sentinel-first books), topic bus + last-value cache, single batched writer into dedicated **`stream_capture.db`** (ed_console.db grows by ZERO bytes), per-feed health states. Acceptance: bounded queues w/ recorded max depth + drop count + parse p99; REST/streamer/terrain contention matrix; measured key accounting. |
 | CR-02 | QUEUED | **Trade prints + CVD (capture)**: Alpaca free IEX websocket (operator opens free account), 30-symbol prints, quote-rule signing, CVD; Schwab-signed vs IEX-signed correlation recorded ≥3 sessions. |
 | CR-CAP | QUEUED | **Mechanical capture gate**: ≥3 full RTH sessions in stream_capture.db before ANY UI consumes stream topics — display paths refuse to mount pre-gate (fail-closed test). |
 | CR-03 | QUEUED | **Console shell**: typed-message websocket replaces polling loops; main chart panel (lightweight-charts, levels-on-chart, VWAP as fair-value reference only); **demote/hide chance-level ML DOM (hard-delete only per §8.3)**. Panels registry + volume profile deferred to CR-03b. |

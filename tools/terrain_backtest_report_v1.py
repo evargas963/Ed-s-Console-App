@@ -41,6 +41,11 @@ from statistics import median
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from math_levels import (  # noqa: E402
+    SIGN_MODEL_EMPIRICAL_PRIOR,
+    compute_gamma_profile,
+    gamma_at_price,
+)
 from terrain_engine import compute_terrain  # noqa: E402
 from time_et import ET  # noqa: E402
 
@@ -126,8 +131,23 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
         snap = compute_terrain(tk, contracts, float(spot))
         if snap.regime not in ("LONG_GAMMA_CHOP", "SHORT_GAMMA_TREND"):
             continue
+        # TU-04 A/B: the GPO empirical prior (+call/+put) for single names. Net gamma
+        # under it is C+P > 0 ALWAYS, so it is a CONSTANT LONG_GAMMA classifier — the
+        # honest A/B question is "does naive's short-gamma call beat 'always dampen'?"
+        # Computed anyway (never assumed) so a chain that violates the expectation
+        # would show up as data, not dogma. Sentinels stay naive-only (index naive is
+        # validated; the prior is a single-name hypothesis).
+        regime_prior = None
+        if tk not in SENTINELS:
+            gp = gamma_at_price(
+                compute_gamma_profile(contracts, float(spot),
+                                      sign_model=SIGN_MODEL_EMPIRICAL_PRIOR),
+                float(spot))
+            if gp is not None and gp != 0:
+                regime_prior = "LONG_GAMMA_CHOP" if gp > 0 else "SHORT_GAMMA_TREND"
         scored.append({
             "ticker": tk, "day": day, "regime": snap.regime,
+            "regime_prior": regime_prior,
             "confidence": snap.confidence, "spot": float(spot),
             "gamma_flip": snap.gamma_flip, "call_wall": snap.call_wall,
             "put_wall": snap.put_wall, **real,
@@ -145,6 +165,9 @@ def _classify_and_hit(scored: list[dict]) -> tuple[list[dict], dict[str, float]]
     for r in rows:
         r["range_class_high"] = r["range_pct"] > med[r["ticker"]]
         r["hit"] = (r["regime"] == "SHORT_GAMMA_TREND") == r["range_class_high"]
+        rp = r.get("regime_prior")
+        r["hit_prior"] = ((rp == "SHORT_GAMMA_TREND") == r["range_class_high"]
+                          if rp is not None else None)
     return rows, med
 
 
@@ -178,6 +201,23 @@ def wall_hold_stats(rows: list[dict]) -> dict:
     return {"call_n": cn, "call_held_pct": pct(ch, cn), "call_close_below_pct": pct(ccb, cn),
             "put_n": pn, "put_held_pct": pct(ph, pn), "put_close_above_pct": pct(pca, pn),
             "spotgamma_spx_benchmark": SG_BENCH}
+
+
+def _sign_ab(rows: list[dict]) -> dict:
+    """TU-04: naive vs empirical-prior hit rates on the SAME single-name rows."""
+    ab = [r for r in rows if r["ticker"] not in SENTINELS and r.get("hit_prior") is not None]
+    n = len(ab)
+    if not n:
+        return {"n": 0, "naive_hit_pct": None, "prior_hit_pct": None,
+                "prior_always_long_pct": None}
+    always_long = sum(r.get("regime_prior") == "LONG_GAMMA_CHOP" for r in ab)
+    return {
+        "n": n,
+        "naive_hit_pct": round(100 * sum(r["hit"] for r in ab) / n, 1),
+        "prior_hit_pct": round(100 * sum(r["hit_prior"] for r in ab) / n, 1),
+        # measured, not assumed: expected 100.0 (C+P>0); anything else = data anomaly
+        "prior_always_long_pct": round(100 * always_long / n, 1),
+    }
 
 
 def _placebo_persistence(rows: list[dict]) -> tuple[int, int]:
@@ -225,6 +265,10 @@ def run(since: str | None) -> dict:
         "short_gamma_days": bucket(lambda r: r["regime"] == "SHORT_GAMMA_TREND"),
         "placebo_persistence": {"n": p_n,
                                 "hit_pct": round(100 * p_hit / p_n, 1) if p_n else None},
+        # TU-04 sign-model A/B, single names only. Reported WITH its structural note:
+        # the prior is constant-LONG by construction (C+P>0), so this measures whether
+        # naive's short-gamma discrimination adds anything over "always dampen".
+        "sign_ab_single_names": _sign_ab(rows),
         # Wall stats use ALL scored rows (no median filter needed) — TRUSTED split is
         # the honest one: narrow-chain walls are strike-truncated by construction.
         "wall_hold_all": wall_hold_stats(scored),
@@ -237,6 +281,16 @@ def run(since: str | None) -> dict:
                                                 if r["regime"] == "LONG_GAMMA_CHOP"]), 3)
         if any(r["regime"] == "LONG_GAMMA_CHOP" for r in rows) else None,
     }
+
+
+def _sign_ab_line(ab: dict) -> str:
+    if not ab.get("n"):
+        return "_No A/B rows scored yet._"
+    return (f"naive {ab['naive_hit_pct']}% vs empirical-prior {ab['prior_hit_pct']}% on "
+            f"n={ab['n']} shared rows (prior classified LONG on "
+            f"{ab['prior_always_long_pct']}% of rows — it is constant-LONG by "
+            f"construction, C+P>0, so this measures whether naive's short-gamma call "
+            f"beats 'always dampen'; GPO prior, Garleanu-Pedersen-Poteshman Table 1).")
 
 
 def _wall_line(name: str, w: dict) -> str:
@@ -271,6 +325,10 @@ def render_md(rep: dict) -> str:
         f"{rep['median_trendiness_short']}, long-gamma days: {rep['median_trendiness_long']} "
         "(mechanism check: short-gamma days should trend more).",
         "",
+        "## TU-04 sign-model A/B (single names; registered test due 2026-08-03)",
+        "",
+        _sign_ab_line(rep["sign_ab_single_names"]),
+        "",
         "## Wall hold rates (10:00 ET walls vs rest-of-session)",
         "",
         "| slice | call n | call held% | close≤CW% | put n | put held% | close≥PW% |",
@@ -300,6 +358,12 @@ HISTORY = ROOT / "reports" / "terrain_scorecard_history.jsonl"
 PDCA_WINDOW_SESSIONS = 20          # rolling window before ACT decisions have footing
 PDCA_PROMOTE_PTS = 5.0             # gap >= +5pts  -> promote toward the economic test
 PDCA_ADJUST_PTS = -5.0             # gap <= -5pts  -> input change via registered tests
+#: Roster-aware coverage bar. Operator 2026-07-21: the 17 panel_auto tickers STAY
+#: excluded (confluence-only by design; their fix is a separate work item), so the
+#: capturable ceiling is ~35 — a "expect ~50" bar would cry DEGRADED every healthy day
+#: and teach the operator to ignore the loop. 33 = ceiling minus slack for per-symbol
+#: fetch hiccups. Revisit WITH the roster decision, never independently of it.
+COVERAGE_HEALTHY_MIN = 33
 
 
 def pdca_verdict(gap_pts: float | None, sessions: int) -> tuple[str, str]:
@@ -382,7 +446,7 @@ def render_pdca(coverage: int, gap: float | None, sessions: int) -> str:
     return "\n".join([
         "", "## PDCA — the loop, self-treating", "",
         f"- **DO (coverage)**: {coverage} tickers wide-captured today "
-        f"({'healthy' if coverage >= 40 else 'DEGRADED — expect ~50; the capture is the defect today'})",
+        f"({'healthy — at roster ceiling (17 confluence-only exclusions stand, operator 2026-07-21)' if coverage >= COVERAGE_HEALTHY_MIN else 'DEGRADED — below the ~35-ticker roster ceiling; the capture is the defect today'})",
         f"- **CHECK (window)**: {sessions}/{PDCA_WINDOW_SESSIONS} sessions accumulated; "
         f"rolling TRUSTED−placebo gap: {f'{gap:+.1f}pts' if gap is not None else '—'}",
         f"- **ACT** → **{colour}**: {action}", "",

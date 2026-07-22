@@ -6,6 +6,7 @@ something real?") — so they are pure functions with boundary tests, not prose.
 from __future__ import annotations
 
 from tools.terrain_backtest_report_v1 import (
+    _sign_ab,
     PDCA_ADJUST_PTS,
     PDCA_PROMOTE_PTS,
     PDCA_WINDOW_SESSIONS,
@@ -83,3 +84,31 @@ def test_wall_hold_touch_exactly_at_wall_counts_as_held():
     touch = _wall_row(high=105.0, low=95.0)
     w = wall_hold_stats([touch])
     assert w["call_held_pct"] == 100.0 and w["put_held_pct"] == 100.0
+
+
+def _ab_row(tk, regime, prior, high):
+    return {"ticker": tk, "regime": regime, "regime_prior": prior,
+            "range_class_high": high,
+            "hit": (regime == "SHORT_GAMMA_TREND") == high,
+            "hit_prior": (prior == "SHORT_GAMMA_TREND") == high if prior else None}
+
+
+def test_sign_ab_scores_shared_rows_and_reports_constant_share():
+    rows = [
+        _ab_row("NVDA", "SHORT_GAMMA_TREND", "LONG_GAMMA_CHOP", True),   # naive hit, prior miss
+        _ab_row("NVDA", "LONG_GAMMA_CHOP", "LONG_GAMMA_CHOP", False),    # both hit
+        _ab_row("AMD", "LONG_GAMMA_CHOP", "LONG_GAMMA_CHOP", True),      # both miss
+        _ab_row("SPY", "SHORT_GAMMA_TREND", None, True),                 # sentinel: excluded
+        _ab_row("TSLA", "LONG_GAMMA_CHOP", None, True),                  # no prior row: excluded
+    ]
+    ab = _sign_ab(rows)
+    assert ab["n"] == 3
+    assert ab["naive_hit_pct"] == round(100 * 2 / 3, 1)
+    assert ab["prior_hit_pct"] == round(100 * 1 / 3, 1)
+    assert ab["prior_always_long_pct"] == 100.0
+
+
+def test_sign_ab_empty_is_explicit_not_zero():
+    ab = _sign_ab([_ab_row("SPY", "LONG_GAMMA_CHOP", None, True)])
+    assert ab == {"n": 0, "naive_hit_pct": None, "prior_hit_pct": None,
+                  "prior_always_long_pct": None}
