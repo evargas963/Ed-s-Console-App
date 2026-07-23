@@ -333,6 +333,9 @@ async function load() {
   } catch (e) {
     document.getElementById('narrator').textContent = 'load failed: ' + e.message;
     feedFresh = false;
+    // fail-closed coach: a failed cycle cannot vouch for the numbers it would
+    // quote — tooltips say "measuring" until a cycle succeeds (Bugbot HIGH)
+    scorecard = null;
     document.getElementById('livedot').className = 'stale';
     document.getElementById('lastdot').style.display = 'none';
   }
