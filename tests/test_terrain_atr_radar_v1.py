@@ -106,6 +106,27 @@ def test_chart_page_route_serves_static_chart_html():
         "chart shell must never be browser-cached (stale-JS class, RC on 2026-07-22)")
 
 
+def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
+    """Flip-drift row (register, due 2026-07-31): each terrain compute appends one
+    JSONL row; flip=None is absence and appends nothing. Drives the REAL logger."""
+    import json as _json
+
+    import server as srv
+
+    p = tmp_path / "flip_drift_log.jsonl"
+    monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", p)
+    srv._log_flip_drift("SPY", {"gamma_flip": 745.25, "spot": 746.1,
+                                "confidence": "TRUSTED",
+                                "computed_ts_utc": 1700000000.0})
+    srv._log_flip_drift("QQQ", {"gamma_flip": None, "spot": 500.0})
+    lines = p.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1, "None flip must not produce a row"
+    row = _json.loads(lines[0])
+    assert row["ticker"] == "SPY" and row["flip"] == 745.25
+    assert row["spot"] == 746.1 and row["confidence"] == "TRUSTED"
+    assert row["ts_utc"] == 1700000000.0
+
+
 def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
     expiry scopes for today + prior capture, sorted by strike, read-only."""

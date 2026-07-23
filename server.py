@@ -10375,6 +10375,30 @@ def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
                     tk, status, result.get("reason"))
 
 
+#: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
+#: proven (gamma depends on spot/IV/time) but the intraday MAGNITUDE of flip movement
+#: is unmeasured. Every terrain-loop compute appends one JSONL row here so a week of
+#: cycles yields per-ticker intraday min/max/range. reports/ file, not a table — the
+#: operational DB grows by zero bytes (RC-6 discipline). flip=None is absence and is
+#: not logged; gaps read as gaps from the timestamps.
+_FLIP_DRIFT_LOG_PATH = Path(APP_DIR) / "reports" / "flip_drift_log.jsonl"
+_flip_drift_lock = threading.Lock()
+
+
+def _log_flip_drift(tk: str, payload: dict) -> None:
+    flip = payload.get("gamma_flip")
+    if flip is None:
+        return
+    row = {"ts_utc": round(float(payload.get("computed_ts_utc") or time.time()), 1),
+           "ticker": tk, "flip": round(float(flip), 4),
+           "spot": payload.get("spot"), "confidence": payload.get("confidence")}
+    try:
+        with _flip_drift_lock, open(_FLIP_DRIFT_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+    except OSError as e:
+        log.warning("flip drift log append failed: %s", e)
+
+
 def _terrain_refresh_one(ticker: str) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises."""
     tk = (ticker or "").upper().strip()
@@ -10411,6 +10435,7 @@ def _terrain_refresh_one(ticker: str) -> str:
         with _terrain_cache_lock:
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
+        _log_flip_drift(tk, payload)
         return f"ok:{snap.confidence}"
     except Exception as e:
         log.debug("terrain refresh %s failed: %s", tk, e, exc_info=True)
