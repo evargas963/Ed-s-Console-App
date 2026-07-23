@@ -82,6 +82,8 @@
   #coachlines { padding:8px 14px; color:var(--dim); font-size:13px; line-height:1.65;
                 border-top:1px solid var(--border); }
   a { color:var(--blue); text-decoration:none; font-weight:700; }
+  a.navtab { color:var(--dim); }
+  a.navtab:hover { color:var(--text); }
 </style>
 </head>
 <body>
@@ -102,7 +104,9 @@
   <span class="chip on" id="ghost">GHOST</span>
   <span class="chip on" id="learn">COACH</span>
   <span class="chip" id="fit" title="reset zoom/pan">FIT</span>
-  <a href="/">← CONSOLE</a>
+  <a class="chip navtab" href="/">CONSOLE</a>
+  <a class="chip navtab" href="/#terrain">TERRAIN</a>
+  <span class="chip on">CHART</span>
   <span id="meta"></span>
 </div>
 <div id="layout" class="card">

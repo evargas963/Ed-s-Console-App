@@ -11490,6 +11490,9 @@ function edSizeDeck() {
 
 function edSwitchView(view) {
   const isTerrain = view === 'terrain';
+  // keep the URL in sync so other pages can deep-link the terrain view (/#terrain)
+  try { history.replaceState(null, '', isTerrain ? '#terrain' : window.location.pathname); }
+  catch (e) { /* history API unavailable — view still switches */ }
   document.body.classList.toggle('ed-terrain-mode', isTerrain);
   const tv = document.getElementById('terrain-view');
   if (tv) tv.hidden = !isTerrain;
@@ -11516,6 +11519,9 @@ function edSwitchView(view) {
 window.addEventListener('resize', () => {
   if (document.body.classList.contains('ed-terrain-mode')) edSizeDeck();
 });
+
+// deep link: opening /#terrain lands directly on the terrain view (chart-page nav)
+if (window.location.hash === '#terrain') edSwitchView('terrain');
 
 function edPct(lvl, spot) {
   if (lvl == null || !spot) return '';
