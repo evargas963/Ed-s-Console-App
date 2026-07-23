@@ -167,6 +167,18 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
         )
         if scoring_regime is None:
             continue
+        # WEIGHTING HEAD-TO-HEAD (operator challenge 2026-07-22 "we have enough
+        # data... your testing or data was wrong"): the volume-vs-OI divergence
+        # study could not attribute blame. This can: the same gamma-at-spot under
+        # VOLUME substitution, on every scored day, judged by the same realized
+        # range the OI weighting is judged by. Arbiter is reality, not agreement.
+        from tools.study_volume_vs_oi_terrain_v1 import volume_substituted
+        try:
+            vol_contracts, _n_vol = volume_substituted(contracts)
+            gas_vol = gamma_at_price(
+                compute_gamma_profile(vol_contracts, float(spot)), float(spot))
+        except Exception:
+            gas_vol = None
         # TU-04 A/B: the GPO empirical prior (+call/+put) for single names. Net gamma
         # under it is C+P > 0 ALWAYS, so it is a CONSTANT LONG_GAMMA classifier — the
         # honest A/B question is "does naive's short-gamma call beat 'always dampen'?"
@@ -184,6 +196,7 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
         scored.append({
             "ticker": tk, "day": day, "regime": scoring_regime,
             "net_gex_at_spot": snap.net_gex_at_spot,
+            "net_gex_at_spot_vol": gas_vol,
             "regime_prior": regime_prior,
             "confidence": snap.confidence, "spot": float(spot),
             "gamma_flip": snap.gamma_flip, "call_wall": snap.call_wall,
@@ -321,6 +334,37 @@ def _sign_split_gex_r1(rows: list[dict], n_perm: int = 2000, seed: int = 2026072
     return out
 
 
+def _weighting_head_to_head(rows: list[dict]) -> dict:
+    """OI- vs VOLUME-weighted gamma judged by the SAME realized range, same rows.
+
+    PRE-REGISTERED DECISION RULE (written 2026-07-22 BEFORE the first run, after
+    the divergence study proved only that the weightings disagree, not who is
+    wrong): per universe, on rows where BOTH weightings produce a value, compare
+    Spearman(gamma_at_spot, realized range). More NEGATIVE rho (stronger
+    dampening read) wins; |delta rho| < 0.03 is a TIE. Reality is the arbiter.
+    """
+    out: dict[str, dict] = {}
+    for name, pred in (("sentinels", lambda r: r["ticker"] in SENTINELS),
+                       ("single_names", lambda r: r["ticker"] not in SENTINELS),
+                       ("all", lambda _r: True)):
+        sub = [r for r in rows if pred(r)
+               and r.get("net_gex_at_spot") is not None
+               and r.get("net_gex_at_spot_vol") is not None]
+        rng_ = [float(r["range_pct"]) for r in sub]
+        rho_oi = _spearman([float(r["net_gex_at_spot"]) for r in sub], rng_)
+        rho_vol = _spearman([float(r["net_gex_at_spot_vol"]) for r in sub], rng_)
+        winner = None
+        if rho_oi is not None and rho_vol is not None:
+            delta = rho_oi - rho_vol
+            winner = ("TIE" if abs(delta) < 0.03
+                      else ("OI" if rho_oi < rho_vol else "VOLUME"))
+        out[name] = {"n": len(sub),
+                     "rho_oi": round(rho_oi, 4) if rho_oi is not None else None,
+                     "rho_vol": round(rho_vol, 4) if rho_vol is not None else None,
+                     "winner": winner}
+    return out
+
+
 def _placebo_persistence(rows: list[dict]) -> tuple[int, int]:
     """Hits/n for 'yesterday's realized class predicts today's', per ticker."""
     p_hit = p_n = 0
@@ -372,6 +416,8 @@ def run(since: str | None) -> dict:
         "sign_ab_single_names": _sign_ab(rows),
         # REGISTERED TEST 1 (single-name sign row, due 2026-08-03): GEX-R1 split.
         "sign_split_gex_r1": _sign_split_gex_r1(rows),
+        # Weighting head-to-head: reality as arbiter (rule pre-set in the fn).
+        "weighting_head_to_head": _weighting_head_to_head(rows),
         # Wall stats use ALL scored rows (no median filter needed) — TRUSTED split is
         # the honest one: narrow-chain walls are strike-truncated by construction.
         "wall_hold_all": wall_hold_stats(scored),
