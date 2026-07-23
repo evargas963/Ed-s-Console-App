@@ -2096,21 +2096,27 @@ def test_mkt_ctx_stale_serve_never_pays_sweep_inline(monkeypatch):
     _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
     calls = {"n": 0}
     done = th.Event()
+    sweep_threads: list = []
 
+    # RC-17: no wall-clock assertions. "Not inline" is proven MECHANICALLY:
+    # (a) callers return the OLD context (an inline sweep would hand back the
+    # new one), and (b) the sweep records its executing thread, which must not
+    # be the caller's. Waits are generous UPPER bounds (fail = truly broken),
+    # never scheduling-window bets.
     def _fake_sweep(client, **kwargs):
         calls["n"] += 1
-        time.sleep(0.2)
+        sweep_threads.append(th.current_thread())
         done.set()
         return MarketContext()
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
-    t0 = time.perf_counter()
+    caller_thread = th.current_thread()
     served = [srv._get_mkt_ctx(None) for _ in range(5)]
-    inline_elapsed = time.perf_counter() - t0
-    assert all(s is old_ctx for s in served)
-    assert inline_elapsed < 0.15, "a caller paid the sweep inline"
-    assert done.wait(5)
-    deadline = time.time() + 5
+    assert all(s is old_ctx for s in served), "a caller was handed the new context inline"
+    assert done.wait(30), "background sweep never executed"
+    assert sweep_threads and all(t is not caller_thread for t in sweep_threads), \
+        "sweep executed inline on the caller thread"
+    deadline = time.time() + 30
     while time.time() < deadline:
         with srv._cached_mkt_ctx_lock:
             if srv._cached_mkt_ctx is not old_ctx and not srv._mkt_ctx_refresh_inflight:
@@ -2136,10 +2142,14 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
     lk = th.Lock()
     done = th.Event()
 
+    # RC-17: the barrier makes overlap CERTAIN instead of hoping threads
+    # collide inside a scheduling window; waits are generous upper bounds.
+    barrier = th.Barrier(8, timeout=30)
+
     def _fake_sweep(client, **kwargs):
         with lk:
             calls["n"] += 1
-        time.sleep(0.3)
+        time.sleep(0.25)   # hold the inflight window open so a herd CAN collide
         done.set()
         return MarketContext()
 
@@ -2148,6 +2158,7 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
     slock = th.Lock()
 
     def _call():
+        barrier.wait()
         out = srv._get_mkt_ctx(None)
         with slock:
             served.append(out)
@@ -2156,11 +2167,12 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
     for t in threads:
         t.start()
     for t in threads:
-        t.join(timeout=10)
+        t.join(timeout=30)
+    assert not any(t.is_alive() for t in threads), "caller thread hung"
     assert len(served) == 8
     assert all(s is old_ctx for s in served)
-    assert done.wait(5)
-    deadline = time.time() + 5
+    assert done.wait(30), "background sweep never executed"
+    deadline = time.time() + 30
     while time.time() < deadline:
         with srv._cached_mkt_ctx_lock:
             if not srv._mkt_ctx_refresh_inflight:
@@ -2182,10 +2194,14 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
     calls = {"n": 0}
     lk = th.Lock()
 
+    # RC-17: barrier guarantees the callers actually overlap; joins are
+    # generous upper bounds with an explicit liveness assert.
+    barrier = th.Barrier(6, timeout=30)
+
     def _fake_sweep(client, **kwargs):
         with lk:
             calls["n"] += 1
-        time.sleep(0.3)
+        time.sleep(0.25)   # hold the sweep open so boot joiners CAN overlap
         return MarketContext()
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
@@ -2193,6 +2209,7 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
     slock = th.Lock()
 
     def _call():
+        barrier.wait()
         out = srv._get_mkt_ctx(None)
         with slock:
             served.append(out)
@@ -2201,7 +2218,8 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
     for t in threads:
         t.start()
     for t in threads:
-        t.join(timeout=10)
+        t.join(timeout=30)
+    assert not any(t.is_alive() for t in threads), "caller thread hung"
     assert len(served) == 6
     assert calls["n"] == 1
     assert all(s is served[0] for s in served), "boot joiners got different contexts"
