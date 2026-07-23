@@ -42,6 +42,7 @@
   <input id="tk" value="SPY" spellcheck="false">
   <span id="narrator">loading…</span>
   <span class="chip tf on" data-tf="1">1m</span>
+  <span class="chip tf" data-tf="3">3m</span>
   <span class="chip tf" data-tf="5">5m</span>
   <span class="chip tf" data-tf="15">15m</span>
   <span class="chip tf" data-tf="60">1h</span>
@@ -76,6 +77,8 @@ let view = null;          // {i0, i1} visible bar index range (fractional)
 let yLock = null;         // {lo, hi} manual price domain when user pans/zooms Y
 let cross = null;         // {mx, my} crosshair position
 let scale = null;
+let daily = null;         // {vwap:[[t,w]…], pdh, pdl, pdc} from canonical 1m rows
+let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
 
 const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
 const j = async u => (await fetch(u)).json();
@@ -97,9 +100,46 @@ function aggregate(src, tfv) {
   return out;
 }
 
+function computeDaily() {
+  // canonical-1m-only derivations (plan §5 main chart): session VWAP polyline +
+  // yesterday's H/L/C. No bars outside the feed → the lines simply don't render.
+  daily = null;
+  if (!raw.length) return;
+  const dkey = t => new Date(t * 1000).toLocaleDateString();
+  const days = []; let cur = null, ck = null;
+  for (const b of raw) { const k = dkey(b.t);
+    if (k !== ck) { cur = []; days.push(cur); ck = k; } cur.push(b); }
+  const today = days[days.length - 1];
+  const prior = days.length > 1 ? days[days.length - 2] : null;
+  let pv = 0, vv = 0; const vwap = [];
+  for (const b of today) { const tp = (b.h + b.l + b.c) / 3;
+    pv += tp * (b.v || 0); vv += (b.v || 0);
+    vwap.push([b.t, vv ? pv / vv : null]); }
+  daily = { vwap,
+    pdh: prior ? Math.max(...prior.map(b => b.h)) : null,
+    pdl: prior ? Math.min(...prior.map(b => b.l)) : null,
+    pdc: prior ? prior[prior.length - 1].c : null };
+}
+
+function vwapAt(tEnd) {
+  if (!daily || !daily.vwap.length) return null;
+  const a = daily.vwap; let lo = 0, hi = a.length - 1, ans = null;
+  while (lo <= hi) { const m = (lo + hi) >> 1;
+    if (a[m][0] < tEnd) { ans = a[m][1]; lo = m + 1; } else hi = m - 1; }
+  return ans;
+}
+
+function clampView() {
+  const minVis = 5;
+  if (view.i0 > bars.length - minVis) {
+    const s = view.i0 - (bars.length - minVis); view.i0 -= s; view.i1 -= s; }
+  if (view.i1 < minVis) {
+    const s = minVis - view.i1; view.i0 += s; view.i1 += s; }
+}
+
 function setBars() {
   bars = aggregate(raw, tf);
-  if (!view || view.i1 > bars.length) {
+  if (!view) {
     const show = Math.min(bars.length, tf === '1' ? 390 : 200);
     view = { i0: Math.max(0, bars.length - show), i1: bars.length };
   }
@@ -114,9 +154,12 @@ async function load() {
       j(`/api/terrain/strikes?ticker=${tk}`).catch(() => null),
       j(`/api/level_crosses?ticker=${tk}&n=8`).catch(() => ({ crosses: [] })),
     ]);
-    const atEnd = !view || view.i1 >= bars.length - 1;
+    // follow the right edge ONLY when actually sitting on it; a view dragged
+    // past the newest bar stays where the operator placed it (snap-back class)
+    const atEnd = !view ||
+      (view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5);
     raw = b.bars || []; terrain = t; strikes = s; crosses = c.crosses || [];
-    setBars();
+    computeDaily(); setBars();
     if (atEnd && view) { const w = view.i1 - view.i0;
       view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
     document.getElementById('narrator').textContent = t.headline || '—';
@@ -124,7 +167,7 @@ async function load() {
       `spot ${fmt((s && s.spot) ?? t.spot)} · regime ${t.regime || '—'} · ` +
       `${t.confidence || '—'} · ${raw.length}×1m bars · ` +
       `strikes ${(s && s.today_source) || 'restart console to activate'} ` +
-      `· wheel=zoom · drag=pan · dbl-click=fit`;
+      `· scroll=taller/shorter · shift+scroll=more/less time · drag=move · dbl-click=fit`;
     document.getElementById('coachlines').innerHTML = learning
       ? (t.lines || []).map(l => '· ' + l).join('<br>') : '';
     draw(); drawHist();
@@ -237,6 +280,23 @@ function draw() {
           ? '<br><i>Landmark only here — sign meaning unproven for this ticker.</i>' : '') });
   }
 
+  // yesterday's H/L/C — white family, labeled on the LEFT (plan §5 main chart)
+  const pdRows = [
+    ['pdh', 'PDH', [8, 4], "Yesterday's high — widely watched breakout/rejection reference."],
+    ['pdl', 'PDL', [8, 4], "Yesterday's low — widely watched breakdown/reclaim reference."],
+    ['pdc', 'PDC', [2, 3], "Yesterday's close — the gap fills or holds against this price."],
+  ];
+  for (const [k, lab, dash, why] of pdRows) {
+    const v = daily && daily[k]; if (v == null || v < lo || v > hi) continue;
+    const yy = y(v);
+    g.strokeStyle = '#f4f6f8'; g.lineWidth = 1.25; g.setLineDash(dash);
+    g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = '#f4f6f8'; g.font = '700 12px system-ui';
+    g.fillText(`${lab} ${fmt(v)}`, PADL + 8, yy - 4);
+    zones.push({ y0: yy - 6, y1: yy + 6, tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` });
+  }
+
   // candles — thick and bright
   const bw = Math.max(2, Math.min(13, (W - PADL - PADR) / nVis - 2));
   const i0 = Math.max(0, Math.floor(view.i0)), i1 = Math.min(bars.length, Math.ceil(view.i1));
@@ -246,6 +306,24 @@ function draw() {
     g.beginPath(); g.moveTo(cx, y(b.h)); g.lineTo(cx, y(b.l)); g.stroke();
     g.fillStyle = up ? '#00e07a' : '#ff3355';
     g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1.5, Math.abs(y(b.o) - y(b.c))));
+  }
+
+  // session VWAP — computed on canonical 1m rows only, sampled per visible bar
+  if (daily && daily.vwap.length) {
+    const t0 = daily.vwap[0][0];
+    g.strokeStyle = '#ff8c00'; g.lineWidth = 2; g.beginPath();
+    let started = false, lastPt = null;
+    for (let i = i0; i < i1; i++) {
+      const b = bars[i]; if (!b || b.t < t0) continue;
+      const tEnd = i + 1 < bars.length ? bars[i + 1].t : Infinity;
+      const w = vwapAt(tEnd); if (w == null) continue;
+      const px = x(i) + bw / 2, py = y(w);
+      if (!started) { g.moveTo(px, py); started = true; } else g.lineTo(px, py);
+      lastPt = [px, py];
+    }
+    g.stroke();
+    if (lastPt) { g.fillStyle = '#ff8c00'; g.font = '800 13px system-ui';
+      g.fillText('VWAP', Math.min(lastPt[0] + 6, W - PADR - 46), lastPt[1] - 6); }
   }
 
   // time scale
@@ -337,22 +415,44 @@ wrap.addEventListener('wheel', ev => {
   ev.preventDefault();
   if (!bars.length || !scale) return;
   const r = wrap.getBoundingClientRect();
-  const anchor = scale.px2i(ev.clientX - r.left);
-  const f = ev.deltaY > 0 ? 1.18 : 1 / 1.18;
-  let w = (view.i1 - view.i0) * f;
-  w = Math.max(12, Math.min(bars.length * 1.2, w));
-  const frac = (anchor - view.i0) / (view.i1 - view.i0);
-  view.i0 = anchor - frac * w; view.i1 = view.i0 + w;
+  const d = ev.deltaY || ev.deltaX;
+  const f = d > 0 ? 1.18 : 1 / 1.18;
+  if (ev.shiftKey) {
+    // shift+scroll: more/less TIME on screen, anchored at the cursor
+    const anchor = scale.px2i(ev.clientX - r.left);
+    let w = (view.i1 - view.i0) * f;
+    w = Math.max(12, Math.min(bars.length * 1.2, w));
+    const frac = (anchor - view.i0) / (view.i1 - view.i0);
+    view.i0 = anchor - frac * w; view.i1 = view.i0 + w;
+    clampView();
+  } else {
+    // plain scroll: chart TALLER (scroll up) / SHORTER (scroll down),
+    // anchored at the price under the cursor (operator directive 2026-07-23)
+    const dom = yLock || domain();
+    const anchorP = scale.px2price(ev.clientY - r.top);
+    let span = (dom.hi - dom.lo) * f;
+    span = Math.max(0.02, Math.min((dom.hi - dom.lo) * 50, span));
+    const frac = (dom.hi - anchorP) / (dom.hi - dom.lo);
+    const hi = anchorP + frac * span;
+    yLock = { lo: hi - span, hi };
+  }
   draw(); drawHist();
 }, { passive: false });
 
 let drag = null;
 wrap.addEventListener('mousedown', ev => {
-  drag = { mx: ev.clientX, my: ev.clientY, v: { ...view },
+  drag = { mx: ev.clientX, my: ev.clientY, v: { ...view }, moved: 0,
            dom: yLock ? { ...yLock } : domain() };
 });
-window.addEventListener('mouseup', () => { drag = null; });
-wrap.addEventListener('dblclick', () => { yLock = null; view = null; setBars(); draw(); drawHist(); });
+window.addEventListener('mouseup', () => {
+  if (drag && drag.moved > 3) lastDragEnd = performance.now();
+  drag = null;
+});
+wrap.addEventListener('dblclick', () => {
+  // a fast pair of drags must NOT be read as "reset view" (snap-back class)
+  if (performance.now() - lastDragEnd < 500) return;
+  yLock = null; view = null; setBars(); draw(); drawHist();
+});
 document.getElementById('fit').addEventListener('click', () => {
   yLock = null; view = null; setBars(); draw(); drawHist(); });
 
@@ -360,8 +460,11 @@ wrap.addEventListener('mousemove', ev => {
   const r = wrap.getBoundingClientRect();
   const mx = ev.clientX - r.left, my = ev.clientY - r.top;
   if (drag && scale) {
+    drag.moved = Math.max(drag.moved,
+      Math.abs(ev.clientX - drag.mx) + Math.abs(ev.clientY - drag.my));
     const dxBars = (drag.mx - ev.clientX) / ((scale.W - PADL - PADR) / (view.i1 - view.i0));
     view.i0 = drag.v.i0 + dxBars; view.i1 = drag.v.i1 + dxBars;
+    clampView();
     const span = drag.dom.hi - drag.dom.lo;
     const dy = (ev.clientY - drag.my) / (scale.H - PADT - PADB) * span;
     yLock = { lo: drag.dom.lo + dy, hi: drag.dom.hi + dy };
