@@ -5,88 +5,126 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Chart — terrain on price</title>
 <style>
-  :root { --bg:#0a0c0f; --panel:#111418; --border:#252c36; --text:#e5e7eb; --dim:#9ca3af;
-          --green:#34d399; --red:#f87171; --amber:#fbbf24; --blue:#60a5fa; --vio:#a5b4fc; }
+  :root { --bg:#05070a; --panel:#10151c; --border:#2b3646; --text:#f4f6f8; --dim:#aab6c4;
+          --green:#00e07a; --red:#ff3355; --amber:#ffc400; --blue:#33aaff; --vio:#c792ff;
+          --cyan:#00e5ff; --pink:#ff66cc; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text);
-         font:13px 'Segoe UI', system-ui, sans-serif; }
-  #top { display:flex; gap:12px; align-items:center; padding:9px 14px;
+         font:14px 'Segoe UI', system-ui, sans-serif; }
+  #top { display:flex; gap:10px; align-items:center; padding:8px 14px;
          border-bottom:1px solid var(--border); flex-wrap:wrap; }
   #tk { background:var(--panel); color:var(--text); border:1px solid var(--border);
-        border-radius:6px; padding:6px 10px; width:86px; font-weight:700;
+        border-radius:6px; padding:7px 10px; width:92px; font-weight:800; font-size:15px;
         text-transform:uppercase; }
-  #narrator { flex:1; min-width:220px; color:var(--amber); font-weight:600; }
+  #narrator { flex:1; min-width:220px; color:var(--amber); font-weight:700; font-size:15px; }
   .chip { border:1px solid var(--border); background:var(--panel); color:var(--dim);
-          border-radius:12px; padding:4px 12px; cursor:pointer; font-size:11px; }
-  .chip.on { color:var(--text); border-color:var(--blue); background:#16213a; }
-  #meta { color:var(--dim); font-size:11px; width:100%; }
+          border-radius:12px; padding:5px 13px; cursor:pointer; font-size:12px;
+          font-weight:700; user-select:none; }
+  .chip.on { color:#031018; border-color:var(--blue); background:var(--blue); }
+  .tf.on { background:var(--amber); border-color:var(--amber); }
+  #meta { color:var(--dim); font-size:12px; width:100%; }
   #layout { display:flex; }
-  #wrap { position:relative; flex:1; min-width:0; }
-  #histwrap { width:220px; border-left:1px solid var(--border); position:relative; }
+  #wrap { position:relative; flex:1; min-width:0; cursor:crosshair; }
+  #histwrap { width:230px; border-left:1px solid var(--border); }
   canvas { display:block; width:100%; }
-  #tip { position:fixed; display:none; max-width:360px; background:var(--panel);
-         border:1px solid var(--border); border-radius:8px; padding:10px 12px;
-         font-size:12px; line-height:1.5; pointer-events:none; z-index:9;
-         box-shadow:0 6px 24px rgba(0,0,0,.55); }
+  #tip { position:fixed; display:none; max-width:380px; background:var(--panel);
+         border:1px solid var(--blue); border-radius:8px; padding:11px 13px;
+         font-size:13px; line-height:1.55; pointer-events:none; z-index:9;
+         box-shadow:0 8px 28px rgba(0,0,0,.65); }
   #tip b { color:var(--amber); }
-  #coachlines { padding:8px 14px; color:var(--dim); font-size:12px; line-height:1.6;
+  #coachlines { padding:8px 14px; color:var(--dim); font-size:13px; line-height:1.65;
                 border-top:1px solid var(--border); }
-  a { color:var(--blue); text-decoration:none; }
+  a { color:var(--blue); text-decoration:none; font-weight:700; }
 </style>
 </head>
 <body>
 <div id="top">
   <input id="tk" value="SPY" spellcheck="false">
   <span id="narrator">loading…</span>
-  <span class="chip on" id="exp-all">ALL EXPIRIES</span>
+  <span class="chip tf on" data-tf="1">1m</span>
+  <span class="chip tf" data-tf="5">5m</span>
+  <span class="chip tf" data-tf="15">15m</span>
+  <span class="chip tf" data-tf="60">1h</span>
+  <span class="chip tf" data-tf="D">D</span>
+  <span class="chip on" id="exp-all">ALL</span>
   <span class="chip" id="exp-near">≤7 DTE</span>
   <span class="chip" id="exp-far">MONTHLY+</span>
-  <span class="chip on" id="ghost">YESTERDAY GHOST</span>
-  <span class="chip on" id="learn">LEARNING MODE</span>
-  <a href="/">← console</a>
+  <span class="chip on" id="ghost">GHOST</span>
+  <span class="chip on" id="learn">COACH</span>
+  <span class="chip" id="fit" title="reset zoom/pan">FIT</span>
+  <a href="/">← CONSOLE</a>
   <span id="meta"></span>
 </div>
 <div id="layout">
-  <div id="wrap"><canvas id="cv" height="540"></canvas></div>
-  <div id="histwrap"><canvas id="hv" height="540"></canvas></div>
+  <div id="wrap"><canvas id="cv" height="560"></canvas></div>
+  <div id="histwrap"><canvas id="hv" height="560"></canvas></div>
 </div>
 <div id="tip"></div>
 <div id="coachlines"></div>
 <script>
-/* CR-03 screen 1 — full v1 (operator directive 2026-07-23: "everything end to end").
-   Candles /api/bars1m · levels+coach /api/terrain · per-strike gamma+volume+ghost
-   /api/terrain/strikes · event badges /api/level_crosses. Every market sentence is
-   SERVER-GENERATED (terrain read / level_crosses rows); this page renders state,
-   never invents confidence. Polling v1 by design; typed WS replaces transport at
-   CR-CAP — the drawing layer stays. */
+/* CR-03 screen 1 v2 — TradingView-grade interaction (operator directive 2026-07-23):
+   wheel = zoom time axis at cursor · drag = pan time AND price · double-click/FIT =
+   re-fit · timeframe chips aggregate client-side from canonical 1m bars · crosshair
+   with axis readouts · ALL terrain key levels plotted · bright palette, loud scales.
+   Every market sentence remains SERVER-GENERATED (terrain read / level_crosses). */
 'use strict';
 const cv = document.getElementById('cv'), hv = document.getElementById('hv');
 const tip = document.getElementById('tip'), wrap = document.getElementById('wrap');
-let bars = [], terrain = null, strikes = null, crosses = [];
-let zones = [], scope = 'all', showGhost = true, learning = true;
+let raw = [], bars = [], terrain = null, strikes = null, crosses = [];
+let zones = [], scope = 'all', showGhost = true, learning = true, tf = '1';
+let view = null;          // {i0, i1} visible bar index range (fractional)
+let yLock = null;         // {lo, hi} manual price domain when user pans/zooms Y
+let cross = null;         // {mx, my} crosshair position
+let scale = null;
 
 const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
+const j = async u => (await fetch(u)).json();
 
-async function j(u) { const r = await fetch(u); return r.json(); }
+function aggregate(src, tfv) {
+  if (tfv === '1') return src.slice();
+  const out = [], key = t => tfv === 'D'
+    ? new Date(t * 1000).toLocaleDateString()
+    : Math.floor(t / (60 * Number(tfv)));
+  let cur = null, ck = null;
+  for (const b of src) {
+    const k = key(b.t);
+    if (k !== ck) { if (cur) out.push(cur);
+      cur = { t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 }; ck = k; }
+    else { cur.h = Math.max(cur.h, b.h); cur.l = Math.min(cur.l, b.l);
+      cur.c = b.c; cur.v += (b.v || 0); }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+function setBars() {
+  bars = aggregate(raw, tf);
+  if (!view || view.i1 > bars.length) {
+    const show = Math.min(bars.length, tf === '1' ? 390 : 200);
+    view = { i0: Math.max(0, bars.length - show), i1: bars.length };
+  }
+}
 
 async function load() {
   const tk = document.getElementById('tk').value.trim().toUpperCase() || 'SPY';
   try {
     const [b, t, s, c] = await Promise.all([
-      j(`/api/bars1m?ticker=${tk}&limit=780`),
+      j(`/api/bars1m?ticker=${tk}&limit=3000`),
       j(`/api/terrain?ticker=${tk}`),
-      // strikes endpoint is newer than a long-running server process — the page
-      // must not lose candles/bands because the histogram feed 404s pre-restart.
       j(`/api/terrain/strikes?ticker=${tk}`).catch(() => null),
-      j(`/api/level_crosses?ticker=${tk}&n=8`).catch(() => ({crosses: []})),
+      j(`/api/level_crosses?ticker=${tk}&n=8`).catch(() => ({ crosses: [] })),
     ]);
-    bars = (b.bars || []).slice(-390);
-    terrain = t; strikes = s; crosses = c.crosses || [];
+    const atEnd = !view || view.i1 >= bars.length - 1;
+    raw = b.bars || []; terrain = t; strikes = s; crosses = c.crosses || [];
+    setBars();
+    if (atEnd && view) { const w = view.i1 - view.i0;
+      view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
     document.getElementById('narrator').textContent = t.headline || '—';
     document.getElementById('meta').textContent =
-      `spot ${fmt(s.spot ?? t.spot)} · regime ${t.regime || '—'} · confidence ` +
-      `${t.confidence || '—'} · bars ${bars.length} · strikes ${s.today_source || '—'}` +
-      (s.prior_source ? ` · ghost ${s.prior_source}` : ' · no prior capture yet');
+      `spot ${fmt((s && s.spot) ?? t.spot)} · regime ${t.regime || '—'} · ` +
+      `${t.confidence || '—'} · ${raw.length}×1m bars · ` +
+      `strikes ${(s && s.today_source) || 'restart console to activate'} ` +
+      `· wheel=zoom · drag=pan · dbl-click=fit`;
     document.getElementById('coachlines').innerHTML = learning
       ? (t.lines || []).map(l => '· ' + l).join('<br>') : '';
     draw(); drawHist();
@@ -95,108 +133,181 @@ async function load() {
   }
 }
 
-let scale = null;  // {lo, hi, y} shared with the histogram panel
-function draw() {
-  const dpr = window.devicePixelRatio || 1;
-  const W = wrap.clientWidth, H = 540;
-  cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
-  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
-  if (!bars.length) { g.fillStyle = '#9ca3af'; g.fillText('no bars yet — pre-market', 20, 40); }
+const PADL = 6, PADR = 78, PADT = 14, PADB = 26;
 
-  const padL = 8, padR = 58, padT = 12, padB = 20;
-  const T = terrain || {}, S = strikes || {};
+function domain() {
+  const i0 = Math.max(0, Math.floor(view.i0)), i1 = Math.min(bars.length, Math.ceil(view.i1));
+  if (yLock) return { lo: yLock.lo, hi: yLock.hi };
   let lo = Infinity, hi = -Infinity;
-  for (const b of bars) { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h); }
-  for (const v of [T.gamma_flip, T.call_wall, T.put_wall, S.spot ?? T.spot])
+  for (let i = i0; i < i1; i++) { lo = Math.min(lo, bars[i].l); hi = Math.max(hi, bars[i].h); }
+  const T = terrain || {};
+  for (const v of [T.gamma_flip, T.call_wall, T.put_wall])
     if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   if (!isFinite(lo)) { lo = 0; hi = 1; }
-  const span = (hi - lo) || 1; lo -= span * 0.05; hi += span * 0.05;
-  const y = p => padT + (hi - p) / (hi - lo) * (H - padT - padB);
-  scale = { lo, hi, y, H, padT, padB };
-  const n = Math.max(bars.length, 1);
-  const bw = Math.max(2, Math.min(9, (W - padL - padR) / n - 1));
-  const x = i => padL + i * ((W - padL - padR) / n);
+  const span = (hi - lo) || 1;
+  return { lo: lo - span * 0.05, hi: hi + span * 0.05 };
+}
+
+function niceStep(span, target) {
+  const rough = span / target, p = Math.pow(10, Math.floor(Math.log10(rough)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (rough <= m * p) return m * p;
+  return 10 * p;
+}
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = wrap.clientWidth, H = 560;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  if (!bars.length) { g.fillStyle = '#aab6c4'; g.font = '14px system-ui';
+    g.fillText('no bars yet — pre-market', 20, 40); return; }
+
+  const { lo, hi } = domain();
+  const y = p => PADT + (hi - p) / (hi - lo) * (H - PADT - PADB);
+  const px2price = py => hi - (py - PADT) / (H - PADT - PADB) * (hi - lo);
+  const nVis = Math.max(view.i1 - view.i0, 1);
+  const x = i => PADL + (i - view.i0) * ((W - PADL - PADR) / nVis);
+  const px2i = px => view.i0 + (px - PADL) / ((W - PADL - PADR) / nVis);
+  scale = { lo, hi, y, x, px2price, px2i, W, H };
+
+  // gridlines + LOUD price scale
+  const step = niceStep(hi - lo, 8);
+  g.font = '700 13px system-ui';
+  for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) {
+    const yy = y(p);
+    g.strokeStyle = 'rgba(170,182,196,0.14)';
+    g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke();
+    g.fillStyle = '#f4f6f8';
+    g.fillText(p.toFixed(step < 1 ? 2 : 2), W - PADR + 6, yy + 4);
+  }
 
   zones = [];
+  const T = terrain || {};
   const unproven = T.regime === 'SIGN_UNPROVEN';
+  // wall BANDS with a real price RANGE: strike ± half the local strike spacing
+  const ks = ((strikes && strikes.today && strikes.today.all) || []).map(r => r[0]);
+  let half = 0.5;
+  if (ks.length > 2) {
+    const gaps = []; for (let i = 1; i < ks.length; i++) gaps.push(ks[i] - ks[i - 1]);
+    gaps.sort((a, b) => a - b); half = (gaps[Math.floor(gaps.length / 2)] || 1) / 2;
+  }
   const band = (level, kind) => {
     if (level == null) return;
-    const h8 = Math.max(13, (H - padT - padB) * 0.042);
-    const y0 = y(level) - h8 / 2, sell = kind === 'call';
-    g.fillStyle = sell ? 'rgba(248,113,113,0.13)' : 'rgba(52,211,153,0.13)';
-    g.fillRect(padL, y0, W - padL - padR, h8);
-    g.fillStyle = sell ? '#f87171' : '#34d399'; g.font = '600 12px system-ui';
-    g.fillText((sell ? 'CALL WALL ' : 'PUT WALL ') + fmt(level) +
-      (unproven ? '' : (sell ? ' — dealers lean SELLING' : ' — dealers lean BUYING')),
-      padL + 8, y0 - 4);
-    zones.push({ y0, y1: y0 + h8,
-      tipHtml: `<b>${sell ? 'Call wall' : 'Put wall'} ${fmt(level)}</b><br>` +
-        `Heavy standing option inventory at this strike — dealer hedging ` +
-        `${sell ? 'sells into strength' : 'buys into weakness'} here, which is why it acts as ` +
-        `${sell ? 'resistance' : 'support'}.<br><i>Wall evidence: OI-weighted holds 70–72% on ` +
-        `1,000+ of our own days (measured tonight; volume-built walls held only 62–66%).</i>` +
-        (unproven ? '<br><i>Single name: BUY/SELL lean wording withheld — dealer-sign unproven (register row, due 2026-08-03).</i>' : '') });
+    const yTop = y(level + half), yBot = y(level - half), sell = kind === 'call';
+    g.fillStyle = sell ? 'rgba(255,51,85,0.20)' : 'rgba(0,224,122,0.20)';
+    g.fillRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
+    g.strokeStyle = sell ? '#ff3355' : '#00e07a'; g.lineWidth = 1.5;
+    g.strokeRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
+    g.fillStyle = sell ? '#ff3355' : '#00e07a'; g.font = '800 14px system-ui';
+    g.fillText((sell ? `CALL WALL ${fmt(level - half)}–${fmt(level + half)}`
+                     : `PUT WALL ${fmt(level - half)}–${fmt(level + half)}`) +
+      (unproven ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY')), PADL + 8, yTop - 5);
+    zones.push({ y0: yTop, y1: yBot,
+      tipHtml: `<b>${sell ? 'Call wall' : 'Put wall'} ${fmt(level)} (band ±${fmt(half)})</b><br>` +
+        `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
+        `in this range; acts as ${sell ? 'resistance' : 'support'}.<br>` +
+        `<i>Measured: OI walls hold 70–72% (1,000+ days); volume-built only 62–66%.</i>` +
+        (unproven ? '<br><i>Single name: BUY/SELL lean withheld — dealer-sign unproven.</i>' : '') });
   };
   band(T.call_wall, 'call'); band(T.put_wall, 'put');
 
-  if (T.gamma_flip != null) {
-    const yf = y(T.gamma_flip);
-    g.strokeStyle = '#e5e7eb'; g.setLineDash([7, 5]); g.lineWidth = 1.5;
-    g.beginPath(); g.moveTo(padL, yf); g.lineTo(W - padR, yf); g.stroke(); g.setLineDash([]);
-    g.fillStyle = '#e5e7eb'; g.font = '600 11px system-ui';
-    g.fillText(`GAMMA FLIP ${fmt(T.gamma_flip)}`, padL + 8, yf - 5);
-    zones.push({ y0: yf - 7, y1: yf + 7,
-      tipHtml: `<b>Gamma flip ${fmt(T.gamma_flip)}</b><br>The regime line: below it dealer ` +
-        `hedging trades WITH moves (amplifies); above it, AGAINST them (dampens).` +
-        `<br><i>Confidence: ${T.confidence || '—'}.</i>` +
-        (unproven ? '<br><i>Landmark only on this ticker — what the sign MEANS is the unproven part.</i>' : '') });
+  // ALL other key levels — bright, labeled, each with a coach tooltip
+  const levels = [
+    ['gamma_flip', 'FLIP', '#f4f6f8', 'The regime line — amplify below, dampen above.', [7, 5]],
+    ['gamma_pin', 'PIN', '#c792ff', 'Largest gamma strike — tested NULL as a price magnet on our data; structure only.', []],
+    ['hvl', 'HVL', '#33aaff', 'Highest-volatility level (absolute gamma) — SpotGamma-style anchor.', []],
+    ['max_pain', 'MAX PAIN', '#ff66cc', 'Strike minimizing option-holder value — expiry-day context only.', []],
+    ['key_delta_strike', 'KDS', '#00e5ff', 'Biggest total delta strike — hedging magnet candidate (unproven).', []],
+    ['hvp', 'HVP', '#ffc400', 'Amplification pocket — most negative dealer gamma strike.', [2, 3]],
+    ['lvp', 'LVP', '#00e07a', 'Damping pocket — most positive dealer gamma strike.', [2, 3]],
+    ['call_charm_wall', 'C-CHARM', '#ff9e40', 'Largest call charm strike — hedge decay flow into the close.', [4, 3]],
+    ['put_charm_wall', 'P-CHARM', '#40ffd0', 'Largest put charm strike — hedge decay flow into the close.', [4, 3]],
+  ];
+  g.font = '700 12px system-ui';
+  for (const [key, lab, col, why, dash] of levels) {
+    const v = T[key]; if (v == null || v < lo || v > hi) continue;
+    const yy = y(v);
+    g.strokeStyle = col; g.lineWidth = key === 'gamma_flip' ? 2 : 1.25;
+    g.setLineDash(dash); g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy);
+    g.stroke(); g.setLineDash([]);
+    g.fillStyle = col; g.fillText(`${lab} ${fmt(v)}`, W - PADR - 92, yy - 4);
+    zones.push({ y0: yy - 6, y1: yy + 6,
+      tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` +
+        (key === 'gamma_flip' && unproven
+          ? '<br><i>Landmark only here — sign meaning unproven for this ticker.</i>' : '') });
   }
 
-  for (let i = 0; i < bars.length; i++) {
+  // candles — thick and bright
+  const bw = Math.max(2, Math.min(13, (W - PADL - PADR) / nVis - 2));
+  const i0 = Math.max(0, Math.floor(view.i0)), i1 = Math.min(bars.length, Math.ceil(view.i1));
+  for (let i = i0; i < i1; i++) {
     const b = bars[i], up = b.c >= b.o, cx = x(i) + bw / 2;
-    g.strokeStyle = up ? '#34d399' : '#f87171';
+    g.strokeStyle = up ? '#00e07a' : '#ff3355'; g.lineWidth = 1.4;
     g.beginPath(); g.moveTo(cx, y(b.h)); g.lineTo(cx, y(b.l)); g.stroke();
-    g.fillStyle = up ? '#34d399' : '#f87171';
-    g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1, Math.abs(y(b.o) - y(b.c))));
+    g.fillStyle = up ? '#00e07a' : '#ff3355';
+    g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1.5, Math.abs(y(b.o) - y(b.c))));
   }
 
-  // event badges — recent level crossings, drawn AT the level they crossed
+  // time scale
+  g.fillStyle = '#aab6c4'; g.font = '700 12px system-ui';
+  for (let k = 0; k <= 5; k++) {
+    const i = Math.round(view.i0 + (nVis - 1) * k / 5);
+    if (!bars[i]) continue;
+    const d = new Date(bars[i].t * 1000);
+    const lab = tf === 'D' ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    g.fillText(lab, Math.min(x(i), W - PADR - 46), H - 8);
+  }
+
+  // event badges
   for (const cr of crosses) {
-    const lv = cr.level_value; if (lv == null) continue;
+    const lv = cr.level_value; if (lv == null || lv < lo || lv > hi) continue;
     const yv = y(lv);
-    g.fillStyle = '#fbbf24';
-    g.beginPath(); g.arc(W - padR - 14, yv, 4, 0, 6.283); g.fill();
-    zones.push({ y0: yv - 6, y1: yv + 6,
+    g.fillStyle = '#ffc400';
+    g.beginPath(); g.arc(W - PADR - 16, yv, 5, 0, 6.283); g.fill();
+    zones.push({ y0: yv - 7, y1: yv + 7,
       tipHtml: `<b>${cr.level_name || 'level'} ${fmt(lv)} crossed ${cr.direction || ''}</b>` +
-        `<br><i>Recent crossing logged by the console (level_crosses feed).</i>` });
+        `<br><i>Recent crossing from the console's own log.</i>` });
   }
 
+  // spot
   const spot = (strikes && strikes.spot != null) ? strikes.spot : T.spot;
-  if (spot != null) {
+  if (spot != null && spot >= lo && spot <= hi) {
     const ys = y(spot);
-    g.fillStyle = '#fbbf24'; g.font = '700 12px system-ui';
-    g.fillText('SPOT ' + fmt(spot), W - padR + 3, ys + 4);
-    g.fillRect(W - padR - 4, ys - 1, 6, 2);
+    g.fillStyle = '#ffc400'; g.font = '800 14px system-ui';
+    g.fillRect(W - PADR, ys - 10, PADR - 2, 20);
+    g.fillStyle = '#05070a'; g.fillText(fmt(spot), W - PADR + 6, ys + 5);
   }
-  g.fillStyle = '#9ca3af'; g.font = '10px system-ui';
-  for (let k = 0; k <= 4; k++) {
-    const p = lo + (hi - lo) * k / 4;
-    g.fillText(fmt(p), W - padR + 3, y(p) + 3);
+
+  // crosshair + readout
+  if (cross) {
+    const { mx, my } = cross;
+    g.strokeStyle = 'rgba(244,246,248,0.45)'; g.setLineDash([4, 4]); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(mx, PADT); g.lineTo(mx, H - PADB); g.stroke();
+    g.beginPath(); g.moveTo(PADL, my); g.lineTo(W - PADR, my); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#33aaff'; g.fillRect(W - PADR, my - 10, PADR - 2, 20);
+    g.fillStyle = '#05070a'; g.font = '800 13px system-ui';
+    g.fillText(fmt(px2price(my)), W - PADR + 6, my + 5);
+    const bi = Math.floor(px2i(mx));
+    if (bars[bi]) {
+      const b = bars[bi];
+      g.fillStyle = '#f4f6f8'; g.font = '700 13px system-ui';
+      g.fillText(`O ${fmt(b.o)}  H ${fmt(b.h)}  L ${fmt(b.l)}  C ${fmt(b.c)}` +
+        (b.v ? `  V ${b.v.toLocaleString()}` : ''), PADL + 6, PADT + 12);
+    }
   }
 }
 
 function drawHist() {
   const dpr = window.devicePixelRatio || 1;
-  const W = 220, H = 540;
+  const W = 230, H = 560;
   hv.width = W * dpr; hv.height = H * dpr; hv.style.height = H + 'px';
   const g = hv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
   if (!scale) return;
-  if (!strikes) {
-    g.fillStyle = '#9ca3af'; g.font = '11px system-ui';
-    g.fillText('histogram activates at the', 12, 24);
-    g.fillText('next console start', 12, 38);
-    return;
-  }
+  g.font = '700 12px system-ui';
+  if (!strikes) { g.fillStyle = '#aab6c4';
+    g.fillText('histogram activates at the', 12, 26);
+    g.fillText('next console start', 12, 42); return; }
   const { y } = scale;
   const rows = (strikes.today || {})[scope] || [];
   const ghost = showGhost ? ((strikes.prior || {})[scope] || []) : [];
@@ -204,41 +315,76 @@ function drawHist() {
   const vis = rows.filter(inView), gvis = ghost.filter(inView);
   const maxG = Math.max(1, ...vis.map(r => Math.abs(r[1])), ...gvis.map(r => Math.abs(r[1])));
   const maxV = Math.max(1, ...vis.map(r => r[2]));
-  const x0 = 6, wMax = 150;
-  g.fillStyle = '#9ca3af'; g.font = '10px system-ui';
-  g.fillText(`gamma per strike (${scope.toUpperCase()})`, x0, 12);
-  // yesterday ghosts (outline)
-  g.strokeStyle = 'rgba(165,180,252,0.55)'; g.setLineDash([3, 2]);
-  for (const r of gvis) {
-    const w = Math.abs(r[1]) / maxG * wMax;
-    g.strokeRect(x0, y(r[0]) - 2.5, Math.max(w, 1), 5);
-  }
+  const x0 = 6, wMax = 158;
+  g.fillStyle = '#f4f6f8';
+  g.fillText(`GAMMA / STRIKE (${scope.toUpperCase()})`, x0, 14);
+  g.strokeStyle = 'rgba(199,146,255,0.8)'; g.setLineDash([3, 2]);
+  for (const r of gvis) g.strokeRect(x0, y(r[0]) - 3, Math.max(Math.abs(r[1]) / maxG * wMax, 1), 6);
   g.setLineDash([]);
-  // today's bars: color by sign (dealer long vs short at that strike)
   for (const r of vis) {
-    const w = Math.abs(r[1]) / maxG * wMax;
-    g.fillStyle = r[1] >= 0 ? 'rgba(96,165,250,0.85)' : 'rgba(248,113,113,0.85)';
-    g.fillRect(x0, y(r[0]) - 2.5, Math.max(w, 1), 5);
-    // live volume sliver beneath
+    g.fillStyle = r[1] >= 0 ? '#33aaff' : '#ff3355';
+    g.fillRect(x0, y(r[0]) - 3, Math.max(Math.abs(r[1]) / maxG * wMax, 1), 6);
     const wv = r[2] / maxV * wMax;
-    if (wv > 0.5) { g.fillStyle = 'rgba(251,191,36,0.65)'; g.fillRect(x0, y(r[0]) + 3, wv, 2); }
+    if (wv > 0.5) { g.fillStyle = '#ffc400'; g.fillRect(x0, y(r[0]) + 4, wv, 2.5); }
   }
-  g.fillStyle = '#9ca3af';
-  g.fillText('■ +gamma  ■ −gamma  ▁ volume', x0, H - 20);
-  g.fillText(showGhost ? '▢ yesterday (ghost)' : '', x0, H - 8);
+  g.fillStyle = '#aab6c4';
+  g.fillText('■ +γ  ■ −γ  ▁ volume', x0, H - 24);
+  if (showGhost) g.fillText('▢ yesterday (ghost)', x0, H - 10);
 }
 
-wrap.addEventListener('mousemove', ev => {
-  const r = wrap.getBoundingClientRect(), my = ev.clientY - r.top;
-  const z = zones.find(z => my >= z.y0 && my <= z.y1);
-  if (!z) { tip.style.display = 'none'; return; }
-  tip.innerHTML = z.tipHtml; tip.style.display = 'block';
-  tip.style.left = Math.min(ev.clientX + 14, window.innerWidth - 380) + 'px';
-  tip.style.top = (ev.clientY + 14) + 'px';
+/* ── interactions: wheel zoom, drag pan (x+y), dbl-click fit, crosshair ── */
+wrap.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  if (!bars.length || !scale) return;
+  const r = wrap.getBoundingClientRect();
+  const anchor = scale.px2i(ev.clientX - r.left);
+  const f = ev.deltaY > 0 ? 1.18 : 1 / 1.18;
+  let w = (view.i1 - view.i0) * f;
+  w = Math.max(12, Math.min(bars.length * 1.2, w));
+  const frac = (anchor - view.i0) / (view.i1 - view.i0);
+  view.i0 = anchor - frac * w; view.i1 = view.i0 + w;
+  draw(); drawHist();
+}, { passive: false });
+
+let drag = null;
+wrap.addEventListener('mousedown', ev => {
+  drag = { mx: ev.clientX, my: ev.clientY, v: { ...view },
+           dom: yLock ? { ...yLock } : domain() };
 });
-wrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+window.addEventListener('mouseup', () => { drag = null; });
+wrap.addEventListener('dblclick', () => { yLock = null; view = null; setBars(); draw(); drawHist(); });
+document.getElementById('fit').addEventListener('click', () => {
+  yLock = null; view = null; setBars(); draw(); drawHist(); });
+
+wrap.addEventListener('mousemove', ev => {
+  const r = wrap.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  if (drag && scale) {
+    const dxBars = (drag.mx - ev.clientX) / ((scale.W - PADL - PADR) / (view.i1 - view.i0));
+    view.i0 = drag.v.i0 + dxBars; view.i1 = drag.v.i1 + dxBars;
+    const span = drag.dom.hi - drag.dom.lo;
+    const dy = (ev.clientY - drag.my) / (scale.H - PADT - PADB) * span;
+    yLock = { lo: drag.dom.lo + dy, hi: drag.dom.hi + dy };
+    cross = { mx, my }; draw(); drawHist(); return;
+  }
+  cross = { mx, my };
+  const z = zones.find(z => my >= z.y0 && my <= z.y1);
+  if (z) { tip.innerHTML = z.tipHtml; tip.style.display = 'block';
+    tip.style.left = Math.min(ev.clientX + 16, window.innerWidth - 400) + 'px';
+    tip.style.top = (ev.clientY + 16) + 'px';
+  } else tip.style.display = 'none';
+  draw();
+});
+wrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; cross = null; draw(); });
 
 function chip(id, fn) { document.getElementById(id).addEventListener('click', fn); }
+for (const el of document.querySelectorAll('.tf')) {
+  el.addEventListener('click', () => {
+    tf = el.dataset.tf;
+    for (const e2 of document.querySelectorAll('.tf')) e2.classList.toggle('on', e2 === el);
+    view = null; yLock = null; setBars(); draw(); drawHist();
+  });
+}
 function setScope(s) {
   scope = s;
   for (const [id, v] of [['exp-all', 'all'], ['exp-near', 'near'], ['exp-far', 'far']])
@@ -254,7 +400,7 @@ chip('learn', () => { learning = !learning;
   document.getElementById('learn').classList.toggle('on', learning);
   document.getElementById('coachlines').innerHTML = learning
     ? ((terrain || {}).lines || []).map(l => '· ' + l).join('<br>') : ''; });
-document.getElementById('tk').addEventListener('change', load);
+document.getElementById('tk').addEventListener('change', () => { view = null; yLock = null; load(); });
 window.addEventListener('resize', () => { draw(); drawHist(); });
 load(); setInterval(load, 15000);
 </script>
