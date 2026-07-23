@@ -11014,6 +11014,17 @@ def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
     return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
 
 
+@app.get("/api/spot")
+def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Featherweight live spot for fast UI polling (operator 2026-07-23: 15s spot
+    lag on /chart). The ONE price authority (resolve_spot, RC-14) — no chain, no
+    model stack, safe at a 2-3s poll."""
+    tk = (ticker or DEFAULT_TICKER).upper().strip()
+    spot, source, ts = resolve_spot(tk)
+    return JSONResponse({"ticker": tk, "spot": spot, "spot_source": source,
+                         "spot_as_of_ts_utc": ts})
+
+
 @app.get("/chart", response_class=HTMLResponse)
 def chart_page():
     """CR-03 screen-1 v0 — chart-first view (candles + terrain bands + coach)."""

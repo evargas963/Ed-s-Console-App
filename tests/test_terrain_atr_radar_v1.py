@@ -236,6 +236,19 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
     assert srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ"
 
 
+def test_spot_endpoint_shape_single_authority():
+    """Fast-poll spot feed for /chart (2.5s): exact shape, one price authority."""
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    client = TestClient(srv.app)
+    r = client.get("/api/spot?ticker=SPY")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ticker"] == "SPY"
+    assert set(body) == {"ticker", "spot", "spot_source", "spot_as_of_ts_utc"}
+
+
 def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
     expiry scopes for today + prior capture, sorted by strike, read-only."""

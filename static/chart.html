@@ -68,6 +68,11 @@
   #coach1 b { color:var(--vio); }
   #coach2 { top:64%; background:rgba(255,196,0,.08); border-color:rgba(255,196,0,.5); }
   #coach2 b { color:var(--amber); }
+  #biglegend { position:absolute; top:6px; left:10px; pointer-events:none; z-index:5;
+               line-height:1.15; text-shadow:0 2px 6px rgba(0,0,0,.85); }
+  #biglegend .sym { font-size:15px; font-weight:800; color:var(--dim); letter-spacing:.05em; }
+  #biglegend .px { font-size:30px; font-weight:800; }
+  #biglegend .chg { font-size:14px; font-weight:800; }
   #wrap .lastdot { position:absolute; width:10px; height:10px; border-radius:50%;
                    background:var(--amber); box-shadow:0 0 10px var(--amber);
                    animation:pulse 1.6s ease-in-out infinite; pointer-events:none;
@@ -116,7 +121,7 @@
   <span id="meta"></span>
 </div>
 <div id="layout" class="card">
-  <div id="wrap"><canvas id="cv" height="560"></canvas><div class="lastdot" id="lastdot"></div></div>
+  <div id="wrap"><canvas id="cv" height="560"></canvas><div id="biglegend"></div><div class="lastdot" id="lastdot"></div></div>
   <div id="histwrap"><canvas id="hv" height="560"></canvas></div>
 </div>
 <div class="card" id="gammacard">
@@ -160,6 +165,7 @@ let cross = null;         // {mx, my} crosshair position
 let scale = null;
 let daily = null;         // {vwap:[[t,w]…], pdh, pdl, pdc} from canonical 1m rows
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
+let liveSpot = null;      // 2.5s fast-poll spot (/api/spot); 15s cycle is the fallback
 let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
 
 const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
@@ -513,7 +519,19 @@ function draw() {
   // last regular-session bar, so outside RTH the live spot can sit far from the
   // last close; the dashed line + session label make that gap self-explanatory.
   // Auto domain includes spot; under yLock clamp to the pane edge so the cue never vanishes.
-  const spot = (strikes && strikes.spot != null) ? strikes.spot : T.spot;
+  const spot = liveSpot != null ? liveSpot
+    : (strikes && strikes.spot != null) ? strikes.spot : T.spot;
+  const bl = document.getElementById('biglegend');
+  if (spot != null && isFinite(Number(spot))) {
+    // TradingView-style big legend: ticker · price · change vs yesterday's close
+    const pdc = daily && daily.pdc;
+    const dn = pdc ? Number(spot) - pdc : null;
+    const col = dn == null ? '#f4f6f8' : dn >= 0 ? '#00e07a' : '#ff3355';
+    bl.innerHTML = `<span class="sym">${(document.getElementById('tk').value || 'SPY').toUpperCase()}</span> ` +
+      `<span class="px" style="color:${col}">${fmt(spot)}</span>` +
+      (dn == null ? '' : ` <span class="chg" style="color:${col}">${dn >= 0 ? '+' : ''}${dn.toFixed(2)} ` +
+        `(${(dn / pdc * 100).toFixed(2)}%) vs yday close</span>`);
+  } else bl.innerHTML = '';
   if (spot != null && isFinite(Number(spot))) {
     const off = Number(spot) < lo || Number(spot) > hi;
     const ys = Math.max(PADT + 2, Math.min(H - PADB - 2, y(Number(spot))));
@@ -552,7 +570,7 @@ function draw() {
       const b = bars[bi];
       g.fillStyle = '#f4f6f8'; g.font = '700 13px system-ui';
       g.fillText(`O ${fmt(b.o)}  H ${fmt(b.h)}  L ${fmt(b.l)}  C ${fmt(b.c)}` +
-        (b.v ? `  V ${b.v.toLocaleString()}` : ''), PADL + 6, PADT + 12);
+        (b.v ? `  V ${b.v.toLocaleString()}` : ''), PADL + 6, 72);   // below big legend
     }
   }
 }
@@ -895,7 +913,24 @@ chip('learn', () => { learning = !learning;
   document.getElementById('learn').classList.toggle('on', learning);
   document.getElementById('coachlines').innerHTML = learning
     ? ((terrain || {}).lines || []).map(l => '· ' + esc(l)).join('<br>') : ''; });
-document.getElementById('tk').addEventListener('change', () => { view = null; yLock = null; load(); });
+document.getElementById('tk').addEventListener('change', () => {
+  view = null; yLock = null; liveSpot = null; load(); });
+
+// fast spot poll (2.5s): kills the 15s spot lag. Fail-closed — if the endpoint
+// is absent (server predates it) or errors, the 15s cycle remains the source.
+async function pollSpot() {
+  const tk = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+  try {
+    const r = await fetch(`/api/spot?ticker=${tk}`);
+    if (!r.ok) return;
+    const j = await r.json();
+    if (j.ticker === tk && j.spot != null && isFinite(Number(j.spot))) {
+      liveSpot = Number(j.spot);
+      draw();
+    }
+  } catch (e) { /* transient — next poll or the 15s cycle recovers */ }
+}
+setInterval(pollSpot, 2500);
 
 // short-window guard: if anything overflows the viewport, a bright pill says so
 // and one click scrolls the gamma panel into view (the charts eat wheel-scroll)
