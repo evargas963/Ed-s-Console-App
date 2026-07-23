@@ -289,9 +289,29 @@ function domain() {
   const T = terrain || {};
   for (const v of [T.gamma_flip, T.call_wall, T.put_wall])
     if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  // Live spot must stay in-frame — overnight/extended moves are the honesty case (v2.7)
+  const spot = (strikes && strikes.spot != null) ? strikes.spot : T.spot;
+  if (spot != null && isFinite(Number(spot))) {
+    lo = Math.min(lo, Number(spot)); hi = Math.max(hi, Number(spot));
+  }
   if (!isFinite(lo)) { lo = 0; hi = 1; }
   const span = (hi - lo) || 1;
   return { lo: lo - span * 0.05, hi: hi + span * 0.05 };
+}
+
+/** RTH 9:30–16:00 America/New_York — matches time_et.RTH_OPEN_MINS/RTH_END_MINS. */
+function etSessionTag() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const get = t => { const p = parts.find(x => x.type === t); return p ? p.value : ''; };
+  const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[get('weekday')];
+  let h = Number(get('hour')); if (h === 24) h = 0;
+  const mm = h * 60 + Number(get('minute'));
+  if (wd >= 1 && wd <= 5 && mm >= 570 && mm < 960) return null;
+  if (wd >= 1 && wd <= 5 && mm < 570) return 'PRE-MKT';
+  return 'AFTER-HRS';
 }
 
 function niceStep(span, target) {
@@ -492,23 +512,26 @@ function draw() {
   // spot — ONE price authority app-wide (resolve_spot, RC-14). Candles end at the
   // last regular-session bar, so outside RTH the live spot can sit far from the
   // last close; the dashed line + session label make that gap self-explanatory.
+  // Auto domain includes spot; under yLock clamp to the pane edge so the cue never vanishes.
   const spot = (strikes && strikes.spot != null) ? strikes.spot : T.spot;
-  if (spot != null && spot >= lo && spot <= hi) {
-    const ys = y(spot);
+  if (spot != null && isFinite(Number(spot))) {
+    const off = Number(spot) < lo || Number(spot) > hi;
+    const ys = Math.max(PADT + 2, Math.min(H - PADB - 2, y(Number(spot))));
     g.strokeStyle = 'rgba(255,196,0,0.55)'; g.lineWidth = 1; g.setLineDash([2, 3]);
     g.beginPath(); g.moveTo(PADL, ys); g.lineTo(W - PADR, ys); g.stroke();
     g.setLineDash([]);
     g.fillStyle = '#ffc400'; g.font = '800 14px system-ui';
     g.fillRect(W - PADR, ys - 10, PADR - 2, 20);
-    g.fillStyle = '#05070a'; g.fillText(fmt(spot), W - PADR + 6, ys + 5);
-    const now = new Date(), mm = now.getHours() * 60 + now.getMinutes();
-    const inRTH = now.getDay() >= 1 && now.getDay() <= 5 && mm >= 510 && mm < 900;
-    if (!inRTH) {
+    g.fillStyle = '#05070a';
+    g.fillText((off ? (Number(spot) > hi ? '↑ ' : '↓ ') : '') + fmt(spot), W - PADR + 4, ys + 5);
+    const sess = etSessionTag();
+    if (sess) {
       g.fillStyle = '#ffc400'; g.font = '800 11px system-ui';
-      g.fillText(mm < 510 ? 'PRE-MKT' : 'AFTER-HRS', W - PADR + 6, ys - 14);
+      g.fillText(sess, W - PADR + 6, ys - 14);
     }
     zones.push({ y0: ys - 6, y1: ys + 6,
-      tipHtml: `<b>Live price ${fmt(spot)}</b><br>` +
+      tipHtml: `<b>Live price ${fmt(spot)}</b>` +
+        (off ? ' <i>(outside locked Y range)</i>' : '') + `<br>` +
         `One price authority feeds every screen. Candles end at the last ` +
         `regular-session bar, so outside market hours the live price can sit ` +
         `away from the last candle — that gap is the overnight move, not a ` +
