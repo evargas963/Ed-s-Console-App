@@ -234,6 +234,7 @@ function draw() {
     const gaps = []; for (let i = 1; i < ks.length; i++) gaps.push(ks[i] - ks[i - 1]);
     gaps.sort((a, b) => a - b); half = (gaps[Math.floor(gaps.length / 2)] || 1) / 2;
   }
+  const wallLabelYs = [];
   const band = (level, kind) => {
     if (level == null) return;
     const yTop = y(level + half), yBot = y(level - half), sell = kind === 'call';
@@ -245,6 +246,7 @@ function draw() {
     g.fillText((sell ? `CALL WALL ${fmt(level - half)}–${fmt(level + half)}`
                      : `PUT WALL ${fmt(level - half)}–${fmt(level + half)}`) +
       (unproven ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY')), PADL + 8, yTop - 5);
+    wallLabelYs.push(yTop - 5);
     zones.push({ y0: yTop, y1: yBot,
       tipHtml: `<b>${sell ? 'Call wall' : 'Put wall'} ${fmt(level)} (band ±${fmt(half)})</b><br>` +
         `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
@@ -266,35 +268,47 @@ function draw() {
     ['call_charm_wall', 'C-CHARM', '#ff9e40', 'Largest call charm strike — hedge decay flow into the close.', [4, 3]],
     ['put_charm_wall', 'P-CHARM', '#40ffd0', 'Largest put charm strike — hedge decay flow into the close.', [4, 3]],
   ];
-  g.font = '700 12px system-ui';
-  for (const [key, lab, col, why, dash] of levels) {
-    const v = T[key]; if (v == null || v < lo || v > hi) continue;
-    const yy = y(v);
-    g.strokeStyle = col; g.lineWidth = key === 'gamma_flip' ? 2 : 1.25;
-    g.setLineDash(dash); g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy);
-    g.stroke(); g.setLineDash([]);
-    g.fillStyle = col; g.fillText(`${lab} ${fmt(v)}`, W - PADR - 92, yy - 4);
-    zones.push({ y0: yy - 6, y1: yy + 6,
-      tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` +
-        (key === 'gamma_flip' && unproven
-          ? '<br><i>Landmark only here — sign meaning unproven for this ticker.</i>' : '') });
-  }
-
-  // yesterday's H/L/C — white family, labeled on the LEFT (plan §5 main chart)
+  // one item list (terrain levels labeled RIGHT, yesterday rows labeled LEFT);
+  // draw the lines first, then lay the labels out with a collision pass so
+  // levels sharing a price NEVER overlap (operator 2026-07-23)
   const pdRows = [
     ['pdh', 'PDH', [8, 4], "Yesterday's high — widely watched breakout/rejection reference."],
     ['pdl', 'PDL', [8, 4], "Yesterday's low — widely watched breakdown/reclaim reference."],
     ['pdc', 'PDC', [2, 3], "Yesterday's close — the gap fills or holds against this price."],
   ];
+  const lvlItems = [];
+  for (const [key, lab, col, why, dash] of levels) {
+    const v = T[key]; if (v == null || v < lo || v > hi) continue;
+    lvlItems.push({ v, text: `${lab} ${fmt(v)}`, col, dash,
+      lw: key === 'gamma_flip' ? 2 : 1.25, side: 'right',
+      tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` +
+        (key === 'gamma_flip' && unproven
+          ? '<br><i>Landmark only here — sign meaning unproven for this ticker.</i>' : '') });
+  }
   for (const [k, lab, dash, why] of pdRows) {
     const v = daily && daily[k]; if (v == null || v < lo || v > hi) continue;
-    const yy = y(v);
-    g.strokeStyle = '#f4f6f8'; g.lineWidth = 1.25; g.setLineDash(dash);
-    g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke();
-    g.setLineDash([]);
-    g.fillStyle = '#f4f6f8'; g.font = '700 12px system-ui';
-    g.fillText(`${lab} ${fmt(v)}`, PADL + 8, yy - 4);
-    zones.push({ y0: yy - 6, y1: yy + 6, tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` });
+    lvlItems.push({ v, text: `${lab} ${fmt(v)}`, col: '#f4f6f8', dash, lw: 1.25,
+      side: 'left', tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` });
+  }
+  for (const it of lvlItems) {
+    const yy = y(it.v);
+    g.strokeStyle = it.col; g.lineWidth = it.lw;
+    g.setLineDash(it.dash); g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy);
+    g.stroke(); g.setLineDash([]);
+    zones.push({ y0: yy - 6, y1: yy + 6, tipHtml: it.tipHtml });
+  }
+  g.font = '700 12px system-ui';
+  for (const side of ['right', 'left']) {
+    const list = lvlItems.filter(i => i.side === side).sort((a, b) => y(a.v) - y(b.v));
+    const fixed = side === 'left' ? wallLabelYs.slice().sort((a, b) => a - b) : [];
+    let prev = -Infinity;
+    for (const it of list) {
+      let pos = Math.max(y(it.v) - 4, prev + 13);
+      for (const fy of fixed) if (Math.abs(pos - fy) < 13) pos = fy + 13;
+      prev = pos;
+      g.fillStyle = it.col;
+      g.fillText(it.text, side === 'right' ? W - PADR - 92 : PADL + 8, pos);
+    }
   }
 
   // candles — thick and bright
@@ -471,8 +485,11 @@ wrap.addEventListener('mousemove', ev => {
     cross = { mx, my }; draw(); drawHist(); return;
   }
   cross = { mx, my };
-  const z = zones.find(z => my >= z.y0 && my <= z.y1);
-  if (z) { tip.innerHTML = z.tipHtml; tip.style.display = 'block';
+  const hits = zones.filter(z => my >= z.y0 && my <= z.y1);
+  if (hits.length) {
+    tip.innerHTML = hits.map(h => h.tipHtml)
+      .join('<div style="border-top:1px solid var(--border);margin:7px 0"></div>');
+    tip.style.display = 'block';
     tip.style.left = Math.min(ev.clientX + 16, window.innerWidth - 400) + 'px';
     tip.style.top = (ev.clientY + 16) + 'px';
   } else tip.style.display = 'none';
