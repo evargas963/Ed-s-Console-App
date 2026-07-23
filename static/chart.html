@@ -9,7 +9,8 @@
           --green:#00e07a; --red:#ff3355; --amber:#ffc400; --blue:#33aaff; --vio:#c792ff;
           --cyan:#00e5ff; --pink:#ff66cc; }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text);
+  body { margin:0; color:var(--text);
+         background:radial-gradient(1200px 600px at 70% -10%, #0b1420 0%, var(--bg) 60%) fixed var(--bg);
          font:14px 'Segoe UI', system-ui, sans-serif; }
   #top { display:flex; gap:10px; align-items:center; padding:8px 14px;
          border-bottom:1px solid var(--border); flex-wrap:wrap; }
@@ -19,9 +20,47 @@
   #narrator { flex:1; min-width:220px; color:var(--amber); font-weight:700; font-size:15px; }
   .chip { border:1px solid var(--border); background:var(--panel); color:var(--dim);
           border-radius:12px; padding:5px 13px; cursor:pointer; font-size:12px;
-          font-weight:700; user-select:none; }
-  .chip.on { color:#031018; border-color:var(--blue); background:var(--blue); }
-  .tf.on { background:var(--amber); border-color:var(--amber); }
+          font-weight:700; user-select:none; letter-spacing:.03em;
+          transition:border-color .15s, color .15s, box-shadow .15s, transform .1s; }
+  .chip:hover { border-color:var(--blue); color:var(--text); transform:translateY(-1px); }
+  .chip.on { color:#031018; border-color:var(--blue); background:var(--blue);
+             box-shadow:0 0 10px rgba(51,170,255,.45); }
+  .tf.on { background:var(--amber); border-color:var(--amber);
+           box-shadow:0 0 10px rgba(255,196,0,.45); }
+  #livedot { width:9px; height:9px; border-radius:50%; background:var(--green);
+             box-shadow:0 0 8px var(--green); animation:pulse 1.6s ease-in-out infinite;
+             flex:none; }
+  #livedot.stale { background:var(--amber); box-shadow:0 0 8px var(--amber); animation:none; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+  #regchip { border-radius:12px; padding:5px 13px; font-size:12px; font-weight:800;
+             letter-spacing:.04em; color:#031018; background:var(--dim); flex:none; }
+  .card { border:1px solid var(--border); border-radius:12px; margin:10px 12px;
+          overflow:hidden; background:rgba(16,21,28,.55);
+          box-shadow:0 6px 24px rgba(0,0,0,.35); }
+  .sechead { display:flex; align-items:center; gap:10px; padding:10px 14px 6px;
+             font-size:13px; font-weight:800; letter-spacing:.07em; color:var(--text); }
+  .sechead::before { content:''; width:5px; height:16px; border-radius:3px;
+                     background:var(--amber); }
+  .sechead .src { margin-left:auto; color:var(--dim); font-weight:600;
+                  letter-spacing:0; font-size:12px; }
+  .legend { display:flex; gap:20px; padding:6px 16px 12px; color:var(--dim);
+            font-size:12px; font-weight:700; flex-wrap:wrap; }
+  .legend .sw { display:inline-block; width:12px; height:12px; border-radius:3px;
+                vertical-align:-2px; margin-right:6px; }
+  .legend .sw.ghostsw { background:transparent; border:1.5px dashed var(--vio); }
+  #gwrap { position:relative; }
+  .coach { position:absolute; right:14px; width:300px; border-radius:10px;
+           padding:11px 14px; font-size:13px; line-height:1.5; display:none;
+           border:1px solid; backdrop-filter:blur(2px); }
+  .coach b { display:block; margin-bottom:4px; font-size:13.5px; }
+  #coach1 { top:52px; background:rgba(199,146,255,.10); border-color:rgba(199,146,255,.5); }
+  #coach1 b { color:var(--vio); }
+  #coach2 { top:288px; background:rgba(255,196,0,.08); border-color:rgba(255,196,0,.5); }
+  #coach2 b { color:var(--amber); }
+  #wrap .lastdot { position:absolute; width:10px; height:10px; border-radius:50%;
+                   background:var(--amber); box-shadow:0 0 10px var(--amber);
+                   animation:pulse 1.6s ease-in-out infinite; pointer-events:none;
+                   display:none; }
   #meta { color:var(--dim); font-size:12px; width:100%; }
   #layout { display:flex; }
   #wrap { position:relative; flex:1; min-width:0; cursor:crosshair; }
@@ -40,6 +79,8 @@
 <body>
 <div id="top">
   <input id="tk" value="SPY" spellcheck="false">
+  <span id="livedot" title="feed state"></span>
+  <span id="regchip">…</span>
   <span id="narrator">loading…</span>
   <span class="chip tf on" data-tf="1">1m</span>
   <span class="chip tf" data-tf="3">3m</span>
@@ -56,11 +97,25 @@
   <a href="/">← CONSOLE</a>
   <span id="meta"></span>
 </div>
-<div id="layout">
-  <div id="wrap"><canvas id="cv" height="560"></canvas></div>
+<div id="layout" class="card">
+  <div id="wrap"><canvas id="cv" height="560"></canvas><div class="lastdot" id="lastdot"></div></div>
   <div id="histwrap"><canvas id="hv" height="560"></canvas></div>
 </div>
-<canvas id="gv" height="430"></canvas>
+<div class="card">
+  <div class="sechead">GAMMA PANEL — POSITIONING MIGRATION &amp; TODAY'S VOLUME
+    <span class="src" id="gsrc"></span></div>
+  <div id="gwrap">
+    <canvas id="gv" height="430"></canvas>
+    <div class="coach" id="coach1"></div>
+    <div class="coach" id="coach2"></div>
+  </div>
+  <div class="legend">
+    <span><i class="sw" style="background:#33aaff"></i>positive dealer gamma</span>
+    <span><i class="sw" style="background:#ff3355"></i>negative dealer gamma</span>
+    <span><i class="sw ghostsw"></i>yesterday (ghost)</span>
+    <span><i class="sw" style="background:#ffc400"></i>today's option volume</span>
+  </div>
+</div>
 <div id="tip"></div>
 <div id="coachlines"></div>
 <script>
@@ -173,9 +228,19 @@ async function load() {
       `· scroll=wider/narrower · shift+scroll=taller/shorter · drag=move · dbl-click=fit`;
     document.getElementById('coachlines').innerHTML = learning
       ? (t.lines || []).map(l => '· ' + l).join('<br>') : '';
+    document.getElementById('livedot').className = '';
+    const rc = document.getElementById('regchip');
+    const reg = String(t.regime || '—');
+    rc.textContent = reg;
+    rc.style.background = /SHORT/.test(reg) ? '#ff3355'
+      : /LONG/.test(reg) ? '#00e07a'
+      : /UNPROVEN/.test(reg) ? '#ffc400' : '#aab6c4';
+    document.getElementById('gsrc').textContent = (s && s.today_source)
+      ? `today: ${s.today_source}` : 'feed activates at the next console start';
     draw(); drawHist();
   } catch (e) {
     document.getElementById('narrator').textContent = 'load failed: ' + e.message;
+    document.getElementById('livedot').className = 'stale';
   }
 }
 
@@ -206,7 +271,8 @@ function draw() {
   cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
   const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
   if (!bars.length) { g.fillStyle = '#aab6c4'; g.font = '14px system-ui';
-    g.fillText('no bars yet — pre-market', 20, 40); return; }
+    g.fillText('no bars yet — pre-market', 20, 40);
+    document.getElementById('lastdot').style.display = 'none'; return; }
 
   const { lo, hi } = domain();
   const y = p => PADT + (hi - p) / (hi - lo) * (H - PADT - PADB);
@@ -325,6 +391,15 @@ function draw() {
     g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1.5, Math.abs(y(b.o) - y(b.c))));
   }
 
+  // pulsing marker on the last price (live-data cue)
+  const dotEl = document.getElementById('lastdot');
+  const lb = bars[bars.length - 1];
+  const ldx = x(bars.length - 1) + bw / 2, ldy = y(lb.c);
+  if (ldx > PADL && ldx < W - PADR && ldy > PADT && ldy < H - PADB) {
+    dotEl.style.left = (ldx - 5) + 'px'; dotEl.style.top = (ldy - 5) + 'px';
+    dotEl.style.display = 'block';
+  } else dotEl.style.display = 'none';
+
   // session VWAP — computed on canonical 1m rows only, sampled per visible bar
   if (daily && daily.vwap.length) {
     const t0 = daily.vwap[0][0];
@@ -436,6 +511,8 @@ function drawHist() {
 const gvEl = document.getElementById('gv');
 let gWin = { n: 24, off: 0 };
 let gZones = [];
+let gHover = null;        // hovered strike band index
+let gLayout = null;       // {bandW, count} of the last gamma render
 
 const fmtBig = v => {
   if (v == null) return '—';
@@ -452,9 +529,11 @@ function drawGamma() {
   gvEl.width = W * dpr; gvEl.height = H * dpr; gvEl.style.height = H + 'px';
   const g = gvEl.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
   g.strokeStyle = '#2b3646'; g.beginPath(); g.moveTo(0, 0.5); g.lineTo(W, 0.5); g.stroke();
+  const coach1 = document.getElementById('coach1'), coach2 = document.getElementById('coach2');
   const rows = ((strikes && strikes.today) || {})[scope] || [];
   if (!rows.length) {
-    gZones = [];
+    gZones = []; gLayout = null;
+    coach1.style.display = coach2.style.display = 'none';
     g.fillStyle = '#f4f6f8'; g.font = '800 14px system-ui';
     g.fillText('GAMMA PANEL — migration + volume by strike', 14, 28);
     g.fillStyle = '#aab6c4'; g.font = '700 13px system-ui';
@@ -476,8 +555,10 @@ function drawGamma() {
   const i1 = Math.min(rows.length, c + gWin.n + gWin.off);
   const vis = rows.slice(i0, i1);
   if (!vis.length) return;
-  const bandW = (W - 24) / vis.length;
+  const CARDW = W > 980 ? 330 : 0;   // reserve the right rail for the coach cards
+  const bandW = (W - 24 - CARDW) / vis.length;
   const xs = i => 12 + i * bandW;
+  gLayout = { bandW, count: vis.length };
 
   const base1 = 196, amp1 = 128, base2 = 402, amp2 = 118;
   const maxG = Math.max(1, ...vis.map(r => Math.abs(r[1])),
@@ -496,6 +577,8 @@ function drawGamma() {
   for (let i = 0; i < vis.length; i++) {
     const [k, gx, vol] = vis[i], gy = ghost.get(k);
     const x0 = xs(i), bwS = Math.max(2, bandW * 0.44), bwG = Math.max(3, bandW * 0.62);
+    if (i === gHover) { g.fillStyle = 'rgba(244,246,248,0.08)';
+      g.fillRect(x0, 30, bandW, H - 50); }
     if (gy != null && showGhost) {
       const h = Math.abs(gy) / maxG * amp1;
       g.strokeStyle = '#c792ff'; g.setLineDash([3, 2]);
@@ -539,7 +622,7 @@ function drawGamma() {
     g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([6, 4]);
     g.beginPath(); g.moveTo(xi, yTop); g.lineTo(xi, H - 20); g.stroke(); g.setLineDash([]);
     g.fillStyle = col; g.font = '800 12px system-ui';
-    g.fillText(lab, Math.min(xi + 5, W - 110), yTop + 12);
+    g.fillText(lab, Math.min(xi + 5, W - CARDW - 120), yTop + 12);
   };
   mark(spot, '#ffc400', `SPOT ${fmt(spot)}`, 30);
   mark(T.call_wall, '#ff3355', `CALL WALL ${fmt(T.call_wall, 0)}`, 46);
@@ -549,11 +632,49 @@ function drawGamma() {
   const deltas = vis.filter(r => ghost.get(r[0]) != null)
     .map(r => [r[0], r[1] - ghost.get(r[0])])
     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 3);
-  if (deltas.length) {
+  if (deltas.length && !CARDW) {
     g.fillStyle = '#c792ff'; g.font = '700 12px system-ui';
     g.fillText('biggest shifts vs yesterday: ' + deltas.map(([k, d]) =>
       `${fmt(k, 0)} ${d >= 0 ? '+' : ''}${fmtBig(d)}`).join(' · '), 14, 42);
   }
+
+  // coach cards (right rail) — every number computed from the data above
+  if (!CARDW) { coach1.style.display = coach2.style.display = 'none'; return; }
+  const withG = vis.filter(r => ghost.get(r[0]) != null);
+  if (!withG.length) {
+    coach1.innerHTML = '<b>Coach: migration view warming up</b>' +
+      'The first day-over-day comparison lands after the next wide morning capture.';
+  } else {
+    const wmean = pick => {
+      let s2 = 0, w2 = 0;
+      for (const r of withG) { const v = pick(r); if (v > 0) { s2 += r[0] * v; w2 += v; } }
+      return w2 ? s2 / w2 : null;
+    };
+    const wmT = wmean(r => r[1]), wmY = wmean(r => ghost.get(r[0]));
+    const dir = (wmT != null && wmY != null)
+      ? (wmT - wmY > 0.15 ? 'UP the chain' : wmY - wmT > 0.15 ? 'DOWN the chain' : 'with little net drift')
+      : 'with no positive-gamma mass in view';
+    const sorted = withG.map(r => [r[0], r[1] - ghost.get(r[0])])
+      .sort((a, b) => b[1] - a[1]);
+    const grew = sorted.filter(d => d[1] > 0).slice(0, 2).map(d => fmt(d[0], 0)).join('/');
+    const shrank = sorted.filter(d => d[1] < 0).slice(-2).map(d => fmt(d[0], 0)).join('/');
+    coach1.innerHTML = `<b>Coach: positive gamma mass moved ${dir}</b>` +
+      (grew ? `Grew most at ${grew}` : 'No strike grew') +
+      (shrank ? `; shrank most at ${shrank}. ` : '. ') +
+      `Opened or closed? Tomorrow's ΔOI confirms.`;
+  }
+  const byVol = vis.slice().sort((a, b) => (b[2] || 0) - (a[2] || 0)).slice(0, 2)
+    .filter(r => (r[2] || 0) > 0);
+  if (byVol.length) {
+    const kk = byVol.map(r => r[0]);
+    const loc = (T.call_wall != null && Math.min(...kk) > T.call_wall) ? 'ABOVE the call wall'
+      : (T.put_wall != null && Math.max(...kk) < T.put_wall) ? 'BELOW the put wall'
+      : 'inside the wall range';
+    coach2.innerHTML = `<b>Coach: heaviest option trading at ${kk.map(k => fmt(k, 0)).join('–')}</b>` +
+      `That is ${loc}. Activity fact only — buyer/seller split stays unproven until the ΔOI test.`;
+    coach2.style.display = 'block';
+  } else coach2.style.display = 'none';
+  coach1.style.display = 'block';
 }
 
 let gDrag = null;
@@ -573,13 +694,21 @@ gvEl.addEventListener('mousemove', ev => {
   }
   const r = gvEl.getBoundingClientRect();
   const mx = ev.clientX - r.left;
+  if (gLayout) {
+    const idx = Math.floor((mx - 12) / gLayout.bandW);
+    const h2 = (idx >= 0 && idx < gLayout.count) ? idx : null;
+    if (h2 !== gHover) { gHover = h2; drawGamma(); }
+  }
   const z = gZones.find(z => mx >= z.x0 && mx < z.x1);
   if (z) { tip.innerHTML = z.tipHtml; tip.style.display = 'block';
     tip.style.left = Math.min(ev.clientX + 16, window.innerWidth - 400) + 'px';
     tip.style.top = (ev.clientY + 16) + 'px';
   } else tip.style.display = 'none';
 });
-gvEl.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+gvEl.addEventListener('mouseleave', () => {
+  tip.style.display = 'none';
+  if (gHover !== null) { gHover = null; drawGamma(); }
+});
 
 /* ── interactions: wheel zoom, drag pan (x+y), dbl-click fit, crosshair ── */
 wrap.addEventListener('wheel', ev => {
