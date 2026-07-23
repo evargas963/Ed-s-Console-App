@@ -128,3 +128,29 @@ def test_sign_ab_empty_is_explicit_not_zero():
     ab = _sign_ab([_ab_row("SPY", "LONG_GAMMA_CHOP", None, True)])
     assert ab == {"n": 0, "naive_hit_pct": None, "prior_hit_pct": None,
                   "prior_always_long_pct": None}
+
+
+def test_spearman_known_values():
+    from tools.terrain_backtest_report_v1 import _spearman
+    a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    assert _spearman(a, a) == 1.0
+    assert _spearman(a, list(reversed(a))) == -1.0
+    assert _spearman(a[:4], a[:4]) is None        # n<8 refuses
+    b = [2.0, 1.0, 4.0, 3.0, 6.0, 5.0, 8.0, 7.0]  # noisy monotone
+    r = _spearman(a, b)
+    assert 0.7 < r < 1.0
+
+
+def test_sign_split_reports_both_universes_with_permutation_p():
+    from tools.terrain_backtest_report_v1 import _sign_split_gex_r1
+    rows = []
+    # single names: strong negative gamma->range relation (dampening), n=12
+    for i in range(12):
+        g = float(i - 6) * 1e8
+        rows.append({"ticker": "AAPL", "net_gex_at_spot": g,
+                     "range_pct": 3.0 - 0.2 * (i - 6)})
+    out = _sign_split_gex_r1(rows, n_perm=200)
+    assert out["single_names"]["n"] == 12
+    assert out["single_names"]["spearman_gamma_vs_range"] < -0.9
+    assert out["single_names"]["p_one_sided_neg"] is not None
+    assert out["sentinels"]["n"] == 0 and out["sentinels"]["spearman_gamma_vs_range"] is None

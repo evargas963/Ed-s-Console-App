@@ -183,6 +183,7 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
                 regime_prior = "LONG_GAMMA_CHOP" if gp > 0 else "SHORT_GAMMA_TREND"
         scored.append({
             "ticker": tk, "day": day, "regime": scoring_regime,
+            "net_gex_at_spot": snap.net_gex_at_spot,
             "regime_prior": regime_prior,
             "confidence": snap.confidence, "spot": float(spot),
             "gamma_flip": snap.gamma_flip, "call_wall": snap.call_wall,
@@ -256,6 +257,70 @@ def _sign_ab(rows: list[dict]) -> dict:
     }
 
 
+def _spearman(a: list[float], b: list[float]) -> float | None:
+    """Spearman rho via rank Pearson (ties -> average rank). Pure python, n up to ~3k."""
+    n = len(a)
+    if n < 8 or n != len(b):
+        return None
+
+    def ranks(v: list[float]) -> list[float]:
+        order = sorted(range(n), key=lambda i: v[i])
+        r = [0.0] * n
+        i = 0
+        while i < n:
+            j = i
+            while j + 1 < n and v[order[j + 1]] == v[order[i]]:
+                j += 1
+            avg = (i + j) / 2.0 + 1.0
+            for k in range(i, j + 1):
+                r[order[k]] = avg
+            i = j + 1
+        return r
+
+    ra, rb = ranks(a), ranks(b)
+    ma, mb = sum(ra) / n, sum(rb) / n
+    num = sum((x - ma) * (y - mb) for x, y in zip(ra, rb, strict=True))
+    da = sum((x - ma) ** 2 for x in ra) ** 0.5
+    db = sum((y - mb) ** 2 for y in rb) ** 0.5
+    return num / (da * db) if da > 0 and db > 0 else None
+
+
+def _sign_split_gex_r1(rows: list[dict], n_perm: int = 2000, seed: int = 20260722) -> dict:
+    """REGISTERED TEST 1 of the single-name sign row (due 2026-08-03): the GEX-R1
+    gamma-vs-range correlation, split sentinels vs single names.
+
+    GEX-R1 (sentinel-confirmed): signed dealer gamma correlates NEGATIVELY with
+    realized range (long gamma dampens). If the naive sign convention breaks on
+    single names, their correlation degrades toward zero or flips. Permutation p
+    (one-sided, rho<0) via day-shuffle within each universe; seeded, reproducible.
+    Run 2026-07-22 the night the test unblocked — nothing gated it but the queue.
+    """
+    import random
+    out: dict[str, dict] = {}
+    for name, pred in (("sentinels", lambda r: r["ticker"] in SENTINELS),
+                       ("single_names", lambda r: r["ticker"] not in SENTINELS)):
+        sub = [r for r in rows
+               if pred(r) and r.get("net_gex_at_spot") is not None]
+        g = [float(r["net_gex_at_spot"]) for r in sub]
+        rng_ = [float(r["range_pct"]) for r in sub]
+        rho = _spearman(g, rng_)
+        p = None
+        if rho is not None:
+            rnd = random.Random(seed)
+            worse = 0
+            for _ in range(n_perm):
+                shuffled = rng_[:]
+                rnd.shuffle(shuffled)
+                rp = _spearman(g, shuffled)
+                if rp is not None and rp <= rho:
+                    worse += 1
+            p = round(worse / n_perm, 4)
+        out[name] = {"n": len(sub),
+                     "spearman_gamma_vs_range": round(rho, 4) if rho is not None else None,
+                     "p_one_sided_neg": p}
+    return out
+
+
 def _placebo_persistence(rows: list[dict]) -> tuple[int, int]:
     """Hits/n for 'yesterday's realized class predicts today's', per ticker."""
     p_hit = p_n = 0
@@ -305,6 +370,8 @@ def run(since: str | None) -> dict:
         # the prior is constant-LONG by construction (C+P>0), so this measures whether
         # naive's short-gamma discrimination adds anything over "always dampen".
         "sign_ab_single_names": _sign_ab(rows),
+        # REGISTERED TEST 1 (single-name sign row, due 2026-08-03): GEX-R1 split.
+        "sign_split_gex_r1": _sign_split_gex_r1(rows),
         # Wall stats use ALL scored rows (no median filter needed) — TRUSTED split is
         # the honest one: narrow-chain walls are strike-truncated by construction.
         "wall_hold_all": wall_hold_stats(scored),
