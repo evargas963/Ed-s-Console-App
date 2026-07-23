@@ -2570,6 +2570,10 @@
 .ed-viewtab.is-active { background:rgba(79,198,255,0.16); border-color:#4fc6ff; color:#7dd3fc; }
 body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view) { display:none !important; }
 body.ed-terrain-mode { overflow:hidden; }
+/* Terrain deep link (/#terrain) must not sit under Schwab boot overlay — terrain uses /api/terrain */
+body.ed-terrain-mode #loading-overlay {
+  opacity: 0; pointer-events: none; visibility: hidden;
+}
 
 #terrain-view { --tv-bg:#06090d; --tv-pan:#0d131a; --tv-pan2:#111922; --tv-ln:#1c2530; --tv-ln2:#2a3644;
   --tv-tx:#f2f7fc; --tv-mu:#dceaf7; --tv-dim:#cfe3f5;
