@@ -338,6 +338,9 @@ async function load() {
     scorecard = null;
     document.getElementById('livedot').className = 'stale';
     document.getElementById('lastdot').style.display = 'none';
+    // rebuild zones NOW — hover tooltips read zones built at the last draw,
+    // so clearing state without redrawing left stale rates hoverable
+    draw(); drawHist();
   }
 }
 
