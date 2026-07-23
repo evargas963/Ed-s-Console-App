@@ -188,6 +188,54 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
 
 
+def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch):
+    """Open-stampede class (measured 21.7s inline at the 2026-07-23 open): the
+    radar snapshot merge must return the LAST memo immediately while exactly ONE
+    background recompute runs; recompute -> None keeps the previous memo."""
+    import threading as th
+    import time as _t
+
+    import server as srv
+
+    started = th.Event()
+    release = th.Event()
+    runs = {"n": 0}
+
+    def _slow_recompute():
+        runs["n"] += 1
+        started.set()
+        release.wait(10)
+        return [{"ticker": "ZZZ", "spot": 10.0}]
+
+    monkeypatch.setattr(srv, "_radar_fallback_recompute", _slow_recompute)
+    monkeypatch.setattr(srv, "_radar_fallback_cache", (0.0, [{"ticker": "OLD", "spot": 1.0}]))
+    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
+
+    out1 = srv._terrain_snapshots_for_radar()
+    out2 = srv._terrain_snapshots_for_radar()
+    # returned while the recompute is still parked on `release` -> proven non-blocking:
+    # an inline path could only return ZZZ (or wait); OLD in hand proves the memo served
+    assert any(m.get("ticker") == "OLD" for m in out1)
+    assert any(m.get("ticker") == "OLD" for m in out2)
+    assert started.wait(30), "background recompute never started"
+    assert runs["n"] == 1, "second caller must join the flight, not start another"
+    release.set()
+    deadline = _t.time() + 30
+    while _t.time() < deadline:
+        if srv._radar_fallback_cache[1] and \
+           srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ":
+            break
+        _t.sleep(0.02)
+    assert srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ", \
+        "background result must land in the memo"
+
+    # None keeps the previous memo (DB hiccup must not wipe the scope)
+    monkeypatch.setattr(srv, "_radar_fallback_recompute", lambda: None)
+    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
+    srv._radar_fallback_refresh_worker()
+    assert srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ"
+
+
 def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
     expiry scopes for today + prior capture, sorted by strike, read-only."""

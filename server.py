@@ -10704,33 +10704,70 @@ def _terrain_snapshots_for_radar() -> list[dict]:
     # cached its first ticker the stored-chain fallback was skipped entirely, so a warming
     # console showed an almost-empty scope. Live cache wins per ticker; everything not yet
     # refreshed still appears from its most recent stored chain.
-    # The fallback reads and recomputes every stored chain, which measured 5-10 s against
-    # a 23 GB snapshots table -- far too slow for a 20 s poll. Memoised for one loop
-    # cycle; the live cache above always takes precedence per ticker, so a fresh terrain
-    # value is never masked by a stale fallback entry.
-    global _radar_fallback_cache
-    now = time.time()
+    # NEVER BLOCKS (2026-07-23 open, measured): the inline recompute cost 21.7 s while
+    # the sentinel-only morning window kept ~48 tickers on the fallback, and the terrain
+    # view polls every 20 s — the sweep monopolised the sync threadpool and the operator
+    # felt the whole app slow (favicon no-op measured 1.4 s). Same stampede class as
+    # _radar_atr, same cure: serve the LAST memo immediately and refresh it on a
+    # single-flight background thread. A stale memo beats a 21 s stall — the live cache
+    # wins per ticker, so staleness only touches tickers the loop has not refreshed.
     ts, memo = _radar_fallback_cache
-    if memo and (now - ts) < RADAR_FALLBACK_TTL_SEC:
-        return list(cached.values()) + [m for m in memo if m.get("ticker") not in cached]
+    if not memo or (time.time() - ts) >= RADAR_FALLBACK_TTL_SEC:
+        _kick_radar_fallback_refresh()
+    return list(cached.values()) + [m for m in (memo or [])
+                                    if m.get("ticker") not in cached]
 
+
+_radar_fallback_flight_lock = threading.Lock()
+_radar_fallback_inflight = False
+
+
+def _kick_radar_fallback_refresh() -> None:
+    """Start ONE background fallback recompute; concurrent callers never queue."""
+    global _radar_fallback_inflight
+    with _radar_fallback_flight_lock:
+        if _radar_fallback_inflight:
+            return
+        _radar_fallback_inflight = True
+    threading.Thread(target=_radar_fallback_refresh_worker,
+                     name="radar-fallback-refresh", daemon=True).start()
+
+
+def _radar_fallback_refresh_worker() -> None:
+    global _radar_fallback_cache, _radar_fallback_inflight
+    try:
+        out = _radar_fallback_recompute()
+        if out is not None:
+            _radar_fallback_cache = (time.time(), out)
+    except Exception as e:
+        log.warning("radar fallback refresh failed: %s", e)
+    finally:
+        with _radar_fallback_flight_lock:
+            _radar_fallback_inflight = False
+
+
+def _radar_fallback_recompute() -> list[dict] | None:
+    """The heavy sweep (runs OFF the request path). None = keep the previous memo —
+    a DB hiccup must degrade to stale data, never wipe the scope."""
+    with _terrain_cache_lock:
+        cached = {t.get("ticker"): t for t in _terrain_cache.values() if t.get("ticker")}
     out: list[dict] = []
     try:
         db = get_db()
     except Exception as e:
         # Degrading to live-cache-only is correct, but doing it SILENTLY made a DB outage
         # indistinguishable from a quiet market on the radar (Cursor audit 2026-07-20:
-        # empty return with no note). The scope shrinks to loop-cached tickers; say so.
-        log.warning("radar fallback: DB unavailable (%s: %s) — scope limited to %d "
-                    "loop-cached tickers", type(e).__name__, e, len(cached))
-        return list(cached.values())
+        # empty return with no note). The scope keeps the stale memo; say so.
+        log.warning("radar fallback: DB unavailable (%s: %s) — keeping previous memo",
+                    type(e).__name__, e)
+        return None
     import sqlite3 as _sq
     try:
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=30.0)
     except Exception as e:
-        log.warning("radar fallback: DB open failed (%s: %s) — scope limited to %d "
-                    "loop-cached tickers", type(e).__name__, e, len(cached))
-        return list(cached.values())
+        log.warning("radar fallback: DB open failed (%s: %s) — keeping previous memo",
+                    type(e).__name__, e)
+        return None
     try:
         con.row_factory = _sq.Row
         # Ticker LIST only — index-only aggregate, no blob touched. The per-ticker chain
@@ -10762,8 +10799,7 @@ def _terrain_snapshots_for_radar() -> list[dict]:
         except (ValueError, TypeError):
             continue
         out.append(snap.to_dict() | {"spot_source": SPOT_SOURCE_SNAPSHOT})
-    _radar_fallback_cache = (now, out)
-    return list(cached.values()) + out
+    return out
 
 
 @app.get("/api/terrain/radar")
