@@ -127,6 +127,67 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
     assert row["ts_utc"] == 1700000000.0
 
 
+def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
+    """Seam: _terrain_refresh_one must call the logger AFTER a successful cache
+    write; a TypeError inside the logger must not turn ok: into error:."""
+    from types import SimpleNamespace
+
+    import server as srv
+
+    calls: list = []
+    real = srv._log_flip_drift
+
+    def _spy(tk, payload):
+        calls.append((tk, payload.get("gamma_flip")))
+        real(tk, payload)
+
+    monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
+    monkeypatch.setattr(srv, "_log_flip_drift", _spy)
+    monkeypatch.setattr(srv, "get_client", lambda: object())
+    monkeypatch.setattr(srv, "_universal_capture_wanted", lambda _tk: (False, None))
+    monkeypatch.setattr(srv, "_terrain_strike_count", lambda _tk: 20)
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {}
+
+    monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *_a, **_k: (_Resp(), 0, 0))
+    monkeypatch.setattr(srv, "flatten_chain_contracts", lambda _j: [])
+    monkeypatch.setattr(srv, "resolve_spot", lambda _tk, **_kw: (100.0, "test", 1.0))
+    monkeypatch.setattr(srv, "_learn_strike_geometry", lambda *_a, **_k: None)
+
+    class _Snap:
+        confidence = "TRUSTED"
+        profile = object()
+
+        def to_dict(self):
+            return {"gamma_flip": 99.5, "spot": 100.0, "confidence": "TRUSTED"}
+
+    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _Snap())
+    monkeypatch.setattr(srv, "_radar_atr", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
+
+    out = srv._terrain_refresh_one("SPY")
+    assert out == "ok:TRUSTED"
+    assert calls == [("SPY", 99.5)], "logger must run on the terrain refresh seam"
+    assert (tmp_path / "flip.jsonl").is_file()
+
+    # Fail-soft: non-numeric flip would raise inside float() — terrain must stay ok:
+    monkeypatch.setattr(srv, "_log_flip_drift", real)
+
+    class _BadSnap:
+        confidence = "TRUSTED"
+        profile = object()
+
+        def to_dict(self):
+            return {"gamma_flip": object(), "spot": 100.0, "confidence": "TRUSTED"}
+
+    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _BadSnap())
+    out2 = srv._terrain_refresh_one("SPY")
+    assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
+
+
 def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
     expiry scopes for today + prior capture, sorted by strike, read-only."""

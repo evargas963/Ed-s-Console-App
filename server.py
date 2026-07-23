@@ -10386,16 +10386,18 @@ _flip_drift_lock = threading.Lock()
 
 
 def _log_flip_drift(tk: str, payload: dict) -> None:
-    flip = payload.get("gamma_flip")
-    if flip is None:
-        return
-    row = {"ts_utc": round(float(payload.get("computed_ts_utc") or time.time()), 1),
-           "ticker": tk, "flip": round(float(flip), 4),
-           "spot": payload.get("spot"), "confidence": payload.get("confidence")}
+    """Append one flip-drift row. Never raises — terrain refresh must stay ok:x
+    even if logging row assembly or disk write fails (measurement only)."""
     try:
+        flip = payload.get("gamma_flip")
+        if flip is None:
+            return
+        row = {"ts_utc": round(float(payload.get("computed_ts_utc") or time.time()), 1),
+               "ticker": tk, "flip": round(float(flip), 4),
+               "spot": payload.get("spot"), "confidence": payload.get("confidence")}
         with _flip_drift_lock, open(_FLIP_DRIFT_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
-    except OSError as e:
+    except Exception as e:
         log.warning("flip drift log append failed: %s", e)
 
 
