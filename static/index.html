@@ -11524,8 +11524,15 @@ window.addEventListener('resize', () => {
   if (document.body.classList.contains('ed-terrain-mode')) edSizeDeck();
 });
 
-// deep link: opening /#terrain lands directly on the terrain view (chart-page nav)
-if (window.location.hash === '#terrain') edSwitchView('terrain');
+// deep link: opening /#terrain lands directly on the terrain view (chart-page nav).
+// DEFERRED to DOMContentLoaded: edSwitchView touches let-bindings declared in LATER
+// script chunks (edSpotPaintTimer). An inline call hit the temporal dead zone, and
+// even setTimeout(0) could fire between parse chunks before those declarations ran
+// (observed live: TDZ from the timeout callback on this ~12k-line page). DCL is by
+// definition after every classic script has evaluated. (Operator 2026-07-23:
+// "terrain renders nothing" — the switch died before edLoadTerrain ever ran.)
+if (window.location.hash === '#terrain')
+  window.addEventListener('DOMContentLoaded', () => edSwitchView('terrain'));
 
 function edPct(lvl, spot) {
   if (lvl == null || !spot) return '';
