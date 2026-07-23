@@ -104,3 +104,26 @@ def test_chart_page_route_serves_static_chart_html():
     assert "terrain on price" in r.text
     assert "no-store" in r.headers.get("cache-control", ""), (
         "chart shell must never be browser-cached (stale-JS class, RC on 2026-07-22)")
+
+
+def test_terrain_strikes_endpoint_shape_and_scopes():
+    """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
+    expiry scopes for today + prior capture, sorted by strike, read-only."""
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    client = TestClient(srv.app)
+    r = client.get("/api/terrain/strikes?ticker=SPY")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ticker"] == "SPY"
+    for side in ("today", "prior"):
+        assert set(body[side]) == {"all", "near", "far"}
+    rows = body["today"]["all"]
+    if rows:
+        assert all(len(x) == 3 for x in rows)
+        ks = [x[0] for x in rows]
+        assert ks == sorted(ks), "strikes must be ascending"
+        # near+far partition the chain: no scope may exceed ALL
+        assert len(body["today"]["near"]) <= len(rows)
+        assert len(body["today"]["far"]) <= len(rows)

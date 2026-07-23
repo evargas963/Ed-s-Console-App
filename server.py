@@ -10835,6 +10835,94 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     return out
 
 
+# ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
+# Feeds the /chart sidebar: today's per-strike dealer gamma + traded volume, plus
+# the PRIOR wide capture's bars (the day-over-day migration ghosts), each in three
+# expiry scopes (all / near<=7DTE / far). Sources are STORED chains only (wide
+# morning capture preferred, live narrow chain as fallback) — read-only, no Schwab
+# call, no model stack. Bar heights use the same exposure math as terrain.
+@app.get("/api/terrain/strikes")
+def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+
+    tk = (ticker or DEFAULT_TICKER).upper().strip()
+
+    def _per_strike(contracts: list, spot: float) -> dict:
+        def _scope(cts: list) -> list:
+            if not cts:
+                return []
+            exposures, _diag = _cebs(cts, spot=spot, require_oi=True)
+            vol_by_k: dict[float, float] = {}
+            for ct in cts:
+                try:
+                    k = float(ct.get("strikePrice"))
+                except (TypeError, ValueError):
+                    continue
+                v = ct.get("totalVolume")
+                if v:
+                    vol_by_k[k] = vol_by_k.get(k, 0.0) + float(v)
+            out = []
+            for k, b in exposures.items():
+                g = bucket_metric(b, "net_gex_1pct")
+                if g is None:
+                    g = total_gamma_raw_at_strike(b)
+                out.append([round(float(k), 2), round(float(g or 0.0), 1),
+                            int(vol_by_k.get(float(k), 0))])
+            out.sort(key=lambda r: r[0])
+            return out
+
+        def _dte(ct) -> float:
+            d = ct.get("daysToExpiration")
+            try:
+                return float(d) if d is not None else 999.0
+            except (TypeError, ValueError):
+                return 999.0
+
+        near = [c for c in contracts if _dte(c) <= 7]
+        far = [c for c in contracts if _dte(c) > 7]
+        return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
+
+    import sqlite3 as _sq
+    today_src, prior_src = None, None
+    today, prior = None, None
+    spot_used = None
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            rows = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date DESC LIMIT 2", (tk,)).fetchall()
+        finally:
+            con.close()
+        if rows:
+            d0, s0, c0 = rows[0]
+            spot_used = float(s0)
+            today = _per_strike(json.loads(c0), float(s0))
+            today_src = f"wide_capture:{d0}"
+            if len(rows) > 1:
+                d1, s1, c1 = rows[1]
+                prior = _per_strike(json.loads(c1), float(s1))
+                prior_src = f"wide_capture:{d1}"
+    except Exception as e:
+        log.debug("terrain strikes wide read failed %s: %s", tk, e)
+    if today is None:
+        contracts, stored_spot = _latest_chain_and_spot(tk)
+        if contracts and stored_spot:
+            spot_used = float(stored_spot)
+            today = _per_strike(contracts, float(stored_spot))
+            today_src = "narrow_snapshot_chain"
+    live_spot, live_src, _ts = resolve_spot(tk)
+    return JSONResponse({
+        "ticker": tk, "spot": live_spot if live_spot is not None else spot_used,
+        "spot_source": live_src,
+        "today": today or {"all": [], "near": [], "far": []},
+        "today_source": today_src,
+        "prior": prior or {"all": [], "near": [], "far": []},
+        "prior_source": prior_src,
+    })
+
+
 # ── CR-03 pre-work (operator directive 2026-07-22 "we have plenty of time"):
 # the chart-first screen v0 at /chart reads canonical 1m bars via this endpoint.
 # Read-only, index-served (ticker+timeframe named — the idx_snap lesson applies to
