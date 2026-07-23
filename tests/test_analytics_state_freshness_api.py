@@ -2095,27 +2095,34 @@ def test_mkt_ctx_stale_serve_never_pays_sweep_inline(monkeypatch):
     old_ctx = MarketContext()
     _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
     calls = {"n": 0}
-    done = th.Event()
+    entered = th.Event()
+    release = th.Event()
     sweep_threads: list = []
 
     # RC-17: no wall-clock assertions. "Not inline" is proven MECHANICALLY:
-    # (a) callers return the OLD context (an inline sweep would hand back the
-    # new one), and (b) the sweep records its executing thread, which must not
-    # be the caller's. Waits are generous UPPER bounds (fail = truly broken),
-    # never scheduling-window bets.
+    # (a) callers return the OLD context while the sweep is still held open
+    # (an inline sweep would hand back the new one), and (b) the sweep
+    # records its executing thread, which must not be the caller's. Holding
+    # the fake sweep open until after the herd of calls finishes prevents a
+    # fast executor from publishing a fresh cache mid-loop (which would
+    # correctly return the NEW object on later calls — not an inline pay).
     def _fake_sweep(client, **kwargs):
         calls["n"] += 1
         sweep_threads.append(th.current_thread())
-        done.set()
+        entered.set()
+        assert release.wait(30), "test never released the held sweep"
         return MarketContext()
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
     caller_thread = th.current_thread()
-    served = [srv._get_mkt_ctx(None) for _ in range(5)]
+    first = srv._get_mkt_ctx(None)
+    assert first is old_ctx
+    assert entered.wait(30), "background sweep never entered"
+    served = [first] + [srv._get_mkt_ctx(None) for _ in range(4)]
     assert all(s is old_ctx for s in served), "a caller was handed the new context inline"
-    assert done.wait(30), "background sweep never executed"
     assert sweep_threads and all(t is not caller_thread for t in sweep_threads), \
         "sweep executed inline on the caller thread"
+    release.set()
     deadline = time.time() + 30
     while time.time() < deadline:
         with srv._cached_mkt_ctx_lock:
