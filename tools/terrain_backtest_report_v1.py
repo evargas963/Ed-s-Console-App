@@ -169,16 +169,26 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
             continue
         # WEIGHTING HEAD-TO-HEAD (operator challenge 2026-07-22 "we have enough
         # data... your testing or data was wrong"): the volume-vs-OI divergence
-        # study could not attribute blame. This can: the same gamma-at-spot under
-        # VOLUME substitution, on every scored day, judged by the same realized
-        # range the OI weighting is judged by. Arbiter is reality, not agreement.
+        # study could not attribute blame. This can: the FULL volume-weighted
+        # terrain (same production pipeline, substituted inputs) on every scored
+        # day, judged by the same forward outcomes — realized range, hit-vs-own-
+        # median, and wall holds. Arbiter is reality, not agreement.
         from tools.study_volume_vs_oi_terrain_v1 import volume_substituted
+        gas_vol = vol_cw = vol_pw = None
+        vol_regime = None
         try:
             vol_contracts, _n_vol = volume_substituted(contracts)
-            gas_vol = gamma_at_price(
-                compute_gamma_profile(vol_contracts, float(spot)), float(spot))
-        except Exception:
-            gas_vol = None
+            snap_vol = compute_terrain(tk, vol_contracts, float(spot))
+            gas_vol = snap_vol.net_gex_at_spot
+            vol_cw, vol_pw = snap_vol.call_wall, snap_vol.put_wall
+            vol_regime = _regime_for_scoring(
+                snap_vol.regime, gas_vol, spot=float(spot), flip=snap_vol.gamma_flip)
+        except Exception as exc:
+            # A day whose volume-substituted terrain cannot compute scores as
+            # ABSENT on the volume map (hit_vol None; excluded from same-row
+            # comparisons) — never fabricated. Printed so a systematic failure
+            # is visible in the run log, not silent.
+            print(f"volume-map compute failed {tk} {day}: {type(exc).__name__}: {exc}")
         # TU-04 A/B: the GPO empirical prior (+call/+put) for single names. Net gamma
         # under it is C+P > 0 ALWAYS, so it is a CONSTANT LONG_GAMMA classifier — the
         # honest A/B question is "does naive's short-gamma call beat 'always dampen'?"
@@ -197,6 +207,8 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
             "ticker": tk, "day": day, "regime": scoring_regime,
             "net_gex_at_spot": snap.net_gex_at_spot,
             "net_gex_at_spot_vol": gas_vol,
+            "regime_vol": vol_regime,
+            "call_wall_vol": vol_cw, "put_wall_vol": vol_pw,
             "regime_prior": regime_prior,
             "confidence": snap.confidence, "spot": float(spot),
             "gamma_flip": snap.gamma_flip, "call_wall": snap.call_wall,
@@ -218,6 +230,9 @@ def _classify_and_hit(scored: list[dict]) -> tuple[list[dict], dict[str, float]]
         rp = r.get("regime_prior")
         r["hit_prior"] = ((rp == "SHORT_GAMMA_TREND") == r["range_class_high"]
                           if rp is not None else None)
+        rv = r.get("regime_vol")
+        r["hit_vol"] = ((rv == "SHORT_GAMMA_TREND") == r["range_class_high"]
+                        if rv is not None else None)
     return rows, med
 
 
@@ -365,6 +380,37 @@ def _weighting_head_to_head(rows: list[dict]) -> dict:
     return out
 
 
+def _weighting_scorecard(rows: list[dict], scored: list[dict]) -> dict:
+    """Map A (OI) vs Map B (VOLUME) vs placebo on FORWARD outcomes — the full
+    predictive scorecard (external directive 2026-07-22; comparison rules the
+    same pre-set family as the rho head-to-head: same rows, reality as arbiter).
+
+    hit% = regime vs own-median range class, computed on rows where BOTH maps
+    classify (no universe mismatch); placebo = yesterday's class persists, on
+    the same row set. Wall holds use each map's OWN walls on identical days.
+    """
+    out: dict[str, dict] = {}
+    for name, pred in (("sentinels", lambda r: r["ticker"] in SENTINELS),
+                       ("single_names", lambda r: r["ticker"] not in SENTINELS)):
+        both = [r for r in rows if pred(r) and r.get("hit_vol") is not None]
+        n = len(both)
+        p_hit, p_n = _placebo_persistence(both)
+        vol_wall_rows = [
+            {"spot": r["spot"], "call_wall": r.get("call_wall_vol"),
+             "put_wall": r.get("put_wall_vol"), "high": r.get("high"),
+             "low": r.get("low"), "close": r.get("close")}
+            for r in scored if pred(r)]
+        out[name] = {
+            "n_both_classified": n,
+            "hit_oi_pct": round(100 * sum(r["hit"] for r in both) / n, 1) if n else None,
+            "hit_vol_pct": round(100 * sum(r["hit_vol"] for r in both) / n, 1) if n else None,
+            "placebo_pct": round(100 * p_hit / p_n, 1) if p_n else None,
+            "wall_hold_oi": wall_hold_stats([r for r in scored if pred(r)]),
+            "wall_hold_vol": wall_hold_stats(vol_wall_rows),
+        }
+    return out
+
+
 def _placebo_persistence(rows: list[dict]) -> tuple[int, int]:
     """Hits/n for 'yesterday's realized class predicts today's', per ticker."""
     p_hit = p_n = 0
@@ -418,6 +464,8 @@ def run(since: str | None) -> dict:
         "sign_split_gex_r1": _sign_split_gex_r1(rows),
         # Weighting head-to-head: reality as arbiter (rule pre-set in the fn).
         "weighting_head_to_head": _weighting_head_to_head(rows),
+        # Full predictive scorecard: hit% vs placebo + wall holds, both maps.
+        "weighting_scorecard": _weighting_scorecard(rows, scored),
         # Wall stats use ALL scored rows (no median filter needed) — TRUSTED split is
         # the honest one: narrow-chain walls are strike-truncated by construction.
         "wall_hold_all": wall_hold_stats(scored),
