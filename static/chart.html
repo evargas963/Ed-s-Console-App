@@ -60,6 +60,7 @@
   <div id="wrap"><canvas id="cv" height="560"></canvas></div>
   <div id="histwrap"><canvas id="hv" height="560"></canvas></div>
 </div>
+<canvas id="gv" height="430"></canvas>
 <div id="tip"></div>
 <div id="coachlines"></div>
 <script>
@@ -158,7 +159,9 @@ async function load() {
     // past the newest bar stays where the operator placed it (snap-back class)
     const atEnd = !view ||
       (view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5);
-    raw = b.bars || []; terrain = t; strikes = s; crosses = c.crosses || [];
+    raw = b.bars || []; terrain = t; crosses = c.crosses || [];
+    // an HTTP error body ({detail:…}) must read as ABSENT, never as data
+    strikes = (s && s.today && s.prior) ? s : null;
     computeDaily(); setBars();
     if (atEnd && view) { const w = view.i1 - view.i0;
       view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
@@ -167,7 +170,7 @@ async function load() {
       `spot ${fmt((s && s.spot) ?? t.spot)} · regime ${t.regime || '—'} · ` +
       `${t.confidence || '—'} · ${raw.length}×1m bars · ` +
       `strikes ${(s && s.today_source) || 'restart console to activate'} ` +
-      `· scroll=taller/shorter · shift+scroll=more/less time · drag=move · dbl-click=fit`;
+      `· scroll=wider/narrower · shift+scroll=taller/shorter · drag=move · dbl-click=fit`;
     document.getElementById('coachlines').innerHTML = learning
       ? (t.lines || []).map(l => '· ' + l).join('<br>') : '';
     draw(); drawHist();
@@ -391,6 +394,7 @@ function draw() {
 }
 
 function drawHist() {
+  drawGamma();   // gamma panel renders in every state, including feed-absent
   const dpr = window.devicePixelRatio || 1;
   const W = 230, H = 560;
   hv.width = W * dpr; hv.height = H * dpr; hv.style.height = H + 'px';
@@ -424,6 +428,159 @@ function drawHist() {
   if (showGhost) g.fillText('▢ yesterday (ghost)', x0, H - 10);
 }
 
+/* ── gamma panel: the two full-size charts from the CR-03 mockup ──────────
+   1 · POSITIONING MIGRATION — today's per-strike gamma (solid) vs yesterday
+       (ghost outlines), strikes on the X axis
+   2 · WHERE TODAY'S OPTION VOLUME IS — per-strike volume vs the walls
+   scroll = more/fewer strikes · drag = slide the strike window · hover = numbers */
+const gvEl = document.getElementById('gv');
+let gWin = { n: 24, off: 0 };
+let gZones = [];
+
+const fmtBig = v => {
+  if (v == null) return '—';
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+  if (a >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if (a >= 1e3) return (v / 1e3).toFixed(0) + 'K';
+  return Number(v).toFixed(0);
+};
+
+function drawGamma() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = gvEl.clientWidth, H = 430;
+  gvEl.width = W * dpr; gvEl.height = H * dpr; gvEl.style.height = H + 'px';
+  const g = gvEl.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  g.strokeStyle = '#2b3646'; g.beginPath(); g.moveTo(0, 0.5); g.lineTo(W, 0.5); g.stroke();
+  const rows = ((strikes && strikes.today) || {})[scope] || [];
+  if (!rows.length) {
+    gZones = [];
+    g.fillStyle = '#f4f6f8'; g.font = '800 14px system-ui';
+    g.fillText('GAMMA PANEL — migration + volume by strike', 14, 28);
+    g.fillStyle = '#aab6c4'; g.font = '700 13px system-ui';
+    g.fillText('activates at the next console start (per-strike feed not on the running server yet)', 14, 52);
+    return;
+  }
+
+  const priorRows = ((strikes && strikes.prior) || {})[scope] || [];
+  const ghost = new Map(priorRows.map(r => [r[0], r[1]]));
+  const spot = (strikes && strikes.spot != null) ? strikes.spot
+    : (terrain ? terrain.spot : null);
+  let c = 0, best = Infinity;
+  for (let i = 0; i < rows.length; i++) {
+    const d = Math.abs(rows[i][0] - (spot ?? rows[i][0]));
+    if (d < best) { best = d; c = i; }
+  }
+  gWin.off = Math.max(-c, Math.min(rows.length - 1 - c, gWin.off));
+  const i0 = Math.max(0, c - gWin.n + gWin.off);
+  const i1 = Math.min(rows.length, c + gWin.n + gWin.off);
+  const vis = rows.slice(i0, i1);
+  if (!vis.length) return;
+  const bandW = (W - 24) / vis.length;
+  const xs = i => 12 + i * bandW;
+
+  const base1 = 196, amp1 = 128, base2 = 402, amp2 = 118;
+  const maxG = Math.max(1, ...vis.map(r => Math.abs(r[1])),
+    ...vis.map(r => Math.abs(ghost.get(r[0]) || 0)));
+  const maxV = Math.max(1, ...vis.map(r => r[2] || 0));
+
+  g.font = '800 14px system-ui'; g.fillStyle = '#f4f6f8';
+  g.fillText('1 · POSITIONING MIGRATION — today (solid) vs yesterday (ghost)', 14, 24);
+  g.fillText("2 · WHERE TODAY'S OPTION VOLUME IS — vs the walls", 14, 262);
+  g.strokeStyle = 'rgba(170,182,196,0.35)';
+  g.beginPath(); g.moveTo(12, base1); g.lineTo(W - 12, base1); g.stroke();
+  g.beginPath(); g.moveTo(12, base2); g.lineTo(W - 12, base2); g.stroke();
+
+  gZones = [];
+  g.lineWidth = 1.5;
+  for (let i = 0; i < vis.length; i++) {
+    const [k, gx, vol] = vis[i], gy = ghost.get(k);
+    const x0 = xs(i), bwS = Math.max(2, bandW * 0.44), bwG = Math.max(3, bandW * 0.62);
+    if (gy != null && showGhost) {
+      const h = Math.abs(gy) / maxG * amp1;
+      g.strokeStyle = '#c792ff'; g.setLineDash([3, 2]);
+      g.strokeRect(x0 + (bandW - bwG) / 2, gy >= 0 ? base1 - h : base1, bwG, h);
+      g.setLineDash([]);
+    }
+    const h = Math.abs(gx) / maxG * amp1;
+    g.fillStyle = gx >= 0 ? '#33aaff' : '#ff3355';
+    g.fillRect(x0 + (bandW - bwS) / 2, gx >= 0 ? base1 - h : base1, bwS, h);
+    const hv2 = (vol || 0) / maxV * amp2;
+    g.fillStyle = '#ffc400';
+    g.fillRect(x0 + (bandW - bwS) / 2, base2 - hv2, bwS, hv2);
+    const dG = gy != null ? gx - gy : null;
+    gZones.push({ x0, x1: x0 + bandW,
+      tipHtml: `<b>Strike ${fmt(k)}</b><br>` +
+        `Dealer gamma today: ${fmtBig(gx)}<br>` +
+        `Yesterday: ${gy != null ? fmtBig(gy) : 'no wide capture'}` +
+        (dG != null ? ` · shift ${dG >= 0 ? '+' : ''}${fmtBig(dG)}` : '') +
+        `<br>Option volume today: ${fmtBig(vol)}` });
+    if (bandW > 26 || (Math.round(k) === k && Math.round(k) % 5 === 0)) {
+      g.fillStyle = '#aab6c4'; g.font = '700 11px system-ui';
+      g.fillText(fmt(k, 0), x0 + bandW / 2 - 9, H - 8);
+    }
+  }
+
+  // spot + walls, marked on both charts
+  const T = terrain || {};
+  const mark = (price, col, lab, yTop) => {
+    if (price == null) return;
+    let xi = null;
+    for (let i = 0; i < vis.length; i++)
+      if (Math.abs(vis[i][0] - price) < 1e-9) { xi = xs(i) + bandW / 2; break; }
+    if (xi == null) {
+      if (price < vis[0][0] || price > vis[vis.length - 1][0]) return;
+      for (let i = 1; i < vis.length; i++)
+        if (vis[i][0] >= price) {
+          xi = xs(i - 1) + bandW / 2 +
+            (price - vis[i - 1][0]) / (vis[i][0] - vis[i - 1][0]) * bandW; break; }
+    }
+    if (xi == null) return;
+    g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([6, 4]);
+    g.beginPath(); g.moveTo(xi, yTop); g.lineTo(xi, H - 20); g.stroke(); g.setLineDash([]);
+    g.fillStyle = col; g.font = '800 12px system-ui';
+    g.fillText(lab, Math.min(xi + 5, W - 110), yTop + 12);
+  };
+  mark(spot, '#ffc400', `SPOT ${fmt(spot)}`, 30);
+  mark(T.call_wall, '#ff3355', `CALL WALL ${fmt(T.call_wall, 0)}`, 46);
+  mark(T.put_wall, '#00e07a', `PUT WALL ${fmt(T.put_wall, 0)}`, 62);
+
+  // measured migration line: biggest per-strike shifts vs yesterday
+  const deltas = vis.filter(r => ghost.get(r[0]) != null)
+    .map(r => [r[0], r[1] - ghost.get(r[0])])
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 3);
+  if (deltas.length) {
+    g.fillStyle = '#c792ff'; g.font = '700 12px system-ui';
+    g.fillText('biggest shifts vs yesterday: ' + deltas.map(([k, d]) =>
+      `${fmt(k, 0)} ${d >= 0 ? '+' : ''}${fmtBig(d)}`).join(' · '), 14, 42);
+  }
+}
+
+let gDrag = null;
+gvEl.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const d = ev.deltaY || ev.deltaX;
+  gWin.n = Math.round(Math.max(6, Math.min(400, gWin.n * (d > 0 ? 1.25 : 0.8))));
+  drawGamma();
+}, { passive: false });
+gvEl.addEventListener('mousedown', ev => { gDrag = { x: ev.clientX, off: gWin.off }; });
+window.addEventListener('mouseup', () => { gDrag = null; });
+gvEl.addEventListener('mousemove', ev => {
+  if (gDrag) {
+    const bandW = (gvEl.clientWidth - 24) / Math.max(1, gWin.n * 2);
+    gWin.off = gDrag.off - Math.round((ev.clientX - gDrag.x) / Math.max(bandW, 1));
+    drawGamma(); return;
+  }
+  const r = gvEl.getBoundingClientRect();
+  const mx = ev.clientX - r.left;
+  const z = gZones.find(z => mx >= z.x0 && mx < z.x1);
+  if (z) { tip.innerHTML = z.tipHtml; tip.style.display = 'block';
+    tip.style.left = Math.min(ev.clientX + 16, window.innerWidth - 400) + 'px';
+    tip.style.top = (ev.clientY + 16) + 'px';
+  } else tip.style.display = 'none';
+});
+gvEl.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+
 /* ── interactions: wheel zoom, drag pan (x+y), dbl-click fit, crosshair ── */
 wrap.addEventListener('wheel', ev => {
   ev.preventDefault();
@@ -432,16 +589,7 @@ wrap.addEventListener('wheel', ev => {
   const d = ev.deltaY || ev.deltaX;
   const f = d > 0 ? 1.18 : 1 / 1.18;
   if (ev.shiftKey) {
-    // shift+scroll: more/less TIME on screen, anchored at the cursor
-    const anchor = scale.px2i(ev.clientX - r.left);
-    let w = (view.i1 - view.i0) * f;
-    w = Math.max(12, Math.min(bars.length * 1.2, w));
-    const frac = (anchor - view.i0) / (view.i1 - view.i0);
-    view.i0 = anchor - frac * w; view.i1 = view.i0 + w;
-    clampView();
-  } else {
-    // plain scroll: chart TALLER (scroll up) / SHORTER (scroll down),
-    // anchored at the price under the cursor (operator directive 2026-07-23)
+    // shift+scroll: chart TALLER/SHORTER (price span), anchored at the cursor
     const dom = yLock || domain();
     const anchorP = scale.px2price(ev.clientY - r.top);
     let span = (dom.hi - dom.lo) * f;
@@ -449,6 +597,15 @@ wrap.addEventListener('wheel', ev => {
     const frac = (dom.hi - anchorP) / (dom.hi - dom.lo);
     const hi = anchorP + frac * span;
     yLock = { lo: hi - span, hi };
+  } else {
+    // plain scroll: chart WIDER (scroll up) / NARROWER (scroll down),
+    // anchored at the bar under the cursor (operator correction 2026-07-23)
+    const anchor = scale.px2i(ev.clientX - r.left);
+    let w = (view.i1 - view.i0) * f;
+    w = Math.max(12, Math.min(bars.length * 1.2, w));
+    const frac = (anchor - view.i0) / (view.i1 - view.i0);
+    view.i0 = anchor - frac * w; view.i1 = view.i0 + w;
+    clampView();
   }
   draw(); drawHist();
 }, { passive: false });
