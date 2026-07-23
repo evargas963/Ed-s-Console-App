@@ -2903,6 +2903,10 @@ body.ed-terrain-mode { overflow:hidden; }
               aria-selected="true" onclick="edSwitchView('console')">CONSOLE</button>
       <button type="button" class="ed-viewtab" id="tab-terrain" role="tab"
               aria-selected="false" onclick="edSwitchView('terrain')">TERRAIN</button>
+      <!-- CR-03 screen-1 v0 (2026-07-23): separate page, plain navigation — the new
+           shell replaces this link when CR-CAP clears; until then one click, no typing. -->
+      <button type="button" class="ed-viewtab" id="tab-chart"
+              onclick="window.location.href='/chart'">CHART</button>
     </div>
     <span class="ub-vdiv" aria-hidden="true"></span>
 
