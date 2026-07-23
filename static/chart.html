@@ -9,9 +9,14 @@
           --green:#00e07a; --red:#ff3355; --amber:#ffc400; --blue:#33aaff; --vio:#c792ff;
           --cyan:#00e5ff; --pink:#ff66cc; }
   * { box-sizing: border-box; }
-  body { margin:0; color:var(--text);
+  html, body { height:100%; }
+  body { margin:0; color:var(--text); display:flex; flex-direction:column;
+         overflow:auto;
          background:radial-gradient(1200px 600px at 70% -10%, #0b1420 0%, var(--bg) 60%) fixed var(--bg);
          font:14px 'Segoe UI', system-ui, sans-serif; }
+  #top { flex:none; }
+  #coachlines { flex:none; max-height:40px; overflow:auto; padding-top:4px;
+                padding-bottom:4px; }
   #top { display:flex; gap:10px; align-items:center; padding:8px 14px;
          border-bottom:1px solid var(--border); flex-wrap:wrap; }
   #tk { background:var(--panel); color:var(--text); border:1px solid var(--border);
@@ -34,7 +39,7 @@
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
   #regchip { border-radius:12px; padding:5px 13px; font-size:12px; font-weight:800;
              letter-spacing:.04em; color:#031018; background:var(--dim); flex:none; }
-  .card { border:1px solid var(--border); border-radius:12px; margin:10px 12px;
+  .card { border:1px solid var(--border); border-radius:12px; margin:8px 12px;
           overflow:hidden; background:rgba(16,21,28,.55);
           box-shadow:0 6px 24px rgba(0,0,0,.35); }
   .sechead { display:flex; align-items:center; gap:10px; padding:10px 14px 6px;
@@ -53,19 +58,22 @@
            padding:11px 14px; font-size:13px; line-height:1.5; display:none;
            border:1px solid; backdrop-filter:blur(2px); }
   .coach b { display:block; margin-bottom:4px; font-size:13.5px; }
-  #coach1 { top:52px; background:rgba(199,146,255,.10); border-color:rgba(199,146,255,.5); }
+  #coach1 { top:14%; background:rgba(199,146,255,.10); border-color:rgba(199,146,255,.5); }
   #coach1 b { color:var(--vio); }
-  #coach2 { top:288px; background:rgba(255,196,0,.08); border-color:rgba(255,196,0,.5); }
+  #coach2 { top:64%; background:rgba(255,196,0,.08); border-color:rgba(255,196,0,.5); }
   #coach2 b { color:var(--amber); }
   #wrap .lastdot { position:absolute; width:10px; height:10px; border-radius:50%;
                    background:var(--amber); box-shadow:0 0 10px var(--amber);
                    animation:pulse 1.6s ease-in-out infinite; pointer-events:none;
                    display:none; }
   #meta { color:var(--dim); font-size:12px; width:100%; }
-  #layout { display:flex; }
+  #layout { display:flex; flex:1.4 1 0; min-height:260px; }
   #wrap { position:relative; flex:1; min-width:0; cursor:crosshair; }
   #histwrap { width:230px; border-left:1px solid var(--border); }
-  canvas { display:block; width:100%; }
+  #gammacard { flex:1 1 0; min-height:210px; display:flex; flex-direction:column; }
+  #gammacard .sechead, #gammacard .legend { flex:none; }
+  #gwrap { flex:1; min-height:0; }
+  canvas { display:block; width:100%; height:100%; }
   #tip { position:fixed; display:none; max-width:380px; background:var(--panel);
          border:1px solid var(--blue); border-radius:8px; padding:11px 13px;
          font-size:13px; line-height:1.55; pointer-events:none; z-index:9;
@@ -101,7 +109,7 @@
   <div id="wrap"><canvas id="cv" height="560"></canvas><div class="lastdot" id="lastdot"></div></div>
   <div id="histwrap"><canvas id="hv" height="560"></canvas></div>
 </div>
-<div class="card">
+<div class="card" id="gammacard">
   <div class="sechead">GAMMA PANEL — POSITIONING MIGRATION &amp; TODAY'S VOLUME
     <span class="src" id="gsrc"></span></div>
   <div id="gwrap">
@@ -125,6 +133,12 @@
    with axis readouts · ALL terrain key levels plotted · bright palette, loud scales.
    Every market sentence remains SERVER-GENERATED (terrain read / level_crosses). */
 'use strict';
+// any uncaught page error becomes VISIBLE in the narrator — never a silent blank
+window.addEventListener('error', e => {
+  const n = document.getElementById('narrator');
+  if (n) n.textContent = 'page error: ' + (e.message || 'unknown') +
+    (e.lineno ? ` (line ${e.lineno})` : '');
+});
 const cv = document.getElementById('cv'), hv = document.getElementById('hv');
 const tip = document.getElementById('tip'), wrap = document.getElementById('wrap');
 let raw = [], bars = [], terrain = null, strikes = null, crosses = [];
@@ -135,9 +149,13 @@ let cross = null;         // {mx, my} crosshair position
 let scale = null;
 let daily = null;         // {vwap:[[t,w]…], pdh, pdl, pdc} from canonical 1m rows
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
+let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
 
 const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
 const j = async u => (await fetch(u)).json();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));
+const hasStrikeBars = sc => !!(sc && Array.isArray(sc.all) && sc.all.length > 0);
 
 function aggregate(src, tfv) {
   if (tfv === '1') return src.slice();
@@ -215,8 +233,8 @@ async function load() {
     const atEnd = !view ||
       (view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5);
     raw = b.bars || []; terrain = t; crosses = c.crosses || [];
-    // an HTTP error body ({detail:…}) must read as ABSENT, never as data
-    strikes = (s && s.today && s.prior) ? s : null;
+    // empty {all:[],…} shells and HTTP error bodies both read as ABSENT
+    strikes = (s && hasStrikeBars(s.today)) ? s : null;
     computeDaily(); setBars();
     if (atEnd && view) { const w = view.i1 - view.i0;
       view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
@@ -224,23 +242,29 @@ async function load() {
     document.getElementById('meta').textContent =
       `spot ${fmt((s && s.spot) ?? t.spot)} · regime ${t.regime || '—'} · ` +
       `${t.confidence || '—'} · ${raw.length}×1m bars · ` +
-      `strikes ${(s && s.today_source) || 'restart console to activate'} ` +
+      `strikes ${(strikes && strikes.today_source) || 'restart console to activate'} ` +
       `· scroll=wider/narrower · shift+scroll=taller/shorter · drag=move · dbl-click=fit`;
     document.getElementById('coachlines').innerHTML = learning
-      ? (t.lines || []).map(l => '· ' + l).join('<br>') : '';
-    document.getElementById('livedot').className = '';
+      ? (t.lines || []).map(l => '· ' + esc(l)).join('<br>') : '';
+    // LIVE only when the newest 1m bar is fresh; otherwise honest STALE
+    const lastTs = raw.length ? Number(raw[raw.length - 1].t) : 0;
+    const barAgeSec = lastTs ? (Date.now() / 1000 - lastTs) : 1e9;
+    feedFresh = !!(raw.length && barAgeSec <= 900);
+    document.getElementById('livedot').className = feedFresh ? '' : 'stale';
     const rc = document.getElementById('regchip');
     const reg = String(t.regime || '—');
     rc.textContent = reg;
     rc.style.background = /SHORT/.test(reg) ? '#ff3355'
       : /LONG/.test(reg) ? '#00e07a'
       : /UNPROVEN/.test(reg) ? '#ffc400' : '#aab6c4';
-    document.getElementById('gsrc').textContent = (s && s.today_source)
-      ? `today: ${s.today_source}` : 'feed activates at the next console start';
+    document.getElementById('gsrc').textContent = (strikes && strikes.today_source)
+      ? `today: ${strikes.today_source}` : 'feed activates at the next console start';
     draw(); drawHist();
   } catch (e) {
     document.getElementById('narrator').textContent = 'load failed: ' + e.message;
+    feedFresh = false;
     document.getElementById('livedot').className = 'stale';
+    document.getElementById('lastdot').style.display = 'none';
   }
 }
 
@@ -267,11 +291,16 @@ function niceStep(span, target) {
 
 function draw() {
   const dpr = window.devicePixelRatio || 1;
-  const W = wrap.clientWidth, H = 560;
-  cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
+  const W = wrap.clientWidth, H = wrap.clientHeight || 560;
+  cv.width = W * dpr; cv.height = H * dpr;
   const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
-  if (!bars.length) { g.fillStyle = '#aab6c4'; g.font = '14px system-ui';
-    g.fillText('no bars yet — pre-market', 20, 40);
+  if (!bars.length) {
+    g.fillStyle = '#f4f6f8'; g.font = '800 20px system-ui'; g.textAlign = 'center';
+    g.fillText('NO BARS YET', W / 2, H / 2 - 12);
+    g.fillStyle = '#aab6c4'; g.font = '700 14px system-ui';
+    g.fillText('pre-market, or the console feed is unreachable — retrying every 15s',
+      W / 2, H / 2 + 14);
+    g.textAlign = 'left';
     document.getElementById('lastdot').style.display = 'none'; return; }
 
   const { lo, hi } = domain();
@@ -295,7 +324,9 @@ function draw() {
 
   zones = [];
   const T = terrain || {};
-  const unproven = T.regime === 'SIGN_UNPROVEN';
+  // Fail-closed lean: SIGN_UNPROVEN, UNAVAILABLE, or non-TRUSTED — never paint BUY/SELL advice
+  const withholdLean = T.regime === 'SIGN_UNPROVEN' || T.regime === 'UNAVAILABLE'
+    || T.confidence !== 'TRUSTED';
   // wall BANDS with a real price RANGE: strike ± half the local strike spacing
   const ks = ((strikes && strikes.today && strikes.today.all) || []).map(r => r[0]);
   let half = 0.5;
@@ -314,14 +345,17 @@ function draw() {
     g.fillStyle = sell ? '#ff3355' : '#00e07a'; g.font = '800 14px system-ui';
     g.fillText((sell ? `CALL WALL ${fmt(level - half)}–${fmt(level + half)}`
                      : `PUT WALL ${fmt(level - half)}–${fmt(level + half)}`) +
-      (unproven ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY')), PADL + 8, yTop - 5);
+      (withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY')), PADL + 8, yTop - 5);
     wallLabelYs.push(yTop - 5);
-    zones.push({ y0: yTop, y1: yBot,
-      tipHtml: `<b>${sell ? 'Call wall' : 'Put wall'} ${fmt(level)} (band ±${fmt(half)})</b><br>` +
-        `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
+    const leanTip = withholdLean
+      ? `Heavy standing option inventory in this strike band (structure fact only).<br>` +
+        `<i>Measured: OI walls hold 70–72% (1,000+ days); volume-built only 62–66%.</i><br>` +
+        `<i>Dealer BUY/SELL lean withheld — regime ${esc(T.regime)} / ${esc(T.confidence)}.</i>`
+      : `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
         `in this range; acts as ${sell ? 'resistance' : 'support'}.<br>` +
-        `<i>Measured: OI walls hold 70–72% (1,000+ days); volume-built only 62–66%.</i>` +
-        (unproven ? '<br><i>Single name: BUY/SELL lean withheld — dealer-sign unproven.</i>' : '') });
+        `<i>Measured: OI walls hold 70–72% (1,000+ days); volume-built only 62–66%.</i>`;
+    zones.push({ y0: yTop, y1: yBot,
+      tipHtml: `<b>${sell ? 'Call wall' : 'Put wall'} ${fmt(level)} (band ±${fmt(half)})</b><br>` + leanTip });
   };
   band(T.call_wall, 'call'); band(T.put_wall, 'put');
 
@@ -348,11 +382,15 @@ function draw() {
   const lvlItems = [];
   for (const [key, lab, col, why, dash] of levels) {
     const v = T[key]; if (v == null || v < lo || v > hi) continue;
+    const leanTips = {
+      gamma_flip: 'Landmark strike only — structure fact; amplify/dampen lean withheld for this read.',
+      hvp: 'Most negative gamma strike — structure fact; amplification lean withheld.',
+      lvp: 'Most positive gamma strike — structure fact; damping lean withheld.',
+    };
+    const tipWhy = (withholdLean && leanTips[key]) || why;
     lvlItems.push({ v, text: `${lab} ${fmt(v)}`, col, dash,
       lw: key === 'gamma_flip' ? 2 : 1.25, side: 'right',
-      tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` +
-        (key === 'gamma_flip' && unproven
-          ? '<br><i>Landmark only here — sign meaning unproven for this ticker.</i>' : '') });
+      tipHtml: `<b>${lab} ${fmt(v)}</b><br>${tipWhy}` });
   }
   for (const [k, lab, dash, why] of pdRows) {
     const v = daily && daily[k]; if (v == null || v < lo || v > hi) continue;
@@ -391,11 +429,11 @@ function draw() {
     g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1.5, Math.abs(y(b.o) - y(b.c))));
   }
 
-  // pulsing marker on the last price (live-data cue)
+  // pulsing marker only while canonical 1m tip is fresh (same gate as #livedot)
   const dotEl = document.getElementById('lastdot');
   const lb = bars[bars.length - 1];
   const ldx = x(bars.length - 1) + bw / 2, ldy = y(lb.c);
-  if (ldx > PADL && ldx < W - PADR && ldy > PADT && ldy < H - PADB) {
+  if (feedFresh && ldx > PADL && ldx < W - PADR && ldy > PADT && ldy < H - PADB) {
     dotEl.style.left = (ldx - 5) + 'px'; dotEl.style.top = (ldy - 5) + 'px';
     dotEl.style.display = 'block';
   } else dotEl.style.display = 'none';
@@ -436,7 +474,7 @@ function draw() {
     g.fillStyle = '#ffc400';
     g.beginPath(); g.arc(W - PADR - 16, yv, 5, 0, 6.283); g.fill();
     zones.push({ y0: yv - 7, y1: yv + 7,
-      tipHtml: `<b>${cr.level_name || 'level'} ${fmt(lv)} crossed ${cr.direction || ''}</b>` +
+      tipHtml: `<b>${esc(cr.level_name || 'level')} ${fmt(lv)} crossed ${esc(cr.direction || '')}</b>` +
         `<br><i>Recent crossing from the console's own log.</i>` });
   }
 
@@ -471,8 +509,8 @@ function draw() {
 function drawHist() {
   drawGamma();   // gamma panel renders in every state, including feed-absent
   const dpr = window.devicePixelRatio || 1;
-  const W = 230, H = 560;
-  hv.width = W * dpr; hv.height = H * dpr; hv.style.height = H + 'px';
+  const W = 230, H = hv.clientHeight || 560;
+  hv.width = W * dpr; hv.height = H * dpr;
   const g = hv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
   if (!scale) return;
   g.font = '700 12px system-ui';
@@ -525,8 +563,8 @@ const fmtBig = v => {
 
 function drawGamma() {
   const dpr = window.devicePixelRatio || 1;
-  const W = gvEl.clientWidth, H = 430;
-  gvEl.width = W * dpr; gvEl.height = H * dpr; gvEl.style.height = H + 'px';
+  const W = gvEl.clientWidth, H = gvEl.clientHeight || 430;
+  gvEl.width = W * dpr; gvEl.height = H * dpr;
   const g = gvEl.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
   g.strokeStyle = '#2b3646'; g.beginPath(); g.moveTo(0, 0.5); g.lineTo(W, 0.5); g.stroke();
   const coach1 = document.getElementById('coach1'), coach2 = document.getElementById('coach2');
@@ -560,14 +598,14 @@ function drawGamma() {
   const xs = i => 12 + i * bandW;
   gLayout = { bandW, count: vis.length };
 
-  const base1 = 196, amp1 = 128, base2 = 402, amp2 = 118;
+  const base1 = H * 0.45, amp1 = H * 0.30, base2 = H * 0.93, amp2 = H * 0.27;
   const maxG = Math.max(1, ...vis.map(r => Math.abs(r[1])),
     ...vis.map(r => Math.abs(ghost.get(r[0]) || 0)));
   const maxV = Math.max(1, ...vis.map(r => r[2] || 0));
 
   g.font = '800 14px system-ui'; g.fillStyle = '#f4f6f8';
   g.fillText('1 · POSITIONING MIGRATION — today (solid) vs yesterday (ghost)', 14, 24);
-  g.fillText("2 · WHERE TODAY'S OPTION VOLUME IS — vs the walls", 14, 262);
+  g.fillText("2 · WHERE TODAY'S OPTION VOLUME IS — vs the walls", 14, H * 0.61);
   g.strokeStyle = 'rgba(170,182,196,0.35)';
   g.beginPath(); g.moveTo(12, base1); g.lineTo(W - 12, base1); g.stroke();
   g.beginPath(); g.moveTo(12, base2); g.lineTo(W - 12, base2); g.stroke();
@@ -805,7 +843,7 @@ chip('ghost', () => { showGhost = !showGhost;
 chip('learn', () => { learning = !learning;
   document.getElementById('learn').classList.toggle('on', learning);
   document.getElementById('coachlines').innerHTML = learning
-    ? ((terrain || {}).lines || []).map(l => '· ' + l).join('<br>') : ''; });
+    ? ((terrain || {}).lines || []).map(l => '· ' + esc(l)).join('<br>') : ''; });
 document.getElementById('tk').addEventListener('change', () => { view = null; yLock = null; load(); });
 window.addEventListener('resize', () => { draw(); drawHist(); });
 load(); setInterval(load, 15000);
