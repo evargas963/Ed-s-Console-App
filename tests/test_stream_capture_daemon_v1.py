@@ -198,3 +198,63 @@ def test_second_owner_refused_while_lock_held(tmp_path, monkeypatch):
     finally:
         d.release_owner_lock(fd)
     assert not (tmp_path / "own.lock").exists()
+
+
+# ── half-open-socket guard (2026-07-23, observed live: both feeds silent, no error) ──
+
+
+def test_stream_needs_recycle_decision_boundaries():
+    from tools.run_stream_capture import (
+        RECONNECT_COOLDOWN_SEC,
+        STREAM_STALE_RECONNECT_SEC,
+        stream_needs_recycle,
+    )
+
+    ok_cool = RECONNECT_COOLDOWN_SEC + 1
+    stale = STREAM_STALE_RECONNECT_SEC + 1
+    assert stream_needs_recycle(stale, True, ok_cool) is True
+    # never recycle: no age yet / never saw data (subscribe problem, not half-open)
+    assert stream_needs_recycle(None, True, ok_cool) is False
+    assert stream_needs_recycle(stale, False, ok_cool) is False
+    # never login-spam: inside cooldown stays put even when stale
+    assert stream_needs_recycle(stale, True, RECONNECT_COOLDOWN_SEC - 1) is False
+    # fresh feed stays connected
+    assert stream_needs_recycle(STREAM_STALE_RECONNECT_SEC - 1, True, ok_cool) is False
+
+
+def test_alpaca_session_recycles_on_silent_socket(monkeypatch):
+    """A half-open socket raises NOTHING — the session must return True (recycle)
+    once quiet passes the bar, instead of spinning on timeouts forever."""
+    import json as _json
+
+    import tools.run_stream_capture as m
+
+    monkeypatch.setattr(m, "ALPACA_STALE_RECONNECT_SEC", 0.05)
+
+    class FakeWS:
+        def __init__(self):
+            self.frames = [
+                _json.dumps([{"T": "success", "msg": "connected"}]),
+                _json.dumps([{"T": "success", "msg": "authenticated"}]),
+            ]
+            self.sent = []
+
+        async def recv(self):
+            if self.frames:
+                return self.frames.pop(0)
+            await asyncio.sleep(3600)   # half-open: silent forever, no exception
+            return None                 # unreachable in test; satisfies RET503
+
+        async def send(self, data):
+            self.sent.append(data)
+
+    async def _run():
+        bus = MessageBus()
+        health = HealthRegistry()
+        stats = CaptureStats()
+        stop = asyncio.Event()
+        return await asyncio.wait_for(
+            m._alpaca_session(FakeWS(), ["SPY"], "k", "s", bus, health, stats, stop),
+            timeout=10)
+
+    assert asyncio.run(_run()) is True, "silent socket must signal recycle, not hang"

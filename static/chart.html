@@ -998,15 +998,20 @@ function _dropLiveSpot() {
   const cs = _cycleSpot();
   if (cs != null && chartTicker) noteSpotTick(cs); else draw();
 }
+let spotPollBackoffUntil = 0;   // 404 = server predates the endpoint: back off,
+                                // do not spam the operator's console log at 1.5s
 async function pollSpot() {
-  if (spotPollInflight) return;
+  if (spotPollInflight || Date.now() < spotPollBackoffUntil) return;
   const tk = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
   spotPollInflight = true;
   try {
     const r = await fetch(`/api/spot?ticker=${tk}`);
     const cur = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
     if (cur !== tk || chartTicker !== tk) return;
-    if (!r.ok) { _dropLiveSpot(); return; }
+    if (!r.ok) {
+      if (r.status === 404) spotPollBackoffUntil = Date.now() + 60000;
+      _dropLiveSpot(); return;
+    }
     const j = await r.json();
     if ((document.getElementById('tk').value || 'SPY').trim().toUpperCase() !== tk
         || chartTicker !== tk) return;

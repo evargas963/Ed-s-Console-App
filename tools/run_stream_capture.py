@@ -124,6 +124,28 @@ ALPACA_ENV_PATH = ROOT / ".env"
 #: tape — the pre-registered CR-02 study decides whether the sample is trustworthy.
 ALPACA_SRC = "alpaca_iex"
 
+# ── half-open-socket guard (2026-07-23, observed live) ───────────────────────
+# A network blip left BOTH websockets half-open: connected on paper, silent in
+# practice. No error ever fires on a half-open TCP socket, so error-driven
+# reconnect logic never triggers — the feeds sat STALE for minutes while the
+# process looked healthy (py-spy: event loop idle at _poll). Staleness itself
+# must therefore force the reconnect.
+ALPACA_STALE_RECONNECT_SEC = 120.0   #: no frames this long -> recycle the socket
+STREAM_STALE_RECONNECT_SEC = 90.0    #: LEVELONE quiet this long -> recycle stream
+RECONNECT_COOLDOWN_SEC = 180.0       #: never login-spam Schwab on quiet tape
+
+
+def stream_needs_recycle(age_sec: float | None, seen_data: bool,
+                         since_last_reconnect: float) -> bool:
+    """Half-open-guard decision (pure; unit-tested). Recycle ONLY when:
+    data has flowed before (a never-beat service is a subscribe problem, not a
+    half-open socket), the feed has been quiet past the stale bar, and the
+    cooldown has passed (quiet after-hours tape must not cycle logins)."""
+    if age_sec is None or not seen_data:
+        return False
+    return (age_sec > STREAM_STALE_RECONNECT_SEC
+            and since_last_reconnect > RECONNECT_COOLDOWN_SEC)
+
 
 def alpaca_keys_from_env() -> tuple[str, str] | None:
     """Paper keys from .env (ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY) or process env.
@@ -242,11 +264,20 @@ async def _alpaca_session(ws, symbols: list[str], kid: str, sec: str, bus: Messa
                               "trades": symbols, "quotes": symbols}))
     print(f"alpaca: subscribed trades+quotes for {len(symbols)} symbols "
           f"(free tier cap 30; separate from Schwab key budget)")
+    last_rx = time.monotonic()
     while not stop.is_set():
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
         except asyncio.TimeoutError:
+            # half-open guard: a dead socket raises NOTHING — quiet past the
+            # bar means recycle (outer loop reconnects with fresh auth+subs)
+            quiet = time.monotonic() - last_rx
+            if quiet > ALPACA_STALE_RECONNECT_SEC:
+                print(f"alpaca: no frames for {quiet:.0f}s — recycling socket "
+                      f"(half-open guard)")
+                return True
             continue
+        last_rx = time.monotonic()
         alpaca_handle_frame(raw, bus, health, stats)
     return True
 
@@ -433,11 +464,12 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
         writer.close()   # every exit path incl. login/subscribe failure (round-3 MEDIUM)
 
 
-async def _run_streaming(symbols, duration_min, bus, health, stats,
-                         writer, wsub, stop, state) -> int:
+async def _schwab_connect(state, symbols, bus, health, stats, stop):
+    """Fresh Schwab stream: login + handlers + subs -> running pump task.
+    Used at start AND by the half-open watchdog (a recycle is a clean rebuild —
+    never an attempt to resuscitate a dead StreamClient)."""
     from schwab.streaming import StreamClient
 
-    max_qdepth = 0
     stream = StreamClient(state.client)
     await stream.login()
     stream.add_level_one_equity_handler(
@@ -449,21 +481,48 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     print(f"subscribed {len(symbols)} symbols x2 services (key accounting: "
           f"{len(symbols) * 2} keys used)")
 
-    writer_task = asyncio.create_task(writer.run(wsub, stop=stop))
-
     async def pump() -> None:
         while not stop.is_set():
             await stream.handle_message()
 
-    pump_task = asyncio.create_task(pump())
+    return asyncio.create_task(pump())
+
+
+async def _run_streaming(symbols, duration_min, bus, health, stats,
+                         writer, wsub, stop, state) -> int:
+    max_qdepth = 0
+    writer_task = asyncio.create_task(writer.run(wsub, stop=stop))
+    pump_task = await _schwab_connect(state, symbols, bus, health, stats, stop)
     # CR-02 prints leg — optional co-producer on the SAME bus/writer/health.
     alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
+    last_reconnect = time.monotonic()
     try:
         while not stop.is_set():
             await asyncio.sleep(10)
             max_qdepth = max(max_qdepth, wsub.queue.qsize())
             write_status(bus, health, writer, stats, max_qdepth)
+            # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
+            age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
+            seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0
+            if stream_needs_recycle(age, seen, time.monotonic() - last_reconnect):
+                print(f"watchdog: LEVELONE_EQUITIES quiet {age:.0f}s — recycling "
+                      f"Schwab stream (half-open guard)")
+                last_reconnect = time.monotonic()
+                pump_task.cancel()
+                try:
+                    await pump_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:  # noqa: BLE001 — recycle path; reported
+                    print(f"watchdog: old pump ended with {type(exc).__name__}: {exc}")
+                try:
+                    pump_task = await _schwab_connect(state, symbols, bus, health,
+                                                      stats, stop)
+                except Exception as exc:  # noqa: BLE001 — retry next tick, loudly
+                    print(f"watchdog: reconnect FAILED ({type(exc).__name__}: {exc}) "
+                          f"— retrying after cooldown")
+                    pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
             if deadline and time.monotonic() > deadline:
                 break
     except (KeyboardInterrupt, asyncio.CancelledError):
