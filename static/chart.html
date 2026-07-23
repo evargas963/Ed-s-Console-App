@@ -963,26 +963,28 @@ chip('learn', () => { learning = !learning;
   document.getElementById('coachlines').innerHTML = learning
     ? ((terrain || {}).lines || []).map(l => '· ' + esc(l)).join('<br>') : ''; });
 document.getElementById('tk').addEventListener('change', () => {
-  view = null; yLock = null; liveSpot = null; forming = null; sealedForming = null;
-  chartTicker = null; load(); });
+  view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0;
+  forming = null; sealedForming = null; chartTicker = null; load(); });
 
-// fast spot poll (2.5s): kills the 15s spot lag. Fail-closed — if the endpoint
-// is absent (server predates it) or errors, clear liveSpot and redraw so the
-// 15s cycle spot paints immediately (never leave a stale fast-poll on screen).
+// fast spot poll (1.5s behind 1.25s server cache). Fail-closed on error.
+// In-flight guard + spot_as_of_ts_utc: a slow reply never overwrites a fresher tick.
+let spotPollInflight = false;
+let liveSpotAsOf = 0;
 function _cycleSpot() {
   return (strikes && strikes.spot != null) ? strikes.spot
     : (terrain ? terrain.spot : null);
 }
 function _dropLiveSpot() {
-  liveSpot = null;
+  liveSpot = null; liveSpotAsOf = 0;
   const cs = _cycleSpot();
   if (cs != null && chartTicker) noteSpotTick(cs); else draw();
 }
 async function pollSpot() {
+  if (spotPollInflight) return;
   const tk = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+  spotPollInflight = true;
   try {
     const r = await fetch(`/api/spot?ticker=${tk}`);
-    // discard late replies until bars for THIS ticker are loaded
     const cur = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
     if (cur !== tk || chartTicker !== tk) return;
     if (!r.ok) { _dropLiveSpot(); return; }
@@ -990,12 +992,16 @@ async function pollSpot() {
     if ((document.getElementById('tk').value || 'SPY').trim().toUpperCase() !== tk
         || chartTicker !== tk) return;
     if (j.ticker === tk && j.spot != null && isFinite(Number(j.spot))) {
+      const asOf = Number(j.spot_as_of_ts_utc) || 0;
+      if (asOf && liveSpotAsOf && asOf < liveSpotAsOf) return;
+      if (asOf) liveSpotAsOf = asOf;
       liveSpot = Number(j.spot);
-      noteSpotTick(liveSpot);   // grows the forming candle + redraws
+      noteSpotTick(liveSpot);
     } else {
       _dropLiveSpot();
     }
   } catch (e) { _dropLiveSpot(); }
+  finally { spotPollInflight = false; }
 }
 setInterval(pollSpot, 1500);   // server caches upstream at 1.25s — budget-safe
 

@@ -250,25 +250,56 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
 
 
 def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
-    """Budget guard: two polls inside the TTL make exactly ONE resolve_spot call
+    """Budget guard: TTL hit + concurrent misses single-flight to ONE resolve_spot
     (every upstream call is a real Schwab request against the shared budget)."""
+    import json as _json
+    import threading as th
+    import time as _t
+
     import server as srv
-    from fastapi.testclient import TestClient
 
     calls = {"n": 0}
+    entered = th.Event()
+    release = th.Event()
+    lk = th.Lock()
 
     def _fake(_tk, **_kw):
-        calls["n"] += 1
+        with lk:
+            calls["n"] += 1
+        entered.set()
+        release.wait(10)
         return (123.45, "test_quote", 1.0)
 
     monkeypatch.setattr(srv, "resolve_spot", _fake)
     srv._spot_poll_cache.clear()
-    client = TestClient(srv.app)
-    r1 = client.get("/api/spot?ticker=SPY")
-    r2 = client.get("/api/spot?ticker=SPY")
-    assert r1.json()["spot"] == 123.45 and r2.json()["spot"] == 123.45
-    assert calls["n"] == 1, "second poll within TTL must serve from the cache"
+    srv._spot_poll_inflight.clear()
+
+    results: list = []
+    slock = th.Lock()
+
+    def _call():
+        resp = srv.get_spot(ticker="SPY")
+        body = _json.loads(resp.body.decode("utf-8"))
+        with slock:
+            results.append(body.get("spot"))
+
+    threads = [th.Thread(target=_call) for _ in range(4)]
+    for t in threads:
+        t.start()
+    assert entered.wait(30), "leader never entered resolve_spot"
+    _t.sleep(0.05)
+    release.set()
+    for t in threads:
+        t.join(timeout=30)
+    assert not any(t.is_alive() for t in threads)
+    assert results == [123.45] * 4
+    assert calls["n"] == 1, f"concurrent misses must single-flight, got {calls['n']}"
+
+    resp2 = srv.get_spot(ticker="SPY")
+    assert _json.loads(resp2.body.decode("utf-8"))["spot"] == 123.45
+    assert calls["n"] == 1, "TTL hit must not resolve again"
     srv._spot_poll_cache.clear()
+    srv._spot_poll_inflight.clear()
 
 
 def test_spot_endpoint_shape_single_authority():

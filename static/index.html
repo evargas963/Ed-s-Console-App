@@ -11531,8 +11531,13 @@ window.addEventListener('resize', () => {
 // (observed live: TDZ from the timeout callback on this ~12k-line page). DCL is by
 // definition after every classic script has evaluated. (Operator 2026-07-23:
 // "terrain renders nothing" — the switch died before edLoadTerrain ever ran.)
-if (window.location.hash === '#terrain')
-  window.addEventListener('DOMContentLoaded', () => edSwitchView('terrain'));
+if (window.location.hash === '#terrain') {
+  // DCL if still loading (mid-script TDZ-safe); direct call if already complete
+  if (document.readyState === 'loading')
+    window.addEventListener('DOMContentLoaded', () => edSwitchView('terrain'));
+  else
+    edSwitchView('terrain');
+}
 
 function edPct(lvl, spot) {
   if (lvl == null || !spot) return '';

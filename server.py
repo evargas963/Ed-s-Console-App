@@ -11023,6 +11023,7 @@ def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
 #: viewers share one upstream call per window and the client can poll at 1.5s.
 _spot_poll_cache: dict[str, tuple[float, dict]] = {}
 _spot_poll_lock = threading.Lock()
+_spot_poll_inflight: dict[str, threading.Event] = {}
 SPOT_POLL_TTL_SEC = 1.25
 
 
@@ -11030,19 +11031,40 @@ SPOT_POLL_TTL_SEC = 1.25
 def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
     """Featherweight live spot for fast UI polling. The ONE price authority
     (resolve_spot, RC-14) behind a 1.25s per-ticker cache — no chain, no model
-    stack, budget-bounded regardless of poll rate or viewer count."""
+    stack, budget-bounded regardless of poll rate or viewer count.
+
+    Concurrent cache misses single-flight: one Schwab quote; waiters join and
+    reuse the TTL-fresh cached payload.
+    """
     tk = (ticker or DEFAULT_TICKER).upper().strip()
     now = time.time()
     with _spot_poll_lock:
         hit = _spot_poll_cache.get(tk)
         if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
             return JSONResponse(hit[1])
-    spot, source, ts = resolve_spot(tk)
-    payload = {"ticker": tk, "spot": spot, "spot_source": source,
-               "spot_as_of_ts_utc": ts}
-    with _spot_poll_lock:
-        _spot_poll_cache[tk] = (time.time(), payload)
-    return JSONResponse(payload)
+        leader = tk not in _spot_poll_inflight
+        if leader:
+            _spot_poll_inflight[tk] = threading.Event()
+        done = _spot_poll_inflight[tk]
+    if not leader:
+        done.wait(timeout=10.0)
+        with _spot_poll_lock:
+            hit = _spot_poll_cache.get(tk)
+            if hit and (time.time() - hit[0]) < SPOT_POLL_TTL_SEC:
+                return JSONResponse(hit[1])
+        # rare timeout / stale / empty — fall through to emergency resolve
+    try:
+        spot, source, ts = resolve_spot(tk)
+        payload = {"ticker": tk, "spot": spot, "spot_source": source,
+                   "spot_as_of_ts_utc": ts}
+        with _spot_poll_lock:
+            _spot_poll_cache[tk] = (time.time(), payload)
+        return JSONResponse(payload)
+    finally:
+        if leader:
+            with _spot_poll_lock:
+                _spot_poll_inflight.pop(tk, None)
+            done.set()
 
 
 @app.get("/chart", response_class=HTMLResponse)
