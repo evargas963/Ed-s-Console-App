@@ -10712,7 +10712,10 @@ def _terrain_snapshots_for_radar() -> list[dict]:
     # single-flight background thread. A stale memo beats a 21 s stall — the live cache
     # wins per ticker, so staleness only touches tickers the loop has not refreshed.
     ts, memo = _radar_fallback_cache
-    if not memo or (time.time() - ts) >= RADAR_FALLBACK_TTL_SEC:
+    # Kick on never-initialized (ts<=0) or TTL expiry — NOT on empty memo.
+    # A successful recompute can legitimately land [] (live cache covers all
+    # tickers); treating that as uninitialized re-stampeded the 21s DB sweep.
+    if ts <= 0 or (time.time() - ts) >= RADAR_FALLBACK_TTL_SEC:
         _kick_radar_fallback_refresh()
     return list(cached.values()) + [m for m in (memo or [])
                                     if m.get("ticker") not in cached]

@@ -166,6 +166,11 @@ let scale = null;
 let daily = null;         // {vwap:[[t,w]…], pdh, pdl, pdc} from canonical 1m rows
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
 let liveSpot = null;      // 2.5s fast-poll spot (/api/spot); 15s cycle is the fallback
+let forming = null;       // TradingView-style FORMING candle for the current minute:
+                          // display-only synthesis from spot ticks; the canonical 1m bar
+                          // REPLACES it the moment the server writes that minute
+let sealedForming = null; // just-finished minute kept until /api/bars1m catches up
+let chartTicker = null;   // ticker whose `raw` bars are loaded — gates forming/spot ticks
 let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
 
 const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
@@ -228,12 +233,46 @@ function clampView() {
     const s = minVis - view.i1; view.i0 += s; view.i1 += s; }
 }
 
+function rawWithForming() {
+  // canonical rows stay PURE (raw feeds VWAP/PDH/PDL/PDC); synthetic minutes
+  // append only while the server has no bar for that minute yet
+  const tip = raw.length ? raw[raw.length - 1].t : null;
+  if (sealedForming && tip != null && tip >= sealedForming.t) sealedForming = null;
+  if (forming && tip != null && tip >= forming.t) forming = null;
+  let out = raw;
+  if (sealedForming && (tip == null || sealedForming.t > tip))
+    out = out.concat([sealedForming]);
+  if (forming && (tip == null || forming.t > tip))
+    out = out.concat([forming]);
+  return out;
+}
+
 function setBars() {
-  bars = aggregate(raw, tf);
+  bars = aggregate(rawWithForming(), tf);
   if (!view) {
     const show = Math.min(bars.length, tf === '1' ? 390 : 200);
     view = { i0: Math.max(0, bars.length - show), i1: bars.length };
   }
+}
+
+function noteSpotTick(s) {
+  // grow the current-minute candle exactly like TradingView's forming bar
+  if (!chartTicker) return;   // bars not yet for the selected ticker
+  const v = Number(s);
+  if (!isFinite(v)) return;
+  const mt = Math.floor(Date.now() / 60000) * 60;
+  if (!forming || forming.t !== mt) {
+    // keep the just-finished synthetic minute until canonical bars catch up
+    if (forming && (!raw.length || forming.t > raw[raw.length - 1].t))
+      sealedForming = forming;
+    forming = { t: mt, o: v, h: v, l: v, c: v, v: 0 };
+  } else { forming.h = Math.max(forming.h, v); forming.l = Math.min(forming.l, v);
+         forming.c = v; }
+  const atEnd = view && view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5;
+  bars = aggregate(rawWithForming(), tf);
+  if (view && atEnd) { const w = view.i1 - view.i0;
+    view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
+  draw();
 }
 
 async function load() {
@@ -245,11 +284,15 @@ async function load() {
       j(`/api/terrain/strikes?ticker=${tk}`).catch(() => null),
       j(`/api/level_crosses?ticker=${tk}&n=8`).catch(() => ({ crosses: [] })),
     ]);
+    const cur = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+    if (cur !== tk) return;   // superseded by a newer ticker selection
     // follow the right edge ONLY when actually sitting on it; a view dragged
     // past the newest bar stays where the operator placed it (snap-back class)
     const atEnd = !view ||
       (view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5);
     raw = b.bars || []; terrain = t; crosses = c.crosses || [];
+    if (chartTicker !== tk) { forming = null; sealedForming = null; liveSpot = null; }
+    chartTicker = tk;
     // empty {all:[],…} shells and HTTP error bodies both read as ABSENT
     strikes = (s && hasStrikeBars(s.today)) ? s : null;
     computeDaily(); setBars();
@@ -276,6 +319,11 @@ async function load() {
       : /UNPROVEN/.test(reg) ? '#ffc400' : '#aab6c4';
     document.getElementById('gsrc').textContent = (strikes && strikes.today_source)
       ? `today: ${strikes.today_source}` : 'feed activates at the next console start';
+    // fallback tick: until /api/spot exists on the running server, the 15s
+    // cycle's repriced spot still grows the forming candle
+    const cycleSpot = (strikes && strikes.spot != null) ? strikes.spot
+      : (terrain ? terrain.spot : null);
+    if (liveSpot == null && cycleSpot != null) noteSpotTick(cycleSpot);
     draw(); drawHist();
   } catch (e) {
     document.getElementById('narrator').textContent = 'load failed: ' + e.message;
@@ -527,7 +575,8 @@ function draw() {
     const pdc = daily && daily.pdc;
     const dn = pdc ? Number(spot) - pdc : null;
     const col = dn == null ? '#f4f6f8' : dn >= 0 ? '#00e07a' : '#ff3355';
-    bl.innerHTML = `<span class="sym">${(document.getElementById('tk').value || 'SPY').toUpperCase()}</span> ` +
+    const sym = esc((document.getElementById('tk').value || 'SPY').trim().toUpperCase());
+    bl.innerHTML = `<span class="sym">${sym}</span> ` +
       `<span class="px" style="color:${col}">${fmt(spot)}</span>` +
       (dn == null ? '' : ` <span class="chg" style="color:${col}">${dn >= 0 ? '+' : ''}${dn.toFixed(2)} ` +
         `(${(dn / pdc * 100).toFixed(2)}%) vs yday close</span>`);
@@ -914,21 +963,39 @@ chip('learn', () => { learning = !learning;
   document.getElementById('coachlines').innerHTML = learning
     ? ((terrain || {}).lines || []).map(l => '· ' + esc(l)).join('<br>') : ''; });
 document.getElementById('tk').addEventListener('change', () => {
-  view = null; yLock = null; liveSpot = null; load(); });
+  view = null; yLock = null; liveSpot = null; forming = null; sealedForming = null;
+  chartTicker = null; load(); });
 
 // fast spot poll (2.5s): kills the 15s spot lag. Fail-closed — if the endpoint
-// is absent (server predates it) or errors, the 15s cycle remains the source.
+// is absent (server predates it) or errors, clear liveSpot and redraw so the
+// 15s cycle spot paints immediately (never leave a stale fast-poll on screen).
+function _cycleSpot() {
+  return (strikes && strikes.spot != null) ? strikes.spot
+    : (terrain ? terrain.spot : null);
+}
+function _dropLiveSpot() {
+  liveSpot = null;
+  const cs = _cycleSpot();
+  if (cs != null && chartTicker) noteSpotTick(cs); else draw();
+}
 async function pollSpot() {
   const tk = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
   try {
     const r = await fetch(`/api/spot?ticker=${tk}`);
-    if (!r.ok) return;
+    // discard late replies until bars for THIS ticker are loaded
+    const cur = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+    if (cur !== tk || chartTicker !== tk) return;
+    if (!r.ok) { _dropLiveSpot(); return; }
     const j = await r.json();
+    if ((document.getElementById('tk').value || 'SPY').trim().toUpperCase() !== tk
+        || chartTicker !== tk) return;
     if (j.ticker === tk && j.spot != null && isFinite(Number(j.spot))) {
       liveSpot = Number(j.spot);
-      draw();
+      noteSpotTick(liveSpot);   // grows the forming candle + redraws
+    } else {
+      _dropLiveSpot();
     }
-  } catch (e) { /* transient — next poll or the 15s cycle recovers */ }
+  } catch (e) { _dropLiveSpot(); }
 }
 setInterval(pollSpot, 2500);
 

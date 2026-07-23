@@ -235,6 +235,19 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
     srv._radar_fallback_refresh_worker()
     assert srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ"
 
+    # Fresh empty memo is a legitimate result — must NOT re-kick the sweep
+    kicks = {"n": 0}
+
+    def _count_recompute():
+        kicks["n"] += 1
+        return []
+
+    monkeypatch.setattr(srv, "_radar_fallback_recompute", _count_recompute)
+    monkeypatch.setattr(srv, "_radar_fallback_cache", (_t.time(), []))
+    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
+    srv._terrain_snapshots_for_radar()
+    assert kicks["n"] == 0, "fresh empty memo must not re-stampede the fallback"
+
 
 def test_spot_endpoint_shape_single_authority():
     """Fast-poll spot feed for /chart (2.5s): exact shape, one price authority."""
