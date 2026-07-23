@@ -15,8 +15,14 @@
          background:radial-gradient(1200px 600px at 70% -10%, #0b1420 0%, var(--bg) 60%) fixed var(--bg);
          font:14px 'Segoe UI', system-ui, sans-serif; }
   #top { flex:none; }
-  #coachlines { flex:none; max-height:40px; overflow:auto; padding-top:4px;
-                padding-bottom:4px; }
+  #coachlines { flex:none; max-height:34px; overflow:auto; padding-top:3px;
+                padding-bottom:3px; }
+  /* if the window is still too short for everything, say so LOUDLY instead of
+     hiding the gamma panel below an unscrollable fold */
+  #foldwarn { display:none; position:fixed; bottom:8px; left:50%;
+              transform:translateX(-50%); background:var(--amber); color:#031018;
+              font-weight:800; font-size:13px; padding:6px 16px; border-radius:14px;
+              z-index:10; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.5); }
   #top { display:flex; gap:10px; align-items:center; padding:8px 14px;
          border-bottom:1px solid var(--border); flex-wrap:wrap; }
   #tk { background:var(--panel); color:var(--text); border:1px solid var(--border);
@@ -67,10 +73,10 @@
                    animation:pulse 1.6s ease-in-out infinite; pointer-events:none;
                    display:none; }
   #meta { color:var(--dim); font-size:12px; width:100%; }
-  #layout { display:flex; flex:1.4 1 0; min-height:260px; }
+  #layout { display:flex; flex:1.4 1 0; min-height:200px; }
   #wrap { position:relative; flex:1; min-width:0; cursor:crosshair; }
   #histwrap { width:230px; border-left:1px solid var(--border); }
-  #gammacard { flex:1 1 0; min-height:210px; display:flex; flex-direction:column; }
+  #gammacard { flex:1 1 0; min-height:170px; display:flex; flex-direction:column; }
   #gammacard .sechead, #gammacard .legend { flex:none; }
   #gwrap { flex:1; min-height:0; }
   canvas { display:block; width:100%; height:100%; }
@@ -129,6 +135,7 @@
   </div>
 </div>
 <div id="tip"></div>
+<div id="foldwarn">▼ GAMMA PANEL BELOW — click to bring it on screen</div>
 <div id="coachlines"></div>
 <script>
 /* CR-03 screen 1 v2 — TradingView-grade interaction (operator directive 2026-07-23):
@@ -849,7 +856,21 @@ chip('learn', () => { learning = !learning;
   document.getElementById('coachlines').innerHTML = learning
     ? ((terrain || {}).lines || []).map(l => '· ' + esc(l)).join('<br>') : ''; });
 document.getElementById('tk').addEventListener('change', () => { view = null; yLock = null; load(); });
-window.addEventListener('resize', () => { draw(); drawHist(); });
+
+// short-window guard: if anything overflows the viewport, a bright pill says so
+// and one click scrolls the gamma panel into view (the charts eat wheel-scroll)
+function checkFold() {
+  const fw = document.getElementById('foldwarn');
+  const gc = document.getElementById('gammacard').getBoundingClientRect();
+  const hidden = gc.bottom > window.innerHeight + 4;
+  fw.style.display = hidden ? 'block' : 'none';
+}
+document.getElementById('foldwarn').addEventListener('click', () => {
+  document.getElementById('gammacard').scrollIntoView({ behavior: 'smooth', block: 'end' });
+  setTimeout(checkFold, 600);
+});
+setInterval(checkFold, 2000);
+window.addEventListener('resize', () => { draw(); drawHist(); checkFold(); });
 load(); setInterval(load, 15000);
 </script>
 </body>
