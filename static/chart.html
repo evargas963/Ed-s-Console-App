@@ -73,10 +73,10 @@
                    animation:pulse 1.6s ease-in-out infinite; pointer-events:none;
                    display:none; }
   #meta { color:var(--dim); font-size:12px; width:100%; }
-  #layout { display:flex; flex:1.4 1 0; min-height:200px; }
+  #layout { display:flex; flex:1.4 1 0; min-height:360px; }
   #wrap { position:relative; flex:1; min-width:0; cursor:crosshair; }
   #histwrap { width:230px; border-left:1px solid var(--border); }
-  #gammacard { flex:1 1 0; min-height:170px; display:flex; flex-direction:column; }
+  #gammacard { flex:1 1 0; min-height:280px; display:flex; flex-direction:column; }
   #gammacard .sechead, #gammacard .legend { flex:none; }
   #gwrap { flex:1; min-height:0; }
   canvas { display:block; width:100%; height:100%; }
@@ -135,7 +135,7 @@
   </div>
 </div>
 <div id="tip"></div>
-<div id="foldwarn">▼ GAMMA PANEL BELOW — click to bring it on screen</div>
+<div id="foldwarn">▼ GAMMA PANEL BELOW — click to jump</div>
 <div id="coachlines"></div>
 <script>
 /* CR-03 screen 1 v2 — TradingView-grade interaction (operator directive 2026-07-23):
@@ -489,13 +489,30 @@ function draw() {
         `<br><i>Recent crossing from the console's own log.</i>` });
   }
 
-  // spot
+  // spot — ONE price authority app-wide (resolve_spot, RC-14). Candles end at the
+  // last regular-session bar, so outside RTH the live spot can sit far from the
+  // last close; the dashed line + session label make that gap self-explanatory.
   const spot = (strikes && strikes.spot != null) ? strikes.spot : T.spot;
   if (spot != null && spot >= lo && spot <= hi) {
     const ys = y(spot);
+    g.strokeStyle = 'rgba(255,196,0,0.55)'; g.lineWidth = 1; g.setLineDash([2, 3]);
+    g.beginPath(); g.moveTo(PADL, ys); g.lineTo(W - PADR, ys); g.stroke();
+    g.setLineDash([]);
     g.fillStyle = '#ffc400'; g.font = '800 14px system-ui';
     g.fillRect(W - PADR, ys - 10, PADR - 2, 20);
     g.fillStyle = '#05070a'; g.fillText(fmt(spot), W - PADR + 6, ys + 5);
+    const now = new Date(), mm = now.getHours() * 60 + now.getMinutes();
+    const inRTH = now.getDay() >= 1 && now.getDay() <= 5 && mm >= 510 && mm < 900;
+    if (!inRTH) {
+      g.fillStyle = '#ffc400'; g.font = '800 11px system-ui';
+      g.fillText(mm < 510 ? 'PRE-MKT' : 'AFTER-HRS', W - PADR + 6, ys - 14);
+    }
+    zones.push({ y0: ys - 6, y1: ys + 6,
+      tipHtml: `<b>Live price ${fmt(spot)}</b><br>` +
+        `One price authority feeds every screen. Candles end at the last ` +
+        `regular-session bar, so outside market hours the live price can sit ` +
+        `away from the last candle — that gap is the overnight move, not a ` +
+        `disagreement between data sources.` });
   }
 
   // crosshair + readout
@@ -866,8 +883,12 @@ function checkFold() {
   fw.style.display = hidden ? 'block' : 'none';
 }
 document.getElementById('foldwarn').addEventListener('click', () => {
-  document.getElementById('gammacard').scrollIntoView({ behavior: 'smooth', block: 'end' });
-  setTimeout(checkFold, 600);
+  // the document root is the scroller (measured: scrollingElement === html);
+  // window.scrollTo drives it regardless of engine quirks
+  const el = document.getElementById('gammacard');
+  const top = Math.max(0, el.offsetTop + el.offsetHeight - window.innerHeight + 12);
+  window.scrollTo(0, top);   // instant — a jump button should jump
+  checkFold();
 });
 setInterval(checkFold, 2000);
 window.addEventListener('resize', () => { draw(); drawHist(); checkFold(); });
