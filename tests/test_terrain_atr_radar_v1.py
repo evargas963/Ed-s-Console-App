@@ -249,6 +249,28 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
     assert kicks["n"] == 0, "fresh empty memo must not re-stampede the fallback"
 
 
+def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
+    """Budget guard: two polls inside the TTL make exactly ONE resolve_spot call
+    (every upstream call is a real Schwab request against the shared budget)."""
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    calls = {"n": 0}
+
+    def _fake(_tk, **_kw):
+        calls["n"] += 1
+        return (123.45, "test_quote", 1.0)
+
+    monkeypatch.setattr(srv, "resolve_spot", _fake)
+    srv._spot_poll_cache.clear()
+    client = TestClient(srv.app)
+    r1 = client.get("/api/spot?ticker=SPY")
+    r2 = client.get("/api/spot?ticker=SPY")
+    assert r1.json()["spot"] == 123.45 and r2.json()["spot"] == 123.45
+    assert calls["n"] == 1, "second poll within TTL must serve from the cache"
+    srv._spot_poll_cache.clear()
+
+
 def test_spot_endpoint_shape_single_authority():
     """Fast-poll spot feed for /chart (2.5s): exact shape, one price authority."""
     import server as srv

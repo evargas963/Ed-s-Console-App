@@ -11017,15 +11017,32 @@ def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
     return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
 
 
+#: /api/spot upstream guard (operator 2026-07-23: "spot needs to be the fastest
+#: polling"). Every resolve_spot is a REAL Schwab REST quote against the shared
+#: ~120 req/min budget, so the endpoint caches per ticker for a short TTL — all
+#: viewers share one upstream call per window and the client can poll at 1.5s.
+_spot_poll_cache: dict[str, tuple[float, dict]] = {}
+_spot_poll_lock = threading.Lock()
+SPOT_POLL_TTL_SEC = 1.25
+
+
 @app.get("/api/spot")
 def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Featherweight live spot for fast UI polling (operator 2026-07-23: 15s spot
-    lag on /chart). The ONE price authority (resolve_spot, RC-14) — no chain, no
-    model stack, safe at a 2-3s poll."""
+    """Featherweight live spot for fast UI polling. The ONE price authority
+    (resolve_spot, RC-14) behind a 1.25s per-ticker cache — no chain, no model
+    stack, budget-bounded regardless of poll rate or viewer count."""
     tk = (ticker or DEFAULT_TICKER).upper().strip()
+    now = time.time()
+    with _spot_poll_lock:
+        hit = _spot_poll_cache.get(tk)
+        if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
+            return JSONResponse(hit[1])
     spot, source, ts = resolve_spot(tk)
-    return JSONResponse({"ticker": tk, "spot": spot, "spot_source": source,
-                         "spot_as_of_ts_utc": ts})
+    payload = {"ticker": tk, "spot": spot, "spot_source": source,
+               "spot_as_of_ts_utc": ts}
+    with _spot_poll_lock:
+        _spot_poll_cache[tk] = (time.time(), payload)
+    return JSONResponse(payload)
 
 
 @app.get("/chart", response_class=HTMLResponse)

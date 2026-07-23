@@ -997,7 +997,7 @@ async function pollSpot() {
     }
   } catch (e) { _dropLiveSpot(); }
 }
-setInterval(pollSpot, 2500);
+setInterval(pollSpot, 1500);   // server caches upstream at 1.25s — budget-safe
 
 // short-window guard: if anything overflows the viewport, a bright pill says so
 // and one click scrolls the gamma panel into view (the charts eat wheel-scroll)
