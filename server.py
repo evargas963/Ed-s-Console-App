@@ -11034,34 +11034,44 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
     stack, budget-bounded regardless of poll rate or viewer count.
 
     Concurrent cache misses single-flight: one Schwab quote; waiters join and
-    reuse the TTL-fresh cached payload.
+    reuse the TTL-fresh cached payload. Waiters never each call resolve_spot —
+    on timeout they re-contend for leadership or serve the last cache entry
+    (stale beats a quote stampede).
     """
     tk = (ticker or DEFAULT_TICKER).upper().strip()
-    now = time.time()
-    with _spot_poll_lock:
-        hit = _spot_poll_cache.get(tk)
-        if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
-            return JSONResponse(hit[1])
-        leader = tk not in _spot_poll_inflight
-        if leader:
-            _spot_poll_inflight[tk] = threading.Event()
-        done = _spot_poll_inflight[tk]
-    if not leader:
-        done.wait(timeout=10.0)
+    deadline = time.time() + 10.0
+    while True:
+        now = time.time()
         with _spot_poll_lock:
             hit = _spot_poll_cache.get(tk)
-            if hit and (time.time() - hit[0]) < SPOT_POLL_TTL_SEC:
+            if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
                 return JSONResponse(hit[1])
-        # rare timeout / stale / empty — fall through to emergency resolve
-    try:
-        spot, source, ts = resolve_spot(tk)
-        payload = {"ticker": tk, "spot": spot, "spot_source": source,
-                   "spot_as_of_ts_utc": ts}
-        with _spot_poll_lock:
-            _spot_poll_cache[tk] = (time.time(), payload)
-        return JSONResponse(payload)
-    finally:
-        if leader:
+            leader = tk not in _spot_poll_inflight
+            if leader:
+                _spot_poll_inflight[tk] = threading.Event()
+            done = _spot_poll_inflight[tk]
+        if not leader:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                with _spot_poll_lock:
+                    hit = _spot_poll_cache.get(tk)
+                if hit:
+                    return JSONResponse(hit[1])  # stale > stampede
+                return JSONResponse(
+                    {"ticker": tk, "spot": None, "spot_source": None,
+                     "spot_as_of_ts_utc": None, "error": "spot_resolve_timeout"},
+                    status_code=504,
+                )
+            done.wait(timeout=remaining)
+            continue
+        try:
+            spot, source, ts = resolve_spot(tk)
+            payload = {"ticker": tk, "spot": spot, "spot_source": source,
+                       "spot_as_of_ts_utc": ts}
+            with _spot_poll_lock:
+                _spot_poll_cache[tk] = (time.time(), payload)
+            return JSONResponse(payload)
+        finally:
             with _spot_poll_lock:
                 _spot_poll_inflight.pop(tk, None)
             done.set()

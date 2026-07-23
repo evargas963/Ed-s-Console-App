@@ -498,6 +498,42 @@ def _wall_line(name: str, w: dict) -> str:
             f"{v(w['put_close_above_pct'])} |")
 
 
+def _pct(x) -> str:
+    return "—" if x is None else f"{x}%"
+
+
+def _weighting_md(rep: dict) -> list[str]:
+    """TU-13 parallel OI-vs-VOLUME table — surfaces scorecard + rho head-to-head."""
+    sc = rep.get("weighting_scorecard") or {}
+    hh = rep.get("weighting_head_to_head") or {}
+    lines = [
+        "## TU-13 OI-vs-VOLUME regime A/B (parallel profile — never silent swap)",
+        "",
+        "| universe | n both | OI hit% | VOL hit% | placebo% | rho OI | rho VOL | winner |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for name, label in (("sentinels", "sentinels (SPY/QQQ/IWM)"),
+                        ("single_names", "single names")):
+        s = sc.get(name) or {}
+        h = hh.get(name) or {}
+        lines.append(
+            f"| {label} | {s.get('n_both_classified', 0)} | "
+            f"{_pct(s.get('hit_oi_pct'))} | {_pct(s.get('hit_vol_pct'))} | "
+            f"{_pct(s.get('placebo_pct'))} | "
+            f"{h.get('rho_oi') if h.get('rho_oi') is not None else '—'} | "
+            f"{h.get('rho_vol') if h.get('rho_vol') is not None else '—'} | "
+            f"{h.get('winner') or '—'} |"
+        )
+    lines += [
+        "",
+        "_Parallel-profile law (TU-04 pattern): a weighting swap goes through PDCA "
+        "rules, never a silent default change. History accrues `ab_*` fields from "
+        "the sentinel slice (sign-proven universe)._",
+        "",
+    ]
+    return lines
+
+
 def render_md(rep: dict) -> str:
     def line(name, b):
         return (f"| {name} | {b['n']} | {b['hit_pct'] if b['hit_pct'] is not None else '—'}% |"
@@ -526,6 +562,7 @@ def render_md(rep: dict) -> str:
         "",
         _sign_ab_line(rep["sign_ab_single_names"]),
         "",
+        *_weighting_md(rep),
         "## Wall hold rates (10:00 ET walls vs rest-of-session)",
         "",
         "| slice | call n | call held% | close≤CW% | put n | put held% | close≥PW% |",
@@ -600,7 +637,12 @@ def _todays_coverage() -> int:
 
 
 def _append_history(rep: dict, day: str, coverage: int) -> list[dict]:
-    """One line per ET day (rerun overwrites that day); returns full history."""
+    """One line per ET day (rerun overwrites that day); returns full history.
+
+    TU-13: each line also carries sentinel-slice OI-vs-VOLUME A/B
+    (`ab_n` / `ab_hit_oi_pct` / `ab_hit_vol_pct`) so the parallel profile accrues
+    daily — never a silent weighting swap.
+    """
     hist: list[dict] = []
     if HISTORY.exists():
         for ln in HISTORY.read_text(encoding="utf-8").splitlines():
@@ -611,10 +653,14 @@ def _append_history(rep: dict, day: str, coverage: int) -> list[dict]:
             if row.get("day") != day:
                 hist.append(row)
     t = rep["trusted_only"]
+    ab = (rep.get("weighting_scorecard") or {}).get("sentinels") or {}
     hist.append({"day": day, "coverage": coverage,
                  "trusted_n": t["n"], "trusted_hit_pct": t["hit_pct"],
                  "placebo_n": rep["placebo_persistence"]["n"],
-                 "placebo_hit_pct": rep["placebo_persistence"]["hit_pct"]})
+                 "placebo_hit_pct": rep["placebo_persistence"]["hit_pct"],
+                 "ab_n": ab.get("n_both_classified"),
+                 "ab_hit_oi_pct": ab.get("hit_oi_pct"),
+                 "ab_hit_vol_pct": ab.get("hit_vol_pct")})
     hist.sort(key=lambda r: r.get("day", ""))
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     HISTORY.write_text("\n".join(json.dumps(r) for r in hist) + "\n", encoding="utf-8")

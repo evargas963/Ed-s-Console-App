@@ -6,8 +6,10 @@ something real?") — so they are pure functions with boundary tests, not prose.
 from __future__ import annotations
 
 from tools.terrain_backtest_report_v1 import (
+    _append_history,
     _regime_for_scoring,
     _sign_ab,
+    _weighting_md,
     PDCA_ADJUST_PTS,
     PDCA_PROMOTE_PTS,
     PDCA_WINDOW_SESSIONS,
@@ -154,3 +156,36 @@ def test_sign_split_reports_both_universes_with_permutation_p():
     assert out["single_names"]["spearman_gamma_vs_range"] < -0.9
     assert out["single_names"]["p_one_sided_neg"] is not None
     assert out["sentinels"]["n"] == 0 and out["sentinels"]["spearman_gamma_vs_range"] is None
+
+
+def test_tu13_ab_rides_every_daily_history_line(tmp_path, monkeypatch):
+    """TU-13 surface: history lines carry ab_* and markdown prints the table.
+    Drives the REAL _append_history / _weighting_md (c615ff90 claimed this;
+    empty commit left it unwired — this test is the gate)."""
+    import tools.terrain_backtest_report_v1 as mod
+
+    hist_path = tmp_path / "terrain_scorecard_history.jsonl"
+    monkeypatch.setattr(mod, "HISTORY", hist_path)
+    rep = {
+        "trusted_only": {"n": 10, "hit_pct": 55.0},
+        "placebo_persistence": {"n": 10, "hit_pct": 50.0},
+        "weighting_scorecard": {
+            "sentinels": {"n_both_classified": 3, "hit_oi_pct": 60.0,
+                          "hit_vol_pct": 66.7, "placebo_pct": 50.0},
+            "single_names": {"n_both_classified": 20, "hit_oi_pct": 52.0,
+                             "hit_vol_pct": 54.0, "placebo_pct": 51.0},
+        },
+        "weighting_head_to_head": {
+            "sentinels": {"n": 3, "rho_oi": -0.1, "rho_vol": -0.2, "winner": "VOLUME"},
+            "single_names": {"n": 20, "rho_oi": -0.16, "rho_vol": -0.22, "winner": "VOLUME"},
+        },
+    }
+    hist = _append_history(rep, "2026-07-23", coverage=35)
+    assert len(hist) == 1
+    row = hist[0]
+    assert row["ab_n"] == 3
+    assert row["ab_hit_oi_pct"] == 60.0
+    assert row["ab_hit_vol_pct"] == 66.7
+    md = "\n".join(_weighting_md(rep))
+    assert "TU-13 OI-vs-VOLUME" in md
+    assert "VOLUME" in md and "60.0%" in md and "66.7%" in md
