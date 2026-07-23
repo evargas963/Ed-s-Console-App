@@ -164,6 +164,7 @@ let yLock = null;         // {lo, hi} manual price domain when user pans/zooms Y
 let cross = null;         // {mx, my} crosshair position
 let scale = null;
 let daily = null;         // {vwap:[[t,w]…], pdh, pdl, pdc} from canonical 1m rows
+let scorecard = null;     // latest daily scorecard — coach numbers update with it
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
 let liveSpot = null;      // 2.5s fast-poll spot (/api/spot); 15s cycle is the fallback
 let forming = null;       // TradingView-style FORMING candle for the current minute:
@@ -278,12 +279,16 @@ function noteSpotTick(s) {
 async function load() {
   const tk = document.getElementById('tk').value.trim().toUpperCase() || 'SPY';
   try {
-    const [b, t, s, c] = await Promise.all([
+    const [b, t, s, c, sc] = await Promise.all([
       j(`/api/bars1m?ticker=${tk}&limit=3000`),
       j(`/api/terrain?ticker=${tk}`),
       j(`/api/terrain/strikes?ticker=${tk}`).catch(() => null),
       j(`/api/level_crosses?ticker=${tk}&n=8`).catch(() => ({ crosses: [] })),
+      j(`/api/terrain/scorecard`).catch(() => null),
     ]);
+    // coach numbers: accept only a real scorecard payload (an error body or a
+    // pre-restart 404 must read as ABSENT -> tooltips say "measuring")
+    scorecard = (sc && sc.generated_utc) ? sc : null;
     const cur = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
     if (cur !== tk) return;   // superseded by a newer ticker selection
     // follow the right edge ONLY when actually sitting on it; a view dragged
@@ -432,13 +437,21 @@ function draw() {
                      : `PUT WALL ${fmt(level - half)}–${fmt(level + half)}`) +
       (withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY')), PADL + 8, yTop - 5);
     wallLabelYs.push(yTop - 5);
+    // Coach numbers are LIVE from the daily scorecard — never a frozen study
+    // figure (operator 2026-07-23). Absent scorecard = "measuring", not a
+    // stale rate.
+    const wh = scorecard && scorecard.wall_hold_trusted;
+    const measured = (wh && wh.call_held_pct != null && wh.put_held_pct != null)
+      ? `<i>Measured on our own history (updates with each daily scorecard` +
+        (scorecard.generated_utc ? `, last ${esc(String(scorecard.generated_utc).slice(0, 10))}` : '') +
+        `): call walls held ${wh.call_held_pct}%, put walls ${wh.put_held_pct}% on trusted days.</i>`
+      : `<i>Hold-rate: measuring — this number fills from the daily scorecard.</i>`;
     const leanTip = withholdLean
       ? `Heavy standing option inventory in this strike band (structure fact only).<br>` +
-        `<i>Measured: OI walls hold 70–72% (1,000+ days); volume-built only 62–66%.</i><br>` +
+        measured + `<br>` +
         `<i>Dealer BUY/SELL lean withheld — regime ${esc(T.regime)} / ${esc(T.confidence)}.</i>`
       : `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
-        `in this range; acts as ${sell ? 'resistance' : 'support'}.<br>` +
-        `<i>Measured: OI walls hold 70–72% (1,000+ days); volume-built only 62–66%.</i>`;
+        `in this range; acts as ${sell ? 'resistance' : 'support'}.<br>` + measured;
     zones.push({ y0: yTop, y1: yBot,
       tipHtml: `<b>${sell ? 'Call wall' : 'Put wall'} ${fmt(level)} (band ±${fmt(half)})</b><br>` + leanTip });
   };

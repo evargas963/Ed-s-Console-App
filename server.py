@@ -11077,6 +11077,29 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
             done.set()
 
 
+@app.get("/api/terrain/scorecard")
+def get_terrain_scorecard():
+    """Coach copy's measured numbers, LIVE from the latest daily scorecard.
+
+    Operator 2026-07-23: "will the coach be updated as we self-test?" — the
+    tooltip hold-rates were frozen into the page the night they were measured.
+    Now the UI reads them from reports/terrain_backtest_latest.json, so every
+    daily scorecard run updates what the coach is allowed to claim. Fail-closed:
+    a missing/broken report serves {} and the UI says "measuring", never a
+    stale rate."""
+    p = Path(APP_DIR) / "reports" / "terrain_backtest_latest.json"
+    try:
+        rep = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return JSONResponse({})
+    return JSONResponse({
+        "generated_utc": rep.get("generated_utc"),
+        "wall_hold_trusted": rep.get("wall_hold_trusted"),
+        "weighting_scorecard": rep.get("weighting_scorecard"),
+        "pdca": rep.get("pdca"),
+    })
+
+
 @app.get("/chart", response_class=HTMLResponse)
 def chart_page():
     """CR-03 screen-1 v0 — chart-first view (candles + terrain bands + coach)."""

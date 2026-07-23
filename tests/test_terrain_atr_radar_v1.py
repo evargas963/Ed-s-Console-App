@@ -315,6 +315,23 @@ def test_spot_endpoint_shape_single_authority():
     assert set(body) == {"ticker", "spot", "spot_source", "spot_as_of_ts_utc"}
 
 
+def test_scorecard_endpoint_serves_live_coach_numbers_or_empty():
+    """Coach copy law: measured numbers come LIVE from the latest daily
+    scorecard, never frozen into the page. Absent/broken report -> {} and the
+    UI says 'measuring' (fail-closed, no stale rate)."""
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    client = TestClient(srv.app)
+    r = client.get("/api/terrain/scorecard")
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body, dict)
+    if body:   # report exists on this machine — shape contract
+        assert set(body) <= {"generated_utc", "wall_hold_trusted",
+                             "weighting_scorecard", "pdca"}
+
+
 def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
     expiry scopes for today + prior capture, sorted by strike, read-only."""
