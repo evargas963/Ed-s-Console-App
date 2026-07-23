@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ed Chart — terrain on price</title>
+<style>
+  :root { --bg:#0a0c0f; --panel:#111418; --border:#252c36; --text:#e5e7eb; --dim:#9ca3af;
+          --green:#34d399; --red:#f87171; --amber:#fbbf24; --blue:#60a5fa; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:13px 'Segoe UI', system-ui, sans-serif; }
+  #top { display:flex; gap:14px; align-items:center; padding:10px 16px;
+         border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  #tk { background:var(--panel); color:var(--text); border:1px solid var(--border);
+        border-radius:6px; padding:6px 10px; width:90px; font-weight:700;
+        text-transform:uppercase; }
+  #narrator { flex:1; min-width:240px; color:var(--amber); font-weight:600; }
+  #meta { color:var(--dim); font-size:12px; }
+  #wrap { position:relative; }
+  canvas { display:block; width:100%; }
+  #tip { position:absolute; display:none; max-width:340px; background:var(--panel);
+         border:1px solid var(--border); border-radius:8px; padding:10px 12px;
+         font-size:12px; line-height:1.5; pointer-events:none; z-index:5;
+         box-shadow:0 6px 24px rgba(0,0,0,.5); }
+  #tip b { color:var(--amber); }
+  #coachlines { padding:10px 16px; color:var(--dim); font-size:12px; line-height:1.6;
+                border-top:1px solid var(--border); }
+  a { color:var(--blue); text-decoration:none; }
+</style>
+</head>
+<body>
+<div id="top">
+  <input id="tk" value="SPY" spellcheck="false">
+  <span id="narrator">loading…</span>
+  <span id="meta"></span>
+  <a href="/">← console</a>
+</div>
+<div id="wrap"><canvas id="cv" height="520"></canvas><div id="tip"></div></div>
+<div id="coachlines"></div>
+<script>
+/* CR-03 screen-1 v0 (2026-07-22). Candles from /api/bars1m (canonical bars),
+   bands/flip/coach from /api/terrain (deterministic terrain read — every coach
+   sentence on this page is server-generated; NO free-typed market prose here).
+   Polling v0 by design: the typed-WS transport replaces these two fetches when
+   CR-CAP clears; the drawing layer stays. Zones carry the proven/unproven state
+   the server sends — this page cannot upgrade confidence, only display it. */
+'use strict';
+const cv = document.getElementById('cv'), tip = document.getElementById('tip');
+const wrap = document.getElementById('wrap');
+let bars = [], terrain = null, zones = [];   // zones: {y0,y1,label,kind,tipHtml}
+
+function fmt(x, d = 2) { return x == null ? '—' : Number(x).toFixed(d); }
+
+async function load() {
+  const tk = document.getElementById('tk').value.trim().toUpperCase() || 'SPY';
+  try {
+    const [b, t] = await Promise.all([
+      fetch(`/api/bars1m?ticker=${tk}&limit=780`).then(r => r.json()),
+      fetch(`/api/terrain?ticker=${tk}`).then(r => r.json()),
+    ]);
+    bars = (b.bars || []).slice(-390);
+    terrain = t;
+    document.getElementById('narrator').textContent = t.headline || '—';
+    document.getElementById('meta').textContent =
+      `spot ${fmt(t.spot)} · regime ${t.regime || '—'} · confidence ${t.confidence || '—'}`
+      + ` · ${bars.length} bars`;
+    document.getElementById('coachlines').innerHTML =
+      (t.lines || []).map(l => '· ' + l).join('<br>');
+    draw();
+  } catch (e) {
+    document.getElementById('narrator').textContent = 'load failed: ' + e.message;
+  }
+}
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = wrap.clientWidth, H = 520;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  if (!bars.length) { g.fillStyle = '#9ca3af'; g.fillText('no bars', 20, 40); return; }
+
+  const padL = 10, padR = 64, padT = 14, padB = 22;
+  const lows = bars.map(b => b.l), highs = bars.map(b => b.h);
+  let lo = Math.min(...lows), hi = Math.max(...highs);
+  const T = terrain || {};
+  // include levels in scale so bands are always on screen
+  for (const v of [T.gamma_flip, T.call_wall, T.put_wall, T.spot])
+    if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  const span = (hi - lo) || 1; lo -= span * 0.04; hi += span * 0.04;
+  const y = p => padT + (hi - p) / (hi - lo) * (H - padT - padB);
+  const bw = Math.max(2, Math.min(9, (W - padL - padR) / bars.length - 1));
+  const x = i => padL + i * ((W - padL - padR) / bars.length);
+
+  zones = [];
+  const unproven = T.regime === 'SIGN_UNPROVEN';
+  const band = (level, kind) => {
+    if (level == null) return;
+    const h8 = Math.max(14, (H - padT - padB) * 0.045);
+    const y0 = y(level) - h8 / 2, sell = kind === 'call';
+    g.fillStyle = sell ? 'rgba(248,113,113,0.14)' : 'rgba(52,211,153,0.14)';
+    g.fillRect(padL, y0, W - padL - padR, h8);
+    g.fillStyle = sell ? '#f87171' : '#34d399'; g.font = '600 12px system-ui';
+    const lab = (sell ? 'CALL WALL ' : 'PUT WALL ') + fmt(level)
+      + (unproven ? '' : (sell ? ' — dealers lean SELLING' : ' — dealers lean BUYING'));
+    g.fillText(lab, padL + 8, y0 - 4);
+    zones.push({ y0, y1: y0 + h8, kind,
+      tipHtml: `<b>${sell ? 'Call wall' : 'Put wall'} ${fmt(level)}</b><br>` +
+        `Heavy option gamma at this strike — dealer hedging ${sell ? 'sells into strength' : 'buys into weakness'} here, which is why it acts as ${sell ? 'resistance' : 'support'}.` +
+        `<br><i>Wall evidence: hold rates 70–86% on our own history (proven).</i>` +
+        (unproven ? '<br><i>Single name: the BUY/SELL direction wording is withheld — dealer-sign unproven (register row due 2026-08-03).</i>' : '') });
+  };
+  band(T.call_wall, 'call'); band(T.put_wall, 'put');
+
+  if (T.gamma_flip != null) {
+    const yf = y(T.gamma_flip);
+    g.strokeStyle = '#e5e7eb'; g.setLineDash([7, 5]); g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(padL, yf); g.lineTo(W - padR, yf); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#e5e7eb'; g.font = '600 11px system-ui';
+    g.fillText(`GAMMA FLIP ${fmt(T.gamma_flip)}`, padL + 8, yf - 5);
+    zones.push({ y0: yf - 7, y1: yf + 7, kind: 'flip',
+      tipHtml: `<b>Gamma flip ${fmt(T.gamma_flip)}</b><br>` +
+        `The regime line. Below it dealer hedging trades WITH price moves (amplifies); above it, AGAINST them (dampens).` +
+        `<br><i>Confidence: ${T.confidence || '—'}.</i>` +
+        (unproven ? '<br><i>Landmark only on this ticker — what its sign MEANS is the unproven part.</i>' : '') });
+  }
+
+  // candles
+  for (let i = 0; i < bars.length; i++) {
+    const b = bars[i], up = b.c >= b.o, cx = x(i) + bw / 2;
+    g.strokeStyle = up ? '#34d399' : '#f87171';
+    g.beginPath(); g.moveTo(cx, y(b.h)); g.lineTo(cx, y(b.l)); g.stroke();
+    g.fillStyle = up ? '#34d399' : '#f87171';
+    const yo = y(Math.max(b.o, b.c)), hgt = Math.max(1, Math.abs(y(b.o) - y(b.c)));
+    g.fillRect(x(i), yo, bw, hgt);
+  }
+
+  // spot marker + right price scale
+  if (T.spot != null) {
+    const ys = y(T.spot);
+    g.fillStyle = '#fbbf24'; g.font = '700 12px system-ui';
+    g.fillText('SPOT ' + fmt(T.spot), W - padR + 4, ys + 4);
+    g.fillRect(W - padR - 4, ys - 1, 6, 2);
+  }
+  g.fillStyle = '#9ca3af'; g.font = '10px system-ui';
+  for (let k = 0; k <= 4; k++) {
+    const p = lo + (hi - lo) * k / 4;
+    g.fillText(fmt(p), W - padR + 4, y(p) + 3);
+  }
+}
+
+wrap.addEventListener('mousemove', ev => {
+  const r = wrap.getBoundingClientRect(), my = ev.clientY - r.top;
+  const z = zones.find(z => my >= z.y0 && my <= z.y1);
+  if (!z) { tip.style.display = 'none'; return; }
+  tip.innerHTML = z.tipHtml;
+  tip.style.display = 'block';
+  tip.style.left = Math.min(ev.clientX - r.left + 14, r.width - 360) + 'px';
+  tip.style.top = (my + 14) + 'px';
+});
+wrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+document.getElementById('tk').addEventListener('change', load);
+window.addEventListener('resize', draw);
+load(); setInterval(load, 15000);
+</script>
+</body>
+</html>

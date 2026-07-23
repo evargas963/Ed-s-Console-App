@@ -10835,6 +10835,44 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     return out
 
 
+# ── CR-03 pre-work (operator directive 2026-07-22 "we have plenty of time"):
+# the chart-first screen v0 at /chart reads canonical 1m bars via this endpoint.
+# Read-only, index-served (ticker+timeframe named — the idx_snap lesson applies to
+# price_bars_1m equally), no Schwab call, no model stack. The WS transport replaces
+# the page's polling when CR-CAP clears; this endpoint stays as the history hydrator.
+@app.get("/api/bars1m")
+def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
+               limit: int = Query(default=780, ge=1, le=3000)):
+    """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts."""
+    tk = (ticker or DEFAULT_TICKER).upper().strip()
+    import sqlite3 as _sq
+    try:
+        db = get_db()
+    except Exception:
+        return JSONResponse({"ticker": tk, "bars": [], "error": "db unavailable"})
+    con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+    try:
+        rows = con.execute(
+            "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
+            "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?", (tk, int(limit)),
+        ).fetchall()
+    finally:
+        con.close()
+    bars = [{"t": r[0], "o": r[1], "h": r[2], "l": r[3], "c": r[4], "v": r[5]}
+            for r in reversed(rows)]
+    return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
+
+
+@app.get("/chart", response_class=HTMLResponse)
+def chart_page():
+    """CR-03 screen-1 v0 — chart-first view (candles + terrain bands + coach)."""
+    p = static_dir / "chart.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/chart.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
 @app.get("/api/terrain")
 def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     """Terrain payload — levels only, NO model stack.

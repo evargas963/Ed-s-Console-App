@@ -74,3 +74,33 @@ def test_regime_ring_is_tighter_than_the_wall_contact_ring() -> None:
     permanently occupy the top of the scope, loose enough to warn before the crossing.
     """
     assert RING_CONTACT < RING_REGIME < RING_CLOSING
+
+
+def test_bars1m_endpoint_serves_canonical_bars_shape():
+    """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows from
+    price_bars_1m (read-only; index-served: ticker named in the WHERE)."""
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    client = TestClient(srv.app)
+    r = client.get("/api/bars1m?ticker=SPY&limit=5")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ticker"] == "SPY" and isinstance(body["bars"], list)
+    if body["bars"]:
+        row = body["bars"][-1]
+        assert set(row) == {"t", "o", "h", "l", "c", "v"}
+        ts = [b["t"] for b in body["bars"]]
+        assert ts == sorted(ts), "bars must be newest-last (ascending time)"
+
+
+def test_chart_page_route_serves_static_chart_html():
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    client = TestClient(srv.app)
+    r = client.get("/chart")
+    assert r.status_code == 200
+    assert "terrain on price" in r.text
+    assert "no-store" in r.headers.get("cache-control", ""), (
+        "chart shell must never be browser-cached (stale-JS class, RC on 2026-07-22)")
