@@ -23,6 +23,7 @@ from typing import Any, Sequence
 from .data_loader import Bar1m
 from .event_generation import PilotEvent
 from .f1_input_gates import (
+    assert_features_off_display_lane,
     gated_label_event_cell_f1,
     permutation_control_verdict,
     placebo_shuffle_train_only,
@@ -181,6 +182,7 @@ def mask_and_drop(
     rows: Sequence[CandidateRow],
 ) -> tuple[list[list[float]], list[int], list[str], list[float], int]:
     """INGEST_V1: a row with any None feature or no binary label is dropped."""
+    assert_features_off_display_lane(FEATURE_NAMES)
     x: list[list[float]] = []
     y: list[int] = []
     sessions: list[str] = []

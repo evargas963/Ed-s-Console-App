@@ -11,6 +11,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from research.pilot_step3.data_loader import Bar1m
 from research.pilot_step3.event_generation import PilotEvent
 from research.pilot_step3.f1_input_gates import (
@@ -130,6 +132,25 @@ def test_placebo_shuffle_preserves_multiset_and_is_seeded():
     assert a == b
     assert sorted(a) == sorted(labels) == sorted(c)
     assert a != labels or c != labels  # at least one seed actually moves labels
+
+
+def test_display_lane_guard_refuses_greeks_without_prereg_binding():
+    from research.pilot_step3.f1_input_gates import (
+        DISPLAY_ONLY_GREEKS_FEATURES,
+        assert_features_off_display_lane,
+    )
+    from research.pilot_step3.meta_xgb_tb_runner import FEATURE_NAMES
+
+    assert_features_off_display_lane(FEATURE_NAMES)  # v1 price-only set is clean
+    assert "net_gamma" in DISPLAY_ONLY_GREEKS_FEATURES
+    assert "net_gamma_rc" in DISPLAY_ONLY_GREEKS_FEATURES
+    with pytest.raises(ValueError, match="net_gamma"):
+        assert_features_off_display_lane([*FEATURE_NAMES, "net_gamma"])
+    # An explicit certified-prereg binding is the ONLY admission path.
+    assert_features_off_display_lane(
+        [*FEATURE_NAMES, "net_gamma"],
+        certified_prereg_id="CERTIFIED_GREEKS_CHANNEL_PREREG_EXAMPLE_V1",
+    )
 
 
 def test_label_quality_report_counts_and_rates():

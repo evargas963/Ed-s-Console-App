@@ -139,6 +139,38 @@ def greeks_era_ok(ts_utc: float, *, rebuilt_from_chain_archive: bool = False) ->
     return float(ts_utc) >= F1_GREEKS_ERA_FLOOR_TS_UTC
 
 
+# ── Display/explains lane (GEX retirement, commit 9bfea2d5) ──────────────────
+# Greeks exposure analytics are DISPLAY/EXPLAINS ONLY: the founding GEX lead
+# failed replication on certified greeks (Spearman -0.02, p=0.88) and every
+# conditioning translation nulled. A predictive ingest may consume these names
+# ONLY under a frozen prereg that explicitly binds the certified greeks channel
+# (era floor + recomputed_greeks_ready read gate). Register:
+# governance/DERIVED_ANALYTICS_REGISTRY.md "Lane Classification".
+DISPLAY_ONLY_GREEKS_FEATURES: frozenset[str] = frozenset(
+    {
+        "net_gamma", "net_gamma_prev", "net_gamma_rc", "net_delta", "charm_net",
+        "vanna_proxy", "gamma_flip", "gex_z",
+        "dist_call_gamma_wall", "dist_put_gamma_wall",
+        "dist_call_delta_wall", "dist_put_delta_wall",
+        "dist_gamma_inflection", "dist_delta_inflection",
+        "dist_call_vanna_wall", "dist_put_vanna_wall",
+    }
+)
+
+
+def assert_features_off_display_lane(
+    feature_names: Sequence[str], *, certified_prereg_id: str | None = None
+) -> None:
+    """Refuse display-lane greeks names in a predictive feature set unless the
+    caller names the frozen prereg that binds the certified greeks channel."""
+    hits = sorted(set(feature_names) & DISPLAY_ONLY_GREEKS_FEATURES)
+    if hits and not certified_prereg_id:
+        raise ValueError(
+            "display-lane greeks features in a predictive ingest without a "
+            f"certified prereg binding: {hits}"
+        )
+
+
 PERMUTATION_TOL_DEFAULT = 0.06
 
 

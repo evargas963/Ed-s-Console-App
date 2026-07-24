@@ -61,6 +61,18 @@ provenance_contract
 
 ---
 
+## Lane Classification — greeks exposure analytics are DISPLAY/EXPLAINS ONLY (2026-07-24)
+
+**Rule:** every greeks-derived exposure analytic in the table above — `GEX`/`DEX`, `net_gex`, `gamma_wall`/`delta_wall`/`pin_rail`, `gamma_pin`/`HVL`/`max_pain`/`gamma_flip`, `vanna_proxy`, `net_charm_daily` — is classified **display/explains lane**. It may render on the console UI and chart overlays and may be cited to explain tape behavior. It may NOT enter a model training matrix, feature store, or candidate-selection rule as a predictive input unless the consuming study's frozen preregistration explicitly binds the certified greeks channel (era floor `F1_GREEKS_ERA_FLOOR_TS_UTC` = 1784502281 + `recomputed_greeks_ready()` read gate on `greeks_recomputed_v1`).
+
+**Evidence (kill-by-measurement, commit `9bfea2d5`):** the founding GEX-R1 association fails replication on certified greeks (Spearman −0.02, permutation p = 0.88, 65 sessions; the original −0.22 was measured on the pre-certification store). §8.6 day-level rule-selection: KILL (conditioned −40.9 bp/session vs best unconditional −33.1). Gamma-conditioned candidate study and Rule-A VWAP-fade: CLEAN NULL. Re-test doors per the no-terminal-null law: a genuine vol-regime change, QQQ replication, external multi-year chain data.
+
+**Enforcement:** `research.pilot_step3.f1_input_gates.assert_features_off_display_lane` — invoked at the meta-ingest matrix boundary (`meta_xgb_tb_runner.mask_and_drop`); any `DISPLAY_ONLY_GREEKS_FEATURES` name in a feature set without a `certified_prereg_id` raises before any fit.
+
+**Known bounded exception (legacy stack, disposition attached):** the legacy snapshot trainer still consumes greeks columns as features (`ml_data_common.py` — `M5_ADDITIVE_SOURCE_COLS` on the deprecated m5 path; `net_gamma_prev` ΔGEX train/serve parity helpers; `net_gamma`/`charm_net` among `snapshots_1m_normalized` feature columns). Disposition: this dies with the Round-2 KILL→DEMOTE of the legacy stack at the parked UI provenance migration. It must NOT be modified while the F3 shuffled-label control is in flight — that control certifies the trainer at SHA `9bfea2d5` exactly, and touching the feature path mid-run voids the control. At demotion, this lane rule applies with no exception.
+
+---
+
 ## Review Rule
 
 Any code review that introduces a new derived market-data field must answer:
