@@ -46,6 +46,9 @@ class Bar1m:
     low: float
     close: float
     volume: float | None = None
+    # F1 S3 (additive): provenance tag from price_bars_1m.source. None = not
+    # loaded — the S3 gate treats that as UNKNOWN and fails closed.
+    source: str | None = None
 
 
 @dataclass
