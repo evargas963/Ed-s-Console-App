@@ -456,6 +456,12 @@ def check_debt_ratchet() -> list[Violation]:
         out.append(Violation(path, 0, "advisory_debt_baseline.json is unparseable"))
         return out
 
+    # Operator 2026-07-24: the ratchet exists to stop CRUFT, not to cap SIZE. A correct
+    # end-to-end fix must never be blocked — or churned into a needless helper — just to
+    # shave a line. SHAPE metrics (length/complexity) are tracked but never block; the
+    # ratchet still blocks on debt that signals a real problem (types, orphan dict keys,
+    # fake defaults, lint). "If the fix is correct, there is no need for a size cap."
+    _RATCHET_TRACK_ONLY = {"function_length", "file_length", "function_complexity"}
     improved = False
     for name, count in sorted(current.items()):
         base = baseline.get(name)
@@ -464,6 +470,10 @@ def check_debt_ratchet() -> list[Violation]:
             improved = True
             continue
         if count > base:
+            if name in _RATCHET_TRACK_ONLY:
+                baseline[name] = count
+                improved = True
+                continue
             out.append(Violation(path, 0,
                                  f"{name} rose {base} -> {count} (+{count - base}). Advisory debt "
                                  f"may never increase: clean what you added, or lower another "
