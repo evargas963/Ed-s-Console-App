@@ -1,0 +1,10 @@
+{
+  "schema": "gamma_er_replication_spy_v1",
+  "question": "does the FOUNDING GEX-R1 lead (morning gamma vs session efficiency ratio, originally Spearman ~-0.22) replicate on CERTIFIED greeks?",
+  "generated_utc": "2026-07-24T12:58:07.809654+00:00",
+  "n_sessions": 65,
+  "spearman_gamma_vs_er": -0.019624125874125875,
+  "permutation_p": 0.883,
+  "original_finding": "-0.22 (2026-07-17, pre-certification store)",
+  "next_depth": "If replicated: the ER->economics translation is the missing link (path-shape signal does not survive barrier costs). If NOT replicated: the founding GEX lead is retired by measurement on certified inputs; terrain gamma stays a display/explains lane; conditioning research shifts to regime accrual + QQQ + external data unlock."
+}
