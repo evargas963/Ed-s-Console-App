@@ -153,7 +153,8 @@ def run_batch(db_path: str, tickers: list[str] | None, mode: str) -> dict[str, A
             battery_files[tk] = str(out)
         handoff.append(
             f"python -m research.pilot_step3.f2_tb_grid_runner --ticker {tk}"
-            "  # EXP-1 grid handoff (operator host, ~1 min/ticker; --ticker flag ships with EXP-1, ACTIVE_PROGRAM §F2 expansion)"
+            "  # full 175-cell grid (~1 min); FAILS CLOSED unless this ticker has "
+            "its own frozen prereg in PREREG_PATHS (binding rule, ACTIVE_PROGRAM §F2 expansion)"
         )
     n_q = sum(1 for s in screens if s["qualified"])
     summary = {

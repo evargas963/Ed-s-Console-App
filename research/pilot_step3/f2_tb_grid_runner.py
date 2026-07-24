@@ -13,6 +13,7 @@ replicate of the whole grid; ANY placebo survivor halts the study
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import random
@@ -31,7 +32,13 @@ from .f1_s5_spy_battery import F1_DRAFT_CANDIDATE_CONFIG, preflight
 from .labeling import build_atr_series
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PREREG_PATH = Path(__file__).resolve().parent / "f2_tb_grid_prereg_v1.json"
+# Binding rule (ACTIVE_PROGRAM §F2 expansion): every ticker runs under its OWN
+# frozen prereg; a ticker without one fails closed in load_prereg.
+PREREG_PATHS: dict[str, Path] = {
+    "SPY": Path(__file__).resolve().parent / "f2_tb_grid_prereg_v1.json",
+    "QQQ": Path(__file__).resolve().parent / "f2_tb_grid_qqq_prereg_v1.json",
+}
+PREREG_PATH = PREREG_PATHS["SPY"]
 DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
 REPORT_PATH = REPO_ROOT / "reports" / "f2_tb_grid_v1_latest.json"
 
@@ -43,8 +50,20 @@ NEXT_DEPTH = (
 )
 
 
-def load_prereg() -> dict[str, Any]:
-    prereg = json.loads(PREREG_PATH.read_text(encoding="utf-8"))
+def load_prereg(ticker: str = "SPY") -> dict[str, Any]:
+    tk = str(ticker).upper().strip()
+    path = PREREG_PATHS.get(tk)
+    if path is None:
+        raise ValueError(
+            f"no frozen F2 prereg for {tk!r}; every expansion ships its own "
+            "frozen prereg before any run (binding rule, ACTIVE_PROGRAM §F2 expansion)"
+        )
+    prereg = json.loads(path.read_text(encoding="utf-8"))
+    declared = str(prereg["data"]["ticker"]).upper().strip()
+    if declared != tk:
+        raise ValueError(
+            f"prereg {prereg['prereg_id']} declares ticker {declared!r}, not {tk!r}"
+        )
     fam = prereg["family"]
     n = (
         len(fam["stop_atr_multiples"])
@@ -386,15 +405,15 @@ def _placebo_replicate(
     )
 
 
-def run_grid(db_path: str) -> dict[str, Any]:
+def run_grid(db_path: str, ticker: str = "SPY") -> dict[str, Any]:
     t0 = time.perf_counter()
-    prereg = load_prereg()
+    prereg = load_prereg(ticker)
     fam = prereg["family"]
     rnd = prereg["randomness"]
     floors = prereg["sample_floors"]
     seed = int(rnd["seed"])
-    pf = preflight(db_path)
-    by_day, events, atrs, loader_info = _sessions_events(db_path)
+    pf = preflight(db_path, ticker)
+    by_day, events, atrs, loader_info = _sessions_events(db_path, ticker)
 
     cell_rows: dict[str, list[tuple[str, float]]] = {}
     cell_counts: dict[str, int] = {}
@@ -445,6 +464,8 @@ def run_grid(db_path: str) -> dict[str, Any]:
     return {
         "schema": "f2_tb_grid_v1",
         "prereg_id": prereg["prereg_id"],
+        "ticker": str(prereg["data"]["ticker"]).upper(),
+        "report_json_relpath": prereg["outputs"]["report_json"],
         "status": status,
         "not_an_admission": prereg["explicitly_not"]["not_an_admission_packet"],
         "generated_utc": datetime.now(tz=timezone.utc).isoformat(),
@@ -467,10 +488,16 @@ def run_grid(db_path: str) -> dict[str, Any]:
 
 
 def main() -> int:
-    report = run_grid(DEFAULT_DB)
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--db", default=DEFAULT_DB)
+    ap.add_argument("--ticker", default="SPY")
+    args = ap.parse_args()
+    report = run_grid(args.db, ticker=args.ticker)
+    out_path = REPO_ROOT / report["report_json_relpath"]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     summary = {
+        "ticker": report["ticker"],
         "status": report["status"],
         "n_cells": report["n_cells"],
         "n_survivors": report["n_survivors"],
@@ -479,7 +506,7 @@ def main() -> int:
         "placebo_survivors": report["placebo"]["n_survivors"],
         "loader": report["loader"],
         "run_sec": report["run_sec"],
-        "report": str(REPORT_PATH),
+        "report": str(out_path),
     }
     print(json.dumps(summary, indent=2))
     return 0

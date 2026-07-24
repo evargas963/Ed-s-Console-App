@@ -71,24 +71,28 @@ F1_DRAFT_CANDIDATE_CONFIG: dict[str, Any] = {
 }
 
 
-def preflight(db_path: str) -> dict[str, Any]:
+def preflight(db_path: str, ticker: str = "SPY") -> dict[str, Any]:
     """Row counts + source distribution (read-only) before any heavy work."""
+    tk = str(ticker).upper().strip()
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         t0 = time.perf_counter()
         n, ts_min, ts_max = con.execute(
             "SELECT COUNT(*), MIN(bar_start_ts_utc), MAX(bar_start_ts_utc) "
-            "FROM price_bars_1m WHERE ticker = 'SPY'"
+            "FROM price_bars_1m WHERE ticker = ?",
+            (tk,),
         ).fetchone()
         sources = {
             (row[0] if row[0] is not None else "NULL"): int(row[1])
             for row in con.execute(
                 "SELECT source, COUNT(*) FROM price_bars_1m "
-                "WHERE ticker = 'SPY' GROUP BY source"
+                "WHERE ticker = ? GROUP BY source",
+                (tk,),
             )
         }
         return {
-            "n_spy_bars": int(n),
+            "ticker": tk,
+            "n_bars": int(n),
             "ts_min": float(ts_min) if ts_min is not None else None,
             "ts_max": float(ts_max) if ts_max is not None else None,
             "source_distribution": sources,

@@ -19,6 +19,21 @@ def test_prereg_loads_and_family_is_175():
     assert p["prereg_id"] == "F2_TB_GRID_V1_PREREG_V1"
 
 
+def test_per_ticker_prereg_registry_is_fail_closed_and_ticker_locked():
+    import pytest
+
+    spy = load_prereg("SPY")
+    qqq = load_prereg("QQQ")
+    assert qqq["prereg_id"] == "F2_TB_GRID_QQQ_PREREG_V1"
+    assert qqq["data"]["ticker"] == "QQQ"
+    assert qqq["family"] == spy["family"]                      # identical 175-cell family
+    assert qqq["sample_floors"] == spy["sample_floors"]        # identical floors
+    assert qqq["randomness"]["seed"] != spy["randomness"]["seed"]  # fresh declared seed
+    assert qqq["outputs"]["report_json"] != spy["outputs"]["report_json"]
+    with pytest.raises(ValueError, match="no frozen F2 prereg"):
+        load_prereg("IWM")
+
+
 def test_session_means_aggregates_per_day():
     rows = [("d1", 10.0), ("d1", 20.0), ("d2", -6.0)]
     m = session_means(rows)
