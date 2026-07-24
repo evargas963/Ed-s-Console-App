@@ -1,0 +1,19 @@
+{
+  "schema": "backfill_greeks_p1_certification_v1",
+  "generated_utc": "2026-07-24T12:01:21.064408+00:00",
+  "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+  "era_floor_ts_utc": 1784502281.0,
+  "rel_tol": 0.001,
+  "parity_gate": 0.99,
+  "n_post_epoch_chain_rows": 8572,
+  "n_no_stored_net_gamma": 0,
+  "n_parse_fail": 0,
+  "n_recompute_none": 0,
+  "n_compared": 8572,
+  "n_match": 8572,
+  "parity": 1.0,
+  "sign_parity": 1.0,
+  "mismatch_examples": [],
+  "verdict": "CERTIFIED",
+  "run_sec": 8.61
+}
