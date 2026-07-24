@@ -1,0 +1,175 @@
+{
+  "schema": "reversion_rule_a_spy_v1",
+  "status": "COMPLETE",
+  "validity": "SINGLE_REGIME_VALIDITY (89-session window; F2 VIX-tercile floor unmet)",
+  "not_an_admission": "report-only; survival requires two-way audit + operator admission",
+  "generated_utc": "2026-07-24T12:46:20.373173+00:00",
+  "declared_generator": {
+    "id": "RULE_A_VWAP_FADE_POSGAMMA_V1",
+    "m_sigma": 1.5,
+    "warmup_bars": 30,
+    "min_bar_gap": 5,
+    "stop_sigma_beyond": 1.0,
+    "target": "back to VWAP-at-signal",
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0,
+    "condition": "fresh (<=900s) trusted (low_trust=0) net_gamma_rc > 0",
+    "falsifiable_bar": "POS clears full F2 screen AND beats unconditioned ALL"
+  },
+  "loader": {
+    "n_rows": 104449,
+    "n_tradable_bars": 33717,
+    "n_sessions": 89,
+    "n_events_total": 855
+  },
+  "generator_stats": {
+    "n_triggers": 3441,
+    "n_labeled": 3391,
+    "n_withheld": 50
+  },
+  "n_candidates_labeled": 3391,
+  "n_no_fresh_gamma": 946,
+  "arms": {
+    "ALL": {
+      "n_selected": 3391,
+      "n_sessions": 86,
+      "mean_net_bp": -1.2082453337113193,
+      "bootstrap": {
+        "ci95": [
+          -0.8241782063361742,
+          1.4808916980192222
+        ],
+        "p_value": 0.576,
+        "n": 86,
+        "n_boot": 1000
+      },
+      "stress_bootstrap": {
+        "ci95": [
+          -1.7653664174255903,
+          0.6097010785476826
+        ],
+        "p_value": 0.224,
+        "n": 86,
+        "n_boot": 1000
+      },
+      "shuffle": {
+        "null_q975": 0.5104596810004486,
+        "n_shuffles": 200
+      },
+      "holm": {
+        "p_raw": 0.576,
+        "p_adjusted": 0.704,
+        "significant": false
+      },
+      "dsr_prob": 0.43366698101890405,
+      "screen": {
+        "mean_positive": false,
+        "ci95_above_zero": false,
+        "holm_significant": false,
+        "dsr_ok": false,
+        "stress_2x_ok": false,
+        "sign_shuffle_ok": false
+      },
+      "anti_signal": false,
+      "verdict": "KILL",
+      "beats_unconditioned_all": true
+    },
+    "NEG": {
+      "n_selected": 857,
+      "n_sessions": 41,
+      "mean_net_bp": -1.392268808719168,
+      "bootstrap": {
+        "ci95": [
+          -0.7114750856720033,
+          4.798258707161139
+        ],
+        "p_value": 0.134,
+        "n": 41,
+        "n_boot": 1000
+      },
+      "stress_bootstrap": {
+        "ci95": [
+          -1.5129928389090885,
+          3.549853740718882
+        ],
+        "p_value": 0.474,
+        "n": 41,
+        "n_boot": 1000
+      },
+      "shuffle": {
+        "null_q975": 1.0774520855978034,
+        "n_shuffles": 200
+      },
+      "holm": {
+        "p_raw": 0.134,
+        "p_adjusted": 0.402,
+        "significant": false
+      },
+      "dsr_prob": 0.8465230891168211,
+      "screen": {
+        "mean_positive": false,
+        "ci95_above_zero": false,
+        "holm_significant": false,
+        "dsr_ok": false,
+        "stress_2x_ok": false,
+        "sign_shuffle_ok": false
+      },
+      "anti_signal": false,
+      "verdict": "KILL",
+      "beats_unconditioned_all": false
+    },
+    "POS": {
+      "n_selected": 1588,
+      "n_sessions": 63,
+      "mean_net_bp": -1.1828129190074481,
+      "bootstrap": {
+        "ci95": [
+          -1.09889483310127,
+          3.420496911666113
+        ],
+        "p_value": 0.352,
+        "n": 63,
+        "n_boot": 1000
+      },
+      "stress_bootstrap": {
+        "ci95": [
+          -2.0989685597126133,
+          2.331255496041524
+        ],
+        "p_value": 0.974,
+        "n": 63,
+        "n_boot": 1000
+      },
+      "shuffle": {
+        "null_q975": 0.5034276190084722,
+        "n_shuffles": 200
+      },
+      "holm": {
+        "p_raw": 0.352,
+        "p_adjusted": 0.704,
+        "significant": false
+      },
+      "dsr_prob": 0.6143622901448251,
+      "screen": {
+        "mean_positive": false,
+        "ci95_above_zero": false,
+        "holm_significant": false,
+        "dsr_ok": false,
+        "stress_2x_ok": false,
+        "sign_shuffle_ok": false
+      },
+      "anti_signal": false,
+      "verdict": "KILL",
+      "beats_unconditioned_all": true
+    }
+  },
+  "n_survivors": 0,
+  "survivors": [],
+  "placebo_day_shuffle": {
+    "n_survivors": 0,
+    "survivors": [],
+    "hard_halt_engaged": false
+  },
+  "next_depth": "If null: exhaustion-confirmed Rule-A variant (external CR-05 #4 spec class) + QQQ replication via the batch pipeline + regime accrual toward the F2 VIX-tercile floor. If survivor: two-way audit, then operator admission review.",
+  "run_sec": 4.83
+}
