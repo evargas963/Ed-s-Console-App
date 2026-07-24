@@ -1,0 +1,679 @@
+{
+  "schema": "batch_universe_summary_v1",
+  "generated_utc": "2026-07-24T05:38:50.837256+00:00",
+  "mode": "battery",
+  "n_universe": 59,
+  "n_qualified": 22,
+  "n_excluded": 37,
+  "gates": {
+    "min_tradable_sessions": 60,
+    "min_total_bars": 20000,
+    "min_real_bar_share": 0.5
+  },
+  "screens": [
+    {
+      "ticker": "$SPX",
+      "n_bars_total": 40623,
+      "n_tradable_bars": 34326,
+      "n_tradable_sessions": 91,
+      "real_bar_share": 0.9984,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "$VIX",
+      "n_bars_total": 20670,
+      "n_tradable_bars": 13035,
+      "n_tradable_sessions": 36,
+      "real_bar_share": 0.9877,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_36_below_60"
+      ]
+    },
+    {
+      "ticker": "AAPL",
+      "n_bars_total": 49723,
+      "n_tradable_bars": 31576,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.998,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "AEIS",
+      "n_bars_total": 6479,
+      "n_tradable_bars": 5819,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9594,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6479_below_20000"
+      ]
+    },
+    {
+      "ticker": "AMD",
+      "n_bars_total": 1228,
+      "n_tradable_bars": 1228,
+      "n_tradable_sessions": 4,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_4_below_60",
+        "bars_1228_below_20000"
+      ]
+    },
+    {
+      "ticker": "AMZN",
+      "n_bars_total": 52857,
+      "n_tradable_bars": 32150,
+      "n_tradable_sessions": 86,
+      "real_bar_share": 0.9974,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "ASTS",
+      "n_bars_total": 23126,
+      "n_tradable_bars": 21068,
+      "n_tradable_sessions": 58,
+      "real_bar_share": 0.9972,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_58_below_60"
+      ]
+    },
+    {
+      "ticker": "AVGO",
+      "n_bars_total": 50409,
+      "n_tradable_bars": 31686,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.997,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "BBIO",
+      "n_bars_total": 6633,
+      "n_tradable_bars": 5970,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.97,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6633_below_20000"
+      ]
+    },
+    {
+      "ticker": "BE",
+      "n_bars_total": 6720,
+      "n_tradable_bars": 6052,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9719,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6720_below_20000"
+      ]
+    },
+    {
+      "ticker": "CDE",
+      "n_bars_total": 6712,
+      "n_tradable_bars": 6052,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9719,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6712_below_20000"
+      ]
+    },
+    {
+      "ticker": "CIFR",
+      "n_bars_total": 42089,
+      "n_tradable_bars": 31202,
+      "n_tradable_sessions": 84,
+      "real_bar_share": 0.9981,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "COP",
+      "n_bars_total": 883,
+      "n_tradable_bars": 780,
+      "n_tradable_sessions": 2,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_2_below_60",
+        "bars_883_below_20000"
+      ]
+    },
+    {
+      "ticker": "CRDO",
+      "n_bars_total": 6693,
+      "n_tradable_bars": 6045,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9727,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6693_below_20000"
+      ]
+    },
+    {
+      "ticker": "CRWD",
+      "n_bars_total": 29917,
+      "n_tradable_bars": 24346,
+      "n_tradable_sessions": 65,
+      "real_bar_share": 0.9932,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "DELL",
+      "n_bars_total": 294,
+      "n_tradable_bars": 294,
+      "n_tradable_sessions": 1,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_1_below_60",
+        "bars_294_below_20000"
+      ]
+    },
+    {
+      "ticker": "FN",
+      "n_bars_total": 6543,
+      "n_tradable_bars": 5896,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.963,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6543_below_20000"
+      ]
+    },
+    {
+      "ticker": "GOOG",
+      "n_bars_total": 48766,
+      "n_tradable_bars": 31203,
+      "n_tradable_sessions": 84,
+      "real_bar_share": 0.998,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "GOOGL",
+      "n_bars_total": 51245,
+      "n_tradable_bars": 31565,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.9983,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "INTC",
+      "n_bars_total": 294,
+      "n_tradable_bars": 294,
+      "n_tradable_sessions": 1,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_1_below_60",
+        "bars_294_below_20000"
+      ]
+    },
+    {
+      "ticker": "IWM",
+      "n_bars_total": 79354,
+      "n_tradable_bars": 32330,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.9986,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "KO",
+      "n_bars_total": 1579,
+      "n_tradable_bars": 780,
+      "n_tradable_sessions": 2,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_2_below_60",
+        "bars_1579_below_20000"
+      ]
+    },
+    {
+      "ticker": "KRE",
+      "n_bars_total": 6698,
+      "n_tradable_bars": 6043,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9732,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6698_below_20000"
+      ]
+    },
+    {
+      "ticker": "KTOS",
+      "n_bars_total": 6694,
+      "n_tradable_bars": 6041,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9725,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6694_below_20000"
+      ]
+    },
+    {
+      "ticker": "MET",
+      "n_bars_total": 34761,
+      "n_tradable_bars": 31096,
+      "n_tradable_sessions": 84,
+      "real_bar_share": 0.9977,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "META",
+      "n_bars_total": 59086,
+      "n_tradable_bars": 34320,
+      "n_tradable_sessions": 91,
+      "real_bar_share": 0.9983,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "MRVL",
+      "n_bars_total": 47798,
+      "n_tradable_bars": 31335,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.998,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "MSFT",
+      "n_bars_total": 55496,
+      "n_tradable_bars": 31994,
+      "n_tradable_sessions": 86,
+      "real_bar_share": 0.9979,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "MU",
+      "n_bars_total": 22739,
+      "n_tradable_bars": 20708,
+      "n_tradable_sessions": 58,
+      "real_bar_share": 0.9959,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_58_below_60"
+      ]
+    },
+    {
+      "ticker": "NBIS",
+      "n_bars_total": 1909,
+      "n_tradable_bars": 1909,
+      "n_tradable_sessions": 5,
+      "real_bar_share": 0.9974,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_5_below_60",
+        "bars_1909_below_20000"
+      ]
+    },
+    {
+      "ticker": "NBIX",
+      "n_bars_total": 1763,
+      "n_tradable_bars": 1763,
+      "n_tradable_sessions": 5,
+      "real_bar_share": 0.9943,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_5_below_60",
+        "bars_1763_below_20000"
+      ]
+    },
+    {
+      "ticker": "NET",
+      "n_bars_total": 10329,
+      "n_tradable_bars": 9653,
+      "n_tradable_sessions": 27,
+      "real_bar_share": 0.9962,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_27_below_60",
+        "bars_10329_below_20000"
+      ]
+    },
+    {
+      "ticker": "NFLX",
+      "n_bars_total": 50598,
+      "n_tradable_bars": 30840,
+      "n_tradable_sessions": 84,
+      "real_bar_share": 0.9973,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "NVDA",
+      "n_bars_total": 56433,
+      "n_tradable_bars": 31600,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.9981,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "NXT",
+      "n_bars_total": 6632,
+      "n_tradable_bars": 5985,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9693,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6632_below_20000"
+      ]
+    },
+    {
+      "ticker": "ORCL",
+      "n_bars_total": 11285,
+      "n_tradable_bars": 10537,
+      "n_tradable_sessions": 29,
+      "real_bar_share": 0.997,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_29_below_60",
+        "bars_11285_below_20000"
+      ]
+    },
+    {
+      "ticker": "PCG",
+      "n_bars_total": 35865,
+      "n_tradable_bars": 30840,
+      "n_tradable_sessions": 84,
+      "real_bar_share": 0.9972,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "PLTR",
+      "n_bars_total": 51632,
+      "n_tradable_bars": 30839,
+      "n_tradable_sessions": 84,
+      "real_bar_share": 0.9973,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "PSCI",
+      "n_bars_total": 2641,
+      "n_tradable_bars": 1999,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.2731,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_2641_below_20000",
+        "real_share_0.27_below_0.5"
+      ]
+    },
+    {
+      "ticker": "Q",
+      "n_bars_total": 1107,
+      "n_tradable_bars": 1105,
+      "n_tradable_sessions": 3,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_3_below_60",
+        "bars_1107_below_20000"
+      ]
+    },
+    {
+      "ticker": "QQQ",
+      "n_bars_total": 92207,
+      "n_tradable_bars": 31542,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.986,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "RKLB",
+      "n_bars_total": 22732,
+      "n_tradable_bars": 20703,
+      "n_tradable_sessions": 58,
+      "real_bar_share": 0.9959,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_58_below_60"
+      ]
+    },
+    {
+      "ticker": "SATS",
+      "n_bars_total": 6703,
+      "n_tradable_bars": 6040,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9725,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6703_below_20000"
+      ]
+    },
+    {
+      "ticker": "SKHY",
+      "n_bars_total": 2868,
+      "n_tradable_bars": 2640,
+      "n_tradable_sessions": 7,
+      "real_bar_share": 0.9795,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_7_below_60",
+        "bars_2868_below_20000"
+      ]
+    },
+    {
+      "ticker": "SMCI",
+      "n_bars_total": 47531,
+      "n_tradable_bars": 31201,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.9973,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "SPCX",
+      "n_bars_total": 10019,
+      "n_tradable_bars": 9369,
+      "n_tradable_sessions": 26,
+      "real_bar_share": 0.9965,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_26_below_60",
+        "bars_10019_below_20000"
+      ]
+    },
+    {
+      "ticker": "SPY",
+      "n_bars_total": 104448,
+      "n_tradable_bars": 33716,
+      "n_tradable_sessions": 89,
+      "real_bar_share": 0.9923,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "STRL",
+      "n_bars_total": 6477,
+      "n_tradable_bars": 5829,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.959,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6477_below_20000"
+      ]
+    },
+    {
+      "ticker": "TSL",
+      "n_bars_total": 31187,
+      "n_tradable_bars": 25677,
+      "n_tradable_sessions": 83,
+      "real_bar_share": 0.9713,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "TSLA",
+      "n_bars_total": 54925,
+      "n_tradable_bars": 31265,
+      "n_tradable_sessions": 85,
+      "real_bar_share": 0.9975,
+      "qualified": true,
+      "exclusion_reasons": []
+    },
+    {
+      "ticker": "TSM",
+      "n_bars_total": 1636,
+      "n_tradable_bars": 1636,
+      "n_tradable_sessions": 5,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_5_below_60",
+        "bars_1636_below_20000"
+      ]
+    },
+    {
+      "ticker": "UNH",
+      "n_bars_total": 1831,
+      "n_tradable_bars": 1831,
+      "n_tradable_sessions": 5,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_5_below_60",
+        "bars_1831_below_20000"
+      ]
+    },
+    {
+      "ticker": "UUUU",
+      "n_bars_total": 1287,
+      "n_tradable_bars": 780,
+      "n_tradable_sessions": 2,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_2_below_60",
+        "bars_1287_below_20000"
+      ]
+    },
+    {
+      "ticker": "VZ",
+      "n_bars_total": 1090,
+      "n_tradable_bars": 780,
+      "n_tradable_sessions": 2,
+      "real_bar_share": 1.0,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_2_below_60",
+        "bars_1090_below_20000"
+      ]
+    },
+    {
+      "ticker": "WMT",
+      "n_bars_total": 7103,
+      "n_tradable_bars": 6433,
+      "n_tradable_sessions": 19,
+      "real_bar_share": 0.9748,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_19_below_60",
+        "bars_7103_below_20000"
+      ]
+    },
+    {
+      "ticker": "XBI",
+      "n_bars_total": 6703,
+      "n_tradable_bars": 6043,
+      "n_tradable_sessions": 18,
+      "real_bar_share": 0.9734,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_18_below_60",
+        "bars_6703_below_20000"
+      ]
+    },
+    {
+      "ticker": "XLE",
+      "n_bars_total": 5221,
+      "n_tradable_bars": 5066,
+      "n_tradable_sessions": 14,
+      "real_bar_share": 0.9986,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_14_below_60",
+        "bars_5221_below_20000"
+      ]
+    },
+    {
+      "ticker": "XOM",
+      "n_bars_total": 10428,
+      "n_tradable_bars": 9759,
+      "n_tradable_sessions": 27,
+      "real_bar_share": 0.9965,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_27_below_60",
+        "bars_10428_below_20000"
+      ]
+    },
+    {
+      "ticker": "XRT",
+      "n_bars_total": 7101,
+      "n_tradable_bars": 6435,
+      "n_tradable_sessions": 19,
+      "real_bar_share": 0.974,
+      "qualified": false,
+      "exclusion_reasons": [
+        "sessions_19_below_60",
+        "bars_7101_below_20000"
+      ]
+    }
+  ],
+  "battery_reports": {
+    "$SPX": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\S_SPX_battery_v1.json",
+    "AAPL": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\AAPL_battery_v1.json",
+    "AMZN": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\AMZN_battery_v1.json",
+    "AVGO": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\AVGO_battery_v1.json",
+    "CIFR": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\CIFR_battery_v1.json",
+    "CRWD": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\CRWD_battery_v1.json",
+    "GOOG": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\GOOG_battery_v1.json",
+    "GOOGL": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\GOOGL_battery_v1.json",
+    "IWM": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\IWM_battery_v1.json",
+    "MET": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\MET_battery_v1.json",
+    "META": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\META_battery_v1.json",
+    "MRVL": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\MRVL_battery_v1.json",
+    "MSFT": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\MSFT_battery_v1.json",
+    "NFLX": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\NFLX_battery_v1.json",
+    "NVDA": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\NVDA_battery_v1.json",
+    "PCG": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\PCG_battery_v1.json",
+    "PLTR": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\PLTR_battery_v1.json",
+    "QQQ": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\QQQ_battery_v1.json",
+    "SMCI": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\SMCI_battery_v1.json",
+    "SPY": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\SPY_battery_v1.json",
+    "TSL": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\TSL_battery_v1.json",
+    "TSLA": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\reports\\batch\\TSLA_battery_v1.json"
+  },
+  "run_sec": 73.12
+}

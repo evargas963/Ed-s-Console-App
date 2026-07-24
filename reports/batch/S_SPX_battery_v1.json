@@ -1,0 +1,45 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "$SPX",
+  "generated_utc": "2026-07-24T05:37:42.513747+00:00",
+  "loader": {
+    "n_rows": 40623,
+    "n_tradable_bars": 34326,
+    "n_sessions": 91,
+    "n_events_total": 894
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "$SPX": {
+      "n_candidates": 894,
+      "n_labeled": 874,
+      "n_withheld": 20,
+      "class_counts": {
+        "WIN": 358,
+        "LOSS": 510,
+        "TIMEOUT": 1,
+        "FORCE_FLAT": 5
+      },
+      "class_rates": {
+        "WIN": 0.4096109839816934,
+        "LOSS": 0.5835240274599542,
+        "TIMEOUT": 0.0011441647597254005,
+        "FORCE_FLAT": 0.005720823798627002
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 13,
+        "synthetic_bar_in_window": 7
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.007829977628635347
+    }
+  },
+  "run_sec": 2.87
+}

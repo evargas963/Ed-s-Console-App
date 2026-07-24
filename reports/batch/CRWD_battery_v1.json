@@ -1,0 +1,45 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "CRWD",
+  "generated_utc": "2026-07-24T05:37:57.577709+00:00",
+  "loader": {
+    "n_rows": 29917,
+    "n_tradable_bars": 24346,
+    "n_sessions": 65,
+    "n_events_total": 230
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "CRWD": {
+      "n_candidates": 230,
+      "n_labeled": 212,
+      "n_withheld": 18,
+      "class_counts": {
+        "WIN": 81,
+        "LOSS": 129,
+        "TIMEOUT": 1,
+        "FORCE_FLAT": 1
+      },
+      "class_rates": {
+        "WIN": 0.38207547169811323,
+        "LOSS": 0.6084905660377359,
+        "TIMEOUT": 0.0047169811320754715,
+        "FORCE_FLAT": 0.0047169811320754715
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 6,
+        "synthetic_bar_in_window": 12
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.05217391304347826
+    }
+  },
+  "run_sec": 1.37
+}

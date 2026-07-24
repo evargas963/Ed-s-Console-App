@@ -1,0 +1,45 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "MET",
+  "generated_utc": "2026-07-24T05:38:09.836289+00:00",
+  "loader": {
+    "n_rows": 34761,
+    "n_tradable_bars": 31096,
+    "n_sessions": 84,
+    "n_events_total": 470
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "MET": {
+      "n_candidates": 470,
+      "n_labeled": 385,
+      "n_withheld": 85,
+      "class_counts": {
+        "WIN": 164,
+        "LOSS": 213,
+        "TIMEOUT": 2,
+        "FORCE_FLAT": 6
+      },
+      "class_rates": {
+        "WIN": 0.42597402597402595,
+        "LOSS": 0.5532467532467532,
+        "TIMEOUT": 0.005194805194805195,
+        "FORCE_FLAT": 0.015584415584415584
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 27,
+        "synthetic_bar_in_window": 58
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.12340425531914893
+    }
+  },
+  "run_sec": 2.03
+}

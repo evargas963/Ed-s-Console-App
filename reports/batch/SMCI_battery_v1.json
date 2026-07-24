@@ -1,0 +1,44 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "SMCI",
+  "generated_utc": "2026-07-24T05:38:39.954383+00:00",
+  "loader": {
+    "n_rows": 47531,
+    "n_tradable_bars": 31201,
+    "n_sessions": 85,
+    "n_events_total": 581
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "SMCI": {
+      "n_candidates": 581,
+      "n_labeled": 566,
+      "n_withheld": 15,
+      "class_counts": {
+        "WIN": 248,
+        "LOSS": 315,
+        "TIMEOUT": 0,
+        "FORCE_FLAT": 3
+      },
+      "class_rates": {
+        "WIN": 0.4381625441696113,
+        "LOSS": 0.5565371024734982,
+        "TIMEOUT": 0.0,
+        "FORCE_FLAT": 0.00530035335689046
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 15
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.0
+    }
+  },
+  "run_sec": 2.1
+}

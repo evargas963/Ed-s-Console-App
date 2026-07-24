@@ -1,0 +1,45 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "PCG",
+  "generated_utc": "2026-07-24T05:38:28.279592+00:00",
+  "loader": {
+    "n_rows": 35865,
+    "n_tradable_bars": 30840,
+    "n_sessions": 84,
+    "n_events_total": 609
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "PCG": {
+      "n_candidates": 609,
+      "n_labeled": 566,
+      "n_withheld": 43,
+      "class_counts": {
+        "WIN": 232,
+        "LOSS": 325,
+        "TIMEOUT": 2,
+        "FORCE_FLAT": 7
+      },
+      "class_rates": {
+        "WIN": 0.4098939929328622,
+        "LOSS": 0.5742049469964664,
+        "TIMEOUT": 0.0035335689045936395,
+        "FORCE_FLAT": 0.012367491166077738
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 32,
+        "synthetic_bar_in_window": 11
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.0180623973727422
+    }
+  },
+  "run_sec": 1.8
+}

@@ -1,0 +1,44 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "NVDA",
+  "generated_utc": "2026-07-24T05:38:25.354662+00:00",
+  "loader": {
+    "n_rows": 56433,
+    "n_tradable_bars": 31600,
+    "n_sessions": 85,
+    "n_events_total": 587
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "NVDA": {
+      "n_candidates": 587,
+      "n_labeled": 563,
+      "n_withheld": 24,
+      "class_counts": {
+        "WIN": 222,
+        "LOSS": 335,
+        "TIMEOUT": 1,
+        "FORCE_FLAT": 5
+      },
+      "class_rates": {
+        "WIN": 0.39431616341030196,
+        "LOSS": 0.5950266429840142,
+        "TIMEOUT": 0.0017761989342806395,
+        "FORCE_FLAT": 0.008880994671403197
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 24
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.0
+    }
+  },
+  "run_sec": 2.06
+}

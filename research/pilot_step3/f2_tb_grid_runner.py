@@ -295,10 +295,10 @@ def _apply_screen(
 # ── Grid orchestration ───────────────────────────────────────────────────────
 
 
-def _sessions_events(db_path: str) -> tuple[dict[str, list[Bar1m]], dict[str, list[PilotEvent]], dict[str, list[float | None]], dict[str, Any]]:
+def _sessions_events(db_path: str, ticker: str = "SPY") -> tuple[dict[str, list[Bar1m]], dict[str, list[PilotEvent]], dict[str, list[float | None]], dict[str, Any]]:
     from time_et import et_date_str_from_ts_utc, is_tradable_session_ts_utc
 
-    rep = load_spy_1m_bars(db_path, require_rth_only=True)
+    rep = load_spy_1m_bars(db_path, ticker=ticker, require_rth_only=True)
     tradable = [b for b in rep.bars if is_tradable_session_ts_utc(b.bar_start_ts_utc)]
     by_day: dict[str, list[Bar1m]] = {}
     for b in tradable:

@@ -1,0 +1,44 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "GOOG",
+  "generated_utc": "2026-07-24T05:38:00.525527+00:00",
+  "loader": {
+    "n_rows": 48766,
+    "n_tradable_bars": 31203,
+    "n_sessions": 84,
+    "n_events_total": 558
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "GOOG": {
+      "n_candidates": 558,
+      "n_labeled": 529,
+      "n_withheld": 29,
+      "class_counts": {
+        "WIN": 204,
+        "LOSS": 323,
+        "TIMEOUT": 1,
+        "FORCE_FLAT": 1
+      },
+      "class_rates": {
+        "WIN": 0.3856332703213611,
+        "LOSS": 0.610586011342155,
+        "TIMEOUT": 0.001890359168241966,
+        "FORCE_FLAT": 0.001890359168241966
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 29
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.0
+    }
+  },
+  "run_sec": 1.93
+}
