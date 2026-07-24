@@ -59,3 +59,67 @@ def is_rth_ts_utc(ts_utc: float) -> bool:
 def calibration_widen_min_ts_utc() -> float:
     """Default ts_utc floor for calibration widen cohorts (post COH-I-A logging)."""
     return COH_I_A_ET_AUTHORITY_TS_UTC
+
+
+# ── F1 session authority (RC-31 / F-8 / F-9) ─────────────────────────────────
+# ONE function answers "is this instant a tradable RTH minute": ET weekday AND
+# holiday/early-close calendar AND RTH minutes. The legacy pair
+# (is_rth_ts_utc + a SQL weekday clause) was only correct when callers composed
+# BOTH — is_rth_ts_utc alone admits Saturday 10:00 ET and full-holiday
+# afternoons (measured 2026-07-23: 3,795 labeled 'rth' rows on Memorial Day,
+# 912 on 2026-07-03). New F1 consumers must call is_tradable_session_ts_utc.
+
+# NYSE/Nasdaq full-closure dates (ET calendar dates). Covered years only —
+# dates outside coverage FAIL CLOSED (excluded, never guessed).
+US_EQUITY_CALENDAR_YEARS: frozenset[int] = frozenset({2025, 2026})
+US_EQUITY_FULL_HOLIDAYS_ET: frozenset[str] = frozenset({
+    # 2025
+    "2025-01-01", "2025-01-20", "2025-02-17", "2025-04-18", "2025-05-26",
+    "2025-06-19", "2025-07-04", "2025-09-01", "2025-11-27", "2025-12-25",
+    # 2026 (2026-07-03 = Independence Day observed, Jul 4 is a Saturday)
+    "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25",
+    "2026-06-19", "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
+})
+# 13:00 ET early closes (minute-of-day 780).
+EARLY_CLOSE_MINS: int = 780
+US_EQUITY_EARLY_CLOSE_MINS_ET: dict[str, int] = {
+    "2025-07-03": EARLY_CLOSE_MINS,
+    "2025-11-28": EARLY_CLOSE_MINS,
+    "2025-12-24": EARLY_CLOSE_MINS,
+    "2026-11-27": EARLY_CLOSE_MINS,
+    "2026-12-24": EARLY_CLOSE_MINS,
+}
+
+
+def session_close_mins_for_et_date(et_date: str) -> int | None:
+    """RTH close (ET minute-of-day) for a calendar date; None = no session that day.
+
+    Fail-closed: dates in uncovered years return None — an unknown calendar is
+    an excluded day, never a guessed full session.
+    """
+    try:
+        year = int(str(et_date)[:4])
+    except (TypeError, ValueError):
+        return None
+    if year not in US_EQUITY_CALENDAR_YEARS:
+        return None
+    if et_date in US_EQUITY_FULL_HOLIDAYS_ET:
+        return None
+    return US_EQUITY_EARLY_CLOSE_MINS_ET.get(str(et_date), RTH_END_MINS)
+
+
+def is_tradable_session_ts_utc(ts_utc: float) -> bool:
+    """True iff ts_utc is an ET-weekday RTH minute of an actual trading session.
+
+    Checks all three dimensions in one place so a caller cannot forget one:
+    ET weekday (not UTC weekday — Sunday 20:30 ET is Monday in UTC), the
+    holiday/early-close calendar, and the 09:30 <= t < close ET minute window.
+    """
+    h, m, wd = et_clock_from_ts_utc(ts_utc)
+    if wd >= 5:
+        return False
+    close = session_close_mins_for_et_date(et_date_str_from_ts_utc(ts_utc))
+    if close is None:
+        return False
+    mins = h * 60 + m
+    return RTH_START_MINS <= mins < close
