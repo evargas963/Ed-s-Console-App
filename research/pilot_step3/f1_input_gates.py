@@ -166,6 +166,58 @@ def placebo_permuted_labels(labels: Sequence[str], seed: int) -> list[str]:
     return out
 
 
+def placebo_shuffle_train_only(
+    labels: Sequence[str], is_train: Sequence[bool], seed: int
+) -> list[str]:
+    """Placebo shuffle confined to the TRAINING partition (S4 isolation law).
+
+    Labels at holdout/validation positions are returned byte-identical; only
+    train-position labels are permuted among themselves (multiset preserved
+    within the train slice). Length mismatch raises — a mask that does not
+    cover every label is not a partition.
+    """
+    if len(labels) != len(is_train):
+        raise ValueError(
+            f"placebo_shuffle_train_only: {len(labels)} labels vs {len(is_train)} mask entries"
+        )
+    out = list(labels)
+    train_idx = [i for i, t in enumerate(is_train) if t]
+    permuted = placebo_permuted_labels([out[i] for i in train_idx], seed)
+    for i, v in zip(train_idx, permuted, strict=True):
+        out[i] = v
+    return out
+
+
+def run_gated_battery(
+    bars: list[Bar1m],
+    atr_series: Sequence[float | None],
+    events: Sequence[PilotEvent],
+    *,
+    ticker: str,
+    stop_atr: float,
+    target_atr: float,
+    vertical_minutes: int,
+    cost_round_trip_bp: float,
+    cost_floor_bp: float | None = None,
+) -> tuple[list[TripleBarrierResult], dict[str, dict[str, object]]]:
+    """S4 battery: every event through the GATED labeler (gate wraps core —
+    no path to label_event_cell_f1_v2 exists here), plus the quality report."""
+    results = [
+        gated_label_event_cell_f1(
+            bars,
+            atr_series,
+            ev,
+            stop_atr=stop_atr,
+            target_atr=target_atr,
+            vertical_minutes=vertical_minutes,
+            cost_round_trip_bp=cost_round_trip_bp,
+            cost_floor_bp=cost_floor_bp,
+        )
+        for ev in events
+    ]
+    return results, build_label_quality_report({ticker: results})
+
+
 def build_label_quality_report(
     results_by_ticker: dict[str, Sequence[TripleBarrierResult]],
 ) -> dict[str, dict[str, object]]:
