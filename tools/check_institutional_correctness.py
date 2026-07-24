@@ -206,6 +206,89 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
     return out
 
 
+# ── Five-why recursive lock (operator law 2026-07-24) ─────────────────────────
+# "You must do a mechanical lock on a 5-why layer recursive regime... that which
+# is uncovered at the 5-why layer regime we must then fix end to end. No patches
+# ever." Rows opened before the cutover are grandfathered for the two NEW
+# closure rules only (retro-scan 2026-07-24: 32 rows, one historical fix cell
+# legitimately DESCRIBES removing workarounds - RC-19); ROOT-terminality and
+# reference integrity were already clean across all 32 rows and enforce globally.
+FIVE_WHY_LOCK_CUTOVER = "2026-07-24"
+_PATCH_BANNED_PHRASES = (
+    "workaround", "band-aid", "bandaid", "stopgap", "quick fix",
+    "temporary fix", "papered over", "route around the",
+)
+
+
+def _five_why_lock_violations(lines: list[str], log_path) -> list[Violation]:
+    """Pure row validator for the recursive 5-why lock (unit-testable)."""
+    import re as _re
+
+    parsed: list[tuple[int, list[str]]] = []
+    ids: set[str] = set()
+    for n, line in enumerate(lines, start=1):
+        if not line.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 7:
+            continue
+        parsed.append((n, cells))
+        ids.add(cells[0])
+    out: list[Violation] = []
+    for n, cells in parsed:
+        rc_id, status, opened = cells[0], cells[1], cells[2]
+        why, fix = cells[5], cells[6]
+        if "ROOT" not in why.upper():
+            out.append(Violation(
+                log_path, n,
+                f"{rc_id}: why-chain never terminates in a named ROOT. A chain without "
+                f"a ROOT is a symptom list - keep asking why until the root is named."))
+        for ref in _re.findall(r"RC-\d+", f"{why} {fix}"):
+            if ref not in ids:
+                out.append(Violation(
+                    log_path, n,
+                    f"{rc_id}: references {ref} which has no row. A why that names a new "
+                    f"defect SPAWNS that defect's own five-why entry - dangling children "
+                    f"break the recursive regime."))
+        if opened < FIVE_WHY_LOCK_CUTOVER:
+            continue
+        low_fix = fix.lower()
+        for phrase in _PATCH_BANNED_PHRASES:
+            if phrase in low_fix:
+                out.append(Violation(
+                    log_path, n,
+                    f"{rc_id}: fix cell contains banned patch vocabulary ({phrase!r}). "
+                    f"No patches ever - fix the architectural cause end to end. There is "
+                    f"deliberately NO escape marker for this rule."))
+        if status == "CLOSED" and "END-TO-END" not in fix.upper():
+            out.append(Violation(
+                log_path, n,
+                f"{rc_id}: CLOSED without an END-TO-END declaration. Closure requires the "
+                f"fix cell to state 'END-TO-END: <producer -> consumer scope>' proving the "
+                f"repair reached the root's full blast radius, not the symptom site."))
+    return out
+
+
+def check_five_why_recursive_lock() -> list[Violation]:
+    """Mechanical lock: recursive 5-why regime + end-to-end fixes, no patches ever.
+
+    Operator law 2026-07-24, machine-forced per the standing rule that goodwill fails.
+    OBSERVED need: RC-14 was closed on code shape and the live bug survived into RC-15
+    and RC-16 (three rows, one defect); the same week, mechanical verification (the P1
+    parity machine) found in 8.5s an undocumented production convention that two days
+    of code reading missed - checks catch what narrative cannot. VALIDATED against the
+    live log 2026-07-24: 32 rows, ROOT-terminality and RC-reference integrity clean on
+    all of them (enforced globally); the two closure rules (patch-vocabulary ban,
+    END-TO-END declaration) bind rows opened on/after the cutover so one historical fix
+    cell that legitimately DESCRIBES removing workarounds (RC-19) is not retro-flagged.
+    """
+    log_path = REPO / "governance" / "root_cause_log.md"
+    if not log_path.exists():
+        return [Violation(log_path, 0, "governance/root_cause_log.md is missing")]
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    return _five_why_lock_violations(lines, log_path)
+
+
 def check_root_cause_log() -> list[Violation]:
     """Every defect gets five whys, and finding a cause RESTARTS the count.
 
@@ -1303,6 +1386,7 @@ CHECKS = [
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
+    ("five_why_recursive_lock", check_five_why_recursive_lock, True),  # end-to-end fixes, no patches ever
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home
     ("checks_are_justified", check_checks_are_justified, True),  # observed + validated, or no ship
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
