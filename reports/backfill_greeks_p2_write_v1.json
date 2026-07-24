@@ -1,0 +1,15 @@
+{
+  "schema": "backfill_greeks_p2_write_v1",
+  "generated_utc": "2026-07-24T12:14:12.971495+00:00",
+  "recompute_version": "greeks_rc_v1_dollar_gex_1pct",
+  "certified_parity_precondition": 1.0,
+  "full_run": false,
+  "n_rows_seen": 300,
+  "n_rows_written": 0,
+  "n_skipped_existing_append_only": 300,
+  "n_parse_fail": 0,
+  "n_low_trust_flagged": 0,
+  "read_gate_ready": false,
+  "verdict": "P2_PARTIAL_NOT_READY_BY_DESIGN",
+  "run_sec": 0.17
+}

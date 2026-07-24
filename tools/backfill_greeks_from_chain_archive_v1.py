@@ -420,14 +420,240 @@ def run_p1(db_path: str, tickers: list[str] | None, rel_tol: float) -> dict[str,
     return report
 
 
+# ── Phase 2: append-only recompute write (operator-authorized DB write) ───────
+
+RECOMPUTE_VERSION = "greeks_rc_v1_dollar_gex_1pct"
+P2_BATCH_ROWS = 2000
+P2_OI_REJECT_LOW_TRUST_SHARE = 0.05
+P2_REPORT = REPO_ROOT / "reports" / "backfill_greeks_p2_write_v1.json"
+
+_P2_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS greeks_recomputed_v1 (
+        snapshot_id INTEGER PRIMARY KEY,
+        ticker TEXT NOT NULL,
+        ts_utc REAL NOT NULL,
+        net_gamma_rc REAL,
+        n_contracts INTEGER NOT NULL,
+        n_distinct_strikes INTEGER NOT NULL,
+        n_gamma_plausible INTEGER NOT NULL,
+        oi_total REAL NOT NULL,
+        oi_gamma_rejected REAL NOT NULL,
+        span_pct REAL,
+        expiry_mix TEXT NOT NULL,
+        slice_type TEXT NOT NULL,
+        quote_time_span_ms INTEGER,
+        low_trust INTEGER NOT NULL,
+        recompute_version TEXT NOT NULL,
+        written_utc REAL NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS greeks_recomputed_v1_meta (
+        recompute_version TEXT PRIMARY KEY,
+        certified_parity REAL NOT NULL,
+        certification_report TEXT NOT NULL,
+        started_utc REAL NOT NULL,
+        completed_utc REAL,
+        full_run INTEGER NOT NULL,
+        n_rows_written INTEGER NOT NULL
+    )
+    """,
+)
+
+
+def recomputed_greeks_ready(conn: sqlite3.Connection) -> bool:
+    """READ-SIDE GATE: loaders must route the rebuilt_from_chain_archive escape
+    through this. True only for a COMPLETED FULL run under a CERTIFIED version —
+    partial (--limit / --tickers) runs, in-flight runs, and uncertified versions
+    all read as not-ready. Fail-closed on missing tables."""
+    try:
+        row = conn.execute(
+            "SELECT completed_utc, full_run, certified_parity "
+            "FROM greeks_recomputed_v1_meta WHERE recompute_version = ?",
+            (RECOMPUTE_VERSION,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    if row is None:
+        return False
+    completed, full_run, parity = row
+    return completed is not None and int(full_run) == 1 and float(parity) >= PARITY_GATE
+
+
+def _p1_certified_or_none() -> float | None:
+    """Mechanical precondition: P2 refuses to start without a CERTIFIED P1 on disk."""
+    if not P1_REPORT.exists():
+        return None
+    try:
+        rep = json.loads(P1_REPORT.read_text(encoding="utf-8"))
+    except ValueError:
+        return None
+    if rep.get("verdict") != "CERTIFIED":
+        return None
+    return float(rep.get("parity", 0.0))
+
+
+def _p2_row_payload(row: sqlite3.Row, now_utc: float) -> tuple | None:
+    try:
+        chain = json.loads(row["option_chain_json"])
+    except (TypeError, ValueError):
+        return None
+    c = census_from_chain(chain, row["spot"])
+    if not c.parse_ok:
+        return None
+    rc = recompute_net_gamma(chain, row["spot"])
+    oi_rej_share = (c.oi_gamma_rejected / c.oi_total) if c.oi_total > 0 else 0.0
+    low_trust = int(
+        c.n_distinct_strikes < MIN_DISTINCT_STRIKES
+        or oi_rej_share > P2_OI_REJECT_LOW_TRUST_SHARE
+        or rc is None
+    )
+    slice_kind = "0dte" if c.expiry_mix == [0] else "front_mixed"
+    return (
+        int(row["snapshot_id"]), str(row["ticker"]), float(row["ts_utc"]), rc,
+        c.n_contracts, c.n_distinct_strikes, c.n_gamma_plausible,
+        c.oi_total, c.oi_gamma_rejected, c.span_pct,
+        json.dumps(c.expiry_mix), f"{slice_kind}_{c.n_contracts}c",
+        c.quote_time_span_ms, low_trust, RECOMPUTE_VERSION, now_utc,
+    )
+
+
+def run_p2(db_path: str, tickers: list[str] | None, limit: int) -> dict[str, Any]:
+    """Append-only write of recomputed greeks + provenance (same INSERT, atomic
+    per row by construction). INSERT OR IGNORE => idempotent resume; per-batch
+    transactions so an exception rolls back only the in-flight batch."""
+    from db import configure_sqlite_connection
+
+    t0 = time.perf_counter()
+    parity = _p1_certified_or_none()
+    if parity is None:
+        return {
+            "schema": "backfill_greeks_p2_write_v1",
+            "verdict": "STOP_P1_NOT_CERTIFIED",
+            "detail": "run --phase p1 to CERTIFIED before any write phase",
+        }
+    full_run = 1 if (not tickers and limit <= 0) else 0
+    wcon = sqlite3.connect(db_path, timeout=60.0)
+    configure_sqlite_connection(wcon)
+    now = time.time()
+    try:
+        for ddl in _P2_DDL:
+            wcon.execute(ddl)
+        wcon.execute(
+            "INSERT OR REPLACE INTO greeks_recomputed_v1_meta "
+            "(recompute_version, certified_parity, certification_report, started_utc,"
+            " completed_utc, full_run, n_rows_written) VALUES (?,?,?,?,NULL,?,0)",
+            (RECOMPUTE_VERSION, parity, str(P1_REPORT), now, full_run),
+        )
+        wcon.commit()
+        ctr = _p2_write_rows(wcon, db_path, tickers, limit, now)
+        wcon.execute(
+            "UPDATE greeks_recomputed_v1_meta SET completed_utc = ?, n_rows_written = ? "
+            "WHERE recompute_version = ?",
+            (time.time(), ctr.n_written, RECOMPUTE_VERSION),
+        )
+        wcon.commit()
+    finally:
+        wcon.close()
+    n_seen = ctr.n_seen
+    n_written = ctr.n_written
+    n_skipped_existing = ctr.n_skipped
+    n_parse_fail = ctr.n_parse_fail
+    n_low_trust = ctr.n_low_trust
+    rcon = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        ready = recomputed_greeks_ready(rcon)
+    finally:
+        rcon.close()
+    report = {
+        "schema": "backfill_greeks_p2_write_v1",
+        "generated_utc": datetime.now(tz=timezone.utc).isoformat(),
+        "recompute_version": RECOMPUTE_VERSION,
+        "certified_parity_precondition": parity,
+        "full_run": bool(full_run),
+        "n_rows_seen": n_seen,
+        "n_rows_written": n_written,
+        "n_skipped_existing_append_only": n_skipped_existing,
+        "n_parse_fail": n_parse_fail,
+        "n_low_trust_flagged": n_low_trust,
+        "read_gate_ready": ready,
+        "verdict": "P2_COMPLETE" if full_run else "P2_PARTIAL_NOT_READY_BY_DESIGN",
+        "run_sec": round(time.perf_counter() - t0, 2),
+    }
+    P2_REPORT.parent.mkdir(parents=True, exist_ok=True)
+    P2_REPORT.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
+
+
+@dataclass
+class _P2Counters:
+    n_seen: int = 0
+    n_written: int = 0
+    n_skipped: int = 0
+    n_parse_fail: int = 0
+    n_low_trust: int = 0
+
+
+def _p2_write_rows(
+    wcon: sqlite3.Connection,
+    db_path: str,
+    tickers: list[str] | None,
+    limit: int,
+    now: float,
+) -> _P2Counters:
+    """Batched append-only insert loop (provenance rides in the same INSERT)."""
+    ctr = _P2Counters()
+    batch: list[tuple] = []
+    for row in _iter_chain_rows(db_path, tickers=tickers, min_ts=None, stride=1):
+        ctr.n_seen += 1
+        payload = _p2_row_payload(row, now)
+        if payload is None:
+            ctr.n_parse_fail += 1
+            continue
+        ctr.n_low_trust += int(payload[13])
+        batch.append(payload)
+        if len(batch) >= P2_BATCH_ROWS:
+            ctr.n_written, ctr.n_skipped = _p2_flush(wcon, batch, ctr.n_written, ctr.n_skipped)
+            batch = []
+        if limit > 0 and ctr.n_seen >= limit:
+            break
+    if batch:
+        ctr.n_written, ctr.n_skipped = _p2_flush(wcon, batch, ctr.n_written, ctr.n_skipped)
+    return ctr
+
+
+def _p2_flush(
+    wcon: sqlite3.Connection, batch: list[tuple], n_written: int, n_skipped: int
+) -> tuple[int, int]:
+    try:
+        before = wcon.total_changes
+        wcon.executemany(
+            "INSERT OR IGNORE INTO greeks_recomputed_v1 VALUES "
+            "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            batch,
+        )
+        wcon.commit()
+        inserted = wcon.total_changes - before
+        return n_written + inserted, n_skipped + (len(batch) - inserted)
+    except sqlite3.Error:
+        wcon.rollback()
+        raise
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DEFAULT_DB)
-    ap.add_argument("--phase", choices=("p0", "p1", "both"), default="p0")
+    ap.add_argument("--phase", choices=("p0", "p1", "both", "p2"), default="p0")
     ap.add_argument("--tickers", nargs="*", default=None)
     ap.add_argument("--census-stride", type=int, default=DEFAULT_CENSUS_STRIDE)
     ap.add_argument("--rel-tol", type=float, default=DEFAULT_REL_TOL)
+    ap.add_argument("--limit", type=int, default=0, help="p2: max rows (0 = full run)")
     args = ap.parse_args()
+    if args.phase == "p2":
+        rep = run_p2(args.db, args.tickers, args.limit)
+        print(json.dumps(rep, indent=2))
+        return 0 if rep.get("verdict", "").startswith("P2_") else 4
     exit_code = 0
     out: dict[str, Any] = {}
     if args.phase in ("p0", "both"):
