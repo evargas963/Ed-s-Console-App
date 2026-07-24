@@ -177,9 +177,12 @@
     flex-direction: column;
     justify-content: center;
     gap: 2px;
-    min-width: 0;
-    flex: 0 1 auto;
-    overflow: hidden;
+    /* Ticker is a primary control: never let it be the utility bar's sole
+       shrink victim. With min-width:0 + flex-shrink:1 it collapsed to 0 width
+       when the bar over-packed, hiding the symbol input entirely. */
+    min-width: max-content;
+    flex: 0 0 auto;
+    overflow: visible;
   }
   .utility-bar .ub-ticker-row {
     display: flex;
