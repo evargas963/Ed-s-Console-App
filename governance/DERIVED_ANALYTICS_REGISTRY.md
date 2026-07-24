@@ -73,6 +73,12 @@ provenance_contract
 
 ---
 
+## Terrain: single source of truth + full-chain basis (RC-33, 2026-07-24)
+
+Terrain regime/posture/headline/lines have exactly ONE producer: `/api/terrain` (`terrain_engine.compute_terrain`), computed on the **wide-capture multi-expiry chain**. Operator decision 2026-07-24: the intraday terrain verdict uses the full chain, not the near-spot 0DTE slice — dealers hedge the entire delta book across weekly/monthly expiries, and gamma walls just outside the 0DTE window still magnetize intraday price. A duplicate terrain read on `/api/analytics/state` (computed on the selected-0DTE slice, ±1.3%) was removed: it was read by nothing (whole-repo consumer audit) and emitted a contradictory `UNAVAILABLE/STAND_ASIDE` against the card's `SHORT_GAMMA_TREND` for the same ticker at the same instant. The narrow-chain confidence gate (`compute_gamma_flip_v2`, ±5% span floor) is **RETAINED** as the fail-closed backstop for when wide capture is unavailable — locking the full-chain basis does not disable the alarm. See RC-33.
+
+---
+
 ## Review Rule
 
 Any code review that introduces a new derived market-data field must answer:

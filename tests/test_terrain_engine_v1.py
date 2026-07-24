@@ -77,6 +77,20 @@ def test_posture_is_never_issued_without_trusted_levels() -> None:
         assert snap.regime == "UNAVAILABLE"
 
 
+def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
+    """RC-33: locking terrain to the full/wide chain must NOT weaken the
+    narrow-chain protection. This real 40-contract 0DTE fixture spans only
+    ~±1.3% (< the ±5% trust floor), so compute_terrain must fail closed to
+    STAND_ASIDE — exactly the state the removed /api/analytics/state duplicate
+    produced. One terrain source of truth keeps this fail-closed backstop.
+    """
+    chain, spot = _real_chain()
+    snap = compute_terrain("SPY", chain, spot)
+    assert snap.confidence != GAMMA_FLIP_TRUSTED
+    assert snap.regime == "UNAVAILABLE"
+    assert snap.posture == "STAND_ASIDE"
+
+
 def test_payload_is_json_serialisable() -> None:
     """It is served over HTTP; a non-serialisable field breaks the tab silently."""
     chain, spot = _real_chain()

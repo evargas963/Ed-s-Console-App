@@ -114,7 +114,16 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
 
 def compute_terrain(ticker: str, contracts: list[dict] | None,
                     spot: float | None) -> TerrainSnapshot:
-    """Full terrain for one ticker. Fails closed — never invents a level."""
+    """Full terrain for one ticker. Fails closed — never invents a level.
+
+    SINGLE SOURCE OF TRUTH (RC-33, 2026-07-24): this is the ONE terrain engine;
+    /api/analytics/state no longer computes a competing terrain read. It must be
+    fed the wide-capture multi-expiry chain — the operator-locked full-chain
+    basis (dealers hedge the whole delta book across weekly/monthly expiries, not
+    just the 0DTE slice). The narrow-chain confidence gate in compute_gamma_flip_v2
+    is RETAINED as the fail-closed backstop: a genuinely narrow chain (e.g. wide
+    capture unavailable) still yields STAND_ASIDE, never a trusted-looking verdict.
+    """
     if not ticker:
         return _unavailable(ticker or "", spot, "no ticker")
     if not contracts:

@@ -8502,27 +8502,17 @@ def _fetch_state(
     ms_dict["kl_gamma_flip_confidence"] = _gamma_flip_conf
     ms_dict["kl_gamma_flip_diag"] = _gamma_flip_diag
 
-    # ── Terrain read ──────────────────────────────────────────────────────────
-    # Deterministic plain-English regime summary built from the levels above. Rules-based,
-    # no model in the path, and fail-closed: an untrusted flip yields STAND_ASIDE with the
-    # reason, never a posture derived from a level we know is unreliable.
-    _terrain = build_terrain_read(
-        spot=spot_f,
-        flip=_gamma_flip,
-        flip_confidence=_gamma_flip_conf,
-        put_wall=ms_dict.get("kl_put_gamma_wall"),
-        call_wall=ms_dict.get("kl_call_gamma_wall"),
-        # RC-11: regime is the SIGN OF DEALER GAMMA AT SPOT; spot-vs-flip is only the
-        # fallback. This call omitted gamma_at_spot, so the MONEY PATH still ran the
-        # pre-RC-11 model while /api/terrain ran the corrected one — the two surfaces
-        # could state opposite regimes for the same ticker (Cursor audit 2026-07-20).
-        gamma_at_spot=(_gamma_flip_diag or {}).get("gamma_at_spot"),
-        ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
-    )
-    ms_dict["terrain_regime"] = _terrain.regime
-    ms_dict["terrain_posture"] = _terrain.posture
-    ms_dict["terrain_headline"] = _terrain.headline
-    ms_dict["terrain_lines"] = _terrain.lines
+    # ── Terrain read: single source of truth (RC-33) ─────────────────────────
+    # Terrain regime/posture/headline/lines are served ONLY by /api/terrain
+    # (terrain_engine.compute_terrain) on the wide-capture multi-expiry chain.
+    # This analytics-state pipeline used to attach a SECOND terrain read computed
+    # on the selected-expiry (0DTE) slice alone — a chain too narrow to trust, so
+    # it fail-closed to UNAVAILABLE/STAND_ASIDE and contradicted the card's
+    # SHORT_GAMMA_TREND for the same ticker at the same instant. Those four
+    # terrain_* fields were read by nothing (whole-repo consumer audit) and are
+    # removed: one terrain, one chain. The narrow-chain confidence gate in
+    # compute_gamma_flip_v2 stays as the fail-closed backstop — the fix is
+    # single-source, not gate-weakening (operator decision 2026-07-24).
 
     _net_gex_raw = getattr(cs, "net_gamma", None) if cs else None
     try:
