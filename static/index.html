@@ -117,7 +117,7 @@
   .utility-bar {
     box-sizing: border-box;
     width: 100%;
-    height: 68px;
+    min-height: 68px;
     background: var(--bg-bar);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -132,9 +132,12 @@
     font-family: var(--mono);
     color: var(--text-pri);
     margin: 0;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
+    /* Wrap onto a second line instead of horizontal scrolling: the utility bar
+       must never require left/right scroll to reach a control (operator, 2026-07-24). */
+    flex-wrap: wrap;
+    row-gap: 4px;
+    overflow-x: visible;
+    overflow-y: visible;
     min-width: 0;
   }
   .utility-bar .ub-vdiv {
