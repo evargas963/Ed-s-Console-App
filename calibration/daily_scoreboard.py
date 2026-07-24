@@ -172,6 +172,15 @@ JOIN_COHORTS = (
     "unknown_join",
 )
 
+# RC-32 (governance/root_cause_log.md): cohorts whose rows may enter the SCORED
+# confusion matrix. `nearest_later` outcomes were attached from a snapshot whose
+# anchor bar closes AFTER the decision (measured 2026-07-23: 28,622 rows, 43.9%
+# of the nearest_within_tol cohort) — future-anchored truth. `unknown_join` has
+# no provable alignment. Both stay DISCLOSED in identity_cohorts but are
+# excluded from accuracy/MCC/confusion; exclusion is counted per cell.
+# Explicit membership, never complement (drift-audit classification rule).
+_V4_SCORED_JOIN_COHORTS = ("identity", "exact_timestamp", "nearest_earlier")
+
 
 def _join_identity_cohort(row: sqlite3.Row) -> str:
     """Cohort of the row's decision→snapshot outcome join (Phase 12 taxonomy)."""
@@ -818,6 +827,7 @@ def _new_v4_cell() -> dict[str, Any]:
         "bundle_identity_unproven": 0,
         "windows": set(),
         "n_pred": 0,
+        "n_excluded_lookahead_join": 0,
     }
 
 
@@ -827,8 +837,13 @@ def _v4_accumulate(cell: dict[str, Any], r: dict[str, Any]) -> None:
     if hz_min:
         cell["windows"].add(int(r["decision_ts_utc"] // (hz_min * 60.0)))
     if r["truth"] in _CLASSES:
+        cohort = r.get("join_cohort") or "unknown_join"
+        cell["cohorts"][cohort] += 1
+        if cohort not in _V4_SCORED_JOIN_COHORTS:
+            # RC-32: future-anchored / unprovable joins are disclosed, never scored.
+            cell["n_excluded_lookahead_join"] += 1
+            return
         cell["confusion"][r["pred"]][r["truth"]] += 1
-        cell["cohorts"][r.get("join_cohort") or "unknown_join"] += 1
         if not r.get("bundle_identity_proven"):
             cell["bundle_identity_unproven"] += 1
 
@@ -915,6 +930,7 @@ def _finalize_v4_cell(cell: dict[str, Any]) -> dict[str, Any]:
         "flat_pred_rate": (pred_dist["flat"] / n_scored) if n_scored else None,
         "flat_truth_rate": always_flat,
         "identity_cohorts": dict(cell["cohorts"]),
+        "n_excluded_lookahead_join": cell["n_excluded_lookahead_join"],
         "n_bundle_identity_unproven": cell["bundle_identity_unproven"],
         "n_independent_windows": len(cell["windows"]),
     }
