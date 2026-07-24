@@ -171,6 +171,25 @@ DOM eye-candy at minutes horizons.
 4. **Phase 5 — restructure** — deliberate directory reorganization; no functional changes mixed in; **after** Find & Prove queue is moving (do not use restructure as a reason to pause FP-01+).
 5. **Find & Prove** — queue table above is authoritative.
 
+## F2 expansion roadmap (operator directive 2026-07-24)
+
+Baseline banked: SPY draft-cell validation (F1 S1-S5), F2 175-cell grid CLEAN NULL
+(`054dbd35`), meta-XGB v1 price-only KILL-family with clean controls (`917fbda8`).
+**Rule (binding): every expansion step runs the exact F2 flow — frozen prereg, S3
+data gates, economic evaluator (Holm + DSR + 2x-cost + sign-shuffle placebo hard
+halt), two-way audit. No unverified asset or horizon ever touches serving.**
+
+| Phase | Study | State | Notes |
+|---|---|---|---|
+| EXP-1 | **QQQ full study** (grid + meta under its own prereg) | NEXT | Runner gains `--ticker`; QQQ bar coverage thinner than SPY (56,943 pre-repair bars) — sample floors decide honestly. Tech-heavy validation of the pipeline. |
+| EXP-2 | **SPY + QQQ focused vertical studies (15/30-min)** | QUEUED | Verticals 15-60 were already inside the F2 family; EXP-2 is the FOCUSED prereg pair examining win/loss asymmetry + DSR behavior at 15c/30c windows once EXP-1 lands. |
+| EXP-3 | **IWM + selected high-beta singles** | QUEUED | Per-ticker volume/liquidity gate BEFORE prereg (Framework Step 8 tier acknowledgment; singles carry gap/halt microstructure SPY does not). |
+| EXP-0 | **Dealer-gamma conditioning channel** | BLOCKED ON DATA | The evidenced conditioning source. Unblocks via post-epoch accrual (era floor 1784502281; ~4 sessions at 2026-07-24) or the chain-archive greeks recompute (operator go/no-go). Runs before or alongside EXP-1 the moment data exists. |
+
+UI provenance migration (`bayesian_fusion` -> `meta_xgb_tb_v1`) stays PARKED until a
+meta study passes the F2 gate AND operator admission; spec + literal inventory live in
+the 2026-07-23/24 session log and the migration is one atomic commit when authorized.
+
 ## Standing runtime law (mechanically enforced — do not restate, just don't break)
 
 ### Feature placement matrix
