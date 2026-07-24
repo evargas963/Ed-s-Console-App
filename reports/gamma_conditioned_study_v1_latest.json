@@ -204,5 +204,6 @@
     "survivors": [],
     "hard_halt_engaged": false
   },
-  "run_sec": 3.06
+  "run_sec": 3.06,
+  "next_depth": "GEX-R1 s8.5 Rule A reversion candidate generator (fade-to-VWAP in positive-gamma tape) under its own prereg; regime accrual toward the F2 VIX-tercile floor; QQQ replication via the batch pipeline."
 }

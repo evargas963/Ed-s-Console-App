@@ -57,3 +57,37 @@ def test_closure_requires_end_to_end_declaration_post_cutover():
 
 def test_cutover_constant_is_the_operator_law_date():
     assert FIVE_WHY_LOCK_CUTOVER == "2026-07-24"
+
+
+# ── No-terminal-null clause (operator law 2026-07-24, second clause) ─────────
+
+
+def test_surrender_vocabulary_requires_next_depth():
+    from tools.check_institutional_correctness import _surrender_violations
+
+    bare = _row(why="(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: this is a dead end")
+    v = _surrender_violations([bare], _P)
+    assert len(v) == 1 and "NEXT-DEPTH" in v[0].msg
+    doored = _row(
+        why="(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: dead end at this depth. "
+            "NEXT-DEPTH: external multi-year data acquisition unlocks it"
+    )
+    assert _surrender_violations([doored], _P) == []
+    grandfathered = _row(opened="2026-07-19",
+                         why="(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: dead end")
+    assert _surrender_violations([grandfathered], _P) == []
+
+
+def test_null_reports_require_next_depth_post_cutover():
+    from tools.check_institutional_correctness import _terminal_null_violations
+
+    null_no_door = (_P, {"generated_utc": "2026-07-26T01:00:00", "n_survivors": 0})
+    v = _terminal_null_violations([null_no_door])
+    assert len(v) == 1 and "next_depth" in v[0].msg
+    null_doored = (_P, {"generated_utc": "2026-07-26T01:00:00", "n_survivors": 0,
+                        "next_depth": "run the reversion generator prereg"})
+    assert _terminal_null_violations([null_doored]) == []
+    pre_cutover = (_P, {"generated_utc": "2026-07-24T01:00:00", "n_survivors": 0})
+    assert _terminal_null_violations([pre_cutover]) == []
+    survivor = (_P, {"generated_utc": "2026-07-26T01:00:00", "n_survivors": 2})
+    assert _terminal_null_violations([survivor]) == []

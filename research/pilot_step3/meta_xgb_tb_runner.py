@@ -40,6 +40,12 @@ PREREG_PATH = Path(__file__).resolve().parent / "meta_xgb_tb_prereg_v1.json"
 DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
 REPORT_PATH = REPO_ROOT / "reports" / "meta_xgb_tb_v1_latest.json"
 
+# no_terminal_null law: a null names its door, at the PRODUCER.
+NEXT_DEPTH = (
+    "Dealer-gamma feature channel via the certified greeks_recomputed_v1 "
+    "recompute, then the GEX-R1 Rule-A reversion candidate generator prereg."
+)
+
 FEATURE_NAMES: tuple[str, ...] = (
     "side_sign", "z_trigger", "cusum_pos", "cusum_neg", "sma_spread_atr",
     "minutes_since_open", "time_sin", "time_cos",
@@ -438,6 +444,7 @@ def run_study(db_path: str) -> dict[str, Any]:
         "n_survivors": 0 if halted else len(survivors),
         "survivors": [] if halted else survivors,
         "greeks_channel": "era-floored to >=1784502281; empty in v1 (price-only feature set)",
+        "next_depth": NEXT_DEPTH,
         "run_sec": round(time.perf_counter() - t0, 2),
     }
 

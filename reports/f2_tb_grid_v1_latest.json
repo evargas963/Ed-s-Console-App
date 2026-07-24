@@ -7909,5 +7909,6 @@
       "verdict": "KILL"
     }
   },
-  "run_sec": 50.04
+  "run_sec": 50.04,
+  "next_depth": "Conditioning: unconditioned entries are EV-zero by design; edge must come from state selection - executed as meta-XGB v1 (price-only) and the certified dealer-gamma channel (P1/P2)."
 }

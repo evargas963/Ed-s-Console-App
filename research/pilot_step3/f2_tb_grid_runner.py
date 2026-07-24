@@ -35,6 +35,13 @@ PREREG_PATH = Path(__file__).resolve().parent / "f2_tb_grid_prereg_v1.json"
 DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
 REPORT_PATH = REPO_ROOT / "reports" / "f2_tb_grid_v1_latest.json"
 
+# no_terminal_null law: a null names its door, at the PRODUCER.
+NEXT_DEPTH = (
+    "Conditioning: unconditioned entries are EV-zero by design; edge must "
+    "come from state selection - the meta-classifier and the certified "
+    "dealer-gamma channel."
+)
+
 
 def load_prereg() -> dict[str, Any]:
     prereg = json.loads(PREREG_PATH.read_text(encoding="utf-8"))
@@ -454,6 +461,7 @@ def run_grid(db_path: str) -> dict[str, Any]:
             "hard_halt_engaged": halted,
         },
         "cells": verdicts,
+        "next_depth": NEXT_DEPTH,
         "run_sec": round(time.perf_counter() - t0, 2),
     }
 

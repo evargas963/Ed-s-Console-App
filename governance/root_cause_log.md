@@ -26,6 +26,11 @@ never belongs here. Enforced by `check_no_governance_duplication`.
 5. "I didn't check", "the sign was inverted", "I didn't do that right" are **not** root causes.
    They are symptoms of a missing mechanical check — keep asking why until you reach the
    check that was absent, then add it.
+6. **No terminal nulls (operator law 2026-07-24, machine-forced by `no_terminal_null`):**
+   there is no terminal state of "no solutions exist" — there is only engineering depth
+   yet to be unlocked. A wall may be stated only by naming the door: surrender vocabulary
+   in a row requires `NEXT-DEPTH: <the unlock>`, and a null-verdict study report requires
+   a `next_depth` field naming the successor bet, data unlock, or generator.
 
 **Row format (machine-parsed — keep the columns):**
 `| id | status | opened | due | defect | why-chain -> root | fix + verification |`

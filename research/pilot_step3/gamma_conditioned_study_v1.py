@@ -52,6 +52,12 @@ Z_STRONG = 1.0
 TRAILING_SESSIONS = 20
 SEED = 20260724
 CONDITIONS = ("NEG", "POS", "NEG_STRONG", "POS_STRONG")
+# no_terminal_null law: a null names its door, at the PRODUCER.
+NEXT_DEPTH = (
+    "GEX-R1 s8.5 Rule-A reversion candidate generator (fade-to-VWAP in "
+    "positive-gamma tape) under its own prereg; regime accrual toward the "
+    "F2 VIX-tercile floor; QQQ replication via the batch pipeline."
+)
 MIN_SESSIONS = 30
 MIN_CANDIDATES = 60
 
@@ -297,6 +303,7 @@ def run_study(db_path: str) -> dict[str, Any]:
             "n_survivors": len(placebo_survivors), "survivors": placebo_survivors,
             "hard_halt_engaged": halted,
         },
+        "next_depth": NEXT_DEPTH,
         "run_sec": round(time.perf_counter() - t0, 2),
     }
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)

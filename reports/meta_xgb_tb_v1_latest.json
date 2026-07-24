@@ -224,5 +224,6 @@
   "n_survivors": 0,
   "survivors": [],
   "greeks_channel": "era-floored to >=1784502281; empty in v1 (price-only feature set)",
-  "run_sec": 5.12
+  "run_sec": 5.12,
+  "next_depth": "Dealer-gamma feature channel via the P1/P2-certified greeks_recomputed_v1 recompute (executed 2026-07-24), then the GEX-R1 Rule-A reversion candidate generator prereg."
 }

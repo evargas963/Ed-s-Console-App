@@ -269,6 +269,94 @@ def _five_why_lock_violations(lines: list[str], log_path) -> list[Violation]:
     return out
 
 
+# Operator law 2026-07-24 (second clause of the lock): "There is no terminal
+# state of 'no solutions exist' - there is only engineering depth yet to be
+# unlocked." Mechanized as: a wall may be stated only by naming the door.
+_SURRENDER_PHRASES = (
+    "no solution", "unsolvable", "impossible to fix", "cannot be fixed",
+    "dead end", "abandon this", "give up",
+)
+NEXT_DEPTH_CUTOVER = "2026-07-25"
+
+
+def _surrender_violations(lines: list[str], log_path) -> list[Violation]:
+    """RC rows (post 5-why cutover): surrender vocabulary in why/fix cells is
+    legal ONLY alongside a NEXT-DEPTH: declaration naming the unlock."""
+    out: list[Violation] = []
+    for n, line in enumerate(lines, start=1):
+        if not line.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 7 or cells[2] < FIVE_WHY_LOCK_CUTOVER:
+            continue
+        text = f"{cells[5]} {cells[6]}".lower()
+        for phrase in _SURRENDER_PHRASES:
+            if phrase in text and "NEXT-DEPTH:" not in f"{cells[5]} {cells[6]}".upper().replace(" ", ""):
+                out.append(Violation(
+                    log_path, n,
+                    f"{cells[0]}: declares a dead end ({phrase!r}) without NEXT-DEPTH:. "
+                    f"There is no terminal state of 'no solutions exist' - only "
+                    f"engineering depth yet to be unlocked. Name the door: "
+                    f"'NEXT-DEPTH: <the unlock>'."))
+    return out
+
+
+def _terminal_null_violations(report_dicts: list) -> list[Violation]:
+    """Study reports born after the cutover with a zero-survivor / null verdict
+    must carry a non-empty top-level 'next_depth' naming the successor bet."""
+    out: list[Violation] = []
+    for path, rep in report_dicts:
+        if not isinstance(rep, dict):
+            continue
+        generated = str(rep.get("generated_utc", ""))
+        if generated[:10] < NEXT_DEPTH_CUTOVER:
+            continue
+        verdictish = f"{rep.get('verdict', '')} {rep.get('status', '')}".upper()
+        is_null = (
+            rep.get("n_survivors") == 0
+            or "NO_SIGNAL" in verdictish
+            or "NULL" in verdictish
+        )
+        if not is_null:
+            continue
+        nd = rep.get("next_depth")
+        if not (isinstance(nd, str) and nd.strip()):
+            out.append(Violation(
+                path, 0,
+                "null-verdict study report without 'next_depth'. A null is never "
+                "terminal - only engineering depth yet to be unlocked. Add "
+                "next_depth: <the successor bet, data unlock, or generator>."))
+    return out
+
+
+def check_no_terminal_null() -> list[Violation]:
+    """No terminal nulls: every dead end must name the next engineering depth.
+
+    Operator law 2026-07-24. OBSERVED basis: four consecutive clean nulls this
+    week (F2 grid, meta-XGB v1, and the gamma-conditioned study twice over its
+    controls) each pointed at a concrete successor in prose - the reversion
+    generator, the greeks channel, the external-data unlock. Prose is goodwill
+    and goodwill fails; this makes the pointer mechanical. VALIDATED 2026-07-24:
+    the three live null reports carry next_depth; RC rows carry no surrender
+    vocabulary; both rules are cutover-dated so history is not retro-flagged.
+    """
+    out: list[Violation] = []
+    log_path = REPO / "governance" / "root_cause_log.md"
+    if log_path.exists():
+        out.extend(_surrender_violations(
+            log_path.read_text(encoding="utf-8").splitlines(), log_path))
+    reports: list = []
+    rdir = REPO / "reports"
+    if rdir.exists():
+        for p in sorted(rdir.glob("*.json")):
+            try:
+                reports.append((p, json.loads(p.read_text(encoding="utf-8"))))
+            except (ValueError, OSError):
+                continue
+    out.extend(_terminal_null_violations(reports))
+    return out
+
+
 def check_five_why_recursive_lock() -> list[Violation]:
     """Mechanical lock: recursive 5-why regime + end-to-end fixes, no patches ever.
 
@@ -1387,6 +1475,7 @@ CHECKS = [
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
     ("five_why_recursive_lock", check_five_why_recursive_lock, True),  # end-to-end fixes, no patches ever
+    ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home
     ("checks_are_justified", check_checks_are_justified, True),  # observed + validated, or no ship
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
