@@ -609,25 +609,30 @@ def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
 
 
 def _derive_session() -> str:
-    """
-    Derive market session label from the ET clock.
-    Returns one of: "RTH" | "Pre-Market" | "After-Hours" | "Closed"
+    """Market session label from the ET clock — HOLIDAY / early-close aware via the one
+    time_et calendar authority. Returns "RTH" | "Pre-Market" | "After-Hours" | "Closed".
 
-    Boundaries (ET):
-      Pre-Market:  04:00 – 09:29
-      RTH:         09:30 – 15:59
-      After-Hours: 16:00 – 19:59
-      Closed:      20:00 – 03:59 (overnight)
+    No local RTH constants and no holiday blindness: the RTH close comes from
+    session_close_mins_for_et_date (960 normal, 780 early-close), and weekends / full
+    holidays / uncovered-calendar-years fail closed to "Closed" instead of falsely
+    reporting "RTH" (the served session_label used to say "RTH" on a full holiday).
     """
-    from time_et import now_et
+    from time_et import now_et, session_close_mins_for_et_date, RTH_START_MINS
 
     now = now_et()
+    if now.weekday() >= 5:                              # Sat / Sun
+        return "Closed"
+    close = session_close_mins_for_et_date(now.strftime("%Y-%m-%d"))
+    if close is None:                                  # full holiday / uncovered year
+        return "Closed"
     mins = now.hour * 60 + now.minute
-    if 570 <= mins <= 959:    # 09:30 – 15:59
-        return "RTH"
-    if 240 <= mins <= 569:    # 04:00 – 09:29
+    if mins < 240:            # before 04:00
+        return "Closed"
+    if mins < RTH_START_MINS:  # 04:00 – 09:29
         return "Pre-Market"
-    if 960 <= mins <= 1199:   # 16:00 – 19:59
+    if mins < close:           # 09:30 – close (960 normal, 780 early-close)
+        return "RTH"
+    if mins < 1200:            # close – 19:59
         return "After-Hours"
     return "Closed"
 
