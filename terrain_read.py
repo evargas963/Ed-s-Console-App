@@ -37,8 +37,11 @@ REGIME_UNAVAILABLE = "UNAVAILABLE"
 REGIME_SIGN_UNPROVEN = "SIGN_UNPROVEN"
 
 #: The universe where the sign convention has independent evidence (GEX-R1 chop
-#: correlation; open-sign persists to close 74.3% of sentinel days).
-SENTINEL_TICKERS = frozenset({"SPY", "QQQ", "IWM"})
+#: correlation; open-sign persists to close 74.3% of sentinel days). SINGLE AUTHORITY —
+#: money_path_ticker_tiers re-exports scheduler_user_tickers.TRAINING_ANCHOR_TICKERS, so a
+#: change to the base universe can never leave this regime-eligibility gate on a stale copy.
+from money_path_ticker_tiers import base_money_path_tickers_upper as _base_upper
+SENTINEL_TICKERS = _base_upper()
 
 
 def dealer_sign_is_proven(ticker: str | None) -> bool:

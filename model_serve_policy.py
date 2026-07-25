@@ -55,8 +55,11 @@ _PRE_CORRECTNESS_END = date(2026, 5, 28)      # exclusive floor of the band
 _REVALIDATION_BAND_END = date(2026, 5, 31)    # inclusive
 _POST_CORRECTNESS_START = date(2026, 6, 1)
 
-# Operator-approved base bundles (2026-07-10): post-correctness anchors.
-_APPROVED_BASE_TICKERS = frozenset({"SPY", "QQQ", "IWM"})
+# Operator-approved base bundles (2026-07-10): post-correctness anchors. SINGLE AUTHORITY —
+# imported from money_path_ticker_tiers so the serving gate and the training/regime base
+# universe can never desync.
+from money_path_ticker_tiers import base_money_path_tickers_upper as _base_upper
+_APPROVED_BASE_TICKERS = _base_upper()
 
 
 def parse_trained_at(raw: Any) -> Optional[date]:
