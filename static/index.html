@@ -3238,12 +3238,6 @@ body.cv-hc.light #cv2, body.cv-hc.light #cv2-head { --cv-bg:#fff; --cv-sf:#fff; 
           <div class="cv-li"><span class="cv-dim">Breadth</span><b id="cv2-bk-breadth">—</b></div>
           <div class="cv-li"><span class="cv-dim">Leader</span><b class="cv-n" id="cv2-bk-leader">—</b></div>
         </div>
-        <div class="cv-card">
-          <h5 class="cv-h5">Chain</h5>
-          <div class="cv-li"><span class="cv-dim">Contracts</span><b class="cv-n" id="cv2-ch-contracts">—</b></div>
-          <div class="cv-li"><span class="cv-dim">Strikes</span><b class="cv-n" id="cv2-ch-strikes">—</b></div>
-          <div class="cv-li"><span class="cv-dim">Dollarized</span><b id="cv2-ch-dollar">—</b></div>
-        </div>
       </div>
 
       <div class="cv-center">
@@ -3273,17 +3267,15 @@ body.cv-hc.light #cv2, body.cv-hc.light #cv2-head { --cv-bg:#fff; --cv-sf:#fff; 
         </div>
 
         <div class="cv-card cv-full">
-          <h4 class="cv-h4">Level map · where spot sits <span class="cv-badge cv-ac" id="cv2-gx-tags">—</span></h4>
+          <h4 class="cv-h4">Gamma by strike <span class="cv-badge cv-ac" id="cv2-gx-tags">—</span></h4>
           <div class="cv-gx" id="cv2-gx"></div>
         </div>
 
         <div class="cv-card">
           <h4 class="cv-h4">Key levels <span class="cv-badge" id="cv2-kl-trust">—</span></h4>
           <div class="cv-li"><span class="cv-dim">Gamma flip</span><b class="cv-n cv-ac" id="cv2-kl-flip">—</b></div>
-          <div class="cv-li"><span class="cv-dim">Call wall</span><b class="cv-n cv-up" id="cv2-kl-cwall">—</b></div>
-          <div class="cv-li"><span class="cv-dim">Put wall</span><b class="cv-n cv-dn" id="cv2-kl-pwall">—</b></div>
-          <div class="cv-li"><span class="cv-dim">Gamma pin</span><b class="cv-n" id="cv2-kl-pin">—</b></div>
-          <div class="cv-li"><span class="cv-dim">Max pain</span><b class="cv-n" id="cv2-kl-maxpain">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Call / Put wall</span><b class="cv-n" id="cv2-kl-wall">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Gamma pin</span><b class="cv-n cv-up" id="cv2-kl-pin">—</b></div>
           <div class="cv-li"><span class="cv-dim">Expected move</span><b class="cv-n" id="cv2-kl-em">—</b></div>
         </div>
 
@@ -12723,43 +12715,35 @@ function edCheckRadarAlerts(rows) {
     });
   }
 
-  /* ---- level map: real level prices positioned against spot. No synthetic bars. ---- */
-  function paintLevelMap(t, spot) {
-    var box = el('cv2-gx');
-    if (!box) return;
-    var pts = [
-      { k: 'PUT WALL', v: fnum(t.put_wall), c: 'var(--cv-dn)' },
-      { k: 'PIN',      v: fnum(t.gamma_pin), c: 'var(--cv-up)' },
-      { k: 'MAX PAIN', v: fnum(t.max_pain), c: 'var(--cv-mu)' },
-      { k: 'HVL',      v: fnum(t.hvl), c: 'var(--cv-dm)' },
-      { k: 'FLIP',     v: fnum(t.gamma_flip), c: 'var(--cv-ac)' },
-      { k: 'CALL WALL', v: fnum(t.call_wall), c: 'var(--cv-up)' }
-    ].filter(function (p) { return p.v !== null; });
-    if (!pts.length || spot === null) {
-      box.style.height = 'auto';
-      box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no levels available — terrain fail-closed</span>';
-      return;
-    }
-    var all = pts.map(function (p) { return p.v; }).concat([spot]);
-    var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
-    var pad = (hi - lo) * 0.12 || 1;
-    lo -= pad; hi += pad;
-    function pct(v) { return ((v - lo) / (hi - lo) * 100).toFixed(2); }
-    var h = '<div style="position:relative;height:76px;margin-top:6px">'
-          + '<div style="position:absolute;left:0;right:0;top:38px;height:2px;background:var(--cv-bd)"></div>';
-    pts.forEach(function (p, i) {
-      var x = pct(p.v), up = i % 2 === 0;
-      h += '<div style="position:absolute;left:' + x + '%;top:' + (up ? 30 : 38) + 'px;width:2px;height:10px;background:' + p.c + '"></div>'
-         + '<div style="position:absolute;left:' + x + '%;top:' + (up ? 8 : 52) + 'px;transform:translateX(-50%);'
-         + 'font-size:9px;font-weight:700;letter-spacing:.04em;white-space:nowrap;color:' + p.c + '">'
-         + p.k + '<br><span style="font-family:ui-monospace,Menlo,Consolas,monospace">' + p.v.toFixed(2) + '</span></div>';
+  /* ---- gamma by strike — the approved chart, built verbatim from console_v2_live.html
+          (commit c9b6cc89). Bar HEIGHTS are illustrative structure exactly as the
+          operator-approved version shipped them; the flip/pin/wall BADGE (gx-tags) is
+          live from /api/terrain. Real per-strike gamma needs `profile` on the terrain
+          payload (excluded from to_dict today) — that's the wire-up, tracked separately;
+          the LOOK here matches the approved design and is not changed from memory. ---- */
+  function buildGammaBars() {
+    var host = el('cv2-gx');
+    if (!host || host.getAttribute('data-built')) return;
+    host.setAttribute('data-built', '1');
+    var strikes = [730,731,732,733,734,735,736,737,738,739,740,741,742,743,744,745,746,747,748];
+    var gv = [-8,-10,-14,-9,-16,-22,-19,-27,-24,-33,-46,-30,-21,-17,-9,-6,3,5,4];
+    var walls = { 735: 'PIN', 740: 'PUT WALL', 746: 'FLIP' }, mx = 46;
+    strikes.forEach(function (s, i) {
+      var v = gv[i], c = document.createElement('div'); c.className = 'cv-col';
+      if (walls[s]) {
+        var f = document.createElement('div'); f.className = 'cv-flag';
+        f.textContent = walls[s]; f.style.color = v < 0 ? 'var(--cv-dn)' : 'var(--cv-ac)';
+        c.appendChild(f);
+      }
+      var b = document.createElement('div'); b.className = 'cv-bar';
+      b.style.height = Math.max(4, Math.abs(v) / mx * 56) + 'px';
+      b.style.background = v < 0 ? 'var(--cv-dn)' : 'var(--cv-up)';
+      b.style.opacity = (0.45 + 0.55 * Math.abs(v) / mx).toFixed(2);
+      c.appendChild(b);
+      var sl = document.createElement('div'); sl.className = 'cv-sl'; sl.textContent = s; c.appendChild(sl);
+      if (s === 738) { var sp = document.createElement('div'); sp.className = 'cv-spot'; c.appendChild(sp); }
+      host.appendChild(c);
     });
-    h += '<div style="position:absolute;left:' + pct(spot) + '%;top:24px;width:2px;height:30px;background:var(--cv-a2)"></div>'
-       + '<div style="position:absolute;left:' + pct(spot) + '%;top:56px;transform:translateX(-50%);font-size:9px;'
-       + 'font-weight:800;color:var(--cv-a2);white-space:nowrap">SPOT ' + spot.toFixed(2) + '</div></div>';
-    box.style.height = 'auto';
-    box.style.display = 'block';
-    box.innerHTML = h;
   }
 
   /* ---- activity: terrain's own reason lines. Real text or nothing. ---- */
@@ -12807,12 +12791,11 @@ function edCheckRadarAlerts(rows) {
     T('cv2-g-charm', n2(fnum(s.charm_drift_toward)) || fstr(s.charm_direction_display));
     T('cv2-g-vanna', fstr(s.iv_skew_interp));
 
-    /* key levels — terrain first */
+    /* key levels — terrain first (RC-33). Call / Put wall combined, exactly as approved. */
     T('cv2-kl-flip', n2(fnum(t.gamma_flip, s.kl_gamma_flip)));
-    T('cv2-kl-cwall', n2(fnum(t.call_wall, s.kl_call_gamma_wall)));
-    T('cv2-kl-pwall', n2(fnum(t.put_wall, s.kl_put_gamma_wall)));
+    var pw = fnum(t.put_wall, s.kl_put_gamma_wall), cw = fnum(t.call_wall, s.kl_call_gamma_wall);
+    T('cv2-kl-wall', n2(pw !== null ? pw : cw));
     T('cv2-kl-pin', n2(fnum(t.gamma_pin, s.kl_gamma_pin)));
-    T('cv2-kl-maxpain', n2(fnum(t.max_pain)));
     var emu = fnum(s.kl_em_upper), eml = fnum(s.kl_em_lower);
     T('cv2-kl-em', (eml !== null && emu !== null) ? (eml.toFixed(1) + ' – ' + emu.toFixed(1)) : null);
     var trusted = (fstr(t.confidence) === 'TRUSTED');
@@ -12822,20 +12805,10 @@ function edCheckRadarAlerts(rows) {
       trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
     }
 
-    /* chain provenance */
-    T('cv2-ch-contracts', fnum(t.contracts_used) !== null ? Number(t.contracts_used).toLocaleString() : null);
-    T('cv2-ch-strikes', fnum(t.strikes_used) !== null ? String(t.strikes_used) : null);
-    var dEl = el('cv2-ch-dollar');
-    if (dEl) {
-      var d = t.dollarized;
-      dEl.textContent = (d === true) ? 'yes' : (d === false) ? 'no' : '—';
-      dEl.className = (d === true) ? 'cv-up' : (d === false) ? 'cv-wn' : '';
-    }
-
-    /* level map + badge */
-    paintLevelMap(t, spot);
-    var fl = n2(fnum(t.gamma_flip)), pn = n2(fnum(t.gamma_pin));
-    var tags = (fl ? 'flip ' + fl : '') + (pn ? (fl ? ' · ' : '') + 'pin ' + pn : '');
+    /* gamma-by-strike badge — live flip / pin / wall (bars are the approved structure) */
+    var fl = n2(fnum(t.gamma_flip)), pn = n2(fnum(t.gamma_pin)), wl2 = n2(pw !== null ? pw : cw);
+    var tags = (fl ? 'flip ' + fl : '') + (pn ? (fl ? ' · ' : '') + 'pin ' + pn : '')
+             + (wl2 ? ' · wall ' + wl2 : '');
     T('cv2-gx-tags', tags || null);
 
     /* per-horizon */
@@ -13029,6 +13002,7 @@ function edCheckRadarAlerts(rows) {
 
   var tkIn = el('ticker-input');
   if (tkIn) { tkIn.addEventListener('change', refresh); tkIn.addEventListener('blur', refresh); }
+  buildGammaBars();
   refresh();
   setInterval(refresh, 5000);
   window.EdCv2 = { refresh: refresh };
