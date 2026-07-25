@@ -12985,11 +12985,15 @@ function edCheckRadarAlerts(rows) {
        load they honestly show "—" until data arrives, then hold their last real value. ---- */
     if (!hasS) return;
     paintHeader(s, spot);
-    var bias = fstr(s.final_bias, s.call_signal, s.rules_signal);
-    var conv = fstr(s.call_conviction, s.rules_conviction);
+    /* THE CALL binds to the ONE GATED authority (compute_call: call_signal/conviction/
+       headline) — never the pre-gate ML synthesis (final_bias) or the ungated rules card.
+       Mixing them via fstr let final_bias win the tag ("LONG") while the verdict showed the
+       gated "WAIT" — the same card contradicting itself. Single source, fail-closed. */
+    var bias = fstr(s.call_signal);
+    var conv = fstr(s.call_conviction);
     T('cv2-c-tag', '◤ THE CALL' + (bias ? ' · ' + String(bias).toUpperCase() : '')
                  + (conv ? ' · ' + String(conv).toUpperCase() : ''));
-    T('cv2-c-verd', fstr(s.call_headline, s.rules_headline_1m, s.rules_headline, s.pred_headline));
+    T('cv2-c-verd', fstr(s.call_headline));
     T('cv2-c-sub', fstr(s.call_reasoning, s.rules_detail));
     T('cv2-c-entry', fstr(s.entry_disp) || n2(fnum(s.entry)));
     T('cv2-c-stop', fstr(s.stop_disp) || n2(fnum(s.stop)));
