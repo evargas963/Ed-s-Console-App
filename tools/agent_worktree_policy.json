@@ -1,0 +1,11 @@
+{
+  "schema": "agent_worktree_policy_v1",
+  "description": "Sibling-folder isolation: Cursor uses the primary checkout; Claude uses <primary>-Claude via git worktree (shared .git object store). No absolute operator-home paths — suffix + ED_AGENT_ROLE only.",
+  "env_role_var": "ED_AGENT_ROLE",
+  "claude_root_suffix": "-Claude",
+  "roles": {
+    "cursor": "Primary worktree; must NOT end with claude_root_suffix.",
+    "claude": "Dedicated worktree; directory name MUST end with claude_root_suffix."
+  },
+  "handoff": "Commit or stash in the active worktree before the other agent reads shared HEAD. tools/check_worktree_handoff.py enforces dirty-source + boundary."
+}

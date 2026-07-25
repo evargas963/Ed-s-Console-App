@@ -4,7 +4,8 @@
 
 **Portable rules live in [`AGENTS.md`](AGENTS.md) and [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).**  
 **Schwab program:** [`CLAUDE.md`](CLAUDE.md).  
-**Multi-agent sync:** HEAD is the shared brain — `python tools/check_worktree_handoff.py` (wired into `tools/session_closeout.py`).
+**Multi-agent sync:** HEAD is the shared brain — `python tools/check_worktree_handoff.py` (wired into `tools/session_closeout.py`).  
+**Physical isolation:** Cursor = primary checkout; Claude = sibling git worktree `*-Claude` (`tools/agent_worktree_policy.json`). Set `ED_AGENT_ROLE=cursor|claude`. Never share one working directory.
 
 Incident-context memory files are **archived, not deleted:**  
 [`governance/archive/2026-Q2/memory_archive/`](governance/archive/2026-Q2/memory_archive/) (34 files; triggers rewritten to topic names 2026-05-23).

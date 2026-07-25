@@ -1,5 +1,12 @@
-"""Seams for the Git-shaped multi-agent handoff gate."""
-from tools.check_worktree_handoff import dirty_protected_paths, is_protected_source
+"""Seams for the Git-shaped multi-agent handoff + worktree boundary gate."""
+from pathlib import Path
+
+from tools.check_worktree_handoff import (
+    dirty_protected_paths,
+    infer_role,
+    is_protected_source,
+    worktree_boundary_violations,
+)
 
 
 def test_protected_source_patterns():
@@ -27,3 +34,25 @@ def test_dirty_protected_paths_from_porcelain():
         "static/chart.html",
         "tools/check_worktree_handoff.py",
     ]
+
+
+def test_infer_role_from_suffix_and_env():
+    assert infer_role(Path("EdWebConsole"), env={}) == "cursor"
+    assert infer_role(Path("EdWebConsole-Claude"), env={}) == "claude"
+    assert infer_role(Path("EdWebConsole"), env={"ED_AGENT_ROLE": "claude"}) == "claude"
+    assert infer_role(Path("EdWebConsole-Claude"), env={"ED_AGENT_ROLE": "cursor"}) == "cursor"
+
+
+def test_boundary_rejects_role_mismatch():
+    # Claude role in a non-Claude folder
+    v = worktree_boundary_violations(
+        repo=Path("C:/repo/EdWebConsole"),
+        env={"ED_AGENT_ROLE": "claude"},
+    )
+    assert v and "role=claude" in v[0]
+    # Cursor role inside a *-Claude folder
+    v2 = worktree_boundary_violations(
+        repo=Path("C:/repo/EdWebConsole-Claude"),
+        env={"ED_AGENT_ROLE": "cursor"},
+    )
+    assert v2 and "role=cursor" in v2[0]

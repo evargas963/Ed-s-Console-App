@@ -1554,6 +1554,25 @@ def check_sqlite_wal_contract() -> list[Violation]:
     return out
 
 
+def check_agent_worktree_boundary() -> list[Violation]:
+    """Cursor vs Claude must not share a physical working tree.
+
+    OBSERVED (2026-07-25): multi-agent fracture when both edit the same checkout —
+    uncommitted work is stashed/overwritten. Isolation is a sibling git worktree
+    named <primary>-Claude. VALIDATED: tools/check_worktree_handoff.py
+    worktree_boundary_violations (role/suffix + linked-worktree check). Dirty-tree
+    handoff stays in session_closeout (must not block mid-commit staging).
+    """
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.check_worktree_handoff import worktree_boundary_violations
+
+    return [
+        Violation(REPO / "tools" / "agent_worktree_policy.json", 0, msg)
+        for msg in worktree_boundary_violations()
+    ]
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -1579,6 +1598,7 @@ CHECKS = [
     ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)
     ("credential_leak", check_credential_leak, True),  # staged secrets / home paths
     ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects
+    ("agent_worktree_boundary", check_agent_worktree_boundary, True),  # Cursor≠Claude folder
     # ADVISORY (visible debt, driven to zero, then flipped to enforced — the ratchet):
     ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, False),  # review each
     ("orphan_dict_keys", check_no_orphan_dict_keys, False),   # silent-None leads (RC-15/RC-20)

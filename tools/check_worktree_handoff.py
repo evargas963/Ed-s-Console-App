@@ -1,27 +1,43 @@
 #!/usr/bin/env python3
-"""Git-shaped multi-agent handoff gate.
+"""Git-shaped multi-agent handoff + worktree boundary gate.
 
 HEAD is the shared brain between Cursor and Claude. Uncommitted source edits are
-invisible to the other agent and cause stale reads / overwrites. This gate fails
-closed when protected source paths are dirty in the working tree.
+invisible to the other agent and cause stale reads / overwrites. Physical
+isolation is a sibling git worktree (`<repo>-Claude`). This gate fails closed when:
+  1. Protected source paths are dirty in THIS worktree, or
+  2. ED_AGENT_ROLE / directory naming says we are in the wrong worktree.
 
     python tools/check_worktree_handoff.py
 
-Exit 0 = clean handoff surface. Exit 1 = commit or stash before handoff.
+Exit 0 = clean handoff surface + correct worktree. Exit 1 = blocked.
 """
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+_POLICY_PATH = Path(__file__).resolve().parent / "agent_worktree_policy.json"
 
 
-def _porcelain() -> list[str]:
+def _load_policy() -> dict:
+    try:
+        return json.loads(_POLICY_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {
+            "env_role_var": "ED_AGENT_ROLE",
+            "claude_root_suffix": "-Claude",
+        }
+
+
+def _porcelain(repo: Path | None = None) -> list[str]:
+    root = repo or REPO
     p = subprocess.run(
         ["git", "status", "--porcelain", "-uall"],
-        cwd=REPO,
+        cwd=root,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -35,7 +51,6 @@ def _porcelain() -> list[str]:
 
 def _paths_from_line(line: str) -> list[str]:
     """Parse one porcelain line into path(s). Handles rename `->` form."""
-    # "XY path" or "XY orig -> new" (rename/copy); untracked is "?? path"
     body = line[3:] if len(line) >= 3 else line
     body = body.strip()
     if " -> " in body:
@@ -59,8 +74,12 @@ def is_protected_source(path: str) -> bool:
     return False
 
 
-def dirty_protected_paths(porcelain_lines: list[str] | None = None) -> list[str]:
-    lines = _porcelain() if porcelain_lines is None else porcelain_lines
+def dirty_protected_paths(
+    porcelain_lines: list[str] | None = None,
+    *,
+    repo: Path | None = None,
+) -> list[str]:
+    lines = _porcelain(repo) if porcelain_lines is None else porcelain_lines
     found: set[str] = set()
     for ln in lines:
         for path in _paths_from_line(ln):
@@ -69,13 +88,91 @@ def dirty_protected_paths(porcelain_lines: list[str] | None = None) -> list[str]
     return sorted(found)
 
 
+def infer_role(repo: Path | None = None, env: dict | None = None) -> str:
+    """Resolve agent role from ED_AGENT_ROLE or directory suffix."""
+    policy = _load_policy()
+    env = env if env is not None else os.environ
+    var = str(policy.get("env_role_var") or "ED_AGENT_ROLE")
+    explicit = (env.get(var) or "").strip().lower()
+    if explicit in {"cursor", "claude"}:
+        return explicit
+    root = repo or REPO
+    suffix = str(policy.get("claude_root_suffix") or "-Claude")
+    return "claude" if root.name.endswith(suffix) else "cursor"
+
+
+def worktree_boundary_violations(
+    repo: Path | None = None,
+    env: dict | None = None,
+) -> list[str]:
+    """Fail closed when role and physical worktree root disagree.
+
+    OBSERVED (2026-07-25): Cursor and Claude share one .git but must not share
+    a working directory — uncommitted edits in a shared tree are overwritten or
+    stashed out from under the other agent. VALIDATED: suffix + ED_AGENT_ROLE
+    checks are deterministic; no operator-home absolute paths in policy.
+    """
+    policy = _load_policy()
+    root = (repo or REPO).resolve()
+    suffix = str(policy.get("claude_root_suffix") or "-Claude")
+    role = infer_role(root, env)
+    out: list[str] = []
+    if role == "claude" and not root.name.endswith(suffix):
+        out.append(
+            f"worktree boundary: role=claude but root name {root.name!r} "
+            f"does not end with {suffix!r}. Use the dedicated *-Claude worktree."
+        )
+    if role == "cursor" and root.name.endswith(suffix):
+        out.append(
+            f"worktree boundary: role=cursor but root is Claude worktree "
+            f"{root.name!r}. Stay in the primary checkout."
+        )
+    # Claude worktree must be a linked git worktree (git-dir ≠ common-dir), not a clone.
+    if role == "claude":
+        try:
+            gd = subprocess.run(
+                ["git", "rev-parse", "--git-dir"],
+                cwd=root, capture_output=True, text=True, encoding="utf-8",
+            )
+            cd = subprocess.run(
+                ["git", "rev-parse", "--git-common-dir"],
+                cwd=root, capture_output=True, text=True, encoding="utf-8",
+            )
+            if gd.returncode == 0 and cd.returncode == 0:
+                git_dir = Path(gd.stdout.strip())
+                common = Path(cd.stdout.strip())
+                if not git_dir.is_absolute():
+                    git_dir = (root / git_dir).resolve()
+                if not common.is_absolute():
+                    common = (root / common).resolve()
+                if git_dir.resolve() == common.resolve():
+                    out.append(
+                        "worktree boundary: Claude root is a standalone .git clone, "
+                        "not a linked `git worktree`. Recreate with "
+                        "`git worktree add <path> -b worktree/claude`."
+                    )
+        except OSError as e:
+            out.append(f"worktree boundary: git rev-parse failed: {e}")
+    return out
+
+
 def main() -> int:
+    blocked = False
+
+    boundary = worktree_boundary_violations()
+    if boundary:
+        blocked = True
+        print("Handoff blocked: worktree boundary violation.", file=sys.stderr)
+        for msg in boundary:
+            print(f"  {msg}", file=sys.stderr)
+
     try:
         dirty = dirty_protected_paths()
     except RuntimeError as e:
         print(f"Handoff blocked: {e}", file=sys.stderr)
         return 1
     if dirty:
+        blocked = True
         print(
             "Handoff blocked: Uncommitted working tree changes. "
             "Commit or stash before handoff.",
@@ -83,8 +180,14 @@ def main() -> int:
         )
         for p in dirty:
             print(f"  {p}", file=sys.stderr)
+
+    if blocked:
         return 1
-    print("Handoff OK — protected source tree clean at HEAD.")
+    role = infer_role()
+    print(
+        f"Handoff OK — role={role} root={REPO.name} "
+        "protected source clean at HEAD."
+    )
     return 0
 
 
