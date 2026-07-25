@@ -3341,8 +3341,9 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
         <div class="cv-card">
           <h4 class="cv-h4">Key levels <span class="cv-badge" id="cv2-kl-trust">—</span></h4>
           <div class="cv-li"><span class="cv-dim">Gamma flip</span><b class="cv-n cv-ac" id="cv2-kl-flip">—</b></div>
-          <div class="cv-li"><span class="cv-dim">Call / Put wall</span><b class="cv-n" id="cv2-kl-wall">—</b></div>
-          <div class="cv-li"><span class="cv-dim">Gamma pin</span><b class="cv-n cv-up" id="cv2-kl-pin">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Call wall</span><b class="cv-n cv-up" id="cv2-kl-cwall">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Put wall</span><b class="cv-n cv-dn" id="cv2-kl-pwall">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Gamma pin</span><b class="cv-n" id="cv2-kl-pin">—</b></div>
           <div class="cv-li"><span class="cv-dim">Expected move</span><b class="cv-n" id="cv2-kl-em">—</b></div>
         </div>
 
@@ -12910,10 +12911,16 @@ function edCheckRadarAlerts(rows) {
     var lvl = {};
     function tag(name, v) { var p = fnum(v); if (p === null) return; var nr = nearest(p); if (nr.k !== null && nr.d <= 0.75) { (lvl[nr.k] = lvl[nr.k] || []).push(name); } }
     if (t) { tag('CALL WALL', t.call_wall); tag('PUT WALL', t.put_wall); tag('PIN', t.gamma_pin); }
+    /* only flag FLIP if it actually falls within the plotted strike window — never
+       mis-label a window-edge strike when the flip is off-scale (e.g. flip 322 vs a
+       279–304 window). Its exact value still shows in the badge above the chart. */
+    var minK = rows[0].k, maxK = rows[rows.length - 1].k;
     var flip = t ? fnum(t.gamma_flip) : null;
-    var flipK = (flip !== null) ? nearest(flip).k : null;
-    if (flipK !== null) (lvl[flipK] = lvl[flipK] || []).unshift('FLIP');
-    var spotK = nearest(spot).k;
+    if (flip !== null && flip >= minK && flip <= maxK) {
+      var fk = nearest(flip).k;
+      if (fk !== null) (lvl[fk] = lvl[fk] || []).unshift('FLIP');
+    }
+    var spotK = (spot >= minK && spot <= maxK) ? nearest(spot).k : null;
     host.innerHTML = '';
     rows.forEach(function (r) {
       var c = document.createElement('div'); c.className = 'cv-col';
@@ -12968,11 +12975,15 @@ function edCheckRadarAlerts(rows) {
     T('cv2-g-charm', n2(fnum(s.charm_drift_toward)) || fstr(s.charm_direction_display));
     T('cv2-g-vanna', fstr(s.iv_skew_interp));
 
-    /* key levels — terrain first (RC-33). Call / Put wall combined, exactly as approved. */
-    T('cv2-kl-flip', n2(fnum(t.gamma_flip, s.kl_gamma_flip)));
-    var pw = fnum(t.put_wall, s.kl_put_gamma_wall), cw = fnum(t.call_wall, s.kl_call_gamma_wall);
-    T('cv2-kl-wall', n2(pw !== null ? pw : cw));
-    T('cv2-kl-pin', n2(fnum(t.gamma_pin, s.kl_gamma_pin)));
+    /* key levels — /api/terrain is the SINGLE SOURCE (RC-33). No analytics kl_* fallback,
+       so the console can never disagree with the terrain tab or the gamma-chart flags.
+       Call wall and Put wall are DISTINCT strikes shown on their own rows (never collapsed
+       into one number). */
+    T('cv2-kl-flip', n2(fnum(t.gamma_flip)));
+    var pw = fnum(t.put_wall), cw = fnum(t.call_wall);
+    T('cv2-kl-cwall', n2(cw));
+    T('cv2-kl-pwall', n2(pw));
+    T('cv2-kl-pin', n2(fnum(t.gamma_pin)));
     var emu = fnum(s.kl_em_upper), eml = fnum(s.kl_em_lower);
     T('cv2-kl-em', (eml !== null && emu !== null) ? (eml.toFixed(1) + ' – ' + emu.toFixed(1)) : null);
     var trusted = (fstr(t.confidence) === 'TRUSTED');
@@ -12982,10 +12993,10 @@ function edCheckRadarAlerts(rows) {
       trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
     }
 
-    /* gamma-by-strike badge — live flip / pin / wall (bars are the approved structure) */
-    var fl = n2(fnum(t.gamma_flip)), pn = n2(fnum(t.gamma_pin)), wl2 = n2(pw !== null ? pw : cw);
-    var tags = (fl ? 'flip ' + fl : '') + (pn ? (fl ? ' · ' : '') + 'pin ' + pn : '')
-             + (wl2 ? ' · wall ' + wl2 : '');
+    /* gamma-by-strike badge — live flip / pin / call wall / put wall, each distinct, all terrain */
+    var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
+                n2(fnum(t.gamma_pin)) && ('pin ' + n2(fnum(t.gamma_pin))),
+                cw !== null && ('call ' + n2(cw)), pw !== null && ('put ' + n2(pw))].filter(Boolean).join(' · ');
     T('cv2-gx-tags', tags || null);
 
     /* per-horizon */
@@ -13249,8 +13260,11 @@ function edCheckRadarAlerts(rows) {
     function nearestIdx(p) { var bi = -1, bd = 1e9; rows.forEach(function (r, i) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bi = i; } }); return { i: bi, d: bd }; }
     var flagAt = {};
     levels.forEach(function (x) { var p = fnum(x[1]); if (p === null) return; var nr = nearestIdx(p); if (nr.i >= 0 && nr.d <= 0.75) { (flagAt[nr.i] = flagAt[nr.i] || []).push(x[0]); } });
-    var flipIdx = (flip !== null) ? nearestIdx(flip).i : -1;
-    var spotIdx = nearestIdx(spot).i;
+    /* only mark FLIP when it lies within the plotted strike window; otherwise it is
+       off-scale (its value shows in the flip badge) and must not mis-label an edge row. */
+    var maxK = rows[0].k, minK = rows[rows.length - 1].k;
+    var flipIdx = (flip !== null && flip >= minK && flip <= maxK) ? nearestIdx(flip).i : -1;
+    var spotIdx = (spot >= minK && spot <= maxK) ? nearestIdx(spot).i : -1;
     var html = '';
     rows.forEach(function (r, i) {
       var isSpot = (i === spotIdx), isFlip = (i === flipIdx);
