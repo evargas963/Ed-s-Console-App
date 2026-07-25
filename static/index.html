@@ -3357,12 +3357,8 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
 
       <div class="cv-rail">
         <div class="cv-card">
-          <h5 class="cv-h5">Activity <span class="cv-dim" style="font-weight:400;text-transform:none;font-size:.9em">· sample</span></h5>
-          <div class="cv-act" id="cv2-act">
-            <div class="cv-row"><span class="cv-dot" style="background:var(--cv-wn)"></span><span class="cv-ts cv-n">10:42</span><span class="cv-msg"><b>g-inflection</b> · 11th test · 739.00</span></div>
-            <div class="cv-row"><span class="cv-dot" style="background:var(--cv-dn)"></span><span class="cv-ts cv-n">10:31</span><span class="cv-msg"><b>EM low</b> breached · 735.9</span></div>
-            <div class="cv-row"><span class="cv-dot" style="background:var(--cv-dm)"></span><span class="cv-ts cv-n">10:15</span><span class="cv-msg"><b>put wall</b> touch · 740</span></div>
-          </div>
+          <h5 class="cv-h5">Activity <span class="cv-dim" style="font-weight:400;text-transform:none;font-size:.9em">· board radar</span></h5>
+          <div class="cv-act" id="cv2-act"><div class="cv-row"><span class="cv-msg cv-mu">—</span></div></div>
         </div>
         <div class="cv-card">
           <h5 class="cv-h5">Session</h5>
@@ -12819,25 +12815,22 @@ function edCheckRadarAlerts(rows) {
     return v || 'SPY';
   }
 
-  /* ---- watchlist — the approved rows: sym + sparkline + change, 5 symbols, built
-          verbatim from console_v2_live.html (commit c9b6cc89). CLICK drives the global
-          ticker (writes #ticker-input + triggerRefresh) so every panel and the terrain
-          view follow. Sparkline is the approved illustrative shape; the % on the three
-          RTH sentinels is overlaid live in paint(). ---- */
-  var WL = [['SPY', '−1.23'], ['QQQ', '−1.50'], ['IWM', '−0.91'], ['NVDA', '−0.92'], ['TSLA', '−2.08']];
-  var SPK = [[6,5,7,4,6,5,3,4,2],[7,6,7,5,6,4,5,3,2],[5,6,5,6,4,5,4,5,3],[6,5,6,4,5,4,3,4,3],[7,5,6,4,3,4,2,3,1]];
+  /* ---- watchlist: sym + REAL sparkline (/api/bars1m close series) + real % change.
+          Click drives the global ticker (#ticker-input + triggerRefresh) so every panel
+          and the terrain view follow. No fabricated shapes: the sparkline is drawn from
+          live 1-minute bars (blank if unavailable); % is the live sentinel change from
+          paint(), honest "—" for names without a change source. ---- */
+  var WL = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA'];
   var wlHost = el('cv2-wl');
-  WL.forEach(function (n, i) {
-    var sym = n[0];
+  WL.forEach(function (sym) {
     var row = document.createElement('button');
     row.type = 'button';
     row.className = 'cv-wlrow';
     row.setAttribute('data-sym', sym);
     row.setAttribute('aria-selected', String(sym === curTicker()));
-    var pts = SPK[i].map(function (v, x) { return (x * 8) + ',' + (22 - v * 2.2); }).join(' ');
     row.innerHTML = '<span class="cv-sym">' + sym + '</span>'
-      + '<svg viewBox="0 0 64 22" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="var(--cv-dn)" stroke-width="1.5" points="' + pts + '"/></svg>'
-      + '<span class="cv-chg cv-dn" data-chg>' + n[1] + '%</span>';
+      + '<svg class="cv-spark" viewBox="0 0 64 22" preserveAspectRatio="none" aria-hidden="true"></svg>'
+      + '<span class="cv-chg cv-mu" data-chg>—</span>';
     row.addEventListener('click', function () {
       var input = el('ticker-input');
       if (input) input.value = sym;
@@ -12853,6 +12846,42 @@ function edCheckRadarAlerts(rows) {
     [].forEach.call(wlHost.children, function (r) {
       r.setAttribute('aria-selected', String(r.getAttribute('data-sym') === t));
     });
+  }
+  /* real sparklines from /api/bars1m (recent close series), fetched in parallel on load
+     and every 60s (slow-moving). Blank on failure — never a fabricated shape. */
+  async function loadSparks() {
+    await Promise.all([].map.call(wlHost.children, function (row) {
+      var sym = row.getAttribute('data-sym'), svg = row.querySelector('.cv-spark');
+      if (!svg) return Promise.resolve();
+      return fetch('/api/bars1m?ticker=' + encodeURIComponent(sym), { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var bars = (d && Array.isArray(d.bars)) ? d.bars : [];
+          var closes = bars.slice(-48).map(function (b) { return +b.c; }).filter(function (v) { return isFinite(v); });
+          if (closes.length < 2) { svg.innerHTML = ''; return; }
+          var lo = Math.min.apply(null, closes), hi = Math.max.apply(null, closes), rng = (hi - lo) || 1;
+          var pts = closes.map(function (c, i) { return (i * (64 / (closes.length - 1))).toFixed(1) + ',' + (21 - (c - lo) / rng * 20).toFixed(1); }).join(' ');
+          var up = closes[closes.length - 1] >= closes[0];
+          svg.innerHTML = '<polyline fill="none" stroke="' + (up ? 'var(--cv-up)' : 'var(--cv-dn)') + '" stroke-width="1.5" points="' + pts + '"/>';
+        })
+        .catch(function () { svg.innerHTML = ''; });
+    }));
+  }
+  /* Activity = REAL market radar (/api/terrain/radar): tickers at walls / regime changes.
+     No sample rows — blank when the radar is empty. */
+  function paintActivity(radar) {
+    var box = el('cv2-act'); if (!box) return;
+    var rows = (radar && Array.isArray(radar.rows)) ? radar.rows : [];
+    if (!rows.length) { box.innerHTML = '<div class="cv-row"><span class="cv-msg cv-mu">—</span></div>'; return; }
+    box.innerHTML = rows.slice(0, 6).map(function (r) {
+      var st = String(r.status || '').trim();
+      var dot = /WALL/i.test(st) ? 'var(--cv-wn)' : /REGIME/i.test(st) ? 'var(--cv-ac)' : 'var(--cv-dm)';
+      var sym = String(r.ticker || '').replace(/[<>]/g, '');
+      var wn = String(r.wall_name || '').replace(/[<>]/g, '');
+      var wall = (typeof r.wall === 'number' && isFinite(r.wall)) ? (' ' + r.wall) : '';
+      return '<div class="cv-row"><span class="cv-dot" style="background:' + dot + '"></span>'
+        + '<span class="cv-msg"><b>' + sym + '</b> ' + st.toLowerCase() + (wn ? ' · ' + wn : '') + wall + '</span></div>';
+    }).join('');
   }
 
   /* ---- gamma by strike — the approved chart, built verbatim from console_v2_live.html
@@ -13146,13 +13175,16 @@ function edCheckRadarAlerts(rows) {
     try { paint(s, t); } catch (e) { T('cv2-f-status', 'render error: ' + e.message); }
     var spot = fnum((s || {}).spot, (s || {}).quote_mid, (t || {}).spot);
     try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); buildGammaBars(g, t, spot); } catch (e) { buildGammaBars(null, t, spot); }
+    try { var rad = await (await fetch('/api/terrain/radar?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); paintActivity(rad); } catch (e) {}
     inflight = false;
   }
 
   var tkIn = el('ticker-input');
   if (tkIn) { tkIn.addEventListener('change', refresh); tkIn.addEventListener('blur', refresh); }
   refresh();
+  loadSparks();
   setInterval(refresh, 5000);
+  setInterval(loadSparks, 60000);
   window.EdCv2 = { refresh: refresh };
 })();
 </script>
