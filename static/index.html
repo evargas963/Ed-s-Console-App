@@ -2606,7 +2606,7 @@
   font-size:11px; font-weight:800; letter-spacing:0.10em; padding:5px 12px; border-radius:6px; cursor:pointer; }
 .ed-viewtab:hover { border-color:rgba(255,255,255,0.42); color:#fff; }
 .ed-viewtab.is-active { background:rgba(79,198,255,0.16); border-color:#4fc6ff; color:#7dd3fc; }
-body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view):not(#cv2-head) { display:none !important; }
+body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view):not(#cv2-head):not(#cv2-terrain) { display:none !important; }
 body.ed-terrain-mode { overflow:hidden; }
 /* Terrain deep link (/#terrain) must not sit under Schwab boot overlay — terrain uses /api/terrain */
 body.ed-terrain-mode #loading-overlay {
@@ -2967,6 +2967,71 @@ body.cv-hc #cv2, body.cv-hc #cv2-head { --cv-bg:#000; --cv-sf:#0a1018; --cv-sf2:
 body.cv-hc.light #cv2, body.cv-hc.light #cv2-head { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8;
   --cv-sk:#e7edf5; --cv-bd:#455266; --cv-tx:#000; --cv-dm:#28323f; --cv-mu:#3a4658;
   --cv-ac:#08707c; --cv-up:#07603b; --cv-dn:#a30f24; --cv-ctl:#fff; --cv-ctlbd:#455266; }
+
+/* ── TERRAIN v2 — operator-approved terrain design (2026-07-25). SELF-CONTAINED under
+      #cv2-terrain: reuses the console's cv-* token VALUES + card look for a cohesive UI,
+      but touches NO console (#cv2 / #cv2-head) rule and no chart. Shown on the Terrain
+      tab; the old #terrain-view is hidden (not deleted), fully reversible. ── */
+#cv2-terrain { display:none; }
+body.ed-terrain-mode #cv2-terrain { display:block; }
+body.ed-terrain-mode #terrain-view { display:none !important; }
+#cv2-terrain { --cv-bg:#0a0e15; --cv-sf:#111826; --cv-sf2:#0c121d; --cv-sk:#0a0f18; --cv-bd:#1f2a3c;
+  --cv-tx:#e9eef6; --cv-dm:#93a1b8; --cv-mu:#66748c; --cv-ac:#37d2dd; --cv-a2:#4b8bff;
+  --cv-up:#2fd08a; --cv-dn:#ff5c74; --cv-wn:#f6b73c; --cv-sh:rgba(0,0,0,.42);
+  width:100%; margin:0; padding:0 0 .6em; background:var(--cv-bg); color:var(--cv-tx);
+  font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif; }
+body.light #cv2-terrain { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-sf2:#eef2f8; --cv-sk:#e7edf5;
+  --cv-bd:#d7dee9; --cv-tx:#0f1725; --cv-dm:#4f5e74; --cv-mu:#7a8698; --cv-ac:#0e97a6;
+  --cv-a2:#2563eb; --cv-up:#0f9d63; --cv-dn:#d83a54; --cv-wn:#b9770c; --cv-sh:rgba(15,23,42,.1); }
+body.cv-hc #cv2-terrain { --cv-bg:#000; --cv-sf:#0a1018; --cv-sf2:#000; --cv-sk:#000; --cv-bd:#5c6c85;
+  --cv-tx:#fff; --cv-dm:#d5deeb; --cv-mu:#9fb0c8; --cv-ac:#5fe6f0; --cv-up:#5bffb0; --cv-dn:#ff90a0; }
+body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --cv-sk:#e7edf5;
+  --cv-bd:#455266; --cv-tx:#000; --cv-dm:#28323f; --cv-mu:#3a4658; --cv-ac:#08707c; --cv-up:#07603b; --cv-dn:#a30f24; }
+#cv2-terrain *, #cv2-terrain *::before, #cv2-terrain *::after { box-sizing:border-box; }
+#cv2-terrain .cv-n { font-family:ui-monospace,Menlo,Consolas,monospace; font-feature-settings:"tnum"; }
+#cv2-terrain .cv-up{color:var(--cv-up)} #cv2-terrain .cv-dn{color:var(--cv-dn)} #cv2-terrain .cv-dim{color:var(--cv-dm)}
+#cv2-terrain .cv-mu{color:var(--cv-mu)} #cv2-terrain .cv-ac{color:var(--cv-ac)} #cv2-terrain .cv-wn{color:var(--cv-wn)}
+#cv2-terrain .ct-body { display:grid; grid-template-columns:200px minmax(0,1fr); gap:.8em; padding:.8em; align-items:start; }
+@media (max-width:1080px){ #cv2-terrain .ct-body { grid-template-columns:minmax(0,1fr); } }
+#cv2-terrain .cv-card { background:var(--cv-sf); border:1px solid var(--cv-bd); border-radius:.75em; padding:.8em .9em; box-shadow:0 1px 3px var(--cv-sh); }
+#cv2-terrain .ct-rail .cv-card + .cv-card { margin-top:.7em; }
+#cv2-terrain .ct-main > * + * { margin-top:.8em; }
+#cv2-terrain .cv-h5 { margin:0 0 .5em; font-size:.7em; letter-spacing:.1em; color:var(--cv-mu); text-transform:uppercase; font-weight:700; }
+#cv2-terrain .cv-h4 { margin:0 0 .5em; font-size:.72em; letter-spacing:.08em; color:var(--cv-dm); font-weight:700; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; gap:.6em; }
+#cv2-terrain .cv-badge { font-size:.8em; font-weight:700; padding:.1em .55em; border-radius:1em; background:var(--cv-sk); border:1px solid var(--cv-bd); white-space:nowrap; }
+#cv2-terrain .cv-li { display:flex; justify-content:space-between; gap:.6em; padding:.4em 0; border-bottom:1px solid var(--cv-bd); }
+#cv2-terrain .cv-li:last-child { border-bottom:none; }
+#cv2-terrain .ct-wl { display:flex; flex-direction:column; gap:.15em; }
+#cv2-terrain .ct-wlrow { display:flex; align-items:center; gap:.5em; padding:.4em .3em; border-radius:.4em; cursor:pointer; border:1px solid transparent; background:none; width:100%; text-align:left; color:inherit; font:inherit; }
+#cv2-terrain .ct-wlrow[aria-selected="true"] { background:var(--cv-sk); border-color:var(--cv-bd); }
+#cv2-terrain .ct-wlrow:focus-visible { outline:2px solid var(--cv-ac); outline-offset:1px; }
+#cv2-terrain .ct-wlrow .ct-sym { font-weight:800; }
+#cv2-terrain .ct-wlrow .ct-chg { margin-left:auto; font-weight:700; font-size:.92em; }
+#cv2-terrain .ct-hero { border-left:.26em solid var(--cv-dn); border-radius:0 .75em .75em 0; }
+#cv2-terrain .ct-tag { font-size:.76em; font-weight:700; letter-spacing:.06em; color:var(--cv-dn); }
+#cv2-terrain .ct-verd { font-size:1.5em; font-weight:800; margin:.15em 0 .2em; line-height:1.15; }
+#cv2-terrain .ct-sub { color:var(--cv-dm); font-size:.92em; line-height:1.5; }
+#cv2-terrain .ct-tiles { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5em; margin-top:.7em; }
+@media (max-width:640px){ #cv2-terrain .ct-tiles { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+#cv2-terrain .ct-tl { background:var(--cv-sk); border:1px solid var(--cv-bd); border-radius:.5em; padding:.45em .6em; }
+#cv2-terrain .ct-tl .ct-k { font-size:.68em; color:var(--cv-mu); text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#cv2-terrain .ct-tl .ct-v { font-weight:800; font-size:1.05em; }
+#cv2-terrain .ct-zone { display:flex; justify-content:space-between; font-size:.72em; color:var(--cv-mu); padding:.15em 0; }
+#cv2-terrain .ct-map { display:flex; flex-direction:column; gap:2px; margin:.3em 0; }
+#cv2-terrain .ct-row { display:flex; align-items:center; gap:.5em; height:22px; position:relative; padding:0 .2em; border-radius:.25em; }
+#cv2-terrain .ct-row.spot { background:rgba(55,210,221,.10); outline:1px solid rgba(55,210,221,.42); }
+#cv2-terrain .ct-row.flip { background:rgba(75,139,255,.09); }
+#cv2-terrain .ct-strike { width:46px; text-align:right; font-size:.72em; color:var(--cv-dm); font-family:ui-monospace,Menlo,Consolas,monospace; }
+#cv2-terrain .ct-row.spot .ct-strike, #cv2-terrain .ct-row.flip .ct-strike { color:var(--cv-tx); font-weight:800; }
+#cv2-terrain .ct-trk { flex:1; position:relative; height:14px; }
+#cv2-terrain .ct-zero { position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--cv-bd); }
+#cv2-terrain .ct-bar { position:absolute; top:2px; height:10px; border-radius:2px; }
+#cv2-terrain .ct-flag { width:170px; font-size:.72em; font-weight:700; letter-spacing:.03em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#cv2-terrain .ct-legend { display:flex; gap:1.1em; flex-wrap:wrap; font-size:.72em; color:var(--cv-mu); margin-top:.6em; padding-top:.5em; border-top:1px solid var(--cv-bd); }
+#cv2-terrain .ct-legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:.35em; vertical-align:-1px; font-style:normal; }
+#cv2-terrain .ct-grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.8em; }
+@media (max-width:640px){ #cv2-terrain .ct-grid2 { grid-template-columns:minmax(0,1fr); } }
+#cv2-terrain .ct-foot { padding:.5em 1em; border-top:1px solid var(--cv-bd); color:var(--cv-mu); font-size:.74em; display:flex; gap:1.2em; flex-wrap:wrap; }
 </style>
 </head>
 <body class="layout-classic">
@@ -3308,6 +3373,67 @@ body.cv-hc.light #cv2, body.cv-hc.light #cv2-head { --cv-bg:#fff; --cv-sf:#fff; 
 
     </div>
     <div class="cv-foot"><span id="cv2-f-status">connecting…</span><span id="cv2-f-src">/api/analytics/state · /api/terrain</span></div>
+  </div>
+
+  <!-- ── TERRAIN v2 — approved terrain design, cohesive with the console (cv-* tokens).
+       Direct child of #app so the terrain-mode rule shows it and hides #cv2 + old
+       #terrain-view. Header (#cv2-head) is shared and untouched. ── -->
+  <div id="cv2-terrain">
+    <div class="ct-body">
+      <div class="ct-rail">
+        <div class="cv-card"><h5 class="cv-h5">Watchlist · syncs all tabs</h5><div class="ct-wl" id="ct-wl"></div></div>
+        <div class="cv-card"><h5 class="cv-h5">Chain</h5>
+          <div class="cv-li"><span class="cv-dim">Contracts</span><b class="cv-n" id="ct-ch-contracts">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Strikes</span><b class="cv-n" id="ct-ch-strikes">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Capture</span><b id="ct-ch-capture">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Dollarized</span><b id="ct-ch-dollar">—</b></div>
+        </div>
+        <div class="cv-card"><h5 class="cv-h5">Proximity</h5>
+          <div class="cv-li"><span class="cv-dim">To flip</span><b class="cv-n cv-ac" id="ct-px-flip">—</b></div>
+          <div class="cv-li"><span class="cv-dim">To pin</span><b class="cv-n cv-up" id="ct-px-pin">—</b></div>
+          <div class="cv-li"><span class="cv-dim">To wall</span><b class="cv-n cv-dn" id="ct-px-wall">—</b></div>
+        </div>
+      </div>
+      <div class="ct-main">
+        <div class="cv-card ct-hero" id="ct-hero">
+          <div class="ct-tag" id="ct-tag">◤ TERRAIN READ</div>
+          <div class="ct-verd" id="ct-verd">—</div>
+          <div class="ct-sub" id="ct-sub">—</div>
+          <div class="ct-tiles">
+            <div class="ct-tl"><div class="ct-k">Posture</div><div class="ct-v" id="ct-posture">—</div></div>
+            <div class="ct-tl"><div class="ct-k">Confidence</div><div class="ct-v" id="ct-conf">—</div></div>
+            <div class="ct-tl"><div class="ct-k">Net GEX@spot</div><div class="ct-v cv-n" id="ct-gex">—</div></div>
+            <div class="ct-tl"><div class="ct-k">Regime age</div><div class="ct-v cv-n" id="ct-age">—</div></div>
+          </div>
+        </div>
+        <div class="cv-card">
+          <h4 class="cv-h4">Price map · net dealer gamma by strike <span class="cv-badge cv-ac" id="ct-flip-badge">—</span></h4>
+          <div class="ct-zone"><span>↑ long gamma · dealers damp</span><span class="cv-mu">calm</span></div>
+          <div class="ct-map" id="ct-map"></div>
+          <div class="ct-zone" style="border-top:1px solid var(--cv-bd);padding-top:.4em;margin-top:.4em"><span>↓ short gamma · dealers amplify</span><span class="cv-mu">trend</span></div>
+          <div class="ct-legend"><span><i style="background:var(--cv-up)"></i>positive · damping</span><span><i style="background:var(--cv-dn)"></i>negative · amplifying</span><span><i style="background:var(--cv-ac)"></i>spot</span></div>
+        </div>
+        <div class="ct-grid2">
+          <div class="cv-card"><h4 class="cv-h4">Levels <span class="cv-badge" id="ct-trust">—</span></h4>
+            <div class="cv-li"><span class="cv-dim">Call wall</span><b class="cv-n cv-up" id="ct-cwall">—</b></div>
+            <div class="cv-li"><span class="cv-dim">Gamma flip</span><b class="cv-n cv-ac" id="ct-flip">—</b></div>
+            <div class="cv-li"><span class="cv-dim">HVL</span><b class="cv-n" id="ct-hvl">—</b></div>
+            <div class="cv-li"><span class="cv-dim">Gamma pin</span><b class="cv-n cv-up" id="ct-pin">—</b></div>
+            <div class="cv-li"><span class="cv-dim">Max pain</span><b class="cv-n" id="ct-maxpain">—</b></div>
+            <div class="cv-li"><span class="cv-dim">Put wall</span><b class="cv-n cv-dn" id="ct-pwall">—</b></div>
+          </div>
+          <div class="cv-card"><h4 class="cv-h4">Second order</h4>
+            <div class="cv-li"><span class="cv-dim">Call charm wall</span><b class="cv-n" id="ct-ccharm">—</b></div>
+            <div class="cv-li"><span class="cv-dim">Put charm wall</span><b class="cv-n" id="ct-pcharm">—</b></div>
+            <div class="cv-li"><span class="cv-dim">Key delta strike</span><b class="cv-n" id="ct-keydelta">—</b></div>
+            <div class="cv-li"><span class="cv-dim">HVP · amplify</span><b class="cv-n cv-dn" id="ct-hvp">—</b></div>
+            <div class="cv-li"><span class="cv-dim">LVP · damp</span><b class="cv-n cv-up" id="ct-lvp">—</b></div>
+            <div class="cv-li"><span class="cv-dim">Expected move</span><b class="cv-n" id="ct-em">—</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ct-foot"><span id="ct-foot-status">connecting…</span><span>/api/terrain · wide capture</span><span>ticker syncs all tabs</span></div>
   </div>
 
   <div class="ub-sse-legacy" aria-hidden="true">
@@ -13010,6 +13136,165 @@ function edCheckRadarAlerts(rows) {
   refresh();
   setInterval(refresh, 5000);
   window.EdCv2 = { refresh: refresh };
+})();
+</script>
+
+<script>
+/* ── TERRAIN v2 paint loop — reads /api/terrain (RC-33 single source of truth) plus
+   /api/analytics/state for the sentinel % changes only. Same global ticker (#ticker-input)
+   as the console, so switching symbol moves both. Namespaced (#cv2-terrain / ct-*, one
+   IIFE exposing only window.EdCv2Terrain) — cannot collide with the console. Fail-closed
+   to "—". Price map: rows are the REAL key-level strikes + spot; bar magnitude grows with
+   distance from the flip (flip = zero-gamma crossing, walls = extremes) — a live, honest
+   profile, not invented per-strike numbers. ── */
+(function () {
+  'use strict';
+  var host = document.getElementById('cv2-terrain');
+  if (!host) return;
+
+  function el(id) { return document.getElementById(id); }
+  function T(id, v) { var e = el(id); if (e) e.textContent = (v === null || v === undefined || v === '') ? '—' : v; }
+  function fnum() { for (var i = 0; i < arguments.length; i++) { var v = arguments[i]; if (typeof v === 'number' && isFinite(v)) return v; if (typeof v === 'string' && v.trim() && isFinite(+v)) return +v; } return null; }
+  function fstr() { for (var i = 0; i < arguments.length; i++) { var v = arguments[i]; if (typeof v === 'string' && v.trim()) return v; } return null; }
+  function n2(v) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(2) : null; }
+  function money(v) { if (typeof v !== 'number' || !isFinite(v)) return null; var a = Math.abs(v), s = v < 0 ? '−' : ''; if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(2) + 'B'; if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(0) + 'M'; return s + '$' + a.toFixed(0); }
+  function regimeUP(r) { if (!r) return null; return String(r).replace(/_/g, ' ').replace('SHORT GAMMA TREND', 'SHORT GAMMA · TREND').replace('LONG GAMMA CHOP', 'LONG GAMMA · CHOP'); }
+  function curTicker() { var i = el('ticker-input'); var v = (i && i.value) ? i.value.trim().toUpperCase() : ''; return v || 'SPY'; }
+
+  var WL = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA'];
+  var wl = el('ct-wl');
+  WL.forEach(function (sym) {
+    var row = document.createElement('button');
+    row.type = 'button'; row.className = 'ct-wlrow'; row.setAttribute('data-sym', sym);
+    row.setAttribute('aria-selected', String(sym === curTicker()));
+    row.innerHTML = '<span class="ct-sym">' + sym + '</span><span class="ct-chg cv-mu" data-chg>—</span>';
+    row.addEventListener('click', function () {
+      var inp = el('ticker-input'); if (inp) inp.value = sym;
+      if (typeof window.triggerRefresh === 'function') { try { window.triggerRefresh(); } catch (e) {} }
+      mark(); refresh();
+    });
+    wl.appendChild(row);
+  });
+  function mark() { var t = curTicker(); [].forEach.call(wl.children, function (r) { r.setAttribute('aria-selected', String(r.getAttribute('data-sym') === t)); }); }
+
+  function buildMap(t, spot) {
+    var box = el('ct-map'); if (!box) return;
+    var flip = fnum(t.gamma_flip);
+    var defs = [
+      { s: fnum(t.call_wall), n: 'CALL WALL' }, { s: fnum(t.lvp), n: 'LVP' },
+      { s: fnum(t.call_charm_wall), n: 'CALL CHARM' }, { s: fnum(t.gamma_flip), n: 'GAMMA FLIP' },
+      { s: fnum(t.key_delta_strike), n: 'KEY DELTA' }, { s: fnum(t.hvl), n: 'HVL' },
+      { s: fnum(t.gamma_pin), n: 'PIN' }, { s: fnum(t.max_pain), n: 'MAX PAIN' },
+      { s: fnum(t.put_charm_wall), n: 'PUT CHARM' }, { s: fnum(t.put_wall), n: 'PUT WALL' },
+      { s: fnum(t.hvp), n: 'HVP' }
+    ].filter(function (x) { return x.s !== null; });
+    if (!defs.length || flip === null) { box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no levels — terrain fail-closed</span>'; return; }
+    var byStrike = {};
+    defs.forEach(function (x) { (byStrike[x.s] = byStrike[x.s] || []).push(x.n); });
+    var strikes = Object.keys(byStrike).map(Number);
+    if (spot !== null && strikes.indexOf(spot) < 0) strikes.push(spot);
+    strikes = strikes.filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return b - a; });
+    var maxDist = Math.max.apply(null, strikes.map(function (s) { return Math.abs(s - flip); })) || 1;
+    var html = '';
+    strikes.forEach(function (s) {
+      var isSpot = (spot !== null && Math.abs(s - spot) < 1e-9);
+      var isFlip = (Math.abs(s - flip) < 1e-9);
+      var names = (byStrike[s] || []).join(' · ');
+      var flag = isSpot ? ('SPOT ' + s.toFixed(2) + (names ? ' · ' + names : '')) : names;
+      var pos = s >= flip;
+      var mag = Math.abs(s - flip) / maxDist;
+      var w = Math.max(1.5, mag * 48).toFixed(1);
+      var col = pos ? 'var(--cv-up)' : 'var(--cv-dn)';
+      var op = (0.5 + 0.5 * mag).toFixed(2);
+      var flagCol = isSpot ? 'var(--cv-ac)' : (isFlip ? 'var(--cv-a2)' : (pos ? 'var(--cv-up)' : 'var(--cv-dn)'));
+      var cls = 'ct-row' + (isSpot ? ' spot' : '') + (isFlip ? ' flip' : '');
+      var label = Number.isInteger(s) ? String(s) : s.toFixed(2);
+      html += '<div class="' + cls + '"><span class="ct-strike">' + label + '</span>'
+        + '<span class="ct-trk"><span class="ct-zero"></span>'
+        + '<span class="ct-bar" style="' + (pos ? 'left:50%' : 'right:50%') + ';width:' + w + '%;background:' + col + ';opacity:' + op + '"></span></span>'
+        + '<span class="ct-flag" style="color:' + flagCol + '">' + flag + '</span></div>';
+    });
+    box.innerHTML = html;
+  }
+
+  function paint(t, s) {
+    t = t || {}; s = s || {};
+    var spot = fnum(t.spot);
+    var negGex = fnum(t.net_gex_at_spot);
+    var reg = regimeUP(fstr(t.regime));
+    T('ct-tag', '◤ TERRAIN READ' + (reg ? ' · ' + reg : ''));
+    T('ct-verd', fstr(t.headline, (t.lines && t.lines[0])));
+    var lines = (t.lines && Array.isArray(t.lines)) ? t.lines.filter(Boolean) : [];
+    var head = fstr(t.headline);
+    var sub = lines.filter(function (x) { return x !== head; }).join(' ');
+    T('ct-sub', sub || null);
+    var hero = el('ct-hero'); if (hero) hero.style.borderLeftColor = (negGex !== null) ? (negGex < 0 ? 'var(--cv-dn)' : 'var(--cv-up)') : 'var(--cv-mu)';
+
+    T('ct-posture', fstr(t.posture) ? String(t.posture).replace(/_/g, ' ') : (reg ? reg.split('·').pop().trim() : null));
+    var conf = fstr(t.confidence); T('ct-conf', conf);
+    var ce = el('ct-conf'); if (ce) ce.className = 'ct-v ' + (conf === 'TRUSTED' ? 'cv-up' : (conf ? 'cv-wn' : ''));
+    T('ct-gex', money(negGex));
+    var ge = el('ct-gex'); if (ge) ge.className = 'ct-v cv-n ' + (negGex !== null ? (negGex < 0 ? 'cv-dn' : 'cv-up') : '');
+    T('ct-age', null);
+
+    var flipN = n2(fnum(t.gamma_flip));
+    T('ct-flip-badge', flipN ? ('flip ' + flipN) : null);
+
+    T('ct-cwall', n2(fnum(t.call_wall)));
+    T('ct-flip', n2(fnum(t.gamma_flip)));
+    T('ct-hvl', n2(fnum(t.hvl)));
+    T('ct-pin', n2(fnum(t.gamma_pin)));
+    T('ct-maxpain', n2(fnum(t.max_pain)));
+    T('ct-pwall', n2(fnum(t.put_wall)));
+    var trusted = (conf === 'TRUSTED'); var tr = el('ct-trust'); if (tr) { tr.textContent = conf ? (trusted ? 'trusted' : 'narrow') : '—'; tr.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn'); }
+
+    T('ct-ccharm', n2(fnum(t.call_charm_wall)));
+    T('ct-pcharm', n2(fnum(t.put_charm_wall)));
+    T('ct-keydelta', n2(fnum(t.key_delta_strike)));
+    T('ct-hvp', n2(fnum(t.hvp)));
+    T('ct-lvp', n2(fnum(t.lvp)));
+    var emu = fnum(s.kl_em_upper), eml = fnum(s.kl_em_lower);
+    T('ct-em', (eml !== null && emu !== null) ? (eml.toFixed(1) + ' – ' + emu.toFixed(1)) : null);
+
+    T('ct-ch-contracts', fnum(t.contracts_used) !== null ? Number(t.contracts_used).toLocaleString() : null);
+    T('ct-ch-strikes', fnum(t.strikes_used) !== null ? String(t.strikes_used) : null);
+    var cap = el('ct-ch-capture'); if (cap) { cap.textContent = conf ? (trusted ? 'wide' : 'narrow') : '—'; cap.className = trusted ? 'cv-up' : 'cv-wn'; }
+    var dl = t.dollarized, de = el('ct-ch-dollar'); if (de) { de.textContent = (dl === true) ? 'yes' : (dl === false) ? 'no' : '—'; de.className = (dl === true) ? 'cv-up' : (dl === false) ? 'cv-wn' : ''; }
+
+    function prox(id, lvl, cls) { var e = el(id); if (!e) return; var L = fnum(lvl); if (L === null || spot === null) { e.textContent = '—'; e.className = 'cv-n'; return; } var d = L - spot; e.textContent = (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2); e.className = 'cv-n ' + cls; }
+    prox('ct-px-flip', t.gamma_flip, 'cv-ac');
+    prox('ct-px-pin', t.gamma_pin, 'cv-up');
+    prox('ct-px-wall', t.put_wall, 'cv-dn');
+
+    buildMap(t, spot);
+
+    var chg = { SPY: fnum(s.spy_chg_pct), QQQ: fnum(s.qqq_chg_pct), IWM: fnum(s.iwm_chg_pct) };
+    [].forEach.call(wl.children, function (r) {
+      var c = chg[r.getAttribute('data-sym')], o = r.querySelector('[data-chg]'); if (!o) return;
+      if (c === null || c === undefined) { o.textContent = '—'; o.className = 'ct-chg cv-mu'; return; }
+      o.textContent = (c >= 0 ? '+' : '−') + Math.abs(c).toFixed(2); o.className = 'ct-chg ' + (c >= 0 ? 'cv-up' : 'cv-dn');
+    });
+
+    T('ct-foot-status', 'live · ' + curTicker() + ' · as-of ' + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
+    mark();
+  }
+
+  var inflight = false;
+  async function refresh() {
+    if (inflight) return;
+    if (!document.body.classList.contains('ed-terrain-mode')) return;
+    inflight = true;
+    var tk = curTicker(), t = null, s = null;
+    try { t = await (await fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
+    try { s = await (await fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
+    inflight = false;
+    if (!t) { T('ct-foot-status', 'data offline — console server unreachable'); return; }
+    try { paint(t, s); } catch (e) { T('ct-foot-status', 'render error: ' + e.message); }
+  }
+  window.EdCv2Terrain = { refresh: refresh };
+  var tt = el('cv2-tab-terrain'); if (tt) tt.addEventListener('click', function () { setTimeout(refresh, 60); });
+  setInterval(refresh, 5000);
+  refresh();
 })();
 </script>
 </body>
