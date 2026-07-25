@@ -4,10 +4,11 @@
 HEAD is the shared brain between Cursor and Claude. Uncommitted source edits are
 invisible to the other agent and cause stale reads / overwrites. Physical
 isolation is a sibling git worktree (`<repo>-Claude`). This gate fails closed when:
-  1. Protected source paths are dirty in THIS worktree, or
-  2. ED_AGENT_ROLE / directory naming says we are in the wrong worktree.
+  1. ED_AGENT_ROLE is missing or not exactly cursor|claude (no silent default),
+  2. Role disagrees with the physical worktree path, or
+  3. Protected source paths are dirty in THIS worktree.
 
-    python tools/check_worktree_handoff.py
+    ED_AGENT_ROLE=cursor python tools/check_worktree_handoff.py
 
 Exit 0 = clean handoff surface + correct worktree. Exit 1 = blocked.
 """
@@ -21,6 +22,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 _POLICY_PATH = Path(__file__).resolve().parent / "agent_worktree_policy.json"
+_VALID_ROLES = frozenset({"cursor", "claude"})
 
 
 def _load_policy() -> dict:
@@ -88,43 +90,55 @@ def dirty_protected_paths(
     return sorted(found)
 
 
-def infer_role(repo: Path | None = None, env: dict | None = None) -> str:
-    """Resolve agent role from ED_AGENT_ROLE or directory suffix."""
+def require_role(env: dict | None = None) -> tuple[str | None, str | None]:
+    """Return (role, error). Role is set only when ED_AGENT_ROLE is explicit.
+
+    No silent defaults — missing/invalid role is a fatal boundary violation.
+    """
     policy = _load_policy()
     env = env if env is not None else os.environ
     var = str(policy.get("env_role_var") or "ED_AGENT_ROLE")
-    explicit = (env.get(var) or "").strip().lower()
-    if explicit in {"cursor", "claude"}:
-        return explicit
-    root = repo or REPO
-    suffix = str(policy.get("claude_root_suffix") or "-Claude")
-    return "claude" if root.name.endswith(suffix) else "cursor"
+    raw = env.get(var)
+    if raw is None or not str(raw).strip():
+        return None, (
+            f"FATAL: {var} is not set. Set {var}=cursor or {var}=claude "
+            f"explicitly — no silent default (worktree isolation)."
+        )
+    role = str(raw).strip().lower()
+    if role not in _VALID_ROLES:
+        return None, (
+            f"FATAL: {var}={raw!r} is invalid. Must be exactly "
+            f"'cursor' or 'claude'."
+        )
+    return role, None
 
 
 def worktree_boundary_violations(
     repo: Path | None = None,
     env: dict | None = None,
 ) -> list[str]:
-    """Fail closed when role and physical worktree root disagree.
+    """Fail closed when role is unset or disagrees with the physical worktree.
 
-    OBSERVED (2026-07-25): Cursor and Claude share one .git but must not share
-    a working directory — uncommitted edits in a shared tree are overwritten or
-    stashed out from under the other agent. VALIDATED: suffix + ED_AGENT_ROLE
-    checks are deterministic; no operator-home absolute paths in policy.
+    OBSERVED (2026-07-25): multi-agent fracture when both edit the same checkout;
+    silent role inference hid mis-routed agents. VALIDATED: explicit ED_AGENT_ROLE
+    + path suffix binding; no operator-home absolute paths in policy.
     """
     policy = _load_policy()
     root = (repo or REPO).resolve()
     suffix = str(policy.get("claude_root_suffix") or "-Claude")
-    role = infer_role(root, env)
+    role, err = require_role(env)
+    if err:
+        return [err]
+    assert role is not None
     out: list[str] = []
     if role == "claude" and not root.name.endswith(suffix):
         out.append(
-            f"worktree boundary: role=claude but root name {root.name!r} "
+            f"FATAL: ED_AGENT_ROLE=claude but root name {root.name!r} "
             f"does not end with {suffix!r}. Use the dedicated *-Claude worktree."
         )
     if role == "cursor" and root.name.endswith(suffix):
         out.append(
-            f"worktree boundary: role=cursor but root is Claude worktree "
+            f"FATAL: ED_AGENT_ROLE=cursor but root is Claude worktree "
             f"{root.name!r}. Stay in the primary checkout."
         )
     # Claude worktree must be a linked git worktree (git-dir ≠ common-dir), not a clone.
@@ -147,12 +161,12 @@ def worktree_boundary_violations(
                     common = (root / common).resolve()
                 if git_dir.resolve() == common.resolve():
                     out.append(
-                        "worktree boundary: Claude root is a standalone .git clone, "
+                        "FATAL: Claude root is a standalone .git clone, "
                         "not a linked `git worktree`. Recreate with "
                         "`git worktree add <path> -b worktree/claude`."
                     )
         except OSError as e:
-            out.append(f"worktree boundary: git rev-parse failed: {e}")
+            out.append(f"FATAL: git rev-parse failed: {e}")
     return out
 
 
@@ -183,7 +197,7 @@ def main() -> int:
 
     if blocked:
         return 1
-    role = infer_role()
+    role, _ = require_role()
     print(
         f"Handoff OK — role={role} root={REPO.name} "
         "protected source clean at HEAD."

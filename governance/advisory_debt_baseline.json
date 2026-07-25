@@ -1,6 +1,6 @@
 {
   "file_length": 37,
-  "function_complexity": 456,
+  "function_complexity": 457,
   "function_length": 392,
   "mypy_types": 758,
   "no_fake_defaults": 10,

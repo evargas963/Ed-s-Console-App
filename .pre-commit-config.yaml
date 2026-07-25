@@ -66,7 +66,8 @@ repos:
       # run_with_repo_venv re-execs under .venv locally (CI falls through).
       - id: institutional-correctness
         name: institutional correctness (one gate — no fake tests, single source of truth)
-        entry: python tools/run_with_repo_venv.py tools/check_institutional_correctness.py
+        # Local hooks ignore env:; wrapper sets ED_AGENT_ROLE=cursor explicitly.
+        entry: python tools/precommit_institutional.py
         language: system
         pass_filenames: false
         always_run: true

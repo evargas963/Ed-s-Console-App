@@ -1558,10 +1558,11 @@ def check_agent_worktree_boundary() -> list[Violation]:
     """Cursor vs Claude must not share a physical working tree.
 
     OBSERVED (2026-07-25): multi-agent fracture when both edit the same checkout —
-    uncommitted work is stashed/overwritten. Isolation is a sibling git worktree
-    named <primary>-Claude. VALIDATED: tools/check_worktree_handoff.py
-    worktree_boundary_violations (role/suffix + linked-worktree check). Dirty-tree
-    handoff stays in session_closeout (must not block mid-commit staging).
+    uncommitted work is stashed/overwritten; silent role defaults hid mis-routes.
+    Isolation is a sibling git worktree named <primary>-Claude. VALIDATED:
+    tools/check_worktree_handoff.py worktree_boundary_violations — ED_AGENT_ROLE
+    mandatory (fail-fast), path suffix binding, linked-worktree check. Pre-commit
+    / CI set ED_AGENT_ROLE=cursor. Dirty-tree handoff stays in session_closeout.
     """
     if str(REPO) not in sys.path:
         sys.path.insert(0, str(REPO))

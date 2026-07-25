@@ -3,8 +3,8 @@ from pathlib import Path
 
 from tools.check_worktree_handoff import (
     dirty_protected_paths,
-    infer_role,
     is_protected_source,
+    require_role,
     worktree_boundary_violations,
 )
 
@@ -36,23 +36,38 @@ def test_dirty_protected_paths_from_porcelain():
     ]
 
 
-def test_infer_role_from_suffix_and_env():
-    assert infer_role(Path("EdWebConsole"), env={}) == "cursor"
-    assert infer_role(Path("EdWebConsole-Claude"), env={}) == "claude"
-    assert infer_role(Path("EdWebConsole"), env={"ED_AGENT_ROLE": "claude"}) == "claude"
-    assert infer_role(Path("EdWebConsole-Claude"), env={"ED_AGENT_ROLE": "cursor"}) == "cursor"
+def test_missing_role_is_fatal_no_silent_default():
+    role, err = require_role(env={})
+    assert role is None
+    assert err and "not set" in err
+    v = worktree_boundary_violations(
+        repo=Path("EdWebConsole"),
+        env={},
+    )
+    assert v and "FATAL" in v[0] and "not set" in v[0]
 
 
-def test_boundary_rejects_role_mismatch():
-    # Claude role in a non-Claude folder
+def test_invalid_role_is_fatal():
+    role, err = require_role(env={"ED_AGENT_ROLE": "agent"})
+    assert role is None and err and "invalid" in err
+
+
+def test_boundary_rejects_role_path_mismatch():
     v = worktree_boundary_violations(
         repo=Path("C:/repo/EdWebConsole"),
         env={"ED_AGENT_ROLE": "claude"},
     )
-    assert v and "role=claude" in v[0]
-    # Cursor role inside a *-Claude folder
+    assert v and "ED_AGENT_ROLE=claude" in v[0]
     v2 = worktree_boundary_violations(
         repo=Path("C:/repo/EdWebConsole-Claude"),
         env={"ED_AGENT_ROLE": "cursor"},
     )
-    assert v2 and "role=cursor" in v2[0]
+    assert v2 and "ED_AGENT_ROLE=cursor" in v2[0]
+
+
+def test_matching_cursor_role_on_primary_has_no_path_error():
+    v = worktree_boundary_violations(
+        repo=Path("C:/repo/EdWebConsole"),
+        env={"ED_AGENT_ROLE": "cursor"},
+    )
+    assert v == []

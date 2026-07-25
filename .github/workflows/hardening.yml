@@ -14,6 +14,9 @@ jobs:
   hardening:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Worktree boundary gate: no silent ED_AGENT_ROLE default (primary CI = cursor).
+      ED_AGENT_ROLE: cursor
     steps:
       - uses: actions/checkout@v4
         with:
