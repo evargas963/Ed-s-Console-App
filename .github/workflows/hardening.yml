@@ -46,6 +46,11 @@ jobs:
           python tools/check_market_correctness.py --self-test
           python tools/check_market_correctness.py
 
+      # BLOCKING: same institutional gate as local pre-commit — catches --no-verify
+      # commits that skip tools/check_institutional_correctness.py on the laptop.
+      - name: institutional correctness (one gate — pre-commit parity)
+        run: python tools/check_institutional_correctness.py
+
       - name: institutional closure gate (no inflated parent closures)
         run: python tools/check_institutional_closure_gate.py
       - name: no-grep subprocess

@@ -11,6 +11,8 @@ not SESSION_CLOSEOUT_GREEN, the turn is not finished — regardless of how good 
     python tools/session_closeout.py
 
 Checks, in order:
+  0. WORKTREE HANDOFF        — tools/check_worktree_handoff.py must exit 0 (no dirty
+                               protected source; HEAD is the Cursor↔Claude shared brain)
   1. INSTITUTIONAL GATE      — tools/check_institutional_correctness.py must exit 0
   2. AFFECTED TESTS          — every changed/untracked .py must have its tests RUN, not
                                merely collected (collection proves imports, not assertions)
@@ -19,6 +21,9 @@ Checks, in order:
                                surfaced, so "I'll test it later" cannot pass silently
 
 Exit code is the arbiter. There is no --force.
+
+Handoff implication: commit (or stash) protected source before closeout GREEN. Mid-turn
+verification of dirty WIP uses pytest / the institutional gate directly — not closeout.
 """
 from __future__ import annotations
 
@@ -167,6 +172,19 @@ def main() -> int:
     print("=" * 78)
     print("SESSION CLOSE-OUT")
     print("=" * 78)
+
+    # 0 ── multi-agent handoff (HEAD is the shared brain)
+    rc, out = _run([sys.executable, "tools/check_worktree_handoff.py"])
+    print(f"[{'PASS' if rc == 0 else 'FAIL'}] worktree handoff")
+    if rc != 0:
+        for ln in (out or "").splitlines():
+            if ln.strip():
+                print(f"         {ln.strip()[:110]}")
+        failures.append("worktree handoff blocked (commit or stash protected source)")
+        print("\n" + "=" * 78)
+        print(f"SESSION_CLOSEOUT_RED — {'; '.join(failures)}")
+        print("The turn is NOT finished. Fix, then re-run.")
+        return 1
 
     changed = changed_python_files()
     print(f"\nchanged/untracked python files: {len(changed)}")

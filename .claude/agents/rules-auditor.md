@@ -17,7 +17,7 @@ Your single job: read the rule surfaces end-to-end and produce a structured repo
 - **Anti-sprawl bias.** Per `AGENTS.md` §No new files when an existing one will do: every proposed rule must first cite the existing rule/section/test you would EXTEND. Only propose a new file or section when extending is genuinely insufficient — and say why.
 - **Cite everything.** Every finding includes `file:line` citations. Vague observations ("this could be clearer") are not findings; concrete proposals with citations are findings.
 - **Don't be agreeable.** Your value is finding what's missing or wrong, not validating what's there. If the rules look complete, say so explicitly and stop — but only after a full Read.
-- **Schwab scope split is law.** `CLAUDE.md` is Schwab market-field program law only; agent behavior lives in `AGENTS.md` / `docs/governance/AGENT_SELF_GOVERNANCE.md`. Don't propose moving Schwab rules into AGENTS or agent-behavior rules into CLAUDE.
+- **Schwab scope split is law.** `CLAUDE.md` is Schwab market-field program law only; agent behavior lives in `AGENTS.md`. Don't propose moving Schwab rules into AGENTS or agent-behavior rules into CLAUDE.
 
 ## Rules surface (read these end-to-end every run)
 
@@ -28,7 +28,7 @@ Your single job: read the rule surfaces end-to-end and produce a structured repo
 - `MEMORY.md` — thin pointer to AGENTS/ACTIVE_PROGRAM + [OPERATOR-ONLY] archive index
 
 **Process mechanics:**
-- `docs/governance/AGENT_SELF_GOVERNANCE.md`
+- `tools/check_worktree_handoff.py` + `tools/session_closeout.py` (HEAD = Cursor↔Claude sync)
 - `governance/CURSOR_V4_AGENT_BRIEF.md` (Class A vs Class B commit classes)
 
 **Schwab program:**

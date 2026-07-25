@@ -427,22 +427,34 @@ def _debt_baseline_path():
     return REPO / "governance" / "advisory_debt_baseline.json"
 
 
+# Correctness-shaped advisory debt — the ONLY metrics whose rise fails the commit.
+# Shape/style volume (file/function length, complexity, ruff SIM/ARG/etc.) is reported
+# but never blocks: elite institutional craft is judged by correctness and architecture,
+# not by shaving counters (RC-19: a file-length ceiling forced five circular imports to
+# save seven lines). Hard correctness already lives elsewhere (ENFORCED checks, pre-commit
+# ruff F401/F821/E9, market-correctness, 5-why). New advisory checks default to
+# track-only unless added here deliberately.
+_RATCHET_BLOCKS_ON_RISE = frozenset({
+    "no_fake_defaults",              # fabricated neutrals hide absence
+    "orphan_dict_keys",              # silent None / misspelled keys (RC-15/RC-20)
+    "tests_missing_explicit_assert", # tests that cannot fail on regression
+    "mypy_types",                    # type errors are correctness when mypy is live
+})
+
+
 def check_debt_ratchet() -> list[Violation]:
-    """Advisory debt may go DOWN or stay flat. It may never go UP.
+    """Correctness advisory debt may go DOWN or stay flat. It may never go UP.
 
-    Operator 2026-07-19: "mypy is not a report, it's a tool." Reporting a counter every
-    turn while it drifts upward is not using the tool. This makes the ratchet mechanical:
-    every advisory count is recorded in governance/advisory_debt_baseline.json and any
-    increase blocks the commit. Lowering a count rewrites the baseline automatically, so
-    the floor only ever descends.
+    Operator 2026-07-19: "mypy is not a report, it's a tool." Operator 2026-07-24/25:
+    the ratchet exists to stop CRUFT (fake defaults, orphan keys, assertion-free tests,
+    type holes) — not to police line counts, cyclomatic complexity, or stylistic ruff
+    volume. Those shape/style counters remain visible as ADVISORY checks and may float
+    with the codebase; they do not fail the gate. Allowlist = `_RATCHET_BLOCKS_ON_RISE`.
 
-    Regenerate deliberately (after an accepted increase) with:
+    Baseline floor for blocked metrics still only descends (auto-rewrite on improvement).
+    Regenerate deliberately (after an accepted correctness-debt increase) with:
         python tools/check_institutional_correctness.py --rebaseline
     """
-    # Imported at CALL time, not module scope: the gate owns CHECKS and imports this
-    # module, so a top-level import here would be circular. By the time any check runs,
-    # the gate module is fully loaded.
-
     out: list[Violation] = []
     path = _debt_baseline_path()
     current = {name: len(fn()) for name, fn, enforced in CHECKS if not enforced
@@ -456,12 +468,6 @@ def check_debt_ratchet() -> list[Violation]:
         out.append(Violation(path, 0, "advisory_debt_baseline.json is unparseable"))
         return out
 
-    # Operator 2026-07-24: the ratchet exists to stop CRUFT, not to cap SIZE. A correct
-    # end-to-end fix must never be blocked — or churned into a needless helper — just to
-    # shave a line. SHAPE metrics (length/complexity) are tracked but never block; the
-    # ratchet still blocks on debt that signals a real problem (types, orphan dict keys,
-    # fake defaults, lint). "If the fix is correct, there is no need for a size cap."
-    _RATCHET_TRACK_ONLY = {"function_length", "file_length", "function_complexity"}
     improved = False
     for name, count in sorted(current.items()):
         base = baseline.get(name)
@@ -470,26 +476,32 @@ def check_debt_ratchet() -> list[Violation]:
             improved = True
             continue
         if count > base:
-            if name in _RATCHET_TRACK_ONLY:
+            if name not in _RATCHET_BLOCKS_ON_RISE:
+                # Shape/style volume (or any future advisory not on the allowlist):
+                # track the new floor; never block a correct professional change.
                 baseline[name] = count
                 improved = True
                 continue
             out.append(Violation(path, 0,
-                                 f"{name} rose {base} -> {count} (+{count - base}). Advisory debt "
-                                 f"may never increase: clean what you added, or lower another "
-                                 f"count to pay for it."))
+                                 f"{name} rose {base} -> {count} (+{count - base}). Correctness "
+                                 f"advisory debt may never increase: clean what you added, or "
+                                 f"lower another correctness count to pay for it."))
         elif count < base:
             # HONESTY GUARD: a checker that fails and returns nothing is indistinguishable
             # from a checker that found nothing. Recording that 0 as the new floor silently
             # destroys the ratchet -- it happened to ruff_quality (1147 -> 0), which then
             # blocked every commit with a phantom +1147. A collapse to zero from a large
             # baseline is a tool failure until proven otherwise.
-            if count == 0 and base > 10:
+            if count == 0 and base > 10 and name in _RATCHET_BLOCKS_ON_RISE:
                 out.append(Violation(
                     path, 0,
                     f"{name} reported 0 against a baseline of {base}. That is a checker "
                     f"failure, not perfection - the baseline was NOT lowered. Investigate "
                     f"the checker, then re-run."))
+                continue
+            if count == 0 and base > 10 and name not in _RATCHET_BLOCKS_ON_RISE:
+                # Track-only metrics: do not collapse a large baseline to 0 on checker flake,
+                # and do not fail the commit either — leave baseline unchanged.
                 continue
             baseline[name] = count
             improved = True
@@ -1490,7 +1502,7 @@ CHECKS = [
     ("checks_are_justified", check_checks_are_justified, True),  # observed + validated, or no ship
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
     ("open_item_cap", check_open_item_cap, True),   # ledgers burn down, never accumulate  # 5 whys, restarted on every new cause
-    ("debt_ratchet", check_debt_ratchet, True),      # advisory debt may never rise
+    ("debt_ratchet", check_debt_ratchet, True),      # correctness advisory debt may never rise
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
