@@ -658,7 +658,8 @@ def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
 
 
 def resolve_spot(ticker: str, *, chain_json: dict | None = None,
-                 allow_stored: bool = True) -> tuple[float | None, str, float | None]:
+                 allow_stored: bool = True,
+                 quote_node: dict | None = None) -> tuple[float | None, str, float | None]:
     """THE single spot authority. Returns (spot, source, as_of_ts_utc).
 
     RC-14: four independent spot sources existed and each consumer picked one, so the
@@ -675,10 +676,19 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
     if not tk:
         return None, "none", None
 
-    # 1. the only source that is a REAL TRADE
-    spot, ts = _spot_from_quote(tk)
-    if spot is not None:
-        return spot, SPOT_SOURCE_QUOTE, ts
+    # 1. the only source that is a REAL TRADE. When the caller already fetched the quote
+    #    (the hot _fetch_state path), reuse that node instead of a second round-trip — the
+    #    precedence + fallbacks below are then IDENTICAL to every other consumer, so the
+    #    analytics card can no longer derive a different spot than the header / terrain.
+    if quote_node is not None:
+        _pq = _parse_quote_node_session_fields(quote_node)
+        _sp = _pq.get("spot")
+        if _sp and _sp > 0:
+            return float(_sp), SPOT_SOURCE_QUOTE, _pq.get("trade_time")
+    else:
+        spot, ts = _spot_from_quote(tk)
+        if spot is not None:
+            return spot, SPOT_SOURCE_QUOTE, ts
 
     # 2. stored snapshot BEFORE the chain: a persisted snapshot was itself captured from
     #    quote.lastPrice, so it is a stale TRADE. The chain underlying is a session CLOSE
@@ -6223,9 +6233,11 @@ def _fetch_state(
     parsed_ask = _session_q["ask"]
     parsed_quote_time = _session_q["quote_time"]
     parsed_trade_time = _session_q["trade_time"]
-    spot = parsed_last if parsed_last and parsed_last > 0 else (
-        parsed_mark if parsed_mark and parsed_mark > 0 else None
-    )
+    # SINGLE SPOT AUTHORITY (RC-14): route the analytics-card spot through resolve_spot,
+    # reusing the quote node already fetched above (no extra round-trip). It now carries the
+    # same value + precedence as /api/spot and the terrain card, and gains the stored-trade
+    # fallback this path lacked (an empty live quote used to yield None / a bare mark here).
+    spot, _spot_source, _spot_ts = resolve_spot(ticker, quote_node=_node_q, chain_json=None)
     bid    = parsed_bid
     ask    = parsed_ask
 
