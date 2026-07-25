@@ -2814,6 +2814,95 @@ body.ed-terrain-mode #loading-overlay {
 .tv-radar-lv { font:600 9.5px/1 var(--font-mono,monospace); color:var(--tv-mu); }
 .tv-radar-pc { font:600 9.5px/1 var(--font-mono,monospace); color:var(--tv-dim); }
 .tv-radar-foot b { color:var(--tv-mu); font-weight:800; }
+
+/* ── CONSOLE v2 — the approved decision-first console body (CR-CAP).
+      SCOPE LOCK: every rule is prefixed #cv2 / .cv-*, so nothing here can reach the
+      utility bar or #terrain-view. The legacy console markup stays in the DOM (its JS
+      drives the utility bar, SSE, freshness pills and terrain) but is display:none —
+      hiding it, not deleting it, is what keeps Terrain and Chart working.
+      Terrain mode already hides #cv2 via the existing
+      `body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view)` rule. ── */
+#app > .ub-sse-legacy,
+#app > .operator-diagnostics-strip,
+#app > #main { display:none !important; }
+
+#cv2 { --cv-bg:#0a0e15; --cv-sf:#111826; --cv-sf2:#0c121d; --cv-sk:#0a0f18; --cv-bd:#1f2a3c;
+  --cv-tx:#e9eef6; --cv-dm:#93a1b8; --cv-mu:#66748c; --cv-ac:#37d2dd; --cv-a2:#4b8bff;
+  --cv-up:#2fd08a; --cv-dn:#ff5c74; --cv-wn:#f6b73c; --cv-sh:rgba(0,0,0,.42);
+  display:block; max-width:1400px; margin:0 auto; padding:0 0 .6em;
+  background:var(--cv-bg); color:var(--cv-tx);
+  font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
+  border-left:1px solid var(--cv-bd); border-right:1px solid var(--cv-bd); }
+body.light #cv2 { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-sf2:#eef2f8; --cv-sk:#e7edf5;
+  --cv-bd:#d7dee9; --cv-tx:#0f1725; --cv-dm:#4f5e74; --cv-mu:#7a8698; --cv-ac:#0e97a6;
+  --cv-a2:#2563eb; --cv-up:#0f9d63; --cv-dn:#d83a54; --cv-wn:#b9770c; --cv-sh:rgba(15,23,42,.1); }
+#cv2 *, #cv2 *::before, #cv2 *::after { box-sizing:border-box; }
+#cv2 .cv-n { font-family:ui-monospace,Menlo,Consolas,monospace; font-feature-settings:"tnum"; }
+#cv2 .cv-up { color:var(--cv-up); }
+#cv2 .cv-dn { color:var(--cv-dn); }
+#cv2 .cv-dim { color:var(--cv-dm); }
+#cv2 .cv-wn { color:var(--cv-wn); }
+#cv2 .cv-ac { color:var(--cv-ac); }
+#cv2 .cv-mu { color:var(--cv-mu); }
+#cv2 .cv-body { display:grid; grid-template-columns:190px minmax(0,1fr) 240px; gap:.8em; padding:.8em; align-items:start; }
+@media (max-width:1080px){ #cv2 .cv-body { grid-template-columns:minmax(0,1fr); } }
+#cv2 .cv-card { background:var(--cv-sf); border:1px solid var(--cv-bd); border-radius:.75em;
+  padding:.8em .9em; box-shadow:0 1px 3px var(--cv-sh); }
+#cv2 .cv-rail .cv-card + .cv-card { margin-top:.7em; }
+#cv2 .cv-h5 { margin:0 0 .5em; font-size:.7em; letter-spacing:.1em; color:var(--cv-mu);
+  text-transform:uppercase; font-weight:700; }
+#cv2 .cv-h4 { margin:0 0 .5em; font-size:.72em; letter-spacing:.08em; color:var(--cv-dm);
+  font-weight:700; text-transform:uppercase; display:flex; justify-content:space-between;
+  align-items:center; gap:.6em; }
+#cv2 .cv-badge { font-size:.8em; font-weight:700; padding:.1em .55em; border-radius:1em;
+  background:var(--cv-sk); border:1px solid var(--cv-bd); white-space:nowrap; }
+#cv2 .cv-wl { display:flex; flex-direction:column; gap:.15em; }
+#cv2 .cv-wlrow { display:flex; align-items:center; gap:.5em; padding:.4em .3em; border-radius:.4em;
+  cursor:pointer; border:1px solid transparent; background:none; width:100%; text-align:left;
+  color:inherit; font:inherit; }
+#cv2 .cv-wlrow[aria-selected="true"] { background:var(--cv-sk); border-color:var(--cv-bd); }
+#cv2 .cv-wlrow:focus-visible { outline:2px solid var(--cv-ac); outline-offset:1px; }
+#cv2 .cv-wlrow .cv-sym { font-weight:800; width:3.2em; }
+#cv2 .cv-wlrow .cv-chg { margin-left:auto; font-size:.82em; font-weight:700; }
+#cv2 .cv-li { display:flex; justify-content:space-between; gap:.6em; padding:.4em 0;
+  border-bottom:1px solid var(--cv-bd); }
+#cv2 .cv-li:last-child { border-bottom:none; }
+#cv2 .cv-center { display:grid; grid-template-columns:1.6fr 1fr; gap:.8em; align-content:start; }
+@media (max-width:640px){ #cv2 .cv-center { grid-template-columns:minmax(0,1fr); } }
+#cv2 .cv-full { grid-column:1/-1; }
+#cv2 .cv-call { border-left:.26em solid var(--cv-dn); border-radius:0 .75em .75em 0; }
+#cv2 .cv-tag { font-size:.76em; font-weight:700; letter-spacing:.06em; color:var(--cv-dn); }
+#cv2 .cv-verd { font-size:1.35em; font-weight:800; margin:.1em 0 .25em; }
+#cv2 .cv-sub { color:var(--cv-dm); font-size:.9em; }
+#cv2 .cv-plan { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.5em .8em; margin-top:.7em; }
+#cv2 .cv-plan .cv-l { color:var(--cv-dm); font-size:.68em; text-transform:uppercase; }
+#cv2 .cv-plan .cv-v { font-size:1.05em; font-weight:700; }
+#cv2 .cv-greeks { display:grid; grid-template-columns:1fr 1fr; gap:.45em; }
+#cv2 .cv-gk { background:var(--cv-sk); border:1px solid var(--cv-bd); border-radius:.5em;
+  padding:.45em .55em; display:flex; align-items:center; gap:.5em; }
+#cv2 .cv-gk .cv-gs { font-size:1.35em; font-weight:800; color:var(--cv-ac);
+  font-family:Georgia,serif; width:1.1em; text-align:center; }
+#cv2 .cv-gk .cv-k { font-size:.62em; color:var(--cv-mu); text-transform:uppercase; }
+#cv2 .cv-gk .cv-val { font-weight:700; }
+#cv2 .cv-gx { display:flex; align-items:flex-end; gap:2px; height:100px; padding-top:14px; }
+#cv2 .cv-gx .cv-col { flex:1; display:flex; flex-direction:column; align-items:center;
+  justify-content:flex-end; height:100%; position:relative; }
+#cv2 .cv-gx .cv-bar { width:72%; border-radius:2px 2px 0 0; }
+#cv2 .cv-gx .cv-flag { position:absolute; top:-13px; font-size:.56em; font-weight:700;
+  white-space:nowrap; transform:translateX(-50%); left:50%; }
+#cv2 .cv-gx .cv-sl { font-size:.56em; color:var(--cv-mu); margin-top:4px;
+  font-family:ui-monospace,Menlo,Consolas,monospace; }
+#cv2 .cv-gx .cv-spot { position:absolute; top:0; bottom:16px; width:2px; background:var(--cv-a2); left:50%; }
+#cv2 .cv-act { display:flex; flex-direction:column; }
+#cv2 .cv-act .cv-row { display:flex; gap:.55em; align-items:baseline; padding:.42em 0;
+  border-bottom:1px solid var(--cv-bd); font-size:.86em; }
+#cv2 .cv-act .cv-row:last-child { border-bottom:none; }
+#cv2 .cv-act .cv-dot { width:.5em; height:.5em; border-radius:50%; flex:none; transform:translateY(.15em); }
+#cv2 .cv-act .cv-ts { color:var(--cv-mu); font-size:.82em; width:3.2em; flex:none; }
+#cv2 .cv-act .cv-msg { color:var(--cv-dm); }
+#cv2 .cv-act .cv-msg b { color:var(--cv-tx); font-weight:600; }
+#cv2 .cv-foot { padding:.5em 1em; border-top:1px solid var(--cv-bd); color:var(--cv-mu);
+  font-size:.74em; display:flex; gap:1.2em; flex-wrap:wrap; }
 </style>
 </head>
 <body class="layout-classic">
@@ -3037,6 +3126,97 @@ body.ed-terrain-mode #loading-overlay {
       </div>
     </div>
   </section>
+
+  <!-- ── CONSOLE v2 — the approved decision-first console body. Direct child of #app so
+       the existing terrain-mode rule hides it automatically when Terrain is selected.
+       Chrome (ticker, expiry, price, VIX, tabs, theme, clock) stays in the utility bar
+       above — this is the console BODY only, deliberately not a second header. ── -->
+  <div id="cv2">
+    <div class="cv-body">
+
+      <div class="cv-rail">
+        <div class="cv-card">
+          <h5 class="cv-h5">Watchlist · switches every tab</h5>
+          <div class="cv-wl" id="cv2-wl"></div>
+        </div>
+        <div class="cv-card">
+          <h5 class="cv-h5">Basket read</h5>
+          <div class="cv-li"><span class="cv-dim">Breadth</span><b id="cv2-bk-breadth">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Leader</span><b class="cv-n" id="cv2-bk-leader">—</b></div>
+        </div>
+        <div class="cv-card">
+          <h5 class="cv-h5">Chain</h5>
+          <div class="cv-li"><span class="cv-dim">Contracts</span><b class="cv-n" id="cv2-ch-contracts">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Strikes</span><b class="cv-n" id="cv2-ch-strikes">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Dollarized</span><b id="cv2-ch-dollar">—</b></div>
+        </div>
+      </div>
+
+      <div class="cv-center">
+        <div class="cv-card cv-call" id="cv2-call-card">
+          <div class="cv-tag" id="cv2-c-tag">◤ THE CALL</div>
+          <div class="cv-verd" id="cv2-c-verd">—</div>
+          <div class="cv-sub" id="cv2-c-sub">—</div>
+          <div class="cv-plan">
+            <div><div class="cv-l">Entry</div><div class="cv-v cv-n" id="cv2-c-entry">—</div></div>
+            <div><div class="cv-l">Stop</div><div class="cv-v cv-n cv-dn" id="cv2-c-stop">—</div></div>
+            <div><div class="cv-l">Target</div><div class="cv-v cv-n cv-up" id="cv2-c-tgt">—</div></div>
+            <div><div class="cv-l">R:R</div><div class="cv-v cv-n" id="cv2-c-rr">—</div></div>
+            <div><div class="cv-l">Size</div><div class="cv-v cv-n" id="cv2-c-size">—</div></div>
+            <div><div class="cv-l">Invalidate</div><div class="cv-v cv-n cv-wn" id="cv2-c-inval">—</div></div>
+          </div>
+        </div>
+
+        <div class="cv-card">
+          <div style="font-weight:700;margin-bottom:.5em" id="cv2-t-regime">—</div>
+          <div class="cv-dim" style="font-size:.82em;margin:-.35em 0 .6em" id="cv2-t-note">—</div>
+          <div class="cv-greeks">
+            <div class="cv-gk"><span class="cv-gs">Γ</span><div><div class="cv-k">Net GEX</div><div class="cv-val cv-n" id="cv2-g-gex">—</div></div></div>
+            <div class="cv-gk"><span class="cv-gs">Δ</span><div><div class="cv-k">Net DEX</div><div class="cv-val cv-n" id="cv2-g-dex">—</div></div></div>
+            <div class="cv-gk"><span class="cv-gs">χ</span><div><div class="cv-k">Charm→</div><div class="cv-val cv-n" id="cv2-g-charm">—</div></div></div>
+            <div class="cv-gk"><span class="cv-gs">ν</span><div><div class="cv-k">Vanna</div><div class="cv-val cv-n" id="cv2-g-vanna">—</div></div></div>
+          </div>
+        </div>
+
+        <div class="cv-card cv-full">
+          <h4 class="cv-h4">Level map · where spot sits <span class="cv-badge cv-ac" id="cv2-gx-tags">—</span></h4>
+          <div class="cv-gx" id="cv2-gx"></div>
+        </div>
+
+        <div class="cv-card">
+          <h4 class="cv-h4">Key levels <span class="cv-badge" id="cv2-kl-trust">—</span></h4>
+          <div class="cv-li"><span class="cv-dim">Gamma flip</span><b class="cv-n cv-ac" id="cv2-kl-flip">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Call wall</span><b class="cv-n cv-up" id="cv2-kl-cwall">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Put wall</span><b class="cv-n cv-dn" id="cv2-kl-pwall">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Gamma pin</span><b class="cv-n" id="cv2-kl-pin">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Max pain</span><b class="cv-n" id="cv2-kl-maxpain">—</b></div>
+          <div class="cv-li"><span class="cv-dim">Expected move</span><b class="cv-n" id="cv2-kl-em">—</b></div>
+        </div>
+
+        <div class="cv-card">
+          <h4 class="cv-h4">Per-horizon <span class="cv-badge">P(dir)</span></h4>
+          <div class="cv-li"><span class="cv-dim">1 min</span><b id="cv2-ph-1">—</b></div>
+          <div class="cv-li"><span class="cv-dim">5 min</span><b id="cv2-ph-5">—</b></div>
+          <div class="cv-li"><span class="cv-dim">15 min</span><b id="cv2-ph-15">—</b></div>
+          <div class="cv-li"><span class="cv-dim">60 min</span><b id="cv2-ph-60">—</b></div>
+        </div>
+      </div>
+
+      <div class="cv-rail">
+        <div class="cv-card">
+          <h5 class="cv-h5">Activity</h5>
+          <div class="cv-act" id="cv2-act"><div class="cv-row"><span class="cv-msg cv-mu">—</span></div></div>
+        </div>
+        <div class="cv-card">
+          <h5 class="cv-h5">Session</h5>
+          <div class="cv-li"><span class="cv-dim">Status</span><b id="cv2-se-status">—</b></div>
+          <div class="cv-li"><span class="cv-dim">VIX regime</span><b class="cv-wn" id="cv2-se-vix">—</b></div>
+        </div>
+      </div>
+
+    </div>
+    <div class="cv-foot"><span id="cv2-f-status">connecting…</span><span id="cv2-f-src">/api/analytics/state · /api/terrain</span></div>
+  </div>
 
   <div class="ub-sse-legacy" aria-hidden="true">
     <span class="sse-dot" id="sse-dot"></span>
@@ -12364,6 +12544,263 @@ function edCheckRadarAlerts(rows) {
 
 
 
+</script>
+
+<script>
+/* ── CONSOLE v2 paint loop ────────────────────────────────────────────────────────────
+   Reads the SAME endpoints the legacy console reads (/api/analytics/state, /api/terrain)
+   and the SAME global ticker (#ticker-input), so changing the symbol anywhere moves both.
+   RC-33: /api/terrain is the single source of truth for regime, levels and trust.
+   FAIL-CLOSED: absent fields render "—". Nothing on this surface is ever fabricated —
+   the level map is drawn from real level prices only, and is hidden when there are none.
+   Fully namespaced; touches no legacy global, no legacy element. ─────────────────────*/
+(function () {
+  'use strict';
+  var host = document.getElementById('cv2');
+  if (!host) return;
+
+  function el(id) { return document.getElementById(id); }
+  function T(id, v) {
+    var e = el(id); if (!e) return;
+    e.textContent = (v === null || v === undefined || v === '') ? '—' : v;
+  }
+  function fnum() {
+    for (var i = 0; i < arguments.length; i++) {
+      var v = arguments[i];
+      if (typeof v === 'number' && isFinite(v)) return v;
+      if (typeof v === 'string' && v.trim() && isFinite(+v)) return +v;
+    }
+    return null;
+  }
+  function fstr() {
+    for (var i = 0; i < arguments.length; i++) {
+      var v = arguments[i];
+      if (typeof v === 'string' && v.trim()) return v;
+    }
+    return null;
+  }
+  function n2(v) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(2) : null; }
+  function money(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return null;
+    var a = Math.abs(v), s = v < 0 ? '−' : '';
+    if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(2) + 'B';
+    if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(0) + 'M';
+    return s + '$' + a.toFixed(0);
+  }
+  function regimeText(r) {
+    if (!r) return null;
+    return r.replace('SHORT_GAMMA_TREND', 'Short gamma · Trend')
+            .replace('LONG_GAMMA_CHOP', 'Long gamma · Chop')
+            .replace('SIGN_UNPROVEN', 'Regime withheld · levels stand')
+            .replace('UNAVAILABLE', 'Terrain unavailable')
+            .replace(/_/g, ' ');
+  }
+  function curTicker() {
+    var i = el('ticker-input');
+    var v = (i && i.value) ? i.value.trim().toUpperCase() : '';
+    return v || 'SPY';
+  }
+
+  /* ---- watchlist: the three RTH sentinels, real % change only (never invented) ---- */
+  var WL = ['SPY', 'QQQ', 'IWM'];
+  var wlHost = el('cv2-wl');
+  WL.forEach(function (sym) {
+    var row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'cv-wlrow';
+    row.setAttribute('data-sym', sym);
+    row.setAttribute('aria-selected', String(sym === curTicker()));
+    row.innerHTML = '<span class="cv-sym">' + sym + '</span>'
+                  + '<span class="cv-chg cv-mu" data-chg>—</span>';
+    row.addEventListener('click', function () {
+      var input = el('ticker-input');
+      if (input) input.value = sym;
+      /* drive the LEGACY refresh too, so every panel and the terrain view follow */
+      if (typeof window.triggerRefresh === 'function') { try { window.triggerRefresh(); } catch (e) {} }
+      markWatchlist();
+      refresh();
+    });
+    wlHost.appendChild(row);
+  });
+  function markWatchlist() {
+    var t = curTicker();
+    [].forEach.call(wlHost.children, function (r) {
+      r.setAttribute('aria-selected', String(r.getAttribute('data-sym') === t));
+    });
+  }
+
+  /* ---- level map: real level prices positioned against spot. No synthetic bars. ---- */
+  function paintLevelMap(t, spot) {
+    var box = el('cv2-gx');
+    if (!box) return;
+    var pts = [
+      { k: 'PUT WALL', v: fnum(t.put_wall), c: 'var(--cv-dn)' },
+      { k: 'PIN',      v: fnum(t.gamma_pin), c: 'var(--cv-up)' },
+      { k: 'MAX PAIN', v: fnum(t.max_pain), c: 'var(--cv-mu)' },
+      { k: 'HVL',      v: fnum(t.hvl), c: 'var(--cv-dm)' },
+      { k: 'FLIP',     v: fnum(t.gamma_flip), c: 'var(--cv-ac)' },
+      { k: 'CALL WALL', v: fnum(t.call_wall), c: 'var(--cv-up)' }
+    ].filter(function (p) { return p.v !== null; });
+    if (!pts.length || spot === null) {
+      box.style.height = 'auto';
+      box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no levels available — terrain fail-closed</span>';
+      return;
+    }
+    var all = pts.map(function (p) { return p.v; }).concat([spot]);
+    var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    var pad = (hi - lo) * 0.12 || 1;
+    lo -= pad; hi += pad;
+    function pct(v) { return ((v - lo) / (hi - lo) * 100).toFixed(2); }
+    var h = '<div style="position:relative;height:76px;margin-top:6px">'
+          + '<div style="position:absolute;left:0;right:0;top:38px;height:2px;background:var(--cv-bd)"></div>';
+    pts.forEach(function (p, i) {
+      var x = pct(p.v), up = i % 2 === 0;
+      h += '<div style="position:absolute;left:' + x + '%;top:' + (up ? 30 : 38) + 'px;width:2px;height:10px;background:' + p.c + '"></div>'
+         + '<div style="position:absolute;left:' + x + '%;top:' + (up ? 8 : 52) + 'px;transform:translateX(-50%);'
+         + 'font-size:9px;font-weight:700;letter-spacing:.04em;white-space:nowrap;color:' + p.c + '">'
+         + p.k + '<br><span style="font-family:ui-monospace,Menlo,Consolas,monospace">' + p.v.toFixed(2) + '</span></div>';
+    });
+    h += '<div style="position:absolute;left:' + pct(spot) + '%;top:24px;width:2px;height:30px;background:var(--cv-a2)"></div>'
+       + '<div style="position:absolute;left:' + pct(spot) + '%;top:56px;transform:translateX(-50%);font-size:9px;'
+       + 'font-weight:800;color:var(--cv-a2);white-space:nowrap">SPOT ' + spot.toFixed(2) + '</div></div>';
+    box.style.height = 'auto';
+    box.style.display = 'block';
+    box.innerHTML = h;
+  }
+
+  /* ---- activity: terrain's own reason lines. Real text or nothing. ---- */
+  function paintActivity(t) {
+    var box = el('cv2-act');
+    if (!box) return;
+    var lines = (t && Array.isArray(t.lines)) ? t.lines.filter(function (x) { return x && String(x).trim(); }) : [];
+    if (!lines.length) { box.innerHTML = '<div class="cv-row"><span class="cv-msg cv-mu">—</span></div>'; return; }
+    box.innerHTML = lines.slice(0, 6).map(function (L) {
+      return '<div class="cv-row"><span class="cv-dot" style="background:var(--cv-ac)"></span>'
+           + '<span class="cv-msg">' + String(L).replace(/[<>]/g, '') + '</span></div>';
+    }).join('');
+  }
+
+  function paint(s, t) {
+    s = s || {}; t = t || {};
+    var spot = fnum(s.spot, s.quote_mid, t.spot);
+
+    /* The Call */
+    var bias = fstr(s.final_bias, s.call_signal, s.rules_signal);
+    var conv = fstr(s.call_conviction, s.rules_conviction);
+    T('cv2-c-tag', '◤ THE CALL' + (bias ? ' · ' + String(bias).toUpperCase() : '')
+                 + (conv ? ' · ' + String(conv).toUpperCase() : ''));
+    T('cv2-c-verd', fstr(s.call_headline, s.rules_headline_1m, s.rules_headline, s.pred_headline));
+    T('cv2-c-sub', fstr(s.call_reasoning, s.rules_detail));
+    T('cv2-c-entry', fstr(s.entry_disp) || n2(fnum(s.entry)));
+    T('cv2-c-stop', fstr(s.stop_disp) || n2(fnum(s.stop)));
+    T('cv2-c-tgt', fstr(s.target_disp) || n2(fnum(s.target)));
+    T('cv2-c-rr', fstr(s.rr_disp) || n2(fnum(s.reward_risk)));
+    T('cv2-c-size', fstr(s.size_cue, s.sizing_summary, s.r_units));
+    T('cv2-c-inval', fstr(s.invalidation, s.wait_reason));
+    var card = el('cv2-call-card');
+    if (card) {
+      var b = (bias || '').toUpperCase();
+      card.style.borderLeftColor = /LONG|BULL|UP/.test(b) ? 'var(--cv-up)'
+                                 : /SHORT|BEAR|DOWN/.test(b) ? 'var(--cv-dn)' : 'var(--cv-mu)';
+    }
+
+    /* terrain + greeks (RC-33: /api/terrain is the single source) */
+    T('cv2-t-regime', regimeText(fstr(t.regime)));
+    T('cv2-t-note', fstr(t.headline, (t.lines && t.lines[0])));
+    T('cv2-g-gex', fstr(s.kl_net_gex_disp) || money(fnum(t.net_gex_at_spot, s.net_gamma)));
+    T('cv2-g-dex', money(fnum(s.net_delta)) || fstr(s.dex_magnitude));
+    T('cv2-g-charm', n2(fnum(s.charm_drift_toward)) || fstr(s.charm_direction_display));
+    T('cv2-g-vanna', fstr(s.iv_skew_interp));
+
+    /* key levels — terrain first */
+    T('cv2-kl-flip', n2(fnum(t.gamma_flip, s.kl_gamma_flip)));
+    T('cv2-kl-cwall', n2(fnum(t.call_wall, s.kl_call_gamma_wall)));
+    T('cv2-kl-pwall', n2(fnum(t.put_wall, s.kl_put_gamma_wall)));
+    T('cv2-kl-pin', n2(fnum(t.gamma_pin, s.kl_gamma_pin)));
+    T('cv2-kl-maxpain', n2(fnum(t.max_pain)));
+    var emu = fnum(s.kl_em_upper), eml = fnum(s.kl_em_lower);
+    T('cv2-kl-em', (eml !== null && emu !== null) ? (eml.toFixed(1) + ' – ' + emu.toFixed(1)) : null);
+    var trusted = (fstr(t.confidence) === 'TRUSTED');
+    var trustEl = el('cv2-kl-trust');
+    if (trustEl) {
+      trustEl.textContent = fstr(t.confidence) ? (trusted ? 'trusted' : 'narrow') : '—';
+      trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
+    }
+
+    /* chain provenance */
+    T('cv2-ch-contracts', fnum(t.contracts_used) !== null ? Number(t.contracts_used).toLocaleString() : null);
+    T('cv2-ch-strikes', fnum(t.strikes_used) !== null ? String(t.strikes_used) : null);
+    var dEl = el('cv2-ch-dollar');
+    if (dEl) {
+      var d = t.dollarized;
+      dEl.textContent = (d === true) ? 'yes' : (d === false) ? 'no' : '—';
+      dEl.className = (d === true) ? 'cv-up' : (d === false) ? 'cv-wn' : '';
+    }
+
+    /* level map + badge */
+    paintLevelMap(t, spot);
+    var fl = n2(fnum(t.gamma_flip)), pn = n2(fnum(t.gamma_pin));
+    var tags = (fl ? 'flip ' + fl : '') + (pn ? (fl ? ' · ' : '') + 'pin ' + pn : '');
+    T('cv2-gx-tags', tags || null);
+
+    /* per-horizon */
+    function hz(id, u, d, f) {
+      var e = el(id); if (!e) return;
+      if (u === null && d === null && f === null) { e.textContent = '—'; e.className = ''; return; }
+      u = u || 0; d = d || 0; f = f || 0;
+      var m = Math.max(u, d, f), lab, cls;
+      if (m === u) { lab = '↑'; cls = 'cv-up'; }
+      else if (m === d) { lab = '↓'; cls = 'cv-dn'; }
+      else { lab = '↔'; cls = 'cv-ac'; }
+      e.textContent = lab + ' ' + Math.round(m * 100) + '%';
+      e.className = cls;
+    }
+    hz('cv2-ph-1', fnum(s.up_prob_1c), fnum(s.down_prob_1c), fnum(s.flat_prob_1c));
+    hz('cv2-ph-5', fnum(s.up_prob_5c), fnum(s.down_prob_5c), fnum(s.flat_prob_5c));
+    hz('cv2-ph-15', fnum(s.up_prob_15c), fnum(s.down_prob_15c), fnum(s.flat_prob_15c));
+    hz('cv2-ph-60', fnum(s.up_prob_60c), fnum(s.down_prob_60c), fnum(s.flat_prob_60c));
+
+    /* basket + session + activity */
+    T('cv2-bk-breadth', fstr(s.index_risk_signal, s.index_breadth));
+    T('cv2-bk-leader', fstr(s.index_leader));
+    T('cv2-se-status', fstr(s.session_label, s.zone_label));
+    T('cv2-se-vix', fstr(s.vix_regime));
+    paintActivity(t);
+
+    /* watchlist % change — sentinels only, real numbers only */
+    var chg = { SPY: fnum(s.spy_chg_pct), QQQ: fnum(s.qqq_chg_pct), IWM: fnum(s.iwm_chg_pct) };
+    [].forEach.call(wlHost.children, function (r) {
+      var c = chg[r.getAttribute('data-sym')], out = r.querySelector('[data-chg]');
+      if (!out) return;
+      if (c === null || c === undefined) { out.textContent = '—'; out.className = 'cv-chg cv-mu'; return; }
+      out.textContent = (c >= 0 ? '+' : '−') + Math.abs(c).toFixed(2) + '%';
+      out.className = 'cv-chg ' + (c >= 0 ? 'cv-up' : 'cv-dn');
+    });
+
+    T('cv2-f-status', 'live · ' + curTicker() + ' · as-of '
+      + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
+  }
+
+  var inflight = false;
+  async function refresh() {
+    if (inflight) return;
+    if (document.body.classList.contains('ed-terrain-mode')) return;
+    inflight = true;
+    var tk = curTicker(), s = null, t = null;
+    try { s = await (await fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
+    try { t = await (await fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
+    inflight = false;
+    markWatchlist();
+    if (!s && !t) { T('cv2-f-status', 'data offline — console server unreachable'); return; }
+    try { paint(s, t); } catch (e) { T('cv2-f-status', 'render error: ' + e.message); }
+  }
+
+  var tkIn = el('ticker-input');
+  if (tkIn) { tkIn.addEventListener('change', refresh); tkIn.addEventListener('blur', refresh); }
+  refresh();
+  setInterval(refresh, 5000);
+  window.EdCv2 = { refresh: refresh };
+})();
 </script>
 </body>
 </html>
