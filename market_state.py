@@ -888,10 +888,10 @@ def _schwab_days_to_expiration_for_contract(contracts, strike: float | None, sid
     for ct in contracts or []:
         if str(ct.get("putCall", "")).upper().strip() != side_up:
             continue
-        try:
-            if abs(float(ct.get("strikePrice")) - strike_f) >= 0.01:
-                continue
-        except Exception:
+        # single source: reject NaN via the finite reader. Raw float() let a NaN strike
+        # pass (abs(nan-strike_f) >= 0.01 is False), falsely matching the wrong contract.
+        _sp = _f_ms(ct.get("strikePrice"))
+        if _sp is None or abs(_sp - strike_f) >= 0.01:
             continue
         raw_dte = ct.get("daysToExpiration")
         try:

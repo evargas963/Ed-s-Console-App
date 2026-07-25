@@ -621,12 +621,14 @@ def parity_f_minus_spot_from_contracts(
         use.append(c)
     if not use:
         return 0.0
+    from numeric_contract import float_finite_or_none as _fin
     strikes = []
     for c in use:
-        try:
-            strikes.append(float(c.get("strikePrice")))
-        except Exception:
+        # single source: reject NaN/inf/junk strikes (raw float() silently admitted NaN)
+        sp = _fin(c.get("strikePrice"))
+        if sp is None:
             continue
+        strikes.append(sp)
     if not strikes:
         return 0.0
     strikes = sorted(set(strikes))
@@ -646,13 +648,10 @@ def parity_f_minus_spot_from_contracts(
     for k in band:
         def _chain_match(c: dict, right: str) -> bool:
             pc = c.get("putCall")
-            sp = c.get("strikePrice")
+            sp = _fin(c.get("strikePrice"))  # single source: finite strike (removes the last raw float() in this function)
             if pc is None or sp is None:
                 return False
-            try:
-                return str(pc).upper() == right and float(sp) == k
-            except (TypeError, ValueError):
-                return False
+            return str(pc).upper() == right and sp == k
 
         calls = [c for c in use if _chain_match(c, "CALL")]
         puts = [c for c in use if _chain_match(c, "PUT")]
@@ -896,14 +895,18 @@ def infer_strike_increment(contracts: List[dict]) -> float | None:
     """
     if not contracts:
         return None
+    from numeric_contract import float_finite_or_none as _fin
     strikes_set: set[float] = set()
     for c in contracts:
         if not isinstance(c, dict):
             continue
-        try:
-            strikes_set.add(float(c.get("strikePrice")))  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            continue  # vendor rows occasionally carry junk; one bad strike must not kill the whole read (audit 2026-07-20: strikePrice='x' raised)
+        # single source: reject NaN/inf as well as junk. Raw float() only caught the
+        # non-numeric case (strikePrice='x', audit 2026-07-20); float('nan') slipped
+        # through and corrupted the sorted set the spacing inference pairs over.
+        sp = _fin(c.get("strikePrice"))
+        if sp is None:
+            continue
+        strikes_set.add(sp)
     strikes = sorted(strikes_set)
     if len(strikes) < 3:
         return None

@@ -5051,6 +5051,7 @@ def _selected_schwab_days_to_expiration(
     except (TypeError, ValueError):
         strike_key = None
 
+    from numeric_contract import float_finite_or_none as _fin
     matches: list[dict] = []
     for ct in contracts or []:
         exp = str(ct.get("expirationDate") or "")[:10]
@@ -5059,10 +5060,10 @@ def _selected_schwab_days_to_expiration(
         if side_key in ("CALL", "PUT") and str(ct.get("putCall") or "").upper().strip() != side_key:
             continue
         if strike_key is not None:
-            try:
-                if abs(float(ct.get("strikePrice")) - strike_key) >= 0.01:
-                    continue
-            except (TypeError, ValueError):
+            # single source: reject NaN via the finite reader. Raw float() let a NaN
+            # strike pass (abs(nan-strike_key) >= 0.01 is False), matching the wrong contract.
+            _sp = _fin(ct.get("strikePrice"))
+            if _sp is None or abs(_sp - strike_key) >= 0.01:
                 continue
         matches.append(ct)
 
@@ -6684,11 +6685,14 @@ def _fetch_state(
         _today_open = getattr(price_levels, "today_open", None)
 
         # ATM straddle: find ATM call + put mark from chain
-        _all_strikes = sorted(set(
-            float(ct.get("strikePrice"))
+        # single source: reject NaN via the finite reader (raw float() admitted NaN into
+        # the strike set, corrupting sorting and the ATM-strike nearest-neighbour pick).
+        from numeric_contract import float_finite_or_none as _fin
+        _all_strikes = sorted({
+            sp
             for ct in contracts_use
-            if ct.get("strikePrice") is not None
-        ))
+            if (sp := _fin(ct.get("strikePrice"))) is not None
+        })
         if _all_strikes and spot_f > 0:
             _atm_k = min(_all_strikes, key=lambda k: abs(k - spot_f))
             _atm_calls = [
@@ -10922,11 +10926,14 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
             # SINGLE SOURCE: totalVolume read through the canonical non-negative reader so
             # the REST aggregation drops NaN/±inf (raw float() used to admit them, poisoning
             # the sum) and reads 0/negatives identically to the exposure and order-flow paths.
-            from numeric_contract import float_nonnegative_or_none as _vol_read
+            from numeric_contract import (
+                float_finite_or_none as _fin,
+                float_nonnegative_or_none as _vol_read,
+            )
             for ct in cts:
-                try:
-                    k = float(ct.get("strikePrice"))
-                except (TypeError, ValueError):
+                # single source: reject NaN strike (raw float() let a NaN become a dict key)
+                k = _fin(ct.get("strikePrice"))
+                if k is None:
                     continue
                 v = _vol_read(ct.get("totalVolume"))
                 if v:
