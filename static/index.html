@@ -12861,33 +12861,50 @@ function edCheckRadarAlerts(rows) {
           live from /api/terrain. Real per-strike gamma needs `profile` on the terrain
           payload (excluded from to_dict today) — that's the wire-up, tracked separately;
           the LOOK here matches the approved design and is not changed from memory. ---- */
-  function buildGammaBars() {
+  /* Gamma-by-strike bars from REAL per-strike net dealer GEX$ (/api/terrain/strikes ->
+     today.all = [strike, net_gex_1pct$, volume]) — the same live source the Terrain tab
+     uses. Bar height = real |net GEX$| normalized; color = sign (red negative = amplifying,
+     green positive = damping). No hardcoded magnitudes. Rebuilt each refresh; fail-closed. */
+  function buildGammaBars(g, t, spot) {
     var host = el('cv2-gx');
-    if (!host || host.getAttribute('data-built')) return;
-    host.setAttribute('data-built', '1');
-    var strikes = [730,731,732,733,734,735,736,737,738,739,740,741,742,743,744,745,746,747,748];
-    var gv = [-8,-10,-14,-9,-16,-22,-19,-27,-24,-33,-46,-30,-21,-17,-9,-6,3,5,4];
-    var walls = { 735: 'PIN', 740: 'PUT WALL', 746: 'FLIP' }, mx = 46;
-    strikes.forEach(function (s, i) {
-      var v = gv[i], c = document.createElement('div'); c.className = 'cv-col';
-      if (walls[s]) {
+    if (!host) return;
+    var all = (g && g.today && Array.isArray(g.today.all)) ? g.today.all : null;
+    if (!all || !all.length || spot === null || spot === undefined) {
+      host.innerHTML = '<span class="cv-mu" style="font-size:.72em;align-self:center">no per-strike gamma</span>'; return;
+    }
+    var rows = all.map(function (r) { return { k: +r[0], g: +r[1] }; })
+      .filter(function (r) { return isFinite(r.k) && isFinite(r.g) && Math.abs(r.k - spot) <= 13; })
+      .sort(function (a, b) { return a.k - b.k; });
+    if (!rows.length) { host.innerHTML = '<span class="cv-mu" style="font-size:.72em;align-self:center">no strikes near spot</span>'; return; }
+    var maxAbs = Math.max.apply(null, rows.map(function (r) { return Math.abs(r.g); })) || 1;
+    function nearest(p) { var bk = null, bd = 1e9; rows.forEach(function (r) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bk = r.k; } }); return { k: bk, d: bd }; }
+    var lvl = {};
+    function tag(name, v) { var p = fnum(v); if (p === null) return; var nr = nearest(p); if (nr.k !== null && nr.d <= 0.75) { (lvl[nr.k] = lvl[nr.k] || []).push(name); } }
+    if (t) { tag('CALL WALL', t.call_wall); tag('PUT WALL', t.put_wall); tag('PIN', t.gamma_pin); }
+    var flip = t ? fnum(t.gamma_flip) : null;
+    var flipK = (flip !== null) ? nearest(flip).k : null;
+    if (flipK !== null) (lvl[flipK] = lvl[flipK] || []).unshift('FLIP');
+    var spotK = nearest(spot).k;
+    host.innerHTML = '';
+    rows.forEach(function (r) {
+      var c = document.createElement('div'); c.className = 'cv-col';
+      var names = lvl[r.k];
+      if (names && names.length) {
         var f = document.createElement('div'); f.className = 'cv-flag';
-        f.textContent = walls[s]; f.style.color = v < 0 ? 'var(--cv-dn)' : 'var(--cv-ac)';
+        f.textContent = names[0]; f.style.color = r.g < 0 ? 'var(--cv-dn)' : 'var(--cv-ac)';
         c.appendChild(f);
       }
+      var mag = Math.abs(r.g) / maxAbs;
       var b = document.createElement('div'); b.className = 'cv-bar';
-      b.style.height = Math.max(4, Math.abs(v) / mx * 56) + 'px';
-      b.style.background = v < 0 ? 'var(--cv-dn)' : 'var(--cv-up)';
-      b.style.opacity = (0.45 + 0.55 * Math.abs(v) / mx).toFixed(2);
+      b.style.height = Math.max(4, mag * 56) + 'px';
+      b.style.background = r.g < 0 ? 'var(--cv-dn)' : 'var(--cv-up)';
+      b.style.opacity = (0.45 + 0.55 * mag).toFixed(2);
       c.appendChild(b);
-      var sl = document.createElement('div'); sl.className = 'cv-sl'; sl.textContent = s; c.appendChild(sl);
-      if (s === 738) { var sp = document.createElement('div'); sp.className = 'cv-spot'; c.appendChild(sp); }
+      var sl = document.createElement('div'); sl.className = 'cv-sl'; sl.textContent = r.k; c.appendChild(sl);
+      if (r.k === spotK) { var sp = document.createElement('div'); sp.className = 'cv-spot'; c.appendChild(sp); }
       host.appendChild(c);
     });
   }
-
-  /* Activity is the approved static "· sample" card (matches console_v2_live.html) —
-     it is intentionally not wired to live data yet, so paint() leaves it untouched. */
 
   function paint(s, t) {
     s = s || {}; t = t || {};
@@ -13124,15 +13141,16 @@ function edCheckRadarAlerts(rows) {
     var tk = curTicker(), s = null, t = null;
     try { s = await (await fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
     try { t = await (await fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
-    inflight = false;
     markWatchlist();
-    if (!s && !t) { T('cv2-f-status', 'data offline — console server unreachable'); return; }
+    if (!s && !t) { inflight = false; T('cv2-f-status', 'data offline — console server unreachable'); return; }
     try { paint(s, t); } catch (e) { T('cv2-f-status', 'render error: ' + e.message); }
+    var spot = fnum((s || {}).spot, (s || {}).quote_mid, (t || {}).spot);
+    try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); buildGammaBars(g, t, spot); } catch (e) { buildGammaBars(null, t, spot); }
+    inflight = false;
   }
 
   var tkIn = el('ticker-input');
   if (tkIn) { tkIn.addEventListener('change', refresh); tkIn.addEventListener('blur', refresh); }
-  buildGammaBars();
   refresh();
   setInterval(refresh, 5000);
   window.EdCv2 = { refresh: refresh };
