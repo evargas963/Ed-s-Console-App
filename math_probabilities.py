@@ -184,9 +184,11 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     candidates = [
         ct
         for ct in contracts
+        # single source: parse the strike once via the canonical finite reader (was
+        # _f for the filter + raw float() for the value — the last such double-parse).
         if str(ct.get("putCall", "")).upper().strip() == side_up
-        and _f(ct.get("strikePrice")) is not None
-        and abs(float(ct.get("strikePrice")) - strike_f) < 0.01
+        and (sp := _f(ct.get("strikePrice"))) is not None
+        and abs(sp - strike_f) < 0.01
     ]
     if not candidates:
         return None
