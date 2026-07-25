@@ -12944,10 +12944,38 @@ function edCheckRadarAlerts(rows) {
 
   function paint(s, t) {
     s = s || {}; t = t || {};
+    var hasS = Object.keys(s).length > 0;   // false = analytics not loaded YET (transient), not "absent"
     var spot = fnum(s.spot, s.quote_mid, t.spot);
-    paintHeader(s, spot);
 
-    /* The Call */
+    /* ---- TERRAIN-sourced cells (/api/terrain, fast): updated on EVERY paint. ---- */
+    T('cv2-hd-px', n2(spot));
+    T('cv2-t-regime', regimeText(fstr(t.regime)));
+    T('cv2-t-note', fstr(t.headline, (t.lines && t.lines[0])));
+    T('cv2-g-gex', money(fnum(t.net_gex_at_spot)));   // terrain single source (net GEX @ spot)
+    T('cv2-kl-flip', n2(fnum(t.gamma_flip)));
+    var pw = fnum(t.put_wall), cw = fnum(t.call_wall);
+    T('cv2-kl-cwall', n2(cw));
+    T('cv2-kl-pwall', n2(pw));
+    T('cv2-kl-pin', n2(fnum(t.gamma_pin)));
+    var trusted = (fstr(t.confidence) === 'TRUSTED');
+    var trustEl = el('cv2-kl-trust');
+    if (trustEl) {
+      trustEl.textContent = fstr(t.confidence) ? (trusted ? 'trusted' : 'narrow') : '—';
+      trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
+    }
+    var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
+                n2(fnum(t.gamma_pin)) && ('pin ' + n2(fnum(t.gamma_pin))),
+                cw !== null && ('call ' + n2(cw)), pw !== null && ('put ' + n2(pw))].filter(Boolean).join(' · ');
+    T('cv2-gx-tags', tags || null);
+    T('cv2-f-status', 'live · ' + curTicker() + ' · as-of '
+      + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
+
+    /* ---- ANALYTICS-sourced cells (/api/analytics/state, the slow 0.15–9s ML stack):
+       update ONLY once it has actually loaded. A pending fetch must NEVER blank these to
+       "—" and collapse the cards — that reflow was the layout "shift"/flicker. On first
+       load they honestly show "—" until data arrives, then hold their last real value. ---- */
+    if (!hasS) return;
+    paintHeader(s, spot);
     var bias = fstr(s.final_bias, s.call_signal, s.rules_signal);
     var conv = fstr(s.call_conviction, s.rules_conviction);
     T('cv2-c-tag', '◤ THE CALL' + (bias ? ' · ' + String(bias).toUpperCase() : '')
@@ -12966,40 +12994,11 @@ function edCheckRadarAlerts(rows) {
       card.style.borderLeftColor = /LONG|BULL|UP/.test(b) ? 'var(--cv-up)'
                                  : /SHORT|BEAR|DOWN/.test(b) ? 'var(--cv-dn)' : 'var(--cv-mu)';
     }
-
-    /* terrain + greeks (RC-33: /api/terrain is the single source) */
-    T('cv2-t-regime', regimeText(fstr(t.regime)));
-    T('cv2-t-note', fstr(t.headline, (t.lines && t.lines[0])));
-    T('cv2-g-gex', fstr(s.kl_net_gex_disp) || money(fnum(t.net_gex_at_spot, s.net_gamma)));
     T('cv2-g-dex', money(fnum(s.net_delta)) || fstr(s.dex_magnitude));
     T('cv2-g-charm', n2(fnum(s.charm_drift_toward)) || fstr(s.charm_direction_display));
     T('cv2-g-vanna', fstr(s.iv_skew_interp));
-
-    /* key levels — /api/terrain is the SINGLE SOURCE (RC-33). No analytics kl_* fallback,
-       so the console can never disagree with the terrain tab or the gamma-chart flags.
-       Call wall and Put wall are DISTINCT strikes shown on their own rows (never collapsed
-       into one number). */
-    T('cv2-kl-flip', n2(fnum(t.gamma_flip)));
-    var pw = fnum(t.put_wall), cw = fnum(t.call_wall);
-    T('cv2-kl-cwall', n2(cw));
-    T('cv2-kl-pwall', n2(pw));
-    T('cv2-kl-pin', n2(fnum(t.gamma_pin)));
     var emu = fnum(s.kl_em_upper), eml = fnum(s.kl_em_lower);
     T('cv2-kl-em', (eml !== null && emu !== null) ? (eml.toFixed(1) + ' – ' + emu.toFixed(1)) : null);
-    var trusted = (fstr(t.confidence) === 'TRUSTED');
-    var trustEl = el('cv2-kl-trust');
-    if (trustEl) {
-      trustEl.textContent = fstr(t.confidence) ? (trusted ? 'trusted' : 'narrow') : '—';
-      trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
-    }
-
-    /* gamma-by-strike badge — live flip / pin / call wall / put wall, each distinct, all terrain */
-    var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
-                n2(fnum(t.gamma_pin)) && ('pin ' + n2(fnum(t.gamma_pin))),
-                cw !== null && ('call ' + n2(cw)), pw !== null && ('put ' + n2(pw))].filter(Boolean).join(' · ');
-    T('cv2-gx-tags', tags || null);
-
-    /* per-horizon */
     function hz(id, u, d, f) {
       var e = el(id); if (!e) return;
       if (u === null && d === null && f === null) { e.textContent = '—'; e.className = ''; return; }
@@ -13015,14 +13014,10 @@ function edCheckRadarAlerts(rows) {
     hz('cv2-ph-5', fnum(s.up_prob_5c), fnum(s.down_prob_5c), fnum(s.flat_prob_5c));
     hz('cv2-ph-15', fnum(s.up_prob_15c), fnum(s.down_prob_15c), fnum(s.flat_prob_15c));
     hz('cv2-ph-60', fnum(s.up_prob_60c), fnum(s.down_prob_60c), fnum(s.flat_prob_60c));
-
-    /* basket + session + activity */
     T('cv2-bk-breadth', fstr(s.index_risk_signal, s.index_breadth));
     T('cv2-bk-leader', fstr(s.index_leader));
     T('cv2-se-status', fstr(s.session_label, s.zone_label));
     T('cv2-se-vix', fstr(s.vix_regime));
-
-    /* watchlist % change — sentinels only, real numbers only */
     var chg = { SPY: fnum(s.spy_chg_pct), QQQ: fnum(s.qqq_chg_pct), IWM: fnum(s.iwm_chg_pct) };
     [].forEach.call(wlHost.children, function (r) {
       var c = chg[r.getAttribute('data-sym')], out = r.querySelector('[data-chg]');
@@ -13031,9 +13026,6 @@ function edCheckRadarAlerts(rows) {
       out.textContent = (c >= 0 ? '+' : '−') + Math.abs(c).toFixed(2) + '%';
       out.className = 'cv-chg ' + (c >= 0 ? 'cv-up' : 'cv-dn');
     });
-
-    T('cv2-f-status', 'live · ' + curTicker() + ' · as-of '
-      + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
   }
 
   /* ---- HEADER: this is the visible chrome now; it drives the hidden legacy controls,
