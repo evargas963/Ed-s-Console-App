@@ -3388,7 +3388,8 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
         <div class="cv-card"><h5 class="cv-h5">Proximity</h5>
           <div class="cv-li"><span class="cv-dim">To flip</span><b class="cv-n cv-ac" id="ct-px-flip">—</b></div>
           <div class="cv-li"><span class="cv-dim">To pin</span><b class="cv-n cv-up" id="ct-px-pin">—</b></div>
-          <div class="cv-li"><span class="cv-dim">To wall</span><b class="cv-n cv-dn" id="ct-px-wall">—</b></div>
+          <div class="cv-li"><span class="cv-dim">To call wall</span><b class="cv-n cv-up" id="ct-px-cwall">—</b></div>
+          <div class="cv-li"><span class="cv-dim">To put wall</span><b class="cv-n cv-dn" id="ct-px-pwall">—</b></div>
         </div>
       </div>
       <div class="ct-main">
@@ -12885,12 +12886,6 @@ function edCheckRadarAlerts(rows) {
     }).join('');
   }
 
-  /* ---- gamma by strike — the approved chart, built verbatim from console_v2_live.html
-          (commit c9b6cc89). Bar HEIGHTS are illustrative structure exactly as the
-          operator-approved version shipped them; the flip/pin/wall BADGE (gx-tags) is
-          live from /api/terrain. Real per-strike gamma needs `profile` on the terrain
-          payload (excluded from to_dict today) — that's the wire-up, tracked separately;
-          the LOOK here matches the approved design and is not changed from memory. ---- */
   /* Gamma-by-strike bars from REAL per-strike net dealer GEX$ (/api/terrain/strikes ->
      today.all = [strike, net_gex_1pct$, volume]) — the same live source the Terrain tab
      uses. Bar height = real |net GEX$| normalized; color = sign (red negative = amplifying,
@@ -12902,14 +12897,28 @@ function edCheckRadarAlerts(rows) {
     if (!all || !all.length || spot === null || spot === undefined) {
       host.innerHTML = '<span class="cv-mu" style="font-size:.72em;align-self:center">no per-strike gamma</span>'; return;
     }
+    /* window scales with the actionable levels (call/put wall, pin) so a wall on a
+       wide-strike name (NVDA/TSLA — $5–$10 spacing, big % moves) is NEVER silently dropped;
+       min ±13, capped at 55 nearest strikes for readability. Flip shows in the badge when
+       it is off this window. */
+    var lvlD = [t && t.call_wall, t && t.put_wall, t && t.gamma_pin]
+      .map(function (v) { return fnum(v); }).filter(function (v) { return v !== null; })
+      .map(function (v) { return Math.abs(v - spot); });
+    var halfW = Math.max.apply(null, [13].concat(lvlD)) + 2;
     var rows = all.map(function (r) { return { k: +r[0], g: +r[1] }; })
-      .filter(function (r) { return isFinite(r.k) && isFinite(r.g) && Math.abs(r.k - spot) <= 13; })
-      .sort(function (a, b) { return a.k - b.k; });
+      .filter(function (r) { return isFinite(r.k) && isFinite(r.g) && Math.abs(r.k - spot) <= halfW; });
+    if (rows.length > 55) rows.sort(function (a, b) { return Math.abs(a.k - spot) - Math.abs(b.k - spot); });
+    rows = rows.slice(0, 55).sort(function (a, b) { return a.k - b.k; });
     if (!rows.length) { host.innerHTML = '<span class="cv-mu" style="font-size:.72em;align-self:center">no strikes near spot</span>'; return; }
     var maxAbs = Math.max.apply(null, rows.map(function (r) { return Math.abs(r.g); })) || 1;
+    /* tag tolerance = half the median strike spacing (min 0.75) so walls tag on wide-strike
+       names too, not just $1-spaced ones. */
+    var sp = []; for (var si = 1; si < rows.length; si++) sp.push(Math.abs(rows[si].k - rows[si - 1].k));
+    sp.sort(function (a, b) { return a - b; });
+    var tol = sp.length ? Math.max(0.75, sp[Math.floor(sp.length / 2)] * 0.5) : 0.75;
     function nearest(p) { var bk = null, bd = 1e9; rows.forEach(function (r) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bk = r.k; } }); return { k: bk, d: bd }; }
     var lvl = {};
-    function tag(name, v) { var p = fnum(v); if (p === null) return; var nr = nearest(p); if (nr.k !== null && nr.d <= 0.75) { (lvl[nr.k] = lvl[nr.k] || []).push(name); } }
+    function tag(name, v) { var p = fnum(v); if (p === null) return; var nr = nearest(p); if (nr.k !== null && nr.d <= tol) { (lvl[nr.k] = lvl[nr.k] || []).push(name); } }
     if (t) { tag('CALL WALL', t.call_wall); tag('PUT WALL', t.put_wall); tag('PIN', t.gamma_pin); }
     /* only flag FLIP if it actually falls within the plotted strike window — never
        mis-label a window-edge strike when the flip is off-scale (e.g. flip 322 vs a
@@ -13171,18 +13180,26 @@ function edCheckRadarAlerts(rows) {
     if (document.body.classList.contains('ed-terrain-mode')) return;
     inflight = true;
     var tk = curTicker(), s = null, t = null;
+    /* Supersede guard: if the operator switches ticker mid-flight, abandon this cycle so
+       old-ticker data is never painted under the new ticker's label. */
+    function stale() { if (curTicker() === tk) return false; inflight = false; return true; }
     /* Terrain FIRST (fast): flip / net GEX / levels + the gamma bars paint immediately.
        analytics/state (The Call, greeks, per-horizon) is the heavy ML call and can take
        several seconds — it must never block the terrain-sourced cells from painting. */
     try { t = await (await fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
+    if (stale()) return;
     markWatchlist();
     if (t) { try { paint(s, t); } catch (e) { T('cv2-f-status', 'render error: ' + e.message); } }
     var spot = fnum((t || {}).spot);
-    try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); buildGammaBars(g, t, spot); } catch (e) { buildGammaBars(null, t, spot); }
+    /* transient strikes-fetch failure: KEEP the last good bars (do not repaint a placeholder
+       and collapse the panel every failed cycle). */
+    try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); if (!stale()) buildGammaBars(g, t, spot); } catch (e) {}
+    if (stale()) return;
     try { s = await (await fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
+    if (stale()) return;
     if (!s && !t) { inflight = false; T('cv2-f-status', 'data offline — console server unreachable'); return; }
     try { paint(s, t); } catch (e) { T('cv2-f-status', 'render error: ' + e.message); }
-    try { var rad = await (await fetch('/api/terrain/radar?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); paintActivity(rad); } catch (e) {}
+    try { var rad = await (await fetch('/api/terrain/radar?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); if (!stale()) paintActivity(rad); } catch (e) {}
     inflight = false;
   }
 
@@ -13243,15 +13260,26 @@ function edCheckRadarAlerts(rows) {
     var flip = fnum(t.gamma_flip), spot = fnum(t.spot);
     var all = (g && g.today && Array.isArray(g.today.all)) ? g.today.all : null;
     if (!all || !all.length || spot === null) { box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no per-strike gamma — fail closed</span>'; return; }
+    /* window scales with the actionable levels (call/put wall, pin) so wide-strike names
+       (NVDA/TSLA) never drop a wall; min ±13, capped at 55 nearest strikes for readability. */
+    var lvlD = [t.call_wall, t.put_wall, t.gamma_pin]
+      .map(function (v) { return fnum(v); }).filter(function (v) { return v !== null; })
+      .map(function (v) { return Math.abs(v - spot); });
+    var halfW = Math.max.apply(null, [13].concat(lvlD)) + 2;
     var rows = all.map(function (r) { return { k: +r[0], g: +r[1] }; })
-      .filter(function (r) { return isFinite(r.k) && isFinite(r.g) && Math.abs(r.k - spot) <= 13; })
-      .sort(function (a, b) { return b.k - a.k; });
+      .filter(function (r) { return isFinite(r.k) && isFinite(r.g) && Math.abs(r.k - spot) <= halfW; });
+    if (rows.length > 55) rows.sort(function (a, b) { return Math.abs(a.k - spot) - Math.abs(b.k - spot); });
+    rows = rows.slice(0, 55).sort(function (a, b) { return b.k - a.k; });
     if (!rows.length) { box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no strikes near spot</span>'; return; }
     var maxAbs = Math.max.apply(null, rows.map(function (r) { return Math.abs(r.g); })) || 1;
+    /* tag tolerance = half the median strike spacing (min 0.75) so levels tag on wide-strike names */
+    var spc = []; for (var sj = 1; sj < rows.length; sj++) spc.push(Math.abs(rows[sj].k - rows[sj - 1].k));
+    spc.sort(function (a, b) { return a - b; });
+    var tol = spc.length ? Math.max(0.75, spc[Math.floor(spc.length / 2)] * 0.5) : 0.75;
     var levels = [['CALL WALL', t.call_wall], ['LVP', t.lvp], ['CALL CHARM', t.call_charm_wall], ['KEY DELTA', t.key_delta_strike], ['HVL', t.hvl], ['PIN', t.gamma_pin], ['MAX PAIN', t.max_pain], ['PUT CHARM', t.put_charm_wall], ['PUT WALL', t.put_wall], ['HVP', t.hvp]];
     function nearestIdx(p) { var bi = -1, bd = 1e9; rows.forEach(function (r, i) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bi = i; } }); return { i: bi, d: bd }; }
     var flagAt = {};
-    levels.forEach(function (x) { var p = fnum(x[1]); if (p === null) return; var nr = nearestIdx(p); if (nr.i >= 0 && nr.d <= 0.75) { (flagAt[nr.i] = flagAt[nr.i] || []).push(x[0]); } });
+    levels.forEach(function (x) { var p = fnum(x[1]); if (p === null) return; var nr = nearestIdx(p); if (nr.i >= 0 && nr.d <= tol) { (flagAt[nr.i] = flagAt[nr.i] || []).push(x[0]); } });
     /* only mark FLIP when it lies within the plotted strike window; otherwise it is
        off-scale (its value shows in the flip badge) and must not mis-label an edge row. */
     var maxK = rows[0].k, minK = rows[rows.length - 1].k;
@@ -13321,7 +13349,8 @@ function edCheckRadarAlerts(rows) {
     function prox(id, lvl, cls) { var e = el(id); if (!e) return; var L = fnum(lvl); if (L === null || spot === null) { e.textContent = '—'; e.className = 'cv-n'; return; } var d = L - spot; e.textContent = (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2); e.className = 'cv-n ' + cls; }
     prox('ct-px-flip', t.gamma_flip, 'cv-ac');
     prox('ct-px-pin', t.gamma_pin, 'cv-up');
-    prox('ct-px-wall', t.put_wall, 'cv-dn');
+    prox('ct-px-cwall', t.call_wall, 'cv-up');
+    prox('ct-px-pwall', t.put_wall, 'cv-dn');
 
     T('ct-foot-status', 'live · ' + curTicker() + ' · as-of ' + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
     mark();
@@ -13349,11 +13378,17 @@ function edCheckRadarAlerts(rows) {
     inflight = true;
     var tk = curTicker();
     var t = null;
+    /* supersede guard: abandon the cycle if the ticker changed mid-flight (never paint
+       old-ticker data under the new label). */
+    function stale() { if (curTicker() === tk) return false; inflight = false; return true; }
     try { t = await (await fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
+    if (stale()) return;
     if (!t) { inflight = false; T('ct-foot-status', 'data offline — console server unreachable'); return; }
     try { paint(t); } catch (e) { T('ct-foot-status', 'render error: ' + e.message); }
-    try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); buildMap(t, g); } catch (e) { buildMap(t, null); }
-    try { var s = await (await fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); paintAux(s); } catch (e) {}
+    /* transient strikes-fetch failure: keep the last good map (do not blank the panel). */
+    try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); if (!stale()) buildMap(t, g); } catch (e) {}
+    if (stale()) return;
+    try { var s = await (await fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); if (!stale()) paintAux(s); } catch (e) {}
     inflight = false;
   }
   window.EdCv2Terrain = { refresh: refresh };
