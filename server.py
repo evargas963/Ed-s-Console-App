@@ -5152,13 +5152,11 @@ def _default_expiry(expiries: list[str], ticker: str = "?") -> Optional[str]:
 # Uses quote.lastPrice, lastSize, bidPrice, askPrice. Accumulates per session.
 # ─────────────────────────────────────────────────────────────────────────────
 def _safe_float_quote(v) -> Optional[float]:
-    """Safe float for quote fields."""
-    if v is None:
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+    """Safe float for quote fields. SINGLE SOURCE: delegates to the canonical
+    numeric_contract.float_finite_or_none so NaN/±inf are rejected identically everywhere
+    (this previously accepted NaN/inf)."""
+    from numeric_contract import float_finite_or_none
+    return float_finite_or_none(v)
 
 
 def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:

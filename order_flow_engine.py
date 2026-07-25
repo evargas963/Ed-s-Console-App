@@ -73,13 +73,12 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _safe_float(val: Any) -> Optional[float]:
-    """Convert to float; return None if invalid."""
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return None
+    """Convert to float; None if invalid. SINGLE SOURCE: delegates to the canonical
+    numeric_contract.float_finite_or_none so a NaN/±inf field is rejected identically
+    everywhere — this used to accept NaN/inf, counting a bad field the exposure engine
+    drops (so the same contract diverged across order-flow vs exposures)."""
+    from numeric_contract import float_finite_or_none
+    return float_finite_or_none(val)
 
 
 def _nonnegative_float(val: Any) -> Optional[float]:
