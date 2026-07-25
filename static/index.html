@@ -32,6 +32,14 @@
     --amber:     #f59e0b;
     --amber-bg:  #2d1a00;
     --amber-bdr: #92400e;
+    /* Per-horizon signal-card state fills — dark values EXACT (dark mode unchanged) */
+    --tf-row-bg:      #04070c;
+    --tf-neutral-bg:  #1e293b; --tf-neutral-tx: #cbd5e1;
+    --tf-wait-bg:     #243552; --tf-wait-tx:    #b8d4f5;
+    --tf-watch-bg:    #422006; --tf-watch-tx:   #fcd34d;
+    --tf-up-bg:       #091812; --tf-up-tx:      #86efac;
+    --tf-down-bg:     #180a0a;
+    --tf-withheld-bg: #1a2840; --tf-withheld-tx:#94a3b8;
     --purple:    #a855f7;
     --purple-bg: #1e0a2d;
     --yellow:    #eab308;
@@ -86,6 +94,14 @@
     --amber:     #d97706;
     --amber-bg:  #fef3c7;
     --amber-bdr: #d97706;
+    /* Per-horizon signal-card state fills — light tints with readable dark text */
+    --tf-row-bg:      #eef2f8;
+    --tf-neutral-bg:  #e2e8f0; --tf-neutral-tx: #334155;
+    --tf-wait-bg:     #dbeafe; --tf-wait-tx:    #1e40af;
+    --tf-watch-bg:    #fef3c7; --tf-watch-tx:   #92400e;
+    --tf-up-bg:       #dcfce7; --tf-up-tx:      #166534;
+    --tf-down-bg:     #fee2e2;
+    --tf-withheld-bg: #e2e8f0; --tf-withheld-tx:#475569;
     --purple:    #7c3aed;
     --purple-bg: #ede9fe;
     --signal-chain-arrow: #64748b;
@@ -780,8 +796,8 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     border: 1px solid #475569;
-    background: #1e293b;
-    color: #cbd5e1;
+    background: var(--tf-neutral-bg);
+    color: var(--tf-neutral-tx);
     box-sizing: border-box;
   }
   .tf-exec-chip--hidden,
@@ -791,18 +807,18 @@
   }
   .tf-exec-chip--trusted.tf-exec-chip--wait {
     border-color: #64748b;
-    background: #243552;
-    color: #b8d4f5;
+    background: var(--tf-wait-bg);
+    color: var(--tf-wait-tx);
   }
   .tf-exec-chip--trusted.tf-exec-chip--watch {
     border-color: #d97706;
-    background: #422006;
-    color: #fcd34d;
+    background: var(--tf-watch-bg);
+    color: var(--tf-watch-tx);
   }
   .tf-exec-chip--trusted.tf-exec-chip--active {
     border-color: #00e676;
-    background: #091812;
-    color: #86efac;
+    background: var(--tf-up-bg);
+    color: var(--tf-up-tx);
     box-shadow: 0 0 8px rgba(0, 230, 118, 0.2);
   }
   .tf-exec-chip--withheld {
@@ -812,8 +828,8 @@
   }
   .tf-exec-chip--withheld.tf-exec-chip--active {
     border-color: #64748b;
-    background: #1a2840;
-    color: #94a3b8;
+    background: var(--tf-withheld-bg);
+    color: var(--tf-withheld-tx);
   }
   #timeframe-signal-row {
     display: grid;
@@ -822,7 +838,7 @@
     grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.26fr);
     gap: 8px;
     justify-content: start;
-    background: #04070c;
+    background: var(--tf-row-bg);
     padding: 10px;
     border-radius: 10px;
     border: 1px solid #1e293b;
@@ -853,7 +869,7 @@
   }
   /* WAIT/neutral: cool slate + visible edge — readable without implying LONG/SHORT */
   .tf-signal-card.tf-state-dim {
-    background: linear-gradient(180deg, #243552 0%, #1a2840 100%);
+    background: linear-gradient(180deg, var(--tf-wait-bg) 0%, var(--tf-withheld-bg) 100%);
     border: 1px solid #6b9fd4;
     box-shadow:
       0 0 0 1px rgba(107, 159, 212, 0.12),
@@ -861,12 +877,12 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
   .tf-signal-card.tf-state-up {
-    background: #091812;
+    background: var(--tf-up-bg);
     border: 1px solid #00E676;
     box-shadow: 0 0 10px rgba(0, 230, 118, 0.22), 0 0 24px rgba(0, 230, 118, 0.08);
   }
   .tf-signal-card.tf-state-down {
-    background: #180A0A;
+    background: var(--tf-down-bg);
     border: 1px solid #FF3C3C;
     box-shadow: 0 0 10px rgba(255, 60, 60, 0.22), 0 0 24px rgba(255, 60, 60, 0.08);
   }
