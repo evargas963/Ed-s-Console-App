@@ -252,14 +252,16 @@ class MarketContext:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _vix_regime(vix: float) -> tuple[str, str, str]:
-    if vix < 15:
-        return "Low Vol",   "#166534", "Low vol — gamma walls stickier, pinning likely"
-    elif vix < 20:
-        return "Normal",    "#92400e", "Normal vol — gamma exposure reliable"
-    elif vix < 30:
-        return "Elevated",  "#b45309", "Elevated vol — walls less sticky, widen stops"
-    else:
-        return "High Vol",  "#991b1b", "Vol spike — gamma unreliable, reduce size"
+    # The 15/20/30 cuts are the single-source authority (math_volatility.vix_tier_token);
+    # this function owns ONLY the display mapping (label/color/implication), so the
+    # thresholds can never drift from vix_bucket / the L1 adaptive-materiality engine.
+    from math_volatility import vix_tier_token
+    return {
+        "low":      ("Low Vol",  "#166534", "Low vol — gamma walls stickier, pinning likely"),
+        "normal":   ("Normal",   "#92400e", "Normal vol — gamma exposure reliable"),
+        "elevated": ("Elevated", "#b45309", "Elevated vol — walls less sticky, widen stops"),
+        "high":     ("High Vol", "#991b1b", "Vol spike — gamma unreliable, reduce size"),
+    }.get(vix_tier_token(vix), ("Normal", "#92400e", "Normal vol — gamma exposure reliable"))
 
 
 def _dot_color(chg_pct: Optional[float]) -> str:
