@@ -13027,7 +13027,13 @@ function edCheckRadarAlerts(rows) {
     hz('cv2-ph-5', fnum(s.up_prob_5c), fnum(s.down_prob_5c), fnum(s.flat_prob_5c));
     hz('cv2-ph-15', fnum(s.up_prob_15c), fnum(s.down_prob_15c), fnum(s.flat_prob_15c));
     hz('cv2-ph-60', fnum(s.up_prob_60c), fnum(s.down_prob_60c), fnum(s.flat_prob_60c));
-    T('cv2-bk-breadth', fstr(s.index_risk_signal, s.index_breadth));
+    /* risk signal -> label + tone; never leak the raw 'risk_on'/'risk_off' token to the cell */
+    var rsk = fstr(s.index_risk_signal), rskEl = el('cv2-bk-breadth');
+    if (rskEl) {
+      var rskLbl = { risk_on: 'Risk ON', risk_off: 'Risk OFF', neutral: 'Neutral' }[(rsk || '').toLowerCase()];
+      rskEl.textContent = rskLbl || fstr(s.index_breadth) || '—';
+      rskEl.className = rsk === 'risk_on' ? 'cv-up' : rsk === 'risk_off' ? 'cv-dn' : '';
+    }
     T('cv2-bk-leader', fstr(s.index_leader));
     T('cv2-se-status', fstr(s.session_label, s.zone_label));
     T('cv2-se-vix', fstr(s.vix_regime));
