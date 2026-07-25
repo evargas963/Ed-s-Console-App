@@ -12,6 +12,7 @@ import math
 import logging
 
 from math_exposure_core import MISSING_GREEK_SENTINEL, _f, _nearest_strike
+from time_et import RTH_SESSION_MINUTES
 
 log = logging.getLogger(__name__)
 
@@ -408,8 +409,11 @@ def compute_iv_skew(contracts: List[dict], spot: float) -> dict:
 # All consumers checked: yes — single call site (server.py 1m candle path,
 #   AST-scanned) now passes bar_minutes=1.0; output shape unchanged.
 # SCHWAB_CSV_CHECKED
-RV_TRADING_DAYS_PER_YEAR: int = 252
-RV_RTH_MINUTES_PER_DAY: int = 390
+# Single-source: aliases of the ONE authority for each truth (not fresh copies) —
+# TRADING_DAYS_PER_YEAR (this module) and time_et.RTH_SESSION_MINUTES (derived from the RTH
+# session bounds). Values identical (252 / 390); this removes the duplicate literals.
+RV_TRADING_DAYS_PER_YEAR: int = TRADING_DAYS_PER_YEAR
+RV_RTH_MINUTES_PER_DAY: int = RTH_SESSION_MINUTES
 
 
 def compute_realized_vol(
