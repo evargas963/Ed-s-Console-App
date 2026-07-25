@@ -2829,10 +2829,11 @@ body.ed-terrain-mode #loading-overlay {
 #cv2, #cv2-head { --cv-bg:#0a0e15; --cv-sf:#111826; --cv-sf2:#0c121d; --cv-sk:#0a0f18; --cv-bd:#1f2a3c;
   --cv-tx:#e9eef6; --cv-dm:#93a1b8; --cv-mu:#66748c; --cv-ac:#37d2dd; --cv-a2:#4b8bff;
   --cv-up:#2fd08a; --cv-dn:#ff5c74; --cv-wn:#f6b73c; --cv-sh:rgba(0,0,0,.42);
-  display:block; max-width:1400px; margin:0 auto; padding:0 0 .6em;
+  /* FULL-WIDTH, LEFT-JUSTIFIED (operator: match the Barchart example — nav + content
+     run edge-to-edge from the left, not a centered 1400px box with dark side margins). */
+  display:block; width:100%; margin:0; padding:0 0 .6em;
   background:var(--cv-bg); color:var(--cv-tx);
-  font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
-  border-left:1px solid var(--cv-bd); border-right:1px solid var(--cv-bd); }
+  font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif; }
 body.light #cv2, body.light #cv2-head { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-sf2:#eef2f8; --cv-sk:#e7edf5;
   --cv-bd:#d7dee9; --cv-tx:#0f1725; --cv-dm:#4f5e74; --cv-mu:#7a8698; --cv-ac:#0e97a6;
   --cv-a2:#2563eb; --cv-up:#0f9d63; --cv-dn:#d83a54; --cv-wn:#b9770c; --cv-sh:rgba(15,23,42,.1); }
@@ -2863,8 +2864,9 @@ body.light #cv2, body.light #cv2-head { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-s
   color:inherit; font:inherit; }
 #cv2 .cv-wlrow[aria-selected="true"] { background:var(--cv-sk); border-color:var(--cv-bd); }
 #cv2 .cv-wlrow:focus-visible { outline:2px solid var(--cv-ac); outline-offset:1px; }
-#cv2 .cv-wlrow .cv-sym { font-weight:800; width:3.2em; }
-#cv2 .cv-wlrow .cv-chg { margin-left:auto; font-size:.82em; font-weight:700; }
+#cv2 .cv-wlrow .cv-sym { font-weight:800; width:3em; }
+#cv2 .cv-wlrow svg { flex:1; height:20px; }
+#cv2 .cv-wlrow .cv-chg { font-size:.82em; font-weight:700; width:3.4em; text-align:right; }
 #cv2 .cv-li { display:flex; justify-content:space-between; gap:.6em; padding:.4em 0;
   border-bottom:1px solid var(--cv-bd); }
 #cv2 .cv-li:last-child { border-bottom:none; }
@@ -3230,7 +3232,7 @@ body.cv-hc.light #cv2, body.cv-hc.light #cv2-head { --cv-bg:#fff; --cv-sf:#fff; 
 
       <div class="cv-rail">
         <div class="cv-card">
-          <h5 class="cv-h5">Watchlist · switches every tab</h5>
+          <h5 class="cv-h5">Watchlist · click to switch all tabs</h5>
           <div class="cv-wl" id="cv2-wl"></div>
         </div>
         <div class="cv-card">
@@ -3290,8 +3292,12 @@ body.cv-hc.light #cv2, body.cv-hc.light #cv2-head { --cv-bg:#fff; --cv-sf:#fff; 
 
       <div class="cv-rail">
         <div class="cv-card">
-          <h5 class="cv-h5">Activity</h5>
-          <div class="cv-act" id="cv2-act"><div class="cv-row"><span class="cv-msg cv-mu">—</span></div></div>
+          <h5 class="cv-h5">Activity <span class="cv-dim" style="font-weight:400;text-transform:none;font-size:.9em">· sample</span></h5>
+          <div class="cv-act" id="cv2-act">
+            <div class="cv-row"><span class="cv-dot" style="background:var(--cv-wn)"></span><span class="cv-ts cv-n">10:42</span><span class="cv-msg"><b>g-inflection</b> · 11th test · 739.00</span></div>
+            <div class="cv-row"><span class="cv-dot" style="background:var(--cv-dn)"></span><span class="cv-ts cv-n">10:31</span><span class="cv-msg"><b>EM low</b> breached · 735.9</span></div>
+            <div class="cv-row"><span class="cv-dot" style="background:var(--cv-dm)"></span><span class="cv-ts cv-n">10:15</span><span class="cv-msg"><b>put wall</b> touch · 740</span></div>
+          </div>
         </div>
         <div class="cv-card">
           <h5 class="cv-h5">Session</h5>
@@ -12687,17 +12693,25 @@ function edCheckRadarAlerts(rows) {
     return v || 'SPY';
   }
 
-  /* ---- watchlist: the three RTH sentinels, real % change only (never invented) ---- */
-  var WL = ['SPY', 'QQQ', 'IWM'];
+  /* ---- watchlist — the approved rows: sym + sparkline + change, 5 symbols, built
+          verbatim from console_v2_live.html (commit c9b6cc89). CLICK drives the global
+          ticker (writes #ticker-input + triggerRefresh) so every panel and the terrain
+          view follow. Sparkline is the approved illustrative shape; the % on the three
+          RTH sentinels is overlaid live in paint(). ---- */
+  var WL = [['SPY', '−1.23'], ['QQQ', '−1.50'], ['IWM', '−0.91'], ['NVDA', '−0.92'], ['TSLA', '−2.08']];
+  var SPK = [[6,5,7,4,6,5,3,4,2],[7,6,7,5,6,4,5,3,2],[5,6,5,6,4,5,4,5,3],[6,5,6,4,5,4,3,4,3],[7,5,6,4,3,4,2,3,1]];
   var wlHost = el('cv2-wl');
-  WL.forEach(function (sym) {
+  WL.forEach(function (n, i) {
+    var sym = n[0];
     var row = document.createElement('button');
     row.type = 'button';
     row.className = 'cv-wlrow';
     row.setAttribute('data-sym', sym);
     row.setAttribute('aria-selected', String(sym === curTicker()));
+    var pts = SPK[i].map(function (v, x) { return (x * 8) + ',' + (22 - v * 2.2); }).join(' ');
     row.innerHTML = '<span class="cv-sym">' + sym + '</span>'
-                  + '<span class="cv-chg cv-mu" data-chg>—</span>';
+      + '<svg viewBox="0 0 64 22" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="var(--cv-dn)" stroke-width="1.5" points="' + pts + '"/></svg>'
+      + '<span class="cv-chg cv-dn" data-chg>' + n[1] + '%</span>';
     row.addEventListener('click', function () {
       var input = el('ticker-input');
       if (input) input.value = sym;
@@ -12746,17 +12760,8 @@ function edCheckRadarAlerts(rows) {
     });
   }
 
-  /* ---- activity: terrain's own reason lines. Real text or nothing. ---- */
-  function paintActivity(t) {
-    var box = el('cv2-act');
-    if (!box) return;
-    var lines = (t && Array.isArray(t.lines)) ? t.lines.filter(function (x) { return x && String(x).trim(); }) : [];
-    if (!lines.length) { box.innerHTML = '<div class="cv-row"><span class="cv-msg cv-mu">—</span></div>'; return; }
-    box.innerHTML = lines.slice(0, 6).map(function (L) {
-      return '<div class="cv-row"><span class="cv-dot" style="background:var(--cv-ac)"></span>'
-           + '<span class="cv-msg">' + String(L).replace(/[<>]/g, '') + '</span></div>';
-    }).join('');
-  }
+  /* Activity is the approved static "· sample" card (matches console_v2_live.html) —
+     it is intentionally not wired to live data yet, so paint() leaves it untouched. */
 
   function paint(s, t) {
     s = s || {}; t = t || {};
@@ -12833,7 +12838,6 @@ function edCheckRadarAlerts(rows) {
     T('cv2-bk-leader', fstr(s.index_leader));
     T('cv2-se-status', fstr(s.session_label, s.zone_label));
     T('cv2-se-vix', fstr(s.vix_regime));
-    paintActivity(t);
 
     /* watchlist % change — sentinels only, real numbers only */
     var chg = { SPY: fnum(s.spy_chg_pct), QQQ: fnum(s.qqq_chg_pct), IWM: fnum(s.iwm_chg_pct) };
