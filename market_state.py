@@ -702,8 +702,11 @@ def recommend_option_expression(
         )
 
     side_contracts = [c for c in contracts if (c.get("putCall") or "").upper() == side]
-    strikes = sorted({float(c["strikePrice"]) for c in side_contracts
-                      if _f_ms(c.get("strikePrice")) is not None})
+    # single source: parse the strike once via the canonical finite reader (was parsed
+    # twice — _f_ms for the filter, raw float() for the value — the raw path could admit
+    # a value the filter would reject if the two ever diverged).
+    strikes = sorted({sp for c in side_contracts
+                      if (sp := _f_ms(c.get("strikePrice"))) is not None})
     if not strikes:
         return (
             "NO TRADE",
