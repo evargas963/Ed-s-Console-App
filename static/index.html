@@ -31,6 +31,7 @@
     --red-bg:    #2d0a0a;
     --amber:     #f59e0b;
     --amber-bg:  #2d1a00;
+    --amber-bdr: #92400e;
     --purple:    #a855f7;
     --purple-bg: #1e0a2d;
     --yellow:    #eab308;
@@ -84,6 +85,7 @@
     --red-bg:    #fee2e2;
     --amber:     #d97706;
     --amber-bg:  #fef3c7;
+    --amber-bdr: #d97706;
     --purple:    #7c3aed;
     --purple-bg: #ede9fe;
     --signal-chain-arrow: #64748b;
@@ -1755,7 +1757,7 @@
   .sig-badge.long  { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green2); }
   .sig-badge.short { background: var(--red-bg);    color: var(--red);    border: 1px solid var(--red2); }
   .sig-badge.wait  { background: var(--bg3);       color: var(--text3);  border: 1px solid var(--border2); }
-  .sig-badge.expansion { background: var(--amber-bg); color: var(--amber); border: 1px solid #92400e; }
+  .sig-badge.expansion { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-bdr); }
 
 
 
@@ -2257,9 +2259,9 @@
   .outcome-pill.breakout { background: var(--green-bg); color: var(--green); border-color: var(--green2); }
   .outcome-pill.reversal { background: var(--red-bg); color: var(--red); border-color: var(--red2); }
   .outcome-pill.continuation { background: var(--green-bg); color: var(--green); border-color: var(--green2); }
-  .outcome-pill.pinning { background: var(--amber-bg); color: var(--amber); border-color: #92400e; }
+  .outcome-pill.pinning { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-bdr); }
   .outcome-pill.mean_reversion { background: var(--purple-bg); color: var(--purple); border-color: #6b21a8; }
-  .outcome-pill.vol_expansion { background: var(--amber-bg); color: var(--amber); border-color: #92400e; }
+  .outcome-pill.vol_expansion { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-bdr); }
   .prob-bars {
     display: flex;
     height: 8px;
@@ -2389,7 +2391,7 @@
     border-radius: 4px;
   }
   .size-cue.full { background: var(--green-bg); color: var(--green); border: 1px solid var(--green2); }
-  .size-cue.half { background: var(--amber-bg); color: var(--amber); border: 1px solid #92400e; }
+  .size-cue.half { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-bdr); }
   .size-cue.quarter { background: var(--red-bg); color: var(--red); border: 1px solid var(--red2); }
   .size-cue.skip { background: var(--bg3); color: var(--text3); border: 1px solid var(--border2); }
   .exec-badge {
@@ -2413,7 +2415,7 @@
   .invalidation { font-size: 10px; color: var(--text3); font-style: italic; margin-top: 4px; }
   .badge-long { background: var(--green-bg); color: var(--green); border: 1px solid var(--green2); }
   .badge-short { background: var(--red-bg); color: var(--red); border: 1px solid var(--red2); }
-  .badge-watch { background: var(--amber-bg); color: var(--amber); border: 1px solid #92400e; }
+  .badge-watch { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-bdr); }
   .badge-wait { background: var(--bg3); color: var(--text3); border: 1px solid var(--border2); }
   .badge-medium { background: var(--amber-bg); color: var(--amber); }
   .badge-high { background: var(--green-bg); color: var(--green); }
