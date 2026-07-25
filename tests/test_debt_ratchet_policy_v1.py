@@ -6,7 +6,7 @@ def test_ratchet_blocks_only_correctness_debt_not_shape_or_style():
     assert "no_fake_defaults" in _RATCHET_BLOCKS_ON_RISE
     assert "orphan_dict_keys" in _RATCHET_BLOCKS_ON_RISE
     assert "tests_missing_explicit_assert" in _RATCHET_BLOCKS_ON_RISE
-    assert "mypy_types" in _RATCHET_BLOCKS_ON_RISE
+    assert "mypy_types" not in _RATCHET_BLOCKS_ON_RISE  # dormant checker — track only
     # Shape / style volume must never fail the commit via the ratchet.
     assert "file_length" not in _RATCHET_BLOCKS_ON_RISE
     assert "function_length" not in _RATCHET_BLOCKS_ON_RISE

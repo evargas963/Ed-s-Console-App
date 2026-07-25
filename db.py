@@ -294,7 +294,8 @@ def ensure_console_db_training_schema(db_path: Path | None = None) -> Path:
     """
     path = Path(db_path if db_path is not None else DB_PATH).resolve()
     if path.is_file():
-        with sqlite3.connect(str(path)) as conn:
+        with sqlite3.connect(str(path), timeout=30.0) as conn:
+            configure_sqlite_connection(conn)
             if conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshots_1m_normalized'"
             ).fetchone():

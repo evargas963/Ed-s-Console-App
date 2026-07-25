@@ -27,6 +27,18 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: credential-leak
+        name: credential leak firewall (staged secrets / home paths)
+        entry: python tools/check_credential_leak.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: venv-parity
+        name: virtualenv parity (interpreter must be repo .venv; CI exempt)
+        entry: python tools/run_with_repo_venv.py tools/check_venv_parity.py
+        language: system
+        pass_filenames: false
+        always_run: true
       # SLIMMING 1C: fast local ruff correctness, parity with the Hardening CI
       # quality job (F401 unused import, F821 undefined name, E9 syntax). Replaces
       # the ruff stage of the retired pre-push parity gate.
@@ -41,7 +53,7 @@ repos:
       # hooks here; Commit 1B removes the old machine and this becomes the gate.
       - id: market-correctness
         name: market correctness (money-path static gate)
-        entry: python tools/check_market_correctness.py
+        entry: python tools/run_with_repo_venv.py tools/check_market_correctness.py
         language: system
         pass_filenames: false
         always_run: true
@@ -51,9 +63,10 @@ repos:
       # option-chain fixtures in tests — correctness is proven on REAL data
       # (tests/fixtures/); fail-closed/edge tests declare themselves with
       # '# institutional-synthetic-ok: <reason>'.
+      # run_with_repo_venv re-execs under .venv locally (CI falls through).
       - id: institutional-correctness
         name: institutional correctness (one gate — no fake tests, single source of truth)
-        entry: python tools/check_institutional_correctness.py
+        entry: python tools/run_with_repo_venv.py tools/check_institutional_correctness.py
         language: system
         pass_filenames: false
         always_run: true

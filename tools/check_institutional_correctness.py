@@ -438,7 +438,8 @@ _RATCHET_BLOCKS_ON_RISE = frozenset({
     "no_fake_defaults",              # fabricated neutrals hide absence
     "orphan_dict_keys",              # silent None / misspelled keys (RC-15/RC-20)
     "tests_missing_explicit_assert", # tests that cannot fail on regression
-    "mypy_types",                    # type errors are correctness when mypy is live
+    # mypy_types intentionally excluded: checker is dormant until mypy is installed;
+    # a 0-vs-baseline honesty trip would brick every bare/.venv without mypy.
 })
 
 
@@ -1488,6 +1489,71 @@ def check_shutdown_is_bounded() -> list[Violation]:
     return out
 
 
+def check_venv_parity() -> list[Violation]:
+    """Active interpreter must live under repo .venv (multi-agent parity).
+
+    OBSERVED (2026-07-25): Claude/Cursor share the filesystem but not the
+    interpreter — global Python313 vs a project venv silently diverges packages
+    and hook installs. VALIDATED: tools/check_venv_parity.py path resolve;
+    CI (GITHUB_ACTIONS/CI) exempt because runners have no repo .venv.
+    """
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.check_venv_parity import venv_parity_violations
+
+    return [Violation(REPO / ".venv", 0, msg) for msg in venv_parity_violations()]
+
+
+def check_credential_leak() -> list[Violation]:
+    """Staged diffs must not introduce secrets, JWTs, or operator home paths.
+
+    OBSERVED (2026-07-25): private-path guard only covers scoreboard_forensic
+    tracked evidence; a Bearer token or C:\\Users\\… in a staged .py/.md still
+    lands. VALIDATED: tools/check_credential_leak.py regex suite + unit tests.
+    """
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.check_credential_leak import find_credential_leaks
+
+    return [
+        Violation(REPO / ".git", 0, hit)
+        for hit in find_credential_leaks()
+    ]
+
+
+def check_sqlite_wal_contract() -> list[Violation]:
+    """Production sqlite connects must use timeout>=30 and WAL pragmas helper.
+
+    OBSERVED (2026-07-25): concurrent agent/server writers lock a DELETE-mode
+    DB; EdDB._connect already sets timeout=30 + configure_sqlite_connection
+    (WAL/NORMAL), but ad-hoc connects can skip both. VALIDATED: AST/source
+    contract on db.py — configure_sqlite_connection body + every
+    sqlite3.connect(…, timeout=…) site.
+    """
+    out: list[Violation] = []
+    path = REPO / "db.py"
+    try:
+        src = path.read_text(encoding="utf-8")
+    except OSError as e:
+        return [Violation(path, 0, f"cannot read db.py: {e}")]
+    if "PRAGMA journal_mode=WAL" not in src:
+        out.append(Violation(path, 0, "configure_sqlite_connection missing PRAGMA journal_mode=WAL"))
+    if "PRAGMA synchronous=NORMAL" not in src:
+        out.append(Violation(path, 0, "configure_sqlite_connection missing PRAGMA synchronous=NORMAL"))
+    if "busy_timeout" not in src:
+        out.append(Violation(path, 0, "configure_sqlite_connection missing busy_timeout pragma"))
+    # Every sqlite3.connect in db.py must pass timeout= (no default 5s lock storms).
+    for i, line in enumerate(src.splitlines(), 1):
+        if "sqlite3.connect(" not in line:
+            continue
+        if "timeout=" not in line:
+            out.append(Violation(
+                path, i,
+                "sqlite3.connect without timeout= — require timeout>=30.0 "
+                "(multi-agent / async lock storm class)"))
+    return out
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -1510,6 +1576,9 @@ CHECKS = [
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
     ("unproven_register", check_unproven_register, True),  # claims: evidenced or registered
+    ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)
+    ("credential_leak", check_credential_leak, True),  # staged secrets / home paths
+    ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects
     # ADVISORY (visible debt, driven to zero, then flipped to enforced — the ratchet):
     ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, False),  # review each
     ("orphan_dict_keys", check_no_orphan_dict_keys, False),   # silent-None leads (RC-15/RC-20)

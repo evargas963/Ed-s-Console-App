@@ -717,6 +717,8 @@ def main() -> int:
     rep["pdca"] = {"coverage": coverage, "window_sessions": sessions,
                    "rolling_gap_pts": round(gap, 2) if gap is not None else None,
                    "verdict": pdca_verdict(gap, sessions)}
+    from tools.run_provenance import stamp_report
+    rep = stamp_report(rep)
     OUT_JSON.write_text(json.dumps(rep, indent=2), encoding="utf-8")
     OUT_MD.write_text(md, encoding="utf-8")
     print(md)
