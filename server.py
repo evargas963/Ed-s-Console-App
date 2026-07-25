@@ -10919,14 +10919,18 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
                 return []
             exposures, _diag = _cebs(cts, spot=spot, require_oi=True)
             vol_by_k: dict[float, float] = {}
+            # SINGLE SOURCE: totalVolume read through the canonical non-negative reader so
+            # the REST aggregation drops NaN/±inf (raw float() used to admit them, poisoning
+            # the sum) and reads 0/negatives identically to the exposure and order-flow paths.
+            from numeric_contract import float_nonnegative_or_none as _vol_read
             for ct in cts:
                 try:
                     k = float(ct.get("strikePrice"))
                 except (TypeError, ValueError):
                     continue
-                v = ct.get("totalVolume")
+                v = _vol_read(ct.get("totalVolume"))
                 if v:
-                    vol_by_k[k] = vol_by_k.get(k, 0.0) + float(v)
+                    vol_by_k[k] = vol_by_k.get(k, 0.0) + v
             out = []
             for k, b in exposures.items():
                 g = bucket_metric(b, "net_gex_1pct")

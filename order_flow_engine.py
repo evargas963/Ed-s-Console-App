@@ -82,10 +82,11 @@ def _safe_float(val: Any) -> Optional[float]:
 
 
 def _nonnegative_float(val: Any) -> Optional[float]:
-    out = _safe_float(val)
-    if out is None or out < 0:
-        return None
-    return out
+    """Non-negative vendor quantity (size/volume): 0 valid, negatives+non-finite dropped.
+    SINGLE SOURCE: delegates to numeric_contract.float_nonnegative_or_none so totalVolume
+    reads identically here, in the exposure engine, and in the REST aggregation."""
+    from numeric_contract import float_nonnegative_or_none
+    return float_nonnegative_or_none(val)
 
 
 def _safe_int(val: Any) -> Optional[int]:

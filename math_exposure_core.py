@@ -12,7 +12,7 @@ from typing import Dict, List
 import math
 import logging
 
-from numeric_contract import float_finite_or_none
+from numeric_contract import float_finite_or_none, float_nonnegative_or_none
 
 log = logging.getLogger(__name__)
 
@@ -221,7 +221,7 @@ def compute_exposures_by_strike(
             continue
 
         b = _strike_bucket(exposures, strike)
-        vol = _f(ct.get("totalVolume"))
+        vol = float_nonnegative_or_none(ct.get("totalVolume"))  # volume: 0 valid, negatives are corruption
         bsz = _f(ct.get("bidSize"))
         asz = _f(ct.get("askSize"))
         if side == "CALL":
