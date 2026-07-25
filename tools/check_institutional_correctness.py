@@ -1554,6 +1554,27 @@ def check_sqlite_wal_contract() -> list[Violation]:
     return out
 
 
+def check_ui_data_integration() -> list[Violation]:
+    """UI cells must be wired to real data — no dead '—' placeholders (Tier 1).
+
+    OBSERVED (2026-07-25): the console shipped illustrative gamma bars / sparklines / a
+    "sample" activity feed, and terrain cells could sit at "—" while the data existed —
+    the agent verified code + endpoints but never the RENDERED DOM. Tier 1 (static binding,
+    here) fails the build if any data cell that ships as the "—" placeholder in
+    static/index.html or static/chart.html has no JavaScript writer. The live tiers
+    (endpoint assertions + Playwright headless render, which actually see the DOM) run via
+    `python tools/check_ui_data_integration.py` with ED_UI_GATE_LIVE=1 in CI / manual — they
+    need a running server + browser, so they are deliberately NOT per-commit gates (that
+    dependency would itself become a flaky false-failure source).
+    """
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.check_ui_data_integration import static_binding_violations
+
+    return [Violation(REPO / rel, line, msg)
+            for rel, line, msg in static_binding_violations()]
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -1579,6 +1600,7 @@ CHECKS = [
     ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)
     ("credential_leak", check_credential_leak, True),  # staged secrets / home paths
     ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects
+    ("ui_data_integration", check_ui_data_integration, True),  # no dead "—" placeholders (Tier 1)
     # REMOVED 2026-07-25 (operator: "i don't want you on separate instances"): the
     # agent_worktree_boundary check required ED_AGENT_ROLE to be set and blocked all
     # commits from a single-instance workflow (fail-closed on unset role). Single

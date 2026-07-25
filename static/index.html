@@ -13168,13 +13168,17 @@ function edCheckRadarAlerts(rows) {
     if (document.body.classList.contains('ed-terrain-mode')) return;
     inflight = true;
     var tk = curTicker(), s = null, t = null;
-    try { s = await (await fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
+    /* Terrain FIRST (fast): flip / net GEX / levels + the gamma bars paint immediately.
+       analytics/state (The Call, greeks, per-horizon) is the heavy ML call and can take
+       several seconds — it must never block the terrain-sourced cells from painting. */
     try { t = await (await fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
     markWatchlist();
+    if (t) { try { paint(s, t); } catch (e) { T('cv2-f-status', 'render error: ' + e.message); } }
+    var spot = fnum((t || {}).spot);
+    try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); buildGammaBars(g, t, spot); } catch (e) { buildGammaBars(null, t, spot); }
+    try { s = await (await fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); } catch (e) {}
     if (!s && !t) { inflight = false; T('cv2-f-status', 'data offline — console server unreachable'); return; }
     try { paint(s, t); } catch (e) { T('cv2-f-status', 'render error: ' + e.message); }
-    var spot = fnum((s || {}).spot, (s || {}).quote_mid, (t || {}).spot);
-    try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); buildGammaBars(g, t, spot); } catch (e) { buildGammaBars(null, t, spot); }
     try { var rad = await (await fetch('/api/terrain/radar?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); paintActivity(rad); } catch (e) {}
     inflight = false;
   }
