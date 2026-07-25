@@ -31,10 +31,7 @@ from pathlib import Path
 APP_DIR = str(Path(__file__).parent.resolve())
 sys.path.insert(0, APP_DIR)
 
-try:
-    from config import DEFAULT_TICKER
-except ImportError:
-    DEFAULT_TICKER = "SPY"
+from config import DEFAULT_TICKER  # single authority — no shadowing local "SPY" fallback
 
 
 def _fetch_bars_from_schwab(ticker: str, session_date_str: str) -> list[dict]:
