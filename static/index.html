@@ -87,6 +87,24 @@
     --purple:    #7c3aed;
     --purple-bg: #ede9fe;
     --signal-chain-arrow: #64748b;
+    /* ── Token cleanup Stage 1 (2026-07-24): light-mode completions ──
+       These were defined in :root (dark) but OMITTED from body.light, so in light
+       mode panels using --bg0/--bg1 stayed near-black on white and --divider
+       (white-translucent) was invisible. Additive only — dark mode is untouched. */
+    --bull:        #059669;
+    --bull-dim:    rgba(5,150,105,0.12);
+    --bull-glow:   rgba(5,150,105,0.35);
+    --bear:        #dc2626;
+    --bear-dim:    rgba(220,38,38,0.12);
+    --bear-glow:   rgba(220,38,38,0.35);
+    --neutral:     #64748b;
+    --neutral-dim: rgba(100,116,139,0.16);
+    --gold:        #b45309;
+    --yellow:      #ca8a04;
+    --cyan:        #0891b2;
+    --bg0:         #e6eaf1;
+    --bg1:         #eef1f6;
+    --divider:     rgba(15,23,42,0.10);
     --bg-page:    var(--bg);
     --bg-bar:     var(--bg2);
     --vdiv:       rgba(15, 23, 42, 0.18);
