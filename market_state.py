@@ -835,11 +835,10 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
                 continue
         except Exception:
             continue
-        try:
-            b = float(ct.get("bid")) if ct.get("bid") is not None else None
-            a = float(ct.get("ask")) if ct.get("ask") is not None else None
-        except (TypeError, ValueError):
-            b = a = None
+        # single source: canonical finite reader (also rejects NaN/inf, which raw float()
+        # admitted into b/a and thus into the mid/spread computed just below).
+        b = _f_ms(ct.get("bid"))
+        a = _f_ms(ct.get("ask"))
         mid: float | None = None
         mid_source: str | None = None
         try:

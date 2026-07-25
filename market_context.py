@@ -1030,13 +1030,11 @@ def fetch_price_levels(
             sym_node = quote_raw.get(symbol.upper()) or quote_raw.get(symbol) or {}
             q = sym_node.get("quote", {}) or {}
             def _sf(key):
-                # STACK-VERIFY-CAND-SILENT-FALLBACK-SWEEP: tighten exception scope to
-                # the actual float coercion failure modes; broad bare-except was hiding
-                # other bugs (AttributeError on q being non-dict, KeyError, etc.).
-                try:
-                    return float(q.get(key)) if q.get(key) is not None else None
-                except (TypeError, ValueError):
-                    return None
+                # single source: canonical finite reader. Raw float() admitted NaN/inf
+                # straight into today_open/high/low, and from there into the levels; the
+                # finite reader rejects them and needs no try/except (it never raises).
+                from numeric_contract import float_finite_or_none as _fin
+                return _fin(q.get(key))
             pl.today_open = _sf("openPrice")
             pl.today_high = _sf("highPrice")
             pl.today_low  = _sf("lowPrice")
