@@ -2606,7 +2606,7 @@
   font-size:11px; font-weight:800; letter-spacing:0.10em; padding:5px 12px; border-radius:6px; cursor:pointer; }
 .ed-viewtab:hover { border-color:rgba(255,255,255,0.42); color:#fff; }
 .ed-viewtab.is-active { background:rgba(79,198,255,0.16); border-color:#4fc6ff; color:#7dd3fc; }
-body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view) { display:none !important; }
+body.ed-terrain-mode #app > *:not(.utility-bar):not(#terrain-view):not(#cv2-head) { display:none !important; }
 body.ed-terrain-mode { overflow:hidden; }
 /* Terrain deep link (/#terrain) must not sit under Schwab boot overlay — terrain uses /api/terrain */
 body.ed-terrain-mode #loading-overlay {
@@ -2826,17 +2826,18 @@ body.ed-terrain-mode #loading-overlay {
 #app > .operator-diagnostics-strip,
 #app > #main { display:none !important; }
 
-#cv2 { --cv-bg:#0a0e15; --cv-sf:#111826; --cv-sf2:#0c121d; --cv-sk:#0a0f18; --cv-bd:#1f2a3c;
+#cv2, #cv2-head { --cv-bg:#0a0e15; --cv-sf:#111826; --cv-sf2:#0c121d; --cv-sk:#0a0f18; --cv-bd:#1f2a3c;
   --cv-tx:#e9eef6; --cv-dm:#93a1b8; --cv-mu:#66748c; --cv-ac:#37d2dd; --cv-a2:#4b8bff;
   --cv-up:#2fd08a; --cv-dn:#ff5c74; --cv-wn:#f6b73c; --cv-sh:rgba(0,0,0,.42);
   display:block; max-width:1400px; margin:0 auto; padding:0 0 .6em;
   background:var(--cv-bg); color:var(--cv-tx);
   font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
   border-left:1px solid var(--cv-bd); border-right:1px solid var(--cv-bd); }
-body.light #cv2 { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-sf2:#eef2f8; --cv-sk:#e7edf5;
+body.light #cv2, body.light #cv2-head { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-sf2:#eef2f8; --cv-sk:#e7edf5;
   --cv-bd:#d7dee9; --cv-tx:#0f1725; --cv-dm:#4f5e74; --cv-mu:#7a8698; --cv-ac:#0e97a6;
   --cv-a2:#2563eb; --cv-up:#0f9d63; --cv-dn:#d83a54; --cv-wn:#b9770c; --cv-sh:rgba(15,23,42,.1); }
-#cv2 *, #cv2 *::before, #cv2 *::after { box-sizing:border-box; }
+#cv2 *, #cv2 *::before, #cv2 *::after,
+#cv2-head *, #cv2-head *::before, #cv2-head *::after { box-sizing:border-box; }
 #cv2 .cv-n { font-family:ui-monospace,Menlo,Consolas,monospace; font-feature-settings:"tnum"; }
 #cv2 .cv-up { color:var(--cv-up); }
 #cv2 .cv-dn { color:var(--cv-dn); }
@@ -2903,6 +2904,67 @@ body.light #cv2 { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-sf2:#eef2f8; --cv-sk:#e
 #cv2 .cv-act .cv-msg b { color:var(--cv-tx); font-weight:600; }
 #cv2 .cv-foot { padding:.5em 1em; border-top:1px solid var(--cv-bd); color:var(--cv-mu);
   font-size:.74em; display:flex; gap:1.2em; flex-wrap:wrap; }
+
+/* ── CONSOLE v2 HEADER — the operator-approved frame, restored verbatim from the
+      signed-off design (candlestick wordmark with SPOT BENEATH IT, nav tabs beside the
+      brand, wider ticker + full expiry side by side, VIX green-when-rising, CT clock,
+      theme + high-contrast tucked right). The legacy .utility-bar is hidden and this
+      drives its controls, so CONSOLE/TERRAIN/CHART, ticker, expiry and theme all still
+      run the legacy functions (edSwitchView / triggerRefresh / toggleTheme).
+      #cv2-head is excepted from the terrain-mode hide rule so the header survives on
+      the Terrain tab -- otherwise switching to Terrain would leave no chrome at all. ── */
+#app > .utility-bar { display:none !important; }
+#cv2-head { padding:0; --cv-ctl:#1e2838; --cv-ctlbd:#3f4d67; }
+body.light #cv2-head { --cv-ctl:#ffffff; --cv-ctlbd:#bcc6d5; }
+#cv2-head .cv-top { display:flex; align-items:center; gap:1.1em; padding:.7em 1em;
+  background:var(--cv-sf2); border-bottom:1px solid var(--cv-bd); flex-wrap:wrap; }
+#cv2-head .cv-brand { display:flex; align-items:center; gap:.55em; font-size:1.02em;
+  font-weight:600; letter-spacing:.01em; color:var(--cv-tx); }
+#cv2-head .cv-mark { display:flex; align-items:center; }
+#cv2-head .cv-mark svg { display:block; }
+#cv2-head .cv-brandblock { display:flex; flex-direction:column; gap:.1em; }
+#cv2-head .cv-brandpx { padding-left:0; font-size:.84em; font-weight:700; line-height:1.1; }
+#cv2-head .cv-brandpx .cv-n { font-size:1.3em; }
+#cv2-head .cv-nav { display:flex; gap:.2em; }
+#cv2-head .cv-tab { padding:.5em .95em; border-radius:.5em; color:var(--cv-dm); font-weight:600;
+  cursor:pointer; border:1px solid transparent; background:none; font:inherit; font-weight:600; }
+#cv2-head .cv-tab[aria-selected="true"] { background:var(--cv-sf); color:var(--cv-tx);
+  border-color:var(--cv-bd); }
+#cv2-head .cv-tab:focus-visible { outline:2px solid var(--cv-ac); outline-offset:2px; }
+#cv2-head .cv-tk { display:flex; flex-direction:column; gap:.1em; background:var(--cv-ctl);
+  border:1px solid var(--cv-ctlbd); border-radius:.5em; padding:.3em .8em; min-width:5.6em; }
+#cv2-head .cv-tk .cv-k { font-size:.62em; letter-spacing:.1em; color:var(--cv-mu); text-transform:uppercase; }
+#cv2-head .cv-tk .cv-v { font-weight:800; white-space:nowrap; }
+#cv2-head .cv-tk input, #cv2-head .cv-tk select { background:none; border:none; color:var(--cv-tx);
+  font:inherit; font-weight:800; padding:0; margin:0; width:100%; cursor:pointer; }
+#cv2-head .cv-tk input { text-transform:uppercase; width:4.6em; cursor:text; }
+#cv2-head .cv-tk select { font-family:ui-monospace,Menlo,Consolas,monospace; }
+#cv2-head .cv-tk select option { background:var(--cv-sf); color:var(--cv-tx); }
+#cv2-head .cv-tk input:focus-visible, #cv2-head .cv-tk select:focus-visible {
+  outline:2px solid var(--cv-ac); outline-offset:2px; }
+#cv2-head .cv-settings { margin-left:auto; display:flex; align-items:center; gap:.7em; }
+#cv2-head .cv-clock { text-align:right; }
+#cv2-head .cv-clock .cv-t { font-weight:700; }
+#cv2-head .cv-clock .cv-d { font-size:.64em; color:var(--cv-mu); }
+#cv2-head .cv-icons { display:flex; border:1px solid var(--cv-ctlbd); border-radius:.5em; overflow:hidden; }
+#cv2-head .cv-icons button { background:var(--cv-ctl); color:var(--cv-tx); border:none;
+  padding:.45em .65em; cursor:pointer; font:inherit; }
+#cv2-head .cv-icons button + button { border-left:1px solid var(--cv-ctlbd); }
+#cv2-head .cv-icons button[aria-pressed="true"] { background:var(--cv-ac); color:#04121a; }
+#cv2-head .cv-icons button:focus-visible { outline:2px solid var(--cv-ac); outline-offset:2px; }
+#cv2-head .cv-n { font-family:ui-monospace,Menlo,Consolas,monospace; font-feature-settings:"tnum"; }
+#cv2-head .cv-up { color:var(--cv-up); }
+#cv2-head .cv-dn { color:var(--cv-dn); }
+#cv2-head .cv-dim { color:var(--cv-dm); }
+#cv2-head .cv-mu { color:var(--cv-mu); }
+#cv2-head .cv-ac { color:var(--cv-ac); }
+/* high-contrast layer (the ◐ button) — overrides the token values only */
+body.cv-hc #cv2, body.cv-hc #cv2-head { --cv-bg:#000; --cv-sf:#0a1018; --cv-sf2:#000; --cv-sk:#000;
+  --cv-bd:#5c6c85; --cv-tx:#fff; --cv-dm:#d5deeb; --cv-mu:#9fb0c8; --cv-ac:#5fe6f0;
+  --cv-up:#5bffb0; --cv-dn:#ff90a0; --cv-ctl:#141d2b; --cv-ctlbd:#8fa3c0; }
+body.cv-hc.light #cv2, body.cv-hc.light #cv2-head { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8;
+  --cv-sk:#e7edf5; --cv-bd:#455266; --cv-tx:#000; --cv-dm:#28323f; --cv-mu:#3a4658;
+  --cv-ac:#08707c; --cv-up:#07603b; --cv-dn:#a30f24; --cv-ctl:#fff; --cv-ctlbd:#455266; }
 </style>
 </head>
 <body class="layout-classic">
@@ -3055,6 +3117,39 @@ body.light #cv2 { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-sf2:#eef2f8; --cv-sk:#e
     </div>
   </div>
 
+  <!-- ── CONSOLE v2 HEADER — the approved frame. Sits ABOVE #terrain-view on purpose:
+       it is excepted from the terrain-mode hide rule, so it must come first in the DOM
+       or the Terrain tab would render its chrome underneath the terrain view. ── -->
+  <div id="cv2-head">
+    <div class="cv-top">
+      <div class="cv-brandblock">
+        <span class="cv-brand"><span class="cv-mark" aria-hidden="true"><svg viewBox="0 0 22 20" width="19" height="17" fill="none"><g stroke="var(--cv-dm)" stroke-width="1.4" stroke-linecap="round"><line x1="4" y1="4" x2="4" y2="16"/><line x1="18" y1="6" x2="18" y2="14"/></g><line x1="11" y1="2.5" x2="11" y2="17.5" stroke="var(--cv-ac)" stroke-width="1.4" stroke-linecap="round"/><rect x="2.4" y="7" width="3.2" height="6" rx=".6" fill="var(--cv-dm)"/><rect x="9.4" y="5.5" width="3.2" height="7" rx=".6" fill="var(--cv-ac)"/><rect x="16.4" y="8.5" width="3.2" height="4" rx=".6" fill="var(--cv-dm)"/></svg></span> Ed&nbsp;Console</span>
+        <div class="cv-brandpx"><span class="cv-n" id="cv2-hd-px">—</span> <span class="cv-dn" id="cv2-hd-chg">—</span></div>
+      </div>
+      <div class="cv-nav" role="tablist" aria-label="View">
+        <button type="button" class="cv-tab" role="tab" aria-selected="true" id="cv2-tab-console">Console</button>
+        <button type="button" class="cv-tab" role="tab" aria-selected="false" id="cv2-tab-terrain">Terrain</button>
+        <button type="button" class="cv-tab" role="tab" aria-selected="false" id="cv2-tab-chart">Chart</button>
+      </div>
+      <div class="cv-tk" title="Change ticker — syncs every tab">
+        <label class="cv-k" for="cv2-hd-ticker">Ticker</label>
+        <input class="cv-v" id="cv2-hd-ticker" type="text" maxlength="12" value="SPY" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cv-tk" title="Change expiry">
+        <label class="cv-k" for="cv2-hd-expiry">Expiry</label>
+        <select class="cv-v" id="cv2-hd-expiry"></select>
+      </div>
+      <span class="cv-n cv-mu" id="cv2-hd-vix" title="VIX rising shows green, falling red">VIX —</span>
+      <div class="cv-settings">
+        <div class="cv-clock"><div class="cv-t cv-n" id="cv2-ct">—</div><div class="cv-d" id="cv2-cd">CT</div></div>
+        <div class="cv-icons">
+          <button type="button" id="cv2-thb" title="Toggle light / dark">🌙</button>
+          <button type="button" id="cv2-hcb" aria-pressed="false" title="High contrast">◐</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── TERRAIN VIEW — full-screen focus + periphery (terrain_engine.py) ── -->
   <section id="terrain-view" hidden aria-label="Terrain">
 
@@ -3129,8 +3224,7 @@ body.light #cv2 { --cv-bg:#f4f7fb; --cv-sf:#ffffff; --cv-sf2:#eef2f8; --cv-sk:#e
 
   <!-- ── CONSOLE v2 — the approved decision-first console body. Direct child of #app so
        the existing terrain-mode rule hides it automatically when Terrain is selected.
-       Chrome (ticker, expiry, price, VIX, tabs, theme, clock) stays in the utility bar
-       above — this is the console BODY only, deliberately not a second header. ── -->
+       Chrome lives in #cv2-head above; this is the console BODY. ── -->
   <div id="cv2">
     <div class="cv-body">
 
@@ -12683,6 +12777,7 @@ function edCheckRadarAlerts(rows) {
   function paint(s, t) {
     s = s || {}; t = t || {};
     var spot = fnum(s.spot, s.quote_mid, t.spot);
+    paintHeader(s, spot);
 
     /* The Call */
     var bias = fstr(s.final_bias, s.call_signal, s.rules_signal);
@@ -12780,6 +12875,143 @@ function edCheckRadarAlerts(rows) {
     T('cv2-f-status', 'live · ' + curTicker() + ' · as-of '
       + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
   }
+
+  /* ---- HEADER: this is the visible chrome now; it drives the hidden legacy controls,
+          so CONSOLE/TERRAIN/CHART still run edSwitchView, ticker still runs
+          triggerRefresh, expiry still drives #expiry-select, theme still runs
+          toggleTheme. Nothing legacy was rewritten — only re-fronted. ---- */
+  var hdTk = el('cv2-hd-ticker'), hdEx = el('cv2-hd-expiry');
+  var lgTk = el('ticker-input'), lgEx = el('expiry-select');
+  var thb = el('cv2-thb'), hcb = el('cv2-hcb');
+
+  function syncTabs() {
+    var terrain = document.body.classList.contains('ed-terrain-mode');
+    var c = el('cv2-tab-console'), t2 = el('cv2-tab-terrain');
+    if (c) c.setAttribute('aria-selected', String(!terrain));
+    if (t2) t2.setAttribute('aria-selected', String(terrain));
+  }
+  function syncTheme() { if (thb) thb.textContent = document.body.classList.contains('light') ? '☀' : '🌙'; }
+
+  function commitTicker() {
+    var v = (hdTk.value || '').trim().toUpperCase();
+    if (!v) { hdTk.value = curTicker(); return; }
+    hdTk.value = v;
+    if (lgTk && lgTk.value !== v) {
+      lgTk.value = v;
+      if (typeof window.triggerRefresh === 'function') { try { window.triggerRefresh(); } catch (e) {} }
+    }
+    markWatchlist();
+    refresh();
+  }
+  if (hdTk) {
+    hdTk.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commitTicker(); } });
+    hdTk.addEventListener('blur', commitTicker);
+  }
+
+  function mirrorExpiry() {
+    if (!lgEx || !hdEx) return;
+    var sig = [].map.call(lgEx.options, function (o) { return o.value + '' + o.text; }).join('|');
+    if (hdEx.getAttribute('data-sig') !== sig) {
+      hdEx.setAttribute('data-sig', sig);
+      hdEx.innerHTML = '';
+      [].forEach.call(lgEx.options, function (o) {
+        var n = document.createElement('option');
+        n.value = o.value; n.textContent = o.text;
+        hdEx.appendChild(n);
+      });
+    }
+    if (document.activeElement !== hdEx) hdEx.value = lgEx.value;
+  }
+  if (hdEx) {
+    hdEx.addEventListener('change', function () {
+      if (!lgEx) return;
+      lgEx.value = hdEx.value;
+      lgEx.dispatchEvent(new Event('change', { bubbles: true }));
+      refresh();
+    });
+  }
+
+  function goto(view) {
+    if (typeof window.edSwitchView === 'function') { try { window.edSwitchView(view); } catch (e) {} }
+    syncTabs();
+    if (view === 'terrain') {
+      /* the console poll stops on Terrain (terrain has its own cheap pipeline and the
+         ML state call is the expensive one). Blank the header numbers rather than leave
+         a stale price sitting next to the live terrain read — fail-closed, not stale. */
+      T('cv2-hd-px', null);
+      var ce = el('cv2-hd-chg'); if (ce) { ce.textContent = '—'; ce.className = 'cv-mu'; }
+      var ve = el('cv2-hd-vix'); if (ve) { ve.textContent = 'VIX —'; ve.className = 'cv-n cv-mu'; }
+      return;
+    }
+    refresh();
+  }
+  var tabC = el('cv2-tab-console'), tabT = el('cv2-tab-terrain'), tabX = el('cv2-tab-chart');
+  if (tabC) tabC.addEventListener('click', function () { goto('console'); });
+  if (tabT) tabT.addEventListener('click', function () { goto('terrain'); });
+  if (tabX) tabX.addEventListener('click', function () { window.location.href = '/chart'; });
+
+  if (thb) thb.addEventListener('click', function () {
+    if (typeof window.toggleTheme === 'function') { try { window.toggleTheme(); } catch (e) {} }
+    else { document.body.classList.toggle('light'); }
+    syncTheme();
+  });
+  if (hcb) {
+    hcb.addEventListener('click', function () {
+      var on = !document.body.classList.contains('cv-hc');
+      document.body.classList.toggle('cv-hc', on);
+      hcb.setAttribute('aria-pressed', String(on));
+      try { localStorage.setItem('ed_cv2_hc', on ? '1' : '0'); } catch (e) {}
+    });
+    try {
+      if (localStorage.getItem('ed_cv2_hc') === '1') {
+        document.body.classList.add('cv-hc');
+        hcb.setAttribute('aria-pressed', 'true');
+      }
+    } catch (e) {}
+  }
+
+  function tickClock() {
+    try {
+      var n = new Date();
+      T('cv2-ct', n.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
+      T('cv2-cd', n.toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase() + ' · CT');
+    } catch (e) {}
+  }
+
+  function paintHeader(s, spot) {
+    if (hdTk && document.activeElement !== hdTk) hdTk.value = curTicker();
+    mirrorExpiry(); syncTabs(); syncTheme();
+    T('cv2-hd-px', n2(spot));
+    var pdc = fnum(s.pdc), chgEl = el('cv2-hd-chg'), tk = curTicker(), c = null, p = null;
+    if (spot !== null && pdc !== null && pdc !== 0) { c = spot - pdc; p = c / pdc * 100; }
+    else {
+      var scp = (tk === 'SPY') ? fnum(s.spy_chg_pct)
+              : (tk === 'QQQ') ? fnum(s.qqq_chg_pct)
+              : (tk === 'IWM') ? fnum(s.iwm_chg_pct) : null;
+      if (scp !== null) p = scp;
+    }
+    if (chgEl) {
+      if (p === null) { chgEl.textContent = '—'; chgEl.className = 'cv-mu'; }
+      else {
+        chgEl.textContent = (p >= 0 ? '▲ ' : '▼ ')
+          + (c !== null ? Math.abs(c).toFixed(2) + ' · ' : '') + Math.abs(p).toFixed(2) + '%';
+        chgEl.className = p >= 0 ? 'cv-up' : 'cv-dn';
+      }
+    }
+    /* operator rule: VIX rising = green, falling = red, flat = neutral */
+    var vix = fnum(s.vix), vvp = fnum(s.vix_vs_prev), vdir = fstr(s.vix_direction), vEl = el('cv2-hd-vix');
+    if (vEl) {
+      var flat = (vdir && /flat/i.test(vdir)) || vvp === 0;
+      var rising = flat ? null : (vvp !== null ? vvp > 0 : (vdir ? /up|ris|high/i.test(vdir) : null));
+      vEl.textContent = 'VIX ' + (n2(vix) || '—')
+        + (vix !== null ? (flat ? ' →' : rising === true ? ' ▲' : rising === false ? ' ▼' : '') : '');
+      vEl.className = 'cv-n ' + ((flat || rising === null) ? 'cv-mu' : (rising ? 'cv-up' : 'cv-dn'));
+    }
+  }
+
+  tickClock(); setInterval(tickClock, 1000);
+  syncTabs(); syncTheme(); mirrorExpiry();
+  if (hdTk) hdTk.value = curTicker();
 
   var inflight = false;
   async function refresh() {
