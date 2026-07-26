@@ -1162,15 +1162,19 @@ def _predict_xgb_movement_heads(
             else:
                 norm = {k: round(1.0 / len(reg["class_names"]), 6) for k in reg["class_names"]}
             if suffix == "dir":
-                pu = float(norm.get("up", 0.5))
-                pd_ = float(norm.get("down", 0.5))
+                # absence reads as absence: norm is keyed by the model's own class_names, so a
+                # dir head that is a valid dir head HAS up/down. A missing key means a mis-wired
+                # head — let the KeyError fall to the except below (logged, emits nothing) rather
+                # than fabricate a neutral 0.5 prob into the decision inputs.
+                pu = float(norm["up"])
+                pd_ = float(norm["down"])
                 out[f"pred_dir_up_prob_{hz}"] = pu
                 out[f"pred_dir_down_prob_{hz}"] = pd_
                 out[f"pred_{hz}_dir_up_prob"] = pu
                 out[f"pred_{hz}_dir_down_prob"] = pd_
             else:
-                pm = float(norm.get("move", 0.5))
-                pn = float(norm.get("no_move", 0.5))
+                pm = float(norm["move"])  # absence reads as absence (see dir branch): no fabricated 0.5
+                pn = float(norm["no_move"])
                 out[f"pred_move_prob_{hz}"] = pm
                 out[f"pred_no_move_prob_{hz}"] = pn
                 out[f"pred_{hz}_move_prob"] = pm

@@ -495,7 +495,7 @@ def _snapshot_expansion_columns(registered: dict[str, set[str]]) -> list[dict]:
             continue
         if verdict not in ("KEEP", "KEEP_LIVE", "WIRED_PENDING_DATA"):
             continue
-        null_pct = float(col.get("null_pct") or 100.0)
+        null_pct = float(col.get("null_pct") or 100.0)  # fake-default-ok: missing null_pct -> treat as fully-null (conservative skip below); offline tooling
         if null_pct >= 99.0:
             continue
         out.append(

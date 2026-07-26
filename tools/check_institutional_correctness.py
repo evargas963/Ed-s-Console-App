@@ -1206,8 +1206,12 @@ _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\
 
 
 def check_no_fake_defaults() -> list[Violation]:
-    """Silent 'neutral'/magic fallbacks (`or 0.5`, `or 100`, `.get(..., 0.5)`) can hide
-    absence as a fabricated value. Review each — absence should read as absence."""
+    """Silent neutral/magic fallbacks (a 0.5/100 default or a two-arg .get) can hide absence
+    as a fabricated value. Review each — absence should read as absence. Annotate a
+    proven-legitimate config/parameter default with a '# fake-default-ok: <reason>' marker.
+
+    (This description is worded to avoid matching its own detector — the earlier docstring/
+    message literally contained the flagged patterns and the check flagged ITSELF, RC-47.)"""
     out: list[Violation] = []
     for p in _production_py_files():
         try:
@@ -1215,10 +1219,11 @@ def check_no_fake_defaults() -> list[Violation]:
         except UnicodeDecodeError:
             continue
         for i, ln in enumerate(lines, 1):
-            if _FAKE_DEFAULT_RE.search(ln):
+            if _FAKE_DEFAULT_RE.search(ln) and "fake-default-ok" not in ln:
                 out.append(
-                    Violation(p, i, "possible fake-default (or 0.5 / or 100 / .get(...,default)) — "
-                              "absence should read as absence, not a fabricated neutral value")
+                    Violation(p, i, "possible fabricated neutral (a 0.5/100 default or a two-arg "
+                              ".get) — absence should read as absence, not a fabricated value; "
+                              "annotate a legitimate one with '# fake-default-ok: <reason>'")
                 )
     return out
 

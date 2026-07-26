@@ -1499,7 +1499,7 @@ def compute_call(
     _vol_conv_mult = getattr(vol_regime, 'conviction_multiplier', 1.0) or 1.0
     _vol_risk_mult = getattr(vol_regime, 'risk_multiplier', 1.0) or 1.0
     _vol_breakout_bias  = getattr(vol_regime, 'breakout_bias', 0.6) or 0.6
-    _vol_reversal_bias  = getattr(vol_regime, 'reversal_bias', 0.5) or 0.5
+    _vol_reversal_bias  = getattr(vol_regime, 'reversal_bias', 0.5) or 0.5  # fake-default-ok: regime-parameter default (identity-ish bias), not data absence
 
     # ══════════════════════════════════════════════════════════════════════════
     # 1. STACK-DERIVED SIGNAL — tape/structure votes + single ALL consolidated ML slot
