@@ -90,13 +90,12 @@ def _nonnegative_float(val: Any) -> Optional[float]:
 
 
 def _safe_int(val: Any) -> Optional[int]:
-    """Convert to int; return None if invalid."""
-    if val is None:
-        return None
-    try:
-        return int(val)
-    except (TypeError, ValueError):
-        return None
+    """Convert to int; None if invalid. SINGLE SOURCE: finite-gates through
+    numeric_contract.float_finite_or_none first, so NaN/±inf are rejected — raw int()
+    caught only TypeError/ValueError and leaked an uncaught OverflowError on +inf."""
+    from numeric_contract import float_finite_or_none
+    v = float_finite_or_none(val)
+    return int(v) if v is not None else None
 
 
 def _collect_from_nested(obj: Any, key: str, collector: list) -> None:
