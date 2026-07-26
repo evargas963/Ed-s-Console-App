@@ -73,14 +73,14 @@ def build_lightweight_snapshot_row_from_quote(
     spot_f = float(quote_fields["spot_f"])
     et_h = int(now_et.hour)
     et_m = int(now_et.minute)
-    bid = quote_fields.get("bid")
-    ask = quote_fields.get("ask")
+    from numeric_contract import float_finite_or_none as _fin
+    # single source: finite bid/ask (raw float() admitted NaN into spread AND the stored
+    # bid_price/ask_price below); canonical reader also removes the need for try/except.
+    bid = _fin(quote_fields.get("bid"))
+    ask = _fin(quote_fields.get("ask"))
     spread = None
     if bid is not None and ask is not None:
-        try:
-            spread = round(float(ask) - float(bid), 4)
-        except (TypeError, ValueError):
-            spread = None
+        spread = round(ask - bid, 4)
 
     return SnapshotRow(
         ticker=t,

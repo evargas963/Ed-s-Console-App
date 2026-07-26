@@ -5071,11 +5071,9 @@ def _selected_schwab_days_to_expiration(
         return _selected_schwab_days_to_expiration(contracts, selected_exp)
 
     for ct in matches:
-        raw_dte = ct.get("daysToExpiration")
-        try:
-            dte = int(float(raw_dte)) if raw_dte is not None else None
-        except (TypeError, ValueError):
-            dte = None
+        # single source: finite DTE (canonical reader rejects NaN/±inf that int(float()) raised on)
+        _dte_f = _fin(ct.get("daysToExpiration"))
+        dte = int(_dte_f) if _dte_f is not None else None
         if dte is not None and dte >= 0:
             return dte
     return None
@@ -5977,14 +5975,14 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             "_endpoint": "/api/live/state",
         }
     spot_f = float(row["spot"])
-    bid = row.get("bid")
-    ask = row.get("ask")
+    from numeric_contract import float_finite_or_none as _fin
+    # single source: finite bid/ask (raw float() admitted NaN into spread AND the bid/ask
+    # echoed into `out` below); canonical reader also removes the try/except.
+    bid = _fin(row.get("bid"))
+    ask = _fin(row.get("ask"))
     spread_dollar = None
     if bid is not None and ask is not None:
-        try:
-            spread_dollar = round(float(ask) - float(bid), 4)
-        except (TypeError, ValueError):
-            pass
+        spread_dollar = round(ask - bid, 4)
     out: dict = {
         "_tier": "A_live",
         "ticker": tkr,
@@ -6244,9 +6242,10 @@ def _fetch_state(
     _quote_spread_pts = (
         round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None
     )
-    _quote_mid_for_spread = None
-    if parsed_mark is not None and parsed_mark > 0:
-        _quote_mid_for_spread = float(parsed_mark)
+    # single source: finite mark (the bare `> 0` gate let +inf through -> inf mid -> inf spread_frac)
+    from numeric_contract import float_finite_or_none as _fin_mk
+    _pm = _fin_mk(parsed_mark)
+    _quote_mid_for_spread = _pm if (_pm is not None and _pm > 0) else None
     _quote_spread_frac = (
         round(_quote_spread_pts / _quote_mid_for_spread, 6)
         if (
@@ -10949,11 +10948,11 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
             return out
 
         def _dte(ct) -> float:
-            d = ct.get("daysToExpiration")
-            try:
-                return float(d) if d is not None else 999.0
-            except (TypeError, ValueError):
-                return 999.0
+            # single source: finite DTE; NaN/±inf/junk -> None -> 999.0 (sorts as far-dated,
+            # same as a missing DTE) instead of a raw NaN poisoning the sort key.
+            from numeric_contract import float_finite_or_none as _fin
+            d = _fin(ct.get("daysToExpiration"))
+            return d if d is not None else 999.0
 
         near = [c for c in contracts if _dte(c) <= 7]
         far = [c for c in contracts if _dte(c) > 7]
@@ -12796,7 +12795,6 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker)
         from math_exposure import compute_net_charm
-        import math as _charm_math
 
         cl       = get_client()
         c_resp   = safe_get_chain(cl, ticker, strike_count=CHAIN_STRIKE_COUNT)
@@ -12838,38 +12836,28 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         usable_iv = 0
         sentinel_gamma = 0
         has_oi = 0
+        from numeric_contract import float_finite_or_none as _fin
         for ct in contracts:
-            try:
-                _g = float(ct.get("gamma")) if ct.get("gamma") is not None else None
-            except (TypeError, ValueError):
-                _g = None
-            try:
-                _d = float(ct.get("delta")) if ct.get("delta") is not None else None
-            except (TypeError, ValueError):
-                _d = None
+            # single source: canonical finite reader for every greek. Raw float() admitted
+            # NaN (the counts were already NaN-safe via inline isfinite gates, now folded
+            # into the reader); MISSING_GREEK_SENTINEL is finite, survives the read, and is
+            # excluded explicitly — behaviour-identical, one fewer finite-check faucet.
+            _g = _fin(ct.get("gamma"))
+            _d = _fin(ct.get("delta"))
             if gamma_is_plausible(_g, _d):
                 usable_gamma += 1
             if ct.get("gamma") == MISSING_GREEK_SENTINEL:
                 sentinel_gamma += 1
-            if _d is not None and _d != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_d):
+            if _d is not None and _d != MISSING_GREEK_SENTINEL:
                 usable_delta += 1
-            try:
-                _t = float(ct.get("theta")) if ct.get("theta") is not None else None
-            except (TypeError, ValueError):
-                _t = None
-            if _t is not None and _t != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_t):
+            _t = _fin(ct.get("theta"))
+            if _t is not None and _t != MISSING_GREEK_SENTINEL:
                 usable_theta += 1
-            try:
-                _v = float(ct.get("vega")) if ct.get("vega") is not None else None
-            except (TypeError, ValueError):
-                _v = None
-            if _v is not None and _v != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_v):
+            _v = _fin(ct.get("vega"))
+            if _v is not None and _v != MISSING_GREEK_SENTINEL:
                 usable_vega += 1
-            try:
-                _iv = float(ct.get("volatility")) if ct.get("volatility") is not None else None
-            except (TypeError, ValueError):
-                _iv = None
-            if _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_iv):
+            _iv = _fin(ct.get("volatility"))
+            if _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL:
                 usable_iv += 1
             if ct.get("openInterest"):
                 has_oi += 1

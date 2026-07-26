@@ -609,19 +609,17 @@ def parity_f_minus_spot_from_contracts(
         spot_f = float(spot)
     except Exception:
         return 0.0
+    from numeric_contract import float_finite_or_none as _fin
     use = []
     for c in contracts or []:
-        try:
-            raw_dte = c.get("daysToExpiration")
-            dte = int(float(raw_dte)) if raw_dte is not None else None
-        except Exception:
-            dte = None
+        # single source: finite DTE (canonical reader rejects NaN/±inf that int(float()) raised on)
+        dte_f = _fin(c.get("daysToExpiration"))
+        dte = int(dte_f) if dte_f is not None else None
         if dte_max is not None and dte != int(dte_max):
             continue
         use.append(c)
     if not use:
         return 0.0
-    from numeric_contract import float_finite_or_none as _fin
     strikes = []
     for c in use:
         # single source: reject NaN/inf/junk strikes (raw float() silently admitted NaN)

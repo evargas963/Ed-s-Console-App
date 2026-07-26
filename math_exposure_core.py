@@ -783,8 +783,12 @@ def compute_net_charm(
     # For 0DTE: use remaining hours to close as T
     # Prevents formula explosion as T → 0
     def _resolve_T(dte_raw):
-        if dte_raw is None: return None
-        dte_f = float(dte_raw)
+        # single source: canonical finite reader. Raw float() admitted a NaN DTE
+        # (nan <= 0 is False, so NaN flowed into T and produced NaN charm) and RAISED
+        # on a junk string; both now fail-closed to None (T unavailable) — the input
+        # coercion only, the charm formula/sign below is unchanged.
+        dte_f = float_finite_or_none(dte_raw)
+        if dte_f is None: return None
         if dte_f <= 0:
             try:
                 from time_et import now_et

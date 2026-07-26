@@ -1575,6 +1575,28 @@ def check_ui_data_integration() -> list[Violation]:
             for rel, line, msg in static_binding_violations()]
 
 
+def check_vendor_field_coercion() -> list[Violation]:
+    """One faucet for every Schwab vendor field: single-source numeric coercion (RC-FAUCET).
+
+    OBSERVED (2026-07-25): the SAME raw leaf (strikePrice, totalVolume, bid/ask, greeks,
+    daysToExpiration, mark, netChange, multiplier) was parsed a dozen ways across the
+    money-path. Raw ``float(ct.get("strikePrice"))`` inside ``try/except (TypeError,
+    ValueError)`` SILENTLY ADMITS NaN/±inf (``float('nan')`` does not raise): NaN became a
+    dict key, corrupted sorted strike sets (ATM/spacing), poisoned volume sums, entered the
+    IV smile, produced NaN charm, and passed ``abs(nan-target) >= 0.01`` as a FALSE contract
+    match. A self-adversarial 5-iteration sweep found bugs the field-name grep MISSED —
+    hidden behind intermediate variables (``sp = ct.get("strikePrice"); float(sp)``). This
+    lock forbids raw float()/int(float()) coercion of a vendor field in BOTH forms; a site is
+    clean only through a canonical numeric_contract reader or an explicit, reasoned
+    ``# vendor-coercion-ok: <why safe>`` marker. VALIDATED: driven to zero the same day.
+    """
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.check_vendor_field_coercion import violations
+
+    return [Violation(REPO / rel, line, msg) for rel, line, msg in violations()]
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -1601,6 +1623,7 @@ CHECKS = [
     ("credential_leak", check_credential_leak, True),  # staged secrets / home paths
     ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects
     ("ui_data_integration", check_ui_data_integration, True),  # no dead "—" placeholders (Tier 1)
+    ("vendor_field_coercion", check_vendor_field_coercion, True),  # one faucet per Schwab leaf (RC-FAUCET)
     # REMOVED 2026-07-25 (operator: "i don't want you on separate instances"): the
     # agent_worktree_boundary check required ED_AGENT_ROLE to be set and blocked all
     # commits from a single-instance workflow (fail-closed on unset role). Single

@@ -307,11 +307,13 @@ def _contract_multiplier(ct: dict) -> Optional[int]:
         return None
     if "multiplier" not in ct or ct["multiplier"] is None:
         return LEGACY_CHAIN_MULTIPLIER_DEFAULT  # O-54 legacy fallback
-    raw = ct["multiplier"]
-    try:
-        n = int(float(raw))
-    except (TypeError, ValueError):
+    # single source: finite multiplier via the canonical reader. int(float(raw)) raised an
+    # UNCAUGHT OverflowError on +inf (the except only caught TypeError/ValueError); the
+    # canonical reader rejects NaN/±inf up front -> fail-closed None.
+    n_f = _f(ct["multiplier"])
+    if n_f is None:
         return None  # invalid (corrupt data) — fail-closed
+    n = int(n_f)
     if n <= 0:
         return None  # invalid (non-positive) — fail-closed
     return n

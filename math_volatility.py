@@ -346,15 +346,14 @@ def compute_iv_skew(contracts: List[dict], spot: float) -> dict:
         }
 
     # Find ATM strike — gate float() so a non-numeric strikePrice cannot crash the iter
+    from numeric_contract import float_finite_or_none as _fin
     strikes_set: set[float] = set()
     for ct in contracts:
-        sp = ct.get("strikePrice")
+        # single source: finite strike; raw float() admitted NaN into the ATM strike set
+        sp = _fin(ct.get("strikePrice"))
         if sp is None:
             continue
-        try:
-            strikes_set.add(float(sp))
-        except (TypeError, ValueError):
-            continue
+        strikes_set.add(sp)
     strikes = sorted(strikes_set)
     if not strikes:
         return {
@@ -870,25 +869,18 @@ def compute_iv_model_spread(
     market_ivs = []
     model_ivs = []
 
+    from numeric_contract import float_finite_or_none as _fin
     for ct in contracts:
-        strike = ct.get("strikePrice")
-        if strike is None:
+        # single source: finite strike + finite IVs. Raw float() let a NaN strike pass
+        # abs()>window (nan>window is False) and admitted NaN IVs into the smile.
+        k = _fin(ct.get("strikePrice"))
+        if k is None or abs(k - spot) > atm_window:
             continue
-        try:
-            k = float(strike)
-        except (ValueError, TypeError):
-            continue
-        if abs(k - spot) > atm_window:
-            continue
-
-        mkt_iv = ct.get("volatility")
-        mdl_iv = ct.get("theoreticalVolatility")
+        mkt_iv = _fin(ct.get("volatility"))
+        mdl_iv = _fin(ct.get("theoreticalVolatility"))
         if mkt_iv is not None and mdl_iv is not None:
-            try:
-                market_ivs.append(float(mkt_iv))
-                model_ivs.append(float(mdl_iv))
-            except (ValueError, TypeError):
-                continue
+            market_ivs.append(mkt_iv)
+            model_ivs.append(mdl_iv)
 
     if not market_ivs or not model_ivs:
         return {"spread": None, "label": None, "market_iv": None, "model_iv": None}

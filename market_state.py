@@ -830,13 +830,13 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
     for ct in contracts or []:
         if str(ct.get("putCall", "")).upper().strip() != su:
             continue
-        sp = ct.get("strikePrice")
+        # single source: finite strike via the canonical reader. A NaN strike used to pass
+        # the None check and then false-match (abs(nan-kf) >= 0.01 is False) — the #8 bug
+        # hidden behind an intermediate variable.
+        sp = _f_ms(ct.get("strikePrice"))
         if sp is None:
             continue
-        try:
-            if abs(float(sp) - kf) >= 0.01:
-                continue
-        except Exception:
+        if abs(sp - kf) >= 0.01:
             continue
         # single source: canonical finite reader (also rejects NaN/inf, which raw float()
         # admitted into b/a and thus into the mid/spread computed just below).
@@ -844,25 +844,17 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
         a = _f_ms(ct.get("ask"))
         mid: float | None = None
         mid_source: str | None = None
-        try:
-            mark_raw = ct.get("mark")
-            if mark_raw is not None:
-                mark_val = float(mark_raw)
-                if mark_val > 0:
-                    mid = mark_val
-                    mid_source = "schwab_chain_mark"
-        except (TypeError, ValueError):
-            pass
+        # single source: finite mark/last via the canonical reader. Raw float() + a bare
+        # `> 0` gate let +inf through (inf > 0 is True) and needed a try/except for junk.
+        mark_val = _f_ms(ct.get("mark"))
+        if mark_val is not None and mark_val > 0:
+            mid = mark_val
+            mid_source = "schwab_chain_mark"
         if mid is None:
-            try:
-                last_raw = ct.get("last")
-                if last_raw is not None:
-                    last_val = float(last_raw)
-                    if last_val > 0:
-                        mid = last_val
-                        mid_source = "schwab_chain_last"
-            except (TypeError, ValueError):
-                pass
+            last_val = _f_ms(ct.get("last"))
+            if last_val is not None and last_val > 0:
+                mid = last_val
+                mid_source = "schwab_chain_last"
         if mid is None and b is not None and a is not None:
             try:
                 bf, af = float(b), float(a)
@@ -895,11 +887,10 @@ def _schwab_days_to_expiration_for_contract(contracts, strike: float | None, sid
         _sp = _f_ms(ct.get("strikePrice"))
         if _sp is None or abs(_sp - strike_f) >= 0.01:
             continue
-        raw_dte = ct.get("daysToExpiration")
-        try:
-            return int(float(raw_dte)) if raw_dte is not None else None
-        except Exception:
-            return None
+        # single source: finite DTE via the canonical reader (also rejects NaN/±inf, which
+        # int(float(...)) turned into a ValueError/OverflowError this except had to swallow).
+        _dte = _f_ms(ct.get("daysToExpiration"))
+        return int(_dte) if _dte is not None else None
     return None
 
 
