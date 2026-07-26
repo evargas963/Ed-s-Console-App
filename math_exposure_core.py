@@ -719,6 +719,7 @@ def compute_net_charm(
     *,
     rate: float = 0.05,
     drift_toward_strike: float | None = None,
+    now=None,
 ) -> dict:
     """
     Compute dealer net charm exposure for a given expiry.
@@ -779,7 +780,7 @@ def compute_net_charm(
         gamma_pin        : same as drift_toward
         contracts_used   : number of contracts that contributed
     """
-    import datetime as _dt2, math as _m
+    import math as _m
 
     try:
         _target_exp = str(expiry)[:10]
@@ -788,25 +789,12 @@ def compute_net_charm(
     except Exception:
         _target_exp = None
 
-    # For 0DTE: use remaining hours to close as T
-    # Prevents formula explosion as T → 0
-    def _resolve_T(dte_raw):
-        # single source: canonical finite reader. Raw float() admitted a NaN DTE
-        # (nan <= 0 is False, so NaN flowed into T and produced NaN charm) and RAISED
-        # on a junk string; both now fail-closed to None (T unavailable) — the input
-        # coercion only, the charm formula/sign below is unchanged.
-        dte_f = float_finite_or_none(dte_raw)
-        if dte_f is None: return None
-        if dte_f <= 0:
-            try:
-                from time_et import now_et
-
-                _now_et = now_et()
-            except Exception:
-                _now_et = _dt2.datetime.now()
-            hours_left = max(0.5, 16.0 - (_now_et.hour + _now_et.minute / 60.0))
-            return hours_left / 24.0 / 365.0
-        return dte_f / 365.0
+    # SINGLE SOURCE of T: intraday time-to-session-close (time_et.time_to_expiry_years),
+    # ACT/365, from `now` (defaults to now_et()). Replaces the old hours-to-close / day-count
+    # split — the 0DTE branch only approximated it (hardcoded 16:00, 0.5h floor) and the
+    # dte/365 branch ignored the intraday fraction entirely, so the two charm engines
+    # disagreed near expiry (RC-42 / RC-37; validated against Schwab-reported gamma).
+    from time_et import time_to_expiry_years as _tte
 
     call_charm = put_charm = 0.0
     used = 0
@@ -836,7 +824,6 @@ def compute_net_charm(
         iv      = _f(ct.get("volatility"))
         oi      = _f(ct.get("openInterest"))
         mult    = _f(ct.get("multiplier"))
-        dte_raw = ct.get("daysToExpiration")
 
         if gamma is None or strike is None:
             _skip_fields += 1
@@ -854,7 +841,7 @@ def compute_net_charm(
             _skip_iv += 1
             continue
 
-        T = _resolve_T(dte_raw)
+        T = _tte(ct.get("expirationDate"), now=now)
         if T is None or T <= 0:
             _skip_T += 1
             continue

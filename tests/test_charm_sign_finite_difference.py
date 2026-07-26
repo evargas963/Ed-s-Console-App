@@ -65,14 +65,21 @@ def test_bs_charm_sign_matches_finite_difference(label, S, dte):
 
 @pytest.mark.parametrize("label,S,dte", CASES)
 def test_compute_net_charm_sign_matches_finite_difference(label, S, dte):
+    from datetime import datetime, timedelta
+    from time_et import ET
     fd = _fd_calendar_charm(S, dte)
+    # T now comes from the canonical calendar clock (time_to_expiry_years), so pin `now` to
+    # exactly `dte` days before the 16:00 ET expiry — making compute_net_charm's T == dte/365,
+    # matching the finite-difference's T (a weekday expiry so the session close is 16:00).
+    exp = "2026-08-03"  # Monday
+    now = datetime(2026, 8, 3, 16, 0, tzinfo=ET) - timedelta(days=dte)
     # single CALL contract -> net_charm_daily = call_charm, sign == per-contract charm sign
     contract = {
-        "strikePrice": K, "putCall": "CALL", "expirationDate": "2026-08-01",
+        "strikePrice": K, "putCall": "CALL", "expirationDate": exp,
         "gamma": 0.05, "delta": 0.55, "volatility": SIGMA * 100.0,  # Schwab reports IV in percent
         "openInterest": 1000, "multiplier": 100, "daysToExpiration": dte,
     }
-    out = compute_net_charm([contract], S, "2026-08-01")
+    out = compute_net_charm([contract], S, exp, now=now)
     ncd = out.get("net_charm_daily")
     assert ncd is not None, f"{label}: charm did not compute ({out.get('error')})"
     assert fd * ncd > 0, (

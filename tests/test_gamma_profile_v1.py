@@ -22,6 +22,20 @@ from math_levels import (
     gamma_flip_from_profile,
 )
 
+import pytest
+from datetime import datetime
+import time_et
+
+
+@pytest.fixture(autouse=True)
+def _pin_now_to_fixture_session(monkeypatch):
+    # The fixture is a REAL 0DTE SPY chain captured 2026-07-17. The canonical intraday
+    # time-to-expiry (time_et.time_to_expiry_years) measures from now_et() to the session
+    # close, so replaying it today reads it as long-expired and drops every contract. Pin the
+    # clock to mid-session on the fixture's expiry day so it is a live 0DTE (~6h to close).
+    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 7, 17, 10, 0, tzinfo=time_et.ET))
+
+
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
 
 

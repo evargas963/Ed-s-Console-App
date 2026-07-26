@@ -719,7 +719,7 @@ def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
     return c if math.isfinite(c) else None
 
 
-def compute_charm_by_strike(contracts: List[dict], spot: float) -> Dict[float, dict]:
+def compute_charm_by_strike(contracts: List[dict], spot: float, now=None) -> Dict[float, dict]:
     """Per-strike dealer CHARM exposure, in delta-shares per day.
 
     Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
@@ -735,7 +735,7 @@ def compute_charm_by_strike(contracts: List[dict], spot: float) -> Dict[float, d
     if not contracts or not spot or spot <= 0:
         return out
     for ct in contracts:
-        parsed = _contract_inputs(ct)
+        parsed = _contract_inputs(ct, now=now)
         if parsed is None:
             continue
         strike, oi, mult, t_years, sigma, sign = parsed
@@ -767,9 +767,17 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
             round(pw, 2) if pw is not None else None)
 
 
-def _contract_inputs(ct: dict) -> tuple[float, float, float, float, float, int] | None:
-    """(strike, oi, mult, t_years, sigma, sign) or None when unusable."""
+def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, float, int] | None:
+    """(strike, oi, mult, t_years, sigma, sign) or None when unusable.
+
+    `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
+    option's session close (16:00 ET / 13:00 early-close), ACT/365, from `now` (defaults to
+    now_et()). Replaces the old max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to
+    24x near the close and flattened the real 1/sqrt(T) gamma/charm spike (RC-42; validated
+    against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
+    """
     from math_exposure_core import _f, schwab_iv_to_sigma
+    from time_et import time_to_expiry_years
 
     strike = _f(ct.get("strikePrice"))
     oi = _f(ct.get("openInterest"))
@@ -783,10 +791,9 @@ def _contract_inputs(ct: dict) -> tuple[float, float, float, float, float, int] 
     sigma = schwab_iv_to_sigma(_f(ct.get("volatility")))  # single source: math_exposure_core
     if sigma is None or sigma <= 0:
         return None
-    dte = _f(ct.get("daysToExpiration"))
-    if dte is None or dte < 0:
-        return None
-    t_years = max(float(dte), 0.5) / 365.0  # intraday floor so 0DTE stays finite
+    t_years = time_to_expiry_years(ct.get("expirationDate"), now=now)  # single source: intraday-to-close
+    if t_years is None or t_years <= 0:
+        return None  # expired / holiday / missing-or-unparseable expiry -> fail closed
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
@@ -810,7 +817,7 @@ def _dealer_sign(side_sign: int, sign_model: str) -> int:
 
 def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float = 0.15,
                           steps: int = 240,
-                          sign_model: str = SIGN_MODEL_NAIVE) -> List[tuple[float, float]]:
+                          sign_model: str = SIGN_MODEL_NAIVE, now=None) -> List[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
     Dealer convention per `sign_model` (default naive +call/−put — the only model in
@@ -819,7 +826,7 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
     """
     if not contracts or spot is None or spot <= 0:
         return []
-    parsed = [p for p in (_contract_inputs(c) for c in contracts if isinstance(c, dict)) if p]
+    parsed = [p for p in (_contract_inputs(c, now=now) for c in contracts if isinstance(c, dict)) if p]
     if not parsed:
         return []
     lo, hi = spot * (1.0 - span_pct), spot * (1.0 + span_pct)
@@ -977,7 +984,7 @@ def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | 
 
 
 def compute_gamma_flip_v2(
-    contracts: List[dict], spot: float, *, min_span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT
+    contracts: List[dict], spot: float, *, min_span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT, now=None
 ) -> tuple[float | None, str, dict]:
     """Canonical gamma flip (profile zero-crossing) plus an honest confidence verdict.
 
@@ -1002,7 +1009,7 @@ def compute_gamma_flip_v2(
         "min_span_pct": min_span_pct,
     }
     covers = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
-    profile = compute_gamma_profile(contracts, spot)
+    profile = compute_gamma_profile(contracts, spot, now=now)
     flip = gamma_flip_from_profile(profile, spot)   # nearest crossing, EITHER direction
 
     # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where

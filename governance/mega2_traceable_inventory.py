@@ -90,7 +90,6 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_exposure_core.py", 541, "window_summary", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Window-level DEX/GEX/OI summary."),
     Mega2TraceableDerivation("math_exposure_core.py", 567, "strike_agg", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Delegates to Schwab transport producers for strike_agg."),
     Mega2TraceableDerivation("math_exposure_core.py", 573, "compute_net_charm", "DERIVED", None, ("server.py:_fetch_state",), None, "Net charm from chain; Schwab charm leaf when present."),
-    Mega2TraceableDerivation("math_exposure_core.py", 622, "compute_net_charm._resolve_T", "SCHWAB_LEAF", 'chains.*.daysToExpiration', (), None, "Nested DTE parse for charm window."),
     Mega2TraceableDerivation("math_exposure_core.py", 745, "greek_bias", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Bias string from greeks."),
     Mega2TraceableDerivation("math_exposure_core.py", 778, "compute_beta", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Beta from return series; inputs from Schwab candles."),
     Mega2TraceableDerivation("math_exposure_core.py", 820, "compute_beta_residual", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Residual vs SPY; quote-derived inputs."),

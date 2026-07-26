@@ -16,9 +16,20 @@ import json
 import math
 from pathlib import Path
 
+import pytest
+from datetime import datetime
+import time_et
+
 from math_levels import bs_charm, compute_charm_by_strike, pick_charm_wall_strikes
 
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
+
+
+@pytest.fixture(autouse=True)
+def _pin_now_to_fixture_session(monkeypatch):
+    # Fixture is a REAL 0DTE SPY chain captured 2026-07-17; pin the clock to mid-session that
+    # day so the canonical intraday time-to-expiry sees a live 0DTE, not an expired past date.
+    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 7, 17, 10, 0, tzinfo=time_et.ET))
 
 
 def _load_real_chain() -> tuple[list, float]:
