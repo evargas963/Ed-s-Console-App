@@ -738,13 +738,21 @@ def compute_net_charm(
 
         dDelta/dT = -phi(d1) * [ r/(iv*sqrt(T)) - d2/(2T) ]
 
-    Ours is dDelta/dt (calendar time) = -dDelta/dT, with the r/(iv*sqrt(T)) term
-    DELIBERATELY OMITTED because it explodes as T->0 (0DTE: 0.05/0.005 -> billions).
-    VERIFIED 2026-07-19: at r=0 ours equals -(textbook) EXACTLY, so the retained
-    algebra is right. The omission costs accuracy that grows with T and rate --
-    measured error vs textbook: ~6% at 0DTE ATM, ~17% at 7d, ~71% at 3-month ATM
-    (r=0.05). Acceptable for the 0DTE/near-expiry use this feeds; NOT acceptable if
-    charm is ever extended to longer-dated expiries. Tracked in the unproven register.
+    Ours is dDelta/dt (CALENDAR time — as the trading day passes and T shrinks), with the
+    r/(iv*sqrt(T)) term DELIBERATELY OMITTED because it explodes as T->0 (0DTE). At r=0
+    that leaves  charm = +phi(d1) * d2 / (2T)  — exactly the formula above evaluated at
+    r=0, which IS the calendar-time charm.
+    SIGN CORRECTED 2026-07-25: a prior revision negated this to -phi*d2/(2T) on the claim
+    "ours = -dDelta/dT", which INVERTED the direction — charm_direction reported "buying"
+    when the dealer flow was selling (measured: sign-inverted vs the correct convention on
+    70-79% of real SPY/QQQ/IWM states, exact-negation of the per-strike bs_charm path). A
+    direct finite-difference of Black-Scholes delta as calendar time advances,
+    (delta(T-1d)-delta(T))/dt, proves calendar charm = +phi*d2/(2T) (= math_levels.bs_charm
+    at r=0) for ATM/ITM/OTM alike. The r-omission still costs accuracy that grows with T and
+    rate (~6% 0DTE ATM, ~17% 7d, ~71% 3-month ATM at r=0.05); acceptable for the near-expiry
+    use this feeds. NOTE: the scalar here and the per-strike compute_charm_by_strike now
+    agree on DIRECTION; a residual magnitude gap near expiry (different T convention:
+    hours-to-close vs a 0.5-day floor) is a separate, tracked single-source item.
 
     NOTE: the ``rate`` parameter is therefore NOT used in the charm computation.
 
@@ -858,18 +866,21 @@ def compute_net_charm(
         S      = float(spot)
         K      = float(strike)
 
-        # charm = dDelta/dt using the standard dealer-positioning form:
-        #   charm = -phi(d1) * d2 / (2*T)
+        # charm = dDelta/dt (CALENDAR time, i.e. as the trading day passes and T shrinks):
+        #   charm = +phi(d1) * d2 / (2*T)          (with the r/(iv*sqrt(T)) term dropped for
+        #                                           0DTE stability; T floor guards the rest)
         #
-        # This form (not the full BS expansion) stays bounded as T→0 because
-        # d2 → 0 at the same rate. The full expansion includes r/(iv*sqrt(T))
-        # which explodes for 0DTE (e.g. 0.05/0.005 = 10 → billions).
+        # SIGN CORRECTED 2026-07-25: the prior form was -phi(d1)*d2/(2T) — the exact
+        # NEGATIVE of calendar-time charm, so charm_direction was systematically INVERTED
+        # ("buying" reported when dealer flow was actually selling). Proven by a direct
+        # finite-difference of Black-Scholes delta as calendar time advances
+        # (delta(T-1d) - delta(T)) / dt: for ATM/ITM/OTM/slight-ITM/slight-OTM the sign
+        # matched +phi*d2/(2T) in every case (= math_levels.bs_charm at r=0, itself
+        # finite-difference verified). This aligns the scalar net_charm with the per-strike
+        # compute_charm_by_strike / bs_charm path (which was already correct and feeds the
+        # charm walls), so the two charm faucets now agree on direction.
         #
-        # Units: delta/year per unit contract. Scale to daily:
-        #   weighted = charm/year / 365 * OI * mult
-        #
-        # Sign: negative charm = delta decaying = dealers buying back delta = bullish.
-        # We flip sign below: net > 0 means dealers net BUYING (bullish flow).
+        # Units: delta/year per unit contract. Scale to daily: weighted = charm/year/365*OI*mult
         try:
             ln_SK = _m.log(S / K)
             sqrt_T = _m.sqrt(T)
@@ -882,8 +893,8 @@ def compute_net_charm(
 
         if T <= 0: continue
 
-        # charm per unit in delta/year
-        charm_unit = -phi_d1 * d2 / (2.0 * T)
+        # charm per unit in delta/year (calendar-time; sign matches bs_charm — see above)
+        charm_unit = phi_d1 * d2 / (2.0 * T)
 
         # For puts: by put-call parity, charm_put = charm_call (same sign, same magnitude
         # at ATM; put delta decays symmetrically to call delta). Use same formula.
