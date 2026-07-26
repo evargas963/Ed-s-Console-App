@@ -51,6 +51,19 @@ VENDOR_FIELDS = frozenset({
     # NaN and the `<= 0` spot guard did not catch it):
     "underlyingPrice", "rho", "theoreticalOptionValue", "theoreticalVolatility",
     "timeValue", "intrinsicValue", "markChange", "markPercentChange", "netPercentChange",
+    # 2026-07-26: the hand-maintained list was proven INCOMPLETE by reconciling against
+    # every numeric contract leaf in real captured chains (test_vendor_field_coercion_
+    # completeness). These price/value leaves were missing:
+    "breakEven", "extrinsicValue", "high52Week", "low52Week", "percentChange",
+})
+
+#: Numeric contract leaves that are NOT prices/greeks — epoch-millisecond timestamps and
+#: security ids. They are still coerced through canonical readers where used, but they are
+#: deliberately OUT of the price/greek faucet class; the completeness test treats them as
+#: intentionally-excluded rather than a coverage gap. (Reconsider if any becomes a money input.)
+EXCLUDED_NUMERIC_LEAVES = frozenset({
+    "quoteTimeInLong", "tradeTimeInLong", "lastTradingDay", "expirationDate", "ssid",
+    "settlementType", "deliverableNote", "penny", "optionRoot",
 })
 
 #: Canonical readers (and their in-scope module-local delegates) that make a coercion safe.
