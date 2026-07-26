@@ -510,5 +510,23 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 10428, "_radar_contact", "DERIVED", None, ("server.py:_radar_row",), None, "Ring classification from existing levels/ATR; thresholds are terrain_atr constants."),
     Mega1TraceableDerivation("server.py", 10575, "_reprice_cached_terrain", "DERIVED", None, ("server.py:resolve_spot",), None, "Re-evaluates cached gamma profile at the fresh authoritative spot (RC-28); both inputs from traced producers."),
 
+    Mega1TraceableDerivation("server.py", 2041, "_record_tier_c_broadcast_identity", "NONE", None, (), None, "No market-field derivation: records the last broadcast bundle id so the cache fanout never re-sends it."),
+    Mega1TraceableDerivation("server.py", 2065, "_tier_c_fanout_is_duplicate", "NONE", None, (), None, "No market-field derivation: dedup check, true when the fanout bundle is already on the wire."),
+    Mega1TraceableDerivation("server.py", 5701, "_l1_on_l2_snapshot_ready_auto_scope", "NONE", None, (), None, "No market-field derivation: L1-SSE auto-scope refresh companion to the L2-ready hook."),
+    Mega1TraceableDerivation("server.py", 5769, "_l1_auto_scope_has_subscribers", "NONE", None, (), None, "No market-field derivation: true when a light-stream client is subscribed to this scope."),
+    Mega1TraceableDerivation("server.py", 10299, "_universal_capture_wanted", "NONE", None, (), None, "No market-field derivation: gate, does this ticker still need today's wide morning capture."),
+    Mega1TraceableDerivation("server.py", 10340, "_persist_universal_capture", "NONE", None, (), None, "No market-field derivation: persists the wide chain (archive concern); terrain serves separately."),
+    Mega1TraceableDerivation("server.py", 10391, "_log_flip_drift", "NONE", None, (), None, "No market-field derivation: appends one flip-drift log row; never raises."),
+    Mega1TraceableDerivation("server.py", 10731, "_kick_radar_fallback_refresh", "NONE", None, (), None, "No market-field derivation: starts one background fallback recompute; concurrent callers coalesce."),
+    Mega1TraceableDerivation("server.py", 10742, "_radar_fallback_refresh_worker", "NONE", None, (), None, "No market-field derivation: background worker wrapping the radar fallback recompute."),
+    Mega1TraceableDerivation("server.py", 11114, "chart_page", "NONE", None, (), None, "No market-field derivation: serves the chart-first HTML view."),
+    Mega1TraceableDerivation("server.py", 10920, "get_terrain_strikes._per_strike._scope", "NONE", None, (), None, "No market-field derivation: nested scope helper for per-strike selection."),
+    Mega1TraceableDerivation("server.py", 10755, "_radar_fallback_recompute", "DERIVED", None, ("server.py:_fetch_state",), None, "Heavy off-request radar sweep recomputed from cached terrain/analytics; no direct leaf read."),
+    Mega1TraceableDerivation("server.py", 11091, "get_terrain_scorecard", "NONE", None, (), None, "No market-field derivation: serves the latest daily-scorecard's persisted numbers; no live Schwab-leaf read in the body."),
+    Mega1TraceableDerivation("server.py", 11008, "get_bars1m", "DERIVED", None, ("server.py:_fetch_state",), None, "Serves canonical 1m OHLCV bars from the cached bars store; no direct chain leaf."),
+    Mega1TraceableDerivation("server.py", 11041, "get_spot", "DERIVED", None, ("server.py:resolve_spot",), None, "Featherweight live spot via the single spot authority resolve_spot (RC-14); no direct leaf here."),
+    Mega1TraceableDerivation("server.py", 10914, "get_terrain_strikes", "SCHWAB_LEAF", 'chains.*.strikePrice', (), None, "Per-strike GEX$ endpoint: reads strikePrice/daysToExpiration/totalVolume from the chain."),
+    Mega1TraceableDerivation("server.py", 10919, "get_terrain_strikes._per_strike", "SCHWAB_LEAF", 'chains.*.strikePrice', (), None, "Nested: builds one per-strike row from the chain leaves."),
+    Mega1TraceableDerivation("server.py", 10950, "get_terrain_strikes._per_strike._dte", "SCHWAB_LEAF", 'chains.*.daysToExpiration', (), None, "Nested: parses daysToExpiration for the per-strike row."),
 )
 
