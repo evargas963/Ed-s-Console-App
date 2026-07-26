@@ -1597,6 +1597,84 @@ def check_vendor_field_coercion() -> list[Violation]:
     return [Violation(REPO / rel, line, msg) for rel, line, msg in violations()]
 
 
+def _git_output_lines(args: list[str]) -> list[str] | None:
+    """git stdout lines, or None when not in a usable git/commit context (never a false block)."""
+    import subprocess
+    try:
+        r = subprocess.run(["git", *args], cwd=str(REPO), capture_output=True, text=True, timeout=25)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return r.stdout.splitlines()
+
+
+def _staged_has_real_change(rel: str) -> bool:
+    """True when the staged diff for `rel` adds/removes any non-blank line (not pure whitespace)."""
+    lines = _git_output_lines(["diff", "--cached", "-U0", "--", rel])
+    if not lines:
+        return False
+    for ln in lines:
+        if ln.startswith("+++") or ln.startswith("---"):
+            continue
+        if (ln.startswith("+") or ln.startswith("-")) and ln[1:].strip():
+            return True
+    return False
+
+
+def check_recursive_five_why_front_loaded() -> list[Violation]:
+    """UNIVERSAL front-end of the recursive-5-why law: a code change ships with its root cause.
+
+    OBSERVED (2026-07-26, RC-41): the five_why_recursive_lock validated the CONTENT of rows
+    that already existed but never the ACT of opening one, so an entire session of fixes (charm
+    RC-35, coercion RC-38 and their children) shipped with zero root-cause rows and the gate
+    stayed green. Per the log's Rule 5, "I didn't do the 5-why" is a symptom whose real defect
+    is a MISSING mechanical check — the law depended on goodwill at discovery time, and goodwill
+    fails. The law is UNIVERSAL ("with everything we do", operator 2026-07-19) — this check is
+    deliberately NOT scoped to a subsystem.
+
+    Rule: any commit that stages a real change to a tracked .py file MUST co-stage a real
+    '| RC-' row in governance/root_cause_log.md. A cosmetic touch of the log does not satisfy it
+    (an added '| RC-' line is required), and the row's quality is separately enforced by
+    five_why_recursive_lock — so a fix cannot reach a commit without a ROOT-terminal recursive
+    entry. Front-end law: open the row at DISCOVERY, before the fix.
+
+    VALIDATED: prototyped against this repo before enforcing — fires when a .py change is staged
+    with no RC row, passes when a real row is co-staged, and no-ops (returns []) outside a git
+    commit context so unit-test imports never false-block. Escapes NONE by design.
+    """
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return []  # not a commit context — never a false block
+    staged_set = {s.strip().replace("\\", "/") for s in staged if s.strip()}
+    if not staged_set:
+        return []
+    log_rel = "governance/root_cause_log.md"
+    changed_code = sorted(
+        f for f in staged_set if f.endswith(".py") and _staged_has_real_change(f)
+    )
+    if not changed_code:
+        return []
+    if log_rel not in staged_set:
+        return [Violation(
+            REPO / changed_code[0], 0,
+            "Code changed (" + ", ".join(changed_code[:5]) +
+            (" …" if len(changed_code) > 5 else "") + ") with NO co-staged root-cause row. "
+            "The recursive-5-why law is UNIVERSAL and FRONT-LOADED (operator 2026-07-19): the "
+            "moment you find an issue you OPEN its RC-<n> row in governance/root_cause_log.md and "
+            "drive each cause to its ROOT before fixing. Every code change ships with its "
+            "recursive root cause — co-stage a real '| RC-' row (its quality is enforced by "
+            "five_why_recursive_lock). This scope is not narrowable.")]
+    log_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
+    if not any(l.startswith("+| RC-") for l in log_diff):
+        return [Violation(
+            REPO / log_rel, 0,
+            "governance/root_cause_log.md is staged but no '| RC-<n>' row was added or changed "
+            "alongside a code change — a real recursive-5-why entry is required, not a cosmetic "
+            "touch. Open the RC at discovery, drive to ROOT, fix end-to-end.")]
+    return []
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -1606,6 +1684,7 @@ CHECKS = [
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
     ("five_why_recursive_lock", check_five_why_recursive_lock, True),  # end-to-end fixes, no patches ever
+    ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded, True),  # UNIVERSAL: any code change ships a root-cause row
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home
     ("checks_are_justified", check_checks_are_justified, True),  # observed + validated, or no ship
