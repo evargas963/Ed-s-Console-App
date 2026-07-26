@@ -12867,11 +12867,11 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         selected_exp = _default_expiry(expiries, ticker)
 
         # Try charm with all contracts, no filter
-        raw_spot = chain_json.get("underlyingPrice")
-        try:
-            spot = float(raw_spot) if raw_spot is not None else None
-        except (TypeError, ValueError):
-            spot = None
+        # single source: finite spot via the canonical reader. Raw float() admitted a NaN
+        # underlyingPrice, and the `spot <= 0` guard does NOT catch NaN (nan <= 0 is False),
+        # so a NaN spot used to flow into compute_net_charm.
+        from numeric_contract import float_finite_or_none as _fin
+        spot = _fin(chain_json.get("underlyingPrice"))
         if spot is None or spot <= 0:
             return {"error": f"underlyingPrice missing or zero in chain response for {ticker}"}
         charm_all = compute_net_charm(contracts, spot, selected_exp or "")

@@ -46,7 +46,11 @@ VENDOR_FIELDS = frozenset({
     "strikePrice", "totalVolume", "openInterest", "gamma", "delta", "theta", "vega",
     "volatility", "bid", "ask", "mark", "last", "lastSize", "bidSize", "askSize",
     "multiplier", "daysToExpiration", "highPrice", "lowPrice", "openPrice",
-    "closePrice", "netChange", "lastPrice", "mid", "closePrice",
+    "closePrice", "netChange", "lastPrice", "mid",
+    # numeric leaves added 2026-07-25 (iteration-4 finding: float(underlyingPrice) admitted
+    # NaN and the `<= 0` spot guard did not catch it):
+    "underlyingPrice", "rho", "theoreticalOptionValue", "theoreticalVolatility",
+    "timeValue", "intrinsicValue", "markChange", "markPercentChange", "netPercentChange",
 })
 
 #: Canonical readers (and their in-scope module-local delegates) that make a coercion safe.

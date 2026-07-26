@@ -302,17 +302,17 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
         ext = data.get("extended", {}) or {}
         reg = data.get("regular", {}) or {}
         last = _last_traded_price(quote, ext, reg)
-        pct_chg = quote.get("netPercentChange")
-        if pct_chg is None:
-            pct_chg = reg.get("regularMarketPercentChange")
         from numeric_contract import float_finite_or_none as _fin
+        pct_chg = _fin(quote.get("netPercentChange"))
+        if pct_chg is None:
+            pct_chg = _fin(reg.get("regularMarketPercentChange"))
         net_chg = _fin(quote.get("netChange"))
         if net_chg is None:
             net_chg = _fin(reg.get("regularMarketNetChange"))
         if last:
-            last = float(last)
+            last = _fin(last)
         if pct_chg is not None:
-            pct_chg = float(pct_chg)
+            pass  # already finite via the canonical reader above
         elif net_chg is not None and last and (last - net_chg) != 0:
             # single source: finite netChange (a NaN change would produce a NaN pct)
             pct_chg = net_chg / (last - net_chg) * 100.0
