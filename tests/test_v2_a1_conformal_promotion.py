@@ -279,8 +279,8 @@ def test_backward_compat_when_no_artifact_loadable():
 
 def test_schema_validates_promoted_and_unpromoted_states():
     """Contract: schema walker accepts promoted and unpromoted p_low/p_high leaves."""
-    validate_v2_decision(build_module_a_a1_decision(_ms()))
-    validate_v2_decision(build_module_a_a1_decision(_ms(a1_conformal_artifact=None)))
+    assert validate_v2_decision(build_module_a_a1_decision(_ms())) is None
+    assert validate_v2_decision(build_module_a_a1_decision(_ms(a1_conformal_artifact=None))) is None
 
 
 def test_bounds_are_symmetric_across_predicate_states():

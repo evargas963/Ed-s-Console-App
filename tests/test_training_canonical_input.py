@@ -69,7 +69,7 @@ def test_training_snapshot_for_sequence_encode_stable_merge():
 def test_validate_tabular_ok_on_valid_frame():
     row = _minimal_valid_db_row()
     df = pd.DataFrame([row])
-    validate_tabular_training_dataframe_canonical(df, max_rows=10)
+    assert validate_tabular_training_dataframe_canonical(df, max_rows=10) is None
 
 
 def test_validate_tabular_treats_pandas_nan_as_missing_on_absorption_score():
@@ -86,7 +86,7 @@ def test_validate_tabular_treats_pandas_nan_as_missing_on_absorption_score():
     row["absorption_score"] = float("nan")
     df = pd.DataFrame([row])
     # Must NOT raise — NaN-from-DataFrame is treated as missing (None).
-    validate_tabular_training_dataframe_canonical(df, max_rows=10)
+    assert validate_tabular_training_dataframe_canonical(df, max_rows=10) is None
 
 
 def test_validate_tabular_treats_pandas_nan_as_missing_on_structure_columns():
@@ -99,7 +99,7 @@ def test_validate_tabular_treats_pandas_nan_as_missing_on_structure_columns():
     row["nearest_below_dist"] = float("nan")
     row["vwap_dist_pts"] = float("nan")
     df = pd.DataFrame([row])
-    validate_tabular_training_dataframe_canonical(df, max_rows=10)
+    assert validate_tabular_training_dataframe_canonical(df, max_rows=10) is None
 
 
 def _make_snapshots_db(tmp_path, rows_per_ticker: dict) -> str:

@@ -31,12 +31,12 @@ def test_validate_blocks_delete_without_where() -> None:
 
 def test_validate_allows_delete_with_where(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED", raising=False)
-    validate_sql_for_production_guard("DELETE FROM snapshots WHERE ticker='X'")
+    assert validate_sql_for_production_guard("DELETE FROM snapshots WHERE ticker='X'") is None
 
 
 def test_validate_respects_dangerous_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED", "1")
-    validate_sql_for_production_guard("DROP TABLE IF EXISTS z")
+    assert validate_sql_for_production_guard("DROP TABLE IF EXISTS z") is None
 
 
 def test_backup_creates_db_copy_and_manifest(tmp_path: Path) -> None:

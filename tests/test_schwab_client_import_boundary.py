@@ -25,7 +25,8 @@ def _reload_server_module() -> object:
 
 
 def test_schwab_py_package_importable() -> None:
-    import schwab.auth  # noqa: F401
+    import schwab.auth
+    assert schwab.auth.__name__ == "schwab.auth"
 
 
 def test_schwab_client_imports_without_constructing_live_client() -> None:

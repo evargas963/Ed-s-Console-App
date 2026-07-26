@@ -374,7 +374,7 @@ def test_harness_arg_parser_defaults(ucf):
 
 
 def test_harness_module_is_valid_python():
-    ast.parse(_harness_source())
+    assert ast.parse(_harness_source()).body  # parses to a non-empty module (raises SyntaxError otherwise)
 
 
 def test_evaluate_institutional_proof_all_green_with_guest(ucf):

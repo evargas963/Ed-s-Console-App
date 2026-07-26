@@ -48,19 +48,19 @@ def test_ci_runtime_dependency_importable(pkg_name: str, import_name: str) -> No
 
 @pytest.mark.parametrize("module", CI_GOVERNANCE_IMPORT_MODULES)
 def test_ci_governance_module_importable(module: str) -> None:
-    importlib.import_module(module)
+    assert importlib.import_module(module).__name__ == module
 
 
 @pytest.mark.parametrize("module", CI_APP_IMPORT_MODULES)
 def test_ci_app_module_importable(module: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCHWAB_API_KEY", "ci-test-key-not-live")
     monkeypatch.setenv("SCHWAB_APP_SECRET", "ci-test-secret-not-live")
-    importlib.import_module(module)
+    assert importlib.import_module(module).__name__ == module
 
 
 def test_build_feature_assignment_matrix_v2_imports_openpyxl() -> None:
-    importlib.import_module("tools.build_feature_assignment_matrix_v2")
-    importlib.import_module("openpyxl")
+    assert importlib.import_module("tools.build_feature_assignment_matrix_v2").__name__ == "tools.build_feature_assignment_matrix_v2"
+    assert importlib.import_module("openpyxl").__name__ == "openpyxl"
 
 
 def test_pytest_conftest_sets_ci_schwab_placeholders() -> None:

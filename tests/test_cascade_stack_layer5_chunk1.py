@@ -58,11 +58,11 @@ def test_validate_lineage_rejects_missing_actual_fingerprint():
 
 def test_validate_lineage_accepts_matching_fingerprints():
     snap = _minimal_inf_v1()
-    validate_cascade_inference_lineage(
+    assert validate_cascade_inference_lineage(
         snap,
         expected_data_fingerprint="same",
         actual_data_fingerprint="same",
-    )
+    ) is None  # matching fingerprints -> returns None (raises on mismatch)
 
 
 def test_assert_no_legacy_mvp_allows_none_overlay():
