@@ -115,7 +115,13 @@ def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
         "_bg_persist_bars_then_fill_outcomes not found — bars persistence has "
         "been moved out of the ordered background task (lane-4 regression)."
     )
-    # Every upsert_1m_bars call in _fetch_state must live inside the bg task.
+    # RC-69 SUPERSEDES THE BARS HALF OF THIS LOCK. Lane-4 correctly moved the 8,090.8ms
+    # upsert_1m_bars off the synchronous path; RC-69 removed it from this RENDER path entirely,
+    # because persisting bars here made COLLECTION a side-effect of DISPLAY (MEASURED 2026-07-27:
+    # SPY on-screen bar lag 3.1 min vs QQQ/IWM 19.1 min off-screen, all three with ~1.0 min
+    # snapshot lag; 39.8% of snapshots unlabelled for want of forward bars). `_bars_loop` is now
+    # the ONE writer of price_bars_1m. This lock now guards that the render path does NOT write
+    # bars, and that outcome labelling stays offloaded and ordered.
     upsert_lines = [
         n.lineno
         for n in ast.walk(fn)
@@ -123,12 +129,10 @@ def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
         and isinstance(n.func, ast.Attribute)
         and n.func.attr == "upsert_1m_bars"
     ]
-    assert upsert_lines, "_fetch_state no longer persists 1m bars at all"
-    for ln in upsert_lines:
-        assert bg.lineno <= ln <= (bg.end_lineno or bg.lineno), (
-            f"upsert_1m_bars called at server.py:{ln} outside the background task — "
-            "the 1m-bars write is back on the synchronous Tier C hot path."
-        )
+    assert not upsert_lines, (
+        f"RC-69 regression: _fetch_state persists 1m bars at server.py:{upsert_lines} - bar "
+        f"collection is coupled to the viewport again."
+    )
     # Ordering inside the task: bars durable before labels advance.
     fill_lines = [
         n.lineno
@@ -138,10 +142,9 @@ def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
         and n.func.attr == "fill_outcomes"
     ]
     assert fill_lines, "background task no longer runs fill_outcomes"
-    assert min(upsert_lines) < min(fill_lines), (
-        "fill_outcomes precedes upsert_1m_bars in the background task — labels "
-        "could advance before their bars are durable."
-    )
+    # The old upsert-before-fill ordering assertion is retired with the bars write itself:
+    # bars are now durable ahead of any render because `_bars_loop` persists them continuously
+    # and independently, rather than racing a per-render background task.
     assert "_get_db_fill_outcomes_executor" in _called_names(fn), (
         "_fetch_state no longer submits to the fill-outcomes executor"
     )

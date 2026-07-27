@@ -1,10 +1,10 @@
 {
   "file_length": 37,
-  "function_complexity": 458,
+  "function_complexity": 459,
   "function_length": 393,
   "mypy_types": 753,
   "no_fake_defaults": 0,
   "orphan_dict_keys": 222,
-  "ruff_quality": 1079,
+  "ruff_quality": 1081,
   "tests_missing_explicit_assert": 0
 }

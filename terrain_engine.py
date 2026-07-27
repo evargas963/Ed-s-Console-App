@@ -22,6 +22,7 @@ scheduling live in the caller, so this stays trivially testable.
 
 from __future__ import annotations
 
+import time as _time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -94,9 +95,25 @@ class TerrainSnapshot:
     #: is not; the regime is the sign of this curve AT spot.
     profile: list[tuple[float, float]] = field(default_factory=list, repr=False)
 
+    #: RC-68 — the LIVE per-strike map, kept instead of discarded. compute_exposures_by_strike
+    #: already runs on every ~60s terrain refresh and its result was used to pick the walls and
+    #: then thrown away, which forced /api/terrain/strikes to render the per-strike histogram from
+    #: the FROZEN option_chain_morning_full archive (MEASURED 2026-07-27: 09:47 capture served at
+    #: 11:31, session volume understated 281 percent). Retaining it makes that panel live at ZERO
+    #: additional vendor cost — the chain is already in hand. Kept OUT of to_dict() for the same
+    #: reason as `profile`: too heavy for every poll; the strikes endpoint reads it directly.
+    per_strike: dict[float, dict[str, Any]] = field(default_factory=dict, repr=False)
+    #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
+    #: an age on its face rather than implying "now".
+    computed_ts_utc: float | None = None
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d.pop("profile", None)
+        # RC-68: per_strike is hundreds of entries — far too heavy for every poll, same reason
+        # `profile` is excluded. /api/terrain/strikes reads it off the cached snapshot directly.
+        # computed_ts_utc DOES stay in the payload: every consumer must be able to show an age.
+        d.pop("per_strike", None)
         return d
 
 
@@ -110,6 +127,34 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
         confidence=read.confidence, headline=read.headline, lines=read.lines,
         error=reason,
     )
+
+
+def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[str, Any]]:
+    """Per-strike net GEX$ and SESSION VOLUME from the chain that just built `exposures` (RC-68).
+
+    Volume is summed through the canonical non-negative reader — never a raw float(), which admits
+    NaN silently (RC-38) — and strikes are read through the finite reader so a NaN strike can never
+    become a dict key. One chain in, one map out: this is the single source for the per-strike
+    histogram, replacing the frozen morning archive it used to read.
+    """
+    from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+
+    out: dict[float, dict[str, Any]] = {}
+    for k, ex in (exposures or {}).items():
+        sk = float_finite_or_none(k)
+        if sk is None:
+            continue
+        out[sk] = {"strike": sk, "net_gex": getattr(ex, "net_gex", None), "volume": 0.0}
+    for ct in contracts or []:
+        if not isinstance(ct, dict):
+            continue
+        sk = float_finite_or_none(ct.get("strikePrice"))
+        if sk is None or sk not in out:
+            continue
+        v = float_nonnegative_or_none(ct.get("totalVolume"))
+        if v is not None:
+            out[sk]["volume"] += v
+    return out
 
 
 def compute_terrain(ticker: str, contracts: list[dict] | None,
@@ -180,4 +225,10 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         dollarized=exposures_have_dollar_gex(exposures),
         flip_diag=dict(flip_diag or {}),
         profile=profile,
+        # RC-68: keep the LIVE per-strike map instead of discarding it. `exposures` was just
+        # computed from THIS chain; the per-strike histogram was previously rendered from the
+        # frozen morning archive purely because nothing persisted this. Session volume is carried
+        # alongside so the volume panel stops serving a 09:47 corpse at 11:31.
+        per_strike=_per_strike_map(exposures, contracts),
+        computed_ts_utc=_time.time(),
     )

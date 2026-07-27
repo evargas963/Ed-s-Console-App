@@ -6436,18 +6436,32 @@ function renderDecisionCommandRail(d) {
    (v2_decision/a2_option_expression._theta). */
 
 // ── Real-time spot authority: fast quote drives display spot between full-state refreshes ──
+/* RC-77 — THE CONSOLE SPOT AUTHORITY. Counterpart of chart.html::currentSpot(). Every rendered
+   price on this page resolves here and nowhere else.
+
+   Three resolvers used to exist. effectiveDisplaySpot() and edLiveSpot() both preferred the SSE
+   fast lane, while the console v2 header rendered `fnum(s.spot, s.quote_mid, t.spot)` and never
+   consulted the fast lane at all — so the v2 header could show an older price than the money-path
+   card and the terrain card sitting directly beside it.
+
+   `d` is the payload whose ticker the render belongs to. The fast lane carries ONLY the active
+   ticker, so for any other symbol (confluence rows) that payload's own spot stays authoritative —
+   dropping that scoping would paint the active ticker's price onto every other symbol's row. */
+function consoleSpot(d) {
+  const lt = (d && d.ticker || '').toUpperCase();
+  if (!lt || lt === activeTicker) {
+    const fs = window._fastLaneSpot;
+    if (fs != null && Number.isFinite(fs) && fs > 0) return fs;
+  }
+  if (!d || typeof d !== 'object') return null;
+  const s = parseFloat(d.spot ?? d.last_price ?? d.quote_mid);
+  return Number.isFinite(s) && s > 0 ? s : null;
+}
+
 /** Active ticker: prefer live plane mirror; otherwise last full-state spot (e.g. other symbols in confluence). */
 function effectiveDisplaySpot(d) {
   if (!d || typeof d !== 'object') return null;
-  const lt = (d.ticker || '').toUpperCase();
-  if (lt && lt !== activeTicker) {
-    const s = parseFloat(d.spot || d.last_price);
-    return Number.isFinite(s) && s > 0 ? s : null;
-  }
-  const fs = window._fastLaneSpot;
-  if (fs != null && Number.isFinite(fs) && fs > 0) return fs;
-  const s = parseFloat(d.spot || d.last_price);
-  return Number.isFinite(s) && s > 0 ? s : null;
+  return consoleSpot(d);   // RC-77: one console spot authority
 }
 
 function buildLiquidityMapSummaryHtml(lm) {
@@ -9571,7 +9585,7 @@ async function _updateLevelTestChip() {
   const ordinal = _levelTestChipOrdinal(total + 1);
   const levelName = String(nearest.name);
   const levelPriceStr = nearest.value.toFixed(2);
-  const spotRaw = parseFloat(ld.spot);
+  const spotRaw = consoleSpot(ld) ?? NaN;   // RC-77: one console spot authority
   const dist = Number.isFinite(spotRaw) ? (nearest.value - spotRaw) : null;
   const distStr = dist != null
     ? (Math.abs(dist).toFixed(2) + ' ' + (dist >= 0 ? 'above' : 'below') + ' spot')
@@ -10660,9 +10674,9 @@ function refreshUtilityBar() {
   const spotDisp = (window._fastLaneSpotDisp != null && window._fastLaneSpotDisp !== '')
     ? window._fastLaneSpotDisp
     : (dRowOk && d.spot_disp) ? d.spot_disp : null;
-  const spotNum = (window._fastLaneSpot != null && Number.isFinite(window._fastLaneSpot))
-    ? window._fastLaneSpot
-    : (dRowOk && d.spot != null) ? parseFloat(d.spot) : NaN;
+  // RC-77: one console spot authority. A row for another ticker is not this bar's price, so it
+  // resolves as absent rather than borrowing the active ticker's live lane.
+  const spotNum = consoleSpot(dRowOk ? d : null) ?? NaN;
 
   domIf('ub-price', el => {
     el.textContent = spotDisp || (Number.isFinite(spotNum) ? spotNum.toFixed(2) : '—');
@@ -12037,12 +12051,12 @@ async function edLoadTerrain() {
   // crossing reconciliation below needs to know which side that spot was on (Bugbot
   // 2026-07-20: overwriting it silently paired a live price with a regime from another).
   d._srvSpot = d.spot;
-  const liveSpot = edLiveSpot();
+  const liveSpot = consoleSpot(d);   // RC-77: one console spot authority
   if (liveSpot != null) d.spot = liveSpot;
   edLastTerrain = d;
 
   set('tv-sym', d.ticker || tk);
-  set('tv-px', d.spot != null ? Number(d.spot).toFixed(2) : '—');
+  set('tv-px', liveSpot != null ? liveSpot.toFixed(2) : '—');   // RC-77: resolved above
 
   const trusted = d.confidence === 'TRUSTED';
   const tr = document.getElementById('tv-trust');
@@ -12954,7 +12968,9 @@ function edCheckRadarAlerts(rows) {
   function paint(s, t) {
     s = s || {}; t = t || {};
     var hasS = Object.keys(s).length > 0;   // false = analytics not loaded YET (transient), not "absent"
-    var spot = fnum(s.spot, s.quote_mid, t.spot);
+    // RC-77: one console spot authority. This header used to skip the SSE fast lane entirely
+    // and render the analytics/terrain copy, so it lagged the money-path card beside it.
+    var spot = consoleSpot(s) ?? consoleSpot(t);
 
     /* ---- TERRAIN-sourced cells (/api/terrain, fast): updated on EVERY paint. ---- */
     T('cv2-hd-px', n2(spot));
@@ -13267,7 +13283,7 @@ function edCheckRadarAlerts(rows) {
      Flags overlaid from the live levels; spot & flip highlight the nearest real strike. */
   function buildMap(t, g) {
     var box = el('ct-map'); if (!box) return;
-    var flip = fnum(t.gamma_flip), spot = fnum(t.spot);
+    var flip = fnum(t.gamma_flip), spot = consoleSpot(t);   // RC-77: one console spot authority
     var all = (g && g.today && Array.isArray(g.today.all)) ? g.today.all : null;
     if (!all || !all.length || spot === null) { box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no per-strike gamma — fail closed</span>'; return; }
     /* window scales with the actionable levels (call/put wall, pin) so wide-strike names
@@ -13316,7 +13332,7 @@ function edCheckRadarAlerts(rows) {
 
   function paint(t) {
     t = t || {};
-    var spot = fnum(t.spot);
+    var spot = consoleSpot(t);   // RC-77: one console spot authority
     var negGex = fnum(t.net_gex_at_spot);
     var reg = regimeUP(fstr(t.regime));
     T('ct-tag', '◤ TERRAIN READ' + (reg ? ' · ' + reg : ''));

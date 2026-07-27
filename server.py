@@ -4512,6 +4512,10 @@ def _base_money_path_capture_one(ticker: str):
             raise
         _snapshot_row_insert_committed(t, snap_ts)
 
+        # RC-69: bars are NOT written here. This is a snapshot capture; bar collection is its own
+        # service (_bars_loop), so there is exactly ONE writer of price_bars_1m. An earlier fix
+        # bolted bar persistence onto this function — that only moved the defect (collection
+        # riding a capture path) instead of removing it.
         touch_ts = time.time()
         if _HAS_SIGNALS:
             try:
@@ -8259,15 +8263,16 @@ def _fetch_state(
                 # live path; bars re-seed from Schwab pricehistory after any gap and labels
                 # only advance when new rows exist.
                 #
-                # Lane-4 (2026-07-05): the bars upsert measured 8,090.8ms of the 10,760ms
-                # db_snapshot_write_accuracy stage (sqlite_tier1_ok op=upsert_1m_bars
-                # ticker=SPY exec_ms=8090.8; warm ~0.5s) while its return value is never
-                # read by the live payload. Bars persist + outcome backfill now run as ONE
-                # ordered task on the single-worker fill-outcomes executor: bars are durable
-                # before labels advance (same relative order as the previous synchronous
-                # form), the Tier C payload no longer blocks on persistence, and a dropped
-                # write self-heals via the re-seed contract above. _bars_persist is a fresh
-                # list copy (get_bars) of immutable completed Candles — race-free handoff.
+                # Lane-4 (2026-07-05) measured the bar write at 8,090.8ms of the 10,760ms
+                # db_snapshot_write_accuracy stage and moved it off the synchronous path onto
+                # this ordered background task.
+                # RC-69 (2026-07-27) went further and removed the bar write from this render
+                # path ENTIRELY. Persisting bars here made COLLECTION a side-effect of DISPLAY:
+                # a ticker only got bars while it was on screen. The bar collection service
+                # (_bars_loop) is now the single writer, running the whole enrolled universe on
+                # its own cadence, so bars are durable independently of any render and the
+                # old upsert-before-fill ordering race disappears with the upsert.
+                # What remains on this task is outcome labelling for the snapshot just written.
                 # Schwab CSV authority checked: yes
                 # CSV row(s): pricehistory.candles[].open/high/low/close/volume — persistence
                 #   scheduling only; no market field read, derivation, emission, or
@@ -8277,14 +8282,16 @@ def _fetch_state(
                 #   fill_outcomes ordering preserved by the max_workers=1 executor.
                 # SCHWAB_CSV_CHECKED
                 if _do_insert:
-                    _bars_persist = _candles_1m.get_bars(ticker)
-
+                    # RC-69 SINGLE BAR FAUCET: this render path no longer PERSISTS bars. It used
+                    # to be the only writer, which made bar collection a side-effect of display —
+                    # MEASURED 2026-07-27 11:59 ET: SPY (on screen) bar lag 3.1 min vs QQQ 19.1
+                    # and IWM 19.1 (off screen), while all three had ~1.0 min snapshot lag, and
+                    # 39.8% of all snapshots carry unfilled outcomes because the forward bars they
+                    # needed were never written. `_bars_loop` is now the ONE writer of
+                    # price_bars_1m, running for every enrolled ticker regardless of the viewport.
+                    # The accumulator is still ticked above for this card's own forming candle.
+                    # fill_outcomes stays here: it labels the snapshot just inserted.
                     def _bg_persist_bars_then_fill_outcomes() -> None:
-                        try:
-                            if _bars_persist:
-                                get_db().upsert_1m_bars(ticker, _bars_persist)
-                        except Exception as _pe:
-                            log.warning("upsert_1m_bars %s: %s", ticker, _pe)
                         try:
                             get_db().fill_outcomes(ticker, CANONICAL_TIMEFRAME, _snap_ts)
                         except Exception as ex:
@@ -9363,6 +9370,8 @@ async def _app_lifespan(app):
     # is connected; terrain is ~5 ms of math plus one chain call per ticker, so it keeps
     # every ticker's levels fresh regardless of what the model stack is doing.
     start_terrain_loop()
+    # RC-69: bar collection is its own always-on service — never a side-effect of rendering.
+    start_bars_loop()
     start_terrain_prewarm()
     log.info("Terrain loop started — %.0fs cadence, %d workers, per-ticker strike width "
              "derived from measured geometry (%d..%d, cold start %d)",
@@ -9483,6 +9492,7 @@ async def _app_lifespan(app):
         log.warning("Order flow streaming shutdown: %s", e)
 
     stop_terrain_loop()
+    stop_bars_loop()
     stop_logger()
     # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf pool shuts down AFTER
     # the analytics executor above — no new leaf submits can arrive first (the
@@ -10538,6 +10548,13 @@ def _terrain_refresh_one(ticker: str) -> str:
         _atr = _radar_atr(tk)
         payload["atr_daily"] = round(_atr.daily, 3) if _atr.daily else None
         payload["atr_15m"] = round(_atr.m15, 3) if _atr.m15 else None
+        # RC-68: carry the LIVE per-strike map into the cache. to_dict() deliberately drops it
+        # (hundreds of entries, far too heavy for every poll — same reason `profile` is dropped),
+        # so /api/terrain/strikes reads it from the cached snapshot instead of the frozen morning
+        # archive. Underscore-prefixed so it is unmistakably an internal cache field, not payload.
+        # getattr, not attribute access: a snapshot without the map (older shape, or a stub) must
+        # degrade to an EMPTY per-strike panel, never take down the whole terrain refresh.
+        payload["_per_strike"] = getattr(snap, "per_strike", None) or {}
         with _terrain_cache_lock:
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
@@ -10636,6 +10653,93 @@ def start_terrain_prewarm() -> None:
         return
     threading.Thread(target=_terrain_prewarm_worker, name="terrain-prewarm",
                      daemon=True).start()
+
+
+#: RC-69 — BAR COLLECTION SERVICE. Collection is not a side-effect of display.
+#: Bars used to be written only inside _fetch_state (the render path), so a ticker's chart
+#: decayed to whenever it was last LOOKED AT. MEASURED 2026-07-27 11:59 ET: SPY (on screen) bar
+#: lag 3.1 min vs QQQ 19.1 and IWM 19.1 (off screen) — while all three had ~1.0 min SNAPSHOT lag.
+#: The quotes were current; the bars were not. 39.8% of all snapshots (122,795/308,796) carry
+#: unfilled outcomes because fill_outcomes reads price_bars_1m for the forward price and the bars
+#: were never written. This loop mirrors _terrain_loop (RC-1), which solved the identical problem
+#: for levels: a cheap, always-on, viewport-independent path over the WHOLE enrolled universe.
+BARS_REFRESH_SEC: float = 30.0
+#: Quotes are far cheaper than chains; this pool is deliberately small so bar collection can never
+#: contend with the operator card the way an unbounded sweep did at the open (TERRAIN_WORKERS=2).
+BARS_WORKERS: int = 3
+_bars_loop_running: bool = False
+_bars_loop_thread: threading.Thread | None = None
+
+
+def _bars_collect_one(tk: str) -> str:
+    """Quote -> accumulator -> price_bars_1m for ONE ticker. Never raises."""
+    try:
+        client = get_client()
+        q = _safe_get_quote_with_retry(client, tk)
+        if q is None or getattr(q, "status_code", None) != 200:
+            return "error:quote_http"
+        node = q.json().get(tk) or {}
+        fields = _parse_quote_node_session_fields(node)
+        # RC-38 single source: a raw float() on a Schwab leaf silently admits NaN/inf, and a NaN
+        # price would enter the bar series as a real value. One canonical reader; absence stays
+        # absence.
+        from numeric_contract import float_positive_or_none
+
+        px = float_positive_or_none(fields.get("last"))
+        if px is None:
+            px = float_positive_or_none(fields.get("mark"))
+        if px is None:
+            return "skip:no_price"      # absence reads as absence — never a fabricated tick
+        _candles_1m.tick(tk, px, time.time(), total_volume=fields.get("total_volume"))
+        bars = _candles_1m.get_bars(tk)
+        if not bars:
+            return "ok:no_completed_bar"
+        get_db().upsert_1m_bars(tk, bars)
+        return "ok:persisted"
+    except Exception as e:
+        log.debug("bars collect %s: %s", tk, e)
+        return f"error:{type(e).__name__}"
+
+
+def _bars_loop() -> None:
+    log.info("Bar collection loop started (quotes only, whole enrolled universe, viewport-independent)")
+    while _bars_loop_running:
+        cycle_start = time.monotonic()
+        try:
+            with _logger_lock:
+                tickers = list(_logger_tickers)
+        except Exception:
+            tickers = list(CORE_TICKERS)
+        # RC-48: only capturable sessions. A market-closed tick would persist a frozen bar.
+        if tickers and _is_loggable_session():
+            try:
+                with ThreadPoolExecutor(max_workers=BARS_WORKERS,
+                                        thread_name_prefix="ed_bars") as pool:
+                    list(pool.map(_bars_collect_one, tickers))
+            except Exception as e:
+                log.warning("bars loop cycle failed: %s", e)
+        sleep_end = time.monotonic() + max(1.0, BARS_REFRESH_SEC - (time.monotonic() - cycle_start))
+        while _bars_loop_running and time.monotonic() < sleep_end:
+            time.sleep(0.5)
+
+
+def start_bars_loop() -> None:
+    """Start bar collection. Refuses under pytest for the same reason as the terrain loop:
+    a production thread inside the test process mutates shared state no test controls (RC-5)."""
+    global _bars_loop_running, _bars_loop_thread
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        log.debug("bars loop not started: running under pytest")
+        return
+    if _bars_loop_running:
+        return
+    _bars_loop_running = True
+    _bars_loop_thread = threading.Thread(target=_bars_loop, name="bars-loop", daemon=True)
+    _bars_loop_thread.start()
+
+
+def stop_bars_loop() -> None:
+    global _bars_loop_running
+    _bars_loop_running = False
 
 
 def start_terrain_loop() -> None:
@@ -11063,6 +11167,33 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     today_src, prior_src = None, None
     today, prior = None, None
     spot_used = None
+    today_age_sec = None
+    # RC-68 SINGLE SOURCE FOR TODAY'S PER-STRIKE DATA: the LIVE terrain snapshot.
+    # This panel used to render from option_chain_morning_full — MEASURED 2026-07-27 11:31 ET:
+    # a 09:47 capture served at 11:31 understated session volume by 281 percent (1,095,874 shown
+    # vs 4,176,672 live), ~500K missing on strike 740 alone, while the walls beside it moved on
+    # the 60s loop. Two clocks, one story. The terrain loop already computes this exact map from
+    # a live wide chain every cycle (terrain_engine._per_strike_map) — it was simply discarded.
+    # Reading it here costs ZERO additional vendor calls. The archive is demoted to the
+    # prior-day ghost, which is the one thing it is genuinely correct for.
+    try:
+        _snap = terrain_cache_get(tk) or {}
+        _ps = _snap.get("_per_strike") or {}
+        if _ps:
+            _live_cts = [
+                {"strikePrice": v.get("strike"), "totalVolume": v.get("volume"),
+                 "netGex": v.get("net_gex")}
+                for v in _ps.values()
+            ]
+            _snap_spot = _snap.get("spot")
+            if _live_cts and _snap_spot:
+                spot_used = float(_snap_spot)
+                today = _per_strike(_live_cts, spot_used)
+                _cts_utc = _snap.get("computed_ts_utc")
+                today_age_sec = round(time.time() - float(_cts_utc), 1) if _cts_utc else None
+                today_src = "terrain_live_cache"
+    except Exception as e:
+        log.debug("terrain strikes live read failed %s: %s", tk, e)
     try:
         db = get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
@@ -11073,28 +11204,33 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
         finally:
             con.close()
         if rows:
-            d0, s0, c0 = rows[0]
-            spot_used = float(s0)
-            today = _per_strike(json.loads(c0), float(s0))
-            today_src = f"wide_capture:{d0}"
-            if len(rows) > 1:
-                d1, s1, c1 = rows[1]
+            # ONE FAUCET FOR TODAY. The archive is NOT a fallback for today's per-strike data —
+            # a fallback IS a second faucet, and it is exactly how a 09:47 capture ended up
+            # rendering at 11:31 under the label "TODAY'S OPTION VOLUME". If the live terrain
+            # snapshot is absent (cold start), `today` stays empty and today_source stays None so
+            # the panel can say so: absence reads as absence, never as a stale substitute.
+            # The archive serves ONLY the prior-day ghost, which is what it is genuinely correct
+            # for — yesterday's close does not change.
+            _prior_row = rows[1] if len(rows) > 1 else (rows[0] if today_src else None)
+            if _prior_row is not None:
+                d1, s1, c1 = _prior_row
                 prior = _per_strike(json.loads(c1), float(s1))
                 prior_src = f"wide_capture:{d1}"
     except Exception as e:
         log.debug("terrain strikes wide read failed %s: %s", tk, e)
-    if today is None:
-        contracts, stored_spot = _latest_chain_and_spot(tk)
-        if contracts and stored_spot:
-            spot_used = float(stored_spot)
-            today = _per_strike(contracts, float(stored_spot))
-            today_src = "narrow_snapshot_chain"
+    # The narrow-snapshot fallback is REMOVED (RC-68). It was the third faucet for one field:
+    # the same panel could be fed by the live cache, the morning archive, or a stored narrow
+    # chain — three different widths and three different clocks — with nothing on screen saying
+    # which. If the live snapshot is absent the panel renders empty and says so.
     live_spot, live_src, _ts = resolve_spot(tk)
     return JSONResponse({
         "ticker": tk, "spot": live_spot if live_spot is not None else spot_used,
         "spot_source": live_src,
         "today": today or {"all": [], "near": [], "far": []},
         "today_source": today_src,
+        # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
+        # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
+        "today_age_sec": today_age_sec,
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
     })

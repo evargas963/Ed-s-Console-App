@@ -42,6 +42,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 TESTS = REPO / "tests"
+#: Run as a bare script, sys.path[0] is tools/ — so `import tools.x` fails and every check that
+#: imports a sibling reports UNMEASURABLE. That is the correct behaviour for a broken import
+#: (RC-57), but here the import is fine and only the path was wrong: check_single_faucet_provenance
+#: went unmeasurable for that reason alone while the audit itself ran clean by hand.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 
 # A dict literal carrying these keys is an inline option CONTRACT built by hand.
@@ -1976,6 +1982,51 @@ def check_domain_constants_are_derived() -> list[Violation]:
     return out
 
 
+def check_single_faucet_provenance() -> list[Violation]:
+    """Every rendered field is fed by DECLARED sources only — measured, never assumed (RC-73).
+
+    WHAT WAS OBSERVED (2026-07-27): single-source-of-truth was a governing law enforced per
+    PRODUCER (single_spot_authority, chain_width_single_faucet) while nothing could answer the
+    operator's real question — is this field on my screen live, and how many faucets feed it?
+    Every answer was agent prose. That is how a 2.1-hour-frozen volume panel (session volume
+    understated 281 percent), a three-faucet spot bind, a 110-hour-old scorecard file and a
+    19.1-minute bar lag all survived. Worse, a "fix" that ADDED a live source while keeping the
+    old one as a FALLBACK made it strictly worse (per_strike 2 -> 3 faucets) — a fallback IS a
+    second faucet, and only the instrument caught it.
+
+    Rule: `tools/data_faucet_audit.py` statically traces every UI endpoint to the sources it
+    reads and fails when a concept is fed by a source outside its DECLARED_FAUCETS contract. A
+    deliberate second field (e.g. the prior-day ghost served from the morning archive) is declared
+    there and reviewed; anything undeclared appearing later is a violation, not a judgement call.
+
+    HOW THE RULE WAS VALIDATED: prototyped before enforcing — it MEASURED violations 3 -> 0 across
+    the RC-68/RC-69 fixes, and immediately caught the fallback regression above. It also corrected
+    itself: counting resolve_spot as a per-concept data faucet scored the single-spot-authority
+    LAW as a violation, so universal authorities are excluded. Import failure is reported, never
+    silently passed (RC-57: a metric that cannot be measured is not a pass).
+    """
+    try:
+        from tools.data_faucet_audit import run as _faucet_run
+    except Exception as e:                                   # unmeasurable is NOT a pass
+        return [Violation(REPO / "tools" / "data_faucet_audit.py", 0,
+                          f"faucet provenance is unmeasurable ({type(e).__name__}: {e}); a metric "
+                          f"that cannot be measured must never report as compliant")]
+    try:
+        rep = _faucet_run(str(REPO / "data" / "ed_console.db"))
+    except Exception as e:
+        return [Violation(REPO / "tools" / "data_faucet_audit.py", 0,
+                          f"faucet audit failed to run: {type(e).__name__}: {e}")]
+    out: list[Violation] = []
+    for v in rep.get("faucet_violations", []):
+        out.append(Violation(
+            REPO / "server.py", 0,
+            f"concept {v['concept']!r} is fed by UNDECLARED source(s) {v['undeclared']} "
+            f"(declared: {v['declared']}). One rendered field, one faucet — a fallback is a "
+            f"second faucet. Either remove the extra source or declare it in "
+            f"tools/data_faucet_audit.py::DECLARED_FAUCETS with the field it legitimately serves."))
+    return out
+
+
 def check_chain_width_single_faucet() -> list[Violation]:
     """Every level-computing chain fetch must size itself from ONE authority.
 
@@ -2200,6 +2251,7 @@ CHECKS = [
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
+    ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
     ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
