@@ -433,25 +433,55 @@ function draw() {
   // Fail-closed lean: SIGN_UNPROVEN, UNAVAILABLE, or non-TRUSTED — never paint BUY/SELL advice
   const withholdLean = T.regime === 'SIGN_UNPROVEN' || T.regime === 'UNAVAILABLE'
     || T.confidence !== 'TRUSTED';
-  // wall BANDS with a real price RANGE: strike ± half the local strike spacing
+  // RC-86 — the drawn band is the strike's HISTOGRAM BUCKET (± half the median strike spacing),
+  // which is the correct binning rule and nothing more. It carries no information about the wall:
+  // a three-billion-dollar concentration and a thin smear get the same width, because the width
+  // is a property of the strike GRID. Per SpotGamma, who originated the terms, a call/put wall is
+  // a SINGLE STRIKE, and the two walls are the bounds of ONE range between them.
+  //
+  // `half` is now null when the grid is unknown. It used to default to a hardcoded 0.5 for every
+  // instrument — measured 2026-07-27, the true half is 0.5 (SPY), 1.0 (NVDA), 1.25 (MET), so the
+  // fallback drew MET 2.5x too narrow and printed invented bounds at 2dp. That is exactly the
+  // state this page was in under RC-79 when the strikes panel served zero rows. Absence of a
+  // strike grid now renders as absence: a line, no band, no numeric range.
   const ks = ((strikes && strikes.today && strikes.today.all) || []).map(r => r[0]);
-  let half = 0.5;
+  let half = null;
   if (ks.length > 2) {
     const gaps = []; for (let i = 1; i < ks.length; i++) gaps.push(ks[i] - ks[i - 1]);
-    gaps.sort((a, b) => a - b); half = (gaps[Math.floor(gaps.length / 2)] || 1) / 2;
+    gaps.sort((a, b) => a - b);
+    const med = gaps[Math.floor(gaps.length / 2)];
+    if (med > 0) half = med / 2;
   }
   const wallLabelYs = [];
   const band = (level, kind) => {
     if (level == null) return;
-    const yTop = y(level + half), yBot = y(level - half), sell = kind === 'call';
-    g.fillStyle = sell ? 'rgba(255,51,85,0.20)' : 'rgba(0,224,122,0.20)';
-    g.fillRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
-    g.strokeStyle = sell ? '#ff3355' : '#00e07a'; g.lineWidth = 1.5;
-    g.strokeRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
-    g.fillStyle = sell ? '#ff3355' : '#00e07a'; g.font = '800 14px system-ui';
-    g.fillText((sell ? `CALL WALL ${fmt(level - half)}–${fmt(level + half)}`
-                     : `PUT WALL ${fmt(level - half)}–${fmt(level + half)}`) +
-      (withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY')), PADL + 8, yTop - 5);
+    const sell = kind === 'call';
+    // RC-86: no strike grid -> no band. A line, not an invented width.
+    const yTop = half == null ? y(level) : y(level + half);
+    const yBot = half == null ? y(level) : y(level - half);
+    const col = kind === 'both' ? '#ffc400' : sell ? '#ff3355' : '#00e07a';
+    if (half != null) {
+      g.fillStyle = kind === 'both' ? 'rgba(255,196,0,0.20)'
+        : sell ? 'rgba(255,51,85,0.20)' : 'rgba(0,224,122,0.20)';
+      g.fillRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
+      g.strokeStyle = col; g.lineWidth = 1.5;
+      g.strokeRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
+    } else {
+      g.strokeStyle = col; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(PADL, yTop); g.lineTo(W - PADR, yTop); g.stroke();
+    }
+    g.fillStyle = col; g.font = '800 14px system-ui';
+    // RC-86: the label names the STRIKE. It used to print `739.50–740.50`, a range invented from
+    // the strike grid that reads as market structure — the wall is a single strike, and the only
+    // real range is the corridor BETWEEN the two walls.
+    // RC-83: when both walls land on one strike it is a two-sided concentration, a magnet rather
+    // than a barrier. Calling it CALL WALL asserts resistance-above on a level that is equally
+    // support-below. The server-side radar was fixed for this; the chart was not, and drew two
+    // identical overlapping bands with opposite labels.
+    const name = kind === 'both' ? 'GAMMA WALL' : sell ? 'CALL WALL' : 'PUT WALL';
+    const lean = kind === 'both' ? '  · TWO-SIDED — magnet, not a barrier'
+      : withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY');
+    g.fillText(`${name} ${fmt(level)}${lean}`, PADL + 8, yTop - 5);
     wallLabelYs.push(yTop - 5);
     // Coach numbers are LIVE from the daily scorecard — never a frozen study
     // figure (operator 2026-07-23). Absent scorecard = "measuring", not a
@@ -467,16 +497,34 @@ function draw() {
           `${esc(String(scorecardStale.generated_utc || '').slice(0, 10))}), so its numbers are ` +
           `withheld rather than quoted as current.</i>`
         : `<i>Hold-rate: measuring — this number fills from the daily scorecard.</i>`;
-    const leanTip = withholdLean
-      ? `Heavy standing option inventory in this strike band (structure fact only).<br>` +
-        measured + `<br>` +
-        `<i>Dealer BUY/SELL lean withheld — regime ${esc(T.regime)} / ${esc(T.confidence)}.</i>`
-      : `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
-        `in this range; acts as ${sell ? 'resistance' : 'support'}.<br>` + measured;
+    const leanTip = kind === 'both'
+      ? `Both walls sit on this ONE strike: heavy standing inventory on the call AND put side.<br>` +
+        `Dealer hedging pulls toward it rather than pushing off it — a magnet, not a barrier. ` +
+        `A one-sided BUY/SELL read would assert a direction the data does not support.<br>` + measured
+      : withholdLean
+        ? `Heavy standing option inventory at this strike (structure fact only).<br>` +
+          measured + `<br>` +
+          `<i>Dealer BUY/SELL lean withheld — regime ${esc(T.regime)} / ${esc(T.confidence)}.</i>`
+        : `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
+          `at this strike; acts as ${sell ? 'resistance' : 'support'}.<br>` + measured;
+    // RC-86: the tooltip states what the drawn band IS — a strike bucket from the chain's own
+    // grid — instead of implying a zone the wall operates over. With no grid there is no bucket
+    // and the width is simply not claimed.
+    const bucket = half == null
+      ? `<br><i>Strike spacing unknown for this chain, so no bucket width is drawn or claimed.</i>`
+      : `<br><i>Drawn bucket ±${fmt(half)} = half the chain's median strike spacing (chart ` +
+        `resolution, not wall size).</i>`;
+    const title = kind === 'both' ? `Two-sided gamma wall ${fmt(level)}`
+      : `${sell ? 'Call wall' : 'Put wall'} ${fmt(level)}`;
     zones.push({ y0: yTop, y1: yBot,
-      tipHtml: `<b>${sell ? 'Call wall' : 'Put wall'} ${fmt(level)} (band ±${fmt(half)})</b><br>` + leanTip });
+      tipHtml: `<b>${title}</b><br>` + leanTip + bucket });
   };
-  band(T.call_wall, 'call'); band(T.put_wall, 'put');
+  // RC-83: one strike carrying both walls is ONE two-sided level, not two opposing ones.
+  if (T.call_wall != null && T.put_wall != null && Number(T.call_wall) === Number(T.put_wall)) {
+    band(T.call_wall, 'both');
+  } else {
+    band(T.call_wall, 'call'); band(T.put_wall, 'put');
+  }
 
   // ALL other key levels — bright, labeled, each with a coach tooltip
   const levels = [

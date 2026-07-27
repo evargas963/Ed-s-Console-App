@@ -4376,7 +4376,7 @@ class EdDB:
             r = dict(row)
             zone = r.get("zone")
             if zone is not None:
-                out[str(zone)] = int(r.get("cnt") or 0)
+                out[str(zone)] = int(r.get("cnt") or 0)   # external-key-ok: SQL alias (GROUP BY zone / ORDER BY cnt)
         return out
 
     def count_level_tests(self, ticker: str, level_name: str,
@@ -4611,7 +4611,7 @@ class EdDB:
             model_version=model_version, horizon=horizon,
         )
         if latest is not None:
-            prev = latest.get("accuracy_pct")
+            prev = latest.get("accuracy_pct")   # external-key-ok: sqlite column from get_latest_model_accuracy()
             if prev is not None and abs(float(prev) - float(accuracy_pct)) < self.MODEL_ACCURACY_DEDUP_EPSILON:
                 return None
         return self.log_model_accuracy(

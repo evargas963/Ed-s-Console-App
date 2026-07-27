@@ -143,7 +143,7 @@ def evaluate_decision_path_admission(
             False, STATE_INVALID,
             f"admissions registry schema_version != {SCHEMA_VERSION} — nothing is admitted; system abstains (WAIT)",
         )
-    admissions = doc.get("admissions")
+    admissions = doc.get("admissions")   # external-key-ok: on-disk admissions registry JSON
     if not isinstance(admissions, list):
         return AdmissionVerdict(
             False, STATE_INVALID,

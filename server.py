@@ -4870,8 +4870,11 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
                     "promoted": promoted,
                     "promotion_reason": ent.get("promotion_reason"),
                     "authority_mode": mode,
-                    "authoritative_stage": ent.get("authoritative_stage")
-                    or ent.get("signal_chain_authoritative"),
+                    # RC-85: the `or ent.get("signal_chain_authoritative")` fallback is REMOVED.
+                    # Nothing in this repo has ever written that key and the live payload does
+                    # not carry it, so the branch could never be taken — it advertised a second
+                    # source that does not exist.
+                    "authoritative_stage": ent.get("authoritative_stage"),
                 }
     except Exception:
         gov = {"available": False, "error": "arch_state_read_failed"}
@@ -4885,9 +4888,10 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
 
     sm = str(ms_dict.get("stack_runtime", {}).get("stack_mode") or "").upper()
     spot_ok = ms_dict.get("spot") is not None
+    # RC-85: `micro_5m_headline` dropped from this chain — never written anywhere in the repo
+    # and absent from the live /api/state payload, so it could only ever contribute False.
     rules_ok = bool(
         ms_dict.get("rules_headline")
-        or ms_dict.get("micro_5m_headline")
         or ms_dict.get("rules_conviction")
     )
     valp = ms_dict.get("validation_passed")
@@ -4924,7 +4928,7 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
     auth_stage: str | None = None
     try:
         if isinstance(arch_ent, dict):
-            raw_a = arch_ent.get("authoritative_stage") or arch_ent.get("signal_chain_authoritative")
+            raw_a = arch_ent.get("authoritative_stage")   # RC-85: dead alias fallback removed
             if isinstance(raw_a, str) and raw_a.strip():
                 a = raw_a.strip().lower()
                 alias = {
@@ -6538,7 +6542,16 @@ def _fetch_state(
             _charm_dir     = _charm_raw["charm_direction"]
             _charm_toward  = _charm_raw.get("drift_toward")
             _charm_mag     = _charm_raw.get("charm_magnitude")
-            _charm_drivers = _charm_raw.get("top_drivers", [])
+            # RC-85: the read of "top_drivers" is GONE. compute_net_charm has never emitted that
+            # key — it returns call_charm_daily, charm_direction, charm_magnitude, contracts_used,
+            # drift_toward, error, gamma_pin, net_charm_daily, put_charm_daily — so
+            # `.get("top_drivers", [])` returned [] on every call since the line was written, and
+            # charm_top_drivers has been permanently empty. The default was the whole problem: []
+            # reads as "computed, no drivers found" when the truth is "never computed", so the
+            # name mismatch had no symptom. _charm_drivers stays [] from its initialiser above,
+            # which is the same value WITHOUT the claim that a producer was consulted. Populating
+            # it needs compute_net_charm to actually rank the contributing strikes; that is a
+            # feature, not a rename, and it is not being smuggled in behind a default.
             log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} pin={_charm_toward} "
                      f"({_charm_used} contracts)")
         else:
@@ -9731,9 +9744,36 @@ def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | None =
             return JSONResponse({"ok": True, "mode": "test_count", "ticker": ticker,
                                  "level_name": level_name, "level_value": float(level_value),
                                  "lookback_hours": float(lookback_hours), **counts})
-        rows = edb.get_recent_crosses(ticker=ticker, n=int(n))
+        # RC-88: COLLAPSE COINCIDENT CROSSINGS. Price crossing one strike writes one row per
+        # NAMED level sitting there, and the producer's debounce is keyed on level_name, so it
+        # cannot see that eight names share a value. MEASURED 2026-07-27: 4,747 of 8,108 stored
+        # rows (58.5%) share a (ticker, ts_utc, level_value) with another; IWM 295.0 wrote 8 rows
+        # for a single tick. The chart asks for n=8, so one coincident crossing filled every slot
+        # and hid every other event. That several concepts coincide is real information — it is
+        # carried in `level_names` — but it is ONE crossing, not eight. Collapsed at the READ
+        # boundary so the stored history stays intact for anything that needs per-level rows.
+        raw = edb.get_recent_crosses(ticker=ticker, n=max(int(n) * 8, 64))
+        merged: list[dict] = []
+        seen: dict[tuple, dict] = {}
+        for r in raw:
+            key = (r.get("ts_utc"), r.get("level_value"), r.get("direction"))
+            hit = seen.get(key)
+            if hit is None:
+                row = dict(r)
+                row["level_names"] = [r.get("level_name")]
+                row["coincident_levels"] = 1
+                seen[key] = row
+                merged.append(row)
+                continue
+            nm = r.get("level_name")
+            if nm and nm not in hit["level_names"]:
+                hit["level_names"].append(nm)
+                hit["coincident_levels"] = len(hit["level_names"])
+                # One event, one name on screen: say what it is rather than picking one arbitrarily.
+                hit["level_name"] = f"{len(hit['level_names'])} levels @ {r.get('level_value')}"
         return JSONResponse({"ok": True, "mode": "recent", "ticker": ticker,
-                             "n": int(n), "crosses": rows})
+                             "n": int(n), "crosses": merged[:int(n)],
+                             "collapsed_from": len(raw)})
     except Exception as exc:  # pragma: no cover — defensive ops surface
         log.warning("api_level_crosses failed ticker=%s: %s", ticker, exc)
         return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
@@ -9937,7 +9977,7 @@ def api_governance_manual_promote(request: Request, payload: dict = Body(...)):
     hz = (body.get("horizon") or body.get("ml_horizon_slug") or "1c").strip().lower()
     target = (body.get("target_architecture") or "").strip().lower()
     op = (body.get("operator_id") or "").strip()
-    intent = (body.get("manual_intent") or "").strip()
+    intent = (body.get("manual_intent") or "").strip()   # external-key-ok: operator HTTP POST body
     if not ticker or target not in ("cascade", "parallel") or not op or not intent:
         return JSONResponse(
             status_code=400,
@@ -13207,7 +13247,7 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         # underlyingPrice, and the `spot <= 0` guard does NOT catch NaN (nan <= 0 is False),
         # so a NaN spot used to flow into compute_net_charm.
         from numeric_contract import float_finite_or_none as _fin
-        spot = _fin(chain_json.get("underlyingPrice"))
+        spot = _fin(chain_json.get("underlyingPrice"))   # external-key-ok: Schwab chain JSON node
         if spot is None or spot <= 0:
             return {"error": f"underlyingPrice missing or zero in chain response for {ticker}"}
         charm_all = compute_net_charm(contracts, spot, selected_exp or "")

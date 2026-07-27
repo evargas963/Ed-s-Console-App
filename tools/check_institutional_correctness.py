@@ -34,6 +34,7 @@ from __future__ import annotations
 import ast
 import datetime
 import json
+import os
 import re
 import subprocess
 import sys
@@ -429,6 +430,27 @@ def check_root_cause_log() -> list[Violation]:
     return out
 
 
+def _ratchet_may_write() -> bool:
+    """A CHECK MUST NOT MUTATE THE REPO (RC-90).
+
+    check_debt_ratchet used to rewrite the baseline whenever a metric improved, and
+    check_open_item_cap the ceiling. pre-commit stashes unstaged work and runs hooks against the
+    STAGED-ONLY tree, so those counts legitimately differ from the working tree: the file was
+    rewritten on every single run, pre-commit treats a hook that modifies a tracked file as a
+    failure, and staging the rewrite could not help because the next run rewrote it again. Four
+    consecutive commits were blocked on 2026-07-27 while the gate itself printed PASS with all 32
+    enforced checks clean -- including the commit carrying the locks the operator had just
+    mandated.
+
+    Under a hook the ratchet still COMPARES and still BLOCKS on a real rise; it just does not
+    record the new floor. Recording is deliberate, exactly as the docstring always claimed:
+        python tools/check_institutional_correctness.py --rebaseline
+    """
+    if os.environ.get("PRE_COMMIT"):          # set by pre-commit for every hook it runs
+        return False
+    return os.environ.get("ED_RATCHET_NO_WRITE", "").strip().lower() not in ("1", "true", "on")
+
+
 def _debt_baseline_path():
     return REPO / "governance" / "advisory_debt_baseline.json"
 
@@ -467,7 +489,9 @@ def check_debt_ratchet() -> list[Violation]:
     current = {name: len(fn()) for name, fn, enforced in CHECKS if not enforced
                and name != "debt_ratchet"}
     if not path.exists():
-        path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if _ratchet_may_write():
+            path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n",
+                            encoding="utf-8")
         return out
     try:
         baseline = json.loads(path.read_text(encoding="utf-8"))
@@ -512,7 +536,7 @@ def check_debt_ratchet() -> list[Violation]:
                 continue
             baseline[name] = count
             improved = True
-    if improved and not out:
+    if improved and not out and _ratchet_may_write():
         path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return out
 
@@ -749,8 +773,9 @@ def check_open_item_cap() -> list[Violation]:
     ceiling_path = REPO / "governance" / "open_item_ceiling.json"
     count = len(open_items)
     if not ceiling_path.exists():
-        ceiling_path.write_text(json.dumps({"open_items": count}, indent=2) + "\n",
-                                encoding="utf-8")
+        if _ratchet_may_write():
+            ceiling_path.write_text(json.dumps({"open_items": count}, indent=2) + "\n",
+                                    encoding="utf-8")
         return out
     try:
         ceiling = int(json.loads(ceiling_path.read_text(encoding="utf-8"))["open_items"])
@@ -764,7 +789,7 @@ def check_open_item_cap() -> list[Violation]:
             f"{count} open governance items > ceiling of {ceiling}. Close one before "
             f"opening another - the ledger may only shrink. "
             f"Open: {', '.join(open_items[:8])}{'...' if count > 8 else ''}"))
-    elif count < ceiling:
+    elif count < ceiling and _ratchet_may_write():
         ceiling_path.write_text(json.dumps({"open_items": count}, indent=2) + "\n",
                                 encoding="utf-8")
     return out
@@ -822,15 +847,36 @@ def check_no_orphan_dict_keys() -> list[Violation]:
             if key is not None and key not in reads:
                 reads[key] = (path, n.lineno)
 
-    return [
-        Violation(path, line,
-                  f"key {key!r} is read from a dict but never written anywhere in the repo "
-                  f"- a stale or misspelled key is a silent None, not an error (RC-15/RC-20). "
-                  f"Confirm it comes from a vendor payload, or fix the name.")
-        for key, (path, line) in sorted(reads.items()) if key not in writes
-    ]
+    # RC-84 — a key that genuinely arrives from OUTSIDE this repo (a Schwab OAuth token, a chain
+    # node, a SQL column alias, an operator's POST body) is never written here and never will be,
+    # so without a way to say so the list can only grow and can never be worked to zero. The repo
+    # already uses this idiom for the coercion gate ('# vendor-coercion-ok:') and for synthetic
+    # test fixtures; the declaration carries a REASON so it is reviewed rather than waved through.
+    out: list[Violation] = []
+    for key, (path, line) in sorted(reads.items()):
+        if key in writes:
+            continue
+        try:
+            src_line = path.read_text(encoding="utf-8", errors="replace").splitlines()[line - 1]
+        except (OSError, IndexError):
+            src_line = ""
+        if "external-key-ok:" in src_line:
+            continue
+        out.append(Violation(
+            path, line,
+            f"key {key!r} is read from a dict but never written anywhere in the repo "
+            f"- a stale or misspelled key is a silent None, not an error (RC-15/RC-20). "
+            f"Fix the name, or if it genuinely arrives from outside this repo declare it inline "
+            f"with '# external-key-ok: <where it comes from>'."))
+    return out
 
 
+# institutional-complexity-ok: this function IS an enumeration - one branch per way this
+# language creates a dict key (literal, subscript assign, setdefault/pop, dict(k=v) keyword
+# form, dataclass/TypedDict field). Its complexity is the COUNT of those ways, so splitting
+# it scatters one cohesive list across helpers and makes the next omission harder to spot -
+# and an omission here is precisely the RC-84 defect, where two missing branches made the
+# check report live, correct money-path code as a suspected silent-None.
 def _collect_dict_writes(node: ast.AST, writes: set[str]) -> None:
     if isinstance(node, ast.Dict):
         writes.update(k.value for k in node.keys
@@ -843,6 +889,24 @@ def _collect_dict_writes(node: ast.AST, writes: set[str]) -> None:
         a0 = node.args[0]
         if isinstance(a0, ast.Constant) and isinstance(a0.value, str):
             writes.add(a0.value)
+    # RC-84 - two more ways this repo legitimately CREATES a dict key. Without them the check
+    # reported live, correct money-path code as a suspected silent-None: `mc_available`,
+    # `ml_layer_probs`, `timeframe_reads` and `startup_git_sha` were all flagged as never written
+    # while /api/state returned every one of them POPULATED on the running console. An instrument
+    # that cries wolf on working code trains its reader to dismiss it, which costs more than the
+    # defects it was built to catch.
+    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
+        # dict(spot=..., regime=...) builds exactly the same keys as a dict literal.
+        writes.update(kw.arg for kw in node.keywords if kw.arg)
+    elif isinstance(node, ast.ClassDef):
+        # Dataclass / TypedDict / NamedTuple FIELDS become dict keys the moment the instance goes
+        # through asdict() or dict() - which is precisely how server.py reads `startup_git_sha`
+        # off ProcessIdentityV1. A declared field IS a declaration that the key exists.
+        for stmt in node.body:
+            if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                writes.add(stmt.target.id)
+            elif isinstance(stmt, ast.Assign):
+                writes.update(t.id for t in stmt.targets if isinstance(t, ast.Name))
 
 
 def _dict_read_key(node: ast.Call, decorated: set[int]) -> str | None:
@@ -1395,6 +1459,146 @@ _RC_NUMBER_RE = re.compile(r"\b\d[\d,.]*\s*(?:GB|MB|KB|s|ms|%|x|rows|files|strik
 _RC_CITATION_MIN_NUMBERS = 3
 
 
+#: Rows written BEFORE check_verdicts_declare_their_power existed. Frozen: the rule binds
+#: NEW verdicts, exactly as the citation and justification rules do.
+_VERDICT_POWER_GRANDFATHERED = frozenset({
+    "RC-1",
+    "RC-10",
+    "RC-11",
+    "RC-12",
+    "RC-13",
+    "RC-14",
+    "RC-15",
+    "RC-16",
+    "RC-17",
+    "RC-18",
+    "RC-19",
+    "RC-2",
+    "RC-20",
+    "RC-21",
+    "RC-22",
+    "RC-23",
+    "RC-24",
+    "RC-25",
+    "RC-26",
+    "RC-27",
+    "RC-28",
+    "RC-29",
+    "RC-3",
+    "RC-30",
+    "RC-31",
+    "RC-32",
+    "RC-33",
+    "RC-34",
+    "RC-35",
+    "RC-36",
+    "RC-37",
+    "RC-38",
+    "RC-39",
+    "RC-4",
+    "RC-40",
+    "RC-41",
+    "RC-42",
+    "RC-43",
+    "RC-44",
+    "RC-45",
+    "RC-46",
+    "RC-47",
+    "RC-48",
+    "RC-49",
+    "RC-5",
+    "RC-50",
+    "RC-51",
+    "RC-52",
+    "RC-53",
+    "RC-54",
+    "RC-55",
+    "RC-56",
+    "RC-57",
+    "RC-58",
+    "RC-59",
+    "RC-6",
+    "RC-63",
+    "RC-65",
+    "RC-67",
+    "RC-68",
+    "RC-69",
+    "RC-7",
+    "RC-70",
+    "RC-72",
+    "RC-73",
+    "RC-74",
+    "RC-75",
+    "RC-76",
+    "RC-77",
+    "RC-78",
+    "RC-79",
+    "RC-8",
+    "RC-80",
+    "RC-81",
+    "RC-82",
+    "RC-83",
+    "RC-84",
+    "RC-85",
+    "RC-87",
+    "RC-9",
+})
+
+
+def check_verdicts_declare_their_power() -> list[Violation]:
+    """A recorded KILL / RETIRED / PROVEN must state the n and an interval it was decided on.
+
+    WHAT WAS OBSERVED (2026-07-27). 'GEX-R1 RETIRED BY MEASUREMENT' was cited as settled fact for
+    days. Re-derived on demand, the retirement study measured n=66, Spearman -0.051, 95% CI
+    [-0.289, +0.194] -- an interval that CONTAINS the founding -0.22 the verdict was used to
+    reject -- and 43% power against that effect, where 80% needs 160 sessions. The study could not
+    have distinguished 'no effect' from 'the claimed effect'. It was a coin flip recorded as a
+    kill.
+
+    WHY THE EXISTING LOCK DID NOT FIRE. `rc_numeric_claims_cite_a_command` already demands the
+    COMMAND behind a number, and that is necessary -- a sampled figure and an exact one read
+    identically. It is not sufficient: a perfectly reproducible command can still be run on a
+    sample far too small to support the verdict drawn from it. Reproducibility and power are
+    different properties, and only the first was gated.
+
+    Rule: a governance row asserting a hard verdict must carry `n=` AND one of a confidence
+    interval / power figure. Absence of evidence is not evidence of absence, and a row that
+    cannot show which of the two it holds must not record a kill.
+
+    HOW THE RULE WAS VALIDATED: prototyped against the log before enforcing; the grandfather set
+    freezes rows written before the rule so it binds new verdicts only -- the same design already
+    used by `rc_numeric_claims_cite_a_command` and `checks_are_justified`.
+    """
+    out: list[Violation] = []
+    log_path = REPO / "governance" / "root_cause_log.md"
+    if not log_path.exists():
+        return out
+    verdict = re.compile(r"\b(KILL|KILLED|RETIRED|PROVEN|DISPROVEN)\b")
+    has_n = re.compile(r"\bn\s*=\s*\d+", re.I)
+    has_interval = re.compile(r"(95%\s*CI|confidence interval|\bpower\b)", re.I)
+    for num, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 7:
+            continue
+        rc_id = cells[0]
+        if rc_id in _VERDICT_POWER_GRANDFATHERED:
+            continue
+        body = " ".join(cells[4:])
+        if not verdict.search(body):
+            continue
+        if has_n.search(body) and has_interval.search(body):
+            continue
+        out.append(Violation(
+            log_path, num,
+            f"{rc_id} records a hard verdict without declaring the evidence that could support "
+            f"it. State n= and a 95% CI or power figure, or soften the verdict to UNPROVEN. "
+            f"A null at n=66 and a null at n=1000 read identically in prose; only the interval "
+            f"tells them apart, and GEX-R1 was killed on a CI that contained the effect."))
+    return out
+
+
 def check_rc_numeric_claims_cite_a_command() -> list[Violation]:
     """A row that asserts numbers must say how to reproduce them.
 
@@ -1693,9 +1897,9 @@ def _staged_has_real_change(rel: str) -> bool:
     if not lines:
         return False
     for ln in lines:
-        if ln.startswith("+++") or ln.startswith("---"):
+        if ln.startswith(("+++", "---")):
             continue
-        if (ln.startswith("+") or ln.startswith("-")) and ln[1:].strip():
+        if ln.startswith(("+", "-")) and ln[1:].strip():
             return True
     return False
 
@@ -2272,7 +2476,8 @@ CHECKS = [
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
-    ("rc_numeric_claims_cite_a_command", check_rc_numeric_claims_cite_a_command, True),  # provenance, not the word "MEASURED" (RC-6)
+    ("rc_numeric_claims_cite_a_command", check_rc_numeric_claims_cite_a_command, True),
+    ("verdicts_declare_their_power", check_verdicts_declare_their_power, True),  # provenance, not the word "MEASURED" (RC-6)
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
     ("unproven_register", check_unproven_register, True),  # claims: evidenced or registered

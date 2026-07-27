@@ -163,3 +163,8 @@ reports/quantile_eval/
 # settings.local.json is already ignored at the top of this file but is still TRACKED,
 # so gitignore cannot apply to it — the commit must `git rm --cached` it once.
 .claude/launch.json
+
+# RC-89: generated audit artifacts carry absolute operator-home paths, so the credential-leak
+# hook rejects them on every commit. They were unstaged by hand three times on 2026-07-27 —
+# fixing the instance instead of the cause. They are regenerated output, never source.
+governance/audits/
