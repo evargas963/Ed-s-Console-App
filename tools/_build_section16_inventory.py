@@ -98,7 +98,7 @@ def classify(file: str, qual: str, fn: ast.FunctionDef, body: str) -> tuple[str,
     if key in OVERRIDES:
         return OVERRIDES[key]
 
-    body_l = body.lower()
+    body.lower()
     name_l = fn.name.lower()
 
     if file == "event_risk.py":

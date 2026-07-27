@@ -74,6 +74,9 @@ def test_compute_net_charm_sign_matches_finite_difference(label, S, dte):
     exp = "2026-08-03"  # Monday
     now = datetime(2026, 8, 3, 16, 0, tzinfo=ET) - timedelta(days=dte)
     # single CALL contract -> net_charm_daily = call_charm, sign == per-contract charm sign
+    # institutional-synthetic-ok: controlled BS inputs (K,S,dte,sigma) are REQUIRED to verify the
+    # charm SIGN against a finite-difference derivative of a known analytic result; a real captured
+    # chain cannot pin an exact math identity (this is a pure-math sign lock, not a domain-shape test).
     contract = {
         "strikePrice": K, "putCall": "CALL", "expirationDate": exp,
         "gamma": 0.05, "delta": 0.55, "volatility": SIGMA * 100.0,  # Schwab reports IV in percent

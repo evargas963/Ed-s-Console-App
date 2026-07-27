@@ -130,7 +130,6 @@ def _diff_keys(d: dict[str, Any]) -> dict[str, Any]:
         "final_bias": d.get("final_bias"),
         "primary_horizon": d.get("primary_horizon"),
         "alignment_state_display": d.get("alignment_state_display"),
-        "primary_horizon": d.get("primary_horizon"),
         "final_quality": d.get("final_quality"),
         "entry_state": d.get("entry_state"),
     }

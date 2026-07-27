@@ -49,7 +49,7 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import now_et, RTH_OPEN_MINS, RTH_END_MINS
+from time_et import now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session
 
 import html
 import hashlib
@@ -3957,13 +3957,18 @@ def _is_loggable_session() -> bool:
     Background snapshot logging session gate (Issue 22 — explicit product policy).
 
     When RTH_ONLY is True (default): allow ET minutes in [PRE_MARKET_MINS, LOGGER_BUFFER_MINS]
-    (see server.py constants — ≈ 9:00 pre through extended post-market buffer).
+    (see server.py constants — ≈ 9:00 pre through extended post-market buffer) AND only on a
+    capturable trading calendar day. RC-48: the minute-window alone was weekday/holiday-blind,
+    so weekend daytime leaked base-logger rows; AND-ing the one calendar authority
+    (time_et.is_capturable_session) closes that leak without changing the window.
 
     When RTH_ONLY is False: no session gate here (logging may run when markets are quiet —
     use only for diagnostics).
     """
     if not RTH_ONLY:
         return True
+    if not is_capturable_session():   # RC-48: weekend / full holiday / overnight -> never loggable
+        return False
     et = now_et()
     mins = et.hour * 60 + et.minute
     return PRE_MARKET_MINS <= mins <= LOGGER_BUFFER_MINS
@@ -5101,9 +5106,14 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
     """
     ticker = ticker.upper().strip()
     client = get_client()
+    # RC-59 chain-width faucet EXEMPTION, declared not accidental: this path reads the EXPIRY
+    # DATE LIST only and computes no levels, so strike width is irrelevant to its output — a
+    # minimal fetch is correct here. Every LEVEL-computing fetch must use
+    # resolve_chain_strike_count(); this one may not, because widening it would only cost
+    # latency on a dropdown poll with zero effect on the result.
     c_resp = safe_get_chain(
         client, ticker,
-        strike_count=CHAIN_STRIKE_COUNT,
+        strike_count=CHAIN_STRIKE_COUNT,   # chain-width-faucet-ok: expiry list only, no level math
     )
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Option chain fetch failed")
@@ -6147,7 +6157,8 @@ def _fetch_state(
         # route pool; operator-facing recomputes keep bounded parallelism.
         if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
-                client, ticker, strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority
+                client, ticker, strike_count=resolve_chain_strike_count(ticker),  # RC-59: one faucet
+                priority=_chain_priority,
             )
             q_resp = _safe_get_quote_with_retry(client, ticker)
         else:
@@ -6164,7 +6175,8 @@ def _fetch_state(
             )
             _chain_fut = _cq_pool.submit(
                 _gated_safe_get_chain, client, ticker,
-                strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority,
+                strike_count=resolve_chain_strike_count(ticker),   # RC-59: one faucet
+                priority=_chain_priority,
             )
             _quote_fut = _cq_pool.submit(_safe_get_quote_with_retry, client, ticker)
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _chain_fut.result()
@@ -8091,7 +8103,11 @@ def _fetch_state(
                                 _wide_resp, _, _ = _gated_safe_get_chain(
                                     client,
                                     ticker,
-                                    strike_count=_GEX_STRIKES,
+                                    # The once-daily WIDE research capture deliberately takes the
+                                    # maximum vendor-safe width, not this ticker's minimum
+                                    # sufficient width: its whole purpose is to preserve strikes
+                                    # the live faucet would trim.
+                                    strike_count=_GEX_STRIKES,  # chain-width-faucet-ok: wide research capture takes max width by design
                                     priority=False,
                                 )
                                 _wide_contracts: list = []
@@ -8217,6 +8233,17 @@ def _fetch_state(
                         log.warning("SnapshotRow field drift detected; dropping unsupported fields: %s", _dropped_snapshot_fields)
                     if _xid_refused:
                         _snapshot_row_insert_release(ticker, _snap_ts)
+                    elif not is_capturable_session():
+                        # RC-48: off-hours (overnight / weekend / full holiday) snapshot carries
+                        # no signal — options don't trade and spot doesn't move — is excluded from
+                        # training (ml_train RTH filter) and read by nothing. The SSE _fetch_state
+                        # path had no session gate (only the 1/min throttle), so a viewer left
+                        # connected off-hours wrote a row every minute. Do not persist; release the
+                        # minute reservation so throttle bookkeeping stays clean. Premarket/RTH/
+                        # afterhours are unaffected (is_capturable_session is True for [04:00,20:00)
+                        # ET on a trading calendar day).
+                        _snapshot_row_insert_release(ticker, _snap_ts)
+                        log.debug("RC-48 off-hours snapshot skip: %s (session not capturable)", ticker)
                     else:
                         _snap = SnapshotRow(**{k: v for k, v in _snapshot_kwargs.items() if k in _snapshotrow_field_names})
                         _ed_db.insert_snapshot(_snap)
@@ -10232,9 +10259,18 @@ RADAR_WATCH_PCT: float = 0.0075  # in the sector, worth watching
 TERRAIN_STRIKE_COUNT_MIN: int = 20
 #: Ceiling, set by the VENDOR not by us. Schwab returned HTTP 502 for SPY/QQQ at
 #: strikeCount=200 at the 2026-07-20 open; 100 was observed working the same session.
-#: A ticker whose requirement exceeds this (e.g. $SPX needs ~180) is fetched at the
-#: ceiling and honestly reports LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
-TERRAIN_STRIKE_COUNT_MAX: int = 100
+#: A ticker whose requirement exceeds this is fetched at the ceiling and honestly reports
+#: LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
+#: RAISED 100 -> 120, MEASURED 2026-07-26 by `python tools/probe_chain_depth_v1.py` against the
+#: live vendor (the previous 100 was an ASSUMPTION: 200 had 502'd and nothing between was tried).
+#: Ladder result: SPY 120 OK / 150 -> HTTP 502; QQQ 120 OK / 150 -> 502; IWM OK to 250 (saturates
+#: at 246 distinct strikes = its whole chain). 120 is therefore the highest UNIVERSALLY safe
+#: request. What it delivers is far wider than the span bar suggests, because strikeCount applies
+#: PER EXPIRY across ~35 expiries: SPY at 120 returned 259 distinct strikes spanning -40.5%/+44.8%
+#: of spot (8,118 contracts), vs 219 strikes / -33.7%/+33.3% at 100.
+#: KNOWN GAP: $SPX 502s even at 100, so it is not truncated — it fails outright and needs its own
+#: LOWER ladder probe (RC-63); raising this ceiling does not help it.
+TERRAIN_STRIKE_COUNT_MAX: int = 120
 #: Used only until this ticker's geometry is known. The prewarm seeds geometry from
 #: stored chains, so this normally applies to a ticker we have never seen.
 TERRAIN_STRIKE_COUNT_COLD_START: int = 40
@@ -10242,6 +10278,25 @@ TERRAIN_STRIKE_COUNT_COLD_START: int = 40
 #: ticker -> (spot, strike_increment), learned from chains we have already fetched.
 _strike_geometry: dict[str, tuple[float, float]] = {}
 _strike_geometry_lock = threading.Lock()
+#: ticker -> distinct expiry count, learned the same way (guarded by the same lock).
+_strike_expiry_count: dict[str, int] = {}
+
+#: RC-63 — the vendor's REAL limit, MEASURED 2026-07-26 (`python tools/probe_chain_depth_v1.py`).
+#: Schwab caps the number of CONTRACTS in a chain response, not strikeCount: SPY returned 8,118
+#: contracts at strikeCount=120 and HTTP 502 at 150; QQQ 7,894 at 120 then 502; $SPX 502'd at 80
+#: with only 60 working (6,950 contracts) purely because it lists 55 expiries vs SPY's 35; IWM
+#: never failed even at 250 because its whole chain is 5,492. So a single global strikeCount
+#: ceiling is structurally wrong — it starves wide-expiry instruments and under-fetches narrow
+#: ones.
+#: VALUE CHOSEN BY BACK-TEST against those four measured ceilings, not by picking a round number:
+#: `strikeCount * 2 * expiries` UNDER-predicts the real payload for some instruments ($SPX
+#: returned 6,950 contracts where the estimate said 6,600), so a budget tuned to the largest
+#: success (SPY's 8,118) would have allowed $SPX 72 — above its measured 502 threshold of 60.
+#: 6,600 is the largest budget that reproduces EVERY measured ceiling without exceeding one:
+#: SPY 94 (safe vs 120), QQQ 97 (vs 120), $SPX 60 (exactly its max), IWM 100 (vs 250).
+#: Deliberately conservative: a 502 returns NO chain at all, while a slightly narrower request
+#: still delivers far more than the span bar needs (SPY at 94 still spans ~±31% of spot).
+SCHWAB_CHAIN_CONTRACT_BUDGET: int = 6600
 
 
 def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | None) -> bool:
@@ -10257,22 +10312,59 @@ def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | No
     incr = infer_strike_increment(contracts)
     if incr is None:
         return False
+    # RC-63: also learn how many EXPIRIES this instrument lists. The vendor's real limit is on
+    # the number of CONTRACTS returned, and contracts ~= strikeCount * 2 * expiries — so the
+    # safe strikeCount depends on the expiry count, not on the ticker.
+    n_exp = len({str(c.get("expirationDate"))[:10] for c in contracts
+                 if isinstance(c, dict) and c.get("expirationDate")})
     with _strike_geometry_lock:
         _strike_geometry[tk] = (float(spot), float(incr))
+        if n_exp > 0:
+            _strike_expiry_count[tk] = n_exp
     return True
 
 
-def _terrain_strike_count(ticker: str) -> int:
-    """Strikes to request for `ticker`, derived from its measured geometry."""
+def resolve_chain_strike_count(ticker: str) -> int:
+    """THE strike-count faucet — one authority for EVERY chain fetch that feeds level math.
+
+    RC-59: the console/analytics path (`_fetch_state`) and the terrain path used to size their
+    chains differently — `_fetch_state` on a hardcoded CHAIN_STRIKE_COUNT=20 ("keep fast") and
+    terrain on measured geometry — so the SAME ticker was analysed at two widths and the levels
+    persisted to `snapshots` were narrower than the ones served on screen. Two widths is two
+    answers; the width is now derived HERE and nowhere else.
+
+    Right-sizing is not "always wider": MEASURED across 52 stored chains 2026-07-20, the old fixed
+    count was wrong in BOTH directions — ~48 equities need UNDER 20 and were fetched at 40, while
+    $SPX needs ~150 and got 40. Routing the console through this faucet therefore makes most
+    tickers CHEAPER, not more expensive, and widens only where the +/-5% span requires it.
+
+    Fail-closed: unknown geometry returns the cold-start default rather than a guessed width.
+    The MAX is a VENDOR limit, not ours (Schwab 502s above it) — a ticker needing more is fetched
+    at the ceiling and its levels self-report LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
+    """
     tk = (ticker or "").upper().strip()
     with _strike_geometry_lock:
         geom = _strike_geometry.get(tk)
+        n_exp = _strike_expiry_count.get(tk)
     if geom is None:
         return TERRAIN_STRIKE_COUNT_COLD_START
     need = required_strike_count(geom[0], geom[1])
     if need is None:
         return TERRAIN_STRIKE_COUNT_COLD_START
-    return max(TERRAIN_STRIKE_COUNT_MIN, min(TERRAIN_STRIKE_COUNT_MAX, need))
+    ceiling = TERRAIN_STRIKE_COUNT_MAX
+    if n_exp and n_exp > 0:
+        # RC-63: respect the VENDOR's contract budget, which is what actually 502s. A chain
+        # returns ~ strikeCount * 2 (call+put) * expiries contracts, so an instrument listing 55
+        # expiries ($SPX) must request a far smaller strikeCount than one listing 35 (SPY) to
+        # return the same payload. Deriving the ceiling per ticker replaces a global constant
+        # that was simultaneously too high for $SPX (502) and too low for everything else.
+        ceiling = min(ceiling, max(TERRAIN_STRIKE_COUNT_MIN,
+                                   SCHWAB_CHAIN_CONTRACT_BUDGET // (2 * n_exp)))
+    return max(TERRAIN_STRIKE_COUNT_MIN, min(ceiling, need))
+
+
+#: Back-compat alias — terrain's original name for the same authority.
+_terrain_strike_count = resolve_chain_strike_count
 
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()
@@ -10395,7 +10487,16 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         flip = payload.get("gamma_flip")
         if flip is None:
             return
-        row = {"ts_utc": round(float(payload.get("computed_ts_utc") or time.time()), 1),
+        _ts = round(float(payload.get("computed_ts_utc") or time.time()), 1)
+        # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
+        # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
+        # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
+        # would have been reported as "the flip is stable intraday". Market-closed rows do not
+        # add noise here, they manufacture the null.
+        from time_et import is_tradable_session_ts_utc as _tradable
+        if not _tradable(_ts):
+            return
+        row = {"ts_utc": _ts,
                "ticker": tk, "flip": round(float(flip), 4),
                "spot": payload.get("spot"), "confidence": payload.get("confidence")}
         with _flip_drift_lock, open(_FLIP_DRIFT_LOG_PATH, "a", encoding="utf-8") as f:
@@ -12797,7 +12898,9 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         from math_exposure import compute_net_charm
 
         cl       = get_client()
-        c_resp   = safe_get_chain(cl, ticker, strike_count=CHAIN_STRIKE_COUNT)
+        # RC-59: charm IS level math — the debug view must see the same width the product
+        # computes on, or it debugs a different chain than the one that produced the number.
+        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker))
         if c_resp is None or c_resp.status_code != 200:
             return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
         chain_json = c_resp.json()

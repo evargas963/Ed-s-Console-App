@@ -230,14 +230,13 @@ def main() -> int:
     print(f"Checking {len(tickers)} tickers: {', '.join(tickers)}")
     print()
 
-    all_ok = True
+    _all_ok = True
     non_compliant = []
 
     for ticker in tickers:
         r = check_artifact_compliance(ticker)
         status = "COMPLIANT" if r["compliant"] else "NON-COMPLIANT"
         if not r["compliant"]:
-            all_ok = False
             non_compliant.append(ticker)
 
         print(f"  {ticker}: {status}")

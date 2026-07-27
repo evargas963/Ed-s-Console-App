@@ -161,7 +161,6 @@ def test_stack_integrity_v1_propagates_mid_pipeline_events():
 
 
 def test_canonical_provenance_enum_complete():
-    u = 1.0 / 3.0
     unavailable = canonical_forecast_from_fusion(None)
     assert unavailable.provenance == "fusion_unavailable"
 

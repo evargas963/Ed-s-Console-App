@@ -112,11 +112,19 @@ def _http_get_text(url: str) -> str:
 
 
 def _f(v: Any) -> float | None:
+    """Parse a possibly comma-formatted numeric field, rejecting NaN/inf (RC-38 class).
+
+    The raw `float()` here admitted NaN and infinity — `float('nan')` raises nothing — so a
+    malformed world-data cell became a poison value rather than an absence. Strips the thousands
+    separators this feed uses, then delegates the numeric contract to the single canonical reader.
+    """
+    from numeric_contract import float_finite_or_none
+
     try:
-        x = float(str(v).replace(",", "").strip())
+        cleaned = str(v).replace(",", "").strip()
     except (TypeError, ValueError):
         return None
-    return x
+    return float_finite_or_none(cleaned)
 
 
 def _i(v: Any) -> int | None:

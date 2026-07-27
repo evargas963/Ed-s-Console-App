@@ -76,7 +76,14 @@ class SliceCensus:
 
 
 def _num(v: Any) -> float | None:
-    return float(v) if isinstance(v, (int, float)) else None
+    """Numeric read of an archived Schwab greek leaf, rejecting NaN/inf (RC-38 class).
+
+    The isinstance guard passed `float('nan')` straight through — NaN IS a float — so a poisoned
+    archived greek entered the gamma census as a value instead of an absence. One canonical reader.
+    """
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(v)
 
 
 def _census_one_contract(

@@ -216,7 +216,7 @@ def test_imports():
 
     for mod in MODULES:
         try:
-            m = importlib.import_module(mod)
+            importlib.import_module(mod)
             _pass(f"import {mod}")
         except Exception as e:
             _fail(f"import {mod}: {e}")
@@ -233,7 +233,7 @@ def test_dataclasses():
     # SnapshotRow
     try:
         from db import SnapshotRow
-        sr = SnapshotRow(
+        _sr = SnapshotRow(
             ticker="SPY", timeframe="5m", ts_utc=1.0, ts_et="test",
             et_hour=10, et_minute=30, market_session="rth", spot=570.0,
         )
@@ -374,7 +374,7 @@ def test_db_schema(full=False):
             _warn(f"DB not found at {db_path}")
             return
 
-        db = EdDB(db_path)
+        EdDB(db_path)
 
         # Get actual DB columns
         import sqlite3

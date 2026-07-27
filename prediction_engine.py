@@ -1039,7 +1039,6 @@ def compute_prediction_enrichment(
     del inference_snapshot_v1  # reserved for API symmetry with compute_prediction
 
     similar = state.similar
-    avg_move = state.avg_move
     mvp = state.mvp
     spot = state.spot
     match_tier = state.match_tier
@@ -1095,7 +1094,7 @@ def compute_prediction_enrichment(
     if probs_5c is not None and emp_dom in ("up", "down", "flat"):
         pu, pd, pf = _tri_probs(probs_5c)
         if pu is None:
-            pu = pd = pf = None
+            pu = pd = _pf = None
         if emp_dom == "up" and pd is not None:
             reversal_risk = round(pd, 2)
         elif emp_dom == "down" and pu is not None:

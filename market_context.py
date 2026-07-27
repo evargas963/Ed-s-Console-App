@@ -1133,7 +1133,7 @@ def fetch_price_levels(
             orb_bars_seen = 0
 
             for dt_et, c in today_bars:
-                o = _float_or_none(c.get("open"))
+                _float_or_none(c.get("open"))
                 h = _float_or_none(c.get("high"))
                 l = _float_or_none(c.get("low"))
                 cl = _float_or_none(c.get("close"))

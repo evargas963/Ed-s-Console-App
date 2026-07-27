@@ -1,11 +1,16 @@
 {
-  "generated_utc": "2026-07-17T19:56:00Z",
+  "generated_utc": "2026-07-26T17:00:00Z",
+  "refreshed_from": "prior snapshot 2026-07-17T19:56:00Z (T5 cross-audit re-run with current disk reality)",
   "verdict": "DO_NOT_DELETE",
-  "confidence": "HIGH — conditions for purge not met; live canonical must stay",
+  "confidence": "HIGH — RECON-02 purge preconditions still not met (no purge word); live canonical must stay. UPDATE 2026-07-26: slimming merge (RC-6) LANDED — live DB slimmed 29.74 -> 22.06 GB, 5-clean-day clock for the pre_exec backup STARTED.",
   "live_canonical": {
     "path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
-    "size_gb": 21.95,
+    "size_gb": 22.06,
+    "size_gb_prior_20260717": 21.95,
+    "size_gb_pre_rc6_20260726": 29.74,
+    "growth_note": "RC-6 slimming landed 2026-07-26: dropped the byte-identical option_chain_json + replay_context_json duplicate from snapshots_1m_normalized on a copy, verified (0 orphans, row counts unchanged), swapped live. 29.74 -> 22.06 GB (reclaimed 7.67 GB). Pre-RC-6 original preserved as data/ed_console.pre_rc6_20260726.db.",
     "DB_PATH_matches_canonical": true,
+    "DB_PATH_resolver": "db.DB_PATH = _resolve_console_db_path() (db.py:290)",
     "ED_CONSOLE_DB_env": null,
     "delete": "NEVER without explicit disaster recovery plan"
   },
@@ -16,7 +21,9 @@
       "operator purge word"
     ],
     "operator_purge_word_given": false,
-    "clean_session_claim": "NOT asserted — mid-day clock debt + restart occurred; G1-G4 passed only as point-in-time operable-surface gates"
+    "operator_engaged_cleanup_cycle": "2026-07-26 — operator re-opened disk cleanup ('safe methodical, protect the DB'); confirmed a complete external full backup exists on operator machine. Explicit PURGE WORD for permanent deletion NOT yet given and correctly still gated.",
+    "clean_session_claim": "NOT formally asserted — 9 days of operation since 2026-07-17, but clean-session assertion is operator-observable and remains the operator's to give",
+    "slimming_merge_status": "RC-6 (blob-dedup slimming) LANDED 2026-07-26 — verified on a copy (0 orphans, row counts unchanged, integrity ok), swapped live (29.74 -> 22.06 GB). The pre_exec backup's 5-clean-day clock STARTS 2026-07-26; it becomes purge-eligible after ~5 clean trading days AND the operator purge word. RC-6 CLOSED in root_cause_log.md."
   },
   "classes": {
     "NEVER_DELETE_now": [
@@ -25,46 +32,79 @@
     "HOLD_per_RECON_02": [
       {
         "path": "data/_backup_pre_exec_identity_v1_20260713.db",
-        "size_gb": 17.96,
-        "reason": "holds until ~5 clean trading days after slimming merge"
+        "size_gb": 19.29,
+        "reason": "RC-6 slimming merge LANDED 2026-07-26 so the 5-clean-day clock is now RUNNING; purge-eligible after ~5 clean trading days from 2026-07-26 AND the operator purge word"
+      },
+      {
+        "path": "data/ed_console.pre_rc6_20260726.db",
+        "size_gb": 29.74,
+        "reason": "the pre-RC-6 original, preserved at the 2026-07-26 slimming swap; primary recovery for the slimming itself — hold until ~5 clean trading days confirm the slimmed live DB is healthy, then purge with the operator word"
       },
       {
         "path": "C:/Users/evarg/Documents/Trading/_disk_cleanup_quarantine_20260716",
-        "size_gb": 52.52,
-        "reason": "quarantined moved bytes; purge only after clean session + purge word"
+        "size_gb": 56.39,
+        "size_gb_prior_20260717": 52.52,
+        "reason": "quarantined moved bytes (OUTSIDE repo); purge only after clean session + purge word"
       }
     ],
     "HOLD_as_recovery_until_purge_word": [
       {
         "path": "backups/db/20260717_130401_ed_console.db",
-        "size_gb": 21.54,
+        "size_gb": 23.13,
+        "size_gb_prior_20260717": 21.54,
         "reason": "same-day full backup of live DB"
       },
       {
         "path": "C:/Users/evarg/Documents/Trading/ed_console_backup_20260716_9b124b3.db",
-        "size_gb": 20.7,
-        "reason": "parent-folder full backup dated 2026-07-16"
+        "size_gb": 22.23,
+        "size_gb_prior_20260717": 20.7,
+        "reason": "parent-folder full backup dated 2026-07-16 (OUTSIDE repo)"
       }
     ],
     "CANDIDATE_after_purge_word_only": [
-      "data/backups/ed_console.pre_* (April 2026 pre-migration snapshots, ~10.9 GB total)",
-      "data/calibration_accumulation_validation.db (harness)",
-      "data/calibration_anchor_proof.db (proof)",
-      "data/research/d2_dual_label.db (research)",
-      "data/_phase3c_prod_like.db",
-      "data/market_snapshots.db / data/trading.db / calibration/trading_data.db (empty/near-empty unknowns — classify before delete)"
+      {
+        "path": "data/backups/ed_console.pre_* (7 April-2026 pre-migration snapshots)",
+        "size_gb": 11.74,
+        "reason": "oldest, superseded by newer full backups; lowest insurance value"
+      },
+      "data/calibration_accumulation_validation.db (1.9 MB harness)",
+      "data/calibration_anchor_proof.db (0.5 MB proof)",
+      "data/research/d2_dual_label.db (0.46 GB research)",
+      "data/_phase3c_prod_like.db (49 KB fixture)",
+      "data/market_snapshots.db / data/trading.db (0 bytes) / calibration/trading_data.db (empty/near-empty unknowns — classify before delete)"
     ]
   },
-  "triple_sure_checks": {
-    "T1_live_is_only_canonical": "PASS — db.DB_PATH == canonical_console_db_path()",
-    "T2_no_uvicorn_holding_other_db": "PASS — no uvicorn process observed at inventory time (end of day)",
-    "T3_recon02_purge_word": "FAIL — operator has not given purge word",
-    "T4_five_clean_days_for_pre_exec_backup": "FAIL — not evidenced",
-    "T5_claude_cross_audit": "REQUIRED before any irreversible delete"
+  "footprint_summary": {
+    "live_db_gb": 29.71,
+    "in_repo_backups_gb": 54.16,
+    "outside_repo_backups_quarantine_gb": 78.62,
+    "total_backup_insurance_gb": 132.78,
+    "note": "operator ALSO holds a complete external full backup on their machine (belt-and-suspenders confirmed 2026-07-26)"
   },
+  "triple_sure_checks": {
+    "T1_live_is_only_canonical": "PASS — db.DB_PATH resolves via _resolve_console_db_path() to the 29.71 GB live DB; no ED_CONSOLE_DB override",
+    "T2_no_uvicorn_holding_other_db": "PARTIAL — uvicorn app is killed (operator), and no code reads any backup as an input DB (reference scan below). BUT 3 lingering python PIDs observed: 2 from 2026-07-25 07:38 (~14.7 CPU-s each, identical start = almost certainly orphaned Schwab multiprocess.spawn workers per FIND-SCHWAB-WORKER-LEAK), 1 from 2026-07-26 11:54 (matches -wal mtime; likely a read-connection remnant from this session's queries). MUST be cleared before any migration; do NOT run RC-6 Phase B until PID list is empty.",
+    "T3_recon02_purge_word": "FAIL — operator has not given the explicit purge word for permanent deletion (correctly gated)",
+    "T4_five_clean_days_for_pre_exec_backup": "FAIL — RC-6 slimming merge not yet landed; 5-clean-day clock not started",
+    "T5_claude_cross_audit": "DONE 2026-07-26 (this refresh). Reference scan proves no source/config reads any backup file as input — every hit is the backup WRITER (db_safety.py), docs, governance records, or a worktree duplicate. Safe to eventually purge under RECON-02 gates; NOT safe to purge now."
+  },
+  "reference_scan_2026_07_26": {
+    "method": "recursive read of *.py/*.json/*.yaml/*.bat/*.ps1/*.md excluding data/,backups/,caches for backup filename stems",
+    "read_input_references_to_backups": 0,
+    "hits_are_all": "backup-writer (db_safety.py copy_db_file_backup), documentation (docs/*.md), governance records (governance/*.md,*.json), one .claude/worktrees duplicate, and this gating report",
+    "conclusion": "deleting any backup cannot break a live read path"
+  },
+  "reversible_sequence_2026_07_26": [
+    "1. Writer gate — stop producing new market_session='closed' rows (reversible code, no data touched) [RC-48]",
+    "2. RC-6 Phase A — repoint 8 readers off snapshots_1m_normalized blobs + stop normalizer duplication (reversible code) = the slimming merge",
+    "3. RC-6 Phase B — migration on a COPY (rc6_migrate.py), original untouched, ~5 GB reclaimed",
+    "4. Clean trading session(s) run by operator",
+    "5. Purge word + clean session -> permanently delete 78.62 GB outside-repo quarantine + April backups + 07-17 recovery backup (operator executes deletes)",
+    "6. 5 clean days post-RC-6 -> purge the 19.29 GB pre_exec backup"
+  ],
   "find_prove_honesty": {
     "existence_PASS_cells": 0,
     "interpretation": "High kill rate under honest screen is expected; does not by itself prove Collect is worthless. Does prove no admission-ready edge yet. Money-path stays WAIT.",
-    "recommendation": "PAUSE/HANG IT UP for Claude triangulation before more model churn; do not delete DBs as a substitute for that audit"
+    "recommendation": "Disk cleanup proceeds via the reversible sequence above; do NOT delete DBs as a substitute for signal work"
   }
 }

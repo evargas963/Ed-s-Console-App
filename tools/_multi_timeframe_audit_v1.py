@@ -122,7 +122,6 @@ def main() -> None:
                 if d > 3600:
                     gap_gt_1h += 1
 
-        ocols = "outcome_1c, outcome_5c, outcome_15c"
         try:
             oc = conn.execute(
                 "SELECT COUNT(*) AS n FROM snapshots WHERE timeframe = ? AND outcome_5c IS NOT NULL",

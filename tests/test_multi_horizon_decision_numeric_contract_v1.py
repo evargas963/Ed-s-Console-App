@@ -14,7 +14,9 @@ from multi_horizon_decision import (
     build_multi_horizon_bundle,
     compute_multi_horizon_synthesis,
 )
-from tests.test_issue18_multi_horizon_decision import _call, _canonical, _inp, _pred
+# NOTE: _pred and _canonical are deliberately NOT imported — this module defines its own below,
+# which shadowed the imported ones and made those imports dead (hiding the shadowing from review).
+from tests.test_issue18_multi_horizon_decision import _call, _inp
 from multi_horizon_ml_bundle import build_multi_horizon_ml_fusion_bundle
 
 

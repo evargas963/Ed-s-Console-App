@@ -25,6 +25,7 @@ from time_et import (  # noqa: F401  (block re-exports COH_*/calibration_*/et_da
     et_clock_from_ts_utc,
     et_date_str_from_ts_utc,
     is_rth_ts_utc,
+    is_tradable_session_ts_utc,
 )
 
 
@@ -54,10 +55,17 @@ def rth_where_clause() -> str:
 
 
 def filter_ts_utc_list_to_rth(ts_values: list[float]) -> list[float]:
+    """Keep only real trading-session timestamps (RC-57: calendar-aware, not clock-only).
+
+    Uses `is_tradable_session_ts_utc` — weekday AND not a full holiday AND inside RTH — NOT the
+    clock-only `is_rth_ts_utc`, which returns True for Saturday 10:00 and Memorial Day 10:00 and
+    therefore admitted market-closed rows into TRAINING data (time_et documents 3,795 rows
+    labelled 'rth' on Memorial Day and 912 on 2026-07-03).
+    """
     out: list[float] = []
     for t in ts_values:
         try:
-            if is_rth_ts_utc(float(t)):
+            if is_tradable_session_ts_utc(float(t)):
                 out.append(float(t))
         except (TypeError, ValueError):
             continue
@@ -65,14 +73,18 @@ def filter_ts_utc_list_to_rth(ts_values: list[float]) -> list[float]:
 
 
 def filter_df_to_rth_ts_utc(df: pd.DataFrame) -> pd.DataFrame:
-    """Keep rows whose ts_utc is in RTH per DST-aware ET (ignores stored et_hour)."""
+    """Keep rows whose ts_utc is a real trading session per DST-aware ET (ignores stored et_hour).
+
+    RC-57: calendar-aware (weekday + holiday + RTH minutes), not the clock-only test that let
+    holiday rows into training.
+    """
     if df.empty or "ts_utc" not in df.columns:
         return df
     ts = pd.to_numeric(df["ts_utc"], errors="coerce")
 
     def _keep(v: float) -> bool:
         try:
-            return bool(is_rth_ts_utc(float(v)))
+            return bool(is_tradable_session_ts_utc(float(v)))
         except (TypeError, ValueError):
             return False
 

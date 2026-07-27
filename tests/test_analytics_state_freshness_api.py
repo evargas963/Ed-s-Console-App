@@ -834,14 +834,28 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
 def test_chain_fetch_call_shape_and_gated_site_source_lock():
     """Fidelity lock: helper preserves the exact Schwab call shape; _fetch_state routes through it.
 
-    UI_05_OPERATOR_PRIORITY_ADMISSION_V1 threads a priority flag into the
-    gated call — the Schwab call shape inside the helper is unchanged."""
+    UI_05_OPERATOR_PRIORITY_ADMISSION_V1 threads a priority flag into the gated call — the Schwab
+    call shape inside the helper is unchanged.
+
+    RC-59 UPDATE: the WIDTH source changed deliberately. _fetch_state used to pass the hardcoded
+    CHAIN_STRIKE_COUNT (20), which analysed the console on a ~±6.6%-of-spot chain while terrain
+    used geometry-sized widths — the same ticker measured two ways. Width now comes from the ONE
+    faucet, resolve_chain_strike_count(). This lock therefore asserts the INTENT (gated helper +
+    priority flag + faucet-sourced width) rather than a frozen literal, so a genuine improvement
+    does not read as a regression while a real drift still fails.
+    """
     from pathlib import Path
 
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
     assert "resp = safe_get_chain(client, ticker, strike_count=strike_count)" in src
     assert "_gated_safe_get_chain, client, ticker," in src
-    assert "strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority," in src
+    # Width comes from the faucet, never a bare constant (enforced repo-wide by
+    # tools/check_institutional_correctness.py::check_chain_width_single_faucet).
+    assert "strike_count=resolve_chain_strike_count(ticker)" in src
+    assert "CHAIN_STRIKE_COUNT, priority=_chain_priority" not in src, (
+        "the console chain fetch regressed to the hardcoded 20-strike width (RC-59)"
+    )
+    assert "priority=_chain_priority," in src
     assert 'ms_dict["chain_gate_wait_sec"]' in src
     assert '_stage_ms["chain_gate_wait_ms"]' in src
 

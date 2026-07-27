@@ -166,11 +166,18 @@ def build_candidate_rows(
                 stats["excluded_timeout_ff"] += 1
                 rows.append(CandidateRow(day, feats, None, None, f"non_binary_{r.barrier_hit}"))
                 continue
+            # Absence must read as absence: `or 0.0` turned a MISSING realized return into a
+            # real 0.0 bp outcome, which is a tradeable-looking number the meta-model would
+            # learn from. A row with no realized return is dropped with a reason instead.
+            _ret = r.realized_return_bp_post_cost
+            if _ret is None:
+                rows.append(CandidateRow(day, feats, None, None, "missing_realized_return"))
+                continue
             rows.append(
                 CandidateRow(
                     day, feats,
                     1 if r.barrier_hit == "WIN" else 0,
-                    float(r.realized_return_bp_post_cost or 0.0),
+                    float(_ret),
                     None,
                 )
             )

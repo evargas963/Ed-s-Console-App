@@ -220,7 +220,6 @@ def test_universal_fix_lock_closes_only_after_final_main_proof_with_open_parents
     the universal-fix lock is PROVEN only against the PR #38 merge SHA with final-main
     CI cited; implementation-only or PR-only proof never suffices; no broader parent
     closes with it; the pre-merge NOT_PROVEN period stays recorded as history."""
-    repo = SCHEMA_PATH.parent.parent
     doc = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     by = {r["lane"]: r for r in doc["lanes"]}
     lane = by["UNIVERSAL-FIX-IMPACT-GATE-V1"]

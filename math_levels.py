@@ -883,7 +883,22 @@ def gamma_flip_from_profile(
 GAMMA_FLIP_TRUSTED = "TRUSTED"
 GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
 GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
-GAMMA_FLIP_MIN_SPAN_PCT = 0.05  # chain must reach +/-5% around spot before the flip is trusted
+#: Span a chain must cover around spot before its flip may be called TRUSTED.
+#: PROVENANCE (RC-62, operator challenge "what is scientific about this number?"): the 0.05 was
+#: ASSERTED, never derived — its original comment merely restated it, while it governs both every
+#: live chain-fetch width and every TRUSTED-vs-LOW_CONFIDENCE verdict.
+#: MEASURED 2026-07-26 by `python tools/study_flip_span_convergence_v1.py` (convergence against the
+#: flip on each stored wide chain's FULL delivered strike set, trading days only, fixed cohort of
+#: 15 chains that yield a flip at every ladder point): the flip has NOT converged at this value —
+#: median error vs the full-chain flip is 1.38% of spot at +/-5%, falling ~10x to 0.117% at +/-10%
+#: and 0.257% at +/-15%; no ladder point reaches 95% of chains inside a 0.05%-of-spot tolerance.
+#: So 0.05 is measurably INSUFFICIENT, not merely unjustified.
+#: HELD AT 0.05 PENDING, deliberately not silently re-tuned: the cohort is only n=15 and the
+#: reference is our WIDEST AVAILABLE chain (Schwab caps strikeCount), so the study bounds the
+#: requirement from below rather than pinning it. Raising it also widens every fetch, which is a
+#: cost/latency decision. Re-set it once `python tools/probe_chain_depth_v1.py` establishes the
+#: real vendor ceiling and the cohort is large enough to pin a value.
+GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 
 #: Overshoot on the derived count. Schwab centres `strikeCount` strikes near ATM but not
 #: exactly on it, so a count that exactly equals the span requirement can land asymmetric

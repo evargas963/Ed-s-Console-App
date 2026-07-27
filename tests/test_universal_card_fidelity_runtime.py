@@ -171,7 +171,6 @@ def test_browser_dom_parity_implemented_in_source():
 
 
 def test_orphan_field_table_includes_all_required_fields(ucf):
-    required = set(ucf.ORPHAN_FIELD_NAMES) | {"EM_bounds"}
     payload = {
         "pred_headline": "Fusion: UP",
         "reversal_risk": 0.33,

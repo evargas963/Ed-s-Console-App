@@ -192,7 +192,7 @@ def _canonical_snapshots_columns() -> list[dict[str, Any]]:
 def _merged_target_columns(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     canonical = _canonical_snapshots_columns()
     live = [_column_dict(r, source="live") for r in _table_info(conn, "snapshots")]
-    live_by_name = {c["name"]: c for c in live}
+    _live_by_name = {c["name"]: c for c in live}
     canonical_names = {c["name"] for c in canonical}
     merged = [dict(c) for c in canonical]
     merged.extend({**c, "source": "live_extra"} for c in live if c["name"] not in canonical_names)

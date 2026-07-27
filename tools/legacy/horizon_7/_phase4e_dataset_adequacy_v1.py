@@ -132,7 +132,6 @@ WHERE s.timeframe = '1m'
         """
     ).fetchall()
     day_counts = [int(r["n"]) for r in by_day]
-    days_with_zero_snapshots = 0
 
     tc = Counter(r["ticker"] for r in rows)
     ticker_vals = sorted(tc.values())

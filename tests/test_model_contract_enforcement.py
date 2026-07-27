@@ -471,7 +471,7 @@ def test_item4_absent_manifest_explicit_legacy_never_verified(tmp_path, monkeypa
 
 
 def test_item4_malformed_and_unsupported_manifest_fail(tmp_path):
-    t, hz = "ZZBAD", "1c"
+    t = "ZZBAD"
     bd = _stamped_bundle(tmp_path, t)
     mf_path = bundle_integrity_manifest_path(bd)
     original = mf_path.read_text(encoding="utf-8")

@@ -184,7 +184,6 @@ def violations() -> list[tuple[str, int, str]]:
 
 
 def main(argv: list[str]) -> int:
-    verbose = "--verbose" in argv
     total: list[tuple[Path, int, str, str]] = []
     for path in sorted(REPO.rglob("*.py")):
         if _is_excluded(path):

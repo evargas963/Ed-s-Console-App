@@ -1065,7 +1065,7 @@ def _predict_xgb_movement_heads(
     restrict to valid_dir rows for outcome_dir calibration; move head uses the full labeled row set.
     """
     hz = get_ml_infer_horizon_slug()
-    tkr = ticker.strip().upper()
+    ticker.strip().upper()
     bt = _bundle_ticker_for_artifacts(ticker)
     out: dict[str, float] = {}
     _m5_snap_cached: dict | None = xgb_pre_engineering_snapshot

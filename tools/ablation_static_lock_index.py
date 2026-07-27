@@ -97,9 +97,7 @@ def _build_index(
     db_exists = dbp.is_file() if dbp is not None else False
     db_resolved = dbp if db_exists else None
 
-    gate_import_error: str | None = None
     manifest: dict[str, Any] | None = None
-    manifest_load_error: str | None = None
     enriched: list[dict[str, Any]] | None = None
     specs: list[dict[str, Any]] = []
     spec_build_error: str | None = None

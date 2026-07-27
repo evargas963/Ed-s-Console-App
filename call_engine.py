@@ -324,8 +324,8 @@ def _mc_reasoning_snippet(fusion, final_signal: str) -> str:
         return ""
     cont = getattr(fusion, 'mc_containment', None)
     exp = getattr(fusion, 'mc_expansion', None)
-    sim_up = getattr(fusion, 'mc_sim_prob_up', None)  # may not be on fusion
-    sim_dn = getattr(fusion, 'mc_sim_prob_down', None)
+    getattr(fusion, 'mc_sim_prob_up', None)  # may not be on fusion
+    getattr(fusion, 'mc_sim_prob_down', None)
     # Fusion gets MC from bayesian_fusion which passes mc_out — fusion doesn't have sim_prob_*
     # We get mc_containment, mc_expansion from fusion. For directional: use fusion_dominant_direction
     # vs call. MC contributes containment/expansion to fusion evidence.
@@ -413,7 +413,6 @@ def _build_call_headlines(final_signal, conviction, trade_type,
 
     # Entry/target strings
     e_s  = f"{entry:.2f}"  if entry  else "—"
-    t1_s = f"{target:.2f}" if target else "—"
 
     headline = f"{dir_word} — {type_label}"
     if mh_promoted_directional:
@@ -1261,7 +1260,6 @@ def _validate_trade(
         result["structure_reason"] = "missing canonical spot"
         result["summary"] = "missing canonical spot"
         return result
-    reasons = []
 
     # ══════════════════════════════════════════════════════════════════════════
     # LAYER 1 — STRUCTURAL VALIDITY
@@ -1627,7 +1625,6 @@ def compute_call(
     # 2. CONVICTION — canonical forecast (confidence + marginal p) + env downgrades only
     # ══════════════════════════════════════════════════════════════════════════
     zone_fresh_bars_1m  = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0   # execution timing
-    zone_stable_bars_5m = inp.zone_since_bars_5m                                 # structure persistence (None if unknown)
     prev_z = (inp.prev_zone or "").lower()
 
     if final_signal == "wait":

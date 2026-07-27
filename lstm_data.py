@@ -552,7 +552,14 @@ def extract_rth_snapshots(
 
     log.info("extract_rth_snapshots: sql_rows=%d ticker=%s", len(rows), ticker)
 
-    from time_et import et_clock_from_ts_utc, et_date_str_from_ts_utc, is_rth_ts_utc
+    # RC-57: is_tradable_session_ts_utc (weekday + holiday + RTH), NOT the clock-only
+    # is_rth_ts_utc, which returns True on Saturday 10:00 and Memorial Day 10:00 and was
+    # admitting market-closed rows into LSTM training sequences.
+    from time_et import (
+        et_clock_from_ts_utc,
+        et_date_str_from_ts_utc,
+        is_tradable_session_ts_utc,
+    )
 
     ablation_enabled = False
     apply_ablation_fn = None
@@ -593,7 +600,7 @@ def extract_rth_snapshots(
         ts_u = d.get("ts_utc")
         if ts_u is not None:
             try:
-                if not is_rth_ts_utc(float(ts_u)):
+                if not is_tradable_session_ts_utc(float(ts_u)):
                     skipped_non_rth += 1
                     continue
                 h, m, _ = et_clock_from_ts_utc(float(ts_u))

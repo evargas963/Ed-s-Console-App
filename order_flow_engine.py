@@ -986,7 +986,7 @@ class OrderFlowEngine:
         order_flow_readiness = (
             "red" if order_flow_score is None else _readiness(order_flow_score, rvol)
         )
-        order_flow_readiness_rvol = (
+        _order_flow_readiness_rvol = (
             "unavailable" if rvol is None and order_flow_score is not None else None
         )
 

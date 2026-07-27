@@ -69,12 +69,12 @@ def main() -> None:
     # Null reason buckets (governed + pred_1c still null)
     null_where = f"({GOV_WHERE}) AND s.pred_1c_up_prob IS NULL"
 
-    n_missing_zone = int(
+    _n_missing_zone = int(
         conn.execute(
             f"SELECT COUNT(*) FROM snapshots s WHERE {null_where} AND (s.zone IS NULL OR TRIM(s.zone) = '')"
         ).fetchone()[0]
     )
-    n_missing_vwap = int(
+    _n_missing_vwap = int(
         conn.execute(
             f"SELECT COUNT(*) FROM snapshots s WHERE {null_where} AND (s.vwap_side IS NULL OR TRIM(s.vwap_side) = '')"
         ).fetchone()[0]

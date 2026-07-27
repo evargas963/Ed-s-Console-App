@@ -115,7 +115,7 @@ def test_regime_engine_no_zone_since_bars_or_zero_pattern():
 
 def test_classify_returns_unknown_when_all_scores_zero():
     mvp = minimal_mvp_features(zone="pin_bull")
-    zero = {k: 0.0 for k in (
+    _zero = {k: 0.0 for k in (
         "pinning", "acceleration", "breakout", "mean_reversion",
         "vol_compression", "vol_expansion", "trend_continuation", "reversal_prone",
     )}

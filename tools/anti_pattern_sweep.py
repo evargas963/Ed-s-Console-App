@@ -384,7 +384,15 @@ CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     ("schwab_client.py", 372, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
     ("schwab_client.py", 403, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
     ("timing_probe2.py", 23, "GET_WITH_DEFAULT", "diagnostic probe display fallback"),
-    ("trade_impacting_gate.py", 218, "GET_WITH_DEFAULT", "env config only"),
+    # 218 -> 217: RC-64 removed a dead `reasons: list[str] = []` initialisation earlier in this
+    # file, shifting every following line up by one. The reviewed site is unchanged.
+    ("trade_impacting_gate.py", 217, "GET_WITH_DEFAULT", "env config only"),
+    # Log-line labels, not data: `msg.get("src", "?")` fills a DISPLAY string in a diagnostic
+    # log record. No decision, model input, or persisted field reads these — absence genuinely
+    # is "unknown source" for a log line, so "?" is the honest rendering, not a fabricated value.
+    ("stream_spine.py", 229, "GET_WITH_DEFAULT", "log-line source label only"),
+    ("stream_spine.py", 236, "GET_WITH_DEFAULT", "log-line source label only"),
+    ("stream_spine.py", 243, "GET_WITH_DEFAULT", "log-line source label only"),
 )
 
 

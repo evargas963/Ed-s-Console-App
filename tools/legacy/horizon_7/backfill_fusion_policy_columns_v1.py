@@ -159,8 +159,8 @@ def main() -> int:
     partial = 0
     skipped = 0
 
-    pred_cols = [f"pred_move_prob_{hz}" for hz in ML_HORIZON_SLUGS]
-    fused_cols = [f"fused_move_prob_{hz}" for hz in ML_HORIZON_SLUGS]
+    _pred_cols = [f"pred_move_prob_{hz}" for hz in ML_HORIZON_SLUGS]
+    _fused_cols = [f"fused_move_prob_{hz}" for hz in ML_HORIZON_SLUGS]
 
     for row in rows:
         attempted += 1

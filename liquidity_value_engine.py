@@ -318,8 +318,8 @@ def get_overnight_levels(
     Overnight range: prior RTH close (16:00) → current RTH open (09:30).
     """
     bars_norm = _bars_to_list(bars)
-    session_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    prev_close_dt = datetime.combine(session_date - timedelta(days=1), RTH_CLOSE, tzinfo=ET)
+    _session_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
+    _prev_close_dt = datetime.combine(session_date - timedelta(days=1), RTH_CLOSE, tzinfo=ET)
 
     overnight = []
     for b in bars_norm:
@@ -815,7 +815,7 @@ def build_opening_snapshot(
         clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
 
     zones = []
-    orb_h, orb_l = orb.get("orb_high"), orb.get("orb_low")
+    _orb_h, orb_l = orb.get("orb_high"), orb.get("orb_low")
     for lo, hi, mid, tags, source_pairs in clusters:
         zt = ZoneType.PIVOT_VALUE
         notes = ""

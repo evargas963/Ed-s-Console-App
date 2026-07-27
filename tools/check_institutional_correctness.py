@@ -530,8 +530,26 @@ def check_no_governance_duplication() -> list[Violation]:
         return [(n, ln) for n, ln in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
                 if ln.startswith("|") and pred(ln)]
 
+    #: Vocabulary that appears in nearly EVERY governance row (verdict words, evidence words,
+    #: market-domain nouns). Two rows sharing these are discussing the same SUBJECT AREA, not the
+    #: same ITEM — and this check exists to stop one ITEM being tracked twice. Without the
+    #: stoplist the heuristic false-positived register:41 against RC-43 on words like "proven",
+    #: "capture", "schwab", "barchart" (one is a CLAIM that our method matches Barchart; the other
+    #: is a DEFECT in a closure that cited a bad number — different items, same topic).
+    _GOVERNANCE_STOPWORDS = frozenset({
+        "proven", "unproven", "verified", "measured", "observed", "remediated", "disproved",
+        "confirm", "confirmed", "evidence", "verdict", "closure", "closed", "record", "records",
+        "register", "registry", "governance", "operator", "before", "already", "original",
+        "sample", "samples", "window", "windows", "capture", "captures", "captured", "method",
+        "methods", "pattern", "patterns", "difference", "smaller", "larger", "observation",
+        "observations", "contaminated", "contamination", "ticker", "tickers", "regime", "regimes",
+        "session", "sessions", "intraday", "overnight", "expiry", "industry", "placebo",
+        "schwab", "barchart", "spotgamma", "against", "because", "instead", "without",
+        "reproduce", "reproduces", "reproducible", "numbers", "number", "median", "percent",
+    })
+
     def _terms(text: str) -> set[str]:
-        return {w.lower() for w in re.findall(r"[a-zA-Z_]{6,}", text)}
+        return {w.lower() for w in re.findall(r"[a-zA-Z_]{6,}", text)} - _GOVERNANCE_STOPWORDS
 
     reg_rows = _rows(reg_path, lambda ln: ln.split("|")[1].strip() in
                      ("PROVEN", "UNPROVEN", "DISPROVED", "REMEDIATED"))
@@ -644,6 +662,40 @@ def _open_register_claims(path) -> list[str]:
     return out
 
 
+def _is_overdue(due: str) -> bool:
+    """True when `due` (YYYY-MM-DD) is in the past. An unparseable date is NOT counted here —
+    check_root_cause_log already fails loudly on a malformed due date, so this never
+    double-reports and never silently treats junk as compliant."""
+    try:
+        return datetime.date.fromisoformat(due.strip()) < datetime.date.today()
+    except (TypeError, ValueError):
+        return False
+
+
+def _overdue_governance_items(rc_path, reg_path) -> list[str]:
+    """RC-65: items that have actually ROTTED — open past their own due date.
+
+    Root-cause columns: id | status | opened | due | ...   (due = cells[3])
+    Register columns:   status | opened | due | claim | ... (due = cells[2])
+    """
+    out: list[str] = []
+    if rc_path.exists():
+        for line in rc_path.read_text(encoding="utf-8").splitlines():
+            if not line.startswith("| RC-"):
+                continue
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if len(cells) > 3 and cells[1] == "OPEN" and _is_overdue(cells[3]):
+                out.append(cells[0])
+    if reg_path.exists():
+        for line in reg_path.read_text(encoding="utf-8").splitlines():
+            if not line.startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if len(cells) > 3 and cells[0] in ("UNPROVEN", "DISPROVED") and _is_overdue(cells[2]):
+                out.append(f"register:{cells[3][:40]}")
+    return out
+
+
 def check_open_item_cap() -> list[Violation]:
     """Governance ledgers must burn DOWN. The open count may never rise.
 
@@ -655,13 +707,23 @@ def check_open_item_cap() -> list[Violation]:
     count is the new ceiling the moment it drops, so the only permitted direction is down,
     and no number had to be invented.
 
-    Opening a genuinely new defect therefore requires closing one first, which is the
-    intended pressure: "logged" must never become a synonym for "deferred forever".
+    MEASURE CORRECTED 2026-07-26 (RC-65, operator: "i don't care about caps as long as we have
+    great code — i thought this was a mechanical lock"). Counting EVERY open item conflated two
+    opposite things: honest new tracking and deferral. On 2026-07-26 a session that found real
+    defects (RC-43's closure was wrong; RC-58's contamination set) FAILED this gate *because* it
+    recorded them — which teaches the agent to stay silent, the precise opposite of this repo's
+    purpose. A control that punishes discovery is worse than no control.
+
+    What actually means "deferred forever" is an item PAST ITS DUE DATE. So the ratchet now counts
+    OVERDUE dated items (root-cause rows and register claims both carry a due date) plus every
+    unchecked OPEN_ITEMS.md row, which has no due date and therefore stays a pure parking-lot
+    count. Opening a defect today with a real due date is free; letting it rot is not — and the
+    burn-down pressure the operator asked for in 2026-07-19 is preserved exactly where it belongs.
     """
     out: list[Violation] = []
     rc = REPO / "governance" / "root_cause_log.md"
-    open_items = _open_root_causes(rc) + _open_register_claims(
-        REPO / "governance" / "unproven_register.md")
+    open_items = _overdue_governance_items(
+        rc, REPO / "governance" / "unproven_register.md")
     # OPEN_ITEMS.md joined the ratchet 2026-07-20. WHAT WAS OBSERVED: the cap covered
     # only the two governance ledgers, so OPEN_ITEMS.md was an UNGATED parking lot --
     # a "flagged, not fixed" disposition could sit there forever, which is exactly the
@@ -706,6 +768,11 @@ def check_open_item_cap() -> list[Violation]:
 _ORPHAN_KEY_SKIP_RECEIVERS = frozenset({
     "app", "router", "api", "client", "session", "requests", "httpx", "self",
     "environ", "os", "sys", "kwargs", "headers", "params", "cookies", "query",
+    # `payload` is by definition an EXTERNAL contract we receive, not one we write — e.g. the
+    # Claude Code PreToolUse hook JSON on stdin (tool_name / tool_input / file_path, RC-66).
+    # Its keys can never appear as writes in this repo, so flagging them is a guaranteed
+    # false positive of exactly the "confirm it comes from a vendor payload" class.
+    "payload",
 })
 
 
@@ -1680,6 +1747,445 @@ def check_recursive_five_why_front_loaded() -> list[Violation]:
     return []
 
 
+def check_adversarial_audit_test_lock() -> list[Violation]:
+    """Second half of the operator's mandate: the self-adversarial-audit loop is machine-forced.
+
+    OBSERVED (2026-07-26, RC-49): the operator specified a TWO-part lock — recursive-5-why AND a
+    self-adversarial-audit loop (analyze -> fix -> adversarially audit -> fix -> re-audit until
+    clean) — but only the recursive-5-why half was ever mechanized (recursive_five_why_front_loaded).
+    The audit half ran on agent goodwill and the operator observed it had lapsed. Per RC-41's proven
+    lesson, goodwill fails and must be machine-forced. The failure this stops: a code fix reaching a
+    commit with nothing that locks it — no test — so a regression silently re-opens the exact defect
+    (the RC-14 -> RC-15 -> RC-16 class, three rows for one bug).
+
+    Rule: any commit staging a real change to a PRODUCTION (non-tests/) tracked .py file MUST
+    co-stage a real change to a tests/ .py file — the adversarial audit's output, a test that fails
+    if the fix regresses. A genuinely untestable change (measurement-only closure, docs, pure config)
+    escapes ONLY via a co-staged root-cause row carrying an explicit 'NO-TEST-LOCK: <reason>' — the
+    exemption is auditable, never silent.
+
+    VALIDATED BY PROTOTYPE before enforcing: run against staging scenarios — fires on a prod .py
+    change with no co-staged test and no NO-TEST-LOCK, passes when a real tests/ change is co-staged,
+    passes on a NO-TEST-LOCK exemption, ignores test-only and non-.py commits, and no-ops (returns [])
+    outside a git commit context so unit-test imports never false-block. HONEST LIMIT: a pre-commit
+    check forces the test-lock ARTIFACT, not the cognitive depth of the audit — the drift-audit skill
+    remains the thinking; this makes skipping the lock fail the build.
+    """
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return []  # not a commit context — never a false block
+    staged_set = {s.strip().replace("\\", "/") for s in staged if s.strip()}
+    if not staged_set:
+        return []
+
+    def _is_test(p: str) -> bool:
+        return p.startswith("tests/") and p.endswith(".py")
+
+    prod_code = sorted(
+        f for f in staged_set
+        if f.endswith(".py") and not _is_test(f) and _staged_has_real_change(f)
+    )
+    if not prod_code:
+        return []  # no production code changed — nothing to lock
+    if any(_is_test(f) and _staged_has_real_change(f) for f in staged_set):
+        return []  # the fix ships its locking test
+    # No co-staged test — allow ONLY an explicit, auditable NO-TEST-LOCK exemption in a staged RC row.
+    log_rel = "governance/root_cause_log.md"
+    if log_rel in staged_set:
+        log_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
+        if any(l.startswith("+") and "NO-TEST-LOCK:" in l for l in log_diff):
+            return []
+    return [Violation(
+        REPO / prod_code[0], 0,
+        "Production code changed (" + ", ".join(prod_code[:5]) +
+        (" …" if len(prod_code) > 5 else "") + ") with NO co-staged test. The self-adversarial-audit "
+        "loop is machine-forced (RC-49): every fix ships a test that locks it (fails on regression). "
+        "Co-stage a real tests/ change, or — only for a genuinely untestable measurement-only/doc/"
+        "config closure — add 'NO-TEST-LOCK: <reason>' to the co-staged root-cause row. Goodwill "
+        "fails; the lock does not.")]
+
+
+#: RC-61 — the recurring failure CLASSES distilled from the root-cause log. Each is a pattern that
+#: has already cost real defects; a NEW row that repeats one must say how this time is different.
+#: (pattern-name, regex over the why/root text, the RC ids where it already bit)
+_RECURRENCE_CLASSES = (
+    ("goodwill-not-machine-forced",
+     re.compile(r"goodwill|no mechanical|not machine[- ]forced|depended on (agent|me) remember", re.I),
+     "RC-41, RC-49, RC-53, RC-56"),
+    ("unverified-claim-asserted",
+     re.compile(r"without measur|asserted .*without|not reproducib|uncommitted one-off|from memory", re.I),
+     "RC-39, RC-40, RC-43, RC-53"),
+    ("session-scope-omitted",
+     re.compile(r"market[- ]closed|weekend|holiday|non[- ]trading|session scop", re.I),
+     "RC-54, RC-57, RC-58"),
+    ("duplicate-authority",
+     re.compile(r"two (different )?(authorit|classifier|implementation|engine|width)|each .* own|open[- ]coded per", re.I),
+     "RC-14, RC-36, RC-42, RC-48, RC-59"),
+    ("stale-record-trusted",
+     re.compile(r"stale|out of date|outdated|superseded but|no longer true", re.I),
+     "RC-44, RC-55"),
+)
+
+
+def check_root_cause_recurrence_declared() -> list[Violation]:
+    """A new root cause that REPEATS a known class must say why this time is different.
+
+    WHAT WAS OBSERVED (2026-07-26, RC-61): the operator asked what we actually DO with the
+    root-cause log — and the answer was nothing. It is written at fix time and never read at
+    author time, so the same classes recur: "goodwill instead of a lock" bit at RC-41, RC-49,
+    RC-53 and RC-56; "claim asserted without measurement" at RC-39, RC-40, RC-43 and RC-53;
+    "session scope omitted" at RC-54, RC-57 and RC-58; "two authorities for one quantity" at
+    RC-14, RC-36, RC-42, RC-48 and RC-59. A log that records history without constraining the
+    next entry is an archive, not a control.
+
+    Rule: when a commit stages a NEW '| RC-' row whose why/root text matches a known recurring
+    class, that row must also carry `RECURRENCE: <class> — <why this fix breaks the cycle>`.
+    The point is not paperwork: it forces the author to notice they are repeating themselves and
+    to state what is structurally different, at the moment the fix is designed.
+
+    HOW THE RULE WAS VALIDATED: the five classes were derived FROM this repo's own log (each
+    lists the RC ids where it already bit, so no class is speculative), and the check is scoped to
+    NEWLY ADDED rows in the staged diff — existing history is never retro-flagged, and it returns
+    [] outside a git commit context so unit-test imports never false-block.
+    """
+    log_rel = "governance/root_cause_log.md"
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return []
+    if log_rel not in {s.strip().replace("\\", "/") for s in staged if s.strip()}:
+        return []
+    # Only GENUINELY NEW rows bind. Editing an existing row (e.g. adding a reproduce command)
+    # shows up as an added diff line too, and demanding a recurrence declaration for that would
+    # cry wolf on ordinary maintenance — so compare against the ids already committed at HEAD.
+    head = _git_output_lines(["show", f"HEAD:{log_rel}"]) or []
+    existing_ids = {
+        ln.strip().strip("|").split("|")[0].strip()
+        for ln in head if ln.startswith("| RC-")
+    }
+    diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
+    out: list[Violation] = []
+    for ln in diff:
+        if not ln.startswith("+| RC-"):
+            continue
+        row = ln[1:]
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        if len(cells) < 7:
+            continue
+        rc_id, why = cells[0], cells[5]
+        if rc_id in existing_ids:
+            continue
+        if "RECURRENCE:" in row.upper():
+            continue
+        for name, pattern, priors in _RECURRENCE_CLASSES:
+            if pattern.search(why):
+                out.append(Violation(
+                    REPO / log_rel, 0,
+                    f"{rc_id} repeats the known failure class '{name}' (already recorded at "
+                    f"{priors}) but does not declare it. The root-cause log is a CONTROL, not an "
+                    f"archive: add 'RECURRENCE: {name} — <what is structurally different this "
+                    f"time>' so a repeat is a deliberate, explained decision rather than an "
+                    f"unnoticed loop."))
+                break
+    return out
+
+
+#: RC-62 — domain constants that decide money-path behaviour must carry their derivation.
+#: Names that set a THRESHOLD/BOUND on market logic (not plumbing sizes like timeouts or buffers).
+_DOMAIN_CONST_RE = re.compile(
+    r"^[A-Z][A-Z0-9_]*(_MIN_[A-Z0-9_]*PCT|_MAX_[A-Z0-9_]*PCT|_PCT|_THRESHOLD|_SPAN|_MARGIN|"
+    r"_MIN_SPAN|_CUTOFF|_FLOOR|_CEILING)$")
+#: A derivation is: a measurement, a citation, a named source, or an explicit operator decision.
+_DERIVATION_RE = re.compile(
+    r"MEASURED|OBSERVED|PROVEN|VERIFIED|DERIVED|per [A-Z]|operator|vendor|"
+    r"industry standard|https?://|RC-\d+|\bsee \w+\.py|convergence", re.I)
+_DOMAIN_CONST_FILES = ("math_levels.py", "math_exposure_core.py", "math_probabilities.py")
+#: FROZEN grandfather set (prototyped 2026-07-26: exactly these). These are TRADING-POLICY numbers
+#: — stop-loss bands, a direction threshold, a greek-bias cut — whose correct values are an
+#: operator decision, not something an agent may invent a derivation for. They are visible debt to
+#: be justified or re-set deliberately; the rule binds every NEW market threshold immediately.
+_DOMAIN_CONST_GRANDFATHERED = frozenset({
+    ("math_exposure_core.py", "GREEK_BIAS_THRESHOLD"),
+    ("math_probabilities.py", "DIRECTION_THRESHOLD_PCT"),
+    ("math_probabilities.py", "STOP_BASE_PCT"),
+    ("math_probabilities.py", "STOP_TIME_DECAY_PCT"),
+    ("math_probabilities.py", "STOP_VIX_MED_PCT"),
+    ("math_probabilities.py", "STOP_VIX_HIGH_PCT"),
+    ("math_probabilities.py", "STOP_FLOOR_PCT"),
+    ("math_probabilities.py", "STOP_CEILING_PCT"),
+})
+
+
+def check_domain_constants_are_derived() -> list[Violation]:
+    """A market-logic threshold must state where its VALUE came from, not just what it does.
+
+    WHAT WAS OBSERVED (2026-07-26, RC-62): the operator asked who set GAMMA_FLIP_MIN_SPAN_PCT =
+    0.05 and what is scientific about it. Nothing was: its entire justification was a comment
+    restating the value ("chain must reach +/-5% around spot before the flip is trusted"). That
+    one number decides how many strikes EVERY live chain fetch requests and whether the operator
+    is told a flip is TRUSTED or LOW_CONFIDENCE — including declaring $SPX untrustworthy. The
+    repo already forces new GATE CHECKS to justify themselves (checks_are_justified) but nothing
+    forced the same of DOMAIN CONSTANTS, which carry more decision weight.
+
+    Rule: in the math modules, a constant whose name marks it as a market threshold (…_PCT,
+    …_THRESHOLD, …_SPAN, …_MARGIN, …_FLOOR, …_CEILING) must have a nearby comment or docstring
+    containing a derivation marker — MEASURED/OBSERVED/PROVEN/DERIVED, a named source, a vendor
+    or operator decision, an RC id, or a convergence study. Restating the value is not a
+    derivation.
+
+    HOW THE RULE WAS VALIDATED: prototyped against the math modules before enforcing; scoped to
+    the three math files (where market thresholds live) rather than repo-wide, so plumbing
+    constants — timeouts, buffer sizes, retry counts — are never flagged. Constants that ARE
+    already derived (e.g. STRIKE_COUNT_MARGIN, which explains Schwab's off-centre strike
+    placement) pass unchanged.
+    """
+    out: list[Violation] = []
+    for fname in _DOMAIN_CONST_FILES:
+        path = REPO / fname
+        if not path.exists():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        for n, line in enumerate(lines, start=1):
+            if "=" not in line or line.startswith((" ", "\t")):
+                continue
+            name = line.split("=", 1)[0].strip()
+            if not _DOMAIN_CONST_RE.match(name):
+                continue
+            if (fname, name) in _DOMAIN_CONST_GRANDFATHERED:
+                continue
+            # The derivation must belong to THIS constant: its own line plus the CONTIGUOUS
+            # comment block directly above it. A wider window let a neighbour's comment vouch
+            # for it — the first draft of this check passed GAMMA_FLIP_MIN_SPAN_PCT itself
+            # because the following constant's comment used the word "derived".
+            block = [line]
+            k = n - 2                       # 0-based index of the line above
+            while k >= 0 and lines[k].lstrip().startswith("#"):
+                block.append(lines[k])
+                k -= 1
+            if _DERIVATION_RE.search("\n".join(block)):
+                continue
+            out.append(Violation(
+                path, n,
+                f"{name} is a market-logic threshold with no stated derivation. This value "
+                f"decides product behaviour, so a comment restating it is not justification "
+                f"(RC-62: GAMMA_FLIP_MIN_SPAN_PCT=0.05 governed every chain fetch width and every "
+                f"TRUSTED verdict on nothing but assertion). State the measurement, the source, "
+                f"or the operator decision that produced this number."))
+    return out
+
+
+def check_chain_width_single_faucet() -> list[Violation]:
+    """Every level-computing chain fetch must size itself from ONE authority.
+
+    WHAT WAS OBSERVED (2026-07-26, RC-59): the console/analytics path fetched option chains at a
+    hardcoded CHAIN_STRIKE_COUNT=20 ("keep fast") while the terrain path sized from measured
+    geometry, so the SAME ticker was analysed at two different widths and the levels persisted to
+    `snapshots` were narrower than the ones shown on screen. Two widths is two answers. The width
+    is a function of the +/-5% span bar and the instrument's own strike spacing, and MEASURED
+    across 52 chains the fixed count was wrong in BOTH directions (~48 equities need under 20 and
+    got 40; $SPX needs ~150 and got 40) — so a hardcoded literal cannot be right for any universe.
+
+    Rule: in server.py, a `strike_count=` argument on a chain fetch must be
+    `resolve_chain_strike_count(...)` (or a variable derived from it), never a bare constant —
+    unless the line declares `chain-width-faucet-ok: <reason>` for a fetch that provably computes
+    no levels (e.g. the expiry-list dropdown).
+
+    HOW THE RULE WAS VALIDATED: prototyped against server.py before enforcing — it flags exactly
+    the bare-constant fetches and passes the faucet-routed ones and the single declared exemption;
+    scoped to server.py because that is where the live fetches live, so it cannot cry wolf across
+    offline tools that legitimately choose their own width.
+    """
+    out: list[Violation] = []
+    path = REPO / "server.py"
+    try:
+        src = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return out
+    for n, line in enumerate(src.splitlines(), start=1):
+        if "strike_count=" not in line or "def " in line:
+            continue
+        if "chain-width-faucet-ok" in line:
+            continue
+        arg = line.split("strike_count=", 1)[1].strip().rstrip(",)").strip()
+        if not arg or arg.startswith(("resolve_chain_strike_count", "_width", "_terrain_strike_count")):
+            continue
+        if arg.isidentifier() and arg.isupper():          # a bare CONSTANT is the defect
+            out.append(Violation(
+                path, n,
+                f"chain fetch sizes itself from the bare constant {arg!r} instead of the ONE "
+                f"width authority resolve_chain_strike_count(ticker) (RC-59). A fixed count is "
+                f"wrong in both directions across a real universe. Use the faucet, or declare "
+                f"'chain-width-faucet-ok: <reason>' if this fetch computes no levels."))
+    return out
+
+
+#: RC-56 — a measured claim committed to the governance record must carry its evidence.
+#: Claim vocabulary: words that assert a FINDING (not mere description).
+_CLAIM_WORDS = re.compile(
+    r"\b(MEASURED|PROVEN|VERIFIED|OBSERVED|CONFIRMED|median|mean|percentile|"
+    r"correlation|accuracy|hit rate|p-value|significan)", re.I)
+#: An explicit hypothesis tag exempts a line — an untested claim may be RECORDED, never asserted.
+_UNVERIFIED_TAG = re.compile(r"\[UNVERIFIED\]|\[HYPOTHESIS\]|UNPROVEN", re.I)
+
+
+def check_measured_claims_cite_evidence() -> list[Violation]:
+    """A quantitative FINDING added to the governance record must cite how to reproduce it.
+
+    WHAT WAS OBSERVED (2026-07-26, RC-53/RC-56): I asserted "far-OTM strikes carry large open
+    interest" as a load-bearing premise with no measurement, then "confirmed" it with unequal
+    comparison buckets that manufactured the result; per-strike OI is in fact HIGHEST near ATM
+    (1,452) and DECLINES to the wings (765). Separately RC-43 was CLOSED on figures (0.068 percent)
+    from an uncommitted one-off that could not be re-run and proved wrong by 5-9x when finally
+    reproduced. The operator's ruling was explicit: every claim must be fact-based and proven, and
+    a written law is NOT a lock — "there are times you say you will mechanically lock something and
+    then i find out that you didn't and you call it goodwill". This check is the mechanical half of
+    the AGENTS.md evidence-before-assertion law: chat prose cannot be hook-gated, but anything
+    COMMITTED to the record can be, and is.
+
+    Rule: when a commit stages a .md under governance/ or reports/, every ADDED line that states a
+    quantitative finding (a claim word plus >=2 numbers) must either appear in a file that carries a
+    backticked reproducible command (`SELECT ...`, `python ...`, `pytest ...`, a tools/ path), or be
+    tagged [UNVERIFIED]/[HYPOTHESIS]/UNPROVEN. Dates and RC/issue ids are stripped before counting so
+    "2026-07-26" and "RC-43" never read as claims.
+
+    HOW THE RULE WAS VALIDATED: prototyped against this repo's staged governance edits before
+    enforcing, and deliberately scoped to STAGED-DIFF ADDED LINES rather than whole files — a
+    whole-file scan would flag years of historical prose and cry wolf, while the diff scope binds
+    exactly the new claims a commit introduces. Returns [] outside a git commit context so unit-test
+    imports never false-block.
+    """
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return []
+    targets = [
+        s.strip().replace("\\", "/") for s in staged
+        if s.strip().endswith(".md")
+        and (s.strip().replace("\\", "/").startswith(("governance/", "reports/")))
+    ]
+    out: list[Violation] = []
+    for rel in targets:
+        path = REPO / rel
+        try:
+            whole = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+        for ln in diff:
+            if not ln.startswith("+") or ln.startswith("+++"):
+                continue
+            body = ln[1:]
+            if _UNVERIFIED_TAG.search(body) or not _CLAIM_WORDS.search(body):
+                continue
+            stripped = re.sub(r"\d{4}-\d{2}-\d{2}|RC-\d+|#\d+", "", body)
+            if len(_RC_NUMBER_RE.findall(stripped)) < 2:
+                continue
+            if _RC_CITATION_RE.search(body) or _RC_CITATION_RE.search(whole):
+                continue
+            out.append(Violation(
+                path, 0,
+                "adds a MEASURED claim with numbers but the file cites no reproducible command. "
+                "A number that cannot be re-run is not evidence (RC-43 closed on an uncommitted "
+                "one-off that was wrong by 5-9x). Add a backticked command that reproduces it, or "
+                "tag the line [UNVERIFIED]."))
+            break   # one violation per file is enough to block; do not spam
+    return out
+
+
+#: RC-54 — market-data measurement must be scoped to trading sessions.
+_RTH_MARKET_READ = re.compile(
+    r"FROM\s+(snapshots|snapshots_1m_normalized|option_chain_morning_full)\b|flip_drift_log\.jsonl",
+    re.I)
+_RTH_STATS = re.compile(r"\b(statistics\.|np\.(mean|median|percentile|std)|\.mean\(|\.median\()")
+#: Data MAINTENANCE (backfill/normalize/migrate) legitimately processes every row — a backfill that
+#: skipped weekends would corrupt the store. Only MEASUREMENT is scoped.
+_RTH_WRITES = re.compile(
+    r"\b(UPDATE\s+snapshots|INSERT\s+INTO\s+snapshots|ALTER\s+TABLE|executemany|CREATE\s+TABLE)", re.I)
+#: CALENDAR-AWARE authorities only. `is_rth_ts_utc` is deliberately NOT here: it is clock-only and
+#: returns True for Saturday 10:00 and Memorial Day 10:00 (measured), so accepting it would let a
+#: holiday-blind file satisfy a calendar check — the first version of this lock did exactly that
+#: (RC-57). `filter_df_to_rth_ts_utc` / `filter_ts_utc_list_to_rth` ARE accepted because RC-57
+#: rebuilt them on is_tradable_session_ts_utc; they are calendar-aware as of that fix.
+_RTH_AUTHORITIES = re.compile(
+    r"is_trading_day_et|is_tradable_session_ts_utc|filter_df_to_rth_ts_utc|"
+    r"filter_ts_utc_list_to_rth|rth-scope-ok")
+#: FROZEN grandfather set — measurement files that predate the lock (prototyped 2026-07-26: exactly
+#: these 17). Visible debt, not hidden: several (study_pin_*) back conclusions in
+#: governance/unproven_register.md that must be re-run under RTH scoping before they are re-cited.
+_RTH_GRANDFATHERED = frozenset({
+    "calibration/analyze_phase3.py",
+    "research/cost_aware_eval_v1/faint_lead_kill_v1.py",
+    "tools/_multi_timeframe_audit_v1.py",
+    "tools/_phase8_remediate_tmp.py",
+    "tools/feature_curation_gate.py",
+    "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
+    "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
+    "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
+    "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
+    "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
+    "tools/run_final_fused_vs_xgb_comparison_v1.py",
+    "tools/run_phase8_calibration_global_v1.py",
+    "tools/study_pin_charm_v1.py",
+    "tools/study_pin_direction_v1.py",
+    "tools/study_pin_regime_cut_v1.py",
+    "tools/study_pin_residence_v1.py",
+    "tools/study_terrain_readiness_v1.py",
+})
+
+
+def check_rth_only_market_measurement() -> list[Violation]:
+    """Any measurement over market data must be scoped to TRADING sessions (operator mandate).
+
+    WHAT WAS OBSERVED (2026-07-26, RC-54): the same defect three times in one session. (a) An
+    intraday gamma-flip-drift reading was taken from `reports/flip_drift_log.jsonl` whose only
+    records were a SUNDAY 11:20-12:54 ET window — market shut, spot frozen — which reported a
+    median flip movement of 0.023 percent and would have been published as "the flip is stable
+    intraday". (b) `tools/flip_iv_sensitivity_v1.py` loaded `option_chain_morning_full` with NO
+    session filter, so 72 of 215 source rows (33.5 percent: 35 Sat + 35 Sun + 2 Sun) were
+    market-closed captures polluting the RC-43 numbers. (c) gamma/charm fixture tests needed
+    clock-pinning for the same reason. A market-closed row has frozen spot and stale IV, so it
+    drags every statistic toward "nothing moved" — it does not merely add noise, it BIASES toward
+    the null. Operator ruling: RTH-only is non-negotiable and must be mechanical.
+
+    Rule: a file that READS market data (snapshots / snapshots_1m_normalized /
+    option_chain_morning_full / flip_drift_log.jsonl) AND aggregates it (statistics/mean/median)
+    must reference a calendar-aware session authority (`is_trading_day_et`,
+    `is_tradable_session_ts_utc`, `filter_df_to_rth_ts_utc`, `filter_ts_utc_list_to_rth`) or carry
+    `# rth-scope-ok: <reason>`. Data MAINTENANCE (backfill/normalize/migrate — detected by row
+    writes) is exempt by design: it must process every row.
+
+    HOW THE RULE WAS VALIDATED: prototyped against the repo BEFORE enforcing. 105 files read the
+    market tables; the naive form flagged 34, of which the write-exemption correctly removed the
+    backfills/normalizer, leaving exactly 17 genuine unscoped MEASUREMENT files — frozen into
+    _RTH_GRANDFATHERED so the rule binds new and changed code without a 17-file emergency. The
+    grandfathered set is visible debt to drive down, and notably includes the study_pin_* tools
+    whose results are cited as PROVEN in governance/unproven_register.md and therefore need
+    re-running under RTH scoping before they may be re-cited.
+    """
+    out: list[Violation] = []
+    for path in _production_py_files():
+        rel = path.relative_to(REPO).as_posix()
+        if rel in _RTH_GRANDFATHERED:
+            continue
+        try:
+            src = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if not (_RTH_MARKET_READ.search(src) and _RTH_STATS.search(src)):
+            continue
+        if _RTH_WRITES.search(src) or _RTH_AUTHORITIES.search(src):
+            continue
+        out.append(Violation(
+            path, 1,
+            "measures market data with NO trading-session scoping. A market-closed row has frozen "
+            "spot and stale IV, so it biases every statistic toward 'nothing moved' (RC-54: a "
+            "Sunday-only sample nearly shipped as 'the flip is stable intraday'). Filter with "
+            "time_et.is_trading_day_et / is_tradable_session_ts_utc (or ml_data_common's df/list "
+            "filters), or declare '# rth-scope-ok: <reason>'."))
+    return out
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -1690,12 +2196,27 @@ CHECKS = [
     ("root_cause_log", check_root_cause_log, True),
     ("five_why_recursive_lock", check_five_why_recursive_lock, True),  # end-to-end fixes, no patches ever
     ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded, True),  # UNIVERSAL: any code change ships a root-cause row
+    ("adversarial_audit_test_lock", check_adversarial_audit_test_lock, True),  # RC-49: every fix ships a locking test (audit's output)
+    ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
+    ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
+    ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
+    ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),  # RC-61: the log is a control, not an archive
+    ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home
     ("checks_are_justified", check_checks_are_justified, True),  # observed + validated, or no ship
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
     ("open_item_cap", check_open_item_cap, True),   # ledgers burn down, never accumulate  # 5 whys, restarted on every new cause
-    ("debt_ratchet", check_debt_ratchet, True),      # correctness advisory debt may never rise
+    # RC-67 (operator 2026-07-26): ADVISORY, not enforced. It still computes and REPORTS every
+    # metric delta, so a real regression stays visible — but a COUNT may no longer block a commit.
+    # A counter cannot distinguish a regression from a false positive or from a deliberate,
+    # higher-quality addition: it failed the build when the operator-mandated PreToolUse guard
+    # read its own external hook payload (+3 orphan keys, all false positives). Correctness is
+    # judged by the checks that read the CODE (no_fake_defaults, no_silent_swallow,
+    # vendor_field_coercion, rth_only_market_measurement, domain_constants_are_derived,
+    # chain_width_single_faucet, adversarial_audit_test_lock) and by the Code Health Panel's
+    # BLOCKING tier — same class as the RC-19 shape-metric ceilings, already ruled track-only.
+    ("debt_ratchet", check_debt_ratchet, False),
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
@@ -1716,13 +2237,21 @@ CHECKS = [
     # agent_worktree_policy.json, db_authority claude routing) remain inert — they only
     # activate if ED_AGENT_ROLE is explicitly set — and can be fully purged later.
     # ADVISORY (visible debt, driven to zero, then flipped to enforced — the ratchet):
-    ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, False),  # review each
+    # RC-67: PROMOTED to directly ENFORCED for the same reason as no_fake_defaults — a test that
+    # cannot fail on regression is not a test, and this was only blocking via the retired counter.
+    # Driven to 0 by RC-46, so it binds on the code rather than on a delta.
+    ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, True),
     ("orphan_dict_keys", check_no_orphan_dict_keys, False),   # silent-None leads (RC-15/RC-20)
     ("function_complexity", check_function_complexity, False),      # too-branchy functions
     ("function_length", check_function_length, False),             # over-long functions
     ("file_length", check_file_length, False),                     # over-long files (split them)
     ("ruff_quality", check_ruff_quality, False),                   # dead code / bugs / simplify (ruff)
-    ("no_fake_defaults", check_no_fake_defaults, False),           # neutral/magic fallbacks (review)
+    # RC-67: PROMOTED to directly ENFORCED. This was only ever blocking as a side effect of the
+    # count-ratchet, so retiring the ratchet would have left fabricated neutrals unguarded — and a
+    # fabricated 0.5 probability entering the decision path is the exact opposite of the quality
+    # bar the operator set. Driven to 0 by RC-47, so it binds cleanly and judges the CODE, not a
+    # counter. Legitimate config parameters declare `# fake-default-ok: <reason>`.
+    ("no_fake_defaults", check_no_fake_defaults, True),
     ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
 ]
 

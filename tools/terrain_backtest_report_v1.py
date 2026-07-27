@@ -66,6 +66,22 @@ def _et_day_and_min(ts: float) -> tuple[str, int]:
     return d.strftime("%Y-%m-%d"), d.hour * 60 + d.minute
 
 
+def _is_measurable_day(day: str) -> bool:
+    """RC-58: only real trading days may enter this scorecard.
+
+    The windows above are minute-of-day only, so weekend and holiday rows were admitted:
+    MEASURED 245 of 1,548 joinable ticker-days (15.8 percent). That is not noise, it is a
+    DETERMINISTIC bias — a market-closed day's bars are frozen (high == low on 100 percent of
+    sampled weekend bars), its realized range is ~0.05 percent vs ~2.21 percent on trading days
+    with NO distribution overlap, so every such day is automatically classed low-range: a
+    guaranteed hit for LONG_GAMMA_CHOP, a guaranteed miss for short gamma, and a guaranteed
+    wall hold (a frozen high cannot exceed a call wall). It inflated the wall-hold KPI and tied
+    ~245 range values at the bottom rank of every Spearman rho.
+    """
+    from time_et import is_trading_day_et
+    return is_trading_day_et(day)
+
+
 def _load_observations(con: sqlite3.Connection, since: str | None):
     """One (ticker, day) observation: the stored chain nearest 10:00 ET."""
     rows = con.execute(
@@ -77,6 +93,8 @@ def _load_observations(con: sqlite3.Connection, since: str | None):
     for tk, ts, spot, chain in rows:
         day, mins = _et_day_and_min(ts)
         if since and day < since:
+            continue
+        if not _is_measurable_day(day):     # RC-58: weekend / holiday -> never scored
             continue
         if not (OBS_LO_MIN <= mins <= OBS_HI_MIN):
             continue
@@ -99,6 +117,8 @@ def _load_realized(con: sqlite3.Connection, tickers: set[str], since: str | None
         for ts, o, h, low, c in cur:
             day, mins = _et_day_and_min(ts)
             if since and day < since:
+                continue
+            if not _is_measurable_day(day):     # RC-58: frozen weekend/holiday bars bias to null
                 continue
             if not (REAL_LO_MIN <= mins <= REAL_HI_MIN):
                 continue

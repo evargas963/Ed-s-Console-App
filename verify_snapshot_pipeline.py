@@ -251,7 +251,7 @@ def main():
         conn.close()
         sys.exit(1)
 
-    columns = check_schema(conn)
+    check_schema(conn)
 
     snapshot = check_latest_snapshot(conn)
 

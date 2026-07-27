@@ -190,7 +190,6 @@ def _price_bounds(ticker: str) -> tuple[float, float]:
 
 def assess_spot_price(ticker: str, spot: Any) -> tuple[bool, list[str]]:
     """Return (acceptable, reasons). Rejects missing, non-finite, non-positive, out-of-range."""
-    reasons: list[str] = []
     t = str(ticker or "").upper().strip() or "UNKNOWN"
     if spot is None:
         return False, ["missing_price"]

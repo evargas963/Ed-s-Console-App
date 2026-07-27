@@ -109,7 +109,7 @@ def sign_shuffle_control(signed_raw: list[float], dates: list[str], signs: list[
     """Shuffle trade signs among trade rows; keep abstain mask. Null mean of mean_net."""
     rng = np.random.default_rng(SEED + 7)
     trade_idx = [i for i, s in enumerate(signs) if s != 0.0]
-    trade_signed = [signed_raw[i] for i in trade_idx]
+    _trade_signed = [signed_raw[i] for i in trade_idx]
     null_means = []
     for _ in range(K):
         # flip each trade sign randomly (equivalent to shuffling direction)

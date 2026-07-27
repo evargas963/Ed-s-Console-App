@@ -161,7 +161,7 @@ def test_mhap_rows_confidence_none_not_zero_for_missing_assessment():
     sig.regime = None
     sig.canonical_forecast = None
 
-    ms = MarketState(ticker="SPY")
+    MarketState(ticker="SPY")
     _mhb = sig.multi_horizon_bundle
     _mhd = _mhb.final_decision
     _rows = []

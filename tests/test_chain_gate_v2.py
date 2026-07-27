@@ -34,7 +34,7 @@ def test_capacity_is_two_and_bounded(monkeypatch):
 
 
 def test_two_different_tickers_run_concurrently(monkeypatch):
-    gate = _fresh_gate(monkeypatch)
+    _fresh_gate(monkeypatch)
     active = {"n": 0, "max": 0}
     lk = threading.Lock()
 

@@ -113,18 +113,29 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
 
     import server as srv
 
+    # RC-58: the timestamp must be a REAL trading session. The question this log answers is
+    # INTRADAY flip drift, and its first week was 784 of 784 rows from one SUNDAY window (spot
+    # frozen), which measured a median 0.023% move and would have been read as "the flip is
+    # stable intraday". 1784296800.0 = Fri 2026-07-17 10:00 ET, a covered trading day.
+    RTH_TS = 1784296800.0
+    NON_TRADING_TS = 1784383200.0          # Sat 2026-07-18 10:00 ET
+
     p = tmp_path / "flip_drift_log.jsonl"
     monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", p)
     srv._log_flip_drift("SPY", {"gamma_flip": 745.25, "spot": 746.1,
                                 "confidence": "TRUSTED",
-                                "computed_ts_utc": 1700000000.0})
+                                "computed_ts_utc": RTH_TS})
     srv._log_flip_drift("QQQ", {"gamma_flip": None, "spot": 500.0})
+    # Market-closed computes must NOT be logged — they manufacture a false "flip is stable".
+    srv._log_flip_drift("IWM", {"gamma_flip": 222.0, "spot": 223.0,
+                                "confidence": "TRUSTED",
+                                "computed_ts_utc": NON_TRADING_TS})
     lines = p.read_text(encoding="utf-8").strip().splitlines()
-    assert len(lines) == 1, "None flip must not produce a row"
+    assert len(lines) == 1, "None flip and market-closed rows must not be logged"
     row = _json.loads(lines[0])
     assert row["ticker"] == "SPY" and row["flip"] == 745.25
     assert row["spot"] == 746.1 and row["confidence"] == "TRUSTED"
-    assert row["ts_utc"] == 1700000000.0
+    assert row["ts_utc"] == RTH_TS
 
 
 def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
@@ -141,6 +152,12 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
         calls.append((tk, payload.get("gamma_flip")))
         real(tk, payload)
 
+    # This test proves the logger is WIRED into the refresh seam; the session POLICY is covered
+    # separately by test_flip_drift_logger_appends_real_jsonl. _log_flip_drift stamps time.time()
+    # when the payload carries no computed_ts_utc, so without pinning the calendar authority this
+    # assertion would pass or fail depending on the day the suite happens to run (RC-58).
+    import time_et as _te
+    monkeypatch.setattr(_te, "is_tradable_session_ts_utc", lambda _ts: True)
     monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
     monkeypatch.setattr(srv, "_log_flip_drift", _spy)
     monkeypatch.setattr(srv, "get_client", lambda: object())

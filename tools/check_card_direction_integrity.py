@@ -263,7 +263,6 @@ def _build_timeline_row(
         displayed = mhap.get(hz)
         tr_hz = trailing_by_hz[hz]
         tr1 = row["trailing_return_1m"]
-        tr60 = row["trailing_return_60m"]
         ft = fusion_triplets.get(hz) or {}
         fus_dir = fusion_direction_from_probs(ft.get("up"), ft.get("down"), ft.get("flat"))
         hist_dir = _histogram_direction(probe, hist_map[hz])

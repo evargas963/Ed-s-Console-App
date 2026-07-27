@@ -1019,7 +1019,6 @@ def train_parallel_candidate(
     import numpy as np
 
     used_feature_cache = False
-    used_parallel_cascade_bridge = False
     if data_fp is None:
         data_fp = db_training_fingerprint(db_path, ticker, label_column=target_column)
     if not code_fp:
@@ -1505,7 +1504,7 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
             if current_lstm.get(label_col) not in TARGET_CLASSES:
                 continue
             try:
-                ref_spot = canonical_reference_spot_from_sequence_window_first_bar(window)
+                canonical_reference_spot_from_sequence_window_first_bar(window)
             except ValueError:
                 continue
             current_xgb = snapshots_xgb[end_idx - 1]
@@ -2201,7 +2200,7 @@ def train_cascade_candidate(
                     if current.get(label_col) not in TARGET_CLASSES:
                         continue
                     try:
-                        ref_spot = canonical_reference_spot_from_sequence_window_first_bar(window)
+                        canonical_reference_spot_from_sequence_window_first_bar(window)
                     except ValueError:
                         continue
                     X_row = engineer_single_snapshot(

@@ -401,6 +401,29 @@ def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
     )
 
 
+def test_offhours_snapshot_writes_gated_rc48() -> None:
+    """RC-48: no off-hours (overnight / weekend / full holiday) snapshot may be
+    persisted — options don't trade, spot doesn't move, training excludes them,
+    nothing reads them. Both capture paths route through the ONE calendar
+    authority time_et.is_capturable_session: the SSE _fetch_state insert skips +
+    releases the reservation when it is False, and the base logger's
+    _is_loggable_session ANDs it in so its minute-window is no longer
+    weekday/holiday-blind (the leak that mislabeled 27,681 weekend rows 'rth')."""
+    assert "is_capturable_session" in SERVER_SRC, "server lost the single capture authority import"
+    fs = _find_function(SERVER_TREE, "_fetch_state")
+    assert fs is not None
+    fs_seg = ast.get_source_segment(SERVER_SRC, fs) or ""
+    assert "elif not is_capturable_session():" in fs_seg, (
+        "SSE _fetch_state off-hours capture gate (RC-48) missing"
+    )
+    ils = _find_function(SERVER_TREE, "_is_loggable_session")
+    assert ils is not None
+    ils_seg = ast.get_source_segment(SERVER_SRC, ils) or ""
+    assert "is_capturable_session()" in ils_seg, (
+        "_is_loggable_session no longer calendar-aware (RC-48 weekend/holiday leak reopened)"
+    )
+
+
 # ── Audit lock — accuracy must be computed for the SERVING model version ────
 
 

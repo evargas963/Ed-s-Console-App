@@ -318,7 +318,6 @@ def test_missing_archive_fails_replay_never_falls_back(tmp_path, conn):
     cas = tmp_path / "cas"
     shas = sorted(xi.envelope_artifact_shas(env))
     assert len(shas) >= 8  # 4 horizons x (manifest + 2 roles) deduped
-    src = tmp_path / "b.bin"
     sha = xi.insert_execution_identity(conn, env, decision_id="d1", expected_surfaces=["decision"])
     with pytest.raises(xi.ExecutionIdentityError) as e:
         xi.resolve_execution_for_replay(conn, execution_identity_sha256=sha, cas_root=cas)

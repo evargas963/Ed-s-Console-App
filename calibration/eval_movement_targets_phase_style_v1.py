@@ -51,7 +51,7 @@ def main() -> None:
     pu_c = f"fused_dir_up_prob_{hz}"
     pm_c = f"fused_move_prob_{hz}"
     pu_l = f"pred_{hz}_dir_up_prob"
-    pm_l, pn_l = f"pred_{hz}_move_prob", f"pred_{hz}_no_move_prob"
+    pm_l = f"pred_{hz}_move_prob"
 
     def _rget(row, *names):
         for k in names:

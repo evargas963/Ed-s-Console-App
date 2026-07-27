@@ -1286,7 +1286,6 @@ def run_ablation_preflight(
     tickers: list[str] | None = None,
 ) -> dict:
     """Fail-closed readiness check before scored ablation (DB + active bundles + stack load)."""
-    method = manifest["ablation_method"]
     anchors = tickers or _ablation_pool_tickers(manifest)
     horizons = _required_ablation_horizons(manifest)
     dbp = Path(db_path)
@@ -2269,7 +2268,7 @@ def build_whole_stack_feature_ablation_section(
         manifest, tickers=tickers, enriched_rows=enriched_sample or None
     )
     accounting = ablation_cell_accounting(manifest, specs, enriched_rows=enriched_sample or None)
-    groups_by_id = {g["group_id"]: g for g in ablation_grid_groups(manifest)}
+    _groups_by_id = {g["group_id"]: g for g in ablation_grid_groups(manifest)}
     horizon_filter = set(horizons) if horizons else None
     resume_cells = resume_cells or {}
     scored_cells = cells_out if cells_out is not None else []
@@ -2299,7 +2298,7 @@ def build_whole_stack_feature_ablation_section(
 
     for spec in specs_to_run:
         is_runnable = bool(spec.get("group_columns"))
-        ck = _whole_stack_cell_key(
+        _ck = _whole_stack_cell_key(
             spec["horizon_slug"], spec["group_id"], model_family=spec["model_family"]
         )
         resumed = _whole_stack_resume_cell(

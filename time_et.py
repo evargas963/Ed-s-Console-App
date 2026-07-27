@@ -108,6 +108,51 @@ def session_close_mins_for_et_date(et_date: str) -> int | None:
     return US_EQUITY_EARLY_CLOSE_MINS_ET.get(str(et_date), RTH_END_MINS)
 
 
+def is_trading_day_et(et_date: str) -> bool:
+    """True iff `et_date` (YYYY-MM-DD) is a US equity TRADING day — the canonical date-level
+    authority for analysis scoping (RC-54).
+
+    Weekday AND not a full holiday AND inside a covered calendar year (uncovered years fail
+    closed). Use this to exclude weekend/holiday rows from ANY measurement: a market-closed
+    row has frozen spot and stale IV, so including it drags every statistic toward "nothing
+    moved". Timestamp-level callers use is_tradable_session_ts_utc (RTH minutes) or
+    is_capturable_session (extended hours) instead.
+    """
+    s = str(et_date)[:10]
+    try:
+        y, m, d = (int(v) for v in s.split("-"))
+        wd = datetime(y, m, d).weekday()
+    except (TypeError, ValueError):
+        return False                      # unparseable -> excluded, never guessed
+    if wd >= 5:
+        return False
+    return session_close_mins_for_et_date(s) is not None
+
+
+def is_capturable_session(now: "datetime | None" = None) -> bool:
+    """True iff a snapshot should be PERSISTED at this ET wall-clock — the one
+    canonical capture-session authority (RC-48).
+
+    True only on a trading calendar day (weekday, not a full holiday / uncovered
+    year) within extended hours [04:00, 20:00) ET — pre-market, RTH, or
+    after-hours. False for weekends, holidays, and the overnight window (< 04:00
+    or >= 20:00). Off-hours snapshots carry no signal (options do not trade, spot
+    does not move), are excluded from training (ml_train RTH filter), and are
+    read by nothing — so they must not be written or accumulated.
+
+    Mirrors market_context._derive_session's calendar logic (weekday -> holiday
+    -> hours) as a single boolean, and takes an optional `now` for deterministic
+    testing. Callers pass now_et() live; offline/replay callers pass their clock.
+    """
+    n = now if now is not None else now_et()
+    if n.weekday() >= 5:                                    # Sat / Sun
+        return False
+    if session_close_mins_for_et_date(n.strftime("%Y-%m-%d")) is None:
+        return False                                       # full holiday / uncovered year
+    mins = n.hour * 60 + n.minute
+    return 240 <= mins < 1200                              # 04:00 <= t < 20:00 ET (extended hours)
+
+
 #: Seconds in a 365-day year (ACT/365, the standard option-pricing day-count).
 YEAR_SECONDS: float = 365.0 * 24.0 * 3600.0
 #: Sub-floor on time-to-expiry (10 minutes) — guards the exact-expiry 1/sqrt(T) singularity

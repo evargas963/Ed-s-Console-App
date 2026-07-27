@@ -214,10 +214,10 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
     # ── 1-min early warning / circuit breaker ─────────────────────────────────
     # If 1-min structure contradicts 5-min, reduce conviction or flip to wait.
     # This cuts reaction time from ~15 min (wait for 5-min bars) to ~3 min.
-    from micro_structure import (
-        regime_direction as _regime_dir,
-        R_BOS_UP, R_BOS_DOWN, R_REVERSAL_UP, R_REVERSAL_DN,
-    )
+    # R_BOS_UP/R_BOS_DOWN/R_REVERSAL_UP/R_REVERSAL_DN are already imported at the top of this
+    # function (line ~109) and remain in scope; re-importing them here shadowed the originals
+    # with identical values (harmless today, but it hid the duplication from review).
+    from micro_structure import regime_direction as _regime_dir
     _r1m = getattr(micro, "regime_1m", "UNKNOWN")
     _dir_5m = _regime_dir(micro.regime)
     _dir_1m = _regime_dir(_r1m)

@@ -45,7 +45,7 @@ def run_xgb(
 
     out = model_dir or MODEL_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    label_col = outcome_column(hz)
+    outcome_column(hz)
     if ticker:
         from scheduler_user_tickers import require_ml_training_ticker_allowed
 

@@ -774,7 +774,6 @@ def compute_garch_forecast(
     long_run_var = _omega / (1.0 - _alpha - _beta) if (_alpha + _beta) < 1.0 else sigma_sq
 
     forecasts = []
-    current_var = sigma_sq
     persist = _alpha + _beta
 
     for k in range(horizon):

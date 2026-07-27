@@ -751,7 +751,7 @@ def test_meta_basis_gate_wired_before_active_copy_auto_path_only():
 
     s = inspect.getsource(pe.execute_promotion_if_eligible)
     gate_at = s.find("meta_basis_blocks_auto_promotion(")
-    copy_at = s.find("scheduler_active_root(")
+    s.find("scheduler_active_root(")
     assert gate_at > 0, "meta basis gate missing from promotion execution"
     guard = s[:gate_at].rfind("if not is_manual:")
     assert guard > 0, "meta basis gate must be scheduler/auto-path only"

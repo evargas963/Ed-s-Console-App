@@ -424,7 +424,7 @@ def test_atr_clustering_no_lookahead():
     assert len(clusters) >= 1
 
     cfg_percent = PlaybookConfig(clustering_mode="percent")
-    clusters_pct = cluster_price_levels_into_zones(levels, 500.0, cfg_percent)
+    cluster_price_levels_into_zones(levels, 500.0, cfg_percent)
     clusters_atr = cluster_price_levels_into_zones(levels, 500.0, cfg, atr_value=0.5)
     assert len(clusters_atr) >= 1
 
