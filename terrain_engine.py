@@ -129,6 +129,73 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
     )
 
 
+def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
+    """`[[strike, net_gex_1pct$, session_volume], …]` — the EXACT shape the panel renders.
+
+    RC-79. This used to hand back a map of raw parts which the endpoint reassembled into synthetic
+    contract dicts and pushed back through compute_exposures_by_strike(require_oi=True). Those
+    synthetics carried no open interest, so the engine rejected every one and the panel rendered
+    ZERO rows — worse than the stale archive it replaced. The finished numbers were already here;
+    they were being taken apart and recomputed from a shape that could not survive the trip.
+
+    The metric is net_gex_1pct with the same raw-gamma fallback the prior-day ghost uses, because
+    the two are drawn in the same frame: a live series on one scale beside a ghost on another is a
+    picture of a positioning shift that did not happen.
+    """
+    from math_exposure_core import bucket_metric, total_gamma_raw_at_strike
+    from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+
+    vol_by_k: dict[float, float] = {}
+    for ct in contracts or []:
+        if not isinstance(ct, dict):
+            continue
+        sk = float_finite_or_none(ct.get("strikePrice"))
+        v = float_nonnegative_or_none(ct.get("totalVolume"))
+        if sk is not None and v:
+            vol_by_k[sk] = vol_by_k.get(sk, 0.0) + v
+
+    rows: list[list] = []
+    for k, b in (exposures or {}).items():
+        sk = float_finite_or_none(k)
+        if sk is None:                      # a NaN strike must never become a rendered bar
+            continue
+        g = bucket_metric(b, "net_gex_1pct")
+        if g is None:
+            g = total_gamma_raw_at_strike(b)
+        rows.append([round(sk, 2), round(float(g or 0.0), 1), int(vol_by_k.get(sk, 0))])
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
+def _dte_of(ct: object) -> float:
+    """Finite DTE; junk sorts as far-dated rather than poisoning the comparison with NaN."""
+    from numeric_contract import float_finite_or_none
+    d = float_finite_or_none(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
+    return d if d is not None else 999.0
+
+
+def _per_strike_scopes(exposures: dict, contracts: list[dict], spot: float | None) -> dict:
+    """`{all, near, far}` rows — the three the ALL / <=7DTE / MONTHLY+ chips switch between.
+
+    RC-79: the live map had no DTE split at all, so two of the three chips would have shown an
+    empty panel even after the rows themselves were fixed. `all` reuses the exposures already
+    computed for this chain; the two subsets are computed here, where the chain is in hand.
+    """
+    out = {"all": _per_strike_rows(exposures, contracts), "near": [], "far": []}
+    if not contracts or spot is None:
+        return out
+    for name, subset in (("near", [c for c in contracts if _dte_of(c) <= 7]),
+                         ("far", [c for c in contracts if _dte_of(c) > 7])):
+        if not subset:
+            continue
+        try:
+            ex, _diag = compute_exposures_by_strike(subset, spot=spot, require_oi=True)
+            out[name] = _per_strike_rows(ex, subset)
+        except Exception:
+            out[name] = []                  # a failed scope renders empty, never as `all`
+    return out
+
+
 def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[str, Any]]:
     """Per-strike net GEX$ and SESSION VOLUME from the chain that just built `exposures` (RC-68).
 
@@ -229,6 +296,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # computed from THIS chain; the per-strike histogram was previously rendered from the
         # frozen morning archive purely because nothing persisted this. Session volume is carried
         # alongside so the volume panel stops serving a 09:47 corpse at 11:31.
-        per_strike=_per_strike_map(exposures, contracts),
+        per_strike=_per_strike_scopes(exposures, contracts, spot),
         computed_ts_utc=_time.time(),
     )

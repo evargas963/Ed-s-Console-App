@@ -39,10 +39,13 @@ def test_shipped_client_has_one_spot_faucet():
 
 def test_detector_catches_an_aliased_precedence():
     """The exact defect that shipped: same sources, different local names."""
-    bad = _mutate("`spot ${fmt(currentSpot())} · regime",
-                  "`spot ${fmt((s && s.spot) ?? t.spot)} · regime")
+    bad = _mutate('<span id="metapx">${esc(fmt(currentSpot()))}</span>',
+                  '<span id="metapx">${esc(fmt((s && s.spot) ?? t.spot))}</span>')
     assert len(bad) == 1, f"the aliased meta-bar bug went undetected: {bad}"
-    assert "chart.html:308" in bad[0]["undeclared"][0]
+    # Assert the CONTENT, not a line number: an unrelated edit above this point must not be able
+    # to fail the lock, or the lock gets weakened to shut it up.
+    assert "chart.html:" in bad[0]["undeclared"][0]
+    assert "s.spot" in bad[0]["undeclared"][0]
 
 
 def test_detector_catches_a_source_name_it_has_never_seen():

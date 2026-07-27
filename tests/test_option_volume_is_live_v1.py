@@ -37,14 +37,40 @@ def _expected_volume_by_strike() -> dict[float, int]:
     return out
 
 
-def test_live_chain_volume_reaches_the_per_strike_map():
-    """The volume ON THE VENDOR CHAIN is the volume IN THE MAP — call + put summed per strike."""
+def test_live_chain_volume_reaches_the_per_strike_rows():
+    """The volume ON THE VENDOR CHAIN is the volume IN THE ROWS — call + put summed per strike."""
     snap = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT)
-    assert snap.per_strike, "terrain produced no per-strike map; the panel would have no source"
+    assert snap.per_strike, "terrain produced no per-strike rows; the panel would have no source"
     expected = _expected_volume_by_strike()
-    got = {k: v["volume"] for k, v in snap.per_strike.items()}
+    got = {r[0]: r[2] for r in snap.per_strike["all"]}
     assert got == expected, f"volume altered in transit: {got} != {expected}"
     assert sum(expected.values()) > 1_000_000, "fixture no longer carries real session volume"
+
+
+def test_rows_are_the_shape_the_panel_renders():
+    """RC-79: the defect was a SHAPE mismatch at the seam, not a missing source. The endpoint
+    served today_source=terrain_live_cache with today_age_sec=7.4 — live and fresh — and ZERO
+    rows, because it rebuilt synthetic contracts from these numbers and re-ran the exposure
+    engine, which rejected them for having no open interest."""
+    ps = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT).per_strike
+    assert set(ps) == {"all", "near", "far"}, (
+        "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
+        f"empty panel on that chip. got {sorted(ps)}"
+    )
+    for scope, rows in ps.items():
+        for r in rows:
+            assert len(r) == 3, f"{scope}: row {r} is not [strike, net_gex_1pct, volume]"
+            assert all(isinstance(x, (int, float)) for x in r), f"{scope}: non-numeric row {r}"
+    assert ps["all"], "the ALL scope is empty on a real 40-contract chain"
+    assert any(r[1] != 0 for r in ps["all"]), "every gamma bar is zero — nothing would render"
+
+
+def test_no_synthetic_contracts_are_reconstructed_anywhere():
+    """The rows are already finished. Rebuilding contract dicts out of them to recompute what
+    they already contain is what emptied the panel — it must not come back."""
+    assert "netGex" not in SERVER_SRC, (
+        "a synthetic contract dict is being rebuilt from finished per-strike output again (RC-79)"
+    )
 
 
 def test_per_strike_map_is_stamped_with_its_own_age():
@@ -81,5 +107,5 @@ def test_terrain_loop_publishes_the_map_into_the_cache():
 def test_absence_renders_as_absence_not_as_stale_data():
     """With no chain there must be no fabricated per-strike data."""
     snap = compute_terrain(FIXTURE["ticker"], [], SPOT)
-    assert snap.per_strike == {}
+    assert not (snap.per_strike or {}).get("all")
     assert snap.error

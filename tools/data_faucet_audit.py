@@ -14,6 +14,14 @@ data concept. It replaces narrative with a number.
   python tools/data_faucet_audit.py            # the report
   python tools/data_faucet_audit.py --check    # exit 1 if any concept has >1 faucet
   python tools/data_faucet_audit.py --json
+  python tools/data_faucet_audit.py --watch 220   # LIVE: do the levels hold still, does volume move?
+
+LIVE WATCH (RC-79/RC-80). A source can be single, declared and fresh and still be wrong, and the
+static half cannot see it. /api/terrain once alternated between call=750/put=740 and
+call=739/put=736 within ten seconds because two producers disagreed, and /api/terrain/strikes once
+served today_source=terrain_live_cache with an age of 7.4s and ZERO rows. Both were found by
+watching the running console, not by reading code — so that measurement is a mode of this tool
+rather than a script someone has to remember to write again.
 
 CLIENT SIDE (RC-75). The server half alone left the browser as the one surface no lock reached,
 and that is where the damage appeared: SIX sites in chart.html each inlined their own spot
@@ -341,7 +349,81 @@ def render(rep: dict) -> str:
     return "\n".join(L)
 
 
+def watch_live(seconds: int = 220, base: str = "http://127.0.0.1:8000") -> dict:
+    """Poll the RUNNING console and measure what no static check can see: whether the levels hold
+    still and whether the volume panel actually moves.
+
+    RC-80 was found this way and by nothing else — /api/terrain alternated between two sets of
+    walls seconds apart because two producers disagreed, while every static check reported one
+    faucet and was right about the read side. RC-79 the same: today_source=terrain_live_cache with
+    an age of 7.4s and ZERO rows. A source can be single, declared and fresh and still be wrong,
+    so the instrument has to watch the values themselves over time.
+    """
+    import urllib.request
+
+    def _get(path: str):
+        try:
+            with urllib.request.urlopen(base + path, timeout=40) as r:
+                return json.loads(r.read().decode())
+        except Exception as e:
+            return {"__err__": f"{type(e).__name__}: {e}"}
+
+    levels: list[tuple] = []
+    volumes: list[int] = []
+    ages: list[float] = []
+    t0 = time.time()
+    while time.time() - t0 < seconds:
+        t = _get("/api/terrain?ticker=SPY")
+        s = _get("/api/terrain/strikes?ticker=SPY")
+        key = (t.get("call_wall"), t.get("put_wall"), t.get("gamma_flip"))
+        if key[0] is not None and (not levels or key != levels[-1]):
+            levels.append(key)
+        rows = (s.get("today") or {}).get("all") or []
+        v = sum(r[2] for r in rows if len(r) > 2)
+        if not volumes or v != volumes[-1]:
+            volumes.append(v)
+        if s.get("today_age_sec") is not None:
+            ages.append(float(s["today_age_sec"]))
+        time.sleep(10)
+
+    walls = sorted({k[0] for k in levels if k[0] is not None})
+    puts = sorted({k[1] for k in levels if k[1] is not None})
+    flips = [k[2] for k in levels if k[2] is not None]
+    return {
+        "seconds": seconds,
+        "call_wall_values": walls,
+        "put_wall_values": puts,
+        "flip_span": round(max(flips) - min(flips), 4) if flips else None,
+        "levels_stable": len(walls) <= 1 and len(puts) <= 1,
+        "volume_first": volumes[0] if volumes else None,
+        "volume_last": volumes[-1] if volumes else None,
+        "volume_delta": (volumes[-1] - volumes[0]) if len(volumes) > 1 else 0,
+        "volume_live": len(volumes) > 1 and volumes[-1] > volumes[0],
+        "panel_age_max_sec": round(max(ages), 1) if ages else None,
+    }
+
+
+def render_watch(w: dict) -> str:
+    ok = lambda b: "OK  " if b else "FAIL"          # noqa: E731
+    return "\n".join([
+        "", "=" * 78, f"LIVE WATCH — {w['seconds']}s against the running console", "=" * 78,
+        f"  [{ok(w['levels_stable'])}] levels stable    call_wall={w['call_wall_values']} "
+        f"put_wall={w['put_wall_values']} flip_span={w['flip_span']}",
+        f"  [{ok(w['volume_live'])}] volume live      {w['volume_first']:,} -> {w['volume_last']:,} "
+        f"(delta {w['volume_delta']:+,})" if w["volume_first"] is not None else
+        "  [FAIL] volume live      no rows served",
+        f"         panel age max    {w['panel_age_max_sec']}s",
+        "=" * 78,
+    ])
+
+
 def main(argv: list[str]) -> int:
+    if "--watch" in argv:
+        i = argv.index("--watch")
+        secs = int(argv[i + 1]) if len(argv) > i + 1 and argv[i + 1].isdigit() else 220
+        w = watch_live(secs)
+        print(json.dumps(w, indent=2) if "--json" in argv else render_watch(w))
+        return 0 if (w["levels_stable"] and w["volume_live"]) else 1
     db = next((a for a in argv if not a.startswith("--")), os.path.join("data", "ed_console.db"))
     rep = run(db)
     print(json.dumps(rep, indent=2) if "--json" in argv else render(rep))

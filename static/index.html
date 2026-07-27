@@ -6458,6 +6458,38 @@ function consoleSpot(d) {
   return Number.isFinite(s) && s > 0 ? s : null;
 }
 
+/* RC-81 — ONE TICK, ONE PRICE EVERYWHERE. consoleSpot() made every reader agree about the
+   SOURCE; it could not make them agree on screen, because they were painted on different clocks.
+   MEASURED in the rendered DOM: over 15 seconds ub-price walked 737.65 -> 737.71 -> 737.73 while
+   cv2-hd-px sat at 737.65 the entire time and sb-spot was written straight from the raw quote
+   payload. Four displays of one number, four cadences.
+
+   Every element that shows the price is listed here and repainted together, so they change in the
+   same frame or not at all. Adding a fifth price display without adding it to this list is the
+   defect returning — the client faucet check in tools/data_faucet_audit.py is what catches that. */
+const SPOT_DISPLAY_IDS = ['sb-spot', 'ub-price', 'cv2-hd-px', 'tv-px'];
+
+function paintSpotDisplays() {
+  const d = window._lastData;
+  // A payload for another symbol is not this screen's price — it must not be borrowed.
+  const dOk = !!(d && typeof d === 'object' &&
+    (d.ticker || '').toUpperCase() === (activeTicker || '').toUpperCase());
+  const px = consoleSpot(dOk ? d : null);
+  // The vendor's own display string when we have it, so formatting matches the quote exactly;
+  // then the payload's copy of it, which lands BEFORE the first fast-lane tick — without that
+  // step this painter left three of four displays on "—" for ~10s after load while the fourth
+  // already showed a price. Finally the authority's number. Absence stays absence: never a
+  // stale last-good price.
+  const disp = (window._fastLaneSpotDisp != null && window._fastLaneSpotDisp !== '')
+    ? String(window._fastLaneSpotDisp)
+    : (dOk && d.spot_disp) ? String(d.spot_disp)
+    : (px != null ? px.toFixed(2) : '—');
+  for (const id of SPOT_DISPLAY_IDS) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = disp;
+  }
+}
+
 /** Active ticker: prefer live plane mirror; otherwise last full-state spot (e.g. other symbols in confluence). */
 function effectiveDisplaySpot(d) {
   if (!d || typeof d !== 'object') return null;
@@ -6551,7 +6583,7 @@ function _livePlaneApplyCore(f, sourceTag) {
     }
   } catch (e) {}
 
-  domIf('sb-spot', el => { el.textContent = f.spot_disp || '—'; });
+  paintSpotDisplays();   // RC-81: every price display repaints on THIS tick, together
   domIf('sb-bidask', el => { el.textContent = `${f.bid_disp || '—'} / ${f.ask_disp || '—'}`; });
 
   const pfe = $('data-price-freshness');
@@ -10671,16 +10703,16 @@ function refreshUtilityBar() {
   const d = window._lastData;
   const dRowOk = d && typeof d === 'object' && (d.ticker || '').toUpperCase() === (activeTicker || '').toUpperCase();
   const plane = _getOwnedPlaneOrNull();
-  const spotDisp = (window._fastLaneSpotDisp != null && window._fastLaneSpotDisp !== '')
-    ? window._fastLaneSpotDisp
-    : (dRowOk && d.spot_disp) ? d.spot_disp : null;
-  // RC-77: one console spot authority. A row for another ticker is not this bar's price, so it
-  // resolves as absent rather than borrowing the active ticker's live lane.
+  // RC-77/RC-81: one console spot authority, and the display-string precedence now lives in
+  // paintSpotDisplays() with it — this function no longer keeps a private copy of either.
+  // A row for another ticker is not this bar's price, so it resolves as absent rather than
+  // borrowing the active ticker's live lane.
   const spotNum = consoleSpot(dRowOk ? d : null) ?? NaN;
 
-  domIf('ub-price', el => {
-    el.textContent = spotDisp || (Number.isFinite(spotNum) ? spotNum.toFixed(2) : '—');
-  });
+  // RC-81: this bar no longer paints the price by itself. It drives the shared painter, so the
+  // utility bar, the status strip, the v2 header and the terrain card all change in one frame —
+  // and the bar's faster cadence pulls the others up with it instead of racing them.
+  paintSpotDisplays();
 
   let chgPct = plane && plane.stream_chg_pct != null ? Number(plane.stream_chg_pct) : NaN;
 
@@ -12527,11 +12559,23 @@ function edRadarRow(r, grp) {
   // SIGN_UNPROVEN / UNAVAILABLE: neutral row class — never paint as short (▼) by fallthrough.
   row.className = 'tv-rrow ' + (isRegime ? 'rg' : isLong ? 'lg' : isShort ? 'sh' : '');
   const NL = String.fromCharCode(10);
+  // RC-82: rows are ranked against each other by wall distance, but their walls can come from
+  // two different chain widths — the terrain loop's wide chain, or a narrower stored chain for
+  // tickers the loop has not reached yet. Chain width MOVES the walls (RC-80 measured 11 points
+  // on SPY), so a provisional row's walls sit systematically inward. The merge is deliberate and
+  // cannot be removed (per-symbol quotes measured a 40.5s cold sweep), so the difference is
+  // shown rather than hidden: an unstamped row reads as provisional, never as measured.
+  const provisional = r.levels_source !== 'wide_chain_loop';
   row.title = r.ticker + ' — ' + r.status + NL +
     (r.distance_atr != null ? r.distance_atr.toFixed(2) + ' daily ATR' : '') +
     (r.distance_atr_15m != null ? '  |  ' + r.distance_atr_15m.toFixed(1) + 'x 15m ATR' : '') + NL +
     (r.atr_daily != null ? 'ATR daily ' + r.atr_daily.toFixed(2) : '') +
-    (r.atr_15m != null ? '  |  15m ' + r.atr_15m.toFixed(2) : '');
+    (r.atr_15m != null ? '  |  15m ' + r.atr_15m.toFixed(2) : '') + NL +
+    (provisional
+      ? 'LEVELS PROVISIONAL (*): computed from a stored, narrower chain because the terrain '
+        + 'loop has not refreshed this ticker yet. Walls sit inward of a full-chain read — do '
+        + 'not compare this row like-for-like with an unmarked one.'
+      : 'Levels from the full-width chain (terrain loop).');
   row.onclick = () => {
     if (typeof setActiveTicker === 'function') setActiveTicker(r.ticker);
     else window.activeTicker = r.ticker;
@@ -12546,7 +12590,9 @@ function edRadarRow(r, grp) {
   at.style.color = grp.colour;
   at.textContent = r.distance_atr != null ? r.distance_atr.toFixed(2) : '—';
   const lv = document.createElement('span'); lv.className = 'tv-rlv';
-  lv.textContent = (r.wall_name || '').toUpperCase() + ' ' + edNum(r.wall);
+  // RC-82: the '*' is the only thing on the rail that distinguishes a narrower-chain wall from
+  // a full-chain one. A tooltip alone is not visibility — nobody hovers every row before ranking.
+  lv.textContent = (r.wall_name || '').toUpperCase() + ' ' + edNum(r.wall) + (provisional ? '*' : '');
   row.appendChild(gl); row.appendChild(tk); row.appendChild(at); row.appendChild(lv);
   return row;
 }

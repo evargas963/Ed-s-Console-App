@@ -42,14 +42,15 @@ import concurrent.futures
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
 from typing import Any, Dict, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session
+from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
+                     is_trading_day_et)
 
 import html
 import hashlib
@@ -10515,8 +10516,14 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         log.warning("flip drift log append failed: %s", e)
 
 
-def _terrain_refresh_one(ticker: str) -> str:
-    """Fetch one chain and compute terrain into the cache. Never raises."""
+def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
+    """Fetch one chain and compute terrain into the cache. Never raises.
+
+    RC-80 — THE SINGLE PRODUCER OF LEVELS. /api/terrain calls this on a cache miss rather than
+    computing its own snapshot, because a second producer is a second faucet even when both write
+    the same cache key. `priority` is True for that operator-facing miss (someone is waiting on
+    the response) and False for the background rotation.
+    """
     tk = (ticker or "").upper().strip()
     if not tk:
         return "skip:empty"
@@ -10527,7 +10534,7 @@ def _terrain_refresh_one(ticker: str) -> str:
         if want_capture:
             _width = max(_width, GEX_FULL_CHAIN_STRIKE_COUNT)
         resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-            client, tk, strike_count=_width, priority=False,
+            client, tk, strike_count=_width, priority=priority,
         )
         if resp is None or getattr(resp, "status_code", None) != 200:
             return "error:chain_http"
@@ -10543,6 +10550,11 @@ def _terrain_refresh_one(ticker: str) -> str:
         snap = compute_terrain(tk, contracts, spot)
         payload = snap.to_dict()
         payload["computed_ts_utc"] = time.time()
+        # RC-82: stamp WHICH producer computed these levels. The radar merges this loop's
+        # wide-chain output with stored-chain fallback rows and ranks them against each other;
+        # wall selection depends on chain width (RC-80 measured an 11-point difference on SPY),
+        # so an unlabelled merge sorts systematically-different numbers as if they were peers.
+        payload["levels_source"] = LEVELS_SOURCE_WIDE_CHAIN
         payload["spot_source"] = spot_source
         payload["spot_as_of_ts_utc"] = spot_ts
         _atr = _radar_atr(tk)
@@ -10847,6 +10859,13 @@ def _radar_atr(ticker: str | None) -> "AtrPair":
     return _radar_atr_compute_into_cache(tk)
 
 
+#: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
+#: unlabelled merge is how systematically-different numbers get ranked as peers (RC-82).
+LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the single producer
+LEVELS_SOURCE_STORED_CHAIN = "stored_chain_fallback"  # narrower; walls sit inward
+LEVELS_SOURCE_UNKNOWN = "unknown"                 # unstamped reads as unknown, never as trusted
+
+
 def _radar_row(t: dict, spot: float, atr: "AtrPair", status: str, level_name: str,
                level: float, gap: float | None, gap_atr: float | None,
                sort_key: float | None) -> dict:
@@ -10863,6 +10882,9 @@ def _radar_row(t: dict, spot: float, atr: "AtrPair", status: str, level_name: st
         "atr_15m": round(atr.m15, 3) if atr.m15 else None,
         "call_wall": t.get("call_wall"), "put_wall": t.get("put_wall"),
         "gamma_flip": t.get("gamma_flip"), "confidence": t.get("confidence"),
+        # RC-82: which producer computed the walls on THIS row. Absent stamp reads as unknown,
+        # never as the trusted wide chain.
+        "levels_source": t.get("levels_source") or LEVELS_SOURCE_UNKNOWN,
         "_sort": sort_key if sort_key is not None else (gap_atr if gap_atr is not None else 9e9),
     }
 
@@ -10881,10 +10903,21 @@ def _radar_contact(t: dict, spot: float, atr: "AtrPair") -> dict | None:
             return _radar_row(t, spot, atr, "REGIME CHANGE", "gamma flip", flip,
                               flip - spot, flip_atr, sort_key=-1.0)
 
-    best = None
-    for name, v in (("call wall", t.get("call_wall")), ("put wall", t.get("put_wall"))):
-        if v is not None and (best is None or abs(v - spot) < abs(best[1] - spot)):
-            best = (name, v)
+    # RC-83 — a strike that is BOTH walls is not a directional level. When call_wall and put_wall
+    # land on the same strike the market has put gamma on both sides of it: that is a magnet, not
+    # a barrier. This used to resolve by tuple order — `abs(v - spot) < abs(...)` is a STRICT
+    # less-than, so on an exact tie the put never displaced the call and every such row rendered
+    # "CALL WALL". MEASURED 2026-07-27: 7 of 22 tracked rows, including NVDA 200/200 with spot at
+    # 196.49. "Call wall" reads resistance above and "put wall" reads support below, so choosing
+    # one by position in a tuple states a direction the data does not support.
+    cw, pw = t.get("call_wall"), t.get("put_wall")
+    if cw is not None and pw is not None and float(cw) == float(pw):
+        best = ("gamma wall", float(cw))
+    else:
+        best = None
+        for name, v in (("call wall", cw), ("put wall", pw)):
+            if v is not None and (best is None or abs(v - spot) < abs(best[1] - spot)):
+                best = (name, v)
     if best is None:
         return None
     name, level = best[0], float(best[1])
@@ -11009,7 +11042,11 @@ def _radar_fallback_recompute() -> list[dict] | None:
             snap = compute_terrain(tk, contracts, spot)
         except (ValueError, TypeError):
             continue
-        out.append(snap.to_dict() | {"spot_source": SPOT_SOURCE_SNAPSHOT})
+        # RC-82: a stored-chain row is PROVISIONAL — narrower than the loop's chain, so its
+        # walls sit systematically inward. Labelled, not hidden: it cannot be removed (per-symbol
+        # vendor calls measured a 40.5s cold sweep) and it must not masquerade as a loop row.
+        out.append(snap.to_dict() | {"spot_source": SPOT_SOURCE_SNAPSHOT,
+                                     "levels_source": LEVELS_SOURCE_STORED_CHAIN})
     return out
 
 
@@ -11179,19 +11216,19 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     try:
         _snap = terrain_cache_get(tk) or {}
         _ps = _snap.get("_per_strike") or {}
-        if _ps:
-            _live_cts = [
-                {"strikePrice": v.get("strike"), "totalVolume": v.get("volume"),
-                 "netGex": v.get("net_gex")}
-                for v in _ps.values()
-            ]
-            _snap_spot = _snap.get("spot")
-            if _live_cts and _snap_spot:
-                spot_used = float(_snap_spot)
-                today = _per_strike(_live_cts, spot_used)
-                _cts_utc = _snap.get("computed_ts_utc")
-                today_age_sec = round(time.time() - float(_cts_utc), 1) if _cts_utc else None
-                today_src = "terrain_live_cache"
+        # RC-79: the terrain loop hands over FINISHED rows ({all,near,far} of
+        # [strike, net_gex_1pct$, volume]) and they are served as-is. This previously rebuilt
+        # synthetic contract dicts out of them and pushed those back through
+        # compute_exposures_by_strike(require_oi=True) — the synthetics had no open interest, so
+        # every row was rejected and the panel rendered EMPTY on a live, 7-second-old snapshot.
+        # Data that is already computed is never recomputed from a lossy reconstruction of its
+        # own inputs.
+        if isinstance(_ps, dict) and _ps.get("all"):
+            today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
+            spot_used = _snap.get("spot")
+            _cts_utc = _snap.get("computed_ts_utc")
+            today_age_sec = round(time.time() - float(_cts_utc), 1) if _cts_utc else None
+            today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
     try:
@@ -11324,6 +11361,35 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
             done.set()
 
 
+#: Trading days a daily scorecard may be old and still be quoted as a measurement. 1 = yesterday's
+#: run is current, the day before that is not. DERIVED from the artifact's own cadence: the job is
+#: daily, so anything older than one trading day means a run was MISSED, and a missed run is
+#: exactly the condition under which the numbers must stop speaking.
+SCORECARD_MAX_TRADING_DAY_AGE: int = 1
+
+
+def scorecard_trading_day_age(generated_utc: object) -> int | None:
+    """TRADING days between `generated_utc` (YYYY-MM-DD...) and today ET. None = unusable.
+
+    Counts sessions, not hours, so a Friday scorecard reads as 1 day old on Monday rather than 3
+    — the distinction between "the job did not run" and "the market was shut"."""
+    s = str(generated_utc or "")[:10]
+    try:
+        y, m, d = (int(v) for v in s.split("-"))
+        gen = datetime(y, m, d).date()
+    except (TypeError, ValueError):
+        return None                          # unparseable age is NOT a fresh age
+    today = now_et().date()
+    if gen > today:
+        return None                          # a future stamp is a broken clock, never "fresh"
+    age, day = 0, gen
+    while day < today:
+        day += timedelta(days=1)
+        if is_trading_day_et(day.isoformat()):
+            age += 1
+    return age
+
+
 @app.get("/api/terrain/scorecard")
 def get_terrain_scorecard():
     """Coach copy's measured numbers, LIVE from the latest daily scorecard.
@@ -11331,16 +11397,42 @@ def get_terrain_scorecard():
     Operator 2026-07-23: "will the coach be updated as we self-test?" — the
     tooltip hold-rates were frozen into the page the night they were measured.
     Now the UI reads them from reports/terrain_backtest_latest.json, so every
-    daily scorecard run updates what the coach is allowed to claim. Fail-closed:
-    a missing/broken report serves {} and the UI says "measuring", never a
-    stale rate."""
+    daily scorecard run updates what the coach is allowed to claim.
+
+    FAIL-CLOSED ON STALE AS WELL AS ABSENT (RC-78). This previously refused a
+    missing or malformed report and served an out-of-date one, while claiming in
+    this very docstring that it "never" served a stale rate — and it was found
+    serving hold-rates 111.6 hours (4.6 days) old under the coach's "Measured on
+    our own history". Age is a precondition to serve, not a footnote to display:
+    a date printed beside a number does not stop the number being read. Past the
+    budget the figures are WITHHELD and the reason is published, so the coach
+    says "measuring" instead of quoting a four-day-old measurement.
+
+    The budget counts TRADING days, so Friday's scorecard is still current on
+    Monday and stale on Tuesday. A wall-clock budget would condemn every
+    scorecard each weekend and teach the operator to ignore the warning."""
     p = Path(APP_DIR) / "reports" / "terrain_backtest_latest.json"
     try:
         rep = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return JSONResponse({})
+    gen = rep.get("generated_utc")
+    age = scorecard_trading_day_age(gen)
+    if age is None or age > SCORECARD_MAX_TRADING_DAY_AGE:
+        return JSONResponse({
+            "generated_utc": gen,
+            "stale": True,
+            "age_trading_days": age,
+            "max_trading_days": SCORECARD_MAX_TRADING_DAY_AGE,
+            "stale_reason": (
+                "scorecard has not been regenerated" if age is None
+                else f"scorecard is {age} trading day(s) old"
+            ),
+        })
     return JSONResponse({
-        "generated_utc": rep.get("generated_utc"),
+        "generated_utc": gen,
+        "stale": False,
+        "age_trading_days": age,
         "wall_hold_trusted": rep.get("wall_hold_trusted"),
         "weighting_scorecard": rep.get("weighting_scorecard"),
         "pdca": rep.get("pdca"),
@@ -11368,25 +11460,30 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     """
     tk = (ticker or DEFAULT_TICKER).upper().strip()
     cached = terrain_cache_get(tk)
+    if cached is None:
+        # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
+        # _latest_chain_and_spot(), the most recent NARROW stored snapshot chain, while the
+        # terrain loop computed from a WIDE chain sized by the resolve_chain_strike_count
+        # faucet. Wall and flip selection depends on how much of the wing is present, so the
+        # two disagreed: MEASURED 2026-07-27, /api/terrain?ticker=SPY alternated between
+        # call=750/put=740/flip=746.59 and call=739/put=736/flip=739.80 within ten seconds
+        # while spot moved four cents. The operator was reading two different sets of trade
+        # levels from one endpoint. A second producer is a second faucet even when both write
+        # the same cache key — the provenance audit only ever saw the read side.
+        #
+        # So on a miss the endpoint drives THE producer instead of imitating it, and if that
+        # cannot deliver, the terrain reads UNAVAILABLE. Absence reads as absence; it never
+        # reads as a narrower chain's answer.
+        _terrain_refresh_one(tk, priority=True)
+        cached = terrain_cache_get(tk)
     if cached is not None:
         # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
         return _reprice_cached_terrain(cached, tk)
-    try:
-        contracts, _stored_spot = _latest_chain_and_spot(tk)
-        spot, spot_source, spot_ts = resolve_spot(tk)
-        snap = compute_terrain(tk, contracts, spot)
-        # ATR travels WITH the terrain payload. The stats row previously read it out of the
-        # radar response, so a slow or failed radar poll left every ATR figure blank even
-        # though terrain itself was fine. One payload, one set of numbers.
-        atr = _radar_atr(tk)
-        return snap.to_dict() | {
-            "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-            "atr_daily": round(atr.daily, 3) if atr.daily else None,
-            "atr_15m": round(atr.m15, 3) if atr.m15 else None,
-        }
-    except Exception as e:
-        log.warning("terrain endpoint failed for %s: %s", tk, e, exc_info=True)
-        return compute_terrain(tk, None, None).to_dict() | {"error": f"{type(e).__name__}: {e}"}
+    spot, spot_source, spot_ts = resolve_spot(tk)
+    return compute_terrain(tk, None, spot).to_dict() | {
+        "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
+        "error": "terrain_not_ready: no wide-chain snapshot yet for this ticker",
+    }
 
 
 def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:

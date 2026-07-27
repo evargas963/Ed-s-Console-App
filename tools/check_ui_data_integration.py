@@ -157,6 +157,49 @@ const { chromium } = require('playwright');
     await waitAll(tCells.map(s => () => real(s)).concat([async () => (await count('#ct-map .ct-row')) >= 1]), 28000);
     for (const s of tCells) { const v = await val(s); if (!v || v === '—') bad.push('terrain ' + s + '=' + v); }
     if ((await count('#ct-map .ct-row')) < 1) bad.push('terrain price map rendered 0 real rows');
+
+    // RC-81 — ONE TICK, ONE PRICE. A single spot AUTHORITY only guarantees that readers
+    // sampled at the SAME INSTANT agree; with several paint sites on several clocks the
+    // operator still sees two prices. MEASURED here before the fix: over 15s ub-price walked
+    // 737.65 -> 737.71 -> 737.73 while cv2-hd-px sat at 737.65 the whole time. No static check
+    // can see that — cadence is only visible in the rendered DOM, which is why the assertion
+    // lives in this tier and not in the faucet audit.
+    await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+    const SPOT_IDS = ['#sb-spot', '#ub-price', '#cv2-hd-px'];
+    const priced = async () => {
+      const vs = [];
+      for (const s of SPOT_IDS) { const v = await val(s); if (v && v !== '—' && v !== '(missing)') vs.push(v); }
+      return vs.length >= 2;
+    };
+    await waitAll([priced], 25000);
+    for (let i = 0; i < 3; i++) {
+      const seen = {};
+      for (const s of SPOT_IDS) {
+        const v = await val(s);
+        if (v && v !== '—' && v !== '(missing)') seen[s] = v;
+      }
+      const distinct = [...new Set(Object.values(seen))];
+      if (distinct.length > 1) {
+        bad.push('console shows ' + distinct.length + ' DIFFERENT spot prices in one frame: ' +
+                 JSON.stringify(seen));
+        break;
+      }
+      await page.waitForTimeout(4000);
+    }
+
+    await page.goto(base + '/chart', { waitUntil: 'domcontentloaded', timeout: 20000 });
+    const chartPriced = async () =>
+      (await real('#biglegend .px')) && (await real('#metapx'));
+    await waitAll([chartPriced], 25000);
+    for (let i = 0; i < 3; i++) {
+      const big = await val('#biglegend .px'), meta = await val('#metapx');
+      if (big !== '(missing)' && meta !== '(missing)' && big !== meta) {
+        bad.push('chart big legend (' + big + ') and meta bar (' + meta +
+                 ') show different spot prices in one frame');
+        break;
+      }
+      await page.waitForTimeout(4000);
+    }
   } catch (e) { bad.push('render error: ' + e.message); }
   await browser.close();
   console.log(JSON.stringify(bad));

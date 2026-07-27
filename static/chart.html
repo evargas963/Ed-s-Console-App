@@ -165,6 +165,8 @@ let cross = null;         // {mx, my} crosshair position
 let scale = null;
 let daily = null;         // {vwap:[[t,w]…], pdh, pdl, pdc} from canonical 1m rows
 let scorecard = null;     // latest daily scorecard — coach numbers update with it
+let scorecardStale = null;// present but PAST its freshness budget (RC-78): the reason,
+                          // never the numbers, so staleness is stated not implied
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
 let liveSpot = null;      // 2.5s fast-poll spot (/api/spot); 15s cycle is the fallback
 let forming = null;       // TradingView-style FORMING candle for the current minute:
@@ -288,7 +290,11 @@ async function load() {
     ]);
     // coach numbers: accept only a real scorecard payload (an error body or a
     // pre-restart 404 must read as ABSENT -> tooltips say "measuring")
-    scorecard = (sc && sc.generated_utc) ? sc : null;
+    // RC-78: a STALE scorecard is not a scorecard. The server withholds the figures past its
+    // trading-day budget and sends the reason instead, so the coach says "measuring" rather than
+    // quoting a four-day-old hold rate under "measured on our own history".
+    scorecard = (sc && sc.generated_utc && !sc.stale) ? sc : null;
+    scorecardStale = (sc && sc.stale) ? sc : null;
     const cur = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
     if (cur !== tk) return;   // superseded by a newer ticker selection
     // follow the right edge ONLY when actually sitting on it; a view dragged
@@ -304,10 +310,15 @@ async function load() {
     if (atEnd && view) { const w = view.i1 - view.i0;
       view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
     document.getElementById('narrator').textContent = t.headline || '—';
-    document.getElementById('meta').textContent =
-      `spot ${fmt(currentSpot())} · regime ${t.regime || '—'} · ` +
-      `${t.confidence || '—'} · ${raw.length}×1m bars · ` +
-      `strikes ${(strikes && strikes.today_source) || 'restart console to activate'} ` +
+    // RC-81 — the spot lives in its OWN element so the 1.5s tick can repaint it. It used to be
+    // baked into this string, which is rewritten once per 15s load(): same authority as the big
+    // legend, but painted 15s apart, so the two showed different prices in the same frame
+    // (MEASURED in the rendered DOM: big legend 737.73 beside meta bar 737.67). One faucet only
+    // guarantees agreement between readers sampled at the same instant.
+    document.getElementById('meta').innerHTML =
+      `spot <span id="metapx">${esc(fmt(currentSpot()))}</span> · regime ${esc(t.regime || '—')} · ` +
+      `${esc(t.confidence || '—')} · ${raw.length}×1m bars · ` +
+      `strikes ${esc((strikes && strikes.today_source) || 'restart console to activate')} ` +
       `· scroll=wider/narrower · shift+scroll=taller/shorter · drag=move · dbl-click=fit`;
     document.getElementById('coachlines').innerHTML = learning
       ? (t.lines || []).map(l => '· ' + esc(l)).join('<br>') : '';
@@ -334,7 +345,7 @@ async function load() {
     feedFresh = false;
     // fail-closed coach: a failed cycle cannot vouch for the numbers it would
     // quote — tooltips say "measuring" until a cycle succeeds (Bugbot HIGH)
-    scorecard = null;
+    scorecard = null; scorecardStale = null;
     document.getElementById('livedot').className = 'stale';
     document.getElementById('lastdot').style.display = 'none';
     // rebuild zones NOW — hover tooltips read zones built at the last draw,
@@ -450,7 +461,12 @@ function draw() {
       ? `<i>Measured on our own history (updates with each daily scorecard` +
         (scorecard.generated_utc ? `, last ${esc(String(scorecard.generated_utc).slice(0, 10))}` : '') +
         `): call walls held ${wh.call_held_pct}%, put walls ${wh.put_held_pct}% on trusted days.</i>`
-      : `<i>Hold-rate: measuring — this number fills from the daily scorecard.</i>`;
+      : scorecardStale
+        ? `<i>Hold-rate: measuring — the daily scorecard is out of date (` +
+          `${esc(String(scorecardStale.stale_reason || 'stale'))}, last ` +
+          `${esc(String(scorecardStale.generated_utc || '').slice(0, 10))}), so its numbers are ` +
+          `withheld rather than quoted as current.</i>`
+        : `<i>Hold-rate: measuring — this number fills from the daily scorecard.</i>`;
     const leanTip = withholdLean
       ? `Heavy standing option inventory in this strike band (structure fact only).<br>` +
         measured + `<br>` +
@@ -586,6 +602,10 @@ function draw() {
   // last close; the dashed line + session label make that gap self-explanatory.
   // Auto domain includes spot; under yLock clamp to the pane edge so the cue never vanishes.
   const spot = currentSpot();   // RC-75: one client spot authority
+  // RC-81: every spot display repaints from THIS value in THIS frame. The meta bar used to be
+  // written only by the 15s load() cycle, so it lagged the legend below it by up to a full cycle.
+  const _mpx = document.getElementById('metapx');
+  if (_mpx) _mpx.textContent = fmt(spot);
   const bl = document.getElementById('biglegend');
   if (spot != null && isFinite(Number(spot))) {
     // TradingView-style big legend: ticker · price · change vs yesterday's close
