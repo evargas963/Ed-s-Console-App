@@ -200,6 +200,18 @@ def main() -> int:
     if not _run_affected_tests(targets):
         failures.append("affected tests are red")
 
+    # 2b ── provably-dead code (v17 graded the report-only tool THEATER; --check is the lock).
+    # Lives HERE and not in the commit gate because its full-tree reference scan runs ~2min —
+    # acceptable at turn end, hostile per-commit. Exit 2 = deletable_now non-empty.
+    rc, out = _run([sys.executable, "tools/verify_dead_code_orphans_v1.py", "--check"],
+                   timeout=600)
+    print(f"[{'PASS' if rc == 0 else 'FAIL'}] dead-code orphans (--check)")
+    if rc != 0:
+        for ln in (out or "").splitlines()[-6:]:
+            if ln.strip():
+                print(f"         {ln.strip()[:110]}")
+        failures.append("provably-dead code present (verify_dead_code_orphans_v1 --check)")
+
     # 3 ── overdue claims (the gate covers this, reported separately for visibility)
     overdue = _count_overdue_claims()
     print(f"[{'PASS' if overdue == 0 else 'FAIL'}] unproven register ({overdue} overdue)")
