@@ -206,3 +206,21 @@ def test_price_bars_session_check_screams_on_an_ungated_reader(tmp_path, monkeyp
         'q = "SELECT close FROM price_bars_1m WHERE ticker=?"\n', encoding="utf-8")
     assert not [b for b in M.check_price_bars_readers_name_their_session()
                 if "zz_bar_probe" in str(b)], "a gated reader was wrongly flagged"
+
+
+def test_rc_log_row_schema_control(tmp_path, monkeypatch):
+    """RC-105: an off-schema row (interior pipe) must be flagged; a 7-cell row must pass."""
+    from tools import check_institutional_correctness as M
+    fake = tmp_path
+    (fake / "governance").mkdir()
+    log = fake / "governance" / "root_cause_log.md"
+    good = "| RC-900 | CLOSED | 2026-07-28 | 2026-07-28 | desc | whys | evidence |"
+    bad = "| RC-901 | CLOSED | 2026-07-28 | 2026-07-28 | desc | whys | ev with |pipe| bars |"
+    log.write_text(good + "\n" + bad + "\n", encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", fake)
+    hits = M.check_rc_log_rows_keep_schema()
+    assert len(hits) == 1 and "9 cells" in str(hits[0]), (
+        f"the 9-cell row was not flagged (or the clean row was): {hits}"
+    )
+    log.write_text(good + "\n", encoding="utf-8")
+    assert M.check_rc_log_rows_keep_schema() == [], "a clean 7-cell log must pass"

@@ -116,9 +116,22 @@ def session_safe_log_returns(ends: np.ndarray, closes: np.ndarray) -> np.ndarray
     return rets
 
 
-def _load_labeled_rows(db: Path, ticker: str, label_col: str) -> list[tuple[float, str]]:
+def _load_labeled_rows(
+    db: Path, ticker: str, label_col: str, *, session: str = "rth"
+) -> list[tuple[float, str]]:
+    """RC-31 (reopened, operator v7 audit): the LABELS were still ungated.
+
+    The bars got a session universe (`_load_closes`) while this loader kept selecting every
+    labeled snapshot row — a weekend/extended-hours label would attach frozen-market outcomes to
+    RTH features. Same explicit-universe contract as `_load_closes`: rth by default, "all" must
+    be asked for, unknown refuses.
+    """
+    from time_et import is_tradable_session_ts_utc
+
     from timeframe_config import SNAPSHOT_TABLE_1M
 
+    if session not in ("rth", "all"):
+        raise ValueError(f"unknown session universe {session!r} — 'rth' or 'all', never implicit")
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = con.execute(
         f"SELECT ts_utc, {label_col} FROM {SNAPSHOT_TABLE_1M} "
@@ -126,6 +139,8 @@ def _load_labeled_rows(db: Path, ticker: str, label_col: str) -> list[tuple[floa
         (ticker,),
     ).fetchall()
     con.close()
+    if session == "rth":
+        rows = [r for r in rows if is_tradable_session_ts_utc(float(r[0]))]
     return [(float(t), str(y)) for t, y in rows if str(y) in CLASSES]
 
 

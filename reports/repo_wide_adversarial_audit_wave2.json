@@ -1,0 +1,140 @@
+{
+  "schema": "repo_wide_adversarial_audit_wave2",
+  "status": "SYNTHESIZED",
+  "generated_et": "2026-07-27T22:30",
+  "verdict": "NOT_PRISTINE — canopy→leaf: Decide admission is a blob switch; Collect auth-degraded quotes miss the plane; DB can re-grow RC-6 blobs; ML unproven stack still paints exposure; tests greenwash admission; RTH lock blind to price_bars_1m while RC-58 siblings stay calendar-blind",
+  "method": "Wave 1 (4 agents) + Wave 2 (8 of 8 agents). Static adversarial reads. Final merge: calibration_tools.",
+  "agents_complete": {
+    "wave1_money_path": "3553e95b-ea16-4f5b-a963-5117bd329534",
+    "wave1_ui": "5a30d83c-2aee-47f9-8b95-6abd866d2fae",
+    "wave1_governance": "09d5de5c-b8ed-4f55-997a-af51e54da77b",
+    "wave1_dead_code": "262604e1-678a-4cb1-97f8-69507a8a41b4",
+    "wave2_ml": "aea5a8ad-a821-416d-9616-52139e368a55",
+    "wave2_db": "f758cbc7-d733-4404-a607-b5eb8be75c9c",
+    "wave2_decide": "292bdab5-32e6-4bed-9f31-8b5d023447a3",
+    "wave2_collect": "fcd2ddc6-64cb-4702-97d4-30c1c97c7c7c",
+    "wave2_tests": "1ea7fdf9-6ad3-4654-9f50-7978beff9629",
+    "wave2_docs": "b1200332-f4a3-470e-be00-2eb85fa20a98",
+    "wave2_planes": "56e8eb5d-b89b-4fee-9389-6c227b80bc56",
+    "wave2_calibration_tools": "956c5b97-f342-465b-9052-1ef44ac484c3"
+  },
+  "agents_incomplete": {},
+  "critical_canopy": [
+    {
+      "id": "W2-C1",
+      "area": "Decide",
+      "title": "Admission is one blob (the_call); evidence is non-empty strings — once admitted, all unproven voters ride through",
+      "evidence": "decision_gate.py"
+    },
+    {
+      "id": "W2-C2",
+      "area": "Decide/UI",
+      "title": "call_state ACTIVE reachable with validation_passed=False; final_bias kept after admission WAIT",
+      "evidence": "setup_readiness.py / multi_horizon_decision.py / index.html"
+    },
+    {
+      "id": "W2-C3",
+      "area": "Collect",
+      "title": "Auth-degraded carried-forward quotes never enter live_market_plane — plane stays 'fresh'",
+      "evidence": "server.py _stale_fast_quote_carried_forward"
+    },
+    {
+      "id": "W2-C4",
+      "area": "Collect",
+      "title": "merge_into_state drops quote_source_detail — stale/auth flags stripped from live stamp",
+      "evidence": "live_market_plane.py"
+    },
+    {
+      "id": "W2-C5",
+      "area": "DB",
+      "title": "RC-6 regression: migrate/ensure_normalized can re-ADD option_chain_json blobs to normalized table",
+      "evidence": "db.py _migrate_schema / _ensure_normalized_table"
+    },
+    {
+      "id": "W2-C6",
+      "area": "ML/Decide",
+      "title": "Unproven fusion stack still computes into Decide; horizon pills paint LONG/SHORT under WAIT",
+      "evidence": "signals.py / ml_predict.py / index.html"
+    },
+    {
+      "id": "W2-C7",
+      "area": "ML",
+      "title": "5c live bypasses meta with hardcoded xgb+transformer 'winning stack' despite FP 0 PASS",
+      "evidence": "ml_predict.py"
+    },
+    {
+      "id": "W2-C8",
+      "area": "Calibration/Locks",
+      "title": "RTH lock blind to price_bars_1m — RC-58 sibling card studies stay calendar-blind while check stays green",
+      "evidence": "check_rth_only_market_measurement _RTH_MARKET_READ; study_card2_am_pm / timeslice / lateday*"
+    },
+    {
+      "id": "W1-C1",
+      "area": "Money path",
+      "title": "Two wall/flip books (analytics expiry-sliced vs terrain full-chain)",
+      "evidence": "wave1"
+    },
+    {
+      "id": "W1-C2",
+      "area": "Money path",
+      "title": "resolve_spot math vs live_market_plane display",
+      "evidence": "wave1"
+    },
+    {
+      "id": "W1-C4",
+      "area": "UI",
+      "title": "Header spot multi-writer; hidden terrain still painted",
+      "evidence": "wave1"
+    }
+  ],
+  "high_canopy": [
+    {"id": "W2-H1", "area": "Collect", "title": "Dual quote writers stream vs REST stomp"},
+    {"id": "W2-H2", "area": "Collect", "title": "Dual tick into _candles_1m; bars fail-open silent"},
+    {"id": "W2-H3", "area": "Collect", "title": "api_pressure banner-only; chain gate fail-open"},
+    {"id": "W2-H4", "area": "DB", "title": "Holiday/weekend market_session stamp lies; RC-31 OPEN outcomes session-blind"},
+    {"id": "W2-H5", "area": "DB", "title": "level_crosses 58.5% coincident duplicates; snapshots chain ~5GB"},
+    {"id": "W2-H6", "area": "ML", "title": "Meta OOF falls back in-sample; train fabricates 0.33; ablation env relaxes serve"},
+    {"id": "W2-H7", "area": "Decide", "title": "MH forges vol confluence max(...,4); fake-open vol defaults"},
+    {"id": "W2-H8", "area": "Tests", "title": "Cursor unbound; money-path gate misses server.py; suite autouse admits decisions"},
+    {"id": "W2-H9", "area": "Tests", "title": "22/37 ENFORCED checks grandfathered from real negative controls"},
+    {"id": "W2-H10", "area": "Docs", "title": "OPEN_ITEMS vs ACTIVE_PROGRAM zombies (PHASE-4, GEX Monday PASS, etc.)"},
+    {"id": "W2-H11", "area": "Calibration", "title": "Grandfathered pin/terrain studies weekday-only still cite as PROVEN in unproven_register"},
+    {"id": "W2-H12", "area": "Calibration", "title": "Triple scoreboard producers (daily_scoreboard vs terrain_backtest vs forensic fossils)"},
+    {"id": "W2-H13", "area": "Ops", "title": "run_daily_scoreboard.ps1 bare python; inert-lock misses logs/daily_scoreboard_*.log"},
+    {"id": "W2-H14", "area": "Ops", "title": "operable_surface_ops has exit lock but no schtasks wrapper — Collect rot regenerates old_missing"},
+    {"id": "W2-H15", "area": "Tools", "title": "feature_curation_gate.py god-tool (5014 LOC) + dual ablation universe authority"}
+  ],
+  "pristine_program_merged": [
+    {"wave": "P0", "name": "Stop lying clocks (UI+Collect)", "items": ["W1-C4", "W1-C5", "W2-C3", "W2-C4", "W2-H1", "levels_stale on console"]},
+    {"wave": "P1", "name": "One spot + one wall book", "items": ["W1-C1", "W1-C2", "W2-H2"]},
+    {"wave": "P2", "name": "Decide admission that is a sieve", "items": ["W2-C1", "W2-C2", "W2-H7", "per-component admission", "kill final_bias after WAIT"]},
+    {"wave": "P3", "name": "ML must not paint exposure unadmitted", "items": ["W2-C6", "W2-C7", "W2-H6", "horizon pill law"]},
+    {"wave": "P4", "name": "DB stop the bleed", "items": ["W2-C5", "W2-H4", "RC-31/58 close", "W2-C8", "level_crosses producer"]},
+    {"wave": "P5", "name": "Locks that bind Cursor + real tests", "items": ["W2-H8", "W2-H9", "W2-H11", "extend _RTH_MARKET_READ to price_bars_1m", "no autouse ADMITTED"]},
+    {"wave": "P6", "name": "Landfill prune", "items": ["docs/reports prune list", "console_v2_shell delete", "lateday/phase study quarantine", "research archive freeze", "split feature_curation_gate"]}
+  ],
+  "delete_now_safeish": [
+    "static/console_v2_shell.html",
+    "verification/operator_trust_backtrack.py",
+    "verification/adaptive_shadow_v2_calibration.json (~1.84MB)",
+    "reports/scoreboard_forensic/mutation_raw/*",
+    "tests/archive/legacy_section_audits_v1/"
+  ],
+  "calibration_tools_top": [
+    "W2-C8 RTH lock blind to price_bars_1m / RC-58 siblings calendar-blind",
+    "W2-H11 grandfathered pin studies weekday-only still PROVEN",
+    "W2-H12 triple scoreboard producers",
+    "W2-H13 daily_scoreboard launcher/lock asymmetry",
+    "W2-H14 operable_surface cadence missing",
+    "W2-H15 feature_curation_gate + dual ablation universe",
+    "Late-day study landfill (v1 VACATED / v2 PENDING / atlas still first-class)",
+    "~160 tools/*.py; live ops thin minority"
+  ],
+  "open_rcs_binding": ["RC-31", "RC-58"],
+  "coverage_limits": [
+    "No live RTH instrumentation this wave",
+    "DB sizes cited from prior stamped reports where noted",
+    "Wave 1+2 = 12 agent slices; not every file AST",
+    "tools/_*.py / tools/legacy / host schtasks not fully audited in calib slice"
+  ]
+}

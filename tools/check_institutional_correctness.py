@@ -2306,6 +2306,41 @@ def check_rc_citations_resolve() -> list[Violation]:
     ]
 
 
+def check_rc_log_rows_keep_schema() -> list[Violation]:
+    """Every RC row in the governance log keeps the 7-cell schema (RC-105).
+
+    WHAT WAS OBSERVED (2026-07-28). While re-closing RC-31 its row had drifted to ELEVEN cells:
+    evidence text containing math absolute-value bars (abs(diff) written as pipe-diff-pipe) and
+    code snippets with pipes was being rendered by markdown as extra COLUMNS — the row truncates
+    at the stray pipe and everything after it is invisible in any rendered view. A sweep found 26
+    more rows off schema (RC-43's pipe-moneyness-pipe, RC-86's pipe-net-GEX-pipe, draft 'IN
+    PROGRESS' segments). A truncated row still LOOKS closed: absence of visible evidence reads as
+    clean, which is the exact absence-of-signal failure this log exists to prevent.
+
+    Rule: a line starting '| RC-' must contain exactly 7 cells (8 pipe separators with the
+    outer pair). Write abs(x), never pipe-x-pipe, inside cells.
+
+    HOW VALIDATED: negative control in tests/test_enforced_check_negative_controls_v1.py injects
+    an 8-cell row and asserts this check returns >= 1; the 26-row repair landed the same turn, so
+    the check binds from a clean baseline with NO grandfather list.
+    """
+    log = REPO / "governance" / "root_cause_log.md"
+    if not log.exists():
+        return []
+    out: list[Violation] = []
+    for n, line in enumerate(log.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        if not line.startswith("| RC-"):
+            continue
+        cells = line.count("|") - 1
+        if cells != 7:
+            out.append(Violation(
+                log, n,
+                f"row has {cells} cells, schema is 7 — an interior pipe truncates the rendered "
+                f"row and hides the evidence after it (RC-105: 27 rows had silently drifted). "
+                f"Replace interior pipes: write abs(x), not pipe-x-pipe."))
+    return out
+
+
 def check_scheduled_producers_are_not_inert() -> list[Violation]:
     """A scheduled PRODUCER that fails every run must not stay silent (RC-97).
 
@@ -2718,8 +2753,10 @@ def check_measured_claims_cite_evidence() -> list[Violation]:
 
 #: RC-54 — market-data measurement must be scoped to trading sessions.
 _RTH_MARKET_READ = re.compile(
-    r"FROM\s+(snapshots|snapshots_1m_normalized|option_chain_morning_full)\b|flip_drift_log\.jsonl",
-    re.I)
+    r"FROM\s+(snapshots|snapshots_1m_normalized|option_chain_morning_full|price_bars_1m)\b"
+    r"|flip_drift_log\.jsonl",
+    re.I)  # price_bars_1m added on the v7 reopen of RC-103: the RTH lock covered every market
+           # table EXCEPT the one the session-blindness class recurred through five times.
 _RTH_STATS = re.compile(r"\b(statistics\.|np\.(mean|median|percentile|std)|\.mean\(|\.median\()")
 #: Data MAINTENANCE (backfill/normalize/migrate) legitimately processes every row — a backfill that
 #: skipped weekends would corrupt the store. Only MEASUREMENT is scoped.
@@ -2830,6 +2867,7 @@ CHECKS = [
     ("agents_laws_name_their_enforcer", check_agents_laws_name_their_enforcer, True),
     ("scheduled_producers_are_not_inert", check_scheduled_producers_are_not_inert, True),
     ("rc_citations_resolve", check_rc_citations_resolve, True),
+    ("rc_log_rows_keep_schema", check_rc_log_rows_keep_schema, True),
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth

@@ -13043,11 +13043,23 @@ function edCheckRadarAlerts(rows) {
     T('cv2-kl-cwall', n2(cw));
     T('cv2-kl-pwall', n2(pw));
     T('cv2-kl-pin', n2(fnum(t.gamma_pin)));
-    var trusted = (fstr(t.confidence) === 'TRUSTED');
+    // RC-102 (reopened, v7 audit): the FIRST staleness wiring only reached the hidden
+    // #terrain-view chip — the VISIBLE console said "trusted" over frozen levels. Same law as
+    // tv-trust: stale levels can never render as trusted, and the chip says WHY.
+    var _cvStale = !!t.levels_stale;
+    var trusted = (fstr(t.confidence) === 'TRUSTED') && !_cvStale;
     var trustEl = el('cv2-kl-trust');
     if (trustEl) {
-      trustEl.textContent = fstr(t.confidence) ? (trusted ? 'trusted' : 'narrow') : '—';
-      trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
+      if (_cvStale) {
+        var _cvAge = fnum(t.levels_age_sec);
+        trustEl.textContent = '⚠ STALE' + (_cvAge !== null ? ' ' + Math.round(_cvAge / 60) + 'm' : '');
+        trustEl.className = 'cv-badge cv-dn';
+        trustEl.title = String(t.levels_stale_reason || 'levels are not refreshing');
+      } else {
+        trustEl.textContent = fstr(t.confidence) ? (trusted ? 'trusted' : 'narrow') : '—';
+        trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
+        trustEl.title = '';
+      }
     }
     var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
                 n2(fnum(t.gamma_pin)) && ('pin ' + n2(fnum(t.gamma_pin))),

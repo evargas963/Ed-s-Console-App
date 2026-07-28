@@ -52,16 +52,45 @@ def kalman_ll_trend(log_prices: np.ndarray, q: float, r: float) -> np.ndarray:
     return out
 
 
+def session_safe_kalman(ends: np.ndarray, log_prices: np.ndarray, q: float, r: float) -> np.ndarray:
+    """RC-31 (reopened, operator v7 audit): the FILTER must not carry state across a session gap.
+
+    kalman_ll_trend ran ONE continuous filter over the whole bar sequence, so even on
+    RTH-filtered bars the Monday-open innovation measured Friday-close -> Monday-open — the
+    whole weekend entering as feature column 2 — and the state update smeared the gap into level
+    and slope. Session-filtering the BARS was not enough; the filter itself was session-blind
+    (the same scope-vs-class failure as HAR's own np.diff).
+
+    Cure: restart the filter at every ET-day boundary so no state crosses a gap. The restart bar
+    itself is NaN'd — a re-initialized slope of 0.0 and innovation of 0.0 are fabricated calm,
+    not estimates. Exclusion, never zeroing (RC-31 doctrine).
+    """
+    n = len(log_prices)
+    out = np.full((n, 3), np.nan, dtype=np.float64)
+    days = [_et_date(float(t)) for t in ends]
+    i = 0
+    while i < n:
+        j = i
+        while j < n and days[j] == days[i]:
+            j += 1
+        out[i:j] = kalman_ll_trend(log_prices[i:j], q, r)
+        out[i] = np.nan  # day-restart bar: its state is not an estimate
+        i = j
+    return out
+
+
 def _build_xy(ends, closes, labeled, q, r):
     import bisect
 
     logp = np.log(np.clip(closes, 1e-12, None))
-    states = kalman_ll_trend(logp, q, r)
+    states = session_safe_kalman(ends, logp, q, r)
     xs, ys, dates = [], [], []
     for ts, y in labeled:
         j = bisect.bisect_right(ends, ts) - 1
         if j < 1:
             continue
+        if not np.isfinite(states[j]).all():
+            continue  # RC-31: day-restart bar — excluded, never median-imputed into a feature
         xs.append(states[j])
         ys.append(y)
         dates.append(_et_date(ts))

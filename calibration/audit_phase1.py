@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# rth-scope-ok: this is a DATA-INTEGRITY audit, not a market measurement — gap/continuity stats
+# must see EVERY row (a weekend gap is exactly what it exists to surface), and it already
+# reports the RTH-scoped view separately (gaps_gt_120s_during_rth).
 """
 Phase 1 — Data integrity audit for calibration.
 

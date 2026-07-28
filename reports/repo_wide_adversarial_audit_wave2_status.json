@@ -1,0 +1,35 @@
+{
+  "schema": "repo_wide_adversarial_audit_wave2_status",
+  "status": "SYNTHESIZED",
+  "note": "All 8 Wave-2 agents merged into reports/repo_wide_adversarial_audit_wave2.json + canopy canvas. calibration_tools closed last (W2-C8 RTH/price_bars_1m).",
+  "wave1_catalog": "reports/repo_wide_adversarial_audit_wave1.json",
+  "wave2_catalog": "reports/repo_wide_adversarial_audit_wave2.json",
+  "agents": {
+    "ml_training": "aea5a8ad-a821-416d-9616-52139e368a55",
+    "db_persistence": "f758cbc7-d733-4404-a607-b5eb8be75c9c",
+    "decide_path": "292bdab5-32e6-4bed-9f31-8b5d023447a3",
+    "collect_streaming": "fcd2ddc6-64cb-4702-97d4-30c1c97c7c7c",
+    "tests_ci": "1ea7fdf9-6ad3-4654-9f50-7978beff9629",
+    "docs_reports": "b1200332-f4a3-470e-be00-2eb85fa20a98",
+    "calibration_tools": "956c5b97-f342-465b-9052-1ef44ac484c3",
+    "planes_static_aux": "56e8eb5d-b89b-4fee-9389-6c227b80bc56"
+  },
+  "mechanical_loc_by_top": {
+    ".claude": 303271,
+    "tests": 88715,
+    "(root)": 85624,
+    "tools": 53682,
+    "governance": 32020,
+    "calibration": 16845,
+    "static": 16236,
+    "docs": 15874,
+    "research": 12763,
+    "reports": 10850
+  },
+  "prior_wave1_agents": {
+    "money_path": "3553e95b-ea16-4f5b-a963-5117bd329534",
+    "ui_client": "5a30d83c-2aee-47f9-8b95-6abd866d2fae",
+    "governance": "09d5de5c-b8ed-4f55-997a-af51e54da77b",
+    "dead_code": "262604e1-678a-4cb1-97f8-69507a8a41b4"
+  }
+}

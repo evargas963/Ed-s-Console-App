@@ -126,3 +126,71 @@ def test_har_ends_is_required_so_a_missed_caller_fails_loudly():
     from research.har_rv_eval_v1.runner import har_features
     with pytest.raises(TypeError):
         har_features(np.array([100.0, 100.1]))  # old single-argument form must be dead
+
+
+# ── RC-31 REOPENED AGAIN (operator v7 audit): session-filtering the BARS was not enough ──────
+# Two survivors of the "class" close: (1) the Kalman FILTER carried state across the weekend —
+# at Monday's first bar the innovation measured Friday-close -> Monday-open even on RTH bars;
+# (2) the LABELS loader still selected every snapshot row with no session predicate.
+
+def test_kalman_state_never_crosses_a_session_gap():
+    from research.kalman_eval_v1.runner import session_safe_kalman
+    ends = np.array([_ts(2026, 7, 24, 15, 58), _ts(2026, 7, 24, 15, 59),
+                     _ts(2026, 7, 27, 9, 31), _ts(2026, 7, 27, 9, 32),
+                     _ts(2026, 7, 27, 9, 33)])
+    closes = np.array([100.0, 100.1, 102.0, 102.1, 102.05])
+    logp = np.log(closes)
+    states = session_safe_kalman(ends, logp, q=1e-6, r=1e-4)
+    gap = float(np.log(102.0 / 100.1))
+    # Monday's restart bar is EXCLUDED (NaN), not a fabricated-calm zero.
+    assert np.isnan(states[2]).all(), "the day-restart bar must be NaN — its state is not an estimate"
+    # No innovation anywhere may be the weekend gap (that was the v7 smoking gun).
+    innov = states[:, 2]
+    finite = innov[np.isfinite(innov)]
+    assert not np.any(np.isclose(finite, gap, atol=1e-6)), (
+        f"the Fri->Mon gap entered the Kalman innovation: {innov}"
+    )
+    # Monday's post-restart innovations are intra-day sized, never gap sized.
+    assert np.all(np.abs(states[3:, 2][np.isfinite(states[3:, 2])]) < 0.01), states[3:, 2]
+    # Friday's rows are ordinary finite estimates (day 1 restart bar aside).
+    assert np.isfinite(states[1]).all()
+
+
+def test_kalman_build_xy_excludes_the_restart_bar_label():
+    from research.kalman_eval_v1.runner import _build_xy
+    ends = np.array([_ts(2026, 7, 24, 15, 58), _ts(2026, 7, 24, 15, 59),
+                     _ts(2026, 7, 27, 9, 31), _ts(2026, 7, 27, 9, 32)])
+    closes = np.array([100.0, 100.1, 102.0, 102.1])
+    # A label at Monday's FIRST bar rides the restart state -> must be excluded, never imputed.
+    X1, y1, d1 = _build_xy(ends, closes, [(_ts(2026, 7, 27, 9, 31), "up")], 1e-6, 1e-4)
+    assert len(X1) == 0, "a label on the day-restart bar was admitted"
+    # Control: a label one bar later attaches to a real intra-day state.
+    X2, y2, d2 = _build_xy(ends, closes, [(_ts(2026, 7, 27, 9, 32), "up")], 1e-6, 1e-4)
+    assert len(X2) == 1 and np.isfinite(X2).all(), "a clean intra-day label was wrongly excluded"
+
+
+def test_labels_respect_the_session_universe(tmp_path):
+    from timeframe_config import SNAPSHOT_TABLE_1M
+
+    from research.tcn_eval_v1.runner import _load_labeled_rows
+    db = tmp_path / "snaps.db"
+    con = sqlite3.connect(db)
+    con.execute(f"CREATE TABLE {SNAPSHOT_TABLE_1M} (ticker TEXT, ts_utc REAL, outcome_5c TEXT)")
+    con.executemany(
+        f"INSERT INTO {SNAPSHOT_TABLE_1M} VALUES (?,?,?)",
+        [
+            ("SPY", _ts(2026, 7, 24, 15, 59), "up"),    # Friday RTH — kept
+            ("SPY", _ts(2026, 7, 24, 17, 30), "down"),  # Friday extended — excluded under rth
+            ("SPY", _ts(2026, 7, 25, 10, 0), "flat"),   # SATURDAY — excluded under rth
+            ("SPY", _ts(2026, 7, 27, 9, 31), "up"),     # Monday RTH — kept
+        ],
+    )
+    con.commit()
+    con.close()
+    rth = _load_labeled_rows(db, "SPY", "outcome_5c")
+    assert len(rth) == 2, f"expected the 2 RTH labels, got {len(rth)}"
+    assert all(y in ("up",) for _, y in rth), rth
+    everything = _load_labeled_rows(db, "SPY", "outcome_5c", session="all")
+    assert len(everything) == 4, "session='all' must be available, explicitly"
+    with pytest.raises(ValueError):
+        _load_labeled_rows(db, "SPY", "outcome_5c", session="weekend")
