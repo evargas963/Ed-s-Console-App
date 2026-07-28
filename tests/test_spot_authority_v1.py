@@ -398,10 +398,14 @@ def test_every_vendor_quote_read_goes_through_the_memo():
     is legal, inside _memoized_quote_response itself."""
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    sites = [ln for ln in src.splitlines()
-             if "_safe_get_quote_with_retry(" in ln
-             and "def _safe_get_quote_with_retry" not in ln]
+    # v10 audit lesson: a paren-matching count missed `pool.submit(_safe_get_quote_with_retry,
+    # ...)` — the function passed BY REFERENCE. Count NAME references: the def line and the
+    # memo's own internal call are the only two legal appearances.
+    sites = [ln.strip() for ln in src.splitlines()
+             if "_safe_get_quote_with_retry" in ln
+             and "def _safe_get_quote_with_retry" not in ln
+             and not ln.strip().startswith("#")]
     assert len(sites) == 1, (
-        f"{len(sites)} direct vendor-quote call sites — every reader must go through "
-        f"_memoized_quote_response (one faucet at the VENDOR): {sites}"
+        f"{len(sites)} references to the raw vendor fetch — every reader (calls AND "
+        f"by-reference handoffs) must go through _memoized_quote_response: {sites}"
     )

@@ -4168,7 +4168,12 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
     try:
         ctx = fetch_market_context(
             client,
-            safe_get_quote_fn=_safe_get_quote_with_retry,
+            # RC-112 recurrence 2: this kwarg handed the RAW vendor fetch by reference into
+            # market-context (VIX/TICK quote legs) — invisible to a call-syntax scan. The
+            # adapter keeps the (client, ticker) signature the callee expects while routing
+            # every quote it makes through the one memoized vendor faucet.
+            safe_get_quote_fn=lambda _c, _tk, **_kw: _memoized_quote_response(
+                _tk, client=_c, **_kw),
             pcr=pcr,
             prev_pcr=prev_pcr,
             stream_chg_pct_fn=_stream_chg_fn,
@@ -6225,7 +6230,11 @@ def _fetch_state(
                 strike_count=resolve_chain_strike_count(ticker),   # RC-59: one faucet
                 priority=_chain_priority,
             )
-            _quote_fut = _cq_pool.submit(_safe_get_quote_with_retry, client, ticker)
+            # RC-112 recurrence 2 (v10 audit, server.py:6228): this pool leaf passed the raw
+            # vendor fetch BY REFERENCE, so the paren-matching structural test never saw it —
+            # the hot parallel path bypassed the memo while the inline branch above used it.
+            # The lock now counts NAME references, not call syntax.
+            _quote_fut = _cq_pool.submit(_memoized_quote_response, ticker, client=client)
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _chain_fut.result()
             q_resp = _quote_fut.result()
     except SchwabAuthError as e:
