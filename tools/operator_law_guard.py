@@ -118,7 +118,12 @@ _HEREDOC_SOURCE_WRITE = re.compile(
     r"<<.{0,2000}?(?:"
     r"(?:io\.)?open\((['\"])[^'\"]+\.py\1\s*,\s*(['\"])[wa]\2"
     r"|\.py(['\"])\s*\)\s*\.write_text\("
+    r"|\.py(['\"])\s*\)\s*\.open\(\s*(['\"])[wa]\5"   # v19: Path('x.py').open('w')
     r")", re.S)
+#: v19: `cat > foo.py <<EOF` writes source through the SHELL itself — no interpreter involved,
+#: so the heredoc rule never saw it. Any shell redirect INTO a .py file is the same banned
+#: action (writing source outside Edit/Write); .py targets only, so log/json redirects stay legal.
+_SHELL_REDIRECT_SOURCE = re.compile(r"(?:^|[^&\d])>{1,2}\s*[^\s;|&<>]+\.py\b")
 
 
 def _has_verification(ledger: list[dict]) -> bool:
@@ -172,6 +177,10 @@ def bash_violations(cmd: str, ledger: list[dict]) -> list[str]:
         out.append("ACTION BLOCKED: writing a .py SOURCE file through a shell-heredoc script "
                    "mangles escapes (E-15, 4 recurrences). Use the Edit/Write tools for source; "
                    "heredoc scripts remain legal for governance rows and data.")
+    if _SHELL_REDIRECT_SOURCE.search(cmd):
+        out.append("ACTION BLOCKED: shell redirect into a .py file writes source outside the "
+                   "Edit/Write tools (v19: `cat > x.py <<EOF` walked around the heredoc rule). "
+                   "Same action, same ban; non-source redirects stay legal.")
     if _GREP_AGAINST_FILES.search(cmd):
         out.append("ACTION BLOCKED: shell grep/rg pointed at repo FILES. Standing law "
                    "(2026-05-22): read files end-to-end or use structural/AST analysis. Filtering "

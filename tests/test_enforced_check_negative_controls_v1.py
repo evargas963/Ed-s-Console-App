@@ -274,6 +274,35 @@ def test_close_contract_controls():
     assert V([_row("CLOSED", "END-TO-END: a -> b.", opened="2026-07-20")], "log", "", "") == []
 
 
+def test_operator_law_guard_action_battery():
+    """v19: the fire/quiet battery, promoted from ad-hoc probes to a permanent suite. Every
+    banned ACTION spelling must fire; every sanctioned form must stay quiet — one list, both
+    directions, so widening a lock reruns the whole surface."""
+    from tools.operator_law_guard import bash_violations
+    led = [{"kind": "bash", "detail": "pytest ok"}]
+    fire = [
+        "git add -A", "git add --all", "git add .", "git add -u", "git add *", "git add -- .",
+        "python - <<EOF\nio.open('tests/x.py','w').write(s)\nEOF",
+        "python - <<EOF\nopen('tools/x.py', 'w').write(s)\nEOF",
+        "python - <<EOF\nfrom pathlib import Path\nPath('tests/x.py').write_text(s)\nEOF",
+        "python - <<EOF\nPath('tools/x.py').open('w').write(s)\nEOF",   # v19
+        "cat > foo.py <<EOF\nx = 1\nEOF",                               # v19: shell redirect
+        "echo 'x = 1' > tools/probe.py",
+    ]
+    quiet = [
+        "git add server.py tools/x.py", "git add -- server.py",
+        "git commit -m \"note: git add -A and open(x.py,w) are banned\"",
+        "python - <<EOF\nio.open('governance/root_cause_log.md','w').write(s)\nEOF",
+        "python - <<EOF\nPath('reports/out.json').write_text(s)\nEOF",
+        "python x.py > reports/run.log 2>&1",
+        "pytest tests/test_x.py -q",
+    ]
+    for c in fire:
+        assert bash_violations(c, led), f"DID NOT FIRE: {c[:60]!r}"
+    for c in quiet:
+        assert not bash_violations(c, led), f"WRONGLY FIRED: {c[:60]!r}"
+
+
 def test_stop_guard_freshness_tells_broken_from_closed(monkeypatch):
     """RC-120: staleness while the producer is legitimately CLOSED (after 16:30 ET, labeled,
     budgeted) must NOT block the turn; staleness while it SHOULD be running must. A guard that
