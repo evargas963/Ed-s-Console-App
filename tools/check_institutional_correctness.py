@@ -2426,7 +2426,10 @@ def check_adversarial_audits_are_answered() -> list[Violation]:
         return []
     best = 0
     for p in rdir.glob("claude_finish_adversarial_audit_v*.md"):
-        m = re.search(r"_v(\d+)\.md$", p.name)
+        # v18 gun accepted: `_v(\d+)\.md$` made `_v17_deep.md` INVISIBLE — a suffixed audit
+        # slipped past the inbox entirely. The version is the digits after _v wherever the
+        # filename puts them; suffixes like _deep are part of the same audit.
+        m = re.search(r"_v(\d+)", p.name)
         if m:
             best = max(best, int(m.group(1)))
     if best == 0:

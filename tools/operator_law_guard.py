@@ -102,14 +102,23 @@ _GIT_COMMIT = re.compile(r"\bgit\s+commit\b", re.I)
 #: 2026-07-28: `git add -A` swept another agent's in-flight files into MY commits twice in one
 #: day (a 530KB runtime log; audit scratch). In a two-agent worktree, blind staging asserts
 #: authorship over work the committer never saw.
-_BLIND_STAGE = re.compile(r"\bgit\s+add\s+(?:-A\b|--all\b|\.(?:\s|$))")
+#: v18 widened: `*`, `-- .`, and `-u` are the same blind action wearing other flags.
+_BLIND_STAGE = re.compile(
+    r"\bgit\s+add\s+(?:--\s+)?(?:-A\b|--all\b|-u\b|--update\b|\*|\.(?:\s|$))")
 #: 2026-07-28 (E-15 class, 4th recurrence today): writing SOURCE files through shell-heredoc
 #: python scripts keeps mangling escapes (literal \n breaking string literals, backspace bytes
 #: in regexes). The Edit/Write tools are the sanctioned path for source; heredoc scripts stay
 #: legal for governance-row edits and data tasks. The scan looks at the RAW command because the
 #: banned ACTION is the write performed by the interpreter the shell launches.
+#: v18 widened: bare open() and Path('x.py').write_text are the same write wearing other
+#: spellings. Stated limit (same AST boundary as every text lock): a path built in a variable
+#: then written escapes any text scan — if that escape is ever demonstrated, this graduates
+#: to blocking ALL heredoc writes of source and whitelisting data targets.
 _HEREDOC_SOURCE_WRITE = re.compile(
-    r"<<.{0,2000}?io\.open\((['\"])[^'\"]+\.py\1\s*,\s*(['\"])[wa]\2", re.S)
+    r"<<.{0,2000}?(?:"
+    r"(?:io\.)?open\((['\"])[^'\"]+\.py\1\s*,\s*(['\"])[wa]\2"
+    r"|\.py(['\"])\s*\)\s*\.write_text\("
+    r")", re.S)
 
 
 def _has_verification(ledger: list[dict]) -> bool:
