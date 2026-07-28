@@ -4504,7 +4504,7 @@ def _base_money_path_capture_one(ticker: str):
         if client is None:
             return BaseCaptureAttempt(t, "error:no_client", time.monotonic() - t0)
 
-        q_resp = _safe_get_quote_with_retry(client, t)
+        q_resp = _memoized_quote_response(t, client=client)   # RC-112/W3-C8: one vendor faucet
         if q_resp is None or getattr(q_resp, "status_code", None) != 200:
             code = getattr(q_resp, "status_code", None)
             return BaseCaptureAttempt(
@@ -5961,7 +5961,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                 }
             raise
     if (not row or row.get("spot") is None) and client:
-        q_resp = _safe_get_quote_with_retry(client, tkr)
+        q_resp = _memoized_quote_response(tkr, client=client)   # RC-112/W3-C8: one vendor faucet
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
             _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
@@ -6207,7 +6207,7 @@ def _fetch_state(
                 client, ticker, strike_count=resolve_chain_strike_count(ticker),  # RC-59: one faucet
                 priority=_chain_priority,
             )
-            q_resp = _safe_get_quote_with_retry(client, ticker)
+            q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
         else:
             # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf futures run on
             # the dedicated recompute-leaf pool — never behind serve bodies.
@@ -10838,7 +10838,7 @@ def _bars_collect_one(tk: str) -> str:
     """Quote -> accumulator -> price_bars_1m for ONE ticker. Never raises."""
     try:
         client = get_client()
-        q = _safe_get_quote_with_retry(client, tk)
+        q = _memoized_quote_response(tk, client=client)   # RC-112/W3-C8: one vendor faucet
         if q is None or getattr(q, "status_code", None) != 200:
             return "error:quote_http"
         node = q.json().get(tk) or {}
@@ -12928,7 +12928,7 @@ def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours
         # TICKER-PREVIEW-NO-ENROLL: price-levels is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker)
         client = get_client()
-        q_resp = _safe_get_quote_with_retry(client, ticker)
+        q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
         q_json = q_resp.json() if q_resp and hasattr(q_resp, "json") else {}
         pl = fetch_price_levels(client, symbol=ticker, quote_raw=q_json, include_extended_hours=extended_hours)
         return asdict(pl)

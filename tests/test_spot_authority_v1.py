@@ -389,3 +389,19 @@ def test_quote_memo_never_caches_a_failure(monkeypatch):
     S._memoized_quote_response("SPY")
     S._memoized_quote_response("SPY")
     assert calls["n"] == 2, "a FAILED response was cached — failures must stay fail-loud"
+
+
+def test_every_vendor_quote_read_goes_through_the_memo():
+    """W3-C8 (RC-112 reopened): the first close said 'both paths' while FIVE more direct
+    callers existed (_fetch_state, tier A, base capture, bars collector, price levels).
+    The class is EVERY vendor quote read; this lock counts the raw call sites — exactly one
+    is legal, inside _memoized_quote_response itself."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    sites = [ln for ln in src.splitlines()
+             if "_safe_get_quote_with_retry(" in ln
+             and "def _safe_get_quote_with_retry" not in ln]
+    assert len(sites) == 1, (
+        f"{len(sites)} direct vendor-quote call sites — every reader must go through "
+        f"_memoized_quote_response (one faucet at the VENDOR): {sites}"
+    )
