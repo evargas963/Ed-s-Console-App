@@ -417,6 +417,39 @@ def render_watch(w: dict) -> str:
     ])
 
 
+def freshness_violations(base: str = "http://127.0.0.1:8000") -> list[dict]:
+    """A rendered field whose SOURCE is correct but whose DATA has stopped moving (RC-91).
+
+    PROVENANCE IS NOT FRESHNESS, and conflating them is how this audit reported a clean bill while
+    the gamma panel served levels 90 MINUTES old: one declared source, no fallback, every faucet
+    check green — and the terrain loop had stopped at the background-logging window (16:30 ET).
+    Naming the right tap proves only that it was opened, never that anything is still coming out.
+
+    Returns [] when no console is reachable, and says so via the `unreachable` marker rather than
+    implying freshness nobody measured.
+    """
+    import urllib.request
+
+    def get(path: str):
+        try:
+            with urllib.request.urlopen(base + path, timeout=30) as r:
+                return json.loads(r.read().decode())
+        except Exception as e:
+            return {"__err__": f"{type(e).__name__}: {e}"}
+
+    probe = get("/api/spot?ticker=SPY")
+    if "__err__" in probe:
+        return [{"concept": "(console unreachable)", "detail": probe["__err__"][:70],
+                 "unreachable": True}]
+    out: list[dict] = []
+    d = get("/api/terrain/strikes?ticker=SPY")
+    if "__err__" not in d and d.get("levels_stale"):
+        out.append({"concept": "per_strike/levels",
+                    "detail": d.get("levels_stale_reason") or "levels are stale",
+                    "age_sec": d.get("levels_age_sec")})
+    return out
+
+
 def main(argv: list[str]) -> int:
     if "--watch" in argv:
         i = argv.index("--watch")

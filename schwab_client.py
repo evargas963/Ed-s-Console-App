@@ -138,9 +138,9 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
     tok = data.get("token")
     if isinstance(tok, dict):
         out.has_token_object = True
-        at = tok.get("access_token")
+        at = tok.get("access_token")   # external-key-ok: Schwab OAuth token payload
         out.has_access_token = isinstance(at, str) and len(at.strip()) > 0
-        rt = tok.get("refresh_token")
+        rt = tok.get("refresh_token")   # external-key-ok: Schwab OAuth token payload
         out.has_refresh_token = isinstance(rt, str) and len(rt.strip()) > 0
         out.has_expires_at = "expires_at" in tok
         sc = tok.get("scope")
@@ -150,7 +150,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
             out.scope_value = str(sc)
 
         now = int(time.time())
-        exp = tok.get("expires_at")
+        exp = tok.get("expires_at")   # external-key-ok: Schwab OAuth token payload
         if exp is not None:
             try:
                 exp_i = int(float(exp))

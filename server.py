@@ -10556,6 +10556,44 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         log.warning("flip drift log append failed: %s", e)
 
 
+#: How old the terrain snapshot may be before it must stop calling itself current. DERIVED from
+#: the loop's own cadence: TERRAIN_REFRESH_SEC=60 plus one full cycle's slack for fetch time, so a
+#: healthy loop never trips it and a stopped one trips within two cycles.
+TERRAIN_STALE_AFTER_SEC: float = 180.0
+
+
+def terrain_staleness(computed_ts_utc: float | None) -> dict:
+    """Whether the levels are current, and WHY NOT when they are not (RC-91).
+
+    MEASURED 2026-07-27 18:02 ET: /api/terrain computed_ts_utc did not advance across 90s against
+    a 60s cadence, the gamma panel served data 90 MINUTES old under a `terrain_live_cache` label,
+    and spot beside it was 3 seconds old. The terrain loop refreshes only while
+    _is_loggable_session() is true, which ends at LOGGER_BUFFER_MINS (16:30 ET) — 210 minutes
+    before the capture window closes. That function is the BACKGROUND LOGGING gate; using it to
+    decide whether the screen is current answered a different question with the same switch.
+
+    Stopping the loop after the post-market buffer may well be correct. Serving its last output
+    under a live label is not: staleness that is budget-justified gets LABELLED, staleness that is
+    not gets removed (the RC-78 rule, applied to the scorecard that day and never to terrain).
+    """
+    refreshing = _is_loggable_session()
+    if computed_ts_utc is None:
+        return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
+                "levels_stale_reason": "no terrain snapshot has been computed yet"}
+    age = round(time.time() - float(computed_ts_utc), 1)
+    stale = age > TERRAIN_STALE_AFTER_SEC
+    reason = ""
+    if stale:
+        reason = (f"levels are {age:.0f}s old; the terrain loop is not refreshing "
+                  f"(outside the background-logging window, which closes at "
+                  f"{LOGGER_BUFFER_MINS // 60:02d}:{LOGGER_BUFFER_MINS % 60:02d} ET)"
+                  if not refreshing else
+                  f"levels are {age:.0f}s old against a {TERRAIN_REFRESH_SEC:.0f}s cadence — the "
+                  f"loop is inside its window but not producing")
+    return {"levels_stale": stale, "levels_age_sec": age,
+            "levels_refresh_active": refreshing, "levels_stale_reason": reason}
+
+
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises.
 
@@ -11183,6 +11221,10 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     # net_gex_at_spot IS gamma_at_spot (schema v2) — reprice both or the NET GEX chip
     # would show loop-time gamma beside a live-spot regime (same defect class as above).
     out["net_gex_at_spot"] = fresh_gamma
+    # RC-91: the levels are cached and the spot is live, so the payload must say HOW OLD the
+    # levels are rather than let a live price imply live structure. Every consumer gets the age,
+    # a stale flag and the reason — absence of the flag is not permission to assume currency.
+    out.update(terrain_staleness(payload.get("computed_ts_utc")))
     return out
 
 
@@ -11308,6 +11350,12 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
         # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
         # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
         "today_age_sec": today_age_sec,
+        # RC-91: PROVENANCE IS NOT FRESHNESS. single_faucet_provenance passes here — one declared
+        # source, no fallback — while the panel served levels 90 MINUTES old under a
+        # `terrain_live_cache` label, because the terrain loop stops at the background-logging
+        # window (16:30 ET) and nothing said so. Naming the right source proves only that the
+        # right tap was opened, never that anything is still coming out of it.
+        **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None),
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
     })

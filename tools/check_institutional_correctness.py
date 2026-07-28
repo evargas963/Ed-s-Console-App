@@ -2099,6 +2099,66 @@ def check_root_cause_recurrence_declared() -> list[Violation]:
     return out
 
 
+def check_fix_crosswalks_to_violated_lock() -> list[Violation]:
+    """A CLOSED root cause must name the LOCK that failed to prevent it, and the tightening.
+
+    OPERATOR DIRECTIVE (2026-07-27): "i just don't want the fix. you then have to cross walk the
+    fix to the 5 why's of why you still had to fix the issue. this will then tell us the
+    violation. you can then tighten up the locks to prevent another similar violation."
+
+    WHAT WAS OBSERVED. Every defect fixed on 2026-07-27 occurred INSIDE a repo carrying 32
+    enforced checks, 7 pre-commit stages and 3 agent hooks — so each one is, by construction,
+    evidence that some lock was missing, inert, or measuring the wrong property. RC-91 is the
+    canonical case: single_faucet_provenance was green the entire time the panel served
+    90-minute-old data, because provenance is static and freshness was nobody's property. A fix
+    that closes without naming that gap fixes the instance and re-arms the class.
+
+    Rule: a NEWLY closed '| RC-' row must carry `VIOLATION: <lock or law that should have caught
+    this, or NO-LOCK-EXISTED>` and `TIGHTENED: <what now catches it>`. RECURRENCE: names the
+    failure class; VIOLATION names the CONTROL that let it through — different questions.
+
+    HOW VALIDATED: scoped to newly-CLOSED rows in the staged diff (same plumbing as
+    check_root_cause_recurrence_declared, validated there); returns [] outside a commit context;
+    existing history is never retro-flagged.
+    """
+    log_rel = "governance/root_cause_log.md"
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return []
+    if log_rel not in {s.strip().replace("\\", "/") for s in staged if s.strip()}:
+        return []
+    head = _git_output_lines(["show", f"HEAD:{log_rel}"]) or []
+    closed_at_head = {
+        ln.strip().strip("|").split("|")[0].strip()
+        for ln in head
+        if ln.startswith("| RC-") and len(ln.split("|")) > 2
+        and ln.strip().strip("|").split("|")[1].strip() == "CLOSED"
+    }
+    diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
+    out: list[Violation] = []
+    for ln in diff:
+        if not ln.startswith("+| RC-"):
+            continue
+        row = ln[1:]
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        if len(cells) < 7 or cells[1] != "CLOSED":
+            continue
+        rc_id = cells[0]
+        if rc_id in closed_at_head:
+            continue                    # already closed before this commit — not a new closure
+        up = row.upper()
+        if "VIOLATION:" in up and "TIGHTENED:" in up:
+            continue
+        out.append(Violation(
+            REPO / log_rel, 0,
+            f"{rc_id} closes a fix without the crosswalk. This repo carries dozens of locks, so "
+            f"every defect that needed fixing is proof a control was missing, inert, or measuring "
+            f"the wrong property. Add 'VIOLATION: <the lock/law that should have caught this, or "
+            f"NO-LOCK-EXISTED>' and 'TIGHTENED: <what now catches this class>' — the fix without "
+            f"the crosswalk re-arms the class (operator directive 2026-07-27)."))
+    return out
+
+
 #: RC-62 — domain constants that decide money-path behaviour must carry their derivation.
 #: Names that set a THRESHOLD/BOUND on market logic (not plumbing sizes like timeouts or buffers).
 _DOMAIN_CONST_RE = re.compile(
@@ -2456,7 +2516,8 @@ CHECKS = [
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
-    ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),  # RC-61: the log is a control, not an archive
+    ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),
+    ("fix_crosswalks_to_violated_lock", check_fix_crosswalks_to_violated_lock, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home

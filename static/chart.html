@@ -333,8 +333,26 @@ async function load() {
     rc.style.background = /SHORT/.test(reg) ? '#ff3355'
       : /LONG/.test(reg) ? '#00e07a'
       : /UNPROVEN/.test(reg) ? '#ffc400' : '#aab6c4';
-    document.getElementById('gsrc').textContent = (strikes && strikes.today_source)
-      ? `today: ${strikes.today_source}` : 'feed activates at the next console start';
+    // RC-91: the SOURCE alone is not the story. The panel read `today: terrain_live_cache` while
+    // serving levels 90 MINUTES old, because the terrain loop stops at the background-logging
+    // window (16:30 ET) and nothing on screen said so. Naming the right tap proves only that it
+    // was opened. Age and staleness now ride beside the source, in the operator's language.
+    const _gsrc = document.getElementById('gsrc');
+    if (!(strikes && strikes.today_source)) {
+      _gsrc.textContent = 'feed activates at the next console start';
+      _gsrc.style.color = '';
+    } else if (t && t.levels_stale) {
+      const mins = t.levels_age_sec != null ? Math.round(t.levels_age_sec / 60) : null;
+      _gsrc.textContent = `STALE — levels ${mins != null ? mins + ' min' : 'unknown age'} old, ` +
+        `not refreshing (source: ${strikes.today_source})`;
+      _gsrc.style.color = '#ffc400';
+      _gsrc.title = String(t.levels_stale_reason || '');
+    } else {
+      const age = t && t.levels_age_sec != null ? `${Math.round(t.levels_age_sec)}s` : 'live';
+      _gsrc.textContent = `today: ${strikes.today_source} · ${age} old`;
+      _gsrc.style.color = '';
+      _gsrc.title = '';
+    }
     // fallback tick: until /api/spot exists on the running server, the 15s
     // cycle's repriced spot still grows the forming candle
     const cs = currentSpot();   // RC-75: one client spot authority — never pick a faucet here
