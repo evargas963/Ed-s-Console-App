@@ -65,13 +65,28 @@ def _et_date(ts: float) -> str:
     return datetime.fromtimestamp(float(ts), tz=ET).strftime("%Y-%m-%d")
 
 
-def _load_closes(db: Path, ticker: str) -> tuple[np.ndarray, np.ndarray]:
+def _load_closes(db: Path, ticker: str, *, session: str = "rth") -> tuple[np.ndarray, np.ndarray]:
+    """RC-31: the session universe is an EXPLICIT parameter, sourced from the time_et authority.
+
+    This loader selected ALL of price_bars_1m with no time predicate, and price_bars_1m carries
+    extended hours BY DESIGN (~1,000 bars/session, RC-26) — the loader silently assumed
+    bars == RTH. Thirteen runners (TCN, HAR, Kalman, quantile, survival, cross-asset, …) import
+    it, so every bar-path study inherited overnight and extended-hours bars in its close series.
+    `session="rth"` keeps only RTH minutes on real trading days; `session="all"` must be ASKED
+    FOR, never assumed. An unknown universe refuses rather than guessing (fail-closed).
+    """
+    from time_et import is_tradable_session_ts_utc
+
+    if session not in ("rth", "all"):
+        raise ValueError(f"unknown session universe {session!r} — 'rth' or 'all', never implicit")
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = con.execute(
         "SELECT bar_end_ts_utc, close FROM price_bars_1m WHERE ticker=? ORDER BY bar_end_ts_utc",
         (ticker,),
     ).fetchall()
     con.close()
+    if session == "rth":
+        rows = [r for r in rows if is_tradable_session_ts_utc(float(r[0]))]
     ends = np.array([float(r[0]) for r in rows], dtype=np.float64)
     closes = np.array([float(r[1]) for r in rows], dtype=np.float64)
     return ends, closes
@@ -100,12 +115,24 @@ def _build_xy(
 
     logc = np.log(np.clip(closes, 1e-12, None))
     rets = np.diff(logc, prepend=logc[0])
+    # RC-31: an OVERNIGHT return must never enter a feature window. Even on session-filtered
+    # bars, np.diff at a day boundary (Friday 16:00 close -> Monday 09:31 close) fabricates one
+    # giant "one-minute" return spanning the whole gap. Zeroing it would fabricate calm instead;
+    # the honest treatment is to EXCLUDE any window that spans a session boundary.
+    bar_days = np.array([_et_date(t) for t in ends]) if len(ends) else np.array([])
     xs, ys, dates = [], [], []
     for ts, y in labeled:
         j = bisect.bisect_right(ends, ts) - 1
         if j < lookback:
             continue
-        xs.append(rets[j - lookback + 1 : j + 1])
+        lo = j - lookback + 1
+        # rets[i] is the diff from bar i-1 to bar i, so the window's returns REACH BACK to bar
+        # lo-1: a window starting at Monday's FIRST bar has same-day endpoints while its first
+        # return is the whole weekend gap. Compare from lo-1, not lo. (rets[0] is the prepend
+        # self-diff, exactly 0, so lo == 0 is safe.)
+        if bar_days[max(lo - 1, 0)] != bar_days[j]:
+            continue          # a return in this window spans a session boundary — it is fake
+        xs.append(rets[lo : j + 1])
         ys.append(CLASSES.index(y))
         dates.append(_et_date(ts))
     if not xs:
