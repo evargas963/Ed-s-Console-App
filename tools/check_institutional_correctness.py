@@ -227,8 +227,32 @@ _PATCH_BANNED_PHRASES = (
 )
 
 
-def _five_why_lock_violations(lines: list[str], log_path) -> list[Violation]:
-    """Pure row validator for the recursive 5-why lock (unit-testable)."""
+#: RC-106 close contract (operator, 2026-07-28): "the locks check words and proxies, not reach."
+#: Rows opened on/after this date close under a DECLARED-reach schema a checker can walk:
+#: FIXED: named victims; no pending vocabulary (PARTIAL status exists for honest incompleteness);
+#: VISIBLE_SURFACE: for DOM-id defects, with the id existing in static/ AND bound by a test;
+#: OUT-OF-SCOPE: only with a tracker. Free-prose blast radius is exactly what let three closes
+#: wear the END-TO-END label while Kalman, the visible #cv2 chip, and the RTH regex stayed broken.
+CLOSE_CONTRACT_CUTOVER = "2026-07-28"
+#: A CLOSED stamp may not defer its own proof — that is what PARTIAL is for. No escape marker.
+_CLOSE_PENDING_PHRASES = (
+    "pending", "proof owed", "awaiting", "closed for the code path", "code path only",
+)
+#: The DOM-id net matches hyphenated ids only (#cv2-kl-trust) — the hyphen requirement keeps
+#: hex colors and markdown anchors out.
+
+
+def _five_why_lock_violations(
+    lines: list[str], log_path,
+    static_corpus: str | None = None,
+    tests_corpus: str | None = None,
+) -> list[Violation]:
+    """Pure row validator for the recursive 5-why lock (unit-testable).
+
+    `static_corpus` / `tests_corpus` are the concatenated static/*.html and tests/**/*.py
+    contents used by the RC-106 close contract; None skips those existence checks (pure
+    unit tests can inject tiny corpora).
+    """
     import re as _re
 
     parsed: list[tuple[int, list[str]]] = []
@@ -273,6 +297,59 @@ def _five_why_lock_violations(lines: list[str], log_path) -> list[Violation]:
                 f"{rc_id}: CLOSED without an END-TO-END declaration. Closure requires the "
                 f"fix cell to state 'END-TO-END: <producer -> consumer scope>' proving the "
                 f"repair reached the root's full blast radius, not the symptom site."))
+        # ── RC-106 close contract: declared, checkable reach ─────────────────────────────
+        if status == "CLOSED" and opened >= CLOSE_CONTRACT_CUTOVER:
+            up_fix = fix.upper()
+            if "FIXED:" not in up_fix:
+                out.append(Violation(
+                    log_path, n,
+                    f"{rc_id}: CLOSED without 'FIXED: <named victims>'. The close contract "
+                    f"(RC-106) requires the repaired consumers to be ENUMERATED so coverage "
+                    f"is checkable — free prose is how three closes wore END-TO-END while "
+                    f"named victims stayed broken."))
+            # Use vs mention: a row that DESCRIBES the pending rule (in backticks) is not
+            # deferring proof — the same backtick convention every guard already uses.
+            low_fix_used = _re.sub(r"`[^`]*`", "", low_fix)
+            for phrase in _CLOSE_PENDING_PHRASES:
+                if phrase in low_fix_used:
+                    out.append(Violation(
+                        log_path, n,
+                        f"{rc_id}: CLOSED while the fix cell defers its own proof "
+                        f"({phrase!r}). A CLOSED stamp may not owe evidence — use status "
+                        f"PARTIAL until the proof lands (RC-106). No escape marker."))
+            dom_ids = sorted(set(_re.findall(
+                r"#[a-z][a-z0-9]*(?:-[a-z0-9]+)+",
+                f"{cells[4]} {why} {fix}".lower())))
+            if dom_ids:
+                if "VISIBLE_SURFACE:" not in up_fix:
+                    out.append(Violation(
+                        log_path, n,
+                        f"{rc_id}: names DOM id(s) {dom_ids} but declares no "
+                        f"'VISIBLE_SURFACE: #<id>'. A UI close must name the surface the "
+                        f"operator SEES so the checker (and the test) can bind it — the "
+                        f"hidden-chip close is the defect this contract exists for."))
+                for did in dom_ids:
+                    if static_corpus is not None and did[1:] not in static_corpus:
+                        out.append(Violation(
+                            log_path, n,
+                            f"{rc_id}: VISIBLE_SURFACE names {did} but no such id exists "
+                            f"in static/ — a surface that does not exist cannot have been "
+                            f"verified."))
+                    if tests_corpus is not None and did[1:] not in tests_corpus:
+                        out.append(Violation(
+                            log_path, n,
+                            f"{rc_id}: no test binds {did}. The close contract requires a "
+                            f"test that asserts the VISIBLE consumer, not a substring "
+                            f"anywhere in the file (RC-102's test passed while the visible "
+                            f"chip stayed blind)."))
+            if "OUT-OF-SCOPE:" in up_fix:
+                seg = fix[up_fix.index("OUT-OF-SCOPE:"):]
+                if "RC-" not in seg and "register" not in seg.lower():
+                    out.append(Violation(
+                        log_path, n,
+                        f"{rc_id}: OUT-OF-SCOPE without a tracker. Deferral is legal only "
+                        f"with an RC id or register entry — otherwise it is the banned "
+                        f"third state (flagged, not fixed, forgotten)."))
     return out
 
 
@@ -381,7 +458,13 @@ def check_five_why_recursive_lock() -> list[Violation]:
     if not log_path.exists():
         return [Violation(log_path, 0, "governance/root_cause_log.md is missing")]
     lines = log_path.read_text(encoding="utf-8").splitlines()
-    return _five_why_lock_violations(lines, log_path)
+    static_corpus = "".join(
+        p.read_text(encoding="utf-8", errors="ignore")
+        for p in sorted((REPO / "static").glob("*.html"))) if (REPO / "static").exists() else ""
+    tests_corpus = "".join(
+        p.read_text(encoding="utf-8", errors="ignore")
+        for p in sorted((REPO / "tests").rglob("*.py"))) if (REPO / "tests").exists() else ""
+    return _five_why_lock_violations(lines, log_path, static_corpus, tests_corpus)
 
 
 def check_root_cause_log() -> list[Violation]:
@@ -2241,7 +2324,12 @@ def check_price_bars_readers_name_their_session() -> list[Violation]:
                 continue
             if not re.search(r"FROM\s+price_bars_1m", text, re.I):
                 continue
-            if _PRICE_BARS_CAL_RE.search(text):
+            # RC-106 mention-loophole: an authority named in a COMMENT satisfied the check
+            # while the code stayed session-blind. Authorities must appear in CODE; the
+            # session-universe-ok marker is the one legitimate comment form and is checked
+            # against the raw text.
+            code_only = "\n".join(ln.split("#", 1)[0] for ln in text.splitlines())
+            if _PRICE_BARS_CAL_RE.search(code_only) or "session-universe-ok" in text:
                 continue
             out.append(Violation(
                 p, 0,

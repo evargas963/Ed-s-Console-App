@@ -147,3 +147,38 @@ def test_ed_live_spot_delegates_to_the_authority():
     assert "_fastLaneSpot" not in body, (
         "edLiveSpot reads the lane directly again — the second door RC-102 closed"
     )
+
+
+def test_visible_cv2_trust_chip_binds_levels_stale():
+    """RC-106 close contract, applied to RC-102's defect: the test must assert the VISIBLE
+    consumer, not a substring anywhere in index.html. The first RC-102 test passed while
+    #cv2-kl-trust stayed blind because the hidden terrain chip also contained the string."""
+    src = CONSOLE.read_text(encoding="utf-8")
+    i = src.find("el('cv2-kl-trust')")
+    assert i > 0, "the visible cv2 trust chip is no longer painted"
+    # The staleness read must live in the SAME painter scope: within the 800 chars leading
+    # up to the chip lookup, not merely somewhere in the file.
+    window = src[max(0, i - 800):i + 800]
+    window = re.sub(r"//.*$", "", window, flags=re.M)   # use vs mention
+    assert "levels_stale" in window, (
+        "#cv2-kl-trust is painted without reading t.levels_stale — the VISIBLE console "
+        "can claim trusted over frozen levels again (RC-102 FAKE_CLOSE class)"
+    )
+    assert "STALE" in window, "the stale branch no longer renders a STALE chip"
+
+
+def test_every_trust_chip_binds_levels_stale():
+    """v8 audit found ct-trust blind AFTER cv2-kl-trust was fixed — the class is 'every trust
+    chip', so the test ENUMERATES the class from the markup instead of naming survivors."""
+    src = CONSOLE.read_text(encoding="utf-8")
+    chips = sorted(set(re.findall(r'id="([a-z0-9-]*trust[a-z0-9-]*)"', src)))
+    assert chips, "no trust chips found — the markup moved and this test is guarding nothing"
+    for chip in chips:
+        i = src.find("el('" + chip + "')")
+        if i < 0:
+            i = src.rfind(chip)   # tv-trust binds through a var, not an el() literal
+        window = re.sub(r"//.*$", "", src[max(0, i - 900):i + 900], flags=re.M)
+        assert ("levels_stale" in window) or ("_lvStale" in window), (
+            f"#{chip} is painted without reading levels_stale — a trust chip that cannot "
+            f"say STALE claims trust over frozen levels (RC-102 class, third recurrence)"
+        )

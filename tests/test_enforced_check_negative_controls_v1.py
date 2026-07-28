@@ -224,3 +224,51 @@ def test_rc_log_row_schema_control(tmp_path, monkeypatch):
     )
     log.write_text(good + "\n", encoding="utf-8")
     assert M.check_rc_log_rows_keep_schema() == [], "a clean 7-cell log must pass"
+
+
+def _row(status, fix, why="a -> b -> c -> d -> ROOT: e", opened="2026-07-28"):
+    return f"| RC-950 | {status} | {opened} | 2026-07-28 | desc | {why} | {fix} |"
+
+
+def test_close_contract_controls():
+    """RC-106: each contract rule must fire on its shape and stay quiet on compliance."""
+    from tools.check_institutional_correctness import _five_why_lock_violations as _V
+    LOG = ROOT / "governance" / "root_cause_log.md"
+
+    def V(lines, _ignored, static_corpus, tests_corpus):
+        return _V(lines, LOG, static_corpus=static_corpus, tests_corpus=tests_corpus)
+    ok_fix = "END-TO-END: a -> b. FIXED: kalman, labels."
+    good = V([_row("CLOSED", ok_fix)], "log", static_corpus="", tests_corpus="")
+    assert good == [], f"a compliant close was flagged: {good}"
+    # 1. missing FIXED:
+    hits = V([_row("CLOSED", "END-TO-END: a -> b.")], "log", "", "")
+    assert any("FIXED:" in str(h) for h in hits), "missing FIXED: not flagged"
+    # 2. pending vocabulary on CLOSED
+    hits = V([_row("CLOSED", ok_fix + " DOM proof pending.")], "log", "", "")
+    assert any("PARTIAL" in str(h) for h in hits), "CLOSED+pending not flagged"
+    # 2b. use vs mention: DESCRIBING the rule in backticks is not deferring proof
+    assert V([_row("CLOSED", ok_fix + " bans `pending` vocabulary.")], "log", "", "") == []
+    # 3. PARTIAL may defer honestly — same text, no violation
+    assert V([_row("PARTIAL", ok_fix + " DOM proof pending.")], "log", "", "") == []
+    # 4. DOM id without VISIBLE_SURFACE
+    hits = V([_row("CLOSED", ok_fix + " repainted #cv2-kl-trust.")], "log",
+             "id=cv2-kl-trust", "cv2-kl-trust")
+    assert any("VISIBLE_SURFACE" in str(h) for h in hits), "unnamed surface not flagged"
+    # 5. declared surface but NO test binds the id
+    hits = V([_row("CLOSED", ok_fix + " VISIBLE_SURFACE: #cv2-kl-trust.")], "log",
+             "id=cv2-kl-trust", "")
+    assert any("no test binds" in str(h) for h in hits), "unbound surface not flagged"
+    # 6. declared surface that does not EXIST in static/
+    hits = V([_row("CLOSED", ok_fix + " VISIBLE_SURFACE: #cv2-kl-trust.")], "log",
+             "", "cv2-kl-trust")
+    assert any("no such id" in str(h) for h in hits), "phantom surface not flagged"
+    # 7. fully-declared UI close is clean
+    assert V([_row("CLOSED", ok_fix + " VISIBLE_SURFACE: #cv2-kl-trust.")], "log",
+             "id=cv2-kl-trust", "binds cv2-kl-trust") == []
+    # 8. OUT-OF-SCOPE needs a tracker
+    hits = V([_row("CLOSED", ok_fix + " OUT-OF-SCOPE: thresholds.")], "log", "", "")
+    assert any("tracker" in str(h) for h in hits), "untracked deferral not flagged"
+    assert V([_row("CLOSED", ok_fix + " OUT-OF-SCOPE: thresholds, tracked as RC-950.")],
+             "log", "", "") == []
+    # 9. pre-cutover rows keep the old contract (no retro-flagging)
+    assert V([_row("CLOSED", "END-TO-END: a -> b.", opened="2026-07-20")], "log", "", "") == []

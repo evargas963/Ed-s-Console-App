@@ -25,7 +25,7 @@ def load_prereg() -> dict[str, Any]:
     return json.loads(PREREG_PATH.read_text(encoding="utf-8"))
 
 
-def kalman_ll_trend(log_prices: np.ndarray, q: float, r: float) -> np.ndarray:
+def _kalman_ll_trend_one_day(log_prices: np.ndarray, q: float, r: float) -> np.ndarray:
     """Causal local-linear-trend Kalman; returns (T,3) = level, slope, innovation."""
     n = len(log_prices)
     out = np.zeros((n, 3), dtype=np.float64)
@@ -55,7 +55,7 @@ def kalman_ll_trend(log_prices: np.ndarray, q: float, r: float) -> np.ndarray:
 def session_safe_kalman(ends: np.ndarray, log_prices: np.ndarray, q: float, r: float) -> np.ndarray:
     """RC-31 (reopened, operator v7 audit): the FILTER must not carry state across a session gap.
 
-    kalman_ll_trend ran ONE continuous filter over the whole bar sequence, so even on
+    the old kalman_ll_trend ran ONE continuous filter over the whole bar sequence, so even on
     RTH-filtered bars the Monday-open innovation measured Friday-close -> Monday-open — the
     whole weekend entering as feature column 2 — and the state update smeared the gap into level
     and slope. Session-filtering the BARS was not enough; the filter itself was session-blind
@@ -73,7 +73,7 @@ def session_safe_kalman(ends: np.ndarray, log_prices: np.ndarray, q: float, r: f
         j = i
         while j < n and days[j] == days[i]:
             j += 1
-        out[i:j] = kalman_ll_trend(log_prices[i:j], q, r)
+        out[i:j] = _kalman_ll_trend_one_day(log_prices[i:j], q, r)
         out[i] = np.nan  # day-restart bar: its state is not an estimate
         i = j
     return out

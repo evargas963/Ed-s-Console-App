@@ -184,3 +184,6 @@ reports/stream_capture_status.json
 # ignored (it is a log). Gitignoring the artifacts was treating the symptom: it left a fresh
 # clone with NO coach data while a local leftover silently served the API.
 reports/scorecard_run.log
+
+# runtime measurement log (RC-54 producer) - grows every session, never a repo artifact
+reports/flip_drift_log.jsonl

@@ -145,6 +145,14 @@ def main(argv: list[str]) -> int:
     print("\nFENCED — in Wave A but protected by the same audit and by the operator")
     for f, exists in rep["fenced"].items():
         print(f"   {f}  present={exists}  (NOT deleted)")
+    if "--check" in argv:
+        # RC-106: "always exits 0 — not a lock." With --check this IS a lock: provably
+        # deletable dead code (no code, test or provenance referrer, not fenced) fails loud.
+        if rep["deletable_now"]:
+            print(f"\nCHECK FAIL: {len(rep['deletable_now'])} provably-dead file(s) above are "
+                  f"deletable NOW and still present. Delete them or show the referrer.")
+            return 2
+        print("\nCHECK PASS: no provably-deletable dead code.")
     return 0
 
 

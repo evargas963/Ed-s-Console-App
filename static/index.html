@@ -13432,7 +13432,23 @@ function edCheckRadarAlerts(rows) {
     T('ct-pin', n2(fnum(t.gamma_pin)));
     T('ct-maxpain', n2(fnum(t.max_pain)));
     T('ct-pwall', n2(fnum(t.put_wall)));
-    var trusted = (conf === 'TRUSTED'); var tr = el('ct-trust'); if (tr) { tr.textContent = conf ? (trusted ? 'trusted' : 'narrow') : '—'; tr.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn'); }
+    // RC-102 class (v8 audit): EVERY trust chip is fail-closed on levels_stale — this one
+    // (ct-trust) was the third chip found blind after tv-trust and cv2-kl-trust.
+    var _ctStale = !!t.levels_stale;
+    var trusted = (conf === 'TRUSTED') && !_ctStale;
+    var tr = el('ct-trust');
+    if (tr) {
+      if (_ctStale) {
+        var _ctAge = fnum(t.levels_age_sec);
+        tr.textContent = '⚠ STALE' + (_ctAge !== null ? ' ' + Math.round(_ctAge / 60) + 'm' : '');
+        tr.className = 'cv-badge cv-dn';
+        tr.title = String(t.levels_stale_reason || 'levels are not refreshing');
+      } else {
+        tr.textContent = conf ? (trusted ? 'trusted' : 'narrow') : '—';
+        tr.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
+        tr.title = '';
+      }
+    }
 
     T('ct-ccharm', n2(fnum(t.call_charm_wall)));
     T('ct-pcharm', n2(fnum(t.put_charm_wall)));

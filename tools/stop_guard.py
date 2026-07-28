@@ -96,6 +96,27 @@ def faucet_violations() -> list[dict]:
     return list(rep.get("faucet_violations", []))
 
 
+def close_contract_blockers() -> list[str]:
+    """RC-106 front end: the gate blocks the COMMIT; this blocks the TURN.
+
+    A CLOSED row written this turn that fails the close contract (missing FIXED:, pending
+    vocabulary, unbound VISIBLE_SURFACE) must be repaired before the turn may end — otherwise
+    the operator reads a green summary over a close the gate will reject at commit time.
+    Fail-closed: if the gate module itself cannot run, that is a loud block, not a pass.
+    """
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        root = str(_Path(__file__).resolve().parent.parent)
+        if root not in _sys.path:
+            _sys.path.insert(0, root)
+        from tools.check_institutional_correctness import check_five_why_recursive_lock
+        return [f"{v}"[:180] for v in check_five_why_recursive_lock()]
+    except Exception as e:  # noqa: BLE001 — a broken gate must scream, not wave through
+        return [f"close-contract check could not run ({type(e).__name__}: {e}) — "
+                f"fix the gate before ending the turn"]
+
+
 def main() -> int:
     if os.environ.get("ED_STOP_GUARD", "").strip().lower() in ("off", "0", "false"):
         return 0
@@ -110,8 +131,10 @@ def main() -> int:
     rows = unfinished_rows_opened_today()
     faucets = faucet_violations()
     stale = freshness_blockers()          # RC-94: stale-on-a-live-console ends no turn quietly
-    if not rows and not faucets and not stale:
+    contract = close_contract_blockers()  # RC-106: a CLOSED row must satisfy the close contract
+    if not rows and not faucets and not stale and not contract:
         return 0
+    rows = rows + [(c, "violates the RC-106 close contract") for c in contract]
     faucets = faucets + [
         {"concept": v["concept"], "undeclared": [v.get("detail", "stale")]} for v in stale
     ]
