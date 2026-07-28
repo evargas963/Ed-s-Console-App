@@ -106,4 +106,60 @@ def test_is_deterministic() -> None:
     chain, spot = _real_chain()
     a = compute_terrain("SPY", chain, spot).to_dict()
     b = compute_terrain("SPY", chain, spot).to_dict()
+    # RC-114: computed_ts_utc is the capture WALL CLOCK — nondeterministic BY DESIGN (RC-68:
+    # every consumer must render an age). Comparing it made this test pass or fail on timer
+    # resolution luck (proven failing at HEAD with no code change, same flake family as the
+    # date-frozen RC-109). Determinism is about the LEVELS, so the stamp is excluded.
+    a.pop("computed_ts_utc"), b.pop("computed_ts_utc")
     assert a == b
+
+
+# ── RC-113: the institutional sigma band (SpotGamma-on-Bloomberg standard) ───────────────────
+
+def test_implied_one_day_move_matches_the_named_formula() -> None:
+    """EM = S x sigma_ATM x sqrt(1/252). The chain here is hand-built ON PURPOSE — a formula
+    verification needs known inputs (the real-chain test below covers the live shape)."""
+    from terrain_engine import compute_implied_one_day_move
+    spot = 700.0
+    # institutional-synthetic-ok: formula verification REQUIRES known inputs — the exactness
+    # assertion below is meaningless on a live chain; the real-chain test covers the live shape.
+    chain = [
+        {"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0, "daysToExpiration": 1},
+        {"putCall": "PUT",  "strikePrice": 700.0, "volatility": 24.0, "daysToExpiration": 1},
+        # a farther expiry with wild IV must be IGNORED — front expiry only
+        {"putCall": "CALL", "strikePrice": 700.0, "volatility": 80.0, "daysToExpiration": 30},
+        # far-from-money same-expiry must lose to the ATM pair
+        {"putCall": "PUT",  "strikePrice": 650.0, "volatility": 99.0, "daysToExpiration": 1},
+    ]
+    em = compute_implied_one_day_move(chain, spot)
+    assert em is not None
+    sigma = (0.20 + 0.24) / 2.0
+    assert abs(em["points"] - spot * sigma * (1.0 / 252.0) ** 0.5) < 1e-4
+    assert em["iv_pct_atm"] == 22.0, "sigma must be the ATM call/put mean, Schwab percent /100"
+    assert em["dte_used"] == 1
+    assert "sqrt(1/252)" in em["method"], "the method label is part of the contract"
+
+
+def test_implied_move_fails_closed_without_usable_iv() -> None:
+    """No usable ATM IV -> None. A fabricated sigma is worse than no sigma."""
+    from terrain_engine import compute_implied_one_day_move
+    # institutional-synthetic-ok: fail-closed tests MUST feed malformed contracts on purpose.
+    assert compute_implied_one_day_move([], 700.0) is None
+    assert compute_implied_one_day_move(None, 700.0) is None
+    assert compute_implied_one_day_move(
+        [{"putCall": "CALL", "strikePrice": 700.0, "volatility": -5.0,
+          "daysToExpiration": 1}], 700.0) is None, "negative IV must not produce a band"
+    assert compute_implied_one_day_move(
+        [{"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0,
+          "daysToExpiration": 1}], None) is None
+
+
+def test_real_chain_carries_the_sigma_band() -> None:
+    chain, spot = _real_chain()
+    snap = compute_terrain("SPY", chain, spot)
+    em = snap.implied_1d_move
+    assert em is not None, "the real chain must yield a band (its ATM IV is present)"
+    assert em["points"] > 0
+    # a one-day sigma on SPY is points, not pennies and not tens of percent of spot
+    assert 0.0005 * spot < em["points"] < 0.15 * spot, em
+    assert "implied_1d_move" in snap.to_dict(), "the payload must carry the band to the chart"

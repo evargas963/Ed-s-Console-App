@@ -82,6 +82,12 @@ class TerrainSnapshot:
     #: (regime = its sign). Disambiguates walls that share a strike.
     net_gex_at_spot: float | None = None
 
+    #: RC-113: the institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
+    #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
+    #: one-sigma half-width; the client centers it on the live spot. The wall RANGE itself
+    #: is the put_wall↔call_wall corridor — already carried above, drawn client-side.
+    implied_1d_move: dict[str, Any] | None = None
+
     # provenance — never render a level without knowing where it came from
     contracts_used: int = 0
     strikes_used: int = 0
@@ -172,6 +178,57 @@ def _dte_of(ct: object) -> float:
     from numeric_contract import float_finite_or_none
     d = float_finite_or_none(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
     return d if d is not None else 999.0
+
+
+def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> dict | None:
+    """The institutional sigma band (RC-113): EM_1d = S x sigma_ATM x sqrt(1/252).
+
+    THE STANDARD, named: SpotGamma — whose levels product ships on Bloomberg — treats the
+    wall as a single strike, the RANGE as the put-wall-to-call-wall corridor, and overlays
+    the Implied 1-Day Move: a one-standard-deviation band (68.3 percent confidence). The
+    textbook EM uses front-expiry ATM implied volatility, annualized, scaled by
+    sqrt(1/252) for one trading day.
+
+    IV source: the nearest-expiry call+put pair closest to spot. Schwab `volatility` is
+    PERCENT, not a fraction (unproven-register row 50, PROVEN on 1,600 sampled contracts)
+    — divided by 100 here. Fails closed: no usable ATM IV means None, never a fabricated
+    band (a made-up sigma is worse than no sigma).
+
+    Returns {points, iv_pct_atm, dte_used, method} — `points` is the one-sigma HALF-width
+    in price points; the client centers it on the LIVE spot so the band can never disagree
+    with the price beside it (the RC-28/RC-77 one-spot discipline).
+    """
+    from numeric_contract import float_finite_or_none
+
+    if spot is None or spot <= 0 or not contracts:
+        return None
+    # nearest expiry present in the chain (weekends/junk sort far-dated via _dte_of)
+    front = min((_dte_of(c) for c in contracts if isinstance(c, dict)), default=None)
+    if front is None or front >= 999.0:
+        return None
+    ivs: dict[str, tuple[float, float]] = {}   # side -> (|strike-spot|, iv_frac)
+    for c in contracts:
+        if not isinstance(c, dict) or _dte_of(c) != front:
+            continue
+        strike = float_finite_or_none(c.get("strikePrice"))
+        iv_pct = float_finite_or_none(c.get("volatility"))
+        side = str(c.get("putCall") or "").upper()
+        if strike is None or iv_pct is None or iv_pct <= 0 or side not in ("CALL", "PUT"):
+            continue
+        d = abs(strike - float(spot))
+        if side not in ivs or d < ivs[side][0]:
+            ivs[side] = (d, iv_pct / 100.0)
+    if not ivs:
+        return None
+    sigma = sum(v[1] for v in ivs.values()) / len(ivs)   # ATM call/put mean (straddle IV)
+    em = float(spot) * sigma * (1.0 / 252.0) ** 0.5
+    return {
+        "points": round(em, 4),
+        "iv_pct_atm": round(sigma * 100.0, 4),
+        "dte_used": front,
+        "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); "
+                  "sigma = mean of nearest-expiry ATM call/put implied vol",
+    }
 
 
 def _per_strike_scopes(exposures: dict, contracts: list[dict], spot: float | None) -> dict:
@@ -281,6 +338,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         hvp=hvp,
         lvp=lvp,
         net_gex_at_spot=flip_diag.get("gamma_at_spot"),
+        implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
         max_pain=compute_max_pain(exposures),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,

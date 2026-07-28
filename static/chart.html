@@ -448,6 +448,9 @@ function draw() {
 
   zones = [];
   const T = terrain || {};
+  // RC-75 one client spot authority — hoisted here (RC-113): the sigma band and off-scale
+  // pinning need the frame's spot before the level pass; every later use reads this same const.
+  const spot = currentSpot();
   // Fail-closed lean: SIGN_UNPROVEN, UNAVAILABLE, or non-TRUSTED — never paint BUY/SELL advice
   const withholdLean = T.regime === 'SIGN_UNPROVEN' || T.regime === 'UNAVAILABLE'
     || T.confidence !== 'TRUSTED';
@@ -620,6 +623,50 @@ function draw() {
     }
   }
 
+  // ── RC-113: WALL RANGE + sigma band, to the named institutional standard ──────────────
+  // SpotGamma — whose levels product ships on Bloomberg — defines the wall as ONE strike
+  // and THE range as the corridor BETWEEN the put wall and the call wall (the dealer-
+  // hedging containment zone; their published hold rates: call wall 83%, put wall 89% of
+  // sessions). The sigma overlay is the Implied 1-Day Move: a one-standard-deviation band.
+  // Nothing here is invented client-side: the corridor is the two walls the server already
+  // certified, and the band half-width comes from the payload's ATM-IV computation.
+  if (T.call_wall != null && T.put_wall != null
+      && Number(T.call_wall) !== Number(T.put_wall)) {
+    const wLo = Math.min(Number(T.put_wall), Number(T.call_wall));
+    const wHi = Math.max(Number(T.put_wall), Number(T.call_wall));
+    if (wLo < hi && wHi > lo) {
+      const yA = y(Math.min(wHi, hi)), yB = y(Math.max(wLo, lo));
+      g.fillStyle = 'rgba(143,168,255,0.055)';
+      g.fillRect(PADL, yA, W - PADL - PADR, yB - yA);
+      g.fillStyle = 'rgba(143,168,255,0.9)'; g.font = '700 12px system-ui';
+      g.fillText(`WALL RANGE ${fmt(wLo)} ↔ ${fmt(wHi)}`, PADL + 8, Math.min(yB, H - PADB) - 8);
+      zones.push({ y0: yA, y1: yB, tipHtml:
+        `<b>WALL RANGE ${fmt(wLo)} ↔ ${fmt(wHi)}</b><br>` +
+        `The dealer-hedging containment corridor between the put wall and the call wall — ` +
+        `the institutional range definition (SpotGamma standard, as shipped on Bloomberg: ` +
+        `the wall is one strike; THE range is between the walls).` });
+    }
+  }
+  const _em = T.implied_1d_move;
+  if (_em && _em.points != null && spot != null && isFinite(Number(spot))) {
+    for (const pair of [[Number(spot) + _em.points, '+1σ EM'],
+                        [Number(spot) - _em.points, '−1σ EM']]) {
+      const v = pair[0], lab = pair[1];
+      const tip = `${lab} ${fmt(v)} — Implied 1-Day Move (68.3% one-sigma band centered on ` +
+                  `the live spot): ${_em.method}. ATM IV ${_em.iv_pct_atm}%.`;
+      if (v < lo || v > hi) {
+        offScale.push({ v, col: '#8fa8ff', text: `${lab} ${fmt(v)}`, tip });
+        continue;
+      }
+      const yy = y(v);
+      g.strokeStyle = '#8fa8ff'; g.lineWidth = 1.25; g.setLineDash([3, 4]);
+      g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke(); g.setLineDash([]);
+      g.fillStyle = '#8fa8ff'; g.font = '700 12px system-ui';
+      g.fillText(`${lab} ${fmt(v)}`, W - PADR - 170, yy - 4);
+      zones.push({ y0: yy - 6, y1: yy + 6, tipHtml: `<b>${tip}</b>` });
+    }
+  }
+
   // RC-110: everything collected as off-scale renders as a compact pinned row at the chart
   // edge it sits beyond — with its real price and a tooltip — so "present but out of window"
   // can never be confused with "absent".
@@ -706,7 +753,7 @@ function draw() {
   // last regular-session bar, so outside RTH the live spot can sit far from the
   // last close; the dashed line + session label make that gap self-explanatory.
   // Auto domain includes spot; under yLock clamp to the pane edge so the cue never vanishes.
-  const spot = currentSpot();   // RC-75: one client spot authority
+  // (`spot` is hoisted to the top of draw() — RC-113 — and read here unchanged.)
   // RC-81: every spot display repaints from THIS value in THIS frame. The meta bar used to be
   // written only by the 15s load() cycle, so it lagged the legend below it by up to a full cycle.
   const _mpx = document.getElementById('metapx');
