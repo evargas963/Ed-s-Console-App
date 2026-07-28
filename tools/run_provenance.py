@@ -33,6 +33,16 @@ def _git(*args: str) -> str | None:
     return (p.stdout or "").strip() or None
 
 
+def _relative_executable() -> str:
+    """The interpreter, expressed so the same venv reads the same on every machine (RC-101)."""
+    exe = Path(sys.executable).resolve()
+    repo = Path(__file__).resolve().parent.parent
+    try:
+        return exe.relative_to(repo).as_posix()      # e.g. ".venv/Scripts/python.exe"
+    except ValueError:
+        return exe.name                              # outside the repo: name only, no home path
+
+
 def build_run_provenance() -> dict[str, Any]:
     sha = _git("rev-parse", "HEAD")
     porcelain = _git("status", "--porcelain")
@@ -41,7 +51,14 @@ def build_run_provenance() -> dict[str, Any]:
         "git_commit": sha,
         "git_dirty": dirty,
         "python_version": sys.version.split()[0],
-        "python_executable": str(Path(sys.executable).resolve()),
+        # RC-101: REPO-RELATIVE, never absolute. An absolute interpreter path is operator-home
+        # data by construction, so every artifact carrying it was permanently rejected by the
+        # credential-leak hook — which is why the scorecard JSON ended up gitignored and a FRESH
+        # CLONE had no coach artifact at all, with only a local leftover serving the API.
+        # Provenance needs to record WHICH interpreter ran; "the repo venv" says that exactly, and
+        # says it identically on every machine. Outside the repo the basename still identifies it
+        # without leaking a home directory.
+        "python_executable": _relative_executable(),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 

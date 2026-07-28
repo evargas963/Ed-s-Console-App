@@ -1,0 +1,4 @@
+{"day": "2026-07-20", "coverage": 3, "trusted_n": 1054, "trusted_hit_pct": 52.1, "placebo_n": 1016, "placebo_hit_pct": 53.8}
+{"day": "2026-07-21", "coverage": 35, "trusted_n": 1055, "trusted_hit_pct": 52.0, "placebo_n": 1017, "placebo_hit_pct": 53.6}
+{"day": "2026-07-22", "coverage": 35, "trusted_n": 1057, "trusted_hit_pct": 52.1, "placebo_n": 1019, "placebo_hit_pct": 53.6}
+{"day": "2026-07-27", "coverage": 37, "trusted_n": 0, "trusted_hit_pct": null, "placebo_n": 0, "placebo_hit_pct": null, "ab_n": 0, "ab_hit_oi_pct": null, "ab_hit_vol_pct": null}

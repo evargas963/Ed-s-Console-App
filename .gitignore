@@ -179,10 +179,8 @@ reports/locks_violation_monitor_prev_v1.json
 reports/stream_raw_sample_*.json
 reports/stream_capture_status.json
 
-# RC-89 pattern (again): scorecard artifacts are GENERATED each run, embed the absolute repo
-# path, and carry numeric findings with no reproduce command - they trip credential-leak and
-# measured_claims_cite_evidence on every commit. Regenerate with tools/run_terrain_scorecard.bat.
-reports/terrain_backtest_latest.json
-reports/terrain_backtest_latest.md
-reports/terrain_scorecard_history.jsonl
+# RC-101: the scorecard artifacts are COMMITTED again — run_provenance now records the
+# interpreter repo-relatively, so the artifacts carry no home paths. Only the run log stays
+# ignored (it is a log). Gitignoring the artifacts was treating the symptom: it left a fresh
+# clone with NO coach data while a local leftover silently served the API.
 reports/scorecard_run.log

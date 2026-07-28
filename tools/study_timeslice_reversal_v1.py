@@ -27,6 +27,7 @@ from statistics import median
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from time_et import is_trading_day_et  # RC-58: the one calendar authority
 from tools.terrain_backtest_report_v1 import (  # noqa: E402
     DB,
     SENTINELS,
@@ -49,6 +50,8 @@ def _series(con: sqlite3.Connection) -> dict:
         "ORDER BY ticker, bar_start_ts_utc")
     for tk, ts, o, h, lo, c in cur:
         day, mins = _et_day_and_min(ts)
+        if not is_trading_day_et(day):
+            continue          # RC-58: calendar gate — minute windows admit weekend bars
         if not (9 * 60 + 30 <= mins <= 15 * 60 + 59):
             continue
         d = out[tk].setdefault(day, {"open": o, "hi": h, "lo": lo, "at": {}})

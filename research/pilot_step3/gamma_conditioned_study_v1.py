@@ -130,9 +130,15 @@ def latest_gamma_at(rows: list[tuple[float, float]], ts: float) -> float | None:
 def session_gamma_medians(
     rows: list[tuple[float, float]], session_of: Any
 ) -> dict[str, float]:
+    from time_et import is_trading_day_et  # RC-58: the one calendar authority
+
     by_day: dict[str, list[float]] = {}
     for ts, g in rows:
-        by_day.setdefault(session_of(ts), []).append(g)
+        day = session_of(ts)
+        if not is_trading_day_et(day):
+            continue      # RC-58: greeks_recomputed_v1 holds 22 of 106 non-trading days
+                          # (20.8 percent); a frozen day's median gamma is an artifact
+        by_day.setdefault(day, []).append(g)
     out: dict[str, float] = {}
     for day, vals in by_day.items():
         s = sorted(vals)

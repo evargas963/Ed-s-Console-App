@@ -35,6 +35,7 @@ from statistics import quantiles
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from time_et import is_trading_day_et  # RC-58: the one calendar authority
 from tools.terrain_backtest_report_v1 import (  # noqa: E402
     DB,
     SENTINELS,
@@ -58,6 +59,9 @@ def _series(con: sqlite3.Connection) -> dict:
         "ORDER BY ticker, bar_start_ts_utc")
     for tk, ts, o, h, lo, c in cur:
         day, mins = _et_day_and_min(ts)
+        if not is_trading_day_et(day):
+            continue          # RC-58: minute windows alone admit Saturday bars — frozen
+                              # ranges bias every response stat deterministically
         # Include the 16:00 ET bar (mins==960) so response is 15:30→16:00, not 15:59.
         if not (9 * 60 + 30 <= mins <= 16 * 60):
             continue

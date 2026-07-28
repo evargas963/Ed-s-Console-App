@@ -122,7 +122,8 @@ def morning_gamma_by_session(
     gamma_rows: list[tuple[float, float]]
 ) -> dict[str, float]:
     """First trusted gamma inside 09:30-10:15 ET per session."""
-    from time_et import RTH_START_MINS, et_date_str_from_ts_utc, et_minute_total_from_ts_utc
+    from time_et import (RTH_START_MINS, et_date_str_from_ts_utc,
+                         et_minute_total_from_ts_utc, is_trading_day_et)  # RC-58
 
     out: dict[str, float] = {}
     for ts, g in gamma_rows:                       # ascending ts
@@ -130,6 +131,9 @@ def morning_gamma_by_session(
         if not (0 <= mins <= MORNING_WINDOW_MINS):
             continue
         day = et_date_str_from_ts_utc(ts)
+        if not is_trading_day_et(day):
+            continue          # RC-58: the intersection with gated pnls happened to filter
+                              # weekends out; the loader itself must not rely on that
         if day not in out:
             out[day] = g
     return out

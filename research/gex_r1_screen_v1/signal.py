@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from time_et import ET
+from time_et import ET, is_trading_day_et  # RC-58: the one calendar authority
 
 
 @dataclass(frozen=True)
@@ -120,6 +120,9 @@ def load_morning_signals(
             if mins < start_mins or mins > end_mins:
                 continue
             day = _et_date(ts)
+            if not is_trading_day_et(day):
+                continue      # RC-58: minute windows admit weekend/holiday snapshots; a
+                              # market-closed morning is frozen data, not a signal
             if day in seen:
                 continue
             try:
