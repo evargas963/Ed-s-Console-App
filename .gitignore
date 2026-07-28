@@ -178,3 +178,11 @@ reports/locks_violation_monitor_v1.json
 reports/locks_violation_monitor_prev_v1.json
 reports/stream_raw_sample_*.json
 reports/stream_capture_status.json
+
+# RC-89 pattern (again): scorecard artifacts are GENERATED each run, embed the absolute repo
+# path, and carry numeric findings with no reproduce command - they trip credential-leak and
+# measured_claims_cite_evidence on every commit. Regenerate with tools/run_terrain_scorecard.bat.
+reports/terrain_backtest_latest.json
+reports/terrain_backtest_latest.md
+reports/terrain_scorecard_history.jsonl
+reports/scorecard_run.log
