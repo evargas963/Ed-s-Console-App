@@ -301,6 +301,40 @@ def _safe_get_quote_with_retry(client, ticker: str, *, attempt_hook=None):
     )
 
 
+#: AUDIT-QUOTE-MEMO-V1 (operator directive 2026-07-28, RC-112): the terrain poll and the fast
+#: lane each called Schwab independently for the SAME ticker — a double vendor fetch per tick,
+#: and display could reprice on a quote math never saw. ONE short-TTL memo now sits under BOTH
+#: paths: the vendor is read once and display + math fan out from that single read. TTL 1.0s is
+#: longer than any same-tick fan-out and far shorter than every consumer cadence, so no reader
+#: sees more staleness than the fast lane already tolerated.
+QUOTE_MEMO_TTL_SEC: float = 1.0
+_quote_memo: dict[str, tuple[float, object]] = {}
+_quote_memo_lock = threading.Lock()
+
+
+def _memoized_quote_response(ticker: str, *, client=None, attempt_hook=None):
+    """ONE Schwab quote read per ticker per TTL, shared by the fast lane AND resolve_spot.
+
+    Only a 200 response is memoized — a failure is never cached (fail-loud: the next caller
+    goes back to the vendor). Consumers treat the response as READ-ONLY; .json() re-parses
+    the already-buffered body, so cross-thread sharing is safe. No single-flight on purpose:
+    a same-instant stampede costs at most one duplicate call, and the chain-gate style
+    event plumbing is not worth that margin here.
+    """
+    tk = (ticker or "").upper().strip()
+    now = time.monotonic()
+    with _quote_memo_lock:
+        hit = _quote_memo.get(tk)
+        if hit is not None and (now - hit[0]) < QUOTE_MEMO_TTL_SEC:
+            return hit[1]
+    resp = _safe_get_quote_with_retry(
+        client if client is not None else get_client(), tk, attempt_hook=attempt_hook)
+    if resp is not None and getattr(resp, "status_code", None) == 200:
+        with _quote_memo_lock:
+            _quote_memo[tk] = (time.monotonic(), resp)
+    return resp
+
+
 # ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — serialize Schwab chain fetches ──
 # Root cause (TIER_C_RECOMPUTE_LATENCY_V1 stage-split sample 2026-07-06): three
 # concurrent Tier C recomputes stretch safe_get_chain from ~1-3s solo to 10-22s,
@@ -524,7 +558,9 @@ SPOT_CLOSE_SOURCES = frozenset({SPOT_SOURCE_REGULAR_CLOSE, SPOT_SOURCE_CHAIN})
 def _spot_from_quote(ticker: str) -> tuple[float | None, float | None]:
     """Live Schwab quote leg of the spot authority. Returns (spot, trade_time)."""
     try:
-        q_resp = safe_get_quote(get_client(), ticker)
+        # RC-112: through the shared memo — math reads the SAME vendor quote the fast lane
+        # serves (and gains its token-retry semantics), never a second independent fetch.
+        q_resp = _memoized_quote_response(ticker)
     except Exception as e:
         log.debug("resolve_spot quote leg failed for %s: %s", ticker, e, exc_info=True)
         return None, None
@@ -3065,7 +3101,9 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         quote_attempts += 1
 
     t_quote0 = time.perf_counter()
-    q_resp = _safe_get_quote_with_retry(client, tkr, attempt_hook=_attempt_hook)
+    # RC-112: the fast lane reads through the same memo as resolve_spot — one vendor call
+    # serves both inside the TTL.
+    q_resp = _memoized_quote_response(tkr, client=client, attempt_hook=_attempt_hook)
     t_quote1 = time.perf_counter()
     if q_resp is None or q_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Quote fetch failed")
@@ -10562,6 +10600,40 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
 TERRAIN_STALE_AFTER_SEC: float = 180.0
 
 
+#: RC-108: Schwab refresh tokens die at 7 days, hard. The 2026-07-28 open went fully dark
+#: because the expiry sat in schwab_token.json for a week with no forward warning — the system
+#: only screamed AFTER the data was lost. Warn from day 5, red from day 6.
+_SCHWAB_TOKEN_WARN_DAYS = 5.0
+_SCHWAB_TOKEN_RED_DAYS = 6.0
+
+
+def schwab_token_countdown(creation_ts: float | None) -> dict:
+    """Pure urgency computation from the token file's creation_timestamp (unit-tested)."""
+    if creation_ts is None:
+        return {"schwab_token_age_days": None, "schwab_token_urgency": "unknown",
+                "schwab_token_note": "token file unreadable — collection may be dead"}
+    age_days = round((time.time() - float(creation_ts)) / 86400.0, 2)
+    if age_days >= _SCHWAB_TOKEN_RED_DAYS:
+        urgency, note = "red", (f"Schwab token is {age_days:.1f} days old (7-day hard limit) — "
+                                f"re-auth NOW: python reauth_schwab.py --manual")
+    elif age_days >= _SCHWAB_TOKEN_WARN_DAYS:
+        urgency, note = "warn", (f"Schwab token is {age_days:.1f} days old — re-auth before "
+                                 f"day 7 kills collection: python reauth_schwab.py --manual")
+    else:
+        urgency, note = "ok", ""
+    return {"schwab_token_age_days": age_days, "schwab_token_urgency": urgency,
+            "schwab_token_note": note}
+
+
+def _schwab_token_creation_ts() -> float | None:
+    """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
+    try:
+        raw = json.loads((Path(APP_DIR) / "schwab_token.json").read_text(encoding="utf-8"))
+        return float(raw["creation_timestamp"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def terrain_staleness(computed_ts_utc: float | None) -> dict:
     """Whether the levels are current, and WHY NOT when they are not (RC-91).
 
@@ -10577,9 +10649,10 @@ def terrain_staleness(computed_ts_utc: float | None) -> dict:
     not gets removed (the RC-78 rule, applied to the scorecard that day and never to terrain).
     """
     refreshing = _is_loggable_session()
+    token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
     if computed_ts_utc is None:
         return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
-                "levels_stale_reason": "no terrain snapshot has been computed yet"}
+                "levels_stale_reason": "no terrain snapshot has been computed yet", **token}
     age = round(time.time() - float(computed_ts_utc), 1)
     stale = age > TERRAIN_STALE_AFTER_SEC
     reason = ""
@@ -10591,7 +10664,7 @@ def terrain_staleness(computed_ts_utc: float | None) -> dict:
                   f"levels are {age:.0f}s old against a {TERRAIN_REFRESH_SEC:.0f}s cadence — the "
                   f"loop is inside its window but not producing")
     return {"levels_stale": stale, "levels_age_sec": age,
-            "levels_refresh_active": refreshing, "levels_stale_reason": reason}
+            "levels_refresh_active": refreshing, "levels_stale_reason": reason, **token}
 
 
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:

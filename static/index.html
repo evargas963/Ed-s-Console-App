@@ -3499,7 +3499,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
         <div class="card-body">
           <div class="metric-row">
             <span class="metric-label">Spot</span>
-            <span class="metric-value" id="sb-spot">—</span>
+            <span class="metric-value" id="sb-spot">—</span><span class="cv-badge" id="sb-token-warn" style="display:none" title=""></span>
           </div>
           <div class="metric-row">
             <span class="metric-label">Bid / Ask</span>
@@ -12064,6 +12064,25 @@ function edPaintNetGex(d) {
   }
 }
 
+/* RC-108: the 2026-07-28 open went dark because the Schwab token's 7-day death was knowable
+   for a week and nothing counted it down. ONE writer, fed by the terrain payload's
+   schwab_token_* fields (server computes urgency — single authority); called from every
+   site that receives a fresh /api/terrain payload. Hidden while ok — absence of warning
+   IS the ok state, never a fabricated 'ok' badge. */
+function edPaintTokenWarn(d) {
+  var el = document.getElementById('sb-token-warn');
+  if (!el || !d || d.schwab_token_urgency === undefined) return;
+  var u = d.schwab_token_urgency;
+  if (u === 'ok') { el.style.display = 'none'; el.textContent = ''; el.title = ''; return; }
+  el.style.display = '';
+  el.className = 'cv-badge ' + (u === 'warn' ? 'cv-wn' : 'cv-dn');
+  el.textContent = (u === 'red' ? '⚠ SCHWAB RE-AUTH NOW' :
+                    u === 'warn' ? '⚠ Schwab re-auth soon (' +
+                      (d.schwab_token_age_days != null ? d.schwab_token_age_days.toFixed(1) : '?')
+                      + 'd)' : '⚠ Schwab token state unknown');
+  el.title = String(d.schwab_token_note || '');
+}
+
 async function edLoadTerrain() {
   const tk = (typeof activeTicker === 'string' && activeTicker) ? activeTicker : 'SPY';
   let d;
@@ -12086,6 +12105,7 @@ async function edLoadTerrain() {
   const liveSpot = consoleSpot(d);   // RC-77: one console spot authority
   if (liveSpot != null) d.spot = liveSpot;
   edLastTerrain = d;
+  edPaintTokenWarn(d);   // RC-108: token countdown rides every fresh terrain payload
 
   set('tv-sym', d.ticker || tk);
   set('tv-px', liveSpot != null ? liveSpot.toFixed(2) : '—');   // RC-77: resolved above
@@ -13046,6 +13066,7 @@ function edCheckRadarAlerts(rows) {
     // RC-102 (reopened, v7 audit): the FIRST staleness wiring only reached the hidden
     // #terrain-view chip — the VISIBLE console said "trusted" over frozen levels. Same law as
     // tv-trust: stale levels can never render as trusted, and the chip says WHY.
+    edPaintTokenWarn(t);   // RC-108: this paint path also receives fresh terrain payloads
     var _cvStale = !!t.levels_stale;
     var trusted = (fstr(t.confidence) === 'TRUSTED') && !_cvStale;
     var trustEl = el('cv2-kl-trust');

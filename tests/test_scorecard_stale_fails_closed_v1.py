@@ -27,9 +27,31 @@ def _age(s: str | None) -> int | None:
 
 
 def test_weekend_does_not_age_a_scorecard():
-    """Friday's run is still the latest run on Monday. Counting hours would call it 3 days old."""
-    assert _age("2026-07-24") == 1, "Friday -> Monday must be ONE trading day"
-    assert _age("2026-07-22") == 3, "Wednesday -> Monday must be THREE trading days"
+    """Friday's run is still the latest run on Monday — a weekend adds ZERO trading days.
+
+    REPAIRED 2026-07-28: the first version hard-coded 2026-07-24 and asserted == 1, which was
+    only true ON Monday 07-27 — a date-frozen test rots one day later (it failed Tuesday at
+    HEAD, proven by swap-test). The invariant is calendar-relative: the age of the most recent
+    Friday equals the count of trading days after it, and the Saturday/Sunday between never
+    add to it. Computed against the SAME trading-day authority the function uses, over a
+    window that always contains a weekend."""
+    import datetime
+    from time_et import is_trading_day_et
+    today = datetime.datetime.now(server.ET_ZONE).date() if hasattr(server, "ET_ZONE") else (
+        datetime.datetime.now(datetime.timezone.utc).astimezone(
+            __import__("zoneinfo").ZoneInfo("America/New_York")).date())
+    # walk back to the most recent Friday strictly before today
+    d = today - datetime.timedelta(days=1)
+    while d.weekday() != 4:
+        d -= datetime.timedelta(days=1)
+    expected = sum(1 for k in range(1, (today - d).days + 1)
+                   if is_trading_day_et(d + datetime.timedelta(days=k)))
+    got = _age(d.isoformat())
+    assert got == expected, (
+        f"Friday {d} -> today {today}: expected {expected} trading day(s), got {got} — "
+        f"the weekend between them must add nothing"
+    )
+    assert (today - d).days > expected, "the window must actually contain non-trading days"
 
 
 def test_unusable_stamps_are_never_fresh():
@@ -66,4 +88,48 @@ def test_client_refuses_a_stale_scorecard_and_states_the_reason():
     )
     assert "scorecardStale" in src and "stale_reason" in src, (
         "staleness is not surfaced, so the coach silently goes quiet with no explanation"
+    )
+
+
+# ── RC-108: Schwab token death is calendar-predictable; the console must warn BEFORE it ──────
+
+def test_schwab_token_countdown_urgency_tiers():
+    """7-day hard limit: quiet before day 5, warn at 5, red at 6, honest unknown on no file."""
+    import time
+    now = time.time()
+    ok = server.schwab_token_countdown(now - 2 * 86400)
+    assert ok["schwab_token_urgency"] == "ok" and ok["schwab_token_note"] == ""
+    warn = server.schwab_token_countdown(now - 5.5 * 86400)
+    assert warn["schwab_token_urgency"] == "warn"
+    assert "reauth_schwab.py" in warn["schwab_token_note"], "the warning must carry the remedy"
+    red = server.schwab_token_countdown(now - 6.5 * 86400)
+    assert red["schwab_token_urgency"] == "red"
+    assert "reauth_schwab.py" in red["schwab_token_note"]
+    unknown = server.schwab_token_countdown(None)
+    assert unknown["schwab_token_urgency"] == "unknown"
+    assert unknown["schwab_token_age_days"] is None, "an unreadable file must never fake an age"
+
+
+def test_terrain_staleness_carries_the_token_countdown():
+    """The countdown rides the SAME payload the levels ride — one faucet, every terrain reply,
+    including the no-snapshot stub (which is exactly the state a dead token produces)."""
+    stub = server.terrain_staleness(None)
+    assert "schwab_token_urgency" in stub and "schwab_token_note" in stub
+    import time
+    live = server.terrain_staleness(time.time())
+    assert "schwab_token_urgency" in live
+
+
+def test_visible_token_chip_binds_the_urgency_field():
+    """Surface-bound (RC-106 contract): #sb-token-warn must be painted FROM schwab_token_urgency
+    by one writer, and both terrain receive sites must call that writer."""
+    import re
+    src = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'id="sb-token-warn"' in src, "the visible chip markup is gone"
+    i = src.find("function edPaintTokenWarn")
+    assert i > 0, "the one token-chip writer is gone"
+    body = re.sub(r"//.*$", "", src[i:i + 1600], flags=re.M)
+    assert "sb-token-warn" in body and "schwab_token_urgency" in body
+    assert src.count("edPaintTokenWarn(") >= 3, (
+        "both terrain receive sites must feed the chip (definition + 2 call sites)"
     )

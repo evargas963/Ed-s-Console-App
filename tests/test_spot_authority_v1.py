@@ -15,6 +15,8 @@ here because both actually happened:
 
 from __future__ import annotations
 
+import pytest
+
 import server
 
 
@@ -85,6 +87,17 @@ class _FakeResp:
         return self._payload
 
 
+@pytest.fixture(autouse=True)
+def _cold_quote_memo():
+    """RC-112: the vendor memo is process state; every test starts cold so a stub cached by
+    one test can never satisfy (or poison) the next within the 1s TTL."""
+    with server._quote_memo_lock:
+        server._quote_memo.clear()
+    yield
+    with server._quote_memo_lock:
+        server._quote_memo.clear()
+
+
 def test_spot_from_quote_actually_returns_the_quote_price(monkeypatch) -> None:
     """THE RC-15 REGRESSION TEST.
 
@@ -96,7 +109,7 @@ def test_spot_from_quote_actually_returns_the_quote_price(monkeypatch) -> None:
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(
         server, "safe_get_quote",
-        lambda _client, tk: _FakeResp({tk: {"quote": {"lastPrice": 742.49,
+        lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 742.49,
                                                       "tradeTime": 1_784_491_628_000}}}),
     )
     spot, trade_time = server._spot_from_quote("SPY")
@@ -109,7 +122,7 @@ def test_resolve_spot_prefers_the_quote_over_the_stored_snapshot(monkeypatch) ->
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(
         server, "safe_get_quote",
-        lambda _client, tk: _FakeResp({tk: {"quote": {"lastPrice": 999.99}}}),
+        lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 999.99}}}),
     )
     monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
     spot, source, _ts = server.resolve_spot("SPY")
@@ -121,7 +134,7 @@ def test_resolve_spot_falls_through_when_the_quote_is_unusable(monkeypatch) -> N
     """A dead quote leg must degrade to a LOWER-precedence source, still labelled."""
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _client, tk: _FakeResp({tk: {"quote": {}}}))
+                        lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {}}}))
     monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
     spot, source, _ts = server.resolve_spot("SPY")
     assert spot == 111.11
@@ -139,7 +152,7 @@ def test_chain_underlying_is_never_preferred_over_a_stored_trade(monkeypatch) ->
     """
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk: _FakeResp({tk: {"quote": {}}}))       # no live trade
+                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {}}}))       # no live trade
     monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (742.4861, 0.0))
 
     spot, source, _ts = server.resolve_spot("SPY", chain_json={"underlying": {"last": 743.29}})
@@ -152,7 +165,7 @@ def test_chain_close_is_used_last_and_flagged_as_a_close(monkeypatch) -> None:
     """When nothing else exists the close may be shown, but never unlabelled."""
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk: _FakeResp({tk: {"quote": {}}}))
+                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {}}}))
     monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (None, None))
 
     spot, source, _ts = server.resolve_spot("SPY", chain_json={"underlying": {"last": 743.29}})
@@ -173,7 +186,7 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
     """
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
+                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
 
     cached = {
         "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
@@ -214,7 +227,7 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     """
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
+                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
     monkeypatch.setitem(server._terrain_cache, "SPY", {
         "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
         "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
@@ -326,3 +339,53 @@ def test_server_queries_actually_carry_the_timeframe_predicate():
             marker + " orders by ts_utc without naming timeframe — that plan degrades to a "
             "full read of every row for the ticker"
         )
+
+
+# ── RC-112 / AUDIT-QUOTE-MEMO-V1: one vendor read serves display AND math ───────────────────
+
+class _StubQuoteResp:
+    status_code = 200
+    def json(self):
+        return {"SPY": {"quote": {"lastPrice": 700.25, "tradeTime": 1785250000000}}}
+
+
+def test_quote_memo_one_vendor_call_serves_both_paths(monkeypatch):
+    """The OPEN_ITEMS acceptance verbatim: one vendor call serves both paths inside the TTL."""
+    import server as S
+    calls = {"n": 0}
+    def fake(client, tk, attempt_hook=None):
+        calls["n"] += 1
+        return _StubQuoteResp()
+    monkeypatch.setattr(S, "_safe_get_quote_with_retry", fake)
+    monkeypatch.setattr(S, "get_client", lambda force_refresh=False: object())
+    with S._quote_memo_lock:
+        S._quote_memo.clear()
+    S._memoized_quote_response("SPY")          # the fast lane's read
+    spot, ts = S._spot_from_quote("SPY")       # the math authority's read
+    assert calls["n"] == 1, "two vendor calls inside the TTL — the memo is not shared"
+    assert spot == 700.25, "the shared read must still parse to the authority's spot"
+    # Expiry: age the entry past the TTL and the vendor must be consulted again.
+    with S._quote_memo_lock:
+        k, (t, r) = next(iter(S._quote_memo.items()))
+        S._quote_memo[k] = (t - S.QUOTE_MEMO_TTL_SEC - 0.01, r)
+    S._memoized_quote_response("SPY")
+    assert calls["n"] == 2, "an expired memo entry was served as fresh"
+
+
+def test_quote_memo_never_caches_a_failure(monkeypatch):
+    """A vendor failure must NOT be memoized — the next caller goes back to the vendor."""
+    import server as S
+    calls = {"n": 0}
+    class _Bad:
+        status_code = 502
+        def json(self): return {}
+    def fake(client, tk, attempt_hook=None):
+        calls["n"] += 1
+        return _Bad()
+    monkeypatch.setattr(S, "_safe_get_quote_with_retry", fake)
+    monkeypatch.setattr(S, "get_client", lambda force_refresh=False: object())
+    with S._quote_memo_lock:
+        S._quote_memo.clear()
+    S._memoized_quote_response("SPY")
+    S._memoized_quote_response("SPY")
+    assert calls["n"] == 2, "a FAILED response was cached — failures must stay fail-loud"

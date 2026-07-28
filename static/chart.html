@@ -471,13 +471,23 @@ function draw() {
     if (med > 0) half = med / 2;
   }
   const wallLabelYs = [];
+  // RC-110: a level that exists but sits beyond the day's auto-scaled window must DEGRADE to
+  // an edge marker, never vanish — invisible walls read as "my walls are missing"
+  // (operator 2026-07-28: call wall 750 / flip 746.5 against a 734–741 traded range).
+  const offScale = [];
   const band = (level, kind) => {
     if (level == null) return;
     const sell = kind === 'call';
+    const col = kind === 'both' ? '#ffc400' : sell ? '#ff3355' : '#00e07a';
+    const name = kind === 'both' ? 'GAMMA WALL' : sell ? 'CALL WALL' : 'PUT WALL';
+    if (level < lo || level > hi) {
+      offScale.push({ v: level, col, text: name + ' ' + fmt(level),
+        tip: name + ' ' + fmt(level) + ' — beyond today\'s traded range; the price axis fits the day\'s bars.' });
+      return;
+    }
     // RC-86: no strike grid -> no band. A line, not an invented width.
     const yTop = half == null ? y(level) : y(level + half);
     const yBot = half == null ? y(level) : y(level - half);
-    const col = kind === 'both' ? '#ffc400' : sell ? '#ff3355' : '#00e07a';
     if (half != null) {
       g.fillStyle = kind === 'both' ? 'rgba(255,196,0,0.20)'
         : sell ? 'rgba(255,51,85,0.20)' : 'rgba(0,224,122,0.20)';
@@ -496,7 +506,6 @@ function draw() {
     // than a barrier. Calling it CALL WALL asserts resistance-above on a level that is equally
     // support-below. The server-side radar was fixed for this; the chart was not, and drew two
     // identical overlapping bands with opposite labels.
-    const name = kind === 'both' ? 'GAMMA WALL' : sell ? 'CALL WALL' : 'PUT WALL';
     const lean = kind === 'both' ? '  · TWO-SIDED — magnet, not a barrier'
       : withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY');
     g.fillText(`${name} ${fmt(level)}${lean}`, PADL + 8, yTop - 5);
@@ -566,7 +575,11 @@ function draw() {
   ];
   const lvlItems = [];
   for (const [key, lab, col, why, dash] of levels) {
-    const v = T[key]; if (v == null || v < lo || v > hi) continue;
+    const v = T[key]; if (v == null) continue;
+    if (v < lo || v > hi) {   // RC-110: degrade to an edge marker, never vanish
+      offScale.push({ v, col, text: `${lab} ${fmt(v)}`, tip: `${lab} ${fmt(v)} — ${why}` });
+      continue;
+    }
     const leanTips = {
       gamma_flip: 'Landmark strike only — structure fact; amplify/dampen lean withheld for this read.',
       hvp: 'Most negative gamma strike — structure fact; amplification lean withheld.',
@@ -578,7 +591,11 @@ function draw() {
       tipHtml: `<b>${lab} ${fmt(v)}</b><br>${tipWhy}` });
   }
   for (const [k, lab, dash, why] of pdRows) {
-    const v = daily && daily[k]; if (v == null || v < lo || v > hi) continue;
+    const v = daily && daily[k]; if (v == null) continue;
+    if (v < lo || v > hi) {   // RC-110
+      offScale.push({ v, col: '#f4f6f8', text: `${lab} ${fmt(v)}`, tip: `${lab} ${fmt(v)} — ${why}` });
+      continue;
+    }
     lvlItems.push({ v, text: `${lab} ${fmt(v)}`, col: '#f4f6f8', dash, lw: 1.25,
       side: 'left', tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` });
   }
@@ -602,6 +619,28 @@ function draw() {
       g.fillText(it.text, side === 'right' ? W - PADR - 92 : PADL + 8, pos);
     }
   }
+
+  // RC-110: everything collected as off-scale renders as a compact pinned row at the chart
+  // edge it sits beyond — with its real price and a tooltip — so "present but out of window"
+  // can never be confused with "absent".
+  const pinRow = (items, top) => {
+    if (!items.length) return;
+    items.sort((a, b) => a.v - b.v);
+    const yy = top ? PADT + 13 : H - PADB - 5;
+    g.font = '800 12px system-ui';
+    // The big-legend DOM overlay owns the top-left corner — start the top pin row past it.
+    let xx = top ? PADL + 400 : PADL + 8;
+    for (const o of items) {
+      const t = (top ? '▲ ' : '▼ ') + o.text;
+      g.fillStyle = o.col; g.fillText(t, xx, yy);
+      xx += g.measureText(t).width + 18;
+    }
+    zones.push({ y0: yy - 11, y1: yy + 3,
+      tipHtml: `<b>Off-scale ${top ? 'above' : 'below'} today's traded range</b><br>`
+        + items.map(o => o.tip || o.text).join('<br>') });
+  };
+  pinRow(offScale.filter(o => o.v > hi), true);
+  pinRow(offScale.filter(o => o.v < lo), false);
 
   // candles — thick and bright
   const bw = Math.max(2, Math.min(13, (W - PADL - PADR) / nVis - 2));
@@ -672,6 +711,11 @@ function draw() {
   // written only by the 15s load() cycle, so it lagged the legend below it by up to a full cycle.
   const _mpx = document.getElementById('metapx');
   if (_mpx) _mpx.textContent = fmt(spot);
+  // RC-111: the gamma panel's canvas SPOT marker must tick with THIS frame too — it froze at
+  // its last data-load repaint, and the screen showed two spots at once (RC-81 class; canvas
+  // markers were outside RC-81's DOM enumeration).
+  if (spot != null && _gammaSpotDrawn != null
+      && Math.abs(Number(spot) - _gammaSpotDrawn) > 1e-9) drawGamma();
   const bl = document.getElementById('biglegend');
   if (spot != null && isFinite(Number(spot))) {
     // TradingView-style big legend: ticker · price · change vs yesterday's close
@@ -782,6 +826,11 @@ const fmtBig = v => {
   return Number(v).toFixed(0);
 };
 
+// RC-111: the value this panel last painted its SPOT marker at. The candle pane compares the
+// live spot against it every frame and re-triggers the panel when they diverge — two rendered
+// spots on one screen is the RC-81 class, and canvas markers were outside RC-81's enumeration.
+let _gammaSpotDrawn = null;
+
 function drawGamma() {
   const dpr = window.devicePixelRatio || 1;
   const W = gvEl.clientWidth, H = gvEl.clientHeight || 430;
@@ -803,6 +852,7 @@ function drawGamma() {
   const priorRows = ((strikes && strikes.prior) || {})[scope] || [];
   const ghost = new Map(priorRows.map(r => [r[0], r[1]]));
   const spot = currentSpot();   // RC-75: one client spot authority
+  _gammaSpotDrawn = spot == null ? null : Number(spot);   // RC-111
   let c = 0, best = Infinity;
   for (let i = 0; i < rows.length; i++) {
     const d = Math.abs(rows[i][0] - (spot ?? rows[i][0]));
