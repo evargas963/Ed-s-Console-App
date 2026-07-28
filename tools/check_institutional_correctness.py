@@ -2164,6 +2164,104 @@ _AGENTS_LAW_GRANDFATHERED = frozenset({
 })
 
 
+def check_rc_citations_resolve() -> list[Violation]:
+    """Every RC-N cited in code must resolve to a real row (RC-99).
+
+    WHAT WAS OBSERVED (2026-07-27). The operator's adversarial audit found RC-96 cited in a
+    docstring and a commit message with no such row. One row was written, the class was not
+    locked, and the SAME defect recurred within the next turn as RC-98. A sweep then measured
+    SEVEN phantom ids live in the tree: RC-60, 61, 62, 64, 66, 93, 98 — so this had been silently
+    accumulating for weeks. A citation that resolves to nothing turns the governance log from an
+    index into decoration: the reader follows the pointer, finds nothing, and learns to stop
+    following pointers.
+
+    WHY THE EXISTING GUARD DID NOT FIRE. proof_only_guard has a promise-check, but it scans the
+    TURN'S PROSE for phrasing like "opening RC-N". A citation living in a DOCSTRING or a COMMIT
+    MESSAGE is invisible to it — the two surfaces already logged as unguarded in E-13.
+
+    Rule: any RC-N appearing in tracked .py/.html source must exist as a '| RC-N ' row.
+
+    HOW VALIDATED: measured against the live tree at authoring time — 7 phantoms found, all real,
+    each confirmed absent from the log by direct grep of the row prefix. Scoped to source files
+    only: reports and audits legitimately discuss ids that may pre-date the log.
+    """
+    log = REPO / "governance" / "root_cause_log.md"
+    if not log.exists():
+        return []
+    have = set(re.findall(r"^\| (RC-\d+) ", log.read_text(encoding="utf-8", errors="ignore"), re.M))
+    seen: dict[str, Path] = {}
+    roots = [REPO / "tools", REPO / "static", REPO]
+    for root in roots:
+        globs = root.glob("*.py") if root is REPO else root.rglob("*")
+        for p in globs:
+            if not p.is_file() or p.suffix not in (".py", ".html"):
+                continue
+            sp = str(p)
+            if any(x in sp for x in (".venv", "worktrees", "__pycache__", ".git")):
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for m in re.finditer(r"\bRC-(\d+)\b", text):
+                rc = "RC-" + m.group(1)
+                if rc not in have and rc not in seen:
+                    seen[rc] = p
+    return [
+        Violation(path, 0,
+                  f"{rc} is cited here but NO '| {rc} ' row exists in "
+                  f"governance/root_cause_log.md. A pointer that resolves to nothing teaches the "
+                  f"next reader to stop following pointers (RC-96 recurred as RC-98 within one "
+                  f"turn; a sweep then found 7 live phantoms). Write the row, or drop the id.")
+        for rc, path in sorted(seen.items(), key=lambda kv: int(kv[0][3:]))
+    ]
+
+
+def check_scheduled_producers_are_not_inert() -> list[Violation]:
+    """A scheduled PRODUCER that fails every run must not stay silent (RC-97).
+
+    WHAT WAS OBSERVED (2026-07-27). The daily terrain scorecard was registered as a scheduled task
+    and had been dying at Python PRE-INIT on every run: its task command used the inline form
+    `set PYTHONUTF8=1 && python …`, and cmd.exe assigns everything between '=' and '&&' to the
+    variable, so PYTHONUTF8 became '1 ' with a trailing space. reports/scorecard_run.log ended in
+    `Fatal Python error: preconfig_init_utf8_mode`, the artifact was 119.4 HOURS old, and nothing
+    in the repo objected. The consumer was correctly fail-closed (RC-78 withholds stale figures),
+    and a silent producer plus a polite consumer reads exactly like a quiet system — fail-closed
+    on the READ side hid the WRITE side.
+
+    Rule: a runner log that ends in a fatal/traceback marker is a FINDING, whatever the artifact
+    downstream does about it. Absence of output is not evidence the job had nothing to do.
+
+    HOW VALIDATED: run against the live tree at authoring time, where it flagged
+    reports/scorecard_run.log on the exact fatal line above; it returns [] when the log is absent
+    (a job that has never run is RC-70's cadence problem, tracked separately) so it cannot cry
+    wolf on a clean checkout.
+    """
+    fatal = re.compile(r"Fatal Python error|Traceback \(most recent call last\)|"
+                       r"ModuleNotFoundError|SyntaxError:", re.I)
+    out: list[Violation] = []
+    reports = REPO / "reports"
+    if not reports.exists():
+        return out
+    for log in sorted(reports.glob("*_run.log")):
+        try:
+            text = log.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if not text.strip():
+            continue
+        m = fatal.search(text)
+        if not m:
+            continue
+        out.append(Violation(
+            log, 0,
+            f"scheduled producer log ends in a fatal error ({m.group(0)!r}) — the job is "
+            f"SCHEDULED BUT INERT and has been failing silently. A fail-closed consumer hides "
+            f"this: it withholds the stale artifact and the system merely looks quiet (RC-97). "
+            f"Fix the runner, prove the artifact mtime advances, then clear the log."))
+    return out
+
+
 def check_agents_laws_name_their_enforcer() -> list[Violation]:
     """A law written into AGENTS.md must name the check that enforces it, or say SOFT (RC-96).
 
@@ -2193,9 +2291,21 @@ def check_agents_laws_name_their_enforcer() -> list[Violation]:
     for m in pat.finditer(text):
         heading = m.group(1).strip()
         key = heading.lower().rstrip(":").rstrip(".")[:28]
-        if any(key.startswith(g[:28]) for g in _AGENTS_LAW_GRANDFATHERED):
-            continue
+        grandfathered = any(key.startswith(g[:28]) for g in _AGENTS_LAW_GRANDFATHERED)
         para = text[m.start():m.start() + 900]
+        if grandfathered:
+            # RC-96 LOOPHOLE, found by the operator's adversarial audit: grandfathered
+            # entries used to `continue` unconditionally, so the docstring's requirement
+            # that they carry SOFT was never checked and all four sat green with soft=False.
+            # A grandfather clause that verifies nothing is an exemption, not a burn-down.
+            if re.search(r"\bSOFT\b", para):
+                continue
+            out.append(Violation(
+                p, text[:m.start()].count("\n") + 1,
+                f"grandfathered AGENTS.md law {heading[:60]!r} does not declare SOFT. "
+                f"Grandfathering permits 'no machine enforces this YET'; it never permits "
+                f"silence about it. Add SOFT, or name the check that enforces it."))
+            continue
         if re.search(r"\b(check_[a-z_]+|[a-z_]+_guard\.py|SOFT)\b", para):
             continue
         out.append(Violation(
@@ -2628,7 +2738,9 @@ CHECKS = [
     ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),
     ("fix_crosswalks_to_violated_lock", check_fix_crosswalks_to_violated_lock, True),
     ("enforced_checks_have_negative_controls", check_enforced_checks_have_negative_controls, True),
-    ("agents_laws_name_their_enforcer", check_agents_laws_name_their_enforcer, True),  # RC-61: the log is a control, not an archive
+    ("agents_laws_name_their_enforcer", check_agents_laws_name_their_enforcer, True),
+    ("scheduled_producers_are_not_inert", check_scheduled_producers_are_not_inert, True),
+    ("rc_citations_resolve", check_rc_citations_resolve, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home

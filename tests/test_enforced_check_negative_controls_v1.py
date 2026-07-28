@@ -130,3 +130,61 @@ def test_agents_law_check_screams_on_a_law_with_no_enforcer():
     assert injected == baseline + 1, "an unenforced AGENTS.md law was not flagged"
     assert softened == baseline, "declaring a law SOFT must satisfy the rule"
     assert len(C.check_agents_laws_name_their_enforcer()) == baseline
+
+
+def test_rc_citation_check_screams_on_a_phantom_id(tmp_path, monkeypatch):
+    """RC-99: an RC-N in source with no log row must be flagged.
+
+    This check found EIGHT live phantoms on first run — including its own docstring citing
+    RC-99 — after the operator's audit found two by hand. It is the lock for the class where
+    RC-96 recurred as RC-98 within a single turn."""
+    from tools import check_institutional_correctness as M
+    fake = tmp_path
+    (fake / "governance").mkdir()
+    (fake / "governance" / "root_cause_log.md").write_text(
+        "| RC-1 | CLOSED | 2026-01-01 | 2026-01-08 | w | y | f |\n", encoding="utf-8")
+    (fake / "tools").mkdir()
+    (fake / "tools" / "zz_probe.py").write_text('"""cites RC-4242 which does not exist."""\n',
+                                                encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", fake)
+    bad = M.check_rc_citations_resolve()
+    assert any("RC-4242" in str(b) for b in bad), (
+        "a phantom RC citation in source was not flagged — the check is inert"
+    )
+
+
+def test_rc_citation_check_accepts_a_resolvable_id(tmp_path, monkeypatch):
+    from tools import check_institutional_correctness as M
+    fake = tmp_path
+    (fake / "governance").mkdir()
+    (fake / "governance" / "root_cause_log.md").write_text(
+        "| RC-4242 | CLOSED | 2026-01-01 | 2026-01-08 | w | y | f |\n", encoding="utf-8")
+    (fake / "tools").mkdir()
+    (fake / "tools" / "zz_probe.py").write_text('"""cites RC-4242 which DOES exist."""\n',
+                                                encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", fake)
+    assert not [b for b in M.check_rc_citations_resolve() if "RC-4242" in str(b)]
+
+
+def test_inert_producer_check_screams_on_a_fatal_run_log(tmp_path, monkeypatch):
+    """RC-97: a scheduled producer whose log ends in a fatal has been failing silently.
+
+    A fail-closed CONSUMER hides this — it withholds the stale artifact and the system merely
+    looks quiet. Measured 2026-07-27: the scorecard artifact was 119.4h old behind exactly this."""
+    from tools import check_institutional_correctness as M
+    fake = tmp_path
+    (fake / "reports").mkdir()
+    (fake / "reports" / "zzjob_run.log").write_text(
+        "starting\nFatal Python error: preconfig_init_utf8_mode\n", encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", fake)
+    assert M.check_scheduled_producers_are_not_inert(), "a fatal run log was not flagged"
+
+
+def test_inert_producer_check_accepts_a_healthy_run_log(tmp_path, monkeypatch):
+    from tools import check_institutional_correctness as M
+    fake = tmp_path
+    (fake / "reports").mkdir()
+    (fake / "reports" / "zzjob_run.log").write_text(
+        "[job] start\nwrote artifact\n[job] exit=0\n", encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", fake)
+    assert not M.check_scheduled_producers_are_not_inert()

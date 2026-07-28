@@ -11461,10 +11461,26 @@ def scorecard_trading_day_age(generated_utc: object) -> int | None:
 
     Counts sessions, not hours, so a Friday scorecard reads as 1 day old on Monday rather than 3
     — the distinction between "the job did not run" and "the market was shut"."""
-    s = str(generated_utc or "")[:10]
+    # RC-98: CONVERT to ET, never slice the UTC string. `generated_utc[:10]` is a UTC calendar
+    # date being compared against an ET calendar date, and after 20:00 ET the UTC date is already
+    # TOMORROW — so a scorecard that had just run successfully scored `gen > today`, returned
+    # None, and the API reported the FRESH artifact as unusable. MEASURED 2026-07-27 21:21 ET:
+    # generated_utc 2026-07-28T00:30:00+00:00 (= 20:30 ET today) returned None instead of 0.
+    # The session calendar is ET, so the timestamp must be moved onto that clock before any date
+    # arithmetic — comparing two different clocks' dates is the defect, not the comparison.
+    raw = str(generated_utc or "").strip()
     try:
-        y, m, d = (int(v) for v in s.split("-"))
-        gen = datetime(y, m, d).date()
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if len(raw) == 10:
+            # A DATE-ONLY string carries no time and no zone — it is already a calendar date, so
+            # converting it is the bug, not the fix. Treating "2026-07-24" as UTC midnight and
+            # shifting to ET lands on 07-23 and ages the scorecard by an extra day. Caught by
+            # tests/test_scorecard_stale_fails_closed_v1.py the moment the ET conversion landed.
+            gen = ts.date()
+        else:
+            if ts.tzinfo is None:            # naive TIMESTAMPS are UTC by this repo's storage law
+                ts = ts.replace(tzinfo=timezone.utc)
+            gen = ts.astimezone(now_et().tzinfo).date()
     except (TypeError, ValueError):
         return None                          # unparseable age is NOT a fresh age
     today = now_et().date()
