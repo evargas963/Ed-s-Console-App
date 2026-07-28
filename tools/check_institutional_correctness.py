@@ -2432,8 +2432,12 @@ def check_adversarial_audits_are_answered() -> list[Violation]:
     if best == 0:
         return []
     tag = f"v{best}"
-    if re.search(rf"\b{tag}\b", _read_or_empty(log)):
-        return []
+    # v17 graded the bare-word match WEAK, correctly: an incidental 'v16' anywhere satisfied
+    # it. A processing receipt is a LINE that names the audit as an audit — the word 'audit'
+    # (or 'processed') must sit on the same ledger line as the version tag.
+    for line in _read_or_empty(log).splitlines():
+        if re.search(rf"\b{tag}\b", line) and re.search(r"\baudit\b|\bprocessed\b", line, re.I):
+            return []
     return [Violation(
         log, 0,
         f"adversarial audit {tag} has NO ledger citation — it arrived and nothing processed "

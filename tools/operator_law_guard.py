@@ -99,6 +99,17 @@ _DESTRUCTIVE_GIT = re.compile(
 _SKIP_HOOKS = re.compile(r"--no-verify|ED_PRETOOLUSE_GUARD=off|ED_STOP_GUARD=off|"
                          r"ED_PROOF_ONLY_GUARD=off|ED_OPERATOR_LAW_GUARD=off", re.I)
 _GIT_COMMIT = re.compile(r"\bgit\s+commit\b", re.I)
+#: 2026-07-28: `git add -A` swept another agent's in-flight files into MY commits twice in one
+#: day (a 530KB runtime log; audit scratch). In a two-agent worktree, blind staging asserts
+#: authorship over work the committer never saw.
+_BLIND_STAGE = re.compile(r"\bgit\s+add\s+(?:-A\b|--all\b|\.(?:\s|$))")
+#: 2026-07-28 (E-15 class, 4th recurrence today): writing SOURCE files through shell-heredoc
+#: python scripts keeps mangling escapes (literal \n breaking string literals, backspace bytes
+#: in regexes). The Edit/Write tools are the sanctioned path for source; heredoc scripts stay
+#: legal for governance-row edits and data tasks. The scan looks at the RAW command because the
+#: banned ACTION is the write performed by the interpreter the shell launches.
+_HEREDOC_SOURCE_WRITE = re.compile(
+    r"<<.{0,2000}?io\.open\((['\"])[^'\"]+\.py\1\s*,\s*(['\"])[wa]\2", re.S)
 
 
 def _has_verification(ledger: list[dict]) -> bool:
@@ -132,12 +143,26 @@ def shell_executed_part(cmd: str) -> str:
                  flags=re.S | re.M)
     # Strip a quoted -c payload:  python -c "..."   /   python -c '...'
     cmd = re.sub(r"-c\s+(['\"])(?:\\.|(?!\1).)*\1", " -c PAYLOAD ", cmd, flags=re.S)
+    # Strip quoted -m payloads (commit/tag messages): the FIRST live run of the blind-stage
+    # rule blocked a commit whose MESSAGE described the ban — message text is data, and a
+    # guard that fires on descriptions is the word-policing failure again (same lesson as
+    # heredocs, same day it was written).
+    cmd = re.sub(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", " -m MESSAGE ", cmd, flags=re.S)
     return cmd
 
 
 def bash_violations(cmd: str, ledger: list[dict]) -> list[str]:
+    raw = cmd
     cmd = shell_executed_part(cmd)
     out: list[str] = []
+    if _BLIND_STAGE.search(cmd):
+        out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) swept another agent's "
+                   "in-flight files into a commit twice on 2026-07-28. Stage EXPLICIT paths — "
+                   "a commit asserts authorship of everything in it.")
+    if _HEREDOC_SOURCE_WRITE.search(raw):
+        out.append("ACTION BLOCKED: writing a .py SOURCE file through a shell-heredoc script "
+                   "mangles escapes (E-15, 4 recurrences). Use the Edit/Write tools for source; "
+                   "heredoc scripts remain legal for governance rows and data.")
     if _GREP_AGAINST_FILES.search(cmd):
         out.append("ACTION BLOCKED: shell grep/rg pointed at repo FILES. Standing law "
                    "(2026-05-22): read files end-to-end or use structural/AST analysis. Filtering "

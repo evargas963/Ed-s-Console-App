@@ -294,6 +294,6 @@ def test_audit_answer_check_control(tmp_path, monkeypatch):
     log.write_text("| RC-1 | CLOSED | 2026-01-01 | 2026-01-01 | d | w | f |" + chr(10), encoding="utf-8")
     monkeypatch.setattr(M, "REPO", tmp_path)
     assert M.check_adversarial_audits_are_answered(), "an unanswered audit was not flagged"
-    log.write_text("| RC-1 | CLOSED | 2026-01-01 | 2026-01-01 | d | w | answered v99 |" + chr(10), encoding="utf-8")
+    log.write_text("| RC-1 | CLOSED | 2026-01-01 | 2026-01-01 | d | w | audit v99 processed |" + chr(10), encoding="utf-8")
     assert M.check_adversarial_audits_are_answered() == [], "a cited audit was wrongly flagged"
 

@@ -280,7 +280,13 @@ def _normalized_insert_columns(conn: sqlite3.Connection) -> list[str]:
     """
     snap_cols = _get_snapshots_columns(conn)
     norm = _table_column_set(conn, "snapshots_1m_normalized")
-    body = [c for c in snap_cols if c in norm]
+    # RC-6 (v17 measured the bleed: 1,097 -> 1,373 rows / 239MB in one day): the culled blob
+    # columns still EXIST on the normalized table until the supervised 2026-08-09 drop, and
+    # this intersection kept refilling them on every pass. They are excluded by NAME so the
+    # bleed stops NOW; the raw `snapshots` table keeps the one authoritative chain copy, and
+    # the 08-09 migration removes the lingering columns + rows.
+    _RC6_CULLED = ("option_chain_json", "replay_context_json")
+    body = [c for c in snap_cols if c in norm and c not in _RC6_CULLED]
     if "normalized_from_subminute" in norm and "normalized_from_subminute" not in body:
         body.append("normalized_from_subminute")
     return ["snapshot_id"] + body
