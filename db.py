@@ -2726,8 +2726,15 @@ class EdDB:
 
         for tbl in ("snapshots_1m_normalized",):
             for col_name, col_type in (
-                ("option_chain_json", "TEXT"),
-                ("replay_context_json", "TEXT"),
+                # RC-6 (reopened 2026-07-28): option_chain_json and replay_context_json are
+                # DELIBERATELY ABSENT from this list. They are the normalized table's SECOND
+                # copy of multi-MB blobs the cull ledger retired — yet this migrate re-ADDed
+                # them on every boot where they were missing, and the normalizer's
+                # column-intersection INSERT refilled them (measured regrowth: 1,097 rows /
+                # 187,193,762 bytes). The intersection DROPS absent columns silently by
+                # design, so their absence is safe; the raw `snapshots` table keeps the one
+                # authoritative copy. Re-introducing them here requires the supervised
+                # migration (operator, due 2026-08-09) — never a silent boot-time ADD.
                 # Raw Schwab quote primitives — must exist here too or the
                 # normalizer's column-intersection INSERT silently drops them.
                 ("bid_price", "REAL"),

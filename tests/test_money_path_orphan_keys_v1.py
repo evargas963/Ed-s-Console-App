@@ -79,3 +79,17 @@ def test_external_declarations_name_their_source():
             if len(reason) < 8:
                 bare.append(f"{name}:{i} declares an external key with no source: {line.strip()!r}")
     assert not bare, "\n  ".join(bare)
+
+
+def test_culled_blob_columns_never_return_via_migrate():
+    """RC-6 (reopened): the boot-time migrate re-ADDed the culled blob columns to
+    snapshots_1m_normalized and the normalizer refilled them (measured: 1,097 rows /
+    187,193,762 bytes of regrowth). The cull ledger retired them; the ONLY legal path back
+    is the supervised migration. This fails the day anyone puts them back in the ADD list."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
+    for col in ("option_chain_json", "replay_context_json"):
+        assert f'("{col}", "TEXT")' not in src, (
+            f"{col} is back in a migrate ADD list — the RC-6 regrowth vector reopened"
+        )
+

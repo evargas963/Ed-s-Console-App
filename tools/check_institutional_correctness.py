@@ -2405,6 +2405,42 @@ def check_rc_citations_resolve() -> list[Violation]:
     ]
 
 
+def check_adversarial_audits_are_answered() -> list[Violation]:
+    """The newest adversarial audit must be CITED in the ledger (RC-118).
+
+    WHAT WAS OBSERVED (2026-07-28). Audit v14 landed between agent turns and was never
+    processed — v15's lead finding was literally "zero commits since v14 REJECT". The audit
+    loop's own output had no delivery guarantee: a report that arrives in a gap silently
+    vanishes, which is the absence-of-signal class operating on the audit loop itself.
+
+    Rule: the highest reports/claude_finish_adversarial_audit_vN.md must have its 'vN' name
+    appear in governance/root_cause_log.md — processing an audit leaves ledger evidence, so
+    an unanswered one fails the gate instead of aging quietly.
+
+    HOW VALIDATED: negative control injects a v99 audit file into a fake repo and demands the
+    check fire until the ledger cites v99.
+    """
+    rdir = REPO / "reports"
+    log = REPO / "governance" / "root_cause_log.md"
+    if not rdir.exists() or not log.exists():
+        return []
+    best = 0
+    for p in rdir.glob("claude_finish_adversarial_audit_v*.md"):
+        m = re.search(r"_v(\d+)\.md$", p.name)
+        if m:
+            best = max(best, int(m.group(1)))
+    if best == 0:
+        return []
+    tag = f"v{best}"
+    if re.search(rf"\b{tag}\b", _read_or_empty(log)):
+        return []
+    return [Violation(
+        log, 0,
+        f"adversarial audit {tag} has NO ledger citation — it arrived and nothing processed "
+        f"it (v14 vanished exactly this way). Cite {tag} in the row that answers it, or the "
+        f"audit loop has no delivery guarantee.")]
+
+
 def check_rc_log_rows_keep_schema() -> list[Violation]:
     """Every RC row in the governance log keeps the 7-cell schema (RC-105).
 
@@ -2967,6 +3003,7 @@ CHECKS = [
     ("scheduled_producers_are_not_inert", check_scheduled_producers_are_not_inert, True),
     ("rc_citations_resolve", check_rc_citations_resolve, True),
     ("rc_log_rows_keep_schema", check_rc_log_rows_keep_schema, True),
+    ("adversarial_audits_are_answered", check_adversarial_audits_are_answered, True),
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth

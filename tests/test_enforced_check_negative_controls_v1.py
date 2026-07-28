@@ -283,3 +283,17 @@ def test_gate_reader_survives_a_vanished_file(tmp_path):
     real.write_text("x = 1", encoding="utf-8")
     assert _read_or_empty(real) == "x = 1"
 
+
+def test_audit_answer_check_control(tmp_path, monkeypatch):
+    """RC-118: an audit file with no ledger citation must fire; a cited one must pass."""
+    from tools import check_institutional_correctness as M
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "reports" / "claude_finish_adversarial_audit_v99.md").write_text("x", encoding="utf-8")
+    log = tmp_path / "governance" / "root_cause_log.md"
+    log.write_text("| RC-1 | CLOSED | 2026-01-01 | 2026-01-01 | d | w | f |" + chr(10), encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", tmp_path)
+    assert M.check_adversarial_audits_are_answered(), "an unanswered audit was not flagged"
+    log.write_text("| RC-1 | CLOSED | 2026-01-01 | 2026-01-01 | d | w | answered v99 |" + chr(10), encoding="utf-8")
+    assert M.check_adversarial_audits_are_answered() == [], "a cited audit was wrongly flagged"
+

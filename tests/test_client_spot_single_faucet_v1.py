@@ -206,11 +206,23 @@ def test_rc117_named_victims_are_locked():
     # v14 kill accepted: exempting any line containing 'null' let a value-writer escape by
     # mentioning the word (e.g. `px || null`). The exemption is now the EXACT sanctioned
     # blank statement, nothing looser.
-    refs = [ln.strip() for ln in body.splitlines()
-            if "cv2-hd-px" in ln
-            and 'id="cv2-hd-px"' not in ln          # the markup node itself
-            and "SPOT_DISPLAY_IDS" not in ln        # the one-writer registry
-            and "T('cv2-hd-px', null)" not in ln]   # the exact tab-switch BLANK, only
+    # v16 hardening: every exemption is now LINE-EQUALITY or exact-literal, so an escape
+    # cannot ride shotgun on a sanctioned line (writer appended to the registry line, code
+    # hidden beside the markup, the blank used as a substring shield). Honest limit, stated:
+    # building the id by string CONCAT ('cv2-hd-' + 'px') evades any text scan — that is the
+    # AST/dataflow boundary; if an escape ever demonstrates it, the lock graduates to a parser.
+    _REGISTRY = "const SPOT_DISPLAY_IDS = ['sb-spot', 'ub-price', 'cv2-hd-px', 'tv-px'];"
+    _BLANK = "T('cv2-hd-px', null);"
+    refs = []
+    for ln in body.splitlines():
+        if "cv2-hd-px" not in ln:
+            continue
+        t = ln.strip()
+        if t == _REGISTRY or t == _BLANK:
+            continue
+        if 'id="cv2-hd-px"' in ln and "<span" in ln and "<script" not in ln.lower():
+            continue                                 # the markup node, and only markup
+        refs.append(t)
     assert refs == [], (
         f"unsanctioned references to cv2-hd-px — the only legal touchpoints are the markup, "
         f"the SPOT_DISPLAY_IDS registry, and the tab-switch blank: {refs}"
@@ -226,9 +238,16 @@ def test_rc117_named_victims_are_locked():
         assert "computed_ts_utc" in stmt or "_asOf" in stmt, (
             f"{writer} as-of no longer reads the payload clock (computed_ts_utc)"
         )
-        assert "new Date().toLocaleTimeString" not in stmt, (
+        # v16: ban EVERY paint-clock form, not one spelling — empty new Date(), Date.now(),
+        # and any Date construction not fed by the payload epoch.
+        assert "new Date()" not in stmt and "Date.now()" not in stmt, (
             f"{writer} stamps the PAINT clock — 'now' beside old data is the lying-clock class"
         )
+        for m in re.finditer(r"new Date\(([^)]*)\)", stmt):
+            arg = m.group(1).strip()
+            assert arg and ("computed_ts_utc" in arg or "_asOf" in arg), (
+                f"{writer} constructs a Date from {arg!r} — only the payload epoch is legal"
+            )
     # ...and _asOf itself must be the payload clock, so the indirection cannot be repurposed.
     assert "var _asOf = fnum(t.computed_ts_utc)" in body, "_asOf no longer binds computed_ts_utc"
     for foot in ("cv2-f-status", "ct-foot-status"):
