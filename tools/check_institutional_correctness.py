@@ -2099,6 +2099,115 @@ def check_root_cause_recurrence_declared() -> list[Violation]:
     return out
 
 
+#: RC-95 — ENFORCED checks that predate the negative-control law and have no test naming them.
+#: A BURN-DOWN LIST, visible and shrinking, never silently accepted: remove an entry ONLY by
+#: adding a test that injects a violation and asserts the check returns >= 1. Adding to this set
+#: is prohibited — that is the entire point of the law.
+_NEGATIVE_CONTROL_GRANDFATHERED = frozenset({
+    "no_synthetic_domain_fixtures_in_tests", "no_swallowed_test_failures",
+    "five_why_recursive_lock", "recursive_five_why_front_loaded", "single_faucet_provenance",
+    "root_cause_recurrence_declared", "fix_crosswalks_to_violated_lock",
+    "domain_constants_are_derived", "no_terminal_null", "no_governance_duplication",
+    "checks_are_justified", "no_tautological_assertions", "open_item_cap",
+    "no_silent_swallow", "no_todo_without_tracking_id", "rc_numeric_claims_cite_a_command",
+    "snapshots_read_names_the_timeframe", "shutdown_is_bounded", "unproven_register",
+    "venv_parity", "credential_leak", "sqlite_wal_contract",
+})
+
+
+def check_enforced_checks_have_negative_controls() -> list[Violation]:
+    """A NEW ENFORCED check must ship with a test proving it CAN fail (RC-95).
+
+    WHAT WAS OBSERVED (2026-07-27). Four instruments shipped INERT in one session: an alias-blind
+    client detector (RC-76), a write-detector missing two shapes (RC-84), a verdict regex carrying
+    literal 0x08 backspace characters that could never match (RC-87), and a gate that mutated the
+    repo while printing PASS (RC-90). Each reported 0 violations while incapable of firing, and
+    each was found only by ad-hoc injection. Green-and-inert is byte-identical to
+    green-and-working; a control that makes the check SCREAM on an injected violation is the only
+    thing that tells them apart. MEASURED at rule creation: 22 of 33 ENFORCED checks were named in
+    no test file at all.
+
+    Rule: every ENFORCED check id must appear in some tests/*.py file. The 22 pre-existing
+    uncovered checks are grandfathered as a VISIBLE burn-down list above — removal only by adding
+    the control, addition prohibited.
+
+    HOW VALIDATED: name-presence is a deliberately cheap proxy (a test could name a check without
+    injecting a violation), stated rather than hidden — it catches the observed failure mode,
+    which was checks nobody's test referenced AT ALL. Tightening the proxy to require an actual
+    injection assertion is the named NEXT-DEPTH once the burn-down list is empty.
+    """
+    tests_dir = REPO / "tests"
+    if not tests_dir.exists():
+        return [Violation(tests_dir, 0, "tests/ directory missing — nothing can prove any check fires")]
+    corpus = " ".join(p.read_text(encoding="utf-8", errors="ignore")
+                      for p in tests_dir.glob("test_*.py"))
+    out: list[Violation] = []
+    for name, _fn, enforced in CHECKS:
+        if not enforced or name in _NEGATIVE_CONTROL_GRANDFATHERED:
+            continue
+        if name in corpus:
+            continue
+        out.append(Violation(
+            REPO / "tools" / "check_institutional_correctness.py", 0,
+            f"ENFORCED check '{name}' has NO negative control — no test names it, so nothing can "
+            f"prove it fires on an injected violation. Green-and-inert is indistinguishable from "
+            f"green-and-working (RC-76/84/87/90: four inert instruments in one session). Ship a "
+            f"test that injects the defect and asserts >= 1 violation, or register ADVISORY."))
+    return out
+
+
+#: RC-96 — AGENTS.md law headings that predate this rule and are honestly UNENFORCEABLE by a
+#: machine (they bind judgement, not a detectable artifact). Grandfathered so the rule binds NEW
+#: laws; each must still carry the literal word SOFT in its own text to stay here.
+_AGENTS_LAW_GRANDFATHERED = frozenset({
+    "never call an operator law", "fair-method clause", "agent truth lock", "immune rule",
+})
+
+
+def check_agents_laws_name_their_enforcer() -> list[Violation]:
+    """A law written into AGENTS.md must name the check that enforces it, or say SOFT (RC-96).
+
+    WHAT WAS OBSERVED. The operator's own lock audit ranked this fifth of five tightenings, and
+    the repo's history is the evidence: RC-41 (recursive-5-why enforced on existing rows but not
+    on the ACT of opening), RC-49 (adversarial-audit loop mandated as a mechanical lock, never
+    mechanized), RC-56 (the RC-53 remedy shipped as AGENTS.md prose with no mechanical component).
+    Thirteen of thirty-five catalogued lock failures are class
+    `goodwill_instead_of_mechanical_lock` — a law in prose reads exactly like a law with a hook,
+    and only the machine can tell them apart.
+
+    Rule: each bold law/rule/clause heading in AGENTS.md must, within its own paragraph, either
+    name an enforcing artifact (`check_*`, `*_guard.py`) or contain the literal word SOFT.
+    Labelling a law SOFT is NOT a defeat — it is an honest declaration that the operator is the
+    detector, which is the thing the mandate-to-mechanism law exists to make visible.
+
+    HOW VALIDATED: run against AGENTS.md at authoring time — 4 of 8 headings named an enforcer,
+    4 did not; those 4 are grandfathered above and must carry SOFT. The rule binds new laws only,
+    the same design as the citation and recurrence rules.
+    """
+    p = REPO / "AGENTS.md"
+    if not p.exists():
+        return []
+    text = p.read_text(encoding="utf-8", errors="ignore")
+    out: list[Violation] = []
+    pat = re.compile(r"\*\*([^*]{6,90}?(?:law|LAW|lock|rule|directive|clause)[^*]{0,40}?)\*\*")
+    for m in pat.finditer(text):
+        heading = m.group(1).strip()
+        key = heading.lower().rstrip(":").rstrip(".")[:28]
+        if any(key.startswith(g[:28]) for g in _AGENTS_LAW_GRANDFATHERED):
+            continue
+        para = text[m.start():m.start() + 900]
+        if re.search(r"\b(check_[a-z_]+|[a-z_]+_guard\.py|SOFT)\b", para):
+            continue
+        out.append(Violation(
+            p, text[:m.start()].count("\n") + 1,
+            f"AGENTS.md law {heading[:60]!r} names no enforcer. State the check id "
+            f"(check_*/…_guard.py) that detects a breach, or write SOFT to declare openly that "
+            f"the operator is the detector. A law in prose reads exactly like a law with a hook "
+            f"— 13 of 35 catalogued lock failures are 'goodwill instead of a mechanical lock' "
+            f"(RC-41/49/56)."))
+    return out
+
+
 def check_fix_crosswalks_to_violated_lock() -> list[Violation]:
     """A CLOSED root cause must name the LOCK that failed to prevent it, and the tightening.
 
@@ -2517,7 +2626,9 @@ CHECKS = [
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
     ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),
-    ("fix_crosswalks_to_violated_lock", check_fix_crosswalks_to_violated_lock, True),  # RC-61: the log is a control, not an archive
+    ("fix_crosswalks_to_violated_lock", check_fix_crosswalks_to_violated_lock, True),
+    ("enforced_checks_have_negative_controls", check_enforced_checks_have_negative_controls, True),
+    ("agents_laws_name_their_enforcer", check_agents_laws_name_their_enforcer, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home

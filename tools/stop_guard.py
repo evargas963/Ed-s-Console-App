@@ -64,6 +64,25 @@ def unfinished_rows_opened_today(today: str | None = None) -> list[tuple[str, st
     return out
 
 
+def freshness_blockers() -> list[dict]:
+    """RC-94: staleness on a REACHABLE console blocks the turn; an unreachable console does not.
+
+    freshness_violations() was built as RC-91's tightening and shipped as an optional function no
+    enforced path called — RC-74's class recurring within hours. Wiring it here makes staleness a
+    turn-blocker the moment it is visible on a running console.
+
+    The unreachable case is deliberately NOT a blocker HERE: a Stop guard that fails whenever the
+    console is off would block every after-hours turn forever — a guard that cannot be satisfied
+    is a hang, not a control. Unreachability is still a FINDING (RC-57), but its reporters are
+    repo_exposure_audit and agent_error_report, which render it; this hook only gates."""
+    try:
+        from tools.data_faucet_audit import freshness_violations
+        return [v for v in freshness_violations() if not v.get("unreachable")]
+    except Exception as e:
+        return [{"concept": "(freshness audit unavailable)",
+                 "detail": f"{type(e).__name__}: {e}"}]
+
+
 def faucet_violations() -> list[dict]:
     """RC-73: a rendered field fed by an UNDECLARED source. Measured by the provenance audit, not
     asserted. A fallback is a second faucet — that regression was introduced and caught inside a
@@ -90,8 +109,12 @@ def main() -> int:
 
     rows = unfinished_rows_opened_today()
     faucets = faucet_violations()
-    if not rows and not faucets:
+    stale = freshness_blockers()          # RC-94: stale-on-a-live-console ends no turn quietly
+    if not rows and not faucets and not stale:
         return 0
+    faucets = faucets + [
+        {"concept": v["concept"], "undeclared": [v.get("detail", "stale")]} for v in stale
+    ]
 
     listed = "\n".join(f"    {rc} — fix cell still says {why!r}" for rc, why in rows)
     if faucets:
