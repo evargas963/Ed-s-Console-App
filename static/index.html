@@ -13054,7 +13054,10 @@ function edCheckRadarAlerts(rows) {
     var spot = consoleSpot(s) ?? consoleSpot(t);
 
     /* ---- TERRAIN-sourced cells (/api/terrain, fast): updated on EVERY paint. ---- */
-    T('cv2-hd-px', n2(spot));
+    // RC-117: ONE writer per rendered concept. This painter used to write cv2-hd-px itself —
+    // a second value-writer racing paintSpotDisplays' 1s lane, so whichever painted last won
+    // the frame. It now TRIGGERS the one writer instead (same pattern as edPaintTokenWarn).
+    paintSpotDisplays();
     T('cv2-t-regime', regimeText(fstr(t.regime)));
     T('cv2-t-note', fstr(t.headline, (t.lines && t.lines[0])));
     T('cv2-g-gex', money(fnum(t.net_gex_at_spot)));   // terrain single source (net GEX @ spot)
@@ -13086,7 +13089,13 @@ function edCheckRadarAlerts(rows) {
                 n2(fnum(t.gamma_pin)) && ('pin ' + n2(fnum(t.gamma_pin))),
                 cw !== null && ('call ' + n2(cw)), pw !== null && ('put ' + n2(pw))].filter(Boolean).join(' · ');
     T('cv2-gx-tags', tags || null);
-    T('cv2-f-status', 'live · ' + curTicker() + ' · as-of '
+    // RC-117: the footer STATES the data state instead of hardcoding the word 'live' — a
+    // stale payload wearing a live badge is the lying-clock class this burn exists for.
+    var _fState = (t && t.levels_stale)
+      ? ('⚠ STALE' + (fnum(t.levels_age_sec) !== null
+          ? ' ' + Math.round(t.levels_age_sec / 60) + 'm' : '') + ' · ')
+      : 'live · ';
+    T('cv2-f-status', _fState + curTicker() + ' · as-of '
       + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
 
     /* ---- ANALYTICS-sourced cells (/api/analytics/state, the slow 0.15–9s ML stack):
@@ -13262,7 +13271,9 @@ function edCheckRadarAlerts(rows) {
   function paintHeader(s, spot) {
     if (hdTk && document.activeElement !== hdTk) hdTk.value = curTicker();
     mirrorExpiry(); syncTabs(); syncTheme();
-    T('cv2-hd-px', n2(spot));
+    // RC-117: the px cell is painted ONLY by paintSpotDisplays (one writer, one frame);
+    // this header keeps computing the CHANGE cells from the same `spot` value below.
+    paintSpotDisplays();
     var pdc = fnum(s.pdc), chgEl = el('cv2-hd-chg'), tk = curTicker(), c = null, p = null;
     if (spot !== null && pdc !== null && pdc !== 0) { c = spot - pdc; p = c / pdc * 100; }
     else {
@@ -13310,7 +13321,10 @@ function edCheckRadarAlerts(rows) {
     if (stale()) return;
     markWatchlist();
     if (t) { try { paint(s, t); } catch (e) { T('cv2-f-status', 'render error: ' + e.message); } }
-    var spot = fnum((t || {}).spot);
+    // RC-117: the gamma panel's spot marker goes through the ONE console authority —
+    // consoleSpot prefers the live lane and falls back to this same payload, so the bars
+    // can never anchor to a spot the header disagrees with.
+    var spot = consoleSpot(t);
     /* transient strikes-fetch failure: KEEP the last good bars (do not repaint a placeholder
        and collapse the panel every failed cycle). */
     try { var g = await (await fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })).json(); if (!stale()) buildGammaBars(g, t, spot); } catch (e) {}
@@ -13438,8 +13452,24 @@ function edCheckRadarAlerts(rows) {
     var hero = el('ct-hero'); if (hero) hero.style.borderLeftColor = (negGex !== null) ? (negGex < 0 ? 'var(--cv-dn)' : 'var(--cv-up)') : 'var(--cv-mu)';
 
     T('ct-posture', fstr(t.posture) ? String(t.posture).replace(/_/g, ' ') : (reg ? reg.split('·').pop().trim() : null));
-    var conf = fstr(t.confidence); T('ct-conf', conf);
-    var ce = el('ct-conf'); if (ce) ce.className = 'ct-v ' + (conf === 'TRUSTED' ? 'cv-up' : (conf ? 'cv-wn' : ''));
+    // RC-117: ct-conf evaded the trust-chip class fix because its id says 'conf' — it painted
+    // TRUSTED green over frozen levels. Same law as every chip: stale outranks confidence,
+    // and the class TEST now enumerates conf ids too so a third alias cannot hide.
+    var conf = fstr(t.confidence);
+    var _ctcStale = !!t.levels_stale;
+    var ce = el('ct-conf');
+    if (ce) {
+      if (_ctcStale) {
+        var _ctcAge = fnum(t.levels_age_sec);
+        ce.textContent = '⚠ STALE' + (_ctcAge !== null ? ' ' + Math.round(_ctcAge / 60) + 'm' : '');
+        ce.className = 'ct-v cv-dn';
+        ce.title = String(t.levels_stale_reason || 'levels are not refreshing');
+      } else {
+        ce.textContent = conf || '—';
+        ce.className = 'ct-v ' + (conf === 'TRUSTED' ? 'cv-up' : (conf ? 'cv-wn' : ''));
+        ce.title = '';
+      }
+    }
     T('ct-gex', money(negGex));
     var ge = el('ct-gex'); if (ge) ge.className = 'ct-v cv-n ' + (negGex !== null ? (negGex < 0 ? 'cv-dn' : 'cv-up') : '');
     T('ct-age', null);
@@ -13488,7 +13518,11 @@ function edCheckRadarAlerts(rows) {
     prox('ct-px-cwall', t.call_wall, 'cv-up');
     prox('ct-px-pwall', t.put_wall, 'cv-dn');
 
-    T('ct-foot-status', 'live · ' + curTicker() + ' · as-of ' + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
+    // RC-117: same lying-clock cure as cv2-f-status — the word 'live' must be earned per paint.
+    T('ct-foot-status', ((t && t.levels_stale)
+        ? ('⚠ STALE' + (fnum(t.levels_age_sec) !== null
+            ? ' ' + Math.round(t.levels_age_sec / 60) + 'm' : '') + ' · ')
+        : 'live · ') + curTicker() + ' · as-of ' + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
     mark();
   }
 

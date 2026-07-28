@@ -171,8 +171,11 @@ def test_every_trust_chip_binds_levels_stale():
     """v8 audit found ct-trust blind AFTER cv2-kl-trust was fixed — the class is 'every trust
     chip', so the test ENUMERATES the class from the markup instead of naming survivors."""
     src = CONSOLE.read_text(encoding="utf-8")
-    chips = sorted(set(re.findall(r'id="([a-z0-9-]*trust[a-z0-9-]*)"', src)))
-    assert chips, "no trust chips found — the markup moved and this test is guarding nothing"
+    # RC-117: ct-conf evaded the first net because its id says 'conf', not 'trust' — the class
+    # is every chip that RENDERS a confidence/trust verdict, so both name families are policed.
+    # word-bounded: 'conf' must be a whole trailing segment, or 'confirm' cells false-positive.
+    chips = sorted(set(re.findall(r'id="([a-z0-9-]*(?:trust|conf))"', src)))
+    assert chips, "no trust/conf chips found — the markup moved and this test is guarding nothing"
     for chip in chips:
         i = src.find("el('" + chip + "')")
         if i < 0:
@@ -182,3 +185,27 @@ def test_every_trust_chip_binds_levels_stale():
             f"#{chip} is painted without reading levels_stale — a trust chip that cannot "
             f"say STALE claims trust over frozen levels (RC-102 class, third recurrence)"
         )
+
+
+def test_rc117_named_victims_are_locked():
+    """RC-117 close contract: the named victims, asserted literally.
+    - cv2-hd-px has ONE value-writer (paintSpotDisplays); painters may only TRIGGER it.
+    - Both footers (cv2-f-status / ct-foot-status) must derive live/STALE from levels_stale,
+      never hardcode 'live'.
+    - ct-conf is a member of the stale-gated chip class."""
+    src = CONSOLE.read_text(encoding="utf-8")
+    body = re.sub(r"//.*$", "", src, flags=re.M)
+    writers = [ln for ln in body.splitlines()
+               if "T('cv2-hd-px'" in ln and "null" not in ln]   # the tab-switch BLANK is a clear, not a value
+    assert writers == [], (
+        f"direct value-writers on cv2-hd-px besides paintSpotDisplays: {writers}"
+    )
+    for foot in ("cv2-f-status", "ct-foot-status"):
+        i = body.find("T('" + foot + "'")
+        assert i > 0, f"{foot} painter is gone"
+        window = body[max(0, i - 700):i + 300]
+        assert "levels_stale" in window, (
+            f"{foot} paints 'live' without consulting levels_stale — the lying-clock class"
+        )
+    chips = sorted(set(re.findall(r'id="([a-z0-9-]*(?:trust|conf))"', src)))
+    assert "ct-conf" in chips, "ct-conf left the policed chip class"
