@@ -483,13 +483,13 @@ function draw() {
     const sell = kind === 'call';
     const col = kind === 'both' ? '#ffc400' : sell ? '#ff3355' : '#00e07a';
     const name = kind === 'both' ? 'PUT + CALL WALL' : sell ? 'CALL WALL' : 'PUT WALL';
-    // RC-115 operator directive: the range prints ON THE WALL LABEL — the surface the
-    // operator reads — with the EARNED per-side value-area bounds (never grid spacing).
-    const _rgTxt = (rg, tag) => (rg && rg.lo != null && rg.hi != null)
-      ? ` · ${tag}RANGE ${fmt(rg.lo)}–${fmt(rg.hi)}` : '';
-    const rangeTxt = kind === 'both'
-      ? _rgTxt(T.put_wall_range, 'PUT ') + _rgTxt(T.call_wall_range, 'CALL ')
-      : _rgTxt(sell ? T.call_wall_range : T.put_wall_range, '');
+    // Operator directive 2026-07-28 (final form): the label states THE BOX — the drawn
+    // band's own top and bottom prices. The box is the strike's nearest-strike zone
+    // (± half the median strike spacing): every price inside it is closer to this wall
+    // than to any neighboring strike, which is where its hedging flow concentrates.
+    // No grid -> no box -> no numbers (the line-only case stays honest).
+    const rangeTxt = half != null
+      ? ` · ${fmt(level - half)}–${fmt(level + half)}` : '';
     if (level < lo || level > hi) {
       offScale.push({ v: level, col, text: name + ' ' + fmt(level) + rangeTxt,
         tip: name + ' ' + fmt(level) + ' — beyond today\'s traded range; the price axis fits the day\'s bars.' });
