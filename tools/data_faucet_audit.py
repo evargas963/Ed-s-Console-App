@@ -446,7 +446,11 @@ def freshness_violations(base: str = "http://127.0.0.1:8000") -> list[dict]:
     if "__err__" not in d and d.get("levels_stale"):
         out.append({"concept": "per_strike/levels",
                     "detail": d.get("levels_stale_reason") or "levels are stale",
-                    "age_sec": d.get("levels_age_sec")})
+                    "age_sec": d.get("levels_age_sec"),
+                    # RC-120: the payload says whether the producer SHOULD be running. False
+                    # after 16:30 ET is the designed, labeled, budgeted state (RC-91/RC-78) —
+                    # consumers that gate on staleness need this to tell broken from closed.
+                    "refresh_active": d.get("levels_refresh_active")})
     return out
 
 

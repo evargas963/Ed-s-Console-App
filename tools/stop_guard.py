@@ -77,7 +77,14 @@ def freshness_blockers() -> list[dict]:
     repo_exposure_audit and agent_error_report, which render it; this hook only gates."""
     try:
         from tools.data_faucet_audit import freshness_violations
-        return [v for v in freshness_violations() if not v.get("unreachable")]
+        # RC-120: staleness while the producer is legitimately CLOSED (after the 16:30 ET
+        # window) is the designed, labeled state — RC-78's rule is that budget-justified
+        # staleness gets LABELLED, and RC-102/117 test-lock the labels. Blocking every
+        # after-hours turn on it is a guard that cannot be satisfied — a hang, not a control
+        # (the same reasoning as the unreachable exemption above). Staleness while the
+        # producer SHOULD be running (refresh_active True or unknown) still blocks.
+        return [v for v in freshness_violations()
+                if not v.get("unreachable") and v.get("refresh_active") is not False]
     except Exception as e:
         return [{"concept": "(freshness audit unavailable)",
                  "detail": f"{type(e).__name__}: {e}"}]

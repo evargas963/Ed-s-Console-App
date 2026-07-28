@@ -274,6 +274,28 @@ def test_close_contract_controls():
     assert V([_row("CLOSED", "END-TO-END: a -> b.", opened="2026-07-20")], "log", "", "") == []
 
 
+def test_stop_guard_freshness_tells_broken_from_closed(monkeypatch):
+    """RC-120: staleness while the producer is legitimately CLOSED (after 16:30 ET, labeled,
+    budgeted) must NOT block the turn; staleness while it SHOULD be running must. A guard that
+    fires every evening forever is a hang, not a control."""
+    import tools.stop_guard as G
+    import tools.data_faucet_audit as A
+    cases = [
+        {"concept": "per_strike/levels", "detail": "outside window", "refresh_active": False},
+        {"concept": "per_strike/levels", "detail": "loop inside window, not producing",
+         "refresh_active": True},
+        {"concept": "per_strike/levels", "detail": "legacy shape, field absent"},
+        {"concept": "(console unreachable)", "detail": "refused", "unreachable": True},
+    ]
+    monkeypatch.setattr(A, "freshness_violations", lambda *a, **k: list(cases))
+    got = G.freshness_blockers()
+    details = [v["detail"] for v in got]
+    assert "outside window" not in details, "designed after-hours staleness blocked the turn"
+    assert "loop inside window, not producing" in details, "a BROKEN producer stopped blocking"
+    assert "legacy shape, field absent" in details, "unknown producer state must fail closed"
+    assert all(not v.get("unreachable") for v in got)
+
+
 def test_gate_reader_survives_a_vanished_file(tmp_path):
     """RC-116: a file that vanishes between glob and read is EMPTY to the gate, not a crash —
     two agents share this worktree and a crashed gate protects nothing."""
