@@ -42,6 +42,16 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
+
+def _read_or_empty(p) -> str:
+    """RC-116: a file that VANISHES between glob and read (another agent's scratch file,
+    a mid-commit delete) must not crash the whole gate — a crashed gate protects nothing.
+    Fixed governance paths deliberately do NOT use this: their absence is a real failure."""
+    try:
+        return p.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+
 TESTS = REPO / "tests"
 #: Run as a bare script, sys.path[0] is tools/ — so `import tools.x` fails and every check that
 #: imports a sibling reports UNMEASURABLE. That is the correct behaviour for a broken import
@@ -459,10 +469,10 @@ def check_five_why_recursive_lock() -> list[Violation]:
         return [Violation(log_path, 0, "governance/root_cause_log.md is missing")]
     lines = log_path.read_text(encoding="utf-8").splitlines()
     static_corpus = "".join(
-        p.read_text(encoding="utf-8", errors="ignore")
+        _read_or_empty(p)
         for p in sorted((REPO / "static").glob("*.html"))) if (REPO / "static").exists() else ""
     tests_corpus = "".join(
-        p.read_text(encoding="utf-8", errors="ignore")
+        _read_or_empty(p)
         for p in sorted((REPO / "tests").rglob("*.py"))) if (REPO / "tests").exists() else ""
     return _five_why_lock_violations(lines, log_path, static_corpus, tests_corpus)
 
@@ -1169,7 +1179,9 @@ def check_no_synthetic_domain_fixtures_in_tests() -> list[Violation]:
         # tests/archive/ is frozen legacy — out of scope for the living standard.
         if "archive" in p.relative_to(TESTS).parts:
             continue
-        src = p.read_text(encoding="utf-8")
+        src = _read_or_empty(p)
+        if not src:
+            continue   # RC-116: vanished mid-scan — nothing to police
         lines = src.splitlines()
         try:
             tree = ast.parse(src, filename=str(p))
@@ -2222,8 +2234,7 @@ def check_enforced_checks_have_negative_controls() -> list[Violation]:
     tests_dir = REPO / "tests"
     if not tests_dir.exists():
         return [Violation(tests_dir, 0, "tests/ directory missing — nothing can prove any check fires")]
-    corpus = " ".join(p.read_text(encoding="utf-8", errors="ignore")
-                      for p in tests_dir.glob("test_*.py"))
+    corpus = " ".join(_read_or_empty(p) for p in tests_dir.glob("test_*.py"))
     out: list[Violation] = []
     for name, _fn, enforced in CHECKS:
         if not enforced or name in _NEGATIVE_CONTROL_GRANDFATHERED:

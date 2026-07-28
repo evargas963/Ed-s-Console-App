@@ -482,7 +482,7 @@ function draw() {
     if (level == null) return;
     const sell = kind === 'call';
     const col = kind === 'both' ? '#ffc400' : sell ? '#ff3355' : '#00e07a';
-    const name = kind === 'both' ? 'GAMMA WALL' : sell ? 'CALL WALL' : 'PUT WALL';
+    const name = kind === 'both' ? 'PUT + CALL WALL' : sell ? 'CALL WALL' : 'PUT WALL';
     if (level < lo || level > hi) {
       offScale.push({ v: level, col, text: name + ' ' + fmt(level),
         tip: name + ' ' + fmt(level) + ' — beyond today\'s traded range; the price axis fits the day\'s bars.' });
@@ -549,7 +549,38 @@ function draw() {
     zones.push({ y0: yTop, y1: yBot,
       tipHtml: `<b>${title}</b><br>` + leanTip + bucket });
   };
-  // RC-83: one strike carrying both walls is ONE two-sided level, not two opposing ones.
+  // RC-115: each wall's EARNED range — per-side gamma value area, computed SERVER-side
+  // (Market-Profile POC expansion on that side's GEX mass to 68.2%). Shaded behind the wall
+  // bands. Never derived client-side and never from the strike grid — the RC-86 falsehood
+  // this replaces printed grid spacing as if it were market structure.
+  const rangeShade = (rg, kind) => {
+    if (!rg || rg.lo == null || rg.hi == null) return;
+    const col = kind === 'call' ? '#ff3355' : '#00e07a';
+    const name = kind === 'call' ? 'CALL RANGE' : 'PUT RANGE';
+    const tip = `<b>${name} ${fmt(rg.lo)}–${fmt(rg.hi)}</b><br>` +
+      `${esc(rg.method || '')} — covers ${esc(String(rg.coverage_pct))}% of that side's ` +
+      `gamma mass. Recomputed with every terrain refresh.`;
+    if (rg.hi < lo || rg.lo > hi) {   // wholly outside the window: pin, never vanish (RC-110)
+      offScale.push({ v: (rg.lo + rg.hi) / 2, col,
+        text: `${name} ${fmt(rg.lo)}–${fmt(rg.hi)}`, tip });
+      return;
+    }
+    const yT = y(Math.min(rg.hi, hi)), yB = y(Math.max(rg.lo, lo));
+    g.fillStyle = kind === 'call' ? 'rgba(255,51,85,0.07)' : 'rgba(0,224,122,0.07)';
+    g.fillRect(PADL, yT, W - PADL - PADR, yB - yT);
+    g.strokeStyle = col; g.lineWidth = 1; g.setLineDash([2, 4]);
+    g.strokeRect(PADL, yT, W - PADL - PADR, yB - yT); g.setLineDash([]);
+    g.fillStyle = col; g.font = '700 12px system-ui';
+    g.fillText(`${name} ${fmt(rg.lo)}–${fmt(rg.hi)} · 68% gamma VA`, PADL + 8,
+      kind === 'call' ? yT - 4 : Math.min(yB, H - PADB) + 14);
+    zones.push({ y0: yT, y1: yB, tipHtml: tip });
+  };
+  rangeShade(T.put_wall_range, 'put');
+  rangeShade(T.call_wall_range, 'call');
+
+  // RC-83: one strike carrying both walls is ONE two-sided level, not two opposing ones —
+  // but it is still BOTH walls, and the label says so (RC-115: 'GAMMA WALL' alone erased
+  // the put/call framing the operator reads).
   if (T.call_wall != null && T.put_wall != null && Number(T.call_wall) === Number(T.put_wall)) {
     band(T.call_wall, 'both');
   } else {

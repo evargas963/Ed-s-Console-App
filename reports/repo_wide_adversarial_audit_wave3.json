@@ -1,0 +1,209 @@
+{
+  "schema": "repo_wide_adversarial_audit_wave3",
+  "status": "SYNTHESIZED",
+  "generated_et": "2026-07-28T10:40",
+  "head": "90048e5e",
+  "dirty_tree": [
+    "governance/root_cause_log.md",
+    "static/chart.html",
+    "terrain_engine.py",
+    "reports/spot_faucet_full_audit_v1.md (untracked)"
+  ],
+  "verdict": "NOT_PRISTINE — locks GREEN; money-path dual books + spot plane/math + multi-writer still open; LP-01 NEXT untouched; OPEN RC-58/107; PARTIAL RC-102/113/115; close-contract still tag theater",
+  "method": "Same-turn ENFORCED gate census + faucet audit + spot_faucet_full_audit_v1 re-proof + 5 parallel explore canopy slices merging wave1/2 residuals.",
+  "agents": {
+    "money_path": "8b492ede-5fa9-4c4e-8394-99f23166c1b1",
+    "ui_client": "524c3abb-ed8b-484e-84a2-277e166ebf29",
+    "locks_governance": "5cf8567e-e372-4613-90f5-c319321a5a3d",
+    "collect_decide_ml": "9228b55e-b6c6-475b-aecb-d09c0da45939",
+    "landfill": "a27c62a3-64eb-4ab4-9814-940183f37ef4"
+  },
+  "agents_status": "MERGED: money_path, locks_governance, ui_client, collect_decide_ml, landfill (5/5)",
+  "merged_slices": {
+    "money_path": {
+      "agent": "8b492ede-5fa9-4c4e-8394-99f23166c1b1",
+      "new_critical": "W3-C8 Tier C _fetch_state bypasses quote memo (server.py:6210/6228)",
+      "grades": {
+        "W1-C1": "OUTSTANDING",
+        "W1-C2": "PARTIAL",
+        "W1-C4": "OUTSTANDING",
+        "W1-H2": "OUTSTANDING",
+        "W2-C3": "OUTSTANDING",
+        "W2-C4": "OUTSTANDING",
+        "W2-H1": "OUTSTANDING",
+        "RC-112": "FIXED"
+      }
+    },
+    "locks_governance": {
+      "agent": "5cf8567e-e372-4613-90f5-c319321a5a3d",
+      "rc_rows": {"CLOSED": 107, "OPEN": 2, "PARTIAL": 3, "REMEDIATED": 1},
+      "theater": [
+        "RC-106 FIXED presence-only",
+        "66 pre-cutover CLOSED without FIXED:",
+        "VISIBLE_SURFACE test bind = tests corpus substring",
+        "verify_dead --check not in CHECKS",
+        "Cursor hooks unbound (no .cursor/hooks.json)",
+        "22 grandfathered negative-control exemptions"
+      ],
+      "open_items_zombies": [
+        "FIND-GAMMA-FULLCHAIN-STRIKES-V1 unchecked vs FP-66 DONE",
+        "FIND-GREEK-SANITIZATION-V1 ~ vs FP-65 DONE"
+      ]
+    },
+    "ui_client": {
+      "agent": "524c3abb-ed8b-484e-84a2-277e166ebf29",
+      "audit_client": 0,
+      "grades": {
+        "W1-C4": "OUTSTANDING",
+        "W1-C5": "OUTSTANDING",
+        "W1-H1": "PARTIAL",
+        "RC-102": "PARTIAL",
+        "RC-110": "FIXED",
+        "RC-111": "FIXED",
+        "RC-113": "PARTIAL",
+        "W2-C2_ui": "OUTSTANDING"
+      },
+      "new": ["W3-U1 nested fnum audit blind", "W3-U3 footer lying clock", "W3-U4 ct-conf vs ct-trust", "W3-U5 terrain-tab cv2-hd race"]
+    },
+    "collect_decide_ml": {
+      "agent": "9228b55e-b6c6-475b-aecb-d09c0da45939",
+      "grades": {
+        "W2-C1": "OUTSTANDING",
+        "W2-C2": "OUTSTANDING",
+        "W2-C5": "OUTSTANDING",
+        "W2-C6": "OUTSTANDING",
+        "W2-C7": "OUTSTANDING",
+        "W2-C8": "PARTIAL",
+        "RC-58": "PARTIAL",
+        "RC-107": "OUTSTANDING",
+        "RC-108": "FIXED",
+        "scorecard_producer": "FIXED"
+      }
+    },
+    "landfill": {
+      "agent": "a27c62a3-64eb-4ab4-9814-940183f37ef4",
+      "grade": "PARTIAL",
+      "deletable_now": 0,
+      "blocked_by_provenance": 20,
+      "section_inventories": 13,
+      "reports_recurse_files": 467,
+      "design_mockups": "GONE",
+      "console_v2_shell": "GONE",
+      "flip_drift": "gitignored_ondisk_sink",
+      "dead_tests": {
+        "live": 4198,
+        "archive_fns": 99,
+        "presence_only": 28,
+        "assert_free": 18
+      }
+    }
+  },
+  "mechanical_census": {
+    "ENFORCED_checks": 39,
+    "ADVISORY_checks": 7,
+    "sampled_gates_all_zero": [
+      "five_why_recursive_lock",
+      "rc_log_rows_keep_schema",
+      "price_bars_readers_name_their_session",
+      "rth_only_market_measurement",
+      "rc_citations_resolve",
+      "agents_laws_name_their_enforcer",
+      "single_spot_authority",
+      "root_cause_log"
+    ],
+    "faucet_violations": 0,
+    "price_bars_grandfather": 38,
+    "OPEN_RC": ["RC-58", "RC-107"],
+    "PARTIAL_RC": ["RC-102", "RC-113", "RC-115"],
+    "REMEDIATED_RC": ["RC-55"],
+    "section_inventory_scripts": 13,
+    "archive_test_files": 16,
+    "design_mockups_present": false,
+    "console_v2_shell_present": false
+  },
+  "since_wave2_credit": [
+    "RC-106 close contract cutover (PARTIAL vs ideal reach)",
+    "RC-112 vendor quote memo (FIXED double Schwab fetch)",
+    "RC-108 token countdown",
+    "RC-110/111 chart off-scale + gamma spot tick",
+    "RC-31 Kalman/labels + RC-103 _RTH_MARKET_READ includes price_bars_1m",
+    "RC-102 cv2/ct-trust code path (PARTIAL pending DOM proof)",
+    "Landfill: mockups + console_v2_shell deleted; flip_drift gitignored"
+  ],
+  "critical_canopy_seed": [
+    {
+      "id": "W3-C1",
+      "area": "money_path",
+      "title": "Dual wall/flip books (analytics expiry-sliced vs terrain full-chain)",
+      "prior": "W1-C1",
+      "grade_seed": "OUTSTANDING"
+    },
+    {
+      "id": "W3-C2",
+      "area": "money_path",
+      "title": "Math resolve_spot vs display live_market_plane (memo shared; semantics dual)",
+      "prior": "W1-C2 / RC-112",
+      "grade_seed": "PARTIAL"
+    },
+    {
+      "id": "W3-C3",
+      "area": "ui",
+      "title": "cv2-hd-px multi-writer + gamma bars raw t.spot",
+      "prior": "W1-C4 / W1-H2",
+      "grade_seed": "OUTSTANDING"
+    },
+    {
+      "id": "W3-C4",
+      "area": "collect",
+      "title": "Auth carry-forward + QSD strip from merge_into_state",
+      "prior": "W2-C3 / W2-C4",
+      "grade_seed": "OUTSTANDING"
+    },
+    {
+      "id": "W3-C5",
+      "area": "decide",
+      "title": "Admission blob + final_bias/horizon paint under WAIT",
+      "prior": "W2-C1 / W2-C2",
+      "grade_seed": "OUTSTANDING",
+      "grade_merged": "OUTSTANDING"
+    },
+    {
+      "id": "W3-C9",
+      "area": "decide_ml",
+      "title": "Unproven ML paint + 5c winning-stack bypass + RC-6 re-ADD hazard",
+      "prior": "W2-C5 / W2-C6 / W2-C7",
+      "grade_merged": "OUTSTANDING"
+    },
+    {
+      "id": "W3-C6",
+      "area": "program",
+      "title": "LP-01 Operator NOW untouched while RC/lock hygiene advanced",
+      "prior": "ACTIVE_PROGRAM",
+      "grade_seed": "OUTSTANDING"
+    },
+    {
+      "id": "W3-C7",
+      "area": "locks",
+      "title": "RC-106 FIXED: tag presence; pre-cutover CLOSED+PENDING; dead_code --check not in CHECKS",
+      "prior": "v9",
+      "grade_seed": "PARTIAL_THEATER",
+      "grade_merged": "PARTIAL_THEATER"
+    },
+    {
+      "id": "W3-C8",
+      "area": "money_path",
+      "title": "Tier C _fetch_state bypasses quote memo — third Schwab quote faucet",
+      "prior": "new vs RC-112",
+      "grade_merged": "OUTSTANDING"
+    }
+  ],
+  "pristine_program": [
+    {"wave": "P0", "name": "Stop lying clocks (UI+Collect)", "items": ["W3-C3", "W3-C4", "W3-C8", "W3-U3", "W3-U4", "RC-102 DOM proof"]},
+    {"wave": "P1", "name": "One spot + one wall book", "items": ["W3-C1", "W3-C2"]},
+    {"wave": "P2", "name": "Decide sieve", "items": ["W3-C5", "W3-C9"]},
+    {"wave": "P3", "name": "Operator NOW LP-01", "items": ["W3-C6"]},
+    {"wave": "P4", "name": "Close contract reach (not tags)", "items": ["W3-C7", "FIXED⊇symptom", "wire verify_dead_code --check", "Cursor hooks"]},
+    {"wave": "P5", "name": "OPEN science debts", "items": ["RC-58 revalidate", "RC-107 thresholds", "38 grandfather burn-down", "RC-6 re-ADD"]},
+    {"wave": "P6", "name": "Landfill", "items": ["deletable_now=0", "20 provenance-blocked", "13 section inventories", "reports 467", "ledger co-retirement"]}
+  ]
+}

@@ -272,3 +272,14 @@ def test_close_contract_controls():
              "log", "", "") == []
     # 9. pre-cutover rows keep the old contract (no retro-flagging)
     assert V([_row("CLOSED", "END-TO-END: a -> b.", opened="2026-07-20")], "log", "", "") == []
+
+
+def test_gate_reader_survives_a_vanished_file(tmp_path):
+    """RC-116: a file that vanishes between glob and read is EMPTY to the gate, not a crash —
+    two agents share this worktree and a crashed gate protects nothing."""
+    from tools.check_institutional_correctness import _read_or_empty
+    assert _read_or_empty(tmp_path / "never_existed.py") == ""
+    real = tmp_path / "real.py"
+    real.write_text("x = 1", encoding="utf-8")
+    assert _read_or_empty(real) == "x = 1"
+

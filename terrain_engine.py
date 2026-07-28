@@ -88,6 +88,11 @@ class TerrainSnapshot:
     #: is the put_wall↔call_wall corridor — already carried above, drawn client-side.
     implied_1d_move: dict[str, Any] | None = None
 
+    #: RC-115: each wall's EARNED per-side range — {lo, hi, coverage_pct, method} or None —
+    #: the value-area of the wall's own side-gamma mass (never the strike grid).
+    call_wall_range: dict[str, Any] | None = None
+    put_wall_range: dict[str, Any] | None = None
+
     # provenance — never render a level without knowing where it came from
     contracts_used: int = 0
     strikes_used: int = 0
@@ -178,6 +183,57 @@ def _dte_of(ct: object) -> float:
     from numeric_contract import float_finite_or_none
     d = float_finite_or_none(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
     return d if d is not None else 999.0
+
+
+def compute_wall_value_area(
+    exposures: dict, wall: float | None, side: str, frac: float = 0.682
+) -> dict | None:
+    """RC-115: the wall's EARNED range — Market-Profile value-area math on SIDE gamma mass.
+
+    THE STANDARD, named: the Value Area algorithm (CQG-documented, the Market/Volume Profile
+    industry method) — start at the point of control and expand one strike at a time toward
+    whichever neighbor holds more mass, until 68.2 percent (one sigma) is enclosed. Here the
+    distribution is the wall's own SIDE gamma (call gamma for the call wall, put gamma for
+    the put wall), so the range is a property of the POSITIONING — different every day and
+    every ticker — never of the strike grid (the RC-86 falsehood this replaces).
+
+    Fail-closed: no wall, wall absent from the mass, or degenerate mass -> None.
+    """
+    from math_exposure_core import bucket_metric_abs, exposures_have_dollar_gex
+
+    if wall is None or not exposures:
+        return None
+    key = (f"{side}_gex_1pct" if exposures_have_dollar_gex(exposures) else f"{side}_gamma")
+    mass: dict[float, float] = {}
+    for k, b in exposures.items():
+        v = bucket_metric_abs(b, key)
+        if v is not None and v > 0:
+            mass[float(k)] = float(v)
+    w = float(wall)
+    if w not in mass:
+        return None
+    total = sum(mass.values())
+    if total <= 0:
+        return None
+    ks = sorted(mass)
+    li = ri = ks.index(w)
+    s = mass[w]
+    while s / total < frac and (li > 0 or ri < len(ks) - 1):
+        lv = mass[ks[li - 1]] if li > 0 else -1.0
+        rv = mass[ks[ri + 1]] if ri < len(ks) - 1 else -1.0
+        if rv >= lv:
+            ri += 1
+            s += rv
+        else:
+            li -= 1
+            s += lv
+    return {
+        "lo": ks[li],
+        "hi": ks[ri],
+        "coverage_pct": round(s / total * 100.0, 1),
+        "method": "gamma value area: Market-Profile POC expansion on "
+                  f"{side}-side GEX mass to 68.2pct (one sigma)",
+    }
 
 
 def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> dict | None:
@@ -339,6 +395,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         lvp=lvp,
         net_gex_at_spot=flip_diag.get("gamma_at_spot"),
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
+        call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
+        put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
         max_pain=compute_max_pain(exposures),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,
