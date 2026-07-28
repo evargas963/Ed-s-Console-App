@@ -195,10 +195,16 @@ def test_rc117_named_victims_are_locked():
     - ct-conf is a member of the stale-gated chip class."""
     src = CONSOLE.read_text(encoding="utf-8")
     body = re.sub(r"//.*$", "", src, flags=re.M)
-    writers = [ln for ln in body.splitlines()
-               if "T('cv2-hd-px'" in ln and "null" not in ln]   # the tab-switch BLANK is a clear, not a value
+    # v12 residual accepted: banning only T('cv2-hd-px', ...) left getElementById(...).textContent
+    # open — the lock must ban the ACTION (any assignment reaching that element), not one syntax.
+    writers = [ln.strip() for ln in body.splitlines()
+               if "cv2-hd-px" in ln
+               and ("T('cv2-hd-px'" in ln or "textContent" in ln
+                    or "innerHTML" in ln or "innerText" in ln)
+               and "null" not in ln            # the tab-switch BLANK is a clear, not a value
+               and "SPOT_DISPLAY_IDS" not in ln]
     assert writers == [], (
-        f"direct value-writers on cv2-hd-px besides paintSpotDisplays: {writers}"
+        f"value-writers on cv2-hd-px besides paintSpotDisplays (any syntax): {writers}"
     )
     for foot in ("cv2-f-status", "ct-foot-status"):
         i = body.find("T('" + foot + "'")

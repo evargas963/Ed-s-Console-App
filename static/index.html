@@ -13095,8 +13095,14 @@ function edCheckRadarAlerts(rows) {
       ? ('⚠ STALE' + (fnum(t.levels_age_sec) !== null
           ? ' ' + Math.round(t.levels_age_sec / 60) + 'm' : '') + ' · ')
       : 'live · ';
+    // v12 residual: 'as-of' must stamp the DATA's clock, not the paint's — new Date() said
+    // "now" beside levels that could be minutes old, which is the same lie in a smaller font.
+    // computed_ts_utc is the chain-fetch instant the payload itself carries; absent stays '—'.
+    var _asOf = fnum(t.computed_ts_utc);
     T('cv2-f-status', _fState + curTicker() + ' · as-of '
-      + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
+      + (_asOf !== null
+         ? new Date(_asOf * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT'
+         : '—'));
 
     /* ---- ANALYTICS-sourced cells (/api/analytics/state, the slow 0.15–9s ML stack):
        update ONLY once it has actually loaded. A pending fetch must NEVER blank these to
@@ -13522,7 +13528,11 @@ function edCheckRadarAlerts(rows) {
     T('ct-foot-status', ((t && t.levels_stale)
         ? ('⚠ STALE' + (fnum(t.levels_age_sec) !== null
             ? ' ' + Math.round(t.levels_age_sec / 60) + 'm' : '') + ' · ')
-        : 'live · ') + curTicker() + ' · as-of ' + new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT');
+        : 'live · ') + curTicker() + ' · as-of '
+      // v12 residual: the data's clock, never the paint's (same cure as cv2-f-status).
+      + (fnum(t.computed_ts_utc) !== null
+         ? new Date(fnum(t.computed_ts_utc) * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }) + ' CT'
+         : '—'));
     mark();
   }
 
