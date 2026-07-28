@@ -2164,6 +2164,95 @@ _AGENTS_LAW_GRANDFATHERED = frozenset({
 })
 
 
+#: RC-103 — files reading price_bars_1m with NO calendar authority when the rule was created.
+#: BURN-DOWN, visible and shrinking: remove an entry only by gating the file (or deleting it).
+#: Addition prohibited — that is the lock. Top of the burn-down by blast radius:
+#: research/pilot_step3/data_loader.py (feeds the F2 pipeline) and challenger_eval_v1/runner.py.
+_PRICE_BARS_GRANDFATHERED = frozenset({
+    "tools/bar_history_recovery_audit_v1.py", "tools/canonical_1m_grid_validator_v1.py",
+    "tools/data_faucet_audit.py", "tools/historical_backfill_enrolled_1m_v1.py",
+    "tools/ingest_1m_to_staging.py", "tools/inspect_price_bars_1m_rth_gaps.py",
+    "tools/issue19_rehydration_range_v1.py", "tools/pin_neutral_anchor_feasibility_sample_v1.py",
+    "tools/study_pin_charm_v1.py", "tools/study_pin_direction_v1.py",
+    "tools/study_pin_regime_cut_v1.py", "tools/study_pin_residence_v1.py",
+    "tools/_multi_timeframe_audit_v1.py", "tools/_phase4a_fast_count.py",
+    "tools/_phase4a_proof_not_exists.py", "tools/_phase4a_quantify_anchor_miss.py",
+    "tools/_phase4b_audits.py", "tools/_phase4_bar_check.py", "tools/_phase4_snapshot_detail.py",
+    "tools/research/d2_build_dual_label_scratch_db.py",
+    "tools/legacy/horizon_7/audit_fused_policy_history_sufficiency_v1.py",
+    "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",
+    "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py",
+    "tools/legacy/horizon_7/batch_backfill_movement_predictions_v1.py",
+    "tools/legacy/horizon_7/build_checkpoint_provenance_bundle_v1.py",
+    "tools/legacy/horizon_7/enforce_universal_ticker_readiness_v1.py",
+    "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py",
+    "tools/legacy/horizon_7/report_pred_1c_governed_remediation_v1.py",
+    "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
+    "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
+    "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
+    "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
+    "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py",
+    "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
+    "tools/legacy/horizon_7/_quick_gov_pred1c.py",
+    "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py",
+    "research/challenger_eval_v1/runner.py", "research/pilot_step3/data_loader.py",
+})
+
+_PRICE_BARS_CAL_RE = re.compile(
+    r"is_trading_day_et|is_tradable_session|_is_measurable_day|is_capturable_session|"
+    r"session_safe_log_returns|_load_closes|session-universe-ok")
+
+
+def check_price_bars_readers_name_their_session() -> list[Violation]:
+    """A NEW file reading price_bars_1m must reference a calendar authority (RC-103).
+
+    WHAT WAS OBSERVED. price_bars_1m carries extended hours BY DESIGN (~1,000 bars/session,
+    RC-26), and the session-blindness class recurred FIVE times through this one table: RC-54
+    (three market-closed measurements in one session), RC-57 (calendar-blind shared filters),
+    RC-58 (seven study loaders), RC-31 twice (thirteen bar-path runners, then HAR's own diff
+    after the 'fix'). Each fix gated a CONSUMER while the TABLE stayed open.
+    rth_only_market_measurement guards MEASUREMENT AUTHORITIES, and a raw SELECT is not an
+    authority, so the whole class sat outside its scope. MEASURED at rule creation: 38 ungated
+    direct readers in tools/ + research/.
+
+    Rule: a tools/ or research/ file containing `FROM price_bars_1m` must reference a calendar
+    authority (is_trading_day_et / is_tradable_session_ts_utc / _is_measurable_day /
+    is_capturable_session / session_safe_log_returns / _load_closes) or carry an explicit
+    `# session-universe-ok: <reason>`. The 38 offenders are grandfathered as a visible burn-down
+    — removal only by gating or deleting the file, addition prohibited.
+
+    HOW VALIDATED: measured against the live tree (38 found, all listed above); a gated file
+    passes by construction because the gate call IS the reference the pattern matches.
+    """
+    out: list[Violation] = []
+    for base in ("tools", "research"):
+        root = REPO / base
+        if not root.exists():
+            continue
+        for p in root.rglob("*.py"):
+            sp = str(p.relative_to(REPO)).replace("\\", "/")
+            if "__pycache__" in sp or "worktrees" in sp:
+                continue
+            if sp in _PRICE_BARS_GRANDFATHERED:
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if not re.search(r"FROM\s+price_bars_1m", text, re.I):
+                continue
+            if _PRICE_BARS_CAL_RE.search(text):
+                continue
+            out.append(Violation(
+                p, 0,
+                f"{sp} reads price_bars_1m with NO calendar authority. The table carries "
+                f"extended hours BY DESIGN; assuming bars == RTH is the class behind "
+                f"RC-31/54/57/58 (five recurrences). Gate the day/timestamp with the time_et "
+                f"authority, use _load_closes(session=)/session_safe_log_returns, or declare "
+                f"'# session-universe-ok: <reason>'."))
+    return out
+
+
 def check_rc_citations_resolve() -> list[Violation]:
     """Every RC-N cited in code must resolve to a real row (RC-99).
 
@@ -2740,7 +2829,8 @@ CHECKS = [
     ("enforced_checks_have_negative_controls", check_enforced_checks_have_negative_controls, True),
     ("agents_laws_name_their_enforcer", check_agents_laws_name_their_enforcer, True),
     ("scheduled_producers_are_not_inert", check_scheduled_producers_are_not_inert, True),
-    ("rc_citations_resolve", check_rc_citations_resolve, True),  # RC-61: the log is a control, not an archive
+    ("rc_citations_resolve", check_rc_citations_resolve, True),
+    ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
     ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home

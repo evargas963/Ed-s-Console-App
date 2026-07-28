@@ -188,3 +188,21 @@ def test_inert_producer_check_accepts_a_healthy_run_log(tmp_path, monkeypatch):
         "[job] start\nwrote artifact\n[job] exit=0\n", encoding="utf-8")
     monkeypatch.setattr(M, "REPO", fake)
     assert not M.check_scheduled_producers_are_not_inert()
+
+
+def test_price_bars_session_check_screams_on_an_ungated_reader(tmp_path, monkeypatch):
+    """RC-103: a NEW ungated price_bars_1m reader must be flagged; a gated one must pass."""
+    from tools import check_institutional_correctness as M
+    fake = tmp_path
+    (fake / "tools").mkdir()
+    (fake / "research").mkdir()
+    (fake / "tools" / "zz_bar_probe.py").write_text(
+        'q = "SELECT close FROM price_bars_1m WHERE ticker=?"\n', encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", fake)
+    bad = M.check_price_bars_readers_name_their_session()
+    assert any("zz_bar_probe" in str(b) for b in bad), "an ungated bar reader was not flagged"
+    (fake / "tools" / "zz_bar_probe.py").write_text(
+        'from time_et import is_trading_day_et\n'
+        'q = "SELECT close FROM price_bars_1m WHERE ticker=?"\n', encoding="utf-8")
+    assert not [b for b in M.check_price_bars_readers_name_their_session()
+                if "zz_bar_probe" in str(b)], "a gated reader was wrongly flagged"
