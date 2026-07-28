@@ -88,3 +88,41 @@ def test_overnight_return_cannot_enter_a_feature_window(tmp_path):
     X2, y2, d2 = _build_xy(ends, closes, labeled, lookback=2)
     assert len(X2) == 1, "a clean intra-day window was wrongly excluded"
     assert float(np.abs(X2).max()) < 0.01, f"a gap-sized return entered: {X2}"
+
+
+# ── RC-31 REOPENED (operator v6 audit): the fix was a SCOPE close, not a CLASS close ─────────
+# TCN's window was fixed while HAR, cost-aware, cross-asset, quantile and survival each ran
+# their OWN np.diff over the same closes. Smoking gun, reproduced before accepting the reopen:
+# har_features(...)[3,0] equalled log(MonOpen/FriClose)^2 EXACTLY — the whole weekend as one
+# bar-to-bar r^2. One shared primitive now exists; these tests fail if any path regresses.
+
+def test_har_never_contains_the_overnight_r2():
+    """The operator's directive verbatim: 'test must fail if HAR equals overnight r²'."""
+    from research.har_rv_eval_v1.runner import har_features
+    ends = np.array([_ts(2026, 7, 24, 15, 58), _ts(2026, 7, 24, 15, 59),
+                     _ts(2026, 7, 27, 9, 31), _ts(2026, 7, 27, 9, 32)])
+    closes = np.array([100.0, 100.1, 102.0, 102.1])
+    F = har_features(ends, closes)
+    gap_r2 = (np.log(102.0 / 100.1)) ** 2
+    assert not np.any(np.isclose(F, gap_r2)), (
+        f"the weekend gap entered HAR as an r^2 again: {F}"
+    )
+    assert np.isfinite(F).all(), "NaN leaked into HAR features — exclusion must happen inside"
+
+
+def test_session_safe_returns_nan_at_the_boundary_and_only_there():
+    from research.tcn_eval_v1.runner import session_safe_log_returns
+    ends = np.array([_ts(2026, 7, 24, 15, 58), _ts(2026, 7, 24, 15, 59),
+                     _ts(2026, 7, 27, 9, 31), _ts(2026, 7, 27, 9, 32)])
+    closes = np.array([100.0, 100.1, 102.0, 102.1])
+    r = session_safe_log_returns(ends, closes)
+    assert np.isnan(r[0]), "the prepend self-diff must be NaN, it is not a return"
+    assert np.isnan(r[2]), "the Fri->Mon gap must be NaN — it is not a bar return"
+    assert np.isfinite(r[1]) and np.isfinite(r[3]), "intra-session returns must survive"
+
+
+def test_har_ends_is_required_so_a_missed_caller_fails_loudly():
+    """An optional `ends` would let a missed caller stay silently session-blind."""
+    from research.har_rv_eval_v1.runner import har_features
+    with pytest.raises(TypeError):
+        har_features(np.array([100.0, 100.1]))  # old single-argument form must be dead

@@ -106,3 +106,44 @@ def test_render_sites_call_the_authority():
         "the authority no longer prefers the 1.5s live poll — the meta bar and the big legend "
         "would agree with each other while both lagging the market"
     )
+
+
+# ── RC-102: the console renders staleness, and the lane has ONE reader ───────────────────────
+# /api/terrain published levels_stale/levels_age_sec/levels_stale_reason since RC-91, and
+# index.html never read them — the terrain card rendered 90-minute-old walls beside a ticking
+# price with no marker. And consoleSpot() + edLiveSpot() each read window._fastLaneSpot
+# independently: two doors to one value ("dual spot clocks", operator Wave-1 audit).
+
+def test_console_renders_levels_staleness():
+    src = CONSOLE.read_text(encoding="utf-8")
+    assert "levels_stale" in src, (
+        "index.html no longer reads levels_stale — the terrain card will render frozen levels "
+        "beside a live price with no marker, the exact RC-91 screen state"
+    )
+    assert "levels_stale_reason" in src, (
+        "the stale marker must carry WHY (the reason tooltip), not just that it is stale"
+    )
+    assert "STALE" in src, "no visible STALE text — a class change alone is not a marker"
+
+
+def test_trusted_badge_cannot_sit_over_stale_levels():
+    """A TRUSTED chip over stale levels is a lie with a checkmark on it."""
+    src = CONSOLE.read_text(encoding="utf-8")
+    assert re.search(r"const trusted = d\.confidence === 'TRUSTED' && !_lvStale", src), (
+        "TRUSTED no longer requires fresh levels — the badge can vouch for a frozen snapshot"
+    )
+
+
+def test_ed_live_spot_delegates_to_the_authority():
+    """RC-102: edLiveSpot must not read window._fastLaneSpot itself — one lane, one reader."""
+    src = CONSOLE.read_text(encoding="utf-8")
+    m = re.search(r"function edLiveSpot\(\)\s*\{(.*?)\n\}", src, re.S)
+    assert m, "edLiveSpot missing"
+    # Strip // comments first — USE versus MENTION. The body's comment EXPLAINS why the lane
+    # must not be read directly, and a test that fails on the explanation forces deleting the
+    # explanation to go green (the operator-law guard hit this exact trap on its own docs).
+    body = re.sub(r"//.*$", "", m.group(1), flags=re.M)
+    assert "consoleSpot(null)" in body, "edLiveSpot no longer delegates to consoleSpot"
+    assert "_fastLaneSpot" not in body, (
+        "edLiveSpot reads the lane directly again — the second door RC-102 closed"
+    )

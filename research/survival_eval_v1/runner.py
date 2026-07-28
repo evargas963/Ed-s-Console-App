@@ -18,6 +18,7 @@ from sklearn.preprocessing import StandardScaler
 from research.elastic_net_eval_v1.runner import apply_advancement_screen, evaluate_cell
 from research.har_rv_eval_v1.runner import har_features
 from research.incumbent_eval_v1.runner import invalid_threshold_horizons
+from research.tcn_eval_v1.runner import session_safe_log_returns  # RC-31
 from research.tcn_eval_v1.runner import _et_date, _load_closes, _load_labeled_rows
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
@@ -53,9 +54,9 @@ def competing_label(
 
 def _build(ends, closes, labeled_ts, horizon_min, thr_by_day_train=None):
     """Build features; labels use thr from train later — here return pts proxy for thr fit."""
-    har = har_features(closes)
+    har = har_features(ends, closes)
     logp = np.log(np.clip(closes, 1e-12, None))
-    rets = np.diff(logp, prepend=logp[0])
+    rets = session_safe_log_returns(ends, closes)   # RC-31: gap returns are NaN
     xs, js, dates = [], [], []
     for ts, _y in labeled_ts:
         j = bisect.bisect_right(ends, ts) - 1

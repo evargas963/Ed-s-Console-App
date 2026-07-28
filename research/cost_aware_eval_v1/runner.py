@@ -18,6 +18,7 @@ from sklearn.preprocessing import StandardScaler
 from research.har_rv_eval_v1.runner import _build_xy, har_features
 from research.kalman_eval_v1.runner import _fit_predict
 from research.survival_eval_v1.runner import _HZ_MIN, _SURV_TO_SCREEN, competing_label
+from research.tcn_eval_v1.runner import session_safe_log_returns  # RC-31
 from research.tcn_eval_v1.runner import _et_date, _load_closes, _load_labeled_rows
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
@@ -142,9 +143,9 @@ def _run_survival_qqq_60c(db: Path, prereg: dict[str, Any]) -> dict[str, Any]:
     hmin = int(_HZ_MIN[hz])
     ends, closes = _load_closes(db, "QQQ")
     labeled = _load_labeled_rows(db, "QQQ", "outcome_1c")
-    har = har_features(closes)
+    har = har_features(ends, closes)
     logp = np.log(np.clip(closes, 1e-12, None))
-    rets = np.diff(logp, prepend=logp[0])
+    rets = session_safe_log_returns(ends, closes)   # RC-31: gap returns are NaN
     xs, js, dates = [], [], []
     for ts, _y in labeled:
         j = bisect.bisect_right(ends, ts) - 1

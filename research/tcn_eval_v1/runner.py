@@ -92,6 +92,30 @@ def _load_closes(db: Path, ticker: str, *, session: str = "rth") -> tuple[np.nda
     return ends, closes
 
 
+def session_safe_log_returns(ends: np.ndarray, closes: np.ndarray) -> np.ndarray:
+    """RC-31 (reopened): THE one bar-return primitive for every bar-path study.
+
+    r[i] = log(close[i] / close[i-1]) when bars i-1 and i are in the SAME ET session; np.nan at
+    r[0] and at every session boundary. The first close was a scope close: TCN's window builder
+    was fixed while HAR, Kalman, cross-asset, quantile, survival and cost-aware each ran their
+    OWN np.diff over the same closes — reproduced same-turn: har_features(...)[3,0] equalled
+    log(MonOpen/FriClose)^2 exactly, the whole weekend as one bar-to-bar r^2.
+
+    NaN, deliberately, not zero: a zeroed gap fabricates calm and silently deflates every
+    vol-style feature. NaN cannot be averaged, summed or squared without the consumer noticing —
+    it forces EXCLUSION, which is the honest treatment, and any consumer that ignores it gets a
+    NaN feature instead of a wrong one (fail-loud, not fail-plausible).
+    """
+    logc = np.log(np.clip(closes, 1e-12, None))
+    rets = np.diff(logc, prepend=logc[0])
+    if len(ends):
+        rets[0] = np.nan                              # the prepend self-diff is not a return
+        days = np.array([_et_date(float(t)) for t in ends])
+        if len(days) > 1:
+            rets[1:][days[1:] != days[:-1]] = np.nan  # the gap is not a return either
+    return rets
+
+
 def _load_labeled_rows(db: Path, ticker: str, label_col: str) -> list[tuple[float, str]]:
     from timeframe_config import SNAPSHOT_TABLE_1M
 

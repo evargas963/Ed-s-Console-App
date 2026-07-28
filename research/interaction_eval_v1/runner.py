@@ -51,7 +51,7 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
     cells: dict[str, dict[str, Any]] = {}
     for ticker in prereg["family"]["tickers"]:
         ends, closes = _load_closes(Path(db_path), str(ticker))
-        feats = har_features(closes)
+        feats = har_features(ends, closes)
         for hz in prereg["family"]["horizons"]:
             if hz in invalid_hz:
                 continue

@@ -12090,9 +12090,21 @@ async function edLoadTerrain() {
   set('tv-sym', d.ticker || tk);
   set('tv-px', liveSpot != null ? liveSpot.toFixed(2) : '—');   // RC-77: resolved above
 
-  const trusted = d.confidence === 'TRUSTED';
+  // RC-102 — the levels' own staleness OUTRANKS the confidence chip. /api/terrain has published
+  // levels_stale / levels_age_sec / levels_stale_reason since RC-91, and this page never read
+  // them: the terrain card rendered 90-minute-old walls beside a ticking price with no marker,
+  // which is the exact screen state RC-91 was opened for. A TRUSTED badge over stale levels is a
+  // lie with a checkmark on it.
+  const _lvStale = !!d.levels_stale;
+  const trusted = d.confidence === 'TRUSTED' && !_lvStale;
   const tr = document.getElementById('tv-trust');
-  if (tr) { tr.className = 'tv-chip ' + (trusted ? 'ok' : 'bad'); tr.textContent = (trusted ? '● ' : '⚠ ') + (d.confidence || '—'); }
+  if (tr && _lvStale) {
+    const mins = d.levels_age_sec != null ? Math.round(d.levels_age_sec / 60) : null;
+    tr.className = 'tv-chip bad';
+    tr.textContent = '⚠ STALE' + (mins != null ? ' ' + mins + 'm' : '');
+    tr.title = String(d.levels_stale_reason || 'levels are not refreshing');
+  } else
+  if (tr) { tr.className = 'tv-chip ' + (trusted ? 'ok' : 'bad'); tr.textContent = (trusted ? '● ' : '⚠') + (d.confidence || '—'); }
   set('tv-contracts', (d.contracts_used || 0).toLocaleString() + ' CT · ' + (d.strikes_used || 0) + ' STRIKES');
   d._gexCrossed = false;   // fresh payload re-anchors: server regime and net GEX agree
   edPaintNetGex(d);
@@ -12384,8 +12396,11 @@ let edLastTerrain = null;
 let edSpotPaintTimer = null;
 
 function edLiveSpot() {
-  const fs = window._fastLaneSpot;
-  return (Number.isFinite(fs) && fs > 0) ? fs : null;
+  // RC-102: DELEGATE, never read the lane directly. This function and consoleSpot() each read
+  // window._fastLaneSpot independently — two doors to one value, flagged in the operator's
+  // Wave-1 audit as "dual spot clocks". consoleSpot(null) is exactly the lane-or-null contract
+  // this function always had: with no payload there is no fallback, so absence stays absence.
+  return consoleSpot(null);
 }
 
 function edPaintSpot() {

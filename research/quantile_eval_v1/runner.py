@@ -17,6 +17,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from research.elastic_net_eval_v1.runner import apply_advancement_screen, evaluate_cell
 from research.har_rv_eval_v1.runner import har_features
 from research.incumbent_eval_v1.runner import invalid_threshold_horizons
+from research.tcn_eval_v1.runner import session_safe_log_returns  # RC-31
 from research.tcn_eval_v1.runner import CLASSES, _et_date, _load_closes
 from timeframe_config import SNAPSHOT_TABLE_1M
 
@@ -52,9 +53,9 @@ def _load_pts_rows(db: Path, ticker: str, hz: str) -> list[tuple[float, str, flo
 def _build(ends, closes, rows):
     import bisect
 
-    har = har_features(closes)
+    har = har_features(ends, closes)
     logp = np.log(np.clip(closes, 1e-12, None))
-    rets = np.diff(logp, prepend=logp[0])
+    rets = session_safe_log_returns(ends, closes)   # RC-31: gap returns are NaN
     xs, ys, dates = [], [], []
     pts = []
     for ts, y, p in rows:

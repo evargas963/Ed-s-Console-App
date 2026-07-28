@@ -18,7 +18,8 @@ from sklearn.preprocessing import StandardScaler
 from research.elastic_net_eval_v1.runner import apply_advancement_screen, evaluate_cell
 from research.incumbent_eval_v1.runner import invalid_threshold_horizons
 from research.kalman_eval_v1.runner import _fit_predict
-from research.tcn_eval_v1.runner import _et_date, _load_closes, _load_labeled_rows
+from research.tcn_eval_v1.runner import (_et_date, _load_closes, _load_labeled_rows,
+                                         session_safe_log_returns)  # RC-31 primitive
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 
@@ -27,22 +28,35 @@ def load_prereg() -> dict[str, Any]:
     return json.loads(PREREG_PATH.read_text(encoding="utf-8"))
 
 
-def har_features(closes: np.ndarray) -> np.ndarray:
-    """Per-bar HAR vector using only past completed returns (causal)."""
-    logp = np.log(np.clip(closes, 1e-12, None))
-    r2 = np.diff(logp, prepend=logp[0]) ** 2
+def har_features(ends: np.ndarray, closes: np.ndarray) -> np.ndarray:
+    """Per-bar HAR vector using only past completed SAME-SESSION returns (causal, RC-31).
+
+    `ends` is REQUIRED, deliberately: this function cannot be session-safe without knowing when
+    each bar ended, and an optional parameter would let a missed caller stay silently blind — a
+    missed caller now fails loudly at the call site instead. Reproduced before this fix:
+    har_features(...)[3,0] equalled log(MonOpen/FriClose)^2 exactly — the whole weekend entering
+    as one bar-to-bar r^2, deterministically inflating every RV mean that touched a Monday.
+
+    Gap returns are EXCLUDED via valid-count denominators (sum over finite r^2 / count of finite
+    r^2), never zeroed: a zeroed gap fabricates calm and deflates the mean instead.
+    """
+    r = session_safe_log_returns(ends, closes)
+    r2 = np.square(r)
+    valid = np.isfinite(r2)
+    v2 = np.where(valid, r2, 0.0)
+    csum = np.cumsum(v2)
+    ccnt = np.cumsum(valid.astype(np.float64))
     n = len(closes)
     out = np.zeros((n, 3), dtype=np.float64)
-    csum = np.cumsum(r2)
     for t in range(n):
         def mean_last(k: int) -> float:
-            lo = max(0, t - k + 1)
-            # exclude current bar's return for strict causality at bar t decision after close
-            hi = t  # use r2[0:t] end-exclusive → last k of completed prior
+            hi = t  # r2[0:t] end-exclusive: only completed prior returns (strict causality)
             if hi <= 0:
                 return 0.0
             lo = max(0, hi - k)
-            return float((csum[hi - 1] - (csum[lo - 1] if lo > 0 else 0.0)) / max(1, hi - lo))
+            s = csum[hi - 1] - (csum[lo - 1] if lo > 0 else 0.0)
+            c = ccnt[hi - 1] - (ccnt[lo - 1] if lo > 0 else 0.0)
+            return float(s / c) if c > 0 else 0.0
 
         out[t, 0] = mean_last(1)
         out[t, 1] = mean_last(5)
@@ -53,7 +67,7 @@ def har_features(closes: np.ndarray) -> np.ndarray:
 def _build_xy(ends, closes, labeled):
     import bisect
 
-    feats = har_features(closes)
+    feats = har_features(ends, closes)
     xs, ys, dates = [], [], []
     for ts, y in labeled:
         j = bisect.bisect_right(ends, ts) - 1
