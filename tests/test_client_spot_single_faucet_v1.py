@@ -194,18 +194,34 @@ def test_rc117_named_victims_are_locked():
       never hardcode 'live'.
     - ct-conf is a member of the stale-gated chip class."""
     src = CONSOLE.read_text(encoding="utf-8")
-    body = re.sub(r"//.*$", "", src, flags=re.M)
+    # use vs mention: strip BOTH comment forms — the strict reference count immediately caught
+    # RC-81's own block-comment history lesson mentioning the id.
+    body = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", src, flags=re.M), flags=re.S)
     # v12 residual accepted: banning only T('cv2-hd-px', ...) left getElementById(...).textContent
     # open — the lock must ban the ACTION (any assignment reaching that element), not one syntax.
-    writers = [ln.strip() for ln in body.splitlines()
-               if "cv2-hd-px" in ln
-               and ("T('cv2-hd-px'" in ln or "textContent" in ln
-                    or "innerHTML" in ln or "innerText" in ln)
-               and "null" not in ln            # the tab-switch BLANK is a clear, not a value
-               and "SPOT_DISPLAY_IDS" not in ln]
-    assert writers == [], (
-        f"value-writers on cv2-hd-px besides paintSpotDisplays (any syntax): {writers}"
+    # v13 residual accepted: a same-line accessor scan is escapable by fetching the element
+    # into a variable and writing on the next line. The strict invariant: outside its markup,
+    # the SPOT_DISPLAY_IDS registry, and the sanctioned tab-switch BLANK, NOTHING in the page
+    # may reference this id at all — any new reference is a potential writer and fails here.
+    refs = [ln.strip() for ln in body.splitlines()
+            if "cv2-hd-px" in ln
+            and 'id="cv2-hd-px"' not in ln          # the markup node itself
+            and "SPOT_DISPLAY_IDS" not in ln        # the one-writer registry
+            and "null" not in ln]                   # the tab-switch BLANK (a clear, not a value)
+    assert refs == [], (
+        f"unsanctioned references to cv2-hd-px — the only legal touchpoints are the markup, "
+        f"the SPOT_DISPLAY_IDS registry, and the tab-switch blank: {refs}"
     )
+    # v13: the as-of stamp must come from the payload clock, never the paint clock.
+    for foot in ("cv2-f-status", "ct-foot-status"):
+        i = body.find("T('" + foot + "'")
+        window = body[max(0, i - 900):i + 500]
+        assert "computed_ts_utc" in window, (
+            f"{foot} as-of no longer reads the payload clock (computed_ts_utc)"
+        )
+        assert "new Date().toLocaleTimeString" not in window, (
+            f"{foot} stamps the PAINT clock — 'now' beside old data is the lying-clock class"
+        )
     for foot in ("cv2-f-status", "ct-foot-status"):
         i = body.find("T('" + foot + "'")
         assert i > 0, f"{foot} painter is gone"

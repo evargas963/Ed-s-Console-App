@@ -13097,7 +13097,9 @@ function edCheckRadarAlerts(rows) {
       : 'live · ';
     // v12 residual: 'as-of' must stamp the DATA's clock, not the paint's — new Date() said
     // "now" beside levels that could be minutes old, which is the same lie in a smaller font.
-    // computed_ts_utc is the chain-fetch instant the payload itself carries; absent stays '—'.
+    // v13 precision: computed_ts_utc is the terrain COMPUTE stamp (time.time() when the
+    // snapshot was built, milliseconds after its chain fetch) — the payload's own clock,
+    // not a proven wire timestamp. Absent stays '—'.
     var _asOf = fnum(t.computed_ts_utc);
     T('cv2-f-status', _fState + curTicker() + ' · as-of '
       + (_asOf !== null
