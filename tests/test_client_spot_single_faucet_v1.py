@@ -203,25 +203,34 @@ def test_rc117_named_victims_are_locked():
     # into a variable and writing on the next line. The strict invariant: outside its markup,
     # the SPOT_DISPLAY_IDS registry, and the sanctioned tab-switch BLANK, NOTHING in the page
     # may reference this id at all — any new reference is a potential writer and fails here.
+    # v14 kill accepted: exempting any line containing 'null' let a value-writer escape by
+    # mentioning the word (e.g. `px || null`). The exemption is now the EXACT sanctioned
+    # blank statement, nothing looser.
     refs = [ln.strip() for ln in body.splitlines()
             if "cv2-hd-px" in ln
             and 'id="cv2-hd-px"' not in ln          # the markup node itself
             and "SPOT_DISPLAY_IDS" not in ln        # the one-writer registry
-            and "null" not in ln]                   # the tab-switch BLANK (a clear, not a value)
+            and "T('cv2-hd-px', null)" not in ln]   # the exact tab-switch BLANK, only
     assert refs == [], (
         f"unsanctioned references to cv2-hd-px — the only legal touchpoints are the markup, "
         f"the SPOT_DISPLAY_IDS registry, and the tab-switch blank: {refs}"
     )
-    # v13: the as-of stamp must come from the payload clock, never the paint clock.
-    for foot in ("cv2-f-status", "ct-foot-status"):
-        i = body.find("T('" + foot + "'")
-        window = body[max(0, i - 900):i + 500]
-        assert "computed_ts_utc" in window, (
-            f"{foot} as-of no longer reads the payload clock (computed_ts_utc)"
+    # v13/v14: every as-of/stamp surface reads the PAYLOAD clock, never the paint clock.
+    # v14 kill accepted: a char-window bind is escapable by moving code — the bind is now the
+    # full STATEMENT (from the writer call to its closing paren), and tv-stamp joins the class.
+    for writer, painter in (("T('cv2-f-status'", "T"), ("T('ct-foot-status'", "T"),
+                            ("set('tv-stamp'", "set")):
+        i = body.find(writer)
+        assert i > 0, f"{writer} painter is gone"
+        stmt = body[i:body.find(");", i) + 2]
+        assert "computed_ts_utc" in stmt or "_asOf" in stmt, (
+            f"{writer} as-of no longer reads the payload clock (computed_ts_utc)"
         )
-        assert "new Date().toLocaleTimeString" not in window, (
-            f"{foot} stamps the PAINT clock — 'now' beside old data is the lying-clock class"
+        assert "new Date().toLocaleTimeString" not in stmt, (
+            f"{writer} stamps the PAINT clock — 'now' beside old data is the lying-clock class"
         )
+    # ...and _asOf itself must be the payload clock, so the indirection cannot be repurposed.
+    assert "var _asOf = fnum(t.computed_ts_utc)" in body, "_asOf no longer binds computed_ts_utc"
     for foot in ("cv2-f-status", "ct-foot-status"):
         i = body.find("T('" + foot + "'")
         assert i > 0, f"{foot} painter is gone"

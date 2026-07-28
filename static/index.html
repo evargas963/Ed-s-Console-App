@@ -12128,7 +12128,11 @@ async function edLoadTerrain() {
   set('tv-contracts', (d.contracts_used || 0).toLocaleString() + ' CT · ' + (d.strikes_used || 0) + ' STRIKES');
   d._gexCrossed = false;   // fresh payload re-anchors: server regime and net GEX agree
   edPaintNetGex(d);
-  set('tv-stamp', new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' }) + ' CT');
+  // v14 kill: this stamp said "now" (paint clock) beside levels whose own age could be
+  // minutes — the DATA clock (computed_ts_utc) is the only honest as-of. Absent stays '—'.
+  set('tv-stamp', (Number.isFinite(Number(d.computed_ts_utc))
+    ? new Date(Number(d.computed_ts_utc) * 1000).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' }) + ' CT'
+    : '—'));
 
   const isLong = d.regime === 'LONG_GAMMA_CHOP', isShort = d.regime === 'SHORT_GAMMA_TREND';
   const signWithheld = d.regime === 'SIGN_UNPROVEN';
