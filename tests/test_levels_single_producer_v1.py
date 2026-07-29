@@ -162,3 +162,75 @@ def test_absent_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
     md = _overlay(None, monkeypatch)
     assert md["kl_call_gamma_wall"] is None and md["kl_gamma_flip"] is None
     assert "withheld" in md["kl_levels_source"]
+
+
+# ── RC-128 (operator mandate: ONE Levels Faucet) ─────────────────────────────────────────────
+# The invariant, enforced structurally: for every SSOT level concept there is exactly ONE
+# writer of its payload key — the carriage helper. The analytics assignments were DELETED,
+# not overridden; this lock fails the day any second writer returns, wherever it is placed.
+
+SSOT_KEYS = (
+    "kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip", "kl_gamma_pin", "kl_hvl",
+    "kl_max_pain", "kl_call_delta_wall", "kl_put_delta_wall", "kl_call_oi_wall",
+    "kl_put_oi_wall", "kl_call_vanna_wall", "kl_put_vanna_wall", "kl_em_upper",
+    "kl_em_lower", "kl_gamma_inflection", "kl_delta_inflection", "kl_oi_center",
+)
+
+
+def _ssot_writes_outside_overlay(src: str) -> list[tuple[int, str]]:
+    """(line, key) for every SSOT-key write outside _terrain_kl_overlay — AST-adjacent scan:
+    dict-literal entries AND subscript assignments both count; comments do not."""
+    import re as _re
+    lines = src.splitlines()
+    try:
+        i0 = next(n for n, l in enumerate(lines, 1) if "def _terrain_kl_overlay" in l)
+        i1 = next(n for n, l in enumerate(lines[i0:], i0 + 1)
+                  if l.startswith("def ") or l.startswith("async def "))
+    except StopIteration:
+        i0, i1 = -1, -1
+    out = []
+    for n, l in enumerate(lines, 1):
+        t = l.split("#")[0]
+        for k in SSOT_KEYS:
+            if _re.search(rf"[\"']{k}[\"']\s*[:\]]", t) and ("=" in t or ": " in t) \
+                    and not (i0 <= n < i1):
+                out.append((n, k))
+    return out
+
+
+def test_the_overlay_is_the_only_ssot_writer():
+    src = SERVER.read_text(encoding="utf-8")
+    offenders = _ssot_writes_outside_overlay(src)
+    assert offenders == [], (
+        f"SSOT level keys written outside _terrain_kl_overlay — a second book can reach the "
+        f"screen again (RC-128): {offenders}"
+    )
+
+
+def test_second_writer_injection_is_caught():
+    """Negative control: the lock must FIRE on an injected second writer, wherever placed."""
+    src = SERVER.read_text(encoding="utf-8") + '\nmd["kl_call_gamma_wall"] = 123.0\n'
+    assert _ssot_writes_outside_overlay(src), (
+        "an injected second writer went undetected — the single-writer lock is inert"
+    )
+
+
+def test_overlay_owns_the_full_concept_set(monkeypatch):
+    """Fresh terrain: delta walls carried, EM from the sigma band; unowned concepts BLANK."""
+    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
+                   "gamma_pin": 741.0, "gamma_pin_strength_pct": 32.5,
+                   "net_gex_peak": 735.0, "max_pain": 742.0,
+                   "call_delta_wall": 747.0, "put_delta_wall": 738.0,
+                   "implied_1d_move": {"points": 8.5}, "spot": 741.0,
+                   "levels_stale": False}, monkeypatch)
+    assert md["kl_call_delta_wall"] == 747.0 and md["kl_put_delta_wall"] == 738.0
+    assert md["kl_em_upper"] == 749.5 and md["kl_em_lower"] == 732.5, (
+        "EM must come from the terrain sigma band centered on the payload spot (E-34)"
+    )
+    for k in ("kl_call_oi_wall", "kl_put_oi_wall", "kl_call_vanna_wall",
+              "kl_put_vanna_wall", "kl_gamma_inflection", "kl_delta_inflection",
+              "kl_oi_center"):
+        assert md[k] is None, f"{k}: terrain does not compute this — it must be BLANK, " \
+                              f"never an analytics book"
+    for k in ("kl_call_delta_str", "kl_put_oi_str", "kl_hvl_str", "kl_max_pain_str"):
+        assert md[k] == "—", f"{k}: a strength from another book must be blanked"

@@ -290,6 +290,20 @@ def test_rc117_named_victims_are_locked():
     assert "ct-conf" in chips, "ct-conf left the policed chip class"
 
 
+def test_no_client_fallback_between_level_books():
+    """RC-128 Lock 4: an `a || b` fallback between an analytics figure and an SSOT level key
+    is the dual book at the paint site — whichever side exists wins silently. The straddle
+    EM chains did exactly this at six legacy sites; the pattern is banned for level keys."""
+    src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", CONSOLE.read_text(encoding="utf-8"),
+                                          flags=re.M), flags=re.S)
+    assert "em_straddle_upper ||" not in src and "em_straddle_lower ||" not in src, (
+        "a straddle-vs-SSOT fallback chain is back — the EM dual book at the paint site"
+    )
+    assert not re.search(r"\|\|\s*d\.kl_em_(?:upper|lower)", src), (
+        "something falls back INTO the SSOT EM key — pick one book, no silent winner"
+    )
+
+
 def test_chart_page_never_calls_console_only_helpers():
     """E-35: fnum() exists only in index.html; a chart.html edit called it and draw() died
     before the candles — the operator found a dead chart. The two pages are separate

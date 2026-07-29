@@ -29,6 +29,7 @@ from typing import Any
 from math_exposure_core import (
     compute_exposures_by_strike,
     exposures_have_dollar_gex,
+    pick_delta_wall_strikes,
     pick_net_gex_peak_strike,
     pick_pin_and_strength,
     pick_gamma_wall_strikes,
@@ -100,6 +101,12 @@ class TerrainSnapshot:
     #: the value-area of the wall's own side-gamma mass (never the strike grid).
     call_wall_range: dict[str, Any] | None = None
     put_wall_range: dict[str, Any] | None = None
+
+    #: RC-128 (One Levels Faucet): delta walls owned by THIS producer — same wide chain,
+    #: one book. Concepts terrain does not compute (OI/vanna walls, inflections) do not
+    #: get fields here and render BLANK with a withheld reason, never an analytics book.
+    call_delta_wall: float | None = None
+    put_delta_wall: float | None = None
 
     # provenance — never render a level without knowing where it came from
     contracts_used: int = 0
@@ -374,6 +381,11 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
     _pin, _pin_strength = pick_pin_and_strength(exposures, strikes)   # RC-124: the standard pin
+    # RC-128 (One Levels Faucet): the SSOT producer owns the delta walls too — same wide
+    # chain, same exposures, one book. OI/vanna walls stay unowned and therefore BLANK on
+    # every operator surface until this producer computes them.
+    (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(
+        exposures, strikes)
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot)
     profile = compute_gamma_profile(contracts, spot)
     charm_by_strike = compute_charm_by_strike(contracts, spot)
@@ -411,6 +423,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
         call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
+        call_delta_wall=call_delta_wall,   # RC-128: one book for delta walls too
+        put_delta_wall=put_delta_wall,
         max_pain=compute_max_pain(exposures),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,

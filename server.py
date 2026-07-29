@@ -174,7 +174,7 @@ from math_exposure import (
     compute_iv_model_spread,
     compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
-    compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
+    compute_hvl, compute_max_pain,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
@@ -2656,20 +2656,11 @@ def _publish_progressive_tier_c_cache(
         "charm_direction": charm_dir,
         "charm_drift_toward": charm_toward,
         "kl_expiry_source": kl_expiry_source,
-        "kl_gamma_flip": _float_key_level(gamma_flip),
+        # RC-128 (One Levels Faucet): every SSOT level key (walls, flip, pin, hvl, max pain,
+        # delta walls, EM, and the unowned oi/vanna/inflection set) is written ONLY by
+        # _terrain_kl_overlay below — the analytics assignments that lived here were DELETED,
+        # not overridden. Placement was the bug: any later write resurrected the dual book.
         "kl_gamma_voids": gamma_voids or [],
-        "kl_hvl": _float_key_level(hvl),
-        "kl_max_pain": _float_key_level(max_pain),
-        "kl_call_gamma_wall": _float_key_level(getattr(w0, "call_gamma_wall", None)),
-        "kl_put_gamma_wall": _float_key_level(getattr(w0, "put_gamma_wall", None)),
-        "kl_gamma_inflection": _float_key_level(getattr(cs, "gamma_inflection", None)),
-        "kl_call_delta_wall": _float_key_level(getattr(w0, "call_delta_wall", None)),
-        "kl_put_delta_wall": _float_key_level(getattr(w0, "put_delta_wall", None)),
-        "kl_delta_inflection": _float_key_level(getattr(cs, "delta_inflection", None)),
-        "kl_call_oi_wall": _float_key_level(getattr(w0, "call_oi_wall", None)),
-        "kl_put_oi_wall": _float_key_level(getattr(w0, "put_oi_wall", None)),
-        "kl_gamma_pin": _float_key_level(getattr(cs, "gamma_pin", None)),
-        "kl_oi_center": _float_key_level(getattr(cs, "oi_center", None)),
         "kl_metrics_dollarized": bool(exposures and exposures_have_dollar_gex(exposures)),
         "spread": quote_spread_pts,
         "spread_source": quote_spread_source,
@@ -8568,16 +8559,9 @@ def _fetch_state(
         except (TypeError, ValueError):
             return None
 
-    ms_dict["kl_call_gamma_wall"]  = _fv(getattr(w0, "call_gamma_wall",  None))
-    ms_dict["kl_put_gamma_wall"]   = _fv(getattr(w0, "put_gamma_wall",   None))
-    ms_dict["kl_gamma_inflection"] = _fv(getattr(cs, "gamma_inflection", None))
-    ms_dict["kl_call_delta_wall"]  = _fv(getattr(w0, "call_delta_wall",  None))
-    ms_dict["kl_put_delta_wall"]   = _fv(getattr(w0, "put_delta_wall",   None))
-    ms_dict["kl_delta_inflection"] = _fv(getattr(cs, "delta_inflection", None))
-    ms_dict["kl_call_oi_wall"]     = _fv(getattr(w0, "call_oi_wall",     None))
-    ms_dict["kl_put_oi_wall"]      = _fv(getattr(w0, "put_oi_wall",      None))
-    ms_dict["kl_call_vanna_wall"]  = _fv(getattr(w0, "call_vanna_wall",  None))
-    ms_dict["kl_put_vanna_wall"]   = _fv(getattr(w0, "put_vanna_wall",   None))
+    # RC-128 (One Levels Faucet): the wall/level assignments that lived here were DELETED,
+    # not overridden — _terrain_kl_overlay below is the ONLY writer of every SSOT level key.
+    # Placement was the bug: any assignment after the overlay resurrected the dual book.
 
     # ── Wall strengths (formatted strings) ────────────────────────────────────
     def _fs(v):
@@ -8598,23 +8582,13 @@ def _fetch_state(
         except (TypeError, ValueError):
             return "—"
 
-    ms_dict["kl_call_gamma_str"]  = _fs(getattr(w0, "call_gamma_strength", None))
-    ms_dict["kl_put_gamma_str"]   = _fs(getattr(w0, "put_gamma_strength",  None))
-    ms_dict["kl_call_delta_str"]  = _fs(getattr(w0, "call_delta_strength", None))
-    ms_dict["kl_put_delta_str"]   = _fs(getattr(w0, "put_delta_strength",  None))
-    ms_dict["kl_call_oi_str"]     = _fs(getattr(w0, "call_oi_strength",    None))
-    ms_dict["kl_put_oi_str"]      = _fs(getattr(w0, "put_oi_strength",     None))
-    ms_dict["kl_call_vanna_str"]  = _fs(getattr(w0, "call_vanna_strength", None))
-    ms_dict["kl_put_vanna_str"]   = _fs(getattr(w0, "put_vanna_strength",  None))
+    # RC-128: strength strings deleted with their book — a dollar strength computed from the
+    # analytics chain beside an SSOT strike is the dual-book lie in a smaller cell. The
+    # overlay blanks every strength it does not own.
 
     # ── New institutional levels ───────────────────────────────────────────────
-    ms_dict["kl_gamma_pin"]    = _fv(getattr(cs, "gamma_pin", None))
-    ms_dict["kl_hvl"]          = _fv(_hvl)
-    ms_dict["kl_max_pain"]     = _fv(_max_pain)
-    ms_dict["kl_hvl_str"]      = _fs(hvl_gamma_strength(exposures, _hvl))
-    ms_dict["kl_max_pain_str"] = _foi(max_pain_oi_strength(exposures, _max_pain))
-    ms_dict["kl_oi_center"]    = _fv(getattr(cs, "oi_center", None))
-    ms_dict["kl_gamma_flip"]   = _fv(_gamma_flip)
+    # RC-128: pin/hvl/max-pain/flip/oi_center and their strength strings deleted — the
+    # overlay below is the only writer for the SSOT set and blanks unowned strengths.
     # Confidence is served alongside the level so the UI can never show a narrow-chain
     # flip as if it were trustworthy (FIND-GAMMA-FLIP-METHOD-V1).
     ms_dict["kl_gamma_flip_confidence"] = _gamma_flip_conf
@@ -8660,8 +8634,11 @@ def _fetch_state(
     _em_lo_straddle = _fv(_em_straddle.get("lower"))
     _em_up_iv = _fv(_em_iv.get("upper"))
     _em_lo_iv = _fv(_em_iv.get("lower"))
-    ms_dict["kl_em_upper"] = _em_up_straddle or _em_up_iv
-    ms_dict["kl_em_lower"] = _em_lo_straddle or _em_lo_iv
+    # RC-128 / E-34 closed: kl_em_* now comes ONLY from the terrain sigma band via the
+    # overlay. The straddle/IV figures stay published as em_straddle_* — a diagnostic that
+    # never shares the level vocabulary — and mc_em_anchor keeps its consumer.
+    ms_dict["em_straddle_upper_diag"] = _em_up_straddle or _em_up_iv
+    ms_dict["em_straddle_lower_diag"] = _em_lo_straddle or _em_lo_iv
     ms_dict["kl_em_anchor"] = _kl_em_anchor
     ms_dict["mc_em_anchor"] = _kl_em_anchor
     ms_dict["mc_iv_source"] = _mc_iv_source
@@ -10503,18 +10480,53 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     with _terrain_cache_lock:
         t = dict(_terrain_cache.get((ticker or "").upper().strip()) or {})
     fresh = bool(t) and not t.get("levels_stale")
-    # RC-124: kl_gamma_pin now carries the STANDARD pin (total gamma); kl_hvl carries the
+    # RC-124: kl_gamma_pin carries the STANDARD pin (total gamma); kl_hvl carries the
     # net-GEX peak (the former "pin", honestly renamed on the card) — the key name is
     # historical, the row label and tooltip say what it is.
-    pairs = (("kl_call_gamma_wall", "call_wall"), ("kl_put_gamma_wall", "put_wall"),
-             ("kl_gamma_flip", "gamma_flip"), ("kl_gamma_pin", "gamma_pin"),
-             ("kl_hvl", "net_gex_peak"), ("kl_max_pain", "max_pain"))
-    for k, src in pairs:
-        md[k] = t.get(src) if fresh else None
-    md["kl_gamma_pin_strength_pct"] = t.get("gamma_pin_strength_pct") if fresh else None
+    # RC-128 (One Levels Faucet): this helper is THE ONLY WRITER of every SSOT level key on
+    # a UI payload. The analytics assignments were DELETED, not overridden — placement was
+    # the bug (a write after this call resurrected the dual book). Delta walls joined the
+    # terrain producer; EM comes from the terrain sigma band; concepts terrain does not
+    # compute (OI/vanna walls, inflections, oi_center) are BLANKED with the reason — an
+    # analytics book may never stand in for an absent SSOT value.
+    # Explicit literal assignments, deliberately not a loop: the orphan-key detector (RC-84)
+    # counts literal write sites, and a loop-driven write made three honest reads look
+    # writerless. Verbosity is the price of a detector that can actually see the writer.
+    _g = (lambda k: t.get(k)) if fresh else (lambda k: None)
+    md["kl_call_gamma_wall"] = _g("call_wall")
+    md["kl_put_gamma_wall"] = _g("put_wall")
+    md["kl_gamma_flip"] = _g("gamma_flip")
+    md["kl_gamma_pin"] = _g("gamma_pin")
+    md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
+    md["kl_hvl"] = _g("net_gex_peak")
+    md["kl_max_pain"] = _g("max_pain")
+    md["kl_call_delta_wall"] = _g("call_delta_wall")
+    md["kl_put_delta_wall"] = _g("put_delta_wall")
+    em = (t.get("implied_1d_move") or {}) if fresh else {}
+    _em_pts, _em_spot = em.get("points"), (t.get("spot") if fresh else None)
+    if _em_pts is not None and _em_spot:
+        md["kl_em_upper"] = round(float(_em_spot) + float(_em_pts), 2)
+        md["kl_em_lower"] = round(float(_em_spot) - float(_em_pts), 2)
+    else:
+        md["kl_em_upper"] = md["kl_em_lower"] = None
+    # terrain does not compute these yet — absence, never a second book
+    md["kl_call_oi_wall"] = None
+    md["kl_put_oi_wall"] = None
+    md["kl_call_vanna_wall"] = None
+    md["kl_put_vanna_wall"] = None
+    md["kl_gamma_inflection"] = None
+    md["kl_delta_inflection"] = None
+    md["kl_oi_center"] = None
+    # a strength from another book beside an SSOT strike is the same lie — blanked
+    md["kl_call_delta_str"] = "—"
+    md["kl_put_delta_str"] = "—"
+    md["kl_call_oi_str"] = "—"
+    md["kl_put_oi_str"] = "—"
+    md["kl_call_vanna_str"] = "—"
+    md["kl_put_vanna_str"] = "—"
     md["kl_levels_source"] = ("terrain_wide_chain" if fresh else
                               "terrain_unavailable — gamma-family levels withheld")
-    for k in ("kl_call_gamma_str", "kl_put_gamma_str"):
+    for k in ("kl_call_gamma_str", "kl_put_gamma_str", "kl_hvl_str", "kl_max_pain_str"):
         md[k] = "—"
 _terrain_loop_running: bool = False
 _terrain_loop_thread: threading.Thread | None = None
