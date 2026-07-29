@@ -4281,6 +4281,11 @@ function setActiveTicker(rawTicker, rawExpiry) {
   const t = (rawTicker || '').trim().toUpperCase() || 'SPY';
   const e = rawExpiry || null;
   const changed = (t !== activeTicker || e !== activeExpiry);
+  // RC-123 (v21 escape closed): activeTicker's ONLY writer is also the cross-page carrier's
+  // writer — radar clicks, watchlist, Enter, programmatic switches all funnel HERE, so no
+  // caller can update the screen's ticker without the chart page following. The fetchState
+  // persist was retired for this: two writers in one pipeline is the multi-writer defect.
+  if (changed) { try { localStorage.setItem('ed_ticker', t); } catch (err) {} }
   activeTicker = t;
   activeExpiry = e;
   if (changed) {
@@ -9899,15 +9904,9 @@ async function _fetchTierCRestAndApply(ctx) {
 }
 
 async function fetchState(forceOrOpts) {
-  // RC-123: EVERY legacy commit path (Enter, watchlist click, programmatic set) funnels
-  // through here — persisting the active symbol at the chokepoint covers them all, where
-  // hooking individual inputs missed the sidebar (proven by the first journey probe:
-  // typed into ticker-input, stored null). Same-value writes fire no storage event.
-  try {
-    const _tv = (document.getElementById('ticker-input') || {}).value;
-    const _tvu = (_tv || '').trim().toUpperCase();
-    if (_tvu) localStorage.setItem('ed_ticker', _tvu);
-  } catch (e) { /* storage unavailable — carrier degrades, console still works */ }
+  // RC-123 (v21): the ed_ticker persist moved INTO setActiveTicker — the canonical writer of
+  // activeTicker, which this function calls — so radar clicks and every other caller are
+  // covered by construction. Persisting here too would be a second writer in one pipeline.
   const forceTierC = typeof forceOrOpts === 'object' && forceOrOpts != null
     ? !!forceOrOpts.forceTierC
     : !!forceOrOpts;

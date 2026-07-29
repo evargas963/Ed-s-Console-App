@@ -198,8 +198,21 @@ def test_cross_page_ticker_carrier_is_wired():
         assert "localStorage.getItem('ed_ticker')" in src, f"{name} no longer ADOPTS the carrier"
         assert "localStorage.setItem('ed_ticker'" in src, f"{name} no longer WRITES the carrier"
     assert idx.find("localStorage.getItem('ed_ticker')") < idx.find("async function fetchState"), (
-        "the console adopts ed_ticker BELOW the fetchState persist — the first poll would "
+        "the console adopts ed_ticker BELOW the first fetch cycle — the first poll would "
         "overwrite the operator's saved ticker with the markup default"
+    )
+    # v21 escape closed: the persist lives INSIDE setActiveTicker — activeTicker's ONLY
+    # canonical writer — so radar clicks and every other caller carry the ticker by
+    # construction. fetchState must NOT persist too: two writers in one pipeline is the
+    # multi-writer defect this whole file polices.
+    m = re.search(r"function setActiveTicker\(.*?\n\}", idx, re.S)
+    assert m and "localStorage.setItem('ed_ticker'" in m.group(0), (
+        "setActiveTicker no longer writes the carrier — radar/watchlist switches will "
+        "leave the chart page on the old symbol (the v21 escape reopened)"
+    )
+    fs = re.search(r"async function fetchState\(.*?\n\}", idx, re.S)
+    assert fs and "localStorage.setItem('ed_ticker'" not in fs.group(0), (
+        "fetchState persists the carrier AND setActiveTicker does — two writers, one pipeline"
     )
 
 
