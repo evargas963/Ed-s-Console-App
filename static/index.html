@@ -2564,20 +2564,9 @@
     filter: grayscale(72%);
     position: relative;
   }
-  /* Trade-signal horizon cards: keep LONG/SHORT color when lane is stale; STALE badge only */
-  .tf-signal-card[data-direction-withhold][data-tf-signal-dir="long"],
-  .tf-signal-card[data-direction-withhold][data-tf-signal-dir="short"],
-  .tf-signal-card.tf-signal-card--trade-active[data-direction-withhold],
-  .tf-signal-card.tf-signal-card--non-actionable[data-tf-signal-dir="long"],
-  .tf-signal-card.tf-signal-card--non-actionable[data-tf-signal-dir="short"] {
-    opacity: 1;
-    filter: none;
-  }
-  /* Horizon opinion without ALL tradeability — direction visible, no entry-armed chrome */
-  .tf-signal-card.tf-signal-card--non-actionable.tf-state-up,
-  .tf-signal-card.tf-signal-card--non-actionable.tf-state-down {
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
-  }
+  /* RC-133/v27: the rules that kept LONG/SHORT color on withheld or non-actionable
+     signal cards were DELETED here — under !tradeable the contract now emits neutral
+     sigDir and dim state, so no selector may resurrect direction chrome. */
   [data-direction-withhold]::after {
     content: "STALE";
     position: absolute;
@@ -5348,12 +5337,12 @@ try {
  * final_tradeable, WAIT/abstain bias). This helper is the ONE paint contract: every
  * direction-shaped pixel on the horizon row derives from its return value; paint
  * sites do not reinterpret the gate.
- * tradeable=false => state 'dim', no glow, dirText '—' on horizon pills ('NEUTRAL'
- * on ALL; the operator-mirror path may show the withheld bias TEXT under its veto
- * labels, but never up/down color). Raw model direction survives only in the
- * data-horizon-direction attribute — diagnostic, unpainted.
+ * tradeable=false => state 'dim', no glow, and NO directional output on ANY slug —
+ * dirText '—' on horizon pills / 'NEUTRAL' on ALL, sigDir 'neutral', dirAttr
+ * 'NEUTRAL' (v27: the operator-mirror text carve-out and the raw-direction
+ * attribute are both revoked; the veto explanation lives in title/reason text).
  * @returns {{ state: 'up'|'down'|'dim', glow: string, sigDir: string,
- *             nonActionable: boolean, dirText: string }}
+ *             nonActionable: boolean, dirText: string, dirAttr: string }}
  */
 function resolveHorizonCardVisualState(slug, dir, tradeable, confPct) {
   const isConsolidated = slug === 'consolidated';
@@ -5381,18 +5370,31 @@ function resolveHorizonCardVisualState(slug, dir, tradeable, confPct) {
     }
   }
 
+  // v27 (audit REJECT of the first RC-133 seal): the consolidated pill escaped through
+  // `!isConsolidated` — the operator-mirror path could still print LONG under !tradeable.
+  // The carve-out is revoked: under !tradeable NO slug emits a directional word, a
+  // directional sigDir, or a directional attribute. The veto explanation lives in the
+  // card title/reason text, never in direction vocabulary.
   const sigDir =
-    dir === 'LONG' ? 'long'
-      : dir === 'SHORT' ? 'short'
-        : dir === 'UNAVAILABLE' ? 'unavailable'
-          : 'neutral';
+    dir === 'UNAVAILABLE' ? 'unavailable'
+      : !tradeable ? 'neutral'
+        : dir === 'LONG' ? 'long'
+          : dir === 'SHORT' ? 'short'
+            : 'neutral';
 
   const dirText =
     dir === 'UNAVAILABLE' ? 'UNAVAILABLE'
-      : (!tradeable && !isConsolidated) ? '—'
+      : !tradeable ? (isConsolidated ? 'NEUTRAL' : '—')
         : dir === 'FLAT' ? 'NEUTRAL' : dir;
 
-  return { state, glow, sigDir, nonActionable, dirText };
+  // The data-horizon-direction attribute follows the same law (v27): it was a raw
+  // diagnostic, but an attribute a stylesheet can select on is paint, not diagnosis.
+  const dirAttr =
+    dir === 'UNAVAILABLE' ? 'UNAVAILABLE'
+      : !tradeable ? 'NEUTRAL'
+        : dir === 'FLAT' ? 'NEUTRAL' : dir;
+
+  return { state, glow, sigDir, nonActionable, dirText, dirAttr };
 }
 
 try { window.resolveHorizonCardVisualState = resolveHorizonCardVisualState; } catch (e) {}
@@ -5401,9 +5403,9 @@ try { window.resolveHorizonCardVisualState = resolveHorizonCardVisualState; } ca
  *  Primary horizon pill tagged PRIMARY; others AGREE/CONFLICT vs primary (not vs ALL) —
  *  tags exist only when tradeable (RC-133; their titles print directions).
  *  ALL + PLAN only light when engineTradeableSetup(d) — a lone 1M LONG must not arm
- *  ALL/PLAN while 5M/15M/60M stay NEUTRAL (matches backend gate). RC-133: when ALL is
- *  not tradeable NOTHING on this row paints a direction — pills dim to '—'; the raw
- *  model call survives only in the data-horizon-direction diagnostic attribute. */
+ *  ALL/PLAN while 5M/15M/60M stay NEUTRAL (matches backend gate). RC-133/v27: when ALL
+ *  is not tradeable NOTHING on this row emits direction — pills dim to '—', ALL reads
+ *  NEUTRAL, and both direction attributes are neutralized (no raw-call attribute). */
 function renderTimeframeSignalRow(d) {
   _edMplOnMoneyPathRowStart();
   if (d == null || typeof d !== 'object') return;
@@ -5687,8 +5689,10 @@ function renderTimeframeSignalRow(d) {
       (state === 'up' || state === 'down');
     if (isPrimaryTrade && glow === 'tf-glow-1') glow = 'tf-glow-2';
 
+    // v27: BOTH direction attributes come from the contract — under !tradeable they are
+    // neutral, because an attribute a stylesheet can select on is paint, not diagnosis.
     card.setAttribute('data-tf-signal-dir', sigDir);
-    card.setAttribute('data-horizon-direction', dir === 'FLAT' ? 'NEUTRAL' : dir);
+    card.setAttribute('data-horizon-direction', visual.dirAttr);
     card.removeAttribute('data-card-trust-withhold');
     if (nonActionable || operatorMirrorVeto) {
       card.setAttribute('data-horizon-actionability', 'NON_ACTIONABLE');

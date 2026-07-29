@@ -60,21 +60,34 @@ def _shipped_fn() -> str:
 
 
 def test_not_tradeable_never_paints_direction():
-    """E1: tradeable=false => dim, no glow, no LONG/SHORT text on horizon pills."""
+    """E1: tradeable=false => dim, no glow, no directional text/sigDir/attr on ANY slug.
+    v27: the consolidated pill escaped the first seal through `!isConsolidated` — the
+    operator-mirror path could print LONG on ALL. Every slug is now asserted."""
     out = _run_contract(_shipped_fn(), [
         ["5c", "LONG", False, 80],
         ["1c", "SHORT", False, 95],
         ["60c", "LONG", False, None],
+        ["consolidated", "LONG", False, 80],    # the v27 escape, exactly
+        ["consolidated", "SHORT", False, 50],
         ["consolidated", "FLAT", False, None],
     ])
-    for r in out[:3]:
-        assert r["state"] == "dim", f"!tradeable painted state={r['state']} — fail-open pill"
-        assert r["glow"] == "", f"!tradeable painted glow={r['glow']}"
-        assert r["dirText"] == "—", (
-            f"!tradeable pill text is {r['dirText']!r} — LONG/SHORT text is trade-shaped paint"
+    for i, r in enumerate(out):
+        assert r["state"] == "dim", f"case {i}: !tradeable painted state={r['state']}"
+        assert r["glow"] == "", f"case {i}: !tradeable painted glow={r['glow']}"
+        assert r["dirText"] not in ("LONG", "SHORT"), (
+            f"case {i}: !tradeable emitted dirText={r['dirText']!r} — the v27 escape"
         )
-        assert r["nonActionable"] is True, "withheld direction must still explain itself"
-    assert out[3]["state"] == "dim" and out[3]["dirText"] == "NEUTRAL"
+        assert r["sigDir"] == "neutral", (
+            f"case {i}: !tradeable emitted sigDir={r['sigDir']!r} — a stylesheet can "
+            "select direction chrome on it"
+        )
+        assert r["dirAttr"] == "NEUTRAL", (
+            f"case {i}: !tradeable emitted dirAttr={r['dirAttr']!r} — the raw-direction "
+            "attribute was revoked (v27)"
+        )
+    for r in out[:3]:
+        assert r["dirText"] == "—" and r["nonActionable"] is True
+    assert out[3]["dirText"] == "NEUTRAL" and out[5]["dirText"] == "NEUTRAL"
 
 
 def test_tradeable_direction_still_paints():
@@ -87,13 +100,14 @@ def test_tradeable_direction_still_paints():
         ["5c", "UNAVAILABLE", False, None],
     ])
     assert out[0]["state"] == "up" and out[0]["glow"] == "tf-glow-3" \
-        and out[0]["dirText"] == "LONG"
+        and out[0]["dirText"] == "LONG" and out[0]["sigDir"] == "long" \
+        and out[0]["dirAttr"] == "LONG"
     assert out[1]["state"] == "down" and out[1]["glow"] == "tf-glow-1" \
-        and out[1]["dirText"] == "SHORT"
+        and out[1]["dirText"] == "SHORT" and out[1]["sigDir"] == "short"
     assert out[2]["state"] == "up" and out[2]["glow"] == "tf-glow-2"
     assert out[3]["state"] == "dim" and out[3]["dirText"] == "NEUTRAL"
     assert out[4]["state"] == "dim" and out[4]["dirText"] == "UNAVAILABLE" \
-        and out[4]["nonActionable"] is False
+        and out[4]["sigDir"] == "unavailable" and out[4]["nonActionable"] is False
 
 
 # The exact function that shipped until 2026-07-29 — the defect this lock exists to kill.
@@ -132,6 +146,31 @@ def test_old_fail_open_shape_fires_the_contract():
     )
 
 
+# The dirText logic that shipped in the FIRST RC-133 seal (d0fe5912) — the v27 escape:
+# `!isConsolidated` let the ALL pill print LONG under !tradeable via the mirror path.
+_V27_ESCAPED_SHAPE = """
+function resolveHorizonCardVisualState(slug, dir, tradeable, confPct) {
+  const isConsolidated = slug === 'consolidated';
+  let state = 'dim';
+  const dirText =
+    dir === 'UNAVAILABLE' ? 'UNAVAILABLE'
+      : (!tradeable && !isConsolidated) ? '—'
+        : dir === 'FLAT' ? 'NEUTRAL' : dir;
+  return { state, glow: '', sigDir: 'long', nonActionable: true,
+           dirText, dirAttr: dir };
+}
+"""
+
+
+def test_v27_escaped_shape_fires_the_contract():
+    """v27 fire control: the FIRST seal's consolidated escape must fail the contract."""
+    out = _run_contract(_V27_ESCAPED_SHAPE, [["consolidated", "LONG", False, 80]])
+    assert out[0]["dirText"] == "LONG", "fixture drifted — no longer reproduces the escape"
+    assert out[0]["dirText"] in ("LONG", "SHORT"), (
+        "the checker passed the consolidated escape — the v27 lock is inert"
+    )
+
+
 def test_paint_site_cannot_reinterpret_the_gate():
     """E2 structural: every direction-shaped pixel on the horizon row derives from the one
     contract helper; the legalizing 2026-06-11 sentence is gone; tags are gated."""
@@ -144,6 +183,13 @@ def test_paint_site_cannot_reinterpret_the_gate():
     )
     assert "dirEl.textContent = visual.dirText" in src, (
         "the direction text is set outside the contract — a site can paint LONG on its own"
+    )
+    assert "'data-horizon-direction', visual.dirAttr" in src, (
+        "data-horizon-direction is set outside the contract — the raw-direction attribute "
+        "was revoked (v27); an attribute a stylesheet can select on is paint"
+    )
+    assert "'data-horizon-direction', dir" not in src, (
+        "the pre-v27 raw-direction attribute write is back"
     )
     assert "tradeable ? deriveTag(slug, dir) : null" in src, (
         "AGREE/CONFLICT/PRIMARY tags escaped the gate — their titles print directions"
