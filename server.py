@@ -749,7 +749,8 @@ def spot_is_a_close(source: str) -> bool:
     return source in SPOT_CLOSE_SOURCES
 
 
-def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False):
+def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False,
+                          to_date=None):
     """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
 
     Schwab CSV authority checked: yes
@@ -774,7 +775,9 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     # SPY strikeCount=200 got Schwab 502; UI/analytics coalesced onto that same
     # ticker key (wanting strikeCount=20) and inherited the failure as
     # "Chain fetch failed". Same-ticker different widths are different fetches.
-    key = ((ticker or "").strip().upper(), int(strike_count))
+    # RC-127: to_date joins the coalesce key — a full-book fetch and a 45-day rung are
+    # DIFFERENT fetches, same as the strike-width lesson above.
+    key = ((ticker or "").strip().upper(), int(strike_count), str(to_date or ""))
     wait_started = time.monotonic()
     with _chain_inflight_lock:
         holder = _chain_inflight.get(key)
@@ -815,7 +818,7 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     resp = None
     exc = None
     try:
-        resp = safe_get_chain(client, ticker, strike_count=strike_count)
+        resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date)
         return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
     except SchwabAuthError as e:
         exc = e
@@ -10740,10 +10743,33 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         _width = _terrain_strike_count(tk)
         if want_capture:
             _width = max(_width, GEX_FULL_CHAIN_STRIKE_COUNT)
-        resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-            client, tk, strike_count=_width, priority=priority,
-        )
+        # RC-127: the FULL multi-year index book ($SPX: weeklies + quarterlies + LEAPS) can
+        # exceed the vendor read timeout under live load — measured 2026-07-29: every $SPX
+        # refresh died in ReadTimeout while the same fetch succeeded on a quiet box. The
+        # ladder narrows the DATE WINDOW on timeout, one rung at a time, and STAMPS the
+        # basis on the payload — degraded is visible, never silent. The operator-locked
+        # full-chain basis stays the first attempt always; the rungs keep the weekly+monthly
+        # book dealers actually hedge (120d, then 45d) rather than serving nothing.
+        _chain_basis = "full"
+        resp = None
+        for _basis, _to_days in (("full", None), ("dte<=120", 120), ("dte<=45", 45)):
+            try:
+                _to = ((datetime.now(timezone.utc) + timedelta(days=_to_days)).date()
+                       if _to_days else None)
+                resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
+                    client, tk, strike_count=_width, priority=priority, to_date=_to,
+                )
+                _chain_basis = _basis
+                break
+            except Exception as _fe:
+                if type(_fe).__name__ not in ("ReadTimeout", "ConnectTimeout", "TimeoutException"):
+                    raise
+                _terrain_refresh_last_error[tk] = (
+                    f"chain fetch timeout at basis {_basis!r} — trying a narrower window")
+                continue
         if resp is None or getattr(resp, "status_code", None) != 200:
+            _terrain_refresh_last_error[tk] = (
+                f"chain fetch failed (HTTP {getattr(resp, 'status_code', 'timeout-at-all-rungs')})")
             return "error:chain_http"
         c_json = resp.json()
         contracts = flatten_chain_contracts(c_json)
@@ -10762,6 +10788,9 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # wall selection depends on chain width (RC-80 measured an 11-point difference on SPY),
         # so an unlabelled merge sorts systematically-different numbers as if they were peers.
         payload["levels_source"] = LEVELS_SOURCE_WIDE_CHAIN
+        # RC-127: which rung of the timeout ladder produced this book — 'full' is the
+        # operator-locked basis; a narrower rung is visible degradation, never silent.
+        payload["chain_basis"] = _chain_basis
         payload["spot_source"] = spot_source
         payload["spot_as_of_ts_utc"] = spot_ts
         _atr = _radar_atr(tk)
