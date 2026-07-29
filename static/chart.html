@@ -1200,8 +1200,28 @@ chip('learn', () => { learning = !learning;
   document.getElementById('coachlines').innerHTML = learning
     ? ((terrain || {}).lines || []).map(l => '· ' + esc(l)).join('<br>') : ''; });
 document.getElementById('tk').addEventListener('change', () => {
+  // RC-123: this page co-owns THE cross-page ticker — a change here follows the operator
+  // back to the console (and to parallel tabs via the storage event).
+  try {
+    const _v = (document.getElementById('tk').value || '').trim().toUpperCase();
+    if (_v) localStorage.setItem('ed_ticker', _v);
+  } catch (e) {}
   view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0;
   forming = null; sealedForming = null; chartTicker = null; load(); });
+// RC-123: adopt the cross-page ticker BEFORE the first load, and follow parallel-tab changes.
+(function () {
+  const tkEl = document.getElementById('tk');
+  let saved = null;
+  try { saved = (localStorage.getItem('ed_ticker') || '').trim().toUpperCase(); } catch (e) {}
+  if (saved && tkEl && tkEl.value !== saved) tkEl.value = saved;
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'ed_ticker' && e.newValue && tkEl && tkEl.value !== e.newValue) {
+      tkEl.value = e.newValue;
+      view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0;
+      forming = null; sealedForming = null; chartTicker = null; load();
+    }
+  });
+})();
 
 // fast spot poll (1.5s behind 1.25s server cache). Fail-closed on error.
 // In-flight guard + spot_as_of_ts_utc: a slow reply never overwrites a fresher tick.

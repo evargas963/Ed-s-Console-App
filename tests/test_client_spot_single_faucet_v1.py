@@ -187,6 +187,22 @@ def test_every_trust_chip_binds_levels_stale():
         )
 
 
+def test_cross_page_ticker_carrier_is_wired():
+    """RC-123: ONE owner of THE ticker across pages (localStorage ed_ticker). Both pages must
+    ADOPT it at load and WRITE it on commit; and the console's adoption must sit ABOVE the
+    fetchState chokepoint persist, or the first poll writes the markup default over the
+    operator's saved symbol (the write-before-read ordering the first probe caught)."""
+    idx = CONSOLE.read_text(encoding="utf-8")
+    cht = CHART.read_text(encoding="utf-8")
+    for src, name in ((idx, "index"), (cht, "chart")):
+        assert "localStorage.getItem('ed_ticker')" in src, f"{name} no longer ADOPTS the carrier"
+        assert "localStorage.setItem('ed_ticker'" in src, f"{name} no longer WRITES the carrier"
+    assert idx.find("localStorage.getItem('ed_ticker')") < idx.find("async function fetchState"), (
+        "the console adopts ed_ticker BELOW the fetchState persist — the first poll would "
+        "overwrite the operator's saved ticker with the markup default"
+    )
+
+
 def test_rc117_named_victims_are_locked():
     """RC-117 close contract: the named victims, asserted literally.
     - cv2-hd-px has ONE value-writer (paintSpotDisplays); painters may only TRIGGER it.

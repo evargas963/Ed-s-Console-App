@@ -3091,6 +3091,15 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
           <input id="ticker-input" type="text" value="SPY" placeholder="SYM" maxlength="12"
                  title="Active symbol"
                  onkeydown="if(event.key==='Enter') triggerRefresh()">
+        <script>
+          /* RC-123: adopt the cross-page ticker THE INSTANT this input exists — before any
+             script can run fetchState, whose chokepoint persist would otherwise write the
+             markup default over the operator's saved symbol (write-before-read ordering). */
+          try {
+            var _edSavedTk = (localStorage.getItem('ed_ticker') || '').trim().toUpperCase();
+            if (_edSavedTk) document.getElementById('ticker-input').value = _edSavedTk;
+          } catch (e) {}
+        </script>
         </div>
         <span class="ub-price" id="ub-price">—</span>
         <span class="ub-price-arrow" id="ub-price-arrow" aria-hidden="true">→</span>
@@ -9890,6 +9899,15 @@ async function _fetchTierCRestAndApply(ctx) {
 }
 
 async function fetchState(forceOrOpts) {
+  // RC-123: EVERY legacy commit path (Enter, watchlist click, programmatic set) funnels
+  // through here — persisting the active symbol at the chokepoint covers them all, where
+  // hooking individual inputs missed the sidebar (proven by the first journey probe:
+  // typed into ticker-input, stored null). Same-value writes fire no storage event.
+  try {
+    const _tv = (document.getElementById('ticker-input') || {}).value;
+    const _tvu = (_tv || '').trim().toUpperCase();
+    if (_tvu) localStorage.setItem('ed_ticker', _tvu);
+  } catch (e) { /* storage unavailable — carrier degrades, console still works */ }
   const forceTierC = typeof forceOrOpts === 'object' && forceOrOpts != null
     ? !!forceOrOpts.forceTierC
     : !!forceOrOpts;
@@ -13202,6 +13220,9 @@ function edCheckRadarAlerts(rows) {
       lgTk.value = v;
       if (typeof window.triggerRefresh === 'function') { try { window.triggerRefresh(); } catch (e) {} }
     }
+    // RC-123: ONE owner of THE ticker across pages. Every page reads this at load and every
+    // commit path writes it, so console <-> chart navigation keeps the operator's symbol.
+    try { localStorage.setItem('ed_ticker', v); } catch (e) {}
     markWatchlist();
     refresh();
   }
@@ -13209,6 +13230,18 @@ function edCheckRadarAlerts(rows) {
     hdTk.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commitTicker(); } });
     hdTk.addEventListener('blur', commitTicker);
   }
+  // RC-123: adopt the cross-page ticker at load, and follow live changes made in a parallel
+  // browser tab (the storage event never fires in the tab that wrote it — no loop).
+  (function () {
+    var saved = null;
+    try { saved = (localStorage.getItem('ed_ticker') || '').trim().toUpperCase(); } catch (e) {}
+    if (saved && hdTk && hdTk.value !== saved) { hdTk.value = saved; commitTicker(); }
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'ed_ticker' && e.newValue && hdTk && hdTk.value !== e.newValue) {
+        hdTk.value = e.newValue; commitTicker();
+      }
+    });
+  })();
 
   function mirrorExpiry() {
     if (!lgEx || !hdEx) return;
