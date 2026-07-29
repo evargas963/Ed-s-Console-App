@@ -12303,14 +12303,19 @@ function edLevelSet(d) {
       tip: 'Call-side delta-decay (charm) concentration. Hedge flow from time decay, strongest in the final two hours.' },
     { t: 'GAMMA FLIP', v: d.gamma_flip,      c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true,
       tip: 'Where net dealer gamma crosses zero. A regime boundary, NOT support/resistance — dealer effects weaken near it (eye of the storm).' },
-    { t: 'HVL',        v: d.hvl,             c: 'tv-c-charm', g: '◇', note: 'abs-γ magnet',
-      tip: 'Highest TOTAL gamma concentration (calls + puts). Stickiest strike — a price magnet in calm tape.' },
+    // RC-132 (A3): the HVL row is DELETED, not renamed — pick_hvl_strike and
+    // pick_pin_and_strength are the same metric (max total GEX$) by construction, so the
+    // ladder painted ONE strike twice under two names and implied two concepts. The
+    // total-gamma concept lives on the GAMMA PIN row; the net book lives on the KL table's
+    // "Net Γ peak" (kl_hvl, RC-124). One metric, one name, one row.
     { t: 'LVP',        v: d.lvp,             c: 'tv-c-lvp',   g: '▣', note: 'most +γ · dampens',
       tip: 'Low-Volatility Point: strike holding the most POSITIVE net dealer gamma. Dealers dampen moves around it — chop pocket.' },
     { t: 'MAX PAIN',   v: d.max_pain,        c: 'tv-c-pin',   g: '·', note: 'advisory',
       tip: 'OI-implied expiry magnet. Evidence supports pinning only ON expiration day — advisory the rest of the time.' },
+    // RC-132 (A2): the old tip defined the pin on the NET book — the pre-RC-124 definition
+    // the producer no longer computes. The tip now states the producer's actual metric.
     { t: 'GAMMA PIN',  v: d.gamma_pin,       c: 'tv-c-pin',   g: '◆', note: 'pin',
-      tip: 'Largest |net gamma| strike — the strongest single pinning candidate into expiry.' },
+      tip: 'Largest TOTAL gamma strike (|call|+|put| GEX$) — SpotGamma Absolute Gamma, the sticky-pin magnet; strongest into expiry. Structure fact: close-prediction is unproven.' },
     { t: 'KEY DELTA',  v: d.key_delta_strike, c: 'tv-c-kds',  g: '◈', note: 'delta magnet',
       tip: 'Largest total delta notional on the board. The biggest hedge inventory — crossing it forces the most dealer rebalancing.' },
     { t: 'HVP',        v: d.hvp,             c: 'tv-c-hvp',   g: '▣', note: 'most −γ · amplifies',
@@ -13490,7 +13495,10 @@ function edCheckRadarAlerts(rows) {
     var spc = []; for (var sj = 1; sj < rows.length; sj++) spc.push(Math.abs(rows[sj].k - rows[sj - 1].k));
     spc.sort(function (a, b) { return a - b; });
     var tol = spc.length ? Math.max(0.75, spc[Math.floor(spc.length / 2)] * 0.5) : 0.75;
-    var levels = [['CALL WALL', t.call_wall], ['LVP', t.lvp], ['CALL CHARM', t.call_charm_wall], ['KEY DELTA', t.key_delta_strike], ['HVL', t.hvl], ['PIN', t.gamma_pin], ['MAX PAIN', t.max_pain], ['PUT CHARM', t.put_charm_wall], ['PUT WALL', t.put_wall], ['HVP', t.hvp]];
+    /* RC-132 (A3): the HVL tag is deleted — pick_hvl_strike equals the pin's metric (max
+       total GEX$) by construction, so 'HVL' tagged the SAME strike as 'PIN' under a second
+       name. One metric, one name: PIN. (The net book is the KL table's "Net Γ peak".) */
+    var levels = [['CALL WALL', t.call_wall], ['LVP', t.lvp], ['CALL CHARM', t.call_charm_wall], ['KEY DELTA', t.key_delta_strike], ['PIN', t.gamma_pin], ['MAX PAIN', t.max_pain], ['PUT CHARM', t.put_charm_wall], ['PUT WALL', t.put_wall], ['HVP', t.hvp]];
     function nearestIdx(p) { var bi = -1, bd = 1e9; rows.forEach(function (r, i) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bi = i; } }); return { i: bi, d: bd }; }
     var flagAt = {};
     levels.forEach(function (x) { var p = fnum(x[1]); if (p === null) return; var nr = nearestIdx(p); if (nr.i >= 0 && nr.d <= tol) { (flagAt[nr.i] = flagAt[nr.i] || []).push(x[0]); } });

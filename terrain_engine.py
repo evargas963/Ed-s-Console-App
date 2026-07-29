@@ -79,6 +79,12 @@ class TerrainSnapshot:
     #: RC-124: the former "pin" — max |net GEX$| (calls minus puts) — kept under its honest
     #: name; a real measure of where the SIGNED book peaks, distinct from the magnet.
     net_gex_peak: float | None = None
+    #: RC-132: hvl equals gamma_pin by construction on every dollarized book —
+    #: pick_hvl_strike and pick_pin_and_strength maximize the SAME total-GEX$ metric.
+    #: The field stays in the payload for API compatibility, but no client paints it as
+    #: its own level (locked: test_terrain_hvl_is_never_painted_as_its_own_level); the
+    #: total-gamma concept renders once, as GAMMA PIN. (kl_hvl on the analytics payload
+    #: is a DIFFERENT book — net_gex_peak under the label "Net Γ peak", RC-124.)
     hvl: float | None = None
     max_pain: float | None = None
     call_charm_wall: float | None = None

@@ -450,6 +450,74 @@ def test_fallthrough_containment_shape_is_caught():
     assert not scan(gated), "the positively-gated shape tripped the lock"
 
 
+# ── RC-132: pin/HVL vocabulary truth ─────────────────────────────────────────────────────────
+# A2: the ladder's GAMMA PIN tip still DEFINED the pin on the net book ("Largest |net gamma|
+# strike") months after RC-124 moved the producer to total gamma — a definition change that
+# never swept every paint site. A3: pick_hvl_strike and pick_pin_and_strength are the SAME
+# metric (max total GEX$) by construction, yet 'HVL' and 'PIN' painted that one strike as two
+# concepts on the ladder and the cv2 tag strip. These locks make both classes recur-proof.
+
+def _pin_tips_defining_net(src: str) -> list[tuple[int, str]]:
+    """Lines in a ±1 window of a GAMMA PIN label whose tip defines the pin on the net book."""
+    src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", src, flags=re.M), flags=re.S)
+    lines = src.splitlines()
+    net_def = re.compile(r"net gamma|\|net\||net GEX|net dealer GEX", re.I)
+    row_start = re.compile(r"\{\s*(t|key)\s*:")
+    out = []
+    for i, l in enumerate(lines):
+        if 'GAMMA PIN' not in l and 'Gamma Pin' not in l:
+            continue
+        for j in range(i, min(len(lines), i + 3)):
+            if j > i and row_start.search(lines[j]):
+                break   # a NEW row object began — its tip belongs to another concept
+            if 'tip' in lines[j] and net_def.search(lines[j]):
+                out.append((j + 1, lines[j].strip()[:120]))
+    return out
+
+
+def test_pin_tip_states_the_producers_metric_not_the_net_book():
+    for path in (CONSOLE, CHART):
+        offenders = _pin_tips_defining_net(path.read_text(encoding="utf-8"))
+        assert offenders == [], (
+            f"{path.name}: a GAMMA PIN tip defines the pin on the NET book — the producer is "
+            f"max TOTAL GEX$ (pick_pin_and_strength, RC-124); the net book is 'Net Γ peak' "
+            f"(RC-132): {offenders}"
+        )
+
+
+def test_net_definition_pin_tip_injection_is_caught():
+    """Negative control: the exact stale tip that shipped must fire; the total tip not."""
+    stale = "{ t: 'GAMMA PIN', v: d.gamma_pin,\n  tip: 'Largest |net gamma| strike — pin.' },"
+    assert _pin_tips_defining_net(stale), "the stale net-book pin tip went undetected"
+    honest = "{ t: 'GAMMA PIN', v: d.gamma_pin,\n  tip: 'Largest TOTAL gamma strike.' },"
+    assert not _pin_tips_defining_net(honest), "the total-gamma pin tip tripped the lock"
+
+
+def test_terrain_hvl_is_never_painted_as_its_own_level():
+    """A3: terrain `hvl` equals the pin by construction (same metric); binding it to a
+    painted level name implies a second concept that does not exist. kl_hvl (the net peak,
+    labeled 'Net Γ peak') is the ONLY legal hvl-spelled binding in the clients."""
+    for path in (CONSOLE, CHART):
+        src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", path.read_text(encoding="utf-8"),
+                                              flags=re.M), flags=re.S)
+        offenders = [(n, l.strip()[:120]) for n, l in enumerate(src.splitlines(), 1)
+                     if re.search(r"[a-zA-Z_$][\w$]*\.hvl\b", l)]
+        assert offenders == [], (
+            f"{path.name}: terrain .hvl bound at a paint site — the pin painted twice under "
+            f"a second name (RC-132): {offenders}"
+        )
+
+
+def test_hvl_rebind_injection_is_caught():
+    """Negative control for the .hvl scan shape: a re-added ladder binding must match."""
+    assert re.search(r"[a-zA-Z_$][\w$]*\.hvl\b", "{ t: 'HVL', v: d.hvl, g: '◇' },"), (
+        "the .hvl binding regex no longer matches the shipped shape — the lock is inert"
+    )
+    assert not re.search(r"[a-zA-Z_$][\w$]*\.hvl\b", "d.kl_hvl"), (
+        "kl_hvl tripped the terrain-hvl lock — the net-peak row would be banned by mistake"
+    )
+
+
 def test_unconditional_wall_claim_injection_is_caught():
     """Negative control: the shipped defect's exact shape must fire; conditional text and
     non-wall S/R prose must stay quiet."""
