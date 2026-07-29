@@ -151,9 +151,10 @@ def test_fresh_terrain_overlays_every_gamma_family_level(monkeypatch):
 
 
 def test_stale_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
-    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "levels_stale": True}, monkeypatch)
+    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "confidence": "TRUSTED",
+                   "levels_stale": True}, monkeypatch)
     for k in ("kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip",
-              "kl_gamma_pin", "kl_hvl", "kl_max_pain"):
+              "kl_gamma_pin", "kl_hvl", "kl_max_pain", "kl_gamma_flip_confidence"):
         assert md[k] is None, f"{k} survived a stale terrain — the second book is back"
     assert "withheld" in md["kl_levels_source"]
 
@@ -174,7 +175,18 @@ SSOT_KEYS = (
     "kl_max_pain", "kl_call_delta_wall", "kl_put_delta_wall", "kl_call_oi_wall",
     "kl_put_oi_wall", "kl_call_vanna_wall", "kl_put_vanna_wall", "kl_em_upper",
     "kl_em_lower", "kl_gamma_inflection", "kl_delta_inflection", "kl_oi_center",
+    # v23: the flip's confidence rides the same book as the flip's strike — it was the last
+    # analytics-written kl_ key. And the terrain generation stamp travels with the values so
+    # cross-surface drift (KL table vs terrain cards) is visible as generation skew, never a
+    # silent disagreement.
+    "kl_gamma_flip_confidence", "kl_levels_from_computed_ts",
 )
+
+# v23: terrain-NATIVE level concepts painted by the chart/console ticker views. They have no
+# kl_ twin; their one producer is terrain_engine.compute_terrain via snap.to_dict(). server.py
+# may CARRY them (t.get(...) into radar rows) but must never ASSIGN them — an assignment is a
+# second producer for a painted key level.
+TERRAIN_NATIVE_KEYS = ("hvp", "lvp", "call_charm_wall", "put_charm_wall", "key_delta_strike")
 
 
 def _ssot_writes_outside_overlay(src: str) -> list[tuple[int, str]]:
@@ -215,6 +227,52 @@ def test_second_writer_injection_is_caught():
     )
 
 
+def _terrain_native_writes(src: str) -> list[tuple[int, str]]:
+    """(line, key) for every server-side ASSIGNMENT of a terrain-native level key.
+
+    An assignment is `["hvp"] =` or a dict-literal `"hvp": <value>` whose value is NOT read
+    from the terrain payload (`t.get(...)` / `payload.get(...)` / `_snap.get(...)` is carriage
+    of the one book, not a second producer)."""
+    import re as _re
+    out = []
+    for n, l in enumerate(src.splitlines(), 1):
+        t = l.split("#")[0]
+        for k in TERRAIN_NATIVE_KEYS:
+            m = _re.search(rf"[\"']{k}[\"']\s*([:\]])", t)
+            if not m:
+                continue
+            rest = t[m.end():]
+            if m.group(1) == "]" and "=" not in rest:
+                continue  # a read, not a write
+            if _re.search(r"\b(t|payload|_snap|snap|entry)\s*(\.get\(|\[)", rest):
+                continue  # carriage from the terrain book itself
+            out.append((n, k))
+    return out
+
+
+def test_server_never_produces_terrain_native_levels():
+    """v23: HVP/LVP/charm walls/key-delta join the single-producer lock. Their producer is
+    terrain_engine.compute_terrain — server.py assigning any of them is a second book."""
+    src = SERVER.read_text(encoding="utf-8")
+    offenders = _terrain_native_writes(src)
+    assert offenders == [], (
+        f"terrain-native level keys assigned in server.py — a second producer for a painted "
+        f"key level (v23): {offenders}"
+    )
+
+
+def test_terrain_native_injection_is_caught():
+    """Negative control: an injected server-side hvp producer must fire the lock; carriage
+    from the terrain payload must stay quiet."""
+    src = SERVER.read_text(encoding="utf-8")
+    assert _terrain_native_writes(src + '\nrow["hvp"] = compute_hvp(chain)\n'), (
+        "an injected terrain-native producer went undetected — the lock is inert"
+    )
+    assert not _terrain_native_writes('row["hvp"] = t.get("hvp")\n'), (
+        "carriage of the terrain book tripped the lock — it would force deleting the radar rows"
+    )
+
+
 def test_overlay_owns_the_full_concept_set(monkeypatch):
     """Fresh terrain: delta walls carried, EM from the sigma band; unowned concepts BLANK."""
     md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
@@ -222,8 +280,16 @@ def test_overlay_owns_the_full_concept_set(monkeypatch):
                    "net_gex_peak": 735.0, "max_pain": 742.0,
                    "call_delta_wall": 747.0, "put_delta_wall": 738.0,
                    "implied_1d_move": {"points": 8.5}, "spot": 741.0,
+                   "confidence": "TRUSTED", "computed_ts_utc": 1722.5,
                    "levels_stale": False}, monkeypatch)
     assert md["kl_call_delta_wall"] == 747.0 and md["kl_put_delta_wall"] == 738.0
+    assert md["kl_gamma_flip_confidence"] == "TRUSTED", (
+        "v23: the flip confidence must ride the SAME terrain book as the flip strike"
+    )
+    assert md["kl_levels_from_computed_ts"] == 1722.5, (
+        "v23 Lock-3: the terrain generation stamp must travel with the values so cross-surface "
+        "drift reads as generation skew, never a silent disagreement"
+    )
     assert md["kl_em_upper"] == 749.5 and md["kl_em_lower"] == 732.5, (
         "EM must come from the terrain sigma band centered on the payload spot (E-34)"
     )

@@ -318,3 +318,56 @@ def test_chart_page_never_calls_console_only_helpers():
             f"and the operator gets a blank chart (E-35)"
         )
 
+
+# ── v23 / RC-128 Lock 3: ONE key family per paint surface ────────────────────────────────────
+# The same concept reaches the screen under two spellings — the analytics payload's kl_* keys
+# (stamped FROM terrain by the overlay) and the terrain payload's bare keys. Both come from the
+# ONE producer, so the remaining failure mode is a paint site that RESOLVES across families
+# (`d.kl_call_gamma_wall || t.call_wall`): whichever payload refreshed last wins silently, and
+# two tiles disagree seconds apart. Census 2026-07-29: zero mixed lines exist; this locks it.
+
+_KL_FAMILY = re.compile(r"kl_(?:call_gamma_wall|put_gamma_wall|gamma_flip|gamma_pin|hvl"
+                        r"|max_pain|em_upper|em_lower|call_delta_wall|put_delta_wall)")
+_TERRAIN_FAMILY = re.compile(r"(?<!kl_)\b(?:call_wall|put_wall|gamma_flip|gamma_pin|hvl"
+                             r"|max_pain)\b")
+
+
+def _mixed_family_lines(src: str) -> list[tuple[int, str]]:
+    """Lines where a kl_* SSOT key and a bare terrain-family key appear in ONE expression —
+    the cross-family resolve path Lock 3 bans. Comments stripped so prose can explain the
+    rule without tripping it."""
+    src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", src, flags=re.M), flags=re.S)
+    out = []
+    for n, l in enumerate(src.splitlines(), 1):
+        if _KL_FAMILY.search(l) and _TERRAIN_FAMILY.search(_KL_FAMILY.sub("", l)):
+            out.append((n, l.strip()[:120]))
+    return out
+
+
+def test_no_paint_site_resolves_across_level_key_families():
+    for path in (CONSOLE, CHART):
+        offenders = _mixed_family_lines(path.read_text(encoding="utf-8"))
+        assert offenders == [], (
+            f"{path.name} mixes the kl_* and terrain key families in one expression — "
+            f"whichever payload is newer wins silently (v23 Lock 3): {offenders}"
+        )
+
+
+def test_mixed_family_injection_is_caught():
+    """Negative control: the classic fallback shape must fire; single-family lines must not."""
+    assert _mixed_family_lines("x = d.kl_call_gamma_wall || t.call_wall;"), (
+        "the cross-family fallback went undetected — Lock 3 is inert"
+    )
+    assert not _mixed_family_lines("x = t.call_wall; // kl_call_gamma_wall is the table's key"), (
+        "a comment mentioning the other family tripped Lock 3 — use-vs-mention regression"
+    )
+
+
+def test_chart_page_binds_only_the_terrain_family():
+    """chart.html reads /api/terrain directly; a kl_* read there would be a second payload
+    fetch racing the first (and E-35 proved chart borrowing console spellings kills draw())."""
+    src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", CHART.read_text(encoding="utf-8"),
+                                          flags=re.M), flags=re.S)
+    hits = _KL_FAMILY.findall(src)
+    assert hits == [], f"chart.html binds analytics-family kl_* keys: {sorted(set(hits))}"
+

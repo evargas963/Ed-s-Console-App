@@ -2629,8 +2629,8 @@ def _publish_progressive_tier_c_cache(
             return
 
     t = ticker.upper().strip()
-    w0 = walls[0] if walls else None
-    cs = consensus_summary
+    # RC-128 cleanup: w0/cs bindings deleted — they fed only the Tier-C kl_ writes the
+    # One Levels Faucet burn removed; pure-expression RHS, nothing else read them.
     now = time.time()
 
     md: dict[str, Any] = {
@@ -8589,10 +8589,11 @@ def _fetch_state(
     # ── New institutional levels ───────────────────────────────────────────────
     # RC-128: pin/hvl/max-pain/flip/oi_center and their strength strings deleted — the
     # overlay below is the only writer for the SSOT set and blanks unowned strengths.
-    # Confidence is served alongside the level so the UI can never show a narrow-chain
-    # flip as if it were trustworthy (FIND-GAMMA-FLIP-METHOD-V1).
-    ms_dict["kl_gamma_flip_confidence"] = _gamma_flip_conf
-    ms_dict["kl_gamma_flip_diag"] = _gamma_flip_diag
+    # v23: the flip CONFIDENCE writes that lived here were the last half of the dual book —
+    # narrow-analytics confidence stamped beside a terrain flip strike. Deleted, not
+    # overridden; the overlay now writes kl_gamma_flip_confidence from the SAME terrain
+    # payload as the strike. kl_gamma_flip_diag had ZERO consumers repo-wide (client,
+    # tests, server reads all enumerated 2026-07-29) — an orphan narrow-book key, deleted.
 
     # ── Terrain read: single source of truth (RC-33) ─────────────────────────
     # Terrain regime/posture/headline/lines are served ONLY by /api/terrain
@@ -10502,6 +10503,12 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_max_pain"] = _g("max_pain")
     md["kl_call_delta_wall"] = _g("call_delta_wall")
     md["kl_put_delta_wall"] = _g("put_delta_wall")
+    # v23: the flip's CONFIDENCE rides the same book as the flip's STRIKE — it was still
+    # analytics-written while the strike was terrain's, a half-dual book.
+    md["kl_gamma_flip_confidence"] = _g("confidence")
+    # v23 Lock-3 drift visibility: which terrain generation stamped these values — the KL
+    # table and the terrain cards can only differ by generation skew, and now it is visible.
+    md["kl_levels_from_computed_ts"] = _g("computed_ts_utc")
     em = (t.get("implied_1d_move") or {}) if fresh else {}
     _em_pts, _em_spot = em.get("points"), (t.get("spot") if fresh else None)
     if _em_pts is not None and _em_spot:
