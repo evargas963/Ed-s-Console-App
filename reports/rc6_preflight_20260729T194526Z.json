@@ -1,0 +1,31 @@
+{
+ "stamp_utc": "20260729T194526Z",
+ "phase": "RC-6 preflight (writers stopped)",
+ "writers_stopped": {
+  "uvicorn_pid_32704": "Stop-Process ~19:36Z (operator console on :8000)",
+  "orphan_workers_16876_7800": "Stop-Process (multiprocess workers from 2026-07-28 18:43; parents 44828/41136 both dead)",
+  "console_8000_after": "curl 000 (no listener)",
+  "wal_mtime_stable_60s": true
+ },
+ "live_db": "data/ed_console.db",
+ "file_bytes": 23705243648,
+ "wal_bytes": 27051952,
+ "shm_bytes": 65536,
+ "disk_free": "97G",
+ "snapshots_count": 313761,
+ "normalized_count": 204972,
+ "norm_option_chain_json_rows": 1328,
+ "norm_option_chain_json_bytes": 230999914,
+ "norm_replay_context_json_rows": 1328,
+ "norm_replay_context_json_bytes": 11725387,
+ "blob_cols_present_on_normalized": ["option_chain_json", "replay_context_json"],
+ "integrity_check": "ok",
+ "orphan_check": "exhaustive check runs inside rc6_migrate --verify-only on the WORK copy (result recorded in migrate stdout)",
+ "consumer_proof": {
+  "test_rc6_normalized_blob_repoint_v1": "3 passed",
+  "culled_blob_migrate_lock (-k culled_blob)": "1 passed",
+  "blob_selects_from_normalized_in_live_code": "NONE (AST-adjacent regex over all non-test .py)"
+ },
+ "queries": "read-only URI file:data/ed_console.db?mode=ro — SELECT COUNT(*) FROM snapshots; SELECT COUNT(*) FROM snapshots_1m_normalized; SELECT COUNT()/COALESCE(SUM(LENGTH()),0) for option_chain_json and replay_context_json; PRAGMA table_info; PRAGMA integrity_check; 329.6s total",
+ "note_vs_2026_07_28_measurement": "option_chain_json regrew further: ~187MB then, 230,999,914 bytes now (1,328 rows both blobs)"
+}
