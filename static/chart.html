@@ -1002,6 +1002,14 @@ function drawGamma() {
       g.fillText(fmt(k, 0), x0 + bandW / 2 - 9, H - 8);
     }
   }
+  // E-35 follow-up (operator: "yellow bars not rendering"): a zero-volume session start
+  // rendered as silent emptiness and read as a broken panel. Absence states its reason.
+  const _totVol = vis.reduce((a, r) => a + (r[2] || 0), 0);
+  if (_totVol <= 0) {
+    g.fillStyle = '#7f8b99'; g.font = '700 12px system-ui';
+    g.fillText('no option volume yet this session — the counter resets at the new session and fills from the open',
+      14, base2 - 8);
+  }
   // RC-124 (operator: "hard to tell the movement"): the three largest shifts vs yesterday
   // get printed ON the panel — migration readable at a glance, hover still has every number.
   if (showGhost) {
