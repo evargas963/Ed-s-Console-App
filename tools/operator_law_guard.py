@@ -110,16 +110,36 @@ _BLIND_STAGE = re.compile(
 #: in regexes). The Edit/Write tools are the sanctioned path for source; heredoc scripts stay
 #: legal for governance-row edits and data tasks. The scan looks at the RAW command because the
 #: banned ACTION is the write performed by the interpreter the shell launches.
-#: v18 widened: bare open() and Path('x.py').write_text are the same write wearing other
-#: spellings. Stated limit (same AST boundary as every text lock): a path built in a variable
-#: then written escapes any text scan — if that escape is ever demonstrated, this graduates
-#: to blocking ALL heredoc writes of source and whitelisting data targets.
-_HEREDOC_SOURCE_WRITE = re.compile(
-    r"<<.{0,2000}?(?:"
-    r"(?:io\.)?open\((['\"])[^'\"]+\.py\1\s*,\s*(['\"])[wa]\2"
-    r"|\.py(['\"])\s*\)\s*\.write_text\("
-    r"|\.py(['\"])\s*\)\s*\.open\(\s*(['\"])[wa]\5"   # v19: Path('x.py').open('w')
-    r")", re.S)
+#: v18 widened; GRADUATED 2026-07-29 (E-37): the stated variable-path escape was demonstrated
+#: the SAME DAY it was written down — a heredoc broke a test file through
+#: `p='tests/x.py'; io.open(p,'w')`, exactly the named boundary. Per the graduation clause:
+#: every heredoc file-write is now inspected; it is legal ONLY when the opened path is a
+#: string LITERAL ending in a data extension (.md/.json/.jsonl/.txt/.csv/.log). A variable
+#: path cannot be verified from the command text, so it is refused outright.
+_HEREDOC_WRITE_SITE = re.compile(
+    r"(?:(?:io\.)?open\(\s*([^,)]+?)\s*,\s*['\"][wa]b?['\"]"
+    r"|([A-Za-z_][\w.()'\"/\\-]*)\.write_text\("
+    r"|\.py(['\"])\s*\)\s*\.open\(\s*(['\"])[wa]\4)", re.S)
+_DATA_TARGET_LITERAL = re.compile(r"^['\"][^'\"]+\.(?:md|json|jsonl|txt|csv|log)['\"]$")
+
+
+def _heredoc_write_violation(raw: str) -> bool:
+    """True when a heredoc body performs a file-write whose target is not a verifiable
+    data-extension string literal (E-37 graduation)."""
+    hd = re.search(r"<<-?\s*(['\"]?)(\w+)\1(.*?)^\s*\2\s*$", raw, re.S | re.M)
+    if not hd:
+        return False
+    body = hd.group(3)
+    for m in _HEREDOC_WRITE_SITE.finditer(body):
+        if m.group(3):                       # Path('x.py').open('w') — source, always banned
+            return True
+        target = (m.group(1) or "").strip()
+        if m.group(2) is not None:           # <expr>.write_text( — target is the expr's path
+            pm = re.search(r"\(\s*(['\"][^'\"]+['\"])\s*\)\s*$", m.group(2))
+            target = pm.group(1) if pm else ""
+        if not _DATA_TARGET_LITERAL.match(target):
+            return True
+    return False
 #: v19: `cat > foo.py <<EOF` writes source through the SHELL itself — no interpreter involved,
 #: so the heredoc rule never saw it. Any shell redirect INTO a .py file is the same banned
 #: action (writing source outside Edit/Write); .py targets only, so log/json redirects stay legal.
@@ -173,10 +193,11 @@ def bash_violations(cmd: str, ledger: list[dict]) -> list[str]:
         out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) swept another agent's "
                    "in-flight files into a commit twice on 2026-07-28. Stage EXPLICIT paths — "
                    "a commit asserts authorship of everything in it.")
-    if _HEREDOC_SOURCE_WRITE.search(raw):
-        out.append("ACTION BLOCKED: writing a .py SOURCE file through a shell-heredoc script "
-                   "mangles escapes (E-15, 4 recurrences). Use the Edit/Write tools for source; "
-                   "heredoc scripts remain legal for governance rows and data.")
+    if _heredoc_write_violation(raw):
+        out.append("ACTION BLOCKED (E-37 graduation): heredoc file-writes are legal ONLY to a "
+                   "string-LITERAL data target (.md/.json/.jsonl/.txt/.csv/.log). Variable "
+                   "paths and source files are refused — the variable-path escape broke a test "
+                   "file the same day it was written down as a boundary. Use Edit/Write.")
     if _SHELL_REDIRECT_SOURCE.search(cmd):
         out.append("ACTION BLOCKED: shell redirect into a .py file writes source outside the "
                    "Edit/Write tools (v19: `cat > x.py <<EOF` walked around the heredoc rule). "
@@ -210,13 +231,39 @@ def edit_violations(path: str, new_text: str, ledger: list[dict]) -> list[str]:
             "or the gate, or a live probe — then close."]
 
 
+#: RC-125 (operator law, 2026-07-29): "you must always probe the live session before you
+#: provide any answers." A live-session probe is a command that touches the RUNNING system or
+#: its data — the console API, the DB, or a rendered-page probe. Tests and gates verify CODE;
+#: they do not observe the live session, so they deliberately do not satisfy this.
+#: First live firing (2026-07-29 08:31 ET): the rule blocked a turn whose probe was a DIRECT
+#: Schwab chain poll — the strongest observation possible — because the vendor-call spellings
+#: were missing from this list. Widened the same minute.
+_LIVE_PROBE = re.compile(
+    r"127\.0\.0\.1|/api/|urlopen|DB_PATH|sqlite3|option_chain|snapshots|"
+    r"ticker_journey_probe|playwright|get_chain|get_quote|schwab", re.I)
+
+
+def _has_live_probe(ledger: list[dict]) -> bool:
+    return any(_LIVE_PROBE.search(e.get("detail", ""))
+               for e in ledger if e.get("kind") == "bash")
+
+
 def stop_violations(ledger: list[dict]) -> list[str]:
+    out: list[str] = []
     edits = _production_edits(ledger)
     if edits and not _has_verification(ledger):
-        return [f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
-                f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or a "
-                f"live probe before ending the turn."]
-    return []
+        out.append(f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
+                   f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
+                   f"a live probe before ending the turn.")
+    # RC-125: every answer stands on a same-turn observation of the live session — the morning
+    # of 2026-07-29 was lost to an answer reasoned from a screenshot while the live payload sat
+    # one command away. Absolute by operator order: probe first, then answer.
+    if not _has_live_probe(ledger):
+        out.append("ACTION BLOCKED (RC-125): no live-session probe ran this turn. Operator law: "
+                   "always probe the live session before providing any answer — query the "
+                   "console API, the DB, or run a rendered-page probe, paste what it said, "
+                   "then answer.")
+    return out
 
 
 def main() -> int:

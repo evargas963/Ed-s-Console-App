@@ -240,3 +240,32 @@ def test_get_similar_setups_rejects_non_canonical_timeframe(tmp_path):
     assert similar == []
     assert tr.get("rejected") is True
     assert tr.get("reject_reason") == "non_canonical_timeframe_for_issue19"
+
+
+# ── RC-126: levels for ALL tickers — the query boundary uses the ONE identity authority ─────
+
+def test_index_roots_resolve_to_dollar_form():
+    """Typing a bare index root anywhere must reach Schwab in its dollar form — $SPX stayed
+    dark for a session because the endpoints skipped this authority."""
+    from instrument_identity import ticker_storage_key
+    for bare, dollar in (("SPX", "$SPX"), ("spx", "$SPX"), ("NDX", "$NDX"), ("rut", "$RUT"),
+                         ("DJX", "$DJX"), ("XSP", "$XSP"), ("OEX", "$OEX"), ("VIX", "$VIX")):
+        assert ticker_storage_key(bare) == dollar
+    assert ticker_storage_key("SPY") == "SPY", "equities must pass through untouched"
+    assert ticker_storage_key("$SPX") == "$SPX", "already-canonical must be idempotent"
+
+
+def test_query_endpoints_canonicalize_through_the_authority():
+    """Structural: every UI query endpoint normalizes via ticker_storage_key, and the raw
+    upper/strip form is gone from those entry lines — one authority, swept consumers
+    (the RC-122/RC-126 root: an SSOT nobody routed through)."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    assert src.count("ticker_storage_key(ticker or DEFAULT_TICKER)") >= 4, (
+        "the terrain/spot/bars endpoints no longer canonicalize the typed symbol"
+    )
+    assert "tk = (ticker or DEFAULT_TICKER).upper().strip()" not in src, (
+        "a raw upper/strip endpoint boundary is back — bare index symbols will go dark again"
+    )
+    # the producer canonicalizes too: background callers don't pass the endpoints
+    assert "tk = ticker_storage_key(ticker)   # RC-126" in src

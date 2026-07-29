@@ -348,3 +348,21 @@ def test_audit_answer_check_control(tmp_path, monkeypatch):
     log.write_text("| RC-1 | CLOSED | 2026-01-01 | 2026-01-01 | d | w | audit v99 processed |" + chr(10), encoding="utf-8")
     assert M.check_adversarial_audits_are_answered() == [], "a cited audit was wrongly flagged"
 
+
+def test_defect_report_requires_probe_artifact():
+    """E-36: an operator message alleging a broken surface blocks any reply that carries no
+    same-turn probe artifact — explanation without measurement, even when correct, is the
+    class that burned 2026-07-29 morning."""
+    from tools.proof_only_guard import defect_report_needs_probe
+    assert defect_report_needs_probe(
+        "the chart is not rendering, why did you break it",
+        "Because the market is closed."), "explanation-without-probe not flagged"
+    # the bar is deliberately the RUNNABLE COMMAND, not just pasted output — the operator
+    # must be able to re-run the probe themselves
+    probe_reply = ("Live probe via `curl -s http://127.0.0.1:8000/api/terrain/strikes`:\n"
+                   "```\nstrikes with volume: 0 | 08:18 ET\n```\nMarket closed.")
+    assert defect_report_needs_probe("volume bars still not working", probe_reply) is None, (
+        "a probe-carrying reply was wrongly flagged"
+    )
+    assert defect_report_needs_probe("what is lp-01?", "LP-01 is the liquidity program.") is None
+

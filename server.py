@@ -155,6 +155,7 @@ from schwab_client import (
     safe_get_price_history,
     SchwabAuthError,
 )
+from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
     gamma_is_plausible,
@@ -10477,6 +10478,9 @@ _terrain_strike_count = resolve_chain_strike_count
 
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()
+#: RC-126: the producer's last failure per ticker, so terrain_not_ready can say WHY instead
+#: of shrugging forever (how $SPX stayed dark a full session). Cleared on the next success.
+_terrain_refresh_last_error: dict[str, str] = {}
 
 
 def _terrain_kl_overlay(md: dict, ticker: str) -> None:
@@ -10727,8 +10731,8 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     the same cache key. `priority` is True for that operator-facing miss (someone is waiting on
     the response) and False for the background rotation.
     """
-    tk = (ticker or "").upper().strip()
-    if not tk:
+    tk = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX at the producer too — background
+    if not tk:                        # callers (radar, enroll lists) don't pass the endpoints
         return "skip:empty"
     try:
         client = get_client()
@@ -10774,9 +10778,14 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
         _log_flip_drift(tk, payload)
+        _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         return f"ok:{snap.confidence}"
     except Exception as e:
-        log.debug("terrain refresh %s failed: %s", tk, e, exc_info=True)
+        # RC-126: DEBUG here meant $SPX failed silently for a full session while the operator
+        # stared at 'not_ready' with no reason. The failure is WARNING-visible AND kept, so
+        # the endpoint can tell the operator WHY instead of an eternal shrug.
+        _terrain_refresh_last_error[tk] = f"{type(e).__name__}: {e}"
+        log.warning("terrain refresh %s failed: %s", tk, e, exc_info=True)
         return f"error:{type(e).__name__}"
 
 
@@ -11363,7 +11372,7 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
 def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
-    tk = (ticker or DEFAULT_TICKER).upper().strip()
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
 
     def _per_strike(contracts: list, spot: float) -> dict:
         def _scope(cts: list) -> list:
@@ -11495,7 +11504,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
 def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
                limit: int = Query(default=780, ge=1, le=3000)):
     """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts."""
-    tk = (ticker or DEFAULT_TICKER).upper().strip()
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     import sqlite3 as _sq
     try:
         db = get_db()
@@ -11535,7 +11544,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
     on timeout they re-contend for leadership or serve the last cache entry
     (stale beats a quote stampede).
     """
-    tk = (ticker or DEFAULT_TICKER).upper().strip()
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     deadline = time.time() + 10.0
     while True:
         now = time.time()
@@ -11687,7 +11696,7 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     background collection had to be throttled to keep it responsive. Terrain is ~5 ms of
     math on the same chain, so it never needs to compete for that budget.
     """
-    tk = (ticker or DEFAULT_TICKER).upper().strip()
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     cached = terrain_cache_get(tk)
     if cached is None:
         # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
@@ -11709,9 +11718,13 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
         # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
         return _reprice_cached_terrain(cached, tk)
     spot, spot_source, spot_ts = resolve_spot(tk)
+    _why = _terrain_refresh_last_error.get(tk)
     return compute_terrain(tk, None, spot).to_dict() | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-        "error": "terrain_not_ready: no wide-chain snapshot yet for this ticker",
+        # RC-126: not_ready carries its REASON when the producer has one — an eternal
+        # unexplained shrug is how $SPX stayed dark for a session.
+        "error": ("terrain_not_ready: no wide-chain snapshot yet for this ticker"
+                  + (f" (last refresh error: {_why})" if _why else "")),
     }
 
 
@@ -12159,7 +12172,7 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
     Fast lane: latest equity quote fields only. Independent fast_generation_id / fast_server_ts.
     Does not return chain, fusion, or decision data.
     """
-    ticker = ticker.upper().strip()
+    ticker = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX etc., ONE authority
     route_t0 = time.perf_counter()
     asyncio_thread = threading.current_thread().name
     log.info(

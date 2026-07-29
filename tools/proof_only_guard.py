@@ -60,7 +60,10 @@ VERDICT = re.compile(
     r"NULL RESULT|NO EFFECT|does not replicate|failed to replicate)\b")
 
 #: Same-turn proof. A runnable command, or a sample size beside an interval.
-COMMAND = re.compile(r"`[^`]*(python|pytest|SELECT |tools/|\.py|npm |node |git )[^`]*`", re.I)
+#: E-36 follow-up: curl / live-URL probes ARE proof commands — the first control run of the
+#: defect-report rule showed a genuine live probe failing to count as evidence.
+COMMAND = re.compile(
+    r"`[^`]*(python|pytest|SELECT |tools/|\.py|npm |node |git |curl |127\.0\.0\.1)[^`]*`", re.I)
 INTERVAL = re.compile(r"\bn\s*=\s*\d+", re.I)
 CI = re.compile(r"(95%\s*CI|confidence interval|\bpower\b|\bp\s*=\s*0?\.\d+)", re.I)
 
@@ -109,6 +112,60 @@ def last_assistant_text(transcript_path: str) -> str | None:
     except OSError:
         return None
     return last
+
+
+def last_user_text(transcript_path: str) -> str | None:
+    """Concatenated text of the final USER message (the turn's trigger)."""
+    p = Path(transcript_path)
+    if not p.exists():
+        return None
+    last: str | None = None
+    try:
+        with p.open(encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                msg = rec.get("message") or {}
+                if rec.get("type") != "user" and msg.get("role") != "user":
+                    continue
+                content = msg.get("content")
+                if isinstance(content, str):
+                    last = content
+                elif isinstance(content, list):
+                    parts = [c.get("text", "") for c in content
+                             if isinstance(c, dict) and c.get("type") == "text"]
+                    if any(parts):
+                        last = "\n".join(parts)
+    except OSError:
+        return None
+    return last
+
+
+#: E-36 (2026-07-29): the operator reported a dead screen and the reply EXPLAINED from the
+#: screenshot instead of probing the live system at answer time — right by luck, unverifiable
+#: by the operator. A defect report is an order to MEASURE FIRST.
+DEFECT_REPORT = re.compile(
+    r"not (?:work|render|refresh|show|updat)|broken|still not|doesn'?t work|"
+    r"why did you break|no (?:candles|bars|data|volume)|blank (?:screen|chart|page)|went dark",
+    re.I)
+
+
+def defect_report_needs_probe(user_text: str | None, assistant_text: str) -> str | None:
+    """When the triggering message alleges a broken surface, the reply must CARRY a same-turn
+    probe artifact (a runnable command in backticks / fenced output) — explanation without
+    measurement is the E-36 class regardless of whether the explanation is correct."""
+    if not user_text or not DEFECT_REPORT.search(user_text):
+        return None
+    if COMMAND.search(assistant_text):
+        return None
+    return ("the operator reported a broken surface and this reply carries NO same-turn probe "
+            "artifact. Measure first: probe the live system, paste the output, then explain. "
+            "Being right from a screenshot is luck wearing a lab coat (E-36).")
 
 
 def rc_rows_present() -> set[str]:
@@ -171,6 +228,9 @@ def main() -> int:
         return 2
 
     bad = violations(text)
+    probe_gap = defect_report_needs_probe(last_user_text(tp), text)
+    if probe_gap:
+        bad.append(probe_gap)
     if not bad:
         return 0
 
