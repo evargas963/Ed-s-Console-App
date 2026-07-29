@@ -55,9 +55,19 @@ def check_integrity(c: sqlite3.Cursor) -> None:
 
 def check_no_orphans(c: sqlite3.Cursor) -> None:
     """EXHAUSTIVE: every normalized row with a real blob MUST have a snapshots row carrying a
-    real blob on the same (ticker, timeframe, ts_utc). If any lacks one, dropping would lose it."""
+    real blob on the same (ticker, timeframe, ts_utc). If any lacks one, dropping would lose it.
+
+    RC-135: a column already dropped is already-satisfied — nothing on normalized can be lost
+    when the column does not exist. Without this skip the query SELECTs a missing column and
+    dies with OperationalError, so a run interrupted after the DROP (measured 2026-07-29:
+    killed mid-VACUUM by session teardown) could never be finished by re-invoking the tool.
+    """
     print("  [2] EXHAUSTIVE orphan check (every normalized blob has a surviving snapshots copy) ...", flush=True)
+    present = _cols(c, NORM)
     for col in BLOBS:
+        if col not in present:
+            print(f"      {col}: column already dropped — premise already satisfied (resume)", flush=True)
+            continue
         n = c.execute(
             f"""SELECT COUNT(*) FROM {NORM} n
                 WHERE n.{col} IS NOT NULL AND length(n.{col}) > {MINLEN}
@@ -99,6 +109,14 @@ def migrate(path: str, verify_only: bool) -> None:
             c.execute(f"ALTER TABLE {NORM} DROP COLUMN {col}")
             print(f"      dropped {NORM}.{col}", flush=True)
     con.commit()
+
+    # RC-135: an interrupted prior run can leave a WAL as large as the database itself
+    # (measured 2026-07-29: 21.1 GB beside a 23.8 GB DB, on a volume with 45 GB free).
+    # VACUUM needs roughly another DB-size of temp space, so the stale WAL must be returned
+    # to disk BEFORE it, or the resume fails for want of room on a copy that is otherwise good.
+    wal_pages = c.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    print(f"      WAL checkpoint(TRUNCATE) -> {tuple(wal_pages) if wal_pages else 'n/a'}",
+          flush=True)
 
     print("  [4] VACUUM (reclaiming space) — this can take several minutes ...", flush=True)
     con.execute("VACUUM")
