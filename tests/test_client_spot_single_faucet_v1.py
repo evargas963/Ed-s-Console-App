@@ -288,3 +288,19 @@ def test_rc117_named_victims_are_locked():
         )
     chips = sorted(set(re.findall(r'id="([a-z0-9-]*(?:trust|conf))"', src)))
     assert "ct-conf" in chips, "ct-conf left the policed chip class"
+
+
+def test_chart_page_never_calls_console_only_helpers():
+    """E-35: fnum() exists only in index.html; a chart.html edit called it and draw() died
+    before the candles — the operator found a dead chart. The two pages are separate
+    documents with separate helper sets; this bans every console-only helper from chart
+    (extend the list when a new console-only helper is born)."""
+    src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", CHART.read_text(encoding="utf-8"),
+                                            flags=re.M), flags=re.S)
+    for helper in ("fnum(", "fstr(", "consoleSpot(", "paintSpotDisplays(",
+                   "edPaintTokenWarn(", "edLiveSpot("):
+        assert helper not in src, (
+            f"chart.html calls console-only {helper} — a ReferenceError there kills draw() "
+            f"and the operator gets a blank chart (E-35)"
+        )
+

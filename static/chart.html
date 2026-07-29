@@ -629,8 +629,10 @@ function draw() {
     const tipWhy = (withholdLean && leanTips[key]) || why;
     // RC-124: the pin label carries its decisiveness — the leader's margin over the
     // runner-up on total gamma. Absent strength renders nothing (no fabricated %).
-    const _lead = (key === 'gamma_pin' && fnum(T.gamma_pin_strength_pct) !== null)
-      ? ` · lead ${T.gamma_pin_strength_pct}%` : '';
+    // E-35: fnum() is an index.html helper that does NOT exist on this page — calling it
+    // here killed draw() before the candles. Chart-native Number check only.
+    const _sp = Number(T.gamma_pin_strength_pct);
+    const _lead = (key === 'gamma_pin' && Number.isFinite(_sp)) ? ` · lead ${_sp}%` : '';
     lvlItems.push({ v, text: `${lab} ${fmt(v)}${_lead}`, col, dash,
       lw: key === 'gamma_flip' ? 2 : 1.25, side: 'right',
       tipHtml: `<b>${lab} ${fmt(v)}${_lead}</b><br>${tipWhy}` });
