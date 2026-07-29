@@ -117,3 +117,43 @@ def test_levels_producers_are_enumerated_and_declared():
         "Every producer is a chance for two answers to disagree — add it here with its reason, "
         "or route it through _terrain_refresh_one."
     )
+
+
+# ── RC-122 (W3-C1, operator P0b): ONE wall book on the screen ────────────────────────────────
+
+def _overlay(cache_entry, monkeypatch):
+    import server as S
+    monkeypatch.setattr(S, "_terrain_cache",
+                        {"SPY": cache_entry} if cache_entry is not None else {})
+    md = {"kl_call_gamma_wall": 111.0, "kl_put_gamma_wall": 222.0, "kl_gamma_flip": 333.0,
+          "kl_gamma_pin": 444.0, "kl_hvl": 555.0, "kl_max_pain": 666.0,
+          "kl_call_gamma_str": "$9.9M/pt", "kl_put_gamma_str": "$8.8M/pt"}
+    S._terrain_kl_overlay(md, "SPY")
+    return md
+
+
+def test_fresh_terrain_overlays_every_gamma_family_level(monkeypatch):
+    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
+                   "gamma_pin": 741.0, "hvl": 740.0, "max_pain": 742.0,
+                   "levels_stale": False}, monkeypatch)
+    assert md["kl_call_gamma_wall"] == 745.0 and md["kl_put_gamma_wall"] == 740.0
+    assert md["kl_gamma_flip"] == 746.5 and md["kl_gamma_pin"] == 741.0
+    assert md["kl_hvl"] == 740.0 and md["kl_max_pain"] == 742.0
+    assert md["kl_levels_source"] == "terrain_wide_chain"
+    # narrow-book dollar strengths beside wide-chain strikes are the dual-book lie in a
+    # smaller cell — blanked, never mixed
+    assert md["kl_call_gamma_str"] == "—" and md["kl_put_gamma_str"] == "—"
+
+
+def test_stale_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
+    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "levels_stale": True}, monkeypatch)
+    for k in ("kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip",
+              "kl_gamma_pin", "kl_hvl", "kl_max_pain"):
+        assert md[k] is None, f"{k} survived a stale terrain — the second book is back"
+    assert "withheld" in md["kl_levels_source"]
+
+
+def test_absent_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
+    md = _overlay(None, monkeypatch)
+    assert md["kl_call_gamma_wall"] is None and md["kl_gamma_flip"] is None
+    assert "withheld" in md["kl_levels_source"]

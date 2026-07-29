@@ -241,6 +241,11 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
         "spread_source",
         "spread_pts_source",
         "quote_ingestion",
+        # W3-C4 / RC-121: the provenance DETAIL travels with the quote it describes. Omitting
+        # it here meant Tier C payloads carried Layer A's spot while STRIPPING its degradation
+        # flags (carried_forward / schwab_auth_degraded) — the exact fields that say whether
+        # the number can be trusted.
+        "quote_source_detail",
     ):
         if k in q and q[k] is not None:
             ms_dict[k] = q[k]
@@ -282,6 +287,7 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
         "spread_source",
         "spread_pts_source",
         "quote_ingestion",
+        "quote_source_detail",   # W3-C4 / RC-121: same carriage as merge_into_state
     ):
         if k in q and q[k] is not None:
             l1_payload[k] = q[k]

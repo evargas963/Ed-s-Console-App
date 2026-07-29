@@ -2681,6 +2681,7 @@ def _publish_progressive_tier_c_cache(
     }
     if update_source is not None:
         md["_update_source"] = update_source
+    _terrain_kl_overlay(md, t)   # RC-122: one wall book (terrain SSOT) on every kl_* payload
     _lmp.merge_into_state(md, t)
 
     _state_cache[cache_key] = {
@@ -3012,6 +3013,11 @@ def _stale_fast_quote_carried_forward(prev: dict, tkr: str) -> dict:
     qsd["schwab_auth_degraded"] = True
     out["quote_source_detail"] = qsd
     out["fast_generation_id"] = _lmp.next_fast_generation(tkr)
+    # W3-C4 / RC-121: the degraded row must be RECORDED, not just served. Five call sites
+    # returned this payload while the plane kept the pre-degradation row — so every plane
+    # reader (merge_into_state, SSE, L1 overlay) kept serving an undegraded picture under an
+    # advanced generation id. Recording here, inside the builder, covers every caller at once.
+    _lmp.record_quote(tkr, out)
     return out
 
 
@@ -8656,6 +8662,11 @@ def _fetch_state(
     ms_dict["mc_em_anchor"] = _kl_em_anchor
     ms_dict["mc_iv_source"] = _mc_iv_source
     ms_dict["kl_gamma_voids"]  = _gamma_voids or []
+    # RC-122: applied AFTER every kl_* assignment above (a first placement two pages up was
+    # silently overwritten by the pin/hvl/flip writes below it — placement IS the fix here).
+    # The gamma-family values were computed from the narrow analytics chain; the screen gets
+    # ONE book (terrain SSOT) or an honest blank.
+    _terrain_kl_overlay(ms_dict, ticker)
     if not _gamma_voids:
         # Diagnostic: why no voids?
         _n_strikes = len(exposures)
@@ -10466,6 +10477,34 @@ _terrain_strike_count = resolve_chain_strike_count
 
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()
+
+
+def _terrain_kl_overlay(md: dict, ticker: str) -> None:
+    """W3-C1 / RC-122: ONE wall book on the screen.
+
+    The Key Levels table read kl_* gamma-family values computed from the ANALYTICS pipeline's
+    narrow chain while the terrain cards painted the wide-capture book beside them — two wall
+    books, one screen, no label saying which is which (the dual-book lie the operator's
+    audits carried since Wave-1). Terrain is THE levels SSOT (RC-33); every gamma-family kl_*
+    is overlaid from its cached payload, stamped kl_levels_source. Absent or stale terrain
+    BLANKS the keys — absence, never a silently different second book. The narrow-book wall
+    STRENGTH strings are blanked with the same stroke: a dollar figure computed from one
+    chain printed beside a strike from another is the same lie in a smaller cell.
+    Delta/OI/vanna walls stay analytics-sourced: terrain does not compute them, so there is
+    only one book for those concepts.
+    """
+    with _terrain_cache_lock:
+        t = dict(_terrain_cache.get((ticker or "").upper().strip()) or {})
+    fresh = bool(t) and not t.get("levels_stale")
+    pairs = (("kl_call_gamma_wall", "call_wall"), ("kl_put_gamma_wall", "put_wall"),
+             ("kl_gamma_flip", "gamma_flip"), ("kl_gamma_pin", "gamma_pin"),
+             ("kl_hvl", "hvl"), ("kl_max_pain", "max_pain"))
+    for k, src in pairs:
+        md[k] = t.get(src) if fresh else None
+    md["kl_levels_source"] = ("terrain_wide_chain" if fresh else
+                              "terrain_unavailable — gamma-family levels withheld")
+    for k in ("kl_call_gamma_str", "kl_put_gamma_str"):
+        md[k] = "—"
 _terrain_loop_running: bool = False
 _terrain_loop_thread: threading.Thread | None = None
 

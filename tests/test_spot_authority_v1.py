@@ -372,6 +372,39 @@ def test_quote_memo_one_vendor_call_serves_both_paths(monkeypatch):
     assert calls["n"] == 2, "an expired memo entry was served as fresh"
 
 
+def test_carried_forward_quote_is_recorded_with_its_degradation(monkeypatch):
+    """RC-121 (W3-C4): serving a degraded carry-forward without RECORDING it left every plane
+    reader (Tier C merge, SSE, L1) with an undegraded picture under an advanced generation."""
+    import server as S
+    captured = {}
+    class _Lmp:
+        def next_fast_generation(self, tk): return 42
+        def record_quote(self, tk, row): captured["tk"] = tk; captured["row"] = row
+    monkeypatch.setattr(S, "_lmp", _Lmp())
+    out = S._stale_fast_quote_carried_forward({"spot": 700.0}, "SPY")
+    assert captured, "the carry-forward was served but never recorded to the plane"
+    assert captured["tk"] == "SPY"
+    assert captured["row"]["quote_source_detail"]["carried_forward"] is True
+    assert captured["row"]["quote_source_detail"]["schwab_auth_degraded"] is True
+    assert captured["row"]["fast_generation_id"] == out["fast_generation_id"] == 42, (
+        "the recorded row and the served row must be the SAME generation"
+    )
+
+
+def test_plane_merges_carry_the_quote_provenance():
+    """RC-121 (W3-C4): quote_source_detail must survive BOTH overlay functions — a spot
+    without its degradation flags is a number stripped of its trust label."""
+    import live_market_plane as L
+    qsd = {"carried_forward": True, "schwab_auth_degraded": True}
+    L.record_quote("ZZQSD", {"spot": 1.23, "quote_source_detail": qsd})
+    md: dict = {}
+    L.merge_into_state(md, "ZZQSD")
+    assert md.get("quote_source_detail") == qsd, "merge_into_state stripped the provenance"
+    l1: dict = {}
+    L.apply_l1_live_quote_overlay(l1, "ZZQSD")
+    assert l1.get("quote_source_detail") == qsd, "the L1 overlay stripped the provenance"
+
+
 def test_quote_memo_never_caches_a_failure(monkeypatch):
     """A vendor failure must NOT be memoized — the next caller goes back to the vendor."""
     import server as S
