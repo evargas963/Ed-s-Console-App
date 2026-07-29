@@ -133,12 +133,17 @@ def _overlay(cache_entry, monkeypatch):
 
 
 def test_fresh_terrain_overlays_every_gamma_family_level(monkeypatch):
+    # RC-124: kl_gamma_pin carries the STANDARD pin (+ strength passthrough); kl_hvl carries
+    # the net-GEX peak under its historical key — the row label says what it is.
     md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
-                   "gamma_pin": 741.0, "hvl": 740.0, "max_pain": 742.0,
+                   "gamma_pin": 741.0, "gamma_pin_strength_pct": 32.5,
+                   "net_gex_peak": 735.0, "max_pain": 742.0,
                    "levels_stale": False}, monkeypatch)
     assert md["kl_call_gamma_wall"] == 745.0 and md["kl_put_gamma_wall"] == 740.0
     assert md["kl_gamma_flip"] == 746.5 and md["kl_gamma_pin"] == 741.0
-    assert md["kl_hvl"] == 740.0 and md["kl_max_pain"] == 742.0
+    assert md["kl_gamma_pin_strength_pct"] == 32.5, "the pin's decisiveness must travel"
+    assert md["kl_hvl"] == 735.0, "kl_hvl now carries net_gex_peak (RC-124 remap)"
+    assert md["kl_max_pain"] == 742.0
     assert md["kl_levels_source"] == "terrain_wide_chain"
     # narrow-book dollar strengths beside wide-chain strikes are the dual-book lie in a
     # smaller cell — blanked, never mixed

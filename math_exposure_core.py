@@ -458,14 +458,48 @@ def _pick_strike_max_metric(
     return best_s, best_v
 
 
-def pick_gamma_pin_strike(
+def pick_pin_and_strength(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> tuple[float | None, float | None]:
+    """RC-124: THE standard gamma pin — max TOTAL gamma (|call GEX$| + |put GEX$|) — plus its
+    decisiveness.
+
+    This is SpotGamma's Absolute Gamma / "sticky pin" definition and the Avellaneda–Lipkin
+    mechanism: hedging MAGNITUDE pins price regardless of net sign, so calls-plus-puts is the
+    magnet measure. The previous pin used the NET book (calls minus puts), which can crown a
+    put-heavy strike while the true two-sided magnet sits elsewhere — that measure lives on,
+    honestly named, as net_gex_peak (pick_net_gex_peak_strike below).
+
+    strength_pct = the leader's margin over the runner-up on the same metric. A 1% lead is a
+    coin flip and the label should say so; a 40% lead is a real magnet.
+    Fail-closed: no dollarized GEX -> (None, None), never a raw-gamma fallback.
+    """
+    if not exposures_have_dollar_gex(exposures):
+        return None, None
+    s, v = _pick_strike_max_metric(exposures, strikes, total_gex_dollars_at_strike)
+    if s is None or v is None or v <= 0:
+        return None, None
+    second = 0.0
+    for k in strikes:
+        if float(k) == s:
+            continue
+        t = total_gex_dollars_at_strike(exposures.get(k, {}))
+        if t is not None and t > second:
+            second = t
+    return round(s, 2), round((v - second) / v * 100.0, 1)
+
+
+def pick_net_gex_peak_strike(
     exposures: Dict[float, dict],
     strikes: List[float],
     *,
     institutional: bool = True,
 ) -> float | None:
     """
-    Gamma pin: strike with largest |net GEX$| per 1% (institutional).
+    Net-GEX peak: strike with largest |net GEX$| per 1% (calls minus puts).
+    RC-124: this WAS displayed as "gamma pin" — a non-standard use of that name; the standard
+    pin is total gamma (pick_pin_and_strength). The net peak remains a real measure of where
+    the SIGNED book concentrates, and it keeps its row under its own name.
     When institutional=True and spot/dollar GEX unavailable, returns None (no raw fallback).
   """
     if exposures_have_dollar_gex(exposures):
@@ -770,7 +804,7 @@ def compute_net_charm(
     Net charm > 0 → net dealer delta buying  → Bullish flow
     Net charm < 0 → net dealer delta selling → Bearish flow
 
-    drift_toward_strike: institutional gamma pin from pick_gamma_pin_strike (caller-supplied).
+    drift_toward_strike: institutional pin from pick_pin_and_strength (caller-supplied).
     Charm flow direction is independent of pin location.
 
     Returns:

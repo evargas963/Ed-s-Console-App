@@ -5,7 +5,7 @@ from __future__ import annotations
 from math_exposure_core import (
     compute_exposures_by_strike,
     gamma_is_plausible,
-    pick_gamma_pin_strike,
+    pick_net_gex_peak_strike,
 )
 
 
@@ -74,9 +74,9 @@ def test_corrupt_spy_748p_excluded_from_gamma_sums_oi_kept() -> None:
     strikes_bad = sorted(exp_bad)
     strikes_clean = sorted(exp_clean)
     # pin from gamma-bearing strikes only — both should agree on ATM/normal set
-    pin_bad = pick_gamma_pin_strike(exp_bad, strikes_bad)
-    pin_clean = pick_gamma_pin_strike(exp_clean, strikes_clean)
-    assert pin_bad == pin_clean
+    peak_bad = pick_net_gex_peak_strike(exp_bad, strikes_bad)
+    peak_clean = pick_net_gex_peak_strike(exp_clean, strikes_clean)
+    assert peak_bad == peak_clean
 
     # Sign of aggregate net gamma matches
     assert (total_net_gamma(exp_bad) > 0) == (total_net_gamma(exp_clean) > 0)

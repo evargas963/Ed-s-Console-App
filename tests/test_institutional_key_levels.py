@@ -6,7 +6,8 @@ from math_exposure_core import (
     compute_exposures_by_strike,
     exposures_have_dollar_gex,
     net_gex_dollars_at_strike,
-    pick_gamma_pin_strike,
+    pick_net_gex_peak_strike,
+    pick_pin_and_strength,
     pick_hvl_strike,
     pick_key_delta_strike,
     pick_volatility_point_strikes,
@@ -32,19 +33,48 @@ def test_exposures_are_dollarized():
     assert exposures_have_dollar_gex(exposures)
 
 
-def test_gamma_pin_uses_net_gex_not_raw_when_dollarized():
+def test_net_gex_peak_uses_net_gex_when_dollarized():
+    """RC-124: the former 'pin' — the NET book's peak — under its honest name."""
     exposures, spot = _dollarized_exposures()
-    pin = pick_gamma_pin_strike(exposures, sorted(exposures.keys()))
-    assert pin is not None
+    peak = pick_net_gex_peak_strike(exposures, sorted(exposures.keys()))
+    assert peak is not None
     rows = build_summary_rows(exposures, spot, windows=[5])
-    assert rows[0].gamma_pin == pin
+    assert rows[0].gamma_pin == peak
 
 
-def test_hvl_can_differ_from_gamma_pin():
+def test_standard_pin_is_total_gamma_with_decisiveness():
+    """RC-124: THE pin is max TOTAL gamma (SpotGamma Absolute Gamma / sticky pin) — it must
+    equal HVL (same metric) and carry the leader's margin over the runner-up."""
     exposures, spot = _dollarized_exposures()
-    pin = pick_gamma_pin_strike(exposures, sorted(exposures.keys()))
+    strikes = sorted(exposures.keys())
+    pin, strength = pick_pin_and_strength(exposures, strikes)
+    hvl = pick_hvl_strike(exposures, strikes)
+    assert pin is not None and pin == hvl, (
+        "the standard pin and HVL are the same measure — divergence means one changed basis"
+    )
+    assert strength is not None and 0.0 < strength <= 100.0
+    # exactness on a known distribution: leader 300, runner-up 200 -> 33.3% lead
+    # institutional-synthetic-ok: strength arithmetic needs known mass.
+    synth = {
+        700.0: {"call_gex_1pct": 200.0, "put_gex_1pct": -100.0},   # total 300
+        705.0: {"call_gex_1pct": 120.0, "put_gex_1pct": -80.0},    # total 200
+        710.0: {"call_gex_1pct": 30.0,  "put_gex_1pct": -20.0},    # total 50
+    }
+    p2, s2 = pick_pin_and_strength(synth, sorted(synth))
+    assert p2 == 700.0 and s2 == round((300 - 200) / 300 * 100, 1)
+
+
+def test_pin_fails_closed_without_dollarized_gex():
+    """No dollarized book -> (None, None); a raw-gamma fallback would silently change basis."""
+    # institutional-synthetic-ok: the refusal path needs an un-dollarized bucket on purpose.
+    raw_only = {700.0: {"net_gamma": 5.0, "call_gamma": 3.0, "put_gamma": 2.0}}
+    assert pick_pin_and_strength(raw_only, [700.0]) == (None, None)
+
+
+def test_hvl_and_walls_still_pick():
+    exposures, spot = _dollarized_exposures()
     hvl = pick_hvl_strike(exposures, sorted(exposures.keys()))
-    assert pin is not None and hvl is not None
+    assert hvl is not None
     (cg, _), (pg, _) = pick_gamma_wall_strikes(exposures, sorted(exposures.keys()))
     assert cg is not None or pg is not None
 

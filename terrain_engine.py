@@ -29,7 +29,8 @@ from typing import Any
 from math_exposure_core import (
     compute_exposures_by_strike,
     exposures_have_dollar_gex,
-    pick_gamma_pin_strike,
+    pick_net_gex_peak_strike,
+    pick_pin_and_strength,
     pick_gamma_wall_strikes,
     pick_hvl_strike,
     pick_key_delta_strike,
@@ -69,7 +70,14 @@ class TerrainSnapshot:
     gamma_flip: float | None = None
     call_wall: float | None = None
     put_wall: float | None = None
+    #: RC-124: THE standard pin — max TOTAL gamma (SpotGamma Absolute Gamma / sticky pin;
+    #: Avellaneda–Lipkin magnitude mechanism). Strength = leader's margin over the runner-up
+    #: on the same metric (a 1% lead is a coin flip; the label says so).
     gamma_pin: float | None = None
+    gamma_pin_strength_pct: float | None = None
+    #: RC-124: the former "pin" — max |net GEX$| (calls minus puts) — kept under its honest
+    #: name; a real measure of where the SIGNED book peaks, distinct from the magnet.
+    net_gex_peak: float | None = None
     hvl: float | None = None
     max_pain: float | None = None
     call_charm_wall: float | None = None
@@ -365,6 +373,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     )
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
+    _pin, _pin_strength = pick_pin_and_strength(exposures, strikes)   # RC-124: the standard pin
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot)
     profile = compute_gamma_profile(contracts, spot)
     charm_by_strike = compute_charm_by_strike(contracts, spot)
@@ -388,7 +397,12 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gamma_flip=flip,
         call_wall=call_wall,
         put_wall=put_wall,
-        gamma_pin=pick_gamma_pin_strike(exposures, strikes, institutional=True),
+        # RC-124: gamma_pin is THE standard pin — max TOTAL gamma (SpotGamma Absolute
+        # Gamma / sticky pin) with its decisiveness; the old net-argmax lives on honestly
+        # as net_gex_peak. Assigned below from _pin/_pin_strength.
+        gamma_pin=_pin,
+        gamma_pin_strength_pct=_pin_strength,
+        net_gex_peak=pick_net_gex_peak_strike(exposures, strikes, institutional=True),
         hvl=pick_hvl_strike(exposures, strikes),
         key_delta_strike=pick_key_delta_strike(exposures, strikes),
         hvp=hvp,

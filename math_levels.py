@@ -25,7 +25,7 @@ from math_exposure_core import (
     key_level_strikes_with_oi,
     net_gex_dollars_at_strike,
     pick_delta_wall_strikes,
-    pick_gamma_pin_strike,
+    pick_net_gex_peak_strike,
     pick_gamma_wall_strikes,
     pick_hvl_strike,
     total_gex_dollars_at_strike,
@@ -126,8 +126,8 @@ def _strike_total_oi(bucket: dict) -> float | None:
 # ── Pin / inflection / OI helpers ─────────────────────────────────────────────
 
 def _pick_gamma_pin(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
-    """Institutional gamma pin — delegates to math_exposure_core.pick_gamma_pin_strike."""
-    return pick_gamma_pin_strike(exposures, strikes)
+    """Net-GEX peak (RC-124: formerly displayed as the pin) — delegates to pick_net_gex_peak_strike."""
+    return pick_net_gex_peak_strike(exposures, strikes)
 
 def _pick_oi_center(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
     # strike with max total OI (call+put)

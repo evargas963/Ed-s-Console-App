@@ -3424,7 +3424,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
           <div class="cv-card"><h4 class="cv-h4">Levels <span class="cv-badge" id="ct-trust">—</span></h4>
             <div class="cv-li"><span class="cv-dim">Call wall</span><b class="cv-n cv-up" id="ct-cwall">—</b></div>
             <div class="cv-li"><span class="cv-dim">Gamma flip</span><b class="cv-n cv-ac" id="ct-flip">—</b></div>
-            <div class="cv-li"><span class="cv-dim">HVL</span><b class="cv-n" id="ct-hvl">—</b></div>
+            <div class="cv-li"><span class="cv-dim" title="Largest |net| dealer GEX strike — the former PIN, renamed (RC-124)">Net Γ peak</span><b class="cv-n" id="ct-hvl">—</b></div>
             <div class="cv-li"><span class="cv-dim">Gamma pin</span><b class="cv-n cv-up" id="ct-pin">—</b></div>
             <div class="cv-li"><span class="cv-dim">Max pain</span><b class="cv-n" id="ct-maxpain">—</b></div>
             <div class="cv-li"><span class="cv-dim">Put wall</span><b class="cv-n cv-dn" id="ct-pwall">—</b></div>
@@ -8241,8 +8241,8 @@ function _renderMoneyPathCore(d, fullRenderSource) {
   const KL_PRIMARY = [
     { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444', tip: 'Strike with the largest call gamma. Dealer hedging tends to cap rallies here, acting as resistance.' },
     { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e', tip: 'Strike with the largest put gamma. Dealer hedging tends to cushion selloffs here, acting as support.' },
-    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'Strike of maximum net gamma. Price tends to get pulled toward it into expiration when dealers are long gamma.' },
-    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9', tip: 'High-Volatility Level: the strike with the most total gamma, where dealer hedging activity peaks.' },
+    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'THE standard pin — largest TOTAL gamma (calls+puts), the SpotGamma Absolute Gamma / sticky-pin measure; strongest into expiry. Lead % on the chart label shows its margin over the runner-up (RC-124).' },
+    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net Γ peak', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9', tip: 'Largest |net| dealer GEX strike (calls minus puts) — where the SIGNED book peaks. Previously labeled PIN/HVL; renamed because no vendor defines the pin on the net book (RC-124).' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
     { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level. Above it dealers dampen moves (choppy). Below it dealers amplify moves (trending).' },
     { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6', tip: 'Expected-move ceiling: the options-implied top of the range.' },
@@ -13219,9 +13219,9 @@ function edCheckRadarAlerts(rows) {
       lgTk.value = v;
       if (typeof window.triggerRefresh === 'function') { try { window.triggerRefresh(); } catch (e) {} }
     }
-    // RC-123: ONE owner of THE ticker across pages. Every page reads this at load and every
-    // commit path writes it, so console <-> chart navigation keeps the operator's symbol.
-    try { localStorage.setItem('ed_ticker', v); } catch (e) {}
+    // RC-123/v22: this function does NOT write ed_ticker itself — both branches above reach
+    // setActiveTicker (via triggerRefresh, or the value already committed there), which is the
+    // carrier's ONE writer in this document. A spare setItem here was the multi-writer shape.
     markWatchlist();
     refresh();
   }
@@ -13523,7 +13523,7 @@ function edCheckRadarAlerts(rows) {
 
     T('ct-cwall', n2(fnum(t.call_wall)));
     T('ct-flip', n2(fnum(t.gamma_flip)));
-    T('ct-hvl', n2(fnum(t.hvl)));
+    T('ct-hvl', n2(fnum(t.net_gex_peak)));   // RC-124: the net-book peak, honestly named
     T('ct-pin', n2(fnum(t.gamma_pin)));
     T('ct-maxpain', n2(fnum(t.max_pain)));
     T('ct-pwall', n2(fnum(t.put_wall)));

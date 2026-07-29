@@ -597,8 +597,8 @@ function draw() {
   // ALL other key levels — bright, labeled, each with a coach tooltip
   const levels = [
     ['gamma_flip', 'FLIP', '#f4f6f8', 'The regime line — amplify below, dampen above.', [7, 5]],
-    ['gamma_pin', 'PIN', '#c792ff', 'Largest gamma strike — tested NULL as a price magnet on our data; structure only.', []],
-    ['hvl', 'HVL', '#33aaff', 'Highest-volatility level (absolute gamma) — SpotGamma-style anchor.', []],
+    ['gamma_pin', 'PIN', '#c792ff', 'THE standard pin — largest TOTAL gamma (calls+puts): the SpotGamma Absolute Gamma / sticky-pin measure; hedging magnitude pins price regardless of net sign, strongest into expiry. Lead % = margin over the runner-up strike (a 1% lead is a coin flip). Our own touch-study on the OLD net-based pin tested NULL; this standard measure displays as structure until re-proven.', []],
+    ['net_gex_peak', 'NET Γ PEAK', '#33aaff', 'Largest |net| dealer GEX strike (calls minus puts) — where the SIGNED book peaks. This was previously labeled PIN; renamed because no originating vendor defines the pin on the net book (RC-124).', []],
     ['max_pain', 'MAX PAIN', '#ff66cc', 'Strike minimizing option-holder value — expiry-day context only.', []],
     ['key_delta_strike', 'KDS', '#00e5ff', 'Biggest total delta strike — hedging magnet candidate (unproven).', []],
     ['hvp', 'HVP', '#ffc400', 'Amplification pocket — most negative dealer gamma strike.', [2, 3]],
@@ -627,9 +627,13 @@ function draw() {
       lvp: 'Most positive gamma strike — structure fact; damping lean withheld.',
     };
     const tipWhy = (withholdLean && leanTips[key]) || why;
-    lvlItems.push({ v, text: `${lab} ${fmt(v)}`, col, dash,
+    // RC-124: the pin label carries its decisiveness — the leader's margin over the
+    // runner-up on total gamma. Absent strength renders nothing (no fabricated %).
+    const _lead = (key === 'gamma_pin' && fnum(T.gamma_pin_strength_pct) !== null)
+      ? ` · lead ${T.gamma_pin_strength_pct}%` : '';
+    lvlItems.push({ v, text: `${lab} ${fmt(v)}${_lead}`, col, dash,
       lw: key === 'gamma_flip' ? 2 : 1.25, side: 'right',
-      tipHtml: `<b>${lab} ${fmt(v)}</b><br>${tipWhy}` });
+      tipHtml: `<b>${lab} ${fmt(v)}${_lead}</b><br>${tipWhy}` });
   }
   for (const [k, lab, dash, why] of pdRows) {
     const v = daily && daily[k]; if (v == null) continue;
@@ -994,6 +998,21 @@ function drawGamma() {
     if (bandW > 26 || (Math.round(k) === k && Math.round(k) % 5 === 0)) {
       g.fillStyle = '#aab6c4'; g.font = '700 11px system-ui';
       g.fillText(fmt(k, 0), x0 + bandW / 2 - 9, H - 8);
+    }
+  }
+  // RC-124 (operator: "hard to tell the movement"): the three largest shifts vs yesterday
+  // get printed ON the panel — migration readable at a glance, hover still has every number.
+  if (showGhost) {
+    const shifts = vis
+      .map((r, i) => ({ i, k: r[0], d: ghost.get(r[0]) != null ? r[1] - ghost.get(r[0]) : null }))
+      .filter(s => s.d != null)
+      .sort((a, b) => Math.abs(b.d) - Math.abs(a.d))
+      .slice(0, 3);
+    g.font = '800 11px system-ui';
+    for (const s of shifts) {
+      const x0 = xs(s.i);
+      g.fillStyle = s.d >= 0 ? '#33aaff' : '#ff3355';
+      g.fillText(`${s.d >= 0 ? '▲' : '▼'}${fmtBig(Math.abs(s.d))}`, x0 - 4, 40);
     }
   }
 

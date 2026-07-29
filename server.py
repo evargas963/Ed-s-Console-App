@@ -174,7 +174,7 @@ from math_exposure import (
     compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
-    pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
+    pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
@@ -6544,7 +6544,7 @@ def _fetch_state(
     _cons_strikes = sorted(float(k) for k in exposures.keys())
     _gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes
     _institutional_pin = (
-        pick_gamma_pin_strike(exposures, _gamma_strikes, institutional=True)
+        pick_net_gex_peak_strike(exposures, _gamma_strikes, institutional=True)
         if _gamma_strikes
         else None
     )
@@ -10496,11 +10496,15 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     with _terrain_cache_lock:
         t = dict(_terrain_cache.get((ticker or "").upper().strip()) or {})
     fresh = bool(t) and not t.get("levels_stale")
+    # RC-124: kl_gamma_pin now carries the STANDARD pin (total gamma); kl_hvl carries the
+    # net-GEX peak (the former "pin", honestly renamed on the card) — the key name is
+    # historical, the row label and tooltip say what it is.
     pairs = (("kl_call_gamma_wall", "call_wall"), ("kl_put_gamma_wall", "put_wall"),
              ("kl_gamma_flip", "gamma_flip"), ("kl_gamma_pin", "gamma_pin"),
-             ("kl_hvl", "hvl"), ("kl_max_pain", "max_pain"))
+             ("kl_hvl", "net_gex_peak"), ("kl_max_pain", "max_pain"))
     for k, src in pairs:
         md[k] = t.get(src) if fresh else None
+    md["kl_gamma_pin_strength_pct"] = t.get("gamma_pin_strength_pct") if fresh else None
     md["kl_levels_source"] = ("terrain_wide_chain" if fresh else
                               "terrain_unavailable — gamma-family levels withheld")
     for k in ("kl_call_gamma_str", "kl_put_gamma_str"):
