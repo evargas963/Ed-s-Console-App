@@ -116,20 +116,34 @@ def require_role(env: dict | None = None) -> tuple[str | None, str | None]:
 def worktree_boundary_violations(
     repo: Path | None = None,
     env: dict | None = None,
+    policy: dict | None = None,
 ) -> list[str]:
     """Fail closed when role is unset or disagrees with the physical worktree.
 
     OBSERVED (2026-07-25): multi-agent fracture when both edit the same checkout;
     silent role inference hid mis-routed agents. VALIDATED: explicit ED_AGENT_ROLE
     + path suffix binding; no operator-home absolute paths in policy.
+
+    MODE (RC-129, operator delegated the call 2026-07-29, decided SHARED):
+    policy "mode": "shared-root" keeps the role requirement and the dirty-source
+    block but SKIPS the role<->path binding and the linked-worktree check. Why:
+    the probe-live law (RC-125) and rendered-DOM verification require Claude's
+    edits to land in the tree the running server serves, and git forbids one
+    branch checked out in two worktrees — sibling isolation would break the
+    edit->restart->probe loop three standing laws depend on. The REAL handoff
+    hazard (uncommitted protected source invisible to the other agent) is the
+    dirty-source check, which mode does not touch. The `policy` parameter exists
+    so tests can pin either mode instead of inheriting the shipped file.
     """
-    policy = _load_policy()
+    policy = policy if policy is not None else _load_policy()
     root = (repo or REPO).resolve()
     suffix = str(policy.get("claude_root_suffix") or "-Claude")
     role, err = require_role(env)
     if err:
         return [err]
     assert role is not None
+    if str(policy.get("mode") or "isolated") == "shared-root":
+        return []
     out: list[str] = []
     if role == "claude" and not root.name.endswith(suffix):
         out.append(
