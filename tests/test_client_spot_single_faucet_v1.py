@@ -409,6 +409,47 @@ def test_no_unconditional_wall_support_resistance_claims():
         )
 
 
+def test_containment_claims_require_a_positive_contains_gate():
+    """RC-131 (v25): the RC-130 fix put the containment claim in the ternary's DEFAULT
+    branch — a payload predating the state fields fell through to 'dealer support' /
+    'DEALERS BUY' on a put wall above spot, the exact lie the fix existed to kill (E-35
+    class: new static + old payload; MEASURED live on :8000). This lock makes the claim
+    exist ONLY behind an explicit === 'contains' comparison: absent state, absent claim."""
+    claim = re.compile(r"dealer supply|dealer support|DEALERS SELL|DEALERS BUY"
+                       r"|Resistance while|Support while")
+    for path in (CONSOLE, CHART):
+        src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", path.read_text(encoding="utf-8"),
+                                              flags=re.M), flags=re.S)
+        lines = src.splitlines()
+        offenders = []
+        for i, l in enumerate(lines):
+            if claim.search(l) and not any(
+                    "=== 'contains'" in w for w in lines[max(0, i - 1):i + 2]):
+                offenders.append((i + 1, l.strip()[:120]))
+        assert offenders == [], (
+            f"{path.name}: a containment claim is reachable without a positive "
+            f"=== 'contains' gate — absent state falls through to the old lie (RC-131): "
+            f"{offenders}"
+        )
+
+
+def test_fallthrough_containment_shape_is_caught():
+    """Negative control: the exact shipped defect shape must fire; the gated shape not."""
+    claim = re.compile(r"dealer supply|dealer support|DEALERS SELL|DEALERS BUY"
+                       r"|Resistance while|Support while")
+
+    def scan(text):
+        lines = text.splitlines()
+        return [i for i, l in enumerate(lines)
+                if claim.search(l) and not any(
+                    "=== 'contains'" in w for w in lines[max(0, i - 1):i + 2])]
+
+    shipped_defect = "note: s === 'breached' ? 'BREACHED — spot below' : 'dealer support',"
+    assert scan(shipped_defect), "the fall-through containment shape went undetected"
+    gated = "note: s === 'contains' ? 'dealer support' : 'γ concentration',"
+    assert not scan(gated), "the positively-gated shape tripped the lock"
+
+
 def test_unconditional_wall_claim_injection_is_caught():
     """Negative control: the shipped defect's exact shape must fire; conditional text and
     non-wall S/R prose must stay quiet."""

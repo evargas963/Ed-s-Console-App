@@ -523,9 +523,16 @@ function draw() {
     // has already crossed (live SPY 2026-07-29: put wall 740 over spot 735 said DEALERS BUY).
     const wState = kind === 'both' ? null
       : (sell ? T.call_wall_state : T.put_wall_state);
+    // RC-131 (v25): FAIL-CLOSED — the dealer lean is earned ONLY by a positive
+    // state === 'contains'; an absent/unknown state renders NO behavioral claim. The first
+    // ship made the claim the ternary's DEFAULT branch, so a payload predating the state
+    // fields fell through to DEALERS BUY on a put wall above spot — the exact lie RC-130
+    // existed to kill, reintroduced by the fallback shape (E-35 class: new static, old payload).
     const lean = kind === 'both' ? '  · TWO-SIDED — magnet, not a barrier'
       : wState === 'breached' ? (sell ? '  · BREACHED — spot above' : '  · BREACHED — spot below')
-      : withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY');
+      : wState === 'contains'
+        ? (withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY'))
+        : '';
     g.fillText(`${name} ${fmt(level)}${rangeTxt}${lean}`, PADL + 8, yTop - 5);
     wallLabelYs.push(yTop - 5);
     // Coach numbers are LIVE from the daily scorecard — never a frozen study
