@@ -5340,35 +5340,39 @@ try {
 } catch (e) {}
 
 /**
- * Horizon card render contract — direction vs actionability (operator 2026-06-11).
- * Per-horizon pills (1M–60M): arrow/class follow mhap_rows[i].call (horizon_direction).
- * ALL final_tradeable=false may dim actionability but must not erase horizon direction.
- * ALL + PLAN: synthesis/entry only — still gated by engineTradeableSetup(d).
- * @returns {{ state: 'up'|'down'|'dim', glow: string, sigDir: string, nonActionable: boolean }}
+ * Horizon card render contract (RC-133, operator Decide mandate 2026-07-29): NO
+ * trade-shaped paint under !tradeable. The 2026-06-11 contract that let per-horizon
+ * pills keep LONG/SHORT arrows and colors while ALL was not tradeable is REVOKED —
+ * with the admission registry empty that was fail-open exposure advice.
+ * `tradeable` is engineTradeableSetup(d) — the ONE gate (freshness veto, card trust,
+ * final_tradeable, WAIT/abstain bias). This helper is the ONE paint contract: every
+ * direction-shaped pixel on the horizon row derives from its return value; paint
+ * sites do not reinterpret the gate.
+ * tradeable=false => state 'dim', no glow, dirText '—' on horizon pills ('NEUTRAL'
+ * on ALL; the operator-mirror path may show the withheld bias TEXT under its veto
+ * labels, but never up/down color). Raw model direction survives only in the
+ * data-horizon-direction attribute — diagnostic, unpainted.
+ * @returns {{ state: 'up'|'down'|'dim', glow: string, sigDir: string,
+ *             nonActionable: boolean, dirText: string }}
  */
 function resolveHorizonCardVisualState(slug, dir, tradeable, confPct) {
   const isConsolidated = slug === 'consolidated';
   let state = 'dim';
   let nonActionable = false;
 
-  if (isConsolidated) {
-    if (tradeable && dir === 'LONG') state = 'up';
-    else if (tradeable && dir === 'SHORT') state = 'down';
+  if (!tradeable) {
+    // RC-133 fail-closed: dim regardless of the model's opinion; flag the withheld
+    // direction so the card can still explain WHY it is dim.
+    nonActionable = dir === 'LONG' || dir === 'SHORT';
   } else if (dir === 'LONG') {
     state = 'up';
-    if (!tradeable) nonActionable = true;
   } else if (dir === 'SHORT') {
     state = 'down';
-    if (!tradeable) nonActionable = true;
-  } else if (dir === 'UNAVAILABLE') {
-    state = 'dim';
   }
 
   let glow = '';
   if (state === 'up' || state === 'down') {
-    if (nonActionable) {
-      glow = 'tf-glow-1';
-    } else if (confPct != null && confPct >= 76) {
+    if (confPct != null && confPct >= 76) {
       glow = 'tf-glow-3';
     } else if (confPct != null && confPct >= 61) {
       glow = 'tf-glow-2';
@@ -5383,16 +5387,23 @@ function resolveHorizonCardVisualState(slug, dir, tradeable, confPct) {
         : dir === 'UNAVAILABLE' ? 'unavailable'
           : 'neutral';
 
-  return { state, glow, sigDir, nonActionable };
+  const dirText =
+    dir === 'UNAVAILABLE' ? 'UNAVAILABLE'
+      : (!tradeable && !isConsolidated) ? '—'
+        : dir === 'FLAT' ? 'NEUTRAL' : dir;
+
+  return { state, glow, sigDir, nonActionable, dirText };
 }
 
 try { window.resolveHorizonCardVisualState = resolveHorizonCardVisualState; } catch (e) {}
 
 /** Stack honesty: 1M–60M = per-horizon fusion readouts; ALL = consolidated synthesis.
- *  Primary horizon pill tagged PRIMARY; others AGREE/CONFLICT vs primary (not vs ALL).
+ *  Primary horizon pill tagged PRIMARY; others AGREE/CONFLICT vs primary (not vs ALL) —
+ *  tags exist only when tradeable (RC-133; their titles print directions).
  *  ALL + PLAN only light when engineTradeableSetup(d) — a lone 1M LONG must not arm
- *  ALL/PLAN while 5M/15M/60M stay NEUTRAL (matches backend gate). Horizon pills still
- *  show their own LONG/SHORT direction when ALL is WAIT (render contract). */
+ *  ALL/PLAN while 5M/15M/60M stay NEUTRAL (matches backend gate). RC-133: when ALL is
+ *  not tradeable NOTHING on this row paints a direction — pills dim to '—'; the raw
+ *  model call survives only in the data-horizon-direction diagnostic attribute. */
 function renderTimeframeSignalRow(d) {
   _edMplOnMoneyPathRowStart();
   if (d == null || typeof d !== 'object') return;
@@ -5655,7 +5666,9 @@ function renderTimeframeSignalRow(d) {
         } else {
           dir = normDir(r.call);
           confPct = parseConf(r.confidence);
-          tag = deriveTag(slug, dir);
+          // RC-133: PRIMARY/AGREE/CONFLICT chips leak direction agreement (their titles
+          // even print the primary's LONG/SHORT) — no tags under !tradeable.
+          tag = tradeable ? deriveTag(slug, dir) : null;
         }
       }
     }
@@ -5715,10 +5728,9 @@ function renderTimeframeSignalRow(d) {
     if (arr) arr.textContent = state === 'dim' ? '→' : (state === 'up' ? '↑' : '↓');
 
     const dirEl = card.querySelector('.tf-dir');
-    if (dirEl) {
-      if (dir === 'UNAVAILABLE') dirEl.textContent = 'UNAVAILABLE';
-      else dirEl.textContent = dir === 'FLAT' ? 'NEUTRAL' : dir;
-    }
+    // RC-133: the direction TEXT comes from the one paint contract — under !tradeable a
+    // horizon pill reads '—', never LONG/SHORT (the site does not reinterpret the gate).
+    if (dirEl) dirEl.textContent = visual.dirText;
 
     const pctEl = card.querySelector('.tf-pct');
     if (pctEl) {
