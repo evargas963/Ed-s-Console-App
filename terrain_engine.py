@@ -108,6 +108,16 @@ class TerrainSnapshot:
     call_delta_wall: float | None = None
     put_delta_wall: float | None = None
 
+    #: RC-130: the wall's GEOMETRY state — "contains" (call wall above spot / put wall below
+    #: spot, the configuration in which support/resistance language is true) or "breached"
+    #: (spot at or through the wall). Institutional basis (researched 2026-07-29): the picker
+    #: is deliberately NOT side-constrained — SpotGamma's wall stays at the concentration max
+    #: and their own SPX stats track breach frequency and closes beyond it; what changes on a
+    #: breach is the LABEL/state, not the strike. None = wall or spot missing (absence, never
+    #: a guessed state). Recomputed by the server at every spot reprice via wall_geometry_state.
+    call_wall_state: str | None = None
+    put_wall_state: str | None = None
+
     # provenance — never render a level without knowing where it came from
     contracts_used: int = 0
     strikes_used: int = 0
@@ -352,6 +362,28 @@ def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[
     return out
 
 
+def wall_geometry_state(spot: float | None, wall: float | None,
+                        side: str) -> str | None:
+    """RC-130: is this wall in the configuration its support/resistance label claims?
+
+    "contains" = call wall strictly above spot / put wall strictly below spot — the only
+    geometry in which dealer-hedging containment language is true. "breached" = spot at or
+    through the wall — institutionally a DISTINCT state (SpotGamma reports closes beyond the
+    wall and tracks them separately; the strike does not move). Equality counts as breached:
+    a wall at spot is not containing anything. None = absent input, absence stays absence.
+
+    ONE definition, called by both compute_terrain and the server's spot-reprice path, so the
+    state can never disagree with the spot painted beside it.
+    """
+    if spot is None or wall is None:
+        return None
+    if side == "call":
+        return "contains" if float(wall) > float(spot) else "breached"
+    if side == "put":
+        return "contains" if float(wall) < float(spot) else "breached"
+    raise ValueError(f"side must be 'call' or 'put', got {side!r}")
+
+
 def compute_terrain(ticker: str, contracts: list[dict] | None,
                     spot: float | None) -> TerrainSnapshot:
     """Full terrain for one ticker. Fails closed — never invents a level.
@@ -425,6 +457,11 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
         call_delta_wall=call_delta_wall,   # RC-128: one book for delta walls too
         put_delta_wall=put_delta_wall,
+        # RC-130: the geometry state ships WITH the wall so no paint site can claim
+        # support/resistance the spot contradicts (live SPY 2026-07-29: put wall 740
+        # painted "dealer support" while spot sat at 735.13 below it).
+        call_wall_state=wall_geometry_state(spot, call_wall, "call"),
+        put_wall_state=wall_geometry_state(spot, put_wall, "put"),
         max_pain=compute_max_pain(exposures),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,

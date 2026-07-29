@@ -269,6 +269,11 @@ def wall_hold_stats(rows: list[dict]) -> dict:
     put wall below) — a wall already breached at 10:00 makes 'held' meaningless.
     """
     cn = ch = ccb = pn = ph = pca = 0
+    # RC-130: the working-side filter is CORRECT (SpotGamma's own SPX stats condition the
+    # same way — "held" is meaningless for a wall already breached at observation) but it
+    # was SILENT. The excluded wrong-side rows are now counted and reported, so the KPI
+    # states its own denominator instead of implying it covered every session.
+    cx = px = 0
     for r in rows:
         cw, pw, spot = r.get("call_wall"), r.get("put_wall"), r.get("spot")
         hi, lo, close = r.get("high"), r.get("low"), r.get("close")
@@ -278,13 +283,18 @@ def wall_hold_stats(rows: list[dict]) -> dict:
             cn += 1
             ch += hi <= cw
             ccb += close <= cw
+        elif cw is not None:
+            cx += 1
         if pw is not None and pw < spot:
             pn += 1
             ph += lo >= pw
             pca += close >= pw
+        elif pw is not None:
+            px += 1
     pct = lambda h, n: round(100.0 * h / n, 1) if n else None  # noqa: E731
     return {"call_n": cn, "call_held_pct": pct(ch, cn), "call_close_below_pct": pct(ccb, cn),
             "put_n": pn, "put_held_pct": pct(ph, pn), "put_close_above_pct": pct(pca, pn),
+            "call_excluded_breached_at_obs": cx, "put_excluded_breached_at_obs": px,
             "spotgamma_spx_benchmark": SG_BENCH}
 
 
@@ -594,6 +604,14 @@ def render_md(rep: dict) -> str:
         f"not a pass bar): call held {SG_BENCH['call_held']}% / close below "
         f"{SG_BENCH['call_close_below']}%; put held {SG_BENCH['put_held']}% / close above "
         f"{SG_BENCH['put_close_above']}%._",
+        "",
+        # RC-130: the denominator's exclusion is stated, never silent — hold% only covers
+        # walls on the working side at 10:00 ET; breached-at-observation rows are counted.
+        f"_Excluded as breached at observation (wall on the wrong side of spot at 10:00 ET; "
+        f"hold undefined): ALL rows — call {rep['wall_hold_all'].get('call_excluded_breached_at_obs', 0)}, "
+        f"put {rep['wall_hold_all'].get('put_excluded_breached_at_obs', 0)}; TRUSTED — call "
+        f"{rep['wall_hold_trusted'].get('call_excluded_breached_at_obs', 0)}, put "
+        f"{rep['wall_hold_trusted'].get('put_excluded_breached_at_obs', 0)}._",
         "",
         "_Bar to clear: beat the placebo, not 50%. Narrow-chain rows are structurally "
         "LOW_CONFIDENCE (20-strike history) — the TRUSTED row is the honest one._",

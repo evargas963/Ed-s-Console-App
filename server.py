@@ -202,7 +202,7 @@ from v2_decision import build_module_a_a1_decision
 from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
 from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
 from terrain_read import build_terrain_read
-from terrain_engine import compute_terrain
+from terrain_engine import compute_terrain, wall_geometry_state
 from terrain_atr import RING_REGIME, AtrPair, atr_distance, compute_atr_pair, ring_for
 
 try:
@@ -10506,6 +10506,11 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     # v23: the flip's CONFIDENCE rides the same book as the flip's STRIKE — it was still
     # analytics-written while the strike was terrain's, a half-dual book.
     md["kl_gamma_flip_confidence"] = _g("confidence")
+    # RC-130: the geometry state travels WITH the wall value it qualifies — as of the same
+    # terrain generation (kl_levels_from_computed_ts). A wall value without its state let
+    # the KL table caption "support" on a put wall sitting above spot.
+    md["kl_call_wall_state"] = _g("call_wall_state")
+    md["kl_put_wall_state"] = _g("put_wall_state")
     # v23 Lock-3 drift visibility: which terrain generation stamped these values — the KL
     # table and the terrain cards can only differ by generation skew, and now it is visible.
     md["kl_levels_from_computed_ts"] = _g("computed_ts_utc")
@@ -11376,6 +11381,12 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     out["spot"] = spot
     out["spot_source"] = spot_source
     out["spot_as_of_ts_utc"] = spot_ts
+    # RC-130: wall geometry states are a function of SPOT, which was just re-resolved —
+    # recomputed with the SAME producer definition (wall_geometry_state), and BEFORE the
+    # profile early-return below, or a wall crossed intra-cycle would keep claiming the
+    # containment the painted spot contradicts. Needs only spot + the cached walls.
+    out["call_wall_state"] = wall_geometry_state(spot, payload.get("call_wall"), "call")
+    out["put_wall_state"] = wall_geometry_state(spot, payload.get("put_wall"), "put")
 
     profile = _terrain_profile_cache.get(ticker)
     if not profile:

@@ -371,3 +371,57 @@ def test_chart_page_binds_only_the_terrain_family():
     hits = _KL_FAMILY.findall(src)
     assert hits == [], f"chart.html binds analytics-family kl_* keys: {sorted(set(hits))}"
 
+
+# ── RC-130: behavioral wall claims must be CONDITIONAL on the geometry state ─────────────────
+# Live SPY 2026-07-29: put wall 740 sat ABOVE spot 735.13 while every surface said "dealer
+# support". RC-83 (two-sided magnet) and RC-86 (invented range) were incident fixes of this
+# same class — a painted claim no state supports — and the class was never locked. This is
+# the lock: any client line that names a wall AND asserts support/resistance must carry a
+# conditional marker (state ternary, 'while', 'BREACHED', or an explicit negation).
+
+_WALL_WORD = re.compile(r"wall", re.I)
+_CLAIM_WORD = re.compile(r"resistance|support", re.I)
+_CONDITIONAL = re.compile(r"while|BREACHED|breached|holds|NOT\b|not\s+(?:resistance|support)")
+
+
+def _unconditional_wall_claims(src: str) -> list[tuple[int, str]]:
+    """A claim line is judged with its ±1-line window: splitting the label and the claim
+    across adjacent lines (multi-line object literals) must not evade the lock."""
+    src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", src, flags=re.M), flags=re.S)
+    lines = src.splitlines()
+    out = []
+    for i, l in enumerate(lines):
+        if not _CLAIM_WORD.search(l):
+            continue
+        window = lines[max(0, i - 1):i + 2]
+        if any(_WALL_WORD.search(w) for w in window) \
+                and not any(_CONDITIONAL.search(w) for w in window):
+            out.append((i + 1, l.strip()[:120]))
+    return out
+
+
+def test_no_unconditional_wall_support_resistance_claims():
+    for path in (CONSOLE, CHART):
+        offenders = _unconditional_wall_claims(path.read_text(encoding="utf-8"))
+        assert offenders == [], (
+            f"{path.name} asserts support/resistance on a wall with no geometry condition — "
+            f"the RC-130 class (put wall painted 'support' above spot): {offenders}"
+        )
+
+
+def test_unconditional_wall_claim_injection_is_caught():
+    """Negative control: the shipped defect's exact shape must fire; conditional text and
+    non-wall S/R prose must stay quiet."""
+    assert _unconditional_wall_claims(
+        "{ key: 'kl_put_gamma_wall', tip: 'Dealer hedging cushions selloffs, acting as support.' }"
+    ), "the RC-130 defect shape (single line) went undetected — the label lock is inert"
+    assert _unconditional_wall_claims(
+        "{ t: 'PUT WALL', v: d.put_wall,\n  tip: 'Dealer hedging supports dips here.' }"
+    ), "the split label/claim shape (adjacent lines) evaded the lock"
+    assert not _unconditional_wall_claims(
+        "tip: 'Put wall: support while spot holds above it.'"
+    ), "a properly conditioned wall claim tripped the lock"
+    assert not _unconditional_wall_claims(
+        "tip: 'A regime boundary, NOT support/resistance.'"
+    ), "non-wall prose tripped the wall-claim lock"
+

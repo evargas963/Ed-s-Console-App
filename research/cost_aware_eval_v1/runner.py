@@ -144,7 +144,6 @@ def _run_survival_qqq_60c(db: Path, prereg: dict[str, Any]) -> dict[str, Any]:
     ends, closes = _load_closes(db, "QQQ")
     labeled = _load_labeled_rows(db, "QQQ", "outcome_1c")
     har = har_features(ends, closes)
-    logp = np.log(np.clip(closes, 1e-12, None))
     rets = session_safe_log_returns(ends, closes)   # RC-31: gap returns are NaN
     xs, js, dates = [], [], []
     for ts, _y in labeled:

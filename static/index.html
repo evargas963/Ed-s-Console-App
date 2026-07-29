@@ -8239,8 +8239,16 @@ function _renderMoneyPathCore(d, fullRenderSource) {
 
   // Level definitions organized into groups
   const KL_PRIMARY = [
-    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444', tip: 'Strike with the largest call gamma. Dealer hedging tends to cap rallies here, acting as resistance.' },
-    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e', tip: 'Strike with the largest put gamma. Dealer hedging tends to cushion selloffs here, acting as support.' },
+    // RC-130: wall tips are FUNCTIONS of the payload — the resistance/support claim is
+    // conditioned on the carried geometry state, never asserted unconditionally.
+    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444',
+      tip: d => d.kl_call_wall_state === 'breached'
+        ? 'Strike with the largest call gamma — BREACHED: spot is at/above it. Dealer hedging flips from capping to chasing; a distinct acceleration state, not resistance.'
+        : 'Strike with the largest call gamma. Resistance while spot holds below it — dealer hedging caps rallies there.' },
+    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e',
+      tip: d => d.kl_put_wall_state === 'breached'
+        ? 'Strike with the largest put gamma — BREACHED: spot is at/below it. Dealer hedging flips from supporting to selling; a high-volatility state, not support.'
+        : 'Strike with the largest put gamma. Support while spot holds above it — dealer hedging cushions selloffs there.' },
     { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'THE standard pin — largest TOTAL gamma (calls+puts), the SpotGamma Absolute Gamma / sticky-pin measure; strongest into expiry. Lead % on the chart label shows its margin over the runner-up (RC-124).' },
     { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net Γ peak', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9', tip: 'Largest |net| dealer GEX strike (calls minus puts) — where the SIGNED book peaks. Previously labeled PIN/HVL; renamed because no vendor defines the pin on the net book (RC-124).' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
@@ -8315,7 +8323,11 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       const sr = level.sr || (isNull ? 'net' : v > (spot||0) ? 'res' : 'sup');
       const srLbl = level.srLabel || (isNull ? '—' : v > (spot||0) ? 'Resistance' : 'Support');
       const pColor = proxColor(v, level);
-      return `<div class="kl-grid" title="${level.tip || ''}">
+      // RC-130: a tip may be a function of the payload so wall captions obey the carried
+      // geometry state (kl_call_wall_state / kl_put_wall_state) instead of asserting
+      // support/resistance the spot contradicts.
+      const tipTxt = typeof level.tip === 'function' ? level.tip(d) : (level.tip || '');
+      return `<div class="kl-grid" title="${tipTxt}">
         <div class="kl-prox" style="background:${pColor}"></div>
         <div class="kl-name${dimmed ? ' dimmed' : ''}">${level.label}</div>
         <div class="kl-price">${isNull ? '—' : v.toFixed(2)}</div>
@@ -12267,8 +12279,14 @@ function edRenderLadder(d) {
 // surfaces — mechanism only, no numbers that go stale.
 function edLevelSet(d) {
   return [
-    { t: 'CALL WALL',  v: d.call_wall,       c: 'tv-c-call',  g: '▲', note: 'dealer supply',
-      tip: 'Largest call-side gamma strike. Dealer hedging tends to cap rallies here — resistance. Hold rate is measured daily in the scorecard.' },
+    // RC-130: note/tip obey the payload's geometry state (one producer, never recomputed
+    // here). "breached" is the institutional distinct state — the strike stays at the
+    // concentration max; the RESISTANCE claim is only true while spot holds below it.
+    { t: 'CALL WALL',  v: d.call_wall,       c: 'tv-c-call',  g: '▲',
+      note: d.call_wall_state === 'breached' ? 'BREACHED — spot above' : 'dealer supply',
+      tip: d.call_wall_state === 'breached'
+        ? 'Largest call-side gamma strike — BREACHED: spot is at/above it. Dealer hedging flips from capping to chasing; watch for stall-or-accelerate, not resistance.'
+        : 'Largest call-side gamma strike. Resistance while spot holds below it — dealer hedging caps rallies there. Hold rate is measured daily in the scorecard.' },
     { t: 'CALL CHARM', v: d.call_charm_wall, c: 'tv-c-charm', g: '◇', note: 'charm wall',
       tip: 'Call-side delta-decay (charm) concentration. Hedge flow from time decay, strongest in the final two hours.' },
     { t: 'GAMMA FLIP', v: d.gamma_flip,      c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true,
@@ -12285,8 +12303,11 @@ function edLevelSet(d) {
       tip: 'Largest total delta notional on the board. The biggest hedge inventory — crossing it forces the most dealer rebalancing.' },
     { t: 'HVP',        v: d.hvp,             c: 'tv-c-hvp',   g: '▣', note: 'most −γ · amplifies',
       tip: 'High-Volatility Point: strike holding the most NEGATIVE net dealer gamma. Dealers amplify moves around it — expansion pocket.' },
-    { t: 'PUT WALL',   v: d.put_wall,        c: 'tv-c-put',   g: '▼', note: 'dealer support',
-      tip: 'Largest put-side gamma strike. Dealer hedging tends to support dips here — support. Hold rate is measured daily in the scorecard.' },
+    { t: 'PUT WALL',   v: d.put_wall,        c: 'tv-c-put',   g: '▼',
+      note: d.put_wall_state === 'breached' ? 'BREACHED — spot below' : 'dealer support',
+      tip: d.put_wall_state === 'breached'
+        ? 'Largest put-side gamma strike — BREACHED: spot is at/below it. Dealer hedging flips from supporting to selling; high-volatility state, not support.'
+        : 'Largest put-side gamma strike. Support while spot holds above it — dealer hedging buys dips there. Hold rate is measured daily in the scorecard.' },
     { t: 'PUT CHARM',  v: d.put_charm_wall,  c: 'tv-c-charm', g: '◇', note: 'charm wall',
       tip: 'Put-side delta-decay (charm) concentration. Hedge flow from time decay, strongest in the final two hours.' }
   ].filter(m => m.v != null && isFinite(m.v));

@@ -206,3 +206,43 @@ def test_real_chain_carries_per_side_wall_ranges() -> None:
         assert rg["coverage_pct"] >= 68.2
     d = snap.to_dict()
     assert "call_wall_range" in d and "put_wall_range" in d, "the chart reads these"
+
+
+# ── RC-130: wall geometry state — the support/resistance claim is CONDITIONAL ────────────────
+# Live SPY 2026-07-29: put wall 740.0 sat ABOVE spot 735.13 while every surface said
+# "dealer support". Institutional standard (SpotGamma stats, GEXBoard): the picker stays at
+# the concentration max — unconstrained by spot — and a breach is a DISTINCT reported state,
+# not a moved strike. These tests pin the state function and its carriage.
+
+def test_wall_geometry_state_truth_table() -> None:
+    from terrain_engine import wall_geometry_state
+    # the live defect, exactly: put wall above spot is NOT support
+    assert wall_geometry_state(735.13, 740.0, "put") == "breached"
+    assert wall_geometry_state(735.13, 730.0, "put") == "contains"
+    assert wall_geometry_state(735.13, 750.0, "call") == "contains"
+    assert wall_geometry_state(735.13, 730.0, "call") == "breached"
+    # equality: a wall AT spot contains nothing
+    assert wall_geometry_state(740.0, 740.0, "put") == "breached"
+    assert wall_geometry_state(740.0, 740.0, "call") == "breached"
+    # absence stays absence — never a guessed state
+    assert wall_geometry_state(None, 740.0, "put") is None
+    assert wall_geometry_state(735.0, None, "call") is None
+
+
+def test_wall_geometry_state_rejects_unknown_side() -> None:
+    from terrain_engine import wall_geometry_state
+    import pytest
+    with pytest.raises(ValueError):
+        wall_geometry_state(735.0, 740.0, "steel")
+
+
+def test_real_chain_carries_wall_states_in_payload() -> None:
+    """The states ship beside the walls they qualify, and agree with the geometry."""
+    from terrain_engine import wall_geometry_state
+    chain, spot = _real_chain()
+    snap = compute_terrain("SPY", chain, spot)
+    d = snap.to_dict()
+    assert d["call_wall_state"] == wall_geometry_state(spot, snap.call_wall, "call")
+    assert d["put_wall_state"] == wall_geometry_state(spot, snap.put_wall, "put")
+    assert d["call_wall_state"] in ("contains", "breached")
+    assert d["put_wall_state"] in ("contains", "breached")

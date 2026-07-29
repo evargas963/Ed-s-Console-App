@@ -95,6 +95,13 @@ def test_wall_hold_excludes_wrong_side_and_missing_walls():
     w = wall_hold_stats([wrong_side, no_walls])
     assert w["call_n"] == 0 and w["call_held_pct"] is None
     assert w["put_n"] == 1  # wrong_side's put wall is still valid
+    # RC-130: the exclusion is COUNTED, never silent — the KPI states its own denominator.
+    assert w["call_excluded_breached_at_obs"] == 1
+    assert w["put_excluded_breached_at_obs"] == 0
+    # a wall missing entirely is absence, not a breach — it lands in neither bucket
+    w2 = wall_hold_stats([no_walls])
+    assert w2["call_excluded_breached_at_obs"] == 0
+    assert w2["put_excluded_breached_at_obs"] == 0
 
 
 def test_wall_hold_touch_exactly_at_wall_counts_as_held():

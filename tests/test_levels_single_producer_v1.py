@@ -180,6 +180,8 @@ SSOT_KEYS = (
     # cross-surface drift (KL table vs terrain cards) is visible as generation skew, never a
     # silent disagreement.
     "kl_gamma_flip_confidence", "kl_levels_from_computed_ts",
+    # RC-130: geometry states ride with the walls they qualify — same single writer.
+    "kl_call_wall_state", "kl_put_wall_state",
 )
 
 # v23: terrain-NATIVE level concepts painted by the chart/console ticker views. They have no
@@ -250,6 +252,19 @@ def _terrain_native_writes(src: str) -> list[tuple[int, str]]:
     return out
 
 
+def test_reprice_recomputes_wall_states_before_the_profile_early_return():
+    """RC-130: wall states are a function of SPOT and must be refreshed by the reprice path
+    with the PRODUCER's definition — and before the no-profile early return, or tickers
+    without a cached profile would serve loop-time geometry beside a live spot."""
+    seg = _fn("_reprice_cached_terrain")
+    calls = seg.count("wall_geometry_state(")
+    assert calls == 2, f"expected exactly 2 wall_geometry_state calls in reprice, found {calls}"
+    assert seg.index("wall_geometry_state(") < seg.index("_terrain_profile_cache"), (
+        "the state recompute sits after the profile early-return — no-profile tickers would "
+        "keep stale geometry beside a fresh spot"
+    )
+
+
 def test_server_never_produces_terrain_native_levels():
     """v23: HVP/LVP/charm walls/key-delta join the single-producer lock. Their producer is
     terrain_engine.compute_terrain — server.py assigning any of them is a second book."""
@@ -281,6 +296,10 @@ def test_overlay_owns_the_full_concept_set(monkeypatch):
                    "call_delta_wall": 747.0, "put_delta_wall": 738.0,
                    "implied_1d_move": {"points": 8.5}, "spot": 741.0,
                    "confidence": "TRUSTED", "computed_ts_utc": 1722.5,
+                   # RC-130 carriage check: states are CARRIED verbatim from the producer,
+                   # never recomputed in the overlay (put deliberately 'breached' here even
+                   # though 740<741 — proving no second computation exists at this seam).
+                   "call_wall_state": "contains", "put_wall_state": "breached",
                    "levels_stale": False}, monkeypatch)
     assert md["kl_call_delta_wall"] == 747.0 and md["kl_put_delta_wall"] == 738.0
     assert md["kl_gamma_flip_confidence"] == "TRUSTED", (
@@ -289,6 +308,9 @@ def test_overlay_owns_the_full_concept_set(monkeypatch):
     assert md["kl_levels_from_computed_ts"] == 1722.5, (
         "v23 Lock-3: the terrain generation stamp must travel with the values so cross-surface "
         "drift reads as generation skew, never a silent disagreement"
+    )
+    assert md["kl_call_wall_state"] == "contains" and md["kl_put_wall_state"] == "breached", (
+        "RC-130: the geometry state must travel WITH the wall value it qualifies"
     )
     assert md["kl_em_upper"] == 749.5 and md["kl_em_lower"] == 732.5, (
         "EM must come from the terrain sigma band centered on the payload spot (E-34)"

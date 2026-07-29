@@ -516,7 +516,15 @@ function draw() {
     // than a barrier. Calling it CALL WALL asserts resistance-above on a level that is equally
     // support-below. The server-side radar was fixed for this; the chart was not, and drew two
     // identical overlapping bands with opposite labels.
+    // RC-130: the lean obeys the wall's GEOMETRY state from the payload (one producer;
+    // never recomputed here). "contains" earns the dealer lean; "breached" is the
+    // institutional distinct state — SpotGamma reports closes beyond the wall rather than
+    // moving it — so the label says BREACHED instead of asserting a cap/floor that spot
+    // has already crossed (live SPY 2026-07-29: put wall 740 over spot 735 said DEALERS BUY).
+    const wState = kind === 'both' ? null
+      : (sell ? T.call_wall_state : T.put_wall_state);
     const lean = kind === 'both' ? '  · TWO-SIDED — magnet, not a barrier'
+      : wState === 'breached' ? (sell ? '  · BREACHED — spot above' : '  · BREACHED — spot below')
       : withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY');
     g.fillText(`${name} ${fmt(level)}${rangeTxt}${lean}`, PADL + 8, yTop - 5);
     wallLabelYs.push(yTop - 5);

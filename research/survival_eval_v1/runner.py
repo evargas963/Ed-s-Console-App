@@ -55,7 +55,6 @@ def competing_label(
 def _build(ends, closes, labeled_ts, horizon_min, thr_by_day_train=None):
     """Build features; labels use thr from train later — here return pts proxy for thr fit."""
     har = har_features(ends, closes)
-    logp = np.log(np.clip(closes, 1e-12, None))
     rets = session_safe_log_returns(ends, closes)   # RC-31: gap returns are NaN
     xs, js, dates = [], [], []
     for ts, _y in labeled_ts:

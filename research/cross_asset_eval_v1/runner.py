@@ -37,7 +37,6 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
     invalid_hz = set(invalid_threshold_horizons())
     spy_ends, spy_closes = _load_closes(Path(db_path), "SPY")
     spy_har = har_features(spy_ends, spy_closes)
-    spy_logp = np.log(np.clip(spy_closes, 1e-12, None))
     spy_rets = session_safe_log_returns(spy_ends, spy_closes)   # RC-31
     cells: dict[str, dict[str, Any]] = {}
     for ticker in prereg["family"]["tickers"]:
