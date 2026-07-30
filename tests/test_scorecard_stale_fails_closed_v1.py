@@ -407,6 +407,29 @@ def test_ladder_narrows_on_over_budget_status_not_only_on_timeout():
     assert "502" in codes, f"502 is not treated as over-budget: {codes!r}"
 
 
+def test_terrain_not_ready_branch_carries_structured_state_too():
+    """RC-151: /api/terrain's cached branch spreads terrain_staleness; the not-ready branch
+    shipped only a prose `error` string, so levels_failing / levels_quarantined were ABSENT for
+    exactly the tickers that were failing. MEASURED 2026-07-30 12:08 ET: RTY returned [] of the
+    five structured fields while SPY returned all five. A flag a consumer must parse English to
+    find is not a flag, and absent is indistinguishable from healthy to every reader."""
+    import re
+    src = (ROOT / "server.py").read_text(encoding="utf-8")
+    i = src.find('"error": ("terrain_not_ready: no wide-chain snapshot yet')
+    assert i > 0, "the not-ready branch is gone"
+    body = re.sub(r"#.*$", "", src[i:i + 900], flags=re.M)
+    assert "terrain_staleness(None, tk)" in body, (
+        "the not-ready branch still returns prose only — a failing ticker reports no "
+        "machine-readable failure state on /api/terrain"
+    )
+    # and the contract itself: the stub must actually carry the flags
+    stub = server.terrain_staleness(None, "ZZTESTNOTREADY")
+    for k in ("levels_stale", "levels_failing", "levels_quarantined",
+              "levels_stale_reason", "levels_refresh_active"):
+        assert k in stub, f"{k} missing from the no-snapshot payload"
+    assert stub["levels_stale"] is True
+
+
 def test_no_bars_payload_survives_so_the_reason_can_be_painted():
     """RC-150: `strikes` is nulled when there are no renderable bars, which also threw away
     levels_stale_reason / levels_failing / levels_quarantined — the diagnosis — at exactly the

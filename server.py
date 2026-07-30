@@ -12133,6 +12133,13 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
         # unexplained shrug is how $SPX stayed dark for a session.
         "error": ("terrain_not_ready: no wide-chain snapshot yet for this ticker"
                   + (f" (last refresh error: {_why})" if _why else "")),
+        # RC-151: and it carries the STRUCTURED state too. The cached branch above spreads
+        # terrain_staleness while this one shipped only a prose `error` string, so
+        # levels_failing / levels_quarantined were absent on /api/terrain for precisely the
+        # tickers that were failing — MEASURED 2026-07-30 12:08 ET: RTY returned [] structured
+        # fields while SPY returned all five. A flag a consumer must parse English to discover
+        # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
+        **terrain_staleness(None, tk),
     }
 
 
