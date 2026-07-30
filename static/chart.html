@@ -158,6 +158,10 @@ window.addEventListener('error', e => {
 const cv = document.getElementById('cv'), hv = document.getElementById('hv');
 const tip = document.getElementById('tip'), wrap = document.getElementById('wrap');
 let raw = [], bars = [], terrain = null, strikes = null, crosses = [];
+//: RC-150: the /api/terrain/strikes payload ALWAYS, bars or no bars. `strikes` is nulled when
+//: there are no renderable bars (many draw sites read its truthiness as "have bars"), which also
+//: discarded the producer's reason for there being none. Two facts, two variables.
+let strikesMeta = null;
 let zones = [], scope = 'all', showGhost = true, learning = true, tf = '1';
 let view = null;          // {i0, i1} visible bar index range (fractional)
 let yLock = null;         // {lo, hi} manual price domain when user pans/zooms Y
@@ -306,6 +310,14 @@ async function load() {
     chartTicker = tk;
     // empty {all:[],…} shells and HTTP error bodies both read as ABSENT
     strikes = (s && hasStrikeBars(s.today)) ? s : null;
+    // RC-150: ...but ABSENT BARS IS NOT AN ABSENT PAYLOAD. Nulling `strikes` also threw away
+    // levels_stale_reason / levels_failing / levels_quarantined — the diagnosis — at exactly the
+    // moment it became the only thing worth showing. MEASURED in the rendered DOM 2026-07-30
+    // 12:03 ET: RTY printed "feed activates at the next console start" while /api/terrain/strikes
+    // was returning `levels_failing: true` and "chain fetch failed (HTTP 400)". RC-147 made the
+    // reason reach the payload; this is what kept it off the screen. The bars and the diagnosis
+    // are separate facts and now travel in separate variables.
+    strikesMeta = s || null;
     computeDaily(); setBars();
     if (atEnd && view) { const w = view.i1 - view.i0;
       view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
@@ -338,9 +350,20 @@ async function load() {
     // window (16:30 ET) and nothing on screen said so. Naming the right tap proves only that it
     // was opened. Age and staleness now ride beside the source, in the operator's language.
     const _gsrc = document.getElementById('gsrc');
+    // RC-150: "activates at the next console start" was the catch-all for every no-bars case,
+    // including a vendor-rejected symbol that no restart can fix. Ask the payload first.
     if (!(strikes && strikes.today_source)) {
-      _gsrc.textContent = 'feed activates at the next console start';
-      _gsrc.style.color = '';
+      const _sm = strikesMeta || {};
+      const _q = _sm.levels_quarantined, _f = _sm.levels_failing;
+      if (_sm.levels_stale_reason) {
+        _gsrc.textContent = (_q ? 'FAILING · QUARANTINED' : _f ? 'FAILING' : 'NO DATA') +
+          ` — ${_sm.levels_stale_reason}`;
+        _gsrc.style.color = (_q || _f) ? '#ff3355' : '#ffc400';
+        _gsrc.title = String(_sm.levels_stale_reason);
+      } else {
+        _gsrc.textContent = 'feed activates at the next console start';
+        _gsrc.style.color = '';
+      }
     } else if (t && t.levels_stale) {
       const mins = t.levels_age_sec != null ? Math.round(t.levels_age_sec / 60) : null;
       // RC-146: "not refreshing" is two different operator actions wearing one label. A
@@ -971,8 +994,11 @@ function drawGamma() {
     // symbol outright (`chain fetch failed (HTTP 400)`, no spot either) — nothing about a
     // console restart was ever going to fix that, and the message sent the operator to the
     // wrong remedy every cycle. The producer's reason is on the payload; print it.
-    const _why = (strikes && strikes.levels_stale_reason) || '';
-    g.fillStyle = strikes && strikes.levels_failing ? '#ff3355' : '#aab6c4';
+    // RC-150: read strikesMeta, not strikes — `strikes` is null in EXACTLY this branch (no
+    // renderable bars), so reading the reason off it could never work. That is why RTY rendered
+    // "activates at the next console start" while the payload said HTTP 400.
+    const _why = (strikesMeta && strikesMeta.levels_stale_reason) || '';
+    g.fillStyle = strikesMeta && strikesMeta.levels_failing ? '#ff3355' : '#aab6c4';
     g.font = '700 13px system-ui';
     g.fillText(_why
       ? 'no per-strike rows — ' + _why

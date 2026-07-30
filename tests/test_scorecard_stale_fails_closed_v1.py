@@ -407,6 +407,31 @@ def test_ladder_narrows_on_over_budget_status_not_only_on_timeout():
     assert "502" in codes, f"502 is not treated as over-budget: {codes!r}"
 
 
+def test_no_bars_payload_survives_so_the_reason_can_be_painted():
+    """RC-150: `strikes` is nulled when there are no renderable bars, which also threw away
+    levels_stale_reason / levels_failing / levels_quarantined — the diagnosis — at exactly the
+    moment it became the only thing worth showing. MEASURED in the rendered DOM 2026-07-30 12:03
+    ET: RTY printed "feed activates at the next console start" while /api/terrain/strikes was
+    returning levels_failing true and "chain fetch failed (HTTP 400)". RC-147 got the reason onto
+    the payload; this is what kept it off the screen."""
+    src = CHART.read_text(encoding="utf-8")
+    assert "let strikesMeta = null;" in src, "the surviving-payload variable is gone"
+    assert "strikesMeta = s || null;" in src, (
+        "the payload is not retained unconditionally, so a no-bars ticker loses its reason again"
+    )
+    # the two branches that render when there are NO bars must read the survivor, not `strikes`
+    i = src.find("const _why = (strikesMeta")
+    assert i > 0, "the empty-panel branch reads `strikes`, which is null in exactly that branch"
+    j = src.find("if (!(strikes && strikes.today_source))")
+    assert j > 0, "the no-source branch is gone"
+    block = src[j:j + 900]
+    assert "strikesMeta" in block, (
+        "the no-source branch still prints 'activates at the next console start' for every cause, "
+        "including a vendor-rejected symbol no restart can fix"
+    )
+    assert "FAILING · QUARANTINED" in block
+
+
 def test_empty_gamma_panel_states_the_producers_reason():
     """Surface-bound: an empty panel blamed the console ('activates at the next console start')
     for RTY/XXT, whose chains Schwab rejects outright with HTTP 400. A restart was never the
