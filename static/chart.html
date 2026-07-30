@@ -343,9 +343,25 @@ async function load() {
       _gsrc.style.color = '';
     } else if (t && t.levels_stale) {
       const mins = t.levels_age_sec != null ? Math.round(t.levels_age_sec / 60) : null;
-      _gsrc.textContent = `STALE — levels ${mins != null ? mins + ' min' : 'unknown age'} old, ` +
-        `not refreshing (source: ${strikes.today_source})`;
-      _gsrc.style.color = '#ffc400';
+      // RC-146: "not refreshing" is two different operator actions wearing one label. A
+      // deliberate pause means WAIT (it resumes at a known time); an unexplained one means GO
+      // FIND OUT. The producer now says which, so the line says which instead of implying the
+      // alarming case for a scheduler that is working as designed.
+      // RC-147: three states, three operator actions. PAUSED = wait, it resumes at a known
+      // time. FAILING = the chain call is erroring; these levels are not coming back on their
+      // own. STALE = should be refreshing and is not, cause unrecorded. Collapsing FAILING into
+      // STALE is how $SPX served a 45-minute-old book with volume bars painting beside it.
+      // RC-148 adds the fourth: QUARANTINED — the loop has stopped REQUESTING this ticker and
+      // will not resume without an operator re-admit. It is still FAILING (the vendor refuses
+      // the symbol), so the label carries both rather than trading one truth for the other.
+      const _state = t.levels_quarantined ? 'FAILING · QUARANTINED'
+        : t.levels_failing ? 'FAILING'
+        : t.levels_paused_on_purpose ? 'PAUSED' : 'STALE';
+      _gsrc.textContent = _state +
+        ` — levels ${mins != null ? mins + ' min' : 'unknown age'} old, ` +
+        `not refreshing (source: ${strikes.today_source})` +
+        (t.levels_stale_reason ? ` · ${t.levels_stale_reason}` : '');
+      _gsrc.style.color = t.levels_failing ? '#ff3355' : '#ffc400';
       _gsrc.title = String(t.levels_stale_reason || '');
     } else {
       const age = t && t.levels_age_sec != null ? `${Math.round(t.levels_age_sec)}s` : 'live';
@@ -950,8 +966,18 @@ function drawGamma() {
     coach1.style.display = coach2.style.display = 'none';
     g.fillStyle = '#f4f6f8'; g.font = '800 14px system-ui';
     g.fillText('GAMMA PANEL — migration + volume by strike', 14, 28);
-    g.fillStyle = '#aab6c4'; g.font = '700 13px system-ui';
-    g.fillText('activates at the next console start (per-strike feed not on the running server yet)', 14, 52);
+    // RC-147: an empty panel had ONE explanation for every cause, and it blamed the console.
+    // MEASURED 2026-07-30 10:16 ET: RTY and XXT render zero rows because Schwab rejects the
+    // symbol outright (`chain fetch failed (HTTP 400)`, no spot either) — nothing about a
+    // console restart was ever going to fix that, and the message sent the operator to the
+    // wrong remedy every cycle. The producer's reason is on the payload; print it.
+    const _why = (strikes && strikes.levels_stale_reason) || '';
+    g.fillStyle = strikes && strikes.levels_failing ? '#ff3355' : '#aab6c4';
+    g.font = '700 13px system-ui';
+    g.fillText(_why
+      ? 'no per-strike rows — ' + _why
+      : 'activates at the next console start (per-strike feed not on the running server yet)',
+      14, 52);
     return;
   }
 
@@ -1019,10 +1045,23 @@ function drawGamma() {
   }
   // E-35 follow-up (operator: "yellow bars not rendering"): a zero-volume session start
   // rendered as silent emptiness and read as a broken panel. Absence states its reason.
+  // RC-146: and it must state the RIGHT reason. A zero here has TWO causes that are not the
+  // same fact — (a) the session really has traded nothing yet, or (b) the chain behind these
+  // rows was read BEFORE the open and has not been refreshed since. MEASURED 2026-07-30 09:43
+  // ET: MSFT rendered volume 0 on all 44 strikes off a snapshot computed 09:29:52 ET (813 s
+  // old, 8 s before the bell) while this line asserted case (a) about a ticker that had been
+  // trading options for thirteen minutes. Age is already on the payload; the message reads it
+  // instead of assuming the innocent case.
   const _totVol = vis.reduce((a, r) => a + (r[2] || 0), 0);
   if (_totVol <= 0) {
-    g.fillStyle = '#7f8b99'; g.font = '700 12px system-ui';
-    g.fillText('no option volume yet this session — the counter resets at the new session and fills from the open',
+    const _st = strikes && strikes.levels_stale;
+    const _mins = strikes && strikes.today_age_sec != null
+      ? Math.max(1, Math.round(Number(strikes.today_age_sec) / 60)) + ' min' : 'an unknown time';
+    g.fillStyle = _st ? '#ffc400' : '#7f8b99'; g.font = '700 12px system-ui';
+    g.fillText(_st
+      ? `zero here is the SNAPSHOT, not the session — this chain was read ${_mins} ago and is `
+        + `not refreshing; hover the source line above for why`
+      : 'no option volume yet this session — the counter resets at the new session and fills from the open',
       14, base2 - 8);
   }
   // RC-124 (operator: "hard to tell the movement"): the three largest shifts vs yesterday

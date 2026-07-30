@@ -10457,6 +10457,198 @@ _terrain_cache_lock = threading.Lock()
 #: RC-126: the producer's last failure per ticker, so terrain_not_ready can say WHY instead
 #: of shrugging forever (how $SPX stayed dark a full session). Cleared on the next success.
 _terrain_refresh_last_error: dict[str, str] = {}
+#: RC-146: the producer's DELIBERATE skips, per ticker. Distinct channel from the error dict
+#: above on purpose — a budget-justified pause is not a failure, and collapsing the two would
+#: report a working scheduler as broken. Written by _terrain_loop at the moment it drops a
+#: ticker from the cycle, read by terrain_staleness so every stale payload carries the real
+#: reason. A degradation that records nothing is indistinguishable from a malfunction.
+_terrain_skipped_reason: dict[str, str] = {}
+_terrain_skip_lock = threading.Lock()
+
+#: RC-148 — QUARANTINE. Visibility is not sufficiency: RTY and XXT are rejected by the vendor
+#: (`chain fetch failed (HTTP 400)`, no spot, no expiries) yet the loop re-requested them every
+#: 60 s against a 2-slot chain gate, indefinitely. A permanently-rejected symbol is not a
+#: transient error to retry — it is a symbol that will never answer, and retrying it spends a
+#: scarce vendor slot the healthy book needs. Hard rejections (HTTP 4xx: the symbol itself is
+#: refused) quarantine PERMANENTLY after TERRAIN_QUARANTINE_HARD_FAILS consecutive hits and stay
+#: out until an operator re-admits. Soft failures (timeout / 5xx / 429: the venue is busy, the
+#: symbol is fine) back off exponentially and re-admit themselves.
+TERRAIN_QUARANTINE_HARD_FAILS: int = 3
+TERRAIN_QUARANTINE_SOFT_BASE_SEC: float = 60.0
+TERRAIN_QUARANTINE_SOFT_MAX_SEC: float = 900.0
+TERRAIN_QUARANTINE_LEDGER = Path(APP_DIR) / "reports" / "terrain_quarantine_ledger.jsonl"
+
+_terrain_quarantine: dict[str, dict] = {}
+_terrain_consecutive_fails: dict[str, int] = {}
+_terrain_quarantine_skips: dict[str, int] = {}
+_terrain_quarantine_lock = threading.Lock()
+
+
+def _quarantine_ledger_append(event: str, tk: str, payload: dict) -> None:
+    """Append-only record of every quarantine decision. A control the operator cannot audit
+    after the fact is a control they have to take on trust."""
+    try:
+        TERRAIN_QUARANTINE_LEDGER.parent.mkdir(parents=True, exist_ok=True)
+        row = {"ts_utc": time.time(), "et": now_et().isoformat(), "event": event,
+               "ticker": tk, **payload}
+        with open(TERRAIN_QUARANTINE_LEDGER, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except OSError as e:                      # a ledger that cannot write must not stop the loop
+        log.warning("quarantine ledger write failed for %s: %s", tk, e)
+
+
+def _classify_chain_failure(status_code: int | None, exc_name: str | None) -> str:
+    """"hard" = the vendor refuses THIS SYMBOL (4xx); "soft" = the venue is busy (timeout/5xx/429).
+
+    Fail-closed to "soft": an unrecognised failure must never earn a permanent quarantine, because
+    a wrong permanent verdict silently removes a real instrument from the board.
+    """
+    if status_code is not None:
+        code = int(status_code)
+        if code == 429:
+            return "soft"                     # rate limit is about US, never about the symbol
+        if 400 <= code < 500:
+            return "hard"
+        return "soft"
+    if exc_name in ("ReadTimeout", "ConnectTimeout", "TimeoutException"):
+        return "soft"
+    return "soft"
+
+
+def terrain_quarantine_state(ticker: str | None = None) -> dict:
+    """Snapshot of the quarantine book (whole book, or one ticker's entry)."""
+    with _terrain_quarantine_lock:
+        if ticker:
+            tk = ticker_storage_key(ticker)
+            e = _terrain_quarantine.get(tk)
+            return dict(e) if e else {}
+        return {k: dict(v) for k, v in _terrain_quarantine.items()}
+
+
+def terrain_quarantine_reason(ticker: str | None) -> str:
+    """Why this ticker is not being requested at all, or "" when it is in the rotation."""
+    if not ticker:
+        return ""
+    tk = ticker_storage_key(ticker)
+    with _terrain_quarantine_lock:
+        e = _terrain_quarantine.get(tk)
+        if not e:
+            return ""
+        if e.get("permanent"):
+            return (f"QUARANTINED after {e.get('failures')} consecutive hard rejections — "
+                    f"{e.get('reason')}. The vendor refuses this symbol, so the loop has stopped "
+                    f"requesting it; it stays out until an operator re-admits it "
+                    f"(POST /api/terrain/quarantine/release?ticker={tk})")
+        left = max(0.0, float(e.get("until_ts") or 0.0) - time.time())
+        return (f"backing off after {e.get('failures')} consecutive failures — {e.get('reason')}; "
+                f"next attempt in {left:.0f}s")
+
+
+def _terrain_quarantine_blocks(tk: str) -> bool:
+    """True when this ticker must NOT be requested this cycle. Expired soft holds self-release."""
+    now = time.time()
+    with _terrain_quarantine_lock:
+        e = _terrain_quarantine.get(tk)
+        if not e:
+            return False
+        if e.get("permanent"):
+            _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
+            return True
+        if now < float(e.get("until_ts") or 0.0):
+            _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
+            return True
+        _terrain_quarantine.pop(tk, None)      # soft hold expired — back into the rotation
+    _quarantine_ledger_append("soft_release", tk, {"note": "backoff elapsed, retrying"})
+    return False
+
+
+def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
+    """Record a failed refresh and quarantine when the pattern earns it.
+
+    The streak counter lives under the SAME lock as the quarantine book it feeds. TERRAIN_WORKERS
+    threads run the rotation while `/api/terrain` can drive `_terrain_refresh_one(priority=True)`
+    for the same ticker concurrently, so a read-modify-write outside the lock can drop a failure —
+    and a dropped failure is a retry storm that never reaches its own threshold.
+    """
+    log_msg: tuple | None = None
+    ledger: tuple | None = None
+    with _terrain_quarantine_lock:
+        n = _terrain_consecutive_fails.get(tk, 0) + 1
+        _terrain_consecutive_fails[tk] = n
+        if n >= TERRAIN_QUARANTINE_HARD_FAILS:
+            if kind == "hard":
+                already = bool(_terrain_quarantine.get(tk, {}).get("permanent"))
+                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "permanent": True,
+                                           "since_ts": time.time(), "until_ts": None,
+                                           "kind": kind}
+                if not already:
+                    log_msg = ("terrain QUARANTINE (permanent) %s after %d hard rejections: %s",
+                               tk, n, reason)
+                    ledger = ("quarantine_permanent", {"failures": n, "reason": reason})
+            else:
+                wait = min(TERRAIN_QUARANTINE_SOFT_MAX_SEC,
+                           TERRAIN_QUARANTINE_SOFT_BASE_SEC
+                           * (2 ** (n - TERRAIN_QUARANTINE_HARD_FAILS)))
+                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "permanent": False,
+                                           "since_ts": time.time(),
+                                           "until_ts": time.time() + wait, "kind": kind}
+                log_msg = ("terrain backoff %s for %.0fs after %d failures: %s",
+                           tk, wait, n, reason)
+                ledger = ("backoff", {"failures": n, "reason": reason,
+                                      "wait_sec": round(wait, 1)})
+    # Disk and logging stay OUTSIDE the lock: a slow ledger write must never hold the producer.
+    if log_msg:
+        log.warning(*log_msg)
+    if ledger:
+        _quarantine_ledger_append(ledger[0], tk, ledger[1])
+
+
+def _note_terrain_success(tk: str) -> None:
+    """A success clears the streak AND any soft hold — the symbol answered."""
+    with _terrain_quarantine_lock:
+        _terrain_consecutive_fails.pop(tk, None)
+        had = _terrain_quarantine.pop(tk, None)
+    if had and not had.get("permanent"):
+        _quarantine_ledger_append("cleared_by_success", tk, {})
+
+
+def terrain_quarantine_release(ticker: str) -> dict:
+    """Operator re-admission. Explicit, logged, and the ONLY way out of a permanent hold."""
+    tk = ticker_storage_key(ticker)
+    with _terrain_quarantine_lock:
+        had = _terrain_quarantine.pop(tk, None)
+        _terrain_consecutive_fails.pop(tk, None)
+        _terrain_quarantine_skips.pop(tk, None)
+    _quarantine_ledger_append("operator_release", tk, {"was": had or {}})
+    log.warning("terrain quarantine RELEASED by operator: %s (was %s)", tk, had)
+    return {"ticker": tk, "released": bool(had), "was": had or {}}
+
+
+def _note_terrain_skip(tickers: list[str], reason: str) -> None:
+    """Record WHY these tickers were dropped from a cycle; clear everyone else.
+
+    Keyed through `ticker_storage_key` — the ONE normalisation authority (RC-126) — because
+    `_terrain_refresh_last_error` beside it is keyed that way too. Two dicts describing the same
+    ticker under two different spellings is how a reader silently misses one of them.
+    """
+    keep = {ticker_storage_key(t) for t in tickers if t}
+    with _terrain_skip_lock:
+        _terrain_skipped_reason.clear()
+        for t in keep:
+            _terrain_skipped_reason[t] = reason
+
+
+def _clear_terrain_skips() -> None:
+    with _terrain_skip_lock:
+        _terrain_skipped_reason.clear()
+
+
+def terrain_skip_reason(ticker: str | None) -> str:
+    """The producer's own reason for not refreshing this ticker, or "" when none."""
+    if not ticker:
+        return ""
+    with _terrain_skip_lock:
+        return _terrain_skipped_reason.get(ticker_storage_key(ticker), "")
 
 
 def _terrain_kl_overlay(md: dict, ticker: str) -> None:
@@ -10712,8 +10904,14 @@ def _schwab_token_creation_ts() -> float | None:
         return None
 
 
-def terrain_staleness(computed_ts_utc: float | None) -> dict:
+def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) -> dict:
     """Whether the levels are current, and WHY NOT when they are not (RC-91).
+
+    RC-146 — the reason must come from the PRODUCER, not be inferred from a clock. Age alone
+    cannot tell a deliberate pause from a broken loop, so this function used to answer "inside
+    its window but not producing" for a scheduler that was working exactly as designed. When a
+    ticker was skipped on purpose, `terrain_skip_reason` has the real sentence and it wins.
+    Pass `ticker` wherever it is known; omitting it degrades to the old clock-only reason.
 
     MEASURED 2026-07-27 18:02 ET: /api/terrain computed_ts_utc did not advance across 90s against
     a 60s cadence, the gamma panel served data 90 MINUTES old under a `terrain_live_cache` label,
@@ -10728,21 +10926,62 @@ def terrain_staleness(computed_ts_utc: float | None) -> dict:
     """
     refreshing = _is_loggable_session()
     token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
+    skipped = terrain_skip_reason(ticker)   # RC-146: the producer's own words, when it has any
+    # RC-147: the FAILURE channel, which RC-146 left unread. `_terrain_refresh_last_error` was
+    # consulted at exactly ONE call site — the not-ready branch of /api/terrain, reachable only
+    # when NO snapshot exists. The moment a ticker has any cached snapshot, that branch is dead
+    # and the recorded exception becomes unreachable, so a ticker failing every single refresh
+    # reported `error: ""` and a generic "inside its window but not producing". MEASURED
+    # 2026-07-30 10:16 ET: $SPX served levels 2,737 s old (45.6 min) with volume bars painting
+    # beside them, chain_basis already degraded to `dte<=120`, and no surface anywhere naming
+    # the cause. Precedence: a pause recorded for THIS cycle is why it is not refreshing right
+    # now and wins; otherwise the last failure is the live reason; the clock is the last resort.
+    # RC-148: quarantine outranks both. A quarantined ticker is not merely failing — it is not
+    # being REQUESTED, which is a different fact and a different operator action (re-admit it,
+    # or accept it is gone). Precedence for the REASON: quarantine > this-cycle pause > last
+    # failure > clock. The FLAGS stay orthogonal on purpose: a hard quarantine is still FAILING
+    # (the vendor refuses the symbol) and is emphatically NOT "paused, resumes on its own", so
+    # collapsing it into either single flag would restore the ambiguity RC-146/147 removed.
+    q_entry = terrain_quarantine_state(ticker)
+    quarantined = terrain_quarantine_reason(ticker)
+    failure = "" if (skipped or quarantined) else str(_terrain_refresh_last_error.get(
+        ticker_storage_key(ticker) if ticker else "", "") or "")
+    hard_quarantine = bool(q_entry.get("permanent"))
     if computed_ts_utc is None:
         return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
-                "levels_stale_reason": "no terrain snapshot has been computed yet", **token}
+                "levels_stale_reason": (
+                    quarantined or skipped
+                    or (f"no terrain snapshot has been computed yet — {failure}" if failure
+                        else "no terrain snapshot has been computed yet")),
+                "levels_paused_on_purpose": bool(skipped and not quarantined),
+                "levels_quarantined": bool(quarantined),
+                "levels_failing": bool(failure or hard_quarantine), **token}
     age = round(time.time() - float(computed_ts_utc), 1)
     stale = age > TERRAIN_STALE_AFTER_SEC
     reason = ""
     if stale:
-        reason = (f"levels are {age:.0f}s old; the terrain loop is not refreshing "
+        reason = (f"levels are {age:.0f}s old — {quarantined}" if quarantined else
+                  f"levels are {age:.0f}s old — {skipped}" if skipped else
+                  f"levels are {age:.0f}s old and every refresh since is failing — {failure}"
+                  if failure else
+                  f"levels are {age:.0f}s old; the terrain loop is not refreshing "
                   f"(outside the background-logging window, which closes at "
                   f"{LOGGER_BUFFER_MINS // 60:02d}:{LOGGER_BUFFER_MINS % 60:02d} ET)"
                   if not refreshing else
                   f"levels are {age:.0f}s old against a {TERRAIN_REFRESH_SEC:.0f}s cadence — the "
                   f"loop is inside its window but not producing")
     return {"levels_stale": stale, "levels_age_sec": age,
-            "levels_refresh_active": refreshing, "levels_stale_reason": reason, **token}
+            "levels_refresh_active": refreshing, "levels_stale_reason": reason,
+            # RC-146: a stale panel must be able to distinguish "paused by design, resumes at a
+            # known time" from "should be refreshing and is not". They are different operator
+            # actions — wait, versus go find out what broke.
+            "levels_paused_on_purpose": bool(stale and skipped and not quarantined),
+            # RC-147: and the third state — actively FAILING — is a different action again
+            # (the chain call is erroring, the levels will not come back on their own).
+            "levels_failing": bool(stale and (failure or hard_quarantine)),
+            # RC-148: the fourth — not even being REQUESTED. Distinct from failing: re-admission
+            # is an operator act, not something the loop will do on its own.
+            "levels_quarantined": bool(quarantined), **token}
 
 
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
@@ -10756,6 +10995,15 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     tk = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX at the producer too — background
     if not tk:                        # callers (radar, enroll lists) don't pass the endpoints
         return "skip:empty"
+    # RC-148: BEFORE the client, before the gate, before any vendor budget is spent. MEASURED
+    # 2026-07-30 11:14 ET: RTY and XXT had each been re-requested every ~60 s all session for a
+    # symbol Schwab answers with HTTP 400 — two permanently-wasted slots per minute out of a
+    # 2-slot gate, against a book where $SPX could not get a chain through. Making that visible
+    # (RC-147) was necessary and not sufficient: a control that reports the burn while the burn
+    # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
+    # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
+    if _terrain_quarantine_blocks(tk):
+        return "skip:quarantined"
     try:
         client = get_client()
         want_capture, cap_key = _universal_capture_wanted(tk)
@@ -10787,8 +11035,14 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     f"chain fetch timeout at basis {_basis!r} — trying a narrower window")
                 continue
         if resp is None or getattr(resp, "status_code", None) != 200:
-            _terrain_refresh_last_error[tk] = (
-                f"chain fetch failed (HTTP {getattr(resp, 'status_code', 'timeout-at-all-rungs')})")
+            _code = getattr(resp, "status_code", None)
+            _msg = f"chain fetch failed (HTTP {_code if _code is not None else 'timeout-at-all-rungs'})"
+            _terrain_refresh_last_error[tk] = _msg
+            # RC-148: classify so the response fits the cause. A 4xx is the vendor refusing THIS
+            # SYMBOL and will refuse it identically forever; a timeout or 5xx is the venue being
+            # busy and deserves a backoff, not a death sentence.
+            _note_terrain_failure(tk, _msg, _classify_chain_failure(
+                _code, "timeout-at-all-rungs" if resp is None else None))
             return "error:chain_http"
         c_json = resp.json()
         contracts = flatten_chain_contracts(c_json)
@@ -10827,12 +11081,17 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             _terrain_profile_cache[tk] = snap.profile
         _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
+        _note_terrain_success(tk)                   # RC-148: and the failure streak with it
         return f"ok:{snap.confidence}"
     except Exception as e:
         # RC-126: DEBUG here meant $SPX failed silently for a full session while the operator
         # stared at 'not_ready' with no reason. The failure is WARNING-visible AND kept, so
         # the endpoint can tell the operator WHY instead of an eternal shrug.
         _terrain_refresh_last_error[tk] = f"{type(e).__name__}: {e}"
+        # RC-148: an exception is never a symbol rejection (those arrive as a 4xx RESPONSE), so
+        # it always classifies soft — backoff, never a permanent hold. A crash in our own code
+        # must not be able to evict a real instrument from the board.
+        _note_terrain_failure(tk, f"{type(e).__name__}: {e}", "soft")
         log.warning("terrain refresh %s failed: %s", tk, e, exc_info=True)
         return f"error:{type(e).__name__}"
 
@@ -10857,6 +11116,10 @@ def _terrain_loop() -> None:
                 tickers = list(_logger_tickers)
         except Exception:
             tickers = list(CORE_TICKERS)
+        # RC-146: a skip reason is only true for the cycle that recorded it. Cleared at the TOP
+        # of every cycle so a pause that has ended cannot keep telling the operator to wait —
+        # the branch below re-records it while, and only while, it still applies.
+        _clear_terrain_skips()
         if tickers and _is_loggable_session():
             # During the morning wide-chain window (09:30-10:00 ET) SPY/QQQ/IWM already
             # take 100-strike gated fetches on the money path. Do not pile a full-universe
@@ -10865,7 +11128,25 @@ def _terrain_loop() -> None:
             # runtime — a missing module stops the server at boot instead.
             _d, _mins = gex_et_date_and_mins()
             if GEX_MORNING_START_MINS <= _mins <= GEX_MORNING_END_MINS:
-                tickers = [t for t in tickers if str(t).upper() in ("SPY", "QQQ", "IWM")]
+                _sentinels = ("SPY", "QQQ", "IWM")
+                _dropped = [t for t in tickers if str(t).upper() not in _sentinels]
+                tickers = [t for t in tickers if str(t).upper() in _sentinels]
+                # RC-146: SAY SO. This pause is deliberate and budget-justified, but it was a
+                # silent list filter — nothing anywhere recorded that these tickers were skipped
+                # on purpose. MEASURED 2026-07-30 09:43 ET: MSFT's per-strike panel served a
+                # chain read at 09:29:52 (8 s before the bell, so session volume was 0 on all 44
+                # strikes) under the message "no option volume yet this session", while
+                # terrain_staleness could only offer "inside its window but not producing" — a
+                # correct scheduler reported as a malfunction, and a pre-open corpse reported as
+                # a market fact. The producer knows why it skipped; now the reader can ask.
+                _note_terrain_skip(
+                    _dropped,
+                    f"the terrain loop refreshes {'/'.join(_sentinels)} only between "
+                    f"{GEX_MORNING_START_MINS // 60:02d}:{GEX_MORNING_START_MINS % 60:02d} and "
+                    f"{GEX_MORNING_END_MINS // 60:02d}:{GEX_MORNING_END_MINS % 60:02d} ET, while "
+                    f"the morning wide-chain capture holds the chain slots — this ticker resumes "
+                    f"at {GEX_MORNING_END_MINS // 60:02d}:{GEX_MORNING_END_MINS % 60:02d} ET",
+                )
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
         elapsed = time.monotonic() - cycle_start
@@ -11412,8 +11693,43 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     # RC-91: the levels are cached and the spot is live, so the payload must say HOW OLD the
     # levels are rather than let a live price imply live structure. Every consumer gets the age,
     # a stale flag and the reason — absence of the flag is not permission to assume currency.
-    out.update(terrain_staleness(payload.get("computed_ts_utc")))
+    out.update(terrain_staleness(payload.get("computed_ts_utc"), ticker))
     return out
+
+
+@app.get("/api/diagnostics/terrain-producer")
+def get_terrain_producer_diagnostics():
+    """RC-148: the producer's own state, readable. Until this existed, `_terrain_refresh_last_error`
+    was reachable only through one dead branch and the console had NO way to answer "why is this
+    ticker not refreshing" — the question that cost a session on $SPX (RC-126) and another on
+    RTY/XXT. Read-only, no Schwab call, no model stack."""
+    with _terrain_skip_lock:
+        skips = dict(_terrain_skipped_reason)
+    with _terrain_quarantine_lock:
+        quar = {k: dict(v) for k, v in _terrain_quarantine.items()}
+        avoided = dict(_terrain_quarantine_skips)
+    return JSONResponse({
+        "last_error": dict(_terrain_refresh_last_error),
+        "consecutive_failures": dict(_terrain_consecutive_fails),
+        "quarantined": quar,
+        "fetches_avoided_by_quarantine": avoided,
+        "skipped_this_cycle": skips,
+        "cache_size": terrain_cache_size(),
+        "stale_after_sec": TERRAIN_STALE_AFTER_SEC,
+        "refresh_sec": TERRAIN_REFRESH_SEC,
+        "hard_fail_threshold": TERRAIN_QUARANTINE_HARD_FAILS,
+        "ledger_path": str(TERRAIN_QUARANTINE_LEDGER),
+    })
+
+
+@app.post("/api/terrain/quarantine/release")
+def post_terrain_quarantine_release(ticker: str = Query(...)):
+    """Operator re-admission — the ONLY exit from a permanent hold, and it is logged.
+
+    A quarantine with no way back is a deletion the operator never approved, so this exists in
+    the same commit as the quarantine itself rather than as a follow-up.
+    """
+    return JSONResponse(terrain_quarantine_release(ticker))
 
 
 # ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
@@ -11475,6 +11791,11 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     today, prior = None, None
     spot_used = None
     today_age_sec = None
+    # RC-146: bound BEFORE the try. `_snap` was assigned only inside the try body yet read
+    # unconditionally in the response dict below — a raising terrain_cache_get took the
+    # logged-and-swallowed path and then killed the endpoint with NameError on the way out,
+    # turning a degraded panel into a 500. Absence must degrade, never explode.
+    _snap: dict = {}
     # RC-68 SINGLE SOURCE FOR TODAY'S PER-STRIKE DATA: the LIVE terrain snapshot.
     # This panel used to render from option_chain_morning_full — MEASURED 2026-07-27 11:31 ET:
     # a 09:47 capture served at 11:31 understated session volume by 281 percent (1,095,874 shown
@@ -11543,7 +11864,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
         # `terrain_live_cache` label, because the terrain loop stops at the background-logging
         # window (16:30 ET) and nothing said so. Naming the right source proves only that the
         # right tap was opened, never that anything is still coming out of it.
-        **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None),
+        **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk),
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
     })

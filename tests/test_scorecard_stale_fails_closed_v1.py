@@ -133,3 +133,225 @@ def test_visible_token_chip_binds_the_urgency_field():
     assert src.count("edPaintTokenWarn(") >= 3, (
         "both terrain receive sites must feed the chip (definition + 2 call sites)"
     )
+
+
+# ── RC-146: a deliberate pause must not be reported as a malfunction, and a pre-open ─────────
+# ── snapshot must not be reported as a market fact. ──────────────────────────────────────────
+
+def test_morning_window_skip_is_recorded_by_the_producer():
+    """The 09:30-10:00 ET sentinel-only filter was a SILENT list comprehension: nothing recorded
+    that MSFT/NVDA/AAPL were dropped on purpose, so every reader downstream had to guess. Drive
+    the real recorder and prove a reason survives exactly as long as the pause does."""
+    try:
+        server._note_terrain_skip(["MSFT", "nvda"], "paused until 10:00 ET")
+        assert server.terrain_skip_reason("MSFT") == "paused until 10:00 ET"
+        assert server.terrain_skip_reason("NVDA") == "paused until 10:00 ET", "case must not matter"
+        assert server.terrain_skip_reason("SPY") == "", "a refreshed ticker carries no skip reason"
+        assert server.terrain_skip_reason(None) == "", "absent ticker fails closed to no reason"
+    finally:
+        server._clear_terrain_skips()
+    assert server.terrain_skip_reason("MSFT") == "", (
+        "a skip reason outlived the pause — the panel would keep telling the operator to wait"
+    )
+
+
+def test_terrain_staleness_prefers_the_producers_reason_over_the_clock():
+    """RC-146 root: age alone cannot tell a deliberate pause from a broken loop, and answering
+    'inside its window but not producing' for a scheduler working as designed sent the operator
+    hunting a bug that did not exist."""
+    import time
+    old = time.time() - (server.TERRAIN_STALE_AFTER_SEC + 600.0)
+    try:
+        blind = server.terrain_staleness(old, "MSFT")
+        assert blind["levels_stale"] is True
+        assert blind["levels_paused_on_purpose"] is False, (
+            "no recorded skip must never be dressed up as a deliberate pause"
+        )
+        server._note_terrain_skip(["MSFT"], "the morning wide-chain capture holds the chain slots")
+        told = server.terrain_staleness(old, "MSFT")
+        assert told["levels_paused_on_purpose"] is True
+        assert "chain slots" in told["levels_stale_reason"], (
+            "the producer's own reason must reach the payload, not a clock-derived guess"
+        )
+        assert "not producing" not in told["levels_stale_reason"]
+        # a ticker that was NOT skipped keeps the honest clock-only reason
+        other = server.terrain_staleness(old, "SPY")
+        assert other["levels_paused_on_purpose"] is False
+    finally:
+        server._clear_terrain_skips()
+
+
+def test_recorded_failure_reaches_the_payload_once_a_snapshot_exists():
+    """RC-147: `_terrain_refresh_last_error` had exactly ONE reader — the not-ready branch of
+    /api/terrain, reachable only when NO snapshot exists. The instant a ticker had any cached
+    snapshot that branch was dead, so a ticker failing every refresh reported error '' and a
+    generic clock sentence ($SPX, 2,737 s old, chain_basis already degraded to dte<=120)."""
+    import time
+    old = time.time() - (server.TERRAIN_STALE_AFTER_SEC + 600.0)
+    try:
+        server._terrain_refresh_last_error["$SPX"] = "chain fetch failed (HTTP 400)"
+        told = server.terrain_staleness(old, "$SPX")
+        assert told["levels_failing"] is True
+        assert "HTTP 400" in told["levels_stale_reason"], (
+            "the recorded exception must reach the payload once a snapshot exists — this is the "
+            "exact state in which it used to become unreachable"
+        )
+        assert told["levels_paused_on_purpose"] is False, "a failure is not a deliberate pause"
+        # the no-snapshot branch must carry it too (RTY/XXT: rejected symbol, never computed)
+        never = server.terrain_staleness(None, "$SPX")
+        assert never["levels_failing"] is True and "HTTP 400" in never["levels_stale_reason"]
+        # a DELIBERATE pause outranks a stale prior failure — it is why it is not refreshing now
+        server._note_terrain_skip(["$SPX"], "paused until 10:00 ET")
+        paused = server.terrain_staleness(old, "$SPX")
+        assert paused["levels_paused_on_purpose"] is True
+        assert paused["levels_failing"] is False
+        assert "HTTP 400" not in paused["levels_stale_reason"]
+    finally:
+        server._terrain_refresh_last_error.pop("$SPX", None)
+        server._clear_terrain_skips()
+    clean = server.terrain_staleness(old, "$SPX")
+    assert clean["levels_failing"] is False, "a cleared failure must not linger"
+
+
+def test_skip_and_error_dicts_share_one_ticker_normalisation():
+    """Two dicts describing the same ticker under two spellings is how a reader silently misses
+    one. `_terrain_refresh_last_error` is keyed by ticker_storage_key (RC-126), so the skip dict
+    must be too — SPX and $SPX are the same instrument to exactly one of them otherwise."""
+    try:
+        server._note_terrain_skip(["SPX"], "paused")
+        assert server.terrain_skip_reason("$SPX") == "paused", (
+            "the skip dict normalises differently from the error dict beside it"
+        )
+        assert server.terrain_skip_reason("SPX") == "paused"
+    finally:
+        server._clear_terrain_skips()
+
+
+def test_hard_rejection_quarantines_and_stops_touching_the_gate():
+    """RC-148: RTY/XXT were re-requested every ~60s all session for a symbol Schwab answers with
+    HTTP 400 — two permanently-wasted slots per minute out of a 2-slot gate. Visibility alone is
+    not a fix; the retry must actually STOP."""
+    tk = "ZZTESTHARD"
+    try:
+        msg = "chain fetch failed (HTTP 400)"
+        for i in range(server.TERRAIN_QUARANTINE_HARD_FAILS - 1):
+            server._note_terrain_failure(tk, msg, "hard")
+            assert not server._terrain_quarantine_blocks(tk), (
+                f"quarantined after only {i + 1} failures — a transient blip must not evict a "
+                f"real instrument"
+            )
+        server._note_terrain_failure(tk, msg, "hard")
+        assert server._terrain_quarantine_blocks(tk) is True, "the retry storm was not stopped"
+        st = server.terrain_quarantine_state(tk)
+        assert st["permanent"] is True and st["failures"] >= server.TERRAIN_QUARANTINE_HARD_FAILS
+        why = server.terrain_quarantine_reason(tk)
+        assert "QUARANTINED" in why and "re-admit" in why, (
+            "a hold with no stated way back is a deletion the operator never approved"
+        )
+        # the producer must refuse BEFORE spending any vendor budget, priority or not
+        assert server._terrain_refresh_one(tk, priority=True) == "skip:quarantined"
+        assert server._terrain_quarantine_skips.get(tk, 0) >= 1, "avoided fetches are not counted"
+        # a permanent hold NEVER self-releases, however long you wait
+        with server._terrain_quarantine_lock:
+            server._terrain_quarantine[tk]["until_ts"] = 0.0
+        assert server._terrain_quarantine_blocks(tk) is True
+        # ...only the operator releases it
+        out = server.terrain_quarantine_release(tk)
+        assert out["released"] is True
+        assert server._terrain_quarantine_blocks(tk) is False
+    finally:
+        server.terrain_quarantine_release(tk)
+
+
+def test_soft_failure_backs_off_and_self_releases():
+    """A timeout is the venue being busy, not the symbol being wrong. It must back off — and it
+    must come back on its own, because a permanent hold on a healthy instrument is the more
+    expensive mistake."""
+    tk = "ZZTESTSOFT"
+    try:
+        for _ in range(server.TERRAIN_QUARANTINE_HARD_FAILS):
+            server._note_terrain_failure(tk, "chain fetch failed (HTTP timeout)", "soft")
+        st = server.terrain_quarantine_state(tk)
+        assert st["permanent"] is False, "a timeout must never earn a permanent hold"
+        assert server._terrain_quarantine_blocks(tk) is True
+        assert "backing off" in server.terrain_quarantine_reason(tk)
+        with server._terrain_quarantine_lock:      # simulate the backoff elapsing
+            server._terrain_quarantine[tk]["until_ts"] = 0.0
+        assert server._terrain_quarantine_blocks(tk) is False, "soft hold failed to self-release"
+        assert server.terrain_quarantine_state(tk) == {}
+    finally:
+        server.terrain_quarantine_release(tk)
+
+
+def test_success_clears_the_failure_streak():
+    """Otherwise a ticker that fails twice a day for a week eventually gets evicted for being
+    healthy — consecutive means consecutive."""
+    tk = "ZZTESTSTREAK"
+    try:
+        server._note_terrain_failure(tk, "boom", "hard")
+        server._note_terrain_failure(tk, "boom", "hard")
+        assert server._terrain_consecutive_fails.get(tk) == 2
+        server._note_terrain_success(tk)
+        assert server._terrain_consecutive_fails.get(tk) is None
+        server._note_terrain_failure(tk, "boom", "hard")
+        assert not server._terrain_quarantine_blocks(tk), (
+            "the streak survived a success, so non-consecutive failures accumulate to eviction"
+        )
+    finally:
+        server.terrain_quarantine_release(tk)
+
+
+def test_quarantine_state_is_distinguishable_from_pause_and_failure():
+    """Four states, four operator actions. A hard quarantine is FAILING (the vendor refuses it)
+    and NOT paused (it will not resume on its own) — collapsing either way restores the ambiguity
+    RC-146/147 removed."""
+    import time
+    tk = "ZZTESTFLAGS"
+    old = time.time() - (server.TERRAIN_STALE_AFTER_SEC + 600.0)
+    try:
+        for _ in range(server.TERRAIN_QUARANTINE_HARD_FAILS):
+            server._note_terrain_failure(tk, "chain fetch failed (HTTP 400)", "hard")
+        s = server.terrain_staleness(old, tk)
+        assert s["levels_quarantined"] is True
+        assert s["levels_failing"] is True, "a vendor-refused symbol is failing, not merely idle"
+        assert s["levels_paused_on_purpose"] is False, "a quarantine does not resume on its own"
+        assert "QUARANTINED" in s["levels_stale_reason"]
+        # and on the no-snapshot branch, which is exactly RTY/XXT's state
+        n = server.terrain_staleness(None, tk)
+        assert n["levels_quarantined"] is True and n["levels_failing"] is True
+        assert "QUARANTINED" in n["levels_stale_reason"]
+    finally:
+        server.terrain_quarantine_release(tk)
+
+
+def test_empty_gamma_panel_states_the_producers_reason():
+    """Surface-bound: an empty panel blamed the console ('activates at the next console start')
+    for RTY/XXT, whose chains Schwab rejects outright with HTTP 400. A restart was never the
+    remedy, and the message sent the operator to the wrong one every cycle."""
+    src = CHART.read_text(encoding="utf-8")
+    i = src.find("GAMMA PANEL — migration + volume by strike")
+    assert i > 0, "the empty-panel branch is gone"
+    body = src[i:i + 1200]
+    assert "levels_stale_reason" in body, (
+        "the empty panel still has one explanation for every cause"
+    )
+    assert "levels_failing" in src, "the panel cannot distinguish FAILING from STALE"
+    assert "'FAILING'" in src, "the source line has no FAILING state"
+
+
+def test_zero_volume_panel_distinguishes_snapshot_from_session():
+    """Surface-bound: the panel asserted 'no option volume yet this session' about MSFT thirteen
+    minutes after the bell, off a chain read at 09:29:52 ET. The zero-volume branch must read
+    staleness before it makes a claim about the market."""
+    src = CHART.read_text(encoding="utf-8")
+    i = src.find("const _totVol")
+    assert i > 0, "the zero-volume branch is gone"
+    body = src[i:i + 900]
+    assert "levels_stale" in body, (
+        "the message still asserts a session fact without checking whether the snapshot is stale"
+    )
+    assert "SNAPSHOT, not the session" in body
+    assert "levels_paused_on_purpose" in src, (
+        "the source line cannot distinguish PAUSED from STALE, so a working scheduler still "
+        "reads as broken"
+    )
