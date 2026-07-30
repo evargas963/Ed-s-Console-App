@@ -187,7 +187,7 @@ def _key_levels_from_ms_dict(ms_dict: dict) -> list[tuple[float, str]]:
 
         (ms_dict.get("kl_put_gamma_wall"), "Put g-Wall"),
 
-        (ms_dict.get("kl_hvl"), "HVL"),
+        (ms_dict.get("kl_hvl"), "Net Γ peak"),  # RC-134: net book, not total-gamma HVL/pin
 
         (ms_dict.get("kl_max_pain"), "Max Pain"),
 

@@ -231,6 +231,15 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
     cache_key = (ticker, exp)
     inflight_key = srv._tier_c_inflight_key(ticker, None)
     srv._state_cache.pop(cache_key, None)
+    # RC-128/134: kl_* walls come only from terrain overlay — seed a fresh terrain row
+    # so the progressive shell proves carriage, not a resurrected analytics wall book.
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[(ticker.upper())] = {
+            "call_wall": 510.0,
+            "put_wall": 490.0,
+            "levels_stale": False,
+            "computed_ts_utc": 1.0,
+        }
 
     row = ExposureRow("CONSENSUS", None, 1.0, -1.0, 500.0, None, None, None, "Low", "Neutral")
     wall = WallsRow(
@@ -295,8 +304,6 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
         exposures={500.0: {"net_gex_1pct": 1.0}},
         gamma_flip=501.0,
         gamma_voids=[],
-        hvl=500.5,
-        max_pain=499.0,
         charm_net=100.0,
         charm_dir="buying",
         charm_toward=500.0,
@@ -318,6 +325,8 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
     assert md.get("kl_call_gamma_wall") == 510.0
     assert len(md.get("summary_rows") or []) == 1
     srv._state_cache.pop(cache_key, None)
+    with srv._terrain_cache_lock:
+        srv._terrain_cache.pop(ticker.upper(), None)
 
 
 def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):

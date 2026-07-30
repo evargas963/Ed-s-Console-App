@@ -174,7 +174,6 @@ from math_exposure import (
     compute_iv_model_spread,
     compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
-    compute_hvl, compute_max_pain,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
@@ -2607,8 +2606,6 @@ def _publish_progressive_tier_c_cache(
     exposures,
     gamma_flip,
     gamma_voids,
-    hvl,
-    max_pain,
     charm_net,
     charm_dir,
     charm_toward,
@@ -6555,8 +6552,8 @@ def _fetch_state(
     # misplaces the flip by ~3.6%, so it must never be presented as trustworthy.
     _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
     _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
-    _hvl = compute_hvl(exposures)
-    _max_pain = compute_max_pain(exposures)
+    # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
+    # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).
 
     # Feed ATM IV into tracker for direction detection (vanna context)
     _t0 = totals[0] if totals else None
@@ -6653,8 +6650,6 @@ def _fetch_state(
             exposures=exposures,
             gamma_flip=_gamma_flip,
             gamma_voids=_gamma_voids,
-            hvl=_hvl,
-            max_pain=_max_pain,
             charm_net=_charm_net,
             charm_dir=_charm_dir,
             charm_toward=_charm_toward,
@@ -13170,7 +13165,8 @@ def _liquidity_fusion_from_cache(
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
         (d.get("kl_gamma_pin"), "GAMMA_PIN"),
-        (d.get("kl_hvl"), "HVL"),
+        # RC-134: kl_hvl is the NET book (RC-124); tag must not say HVL (that name = total gamma = pin).
+        (d.get("kl_hvl"), "NET_GEX_PEAK"),
         (d.get("kl_max_pain"), "MAX_PAIN"),
         (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
         (d.get("kl_oi_center"), "OI_CENTER"),

@@ -494,9 +494,8 @@ def test_net_definition_pin_tip_injection_is_caught():
 
 
 def test_terrain_hvl_is_never_painted_as_its_own_level():
-    """A3: terrain `hvl` equals the pin by construction (same metric); binding it to a
-    painted level name implies a second concept that does not exist. kl_hvl (the net peak,
-    labeled 'Net Γ peak') is the ONLY legal hvl-spelled binding in the clients."""
+    """A3/RC-134: terrain `hvl` was the pin under a second name; field removed from payload.
+    Client bindings of `.hvl` stay banned. kl_hvl (net peak, 'Net Γ peak') remains legal."""
     for path in (CONSOLE, CHART):
         src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", path.read_text(encoding="utf-8"),
                                               flags=re.M), flags=re.S)
@@ -504,8 +503,21 @@ def test_terrain_hvl_is_never_painted_as_its_own_level():
                      if re.search(r"[a-zA-Z_$][\w$]*\.hvl\b", l)]
         assert offenders == [], (
             f"{path.name}: terrain .hvl bound at a paint site — the pin painted twice under "
-            f"a second name (RC-132): {offenders}"
+            f"a second name (RC-132/134): {offenders}"
         )
+
+
+def test_kl_hvl_tag_is_net_peak_not_legacy_hvl():
+    """RC-134: any tag/label that carries kl_hvl must not say bare HVL (total-gamma name)."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    offenders = []
+    for rel in ("server.py", "live_decision_bundle.py", "liquidity_value_engine.py"):
+        src = (root / rel).read_text(encoding="utf-8")
+        for n, l in enumerate(src.splitlines(), 1):
+            if "kl_hvl" in l and re.search(r'["\']HVL["\']', l):
+                offenders.append((rel, n, l.strip()[:100]))
+    assert offenders == [], f"kl_hvl still tagged as legacy HVL: {offenders}"
 
 
 def test_hvl_rebind_injection_is_caught():
