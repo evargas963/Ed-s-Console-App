@@ -2017,9 +2017,11 @@ def _staged_has_real_change(rel: str) -> bool:
 _FIXED_SOURCE_FILE_RE = re.compile(
     r"\b([\w][\w./\-]*\.(?:py|pyi|html|js|jsx|mjs|cjs|ts|tsx|css|scss|sql|ps1|bat|sh|yaml|yml))\b"
 )
-#: RC-140: a row claiming FIXED must name something a machine can check. Prose-only claims
-#: ("FIXED: the overlay now owns it") were quiet because the path regex matched nothing —
-#: the lock silently graded an unverifiable claim as compliant.
+#: RC-141: RC-140 keyed this on the literal word FIXED, so dropping that token ("See VERIFIED
+#: below.") walked straight through — v32 measured it, the same omit-the-watched-token class
+#: as the prose escape it replaced. The obligation now attaches to CLOSING a row, not to any
+#: word in it: every new closure either names checkable source or declares it changed none.
+#: Kept only to describe the claim in messages, never as the trigger.
 _FIXED_CLAIM_RE = re.compile(r"\bFIXED\b\s*[:\-]", re.I)
 #: The declared escape for closures that genuinely change no source (a disposition, a
 #: measurement, a deferral). Explicit, so "no code" is a STATEMENT rather than an omission.
@@ -2072,11 +2074,11 @@ def _closed_row_code_not_shipped(
         body = " ".join(cells[6:])
         shas = [s for s in _ROW_SHA_RE.findall(body) if not s.isdigit()]
         bad: list[str] = []
-        # RC-140: a FIXED claim naming nothing checkable is the emptiest closure of all —
-        # it asserts a repair while giving the machine nothing to verify. Only a NEW closure
-        # is held to it, and an explicit no-code declaration satisfies it.
+        # RC-140/RC-141: a closure naming nothing checkable is the emptiest of all — it
+        # asserts a repair while giving the machine nothing to verify. The trigger is CLOSING
+        # (not the word FIXED, which v32 showed could simply be omitted); an explicit no-code
+        # declaration satisfies it, so a disposition-only closure stays legal by SAYING so.
         if (rc_id not in was_closed
-                and _FIXED_CLAIM_RE.search(body)
                 and not _FIXED_SOURCE_FILE_RE.search(body)
                 and not _NO_CODE_CLAIM_RE.search(body)):
             bad.append(_UNNAMED_FIX)
@@ -2106,8 +2108,11 @@ def check_closed_rows_ship_their_code() -> list[Violation]:
       ABSENT  (v30/RC-139)    — a NEW closure names FIXED files carried by neither this commit
               nor any commit it cites. A clean worktree is not evidence: it reads identically
               whether the fix landed or was never written.
-      UNNAMED (v31/RC-140)    — a NEW closure claims FIXED but names nothing machine-readable,
-              so nothing can be verified at all. An explicit no-code declaration satisfies it.
+      UNNAMED (v31/RC-140, widened by v32/RC-141) — a NEW closure names nothing
+              machine-readable, so nothing about it can be verified. The trigger is CLOSING
+              the row, NOT the word "FIXED": keying on that token meant omitting it walked
+              through. A closure that genuinely changes no source stays legal by SAYING so
+              ("no code change" / "documentation only" / "disposition only").
 
     Both satisfying paths demand a REAL change: a staged file whose diff is only whitespace,
     or a cited commit that merely touched the file without changing a non-blank line, does not

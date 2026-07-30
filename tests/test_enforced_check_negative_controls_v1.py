@@ -541,3 +541,14 @@ def test_closed_row_semantics_escapes_are_closed():
     assert V([cited], set(), staged=set(),
              sha_touches=lambda _s, _r: True) == [], "a real cited change should be quiet"
 
+    # FIRE 4 (RC-141, v32) — the obligation attaches to CLOSING, not to the word "FIXED".
+    # Keying on that token meant a closure could simply omit it: the same omit-the-watched-
+    # token escape the prose case was supposed to end.
+    no_token = V([row("See VERIFIED below; the behaviour is correct now.")], set(), staged=set())
+    assert len(no_token) == 1 and no_token[0][1] == [_UNNAMED_FIX], (
+        f"a closure that never says FIXED slipped through: {no_token}"
+    )
+    # ...and the honest disposition-only closure still passes by SAYING it changed no code.
+    assert V([row("Disposition only — the radar fallback stays as declared, no code change.")],
+             set(), staged=set()) == [], "an explicit no-code closure was blocked"
+

@@ -135,8 +135,24 @@ def _provenance() -> str:
     head = _git("rev-parse", "--short", "HEAD") or "unknown"
     porcelain = [ln for ln in _git("status", "--porcelain").splitlines() if ln.strip()]
     dirty_py = [ln for ln in porcelain if ln.strip().endswith(".py")]
+
+    # RC-142: the FIRST stamp recorded tree + python and STILL could not reconcile two agents
+    # reading 759 vs 753 on the same HEAD with the same clean tree. Ruled out by measurement
+    # (2026-07-29): warm cache, cold isolated cache and --no-incremental all returned 759 with
+    # byte-identical error sets, so neither working tree nor mypy's cache explains it. What the
+    # stamp omitted is the TOOL that produces the number — a different mypy build, or the same
+    # panel run under a non-.venv interpreter, moves it. Stamping them makes a mismatch visible
+    # instead of arguable.
+    try:
+        mypy_ver = subprocess.run([_py(), "-m", "mypy", "--version"], cwd=str(_ROOT),
+                                  capture_output=True, text=True, timeout=60)
+        mypy_s = (mypy_ver.stdout or mypy_ver.stderr or "").strip() or "mypy: unavailable"
+    except (OSError, subprocess.SubprocessError):
+        mypy_s = "mypy: unavailable"
+    interp = "repo .venv" if _py() != sys.executable or ".venv" in _py() else "NON-.venv"
     return (f"tree: HEAD {head} · {len(dirty_py)} dirty/untracked .py "
-            f"({len(porcelain)} paths total) · python {sys.version.split()[0]}")
+            f"({len(porcelain)} paths total)\ntools: python {sys.version.split()[0]} · "
+            f"{mypy_s} · interpreter {interp}")
 
 
 def render(panel: dict) -> str:
