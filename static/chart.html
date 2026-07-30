@@ -59,6 +59,19 @@
   .legend .sw { display:inline-block; width:12px; height:12px; border-radius:3px;
                 vertical-align:-2px; margin-right:6px; }
   .legend .sw.ghostsw { background:transparent; border:1.5px dashed var(--vio); }
+  /* RC-156 raw structure levels — a price ladder, read top-down like the tape */
+  #rl-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr));
+             gap:4px 14px; padding:4px 16px 6px; }
+  .rl-row { display:flex; align-items:baseline; gap:8px; font-size:12.5px;
+            font-weight:700; padding:3px 6px; border-radius:6px;
+            border-left:3px solid var(--border); }
+  .rl-row.above { border-left-color:#ff3355; }
+  .rl-row.below { border-left-color:#00e07a; }
+  .rl-tag { color:var(--dim); min-width:74px; }
+  .rl-val { color:var(--fg); font-variant-numeric:tabular-nums; }
+  .rl-dist { margin-left:auto; color:var(--dim); font-weight:600;
+             font-variant-numeric:tabular-nums; }
+  #rl-empty { padding:8px 16px 12px; color:#ffc400; font-size:12.5px; font-weight:700; }
   #gwrap { position:relative; }
   .coach { position:absolute; right:14px; width:300px; border-radius:10px;
            padding:11px 14px; font-size:13px; line-height:1.5; display:none;
@@ -123,6 +136,21 @@
 <div id="layout" class="card">
   <div id="wrap"><canvas id="cv" height="560"></canvas><div id="biglegend"></div><div class="lastdot" id="lastdot"></div></div>
   <div id="histwrap"><canvas id="hv" height="560"></canvas></div>
+</div>
+<!-- LP-01 Step 4 (RC-156): the raw structure levels the engine already computes, made
+     OPERATOR-VISIBLE. They existed only on /api/liquidity-snapshot and were never rendered on
+     the Chart at all — an operator reading price had no way to see the prior-day range, the
+     opening range, the volume-profile value area, or the VWAP bands they were trading through.
+     STRUCTURE CONTEXT ONLY: these are reference prices, not a signal, and nothing here feeds
+     Decide. Real ids per level so the surface is checkable, never a blob of text. -->
+<div class="card" id="rawlevels">
+  <div class="sechead">RAW STRUCTURE LEVELS — reference prices, not a trade signal
+    <span class="src" id="rl-src"></span></div>
+  <div id="rl-grid"></div>
+  <div class="legend" id="rl-legend">
+    <span>PD = prior trading session &middot; ON = overnight window &middot; ORB = opening range</span>
+    <span>&sigma; bands are VWAP standard deviations</span>
+  </div>
 </div>
 <div class="card" id="gammacard">
   <div class="sechead">GAMMA PANEL — POSITIONING MIGRATION &amp; TODAY'S VOLUME
@@ -282,6 +310,88 @@ function noteSpotTick(s) {
   draw();
 }
 
+function currentChartTicker() {
+  return (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+}
+
+//: The ticker whose raw levels are currently painted — gates the pending-state reset so a
+//: same-ticker refresh does not blank the panel every 15s cycle.
+let rawLevelsTicker = null;
+
+/* RC-156 (LP-01 Step 4) — the raw structure levels, made visible.
+   ORDER OF EXTRACTION IS THE CONTRACT: each tag is pulled from ONE named field of
+   /api/liquidity-snapshot's raw_levels. No level is computed here — the client must never
+   become a second producer of a number the engine already owns (RC-80). Absent fields are
+   simply absent; a missing level is omitted, never rendered as 0 or a dash pretending to be
+   a price. */
+/* The 5th column is the DOM id token, stated EXPLICITLY and matching the server's own tag
+   vocabulary (PDH, VWAP_P2, TODAY_POC, ...). Deriving it from the display label instead —
+   `label.replace(/[^A-Za-z0-9]+/g,'_')` — collapsed "VWAP +2σ" and "VWAP −2σ" onto one token,
+   because +, − and σ are all non-alphanumeric: two rows, one id, invalid DOM and a surface that
+   cannot be checked by the ids it advertises. An identifier is not a derived convenience. */
+const RL_SPEC = [
+  ['prev',      'pdh',            'PDH',       'prior-day high',                        'PDH'],
+  ['prev',      'pdl',            'PDL',       'prior-day low',                         'PDL'],
+  ['prev',      'pdc',            'PDC',       'prior-day close',                       'PDC'],
+  ['prev',      'pd_poc',         'PD POC',    'prior-day point of control',            'PD_POC'],
+  ['prev',      'pd_vah',         'PD VAH',    'prior-day value-area high',             'PD_VAH'],
+  ['prev',      'pd_val',         'PD VAL',    'prior-day value-area low',              'PD_VAL'],
+  ['overnight', 'overnight_high', 'ON HIGH',   'overnight high',                        'OVERNIGHT_HIGH'],
+  ['overnight', 'overnight_low',  'ON LOW',    'overnight low',                         'OVERNIGHT_LOW'],
+  ['orb',       'orb_high',       'ORB HIGH',  'opening-range high',                    'ORB_HIGH'],
+  ['orb',       'orb_mid',        'ORB MID',   'opening-range mid',                     'ORB_MID'],
+  ['orb',       'orb_low',        'ORB LOW',   'opening-range low',                     'ORB_LOW'],
+  ['@',         'vah',            'VAH',       "today's value-area high",               'TODAY_VAH'],
+  ['@',         'poc',            'POC',       "today's point of control",              'TODAY_POC'],
+  ['@',         'val',            'VAL',       "today's value-area low",                'TODAY_VAL'],
+  ['vwap_bands', 'plus2',         'VWAP +2σ', 'VWAP plus two standard deviations',  'VWAP_P2'],
+  ['vwap_bands', 'plus1',         'VWAP +1σ', 'VWAP plus one standard deviation',   'VWAP_P1'],
+  ['vwap_bands', 'vwap',          'VWAP',      'session volume-weighted average price',  'VWAP'],
+  ['vwap_bands', 'minus1',        'VWAP −1σ', 'VWAP minus one standard deviation', 'VWAP_M1'],
+  ['vwap_bands', 'minus2',        'VWAP −2σ', 'VWAP minus two standard deviations', 'VWAP_M2'],
+];
+
+function renderRawLevels(ls, tk, err) {
+  const grid = document.getElementById('rl-grid');
+  const src = document.getElementById('rl-src');
+  if (!grid || !src) return;
+  const showEmpty = (msg, warn) => {
+    grid.innerHTML = '<div id="rl-empty">' + esc(msg) + '</div>';
+    src.textContent = warn || '';
+  };
+  const raw = ls && ls.raw_levels;
+  if (!raw) {
+    // Absence reads as absence (RC-11): say WHY, and never leave the previous ticker's
+    // prices on screen under a new symbol.
+    showEmpty(err ? ('levels unavailable — ' + String(err.message || err).slice(0, 90))
+                  : 'no structure levels for ' + tk + ' in this session yet', 'unavailable');
+    return;
+  }
+  const spot = currentSpot();   // RC-75: ONE client spot authority, never a second faucet
+  const rows = [];
+  for (const [group, key, tag, title, id] of RL_SPEC) {
+    const bag = group === '@' ? raw : raw[group];
+    if (!bag || typeof bag !== 'object') continue;
+    const v = Number(bag[key]);
+    if (!isFinite(v)) continue;
+    rows.push({ tag, title, v, id });
+  }
+  if (!rows.length) { showEmpty('no structure levels for ' + tk + ' in this session yet'); return; }
+  rows.sort((a, b) => b.v - a.v);          // price ladder, high to low
+  grid.innerHTML = rows.map(r => {
+    const side = (spot == null) ? '' : (r.v > spot ? 'above' : 'below');
+    const dist = (spot == null || !spot) ? ''
+      : `${r.v - spot >= 0 ? '+' : ''}${(r.v - spot).toFixed(2)} (${((r.v - spot) / spot * 100).toFixed(2)}%)`;
+    return `<div class="rl-row ${side}" id="rl-${esc(r.id)}" title="${esc(r.title)}">`
+         + `<span class="rl-tag">${esc(r.tag)}</span>`
+         + `<span class="rl-val">${esc(fmt(r.v))}</span>`
+         + `<span class="rl-dist">${esc(dist)}</span></div>`;
+  }).join('');
+  const cutoff = raw.cutoff_et ? String(raw.cutoff_et).slice(11, 16) + ' ET cutoff' : '';
+  src.textContent = `${rows.length} levels · ${esc(ls.snapshot_type || 'live')}`
+                  + (cutoff ? ' · ' + cutoff : '');
+}
+
 async function load() {
   const tk = document.getElementById('tk').value.trim().toUpperCase() || 'SPY';
   try {
@@ -292,6 +402,25 @@ async function load() {
       j(`/api/level_crosses?ticker=${tk}&n=8`).catch(() => ({ crosses: [] })),
       j(`/api/terrain/scorecard`).catch(() => null),
     ]);
+    // RC-156: the raw structure levels ride their OWN request and their OWN failure. This is a
+    // slow endpoint (it fetches a session of Schwab bars), so it must never hold up the price
+    // paint — the RC-68/RC-91 discipline: paint what is ready, and let the late panel say it is
+    // late rather than blocking the chart behind it. A rejection renders the panel's honest
+    // absence state, never a stale set of prices from the previous ticker.
+    // Clear to a PENDING state naming the new ticker before the request goes out. Without it
+    // the previous symbol's rows (or its absence message) sit under the new symbol for as long
+    // as the fetch takes — MEASURED in the DOM: switching RTY -> QQQ left "no structure levels
+    // for RTY" on screen while the box read QQQ. Prices under the wrong ticker is the one
+    // failure this panel must never have, however briefly.
+    if (rawLevelsTicker !== tk) {
+      rawLevelsTicker = tk;
+      const _g = document.getElementById('rl-grid'), _s = document.getElementById('rl-src');
+      if (_g) _g.innerHTML = '<div id="rl-empty">loading ' + esc(tk) + ' levels…</div>';
+      if (_s) _s.textContent = 'loading';
+    }
+    j(`/api/liquidity-snapshot?ticker=${tk}&snapshot=live`)
+      .then(ls => { if (currentChartTicker() === tk) renderRawLevels(ls, tk); })
+      .catch(err => { if (currentChartTicker() === tk) renderRawLevels(null, tk, err); });
     // coach numbers: accept only a real scorecard payload (an error body or a
     // pre-restart 404 must read as ABSENT -> tooltips say "measuring")
     // RC-78: a STALE scorecard is not a scorecard. The server withholds the figures past its
@@ -308,6 +437,7 @@ async function load() {
     raw = b.bars || []; terrain = t; crosses = c.crosses || [];
     if (chartTicker !== tk) { forming = null; sealedForming = null; liveSpot = null; }
     chartTicker = tk;
+    if (_chartCommitInflight === tk) _chartCommitInflight = null;
     // empty {all:[],…} shells and HTTP error bodies both read as ABSENT
     strikes = (s && hasStrikeBars(s.today)) ? s : null;
     // RC-150: ...but ABSENT BARS IS NOT AN ABSENT PAYLOAD. Nulling `strikes` also threw away

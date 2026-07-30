@@ -598,6 +598,117 @@ def test_ui_shows_no_pool_badges():
     assert "LOW EXTREME" in block and "HIGH EXTREME" in block
 
 
+# ── LP-01 Step 4 (RC-156): raw structure levels are OPERATOR-VISIBLE on Chart ────────────
+_RL_REQUIRED_IDS = [
+    "rl-PDH", "rl-PDL", "rl-PDC", "rl-PD_POC", "rl-PD_VAH", "rl-PD_VAL",
+    "rl-OVERNIGHT_HIGH", "rl-OVERNIGHT_LOW",
+    "rl-ORB_HIGH", "rl-ORB_MID", "rl-ORB_LOW",
+    "rl-TODAY_POC", "rl-TODAY_VAH", "rl-TODAY_VAL",
+    "rl-VWAP", "rl-VWAP_P1", "rl-VWAP_M1", "rl-VWAP_P2", "rl-VWAP_M2",
+]
+
+
+def _chart_src() -> str:
+    from pathlib import Path
+    return (Path(__file__).resolve().parent.parent / "static" / "chart.html").read_text(
+        encoding="utf-8")
+
+
+def test_chart_declares_every_raw_level_row_with_a_unique_id():
+    """Step 4 requires the levels to be visible AND checkable. Ids are the contract: a panel
+    that renders a blob of text cannot be verified, and a panel with COLLIDING ids is worse than
+    one with none — MEASURED in the rendered DOM this turn, deriving the id from the display
+    label collapsed 'VWAP +2σ' and 'VWAP −2σ' onto one token because +, − and σ are all
+    non-alphanumeric. Every row id is therefore stated explicitly in RL_SPEC."""
+    import re
+    src = _chart_src()
+    i = src.find("const RL_SPEC")
+    assert i > 0, "the raw-levels spec is gone"
+    spec = src[i:src.find("];", i)]
+    ids = []
+    for ln in spec.splitlines():
+        if not ln.strip().startswith("['"):
+            continue
+        # the id is the LAST column by contract; anchor on it rather than splitting on quotes,
+        # because a description may legitimately contain an apostrophe ("today's value area")
+        m = re.search(r"'([A-Z0-9_]+)'\s*\],?\s*$", ln)
+        assert m, f"RL_SPEC row is missing its explicit id column: {ln.strip()}"
+        ids.append(m.group(1))
+    assert ids, "RL_SPEC parsed to nothing — the assertion would be vacuous"
+    assert len(ids) == len(set(ids)), f"RL_SPEC declares duplicate row ids: {ids}"
+    for want in _RL_REQUIRED_IDS:
+        tag = want[len("rl-"):]
+        assert tag in ids, f"{want} has no RL_SPEC entry — that level cannot render a row"
+
+
+def test_chart_raw_levels_card_is_visible_not_buried():
+    """The slice is explicit: visible, not hidden under #main / display:none / off-canvas."""
+    import re
+    src = _chart_src()
+    # Bind EACH static visible id by name. These four are the surface that exists in the file;
+    # the 19 per-level row ids are generated at runtime from RL_SPEC and are bound by
+    # test_chart_declares_every_raw_level_row_with_a_unique_id instead — claiming them as
+    # static ids would assert a surface no checker could resolve.
+    for vid in ("rawlevels", "rl-grid", "rl-src", "rl-empty"):
+        assert f'id="{vid}"' in src, f"#{vid} is not present in static/chart.html"
+    i = src.find('id="rawlevels"')
+    card_open = src.rfind("<div", 0, i)
+    card_tag = src[card_open:i + 200]
+    assert "display:none" not in card_tag.replace(" ", ""), "the card ships hidden"
+    assert 'id="rl-grid"' in src and 'id="rl-src"' in src
+    # the card must not be nested inside a hidden #main container
+    before = src[:i]
+    assert before.count('id="main"') == 0, (
+        "the raw-levels card sits after a #main container — Step 4 forbids burying it there"
+    )
+    # every required id must be REACHABLE from real data, i.e. the renderer writes id="rl-<id>"
+    assert re.search(r'id="rl-\$\{esc\(r\.id\)\}"', src), (
+        "row ids are not emitted from the declared spec id"
+    )
+
+
+def test_chart_reads_levels_from_the_engine_never_recomputes_them():
+    """RC-80 discipline: the client must not become a second producer of a number the engine
+    owns. The panel may only READ raw_levels off /api/liquidity-snapshot."""
+    src = _chart_src()
+    assert "/api/liquidity-snapshot?ticker=" in src, "the chart does not read the levels endpoint"
+    i = src.find("function renderRawLevels")
+    assert i > 0, "the renderer is gone"
+    body = src[i:i + 3000]
+    for banned in ("Math.max(", "Math.min(", "reduce(", "* 2", "/ 2"):
+        assert banned not in body, (
+            f"renderRawLevels contains {banned!r} — it is deriving a level instead of reading one"
+        )
+
+
+def test_chart_raw_levels_are_structure_context_not_a_signal():
+    """Step 4 is structure-context ONLY: no Decide influence, no TRADE shaping, and the Step 3
+    demotion stays — no pool vocabulary may re-enter through this new surface."""
+    src = _chart_src()
+    i = src.find('id="rawlevels"')
+    card = src[i:i + 1200]
+    assert "not a trade signal" in card, "the card does not state that it is context, not a signal"
+    j = src.find("const RL_SPEC")
+    surface = src[i:i + 1200] + src[j:j + 4000]
+    for banned in ("TRADE", "BUY LIQ", "SELL LIQ", "liquidity pool", "stop-run", "sweep"):
+        assert banned not in surface, f"the raw-levels surface reintroduces {banned!r}"
+
+
+def test_chart_raw_levels_fail_closed_on_absence():
+    """A missing level is omitted; a missing payload says so and does NOT leave the previous
+    ticker's prices under a new symbol."""
+    src = _chart_src()
+    i = src.find("function renderRawLevels")
+    body = src[i:i + 3000]
+    assert "if (!isFinite(v)) continue;" in body, (
+        "a non-finite level would render as a price"
+    )
+    assert "no structure levels for" in body, "absence has no honest message"
+    assert "rawLevelsTicker" in src, (
+        "no pending-state reset — the prior ticker's rows survive a symbol switch"
+    )
+
+
 def test_cluster_price_levels():
     """Levels within threshold clustered into zones."""
     from liquidity_value_engine import cluster_price_levels_into_zones
