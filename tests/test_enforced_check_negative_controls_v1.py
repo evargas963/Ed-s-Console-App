@@ -449,9 +449,15 @@ def test_closed_row_must_ship_its_code_controls():
              staged={"server.py", "terrain_engine.py"}) == [], "a shipped fix was flagged"
     # QUIET 2 — the row is not CLOSED yet; work in progress may leave files dirty.
     assert V([row("PARTIAL", fixed)], {"terrain_engine.py"}) == [], "a non-CLOSED row fired"
-    # QUIET 3 — churny evidence artifacts are not "the fix" (daily runs rewrite them).
-    assert V([row("CLOSED", "FIXED: see reports/terrain_backtest_latest.json")],
-             {"reports/terrain_backtest_latest.json"}) == [], (
+    # QUIET 3 — churny evidence artifacts are not "the fix": a row that ships real source may
+    # also cite a report that daily runs leave dirty, and that must not block the commit.
+    # (RC-140 note: a row naming ONLY a report now fires as an unverifiable claim — correct,
+    # since no source is named; the guarantee preserved here is that report churn ALONE
+    # cannot block a closure that does ship code.)
+    assert V([row("CLOSED", "FIXED: terrain_engine.py; evidence in "
+                            "reports/terrain_backtest_latest.json")],
+             {"reports/terrain_backtest_latest.json"},
+             staged={"terrain_engine.py"}) == [], (
         "a dirty report artifact fired — daily runs would block every ledger commit"
     )
 
@@ -496,4 +502,42 @@ def test_closed_row_cannot_close_on_an_empty_tree():
     assert V([closed], set(), removed_rows=[closed], staged=set()) == [], (
         "editing a long-closed row's prose was treated as a new closure claim"
     )
+
+
+def test_closed_row_semantics_escapes_are_closed():
+    """RC-140 (v31): the lock bound path TOKENS it recognized, not the CLAIM that a fix exists.
+    Three measured escapes — a prose-only FIXED claim, a fix in an unlisted language, and a
+    'touched' file that was never really changed — all read as compliant."""
+    from tools.check_institutional_correctness import _UNNAMED_FIX
+    from tools.check_institutional_correctness import _closed_row_code_not_shipped as V
+
+    def row(fix, rc="RC-960", status="CLOSED"):
+        return (f"| {rc} | {status} | 2026-07-29 | 2026-08-01 | desc | "
+                f"a -> b -> c -> d -> ROOT: e | {fix} |")
+
+    # FIRE 1 — prose-only claim: nothing machine-readable to verify.
+    hits = V([row("FIXED: the overlay now owns the whole level set.")], set(), staged=set())
+    assert len(hits) == 1 and hits[0][1] == [_UNNAMED_FIX], (
+        f"a FIXED claim naming no checkable path was graded compliant: {hits}"
+    )
+    # QUIET — a closure that HONESTLY changes no code says so.
+    assert V([row("FIXED: no code change — disposition only, the radar stays as declared.")],
+             set(), staged=set()) == [], "an explicit no-code closure was blocked"
+
+    # FIRE 2 — extensions beyond py/html/js must be checkable too (v31 used .ts / .css).
+    for path in ("static/app.ts", "static/theme.css", "tools/deploy.ps1", "db/migrate.sql"):
+        hits = V([row(f"FIXED: {path}")], set(), staged=set())
+        assert len(hits) == 1 and hits[0][1] == [path], (
+            f"a fix named in {path} was invisible to the lock: {hits}"
+        )
+        assert V([row(f"FIXED: {path}")], set(), staged={path}) == [], (
+            f"{path} staged with its row should be quiet"
+        )
+
+    # FIRE 3 — 'touched != fixed': a cited SHA that changed nothing real must not satisfy it.
+    cited = row("FIXED: static/app.ts — landed in deadbee.")
+    assert V([cited], set(), staged=set(),
+             sha_touches=lambda _s, _r: False), "a no-real-change commit satisfied the closure"
+    assert V([cited], set(), staged=set(),
+             sha_touches=lambda _s, _r: True) == [], "a real cited change should be quiet"
 

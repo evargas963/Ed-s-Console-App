@@ -114,8 +114,33 @@ def collect() -> dict:
     }
 
 
+def _provenance() -> str:
+    """WHICH TREE these numbers describe (RC-140).
+
+    mypy_types runs `mypy .` over the WORKING TREE, not HEAD — MEASURED 2026-07-29: adding a
+    single untracked .py with one type error moved the count 759 -> 760. So two agents reading
+    the panel minutes apart legitimately get different integers with neither being wrong, and
+    three readings that evening (751 / 759 / 753) could not be reconciled because no reading
+    said which tree it described. A bare integer is not a measurement; this line makes any two
+    readings comparable, per RC-57 (a metric that cannot be trusted is worse than none).
+    """
+    def _git(*args: str) -> str:
+        try:
+            r = subprocess.run(["git", *args], cwd=str(_ROOT), capture_output=True,
+                               text=True, timeout=20)
+            return r.stdout.strip() if r.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    head = _git("rev-parse", "--short", "HEAD") or "unknown"
+    porcelain = [ln for ln in _git("status", "--porcelain").splitlines() if ln.strip()]
+    dirty_py = [ln for ln in porcelain if ln.strip().endswith(".py")]
+    return (f"tree: HEAD {head} · {len(dirty_py)} dirty/untracked .py "
+            f"({len(porcelain)} paths total) · python {sys.version.split()[0]}")
+
+
 def render(panel: dict) -> str:
-    lines = ["", "=" * 72, "CODE HEALTH PANEL", "=" * 72]
+    lines = ["", "=" * 72, "CODE HEALTH PANEL", _provenance(), "=" * 72]
     b = panel["BLOCKING"]
     n = b["ruff_project_correctness"]
     verdict = "UNKNOWN (ruff unavailable)" if n is None else ("CLEAN" if n == 0 else f"{n} DEFECT(S)")
