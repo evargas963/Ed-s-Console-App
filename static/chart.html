@@ -60,6 +60,15 @@
                 vertical-align:-2px; margin-right:6px; }
   .legend .sw.ghostsw { background:transparent; border:1.5px dashed var(--vio); }
   /* RC-156 raw structure levels — a price ladder, read top-down like the tape */
+  /* RC-157: the card must NOT shrink. `body` is a column flex container sized to the viewport,
+     and `.card` sets overflow:hidden — so at a default `flex: 0 1 auto` this card is the one the
+     layout chooses to compress, and its content is clipped INSIDE it where body scroll cannot
+     recover it. MEASURED at 1280x700 on e581447e: height 2px against scrollHeight 209, clipped
+     true, 19 rows in the DOM and ZERO visible. `flex:none` opts the card out of shrinking so it
+     always takes its content height; `overflow:visible` and a min-height are belt-and-braces so
+     a future flex change cannot silently re-clip it. A panel whose visibility depends on the
+     window being large enough is not a surface — it is a surface on some monitors. */
+  #rawlevels { flex:none; overflow:visible; min-height:fit-content; }
   #rl-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr));
              gap:4px 14px; padding:4px 16px 6px; }
   .rl-row { display:flex; align-items:baseline; gap:8px; font-size:12.5px;

@@ -667,6 +667,26 @@ def test_chart_raw_levels_card_is_visible_not_buried():
     )
 
 
+def test_chart_raw_levels_card_cannot_be_flex_collapsed():
+    """RC-157: `body` is a column flex container sized to the viewport and `.card` sets
+    overflow:hidden, so at the default `flex: 0 1 auto` this card is the one the layout
+    compresses — and its content is clipped INSIDE it, where body scroll cannot recover it.
+    MEASURED at 1280x700 on e581447e: height 2px against scrollHeight 209, clipped true, 19 rows
+    in the DOM and ZERO visible, while 1600x1000 looked perfect. A panel whose visibility depends
+    on the window being large enough is not a surface; it is a surface on some monitors."""
+    import re
+    src = _chart_src()
+    m = re.search(r"#rawlevels\s*\{([^}]*)\}", src)
+    assert m, "#rawlevels has no CSS rule — it inherits a shrinkable flex default"
+    rule = m.group(1).replace(" ", "")
+    assert "flex:none" in rule or "flex-shrink:0" in rule or "flex:00auto" in rule, (
+        f"#rawlevels does not opt out of flex shrinking: {{{m.group(1).strip()}}}"
+    )
+    assert "overflow:visible" in rule, (
+        "#rawlevels inherits .card's overflow:hidden, so any future shrink clips silently"
+    )
+
+
 def test_chart_reads_levels_from_the_engine_never_recomputes_them():
     """RC-80 discipline: the client must not become a second producer of a number the engine
     owns. The panel may only READ raw_levels off /api/liquidity-snapshot."""
