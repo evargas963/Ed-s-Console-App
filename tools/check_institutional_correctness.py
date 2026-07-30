@@ -1492,12 +1492,35 @@ def mypy_interpreter() -> str:
     return sys.executable
 
 
+def _tracked_py_files() -> set[str] | None:
+    """Repo-relative .py paths git actually tracks, or None when git cannot answer.
+
+    RC-145: `mypy .` walks the DISK, and the disk holds files the commit does not.
+    MEASURED 2026-07-30 on a tree git called completely clean: 1,115 .py files in scope, 501
+    of them untracked — a nested registered worktree (git omits it from `status` entirely) plus
+    gitignored scratch probes, two of which contributed findings to the debt total. So the
+    "clean tree" stamp was true and the number still described a different population on every
+    machine, which is why two agents at one HEAD could not reconcile 759 against 751.
+    """
+    try:
+        r = subprocess.run(["git", "ls-files", "*.py"], cwd=str(REPO),
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return {ln.strip().replace("\\", "/") for ln in r.stdout.splitlines() if ln.strip()}
+
+
 def check_mypy_types() -> list[Violation]:
     """Delegate type checking to mypy. DORMANT until mypy is installed (returns nothing),
     then activates automatically — no environment change forced.
 
     RC-143: runs under mypy_interpreter(), not the caller's interpreter, so the count is a
-    property of the TREE plus that one pinned instrument rather than of the launcher."""
+    property of the TREE plus that one pinned instrument rather than of the launcher.
+    RC-145: findings in files git does not track are DROPPED, so the number describes the
+    committed codebase instead of whatever scratch files happen to sit on this disk. Debt in
+    an untracked probe is not repo debt, and counting it made the metric unreproducible."""
     try:
         r = subprocess.run(
             [mypy_interpreter(), "-m", "mypy", ".", "--ignore-missing-imports",
@@ -1510,11 +1533,18 @@ def check_mypy_types() -> list[Violation]:
         return []  # mypy not installed / timed out — dormant, not "clean"
     if "No module named mypy" in (r.stderr or ""):
         return []
+    tracked = _tracked_py_files()
     out: list[Violation] = []
     for line in r.stdout.splitlines():
         m = re.match(r"^(.+?):(\d+):\s*error:\s*(.*)$", line.strip())
-        if m:
-            out.append(Violation(REPO / m.group(1), int(m.group(2)), f"mypy: {m.group(3)}"))
+        if not m:
+            continue
+        rel = m.group(1).strip().replace("\\", "/")
+        # RC-145: scope the count to the COMMIT. When git cannot answer (tracked is None) the
+        # raw result stands rather than silently shrinking to "clean".
+        if tracked is not None and rel not in tracked:
+            continue
+        out.append(Violation(REPO / m.group(1), int(m.group(2)), f"mypy: {m.group(3)}"))
     # HONESTY GUARD: exit 0/1 = mypy ran (clean/errors). Anything else = it FAILED to run,
     # so an empty result is NOT "clean" — surface the failure instead of falsely passing.
     if not out and r.returncode not in (0, 1):

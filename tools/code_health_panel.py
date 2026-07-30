@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -161,11 +162,28 @@ def _provenance() -> str:
         mypy_s = "mypy: unavailable"
     venv_py = _ROOT / ".venv" / "Scripts" / "python.exe"
     is_venv = venv_py.exists() and Path(interp_path).resolve() == venv_py.resolve()
+    # RC-145: `git status` cannot see a nested registered worktree or gitignored files, so
+    # "0 dirty .py" was true while mypy analysed 501 untracked .py files. State the SCOPE that
+    # produced the number, and how many .py files on disk are outside the commit entirely.
+    try:
+        from tools.check_institutional_correctness import _tracked_py_files
+        tracked = _tracked_py_files()
+    except ImportError:
+        tracked = None
+    excl = re.compile(r"(^|/)(tests|archive|\.venv|node_modules|\.git|__pycache__"
+                      r"|\.mypy_cache)(/|$)")
+    on_disk = [str(p).replace("\\", "/") for p in _ROOT.rglob("*.py")]
+    on_disk = [p for p in (q[len(str(_ROOT).replace("\\", "/")) + 1:] if q.startswith(
+        str(_ROOT).replace("\\", "/")) else q for q in on_disk) if not excl.search(p)]
+    off_commit = "unknown (git unavailable)" if tracked is None else str(
+        len([p for p in on_disk if p not in tracked]))
     return (f"tree: HEAD {head} · {len(dirty_py)} dirty/untracked .py "
-            f"({len(porcelain)} paths total)\n"
+            f"({len(porcelain)} paths total) · {off_commit} .py on disk outside the commit "
+            f"(excluded from the count)\n"
             f"tools: {mypy_s} · counted by {interp_path} "
             f"({'repo .venv' if is_venv else 'NOT the repo .venv'}) · "
-            f"panel launched by {sys.executable}")
+            f"panel launched by {sys.executable}\n"
+            f"scope: git-tracked .py only (RC-145)")
 
 
 def render(panel: dict) -> str:

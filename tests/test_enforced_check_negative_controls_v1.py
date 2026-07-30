@@ -504,6 +504,37 @@ def test_closed_row_cannot_close_on_an_empty_tree():
     )
 
 
+def test_mypy_metric_is_scoped_to_the_commit():
+    """RC-145: the debt count must describe the COMMITTED codebase, not whatever .py files this
+    disk happens to hold. Measured 2026-07-30: 501 of 1,115 in-scope .py files were untracked
+    (a nested worktree plus gitignored probes) and two of them contributed findings, while
+    `git status -uall` reported 0 dirty .py — so no amount of provenance could reconcile two
+    agents' integers."""
+    from tools import check_institutional_correctness as M
+
+    tracked = M._tracked_py_files()
+    assert tracked, "git could not list tracked .py — the scope filter cannot be verified"
+    assert "server.py" in tracked, "a core money-path file is missing from the tracked set"
+
+    # every finding the metric reports must belong to the commit
+    findings = dict((n, f) for n, f, _ in M.CHECKS)["mypy_types"]()
+    off_commit = [str(v) for v in findings
+                  if str(v).split(":")[0].strip().replace("\\", "/") not in tracked]
+    assert off_commit == [], (
+        f"the debt count includes files git does not track — unreproducible by anyone else: "
+        f"{off_commit[:3]}"
+    )
+
+    # and the filter must FAIL CLOSED: if git cannot answer, keep the raw result rather than
+    # silently reporting a smaller (cleaner) number.
+    import inspect
+    src = inspect.getsource(M.check_mypy_types)
+    assert "tracked is not None" in src, (
+        "the scope filter does not guard against git being unavailable — an unanswerable git "
+        "would silently shrink the metric toward 'clean'"
+    )
+
+
 def test_close_contract_deferral_matches_whole_words_only():
     """RC-144: the deferral phrases were matched as SUBSTRINGS, so "pending" fired inside
     "depending" and blocked a row whose sentence was entirely honest. The rule must keep its
