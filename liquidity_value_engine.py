@@ -726,36 +726,38 @@ def build_premarket_snapshot(
         )
         zones.append(z)
 
-    # Canonical taxonomy: overnight low / extreme downside -> sell_side_liquidity;
-    # PDL/VAL/support -> support_liquidity; POC/balance -> pivot_value; PDH/overnight high -> resistance_liquidity
+    # Canonical taxonomy (RC-154, LP-01 Step 3): downside extremes -> low_extreme; PDL/VAL ->
+    # support_liquidity; POC/balance -> pivot_value; PDH/overnight high -> resistance_liquidity.
+    # The GEOMETRY of each branch is unchanged; only the claim attached to it is. Notes state
+    # WHERE the level came from — never that stops rest there or that price is drawn to it.
     out_zones = []
     if prev and over:
         pdh, pdl = prev.get("pdh"), prev.get("pdl")
         for z in zones:
             tags_str = " ".join(z.source_tags)
             if pdl is not None and z.zone_low < pdl * 0.995:
-                z.zone_type = ZoneType.SELL_SIDE_LIQUIDITY
-                z.interpretation_notes = "Sell-side liquidity below prior day low"
+                z.zone_type = ZoneType.LOW_EXTREME
+                z.interpretation_notes = "Extreme low, below the prior-day low"
             elif "PDH" in tags_str or "OVERNIGHT_HIGH" in tags_str:
                 if "PD_POC" not in tags_str and "PDC" not in tags_str:
                     z.zone_type = ZoneType.RESISTANCE_LIQUIDITY
-                    z.interpretation_notes = "Resistance liquidity near prior day high"
+                    z.interpretation_notes = "Overhead structure at the prior-day high"
             elif "OVERNIGHT_LOW" in tags_str and "PDL" not in tags_str and "PD_VAL" not in tags_str:
-                z.zone_type = ZoneType.SELL_SIDE_LIQUIDITY
-                z.interpretation_notes = "Sell-side liquidity at overnight low"
+                z.zone_type = ZoneType.LOW_EXTREME
+                z.interpretation_notes = "Extreme low of the overnight window"
             elif "PDL" in tags_str or "PD_VAL" in tags_str:
                 if "PD_POC" not in tags_str and "PDC" not in tags_str:
                     z.zone_type = ZoneType.SUPPORT_LIQUIDITY
-                    z.interpretation_notes = "Support liquidity near prior day low"
+                    z.interpretation_notes = "Underside structure at the prior-day low"
             elif "PD_POC" in tags_str or "PDC" in tags_str or "PD_VAL" in tags_str:
                 z.zone_type = ZoneType.PIVOT_VALUE
                 z.interpretation_notes = "Fair value reference from prior day POC/close"
             elif pdh is not None and z.zone_high >= pdh * 0.998:
                 z.zone_type = ZoneType.RESISTANCE_LIQUIDITY
-                z.interpretation_notes = "Resistance liquidity above prior day high"
+                z.interpretation_notes = "Overhead structure, above the prior-day high"
             elif pdl is not None and z.zone_low <= pdl * 1.002:
                 z.zone_type = ZoneType.SUPPORT_LIQUIDITY
-                z.interpretation_notes = "Support liquidity near prior day low"
+                z.interpretation_notes = "Underside structure at the prior-day low"
             out_zones.append(z)
     else:
         out_zones = zones
@@ -828,16 +830,16 @@ def build_opening_snapshot(
             notes = "Breakdown trigger below opening range low"
         elif "PDH" in str(tags) or "PD_VAH" in str(tags):
             zt = ZoneType.RESISTANCE_LIQUIDITY
-            notes = "Resistance liquidity"
+            notes = "Overhead structure"
         elif "PDL" in str(tags) or "PD_VAL" in str(tags):
             zt = ZoneType.SUPPORT_LIQUIDITY
-            notes = "Support liquidity"
+            notes = "Underside structure"
         elif "VWAP" in str(tags) or "ORB_MID" in str(tags):
             zt = ZoneType.PIVOT_VALUE
             notes = "Intraday pivot zone"
         elif orb_l and lo < orb_l * 0.995:
-            zt = ZoneType.SELL_SIDE_LIQUIDITY
-            notes = "Sell-side liquidity below ORB"
+            zt = ZoneType.LOW_EXTREME
+            notes = "Extreme low, below the opening range"
         sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
         z = Zone(
             zone_type=zt,
@@ -954,8 +956,8 @@ def build_midday_snapshot(
             zt = ZoneType.RESISTANCE_LIQUIDITY
             notes = "Major resistance zone"
         elif "ORB_LOW" in str(tags) or "PD_VAL" in str(tags):
-            zt = ZoneType.SELL_SIDE_LIQUIDITY
-            notes = "Liquidity sweep zone"
+            zt = ZoneType.LOW_EXTREME
+            notes = "Extreme low of the session so far"
         sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
         z = Zone(
             zone_type=zt,

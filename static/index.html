@@ -3079,7 +3079,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
         <div class="ticker-input-wrap">
           <input id="ticker-input" type="text" value="SPY" placeholder="SYM" maxlength="12"
                  title="Active symbol"
-                 onkeydown="if(event.key==='Enter') triggerRefresh()">
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();triggerRefresh();this.blur();}">
         <script>
           /* RC-123: adopt the cross-page ticker THE INSTANT this input exists — before any
              script can run fetchState, whose chokepoint persist would otherwise write the
@@ -8963,8 +8963,13 @@ const ZONE_BADGE_MAP = {
   pivot_value: { cls: 'fair', lbl: 'PIVOT VAL' },
   breakout_trigger: { cls: 'breakout', lbl: 'BREAKOUT' },
   breakdown_trigger: { cls: 'breakdown', lbl: 'BREAKDOWN' },
-  sell_side_liquidity: { cls: 'sell', lbl: 'SELL LIQ' },
-  buy_side_liquidity: { cls: 'buy', lbl: 'BUY LIQ' },
+  // RC-154 (LP-01 Step 3): 'SELL LIQ' / 'BUY LIQ' painted an SMC liquidity-pool claim — that
+  // resting stops cluster beyond a prior extreme and price is drawn to them. Nothing here
+  // measured that: no equal-extreme stop-cluster detector, no touch study, no forward test.
+  // The zones are ordinary session extremes, so the badge now says only what is true of them.
+  // CSS classes are unchanged on purpose — the colours are fine, it was the WORDS that lied.
+  low_extreme: { cls: 'sell', lbl: 'LOW EXTREME' },
+  high_extreme: { cls: 'buy', lbl: 'HIGH EXTREME' },
 };
 function renderLiquidityMap(lm) {
   if (!lm || typeof lm !== 'object' || Array.isArray(lm)) return;
@@ -13270,20 +13275,29 @@ function edCheckRadarAlerts(rows) {
 
   function commitTicker() {
     var v = (hdTk.value || '').trim().toUpperCase();
-    if (!v) { hdTk.value = curTicker(); return; }
+    if (!v) { hdTk.value = (typeof activeTicker === 'string' && activeTicker) ? activeTicker : curTicker(); return false; }
     hdTk.value = v;
-    if (lgTk && lgTk.value !== v) {
-      lgTk.value = v;
-      if (typeof window.triggerRefresh === 'function') { try { window.triggerRefresh(); } catch (e) {} }
+    if (lgTk) lgTk.value = v;
+    // Commit when the AUTHORITY differs — not when the hidden twin already matches.
+    // lgTk can be pre-synced (or stale-equal) while activeTicker still lags, which made
+    // Enter a no-op besides a soft refresh and felt broken.
+    var needFetch = (typeof activeTicker !== 'string') || (v !== activeTicker);
+    if (needFetch && typeof window.triggerRefresh === 'function') {
+      try { window.triggerRefresh(); } catch (e) {}
     }
-    // RC-123/v22: this function does NOT write ed_ticker itself — both branches above reach
-    // setActiveTicker (via triggerRefresh, or the value already committed there), which is the
-    // carrier's ONE writer in this document. A spare setItem here was the multi-writer shape.
+    // RC-123/v22: do NOT write ed_ticker here — triggerRefresh → fetchState → setActiveTicker
+    // is the carrier's ONE writer in this document.
     markWatchlist();
-    refresh();
+    if (needFetch) refresh();
+    return needFetch;
   }
   if (hdTk) {
-    hdTk.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commitTicker(); } });
+    hdTk.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      commitTicker();
+      hdTk.blur();
+    });
     hdTk.addEventListener('blur', commitTicker);
   }
   // RC-123: adopt the cross-page ticker at load, and follow live changes made in a parallel
@@ -13299,8 +13313,13 @@ function edCheckRadarAlerts(rows) {
     });
   })();
 
-  function mirrorExpiry() {
+  function mirrorExpiry(force) {
     if (!lgEx || !hdEx) return;
+    // While the operator is in the header expiry control, do not rebuild or overwrite —
+    // a mid-focus option wipe (ticker switch / chain repaint) was dropping selections and
+    // making Enter feel like it did nothing. force=true is for explicit resync after a
+    // failed commit (stale header list).
+    if (!force && document.activeElement === hdEx) return;
     var sig = [].map.call(lgEx.options, function (o) { return o.value + '' + o.text; }).join('|');
     if (hdEx.getAttribute('data-sig') !== sig) {
       hdEx.setAttribute('data-sig', sig);
@@ -13311,15 +13330,41 @@ function edCheckRadarAlerts(rows) {
         hdEx.appendChild(n);
       });
     }
-    if (document.activeElement !== hdEx) hdEx.value = lgEx.value;
+    hdEx.value = lgEx.value;
+  }
+  function commitExpiry() {
+    if (!lgEx || !hdEx) return;
+    var v = (hdEx.value || '').trim();
+    if (!v) return;
+    // Legacy select emptied on ticker switch until render() repopulates — do not push a
+    // stale header list into an empty authority select (wedges activeExpiry / fetch scope).
+    if (!lgEx.options.length) return;
+    var found = false;
+    for (var i = 0; i < lgEx.options.length; i++) {
+      if (lgEx.options[i].value === v) { found = true; break; }
+    }
+    if (!found) {
+      // Header list lagged the authority list — resync visuals; no false commit.
+      mirrorExpiry(true);
+      return;
+    }
+    if (lgEx.value !== v) {
+      lgEx.value = v;
+      lgEx.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if ((typeof activeExpiry === 'undefined' ? null : activeExpiry) !== v) {
+      if (typeof fetchState === 'function') { try { fetchState(false); } catch (e) {} }
+    }
+    refresh();
   }
   if (hdEx) {
-    hdEx.addEventListener('change', function () {
-      if (!lgEx) return;
-      lgEx.value = hdEx.value;
-      lgEx.dispatchEvent(new Event('change', { bubbles: true }));
-      refresh();
+    hdEx.addEventListener('change', commitExpiry);
+    hdEx.addEventListener('keydown', function (e) {
+      // Do not preventDefault — native <select> needs Enter to apply the highlighted
+      // option. Commit on the next tick once the value has landed.
+      if (e.key !== 'Enter') return;
+      setTimeout(function () { commitExpiry(); }, 0);
     });
+    hdEx.addEventListener('blur', function () { mirrorExpiry(); });
   }
 
   function goto(view) {

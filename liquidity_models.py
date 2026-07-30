@@ -128,24 +128,41 @@ class SnapshotType(str, Enum):
 
 class ZoneType(str, Enum):
     """
-    Canonical zone types for liquidity/value mapping.
-    Taxonomy: sell_side_liquidity | support_liquidity | pivot_value | breakdown_trigger |
-    breakout_trigger | resistance_liquidity | buy_side_liquidity
+    Canonical zone types for structure/value mapping.
+
+    LP-01 Step 3 (RC-154) — `sell_side_liquidity` / `buy_side_liquidity` are RETIRED. Those
+    names make an SMC claim: that resting stop orders pool beyond a prior extreme and that
+    price is drawn to them. We have measured no such thing. There is no equal-extreme
+    stop-cluster detector in this repo, no touch study, and no forward test — the zones were
+    built from ordinary session extremes (overnight low, prior-day low, below the opening
+    range) and then given a name that asserts a mechanism.
+
+    What we can honestly say is geometric: this is the LOW extreme of the prior session /
+    overnight window, or the HIGH one. `low_extreme` / `high_extreme` say exactly that and
+    nothing more. If stop-cluster levels are ever built and proven, they earn their own type.
+
+    Taxonomy: low_extreme | support_liquidity | pivot_value | breakdown_trigger |
+    breakout_trigger | resistance_liquidity | high_extreme
     """
-    SELL_SIDE_LIQUIDITY = "sell_side_liquidity"
+    LOW_EXTREME = "low_extreme"
     SUPPORT_LIQUIDITY = "support_liquidity"
     PIVOT_VALUE = "pivot_value"
     BREAKDOWN_TRIGGER = "breakdown_trigger"
     BREAKOUT_TRIGGER = "breakout_trigger"
     RESISTANCE_LIQUIDITY = "resistance_liquidity"
-    BUY_SIDE_LIQUIDITY = "buy_side_liquidity"
+    HIGH_EXTREME = "high_extreme"
 
 
 def zone_class_for_type(zone_type: ZoneType) -> str:
-    """Return zone_class from zone_type: liquidity | structure | trigger | value."""
+    """Return zone_class from zone_type: structure | trigger | value.
+
+    RC-154: the `liquidity` CLASS is retired with the two types that carried it. No zone in
+    this taxonomy is a measured liquidity pool, so no zone may be classed as one — a class is
+    read as a category of evidence, and there is no evidence in that category yet.
+    """
     _class_map = {
-        ZoneType.SELL_SIDE_LIQUIDITY: "liquidity",
-        ZoneType.BUY_SIDE_LIQUIDITY: "liquidity",
+        ZoneType.LOW_EXTREME: "structure",
+        ZoneType.HIGH_EXTREME: "structure",
         ZoneType.SUPPORT_LIQUIDITY: "structure",
         ZoneType.RESISTANCE_LIQUIDITY: "structure",
         ZoneType.BREAKDOWN_TRIGGER: "trigger",

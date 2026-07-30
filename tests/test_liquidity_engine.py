@@ -474,6 +474,104 @@ def test_prior_session_helper_is_the_one_definition():
         )
 
 
+# ── LP-01 Step 3 (RC-154): no liquidity-pool claim on untested extremes ──────────────────
+_POOL_WORDS = ("liquidity", "pool", "sweep", "stop hunt", "stop-hunt", "magnet")
+
+
+def _step3_bars(session_date: date) -> list:
+    """Bars that drive the taxonomy branch: a prior session, an overnight leg that undercuts
+    the prior low, and an RTH open — i.e. exactly the shape that used to be labelled
+    'sell-side liquidity'."""
+    prev = date.fromordinal(session_date.toordinal() - 1)
+    return [
+        _bar(prev, 10, 0, 105.0, 100.0, close=104.0),
+        _bar(prev, 15, 0, 106.0, 101.0, close=102.0),
+        _bar(prev, 17, 0, 103.0, 99.0, close=99.5),      # after the close
+        _bar(session_date, 6, 0, 100.0, 95.0, close=96.0),   # overnight UNDER the prior low
+        _bar(session_date, 9, 45, 101.0, 96.0, close=100.0),  # RTH
+    ]
+
+
+def _step3_zones(session_date: date):
+    from liquidity_models import PlaybookConfig
+    from liquidity_value_engine import build_premarket_snapshot
+    out = build_premarket_snapshot("SPY", _step3_bars(session_date),
+                                   session_date, PlaybookConfig())
+    return out.zones
+
+
+def test_no_liquidity_pool_claim_in_zone_taxonomy():
+    """RC-154: these zones are session EXTREMES. Presenting them as sell/buy-side liquidity is
+    an SMC pool claim we have not measured — no equal-extreme stop-cluster detection exists and
+    no touch study has run. The wire must not assert what nothing has proven."""
+    from liquidity_models import ZoneType, zone_class_for_type
+    values = {z.value for z in ZoneType}
+    assert not any("side_liquidity" in v for v in values), (
+        f"zone taxonomy still claims liquidity pools: {sorted(values)}"
+    )
+    classes = {zone_class_for_type(z) for z in ZoneType}
+    assert "liquidity" not in classes, (
+        f"a zone_class still asserts 'liquidity': {sorted(classes)}"
+    )
+
+
+def test_no_pool_language_in_rendered_zone_payload():
+    """Behaviour-bound: build the snapshot that used to produce 'Sell-side liquidity at
+    overnight low' and assert no operator-facing field claims a pool."""
+    session = date(2026, 7, 28)
+    zones = _step3_zones(session)
+    assert zones, "fixture produced no zones — the assertion would be vacuous"
+    for z in zones:
+        zt = str(getattr(z.zone_type, "value", z.zone_type))
+        notes = (z.interpretation_notes or "").lower()
+        assert "side_liquidity" not in zt, f"zone_type claims a pool: {zt}"
+        assert z.zone_class != "liquidity", f"zone_class claims a pool: {z.zone_class}"
+        for w in _POOL_WORDS:
+            assert w not in notes, (
+                f"interpretation_notes asserts {w!r} on an untested extreme: "
+                f"{z.interpretation_notes!r} (zone_type={zt})"
+            )
+
+
+def test_engine_emits_no_pool_language_anywhere_it_writes_notes():
+    """Every interpretation_notes literal in the engine, not only the branches one fixture
+    happens to reach."""
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "liquidity_value_engine.py").read_text(
+        encoding="utf-8")
+    offenders = []
+    for m in re.finditer(r'(?:interpretation_notes\s*=|notes\s*=)\s*"([^"]*)"', src):
+        text = m.group(1).lower()
+        if any(w in text for w in _POOL_WORDS):
+            offenders.append(m.group(1))
+    assert not offenders, f"engine still writes pool language: {offenders}"
+
+
+def test_ui_shows_no_pool_badges():
+    """Surface-bound: the Console Liquidity Map painted 'SELL LIQ' / 'BUY LIQ' — an operator
+    reading those sees a proven pool, which is the claim being demoted."""
+    import re
+    from pathlib import Path
+    ui = (Path(__file__).resolve().parent.parent / "static" / "index.html").read_text(
+        encoding="utf-8")
+    # Strip // comments: the badge map's own comment quotes the retired labels to explain what
+    # was demoted, and a raw text search reads that explanation as the offence (the same trap
+    # RC-153's docstring set). Only code the browser executes can paint a badge.
+    code = re.sub(r"^\s*//.*$", "", ui, flags=re.M)
+    assert "SELL LIQ" not in code and "BUY LIQ" not in code, "the UI still paints pool badges"
+    assert "sell_side_liquidity" not in code and "buy_side_liquidity" not in code, (
+        "the UI badge map still keys on the retired pool taxonomy"
+    )
+    i = code.find("ZONE_BADGE_MAP")
+    assert i > 0, "the badge map is gone"
+    block = code[i:i + 700]
+    assert "low_extreme" in block and "high_extreme" in block, (
+        "the demoted zone types have no badge, so they would render via the raw-string fallback"
+    )
+    assert "LOW EXTREME" in block and "HIGH EXTREME" in block
+
+
 def test_cluster_price_levels():
     """Levels within threshold clustered into zones."""
     from liquidity_value_engine import cluster_price_levels_into_zones
