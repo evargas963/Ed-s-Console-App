@@ -143,16 +143,29 @@ def _provenance() -> str:
     # stamp omitted is the TOOL that produces the number — a different mypy build, or the same
     # panel run under a non-.venv interpreter, moves it. Stamping them makes a mismatch visible
     # instead of arguable.
+    # RC-143: ask the CHECKER which interpreter produced the count, then version mypy with that
+    # SAME binary. The first stamp read the version from _py() while check_mypy_types ran
+    # sys.executable, and labelled the interpreter with `".venv" in _py()` — always true once
+    # the venv exists, so it printed "repo .venv" even when launched from system python (v33
+    # measured exactly that). A label that cannot say the other thing is not a measurement.
     try:
-        mypy_ver = subprocess.run([_py(), "-m", "mypy", "--version"], cwd=str(_ROOT),
+        from tools.check_institutional_correctness import mypy_interpreter
+        interp_path = mypy_interpreter()
+    except ImportError:
+        interp_path = sys.executable
+    try:
+        mypy_ver = subprocess.run([interp_path, "-m", "mypy", "--version"], cwd=str(_ROOT),
                                   capture_output=True, text=True, timeout=60)
         mypy_s = (mypy_ver.stdout or mypy_ver.stderr or "").strip() or "mypy: unavailable"
     except (OSError, subprocess.SubprocessError):
         mypy_s = "mypy: unavailable"
-    interp = "repo .venv" if _py() != sys.executable or ".venv" in _py() else "NON-.venv"
+    venv_py = _ROOT / ".venv" / "Scripts" / "python.exe"
+    is_venv = venv_py.exists() and Path(interp_path).resolve() == venv_py.resolve()
     return (f"tree: HEAD {head} · {len(dirty_py)} dirty/untracked .py "
-            f"({len(porcelain)} paths total)\ntools: python {sys.version.split()[0]} · "
-            f"{mypy_s} · interpreter {interp}")
+            f"({len(porcelain)} paths total)\n"
+            f"tools: {mypy_s} · counted by {interp_path} "
+            f"({'repo .venv' if is_venv else 'NOT the repo .venv'}) · "
+            f"panel launched by {sys.executable}")
 
 
 def render(panel: dict) -> str:

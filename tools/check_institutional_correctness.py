@@ -248,6 +248,15 @@ CLOSE_CONTRACT_CUTOVER = "2026-07-28"
 _CLOSE_PENDING_PHRASES = (
     "pending", "proof owed", "awaiting", "closed for the code path", "code path only",
 )
+#: RC-144: matched as WHOLE WORDS. As bare substrings, "pending" fired inside "depending",
+#: "impending" and "suspending" — MEASURED 2026-07-30 when a row stating that a metric "stops
+#: depending on how the caller was launched" was flagged for deferring its own proof. The only
+#: ways out of a false positive are rewording true evidence until the regex is satisfied, or
+#: weakening the rule; both are worse than the bug, and the first is the citation theater
+#: RC-136 was opened for. Word boundaries keep the rule's strength and drop the accidents.
+_CLOSE_PENDING_RES = tuple(
+    (p, re.compile(r"\b" + re.escape(p) + r"\b")) for p in _CLOSE_PENDING_PHRASES
+)
 #: The DOM-id net matches hyphenated ids only (#cv2-kl-trust) — the hyphen requirement keeps
 #: hex colors and markdown anchors out.
 
@@ -320,8 +329,8 @@ def _five_why_lock_violations(
             # Use vs mention: a row that DESCRIBES the pending rule (in backticks) is not
             # deferring proof — the same backtick convention every guard already uses.
             low_fix_used = _re.sub(r"`[^`]*`", "", low_fix)
-            for phrase in _CLOSE_PENDING_PHRASES:
-                if phrase in low_fix_used:
+            for phrase, rx in _CLOSE_PENDING_RES:
+                if rx.search(low_fix_used):
                     out.append(Violation(
                         log_path, n,
                         f"{rc_id}: CLOSED while the fix cell defers its own proof "
@@ -1460,12 +1469,39 @@ def check_no_fake_defaults() -> list[Violation]:
     return out
 
 
+def mypy_interpreter() -> str:
+    """The interpreter that WILL run mypy — the single authority the panel also stamps.
+
+    RC-143: check_mypy_types ran mypy through sys.executable, so the count depended on how the
+    caller was launched. MEASURED 2026-07-29/30 at one HEAD: PATH python reported 753 while the
+    repo .venv reported 751, and the panel stamped "repo .venv" either way, certifying a
+    comparability it had not established. The repo already mandates ONE interpreter for its
+    tooling (check_venv_parity), so the metric is pinned to it here and the choice is returned
+    rather than assumed — a caller launched with system python now gets the same number, and
+    the fallback is visible instead of silent.
+    """
+    cand = REPO / ".venv" / "Scripts" / "python.exe"
+    if cand.exists():
+        try:
+            probe = subprocess.run([str(cand), "-c", "import mypy"],
+                                   capture_output=True, timeout=60)
+            if probe.returncode == 0:
+                return str(cand)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return sys.executable
+
+
 def check_mypy_types() -> list[Violation]:
     """Delegate type checking to mypy. DORMANT until mypy is installed (returns nothing),
-    then activates automatically — no environment change forced."""
+    then activates automatically — no environment change forced.
+
+    RC-143: runs under mypy_interpreter(), not the caller's interpreter, so the count is a
+    property of the TREE plus that one pinned instrument rather than of the launcher."""
     try:
         r = subprocess.run(
-            [sys.executable, "-m", "mypy", ".", "--ignore-missing-imports", "--no-error-summary",
+            [mypy_interpreter(), "-m", "mypy", ".", "--ignore-missing-imports",
+             "--no-error-summary",
              "--explicit-package-bases", "--namespace-packages",
              "--exclude", r"(tests|archive|\.venv|node_modules)"],
             cwd=str(REPO), capture_output=True, text=True, timeout=900,

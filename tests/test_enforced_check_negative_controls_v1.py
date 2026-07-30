@@ -504,6 +504,36 @@ def test_closed_row_cannot_close_on_an_empty_tree():
     )
 
 
+def test_close_contract_deferral_matches_whole_words_only():
+    """RC-144: the deferral phrases were matched as SUBSTRINGS, so "pending" fired inside
+    "depending" and blocked a row whose sentence was entirely honest. The rule must keep its
+    teeth on real deferrals and lose the accidents — a false positive here pressures the author
+    to reword TRUE evidence until the regex is happy, which is RC-136's citation theater."""
+    from tools.check_institutional_correctness import _five_why_lock_violations as _V
+    LOG = ROOT / "governance" / "root_cause_log.md"
+
+    def row(fix):
+        return ("| RC-970 | CLOSED | 2026-07-29 | 2026-08-01 | desc | "
+                f"a -> b -> c -> d -> ROOT: e | END-TO-END: x -> y. FIXED: server.py. {fix} |")
+
+    def defers(fix):
+        hits = _V([row(fix)], LOG, static_corpus="", tests_corpus="")
+        return [v for v in hits if "defers its own proof" in str(v)]
+
+    # FIRE — real deferrals still fail.
+    assert defers("Rendered proof pending the next restart."), "a real 'pending' escaped"
+    assert defers("Proof owed once the operator restarts."), "'proof owed' escaped"
+    assert defers("Awaiting the operator's swap window."), "'awaiting' escaped"
+
+    # QUIET — innocent words that merely CONTAIN a phrase.
+    for honest in (
+        "The count stops depending on how the caller was launched.",
+        "No impending change to the money path.",
+        "Nothing is suspending the logger.",
+    ):
+        assert not defers(honest), f"a substring match blocked honest wording: {honest!r}"
+
+
 def test_closed_row_semantics_escapes_are_closed():
     """RC-140 (v31): the lock bound path TOKENS it recognized, not the CLAIM that a fix exists.
     Three measured escapes — a prose-only FIXED claim, a fix in an unlisted language, and a
