@@ -255,6 +255,30 @@ def merge_schwab_bars_with_live_overlay(schwab_bars: list, live_overlay: list) -
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[date]:
+    """The most recent date BEFORE `session_date` that actually traded an RTH session.
+
+    LP-01 Step 2 (RC-153) — THE single definition of "the prior session", for both the
+    previous-day levels and the overnight window. The calendar cannot answer this question:
+    `session_date - 1 day` is Sunday on a Monday and a closed holiday after one, and a market
+    that was shut has no close for an overnight range to start from.
+
+    Presence of RTH bars is the evidence a session happened — we do not consult a holiday table,
+    because the bars ARE the record and a table can disagree with the tape (half-days, ad-hoc
+    closures). Fail-closed: no prior RTH date in the buffer returns None, never a guessed date.
+    """
+    prior: Optional[date] = None
+    for b in bars_norm:
+        dt = _bar_dt_et(b)
+        if dt is None:
+            continue
+        d = dt.date()
+        if d < session_date and RTH_OPEN <= dt.time() < RTH_CLOSE:
+            if prior is None or d > prior:
+                prior = d
+    return prior
+
+
 def get_previous_day_levels(
     bars: list,
     session_date: date,
@@ -284,16 +308,12 @@ def get_previous_day_levels(
     # All consumers checked: yes — same dict shape; absent keys were already
     #   a legal output (empty-bars path) handled by every consumer.
     # SCHWAB_CSV_CHECKED
-    prior_rth_dates = set()
-    for b in bars_norm:
-        dt = _bar_dt_et(b)
-        if dt is None:
-            continue
-        if dt.date() < session_date and RTH_OPEN <= dt.time() < RTH_CLOSE:
-            prior_rth_dates.add(dt.date())
+    # RC-153: this inline scan WAS the correct answer; it is now the canonical helper
+    # `prior_trading_session_date`, shared with the overnight window so the two can never
+    # disagree about which session was the prior one.
+    prev_trading_day = prior_trading_session_date(bars_norm, session_date)
     prev_bars = []
-    if prior_rth_dates:
-        prev_trading_day = max(prior_rth_dates)
+    if prev_trading_day is not None:
         for b in bars_norm:
             dt = _bar_dt_et(b)
             if dt is None:
@@ -315,26 +335,43 @@ def get_overnight_levels(
     bars: list,
     session_date: date,
 ) -> dict:
-    """
-    Overnight range: prior RTH close (16:00) → current RTH open (09:30).
+    """Overnight range: prior TRADING session's RTH close (16:00 ET) → this session's RTH
+    open (09:30 ET).
+
+    LP-01 Step 2 (RC-153). The docstring already claimed "prior RTH close"; the code used
+    `session_date - timedelta(days=1)`, i.e. CALENDAR yesterday. On a Monday that is Sunday —
+    a day with no close and no bars — so Friday's entire post-16:00 session was silently
+    dropped and the overnight range was only Monday's own pre-open. The same hole opens after
+    every holiday. A range that omits half its window is not a narrower range, it is a wrong
+    level: OVERNIGHT_HIGH/LOW feed liquidity zones read as stop-run targets.
+
+    The window is now a CONTINUOUS INTERVAL [prior_close, this_open), so everything inside it
+    counts — Friday's post-16:00 tape, any weekend or holiday bars, and this session's
+    pre-open — rather than two hand-picked calendar dates that skip whatever sits between.
+
+    Fail-closed: with no prior trading session in the buffer the interval has no start, so only
+    this session's pre-open bars are used (a subset we are certain lies inside any correct
+    window) and that is stated here rather than being widened into a guess. Absence of bars in
+    the window returns {} — honest empty, never a fabricated level.
     """
     bars_norm = _bars_to_list(bars)
-    _session_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    _prev_close_dt = datetime.combine(session_date - timedelta(days=1), RTH_CLOSE, tzinfo=ET)
+    session_open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
+    prev_session = prior_trading_session_date(bars_norm, session_date)
+    prev_close_dt = (datetime.combine(prev_session, RTH_CLOSE, tzinfo=ET)
+                     if prev_session is not None else None)
 
     overnight = []
     for b in bars_norm:
         dt = _bar_dt_et(b)
         if dt is None:
             continue
-        if dt.date() == session_date:
-            mins = dt.hour * 60 + dt.minute
-            if mins < 9 * 60 + 30:
+        if dt >= session_open_dt:
+            continue
+        if prev_close_dt is not None:
+            if dt >= prev_close_dt:
                 overnight.append(b)
-        elif dt.date() == session_date - timedelta(days=1):
-            mins = dt.hour * 60 + dt.minute
-            if mins >= 16 * 60:
-                overnight.append(b)
+        elif dt.date() == session_date:
+            overnight.append(b)
 
     if not overnight:
         return {}

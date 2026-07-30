@@ -348,6 +348,132 @@ def test_engine_and_context_agree_on_one_profile():
     assert abs(e_vah - c_vah) < 0.01 and abs(e_val - c_val) < 0.01
 
 
+def _bar(d: date, hh: int, mm: int, high: float, low: float, close: float = None,
+         volume: float = 1000.0) -> dict:
+    """One 1m bar at an explicit ET wall-clock time."""
+    from datetime import datetime as _dt
+    from time_et import ET as _ET
+    ts = _dt(d.year, d.month, d.day, hh, mm, tzinfo=_ET)
+    return {"datetime": int(ts.timestamp() * 1000), "open": low,
+            "high": high, "low": low, "close": close if close is not None else high,
+            "volume": volume}
+
+
+def test_overnight_window_monday_reaches_back_to_friday():
+    """LP-01 Step 2 (RC-153): Monday's overnight starts at FRIDAY's 16:00 close. The old code
+    used session_date - 1 day = SUNDAY, a day with no close and no bars, so Friday's entire
+    post-16:00 tape was dropped and OVERNIGHT_HIGH/LOW described only Monday's pre-open."""
+    from liquidity_value_engine import get_overnight_levels
+    friday, monday = date(2026, 7, 24), date(2026, 7, 27)
+    bars = [
+        _bar(friday, 10, 0, 100.0, 99.0),      # Friday RTH — establishes the prior session
+        _bar(friday, 15, 59, 101.0, 100.0),    # Friday RTH, before the close
+        _bar(friday, 17, 30, 108.0, 107.0),    # Friday AFTER 16:00 — inside the overnight
+        _bar(monday, 4, 30, 96.0, 95.0),       # Monday pre-open — inside the overnight
+        _bar(monday, 10, 0, 120.0, 90.0),      # Monday RTH — must NOT be in the overnight
+    ]
+    out = get_overnight_levels(bars, monday)
+    assert out["overnight_high"] == 108.0, (
+        f"Friday's post-close high is missing from Monday's overnight: {out}"
+    )
+    assert out["overnight_low"] == 95.0, f"overnight low wrong: {out}"
+    assert out["overnight_high"] != 96.0, "overnight collapsed to Monday's pre-open only"
+
+
+def test_overnight_window_midweek_uses_the_immediately_prior_session():
+    """Tuesday's overnight starts at Monday's 16:00 — and Monday's RTH body stays out of it."""
+    from liquidity_value_engine import get_overnight_levels
+    monday, tuesday = date(2026, 7, 27), date(2026, 7, 28)
+    bars = [
+        _bar(monday, 10, 0, 130.0, 70.0),      # Monday RTH — wide, must be EXCLUDED
+        _bar(monday, 18, 0, 104.0, 103.0),     # Monday post-close — included
+        _bar(tuesday, 8, 0, 99.0, 98.0),       # Tuesday pre-open — included
+        _bar(tuesday, 9, 30, 140.0, 60.0),     # Tuesday RTH open bar — must be EXCLUDED
+    ]
+    out = get_overnight_levels(bars, tuesday)
+    assert out["overnight_high"] == 104.0 and out["overnight_low"] == 98.0, (
+        f"midweek overnight leaked an RTH bar: {out}"
+    )
+
+
+def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
+    """A closed day has no close for a range to start from. With Thursday shut, Friday's
+    overnight must reach back to WEDNESDAY's 16:00 and include the Thursday bars in between —
+    the interval is continuous, not two hand-picked calendar dates."""
+    from liquidity_value_engine import get_overnight_levels, prior_trading_session_date
+    from liquidity_value_engine import _bars_to_list
+    wed, thu, fri = date(2026, 7, 22), date(2026, 7, 23), date(2026, 7, 24)
+    bars = [
+        _bar(wed, 10, 0, 100.0, 99.0),         # Wednesday RTH — the real prior session
+        _bar(wed, 17, 0, 106.0, 105.0),        # Wednesday post-close
+        # The holiday itself: bars exist but NONE in RTH — a closed day trades no session.
+        # (Placing one at 12:00 would make Thursday a real session, which is what the code
+        # should conclude from that evidence; the fixture must mean what it claims.)
+        _bar(thu, 3, 0, 111.0, 94.0),          # holiday extended-hours bar INSIDE the window
+        _bar(fri, 8, 0, 97.0, 96.0),           # Friday pre-open
+        _bar(fri, 10, 0, 200.0, 10.0),         # Friday RTH — excluded
+    ]
+    assert prior_trading_session_date(_bars_to_list(bars), fri) == wed, (
+        "a day with no RTH bars was treated as the prior trading session"
+    )
+    out = get_overnight_levels(bars, fri)
+    assert out["overnight_high"] == 111.0 and out["overnight_low"] == 94.0, (
+        f"the holiday gap was skipped instead of spanned: {out}"
+    )
+
+
+def test_overnight_empty_is_empty_never_fabricated():
+    """No bars in the window -> {}. Absence reads as absence."""
+    from liquidity_value_engine import get_overnight_levels
+    tuesday = date(2026, 7, 28)
+    only_rth = [_bar(date(2026, 7, 27), 11, 0, 100.0, 99.0),
+                _bar(tuesday, 10, 0, 101.0, 98.0)]
+    assert get_overnight_levels(only_rth, tuesday) == {}, "an overnight range was invented"
+    assert get_overnight_levels([], tuesday) == {}
+
+
+def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
+    """Fail-closed: with no prior RTH session in the buffer the interval has no start, so only
+    this session's pre-open is used — never widened into a guess that sweeps older days."""
+    from liquidity_value_engine import get_overnight_levels
+    tuesday = date(2026, 7, 28)
+    bars = [
+        _bar(date(2026, 7, 27), 20, 0, 300.0, 290.0),   # prior-day AFTER hours, no RTH anywhere
+        _bar(tuesday, 8, 0, 99.0, 98.0),
+    ]
+    out = get_overnight_levels(bars, tuesday)
+    assert out == {"overnight_high": 99.0, "overnight_low": 98.0}, (
+        f"an unbounded window swept bars from a session that was never established: {out}"
+    )
+
+
+def test_prior_session_helper_is_the_one_definition():
+    """Both the previous-day levels and the overnight window must resolve 'prior session' the
+    same way — two definitions is how they disagree about which day yesterday was."""
+    import ast
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "liquidity_value_engine.py").read_text(
+        encoding="utf-8")
+    tree = ast.parse(src)
+    fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    for name in ("get_overnight_levels", "get_previous_day_levels"):
+        assert name in fns, f"{name} is gone"
+        node = fns[name]
+        # EXECUTABLE code only — the docstrings deliberately quote the retired
+        # `session_date - timedelta(days=1)` to explain the defect, and a text search would
+        # read that explanation as the defect itself.
+        stmts = [s for s in node.body if not (isinstance(s, ast.Expr)
+                                              and isinstance(s.value, ast.Constant)
+                                              and isinstance(s.value.value, str))]
+        code = "\n".join(ast.dump(s) for s in stmts)
+        assert "prior_trading_session_date" in code, (
+            f"{name} does not use the one prior-session definition"
+        )
+        assert "timedelta" not in code, (
+            f"{name} still does calendar arithmetic to find the prior session"
+        )
+
+
 def test_cluster_price_levels():
     """Levels within threshold clustered into zones."""
     from liquidity_value_engine import cluster_price_levels_into_zones
