@@ -464,8 +464,8 @@ def _pin_tips_defining_net(src: str) -> list[tuple[int, str]]:
     net_def = re.compile(r"net gamma|\|net\||net GEX|net dealer GEX", re.I)
     row_start = re.compile(r"\{\s*(t|key)\s*:")
     out = []
-    for i, l in enumerate(lines):
-        if 'GAMMA PIN' not in l and 'Gamma Pin' not in l:
+    for i, line in enumerate(lines):
+        if 'GAMMA PIN' not in line and 'Gamma Pin' not in line:
             continue
         for j in range(i, min(len(lines), i + 3)):
             if j > i and row_start.search(lines[j]):
@@ -499,8 +499,8 @@ def test_terrain_hvl_is_never_painted_as_its_own_level():
     for path in (CONSOLE, CHART):
         src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", path.read_text(encoding="utf-8"),
                                               flags=re.M), flags=re.S)
-        offenders = [(n, l.strip()[:120]) for n, l in enumerate(src.splitlines(), 1)
-                     if re.search(r"[a-zA-Z_$][\w$]*\.hvl\b", l)]
+        offenders = [(n, line.strip()[:120]) for n, line in enumerate(src.splitlines(), 1)
+                     if re.search(r"[a-zA-Z_$][\w$]*\.hvl\b", line)]
         assert offenders == [], (
             f"{path.name}: terrain .hvl bound at a paint site — the pin painted twice under "
             f"a second name (RC-132/134): {offenders}"
@@ -514,9 +514,9 @@ def test_kl_hvl_tag_is_net_peak_not_legacy_hvl():
     offenders = []
     for rel in ("server.py", "live_decision_bundle.py", "liquidity_value_engine.py"):
         src = (root / rel).read_text(encoding="utf-8")
-        for n, l in enumerate(src.splitlines(), 1):
-            if "kl_hvl" in l and re.search(r'["\']HVL["\']', l):
-                offenders.append((rel, n, l.strip()[:100]))
+        for n, line in enumerate(src.splitlines(), 1):
+            if "kl_hvl" in line and re.search(r'["\']HVL["\']', line):
+                offenders.append((rel, n, line.strip()[:100]))
     assert offenders == [], f"kl_hvl still tagged as legacy HVL: {offenders}"
 
 

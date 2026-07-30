@@ -67,7 +67,9 @@ def test_levels_are_real_strikes_or_absent() -> None:
         value = getattr(snap, name)
         assert value is None or value in strikes, f"{name}={value} is not a chain strike"
     # RC-134: dead total-gamma twin removed — pin is the sole terrain total-gamma level.
-    assert "hvl" not in snap.to_dict(), "terrain must not ship hvl (equals gamma_pin by construction)"
+    assert "hvl" not in snap.to_dict(), (
+        "terrain must not ship hvl (it equals gamma_pin by construction)"
+    )
 
 
 def test_posture_is_never_issued_without_trusted_levels() -> None:

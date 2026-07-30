@@ -66,7 +66,8 @@ def check_no_orphans(c: sqlite3.Cursor) -> None:
     present = _cols(c, NORM)
     for col in BLOBS:
         if col not in present:
-            print(f"      {col}: column already dropped — premise already satisfied (resume)", flush=True)
+            print(f"      {col}: column already dropped — premise satisfied (resume)",
+                  flush=True)
             continue
         n = c.execute(
             f"""SELECT COUNT(*) FROM {NORM} n

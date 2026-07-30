@@ -13165,7 +13165,8 @@ def _liquidity_fusion_from_cache(
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
         (d.get("kl_gamma_pin"), "GAMMA_PIN"),
-        # RC-134: kl_hvl is the NET book (RC-124); tag must not say HVL (that name = total gamma = pin).
+        # RC-134: kl_hvl is the NET book (RC-124); the tag must not say HVL, since that
+        # name means total gamma, which is the pin.
         (d.get("kl_hvl"), "NET_GEX_PEAK"),
         (d.get("kl_max_pain"), "MAX_PAIN"),
         (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
