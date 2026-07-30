@@ -10385,12 +10385,24 @@ _strike_expiry_count: dict[str, int] = {}
 SCHWAB_CHAIN_CONTRACT_BUDGET: int = 6600
 
 
-def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | None) -> bool:
+def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | None,
+                           *, date_window_narrowed: bool = False) -> bool:
     """Remember this instrument's spot and strike spacing from a chain we just read.
 
     Returns True when a geometry was stored, so callers can count outcomes without
     reading the shared dict outside the lock (Cursor audit 2026-07-20: the seed loop
     compared len() across calls unlocked while workers mutate under the lock).
+
+    RC-149 — `date_window_narrowed` exists because the expiry count is the DENOMINATOR of the
+    width budget, and learning it from a date-narrowed chain inverts the safety it provides.
+    A `to_date`-limited fetch returns only the expiries inside that window, so n_exp comes back
+    SMALL; a small n_exp makes `resolve_chain_strike_count` compute a LARGER ceiling; the next
+    cycle then asks for that wider chain over the FULL date range and blows the contract budget.
+    The narrower the rung that rescued us, the more certain the next request is to fail — a
+    feedback loop that cannot recover on its own. MEASURED 2026-07-30: $SPX's last success was
+    on `chain_basis: dte<=120` with contracts_used 6785, and every fetch after it returned
+    HTTP 502 for 2h10m. A narrowed chain's count is a FLOOR, never the truth, so it may seed an
+    unknown instrument but must never overwrite a full-basis measurement.
     """
     tk = (ticker or "").upper().strip()
     if not tk or not contracts or spot is None or spot <= 0:
@@ -10406,7 +10418,11 @@ def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | No
     with _strike_geometry_lock:
         _strike_geometry[tk] = (float(spot), float(incr))
         if n_exp > 0:
-            _strike_expiry_count[tk] = n_exp
+            if not date_window_narrowed:
+                _strike_expiry_count[tk] = n_exp
+            else:
+                # a floor: raise a missing/too-low count, never lower a full-basis one
+                _strike_expiry_count[tk] = max(_strike_expiry_count.get(tk, 0), n_exp)
     return True
 
 
@@ -11019,6 +11035,14 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # book dealers actually hedge (120d, then 45d) rather than serving nothing.
         _chain_basis = "full"
         resp = None
+        # RC-149: the ladder narrowed on a TIMEOUT EXCEPTION only. An over-budget index chain does
+        # not time out — the vendor answers, with HTTP 502 — so `break` fired on the first rung and
+        # the narrower rungs it exists to reach were never tried. MEASURED 2026-07-30: $SPX
+        # returned HTTP 502 on every cycle for 2h10m while a ladder built for exactly this case
+        # sat unused, because RC-127 was written from a day when the same over-width request
+        # happened to die in ReadTimeout instead. One failure, two vendor expressions; the rung
+        # must advance on the CONDITION (this window is too big), never on the expression of it.
+        _OVER_BUDGET_CODES = (502, 413, 500, 504)
         for _basis, _to_days in (("full", None), ("dte<=120", 120), ("dte<=45", 45)):
             try:
                 _to = ((datetime.now(timezone.utc) + timedelta(days=_to_days)).date()
@@ -11026,6 +11050,12 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                 resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
                     client, tk, strike_count=_width, priority=priority, to_date=_to,
                 )
+                _code = getattr(resp, "status_code", None)
+                if _code in _OVER_BUDGET_CODES and _to_days != 45:
+                    _terrain_refresh_last_error[tk] = (
+                        f"chain fetch HTTP {_code} at basis {_basis!r} — trying a narrower window")
+                    resp = None          # do NOT keep a failed response as the answer
+                    continue
                 _chain_basis = _basis
                 break
             except Exception as _fe:
@@ -11052,7 +11082,10 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             _persist_universal_capture(tk, cap_key, _width, contracts, spot)
         # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
         # requests the width its +/-5% span actually needs instead of a tabulated guess.
-        _learn_strike_geometry(tk, contracts, spot)
+        # RC-149: tell the learner WHICH basis produced this chain. A narrowed window under-counts
+        # expiries, and that count is the denominator of the next request's width budget.
+        _learn_strike_geometry(tk, contracts, spot,
+                               date_window_narrowed=(_chain_basis != "full"))
         snap = compute_terrain(tk, contracts, spot)
         payload = snap.to_dict()
         payload["computed_ts_utc"] = time.time()

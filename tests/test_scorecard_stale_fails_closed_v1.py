@@ -324,6 +324,89 @@ def test_quarantine_state_is_distinguishable_from_pause_and_failure():
         server.terrain_quarantine_release(tk)
 
 
+def _fake_chain(n_expiries: int, spot: float = 7400.0) -> list:
+    """Minimal contracts with a regular strike grid across N expiry dates."""
+    out = []
+    for e in range(n_expiries):
+        for k in range(int(spot) - 50, int(spot) + 60, 10):
+            out.append({"expirationDate": f"2026-{8 + e // 28:02d}-{1 + e % 28:02d}T00:00:00.000Z",
+                        "strikePrice": float(k), "putCall": "CALL", "openInterest": 10})
+    return out
+
+
+def test_narrowed_chain_never_lowers_the_expiry_count():
+    """RC-149: n_exp is the DENOMINATOR of the width budget. Learning it from a date-narrowed
+    chain makes it small, which makes the next ceiling LARGE, which asks for a wider chain over
+    the full date range and blows the contract budget — the narrower the rung that rescued us,
+    the more certain the next request is to fail. $SPX rode that loop for 2h10m of HTTP 502."""
+    tk = "ZZTESTGEO"
+    try:
+        assert server._learn_strike_geometry(tk, _fake_chain(54), 7400.0) is True
+        with server._strike_geometry_lock:
+            assert server._strike_expiry_count[tk] == 54
+        wide = server.resolve_chain_strike_count(tk)
+        # a NARROWED chain reports fewer expiries — it must not overwrite the full-basis truth
+        assert server._learn_strike_geometry(tk, _fake_chain(12), 7400.0,
+                                             date_window_narrowed=True) is True
+        with server._strike_geometry_lock:
+            assert server._strike_expiry_count[tk] == 54, (
+                "a date-narrowed chain lowered the expiry count — the next full request will be "
+                "sized for 12 expiries and asked over all 54"
+            )
+        assert server.resolve_chain_strike_count(tk) == wide, (
+            "the width authority moved on a narrowed rung; this is the 502 feedback loop"
+        )
+        # ...but it may still SEED an instrument we know nothing about
+        with server._strike_geometry_lock:
+            server._strike_expiry_count.pop(tk, None)
+        server._learn_strike_geometry(tk, _fake_chain(12), 7400.0, date_window_narrowed=True)
+        with server._strike_geometry_lock:
+            assert server._strike_expiry_count[tk] == 12, "a floor must still seed an unknown"
+    finally:
+        with server._strike_geometry_lock:
+            server._strike_geometry.pop(tk, None)
+            server._strike_expiry_count.pop(tk, None)
+
+
+def test_width_budget_shrinks_as_expiries_grow():
+    """The vendor limit is on CONTRACTS (~strikeCount * 2 * expiries), so an instrument listing
+    more expiries must be asked for fewer strikes. This is the invariant the 502 violated."""
+    a, b = "ZZTESTFEW", "ZZTESTMANY"
+    try:
+        server._learn_strike_geometry(a, _fake_chain(8), 7400.0)
+        server._learn_strike_geometry(b, _fake_chain(54), 7400.0)
+        wa, wb = server.resolve_chain_strike_count(a), server.resolve_chain_strike_count(b)
+        assert wb <= wa, f"more expiries got a wider ask ({b}={wb} vs {a}={wa})"
+        assert wb * 2 * 54 <= server.SCHWAB_CHAIN_CONTRACT_BUDGET, (
+            f"width {wb} over 54 expiries implies {wb * 2 * 54} contracts, above the "
+            f"{server.SCHWAB_CHAIN_CONTRACT_BUDGET} budget the vendor 502s on"
+        )
+    finally:
+        with server._strike_geometry_lock:
+            for t in (a, b):
+                server._strike_geometry.pop(t, None)
+                server._strike_expiry_count.pop(t, None)
+
+
+def test_ladder_narrows_on_over_budget_status_not_only_on_timeout():
+    """RC-149 root: the rungs advanced on a TIMEOUT EXCEPTION only. An over-budget chain does not
+    time out — the vendor answers HTTP 502 — so `break` fired on rung 1 and the ladder built for
+    exactly this case was never reached."""
+    import re
+    src = (ROOT / "server.py").read_text(encoding="utf-8")
+    i = src.find('for _basis, _to_days in (("full", None)')
+    assert i > 0, "the timeout ladder is gone"
+    body = re.sub(r"#.*$", "", src[i:i + 1400], flags=re.M)
+    assert "_OVER_BUDGET_CODES" in body, (
+        "the ladder still advances only on a timeout exception, so a 502 breaks out at rung 1"
+    )
+    assert "resp = None" in body, (
+        "a failed response is kept as the answer instead of falling through to the next rung"
+    )
+    codes = src[src.find("_OVER_BUDGET_CODES = "):][:60]
+    assert "502" in codes, f"502 is not treated as over-budget: {codes!r}"
+
+
 def test_empty_gamma_panel_states_the_producers_reason():
     """Surface-bound: an empty panel blamed the console ('activates at the next console start')
     for RTY/XXT, whose chains Schwab rejects outright with HTTP 400. A restart was never the
