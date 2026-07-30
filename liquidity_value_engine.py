@@ -343,7 +343,10 @@ def get_overnight_levels(
     a day with no close and no bars — so Friday's entire post-16:00 session was silently
     dropped and the overnight range was only Monday's own pre-open. The same hole opens after
     every holiday. A range that omits half its window is not a narrower range, it is a wrong
-    level: OVERNIGHT_HIGH/LOW feed liquidity zones read as stop-run targets.
+    level: OVERNIGHT_HIGH/LOW are surfaced as session extremes an operator reads off the map.
+    (RC-155: this line previously asserted the pool mechanism RC-154 demoted. It was written
+    before that demotion and outlived its own taxonomy — a docstring that does so re-teaches
+    the retired claim to the next reader.)
 
     The window is now a CONTINUOUS INTERVAL [prior_close, this_open), so everything inside it
     counts — Friday's post-16:00 tape, any weekend or holiday bars, and this session's
@@ -1156,7 +1159,11 @@ def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
         return ZoneType.SUPPORT_LIQUIDITY, "Support / lower structure"
     if "TODAY_POC" in ts or "VWAP" in ts or "ORB_MID" in ts or "PD_POC" in ts or "PDC" in ts:
         return ZoneType.PIVOT_VALUE, "Fair value / pivot"
-    return ZoneType.PIVOT_VALUE, "Session liquidity zone"
+    # RC-155: the FALLTHROUGH note — no tag matched any branch above, so nothing is known about
+    # this cluster beyond the fact that it exists in this session. The retired wording named a
+    # pool mechanism precisely where the code had run out of classifications, and it reached the
+    # payload by RETURN TUPLE, which the first note-sweep (assignments only) could not see.
+    return ZoneType.PIVOT_VALUE, "Unclassified session zone"
 
 
 def build_live_snapshot(

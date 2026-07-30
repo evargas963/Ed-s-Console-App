@@ -534,18 +534,44 @@ def test_no_pool_language_in_rendered_zone_payload():
 
 
 def test_engine_emits_no_pool_language_anywhere_it_writes_notes():
-    """Every interpretation_notes literal in the engine, not only the branches one fixture
-    happens to reach."""
-    import re
+    """Every operator-facing note STRING in the engine, however it reaches the payload.
+
+    RC-155 (v39 gun 2): the first version of this sweep matched only `notes =` /
+    `interpretation_notes =` ASSIGNMENTS, so `return ZoneType.PIVOT_VALUE, "Session liquidity
+    zone"` — a note delivered by return tuple — was invisible to it and survived the Step 3
+    demotion. A checker that only knows one delivery mechanism certifies the others as clean.
+
+    This now walks the AST and inspects every string CONSTANT in the module, so a note cannot
+    escape by changing how it travels. Docstrings and comments are excluded: they must be free
+    to NAME the retired vocabulary in order to explain it (the RC-153 trap), and neither is
+    ever rendered to an operator.
+    """
+    import ast
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "liquidity_value_engine.py").read_text(
         encoding="utf-8")
+    tree = ast.parse(src)
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            d = ast.get_docstring(node, clean=False)
+            if d:
+                docstrings.add(d)
     offenders = []
-    for m in re.finditer(r'(?:interpretation_notes\s*=|notes\s*=)\s*"([^"]*)"', src):
-        text = m.group(1).lower()
-        if any(w in text for w in _POOL_WORDS):
-            offenders.append(m.group(1))
-    assert not offenders, f"engine still writes pool language: {offenders}"
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            s = node.value
+            if s in docstrings:
+                continue
+            if any(w in s.lower() for w in _POOL_WORDS):
+                offenders.append((getattr(node, "lineno", "?"), s))
+    # Source TAGS and enum values are identifiers, not prose shown as a claim; the two
+    # remaining zone-type names are named OBSERVED in RC-154 and are not Step 3 victims.
+    offenders = [(ln, s) for ln, s in offenders
+                 if s not in ("support_liquidity", "resistance_liquidity")]
+    assert not offenders, (
+        f"engine still emits pool language in a rendered string: {offenders}"
+    )
 
 
 def test_ui_shows_no_pool_badges():
