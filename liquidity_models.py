@@ -7,9 +7,114 @@ Ticker-agnostic; works for any instrument.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
+
+#: LP-01 Step 1 (RC-152) — the ONE volume-profile construction.
+#: A bar's volume did not trade at one price. It traded ACROSS [low, high], and the profile is
+#: the record of where. Both prior implementations dumped a bar's entire volume into a single
+#: bin at the typical price (H+L+C)/3, which is not a volume profile at all — it is a
+#: typical-price histogram wearing the name. Auction Market Theory / Volume Profile practice
+#: distributes the bar's volume across every price the bar traded through; POC is then the price
+#: that actually saw the most volume, and the value area is the smallest contiguous band holding
+#: `value_area_pct` of it.
+#:
+#: Uniform distribution across the spanned bins is the standard first-order model (it is what
+#: TPO-style and most charting-package volume profiles do without tick-level trade data). We do
+#: not have per-trade prints (the Schwab streamer carries no trade prints — see
+#: project_console_rebuild_program), so a within-bar shape would be invented, not measured.
+#: Uniform is the honest choice: it asserts only what the bar actually tells us — this volume
+#: traded somewhere in [low, high].
+
+#: Bound the work a single pathological bar can cause (a wide index bar against a 0.01 tick).
+#: When a bar spans more bins than this, its volume is spread across this many evenly-spaced
+#: bins covering the SAME range — still distributed, never dumped, and never unbounded.
+MAX_BINS_PER_BAR: int = 5000
+
+
+def volume_profile_poc_vah_val(
+    bars: list,
+    value_area_pct: float = 0.70,
+    tick_size: float = 0.01,
+    ndigits: int = 4,
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """POC / VAH / VAL from a volume profile built by DISTRIBUTING each bar across [low, high].
+
+    Returns (poc, vah, val), or (None, None, None) when no usable volume exists — absence reads
+    as absence, never a fabricated level.
+
+    Bins are addressed by INTEGER index (round(price / tick_size)) so that binning is exact:
+    accumulating float bin prices as dict keys lets 724.9999999 and 725.0 become two bins for
+    one price, which silently fragments the profile and can move the POC.
+    """
+    if not bars or tick_size <= 0:
+        return None, None, None
+
+    vol_by_idx: dict[int, float] = defaultdict(float)
+    for b in bars:
+        if not isinstance(b, dict):
+            continue
+        try:
+            hi = float(b["high"])
+            lo = float(b["low"])
+            vol = float(b.get("volume") or 0.0)
+        except (KeyError, TypeError, ValueError):
+            continue
+        # NaN/inf must never enter the profile: a NaN bin key poisons every comparison after it
+        if not (hi == hi and lo == lo and vol == vol):        # NaN check without importing math
+            continue
+        if hi in (float("inf"), float("-inf")) or lo in (float("inf"), float("-inf")):
+            continue
+        if vol <= 0:
+            continue
+        if hi < lo:
+            hi, lo = lo, hi
+        lo_i = int(round(lo / tick_size))
+        hi_i = int(round(hi / tick_size))
+        n = hi_i - lo_i + 1
+        if n <= 1:
+            vol_by_idx[lo_i] += vol            # flat bar: one price, all of it
+            continue
+        if n <= MAX_BINS_PER_BAR:
+            share = vol / n
+            for i in range(lo_i, hi_i + 1):
+                vol_by_idx[i] += share
+        else:
+            share = vol / MAX_BINS_PER_BAR
+            step = (hi_i - lo_i) / (MAX_BINS_PER_BAR - 1)
+            for k in range(MAX_BINS_PER_BAR):
+                vol_by_idx[int(round(lo_i + k * step))] += share
+
+    if not vol_by_idx:
+        return None, None, None
+    total_vol = sum(vol_by_idx.values())
+    if total_vol <= 0:
+        return None, None, None
+
+    idx_sorted = sorted(vol_by_idx)
+    poc_idx = max(idx_sorted, key=lambda i: (vol_by_idx[i], -i))
+    target = total_vol * value_area_pct
+    lo_pos = hi_pos = idx_sorted.index(poc_idx)
+    acc = vol_by_idx[poc_idx]
+    while acc < target and (lo_pos > 0 or hi_pos < len(idx_sorted) - 1):
+        v_lo = vol_by_idx[idx_sorted[lo_pos - 1]] if lo_pos > 0 else -1.0
+        v_hi = vol_by_idx[idx_sorted[hi_pos + 1]] if hi_pos < len(idx_sorted) - 1 else -1.0
+        if v_hi > v_lo and hi_pos < len(idx_sorted) - 1:
+            hi_pos += 1
+            acc += v_hi
+        elif lo_pos > 0:
+            lo_pos -= 1
+            acc += v_lo
+        elif hi_pos < len(idx_sorted) - 1:
+            hi_pos += 1
+            acc += v_hi
+        else:
+            break
+    return (round(poc_idx * tick_size, ndigits),
+            round(idx_sorted[hi_pos] * tick_size, ndigits),
+            round(idx_sorted[lo_pos] * tick_size, ndigits))
 
 
 class SnapshotType(str, Enum):

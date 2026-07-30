@@ -869,53 +869,17 @@ def proximity_alerts(
 
 def _volume_profile_poc_vah_val(bars: list, value_area_pct: float = 0.70,
                                  tick_size: float = 0.01) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """POC / VAH / VAL from the ONE volume-profile construction (LP-01 Step 1, RC-152).
+
+    This was a SECOND, independent copy of the same typical-price dump — it binned each bar's
+    entire volume at (H+L+C)/3, and its output feeds `pd_poc/pd_vah/pd_val` and
+    `today_poc/today_vah/today_val`. Two copies of a wrong construction is two wrong answers
+    that can also disagree with each other; `liquidity_models` now owns the one implementation
+    and distributes volume across [low, high]. Kept as a thin entry point so no caller changes,
+    and `ndigits=2` preserves this module's original rounding.
     """
-    Compute POC (Point of Control), VAH (Value Area High), VAL (Value Area Low)
-    from bars with 'open','high','low','close','volume'.
-    POC = price with max volume. Value area = smallest range containing
-    value_area_pct of volume, centered on POC.
-    Returns (poc, vah, val).
-    """
-    if not bars:
-        return None, None, None
-    from collections import defaultdict
-    vol_by_price: dict[float, float] = defaultdict(float)
-    for c in bars:
-        h = _float_or_none(c.get("high"))
-        l = _float_or_none(c.get("low"))
-        cl = _float_or_none(c.get("close"))
-        vol = _positive_float_or_none(c.get("volume"))
-        if h is None or l is None or cl is None or vol is None:
-            continue
-        typical = (h + l + cl) / 3.0
-        price_bin = round(typical / tick_size) * tick_size
-        vol_by_price[price_bin] += vol
-    if not vol_by_price:
-        return None, None, None
-    total_vol = sum(vol_by_price.values())
-    if total_vol <= 0:
-        return None, None, None
-    poc_price = max(vol_by_price.keys(), key=lambda p: vol_by_price[p])
-    target_vol = total_vol * value_area_pct
-    prices_sorted = sorted(vol_by_price.keys())
-    best_lo, best_hi = poc_price, poc_price
-    best_vol = vol_by_price[poc_price]
-    lo_idx = prices_sorted.index(poc_price) if poc_price in prices_sorted else 0
-    hi_idx = lo_idx
-    while best_vol < target_vol and (lo_idx > 0 or hi_idx < len(prices_sorted) - 1):
-        v_lo = vol_by_price.get(prices_sorted[lo_idx - 1], 0) if lo_idx > 0 else 0
-        v_hi = vol_by_price.get(prices_sorted[hi_idx + 1], 0) if hi_idx < len(prices_sorted) - 1 else 0
-        if v_lo >= v_hi and lo_idx > 0:
-            lo_idx -= 1
-            best_vol += v_lo
-            best_lo = prices_sorted[lo_idx]
-        elif hi_idx < len(prices_sorted) - 1:
-            hi_idx += 1
-            best_vol += v_hi
-            best_hi = prices_sorted[hi_idx]
-        else:
-            break
-    return round(poc_price, 2), round(best_hi, 2), round(best_lo, 2)
+    from liquidity_models import volume_profile_poc_vah_val
+    return volume_profile_poc_vah_val(bars, value_area_pct, tick_size, ndigits=2)
 
 
 def _vwap_bands(bars: list, vwap_val: float) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:

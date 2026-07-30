@@ -212,6 +212,142 @@ def test_compute_volume_profile_levels():
     assert val <= poc <= vah
 
 
+def _typical_price_dump(bars, value_area_pct=0.70, tick_size=0.01):
+    """The construction LP-01 Step 1 REPLACED, kept here only as the disagreement witness.
+
+    A test that a new method 'works' proves nothing if the old one produced the same number.
+    This reproduces the retired typical-price dump so the fixtures below can show the two
+    genuinely differ where it matters.
+    """
+    from collections import defaultdict
+    vol_by_price: dict = defaultdict(float)
+    for b in bars:
+        typical = (float(b["high"]) + float(b["low"]) + float(b["close"])) / 3.0
+        vol_by_price[round(typical / tick_size) * tick_size] += float(b["volume"])
+    if not vol_by_price:
+        return None
+    return round(max(vol_by_price, key=lambda p: vol_by_price[p]), 4)
+
+
+def test_volume_profile_flat_bar_puts_all_volume_at_one_price():
+    """A bar with high == low DID trade at exactly one price — distribution must not smear it."""
+    from liquidity_models import volume_profile_poc_vah_val
+    bars = [{"high": 100.0, "low": 100.0, "close": 100.0, "volume": 5000.0}]
+    poc, vah, val = volume_profile_poc_vah_val(bars)
+    assert poc == 100.0, f"flat bar POC moved off its only traded price: {poc}"
+    assert vah == 100.0 and val == 100.0, f"flat bar produced a width: {val}..{vah}"
+
+
+def test_volume_profile_distributes_a_wide_bar_across_its_range():
+    """The defect in one line: one wide bar's volume belongs across [low, high], not at
+    (H+L+C)/3. With a single bar the distributed profile is FLAT, so every spanned price ties —
+    while the dump puts 100% of it in one bin at the typical price."""
+    from liquidity_models import volume_profile_poc_vah_val
+    bars = [{"high": 101.0, "low": 100.0, "close": 100.9, "volume": 10100.0}]
+    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
+    assert val >= 100.0 and vah <= 101.0, f"value area escaped the bar's range: {val}..{vah}"
+    assert (vah - val) > 0.5, (
+        f"a 70% value area over a uniformly-distributed 1.00-wide bar must span ~0.70, got "
+        f"{vah - val:.2f} — volume is still being dumped"
+    )
+    dump_poc = _typical_price_dump(bars)
+    assert abs(dump_poc - 100.6333) < 0.01, "witness fixture drifted"
+    assert vah > dump_poc > val, (
+        "the retired dump concentrated everything at the typical price; the distributed "
+        "profile must instead spread across the range that price sits inside"
+    )
+
+
+def test_volume_profile_poc_is_the_price_most_bars_traded_through():
+    """Hand-worked: three bars all span 100.00-100.04; a fourth spans 100.03-100.07. Every bar
+    covers 100.03-100.04, so those two bins carry the most volume and the POC must land there.
+    The typical-price dump cannot find it — no bar's (H+L+C)/3 lands on 100.03/100.04."""
+    from liquidity_models import volume_profile_poc_vah_val
+    bars = [
+        {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
+        {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
+        {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
+        {"high": 100.07, "low": 100.03, "close": 100.07, "volume": 500.0},
+    ]
+    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
+    assert poc in (100.03, 100.04), (
+        f"POC {poc} is not in the band every bar traded through (100.03-100.04)"
+    )
+    dump_poc = _typical_price_dump(bars)
+    assert dump_poc not in (100.03, 100.04), (
+        "fixture no longer discriminates — the retired dump happens to agree here"
+    )
+    assert val <= poc <= vah
+
+
+def test_volume_profile_rejects_nan_and_nonpositive_volume():
+    """A NaN bin key poisons every comparison after it, and a zero-volume bar contributes
+    nothing — absence must read as absence rather than a fabricated level."""
+    from liquidity_models import volume_profile_poc_vah_val
+    nan = float("nan")
+    bars = [
+        {"high": nan, "low": 100.0, "close": 100.0, "volume": 900.0},
+        {"high": 100.0, "low": 100.0, "close": 100.0, "volume": 0.0},
+        {"high": float("inf"), "low": 100.0, "close": 100.0, "volume": 900.0},
+    ]
+    assert volume_profile_poc_vah_val(bars) == (None, None, None)
+    assert volume_profile_poc_vah_val([]) == (None, None, None)
+    assert volume_profile_poc_vah_val([{"high": 1.0, "low": 1.0, "close": 1.0,
+                                        "volume": 1.0}], tick_size=0.0) == (None, None, None)
+
+
+def test_volume_profile_wide_bar_stays_bounded_and_still_distributed():
+    """A pathological range against a 0.01 tick must not allocate unbounded bins, and must
+    still SPREAD — the bound is a work cap, never a licence to dump."""
+    from liquidity_models import MAX_BINS_PER_BAR, volume_profile_poc_vah_val
+    bars = [{"high": 10000.0, "low": 0.01, "close": 5000.0, "volume": 1e6}]
+    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
+    assert poc is not None and vah is not None and val is not None
+    assert (vah - val) > 1000.0, "a 10,000-wide bar collapsed to a point — that is a dump"
+    assert MAX_BINS_PER_BAR > 0
+
+
+def test_both_call_sites_use_the_one_construction():
+    """LP-01 Step 1 requires ONE faucet. liquidity_value_engine and market_context each held an
+    independent copy of the same dump; two copies of a wrong construction are two wrong answers
+    that can also disagree with each other."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    for name in ("liquidity_value_engine.py", "market_context.py"):
+        src = (root / name).read_text(encoding="utf-8")
+        body = re.sub(r"#.*$", "", src, flags=re.M)
+        assert "volume_profile_poc_vah_val(bars, value_area_pct, tick_size" in body, (
+            f"{name} does not delegate to the one construction"
+        )
+        i = body.find("def _volume_profile_poc_vah_val")
+        assert i > 0, f"{name} lost its entry point"
+        # Scope to the PROFILE function only. Typical price is CORRECT for VWAP — VWAP is
+        # defined as sum(typical * vol) / sum(vol) — so `_vwap_bands` legitimately computes
+        # (h+l+cl)/3 and must not be swept up by this check. The defect was using typical
+        # price to build the volume PROFILE, nowhere else.
+        fn = body[i:i + 1200]
+        assert "/ 3.0" not in fn, f"{name} still builds the profile from a typical price"
+        assert "defaultdict" not in fn, (
+            f"{name} still accumulates its own bins instead of delegating to the one faucet"
+        )
+
+
+def test_engine_and_context_agree_on_one_profile():
+    """Same bars, same tick, same value-area pct -> the two entry points must agree (they now
+    share an implementation; rounding differs by design, 4dp vs 2dp)."""
+    from liquidity_value_engine import _volume_profile_poc_vah_val as eng
+    from market_context import _volume_profile_poc_vah_val as ctx
+    bars = [
+        {"high": 100.04, "low": 100.00, "close": 100.02, "volume": 500.0},
+        {"high": 100.06, "low": 100.02, "close": 100.05, "volume": 800.0},
+    ]
+    e_poc, e_vah, e_val = eng(bars, 0.70, 0.01)
+    c_poc, c_vah, c_val = ctx(bars, 0.70, 0.01)
+    assert abs(e_poc - c_poc) < 0.01, f"two faucets disagree on POC: {e_poc} vs {c_poc}"
+    assert abs(e_vah - c_vah) < 0.01 and abs(e_val - c_val) < 0.01
+
+
 def test_cluster_price_levels():
     """Levels within threshold clustered into zones."""
     from liquidity_value_engine import cluster_price_levels_into_zones

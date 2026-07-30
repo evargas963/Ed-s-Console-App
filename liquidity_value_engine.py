@@ -24,6 +24,7 @@ from liquidity_models import (
     SnapshotType,
     Zone,
     ZoneType,
+    volume_profile_poc_vah_val,   # LP-01 Step 1 (RC-152): the ONE profile construction
 )
 
 if TYPE_CHECKING:  # forward-ref only — the "pd.DataFrame" annotations; no runtime pandas import
@@ -457,51 +458,14 @@ def _volume_profile_poc_vah_val(
     value_area_pct: float = 0.70,
     tick_size: float = 0.01,
 ) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """POC / VAH / VAL from the ONE volume-profile construction (LP-01 Step 1, RC-152).
+
+    This used to dump each bar's ENTIRE volume into a single bin at the typical price
+    (H+L+C)/3 — a typical-price histogram, not a volume profile. `liquidity_models`
+    now owns the construction and distributes each bar's volume across [low, high];
+    this stays as the engine's private entry point so no caller changes.
     """
-    POC = price with max volume.
-    Value area = smallest range containing value_area_pct of volume, centered on POC.
-    Approximation: uses typical_price (H+L+C)/3 per bar, binned by tick_size.
-    """
-    if not bars:
-        return None, None, None
-    vol_by_price: dict[float, float] = defaultdict(float)
-    for b in bars:
-        vol = _positive_float_or_none(b.get("volume"))
-        if vol is None:
-            continue
-        h, l_, c = b["high"], b["low"], b["close"]
-        typical = (h + l_ + c) / 3.0
-        price_bin = round(typical / tick_size) * tick_size
-        vol_by_price[price_bin] += vol
-    if not vol_by_price:
-        return None, None, None
-    total_vol = sum(vol_by_price.values())
-    if total_vol <= 0:
-        return None, None, None
-    poc_price = max(vol_by_price.keys(), key=lambda p: vol_by_price[p])
-    target_vol = total_vol * value_area_pct
-    prices_sorted = sorted(vol_by_price.keys())
-    best_lo, best_hi = poc_price, poc_price
-    best_vol = vol_by_price[poc_price]
-    try:
-        lo_idx = prices_sorted.index(poc_price)
-    except ValueError:
-        lo_idx = 0
-    hi_idx = lo_idx
-    while best_vol < target_vol and (lo_idx > 0 or hi_idx < len(prices_sorted) - 1):
-        v_lo = vol_by_price.get(prices_sorted[lo_idx - 1], 0) if lo_idx > 0 else 0
-        v_hi = vol_by_price.get(prices_sorted[hi_idx + 1], 0) if hi_idx < len(prices_sorted) - 1 else 0
-        if v_lo >= v_hi and lo_idx > 0:
-            lo_idx -= 1
-            best_vol += v_lo
-            best_lo = prices_sorted[lo_idx]
-        elif hi_idx < len(prices_sorted) - 1:
-            hi_idx += 1
-            best_vol += v_hi
-            best_hi = prices_sorted[hi_idx]
-        else:
-            break
-    return round(poc_price, 4), round(best_hi, 4), round(best_lo, 4)
+    return volume_profile_poc_vah_val(bars, value_area_pct, tick_size, ndigits=4)
 
 
 def compute_volume_profile_levels(
