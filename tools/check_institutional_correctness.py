@@ -1545,8 +1545,17 @@ def check_unproven_register() -> list[Violation]:
 _RC_CITATION_GRANDFATHERED = frozenset(f"RC-{i}" for i in range(1, 30))
 
 #: A citation is a backticked fragment that could be RE-RUN to reproduce the number.
+#: RC-136: `curl` and the HTTP-probe forms were MISSING, so the operator's RC-125 live-probe
+#: law — which is curl-shaped by definition — could not satisfy this rule. Measured
+#: 2026-07-29: RC-134's row cited `curl -s "http://127.0.0.1:8000/api/terrain?ticker=SPY"`
+#: and the gate still failed, pressuring the author to reword TRUE evidence until the regex
+#: was happy, which is the citation theater this rule exists to prevent. proof_only_guard's
+#: COMMAND regex had to close the same gap for curl and 127.0.0.1 earlier that day.
+#: The rule's STRENGTH is unchanged: numbers with no backticked command still fail, and a
+#: backticked span that is prose rather than a command still fails.
 _RC_CITATION_RE = re.compile(
-    r"`[^`]*(SELECT |COUNT\(|SUM\(|PRAGMA |pytest|python |node |tools/|\.py)[^`]*`", re.I
+    r"`[^`]*(SELECT |COUNT\(|SUM\(|PRAGMA |pytest|python |node |tools/|\.py"
+    r"|curl |urllib|http://127\.0\.0\.1|https?://localhost)[^`]*`", re.I
 )
 #: A numeric CLAIM — a bare digit run, optionally with a unit. Dates and RC ids are excluded
 #: by the callers stripping them, so "2026-07-20" does not read as three claims.
@@ -1999,6 +2008,87 @@ def _staged_has_real_change(rel: str) -> bool:
     return False
 
 
+#: Source files a FIXED cell can name. Deliberately NOT .json/.jsonl/.md/.txt: report and
+#: ledger artifacts churn from daily runs, and treating them as "the fix" would make this
+#: check fire on unrelated evidence writes (RC-137's own false-positive analysis).
+_FIXED_SOURCE_FILE_RE = re.compile(r"\b([\w][\w./\-]*\.(?:py|html|js))\b")
+
+
+def _closed_row_code_not_shipped(
+    added_rows: list[str],
+    dirty: frozenset[str] | set[str],
+) -> list[tuple[str, list[str]]]:
+    """PURE core of RC-137: (rc_id, [dirty files it claims are FIXED]) for each staged row.
+
+    A row is checked only when THIS commit adds/rewrites it, so commits that do not touch the
+    ledger are unaffected and one agent's unrelated dirty files cannot block another's commit.
+    """
+    out: list[tuple[str, list[str]]] = []
+    for row in added_rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        if len(cells) < 7 or cells[1].upper() != "CLOSED":
+            continue
+        named: list[str] = []
+        for m in _FIXED_SOURCE_FILE_RE.finditer(" ".join(cells[6:])):
+            rel = m.group(1).replace("\\", "/").lstrip("./")
+            if rel in dirty and rel not in named:
+                named.append(rel)
+        if named:
+            out.append((cells[0], sorted(named)))
+    return out
+
+
+def check_closed_rows_ship_their_code() -> list[Violation]:
+    """A row that says CLOSED must not leave the code it names sitting in the working tree.
+
+    WHAT WAS OBSERVED (2026-07-29, RC-137). RC-134 was written CLOSED with a FIXED cell naming
+    terrain_engine.py, server.py, live_decision_bundle.py and liquidity_value_engine.py, and the
+    ledger row was committed while every one of those files stayed UNCOMMITTED. HEAD therefore
+    still shipped the defect (`hvl=pick_hvl_strike`) for hours while the ledger asserted the fix
+    had landed. It looked correct from the outside because the running console had loaded the
+    working-tree files, so the live wire agreed with the ledger and disagreed with git — one
+    `git checkout .` or a stash cycle would have silently reverted the running system.
+
+    Rule: for every '| RC-' row this commit adds or rewrites with status CLOSED, no source file
+    (.py/.html/.js) named in its fix cell may still be dirty in the working tree.
+
+    HOW VALIDATED: prototyped against this repo before enforcing. It is scoped to rows the
+    commit actually touches — a commit that does not touch the ledger cannot be blocked by
+    someone else's in-flight edits, and a later text edit to an old CLOSED row stays quiet once
+    its files are committed. Returns [] outside a git/commit context, so it never false-blocks.
+    """
+    log_rel = "governance/root_cause_log.md"
+    staged = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel])
+    if not staged:
+        return []
+    added = [ln[1:] for ln in staged if ln.startswith("+| RC-")]
+    if not added:
+        return []
+
+    status = _git_output_lines(["status", "--porcelain"])
+    if status is None:
+        return []
+    dirty: set[str] = set()
+    for ln in status:
+        if len(ln) < 4:
+            continue
+        worktree_col, path = ln[1], ln[3:].strip().strip('"')
+        if " -> " in path:
+            path = path.split(" -> ")[-1].strip().strip('"')
+        if ln[:2] == "??" or worktree_col in ("M", "D"):
+            dirty.add(path.replace("\\", "/"))
+
+    out: list[Violation] = []
+    for rc_id, files in _closed_row_code_not_shipped(added, dirty):
+        out.append(Violation(
+            REPO / log_rel, 0,
+            f"{rc_id} is being committed as CLOSED but the code it names as FIXED is still "
+            f"dirty in the working tree: {', '.join(files)}. Stage the fix with its row, or the "
+            f"ledger asserts a repair that HEAD does not contain (RC-137: RC-134 shipped CLOSED "
+            f"while HEAD still had the defect and only the running process looked correct)."))
+    return out
+
+
 def check_recursive_five_why_front_loaded() -> list[Violation]:
     """UNIVERSAL front-end of the recursive-5-why law: a code change ships with its root cause.
 
@@ -2204,7 +2294,11 @@ _NEGATIVE_CONTROL_GRANDFATHERED = frozenset({
     "root_cause_recurrence_declared", "fix_crosswalks_to_violated_lock",
     "domain_constants_are_derived", "no_terminal_null", "no_governance_duplication",
     "checks_are_justified", "no_tautological_assertions", "open_item_cap",
-    "no_silent_swallow", "no_todo_without_tracking_id", "rc_numeric_claims_cite_a_command",
+    "no_silent_swallow", "no_todo_without_tracking_id",
+    # RC-136 GRADUATED rc_numeric_claims_cite_a_command off this list: it now has real fire AND
+    # quiet controls (test_citation_check_fires_when_numbers_carry_no_command /
+    # test_citation_check_accepts_the_repos_live_probe_forms), which is stronger than the
+    # name-presence proxy this set exempts. Burn-down, never addition.
     "snapshots_read_names_the_timeframe", "shutdown_is_bounded", "unproven_register",
     "venv_parity", "credential_leak", "sqlite_wal_contract",
 })
@@ -3032,6 +3126,8 @@ CHECKS = [
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
     ("rc_numeric_claims_cite_a_command", check_rc_numeric_claims_cite_a_command, True),
+    # RC-137: a CLOSED row must ship the code it names (the ledger cannot outrun HEAD).
+    ("closed_rows_ship_their_code", check_closed_rows_ship_their_code, True),
     ("verdicts_declare_their_power", check_verdicts_declare_their_power, True),  # provenance, not the word "MEASURED" (RC-6)
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work

@@ -366,3 +366,90 @@ def test_defect_report_requires_probe_artifact():
     )
     assert defect_report_needs_probe("what is lp-01?", "LP-01 is the liquidity program.") is None
 
+
+def _citation_row(evidence: str) -> str:
+    """A 7-cell ledger row whose fix cell carries `evidence` beside four numeric claims.
+    RC-900 is outside the grandfathered range, so the citation rule binds it."""
+    return ("| RC-900 | CLOSED | 2026-07-28 | 2026-07-28 | desc | a -> b -> c -> d -> ROOT: e | "
+            f"reclaimed 0.25 GB across 1,328 rows in 42 s over 3 tables. {evidence} |")
+
+
+def test_citation_check_fires_when_numbers_carry_no_command(tmp_path, monkeypatch):
+    """RC-136 FIRE control: the rule's strength must be untouched by the allowlist widening —
+    numeric claims with no backticked command still fail, and a backticked span that is PROSE
+    rather than a command still fails (otherwise `any text` would buy a free pass)."""
+    from tools import check_institutional_correctness as M
+    (tmp_path / "governance").mkdir()
+    log = tmp_path / "governance" / "root_cause_log.md"
+    monkeypatch.setattr(M, "REPO", tmp_path)
+
+    log.write_text(_citation_row("Verified by careful review.") + "\n", encoding="utf-8")
+    assert len(M.check_rc_numeric_claims_cite_a_command()) == 1, (
+        "numbers with no citation were not flagged — the rule went inert"
+    )
+    log.write_text(_citation_row("Verified `by careful review`.") + "\n", encoding="utf-8")
+    assert len(M.check_rc_numeric_claims_cite_a_command()) == 1, (
+        "backticked PROSE satisfied the citation rule — any text would buy a free pass"
+    )
+
+
+def test_citation_check_accepts_the_repos_live_probe_forms(tmp_path, monkeypatch):
+    """RC-136 QUIET control: the operator's RC-125 live-probe law is curl-shaped, and a python
+    urllib probe is the same evidence in another idiom. Both must satisfy the rule — measured
+    2026-07-29, a true curl citation on RC-134 was rejected and the evidence had to be reworded
+    to pass, which is the citation theater this rule exists to prevent."""
+    from tools import check_institutional_correctness as M
+    (tmp_path / "governance").mkdir()
+    log = tmp_path / "governance" / "root_cause_log.md"
+    monkeypatch.setattr(M, "REPO", tmp_path)
+
+    for evidence in (
+        'Measured by `curl -s "http://127.0.0.1:8000/api/terrain?ticker=SPY"`.',
+        "Measured by `python -c \"import urllib.request; "
+        "print(urllib.request.urlopen('http://127.0.0.1:8000/api/health').status)\"`.",
+        "Measured by `SELECT COUNT(*) FROM snapshots`.",
+        "Measured by `python -m pytest tests/test_terrain_engine_v1.py -q`.",
+    ):
+        log.write_text(_citation_row(evidence) + "\n", encoding="utf-8")
+        assert M.check_rc_numeric_claims_cite_a_command() == [], (
+            f"a re-runnable citation was rejected — false reject remains: {evidence}"
+        )
+
+
+def test_closed_row_must_ship_its_code_controls():
+    """RC-137: a CLOSED row must not name FIXED source files that are still dirty.
+
+    FIRE on the exact shape that shipped: RC-134 was committed CLOSED naming terrain_engine.py
+    while that file sat uncommitted, so HEAD still had `hvl=pick_hvl_strike` while the ledger
+    said otherwise. QUIET on the three legitimate shapes, or the check would block honest
+    commits in a shared worktree."""
+    from tools.check_institutional_correctness import CHECKS
+    from tools.check_institutional_correctness import _closed_row_code_not_shipped as V
+
+    assert ("closed_rows_ship_their_code", True) in [(n, e) for n, _f, e in CHECKS], (
+        "closed_rows_ship_their_code is not registered ENFORCED — an unregistered check "
+        "cannot block anything"
+    )
+
+    def row(status, fix):
+        return (f"| RC-134 | {status} | 2026-07-29 | 2026-08-01 | desc | "
+                f"a -> b -> c -> d -> ROOT: e | {fix} |")
+
+    fixed = "FIXED: terrain_engine.py, server.py (Tier-C kwargs)."
+
+    hits = V([row("CLOSED", fixed)], {"terrain_engine.py", "server.py"})
+    assert len(hits) == 1 and hits[0][0] == "RC-134", f"the RC-134 shape did not fire: {hits}"
+    assert hits[0][1] == ["server.py", "terrain_engine.py"], (
+        f"the violation must name the exact unshipped files: {hits}"
+    )
+
+    # QUIET 1 — the fix is staged/committed, so nothing is dirty.
+    assert V([row("CLOSED", fixed)], set()) == [], "a shipped fix was flagged"
+    # QUIET 2 — the row is not CLOSED yet; work in progress may leave files dirty.
+    assert V([row("PARTIAL", fixed)], {"terrain_engine.py"}) == [], "a non-CLOSED row fired"
+    # QUIET 3 — churny evidence artifacts are not "the fix" (daily runs rewrite them).
+    assert V([row("CLOSED", "FIXED: see reports/terrain_backtest_latest.json")],
+             {"reports/terrain_backtest_latest.json"}) == [], (
+        "a dirty report artifact fired — daily runs would block every ledger commit"
+    )
+
