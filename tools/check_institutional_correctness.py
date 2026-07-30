@@ -2014,27 +2014,63 @@ def _staged_has_real_change(rel: str) -> bool:
 _FIXED_SOURCE_FILE_RE = re.compile(r"\b([\w][\w./\-]*\.(?:py|html|js))\b")
 
 
+#: A commit SHA cited inside a row — how a closure points at code that landed earlier.
+_ROW_SHA_RE = re.compile(r"\b([0-9a-f]{7,40})\b")
+
+
+def _row_cells(row: str) -> list[str]:
+    return [c.strip() for c in row.strip("|").split("|")]
+
+
 def _closed_row_code_not_shipped(
     added_rows: list[str],
     dirty: frozenset[str] | set[str],
+    *,
+    removed_rows: tuple[str, ...] | list[str] = (),
+    staged: frozenset[str] | set[str] = frozenset(),
+    sha_touches=None,
 ) -> list[tuple[str, list[str]]]:
-    """PURE core of RC-137: (rc_id, [dirty files it claims are FIXED]) for each staged row.
+    """PURE core of RC-137/RC-139: rows whose CLOSED claim is not backed by shipped code.
 
-    A row is checked only when THIS commit adds/rewrites it, so commits that do not touch the
-    ledger are unaffected and one agent's unrelated dirty files cannot block another's commit.
+    Two distinct escapes, both closed here:
+      DIRTY   (RC-134's shape) — the row names FIXED files that are sitting uncommitted, so
+              the ledger says fixed while HEAD does not have it.
+      ABSENT  (v30's shape) — the row is NEWLY closed and names FIXED files that are in
+              neither this commit nor any commit the row cites by SHA. A clean worktree is
+              not evidence: it reads identically whether the fix landed or was never written.
+
+    A row is checked only when THIS commit adds/rewrites it. ABSENT applies only to rows
+    BECOMING closed (a text edit to a long-closed row cannot re-litigate old history), and a
+    cited SHA that actually touched the file satisfies it — closures may point at where the
+    code landed instead of carrying it.
     """
+    was_closed = {
+        _row_cells(r)[0] for r in removed_rows
+        if len(_row_cells(r)) >= 7 and _row_cells(r)[1].upper() == "CLOSED"
+    }
     out: list[tuple[str, list[str]]] = []
     for row in added_rows:
-        cells = [c.strip() for c in row.strip("|").split("|")]
+        cells = _row_cells(row)
         if len(cells) < 7 or cells[1].upper() != "CLOSED":
             continue
-        named: list[str] = []
-        for m in _FIXED_SOURCE_FILE_RE.finditer(" ".join(cells[6:])):
+        rc_id = cells[0]
+        body = " ".join(cells[6:])
+        shas = [s for s in _ROW_SHA_RE.findall(body) if not s.isdigit()]
+        bad: list[str] = []
+        for m in _FIXED_SOURCE_FILE_RE.finditer(body):
             rel = m.group(1).replace("\\", "/").lstrip("./")
-            if rel in dirty and rel not in named:
-                named.append(rel)
-        if named:
-            out.append((cells[0], sorted(named)))
+            if rel in bad or rel in staged:
+                continue
+            if rel in dirty:
+                bad.append(rel)
+                continue
+            if rc_id in was_closed:
+                continue      # already closed before this commit — not a new claim
+            if sha_touches and any(sha_touches(s, rel) for s in shas):
+                continue      # the row points at the commit that carried it
+            bad.append(rel)
+        if bad:
+            out.append((rc_id, sorted(bad)))
     return out
 
 
@@ -2058,10 +2094,11 @@ def check_closed_rows_ship_their_code() -> list[Violation]:
     its files are committed. Returns [] outside a git/commit context, so it never false-blocks.
     """
     log_rel = "governance/root_cause_log.md"
-    staged = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel])
-    if not staged:
+    ledger_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel])
+    if not ledger_diff:
         return []
-    added = [ln[1:] for ln in staged if ln.startswith("+| RC-")]
+    added = [ln[1:] for ln in ledger_diff if ln.startswith("+| RC-")]
+    removed = [ln[1:] for ln in ledger_diff if ln.startswith("-| RC-")]
     if not added:
         return []
 
@@ -2078,14 +2115,41 @@ def check_closed_rows_ship_their_code() -> list[Violation]:
         if ln[:2] == "??" or worktree_col in ("M", "D"):
             dirty.add(path.replace("\\", "/"))
 
+    staged_files = {
+        p.replace("\\", "/") for p in (_git_output_lines(["diff", "--cached", "--name-only"]) or [])
+        if p.strip()
+    }
+
+    def _sha_touched(sha: str, rel: str) -> bool:
+        """True when `sha` is a real commit that changed `rel` — how a closure may point at
+        code that landed in an EARLIER commit instead of carrying it in this one."""
+        files = _git_output_lines(["show", "--name-only", "--pretty=format:", sha])
+        if files is None:
+            return False
+        return rel in {f.replace("\\", "/").strip() for f in files if f.strip()}
+
     out: list[Violation] = []
-    for rc_id, files in _closed_row_code_not_shipped(added, dirty):
-        out.append(Violation(
-            REPO / log_rel, 0,
-            f"{rc_id} is being committed as CLOSED but the code it names as FIXED is still "
-            f"dirty in the working tree: {', '.join(files)}. Stage the fix with its row, or the "
-            f"ledger asserts a repair that HEAD does not contain (RC-137: RC-134 shipped CLOSED "
-            f"while HEAD still had the defect and only the running process looked correct)."))
+    gaps = _closed_row_code_not_shipped(
+        added, dirty, removed_rows=removed, staged=staged_files, sha_touches=_sha_touched)
+    for rc_id, files in gaps:
+        still_dirty = sorted(f for f in files if f in dirty)
+        absent = sorted(f for f in files if f not in dirty)
+        if still_dirty:
+            out.append(Violation(
+                REPO / log_rel, 0,
+                f"{rc_id} is being committed as CLOSED but the code it names as FIXED is still "
+                f"dirty in the working tree: {', '.join(still_dirty)}. Stage the fix with its "
+                f"row, or the ledger asserts a repair that HEAD does not contain (RC-137: "
+                f"RC-134 shipped CLOSED while HEAD still had the defect and only the running "
+                f"process looked correct)."))
+        if absent:
+            out.append(Violation(
+                REPO / log_rel, 0,
+                f"{rc_id} is being CLOSED naming FIXED files this commit does not carry and no "
+                f"cited commit touched: {', '.join(absent)}. A clean worktree is not evidence — "
+                f"it looks identical whether the fix landed or was never written (RC-139, the "
+                f"escape v30 measured in RC-137's first cut). Stage the fix, or cite the SHA "
+                f"that carried it."))
     return out
 
 

@@ -443,13 +443,57 @@ def test_closed_row_must_ship_its_code_controls():
         f"the violation must name the exact unshipped files: {hits}"
     )
 
-    # QUIET 1 — the fix is staged/committed, so nothing is dirty.
-    assert V([row("CLOSED", fixed)], set()) == [], "a shipped fix was flagged"
+    # QUIET 1 — the fix ships in this commit: nothing dirty AND the files are staged.
+    # (Under RC-139 "nothing dirty" alone is NOT quiet — a clean tree is not evidence.)
+    assert V([row("CLOSED", fixed)], set(),
+             staged={"server.py", "terrain_engine.py"}) == [], "a shipped fix was flagged"
     # QUIET 2 — the row is not CLOSED yet; work in progress may leave files dirty.
     assert V([row("PARTIAL", fixed)], {"terrain_engine.py"}) == [], "a non-CLOSED row fired"
     # QUIET 3 — churny evidence artifacts are not "the fix" (daily runs rewrite them).
     assert V([row("CLOSED", "FIXED: see reports/terrain_backtest_latest.json")],
              {"reports/terrain_backtest_latest.json"}) == [], (
         "a dirty report artifact fired — daily runs would block every ledger commit"
+    )
+
+
+def test_closed_row_cannot_close_on_an_empty_tree():
+    """RC-139 (escape v30 measured in RC-137's first cut): keying only on DIRTY files let the
+    worst shape through — a row CLOSED with a CLEAN worktree, because the fix was never written
+    or was reverted to HEAD. A clean tree reads identically either way, so a NEW closure must
+    ship its files or cite the commit that carried them."""
+    from tools.check_institutional_correctness import _closed_row_code_not_shipped as V
+
+    def row(status, fix, rc="RC-950"):
+        return (f"| {rc} | {status} | 2026-07-29 | 2026-08-01 | desc | "
+                f"a -> b -> c -> d -> ROOT: e | {fix} |")
+
+    fixed = "FIXED: terrain_engine.py."
+    closed, was_open = row("CLOSED", fixed), row("PARTIAL", fixed)
+
+    # FIRE — the v30 escape: newly CLOSED, nothing dirty, nothing staged, no SHA cited.
+    hits = V([closed], set(), removed_rows=[was_open], staged=set())
+    assert len(hits) == 1 and hits[0][1] == ["terrain_engine.py"], (
+        f"a closure with no shipped code and a clean tree went undetected: {hits}"
+    )
+    # ...and a brand-new row (no prior version at all) is the same claim.
+    assert V([closed], set(), removed_rows=[], staged=set()), "a brand-new CLOSED row escaped"
+
+    # QUIET 1 — the fix ships in this very commit.
+    assert V([closed], set(), removed_rows=[was_open],
+             staged={"terrain_engine.py"}) == [], "a closure carrying its fix was flagged"
+
+    # QUIET 2 — the fix landed earlier and the row points at that commit.
+    cited = row("CLOSED", "FIXED: terrain_engine.py — landed in 1a384d0b.")
+    assert V([cited], set(), removed_rows=[was_open], staged=set(),
+             sha_touches=lambda sha, rel: sha == "1a384d0b" and rel == "terrain_engine.py") == [], (
+        "a closure citing the commit that carried the fix was flagged"
+    )
+    # ...but a cited SHA that did NOT touch the file must not launder the claim.
+    assert V([cited], set(), removed_rows=[was_open], staged=set(),
+             sha_touches=lambda _sha, _rel: False), "an unrelated SHA laundered an empty closure"
+
+    # QUIET 3 — a text edit to a row that was ALREADY closed cannot re-litigate old history.
+    assert V([closed], set(), removed_rows=[closed], staged=set()) == [], (
+        "editing a long-closed row's prose was treated as a new closure claim"
     )
 
