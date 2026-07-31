@@ -1,0 +1,20 @@
+---
+description: UNIVERSAL ticker scope — no SPY-only work framed as complete
+alwaysApply: true
+---
+
+# UNIVERSAL ticker scope (RC-160)
+
+Failure mode: SPY-only (or sentinel-only) prompts, experiments, Chart features, Collect paths, or reports framed as complete while other enrolled tickers are excluded without explicit OUT-OF-SCOPE.
+
+## Laws
+
+1. **Default universe is enrolled, not SPY.** Prompts to Claude/Cursor, Find & Prove experiments, Chart features, and Collect paths run the enrolled ticker universe (or are explicitly parameterized by ticker). "At least SPY" / "SPY only" is not a complete scope.
+2. **Narrow scope requires OUT-OF-SCOPE.** A SPY-first sample, sentinel smoke, or single-ticker debug is legal only when the artifact says `OUT-OF-SCOPE:` (or `# universal-scope-ok:` / `# spy-sample-ok:`) with the reason and, for operator-facing "complete" claims, an operator waiver.
+3. **Naming.** Sentinel-only clean/verified → `SENTINEL_*` only — never claim the operable / enrolled surface is done.
+4. **Do not prompt Claude SPY-only** for work that will be treated as the system answer. Prefer UNIVERSAL / enrolled-universe language in every cross-agent prompt.
+
+## Enforcers
+
+- `check_universal_ticker_scope` in `tools/check_institutional_correctness.py` (commit BLOCK)
+- `tools/pretooluse_guard.py` + `tools/universal_scope_lock.py` (Edit/Write BLOCK on prompt / agent-instruction paths)

@@ -3270,6 +3270,80 @@ def check_rth_only_market_measurement() -> list[Violation]:
     return out
 
 
+def check_universal_ticker_scope() -> list[Violation]:
+    """SPY-only / sentinel-complete work without OUT-OF-SCOPE is a breach (RC-160).
+
+    WHAT WAS OBSERVED (operator 2026-07-30): prompts, experiments, Chart features, Collect
+    paths, and reports were repeatedly framed as complete while scoped to SPY (or sentinels)
+    alone — the same class as operable-surface SENTINEL_vs_OPERABLE (rule 02) and RC-1's
+    non-SPY starvation, but at the WORK-DEFINITION layer. Without a lock, "at least SPY" and
+    `default="SPY"` experiment tools launder a partial universe into a system answer. The
+    operator mandate: UNIVERSAL for everything we do, enforced with Cursor and Claude.
+
+    Rule (practical — does NOT retro-flag historical report prose):
+      1. tools/liquidity_*.py, *_experiment*.py, lp01_*.py must not default --tickers / TICKERS
+         to SPY alone (AST). Escape: `# universal-scope-ok:` / OUT-OF-SCOPE / operator waiver.
+      2. static/chart.html must keep parameterized ticker fetches and must not gate
+         storm/highlight/combo/accrual on `=== 'SPY'` (or hardcode `ticker=SPY` APIs).
+      3. STAGED prompt / agent-instruction .md files (reports/*prompt*, .cursor/rules/,
+         .claude/*.md, AGENTS.md, …) must not add SPY-only / sentinel-complete framing without
+         UNIVERSAL / enrolled-universe / OUT-OF-SCOPE language.
+
+    HOW THE RULE WAS VALIDATED: prototyped against the live tree before enforcing — existing
+    liquidity_* tools default to SPY,QQQ,IWM (pass); chart.html already uses ticker=${tk}
+    (pass); historical reports/ are out of whole-file scope so they do not false-block. Negative
+    controls in tests/test_universal_ticker_scope_v1.py inject SPY-only defaults, Chart gates,
+    and prompt prose and demand a scream; universal wording stays quiet.
+    """
+    from tools.universal_scope_lock import (
+        chart_spy_only_feature_violations,
+        chart_ticker_path_violations,
+        experiment_tool_paths,
+        is_prompt_or_agent_instruction_path,
+        spy_only_content_violation,
+        spy_only_ticker_default_violations,
+    )
+
+    out: list[Violation] = []
+
+    for path in experiment_tool_paths(REPO):
+        src = _read_or_empty(path)
+        if not src:
+            continue
+        for lineno, msg in spy_only_ticker_default_violations(path, src):
+            out.append(Violation(path, lineno, msg))
+
+    chart = REPO / "static" / "chart.html"
+    if chart.exists():
+        csrc = _read_or_empty(chart)
+        for lineno, msg in chart_ticker_path_violations(csrc):
+            out.append(Violation(chart, lineno, msg))
+        for lineno, msg in chart_spy_only_feature_violations(csrc):
+            out.append(Violation(chart, lineno, msg))
+
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is not None:
+        for raw in staged:
+            rel = raw.strip().replace("\\", "/")
+            if not rel or not is_prompt_or_agent_instruction_path(rel):
+                continue
+            path = REPO / rel
+            whole = _read_or_empty(path)
+            diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+            added = "\n".join(
+                ln[1:] for ln in diff
+                if ln.startswith("+") and not ln.startswith("+++")
+            )
+            # Prefer ADDED text (binds new prompt framing); fall back to whole file for new files.
+            text = added if added.strip() else whole
+            reason = spy_only_content_violation(text)
+            if reason is None:
+                continue
+            out.append(Violation(path, 0, reason))
+
+    return out
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -3283,6 +3357,7 @@ CHECKS = [
     ("adversarial_audit_test_lock", check_adversarial_audit_test_lock, True),  # RC-49: every fix ships a locking test (audit's output)
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
+    ("universal_ticker_scope", check_universal_ticker_scope, True),  # RC-160: no SPY-only work framed as complete
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
     ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),

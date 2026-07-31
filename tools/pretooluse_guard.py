@@ -16,8 +16,11 @@ because the violation that triggered this was in the frontend.
 Contract:
   * Editing a PRODUCTION file requires a root-cause row opened in THIS working tree first
     (a `| RC-` line in governance/root_cause_log.md that is not in HEAD).
-  * Editing governance/, docs/, reports/, or tests/ is always allowed — that is HOW you open the
-    row and lock the fix.
+  * Editing governance/, docs/, reports/, or tests/ is always allowed for the RC-66 rule — that
+    is HOW you open the row and lock the fix.
+  * RC-160 UNIVERSAL ticker scope: Write/Edit of prompt / agent-instruction paths is BLOCKED when
+    the new content frames SPY-only / sentinel-complete work without UNIVERSAL or OUT-OF-SCOPE
+    language — even under otherwise-allowed prefixes (reports/, .claude/).
   * ED_PRETOOLUSE_GUARD=off disables it. That is deliberate and visible: an operator may switch it
     off, an agent may not silently route around it.
 """
@@ -32,7 +35,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 RC_LOG = "governance/root_cause_log.md"
 
-#: Editing these is how you COMPLY (open the row, write the test, record evidence) — never blocked.
+#: Editing these is how you COMPLY (open the row, write the test, record evidence) — never blocked
+#: by the RC-66 production-surface rule. RC-160 still gates prompt/agent-instruction content.
 ALWAYS_ALLOWED_PREFIXES = (
     "governance/", "docs/", "reports/", "tests/", ".claude/", "calibration/",
 )
@@ -80,6 +84,65 @@ def _has_new_rc_row() -> bool:
     return any(ln.startswith("+| RC-") for ln in diff.splitlines())
 
 
+def _tool_new_text(tool_input: dict) -> str:
+    """Extract the text the tool is about to write (Write content / Edit new_string / MultiEdit)."""
+    chunks: list[str] = []
+    content = tool_input.get("content")
+    if isinstance(content, str) and content:
+        chunks.append(content)
+    new_string = tool_input.get("new_string")
+    if isinstance(new_string, str) and new_string:
+        chunks.append(new_string)
+    edits = tool_input.get("edits")
+    if isinstance(edits, list):
+        for ed in edits:
+            if isinstance(ed, dict):
+                ns = ed.get("new_string")
+                if isinstance(ns, str) and ns:
+                    chunks.append(ns)
+    return "\n".join(chunks)
+
+
+def _block_spy_only_prompt(rel: str, tool_input: dict) -> int | None:
+    """RC-160: block SPY-only prompt / agent-instruction Writes. Returns exit code or None."""
+    try:
+        from tools.universal_scope_lock import (
+            is_prompt_or_agent_instruction_path,
+            spy_only_content_violation,
+        )
+    except ImportError:
+        # Hook command is `python tools/pretooluse_guard.py` → sys.path[0] is tools/.
+        if str(REPO) not in sys.path:
+            sys.path.insert(0, str(REPO))
+        try:
+            from tools.universal_scope_lock import (  # type: ignore[no-redef]
+                is_prompt_or_agent_instruction_path,
+                spy_only_content_violation,
+            )
+        except ImportError:
+            from universal_scope_lock import (  # type: ignore[no-redef]
+                is_prompt_or_agent_instruction_path,
+                spy_only_content_violation,
+            )
+    if not is_prompt_or_agent_instruction_path(rel):
+        return None
+    text = _tool_new_text(tool_input)
+    if not text:
+        return None
+    reason = spy_only_content_violation(text)
+    if reason is None:
+        return None
+    sys.stderr.write(
+        "BLOCKED by the UNIVERSAL ticker-scope law (RC-160).\n\n"
+        f"  File: {rel}\n"
+        f"  {reason}\n\n"
+        "Default scope is the enrolled universe, not SPY. Narrow work must say OUT-OF-SCOPE:\n"
+        "(or UNIVERSAL / enrolled-universe / # universal-scope-ok:) with the reason.\n"
+        "Do not prompt Claude or Cursor with SPY-only framing for work treated as complete.\n"
+    )
+    return 2
+
+
 def main() -> int:
     if os.environ.get("ED_PRETOOLUSE_GUARD", "").strip().lower() in ("off", "0", "false"):
         return 0
@@ -90,10 +153,17 @@ def main() -> int:
     tool = payload.get("tool_name") or ""
     if tool not in ("Edit", "Write", "NotebookEdit", "MultiEdit"):
         return 0
-    fp = (payload.get("tool_input") or {}).get("file_path") or ""
+    tool_input = payload.get("tool_input") or {}
+    fp = tool_input.get("file_path") or ""
     if not fp:
         return 0
     rel = _rel(fp)
+
+    # RC-160 runs BEFORE the RC-66 allowlist — prompt drafts under reports/ must still be universal.
+    blocked = _block_spy_only_prompt(rel, tool_input)
+    if blocked is not None:
+        return blocked
+
     if rel.startswith(ALWAYS_ALLOWED_PREFIXES):
         return 0
     if not rel.endswith(PRODUCTION_SUFFIXES):
