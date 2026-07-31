@@ -525,6 +525,20 @@ async function load() {
         (t.levels_stale_reason ? ` · ${t.levels_stale_reason}` : '');
       _gsrc.style.color = t.levels_failing ? '#ff3355' : '#ffc400';
       _gsrc.title = String(t.levels_stale_reason || '');
+    } else if (String(strikes.today_source || '').startsWith('accrual_bank')) {
+      // RC-162: the bars are this session's own wide book, read from the accrual bank because
+      // the live cache was cold or stale. Say so on the panel's face — the age here is the
+      // BANK ROW's age, not the terrain loop's, and labelling banked rows "live" is exactly the
+      // RC-68 failure (a 09:47 capture served at 11:31 under a live label).
+      const bankAge = strikes.today_age_sec != null
+        ? `${Math.round(strikes.today_age_sec / 60)} min` : 'unknown age';
+      _gsrc.textContent = `BANKED — session accrual, ${bankAge} old `
+        + `(${strikes.today_source}); live chain not current`;
+      _gsrc.style.color = '#ffc400';
+      _gsrc.title = 'Per-strike gamma and volume accrued this session and read from the '
+        + 'durable bank because the live wide chain was cold or stale. Same wide book, same '
+        + 'metrics; the ≤7 DTE and MONTHLY+ chips are empty because the bank stores the ALL '
+        + 'scope only.';
     } else {
       const age = t && t.levels_age_sec != null ? `${Math.round(t.levels_age_sec)}s` : 'live';
       _gsrc.textContent = `today: ${strikes.today_source} · ${age} old`;

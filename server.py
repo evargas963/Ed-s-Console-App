@@ -3487,6 +3487,7 @@ from calibration.option_chain_morning_full import (
     # terrain loop's contention guard. The guard now owns TERRAIN_CONTENTION_*, and the archive
     # keeps MORNING_* to itself, so neither can move the other by accident again.
     accrual_window as gex_accrual_window,
+    latest_accrual_rows,
     persist_chain_accrual,
     SOURCE_WIDE as GEX_SOURCE_WIDE,
     et_date_and_mins as gex_et_date_and_mins,
@@ -11956,6 +11957,34 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
+    # RC-162 — THE BANK'S FIRST READER. RC-159 built the accrual writer and RC-161 made the
+    # producer universal, but nothing ever read it: with a cold, thin or stale live cache the
+    # Chart painted NOTHING while this session's own gamma and volume sat in the DB. Banking is
+    # not rendering, and a bank with no reader satisfies no operator intent.
+    #
+    # This is a DECLARED SECOND SOURCE, not a silent one, and it is bounded three ways so it
+    # cannot become the RC-68 failure again (a 09:47 archive served at 11:31 under a live label):
+    #   1. It serves only when the live snapshot is ABSENT or older than TERRAIN_STALE_AFTER_SEC.
+    #   2. It serves only rows banked TODAY, and only if they are NEWER than what live has.
+    #   3. It stamps its own source and age, so no consumer can mistake it for the live cache.
+    # The prior-day morning_full archive is untouched and still serves ONLY the ghost — a bank
+    # row is this session's own wide book, which is exactly what the archive is not.
+    try:
+        _live_ts = float(_snap.get("computed_ts_utc") or 0.0) if isinstance(_snap, dict) else 0.0
+        _live_stale = (today is None) or (
+            _live_ts <= 0.0) or ((time.time() - _live_ts) > TERRAIN_STALE_AFTER_SEC)
+        if _live_stale:
+            _bank = latest_accrual_rows(get_db().db_path, tk)
+            if _bank and _bank.get("rows") and _bank["ts_utc"] > _live_ts:
+                # `near`/`far` stay EMPTY on purpose: the bank holds the `all` scope only, and
+                # inventing a DTE split it never measured would be a fabricated level. The scope
+                # chips render empty and say so rather than showing `all` under another name.
+                today = {"all": _bank["rows"], "near": [], "far": []}
+                spot_used = _bank.get("spot") if _bank.get("spot") is not None else spot_used
+                today_age_sec = round(time.time() - _bank["ts_utc"], 1)
+                today_src = f"accrual_bank:{_bank['et_minute']:04d}et"
+    except Exception as e:
+        log.debug("terrain strikes accrual fallback failed %s: %s", tk, e)
     try:
         db = get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)

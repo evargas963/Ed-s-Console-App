@@ -102,6 +102,60 @@ CREATE INDEX IF NOT EXISTS idx_chain_accrual_ticker_date
 """
 
 
+def latest_accrual_rows(
+    db_path: Path | str, ticker: str, et_date: str | None = None
+) -> dict[str, Any] | None:
+    """Newest banked wide-chain observation for (ticker, et_date), or None.
+
+    RC-162 — the bank's FIRST production reader. RC-159 built the writer and RC-161 made the
+    producer universal, but nothing read it, so a Chart with a cold or stale live cache painted
+    nothing while the session's own gamma and volume sat in the DB. Banking is not rendering.
+
+    Returns `{rows, ts_utc, et_minute, spot, n_strikes, session_volume, source}` where `rows` is
+    the `[[strike, net_gex_1pct$, session_volume], ...]` shape the Chart already paints — the
+    same metric family, from the same wide book, so the fallback cannot silently change what the
+    numbers MEAN.
+
+    Fail-closed everywhere: a missing file, a missing table, an unparseable payload or an empty
+    row set all return None. Absence must reach the surface as absence; this reader never
+    substitutes a different day, a different scope, or a narrower book.
+    """
+    path = Path(db_path)
+    if not path.is_file():
+        return None
+    day = str(et_date) if et_date else et_date_and_mins()[0]
+    try:
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='option_chain_accrual'"
+        ).fetchone():
+            return None
+        row = conn.execute(
+            "SELECT ts_utc, et_minute, spot, n_strikes, session_volume, per_strike_json, source "
+            "FROM option_chain_accrual WHERE ticker=? AND et_date=? "
+            "ORDER BY ts_utc DESC LIMIT 1",
+            (str(ticker).upper().strip(), day),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        rows = json.loads(row[5])
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(rows, list) or not rows:
+        return None
+    return {"rows": rows, "ts_utc": float(row[0]), "et_minute": int(row[1]),
+            "spot": row[2], "n_strikes": int(row[3]), "session_volume": row[4],
+            "source": str(row[6]), "et_date": day}
+
+
 def accrual_window(mins: int) -> bool:
     """True inside the mandated accrual span [09:15, 16:15] ET (= 08:15-15:15 CT).
 
