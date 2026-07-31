@@ -446,7 +446,13 @@ async function load() {
     raw = b.bars || []; terrain = t; crosses = c.crosses || [];
     if (chartTicker !== tk) { forming = null; sealedForming = null; liveSpot = null; }
     chartTicker = tk;
-    if (_chartCommitInflight === tk) _chartCommitInflight = null;
+    // RC-164: this line referenced `_chartCommitInflight`, declared by an Enter-key commit guard
+    // that is NOT in this file — I stripped that guard's hunk from my commits by matching the
+    // string `commitChartTicker`, and this line does not contain it, so the REFERENCE survived
+    // its DECLARATION. Every load() then threw "_chartCommitInflight is not defined" before
+    // reaching draw(), which is why the Chart showed "load failed" during a live session.
+    // Removed rather than re-declared: a variable whose owner does not exist here has no
+    // meaning, and inventing a declaration would fake state the guard needs to be correct.
     // empty {all:[],…} shells and HTTP error bodies both read as ABSENT
     strikes = (s && hasStrikeBars(s.today)) ? s : null;
     // RC-150: ...but ABSENT BARS IS NOT AN ABSENT PAYLOAD. Nulling `strikes` also threw away
