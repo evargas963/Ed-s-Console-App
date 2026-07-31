@@ -363,6 +363,82 @@ def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[
     return out
 
 
+def strongest_strike_storm1(rows: list | None) -> dict | None:
+    """RC-159 — the SPOT-INDEPENDENT strongest strike, from `[[strike, net_gex, volume], ...]`.
+
+    OPERATOR DEFINITION (binding):
+        inv_rank(x) = n + 1 - rank(x)          # rank 1 = highest value
+        storm1(k)   = inv_rank(volume_k) * inv_rank(|net_gex_k|)
+        strongest   = argmax_k storm1(k)
+
+    SPOT DOES NOT SELECT THE CANDIDATE SET, and that is the whole point. The old
+    strongest-strike notion ranked inside a +/-5 percent band around spot, which cannot express
+    the situation the operator is actually asking about: a strike that is far away NOW and that
+    price may migrate toward. A band centred on spot answers "what is strong near where we are";
+    this answers "what is strong", and the two differ exactly when the answer matters.
+
+    Ranking is over every strike PRESENT IN THE ROWS — the same liquid set the Chart paints, so
+    the score describes the ladder an operator is looking at rather than a private universe.
+    Ties take the average rank, so two equal volumes cannot be ordered by list position.
+
+    Returns None when no row carries a finite strike, gex and volume — absence stays absence.
+    NOT A SIGNAL: this is a Collect/analytics descriptor. It has no forward test, no admission,
+    and no place in Decide.
+    """
+    clean: list[tuple[float, float, float]] = []
+    for r in rows or []:
+        if not isinstance(r, (list, tuple)) or len(r) < 3:
+            continue
+        try:
+            k, g, v = float(r[0]), float(r[1]), float(r[2])
+        except (TypeError, ValueError):
+            continue
+        if not (k == k and g == g and v == v):          # NaN never becomes a winner
+            continue
+        if k in (float("inf"), float("-inf")):
+            continue
+        clean.append((k, abs(g), v))
+    if not clean:
+        return None
+
+    def _inv_ranks(vals: list[float]) -> list[float]:
+        """n+1-rank with AVERAGE ranks for ties (rank 1 = highest)."""
+        n = len(vals)
+        order = sorted(range(n), key=lambda i: -vals[i])
+        ranks = [0.0] * n
+        i = 0
+        while i < n:
+            j = i
+            while j + 1 < n and vals[order[j + 1]] == vals[order[i]]:
+                j += 1
+            avg = (i + 1 + j + 1) / 2.0                  # 1-based average rank for the tie group
+            for t in range(i, j + 1):
+                ranks[order[t]] = avg
+            i = j + 1
+        return [n + 1 - r for r in ranks]
+
+    vol_inv = _inv_ranks([c[2] for c in clean])
+    gex_inv = _inv_ranks([c[1] for c in clean])
+    best_i, best_score = 0, -1.0
+    for i in range(len(clean)):
+        s = vol_inv[i] * gex_inv[i]
+        # deterministic tie-break: higher volume, then lower strike — never list order
+        if s > best_score or (s == best_score and (
+                clean[i][2], -clean[i][0]) > (clean[best_i][2], -clean[best_i][0])):
+            best_i, best_score = i, s
+    n = len(clean)
+    return {
+        "strike": clean[best_i][0],
+        "storm1": best_score,
+        "vol": clean[best_i][2],
+        "abs_gex": clean[best_i][1],
+        "vol_rank": n + 1 - vol_inv[best_i],
+        "gex_rank": n + 1 - gex_inv[best_i],
+        "n_strikes": n,
+        "universe": "all strikes present in the row set — spot did not select it",
+    }
+
+
 def wall_geometry_state(spot: float | None, wall: float | None,
                         side: str) -> str | None:
     """RC-130: is this wall in the configuration its support/resistance label claims?

@@ -37,7 +37,12 @@ CREATE TABLE IF NOT EXISTS option_chain_morning_full (
 
 # ~0.10y ≈ 36.5 calendar days
 MAX_DTE_DAYS = 37.0
-MORNING_START_MINS = 570  # 09:30 ET
+#: RC-159: widened 570 -> 555 on operator mandate. The archive used to open at 09:30 ET, so the
+#: earliest a wide chain could be banked was the cash open — and MEASURED 2026-07-30, SPY's
+#: actually landed at 09:53. Premarket from 08:15 CT (09:15 ET) is explicitly in scope for chain
+#: accrual, so the first-write window now opens with it. The END bound is unchanged: this row is
+#: still ONE per (ticker, et_date); continuous accrual is `option_chain_accrual` below.
+MORNING_START_MINS = 555  # 09:15 ET == 08:15 CT (was 570 / 09:30 ET)
 MORNING_END_MINS = 600    # 10:00 ET — capture window for first write
 # Dedicated morning wide fetch (UI live path stays at CHAIN_STRIKE_COUNT=20).
 # Cap 100: Schwab 502'd strikeCount=200 on SPY/QQQ at the 2026-07-20 open.
@@ -54,6 +59,127 @@ UNIVERSAL_CAPTURE_END_MINS = 690  # 11:30 ET
 def universal_capture_window(mins: int) -> bool:
     """True when the terrain loop may spend budget on universe wide captures."""
     return MORNING_END_MINS < mins <= UNIVERSAL_CAPTURE_END_MINS
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ACCRUAL (RC-159) — the wide chain persisted as a TIME SERIES, not one row a day
+# ─────────────────────────────────────────────────────────────────────────────
+#: OPERATOR MANDATE 2026-07-30: gamma and per-strike option volume must accrue from BEFORE the
+#: cash open through late session, every regular trading day. The operator's wall clock is
+#: America/Chicago; the exchange calendar is America/New_York, and `time_et.ET` remains the ONE
+#: session authority — these bounds are ET minutes, and the CT equivalence is a fact about the
+#: US market's fixed one-hour offset between the two zones, not a second clock.
+#:
+#:     08:15 America/Chicago  ==  09:15 America/New_York  ==  minute 555
+#:     15:15 America/Chicago  ==  16:15 America/New_York  ==  minute 975
+#:
+#: MEASURED 2026-07-30 (the gap this closes): SPY's ONLY wide chain landed at 09:53:02 ET
+#: (08:53 CT) — 38 minutes after the mandated start — because `option_chain_morning_full` is
+#: keyed PRIMARY KEY (ticker, et_date), i.e. one row per day by construction. Everything else in
+#: the DB before that was the NARROW chain: 178 contracts / 89 strikes, against 3,060 in the wide
+#: capture. Narrow is enough to price a spread and far too thin to paint a gamma ladder.
+ACCRUAL_START_MINS = 555   # 09:15 ET == 08:15 CT
+ACCRUAL_END_MINS = 975     # 16:15 ET == 15:15 CT
+ACCRUAL_SOURCE = "terrain_wide_chain_accrual"
+
+ACCRUAL_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS option_chain_accrual (
+    ticker TEXT NOT NULL,
+    ts_utc REAL NOT NULL,
+    et_date TEXT NOT NULL,
+    et_minute INTEGER NOT NULL,
+    spot REAL,
+    n_strikes INTEGER NOT NULL,
+    session_volume REAL,
+    abs_gex_total REAL,
+    per_strike_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (ticker, ts_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_chain_accrual_ticker_date
+    ON option_chain_accrual(ticker, et_date, et_minute);
+"""
+
+
+def accrual_window(mins: int) -> bool:
+    """True inside the mandated accrual span [09:15, 16:15] ET (= 08:15-15:15 CT).
+
+    Inclusive at BOTH ends: the operator named the boundaries as times data must exist, so a
+    snapshot landing exactly at 09:15:00 or 16:15:00 belongs in the record.
+    """
+    return ACCRUAL_START_MINS <= int(mins) <= ACCRUAL_END_MINS
+
+
+def ensure_accrual_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(ACCRUAL_TABLE_SQL)
+    conn.commit()
+
+
+def persist_chain_accrual(
+    db_path: Path | str,
+    *,
+    ticker: str,
+    per_strike_rows: list[Any],
+    spot: float | None,
+    ts_utc: float | None = None,
+    source: str = ACCRUAL_SOURCE,
+) -> dict[str, Any]:
+    """Append one wide-chain observation: `[[strike, net_gex_1pct$, session_volume], ...]`.
+
+    We store the PER-STRIKE AGGREGATE rather than every contract. It is exactly what the gamma
+    ladder and the volume histogram consume, and it is what the terrain loop already computed
+    from the wide chain it already fetched — so accrual costs ZERO additional vendor calls
+    (RC-68 kept this map in memory and threw it away at the end of each cycle). Persisting whole
+    chains at this cadence would add hundreds of megabytes a day for data no surface reads.
+
+    FAIL CLOSED: no rows, or rows that carry no finite strike, writes NOTHING and says why. A
+    fabricated or empty-but-present observation is worse than a gap, because a gap is visible.
+    """
+    et_date, mins = et_date_and_mins(ts_utc)
+    tk = str(ticker).upper().strip()
+    if not tk:
+        return {"status": "skipped", "reason": "no_ticker"}
+    if not accrual_window(mins):
+        return {"status": "skipped", "reason": "outside_accrual_window",
+                "et_date": et_date, "mins": mins}
+
+    clean: list[list[float]] = []
+    vol_total = 0.0
+    gex_total = 0.0
+    for row in per_strike_rows or []:
+        if not isinstance(row, (list, tuple)) or len(row) < 3:
+            continue
+        try:
+            k, g, v = float(row[0]), float(row[1]), float(row[2])
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(k) and math.isfinite(g) and math.isfinite(v)):
+            continue
+        clean.append([k, g, v])
+        vol_total += v
+        gex_total += abs(g)
+    if not clean:
+        return {"status": "skipped", "reason": "no_finite_per_strike_rows", "ticker": tk}
+
+    ts = float(ts_utc if ts_utc is not None else time.time())
+    conn = sqlite3.connect(str(db_path), timeout=60.0)
+    try:
+        ensure_accrual_schema(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO option_chain_accrual "
+            "(ticker, ts_utc, et_date, et_minute, spot, n_strikes, session_volume, "
+            " abs_gex_total, per_strike_json, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (tk, ts, et_date, int(mins),
+             float(spot) if spot is not None and math.isfinite(float(spot)) else None,
+             len(clean), vol_total, gex_total,
+             json.dumps(clean, separators=(",", ":")), str(source)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "written", "ticker": tk, "et_date": et_date, "mins": mins,
+            "n_strikes": len(clean), "session_volume": vol_total, "ts_utc": ts}
 
 
 def ensure_morning_full_schema(conn: sqlite3.Connection) -> None:

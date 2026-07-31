@@ -3484,6 +3484,8 @@ from calibration.option_chain_morning_full import (
     GEX_FULL_CHAIN_STRIKE_COUNT,
     MORNING_END_MINS as GEX_MORNING_END_MINS,
     MORNING_START_MINS as GEX_MORNING_START_MINS,
+    accrual_window as gex_accrual_window,
+    persist_chain_accrual,
     SOURCE_WIDE as GEX_SOURCE_WIDE,
     et_date_and_mins as gex_et_date_and_mins,
     has_morning_full_capture,
@@ -11000,6 +11002,45 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
             "levels_quarantined": bool(quarantined), **token}
 
 
+#: RC-159 accrual cadence, stated rather than implied. Sentinels every minute (they ARE the
+#: money path); the rest of the enrolled board every five. These are FLOORS between writes, not
+#: a schedule — the terrain loop's own cadence still governs when a chain exists to bank.
+ACCRUAL_MIN_INTERVAL_SENTINEL_SEC: float = 60.0
+ACCRUAL_MIN_INTERVAL_OTHER_SEC: float = 300.0
+ACCRUAL_SENTINELS: tuple[str, ...] = ("SPY", "QQQ", "IWM")
+_accrual_last_write: dict[str, float] = {}
+_accrual_lock = threading.Lock()
+
+
+def _accrue_chain_observation(tk: str, snap) -> None:
+    """Bank one wide-chain per-strike observation. Never raises into the producer.
+
+    A failure to ARCHIVE must never take down the loop that FEEDS the screen: collection is
+    downstream of display, and losing a row is recoverable while losing the refresh is not.
+    """
+    try:
+        _d, mins = gex_et_date_and_mins()
+        if not gex_accrual_window(mins):
+            return
+        floor = (ACCRUAL_MIN_INTERVAL_SENTINEL_SEC if tk in ACCRUAL_SENTINELS
+                 else ACCRUAL_MIN_INTERVAL_OTHER_SEC)
+        now = time.time()
+        with _accrual_lock:
+            if now - _accrual_last_write.get(tk, 0.0) < floor:
+                return
+            _accrual_last_write[tk] = now
+        rows = (getattr(snap, "per_strike", None) or {}).get("all") or []
+        if not rows:
+            return                      # absence stays absence; never bank an empty observation
+        res = persist_chain_accrual(
+            get_db().db_path, ticker=tk, per_strike_rows=rows,
+            spot=getattr(snap, "spot", None), ts_utc=now)
+        if res.get("status") != "written":
+            log.debug("chain accrual %s: %s", tk, res)
+    except Exception as e:
+        log.warning("chain accrual failed for %s: %s", tk, e)
+
+
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises.
 
@@ -11112,6 +11153,13 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         with _terrain_cache_lock:
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
+        # RC-159 (operator mandate 2026-07-30): ACCRUE the wide chain across
+        # [09:15, 16:15] ET == [08:15, 15:15] CT. The chain is already fetched and the
+        # per-strike map already computed above, so this costs ZERO additional vendor calls —
+        # it persists what RC-68 kept in memory and then discarded every cycle. Sentinels bank
+        # every minute; the rest of the board every five, because 40 tickers x 1/min of
+        # per-strike JSON is hundreds of MB a day for data no surface reads at that resolution.
+        _accrue_chain_observation(tk, snap)
         _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _note_terrain_success(tk)                   # RC-148: and the failure streak with it
