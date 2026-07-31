@@ -175,6 +175,90 @@ def test_storm1_ties_do_not_depend_on_list_order():
     assert a["storm1"] == b["storm1"]
 
 
+# ── RC-161: the accrual producer is UNIVERSAL, not sentinel-only ─────────────────────────
+def _server():
+    import server
+    return server
+
+
+def _board(n_others: int = 54) -> list[str]:
+    return ["SPY", "QQQ", "IWM"] + [f"T{i:02d}" for i in range(n_others)]
+
+
+def test_non_sentinels_are_not_excluded_anywhere_in_the_accrual_window():
+    """RC-161 GUN: widening MORNING_START_MINS 570 -> 555 for the archive also widened the
+    scheduler's sentinel-only filter, because ONE constant answered two questions. Result: the
+    accrual mandate claimed [555, 975] UNIVERSAL while three tickers met it and 54 enrolled ones
+    were dropped for the first 45 minutes. No enrolled ticker may be excluded for a whole
+    window."""
+    s = _server()
+    board = _board()
+    depth = max(1, -(-int(s.ACCRUAL_MIN_INTERVAL_OTHER_SEC) // max(1, int(s.TERRAIN_REFRESH_SEC))))
+    for mins in (ACCRUAL_START_MINS, 560, 569, 570, 575, 599, 600, 601, 720, ACCRUAL_END_MINS):
+        seen: set[str] = set()
+        for cycle in range(1, depth + 1):
+            now, _deferred = s.terrain_cycle_tickers(board, mins, cycle)
+            seen |= set(now)
+        missing = [t for t in board if t not in seen]
+        assert not missing, (
+            f"at ET minute {mins}, {len(missing)} enrolled tickers never refreshed across "
+            f"{depth} cycles (e.g. {missing[:4]}) — accrual is not universal there"
+        )
+
+
+def test_premarket_window_refreshes_the_whole_enrolled_board_every_cycle():
+    """09:15-09:29 ET is the stretch my own RC-159 edit starved. There is no money-path wide
+    capture before the open, so there is nothing to contend with and no reason to defer."""
+    s = _server()
+    board = _board()
+    for mins in range(ACCRUAL_START_MINS, s.TERRAIN_CONTENTION_START_MINS):
+        now, deferred = s.terrain_cycle_tickers(board, mins, 1)
+        assert deferred == [], f"ET minute {mins} still defers {len(deferred)} tickers pre-open"
+        assert len(now) == len(board)
+
+
+def test_sentinels_still_refresh_every_cycle_inside_contention():
+    """Rotation must not cost the money path its per-minute cadence."""
+    s = _server()
+    board = _board()
+    for cycle in range(1, 11):
+        now, _ = s.terrain_cycle_tickers(board, 575, cycle)
+        assert {"SPY", "QQQ", "IWM"} <= set(now), f"a sentinel was deferred on cycle {cycle}"
+
+
+def test_contention_window_still_spreads_the_load():
+    """The original budget intent (RC-146) survives: the open must not take a full 57-ticker
+    sweep on top of the money-path wide fetches. Deferral is spreading, not starving."""
+    s = _server()
+    board = _board()
+    now, deferred = s.terrain_cycle_tickers(board, 575, 1)
+    assert deferred, "the contention window no longer spreads load at all"
+    assert len(now) < len(board) / 2, (
+        f"cycle refreshes {len(now)} of {len(board)} inside contention — load is not spread"
+    )
+
+
+def test_contention_guard_is_decoupled_from_the_archive_write_gate():
+    """The root cause: one constant answering two questions. The scheduler's guard must have its
+    own bound, or widening the archive window silently re-starves the board."""
+    s = _server()
+    assert s.TERRAIN_CONTENTION_START_MINS == 570, "contention guard drifted off the cash open"
+    assert s.TERRAIN_CONTENTION_START_MINS != ACCRUAL_START_MINS, (
+        "the guard is coupled to the accrual/archive start again — the RC-161 regression"
+    )
+    assert ACCRUAL_START_MINS < s.TERRAIN_CONTENTION_START_MINS, (
+        "accrual must begin before the contention window, not with it"
+    )
+
+
+def test_outside_contention_nothing_is_deferred():
+    s = _server()
+    board = _board()
+    for mins in (0, 540, 554, 601, 900, ACCRUAL_END_MINS, 1439):
+        now, deferred = s.terrain_cycle_tickers(board, mins, 3)
+        assert deferred == [] and now == board, f"ET minute {mins} deferred unexpectedly"
+
+
 def test_storm1_absence_reads_as_absence():
     assert strongest_strike_storm1([]) is None
     assert strongest_strike_storm1(None) is None

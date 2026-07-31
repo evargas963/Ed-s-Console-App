@@ -3482,8 +3482,10 @@ from timeframe_config import CANONICAL_TIMEFRAME
 # path now has no failure mode to pick a policy for.
 from calibration.option_chain_morning_full import (
     GEX_FULL_CHAIN_STRIKE_COUNT,
-    MORNING_END_MINS as GEX_MORNING_END_MINS,
-    MORNING_START_MINS as GEX_MORNING_START_MINS,
+    # RC-161: the MORNING_* aliases are gone from this import because the scheduler no longer
+    # reads them. That coupling WAS the defect — the archive's write window was steering the
+    # terrain loop's contention guard. The guard now owns TERRAIN_CONTENTION_*, and the archive
+    # keeps MORNING_* to itself, so neither can move the other by accident again.
     accrual_window as gex_accrual_window,
     persist_chain_accrual,
     SOURCE_WIDE as GEX_SOURCE_WIDE,
@@ -11041,6 +11043,50 @@ def _accrue_chain_observation(tk: str, snap) -> None:
         log.warning("chain accrual failed for %s: %s", tk, e)
 
 
+#: RC-161 — the morning contention guard's OWN start, decoupled from the archive write gate.
+#: RC-159 widened `MORNING_START_MINS` 570 -> 555 so the once-daily archive could open at the
+#: mandated 09:15 ET. That constant was ALSO the scheduler's sentinel-only filter, so the same
+#: edit lengthened non-sentinel starvation by 15 minutes at precisely the moment the accrual
+#: mandate begins. One constant was answering two different questions: "when may the archive
+#: accept a first write" and "when is the chain gate too busy for a full sweep".
+TERRAIN_CONTENTION_START_MINS: int = 570   # 09:30 ET — the cash open, where money-path fetches begin
+TERRAIN_CONTENTION_END_MINS: int = 600     # 10:00 ET
+
+
+def terrain_cycle_tickers(
+    all_tickers: list[str], mins: int, cycle_n: int
+) -> tuple[list[str], list[str]]:
+    """Which tickers this cycle refreshes, and which are DEFERRED to a later cycle.
+
+    RC-161. The morning guard used to DROP every non-sentinel for a full half hour, which made
+    the accrual mandate sentinel-only in [555, 600) — a universal claim that three tickers were
+    meeting. Exclusion is now ROTATION: no enrolled ticker is ever removed from the board, it is
+    scheduled later within the window.
+
+    The rotation depth is derived from the accrual cadence, not guessed: a non-sentinel needs one
+    refresh per ACCRUAL_MIN_INTERVAL_OTHER_SEC, so with a TERRAIN_REFRESH_SEC cycle it needs to
+    appear once every `depth` cycles. Refreshing it more often would spend vendor budget on a
+    write the accrual floor would throw away, so this rotation costs nothing the mandate does not
+    already require — and it keeps the original budget intent (RC-146: do not pile a 54-ticker
+    sweep on top of the money-path wide fetches at the open) by spreading, not by starving.
+
+    Returns (refresh_now, deferred_this_cycle). Outside the contention window every ticker
+    refreshes, exactly as before.
+    """
+    sentinels = [t for t in all_tickers if str(t).upper() in ACCRUAL_SENTINELS]
+    others = [t for t in all_tickers if str(t).upper() not in ACCRUAL_SENTINELS]
+    if not (TERRAIN_CONTENTION_START_MINS <= int(mins) <= TERRAIN_CONTENTION_END_MINS):
+        return list(all_tickers), []
+    # integer ceiling division — server.py has no module-level `math`, and adding an import for
+    # one division would be a wider change than the fix
+    _cyc = max(1, int(TERRAIN_REFRESH_SEC))
+    depth = max(1, -(-int(ACCRUAL_MIN_INTERVAL_OTHER_SEC) // _cyc))
+    idx = int(cycle_n) % depth
+    slice_now = others[idx::depth]
+    deferred = [t for t in others if t not in set(slice_now)]
+    return sentinels + slice_now, deferred
+
+
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises.
 
@@ -11179,6 +11225,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
 
 def _terrain_loop() -> None:
     log.info("Terrain loop started (levels only, no model stack)")
+    _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
     # Seed strike geometry BEFORE the first fetch cycle, in THIS thread. The seed
     # previously lived only in the prewarm worker, and _app_lifespan starts the loop
     # first -- so the first cycle raced the seed and could fetch every ticker at the
@@ -11208,10 +11255,10 @@ def _terrain_loop() -> None:
             # No try/except: the imports are module-level, so this path cannot fail at
             # runtime — a missing module stops the server at boot instead.
             _d, _mins = gex_et_date_and_mins()
-            if GEX_MORNING_START_MINS <= _mins <= GEX_MORNING_END_MINS:
-                _sentinels = ("SPY", "QQQ", "IWM")
-                _dropped = [t for t in tickers if str(t).upper() not in _sentinels]
-                tickers = [t for t in tickers if str(t).upper() in _sentinels]
+            _terrain_cycle_n += 1
+            _all_this_cycle = list(tickers)
+            tickers, _dropped = terrain_cycle_tickers(_all_this_cycle, _mins, _terrain_cycle_n)
+            if _dropped:
                 # RC-146: SAY SO. This pause is deliberate and budget-justified, but it was a
                 # silent list filter — nothing anywhere recorded that these tickers were skipped
                 # on purpose. MEASURED 2026-07-30 09:43 ET: MSFT's per-strike panel served a
@@ -11220,13 +11267,19 @@ def _terrain_loop() -> None:
                 # terrain_staleness could only offer "inside its window but not producing" — a
                 # correct scheduler reported as a malfunction, and a pre-open corpse reported as
                 # a market fact. The producer knows why it skipped; now the reader can ask.
+                # RC-161: the wording follows the mechanism. This is no longer an exclusion for
+                # the whole window — the ticker is DEFERRED to a later cycle inside it, and will
+                # be refreshed within the accrual cadence rather than held until 10:00.
                 _note_terrain_skip(
                     _dropped,
-                    f"the terrain loop refreshes {'/'.join(_sentinels)} only between "
-                    f"{GEX_MORNING_START_MINS // 60:02d}:{GEX_MORNING_START_MINS % 60:02d} and "
-                    f"{GEX_MORNING_END_MINS // 60:02d}:{GEX_MORNING_END_MINS % 60:02d} ET, while "
-                    f"the morning wide-chain capture holds the chain slots — this ticker resumes "
-                    f"at {GEX_MORNING_END_MINS // 60:02d}:{GEX_MORNING_END_MINS % 60:02d} ET",
+                    f"deferred to a later cycle inside the "
+                    f"{TERRAIN_CONTENTION_START_MINS // 60:02d}:"
+                    f"{TERRAIN_CONTENTION_START_MINS % 60:02d}-"
+                    f"{TERRAIN_CONTENTION_END_MINS // 60:02d}:"
+                    f"{TERRAIN_CONTENTION_END_MINS % 60:02d} ET window, while the morning "
+                    f"wide-chain capture holds the chain slots — the enrolled board rotates at "
+                    f"the accrual cadence ({ACCRUAL_MIN_INTERVAL_OTHER_SEC:.0f}s) instead of "
+                    f"being held out, so this ticker still accrues inside the window",
                 )
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
