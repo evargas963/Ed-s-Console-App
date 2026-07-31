@@ -21,6 +21,10 @@ Contract:
   * RC-160 UNIVERSAL ticker scope: Write/Edit of prompt / agent-instruction paths is BLOCKED when
     the new content frames SPY-only / sentinel-complete work without UNIVERSAL or OUT-OF-SCOPE
     language — even under otherwise-allowed prefixes (reports/, .claude/).
+  * RC-163 Chart-intent + next-RTH: Write/Edit of residual/handoff/RC/prompt paths is BLOCKED when
+    Collect/Chart is framed Done while Chart stays soft OUT-OF-SCOPE/OBSERVED, or when forward
+    residuals say weekday-named live proof while next RTH is not that weekday — even under
+    allowed prefixes.
   * ED_PRETOOLUSE_GUARD=off disables it. That is deliberate and visible: an operator may switch it
     off, an agent may not silently route around it.
 """
@@ -36,7 +40,7 @@ REPO = Path(__file__).resolve().parent.parent
 RC_LOG = "governance/root_cause_log.md"
 
 #: Editing these is how you COMPLY (open the row, write the test, record evidence) — never blocked
-#: by the RC-66 production-surface rule. RC-160 still gates prompt/agent-instruction content.
+#: by the RC-66 production-surface rule. RC-160/RC-163 still gate residual/prompt content.
 ALWAYS_ALLOWED_PREFIXES = (
     "governance/", "docs/", "reports/", "tests/", ".claude/", "calibration/",
 )
@@ -103,27 +107,28 @@ def _tool_new_text(tool_input: dict) -> str:
     return "\n".join(chunks)
 
 
-def _block_spy_only_prompt(rel: str, tool_input: dict) -> int | None:
-    """RC-160: block SPY-only prompt / agent-instruction Writes. Returns exit code or None."""
+def _import_lock(module: str, names: tuple[str, ...]):
+    """Import helpers whether the hook ran as `python tools/X.py` or as a package."""
     try:
-        from tools.universal_scope_lock import (
-            is_prompt_or_agent_instruction_path,
-            spy_only_content_violation,
-        )
+        mod = __import__(f"tools.{module}", fromlist=list(names))
+        return tuple(getattr(mod, n) for n in names)
     except ImportError:
-        # Hook command is `python tools/pretooluse_guard.py` → sys.path[0] is tools/.
         if str(REPO) not in sys.path:
             sys.path.insert(0, str(REPO))
         try:
-            from tools.universal_scope_lock import (  # type: ignore[no-redef]
-                is_prompt_or_agent_instruction_path,
-                spy_only_content_violation,
-            )
+            mod = __import__(f"tools.{module}", fromlist=list(names))
+            return tuple(getattr(mod, n) for n in names)
         except ImportError:
-            from universal_scope_lock import (  # type: ignore[no-redef]
-                is_prompt_or_agent_instruction_path,
-                spy_only_content_violation,
-            )
+            mod = __import__(module, fromlist=list(names))
+            return tuple(getattr(mod, n) for n in names)
+
+
+def _block_spy_only_prompt(rel: str, tool_input: dict) -> int | None:
+    """RC-160: block SPY-only prompt / agent-instruction Writes. Returns exit code or None."""
+    is_prompt_or_agent_instruction_path, spy_only_content_violation = _import_lock(
+        "universal_scope_lock",
+        ("is_prompt_or_agent_instruction_path", "spy_only_content_violation"),
+    )
     if not is_prompt_or_agent_instruction_path(rel):
         return None
     text = _tool_new_text(tool_input)
@@ -139,6 +144,32 @@ def _block_spy_only_prompt(rel: str, tool_input: dict) -> int | None:
         "Default scope is the enrolled universe, not SPY. Narrow work must say OUT-OF-SCOPE:\n"
         "(or UNIVERSAL / enrolled-universe / # universal-scope-ok:) with the reason.\n"
         "Do not prompt Claude or Cursor with SPY-only framing for work treated as complete.\n"
+    )
+    return 2
+
+
+def _block_chart_intent_and_next_rth(rel: str, tool_input: dict) -> int | None:
+    """RC-163: block Chart soft-out Done claims and weekday-proof calendar lies."""
+    is_residual_language_path, residual_language_violations = _import_lock(
+        "chart_intent_lock",
+        ("is_residual_language_path", "residual_language_violations"),
+    )
+    if not is_residual_language_path(rel):
+        return None
+    text = _tool_new_text(tool_input)
+    if not text:
+        return None
+    reasons = residual_language_violations(text)
+    if not reasons:
+        return None
+    sys.stderr.write(
+        "BLOCKED by the Chart-intent / next-RTH residual law (RC-163).\n\n"
+        f"  File: {rel}\n"
+        + "".join(f"  {r}\n" for r in reasons)
+        + "\n"
+        "Escapes: # chart-intent-ok: + operator waiver; STATUS PARTIAL naming an open\n"
+        "P0/CHART_CONSUMER residual; proven Chart consumer; or # next-rth-ok: + computed\n"
+        "next RTH ISO date (America/New_York / is_trading_day_et). Prefer NEXT_RTH_PROOF.\n"
     )
     return 2
 
@@ -159,8 +190,11 @@ def main() -> int:
         return 0
     rel = _rel(fp)
 
-    # RC-160 runs BEFORE the RC-66 allowlist — prompt drafts under reports/ must still be universal.
+    # RC-160 / RC-163 run BEFORE the RC-66 allowlist — residual drafts under reports/ still gate.
     blocked = _block_spy_only_prompt(rel, tool_input)
+    if blocked is not None:
+        return blocked
+    blocked = _block_chart_intent_and_next_rth(rel, tool_input)
     if blocked is not None:
         return blocked
 

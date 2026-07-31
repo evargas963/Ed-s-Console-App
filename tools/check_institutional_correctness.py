@@ -3344,6 +3344,63 @@ def check_universal_ticker_scope() -> list[Violation]:
     return out
 
 
+
+
+def check_chart_intent_and_next_rth() -> list[Violation]:
+    """Chart-intent soft-out + next-RTH weekday lies in residual prose (RC-163).
+
+    WHAT WAS OBSERVED (operator 2026-07-30): Cursor repeatedly closed Collect /
+    accrual slices as ACCEPT/Done while Chart render (yellow OV / GEX bars) stayed
+    OUT-OF-SCOPE or soft OBSERVED with no open P0/CHART_CONSUMER residual — banking
+    was treated as product delivery. Separately, forward residuals used a hardcoded
+    weekday-named live-proof label when the next RTH (America/New_York +
+    is_trading_day_et) was Friday 2026-07-31. Both are the goodwill-instead-of-lock
+    class RC-66/RC-160 already named; Chart intent and residual calendars had no
+    detector.
+
+    Rule (practical — binds STAGED ADDED text on residual/handoff/RC/prompt paths,
+    not historical whole-file prose):
+      1. Collect/accrual/bank finish language + Chart OUT-OF-SCOPE / soft OBSERVED
+         without proven consumer / STATUS PARTIAL + Chart residual /
+         `# chart-intent-ok:` → BLOCK.
+      2. Chart mandate framed Done via bank/accrual alone without proven consumer
+         → BLOCK (same escape set).
+      3. Weekday-named live-proof phrases (Monday proof / Monday live proof /
+         MONDAY_PROOF / next Monday) when next RTH weekday ≠ Monday → BLOCK unless
+         `# next-rth-ok:` + computed date.
+
+    HOW THE RULE WAS VALIDATED: negative controls in
+    tests/test_chart_intent_lock_v1.py inject Done+Chart-OOS and Monday-proof-on-
+    Friday blobs and demand a scream; PARTIAL+CHART_CONSUMER, chart-intent-ok,
+    next-rth-ok, and NEXT_RTH_PROOF+Friday stay quiet. Live tree staged scan is
+    empty outside a commit context (no false block).
+    """
+    from tools.chart_intent_lock import (
+        is_residual_language_path,
+        residual_language_violations,
+    )
+
+    out: list[Violation] = []
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return out
+    for raw in staged:
+        rel = raw.strip().replace("\\", "/")
+        if not rel or not is_residual_language_path(rel):
+            continue
+        path = REPO / rel
+        whole = _read_or_empty(path)
+        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+        added = "\n".join(
+            ln[1:] for ln in diff
+            if ln.startswith("+") and not ln.startswith("+++")
+        )
+        text = added if added.strip() else whole
+        for reason in residual_language_violations(text):
+            out.append(Violation(path, 0, reason))
+    return out
+
+
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -3358,6 +3415,7 @@ CHECKS = [
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
     ("universal_ticker_scope", check_universal_ticker_scope, True),  # RC-160: no SPY-only work framed as complete
+    ("chart_intent_and_next_rth", check_chart_intent_and_next_rth, True),  # RC-163: Chart Done ≠ bank; no weekday-proof lies
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
     ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),
