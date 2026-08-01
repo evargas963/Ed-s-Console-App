@@ -35,7 +35,7 @@ This is the single ruling standard. Everything specific is a CHECK under it, nev
 - [x] **RECON-01 Operator-doc reconciliation** — `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closed @ `5c5f239` (PR #45).
 - [ ] **RECON-02 Disk-cleanup purge** — ~53.3 GB quarantined (moved, not deleted) 2026-07-15/16. Purge only after one clean trading session AND the operator gives the purge word. Separately: `_backup_pre_exec_identity_v1_20260713.db` (19.29 GB) holds until ~5 clean trading days after the slimming merge. **UPDATE 2026-07-26: the slimming merge landed — RC-6 blob-dedup slimmed the live DB 29.74 → 22.06 GB (verified on a copy, swapped live; original preserved as `data/ed_console.pre_rc6_20260726.db`). The 5-clean-day clock for the pre_exec backup now RUNS from 2026-07-26.** Full purge candidate set + gates: `reports/fp_db_deletion_gating_latest.json`.
 - [ ] **OPS-OPERABLE-SURFACE-JOB** — ALSO covers (2026-07-20, operator-approved): daily terrain scorecard at 15:30 CT — `python tools/terrain_backtest_report_v1.py` → `reports/terrain_backtest_latest.md`; host task to be registered by the operator with this row as its visible record (`schtasks /Create /SC DAILY /TN EdTerrainScorecard /TR "cmd /c cd /d C:\Users\evarg\Documents\Trading\EdWebConsole && python tools\terrain_backtest_report_v1.py" /ST 15:30`). Recurring Collect job not yet registered on the host: `python -m tools.run_operable_surface_ops --db data/ed_console.db` (production backfill tol=29 + gate). Optional end-of-day: `--refresh-outcomes --repair59 --quarantine`. Durable gate: `python -m tools.operable_surface_gate --db data/ed_console.db --write-report`. Do not create a silent Windows task without an operator-visible inventory row (see FIND-SCHEDULED-JOBS-VISIBILITY).
-- [ ] **OPS-GEX-MORNING-FULL-MONDAY-GATE** — Demoted under LP-01 (2026-07-27). Confirm live collector is up on code that includes `option_chain_morning_full` before counting forward GEX days. Checklist `reports/gex_r1_monday_collector_gate.md`; evidence `reports/gex_r1_monday_collector_gate_result.json`. Stale process / no rows after 10:00 ET = capture not started.
+- [x] **OPS-GEX-MORNING-FULL-MONDAY-GATE** — CLOSED 2026-08-01. The row's ask was "confirm live collector is up on code that includes `option_chain_morning_full` before counting forward GEX days." Confirmed by query: the table carries fresh daily captures — 2026-07-27 through 2026-07-31 at 37–38 tickers/day (`select et_date,count(*) from option_chain_morning_full group by et_date order by et_date desc limit 5`). The collector is demonstrably up and writing on current code (wide-capture writer landed pre-`6c47b89b`; RC-162 @ `202237c7` reads the same pipeline). The forward-counting question the gate protected is itself moot: GEX-R1's day-level bet was KILLED on certified greeks (§8.6), so no forward GEX days are being counted.
 - [ ] **PHASE-4 Decision-path gate (mechanical)** — `decision_gate.py` (fail-closed admission verdict) + empty `governance/decision_path_admissions.json` + gate block in `call_engine.compute_call` (last directional authority; would-be direction preserved in `wait_blocker.gated_signal` for the scoring loop) + `tests/test_decision_gate.py`. Landed on branch `decision-path-gate-v1`; closes with the merge SHA. Runtime activation: on the next live-server restart every directional call shows `WAIT — decision path not admitted` until the Find & Prove program earns the first admission.
 - [ ] **PHASE-5 Restructure** — deliberate directory reorganization for a legible repo. After Phase 4; no functional changes mixed in.
 
@@ -55,10 +55,95 @@ This is the single ruling standard. Everything specific is a CHECK under it, nev
 
 - [ ] **GAMMA-SCANNER-RADAR** — background scanner computing the gamma regime + a "popping" flag (unusual move/vol/short-gamma) across ALL ~32 collected tickers, alerting the operator regardless of which ticker the UI shows. Best-fit monitoring product; TOS scanners can't compute our gamma-regime signal. Operator-requested 2026-07-17.
 - [ ] **GAMMA-STRIKE-PICKER** — trade-construction helper: given operator intent (fast day-trade → max gamma near ATM; higher-probability → target-delta ITM), suggest the strike. Separate from the regime signal; a helper, not the edge.
-- [ ] **GAMMA-PROFILE-CHARTS** — visualize GEX by strike, the flip level, call/put walls, pin. Useful monitoring surface even before auto-trading; depends on full-chain capture (FP-63) + corrected formulas (FIND-GAMMA-FLIP-METHOD-V1).
+- [x] **GAMMA-PROFILE-CHARTS** — CLOSED 2026-08-01: delivered across two shipped surfaces. GEX by strike renders on the Chart tab as the blue/red per-strike bars (accrual pipeline, RC-159/RC-161/RC-162 @ `202237c7`, tests `tests/test_chart_accrual_consumer_v1.py` = 10 passed reading the rendered file); flip level, call/put walls and pin render on the Terrain tab (SSOT `/api/terrain` wide capture, per RC-33). Both dependencies the row named are satisfied: full-chain capture exists (`option_chain_morning_full`, daily rows through 2026-07-31) and the flip formula was corrected under FIND-GAMMA-FLIP-METHOD-V1 (closed 2026-07-19, below).
 - [ ] **SCOREBOARD-ECONOMIC-REWORK** — keep the scoreboard's purpose (measure → refine inputs → improve signal) but change the metric from direction-accuracy-vs-placeholder to dollars-after-costs of the gamma-conditioned strategy, per regime. Ties to F1/F2 in `reports/fp_levelset_directive_for_cursor.md`.
 - [ ] **UNIVERSE-EXPAND-NEWS-NAMES** — extend beyond SPY/QQQ/IWM sentinels to liquid single names (NVDA/TSLA/META/AAPL…), where short-gamma trend days on news may pay best; per-ticker calibration required. Operator: SPY/QQQ/IWM were never binding, just his early starting point.
 - [ ] **TOS-SLIPPAGE-CALIBRATION** — calibrate the FP-64 cost model's slippage/leakage to the operator's REAL ThinkOrSwim fills (not theoretical option spread), so the economic gate is honest to his execution.
+
+## Directional bias on the Chart — DIR-** (operator 2026-08-01; discussion-stage, NOTHING built)
+
+**Operator's question, exactly:** GEX dollars roughly equal and options volume roughly equal on
+*both* sides of spot — what breaks the tie and says which way spot goes? **Constraint: the existing
+GEX and options-volume rendering on the Chart tab is NOT to be touched.** Every row below is
+additive or research-only.
+
+**Standing truth that governs all of it:** predictive validity is `NOT_PROVEN`, 18 Find & Prove
+studies returned 0 PASS cells, and GEX-R1 was retired at −0.02 (p=0.88) on certified greeks. No row
+here may be described as edge until it clears a placebo. All of them start `UNPROVEN`.
+
+- [ ] **DIR-01 (ONE open item — sub-points a–g are facets of it, deliberately not separate rows;
+  the ledger is over its cap and may only shrink).**
+
+  **a) DEX as the tie-breaker (the direct answer to the operator's question).** GEX ≈ ∂DEX/∂S:
+  DEX is the *level* of the dealer hedge book in shares, GEX is its *slope* per point of spot. The
+  Chart currently renders the slope and the flow with the level missing between them. Why it can break
+  a symmetric tie specifically: gamma is positive for calls and puts alike, so two clusters of equal
+  |GEX| on either side of spot look identical; delta is signed by contract type and moneyness, so the
+  same two clusters generally have *different* DEX. That asymmetry is the candidate signal.
+  **MEASURED 2026-08-01 (this is a redundancy check, NOT an edge claim):** per-strike correlation
+  between `net_delta` and `net_gamma`, computed through the repo's own
+  `math_exposure_core.compute_exposures_by_strike` on stored `option_chain_morning_full` chains for
+  2026-07-31 — QQQ **0.20**, NVDA **0.52**, SPY **0.55**, IWM **0.91** across 107–145 strikes each.
+  So DEX is *not* a restatement of GEX for QQQ/NVDA/SPY, and *nearly is* for IWM — the amount it adds
+  is name-dependent and must be measured per ticker, never assumed. Reproduce with
+  `.venv/Scripts/python.exe -c "import sqlite3,json;from math_exposure_core import compute_exposures_by_strike;c=sqlite3.connect('file:data/ed_console.db?mode=ro',uri=True);r=c.execute(\"select ticker,spot,chain_json from option_chain_morning_full order by ts_utc desc limit 4\").fetchall();print([(t,len(compute_exposures_by_strike(json.loads(j),spot=s)[0])) for t,s,j in r])"`.
+  **NO NEW FEED REQUIRED:** `aggregate_net_dex` and per-strike `net_delta` already exist in
+  `math_exposure_core`, and `chain_json` already banks `delta`, `gamma`, `openInterest`,
+  `totalVolume`, `bid`, `ask`, `volatility` per contract.
+
+  **b) ΔOI is the cheapest symmetry-breaker we are not using.** Volume is unsigned AND
+  ambiguous: it cannot distinguish a position being OPENED from one being CLOSED. Two strikes with
+  identical GEX and identical options volume mean opposite things if open interest ROSE at one and
+  FELL at the other — a wall forming versus a wall dissolving. `option_chain_morning_full` banks
+  per-contract `openInterest` daily (401 rows as of 2026-08-01), so day-over-day ΔOI per strike is
+  computable from data already on disk. This is a Collect-side derivation, not a signal; it changes
+  what the existing yellow bars MEAN without changing how they render.
+
+  **c) Signed flow — what is and is NOT available (kill the per-trade plan before it is
+  built).** The textbook construction is `DEX_t = DEX_open + Σ(signed_volume × Δ_at_trade × 100)`
+  with the quote rule signing each print. **We cannot do that: the Schwab feed carries NO options
+  trade prints** (see the console rebuild decision — Schwab streamer, no trade prints; Alpaca IEX is
+  equities only). What IS available is `totalVolume` per contract per chain snapshot, so the honest
+  substitute is Δ`totalVolume` BETWEEN snapshots classified against the bid/ask at the snapshot
+  boundaries — a coarse, interval-level approximation that cannot know where inside the interval a
+  print landed. Treat it as a weak instrument and pair it with DIR-02, which does not need trade
+  signing at all. Anyone proposing per-trade quote-rule signing must first name the trade feed.
+
+  **d) Charm as the time-indexed component (where directional content actually lives).**
+  Charm is ∂Δ/∂t — a *rate*, so it converts into a projected share count only against the delta
+  position it decays against, i.e. against DEX. That makes DIR-01 a prerequisite rather than an
+  alternative. `compute_charm_by_strike` already exists and its sign was FD-verified; `compute_net_charm`
+  had an inverted sign, fixed at `053c679f`. The charm VOTE remains **UNAPPROVED** and a residual
+  near-expiry T-convention faucet is still open — both must close before charm may condition anything.
+
+  **e) Equal dollars at unequal distance are not equal.** A cluster 0.3% from spot and one
+  2% away can carry identical GEX dollars and impose very different hedging pressure per unit of spot
+  movement, because the hedge only fires as spot traverses the strike. Any tie-break rule must be
+  distance-weighted, and the weighting must be *fitted or justified*, not asserted — an arbitrary
+  decay is a free parameter and would make the whole thing ESTIMATED at best.
+
+  **f) The dealer-side convention is the load-bearing assumption, and it is wrong more often
+  than the literature admits.** GEX needs ONE assumption (which side dealers are on). DEX needs that
+  assumption PLUS correct call/put attribution, so errors compound: a wrong dealer-side assumption
+  degrades GEX gracefully but can flip DEX's sign outright. Systematic call-overwriting and buffered
+  ETF programs mean customers are net *sellers* of calls at whole strike bands, putting dealers LONG
+  those calls and inverting the standard convention exactly there. The operator holds such a position
+  personally (Parametric). Keep the locked convention for internal consistency, and treat DEX as a
+  **conditioning variable that scales and signs the charm/vanna flow**, never as a standalone
+  directional read. A first ad-hoc probe of this on 2026-08-01 used a `putCall` sign factor on top of
+  the vendor delta, which double-counted the sign for puts and produced correlations of −0.56 to
+  +0.70; recomputing through the repo's own function gave +0.20 to +0.91. The sign convention is
+  exactly where this breaks, and it broke on the first attempt.
+
+  **g) The study that would settle it (design, not yet run).** Subsample = sessions where the
+  GEX-dollar and options-volume clusters above and below spot are BALANCED within a stated tolerance
+  (that is the operator's scenario, and it must be defined mechanically, not by eye). Candidate
+  discriminators, each tested alone and in combination: net DEX sign, ΔOI asymmetry, charm-projected
+  share flow, distance-weighted cluster mass. Requirements are the standing ones — pre-registered,
+  purged/embargoed walk-forward, cost-aware, **placebo-controlled** (displaced clusters, as in LP-01
+  where the placebo scored HIGHER and correctly killed the signal), and a stated minimum n with a CI
+  that excludes zero. Until it passes, nothing here may reach `governance/decision_path_admissions.json`
+  and the Chart renders no directional arrow.
 
 ## Find & Prove queue
 
