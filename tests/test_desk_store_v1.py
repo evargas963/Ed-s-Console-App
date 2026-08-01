@@ -538,6 +538,90 @@ def test_materialize_is_not_reachable_by_a_speculative_get():
     assert '@app.get("/api/desk/materialize")' not in src
 
 
+def test_payoff_refuses_a_non_positive_price(tmp_path):
+    """RC-173: a negative price was accepted and rendered `max_loss = -0.0` — a screen saying
+    this trade cannot lose money. A mis-keyed minus sign must not produce a risk-free position.
+    """
+    for bad in ((145, 150, -3.0, 2.0), (145, 150, 0.0, 0.0), (145, 150, 3.85, -1.0),
+                (145, 150, 3.85, 0.0)):
+        with pytest.raises(ds.DeskFactError):
+            ds.vertical_spread(*bad)
+    ok = ds.vertical_spread(145, 150, 3.85, 2.32)
+    assert ok["max_loss"] < 0, "a real debit spread must carry a real loss"
+
+
+def test_a_session_in_progress_is_not_a_completed_session():
+    """RC-173: daily statistics took the last regular-session bar of each date as that date's
+    close. After the bell that IS the close; at 11:00 ET it is an intraday print, so the newest
+    daily return became a partial-day move and the newest session volume a fraction of a
+    session. The distortion appears only while the market is open, which is exactly when the
+    operator is reading the number."""
+    from datetime import datetime
+
+    from time_et import ET, is_trading_day_et
+
+    # find a real trading day inside the window
+    probe = datetime.now(ET).date()
+    for _ in range(10):
+        if is_trading_day_et(probe.isoformat()):
+            break
+        probe = probe.fromordinal(probe.toordinal() - 1)
+    d = probe.isoformat()
+
+    mid = datetime(probe.year, probe.month, probe.day, 11, 0, tzinfo=ET).timestamp()
+    after = datetime(probe.year, probe.month, probe.day, 20, 0, tzinfo=ET).timestamp()
+    assert ds.session_is_complete(d, mid) is False, (
+        "an 11:00 ET instant was treated as a closed session"
+    )
+    assert ds.session_is_complete(d, after) is True
+    # a prior date is closed by construction, whatever the clock says
+    earlier = probe.fromordinal(probe.toordinal() - 7).isoformat()
+    assert ds.session_is_complete(earlier, mid) is True
+
+
+def test_sigma_drops_the_session_in_progress(tmp_path):
+    """The operative consequence of RC-173: asked mid-session, the sample must be one session
+    shorter than it is after the bell."""
+    import sqlite3
+    from datetime import datetime
+
+    from time_et import ET, is_rth_ts_utc
+
+    db = tmp_path / "d.db"
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, "
+                "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
+                "volume REAL, source TEXT)")
+    stamps = _rth_session_stamps(ds._MIN_SESSIONS_FOR_SIGMA + 2)
+    for i, ts in enumerate(stamps):
+        con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+                    ("ZZZ", ts - 60, ts, 1, 1, 1, 100.0 + i, 1000.0, "unit"))
+    con.commit()
+    con.close()
+
+    last = stamps[-1]
+    day = datetime.fromtimestamp(last, ET).date()
+    after = datetime(day.year, day.month, day.day, 20, 0, tzinfo=ET).timestamp()
+    mid = datetime(day.year, day.month, day.day, 11, 0, tzinfo=ET).timestamp()
+    assert is_rth_ts_utc(mid)
+
+    closed = ds.daily_sigma_bps(db, "ZZZ", after)
+    open_now = ds.daily_sigma_bps(db, "ZZZ", mid)
+    assert closed and open_now
+    assert open_now["n_sessions"] == closed["n_sessions"] - 1, (
+        "the session in progress was counted as a completed one"
+    )
+
+
+def test_adv_reports_the_bars_it_dropped_for_being_mid_session():
+    """A silent exclusion reads as 'covered everything'. The count travels with the answer."""
+    import inspect
+
+    src = inspect.getsource(ds.materialize_dollar_volume)
+    assert "session_is_complete" in src
+    assert "skipped_incomplete_session_bars" in src
+
+
 def test_decide_untouched_admissions_empty():
     """This slice is Collect and a visible surface. Nothing may reach the decision path."""
     import json

@@ -517,9 +517,11 @@ def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> 
     # 358 — one name's ADV was counting pre- and post-market turnover and the other's was not,
     # so the column ranked names against each other on different definitions of a day. Session
     # membership is the `time_et` authority's call, never a bar count.
+    now = time.time()
     per_day: dict[tuple[str, str], list[float]] = {}
     last_bar: dict[str, float] = {}
-    skipped_non_rth = 0
+    skipped_non_rth = skipped_incomplete = 0
+    complete: dict[str, bool] = {}
     for r in raw:
         ts = float(r["bar_end_ts_utc"] or 0.0)
         sym = str(r["ticker"] or "").upper()
@@ -529,6 +531,13 @@ def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> 
             skipped_non_rth += 1
             continue
         d = et_date_str_from_ts_utc(ts)
+        # RC-173: a session in progress contributes a FRACTION of a session's turnover. Letting
+        # it into the sample drags the median down for as long as the market is open.
+        if d not in complete:
+            complete[d] = session_is_complete(d, now)
+        if not complete[d]:
+            skipped_incomplete += 1
+            continue
         per_day.setdefault((sym, d), []).append(float(r["close"] or 0.0) * float(r["volume"]))
         if ts > last_bar.get(sym, 0.0):
             last_bar[sym] = ts
@@ -585,6 +594,7 @@ def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> 
         target.close()
     return {"written": written, "skipped_no_knowledge_time": skipped,
             "source_rows": len(raw), "skipped_non_rth_bars": skipped_non_rth,
+            "skipped_incomplete_session_bars": skipped_incomplete,
             "suspect_sessions": suspect_total}
 
 
@@ -686,6 +696,30 @@ def effective_spread_bps(
     }
 
 
+def session_is_complete(et_date: str, as_of_utc: float) -> bool:
+    """Has the regular session for `et_date` already closed as of `as_of_utc`?
+
+    RC-173: every daily statistic here — sigma, and the ADV median — was built by taking the
+    last regular-session bar of each ET date as that date's close. At 21:15 CT with the market
+    shut that is the close. At 11:00 ET it is an intraday print being treated as one, so the
+    newest "daily return" is a partial-day move and the newest "session volume" is a fraction of
+    a session. Both quietly distort the number, and only ever while the market is open — which
+    is precisely when the operator is looking at it.
+    """
+    from time_et import (
+        et_date_str_from_ts_utc,
+        et_minute_total_from_ts_utc,
+        session_close_mins_for_et_date,
+    )
+
+    if et_date != et_date_str_from_ts_utc(as_of_utc):
+        return True  # a past date's session is closed by construction
+    close_mins = session_close_mins_for_et_date(et_date)
+    if not close_mins:
+        return True  # not a trading day — nothing incomplete about it
+    return et_minute_total_from_ts_utc(as_of_utc) >= float(close_mins)
+
+
 def daily_sigma_bps(db_path: str | Path, subject: str, as_of_utc: float, *,
                     window_days: int = 20) -> dict[str, Any] | None:
     """Daily volatility in basis points, measured on this name's own regular-session closes.
@@ -721,7 +755,9 @@ def daily_sigma_bps(db_path: str | Path, subject: str, as_of_utc: float, *,
         if not is_rth_ts_utc(ts):
             continue
         closes[et_date_str_from_ts_utc(ts)] = float(r["close"])
-    series = [closes[d] for d in sorted(closes)]
+    # RC-173: a session still in progress has no close. Including it turns the newest daily
+    # return into a partial-day move.
+    series = [closes[d] for d in sorted(closes) if session_is_complete(d, as_of_utc)]
     if len(series) < _MIN_SESSIONS_FOR_SIGMA:
         return None
     rets = [math.log(b / a) for a, b in zip(series, series[1:]) if a > 0 and b > 0]
@@ -1001,6 +1037,15 @@ def vertical_spread(long_strike: float, short_strike: float, long_price: float,
         raise DeskFactError("strikes and contracts must be positive")
     if long_strike == short_strike:
         raise DeskFactError("a vertical needs two different strikes")
+    # RC-173: an option price of zero or less is not a quote, and accepting one produced a
+    # spread whose maximum loss displayed as -0.0 — a screen saying this trade cannot lose
+    # money. A mis-keyed minus sign must not be able to render a risk-free position.
+    if float(long_price) <= 0 or float(short_price) <= 0:
+        raise DeskFactError(
+            f"option prices must be positive quotes, got long={long_price} short={short_price} "
+            "— a non-positive price is not a market, and pricing against one produces a payoff "
+            "that understates the loss"
+        )
     debit = (float(long_price) - float(short_price)) * multiplier * contracts
     width = abs(float(short_strike) - float(long_strike)) * multiplier * contracts
     is_debit = debit > 0
