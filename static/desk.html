@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Desk — Ed Console</title>
+<!--
+  Desk — research, candidates and book, replayable at an earlier knowledge time.
+
+  TOKEN-ONLY BY CONSTRUCTION. Every colour below is var(--cv-*); the only literals in this file
+  are the token definitions in :root. MEASURED 2026-07-31: static/index.html carries 410 raw hex
+  and 188 rgba literals against 125 var() uses, and static/chart.html uses the token system zero
+  times — so "matches the console" today means "repeats its palette by hand" three times over.
+  This surface does not add a fourth copy. Light mode becomes 16 values, not a rewrite.
+
+  NO FIXTURE DATA. Subtabs that are not built yet say so and render nothing. A trading surface
+  that paints an illustrative shape is a risk hazard, not a placeholder.
+-->
+<style>
+:root{
+  --cv-bg:#0a0e15; --cv-sf:#111826; --cv-sf2:#0c121d; --cv-sk:#080c13;
+  --cv-bd:#1f2a3c; --cv-bd2:#2b3a52;
+  --cv-tx:#e9eef6; --cv-dm:#93a1b8; --cv-mu:#66748c;
+  --cv-ac:#37d2dd; --cv-a2:#4b8bff;
+  --cv-up:#2fd08a; --cv-dn:#ff5c74; --cv-wn:#f6b73c;
+  --cv-ctl:#1e2838; --cv-ctlbd:#3f4d67;
+  --cv-mono:ui-monospace,"Cascadia Mono","Consolas",monospace;
+  --cv-sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--cv-bg);color:var(--cv-tx);font-family:var(--cv-sans);font-size:14px}
+.top{display:flex;align-items:center;gap:16px;padding:9px 14px;background:var(--cv-sf);
+  border-bottom:1px solid var(--cv-bd)}
+.brand{font-family:var(--cv-mono);font-size:13px;letter-spacing:.04em;white-space:nowrap}
+.brand b{color:var(--cv-ac);font-weight:400}
+.navs{display:flex;gap:3px}
+.navs a{font-family:var(--cv-mono);font-size:11.5px;letter-spacing:.05em;text-decoration:none;
+  color:var(--cv-mu);padding:4px 11px;border-radius:3px;border:1px solid transparent}
+.navs a:hover{color:var(--cv-tx);background:var(--cv-sf2)}
+.navs a.on{background:var(--cv-ac);color:var(--cv-bg)}
+.topright{margin-left:auto;display:flex;align-items:center;gap:12px;font-family:var(--cv-mono);
+  font-size:11.5px;color:var(--cv-dm)}
+#tk{background:var(--cv-ctl);border:1px solid var(--cv-ctlbd);border-radius:3px;padding:3px 9px;
+  color:var(--cv-tx);letter-spacing:.06em;width:92px;font-family:var(--cv-mono);font-size:11.5px}
+.asof{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;
+  background:var(--cv-sk);border-bottom:1px solid var(--cv-bd)}
+.lbl{font-family:var(--cv-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--cv-mu)}
+#scrub{flex:1;min-width:200px;accent-color:var(--cv-ac)}
+#ktxt{font-family:var(--cv-mono);font-size:12.5px;color:var(--cv-ac);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+#lock{font-family:var(--cv-mono);font-size:10px;letter-spacing:.08em;color:var(--cv-mu);
+  border:1px solid var(--cv-bd2);border-radius:3px;padding:3px 8px;white-space:nowrap}
+#lock.armed{color:var(--cv-wn);border-color:var(--cv-wn)}
+.subs{display:flex;background:var(--cv-sf2);border-bottom:1px solid var(--cv-bd);overflow-x:auto}
+.subs button{font-family:var(--cv-mono);font-size:11.5px;letter-spacing:.06em;background:none;
+  border:0;border-bottom:2px solid transparent;color:var(--cv-dm);padding:9px 16px;cursor:pointer}
+.subs button:hover{color:var(--cv-tx);background:var(--cv-sf)}
+.subs button.on{color:var(--cv-ac);border-bottom-color:var(--cv-ac);background:var(--cv-sf)}
+.subs button:focus-visible{outline:2px solid var(--cv-ac);outline-offset:-2px}
+.panel{display:none;padding:14px}
+.panel.on{display:block}
+h3.sec{font-family:var(--cv-mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--cv-mu);font-weight:400;margin:0 0 8px;padding-bottom:5px;
+  border-bottom:1px solid var(--cv-bd)}
+.tw{overflow-x:auto;border:1px solid var(--cv-bd);border-radius:4px}
+table{width:100%;border-collapse:collapse;font-family:var(--cv-mono);font-size:12px;
+  font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:400;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--cv-mu);padding:7px 10px;background:var(--cv-sf2);
+  border-bottom:1px solid var(--cv-bd);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--cv-bd);white-space:nowrap}
+tbody tr:hover{background:var(--cv-sf2)}
+.num{text-align:right}
+.mu{color:var(--cv-mu)}.dm{color:var(--cv-dm)}.wn{color:var(--cv-wn)}.up{color:var(--cv-up)}
+.tier{font-family:var(--cv-mono);font-size:9px;letter-spacing:.11em;padding:1px 5px;
+  border-radius:2px;border:1px solid var(--cv-bd2);color:var(--cv-dm)}
+.tier.DERIVED{color:var(--cv-mu)}
+.tier.ESTIMATED{border-style:dashed}
+.tier.UNPROVEN{border-style:dashed;color:var(--cv-mu);text-decoration:line-through}
+.note{font-size:13px;color:var(--cv-dm);line-height:1.6;max-width:78ch;margin:9px 0 0}
+.void{border:1px dashed var(--cv-bd2);border-radius:4px;padding:14px;background:var(--cv-sf2)}
+.void .h{font-family:var(--cv-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--cv-mu)}
+.void .m{font-family:var(--cv-mono);font-size:13px;color:var(--cv-dm);margin-top:5px}
+.void .why{font-size:13px;color:var(--cv-mu);margin-top:7px;line-height:1.55;max-width:74ch}
+.legend{display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--cv-bd);
+  background:var(--cv-sk);font-family:var(--cv-mono);font-size:10.5px;color:var(--cv-mu)}
+.legend span{display:flex;align-items:center;gap:6px}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="brand"><b>&#9679;</b> ED&nbsp;CONSOLE</span>
+  <nav class="navs">
+    <a href="/">Console</a><a href="/">Terrain</a><a href="/chart">Chart</a>
+    <a href="/desk" class="on">Desk</a>
+  </nav>
+  <div class="topright">
+    <input id="tk" value="SPY" spellcheck="false" aria-label="Ticker" />
+    <span id="clk">--:--:-- CT</span>
+  </div>
+</div>
+
+<div class="asof">
+  <span class="lbl">Knowledge&nbsp;time</span>
+  <input id="scrub" type="range" min="0" max="0" step="3600" value="0"
+         aria-label="Replay the desk as of an earlier knowledge time" />
+  <span id="ktxt">now</span>
+  <span id="lock">no lookahead &middot; live</span>
+</div>
+
+<div class="subs" role="tablist">
+  <button type="button" class="on" data-p="radar" role="tab">Radar</button>
+  <button type="button" data-p="brief" role="tab">Brief</button>
+  <button type="button" data-p="dossier" role="tab">Dossier</button>
+  <button type="button" data-p="struct" role="tab">Structures</button>
+  <button type="button" data-p="book" role="tab">Book</button>
+  <button type="button" data-p="evid" role="tab">Evidence</button>
+</div>
+
+<div class="panel on" id="p-radar">
+  <h3 class="sec">Candidates &mdash; <span id="rank-basis" class="mu">loading</span></h3>
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Subject</th><th class="num">ADV $</th><th class="num">Short vol</th>
+      <th class="num">Lag h</th><th class="num">Strikes</th><th>Earnings</th><th>Knowable</th>
+    </tr></thead>
+    <tbody id="radar-body"><tr><td colspan="7" class="mu">loading…</td></tr></tbody>
+  </table></div>
+  <p class="note" id="radar-foot"></p>
+</div>
+
+<div class="panel" id="p-brief"></div>
+<div class="panel" id="p-dossier"></div>
+<div class="panel" id="p-struct"></div>
+<div class="panel" id="p-book"></div>
+<div class="panel" id="p-evid"></div>
+
+<div class="legend">
+  <span><i class="tier">MEASURED</i> fetched fact, carries source and vintage</span>
+  <span><i class="tier DERIVED">DERIVED</i> arithmetic on measured facts</span>
+  <span><i class="tier ESTIMATED">ESTIMATED</i> model output with a calibration record</span>
+  <span><i class="tier UNPROVEN">UNPROVEN</i> no record &mdash; cannot drive an action</span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+
+  // Subtabs that have no producer yet render this and nothing else. A trading surface never
+  // paints an illustrative shape: a fake bar is indistinguishable from a real one at a glance,
+  // and the glance is what the operator acts on.
+  var PENDING={
+    brief:["Brief","the overnight diff and research digest",
+      "Needs the research loop (LLM + web search) and an EDGAR collector. Neither is wired, so "+
+      "there is nothing here that could be shown without inventing it."],
+    dossier:["Dossier","one name, in depth",
+      "Needs per-name quote history for effective spread and a filing timeline. The fact store "+
+      "holds ADV, short-volume ratio and chain width today; the rest is not collected yet."],
+    struct:["Structures","option structures and their two densities",
+      "Needs per-strike prices read back out of the banked chains to build the risk-neutral "+
+      "density, plus a block bootstrap of this name's own returns."],
+    book:["Book","positions, exposure and concentration",
+      "Needs a positions source. No broker position feed is wired into this console."],
+    evid:["Evidence","what every claim has actually earned",
+      "Needs the study scoreboard read out of reports/ rather than retyped. Retyping it is how "+
+      "a scoreboard drifts from the studies it claims to summarise."]
+  };
+  Object.keys(PENDING).forEach(function(k){
+    var d=PENDING[k];
+    $("p-"+k).innerHTML='<h3 class="sec">'+d[0]+' &mdash; '+d[1]+'</h3>'+
+      '<div class="void"><div class="h">Not built</div>'+
+      '<div class="m">This subtab has no data source yet.</div>'+
+      '<div class="why">'+d[2]+'</div></div>';
+  });
+
+  var subs=document.querySelectorAll(".subs button");
+  subs.forEach(function(b){
+    b.addEventListener("click",function(){
+      subs.forEach(function(x){x.classList.remove("on");x.setAttribute("aria-selected","false");});
+      b.classList.add("on");b.setAttribute("aria-selected","true");
+      document.querySelectorAll(".panel").forEach(function(p){p.classList.remove("on");});
+      $("p-"+b.dataset.p).classList.add("on");
+    });
+  });
+
+  function ct(ts){
+    try{
+      return new Date(ts*1000).toLocaleString("en-US",{timeZone:"America/Chicago",
+        month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false})+" CT";
+    }catch(e){return new Date(ts*1000).toISOString();}
+  }
+  function money(v){
+    if(v===null||v===undefined)return "—";
+    if(v>=1e9)return "$"+(v/1e9).toFixed(2)+"B";
+    if(v>=1e6)return "$"+(v/1e6).toFixed(1)+"M";
+    if(v>=1e3)return "$"+(v/1e3).toFixed(0)+"k";
+    return "$"+v.toFixed(0);
+  }
+  function pct(v){return (v===null||v===undefined)?"—":(v*100).toFixed(1)+"%";}
+
+  var SERVER_NOW=0, WINDOW_DAYS=21;
+
+  function render(d){
+    $("rank-basis").textContent=d.rank_basis||"";
+    var b=$("radar-body");
+    if(d.error){
+      b.innerHTML='<tr><td colspan="7" class="wn">'+d.error+'</td></tr>';
+      $("radar-foot").textContent="";return;
+    }
+    if(!d.rows||!d.rows.length){
+      b.innerHTML='<tr><td colspan="7" class="mu">'+
+        (d.empty_reason||"nothing was knowable at this instant")+'</td></tr>';
+      $("radar-foot").textContent="";return;
+    }
+    var h="";
+    d.rows.forEach(function(r){
+      var kt=Math.max(r.adv_knowledge_utc||0,r.svr_knowledge_utc||0,r.options_knowledge_utc||0);
+      h+="<tr><td>"+r.subject+"</td>"+
+         '<td class="num">'+money(r.adv_dollar)+"</td>"+
+         '<td class="num">'+pct(r.short_volume_ratio)+"</td>"+
+         '<td class="num '+(r.svr_lag_hours>48?"wn":"mu")+'">'+
+           (r.svr_lag_hours===null||r.svr_lag_hours===undefined?"—":r.svr_lag_hours)+"</td>"+
+         '<td class="num">'+(r.n_strikes===null||r.n_strikes===undefined?"—":r.n_strikes)+"</td>"+
+         '<td class="'+(r.earnings_utc?"wn":"mu")+'">'+(r.earnings_utc?ct(r.earnings_utc):"—")+"</td>"+
+         '<td class="mu">'+(kt?ct(kt):"—")+"</td></tr>";
+    });
+    b.innerHTML=h;
+    $("radar-foot").textContent=
+      d.n_total+" subjects knowable at this instant. Rank is measured structure only — it makes "+
+      "no forecast. Lag h is how long after the event we could first act on it; the FINRA "+
+      "column routinely runs days behind, which is why replay filters on knowledge time.";
+  }
+
+  function load(){
+    var v=+$("scrub").value;
+    var at=SERVER_NOW+v;                       // v is <= 0 seconds, so this walks backwards
+    var replay=v<0;
+    $("ktxt").textContent=replay?ct(at):("now · "+ct(SERVER_NOW));
+    $("lock").textContent=replay?"no lookahead · replay":"no lookahead · live";
+    $("lock").classList.toggle("armed",replay);
+    fetch("/api/desk/radar?as_of="+(replay?at.toFixed(0):"0"))
+      .then(function(r){return r.json();})
+      .then(render)
+      .catch(function(e){
+        $("radar-body").innerHTML='<tr><td colspan="7" class="wn">request failed: '+e+"</td></tr>";
+      });
+  }
+
+  fetch("/api/desk/radar?as_of=0").then(function(r){return r.json();}).then(function(d){
+    SERVER_NOW=d.server_now_utc||(Date.now()/1000);
+    var s=$("scrub");
+    s.min=String(-WINDOW_DAYS*86400); s.max="0"; s.value="0";
+    s.addEventListener("input",load);
+    render(d);
+    $("ktxt").textContent="now · "+ct(SERVER_NOW);
+  }).catch(function(e){
+    $("radar-body").innerHTML='<tr><td colspan="7" class="wn">request failed: '+e+"</td></tr>";
+  });
+
+  function tick(){
+    var n=new Date();
+    $("clk").textContent=n.toLocaleTimeString("en-US",{timeZone:"America/Chicago",hour12:false})+" CT";
+  }
+  tick(); setInterval(tick,1000);
+})();
+</script>
+</body>
+</html>

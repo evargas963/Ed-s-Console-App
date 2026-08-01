@@ -655,7 +655,17 @@ def _install_signal_handlers() -> None:
         _arm_shutdown_watchdog()
         raise KeyboardInterrupt
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    # RC-166: SIGBREAK (Ctrl+Break on Windows) was NOT registered, so it bypassed this handler
+    # entirely and the 12s hard-exit watchdog never armed. MEASURED 2026-07-31: a console sent
+    # CTRL_BREAK_EVENT took 24.8s to exit — twice the deadline that exists to bound it — because
+    # the exit fell through to Python's default and waited on whatever background worker was
+    # blocked. Ctrl+Break is the operator's second lever when Ctrl+C is being swallowed, so it
+    # must reach the same bounded path. `getattr` because SIGBREAK is Windows-only.
+    _sigs = [signal.SIGINT, signal.SIGTERM]
+    _sigbreak = getattr(signal, "SIGBREAK", None)
+    if _sigbreak is not None:
+        _sigs.append(_sigbreak)
+    for sig in _sigs:
         try:
             signal.signal(sig, _on_signal)
         except (ValueError, OSError, AttributeError) as e:
@@ -1217,6 +1227,10 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
 # route offloads cannot starve the price strip during ticker switches.
 _quote_hot_executor: Optional[ThreadPoolExecutor] = None
 _route_offload_executor: Optional[ThreadPoolExecutor] = None
+# RC-166: L1 light HTTP/SSE must not share ed_route_offload with Tier C JSON copies
+# and streaming resubscribe (up to 30s). Wall ≫ _pipeline_ms was mostly that queue.
+_l1_light_executor: Optional[ThreadPoolExecutor] = None
+L1_LIGHT_EXECUTOR_MAX_WORKERS = 4
 
 # Legacy name retained for call sites that still import the route pool.
 _fast_quote_executor: Optional[ThreadPoolExecutor] = None
@@ -1268,8 +1282,19 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
 
 
 def _get_fast_quote_executor() -> ThreadPoolExecutor:
-    """Route-touch pool (Tier B/C JSON, streaming POST touch, L1 SSE subscribe)."""
+    """Route-touch pool (Tier C JSON, streaming POST touch). Not L1 light (RC-166)."""
     return _get_route_offload_executor()
+
+
+def _get_l1_light_executor() -> ThreadPoolExecutor:
+    """Dedicated pool for /api/analytics/light (+ SSE touch). Isolated from Tier C/stream."""
+    global _l1_light_executor
+    if _l1_light_executor is None:
+        _l1_light_executor = ThreadPoolExecutor(
+            max_workers=L1_LIGHT_EXECUTOR_MAX_WORKERS,
+            thread_name_prefix="ed_l1_light",
+        )
+    return _l1_light_executor
 
 
 def _get_recompute_leaf_executor() -> ThreadPoolExecutor:
@@ -10978,7 +11003,20 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                 "levels_quarantined": bool(quarantined),
                 "levels_failing": bool(failure or hard_quarantine), **token}
     age = round(time.time() - float(computed_ts_utc), 1)
-    stale = age > TERRAIN_STALE_AFTER_SEC
+    # RC-165: judge age against the cycle the loop ACTUALLY delivers, not the nominal floor.
+    # `TERRAIN_REFRESH_SEC` (60s) is a sleep floor between cycles; the delivered spacing is
+    # whatever a full sweep costs, and MEASURED 2026-07-31 12:57 ET that was a 156s median on
+    # SPY. With a fixed 180s threshold and a 60s sentence, a ticker 234s old — barely 1.5
+    # cycles, entirely healthy — was reported to the operator as "the loop is inside its window
+    # but not producing". That is RC-146's defect returning through a different door: a
+    # correctly-working scheduler described as broken, this time because the yardstick was a
+    # number the loop cannot reach rather than a silence nobody recorded.
+    observed = _terrain_last_cycle_sec if _terrain_last_cycle_sec > 0 else TERRAIN_REFRESH_SEC
+    expected = max(float(TERRAIN_REFRESH_SEC), float(observed))
+    # Stale only past the FLOOR *and* past two delivered cycles — one missed sweep is normal
+    # jitter, two is a real gap. The floor is retained so a fast loop cannot hide staleness.
+    stale_after = max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * expected)
+    stale = age > stale_after
     reason = ""
     if stale:
         reason = (f"levels are {age:.0f}s old — {quarantined}" if quarantined else
@@ -10989,8 +11027,9 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                   f"(outside the background-logging window, which closes at "
                   f"{LOGGER_BUFFER_MINS // 60:02d}:{LOGGER_BUFFER_MINS % 60:02d} ET)"
                   if not refreshing else
-                  f"levels are {age:.0f}s old against a {TERRAIN_REFRESH_SEC:.0f}s cadence — the "
-                  f"loop is inside its window but not producing")
+                  f"levels are {age:.0f}s old — over two full sweeps at the loop's DELIVERED "
+                  f"cycle of {expected:.0f}s (nominal floor {TERRAIN_REFRESH_SEC:.0f}s), so this "
+                  f"ticker is genuinely behind rather than merely between sweeps")
     return {"levels_stale": stale, "levels_age_sec": age,
             "levels_refresh_active": refreshing, "levels_stale_reason": reason,
             # RC-146: a stale panel must be able to distinguish "paused by design, resumes at a
@@ -11050,6 +11089,13 @@ def _accrue_chain_observation(tk: str, snap) -> None:
 #: edit lengthened non-sentinel starvation by 15 minutes at precisely the moment the accrual
 #: mandate begins. One constant was answering two different questions: "when may the archive
 #: accept a first write" and "when is the chain gate too busy for a full sweep".
+#: RC-165: the DELIVERED cycle time, published by `_terrain_loop` from the duration it already
+#: measures. `TERRAIN_REFRESH_SEC` is a sleep FLOOR, not a promise — a full sweep over ~40
+#: tickers on 2 workers against a 2-slot chain gate costs more than that, and judging freshness
+#: against the floor reports healthy tickers as broken. 0.0 until the first cycle completes, in
+#: which case readers fall back to the nominal floor.
+_terrain_last_cycle_sec: float = 0.0
+
 TERRAIN_CONTENTION_START_MINS: int = 570   # 09:30 ET — the cash open, where money-path fetches begin
 TERRAIN_CONTENTION_END_MINS: int = 600     # 10:00 ET
 
@@ -11285,6 +11331,10 @@ def _terrain_loop() -> None:
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
         elapsed = time.monotonic() - cycle_start
+        # RC-165: publish the DELIVERED cycle so freshness is judged against reality, not the
+        # sleep floor. This number was already computed and only logged; readers had no access
+        # to it, so terrain_staleness was left comparing against a cadence the loop never meets.
+        globals()["_terrain_last_cycle_sec"] = float(elapsed)
         log.info("Terrain cycle: %d tickers in %.1fs", len(tickers), elapsed)
         sleep_end = time.monotonic() + max(0.0, TERRAIN_REFRESH_SEC - elapsed)
         while _terrain_loop_running and time.monotonic() < sleep_end:
@@ -12225,6 +12275,51 @@ def chart_page():
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
+@app.get("/desk", response_class=HTMLResponse)
+def desk_page():
+    """Desk — research, candidates and book, replayable at an earlier knowledge time."""
+    p = static_dir / "desk.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/desk.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/api/desk/radar")
+def get_desk_radar(as_of: float = Query(default=0.0), limit: int = Query(default=60)):
+    """Candidate structure as it stood at `as_of` (epoch seconds; 0 = now).
+
+    The whole point of the parameter is that moving it BACKWARD must remove rows. Filtering
+    happens on knowledge time inside `desk_store.radar_rows`, never on event time — see the
+    module docstring for the six-day FINRA lag that makes the distinction load-bearing.
+    """
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    try:
+        payload = desk_store.radar_rows(_desk_db, at, limit=max(1, min(int(limit), 500)))
+    except Exception as e:  # absence reaches the surface as absence, never as zeros
+        return {"as_of_utc": at, "rows": [], "n_total": 0, "error": f"{type(e).__name__}: {e}"}
+    payload["server_now_utc"] = time.time()
+    payload["is_replay"] = bool(as_of and as_of > 0)
+    return payload
+
+
+@app.get("/api/desk/materialize")
+def post_desk_materialize():
+    """Rebuild the fact store from tables this repo already fills. Idempotent."""
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    t0 = time.time()
+    try:
+        res = desk_store.materialize_all(_desk_db)
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    return {"ok": True, "elapsed_sec": round(time.time() - t0, 2), "counts": res}
+
+
 @app.get("/api/terrain")
 def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     """Terrain payload — levels only, NO model stack.
@@ -12344,15 +12439,38 @@ async def get_analytics_light(
     t = ticker.upper().strip()
     from planes.l1_events import notify_ticker_expiry_changed
 
-    # SWITCH-LATENCY FIX: async route — keep the symbol persist (DB write) and the L1
-    # projection build (a full recompute on a cold miss) OFF the event loop.
+    # RC-166: L1 assembly runs on ed_l1_light (not ed_route_offload). logging_universe
+    # touch is fire-and-forget on the route pool so a SQLITE wait cannot hold the L1
+    # response (L1 itself is memory-only; _pipeline_ms never included that wait).
+    route_t0 = time.perf_counter()
+    submit_ts = time.perf_counter()
+    try:
+        _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
+    except Exception:
+        log.debug("analytics_light: touch_seen submit failed ticker=%s", t, exc_info=True)
+
     def _build():
-        # TICKER-PREVIEW-NO-ENROLL: L1 light view touches last-seen only, never enrolls.
-        _touch_tracked_ticker_view(t)
         return notify_ticker_expiry_changed(t, expiry, force=force)
+
     loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_fast_quote_executor(), _build)
-    return JSONResponse(payload)
+    payload = await loop.run_in_executor(_get_l1_light_executor(), _build)
+    after_exec = time.perf_counter()
+    await_ms = (after_exec - submit_ts) * 1000.0
+    total_ms = (after_exec - route_t0) * 1000.0
+    log.info(
+        "analytics_light_route_done ticker=%s await_executor_ms=%.2f route_total_ms=%.2f "
+        "pipeline_ms=%s",
+        t,
+        await_ms,
+        total_ms,
+        (payload or {}).get("_pipeline_ms") if isinstance(payload, dict) else None,
+    )
+    # Shallow copy so route timing fields never mutate the authoritative L1 cache object.
+    out = dict(payload) if isinstance(payload, dict) else payload
+    if isinstance(out, dict):
+        out["_route_await_executor_ms"] = round(await_ms, 2)
+        out["_route_total_ms"] = round(total_ms, 2)
+    return JSONResponse(out)
 
 
 @app.get("/api/analytics/light/stream")
@@ -12367,8 +12485,11 @@ async def get_analytics_light_stream(
     """
     t = ticker.upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
-    # touch last-seen only. Offloaded because it may do a SQLite write for enrolled tickers.
-    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, t)
+    # touch last-seen only. Fire-and-forget (RC-166): do not block SSE setup on SQLite.
+    try:
+        _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
+    except Exception:
+        log.debug("analytics_light_stream: touch_seen submit failed ticker=%s", t, exc_info=True)
     exp_key = expiry if expiry is not None else "__auto__"
     key = (t, exp_key)
     q, rs_key = _l1_light_sse_try_reserve(request, key)
