@@ -159,9 +159,15 @@ here may be described as edge until it clears a placebo. All of them start `UNPR
   `compute_exposures_by_strike` + `math_levels.compute_charm_by_strike`, sum per side of spot.
 
   **i) Chart-tab consumer design (operator direction, 2026-08-01; mockup shown inline, nothing
-  built).** A five-row strip in the levels card's space — GEX, OV, ΔOI, DEX, charm — each split
-  above/below spot, re-splitting live as spot moves, each row wearing its evidence tier (charm
-  greyed UNAPPROVED until the T-convention faucet closes). Below it a MECHANICAL READING line
+  built; operator: "subject to change").** A five-row strip — GEX, OV, ΔOI, DEX, charm — laid
+  out to READ LEFT-TO-RIGHT LIKE THE PRICE AXIS: **BELOW-spot column | spot (center) |
+  ABOVE-spot column** (operator 2026-08-01, superseding the above/below column order in the
+  first mockup). It LIVES IN THE SPACE of the raw-levels card inserted under LP-01 Step 4
+  (`#rawlevels`); the candle chart stays where it is; the red/blue + yellow bars area is loved
+  and untouched. Every number REAL (no fixtures, per the standing UI-data law), re-splitting
+  live as spot moves, each row wearing its evidence tier — and **charm does not render at all
+  until APPROVED** (T-convention faucet closed + vote), not even greyed. Broader UI
+  functional-design consistency cleanup is deferred by the operator: LATER, not now. Below it a MECHANICAL READING line
   (restates measured facts with units, no forecast) and a LOCKED "Bias" slot that fills in only
   when a scoring rule passes facet (g), citing the study. Levels stop rendering always-on:
   culled to A+ credible ones, appearing as proximity PILLS on the candle canvas only when spot
