@@ -110,7 +110,7 @@ tbody tr:hover{background:var(--cv-sf2)}
 <div class="top">
   <span class="brand"><b>&#9679;</b> ED&nbsp;CONSOLE</span>
   <nav class="navs">
-    <a href="/">Console</a><a href="/">Terrain</a><a href="/chart">Chart</a>
+    <a href="/">Console</a><a href="/#terrain">Terrain</a><a href="/chart">Chart</a>
     <a href="/desk" class="on">Desk</a>
   </nav>
   <div class="topright">
@@ -268,9 +268,10 @@ tbody tr:hover{background:var(--cv-sf2)}
     });
     b.innerHTML=h;
     $("radar-foot").textContent=
-      d.n_total+" subjects knowable at this instant. Rank is measured structure only — it makes "+
-      "no forecast. Lag h is how long after the event we could first act on it; the FINRA "+
-      "column routinely runs days behind, which is why replay filters on knowledge time.";
+      (d.coverage_note ? d.coverage_note+". " : d.n_total+" subjects knowable. ")+
+      "Rank is measured structure only — it makes no forecast. Lag h is how long after the "+
+      "event we could first act on it; the FINRA column routinely runs days behind, which is "+
+      "why replay filters on knowledge time.";
   }
 
   function load(){

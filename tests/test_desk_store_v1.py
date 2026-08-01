@@ -622,6 +622,62 @@ def test_adv_reports_the_bars_it_dropped_for_being_mid_session():
     assert "skipped_incomplete_session_bars" in src
 
 
+def test_no_api_response_hands_the_operator_home_path_to_a_browser():
+    """RC-174: the Evidence payload carried
+    `C:\\Users\\<operator>\\Documents\\Trading\\EdWebConsole\\reports\\...`. This repo already
+    forbids operator-home paths in tracked evidence for the same reason — a path discloses who
+    is running the process and from where — and an API response reaches further than a file
+    does."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    for payload in (ds.evidence_rows(root), ds.evidence_rows(root, time.time()),
+                    ds.evidence_rows(root, 1.0)):
+        src = str(payload.get("source", ""))
+        assert src == "reports/fp_scoreboard_latest.json", src
+        assert "Users" not in src and ":" not in src, f"absolute path leaked: {src}"
+
+
+def test_radar_says_how_many_rows_are_actually_screened(tmp_path):
+    """RC-174: the footer read "12,617 subjects knowable" under a header saying "Candidates".
+    MEASURED 2026-07-31: of 60 rendered rows only 37 carried dollar volume, a chain AND a short
+    ratio; 23 carried a short ratio alone — no capacity, no chain, nothing that makes a name
+    tradeable. A count that mixes the two is a count of rows in a file."""
+    db = tmp_path / "d.db"
+    ds.ensure_schema(db)
+    now = time.time()
+    ds.put_fact(db, subject="FULL", kind="adv_dollar", event_time_utc=now - 60,
+                knowledge_time_utc=now - 60, source="u", tier="DERIVED", value_num=1e7)
+    ds.put_fact(db, subject="FULL", kind="options_listed", event_time_utc=now - 60,
+                knowledge_time_utc=now - 60, source="u", tier="MEASURED", value_num=50)
+    ds.put_fact(db, subject="THIN", kind="short_volume_ratio", event_time_utc=now - 600,
+                knowledge_time_utc=now - 60, source="u", tier="MEASURED", value_num=0.3)
+    p = ds.radar_rows(db, now)
+    assert p["n_total"] == 2
+    assert p["n_structural"] == 1, "a single-fact row was counted as screened structure"
+    assert p["n_single_fact"] == 1
+    assert "listed, not screened" in p["coverage_note"]
+
+
+def test_desk_nav_links_go_where_they_say(tmp_path):
+    """A link labelled Terrain pointed at `/`, which lands on Console. index.html honours
+    `#terrain`, so the link was wrong rather than the destination being unreachable."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    ui = (root / "static" / "desk.html").read_text(encoding="utf-8")
+    nav = dict((lbl, href) for href, lbl in
+               re.findall(r'href="([^"]*)"[^>]*>(Console|Terrain|Chart|Desk)', ui))
+    assert nav["Terrain"] == "/#terrain", nav
+    assert nav["Chart"] == "/chart"
+    assert nav["Desk"] == "/desk"
+    index = (root / "static" / "index.html").read_text(encoding="utf-8")
+    assert "'#terrain'" in index or '"#terrain"' in index, (
+        "the Desk links to a deep link the console no longer honours"
+    )
+
+
 def test_decide_untouched_admissions_empty():
     """This slice is Collect and a visible surface. Nothing may reach the decision path."""
     import json

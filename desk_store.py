@@ -861,22 +861,27 @@ def evidence_rows(repo_root: str | Path | None = None,
     """
     root = Path(repo_root) if repo_root else Path(__file__).resolve().parent
     p = root / "reports" / "fp_scoreboard_latest.json"
+    # RC-174: the absolute path is the operator's home directory. This value is handed to a
+    # browser, and this repo already forbids operator-home paths in tracked evidence for the
+    # same reason — a path is an environment disclosure that tells a reader who is running the
+    # process and where. The repo-relative form names the file just as usefully.
+    rel = "reports/fp_scoreboard_latest.json"
     if not p.exists():
-        return {"rows": [], "source": str(p), "empty_reason": "no scoreboard has been written"}
+        return {"rows": [], "source": rel, "empty_reason": "no scoreboard has been written"}
     try:
         doc = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
-        return {"rows": [], "source": str(p), "empty_reason": f"{type(e).__name__}: {e}"}
+        return {"rows": [], "source": rel, "empty_reason": f"{type(e).__name__}: {e}"}
 
     gen_raw = str(doc.get("generated_utc") or "")
     if as_of_utc is not None:
         gen_ts = _iso_utc_to_epoch(gen_raw)
         if gen_ts is None:
-            return {"rows": [], "source": str(p), "generated_utc": gen_raw,
+            return {"rows": [], "source": rel, "generated_utc": gen_raw,
                     "empty_reason": ("the scoreboard carries no readable generated_utc, so it "
                                      "cannot be placed on the replay clock")}
         if gen_ts > float(as_of_utc):
-            return {"rows": [], "source": str(p), "generated_utc": gen_raw,
+            return {"rows": [], "source": rel, "generated_utc": gen_raw,
                     "empty_reason": (f"this scoreboard was generated {gen_raw}, after the "
                                      "instant being replayed — it was not knowable yet")}
 
@@ -896,7 +901,7 @@ def evidence_rows(repo_root: str | Path | None = None,
     totals = doc.get("totals") or {}
     return {
         "rows": rows,
-        "source": str(p),
+        "source": rel,
         "generated_utc": doc.get("generated_utc"),
         "money_path": doc.get("money_path"),
         "existence_pass_cells": totals.get("existence_pass_cells_sum"),
@@ -1220,10 +1225,31 @@ def radar_rows(db_path: str | Path, as_of_utc: float, *, limit: int = 60) -> dic
         return (-float(adv) if isinstance(adv, (int, float)) else 0.0, str(r["subject"]))
 
     out.sort(key=_rank_key)
+    # RC-174: "12,617 subjects knowable" overstated what the desk actually holds. MEASURED
+    # 2026-07-31: of the 60 rows rendered, 37 carried all three structural facts and 23 carried
+    # a short-volume ratio and nothing else — no dollar volume, no chain, nothing that makes a
+    # name tradeable. A count that mixes those two is a count of rows in a file, not of
+    # candidates, and under a header reading "Candidates" it reads as depth the desk does not
+    # have. The breakdown now travels with the total.
+    structural = sum(
+        1 for r in out
+        if r["adv_dollar"] is not None and r["n_strikes"] is not None
+    )
+    single = sum(
+        1 for r in out
+        if sum(1 for k in ("adv_dollar", "short_volume_ratio", "n_strikes")
+               if r[k] is not None) <= 1
+    )
     return {
         "as_of_utc": float(as_of_utc),
         "rows": out[:limit],
         "n_total": len(out),
+        "n_structural": structural,
+        "n_single_fact": single,
+        "coverage_note": (
+            f"{structural} of {len(out)} subjects carry both dollar volume and a banked chain; "
+            f"{single} carry a single fact and are listed, not screened"
+        ),
         "rank_basis": "adv_dollar desc — tradeability, not expected return",
         "empty_reason": None if out else (
             "no facts carry a knowledge time at or before this instant"
