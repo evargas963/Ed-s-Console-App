@@ -498,7 +498,7 @@ def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> 
        does not repair it, so the count of suspect sessions rides along in the payload where it
        stays visible instead of being smoothed away.
     """
-    from time_et import et_date_str_from_ts_utc, is_rth_ts_utc
+    from time_et import et_date_str_from_ts_utc
 
     cutoff = time.time() - (window_days * 86400.0)
     con = _connect(db_path, read_only=True)
@@ -527,7 +527,10 @@ def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> 
         sym = str(r["ticker"] or "").upper()
         if not sym or ts <= 0:
             continue
-        if not is_rth_ts_utc(ts):
+        # RC-176: both clock AND calendar. `price_bars_1m` really does carry weekend/holiday
+        # rows (2026-07-03/04/05/11/18 measured), and the clock-only filter counted them as
+        # sessions.
+        if not is_rth_trading_ts(ts):
             skipped_non_rth += 1
             continue
         d = et_date_str_from_ts_utc(ts)
@@ -661,8 +664,6 @@ def effective_spread_bps(
     is not a spread. RTH membership comes from `time_et`, not from the denormalised
     `market_session` column, for the same reason RC-170 exists: one authority per question.
     """
-    from time_et import is_rth_ts_utc
-
     lo = as_of_utc - (window_days * 86400.0)
     try:
         con = _connect(db_path, read_only=True)
@@ -681,7 +682,8 @@ def effective_spread_bps(
 
     bps = sorted(
         (float(r["spread"]) / float(r["spot"])) * 10_000.0
-        for r in rows if is_rth_ts_utc(float(r["ts_utc"] or 0.0)) and float(r["spread"]) >= 0
+        for r in rows
+        if is_rth_trading_ts(float(r["ts_utc"] or 0.0)) and float(r["spread"]) >= 0
     )
     if len(bps) < _MIN_QUOTES_FOR_SPREAD:
         return None
@@ -694,6 +696,20 @@ def effective_spread_bps(
         "window_days": window_days,
         "tier": "DERIVED",
     }
+
+
+def is_rth_trading_ts(ts_utc: float) -> bool:
+    """RTH means BOTH clock and calendar — 09:30–16:00 ET on an actual trading day.
+
+    RC-176: `time_et.is_rth_ts_utc` answers only the CLOCK question (its docstring says so), and
+    every Desk reader used it alone, so Saturday 11:00 passed as regular session. That is not
+    hypothetical: MEASURED 2026-08-01, `price_bars_1m` carries bars on 2026-07-03/04/05/11/18 —
+    a holiday and four weekend dates — which the ADV, sigma and bootstrap readers all counted as
+    sessions. The calendar question belongs to `is_trading_day_et`; this helper asks both.
+    """
+    from time_et import et_date_str_from_ts_utc, is_rth_ts_utc, is_trading_day_et
+
+    return is_rth_ts_utc(ts_utc) and is_trading_day_et(et_date_str_from_ts_utc(ts_utc))
 
 
 def session_is_complete(et_date: str, as_of_utc: float) -> bool:
@@ -709,14 +725,24 @@ def session_is_complete(et_date: str, as_of_utc: float) -> bool:
     from time_et import (
         et_date_str_from_ts_utc,
         et_minute_total_from_ts_utc,
+        is_trading_day_et,
         session_close_mins_for_et_date,
     )
 
+    # RC-176: a non-trading date has no session, so nothing can be in progress. Without this
+    # guard, `session_close_mins_for_et_date` supplies a close time for any non-holiday date in
+    # a covered year (it does not ask the weekday), so a Saturday judged before 16:00 ET read as
+    # "session still open" — and Desk statistics froze out the day's data on weekend runs.
+    # Callers that COUNT sessions must separately exclude non-trading dates (is_rth_trading_ts);
+    # this function only answers "is anything still in progress", and on a Saturday the answer
+    # is no.
+    if not is_trading_day_et(et_date):
+        return True
     if et_date != et_date_str_from_ts_utc(as_of_utc):
         return True  # a past date's session is closed by construction
     close_mins = session_close_mins_for_et_date(et_date)
     if not close_mins:
-        return True  # not a trading day — nothing incomplete about it
+        return True  # no session that day — nothing incomplete about it
     return et_minute_total_from_ts_utc(as_of_utc) >= float(close_mins)
 
 
@@ -732,7 +758,7 @@ def daily_sigma_bps(db_path: str | Path, subject: str, as_of_utc: float, *,
     """
     import math
 
-    from time_et import et_date_str_from_ts_utc, is_rth_ts_utc
+    from time_et import et_date_str_from_ts_utc
 
     lo = as_of_utc - (window_days * 86400.0)
     try:
@@ -752,7 +778,7 @@ def daily_sigma_bps(db_path: str | Path, subject: str, as_of_utc: float, *,
     closes: dict[str, float] = {}
     for r in rows:
         ts = float(r["bar_end_ts_utc"] or 0.0)
-        if not is_rth_ts_utc(ts):
+        if not is_rth_trading_ts(ts):  # RC-176: clock AND calendar
             continue
         closes[et_date_str_from_ts_utc(ts)] = float(r["close"])
     # RC-173: a session still in progress has no close. Including it turns the newest daily
@@ -919,8 +945,6 @@ def evidence_rows(repo_root: str | Path | None = None,
 
 def _rth_log_returns(db_path: str | Path, subject: str, as_of_utc: float,
                      window_days: int) -> list[float]:
-    from time_et import is_rth_ts_utc
-
     lo = as_of_utc - (window_days * 86400.0)
     try:
         con = _connect(db_path, read_only=True)
@@ -936,7 +960,10 @@ def _rth_log_returns(db_path: str | Path, subject: str, as_of_utc: float,
         return []
     finally:
         con.close()
-    closes = [float(r["close"]) for r in rows if is_rth_ts_utc(float(r["bar_end_ts_utc"] or 0))]
+    # RC-176: clock AND calendar — a weekend bar in the return series injects a fake flat (or
+    # blown) minute into the bootstrap's block distribution.
+    closes = [float(r["close"]) for r in rows
+              if is_rth_trading_ts(float(r["bar_end_ts_utc"] or 0))]
     import math
     return [math.log(b / a) for a, b in zip(closes, closes[1:], strict=False)
             if a > 0 and b > 0]

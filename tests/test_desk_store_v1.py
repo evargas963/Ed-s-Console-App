@@ -27,10 +27,14 @@ def _rth_session_stamps(n: int) -> list[float]:
     Derived from the `time_et` authority rather than `now - k*86400`: a fixture pinned to a
     fixed offset lands on a weekend or a holiday depending on the day the suite runs, which is
     the same going-stale-by-construction defect as a hard-coded date (RC-169).
+
+    RC-176: the first version asked `is_rth_ts_utc` alone, which answers only the CLOCK question
+    — Saturday 11:00 passed as a session, so the whole suite went red the first Saturday morning
+    it ran. The calendar question belongs to `is_trading_day_et`; a stamp must satisfy both.
     """
     from datetime import datetime, timedelta
 
-    from time_et import ET, is_rth_ts_utc
+    from time_et import ET, is_rth_ts_utc, is_trading_day_et
 
     out: list[float] = []
     probe = datetime.now(ET).date()
@@ -38,7 +42,7 @@ def _rth_session_stamps(n: int) -> list[float]:
     while len(out) < n and guard < 40:
         guard += 1
         ts = datetime(probe.year, probe.month, probe.day, 11, 0, tzinfo=ET).timestamp()
-        if is_rth_ts_utc(ts):
+        if is_trading_day_et(probe.isoformat()) and is_rth_ts_utc(ts):
             out.append(ts)
         probe = probe - timedelta(days=1)
     assert len(out) == n, "could not find enough regular sessions in the last 40 days"
@@ -252,7 +256,7 @@ def test_adv_counts_only_the_regular_session(tmp_path):
     import sqlite3
     from datetime import datetime, timedelta
 
-    from time_et import ET, is_rth_ts_utc
+    from time_et import ET, is_rth_ts_utc, is_trading_day_et
 
     db = tmp_path / "d.db"
     ds.ensure_schema(db)
@@ -261,13 +265,16 @@ def test_adv_counts_only_the_regular_session(tmp_path):
                 "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
                 "volume REAL, source TEXT)")
     # Three RTH sessions of equal size, each shadowed by a huge pre-market bar.
+    # RC-176: the trading-day check is part of the condition — without it this loop planted a
+    # Saturday pair whenever the suite ran on a weekend, and the count assertion drifted by one.
     day = datetime.now(ET).date()
     sessions = 0
     probe = day
     while sessions < 3:
         rth = datetime(probe.year, probe.month, probe.day, 11, 0, tzinfo=ET).timestamp()
         pre = datetime(probe.year, probe.month, probe.day, 5, 0, tzinfo=ET).timestamp()
-        if is_rth_ts_utc(rth) and not is_rth_ts_utc(pre):
+        if is_trading_day_et(probe.isoformat()) and is_rth_ts_utc(rth) \
+                and not is_rth_ts_utc(pre):
             con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
                         ("ZZZ", rth - 60, rth, 1, 1, 1, 100.0, 10_000.0, "unit"))
             con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
@@ -772,6 +779,65 @@ def test_desk_page_is_navigable_without_a_mouse():
     assert "<h1" in ui, "the page has no top-level heading"
     assert ".sr{" in ui, "the visually-hidden helper the h1 relies on is undefined"
     assert "focus-visible" in ui, "keyboard focus has no visible state"
+
+
+def test_saturday_is_not_a_session_anywhere_in_the_desk(tmp_path):
+    """RC-176 — the defect that turned the suite red the first Saturday it ran, and was REAL in
+    production: `price_bars_1m` carries rows on 2026-07-03/04/05/11/18 (a holiday and four
+    weekend dates), and every Desk reader filtered on the CLOCK alone, so those rows counted as
+    sessions. 2026-08-01 is a Saturday forever, so these assertions are deterministic."""
+    import sqlite3
+    from datetime import datetime
+
+    from time_et import ET
+
+    sat = "2026-08-01"
+    sat_11et = datetime(2026, 8, 1, 11, 0, tzinfo=ET).timestamp()
+
+    # the combined authority: right clock, wrong day -> not a session
+    assert ds.is_rth_trading_ts(sat_11et) is False, (
+        "Saturday 11:00 ET passed the RTH filter — the calendar half of the question is unasked"
+    )
+    # nothing can be 'in progress' on a day with no session
+    assert ds.session_is_complete(sat, sat_11et) is True, (
+        "a Saturday read as an open session — weekend runs would freeze out the day's data"
+    )
+
+    # and a weekend bar must not become an ADV session
+    db = tmp_path / "d.db"
+    ds.ensure_schema(db)
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, "
+                "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
+                "volume REAL, source TEXT)")
+    for ts in _rth_session_stamps(ds._MIN_SESSIONS_FOR_ADV):
+        con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+                    ("ZZZ", ts - 60, ts, 1, 1, 1, 100.0, 10_000.0, "unit"))
+    con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+                ("ZZZ", sat_11et - 60, sat_11et, 1, 1, 1, 100.0, 9_999_999.0, "unit"))
+    con.commit()
+    con.close()
+    res = ds.materialize_dollar_volume(db)
+    assert res["skipped_non_rth_bars"] >= 1, "the Saturday bar was not excluded"
+    row = ds.latest_by_subject(db, time.time() + 5, "adv_dollar").get("ZZZ")
+    assert row is not None
+    assert row["payload"]["sessions"] == ds._MIN_SESSIONS_FOR_ADV, (
+        "a weekend bar was counted as a trading session"
+    )
+    assert row["value_num"] == pytest.approx(1_000_000.0), (
+        "the weekend bar's dollars leaked into the median"
+    )
+
+
+def test_session_stamps_only_land_on_trading_days():
+    """The fixture helper itself is under test now — it broke the suite before the code did."""
+    from datetime import datetime
+
+    from time_et import ET, is_trading_day_et
+
+    for ts in _rth_session_stamps(5):
+        d = datetime.fromtimestamp(ts, ET).date().isoformat()
+        assert is_trading_day_et(d), f"fixture stamp landed on non-trading day {d}"
 
 
 def test_decide_untouched_admissions_empty():

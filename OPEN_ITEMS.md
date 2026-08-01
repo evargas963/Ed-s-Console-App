@@ -18,6 +18,7 @@ are removed, not accumulated; the pre-slimming ledger is preserved at tag-time i
 | Real-money readiness | **NOT_APPROVED** |
 | Decision-path admission registry (`governance/decision_path_admissions.json`) | **BUILT_EMPTY** — gate live in `call_engine.compute_call` via `decision_gate.py`; nothing admitted; directional calls force WAIT (running server picks this up on its next restart) |
 | Card fidelity overall / universal runtime live proof | **NOT_PROVEN** |
+| FP-03..FP-25 battery + LP-01 levels verdicts (kills AND signals) | **ERA-CONTAMINATED — not citable either direction until re-run under the clean protocol (operator 2026-08-01; see Validity notes below)** |
 
 ---
 
@@ -144,6 +145,39 @@ here may be described as edge until it clears a placebo. All of them start `UNPR
   where the placebo scored HIGHER and correctly killed the signal), and a stated minimum n with a CI
   that excludes zero. Until it passes, nothing here may reach `governance/decision_path_admissions.json`
   and the Chart renders no directional arrow.
+
+  **h) Charm extends the worked example; the operator's "score" ask (2026-08-01).** Same SPY
+  2026-07-31 stored chain, per-strike charm via `math_levels.compute_charm_by_strike` (+call/−put
+  convention, units = delta-shares/day): ABOVE spot −526,350 · BELOW −1,224,759 · TOTAL
+  −1,751,108 sh/day. Beside gamma ~2:1 and volume 0.75:1, charm sits at ~0.43:1 — and unlike DEX
+  it is a FLOW with units and an advance-computable sign (it fires from the clock alone), which
+  is the tie-breaker property. CAVEATS: the chain includes 0DTE contracts where the open
+  near-expiry T-convention faucet lives, so magnitudes are illustrative only; and the proposed
+  above-vs-below directional SCORE is exactly facet (g)'s deliverable — its weights must come OUT
+  of the study, never be hand-picked (a hand-weighted score is free parameters wearing a
+  formula). Reproduce: load the latest SPY `option_chain_morning_full` row, run
+  `compute_exposures_by_strike` + `math_levels.compute_charm_by_strike`, sum per side of spot.
+
+## Validity — probing notes (operator + Claude, 2026-08-01; prose on purpose, not queue rows)
+
+**Citation rule (operator 2026-08-01):** a study run on contaminated data is NOT citable
+evidence — in either direction — until re-run under a clean protocol. Falling under it today:
+the LP-01 touch study (`tools/lp01_touch_study_v1.py` is flagged by the institutional gate for
+NO trading-session scoping AND no calendar authority on `price_bars_1m`, which carries extended
+hours by design) and the FP-03..FP-25 battery (bar/greek repairs landed mid-sequence; the
+earlier ~30-null battery is already VOID for the corrupted era). Contamination biases toward
+"nothing moved", so the KILLS are as untrustworthy as the signals. Honest status of all of it:
+**UNKNOWN, not disproven.**
+
+**Clean-test protocol (required for any re-run):** RTH-scoped via the `time_et` authority ·
+certified greeks (`greeks_recomputed_v1`) only · repaired-bar era only · placebo mandatory ·
+pre-registered.
+
+**Unapproved inventory (probed 2026-08-01; each item tracked in its own home, listed here so the
+set is visible in one place):** register `governance/unproven_register.md` — 6 UNPROVEN rows,
+one (intraday flip-drift magnitude) OVERDUE since 2026-07-31 · root-cause log — RC-58, RC-107,
+RC-168 OPEN and RC-102/110/115/117/124/165/166 PARTIAL · charm — near-expiry T-convention faucet
+open; the charm VOTE stays UNAPPROVED until it closes.
 
 ## Find & Prove queue
 
