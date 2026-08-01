@@ -88,6 +88,7 @@ tbody tr:hover{background:var(--cv-sf2)}
 .legend{display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--cv-bd);
   background:var(--cv-sk);font-family:var(--cv-mono);font-size:10.5px;color:var(--cv-mu)}
 .legend span{display:flex;align-items:center;gap:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .hid td{opacity:.4}
 .strctl{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
 .strctl label{font-family:var(--cv-mono);font-size:10px;letter-spacing:.1em;
@@ -127,16 +128,24 @@ tbody tr:hover{background:var(--cv-sf2)}
   <span id="lock">no lookahead &middot; live</span>
 </div>
 
-<div class="subs" role="tablist">
-  <button type="button" class="on" data-p="radar" role="tab">Radar</button>
-  <button type="button" data-p="brief" role="tab">Brief</button>
-  <button type="button" data-p="dossier" role="tab">Dossier</button>
-  <button type="button" data-p="struct" role="tab">Structures</button>
-  <button type="button" data-p="book" role="tab">Book</button>
-  <button type="button" data-p="evid" role="tab">Evidence</button>
+<h1 class="sr">Desk — research, candidates and book, replayable at an earlier knowledge time</h1>
+
+<div class="subs" role="tablist" aria-label="Desk sections">
+  <button type="button" class="on" data-p="radar" role="tab" id="t-radar"
+          aria-controls="p-radar" aria-selected="true">Radar</button>
+  <button type="button" data-p="brief" role="tab" id="t-brief"
+          aria-controls="p-brief" aria-selected="false">Brief</button>
+  <button type="button" data-p="dossier" role="tab" id="t-dossier"
+          aria-controls="p-dossier" aria-selected="false">Dossier</button>
+  <button type="button" data-p="struct" role="tab" id="t-struct"
+          aria-controls="p-struct" aria-selected="false">Structures</button>
+  <button type="button" data-p="book" role="tab" id="t-book"
+          aria-controls="p-book" aria-selected="false">Book</button>
+  <button type="button" data-p="evid" role="tab" id="t-evid"
+          aria-controls="p-evid" aria-selected="false">Evidence</button>
 </div>
 
-<div class="panel on" id="p-radar">
+<div class="panel on" id="p-radar" role="tabpanel" aria-labelledby="t-radar">
   <h3 class="sec">Candidates &mdash; <span id="rank-basis" class="mu">loading</span></h3>
   <div class="tw"><table>
     <thead><tr>
@@ -148,17 +157,17 @@ tbody tr:hover{background:var(--cv-sf2)}
   <p class="note" id="radar-foot"></p>
 </div>
 
-<div class="panel" id="p-brief">
+<div class="panel" id="p-brief" role="tabpanel" aria-labelledby="t-brief">
   <h3 class="sec">Research brief</h3>
   <div id="brief-out"><p class="note mu">loading…</p></div>
 </div>
 
-<div class="panel" id="p-dossier">
+<div class="panel" id="p-dossier" role="tabpanel" aria-labelledby="t-dossier">
   <h3 class="sec">Dossier &mdash; <span id="dos-sym" class="mu">—</span></h3>
   <div id="dos-out"><p class="note mu">loading…</p></div>
 </div>
 
-<div class="panel" id="p-struct">
+<div class="panel" id="p-struct" role="tabpanel" aria-labelledby="t-struct">
   <h3 class="sec">Structures &mdash; <span id="str-sym" class="mu">—</span></h3>
   <div class="strctl">
     <label>Long <input id="s-long" type="number" step="0.5" value="0" /></label>
@@ -174,9 +183,9 @@ tbody tr:hover{background:var(--cv-sf2)}
   <div id="str-out"><p class="note mu">enter two strikes and their prices, then compute</p></div>
 </div>
 
-<div class="panel" id="p-book"></div>
+<div class="panel" id="p-book" role="tabpanel" aria-labelledby="t-book"></div>
 
-<div class="panel" id="p-evid">
+<div class="panel" id="p-evid" role="tabpanel" aria-labelledby="t-evid">
   <h3 class="sec">Evidence &mdash; what every claim has actually earned</h3>
   <div id="evid-out"><p class="note mu">loading…</p></div>
 </div>
@@ -456,8 +465,18 @@ tbody tr:hover{background:var(--cv-sf2)}
     o.innerHTML=h;
   }
 
+  // RC-175: one sequence number per box. A slow response must never repaint over a newer one.
+  // This session already shipped that failure once through a different door — an orphaned
+  // in-flight guard on the Chart threw on every load — so the guard here is explicit and its
+  // discard is total: a stale reply is dropped, not merged.
+  var SEQ={};
   function grab(url,fn,box){
-    fetch(url).then(function(r){return r.json();}).then(fn).catch(function(e){
+    var n=(SEQ[box]=(SEQ[box]||0)+1);
+    fetch(url).then(function(r){return r.json();}).then(function(d){
+      if(SEQ[box]!==n) return;              // a newer request already answered
+      fn(d);
+    }).catch(function(e){
+      if(SEQ[box]!==n) return;
       $(box).innerHTML=voidBox("Request failed",String(e),"");
     });
   }

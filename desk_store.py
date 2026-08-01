@@ -949,9 +949,12 @@ def terminal_distribution(
     call price across strikes — the density the market itself is quoting — cannot be formed from
     anything this repo currently stores. That absence is reported, not approximated.
 
-    The seed is derived from the inputs so the same question returns the same answer. A desk
-    number that changes on refresh cannot be checked, and a number that cannot be checked is
-    not evidence.
+    The seed is derived from the DATA, not the clock, so the same underlying series returns the
+    same answer however often it is asked. RC-175: it used to include `int(as_of_utc)`, and on
+    the live path `as_of` is NOW — so two calls a second apart produced different quantiles
+    (p50 745.3444 then 744.9982, MEASURED 2026-07-31) while this docstring claimed they could
+    not. A desk number that changes on refresh cannot be checked, and a number that cannot be
+    checked is not evidence; a docstring promising otherwise is worse than no promise at all.
     """
     import math
     import random
@@ -993,7 +996,11 @@ def terminal_distribution(
                 "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE}
 
     n_blocks = max(1, steps // blk)
-    rng = random.Random(f"{subject.upper()}|{int(as_of_utc)}|{horizon_sessions}|{n_paths}")
+    # RC-175: seeded on the SERIES, never on the wall clock. Two calls against the same bars
+    # must agree; two calls after a new bar arrives are entitled to differ, and do.
+    seed = (f"{subject.upper()}|{len(rets)}|{blk}|{len(block_sums)}|"
+            f"{spot:.6f}|{rets[-1]:.10f}|{horizon_sessions}|{n_paths}")
+    rng = random.Random(seed)
     terminals = []
     for _ in range(int(n_paths)):
         total = 0.0
@@ -1020,6 +1027,7 @@ def terminal_distribution(
         "n_paths": int(n_paths),
         "n_returns": len(rets),
         "block_bars": blk,
+        "seed": seed,
         "quantiles": {"p05": q(0.05), "p25": q(0.25), "p50": q(0.50),
                       "p75": q(0.75), "p95": q(0.95)},
         "density": {"lo": lo, "hi": hi, "bin_width": width,

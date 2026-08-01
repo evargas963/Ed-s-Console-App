@@ -678,6 +678,102 @@ def test_desk_nav_links_go_where_they_say(tmp_path):
     )
 
 
+def test_the_distribution_is_deterministic_against_the_same_bars(tmp_path):
+    """RC-175: the docstring promised the same question returns the same answer, and the live
+    path broke it. The seed included `int(as_of_utc)`, and on the live path `as_of` is NOW —
+    MEASURED 2026-07-31, two calls a second apart gave p50 745.3444 then 744.9982. A number that
+    changes on refresh cannot be checked, and a promise in a docstring that the code does not
+    keep is worse than no promise."""
+    import ast
+    import inspect
+    import sqlite3
+
+    # Search the CODE, not the prose. The docstring documents the defect by name, and a naive
+    # substring check matched the explanation rather than the thing explained — the same trap
+    # that fired earlier this session when a guard blocked the text describing its own removal.
+    tree = ast.parse(inspect.getsource(ds.terminal_distribution).lstrip())
+    fn = tree.body[0]
+    assert isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+    body = fn.body[1:] if isinstance(fn.body[0], ast.Expr) and isinstance(
+        fn.body[0].value, ast.Constant) else fn.body
+    seed_stmt = [n for n in ast.walk(ast.Module(body=body, type_ignores=[]))
+                 if isinstance(n, ast.Assign)
+                 and any(getattr(t, "id", "") == "seed" for t in n.targets)]
+    assert seed_stmt, "no `seed` is constructed at all"
+    seed_src = ast.dump(seed_stmt[0])
+    assert "as_of_utc" not in seed_src, "the wall clock is back in the seed"
+
+    db = tmp_path / "d.db"
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, "
+                "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
+                "volume REAL, source TEXT)")
+    # Fill whole regular sessions. Walking back minute-by-minute from one session's midpoint
+    # leaves the session after 90 bars and starves the bootstrap — the filter is doing its job,
+    # the fixture was wrong.
+    from time_et import is_rth_ts_utc
+
+    px, n_rth = 100.0, 0
+    for day_ts in _rth_session_stamps(3):
+        for k in range(390):
+            ts = day_ts - (90 * 60) + (k * 60)   # 09:30 ET onward
+            if not is_rth_ts_utc(ts):
+                continue
+            n_rth += 1
+            px *= 1.0 + (0.0004 if k % 3 else -0.0005)
+            con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+                        ("ZZZ", ts - 60, ts, 1, 1, 1, px, 100.0, "unit"))
+    con.commit()
+    con.close()
+    assert n_rth > ds._MIN_RETURNS_FOR_BOOTSTRAP, (
+        f"fixture only produced {n_rth} regular-session bars"
+    )
+
+    now = time.time()
+    a = ds.terminal_distribution(db, "ZZZ", now)
+    b = ds.terminal_distribution(db, "ZZZ", now + 900)  # a later clock, identical bars
+    assert a["available"] and b["available"]
+    assert a["quantiles"] == b["quantiles"], (
+        "the same bars produced two different distributions — the clock is still in the seed"
+    )
+    assert a["seed"] == b["seed"]
+    c = ds.terminal_distribution(db, "ZZZ", now, horizon_sessions=9)
+    assert c["quantiles"] != a["quantiles"], "a different question gave an identical answer"
+
+
+def test_a_slow_response_cannot_repaint_over_a_newer_one():
+    """RC-175: no request-sequence guard existed, so a slow reply could overwrite a fresher one
+    after a ticker change or a fast tab switch. This session already shipped that failure class
+    through a different door — an orphaned in-flight guard that threw on every Chart load."""
+    from pathlib import Path
+
+    ui = (Path(__file__).resolve().parent.parent / "static" / "desk.html").read_text(
+        encoding="utf-8")
+    i = ui.find("function grab(")
+    assert i > 0
+    body = ui[i:i + 700]
+    assert "SEQ[box]" in body, "responses are still applied without checking they are current"
+    assert body.count("if(SEQ[box]!==n) return;") >= 2, (
+        "the guard must cover the error path too — a stale FAILURE overwriting a good render "
+        "is the same defect wearing a different face"
+    )
+
+
+def test_desk_page_is_navigable_without_a_mouse():
+    """Tabs that cannot be reached or announced are not a surface for everyone who has to read
+    a position off this screen."""
+    from pathlib import Path
+
+    ui = (Path(__file__).resolve().parent.parent / "static" / "desk.html").read_text(
+        encoding="utf-8")
+    assert ui.count('role="tabpanel"') == 6, "not every panel is announced as a tab panel"
+    for p in ("radar", "brief", "dossier", "struct", "book", "evid"):
+        assert f'aria-controls="p-{p}"' in ui and f'aria-labelledby="t-{p}"' in ui, p
+    assert "<h1" in ui, "the page has no top-level heading"
+    assert ".sr{" in ui, "the visually-hidden helper the h1 relies on is undefined"
+    assert "focus-visible" in ui, "keyboard focus has no visible state"
+
+
 def test_decide_untouched_admissions_empty():
     """This slice is Collect and a visible surface. Nothing may reach the decision path."""
     import json
