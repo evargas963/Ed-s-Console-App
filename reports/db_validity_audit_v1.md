@@ -42,6 +42,33 @@ The July 4th sample proves fabrication rather than mislabeling: every one of the
 weekend-ET rows on 07-03..07-05 carries source `synthetic_interior_grid_repair_v1` — a repair
 tool "filled" a gap that was actually a market holiday.
 
+## RTH completeness census (added 2026-08-01, operator question: "are RTH rows missing?")
+
+Scope: every (ticker, trading day) where the ticker logged at least one RTH bar; expected
+minutes from 09:30 to that date's session close (half-days honoured via
+`session_close_mins_for_et_date`).
+
+| Quantity | Count | % of expected |
+|---|---|---|
+| Session-minutes expected | 1,066,650 | — |
+| Minutes with a row | 967,269 | 90.68% |
+| **TRUE HOLES — no row at all** | **99,381** | **9.32%** |
+| **FAKE FILLS — synthetic row occupying a real minute** | **7,451** | 0.70% |
+
+Worst tickers by holes: TSL 7,732 · PSCI 5,021 · PLTR 2,837 · PCG 2,833 · RKLB 2,825 ·
+SMCI 2,765 · NFLX 2,752 · MU 2,746.
+
+**Answer to the operator's hypothesis:** the weekend rows did not displace RTH rows one-for-one
+— they are bridge spillover — but the underlying suspicion is confirmed and larger: the repair
+machinery fabricated data across closed periods while 99,381 genuine session minutes stayed
+empty and 7,451 more were filled with fakes. **Backfill target = 99,381 + 7,451 ≈ 106,832 RTH
+minutes**, fetched real from Schwab via the proven FP-10 machine. Known nuance: FP-18 measured
+~7,724 clock-gap bars in (29s,60s] — some "holes" are jitter-displaced bars, and the backfill
+reconciliation tolerance already handles that class; the census number is therefore an upper
+bound on truly absent data. Reproduce:
+`.venv/Scripts/python.exe` census script per the matrix note (same connection, group RTH minutes
+per (ticker, ET trading date), diff against the session grid).
+
 ## Audit's own errors (kept per the fair-method clause)
 
 1. First pass dated bars in **UTC** and reported five suspect dates; ET re-dating showed one of
@@ -69,6 +96,9 @@ tool "filled" a gap that was actually a market holiday.
    gaps left HONESTLY EMPTY (an empty minute is true; an interpolated one is not). One check
    first: Schwab's 1m history depth must cover the oldest synthetic date (2026-02-22) —
    measured, not assumed, before the run is sized.
+   **Sized by the census (2026-08-01): the backfill target is ≈106,832 RTH minutes — 99,381
+   true holes plus 7,451 fake-filled — an upper bound pending jitter reconciliation. The weekend
+   rows displaced nothing; they are removal-only.**
 2. **RC-178 labeler:** `market_session` must consult the calendar, and the 33,929 `rth`-labeled
    weekend rows need relabeling or flagging.
 3. **Weekend collector policy:** console runs on weekends by operator habit; collectors persist
