@@ -58,6 +58,16 @@ minutes from 09:30 to that date's session close (half-days honoured via
 Worst tickers by holes: TSL 7,732 · PSCI 5,021 · PLTR 2,837 · PCG 2,833 · RKLB 2,825 ·
 SMCI 2,765 · NFLX 2,752 · MU 2,746.
 
+**Vendor floor, MEASURED 2026-08-01 (binary search over live `pricehistory` calls):** Schwab 1m
+history starts at **2026-06-17** — ~45 days of reach (Feb/Mar/Apr/May windows all return HTTP
+200 with 0 candles; 06-16 returns 0, 06-17 returns 34, 06-19 returns 758). The window SLIDES
+DAILY: every day of delay pushes another day of holes past the floor forever.
+
+| Split at the floor | Holes | Fake-filled | Disposition |
+|---|---|---|---|
+| **Recoverable (≥ 2026-06-17)** | **49,478** | **800** | **backfill NOW — 50,278 minutes, decaying daily** |
+| Unrecoverable (< floor) | 49,903 | 6,651 | permanently empty; fakes quarantine |
+
 **Answer to the operator's hypothesis:** the weekend rows did not displace RTH rows one-for-one
 — they are bridge spillover — but the underlying suspicion is confirmed and larger: the repair
 machinery fabricated data across closed periods while 99,381 genuine session minutes stayed
