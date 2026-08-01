@@ -785,18 +785,26 @@ def compute_net_charm(
     (delta(T-1d)-delta(T))/dt, proves calendar charm = +phi*d2/(2T) (= math_levels.bs_charm
     at r=0) for ATM/ITM/OTM alike. The r-omission still costs accuracy that grows with T and
     rate (~6% 0DTE ATM, ~17% 7d, ~71% 3-month ATM at r=0.05); acceptable for the near-expiry
-    use this feeds. NOTE: the scalar here and the per-strike compute_charm_by_strike now
-    agree on DIRECTION; a residual magnitude gap near expiry (different T convention:
-    hours-to-close vs a 0.5-day floor) is a separate, tracked single-source item.
+    use this feeds. The scalar here and the per-strike compute_charm_by_strike agree on
+    DIRECTION and, since RC-42 unified both on time_et.time_to_expiry_years, on T as well —
+    the once-tracked "hours-to-close vs 0.5-day floor" magnitude gap no longer exists in
+    code (RC-179 closed it as a stale claim; parity measured at 0.02% on a real 0DTE book).
 
     NOTE: the ``rate`` parameter is therefore NOT used in the charm computation.
 
     Put charm: with q=0, Delta_put = Delta_call - 1, and the constant vanishes under
     d/dt, so charm_put == charm_call. That identity is why both sides use one formula.
-    They are then summed with the SAME sign (no +call/-put dealer convention, unlike
-    net GEX) -- so ``net_charm_daily`` is an OI-weighted magnitude of hedge decay, NOT
-    a dealer-signed directional flow. Registered as an open question, do not read the
-    sign of net_charm as dealer direction without resolving it.
+    AGGREGATION IS DEALER-SIGNED (RC-179, convention pinned 2026-08-01 by operator order):
+    ``net = call_charm - put_charm`` — the SAME +call/-put dealer book assumption as net
+    GEX and the per-strike compute_charm_by_strike path, so ``net_charm_daily`` IS a
+    dealer-signed directional flow and its sign may be read as dealer direction. An older
+    revision of this paragraph claimed the two sides were summed with the same sign; the
+    code below never did that after the 2026-07-25 correction, and the claim survived only
+    in prose. MEASURED parity on the real SPY 2026-07-31 0DTE book (put-heavy, 782,222 put
+    OI vs 530,996 call): scalar -3,529,621.8 vs per-strike dealer-signed sum -3,528,882.8
+    (0.02%, the scalar's extra plausibility gates account for the gap), against a same-sign
+    gross of +5,907,087.6 — the sign itself is the proof the dealer convention is live.
+    Locked by tests/test_charm_sign_finite_difference.py (parity + put-heavy sign-flip).
 
     Dealer position: market makers are typically SHORT options (sold to retail).
     SHORT call → delta hedge = SHORT stock. As charm decays, they BUY back stock.

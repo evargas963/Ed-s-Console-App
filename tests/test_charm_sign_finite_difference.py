@@ -63,6 +63,105 @@ def test_bs_charm_sign_matches_finite_difference(label, S, dte):
     assert fd * bs > 0, f"{label}: bs_charm sign {bs:+.4f} disagrees with FD calendar charm {fd:+.4f}"
 
 
+def _mixed_book(exp: str, call_oi: int, put_oi: int) -> list[dict]:
+    """Two-sided book at one strike with controllable OI mix.
+
+    institutional-synthetic-ok: the dealer-sign convention is a pure aggregation identity
+    (net = call - put); proving it requires exact control of the OI mix, which no captured
+    chain can pin.
+    """
+    base = {"strikePrice": K, "expirationDate": exp, "gamma": 0.05,
+            "volatility": SIGMA * 100.0, "multiplier": 100}
+    return [
+        {**base, "putCall": "CALL", "delta": 0.55, "openInterest": call_oi},
+        {**base, "putCall": "PUT", "delta": -0.45, "openInterest": put_oi},
+    ]
+
+
+def test_scalar_equals_per_strike_dealer_signed_sum():
+    """RC-179 LOCK 1 — one convention, two engines, zero drift. The scalar's docstring once
+    claimed same-sign summation while the code netted call-put; prose and code diverged for a
+    week and the 'open faucet' lived on only in documentation. This binds the CODE identity:
+    compute_net_charm == sum of compute_charm_by_strike net over the same book."""
+    from datetime import datetime, timedelta
+
+    from math_levels import compute_charm_by_strike
+    from time_et import ET
+
+    exp = "2026-08-03"
+    now = datetime(2026, 8, 3, 16, 0, tzinfo=ET) - timedelta(days=5)
+    book = _mixed_book(exp, call_oi=1000, put_oi=3000)
+    scalar = compute_net_charm(book, 100.0, exp, now=now)["net_charm_daily"]
+    per = compute_charm_by_strike(book, 100.0, now=now)
+    per_net = sum(v["net_charm"] for v in per.values())
+    assert scalar is not None
+    # abs=0.005: net_charm_daily is contractually rounded to 2 decimals on return; the
+    # underlying sums agree to machine precision (measured 93.38 vs 93.37892829040211).
+    assert scalar == pytest.approx(per_net, abs=0.005), (
+        f"the two charm engines diverged: scalar {scalar} vs per-strike {per_net} — "
+        "single-faucet parity is the whole point of RC-179"
+    )
+
+
+def test_put_heavy_book_flips_the_dealer_signed_net():
+    """RC-179 LOCK 2 — the dealer convention must be LIVE, not asserted. Same charm unit on
+    both sides, so a same-sign (gross) summation could never flip with the OI mix; only
+    call-minus-put can. A put-heavy book must carry the opposite net sign from a call-heavy
+    one, and neither may equal the gross."""
+    from datetime import datetime, timedelta
+
+    from time_et import ET
+
+    exp = "2026-08-03"
+    now = datetime(2026, 8, 3, 16, 0, tzinfo=ET) - timedelta(days=5)
+    call_heavy = compute_net_charm(_mixed_book(exp, 3000, 1000), 100.0, exp, now=now)
+    put_heavy = compute_net_charm(_mixed_book(exp, 1000, 3000), 100.0, exp, now=now)
+    a, b = call_heavy["net_charm_daily"], put_heavy["net_charm_daily"]
+    assert a is not None and b is not None
+    assert a * b < 0, (
+        f"OI mix did not flip the net ({a} vs {b}) — aggregation has regressed to a "
+        "same-sign magnitude and charm_direction is meaningless again"
+    )
+    gross = abs(call_heavy["call_charm_daily"]) + abs(call_heavy["put_charm_daily"])
+    assert abs(a) != pytest.approx(gross, rel=1e-6), "net equals gross — convention lost"
+
+
+def test_near_expiry_minutes_to_close_matches_finite_difference():
+    """RC-179 LOCK 3 — the regime the retired 0.5-day floor used to flatten. One hour to the
+    bell: analytic charm must match a finite-difference of BS delta over the final minutes,
+    in MAGNITUDE, not just sign. This is the test that would have caught the floor."""
+    T_1h = 1.0 / (24.0 * 365.0)
+    dt = 1.0 / (60.0 * 24.0 * 365.0)  # one minute of calendar time
+    S = 100.5  # slightly ITM — charm is finite and nonzero here
+    fd = (_call_delta(S, T_1h - dt) - _call_delta(S, T_1h)) / dt
+    analytic = bs_charm(S, K, T_1h, SIGMA, rate=0.0)
+    assert analytic is not None
+    assert analytic == pytest.approx(fd, rel=0.05), (
+        f"one hour from the close, analytic charm {analytic:.2f} vs FD {fd:.2f} — a T floor "
+        "or convention drift is flattening the near-expiry spike again"
+    )
+
+
+def test_both_engines_draw_T_from_the_single_source():
+    """RC-179 LOCK 4 — the unification is structural, not incidental. Both engines must call
+    time_et.time_to_expiry_years; a reintroduced local T derivation is how the two-convention
+    era began."""
+    import inspect
+
+    import math_levels as ml
+    from math_exposure_core import compute_net_charm as cnc
+
+    assert "time_to_expiry_years" in inspect.getsource(cnc)
+    assert "time_to_expiry_years" in inspect.getsource(ml._contract_inputs)
+    # and the stale disclaimer must never return to the contract text
+    doc = inspect.getdoc(cnc) or ""
+    assert "summed with the SAME sign" not in doc, (
+        "the pre-fix docstring paragraph is back — prose contradicting code is how this "
+        "faucet survived three weeks after the code was fixed"
+    )
+    assert "call_charm - put_charm" in inspect.getsource(cnc)
+
+
 @pytest.mark.parametrize("label,S,dte", CASES)
 def test_compute_net_charm_sign_matches_finite_difference(label, S, dte):
     from datetime import datetime, timedelta
