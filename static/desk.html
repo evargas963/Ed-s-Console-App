@@ -466,7 +466,7 @@ tbody tr:hover{background:var(--cv-sf2)}
     brief:function(){grab("/api/desk/brief?as_of="+asOfParam(),renderBrief,"brief-out");},
     dossier:function(){grab("/api/desk/dossier?ticker="+encodeURIComponent(sym())+
       "&as_of="+asOfParam(),renderDossier,"dos-out");},
-    evid:function(){grab("/api/desk/evidence",renderEvidence,"evid-out");},
+    evid:function(){grab("/api/desk/evidence?as_of="+asOfParam(),renderEvidence,"evid-out");},
     book:function(){},
     struct:function(){
       var u="/api/desk/structure?ticker="+encodeURIComponent(sym())+

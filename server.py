@@ -12326,12 +12326,18 @@ def get_desk_dossier(ticker: str = Query(default=DEFAULT_TICKER),
 
 
 @app.get("/api/desk/evidence")
-def get_desk_evidence():
-    """The study scoreboard, read from reports/ rather than retyped."""
+def get_desk_evidence(as_of: float = Query(default=0.0)):
+    """The study scoreboard, read from reports/ rather than retyped.
+
+    RC-172: honours the replay clock. A scoreboard generated after the instant being replayed is
+    refused with its reason — on a tab whose premise is judging a screen by what was knowable,
+    the surface that adjudicates claims cannot be the one reading the future.
+    """
     import desk_store
 
+    at = float(as_of) if as_of and as_of > 0 else time.time()
     try:
-        return desk_store.evidence_rows(APP_DIR)
+        return desk_store.evidence_rows(APP_DIR, at)
     except Exception as e:
         return {"rows": [], "empty_reason": f"{type(e).__name__}: {e}"}
 
@@ -12395,9 +12401,16 @@ def get_desk_brief(as_of: float = Query(default=0.0)):
     return {"brief": brief, "as_of_utc": at, "empty_reason": None}
 
 
-@app.get("/api/desk/materialize")
+@app.post("/api/desk/materialize")
 def post_desk_materialize():
-    """Rebuild the fact store from tables this repo already fills. Idempotent."""
+    """Rebuild the fact store from tables this repo already fills. Idempotent.
+
+    RC-172: this was a GET. A GET that rewrites tens of thousands of rows against a 25 GB
+    database is fired by anything that speculatively fetches a URL — a link prefetch, a crawler,
+    a browser preconnect, an operator refreshing a saved tab — and this database already has an
+    open root cause for write contention (RC-166). POST is the fix: the method now matches what
+    the call actually does.
+    """
     import desk_store
     from db import DB_PATH as _desk_db
 

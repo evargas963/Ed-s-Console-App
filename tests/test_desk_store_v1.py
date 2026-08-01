@@ -460,6 +460,84 @@ def test_desk_page_renders_every_subtab_from_an_endpoint_or_says_not_built():
     )
 
 
+def test_evidence_refuses_a_scoreboard_from_the_future(tmp_path):
+    """RC-172: Evidence ignored the replay clock, so dragging the Desk into the past still
+    rendered whatever scoreboard exists on disk NOW. On a tab whose premise is judging a screen
+    by what was knowable, the surface that adjudicates claims was the one reading ahead."""
+    import json as _json
+
+    root = tmp_path
+    (root / "reports").mkdir()
+    gen = "2026-07-17T14:10:43Z"
+    (root / "reports" / "fp_scoreboard_latest.json").write_text(_json.dumps({
+        "generated_utc": gen, "money_path": "WAIT",
+        "studies": {"FP-X": {"verdict": "NO_SIGNAL_DETECTED", "n_pass": 0, "n_fail": 4}},
+        "totals": {"existence_pass_cells_sum": 0}}), encoding="utf-8")
+
+    gen_ts = ds._iso_utc_to_epoch(gen)
+    assert gen_ts is not None
+    after = ds.evidence_rows(root, gen_ts + 60)
+    assert len(after["rows"]) == 1, "a scoreboard we already held was withheld"
+    before = ds.evidence_rows(root, gen_ts - 60)
+    assert before["rows"] == [], "a scoreboard was served before it was generated"
+    assert "after the instant being replayed" in before["empty_reason"]
+    # no clock supplied at all keeps the old unconditional behaviour for callers that want it
+    assert len(ds.evidence_rows(root)["rows"]) == 1
+
+
+def test_iso_parser_requires_a_declared_zone():
+    """Distinct from the conservative naive parser on purpose: this input declares its zone, so
+    adding a safety margin would be wrong, and a stamp with NO zone must be refused rather than
+    guessed at."""
+    assert ds._iso_utc_to_epoch("2026-07-17T14:10:43Z") == pytest.approx(
+        ds._iso_utc_to_epoch("2026-07-17T14:10:43+00:00"))
+    assert ds._iso_utc_to_epoch("2026-07-17T14:10:43") is None, (
+        "a zone-less stamp was silently treated as UTC"
+    )
+    assert ds._iso_utc_to_epoch("") is None
+    assert ds._iso_utc_to_epoch("not a date") is None
+
+
+def test_latest_by_subject_reduces_in_sql_not_in_python(tmp_path):
+    """RC-172: the Python reduction pulled 48,564 rows across the wire on every Radar request to
+    keep 12,617 of them, against a database with an open contention root cause (RC-166)."""
+    import inspect
+
+    src = inspect.getsource(ds.latest_by_subject)
+    assert "ROW_NUMBER() OVER" in src, "the newest-per-subject reduction left SQL"
+    assert "facts_as_of(" not in src, "still fanning every row into Python"
+
+    db = tmp_path / "d.db"
+    ds.ensure_schema(db)
+    now = time.time()
+    for i, val in enumerate((1.0, 2.0, 3.0)):
+        ds.put_fact(db, subject="ZZ", kind="k", event_time_utc=now - 500,
+                    knowledge_time_utc=now - 300 + i, source=f"s{i}", tier="MEASURED",
+                    value_num=val)
+    got = ds.latest_by_subject(db, now, "k")
+    assert got["ZZ"]["value_num"] == 3.0, "SQL kept the wrong row as newest"
+    # and the knowledge-time filter must survive the rewrite
+    assert ds.latest_by_subject(db, now - 400, "k") == {}
+
+
+def test_materialize_is_not_reachable_by_a_speculative_get():
+    """RC-172: a GET that rewrites tens of thousands of rows is fired by any link prefetch,
+    crawler or preconnect — against a database that already has an open write-contention root
+    cause."""
+    import inspect
+
+    import server as s
+
+    src = inspect.getsource(s)
+    i = src.find("def post_desk_materialize")
+    assert i > 0
+    decorator = src[max(0, i - 260):i]
+    assert '@app.post("/api/desk/materialize")' in decorator, (
+        "the materialize route is not POST-only — a speculative GET can trigger a full rewrite"
+    )
+    assert '@app.get("/api/desk/materialize")' not in src
+
+
 def test_decide_untouched_admissions_empty():
     """This slice is Collect and a visible surface. Nothing may reach the decision path."""
     import json

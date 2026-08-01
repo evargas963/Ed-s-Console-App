@@ -146,6 +146,26 @@ def ensure_schema(db_path: str | Path) -> None:
         con.close()
 
 
+def _iso_utc_to_epoch(text: str) -> float | None:
+    """Parse an explicitly-UTC ISO stamp such as `2026-07-17T14:10:43Z`.
+
+    Separate from `_naive_text_to_utc_conservative` on purpose: this input DECLARES its zone, so
+    there is nothing to be conservative about and adding a safety margin would be wrong.
+    """
+    s = (text or "").strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return None
+    return dt.timestamp()
+
+
 def _naive_text_to_utc_conservative(text: str) -> float | None:
     """Resolve a naive 'YYYY-MM-DD HH:MM:SS' stamp to the LATEST instant it could mean.
 
@@ -281,16 +301,48 @@ def facts_as_of(
 def latest_by_subject(
     db_path: str | Path, as_of_utc: float, kind: str, *, subjects: Iterable[str] | None = None
 ) -> dict[str, dict[str, Any]]:
-    """One row per subject — the newest thing we knew about `kind` at `as_of_utc`."""
+    """One row per subject — the newest thing we knew about `kind` at `as_of_utc`.
+
+    RC-172: this used to call `facts_as_of` and reduce in Python, which MEASURED 2026-07-31
+    pulled 48,564 short-volume rows across the wire to keep 12,617 of them, on every Radar
+    request, against a database already under enough write contention to have its own open root
+    cause (RC-166). The reduction belongs in SQL, where the index can do it.
+    """
     wanted = {s.upper() for s in subjects} if subjects else None
+    if not isinstance(as_of_utc, (int, float)) or as_of_utc <= 0:
+        raise DeskFactError(f"as_of_utc must be a positive epoch, got {as_of_utc!r}")
+    sql = (
+        "SELECT subject, kind, event_time_utc, knowledge_time_utc, source, source_ref, tier, "
+        "value_num, payload_json FROM ("
+        "  SELECT *, ROW_NUMBER() OVER ("
+        "    PARTITION BY subject ORDER BY knowledge_time_utc DESC, event_time_utc DESC"
+        "  ) AS rn FROM desk_facts WHERE kind = ? AND knowledge_time_utc <= ?"
+        ") WHERE rn = 1"
+    )
+    args: list[Any] = [kind, float(as_of_utc)]
+    if wanted:
+        sql += " AND subject IN (" + ",".join("?" for _ in wanted) + ")"
+        args.extend(sorted(wanted))
+    try:
+        con = _connect(db_path, read_only=True)
+    except sqlite3.OperationalError:
+        return {}
+    try:
+        rows = con.execute(sql, args).fetchall()
+    except sqlite3.OperationalError:
+        return {}  # table absent — absence reaches the surface as absence
+    finally:
+        con.close()
     best: dict[str, dict[str, Any]] = {}
-    for f in facts_as_of(db_path, as_of_utc, kind=kind):
-        s = f["subject"]
-        if wanted is not None and s not in wanted:
-            continue
-        prev = best.get(s)
-        if prev is None or f["knowledge_time_utc"] > prev["knowledge_time_utc"]:
-            best[s] = f
+    for r in rows:
+        d = dict(r)
+        if d.get("payload_json"):
+            try:
+                d["payload"] = json.loads(d["payload_json"])
+            except (TypeError, ValueError):
+                d["payload"] = None
+        d.pop("payload_json", None)
+        best[d["subject"]] = d
     return best
 
 
@@ -758,12 +810,18 @@ def dossier(db_path: str | Path, subject: str, as_of_utc: float) -> dict[str, An
     }
 
 
-def evidence_rows(repo_root: str | Path | None = None) -> dict[str, Any]:
+def evidence_rows(repo_root: str | Path | None = None,
+                  as_of_utc: float | None = None) -> dict[str, Any]:
     """The study scoreboard, READ from `reports/` rather than retyped.
 
     Retyping is how a scoreboard drifts from the studies it claims to summarise, and a drifted
     scoreboard is worse than none: it is the one surface the rest of the Desk defers to when it
     refuses to make a claim.
+
+    RC-172: this ignored the replay clock entirely, so dragging the Desk back to a past instant
+    still rendered whatever scoreboard exists on disk NOW. On a tab whose whole premise is that
+    a screen can be judged against what was knowable, the one surface that adjudicates claims
+    was the surface reading the future. It now refuses a scoreboard generated after `as_of_utc`.
     """
     root = Path(repo_root) if repo_root else Path(__file__).resolve().parent
     p = root / "reports" / "fp_scoreboard_latest.json"
@@ -773,6 +831,18 @@ def evidence_rows(repo_root: str | Path | None = None) -> dict[str, Any]:
         doc = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         return {"rows": [], "source": str(p), "empty_reason": f"{type(e).__name__}: {e}"}
+
+    gen_raw = str(doc.get("generated_utc") or "")
+    if as_of_utc is not None:
+        gen_ts = _iso_utc_to_epoch(gen_raw)
+        if gen_ts is None:
+            return {"rows": [], "source": str(p), "generated_utc": gen_raw,
+                    "empty_reason": ("the scoreboard carries no readable generated_utc, so it "
+                                     "cannot be placed on the replay clock")}
+        if gen_ts > float(as_of_utc):
+            return {"rows": [], "source": str(p), "generated_utc": gen_raw,
+                    "empty_reason": (f"this scoreboard was generated {gen_raw}, after the "
+                                     "instant being replayed — it was not knowable yet")}
 
     rows = []
     for name, st in sorted((doc.get("studies") or {}).items()):
@@ -1098,7 +1168,13 @@ def radar_rows(db_path: str | Path, as_of_utc: float, *, limit: int = 60) -> dic
                 "earnings_date": "MEASURED" if e_val else None,
             },
         })
-    out.sort(key=lambda r: (-(r["adv_dollar"] or 0.0), r["subject"]))
+    def _rank_key(r: dict[str, Any]) -> tuple[float, str]:
+        """Descending ADV, then symbol. A name with no measured ADV sorts last rather than
+        sorting as zero-and-therefore-cheapest — absence is not a small number."""
+        adv = r.get("adv_dollar")
+        return (-float(adv) if isinstance(adv, (int, float)) else 0.0, str(r["subject"]))
+
+    out.sort(key=_rank_key)
     return {
         "as_of_utc": float(as_of_utc),
         "rows": out[:limit],
