@@ -56,6 +56,19 @@ tool "filled" a gap that was actually a market holiday.
 1. **RC-177 rows (92,195 bars):** quarantine-move or flag — never silent deletion (stewardship
    rule). Reader-side containment is already live (`desk_store.is_rth_trading_ts`, RC-176), but
    every OTHER consumer of `price_bars_1m` still reads them.
+   **Operator asked (2026-08-01): "can we backfill from Schwab instead?" Answer — partially,
+   and the combination is better than either alone.** Schwab has NOTHING for the non-trading
+   timestamps (the market was closed; there is no true bar for Saturday 10:00), so the 92,195
+   weekend/holiday rows cannot be backfilled — only removed to quarantine. But the synthetic
+   sources total **109,343** rows, of which **46,786 sit on legitimate trading days** — those
+   were fabricated to fill real gaps, and THOSE can be replaced with vendor truth: the existing
+   backfill machine (FP-10, `historical_backfill_enrolled_1m_v1`, 125,487 bars landed in its
+   proven run) re-fetches the gap universe from Schwab, and every synthetic row where a vendor
+   bar lands is retired. End state: zero fabricated bars anywhere — weekends quarantined because
+   nothing real exists there, trading-day gaps refilled with real prints, residual unfillable
+   gaps left HONESTLY EMPTY (an empty minute is true; an interpolated one is not). One check
+   first: Schwab's 1m history depth must cover the oldest synthetic date (2026-02-22) —
+   measured, not assumed, before the run is sized.
 2. **RC-178 labeler:** `market_session` must consult the calendar, and the 33,929 `rth`-labeled
    weekend rows need relabeling or flagging.
 3. **Weekend collector policy:** console runs on weekends by operator habit; collectors persist

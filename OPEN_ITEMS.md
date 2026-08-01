@@ -158,6 +158,21 @@ here may be described as edge until it clears a placebo. All of them start `UNPR
   formula). Reproduce: load the latest SPY `option_chain_morning_full` row, run
   `compute_exposures_by_strike` + `math_levels.compute_charm_by_strike`, sum per side of spot.
 
+  **i) Chart-tab consumer design (operator direction, 2026-08-01; mockup shown inline, nothing
+  built).** A five-row strip in the levels card's space — GEX, OV, ΔOI, DEX, charm — each split
+  above/below spot, re-splitting live as spot moves, each row wearing its evidence tier (charm
+  greyed UNAPPROVED until the T-convention faucet closes). Below it a MECHANICAL READING line
+  (restates measured facts with units, no forecast) and a LOCKED "Bias" slot that fills in only
+  when a scoring rule passes facet (g), citing the study. Levels stop rendering always-on:
+  culled to A+ credible ones, appearing as proximity PILLS on the candle canvas only when spot
+  comes within a threshold (percent or ticks — operator to pick); "A+ credible" requires the
+  clean re-run since the LP-01 verdicts are voided, or pure mechanical provenance until then.
+  UI overlap cleanup rides along. METHOD NOTE recorded for ΔOI: per-strike delta FIRST, then
+  bucket by TODAY's spot — the naive above/below-per-day comparison let the moving spot boundary
+  masquerade as OI change and inverted the sign (naive: above −387,645; correct: above +104,621,
+  below −173,741, SPY 2026-07-30→31). Reproduce: two latest SPY `option_chain_morning_full`
+  rows, per-strike OI delta, bucket by the newer spot.
+
 ## Validity — probing notes (operator + Claude, 2026-08-01; prose on purpose, not queue rows)
 
 **Citation rule (operator 2026-08-01):** a study run on contaminated data is NOT citable
