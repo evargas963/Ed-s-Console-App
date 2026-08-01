@@ -760,7 +760,10 @@ def daily_sigma_bps(db_path: str | Path, subject: str, as_of_utc: float, *,
     series = [closes[d] for d in sorted(closes) if session_is_complete(d, as_of_utc)]
     if len(series) < _MIN_SESSIONS_FOR_SIGMA:
         return None
-    rets = [math.log(b / a) for a, b in zip(series, series[1:]) if a > 0 and b > 0]
+    # strict=False is deliberate and correct: `series[1:]` is one shorter by construction, which
+    # is exactly the pairing wanted. Stated rather than defaulted so the next reader does not
+    # have to work out whether the length mismatch is intended.
+    rets = [math.log(b / a) for a, b in zip(series, series[1:], strict=False) if a > 0 and b > 0]
     if len(rets) < 2:
         return None
     mean = sum(rets) / len(rets)
@@ -886,7 +889,12 @@ def evidence_rows(repo_root: str | Path | None = None,
                                      "instant being replayed — it was not knowable yet")}
 
     rows = []
-    for name, st in sorted((doc.get("studies") or {}).items()):
+    # external-key-ok: `studies` and `totals.existence_pass_cells_sum` are keys of the
+    # fp_scoreboard_v1 JSON document written by the Find & Prove scoreboard tool, not of any
+    # dict literal in this repo, so the orphan-key check cannot see their producer. They are
+    # read defensively — a missing key yields an empty mapping and an empty Evidence tab with a
+    # stated reason, never a silent None presented as a result.
+    for name, st in sorted((doc.get("studies") or {}).items()):  # external-key-ok: fp_scoreboard_v1 JSON
         status = str(st.get("status") or st.get("verdict") or "UNKNOWN")
         n_pass = st.get("n_pass")
         n_fail = st.get("n_fail")
@@ -904,7 +912,7 @@ def evidence_rows(repo_root: str | Path | None = None,
         "source": rel,
         "generated_utc": doc.get("generated_utc"),
         "money_path": doc.get("money_path"),
-        "existence_pass_cells": totals.get("existence_pass_cells_sum"),
+        "existence_pass_cells": totals.get("existence_pass_cells_sum"),  # external-key-ok: fp_scoreboard_v1 JSON
         "empty_reason": None if rows else "the scoreboard names no studies",
     }
 
@@ -930,7 +938,8 @@ def _rth_log_returns(db_path: str | Path, subject: str, as_of_utc: float,
         con.close()
     closes = [float(r["close"]) for r in rows if is_rth_ts_utc(float(r["bar_end_ts_utc"] or 0))]
     import math
-    return [math.log(b / a) for a, b in zip(closes, closes[1:]) if a > 0 and b > 0]
+    return [math.log(b / a) for a, b in zip(closes, closes[1:], strict=False)
+            if a > 0 and b > 0]
 
 
 def terminal_distribution(
@@ -988,7 +997,7 @@ def terminal_distribution(
                 "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE}
 
     blk = _BOOTSTRAP_BLOCK_BARS
-    block_sums = [sum(rets[i:i + blk]) for i in range(0, len(rets) - blk + 1)]
+    block_sums = [sum(rets[i:i + blk]) for i in range(len(rets) - blk + 1)]
     if not block_sums:
         return {"subject": subject.upper(), "available": False,
                 "reason": "return series shorter than one bootstrap block",

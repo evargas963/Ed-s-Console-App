@@ -321,7 +321,7 @@ def test_vertical_payoff_is_checkable_by_hand():
         ds.vertical_spread(150, 150, 1.0, 0.5)
 
 
-def test_capacity_is_driven_by_volatility_and_publishes_its_assumption(tmp_path):
+def test_capacity_is_driven_by_volatility_and_publishes_its_assumption():
     """RC-171: capacity was computed from a ratio of impact budget to quoted SPREAD, which is
     not a volatility and has no units that make the square-root law true. It returned
     $5,601,230,345 for SPY — a quarter of the name's entire daily turnover — because the
@@ -339,7 +339,7 @@ def test_capacity_is_driven_by_volatility_and_publishes_its_assumption(tmp_path)
     )
 
 
-def test_pop_refuses_to_report_a_certainty(tmp_path):
+def test_pop_refuses_to_report_a_certainty():
     """RC-171: a POP of exactly 1.0 or 0.0 is never something the sample supports — it means the
     breakeven lies outside every path drawn. Printing 1.0000 beside a real position is how a
     mis-keyed strike becomes a conviction."""
@@ -538,7 +538,7 @@ def test_materialize_is_not_reachable_by_a_speculative_get():
     assert '@app.get("/api/desk/materialize")' not in src
 
 
-def test_payoff_refuses_a_non_positive_price(tmp_path):
+def test_payoff_refuses_a_non_positive_price():
     """RC-173: a negative price was accepted and rendered `max_loss = -0.0` — a screen saying
     this trade cannot lose money. A mis-keyed minus sign must not produce a risk-free position.
     """
@@ -659,7 +659,7 @@ def test_radar_says_how_many_rows_are_actually_screened(tmp_path):
     assert "listed, not screened" in p["coverage_note"]
 
 
-def test_desk_nav_links_go_where_they_say(tmp_path):
+def test_desk_nav_links_go_where_they_say():
     """A link labelled Terrain pointed at `/`, which lands on Console. index.html honours
     `#terrain`, so the link was wrong rather than the destination being unreachable."""
     import re
