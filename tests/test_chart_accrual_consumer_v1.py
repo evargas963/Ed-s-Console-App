@@ -11,7 +11,7 @@ complete.
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
 
@@ -28,7 +28,15 @@ NON_SENTINEL = "MSFT"
 
 
 def _ts_at(h: int, m: int) -> float:
-    return datetime(2026, 7, 30, h, m, tzinfo=ET).timestamp()
+    """A timestamp at h:m ET on TODAY's ET date.
+
+    Deliberately not a hard-coded calendar date: `latest_accrual_rows` defaults to today's ET
+    date, so a fixture pinned to a fixed day stops matching the moment the clock rolls over.
+    That happened twice — 2026-07-30 -> 07-31 — turning a correct date-scoping guarantee into a
+    red test. A test file that hard-codes a date goes stale by construction.
+    """
+    today = datetime.now(ET).date()
+    return datetime(today.year, today.month, today.day, h, m, tzinfo=ET).timestamp()
 
 
 def _bank(db, ticker: str, h: int, m: int, rows):
@@ -72,7 +80,8 @@ def test_reader_fails_closed_and_never_serves_another_day(tmp_path):
     assert latest_accrual_rows(tmp_path / "missing.db", SENTINEL) is None
     assert latest_accrual_rows(db, SENTINEL) is None, "empty DB produced rows"
     _bank(db, SENTINEL, 10, 0, [[100.0, 1.0, 1.0]])
-    assert latest_accrual_rows(db, SENTINEL, "2026-07-29") is None, (
+    other_day = (datetime.now(ET).date() - timedelta(days=2)).isoformat()
+    assert latest_accrual_rows(db, SENTINEL, other_day) is None, (
         "the reader served a different et_date — that is the RC-68 failure class"
     )
     assert latest_accrual_rows(db, "ZZNOSUCH") is None
@@ -140,6 +149,86 @@ def test_chart_still_reads_the_same_paint_fields():
     assert "/api/terrain/strikes?ticker=" in ui
     assert "strikes.today" in ui or "(strikes && strikes.today)" in ui
     assert "r[2]" in ui, "the yellow option-volume field is no longer read"
+
+
+def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
+    """RC-165: `TERRAIN_REFRESH_SEC` is a sleep FLOOR between cycles, not a promise. A full sweep
+    over ~40 tickers on 2 workers against a 2-slot chain gate costs more than that. MEASURED
+    2026-07-31 12:57 ET: SPY inter-observation spacing median 156s, while a fixed 180s threshold
+    and a hard-coded "60s cadence" sentence reported MSFT at 234s — barely 1.5 sweeps, entirely
+    healthy — as "the loop is inside its window but not producing". That is RC-146's defect
+    through a different door: a working scheduler described as broken, because the yardstick was
+    a number the loop cannot reach.
+
+    RC-169: this test used to assert the DELIVERED wording unconditionally and so passed during
+    the session and FAILED at night — `terrain_staleness` takes an earlier branch once the
+    background-logging window closes at 16:30 ET, and that branch's sentence is correct for a
+    loop that has legitimately stopped. A test whose verdict depends on when it runs is not a
+    test of the code. The window is now PINNED, so the branch under test is the branch chosen.
+    """
+    import time
+
+    import server as s
+
+    now = time.time()
+    prev = s._terrain_last_cycle_sec
+    prev_gate = s._is_loggable_session
+    try:
+        # Pin the branch instead of the clock: this test is about the CADENCE yardstick, so the
+        # loop must be inside its window for the whole of it, whatever hour the suite runs at.
+        s._is_loggable_session = lambda *a, **k: True
+        s._terrain_last_cycle_sec = 156.0
+        healthy = s.terrain_staleness(now - 234, "ZZTEST")
+        assert healthy["levels_stale"] is False, (
+            "234s at a 156s delivered cycle is 1.5 sweeps — flagging it stale calls a healthy "
+            "scheduler broken"
+        )
+        behind = s.terrain_staleness(now - 400, "ZZTEST")
+        assert behind["levels_stale"] is True, "400s is 2.6 sweeps — genuinely behind"
+        assert "DELIVERED" in behind["levels_stale_reason"]
+        assert "156s" in behind["levels_stale_reason"], (
+            "the reason must quote the cycle actually delivered, not only the floor"
+        )
+        assert "not producing" not in behind["levels_stale_reason"], (
+            "the retired sentence asserted a malfunction from a cadence the loop never meets"
+        )
+        # a FAST loop must not be allowed to hide staleness: the floor still applies
+        s._terrain_last_cycle_sec = 10.0
+        assert s.terrain_staleness(now - 200, "ZZTEST")["levels_stale"] is True, (
+            "a fast cycle dropped the floor — staleness could be hidden by a quick sweep"
+        )
+        # before the first cycle completes, fall back to the nominal floor rather than 0
+        s._terrain_last_cycle_sec = 0.0
+        assert s.terrain_staleness(now - 400, "ZZTEST")["levels_stale"] is True
+
+        # And the branch that legitimately owns the OTHER sentence: outside its window the loop
+        # is not refreshing on purpose, and saying so is correct — the defect was asserting the
+        # in-window wording while the clock had chosen the out-of-window path.
+        s._is_loggable_session = lambda *a, **k: False
+        s._terrain_last_cycle_sec = 156.0
+        paused = s.terrain_staleness(now - 400, "ZZTEST")
+        assert paused["levels_stale"] is True
+        assert "DELIVERED" not in paused["levels_stale_reason"], (
+            "a loop stopped by design must not be described by the cadence yardstick"
+        )
+    finally:
+        s._terrain_last_cycle_sec = prev
+        s._is_loggable_session = prev_gate
+
+
+def test_loop_publishes_the_cycle_duration_it_already_measures():
+    """The number existed and was only logged; readers had no access, which is why staleness was
+    left comparing against the floor."""
+    import inspect
+
+    import server as s
+
+    src = inspect.getsource(s._terrain_loop)
+    assert "_terrain_last_cycle_sec" in src, (
+        "the loop still keeps its measured cycle duration to itself"
+    )
+    assert "elapsed" in src
+    assert isinstance(s._terrain_last_cycle_sec, float)
 
 
 def test_decide_untouched_admissions_empty():
