@@ -55,6 +55,49 @@ _MIN_SESSIONS_FOR_ADV = 3
 #: applied to every symbol identically and the count reaches the payload.
 _SUSPECT_SESSION_MULTIPLE = 5.0
 
+#: A median spread formed from a handful of quotes is a quote, not a spread.
+_MIN_QUOTES_FOR_SPREAD = 30
+
+#: Capacity is quoted at a stated impact budget rather than as an unqualified "max size".
+#: The number is meaningless without the budget it was computed against, so both travel together.
+_CAPACITY_IMPACT_BPS = 25.0
+
+#: RC-171: square-root impact coefficient, impact = Y * sigma * sqrt(Q/ADV). Published in every
+#: payload that uses it. Literature puts Y near 0.5-1.5; 1.0 is the neutral choice and this
+#: number is a stated assumption, which is why the capacity field is ESTIMATED and not DERIVED.
+_IMPACT_COEFFICIENT = 1.0
+
+#: Hard ceiling on participation. A cap is not a model — when it binds, the payload says so
+#: rather than letting a ceiling masquerade as an answer.
+_MAX_PARTICIPATION = 0.25
+
+#: A two-session sigma is a coin flip dressed as a volatility.
+_MIN_SESSIONS_FOR_SIGMA = 5
+
+#: Minutes in a regular session, 09:30-16:00 ET. Used to convert a horizon in SESSIONS into a
+#: number of 1m steps — never to infer how many sessions a pile of bars represents (RC-167).
+_BARS_PER_RTH_SESSION = 390
+
+#: Below this the bootstrap is resampling noise. One session of bars is not a return series.
+_MIN_RETURNS_FOR_BOOTSTRAP = 600
+
+#: Block length. Long enough to carry a volatility cluster through into the sampled path;
+#: independent draws would destroy the very autocorrelation that makes a real tape dangerous.
+_BOOTSTRAP_BLOCK_BARS = 30
+
+_DENSITY_BINS = 48
+
+#: Stated once, so every surface refuses for the same reason in the same words.
+_RISK_NEUTRAL_UNAVAILABLE = (
+    "option_chain_accrual banks [strike, net_gex, volume] triples and no option PRICES, so the "
+    "risk-neutral density (second derivative of call price across strikes) cannot be formed "
+    "from anything this repo currently stores"
+)
+
+#: A research block older than this is shown greyed. Catalysts and analyst scorecards perish;
+#: a brief that ages silently is worse than no brief.
+_BRIEF_BLOCK_SHELF_LIFE_SEC = 36 * 3600.0
+
 DESK_FACTS_SQL = """
 CREATE TABLE IF NOT EXISTS desk_facts (
     subject            TEXT NOT NULL,
@@ -544,6 +587,475 @@ def materialize_all(db_path: str | Path, *, limit_symbols: int = 0) -> dict[str,
         "adv_dollar": materialize_dollar_volume(db_path),
         "options_listed": materialize_options_listed(db_path),
     }
+
+
+def effective_spread_bps(
+    db_path: str | Path, subject: str, as_of_utc: float, *, window_days: int = 20
+) -> dict[str, Any] | None:
+    """Median quoted spread in basis points over the regular session.
+
+    `snapshots.spread` is an absolute price, so it is normalised by the spot recorded on the
+    same row rather than by a later one — a spread divided by a price from a different instant
+    is not a spread. RTH membership comes from `time_et`, not from the denormalised
+    `market_session` column, for the same reason RC-170 exists: one authority per question.
+    """
+    from time_et import is_rth_ts_utc
+
+    lo = as_of_utc - (window_days * 86400.0)
+    try:
+        con = _connect(db_path, read_only=True)
+    except sqlite3.OperationalError:
+        return None
+    try:
+        rows = con.execute(
+            "SELECT ts_utc, spot, spread FROM snapshots WHERE ticker = ? AND ts_utc >= ? "
+            "AND ts_utc <= ? AND spread IS NOT NULL AND spot > 0",
+            (subject.upper(), lo, as_of_utc),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+
+    bps = sorted(
+        (float(r["spread"]) / float(r["spot"])) * 10_000.0
+        for r in rows if is_rth_ts_utc(float(r["ts_utc"] or 0.0)) and float(r["spread"]) >= 0
+    )
+    if len(bps) < _MIN_QUOTES_FOR_SPREAD:
+        return None
+    mid = len(bps) // 2
+    median = bps[mid] if len(bps) % 2 else 0.5 * (bps[mid - 1] + bps[mid])
+    return {
+        "median_bps": round(median, 2),
+        "p90_bps": round(bps[min(len(bps) - 1, int(0.90 * len(bps)))], 2),
+        "n_quotes": len(bps),
+        "window_days": window_days,
+        "tier": "DERIVED",
+    }
+
+
+def daily_sigma_bps(db_path: str | Path, subject: str, as_of_utc: float, *,
+                    window_days: int = 20) -> dict[str, Any] | None:
+    """Daily volatility in basis points, measured on this name's own regular-session closes.
+
+    RC-171: capacity used to be computed from a ratio of impact budget to quoted SPREAD, which
+    is not a volatility and carries no units that make the square-root law true — it produced a
+    $5,601,230,345 capacity for SPY, a quarter of its entire daily turnover, because the
+    participation cap was the only thing still binding. Impact scales with VOLATILITY; the
+    spread is the cost of one crossing, not the cost of size.
+    """
+    import math
+
+    from time_et import et_date_str_from_ts_utc, is_rth_ts_utc
+
+    lo = as_of_utc - (window_days * 86400.0)
+    try:
+        con = _connect(db_path, read_only=True)
+    except sqlite3.OperationalError:
+        return None
+    try:
+        rows = con.execute(
+            "SELECT bar_end_ts_utc, close FROM price_bars_1m WHERE ticker = ? "
+            "AND bar_end_ts_utc >= ? AND bar_end_ts_utc <= ? AND close > 0 "
+            "ORDER BY bar_end_ts_utc", (subject.upper(), lo, as_of_utc)).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+
+    closes: dict[str, float] = {}
+    for r in rows:
+        ts = float(r["bar_end_ts_utc"] or 0.0)
+        if not is_rth_ts_utc(ts):
+            continue
+        closes[et_date_str_from_ts_utc(ts)] = float(r["close"])
+    series = [closes[d] for d in sorted(closes)]
+    if len(series) < _MIN_SESSIONS_FOR_SIGMA:
+        return None
+    rets = [math.log(b / a) for a, b in zip(series, series[1:]) if a > 0 and b > 0]
+    if len(rets) < 2:
+        return None
+    mean = sum(rets) / len(rets)
+    var = sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)
+    sigma = math.sqrt(var)
+    if sigma <= 0:
+        return None
+    return {"sigma_bps": round(sigma * 10_000.0, 1), "n_sessions": len(series),
+            "window_days": window_days, "tier": "DERIVED"}
+
+
+def dossier(db_path: str | Path, subject: str, as_of_utc: float) -> dict[str, Any]:
+    """One name, assembled only from facts knowable at `as_of_utc`.
+
+    Every field is nullable and every null is reported as a null with a reason. There is no
+    branch here that substitutes a plausible number for a missing one.
+    """
+    s = subject.upper()
+    adv = latest_by_subject(db_path, as_of_utc, "adv_dollar", subjects=[s]).get(s)
+    svr = latest_by_subject(db_path, as_of_utc, "short_volume_ratio", subjects=[s]).get(s)
+    opt = latest_by_subject(db_path, as_of_utc, "options_listed", subjects=[s]).get(s)
+    spread = effective_spread_bps(db_path, s, as_of_utc)
+
+    earnings = [
+        f for f in facts_as_of(db_path, as_of_utc, subject=s, kind="earnings_date")
+        if f["value_num"] and f["value_num"] >= as_of_utc
+    ]
+    earnings.sort(key=lambda f: f["value_num"])
+
+    capacity = None
+    capacity_inputs: dict[str, Any] | None = None
+    sigma_bps = daily_sigma_bps(db_path, s, as_of_utc)
+    if adv and adv["value_num"] and sigma_bps:
+        # RC-171: square-root market impact, impact_bps = Y * sigma_daily_bps * sqrt(Q / ADV),
+        # solved for Q. Sigma is MEASURED on this name's own regular-session closes; Y is a
+        # literature coefficient and is published alongside the answer rather than buried, so
+        # the number can be re-derived and argued with. The participation cap is a hard ceiling,
+        # not the operative term — when it binds, the payload says so.
+        q_frac = (_CAPACITY_IMPACT_BPS / (_IMPACT_COEFFICIENT * sigma_bps["sigma_bps"])) ** 2
+        capped = q_frac >= _MAX_PARTICIPATION
+        capacity = float(adv["value_num"]) * min(_MAX_PARTICIPATION, q_frac)
+        capacity_inputs = {
+            "model": "square_root_impact",
+            "impact_budget_bps": _CAPACITY_IMPACT_BPS,
+            "coefficient_Y": _IMPACT_COEFFICIENT,
+            "sigma_daily_bps": sigma_bps["sigma_bps"],
+            "sigma_sessions": sigma_bps["n_sessions"],
+            "participation": round(min(_MAX_PARTICIPATION, q_frac), 4),
+            "participation_capped": capped,
+        }
+
+    missing: list[str] = []
+    if adv is None:
+        missing.append("adv_dollar — fewer than 3 regular sessions of bars in the window")
+    if spread is None:
+        missing.append(
+            f"effective_spread — fewer than {_MIN_QUOTES_FOR_SPREAD} regular-session quotes")
+    if opt is None:
+        missing.append("options_listed — this name has no banked chain")
+    if svr is None:
+        missing.append("short_volume_ratio — not present in the FINRA file for this symbol")
+
+    return {
+        "subject": s,
+        "as_of_utc": float(as_of_utc),
+        "adv_dollar": adv["value_num"] if adv else None,
+        "adv_payload": adv.get("payload") if adv else None,
+        "short_volume_ratio": svr["value_num"] if svr else None,
+        "short_volume_lag_hours": (
+            round((svr["knowledge_time_utc"] - svr["event_time_utc"]) / 3600.0, 1)
+            if svr else None
+        ),
+        "n_strikes": opt["value_num"] if opt else None,
+        "spread": spread,
+        "capacity_usd": capacity,
+        "capacity_inputs": capacity_inputs,
+        "capacity_impact_bps": _CAPACITY_IMPACT_BPS if capacity is not None else None,
+        "next_earnings_utc": earnings[0]["value_num"] if earnings else None,
+        "missing": missing,
+        "tiers": {"adv_dollar": "DERIVED", "short_volume_ratio": "MEASURED",
+                  "options_listed": "MEASURED", "spread": "DERIVED",
+                  "capacity_usd": "ESTIMATED" if capacity is not None else None},
+    }
+
+
+def evidence_rows(repo_root: str | Path | None = None) -> dict[str, Any]:
+    """The study scoreboard, READ from `reports/` rather than retyped.
+
+    Retyping is how a scoreboard drifts from the studies it claims to summarise, and a drifted
+    scoreboard is worse than none: it is the one surface the rest of the Desk defers to when it
+    refuses to make a claim.
+    """
+    root = Path(repo_root) if repo_root else Path(__file__).resolve().parent
+    p = root / "reports" / "fp_scoreboard_latest.json"
+    if not p.exists():
+        return {"rows": [], "source": str(p), "empty_reason": "no scoreboard has been written"}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return {"rows": [], "source": str(p), "empty_reason": f"{type(e).__name__}: {e}"}
+
+    rows = []
+    for name, st in sorted((doc.get("studies") or {}).items()):
+        status = str(st.get("status") or st.get("verdict") or "UNKNOWN")
+        n_pass = st.get("n_pass")
+        n_fail = st.get("n_fail")
+        rows.append({
+            "study": name,
+            "verdict": status,
+            "n_pass": n_pass,
+            "n_fail": n_fail,
+            # Nothing is ESTIMATED until it passes. The scoreboard is the promotion authority.
+            "tier": "ESTIMATED" if (isinstance(n_pass, int) and n_pass > 0) else "UNPROVEN",
+        })
+    totals = doc.get("totals") or {}
+    return {
+        "rows": rows,
+        "source": str(p),
+        "generated_utc": doc.get("generated_utc"),
+        "money_path": doc.get("money_path"),
+        "existence_pass_cells": totals.get("existence_pass_cells_sum"),
+        "empty_reason": None if rows else "the scoreboard names no studies",
+    }
+
+
+def _rth_log_returns(db_path: str | Path, subject: str, as_of_utc: float,
+                     window_days: int) -> list[float]:
+    from time_et import is_rth_ts_utc
+
+    lo = as_of_utc - (window_days * 86400.0)
+    try:
+        con = _connect(db_path, read_only=True)
+    except sqlite3.OperationalError:
+        return []
+    try:
+        rows = con.execute(
+            "SELECT bar_end_ts_utc, close FROM price_bars_1m WHERE ticker = ? "
+            "AND bar_end_ts_utc >= ? AND bar_end_ts_utc <= ? AND close > 0 "
+            "ORDER BY bar_end_ts_utc", (subject.upper(), lo, as_of_utc)
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        con.close()
+    closes = [float(r["close"]) for r in rows if is_rth_ts_utc(float(r["bar_end_ts_utc"] or 0))]
+    import math
+    return [math.log(b / a) for a, b in zip(closes, closes[1:]) if a > 0 and b > 0]
+
+
+def terminal_distribution(
+    db_path: str | Path, subject: str, as_of_utc: float, *,
+    horizon_sessions: int = 5, spot: float | None = None,
+    n_paths: int = 4000, window_days: int = 20,
+) -> dict[str, Any]:
+    """Block bootstrap of the name's OWN one-minute returns to a terminal price distribution.
+
+    Blocks rather than independent draws, because independent draws destroy exactly what makes
+    a real tape dangerous: volatility clusters and autocorrelation. A lognormal Monte Carlo with
+    one sigma would produce a prettier curve and a thinner tail than this name actually has.
+
+    This is the PHYSICAL measure. The risk-neutral one is not available: `option_chain_accrual`
+    banks `[strike, net_gex, volume]` triples and no option prices, so the second derivative of
+    call price across strikes — the density the market itself is quoting — cannot be formed from
+    anything this repo currently stores. That absence is reported, not approximated.
+
+    The seed is derived from the inputs so the same question returns the same answer. A desk
+    number that changes on refresh cannot be checked, and a number that cannot be checked is
+    not evidence.
+    """
+    import math
+    import random
+
+    rets = _rth_log_returns(db_path, subject, as_of_utc, window_days)
+    steps = int(horizon_sessions) * _BARS_PER_RTH_SESSION
+    if len(rets) < _MIN_RETURNS_FOR_BOOTSTRAP or steps <= 0:
+        return {
+            "subject": subject.upper(), "available": False,
+            "reason": (f"only {len(rets)} regular-session 1m returns in the window; "
+                       f"{_MIN_RETURNS_FOR_BOOTSTRAP} required"),
+            "risk_neutral_available": False,
+            "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE,
+        }
+
+    if spot is None or spot <= 0:
+        try:
+            con = _connect(db_path, read_only=True)
+            row = con.execute(
+                "SELECT close FROM price_bars_1m WHERE ticker = ? AND bar_end_ts_utc <= ? "
+                "AND close > 0 ORDER BY bar_end_ts_utc DESC LIMIT 1",
+                (subject.upper(), as_of_utc)).fetchone()
+            con.close()
+            spot = float(row["close"]) if row else None
+        except sqlite3.OperationalError:
+            spot = None
+    if not spot or spot <= 0:
+        return {"subject": subject.upper(), "available": False,
+                "reason": "no regular-session close at or before this instant",
+                "risk_neutral_available": False,
+                "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE}
+
+    blk = _BOOTSTRAP_BLOCK_BARS
+    block_sums = [sum(rets[i:i + blk]) for i in range(0, len(rets) - blk + 1)]
+    if not block_sums:
+        return {"subject": subject.upper(), "available": False,
+                "reason": "return series shorter than one bootstrap block",
+                "risk_neutral_available": False,
+                "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE}
+
+    n_blocks = max(1, steps // blk)
+    rng = random.Random(f"{subject.upper()}|{int(as_of_utc)}|{horizon_sessions}|{n_paths}")
+    terminals = []
+    for _ in range(int(n_paths)):
+        total = 0.0
+        for _ in range(n_blocks):
+            total += block_sums[rng.randrange(len(block_sums))]
+        terminals.append(spot * math.exp(total))
+    terminals.sort()
+
+    def q(p: float) -> float:
+        return terminals[min(len(terminals) - 1, max(0, int(p * len(terminals))))]
+
+    lo, hi = terminals[0], terminals[-1]
+    nb = _DENSITY_BINS
+    width = (hi - lo) / nb if hi > lo else 1.0
+    counts = [0] * nb
+    for t in terminals:
+        counts[min(nb - 1, int((t - lo) / width))] += 1
+
+    return {
+        "subject": subject.upper(),
+        "available": True,
+        "spot": spot,
+        "horizon_sessions": int(horizon_sessions),
+        "n_paths": int(n_paths),
+        "n_returns": len(rets),
+        "block_bars": blk,
+        "quantiles": {"p05": q(0.05), "p25": q(0.25), "p50": q(0.50),
+                      "p75": q(0.75), "p95": q(0.95)},
+        "density": {"lo": lo, "hi": hi, "bin_width": width,
+                    "counts": counts, "n": len(terminals)},
+        "tier": "ESTIMATED",
+        "risk_neutral_available": False,
+        "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE,
+    }
+
+
+def vertical_spread(long_strike: float, short_strike: float, long_price: float,
+                    short_price: float, contracts: int = 1,
+                    multiplier: int = 100) -> dict[str, Any]:
+    """Payoff arithmetic for a two-leg vertical. Deterministic — no forecast, no free parameter.
+
+    Kept a pure function so it can be checked by hand against the screen, which is the whole
+    reason a calculator earns trust before anything predictive appears next to it.
+    """
+    if long_strike <= 0 or short_strike <= 0 or contracts <= 0:
+        raise DeskFactError("strikes and contracts must be positive")
+    if long_strike == short_strike:
+        raise DeskFactError("a vertical needs two different strikes")
+    debit = (float(long_price) - float(short_price)) * multiplier * contracts
+    width = abs(float(short_strike) - float(long_strike)) * multiplier * contracts
+    is_debit = debit > 0
+    max_gain = (width - debit) if is_debit else -debit
+    max_loss = debit if is_debit else -(width + debit)
+    lower = min(long_strike, short_strike)
+    breakeven = (lower + abs(debit) / (multiplier * contracts)) if is_debit else (
+        lower + (width - abs(debit)) / (multiplier * contracts))
+    return {
+        "net_debit": round(debit, 2),
+        "max_gain": round(max_gain, 2),
+        "max_loss": round(-abs(max_loss), 2),
+        "breakeven": round(breakeven, 4),
+        "width_usd": round(width, 2),
+        "is_debit": is_debit,
+        "tier": "DERIVED",
+    }
+
+
+def probability_of_profit(dist: Mapping[str, Any], breakeven: float,
+                          direction: str = "above") -> dict[str, Any] | None:
+    """POP read off the bootstrap terminal distribution — one measure, named as such.
+
+    Deliberately returns a single labelled measure rather than a blended number. The two
+    measures a desk wants side by side are physical and risk-neutral, and the risk-neutral one
+    is unavailable here; averaging what exists with what does not is how a placeholder becomes
+    a fact.
+    """
+    if not dist or not dist.get("available"):
+        return None
+    d = dist["density"]
+    lo, width, counts = float(d["lo"]), float(d["bin_width"]), list(d["counts"])
+    hi = float(d["hi"])
+    total = sum(counts) or 1
+    hit = 0
+    for i, c in enumerate(counts):
+        centre = lo + (i + 0.5) * width
+        if (direction == "above" and centre >= breakeven) or (
+                direction == "below" and centre <= breakeven):
+            hit += c
+    # RC-171: a POP of exactly 0 or 1 is never a probability the sample can support — it means
+    # the breakeven sits outside every path drawn, so the honest answer is "outside the sampled
+    # range", not a certainty. Printing 1.0000 next to a real position is how a mis-keyed strike
+    # becomes a conviction.
+    outside = breakeven < lo or breakeven > hi
+    return {"measure": "bootstrap_physical",
+            "pop": None if outside else round(hit / total, 4),
+            "outside_sampled_range": outside,
+            "sampled_range": [round(lo, 4), round(hi, 4)],
+            "breakeven": round(float(breakeven), 4),
+            "n_paths": dist.get("n_paths"), "tier": "ESTIMATED",
+            "risk_neutral_pop": None, "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE}
+
+
+BRIEF_SQL = """
+CREATE TABLE IF NOT EXISTS desk_briefs (
+    brief_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    et_date         TEXT NOT NULL,
+    generated_utc   REAL NOT NULL,
+    title           TEXT NOT NULL,
+    producer        TEXT NOT NULL,
+    blocks_json     TEXT NOT NULL,
+    sources_json    TEXT NOT NULL,
+    ingested_at_utc REAL NOT NULL
+)
+"""
+
+
+def put_brief(db_path: str | Path, *, et_date: str, title: str, producer: str,
+              generated_utc: float, blocks: Sequence[Mapping[str, Any]],
+              sources: Sequence[Mapping[str, Any]]) -> int:
+    """Store a research brief as STRUCTURED BLOCKS, never as rendered HTML.
+
+    Blocks are what make the Brief replayable and self-scoring: each carries its own `as_of`, so
+    the page can grey a stale block instead of ageing silently as one opaque document. A stored
+    blob of HTML can do neither.
+    """
+    if not et_date or not title or not producer:
+        raise DeskFactError("et_date, title and producer are required")
+    if not blocks:
+        raise DeskFactError("a brief with no blocks is not a brief")
+    for i, b in enumerate(blocks):
+        if "as_of_utc" not in b:
+            raise DeskFactError(f"block {i} has no as_of_utc — it could never be shown as stale")
+    con = _connect(db_path)
+    try:
+        con.execute(BRIEF_SQL)
+        cur = con.execute(
+            "INSERT INTO desk_briefs (et_date, generated_utc, title, producer, blocks_json, "
+            "sources_json, ingested_at_utc) VALUES (?,?,?,?,?,?,?)",
+            (et_date, float(generated_utc), title, producer,
+             json.dumps(list(blocks), separators=(",", ":")),
+             json.dumps(list(sources), separators=(",", ":")), time.time()))
+        con.commit()
+        return int(cur.lastrowid or 0)
+    finally:
+        con.close()
+
+
+def latest_brief(db_path: str | Path, as_of_utc: float) -> dict[str, Any] | None:
+    """The newest brief we held at `as_of_utc`, with each block's age computed against it."""
+    try:
+        con = _connect(db_path, read_only=True)
+    except sqlite3.OperationalError:
+        return None
+    try:
+        row = con.execute(
+            "SELECT * FROM desk_briefs WHERE generated_utc <= ? ORDER BY generated_utc DESC "
+            "LIMIT 1", (float(as_of_utc),)).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+    if row is None:
+        return None
+    d = dict(row)
+    blocks = json.loads(d.pop("blocks_json"))
+    for b in blocks:
+        age = float(as_of_utc) - float(b.get("as_of_utc") or 0.0)
+        b["age_sec"] = age
+        b["stale"] = age > _BRIEF_BLOCK_SHELF_LIFE_SEC
+    d["blocks"] = blocks
+    d["sources"] = json.loads(d.pop("sources_json"))
+    d["stale_blocks"] = sum(1 for b in blocks if b["stale"])
+    return d
 
 
 def radar_rows(db_path: str | Path, as_of_utc: float, *, limit: int = 60) -> dict[str, Any]:

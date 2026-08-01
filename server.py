@@ -12306,6 +12306,95 @@ def get_desk_radar(as_of: float = Query(default=0.0), limit: int = Query(default
     return payload
 
 
+@app.get("/api/desk/dossier")
+def get_desk_dossier(ticker: str = Query(default=DEFAULT_TICKER),
+                     as_of: float = Query(default=0.0)):
+    """One name's measured structure, as it stood at `as_of`."""
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    try:
+        payload = desk_store.dossier(_desk_db, tk, at)
+    except Exception as e:
+        return {"subject": tk, "as_of_utc": at, "error": f"{type(e).__name__}: {e}",
+                "missing": ["request failed"]}
+    payload["server_now_utc"] = time.time()
+    payload["is_replay"] = bool(as_of and as_of > 0)
+    return payload
+
+
+@app.get("/api/desk/evidence")
+def get_desk_evidence():
+    """The study scoreboard, read from reports/ rather than retyped."""
+    import desk_store
+
+    try:
+        return desk_store.evidence_rows(APP_DIR)
+    except Exception as e:
+        return {"rows": [], "empty_reason": f"{type(e).__name__}: {e}"}
+
+
+@app.get("/api/desk/structure")
+def get_desk_structure(
+    ticker: str = Query(default=DEFAULT_TICKER),
+    horizon_sessions: int = Query(default=5),
+    long_strike: float = Query(default=0.0),
+    short_strike: float = Query(default=0.0),
+    long_price: float = Query(default=0.0),
+    short_price: float = Query(default=0.0),
+    contracts: int = Query(default=1),
+    as_of: float = Query(default=0.0),
+):
+    """Deterministic payoff plus the PHYSICAL terminal distribution.
+
+    The risk-neutral half is refused, not approximated — see `desk_store` for the reason, which
+    is stated once so every surface refuses in the same words.
+    """
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    out: dict = {"subject": tk, "as_of_utc": at}
+    try:
+        out["distribution"] = desk_store.terminal_distribution(
+            _desk_db, tk, at, horizon_sessions=max(1, min(int(horizon_sessions), 60)))
+    except Exception as e:
+        out["distribution"] = {"available": False, "reason": f"{type(e).__name__}: {e}"}
+    if long_strike > 0 and short_strike > 0:
+        try:
+            payoff = desk_store.vertical_spread(
+                long_strike, short_strike, long_price, short_price,
+                contracts=max(1, int(contracts)))
+            out["payoff"] = payoff
+            out["pop"] = desk_store.probability_of_profit(
+                out["distribution"], payoff["breakeven"])
+        except desk_store.DeskFactError as e:
+            out["payoff_error"] = str(e)
+    out["server_now_utc"] = time.time()
+    return out
+
+
+@app.get("/api/desk/brief")
+def get_desk_brief(as_of: float = Query(default=0.0)):
+    """The newest research brief we held at `as_of`, blocks aged against that instant."""
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    try:
+        brief = desk_store.latest_brief(_desk_db, at)
+    except Exception as e:
+        return {"brief": None, "empty_reason": f"{type(e).__name__}: {e}"}
+    if brief is None:
+        return {"brief": None, "as_of_utc": at, "empty_reason": (
+            "no research brief has been ingested — the Brief is a publish target and nothing "
+            "has published to it yet")}
+    return {"brief": brief, "as_of_utc": at, "empty_reason": None}
+
+
 @app.get("/api/desk/materialize")
 def post_desk_materialize():
     """Rebuild the fact store from tables this repo already fills. Idempotent."""

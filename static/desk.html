@@ -88,6 +88,21 @@ tbody tr:hover{background:var(--cv-sf2)}
 .legend{display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--cv-bd);
   background:var(--cv-sk);font-family:var(--cv-mono);font-size:10.5px;color:var(--cv-mu)}
 .legend span{display:flex;align-items:center;gap:6px}
+.hid td{opacity:.4}
+.strctl{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+.strctl label{font-family:var(--cv-mono);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--cv-mu);display:flex;flex-direction:column;gap:3px}
+.strctl input{background:var(--cv-ctl);border:1px solid var(--cv-ctlbd);border-radius:3px;
+  color:var(--cv-tx);font-family:var(--cv-mono);font-size:12px;padding:4px 7px;width:92px}
+.strctl button{background:var(--cv-ctl);border:1px solid var(--cv-ac);border-radius:3px;
+  color:var(--cv-ac);font-family:var(--cv-mono);font-size:11.5px;letter-spacing:.06em;
+  padding:6px 14px;cursor:pointer}
+.strctl button:hover{background:var(--cv-ac);color:var(--cv-bg)}
+.strctl input:focus-visible,.strctl button:focus-visible{outline:2px solid var(--cv-ac);
+  outline-offset:1px}
+#dens{display:block;width:100%;height:auto;border:1px solid var(--cv-bd);border-radius:4px;
+  background:var(--cv-sf2);margin-bottom:10px}
+#p-brief b,#p-dossier b,#p-struct b,#p-evid b{font-weight:400;color:var(--cv-ac)}
 </style>
 </head>
 <body>
@@ -133,11 +148,38 @@ tbody tr:hover{background:var(--cv-sf2)}
   <p class="note" id="radar-foot"></p>
 </div>
 
-<div class="panel" id="p-brief"></div>
-<div class="panel" id="p-dossier"></div>
-<div class="panel" id="p-struct"></div>
+<div class="panel" id="p-brief">
+  <h3 class="sec">Research brief</h3>
+  <div id="brief-out"><p class="note mu">loading…</p></div>
+</div>
+
+<div class="panel" id="p-dossier">
+  <h3 class="sec">Dossier &mdash; <span id="dos-sym" class="mu">—</span></h3>
+  <div id="dos-out"><p class="note mu">loading…</p></div>
+</div>
+
+<div class="panel" id="p-struct">
+  <h3 class="sec">Structures &mdash; <span id="str-sym" class="mu">—</span></h3>
+  <div class="strctl">
+    <label>Long <input id="s-long" type="number" step="0.5" value="0" /></label>
+    <label>Short <input id="s-short" type="number" step="0.5" value="0" /></label>
+    <label>Long px <input id="s-lpx" type="number" step="0.01" value="0" /></label>
+    <label>Short px <input id="s-spx" type="number" step="0.01" value="0" /></label>
+    <label>Qty <input id="s-qty" type="number" step="1" value="1" /></label>
+    <label>Sessions <input id="s-hz" type="number" step="1" value="5" /></label>
+    <button type="button" id="s-go">Compute</button>
+  </div>
+  <canvas id="dens" width="1200" height="300" role="img"
+          aria-label="Bootstrap terminal price distribution"></canvas>
+  <div id="str-out"><p class="note mu">enter two strikes and their prices, then compute</p></div>
+</div>
+
 <div class="panel" id="p-book"></div>
-<div class="panel" id="p-evid"></div>
+
+<div class="panel" id="p-evid">
+  <h3 class="sec">Evidence &mdash; what every claim has actually earned</h3>
+  <div id="evid-out"><p class="note mu">loading…</p></div>
+</div>
 
 <div class="legend">
   <span><i class="tier">MEASURED</i> fetched fact, carries source and vintage</span>
@@ -154,29 +196,23 @@ tbody tr:hover{background:var(--cv-sf2)}
   // Subtabs that have no producer yet render this and nothing else. A trading surface never
   // paints an illustrative shape: a fake bar is indistinguishable from a real one at a glance,
   // and the glance is what the operator acts on.
-  var PENDING={
-    brief:["Brief","the overnight diff and research digest",
-      "Needs the research loop (LLM + web search) and an EDGAR collector. Neither is wired, so "+
-      "there is nothing here that could be shown without inventing it."],
-    dossier:["Dossier","one name, in depth",
-      "Needs per-name quote history for effective spread and a filing timeline. The fact store "+
-      "holds ADV, short-volume ratio and chain width today; the rest is not collected yet."],
-    struct:["Structures","option structures and their two densities",
-      "Needs per-strike prices read back out of the banked chains to build the risk-neutral "+
-      "density, plus a block bootstrap of this name's own returns."],
-    book:["Book","positions, exposure and concentration",
-      "Needs a positions source. No broker position feed is wired into this console."],
-    evid:["Evidence","what every claim has actually earned",
-      "Needs the study scoreboard read out of reports/ rather than retyped. Retyping it is how "+
-      "a scoreboard drifts from the studies it claims to summarise."]
-  };
-  Object.keys(PENDING).forEach(function(k){
-    var d=PENDING[k];
-    $("p-"+k).innerHTML='<h3 class="sec">'+d[0]+' &mdash; '+d[1]+'</h3>'+
-      '<div class="void"><div class="h">Not built</div>'+
-      '<div class="m">This subtab has no data source yet.</div>'+
-      '<div class="why">'+d[2]+'</div></div>';
-  });
+  // Book has no producer. It says so and renders nothing: a trading surface never paints an
+  // illustrative shape, because a fake row is indistinguishable from a real one at a glance and
+  // the glance is what gets acted on.
+  $("p-book").innerHTML='<h3 class="sec">Book &mdash; positions, exposure and concentration</h3>'+
+    '<div class="void"><div class="h">Not built</div>'+
+    '<div class="m">No positions source.</div>'+
+    '<div class="why">No broker position feed is wired into this console, so there is nothing '+
+    'here that could be shown without inventing it. Sizing would additionally require a '+
+    'calibrated probability, and the Evidence tab currently carries none.</div></div>';
+
+  function esc(s){return String(s===null||s===undefined?"":s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+  function tier(t){return t?'<i class="tier '+esc(t)+'">'+esc(t)+'</i>':"";}
+  function voidBox(head,msg,why){
+    return '<div class="void"><div class="h">'+esc(head)+'</div><div class="m">'+esc(msg)+
+      '</div><div class="why">'+esc(why)+'</div></div>';
+  }
 
   var subs=document.querySelectorAll(".subs button");
   subs.forEach(function(b){
@@ -185,6 +221,7 @@ tbody tr:hover{background:var(--cv-sf2)}
       b.classList.add("on");b.setAttribute("aria-selected","true");
       document.querySelectorAll(".panel").forEach(function(p){p.classList.remove("on");});
       $("p-"+b.dataset.p).classList.add("on");
+      LOADERS[b.dataset.p] && LOADERS[b.dataset.p]();
     });
   });
 
@@ -260,6 +297,190 @@ tbody tr:hover{background:var(--cv-sf2)}
     $("ktxt").textContent="now · "+ct(SERVER_NOW);
   }).catch(function(e){
     $("radar-body").innerHTML='<tr><td colspan="7" class="wn">request failed: '+e+"</td></tr>";
+  });
+
+  function asOfParam(){
+    var v=+$("scrub").value;
+    return v<0 ? (SERVER_NOW+v).toFixed(0) : "0";
+  }
+  function sym(){return ($("tk").value||"SPY").toUpperCase().trim();}
+
+  function renderBrief(d){
+    var o=$("brief-out");
+    if(!d.brief){
+      o.innerHTML=voidBox("Nothing ingested","No research brief yet.",
+        d.empty_reason||"the Brief is a publish target and nothing has published to it");
+      return;
+    }
+    var b=d.brief, h='<p class="note">'+esc(b.title)+' &mdash; produced by '+esc(b.producer)+
+      ', generated '+ct(b.generated_utc)+'. '+b.stale_blocks+' of '+b.blocks.length+
+      ' blocks past shelf life.</p>';
+    h+='<div class="tw"><table><thead><tr><th>Block</th><th>Content</th><th class="num">Age h</th>'+
+       '<th>State</th></tr></thead><tbody>';
+    b.blocks.forEach(function(x){
+      h+='<tr class="'+(x.stale?"hid":"")+'"><td>'+esc(x.heading||x.kind||"—")+'</td><td>'+
+         esc((x.text||"").slice(0,120))+'</td><td class="num">'+
+         (x.age_sec/3600).toFixed(1)+'</td><td class="'+(x.stale?"wn":"mu")+'">'+
+         (x.stale?"stale":"fresh")+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(b.sources&&b.sources.length){
+      h+='<p class="note mu">'+b.sources.length+' sources cited.</p>';
+    }
+    o.innerHTML=h;
+  }
+
+  function renderDossier(d){
+    $("dos-sym").textContent=d.subject||"—";
+    var o=$("dos-out");
+    if(d.error){o.innerHTML=voidBox("Request failed",d.error,"");return;}
+    var rows=[
+      ["ADV (median regular session)",d.adv_dollar===null?null:money(d.adv_dollar),"DERIVED"],
+      ["Effective spread",d.spread?d.spread.median_bps+" bp (p90 "+d.spread.p90_bps+
+        ", n="+d.spread.n_quotes+")":null,"DERIVED"],
+      ["Short volume ratio",d.short_volume_ratio===null?null:pct(d.short_volume_ratio),"MEASURED"],
+      ["Short data lag",d.short_volume_lag_hours===null?null:d.short_volume_lag_hours+" h","MEASURED"],
+      ["Chain strikes banked",d.n_strikes===null?null:d.n_strikes,"MEASURED"],
+      ["Next earnings",d.next_earnings_utc?ct(d.next_earnings_utc):null,"MEASURED"],
+      ["Capacity at "+(d.capacity_impact_bps||"—")+" bp impact",
+        d.capacity_usd===null||d.capacity_usd===undefined?null:money(d.capacity_usd),"ESTIMATED"]
+    ];
+    var h='<div class="tw"><table><thead><tr><th>Field</th><th>Value</th><th>Class</th>'+
+      '</tr></thead><tbody>';
+    rows.forEach(function(r){
+      h+='<tr><td>'+esc(r[0])+'</td><td class="'+(r[1]===null?"mu":"")+'">'+
+         (r[1]===null?"not available":esc(r[1]))+'</td><td>'+
+         (r[1]===null?"":tier(r[2]))+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(d.capacity_inputs){
+      var ci=d.capacity_inputs;
+      h+='<p class="note">Capacity is '+esc(ci.model)+': impact = Y &times; &sigma; &times; '+
+         '&radic;(Q/ADV), solved for Q. Y = '+ci.coefficient_Y+' (a stated assumption, not a '+
+         'measurement), &sigma; = '+ci.sigma_daily_bps+' bp measured over '+ci.sigma_sessions+
+         ' regular sessions, participation '+(ci.participation*100).toFixed(2)+'%'+
+         (ci.participation_capped?" (CAPPED — the ceiling is binding, not the model)":"")+
+         '. It is ESTIMATED because Y is assumed.</p>';
+    }
+    if(d.missing&&d.missing.length){
+      h+='<p class="note mu">Not available here: '+d.missing.map(esc).join("; ")+'.</p>';
+    }
+    $("dos-out").innerHTML=h;
+  }
+
+  function drawDensity(dist){
+    var c=$("dens"), g=c.getContext("2d");
+    g.clearRect(0,0,c.width,c.height);
+    var cs=getComputedStyle(document.documentElement);
+    var ac=cs.getPropertyValue("--cv-ac").trim(), bd=cs.getPropertyValue("--cv-bd").trim();
+    var mu=cs.getPropertyValue("--cv-mu").trim();
+    if(!dist||!dist.available){
+      g.fillStyle=mu;g.font='13px ui-monospace,Consolas,monospace';g.textAlign="center";
+      g.fillText(dist&&dist.reason?dist.reason:"no distribution available",c.width/2,c.height/2);
+      return;
+    }
+    var d=dist.density,n=d.counts.length,mx=Math.max.apply(null,d.counts)||1;
+    var L=54,R=16,T=14,B=30,W=c.width-L-R,H=c.height-T-B;
+    g.strokeStyle=bd;g.lineWidth=1;
+    g.beginPath();g.moveTo(L,c.height-B);g.lineTo(c.width-R,c.height-B);g.stroke();
+    g.beginPath();
+    for(var i=0;i<n;i++){
+      var x=L+(i/(n-1))*W, y=c.height-B-(d.counts[i]/mx)*H;
+      i?g.lineTo(x,y):g.moveTo(x,y);
+    }
+    g.strokeStyle=ac;g.lineWidth=1.8;g.stroke();
+    g.lineTo(c.width-R,c.height-B);g.lineTo(L,c.height-B);g.closePath();
+    g.globalAlpha=.12;g.fillStyle=ac;g.fill();g.globalAlpha=1;
+    g.fillStyle=mu;g.font='11px ui-monospace,Consolas,monospace';g.textAlign="center";
+    g.fillText(d.lo.toFixed(2),L,c.height-10);
+    g.fillText(d.hi.toFixed(2),c.width-R,c.height-10);
+    g.fillText("spot "+dist.spot.toFixed(2),(L+c.width-R)/2,c.height-10);
+    g.textAlign="left";
+    g.fillText("bootstrap terminal price · "+dist.horizon_sessions+" sessions · "+
+      dist.n_paths+" paths · block "+dist.block_bars+"m",L,T+9);
+  }
+
+  function renderStructure(d){
+    $("str-sym").textContent=d.subject||"—";
+    drawDensity(d.distribution);
+    var o=$("str-out"), h="";
+    if(d.payoff_error){h+='<p class="note wn">'+esc(d.payoff_error)+'</p>';}
+    if(d.payoff){
+      var p=d.payoff;
+      h+='<div class="tw"><table><thead><tr><th>Net debit</th><th>Max gain</th><th>Max loss</th>'+
+         '<th>Breakeven</th><th>Class</th></tr></thead><tbody><tr>'+
+         '<td>'+p.net_debit+'</td><td class="up">'+p.max_gain+'</td>'+
+         '<td class="dn">'+p.max_loss+'</td><td>'+p.breakeven+'</td>'+
+         '<td>'+tier("DERIVED")+'</td></tr></tbody></table></div>';
+    }
+    if(d.pop){
+      var q=d.pop;
+      h+='<p class="note">Probability of profit, '+esc(q.measure)+': '+
+        (q.outside_sampled_range
+          ? '<span class="wn">breakeven '+q.breakeven+' is outside every path drawn ('+
+            q.sampled_range[0]+' to '+q.sampled_range[1]+'), so no probability is reported</span>'
+          : '<b>'+(q.pop*100).toFixed(1)+'%</b> over '+q.n_paths+' paths')+
+        ' '+tier("ESTIMATED")+'</p>';
+      h+='<p class="note mu">Risk-neutral measure not shown: '+esc(q.risk_neutral_reason)+'.</p>';
+    }else if(d.distribution&&d.distribution.available){
+      h+='<p class="note mu">Enter both strikes and both prices to price a vertical against '+
+         'this distribution.</p>';
+      h+='<p class="note mu">Risk-neutral measure not shown: '+
+         esc(d.distribution.risk_neutral_reason||"")+'.</p>';
+    }
+    o.innerHTML=h||'<p class="note mu">nothing to show</p>';
+  }
+
+  function renderEvidence(d){
+    var o=$("evid-out");
+    if(!d.rows||!d.rows.length){
+      o.innerHTML=voidBox("No scoreboard","Nothing to report.",d.empty_reason||"");return;
+    }
+    var h='<p class="note">Money path: <b>'+esc(d.money_path||"unknown")+'</b>. Existence PASS '+
+      'cells across every study: <b>'+esc(d.existence_pass_cells)+'</b>. Scoreboard generated '+
+      esc(d.generated_utc||"—")+'.</p>';
+    h+='<div class="tw"><table><thead><tr><th>Study</th><th>Verdict</th><th class="num">Pass</th>'+
+       '<th class="num">Fail</th><th>Class</th></tr></thead><tbody>';
+    d.rows.forEach(function(r){
+      h+='<tr><td>'+esc(r.study)+'</td><td class="'+
+        (r.verdict==="MISSING"?"mu":(r.n_pass>0?"up":"dm"))+'">'+esc(r.verdict)+'</td>'+
+        '<td class="num">'+(r.n_pass===null?"—":r.n_pass)+'</td>'+
+        '<td class="num">'+(r.n_fail===null?"—":r.n_fail)+'</td>'+
+        '<td>'+tier(r.tier)+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    h+='<p class="note">Promotion rule: a claim leaves UNPROVEN only with an out-of-sample '+
+       'sample, a confidence interval excluding zero, and a placebo it beats. No other subtab '+
+       'may consume a claim below ESTIMATED, which is why Book has no rebalance panel.</p>';
+    o.innerHTML=h;
+  }
+
+  function grab(url,fn,box){
+    fetch(url).then(function(r){return r.json();}).then(fn).catch(function(e){
+      $(box).innerHTML=voidBox("Request failed",String(e),"");
+    });
+  }
+
+  var LOADERS={
+    radar:function(){},
+    brief:function(){grab("/api/desk/brief?as_of="+asOfParam(),renderBrief,"brief-out");},
+    dossier:function(){grab("/api/desk/dossier?ticker="+encodeURIComponent(sym())+
+      "&as_of="+asOfParam(),renderDossier,"dos-out");},
+    evid:function(){grab("/api/desk/evidence",renderEvidence,"evid-out");},
+    book:function(){},
+    struct:function(){
+      var u="/api/desk/structure?ticker="+encodeURIComponent(sym())+
+        "&horizon_sessions="+(+$("s-hz").value||5)+"&as_of="+asOfParam()+
+        "&long_strike="+(+$("s-long").value||0)+"&short_strike="+(+$("s-short").value||0)+
+        "&long_price="+(+$("s-lpx").value||0)+"&short_price="+(+$("s-spx").value||0)+
+        "&contracts="+(+$("s-qty").value||1);
+      grab(u,renderStructure,"str-out");
+    }
+  };
+  $("s-go").addEventListener("click",LOADERS.struct);
+  $("tk").addEventListener("change",function(){
+    var on=document.querySelector(".subs button.on");
+    if(on&&LOADERS[on.dataset.p])LOADERS[on.dataset.p]();
   });
 
   function tick(){
