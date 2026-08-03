@@ -288,5 +288,13 @@ stopped 10:17 CT):
 suites, all three canonical-1m repair suites — **25 passed, 0 failed**, including the negative
 control `test_institutional_check_fires_when_the_law_is_unplugged`.
 `check_collect_window_single_law()` → **0 violations**. `tools.rth_completeness_check_v1` runs
-(mid-session verdict HOLES as expected). **The law is live at the seam again, with no test debt
-carried.**
+(mid-session verdict HOLES as expected).
+
+**Status correction (auditor falsification, accepted): DISK_ONLY_UNTIL_RESTART — not live.**
+The console process on :8000 (PID 15428) started 08:38 CT, before the 12:00 CT commit, and Python
+does not hot-reload; the in-memory `db.py` is still pre-gate, so `price_bars_1m` writes remain
+ungated in the running process. The law becomes LIVE_ENFORCED at the next console restart — an
+operator action. Anything that imports fresh (tonight's 15:35 CT completeness fire, repair tools,
+tests) already gets the gated code. Restart trade-off: restarting mid-RTH stops ungated writes
+immediately at the cost of ~2 minutes of capture; waiting to 15:15 CT close loses nothing further
+tonight since today's session was already part-ungated either way.
