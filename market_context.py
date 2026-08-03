@@ -1075,11 +1075,28 @@ def fetch_price_levels(
 
         # ── PDH / PDL / POC / VAH / VAL from previous session ────────────────
         if prev_bars:
+            # RC-213 (mission levels-faucet-v1): the prior-day family is the SINGLE most
+            # recent prior RTH session — never a union of every prior date the vendor
+            # window holds (TWO_DAYS merged Thursday AND Friday into "previous day" on
+            # Mondays; measured 56/59 tickers divergent, worst 11.81% of price). Window
+            # selection delegates to the RC-153 authority so this producer and
+            # liquidity_value_engine can never again disagree about WHICH session was
+            # "the prior day".
+            from liquidity_value_engine import prior_trading_session_date
+            prior_date = prior_trading_session_date(
+                [{"_ts": dt} for dt, _ in prev_bars], today_date
+            )
+            prev_bars = [(dt, c) for dt, c in prev_bars if dt.date() == prior_date]
+        if prev_bars:
             prev_candles = [c for _, c in prev_bars]
             pl.pdh = max(c["high"] for _, c in prev_bars)
             pl.pdl = min(c["low"] for _, c in prev_bars)
-            if pl.pdc is None:
-                pl.pdc = prev_bars[-1][1]["close"]
+            # RC-213 PDC reconciliation, decided in the open: PDC is the last RTH 1m bar
+            # close of the single prior session — the same window and basis as every other
+            # prior-day level. The Schwab quote closePrice (Tier 1) is now only the
+            # fallback when history is unavailable; the two definitions measured 0.21
+            # apart on SPY and had never been reconciled.
+            pl.pdc = prev_bars[-1][1]["close"]
             pl.pd_poc, pl.pd_vah, pl.pd_val = _volume_profile_poc_vah_val(prev_candles)
 
         # ── Overnight high/low ────────────────────────────────────────────────

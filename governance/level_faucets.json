@@ -1,13 +1,20 @@
 {
-  "charter": "ONE faucet per domain (operator law 2026-08-02: two faucets 'in any other way they can manifest' are strictly prohibited). This registry enumerates every AUTHORIZED producer of the levels/exposure domain and the single authorized home of greek formulas. Adding a producer requires an operator_quote in the same staged change to THIS file. Target state: the level producers collapse into one /api/levels service (Monday 2026-08-03 08:30 mission).",
+  "charter": "ONE faucet per domain (operator law 2026-08-02: two faucets 'in any other way they can manifest' are strictly prohibited). This registry enumerates every AUTHORIZED producer of the levels/exposure domain and the single authorized home of greek formulas. Adding a producer requires an operator_quote in the same staged change to THIS file. Target state: the level producers collapse into one /api/levels service (mission levels-faucet-v1).",
+  "operator_quote": "OPERATOR GO — MISSION levels-faucet-v1 (PM Cursor, 2026-08-03 17:16 CT): 'Single authority for prior-day levels (prior_trading_session_date path in liquidity_value_engine). Kill multi-session merge in market_context.fetch_price_levels /api/price-levels. Land /api/levels as B1 read-adapter per the design (not a sync fan-out of all producers).'",
   "greek_formula_faucet": "math_levels.py",
   "grandfathered_inline_greeks": {
-    "math_exposure_core.py": "compute_net_charm inline charm formula - RC-179 parity-locked against bs_charm; migrate to the bs_* faucet in the Monday consolidation"
+    "math_exposure_core.py": "compute_net_charm inline charm formula - RC-179 parity-locked against bs_charm; migrate to the bs_* faucet in the consolidation"
   },
+  "prior_day_window_authority": "liquidity_value_engine.prior_trading_session_date (RC-153/RC-213: the ONE definition of 'the prior session' — single most recent prior RTH date; market_context.fetch_price_levels delegates to it as of mission levels-faucet-v1; PDC basis reconciled to last RTH 1m bar close of that session, Schwab quote closePrice is fallback-only when history is absent)",
   "level_domain_producers": {
+    "/api/levels": "B1 read-adapter (mission levels-faucet-v1): assembles the levels contract from existing producers; Tier A (banked/cached) inline, Tier B (vendor-blocking) from producer caches only — never a synchronous fan-out. Design authority: reports/levels_single_faucet_design_v1.md §5",
     "/api/liquidity-snapshot": "liquidity engine raw levels (PDH/VWAP/ORB family)",
+    "/api/price-levels": "REGISTERED FOR RETIREMENT (RC-213 B6): zero client consumers; prior-day family delegates to prior_day_window_authority as of mission levels-faucet-v1; retire after consumer migration",
+    "/api/level_crosses": "NOT a level producer — history of level-cross EVENTS; becomes a consumer of /api/levels ids in a later phase",
     "/api/terrain": "terrain walls / flip / regime",
     "/api/terrain/strikes": "per-strike GEX / volume",
+    "/api/terrain/radar": "activity radar (registered 2026-08-03 census — previously shipping unregistered)",
+    "/api/terrain/scorecard": "terrain scorecard (registered 2026-08-03 census — previously shipping unregistered)",
     "/api/forces": "banked dOI / DEX / charm side sums",
     "/api/exposure/flow": "banked intraday accrual frames",
     "/api/exposure/book": "banked call/put split + DEX per strike",

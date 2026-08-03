@@ -14038,6 +14038,125 @@ def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/levels")
+# RC-213 B1 (mission levels-faucet-v1, design authority reports/levels_single_faucet_design_v1.md §5):
+# pure READ-ADAPTER — no math moves, no producer changes, and NEVER a synchronous vendor
+# fan-out (measured cost of that: ~27 s). B1 serves the prior_day family — the family that
+# diverged on screen — from the ONE RC-153 window authority over bars we already hold
+# (live accumulator first, banked price_bars_1m fallback). Every other family is declared
+# in families_absent rather than substituted (RC-68: absence reads as absence).
+def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
+    import sqlite3 as _sq
+    import time as _time
+
+    from liquidity_value_engine import (
+        PlaybookConfig,
+        _bars_to_list,
+        get_previous_day_levels,
+        prior_trading_session_date,
+    )
+    from time_et import now_et
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    served_ts = _time.time()
+    spot, spot_source, spot_ts = resolve_spot(tk)
+    session_date = now_et().date()
+    degraded: list[dict] = []
+
+    bars = _liquidity_live_1m_overlay_bars(tk)
+    bars_norm = _bars_to_list(bars)
+    bar_source = "live_accumulator"
+    if prior_trading_session_date(bars_norm, session_date) is None:
+        # Accumulator holds no prior RTH session (fresh process / after-hours seed) —
+        # fall back to banked canonical bars. Read-only, indexed, no vendor call.
+        try:
+            db = get_db()
+            con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+            try:
+                rows = con.execute(
+                    "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
+                    "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT 2500", (tk,),
+                ).fetchall()
+            finally:
+                con.close()
+            bars_norm = _bars_to_list([
+                {"timestamp": r[0], "open": r[1], "high": r[2], "low": r[3],
+                 "close": r[4], "volume": r[5]} for r in reversed(rows)
+            ])
+            bar_source = "banked_price_bars_1m"
+        except Exception as e:
+            degraded.append({"family": "prior_day",
+                             "reason": f"banked bar read failed: {str(e)[:80]}",
+                             "last_good_ts_utc": None})
+            bars_norm = []
+
+    levels: list[dict] = []
+    families_absent: list[dict] = []
+    prior_date = prior_trading_session_date(bars_norm, session_date)
+    if prior_date is None:
+        families_absent.append({
+            "family": "prior_day",
+            "reason": f"no prior RTH session in available bars (source {bar_source})",
+        })
+    else:
+        eng = get_previous_day_levels(bars_norm, session_date, PlaybookConfig())
+        prior_bar_ts = [
+            b.get("_ts") or b.get("timestamp") for b in bars_norm
+        ]
+        as_of = max((float(t) / 1000.0 if isinstance(t, (int, float)) and t > 1e12 else float(t))
+                    for t in prior_bar_ts if t is not None)
+        window = f"{prior_date.isoformat()} 09:30-16:00 ET (most recent prior RTH session)"
+        id_map = [
+            ("PDH", "pdh", "price_fact"), ("PDL", "pdl", "price_fact"),
+            ("PDC", "pdc", "price_fact"), ("PD_POC", "pd_poc", "derived_certified"),
+            ("PD_VAH", "pd_vah", "derived_certified"), ("PD_VAL", "pd_val", "derived_certified"),
+        ]
+        for lid, key, tier in id_map:
+            val = eng.get(key)
+            if val is None:
+                continue
+            levels.append({
+                "id": lid, "price": float(val), "family": "prior_day", "label": lid,
+                "side": None, "strength": None, "evidence_tier": tier,
+                "provenance": {
+                    "producer": "liquidity_value_engine.get_previous_day_levels",
+                    "session_scope": "RTH",
+                    "window": window,
+                    "vendor_basis": f"1m bars ({bar_source}); schwab pricehistory/stream basis",
+                },
+                "staleness": {
+                    "as_of_ts_utc": as_of,
+                    "age_sec": round(served_ts - as_of, 1),
+                    "stale_after_sec": None,
+                    "stale": False,
+                    "reason": "prior-day facts are static after their session closes",
+                },
+            })
+
+    for fam, why in (
+        ("vwap", "B1 partial: Tier-B producer cache wiring lands in a later phase (design §5.4)"),
+        ("opening_range", "B1 partial: Tier-B producer cache wiring lands in a later phase"),
+        ("overnight", "B1 partial: Tier-B producer cache wiring lands in a later phase"),
+        ("value_area", "B1 partial: today-session profile served by /api/liquidity-snapshot until migration"),
+        ("gamma", "B1 partial: served by /api/terrain and /api/terrain/strikes until migration"),
+        ("expected_move", "B1 partial: served by /api/state until migration"),
+    ):
+        families_absent.append({"family": fam, "reason": why})
+
+    return JSONResponse({
+        "ticker": tk,
+        "schema_version": 1,
+        "served_ts_utc": served_ts,
+        "spot": spot,
+        "spot_source": spot_source,
+        "spot_as_of_ts_utc": spot_ts,
+        "levels": levels,
+        "families_absent": families_absent,
+        "degraded": degraded,
+    })
+
+
 def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
     """Flatten raw_levels into [{tag, value}] for display, ordered by price."""
     items = []

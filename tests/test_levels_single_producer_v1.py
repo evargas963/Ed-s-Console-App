@@ -322,3 +322,74 @@ def test_overlay_owns_the_full_concept_set(monkeypatch):
                               f"never an analytics book"
     for k in ("kl_call_delta_str", "kl_put_oi_str", "kl_hvl_str", "kl_max_pain_str"):
         assert md[k] == "—", f"{k}: a strength from another book must be blanked"
+
+
+# ── RC-213 B1: /api/levels read-adapter contract (mission levels-faucet-v1) ──────────
+
+
+def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
+    """The B1 read-adapter serves the prior_day family from the RC-153 single-session
+    authority, with per-level provenance naming the window, unique ids, honest
+    families_absent — and never the multi-session union values (the RC-213 defect)."""
+    import json
+    from datetime import datetime as _dt
+
+    import server as srv
+    from time_et import ET
+
+    def _bar(y, mo, d, h, mi, o, hi, lo, c):
+        return {"timestamp": int(_dt(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000),
+                "open": o, "high": hi, "low": lo, "close": c, "volume": 1000.0}
+
+    tape = [
+        _bar(2026, 7, 30, 10, 0, 100, 110, 90, 100),   # older prior session: both extremes
+        _bar(2026, 7, 30, 14, 0, 100, 101, 99, 100),
+        _bar(2026, 7, 31, 10, 0, 96, 105, 95, 97),     # most recent prior session
+        _bar(2026, 7, 31, 15, 59, 101, 103, 100, 102),
+        _bar(2026, 8, 3, 9, 45, 103, 104, 102, 103),   # "today"
+    ]
+    monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda t: tape)
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (103.5, "schwab_quote_last", 1.0))
+    import time_et as te
+    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
+
+    resp = srv.get_levels(ticker="SPY")
+    payload = json.loads(bytes(resp.body))
+
+    assert payload["schema_version"] == 1
+    assert payload["spot"] == 103.5 and payload["spot_source"] == "schwab_quote_last"
+
+    ids = [lv["id"] for lv in payload["levels"]]
+    assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload (RC-88)"
+    by_id = {lv["id"]: lv for lv in payload["levels"]}
+    assert by_id["PDH"]["price"] == 105 and by_id["PDL"]["price"] == 95, (
+        "prior_day must be the SINGLE most recent prior RTH session"
+    )
+    assert by_id["PDC"]["price"] == 102
+    for lv in payload["levels"]:
+        assert lv["price"] not in (110, 90), "multi-session union value served — RC-213 reopened"
+        assert lv["provenance"]["session_scope"] == "RTH"
+        assert "2026-07-31" in lv["provenance"]["window"], (
+            "provenance.window must name the literal session used (RC-153)"
+        )
+        assert "as_of_ts_utc" in lv["staleness"] and "age_sec" in lv["staleness"]
+
+    fams = {f["family"] for f in payload["families_absent"]}
+    assert "vwap" in fams and "gamma" in fams, (
+        "B1 partial families must be DECLARED absent with reasons, never substituted (RC-68)"
+    )
+    assert all(f.get("reason") for f in payload["families_absent"])
+
+
+def test_api_levels_registered_in_faucet_registry():
+    """RC-212 registry law: /api/levels must be a registered producer with the operator
+    quote present in governance/level_faucets.json."""
+    import json
+    from pathlib import Path
+
+    reg = json.loads((Path(__file__).resolve().parent.parent / "governance" /
+                      "level_faucets.json").read_text(encoding="utf-8"))
+    assert "/api/levels" in reg["level_domain_producers"]
+    assert "levels-faucet-v1" in reg.get("operator_quote", ""), (
+        "adding a producer requires the operator_quote in the registry (RC-212)"
+    )
