@@ -272,12 +272,16 @@ def compute_exposures_by_strike(
                     b["call_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
                     b["call_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
-                _vega = _f(ct.get("vega"))
-                _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
+                # RC-211: exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna,
+                # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
+                # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
                 _iv = _f(ct.get("volatility"))
                 _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
-                if _vega_ok and _iv_ok:
-                    b["call_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
+                if _iv_ok and dte is not None and dte > 0:
+                    from math_levels import bs_vanna as _bsv
+                    _vn = _bsv(spt, float(strike), float(dte) / 365.0, _iv / 100.0)
+                    if _vn is not None:
+                        b["call_vanna"] += _vn * oi * mult
         elif side == "PUT":
             if oi is not None:
                 prev = b.get("put_oi")
@@ -294,12 +298,15 @@ def compute_exposures_by_strike(
                     b["put_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
                     b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
-                _vega = _f(ct.get("vega"))
-                _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
+                # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
+                # calls and puts at a strike/expiry — any split comes from OI, never math).
                 _iv = _f(ct.get("volatility"))
                 _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
-                if _vega_ok and _iv_ok:
-                    b["put_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
+                if _iv_ok and dte is not None and dte > 0:
+                    from math_levels import bs_vanna as _bsv
+                    _vn = _bsv(spt, float(strike), float(dte) / 365.0, _iv / 100.0)
+                    if _vn is not None:
+                        b["put_vanna"] += _vn * oi * mult
         else:
             continue
 

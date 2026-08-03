@@ -108,7 +108,7 @@ def test_ui_data_integration_tier1_screams_on_a_dead_placeholder(tmp_path, monke
 
 
 def test_agents_law_check_screams_on_a_law_with_no_enforcer():
-    """RC-96: a NEW bold law heading in AGENTS.md naming no check and not marked SOFT must fail.
+    """RC-96: a NEW bold law heading in AGENTS.md naming no check and not marked JUDGMENT-ONLY must fail.
 
     13 of 35 catalogued lock failures are 'goodwill instead of a mechanical lock' (RC-41/49/56):
     a law in prose reads exactly like a law with a hook."""
@@ -120,15 +120,15 @@ def test_agents_law_check_screams_on_a_law_with_no_enforcer():
         with io.open(agents, "w", encoding="utf-8") as fh:
             fh.write(orig + law + "\n")
         injected = len(C.check_agents_laws_name_their_enforcer())
-        # ...and the SAME law becomes acceptable the moment it declares itself SOFT.
+        # ...and the SAME law becomes acceptable the moment it declares itself JUDGMENT-ONLY.
         with io.open(agents, "w", encoding="utf-8") as fh:
-            fh.write(orig + law + " SOFT.\n")
+            fh.write(orig + law + " JUDGMENT-ONLY.\n")
         softened = len(C.check_agents_laws_name_their_enforcer())
     finally:
         with io.open(agents, "w", encoding="utf-8") as fh:
             fh.write(orig)
     assert injected == baseline + 1, "an unenforced AGENTS.md law was not flagged"
-    assert softened == baseline, "declaring a law SOFT must satisfy the rule"
+    assert softened == baseline, "declaring a law JUDGMENT-ONLY must satisfy the rule"
     assert len(C.check_agents_laws_name_their_enforcer()) == baseline
 
 

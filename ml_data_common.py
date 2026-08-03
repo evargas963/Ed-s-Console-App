@@ -7,11 +7,15 @@ train_all, ml_scheduler.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+import time
 import warnings
 from typing import Any
 
 from db import sql_select_snapshots_columns
+
+log = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
@@ -379,6 +383,65 @@ M5_ADDITIVE_SOURCE_COLS: tuple[str, ...] = (
 )
 
 
+#: RC-206 bounded retry for transient reader failures under writer contention. The morning
+#: capture held ~131 `database disk image is malformed` tracebacks from these readers — raw
+#: sqlite3.connect() with no timeout/pragmas against the DB the tier-1 writer holds in WAL.
+#: (Re-applied 2026-08-02 after a shared-worktree rewrite dropped it — RC-206 is CLOSED and
+#: the code must match its ledger row.)
+_READ_RETRY_ATTEMPTS = 3
+_READ_RETRY_SLEEP_S = (0.05, 0.25)
+#: One warning per (op) per window — a known-corrupt table (RC-207 rebuild pending) must
+#: not turn the console into a scroll of identical lines; the FIRST line already says it all.
+_READ_FAIL_WARN_WINDOW_S = 300.0
+_read_fail_last_warn: dict[str, float] = {}
+
+
+def _console_read_conn(path: str) -> sqlite3.Connection:
+    """Repo connection contract for console-DB readers (reference: db._connect /
+    db.configure_sqlite_connection, db.py:228 — WAL, busy_timeout, mmap). The ML lane had
+    grown its own raw-connect idiom, which is the RC-206 root."""
+    conn = sqlite3.connect(path, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    from db import configure_sqlite_connection
+
+    configure_sqlite_connection(conn)
+    return conn
+
+
+def _read_with_retry(path: str, sql: str, params: tuple, op: str, *, all_rows: bool):
+    """Run a read under the connection contract with bounded retries on transient
+    sqlite3.DatabaseError. Final failure logs ONE loud line (signature, not a traceback
+    storm into the signals loop) and returns None/[] — the feature degrades to absent,
+    callers already handle that. all_rows=False -> fetchone, True -> fetchall."""
+    last: Exception | None = None
+    for attempt in range(_READ_RETRY_ATTEMPTS):
+        try:
+            conn = _console_read_conn(path)
+            try:
+                cur = conn.execute(sql, params)
+                return cur.fetchall() if all_rows else cur.fetchone()
+            finally:
+                conn.close()
+        except sqlite3.DatabaseError as e:
+            last = e
+            if attempt < _READ_RETRY_ATTEMPTS - 1:
+                time.sleep(_READ_RETRY_SLEEP_S[min(attempt, len(_READ_RETRY_SLEEP_S) - 1)])
+    now = time.time()
+    if now - _read_fail_last_warn.get(op, 0.0) >= _READ_FAIL_WARN_WINDOW_S:
+        _read_fail_last_warn[op] = now
+        log.warning(
+            "ml_read_failed op=%s db=%s attempts=%s err=%s — feature degrades to absent; "
+            "further identical failures suppressed for %.0fs (RC-206/RC-207: known corrupt "
+            "table, rebuild scheduled)",
+            op, path, _READ_RETRY_ATTEMPTS, last, _READ_FAIL_WARN_WINDOW_S,
+        )
+    return [] if all_rows else None
+
+
+def _read_one_row_with_retry(path: str, sql: str, params: tuple, op: str):
+    return _read_with_retry(path, sql, params, op, all_rows=False)
+
+
 def fetch_m5_additive_dict(
     ticker: str,
     ts_utc: float,
@@ -396,16 +459,13 @@ def fetch_m5_additive_dict(
     from timeframe_config import CANONICAL_TIMEFRAME
 
     cols_sql = ", ".join(M5_ADDITIVE_SOURCE_COLS)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    try:
-        row = conn.execute(
-            sql_select_snapshots_columns(cols_sql)
-            + "\n            WHERE ticker = ? AND timeframe = ? AND ts_utc <= ?\n            ORDER BY ts_utc DESC\n            LIMIT 1\n            ",
-            (t, CANONICAL_TIMEFRAME, float(ts_utc)),
-        ).fetchone()
-    finally:
-        conn.close()
+    row = _read_one_row_with_retry(
+        path,
+        sql_select_snapshots_columns(cols_sql)
+        + "\n            WHERE ticker = ? AND timeframe = ? AND ts_utc <= ?\n            ORDER BY ts_utc DESC\n            LIMIT 1\n            ",
+        (t, CANONICAL_TIMEFRAME, float(ts_utc)),
+        op="fetch_m5_additive_dict",
+    )
 
     if not row:
         return {}
@@ -431,16 +491,14 @@ def fetch_prior_net_gamma(
 
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
-    conn = sqlite3.connect(path)
-    try:
-        row = conn.execute(
-            f"SELECT net_gamma FROM {SNAPSHOT_TABLE_1M} "
-            "WHERE ticker = ? AND timeframe = ? AND ts_utc < ? "
-            "ORDER BY ts_utc DESC LIMIT 1",
-            (t, CANONICAL_TIMEFRAME, float(ts_utc)),
-        ).fetchone()
-    finally:
-        conn.close()
+    row = _read_one_row_with_retry(
+        path,
+        f"SELECT net_gamma FROM {SNAPSHOT_TABLE_1M} "
+        "WHERE ticker = ? AND timeframe = ? AND ts_utc < ? "
+        "ORDER BY ts_utc DESC LIMIT 1",
+        (t, CANONICAL_TIMEFRAME, float(ts_utc)),
+        op="fetch_prior_net_gamma",
+    )
     if not row or row[0] is None:
         return None
     try:
@@ -487,17 +545,16 @@ def attach_confluence_features_for_serve(
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
     path = db_path or _db_default_path()
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute(
-            f"SELECT * FROM {SNAPSHOT_TABLE_1M} "
-            "WHERE ticker = ? AND timeframe = ? AND ts_utc <= ? "
-            "ORDER BY ts_utc DESC LIMIT 60",
-            (str(tk).upper(), CANONICAL_TIMEFRAME, float(ts)),
-        ).fetchall()
-    finally:
-        conn.close()
+    # RC-206 class-completion (operator caught the third raw caller live, 2026-08-02):
+    # THIS was the surviving traceback path — same corrupted table, same signals loop.
+    rows = _read_with_retry(
+        path,
+        f"SELECT * FROM {SNAPSHOT_TABLE_1M} "
+        "WHERE ticker = ? AND timeframe = ? AND ts_utc <= ? "
+        "ORDER BY ts_utc DESC LIMIT 60",
+        (str(tk).upper(), CANONICAL_TIMEFRAME, float(ts)),
+        op="attach_confluence_features_for_serve", all_rows=True,
+    )
     if not rows:
         for cf in CONFLUENCE_FEATURES:
             out.setdefault(cf, 0.0)
@@ -569,7 +626,8 @@ def attach_5m_additive_context(
     from timeframe_config import CANONICAL_TIMEFRAME
 
     sel = ", ".join(["ticker", "ts_utc"] + list(M5_ADDITIVE_SOURCE_COLS))
-    conn = sqlite3.connect(path)
+    # RC-206 class-completion: deprecated/test-only, but no reader stays raw.
+    conn = _console_read_conn(path)
     try:
         frames: list[pd.DataFrame] = []
         for t in tickers:

@@ -71,3 +71,10 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      # RC-217: index=WT parity + staged ENFORCED checks on HEAD before commit lands.
+      - id: operating-process
+        name: operating process (index parity, staged checks, orphan patch warn)
+        entry: python tools/run_with_repo_venv.py tools/operating_process_lock.py --pre-commit
+        language: system
+        pass_filenames: false
+        always_run: true

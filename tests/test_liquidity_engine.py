@@ -641,91 +641,93 @@ def test_chart_declares_every_raw_level_row_with_a_unique_id():
         assert tag in ids, f"{want} has no RL_SPEC entry — that level cannot render a row"
 
 
-def test_chart_raw_levels_card_is_visible_not_buried():
-    """The slice is explicit: visible, not hidden under #main / display:none / off-canvas."""
+def test_chart_raw_levels_surface_is_visible_not_buried():
+    """v6 (RC-192): the raw-levels CARD merged into the candle canvas — the engine levels now
+    live in the LEVELS manager (per-level ids intact) and render as axis tags / FIRED pills.
+    The always-visible statics are the FIRED row and the forces strip; the manager holds the
+    per-level ids. Approved variant: governance/ui_mockup_approvals.json."""
     import re
     src = _chart_src()
-    # Bind EACH static visible id by name. These four are the surface that exists in the file;
-    # the 19 per-level row ids are generated at runtime from RL_SPEC and are bound by
-    # test_chart_declares_every_raw_level_row_with_a_unique_id instead — claiming them as
-    # static ids would assert a surface no checker could resolve.
-    for vid in ("rawlevels", "rl-grid", "rl-src", "rl-empty"):
+    for vid in ("firedrow", "firedpills", "lvlmenu", "lvlrows", "forces",
+                "mode-candles", "mode-line", "lvlbtn", "proxbtn"):
         assert f'id="{vid}"' in src, f"#{vid} is not present in static/chart.html"
-    i = src.find('id="rawlevels"')
-    card_open = src.rfind("<div", 0, i)
-    card_tag = src[card_open:i + 200]
-    assert "display:none" not in card_tag.replace(" ", ""), "the card ships hidden"
-    assert 'id="rl-grid"' in src and 'id="rl-src"' in src
-    # the card must not be nested inside a hidden #main container
-    before = src[:i]
-    assert before.count('id="main"') == 0, (
-        "the raw-levels card sits after a #main container — Step 4 forbids burying it there"
+    # the toggles are WIRED, not decorative: setMode binds both chips and repaints
+    assert "chip('mode-candles'" in src and "chip('mode-line'" in src, (
+        "the candles/line toggle chips have no click wiring"
     )
-    # every required id must be REACHABLE from real data, i.e. the renderer writes id="rl-<id>"
+    assert "function setMode" in src and "chartMode" in src
+    i = src.find('id="firedrow"')
+    row_open = src.rfind("<div", 0, i + 4)
+    assert "display:none" not in src[row_open:i + 200].replace(" ", ""), (
+        "the FIRED row ships hidden"
+    )
+    assert src[:src.find('id="forces"')].count('id="main"') == 0, (
+        "the forces card sits after a #main container — burying it there is forbidden"
+    )
+    # every engine level id must be REACHABLE from real data: the manager emits id="rl-<id>"
     assert re.search(r'id="rl-\$\{esc\(r\.id\)\}"', src), (
-        "row ids are not emitted from the declared spec id"
+        "engine-level ids are not emitted from the declared spec id"
     )
 
 
-def test_chart_raw_levels_card_cannot_be_flex_collapsed():
-    """RC-157: `body` is a column flex container sized to the viewport and `.card` sets
-    overflow:hidden, so at the default `flex: 0 1 auto` this card is the one the layout
-    compresses — and its content is clipped INSIDE it, where body scroll cannot recover it.
-    MEASURED at 1280x700 on e581447e: height 2px against scrollHeight 209, clipped true, 19 rows
-    in the DOM and ZERO visible, while 1600x1000 looked perfect. A panel whose visibility depends
-    on the window being large enough is not a surface; it is a surface on some monitors."""
+def test_chart_forces_card_cannot_be_flex_collapsed():
+    """RC-157 class, carried to the v6 forces card: `body` is a column flex container and
+    `.card` sets overflow:hidden, so the default `flex: 0 1 auto` makes some card the layout's
+    compression victim and clips its content invisibly (measured on the raw-levels card at
+    1280x700: height 2px, 19 rows, zero visible)."""
     import re
     src = _chart_src()
-    m = re.search(r"#rawlevels\s*\{([^}]*)\}", src)
-    assert m, "#rawlevels has no CSS rule — it inherits a shrinkable flex default"
+    m = re.search(r"#forces\s*\{([^}]*)\}", src)
+    assert m, "#forces has no CSS rule — it inherits a shrinkable flex default"
     rule = m.group(1).replace(" ", "")
-    assert "flex:none" in rule or "flex-shrink:0" in rule or "flex:00auto" in rule, (
-        f"#rawlevels does not opt out of flex shrinking: {{{m.group(1).strip()}}}"
+    assert "flex:none" in rule or "flex-shrink:0" in rule, (
+        f"#forces does not opt out of flex shrinking: {{{m.group(1).strip()}}}"
     )
     assert "overflow:visible" in rule, (
-        "#rawlevels inherits .card's overflow:hidden, so any future shrink clips silently"
+        "#forces inherits .card's overflow:hidden, so any future shrink clips silently"
     )
 
 
 def test_chart_reads_levels_from_the_engine_never_recomputes_them():
     """RC-80 discipline: the client must not become a second producer of a number the engine
-    owns. The panel may only READ raw_levels off /api/liquidity-snapshot."""
+    owns. The manager may only READ raw_levels off /api/liquidity-snapshot."""
     src = _chart_src()
     assert "/api/liquidity-snapshot?ticker=" in src, "the chart does not read the levels endpoint"
-    i = src.find("function renderRawLevels")
-    assert i > 0, "the renderer is gone"
-    body = src[i:i + 3000]
+    i = src.find("function renderEngineLevels")
+    assert i > 0, "the engine-level reader is gone"
+    body = src[i:i + 1600]
     for banned in ("Math.max(", "Math.min(", "reduce(", "* 2", "/ 2"):
         assert banned not in body, (
-            f"renderRawLevels contains {banned!r} — it is deriving a level instead of reading one"
+            f"renderEngineLevels contains {banned!r} — it is deriving a level instead of reading one"
         )
 
 
 def test_chart_raw_levels_are_structure_context_not_a_signal():
-    """Step 4 is structure-context ONLY: no Decide influence, no TRADE shaping, and the Step 3
-    demotion stays — no pool vocabulary may re-enter through this new surface."""
+    """Structure-context ONLY: no Decide influence, no TRADE shaping, and the Step 3 demotion
+    stays — no pool vocabulary may re-enter through the manager or the forces strip."""
     src = _chart_src()
-    i = src.find('id="rawlevels"')
+    i = src.find('id="forces"')
     card = src[i:i + 1200]
-    assert "not a trade signal" in card, "the card does not state that it is context, not a signal"
+    assert "not a trade signal" in card, "the strip does not state that it is context, not a signal"
     j = src.find("const RL_SPEC")
-    surface = src[i:i + 1200] + src[j:j + 4000]
+    surface = src[i:i + 1600] + src[j:j + 4000]
     for banned in ("TRADE", "BUY LIQ", "SELL LIQ", "liquidity pool", "stop-run", "sweep"):
-        assert banned not in surface, f"the raw-levels surface reintroduces {banned!r}"
+        assert banned not in surface, f"the levels surface reintroduces {banned!r}"
 
 
 def test_chart_raw_levels_fail_closed_on_absence():
     """A missing level is omitted; a missing payload says so and does NOT leave the previous
-    ticker's prices under a new symbol."""
+    ticker's levels under a new symbol."""
     src = _chart_src()
-    i = src.find("function renderRawLevels")
-    body = src[i:i + 3000]
-    assert "if (!isFinite(v)) continue;" in body, (
-        "a non-finite level would render as a price"
+    i = src.find("function renderEngineLevels")
+    body = src[i:i + 1600]
+    assert "if (!isFinite(v) || v <= 0) continue;" in body, (
+        "a non-finite OR non-positive level would render as a price (the engine sends 0 for "
+        "not-yet-computed session levels — v6.2 audit finding: 'VAH 0.00' was drawn as a level)"
     )
     assert "no structure levels for" in body, "absence has no honest message"
     assert "rawLevelsTicker" in src, (
-        "no pending-state reset — the prior ticker's rows survive a symbol switch"
+        "no pending-state reset — the prior ticker's levels survive a symbol switch"
     )
 
 

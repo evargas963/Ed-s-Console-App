@@ -12111,6 +12111,264 @@ def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
     return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
 
 
+#: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
+#: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
+#: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the
+#: two newest wide captures, which only the server can read.
+_FORCES_CACHE: dict = {}
+
+
+@app.get("/api/forces")
+def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
+    bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
+    boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
+    DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
+    2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
+    spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
+    """
+    import sqlite3 as _sq
+
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from math_levels import compute_charm_by_strike as _ccs
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _FORCES_CACHE.get(tk)
+    if hit and now - hit[0] < 300.0:
+        return JSONResponse(hit[1])
+    payload: dict = {"ticker": tk, "available": False,
+                     "reason": "fewer than 2 banked wide captures for this ticker"}
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            # RC-193: pull a wider candidate window and keep only trading ET dates —
+            # ORDER BY et_date DESC LIMIT 2 silently preferred Sunday stock.
+            cand = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
+        finally:
+            con.close()
+        rows = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:2]
+        if len(rows) >= 2:
+            (d1, s1, c1), (d0, s0, c0) = rows[0], rows[1]
+            per1 = _cebs(json.loads(c1), spot=float(s1))[0]
+            per0 = _cebs(json.loads(c0), spot=float(s0))[0]
+
+            def _g(v: dict, k: str) -> float:
+                x = v.get(k)
+                return float(x) if x is not None else 0.0
+
+            oi1 = {k: _g(v, "call_oi") + _g(v, "put_oi") for k, v in per1.items()}
+            oi0 = {k: _g(v, "call_oi") + _g(v, "put_oi") for k, v in per0.items()}
+            spot1 = float(s1)
+            # RC-199: CHARM below/above from the NEWER banked wide chain (full book).
+            # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
+            charm_below = charm_above = None
+            charm_err = None
+            try:
+                chain1 = json.loads(c1)
+                contracts = chain1 if isinstance(chain1, list) else (
+                    (chain1.get("contracts") if isinstance(chain1, dict) else None) or [])
+                per_ch = _ccs(contracts, spot1) if contracts else {}
+                if not per_ch:
+                    charm_err = "charm_by_strike empty on newer banked chain"
+                else:
+                    charm_below = round(sum(
+                        float(v.get("net_charm") or 0.0)
+                        for k, v in per_ch.items() if k < spot1), 4)
+                    charm_above = round(sum(
+                        float(v.get("net_charm") or 0.0)
+                        for k, v in per_ch.items() if k > spot1), 4)
+            except Exception as _ce:
+                charm_err = str(_ce)[:120]
+            payload = {
+                "ticker": tk, "available": True,
+                "doi_below": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k < spot1)),
+                "doi_above": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k > spot1)),
+                "dex_below_dollars": round(sum(
+                    _g(v, "net_dex_dollars") for k, v in per1.items() if k < spot1)),
+                "dex_above_dollars": round(sum(
+                    _g(v, "net_dex_dollars") for k, v in per1.items() if k > spot1)),
+                "charm_below": charm_below,
+                "charm_above": charm_above,
+                "charm_book_scope": "full_chain_banked",
+                "charm_error": charm_err,
+                "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
+                "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "
+                           "DEX = net_dex_dollars side sums on the newer capture; "
+                           "CHARM = dealer-signed net_charm side sums on the newer capture"),
+            }
+    except Exception as e:
+        payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
+    _FORCES_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
+#: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
+#: per-strike exposure time series the console has.
+_EXPOSURE_FLOW_CACHE: dict = {}
+
+
+@app.get("/api/exposure/flow")
+def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
+    """RC-208: serve option_chain_accrual frames for the latest banked session so the
+    Exposure tab paints per-minute Pika/Barney structure, the intraday King path, and
+    volume-delta bubbles at the minute they happened. per_strike_json served verbatim
+    ([[strike, gex_dollars, session_volume], ...]; MEASURED: SPY 07-31 = 133 frames, ET
+    minutes 556-975), spot-windowed ±5%. 5-min cache like /api/forces."""
+    import sqlite3 as _sq
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _EXPOSURE_FLOW_CACHE.get(tk)
+    if hit and now - hit[0] < 300.0:
+        return JSONResponse(hit[1])
+    payload: dict = {"ticker": tk, "available": False,
+                     "reason": "no banked accrual frames for this ticker"}
+    try:
+        db = get_db()
+        frames: list[dict] = []
+        latest = None
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            latest = con.execute(
+                "SELECT MAX(et_date) FROM option_chain_accrual WHERE ticker=?", (tk,),
+            ).fetchone()
+            if latest and latest[0]:
+                for ts, m, spot, psj in con.execute(
+                        "SELECT ts_utc, et_minute, spot, per_strike_json "
+                        "FROM option_chain_accrual WHERE ticker=? AND et_date=? "
+                        "ORDER BY ts_utc", (tk, latest[0])):
+                    try:
+                        rows2 = json.loads(psj)
+                    except (ValueError, TypeError):
+                        continue
+                    sp = float(spot) if spot is not None else None
+                    if sp:
+                        rows2 = [r for r in rows2 if abs(float(r[0]) - sp) <= sp * 0.05]
+                    frames.append({"t": int(float(ts) // 60) * 60, "m": int(m),
+                                   "spot": sp, "rows": rows2})
+        finally:
+            con.close()
+        if frames:
+            payload = {"ticker": tk, "available": True, "et_date": latest[0],
+                       "n_frames": len(frames), "frames": frames,
+                       "method": ("option_chain_accrual per_strike_json verbatim "
+                                  "[[strike, gex_dollars, session_volume]...], "
+                                  "spot-windowed ±5%, latest banked session")}
+    except Exception as e:
+        payload = {"ticker": tk, "available": False, "reason": f"flow read failed: {e}"}
+    _EXPOSURE_FLOW_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
+#: RC-209: Split·DEX and multi-day structure were gated ONLY by missing endpoints.
+_EXPOSURE_BOOK_CACHE: dict = {}
+_EXPOSURE_HISTORY_CACHE: dict = {}
+
+
+@app.get("/api/exposure/book")
+def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
+    """RC-209: per-strike call/put GEX split + net DEX + volumes from the NEWEST banked wide
+    chain — turns the Exposure tab's Split·DEX pill live. Vendor convention researched this
+    turn (FlashAlpha): green = call side, red = put side. 5-min cache."""
+    import sqlite3 as _sq
+
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _EXPOSURE_BOOK_CACHE.get(tk)
+    if hit and now - hit[0] < 300.0:
+        return JSONResponse(hit[1])
+    payload: dict = {"ticker": tk, "available": False, "reason": "no banked wide chain"}
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            cand = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
+        finally:
+            con.close()
+        rows_t = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:1]
+        if rows_t:
+            d1, s1, c1 = rows_t[0]
+            spot1 = float(s1)
+            per, _diag = _cebs(json.loads(c1), spot=spot1)
+
+            def _f(v: dict, k: str) -> float:
+                x = v.get(k)
+                return float(x) if x is not None else 0.0
+
+            out_rows = [
+                [k, round(_f(v, "call_gex_1pct")), round(_f(v, "put_gex_1pct")),
+                 round(_f(v, "net_dex_dollars")),
+                 round(_f(v, "call_volume")), round(_f(v, "put_volume"))]
+                for k, v in sorted(per.items())
+                if abs(float(k) - spot1) <= spot1 * 0.05
+            ]
+            payload = {"ticker": tk, "available": True, "et_date": d1, "spot": spot1,
+                       "rows": out_rows,
+                       "method": ("newest banked wide chain -> compute_exposures_by_strike; "
+                                  "[strike, call_gex_1pct, put_gex_1pct, net_dex_dollars, "
+                                  "call_volume, put_volume], ±5% spot window")}
+    except Exception as e:
+        payload = {"ticker": tk, "available": False, "reason": f"book read failed: {e}"}
+    _EXPOSURE_BOOK_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
+@app.get("/api/exposure/history")
+def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
+    """RC-209 (operator: multi-day scroll-back goes live): per-day per-strike net GEX$ for
+    EVERY banked session, so scrolled-back days paint THEIR OWN structure under their own
+    candles. ±5% of each day's spot; 10-min cache (the bank changes nightly)."""
+    import sqlite3 as _sq
+
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _EXPOSURE_HISTORY_CACHE.get(tk)
+    if hit and now - hit[0] < 600.0:
+        return JSONResponse(hit[1])
+    payload: dict = {"ticker": tk, "available": False, "reason": "no banked sessions"}
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            cand = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date", (tk,)).fetchall()
+        finally:
+            con.close()
+        days = []
+        for d0, s0, c0 in cand:
+            if not d0 or not is_trading_day_et(str(d0)):
+                continue
+            sp = float(s0)
+            per, _diag = _cebs(json.loads(c0), spot=sp)
+            rws = []
+            for k, v in sorted(per.items()):
+                if abs(float(k) - sp) > sp * 0.05:
+                    continue
+                x = v.get("net_gex_1pct")
+                rws.append([k, round(float(x) if x is not None else 0.0)])
+            if rws:
+                days.append({"date": d0, "spot": sp, "rows": rws})
+        if days:
+            payload = {"ticker": tk, "available": True, "n_days": len(days), "days": days,
+                       "method": ("every banked session -> compute_exposures_by_strike "
+                                  "net_gex_1pct per strike, ±5% of that day's spot")}
+    except Exception as e:
+        payload = {"ticker": tk, "available": False, "reason": f"history read failed: {e}"}
+    _EXPOSURE_HISTORY_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
 #: /api/spot upstream guard (operator 2026-07-23: "spot needs to be the fastest
 #: polling"). Every resolve_spot is a REAL Schwab REST quote against the shared
 #: ~120 req/min budget, so the endpoint caches per ticker for a short TTL — all
@@ -12271,6 +12529,17 @@ def chart_page():
     p = static_dir / "chart.html"
     if not p.exists():
         return HTMLResponse("<p>static/chart.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/exposure", response_class=HTMLResponse)
+def exposure_page():
+    """RC-200 (re-landed with RC-210) — the Exposure Overlay tab: dealer positioning on
+    price (operator #1 project, LIVE order 2026-08-02)."""
+    p = static_dir / "exposure.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/exposure.html not found</p>", status_code=404)
     return HTMLResponse(p.read_text(encoding="utf-8"),
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 

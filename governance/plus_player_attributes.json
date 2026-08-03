@@ -1,0 +1,483 @@
+{
+  "version": 2,
+  "law": "Ultimate plus-player MIT/Bloomberg (RC-205/RC-208) \u2014 ENFORCED only; non-mechanical catalog rows banned",
+  "strength_definition": "A lock is a .py BLOCK. Catalog lists only ENFORCED attributes bound to CHECK ids.",
+  "attributes": [
+    {
+      "id": "RES-01",
+      "pillar": "res",
+      "enforcement": "enforced",
+      "enforcer": "research_before_act",
+      "soft_reason": null
+    },
+    {
+      "id": "RES-02",
+      "pillar": "res",
+      "enforcement": "enforced",
+      "enforcer": "find_prove_significance_substance",
+      "soft_reason": null
+    },
+    {
+      "id": "RES-03",
+      "pillar": "res",
+      "enforcement": "enforced",
+      "enforcer": "purged_cv_research",
+      "soft_reason": null
+    },
+    {
+      "id": "RES-04",
+      "pillar": "res",
+      "enforcement": "enforced",
+      "enforcer": "prereg_before_confirmatory",
+      "soft_reason": null
+    },
+    {
+      "id": "RES-14",
+      "pillar": "res",
+      "enforcement": "enforced",
+      "enforcer": "universal_ticker_scope",
+      "soft_reason": null
+    },
+    {
+      "id": "RES-15",
+      "pillar": "res",
+      "enforcement": "enforced",
+      "enforcer": "rth_only_market_measurement",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-01",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "measured_claims_cite_evidence",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-03",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "guard:proof_only_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-04",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "rc_numeric_claims_cite_a_command",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-05",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "unproven_register",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-07",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "verdicts_declare_their_power",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-08",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "no_tautological_assertions",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-09",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "checks_are_justified",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-10",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "enforced_checks_have_negative_controls",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-11",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "adversarial_audits_are_answered",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-12",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "EVI-13",
+      "pillar": "evi",
+      "enforcement": "enforced",
+      "enforcer": "ui_mockup_approval",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-01",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "agents_laws_name_their_enforcer",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-02",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "recursive_five_why_front_loaded",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-03",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "five_why_recursive_lock",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-04",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "fix_crosswalks_to_violated_lock",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-05",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "root_cause_recurrence_declared",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-06",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "rc_log_rows_keep_schema",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-07",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "no_silent_swallow",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-08",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "no_fake_defaults",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-09",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "no_terminal_null",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-10",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "single_spot_authority",
+      "soft_reason": null
+    },
+    {
+      "id": "COR-11",
+      "pillar": "cor",
+      "enforcement": "enforced",
+      "enforcer": "domain_constants_are_derived",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-01",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "chart_intent_and_next_rth",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-02",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "chart_intent_and_next_rth",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-05",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "open_item_cap",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-07",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "no_todo_without_tracking_id",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-08",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "no_governance_duplication",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-09",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "scheduled_producers_are_not_inert",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-10",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "ui_mockup_approval",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-11",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "guard:stop_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "CMP-13",
+      "pillar": "cmp",
+      "enforcement": "enforced",
+      "enforcer": "five_why_recursive_lock",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-02",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "collect_window_single_law",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-03",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "price_bars_readers_name_their_session",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-04",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "snapshots_read_names_the_timeframe",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-05",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "vendor_field_coercion",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-06",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "no_synthetic_domain_fixtures_in_tests",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-07",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "sqlite_wal_contract",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-11",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "no_fake_defaults",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-15",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "collect_datasheet_staged",
+      "soft_reason": null
+    },
+    {
+      "id": "DAT-14",
+      "pillar": "dat",
+      "enforcement": "enforced",
+      "enforcer": "credential_leak",
+      "soft_reason": null
+    },
+    {
+      "id": "TST-01",
+      "pillar": "tst",
+      "enforcement": "enforced",
+      "enforcer": "adversarial_audit_test_lock",
+      "soft_reason": null
+    },
+    {
+      "id": "TST-02",
+      "pillar": "tst",
+      "enforcement": "enforced",
+      "enforcer": "tests_missing_explicit_assert",
+      "soft_reason": null
+    },
+    {
+      "id": "TST-03",
+      "pillar": "tst",
+      "enforcement": "enforced",
+      "enforcer": "no_swallowed_test_failures",
+      "soft_reason": null
+    },
+    {
+      "id": "TST-04",
+      "pillar": "tst",
+      "enforcement": "enforced",
+      "enforcer": "guard:turn_self_audit",
+      "soft_reason": null
+    },
+    {
+      "id": "TST-05",
+      "pillar": "tst",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "TST-06",
+      "pillar": "tst",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "TST-07",
+      "pillar": "tst",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "TST-08",
+      "pillar": "tst",
+      "enforcement": "enforced",
+      "enforcer": "ui_data_integration",
+      "soft_reason": null
+    },
+    {
+      "id": "OBS-01",
+      "pillar": "obs",
+      "enforcement": "enforced",
+      "enforcer": "shutdown_is_bounded",
+      "soft_reason": null
+    },
+    {
+      "id": "OBS-02",
+      "pillar": "obs",
+      "enforcement": "enforced",
+      "enforcer": "venv_parity",
+      "soft_reason": null
+    },
+    {
+      "id": "OBS-04",
+      "pillar": "obs",
+      "enforcement": "enforced",
+      "enforcer": "guard:turn_self_audit",
+      "soft_reason": null
+    },
+    {
+      "id": "INS-02",
+      "pillar": "ins",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "INS-03",
+      "pillar": "ins",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "INS-04",
+      "pillar": "ins",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "INS-05",
+      "pillar": "ins",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "INS-06",
+      "pillar": "ins",
+      "enforcement": "enforced",
+      "enforcer": "guard:operator_law_guard",
+      "soft_reason": null
+    },
+    {
+      "id": "INS-08",
+      "pillar": "ins",
+      "enforcement": "enforced",
+      "enforcer": "plus_player_cursor_hooks",
+      "soft_reason": null
+    },
+    {
+      "id": "INS-11",
+      "pillar": "ins",
+      "enforcement": "enforced",
+      "enforcer": "claude_cursor_guard_parity",
+      "soft_reason": null
+    },
+    {
+      "id": "INS-10",
+      "pillar": "ins",
+      "enforcement": "enforced",
+      "enforcer": "plus_player_cursor_hooks",
+      "soft_reason": null
+    },
+    {
+      "id": "RSK-01",
+      "pillar": "rsk",
+      "enforcement": "enforced",
+      "enforcer": "runtime:decision_gate",
+      "soft_reason": null
+    },
+    {
+      "id": "RSK-02",
+      "pillar": "rsk",
+      "enforcement": "enforced",
+      "enforcer": "admission_evidence_resolves",
+      "soft_reason": null
+    },
+    {
+      "id": "RSK-06",
+      "pillar": "rsk",
+      "enforcement": "enforced",
+      "enforcer": "runtime:decision_gate",
+      "soft_reason": null
+    }
+  ]
+}

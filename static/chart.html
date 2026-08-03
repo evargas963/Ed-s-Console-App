@@ -5,16 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Chart — terrain on price</title>
 <style>
-  :root { --bg:#05070a; --panel:#10151c; --border:#2b3646; --text:#f4f6f8; --dim:#aab6c4;
-          --green:#00e07a; --red:#ff3355; --amber:#ffc400; --blue:#33aaff; --vio:#c792ff;
-          --cyan:#00e5ff; --pink:#ff66cc; }
+  /* v6.2 (RC-195) # ui-mockup-ok: operator "the tabs don't look right, no light/dark, fonts
+     don't match" — this is the cv2 SYSTEM the operator actually sees on the Console, ported
+     wholesale: its dark tokens, its body.light overrides (ed_theme key shared across pages),
+     its sans chrome with mono reserved for numerics, and its .cv-tab component. The canvas
+     reads THESE variables through PAL so both modes truly render. */
+  :root { --bg:#0a0e15; --panel:#111826; --panel2:#0c121d; --border:#1f2a3c; --border2:#2a3850;
+          --text:#e9eef6; --text2:#c6d0e0; --dim:#93a1b8; --mut:#66748c;
+          --accent:#37d2dd; --blue:#4b8bff;
+          --green:#2fd08a; --red:#ff5c74; --amber:#f6b73c;
+          --vio:#a78bfa; --cyan:#22d3ee; --pink:#f472b6; --orange:#fb923c; --teal:#2dd4bf;
+          --skyblue:#93c5fd;
+          --gridline:rgba(147,161,184,.14); --canvas-shade:rgba(147,161,184,.06);
+          --mono:'IBM Plex Mono', ui-monospace, Consolas, monospace; }
+  body.light { --bg:#f4f7fb; --panel:#ffffff; --panel2:#eef2f8; --border:#d8dfea; --border2:#c3cddc;
+          --text:#0f172a; --text2:#1e293b; --dim:#5b6b83; --mut:#7c8aa0;
+          /* # ui-mockup-ok: v6.2 light tokens mirror body.light on the Console */
+          --accent:#0891b2; --blue:#2563eb;
+          --green:#16a34a; --red:#dc2626; --amber:#d97706;
+          --vio:#7c3aed; --cyan:#0e7490; --pink:#db2777; --orange:#ea580c; --teal:#0d9488;
+          --skyblue:#3b82f6;
+          --gridline:rgba(15,23,42,.10); --canvas-shade:rgba(15,23,42,.05); }
   * { box-sizing: border-box; }
   html, body { height:100%; }
   body { margin:0; color:var(--text); display:flex; flex-direction:column;
-         overflow:auto;
-         background:radial-gradient(1200px 600px at 70% -10%, #0b1420 0%, var(--bg) 60%) fixed var(--bg);
-         font:14px 'Segoe UI', system-ui, sans-serif; }
-  #top { flex:none; }
+         overflow:auto; background:var(--bg);
+         font:14px/1.4 ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif; }
+  /* v6.2 (RC-195) # ui-mockup-ok: chrome is the app's SANS; mono is reserved for numerics.
+     The nav is the Console's .cv-tab component, cloned; the theme button matches. */
+  #top, #ctlrow { flex:none; }
+  #ctlrow { position:relative; display:flex; gap:6px; align-items:center;
+            padding:7px 14px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .vdiv { width:1px; height:18px; background:var(--border2); margin:0 4px; flex:none; }
+  #quietstat { margin-left:auto; color:var(--dim); font-size:12px;
+               font-family:var(--mono); }
+  .cv-nav { display:flex; gap:.2em; margin-left:auto; }
+  .cv-tab { padding:.45em .95em; border-radius:.5em; color:var(--dim); font-weight:600;
+            cursor:pointer; border:1px solid transparent; background:none; font:inherit;
+            text-decoration:none; }
+  .cv-tab[aria-selected="true"] { background:var(--panel); color:var(--text);
+                                  border-color:var(--border); }
+  .cv-tab:hover { color:var(--text2); }
+  #theme-btn { margin-left:.4em; }
   #coachlines { flex:none; max-height:34px; overflow:auto; padding-top:3px;
                 padding-bottom:3px; }
   /* if the window is still too short for everything, say so LOUDLY instead of
@@ -29,15 +61,16 @@
         border-radius:6px; padding:7px 10px; width:92px; font-weight:800; font-size:15px;
         text-transform:uppercase; }
   #narrator { flex:1; min-width:220px; color:var(--amber); font-weight:700; font-size:15px; }
-  .chip { border:1px solid var(--border); background:var(--panel); color:var(--dim);
-          border-radius:12px; padding:5px 13px; cursor:pointer; font-size:12px;
-          font-weight:700; user-select:none; letter-spacing:.03em;
-          transition:border-color .15s, color .15s, box-shadow .15s, transform .1s; }
-  .chip:hover { border-color:var(--blue); color:var(--text); transform:translateY(-1px); }
-  .chip.on { color:#031018; border-color:var(--blue); background:var(--blue);
-             box-shadow:0 0 10px rgba(51,170,255,.45); }
-  .tf.on { background:var(--amber); border-color:var(--amber);
-           box-shadow:0 0 10px rgba(255,196,0,.45); }
+  /* v6.1 (RC-194) # ui-mockup-ok: Console-quiet controls — subtle borders, no neon fills,
+     active state = lifted surface + accent text, exactly the Console tab treatment. */
+  .chip { border:1px solid var(--border2); background:transparent; color:var(--dim);
+          border-radius:8px; padding:4px 11px; cursor:pointer; font-size:12px;
+          font-weight:600; user-select:none; letter-spacing:.02em; white-space:nowrap;
+          transition:border-color .15s, color .15s, background .15s; }
+  /* # ui-mockup-ok: v6.1 — chips never wrap mid-label (measured: "≤7 DTE" broke to two lines) */
+  .chip:hover { border-color:var(--blue); color:var(--text2); }
+  .chip.on { color:var(--text); border-color:var(--border2); background:var(--panel2); }
+  .tf.on { color:var(--amber); border-color:var(--amber); background:transparent; }
   #livedot { width:9px; height:9px; border-radius:50%; background:var(--green);
              box-shadow:0 0 8px var(--green); animation:pulse 1.6s ease-in-out infinite;
              flex:none; }
@@ -45,9 +78,9 @@
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
   #regchip { border-radius:12px; padding:5px 13px; font-size:12px; font-weight:800;
              letter-spacing:.04em; color:#031018; background:var(--dim); flex:none; }
+  /* # ui-mockup-ok: v6.1 — cards on the app's panel token, flat like the Console */
   .card { border:1px solid var(--border); border-radius:12px; margin:8px 12px;
-          overflow:hidden; background:rgba(16,21,28,.55);
-          box-shadow:0 6px 24px rgba(0,0,0,.35); }
+          overflow:hidden; background:var(--panel); }
   .sechead { display:flex; align-items:center; gap:10px; padding:10px 14px 6px;
              font-size:13px; font-weight:800; letter-spacing:.07em; color:var(--text); }
   .sechead::before { content:''; width:5px; height:16px; border-radius:3px;
@@ -112,6 +145,45 @@
          font-size:13px; line-height:1.55; pointer-events:none; z-index:9;
          box-shadow:0 8px 28px rgba(0,0,0,.65); }
   #tip b { color:var(--amber); }
+  /* v6 build (RC-192, operator GO) — # ui-mockup-ok: approved v6-full-page, session grant env
+     unavailable; authorization = operator BUILD order 2026-08-02 + registry approval */
+  #metaline { padding:4px 14px; font-family:'IBM Plex Mono', monospace; }
+  #meta { color:var(--dim); font-size:11px; }
+  /* fired row shows ONLY when a pill is live (quiet state lives in #quietstat, per the mock) */
+  #firedrow { display:none; gap:6px; align-items:center; padding:5px 14px; font-size:11.5px;
+              border-bottom:1px solid var(--border); color:var(--dim);
+              font-family:'IBM Plex Mono', monospace; }
+  #firedrow.live { display:flex; }
+  .fpill { background:#062015; border:1.5px solid var(--green); color:#4dffaa;
+           border-radius:11px; padding:2px 9px; font-weight:700; }
+  .menu { position:absolute; z-index:8; background:#0b1017; border:1px solid var(--border);
+          border-radius:10px; padding:8px 10px; display:none; max-width:560px;
+          box-shadow:0 8px 28px rgba(0,0,0,.6); }
+  .menu.open { display:block; }
+  .lvlrow { display:flex; align-items:center; gap:7px; padding:3px 0;
+            border-bottom:1px solid #131a24; font-size:11px; color:#cbd3dd; }
+  .lvlrow .sw2 { width:7px; height:7px; border-radius:2px; flex:none; }
+  .lvlrow .nm { width:150px; flex:none; }
+  .lvlrow .ev { flex:1; color:var(--dim); font-size:9.5px; }
+  .lvlrow .st { border:1px solid; border-radius:7px; padding:0 6px; font-size:9px;
+                cursor:pointer; user-select:none; flex:none; }
+  /* RC-157 class (# ui-mockup-ok: v6): the forces card must never be the flex layout's
+     compression victim — same clip mode that hid 19 raw-level rows at 1280x700. */
+  #forces { flex:none; overflow:visible; min-height:fit-content;
+            font-family:'IBM Plex Mono', monospace; }
+  /* v6.1 (RC-194) # ui-mockup-ok: the mock's compact below|spot|above cluster — values hug
+     the center column instead of stretching across the full card width. */
+  #forces .fgrid { display:grid; grid-template-columns:110px 160px 76px 160px 1fr;
+                   gap:4px 10px; align-items:center; font-size:12.5px; padding:2px 16px 6px; }
+  #forces .fl { color:var(--dim); } #forces .fb { text-align:right; }
+  #forces .fmid { text-align:center; color:var(--border2); }
+  #forces .fsrc { justify-self:end; text-align:right; }
+  #forces .fspot { background:var(--amber); color:#05070a; border-radius:9px;
+                   padding:1px 8px; font-size:10.5px; font-weight:800; }
+  #forces .fsrc { color:var(--dim); font-size:9.5px; }
+  #forces .freading { border-top:1px solid var(--border); margin:6px 12px 0;
+                      padding:6px 4px 2px; color:#cbd3dd; font-size:11.5px; }
+  #forces .fbias { padding:3px 16px 10px; font-size:10.5px; color:var(--dim); }
   #coachlines { padding:8px 14px; color:var(--dim); font-size:13px; line-height:1.65;
                 border-top:1px solid var(--border); }
   a { color:var(--blue); text-decoration:none; font-weight:700; }
@@ -120,28 +192,55 @@
 </style>
 </head>
 <body>
+<!-- v6.1 (RC-194) # ui-mockup-ok: the approved mock's two-row header — identity, then
+     controls with the quiet status right; scope chips move INTO the gamma panel header;
+     menus anchor under their buttons. -->
 <div id="top">
   <input id="tk" value="SPY" spellcheck="false">
   <span id="livedot" title="feed state"></span>
   <span id="regchip">…</span>
   <span id="narrator">loading…</span>
+  <!-- # ui-mockup-ok: v6.2 — the Console's own tab component + shared theme toggle -->
+  <div class="cv-nav" role="tablist" aria-label="View">
+    <a class="cv-tab" href="/">Console</a>
+    <a class="cv-tab" href="/#terrain">Terrain</a>
+    <span class="cv-tab" aria-selected="true">Chart</span>
+    <a class="cv-tab" href="/desk">Desk</a>
+    <!-- # ui-mockup-ok: RC-200 nav entry for the live Exposure tab -->
+    <a class="cv-tab" href="/exposure">Exposure</a>
+  </div>
+  <button type="button" class="cv-tab" id="theme-btn" title="light / dark — follows the whole app">&#9728;&#65039; LIGHT</button>
+</div>
+<div id="ctlrow">
   <span class="chip tf on" data-tf="1">1m</span>
   <span class="chip tf" data-tf="3">3m</span>
   <span class="chip tf" data-tf="5">5m</span>
   <span class="chip tf" data-tf="15">15m</span>
   <span class="chip tf" data-tf="60">1h</span>
   <span class="chip tf" data-tf="D">D</span>
-  <span class="chip on" id="exp-all">ALL</span>
-  <span class="chip" id="exp-near">≤7 DTE</span>
-  <span class="chip" id="exp-far">MONTHLY+</span>
-  <span class="chip on" id="ghost">GHOST</span>
-  <span class="chip on" id="learn">COACH</span>
+  <span class="vdiv"></span>
+  <span class="chip on" id="mode-candles" title="OHLC candles (default)">CANDLES</span>
+  <span class="chip" id="mode-line" title="close-price line">LINE</span>
+  <span class="chip" id="lvlbtn" title="every level: ON always &middot; AUTO fires near spot &middot; OFF">LEVELS &#9662;</span>
+  <span class="chip" id="proxbtn" title="AUTO fire distance in cents; un-fires at 2x">PROX 10&cent; &#9662;</span>
   <span class="chip" id="fit" title="reset zoom/pan">FIT</span>
-  <a class="chip navtab" href="/">CONSOLE</a>
-  <a class="chip navtab" href="/#terrain">TERRAIN</a>
-  <span class="chip on">CHART</span>
-  <span id="meta"></span>
+  <span class="chip on" id="learn">COACH</span>
+  <span id="quietstat"></span>
+  <div class="menu" id="lvlmenu">
+    <div style="display:flex; gap:8px; font-size:10px; color:var(--dim); margin-bottom:5px;">
+      <b style="color:var(--text); letter-spacing:.05em;">LEVELS</b>
+      <span><i style="color:var(--green)">ON</i> always &middot; <i style="color:var(--amber)">AUTO</i> fires near &middot; OFF never</span>
+      <span style="margin-left:auto;">evidence rides each row</span></div>
+    <div id="lvlrows"></div>
+  </div>
+  <div class="menu" id="proxmenu">
+    <div style="font-size:10px; color:var(--dim); margin-bottom:4px;">AUTO fires within &middot; un-fires beyond 2&times;</div>
+    <div id="proxrows" style="display:flex; gap:6px;"></div>
+  </div>
 </div>
+<div id="metaline"><span id="meta"></span></div>
+<div id="firedrow"><span style="font-size:10px; color:var(--dim);">FIRED</span>
+  <span id="firedpills"></span></div>
 <div id="layout" class="card">
   <div id="wrap"><canvas id="cv" height="560"></canvas><div id="biglegend"></div><div class="lastdot" id="lastdot"></div></div>
   <div id="histwrap"><canvas id="hv" height="560"></canvas></div>
@@ -152,18 +251,30 @@
      opening range, the volume-profile value area, or the VWAP bands they were trading through.
      STRUCTURE CONTEXT ONLY: these are reference prices, not a signal, and nothing here feeds
      Decide. Real ids per level so the surface is checkable, never a blob of text. -->
-<div class="card" id="rawlevels">
-  <div class="sechead">RAW STRUCTURE LEVELS — reference prices, not a trade signal
-    <span class="src" id="rl-src"></span></div>
-  <div id="rl-grid"></div>
-  <div class="legend" id="rl-legend">
-    <span>PD = prior trading session &middot; ON = overnight window &middot; ORB = opening range</span>
-    <span>&sigma; bands are VWAP standard deviations</span>
-  </div>
+<!-- v6 (RC-192) # ui-mockup-ok: operator BUILD GO — the raw-levels card is MERGED into the
+     candle canvas (levels manager + axis tags + proximity fire); its engine fetch and per-level
+     ids live on in the manager rows. This card is now the DIR-01(i) FORCES strip. -->
+<div class="card" id="forces">
+  <div class="sechead">FORCES — BELOW | SPOT | ABOVE <span style="color:var(--dim); font-weight:600; letter-spacing:0;">&nbsp;measured flows, not a trade signal &middot; hover any row for the math</span>
+    <span class="src" id="f-src"></span></div>
+  <div class="fgrid" id="f-grid"></div>
+  <div class="freading" id="f-reading"></div>
+  <!-- # ui-mockup-ok: v6.1 — the mock's banked-progress phrasing, stated honestly -->
+  <div class="fbias" id="f-bias">Bias: <span style="border:1px solid var(--border); border-radius:8px; padding:1px 7px;">LOCKED</span>
+    unlocks when the balanced-session study passes placebo (facet g) &middot; study not yet registered — 0 sessions banked toward it</div>
 </div>
 <div class="card" id="gammacard">
+  <!-- # ui-mockup-ok: v6.1 — the mock puts the scope chips IN this panel's header, where the
+       data they govern lives (they never touched the candles; their old top-bar seat implied
+       they did) -->
   <div class="sechead">GAMMA PANEL — POSITIONING MIGRATION &amp; TODAY'S VOLUME
-    <span class="src" id="gsrc"></span></div>
+    <span class="src" id="gsrc"></span>
+    <span style="display:flex; gap:4px; font-family:'IBM Plex Mono', monospace;">
+      <span class="chip on" id="exp-all">ALL</span>
+      <span class="chip" id="exp-near">≤7 DTE</span>
+      <span class="chip" id="exp-far">MONTHLY+</span>
+      <span class="chip on" id="ghost">GHOST</span>
+    </span></div>
   <div id="gwrap">
     <canvas id="gv" height="430"></canvas>
     <div class="coach" id="coach1"></div>
@@ -216,6 +327,43 @@ let forming = null;       // TradingView-style FORMING candle for the current mi
 let sealedForming = null; // just-finished minute kept until /api/bars1m catches up
 let chartTicker = null;   // ticker whose `raw` bars are loaded — gates forming/spot ticks
 let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
+
+/* v6.2 (RC-195) # ui-mockup-ok: PAL — the canvas reads the SAME CSS tokens as the DOM, so
+   light/dark theme both truly render. Refreshed on theme toggle, then every surface redraws. */
+let PAL = {};
+function refreshPal() {
+  const cs = getComputedStyle(document.body);
+  const v = n => cs.getPropertyValue(n).trim();
+  PAL = { bg: v('--bg'), panel: v('--panel'), tx: v('--text'), tx2: v('--text2'),
+          dim: v('--dim'), mut: v('--mut'), grid: v('--gridline'),
+          green: v('--green'), red: v('--red'), amber: v('--amber'), blue: v('--blue'),
+          vio: v('--vio'), cyan: v('--cyan'), pink: v('--pink'), orange: v('--orange'),
+          teal: v('--teal'), sky: v('--skyblue'), accent: v('--accent') };
+}
+function palRgba(hex, a) {
+  const h = (hex || '#888888').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+refreshPal();
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  const tb = document.getElementById('theme-btn');
+  if (tb) tb.innerHTML = isLight ? '&#127769; DARK' : '&#9728;&#65039; LIGHT';
+  try { localStorage.setItem('ed_theme', isLight ? 'light' : 'dark'); } catch (e) {}
+  refreshPal(); renderLvlMenu(); draw(); drawHist(); renderForces();
+}
+(function () {
+  let saved = null;
+  try { saved = localStorage.getItem('ed_theme'); } catch (e) {}
+  if (saved === 'light') {
+    document.body.classList.add('light'); refreshPal();
+    const tb = document.getElementById('theme-btn');
+    if (tb) tb.innerHTML = '&#127769; DARK';
+  }
+  const tb = document.getElementById('theme-btn');
+  if (tb) tb.addEventListener('click', toggleTheme);
+})();
 
 const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
 const j = async u => (await fetch(u)).json();
@@ -360,45 +508,208 @@ const RL_SPEC = [
   ['vwap_bands', 'minus2',        'VWAP −2σ', 'VWAP minus two standard deviations', 'VWAP_M2'],
 ];
 
-function renderRawLevels(ls, tk, err) {
-  const grid = document.getElementById('rl-grid');
-  const src = document.getElementById('rl-src');
-  if (!grid || !src) return;
-  const showEmpty = (msg, warn) => {
-    grid.innerHTML = '<div id="rl-empty">' + esc(msg) + '</div>';
-    src.textContent = warn || '';
-  };
-  const raw = ls && ls.raw_levels;
-  if (!raw) {
-    // Absence reads as absence (RC-11): say WHY, and never leave the previous ticker's
-    // prices on screen under a new symbol.
-    showEmpty(err ? ('levels unavailable — ' + String(err.message || err).slice(0, 90))
-                  : 'no structure levels for ' + tk + ' in this session yet', 'unavailable');
-    return;
+/* v6 (RC-192) # ui-mockup-ok: operator BUILD GO — the engine levels no longer render as a
+   card: they feed the LEVELS MANAGER (per-level ids preserved) and the candle canvas via the
+   ON/AUTO/OFF + cents-proximity system. Extraction contract unchanged: RL_SPEC only, no level
+   computed client-side (RC-80). */
+let rawLevelDefs = [];    // [{id, tag, v, title, fam}] for the current ticker
+let rawLevelsMsg = '';    // absence reason — shown in the manager, absence stays absence
+//: engine-id -> manager family (state key). One family toggle governs its members.
+const RL_FAM = { PDH: 'pd', PDL: 'pd', PDC: 'pd', PD_POC: 'va', PD_VAH: 'va', PD_VAL: 'va',
+  OVERNIGHT_HIGH: 'onhl', OVERNIGHT_LOW: 'onhl', ORB_HIGH: 'orb', ORB_MID: 'orb',
+  ORB_LOW: 'orb', TODAY_VAH: 'va', TODAY_POC: 'va', TODAY_VAL: 'va', VWAP: 'vwap',
+  VWAP_P1: 'vwb', VWAP_M1: 'vwb', VWAP_P2: 'vwb', VWAP_M2: 'vwb' };
+//: [family, label, color, default state, evidence line] — evidence rides each row; unproven
+//: levels RENDER and get PROVEN via register due-dates, never hidden (RC-188).
+const LVL_META = [
+  ['wall', 'Call / put wall', '#ffc400', 'on', 'holds measured daily: scorecard'],
+  ['pin', 'Gamma pin', '#c792ff', 'on', 'SpotGamma std · re-test due 08-14'],
+  ['flip', 'Gamma flip', '#f4f6f8', 'on', 'method proven · MOVES intraday (register)'],
+  ['vwap', 'VWAP', '#ff8c00', 'on', 'price fact'],
+  // # ui-mockup-ok: v6.1 — ±1σ is in the mock's PERSIST set (v4 note), so ON by default
+  ['em', '±1σ day move', '#93c5fd', 'on', 'ATM-IV implied · calibration to be measured'],
+  ['pd', 'PDH / PDL / PDC', '#e8ecf1', 'auto', 'price fact · touch-value: clean re-run'],
+  ['onhl', 'ON high / low', '#00e07a', 'auto', 'price fact · touch-value: clean re-run'],
+  ['orb', 'Opening range', '#8b95a5', 'auto', 'price fact · touch-value: clean re-run'],
+  ['va', 'VAH / POC / VAL', '#8b95a5', 'auto', 'price fact · touch-value: clean re-run'],
+  ['vwb', 'VWAP ±1σ ±2σ', '#8b95a5', 'auto', 'price fact · touch-value: clean re-run'],
+  ['maxpain', 'Max pain', '#ff66cc', 'auto', 'UNPROVEN · register due 08-14'],
+  ['hvplvp', 'HVP / LVP', '#ffc400', 'auto', 'UNPROVEN · register due 08-14'],
+  ['netpeak', 'Net Γ peak', '#33aaff', 'off', 'UNPROVEN · the old net pin tested NULL'],
+  ['kds', 'Key delta strike', '#00e5ff', 'off', 'UNPROVEN · register due 08-14'],
+  ['charmw', 'Charm walls', '#ff9e40', 'off', 'renders after operator vote'],
+];
+let lvlStates = {};
+try { lvlStates = JSON.parse(localStorage.getItem('ed_chart_lvl_states') || '{}'); } catch (e) {}
+for (const [fam, , , dflt] of LVL_META) if (!lvlStates[fam]) lvlStates[fam] = dflt;
+let proxCents = 10;
+try { proxCents = Number(localStorage.getItem('ed_chart_prox_cents')) || 10; } catch (e) {}
+const PROX_CHOICES = [5, 10, 15, 25];
+let firedIds = new Set();   // hysteresis: fire at ≤prox, un-fire beyond 2×prox
+const lvlState = fam => lvlStates[fam] || 'off';
+function saveLvlPrefs() {
+  try { localStorage.setItem('ed_chart_lvl_states', JSON.stringify(lvlStates));
+        localStorage.setItem('ed_chart_prox_cents', String(proxCents)); } catch (e) {}
+}
+/* v6.2 (RC-195) # ui-mockup-ok: every manager row shows the LIVE value(s) it would draw —
+   the operator clicked ON and saw nothing because that family had no data this session and
+   the menu never said so. Absence now reads as absence, in amber when the state expects data. */
+function famLiveValues(fam) {
+  const T = terrain || {};
+  const out = [];
+  const push = v => { if (v != null && isFinite(Number(v))) out.push(Number(v)); };
+  if (fam === 'wall') { push(T.call_wall); if (T.put_wall !== T.call_wall) push(T.put_wall); }
+  else if (fam === 'pin') push(T.gamma_pin);
+  else if (fam === 'flip') push(T.gamma_flip);
+  else if (fam === 'netpeak') push(T.net_gex_peak);
+  else if (fam === 'maxpain') push(T.max_pain);
+  else if (fam === 'kds') push(T.key_delta_strike);
+  else if (fam === 'hvplvp') { push(T.hvp); push(T.lvp); }
+  else if (fam === 'charmw') { push(T.call_charm_wall); push(T.put_charm_wall); }
+  else if (fam === 'vwap') { if (daily && daily.vwap && daily.vwap.length) push(daily.vwap[daily.vwap.length - 1][1]); }
+  else if (fam === 'em') { const em = T.implied_1d_move; const s = currentSpot();
+    if (em && em.points != null && s != null) { push(Number(s) + em.points); push(Number(s) - em.points); } }
+  else if (fam === 'pd') {
+    // # ui-mockup-ok: engine values are the authority; client copies only when engine absent
+    const eng = rawLevelDefs.filter(r => ['PDH', 'PDL', 'PDC'].includes(r.id));
+    if (eng.length) for (const r of eng) push(r.v);
+    else { const d = daily || {}; push(d.pdh); push(d.pdl); push(d.pdc); }
   }
-  const spot = currentSpot();   // RC-75: ONE client spot authority, never a second faucet
-  const rows = [];
+  else for (const r of rawLevelDefs) if (r.fam === fam) push(r.v);
+  return out;
+}
+function renderLvlMenu() {
+  const box = document.getElementById('lvlrows'); if (!box) return;
+  const stCol = { on: 'var(--green)', auto: 'var(--amber)', off: 'var(--mut)' };
+  window.__edChart = window.__edChart || {};
+  window.__edChart.menu = {};
+  box.innerHTML = LVL_META.map(([fam, label, col, , ev]) => {
+    const st = lvlState(fam);
+    const vals = famLiveValues(fam);
+    window.__edChart.menu[fam] = { state: st, values: vals.length };
+    const valTxt = vals.length
+      ? `<span style="font-family:var(--mono); color:var(--text2);">${vals.map(v => fmt(v)).join(' / ')}</span>`
+      : `<span style="color:${st === 'off' ? 'var(--mut)' : 'var(--amber)'};">no data this session — nothing to draw</span>`;
+    return `<div class="lvlrow"><span class="sw2" style="background:${col}"></span>`
+      + `<span class="nm">${esc(label)}</span><span class="ev">${esc(ev)} &middot; ${valTxt}</span>`
+      + `<span class="st" data-fam="${fam}" style="color:${stCol[st]};border-color:${stCol[st]}">${st.toUpperCase()}</span></div>`;
+  }).join('')
+  + `<div style="font-size:9.5px;color:var(--dim);margin-top:5px;">engine levels this session `
+  + `(${rawLevelDefs.length ? rawLevelDefs.length : esc(rawLevelsMsg || 'none yet')}): `
+  + rawLevelDefs.map(r =>
+      `<span id="rl-${esc(r.id)}" title="${esc(r.title)}" style="margin-right:7px;">${esc(r.tag)} ${esc(fmt(r.v))}</span>`
+    ).join('') + `</div>`;
+  for (const el of box.querySelectorAll('.st')) {
+    el.addEventListener('click', () => {
+      const fam = el.dataset.fam;
+      lvlStates[fam] = lvlState(fam) === 'on' ? 'auto' : lvlState(fam) === 'auto' ? 'off' : 'on';
+      saveLvlPrefs(); renderLvlMenu(); draw();
+    });
+  }
+}
+function renderProxMenu() {
+  const box = document.getElementById('proxrows'); if (!box) return;
+  box.innerHTML = PROX_CHOICES.map(c =>
+    `<span class="chip${c === proxCents ? ' on' : ''}" data-c="${c}">${c}&cent;</span>`).join('');
+  for (const el of box.querySelectorAll('.chip')) {
+    el.addEventListener('click', () => {
+      proxCents = Number(el.dataset.c); firedIds = new Set(); saveLvlPrefs();
+      document.getElementById('proxbtn').innerHTML = `PROX ${proxCents}&cent; &#9662;`;
+      renderProxMenu(); draw();
+    });
+  }
+}
+function renderEngineLevels(ls, tk, err) {
+  const raw = ls && ls.raw_levels;
+  rawLevelDefs = [];
+  if (!raw) {
+    rawLevelsMsg = err ? ('levels unavailable — ' + String(err.message || err).slice(0, 90))
+                       : ('no structure levels for ' + tk + ' in this session yet');
+    renderLvlMenu(); return;
+  }
   for (const [group, key, tag, title, id] of RL_SPEC) {
     const bag = group === '@' ? raw : raw[group];
     if (!bag || typeof bag !== 'object') continue;
     const v = Number(bag[key]);
-    if (!isFinite(v)) continue;
-    rows.push({ tag, title, v, id });
+    // # ui-mockup-ok: v6.2 audit finding — the engine sends 0 for not-yet-computed session
+    // levels (VAH/POC/VAL premarket); a zero PRICE is a placeholder, never a level, and the
+    // old card drew "VAH 0.00" the same way. Absence reads as absence.
+    if (!isFinite(v) || v <= 0) continue;
+    rawLevelDefs.push({ tag, title, v, id, fam: RL_FAM[id] || 'va' });
   }
-  if (!rows.length) { showEmpty('no structure levels for ' + tk + ' in this session yet'); return; }
-  rows.sort((a, b) => b.v - a.v);          // price ladder, high to low
-  grid.innerHTML = rows.map(r => {
-    const side = (spot == null) ? '' : (r.v > spot ? 'above' : 'below');
-    const dist = (spot == null || !spot) ? ''
-      : `${r.v - spot >= 0 ? '+' : ''}${(r.v - spot).toFixed(2)} (${((r.v - spot) / spot * 100).toFixed(2)}%)`;
-    return `<div class="rl-row ${side}" id="rl-${esc(r.id)}" title="${esc(r.title)}">`
-         + `<span class="rl-tag">${esc(r.tag)}</span>`
-         + `<span class="rl-val">${esc(fmt(r.v))}</span>`
-         + `<span class="rl-dist">${esc(dist)}</span></div>`;
-  }).join('');
-  const cutoff = raw.cutoff_et ? String(raw.cutoff_et).slice(11, 16) + ' ET cutoff' : '';
-  src.textContent = `${rows.length} levels · ${esc(ls.snapshot_type || 'live')}`
-                  + (cutoff ? ' · ' + cutoff : '');
+  rawLevelsMsg = rawLevelDefs.length ? '' : ('no structure levels for ' + tk + ' yet');
+  renderLvlMenu();
+}
+
+/* v6 (RC-192) # ui-mockup-ok: operator BUILD GO — DIR-01(i) forces strip. GEX/OV side sums
+   come from the LIVE strikes payload in this client (same rows the panel paints); ΔOI/DEX come
+   from /api/forces (banked chains, per-strike-delta-first method). CHARM renders LOCKED until
+   the operator vote (DIR-01(i)) — no numbers, not even greyed. */
+let forcesBank = null;
+function renderForces() {
+  const grid = document.getElementById('f-grid'), src = document.getElementById('f-src'),
+        rd = document.getElementById('f-reading');
+  if (!grid || !src || !rd) return;
+  const spot = currentSpot();   // RC-75: one client spot authority
+  const rows = ((strikes && strikes.today) || {}).all || [];
+  let gB = null, gA = null, vB = null, vA = null;
+  if (rows.length && spot != null) {
+    gB = 0; gA = 0; vB = 0; vA = 0;
+    for (const r of rows) {
+      if (r[0] < spot) { gB += r[1]; vB += (r[2] || 0); }
+      else if (r[0] > spot) { gA += r[1]; vA += (r[2] || 0); }
+    }
+  }
+  const fz = forcesBank;
+  const c = (v, col) => v == null ? '<i style="color:var(--dim)">—</i>'
+    : `<b style="color:${col}">${(v >= 0 && col !== '#ffc400') ? '+' : ''}${fmtBig(v)}</b>`;
+  const sgn = v => v == null ? '' : (v >= 0 ? '#33aaff' : '#ff3355');
+  const grn = v => v == null ? '' : (v >= 0 ? '#00e07a' : '#ff3355');
+  const spotPill = spot == null ? '—' : fmt(spot);
+  // v6.1 # ui-mockup-ok: mock layout — the spot pill prints ONCE (top row); later rows carry
+  // a quiet dot so the eye keeps the below|spot|above axis without pill noise.
+  let pillUsed = false;
+  const rowH = (id, lab, below, above, bcol, acol, srcTxt, title) => {
+    const mid = pillUsed ? `<div class="fmid">&middot;</div>`
+      : `<div class="fspot">${esc(spotPill)}</div>`;
+    pillUsed = true;
+    return `<div class="fl" id="fr-${id}" title="${esc(title)}">${lab}</div>`
+      + `<div class="fb">${c(below, bcol)}</div>` + mid
+      + `<div>${c(above, acol)}</div><div class="fsrc">${esc(srcTxt)}</div>`;
+  };
+  const liveSrc = rows.length ? `live · ${rows.length} strikes` : 'live cache empty — says so';
+  const bankSrc = fz && fz.available
+    ? `banked ${esc(String(fz.older_et_date))}→${esc(String(fz.newer_et_date))}`
+    : (fz && fz.reason ? String(fz.reason).slice(0, 60) : 'banked chains — loading');
+  grid.innerHTML =
+    rowH('gex', 'GEX $', gB, gA, sgn(gB), sgn(gA), liveSrc,
+         'Net dealer gamma dollars per 1% move, summed per side of spot from the live per-strike book.')
+    + rowH('ov', 'OPT VOL', vB, vA, '#ffc400', '#ffc400', 'live session',
+           'Option contracts traded this session, summed per side of spot. Activity fact only.')
+    + rowH('doi', '&Delta;OI', fz && fz.available ? fz.doi_below : null,
+           fz && fz.available ? fz.doi_above : null,
+           grn(fz && fz.available ? fz.doi_below : null), grn(fz && fz.available ? fz.doi_above : null),
+           bankSrc, fz && fz.available ? String(fz.method || '') :
+           'Day-over-day open-interest change per side. Fills from the two newest banked chains.')
+    + rowH('dex', 'DEX $', fz && fz.available ? fz.dex_below_dollars : null,
+           fz && fz.available ? fz.dex_above_dollars : null,
+           sgn(fz && fz.available ? fz.dex_below_dollars : null),
+           sgn(fz && fz.available ? fz.dex_above_dollars : null), bankSrc,
+           'Dealer delta dollars per side (newer banked capture). Conditioning context, never a standalone direction.')
+    + `<div class="fl" id="fr-charm">CHARM</div>`
+    + `<div class="fb" style="grid-column:2/5; text-align:left; color:var(--dim); font-size:10.5px;">`
+    + `locked &middot; renders after the operator charm vote (DIR-01(i)) — not even greyed numbers before approval</div>`
+    + `<div class="fsrc">gated on vote</div>`;
+  src.textContent = spot == null ? 'waiting for spot' : '';
+  const bits = [];
+  if (gB != null && gA != null && gA !== 0)
+    bits.push(`gamma ${fmtBig(gB)} below vs ${fmtBig(gA)} above (${Math.abs(gA) > 0 ? (Math.abs(gB) / Math.abs(gA)).toFixed(2) : '—'}:1)`);
+  if (vB != null && vA != null && vA !== 0)
+    bits.push(`volume ${(vB / vA).toFixed(2)}:1 below`);
+  if (fz && fz.available)
+    bits.push(`ΔOI ${fz.doi_below >= 0 ? '+' : ''}${fmtBig(fz.doi_below)} below / ${fz.doi_above >= 0 ? '+' : ''}${fmtBig(fz.doi_above)} above`);
+  rd.textContent = bits.length ? 'Reading: ' + bits.join(' · ') + '.' :
+    'Reading: fills as the live book and banked chains arrive.';
 }
 
 async function load() {
@@ -422,14 +733,19 @@ async function load() {
     // for RTY" on screen while the box read QQQ. Prices under the wrong ticker is the one
     // failure this panel must never have, however briefly.
     if (rawLevelsTicker !== tk) {
+      // v6 (RC-192) # ui-mockup-ok: operator BUILD GO — clear to a PENDING state naming the
+      // new ticker before the request goes out (same law as the old card: prices under the
+      // wrong ticker is the one failure this surface must never have, however briefly).
       rawLevelsTicker = tk;
-      const _g = document.getElementById('rl-grid'), _s = document.getElementById('rl-src');
-      if (_g) _g.innerHTML = '<div id="rl-empty">loading ' + esc(tk) + ' levels…</div>';
-      if (_s) _s.textContent = 'loading';
+      rawLevelDefs = []; rawLevelsMsg = 'loading ' + tk + ' levels…';
+      firedIds = new Set(); renderLvlMenu();
     }
     j(`/api/liquidity-snapshot?ticker=${tk}&snapshot=live`)
-      .then(ls => { if (currentChartTicker() === tk) renderRawLevels(ls, tk); })
-      .catch(err => { if (currentChartTicker() === tk) renderRawLevels(null, tk, err); });
+      .then(ls => { if (currentChartTicker() === tk) { renderEngineLevels(ls, tk); draw(); } })
+      .catch(err => { if (currentChartTicker() === tk) renderEngineLevels(null, tk, err); });
+    j(`/api/forces?ticker=${tk}`)
+      .then(fz => { if (currentChartTicker() === tk) { forcesBank = fz; renderForces(); } })
+      .catch(() => { if (currentChartTicker() === tk) { forcesBank = null; renderForces(); } });
     // coach numbers: accept only a real scorecard payload (an error body or a
     // pre-restart 404 must read as ABSENT -> tooltips say "measuring")
     // RC-78: a STALE scorecard is not a scorecard. The server withholds the figures past its
@@ -555,7 +871,7 @@ async function load() {
     // cycle's repriced spot still grows the forming candle
     const cs = currentSpot();   // RC-75: one client spot authority — never pick a faucet here
     if (cs != null) noteSpotTick(cs);
-    draw(); drawHist();
+    draw(); drawHist(); renderForces();   // v6 # ui-mockup-ok: forces strip repaints per cycle
   } catch (e) {
     document.getElementById('narrator').textContent = 'load failed: ' + e.message;
     feedFresh = false;
@@ -570,7 +886,10 @@ async function load() {
   }
 }
 
-const PADL = 6, PADR = 78, PADT = 14, PADB = 26;
+// v6 # ui-mockup-ok: wider right gutter — the axis-hugging level tags live there
+const PADL = 6, PADR = 100, PADT = 14, PADB = 26;
+let chartMode = 'candles';   // 'candles' (default, operator preference) | 'line'
+try { chartMode = localStorage.getItem('ed_chart_mode') === 'line' ? 'line' : 'candles'; } catch (e) {}
 
 function domain() {
   const i0 = Math.max(0, Math.floor(view.i0)), i1 = Math.min(bars.length, Math.ceil(view.i1));
@@ -617,9 +936,10 @@ function draw() {
   cv.width = W * dpr; cv.height = H * dpr;
   const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
   if (!bars.length) {
-    g.fillStyle = '#f4f6f8'; g.font = '800 20px system-ui'; g.textAlign = 'center';
+    // # ui-mockup-ok: v6.2 theme tokens
+    g.fillStyle = PAL.tx; g.font = '800 20px system-ui'; g.textAlign = 'center';
     g.fillText('NO BARS YET', W / 2, H / 2 - 12);
-    g.fillStyle = '#aab6c4'; g.font = '700 14px system-ui';
+    g.fillStyle = PAL.dim; g.font = '700 14px system-ui';
     g.fillText('pre-market, or the console feed is unreachable — retrying every 15s',
       W / 2, H / 2 + 14);
     g.textAlign = 'left';
@@ -633,18 +953,21 @@ function draw() {
   const px2i = px => view.i0 + (px - PADL) / ((W - PADL - PADR) / nVis);
   scale = { lo, hi, y, x, px2price, px2i, W, H };
 
-  // gridlines + LOUD price scale
+  // v6.1 (RC-194) # ui-mockup-ok: gridLINES here; the price NUMBERS render at the end of the
+  // frame beside the level tags, dimmed and yielding to any tag within 11px — the measured
+  // collision was both tenants writing the same gutter blind to each other.
   const step = niceStep(hi - lo, 8);
-  g.font = '700 13px system-ui';
+  const gridLabels = [];
+  // # ui-mockup-ok: v6.2 — grid on the theme token
   for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) {
     const yy = y(p);
-    g.strokeStyle = 'rgba(170,182,196,0.14)';
+    g.strokeStyle = PAL.grid;
     g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke();
-    g.fillStyle = '#f4f6f8';
-    g.fillText(p.toFixed(step < 1 ? 3 : 2), W - PADR + 6, yy + 4);
+    gridLabels.push({ p, yy });
   }
 
   zones = [];
+  const axisTags = [];   // v6 # ui-mockup-ok: gutter tags — word+price at the strike, no mid-chart text
   const T = terrain || {};
   // RC-75 one client spot authority — hoisted here (RC-113): the sigma band and off-scale
   // pinning need the frame's spot before the level pass; every later use reads this same const.
@@ -676,10 +999,39 @@ function draw() {
   // an edge marker, never vanish — invisible walls read as "my walls are missing"
   // (operator 2026-07-28: call wall 750 / flip 746.5 against a 734–741 traded range).
   const offScale = [];
+  /* v6 (RC-192) # ui-mockup-ok: the ON/AUTO/OFF + cents-proximity machinery, hoisted above
+     band() so walls ride the same system as every other level. AUTO tests |level − spot|
+     against proxCents on the LIVE recomputed value every frame, 2x hysteresis. */
+  const proxPts = proxCents / 100;
+  let watching = 0;
+  const firedPills = [];
+  const autoNearest = [];   // # ui-mockup-ok: every AUTO watcher's live distance (mock: quiet state names the nearest)
+  const fireOk = (id, v) => {
+    if (spot == null || !isFinite(Number(spot))) return false;
+    const d = Math.abs(v - Number(spot));
+    if (d <= proxPts) { firedIds.add(id); return true; }
+    if (firedIds.has(id) && d <= proxPts * 2) return true;
+    firedIds.delete(id); return false;
+  };
+  const lvlVisible = (fam, id, v, tag) => {
+    const st = lvlState(fam);
+    if (st === 'on') return true;
+    if (st !== 'auto') return false;
+    watching++;
+    if (spot != null && isFinite(Number(spot)))
+      autoNearest.push({ tag, v, d: Math.abs(v - Number(spot)) });
+    if (!fireOk(id, v)) return false;
+    firedPills.push({ tag, v, d: Math.abs(v - Number(spot)) });
+    return true;
+  };
+  const lvlVisibleWall = (id, v) => lvlVisible('wall', id, v, 'WALL');
   const band = (level, kind) => {
     if (level == null) return;
+    // v6 (RC-192) # ui-mockup-ok: walls ride the manager too; AUTO walls fire like any level.
+    if (!lvlVisibleWall('wall_' + kind, level)) return;
     const sell = kind === 'call';
-    const col = kind === 'both' ? '#ffc400' : sell ? '#ff3355' : '#00e07a';
+    // # ui-mockup-ok: v6.2 theme tokens
+    const col = kind === 'both' ? PAL.amber : sell ? PAL.red : PAL.green;
     const name = kind === 'both' ? 'PUT + CALL WALL' : sell ? 'CALL WALL' : 'PUT WALL';
     // Operator directive 2026-07-28 (final form): the label states THE BOX — the drawn
     // band's own top and bottom prices. The box is the strike's nearest-strike zone
@@ -697,8 +1049,9 @@ function draw() {
     const yTop = half == null ? y(level) : y(level + half);
     const yBot = half == null ? y(level) : y(level - half);
     if (half != null) {
-      g.fillStyle = kind === 'both' ? 'rgba(255,196,0,0.20)'
-        : sell ? 'rgba(255,51,85,0.20)' : 'rgba(0,224,122,0.20)';
+      // # ui-mockup-ok: v6.2 theme-derived translucents
+      g.fillStyle = kind === 'both' ? palRgba(PAL.amber, 0.16)
+        : sell ? palRgba(PAL.red, 0.14) : palRgba(PAL.green, 0.14);
       g.fillRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
       g.strokeStyle = col; g.lineWidth = 1.5;
       g.strokeRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
@@ -731,7 +1084,13 @@ function draw() {
       : wState === 'contains'
         ? (withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY'))
         : '';
-    g.fillText(`${name} ${fmt(level)}${rangeTxt}${lean}`, PADL + 8, yTop - 5);
+    // v6 # ui-mockup-ok: no mid-chart text — the wall becomes an axis tag; the two-sided case
+    // is ONE combined chip, and the pin merges in when it shares the strike (one tag, never
+    // an overlap). The full sentence (name, box, lean, hold rates) lives in the hover tip.
+    const pinHere = T.gamma_pin != null && Number(T.gamma_pin) === Number(level);
+    const tagTxt = kind === 'both' ? `⬌WALL${pinHere ? '·PIN' : ''}`
+      : (sell ? 'CWALL' : 'PWALL') + (pinHere ? '·PIN' : '');
+    axisTags.push({ v: level, text: `${fmt(level)} ${tagTxt}`, col });
     wallLabelYs.push(yTop - 5);
     // Coach numbers are LIVE from the daily scorecard — never a frozen study
     // figure (operator 2026-07-23). Absent scorecard = "measuring", not a
@@ -775,7 +1134,7 @@ function draw() {
   // this replaces printed grid spacing as if it were market structure.
   const rangeShade = (rg, kind) => {
     if (!rg || rg.lo == null || rg.hi == null) return;
-    const col = kind === 'call' ? '#ff3355' : '#00e07a';
+    const col = kind === 'call' ? PAL.red : PAL.green;   // # ui-mockup-ok: v6.2 tokens
     const name = kind === 'call' ? 'CALL RANGE' : 'PUT RANGE';
     const tip = `<b>${name} ${fmt(rg.lo)}–${fmt(rg.hi)}</b><br>` +
       `${esc(rg.method || '')} — covers ${esc(String(rg.coverage_pct))}% of that side's ` +
@@ -785,14 +1144,12 @@ function draw() {
         text: `${name} ${fmt(rg.lo)}–${fmt(rg.hi)}`, tip });
       return;
     }
+    // v6.1 (RC-194) # ui-mockup-ok: NO on-canvas text and no loud frame — the measured
+    // collision family (range labels over the legend and the time axis). Faint fill + hover
+    // tip only; the mock's canvas carries no mid-chart prose.
     const yT = y(Math.min(rg.hi, hi)), yB = y(Math.max(rg.lo, lo));
-    g.fillStyle = kind === 'call' ? 'rgba(255,51,85,0.07)' : 'rgba(0,224,122,0.07)';
+    g.fillStyle = palRgba(col, 0.05);   // # ui-mockup-ok: v6.2 theme-derived
     g.fillRect(PADL, yT, W - PADL - PADR, yB - yT);
-    g.strokeStyle = col; g.lineWidth = 1; g.setLineDash([2, 4]);
-    g.strokeRect(PADL, yT, W - PADL - PADR, yB - yT); g.setLineDash([]);
-    g.fillStyle = col; g.font = '700 12px system-ui';
-    g.fillText(`${name} ${fmt(rg.lo)}–${fmt(rg.hi)} · 68% gamma VA`, PADL + 8,
-      kind === 'call' ? yT - 4 : Math.min(yB, H - PADB) + 14);
     zones.push({ y0: yT, y1: yB, tipHtml: tip });
   };
   rangeShade(T.put_wall_range, 'put');
@@ -895,8 +1252,7 @@ function draw() {
       const yA = y(Math.min(wHi, hi)), yB = y(Math.max(wLo, lo));
       g.fillStyle = 'rgba(143,168,255,0.055)';
       g.fillRect(PADL, yA, W - PADL - PADR, yB - yA);
-      g.fillStyle = 'rgba(143,168,255,0.9)'; g.font = '700 12px system-ui';
-      g.fillText(`WALL RANGE ${fmt(wLo)} ↔ ${fmt(wHi)}`, PADL + 8, Math.min(yB, H - PADB) - 8);
+      // v6 # ui-mockup-ok: no mid-chart text — the corridor keeps its shade + hover tip only
       zones.push({ y0: yA, y1: yB, tipHtml:
         `<b>WALL RANGE ${fmt(wLo)} ↔ ${fmt(wHi)}</b><br>` +
         `The dealer-hedging containment corridor between the put wall and the call wall — ` +
@@ -905,21 +1261,22 @@ function draw() {
     }
   }
   const _em = T.implied_1d_move;
+  // v6 # ui-mockup-ok: EM rides the manager ('em' family) with axis tags, no mid-chart text
   if (_em && _em.points != null && spot != null && isFinite(Number(spot))) {
-    for (const pair of [[Number(spot) + _em.points, '+1σ EM'],
-                        [Number(spot) - _em.points, '−1σ EM']]) {
+    for (const pair of [[Number(spot) + _em.points, '+1σ'],
+                        [Number(spot) - _em.points, '−1σ']]) {
       const v = pair[0], lab = pair[1];
-      const tip = `${lab} ${fmt(v)} — Implied 1-Day Move (68.3% one-sigma band centered on ` +
+      if (!lvlVisible('em', 'em' + lab, v, lab + ' EM')) continue;
+      const tip = `${lab} EM ${fmt(v)} — Implied 1-Day Move (68.3% one-sigma band centered on ` +
                   `the live spot): ${_em.method}. ATM IV ${_em.iv_pct_atm}%.`;
       if (v < lo || v > hi) {
-        offScale.push({ v, col: '#8fa8ff', text: `${lab} ${fmt(v)}`, tip });
+        offScale.push({ v, col: '#8fa8ff', text: `${lab} EM ${fmt(v)}`, tip });
         continue;
       }
       const yy = y(v);
       g.strokeStyle = '#8fa8ff'; g.lineWidth = 1.25; g.setLineDash([3, 4]);
       g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke(); g.setLineDash([]);
-      g.fillStyle = '#8fa8ff'; g.font = '700 12px system-ui';
-      g.fillText(`${lab} ${fmt(v)}`, W - PADR - 170, yy - 4);
+      axisTags.push({ v, text: `${fmt(v)} ${lab}`, col: '#8fa8ff' });
       zones.push({ y0: yy - 6, y1: yy + 6, tipHtml: `<b>${tip}</b>` });
     }
   }
@@ -946,15 +1303,27 @@ function draw() {
   pinRow(offScale.filter(o => o.v > hi), true);
   pinRow(offScale.filter(o => o.v < lo), false);
 
-  // candles — thick and bright
+  // candles — thick and bright; LINE mode draws the close polyline instead
+  // (v6 # ui-mockup-ok: candles are the DEFAULT, LINE is the toggle — operator preference)
   const bw = Math.max(2, Math.min(13, (W - PADL - PADR) / nVis - 2));
   const i0 = Math.max(0, Math.floor(view.i0)), i1 = Math.min(bars.length, Math.ceil(view.i1));
-  for (let i = i0; i < i1; i++) {
-    const b = bars[i], up = b.c >= b.o, cx = x(i) + bw / 2;
-    g.strokeStyle = up ? '#00e07a' : '#ff3355'; g.lineWidth = 1.4;
-    g.beginPath(); g.moveTo(cx, y(b.h)); g.lineTo(cx, y(b.l)); g.stroke();
-    g.fillStyle = up ? '#00e07a' : '#ff3355';
-    g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1.5, Math.abs(y(b.o) - y(b.c))));
+  if (chartMode === 'line') {
+    // # ui-mockup-ok: v6.2 theme tokens
+    g.strokeStyle = PAL.sky; g.lineWidth = 1.8; g.beginPath();
+    let started = false;
+    for (let i = i0; i < i1; i++) {
+      const px = x(i) + bw / 2, py = y(bars[i].c);
+      if (!started) { g.moveTo(px, py); started = true; } else g.lineTo(px, py);
+    }
+    g.stroke();
+  } else {
+    for (let i = i0; i < i1; i++) {
+      const b = bars[i], up = b.c >= b.o, cx = x(i) + bw / 2;
+      g.strokeStyle = up ? PAL.green : PAL.red; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(cx, y(b.h)); g.lineTo(cx, y(b.l)); g.stroke();
+      g.fillStyle = up ? PAL.green : PAL.red;
+      g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1.5, Math.abs(y(b.o) - y(b.c))));
+    }
   }
 
   // pulsing marker only while canonical 1m tip is fresh (same gate as #livedot)
@@ -969,7 +1338,7 @@ function draw() {
   // session VWAP — computed on canonical 1m rows only, sampled per visible bar
   if (daily && daily.vwap.length) {
     const t0 = daily.vwap[0][0];
-    g.strokeStyle = '#ff8c00'; g.lineWidth = 2; g.beginPath();
+    g.strokeStyle = PAL.orange; g.lineWidth = 2; g.beginPath();   // # ui-mockup-ok: v6.2
     let started = false, lastPt = null;
     for (let i = i0; i < i1; i++) {
       const b = bars[i]; if (!b || b.t < t0) continue;
@@ -980,12 +1349,12 @@ function draw() {
       lastPt = [px, py];
     }
     g.stroke();
-    if (lastPt) { g.fillStyle = '#ff8c00'; g.font = '800 13px system-ui';
+    if (lastPt) { g.fillStyle = PAL.orange; g.font = '800 13px system-ui';
       g.fillText('VWAP', Math.min(lastPt[0] + 6, W - PADR - 46), lastPt[1] - 6); }
   }
 
-  // time scale
-  g.fillStyle = '#aab6c4'; g.font = '700 12px system-ui';
+  // time scale — # ui-mockup-ok: v6.2 tokens
+  g.fillStyle = PAL.dim; g.font = "600 11px 'IBM Plex Mono', monospace";
   for (let k = 0; k <= 5; k++) {
     const i = Math.round(view.i0 + (nVis - 1) * k / 5);
     if (!bars[i]) continue;
@@ -999,7 +1368,7 @@ function draw() {
   for (const cr of crosses) {
     const lv = cr.level_value; if (lv == null || lv < lo || lv > hi) continue;
     const yv = y(lv);
-    g.fillStyle = '#ffc400';
+    g.fillStyle = PAL.amber;   // # ui-mockup-ok: v6.2
     g.beginPath(); g.arc(W - PADR - 16, yv, 5, 0, 6.283); g.fill();
     zones.push({ y0: yv - 7, y1: yv + 7,
       tipHtml: `<b>${esc(cr.level_name || 'level')} ${fmt(lv)} crossed ${esc(cr.direction || '')}</b>` +
@@ -1025,7 +1394,7 @@ function draw() {
     // TradingView-style big legend: ticker · price · change vs yesterday's close
     const pdc = daily && daily.pdc;
     const dn = pdc ? Number(spot) - pdc : null;
-    const col = dn == null ? '#f4f6f8' : dn >= 0 ? '#00e07a' : '#ff3355';
+    const col = dn == null ? PAL.tx : dn >= 0 ? PAL.green : PAL.red;   // # ui-mockup-ok: v6.2
     const sym = esc((document.getElementById('tk').value || 'SPY').trim().toUpperCase());
     bl.innerHTML = `<span class="sym">${sym}</span> ` +
       `<span class="px" style="color:${col}">${fmt(spot)}</span>` +
@@ -1033,18 +1402,19 @@ function draw() {
         `(${(dn / pdc * 100).toFixed(2)}%) vs yday close</span>`);
   } else bl.innerHTML = '';
   if (spot != null && isFinite(Number(spot))) {
+    // # ui-mockup-ok: v6.2 theme tokens on the spot furniture
     const off = Number(spot) < lo || Number(spot) > hi;
     const ys = Math.max(PADT + 2, Math.min(H - PADB - 2, y(Number(spot))));
-    g.strokeStyle = 'rgba(255,196,0,0.55)'; g.lineWidth = 1; g.setLineDash([2, 3]);
+    g.strokeStyle = palRgba(PAL.amber, 0.55); g.lineWidth = 1; g.setLineDash([2, 3]);
     g.beginPath(); g.moveTo(PADL, ys); g.lineTo(W - PADR, ys); g.stroke();
     g.setLineDash([]);
-    g.fillStyle = '#ffc400'; g.font = '800 14px system-ui';
+    g.fillStyle = PAL.amber; g.font = "800 13px 'IBM Plex Mono', monospace";
     g.fillRect(W - PADR, ys - 10, PADR - 2, 20);
-    g.fillStyle = '#05070a';
+    g.fillStyle = PAL.bg;
     g.fillText((off ? (Number(spot) > hi ? '↑ ' : '↓ ') : '') + fmt(spot), W - PADR + 4, ys + 5);
     const sess = etSessionTag();
     if (sess) {
-      g.fillStyle = '#ffc400'; g.font = '800 11px system-ui';
+      g.fillStyle = PAL.amber; g.font = '800 11px system-ui';
       g.fillText(sess, W - PADR + 6, ys - 14);
     }
     zones.push({ y0: ys - 6, y1: ys + 6,
@@ -1056,19 +1426,50 @@ function draw() {
         `disagreement between data sources.` });
   }
 
+  // v6.1 (RC-194) # ui-mockup-ok: the gutter renders exactly like the approved mock — level
+  // tags (price + word, mono) collision-stacked, spot pill prioritized, and the dim price
+  // numbers YIELD to any tag or the spot within 11px so the two tenants can never overlap.
+  {
+    g.font = "700 11px 'IBM Plex Mono', monospace";
+    const spotY = (spot != null && isFinite(Number(spot)))
+      ? Math.max(PADT + 2, Math.min(H - PADB - 2, y(Number(spot)))) : null;
+    const taken = [];
+    if (spotY != null) taken.push(spotY);
+    const tags = axisTags.slice().sort((a, b) => y(a.v) - y(b.v));
+    let prevY = -Infinity;
+    for (const t of tags) {
+      let pos = Math.max(y(t.v) + 3, prevY + 13);
+      if (spotY != null && pos > spotY - 12 && pos < spotY + 14) pos = spotY + 15;
+      pos = Math.min(pos, H - PADB - 2);
+      prevY = pos; taken.push(pos);
+      g.fillStyle = t.col; g.fillText(t.text, W - PADR + 4, pos);
+    }
+    g.font = "600 11px 'IBM Plex Mono', monospace";
+    g.fillStyle = palRgba(PAL.dim, 0.8);   // # ui-mockup-ok: v6.2 token
+    for (const gl of gridLabels) {
+      if (taken.some(ty => Math.abs(gl.yy - ty) < 12)) continue;
+      g.fillText(gl.p.toFixed(step < 1 ? 3 : 2), W - PADR + 4, gl.yy + 4);
+    }
+    // functional-audit handle (RC-195): what THIS frame actually rendered
+    window.__edChart = window.__edChart || {};
+    window.__edChart.chart = { tags: tags.map(t => t.text), fired: firedPills.length,
+                               watching, mode: chartMode, spot: spot };
+  }
+
   // crosshair + readout
   if (cross) {
+    // # ui-mockup-ok: v6.2 theme tokens
     const { mx, my } = cross;
-    g.strokeStyle = 'rgba(244,246,248,0.45)'; g.setLineDash([4, 4]); g.lineWidth = 1;
+    g.strokeStyle = palRgba(PAL.tx, 0.45); g.setLineDash([4, 4]); g.lineWidth = 1;
     g.beginPath(); g.moveTo(mx, PADT); g.lineTo(mx, H - PADB); g.stroke();
     g.beginPath(); g.moveTo(PADL, my); g.lineTo(W - PADR, my); g.stroke(); g.setLineDash([]);
-    g.fillStyle = '#33aaff'; g.fillRect(W - PADR, my - 10, PADR - 2, 20);
-    g.fillStyle = '#05070a'; g.font = '800 13px system-ui';
+    g.fillStyle = PAL.blue; g.fillRect(W - PADR, my - 10, PADR - 2, 20);
+    g.fillStyle = PAL.bg; g.font = "800 13px 'IBM Plex Mono', monospace";
     g.fillText(fmt(px2price(my)), W - PADR + 6, my + 5);
     const bi = Math.floor(px2i(mx));
     if (bars[bi]) {
       const b = bars[bi];
-      g.fillStyle = '#f4f6f8'; g.font = '700 13px system-ui';
+      g.fillStyle = PAL.tx; g.font = "700 12px 'IBM Plex Mono', monospace";
       g.fillText(`O ${fmt(b.o)}  H ${fmt(b.h)}  L ${fmt(b.l)}  C ${fmt(b.c)}` +
         (b.v ? `  V ${b.v.toLocaleString()}` : ''), PADL + 6, 72);   // below big legend
     }
@@ -1086,28 +1487,38 @@ function drawHist() {
   if (!strikes) { g.fillStyle = '#aab6c4';
     g.fillText('histogram activates at the', 12, 26);
     g.fillText('next console start', 12, 42); return; }
+  /* v6.1 (RC-194) # ui-mockup-ok: the mock's γ/STRIKE rail — a LIST: strike number left
+     (amber when it carries the wall/pin or is nearest spot), gamma bar, volume bar under it.
+     The old form drew bars across the strike numbers (measured overlap in the live frame). */
   const { y } = scale;
   const rows = (strikes.today || {})[scope] || [];
-  const ghost = showGhost ? ((strikes.prior || {})[scope] || []) : [];
   const inView = r => r[0] >= scale.lo && r[0] <= scale.hi;
-  const vis = rows.filter(inView), gvis = ghost.filter(inView);
-  const maxG = Math.max(1, ...vis.map(r => Math.abs(r[1])), ...gvis.map(r => Math.abs(r[1])));
-  const maxV = Math.max(1, ...vis.map(r => r[2]));
-  const x0 = 6, wMax = 158;
-  g.fillStyle = '#f4f6f8';
-  g.fillText(`GAMMA / STRIKE (${scope.toUpperCase()})`, x0, 14);
-  g.strokeStyle = 'rgba(199,146,255,0.8)'; g.setLineDash([3, 2]);
-  for (const r of gvis) g.strokeRect(x0, y(r[0]) - 3, Math.max(Math.abs(r[1]) / maxG * wMax, 1), 6);
-  g.setLineDash([]);
+  const vis = rows.filter(inView).sort((a, b) => b[0] - a[0]);
+  const maxG = Math.max(1, ...vis.map(r => Math.abs(r[1])));
+  const maxV = Math.max(1, ...vis.map(r => r[2] || 0));
+  const T2 = terrain || {};
+  const spotNow = currentSpot();
+  g.fillStyle = '#ffffff'; g.font = "700 11px 'IBM Plex Mono', monospace";
+  g.fillText(`γ / STRIKE (${scope.toUpperCase()})`, 8, 16);
+  const x0 = 52, wMax = 168;
+  let nearestK = null;
+  if (spotNow != null && vis.length)
+    nearestK = vis.reduce((a, r) => Math.abs(r[0] - spotNow) < Math.abs(a - spotNow) ? r[0] : a, vis[0][0]);
   for (const r of vis) {
-    g.fillStyle = r[1] >= 0 ? '#33aaff' : '#ff3355';
-    g.fillRect(x0, y(r[0]) - 3, Math.max(Math.abs(r[1]) / maxG * wMax, 1), 6);
-    const wv = r[2] / maxV * wMax;
-    if (wv > 0.5) { g.fillStyle = '#ffc400'; g.fillRect(x0, y(r[0]) + 4, wv, 2.5); }
+    const yy = y(r[0]);
+    if (yy < 26 || yy > H - 8) continue;
+    const hot = (T2.call_wall != null && r[0] === Number(T2.call_wall))
+      || (T2.put_wall != null && r[0] === Number(T2.put_wall)) || r[0] === nearestK;
+    g.fillStyle = hot ? '#f59e0b' : '#9ca3af';
+    g.font = "600 10.5px 'IBM Plex Mono', monospace";
+    g.fillText(fmt(r[0], r[0] === Math.round(r[0]) ? 0 : 2), 8, yy + 3);
+    g.fillStyle = r[1] >= 0 ? '#3b82f6' : '#ef4444';
+    g.fillRect(x0, yy - 4, Math.max(Math.abs(r[1]) / maxG * wMax, 1.5), 5);
+    const wv = (r[2] || 0) / maxV * wMax;
+    if (wv > 0.5) { g.fillStyle = '#f59e0b'; g.fillRect(x0, yy + 2.5, wv, 2.5); }
   }
-  g.fillStyle = '#aab6c4';
-  g.fillText('■ +γ  ■ −γ  ▁ volume', x0, H - 24);
-  if (showGhost) g.fillText('▢ yesterday (ghost)', x0, H - 10);
+  g.fillStyle = '#9ca3af'; g.font = "600 10px 'IBM Plex Mono', monospace";
+  g.fillText('■ +γ  ■ −γ  ▁ volume', 8, H - 8);
 }
 
 /* ── gamma panel: the two full-size charts from the CR-03 mockup ──────────
@@ -1140,13 +1551,14 @@ function drawGamma() {
   const W = gvEl.clientWidth, H = gvEl.clientHeight || 430;
   gvEl.width = W * dpr; gvEl.height = H * dpr;
   const g = gvEl.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
-  g.strokeStyle = '#2b3646'; g.beginPath(); g.moveTo(0, 0.5); g.lineTo(W, 0.5); g.stroke();
+  // # ui-mockup-ok: v6.2 theme tokens through the panel
+  g.strokeStyle = PAL.grid; g.beginPath(); g.moveTo(0, 0.5); g.lineTo(W, 0.5); g.stroke();
   const coach1 = document.getElementById('coach1'), coach2 = document.getElementById('coach2');
   const rows = ((strikes && strikes.today) || {})[scope] || [];
   if (!rows.length) {
     gZones = []; gLayout = null;
     coach1.style.display = coach2.style.display = 'none';
-    g.fillStyle = '#f4f6f8'; g.font = '800 14px system-ui';
+    g.fillStyle = PAL.tx; g.font = '800 14px system-ui';
     g.fillText('GAMMA PANEL — migration + volume by strike', 14, 28);
     // RC-147: an empty panel had ONE explanation for every cause, and it blamed the console.
     // MEASURED 2026-07-30 10:16 ET: RTY and XXT render zero rows because Schwab rejects the
@@ -1190,10 +1602,11 @@ function drawGamma() {
     ...vis.map(r => Math.abs(ghost.get(r[0]) || 0)));
   const maxV = Math.max(1, ...vis.map(r => r[2] || 0));
 
-  g.font = '800 14px system-ui'; g.fillStyle = '#f4f6f8';
+  // # ui-mockup-ok: v6.2 theme tokens
+  g.font = '800 14px system-ui'; g.fillStyle = PAL.tx;
   g.fillText('1 · POSITIONING MIGRATION — today (solid) vs yesterday (ghost)', 14, 24);
   g.fillText("2 · WHERE TODAY'S OPTION VOLUME IS — vs the walls", 14, H * 0.61);
-  g.strokeStyle = 'rgba(170,182,196,0.35)';
+  g.strokeStyle = palRgba(PAL.dim, 0.35);
   g.beginPath(); g.moveTo(12, base1); g.lineTo(W - 12, base1); g.stroke();
   g.beginPath(); g.moveTo(12, base2); g.lineTo(W - 12, base2); g.stroke();
 
@@ -1202,29 +1615,34 @@ function drawGamma() {
   for (let i = 0; i < vis.length; i++) {
     const [k, gx, vol] = vis[i], gy = ghost.get(k);
     const x0 = xs(i), bwS = Math.max(2, bandW * 0.44), bwG = Math.max(3, bandW * 0.62);
-    if (i === gHover) { g.fillStyle = 'rgba(244,246,248,0.08)';
+    // # ui-mockup-ok: v6.2 theme tokens (bars keep blue/red SIGN palette, theme-resolved)
+    if (i === gHover) { g.fillStyle = palRgba(PAL.tx, 0.08);
       g.fillRect(x0, 30, bandW, H - 50); }
     if (gy != null && showGhost) {
       const h = Math.abs(gy) / maxG * amp1;
-      g.strokeStyle = '#c792ff'; g.setLineDash([3, 2]);
+      g.strokeStyle = PAL.vio; g.setLineDash([3, 2]);
       g.strokeRect(x0 + (bandW - bwG) / 2, gy >= 0 ? base1 - h : base1, bwG, h);
       g.setLineDash([]);
     }
     const h = Math.abs(gx) / maxG * amp1;
-    g.fillStyle = gx >= 0 ? '#33aaff' : '#ff3355';
+    g.fillStyle = gx >= 0 ? PAL.blue : PAL.red;
     g.fillRect(x0 + (bandW - bwS) / 2, gx >= 0 ? base1 - h : base1, bwS, h);
     const hv2 = (vol || 0) / maxV * amp2;
-    g.fillStyle = '#ffc400';
+    g.fillStyle = PAL.amber;
     g.fillRect(x0 + (bandW - bwS) / 2, base2 - hv2, bwS, hv2);
     const dG = gy != null ? gx - gy : null;
+    // v6 # ui-mockup-ok: from -> to tooltip (operator, strike-730 lesson: the arrow shows the
+    // SIGNED change while the bar shows magnitude — the tip says the whole sentence)
+    const story = dG == null ? '' :
+      `<br>${fmtBig(gy)} → ${fmtBig(gx)} (${dG >= 0 ? '+' : ''}${fmtBig(dG)}` +
+      (gy < 0 && gx < 0 ? (dG >= 0 ? ' · short gamma shrinking' : ' · short gamma growing') : '') + ')';
     gZones.push({ x0, x1: x0 + bandW,
       tipHtml: `<b>Strike ${fmt(k)}</b><br>` +
         `Dealer gamma today: ${fmtBig(gx)}<br>` +
-        `Yesterday: ${gy != null ? fmtBig(gy) : 'no wide capture'}` +
-        (dG != null ? ` · shift ${dG >= 0 ? '+' : ''}${fmtBig(dG)}` : '') +
+        `Yesterday: ${gy != null ? fmtBig(gy) : 'no wide capture'}` + story +
         `<br>Option volume today: ${fmtBig(vol)}` });
-    if (bandW > 26 || (Math.round(k) === k && Math.round(k) % 5 === 0)) {
-      g.fillStyle = '#aab6c4'; g.font = '700 11px system-ui';
+    if (bandW >= 12 || (Math.round(k) === k && Math.round(k) % 5 === 0)) {
+      g.fillStyle = PAL.dim; g.font = "600 10px 'IBM Plex Mono', monospace";   // # ui-mockup-ok: v6.2
       g.fillText(fmt(k, 0), x0 + bandW / 2 - 9, H - 8);
     }
   }
@@ -1260,34 +1678,45 @@ function drawGamma() {
     g.font = '800 11px system-ui';
     for (const s of shifts) {
       const x0 = xs(s.i);
-      g.fillStyle = s.d >= 0 ? '#33aaff' : '#ff3355';
+      // v6 # ui-mockup-ok: increases GREEN, decreases RED (operator color grammar) — the
+      // arrow is the day-over-day CHANGE; the bars keep blue/red for the SIGN of gamma.
+      g.fillStyle = s.d >= 0 ? PAL.green : PAL.red;   // # ui-mockup-ok: v6.2 tokens
       g.fillText(`${s.d >= 0 ? '▲' : '▼'}${fmtBig(Math.abs(s.d))}`, x0 - 4, 40);
     }
   }
 
   // spot + walls, marked on both charts
   const T = terrain || {};
-  const mark = (price, col, lab, yTop) => {
-    if (price == null) return;
+  // # ui-mockup-ok: v6.2 — mark RETURNS whether it drew, so the functional audit can assert
+  // the walls are on screen instead of anyone eyeballing it (RC-195).
+  const mark2 = (price, col, lab, yTop) => {
+    if (price == null) return false;
     let xi = null;
     for (let i = 0; i < vis.length; i++)
       if (Math.abs(vis[i][0] - price) < 1e-9) { xi = xs(i) + bandW / 2; break; }
     if (xi == null) {
-      if (price < vis[0][0] || price > vis[vis.length - 1][0]) return;
+      if (price < vis[0][0] || price > vis[vis.length - 1][0]) return false;
       for (let i = 1; i < vis.length; i++)
         if (vis[i][0] >= price) {
           xi = xs(i - 1) + bandW / 2 +
             (price - vis[i - 1][0]) / (vis[i][0] - vis[i - 1][0]) * bandW; break; }
     }
-    if (xi == null) return;
+    if (xi == null) return false;
     g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([6, 4]);
     g.beginPath(); g.moveTo(xi, yTop); g.lineTo(xi, H - 20); g.stroke(); g.setLineDash([]);
     g.fillStyle = col; g.font = '800 12px system-ui';
     g.fillText(lab, Math.min(xi + 5, W - CARDW - 120), yTop + 12);
+    return true;
   };
-  mark(spot, '#ffc400', `SPOT ${fmt(spot)}`, 30);
-  mark(T.call_wall, '#ff3355', `CALL WALL ${fmt(T.call_wall, 0)}`, 46);
-  mark(T.put_wall, '#00e07a', `PUT WALL ${fmt(T.put_wall, 0)}`, 62);
+  const _dbgGamma = { scope, rows: vis.length };
+  window.__edChart = window.__edChart || {};
+  window.__edChart.gamma = _dbgGamma;
+  // # ui-mockup-ok: v6.2 tokens; walls EXPOSED to the functional audit (operator report:
+  // "i don't see the call wall in the gamma panel" must be a machine-checkable assertion)
+  const _mk = (p, c, l, yy, key) => { const drew = mark2(p, c, l, yy); _dbgGamma[key] = !!drew; };
+  _mk(spot, PAL.amber, `SPOT ${fmt(spot)}`, 30, 'spot');
+  _mk(T.call_wall, PAL.red, `CALL WALL ${fmt(T.call_wall, 0)}`, 46, 'call_wall');
+  _mk(T.put_wall, PAL.green, `PUT WALL ${fmt(T.put_wall, 0)}`, 62, 'put_wall');
 
   // measured migration line: biggest per-strike shifts vs yesterday
   const deltas = vis.filter(r => ghost.get(r[0]) != null)
@@ -1467,6 +1896,30 @@ chip('learn', () => { learning = !learning;
   document.getElementById('learn').classList.toggle('on', learning);
   document.getElementById('coachlines').innerHTML = learning
     ? ((terrain || {}).lines || []).map(l => '· ' + esc(l)).join('<br>') : ''; });
+/* v6 (RC-192) # ui-mockup-ok: candles/line toggle + the LEVELS and PROX pulldowns under the
+   timeframe row (operator placement). */
+function setMode(m) {
+  chartMode = m;
+  try { localStorage.setItem('ed_chart_mode', m); } catch (e) {}
+  document.getElementById('mode-candles').classList.toggle('on', m === 'candles');
+  document.getElementById('mode-line').classList.toggle('on', m === 'line');
+  draw();
+}
+chip('mode-candles', () => setMode('candles'));
+chip('mode-line', () => setMode('line'));
+// # ui-mockup-ok: v6.1 — menus anchor UNDER their own buttons (operator: the pulldown lives
+// right underneath the timeframe row), never at a hardcoded page offset.
+function toggleMenu(btnId, menuId, otherId) {
+  const b = document.getElementById(btnId), m = document.getElementById(menuId);
+  document.getElementById(otherId).classList.remove('open');
+  m.style.left = b.offsetLeft + 'px';
+  m.style.top = (b.offsetTop + b.offsetHeight + 6) + 'px';
+  m.classList.toggle('open');
+}
+chip('lvlbtn', () => toggleMenu('lvlbtn', 'lvlmenu', 'proxmenu'));
+chip('proxbtn', () => toggleMenu('proxbtn', 'proxmenu', 'lvlmenu'));
+renderLvlMenu(); renderProxMenu(); setMode(chartMode);
+document.getElementById('proxbtn').innerHTML = `PROX ${proxCents}&cent; &#9662;`;
 document.getElementById('tk').addEventListener('change', () => {
   // RC-123: this page co-owns THE cross-page ticker — a change here follows the operator
   // back to the console (and to parallel tabs via the storage event).

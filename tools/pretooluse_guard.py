@@ -25,6 +25,10 @@ Contract:
     Collect/Chart is framed Done while Chart stays soft OUT-OF-SCOPE/OBSERVED, or when forward
     residuals say weekday-named live proof while next RTH is not that weekday — even under
     allowed prefixes.
+  * RC-186 mockup-before-code: Write/Edit of a surface listed in
+    governance/ui_mockup_approvals.json is BLOCKED until the operator has approved a rendered
+    mockup variant there (status='approved') — escape `# ui-mockup-ok: <reason>` for
+    non-redesign bug fixes, ED_UI_MOCKUP_LOCK=off for the operator.
   * ED_PRETOOLUSE_GUARD=off disables it. That is deliberate and visible: an operator may switch it
     off, an agent may not silently route around it.
 """
@@ -57,8 +61,11 @@ def _rel(p: str) -> str:
 
 def _git(args: list[str]) -> str | None:
     try:
+        # RC-187: pin the decode to what git emits. text=True alone uses the locale codepage
+        # (cp1252 on this host), which throws in the capture reader THREAD on UTF-8 governance
+        # content — outside this except — and silently degraded the RC-66 check to never-block.
         r = subprocess.run(["git", *args], cwd=str(REPO), capture_output=True,
-                           text=True, timeout=20)
+                           text=True, encoding="utf-8", errors="replace", timeout=20)
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout if r.returncode == 0 else None
@@ -174,6 +181,30 @@ def _block_chart_intent_and_next_rth(rel: str, tool_input: dict) -> int | None:
     return 2
 
 
+def _block_unapproved_ui_redesign(rel: str, tool_input: dict) -> int | None:
+    """RC-186: block edits to mockup-gated UI surfaces before an operator-approved mockup.
+    RC-189: judge MultiEdit PER EDIT (one escape must not unlock its siblings) and gate the
+    approval registry itself (self-approve was Cursor's top break)."""
+    (mockup_approval_violation, registry_mutation_violation, tool_input_texts) = _import_lock(
+        "ui_mockup_lock",
+        ("mockup_approval_violation", "registry_mutation_violation", "tool_input_texts"),
+    )
+    texts = tool_input_texts(tool_input) or [""]
+    for text in texts:
+        reason = registry_mutation_violation(rel, text)
+        if reason is None:
+            reason = mockup_approval_violation(rel, text)
+        if reason is None:
+            continue
+        sys.stderr.write(
+            "BLOCKED by the mockup-before-code law (RC-186/RC-189).\n\n"
+            f"  File: {rel}\n"
+            f"  {reason}\n"
+        )
+        return 2
+    return None
+
+
 def main() -> int:
     if os.environ.get("ED_PRETOOLUSE_GUARD", "").strip().lower() in ("off", "0", "false"):
         return 0
@@ -195,6 +226,9 @@ def main() -> int:
     if blocked is not None:
         return blocked
     blocked = _block_chart_intent_and_next_rth(rel, tool_input)
+    if blocked is not None:
+        return blocked
+    blocked = _block_unapproved_ui_redesign(rel, tool_input)
     if blocked is not None:
         return blocked
 

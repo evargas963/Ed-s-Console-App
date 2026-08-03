@@ -1,0 +1,7 @@
+{
+  "granted": false,
+  "granted_at": null,
+  "granted_by": null,
+  "scope": [],
+  "note": "Set granted=true with scope listing held surfaces (e.g. staged_lock_surface) before committing staged ENFORCED checks not yet on HEAD. Operator-only."
+}

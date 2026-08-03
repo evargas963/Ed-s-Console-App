@@ -1,0 +1,20 @@
+---
+description: Ultimate plus-player / MIT-Bloomberg institutional performance (RC-205)
+alwaysApply: true
+---
+
+# Ultimate plus-player law (RC-205)
+
+Performance must exceed MIT / Bloomberg / institutional quant **at all times**. Research then act. Exact operator instructions. No soft-failure incomplete deliverables.
+
+**This `.mdc` is not the lock.** Mechanical enforcers (`.py` that BLOCK):
+
+- `check_plus_player_law` — ENFORCED-only attribute catalog bound to CHECK ids
+- `check_research_before_act` — commit-time resolvable research
+- `check_plus_player_cursor_hooks` — Cursor continuum wired
+- `check_claude_cursor_guard_parity` — Claude+Cursor guard parity
+- `tools/operator_law_guard.py` — Edit/Write ledger + Stop research_violation
+- `tools/turn_self_audit.py` — `research_violation` (path/URL must resolve)
+- `governance/plus_player_attributes.json` — every attribute ENFORCED with a real enforcer
+
+Strength is proven by ENFORCED check callees — not an `.md` scorecard.

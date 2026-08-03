@@ -142,3 +142,57 @@ def test_head_rth_df_from_ts_utc_caps_after_filter():
     out = head_rth_df_from_ts_utc(df, 1)
     assert len(out) == 1
     assert float(out["ts_utc"].iloc[0]) == t_rth
+
+
+def test_rc206_reader_contract_and_retry(tmp_path):
+    """RC-206 negative control (re-applied after a shared-worktree rewrite dropped it): the
+    ML readers run under the repo connection contract (busy_timeout from
+    db.configure_sqlite_connection) and a corrupt DB degrades to None after bounded retries —
+    never a traceback into the signals loop."""
+    import sqlite3
+
+    from ml_data_common import _console_read_conn, _read_one_row_with_retry
+
+    good = tmp_path / "good.db"
+    con = sqlite3.connect(str(good))
+    con.execute("CREATE TABLE t (x REAL)")
+    con.execute("INSERT INTO t VALUES (7.5)")
+    con.commit()
+    con.close()
+    conn = _console_read_conn(str(good))
+    try:
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 30000, (
+            "reader connection does not carry the repo busy_timeout contract")
+    finally:
+        conn.close()
+    row = _read_one_row_with_retry(str(good), "SELECT x FROM t", (), op="test")
+    assert row is not None and float(row[0]) == 7.5
+
+    bad = tmp_path / "bad.db"
+    bad.write_bytes(b"SQLite format 3\x00" + b"\x00" * 400)  # header only: malformed image
+    assert _read_one_row_with_retry(str(bad), "SELECT x FROM t", (), op="test") is None
+
+
+def test_rc206_fetch_prior_net_gamma_survives_malformed_db(tmp_path):
+    """The exact caller from the traceback signature: fetch_prior_net_gamma on a malformed
+    file returns None instead of raising sqlite3.DatabaseError."""
+    from ml_data_common import fetch_prior_net_gamma
+
+    bad = tmp_path / "malformed.db"
+    bad.write_bytes(b"SQLite format 3\x00" + b"\x00" * 400)
+    assert fetch_prior_net_gamma("SPY", 1e9, db_path=str(bad)) is None
+
+
+def test_rc206_confluence_serve_survives_malformed_db(tmp_path):
+    """CLASS COMPLETION (operator caught this third raw caller live on the restarted
+    console): attach_confluence_features_for_serve on a malformed DB degrades to cf_*
+    defaults instead of raising into the signals loop."""
+    from lstm_data import CONFLUENCE_FEATURES
+    from ml_data_common import attach_confluence_features_for_serve
+
+    bad = tmp_path / "malformed.db"
+    bad.write_bytes(b"SQLite format 3\x00" + b"\x00" * 400)
+    out = attach_confluence_features_for_serve(
+        {"ticker": "SPY", "ts_utc": 1e9}, db_path=str(bad))
+    for cf in CONFLUENCE_FEATURES:
+        assert out.get(cf) == 0.0, f"{cf} not defaulted on malformed DB"

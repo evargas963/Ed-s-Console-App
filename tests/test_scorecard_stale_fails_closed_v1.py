@@ -329,7 +329,7 @@ def _fake_chain(n_expiries: int, spot: float = 7400.0) -> list:
     out = []
     for e in range(n_expiries):
         for k in range(int(spot) - 50, int(spot) + 60, 10):
-            out.append({"expirationDate": f"2026-{8 + e // 28:02d}-{1 + e % 28:02d}T00:00:00.000Z",
+            out.append({"expirationDate": f"2026-{8 + e // 28:02d}-{1 + e % 28:02d}T00:00:00.000Z",  # institutional-synthetic-ok: fail-closed stale scorecard edge uses minimal malformed contract
                         "strikePrice": float(k), "putCall": "CALL", "openInterest": 10})
     return out
 

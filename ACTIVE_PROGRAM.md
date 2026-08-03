@@ -1,8 +1,19 @@
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-07-27 — Operator redirected: **LP-01 liquidity levels** is NEXT (ahead of residual GEX/F2 queue). Prior 2026-07-17 PAUSE lifted for this directed track only.
+**Updated:** 2026-08-03 — **Cursor is standing PM** (RC-218 / `governance/PM_MANDATE.md`). Daily rehab: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md`.
 **Charter:** `AGENTS.md` (Collect / Find & Prove / Decide). **Ledger:** `OPEN_ITEMS.md`.
 **Agent stop authority:** only operator `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`. **Current:** `GO` on LP-01; other FP hunt rows stay queued unless operator expands scope.
+
+## PM binding (Cursor — always)
+
+| Role | Agent | Authority |
+|---|---|---|
+| **PM** | Cursor | Sequence missions, sole-writer, GO/NO-GO, rehab triage, stop thrash |
+| **Writer** | per `governance/sole_writer.json` | Only agent that edits protected paths |
+| **Auditor** | Cursor | Falsify claims vs disk/git/live after landings |
+| **Rehab scan** | Automation / local cron | Recommend only — append queue; no auto-edit |
+
+**Operator residue (2026-08-03):** (A) restart `:8000` for LIVE_ENFORCED collect-window · (B) `operator_go.json` green-light for held iceberg · then PM sequences next mission (FORCES UI vs levels vs DB size).
 
 ## Operator NOW (binding — work this before any other NEXT/QUEUED)
 

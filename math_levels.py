@@ -692,6 +692,32 @@ def bs_gamma(spot: float, strike: float, t_years: float, sigma: float,
     return g if math.isfinite(g) else None
 
 
+def bs_vanna(spot: float, strike: float, t_years: float, sigma: float,
+             rate: float = 0.0, div: float = 0.0) -> float | None:
+    """Black-Scholes vanna (dDelta/dSigma) per share — identical for calls and puts.
+
+    Closed form: -e^(-qT) * phi(d1) * d2 / sigma. Sign is driven entirely by -d2, so it
+    flips through SPOT (strikes above spot positive, below negative) — never through the
+    call/put boundary. INDEPENDENTLY VERIFIED 2026-08-02 (scratchpad/_vanna_independent_verify.py):
+    central finite difference of the BS delta across 27 (K,T,sigma) points agrees to
+    max |err| 9.1e-9, as do both identities vanna = (vega/S)(1 - d1/(sigma*sqrt(T)))
+    and vanna = -Gamma * S * sqrt(T) * d2 (the gamma identity is wired into
+    tests/test_charm_sign_finite_difference.py as a standing cross-check).
+    Units: delta-change per 1.00 of IV (100 vol points); multiply by 0.01 for per-vol-point
+    — the sigma-scaling convention is LOCKED here beside the dealer convention (RC-179).
+    """
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    try:
+        vt = sigma * math.sqrt(t_years)
+        d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
+        d2 = d1 - vt
+        v = -math.exp(-div * t_years) * _norm_pdf(d1) * d2 / sigma
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return v if math.isfinite(v) else None
+
+
 def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
              rate: float = 0.0) -> float | None:
     """Black-Scholes charm (dDelta/dt, calendar time) per share, q=0.

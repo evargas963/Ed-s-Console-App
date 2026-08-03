@@ -116,6 +116,22 @@ def session_safe_log_returns(ends: np.ndarray, closes: np.ndarray) -> np.ndarray
     return rets
 
 
+def session_safe_abs_price_moves(ends: np.ndarray, closes: np.ndarray) -> np.ndarray:
+    """RC-107: abs close-to-close PRICE moves with session-boundary steps excluded.
+
+    Threshold sites (cost_aware / survival) cut on absolute price moves, not log returns.
+    Raw ``np.abs(np.diff(closes))`` admits the Fri->Mon gap as a "typical" move and inflates
+    the median. This helper drops every step whose ET date changes.
+    """
+    if len(closes) < 2:
+        return np.asarray([], dtype=float)
+    moves = np.abs(np.diff(np.asarray(closes, dtype=float)))
+    if len(ends) < 2:
+        return moves
+    days = np.array([_et_date(float(t)) for t in ends])
+    return moves[days[1:] == days[:-1]]
+
+
 def _load_labeled_rows(
     db: Path, ticker: str, label_col: str, *, session: str = "rth"
 ) -> list[tuple[float, str]]:

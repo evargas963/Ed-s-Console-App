@@ -1,0 +1,17 @@
+{
+  "status": "active",
+  "mission_id": "RC-216-iceberg-land",
+  "title": "Land held staged lock surface (operator GO + commit); then restart for LIVE_ENFORCED",
+  "writer": "claude",
+  "scope_paths": ["*"],
+  "approved_by": "operator",
+  "approved_via": "cursor_pm",
+  "approved_at": "2026-08-03T16:22:00-05:00",
+  "done_criteria": [
+    "operator_go.json granted=true with staged_lock_surface",
+    "iceberg commit on HEAD",
+    "operating_process_lock --measure index_worktree_mismatches empty",
+    "operator restarts :8000 for LIVE_ENFORCED"
+  ],
+  "note": "RC-219 PM-first change protocol. Cursor PM opens/closes missions after operator approves the plan. status=idle blocks product edits. Current mission keeps Claude unblocked for the held iceberg only."
+}

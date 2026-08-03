@@ -96,8 +96,85 @@ _GREP_AGAINST_FILES = re.compile(
     r"-t\s+\w+|--type|--glob|\s\.$|\s\./)", re.I)
 _DESTRUCTIVE_GIT = re.compile(
     r"\bgit\s+(?:reset\s+--hard|checkout\s+--\s|clean\s+-[a-z]*f|push\s+--force(?!-with-lease))", re.I)
-_SKIP_HOOKS = re.compile(r"--no-verify|ED_PRETOOLUSE_GUARD=off|ED_STOP_GUARD=off|"
-                         r"ED_PROOF_ONLY_GUARD=off|ED_OPERATOR_LAW_GUARD=off", re.I)
+# RC-186 self-audit finding (2026-08-02): the enumerated list covered only the four *_GUARD
+# names, so the mockup lock's ED_UI_MOCKUP_LOCK=off escape was silently agent-usable the day it
+# shipped. Generalized: ANY ED_*_GUARD/ED_*_LOCK=off is a lock-disable action — operator-only.
+# RC-189 GUN 2 (Cursor audit v1): the generalization kept the single unquoted-POSIX SHAPE while
+# this host's agent shell is PowerShell. Widened to quoted values, spaced assignment, $env:,
+# Set-Item/New-Item on the env: drive, and [Environment]::SetEnvironmentVariable. The negative
+# lookahead keeps ED_*_GUARD_TIMEOUT-style names out; grant vars (ED_UI_MOCKUP_APPROVE=1) and
+# non-disable values ('on', '1') never match.
+# Cursor v2 residuals sealed (RC-189): `${env:NAME}` braces, `PSVariable.Set`, and a COMPUTED
+# value (`("o"+"ff")`) — a lock variable has no legitimate computed assignment, so ANY
+# parenthesized/expression value is refused outright rather than pattern-matching its pieces.
+_SKIP_HOOKS = re.compile(
+    r"--no-verify"
+    r"|(?:\$\{?env:)?ED_[A-Z_]*(?:_GUARD|_LOCK)(?![A-Z0-9_])['\"\s\]\}]*=\s*"
+    r"(?:['\"]?\s*(?:off|false|0)\b|\()"
+    r"|(?:Set-Item|New-Item|SetEnvironmentVariable|PSVariable)[^\n]{0,80}?"
+    r"ED_[A-Z_]*(?:_GUARD|_LOCK)(?![A-Z0-9_])[^\n]{0,60}?['\"\s,(](?:off|false|0)\b",
+    re.I)
+#: RC-189 GUN 1 — the approval registry and the operator grant are OPERATOR CHANNELS. Shell
+#: access to either (read, write, heredoc, -c payload — RAW command text, deliberately wider
+#: than shell_executed_part, because heredocs and payloads ARE the write channels that dodge
+#: the Edit/Write hook) is refused outright: the registry is read with the Read tool and
+#: mutated only through Edit/Write, where the RC-189 provenance hook judges it.
+#: Cursor v2: the contiguous-token ban lost to string concatenation, so the scan (a) first
+#: strips the LEGITIMATE code-path spellings (the lock module and its test file), then
+#: (b) matches FRAGMENTS of the registry name and grant var. Deep concatenation of fragments
+#: is backstopped by the constructed-write bans below: a write whose target is not a literal
+#: safe-data path is refused no matter what it spells.
+_APPROVAL_ALLOWED_SPELLINGS = re.compile(
+    r"(?:tools[/\\])?(?:test_)?ui_mockup_lock(?:_v1)?(?:\.py)?", re.I)
+_APPROVAL_FRAGMENT = re.compile(
+    r"ui_mockup|mockup_approv|approvals\.json|ED_UI_MOCKUP", re.I)
+
+
+def _approval_channel_violation(raw: str) -> bool:
+    return bool(_APPROVAL_FRAGMENT.search(_APPROVAL_ALLOWED_SPELLINGS.sub("", raw)))
+
+
+def _safe_data_target(target: str) -> bool:
+    """A write target is safe only as a string LITERAL with a data extension, and never the
+    approval registry or anything under .claude/ (Cursor v2: a literal .json there is the
+    registry-forge / grant-mint channel wearing a legal extension). Other governance data
+    files stay heredoc-legal — governance-row edits are HOW agents comply (battery contract)."""
+    if not _DATA_TARGET_LITERAL.match(target):
+        return False
+    return not re.search(r"\.claude[/\\]|ui_mockup|approvals\.json", target, re.I)
+
+
+#: Cursor v2: `python -c "p='gov'+'ernance/...'; open(p,'w')"` — the -c payload is stripped
+#: from the executed-part scan as data, but the WRITE it performs is an action. Payload writes
+#: obey the same E-37 rule as heredocs: literal safe-data targets only. This also closes the
+#: compounding escape `python -c "open('static/chart.html','w')"` — .html is not a data
+#: extension, so a production-surface write from a payload is refused.
+_C_PAYLOAD = re.compile(r"-c\s+(['\"])((?:\\.|(?!\1).)*)\1", re.S)
+
+
+def _payload_write_violation(raw: str) -> bool:
+    for pm in _C_PAYLOAD.finditer(raw):
+        body = pm.group(2)
+        for m in _HEREDOC_WRITE_SITE.finditer(body):
+            if m.group(3):
+                return True
+            target = (m.group(1) or "").strip()
+            if m.group(2) is not None:
+                tm = re.search(r"\(\s*(['\"][^'\"]+['\"])\s*\)\s*$", m.group(2))
+                target = tm.group(1) if tm else ""
+            if not _safe_data_target(target):
+                return True
+    return False
+
+
+#: Cursor v2: PowerShell write cmdlets with a CONSTRUCTED destination (Join-Path, $(),
+#: string concat) or a destination in the governance/.claude trees or with a production
+#: suffix dodge every token ban by never spelling the name. Source and governance mutations
+#: go through Edit/Write, where the hooks judge them.
+_PS_WRITE_BAD = re.compile(
+    r"(?:Copy-Item|Move-Item|Set-Content|Add-Content|Out-File)\b[^\n;|]{0,160}?"
+    r"(?:Join-Path|\$\(|['\"]\s*\+|governance[/\\]|\.claude[/\\]|"
+    r"\.(?:py|html|js|css|ts|sql)\b)", re.I)
 _GIT_COMMIT = re.compile(r"\bgit\s+commit\b", re.I)
 #: 2026-07-28: `git add -A` swept another agent's in-flight files into MY commits twice in one
 #: day (a 530KB runtime log; audit scratch). In a two-agent worktree, blind staging asserts
@@ -125,7 +202,8 @@ _DATA_TARGET_LITERAL = re.compile(r"^['\"][^'\"]+\.(?:md|json|jsonl|txt|csv|log)
 
 def _heredoc_write_violation(raw: str) -> bool:
     """True when a heredoc body performs a file-write whose target is not a verifiable
-    data-extension string literal (E-37 graduation)."""
+    safe-data string literal (E-37 graduation; Cursor v2 tightened governance/.claude out
+    of the legal target set — see _safe_data_target)."""
     hd = re.search(r"<<-?\s*(['\"]?)(\w+)\1(.*?)^\s*\2\s*$", raw, re.S | re.M)
     if not hd:
         return False
@@ -137,7 +215,7 @@ def _heredoc_write_violation(raw: str) -> bool:
         if m.group(2) is not None:           # <expr>.write_text( — target is the expr's path
             pm = re.search(r"\(\s*(['\"][^'\"]+['\"])\s*\)\s*$", m.group(2))
             target = pm.group(1) if pm else ""
-        if not _DATA_TARGET_LITERAL.match(target):
+        if not _safe_data_target(target):
             return True
     return False
 #: v19: `cat > foo.py <<EOF` writes source through the SHELL itself — no interpreter involved,
@@ -211,6 +289,21 @@ def bash_violations(cmd: str, ledger: list[dict]) -> list[str]:
                    "operator.")
     if _SKIP_HOOKS.search(cmd):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+    if _approval_channel_violation(raw):
+        out.append("ACTION BLOCKED (RC-189): shell access to the mockup-approval registry or "
+                   "the operator grant variable. Self-approve through a shell write was "
+                   "Cursor's top break. Read the registry with the Read tool; mutate it only "
+                   "through Edit/Write (the provenance hook judges those); the grant is set by "
+                   "the operator outside agent channels.")
+    if _payload_write_violation(raw):
+        out.append("ACTION BLOCKED (RC-189 v2): a -c payload performs a file-write whose "
+                   "target is not a literal safe-data path (constructed paths and "
+                   "governance/.claude/source targets are how self-approve dodged the token "
+                   "ban). Use the Edit/Write tools — the hooks judge those.")
+    if _PS_WRITE_BAD.search(cmd):
+        out.append("ACTION BLOCKED (RC-189 v2): PowerShell write cmdlet with a constructed, "
+                   "governance/.claude, or production-suffix destination. Use the Edit/Write "
+                   "tools — a destination the command never spells cannot be audited.")
     if _GIT_COMMIT.search(cmd) and not _has_verification(ledger):
         out.append("ACTION BLOCKED: committing without having RUN anything this turn. A commit "
                    "asserts the work is sound; run the gate, the tests, or a live probe first — "
@@ -248,6 +341,55 @@ def _has_live_probe(ledger: list[dict]) -> bool:
                for e in ledger if e.get("kind") == "bash")
 
 
+#: RC-190 (operator non-negotiable, 2026-08-02, "self audit is a non negotiable universally
+#: repo wide"): a turn that changed ANY production surface must have RUN the per-turn self
+#: adversarial audit — tools/turn_self_audit.py re-derives the turn's blast radius and re-runs
+#: the attack suites against it, leaving a JSONL record. Ordinary pytest is verification;
+#: it does not satisfy the audit, whose artifact is this tool's ledger entry.
+_TURN_SELF_AUDIT = re.compile(r"turn_self_audit\.py", re.I)
+
+
+def _has_turn_self_audit(ledger: list[dict]) -> bool:
+    return any(_TURN_SELF_AUDIT.search(e.get("detail", ""))
+               for e in ledger if e.get("kind") == "bash")
+
+
+#: RC-203 (operator non-negotiable, 2026-08-02: "always research and then act... at an
+#: institutional/mit/bloomberg manner... universal throughout the entire repo"): the audit
+#: record of a production-editing turn must NAME the reference researched before acting.
+#: The drag-clamp defect shipped because view machinery was invented while the reference
+#: implementation (chart.html clampView) sat in the same repo; the bubble layer shipped
+#: against the recorded spec (direction doc §3.3) without re-reading it. Research is an
+#: ACTION with an artifact — the named reference in the audit ledger — so it can be forced.
+def _latest_audit_lacks_research(log: Path | None = None) -> bool:
+    """True when latest same-turn audit fails full research_violation (RC-203/RC-205).
+
+    Empty string used to be the only test; a non-resolving vibe string must also BLOCK."""
+    if log is None:
+        log = Path(__file__).resolve().parent.parent / "reports" / "turn_self_audit_log.jsonl"
+    try:
+        lines = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    except OSError:
+        return False
+    if not lines:
+        return False
+    try:
+        rec = json.loads(lines[-1])
+    except ValueError:
+        return False
+    import time as _time
+    if _time.time() - float(rec.get("ts_utc", 0) or 0) > 12 * 3600:
+        return False
+    changed = list(rec.get("changed") or [])
+    if not changed:
+        return False
+    try:
+        from tools.turn_self_audit import research_violation
+    except ImportError:
+        from turn_self_audit import research_violation  # type: ignore
+    return research_violation(str(rec.get("research", "") or ""), changed) is not None
+
+
 def stop_violations(ledger: list[dict]) -> list[str]:
     out: list[str] = []
     edits = _production_edits(ledger)
@@ -255,6 +397,17 @@ def stop_violations(ledger: list[dict]) -> list[str]:
         out.append(f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
                    f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
                    f"a live probe before ending the turn.")
+    if edits and not _has_turn_self_audit(ledger):
+        out.append("ACTION BLOCKED (RC-190): this turn changed production code and the "
+                   "per-turn self adversarial audit never RAN. Universal, repo-wide, "
+                   "non-negotiable: run `.venv/Scripts/python.exe tools/turn_self_audit.py` "
+                   "(add --tests for surfaces the stem scan cannot match), fix what it finds, "
+                   "then end the turn.")
+    if edits and _has_turn_self_audit(ledger) and _latest_audit_lacks_research():
+        out.append("ACTION BLOCKED (RC-203): the turn's self-audit record names NO research. "
+                   "Operator law: research THEN act, institutional level, universal. Re-run "
+                   "`tools/turn_self_audit.py --research '<the spec/reference consulted and "
+                   "what it settled>'` — a concrete artifact (path, §section, URL).")
     # RC-125: every answer stands on a same-turn observation of the live session — the morning
     # of 2026-07-29 was lost to an answer reasoned from a screenshot while the live payload sat
     # one command away. Absolute by operator order: probe first, then answer.

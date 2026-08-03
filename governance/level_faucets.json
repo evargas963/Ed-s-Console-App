@@ -1,0 +1,16 @@
+{
+  "charter": "ONE faucet per domain (operator law 2026-08-02: two faucets 'in any other way they can manifest' are strictly prohibited). This registry enumerates every AUTHORIZED producer of the levels/exposure domain and the single authorized home of greek formulas. Adding a producer requires an operator_quote in the same staged change to THIS file. Target state: the level producers collapse into one /api/levels service (Monday 2026-08-03 08:30 mission).",
+  "greek_formula_faucet": "math_levels.py",
+  "grandfathered_inline_greeks": {
+    "math_exposure_core.py": "compute_net_charm inline charm formula - RC-179 parity-locked against bs_charm; migrate to the bs_* faucet in the Monday consolidation"
+  },
+  "level_domain_producers": {
+    "/api/liquidity-snapshot": "liquidity engine raw levels (PDH/VWAP/ORB family)",
+    "/api/terrain": "terrain walls / flip / regime",
+    "/api/terrain/strikes": "per-strike GEX / volume",
+    "/api/forces": "banked dOI / DEX / charm side sums",
+    "/api/exposure/flow": "banked intraday accrual frames",
+    "/api/exposure/book": "banked call/put split + DEX per strike",
+    "/api/exposure/history": "banked per-day structure"
+  }
+}

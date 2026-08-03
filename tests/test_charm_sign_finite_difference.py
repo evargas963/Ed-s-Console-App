@@ -188,3 +188,77 @@ def test_compute_net_charm_sign_matches_finite_difference(label, S, dte):
         f"{label}: compute_net_charm sign {ncd:+.1f} disagrees with FD calendar charm "
         f"{fd:+.4f} — the sign was inverted once (2026-07-25); it must never flip again."
     )
+
+
+# ── RC-211: the SAME ground-truth lock for VANNA (operator spec, independently verified) ──
+
+def _phi_pdf(x: float) -> float:
+    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+
+def _Phi_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def _bs_call_delta(S: float, K_: float, T: float, s: float) -> float:
+    d1 = (math.log(S / K_) + 0.5 * s * s * T) / (s * math.sqrt(T))
+    return _Phi_cdf(d1)
+
+
+@pytest.mark.parametrize("K_, T, sigma, label", [
+    (90.0, 30 / 365, 0.25, "below-spot (vanna must be NEGATIVE)"),
+    (110.0, 30 / 365, 0.25, "above-spot (vanna must be POSITIVE)"),
+    (100.0, 2 / 365, 0.20, "ATM 0DTE-adjacent (small, ~0.2*sqrt(T))"),
+    (95.0, 180 / 365, 0.60, "high-vol long-dated"),
+])
+def test_bs_vanna_matches_finite_difference_and_gamma_identity(K_, T, sigma, label):
+    """RC-211 ground truth: bs_vanna must match (1) a central finite difference of the BS
+    delta w.r.t. sigma — computed here independently of the implementation — and (2) the
+    gamma identity vanna = -Gamma * S * sqrt(T) * d2 (operator: 'if your analytic vanna and
+    your gamma disagree under it, one of them is wrong'). The shipped vega/(S*sigma)
+    shortcut failed BOTH (always positive; REFUTED 2026-08-02, max truth-gap 1.19 at
+    below-spot strikes) — this lock makes that class unshippable."""
+    from math_levels import bs_gamma, bs_vanna
+
+    S = 100.0
+    h = 1e-5
+    fd = (_bs_call_delta(S, K_, T, sigma + h) - _bs_call_delta(S, K_, T, sigma - h)) / (2 * h)
+    v = bs_vanna(S, K_, T, sigma)
+    assert v is not None, f"{label}: bs_vanna returned None on valid inputs"
+    assert abs(v - fd) < 1e-5, f"{label}: bs_vanna {v:+.6f} != FD ground truth {fd:+.6f}"
+    g = bs_gamma(S, K_, T, sigma)
+    d1 = (math.log(S / K_) + 0.5 * sigma * sigma * T) / (sigma * math.sqrt(T))
+    d2 = d1 - sigma * math.sqrt(T)
+    gamma_id = -g * S * math.sqrt(T) * d2
+    assert abs(v - gamma_id) < 1e-9, (
+        f"{label}: vanna {v:+.6f} violates the gamma identity {gamma_id:+.6f} — "
+        f"one of bs_vanna/bs_gamma is wrong")
+    # EXACT sign law: sign(vanna) == sign(-d2). (The 'above spot positive / below spot
+    # negative' shorthand holds only while the d2=0 boundary K = S*e^((sigma^2/2)T) sits
+    # near spot — long-dated high-vol moves it; the K=95/T=180d/sigma=0.6 case here has
+    # the boundary at ~109, so below-spot vanna is legitimately POSITIVE.)
+    if abs(d2) > 1e-12:
+        assert (v > 0) == (d2 < 0), (
+            f"{label}: sign(vanna)={v:+.6f} disagrees with -d2 (d2={d2:+.4f})")
+
+
+def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
+    """RC-211: put-call parity kills any call/put vanna split — same strike/expiry/IV must
+    aggregate the SAME per-contract vanna into both bucket sides (splits come from OI only)."""
+    from math_exposure_core import compute_exposures_by_strike
+
+    base = {"strikePrice": 100.0, "expirationDate": "2026-09-18", "gamma": 0.05,
+            "delta": 0.5, "volatility": 20.0, "openInterest": 100, "multiplier": 100,
+            "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,
+            "totalVolume": 10}
+    # institutional-synthetic-ok: exact-identity math lock needs controlled equal inputs;
+    # a captured chain cannot pin call_vanna == put_vanna at equal OI.
+    call = dict(base, putCall="CALL")
+    put = dict(base, putCall="PUT")
+    per, _ = compute_exposures_by_strike([call, put], spot=98.0)
+    b = per[100.0]
+    assert b["call_vanna"] != 0.0, "call vanna did not compute"
+    assert abs(b["call_vanna"] - b["put_vanna"]) < 1e-9, (
+        f"call/put vanna split at equal OI: {b['call_vanna']} vs {b['put_vanna']} — "
+        f"the math invented a split parity forbids")
+    assert b["call_vanna"] > 0, "strike above spot (100 > 98) must have positive vanna"

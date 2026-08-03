@@ -1,4 +1,7 @@
 {
+  "env": {
+    "ED_AGENT_ROLE": "claude"
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -7,6 +10,14 @@
           {
             "type": "command",
             "command": ".venv/Scripts/python.exe tools/pretooluse_guard.py"
+          },
+          {
+            "type": "command",
+            "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
+          },
+          {
+            "type": "command",
+            "command": ".venv/Scripts/python.exe tools/process_lock_guard.py"
           }
         ]
       },
@@ -16,6 +27,10 @@
           {
             "type": "command",
             "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
+          },
+          {
+            "type": "command",
+            "command": ".venv/Scripts/python.exe tools/process_lock_guard.py"
           }
         ]
       }
@@ -33,12 +48,21 @@
           },
           {
             "type": "command",
+            "command": ".venv/Scripts/python.exe tools/honesty_guard.py"
+          },
+          {
+            "type": "command",
             "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
+          },
+          {
+            "type": "command",
+            "command": ".venv/Scripts/python.exe tools/process_lock_guard.py"
           }
         ]
       }
     ]
   },
+  "_comment_process_lock_guard": "RC-217 (operator 2026-08-03): the day's failures were PROCESS failures — two agents writing one tree, claims measured an hour before they were made, a killed pre-commit stripping the worktree, LIVE claimed while the running PID predated the commit. governance/AGENT_OPERATING_PROCESS_V1.md is the checklist; tools/operating_process_lock.py is the mechanism; tools/process_lock_guard.py fires it on PreToolUse (sole-writer edit protection on protected paths; git-commit checks incl. operator_go.granted for held surfaces) and Stop (completion-claim vs measured state; index-vs-worktree mismatch on enforcement paths; DISK_ONLY-vs-LIVE honesty for the running console PID). Parity with .cursor/hooks.json is enforced by check_claude_cursor_guard_parity. Operator escape: ED_PROCESS_LOCK_GUARD=off — deliberate and visible; an agent may not silently route around it.",
   "_comment_enforcement": "ED CONSOLE SLIMMING 1B (2026-07-16): the Stop hook (python tools/enforce_all_rules.py --stop-hook) was retired together with the enforcement stack it ran. Enforcement is now operator review per the one-page /AGENTS.md charter; the money-path gate (tools/check_market_correctness.py) and the required pytest-full suite carry the mechanical checks.",
   "_comment_pretooluse_guard": "RC-66 (operator 2026-07-26, non-negotiable): every mechanical lock in tools/check_institutional_correctness.py fires at PRE-COMMIT, but the recursive-5-why law is FRONT-LOADED - 'this law lives on the front end of coding and fixing end to end, not on the back end'. With hooks empty, nothing ran BEFORE a tool, so a CSS patch landed on static/index.html with no root-cause row and no root-cause analysis, and only the operator caught it. tools/pretooluse_guard.py now BLOCKS (exit 2) an Edit/Write to any PRODUCTION surface across the whole continuum - .py backend AND .html/.js/.css/.ts frontend, SQL, config - unless a new '| RC-' row exists in governance/root_cause_log.md. governance/, docs/, reports/, tests/ and .claude/ are never blocked by RC-66 because editing them is HOW you comply. RC-160 (operator 2026-07-30): the same hook ALSO BLOCKS Write/Edit of prompt/agent-instruction paths whose new content frames SPY-only / sentinel-complete work without UNIVERSAL or OUT-OF-SCOPE language — including under reports/ and .claude/ — via tools/universal_scope_lock.py. RC-163 (operator 2026-07-30): ALSO BLOCKS residual/handoff/RC/prompt Writes whose new content claims Collect/Chart Done while Chart render stays soft OUT-OF-SCOPE/OBSERVED, or schedules live proof with a hardcoded weekday name when next RTH (America/New_York + is_trading_day_et) is a different weekday — via tools/chart_intent_lock.py. Operator escape: set ED_PRETOOLUSE_GUARD=off - deliberate and visible; an agent may not silently route around it.",
   "_comment_stop_guard": "RC-72 (operator 2026-07-27): every other lock fires on an ACTION; the agent's worst failure is the ABSENCE of one - writing a tidy summary ending in 'next: X' and stopping. No PreToolUse hook can catch that because no tool is called. Observed repeatedly on 2026-07-27, including immediately after the agent wrote 'I'm not stopping here. Building the Stop hook now.' and then stopped. tools/stop_guard.py BLOCKS (exit 2) the end of a turn when a root-cause row opened THAT DAY is still OPEN with a fix cell reading IN PROGRESS / VERIFICATION PENDING / NOT FIXED / PARTIALLY FIXED. It honours stop_hook_active so it can never hang a turn, and ignores rows from earlier days (those are a dated backlog that check_root_cause_log already enforces). Operator escape: ED_STOP_GUARD=off.",

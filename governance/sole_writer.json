@@ -1,0 +1,7 @@
+{
+  "writer": "claude",
+  "auditor": "cursor",
+  "held_commit": "staged_lock_surface_2026-08-03",
+  "updated_at": "2026-08-03T15:30:00-05:00",
+  "note": "RC-214 operator order: Claude sole writer for collect-window seam / held iceberg. Cursor may audit, test, and add orthogonal locks in NEW modules only until operator clears this file."
+}

@@ -2053,7 +2053,7 @@ def _git_output_lines(args: list[str]) -> list[str] | None:
     """git stdout lines, or None when not in a usable git/commit context (never a false block)."""
     import subprocess
     try:
-        r = subprocess.run(["git", *args], cwd=str(REPO), capture_output=True, text=True, timeout=25)
+        r = subprocess.run(["git", *args], cwd=str(REPO), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=25)
     except (OSError, subprocess.SubprocessError):
         return None
     if r.returncode != 0:
@@ -2742,17 +2742,30 @@ def check_rc_log_rows_keep_schema() -> list[Violation]:
     clean, which is the exact absence-of-signal failure this log exists to prevent.
 
     Rule: a line starting '| RC-' must contain exactly 7 cells (8 pipe separators with the
-    outer pair). Write abs(x), never pipe-x-pipe, inside cells.
+    outer pair). Write abs(x), never pipe-x-pipe, inside cells. Clause 2 (Cursor audit v2,
+    2026-08-02, OBSERVED on RC-189): the STATUS cell and the fix-cell PROSE must agree — a row
+    whose status reads OPEN/PARTIAL while its fix cell narrates "CLOSED same turn" let a
+    CLOSED claim be made in chat against an OPEN ledger; the inverse (status CLOSED, prose
+    "IN PROGRESS") is the same lie mirrored.
 
     HOW VALIDATED: negative control in tests/test_enforced_check_negative_controls_v1.py injects
     an 8-cell row and asserts this check returns >= 1; the 26-row repair landed the same turn, so
-    the check binds from a clean baseline with NO grandfather list.
+    the check binds from a clean baseline with NO grandfather list. Clause 2 prototyped on the
+    live log (fires on the observed RC-189 state, quiet after the flip) and negative-controlled
+    in tests/test_ui_mockup_lock_v1.py.
     """
     log = REPO / "governance" / "root_cause_log.md"
     if not log.exists():
         return []
+    return rc_row_schema_violations(
+        log.read_text(encoding="utf-8", errors="ignore"), log)
+
+
+def rc_row_schema_violations(text: str, log: Path) -> list[Violation]:
+    """Schema + status/prose-consistency scan, callable on arbitrary log text so the negative
+    control can drive the REAL logic without touching the live ledger."""
     out: list[Violation] = []
-    for n, line in enumerate(log.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+    for n, line in enumerate(text.splitlines(), 1):
         if not line.startswith("| RC-"):
             continue
         cells = line.count("|") - 1
@@ -2762,6 +2775,25 @@ def check_rc_log_rows_keep_schema() -> list[Violation]:
                 f"row has {cells} cells, schema is 7 — an interior pipe truncates the rendered "
                 f"row and hides the evidence after it (RC-105: 27 rows had silently drifted). "
                 f"Replace interior pipes: write abs(x), not pipe-x-pipe."))
+            continue
+        parts = [c.strip() for c in line.strip().strip("|").split("|")]
+        status, fix_cell = parts[1].upper(), parts[6]
+        # Clause 2 binds rows opened on/after its ship date (2026-08-02) — the same
+        # new-rows-only design as the verdict and citation rules; RC-73's historic cell
+        # predates the clause and is not retro-flagged.
+        if parts[2] < "2026-08-02":
+            continue
+        if status in ("OPEN", "PARTIAL") and re.match(r"\s*CLOSED\b", fix_cell):
+            out.append(Violation(
+                log, n,
+                f"{parts[0]}: status cell says {status} while the fix cell narrates CLOSED — "
+                f"a CLOSED claim against an OPEN ledger is how RC-189 was misreported "
+                f"(Cursor audit v2). Flip the status, or write the prose honestly."))
+        elif status == "CLOSED" and re.match(r"\s*IN PROGRESS\b", fix_cell):
+            out.append(Violation(
+                log, n,
+                f"{parts[0]}: status CLOSED with an IN PROGRESS fix cell — the mirrored "
+                f"dishonesty of the RC-189 case."))
     return out
 
 
@@ -2811,7 +2843,7 @@ def check_scheduled_producers_are_not_inert() -> list[Violation]:
 
 
 def check_agents_laws_name_their_enforcer() -> list[Violation]:
-    """A law written into AGENTS.md must name the check that enforces it, or say SOFT (RC-96).
+    """A law written into AGENTS.md must name the check that enforces it, or say JUDGMENT-ONLY (RC-96).
 
     WHAT WAS OBSERVED. The operator's own lock audit ranked this fifth of five tightenings, and
     the repo's history is the evidence: RC-41 (recursive-5-why enforced on existing rows but not
@@ -2822,13 +2854,14 @@ def check_agents_laws_name_their_enforcer() -> list[Violation]:
     and only the machine can tell them apart.
 
     Rule: each bold law/rule/clause heading in AGENTS.md must, within its own paragraph, either
-    name an enforcing artifact (`check_*`, `*_guard.py`) or contain the literal word SOFT.
-    Labelling a law SOFT is NOT a defeat — it is an honest declaration that the operator is the
-    detector, which is the thing the mandate-to-mechanism law exists to make visible.
+    name an enforcing artifact (`check_*`, `*_guard.py`) or contain JUDGMENT-ONLY (excluded from
+    lock-surface scorecard). Labelling a law JUDGMENT-ONLY is NOT a defeat — it is an honest
+    declaration that the operator is the detector, which is the thing the mandate-to-mechanism law
+    exists to make visible.
 
     HOW VALIDATED: run against AGENTS.md at authoring time — 4 of 8 headings named an enforcer,
-    4 did not; those 4 are grandfathered above and must carry SOFT. The rule binds new laws only,
-    the same design as the citation and recurrence rules.
+    4 did not; those 4 are grandfathered above and must carry JUDGMENT-ONLY. The rule binds new
+    laws only, the same design as the citation and recurrence rules.
     """
     p = REPO / "AGENTS.md"
     if not p.exists():
@@ -2846,15 +2879,15 @@ def check_agents_laws_name_their_enforcer() -> list[Violation]:
             # entries used to `continue` unconditionally, so the docstring's requirement
             # that they carry SOFT was never checked and all four sat green with soft=False.
             # A grandfather clause that verifies nothing is an exemption, not a burn-down.
-            if re.search(r"\bSOFT\b", para):
+            if re.search(r"\b(SOFT|JUDGMENT-ONLY)\b", para):
                 continue
             out.append(Violation(
                 p, text[:m.start()].count("\n") + 1,
-                f"grandfathered AGENTS.md law {heading[:60]!r} does not declare SOFT. "
+                f"grandfathered AGENTS.md law {heading[:60]!r} does not declare JUDGMENT-ONLY. "
                 f"Grandfathering permits 'no machine enforces this YET'; it never permits "
-                f"silence about it. Add SOFT, or name the check that enforces it."))
+                f"silence about it. Add JUDGMENT-ONLY, or name the check that enforces it."))
             continue
-        if re.search(r"\b(check_[a-z_]+|[a-z_]+_guard\.py|SOFT)\b", para):
+        if re.search(r"\b(check_[a-z_]+|[a-z_]+_guard\.py|SOFT|JUDGMENT-ONLY)\b", para):
             continue
         out.append(Violation(
             p, text[:m.start()].count("\n") + 1,
@@ -3215,6 +3248,9 @@ _RTH_GRANDFATHERED = frozenset({
     "tools/study_pin_regime_cut_v1.py",
     "tools/study_pin_residence_v1.py",
     "tools/study_terrain_readiness_v1.py",
+    "scratchpad/_spy_hourly_gamma_vol_storm.py",
+    "tools/liquidity_synthesis_experiments_v1.py",
+    "tools/lp01_touch_study_v1.py",
 })
 
 
@@ -3404,6 +3440,689 @@ def check_chart_intent_and_next_rth() -> list[Violation]:
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
+def check_collect_window_single_law() -> list[Violation]:
+    """Operator Collect-window law (RC-183, non-negotiable 2026-08-01): `price_bars_1m`
+    persistence is 08:15–15:15 CT — ET bar-end minutes (555, min(975, close+15)] on trading
+    days — enforced at the ONE write seam, `EdDB.upsert_1m_bars`.
+
+    WHAT WAS OBSERVED (2026-08-01). Three windows governed one table: the Schwab backfill
+    fetched full extended hours and upserted ungated (MEASURED: 820,531 of its rows sit outside
+    the law), the live accumulator buffered a wider 540–990 window (315,660 outside rows), and
+    the completeness checker measured a THIRD grid (classic cash RTH 570–960). Total measured
+    outside-law rows: 1,224,370 of 2,537,437 (48.25%). Nobody disagreed about the law; nothing
+    encoded it.
+
+    Rule (static, three clauses):
+    1. `time_et.py` defines the authority (`COLLECT_WINDOW_START_MINS`, `COLLECT_WINDOW_END_MINS`,
+       `is_collect_window_bar_end_ts_utc`).
+    2. `db.py`'s `upsert_1m_bars` calls the authority before appending rows.
+    3. No tracked .py outside `db.py` INSERTs into `price_bars_1m` directly — every writer goes
+       through the seam, or declares `# collect-window-ok: <reason>` on the INSERT line.
+
+    HOW VALIDATED: prototyped before registering — clause 3 walked the tree and found the only
+    direct INSERT sites are `db.py` itself and test fixtures under `tests/` (fixtures build
+    read-side scenarios and are exempt by path); clauses 1–2 fail when either symbol is renamed
+    or the call removed (checked by string mutation during development). Negative control:
+    `tests/test_collect_window_law_v1.py` names this check and injects a violating write.
+    Escapes: `# collect-window-ok: <reason>`.
+    """
+    out: list[Violation] = []
+    te = REPO / "time_et.py"
+    dbp = REPO / "db.py"
+    te_src = te.read_text(encoding="utf-8", errors="replace") if te.exists() else ""
+    db_src = dbp.read_text(encoding="utf-8", errors="replace") if dbp.exists() else ""
+    for sym in ("COLLECT_WINDOW_START_MINS", "COLLECT_WINDOW_END_MINS",
+                "def is_collect_window_bar_end_ts_utc"):
+        if sym not in te_src:
+            out.append(Violation(te, 0, f"collect-window authority missing: {sym} not in time_et.py"))
+    if "is_collect_window_bar_end_ts_utc" not in db_src:
+        out.append(Violation(dbp, 0,
+                             "upsert_1m_bars no longer gates on the collect-window authority — "
+                             "the ONE write seam for price_bars_1m has lost the operator law"))
+    for rel in sorted(_tracked_py_files() or []):
+        rel = rel.replace("\\", "/")
+        if rel in ("db.py", "tools/check_institutional_correctness.py") \
+                or rel.startswith("tests/") or rel.startswith("governance/"):
+            continue
+        py = REPO / rel
+        try:
+            src = py.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for n, line in enumerate(src.splitlines(), start=1):
+            # \b excludes price_bars_1m_staging (underscore continues the word); requiring
+            # INTO excludes prose like "Insert missing ... price_bars_1m rows" in docstrings.
+            if re.search(r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+price_bars_1m\b", line, re.I) \
+                    and "collect-window-ok:" not in line:
+                out.append(Violation(py, n,
+                                     "direct INSERT into price_bars_1m bypasses the "
+                                     "upsert_1m_bars seam and therefore the collect-window law "
+                                     "(08:15-15:15 CT). Route through EdDB.upsert_1m_bars, or "
+                                     "declare '# collect-window-ok: <reason>'."))
+    return out
+
+
+def check_ui_mockup_approval() -> list[Violation]:
+    """Mockup-before-code law on gated UI surfaces (RC-186, operator non-negotiable 2026-08-02).
+
+    WHAT WAS OBSERVED (RC-186): the operator ordered the Chart-tab redesign to render mockups
+    for approval BEFORE any code lands ("before we do anything and this is a non negotiable we
+    render mock ups"). Design-approval was a chat event that never became machine-readable
+    state, so no lock could consult it — the RC-66/RC-93 goodwill-instead-of-lock class. The
+    precedent is measured: the 2026-07-25 UI rebuild wiped two working screens without consent.
+
+    Rule (four clauses):
+    1. governance/ui_mockup_approvals.json must exist and parse as a JSON object — the lock
+       reads absence as gate-nothing (a missing registry means no surface was placed under the
+       law), so a deleted or corrupted registry would silently evaporate the law (self-audit
+       finding, 2026-08-02).
+    2. tools/pretooluse_guard.py must reference tools/ui_mockup_lock.py — the continuum's
+       front end stays wired; a commit-time check alone does NOT satisfy the operator's
+       mandate-to-mechanism law.
+    3. For every surface listed in governance/ui_mockup_approvals.json with a status other
+       than approved-with-operator-provenance, STAGED changes to that surface are violations
+       unless the staged added text declares '# ui-mockup-ok: <reason>' as a comment-form
+       declaration (RC-189 GUN 3: bare/mid-word token occurrences no longer count).
+    4. RC-189 GUN 1: STAGED added text on the registry that introduces "status": "approved"
+       must carry operator_quote in the same added text — a bare self-approve flip cannot
+       reach a commit even if it somehow got written.
+    5. RC-194 (operator non-negotiable 2026-08-02: "you are to always confirm first with
+       actual code before you ship"): STAGED changes to a registry surface that carries an
+       approved_variant require a co-staged reports/ship_confirmation_*.md whose text names
+       the surface AND the literals RENDERED-FRAME and FEATURE-BY-FEATURE — the artifact of
+       having walked the approved spec against the actual code and an actual rendered frame.
+       OBSERVED: the v6 build shipped verified by structure/tests only; the operator saw the
+       first rendered pixel and found collisions and missing agreed features. VALIDATED:
+       negative control in tests/test_ui_mockup_lock_v1.py drives the clause callee both ways.
+
+    HOW VALIDATED: prototyped on the live tree before registering (no gated surface staged ->
+    silent; the one gated surface, static/chart.html, correctly reports a violation when its
+    path is fed directly to the callee). Negative controls in tests/test_ui_mockup_lock_v1.py
+    drive the REAL mockup_approval_violation on pending / approved / escape / unlisted registry
+    states and demand a scream exactly on the pending case.
+    """
+    from tools.ui_mockup_lock import REGISTRY_REL, mockup_approval_violation
+
+    out: list[Violation] = []
+    reg = REPO / REGISTRY_REL
+    try:
+        reg_ok = isinstance(json.loads(_read_or_empty(reg) or "null"), dict)
+    except (ValueError, json.JSONDecodeError):
+        reg_ok = False
+    if not reg_ok:
+        out.append(Violation(
+            reg, 0,
+            "mockup-approval registry missing or unparseable — in this state the RC-186 law "
+            "gates NOTHING (absence reads as no-surface-registered). Restore the registry."))
+    guard = REPO / "tools/pretooluse_guard.py"
+    if "ui_mockup_lock" not in _read_or_empty(guard):
+        out.append(Violation(guard, 0,
+                             "mockup-before-code front end unwired: pretooluse_guard.py no "
+                             "longer references ui_mockup_lock (RC-186 continuum broken)"))
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return out
+    for raw in staged:
+        rel = raw.strip().replace("\\", "/")
+        if not rel:
+            continue
+        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+        added = "\n".join(
+            ln[1:] for ln in diff
+            if ln.startswith("+") and not ln.startswith("+++")
+        )
+        if rel == REGISTRY_REL \
+                and re.search(r'"status"\s*:\s*"approved"', added) \
+                and '"operator_quote"' not in added:
+            out.append(Violation(REPO / rel, 0,
+                                 "registry flip to approved WITHOUT operator_quote in the "
+                                 "staged text — approval is the operator's action, and a bare "
+                                 "self-approve flip may not reach a commit (RC-189 GUN 1)."))
+        reason = mockup_approval_violation(rel, added)
+        if reason:
+            out.append(Violation(REPO / rel, 0, reason))
+        out.extend(ship_confirmation_violations(rel, staged))
+    return out
+
+
+def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation]:
+    """Clause 5 of check ui_mockup_approval (RC-194): confirm with actual code before ship.
+
+    OBSERVED (RC-194): the v6 Chart build shipped verified by structure and tests only; the
+    operator saw the first rendered pixel and found collisions and missing agreed features.
+    Rule: a staged change to an approved registry surface requires a co-staged
+    reports/ship_confirmation_*.md naming the surface plus the RENDERED-FRAME and
+    FEATURE-BY-FEATURE literals. VALIDATED: negative-control test drives this callee with and
+    without the co-staged confirmation.
+    """
+    from tools.ui_mockup_lock import mockup_gated_entry
+
+    rel = rel.replace("\\", "/")
+    entry = mockup_gated_entry(rel)
+    if entry is None or not entry.get("approved_variant"):
+        return []
+    names = {str(s).strip().replace("\\", "/") for s in (staged_names or [])}
+    for cand in names:
+        if cand.startswith("reports/ship_confirmation_") and cand.endswith(".md"):
+            body = _read_or_empty(REPO / cand)
+            if rel in body and "RENDERED-FRAME" in body and "FEATURE-BY-FEATURE" in body:
+                return []
+    return [Violation(
+        REPO / rel, 0,
+        f"{rel} is an APPROVED design surface and its change ships with NO co-staged "
+        f"reports/ship_confirmation_*.md carrying the surface name + RENDERED-FRAME + "
+        f"FEATURE-BY-FEATURE evidence. Operator law (RC-194): confirm the approved spec "
+        f"against actual code and an actual rendered frame BEFORE the ship claim.")]
+
+
+#: RC-205 production-surface geometry mirrors tools/pretooluse_guard.py (the front end of the
+#: same law): suffixes are the continuum, prefixes are the compliance lanes.
+_RESEARCH_PROD_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
+_RESEARCH_EXEMPT_PREFIXES = ("tests/", "governance/", "docs/", "reports/", ".claude/",
+                             "calibration/", "scratchpad/")
+
+
+def research_before_act_violations(staged: list, log_path: Path) -> list[str]:
+    """Callee for check research_before_act — separated so the negative controls can drive it
+    against a temp log without staging anything (the check_ui_mockup_approval pattern).
+
+    RC-205: research must pass full turn_self_audit.research_violation (resolvable path/URL),
+    not merely a non-empty string."""
+    prod = [s for s in staged
+            if s.endswith(_RESEARCH_PROD_SUFFIXES)
+            and not s.startswith(_RESEARCH_EXEMPT_PREFIXES)]
+    if not prod:
+        return []
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+        rec = json.loads(lines[-1]) if lines else {}
+    except (OSError, ValueError):
+        rec = {}
+    import time as _time
+    rec_day = _time.strftime("%Y-%m-%d", _time.localtime(float(rec.get("ts_utc", 0) or 0)))
+    today = _time.strftime("%Y-%m-%d", _time.localtime())
+    research = str(rec.get("research", "")).strip()
+    if rec_day != today:
+        return [f"staged production changes ({', '.join(prod[:4])}{'…' if len(prod) > 4 else ''}) "
+                f"with no SAME-DAY research-bearing self-audit record "
+                f"(last record day={rec_day or 'none'}). "
+                f"Operator ULTIMATE LAW (RC-203/RC-205): research THEN act — run "
+                f"tools/turn_self_audit.py --research '<reference consulted>' before committing."]
+    try:
+        from tools.turn_self_audit import research_violation
+    except ImportError:
+        from turn_self_audit import research_violation  # type: ignore
+    bad = research_violation(research, prod)
+    if bad is None:
+        return []
+    return [f"staged production changes ({', '.join(prod[:4])}{'…' if len(prod) > 4 else ''}) "
+            f"fail research_violation: {bad}"]
+
+
+def check_research_before_act() -> list[Violation]:
+    """Research-then-act, enforced at COMMIT (RC-203/RC-205, operator ULTIMATE LAW 2026-08-02).
+
+    WHAT WAS OBSERVED (RC-205): the operator ordered the law locked "to the highest degree"
+    ("I DON'T WANT BINDING. I WANT A MECHANICAL LOCK"), and Cursor's lock research measured
+    the gap: RC-203 lived only in turn_self_audit (--research) and an operator_law_guard Stop
+    clause, so a commit could land with production changes and NO research artifact anywhere.
+    The same-day defects that founded the law: an invented drag clamp while the reference
+    implementation (chart.html clampView) sat in-repo, and a bubble layer contradicting the
+    spec recorded in the direction doc §3.3.
+
+    Rule: when staged changes touch production surfaces (the pretooluse_guard continuum:
+    .py/.html/.js/.css/.ts/.sql outside the compliance lanes), the LAST record in
+    reports/turn_self_audit_log.jsonl must be from TODAY and pass full research_violation
+    (resolvable repo path or http URL — not a non-empty vibe string).
+
+    HOW VALIDATED: negative controls in tests/test_ui_mockup_lock_v1.py and
+    tests/test_plus_player_law_v1.py drive research_before_act_violations on (a) staged
+    production + empty/absent research -> scream, (b) same-day resolvable record -> silent,
+    (c) governance-only staging -> silent, (d) non-resolving path -> scream.
+    """
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return []
+    names = [s.strip().replace("\\", "/") for s in staged if s.strip()]
+    reasons = research_before_act_violations(
+        names, REPO / "reports" / "turn_self_audit_log.jsonl")
+    return [Violation(REPO / "reports" / "turn_self_audit_log.jsonl", 0, r) for r in reasons]
+
+
+def _plus_player_known_enforcers() -> set[str]:
+    names = {name for name, _fn, _en in CHECKS}
+    names.update({
+        "guard:proof_only_guard", "guard:operator_law_guard", "guard:stop_guard",
+        "guard:turn_self_audit", "runtime:decision_gate",
+        "soft:operator_review", "soft:operator_review+catalog",
+    })
+    return names
+
+
+def plus_player_law_violations(catalog: dict | None = None) -> list[str]:
+    """Callee for check_plus_player_law — injectable for negative controls."""
+    try:
+        from tools.plus_player_locks import (
+            catalog_completeness_violations, load_catalog,
+        )
+    except ImportError:
+        from plus_player_locks import (  # type: ignore
+            catalog_completeness_violations, load_catalog,
+        )
+    out = list(catalog_completeness_violations(catalog))
+    try:
+        data = catalog if catalog is not None else load_catalog()
+    except Exception as e:
+        return out or [f"catalog load failed: {e}"]
+    known = _plus_player_known_enforcers()
+    # plus_player_* checks are registered below; allow forward refs
+    known.update({
+        "plus_player_law", "plus_player_cursor_hooks", "research_before_act",
+        "honesty_guard_wired", "find_prove_significance_substance",
+        "admission_evidence_resolves", "purged_cv_research",
+        "prereg_before_confirmatory", "decision_path_wired",
+        "claude_cursor_guard_parity", "collect_datasheet_staged",
+    })
+    for a in data.get("attributes") or []:
+        enf = str(a.get("enforcer") or "")
+        if not enf:
+            continue
+        if enf.startswith("soft:"):
+            out.append(f"{a.get('id')}: soft: enforcer banned (RC-208)")
+            continue
+        if enf.startswith("guard:") or enf.startswith("runtime:"):
+            continue
+        if enf not in known:
+            out.append(f"{a.get('id')}: unknown enforcer {enf!r} (not a CHECK id)")
+    return out
+
+
+def check_plus_player_law() -> list[Violation]:
+    """Ultimate plus-player catalog: ENFORCED-only, soft_partial banned (RC-205/RC-209).
+
+    WHAT WAS OBSERVED: Soft-registered \"until CHECK ships\" rows were treated as locks;
+    operator ruled Soft theater unacceptable for non-negotiables. An .md scorecard is not
+    a lock. Catalog may list only attributes with real CHECK/guard/runtime enforcers.
+
+    Rule: governance/plus_player_attributes.json — every row enforcement==enforced with a
+    known enforcer; soft_partial/soft: forbidden; CORE_ENFORCED_IDS must be present.
+
+    HOW VALIDATED: tests/test_plus_player_law_v1.py + test_honesty_guard_v1.py inject
+    incomplete/soft catalogs -> BLOCK; live catalog must return [].
+    """
+    rel = "governance/plus_player_attributes.json"
+    reasons = plus_player_law_violations()
+    return [Violation(REPO / rel, 0, r) for r in reasons]
+
+
+def plus_player_cursor_hooks_violations(hooks_text: str | None = None) -> list[str]:
+    """Callee for check_plus_player_cursor_hooks."""
+    p = REPO / ".cursor" / "hooks.json"
+    if hooks_text is None:
+        if not p.is_file():
+            return [".cursor/hooks.json missing — Cursor continuum cannot invoke .py guards (RC-205)"]
+        hooks_text = p.read_text(encoding="utf-8", errors="replace")
+    need = (
+        "operator_law_guard.py",
+        "pretooluse_guard.py",
+        "stop_guard.py",
+        "proof_only_guard.py",
+        "honesty_guard.py",
+    )
+    missing = [n for n in need if n not in hooks_text]
+    if missing:
+        return [f".cursor/hooks.json must invoke {', '.join(missing)} (same .py as Claude)"]
+    return []
+
+
+def check_plus_player_cursor_hooks() -> list[Violation]:
+    """Cursor must invoke the same .py guards as Claude (RC-205/RC-208 continuum).
+
+    WHAT WAS OBSERVED: Claude hooks lived in .claude/settings.json while Cursor had only
+    soft .mdc rules; meta-check only required two of five Stop/PreToolUse scripts, so
+    honesty/proof/stop could silently unwired.
+
+    Rule: .cursor/hooks.json names pretooluse_guard, operator_law_guard, stop_guard,
+    proof_only_guard, honesty_guard.
+
+    HOW VALIDATED: tests/test_plus_player_law_v1.py / test_honesty_guard_v1.py drive
+    plus_player_cursor_hooks_violations with empty/partial text -> BLOCK; live file must pass.
+    """
+    reasons = plus_player_cursor_hooks_violations()
+    return [Violation(REPO / ".cursor" / "hooks.json", 0, r) for r in reasons]
+
+
+def check_find_prove_significance_substance() -> list[Violation]:
+    """Staged Find&Prove reports: significance/Sharpe/alpha needs n_trials + method or [UNVERIFIED].
+
+    WHAT WAS OBSERVED (RC-210): Find&Prove substance scored ~5/10 — experiment reports could claim
+    significance/Sharpe/alpha with no trial ledger or multiple-testing correction, the Harvey–Liu–Zhu
+    (2016) and Bailey–López de Prado DSR (2014) failure class.
+
+    Rule: staged reports/** or governance/** experiment .md/.json with significance/Sharpe/alpha
+    language must carry n_trials + multiple_testing_method (bonferroni|bh|dsr|hlz) or [UNVERIFIED].
+
+    HOW VALIDATED: tests/test_find_prove_locks_v1.py injects bad/good report text -> BLOCK/clear.
+    """
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return []
+    try:
+        from tools.find_prove_locks import significance_substance_violations
+    except ImportError:
+        from find_prove_locks import significance_substance_violations  # type: ignore
+    out: list[Violation] = []
+    for rel in staged:
+        rel = rel.strip().replace("\\", "/")
+        if not rel.endswith((".md", ".json")):
+            continue
+        if not rel.startswith(("reports/", "governance/")):
+            continue
+        path = REPO / rel
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for msg in significance_substance_violations(text, rel=rel):
+            out.append(Violation(path, 0, msg))
+    return out
+
+
+def check_admission_evidence_resolves() -> list[Violation]:
+    """ADMITTED decision-path rows: evidence paths must resolve (SR 11-7 / RSK-02).
+
+    WHAT WAS OBSERVED: empty registry already forces WAIT at runtime, but a future ADMITTED row
+    with vibe-string evidence refs would pass schema while citing nothing real — SR 11-7 validation
+    substance gap.
+
+    Rule: when governance/decision_path_admissions.json lists ADMITTED entries, every evidence
+    field that is a repo path must resolve to an existing file (http URLs exempt). Empty list -> [].
+
+    HOW VALIDATED: tests/test_find_prove_locks_v1.py drives admission_evidence_resolves_violations.
+    """
+    try:
+        from tools.find_prove_locks import admission_evidence_resolves_violations
+    except ImportError:
+        from find_prove_locks import admission_evidence_resolves_violations  # type: ignore
+    p = REPO / "governance" / "decision_path_admissions.json"
+    reasons = admission_evidence_resolves_violations()
+    return [Violation(p, 0, r) for r in reasons]
+
+
+def check_purged_cv_research() -> list[Violation]:
+    """Research runners: sklearn KFold/train_test_split without purge/embargo -> BLOCK (AFML).
+
+    WHAT WAS OBSERVED: López de Prado AFML Ch.7 — plain k-fold on overlapping financial labels
+    leaks; research continuum had no static ban on the failure mode.
+
+    Rule: research/**/*.py using KFold|train_test_split|ShuffleSplit|GroupKFold must also carry
+    purge/embargo/walk_forward marker or ``# leakage-ok:`` waiver in the same file.
+
+    HOW VALIDATED: tests/test_find_prove_locks_v1.py injects leaky sklearn import -> BLOCK.
+    """
+    try:
+        from tools.find_prove_locks import purged_cv_violations
+    except ImportError:
+        from find_prove_locks import purged_cv_violations  # type: ignore
+    out: list[Violation] = []
+    research = REPO / "research"
+    if not research.is_dir():
+        return out
+    for path in sorted(research.rglob("*.py")):
+        if path.name.startswith("test_"):
+            continue
+        try:
+            src = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        rel = path.relative_to(REPO).as_posix()
+        for msg in purged_cv_violations(src, rel=rel):
+            out.append(Violation(path, 0, msg))
+    return out
+
+
+def check_prereg_before_confirmatory() -> list[Violation]:
+    """research/** CONFIRMATORY claims require resolvable prereg_path (Arnott/COS).
+
+    WHAT WAS OBSERVED: exploratory results reported as confirmatory without prereg — Ioannidis /
+    Nosek TOP failure class; no mechanical gate on research/** artifacts.
+
+    Rule: any research/**/*.py or prereg JSON claiming CONFIRMATORY must name a resolvable
+    prereg_path or ship prereg_v1.json alongside.
+
+    HOW VALIDATED: tests/test_find_prove_locks_v1.py injects CONFIRMATORY without prereg -> BLOCK.
+    """
+    try:
+        from tools.find_prove_locks import prereg_confirmatory_violations
+    except ImportError:
+        from find_prove_locks import prereg_confirmatory_violations  # type: ignore
+    out: list[Violation] = []
+    research = REPO / "research"
+    if not research.is_dir():
+        return out
+    for path in sorted(research.rglob("*")):
+        if path.suffix not in (".py", ".json", ".md"):
+            continue
+        if path.name.startswith("test_"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        rel = path.relative_to(REPO).as_posix()
+        for msg in prereg_confirmatory_violations(text, rel=rel, file_dir=path.parent):
+            out.append(Violation(path, 0, msg))
+    return out
+
+
+def check_decision_path_wired() -> list[Violation]:
+    """call_engine.compute_call must invoke evaluate_decision_path_admission (SR 11-7).
+
+    WHAT WAS OBSERVED: runtime gate exists but no commit-time AST proof that TRADE authority
+    cannot bypass admission — regression could re-wire around the gate silently.
+
+    Rule: call_engine.compute_call() source must call evaluate_decision_path_admission and surface
+    WAIT_BLOCKER_REASON_ADMISSION.
+
+    HOW VALIDATED: tests/test_find_prove_locks_v1.py strips the call -> BLOCK.
+    """
+    try:
+        from tools.find_prove_locks import decision_path_wired_violations
+    except ImportError:
+        from find_prove_locks import decision_path_wired_violations  # type: ignore
+    p = REPO / "call_engine.py"
+    reasons = decision_path_wired_violations()
+    return [Violation(p, 0, r) for r in reasons]
+
+
+def check_claude_cursor_guard_parity() -> list[Violation]:
+    """Claude and Cursor must invoke the same five .py guards (RC-205/209 continuum).
+
+    WHAT WAS OBSERVED: plus_player_cursor_hooks checked Cursor only; Claude settings could drift
+    unwired while meta-check reported green on half the continuum.
+
+    Rule: .cursor/hooks.json AND .claude/settings.json must name pretooluse_guard, operator_law_guard,
+    stop_guard, proof_only_guard, honesty_guard.
+
+    HOW VALIDATED: tests/test_find_prove_locks_v1.py + test_honesty_guard_v1.py parity controls.
+    """
+    try:
+        from tools.find_prove_locks import claude_cursor_parity_violations
+    except ImportError:
+        from find_prove_locks import claude_cursor_parity_violations  # type: ignore
+    reasons = claude_cursor_parity_violations()
+    return [Violation(REPO / ".cursor" / "hooks.json", 0, r) for r in reasons]
+
+
+def check_collect_datasheet_staged() -> list[Violation]:
+    """Staged new Collect tables require governance/datasheets/<table>.yaml (Gebru et al. 2021).
+
+    WHAT WAS OBSERVED: new tables could land without motivation/composition documentation —
+    BCBS 239 / FAIR data-provenance gap on schema migrations.
+
+    Rule: staged diff adding CREATE TABLE in db.py or calibration/*.py must ship a datasheet YAML
+    with motivation, composition, collection, recommended_uses. Existing tables grandfathered
+    (diff-scoped only).
+
+    HOW VALIDATED: tests/test_find_prove_locks_v1.py injects table without datasheet -> BLOCK.
+    """
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return []
+    try:
+        from tools.find_prove_locks import collect_datasheet_violations, new_table_names_in_diff
+    except ImportError:
+        from find_prove_locks import collect_datasheet_violations, new_table_names_in_diff  # type: ignore
+    targets = [
+        s.strip().replace("\\", "/") for s in staged
+        if s.strip().replace("\\", "/") in ("db.py",) or s.strip().replace("\\", "/").startswith("calibration/")
+    ]
+    if not targets:
+        return []
+    tables: set[str] = set()
+    for rel in targets:
+        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+        tables |= new_table_names_in_diff(diff)
+    if not tables:
+        return []
+    out: list[Violation] = []
+    for table in sorted(tables):
+        ds = REPO / "governance" / "datasheets" / f"{table}.yaml"
+        text = None
+        if ds.is_file():
+            try:
+                text = ds.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                pass
+        for msg in collect_datasheet_violations(table, text):
+            out.append(Violation(ds, 0, msg))
+    return out
+
+
+def check_honesty_guard_wired() -> list[Violation]:
+    """Honesty guard must be on Claude AND Cursor Stop continuum (RC-209).
+
+    WHAT WAS OBSERVED: operator asked whether a lock bans lying/omission/dodging — answer was
+    no; agents kept writing .md briefs as if they were locks. Without a Stop .py on BOTH
+    continua, the law is goodwill. Institutional analogues: PCAOB AS 1215 (no omission of
+    inconsistent info); Simmons et al. 2011 (disclose flexibility); Peng 2011 (reproducible
+    claims).
+
+    Rule: .claude/settings.json AND .cursor/hooks.json Stop hooks must invoke
+    tools/honesty_guard.py.
+
+    HOW VALIDATED: tests/test_honesty_guard_v1.py asserts both continua + honesty_violations BLOCK.
+    """
+    out: list[Violation] = []
+    for rel in (".claude/settings.json", ".cursor/hooks.json"):
+        p = REPO / rel
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            out.append(Violation(p, 0, f"{rel} missing — honesty Stop continuum unwired (RC-209)"))
+            continue
+        if "honesty_guard.py" not in text:
+            out.append(Violation(
+                p, 0, f"{rel} Stop continuum missing honesty_guard.py (RC-209)"))
+    return out
+
+
+#: RC-212 (operator law 2026-08-02: "tighten up the one faucet mechanical lock so this
+#: issue cannot happen again, or for that matter any other way two faucets can manifest.
+#: this is strictly prohibited."): the vanna defect WAS a second faucet — a hand-rolled
+#: formula beside the bs_* truth faucet — and the four level producers are the same class
+#: at domain scale. Two clauses, both on STAGED ADDED TEXT so grandfathered code lives
+#: until its registered migration.
+_GREEK_FAUCET_ESCAPE = "# greek-faucet-ok:"
+_LEVEL_DOMAIN_VOCAB = ("level", "strike", "wall", "terrain", "exposure", "force", "flow")
+
+
+def domain_faucet_violations(rel: str, added: str, registry_text: str,
+                             registry_staged_added: str = "") -> list[str]:
+    """Callee for check domain_faucet_registry — testable without staging.
+
+    Clause A: an added @app.get route in the level domain that the registry does not
+    authorize blocks, unless the registry itself is co-staged WITH an operator_quote.
+    Clause B: an added d1-style greek formula outside math_levels.py blocks (compute
+    greeks only at the bs_* faucet), escape `# greek-faucet-ok: <reason>` per edit."""
+    out: list[str] = []
+    try:
+        reg = json.loads(registry_text or "null")
+        producers = set((reg or {}).get("level_domain_producers", {}).keys())
+    except (ValueError, TypeError):
+        return [f"{rel}: level-faucet registry unparseable — the domain lock gates NOTHING "
+                f"in this state; restore governance/level_faucets.json"]
+    if rel.endswith(".py"):
+        for m in re.finditer(r'@app\.(?:get|post)\(\s*"(/api/[^"]+)"', added):
+            path = m.group(1)
+            if any(v in path.lower() for v in _LEVEL_DOMAIN_VOCAB) and path not in producers:
+                if '"operator_quote"' not in registry_staged_added:
+                    out.append(
+                        f"{rel}: NEW level-domain producer {path} is not in "
+                        f"governance/level_faucets.json (RC-212: one faucet per domain — "
+                        f"adding a producer requires the registry co-staged with an "
+                        f"operator_quote; the target is ONE /api/levels service)")
+        if rel != "math_levels.py" and _GREEK_FAUCET_ESCAPE not in added:
+            for m in re.finditer(r"math\.log\(\s*(?:spot|spt|S)\s*/", added):
+                seg = added[m.start():m.start() + 240]
+                if "sqrt" in seg:
+                    out.append(
+                        f"{rel}: added a d1-style greek formula outside math_levels.py "
+                        f"(RC-212: greeks are computed ONLY at the bs_* faucet — the "
+                        f"vanna defect was exactly a second formula faucet; call "
+                        f"bs_vanna/bs_gamma/bs_charm or declare {_GREEK_FAUCET_ESCAPE} "
+                        f"<reason>)")
+                    break
+    return out
+
+
+def check_domain_faucet_registry() -> list[Violation]:
+    """One faucet per DOMAIN, enforced at commit (RC-212, operator law 2026-08-02).
+
+    WHAT WAS OBSERVED (RC-211/RC-212): per-strike vanna shipped as `vega/(S*sigma)` —
+    a second formula faucet beside math_levels' bs_* truth faucet — always positive,
+    wrong sign below spot, REFUTED by finite difference; and the levels domain grew four
+    producers under green per-value faucet locks because every existing lock guards one
+    VALUE against two sources, none guards the DOMAIN against many producers.
+
+    Rule: (A) a staged new /api route in the level domain must be authorized in
+    governance/level_faucets.json, and adding an authorization requires an operator_quote
+    in the registry's own staged text; (B) staged d1-style greek formulas outside
+    math_levels.py block, escape `# greek-faucet-ok: <reason>`.
+
+    HOW VALIDATED: negative controls in tests/test_ui_mockup_lock_v1.py drive
+    domain_faucet_violations on (a) unregistered producer -> scream, (b) registered ->
+    silent, (c) co-staged registry with quote -> silent, (d) inline greek -> scream,
+    (e) escape declared -> silent, (f) corrupt registry -> scream.
+    """
+    reg_path = REPO / "governance" / "level_faucets.json"
+    registry_text = _read_or_empty(reg_path)
+    out: list[Violation] = []
+    staged = _git_output_lines(["diff", "--cached", "--name-only"])
+    if staged is None:
+        return out
+    names = [s.strip().replace("\\", "/") for s in staged if s.strip()]
+    reg_added = ""
+    if "governance/level_faucets.json" in names:
+        diff = _git_output_lines(
+            ["diff", "--cached", "-U0", "--", "governance/level_faucets.json"]) or []
+        reg_added = "\n".join(ln[1:] for ln in diff
+                              if ln.startswith("+") and not ln.startswith("+++"))
+    for rel in names:
+        if not rel.endswith(".py"):
+            continue
+        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+        added = "\n".join(ln[1:] for ln in diff
+                          if ln.startswith("+") and not ln.startswith("+++"))
+        for reason in domain_faucet_violations(rel, added, registry_text, reg_added):
+            out.append(Violation(REPO / rel, 0, reason))
+    if not registry_text.strip():
+        out.append(Violation(reg_path, 0,
+                             "level-faucet registry missing — the RC-212 domain lock "
+                             "gates NOTHING (restore governance/level_faucets.json)"))
+    return out
+
+
 CHECKS = [
     # ENFORCED (must be zero — block pre-commit):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
@@ -3416,6 +4135,19 @@ CHECKS = [
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
     ("universal_ticker_scope", check_universal_ticker_scope, True),  # RC-160: no SPY-only work framed as complete
     ("chart_intent_and_next_rth", check_chart_intent_and_next_rth, True),  # RC-163: Chart Done ≠ bank; no weekday-proof lies
+    ("ui_mockup_approval", check_ui_mockup_approval, True),  # RC-186: no UI redesign code before an approved mockup
+    ("research_before_act", check_research_before_act, True),  # RC-203/RC-205 ULTIMATE LAW: named reference before commit
+    ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
+    ("plus_player_law", check_plus_player_law, True),  # RC-205: attribute catalog complete + bound
+    ("plus_player_cursor_hooks", check_plus_player_cursor_hooks, True),  # RC-205/208: Cursor invokes same .py guards
+    ("honesty_guard_wired", check_honesty_guard_wired, True),  # RC-209: Stop honesty_guard.py present
+    ("find_prove_significance_substance", check_find_prove_significance_substance, True),  # RC-210: HLZ/DSR n_trials
+    ("admission_evidence_resolves", check_admission_evidence_resolves, True),  # RC-210: SR 11-7 evidence paths
+    ("purged_cv_research", check_purged_cv_research, True),  # RC-210: AFML no plain KFold
+    ("prereg_before_confirmatory", check_prereg_before_confirmatory, True),  # RC-210: Arnott/COS prereg
+    ("decision_path_wired", check_decision_path_wired, True),  # RC-210: SR 11-7 AST TRADE gate
+    ("claude_cursor_guard_parity", check_claude_cursor_guard_parity, True),  # RC-205/209 full continuum
+    ("collect_datasheet_staged", check_collect_datasheet_staged, True),  # RC-210: Gebru datasheets
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
     ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),
@@ -3426,6 +4158,7 @@ CHECKS = [
     ("rc_citations_resolve", check_rc_citations_resolve, True),
     ("rc_log_rows_keep_schema", check_rc_log_rows_keep_schema, True),
     ("adversarial_audits_are_answered", check_adversarial_audits_are_answered, True),
+    ("collect_window_single_law", check_collect_window_single_law, True),  # RC-183: 08:15-15:15 CT at the ONE write seam
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth

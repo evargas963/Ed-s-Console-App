@@ -121,7 +121,10 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
                         moves.append(abs(closes[min(j + hmin, len(closes) - 1)] - closes[j]))
                 thr = float(np.median(moves)) if moves else 0.0
                 if thr <= 0:
-                    thr = float(np.median(np.abs(np.diff(closes)))) if len(closes) > 1 else 0.01
+                    # RC-107: never fall back to raw np.diff — weekend gaps inflate the median.
+                    from research.tcn_eval_v1.runner import session_safe_abs_price_moves
+                    safe = session_safe_abs_price_moves(ends, closes)
+                    thr = float(np.median(safe)) if len(safe) else 0.01
                 y_tr = [
                     _SURV_TO_SCREEN[competing_label(ends, closes, int(j), hmin, thr)]
                     for j in js[tr]
