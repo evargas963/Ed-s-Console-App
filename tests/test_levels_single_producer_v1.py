@@ -381,6 +381,36 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     assert all(f.get("reason") for f in payload["families_absent"])
 
 
+def test_multi_faucet_census_tool_emits_and_finds_known_duals(tmp_path, monkeypatch):
+    """T1 (mission multi-faucet-census-v1): the census tool runs, emits both artifacts,
+    every producer site cites a CURRENT line (no stale evidence), and the known duals
+    (vwap triple-producer, clocks, charm grandfather) are present with severities."""
+    import json
+
+    import tools.multi_faucet_census_v1 as census
+
+    monkeypatch.setattr(census, "MD_OUT", tmp_path / "census.md")
+    monkeypatch.setattr(census, "JSON_OUT", tmp_path / "census.json")
+    assert census.main() == 0
+    payload = json.loads((tmp_path / "census.json").read_text(encoding="utf-8"))
+    concepts = {f["concept"]: f for f in payload["findings"]}
+
+    vwap = next(f for c, f in concepts.items() if c.startswith("vwap"))
+    assert len(vwap["producers"]) == 3 and vwap["severity"] == "P1"
+    clocks = next(f for c, f in concepts.items() if c.startswith("clocks"))
+    assert len(clocks["producers"]) >= 2
+    charm = next(f for c, f in concepts.items() if c.startswith("charm"))
+    assert "bs_" in str(charm["producers"]) and "compute_net_charm" in str(charm["producers"])
+    prior = next(f for c, f in concepts.items() if c.startswith("prior_day"))
+    assert "PHASE1_DONE" in prior.get("status", "")
+
+    md = (tmp_path / "census.md").read_text(encoding="utf-8")
+    assert "pattern gone" not in md, "census cites a producer line that no longer exists"
+    for f in payload["findings"]:
+        assert f["severity"] in ("P0", "P1", "P2")
+        assert f["reproduce"] and f["proposed_kill"]
+
+
 def test_api_levels_registered_in_faucet_registry():
     """RC-212 registry law: /api/levels must be a registered producer with the operator
     quote present in governance/level_faucets.json."""

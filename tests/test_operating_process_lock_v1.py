@@ -37,7 +37,16 @@ def test_sole_writer_blocks_cursor_on_db():
     assert msg and ("sole_writer" in msg or "PM-FIRST" in msg)
 
 
-def test_sole_writer_allows_writer_agent():
+def test_sole_writer_allows_writer_agent(monkeypatch, tmp_path):
+    # Pin the mission: the live pm_mission.json scopes the writer to the CURRENT mission's
+    # paths, so this permits-check must supply its own all-scope mission rather than
+    # inherit ambient state (same defect class as ambient ED_AGENT_ROLE).
+    mission = tmp_path / "pm_mission.json"
+    mission.write_text(
+        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     assert OPL.sole_writer_edit_violation("db.py", agent="claude") is None
 
 
@@ -124,9 +133,16 @@ def test_pretooluse_hook_blocks_sole_writer_edit(monkeypatch):
     assert bad and any("sole_writer" in b or "PM-FIRST" in b for b in bad)
 
 
-def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch):
+def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch, tmp_path):
     # The named writer is NOT blocked on the same protected path (RC-217 negative control).
+    # Role AND mission both pinned — ambient env/mission state must not leak in.
     monkeypatch.setenv("ED_AGENT_ROLE", "claude")
+    mission = tmp_path / "pm_mission.json"
+    mission.write_text(
+        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
     assert not [b for b in bad if "sole_writer" in b or "PM-FIRST" in b]
 

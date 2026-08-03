@@ -56,6 +56,7 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
 PROCESS_ALLOWED_PREFIXES = (
     "governance/AGENT_OPERATING_PROCESS_V1.md",
     "governance/PM_MANDATE.md",
+    "governance/REHAB_PROGRAM.md",
     "governance/sole_writer.json",
     "governance/operator_go.json",
     "governance/pm_mission.json",
