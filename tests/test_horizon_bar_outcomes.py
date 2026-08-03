@@ -102,6 +102,72 @@ def test_fill_outcomes_bar_based_anchor_matches_last_completed_bar(tmp_db: EdDB)
     assert abs(float(row["outcome_1c_pts"]) - pts) < 1e-6
 
 
+def test_fill_outcomes_live_batch_limit_caps_rows_per_call(tmp_db: EdDB, monkeypatch: pytest.MonkeyPatch):
+    """Newest-first LIMIT bounds live fill_outcomes (no unbounded 14d scan)."""
+    import db as dbmod
+
+    monkeypatch.setattr(dbmod, "FILL_OUTCOMES_LIVE_BATCH_LIMIT", 2)
+    t0 = 1_785_506_400.0  # 2026-07-31 10:00 ET
+    # Bars first (no snapshots yet) so upsert mutation-refresh cannot pre-fill labels.
+    bars = []
+    for i in range(120):
+        bs = t0 + i * 60.0
+        bars.append(
+            {
+                "datetime": bs,
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0 + 0.1 * i,
+                "volume": 1.0,
+            }
+        )
+    tmp_db.upsert_1m_bars("SPY", bars)
+    with tmp_db._connect() as conn:
+        for i in range(5):
+            t_snap = t0 + 90.0 + i * 60.0
+            conn.execute(
+                """
+                INSERT INTO snapshots (
+                    ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                    horizon_outcome_schema_version, outcome_filled
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    "SPY",
+                    CF,
+                    t_snap,
+                    "test",
+                    10,
+                    30 + i,
+                    "rth",
+                    100.0,
+                    HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                ),
+            )
+    # Eval far enough that 60c horizons are complete for all five.
+    tmp_db.fill_outcomes("SPY", CF, t0 + 90.0 + 4 * 60.0 + 5000.0)
+    with tmp_db._connect() as conn:
+        n_touched = conn.execute(
+            """
+            SELECT COUNT(*) AS n FROM snapshots
+            WHERE ticker='SPY' AND timeframe=? AND outcome_1c IS NOT NULL
+            """,
+            (CF,),
+        ).fetchone()["n"]
+        n_still = conn.execute(
+            """
+            SELECT COUNT(*) AS n FROM snapshots
+            WHERE ticker='SPY' AND timeframe=? AND outcome_filled=0
+            """,
+            (CF,),
+        ).fetchone()["n"]
+    # One call with LIMIT 2 fills at most 2 rows; at least 3 remain unfilled.
+    assert n_touched <= 2
+    assert n_still >= 3
+
+
 def test_upsert_1m_bars_normalizes_epoch_ms_for_candle_objects_and_dicts(tmp_db: EdDB):
     """2026-06-09 regression: Candle objects with epoch-ms .ts (Schwab quoteTime passthrough)
     were stored raw on an ms grid, so fill_outcomes (seconds grid) matched zero bars all day.

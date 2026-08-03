@@ -97,6 +97,53 @@ class _LevelMarkerFormatter(logging.Formatter):
         return marker + super().format(record)
 
 
+class _FlushingFileHandler(logging.FileHandler):
+    """FileHandler that flushes after every emit so quiet-window gates see live lines."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        self.flush()
+
+
+# Quiet-window / LIVE closeout sink. Root handler so ANY logger (db, ed_server,
+# uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
+ED_SERVER_LOG_PATH = Path(__file__).resolve().parent / "logs" / "ed_server.log"
+
+
+def install_ed_server_file_sink(
+    log_path: Path | None = None,
+    *,
+    level: int = logging.INFO,
+) -> logging.Handler:
+    """Attach a flushing plain FileHandler on the root logger for logs/ed_server.log.
+
+    Captures all loggers (root). INFO+ so a healthy process proves the sink is
+    alive (gate fail-closes on a stale file); WARNING+/ERROR/CRITICAL still
+    appear for the quiet-window matcher. Idempotent for this path.
+    """
+    path = Path(log_path) if log_path is not None else ED_SERVER_LOG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    abs_target = str(path.resolve())
+    for h in list(root.handlers):
+        if isinstance(h, logging.FileHandler):
+            try:
+                existing = str(Path(getattr(h, "baseFilename", "")).resolve())
+            except (OSError, TypeError, ValueError):
+                existing = ""
+            if existing == abs_target:
+                return h
+    handler = _FlushingFileHandler(path, encoding="utf-8")
+    handler.setLevel(level)
+    handler.setFormatter(
+        _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=False)
+    )
+    root.addHandler(handler)
+    if root.level == logging.NOTSET or root.level > level:
+        root.setLevel(level)
+    return handler
+
+
 def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     """Replace any default root handlers with one that adds the level marker."""
     use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())
@@ -109,6 +156,7 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
         root.removeHandler(h)
     root.addHandler(handler)
     root.setLevel(level)
+    install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
 
 
 _install_visual_severity_markers(logging.INFO)
