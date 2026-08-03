@@ -68,7 +68,7 @@ def test_repair_rolls_back_inserts_when_eddb_unavailable(tmp_path, monkeypatch):
     import calibration.repair_canonical_1m_bars_for_outcomes as rep
 
     db_path = tmp_path / "t.db"
-    ts = 1_700_000_000.0
+    ts = 1_785_506_490.0  # 2026-07-31 10:01:30 ET — in-window (RC-183), so the repair genuinely inserts
     missing_start = _seed_minimal_db(db_path, ts_utc=ts)
 
     monkeypatch.setattr(rep, "EdDB", None)

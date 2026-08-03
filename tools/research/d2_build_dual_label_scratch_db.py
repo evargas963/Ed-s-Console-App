@@ -213,7 +213,7 @@ def main() -> int:
         f"SELECT ticker, bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume, source"
         f" FROM price_bars_1m WHERE ticker IN ({ph})", args.tickers
     ):
-        dst.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)", tuple(row))
+        dst.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)", tuple(row))  # collect-window-ok: verbatim copy into isolated scratch DB data/research/d2_dual_label.db; source opened mode=ro (RC-183)
         n_bars += 1
     dst.commit()
 

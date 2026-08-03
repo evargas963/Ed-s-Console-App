@@ -107,7 +107,7 @@ def _seed_bars_and_snapshots(conn: sqlite3.Connection, plan: list[tuple[str, flo
             vol = 1_200_000.0 + float(k_g) * 800.0
             conn.execute(
                 """
-                INSERT INTO price_bars_1m (
+                INSERT INTO price_bars_1m ( -- collect-window-ok: isolated validation DB data/calibration_accumulation_validation.db, never canonical (RC-183)
                     ticker, bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume, source
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accum_validation')

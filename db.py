@@ -328,6 +328,7 @@ def ensure_console_db_training_schema(db_path: Path | None = None) -> Path:
 
 # ── ET timezone (DST-aware; see time_et.py) ───────────────────────────────────
 from time_et import now_et  # noqa: E402  — re-export for legacy `from db import now_et`
+from time_et import is_collect_window_bar_end_ts_utc  # noqa: E402  — RC-183 collect-window law
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -3259,6 +3260,11 @@ class EdDB:
             if bar_start <= 0:
                 continue
             bar_end = bar_start + 60.0
+            # RC-183 collect-window law (operator, non-negotiable): price_bars_1m persists ET
+            # bar-END minutes (555, min(975, cash_close+15)] on trading days only. This is the
+            # ONE write seam for the table; every producer inherits the gate here.
+            if not is_collect_window_bar_end_ts_utc(bar_end):
+                continue
             rows.append((tkr, bar_start, bar_end, o, h, lo, c, vol, src))
         if not rows:
             return 0

@@ -95,6 +95,7 @@ def test_apply_repair_batch_writes_with_snapshot_refresh(tmp_path: Path):
     from timeframe_config import CANONICAL_TIMEFRAME
 
     db_path = tmp_path / "refresh.db"
+    base = 1_785_506_400.0  # 2026-07-31 10:00 ET — in-window session (RC-183 collect-window law)
     conn = sqlite3.connect(str(db_path))
     conn.executescript(
         f"""
@@ -115,10 +116,10 @@ def test_apply_repair_batch_writes_with_snapshot_refresh(tmp_path: Path):
             outcome_filled INTEGER DEFAULT 0
         );
         INSERT INTO price_bars_1m VALUES
-          ('SPY', 1000.0, 1060.0, 10,10,10,10,1,'schwab'),
-          ('SPY', 1120.0, 1180.0, 20,20,20,20,1,'schwab');
+          ('SPY', {base}, {base + 60.0}, 10,10,10,10,1,'schwab'),
+          ('SPY', {base + 120.0}, {base + 180.0}, 20,20,20,20,1,'schwab');
         INSERT INTO snapshots (ticker, timeframe, ts_utc, atr, horizon_outcome_schema_version)
-        VALUES ('SPY', '{CANONICAL_TIMEFRAME}', 1050.0, 1.0, 3);
+        VALUES ('SPY', '{CANONICAL_TIMEFRAME}', {base + 50.0}, 1.0, 3);
         """
     )
     conn.commit()
@@ -128,7 +129,7 @@ def test_apply_repair_batch_writes_with_snapshot_refresh(tmp_path: Path):
         {
             "SPY": [
                 {
-                    "ts": 1060.0,
+                    "ts": base + 60.0,
                     "open": 15.0,
                     "high": 15.0,
                     "low": 15.0,
@@ -138,12 +139,12 @@ def test_apply_repair_batch_writes_with_snapshot_refresh(tmp_path: Path):
                 }
             ]
         },
-        tz=2000.0,
+        tz=base + 2000.0,
         default_source=SYNTHETIC_INTERIOR_GRID_REPAIR_V1,
     )
     assert n_written == 1 and n_tickers == 1
     conn = sqlite3.connect(str(db_path))
     assert conn.execute(
-        "SELECT COUNT(*) FROM price_bars_1m WHERE bar_start_ts_utc=1060.0"
+        "SELECT COUNT(*) FROM price_bars_1m WHERE bar_start_ts_utc=?", (base + 60.0,)
     ).fetchone()[0] == 1
     conn.close()

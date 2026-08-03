@@ -56,6 +56,58 @@ def is_rth_ts_utc(ts_utc: float) -> bool:
     return RTH_START_MINS <= mins < RTH_END_MINS
 
 
+# ── Collect-window authority (RC-183, operator law 2026-08-01, non-negotiable) ──────────
+# `price_bars_1m` persists ET bar-END minutes (555, min(975, cash_close+15)] on trading days
+# only — 08:15–15:15 CT. The app gathers from 08:15 CT because it must be ready before the
+# open, and SPY/QQQ-class ETFs trade to 16:15 ET. This is NEITHER classic cash RTH [570,960)
+# NOR vendor extended hours, which is exactly why it needs its own named authority: three
+# different windows governed one table and nothing encoded the law.
+# MEASURED 2026-08-01 before the lock: 1,224,370 of 2,537,437 rows (48.25%) sat outside it —
+# 820,531 from the ungated Schwab backfill, 315,660 from the accumulator's wider 540–990
+# buffer, and the completeness checker measured a THIRD grid.
+# RESTORED 2026-08-03: these four symbols were destroyed by the RC-210 worktree wipe, leaving
+# `EdDB.upsert_1m_bars` ungated in production and `tools/rth_completeness_check_v1` unable to
+# import. Rebuilt against the surviving negative-control spec in
+# `tests/test_collect_window_law_v1.py`, which is the authority for every boundary below.
+COLLECT_WINDOW_START_MINS = 555      # 09:15 ET bar-END exclusive floor (08:15 CT)
+COLLECT_WINDOW_END_MINS = 975        # 16:15 ET bar-END inclusive ceiling (15:15 CT)
+
+
+def collect_window_end_mins_for_et_date(et_date: str) -> int | None:
+    """Collect-window ceiling (ET minute-of-day, inclusive) for a date; None = no session.
+
+    `min(COLLECT_WINDOW_END_MINS, cash_close + 15)` — the ETF tail is 15 minutes past the
+    cash close, so a half day ends at 13:15 ET (795), never at the full-day 975. Fail-closed
+    through `session_close_mins_for_et_date`: holidays and uncovered calendar years return
+    None, so an unknown day admits NO bars rather than a guessed full session.
+    """
+    close = session_close_mins_for_et_date(et_date)
+    if close is None:
+        return None
+    return min(COLLECT_WINDOW_END_MINS, close + 15)
+
+
+def is_collect_window_bar_end_ts_utc(ts_utc: float) -> bool:
+    """True iff a bar ENDING at ts_utc may be persisted to `price_bars_1m` (RC-183).
+
+    Judged on the bar's END minute, which is what the table stores: a bar ending 09:15 ET
+    COVERS 09:14 and is therefore pre-window, while the first legal bar ends 09:16. Hence the
+    half-open interval (start, end] rather than [start, end).
+    """
+    try:
+        ts = float(ts_utc)
+    except (TypeError, ValueError):
+        return False                      # unparseable -> excluded, never guessed
+    et_date = et_date_str_from_ts_utc(ts)
+    if not is_trading_day_et(et_date):
+        return False                      # weekends/holidays are never a session
+    end_mins = collect_window_end_mins_for_et_date(et_date)
+    if end_mins is None:
+        return False
+    mins = et_minute_total_from_ts_utc(ts)
+    return COLLECT_WINDOW_START_MINS < mins <= end_mins
+
+
 def calibration_widen_min_ts_utc() -> float:
     """Default ts_utc floor for calibration widen cohorts (post COH-I-A logging)."""
     return COH_I_A_ET_AUTHORITY_TS_UTC

@@ -48,7 +48,7 @@ def tmp_db(tmp_path: Path) -> EdDB:
 
 def test_fill_outcomes_bar_based_anchor_matches_last_completed_bar(tmp_db: EdDB):
     """Anchor = close of last bar with bar_end <= ts_utc; forward close unchanged (Issue 4)."""
-    t0 = 1_020_000.0  # on 1m grid
+    t0 = 1_785_506_400.0  # 2026-07-31 10:00 ET, on 1m grid — real PAST in-window session (RC-183)
     t_snap = t0 + 90.0  # after first bar ends (t0+60), inside second bar
     with tmp_db._connect() as conn:
         conn.execute(
@@ -108,7 +108,7 @@ def test_upsert_1m_bars_normalizes_epoch_ms_for_candle_objects_and_dicts(tmp_db:
     Both input shapes must land on the canonical whole-minute epoch-seconds grid."""
     from types import SimpleNamespace
 
-    sec_start = 1_781_000_040.0  # already whole-minute, seconds
+    sec_start = 1_785_506_400.0  # 2026-07-31 10:00 ET — already whole-minute, seconds, past in-window (RC-183)
     obj_bar = SimpleNamespace(
         ts=sec_start * 1000.0, open=10.0, high=11.0, low=9.0, close=10.5, volume=5.0
     )
@@ -216,7 +216,7 @@ def test_outcome_fill_uses_per_horizon_threshold_all_horizons(tmp_db: EdDB):
         threshold_move_pts_for_slug,
     )
 
-    t0 = 1_020_000.0
+    t0 = 1_785_506_400.0  # 2026-07-31 10:00 ET — real PAST in-window session (RC-183 collect-window law)
     t_snap = t0 + 90.0
     atr_v = 1.0
     with tmp_db._connect() as conn:

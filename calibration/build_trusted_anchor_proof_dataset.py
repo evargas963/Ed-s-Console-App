@@ -56,7 +56,7 @@ def _seed_bars_and_snapshots(conn: sqlite3.Connection, plan: list[tuple[str, flo
         bs = be - 60.0
         conn.execute(
             """
-            INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc, close, source)
+            INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc, close, source) -- collect-window-ok: isolated proof DB data/calibration_anchor_proof.db, never canonical (RC-183)
             VALUES (?, ?, ?, ?, 'anchor_proof')
             """,
             (tkr, bs, be, 450.0),

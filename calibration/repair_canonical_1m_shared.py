@@ -11,6 +11,7 @@ from horizon_outcomes import (
     SYNTHETIC_EDGE_CARRY_V1,
     SYNTHETIC_INTERIOR_GRID_REPAIR_V1,
 )
+from time_et import is_collect_window_bar_end_ts_utc  # RC-183 collect-window law
 
 GAP_FILL_CANONICAL_1M_GRID_V1 = "gap_fill_canonical_1m_grid_v1"
 
@@ -61,6 +62,11 @@ def apply_repair_1m_bar_batch_writes(
             rows: list[tuple[Any, ...]] = []
             for b in bars:
                 g = float(b["ts"])
+                # RC-183: this writer FABRICATES flat o=h=l=c volume-0 bars — the exact shape
+                # the RTH census counted as fake-filled minutes. It must never fabricate one
+                # outside the collect window the seam enforces.
+                if not is_collect_window_bar_end_ts_utc(g + CANONICAL_1M_BAR_SECONDS):
+                    continue
                 c = float(b["close"])
                 rows.append(
                     (
@@ -80,7 +86,7 @@ def apply_repair_1m_bar_batch_writes(
                 continue
             conn.executemany(
                 """
-                INSERT INTO price_bars_1m
+                INSERT INTO price_bars_1m -- collect-window-ok: rows gated via is_collect_window_bar_end_ts_utc above (RC-183)
                   (ticker, bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume, source)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticker, bar_start_ts_utc) DO UPDATE SET

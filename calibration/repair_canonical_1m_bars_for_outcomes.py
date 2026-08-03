@@ -44,6 +44,7 @@ except ImportError as e:
 from instrument_identity import ticker_storage_key
 
 from calibration.repair_canonical_1m_shared import GAP_FILL_CANONICAL_1M_GRID_V1, carry_basis_source_sql
+from time_et import is_collect_window_bar_end_ts_utc  # RC-183 collect-window law
 
 GAP_FILL_SOURCE = GAP_FILL_CANONICAL_1M_GRID_V1
 
@@ -95,6 +96,7 @@ def repair_snapshot_horizon_bars(
 
     inserted: list[float] = []
     skipped_existing: list[float] = []
+    skipped_outside_window: list[float] = []
 
     for b_start in sorted(needed):
         exists = conn.execute(
@@ -103,6 +105,11 @@ def repair_snapshot_horizon_bars(
         ).fetchone()
         if exists:
             skipped_existing.append(b_start)
+            continue
+        # RC-183: never FABRICATE a carry bar outside the collect window — an outcome whose
+        # forward anchor falls outside the law stays unresolved rather than resting on a fake bar.
+        if not is_collect_window_bar_end_ts_utc(b_start + 60.0):
+            skipped_outside_window.append(b_start)
             continue
         c = _prev_close(conn, tkr, b_start)
         if c is None:
@@ -116,7 +123,7 @@ def repair_snapshot_horizon_bars(
         if not dry_run:
             conn.execute(
                 """
-                INSERT INTO price_bars_1m
+                INSERT INTO price_bars_1m -- collect-window-ok: rows gated via is_collect_window_bar_end_ts_utc above (RC-183)
                   (ticker, bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume, source)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticker, bar_start_ts_utc) DO UPDATE SET
@@ -172,6 +179,7 @@ def repair_snapshot_horizon_bars(
         "needed_bar_starts": sorted(needed),
         "inserted_bar_starts": inserted,
         "skipped_existing_bar_starts": skipped_existing,
+        "skipped_outside_collect_window_bar_starts": skipped_outside_window,
         "dry_run": dry_run,
         "source_tag": GAP_FILL_SOURCE,
         "governed_outcome_refresh_rows": refresh_n,
