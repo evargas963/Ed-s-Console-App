@@ -11551,7 +11551,17 @@ def start_terrain_prewarm() -> None:
 BARS_REFRESH_SEC: float = 30.0
 #: Quotes are far cheaper than chains; this pool is deliberately small so bar collection can never
 #: contend with the operator card the way an unbounded sweep did at the open (TERRAIN_WORKERS=2).
-BARS_WORKERS: int = 3
+#:
+#: RC-243 (2026-08-04, PM GO executed post-RTH): sized DOWN 3 -> 2. The comment above reasons about
+#: the API this loop READS FROM; the binding constraint is the seam it WRITES THROUGH. Every bar
+#: upsert serializes on the single process-wide db._TIER1_SNAPSHOT_WRITE_LOCK, so workers past the
+#: first cannot parallelise — they queue, and each extra contender lengthens the queue against a
+#: file that reached 27.3 GB. MEASURED on the live console: threads ed_bars_0/1/2 took 426/407/405
+#: lock waits (1,238 of them on upsert_1m_bars vs 449 on insert_snapshot), lifetime max wait
+#: 180,340 ms, recent-window max 64,229 ms, with busy_retry_count 0 — the wait is on the Python
+#: mutex, not SQLite's busy handler. Two workers keep the loop concurrent with the quote fetch
+#: (which is the latency this pool exists to hide) while cutting write-seam contenders by a third.
+BARS_WORKERS: int = 2
 _bars_loop_running: bool = False
 _bars_loop_thread: threading.Thread | None = None
 

@@ -3356,18 +3356,40 @@ class EdDB:
                     write_rows,
                 )
                 n_written = len(write_rows)
-                if refresh_governed_outcomes:
-                    changed_bar_starts = {float(r[1]) for r in write_rows}
-                    tz_eval = float(_wall_time.time())
-                    _refresh_governed_outcomes_after_bar_mutation(
-                        conn,
-                        tkr=tkr,
-                        changed_bar_starts=changed_bar_starts,
-                        tz=tz_eval,
-                    )
+                if refresh_governed_outcomes and write_rows:
+                    # RC-166/RC-243: the refresh is DEFERRED to after the tier-1 lock is
+                    # released — see the post-unlock block below. Only the bar starts travel
+                    # out of the critical section.
+                    _pending_refresh["starts"] = {float(r[1]) for r in write_rows}
                 return n_written
 
-        return self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
+        # RC-166 (root reached 2026-08-04, RC-243): the governed-outcome recompute used to run
+        # INSIDE _do(), i.e. while _TIER1_SNAPSHOT_WRITE_LOCK was held, so every bar upsert held
+        # the one global write lock for the whole recompute. On a 27 GB file that is precisely
+        # the 38–180 s holds measured on the live console, and it is why adding bar workers made
+        # the console slower rather than faster: they queue behind one another's refreshes.
+        # tests/test_db_perf_rc166_v1.py has asserted this contract ("outcome refresh must not
+        # hold the tier-1 lock") since 2026-07-31 and had been RED — the fix was specified and
+        # never landed. Bars commit under the lock; labels are recomputed after release on a
+        # separate connection, so a concurrent writer can proceed between the two.
+        _pending_refresh: dict[str, set[float]] = {}
+
+        def _post_unlock_refresh() -> None:
+            """post-unlock governed outcome refresh — runs with tier-1 RELEASED."""
+            starts = _pending_refresh.get("starts")
+            if not starts:
+                return
+            with self._connect() as refresh_conn:
+                _refresh_governed_outcomes_after_bar_mutation(
+                    refresh_conn,
+                    tkr=tkr,
+                    changed_bar_starts=starts,
+                    tz=float(_wall_time.time()),
+                )
+
+        n_written_total = self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
+        _post_unlock_refresh()
+        return n_written_total
 
     def fill_outcomes(self, ticker: str, timeframe: str, ts_utc_now: float) -> None:
         """
