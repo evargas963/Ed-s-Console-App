@@ -10,7 +10,8 @@
 
 - Every multi-agent or “what next” turn: Cursor states **mission · blockers · single next operator action**.
 - **Change requests:** operator → Cursor PM → plan → operator GO → Cursor sets `governance/pm_mission.json` `status=active` → writer executes → Cursor audits → mission `idle`.
-- Product edits without an active mission are **BLOCKED** (`pm_mission_edit_violation`).
+- Product edits without an in-progress mission are **BLOCKED** (`pm_mission_edit_violation`).
+- **Writer no-drift (RC-226):** non-writer staged `scope_paths` → BLOCK (`writer_drift_lock.py` / `check_writer_no_drift`). Cursor=PM only while Claude writes.
 - One active mission; Collect/lock vs UI polish are sequenced windows, not a free-for-all.
 - Daily rehab: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` (recommend only).
 - **DONE when:** `sole_writer.json` has `"pm": "cursor"`; `pm_mission.json` reflects the only approved active work.

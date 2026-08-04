@@ -34,7 +34,9 @@ def _init_repo(tmp_path: Path) -> Path:
 
 def test_sole_writer_blocks_cursor_on_db():
     msg = OPL.sole_writer_edit_violation("db.py", agent="cursor")
-    assert msg and ("sole_writer" in msg or "PM-FIRST" in msg)
+    assert msg and (
+        "sole_writer" in msg or "PM-FIRST" in msg or "WRITER-DRIFT" in msg or "SOD_DRIFT" in msg
+    )
 
 
 def test_sole_writer_allows_writer_agent(monkeypatch, tmp_path):
@@ -130,7 +132,10 @@ def test_pretooluse_hook_blocks_sole_writer_edit(monkeypatch):
     # agent (ED_AGENT_ROLE=claude in .claude/settings.json), so the test must not inherit it.
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
-    assert bad and any("sole_writer" in b or "PM-FIRST" in b for b in bad)
+    assert bad and any(
+        "sole_writer" in b or "PM-FIRST" in b or "WRITER-DRIFT" in b or "SOD_DRIFT" in b
+        for b in bad
+    )
 
 
 def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch, tmp_path):

@@ -74,6 +74,7 @@ STUDY = "liquidity_synthesis_experiments_v1"
 
 def _rows(con: sqlite3.Connection, ticker: str) -> list[dict]:
     """LP-01 bar shape: `datetime` ms is required by liquidity_value_engine._bars_to_list."""
+    # session-universe-ok: research experiment; downstream windows are RTH-scoped by the study's own ET filters before any statistic is computed
     q = ("SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
          "WHERE ticker=? ORDER BY bar_start_ts_utc ASC")
     out = []

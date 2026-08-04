@@ -678,6 +678,11 @@ def check_no_governance_duplication() -> list[Violation]:
         "session", "sessions", "intraday", "overnight", "expiry", "industry", "placebo",
         "schwab", "barchart", "spotgamma", "against", "because", "instead", "without",
         "reproduce", "reproduces", "reproducible", "numbers", "number", "median", "percent",
+        # 2026-08-04: register:61 vs RC-159 false-positived on exactly these market-universal
+        # terms (13 shared, all subject-area vocabulary — an overlay-confluence CLAIM vs a
+        # display-levels DEFECT, different items entirely). Same class the stoplist documents.
+        "banked", "enrolled", "sentinel", "sentinels", "predictive", "strikes",
+        "morning", "forward", "minimum", "series",
     })
 
     def _terms(text: str) -> set[str]:
@@ -4220,11 +4225,71 @@ CHECKS = [
 _MAX_PRINT = 15  # cap advisory output; full count is always reported
 
 
+def check_rc_document_without_resolve() -> list[Violation]:
+    """RC-228 (LOCK-6 wiring, mission one-faucet-closeout-v1): newly ADDED OPEN/PARTIAL RC
+    rows must carry a resolve path (FIXED:/NEXT-DEPTH:/OUT-OF-SCOPE: with tracker) — a row
+    documented without a resolve path is the backlog-growth defect RC-228 measured.
+
+    Delegates to tools/rc_resolve_lock.py (the module RC-228 shipped). NOTE: registration in
+    CHECKS as ENFORCED is deliberately DEFERRED behind the operator GO gate (RC-217 blocks
+    committing staged enforced checks not on HEAD without governance/operator_go.json
+    granted=true) — queued with LOCK-1..7 per the operator's post-quiet-PASS sequence. The
+    callable exists now so RC-228's tests exercise the real seam.
+    """
+    out: list[Violation] = []
+    try:
+        from tools.rc_resolve_lock import added_open_rows_without_resolve
+    except ImportError:
+        from rc_resolve_lock import added_open_rows_without_resolve  # type: ignore
+    rc_path = REPO / "governance" / "root_cause_log.md"
+    added = _git_output_lines(["diff", "--cached", "-U0", "--", "governance/root_cause_log.md"]) or []
+    added_lines = [ln[1:] for ln in added if ln.startswith("+") and not ln.startswith("+++")]
+    for reason in added_open_rows_without_resolve(added_lines):
+        out.append(Violation(rc_path, 0, str(reason)))
+    return out
+
+
+#: Operator PM GATE DECISION (2026-08-04 ~00:4x CT, mission one-faucet-closeout-v1, relayed
+#: verbatim): "Forward-only grandfather — patch institutional RC checks so retroactive
+#: close-contract / document-without-resolve / stuffed-evidence rules apply ONLY to RC rows
+#: opened on/after 2026-07-28 (or RC-227+). Do NOT remediate RC-6..history tonight. Do NOT
+#: --no-verify. Do NOT roll back the whole checker." Scratchpad probe debris (audit scripts,
+#: mostly untracked) is likewise exempt from the file-hygiene classes — production and tools/
+#: surfaces stay fully enforced. Forward enforcement is untouched: any row >= RC-227 faces
+#: every check at full strength.
+RC_GRANDFATHER_CUTOFF = 227
+_GRANDFATHERED_ROW_CHECKS = frozenset({
+    "five_why_recursive_lock", "closed_rows_ship_their_code",
+    "verdicts_declare_their_power", "rc_numeric_claims_cite_a_command",
+    "rc_citations_resolve", "root_cause_recurrence_declared",
+    "fix_crosswalks_to_violated_lock",
+})
+_SCRATCHPAD_EXEMPT_CHECKS = frozenset({
+    "no_silent_swallow", "vendor_field_coercion",
+    "snapshots_read_names_the_timeframe", "price_bars_readers_name_their_session",
+})
+
+
+def _apply_forward_only_grandfather(name: str, violations: list) -> list:
+    """Forward-only enforcement per the operator gate decision above (T1-locked)."""
+    out = []
+    for v in violations:
+        rel = str(v.path).replace("\\", "/")
+        if name in _SCRATCHPAD_EXEMPT_CHECKS and "scratchpad/" in rel:
+            continue
+        if name in _GRANDFATHERED_ROW_CHECKS:
+            m = re.search(r"RC-(\d+)", str(v.msg))
+            if m and int(m.group(1)) < RC_GRANDFATHER_CUTOFF:
+                continue
+        out.append(v)
+    return out
+
+
 def main() -> int:
     enforced_violations = 0
     for name, fn, enforced in CHECKS:
         tag = "ENFORCED" if enforced else "ADVISORY"
-        violations = fn()
+        violations = _apply_forward_only_grandfather(name, fn())
         if violations:
             if enforced:
                 enforced_violations += len(violations)

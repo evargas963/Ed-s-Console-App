@@ -1,12 +1,15 @@
 {
   "status": "active",
+<<<<<<< ours
   "mission_id": "chart-prior-day-b3-v1",
-  "title": "Census #1 prior_day B3: chart.html consumes /api/levels prior_day ids; computeDaily prior_day derivation DELETED — absent engine values render absent (no JS fallback)",
-  "writer": "cursor",
+  "title": "Census #1 prior_day B3: chart.html consumes /api/levels prior_day ids; computeDaily prior_day derivation DELETED \u2014 absent engine values render absent (no JS fallback)",
+  "writer": "claude",
   "pm": "cursor",
   "auditor": "cursor",
   "census_source": "reports/multi_faucet_census_latest.md",
-  "concepts": [1],
+  "concepts": [
+    1
+  ],
   "out_of_scope": [
     "strip re-aggregation (#10)",
     "pdh rounding (#11)",
@@ -21,20 +24,79 @@
     "governance/pm_mission.json",
     "governance/sole_writer.json"
   ],
+=======
+  "mission_id": "one-faucet-closeout-v1",
+  "title": "Kill remaining multi-faucet residuals (B3 / strip / PDH precision / B6)",
+  "writer": "claude",
+  "pm": "cursor",
+  "auditor": "cursor",
+>>>>>>> theirs
   "prior_mission": {
     "mission_id": "spot-binding-single-payload-v1",
     "status": "DONE",
-    "rc": "RC-225",
-    "note": "head set at spot-binding commit this turn"
+    "head": "ead22055",
+    "rc": "RC-225"
   },
-  "approved_by": "operator",
-  "approved_via": "chat_continue_dont_stop_pipeline",
-  "approved_at": "2026-08-03T20:45:00-05:00",
+  "do_not_redo": [
+    "quiet gate / fill_outcomes / RC-207 quarantine / Tier-B session collapse",
+    "clocks TZ (RC-223)",
+    "charm→bs_charm (RC-224)",
+    "spot-binding single payload (RC-225 / ead22055)"
+  ],
+  "remaining": [
+    {
+      "id": "B3",
+      "concept": "prior_day",
+      "kill": "static/chart.html computeDaily JS fallback — DELETE or hard-fail; /api/levels prior_day ids sole; absent engine values render absent (RC-68)",
+      "paths": ["static/chart.html", "tools/*prior_day* or chart lock", "tests/"]
+    },
+    {
+      "id": "STRIP",
+      "concept": "per-strike volume / strikes",
+      "kill": "Kill in-browser strip re-derivation of GEX/OV; consume server-aggregated rows from /api/terrain/strikes or /api/levels gamma family",
+      "paths": ["static/chart.html", "server.py (/api/terrain/strikes contract)", "tests/"]
+    },
+    {
+      "id": "PDH_PRECISION",
+      "concept": "display precision (prior-day family)",
+      "kill": "One precision authority — payloads RAW; rounding at render only (state must not round differently from /api/levels)",
+      "paths": ["server.py (analytics state pdh/_fv)", "static/ consumers", "tests/"]
+    },
+    {
+      "id": "B6",
+      "concept": "/api/price-levels second HTTP surface",
+      "kill": "Retire or hard-fail /api/price-levels OR single alias redirect to /api/levels — no second producer surface",
+      "paths": ["server.py", "market_context.py consumers", "static/", "tests/"]
+    }
+  ],
   "done_criteria": [
-    "chart.html prior_day levels come from /api/levels (or terrain levels payload) — not computeDaily JS",
+<<<<<<< ours
+    "chart.html prior_day levels come from /api/levels (or terrain levels payload) \u2014 not computeDaily JS",
     "computeDaily prior_day derivation DELETED (not fallback-patched); absent = absent",
     "T1 locks the kill; silent JS prior_day recompute fails the lock",
     "LIVE or DISK_ONLY+restart owed stated honestly"
+=======
+    "Every remaining concept KILLED with T1 proof OR honestly OUT-OF-SCOPE with RC tracker (prefer KILL)",
+    "reports/multi_faucet_one_faucet_closeout_latest.md + .json scoreboard: concept → SINGLE|KILLED_TONIGHT|REMAINING; REMAINING must be empty for 100%",
+    "Mechanical lock (clocks_tz_lock pattern) for families killed tonight where feasible",
+    "After server-touching lands: restart + python -m tools.ed_server_warn_quiet_window PASS (no demote)",
+    "Commits coherent slices with hooks (never --no-verify)",
+    "ONE_FAUCET_REPO_WIDE=YES only when scoreboard REMAINING=0 with evidence"
+>>>>>>> theirs
   ],
-  "note": "Armed+started after spot-binding RC-225. Highest-leverage census P2 residue (rank #1)."
+  "census": "reports/multi_faucet_census_latest.md",
+  "scope_paths": [
+    "static/chart.html",
+    "server.py",
+    "market_context.py",
+    "tools/",
+    "tests/",
+    "governance/",
+    "reports/multi_faucet_one_faucet_closeout_latest.md",
+    "reports/multi_faucet_one_faucet_closeout_latest.json"
+  ],
+  "approved_by": "operator",
+  "approved_via": "chat_roles_cursor_pm_claude_writer",
+  "approved_at": "2026-08-03T21:02:00-05:00",
+  "note": "Cursor STOP writing. Claude = sole writer. Arm status:active only when Claude starts. Spot agent mid-flight possible — do not dual-write static/chart.html / spot locks until confirmed idle. Cursor PM audits after landings."
 }

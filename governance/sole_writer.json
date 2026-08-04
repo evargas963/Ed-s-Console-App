@@ -1,8 +1,12 @@
 {
   "pm": "cursor",
-  "writer": "cursor",
+  "writer": "claude",
   "auditor": "cursor",
   "held_commit": null,
-  "updated_at": "2026-08-03T20:45:00-05:00",
-  "note": "Active mission chart-prior-day-b3-v1 (census #1 P2 residue). Prior: spot-binding RC-225, clocks RC-223, charm RC-224."
+<<<<<<< ours
+  "updated_at": "2026-08-03T21:35:00-05:00",
+=======
+  "updated_at": "2026-08-03T21:30:00-05:00",
+>>>>>>> theirs
+  "note": "RC-226 SoD: Cursor PM/auditor; Claude sole writer for one-faucet-closeout-v1."
 }

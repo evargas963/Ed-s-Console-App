@@ -1,12 +1,13 @@
-"""Front-end hook for operating_process_lock (RC-217).
+"""Front-end hook for operating_process_lock (RC-217 / RC-226).
 
-Runs on PreToolUse (Edit/Write/Bash) and Stop. Exit 2 BLOCKS.
+Runs on PreToolUse (Edit/Write/StrReplace/Bash) and Stop. Exit 2 BLOCKS.
 Escape: ED_PROCESS_LOCK_GUARD=off (operator only).
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -15,6 +16,16 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 import tools.operating_process_lock as OPL  # noqa: E402
+
+#: Cursor continuum tools that mutate files (RC-226: StrReplace/path were previously ignored).
+_EDIT_TOOLS = (
+    "Edit",
+    "Write",
+    "MultiEdit",
+    "NotebookEdit",
+    "StrReplace",
+    "Delete",
+)
 
 
 def _tool_new_text(tool_input: dict) -> str:
@@ -37,18 +48,24 @@ def _rel(fp: str) -> str:
     return OPL._rel(fp)
 
 
+def _edit_path(tool_input: dict) -> str:
+    """Cursor may pass file_path or path depending on tool."""
+    fp = tool_input.get("file_path") or tool_input.get("path") or ""
+    return str(fp) if fp else ""
+
+
 def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
     out: list[str] = []
-    if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
-        fp = tool_input.get("file_path") or ""
+    if tool in _EDIT_TOOLS:
+        fp = _edit_path(tool_input)
         if fp:
             rel = _rel(fp)
             msg = OPL.sole_writer_edit_violation(rel)
             if msg:
                 out.append(msg)
-    if tool in ("Bash", "PowerShell"):
+    if tool in ("Bash", "PowerShell", "Shell"):
         cmd = tool_input.get("command") or ""
-        if __import__("re").search(r"\bgit\s+commit\b", cmd, __import__("re").I):
+        if re.search(r"\bgit\s+commit\b", cmd, re.I):
             out.extend(OPL.commit_violations())
     return out
 
@@ -61,11 +78,10 @@ def stop_block(payload: dict) -> list[str]:
         try:
             from tools.proof_only_guard import last_assistant_text
             text = last_assistant_text(transcript) or ""
-        except Exception:
+        except Exception:  # institutional-swallow-ok: guard must fail-open on transcript read, never hang a Stop; index/DISK checks below still run
             pass
     if text:
         out.extend(OPL.completion_claim_violations(text))
-    # Always surface index≠WT at stop if enforcement parity fails (auditor window).
     mism = OPL.index_worktree_mismatches()
     if mism:
         out.append(
@@ -92,7 +108,7 @@ def main() -> int:
     tool = payload.get("tool_name") or ""
     ti = payload.get("tool_input") or {}
 
-    if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "PowerShell"):
+    if tool in _EDIT_TOOLS or tool in ("Bash", "PowerShell", "Shell"):
         bad = pretooluse_block(tool, ti)
     elif not tool or tool == "Stop":
         bad = stop_block(payload)
@@ -102,9 +118,10 @@ def main() -> int:
     if not bad:
         return 0
     sys.stderr.write(
-        "BLOCKED by operating process lock (RC-217 / AGENT_OPERATING_PROCESS_V1).\n\n"
+        "BLOCKED by operating process lock (RC-217/RC-226 / AGENT_OPERATING_PROCESS_V1).\n\n"
         + "".join(f"  {b}\n" for b in bad)
-        + "\nSee governance/AGENT_OPERATING_PROCESS_V1.md and tools/operating_process_lock.py --measure\n"
+        + "\nSee governance/AGENT_OPERATING_PROCESS_V1.md, tools/writer_drift_lock.py, "
+        + "tools/operating_process_lock.py --measure\n"
     )
     return 2
 

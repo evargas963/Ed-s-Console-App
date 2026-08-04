@@ -63,7 +63,7 @@ def enrolled_tickers(db_path: str) -> list[str]:
         tks = list(db.logging_universe_authoritative_tickers())
         if tks:
             return sorted(set(tks))
-    except Exception:
+    except Exception:  # institutional-swallow-ok: enrollment-authority read is best-effort; falls through to the direct DB scan below, never a silent empty
         pass
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=15.0)
     try:

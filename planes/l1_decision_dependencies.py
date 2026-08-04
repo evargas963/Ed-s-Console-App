@@ -102,6 +102,9 @@ L1_KNOWN_NON_MATERIAL_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
     {
         "as_of_ts",
         "as_of_iso",
+        # RC-225 spot-binding (registered 2026-08-04, quiet-gate finding): per-field quote
+        # source/age attribution metadata — display provenance, never a decision input.
+        "quote_source_detail",
         "l1_pipeline_ms",
         "l2_analytics_refresh_in_progress",
         "l2_snapshot_ts_used_iso",

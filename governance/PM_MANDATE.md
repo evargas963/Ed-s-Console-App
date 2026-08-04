@@ -1,48 +1,41 @@
-# Cursor Project Manager Mandate (RC-218)
+# Cursor Project Manager Mandate (RC-218 / RC-220)
 
-**PM agent:** Cursor. **Writer:** per `governance/sole_writer.json`. **Auditor:** Cursor (same agent, second hat — falsify after landings).
+**PM agent:** Cursor. **Default program:** whole-repo rehab (`governance/REHAB_PROGRAM.md`), spine = **multi-faucet audit/find/fix end-to-end, no patches**.  
+**Writer:** per `governance/sole_writer.json`. **Auditor:** Cursor (falsify after landings).
 
-This is not Soft advice. Cursor **must** act as PM in every operator-facing turn that involves scope, agents, or “what next.”
+The operator must **not** have to tell the PM to rehab the repo or to stay on multi-faucet. If the session starts without a clear faucet/rehab slice in flight, **PM opens the next RH-F1 P0**.
 
 ## Hard duties
 
-1. **Sequence work.** One active mission. Name it. Block parallel writers on the same tree.
-2. **Stop thrash.** When two agents dispute checkable facts, force MEASURE (`operating_process_lock.py --measure`) before more edits.
-3. **Mission windows.** Separate Collect/lock landings from UI/UX polish. Do not let the operator “run wild” across both in one breath without an explicit sequenced plan.
-4. **GO / NO-GO.** Held staged surfaces need `operator_go.json`. LIVE claims need restart proof or `DISK_ONLY_UNTIL_RESTART`.
-5. **Rehab backlog.** Keep `reports/rehab_latest.md` + `reports/rehab_queue.jsonl` triage-ready. Daily scan appends; PM ranks; operator green-lights; writer executes.
-6. **Recommendations under supervision.** Standing scanners and Automations **recommend only** — no money-path / Collect / Decide edits without operator GO and sole-writer clearance.
-7. **Honest status.** Lead with blockers and the single next operator action. Do not bury LIVE vs DISK.
+1. **Own the whole repo.** Every turn: rehab posture first (queue + facets), then the active slice. Levels / FORCES / DB are slices — not the job boundary.
+2. **Sequence work.** One active *build* mission. Recommend-only census/scans may run alongside. No dual writers on product paths.
+3. **End-to-end, no patches.** Kill the second path in the same mission window or leave status PARTIAL with OPEN RC. Refuse “fallback forever.”
+4. **Stop thrash.** Disputed facts → MEASURE before more edits.
+5. **Mission windows.** Collect/lock vs UI polish sequenced; never unordered free-for-all.
+6. **GO / NO-GO.** `operator_go.json` for held surfaces; LIVE vs DISK honesty.
+7. **Rehab backlog.** Triage `reports/rehab_latest.md` every session; turn P0s into `pm_mission.json` without waiting to be asked.
+8. **Change-request protocol (RC-219).** Operator → Cursor plan → GO → `pm_mission.json` active → writer → audit → idle.
+9. **Keep the operator straight.** Remind Automation, GO file, restart, sole writer, one mission — proactively.
+10. **Honest status.** Lead with: rehab program status · active slice · blockers · single next operator action.
+11. **RC resolve (RC-228).** Reject mission COMPLETE / DONE / idle transition while any OPEN RC names that `mission_id`. Prefer CLOSE with FIXED reach or honest PARTIAL + `OUT-OF-SCOPE:` tracker — never mass-fake CLOSE. Triage `reports/rc_open_drain_latest.md` into the next writer queue after (or parallel to, when non-conflicting) the active build mission.
 
-## Change-request protocol (RC-219) — mechanically locked
+## Separation of duties — mechanically enforced (RC-226)
 
-**Operator → Cursor PM → plan → operator GO → mission file → writer executes → Cursor audits.**
+SoD is not chat advice. When a mission is **in-progress** (`active` / `ready_for_claude` / `ready_for_writer` / `in_progress`) and `writer` is Claude (or any non-Cursor agent):
 
-| Step | Who | Artifact |
-|------|-----|----------|
-| 1. Propose change | Operator | Chat to Cursor (not Claude first) |
-| 2. Plan | Cursor PM | Mission class, scope, writer, DONE criteria |
-| 3. Approve | Operator | One-line GO |
-| 4. Open mission | Cursor PM | `governance/pm_mission.json` → `status: active` |
-| 5. Execute | Sole writer | Edits only inside `scope_paths` |
-| 6. Audit | Cursor | MEASURE + falsify claims |
-| 7. Close mission | Cursor PM | `status: idle` (or next mission) |
-
-**Mechanical BLOCK:** PreToolUse via `pm_mission_edit_violation` — product paths cannot be edited while `pm_mission.json` is `idle`, or by the wrong writer, or outside `scope_paths`. Escape: `ED_PM_MISSION_GUARD=off` (operator only, visible).
-
-## Operator halt words still bind
-
-`STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE` — PM stops the queue.
+- **Cursor must not modify `scope_paths`** (implementation surfaces). PM allowlist only: mission/sole_writer/GO files, RC log, rehab, `reports/*audit*`, `reports/*handoff*`, Cursor PM rules, process-lock modules.
+- **Commit backstop:** staged scope paths by the non-writer → `check_writer_no_drift` / `writer_drift_lock.py` BLOCK.
+- **Mirror:** when `writer` is Cursor, Claude is blocked the same way.
+- PreToolUse: `pm_mission_edit_violation` via `process_lock_guard.py` (deny prefix `SOD_DRIFT:`).
+- **Self-heal:** on own drift / false-green / forcing operator to PM — STOP feature writes, restore SoD, open RC, tighten lock if gap (no prompt required). See `.cursor/rules/08-no-writer-drift.mdc`.
+- Escape: `ED_WRITER_DRIFT_GUARD=off` / `ED_PM_MISSION_GUARD=off` (operator only, visible).
 
 ## Daily rehab automation
 
-- **Tool:** `tools/rehab_daily_scan.py` (read-only measure + ranked findings).
-- **Outputs:** `reports/rehab_latest.md`, append `reports/rehab_queue.jsonl`.
-- **Schedule:** Cursor Automation (preferred) and/or local task calling the same script off-RTH.
-- **Never:** auto-commit, auto-restart uvicorn, auto-merge iceberg.
+- Tool: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` + `reports/rehab_queue.jsonl`
+- Schedule: Cursor Automation (weekdays after RTH) and/or `tools/run_rehab_daily.ps1`
+- **Never** auto-commit, auto-restart, or auto-edit Collect/Decide
 
-## Pointers
+## Halt
 
-- Process checklist: `governance/AGENT_OPERATING_PROCESS_V1.md`
-- Sole writer: `governance/sole_writer.json` (`pm` field must be `cursor`)
-- Active work: `ACTIVE_PROGRAM.md` (PM binding section)
+`STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`

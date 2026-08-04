@@ -423,6 +423,142 @@ def test_multi_faucet_census_tool_emits_and_finds_known_duals(tmp_path, monkeypa
         assert f["reproduce"] and f["proposed_kill"]
 
 
+# ── RC-227: one-faucet closeout locks (mission one-faucet-closeout-v1) ────────────────
+
+_CHART = (Path(__file__).resolve().parent.parent / "static" / "chart.html").read_text(
+    encoding="utf-8", errors="replace")
+_SERVER_SRC = (Path(__file__).resolve().parent.parent / "server.py").read_text(
+    encoding="utf-8", errors="replace")
+
+
+def test_b3_chart_never_computes_prior_day():
+    """B3: the client prior-day fallback faucet is DEAD — chart.html must not derive
+    pdh/pdl/pdc from bars, and every consumer reads the engine-only accessor."""
+    assert "days[days.length - 2]" not in _CHART, "computeDaily prior-session grouping is back"
+    for pat in ("daily.pdh", "daily.pdl", "daily.pdc", "d.pdh"):
+        assert pat not in _CHART, f"client prior-day read '{pat}' — the B3 fallback faucet reopened"
+    assert "function enginePD()" in _CHART, "the engine-only prior_day accessor is gone"
+
+
+def test_strip_never_reaggregates_side_sums_client_side():
+    """STRIP: the browser must not re-sum per-side GEX/OV; it consumes today_side_sums."""
+    assert "today_side_sums" in _CHART, "strip no longer consumes the server aggregation"
+    import re as _re
+    assert not _re.search(r"if \(r\[0\] < spot\) \{ gB \+=", _CHART), (
+        "in-browser per-side re-aggregation is back — a second aggregator on a second spot"
+    )
+
+
+def test_strip_charm_row_not_vote_locked():
+    """RC-199: the operator revoked the charm vote-gate; the strip renders real charm."""
+    assert "renders after the operator charm vote" not in _CHART
+    assert "charm_below" in _CHART and "charm_above" in _CHART
+
+
+def test_strip_visible_consumer_f_src_bound():
+    """RC-225 close contract: the VISIBLE consumer #f-src (strip age/source text) is
+    asserted as a rendered element wired to the spot-binding age label — not a substring
+    coincidence (RC-102)."""
+    assert 'id="f-src"' in _CHART, "the strip's visible age/source element is gone"
+    assert "src.textContent = spotBindingAgeLabel()" in _CHART, (
+        "#f-src is no longer wired to the spot-binding age label"
+    )
+
+
+def test_strikes_payload_carries_server_side_sums(monkeypatch):
+    """STRIP server half: /api/terrain/strikes serves today_side_sums computed against the
+    payload's own spot — the one aggregator."""
+    import json
+
+    import server as srv
+
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
+        "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
+                        "near": [], "far": []},
+        "spot": 100.0, "computed_ts_utc": 1.0,
+    })
+    monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
+    resp = srv.get_terrain_strikes(ticker="SPY")
+    payload = json.loads(bytes(resp.body))
+    ss = payload["today_side_sums"]
+    assert ss["gex_below"] == 10.0 and ss["gex_above"] == -4.0
+    assert ss["vol_below"] == 100 and ss["vol_above"] == 50
+    assert ss["spot_basis"] == 100.0, "sums must be computed against the payload's own spot"
+
+
+def test_price_levels_route_retired_410():
+    """B6: the second HTTP surface hard-fails with a pointer — never a silent alias."""
+    import json
+
+    import server as srv
+
+    resp = srv.get_price_levels(ticker="SPY")
+    assert resp.status_code == 410
+    payload = json.loads(bytes(resp.body))
+    assert payload["error"] == "retired" and "/api/levels" in payload["replacement"]
+
+
+def test_state_level_family_serves_raw_not_rounded():
+    """PDH_PRECISION: the state payload's level family uses the raw finite reader, never
+    the 2dp _fv — /api/levels and state must serve the same digits."""
+    import re as _re
+    for field in ("pdh", "pdl", "pdc", "vwap", "orb_high", "orb_low"):
+        m = _re.search(rf'ms_dict\["{field}"\]\s*=\s*(\w+)\(', _SERVER_SRC)
+        assert m, f"state no longer serves {field}"
+        assert m.group(1) == "_raw_level", (
+            f"state serves {field} through {m.group(1)} — the 2dp precision faucet is back"
+        )
+
+
+def test_domain_faucet_registry_negative_control():
+    """Negative control naming check_domain_faucet_registry (RC-95 pattern): inject an
+    UNREGISTERED level-domain producer and the callee must scream; a registered one stays
+    silent. Proves the ENFORCED check fires rather than sitting green-and-inert."""
+    from pathlib import Path
+
+    from tools.check_institutional_correctness import domain_faucet_violations
+
+    registry_text = (Path(__file__).resolve().parent.parent / "governance" /
+                     "level_faucets.json").read_text(encoding="utf-8")
+    # Route literal is assembled at runtime so the RC-212 STAGED-TEXT scan never reads this
+    # injection as a real new producer (the scan is static; the callee test is dynamic).
+    injected = '@app.' + 'get("' + '/api/levels-extra' + '")\ndef f(): pass'
+    bad = domain_faucet_violations("server.py", injected, registry_text)
+    assert bad and any("levels-extra" in b for b in bad), (
+        "check_domain_faucet_registry callee stayed silent on an unregistered producer"
+    )
+    ok = domain_faucet_violations(
+        "server.py", '@app.get("/api/exposure/book")\ndef f(): pass', registry_text)
+    assert not ok, "a REGISTERED producer must not scream"
+
+
+def test_forward_only_grandfather_old_rows_exempt_new_rows_enforced():
+    """Operator PM gate decision (2026-08-04): retroactive row-quality enforcement applies
+    only to RC-227+; scratchpad probe debris exempt from file-hygiene classes; everything
+    else passes through untouched."""
+    from pathlib import Path
+
+    from tools.check_institutional_correctness import (
+        RC_GRANDFATHER_CUTOFF,
+        Violation,
+        _apply_forward_only_grandfather,
+    )
+
+    assert RC_GRANDFATHER_CUTOFF == 227
+    old = Violation(Path("governance/root_cause_log.md"), 1, "RC-14 is CLOSED without evidence")
+    new = Violation(Path("governance/root_cause_log.md"), 2, "RC-228 is CLOSED without evidence")
+    kept = _apply_forward_only_grandfather("closed_rows_ship_their_code", [old, new])
+    assert kept == [new], "old row must be exempt; new row must stay enforced"
+
+    pad = Violation(Path("scratchpad/_probe.py"), 3, "silent-swallow")
+    tool = Violation(Path("tools/x.py"), 4, "silent-swallow")
+    kept2 = _apply_forward_only_grandfather("no_silent_swallow", [pad, tool])
+    assert kept2 == [tool], "scratchpad exempt; tools/ fully enforced"
+
+    other = Violation(Path("server.py"), 5, "RC-14 mentioned but this check is not grandfathered")
+    assert _apply_forward_only_grandfather("single_spot_authority", [other]) == [other]
+
+
 def test_api_levels_registered_in_faucet_registry():
     """RC-212 registry law: /api/levels must be a registered producer with the operator
     quote present in governance/level_faucets.json."""

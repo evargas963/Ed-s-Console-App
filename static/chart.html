@@ -261,8 +261,9 @@
   <div class="fgrid" id="f-grid"></div>
   <div class="freading" id="f-reading"></div>
   <!-- # ui-mockup-ok: v6.1 — the mock's banked-progress phrasing, stated honestly -->
-  <div class="fbias" id="f-bias">Bias: <span style="border:1px solid var(--border); border-radius:8px; padding:1px 7px;">LOCKED</span>
-    unlocks when the balanced-session study passes placebo (facet g) &middot; study not yet registered — 0 sessions banked toward it</div>
+  <!-- # ui-mockup-ok: RC-199 — Bias renders honest WAIT, never a LOCKED badge (no vote/lock theater) -->
+  <div class="fbias" id="f-bias">Bias: <span style="border:1px solid var(--border); border-radius:8px; padding:1px 7px;">WAIT</span>
+    no admissible evidence yet &middot; balanced-session study unregistered — 0 sessions banked; placebo required before any bias renders</div>
 </div>
 <div class="card" id="gammacard">
   <!-- # ui-mockup-ok: v6.1 — the mock puts the scope chips IN this panel's header, where the
@@ -417,24 +418,37 @@ function aggregate(src, tfv) {
 }
 
 function computeDaily() {
-  // canonical-1m-only derivations (plan §5 main chart): session VWAP polyline +
-  // yesterday's H/L/C. No bars outside the feed → the lines simply don't render.
-  // Session buckets use ET date keys (time_et) — never the browser ambient TZ.
+  // # ui-mockup-ok: RC-213 B3 data-integrity kill (one-faucet-closeout-v1) — no visual
+  // redesign; the prior-day lines keep their exact style, they just single-source.
+  // canonical-1m-only derivation (plan §5 main chart): session VWAP polyline for the
+  // CURRENT ET session only. Session buckets use ET date keys — never browser TZ.
+  // RC-213 B3: the prior-day family (PDH/PDL/PDC) is NOT computed here anymore — the
+  // client fallback faucet is DELETED. Engine raw levels are the sole prior_day
+  // source; absent engine values render absent (RC-68).
   daily = null;
   if (!raw.length) return;
   const days = []; let cur = null, ck = null;
   for (const b of raw) { const k = etDateKey(b.t);
     if (k !== ck) { cur = []; days.push(cur); ck = k; } cur.push(b); }
   const today = days[days.length - 1];
-  const prior = days.length > 1 ? days[days.length - 2] : null;
   let pv = 0, vv = 0; const vwap = [];
   for (const b of today) { const tp = (b.h + b.l + b.c) / 3;
     pv += tp * (b.v || 0); vv += (b.v || 0);
     vwap.push([b.t, vv ? pv / vv : null]); }
-  daily = { vwap,
-    pdh: prior ? Math.max(...prior.map(b => b.h)) : null,
-    pdl: prior ? Math.min(...prior.map(b => b.l)) : null,
-    pdc: prior ? prior[prior.length - 1].c : null };
+  daily = { vwap };
+}
+
+function enginePD() {
+  // RC-213 B3: prior_day values come ONLY from the engine's raw levels (the same
+  // liquidity_value_engine authority /api/levels serves). The chart computes NOTHING
+  // for this family.
+  const out = { pdh: null, pdl: null, pdc: null };
+  for (const r of rawLevelDefs) {
+    if (r.id === 'PDH') out.pdh = r.v;
+    else if (r.id === 'PDL') out.pdl = r.v;
+    else if (r.id === 'PDC') out.pdc = r.v;
+  }
+  return out;
 }
 
 function vwapAt(tEnd) {
@@ -565,7 +579,7 @@ const LVL_META = [
   ['hvplvp', 'HVP / LVP', '#ffc400', 'auto', 'UNPROVEN · register due 08-14'],
   ['netpeak', 'Net Γ peak', '#33aaff', 'off', 'UNPROVEN · the old net pin tested NULL'],
   ['kds', 'Key delta strike', '#00e5ff', 'off', 'UNPROVEN · register due 08-14'],
-  ['charmw', 'Charm walls', '#ff9e40', 'off', 'renders after operator vote'],
+  ['charmw', 'Charm walls', '#ff9e40', 'on', 'banked charm walls · RC-199 gate revoked, default ON'],  // # ui-mockup-ok: RC-199 stale-gate text fix, no redesign
 ];
 let lvlStates = {};
 try { lvlStates = JSON.parse(localStorage.getItem('ed_chart_lvl_states') || '{}'); } catch (e) {}
@@ -598,10 +612,9 @@ function famLiveValues(fam) {
   else if (fam === 'em') { const em = T.implied_1d_move; const s = currentSpot();
     if (em && em.points != null && s != null) { push(Number(s) + em.points); push(Number(s) - em.points); } }
   else if (fam === 'pd') {
-    // # ui-mockup-ok: engine values are the authority; client copies only when engine absent
-    const eng = rawLevelDefs.filter(r => ['PDH', 'PDL', 'PDC'].includes(r.id));
-    if (eng.length) for (const r of eng) push(r.v);
-    else { const d = daily || {}; push(d.pdh); push(d.pdl); push(d.pdc); }
+    // # ui-mockup-ok: RC-213 B3 — engine values are the SOLE source; the client-copy
+    // fallback is deleted. Absent engine values show "no data" honestly (RC-68).
+    for (const r of rawLevelDefs.filter(r => ['PDH', 'PDL', 'PDC'].includes(r.id))) push(r.v);
   }
   else for (const r of rawLevelDefs) if (r.fam === fam) push(r.v);
   return out;
@@ -670,24 +683,24 @@ function renderEngineLevels(ls, tk, err) {
 }
 
 /* v6 (RC-192) # ui-mockup-ok: operator BUILD GO — DIR-01(i) forces strip. GEX/OV side sums
-   come from the LIVE strikes payload in this client (same rows the panel paints); ΔOI/DEX come
-   from /api/forces (banked chains, per-strike-delta-first method). CHARM renders LOCKED until
-   the operator vote (DIR-01(i)) — no numbers, not even greyed. */
+   come SERVER-AGGREGATED in the strikes payload (today_side_sums — one aggregator, one spot
+   basis; the in-browser re-sum was killed in one-faucet-closeout-v1); ΔOI/DEX/CHARM come
+   from /api/forces (banked chains). RC-199: the charm vote-gate was REVOKED by the operator —
+   charm renders real numbers here. */
 let forcesBank = null;
 function renderForces() {
   const grid = document.getElementById('f-grid'), src = document.getElementById('f-src'),
         rd = document.getElementById('f-reading');
   if (!grid || !src || !rd) return;
   const spot = currentSpot();   // RC-75/RC-225: /api/spot binding only
+  // # ui-mockup-ok: STRIP kill (one-faucet-closeout-v1) — same cells, server-aggregated
+  // values. The in-browser per-side re-aggregation is DELETED: the server computes
+  // today_side_sums against the payload's own spot (ONE aggregator; the client loop could
+  // straddle a different spot and broke silently on payload changes). Absent sums render —.
+  const ss = (strikes && strikes.today_side_sums) || null;
   const rows = ((strikes && strikes.today) || {}).all || [];
-  let gB = null, gA = null, vB = null, vA = null;
-  if (rows.length && spot != null) {
-    gB = 0; gA = 0; vB = 0; vA = 0;
-    for (const r of rows) {
-      if (r[0] < spot) { gB += r[1]; vB += (r[2] || 0); }
-      else if (r[0] > spot) { gA += r[1]; vA += (r[2] || 0); }
-    }
-  }
+  const gB = ss ? ss.gex_below : null, gA = ss ? ss.gex_above : null;
+  const vB = ss ? ss.vol_below : null, vA = ss ? ss.vol_above : null;
   const fz = forcesBank;
   const c = (v, col) => v == null ? '<i style="color:var(--dim)">—</i>'
     : `<b style="color:${col}">${(v >= 0 && col !== '#ffc400') ? '+' : ''}${fmtBig(v)}</b>`;
@@ -726,10 +739,15 @@ function renderForces() {
            sgn(fz && fz.available ? fz.dex_below_dollars : null),
            sgn(fz && fz.available ? fz.dex_above_dollars : null), bankSrc,
            'Dealer delta dollars per side (newer banked capture). Conditioning context, never a standalone direction.')
-    + `<div class="fl" id="fr-charm">CHARM</div>`
-    + `<div class="fb" style="grid-column:2/5; text-align:left; color:var(--dim); font-size:10.5px;">`
-    + `locked &middot; renders after the operator charm vote (DIR-01(i)) — not even greyed numbers before approval</div>`
-    + `<div class="fsrc">gated on vote</div>`;
+    // # ui-mockup-ok: RC-199 — the operator REVOKED the DIR-01(i) charm vote-gate
+    // ("nothing locked"); charm renders real numbers everywhere its fields serve, and
+    // /api/forces charm_below/charm_above is the banked faucet. Re-encoding a vote-lock
+    // here is FORBIDDEN by that order.
+    + rowH('charm', 'CHARM', fz && fz.available ? fz.charm_below : null,
+           fz && fz.available ? fz.charm_above : null,
+           sgn(fz && fz.available ? fz.charm_below : null),
+           sgn(fz && fz.available ? fz.charm_above : null), bankSrc,
+           'Dealer-signed net charm per side of spot (newer banked chain, bs_charm faucet). Hedge-decay flow context.');
   src.textContent = spotBindingAgeLabel();
   const bits = [];
   if (gB != null && gA != null && gA !== 0)
@@ -1240,8 +1258,9 @@ function draw() {
       lw: key === 'gamma_flip' ? 2 : 1.25, side: 'right',
       tipHtml: `<b>${lab} ${fmt(v)}${_lead}</b><br>${tipWhy}` });
   }
+  const _pdEng = enginePD();   // # ui-mockup-ok: RC-213 B3 — same lines, engine-only values
   for (const [k, lab, dash, why] of pdRows) {
-    const v = daily && daily[k]; if (v == null) continue;
+    const v = _pdEng[k]; if (v == null) continue;
     if (v < lo || v > hi) {   // RC-110
       offScale.push({ v, col: '#f4f6f8', text: `${lab} ${fmt(v)}`, tip: `${lab} ${fmt(v)} — ${why}` });
       continue;
@@ -1425,7 +1444,8 @@ function draw() {
   const bl = document.getElementById('biglegend');
   if (spot != null && isFinite(Number(spot))) {
     // TradingView-style big legend: ticker · price · change vs yesterday's close
-    const pdc = daily && daily.pdc;
+    // # ui-mockup-ok: RC-213 B3 — pdc from the engine only; no client-computed close
+    const pdc = enginePD().pdc;
     const dn = pdc ? Number(spot) - pdc : null;
     const col = dn == null ? PAL.tx : dn >= 0 ? PAL.green : PAL.red;   // # ui-mockup-ok: v6.2
     const sym = esc((document.getElementById('tk').value || 'SPY').trim().toUpperCase());

@@ -213,10 +213,16 @@ def main() -> int:
     except (json.JSONDecodeError, ValueError):
         return 0                         # unreadable hook input is never a block
     tool = payload.get("tool_name") or ""
-    if tool not in ("Edit", "Write", "NotebookEdit", "MultiEdit"):
+    # Cursor continuum: Write/StrReplace/Delete (+ path); Claude: Edit/Write (+ file_path).
+    if tool not in ("Edit", "Write", "StrReplace", "NotebookEdit", "MultiEdit", "Delete", "EditNotebook"):
         return 0
     tool_input = payload.get("tool_input") or {}
-    fp = tool_input.get("file_path") or ""
+    fp = (
+        tool_input.get("file_path")
+        or tool_input.get("path")
+        or tool_input.get("target_notebook")
+        or ""
+    )
     if not fp:
         return 0
     rel = _rel(fp)

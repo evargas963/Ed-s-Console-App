@@ -90,6 +90,7 @@ BOOTSTRAP_SEED = 20260730             # fixed: the study must reproduce exactly
 
 
 def _rows(con: sqlite3.Connection, ticker: str) -> list[dict]:
+    # session-universe-ok: LP-01 touch study; bars are session-gated by the study's ET window logic downstream of this raw read
     q = ("SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
          "WHERE ticker=? ORDER BY bar_start_ts_utc ASC")
     out = []

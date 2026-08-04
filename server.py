@@ -8786,12 +8786,17 @@ def _fetch_state(
         ms_dict["kl_synth_fwd"] = None
 
     # ── Price levels (VWAP / PDH / PDL / PDC / ORB) ───────────────────────────
-    ms_dict["vwap"]     = _fv(getattr(price_levels, "vwap",     None))
-    ms_dict["pdh"]      = _fv(getattr(price_levels, "pdh",      None))
-    ms_dict["pdl"]      = _fv(getattr(price_levels, "pdl",      None))
-    ms_dict["pdc"]      = _fv(getattr(price_levels, "pdc",      None))
-    ms_dict["orb_high"] = _fv(getattr(price_levels, "orb_high", None))
-    ms_dict["orb_low"]  = _fv(getattr(price_levels, "orb_low",  None))
+    # PDH_PRECISION kill (one-faucet-closeout-v1): the LEVEL family travels RAW — the state
+    # payload must never round what /api/levels serves unrounded (MEASURED same instant:
+    # state pdh 748.89 vs levels PDH 748.895 — one number, two precisions on two surfaces).
+    # Rounding is a RENDER concern; consumers format. _fv (2dp) stays for non-level fields.
+    from numeric_contract import float_finite_or_none as _raw_level
+    ms_dict["vwap"]     = _raw_level(getattr(price_levels, "vwap",     None))
+    ms_dict["pdh"]      = _raw_level(getattr(price_levels, "pdh",      None))
+    ms_dict["pdl"]      = _raw_level(getattr(price_levels, "pdl",      None))
+    ms_dict["pdc"]      = _raw_level(getattr(price_levels, "pdc",      None))
+    ms_dict["orb_high"] = _raw_level(getattr(price_levels, "orb_high", None))
+    ms_dict["orb_low"]  = _raw_level(getattr(price_levels, "orb_low",  None))
 
     # ── Expected Move ────────────────────────────────────────────────────────
     ms_dict["em_straddle"]       = _fv(_em_straddle.get("straddle"))
@@ -12112,10 +12117,31 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     # chain — three different widths and three different clocks — with nothing on screen saying
     # which. If the live snapshot is absent the panel renders empty and says so.
     live_spot, live_src, _ts = resolve_spot(tk)
+    _payload_spot = live_spot if live_spot is not None else spot_used
+
+    # STRIP kill (one-faucet-closeout-v1): per-side GEX/OV sums are computed HERE, against
+    # the exact spot this payload serves — the chart strip used to re-derive them in the
+    # browser from the same rows (a second aggregation site that breaks silently when the
+    # payload changes, and can straddle a different spot than the server's). One aggregator.
+    def _side_sums(rows, s):
+        if not rows or s is None:
+            return None
+        gb = ga = vb = va = 0.0
+        for r in rows:
+            k, g, v = float(r[0]), float(r[1] or 0.0), float(r[2] or 0)
+            if k < s:
+                gb += g; vb += v
+            elif k > s:
+                ga += g; va += v
+        return {"gex_below": round(gb, 1), "gex_above": round(ga, 1),
+                "vol_below": int(vb), "vol_above": int(va),
+                "spot_basis": float(s)}
+
     return JSONResponse({
-        "ticker": tk, "spot": live_spot if live_spot is not None else spot_used,
+        "ticker": tk, "spot": _payload_spot,
         "spot_source": live_src,
         "today": today or {"all": [], "near": [], "far": []},
+        "today_side_sums": _side_sums((today or {}).get("all"), _payload_spot),
         "today_source": today_src,
         # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
         # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
@@ -14071,19 +14097,20 @@ def api_chain_gate_diagnostics():
 
 
 @app.get("/api/price-levels")
-# SWITCH-LATENCY FIX: sync def → threadpool (Schwab quote + price-levels compute, no await).
 def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
-    """Return PDH/PDL/PDC, POC/VAH/VAL, VWAP bands, ORB, overnight range as JSON."""
-    try:
-        # TICKER-PREVIEW-NO-ENROLL: price-levels is a VIEW — touch last-seen only.
-        _touch_tracked_ticker_view(ticker)
-        client = get_client()
-        q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
-        q_json = q_resp.json() if q_resp and hasattr(q_resp, "json") else {}
-        pl = fetch_price_levels(client, symbol=ticker, quote_raw=q_json, include_extended_hours=extended_hours)
-        return asdict(pl)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    """RETIRED (RC-213 B6, one-faucet-closeout-v1): /api/levels is the ONE levels surface.
+
+    This route measured ZERO client consumers (census 2026-08-03) and was the second HTTP
+    producer for the level families. It hard-fails with a pointer rather than aliasing —
+    an alias is a second name for one faucet and second names are how duals grow back.
+    The compute path is untouched: _fetch_state still uses fetch_price_levels internally
+    (which delegates every family to the liquidity_value_engine authorities)."""
+    return JSONResponse({
+        "error": "retired",
+        "detail": "/api/price-levels is retired (RC-213 B6). Use /api/levels — the single "
+                  "levels contract (id/price/family/provenance/staleness per level).",
+        "replacement": f"/api/levels?ticker={(ticker or DEFAULT_TICKER).upper().strip()}",
+    }, status_code=410)
 
 
 @app.get("/api/levels")

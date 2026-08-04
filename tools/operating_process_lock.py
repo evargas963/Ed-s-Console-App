@@ -23,12 +23,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"
 OPERATOR_GO_PATH = REPO / "governance" / "operator_go.json"
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 CHECKER_REL = "tools/check_institutional_correctness.py"
 DB_REL = "db.py"
+
+# writer_drift_lock does not import this module (no cycle).
+from tools import writer_drift_lock as WDL  # noqa: E402
 
 #: Paths where index≠WT is catastrophic (enforcement / collect seam / locks).
 ENFORCEMENT_PATHS: tuple[str, ...] = (
@@ -67,10 +72,17 @@ PROCESS_ALLOWED_PREFIXES = (
     "reports/rehab_queue.jsonl",
     "tests/test_operating_process_lock_v1.py",
     "tests/test_rehab_daily_scan_v1.py",
+    "tests/test_writer_drift_lock_v1.py",
     "tools/operating_process_lock.py",
     "tools/process_lock_guard.py",
+    "tools/pretooluse_guard.py",
     "tools/rehab_daily_scan.py",
+    "tools/writer_drift_lock.py",
+    "tools/rc_resolve_lock.py",
+    "tools/check_institutional_correctness.py",
+    "tests/test_rc_document_without_resolve_v1.py",
     ".cursor/rules/07-cursor-pm.mdc",
+    ".cursor/rules/08-no-writer-drift.mdc",
     "ACTIVE_PROGRAM.md",
     "AGENTS.md",
 )
@@ -442,36 +454,54 @@ def _mission_scope_allows(rel: str, scope_paths: list) -> bool:
 
 
 def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
-    """RC-219: product edits require an active Cursor-PM mission (operator-approved plan)."""
+    """RC-219 + RC-226: product edits need an in-progress mission; non-writer cannot touch scope."""
     if os.environ.get("ED_PM_MISSION_GUARD", "").strip().lower() in ("off", "0", "false"):
         return None
     rel = rel.replace("\\", "/")
-    if rel in PROCESS_ALLOWED_PREFIXES or rel.startswith("tests/"):
-        return None
-    if rel.startswith("governance/") and not _mission_gates_path(rel):
-        return None
-    if rel.startswith("reports/"):
-        return None
-    if not _mission_gates_path(rel):
+    if rel in PROCESS_ALLOWED_PREFIXES or WDL.is_pm_allowlisted(rel):
         return None
     mission = pm_mission_record()
     status = str(mission.get("status") or "idle").strip().lower()
-    if status != "active":
-        return (
-            f"PM-FIRST BLOCK: no active mission (governance/pm_mission.json status={status!r}) — "
-            f"run change requests through Cursor PM; do not edit {rel} until a mission is opened"
-        )
     agent = (agent or current_agent_role()).lower()
     writer = str(mission.get("writer") or sole_writer_record().get("writer") or "").strip().lower()
-    if writer and agent != writer:
+    scopes = mission.get("scope_paths") or ["*"]
+    if not isinstance(scopes, list):
+        scopes = ["*"]
+    in_prog = WDL.mission_in_progress(mission)
+
+    # RC-226: in-progress mission — non-writer blocked on scope_paths (and gated product).
+    if in_prog and writer and agent != writer:
         if sole_writer_record().get("cursor_edit_ok") is True and agent == "cursor":
             return None
+        if WDL.path_in_mission_scope(rel, scopes) or _mission_gates_path(rel):
+            return (
+                f"SOD_DRIFT: {writer} is sole writer — WRITER-DRIFT BLOCK: "
+                f"mission writer={writer!r} but agent={agent!r} — "
+                f"path {rel} blocked (mission_id={mission.get('mission_id')!r}; "
+                f"status={status!r}). Cursor=PM/auditor; sole writer owns scope_paths."
+            )
+        return None
+
+    # Idle / not in-progress: block mission-gated product for everyone (RC-219).
+    if not in_prog:
+        if rel.startswith("tests/") or rel.startswith("reports/"):
+            return None
+        if rel.startswith("governance/") and not _mission_gates_path(rel):
+            return None
+        if not _mission_gates_path(rel):
+            return None
         return (
-            f"PM-FIRST BLOCK: active mission writer={writer!r} but agent={agent!r} — "
-            f"path {rel} blocked (mission_id={mission.get('mission_id')!r})"
+            f"PM-FIRST BLOCK: no in-progress mission (governance/pm_mission.json status={status!r}) — "
+            f"run change requests through Cursor PM; do not edit {rel} until a mission is opened"
         )
-    scopes = mission.get("scope_paths") or ["*"]
-    if not isinstance(scopes, list) or not _mission_scope_allows(rel, scopes):
+
+    # Named writer on in-progress mission: stay inside scope_paths for gated surfaces.
+    if rel.startswith("tests/") or rel.startswith("reports/"):
+        if WDL.path_in_mission_scope(rel, scopes) or not _mission_gates_path(rel):
+            return None
+    if not _mission_gates_path(rel) and not WDL.path_in_mission_scope(rel, scopes):
+        return None
+    if not _mission_scope_allows(rel, scopes):
         return (
             f"PM-FIRST BLOCK: {rel} outside mission scope_paths={scopes!r} "
             f"(mission_id={mission.get('mission_id')!r})"
@@ -529,6 +559,24 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     if staged_head and re.search(r"\b(iceberg ready|ready to commit|one intentional tree)\b", text, re.I):
         if not operator_go_granted("staged_lock_surface"):
             out.extend(staged_head)
+    # RC-228: COMPLETE claims while the active mission still owns OPEN RC rows.
+    if re.search(r"\b(mission\s+complete|done_criteria|COMPLETE(?:/CLOSED)?)\b", text, re.I):
+        try:
+            from tools.rc_resolve_lock import open_rcs_owned_by_mission
+        except ImportError:
+            from rc_resolve_lock import open_rcs_owned_by_mission  # type: ignore
+        mission = pm_mission_record()
+        mid = str(mission.get("mission_id") or "").strip()
+        rc_path = root / "governance" / "root_cause_log.md"
+        if mid and rc_path.is_file():
+            open_ids = open_rcs_owned_by_mission(
+                mid, rc_path.read_text(encoding="utf-8").splitlines()
+            )
+            if open_ids:
+                out.append(
+                    f"completion claim while OPEN RC(s) still name mission {mid!r}: "
+                    f"{', '.join(open_ids)} (RC-228 — CLOSE or honest PARTIAL+OUT-OF-SCOPE first)"
+                )
     return out
 
 
@@ -543,6 +591,12 @@ def commit_violations(repo: Path | None = None) -> list[str]:
     if staged_head and not operator_go_granted("staged_lock_surface"):
         out.extend(f"commit BLOCKED: {msg} — set governance/operator_go.json granted=true" for msg in staged_head)
     out.extend(precommit_orphan_patch_warnings(root))
+    # RC-226: non-writer staging scope_paths → commit BLOCK (Shell-bypass backstop).
+    out.extend(
+        WDL.live_writer_drift_violations(
+            root, agent=current_agent_role(), staged_only=True
+        )
+    )
     return out
 
 
@@ -577,9 +631,19 @@ def measure_report(repo: Path | None = None) -> dict:
 
 
 def all_precommit_violations(repo: Path | None = None) -> list[str]:
-    out = index_worktree_mismatches(repo)
-    out.extend(staged_enforced_checks_not_on_head(repo) if not operator_go_granted("staged_lock_surface") else [])
-    out.extend(precommit_orphan_patch_warnings(repo))
+    root = repo or REPO
+    out = index_worktree_mismatches(root)
+    out.extend(
+        staged_enforced_checks_not_on_head(root)
+        if not operator_go_granted("staged_lock_surface")
+        else []
+    )
+    out.extend(precommit_orphan_patch_warnings(root))
+    out.extend(
+        WDL.live_writer_drift_violations(
+            root, agent=current_agent_role(), staged_only=True
+        )
+    )
     return out
 
 
@@ -593,14 +657,14 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(measure_report(), indent=2))
         return 0
     if args.commit_check:
-        v = commit_violations()
+        v = commit_violations(REPO)
     elif args.pre_commit:
-        v = all_precommit_violations()
+        v = all_precommit_violations(REPO)
     else:
-        v = index_worktree_mismatches() + staged_enforced_checks_not_on_head()
+        v = index_worktree_mismatches(REPO) + staged_enforced_checks_not_on_head(REPO)
         if not operator_go_granted("staged_lock_surface"):
             pass
-        disk = live_collect_disk_only()
+        disk = live_collect_disk_only(REPO)
         if disk:
             v.append(disk)
     if v:

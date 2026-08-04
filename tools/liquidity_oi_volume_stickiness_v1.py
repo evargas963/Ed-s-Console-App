@@ -317,7 +317,7 @@ def _gex_levels_from_chain(ticker: str, spot: float, chain_raw: str) -> dict | N
             levels["PUT_WALL"] = float(pw)
         if pin is not None:
             levels["GAMMA_PIN"] = float(pin)
-    except Exception:
+    except Exception:  # institutional-swallow-ok: research study; absent terrain levels degrade to fewer rows, never a wrong number
         pass
     regime = None
     gex = snap.net_gex_at_spot
