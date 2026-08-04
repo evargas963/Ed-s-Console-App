@@ -12,7 +12,7 @@ fallback patch.
 | 3 | opening_range (ORB H/L/mid) | P2 | 2 | TIERB_DONE — B6 retires /api/price-levels as a second HTTP surface, not a second formula. |
 | 4 | overnight (high/low) | P2 | 2 | TIERB_DONE. |
 | 5 | today value_area (POC/VAH/VAL) + today profile | P2 | 2 | TIERB_DONE for today VA; prior_day profile entry-point collapse is a later residue. |
-| 6 | charm / greeks formulas | P1 | 2 | Migrate compute_net_charm onto bs_charm; delete the inline formula; registry grandfather entry removed (its ow |
+| 6 | charm / greeks formulas | P1 | 2 | CHARM_DONE (RC-224) — compute_net_charm calls bs_charm(rate=0); grandfathered_inline_greeks cleared. |
 | 7 | clocks (session date / display time) | P1 | 3 | CLOCKS_DONE (RC-223) — SESSION_TZ=ET / DISPLAY_TZ=CT; bare toLocaleDateString banned by clocks_tz_lock + T1. |
 | 8 | spot | P2 | 2 | Consumers render spot ONLY from a single shared payload field per screen with its as_of age visible; stale spo |
 | 9 | walls / gamma flip | P2 | 2 | none needed — layered single stack. Census pointer: research entries at the primitive bypass v2's confidence g |
@@ -92,18 +92,16 @@ fallback patch.
 **Reproduce:** `read fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family=="value_area")'`
 **Proposed kill:** TIERB_DONE for today VA; prior_day profile entry-point collapse is a later residue.
 
-## 6. charm / greeks formulas — P1
+## 6. charm / greeks formulas — P1 (KILLED — RC-224 / charm-bs-faucet-migrate-v1)
 
 - **math_levels bs_* faucet (AUTHORITY per registry greek_formula_faucet)**
-  - `math_levels.py:681: def bs_gamma(spot: float, strike: float, t_years: float, sigma: float,`
-  - `math_levels.py:695: def bs_vanna(spot: float, strike: float, t_years: float, sigma: float,`
-  - `math_levels.py:721: def bs_charm(spot: float, strike: float, t_years: float, sigma: float,`
-- **math_exposure_core.compute_net_charm inline formula (GRANDFATHERED, RC-179 parity-locked)**
-  - `math_exposure_core.py:756: def compute_net_charm(`
+  - `math_levels.py: bs_gamma / bs_vanna / bs_charm`
+- **math_exposure_core.compute_net_charm (DELEGATES to bs_charm)**
+  - `math_exposure_core.py: compute_net_charm → bs_charm(..., rate=0.0)`
 
-**Evidence:** Registry names the grandfather explicitly; RC-179 parity locks pin sign/magnitude. Structural residue: one concept, two formula sites — the vanna defect (RC-211) was exactly this class before its kill.
-**Reproduce:** `python tools/check_institutional_correctness.py (charm parity checks); read registry grandfathered_inline_greeks`
-**Proposed kill:** Migrate compute_net_charm onto bs_charm; delete the inline formula; registry grandfather entry removed (its own stated destiny: 'migrate to the bs_* faucet').
+**Evidence:** Prior defect: inline d1/d2/PDF beside bs_charm under grandfather. Killed 2026-08-03: scalar path calls bs_charm; grandfathered_inline_greeks empty; RC-179 T1 green.
+**Reproduce:** `python -m pytest tests/test_charm_sign_finite_difference.py -q; python -c "import json; assert not json.load(open('governance/level_faucets.json'))['grandfathered_inline_greeks']"`
+**Proposed kill:** DONE — migrate + delete inline + clear grandfather (RC-224).
 
 ## 7. clocks (session date / display time) — P1 (KILLED — RC-223 / clocks-tz-explicit-v1)
 

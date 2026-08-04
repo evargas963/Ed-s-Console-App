@@ -723,9 +723,9 @@ def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
     """Black-Scholes charm (dDelta/dt, calendar time) per share, q=0.
 
     Textbook (Haug) charm is dDelta/dT = -phi(d1) * [ r/(sigma*sqrt(T)) - d2/(2T) ].
-    Calendar-time charm is the negative of that. The r/(sigma*sqrt(T)) term is retained
-    here (unlike compute_net_charm, which drops it for 0DTE stability) and guarded
-    instead by the t_years floor applied upstream, so per-strike charm stays exact.
+    Calendar-time charm is the negative of that. Callers that want the deliberate
+    0DTE-stable r-omission (compute_net_charm) pass rate=0.0; the r term is otherwise
+    retained and guarded by the t_years floor applied upstream.
 
     Identical for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant
     vanishes under differentiation with respect to time.

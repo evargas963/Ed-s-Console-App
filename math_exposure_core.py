@@ -829,8 +829,6 @@ def compute_net_charm(
         gamma_pin        : same as drift_toward
         contracts_used   : number of contracts that contributed
     """
-    import math as _m
-
     try:
         _target_exp = str(expiry)[:10]
         if len(_target_exp) != 10:
@@ -844,6 +842,8 @@ def compute_net_charm(
     # dte/365 branch ignored the intraday fraction entirely, so the two charm engines
     # disagreed near expiry (RC-42 / RC-37; validated against Schwab-reported gamma).
     from time_et import time_to_expiry_years as _tte
+    # RC-224 / census #6: unit charm from the ONE greek-formula faucet (not inline).
+    from math_levels import bs_charm as _bs_charm
 
     call_charm = put_charm = 0.0
     used = 0
@@ -902,41 +902,16 @@ def compute_net_charm(
         S      = float(spot)
         K      = float(strike)
 
-        # charm = dDelta/dt (CALENDAR time, i.e. as the trading day passes and T shrinks):
-        #   charm = +phi(d1) * d2 / (2*T)          (with the r/(iv*sqrt(T)) term dropped for
-        #                                           0DTE stability; T floor guards the rest)
-        #
-        # SIGN CORRECTED 2026-07-25: the prior form was -phi(d1)*d2/(2T) — the exact
-        # NEGATIVE of calendar-time charm, so charm_direction was systematically INVERTED
-        # ("buying" reported when dealer flow was actually selling). Proven by a direct
-        # finite-difference of Black-Scholes delta as calendar time advances
-        # (delta(T-1d) - delta(T)) / dt: for ATM/ITM/OTM/slight-ITM/slight-OTM the sign
-        # matched +phi*d2/(2T) in every case (= math_levels.bs_charm at r=0, itself
-        # finite-difference verified). This aligns the scalar net_charm with the per-strike
-        # compute_charm_by_strike / bs_charm path (which was already correct and feeds the
-        # charm walls), so the two charm faucets now agree on direction.
-        #
-        # Units: delta/year per unit contract. Scale to daily: weighted = charm/year/365*OI*mult
-        try:
-            ln_SK = _m.log(S / K)
-            sqrt_T = _m.sqrt(T)
-            d1 = (ln_SK + 0.5 * iv_dec**2 * T) / (iv_dec * sqrt_T)
-            d2 = d1 - iv_dec * sqrt_T
-            phi_d1 = (1.0 / _m.sqrt(2.0 * _m.pi)) * _m.exp(-0.5 * d1**2)
-        except Exception:
+        # RC-224 / census #6: ONE greek-formula faucet — math_levels.bs_charm.
+        # rate=0 keeps the deliberate r-term omission for 0DTE stability (same numeric
+        # identity the prior inline +phi(d1)*d2/(2T) encoded; RC-179 parity locks).
+        charm_unit = _bs_charm(S, K, float(T), float(iv_dec), rate=0.0)
+        if charm_unit is None:
             _skip_math += 1
             continue
 
-        if T <= 0: continue
-
-        # charm per unit in delta/year (calendar-time; sign matches bs_charm — see above)
-        charm_unit = phi_d1 * d2 / (2.0 * T)
-
         # For puts: by put-call parity, charm_put = charm_call (same sign, same magnitude
         # at ATM; put delta decays symmetrically to call delta). Use same formula.
-        # The sign difference between calls and puts is already captured in the
-        # direction of net_delta (calls positive, puts negative).
-
         # Daily aggregate: charm_unit/365 * OI * mult
         weighted = charm_unit / 365.0 * oi * mult
 

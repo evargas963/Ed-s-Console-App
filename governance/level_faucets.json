@@ -1,10 +1,9 @@
 {
   "charter": "ONE faucet per domain (operator law 2026-08-02: two faucets 'in any other way they can manifest' are strictly prohibited). This registry enumerates every AUTHORIZED producer of the levels/exposure domain and the single authorized home of greek formulas. Adding a producer requires an operator_quote in the same staged change to THIS file. Target state: the level producers collapse into one /api/levels service (mission levels-faucet-v1).",
-  "operator_quote": "OPERATOR GO — MISSION levels-tierb-session-collapse-v1 (PM Cursor, 2026-08-03 continue-dont-stop): Collapse vwap/ORB/overnight/today value_area onto /api/levels Tier-B via liquidity_value_engine; delete market_context inline duals (no fallback); hard-fail backfill typical-price vwap substitution. Prior mission levels-faucet-v1 quote retained as Phase-1 authority for prior_day.",
+  "operator_quote": "OPERATOR GO — MISSION levels-tierb-session-collapse-v1 (PM Cursor, 2026-08-03 continue-dont-stop): Collapse vwap/ORB/overnight/today value_area onto /api/levels Tier-B via liquidity_value_engine; delete market_context inline duals (no fallback); hard-fail backfill typical-price vwap substitution. Prior mission levels-faucet-v1 quote retained as Phase-1 authority for prior_day. ALSO: MISSION charm-bs-faucet-migrate-v1 — migrate compute_net_charm onto math_levels.bs_charm; delete inline formula; clear grandfathered_inline_greeks.",
   "greek_formula_faucet": "math_levels.py",
-  "grandfathered_inline_greeks": {
-    "math_exposure_core.py": "compute_net_charm inline charm formula - RC-179 parity-locked against bs_charm; migrate to the bs_* faucet in the consolidation"
-  },
+  "grandfathered_inline_greeks": {},
+
   "prior_day_window_authority": "liquidity_value_engine.prior_trading_session_date (RC-153/RC-213: the ONE definition of 'the prior session' — single most recent prior RTH date; market_context.fetch_price_levels delegates to it as of mission levels-faucet-v1; PDC basis reconciled to last RTH 1m bar close of that session, Schwab quote closePrice is fallback-only when history is absent)",
   "level_domain_producers": {
     "/api/levels": "B1+Tier-B read-adapter (missions levels-faucet-v1 + levels-tierb-session-collapse-v1): prior_day + vwap + opening_range + overnight + today value_area from liquidity_value_engine over held bars — never a sync vendor fan-out, never market_context inline duals. Design authority: reports/levels_single_faucet_design_v1.md §5",

@@ -162,6 +162,28 @@ def test_both_engines_draw_T_from_the_single_source():
     assert "call_charm - put_charm" in inspect.getsource(cnc)
 
 
+def test_compute_net_charm_uses_bs_charm_faucet_not_inline():
+    """RC-224 / census #6 — scalar net charm must call math_levels.bs_charm; no second formula."""
+    import inspect
+    import json
+    from pathlib import Path
+
+    from math_exposure_core import compute_net_charm as cnc
+
+    src = inspect.getsource(cnc)
+    assert "bs_charm" in src, "compute_net_charm lost the bs_* faucet call"
+    assert "phi_d1" not in src, "inline PDF charm formula returned"
+    assert "ln_SK" not in src, "inline d1/d2 charm formula returned"
+    reg = json.loads(
+        (Path(__file__).resolve().parent.parent / "governance" / "level_faucets.json")
+        .read_text(encoding="utf-8")
+    )
+    gf = reg.get("grandfathered_inline_greeks") or {}
+    assert "math_exposure_core.py" not in gf, (
+        "grandfather entry still names compute_net_charm — migration incomplete"
+    )
+
+
 @pytest.mark.parametrize("label,S,dte", CASES)
 def test_compute_net_charm_sign_matches_finite_difference(label, S, dte):
     from datetime import datetime, timedelta

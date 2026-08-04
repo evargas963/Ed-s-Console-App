@@ -3,6 +3,6 @@
   "writer": "cursor",
   "auditor": "cursor",
   "held_commit": null,
-  "updated_at": "2026-08-03T20:02:00-05:00",
-  "note": "clocks-tz-explicit-v1 DONE (RC-223). Next: arm census #6 charm kill."
+  "updated_at": "2026-08-03T20:12:00-05:00",
+  "note": "charm-bs-faucet-migrate-v1 DONE (RC-224). clocks DONE 29c1e17f/RC-223. Next: arm spot (#8) or chart B3."
 }

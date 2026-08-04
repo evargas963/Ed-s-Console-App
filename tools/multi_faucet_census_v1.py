@@ -135,15 +135,16 @@ def build_findings() -> list[dict]:
             "producers": {
                 "math_levels bs_* faucet (AUTHORITY per registry greek_formula_faucet)":
                     _sites("math_levels.py", r"def bs_charm|def bs_gamma|def bs_vanna", 4),
-                "math_exposure_core.compute_net_charm inline formula (GRANDFATHERED, RC-179 parity-locked)":
-                    _sites("math_exposure_core.py", r"def compute_net_charm", 2),
+                "math_exposure_core.compute_net_charm (DELEGATES to bs_charm; RC-224)":
+                    _sites("math_exposure_core.py", r"bs_charm|def compute_net_charm", 2),
             },
-            "evidence": "Registry names the grandfather explicitly; RC-179 parity locks pin sign/magnitude. "
-                        "Structural residue: one concept, two formula sites — the vanna defect (RC-211) was "
-                        "exactly this class before its kill.",
-            "reproduce": "python tools/check_institutional_correctness.py (charm parity checks); read registry grandfathered_inline_greeks",
-            "proposed_kill": "Migrate compute_net_charm onto bs_charm; delete the inline formula; registry "
-                             "grandfather entry removed (its own stated destiny: 'migrate to the bs_* faucet').",
+            "evidence": "CHARM_DONE (RC-224 / charm-bs-faucet-migrate-v1): compute_net_charm calls "
+                        "math_levels.bs_charm(rate=0); grandfathered_inline_greeks cleared; RC-179 "
+                        "parity locks remain green.",
+            "reproduce": "python -m pytest tests/test_charm_sign_finite_difference.py -q; "
+                         "python -c \"import json; assert not json.load(open("
+                         "'governance/level_faucets.json'))['grandfathered_inline_greeks']\"",
+            "proposed_kill": "CHARM_DONE — migrate + delete inline + clear grandfather (RC-224).",
         },
         {
             "concept": "clocks (session date / display time)",

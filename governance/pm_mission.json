@@ -1,47 +1,47 @@
 {
   "status": "DONE",
-  "mission_id": "clocks-tz-explicit-v1",
-  "title": "Census #7 clocks: JS date grouping/labels take explicit timeZone; bare toLocaleDateString banned; session logic stays ET via API provenance",
+  "mission_id": "charm-bs-faucet-migrate-v1",
+  "title": "Census #6 charm: migrate compute_net_charm onto bs_charm; delete inline formula; remove grandfathered_inline_greeks entry",
   "writer": "cursor",
   "pm": "cursor",
   "auditor": "cursor",
   "census_source": "reports/multi_faucet_census_latest.md",
-  "concepts": [7],
+  "concepts": [6],
   "out_of_scope": [
-    "charm / greeks (census #6)",
     "spot dual (census #8)",
-    "chart computeDaily prior_day kill (B3)",
-    "static/exposure.html untracked surface — axis time labels OUT-OF-SCOPE this packet (not on HEAD)"
+    "clocks (census #7 DONE RC-223)",
+    "chart computeDaily prior_day B3"
   ],
   "scope_paths": [
-    "static/",
-    "time_et.py",
-    "server.py",
+    "math_exposure_core.py",
+    "math_levels.py",
+    "governance/level_faucets.json",
+    "governance/root_cause_log.md",
     "tests/",
     "tools/",
     "reports/",
-    "governance/root_cause_log.md",
     "governance/pm_mission.json",
     "governance/sole_writer.json"
   ],
   "prior_mission": {
-    "mission_id": "levels-tierb-session-collapse-v1",
+    "mission_id": "clocks-tz-explicit-v1",
     "status": "DONE",
-    "head": "6d49604d"
+    "head": "29c1e17f",
+    "rc": "RC-223"
   },
   "approved_by": "operator",
   "approved_via": "chat_continue_dont_stop_pipeline",
-  "approved_at": "2026-08-03T19:50:00-05:00",
+  "approved_at": "2026-08-03T20:05:00-05:00",
   "done_criteria": [
-    "All JS date grouping/labels take explicit timeZone (America/Chicago display; ET session logic from API)",
-    "Bare toLocaleDateString banned by static check / T1",
+    "compute_net_charm unit charm comes from math_levels.bs_charm (no inline d1/d2 charm formula)",
+    "grandfathered_inline_greeks entry for compute_net_charm removed",
+    "RC-179 T1 suite still green (parity + sign locks)",
     "LIVE or DISK_ONLY+restart owed stated honestly"
   ],
   "done_evidence": {
-    "t1": "tests/test_clocks_tz_explicit_v1.py 7 passed",
-    "scan": "tools.clocks_tz_lock.scan_tracked_static() QUIET",
-    "rc": "RC-223 CLOSED",
-    "live": "DISK_ONLY_UNTIL_RESTART for chart.html static reload — browser refresh loads new JS; server restart not required for this packet"
+    "t1": "tests/test_charm_sign_finite_difference.py (incl. RC-224 faucet lock) green",
+    "rc": "RC-224 CLOSED",
+    "live": "pure math path — no server restart required; DISK_ONLY note from rehab is unrelated collect-window seam"
   },
-  "note": "DONE. Next census P1 = charm (#6). Arm immediately after this commit."
+  "note": "DONE same turn as clocks. Next census P1 residual exhausted; next open faucet is spot (#8 P2) or B3 computeDaily."
 }
