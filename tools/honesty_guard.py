@@ -186,6 +186,14 @@ def main() -> int:
         )
         return 2
     bad = honesty_violations(last_user_text(tp), text)
+    # RC-233 (PM full-prompt coverage): both agents' Stop hooks run this file, so the
+    # coverage law holds on the whole continuum with no separate Cursor wiring.
+    if os.environ.get("ED_PM_COVERAGE_GUARD", "").strip().lower() not in ("off", "0", "false"):
+        try:
+            from tools.operating_process_lock import pm_coverage_violations
+        except ImportError:
+            from operating_process_lock import pm_coverage_violations  # type: ignore
+        bad.extend(pm_coverage_violations(last_user_text(tp), text))
     if not bad:
         return 0
     sys.stderr.write(

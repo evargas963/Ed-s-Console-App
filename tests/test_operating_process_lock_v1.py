@@ -255,3 +255,42 @@ def test_main_precommit_exits_zero_on_clean_repo(tmp_path, monkeypatch):
     monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", repo / "governance" / "operator_go.json")
     rc = OPL.main(["--pre-commit"])
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# RC-234 — pipe-masked commits (the t6+t12 slice reported exit 0 off `| tail -3`
+# while HEAD never moved; the filter's exit code replaced the commit's).
+# ---------------------------------------------------------------------------
+
+def test_rc234_piped_commit_blocks():
+    bad = OPL.commit_pipe_violations('git commit -m "t6 + t12 slice" 2>&1 | tail -3')
+    assert bad and bad[0].startswith("PIPE_MASKED_COMMIT:")
+
+
+def test_rc234_powershell_out_null_blocks():
+    bad = OPL.commit_pipe_violations("git commit -m 'x' | Out-Null")
+    assert bad and bad[0].startswith("PIPE_MASKED_COMMIT:")
+
+
+def test_rc234_unpiped_commit_allows():
+    assert OPL.commit_pipe_violations('git commit -m "clean landing" 2>&1') == []
+
+
+def test_rc234_pipe_inside_quoted_message_allows():
+    assert OPL.commit_pipe_violations(
+        'git commit -m "RC row schema: 7-cell | pipes live in prose here"') == []
+
+
+def test_rc234_pipe_on_other_segment_allows():
+    assert OPL.commit_pipe_violations(
+        'pytest -q | tail -2 && git commit -m "after tests"') == []
+
+
+def test_rc234_pipe_ok_escape_allows():
+    assert OPL.commit_pipe_violations(
+        'git commit -m "x" | tail -1  # pipe-ok: operator demo') == []
+
+
+def test_rc234_live_path_wired_into_bash_branch():
+    src = (Path(PLG.__file__)).read_text(encoding="utf-8")
+    assert "commit_pipe_violations" in src

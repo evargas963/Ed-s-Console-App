@@ -26,6 +26,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -64,6 +65,11 @@ def unfinished_rows_opened_today(today: str | None = None) -> list[tuple[str, st
     return out
 
 
+#: RC-235: the ONLY freshness reason exempt from the turn-block — the producer is running
+#: but Schwab auth is latched, and clearing it is an operator-only OAuth flow (RC-227).
+_AUTH_LATCH_RE = re.compile(r"SchwabAuthError|auth\s+latched", re.I)
+
+
 def freshness_blockers() -> list[dict]:
     """RC-94: staleness on a REACHABLE console blocks the turn; an unreachable console does not.
 
@@ -83,8 +89,16 @@ def freshness_blockers() -> list[dict]:
         # after-hours turn on it is a guard that cannot be satisfied — a hang, not a control
         # (the same reasoning as the unreachable exemption above). Staleness while the
         # producer SHOULD be running (refresh_active True or unknown) still blocks.
+        # RC-235: staleness whose stated reason is the Schwab AUTH LATCH is the same shape —
+        # a LABELED state only the operator can clear (re-auth is a credential flow agents are
+        # prohibited from running; the blocker is recorded in RC-227). Blocking every turn on
+        # it is unsatisfiable by the agent: option 2's "say so in the row" cannot clear a
+        # live-payload check, so without this exemption the guard hangs instead of controlling.
+        # The exemption is NARROW — the reason must name the latch; unlabeled staleness while
+        # the producer should run still blocks exactly as before.
         return [v for v in freshness_violations()
-                if not v.get("unreachable") and v.get("refresh_active") is not False]
+                if not v.get("unreachable") and v.get("refresh_active") is not False
+                and not _AUTH_LATCH_RE.search(str(v.get("detail") or ""))]
     except Exception as e:
         return [{"concept": "(freshness audit unavailable)",
                  "detail": f"{type(e).__name__}: {e}"}]

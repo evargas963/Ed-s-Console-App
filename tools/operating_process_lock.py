@@ -626,6 +626,100 @@ def _quiet_pass_required_violations(text: str, root: Path) -> list[str]:
     ]
 
 
+_QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
+
+
+def commit_pipe_violations(cmd: str) -> list[str]:
+    """RC-234: a `git commit` piped into a filter (tail/head/grep/Out-Null/...) reports
+    the FILTER's exit code and truncates hook output — twice this masked a failed landing
+    as exit 0 (F401 hidden, t6+t12 slice silently not on HEAD). Commits run UNPIPED;
+    long hooks go to a background task whose full output is read back. Escape:
+    '# pipe-ok: <reason>' (operator-reviewed). Pipes inside the quoted -m message are
+    legal — quoted strings are stripped before the scan."""
+    if not cmd or "# pipe-ok:" in cmd:
+        return []
+    stripped = _QUOTED_STRING_RE.sub("", cmd).replace("||", "&&")
+    for seg in re.split(r"&&|;|\n", stripped):
+        if re.search(r"\bgit\s+commit\b", seg, re.I) and "|" in seg:
+            return [
+                "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
+                "code replaces the commit's and hook failures vanish (RC-234). Run the "
+                "commit UNPIPED (background task for long hooks), then verify via "
+                "`git show --stat`. Escape: '# pipe-ok: <reason>'."
+            ]
+    return []
+
+
+_PM_DISPOSITION_RE = re.compile(r"\b(VERIFIED|ACCEPTED|REJECTED|QUEUED|BLOCKED)\b")
+_PM_ISSUE_BULLET_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+(\S.{14,})", re.M)
+_PM_ISSUE_LABEL_RE = re.compile(r"\b(ISSUE|BLOCKER|RESIDUAL|P0)\b")
+# Named process tokens from the RC-233 encode addendum. Tokens alone form issue units
+# only when >=3 DISTINCT ones appear — the false-positive control the addendum demands
+# ("single-question operator chats do not BLOCK"): a casual sentence like "after restart
+# it went quiet" carries two tokens but is one question, not a multi-issue paste.
+_PM_PROCESS_TOKEN_RES = {
+    "sole_writer": re.compile(r"\bsole_writer\b"),
+    "operator_go": re.compile(r"\boperator_go\b"),
+    "pm_mission": re.compile(r"\bpm_mission\b"),
+    "PDL": re.compile(r"\bPDL\b"),
+    "PDH": re.compile(r"\bPDH\b"),
+    "DISK_ONLY": re.compile(r"\bDISK_ONLY\b"),
+    "LIVE_ENFORCED": re.compile(r"\bLIVE_ENFORCED\b"),
+    "quiet": re.compile(r"\bquiet\b", re.I),
+    "restart": re.compile(r"\brestart\b", re.I),
+    "lock remainder": re.compile(r"\block remainder\b", re.I),
+    "LOCK-": re.compile(r"\bLOCK-\d"),
+}
+
+
+def pm_coverage_issue_units(user_text: str) -> list[str]:
+    """RC-233: extract distinct issue units from an operator paste. A unit is a
+    substantive bullet/numbered line, an ISSUE/BLOCKER/RESIDUAL/P0-labeled line, or
+    (when >=3 distinct ones appear) a named process token not already inside a unit."""
+    units: list[str] = []
+    for m in _PM_ISSUE_BULLET_RE.finditer(user_text):
+        units.append(m.group(1).strip()[:60])
+    for ln in user_text.splitlines():
+        if _PM_ISSUE_LABEL_RE.search(ln) and not any(
+                ln.strip()[:60].startswith(u[:20]) for u in units):
+            units.append(ln.strip()[:60])
+    tok_hits = [name for name, rx in _PM_PROCESS_TOKEN_RES.items()
+                if rx.search(user_text)]
+    if len(tok_hits) >= 3:
+        covered = "\n".join(units)
+        for name in tok_hits:
+            if not _PM_PROCESS_TOKEN_RES[name].search(covered):
+                units.append(name)
+    return units
+
+
+def pm_coverage_violations(user_text: str | None, assistant_text: str) -> list[str]:
+    """LOCK RC-233 (PM full-prompt coverage, operator law 2026-08-04): a multi-issue
+    operator paste (>=2 distinct units) requires the reply to disposition EVERY unit —
+    VERIFIED/ACCEPTED/REJECTED/QUEUED/BLOCKED, at least one token per unit. Escape:
+    operator '# pm-coverage-ok:' naming the waived items. Deny prefix: PM_COVERAGE:."""
+    u = user_text or ""
+    a = assistant_text or ""
+    if "# pm-coverage-ok:" in u:
+        return []
+    units = pm_coverage_issue_units(u)
+    if len(units) < 2:
+        return []
+    dispositions = len(_PM_DISPOSITION_RE.findall(a))
+    if dispositions >= len(units):
+        return []
+    unaddressed = [s for s in units
+                   if not re.search(re.escape(s.split()[0][:12]), a, re.I)][:5]
+    return [
+        f"PM_COVERAGE: operator paste carries {len(units)} distinct issue units but the "
+        f"reply holds only {dispositions} disposition token(s) "
+        f"(VERIFIED/ACCEPTED/REJECTED/QUEUED/BLOCKED) — every item gets a per-item "
+        f"disposition + one-line note (RC-233). Units with no echo in the reply: "
+        + ("; ".join(unaddressed) if unaddressed else "(all echoed, dispositions missing)")
+        + ". Escape: operator '# pm-coverage-ok:' naming the waived items."
+    ]
+
+
 def completion_claim_violations(text: str, repo: Path | None = None) -> list[str]:
     """BLOCK COMPLETE/LIVE/parity claims while measurable preconditions fail."""
     if not text:

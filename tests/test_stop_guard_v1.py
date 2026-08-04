@@ -78,3 +78,34 @@ def test_operator_escape_is_explicit(monkeypatch):
     monkeypatch.setenv("ED_STOP_GUARD", "off")
     monkeypatch.setattr(sg.sys, "stdin", io.StringIO('{"stop_hook_active": false}'))
     assert sg.main() == 0
+
+
+# ---------------------------------------------------------------------------
+# RC-235 — the auth-latch freshness exemption. The Schwab latch is a LABELED
+# state only the operator can clear (re-auth is a credential flow agents are
+# prohibited from running, RC-227); a live-payload block no row edit can clear
+# would hang every turn — the RC-120 shape. The exemption must be NARROW.
+# ---------------------------------------------------------------------------
+
+def _freshness(monkeypatch, violations):
+    import tools.data_faucet_audit as dfa
+    monkeypatch.setattr(dfa, "freshness_violations", lambda base="x": violations)
+
+
+def test_rc235_auth_latched_staleness_does_not_block(monkeypatch):
+    _freshness(monkeypatch, [{
+        "concept": "per_strike/levels",
+        "detail": ("levels are 5295s old — backing off after 11 consecutive failures — "
+                   "SchwabAuthError: Schwab auth latched after prior token failure"),
+        "refresh_active": True,
+    }])
+    assert sg.freshness_blockers() == []
+
+
+def test_rc235_unlabeled_staleness_still_blocks(monkeypatch):
+    _freshness(monkeypatch, [{
+        "concept": "per_strike/levels",
+        "detail": "levels are 900s old against the delivered 156s cycle",
+        "refresh_active": True,
+    }])
+    assert len(sg.freshness_blockers()) == 1

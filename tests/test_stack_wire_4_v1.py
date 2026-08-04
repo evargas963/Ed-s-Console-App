@@ -90,7 +90,10 @@ def test_mc_model_direction_inputs_stack_probs_path_does_not_raise():
 
 def test_classify_stack_health_single_producer():
     root = _repo_root()
-    skip_dirs = {".git", ".venv", "venv", "node_modules", "__pycache__", "tests", ".claude"}
+    # scratchpad/ holds the RC-210 wipe-recovery copies (e.g. _server_RELANDED_20260802.py)
+    # — preserved evidence, never production; counting them breaks single-producer scans.
+    skip_dirs = {".git", ".venv", "venv", "node_modules", "__pycache__", "tests", ".claude",
+                 "scratchpad"}
     call_sites: list[str] = []
     for path in root.rglob("*.py"):
         rel = path.relative_to(root)

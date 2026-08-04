@@ -156,7 +156,15 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
         root.removeHandler(h)
     root.addHandler(handler)
     root.setLevel(level)
-    install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
+    # t6/RC-232 board (quiet-gate finding, root-caused): `import server` under pytest
+    # attached this SAME live-log file sink, so TEST-emitted warnings (the deliberate
+    # ZZQD/ZZQE failure fixtures, fresh-DB migration notices) appended to logs/ed_server.log
+    # and the quiet-window gate read them as live console noise. The ZZQD "leak" was never
+    # in any DB — it was test log pollution through the shared sink. Tests keep the stream
+    # handler; only the FILE sink is skipped under pytest (the sink's own unit test calls
+    # install_ed_server_file_sink directly with a tmp path and is unaffected).
+    if "pytest" not in sys.modules and not os.environ.get("PYTEST_CURRENT_TEST"):
+        install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
 
 
 _install_visual_severity_markers(logging.INFO)
@@ -3008,6 +3016,11 @@ def _session_open_anchor_warm_loop() -> None:
 #   "rest_anchor_lane_refresher" (no consumer branches on that value);
 #   card_freshness quote ages simply read fresher fast_server_ts.
 # SCHWAB_CSV_CHECKED
+#: t12 (RC-227 residual): a prior-day fact requires plausibly FULL session coverage from
+#: the live accumulator (~390 RTH minutes; floor 300) — below it, /api/levels falls
+#: through to banked canonical bars rather than serving a truncated min/max.
+LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
+
 ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC: float = 20.0
 ANCHOR_QUOTE_LANE_MAX_AGE_SEC: float = 20.0
 _anchor_quote_lane_refresh_stop = threading.Event()
@@ -14173,8 +14186,22 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
     bars = _liquidity_live_1m_overlay_bars(tk)
     bars_norm = _bars_to_list(bars)
     bar_source = "live_accumulator"
-    if prior_trading_session_date(bars_norm, session_date) is None:
-        # Accumulator holds no prior RTH session (fresh process / after-hours seed) —
+    # t12 (RC-227 residual, MEASURED): the accumulator's rolling buffer can hold a
+    # TRUNCATED prior session — the prior date resolves but min()/max() run over a
+    # partial tape (PDL served 756.84 vs the true 749.59 while PDH/PDC matched).
+    # A prior-day fact needs the FULL session: require plausible full coverage
+    # (>= 300 of ~390 RTH minutes) or fall through to banked canonical bars.
+    _prior_probe = prior_trading_session_date(bars_norm, session_date)
+    _prior_full = False
+    if _prior_probe is not None:
+        from liquidity_value_engine import _bar_dt_et as _bde
+        _n_prior = sum(
+            1 for b in bars_norm
+            if (lambda d: d is not None and d.date() == _prior_probe)(_bde(b))
+        )
+        _prior_full = _n_prior >= LEVELS_PRIOR_SESSION_MIN_BARS
+    if not _prior_full:
+        # Accumulator holds no prior RTH session or only a truncated slice —
         # fall back to banked canonical bars. Read-only, indexed, no vendor call.
         try:
             db = get_db()
