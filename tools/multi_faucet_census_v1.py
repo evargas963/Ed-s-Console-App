@@ -151,19 +151,19 @@ def build_findings() -> list[dict]:
             "producers": {
                 "time_et (ET market-logic authority) / America-Chicago display law":
                     _sites("time_et.py", r"def now_et|^ET = ", 2),
-                "static/chart.html bare toLocaleDateString (BROWSER-LOCAL clock in bar grouping + axis)":
-                    _sites("static/chart.html", r"toLocaleDateString"),
-                "static/index.html toLocaleDateString('en-CA') date stamp (browser-local)":
-                    _sites("static/index.html", r"toLocaleDateString\('en-CA'\)"),
+                "static/chart.html SESSION_TZ+DISPLAY_TZ (RC-223 killed ambient regroup)":
+                    _sites("static/chart.html", r"SESSION_TZ|etDateKey|DISPLAY_TZ"),
+                "tools/clocks_tz_lock.py bare toLocaleDateString ban":
+                    _sites("tools/clocks_tz_lock.py", r"bare_locale_date_violations|SESSION_TZ"),
             },
-            "evidence": "chart.html groups daily bars by the BROWSER's timezone (computeDaily dkey + axis labels) "
-                        "while every server window is ET and the display law is CT — a traveling operator's "
-                        "chart would regroup sessions. index.html carries one browser-local date stamp beside "
-                        "CT-explicit stamps.",
-            "reproduce": "read chart.html L377/L396/L1362 + index.html L11710; compare with UI clock law (CT)",
-            "proposed_kill": "All JS date grouping/labels take an explicit timeZone (America/Chicago display, "
-                             "ET session logic served by the API, e.g. /api/levels provenance.window); bare "
-                             "toLocaleDateString banned by a static check.",
+            "evidence": "CLOCKS_DONE (RC-223 / clocks-tz-explicit-v1): session keys America/New_York, "
+                        "display labels America/Chicago, bare toLocaleDateString banned by "
+                        "tools/clocks_tz_lock.py + T1. Residue: untracked exposure.html axis times; "
+                        "computeDaily prior_day B3 is a later mission.",
+            "reproduce": "python -m pytest tests/test_clocks_tz_explicit_v1.py -q; "
+                         "python -c \"from tools.clocks_tz_lock import scan_tracked_static; "
+                         "assert scan_tracked_static()==[]\"",
+            "proposed_kill": "CLOCKS_DONE — explicit timeZone binding + static ban (RC-223).",
         },
         {
             "concept": "spot",

@@ -11707,7 +11707,8 @@ function updateClock() {
       const tzStr = tz ? tz.value : '';
       ubD.textContent = tzStr ? dateStr + ' · ' + tzStr : dateStr;
     } catch (e) {
-      ubD.textContent = now.toLocaleDateString('en-CA');
+      // Same CT display law as the try-path — never browser-ambient (RC-223 / census #7).
+      ubD.textContent = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
     }
   }
   try { paintUtilityFeedPill(); } catch (e) {}

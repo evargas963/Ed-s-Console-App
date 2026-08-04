@@ -371,10 +371,37 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));
 const hasStrikeBars = sc => !!(sc && Array.isArray(sc.all) && sc.all.length > 0);
 
+// # ui-mockup-ok: RC-223 / census #7 clocks — explicit TZ only; not a redesign.
+// Session date keys = America/New_York (matches time_et). Display labels = America/Chicago.
+const SESSION_TZ = 'America/New_York';
+const DISPLAY_TZ = 'America/Chicago';
+
+function etDateKey(tsSec) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SESSION_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(Number(tsSec) * 1000));
+  const y = parts.find(p => p.type === 'year');
+  const mo = parts.find(p => p.type === 'month');
+  const da = parts.find(p => p.type === 'day');
+  return (y && mo && da) ? `${y.value}-${mo.value}-${da.value}` : '';
+}
+
+function displayDateLabel(tsSec) {
+  return new Date(Number(tsSec) * 1000).toLocaleDateString('en-US', {
+    timeZone: DISPLAY_TZ, month: 'short', day: 'numeric',
+  });
+}
+
+function displayTimeLabel(tsSec) {
+  return new Date(Number(tsSec) * 1000).toLocaleTimeString('en-US', {
+    timeZone: DISPLAY_TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+}
+
 function aggregate(src, tfv) {
   if (tfv === '1') return src.slice();
   const out = [], key = t => tfv === 'D'
-    ? new Date(t * 1000).toLocaleDateString()
+    ? etDateKey(t)
     : Math.floor(t / (60 * Number(tfv)));
   let cur = null, ck = null;
   for (const b of src) {
@@ -391,11 +418,11 @@ function aggregate(src, tfv) {
 function computeDaily() {
   // canonical-1m-only derivations (plan §5 main chart): session VWAP polyline +
   // yesterday's H/L/C. No bars outside the feed → the lines simply don't render.
+  // Session buckets use ET date keys (time_et) — never the browser ambient TZ.
   daily = null;
   if (!raw.length) return;
-  const dkey = t => new Date(t * 1000).toLocaleDateString();
   const days = []; let cur = null, ck = null;
-  for (const b of raw) { const k = dkey(b.t);
+  for (const b of raw) { const k = etDateKey(b.t);
     if (k !== ck) { cur = []; days.push(cur); ck = k; } cur.push(b); }
   const today = days[days.length - 1];
   const prior = days.length > 1 ? days[days.length - 2] : null;
@@ -1358,9 +1385,7 @@ function draw() {
   for (let k = 0; k <= 5; k++) {
     const i = Math.round(view.i0 + (nVis - 1) * k / 5);
     if (!bars[i]) continue;
-    const d = new Date(bars[i].t * 1000);
-    const lab = tf === 'D' ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-      : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const lab = tf === 'D' ? displayDateLabel(bars[i].t) : displayTimeLabel(bars[i].t);
     g.fillText(lab, Math.min(x(i), W - PADR - 46), H - 8);
   }
 

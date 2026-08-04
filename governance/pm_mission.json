@@ -1,49 +1,47 @@
 {
-  "status": "active",
-  "mission_id": "levels-tierb-session-collapse-v1",
-  "title": "Collapse session levels (vwap/ORB/overnight/today VA) onto ONE /api/levels Tier-B authority; delete market_context inline computes (no fallback)",
+  "status": "DONE",
+  "mission_id": "clocks-tz-explicit-v1",
+  "title": "Census #7 clocks: JS date grouping/labels take explicit timeZone; bare toLocaleDateString banned; session logic stays ET via API provenance",
   "writer": "cursor",
   "pm": "cursor",
   "auditor": "cursor",
   "census_source": "reports/multi_faucet_census_latest.md",
-  "concepts": [2, 3, 4, 5],
+  "concepts": [7],
   "out_of_scope": [
-    "charm / greeks formulas (census #6)",
-    "clocks / session date display TZ (census #7)",
+    "charm / greeks (census #6)",
     "spot dual (census #8)",
-    "chart computeDaily prior_day kill (B3 / census #1 residue)"
+    "chart computeDaily prior_day kill (B3)",
+    "static/exposure.html untracked surface — axis time labels OUT-OF-SCOPE this packet (not on HEAD)"
   ],
   "scope_paths": [
-    "liquidity_value_engine.py",
-    "market_context.py",
-    "server.py",
-    "backfill_snapshot_derived.py",
     "static/",
-    "governance/level_faucets.json",
+    "time_et.py",
+    "server.py",
     "tests/",
+    "tools/",
     "reports/",
-    "governance/root_cause_log.md"
+    "governance/root_cause_log.md",
+    "governance/pm_mission.json",
+    "governance/sole_writer.json"
   ],
-  "activate_gate": {
-    "require": "quiet_window_pass",
-    "artifact": "reports/ed_server_warn_quiet_window_latest.json",
-    "proven": {
-      "verdict": "PASS",
-      "log_progressed": true,
-      "commit_pre": "7ab5e0c8",
-      "quiet_started_at_utc": "2026-08-04T00:29:50.742788+00:00"
-    }
+  "prior_mission": {
+    "mission_id": "levels-tierb-session-collapse-v1",
+    "status": "DONE",
+    "head": "6d49604d"
   },
   "approved_by": "operator",
-  "approved_via": "chat_continue_dont_stop_2026-08-03",
-  "approved_at": "2026-08-03T19:35:00-05:00",
+  "approved_via": "chat_continue_dont_stop_pipeline",
+  "approved_at": "2026-08-03T19:50:00-05:00",
   "done_criteria": [
-    "Census P1 slice from reports/multi_faucet_census_latest.md concepts 2–5: vwap(+bands), ORB, overnight, today value_area/profile",
-    "ONE compute+serve authority via /api/levels Tier-B (engine functions); market_context inline loops REMOVED or hard-fail — not silent fallback",
-    "backfill typical-price vwap substitution hard-fails to absent (no fabricated vwap)",
-    "T1 tests bind dual-path kill + API contract; LIVE prove enrolled universe or STATUS PARTIAL + restart owed",
-    "No chart computeDaily prior_day kill in this slice (separate B3 / prior_day P2 residue)",
-    "No charm/clock/spot edits in this mission"
+    "All JS date grouping/labels take explicit timeZone (America/Chicago display; ET session logic from API)",
+    "Bare toLocaleDateString banned by static check / T1",
+    "LIVE or DISK_ONLY+restart owed stated honestly"
   ],
-  "note": "ACTIVE after quiet PASS log_progressed=true (post 7ab5e0c8). Writer=cursor (Claude process unavailable; operator continue don't stop). Kill in progress."
+  "done_evidence": {
+    "t1": "tests/test_clocks_tz_explicit_v1.py 7 passed",
+    "scan": "tools.clocks_tz_lock.scan_tracked_static() QUIET",
+    "rc": "RC-223 CLOSED",
+    "live": "DISK_ONLY_UNTIL_RESTART for chart.html static reload — browser refresh loads new JS; server restart not required for this packet"
+  },
+  "note": "DONE. Next census P1 = charm (#6). Arm immediately after this commit."
 }

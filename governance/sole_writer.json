@@ -3,6 +3,6 @@
   "writer": "cursor",
   "auditor": "cursor",
   "held_commit": null,
-  "updated_at": "2026-08-03T19:35:00-05:00",
-  "note": "Mission levels-tierb-session-collapse-v1 ACTIVE. Cursor writer (Claude unavailable; operator continue don't stop). Quiet PASS proven post 7ab5e0c8."
+  "updated_at": "2026-08-03T20:02:00-05:00",
+  "note": "clocks-tz-explicit-v1 DONE (RC-223). Next: arm census #6 charm kill."
 }

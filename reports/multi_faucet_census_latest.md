@@ -13,7 +13,7 @@ fallback patch.
 | 4 | overnight (high/low) | P2 | 2 | TIERB_DONE. |
 | 5 | today value_area (POC/VAH/VAL) + today profile | P2 | 2 | TIERB_DONE for today VA; prior_day profile entry-point collapse is a later residue. |
 | 6 | charm / greeks formulas | P1 | 2 | Migrate compute_net_charm onto bs_charm; delete the inline formula; registry grandfather entry removed (its ow |
-| 7 | clocks (session date / display time) | P1 | 3 | All JS date grouping/labels take an explicit timeZone (America/Chicago display, ET session logic served by the |
+| 7 | clocks (session date / display time) | P1 | 3 | CLOCKS_DONE (RC-223) — SESSION_TZ=ET / DISPLAY_TZ=CT; bare toLocaleDateString banned by clocks_tz_lock + T1. |
 | 8 | spot | P2 | 2 | Consumers render spot ONLY from a single shared payload field per screen with its as_of age visible; stale spo |
 | 9 | walls / gamma flip | P2 | 2 | none needed — layered single stack. Census pointer: research entries at the primitive bypass v2's confidence g |
 | 10 | per-strike volume / strikes | P2 | 2 | Strip consumes server-aggregated rows (or /api/levels gamma family) — no in-browser re-derivation of served nu |
@@ -105,21 +105,19 @@ fallback patch.
 **Reproduce:** `python tools/check_institutional_correctness.py (charm parity checks); read registry grandfathered_inline_greeks`
 **Proposed kill:** Migrate compute_net_charm onto bs_charm; delete the inline formula; registry grandfather entry removed (its own stated destiny: 'migrate to the bs_* faucet').
 
-## 7. clocks (session date / display time) — P1
+## 7. clocks (session date / display time) — P1 (KILLED — RC-223 / clocks-tz-explicit-v1)
 
 - **time_et (ET market-logic authority) / America-Chicago display law**
   - `time_et.py:8: ET = ZoneInfo("America/New_York")`
   - `time_et.py:25: def now_et() -> datetime:`
-- **static/chart.html bare toLocaleDateString (BROWSER-LOCAL clock in bar grouping + axis)**
-  - `static/chart.html:377: ? new Date(t * 1000).toLocaleDateString()`
-  - `static/chart.html:396: const dkey = t => new Date(t * 1000).toLocaleDateString();`
-  - `static/chart.html:1362: const lab = tf === 'D' ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })`
-- **static/index.html toLocaleDateString('en-CA') date stamp (browser-local)**
-  - `static/index.html:11710: ubD.textContent = now.toLocaleDateString('en-CA');`
+- **static/chart.html SESSION_TZ / DISPLAY_TZ (killed browser-ambient regroup)**
+  - `static/chart.html: etDateKey + displayDateLabel/displayTimeLabel`
+- **Static ban**
+  - `tools/clocks_tz_lock.py` + `tests/test_clocks_tz_explicit_v1.py`
 
-**Evidence:** chart.html groups daily bars by the BROWSER's timezone (computeDaily dkey + axis labels) while every server window is ET and the display law is CT — a traveling operator's chart would regroup sessions. index.html carries one browser-local date stamp beside CT-explicit stamps.
-**Reproduce:** `read chart.html L377/L396/L1362 + index.html L11710; compare with UI clock law (CT)`
-**Proposed kill:** All JS date grouping/labels take an explicit timeZone (America/Chicago display, ET session logic served by the API, e.g. /api/levels provenance.window); bare toLocaleDateString banned by a static check.
+**Evidence:** Prior defect: chart.html grouped daily bars by browser TZ while server windows are ET and display law is CT. Killed 2026-08-03: session keys America/New_York, labels America/Chicago, bare toLocaleDateString banned (T1 + clocks_tz_lock).
+**Reproduce:** `python -m pytest tests/test_clocks_tz_explicit_v1.py -q; python -c "from tools.clocks_tz_lock import scan_tracked_static; assert scan_tracked_static()==[]"`
+**Proposed kill:** DONE — explicit timeZone binding + static ban (RC-223). Residue: untracked exposure.html axis times; computeDaily prior_day B3 is a separate mission.
 
 ## 8. spot — P2
 
