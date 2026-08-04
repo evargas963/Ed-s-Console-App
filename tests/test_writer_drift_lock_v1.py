@@ -213,3 +213,25 @@ def test_cursor_strreplace_pm_path_allowed(monkeypatch, tmp_path):
         {"path": str(ROOT / "governance" / "pm_mission.json")},
     )
     assert not [b for b in bad if "SOD_DRIFT" in b or "WRITER-DRIFT" in b]
+
+
+def test_rc240_precommit_wrapper_never_fabricates_an_agent_identity():
+    """RC-240: the pre-commit wrapper must not INVENT the actor.
+
+    It used to run `os.environ["ED_AGENT_ROLE"] = "cursor"` unconditionally, so the
+    identity-sensitive backstop judged the sole writer's own commit against an invented
+    agent and blocked it ("mission writer='claude' but agent='cursor'"). A check whose
+    verdict depends on who is acting may be given the real identity or none — never a guess.
+    """
+    src = (ROOT / "tools" / "precommit_institutional.py").read_text(encoding="utf-8")
+    for forged in ('ED_AGENT_ROLE"] = "cursor"', "ED_AGENT_ROLE'] = 'cursor'",
+                   'ED_AGENT_ROLE"] = "claude"', "ED_AGENT_ROLE'] = 'claude'"):
+        assert forged not in src, (
+            f"the pre-commit wrapper assigns a literal agent role ({forged!r}) — a "
+            f"fabricated identity is what RC-240 was opened for"
+        )
+    # and it must actively CLEAR an unusable value rather than pass junk through
+    assert 'os.environ.pop("ED_AGENT_ROLE", None)' in src, (
+        "the wrapper must leave identity ABSENT when the environment carries none, so the "
+        "backstop abstains instead of judging under a wrong actor"
+    )

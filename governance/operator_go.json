@@ -1,7 +1,7 @@
 {
-  "granted": false,
-  "granted_at": null,
-  "granted_by": null,
-  "scope": [],
-  "note": "Set granted=true with scope before committing staged ENFORCED checks not on HEAD. Operator-only. Last grant: PM flip 2026-08-04 07:59 for staged_lock_surface — consumed by commit 8f6467fa (LOCK-1 writer_no_drift ENFORCED registration + LOCK batch), closed per protocol by the sole writer post-landing."
+  "granted": true,
+  "granted_at": "2026-08-04T18:58:00+00:00",
+  "granted_by": "cursor_pm",
+  "scope": ["staged_lock_surface"],
+  "note": "PM 2026-08-04 GO for LOG LAW ENFORCED registration (RC-237)"
 }

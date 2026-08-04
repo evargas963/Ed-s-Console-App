@@ -100,3 +100,21 @@ def test_live_repo_satisfies_the_law():
 def test_open_class_count_reads_the_live_ledger():
     n = open_class_count(REPO)
     assert n >= 0, "the defect ledger must be readable for the count to mean anything"
+
+
+def test_rc238_the_law_is_actually_REGISTERED_not_merely_present():
+    """RC-238: a lock that exists and passes is NOT a lock that blocks.
+
+    This module shipped green while its CHECKS registration sat commented out awaiting the
+    operator GO, and a green run cannot distinguish 'enforced' from 'present'. This asserts
+    the WIRING: the check must be registered ENFORCED in the live CHECKS list, so the line
+    cannot silently revert to a comment without a test failing.
+    """
+    import tools.check_institutional_correctness as gate
+
+    entry = [c for c in gate.CHECKS if c[0] == "log_law"]
+    assert entry, "log_law is not registered in CHECKS — the LOG LAW is inert"
+    name, fn, enforced = entry[0]
+    assert enforced is True, "log_law must be ENFORCED (blocking), not advisory"
+    assert fn is gate.check_log_law
+    assert fn() == [], "the registered check must be green on the tree that ships it"

@@ -753,7 +753,9 @@ def test_chain_fetch_gate_serializes_concurrent_fetches(monkeypatch):
     active = {"n": 0, "max": 0}
     lk = th.Lock()
 
-    def _slow_chain(client, ticker, *, strike_count):
+    # RC-239: the production call site passes `to_date=` as well; a stub that omits it does
+    # not stand in for the real callee, it just raises TypeError inside the gate.
+    def _slow_chain(client, ticker, *, strike_count, to_date=None):
         with lk:
             active["n"] += 1
             active["max"] = max(active["max"], active["n"])
@@ -790,7 +792,7 @@ def test_chain_fetch_gate_fail_open_on_timeout(monkeypatch):
     monkeypatch.setattr(
         srv,
         "safe_get_chain",
-        lambda client, ticker, *, strike_count: (calls.append(ticker), "RESP")[1],
+        lambda client, ticker, *, strike_count, to_date=None: (calls.append(ticker), "RESP")[1],
     )
     # CHAIN_GATE_V2: two slots — saturate both to force the timeout path.
     assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
@@ -821,7 +823,9 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
     # "immediately acquirable" assertion requires a gate no other test has touched.
     monkeypatch.setattr(srv, "_schwab_chain_fetch_gate", srv._ChainGateV2())
     monkeypatch.setattr(srv, "_chain_inflight", {})
-    monkeypatch.setattr(srv, "safe_get_chain", lambda client, ticker, *, strike_count: "OK")
+    monkeypatch.setattr(
+        srv, "safe_get_chain",
+        lambda client, ticker, *, strike_count, to_date=None: "OK")
     resp, gate_wait_sec, fetch_sec = srv._gated_safe_get_chain(None, "ZZZ_NORM", strike_count=5)
     assert resp == "OK"
     assert gate_wait_sec >= 0.0
@@ -847,7 +851,10 @@ def test_chain_fetch_call_shape_and_gated_site_source_lock():
     from pathlib import Path
 
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    assert "resp = safe_get_chain(client, ticker, strike_count=strike_count)" in src
+    # RC-239: the call shape gained `to_date=` (expiry scoping). The lock asserts the SHAPE —
+    # gated helper, faucet-sourced width, and every kwarg named — rather than a frozen literal
+    # that goes stale the moment a legitimate argument is added.
+    assert "resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date)" in src
     assert "_gated_safe_get_chain, client, ticker," in src
     # Width comes from the faucet, never a bare constant (enforced repo-wide by
     # tools/check_institutional_correctness.py::check_chain_width_single_faucet).

@@ -66,7 +66,9 @@ repos:
       # run_with_repo_venv re-execs under .venv locally (CI falls through).
       - id: institutional-correctness
         name: institutional correctness (one gate — no fake tests, single source of truth)
-        # Local hooks ignore env:; wrapper sets ED_AGENT_ROLE=cursor explicitly.
+        # Local hooks ignore env:; the wrapper passes the AMBIENT ED_AGENT_ROLE through and
+        # leaves it unset when there is none (RC-240 — it used to hardcode 'cursor', which
+        # made the sole writer's own commit read as writer-drift).
         entry: python tools/precommit_institutional.py
         language: system
         pass_filenames: false

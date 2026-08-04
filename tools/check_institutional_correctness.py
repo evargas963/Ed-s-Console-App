@@ -4129,14 +4129,26 @@ def check_domain_faucet_registry() -> list[Violation]:
 
 
 def check_log_law() -> list[Violation]:
-    """LOG LAW (operator/PM 2026-08-04): closable work has exactly TWO homes.
+    """LOG LAW (operator/PM 2026-08-04, RC-237): closable work has exactly TWO homes.
 
-    The repo grew four shapes of list by accident of role and two started reading like work
-    queues — `reports/rc_open_drain_latest.md` alone carried 21 OPEN rows beside the real
-    ledger, so whichever list a reader opened looked authoritative while the other rotted.
-    This blocks a THIRD markdown work queue and any OVERDUE epistemic row; telemetry .jsonl
-    files are explicitly not debt. Delegates to tools/log_law.py so the gate, the tests and
-    the CLI all judge by one implementation.
+    OBSERVED (RC-237, measured 2026-08-04): five markdown files outside the two ledgers
+    carried status-bearing work rows — `reports/rc_open_drain_latest.md` 21 rows,
+    `reports/zero_debt_work_law_v1.md` 10, and three audit reports 3–7 each — beside the
+    real ledger's own open class. Closable work therefore had more than one home, and
+    whichever list a reader opened looked authoritative while the other rotted; a drain
+    measured against the wrong list reports progress the defect ledger does not have.
+
+    VALIDATED BY PROTOTYPE before enforcing: run against the whole tree first, it found
+    exactly those five files and nothing else — no false positive on prose that merely
+    mentions RC ids, on the two sanctioned ledgers, or on telemetry .jsonl/.log (events are
+    explicitly not debt). The threshold is three work rows because two reads as discussion
+    rather than a queue; frozen dated snapshots keep an operator escape (`# log-law-ok:`).
+    The overdue-epistemic clause was likewise prototyped: it fires on a lapsed due date and
+    stays silent on a future-dated pre-registered hypothesis, since forcing an early verdict
+    is how contaminated data becomes a citation. 10 negative controls in
+    tests/test_log_law_v1.py, plus a wiring assertion (RC-238) that this registration is
+    ENFORCED rather than merely present. Delegates to tools/log_law.py so the gate, the
+    tests and the CLI all judge by ONE implementation.
     """
     try:
         from tools.log_law import log_law_violations
@@ -4219,12 +4231,12 @@ CHECKS = [
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("rc_document_without_resolve", check_rc_document_without_resolve, True),  # RC-228/RC-230 LOCK-6: added OPEN rows must carry a resolve path
     ("writer_no_drift", check_writer_no_drift, True),  # RC-232 LOCK-1: staged paths must come from the mission's resolved writer
-    # LOG LAW 2026-08-04 (RC-237) — registration line HELD FOR THE OPERATOR GO, not omitted:
-    # adding a new ENFORCED check is exactly what operator_go.json gates, and the sole writer
-    # does not self-approve that flip. The mechanism itself is live and green today via
-    # tools/log_law.py (CLI + 10 negative controls); this line arms it at commit time.
-    # Uncomment under a granted GO with scope staged_lock_surface:
-    # ("log_law", check_log_law, True),
+    # LOG LAW (RC-237) — ARMED under the PM GO of 2026-08-04T18:58Z, scope staged_lock_surface
+    # (governance/operator_go.json, granted_by cursor_pm). One defect ledger, one epistemic
+    # ledger, telemetry stays telemetry: a THIRD markdown work queue or an OVERDUE epistemic
+    # row now BLOCKS pre-commit. RC-238 records the window in which this line sat commented —
+    # a proven-but-unwired lock reads as enforced to anyone who only runs the tests.
+    ("log_law", check_log_law, True),
     ("plus_player_law", check_plus_player_law, True),  # RC-205: attribute catalog complete + bound
     ("plus_player_cursor_hooks", check_plus_player_cursor_hooks, True),  # RC-205/208: Cursor invokes same .py guards
     ("honesty_guard_wired", check_honesty_guard_wired, True),  # RC-209: Stop honesty_guard.py present
