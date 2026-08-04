@@ -3,6 +3,6 @@
   "writer": "cursor",
   "auditor": "cursor",
   "held_commit": null,
-  "updated_at": "2026-08-03T20:20:00-05:00",
-  "note": "Active mission spot-binding-single-payload-v1 (census #8 P2). Prior: clocks 29c1e17f/RC-223, charm 18ce7f66/RC-224."
+  "updated_at": "2026-08-03T20:45:00-05:00",
+  "note": "Active mission chart-prior-day-b3-v1 (census #1 P2 residue). Prior: spot-binding RC-225, clocks RC-223, charm RC-224."
 }

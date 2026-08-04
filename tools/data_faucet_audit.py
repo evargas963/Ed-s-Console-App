@@ -110,12 +110,31 @@ CLIENT_CONCEPTS: dict[str, dict] = {
         # Promise.all destructure. The operator was looking at two different prices on one screen
         # while the audit reported one faucet. The rule is therefore structural: ANY read of a
         # spot-bearing name, whatever it happens to be called, is a violation outside the authority.
+        # RC-225: _cycleSpot DELETED — authorities are the /api/spot binding + as_of helpers only.
         "reader": r"\bliveSpot\b|\b[A-Za-z_$][\w$]*\.spot\b",
-        "authorities": ("currentSpot", "_cycleSpot"),
+        "authorities": (
+            "currentSpot",
+            "spotBindingAgeSec",
+            "spotBindingStale",
+            "spotBindingAgeLabel",
+        ),
         # The only functions allowed to ingest the raw /api/spot payload and feed the authority.
         "writers": ("pollSpot", "_dropLiveSpot"),
         # A bare state reset (`liveSpot = null`) chooses no faucet and renders nothing.
         "assign_only": r"\bliveSpot\s*=",
+    },
+    # RC-225: exposure had the same silent strikes/terrain age fork; same structural rule.
+    "exposure_spot": {
+        "files": ("static/exposure.html",),
+        "reader": r"\bliveSpot\b|\b[A-Za-z_$][\w$]*\.spot\b",
+        "authorities": (
+            "currentSpot",
+            "spotBindingAgeSec",
+            "spotBindingStale",
+            "spotBindingAgeLabel",
+        ),
+        "writers": ("pollSpot",),
+        "assign_only": r"\bliveSpot\w*\s*=",
     },
     # RC-77. The console page carries the same defect class on a much larger surface, so its
     # reader is NARROW BY NECESSITY rather than by preference: `r.spot` on a ladder row is a
@@ -131,8 +150,8 @@ CLIENT_CONCEPTS: dict[str, dict] = {
                    r"|\bedLiveSpot\s*\("),
         "authorities": ("consoleSpot", "effectiveDisplaySpot"),
         # Lane management and fast-repaint paths: they FEED the authority or repaint from the
-        # lane itself. edLiveSpot is the raw lane accessor, the counterpart of chart.html's
-        # _cycleSpot — legitimate to read the lane, never to choose between faucets.
+        # lane itself. edLiveSpot is the raw lane accessor — legitimate to read the lane,
+        # never to choose between faucets.
         "writers": ("_livePlaneApplyCore", "_quoteLaneShouldApply", "_syncQuoteLaneFromMergedState",
                     "setActiveTicker", "edLiveSpot", "edPaintSpot", "edLoadRadar",
                     "computeSpreadGate"),

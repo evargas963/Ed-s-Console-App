@@ -70,7 +70,7 @@ def test_authority_is_the_only_place_precedence_lives():
         and owner not in spec["authorities"] and owner not in spec["writers"]
         and not re.search(spec["assign_only"], line)
     ]
-    assert not offenders, f"spot read outside currentSpot()/_cycleSpot(): {offenders}"
+    assert not offenders, f"spot read outside currentSpot()/as_of helpers: {offenders}"
 
 
 def test_console_detector_catches_the_defect_it_was_built_for():
@@ -102,9 +102,12 @@ def test_render_sites_call_the_authority():
     src = CHART.read_text(encoding="utf-8")
     assert src.count("currentSpot()") >= 5, "render sites no longer route through the authority"
     assert "function currentSpot()" in src
-    assert "if (liveSpot != null) return liveSpot;" in src, (
-        "the authority no longer prefers the 1.5s live poll — the meta bar and the big legend "
-        "would agree with each other while both lagging the market"
+    # RC-225: authority is /api/spot only (liveSpot); cycle fallback DELETED.
+    assert "return liveSpot;" in src, (
+        "the authority no longer returns the /api/spot binding — dual-age fallback may return"
+    )
+    assert "function _cycleSpot" not in src, (
+        "cycle fallback faucet returned — strikes/terrain ages can paint as current (RC-225)"
     )
 
 

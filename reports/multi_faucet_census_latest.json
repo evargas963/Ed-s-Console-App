@@ -15,9 +15,7 @@
      "market_context.py:1067: prior_date = prior_trading_session_date("
     ],
     "static/chart.html computeDaily (JS FALLBACK faucet \u2014 browser-local clock, buffer-group window)": [
-     "static/chart.html:377: ? new Date(t * 1000).toLocaleDateString()",
-     "static/chart.html:391: function computeDaily() {",
-     "static/chart.html:396: const dkey = t => new Date(t * 1000).toLocaleDateString();"
+     "static/chart.html:419: function computeDaily() {"
     ]
    },
    "evidence": "LIVE 2026-08-03 18:0x CT PID 39720: /api/price-levels PDL 737.68 == /api/levels PDL 737.68 (was 737.68 vs 734.59 at 09:41). Residue: computeDaily derives pdh/pdl/pdc client-side when engine values absent \u2014 browser timezone, no RTH filter, days[length-2] window.",
@@ -110,13 +108,14 @@
      "math_levels.py:695: def bs_vanna(spot: float, strike: float, t_years: float, sigma: float,",
      "math_levels.py:721: def bs_charm(spot: float, strike: float, t_years: float, sigma: float,"
     ],
-    "math_exposure_core.compute_net_charm inline formula (GRANDFATHERED, RC-179 parity-locked)": [
-     "math_exposure_core.py:756: def compute_net_charm("
+    "math_exposure_core.compute_net_charm (DELEGATES to bs_charm; RC-224)": [
+     "math_exposure_core.py:756: def compute_net_charm(",
+     "math_exposure_core.py:790: 70-79% of real SPY/QQQ/IWM states, exact-negation of the per-strike bs_charm path). A"
     ]
    },
-   "evidence": "Registry names the grandfather explicitly; RC-179 parity locks pin sign/magnitude. Structural residue: one concept, two formula sites \u2014 the vanna defect (RC-211) was exactly this class before its kill.",
-   "reproduce": "python tools/check_institutional_correctness.py (charm parity checks); read registry grandfathered_inline_greeks",
-   "proposed_kill": "Migrate compute_net_charm onto bs_charm; delete the inline formula; registry grandfather entry removed (its own stated destiny: 'migrate to the bs_* faucet')."
+   "evidence": "CHARM_DONE (RC-224 / charm-bs-faucet-migrate-v1): compute_net_charm calls math_levels.bs_charm(rate=0); grandfathered_inline_greeks cleared; RC-179 parity locks remain green.",
+   "reproduce": "python -m pytest tests/test_charm_sign_finite_difference.py -q; python -c \"import json; assert not json.load(open('governance/level_faucets.json'))['grandfathered_inline_greeks']\"",
+   "proposed_kill": "CHARM_DONE \u2014 migrate + delete inline + clear grandfather (RC-224)."
   },
   {
    "concept": "clocks (session date / display time)",
@@ -126,35 +125,49 @@
      "time_et.py:8: ET = ZoneInfo(\"America/New_York\")",
      "time_et.py:25: def now_et() -> datetime:"
     ],
-    "static/chart.html bare toLocaleDateString (BROWSER-LOCAL clock in bar grouping + axis)": [
-     "static/chart.html:377: ? new Date(t * 1000).toLocaleDateString()",
-     "static/chart.html:396: const dkey = t => new Date(t * 1000).toLocaleDateString();",
-     "static/chart.html:1362: const lab = tf === 'D' ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })"
+    "static/chart.html SESSION_TZ+DISPLAY_TZ (RC-223 killed ambient regroup)": [
+     "static/chart.html:377: const SESSION_TZ = 'America/New_York';",
+     "static/chart.html:378: const DISPLAY_TZ = 'America/Chicago';",
+     "static/chart.html:380: function etDateKey(tsSec) {",
+     "static/chart.html:382: timeZone: SESSION_TZ, year: 'numeric', month: '2-digit', day: '2-digit',",
+     "static/chart.html:392: timeZone: DISPLAY_TZ, month: 'short', day: 'numeric',",
+     "static/chart.html:398: timeZone: DISPLAY_TZ, hour: '2-digit', minute: '2-digit', hour12: false,"
     ],
-    "static/index.html toLocaleDateString('en-CA') date stamp (browser-local)": [
-     "static/index.html:11710: ubD.textContent = now.toLocaleDateString('en-CA');"
+    "tools/clocks_tz_lock.py bare toLocaleDateString ban": [
+     "tools/clocks_tz_lock.py:13: SESSION_TZ = \"America/New_York\"",
+     "tools/clocks_tz_lock.py:43: def bare_locale_date_violations(text: str, *, rel: str = \"snippet\") -> list[str]:",
+     "tools/clocks_tz_lock.py:57: f\"session keys use {SESSION_TZ}; display uses {DISPLAY_TZ} (RC-223)\"",
+     "tools/clocks_tz_lock.py:63: \"\"\"Chart must bind daily grouping to SESSION_TZ and labels to DISPLAY_TZ.\"\"\"",
+     "tools/clocks_tz_lock.py:65: if f\"SESSION_TZ = '{SESSION_TZ}'\" not in text and f'SESSION_TZ = \"{SESSION_TZ}\"' not in text:",
+     "tools/clocks_tz_lock.py:67: f\"static/chart.html: missing SESSION_TZ={SESSION_TZ!r} \""
     ]
    },
-   "evidence": "chart.html groups daily bars by the BROWSER's timezone (computeDaily dkey + axis labels) while every server window is ET and the display law is CT \u2014 a traveling operator's chart would regroup sessions. index.html carries one browser-local date stamp beside CT-explicit stamps.",
-   "reproduce": "read chart.html L377/L396/L1362 + index.html L11710; compare with UI clock law (CT)",
-   "proposed_kill": "All JS date grouping/labels take an explicit timeZone (America/Chicago display, ET session logic served by the API, e.g. /api/levels provenance.window); bare toLocaleDateString banned by a static check."
+   "evidence": "CLOCKS_DONE (RC-223 / clocks-tz-explicit-v1): session keys America/New_York, display labels America/Chicago, bare toLocaleDateString banned by tools/clocks_tz_lock.py + T1. Residue: untracked exposure.html axis times; computeDaily prior_day B3 is a later mission.",
+   "reproduce": "python -m pytest tests/test_clocks_tz_explicit_v1.py -q; python -c \"from tools.clocks_tz_lock import scan_tracked_static; assert scan_tracked_static()==[]\"",
+   "proposed_kill": "CLOCKS_DONE \u2014 explicit timeZone binding + static ban (RC-223)."
   },
   {
    "concept": "spot",
    "severity": "P2",
+   "status": "SPOT_DONE",
    "producers": {
     "server.resolve_spot (THE authority, RC-14; every payload carries spot_source)": [
      "server.py:755: def resolve_spot(ticker: str, *, chain_json: dict | None = None,"
     ],
-    "client bindings (chart/exposure/index render spot from different payloads' spot fields)": [
-     "static/chart.html:174: /* v6.1 (RC-194) # ui-mockup-ok: the mock's compact below|spot|above cluster \u2014 values hug",
-     "static/chart.html:224: <span class=\"chip\" id=\"lvlbtn\" title=\"every level: ON always &middot; AUTO fires near spot &middot; OFF\">LEVEL",
-     "static/chart.html:323: let liveSpot = null;      // 2.5s fast-poll spot (/api/spot); 15s cycle is the fallback"
+    "client /api/spot binding + as_of (RC-225; cycle fallback DELETED)": [
+     "static/chart.html:733: src.textContent = spotBindingAgeLabel();",
+     "static/chart.html:826: ` <span id=\"spotage\" class=\"src\">${esc(spotBindingAgeLabel())}</span> \u00b7 regime ${esc(t.regime || '\u2014')} \u00b7 ` +",
+     "static/chart.html:1419: if (_mage) _mage.textContent = spotBindingAgeLabel();"
+    ],
+    "tools/spot_binding_lock.py dual-age ban": [
+     "tools/spot_binding_lock.py:38: def chart_binding_violations(text: str) -> list[str]:",
+     "tools/spot_binding_lock.py:130: def scan_tracked_static(repo: Path | None = None) -> list[str]:",
+     "tools/spot_binding_lock.py:134: \"static/chart.html\": chart_binding_violations,"
     ]
    },
-   "evidence": "Compute side is single-faucet (RC-14). Residue is BINDING-level: each tab renders the spot of whichever payload it last fetched, so tabs can show different ages of the one authority. FORCES strip spot honesty is the PM-named instance.",
-   "reproduce": "compare spot + spot_source + as_of across /api/terrain, /api/analytics/state, /api/levels",
-   "proposed_kill": "Consumers render spot ONLY from a single shared payload field per screen with its as_of age visible; stale spot renders as stale, not as current."
+   "evidence": "SPOT_DONE (RC-225 / spot-binding-single-payload-v1): chart+exposure bind ONLY /api/spot with spot_as_of age visible (STALE >30s); consoleSpot drops last_price/quote_mid fallback; _cycleSpot DELETED; T1 + spot_binding_lock. Residue: desk.html dist.spot sample surface (OUT-OF-SCOPE this slice).",
+   "reproduce": "python -m pytest tests/test_spot_binding_single_payload_v1.py -q; python -c \"from tools.spot_binding_lock import scan_tracked_static; assert scan_tracked_static()==[]\"",
+   "proposed_kill": "SPOT_DONE \u2014 single per-screen binding + visible as_of (RC-225)."
   },
   {
    "concept": "walls / gamma flip",

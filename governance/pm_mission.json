@@ -1,20 +1,19 @@
 {
   "status": "active",
-  "mission_id": "spot-binding-single-payload-v1",
-  "title": "Census #8 spot: consumers render spot ONLY from a single shared payload field per screen with as_of age visible; no silent dual ages across tabs",
+  "mission_id": "chart-prior-day-b3-v1",
+  "title": "Census #1 prior_day B3: chart.html consumes /api/levels prior_day ids; computeDaily prior_day derivation DELETED — absent engine values render absent (no JS fallback)",
   "writer": "cursor",
   "pm": "cursor",
   "auditor": "cursor",
   "census_source": "reports/multi_faucet_census_latest.md",
-  "concepts": [8],
+  "concepts": [1],
   "out_of_scope": [
-    "chart computeDaily prior_day B3 (separate)",
-    "clocks (DONE RC-223)",
-    "charm (DONE RC-224)"
+    "strip re-aggregation (#10)",
+    "pdh rounding (#11)",
+    "desk.html dist.spot (spot residue)"
   ],
   "scope_paths": [
-    "static/",
-    "server.py",
+    "static/chart.html",
     "tests/",
     "tools/",
     "reports/",
@@ -23,18 +22,19 @@
     "governance/sole_writer.json"
   ],
   "prior_mission": {
-    "mission_id": "charm-bs-faucet-migrate-v1",
+    "mission_id": "spot-binding-single-payload-v1",
     "status": "DONE",
-    "head": "18ce7f66",
-    "rc": "RC-224"
+    "rc": "RC-225",
+    "note": "head set at spot-binding commit this turn"
   },
   "approved_by": "operator",
   "approved_via": "chat_continue_dont_stop_pipeline",
-  "approved_at": "2026-08-03T20:20:00-05:00",
+  "approved_at": "2026-08-03T20:45:00-05:00",
   "done_criteria": [
-    "Each screen binds spot from one declared payload field with as_of visible",
-    "T1 locks the binding; silent dual-age renders fail the lock",
+    "chart.html prior_day levels come from /api/levels (or terrain levels payload) — not computeDaily JS",
+    "computeDaily prior_day derivation DELETED (not fallback-patched); absent = absent",
+    "T1 locks the kill; silent JS prior_day recompute fails the lock",
     "LIVE or DISK_ONLY+restart owed stated honestly"
   ],
-  "note": "Armed after P1 clocks+charm DONE. Census P1 queue clear; next kill is P2 spot binding. Research then first cut under PROCEED."
+  "note": "Armed+started after spot-binding RC-225. Highest-leverage census P2 residue (rank #1)."
 }

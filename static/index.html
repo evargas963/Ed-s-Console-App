@@ -6479,13 +6479,15 @@ function renderDecisionCommandRail(d) {
    ticker, so for any other symbol (confluence rows) that payload's own spot stays authoritative —
    dropping that scoping would paint the active ticker's price onto every other symbol's row. */
 function consoleSpot(d) {
+  // RC-225: one declared field per binding — live-plane spot for the active ticker,
+  // else payload.spot only. Never silent-fallback through last_price / quote_mid ages.
   const lt = (d && d.ticker || '').toUpperCase();
   if (!lt || lt === activeTicker) {
     const fs = window._fastLaneSpot;
     if (fs != null && Number.isFinite(fs) && fs > 0) return fs;
   }
   if (!d || typeof d !== 'object') return null;
-  const s = parseFloat(d.spot ?? d.last_price ?? d.quote_mid);
+  const s = parseFloat(d.spot);
   return Number.isFinite(s) && s > 0 ? s : null;
 }
 

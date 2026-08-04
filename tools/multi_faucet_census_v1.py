@@ -169,18 +169,23 @@ def build_findings() -> list[dict]:
         {
             "concept": "spot",
             "severity": "P2",
+            "status": "SPOT_DONE",
             "producers": {
                 "server.resolve_spot (THE authority, RC-14; every payload carries spot_source)":
                     _sites("server.py", r"def resolve_spot", 1),
-                "client bindings (chart/exposure/index render spot from different payloads' spot fields)":
-                    _sites("static/chart.html", r"\bspot\b", 3),
+                "client /api/spot binding + as_of (RC-225; cycle fallback DELETED)":
+                    _sites("static/chart.html", r"function currentSpot|spotBindingAgeLabel", 3),
+                "tools/spot_binding_lock.py dual-age ban":
+                    _sites("tools/spot_binding_lock.py", r"scan_tracked_static|chart_binding_violations"),
             },
-            "evidence": "Compute side is single-faucet (RC-14). Residue is BINDING-level: each tab renders the "
-                        "spot of whichever payload it last fetched, so tabs can show different ages of the one "
-                        "authority. FORCES strip spot honesty is the PM-named instance.",
-            "reproduce": "compare spot + spot_source + as_of across /api/terrain, /api/analytics/state, /api/levels",
-            "proposed_kill": "Consumers render spot ONLY from a single shared payload field per screen with its "
-                             "as_of age visible; stale spot renders as stale, not as current.",
+            "evidence": "SPOT_DONE (RC-225 / spot-binding-single-payload-v1): chart+exposure bind ONLY "
+                        "/api/spot with spot_as_of age visible (STALE >30s); consoleSpot drops "
+                        "last_price/quote_mid fallback; _cycleSpot DELETED; T1 + spot_binding_lock. "
+                        "Residue: desk.html dist.spot sample surface (OUT-OF-SCOPE this slice).",
+            "reproduce": "python -m pytest tests/test_spot_binding_single_payload_v1.py -q; "
+                         "python -c \"from tools.spot_binding_lock import scan_tracked_static; "
+                         "assert scan_tracked_static()==[]\"",
+            "proposed_kill": "SPOT_DONE — single per-screen binding + visible as_of (RC-225).",
         },
         {
             "concept": "walls / gamma flip",

@@ -180,6 +180,7 @@
   #forces .fsrc { justify-self:end; text-align:right; }
   #forces .fspot { background:var(--amber); color:#05070a; border-radius:9px;
                    padding:1px 8px; font-size:10.5px; font-weight:800; }
+  #forces .fspot.stale { background:var(--dim); color:#05070a; }
   #forces .fsrc { color:var(--dim); font-size:9.5px; }
   #forces .freading { border-top:1px solid var(--border); margin:6px 12px 0;
                       padding:6px 4px 2px; color:#cbd3dd; font-size:11.5px; }
@@ -320,7 +321,7 @@ let scorecard = null;     // latest daily scorecard — coach numbers update wit
 let scorecardStale = null;// present but PAST its freshness budget (RC-78): the reason,
                           // never the numbers, so staleness is stated not implied
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
-let liveSpot = null;      // 2.5s fast-poll spot (/api/spot); 15s cycle is the fallback
+let liveSpot = null;      // RC-225: ONLY /api/spot — never borrow strikes/terrain ages
 let forming = null;       // TradingView-style FORMING candle for the current minute:
                           // display-only synthesis from spot ticks; the canonical 1m bar
                           // REPLACES it the moment the server writes that minute
@@ -677,7 +678,7 @@ function renderForces() {
   const grid = document.getElementById('f-grid'), src = document.getElementById('f-src'),
         rd = document.getElementById('f-reading');
   if (!grid || !src || !rd) return;
-  const spot = currentSpot();   // RC-75: one client spot authority
+  const spot = currentSpot();   // RC-75/RC-225: /api/spot binding only
   const rows = ((strikes && strikes.today) || {}).all || [];
   let gB = null, gA = null, vB = null, vA = null;
   if (rows.length && spot != null) {
@@ -692,13 +693,15 @@ function renderForces() {
     : `<b style="color:${col}">${(v >= 0 && col !== '#ffc400') ? '+' : ''}${fmtBig(v)}</b>`;
   const sgn = v => v == null ? '' : (v >= 0 ? '#33aaff' : '#ff3355');
   const grn = v => v == null ? '' : (v >= 0 ? '#00e07a' : '#ff3355');
-  const spotPill = spot == null ? '—' : fmt(spot);
+  // RC-225: pill carries value; age/source sit in #f-src — never paint a borrowed cycle spot as live.
+  const spotPill = spot == null ? '—'
+    : (fmt(spot) + (spotBindingStale() ? ' STALE' : ''));
   // v6.1 # ui-mockup-ok: mock layout — the spot pill prints ONCE (top row); later rows carry
   // a quiet dot so the eye keeps the below|spot|above axis without pill noise.
   let pillUsed = false;
   const rowH = (id, lab, below, above, bcol, acol, srcTxt, title) => {
     const mid = pillUsed ? `<div class="fmid">&middot;</div>`
-      : `<div class="fspot">${esc(spotPill)}</div>`;
+      : `<div class="fspot${spotBindingStale() ? ' stale' : ''}">${esc(spotPill)}</div>`;
     pillUsed = true;
     return `<div class="fl" id="fr-${id}" title="${esc(title)}">${lab}</div>`
       + `<div class="fb">${c(below, bcol)}</div>` + mid
@@ -727,7 +730,7 @@ function renderForces() {
     + `<div class="fb" style="grid-column:2/5; text-align:left; color:var(--dim); font-size:10.5px;">`
     + `locked &middot; renders after the operator charm vote (DIR-01(i)) — not even greyed numbers before approval</div>`
     + `<div class="fsrc">gated on vote</div>`;
-  src.textContent = spot == null ? 'waiting for spot' : '';
+  src.textContent = spotBindingAgeLabel();
   const bits = [];
   if (gB != null && gA != null && gA !== 0)
     bits.push(`gamma ${fmtBig(gB)} below vs ${fmtBig(gA)} above (${Math.abs(gA) > 0 ? (Math.abs(gB) / Math.abs(gA)).toFixed(2) : '—'}:1)`);
@@ -787,7 +790,10 @@ async function load() {
     const atEnd = !view ||
       (view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5);
     raw = b.bars || []; terrain = t; crosses = c.crosses || [];
-    if (chartTicker !== tk) { forming = null; sealedForming = null; liveSpot = null; }
+    if (chartTicker !== tk) {
+      forming = null; sealedForming = null;
+      liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+    }
     chartTicker = tk;
     // RC-164: this line referenced `_chartCommitInflight`, declared by an Enter-key commit guard
     // that is NOT in this file — I stripped that guard's hunk from my commits by matching the
@@ -816,7 +822,8 @@ async function load() {
     // (MEASURED in the rendered DOM: big legend 737.73 beside meta bar 737.67). One faucet only
     // guarantees agreement between readers sampled at the same instant.
     document.getElementById('meta').innerHTML =
-      `spot <span id="metapx">${esc(fmt(currentSpot()))}</span> · regime ${esc(t.regime || '—')} · ` +
+      `spot <span id="metapx">${esc(fmt(currentSpot()))}</span>` +
+      ` <span id="spotage" class="src">${esc(spotBindingAgeLabel())}</span> · regime ${esc(t.regime || '—')} · ` +
       `${esc(t.confidence || '—')} · ${raw.length}×1m bars · ` +
       `strikes ${esc((strikes && strikes.today_source) || 'restart console to activate')} ` +
       `· scroll=wider/narrower · shift+scroll=taller/shorter · drag=move · dbl-click=fit`;
@@ -894,9 +901,8 @@ async function load() {
       _gsrc.style.color = '';
       _gsrc.title = '';
     }
-    // fallback tick: until /api/spot exists on the running server, the 15s
-    // cycle's repriced spot still grows the forming candle
-    const cs = currentSpot();   // RC-75: one client spot authority — never pick a faucet here
+    // RC-225: forming candle grows only from the /api/spot binding — never from cycle payload.
+    const cs = currentSpot();
     if (cs != null) noteSpotTick(cs);
     draw(); drawHist(); renderForces();   // v6 # ui-mockup-ok: forces strip repaints per cycle
   } catch (e) {
@@ -1409,6 +1415,8 @@ function draw() {
   // written only by the 15s load() cycle, so it lagged the legend below it by up to a full cycle.
   const _mpx = document.getElementById('metapx');
   if (_mpx) _mpx.textContent = fmt(spot);
+  const _mage = document.getElementById('spotage');
+  if (_mage) _mage.textContent = spotBindingAgeLabel();
   // RC-111: the gamma panel's canvas SPOT marker must tick with THIS frame too — it froze at
   // its last data-load repaint, and the screen showed two spots at once (RC-81 class; canvas
   // markers were outside RC-81's DOM enumeration).
@@ -1952,7 +1960,7 @@ document.getElementById('tk').addEventListener('change', () => {
     const _v = (document.getElementById('tk').value || '').trim().toUpperCase();
     if (_v) localStorage.setItem('ed_ticker', _v);
   } catch (e) {}
-  view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0;
+  view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
   forming = null; sealedForming = null; chartTicker = null; load(); });
 // RC-123: adopt the cross-page ticker BEFORE the first load, and follow parallel-tab changes.
 (function () {
@@ -1963,7 +1971,7 @@ document.getElementById('tk').addEventListener('change', () => {
   window.addEventListener('storage', (e) => {
     if (e.key === 'ed_ticker' && e.newValue && tkEl && tkEl.value !== e.newValue) {
       tkEl.value = e.newValue;
-      view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0;
+      view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
       forming = null; sealedForming = null; chartTicker = null; load();
     }
   });
@@ -1973,28 +1981,36 @@ document.getElementById('tk').addEventListener('change', () => {
 // In-flight guard + spot_as_of_ts_utc: a slow reply never overwrites a fresher tick.
 let spotPollInflight = false;
 let liveSpotAsOf = 0;
-// RC-75 — THE CLIENT SPOT AUTHORITY. Every rendered spot reads through this and nothing else.
-// Five call sites used to inline their own precedence: the drawn price line included liveSpot
-// while the cycle tick, the level bands, the gamma mark and the fallback helper all SKIPPED it,
-// so the amber line showed the 1.5s poll while the y-domain and gamma mark showed the 15s cycle
-// value — several different spots on one screen in one frame. The server has had one spot
-// authority since RC-14 (resolve_spot); this is its browser counterpart.
-// Precedence is deliberate: freshest first. liveSpot (1.5s poll) > strikes.spot > terrain.spot.
+let liveSpotSource = null;
+const SPOT_STALE_SEC = 30;   // RC-225: age > this → visible STALE (value retained, not painted as live)
+// RC-75 / RC-225 — THE CLIENT SPOT AUTHORITY. Every rendered spot reads through currentSpot()
+// and nothing else. RC-75 unified in-frame precedence; RC-225 kills the silent dual-age fallback
+// onto strikes.spot / terrain.spot. Declared payload field for this screen: /api/spot.spot
+// with spot_as_of_ts_utc + spot_source visible via spotBindingAgeLabel().
 function currentSpot() {
-  if (liveSpot != null) return liveSpot;
-  return _cycleSpot();
+  return liveSpot;
 }
-// The 15s cycle value ONLY — used where the live poll must be deliberately excluded (seeding a
-// tick when no live spot exists yet, and dropping the live spot on ticker change). Never call
-// this to RENDER a spot; render through currentSpot().
-function _cycleSpot() {
-  return (strikes && strikes.spot != null) ? strikes.spot
-    : (terrain ? terrain.spot : null);
+function spotBindingAgeSec() {
+  if (!liveSpotAsOf) return null;
+  return Math.max(0, (Date.now() / 1000) - liveSpotAsOf);
+}
+function spotBindingStale() {
+  const age = spotBindingAgeSec();
+  return age != null && age > SPOT_STALE_SEC;
+}
+function spotBindingAgeLabel() {
+  if (liveSpot == null) return 'waiting for /api/spot';
+  const age = spotBindingAgeSec();
+  if (age == null) return 'as_of unknown';
+  const src = liveSpotSource
+    ? String(liveSpotSource).replace('schwab_quote_last', 'quote.last') : '—';
+  const ageTxt = age < 1 ? '<1s' : (Math.round(age) + 's');
+  return (spotBindingStale() ? 'STALE ' : '') + ageTxt + ' · ' + src;
 }
 function _dropLiveSpot() {
-  liveSpot = null; liveSpotAsOf = 0;
-  const cs = _cycleSpot();
-  if (cs != null && chartTicker) noteSpotTick(cs); else draw();
+  // RC-225: absent binding stays absent — never borrow a slower payload's spot as "current".
+  liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+  draw(); renderForces();
 }
 let spotPollBackoffUntil = 0;   // 404 = server predates the endpoint: back off,
                                 // do not spam the operator's console log at 1.5s
@@ -2017,8 +2033,13 @@ async function pollSpot() {
       const asOf = Number(j.spot_as_of_ts_utc) || 0;
       if (asOf && liveSpotAsOf && asOf < liveSpotAsOf) return;
       if (asOf) liveSpotAsOf = asOf;
+      liveSpotSource = j.spot_source != null ? String(j.spot_source) : null;
       liveSpot = Number(j.spot);
       noteSpotTick(liveSpot);
+      // Age label + FORCES pill must tick with the binding, not wait for the 15s cycle.
+      const _mage = document.getElementById('spotage');
+      if (_mage) _mage.textContent = spotBindingAgeLabel();
+      renderForces();
     } else {
       _dropLiveSpot();
     }

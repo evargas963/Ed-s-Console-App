@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ed Exposure — dealer positioning on price</title>
+<!-- # ui-mockup-ok: RC-200/RC-201 operator LIVE order 2026-08-02 ("this goes live") + same-day
+     "lifeless chart" correction: full interactions, series VWAP bands, seeded red/green
+     bubbles, forming candle. Quote recorded in governance/ui_mockup_approvals.json. -->
+<style>
+  :root { --bg:#0a0e15; --panel:#111826; --panel2:#181c26; --border:#1f2a3c; --border2:#2a3850;
+          --text:#e9eef6; --text2:#c6d0e0; --dim:#93a1b8; --mut:#66748c;
+          --accent:#37d2dd; --blue:#4b8bff; --green:#2fd08a; --red:#ff5c74; --amber:#f6b73c;
+          --vio:#a78bfa; --orange:#f97316; --skyblue:#93c5fd;
+          --gridline:rgba(147,161,184,.14);
+          --mono:'IBM Plex Mono', ui-monospace, Consolas, monospace; }
+  body.light { --bg:#f4f7fb; --panel:#ffffff; --panel2:#eef2f8; --border:#d8dfea; --border2:#c3cddc;
+          --text:#0f172a; --text2:#1e293b; --dim:#5b6b83; --mut:#7c8aa0;
+          --accent:#0891b2; --blue:#2563eb; --green:#16a34a; --red:#dc2626; --amber:#d97706;
+          --vio:#7c3aed; --orange:#ea580c; --skyblue:#3b82f6;
+          --gridline:rgba(15,23,42,.10); }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; color:var(--text); background:var(--bg); display:flex; flex-direction:column;
+         overflow:auto; font:14px/1.4 ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif; }
+  #top { flex:none; display:flex; gap:10px; align-items:center; padding:8px 14px;
+         border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  #tk { background:var(--panel); color:var(--text); border:1px solid var(--border2);
+        border-radius:8px; padding:6px 10px; width:88px; font-weight:800; font-size:14px;
+        text-transform:uppercase; font-family:var(--mono); }
+  .cv-nav { display:flex; gap:.2em; margin-left:auto; }
+  .cv-tab { padding:.45em .95em; border-radius:.5em; color:var(--dim); font-weight:600;
+            cursor:pointer; border:1px solid transparent; background:none; font:inherit;
+            text-decoration:none; }
+  .cv-tab[aria-selected="true"] { background:var(--panel); color:var(--text);
+                                  border-color:var(--border); }
+  .cv-tab:hover { color:var(--text2); }
+  .pill { border:1px solid var(--border2); background:transparent; color:var(--dim);
+          border-radius:9px; padding:3px 10px; font-size:11.5px; font-weight:600;
+          cursor:pointer; user-select:none; white-space:nowrap; }
+  .pill.on { background:var(--panel2); color:var(--text); }
+  .pill.gate { color:var(--mut); border-color:var(--border); cursor:help; }
+  #ctl { flex:none; display:flex; gap:6px; align-items:center; padding:6px 14px;
+         border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  #clocks { flex:none; display:flex; gap:14px; padding:4px 14px; font-size:10.5px;
+            color:var(--mut); border-bottom:1px solid var(--border);
+            font-family:var(--mono); flex-wrap:wrap; }
+  #clocks b { font-weight:600; color:var(--dim); }
+  #dq { margin-left:auto; }
+  #layout { display:flex; flex:1 1 0; min-height:420px; }
+  #wrap { position:relative; flex:1; min-width:0; cursor:crosshair; }
+  #rail { width:230px; border-left:1px solid var(--border); padding:6px 8px;
+          font-size:11px; font-family:var(--mono); }
+  canvas { display:block; width:100%; height:100%; }
+  #tip { position:fixed; display:none; max-width:340px; background:var(--panel);
+         border:1px solid var(--accent); border-radius:8px; padding:9px 12px;
+         font-size:12px; line-height:1.55; pointer-events:none; z-index:9; }
+  #legend { flex:none; display:flex; gap:14px; padding:6px 14px; font-size:10.5px;
+            color:var(--dim); border-top:1px solid var(--border); flex-wrap:wrap; }
+  #hedge { color:var(--text2); font-family:var(--mono); font-size:11px; }
+  .lz { color:var(--mut); }
+  #livedot { width:8px; height:8px; border-radius:50%; background:var(--green); flex:none;
+             animation:pulse 1.6s ease-in-out infinite; }
+  #livedot.stale { background:var(--amber); animation:none; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+</style>
+</head>
+<body>
+<div id="top">
+  <input id="tk" value="SPY" spellcheck="false">
+  <span id="livedot" title="feed state"></span>
+  <span class="pill" id="scope-all">ALL</span>
+  <span class="pill" id="scope-near" title="what the strikes endpoint serves — honest scopes only">&le;7 DTE</span>
+  <span class="pill" id="regime">&hellip;</span>
+  <span class="pill gate" title="dealer-side convention toggle renders after our own basis measurement (direction doc R.Q3) — no vendor-copied assumption flips">dealer-side: standard</span>
+  <div class="cv-nav" role="tablist" aria-label="View">
+    <a class="cv-tab" href="/">Console</a>
+    <a class="cv-tab" href="/#terrain">Terrain</a>
+    <a class="cv-tab" href="/chart">Chart</a>
+    <a class="cv-tab" href="/desk">Desk</a>
+    <span class="cv-tab" aria-selected="true">Exposure</span>
+  </div>
+  <button type="button" class="cv-tab" id="theme-btn">&#9728;&#65039; LIGHT</button>
+</div>
+<div id="ctl">
+  <!-- # ui-mockup-ok: RC-201 alive-fix — operator: "no timeframe to choose from" -->
+  <span class="lz" style="font-size:10px;">TF</span>
+  <span class="pill on" id="tf-1">1m</span>
+  <span class="pill" id="tf-5">5m</span>
+  <span class="pill" id="tf-15">15m</span>
+  <span class="lz" style="font-size:10px; margin-left:8px;">OVERLAYS</span>
+  <span class="pill on" id="ov-dots" title="per-strike net dealer gamma — dot size and density carry magnitude">GEX dots</span>
+  <span class="pill on" id="ov-bubbles" title="flow: session volume seeds at the right edge, then deltas accrue from live polls while open — the persisted history store is the named next build (direction doc R.A1); this stays live-accrual">Bubbles &middot; live-accrual</span>
+  <span class="pill on" id="ov-vwap" title="session VWAP and ±1σ/±2σ as CUMULATIVE SERIES curves from canonical RTH bars (RC-198 geometry)">VWAP &sigma;</span>
+  <span class="pill on" id="ov-king" title="largest |GEX| strike — cyan is reserved for the king node and spot">King node</span>
+  <span class="pill" id="ov-vol" title="ladder shows per-strike session option volume">VOL ladder</span>
+  <!-- # ui-mockup-ok: RC-199 — no vote gate; state is purely whether the fields are served -->
+  <span class="pill gate" id="ov-charm" title="lights when /api/forces serves charm_below/charm_above (restart the console to pick the fields up)">Charm</span>
+  <span class="pill gate" title="per-strike call/put split and DEX ladder await their server fields (direction doc R.5)">Split &middot; DEX</span>
+  <span id="dq" class="pill" title="data quality: strikes served, staleness state">DQ &hellip;</span>
+</div>
+<div id="clocks">
+  <span>chain <b id="ck-chain">&hellip;</b></span>
+  <span>bars <b id="ck-bars">&hellip;</b></span>
+  <span>flow <b id="ck-flow">accrues while open</b></span>
+  <span>OI <b id="ck-oi">&Delta; nightly</b></span>
+  <span>scroll=zoom &middot; shift+scroll=price &middot; drag=pan &middot; dbl-click=fit</span>
+  <span style="margin-left:auto;">poll <b>15s</b> &middot; spot <b>1.5s</b> &middot; chain loop <b id="ck-cad">&hellip;</b></span>
+</div>
+<div id="layout">
+  <div id="wrap"><canvas id="cv" height="560"></canvas></div>
+  <div id="rail">
+    <div style="color:var(--text);">ladder &middot; <span id="lad-mode" style="color:var(--accent); cursor:pointer;">GEX</span></div>
+    <canvas id="lv" height="560" style="height:300px;"></canvas>
+    <div id="ranked" style="line-height:1.8; color:var(--text2); margin-top:4px;"></div>
+    <div id="hedge" style="border-top:1px solid var(--border); margin-top:6px; padding-top:5px;"></div>
+    <div class="lz" id="gates" style="margin-top:4px;"></div>
+  </div>
+</div>
+<div id="legend">
+  <!-- # ui-mockup-ok: RC-201 alive-fix — Pika/Barney are CLICKABLE filters (vendor's clickable pills) -->
+  <span class="pill" id="leg-barney" title="click: show only −γ (Barney) strikes — dealers chase, moves extend"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--vio);"></span> &minus;&gamma; Barney &middot; fuel</span>
+  <span class="pill" id="leg-pika" title="click: show only +γ (Pika) strikes — dealers fade, moves compress"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--amber);"></span> +&gamma; Pika &middot; friction</span>
+  <!-- # ui-mockup-ok: RC-203 — legend states the $ figure honestly (notional, not premium) -->
+  <span title="time-anchored flow: each bubble sits at the minute its volume hit; $ = underlying notional (contracts × 100 × spot); session totals with unknown print time sit in the right gutter until the A1 store backfills"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--green);"></span>/<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);"></span> bubbles: activity at +&gamma; / &minus;&gamma; strikes &middot; $ notional</span>
+  <span><span style="display:inline-block;width:9px;height:9px;border:1.5px solid var(--accent);border-radius:50%;"></span> king + spot only</span>
+  <span style="margin-left:auto;" class="lz">structure facts only &middot; signal rules UNPROVEN (register) &middot; Decide WAIT</span>
+</div>
+<div id="tip"></div>
+<script>
+'use strict';
+/* Ed Exposure v1.1 (RC-200/RC-201) — # ui-mockup-ok: operator LIVE order + the "lifeless
+   chart" correction: TradingView-grade interactions ported from the Chart, RC-198 series
+   VWAP bands, seeded + accruing red/green bubbles, forming candle on the 1.5s spot poll.
+   §R.5 honesty ledger governs: every absence labeled, nothing rendered unserved. */
+window.addEventListener('error', e => {
+  const el = document.getElementById('regime');
+  if (el) el.textContent = 'page error: ' + (e.message || 'unknown');
+});
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));
+const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
+const fmtBig = v => { if (v == null) return '—'; const a = Math.abs(v);
+  return a >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (v / 1e6).toFixed(1) + 'M'
+       : a >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : String(Math.round(v)); };
+const j = async u => (await fetch(u)).json();
+
+let PAL = {};
+function refreshPal() {
+  const cs = getComputedStyle(document.body);
+  const v = n => cs.getPropertyValue(n).trim();
+  PAL = { bg: v('--bg'), tx: v('--text'), dim: v('--dim'), mut: v('--mut'),
+          grid: v('--gridline'), green: v('--green'), red: v('--red'), amber: v('--amber'),
+          vio: v('--vio'), blue: v('--blue'), orange: v('--orange'), acc: v('--accent'),
+          sky: v('--skyblue') };
+}
+function palRgba(hex, a) {
+  const h = (hex || '#888888').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+refreshPal();
+function toggleTheme() {
+  const light = document.body.classList.toggle('light');
+  $('theme-btn').innerHTML = light ? '&#127769; DARK' : '&#9728;&#65039; LIGHT';
+  try { localStorage.setItem('ed_theme', light ? 'light' : 'dark'); } catch (e) {}
+  refreshPal(); draw(); drawLadder();
+}
+(function () {
+  let s = null; try { s = localStorage.getItem('ed_theme'); } catch (e) {}
+  if (s === 'light') { document.body.classList.add('light'); refreshPal();
+    $('theme-btn').innerHTML = '&#127769; DARK'; }
+  $('theme-btn').addEventListener('click', toggleTheme);
+  try { const t = (localStorage.getItem('ed_ticker') || '').trim().toUpperCase();
+    if (t) $('tk').value = t; } catch (e) {}
+})();
+
+/* # ui-mockup-ok: RC-201 alive-fix state — timeframe, strike selection, γ filter, anim clock */
+let bars = [], strikes = null, terrain = null, forces = null;
+let scope = 'all', ladMode = 'GEX', tf = 1;
+let selStrike = null;     // clicked strike (king ring, ranked row, or canvas click)
+let gammaFilter = 'all';  // 'all' | 'pos' (Pika only) | 'neg' (Barney only)
+let phase = 0;            // animation clock — king pulse, bubble breathing, spot glow
+let view = null;          // {i0, i1} fractional visible index range — ported Chart machinery
+let yLock = null;         // manual price domain from shift+scroll / drag
+let lastDragEnd = 0;
+let forming = null;       // current-minute forming candle from the 1.5s spot poll
+let liveSpot = null, liveSpotTicker = null, liveSpotAsOf = 0, liveSpotSource = null;
+const SPOT_STALE_SEC = 30;   // RC-225: visible STALE when /api/spot binding ages out
+function currentSpot() {
+  // RC-225: declared payload field for this screen = /api/spot.spot only.
+  const tk = ($('tk').value || '').trim().toUpperCase();
+  if (liveSpot != null && liveSpotTicker === tk) return liveSpot;
+  return null;
+}
+function spotBindingAgeSec() {
+  if (!liveSpotAsOf) return null;
+  return Math.max(0, (Date.now() / 1000) - liveSpotAsOf);
+}
+function spotBindingStale() {
+  const age = spotBindingAgeSec();
+  return age != null && age > SPOT_STALE_SEC;
+}
+function spotBindingAgeLabel() {
+  if (currentSpot() == null) return 'waiting for /api/spot';
+  const age = spotBindingAgeSec();
+  if (age == null) return 'as_of unknown';
+  const src = liveSpotSource
+    ? String(liveSpotSource).replace('schwab_quote_last', 'quote.last') : '—';
+  const ageTxt = age < 1 ? '<1s' : (Math.round(age) + 's');
+  return (spotBindingStale() ? 'STALE ' : '') + ageTxt + ' · ' + src;
+}
+let feedFresh = false;
+let bubbles = [];         // live-poll delta bubbles (accrue while the page is open)
+let prevVol = null;
+/* # ui-mockup-ok: RC-208 — the banked intraday accrual frames: per-minute per-strike
+   structure so ribbons/bubbles/King live ON the candles, not off to the side */
+let flow = null;          // /api/exposure/flow payload for the ticker
+let flowMaxAbs = 0;       // scaling peak across ALL frames (stable intraday scale)
+let flowBubbles = [];     // per-frame volume-delta bubbles [{t, strike, dvol, pos}]
+// # ui-mockup-ok: RC-208 — the Charm pill is a TOGGLE for the on-chart annotation
+let charmLive = false;    // /api/forces serves the charm fields
+let charmShow = true;
+let vwapSeries = null;    // RC-198 geometry: [{t, vwap, u1, d1, u2, d2}] cumulative series
+let cross = null, scale = null;
+
+/* ET session minutes for a bar timestamp — one Intl formatter, applied once per load. */
+const _etFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23', year: 'numeric',
+  month: '2-digit', day: '2-digit' });
+function etParts(tSec) {
+  const p = {}; for (const x of _etFmt.formatToParts(new Date(tSec * 1000))) p[x.type] = x.value;
+  let h = Number(p.hour); if (h === 24) h = 0;
+  return { date: `${p.year}-${p.month}-${p.day}`, mins: h * 60 + Number(p.minute) };
+}
+function computeVwapSeries() {
+  // RC-198: VWAP_t = Σ(tp·v)/Σv, σ_t² = Σ(tp²·v)/Σv − VWAP_t², bands = VWAP_t ± kσ_t —
+  // cumulative SERIES over the latest ET session that has RTH bars (weekend → Friday),
+  // from the same canonical 1m bars the candles use. Curves, never tip scalars.
+  vwapSeries = null;
+  if (!bars.length) return;
+  const byDate = new Map();
+  for (const b of bars) { const p = etParts(b.t);
+    if (!byDate.has(p.date)) byDate.set(p.date, []);
+    byDate.get(p.date).push({ ...b, _m: p.mins }); }
+  const dates = [...byDate.keys()].sort();
+  let sess = null;
+  for (let i = dates.length - 1; i >= 0; i--) {
+    if ((byDate.get(dates[i]) || []).some(b => b._m >= 570 && b._m < 960)) { sess = dates[i]; break; }
+  }
+  if (!sess) return;
+  const rth = byDate.get(sess).filter(b => b._m >= 570 && b._m < 960);
+  let pv = 0, vv = 0, p2v = 0; const out = [];
+  for (const b of rth) {
+    const tp = (b.h + b.l + b.c) / 3, v = b.v || 0;
+    pv += tp * v; vv += v; p2v += tp * tp * v;
+    if (!vv) continue;
+    const w = pv / vv, varr = Math.max(0, p2v / vv - w * w), sd = Math.sqrt(varr);
+    out.push({ t: b.t, vwap: w, u1: w + sd, d1: w - sd, u2: w + 2 * sd, d2: w - 2 * sd });
+  }
+  vwapSeries = out.length ? out : null;
+}
+
+async function load() {
+  const tk = ($('tk').value || 'SPY').trim().toUpperCase();
+  try {
+    // # ui-mockup-ok: RC-208 — six producers: the accrual flow frames join the five
+    const [b, s, t, f, lq, fl] = await Promise.all([
+      j(`/api/bars1m?ticker=${tk}&limit=780`),
+      j(`/api/terrain/strikes?ticker=${tk}`),
+      j(`/api/terrain?ticker=${tk}`).catch(() => null),
+      j(`/api/forces?ticker=${tk}`).catch(() => null),
+      j(`/api/liquidity-snapshot?ticker=${tk}`).catch(() => null),
+      j(`/api/exposure/flow?ticker=${tk}`).catch(() => null),
+    ]);
+    if (lq && typeof lq === 'object')
+      $('livedot').title = 'feed state · liquidity snapshot ' + (lq.available === false ? 'unavailable' : 'served');
+    const cur = ($('tk').value || 'SPY').trim().toUpperCase();
+    if (cur !== tk) return;
+    bars = b.bars || []; strikes = s; terrain = t; forces = f;
+    // # ui-mockup-ok: RC-202 — a view narrower than the clamp's own minimum is an artifact
+    // (no user gesture can produce it); refit rather than trap the operator in 1 bar
+    if (view && bars.length > 50 && (view.i1 - view.i0) < 5) { view = null; yLock = null; }
+    computeVwapSeries();
+    /* # ui-mockup-ok: RC-208 — historical bubbles come from the FRAMES (volume deltas at
+       the minute they printed, top movers per frame); right-gutter session seeds survive
+       only when a ticker has no banked frames yet */
+    flow = (fl && fl.available) ? fl : null;
+    flowMaxAbs = 0; flowBubbles = [];
+    if (flow && Array.isArray(flow.frames)) {
+      for (const fr of flow.frames)
+        for (const r of fr.rows) flowMaxAbs = Math.max(flowMaxAbs, Math.abs(r[1]));
+      /* # ui-mockup-ok: RC-208 — the decode's design target is "time-to-comprehension,
+         not information density" (direction doc §E: the reference frame labels THREE
+         bubbles). Only the session's NOTABLE prints make the tape: day-global top 24 by
+         volume delta, every one labeled. Dust never draws. */
+      const cand = [];
+      for (let fi = 1; fi < flow.frames.length; fi++) {
+        const prev = new Map(flow.frames[fi - 1].rows.map(r => [r[0], r[2] || 0]));
+        for (const r of flow.frames[fi].rows) {
+          const d = (r[2] || 0) - (prev.get(r[0]) || 0);
+          if (d > 0) cand.push({ t: flow.frames[fi].t, strike: r[0], dvol: d, pos: r[1] >= 0 });
+        }
+      }
+      cand.sort((a2, b2) => b2.dvol - a2.dvol);
+      flowBubbles = cand.slice(0, 24);
+      const maxD = Math.max(1, ...flowBubbles.map(c => c.dvol));
+      flowBubbles.forEach(bb => { bb.frac = bb.dvol / maxD; });
+    }
+    const rows = ((s && s.today) || {})[scope] || [];
+    const nowVol = new Map(rows.map(r => [r[0], r[2] || 0]));
+    const gSign = new Map(rows.map(r => [r[0], r[1] >= 0]));
+    if (!prevVol) {
+      const maxV = Math.max(1, ...nowVol.values());
+      bubbles = flow ? [] : [...nowVol.entries()].filter(x => x[1] > 0.04 * maxV)
+        .map(([k, v]) => ({ t: Date.now(), strike: k, dvol: v, seed: true,
+                            pos: gSign.get(k) }));
+    } else {
+      for (const [k, v] of nowVol) {
+        const d = v - (prevVol.get(k) || 0);
+        // # ui-mockup-ok: RC-203 — flow events carry their MINUTE so they paint at
+        // (timestamp, strike) per the direction doc §3.3, not pinned at the right edge
+        if (d > 0) bubbles.push({ t: Date.now(), mt: Math.floor(Date.now() / 60000) * 60,
+                                  strike: k, dvol: d, seed: false, pos: gSign.get(k) });
+      }
+      const cut = Date.now() - 60 * 60000;
+      bubbles = bubbles.filter(x => x.seed || x.t > cut).slice(-500);
+    }
+    prevVol = nowVol;
+    const lastT = bars.length ? Number(bars[bars.length - 1].t) : 0;
+    feedFresh = !!(lastT && (Date.now() / 1000 - lastT) <= 900);
+    $('livedot').className = feedFresh ? '' : 'stale';
+    const reg = String((t && t.regime) || '—');
+    const rp = $('regime');
+    rp.textContent = reg + ((t && t.confidence) ? ' · ' + t.confidence : '');
+    rp.style.color = /SHORT/.test(reg) ? PAL.red : /LONG/.test(reg) ? PAL.green : PAL.dim;
+    $('dq').textContent = `DQ ${rows.length} strikes` + (s && s.levels_stale ? ' · STALE' : ' · live');
+    $('dq').style.color = s && s.levels_stale ? PAL.amber : PAL.green;
+    $('dq').title = (s && s.levels_stale_reason) || 'chain serving normally';
+    const age = s && s.today_age_sec != null ? Math.round(s.today_age_sec) + 's'
+      : (t && t.levels_age_sec != null ? Math.round(t.levels_age_sec) + 's' : '—');
+    $('ck-chain').textContent = `${(s && s.today_source) || '—'} · ${age}`;
+    $('ck-bars').textContent = lastT ? `tip ${Math.round(Date.now() / 1000 - lastT)}s ago` : 'none';
+    $('ck-oi').textContent = forces && forces.newer_et_date
+      ? `Δ nightly · ${forces.newer_et_date}` : 'Δ nightly';
+    $('ck-cad').textContent = t && t.levels_stale ? 'paused/stale' : 'delivering';
+    // # ui-mockup-ok: RC-199/RC-208 — real payload keys; the pill is a real TOGGLE now
+    charmLive = !!(forces && forces.available &&
+      forces.charm_below != null && forces.charm_above != null);
+    const cp = $('ov-charm');
+    if (charmLive) { cp.classList.remove('gate');
+      cp.classList.toggle('on', charmShow);
+      cp.title = 'TOGGLE: paints the dealer-charm annotation at spot — how many shares/day '
+        + 'dealers must trade below and above spot as time decays the book '
+        + `(${forces.charm_book_scope || 'full_chain_banked'})`; }
+    draw(); drawLadder();
+  } catch (e) {
+    $('regime').textContent = 'load failed: ' + e.message;
+    $('livedot').className = 'stale';
+  }
+}
+
+/* forming candle — the Chart's movement, ported: the 1.5s spot poll grows the current minute */
+async function pollSpot() {
+  const tk = ($('tk').value || 'SPY').trim().toUpperCase();
+  try {
+    const r = await fetch(`/api/spot?ticker=${tk}`);
+    if (!r.ok) {
+      // RC-225: fail closed — clear binding; never keep a silent stale value as current.
+      liveSpot = null; liveSpotTicker = null; liveSpotAsOf = 0; liveSpotSource = null;
+      draw(); return;
+    }
+    const d = await r.json();
+    if ((($('tk').value || 'SPY').trim().toUpperCase()) !== tk) return;
+    if (d.ticker !== tk || d.spot == null || !isFinite(Number(d.spot))) {
+      liveSpot = null; liveSpotTicker = null; liveSpotAsOf = 0; liveSpotSource = null;
+      draw(); return;
+    }
+    const asOf = Number(d.spot_as_of_ts_utc) || 0;
+    if (asOf && liveSpotAsOf && asOf < liveSpotAsOf) return;
+    if (asOf) liveSpotAsOf = asOf;
+    liveSpotSource = d.spot_source != null ? String(d.spot_source) : null;
+    liveSpot = Number(d.spot); liveSpotTicker = tk;
+    const mt = Math.floor(Date.now() / 60000) * 60;
+    const tipT = bars.length ? bars[bars.length - 1].t : 0;
+    // # ui-mockup-ok: RC-202 — a forming candle needs a chart to form ON: with no real bars
+    // it seeded a 1-bar view that the fit then locked to (the audit's bars:1 collapse)
+    if (mt > tipT && bars.length) {
+      if (!forming || forming.t !== mt)
+        forming = { t: mt, o: liveSpot, h: liveSpot, l: liveSpot, c: liveSpot, v: 0 };
+      else { forming.h = Math.max(forming.h, liveSpot);
+             forming.l = Math.min(forming.l, liveSpot); forming.c = liveSpot; }
+    } else forming = null;
+    draw();
+  } catch (e) {
+    liveSpot = null; liveSpotTicker = null; liveSpotAsOf = 0; liveSpotSource = null;
+  }
+}
+/* # ui-mockup-ok: RC-201 alive-fix — timeframe aggregation of the same canonical 1m bars */
+function aggBars(src) {
+  if (tf === 1) return src;
+  const w = tf * 60, out = [];
+  for (const b of src) {
+    const bt = b.t - (b.t % w);
+    const last = out[out.length - 1];
+    if (last && last.t === bt) {
+      last.h = Math.max(last.h, b.h); last.l = Math.min(last.l, b.l);
+      last.c = b.c; last.v += b.v || 0;
+    } else out.push({ t: bt, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 });
+  }
+  return out;
+}
+function viewBars() {
+  const tipT = bars.length ? bars[bars.length - 1].t : 0;
+  return aggBars((forming && forming.t > tipT) ? bars.concat([forming]) : bars);
+}
+
+const PADL = 6, PADR = 96, PADT = 14, PADB = 24;
+const cvEl = $('cv'), wrap = $('wrap'), tipEl = $('tip');
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = wrap.clientWidth, H = wrap.clientHeight || 560;
+  cvEl.width = W * dpr; cvEl.height = H * dpr;
+  const g = cvEl.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  const all = viewBars();
+  const rows = ((strikes && strikes.today) || {})[scope] || [];
+  const spot = currentSpot();   // RC-225: /api/spot only — no strikes/terrain age fork
+  if (!all.length) {
+    g.fillStyle = PAL.tx; g.font = '800 18px system-ui'; g.textAlign = 'center';
+    g.fillText('NO BARS YET', W / 2, H / 2);
+    g.fillStyle = PAL.dim; g.font = '600 13px system-ui';
+    g.fillText('pre-market, or the console feed is unreachable — retrying', W / 2, H / 2 + 22);
+    g.textAlign = 'left';
+    window.__edExposure = { bars: 0, ribbons: 0, bubbles: bubbles.length };
+    return;
+  }
+  if (!view) { const show = Math.min(all.length, 390);
+    view = { i0: Math.max(0, all.length - show), i1: all.length }; }
+  /* # ui-mockup-ok: RC-202 — the reference clamp (chart.html clampView): FULL overscroll in
+     both directions, only minVis bars must stay on screen. My invented snap-back clamp made
+     it impossible to drag the candles off the right edge — operator: "i cannot completely
+     drag the chart where i want". Follow-at-end kept: if the view sat at the tip, new bars
+     shift it along (chart.html atEnd semantics). */
+  if (window.__expLastLen && all.length !== window.__expLastLen &&
+      view.i1 >= window.__expLastLen - 1 && view.i1 <= window.__expLastLen + 0.5) {
+    const dnew = all.length - window.__expLastLen; view.i0 += dnew; view.i1 += dnew;
+  }
+  window.__expLastLen = all.length;
+  const minVis = 5;
+  if (view.i0 > all.length - minVis) {
+    const s = view.i0 - (all.length - minVis); view.i0 -= s; view.i1 -= s; }
+  if (view.i1 < minVis) {
+    const s = minVis - view.i1; view.i0 += s; view.i1 += s; }
+  const i0 = Math.max(0, Math.floor(view.i0)), i1 = Math.min(all.length, Math.ceil(view.i1));
+  const nVis = Math.max(view.i1 - view.i0, 2);
+  let lo, hi;
+  if (yLock) { lo = yLock.lo; hi = yLock.hi; }
+  else {
+    lo = Infinity; hi = -Infinity;
+    for (let i = i0; i < i1; i++) { lo = Math.min(lo, all[i].l); hi = Math.max(hi, all[i].h); }
+    if (spot != null) { lo = Math.min(lo, spot); hi = Math.max(hi, spot); }
+    const sp = (hi - lo) || 1; lo -= sp * 0.06; hi += sp * 0.06;
+  }
+  const y = p => PADT + (hi - p) / (hi - lo) * (H - PADT - PADB);
+  const x = i => PADL + (i - view.i0) * ((W - PADL - PADR) / nVis);
+  const px2i = px => view.i0 + (px - PADL) / ((W - PADL - PADR) / nVis);
+  const px2p = py => hi - (py - PADT) / (H - PADT - PADB) * (hi - lo);
+  scale = { lo, hi, y, x, px2i, px2p, W, H, all };
+  const step = Math.max((hi - lo) / 8, 0.01);
+  g.strokeStyle = PAL.grid;
+  for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) {
+    const yy = y(p); g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke();
+  }
+  const tIdx = new Map(); for (let ii = 0; ii < all.length; ii++) tIdx.set(all[ii].t, ii);
+  const bw = Math.max(1.5, Math.min(14, (W - PADL - PADR) / nVis - 1.5));
+  const barOf = ts => tIdx.get(ts - (ts % (tf * 60)));
+  let ribbons = 0, king = null, peak = 0;
+  for (const r of rows) peak = Math.max(peak, Math.abs(r[1]));
+  for (const r of rows) if (king == null || Math.abs(r[1]) > Math.abs(king[1])) king = r;
+  /* # ui-mockup-ok: RC-208 — structure lives ON the candles: each banked frame paints its
+     OWN Pika/Barney dots only across its own minutes; the current snapshot paints (dimmed)
+     only AFTER the last banked frame; the King walks the day as a cyan path */
+  const passes = gex => !((gammaFilter === 'pos' && gex < 0) || (gammaFilter === 'neg' && gex >= 0));
+  /* # ui-mockup-ok: RC-208 — the decode's grammar table: magnitude is THICKNESS (dot
+     radius), never color intensity; alpha only separates banked frames from the dim
+     latest-book zone and the selection beam */
+  const dotRow = (k, gex, x0, x1, alpha, magPeak) => {
+    if (k < lo || k > hi || Math.abs(gex) < 0.12 * magPeak || !passes(gex)) return false;
+    const yy = y(k), mag = Math.abs(gex) / magPeak;
+    const sel = selStrike != null && Math.abs(k - selStrike) < 1e-9;
+    const rad = 1.4 + mag * 4.2, gap = rad * 2 + 5;
+    g.fillStyle = palRgba(gex >= 0 ? PAL.amber : PAL.vio, alpha * (sel ? 0.95 : 0.55));
+    for (let px = Math.max(PADL, x0) + rad; px < Math.min(W - PADR, x1) - rad; px += gap) {
+      g.beginPath(); g.arc(px, yy, sel ? rad + 1 : rad, 0, 6.283); g.fill();
+    }
+    return true;
+  };
+  let framesDrawn = 0; const kingPath = [];
+  if ($('ov-dots').classList.contains('on')) {
+    let lastFrameX = PADL;
+    if (flow && flowMaxAbs > 0) {
+      const frs = flow.frames;
+      for (let fi = 0; fi < frs.length; fi++) {
+        const b0 = barOf(frs[fi].t);
+        if (b0 == null) continue;
+        const bNext = fi + 1 < frs.length ? barOf(frs[fi + 1].t) : null;
+        const x0 = x(b0), x1 = bNext != null ? x(bNext) : x(b0) + bw * 3.2;
+        lastFrameX = Math.max(lastFrameX, x1);
+        let kf = null;
+        for (const r of frs[fi].rows)
+          if (kf == null || Math.abs(r[1]) > Math.abs(kf[1])) kf = r;
+        if (kf) kingPath.push({ x: (x0 + x1) / 2, k: kf[0] });
+        if (x1 < PADL || x0 > W - PADR) continue;
+        framesDrawn++;
+        for (const r of frs[fi].rows)
+          if (dotRow(r[0], r[1], x0, x1, 0.9, flowMaxAbs)) ribbons++;
+      }
+    }
+    // the zone the frames don't cover yet: today's latest book, dimmed and honest
+    const x0s = flow ? Math.max(PADL, lastFrameX) : PADL;
+    if (peak > 0 && x0s < W - PADR - 8) {
+      for (const r of rows)
+        if (dotRow(r[0], r[1], x0s, W - PADR, flow ? 0.4 : 1, peak)) ribbons++;
+    }
+    if (selStrike != null) {
+      const selRow = rows.find(r => Math.abs(r[0] - selStrike) < 1e-9);
+      if (selRow && selRow[0] >= lo && selRow[0] <= hi) {
+        const yy = y(selRow[0]);
+        g.strokeStyle = palRgba(selRow[1] >= 0 ? PAL.amber : PAL.vio, 0.9);
+        g.strokeRect(PADL, yy - 7, W - PADL - PADR, 14);
+        g.fillStyle = palRgba(selRow[1] >= 0 ? PAL.amber : PAL.vio, 1);
+        g.font = "800 11px 'IBM Plex Mono', monospace";
+        g.fillText(`${selRow[1] >= 0 ? 'PIKA +γ' : 'BARNEY −γ'} ${fmt(selRow[0], 0)} · ${fmtBig(selRow[1])} · ${selRow[1] >= 0 ? 'friction' : 'fuel'}`,
+          PADL + 6, yy + (yy > PADT + 30 ? -11 : 24));
+      }
+    }
+  }
+  if (kingPath.length > 1) {
+    g.strokeStyle = palRgba(PAL.acc, 0.85); g.lineWidth = 2; g.beginPath();
+    let started = false;
+    for (const p2 of kingPath) {
+      if (p2.k < lo || p2.k > hi) { started = false; continue; }
+      if (!started) { g.moveTo(p2.x, y(p2.k)); started = true; } else g.lineTo(p2.x, y(p2.k));
+    }
+    g.stroke(); g.lineWidth = 1;
+  }
+  if ($('ov-king').classList.contains('on') && king && king[0] >= lo && king[0] <= hi) {
+    const yy = y(king[0]);
+    const pulse = 0.55 + 0.45 * Math.sin(phase * 2.6);
+    g.strokeStyle = palRgba(PAL.acc, 0.35 + 0.6 * pulse); g.lineWidth = 1.5 + pulse;
+    g.strokeRect(PADL, yy - 8 - pulse * 2, W - PADL - PADR, 16 + pulse * 4); g.lineWidth = 1;
+    g.fillStyle = PAL.acc; g.font = "800 11px 'IBM Plex Mono', monospace";
+    g.fillText(`⛁ KING ${fmt(king[0], 0)} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, yy - 12 - pulse * 2);
+  }
+  // VWAP + σ bands as SERIES CURVES (RC-198) — mapped bar-time → visible index
+  let vwbDrawn = false;
+  // # ui-mockup-ok: RC-208 — tIdx is built once at the top of draw() now
+  if ($('ov-vwap').classList.contains('on') && vwapSeries && vwapSeries.length) {
+    const seriesLine = (pick, col, alpha, wid) => {
+      g.strokeStyle = palRgba(col, alpha); g.lineWidth = wid;
+      g.setLineDash(wid > 1.5 ? [] : [4, 4]); g.beginPath();
+      let started = false;
+      for (const pt of vwapSeries) {
+        // # ui-mockup-ok: RC-201 — series time maps into the ACTIVE timeframe's buckets
+        const i = tIdx.get(pt.t - (pt.t % (tf * 60)));
+        if (i == null || i < i0 || i > i1) continue;
+        const px = x(i) + 1, py = y(pick(pt));
+        if (!started) { g.moveTo(px, py); started = true; } else g.lineTo(px, py);
+      }
+      g.stroke(); g.setLineDash([]); g.lineWidth = 1;
+      return started;
+    };
+    const a = seriesLine(p => p.u2, PAL.blue, 0.5, 1);
+    seriesLine(p => p.u1, PAL.blue, 0.8, 1);
+    seriesLine(p => p.d1, PAL.blue, 0.8, 1);
+    seriesLine(p => p.d2, PAL.blue, 0.5, 1);
+    const v = seriesLine(p => p.vwap, PAL.orange, 1, 2);
+    vwbDrawn = a || v;
+  }
+  const flip = terrain && terrain.gamma_flip;
+  if (flip != null && flip >= lo && flip <= hi) {
+    g.strokeStyle = PAL.tx; g.setLineDash([7, 5]);
+    g.beginPath(); g.moveTo(PADL, y(flip)); g.lineTo(W - PADR, y(flip)); g.stroke();
+    g.setLineDash([]);
+  }
+  // # ui-mockup-ok: RC-208 — bw moved to the top of draw() (frames need it before candles)
+  for (let i = i0; i < i1; i++) {
+    const b = all[i], up = b.c >= b.o, cx = x(i) + bw / 2;
+    g.strokeStyle = up ? PAL.green : PAL.red; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(cx, y(b.h)); g.lineTo(cx, y(b.l)); g.stroke();
+    g.fillStyle = up ? PAL.green : PAL.red;
+    g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1, Math.abs(y(b.o) - y(b.c))));
+  }
+  // bubbles — RED at −γ strikes, GREEN at +γ strikes: seeds hug the right edge (session
+  // size), live deltas drift left with age. Size = √(share of the largest).
+  /* # ui-mockup-ok: RC-203 — the doc's recorded spec, not my invention: flow bubbles at
+     (timestamp, strike) with a stem to their candle and the DOLLAR amount inside (§3.3 /
+     decode line "$30.51M red, $22.83M green"); radius = sqrt scale; opacity = age. Session
+     seeds keep the right gutter — their print times are unknown until the A1 store lands. */
+  /* # ui-mockup-ok: RC-208 — every bubble lives at ITS minute on the candles with a stem
+     and a PERSISTENT $ label (operator: "why can't the dollar amount persist... they need
+     to live on the candles"); frame bubbles are the banked history, live bubbles accrue on
+     top; the right-gutter seed survives only for tickers with no banked frames */
+  let drawnBubbles = 0, labeledBubbles = 0;
+  if ($('ov-bubbles').classList.contains('on')) {
+    const now = Date.now();
+    const liveMax = Math.max(1, ...bubbles.map(b => b.dvol));
+    const drawBubble = (px, bx, strike, rad, col, alpha, dvol) => {
+      if (bx != null && all[bx]) {
+        g.strokeStyle = palRgba(col, 0.35);
+        g.beginPath(); g.moveTo(px, y(strike)); g.lineTo(px, y(all[bx].c)); g.stroke();
+      }
+      g.fillStyle = palRgba(col, alpha);
+      g.beginPath(); g.arc(px, y(strike), rad, 0, 6.283); g.fill();
+      g.strokeStyle = palRgba(col, 0.9);
+      g.beginPath(); g.arc(px, y(strike), rad, 0, 6.283); g.stroke();
+      /* # ui-mockup-ok: RC-208 — every bubble that makes the tape is a notable print, so
+         every one carries its PERSISTENT $ figure beside it (decode: "$30.51M red,
+         $22.83M / $38.32M green" — number next to the dot, readable at a glance) */
+      if (rad >= 4 && spot != null) {
+        g.fillStyle = PAL.tx;
+        g.font = "800 9px 'IBM Plex Mono', monospace";
+        const lbl = '$' + fmtBig(dvol * 100 * spot);
+        g.fillText(lbl, px + rad + 3, y(strike) + 3);
+        labeledBubbles++;
+      }
+      drawnBubbles++;
+    };
+    for (const bb of flowBubbles) {
+      // # ui-mockup-ok: RC-208 tune — floor lifted so dust prints stay off the tape
+      if (bb.strike < lo || bb.strike > hi || bb.frac < 0.06) continue;
+      const bIdx = barOf(bb.t);
+      if (bIdx == null || bIdx < i0 - 3 || bIdx > i1 + 3) continue;
+      drawBubble(x(bIdx) + bw / 2, bIdx, bb.strike,
+        3 + Math.sqrt(bb.frac) * 13, bb.pos ? PAL.green : PAL.red, 0.55, bb.dvol);
+    }
+    let bi = 0;
+    for (const bb of bubbles) {
+      if (bb.strike < lo || bb.strike > hi) continue;
+      const ageMin = (now - bb.t) / 60000;
+      const frac = bb.seed ? 0.8 : Math.max(0.3, 1 - ageMin / 90);
+      let px = W - PADR - 16, bx = null;
+      if (!bb.seed && bb.mt != null) {
+        const bIdx = barOf(bb.mt);
+        if (bIdx != null) {
+          if (bIdx < i0 - 3 || bIdx > i1 + 3) continue;
+          px = x(bIdx) + bw / 2; bx = bIdx;
+        }
+      }
+      const breathe = 1 + 0.08 * Math.sin(phase * 2 + (bi++) * 0.9);
+      drawBubble(px, bx, bb.strike,
+        (3 + Math.sqrt(bb.dvol / liveMax) * 13) * breathe,
+        bb.pos ? PAL.green : PAL.red, 0.22 + frac * 0.6, bb.dvol);
+    }
+  }
+  /* # ui-mockup-ok: RC-208 — the Charm TOGGLE paints the whole-book dealer-charm
+     annotation at spot: shares/day dealers must trade below/above as decay reprices */
+  let charmDrawn = false;
+  if (charmShow && charmLive && forces && forces.charm_below != null && spot != null) {
+    const ys = Math.max(PADT + 26, Math.min(H - PADB - 26, y(spot)));
+    g.font = "600 10px 'IBM Plex Mono', monospace";
+    g.fillStyle = palRgba(PAL.sky, 0.85);
+    g.fillText(`charm ↑side ${fmtBig(forces.charm_above)} sh/day`, PADL + 6, ys - 12);
+    g.fillText(`charm ↓side ${fmtBig(forces.charm_below)} sh/day`, PADL + 6, ys + 18);
+    charmDrawn = true;
+  }
+  if (spot != null) {
+    const ys = Math.max(PADT, Math.min(H - PADB, y(spot)));
+    // # ui-mockup-ok: RC-201 — soft live glow behind the spot line when the feed is fresh
+    if (feedFresh) {
+      g.fillStyle = palRgba(PAL.acc, 0.05 + 0.05 * Math.sin(phase * 2.6));
+      g.fillRect(PADL, ys - 10, W - PADL - PADR, 20);
+    }
+    g.strokeStyle = palRgba(PAL.acc, 0.7); g.setLineDash([2, 3]);
+    g.beginPath(); g.moveTo(PADL, ys); g.lineTo(W - PADR, ys); g.stroke(); g.setLineDash([]);
+    g.fillStyle = PAL.acc; g.fillRect(W - PADR, ys - 9, PADR - 4, 18);
+    g.fillStyle = PAL.bg; g.font = "800 12px 'IBM Plex Mono', monospace";
+    const spotTxt = spotBindingStale() ? (fmt(spot) + ' STALE') : fmt(spot);
+    g.fillText(spotTxt, W - PADR + 5, ys + 4);
+    g.fillStyle = spotBindingStale() ? PAL.amber : PAL.dim;
+    g.font = "600 9px 'IBM Plex Mono', monospace";
+    g.fillText(spotBindingAgeLabel(), W - PADR + 5, Math.min(H - PADB - 2, ys + 16));
+  }
+  g.fillStyle = PAL.dim; g.font = "600 10px 'IBM Plex Mono', monospace";
+  for (let kk = 0; kk <= 4; kk++) {
+    const i = Math.round(view.i0 + (nVis - 1) * kk / 4);
+    if (!all[i]) continue;
+    const d = new Date(all[i].t * 1000);
+    g.fillText(d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+      Math.min(x(i), W - PADR - 44), H - 8);
+  }
+  if (cross) {
+    g.strokeStyle = palRgba(PAL.tx, 0.4); g.setLineDash([4, 4]);
+    g.beginPath(); g.moveTo(cross.mx, PADT); g.lineTo(cross.mx, H - PADB); g.stroke();
+    g.beginPath(); g.moveTo(PADL, cross.my); g.lineTo(W - PADR, cross.my); g.stroke();
+    g.setLineDash([]);
+  }
+  /* # ui-mockup-ok: RC-208 — handle carries the frame/flow state so the audit can assert
+     that structure and bubbles TRACK the candles */
+  window.__edExposure = { bars: i1 - i0, ribbons, bubbles: drawnBubbles,
+    king: king ? king[0] : null, spot, scope, vwbDrawn, vwbIsSeries: vwbDrawn,
+    viewSpan: Math.round(nVis), zoomed: !!(view && (view.i1 - view.i0) < all.length - 1),
+    charm: $('ov-charm').classList.contains('on'),
+    tf, selStrike, gammaFilter, animated: true, phase,
+    overscrollRight: view.i1 > all.length, overscrollLeft: view.i0 < 0,
+    flowFrames: flow ? flow.n_frames : 0, framesDrawn, kingPathLen: kingPath.length,
+    labeledBubbles, flowBubbles: flowBubbles.length, charmDrawn };
+}
+
+function drawLadder() {
+  const lvEl = $('lv');
+  const dpr = window.devicePixelRatio || 1;
+  const W = 214, H = 300;
+  lvEl.width = W * dpr; lvEl.height = H * dpr;
+  const g = lvEl.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  const rows = ((strikes && strikes.today) || {})[scope] || [];
+  if (!rows.length || !scale) {
+    g.fillStyle = PAL.dim; g.font = '600 11px system-ui';
+    g.fillText('ladder fills with the live chain', 8, 20); return;
+  }
+  const vis = rows.filter(r => r[0] >= scale.lo && r[0] <= scale.hi);
+  const series = r => ladMode === 'VOL' ? (r[2] || 0) : r[1];
+  const maxA = Math.max(1, ...vis.map(r => Math.abs(series(r))));
+  const mid = W / 2, half = mid - 34;
+  const yln = p => (p - scale.lo) / (scale.hi - scale.lo);
+  g.strokeStyle = PAL.grid;
+  g.beginPath(); g.moveTo(mid, 4); g.lineTo(mid, H - 4); g.stroke();
+  g.font = "600 9.5px 'IBM Plex Mono', monospace";
+  for (const r of vis) {
+    const yy = 6 + (1 - yln(r[0])) * (H - 12);
+    const v = series(r), w = Math.abs(v) / maxA * half;
+    g.fillStyle = ladMode === 'VOL' ? PAL.amber : (v >= 0 ? PAL.amber : PAL.vio);
+    if (v >= 0) g.fillRect(mid + 1, yy - 2.5, w, 5); else g.fillRect(mid - 1 - w, yy - 2.5, w, 5);
+    if (Math.abs(v) > 0.5 * maxA) { g.fillStyle = PAL.dim; g.fillText(fmt(r[0], 0), 2, yy + 3); }
+  }
+  // # ui-mockup-ok: RC-201 — ranked rows are CLICKABLE: select + spotlight that strike on the chart
+  const ranked = rows.slice().sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4);
+  $('ranked').innerHTML = ranked.map((r, i) =>
+    `<div data-k="${esc(String(r[0]))}" style="cursor:pointer;${selStrike === r[0] ? 'background:var(--panel2);border-radius:5px;' : ''}">` +
+    `L${i} <b style="font-weight:600;${i === 0 ? 'color:var(--accent);' : ''}">${esc(fmt(r[0], 0))}</b> ` +
+    `<span style="color:${r[1] >= 0 ? 'var(--amber)' : 'var(--vio)'}">${esc(fmtBig(r[1]))}</span></div>`).join('');
+  const net = rows.reduce((a, r) => a + r[1], 0);
+  $('hedge').innerHTML = `spot +1% &Rightarrow; dealers trade &asymp; ` +
+    `<b style="font-weight:600; color:${net >= 0 ? 'var(--amber)' : 'var(--vio)'}">${esc(fmtBig(-net))}</b>` +
+    `<div class="lz">mechanical hedge flow — never a forecast</div>`;
+  const flips = rows.filter((r, i) => i > 0 && rows[i - 1][1] * r[1] < 0).length;
+  // # ui-mockup-ok: RC-199 real keys; absence = fields not served, never a vote gate
+  const charmTxt = forces && forces.available && forces.charm_below != null
+    ? `charm ${fmtBig(forces.charm_below)} / ${fmtBig(forces.charm_above)} sh/day · ${forces.charm_book_scope || 'full_chain_banked'}`
+    : 'charm: fields not served';
+  $('gates').textContent = `gatekeepers ${flips} · ${charmTxt}`;
+}
+
+/* interactions — the Chart's proven machinery: wheel zoom at cursor, shift+wheel price zoom,
+   drag pans both axes, dbl-click refits (guarded against fast drag pairs). */
+wrap.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  if (!scale || !view) return;
+  const r = wrap.getBoundingClientRect();
+  const f = (ev.deltaY || ev.deltaX) > 0 ? 1.18 : 1 / 1.18;
+  if (ev.shiftKey) {
+    const dom = yLock || { lo: scale.lo, hi: scale.hi };
+    const anchor = scale.px2p(ev.clientY - r.top);
+    let span = (dom.hi - dom.lo) * f;
+    span = Math.max(0.02, Math.min((dom.hi - dom.lo) * 50, span));
+    const frac = (dom.hi - anchor) / (dom.hi - dom.lo);
+    const nh = anchor + frac * span;
+    yLock = { lo: nh - span, hi: nh };
+  } else {
+    const anchor = scale.px2i(ev.clientX - r.left);
+    let w = (view.i1 - view.i0) * f;
+    w = Math.max(12, Math.min(scale.all.length * 1.2, w));
+    const frac = (anchor - view.i0) / (view.i1 - view.i0);
+    view.i0 = anchor - frac * w; view.i1 = view.i0 + w;
+  }
+  draw(); drawLadder();
+}, { passive: false });
+let drag = null;
+wrap.addEventListener('mousedown', ev => {
+  if (!scale || !view) return;
+  drag = { mx: ev.clientX, my: ev.clientY, v: { ...view }, moved: 0,
+           dom: yLock ? { ...yLock } : { lo: scale.lo, hi: scale.hi } };
+});
+window.addEventListener('mouseup', ev => {
+  /* # ui-mockup-ok: RC-201 — a CLICK (not a drag) selects the nearest strike row within
+     8px: king ring, any ribbon. Click it again (or empty space) to clear. */
+  if (drag && drag.moved <= 3 && scale) {
+    const r = wrap.getBoundingClientRect();
+    const my = ev.clientY - r.top, mx = ev.clientX - r.left;
+    if (mx >= PADL && mx <= scale.W - PADR && my >= PADT && my <= scale.H - PADB) {
+      const rows = ((strikes && strikes.today) || {})[scope] || [];
+      let best = null, bd = 9;
+      for (const rr of rows) {
+        const d = Math.abs(scale.y(rr[0]) - my);
+        if (d < bd) { bd = d; best = rr[0]; }
+      }
+      selStrike = (best != null && best !== selStrike) ? best : null;
+      draw();
+    }
+  }
+  if (drag && drag.moved > 3) lastDragEnd = performance.now();
+  drag = null;
+});
+wrap.addEventListener('dblclick', () => {
+  if (performance.now() - lastDragEnd < 500) return;
+  view = null; yLock = null; draw(); drawLadder();
+});
+wrap.addEventListener('mousemove', ev => {
+  const r = wrap.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  if (drag && scale && view) {
+    drag.moved = Math.max(drag.moved,
+      Math.abs(ev.clientX - drag.mx) + Math.abs(ev.clientY - drag.my));
+    const dxBars = (drag.mx - ev.clientX) / ((scale.W - PADL - PADR) / (view.i1 - view.i0));
+    view.i0 = drag.v.i0 + dxBars; view.i1 = drag.v.i1 + dxBars;
+    const span = drag.dom.hi - drag.dom.lo;
+    const dy = (ev.clientY - drag.my) / (scale.H - PADT - PADB) * span;
+    yLock = { lo: drag.dom.lo + dy, hi: drag.dom.hi + dy };
+    cross = { mx, my }; draw(); drawLadder(); return;
+  }
+  cross = { mx, my };
+  if (scale) {
+    const price = scale.px2p(my);
+    const idx = Math.floor(scale.px2i(mx));
+    const bar = scale.all[idx];
+    const rows = ((strikes && strikes.today) || {})[scope] || [];
+    let near = null;
+    for (const rr of rows) if (!near || Math.abs(rr[0] - price) < Math.abs(near[0] - price)) near = rr;
+    if (bar && near) {
+      const d = new Date(bar.t * 1000);
+      tipEl.innerHTML =
+        `<b>${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</b> · ` +
+        `O ${fmt(bar.o)} H ${fmt(bar.h)} L ${fmt(bar.l)} C ${fmt(bar.c)}<br>` +
+        `strike <b>${fmt(near[0], 0)}</b> · ${near[1] >= 0
+          ? '<span style="color:var(--amber)">PIKA +γ · friction</span>'
+          : '<span style="color:var(--vio)">BARNEY −γ · fuel</span>'}<br>` +
+        `net GEX ${fmtBig(near[1])} · vol ${fmtBig(near[2] || 0)}<br>` +
+        `<span style="color:var(--mut)">call/put split · DEX: banked view (next)</span>`;
+      tipEl.style.display = 'block';
+      tipEl.style.left = Math.min(ev.clientX + 14, window.innerWidth - 360) + 'px';
+      tipEl.style.top = (ev.clientY + 14) + 'px';
+    }
+  }
+  draw();
+});
+wrap.addEventListener('mouseleave', () => { tipEl.style.display = 'none'; cross = null; draw(); });
+
+/* # ui-mockup-ok: RC-208 — the Charm pill toggles the on-chart annotation when served */
+$('ov-charm').addEventListener('click', () => {
+  if (!charmLive) return;              // fields not served: it stays an honest lamp
+  charmShow = !charmShow;
+  $('ov-charm').classList.toggle('on', charmShow);
+  draw();
+});
+for (const id of ['ov-dots', 'ov-bubbles', 'ov-vwap', 'ov-king', 'ov-vol']) {
+  $(id).addEventListener('click', () => {
+    $(id).classList.toggle('on');
+    if (id === 'ov-vol') { ladMode = $(id).classList.contains('on') ? 'VOL' : 'GEX';
+      $('lad-mode').textContent = ladMode; }
+    draw(); drawLadder();
+  });
+}
+$('lad-mode').addEventListener('click', () => {
+  ladMode = ladMode === 'GEX' ? 'VOL' : 'GEX';
+  $('lad-mode').textContent = ladMode; drawLadder();
+});
+$('scope-all').classList.add('on');
+$('scope-all').addEventListener('click', () => { scope = 'all';
+  $('scope-all').classList.add('on'); $('scope-near').classList.remove('on'); draw(); drawLadder(); });
+$('scope-near').addEventListener('click', () => { scope = 'near';
+  $('scope-near').classList.add('on'); $('scope-all').classList.remove('on'); draw(); drawLadder(); });
+$('tk').addEventListener('change', () => {
+  try { const v = ($('tk').value || '').trim().toUpperCase();
+    if (v) localStorage.setItem('ed_ticker', v); } catch (e) {}
+  bars = []; strikes = null; forces = null; bubbles = []; prevVol = null;
+  view = null; yLock = null; forming = null;
+  liveSpot = null; liveSpotTicker = null; liveSpotAsOf = 0; liveSpotSource = null; load();
+});
+/* # ui-mockup-ok: RC-201 alive-fix — TF chips, ranked-row selection, Pika/Barney filters,
+   and the requestAnimationFrame heartbeat that keeps the canvas breathing */
+for (const [id, n] of [['tf-1', 1], ['tf-5', 5], ['tf-15', 15]]) {
+  $(id).addEventListener('click', () => {
+    if (tf === n) return;
+    tf = n; view = null; yLock = null; selStrike = null;
+    for (const [i2] of [['tf-1'], ['tf-5'], ['tf-15']]) $(i2).classList.remove('on');
+    $(id).classList.add('on');
+    draw(); drawLadder();
+  });
+}
+$('ranked').addEventListener('click', ev => {
+  const row = ev.target.closest('[data-k]');
+  if (!row) return;
+  const k = Number(row.dataset.k);
+  selStrike = (selStrike === k) ? null : k;
+  if (selStrike != null && scale && (k < scale.lo || k > scale.hi)) {
+    const span = scale.hi - scale.lo;
+    yLock = { lo: k - span / 2, hi: k + span / 2 };
+  }
+  draw(); drawLadder();
+});
+$('leg-pika').addEventListener('click', () => {
+  gammaFilter = gammaFilter === 'pos' ? 'all' : 'pos';
+  $('leg-pika').classList.toggle('on', gammaFilter === 'pos');
+  $('leg-barney').classList.remove('on'); draw();
+});
+$('leg-barney').addEventListener('click', () => {
+  gammaFilter = gammaFilter === 'neg' ? 'all' : 'neg';
+  $('leg-barney').classList.toggle('on', gammaFilter === 'neg');
+  $('leg-pika').classList.remove('on'); draw();
+});
+window.addEventListener('resize', () => { draw(); drawLadder(); });
+let _lastAnim = 0;
+function heartbeat(ts) {
+  phase = ts / 1000;
+  if (ts - _lastAnim > 40) { _lastAnim = ts; draw(); }   // ~25fps — pulse without burning CPU
+  requestAnimationFrame(heartbeat);
+}
+requestAnimationFrame(heartbeat);
+load(); setInterval(load, 15000); setInterval(pollSpot, 1500);
+</script>
+</body>
+</html>
