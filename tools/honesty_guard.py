@@ -194,6 +194,15 @@ def main() -> int:
         except ImportError:
             from operating_process_lock import pm_coverage_violations  # type: ignore
         bad.extend(pm_coverage_violations(last_user_text(tp), text))
+    # RC-242 LOCK-PM-VERIFY: a verdict about REPO STATE must carry a reading OF the repo.
+    # Wired here because .claude/settings.json and .cursor/hooks.json BOTH run honesty_guard
+    # at Stop, so the PM seat and the writer seat are bound by one implementation — parity by
+    # construction rather than by two files agreeing.
+    try:
+        from tools.pm_verify_lock import pm_verify_repo_violations
+    except ImportError:
+        from pm_verify_lock import pm_verify_repo_violations  # type: ignore
+    bad.extend(pm_verify_repo_violations(text))
     if not bad:
         return 0
     sys.stderr.write(
