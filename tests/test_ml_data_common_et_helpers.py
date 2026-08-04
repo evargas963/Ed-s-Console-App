@@ -196,3 +196,79 @@ def test_rc206_confluence_serve_survives_malformed_db(tmp_path):
         {"ticker": "SPY", "ts_utc": 1e9}, db_path=str(bad))
     for cf in CONFLUENCE_FEATURES:
         assert out.get(cf) == 0.0, f"{cf} not defaulted on malformed DB"
+
+
+def test_rc207_serve_readers_use_snapshots_not_normalized():
+    """RC-207 quarantine: live serve SQL must bind SERVE_SNAPSHOT_TABLE, not SNAPSHOT_TABLE_1M."""
+    import inspect
+
+    import ml_data_common as m
+
+    assert m.SERVE_SNAPSHOT_TABLE == "snapshots"
+    for fn in (m.fetch_prior_net_gamma, m.attach_confluence_features_for_serve):
+        src = inspect.getsource(fn)
+        assert "SERVE_SNAPSHOT_TABLE" in src
+        assert "SNAPSHOT_TABLE_1M" not in src
+        # SQL f-strings must interpolate the serve table name, not the training mirror.
+        assert "FROM {SERVE_SNAPSHOT_TABLE}" in src
+        assert "FROM {SNAPSHOT_TABLE_1M}" not in src
+
+
+def test_rc207_fetch_prior_net_gamma_reads_snapshots_table(tmp_path):
+    """Positive control: prior net_gamma is taken from snapshots rows."""
+    import sqlite3
+
+    from ml_data_common import fetch_prior_net_gamma
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    db = tmp_path / "serve.db"
+    con = sqlite3.connect(str(db))
+    con.execute(
+        "CREATE TABLE snapshots (ticker TEXT, timeframe TEXT, ts_utc REAL, net_gamma REAL)"
+    )
+    con.execute(
+        "CREATE TABLE snapshots_1m_normalized "
+        "(ticker TEXT, timeframe TEXT, ts_utc REAL, net_gamma REAL)"
+    )
+    # Poison normalized with a different value — serve must ignore it.
+    con.execute(
+        "INSERT INTO snapshots_1m_normalized VALUES (?,?,?,?)",
+        ("SPY", CANONICAL_TIMEFRAME, 1000.0, 111.0),
+    )
+    con.execute(
+        "INSERT INTO snapshots VALUES (?,?,?,?)",
+        ("SPY", CANONICAL_TIMEFRAME, 1000.0, 222.0),
+    )
+    con.commit()
+    con.close()
+    got = fetch_prior_net_gamma("SPY", 2000.0, db_path=str(db))
+    assert got == 222.0
+
+
+def test_rc207_rebuild_tool_measure_and_dry_defaults(tmp_path):
+    """Rebuild tool measure mode writes a report and does not require --execute-clone."""
+    import json
+    import sqlite3
+    from pathlib import Path
+
+    from tools.rebuild_snapshots_1m_normalized_v1 import main
+
+    db = tmp_path / "tiny.db"
+    con = sqlite3.connect(str(db))
+    con.execute(
+        "CREATE TABLE snapshots (ticker TEXT, timeframe TEXT, ts_utc REAL, net_gamma REAL)"
+    )
+    con.execute(
+        "INSERT INTO snapshots VALUES ('SPY','1m',1000.0,1.5)"
+    )
+    con.execute(
+        "CREATE TABLE snapshots_1m_normalized AS SELECT * FROM snapshots WHERE 0"
+    )
+    con.commit()
+    con.close()
+    report = tmp_path / "r.json"
+    rc = main(["--db", str(db), "--report", str(report)])
+    assert rc == 0
+    doc = json.loads(Path(report).read_text(encoding="utf-8"))
+    assert doc["mode"] == "measure"
+    assert doc.get("snapshots_prior_net_gamma", {}).get("ok") is True

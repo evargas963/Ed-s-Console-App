@@ -1,17 +1,55 @@
 {
-  "status": "active",
-  "mission_id": "RC-216-iceberg-land",
-  "title": "Land held staged lock surface (operator GO + commit); then restart for LIVE_ENFORCED",
+  "status": "pending_go",
+  "mission_id": "levels-tierb-session-collapse-v1",
+  "title": "Collapse session levels (vwap/ORB/overnight/today VA) onto ONE /api/levels Tier-B authority; delete market_context inline computes (no fallback)",
   "writer": "claude",
-  "scope_paths": ["*"],
-  "approved_by": "operator",
-  "approved_via": "cursor_pm",
-  "approved_at": "2026-08-03T16:22:00-05:00",
-  "done_criteria": [
-    "operator_go.json granted=true with staged_lock_surface",
-    "iceberg commit on HEAD",
-    "operating_process_lock --measure index_worktree_mismatches empty",
-    "operator restarts :8000 for LIVE_ENFORCED"
+  "pm": "cursor",
+  "auditor": "cursor",
+  "census_source": "reports/multi_faucet_census_latest.md",
+  "concepts": [2, 3, 4, 5],
+  "out_of_scope": [
+    "charm / greeks formulas (census #6)",
+    "clocks / session date display TZ (census #7)",
+    "spot dual (census #8)",
+    "chart computeDaily prior_day kill (B3 / census #1 residue)"
   ],
-  "note": "RC-219 PM-first change protocol. Cursor PM opens/closes missions after operator approves the plan. status=idle blocks product edits. Current mission keeps Claude unblocked for the held iceberg only."
+  "scope_paths": [
+    "liquidity_value_engine.py",
+    "market_context.py",
+    "server.py",
+    "backfill_snapshot_derived.py",
+    "static/",
+    "governance/level_faucets.json",
+    "tests/",
+    "reports/",
+    "governance/root_cause_log.md"
+  ],
+  "activate_gate": {
+    "require": "quiet_window_pass",
+    "artifact": "reports/ed_server_warn_quiet_window_latest.json",
+    "require_fields": {
+      "verdict": "PASS",
+      "log_progressed": true
+    },
+    "void_if": "start_offset==end_offset or log_progressed!=true (stale FileHandler)"
+  },
+  "approved_by": "operator",
+  "approved_via": "chat_continue_dont_stop_2026-08-03",
+  "approved_at": null,
+  "done_criteria": [
+    "Census P1 slice from reports/multi_faucet_census_latest.md concepts 2–5: vwap(+bands), ORB, overnight, today value_area/profile",
+    "ONE compute+serve authority via /api/levels Tier-B (engine functions); market_context inline loops REMOVED or hard-fail — not silent fallback",
+    "backfill typical-price vwap substitution hard-fails to absent (no fabricated vwap)",
+    "T1 tests bind dual-path kill + API contract; LIVE prove enrolled universe or STATUS PARTIAL + restart owed",
+    "No chart computeDaily prior_day kill in this slice (separate B3 / prior_day P2 residue)",
+    "No charm/clock/spot edits in this mission"
+  ],
+  "kill_plan": [
+    "Wire /api/levels Tier-B families from liquidity_value_engine (compute_session_vwap + bands, ORB, get_overnight_levels, today profile)",
+    "Delete or hard-fail market_context.fetch_price_levels inline vwap/ORB/overnight/today-profile duals",
+    "Hard-fail backfill_snapshot_derived typical-price vwap substitution to absent",
+    "Update governance/level_faucets.json producers; T1 string-lock + contract tests",
+    "Commit; restart if needed; LIVE spot-check /api/levels vs liquidity-snapshot for enrolled sentinels at minimum with UNIVERSAL note"
+  ],
+  "note": "ARMED. Census 4033a33f + quiet gate af0c4897 on HEAD. status stays pending_go until quiet prove PASS with log_progressed=true (prior 482→482 artifact VOID). On PASS: PM flips status=active; writer=claude preferred — if Claude process unavailable, PM sets writer=cursor and implements kill same turn (operator continue don't stop). Prior mission multi-faucet-census-v1 DONE."
 }

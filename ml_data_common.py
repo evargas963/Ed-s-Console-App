@@ -390,10 +390,16 @@ M5_ADDITIVE_SOURCE_COLS: tuple[str, ...] = (
 #: the code must match its ledger row.)
 _READ_RETRY_ATTEMPTS = 3
 _READ_RETRY_SLEEP_S = (0.05, 0.25)
-#: One warning per (op) per window — a known-corrupt table (RC-207 rebuild pending) must
-#: not turn the console into a scroll of identical lines; the FIRST line already says it all.
+#: One warning per (op) per window — avoid identical-line scroll on repeated reader failures.
 _READ_FAIL_WARN_WINDOW_S = 300.0
 _read_fail_last_warn: dict[str, float] = {}
+
+#: RC-207 — live serve readers MUST NOT touch `snapshots_1m_normalized` while that table's
+#: b-tree payload is malformed (MEASURED 2026-08-03: rootpage 20; COUNT/MAX still answer,
+#: SELECT net_gamma raises DatabaseError; DROP TABLE also raises). Source `snapshots`
+#: (canonical 1m) stays healthy — use it for serve-path prior-gamma / confluence history.
+#: Training materialize rebuild: `python -m tools.rebuild_snapshots_1m_normalized_v1`.
+SERVE_SNAPSHOT_TABLE = "snapshots"
 
 
 def _console_read_conn(path: str) -> sqlite3.Connection:
@@ -431,8 +437,7 @@ def _read_with_retry(path: str, sql: str, params: tuple, op: str, *, all_rows: b
         _read_fail_last_warn[op] = now
         log.warning(
             "ml_read_failed op=%s db=%s attempts=%s err=%s — feature degrades to absent; "
-            "further identical failures suppressed for %.0fs (RC-206/RC-207: known corrupt "
-            "table, rebuild scheduled)",
+            "further identical failures suppressed for %.0fs (RC-206)",
             op, path, _READ_RETRY_ATTEMPTS, last, _READ_FAIL_WARN_WINDOW_S,
         )
     return [] if all_rows else None
@@ -481,19 +486,21 @@ def fetch_prior_net_gamma(
     db_path: str | None = None,
 ) -> float | None:
     """
-    net_gamma from the immediately prior normalized training row (same ticker, ts_utc strictly less).
-    Matches training ``groupby(ticker).diff()`` on chronologically ordered snapshots_1m_normalized rows.
+    net_gamma from the immediately prior canonical 1m snapshot row (same ticker, ts_utc
+    strictly less). Serve path reads ``snapshots`` (RC-207) — not the corruptible
+    ``snapshots_1m_normalized`` training mirror. For native timeframe='1m' rows the
+    prior net_gamma matches the normalized last-in-bucket copy used at train time.
     """
     path = db_path or _db_default_path()
     t = str(ticker or "").upper().strip()
     if not t:
         return None
 
-    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
+    from timeframe_config import CANONICAL_TIMEFRAME
 
     row = _read_one_row_with_retry(
         path,
-        f"SELECT net_gamma FROM {SNAPSHOT_TABLE_1M} "
+        f"SELECT net_gamma FROM {SERVE_SNAPSHOT_TABLE} "
         "WHERE ticker = ? AND timeframe = ? AND ts_utc < ? "
         "ORDER BY ts_utc DESC LIMIT 1",
         (t, CANONICAL_TIMEFRAME, float(ts_utc)),
@@ -542,14 +549,14 @@ def attach_confluence_features_for_serve(
             out.setdefault(cf, 0.0)
         return out
 
-    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
+    from timeframe_config import CANONICAL_TIMEFRAME
 
     path = db_path or _db_default_path()
-    # RC-206 class-completion (operator caught the third raw caller live, 2026-08-02):
-    # THIS was the surviving traceback path — same corrupted table, same signals loop.
+    # RC-206 retry contract + RC-207 serve quarantine: read healthy `snapshots`, never the
+    # malformed `snapshots_1m_normalized` b-tree (quiet-window FAIL 2026-08-03).
     rows = _read_with_retry(
         path,
-        f"SELECT * FROM {SNAPSHOT_TABLE_1M} "
+        f"SELECT * FROM {SERVE_SNAPSHOT_TABLE} "
         "WHERE ticker = ? AND timeframe = ? AND ts_utc <= ? "
         "ORDER BY ts_utc DESC LIMIT 60",
         (str(tk).upper(), CANONICAL_TIMEFRAME, float(ts)),

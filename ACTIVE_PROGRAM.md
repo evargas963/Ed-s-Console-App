@@ -1,19 +1,20 @@
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-08-03 — **Cursor is standing PM** (RC-218 / `governance/PM_MANDATE.md`). Daily rehab: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md`.
+**Updated:** 2026-08-03 — **Cursor = whole-repo rehab PM** (RC-220 / `governance/REHAB_PROGRAM.md`). Daily rehab Automation + `tools/rehab_daily_scan.py` → `reports/rehab_latest.md`.
 **Charter:** `AGENTS.md` (Collect / Find & Prove / Decide). **Ledger:** `OPEN_ITEMS.md`.
-**Agent stop authority:** only operator `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`. **Current:** `GO` on LP-01; other FP hunt rows stay queued unless operator expands scope.
+**Agent stop authority:** only operator `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
 
-## PM binding (Cursor — always)
+## PM binding (Cursor — always — entire repo)
 
 | Role | Agent | Authority |
 |---|---|---|
-| **PM** | Cursor | Sequence missions, sole-writer, GO/NO-GO, rehab triage, stop thrash |
-| **Writer** | per `governance/sole_writer.json` | Only agent that edits protected paths |
+| **PM** | Cursor | Whole-repo rehab program; sequence slices; sole-writer; GO/NO-GO; keep operator straight |
+| **Writer** | per `governance/sole_writer.json` | Only agent that edits product paths for the active slice |
 | **Auditor** | Cursor | Falsify claims vs disk/git/live after landings |
-| **Rehab scan** | Automation / local cron | Recommend only — append queue; no auto-edit |
+| **Rehab scan** | Cursor Automation + local script | Recommend only — append queue; no auto-edit |
 
-**Operator residue (2026-08-03):** (A) restart `:8000` for LIVE_ENFORCED collect-window · (B) `operator_go.json` green-light for held iceberg · then PM sequences next mission (FORCES UI vs levels vs DB size).
+**Rehab spine:** repo-wide **multi-faucet** audit/find/fix end-to-end, no patches (`REHAB_PROGRAM.md` RH-F1 primary).  
+**Active slice:** **levels-tierb-session-collapse-v1** (census concepts 2–5: vwap/ORB/overnight/today VA) — packet in `governance/pm_mission.json`, `pending_go` until quiet-window PASS with `log_progressed=true`, then activate kill. Prior: census `4033a33f`, quiet-gate honesty `af0c4897`, Phase-1 prior_day `91d38623`. OUT-OF-SCOPE this slice: charm, clocks, spot, chart `computeDaily` B3.
 
 ## Operator NOW (binding — work this before any other NEXT/QUEUED)
 

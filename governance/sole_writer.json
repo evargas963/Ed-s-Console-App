@@ -1,7 +1,8 @@
 {
-  "writer": "claude",
+  "pm": "cursor",
+  "writer": "cursor",
   "auditor": "cursor",
-  "held_commit": "staged_lock_surface_2026-08-03",
-  "updated_at": "2026-08-03T15:30:00-05:00",
-  "note": "RC-214 operator order: Claude sole writer for collect-window seam / held iceberg. Cursor may audit, test, and add orthogonal locks in NEW modules only until operator clears this file."
+  "held_commit": null,
+  "updated_at": "2026-08-03T19:20:00-05:00",
+  "note": "Cursor PM holding writer for RC-207 quiet-console quarantine (serve readers off corrupt snapshots_1m_normalized). Tier-B levels-tierb-session-collapse-v1 stays pending_go until quiet PASS+log_progressed. After that kill, prefer writer=claude for faucet kill unless Claude unavailable."
 }
