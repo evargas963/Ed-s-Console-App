@@ -219,6 +219,35 @@ def test_cross_page_ticker_carrier_is_wired():
     )
 
 
+def _collapse_js_literal_concat(src: str) -> str:
+    """RC-117 v17: fold adjacent JS string-literal concatenation into a single literal.
+
+    `'cv2-hd-' + 'px'` becomes `'cv2-hd-px'`, so an id assembled from literals is visible to
+    the same text scan that catches the plain spelling. Runs to a fixed point so chains of
+    three or more literals collapse too, and handles both quote styles plus the whitespace /
+    line-continuation forms a minifier or a hand edit would produce.
+    """
+    pat = re.compile(r"(['\"])((?:[^'\"\\\n]|\\.)*)\1\s*\+\s*(['\"])((?:[^'\"\\\n]|\\.)*)\3")
+    prev = None
+    out = src
+    while prev != out:
+        prev = out
+        out = pat.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(4)}{m.group(1)}", out)
+    return out
+
+
+def test_rc117_concat_built_id_no_longer_evades_the_scan():
+    """The boundary this row was held open for: the collapser must make a concat-built id
+    indistinguishable from the plain spelling, and must not corrupt ordinary source."""
+    assert "'cv2-hd-px'" in _collapse_js_literal_concat("T('cv2-hd-' + 'px', v);")
+    assert "'cv2-hd-px'" in _collapse_js_literal_concat("T('cv2' + '-hd' + '-px', v);")
+    assert '"cv2-hd-px"' in _collapse_js_literal_concat('T("cv2-hd-" + "px", v);')
+    # identifier-valued concat is NOT folded (it is not a literal) and must stay untouched
+    assert _collapse_js_literal_concat("T(a + b, v);") == "T(a + b, v);"
+    # arithmetic and template usage survive unchanged
+    assert _collapse_js_literal_concat("const n = x + 1;") == "const n = x + 1;"
+
+
 def test_rc117_named_victims_are_locked():
     """RC-117 close contract: the named victims, asserted literally.
     - cv2-hd-px has ONE value-writer (paintSpotDisplays); painters may only TRIGGER it.
@@ -240,9 +269,15 @@ def test_rc117_named_victims_are_locked():
     # blank statement, nothing looser.
     # v16 hardening: every exemption is now LINE-EQUALITY or exact-literal, so an escape
     # cannot ride shotgun on a sanctioned line (writer appended to the registry line, code
-    # hidden beside the markup, the blank used as a substring shield). Honest limit, stated:
-    # building the id by string CONCAT ('cv2-hd-' + 'px') evades any text scan — that is the
-    # AST/dataflow boundary; if an escape ever demonstrates it, the lock graduates to a parser.
+    # hidden beside the markup, the blank used as a substring shield).
+    # v17 (RC-117 close, 2026-08-04): the stated CONCAT boundary is now CLOSED. Building the id
+    # from adjacent string literals ('cv2-hd-' + 'px') no longer evades the scan — the body is
+    # normalized by _collapse_js_literal_concat first, which folds literal-to-literal '+' into
+    # one literal exactly as the JS engine would. This is the deterministic subset of the
+    # dataflow problem that a text scan can own; identifier-valued concat (id = a + b) remains
+    # outside any scanner and is covered instead by the registry invariant below, since a
+    # variable holding this id must still have been assigned from one of the sanctioned lines.
+    body = _collapse_js_literal_concat(body)
     _REGISTRY = "const SPOT_DISPLAY_IDS = ['sb-spot', 'ub-price', 'cv2-hd-px', 'tv-px'];"
     _BLANK = "T('cv2-hd-px', null);"
     refs = []

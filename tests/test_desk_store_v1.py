@@ -31,21 +31,33 @@ def _rth_session_stamps(n: int) -> list[float]:
     RC-176: the first version asked `is_rth_ts_utc` alone, which answers only the CLOCK question
     — Saturday 11:00 passed as a session, so the whole suite went red the first Saturday morning
     it ran. The calendar question belongs to `is_trading_day_et`; a stamp must satisfy both.
+
+    RC-210 (2026-08-04): a third question was still missing — COMPLETENESS. `materialize_dollar_volume`
+    excludes sessions still in progress (RC-173: a live session contributes a fraction of a day's
+    turnover and drags the median down), so a fixture that walks back from *today* silently loses
+    one session whenever the suite runs during RTH and lands below `_MIN_SESSIONS_FOR_ADV`. These
+    four desk tests therefore passed after the close and failed mid-session — the same
+    stale-by-construction class the docstring above warns about, in the time dimension instead of
+    the calendar one. A stamp must satisfy clock AND calendar AND completeness, judged by the
+    same `session_is_complete` the production reader uses, so the fixture cannot disagree with it.
     """
     from datetime import datetime, timedelta
 
     from time_et import ET, is_rth_ts_utc, is_trading_day_et
 
+    now = time.time()
     out: list[float] = []
     probe = datetime.now(ET).date()
     guard = 0
     while len(out) < n and guard < 40:
         guard += 1
+        day = probe.isoformat()
         ts = datetime(probe.year, probe.month, probe.day, 11, 0, tzinfo=ET).timestamp()
-        if is_trading_day_et(probe.isoformat()) and is_rth_ts_utc(ts):
+        if (is_trading_day_et(day) and is_rth_ts_utc(ts)
+                and ds.session_is_complete(day, now)):
             out.append(ts)
         probe = probe - timedelta(days=1)
-    assert len(out) == n, "could not find enough regular sessions in the last 40 days"
+    assert len(out) == n, "could not find enough COMPLETE regular sessions in the last 40 days"
     return list(reversed(out))
 
 
@@ -267,13 +279,18 @@ def test_adv_counts_only_the_regular_session(tmp_path):
     # Three RTH sessions of equal size, each shadowed by a huge pre-market bar.
     # RC-176: the trading-day check is part of the condition — without it this loop planted a
     # Saturday pair whenever the suite ran on a weekend, and the count assertion drifted by one.
+    # RC-210 (2026-08-04): completeness belongs in the condition too — an in-progress session
+    # is excluded by the reader (RC-173), so planting a pair on today made this test pass after
+    # the close and fail mid-session. Same three-part rule as _rth_session_stamps.
     day = datetime.now(ET).date()
     sessions = 0
     probe = day
+    _now = time.time()
     while sessions < 3:
         rth = datetime(probe.year, probe.month, probe.day, 11, 0, tzinfo=ET).timestamp()
         pre = datetime(probe.year, probe.month, probe.day, 5, 0, tzinfo=ET).timestamp()
         if is_trading_day_et(probe.isoformat()) and is_rth_ts_utc(rth) \
+                and ds.session_is_complete(probe.isoformat(), _now) \
                 and not is_rth_ts_utc(pre):
             con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
                         ("ZZZ", rth - 60, rth, 1, 1, 1, 100.0, 10_000.0, "unit"))

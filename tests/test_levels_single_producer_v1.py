@@ -664,3 +664,19 @@ def test_backfill_typical_price_vwap_substitution_hard_fails():
         "typical-price vwap SUBSTITUTION must hard-fail to absent (census #2)"
     )
     assert "SUBSTITUTION is forbidden" in src
+
+
+def test_rc124_merged_pin_tag_keeps_its_decisiveness():
+    """RC-124 (2026-08-04): when the pin is coincident with a wall the axis tag MERGES, and
+    the merge used to drop the lead % — measured live as `750.00 PWALL·PIN` while the payload
+    carried gamma_pin_strength_pct 19.8. A near-tie pin and a decisive one must never render
+    identically; absent strength still renders nothing rather than a fabricated number."""
+    assert "const _pinSp = Number(T.gamma_pin_strength_pct);" in _CHART, (
+        "the merged wall/pin tag no longer reads the pin's strength from the payload"
+    )
+    assert "'·PIN' + (Number.isFinite(_pinSp) ? ` ${_pinSp}%` : '')" in _CHART, (
+        "the merged tag must append the strength when present and NOTHING when absent"
+    )
+    # the bare merge (decisiveness deleted) must not come back in either wall shape
+    assert "`⬌WALL${pinHere ? '·PIN' : ''}`" not in _CHART
+    assert "(sell ? 'CWALL' : 'PWALL') + (pinHere ? '·PIN' : '')" not in _CHART

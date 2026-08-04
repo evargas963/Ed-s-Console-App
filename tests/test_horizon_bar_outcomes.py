@@ -382,6 +382,41 @@ def test_candle_accumulator_seed_refuses_stale_payload():
     assert acc.get_bars("ZZT")[-1].ts == base + 3_600.0
 
 
+def test_rc168_multi_minute_volume_delta_is_not_charged_to_one_bar():
+    """RC-168 ROOT: totalVolume is CUMULATIVE, so a delta between two readings covers the whole
+    span between them. Without a staleness bound, a ticker that went unpolled for minutes (42
+    symbol rotation, stalled poll, mid-session restart) dumped its entire multi-minute delta
+    into whichever ONE bar was open — MEASURED as a 40x spike rate against the vendor's own 1m
+    bars for the same name. Past the bound the span is unknowable, so the bar must record NO
+    volume rather than a fabricated minute."""
+    from server import _CandleAccumulator
+
+    acc = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    base = 1_800_000_000.0
+    # normal polling cadence: consecutive readings inside the bound are attributed in full
+    acc.tick("ZZV", 100.0, base, total_volume=1_000.0)
+    acc.tick("ZZV", 100.5, base + 2.0, total_volume=1_600.0)
+    cur = acc._current["ZZV"]
+    assert cur["v"] == 600.0, "a normal-cadence delta must still be counted"
+
+    # a long gap (ticker unpolled for 10 minutes) must NOT charge 10 minutes to this bar
+    acc2 = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    acc2.tick("ZZG", 100.0, base, total_volume=1_000.0)
+    acc2.tick("ZZG", 101.0, base + 600.0, total_volume=25_000_000.0)
+    cur2 = acc2._current["ZZG"]
+    assert cur2["v"] is None, (
+        f"a 10-minute cumulative delta was attributed to one bar (v={cur2['v']!r}) — this is "
+        f"the RC-168 spike mechanism"
+    )
+    assert cur2["volume_source"] == "schwab_quote_totalVolume_gap_unattributable"
+
+    # the session reset (counter drops) keeps its own honest handling
+    acc3 = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    acc3.tick("ZZR", 100.0, base, total_volume=9_000.0)
+    acc3.tick("ZZR", 100.0, base + 2.0, total_volume=10.0)
+    assert acc3._current["ZZR"]["volume_source"] == "schwab_quote_totalVolume_session_reset"
+
+
 def test_candle_accumulator_seed_refresh_allowed_at_equal_ts():
     """Equal-newest-ts payloads refresh (pricehistory OHLCV beats sparse tick bars)."""
     from server import _CandleAccumulator

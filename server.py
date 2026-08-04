@@ -3615,6 +3615,14 @@ from calibration.option_chain_morning_full import (
 #: resolve it at call time, long after module load.
 _STORED_CHAIN_TIMEFRAMES: tuple[str, ...] = (CANONICAL_TIMEFRAME, "5m")
 
+#: RC-168: the oldest a prior totalVolume reading may be and still have its delta charged to
+#: the currently open bar. Quote polls run ~1.5s apart, so a gap beyond one bar length means
+#: the cumulative delta necessarily spans bars and cannot be attributed to any single minute.
+ACCUM_VOL_MAX_ATTRIBUTION_GAP_SEC: float = float(
+    os.environ.get("ED_ACCUM_VOL_MAX_GAP_SEC", "60")
+)
+
+
 class _CandleAccumulator:
     """Accumulate spot ticks into OHLCV candle bars."""
 
@@ -3624,6 +3632,9 @@ class _CandleAccumulator:
         self._bars: dict[str, list[Candle]] = {}       # ticker -> completed bars
         self._current: dict[str, dict] = {}             # ticker -> {ts, o, h, l, c, v}
         self._prev_total_vol: dict[str, float] = {}    # ticker -> prior totalVolume for delta
+        # RC-168: WHEN that prior reading was taken. Without it a cumulative delta spanning
+        # minutes was attributed to one bar (see tick()).
+        self._prev_total_vol_ts: dict[str, float] = {}
         self._bars_source: dict[str, str] = {}         # ticker -> provenance for VWAP path
 
     def _bar_start(self, epoch: float) -> float:
@@ -3638,19 +3649,38 @@ class _CandleAccumulator:
         bar_ts = self._bar_start(ts)
         total_now = float(total_volume) if total_volume is not None else None
         prev = self._prev_total_vol.get(ticker)
+        prev_ts = self._prev_total_vol_ts.get(ticker)
         vol_source = "schwab_quote_totalVolume_delta"
 
         # Compute volume delta; reset if value drops (new session)
         if total_now is not None and prev is not None:
+            # RC-168 ROOT: totalVolume is CUMULATIVE, so `total_now - prev` covers the whole
+            # span between the two readings — not the current minute. The prior reading had no
+            # staleness bound, so whenever a ticker went unpolled for minutes (42-symbol
+            # rotation, a stalled poll, a mid-session restart) the entire multi-minute delta
+            # was attributed to whichever ONE bar happened to be open, producing the spikes
+            # this row was opened for. MEASURED on MSFT: the accumulator produced 601
+            # non-auction 10x-neighbourhood spikes in 24,284 bars (2.5%) while the vendor's own
+            # 1m bars over the same name and period produced 8 in 13,017 (0.06%) — a 40x rate
+            # from the same market, which isolates the attribution, not the feed. Past the
+            # bound the span is unknowable, so the bar records NO volume rather than a
+            # fabricated minute (absence over invention).
+            gap = None if prev_ts is None else (ts - float(prev_ts))
             delta = total_now - prev
-            vol_delta = max(0.0, delta) if delta >= 0 else 0.0
-            if delta < 0:
+            if gap is not None and gap > ACCUM_VOL_MAX_ATTRIBUTION_GAP_SEC:
+                vol_delta = None
+                vol_source = "schwab_quote_totalVolume_gap_unattributable"
+            elif delta >= 0:
+                vol_delta = delta
+            else:
+                vol_delta = 0.0
                 prev = None
                 vol_source = "schwab_quote_totalVolume_session_reset"
         else:
             vol_delta = None
         if total_now is not None:
             self._prev_total_vol[ticker] = total_now
+            self._prev_total_vol_ts[ticker] = ts
         if ticker not in self._bars_source or self._bars_source[ticker] != "schwab_pricehistory":
             self._bars_source[ticker] = vol_source
 
@@ -5525,6 +5555,22 @@ _l1_instrumentation: dict[str, Any] = {
 # Monotonic clock anchor for L1 diagnostics rates (operational assessment per /api/diagnostics/l1).
 _l1_diag_start_mono = time.monotonic()
 
+#: RC-236: minimum 1m bars the ATR needs, and the warmup horizon during which a deficit is the
+#: designed state rather than a defect. One bar per minute means the accumulator cannot beat the
+#: clock; the horizon carries a small margin for the first partial minute and re-seed latency.
+ATR_MIN_BARS: int = 16
+ATR_WARMUP_HORIZON_SEC: float = float(ATR_MIN_BARS + 4) * 60.0
+
+
+def _seconds_since_boot() -> float:
+    """Wall seconds this server process has been up (monotonic, restart-anchored)."""
+    return max(0.0, time.monotonic() - _l1_diag_start_mono)
+
+
+def _atr_warmup_active() -> bool:
+    """True while the in-memory bar accumulator cannot yet physically hold ATR_MIN_BARS."""
+    return _seconds_since_boot() < ATR_WARMUP_HORIZON_SEC
+
 
 def _l1_generation_pop(key: tuple) -> None:
     """Remove generation state for a scope (eviction); must hold no locks from caller."""
@@ -6979,10 +7025,20 @@ def _fetch_state(
                 )
     except Exception as e:
         log.debug(f"Volatility signals calc: {e}")
-    if _atr is None and _bars:
-        log.warning(f"ATR NULL for {ticker}: only {len(_bars)} bars, need 16")
-    elif _atr is None:
-        log.warning(f"ATR NULL for {ticker}: no bars, need 16")
+    # RC-236 (same calibration law as the tier-1 lock waits): a bar deficit during ACCUMULATOR
+    # WARMUP is the designed state — the in-memory series re-seeds from zero on every restart
+    # and cannot hold 16 one-minute bars until 16 minutes of wall clock have passed. Logging
+    # that at WARNING makes the quiet gate fail for doing exactly what it must do, and trains
+    # the operator to ignore the channel. Past the warmup horizon the SAME deficit is genuine
+    # starvation and keeps its WARNING; the deficit is always logged, only the severity moves.
+    if _atr is None:
+        _warm = _atr_warmup_active()
+        _msg = (f"ATR NULL for {ticker}: only {len(_bars)} bars, need {ATR_MIN_BARS}"
+                if _bars else f"ATR NULL for {ticker}: no bars, need {ATR_MIN_BARS}")
+        if _warm:
+            log.info("%s (accumulator warmup, %.0fs since boot)", _msg, _seconds_since_boot())
+        else:
+            log.warning(_msg)
 
     # ── GARCH Volatility Forecast ─────────────────────────────────────────────
     _garch_sigma_bars = None

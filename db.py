@@ -110,6 +110,10 @@ SQLITE_BUSY_MAX_RETRIES = max(1, int(os.environ.get("ED_SQLITE_BUSY_RETRIES", "8
 SQLITE_BUSY_BASE_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_BASE_SLEEP_SEC", "0.02"))
 SQLITE_BUSY_MAX_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_MAX_SLEEP_SEC", "0.4"))
 SQLITE_LOCK_WAIT_WARN_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_WARN_MS", "100"))
+# RC-236: the distress bar separating routine absorbed waits (INFO) from real contention
+# (WARNING). 2s ~ 5x the retry ladder's max sleep; attempt 4+ means the ladder is failing.
+SQLITE_LOCK_WAIT_DISTRESS_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_DISTRESS_MS", "2000"))
+SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT = int(os.environ.get("ED_SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT", "4"))
 SQLITE_WRITE_SLOW_MS = float(os.environ.get("ED_SQLITE_WRITE_SLOW_MS", "500"))
 # Live bar-upsert incremental window: closed bars already persisted are immutable on the
 # live path; only the in-progress bar plus this overlap is rewritten each cycle. Three
@@ -927,7 +931,16 @@ class EdDB:
                     db_path=db_s,
                 )
             if lock_wait_ms >= SQLITE_LOCK_WAIT_WARN_MS:
-                log.warning(
+                # RC-236: severity calibrated like the SSE-duplicate precedent — a wait the
+                # retry contract absorbs on an early attempt is NORMAL WAL contention under
+                # 42 writers (SQLite busy_timeout doctrine) and logs INFO; WARNING is reserved
+                # for genuine distress (a wait past the distress bar, or a deep retry), so the
+                # quiet gate measures real defects instead of routine mid-RTH lock traffic.
+                # Escalation retained: distress still WARNs and the contention telemetry event
+                # above records EVERY wait regardless of severity.
+                distress = (lock_wait_ms >= SQLITE_LOCK_WAIT_DISTRESS_MS
+                            or attempt >= SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT)
+                (log.warning if distress else log.info)(
                     "sqlite_tier1_lock_wait op=%s ticker=%s db_path=%s wait_ms=%.1f "
                     "attempt=%s/%s thread=%s",
                     op,

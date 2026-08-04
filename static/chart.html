@@ -1139,8 +1139,18 @@ function draw() {
     // is ONE combined chip, and the pin merges in when it shares the strike (one tag, never
     // an overlap). The full sentence (name, box, lean, hold rates) lives in the hover tip.
     const pinHere = T.gamma_pin != null && Number(T.gamma_pin) === Number(level);
-    const tagTxt = kind === 'both' ? `⬌WALL${pinHere ? '·PIN' : ''}`
-      : (sell ? 'CWALL' : 'PWALL') + (pinHere ? '·PIN' : '');
+    // # ui-mockup-ok: RC-124 information-loss BUG FIX, not a redesign — the merged axis tag
+    // restores the decisiveness the standalone PIN label already renders. Measured live: pin
+    // 750 coincident with the put wall rendered "750.00 PWALL·PIN" while the payload carried
+    // gamma_pin_strength_pct 19.8, so a near-tie pin and a decisive one looked identical —
+    // the same information-deleting merge RC-115 was opened for. Absent strength renders
+    // nothing (no fabricated %), exactly as the standalone label does.
+    const _pinSp = Number(T.gamma_pin_strength_pct);
+    const _pinTag = pinHere
+      ? '·PIN' + (Number.isFinite(_pinSp) ? ` ${_pinSp}%` : '')
+      : '';
+    const tagTxt = kind === 'both' ? `⬌WALL${_pinTag}`
+      : (sell ? 'CWALL' : 'PWALL') + _pinTag;
     axisTags.push({ v: level, text: `${fmt(level)} ${tagTxt}`, col });
     wallLabelYs.push(yTop - 5);
     // Coach numbers are LIVE from the daily scorecard — never a frozen study

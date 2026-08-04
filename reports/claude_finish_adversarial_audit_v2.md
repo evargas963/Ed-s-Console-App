@@ -1,5 +1,8 @@
 # BRUTAL ADVERSARIAL AUDIT v2 — Claude "finished" again (2026-07-27 ~20:18 CT)
 
+`# log-law-ok: frozen dated audit record — evidence of what was true on 2026-07-27, never a live
+queue; the defects it names live in governance/root_cause_log.md.`
+
 **Verdict: REJECT. NOT FINISHED.**
 
 ---
