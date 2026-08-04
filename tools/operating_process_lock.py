@@ -57,6 +57,45 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
     "calibration/run_production_accumulation_validation.py",
 )
 
+#: LOCK-2 (RC-231): the tree-destructive git CLASS, not just `reset --hard`. Three wipes on
+#: 2026-08-03 (RC-210 x2, RC-229) used soft forms the literal-match ban never saw. A command
+#: matching a destructive verb AND touching a protected/product path (or bare, whole-tree
+#: forms) BLOCKS at PreToolUse in EVERY session wired to process_lock_guard.
+_RESET_GUARD_RE = __import__("re").compile(
+    r"\bgit\s+(?:-\S+\s+)*(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|stash\b)", __import__("re").I)
+_RESET_GUARD_SAFE_RE = __import__("re").compile(
+    r"\bgit\s+(?:-\S+\s+)*(restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b)",
+    __import__("re").I)
+
+
+def reset_guard_violations(command: str) -> list[str]:
+    """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231).
+
+    Escapes: ED_RESET_GUARD=off (operator, visible) or operator_go scope git_reset_product.
+    `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
+    """
+    if os.environ.get("ED_RESET_GUARD", "").strip().lower() in ("off", "0", "false"):
+        return []
+    if operator_go_granted("git_reset_product"):
+        return []
+    cmd = command or ""
+    if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
+        return []
+    touched = [p for p in PROTECTED_PATHS if p in cmd]
+    mission = _load_json(PM_MISSION_PATH) or {}
+    for sp in (mission.get("scope_paths") or []):
+        if isinstance(sp, str) and sp.strip("*/") and sp in cmd:
+            touched.append(sp)
+    bare = not any(tok in cmd for tok in (" -- ", ".py", ".html", ".json"))
+    if touched or bare:
+        return [
+            "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
+            f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
+            "— three 2026-08-03 wipes used exactly this class. Escape: ED_RESET_GUARD=off "
+            "(operator) or operator_go scope git_reset_product."
+        ]
+    return []
+
 #: Process-lock edits to governance process files are always allowed (compliance path).
 PROCESS_ALLOWED_PREFIXES = (
     "governance/AGENT_OPERATING_PROCESS_V1.md",

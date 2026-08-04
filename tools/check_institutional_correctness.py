@@ -4128,6 +4128,26 @@ def check_domain_faucet_registry() -> list[Violation]:
     return out
 
 
+def check_writer_no_drift() -> list[Violation]:
+    """LOCK-1 seam (RC-226 writer-drift / RC-231 queue): staged changes must come from the
+    mission's resolved writer — the maker-checker split enforced at commit. Delegates to
+    tools/writer_drift_lock.py. CHECKS registration rides the next operator GO batch (the
+    RC-217 gate correctly blocks unlanded ENFORCED checks); the callable exists so the
+    negative-control tests exercise the real seam.
+    """
+    out: list[Violation] = []
+    try:
+        from tools.writer_drift_lock import live_writer_drift_violations
+    except ImportError:
+        try:
+            from writer_drift_lock import live_writer_drift_violations  # type: ignore
+        except ImportError:
+            return out
+    for reason in live_writer_drift_violations(REPO, staged_only=True):
+        out.append(Violation(REPO / "governance" / "pm_mission.json", 0, str(reason)))
+    return out
+
+
 def check_rc_document_without_resolve() -> list[Violation]:
     """RC-228/RC-230 (LOCK-6): newly ADDED OPEN/PARTIAL RC rows must carry a resolve path
     (FIXED:/NEXT-DEPTH:/OUT-OF-SCOPE: with tracker) — a row documented without one is the

@@ -1,7 +1,7 @@
 {
-  "granted": true,
-  "granted_at": "2026-08-04T07:15:00-05:00",
-  "granted_by": "operator",
-  "scope": ["staged_lock_surface"],
-  "note": "PM flip 2026-08-04 for LOCK-6 land under operator proceed. A/B verified on HEAD ff2a22ed (enginePD + today_side_sums); staged ENFORCED rc_document_without_resolve not on HEAD — H unblocked."
+  "granted": false,
+  "granted_at": null,
+  "granted_by": null,
+  "scope": [],
+  "note": "Set granted=true with scope before committing staged ENFORCED checks not on HEAD. Operator-only. Last grant: operator/PM flip 2026-08-04 07:15 for staged_lock_surface — consumed by commit e2e03529 (LOCK-6 rc_document_without_resolve registration on HEAD), closed per protocol by the sole writer post-landing."
 }

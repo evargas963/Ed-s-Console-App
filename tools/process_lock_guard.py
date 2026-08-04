@@ -67,6 +67,9 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
         cmd = tool_input.get("command") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.I):
             out.extend(OPL.commit_violations())
+        # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
+        # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.
+        out.extend(OPL.reset_guard_violations(cmd))
     return out
 
 

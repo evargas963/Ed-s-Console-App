@@ -181,6 +181,43 @@ def test_pm_mission_active_allows_scoped_writer(monkeypatch, tmp_path):
     assert OPL.pm_mission_edit_violation("db.py", agent="claude") is not None
 
 
+def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
+    """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS."""
+    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
+    go = tmp_path / "go.json"
+    go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
+    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
+    for cmd in ("git restore -- static/chart.html",
+                "git checkout -- server.py",
+                "git reset --hard",
+                "git stash"):
+        assert OPL.reset_guard_violations(cmd), f"reset guard silent on: {cmd}"
+
+
+def test_reset_guard_permits_safe_git(monkeypatch, tmp_path):
+    """LOCK-2 negative control: index-only and read-only git stays legal."""
+    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
+    go = tmp_path / "go.json"
+    go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
+    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
+    for cmd in ("git status", "git log --oneline -3",
+                "git restore --staged governance/root_cause_log.md",
+                "git stash list", "git checkout -b feature/x"):
+        assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
+
+
+def test_reset_guard_escapes(monkeypatch, tmp_path):
+    """LOCK-2 escapes: ED_RESET_GUARD=off and operator_go scope git_reset_product."""
+    go = tmp_path / "go.json"
+    go.write_text('{"granted": true, "scope": ["git_reset_product"]}', encoding="utf-8")
+    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
+    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
+    assert not OPL.reset_guard_violations("git restore -- static/chart.html")
+    go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
+    monkeypatch.setenv("ED_RESET_GUARD", "off")
+    assert not OPL.reset_guard_violations("git restore -- static/chart.html")
+
+
 def test_measure_report_has_enforcement_hashes():
     rep = OPL.measure_report()
     assert "enforcement_hashes" in rep
