@@ -1,7 +1,7 @@
 {
-  "granted": true,
+  "granted": false,
   "granted_at": "2026-08-04T18:58:00+00:00",
   "granted_by": "cursor_pm",
-  "scope": ["staged_lock_surface"],
-  "note": "PM 2026-08-04 GO for LOG LAW ENFORCED registration (RC-237)"
+  "scope": [],
+  "note": "PM closed post LOG LAW ENFORCE land 5e12584e"
 }

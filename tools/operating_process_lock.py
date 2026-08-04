@@ -626,6 +626,61 @@ def _quiet_pass_required_violations(text: str, root: Path) -> list[str]:
     ]
 
 
+#: RC-241: phrasings that ASSERT the operator GO has been consumed / closed.
+_GO_CLOSED_CLAIM_RE = re.compile(
+    r"\boperator_go\b[^.\n]{0,90}?\b(?:closed|consumed|granted=false|set to false)\b"
+    r"|\bGO\s+(?:consumed|closed)\b"
+    r"|\b(?:closed|consumed)\s+(?:the\s+)?GO\b",
+    re.I,
+)
+
+
+def go_closeout_violations(commit_message: str, repo: Path | None = None) -> list[str]:
+    """RC-241: a commit that CLAIMS the GO was closed must actually ship it closed.
+
+    The GO protocol was enforced only on the way IN (staged ENFORCED checks require
+    granted=true) and nothing checked the way OUT. I told the operator the GO was "closed
+    back to false in this commit" while the committed blob carried granted=true — the claim
+    rested on my discipline, not on a check, and the PM had to catch it. A GO left open on
+    HEAD is a standing authorisation nobody granted for the NEXT commit, which is precisely
+    the self-approval hazard the file exists to prevent.
+
+    Fires ONLY when the message makes the claim: leaving a GO open without saying otherwise
+    is a process matter for the PM, not a lie, and is not this lock's business.
+    """
+    root = repo or REPO
+    if not commit_message or not _GO_CLOSED_CLAIM_RE.search(commit_message):
+        return []
+    try:
+        r = subprocess.run(
+            ["git", "show", ":governance/operator_go.json"],
+            cwd=str(root), capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if r.returncode != 0:
+        return [
+            "GO_CLOSEOUT: the commit message claims the operator GO was closed/consumed, but "
+            "governance/operator_go.json is NOT staged — the claim and the artifact must "
+            "agree at the moment of commit (RC-241)."
+        ]
+    try:
+        granted = bool(json.loads(r.stdout).get("granted"))
+    except (ValueError, json.JSONDecodeError):
+        return [
+            "GO_CLOSEOUT: staged governance/operator_go.json does not parse, so a closure "
+            "claim cannot be verified — unmeasurable is never a pass (RC-241)."
+        ]
+    if granted:
+        return [
+            "GO_CLOSEOUT: the commit message claims the operator GO was closed/consumed while "
+            "the STAGED governance/operator_go.json still reads granted=true (RC-241). Either "
+            "set granted=false and stage it, or stop claiming the closure."
+        ]
+    return []
+
+
 _QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
 
 

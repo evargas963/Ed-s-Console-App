@@ -294,3 +294,46 @@ def test_rc234_pipe_ok_escape_allows():
 def test_rc234_live_path_wired_into_bash_branch():
     src = (Path(PLG.__file__)).read_text(encoding="utf-8")
     assert "commit_pipe_violations" in src
+
+
+# ---------------------------------------------------------------------------
+# RC-241 — a commit that CLAIMS the GO was closed must actually ship it closed.
+# I reported "operator_go.json closed back to false in this commit" while the
+# committed blob carried granted=true; the PM caught it, no lock did.
+# ---------------------------------------------------------------------------
+
+def _repo_with_staged_go(tmp_path: Path, granted: bool) -> Path:
+    repo = _init_repo(tmp_path)
+    gov = repo / "governance"
+    gov.mkdir(exist_ok=True)
+    (gov / "operator_go.json").write_text(
+        json.dumps({"granted": granted, "scope": [], "note": "fixture"}), encoding="utf-8")
+    subprocess.run(["git", "add", "governance/operator_go.json"], cwd=str(repo), check=True)
+    return repo
+
+
+def test_rc241_claim_while_go_still_granted_blocks(tmp_path):
+    repo = _repo_with_staged_go(tmp_path, granted=True)
+    bad = OPL.go_closeout_violations(
+        "Landed the thing. GO consumed; operator_go closed back to false per protocol.", repo)
+    assert bad and bad[0].startswith("GO_CLOSEOUT:")
+
+
+def test_rc241_claim_with_go_actually_closed_allows(tmp_path):
+    repo = _repo_with_staged_go(tmp_path, granted=False)
+    assert OPL.go_closeout_violations(
+        "Landed the thing. GO consumed; operator_go closed back to false per protocol.",
+        repo) == []
+
+
+def test_rc241_no_claim_leaves_an_open_go_alone(tmp_path):
+    """Leaving a GO open without saying otherwise is a PM process matter, not a lie —
+    this lock only judges the CLAIM against the artifact."""
+    repo = _repo_with_staged_go(tmp_path, granted=True)
+    assert OPL.go_closeout_violations("Ordinary landing with no claim about the gate.",
+                                      repo) == []
+
+
+def test_rc241_live_path_wired_into_the_commit_branch():
+    src = (Path(PLG.__file__)).read_text(encoding="utf-8")
+    assert "go_closeout_violations" in src
