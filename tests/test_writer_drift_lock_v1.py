@@ -88,6 +88,77 @@ def test_pretooluse_ready_for_claude_allows_claude_writer(monkeypatch, tmp_path)
     assert OPL.pm_mission_edit_violation("static/chart.html", agent="claude") is None
 
 
+def test_lock1_hard_denylist_blocks_cursor_on_chart_and_server(monkeypatch):
+    """LOCK-1 spec case: Cursor touching chart.html/server.py under writer=claude BLOCKS
+    with the SOD_DRIFT prefix, regardless of scope_paths."""
+    monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
+    mission = {"status": "active", "writer": "claude", "mission_id": "m1", "scope_paths": ["tools/"]}
+    sole = {"writer": "claude"}
+    for rel in ("static/chart.html", "server.py", "market_context.py", "db.py"):
+        msg = WDL.hard_denylist_violation(rel, agent="cursor", mission=mission, sole=sole)
+        assert msg and msg.startswith("SOD_DRIFT:"), f"hard denylist silent on {rel}"
+    assert WDL.hard_denylist_violation("server.py", agent="claude", mission=mission, sole=sole) is None
+
+
+def test_lock1_lock_modules_gated_by_cursor_lock_encode_ok(monkeypatch):
+    monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
+    mission = {"status": "active", "writer": "claude", "mission_id": "m1"}
+    sole = {"writer": "claude"}
+    msg = WDL.hard_denylist_violation(
+        "tools/check_institutional_correctness.py", agent="cursor", mission=mission, sole=sole)
+    assert msg and "cursor_lock_encode_ok" in msg
+    mission_ok = dict(mission, cursor_lock_encode_ok=True)
+    assert WDL.hard_denylist_violation(
+        "tools/check_institutional_correctness.py", agent="cursor",
+        mission=mission_ok, sole=sole) is None
+
+
+def test_lock1_pm_status_fields_only_for_cursor():
+    """LOCK-1/3: role flips, scope expansion and remaining[] deletion BLOCK; status-field
+    changes pass; the operator escape marker passes."""
+    cur = ('{"writer": "claude", "pm": "cursor", "auditor": "cursor", "status": "active", '
+           '"scope_paths": ["tools/"], "remaining": [{"id": "X"}], "note": "n"}')
+    flip = cur.replace('"writer": "claude"', '"writer": "cursor"')
+    v = WDL.pm_status_field_violations("governance/pm_mission.json", flip,
+                                       agent="cursor", current_text=cur)
+    assert v and any("writer" in m and m.startswith("SOD_DRIFT:") for m in v)
+    grow = cur.replace('["tools/"]', '["tools/", "server.py"]')
+    v2 = WDL.pm_status_field_violations("governance/pm_mission.json", grow,
+                                        agent="cursor", current_text=cur)
+    assert v2 and any("expands scope_paths" in m for m in v2)
+    drop = cur.replace('"remaining": [{"id": "X"}], ', '"remaining": [], ')
+    v3 = WDL.pm_status_field_violations("governance/pm_mission.json", drop,
+                                        agent="cursor", current_text=cur)
+    assert v3 and any("remaining" in m for m in v3)
+    status_only = cur.replace('"status": "active"', '"status": "idle"')
+    assert not WDL.pm_status_field_violations("governance/pm_mission.json", status_only,
+                                              agent="cursor", current_text=cur)
+    escaped = flip.replace('"note": "n"', '"note": "# sod-role-ok: operator order"')
+    assert not WDL.pm_status_field_violations("governance/pm_mission.json", escaped,
+                                              agent="cursor", current_text=cur)
+
+
+def test_lock4_self_heal_owed_blocks_until_rc_exists(tmp_path, monkeypatch):
+    """LOCK-4: a recorded SOD_DRIFT denial with no RC naming mission+SOD_DRIFT BLOCKS;
+    the matching row clears it."""
+    ledger = tmp_path / "sod_drift_events.jsonl"
+    monkeypatch.setattr(WDL, "SOD_DRIFT_EVENTS_PATH", ledger)
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", tmp_path / "pm_mission.json")
+    (tmp_path / "pm_mission.json").write_text(
+        '{"status": "active", "writer": "claude", "mission_id": "m-heal"}', encoding="utf-8")
+    # Write the event directly: record_sod_drift deliberately refuses to write under
+    # pytest (real-ledger pollution guard) — this test targets self_heal_owed_violations.
+    import json as _json
+    ledger.write_text(_json.dumps({
+        "ts": 1.0, "agent": "cursor", "mission_id": "m-heal",
+        "message": "SOD_DRIFT: synthetic", "healed": False,
+    }) + "\n", encoding="utf-8")
+    owed = WDL.self_heal_owed_violations(rc_lines=["| RC-1 | OPEN | d | d | x | y | z |"])
+    assert owed and owed[0].startswith("SELF_HEAL_OWED:")
+    healed_rows = ["| RC-999 | OPEN | d | d | SOD_DRIFT denial for mission m-heal | why | plan |"]
+    assert not WDL.self_heal_owed_violations(rc_lines=healed_rows)
+
+
 def test_check_writer_no_drift_name_present_for_negative_control():
     """RC-95: ENFORCED check id must appear in tests (name-presence + injection above)."""
     from tools.check_institutional_correctness import check_writer_no_drift

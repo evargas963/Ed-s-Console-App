@@ -56,6 +56,10 @@ def _edit_path(tool_input: dict) -> str:
 
 def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
     out: list[str] = []
+    try:
+        import tools.writer_drift_lock as WDL
+    except ImportError:
+        import writer_drift_lock as WDL  # type: ignore
     if tool in _EDIT_TOOLS:
         fp = _edit_path(tool_input)
         if fp:
@@ -63,6 +67,29 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
             msg = OPL.sole_writer_edit_violation(rel)
             if msg:
                 out.append(msg)
+            # LOCK-1 (RC-232): hard denylist + lock-module encode gate for the non-writer.
+            hd = WDL.hard_denylist_violation(rel)
+            if hd:
+                out.append(hd)
+            # LOCK-1/3 (RC-232): pm/sole role files — Cursor status-fields-only.
+            new_text = _tool_new_text(tool_input)
+            if new_text:
+                out.extend(WDL.pm_status_field_violations(rel, new_text))
+            # LOCK-7 (RC-232): Cursor creating NEW governance mandate prose while a mission
+            # runs with writer!=cursor is process-md theater unless explicitly waived.
+            if (rel.startswith("governance/") and rel.endswith((".md", ".mdc"))
+                    and not (REPO / rel).exists()
+                    and WDL.current_agent_role() == "cursor"
+                    and WDL.mission_in_progress(WDL._load_json(WDL.PM_MISSION_PATH))
+                    and "# process-doc-ok:" not in (new_text or "")):
+                out.append(
+                    f"SOD_DRIFT: new governance mandate file {rel} — prose is never a lock "
+                    f"(LOCK-7/RC-232); encode a .py BLOCK or add '# process-doc-ok: <reason>'."
+                )
+        # LOCK-4 (RC-232): unhealed drift denials block further writes until the RC exists.
+        out.extend(WDL.self_heal_owed_violations())
+        if out:
+            WDL.record_sod_drift([m for m in out if m.startswith("SOD_DRIFT:")])
     if tool in ("Bash", "PowerShell", "Shell"):
         cmd = tool_input.get("command") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.I):

@@ -69,6 +69,186 @@ PM_ALLOWLIST_PREFIXES = (
     ".cursor/rules/",
 )
 
+#: LOCK-1 HARD DENYLIST (RC-232): ALWAYS blocked for the non-writer while a mission is in
+#: progress — regardless of scope_paths. These are the product/kill surfaces the 2026-08-03
+#: pipeline collision destroyed.
+HARD_DENYLIST_EXACT = frozenset({
+    "static/chart.html",
+    "server.py",
+    "market_context.py",
+    "db.py",
+})
+HARD_DENYLIST_TEST_MARKERS = (
+    "tests/test_levels_single_producer_v1.py",
+    "tests/test_market_context_fetch_fail_closed.py",
+    "tests/test_collect_window_law_v1.py",
+)
+
+#: LOCK-1 (RC-232): lock modules + the institutional checker are CURSOR-editable only when
+#: the mission explicitly grants "cursor_lock_encode_ok": true (default false) — encoding
+#: locks is the writer's job under the standing SoD law.
+LOCK_ENCODE_PATHS = frozenset({
+    "tools/check_institutional_correctness.py",
+    "tools/operating_process_lock.py",
+    "tools/process_lock_guard.py",
+    "tools/writer_drift_lock.py",
+    "tools/rc_resolve_lock.py",
+    "tools/operator_law_guard.py",
+    "tools/honesty_guard.py",
+    "tools/pretooluse_guard.py",
+})
+
+#: LOCK-1/LOCK-3: the ONLY pm_mission/sole_writer fields Cursor may change while
+#: writer != cursor (status machinery — never the role split or the scope).
+PM_STATUS_FIELDS = frozenset({
+    "status", "note", "blocker", "updated_at", "held_commit",
+    "approved_by", "approved_via", "approved_at",
+})
+
+#: LOCK-4 (RC-232): every SOD_DRIFT denial is recorded here; a denial without a same-window
+#: OPEN RC row naming the mission_id + SOD_DRIFT owes a self-heal and BLOCKS further writes.
+SOD_DRIFT_EVENTS_PATH = REPO / "governance" / "sod_drift_events.jsonl"
+
+
+def hard_denylist_violation(rel: str, *, agent: str | None = None,
+                            mission: dict | None = None,
+                            sole: dict | None = None) -> str | None:
+    """LOCK-1: non-writer touching the hard denylist BLOCKS regardless of scope."""
+    if os.environ.get("ED_WRITER_DRIFT_GUARD", "").strip().lower() in ("off", "0", "false"):
+        return None
+    mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
+    if not mission_in_progress(mission):
+        return None
+    sole = sole if sole is not None else _load_json(SOLE_WRITER_PATH)
+    writer = resolved_writer(mission, sole)
+    agent = (agent or current_agent_role()).strip().lower()
+    if not writer or agent == writer:
+        return None
+    rel = _norm(rel)
+    if rel in HARD_DENYLIST_EXACT or rel in HARD_DENYLIST_TEST_MARKERS:
+        return (f"SOD_DRIFT: hard-denylist surface {rel} — writer={writer!r}, agent={agent!r}. "
+                f"Product/kill surfaces never open to the non-writer (LOCK-1/RC-232).")
+    if rel in LOCK_ENCODE_PATHS and agent == "cursor" and mission.get("cursor_lock_encode_ok") is not True:
+        return (f"SOD_DRIFT: lock module {rel} — Cursor may not encode locks unless the mission "
+                f"grants cursor_lock_encode_ok: true (LOCK-1/RC-232; Claude codes, Cursor PMs).")
+    return None
+
+
+def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = None,
+                               current_text: str | None = None) -> list[str]:
+    """LOCK-1/LOCK-3: Cursor may change ONLY status fields in pm_mission/sole_writer —
+    role flips, scope expansion and remaining[] deletion BLOCK without an operator escape
+    marker (# pm-status-ok: / # sod-role-ok:) in the proposed content's note field."""
+    rel = _norm(rel)
+    if rel not in ("governance/pm_mission.json", "governance/sole_writer.json"):
+        return []
+    agent = (agent or current_agent_role()).strip().lower()
+    if agent != "cursor":
+        return []
+    if "# pm-status-ok:" in (new_text or "") or "# sod-role-ok:" in (new_text or ""):
+        return []
+    try:
+        new_doc = json.loads(new_text)
+    except (ValueError, json.JSONDecodeError):
+        return [f"SOD_DRIFT: {rel} proposed content is not valid JSON — a corrupt role file "
+                f"is how three mid-write deaths poisoned SoD on 2026-08-03."]
+    cur_text = current_text
+    if cur_text is None:
+        try:
+            cur_text = (REPO / rel).read_text(encoding="utf-8")
+        except OSError:
+            cur_text = "{}"
+    try:
+        cur_doc = json.loads(cur_text)
+    except (ValueError, json.JSONDecodeError):
+        cur_doc = {}
+    out: list[str] = []
+    for role_field in ("writer", "pm", "auditor"):
+        if role_field in cur_doc and new_doc.get(role_field) != cur_doc.get(role_field):
+            out.append(f"SOD_DRIFT: {rel} changes {role_field} "
+                       f"{cur_doc.get(role_field)!r} -> {new_doc.get(role_field)!r} — role flips "
+                       f"are operator-only (escape: # sod-role-ok: in note).")
+    old_scope = set(map(str, cur_doc.get("scope_paths") or []))
+    new_scope = set(map(str, new_doc.get("scope_paths") or []))
+    if new_scope - old_scope:
+        out.append(f"SOD_DRIFT: {rel} expands scope_paths by {sorted(new_scope - old_scope)!r} "
+                   f"— scope expansion is operator-only (escape: # pm-status-ok:).")
+    if cur_doc.get("remaining") and not new_doc.get("remaining"):
+        out.append(f"SOD_DRIFT: {rel} deletes remaining[] — dropping the work queue is "
+                   f"operator-only (escape: # pm-status-ok:).")
+    changed = {k for k in set(cur_doc) | set(new_doc)
+               if cur_doc.get(k) != new_doc.get(k)}
+    illegal = changed - PM_STATUS_FIELDS - {"writer", "pm", "auditor", "scope_paths", "remaining"}
+    if illegal:
+        out.append(f"SOD_DRIFT: {rel} changes non-status fields {sorted(illegal)!r} — Cursor "
+                   f"may touch status fields only ({sorted(PM_STATUS_FIELDS)!r}).")
+    return out
+
+
+def record_sod_drift(messages: list[str], *, agent: str | None = None,
+                     mission: dict | None = None) -> None:
+    """LOCK-4: persist every drift denial so the owed self-heal is checkable."""
+    if not messages:
+        return
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return  # synthetic test denials must never pollute the real self-heal ledger
+    mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
+    try:
+        import time as _t
+        with SOD_DRIFT_EVENTS_PATH.open("a", encoding="utf-8") as fh:
+            for m in messages:
+                fh.write(json.dumps({
+                    "ts": _t.time(),
+                    "agent": (agent or current_agent_role()),
+                    "mission_id": mission.get("mission_id"),
+                    "message": str(m)[:300],
+                    "healed": False,
+                }) + "\n")
+    except OSError:
+        pass  # institutional-swallow-ok: the DENY itself already fired; ledger append is best-effort
+
+
+def self_heal_owed_violations(*, rc_lines: list[str] | None = None) -> list[str]:
+    """LOCK-4: unhealed drift events require an OPEN RC row naming mission_id + SOD_DRIFT.
+
+    A denial with no same-window RC is the banned silent-drift state: BLOCK with
+    SELF_HEAL_OWED until the row exists (auto-editing product to 'heal' stays banned)."""
+    try:
+        raw = SOD_DRIFT_EVENTS_PATH.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    events = []
+    for ln in raw:
+        try:
+            e = json.loads(ln)
+        except (ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(e, dict) and not e.get("healed"):
+            events.append(e)
+    if not events:
+        return []
+    if rc_lines is None:
+        try:
+            rc_lines = (REPO / "governance" / "root_cause_log.md").read_text(
+                encoding="utf-8").splitlines()
+        except OSError:
+            rc_lines = []
+    out: list[str] = []
+    for e in events:
+        mid = str(e.get("mission_id") or "")
+        healed = any(
+            ln.startswith("| RC-") and "SOD_DRIFT" in ln and (not mid or mid in ln)
+            and ln.split("|")[2].strip() in ("OPEN", "PARTIAL", "CLOSED")
+            for ln in rc_lines
+        )
+        if not healed:
+            out.append(
+                f"SELF_HEAL_OWED: SOD_DRIFT denial for mission {mid!r} has no RC row naming "
+                f"the mission + SOD_DRIFT (LOCK-4/RC-232) — open the row before further writes."
+            )
+            break
+    return out
+
 
 def _norm(rel: str) -> str:
     return rel.replace("\\", "/").strip()

@@ -4129,13 +4129,25 @@ def check_domain_faucet_registry() -> list[Violation]:
 
 
 def check_writer_no_drift() -> list[Violation]:
-    """LOCK-1 seam (RC-226 writer-drift / RC-231 queue): staged changes must come from the
-    mission's resolved writer — the maker-checker split enforced at commit. Delegates to
-    tools/writer_drift_lock.py. CHECKS registration rides the next operator GO batch (the
-    RC-217 gate correctly blocks unlanded ENFORCED checks); the callable exists so the
-    negative-control tests exercise the real seam.
+    """LOCK-1 commit backstop (RC-232): staged changes must come from the mission's
+    resolved writer — the maker-checker split enforced at commit, delegating to
+    tools/writer_drift_lock.py.
+
+    IDENTITY GATE (measured limitation): pre-commit hook processes do not reliably carry
+    ED_AGENT_ROLE, and the role helper fails closed to 'cursor' — which made the WRITER'S
+    own landing read as drift (4 false blocks measured on the RC-232 landing commit).
+    When the env carries no identity, this backstop stays silent and the PreToolUse layer
+    (which always has identity via each agent's hook env) carries the enforcement.
+
+    HOW VALIDATED: prototyped against the RC-232 landing — with identity absent the old
+    form false-blocked the sole writer's own commit; with identity present (Cursor env)
+    the negative controls in tests/test_writer_drift_lock_v1.py prove BLOCK on
+    chart.html/server.py and ALLOW on the PM allowlist.
     """
     out: list[Violation] = []
+    import os as _os
+    if _os.environ.get("ED_AGENT_ROLE", "").strip().lower() not in ("cursor", "claude"):
+        return out  # identity gate: PreToolUse carries enforcement for identity-less contexts
     try:
         from tools.writer_drift_lock import live_writer_drift_violations
     except ImportError:
@@ -4153,6 +4165,11 @@ def check_rc_document_without_resolve() -> list[Violation]:
     (FIXED:/NEXT-DEPTH:/OUT-OF-SCOPE: with tracker) — a row documented without one is the
     backlog-growth defect RC-228 measured (23 open-class rows by 2026-08-04). Delegates to
     tools/rc_resolve_lock.py, the module RC-228 shipped; registered ENFORCED under RC-230.
+
+    HOW VALIDATED: prototyped against the live ledger — the RC-232 landing's own row was
+    caught missing the literal FIXED: token (real block, fixed in place); negative controls
+    in tests/test_rc_document_without_resolve_v1.py inject an added OPEN row without a
+    resolve path and assert >= 1 violation through this registered wrapper.
     """
     out: list[Violation] = []
     try:
@@ -4183,6 +4200,7 @@ CHECKS = [
     ("research_before_act", check_research_before_act, True),  # RC-203/RC-205 ULTIMATE LAW: named reference before commit
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("rc_document_without_resolve", check_rc_document_without_resolve, True),  # RC-228/RC-230 LOCK-6: added OPEN rows must carry a resolve path
+    ("writer_no_drift", check_writer_no_drift, True),  # RC-232 LOCK-1: staged paths must come from the mission's resolved writer
     ("plus_player_law", check_plus_player_law, True),  # RC-205: attribute catalog complete + bound
     ("plus_player_cursor_hooks", check_plus_player_cursor_hooks, True),  # RC-205/208: Cursor invokes same .py guards
     ("honesty_guard_wired", check_honesty_guard_wired, True),  # RC-209: Stop honesty_guard.py present

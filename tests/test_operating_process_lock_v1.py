@@ -218,6 +218,28 @@ def test_reset_guard_escapes(monkeypatch, tmp_path):
     assert not OPL.reset_guard_violations("git restore -- static/chart.html")
 
 
+def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
+    """LOCK-5 (RC-232): COMPLETE claim with server.py touched and quiet verdict != PASS
+    BLOCKS with QUIET_PASS_REQUIRED; the DISK_ONLY token escapes honestly."""
+    monkeypatch.setattr(OPL, "index_worktree_mismatches", lambda repo=None, **kw: [])
+    monkeypatch.setattr(OPL, "live_collect_disk_only", lambda repo=None, port=8000: None)
+    monkeypatch.setattr(OPL, "staged_enforced_checks_not_on_head", lambda repo=None: [])
+    monkeypatch.setattr(OPL, "_git_diff_names", lambda root, a, b: ["server.py"])
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "ed_server_warn_quiet_window_latest.json").write_text(
+        '{"verdict": "FAIL"}', encoding="utf-8")
+    (tmp_path / "governance").mkdir()
+    v = OPL.completion_claim_violations("Mission COMPLETE: all landed.", tmp_path)
+    assert any(m.startswith("QUIET_PASS_REQUIRED:") for m in v), v
+    ok = OPL.completion_claim_violations(
+        "Mission COMPLETE: DISK_ONLY_UNTIL_RESTART for the server half.", tmp_path)
+    assert not any(m.startswith("QUIET_PASS_REQUIRED:") for m in ok)
+    (tmp_path / "reports" / "ed_server_warn_quiet_window_latest.json").write_text(
+        '{"verdict": "PASS"}', encoding="utf-8")
+    v2 = OPL.completion_claim_violations("Mission COMPLETE: all landed.", tmp_path)
+    assert not any(m.startswith("QUIET_PASS_REQUIRED:") for m in v2)
+
+
 def test_measure_report_has_enforcement_hashes():
     rep = OPL.measure_report()
     assert "enforcement_hashes" in rep

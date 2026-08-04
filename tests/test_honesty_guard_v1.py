@@ -27,6 +27,19 @@ def test_honesty_violations_require_score():
     assert honesty_violations("what is the score of the locks?", "Score: 4/10.") == []
 
 
+def test_lock7_lock_claim_must_name_mechanism():
+    """LOCK-7 (RC-232): 'locked via mandate/rule' without a CHECK id or guard .py BLOCKS;
+    naming the mechanism passes."""
+    from tools.honesty_guard import honesty_violations
+
+    bad = honesty_violations(None, "This is now locked via the mandate we wrote today.")
+    assert any("without naming a CHECK id" in m for m in bad), bad
+    ok = honesty_violations(
+        None, "This is now locked via the mandate, enforced by check_writer_no_drift "
+              "and process_lock_guard.py at PreToolUse.")
+    assert not any("without naming a CHECK id" in m for m in ok)
+
+
 def test_honesty_blocks_md_as_lock_claim():
     from tools.honesty_guard import honesty_violations
 

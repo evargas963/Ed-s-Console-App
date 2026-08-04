@@ -62,9 +62,10 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
 #: matching a destructive verb AND touching a protected/product path (or bare, whole-tree
 #: forms) BLOCKS at PreToolUse in EVERY session wired to process_lock_guard.
 _RESET_GUARD_RE = __import__("re").compile(
-    r"\bgit\s+(?:-\S+\s+)*(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|stash\b)", __import__("re").I)
+    r"\bgit\s+(?:-\S+\s+)*(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
+    __import__("re").I)
 _RESET_GUARD_SAFE_RE = __import__("re").compile(
-    r"\bgit\s+(?:-\S+\s+)*(restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b)",
+    r"\bgit\s+(?:-\S+\s+)*(restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
     __import__("re").I)
 
 
@@ -579,12 +580,63 @@ def sole_writer_edit_violation(rel: str, agent: str | None = None) -> str | None
     )
 
 
+def _git_diff_names(root: Path, a: str | None, b: str | None) -> list[str]:
+    """Changed path names between two revs (or worktree-vs-HEAD when both None)."""
+    args = ["git", "diff", "--name-only"]
+    if a and b:
+        args.append(f"{a}..{b}")
+    else:
+        args.append("HEAD")
+    try:
+        r = subprocess.run(args, cwd=str(root), capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if r.returncode != 0:
+        return []
+    return [ln.replace("\\", "/").strip() for ln in r.stdout.splitlines() if ln.strip()]
+
+
+def _quiet_pass_required_violations(text: str, root: Path) -> list[str]:
+    """LOCK-5 (RC-232): COMPLETE / LIVE_ENFORCED / mission-complete claims require the
+    live quiet bar when the landing touched server.py/db.py — the quiet-window JSON must
+    read PASS. Honest escapes only: the DISK_ONLY_UNTIL_RESTART token in the same claim,
+    or an explicit operator '# quiet-bar-ok:' waiver."""
+    if not re.search(r"\b(COMPLETE\b|LIVE_ENFORCED\b|mission[- ]complete)\b", text):
+        return []
+    if _DISK_ONLY_TOKEN.search(text) or "# quiet-bar-ok:" in text:
+        return []
+    touched = set(_git_diff_names(root, "HEAD~1", "HEAD")) | set(
+        _git_diff_names(root, None, None))
+    if not ({"server.py", "db.py"} & touched):
+        return []
+    try:
+        qj = json.loads((root / "reports" /
+                         "ed_server_warn_quiet_window_latest.json").read_text(
+                             encoding="utf-8"))
+        verdict = str(qj.get("verdict") or "")
+    except (OSError, ValueError, json.JSONDecodeError):
+        verdict = "MISSING"
+    if verdict == "PASS":
+        return []
+    return [
+        f"QUIET_PASS_REQUIRED: completion claim with server.py/db.py touched but "
+        f"ed_server_warn_quiet_window_latest.json verdict={verdict!r} (LOCK-5/RC-232) — "
+        f"run the gate to PASS, or state DISK_ONLY_UNTIL_RESTART / obtain '# quiet-bar-ok:'."
+    ]
+
+
 def completion_claim_violations(text: str, repo: Path | None = None) -> list[str]:
     """BLOCK COMPLETE/LIVE/parity claims while measurable preconditions fail."""
-    if not text or not _COMPLETION_CLAIM.search(text):
+    if not text:
         return []
     root = repo or REPO
     out: list[str] = []
+    # LOCK-5 (RC-232) triggers on its OWN claim regex — the legacy _COMPLETION_CLAIM tails
+    # missed plain forms like 'Mission COMPLETE: ...' (measured by its own fixture).
+    out.extend(_quiet_pass_required_violations(text, root))
+    if not _COMPLETION_CLAIM.search(text):
+        return out
     mism = index_worktree_mismatches(root)
     if mism:
         out.append(
@@ -594,6 +646,7 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     disk = live_collect_disk_only(root)
     if disk and _LIVE_RC_CLAIM.search(text) and not _DISK_ONLY_TOKEN.search(text):
         out.append(f"completion claim LIVE_ENFORCED while {disk}")
+    # (LOCK-5 runs above via _quiet_pass_required_violations — independent trigger.)
     staged_head = staged_enforced_checks_not_on_head(root)
     if staged_head and re.search(r"\b(iceberg ready|ready to commit|one intentional tree)\b", text, re.I):
         if not operator_go_granted("staged_lock_surface"):
