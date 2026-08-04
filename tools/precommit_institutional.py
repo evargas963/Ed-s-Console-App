@@ -34,7 +34,13 @@ def main() -> int:
         os.environ.pop("ED_AGENT_ROLE", None)
     runner = REPO / "tools" / "run_with_repo_venv.py"
     gate = REPO / "tools" / "check_institutional_correctness.py"
-    os.execv(sys.executable, [sys.executable, str(runner), str(gate)])
+    # RC-246: the blocking path runs ENFORCED checks only. Advisory checks cannot fail this
+    # gate by construction, and charging every commit 153s of a 244s wall for verdicts that
+    # can never veto made the gate expensive enough to route around — a cost this repo has
+    # already paid in piped commits and hooks killed mid-run. Advisory debt is not dropped:
+    # it runs via `--advisory` on the scheduled/rehab path and is recorded in
+    # reports/advisory_debt_latest.json.
+    os.execv(sys.executable, [sys.executable, str(runner), str(gate), "--enforced-only"])
     return 0
 
 

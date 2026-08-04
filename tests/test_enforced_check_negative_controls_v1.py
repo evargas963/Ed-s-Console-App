@@ -613,3 +613,82 @@ def test_closed_row_semantics_escapes_are_closed():
     assert V([row("Disposition only — the radar fallback stays as declared, no code change.")],
              set(), staged=set()) == [], "an explicit no-code closure was blocked"
 
+
+# ── RC-246 (P1): the blocking path runs ENFORCED only; advisory still RUNS and is recorded ──
+
+
+def test_rc246_precommit_path_excludes_advisory_checks():
+    """The blocking gate must not pay for verdicts that cannot veto.
+
+    Advisory checks print and return 0 by construction, so charging every commit for them
+    (153s of a 244s wall) bought nothing and made the gate expensive enough to route around —
+    a cost this repo already paid in piped commits and hooks killed mid-run.
+    """
+    import tools.check_institutional_correctness as gate
+
+    src = (Path(gate.__file__).parent / "precommit_institutional.py").read_text(encoding="utf-8")
+    assert '"--enforced-only"' in src, (
+        "the pre-commit wrapper no longer asks for the enforced-only path (RC-246)"
+    )
+
+
+def test_rc246_enforced_only_mode_skips_every_advisory_check(monkeypatch, capsys):
+    import tools.check_institutional_correctness as gate
+
+    ran: list[str] = []
+    fake = [
+        ("fake_enforced", lambda: ran.append("fake_enforced") or [], True),
+        ("fake_advisory", lambda: ran.append("fake_advisory") or [], False),
+    ]
+    monkeypatch.setattr(gate, "CHECKS", fake)
+    gate.run_checks(mode="enforced")
+    capsys.readouterr()
+    assert ran == ["fake_enforced"], f"advisory check ran in the blocking path: {ran}"
+
+
+def test_rc246_advisory_mode_still_runs_them_and_records_the_debt(monkeypatch, tmp_path, capsys):
+    """The condition attached to P1's approval: advisory debt must not be silently dropped."""
+    import json
+
+    import tools.check_institutional_correctness as gate
+
+    ran: list[str] = []
+
+    def _two_violations():
+        ran.append("fake_advisory")
+        # real Violation objects — the grandfather filter reads v.path, so bare strings
+        # would test the fixture rather than the code
+        return [gate.Violation(tmp_path / "x.py", 1, "advisory debt one"),
+                gate.Violation(tmp_path / "y.py", 2, "advisory debt two")]
+
+    fake = [
+        ("fake_enforced", lambda: ran.append("fake_enforced") or [], True),
+        ("fake_advisory", _two_violations, False),
+    ]
+    monkeypatch.setattr(gate, "CHECKS", fake)
+    monkeypatch.setattr(gate, "REPO", tmp_path)
+    _, results = gate.run_checks(mode="advisory")
+    capsys.readouterr()
+    assert ran == ["fake_advisory"], f"enforced check ran in the advisory path: {ran}"
+
+    path = gate.write_advisory_report(results)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["checks"]["fake_advisory"] == 2
+    assert data["total_advisory_violations"] == 2
+    assert isinstance(data.get("measured_at_utc"), float), "the record must be dated"
+
+
+def test_rc246_advisory_never_blocks_and_the_catalogue_keeps_all_seven():
+    """Advisory mode reports; it must never return non-zero. And the seven must still be
+    REGISTERED — moving them off the hook is not permission to delete them."""
+    import tools.check_institutional_correctness as gate
+
+    advisory = [n for n, _f, e in gate.CHECKS if not e]
+    for name in ("debt_ratchet", "orphan_dict_keys", "function_complexity", "function_length",
+                 "file_length", "ruff_quality", "mypy_types"):
+        assert name in advisory, f"advisory check {name} left the catalogue (RC-246)"
+    src = Path(gate.__file__).read_text(encoding="utf-8")
+    i = src.index('if "--advisory" in args:')
+    block = src[i:i + 700]
+    assert "return 0" in block, "advisory mode must never block a commit"
+

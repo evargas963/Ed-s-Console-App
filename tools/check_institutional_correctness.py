@@ -4355,7 +4355,82 @@ def _apply_forward_only_grandfather(name: str, violations: list) -> list:
     return out
 
 
-def main() -> int:
+#: RC-246: where the ADVISORY run leaves its dated result so the debt stays visible daily
+#: even though it no longer blocks a commit. The PM's approval of P1 was conditional on
+#: exactly this — advisory debt must surface, debt_ratchet must not be silently dropped.
+ADVISORY_REPORT_REL = "reports/advisory_debt_latest.json"
+
+
+def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
+    """Run the catalogue and return (enforced_violation_count, per-check results).
+
+    RC-246: `mode` splits WHO PAYS for a check from WHETHER it can veto.
+      * "enforced" — the pre-commit path. Advisory checks are structurally incapable of
+        failing the gate (they print and return 0), so charging every commit 153s of the
+        244s wall for them bought nothing and made the gate expensive enough to route
+        around — this repo has the scar tissue to prove that (RC-215, RC-234).
+      * "advisory" — the scheduled/rehab path. Runs the seven and writes them down.
+      * "all" — unchanged default, so a human invoking the gate by hand still sees
+        everything in one place.
+    """
+    enforced_violations = 0
+    results: list[tuple[str, bool, int]] = []
+    for name, fn, enforced in CHECKS:
+        if mode == "enforced" and not enforced:
+            continue
+        if mode == "advisory" and enforced:
+            continue
+        tag = "ENFORCED" if enforced else "ADVISORY"
+        violations = _apply_forward_only_grandfather(name, fn())
+        results.append((name, enforced, len(violations)))
+        if violations:
+            if enforced:
+                enforced_violations += len(violations)
+            note = "" if enforced else " — advisory debt: drive to zero, then enforce"
+            print(f"FAIL [{name}] ({tag}) — {len(violations)} violation(s){note}:")
+            for v in violations[:_MAX_PRINT]:
+                print(v)
+            if len(violations) > _MAX_PRINT:
+                print(f"  … and {len(violations) - _MAX_PRINT} more")
+        else:
+            print(f"PASS [{name}] ({tag})")
+    return enforced_violations, results
+
+
+def write_advisory_report(results: list[tuple[str, bool, int]]) -> Path:
+    """Persist the advisory tally — the visibility half of P1's approval."""
+    import json as _json
+    import time as _time
+
+    payload = {
+        "measured_at_utc": _time.time(),
+        "checks": {name: count for name, enforced, count in results if not enforced},
+        "total_advisory_violations": sum(c for _n, e, c in results if not e),
+    }
+    out = REPO / ADVISORY_REPORT_REL
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if "--enforced-only" in args:
+        enforced_violations, _ = run_checks(mode="enforced")
+        if enforced_violations:
+            print(f"\nINSTITUTIONAL CORRECTNESS GATE: FAIL "
+                  f"({enforced_violations} enforced violation(s))")
+            return 1
+        print("\nINSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean; advisory debt "
+              f"runs on its own schedule and is recorded in {ADVISORY_REPORT_REL})")
+        return 0
+    if "--advisory" in args:
+        _, results = run_checks(mode="advisory")
+        path = write_advisory_report(results)
+        total = sum(c for _n, e, c in results if not e)
+        print(f"\nADVISORY DEBT: {total} violation(s) across "
+              f"{len([1 for _n, e, _c in results if not e])} checks — recorded in {path}")
+        return 0                      # advisory NEVER blocks; it reports
     enforced_violations = 0
     for name, fn, enforced in CHECKS:
         tag = "ENFORCED" if enforced else "ADVISORY"
