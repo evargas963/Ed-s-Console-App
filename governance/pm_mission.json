@@ -1,47 +1,40 @@
 {
-  "status": "DONE",
-  "mission_id": "charm-bs-faucet-migrate-v1",
-  "title": "Census #6 charm: migrate compute_net_charm onto bs_charm; delete inline formula; remove grandfathered_inline_greeks entry",
+  "status": "active",
+  "mission_id": "spot-binding-single-payload-v1",
+  "title": "Census #8 spot: consumers render spot ONLY from a single shared payload field per screen with as_of age visible; no silent dual ages across tabs",
   "writer": "cursor",
   "pm": "cursor",
   "auditor": "cursor",
   "census_source": "reports/multi_faucet_census_latest.md",
-  "concepts": [6],
+  "concepts": [8],
   "out_of_scope": [
-    "spot dual (census #8)",
-    "clocks (census #7 DONE RC-223)",
-    "chart computeDaily prior_day B3"
+    "chart computeDaily prior_day B3 (separate)",
+    "clocks (DONE RC-223)",
+    "charm (DONE RC-224)"
   ],
   "scope_paths": [
-    "math_exposure_core.py",
-    "math_levels.py",
-    "governance/level_faucets.json",
-    "governance/root_cause_log.md",
+    "static/",
+    "server.py",
     "tests/",
     "tools/",
     "reports/",
+    "governance/root_cause_log.md",
     "governance/pm_mission.json",
     "governance/sole_writer.json"
   ],
   "prior_mission": {
-    "mission_id": "clocks-tz-explicit-v1",
+    "mission_id": "charm-bs-faucet-migrate-v1",
     "status": "DONE",
-    "head": "29c1e17f",
-    "rc": "RC-223"
+    "head": "18ce7f66",
+    "rc": "RC-224"
   },
   "approved_by": "operator",
   "approved_via": "chat_continue_dont_stop_pipeline",
-  "approved_at": "2026-08-03T20:05:00-05:00",
+  "approved_at": "2026-08-03T20:20:00-05:00",
   "done_criteria": [
-    "compute_net_charm unit charm comes from math_levels.bs_charm (no inline d1/d2 charm formula)",
-    "grandfathered_inline_greeks entry for compute_net_charm removed",
-    "RC-179 T1 suite still green (parity + sign locks)",
+    "Each screen binds spot from one declared payload field with as_of visible",
+    "T1 locks the binding; silent dual-age renders fail the lock",
     "LIVE or DISK_ONLY+restart owed stated honestly"
   ],
-  "done_evidence": {
-    "t1": "tests/test_charm_sign_finite_difference.py (incl. RC-224 faucet lock) green",
-    "rc": "RC-224 CLOSED",
-    "live": "pure math path — no server restart required; DISK_ONLY note from rehab is unrelated collect-window seam"
-  },
-  "note": "DONE same turn as clocks. Next census P1 residual exhausted; next open faucet is spot (#8 P2) or B3 computeDaily."
+  "note": "Armed after P1 clocks+charm DONE. Census P1 queue clear; next kill is P2 spot binding. Research then first cut under PROCEED."
 }
