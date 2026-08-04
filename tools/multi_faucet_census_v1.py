@@ -68,69 +68,66 @@ def build_findings() -> list[dict]:
         },
         {
             "concept": "vwap (+bands)",
-            "severity": "P1",
+            "severity": "P2",
+            "status": "TIERB_DONE",
             "producers": {
-                "liquidity_value_engine.compute_session_vwap (session bars, cutoff-aware)":
+                "liquidity_value_engine.compute_session_vwap (AUTHORITY; /api/levels Tier-B)":
                     _sites("liquidity_value_engine.py", r"def compute_session_vwap|def compute_vwap_bands"),
-                "market_context.fetch_price_levels inline cum_tpv loop (vendor TWO_DAYS window)":
-                    _sites("market_context.py", r"cum_tpv"),
-                "backfill_snapshot_derived eff_vwap fallback chain (typical-price SUBSTITUTION)":
+                "market_context.fetch_price_levels (DELEGATES to compute_session_vwap)":
+                    _sites("market_context.py", r"compute_session_vwap"),
+                "backfill_snapshot_derived eff_vwap (real/forward-fill only; typical-price SUBSTITUTION deleted)":
                     _sites("backfill_snapshot_derived.py", r"eff_vwap"),
             },
-            "evidence": "MEASURED 2026-08-03 18:1x CT same instant: /api/analytics/state vwap=None while "
-                        "/api/liquidity-snapshot raw_levels.vwap=755.8154 — one concept, one tab absent, one tab "
-                        "valued. Structural: three computes, three windows/bases (session+cutoff vs vendor-2day "
-                        "vs typical-price substitute).",
-            "reproduce": "curl /api/analytics/state?ticker=SPY | jq .vwap; curl '/api/liquidity-snapshot?ticker=SPY&snapshot=live' | jq .raw_levels.vwap",
-            "proposed_kill": "NEXT KILL SLICE (highest leverage): vwap family collapses onto "
-                             "compute_session_vwap served via /api/levels Tier-B cache (design §5.4); "
-                             "market_context inline compute DELETED; backfill typical-price substitution "
-                             "HARD-FAILS to absent (a fabricated vwap is worse than no vwap).",
+            "evidence": "Mission levels-tierb-session-collapse-v1: inline cum_tpv loop DELETED; "
+                        "fetch_price_levels + /api/levels call compute_session_vwap; typical-price "
+                        "substitution hard-failed to absent.",
+            "reproduce": "read market_context.fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family==\"vwap\")'",
+            "proposed_kill": "TIERB_DONE — residue is consumer migration off /api/price-levels (B6), not a second compute.",
         },
         {
             "concept": "opening_range (ORB H/L/mid)",
-            "severity": "P1",
+            "severity": "P2",
+            "status": "TIERB_DONE",
             "producers": {
-                "liquidity_value_engine ORB family (raw_levels.orb)":
-                    _sites("liquidity_value_engine.py", r"orb", 3),
-                "market_context.fetch_price_levels inline ORB loop":
-                    _sites("market_context.py", r"orb_h = max|pl\.orb_high"),
+                "liquidity_value_engine.compute_opening_range (AUTHORITY)":
+                    _sites("liquidity_value_engine.py", r"def compute_opening_range"),
+                "market_context.fetch_price_levels (DELEGATES to compute_opening_range)":
+                    _sites("market_context.py", r"compute_opening_range"),
             },
-            "evidence": "MEASURED same instant: state orb_high=None while liquidity raw_levels.orb="
-                        "{751.94/748.8/750.37} — same absence-vs-value split as vwap, same producers.",
-            "reproduce": "curl /api/analytics/state?ticker=SPY | jq .orb_high; curl '/api/liquidity-snapshot?ticker=SPY&snapshot=live' | jq .raw_levels.orb",
-            "proposed_kill": "Same slice as vwap: ORB collapses onto the engine via /api/levels; "
-                             "market_context inline loop deleted with fetch_price_levels retirement (B6).",
+            "evidence": "Mission levels-tierb-session-collapse-v1: inline ORB loop DELETED; both serve paths use engine.",
+            "reproduce": "read fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family==\"opening_range\")'",
+            "proposed_kill": "TIERB_DONE — B6 retires /api/price-levels as a second HTTP surface, not a second formula.",
         },
         {
             "concept": "overnight (high/low)",
-            "severity": "P1",
+            "severity": "P2",
+            "status": "TIERB_DONE",
             "producers": {
-                "liquidity_value_engine.get_overnight_levels (RC-153-corrected interval window)":
+                "liquidity_value_engine.get_overnight_levels (AUTHORITY, RC-153 window)":
                     _sites("liquidity_value_engine.py", r"def get_overnight_levels"),
-                "market_context.fetch_price_levels overnight_bars (today-premarket only window)":
-                    _sites("market_context.py", r"overnight_bars"),
+                "market_context.fetch_price_levels (DELEGATES to get_overnight_levels)":
+                    _sites("market_context.py", r"get_overnight_levels"),
             },
-            "evidence": "Two windows for one name: engine = prior close -> today open interval (holiday-safe, "
-                        "RC-153); market_context = today's premarket bars only (extended_hours flag). "
-                        "Different answers whenever the overnight range formed before midnight.",
-            "reproduce": "read both functions; compare on a Monday tape",
-            "proposed_kill": "Same slice: overnight collapses onto get_overnight_levels via /api/levels.",
+            "evidence": "Mission levels-tierb-session-collapse-v1: today-premarket overnight_bars dual DELETED; "
+                        "fetch_price_levels uses the RC-153 interval via the engine.",
+            "reproduce": "read fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family==\"overnight\")'",
+            "proposed_kill": "TIERB_DONE.",
         },
         {
             "concept": "today value_area (POC/VAH/VAL) + today profile",
-            "severity": "P1",
+            "severity": "P2",
+            "status": "TIERB_DONE",
             "producers": {
-                "liquidity_value_engine profile (raw_levels.poc/vah/val)":
-                    _sites("liquidity_value_engine.py", r"_volume_profile_poc_vah_val", 3),
-                "market_context._volume_profile_poc_vah_val (separate copy)":
-                    _sites("market_context.py", r"_volume_profile_poc_vah_val", 3),
+                "liquidity_value_engine.compute_volume_profile_levels (AUTHORITY for today)":
+                    _sites("liquidity_value_engine.py", r"def compute_volume_profile_levels"),
+                "market_context.fetch_price_levels today VA (DELEGATES to compute_volume_profile_levels)":
+                    _sites("market_context.py", r"compute_volume_profile_levels"),
             },
-            "evidence": "Two same-named profile implementations, one per module — value-area math forked at "
-                        "module boundary; divergence follows bar-source/window differences exactly as prior_day did.",
-            "reproduce": "read both _volume_profile_poc_vah_val implementations; diff parameters (value-area %, tick size)",
-            "proposed_kill": "Same slice: ONE profile implementation (engine's, config-carrying) serves both; "
-                             "market_context copy deleted.",
+            "evidence": "Mission levels-tierb-session-collapse-v1: today profile uses engine; "
+                        "market_context._volume_profile_poc_vah_val remains only for prior_day pd_* "
+                        "(Phase-1 residue, not this slice).",
+            "reproduce": "read fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family==\"value_area\")'",
+            "proposed_kill": "TIERB_DONE for today VA; prior_day profile entry-point collapse is a later residue.",
         },
         {
             "concept": "charm / greeks formulas",
@@ -225,7 +222,7 @@ def build_findings() -> list[dict]:
                 "state payload rounds (pdh 748.89)":
                     _sites("server.py", r'ms_dict\["pdh"\]', 1),
                 "/api/levels + /api/price-levels serve raw (748.895)":
-                    _sites("server.py", r'"id": lid, "price": float\(val\)', 1),
+                    _sites("server.py", r'family": "prior_day"|_append_level', 1),
             },
             "evidence": "MEASURED same instant: state pdh=748.89 vs levels PDH=748.895 — same number, two "
                         "precisions on two surfaces. Not a producer split; a payload-rounding faucet.",

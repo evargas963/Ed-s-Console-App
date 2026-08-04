@@ -14101,6 +14101,11 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
     from liquidity_value_engine import (
         PlaybookConfig,
         _bars_to_list,
+        compute_opening_range,
+        compute_session_vwap,
+        compute_volume_profile_levels,
+        compute_vwap_bands,
+        get_overnight_levels,
         get_previous_day_levels,
         prior_trading_session_date,
     )
@@ -14111,6 +14116,7 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
     spot, spot_source, spot_ts = resolve_spot(tk)
     session_date = now_et().date()
     degraded: list[dict] = []
+    cfg = PlaybookConfig()
 
     bars = _liquidity_live_1m_overlay_bars(tk)
     bars_norm = _bars_to_list(bars)
@@ -14141,6 +14147,51 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
 
     levels: list[dict] = []
     families_absent: list[dict] = []
+
+    def _as_of_from_bars() -> float | None:
+        prior_bar_ts = [b.get("_ts") or b.get("timestamp") for b in bars_norm]
+        vals = []
+        for t in prior_bar_ts:
+            if t is None:
+                continue
+            vals.append(
+                float(t) / 1000.0 if isinstance(t, (int, float)) and t > 1e12 else float(t)
+            )
+        return max(vals) if vals else None
+
+    as_of = _as_of_from_bars()
+
+    def _append_level(
+        lid: str,
+        price: float | None,
+        family: str,
+        *,
+        producer: str,
+        window: str,
+        tier: str,
+        session_scope: str,
+        stale_reason: str,
+    ) -> None:
+        if price is None:
+            return
+        levels.append({
+            "id": lid, "price": float(price), "family": family, "label": lid,
+            "side": None, "strength": None, "evidence_tier": tier,
+            "provenance": {
+                "producer": producer,
+                "session_scope": session_scope,
+                "window": window,
+                "vendor_basis": f"1m bars ({bar_source}); schwab pricehistory/stream basis",
+            },
+            "staleness": {
+                "as_of_ts_utc": as_of,
+                "age_sec": None if as_of is None else round(served_ts - as_of, 1),
+                "stale_after_sec": None,
+                "stale": False,
+                "reason": stale_reason,
+            },
+        })
+
     prior_date = prior_trading_session_date(bars_norm, session_date)
     if prior_date is None:
         families_absent.append({
@@ -14148,12 +14199,7 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
             "reason": f"no prior RTH session in available bars (source {bar_source})",
         })
     else:
-        eng = get_previous_day_levels(bars_norm, session_date, PlaybookConfig())
-        prior_bar_ts = [
-            b.get("_ts") or b.get("timestamp") for b in bars_norm
-        ]
-        as_of = max((float(t) / 1000.0 if isinstance(t, (int, float)) and t > 1e12 else float(t))
-                    for t in prior_bar_ts if t is not None)
+        eng = get_previous_day_levels(bars_norm, session_date, cfg)
         window = f"{prior_date.isoformat()} 09:30-16:00 ET (most recent prior RTH session)"
         id_map = [
             ("PDH", "pdh", "price_fact"), ("PDL", "pdl", "price_fact"),
@@ -14161,34 +14207,103 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
             ("PD_VAH", "pd_vah", "derived_certified"), ("PD_VAL", "pd_val", "derived_certified"),
         ]
         for lid, key, tier in id_map:
-            val = eng.get(key)
-            if val is None:
-                continue
-            levels.append({
-                "id": lid, "price": float(val), "family": "prior_day", "label": lid,
-                "side": None, "strength": None, "evidence_tier": tier,
-                "provenance": {
-                    "producer": "liquidity_value_engine.get_previous_day_levels",
-                    "session_scope": "RTH",
-                    "window": window,
-                    "vendor_basis": f"1m bars ({bar_source}); schwab pricehistory/stream basis",
-                },
-                "staleness": {
-                    "as_of_ts_utc": as_of,
-                    "age_sec": round(served_ts - as_of, 1),
-                    "stale_after_sec": None,
-                    "stale": False,
-                    "reason": "prior-day facts are static after their session closes",
-                },
+            _append_level(
+                lid, eng.get(key), "prior_day",
+                producer="liquidity_value_engine.get_previous_day_levels",
+                window=window, tier=tier, session_scope="RTH",
+                stale_reason="prior-day facts are static after their session closes",
+            )
+
+    # RC-213 Tier-B (mission levels-tierb-session-collapse-v1): session families from the
+    # ONE engine authority over held bars — never market_context inline duals.
+    if not bars_norm:
+        for fam in ("vwap", "opening_range", "overnight", "value_area"):
+            families_absent.append({
+                "family": fam,
+                "reason": f"no bars available (source {bar_source})",
             })
+    else:
+        sess_window = f"{session_date.isoformat()} RTH (engine Tier-B over {bar_source})"
+        vwap_val = compute_session_vwap(bars_norm, session_date)
+        if vwap_val is None:
+            families_absent.append({
+                "family": "vwap",
+                "reason": "no RTH volume for session VWAP in available bars",
+            })
+        else:
+            _append_level(
+                "VWAP", vwap_val, "vwap",
+                producer="liquidity_value_engine.compute_session_vwap",
+                window=sess_window, tier="derived_certified", session_scope="RTH",
+                stale_reason="session VWAP recomputed from held 1m bars",
+            )
+            p1, m1, p2, m2 = compute_vwap_bands(bars_norm, session_date, vwap_val)
+            for lid, val in (
+                ("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2),
+            ):
+                _append_level(
+                    lid, val, "vwap",
+                    producer="liquidity_value_engine.compute_vwap_bands",
+                    window=sess_window, tier="derived_certified", session_scope="RTH",
+                    stale_reason="session VWAP bands recomputed from held 1m bars",
+                )
+
+        orb = compute_opening_range(bars_norm, session_date, cfg)
+        if not orb:
+            families_absent.append({
+                "family": "opening_range",
+                "reason": "no ORB bars in available tape for session",
+            })
+        else:
+            for lid, key in (
+                ("ORB_HIGH", "orb_high"), ("ORB_LOW", "orb_low"), ("ORB_MID", "orb_mid"),
+            ):
+                _append_level(
+                    lid, orb.get(key), "opening_range",
+                    producer="liquidity_value_engine.compute_opening_range",
+                    window=f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH",
+                    tier="price_fact", session_scope="RTH",
+                    stale_reason="ORB is fixed after the opening-range window closes",
+                )
+
+        overnight = get_overnight_levels(bars_norm, session_date)
+        if not overnight:
+            families_absent.append({
+                "family": "overnight",
+                "reason": "no overnight-window bars in available tape",
+            })
+        else:
+            for lid, key in (
+                ("OVERNIGHT_HIGH", "overnight_high"), ("OVERNIGHT_LOW", "overnight_low"),
+            ):
+                _append_level(
+                    lid, overnight.get(key), "overnight",
+                    producer="liquidity_value_engine.get_overnight_levels",
+                    window="prior RTH close -> session RTH open (RC-153)",
+                    tier="price_fact", session_scope="extended",
+                    stale_reason="overnight range is fixed after the cash open",
+                )
+
+        poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, cfg)
+        if poc is None and vah is None and val is None:
+            families_absent.append({
+                "family": "value_area",
+                "reason": "no today RTH bars for volume profile",
+            })
+        else:
+            for lid, price in (
+                ("TODAY_POC", poc), ("TODAY_VAH", vah), ("TODAY_VAL", val),
+            ):
+                _append_level(
+                    lid, price, "value_area",
+                    producer="liquidity_value_engine.compute_volume_profile_levels",
+                    window=sess_window, tier="derived_certified", session_scope="RTH",
+                    stale_reason="today value area recomputed from held 1m bars",
+                )
 
     for fam, why in (
-        ("vwap", "B1 partial: Tier-B producer cache wiring lands in a later phase (design §5.4)"),
-        ("opening_range", "B1 partial: Tier-B producer cache wiring lands in a later phase"),
-        ("overnight", "B1 partial: Tier-B producer cache wiring lands in a later phase"),
-        ("value_area", "B1 partial: today-session profile served by /api/liquidity-snapshot until migration"),
-        ("gamma", "B1 partial: served by /api/terrain and /api/terrain/strikes until migration"),
-        ("expected_move", "B1 partial: served by /api/state until migration"),
+        ("gamma", "Tier-B slice excludes gamma — served by /api/terrain until migration"),
+        ("expected_move", "Tier-B slice excludes EM — served by /api/state until migration"),
     ):
         families_absent.append({"family": fam, "reason": why})
 

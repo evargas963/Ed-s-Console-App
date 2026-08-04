@@ -3,6 +3,6 @@
   "writer": "cursor",
   "auditor": "cursor",
   "held_commit": null,
-  "updated_at": "2026-08-03T19:20:00-05:00",
-  "note": "Cursor PM holding writer for RC-207 quiet-console quarantine (serve readers off corrupt snapshots_1m_normalized). Tier-B levels-tierb-session-collapse-v1 stays pending_go until quiet PASS+log_progressed. After that kill, prefer writer=claude for faucet kill unless Claude unavailable."
+  "updated_at": "2026-08-03T19:35:00-05:00",
+  "note": "Mission levels-tierb-session-collapse-v1 ACTIVE. Cursor writer (Claude unavailable; operator continue don't stop). Quiet PASS proven post 7ab5e0c8."
 }

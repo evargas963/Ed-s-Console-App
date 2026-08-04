@@ -31,40 +31,6 @@ ROOT = Path(__file__).resolve().parent
 IV_HIST_CAP = 5000
 
 
-def _typical_price(row: sqlite3.Row) -> float | None:
-    """Fallback when no VWAP yet: OHLC average, else close/open, else spot."""
-    spot = row["spot"]
-    try:
-        if spot is not None:
-            sf = float(spot)
-            if sf > 0:
-                pass
-            else:
-                sf = None
-        else:
-            sf = None
-    except (TypeError, ValueError):
-        sf = None
-    o, h, l, c = row["candle_open"], row["candle_high"], row["candle_low"], row["candle_close"]
-    vals = []
-    for v in (o, h, l, c):
-        if v is None:
-            continue
-        try:
-            vals.append(float(v))
-        except (TypeError, ValueError):
-            continue
-    if vals:
-        return round(sum(vals) / len(vals), 4)
-    for v in (c, o):
-        if v is not None:
-            try:
-                return round(float(v), 4)
-            except (TypeError, ValueError):
-                pass
-    return sf
-
-
 def backfill(db_path: Path) -> dict:
     conn = sqlite3.connect(str(db_path), timeout=60)
     conn.row_factory = sqlite3.Row
@@ -105,9 +71,10 @@ def backfill(db_path: Path) -> dict:
             except (TypeError, ValueError):
                 pass
         if eff_vwap is None:
+            # Forward-fill from a prior REAL vwap on this ticker is allowed.
+            # Typical-price SUBSTITUTION is forbidden (RC-213 Tier-B / census #2):
+            # a fabricated vwap is worse than an absent vwap.
             eff_vwap = last_vwap_by_ticker.get(tkr)
-        if eff_vwap is None:
-            eff_vwap = _typical_price(r)
         if eff_vwap is not None:
             last_vwap_by_ticker[tkr] = eff_vwap
         if vwap_raw is None and eff_vwap is not None:

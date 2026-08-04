@@ -882,33 +882,6 @@ def _volume_profile_poc_vah_val(bars: list, value_area_pct: float = 0.70,
     return volume_profile_poc_vah_val(bars, value_area_pct, tick_size, ndigits=2)
 
 
-def _vwap_bands(bars: list, vwap_val: float) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """Compute VWAP ±1σ and ±2σ. Returns (vwap_p1, vwap_m1, vwap_p2, vwap_m2)."""
-    if not bars or vwap_val is None:
-        return None, None, None, None
-    cum_var = 0.0
-    cum_vol = 0.0
-    for c in bars:
-        h = _float_or_none(c.get("high"))
-        l = _float_or_none(c.get("low"))
-        cl = _float_or_none(c.get("close"))
-        vol = _positive_float_or_none(c.get("volume"))
-        if h is None or l is None or cl is None or vol is None:
-            continue
-        typical = (h + l + cl) / 3.0
-        cum_var += (typical - vwap_val) ** 2 * vol
-        cum_vol += vol
-    if cum_vol <= 0:
-        return None, None, None, None
-    std = (cum_var / cum_vol) ** 0.5
-    return (
-        round(vwap_val + std, 2),
-        round(vwap_val - std, 2),
-        round(vwap_val + 2 * std, 2),
-        round(vwap_val - 2 * std, 2),
-    )
-
-
 @dataclass
 class PriceLevels:
     """
@@ -1047,7 +1020,7 @@ def fetch_price_levels(
         today_date = now_et().date()
         today_bars = []
         prev_bars  = []
-        overnight_bars = []
+        engine_bars: list[dict] = []
 
         for c in candles:
             dt_ms = c.get("datetime")
@@ -1063,10 +1036,18 @@ def fetch_price_levels(
             dt_et  = dt_utc.astimezone(ET)
             dt_mins = dt_et.hour * 60 + dt_et.minute
             is_rth = RTH_OPEN_MINS <= dt_mins < RTH_END_MINS
+            # Engine bar basis for Tier-B session families (RC-213 levels-tierb-session-collapse-v1).
+            # include_extended_hours still controls the vendor request; overnight uses the
+            # engine's prior-close→open window over whatever bars arrived.
+            engine_bars.append({
+                "timestamp": dt_ms / 1000.0,
+                "open": c.get("open"),
+                "high": c.get("high"),
+                "low": c.get("low"),
+                "close": c.get("close"),
+                "volume": c.get("volume"),
+            })
             if not is_rth:
-                if include_extended_hours and dt_et.date() == today_date:
-                    if dt_mins < RTH_OPEN_MINS:
-                        overnight_bars.append((dt_et, c))
                 continue
             if dt_et.date() == today_date:
                 today_bars.append((dt_et, c))
@@ -1099,48 +1080,35 @@ def fetch_price_levels(
             pl.pdc = prev_bars[-1][1]["close"]
             pl.pd_poc, pl.pd_vah, pl.pd_val = _volume_profile_poc_vah_val(prev_candles)
 
-        # ── Overnight high/low ────────────────────────────────────────────────
-        if overnight_bars:
-            pl.overnight_high = max(c["high"] for _, c in overnight_bars)
-            pl.overnight_low  = min(c["low"] for _, c in overnight_bars)
-
-        # ── VWAP + bands + ORB + today POC/VAH/VAL ───────────────────────────
+        # ── Tier-B session families: ONE engine authority (no inline dual computes) ──
+        # Census concepts 2–5 (vwap/ORB/overnight/today VA). Former inline VWAP/ORB/
+        # today-premarket overnight / local today profile DELETED — not kept as fallback.
+        from liquidity_value_engine import (
+            PlaybookConfig,
+            compute_opening_range,
+            compute_session_vwap,
+            compute_volume_profile_levels,
+            compute_vwap_bands,
+            get_overnight_levels,
+        )
+        cfg = PlaybookConfig(opening_range_minutes=orb_minutes)
+        on = get_overnight_levels(engine_bars, today_date)
+        pl.overnight_high = on.get("overnight_high")
+        pl.overnight_low = on.get("overnight_low")
         if today_bars:
-            today_candles = [c for _, c in today_bars]
             pl.bars_today = len(today_bars)
-            cum_tpv = 0.0
-            cum_vol = 0.0
-            orb_h, orb_l = -1e9, 1e9
-            orb_bars_seen = 0
-
-            for dt_et, c in today_bars:
-                _float_or_none(c.get("open"))
-                h = _float_or_none(c.get("high"))
-                l = _float_or_none(c.get("low"))
-                cl = _float_or_none(c.get("close"))
-                vol = _positive_float_or_none(c.get("volume"))
-                if h is not None and l is not None and cl is not None and vol is not None:
-                    typical = (h + l + cl) / 3.0
-                    cum_tpv += typical * vol
-                    cum_vol += vol
-
-                # ORB: first orb_minutes of RTH
-                mins_since_open = (dt_et.hour * 60 + dt_et.minute) - RTH_OPEN_MINS
-                if mins_since_open < orb_minutes and h is not None and l is not None:
-                    orb_h = max(orb_h, h)
-                    orb_l = min(orb_l, l)
-                    orb_bars_seen += 1
-
-            if cum_vol > 0:
-                pl.vwap = cum_tpv / cum_vol
-                pl.vwap_p1, pl.vwap_m1, pl.vwap_p2, pl.vwap_m2 = _vwap_bands(today_candles, pl.vwap)
-
-            if orb_bars_seen > 0 and orb_h > -1e9:
-                pl.orb_high = orb_h
-                pl.orb_low  = orb_l
-                pl.orb_midpoint = (orb_h + orb_l) / 2.0
-
-            pl.today_poc, pl.today_vah, pl.today_val = _volume_profile_poc_vah_val(today_candles)
+            pl.vwap = compute_session_vwap(engine_bars, today_date)
+            if pl.vwap is not None:
+                pl.vwap_p1, pl.vwap_m1, pl.vwap_p2, pl.vwap_m2 = compute_vwap_bands(
+                    engine_bars, today_date, pl.vwap
+                )
+            orb = compute_opening_range(engine_bars, today_date, cfg)
+            pl.orb_high = orb.get("orb_high")
+            pl.orb_low = orb.get("orb_low")
+            pl.orb_midpoint = orb.get("orb_mid")
+            pl.today_poc, pl.today_vah, pl.today_val = compute_volume_profile_levels(
+                engine_bars, today_date, cfg
+            )
 
     except Exception as e:
         err_str = str(e)[:120]

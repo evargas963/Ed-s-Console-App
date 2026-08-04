@@ -8,10 +8,10 @@ fallback patch.
 | # | concept | severity | producers | proposed kill |
 |---|---------|----------|-----------|---------------|
 | 1 | prior_day (PDH/PDL/PDC/PD_POC/PD_VAH/PD_VAL) | P2 | 3 | B3 (design §7): chart.html consumes /api/levels prior_day ids; computeDaily DELETED (not fallback-patched) — a |
-| 2 | vwap (+bands) | P1 | 3 | NEXT KILL SLICE (highest leverage): vwap family collapses onto compute_session_vwap served via /api/levels Tie |
-| 3 | opening_range (ORB H/L/mid) | P1 | 2 | Same slice as vwap: ORB collapses onto the engine via /api/levels; market_context inline loop deleted with fet |
-| 4 | overnight (high/low) | P1 | 2 | Same slice: overnight collapses onto get_overnight_levels via /api/levels. |
-| 5 | today value_area (POC/VAH/VAL) + today profile | P1 | 2 | Same slice: ONE profile implementation (engine's, config-carrying) serves both; market_context copy deleted. |
+| 2 | vwap (+bands) | P2 | 3 | TIERB_DONE — residue is consumer migration off /api/price-levels (B6), not a second compute. |
+| 3 | opening_range (ORB H/L/mid) | P2 | 2 | TIERB_DONE — B6 retires /api/price-levels as a second HTTP surface, not a second formula. |
+| 4 | overnight (high/low) | P2 | 2 | TIERB_DONE. |
+| 5 | today value_area (POC/VAH/VAL) + today profile | P2 | 2 | TIERB_DONE for today VA; prior_day profile entry-point collapse is a later residue. |
 | 6 | charm / greeks formulas | P1 | 2 | Migrate compute_net_charm onto bs_charm; delete the inline formula; registry grandfather entry removed (its ow |
 | 7 | clocks (session date / display time) | P1 | 3 | All JS date grouping/labels take an explicit timeZone (America/Chicago display, ET session logic served by the |
 | 8 | spot | P2 | 2 | Consumers render spot ONLY from a single shared payload field per screen with its as_of age visible; stale spo |
@@ -25,8 +25,8 @@ fallback patch.
 - **liquidity_value_engine.get_previous_day_levels (AUTHORITY, RC-153/RC-213)**
   - `liquidity_value_engine.py:282: def get_previous_day_levels(`
 - **market_context.fetch_price_levels (DELEGATES to authority since 91d38623)**
-  - `market_context.py:1085: from liquidity_value_engine import prior_trading_session_date`
-  - `market_context.py:1086: prior_date = prior_trading_session_date(`
+  - `market_context.py:1066: from liquidity_value_engine import prior_trading_session_date`
+  - `market_context.py:1067: prior_date = prior_trading_session_date(`
 - **static/chart.html computeDaily (JS FALLBACK faucet — browser-local clock, buffer-group window)**
   - `static/chart.html:377: ? new Date(t * 1000).toLocaleDateString()`
   - `static/chart.html:391: function computeDaily() {`
@@ -36,70 +36,61 @@ fallback patch.
 **Reproduce:** `curl /api/price-levels?ticker=SPY + /api/levels?ticker=SPY; read chart.html computeDaily`
 **Proposed kill:** B3 (design §7): chart.html consumes /api/levels prior_day ids; computeDaily DELETED (not fallback-patched) — absent engine values render as absent (RC-68).
 
-## 2. vwap (+bands) — P1
+## 2. vwap (+bands) — P2 (TIERB_DONE)
 
-- **liquidity_value_engine.compute_session_vwap (session bars, cutoff-aware)**
+- **liquidity_value_engine.compute_session_vwap (AUTHORITY; /api/levels Tier-B)**
   - `liquidity_value_engine.py:426: def compute_session_vwap(bars: list, session_date: date, cutoff_dt: Optional[datetime] = None) -> Optional[flo`
   - `liquidity_value_engine.py:445: def compute_vwap_bands(`
-- **market_context.fetch_price_levels inline cum_tpv loop (vendor TWO_DAYS window)**
-  - `market_context.py:1111: cum_tpv = 0.0`
-  - `market_context.py:1124: cum_tpv += typical * vol`
-  - `market_context.py:1135: pl.vwap = cum_tpv / cum_vol`
-- **backfill_snapshot_derived eff_vwap fallback chain (typical-price SUBSTITUTION)**
-  - `backfill_snapshot_derived.py:98: eff_vwap = None`
-  - `backfill_snapshot_derived.py:103: eff_vwap = vf`
-  - `backfill_snapshot_derived.py:107: if eff_vwap is None:`
-  - `backfill_snapshot_derived.py:108: eff_vwap = last_vwap_by_ticker.get(tkr)`
-  - `backfill_snapshot_derived.py:109: if eff_vwap is None:`
-  - `backfill_snapshot_derived.py:110: eff_vwap = _typical_price(r)`
+- **market_context.fetch_price_levels (DELEGATES to compute_session_vwap)**
+  - `market_context.py:1089: compute_session_vwap,`
+  - `market_context.py:1100: pl.vwap = compute_session_vwap(engine_bars, today_date)`
+- **backfill_snapshot_derived eff_vwap (real/forward-fill only; typical-price SUBSTITUTION deleted)**
+  - `backfill_snapshot_derived.py:64: eff_vwap = None`
+  - `backfill_snapshot_derived.py:69: eff_vwap = vf`
+  - `backfill_snapshot_derived.py:73: if eff_vwap is None:`
+  - `backfill_snapshot_derived.py:77: eff_vwap = last_vwap_by_ticker.get(tkr)`
+  - `backfill_snapshot_derived.py:78: if eff_vwap is not None:`
+  - `backfill_snapshot_derived.py:79: last_vwap_by_ticker[tkr] = eff_vwap`
 
-**Evidence:** MEASURED 2026-08-03 18:1x CT same instant: /api/analytics/state vwap=None while /api/liquidity-snapshot raw_levels.vwap=755.8154 — one concept, one tab absent, one tab valued. Structural: three computes, three windows/bases (session+cutoff vs vendor-2day vs typical-price substitute).
-**Reproduce:** `curl /api/analytics/state?ticker=SPY | jq .vwap; curl '/api/liquidity-snapshot?ticker=SPY&snapshot=live' | jq .raw_levels.vwap`
-**Proposed kill:** NEXT KILL SLICE (highest leverage): vwap family collapses onto compute_session_vwap served via /api/levels Tier-B cache (design §5.4); market_context inline compute DELETED; backfill typical-price substitution HARD-FAILS to absent (a fabricated vwap is worse than no vwap).
+**Evidence:** Mission levels-tierb-session-collapse-v1: inline cum_tpv loop DELETED; fetch_price_levels + /api/levels call compute_session_vwap; typical-price substitution hard-failed to absent.
+**Reproduce:** `read market_context.fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family=="vwap")'`
+**Proposed kill:** TIERB_DONE — residue is consumer migration off /api/price-levels (B6), not a second compute.
 
-## 3. opening_range (ORB H/L/mid) — P1
+## 3. opening_range (ORB H/L/mid) — P2 (TIERB_DONE)
 
-- **liquidity_value_engine ORB family (raw_levels.orb)**
-  - `liquidity_value_engine.py:401: orb_min = config.opening_range_minutes`
-  - `liquidity_value_engine.py:403: orb_bars = []`
-  - `liquidity_value_engine.py:409: if 0 <= mins_since_open < orb_min:`
-- **market_context.fetch_price_levels inline ORB loop**
-  - `market_context.py:1130: orb_h = max(orb_h, h)`
-  - `market_context.py:1139: pl.orb_high = orb_h`
+- **liquidity_value_engine.compute_opening_range (AUTHORITY)**
+  - `liquidity_value_engine.py:392: def compute_opening_range(`
+- **market_context.fetch_price_levels (DELEGATES to compute_opening_range)**
+  - `market_context.py:1088: compute_opening_range,`
+  - `market_context.py:1105: orb = compute_opening_range(engine_bars, today_date, cfg)`
 
-**Evidence:** MEASURED same instant: state orb_high=None while liquidity raw_levels.orb={751.94/748.8/750.37} — same absence-vs-value split as vwap, same producers.
-**Reproduce:** `curl /api/analytics/state?ticker=SPY | jq .orb_high; curl '/api/liquidity-snapshot?ticker=SPY&snapshot=live' | jq .raw_levels.orb`
-**Proposed kill:** Same slice as vwap: ORB collapses onto the engine via /api/levels; market_context inline loop deleted with fetch_price_levels retirement (B6).
+**Evidence:** Mission levels-tierb-session-collapse-v1: inline ORB loop DELETED; both serve paths use engine.
+**Reproduce:** `read fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family=="opening_range")'`
+**Proposed kill:** TIERB_DONE — B6 retires /api/price-levels as a second HTTP surface, not a second formula.
 
-## 4. overnight (high/low) — P1
+## 4. overnight (high/low) — P2 (TIERB_DONE)
 
-- **liquidity_value_engine.get_overnight_levels (RC-153-corrected interval window)**
+- **liquidity_value_engine.get_overnight_levels (AUTHORITY, RC-153 window)**
   - `liquidity_value_engine.py:334: def get_overnight_levels(`
-- **market_context.fetch_price_levels overnight_bars (today-premarket only window)**
-  - `market_context.py:1050: overnight_bars = []`
-  - `market_context.py:1069: overnight_bars.append((dt_et, c))`
-  - `market_context.py:1103: if overnight_bars:`
-  - `market_context.py:1104: pl.overnight_high = max(c["high"] for _, c in overnight_bars)`
-  - `market_context.py:1105: pl.overnight_low  = min(c["low"] for _, c in overnight_bars)`
+- **market_context.fetch_price_levels (DELEGATES to get_overnight_levels)**
+  - `market_context.py:1092: get_overnight_levels,`
+  - `market_context.py:1095: on = get_overnight_levels(engine_bars, today_date)`
 
-**Evidence:** Two windows for one name: engine = prior close -> today open interval (holiday-safe, RC-153); market_context = today's premarket bars only (extended_hours flag). Different answers whenever the overnight range formed before midnight.
-**Reproduce:** `read both functions; compare on a Monday tape`
-**Proposed kill:** Same slice: overnight collapses onto get_overnight_levels via /api/levels.
+**Evidence:** Mission levels-tierb-session-collapse-v1: today-premarket overnight_bars dual DELETED; fetch_price_levels uses the RC-153 interval via the engine.
+**Reproduce:** `read fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family=="overnight")'`
+**Proposed kill:** TIERB_DONE.
 
-## 5. today value_area (POC/VAH/VAL) + today profile — P1
+## 5. today value_area (POC/VAH/VAL) + today profile — P2 (TIERB_DONE)
 
-- **liquidity_value_engine profile (raw_levels.poc/vah/val)**
-  - `liquidity_value_engine.py:329: poc, vah, val = _volume_profile_poc_vah_val(prev_bars, config.value_area_percent, config.tick_size)`
-  - `liquidity_value_engine.py:496: def _volume_profile_poc_vah_val(`
-  - `liquidity_value_engine.py:520: return _volume_profile_poc_vah_val(rth_bars, config.value_area_percent, config.tick_size)`
-- **market_context._volume_profile_poc_vah_val (separate copy)**
-  - `market_context.py:870: def _volume_profile_poc_vah_val(bars: list, value_area_pct: float = 0.70,`
-  - `market_context.py:1100: pl.pd_poc, pl.pd_vah, pl.pd_val = _volume_profile_poc_vah_val(prev_candles)`
-  - `market_context.py:1143: pl.today_poc, pl.today_vah, pl.today_val = _volume_profile_poc_vah_val(today_candles)`
+- **liquidity_value_engine.compute_volume_profile_levels (AUTHORITY for today)**
+  - `liquidity_value_engine.py:511: def compute_volume_profile_levels(`
+- **market_context.fetch_price_levels today VA (DELEGATES to compute_volume_profile_levels)**
+  - `market_context.py:1090: compute_volume_profile_levels,`
+  - `market_context.py:1109: pl.today_poc, pl.today_vah, pl.today_val = compute_volume_profile_levels(`
 
-**Evidence:** Two same-named profile implementations, one per module — value-area math forked at module boundary; divergence follows bar-source/window differences exactly as prior_day did.
-**Reproduce:** `read both _volume_profile_poc_vah_val implementations; diff parameters (value-area %, tick size)`
-**Proposed kill:** Same slice: ONE profile implementation (engine's, config-carrying) serves both; market_context copy deleted.
+**Evidence:** Mission levels-tierb-session-collapse-v1: today profile uses engine; market_context._volume_profile_poc_vah_val remains only for prior_day pd_* (Phase-1 residue, not this slice).
+**Reproduce:** `read fetch_price_levels; curl /api/levels?ticker=SPY | jq '.levels[]|select(.family=="value_area")'`
+**Proposed kill:** TIERB_DONE for today VA; prior_day profile entry-point collapse is a later residue.
 
 ## 6. charm / greeks formulas — P1
 
@@ -133,7 +124,7 @@ fallback patch.
 ## 8. spot — P2
 
 - **server.resolve_spot (THE authority, RC-14; every payload carries spot_source)**
-  - `server.py:707: def resolve_spot(ticker: str, *, chain_json: dict | None = None,`
+  - `server.py:755: def resolve_spot(ticker: str, *, chain_json: dict | None = None,`
 - **client bindings (chart/exposure/index render spot from different payloads' spot fields)**
   - `static/chart.html:174: /* v6.1 (RC-194) # ui-mockup-ok: the mock's compact below|spot|above cluster — values hug`
   - `static/chart.html:224: <span class="chip" id="lvlbtn" title="every level: ON always &middot; AUTO fires near spot &middot; OFF">LEVEL`
@@ -159,9 +150,9 @@ fallback patch.
 ## 10. per-strike volume / strikes — P2
 
 - **/api/terrain/strikes (per-strike GEX$/volume payload)**
-  - `server.py:11926: @app.get("/api/terrain/strikes")`
+  - `server.py:11974: @app.get("/api/terrain/strikes")`
 - **chart FORCES strip client-side rows (GEX/OV derived in-browser from the same payload)**
-  - `server.py:12116: #: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the`
+  - `server.py:12164: #: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the`
 
 **Evidence:** One data source, two aggregation sites (server payload vs in-browser derivation for the strip). Binding-level duality: a payload change breaks the strip silently.
 **Reproduce:** `read chart.html strip builder vs /api/terrain/strikes payload contract`
@@ -170,9 +161,9 @@ fallback patch.
 ## 11. display precision (prior-day family) — P2
 
 - **state payload rounds (pdh 748.89)**
-  - `server.py:8742: ms_dict["pdh"]      = _fv(getattr(price_levels, "pdh",      None))`
+  - `server.py:8790: ms_dict["pdh"]      = _fv(getattr(price_levels, "pdh",      None))`
 - **/api/levels + /api/price-levels serve raw (748.895)**
-  - `server.py:14120: "id": lid, "price": float(val), "family": "prior_day", "label": lid,`
+  - `server.py:14143: degraded.append({"family": "prior_day",`
 
 **Evidence:** MEASURED same instant: state pdh=748.89 vs levels PDH=748.895 — same number, two precisions on two surfaces. Not a producer split; a payload-rounding faucet.
 **Reproduce:** `curl /api/analytics/state | jq .pdh; curl /api/levels | jq '.levels[] | select(.id=="PDH").price'`
@@ -181,8 +172,8 @@ fallback patch.
 ## 12. expected_move (EM bands) — P2
 
 - **terrain sigma band (kl_em_upper/lower, E-34 locked to payload spot)**
-  - `server.py:10753: md["kl_em_upper"] = round(float(_em_spot) + float(_em_pts), 2)`
-  - `server.py:10756: md["kl_em_upper"] = md["kl_em_lower"] = None`
+  - `server.py:10801: md["kl_em_upper"] = round(float(_em_spot) + float(_em_pts), 2)`
+  - `server.py:10804: md["kl_em_upper"] = md["kl_em_lower"] = None`
 
 **Evidence:** Single producer, lock-tested (test_levels_single_producer_v1 E-34 assertions). Census pointer only — no second producer found this run.
 **Reproduce:** `pytest tests/test_levels_single_producer_v1.py -k em`

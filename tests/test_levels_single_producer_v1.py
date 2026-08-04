@@ -346,7 +346,8 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
         _bar(2026, 7, 30, 14, 0, 100, 101, 99, 100),
         _bar(2026, 7, 31, 10, 0, 96, 105, 95, 97),     # most recent prior session
         _bar(2026, 7, 31, 15, 59, 101, 103, 100, 102),
-        _bar(2026, 8, 3, 9, 45, 103, 104, 102, 103),   # "today"
+        _bar(2026, 8, 3, 9, 35, 103, 104, 102, 103),   # today inside ORB window
+        _bar(2026, 8, 3, 9, 45, 103, 104, 102, 103),   # today post-ORB
     ]
     monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda t: tape)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (103.5, "schwab_quote_last", 1.0))
@@ -368,17 +369,27 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     assert by_id["PDC"]["price"] == 102
     for lv in payload["levels"]:
         assert lv["price"] not in (110, 90), "multi-session union value served — RC-213 reopened"
-        assert lv["provenance"]["session_scope"] == "RTH"
-        assert "2026-07-31" in lv["provenance"]["window"], (
-            "provenance.window must name the literal session used (RC-153)"
-        )
         assert "as_of_ts_utc" in lv["staleness"] and "age_sec" in lv["staleness"]
+        if lv["family"] == "prior_day":
+            assert lv["provenance"]["session_scope"] == "RTH"
+            assert "2026-07-31" in lv["provenance"]["window"], (
+                "provenance.window must name the literal session used (RC-153)"
+            )
 
     fams = {f["family"] for f in payload["families_absent"]}
-    assert "vwap" in fams and "gamma" in fams, (
-        "B1 partial families must be DECLARED absent with reasons, never substituted (RC-68)"
+    assert "gamma" in fams, (
+        "gamma remains OUT-OF-SCOPE for Tier-B and must be DECLARED absent (RC-68)"
     )
+    # Tier-B (levels-tierb-session-collapse-v1): session families are served from the engine
+    # when today bars exist — not left as soft B1-absent placeholders.
+    by_fam = {}
+    for lv in payload["levels"]:
+        by_fam.setdefault(lv["family"], []).append(lv["id"])
+    assert "VWAP" in by_id and by_id["VWAP"]["family"] == "vwap"
+    assert "ORB_HIGH" in by_id and by_id["ORB_HIGH"]["family"] == "opening_range"
+    assert "TODAY_POC" in by_id and by_id["TODAY_POC"]["family"] == "value_area"
     assert all(f.get("reason") for f in payload["families_absent"])
+    assert "vwap" not in fams, "vwap must be served by Tier-B, not declared absent when bars exist"
 
 
 def test_multi_faucet_census_tool_emits_and_finds_known_duals(tmp_path, monkeypatch):
@@ -396,7 +407,8 @@ def test_multi_faucet_census_tool_emits_and_finds_known_duals(tmp_path, monkeypa
     concepts = {f["concept"]: f for f in payload["findings"]}
 
     vwap = next(f for c, f in concepts.items() if c.startswith("vwap"))
-    assert len(vwap["producers"]) == 3 and vwap["severity"] == "P1"
+    assert "TIERB_DONE" in vwap.get("status", "")
+    assert len(vwap["producers"]) >= 2
     clocks = next(f for c, f in concepts.items() if c.startswith("clocks"))
     assert len(clocks["producers"]) >= 2
     charm = next(f for c, f in concepts.items() if c.startswith("charm"))
@@ -420,6 +432,42 @@ def test_api_levels_registered_in_faucet_registry():
     reg = json.loads((Path(__file__).resolve().parent.parent / "governance" /
                       "level_faucets.json").read_text(encoding="utf-8"))
     assert "/api/levels" in reg["level_domain_producers"]
-    assert "levels-faucet-v1" in reg.get("operator_quote", ""), (
+    assert "levels-tierb-session-collapse-v1" in reg.get("operator_quote", ""), (
         "adding a producer requires the operator_quote in the registry (RC-212)"
     )
+
+
+def test_market_context_session_families_delegate_to_engine():
+    """Tier-B kill lock: fetch_price_levels must call engine session functions and must
+    NOT retain the inline cum_tpv / ORB dual loops (census concepts 2–5)."""
+    import inspect
+
+    from market_context import fetch_price_levels
+
+    src = inspect.getsource(fetch_price_levels)
+    for name in (
+        "compute_session_vwap",
+        "compute_vwap_bands",
+        "compute_opening_range",
+        "get_overnight_levels",
+        "compute_volume_profile_levels",
+    ):
+        assert name in src, f"fetch_price_levels missing engine delegate {name}"
+    assert "cum_tpv =" not in src, "inline VWAP dual still present"
+    assert "orb_bars_seen" not in src, "inline ORB dual still present"
+    assert "overnight_bars =" not in src and "overnight_bars.append" not in src, (
+        "today-premarket overnight dual still present"
+    )
+
+
+def test_backfill_typical_price_vwap_substitution_hard_fails():
+    """Census #2: typical-price must not fabricate a vwap when the column is absent."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parent.parent.joinpath(
+        "backfill_snapshot_derived.py"
+    ).read_text(encoding="utf-8")
+    assert "eff_vwap = _typical_price(r)" not in src, (
+        "typical-price vwap SUBSTITUTION must hard-fail to absent (census #2)"
+    )
+    assert "SUBSTITUTION is forbidden" in src

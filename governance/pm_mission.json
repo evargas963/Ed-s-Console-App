@@ -1,8 +1,8 @@
 {
-  "status": "pending_go",
+  "status": "active",
   "mission_id": "levels-tierb-session-collapse-v1",
   "title": "Collapse session levels (vwap/ORB/overnight/today VA) onto ONE /api/levels Tier-B authority; delete market_context inline computes (no fallback)",
-  "writer": "claude",
+  "writer": "cursor",
   "pm": "cursor",
   "auditor": "cursor",
   "census_source": "reports/multi_faucet_census_latest.md",
@@ -27,15 +27,16 @@
   "activate_gate": {
     "require": "quiet_window_pass",
     "artifact": "reports/ed_server_warn_quiet_window_latest.json",
-    "require_fields": {
+    "proven": {
       "verdict": "PASS",
-      "log_progressed": true
-    },
-    "void_if": "start_offset==end_offset or log_progressed!=true (stale FileHandler)"
+      "log_progressed": true,
+      "commit_pre": "7ab5e0c8",
+      "quiet_started_at_utc": "2026-08-04T00:29:50.742788+00:00"
+    }
   },
   "approved_by": "operator",
   "approved_via": "chat_continue_dont_stop_2026-08-03",
-  "approved_at": null,
+  "approved_at": "2026-08-03T19:35:00-05:00",
   "done_criteria": [
     "Census P1 slice from reports/multi_faucet_census_latest.md concepts 2–5: vwap(+bands), ORB, overnight, today value_area/profile",
     "ONE compute+serve authority via /api/levels Tier-B (engine functions); market_context inline loops REMOVED or hard-fail — not silent fallback",
@@ -44,12 +45,5 @@
     "No chart computeDaily prior_day kill in this slice (separate B3 / prior_day P2 residue)",
     "No charm/clock/spot edits in this mission"
   ],
-  "kill_plan": [
-    "Wire /api/levels Tier-B families from liquidity_value_engine (compute_session_vwap + bands, ORB, get_overnight_levels, today profile)",
-    "Delete or hard-fail market_context.fetch_price_levels inline vwap/ORB/overnight/today-profile duals",
-    "Hard-fail backfill_snapshot_derived typical-price vwap substitution to absent",
-    "Update governance/level_faucets.json producers; T1 string-lock + contract tests",
-    "Commit; restart if needed; LIVE spot-check /api/levels vs liquidity-snapshot for enrolled sentinels at minimum with UNIVERSAL note"
-  ],
-  "note": "ARMED. Census 4033a33f + quiet gate af0c4897 on HEAD. status stays pending_go until quiet prove PASS with log_progressed=true (prior 482→482 artifact VOID). On PASS: PM flips status=active; writer=claude preferred — if Claude process unavailable, PM sets writer=cursor and implements kill same turn (operator continue don't stop). Prior mission multi-faucet-census-v1 DONE."
+  "note": "ACTIVE after quiet PASS log_progressed=true (post 7ab5e0c8). Writer=cursor (Claude process unavailable; operator continue don't stop). Kill in progress."
 }
