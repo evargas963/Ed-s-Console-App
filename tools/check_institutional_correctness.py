@@ -4128,6 +4128,25 @@ def check_domain_faucet_registry() -> list[Violation]:
     return out
 
 
+def check_rc_document_without_resolve() -> list[Violation]:
+    """RC-228/RC-230 (LOCK-6): newly ADDED OPEN/PARTIAL RC rows must carry a resolve path
+    (FIXED:/NEXT-DEPTH:/OUT-OF-SCOPE: with tracker) — a row documented without one is the
+    backlog-growth defect RC-228 measured (23 open-class rows by 2026-08-04). Delegates to
+    tools/rc_resolve_lock.py, the module RC-228 shipped; registered ENFORCED under RC-230.
+    """
+    out: list[Violation] = []
+    try:
+        from tools.rc_resolve_lock import added_open_rows_without_resolve
+    except ImportError:
+        from rc_resolve_lock import added_open_rows_without_resolve  # type: ignore
+    rc_path = REPO / "governance" / "root_cause_log.md"
+    added = _git_output_lines(["diff", "--cached", "-U0", "--", "governance/root_cause_log.md"]) or []
+    added_lines = [ln[1:] for ln in added if ln.startswith("+") and not ln.startswith("+++")]
+    for reason in added_open_rows_without_resolve(added_lines):
+        out.append(Violation(rc_path, 0, str(reason)))
+    return out
+
+
 CHECKS = [
     # ENFORCED (must be zero — block pre-commit):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
@@ -4143,6 +4162,7 @@ CHECKS = [
     ("ui_mockup_approval", check_ui_mockup_approval, True),  # RC-186: no UI redesign code before an approved mockup
     ("research_before_act", check_research_before_act, True),  # RC-203/RC-205 ULTIMATE LAW: named reference before commit
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
+    ("rc_document_without_resolve", check_rc_document_without_resolve, True),  # RC-228/RC-230 LOCK-6: added OPEN rows must carry a resolve path
     ("plus_player_law", check_plus_player_law, True),  # RC-205: attribute catalog complete + bound
     ("plus_player_cursor_hooks", check_plus_player_cursor_hooks, True),  # RC-205/208: Cursor invokes same .py guards
     ("honesty_guard_wired", check_honesty_guard_wired, True),  # RC-209: Stop honesty_guard.py present
@@ -4223,30 +4243,6 @@ CHECKS = [
 ]
 
 _MAX_PRINT = 15  # cap advisory output; full count is always reported
-
-
-def check_rc_document_without_resolve() -> list[Violation]:
-    """RC-228 (LOCK-6 wiring, mission one-faucet-closeout-v1): newly ADDED OPEN/PARTIAL RC
-    rows must carry a resolve path (FIXED:/NEXT-DEPTH:/OUT-OF-SCOPE: with tracker) — a row
-    documented without a resolve path is the backlog-growth defect RC-228 measured.
-
-    Delegates to tools/rc_resolve_lock.py (the module RC-228 shipped). NOTE: registration in
-    CHECKS as ENFORCED is deliberately DEFERRED behind the operator GO gate (RC-217 blocks
-    committing staged enforced checks not on HEAD without governance/operator_go.json
-    granted=true) — queued with LOCK-1..7 per the operator's post-quiet-PASS sequence. The
-    callable exists now so RC-228's tests exercise the real seam.
-    """
-    out: list[Violation] = []
-    try:
-        from tools.rc_resolve_lock import added_open_rows_without_resolve
-    except ImportError:
-        from rc_resolve_lock import added_open_rows_without_resolve  # type: ignore
-    rc_path = REPO / "governance" / "root_cause_log.md"
-    added = _git_output_lines(["diff", "--cached", "-U0", "--", "governance/root_cause_log.md"]) or []
-    added_lines = [ln[1:] for ln in added if ln.startswith("+") and not ln.startswith("+++")]
-    for reason in added_open_rows_without_resolve(added_lines):
-        out.append(Violation(rc_path, 0, str(reason)))
-    return out
 
 
 #: Operator PM GATE DECISION (2026-08-04 ~00:4x CT, mission one-faucet-closeout-v1, relayed

@@ -131,3 +131,26 @@ def test_check_rc_document_without_resolve_name_present():
     assert "rc_document_without_resolve" in (
         "rc_document_without_resolve"  # name-presence for enforced_checks_have_negative_controls
     )
+
+
+def test_check_registered_enforced_in_checks():
+    """LOCK-6 (RC-230): the check is REGISTERED in CHECKS as ENFORCED — a module with an
+    unregistered check is green-and-inert by construction."""
+    from tools.check_institutional_correctness import CHECKS
+
+    entry = [(n, e) for n, _fn, e in CHECKS if n == "rc_document_without_resolve"]
+    assert entry == [("rc_document_without_resolve", True)], (
+        "rc_document_without_resolve missing from CHECKS or not ENFORCED"
+    )
+
+
+def test_registered_check_blocks_on_injected_open_row(monkeypatch):
+    """Negative control on the REGISTERED wrapper: an added OPEN row with no resolve path
+    must produce >= 1 violation through check_rc_document_without_resolve itself."""
+    import tools.check_institutional_correctness as m
+
+    bad_row = ("| RC-999 | OPEN | 2026-08-04 | 2026-08-05 | synthetic defect for the negative "
+               "control | (1)->(2)->(3)->(4)->(5) ROOT: synthetic | investigating, will fix later |")
+    monkeypatch.setattr(m, "_git_output_lines", lambda args: ["+" + bad_row])
+    v = m.check_rc_document_without_resolve()
+    assert v, "registered check stayed silent on an added OPEN row without a resolve path"

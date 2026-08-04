@@ -173,6 +173,14 @@ def _log_calibration_logging_state_at_boot() -> None:
     operator never restarts into "writer silently dropping all rows" without
     knowing it.
     """
+    # RC-230 (second cut): importing config does NOT load .env — only build_config() calls
+    # _ensure_dotenv_loaded(). The first fix moved this call after the import and the false
+    # DISABLED warning still fired (measured, PID 35680). Load .env explicitly here.
+    try:
+        from config import _ensure_dotenv_loaded
+        _ensure_dotenv_loaded()
+    except ImportError:
+        pass
     try:
         from calibration.writer import calibration_logging_enabled
     except ImportError:
@@ -190,10 +198,14 @@ def _log_calibration_logging_state_at_boot() -> None:
         )
 
 
-_log_calibration_logging_state_at_boot()
-
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
 from config import build_config, DEFAULT_TICKER
+
+# RC-230 quiet-gate finding: this boot diagnostic ran BEFORE the config import that loads
+# .env, so it read a bare os.environ and warned "calibration logging DISABLED" on every
+# boot even with ED_CALIBRATION_LOG=1 correctly present in .env — a false alarm that also
+# failed the ed_server_warn_quiet_window gate. It must run AFTER dotenv is loaded.
+_log_calibration_logging_state_at_boot()
 from schwab_client import (
     auth_is_refreshable,
     build_client_from_token,
@@ -1143,12 +1155,25 @@ def _l1_light_sse_try_reserve(request: Request, key: tuple[str, str]) -> tuple[a
             _l1_sse_diag["l1_light_sse_duplicate_scope_same_client_warn_total"] = int(
                 _l1_sse_diag.get("l1_light_sse_duplicate_scope_same_client_warn_total", 0)
             ) + 1
-            log.warning(
-                "duplicate L1 light SSE connections for scope %s from client %s (existing=%s)",
-                key,
-                remote,
-                dup,
-            )
+            # RC-230 severity calibration (quiet-gate finding, reasoning on record): a SAME-client
+            # duplicate is the operator's own multi-tab/multi-monitor viewing — designed-normal,
+            # not a malfunction — so it logs INFO with the full diag counter retained. The
+            # per-scope and global CAPS above keep their WARNING+503 teeth for real floods;
+            # approaching the cap re-escalates to WARNING here so leak growth stays loud.
+            if dup + 1 >= MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE - 1:
+                log.warning(
+                    "L1 light SSE same-client duplicates approaching per-scope cap for %s from %s (existing=%s)",
+                    key,
+                    remote,
+                    dup,
+                )
+            else:
+                log.info(
+                    "duplicate L1 light SSE connections for scope %s from client %s (existing=%s) — same-client multi-tab, designed-normal",
+                    key,
+                    remote,
+                    dup,
+                )
         _l1_light_sse_remote_scope[rs_key] = dup + 1
         q: asyncio.Queue = asyncio.Queue(maxsize=8)
         _l1_light_sse_clients.append((q, key))

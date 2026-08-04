@@ -1,7 +1,7 @@
 {
-  "granted": false,
-  "granted_at": null,
-  "granted_by": null,
-  "scope": [],
-  "note": "Set granted=true with scope listing held surfaces (e.g. staged_lock_surface) before committing staged ENFORCED checks not yet on HEAD. Operator-only."
+  "granted": true,
+  "granted_at": "2026-08-04T07:15:00-05:00",
+  "granted_by": "operator",
+  "scope": ["staged_lock_surface"],
+  "note": "PM flip 2026-08-04 for LOCK-6 land under operator proceed. A/B verified on HEAD ff2a22ed (enginePD + today_side_sums); staged ENFORCED rc_document_without_resolve not on HEAD — H unblocked."
 }

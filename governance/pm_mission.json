@@ -1,90 +1,13 @@
 {
   "status": "active",
-<<<<<<< ours
-  "mission_id": "chart-prior-day-b3-v1",
-  "title": "Census #1 prior_day B3: chart.html consumes /api/levels prior_day ids; computeDaily prior_day derivation DELETED \u2014 absent engine values render absent (no JS fallback)",
-  "writer": "claude",
-  "pm": "cursor",
-  "auditor": "cursor",
-  "census_source": "reports/multi_faucet_census_latest.md",
-  "concepts": [
-    1
-  ],
-  "out_of_scope": [
-    "strip re-aggregation (#10)",
-    "pdh rounding (#11)",
-    "desk.html dist.spot (spot residue)"
-  ],
-  "scope_paths": [
-    "static/chart.html",
-    "tests/",
-    "tools/",
-    "reports/",
-    "governance/root_cause_log.md",
-    "governance/pm_mission.json",
-    "governance/sole_writer.json"
-  ],
-=======
   "mission_id": "one-faucet-closeout-v1",
-  "title": "Kill remaining multi-faucet residuals (B3 / strip / PDH precision / B6)",
+  "title": "Closeout finish per operator binding addendum: C quiet PASS loop (boot-order fix) + E-H (LOCK-6 registered, ledger drain, hooks-on commit)",
   "writer": "claude",
   "pm": "cursor",
   "auditor": "cursor",
->>>>>>> theirs
-  "prior_mission": {
-    "mission_id": "spot-binding-single-payload-v1",
-    "status": "DONE",
-    "head": "ead22055",
-    "rc": "RC-225"
-  },
-  "do_not_redo": [
-    "quiet gate / fill_outcomes / RC-207 quarantine / Tier-B session collapse",
-    "clocks TZ (RC-223)",
-    "charm→bs_charm (RC-224)",
-    "spot-binding single payload (RC-225 / ead22055)"
-  ],
-  "remaining": [
-    {
-      "id": "B3",
-      "concept": "prior_day",
-      "kill": "static/chart.html computeDaily JS fallback — DELETE or hard-fail; /api/levels prior_day ids sole; absent engine values render absent (RC-68)",
-      "paths": ["static/chart.html", "tools/*prior_day* or chart lock", "tests/"]
-    },
-    {
-      "id": "STRIP",
-      "concept": "per-strike volume / strikes",
-      "kill": "Kill in-browser strip re-derivation of GEX/OV; consume server-aggregated rows from /api/terrain/strikes or /api/levels gamma family",
-      "paths": ["static/chart.html", "server.py (/api/terrain/strikes contract)", "tests/"]
-    },
-    {
-      "id": "PDH_PRECISION",
-      "concept": "display precision (prior-day family)",
-      "kill": "One precision authority — payloads RAW; rounding at render only (state must not round differently from /api/levels)",
-      "paths": ["server.py (analytics state pdh/_fv)", "static/ consumers", "tests/"]
-    },
-    {
-      "id": "B6",
-      "concept": "/api/price-levels second HTTP surface",
-      "kill": "Retire or hard-fail /api/price-levels OR single alias redirect to /api/levels — no second producer surface",
-      "paths": ["server.py", "market_context.py consumers", "static/", "tests/"]
-    }
-  ],
-  "done_criteria": [
-<<<<<<< ours
-    "chart.html prior_day levels come from /api/levels (or terrain levels payload) \u2014 not computeDaily JS",
-    "computeDaily prior_day derivation DELETED (not fallback-patched); absent = absent",
-    "T1 locks the kill; silent JS prior_day recompute fails the lock",
-    "LIVE or DISK_ONLY+restart owed stated honestly"
-=======
-    "Every remaining concept KILLED with T1 proof OR honestly OUT-OF-SCOPE with RC tracker (prefer KILL)",
-    "reports/multi_faucet_one_faucet_closeout_latest.md + .json scoreboard: concept → SINGLE|KILLED_TONIGHT|REMAINING; REMAINING must be empty for 100%",
-    "Mechanical lock (clocks_tz_lock pattern) for families killed tonight where feasible",
-    "After server-touching lands: restart + python -m tools.ed_server_warn_quiet_window PASS (no demote)",
-    "Commits coherent slices with hooks (never --no-verify)",
-    "ONE_FAUCET_REPO_WIDE=YES only when scoreboard REMAINING=0 with evidence"
->>>>>>> theirs
-  ],
-  "census": "reports/multi_faucet_census_latest.md",
+  "approved_by": "operator",
+  "approved_via": "chat STANDING ORDER + ADDENDUM 2026-08-04 ('CONTINUE UNTIL CLOSEOUT A-D DONE; then E-H without waiting on Cursor to code')",
+  "approved_at": "2026-08-04T03:0x-05:00",
   "scope_paths": [
     "static/chart.html",
     "server.py",
@@ -92,11 +15,18 @@
     "tools/",
     "tests/",
     "governance/",
-    "reports/multi_faucet_one_faucet_closeout_latest.md",
-    "reports/multi_faucet_one_faucet_closeout_latest.json"
+    "reports/",
+    "planes/"
   ],
-  "approved_by": "operator",
-  "approved_via": "chat_roles_cursor_pm_claude_writer",
-  "approved_at": "2026-08-03T21:02:00-05:00",
-  "note": "Cursor STOP writing. Claude = sole writer. Arm status:active only when Claude starts. Spot agent mid-flight possible — do not dual-write static/chart.html / spot locks until confirmed idle. Cursor PM audits after landings."
+  "done_criteria": [
+    "A-B: kills proven on HEAD ff2a22ed (DONE, git show evidence)",
+    "C: restart + quiet gate PASS bound to HEAD process (boot-order false-warning fixed for real, no demote)",
+    "D: scoreboard REMAINING=0",
+    "E: LOCK-6 registered ENFORCED + T1 BLOCK (DONE, 11 passed; commit gated on operator GO)",
+    "F: open-class count measured (DONE: 23 -> 21 after honest drains)",
+    "G: honest drains only (RC-216/217 restored+closed; RC-227 on gate PASS; no stuffing)",
+    "H: hooks-on commit; exact blocker named if the GO gate fires"
+  ],
+  "note": "PM 2026-08-04: A/B verified on HEAD ff2a22ed; operator_go.json flipped granted=true scope staged_lock_surface for H (LOCK-6). C quiet still FAIL (ZZQD/RC-207) — do not claim quiet PASS. Claude: hooks-on commit H now; report new HEAD + quiet honesty."
 }
+
