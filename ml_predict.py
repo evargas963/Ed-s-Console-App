@@ -824,6 +824,25 @@ def _strict_bundle_block_detail(ticker: str, hz: str) -> str:
     return "; ".join(issues) if issues else "bundle incomplete"
 
 
+def _never_trained_ticker(ticker: str, hz: str) -> bool:
+    """True when NO active bundle directory exists for (ticker, horizon) — RC-244.
+
+    The discriminator between "the operator enrolled this symbol for quotes and never trained
+    it" and "this symbol's model is broken". Only the first is a configuration state; the
+    second is a defect and must keep its WARNING. Deliberately asks the filesystem rather than
+    the exception text, because the message wording is not a contract. Fail-closed: if the
+    path cannot be resolved at all, report False so the louder branch wins.
+    """
+    try:
+        from active_bundle_contract import active_bundle_dir
+
+        return not active_bundle_dir(
+            _bundle_ticker_for_artifacts(ticker), hz, models_dir=MODEL_DIR
+        ).exists()
+    except Exception:  # institutional-swallow-ok: severity choice must never mask the event; unresolvable path falls through to WARNING
+        return False
+
+
 def _active_bundle_dir_for_load(ticker: str) -> Path | None:
     """Resolve bundle dir for serve-path model load; None when strict contract blocks."""
     rk = _model_registry_key(ticker)
@@ -837,12 +856,29 @@ def _active_bundle_dir_for_load(ticker: str) -> Path | None:
         _active_bundle_dir_cache[rk] = None
         if rk not in _strict_bundle_warned:
             _strict_bundle_warned.add(rk)
-            logger.warning(
-                "Active bundle blocked for %s hz=%s (%s)",
-                ticker,
-                hz,
-                _strict_bundle_block_detail(ticker, hz),
-            )
+            # RC-244: absence-by-CHOICE and absence-by-BREAKAGE arrive as the same exception,
+            # and they are not the same event. A ticker enrolled for market data that was
+            # never trained has NO bundle directory — that is a configuration state the
+            # operator chose, and logging it as a failure every serve makes the channel
+            # unreadable (it was the sole cause of the quiet-window FAIL for AMD). A ticker
+            # whose bundle EXISTS but fails the strict contract is a genuine regression and
+            # keeps its WARNING untouched — the PM's order forbids demoting that, and the
+            # existing fail-closed test asserts it. Serve is skipped identically either way;
+            # only the severity differs, and the reason is stated in the line itself.
+            if _never_trained_ticker(ticker, hz):
+                logger.info(
+                    "No active ML bundle for %s hz=%s — ticker is enrolled for market data "
+                    "but has never been trained; ML serve skipped (not a failure)",
+                    ticker,
+                    hz,
+                )
+            else:
+                logger.warning(
+                    "Active bundle blocked for %s hz=%s (%s)",
+                    ticker,
+                    hz,
+                    _strict_bundle_block_detail(ticker, hz),
+                )
         else:
             logger.debug("Active bundle still blocked for %s hz=%s: %s", ticker, hz, exc)
         return None

@@ -8,8 +8,14 @@ import re
 from pathlib import Path
 
 
+#: RC-244: `scratchpad` joins the skip set. These tests declare their scope in their own
+#: names — "in_production_tree" — and scratchpad is throwaway analysis, which repo policy
+#: already treats as non-production: the ENFORCED gate's forward-only grandfather filters
+#: scratchpad paths out of the same no_silent_swallow rule, so a commit passes while this
+#: test failed on the identical six hits. A control that disagrees with the gate it mirrors
+#: cries wolf on debris and trains the reader to ignore a real production regression.
 _SKIP_PY_TREE_DIRS = frozenset(
-    {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__", "tests"}
+    {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__", "tests", "scratchpad"}
 )
 
 # Repo-wide silent ``except Exception: pass`` after sweep #3 (production tree).

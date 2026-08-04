@@ -355,18 +355,25 @@ def test_dgex_train_serve_parity_via_prior_db_row(tmp_path):
     """Serve path: attach_net_gamma_prev_for_dgex attaches net_gamma_prev from prior normalized row."""
     import sqlite3
 
-    from ml_data_common import attach_net_gamma_prev_column, attach_net_gamma_prev_for_dgex
-    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
+    from ml_data_common import SERVE_SNAPSHOT_TABLE, attach_net_gamma_prev_column, attach_net_gamma_prev_for_dgex
+    from timeframe_config import CANONICAL_TIMEFRAME
 
+    # RC-244 (follow-on to RC-207): this fixture built SNAPSHOT_TABLE_1M
+    # (`snapshots_1m_normalized`), but RC-207 repointed the SERVE path to `snapshots` when the
+    # normalized mirror was found b-tree corrupt. The fixture was never moved with it, so the
+    # test asked the serve reader for a table it no longer reads and failed on "no such table:
+    # snapshots" — a stale double, not a product defect. Bind the fixture to the SAME constant
+    # the serve path resolves, so a future repoint moves both together instead of silently
+    # splitting them again.
     db = tmp_path / "dgex_parity.db"
     conn = sqlite3.connect(str(db))
     conn.execute(
-        f"CREATE TABLE {SNAPSHOT_TABLE_1M} ("
+        f"CREATE TABLE {SERVE_SNAPSHOT_TABLE} ("
         "ticker TEXT NOT NULL, timeframe TEXT NOT NULL, ts_utc REAL NOT NULL, net_gamma REAL)"
     )
     for ts, ng in ((100.0, 1.0), (160.0, 4.0), (220.0, 2.0)):
         conn.execute(
-            f"INSERT INTO {SNAPSHOT_TABLE_1M} (ticker, timeframe, ts_utc, net_gamma) VALUES (?, ?, ?, ?)",
+            f"INSERT INTO {SERVE_SNAPSHOT_TABLE} (ticker, timeframe, ts_utc, net_gamma) VALUES (?, ?, ?, ?)",
             ("SPY", CANONICAL_TIMEFRAME, ts, ng),
         )
     conn.commit()
