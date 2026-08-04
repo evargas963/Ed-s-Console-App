@@ -845,6 +845,25 @@ def compute_net_charm(
     # RC-224 / census #6: unit charm from the ONE greek-formula faucet (not inline).
     from math_levels import bs_charm as _bs_charm
 
+    # RC-245: T is a pure function of (expirationDate, now) and every contract in this
+    # aggregate resolves the SAME expiry, so the per-contract call did the work of one 188
+    # times (MEASURED: 21% of warm runtime). Worse than the cost: with now=None each call
+    # re-read the clock, so contracts summed into ONE number were priced at instants that
+    # drifted across the loop. Pinning `now` once makes the aggregate internally consistent
+    # — a single figure now describes a single moment — and memoising per distinct expiry
+    # string makes it cheap. Values are unchanged: same inputs, same formula, same faucet.
+    if now is None:
+        from time_et import now_et as _now_et
+
+        now = _now_et()
+    _tte_cache: dict[str, float | None] = {}
+
+    def _tte_memo(exp_raw) -> float | None:
+        key = str(exp_raw)
+        if key not in _tte_cache:
+            _tte_cache[key] = _tte(exp_raw, now=now)
+        return _tte_cache[key]
+
     call_charm = put_charm = 0.0
     used = 0
     _input_n = len(contracts)
@@ -890,7 +909,7 @@ def compute_net_charm(
             _skip_iv += 1
             continue
 
-        T = _tte(ct.get("expirationDate"), now=now)
+        T = _tte_memo(ct.get("expirationDate"))
         if T is None or T <= 0:
             _skip_T += 1
             continue
