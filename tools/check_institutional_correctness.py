@@ -4375,6 +4375,7 @@ def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
     """
     enforced_violations = 0
     results: list[tuple[str, bool, int]] = []
+    hotspots: dict[str, dict[str, int]] = {}
     for name, fn, enforced in CHECKS:
         if mode == "enforced" and not enforced:
             continue
@@ -4383,6 +4384,19 @@ def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
         tag = "ENFORCED" if enforced else "ADVISORY"
         violations = _apply_forward_only_grandfather(name, fn())
         results.append((name, enforced, len(violations)))
+        if not enforced and violations:
+            # RC-251: WHERE, not just how much. Per-file counts are what turn a total into a
+            # bounded work list; without them the only options are ignore or mass-rewrite.
+            per_file: dict[str, int] = {}
+            for v in violations:
+                try:
+                    rel = str(Path(v.path).resolve().relative_to(REPO.resolve())).replace("\\", "/")
+                except (ValueError, OSError, AttributeError):
+                    rel = str(getattr(v, "path", "?")).replace("\\", "/")
+                per_file[rel] = per_file.get(rel, 0) + 1
+            hotspots[name] = dict(
+                sorted(per_file.items(), key=lambda kv: -kv[1])[:20]
+            )
         if violations:
             if enforced:
                 enforced_violations += len(violations)
@@ -4394,11 +4408,20 @@ def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
                 print(f"  … and {len(violations) - _MAX_PRINT} more")
         else:
             print(f"PASS [{name}] ({tag})")
-    return enforced_violations, results
+    return enforced_violations, results, hotspots
 
 
-def write_advisory_report(results: list[tuple[str, bool, int]]) -> Path:
-    """Persist the advisory tally — the visibility half of P1's approval."""
+def write_advisory_report(
+    results: list[tuple[str, bool, int]],
+    hotspots: dict[str, dict[str, int]] | None = None,
+) -> Path:
+    """Persist the advisory tally — the visibility half of P1's approval.
+
+    RC-251: a total is not a work list. The report now carries per-file HOTSPOTS alongside the
+    counts, because a number without a location supports no smallest-safe-change: the only
+    actions a bare total affords are 'ignore it' or 'mass-rewrite thousands of findings', and
+    the second is banned. `hotspots` maps check name -> {repo-relative path: count}.
+    """
     import json as _json
     import time as _time
 
@@ -4406,6 +4429,7 @@ def write_advisory_report(results: list[tuple[str, bool, int]]) -> Path:
         "measured_at_utc": _time.time(),
         "checks": {name: count for name, enforced, count in results if not enforced},
         "total_advisory_violations": sum(c for _n, e, c in results if not e),
+        "hotspots": hotspots or {},
     }
     out = REPO / ADVISORY_REPORT_REL
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -4416,7 +4440,7 @@ def write_advisory_report(results: list[tuple[str, bool, int]]) -> Path:
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if "--enforced-only" in args:
-        enforced_violations, _ = run_checks(mode="enforced")
+        enforced_violations, _, _ = run_checks(mode="enforced")
         if enforced_violations:
             print(f"\nINSTITUTIONAL CORRECTNESS GATE: FAIL "
                   f"({enforced_violations} enforced violation(s))")
@@ -4425,8 +4449,8 @@ def main(argv: list[str] | None = None) -> int:
               f"runs on its own schedule and is recorded in {ADVISORY_REPORT_REL})")
         return 0
     if "--advisory" in args:
-        _, results = run_checks(mode="advisory")
-        path = write_advisory_report(results)
+        _, results, hotspots = run_checks(mode="advisory")
+        path = write_advisory_report(results, hotspots)
         total = sum(c for _n, e, c in results if not e)
         print(f"\nADVISORY DEBT: {total} violation(s) across "
               f"{len([1 for _n, e, _c in results if not e])} checks — recorded in {path}")

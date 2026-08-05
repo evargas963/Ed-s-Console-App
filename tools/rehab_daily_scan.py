@@ -61,6 +61,191 @@ def _measure() -> dict:
         return {"error": "measure_not_json", "exit": code, "raw": out[:2000]}
 
 
+#: RC-250: how stale the advisory report may be before the scan calls it out. The daily job
+#: refreshes it every run, so anything older than ~2 days means the schedule itself stopped.
+ADVISORY_REPORT_REL = "reports/advisory_debt_latest.json"
+ADVISORY_STALE_SEC = 48 * 3600.0
+
+
+def _run_advisory_debt() -> dict:
+    """RC-250: actually RUN the advisory checks P1 moved off the blocking commit path.
+
+    RC-246 took 7 ADVISORY checks out of pre-commit (145s/commit faster) on the PM's explicit
+    condition that they still surface daily. That condition was written into the row and the
+    commit message but never wired: nothing invoked `--advisory`, so the only reason the report
+    existed was a hand-typed one-shot. A capability without a caller is indistinguishable from
+    a feature, from the inside — this is the caller.
+
+    Read-only with respect to product code: the gate's advisory mode prints and returns 0, and
+    this scan is recommendation-only by design.
+    """
+    py = REPO / ".venv" / "Scripts" / "python.exe"
+    exe = str(py) if py.is_file() else sys.executable
+    code, out = _run(
+        [exe, "-m", "tools.check_institutional_correctness", "--advisory"], timeout=1800
+    )
+    report = REPO / ADVISORY_REPORT_REL
+    info: dict = {"exit": code, "report": ADVISORY_REPORT_REL, "ran": True}
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+        info["total_advisory_violations"] = data.get("total_advisory_violations")
+        info["checks"] = data.get("checks")
+        info["measured_at_utc"] = data.get("measured_at_utc")
+        # RC-251: hotspots are the WHERE. Omitting them here silently emptied the TQM queue —
+        # the report had them, the reader dropped them, and triage produced zero items while
+        # every count looked healthy. Caught by RUNNING the loop, not by reading it.
+        info["hotspots"] = data.get("hotspots") or {}
+    except (OSError, ValueError, json.JSONDecodeError) as e:
+        info["error"] = f"{type(e).__name__}: {e}"
+    if out:
+        info["tail"] = out.strip().splitlines()[-1][:200]
+    return info
+
+
+def _advisory_findings(adv: dict) -> list[dict]:
+    """A silent advisory run is the failure this row exists for — say so out loud."""
+    import time as _time
+
+    out: list[dict] = []
+    if adv.get("error") or adv.get("total_advisory_violations") is None:
+        out.append({
+            "id": "rehab.advisory_report_missing",
+            "severity": "P1",
+            "facet": "governance_visibility",
+            "summary": f"advisory debt report unreadable after run: {adv.get('error') or 'no total'}",
+            "recommendation": (
+                "P1 (RC-246) moved 7 advisory checks off pre-commit ONLY because this report "
+                "keeps them visible. If it cannot be produced, that trade is void — fix the "
+                "runner or put the checks back in the blocking path."
+            ),
+            "evidence": adv,
+        })
+        return out
+    ts = adv.get("measured_at_utc")
+    if isinstance(ts, (int, float)) and (_time.time() - float(ts)) > ADVISORY_STALE_SEC:
+        out.append({
+            "id": "rehab.advisory_report_stale",
+            "severity": "P1",
+            "facet": "governance_visibility",
+            "summary": f"advisory debt report is older than {int(ADVISORY_STALE_SEC/3600)}h",
+            "recommendation": "The scheduled rehab job is not firing — check the Task Scheduler entry.",
+            "evidence": {"measured_at_utc": ts},
+        })
+    return out
+
+
+#: RC-251: the TRIAGE artifact. Five is the cap because a queue longer than a session's
+#: attention is a dump wearing a queue's clothes — the failure this row exists for.
+TQM_QUEUE_REL = "reports/tqm_queue_latest.json"
+TQM_MAX_ITEMS = 5
+
+#: What a "smallest safe change" means per advisory check, and what would DISPROVE the item
+#: being worth doing. Kill criteria are first-class: an item nobody can refuse is not triage.
+_TQM_PLAYBOOK: dict[str, dict[str, str]] = {
+    "ruff_quality": {
+        "severity": "P2",
+        "suggested_smallest_change": "ruff --fix on THIS FILE only, then run the file's own test module; commit the autofix alone",
+        "kill_criteria": "kill if the file has no test module, or if --fix touches money-path semantics (greeks, levels, decisions) rather than style",
+    },
+    "mypy_types": {
+        "severity": "P2",
+        "suggested_smallest_change": "annotate the single function the error names; do not restructure call sites",
+        "kill_criteria": "kill if the annotation forces a runtime change, or if the error is in a vendored/legacy tree scheduled for deletion",
+    },
+    "function_length": {
+        "severity": "P3",
+        "suggested_smallest_change": "extract ONE cohesive block into a named helper, with a behavioural test pinning before==after on real inputs",
+        "kill_criteria": "kill if no behavioural test can be written for the extracted block — RC-19 split five circular imports to save seven lines; length is never worth a correctness risk",
+    },
+    "function_complexity": {
+        "severity": "P3",
+        "suggested_smallest_change": "collapse one guard ladder into an early-return, behaviour identical, test first",
+        "kill_criteria": "kill if the complexity encodes real market branching (session states, tier fallbacks) — that is domain truth, not debt",
+    },
+    "file_length": {
+        "severity": "P3",
+        "suggested_smallest_change": "move one already-cohesive group to a sibling module; imports only, no logic edits",
+        "kill_criteria": "kill unless the move is import-only; RC e52b5701 made SHAPE metrics track-but-never-block precisely because splitting to hit a number is the anti-pattern",
+    },
+    "orphan_dict_keys": {
+        "severity": "P2",
+        "suggested_smallest_change": "delete the key at its producer AND prove no consumer reads it (grep the payload name end-to-end)",
+        "kill_criteria": "kill if any UI/API surface still reads the key — an orphan by static scan may be a live field via dynamic access",
+    },
+    "debt_ratchet": {
+        "severity": "P1",
+        "suggested_smallest_change": "read the ratchet delta and revert whichever change raised it, or record why the rise is correct",
+        "kill_criteria": "kill if the rise is a deliberate, reviewed addition already justified in an RC row",
+    },
+}
+
+
+def _load_prior_advisory_total() -> int | None:
+    """Previous run's total, for the RE-MEASURE stage. Without a baseline no action can be
+    shown to have helped, which is how quality work becomes unfalsifiable."""
+    try:
+        prior = json.loads((REPO / TQM_QUEUE_REL).read_text(encoding="utf-8"))
+        val = prior.get("advisory_total")
+        return int(val) if isinstance(val, (int, float)) else None
+    except (OSError, ValueError, json.JSONDecodeError, TypeError):
+        return None
+
+
+def _build_tqm_queue(adv: dict) -> dict:
+    """RC-251: turn a 3,349-line tally into at most five things worth doing next.
+
+    Ranking is by (check severity, then hotspot density) — a file with 40 findings of one rule
+    is one bounded change; 40 files with one finding each is a sweep, and sweeps are banned.
+    """
+    prior_total = _load_prior_advisory_total()
+    total = adv.get("total_advisory_violations")
+    hotspots: dict = adv.get("hotspots") or {}
+    sev_rank = {"P1": 0, "P2": 1, "P3": 2}
+
+    candidates: list[dict] = []
+    for check, per_file in hotspots.items():
+        play = _TQM_PLAYBOOK.get(check, {
+            "severity": "P3",
+            "suggested_smallest_change": "inspect the top file and make the narrowest change that clears it",
+            "kill_criteria": "kill if the change cannot be covered by an existing or new test",
+        })
+        for path, count in list(per_file.items())[:3]:
+            candidates.append({
+                "id": f"tqm.{check}.{path.replace('/', '.')}",
+                "check": check,
+                "path": path,
+                "count": count,
+                "severity": play["severity"],
+                "kill_criteria": play["kill_criteria"],
+                "suggested_smallest_change": play["suggested_smallest_change"],
+                "why_now": f"{count} {check} finding(s) concentrated in one file — a bounded change, not a sweep",
+            })
+    candidates.sort(key=lambda c: (sev_rank.get(c["severity"], 9), -int(c["count"])))
+    top = candidates[:TQM_MAX_ITEMS]
+
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).timestamp(),
+        "generated_at_iso": datetime.now(timezone.utc).isoformat(),
+        "advisory_total": total,
+        "prior_total": prior_total,
+        "delta": (total - prior_total) if isinstance(total, int) and isinstance(prior_total, int) else None,
+        "checks": adv.get("checks") or {},
+        "top_items": top,
+        "cap": TQM_MAX_ITEMS,
+        "note": (
+            "TRIAGE stage of the TQM loop. Work ONLY these items. Mass-rewriting the advisory "
+            "backlog is banned: every change needs a reproduce command and a test."
+        ),
+    }
+
+
+def _write_tqm_queue(queue: dict) -> Path:
+    out = REPO / TQM_QUEUE_REL
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(queue, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return out
+
+
 def _porcelain_stats() -> dict:
     raw = _git("status", "--porcelain")
     lines = [ln for ln in raw.splitlines() if ln.strip()]
@@ -238,6 +423,66 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
         )
     if not findings:
         lines.append("| — | — | — | No findings this scan | Keep PM cadence |")
+
+    # RC-251: the report a human or agent acts from. Totals answer "how much", hotspots answer
+    # "where", delta answers "is it getting better", and the TQM queue answers "what next" —
+    # a report missing any of those is a dump, and dumps are what this loop replaced.
+    adv = (measure or {}).get("advisory_debt") or {}
+    tqm = (measure or {}).get("tqm_queue") or {}
+    if adv or tqm:
+        total = adv.get("total_advisory_violations")
+        prior = tqm.get("prior_total")
+        delta = tqm.get("delta")
+        arrow = "—" if delta is None else ("▲ +%d" % delta if delta > 0 else ("▼ %d" % delta if delta < 0 else "= 0"))
+        lines.extend([
+            "",
+            "## Advisory debt (P1/RC-246 moved these off the blocking commit path)",
+            "",
+            f"**Total: {total}** · prior: {prior if prior is not None else '—'} · delta: {arrow}",
+            "",
+            "| Check | Count |",
+            "|---|---:|",
+        ])
+        for name, count in sorted((adv.get("checks") or {}).items(), key=lambda kv: -kv[1]):
+            lines.append(f"| `{name}` | {count} |")
+
+        hotspots = adv.get("hotspots") or {}
+        if hotspots:
+            lines.extend(["", "### Top hotspots (file · rule · count)", "",
+                          "| File | Check | Count |", "|---|---|---:|"])
+            flat = [(p, c, n) for c, per in hotspots.items() for p, n in list(per.items())[:3]]
+            for path, check, n in sorted(flat, key=lambda t: -t[2])[:10]:
+                lines.append(f"| `{path}` | {check} | {n} |")
+
+        items = tqm.get("top_items") or []
+        lines.extend([
+            "",
+            f"## TQM queue — next ACT cycle (max {tqm.get('cap', TQM_MAX_ITEMS)})",
+            "",
+            "Work ONLY these. Mass-rewriting the backlog is banned: every change needs a "
+            "reproduce command and a test, and each item below carries the criteria that "
+            "would KILL it as not-worth-doing.",
+            "",
+        ])
+        if not items:
+            lines.append("_No actionable hotspots this run._")
+        for i, it in enumerate(items, 1):
+            lines.extend([
+                f"**{i}. [{it.get('severity')}] `{it.get('check')}` → `{it.get('path')}` "
+                f"({it.get('count')} finding(s))**",
+                "",
+                f"- why now: {it.get('why_now')}",
+                f"- smallest safe change: {it.get('suggested_smallest_change')}",
+                f"- kill criteria: {it.get('kill_criteria')}",
+                "",
+            ])
+        lines.extend([
+            f"Machine-readable queue: `{TQM_QUEUE_REL}` · tally: `reports/advisory_debt_latest.json`",
+            "",
+            "RE-MEASURE after acting: re-run this scan and confirm the delta moved. "
+            "A win claimed in chat is not a win.",
+        ])
+
     lines.extend(
         [
             "",
@@ -258,10 +503,29 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json-only", action="store_true")
+    ap.add_argument(
+        "--skip-advisory",
+        action="store_true",
+        help="skip the advisory-debt run (RC-250: the run is ON by default because P1 moved "
+             "those checks off pre-commit only on condition they surface here)",
+    )
     args = ap.parse_args(argv)
     measure = _measure()
     status = _porcelain_stats()
     findings = _collect_findings(measure, status)
+    # RC-250: the caller P1 promised and never wired. Advisory checks cannot block a commit;
+    # this is the path that keeps them VISIBLE, which is the whole basis of that trade.
+    tqm_queue: dict | None = None
+    if not args.skip_advisory:
+        advisory = _run_advisory_debt()
+        # RC-251: TRIAGE must be built from the SAME run that measured, and the prior total
+        # must be read BEFORE the new queue overwrites it, or the delta compares a file to
+        # itself and every day reports "no change".
+        tqm_queue = _build_tqm_queue(advisory)
+        _write_tqm_queue(tqm_queue)
+        measure["advisory_debt"] = advisory
+        measure["tqm_queue"] = tqm_queue
+        findings.extend(_advisory_findings(advisory))
     payload = _write_outputs(findings, measure, status)
     def _safe_print(msg: str) -> None:
         try:

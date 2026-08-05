@@ -182,13 +182,25 @@ def test_pm_mission_active_allows_scoped_writer(monkeypatch, tmp_path):
 
 
 def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
-    """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS."""
+    """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
+
+    RC-252 pins PM_MISSION_PATH to an EMPTY scope. This test used to leave it pointed at the
+    live mission file, so it asserted the guard AND today's configuration together — and passed
+    for weeks only because the missions of those weeks happened to name these paths. With an
+    empty mission, the only thing that can satisfy it is the guard's own static inventory.
+    """
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
     go = tmp_path / "go.json"
     go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
     monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
+    mission = tmp_path / "mission.json"
+    mission.write_text('{"mission_id": "empty", "scope_paths": []}', encoding="utf-8")
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     for cmd in ("git restore -- static/chart.html",
                 "git checkout -- server.py",
+                "git restore -- math_levels.py",
+                "git checkout -- math_exposure_core.py",
+                "git clean -fd static/",
                 "git reset --hard",
                 "git stash"):
         assert OPL.reset_guard_violations(cmd), f"reset guard silent on: {cmd}"

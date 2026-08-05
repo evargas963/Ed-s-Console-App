@@ -68,9 +68,56 @@ _RESET_GUARD_SAFE_RE = __import__("re").compile(
     r"\bgit\s+(?:-\S+\s+)*(restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
     __import__("re").I)
 
+#: RC-252: the STATIC inventory of what must never be wiped, independent of any mission.
+#: LOCK-2 originally drew its targeted reach from PROTECTED_PATHS plus the ACTIVE mission's
+#: scope_paths — so protection contracted whenever a mission narrowed, which is what a good
+#: mission does. Under axiom-brand-landing-v1 that left `git restore -- static/chart.html`,
+#: `git checkout -- server.py` and `git restore -- math_levels.py` all silent. Mission scope
+#: is still consulted below, but only ever ADDS reach; it can no longer define it.
+PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
+    "db.py",
+    "server.py",
+    "time_et.py",
+    "math_exposure_core.py",
+    "math_levels.py",
+    "liquidity_value_engine.py",
+    "liquidity_models.py",
+    "ml_predict.py",
+    "ml_data_common.py",
+    "static/",
+    "calibration/",
+    "features/",
+    "tools/",
+)
+
+
+#: RC-253: a command that pipes its heredoc INTO an interpreter is one where the body IS the
+#: instruction, so the body must still be judged. Everywhere else a heredoc is data.
+_INTERPRETER_RE = __import__("re").compile(
+    r"(?:^|[|;&]\s*)(?:bash|sh|zsh|pwsh|powershell|cmd|eval|xargs|source|\.)\b",
+    __import__("re").I)
+_HEREDOC_RE = __import__("re").compile(
+    r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1\s*?\n.*?^\2\s*$",
+    __import__("re").S | __import__("re").M)
+_MESSAGE_PAYLOAD_RE = __import__("re").compile(
+    r"(-m|--message|--file|-F)\s+('[^']*'|\"[^\"]*\")")
+
+
+def _strip_command_payloads(cmd: str) -> str:
+    """RC-253: judge the ACTION, not the data the command carries (RC-93).
+
+    A commit message that quotes `git reset --hard` is prose about an incident; the command
+    itself touches nothing. Left unstripped, LOCK-2 fired hardest on the most precise incident
+    write-ups — taxing exactly the honesty the ledger depends on. Heredoc bodies handed to an
+    interpreter are NOT stripped: there the body is the instruction.
+    """
+    if _INTERPRETER_RE.search(cmd):
+        return cmd
+    return _MESSAGE_PAYLOAD_RE.sub(r"\1 <payload>", _HEREDOC_RE.sub("<heredoc>", cmd))
+
 
 def reset_guard_violations(command: str) -> list[str]:
-    """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231).
+    """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231/RC-252).
 
     Escapes: ED_RESET_GUARD=off (operator, visible) or operator_go scope git_reset_product.
     `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
@@ -79,10 +126,10 @@ def reset_guard_violations(command: str) -> list[str]:
         return []
     if operator_go_granted("git_reset_product"):
         return []
-    cmd = command or ""
+    cmd = _strip_command_payloads(command or "")
     if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
         return []
-    touched = [p for p in PROTECTED_PATHS if p in cmd]
+    touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in cmd]
     mission = _load_json(PM_MISSION_PATH) or {}
     for sp in (mission.get("scope_paths") or []):
         if isinstance(sp, str) and sp.strip("*/") and sp in cmd:

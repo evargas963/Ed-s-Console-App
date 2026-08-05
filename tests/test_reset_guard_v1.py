@@ -74,6 +74,50 @@ def test_escapes_are_explicit(monkeypatch, tmp_path):
     assert not OPL.reset_guard_violations("git reset -- static/chart.html")
 
 
+# ── RC-253: judge the ACTION, not the data the command carries (RC-93) ──────────────────
+# LOCK-2 blocked a `git commit` because the MESSAGE described a wipe. It fired hardest on the
+# most precise incident write-ups, which pressures every future writer toward vaguer accounts
+# of exactly the incidents this ledger exists to record.
+
+
+def test_rc253_commit_message_quoting_destructive_git_is_not_an_action(monkeypatch, tmp_path):
+    _no_escape(monkeypatch, tmp_path)
+    heredoc = (
+        "git commit --file - <<'MSG'\n"
+        "RC-252: the guard was silent on git restore -- static/chart.html\n"
+        "and on git checkout -- server.py, so product files were wipeable.\n"
+        "Also proved git reset --hard still blocks.\n"
+        "MSG"
+    )
+    assert not OPL.reset_guard_violations(heredoc), (
+        "LOCK-2 blocked a commit whose only destructive git is prose in the message — this is "
+        "the RC-93 inversion: banning the word, not the action"
+    )
+    inline = "git commit -m 'RC-231 was opened after a git reset --hard wiped static/chart.html'"
+    assert not OPL.reset_guard_violations(inline)
+
+
+def test_rc253_stripping_payloads_does_not_open_a_bypass(monkeypatch, tmp_path):
+    """The exemption is for DATA. A body handed to an interpreter is the instruction, and a
+    real destructive command is unaffected by any of this."""
+    _no_escape(monkeypatch, tmp_path)
+    piped = "bash <<'EOF'\ngit reset --hard\nEOF"
+    assert OPL.reset_guard_violations(piped), (
+        "a heredoc piped into a shell IS the instruction — stripping it would be a bypass"
+    )
+    for cmd in ("git restore -- server.py", "git reset --hard", "git clean -fd static/"):
+        assert OPL.reset_guard_violations(cmd), f"real command no longer blocks: {cmd}"
+
+
+def test_rc253_a_destructive_command_after_a_quoted_message_still_blocks(monkeypatch, tmp_path):
+    """Stripping the quoted payload must not swallow what follows it."""
+    _no_escape(monkeypatch, tmp_path)
+    chained = "git commit -m 'notes' && git checkout -- server.py"
+    assert OPL.reset_guard_violations(chained), (
+        "the second, genuinely destructive command was lost with the message payload"
+    )
+
+
 def test_live_path_wired_through_guard(monkeypatch, tmp_path):
     """The guard's Shell path carries the reset-guard — the live BLOCK site."""
     _no_escape(monkeypatch, tmp_path)

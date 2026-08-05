@@ -187,3 +187,9 @@ reports/scorecard_run.log
 
 # runtime measurement log (RC-54 producer) - grows every session, never a repo artifact
 reports/flip_drift_log.jsonl
+# RC-251: append-only per-run TQM telemetry. The reviewable artifacts are
+# reports/rehab_latest.md and reports/tqm_queue_latest.json, which ARE tracked.
+reports/rehab_queue.jsonl
+# The raw machine dump embeds absolute operator-home paths and verbatim mission text
+# (the credential-leak hook refused it, correctly). The markdown carries the same findings.
+reports/rehab_latest.json

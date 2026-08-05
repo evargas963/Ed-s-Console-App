@@ -1,0 +1,13 @@
+{
+  "advisory_total": 1,
+  "cap": 5,
+  "checks": {
+    "x": 1
+  },
+  "delta": 1,
+  "generated_at_iso": "2026-08-05T03:53:35.618090+00:00",
+  "generated_at_utc": 1785902015.61808,
+  "note": "TRIAGE stage of the TQM loop. Work ONLY these items. Mass-rewriting the advisory backlog is banned: every change needs a reproduce command and a test.",
+  "prior_total": 0,
+  "top_items": []
+}
