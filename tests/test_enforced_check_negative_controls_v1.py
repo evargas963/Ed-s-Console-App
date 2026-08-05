@@ -667,7 +667,7 @@ def test_rc246_advisory_mode_still_runs_them_and_records_the_debt(monkeypatch, t
     ]
     monkeypatch.setattr(gate, "CHECKS", fake)
     monkeypatch.setattr(gate, "REPO", tmp_path)
-    _, results = gate.run_checks(mode="advisory")
+    _, results, _hotspots = gate.run_checks(mode="advisory")
     capsys.readouterr()
     assert ran == ["fake_advisory"], f"enforced check ran in the advisory path: {ran}"
 

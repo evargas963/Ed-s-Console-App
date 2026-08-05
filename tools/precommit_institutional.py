@@ -19,6 +19,7 @@ env) carries the enforcement. Abstaining is correct here; guessing is not.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -40,8 +41,12 @@ def main() -> int:
     # already paid in piped commits and hooks killed mid-run. Advisory debt is not dropped:
     # it runs via `--advisory` on the scheduled/rehab path and is recorded in
     # reports/advisory_debt_latest.json.
-    os.execv(sys.executable, [sys.executable, str(runner), str(gate), "--enforced-only"])
-    return 0
+    # RC-254: was os.execv, which on Windows spawns a detached child and returns 0 to
+    # pre-commit immediately — this hook reported "Passed" without the gate's verdict ever
+    # reaching it. The gate's exit code must BE this hook's exit code.
+    return subprocess.run(
+        [sys.executable, str(runner), str(gate), "--enforced-only"], cwd=str(REPO)
+    ).returncode
 
 
 if __name__ == "__main__":
