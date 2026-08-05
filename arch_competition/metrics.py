@@ -13,7 +13,17 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import numpy as np
-from sklearn.metrics import balanced_accuracy_score, log_loss
+# RC-247: sklearn is imported LAZILY, inside the three functions that score models.
+# At module level it cost the live console 8.66s (plus scipy's 1.65s) on EVERY boot, because
+# arch_competition/__init__ re-exports eval_runner -> metrics, and the console reaches that
+# package for calibration helpers it does need. A trading console was loading an ML evaluation
+# library before it could serve a quote. Everything else in this module is pure numpy and
+# stays importable for free; only code that actually scores a model now pays.
+def _sklearn_metrics():
+    """Import-on-use accessor for the two sklearn functions this module scores with."""
+    from sklearn.metrics import balanced_accuracy_score, log_loss
+
+    return balanced_accuracy_score, log_loss
 
 # Eval-domain VIX regime cuts (NOT the runtime vix_tier_token 15/20/30 authority).
 # Promotion policy mid-VIX balanced_accuracy regression gate is calibrated against these.
@@ -58,6 +68,7 @@ def half_split_log_loss_std(y_true: list[int], prob_rows: list[list[float]]) -> 
     n = len(y_true)
     if n < 20 or len(prob_rows) != n:
         return None
+    _, log_loss = _sklearn_metrics()          # RC-247: pay for sklearn only when scoring
     mid = n // 2
     y1, y2 = y_true[:mid], y_true[mid:]
     p1 = np.asarray(prob_rows[:mid], dtype=np.float64)
@@ -102,7 +113,7 @@ def regime_bucket_metrics(
         out[name] = {
             "n": len(pairs),
             "slice_accuracy": float(correct / len(pairs)),
-            "balanced_accuracy": float(balanced_accuracy_score(ys, ps)),
+            "balanced_accuracy": float(_sklearn_metrics()[0](ys, ps)),
             "skipped_low_support": False,
         }
     return out
@@ -379,7 +390,8 @@ def rolling_calibration_and_loss_stability(
         ece = expected_calibration_error_multiclass(yt_w, pr_w, n_bins=8)
         if ece is None:
             continue
-        ll = float(log_loss(yt_w, np.asarray(pr_w, dtype=np.float64), labels=[0, 1, 2]))
+        ll = float(_sklearn_metrics()[1](yt_w, np.asarray(pr_w, dtype=np.float64),
+                                         labels=[0, 1, 2]))
         eces.append({"lo": lo, "hi": hi, "ece": ece})
         lls.append({"lo": lo, "hi": hi, "log_loss": ll})
     std_ece = float(np.std([x["ece"] for x in eces], ddof=0)) if len(eces) >= 2 else None
@@ -461,6 +473,7 @@ def architecture_win_consistency_by_window(
             "cascade_win_rate_by_log_loss": None,
             "insufficient_rows": True,
         }
+    _, log_loss = _sklearn_metrics()          # RC-247: hoisted once, outside the slice loop
     wins = 0
     details = []
     for lo, hi in slices:
