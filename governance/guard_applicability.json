@@ -1,0 +1,63 @@
+{
+  "_law": "IEOS SPECIFICATION.md §3.3 — every material governance mechanism declares WHERE it governs. Global wiring MUST NOT be read as a declaration of universal applicability: a mechanism that executes everywhere because of how it was installed, rather than because its declaration says it governs everywhere, is incorrectly scoped even when it executes exactly as coded. Until a material mechanism declares these fields its scope is NOT_PROVEN.",
+  "_why_this_file_exists": "RC-258, measured 2026-08-05. tools/operator_law_guard.py is registered through the EdWebConsole Claude project settings and therefore sees commands aimed at every checkout on this host. It had no concept of a target, so its RC-93 commit-before-proof rule blocked an IEOS commit it knew nothing about (false positive) while an IEOS probe authorised an Ed Console commit (false negative). Scope is declared here, as data, rather than hardcoded in the guard.",
+  "_repository_identity": "Repositories are identified by CONTENT MARKERS, never by absolute path. A clone, a rename, a second worktree, or a checkout at another location is the SAME repository if it carries the markers; an absolute path would make identity a property of this machine.",
+  "schema": "ed-guard-applicability/1",
+  "mechanisms": [
+    {
+      "governing_mechanism_id": "ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF",
+      "governing_authority": "Operator, 2026-07-27: 'i don't want you to ban the terms i want you to ban the actions. non negotiable.' Recorded as RC-93 in governance/root_cause_log.md.",
+      "applicable_repositories": {
+        "human_name": "EdWebConsole",
+        "match": "all_identity_markers_present",
+        "identity_markers": [
+          "tools/operator_law_guard.py",
+          "governance/root_cause_log.md"
+        ]
+      },
+      "applicable_mission_classes": [
+        "any mission that creates a commit in the governed repository"
+      ],
+      "applicable_components_or_paths": [
+        "*"
+      ],
+      "triggering_conditions": "PreToolUse on Bash or PowerShell where the command performs a git commit (detected by token, not by adjacency) AND the resolved target repository carries every identity marker above.",
+      "exclusions": [
+        "Repositories that do not carry the identity markers. The IEOS repository is the measured case: it carries neither marker, so RC-93 does not govern its commits. Its location is deliberately not written here — identity is content, not path.",
+        "Commands whose target repository cannot be resolved are NOT excluded: they are refused openly, because an unidentifiable target cannot be matched to any proof."
+      ],
+      "precedence": "Subordinate to the universal protections declared below — those evaluate first and independently, so a repository outside RC-93's scope is still covered by destructive-git, blind-stage, lock-disable and unsafe-write rules. RC-93 never causes an early return from the guard.",
+      "conflict_behavior": "Fail openly (§3.3): an applicability conflict or an unresolved target repository BLOCKS with the reason stated. It is never resolved by execution order, file location, wiring depth, or by assuming the guard's own repository.",
+      "expiration_or_review_conditions": "Re-justify when a second governed repository is added to this host, when the hook registration moves out of .claude/settings.json, or when the tool payload's working-directory field changes shape. Reviewed against RC-258's reproductions.",
+      "product_owner_determination": {
+        "determined_by": "Product Owner",
+        "determined_at": "2026-08-05",
+        "determination": "The guard governs Ed Console-targeted commands. It does not govern IEOS-targeted commands. Ed Console verification authorises only Ed Console actions; verification from IEOS or any other repository must not authorise Ed Console actions. Unresolved target identity fails openly. Valid destructive-command, guard-disable and other universal protections remain intact. No global disablement and no unrelated proof substitution is permitted.",
+        "classification": "APPLICABILITY DETERMINATION — explicitly NOT an accepted risk, waiver, weakening, or retirement of RC-93 (§2.5). RC-93 remains fully applicable everywhere it is declared to govern.",
+        "recorded_in": "governance/root_cause_log.md RC-258"
+      }
+    },
+    {
+      "governing_mechanism_id": "ED-OPERATOR-LAW-GUARD/UNIVERSAL-SAFETY",
+      "governing_authority": "Operator standing laws: no-grep (2026-05-22), no destructive git, no lock disablement, no source writes outside Edit/Write (E-37), no blind staging (2026-07-28).",
+      "applicable_repositories": {
+        "human_name": "every repository this host's agent can reach",
+        "match": "always",
+        "identity_markers": []
+      },
+      "applicable_mission_classes": [
+        "all"
+      ],
+      "applicable_components_or_paths": [
+        "*"
+      ],
+      "triggering_conditions": "PreToolUse on Bash or PowerShell, evaluated on every command regardless of target repository and regardless of whether the target can be resolved at all.",
+      "exclusions": [
+        "Filtering a command's OWN stdout is an explicit carve-out of the no-grep rule; searching the codebase is not."
+      ],
+      "precedence": "Highest. These evaluate before and independently of any repository-scoped rule.",
+      "conflict_behavior": "Block. These protect the operator's work and the locks themselves, so no applicability determination narrows them; a determination that did would be recorded as a specification violation.",
+      "expiration_or_review_conditions": "None — standing operator laws with no expiry."
+    }
+  ]
+}

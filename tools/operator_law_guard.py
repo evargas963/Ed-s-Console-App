@@ -47,10 +47,34 @@ def _ledger_path(session_id: str) -> Path:
     return Path(tempfile.gettempdir()) / f"ed_turn_ledger_{safe}.jsonl"
 
 
-def _record(session_id: str, kind: str, detail: str) -> None:
+def _record(session_id: str, kind: str, detail: str, repo: str = "") -> None:
+    """Append a ledger entry BOUND to the repository the action targeted (RC-258).
+
+    The `repo` field is what makes proof non-transferable. Without it the ledger was a
+    session-wide bearer token, MEASURED failing both ways on 2026-08-05: an Ed Console pytest
+    authorised an IEOS commit, and a probe run inside IEOS authorised an Ed Console commit.
+    An entry written with an unresolved target keeps `repo` empty, and an empty repo never
+    satisfies a repository-scoped rule — legacy entries are inert by the same clause.
+    """
     try:
         with _ledger_path(session_id).open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"kind": kind, "detail": detail[:600]}) + "\n")
+            fh.write(json.dumps({"kind": kind, "detail": detail[:600], "repo": repo}) + "\n")
+    except OSError:
+        pass
+
+
+def _record_edit_attempt(session_id: str, path: str, repo: str = "") -> None:
+    """Record an edit REQUEST together with the file's pre-edit mtime (RC-258).
+
+    The baseline is captured here, before the tool runs, because that is the only moment the
+    "unmodified" state is observable. Stop compares against it to separate an edit that landed
+    from one a later hook refused.
+    """
+    try:
+        entry = {"kind": "edit_attempt", "detail": (path or "")[:600], "repo": repo,
+                 "mtime_before": _mtime_or_none(path)}
+        with _ledger_path(session_id).open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
     except OSError:
         pass
 
@@ -76,6 +100,211 @@ def _clear(session_id: str) -> None:
         _ledger_path(session_id).unlink(missing_ok=True)
     except OSError:
         pass
+
+
+# ── repository identity (RC-258) ──────────────────────────────────────────────────────────
+#: The guard is registered globally, so it sees commands aimed at ANY checkout on this host.
+#: Until 2026-08-05 it had no notion of a target at all: `REPO` above is computed and never
+#: consulted by a single rule. That is why one repository's proof authorised another's commit
+#: and why an IEOS commit was judged by an Ed Console law. Identity is resolved from the
+#: command's own execution context — never defaulted to this file's repository.
+_WINDOWS = os.name == "nt"
+#: Command segmentation. `shell_executed_part` has already removed heredoc bodies, -c payloads
+#: and -m messages, so quoted separators inside DATA cannot reach this split.
+_SEG_SPLIT = re.compile(r"\s*(?:&&|\|\||[;&|])\s*")
+#: One shell argument: double-quoted, single-quoted, or bare. Quoted forms carry spaces, which
+#: is the whole point on Windows (`C:/Program Files/...`).
+_ARG = r"""(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))"""
+_CD_RE = re.compile(r"^(?:cd|pushd|Set-Location|sl|chdir)\s+(?:/d\s+)?" + _ARG, re.I)
+_GIT_C_RE = re.compile(r"(?:^|\s)-C\s+" + _ARG)
+_GIT_DIR_RE = re.compile(r"--(?:git-dir|work-tree)(?:=|\s+)" + _ARG, re.I)
+_TOKEN_RE = re.compile(r"\"[^\"]*\"|'[^']*'|\S+")
+_ABS_RE = re.compile(r"^(?:[A-Za-z]:[/\\]|[/\\])")
+
+
+#: MSYS / Cygwin drive spellings. The Bash tool on this host IS Git Bash, so `cd "/c/Users/..."`
+#: is the ORDINARY form, not an exotic one — MEASURED 2026-08-05 by reading the live ledger,
+#: where every bash entry resolved to NOTHING because `/c/...` was treated as a rooted Windows
+#: path and `C:\c\Users\...` does not exist. A resolver that cannot read the shell it actually
+#: runs under resolves nothing, and "unresolved" would have become the normal case.
+_MSYS_DRIVE_RE = re.compile(r"^/(?:cygdrive/)?([A-Za-z])(?=/|$)")
+
+
+def _msys_to_windows(path: str) -> str:
+    if not _WINDOWS or not path:
+        return path
+    m = _MSYS_DRIVE_RE.match(path.replace("\\", "/"))
+    if not m:
+        return path
+    rest = path.replace("\\", "/")[m.end():]
+    return f"{m.group(1).upper()}:{rest or '/'}"
+
+
+def _arg_value(m: re.Match) -> str:
+    for g in m.groups():
+        if g is not None:
+            return g
+    return ""
+
+
+def normalize_repo(path) -> str:
+    """Repository identity: absolute, forward slashes, case-folded on Windows.
+
+    Case folding is not cosmetic here — a drive-letter path spelled upper-case and the same
+    path spelled lower-case are one repository, and a comparison that says otherwise would
+    reject an agent's own proof.
+    """
+    try:
+        p = Path(_msys_to_windows(str(path))).expanduser().resolve()
+    except (OSError, ValueError, RuntimeError):
+        return ""
+    s = str(p).replace("\\", "/").rstrip("/")
+    return s.casefold() if _WINDOWS else s
+
+
+def repo_root_of(path) -> str:
+    """Normalized root of the git repository containing `path`, or "" when there is none.
+
+    Deliberately filesystem-only: a PreToolUse hook runs on every command, so shelling out to
+    `git rev-parse` here would put a subprocess in front of every keystroke. Walking up for a
+    `.git` entry answers the same question and handles a nonexistent path by returning "".
+    """
+    try:
+        p = Path(_msys_to_windows(str(path))).expanduser()
+        if not p.exists():
+            return ""
+        p = p.resolve()
+        if p.is_file():
+            p = p.parent
+        for cand in (p, *p.parents):
+            if (cand / ".git").exists():
+                return normalize_repo(cand)
+    except (OSError, ValueError, RuntimeError):
+        return ""
+    return ""
+
+
+def _tokens(seg: str) -> list[str]:
+    return _TOKEN_RE.findall(seg)
+
+
+def is_git_commit(seg: str) -> bool:
+    """True when this segment runs `git commit`, whatever the option placement.
+
+    The old detector was the adjacency pattern `git\\s+commit`, and MEASURED 2026-08-05 it
+    returned zero violations for `git -C . commit`, `git -C <path> commit` and
+    `git --git-dir=... commit` — four typed characters walked any commit past the law. The
+    action is "this git invocation commits", so the test is tokens, not adjacency.
+    """
+    toks = _tokens(seg.strip())
+    if not toks:
+        return False
+    exe = toks[0].strip("\"'")
+    if Path(exe).name.lower() not in ("git", "git.exe"):
+        return False
+    return any(t.strip("\"'") == "commit" for t in toks[1:])
+
+
+def _join_dir(base: str, path: str) -> str:
+    """Resolve `path` against `base`; "" when it is relative and `base` is unknown."""
+    path = _msys_to_windows(path)
+    if _ABS_RE.match(path):
+        return path
+    if not base:
+        return ""
+    return os.path.join(_msys_to_windows(base), path)
+
+
+def resolve_target_repo(cmd: str, payload_cwd: str = "") -> tuple[str, str]:
+    """(normalized repository identity, reason). An empty identity means UNRESOLVED.
+
+    Precedence, highest first: an explicit path on the git invocation (-C / --git-dir /
+    --work-tree), then a directory change earlier in the same chained command, then the
+    working directory the tool payload supplies. This function NEVER falls back to `REPO`:
+    assuming the guard's own checkout is exactly how an IEOS commit came to be judged by an
+    Ed Console rule.
+    """
+    executed = shell_executed_part(cmd or "")
+    cur = str(payload_cwd or "")
+    for seg in _SEG_SPLIT.split(executed):
+        seg = seg.strip()
+        if not seg:
+            continue
+        m = _CD_RE.match(seg)
+        if m:
+            cur = _join_dir(cur, _arg_value(m))
+            continue
+        if not is_git_commit(seg):
+            continue
+        target = ""
+        for rx in (_GIT_C_RE, _GIT_DIR_RE):
+            mm = rx.search(seg)
+            if mm:
+                target = _join_dir(cur, _arg_value(mm))
+                if not target:
+                    return "", "relative path on the git invocation with no known working directory"
+                break
+        target = target or cur
+        if not target:
+            return "", "no path on the command and no working directory supplied by the tool payload"
+        root = repo_root_of(target)
+        if not root:
+            return "", f"target path is not inside a git repository: {target}"
+        return root, "resolved from the command"
+    if cur:
+        root = repo_root_of(cur)
+        return (root, "resolved from the tool payload working directory") if root else (
+            "", f"working directory is not inside a git repository: {cur}")
+    return "", "no repository identity in the command and no working directory supplied"
+
+
+# ── applicability declaration (IEOS SPECIFICATION.md §3.3 ten-field model) ─────────────────
+#: Global WIRING is not a declaration of universal applicability (§3.3). RC-93 is an Ed Console
+#: law; it is declared here rather than hardcoded, and repositories are identified by CONTENT
+#: MARKERS so a clone, a rename, or a worktree at another path is still the same repository.
+_APPLICABILITY_REL = "governance/guard_applicability.json"
+_RC93_MECHANISM_ID = "ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF"
+
+
+def _load_applicability(repo_for_lookup: str = "") -> dict:
+    for base in (Path(repo_for_lookup) if repo_for_lookup else None, REPO):
+        if base is None:
+            continue
+        try:
+            doc = json.loads((Path(base) / _APPLICABILITY_REL).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict):
+            return doc
+    return {}
+
+
+def _mechanism(doc: dict, mech_id: str) -> dict:
+    for m in doc.get("mechanisms") or []:
+        if isinstance(m, dict) and m.get("governing_mechanism_id") == mech_id:
+            return m
+    return {}
+
+
+def rc93_applies_to(repo: str) -> bool:
+    """True when the declaration says RC-93 governs this repository.
+
+    A repository matches when EVERY declared identity marker exists inside it. Absent or
+    unreadable declaration -> the mechanism governs nothing, which is the §3.3 rule that an
+    undeclared scope is NOT_PROVEN rather than assumed universal.
+    """
+    if not repo:
+        return False
+    mech = _mechanism(_load_applicability(repo), _RC93_MECHANISM_ID)
+    spec = (mech.get("applicable_repositories") or {}) if mech else {}
+    markers = [str(x) for x in (spec.get("identity_markers") or []) if str(x).strip()]
+    if not markers:
+        return False
+    try:
+        root = Path(repo)
+        return all((root / m).exists() for m in markers)
+    except (OSError, ValueError):
+        return False
 
 
 # ── what counts as PROOF HAVING RUN ───────────────────────────────────────────────────────
@@ -224,20 +453,80 @@ def _heredoc_write_violation(raw: str) -> bool:
 _SHELL_REDIRECT_SOURCE = re.compile(r"(?:^|[^&\d])>{1,2}\s*[^\s;|&<>]+\.py\b")
 
 
-def _has_verification(ledger: list[dict]) -> bool:
+def _has_verification_any(ledger: list[dict]) -> bool:
+    """Session-wide proof — the Stop clauses' question, which is about the TURN, not a repo."""
     return any(_VERIFICATION.search(e.get("detail", "")) for e in ledger if e.get("kind") == "bash")
 
 
-def _production_edits(ledger: list[dict]) -> list[str]:
+def _has_verification(ledger: list[dict], repo: str = "") -> bool:
+    """Proof that ran AGAINST `repo` (RC-258).
+
+    An entry whose `repo` is missing or empty can never satisfy this: legacy unscoped rows and
+    commands whose target could not be resolved are inert rather than universally valid, which
+    is the difference between a bearer token and a bound credential.
+    """
+    if not repo:
+        return False
+    for e in ledger:
+        if e.get("kind") != "bash":
+            continue
+        if (e.get("repo") or "") != repo:
+            continue
+        if _VERIFICATION.search(e.get("detail", "")):
+            return True
+    return False
+
+
+def _mtime_or_none(path: str):
+    try:
+        return Path(path).stat().st_mtime_ns
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
+def _edit_took_effect(entry: dict) -> bool:
+    """Did this recorded edit ATTEMPT actually reach the disk (RC-258, fifth failure)?
+
+    PreToolUse fires before the tool runs and before every LATER hook has had its say, so an
+    edit this guard permits may still be refused downstream. It was: on 2026-08-05 an Edit to
+    tools/operator_law_guard.py was recorded as a production change, the operating-process lock
+    then blocked it, the file never changed — and the Stop clause demanded a self-adversarial
+    audit for work that did not exist. Intent is not outcome.
+
+    The signal is the file's own modification time, captured BEFORE the tool ran and compared
+    after. That is exact where git status is not: a file edited and then committed inside the
+    same turn is clean against HEAD yet genuinely changed, and dropping its obligation would
+    weaken the very clause this repairs.
+
+    Two deliberate biases, both toward keeping the obligation: an entry with no recorded
+    baseline (a legacy `edit` row, or a stat that failed) counts as changed, and so does any
+    case the comparison cannot decide. An unmeasurable outcome is never treated as "nothing
+    happened" — RC-57: unmeasurable is never compliant.
+    """
+    if "mtime_before" not in entry:
+        return True                      # legacy row — behave exactly as before
+    before = entry.get("mtime_before")
+    after = _mtime_or_none(entry.get("detail", ""))
+    if after is None and before is None:
+        return True                      # cannot tell either side
+    return after != before
+
+
+def _production_edits(ledger: list[dict], confirm=None) -> list[str]:
+    """Production surfaces this turn actually CHANGED — attempts that were refused drop out."""
+    confirm = _edit_took_effect if confirm is None else confirm
     out = []
     for e in ledger:
-        if e.get("kind") != "edit":
+        if e.get("kind") not in ("edit", "edit_attempt"):
             continue
         p = e.get("detail", "").replace("\\", "/")
         if any(seg in p for seg in _NON_PRODUCTION):
             continue
-        if p.endswith(_PRODUCTION_SUFFIX):
-            out.append(p)
+        if not p.endswith(_PRODUCTION_SUFFIX):
+            continue
+        if not confirm(e):
+            continue
+        out.append(p)
     return out
 
 
@@ -263,7 +552,14 @@ def shell_executed_part(cmd: str) -> str:
     return cmd
 
 
-def bash_violations(cmd: str, ledger: list[dict]) -> list[str]:
+def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list[str]:
+    """Every UNIVERSAL protection, plus the repository-SCOPED ones where they are declared.
+
+    Applicability is decided per rule, never by returning early (RC-258). Returning early for a
+    non-Ed-Console target would have exempted that repository from destructive-git, blind-stage,
+    lock-disable and unsafe-write protections, which are host-wide safety rules that have
+    nothing to do with which checkout is in front of them.
+    """
     raw = cmd
     cmd = shell_executed_part(cmd)
     out: list[str] = []
@@ -304,10 +600,20 @@ def bash_violations(cmd: str, ledger: list[dict]) -> list[str]:
         out.append("ACTION BLOCKED (RC-189 v2): PowerShell write cmdlet with a constructed, "
                    "governance/.claude, or production-suffix destination. Use the Edit/Write "
                    "tools — a destination the command never spells cannot be audited.")
-    if _GIT_COMMIT.search(cmd) and not _has_verification(ledger):
-        out.append("ACTION BLOCKED: committing without having RUN anything this turn. A commit "
-                   "asserts the work is sound; run the gate, the tests, or a live probe first — "
-                   "the proof must exist before the action, not in the message describing it.")
+    if any(is_git_commit(s) for s in _SEG_SPLIT.split(cmd)):
+        repo, why = resolve_target_repo(raw, payload_cwd)
+        if not repo:
+            # Fail OPENLY: an unresolved target is refused and says so, rather than being
+            # silently treated as this repository (which is the assumption RC-258 exists for).
+            out.append(f"ACTION BLOCKED (RC-258): cannot resolve which repository this commit "
+                       f"targets — {why}. Proof is bound to a repository, so an unidentifiable "
+                       f"target cannot be authorised by anything. Name it explicitly "
+                       f"(`git -C <path> commit`) and the guard will judge that repository.")
+        elif rc93_applies_to(repo) and not _has_verification(ledger, repo):
+            out.append(f"ACTION BLOCKED: committing to {repo} without having RUN anything "
+                       f"against THAT repository this turn. A commit asserts the work is sound; "
+                       f"run the gate, the tests, or a live probe there first — proof from "
+                       f"another checkout is not proof of this one (RC-258).")
     return out
 
 
@@ -317,11 +623,19 @@ def edit_violations(path: str, new_text: str, ledger: list[dict]) -> list[str]:
         return []
     if not re.search(r"\|\s*CLOSED\s*\|", new_text or ""):
         return []
-    if _has_verification(ledger):
+    # The suffix test above matches ANY repository's same-named ledger, so the proof required
+    # is the proof for the repository that file lives in (RC-258).
+    repo = repo_root_of(path)
+    if not repo:
+        return [f"ACTION BLOCKED (RC-258): cannot resolve which repository owns {p}, so no "
+                f"verification can be matched to it. Closing a row is an assertion about a "
+                f"specific repository's code."]
+    if _has_verification(ledger, repo):
         return []
-    return ["ACTION BLOCKED: closing a root-cause row without having RUN a verification this "
-            "turn. Closing IS the assertion that the defect is fixed. Run the test that locks it, "
-            "or the gate, or a live probe — then close."]
+    return [f"ACTION BLOCKED: closing a root-cause row in {repo} without having RUN a "
+            f"verification against that repository this turn. Closing IS the assertion that "
+            f"the defect is fixed. Run the test that locks it, or the gate, or a live probe — "
+            f"then close."]
 
 
 #: RC-125 (operator law, 2026-07-29): "you must always probe the live session before you
@@ -392,8 +706,10 @@ def _latest_audit_lacks_research(log: Path | None = None) -> bool:
 
 def stop_violations(ledger: list[dict]) -> list[str]:
     out: list[str] = []
+    # Stop clauses stay SESSION-scoped and behaviourally unchanged: they ask whether this TURN
+    # verified/audited/probed, which is a property of the turn rather than of a repository.
     edits = _production_edits(ledger)
-    if edits and not _has_verification(ledger):
+    if edits and not _has_verification_any(ledger):
         out.append(f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
                    f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
                    f"a live probe before ending the turn.")
@@ -432,14 +748,19 @@ def main() -> int:
     ti = payload.get("tool_input") or {}
     ledger = _ledger(sid)
 
+    # Claude Code supplies the working directory on the payload when it knows it. Absence is
+    # handled as UNRESOLVED rather than guessed — see resolve_target_repo.
+    payload_cwd = str(payload.get("cwd") or "")
+
     if tool in ("Bash", "PowerShell"):
         cmd = ti.get("command") or ""
-        bad = bash_violations(cmd, ledger)
+        bad = bash_violations(cmd, ledger, payload_cwd)
         if bad:
             sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                              + "\n".join(f"    {b}" for b in bad) + "\n")
             return 2
-        _record(sid, "bash", cmd)
+        repo, _why = resolve_target_repo(cmd, payload_cwd)
+        _record(sid, "bash", cmd, repo)
         return 0
 
     if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
@@ -450,7 +771,10 @@ def main() -> int:
             sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                              + "\n".join(f"    {b}" for b in bad) + "\n")
             return 2
-        _record(sid, "edit", path)
+        # ATTEMPTED, not executed: later hooks in the chain may still refuse this edit, and one
+        # did (RC-258 fifth failure). Capture the pre-edit mtime so Stop can tell whether the
+        # write ever landed, then confirm the outcome rather than assuming it.
+        _record_edit_attempt(sid, path, repo_root_of(path))
         return 0
 
     # Stop

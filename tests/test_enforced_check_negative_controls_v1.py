@@ -278,8 +278,15 @@ def test_operator_law_guard_action_battery():
     """v19: the fire/quiet battery, promoted from ad-hoc probes to a permanent suite. Every
     banned ACTION spelling must fire; every sanctioned form must stay quiet — one list, both
     directions, so widening a lock reruns the whole surface."""
-    from tools.operator_law_guard import bash_violations
-    led = [{"kind": "bash", "detail": "pytest ok"}]
+    from pathlib import Path as _P
+
+    from tools.operator_law_guard import bash_violations, normalize_repo
+    # RC-258: proof is now bound to the repository it ran against, and the target repository is
+    # resolved from the caller's working directory. This battery drives the pure callee, so it
+    # supplies both exactly as the hook does — the SPELLINGS under test are unchanged.
+    _repo = _P(__file__).resolve().parent.parent
+    _cwd = str(_repo)
+    led = [{"kind": "bash", "detail": "pytest ok", "repo": normalize_repo(_repo)}]
     fire = [
         "git add -A", "git add --all", "git add .", "git add -u", "git add *", "git add -- .",
         "python - <<EOF\nio.open('tests/x.py','w').write(s)\nEOF",
@@ -298,9 +305,9 @@ def test_operator_law_guard_action_battery():
         "pytest tests/test_x.py -q",
     ]
     for c in fire:
-        assert bash_violations(c, led), f"DID NOT FIRE: {c[:60]!r}"
+        assert bash_violations(c, led, _cwd), f"DID NOT FIRE: {c[:60]!r}"
     for c in quiet:
-        assert not bash_violations(c, led), f"WRONGLY FIRED: {c[:60]!r}"
+        assert not bash_violations(c, led, _cwd), f"WRONGLY FIRED: {c[:60]!r}"
 
 
 def test_stop_guard_freshness_tells_broken_from_closed(monkeypatch):
