@@ -6,7 +6,7 @@
     "function_length": 474,
     "mypy_types": 796,
     "orphan_dict_keys": 188,
-    "ruff_quality": 1262
+    "ruff_quality": 1269
   },
   "hotspots": {
     "debt_ratchet": {
@@ -125,7 +125,6 @@
     "ruff_quality": {
       "arch_competition/stack_bundle_eval_v1.py": 11,
       "bayesian_fusion.py": 10,
-      "calibration/phase65_edge_isolation_v1.py": 10,
       "call_engine.py": 20,
       "scratchpad/_server_RELANDED_20260802.py": 34,
       "server.py": 35,
@@ -140,11 +139,12 @@
       "tests/test_model_serve_policy.py": 21,
       "tests/test_oof_stacker.py": 42,
       "tests/test_operating_process_lock_v1.py": 12,
+      "tests/test_rehab_daily_scan_v1.py": 17,
       "tests/test_t5_sse_db_contention.py": 21,
       "tests/test_v2_a1_isotonic_calibration_attachment.py": 19,
       "tools/feature_curation_gate.py": 12
     }
   },
-  "measured_at_utc": 1785900917.9215045,
-  "total_advisory_violations": 3360
+  "measured_at_utc": 1785921007.2527423,
+  "total_advisory_violations": 3367
 }

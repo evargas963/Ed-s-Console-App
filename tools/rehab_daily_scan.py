@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -139,6 +140,32 @@ def _advisory_findings(adv: dict) -> list[dict]:
 TQM_QUEUE_REL = "reports/tqm_queue_latest.json"
 TQM_MAX_ITEMS = 5
 
+#: RC-255: module-level and therefore REDIRECTABLE, like QUEUE_PATH / LATEST_MD / LATEST_JSON.
+#: This used to be built as `REPO / TQM_QUEUE_REL` inside the writer, which left it the one
+#: artifact a test could not monkeypatch — so the two tests that drive main() wrote the real
+#: tracked file and shipped a fixture (advisory_total 1, top_items []) into a commit.
+TQM_QUEUE_PATH = REPO / TQM_QUEUE_REL
+
+
+def _guard_repo_artifact(path: Path) -> None:
+    """RC-255: a test may never write a TRACKED artifact — fail closed, not silently.
+
+    Redirecting paths in tests is goodwill, and goodwill fails: forgetting is invisible,
+    because the suite asserts what main() RETURNS and never what it TOUCHED. Under pytest a
+    write aimed at the real reports/ tree is a defect in the test, so it raises there and
+    stays inert in a real scheduled run.
+    """
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    try:
+        path.resolve().relative_to((REPO / "reports").resolve())
+    except ValueError:
+        return
+    raise RuntimeError(
+        f"RC-255: test tried to write the TRACKED artifact {path} — redirect it "
+        f"(monkeypatch the module-level path) instead of mutating repo state"
+    )
+
 #: What a "smallest safe change" means per advisory check, and what would DISPROVE the item
 #: being worth doing. Kill criteria are first-class: an item nobody can refuse is not triage.
 _TQM_PLAYBOOK: dict[str, dict[str, str]] = {
@@ -184,7 +211,7 @@ def _load_prior_advisory_total() -> int | None:
     """Previous run's total, for the RE-MEASURE stage. Without a baseline no action can be
     shown to have helped, which is how quality work becomes unfalsifiable."""
     try:
-        prior = json.loads((REPO / TQM_QUEUE_REL).read_text(encoding="utf-8"))
+        prior = json.loads(TQM_QUEUE_PATH.read_text(encoding="utf-8"))
         val = prior.get("advisory_total")
         return int(val) if isinstance(val, (int, float)) else None
     except (OSError, ValueError, json.JSONDecodeError, TypeError):
@@ -240,7 +267,8 @@ def _build_tqm_queue(adv: dict) -> dict:
 
 
 def _write_tqm_queue(queue: dict) -> Path:
-    out = REPO / TQM_QUEUE_REL
+    out = TQM_QUEUE_PATH
+    _guard_repo_artifact(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(queue, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return out
@@ -399,6 +427,8 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
         "pm": "cursor",
         "mode": "recommend_only",
     }
+    for _artifact in (QUEUE_PATH, LATEST_JSON, LATEST_MD):
+        _guard_repo_artifact(_artifact)
     QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with QUEUE_PATH.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps({"scanned_at_utc": now, "head": payload["head"], "findings": findings}) + "\n")

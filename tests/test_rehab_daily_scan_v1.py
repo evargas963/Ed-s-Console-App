@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -51,7 +53,8 @@ def test_write_outputs_appends_queue_and_md(tmp_path: Path, monkeypatch) -> None
     assert "Rehab latest" in md.read_text(encoding="utf-8")
 
 
-def test_main_recommend_only_exit_zero(monkeypatch) -> None:
+def test_main_recommend_only_exit_zero(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(scan, "TQM_QUEUE_PATH", tmp_path / "tqm_queue_latest.json")  # RC-255
     monkeypatch.setattr(scan, "_measure", lambda: {"index_worktree_mismatches": [], "staged_checks_not_on_head": []})
     monkeypatch.setattr(scan, "_porcelain_stats", lambda: {"porcelain_lines": 0, "staged_ish": 0, "untracked": 0, "modified_ish": 0})
     monkeypatch.setattr(scan, "_collect_findings", lambda m, s: [])
@@ -96,9 +99,10 @@ def test_rc250_the_scan_actually_invokes_advisory_mode(monkeypatch) -> None:
     )
 
 
-def test_rc250_advisory_runs_by_default_and_is_opt_out_only(monkeypatch) -> None:
+def test_rc250_advisory_runs_by_default_and_is_opt_out_only(monkeypatch, tmp_path) -> None:
     """Default-ON is the whole point: an advisory run that must be asked for is the hand-typed
     one-shot this row was opened for."""
+    monkeypatch.setattr(scan, "TQM_QUEUE_PATH", tmp_path / "tqm_queue_latest.json")  # RC-255
     calls = {"n": 0}
     monkeypatch.setattr(scan, "_measure", lambda: {"index_worktree_mismatches": [], "staged_checks_not_on_head": []})
     monkeypatch.setattr(scan, "_porcelain_stats", lambda: {"porcelain_lines": 0, "staged_ish": 0, "untracked": 0, "modified_ish": 0})
@@ -218,6 +222,54 @@ def test_rc251_launcher_is_the_canonical_entry_point() -> None:
     ps1 = (ROOT / "tools" / "run_rehab_daily.ps1").read_text(encoding="utf-8")
     assert "rehab_daily_scan.py" in ps1
     assert ".venv" in ps1, "the launcher must prefer the repo venv (venv parity)"
+
+
+# ── RC-255: the test suite is not a writer of tracked state ──────────────────────────────
+# The PM found reports/tqm_queue_latest.json committed with top_items: [] and advisory_total 1.
+# That 1 is the fixture value above — a green test had overwritten the repo's real artifact,
+# because _write_tqm_queue built its destination inline and was the one path a test could not
+# redirect. The suite asserts what main() RETURNS and never what it TOUCHED.
+
+
+def test_rc255_a_test_cannot_write_the_tracked_artifact(monkeypatch, tmp_path) -> None:
+    """Drive main() WITHOUT redirecting the queue: the guard must raise, not write."""
+    monkeypatch.setattr(scan, "_measure", lambda: {"index_worktree_mismatches": [], "staged_checks_not_on_head": []})
+    monkeypatch.setattr(scan, "_porcelain_stats", lambda: {"porcelain_lines": 0, "staged_ish": 0, "untracked": 0, "modified_ish": 0})
+    monkeypatch.setattr(scan, "_collect_findings", lambda m, s: [])
+    monkeypatch.setattr(scan, "_write_outputs", lambda f, m, s: {"finding_count": 0})
+    monkeypatch.setattr(scan, "_run_advisory_debt", lambda: {
+        "ran": True, "exit": 0, "total_advisory_violations": 1, "checks": {"x": 1},
+        "hotspots": {}, "measured_at_utc": 1e12})
+    with pytest.raises(RuntimeError, match="RC-255"):
+        scan.main(["--json-only"])
+
+
+def test_rc255_the_guard_is_inert_for_a_redirected_path(tmp_path, monkeypatch) -> None:
+    """Negative control: the guard must block only the TRACKED tree, or it breaks every test."""
+    monkeypatch.setattr(scan, "TQM_QUEUE_PATH", tmp_path / "tqm_queue_latest.json")
+    out = scan._write_tqm_queue({"advisory_total": 7, "top_items": []})
+    assert out.is_file() and json.loads(out.read_text(encoding="utf-8"))["advisory_total"] == 7
+
+
+def test_rc255_the_committed_queue_is_not_a_fixture() -> None:
+    """The artifact on disk must look like a MEASUREMENT, not like test residue. advisory_total
+    1 with an empty queue beside a 3,360-violation advisory report is the shipped defect."""
+    qp = ROOT / "reports" / "tqm_queue_latest.json"
+    adv = ROOT / "reports" / "advisory_debt_latest.json"
+    if not (qp.is_file() and adv.is_file()):
+        pytest.skip("artifacts not present in this checkout")
+    q = json.loads(qp.read_text(encoding="utf-8"))
+    a = json.loads(adv.read_text(encoding="utf-8"))
+    total_adv = a.get("total_advisory_violations") or 0
+    assert q.get("advisory_total") == total_adv, (
+        f"queue advisory_total {q.get('advisory_total')} disagrees with the advisory report's "
+        f"{total_adv} — the queue was not written by the run that produced the tally"
+    )
+    if total_adv > 0 and (a.get("hotspots") or {}):
+        assert q.get("top_items"), (
+            "hotspots exist but the committed queue has no items — a vacuous queue reads as "
+            "'nothing to do' (RC-251/RC-255)"
+        )
 
 
 def test_rc250_advisory_never_returns_to_the_blocking_commit_path() -> None:

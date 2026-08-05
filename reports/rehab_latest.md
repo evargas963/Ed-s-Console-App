@@ -1,21 +1,20 @@
-# Rehab latest — 2026-08-05T03:35:17.946770+00:00
+# Rehab latest — 2026-08-05T09:10:09.405501+00:00
 
-**HEAD:** `8da220ad` · **PM:** Cursor · **Mode:** recommend only (no auto-edit)
+**HEAD:** `2476bb45` · **PM:** Cursor · **Mode:** recommend only (no auto-edit)
 
-Findings: **2**
+Findings: **1**
 
 | Sev | ID | Facet | Summary | Recommendation |
 |-----|----|-------|---------|----------------|
-| P0 | `rehab.index_wt_drift` | worktree_integrity | 1 enforcement path(s) index≠WT | Reconcile WT from index (or re-stage intentional WT) before any green claim or commit. |
-| P2 | `rehab.dirty_tree_sprawl` | worktree_hygiene | Dirty tree sprawl: 357 porcelain lines | PM: sequence landings; avoid multi-mission dirt; path-limited commits only. |
+| P2 | `rehab.dirty_tree_sprawl` | worktree_hygiene | Dirty tree sprawl: 352 porcelain lines | PM: sequence landings; avoid multi-mission dirt; path-limited commits only. |
 
 ## Advisory debt (P1/RC-246 moved these off the blocking commit path)
 
-**Total: 3360** · prior: 3360 · delta: = 0
+**Total: 3367** · prior: 3367 · delta: = 0
 
 | Check | Count |
 |---|---:|
-| `ruff_quality` | 1262 |
+| `ruff_quality` | 1269 |
 | `mypy_types` | 796 |
 | `function_complexity` | 592 |
 | `function_length` | 474 |
@@ -30,11 +29,11 @@ Findings: **2**
 | `calibration/phase65_edge_isolation_v1.py` | mypy_types | 45 |
 | `db.py` | mypy_types | 22 |
 | `features/signal_layer_v1.py` | mypy_types | 22 |
+| `call_engine.py` | ruff_quality | 20 |
 | `arch_competition/stack_bundle_eval_v1.py` | ruff_quality | 11 |
 | `arch_competition/stack_bundle_eval_v1.py` | function_complexity | 10 |
 | `calibration/daily_scoreboard.py` | function_complexity | 10 |
 | `bayesian_fusion.py` | ruff_quality | 10 |
-| `calibration/phase65_edge_isolation_v1.py` | ruff_quality | 10 |
 | `arch_competition/stack_bundle_eval_v1.py` | function_length | 8 |
 | `news_sentiment.py` | orphan_dict_keys | 8 |
 
@@ -66,9 +65,9 @@ Work ONLY these. Mass-rewriting the backlog is banned: every change needs a repr
 - smallest safe change: annotate the single function the error names; do not restructure call sites
 - kill criteria: kill if the annotation forces a runtime change, or if the error is in a vendored/legacy tree scheduled for deletion
 
-**5. [P2] `ruff_quality` → `arch_competition/stack_bundle_eval_v1.py` (11 finding(s))**
+**5. [P2] `ruff_quality` → `call_engine.py` (20 finding(s))**
 
-- why now: 11 ruff_quality finding(s) concentrated in one file — a bounded change, not a sweep
+- why now: 20 ruff_quality finding(s) concentrated in one file — a bounded change, not a sweep
 - smallest safe change: ruff --fix on THIS FILE only, then run the file's own test module; commit the autofix alone
 - kill criteria: kill if the file has no test module, or if --fix touches money-path semantics (greeks, levels, decisions) rather than style
 
