@@ -11,8 +11,8 @@
     "ruff_quality": 1269
   },
   "delta": 0,
-  "generated_at_iso": "2026-08-05T09:10:09.403987+00:00",
-  "generated_at_utc": 1785921009.403978,
+  "generated_at_iso": "2026-08-05T09:59:21.110869+00:00",
+  "generated_at_utc": 1785923961.110843,
   "note": "TRIAGE stage of the TQM loop. Work ONLY these items. Mass-rewriting the advisory backlog is banned: every change needs a reproduce command and a test.",
   "prior_total": 3367,
   "top_items": [

@@ -1,12 +1,12 @@
-# Rehab latest — 2026-08-05T09:10:09.405501+00:00
+# Rehab latest — 2026-08-05T09:59:21.123062+00:00
 
-**HEAD:** `2476bb45` · **PM:** Cursor · **Mode:** recommend only (no auto-edit)
+**HEAD:** `29713756` · **PM:** Cursor · **Mode:** recommend only (no auto-edit)
 
 Findings: **1**
 
 | Sev | ID | Facet | Summary | Recommendation |
 |-----|----|-------|---------|----------------|
-| P2 | `rehab.dirty_tree_sprawl` | worktree_hygiene | Dirty tree sprawl: 352 porcelain lines | PM: sequence landings; avoid multi-mission dirt; path-limited commits only. |
+| P2 | `rehab.dirty_tree_sprawl` | worktree_hygiene | Dirty tree sprawl: 340 porcelain lines | PM: sequence landings; avoid multi-mission dirt; path-limited commits only. |
 
 ## Advisory debt (P1/RC-246 moved these off the blocking commit path)
 

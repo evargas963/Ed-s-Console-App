@@ -16,6 +16,7 @@ absolute operator-home paths never appear in tracked files (credential-leak hook
 | `EdConsole Stream Capture` | Daily 08:25 ET, 405 min | `cmd /c cd /d <REPO> && python tools\run_stream_capture.py --symbols SPY,QQQ,IWM --duration-min 405` | `data/stream_capture.lock` owner + `reports/stream_capture_status.json` | 2026-08-04 — Last Result **3221225786** (was 0 on 2026-07-27) |
 | `EdWebConsole Daily Scoreboard` | Daily 15:35 ET | `powershell -NoProfile -ExecutionPolicy Bypass -File <REPO>\tools\run_daily_scoreboard.ps1` | per-script | 2026-08-04 — Last Result **3221225786** (was 0 on 2026-07-27) |
 | `EdMondayDebtWake` | weekly wake | (registered outside this inventory before the standing rule) | `reports/_wake/` | 2026-08-04 — Last Result **0** |
+| `EdRehabDailyScan` | Daily 18:30 | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<REPO>\tools\run_rehab_daily.ps1"` (repo launcher, venv parity + non-zero exit surfaced inside it) | `reports/rehab_latest.md` + `reports/tqm_queue_latest.json` + `reports/advisory_debt_latest.json` | 2026-08-05 — registered by the PM; **PROVEN BY EXECUTION, not by registration**: triggered on demand, Last Result **0**, LastRunTime 04:53:24, and all three artifacts advanced 04:10 → 04:59 with the queue reading 3367/prior 3367/delta 0 across 5 items |
 | `EdRthCompletenessCheck` | daily | (registered outside this inventory before the standing rule) | per-script | 2026-08-04 — Last Result **3221225786** |
 
 ### Terminated-mid-run reading (measured 2026-08-04, not diagnosed)
@@ -32,7 +33,17 @@ Left visible here rather than quietly refreshing the dates, because a table that
 "Last Result 0" while this turn's `Get-ScheduledTaskInfo` said otherwise is the precise failure
 this inventory exists to prevent.
 
-## NOT SCHEDULED — the advisory-debt / TQM runner (RC-250 → RC-251, honest gap)
+## RESOLVED 2026-08-05 — the advisory-debt / TQM runner is now scheduled AND proven to run
+
+The section below is kept as written, with this heading correcting it, because the honest
+record of a gap is worth more than a tidy file. `EdRehabDailyScan` now exists (see the table
+above), calls the repo launcher rather than an inline command, and — the part that matters —
+was **executed on demand and observed to complete**: Last Result 0 and all three artifacts
+advanced. Registration alone would have proven nothing; that is the `EdTerrainScorecard`
+lesson recorded at the bottom of this file, where a task reported "scheduled" for weeks while
+producing nothing.
+
+### The gap as it stood, 2026-08-04 (historical)
 
 `tools/rehab_daily_scan.py` runs the full MEASURE + TRIAGE pass: it invokes
 `-m tools.check_institutional_correctness --advisory`, refreshes
