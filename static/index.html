@@ -4,6 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ed Console</title>
+<!-- # ui-mockup-ok: Axiom brand kit integration (operator/PM mission axiom-brand-landing-v1,
+     2026-08-04). Additive brand chrome only — startup splash, icons, manifest. No layout,
+     card, or data surface is redesigned, and the title/labels deliberately stay "Ed Console"
+     per the PM default (no global rename). Assets are self-contained: inspected before
+     deploy — zero external URLs, zero @import, no web fonts, no network calls, no
+     credentials; sessionStorage is used only to tell a warm reload from a cold start. -->
+<link rel="icon" href="/static/icons/axiom.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/axiom-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icons/axiom-512.png">
+<link rel="apple-touch-icon" href="/static/icons/axiom-256.png">
+<link rel="manifest" href="/static/site.webmanifest">
+<meta name="theme-color" content="#0A1930">
+<link rel="stylesheet" href="/static/css/axiom-splash.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -3024,6 +3037,40 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
 </style>
 </head>
 <body class="layout-classic">
+<!-- # ui-mockup-ok: Axiom startup splash (mission axiom-brand-landing-v1, RC-249). FIRST body
+     child so it covers the console before any paint. It is dismissed from the ACCEPTED
+     full-render branch only — never on DOMContentLoaded, SSE onopen, a quote-only tick, or
+     the duplicate-fingerprint skip, because a splash is a promise that pixels exist
+     underneath it. The single dismissal call site lives in _renderMoneyPathCore. -->
+<div id="axiom-splash" class="axiom-splash" role="status" aria-live="polite">
+  <span class="ax-sr">Loading axiom</span>
+  <span class="ax-keyline" aria-hidden="true"></span>
+  <span class="ax-corner ax-tl" aria-hidden="true"></span>
+  <span class="ax-corner ax-tr" aria-hidden="true"></span>
+  <span class="ax-corner ax-bl" aria-hidden="true"></span>
+  <span class="ax-corner ax-br" aria-hidden="true"></span>
+
+  <svg class="ax-medallion" viewBox="0 0 260 260" aria-hidden="true">
+    <circle class="ax-disc" cx="130" cy="130" r="90" fill="#1C3560"/>
+    <circle class="ax-disc" cx="130" cy="130" r="90" fill="none" stroke="#F0C44A" stroke-width="1.5" opacity=".7"/>
+    <circle class="ax-bezel" cx="130" cy="130" r="102" stroke-width="10" stroke-dasharray="2.4 8.28"/>
+    <circle class="ax-ring" cx="130" cy="130" r="112" stroke-width="8"/>
+    <polygon class="ax-diamond" points="130,9 139,18 130,27 121,18"     fill="#FFDE8C" style="animation-delay:1800ms"/>
+    <polygon class="ax-diamond" points="233,130 242,139 251,130 242,121" fill="#FFDE8C" style="animation-delay:1920ms"/>
+    <polygon class="ax-diamond" points="130,233 139,242 130,251 121,242" fill="#FFDE8C" style="animation-delay:2040ms"/>
+    <polygon class="ax-diamond" points="9,130 18,139 27,130 18,121"      fill="#FFDE8C" style="animation-delay:2160ms"/>
+    <rect class="ax-column" x="86"  y="140" width="28" height="46"  fill="#D9A73A" style="animation-delay:2200ms"/>
+    <rect class="ax-column" x="118" y="114" width="28" height="72"  fill="#F0C44A" style="animation-delay:2420ms"/>
+    <rect class="ax-column" x="150" y="86"  width="28" height="100" fill="#FFDE8C" style="animation-delay:2640ms"/>
+    <rect class="ax-baserule" x="78" y="193" width="104" height="7" fill="#E8B93A"/>
+    <rect class="ax-baserule" x="78" y="205" width="62"  height="3" fill="#E8B93A" opacity=".6"/>
+  </svg>
+
+  <span class="ax-rule" aria-hidden="true"></span>
+  <p class="ax-wordmark">axiom</p>
+  <p class="ax-subline">systematic market intelligence</p>
+</div>
+<script src="/static/js/axiom-splash.js"></script>
 <script>
 (function(){try{var m=localStorage.getItem('ed_ui_layout')||'classic';document.body.classList.remove('layout-classic','layout-clean');document.body.classList.add('layout-'+m);}catch(e){}})();
 </script>
@@ -8902,6 +8949,13 @@ function _renderMoneyPathCore(d, fullRenderSource) {
   try { paintSwitchStateChip(); } catch (eSw) {}
   _commitTierCCardRenderFingerprint(d);
   _edMplOnRenderComplete(fullRenderSource, _mplRenderStart, null);
+  // # ui-mockup-ok: RC-249 — the ONLY legal Axiom splash dismissal point. This is the accepted
+  // full-render branch: the cards are painted and _edMplOnRenderComplete has run. The other
+  // `return true` in this function (the _shouldSkipTierCCardRender duplicate-fingerprint skip)
+  // paints NOTHING and must never lift the overlay, which is why this is hooked to the branch
+  // rather than to the return value the integration spec named. Guarded so a missing splash,
+  // an early load, or a throw here can never break the money path.
+  try { if (window.AxiomSplash) window.AxiomSplash.dismiss(); } catch (eAx) {}
   return true;
 }
 

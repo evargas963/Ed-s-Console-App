@@ -1,0 +1,189 @@
+/* ============================================================
+   AXIOM SPLASH OVERLAY
+   Full-viewport startup splash for the console landing page.
+
+   Deployed 2026-08-04 from the operator's Axiom brand package (top-level assets
+   only; the nested kit archive was deliberately not deployed).
+   Self-contained by inspection: no external URLs, no stylesheet imports, no web fonts —
+   the type stacks below are system fonts, so nothing here reaches the network.
+
+   Dismissal is NOT time-based: static/js/axiom-splash.js exposes
+   AxiomSplash.dismiss(), and index.html calls it from the accepted
+   full-render success path only (RC-249).
+   ============================================================ */
+
+.axiom-splash {
+  --ax-field:      #0A1930;
+  --ax-disc:       #1C3560;
+  --ax-gold:       #E8B93A;
+  --ax-gold-lit:   #F0C44A;
+  --ax-gold-pale:  #FFDE8C;
+  --ax-gold-deep:  #D9A73A;
+  --ax-type:       #FFE7B0;
+  --ax-type-mute:  #BCA269;
+
+  --ax-med:        clamp(170px, 24vmin, 360px);
+  --ax-wordmark:   clamp(26px, 4.2vmin, 52px);
+  --ax-subline:    clamp(11px, 1.1vmin, 14px);
+  --ax-inset:      max(20px, 3vmin);
+  --ax-rule-w:     clamp(220px, 26vmin, 420px);
+
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--ax-field);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 600ms ease-out;
+}
+
+.axiom-splash.ax-out { opacity: 0; pointer-events: none; }
+
+.axiom-splash .ax-keyline {
+  position: absolute;
+  inset: var(--ax-inset);
+  border: 1px solid rgba(240, 196, 74, 0.42);
+  border-radius: 4px;
+  opacity: 0;
+  animation: ax-fade 800ms ease-out 100ms forwards;
+}
+
+.axiom-splash .ax-corner {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 0;
+  opacity: 0;
+  animation: ax-fade 700ms ease-out 350ms forwards;
+}
+.axiom-splash .ax-tl { top: calc(var(--ax-inset) + 12px); left: calc(var(--ax-inset) + 12px);
+  border-top: 2px solid var(--ax-gold-lit); border-left: 2px solid var(--ax-gold-lit); }
+.axiom-splash .ax-tr { top: calc(var(--ax-inset) + 12px); right: calc(var(--ax-inset) + 12px);
+  border-top: 2px solid var(--ax-gold-lit); border-right: 2px solid var(--ax-gold-lit); }
+.axiom-splash .ax-bl { bottom: calc(var(--ax-inset) + 12px); left: calc(var(--ax-inset) + 12px);
+  border-bottom: 2px solid var(--ax-gold-lit); border-left: 2px solid var(--ax-gold-lit); }
+.axiom-splash .ax-br { bottom: calc(var(--ax-inset) + 12px); right: calc(var(--ax-inset) + 12px);
+  border-bottom: 2px solid var(--ax-gold-lit); border-right: 2px solid var(--ax-gold-lit); }
+
+.axiom-splash .ax-medallion { width: var(--ax-med); height: var(--ax-med); display: block; }
+
+.axiom-splash .ax-ring {
+  fill: none;
+  stroke: var(--ax-gold);
+  stroke-dasharray: 704;
+  stroke-dashoffset: 704;
+  animation: ax-draw 1500ms cubic-bezier(.16,.85,.3,1) 400ms forwards;
+}
+.axiom-splash .ax-bezel {
+  fill: none;
+  stroke: var(--ax-gold);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0.9);
+  animation: ax-bezel-in 1000ms ease-out 1000ms forwards;
+}
+.axiom-splash .ax-disc {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0.85);
+  animation: ax-disc-in 900ms cubic-bezier(.2,.9,.3,1) 1200ms forwards;
+}
+.axiom-splash .ax-diamond {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0);
+  animation: ax-pop 450ms cubic-bezier(.2,1.5,.4,1) forwards;
+}
+.axiom-splash .ax-column {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transform: scaleY(0);
+  animation: ax-rise 950ms cubic-bezier(.18,.85,.25,1) forwards;
+}
+.axiom-splash .ax-baserule {
+  clip-path: inset(0 100% 0 0);
+  animation: ax-wipe 800ms cubic-bezier(.3,.7,.2,1) 3000ms forwards;
+}
+
+.axiom-splash .ax-rule {
+  width: var(--ax-rule-w);
+  height: 1px;
+  background: rgba(232, 185, 58, 0.55);
+  margin-top: 20px;
+  opacity: 0;
+  animation: ax-fade 800ms ease-out 3900ms forwards;
+}
+
+.axiom-splash .ax-wordmark {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: var(--ax-wordmark);
+  font-weight: 500;
+  color: var(--ax-type);
+  letter-spacing: 0.55em;
+  text-indent: 0.55em;
+  line-height: 1.1;
+  margin: 24px 0 0;
+  opacity: 0;
+  animation: ax-track 1100ms cubic-bezier(.2,.85,.3,1) 3200ms forwards;
+}
+
+.axiom-splash .ax-subline {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  font-size: var(--ax-subline);
+  color: var(--ax-type-mute);
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  margin: 14px 0 0;
+  opacity: 0;
+  animation: ax-fade 900ms ease-out 4200ms forwards;
+}
+
+.axiom-splash .ax-sr {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+@keyframes ax-fade      { to { opacity: 1; } }
+@keyframes ax-draw      { to { stroke-dashoffset: 0; } }
+@keyframes ax-bezel-in  { to { opacity: 0.62; transform: scale(1); } }
+@keyframes ax-disc-in   { to { opacity: 1; transform: scale(1); } }
+@keyframes ax-pop       { to { transform: scale(1); } }
+@keyframes ax-rise      { to { transform: scaleY(1); } }
+@keyframes ax-wipe      { to { clip-path: inset(0 0 0 0); } }
+@keyframes ax-track     { to { opacity: 1; letter-spacing: 0.18em; text-indent: 0.18em; } }
+
+/* Warm start and reduced motion both land on the finished frame with
+   no build sequence. Same rules, two triggers. */
+.axiom-splash.ax-warm .ax-keyline,
+.axiom-splash.ax-warm .ax-corner,
+.axiom-splash.ax-warm .ax-rule,
+.axiom-splash.ax-warm .ax-subline { animation: none; opacity: 1; }
+.axiom-splash.ax-warm .ax-ring     { animation: none; stroke-dashoffset: 0; }
+.axiom-splash.ax-warm .ax-bezel    { animation: none; opacity: 0.62; transform: none; }
+.axiom-splash.ax-warm .ax-disc     { animation: none; opacity: 1; transform: none; }
+.axiom-splash.ax-warm .ax-diamond  { animation: none; transform: none; }
+.axiom-splash.ax-warm .ax-column   { animation: none; transform: none; }
+.axiom-splash.ax-warm .ax-baserule { animation: none; clip-path: none; }
+.axiom-splash.ax-warm .ax-wordmark { animation: none; opacity: 1; letter-spacing: 0.18em; text-indent: 0.18em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .axiom-splash * { animation: none !important; }
+  .axiom-splash .ax-keyline,
+  .axiom-splash .ax-corner,
+  .axiom-splash .ax-rule,
+  .axiom-splash .ax-subline,
+  .axiom-splash .ax-disc,
+  .axiom-splash .ax-wordmark { opacity: 1; }
+  .axiom-splash .ax-bezel    { opacity: 0.62; transform: none; }
+  .axiom-splash .ax-ring     { stroke-dashoffset: 0; }
+  .axiom-splash .ax-diamond,
+  .axiom-splash .ax-column   { transform: none; }
+  .axiom-splash .ax-baserule { clip-path: none; }
+  .axiom-splash .ax-wordmark { letter-spacing: 0.18em; text-indent: 0.18em; }
+  .axiom-splash             { transition: none; }
+}
