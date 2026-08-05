@@ -272,3 +272,38 @@ def test_rc207_rebuild_tool_measure_and_dry_defaults(tmp_path):
     doc = json.loads(Path(report).read_text(encoding="utf-8"))
     assert doc["mode"] == "measure"
     assert doc.get("snapshots_prior_net_gamma", {}).get("ok") is True
+
+
+def test_rc248_repair_tool_runs_when_invoked_BY_PATH(tmp_path):
+    """RC-248: the operator ran this tool the documented way and got a traceback.
+
+    `from db import configure_sqlite_connection` inside _connect needs the REPO root on
+    sys.path; run by PATH, Python puts tools/ there instead, so the tool died with
+    ModuleNotFoundError before it could measure anything — on a REPAIR tool, reached for when
+    something is already broken, by someone following a written instruction.
+
+    The test above imports main() and therefore CANNOT catch this: by the time it runs, pytest
+    has already put the repo root on the path. Only executing the tool as its own process, by
+    path, exercises what the operator actually typed.
+    """
+    import sqlite3
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    script = repo / "tools" / "rebuild_snapshots_1m_normalized_v1.py"
+    db = tmp_path / "probe.db"
+    sqlite3.connect(str(db)).close()
+    report = tmp_path / "rc248_report.json"
+
+    out = subprocess.run(
+        [sys.executable, str(script), "--db", str(db), "--report", str(report)],
+        capture_output=True, text=True, timeout=300,
+        cwd=str(tmp_path),          # NOT the repo root — the path form must not depend on CWD
+    )
+    assert "ModuleNotFoundError" not in out.stderr, (
+        f"the repair tool still cannot be run by path (RC-248): {out.stderr[-400:]}"
+    )
+    assert out.returncode == 0, out.stderr[-400:]
+    assert report.is_file(), "path-invoked run produced no report"

@@ -29,6 +29,14 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
+# RC-248: make BOTH invocation forms work. Run by PATH, Python puts tools/ on sys.path rather
+# than the repo root, so `from db import ...` inside _connect died with ModuleNotFoundError —
+# and the path form is the one the RC-207 row prints and the one the operator was handed. This
+# is a REPAIR tool: it is reached for when something is already broken, by someone following a
+# written instruction, which is the worst possible moment to return a traceback. Same guard
+# tools/process_lock_guard.py and tools/pm_verify_lock.py already carry.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 DEFAULT_DB = REPO / "data" / "ed_console.db"
 OUT_DEFAULT = REPO / "data" / "ed_console_repaired.db"
 QUAR_DEFAULT = REPO / "data" / "ed_console_pre_rc207_quarantine.db"
