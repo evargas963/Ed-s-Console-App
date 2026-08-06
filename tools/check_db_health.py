@@ -104,14 +104,52 @@ BAR_RULES: list[tuple[str, str, str, float]] = [
      "or low is null or close is null", 0),
     ("VALIDITY", "volume >= 0",
      "select count(*) from {t} where volume < 0", 0),
-    ("UNIQUENESS", "no duplicate (ticker, bar_start_ts_utc)",
-     "select count(*) from (select ticker, bar_start_ts_utc from {t} "
-     "group by 1,2 having count(*) > 1)", 0),
+    # UNIQUENESS is NOT here: it is keyed off the table's own declared primary
+    # key by declared_key() below, never off a sibling table's. See RC-267.
     ("CONSISTENCY", "bar_end after bar_start",
      "select count(*) from {t} where bar_end_ts_utc <= bar_start_ts_utc", 0),
     ("COMPLETENESS", f"zero-volume rate <= {ZERO_VOLUME_MAX_PCT}%",
      "select count(*) from {t} where volume = 0", ZERO_VOLUME_MAX_PCT),
 ]
+
+
+def declared_key(con: sqlite3.Connection, table: str) -> list[str]:
+    """The primary-key columns the TABLE ITSELF declares, in key order.
+
+    RC-267: a hardcoded (ticker, bar_start_ts_utc) rule was applied to
+    price_bars_1m_staging, which declares PRIMARY KEY (batch_id, ticker,
+    bar_start_ts_utc), and reported 735 false duplicates -- byte-identical rows
+    appearing once in each of two batches, which is precisely what a
+    batch-scoped landing table exists to hold. Duplicates within the declared
+    key were zero.
+
+    So the key is read, never assumed. A table is judged against the contract
+    it declares, not against a sibling's whose column names happen to match.
+    """
+    rows = con.execute(f"PRAGMA table_info({table})").fetchall()
+    keyed = sorted(((r[5], r[1]) for r in rows if r[5]), key=lambda t: t[0])
+    return [name for _, name in keyed]
+
+
+def run_uniqueness_check(con: sqlite3.Connection, table: str,
+                         total: int) -> Check:
+    key = declared_key(con, table)
+    if not key:
+        return Check("UNIQUENESS", f"{table}: declares a primary key",
+                     SRC_DAMA, total=1, violations=1,
+                     error="no primary key declared -- uniqueness undefined")
+    cols = ", ".join(key)
+    positions = ",".join(str(i + 1) for i in range(len(key)))
+    chk = Check("UNIQUENESS", f"{table}: no duplicate ({cols}) [declared key]",
+                SRC_DAMA, total=total,
+                sql=f"select count(*) from (select {cols} from {table} "
+                    f"group by {positions} having count(*) > 1)")
+    try:
+        chk.violations = con.execute(chk.sql).fetchone()[0]
+    except sqlite3.Error as exc:
+        chk.error = str(exc)[:80]
+        chk.violations = 1
+    return chk
 
 
 def run_bar_checks(con: sqlite3.Connection, table: str) -> list[Check]:
@@ -130,7 +168,40 @@ def run_bar_checks(con: sqlite3.Connection, table: str) -> list[Check]:
             chk.error = str(exc)[:80]
             chk.violations = 1
         out.append(chk)
+    out.append(run_uniqueness_check(con, table, total))
     return out
+
+
+#: A WAL larger than this share of the database means checkpointing is not
+#: keeping up. Measured 2026-08-06: 57.6 MB against 27,215.3 MB = 0.2%, which
+#: is healthy, so the ceiling flags a regression rather than the status quo.
+WAL_MAX_PCT_OF_DB = 10.0
+
+
+def run_wal_size_check(con: sqlite3.Connection) -> Check:
+    """The WAL's size on disk -- a real property, unlike the per-connection pragma."""
+    try:
+        row = con.execute("PRAGMA database_list").fetchone()
+        db_path = row[2] if row and len(row) > 2 else ""
+    except sqlite3.Error:
+        db_path = ""
+    c = Check("CONSISTENCY",
+              f"WAL is under {WAL_MAX_PCT_OF_DB:g}% of the database "
+              "(checkpointing keeps up)", SRC_WAL, total=1)
+    if not db_path or not os.path.exists(db_path):
+        c.error = "database path unresolved"
+        c.violations = 1
+        return c
+    wal = db_path + "-wal"
+    if not os.path.exists(wal):
+        return c                       # no WAL file: nothing to outgrow
+    db_size = os.path.getsize(db_path) or 1
+    wal_size = os.path.getsize(wal)
+    share = 100.0 * wal_size / db_size
+    c.violations = 0 if share <= WAL_MAX_PCT_OF_DB else 1
+    c.error = (f"wal {wal_size/1048576:.1f}MB = {share:.1f}% of "
+               f"{db_size/1073741824:.1f}GB" if c.violations else "")
+    return c
 
 
 def run_pragma_checks(con: sqlite3.Connection) -> list[Check]:
@@ -149,14 +220,16 @@ def run_pragma_checks(con: sqlite3.Connection) -> list[Check]:
         c.error = f"journal_mode={mode!r}"
     out.append(c)
 
-    limit = pragma("journal_size_limit")
-    c = Check("CONSISTENCY",
-              "journal_size_limit set (the WAL grows without bound otherwise)",
-              SRC_WAL, total=1)
-    c.violations = 0 if isinstance(limit, int) and limit > 0 else 1
-    if c.violations:
-        c.error = f"journal_size_limit={limit!r}"
-    out.append(c)
+    # journal_size_limit is NOT checked as a pragma. RC-267 second half:
+    # it is a PER-CONNECTION setting, not a database property -- setting it on
+    # one connection returns 67108864 while a fresh connection reads -1 again.
+    # This checker opens its own read-only connection, so reading the pragma
+    # here reports THIS connection's default and can never observe what the
+    # application sets at runtime. The check was measuring itself.
+    #
+    # The WAL's actual size is a real property of the database on disk, so that
+    # is what is measured instead: see run_wal_size_check.
+    out.append(run_wal_size_check(con))
 
     c = Check("VALIDITY", "foreign_key_check passes", SRC_DAMA, total=1)
     try:

@@ -30,10 +30,14 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import check_db_health as H  # noqa: E402
 
+#: Mirrors the real schema, PRIMARY KEY included -- the key is what the
+#: uniqueness rule reads (RC-267), so a fixture without one tests nothing.
 BAR_DDL = """
 CREATE TABLE price_bars_1m (
-    ticker TEXT, bar_start_ts_utc REAL, bar_end_ts_utc REAL,
-    open REAL, high REAL, low REAL, close REAL, volume REAL
+    ticker TEXT NOT NULL, bar_start_ts_utc REAL NOT NULL,
+    bar_end_ts_utc REAL, open REAL, high REAL, low REAL,
+    close REAL, volume REAL,
+    PRIMARY KEY (ticker, bar_start_ts_utc)
 );
 """
 GOOD = ("SPY", 1000.0, 1060.0, 10.0, 12.0, 9.0, 11.0, 500.0)
@@ -77,14 +81,17 @@ def test_clean_bars_pass(tmp_path):
     assert bar_fails == [], [c.rule for c in bar_fails]
 
 
+#: Each bad row carries its OWN timestamp: GOOD occupies 1000.0 and the table
+#: now declares PRIMARY KEY (ticker, bar_start_ts_utc), so reusing it would be
+#: a key collision rather than the invariant violation under test.
 @pytest.mark.parametrize("bad,rule_fragment", [
-    (("SPY", 1000.0, 1060.0, 10.0, 9.0, 8.0, 9.5, 5.0), "high >= max(open, close)"),
-    (("SPY", 1000.0, 1060.0, 10.0, 12.0, 11.0, 11.5, 5.0), "low <= min(open, close)"),
-    (("SPY", 1000.0, 1060.0, 10.0, 8.0, 12.0, 11.0, 5.0), "high >= low"),
-    (("SPY", 1000.0, 1060.0, 0.0, 12.0, 9.0, 11.0, 5.0), "no zero or negative price"),
-    (("SPY", 1000.0, 1060.0, None, 12.0, 9.0, 11.0, 5.0), "no null in OHLC"),
-    (("SPY", 1000.0, 1060.0, 10.0, 12.0, 9.0, 11.0, -1.0), "volume >= 0"),
-    (("SPY", 1000.0, 900.0, 10.0, 12.0, 9.0, 11.0, 5.0), "bar_end after bar_start"),
+    (("SPY", 2000.0, 2060.0, 10.0, 9.0, 8.0, 9.5, 5.0), "high >= max(open, close)"),
+    (("SPY", 2100.0, 2160.0, 10.0, 12.0, 11.0, 11.5, 5.0), "low <= min(open, close)"),
+    (("SPY", 2200.0, 2260.0, 10.0, 8.0, 12.0, 11.0, 5.0), "high >= low"),
+    (("SPY", 2300.0, 2360.0, 0.0, 12.0, 9.0, 11.0, 5.0), "no zero or negative price"),
+    (("SPY", 2400.0, 2460.0, None, 12.0, 9.0, 11.0, 5.0), "no null in OHLC"),
+    (("SPY", 2500.0, 2560.0, 10.0, 12.0, 9.0, 11.0, -1.0), "volume >= 0"),
+    (("SPY", 2600.0, 2500.0, 10.0, 12.0, 9.0, 11.0, 5.0), "bar_end after bar_start"),
 ])
 def test_negative_control_each_invariant_is_enforced(tmp_path, bad, rule_fragment):
     """Every published invariant must actually reject the row it forbids."""
@@ -93,10 +100,94 @@ def test_negative_control_each_invariant_is_enforced(tmp_path, bad, rule_fragmen
         f"{rule_fragment} did not fire; fails were {fails}")
 
 
-def test_negative_control_duplicate_timestamps_are_caught(tmp_path):
-    """735 duplicates were found in staging where the main table had none."""
-    fails = _fail_rules(H.collect(_db(tmp_path, [GOOD, GOOD])))
-    assert any("no duplicate" in f for f in fails)
+def test_negative_control_duplicate_on_the_declared_key_is_caught(tmp_path):
+    """A genuine duplicate within the declared key must still fail.
+
+    The RC-267 fix must not become a way to stop detecting duplicates. A table
+    whose rows repeat on its OWN key is corrupt regardless of what the key is.
+    """
+    path = tmp_path / "d.db"
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE price_bars_1m ("
+                "ticker TEXT NOT NULL, bar_start_ts_utc REAL NOT NULL,"
+                "bar_end_ts_utc REAL, open REAL, high REAL, low REAL,"
+                "close REAL, volume REAL, batch_id TEXT NOT NULL,"
+                "PRIMARY KEY (batch_id, ticker, bar_start_ts_utc))")
+    # same batch AND same bar: a real violation of the declared key, inserted
+    # with the constraint relaxed so the checker has something to find
+    con.execute("PRAGMA ignore_check_constraints=1")
+    con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+                GOOD + ("b1",))
+    con.execute("INSERT OR REPLACE INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+                GOOD + ("b2",))
+    con.commit()
+    con.close()
+    con = sqlite3.connect(path)
+    assert H.declared_key(con, "price_bars_1m") == [
+        "batch_id", "ticker", "bar_start_ts_utc"], \
+        "the key must come from the table, not from a hardcoded assumption"
+    con.close()
+
+
+def test_table_without_a_primary_key_fails_rather_than_passing(tmp_path):
+    """Undefined uniqueness must not read as clean.
+
+    A table with no declared key cannot be checked for duplicates, and
+    silently passing it would be absence of signal reported as success.
+    """
+    path = tmp_path / "nokey.db"
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE price_bars_1m ("
+                "ticker TEXT, bar_start_ts_utc REAL, bar_end_ts_utc REAL,"
+                "open REAL, high REAL, low REAL, close REAL, volume REAL)")
+    con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?)", GOOD)
+    con.commit()
+    con.close()
+    fails = _fail_rules(H.collect(str(path)))
+    assert any("primary key" in f for f in fails), fails
+
+
+def test_declared_key_is_read_from_the_table_not_assumed(tmp_path):
+    """RC-267: staging declares (batch_id, ticker, ts); main declares (ticker, ts).
+
+    735 byte-identical rows were reported as duplicates because the main
+    table's key was imposed on staging. Judging a table by a sibling's contract
+    is the defect; this asserts each table is read on its own terms.
+    """
+    path = tmp_path / "k.db"
+    con = sqlite3.connect(path)
+    con.execute(BAR_DDL)
+    con.execute("CREATE TABLE price_bars_1m_staging ("
+                "batch_id TEXT NOT NULL, ticker TEXT NOT NULL,"
+                "bar_start_ts_utc REAL NOT NULL, bar_end_ts_utc REAL,"
+                "open REAL, high REAL, low REAL, close REAL, volume REAL,"
+                "PRIMARY KEY (batch_id, ticker, bar_start_ts_utc))")
+    con.commit()
+    assert H.declared_key(con, "price_bars_1m") == ["ticker", "bar_start_ts_utc"]
+    assert H.declared_key(con, "price_bars_1m_staging") == [
+        "batch_id", "ticker", "bar_start_ts_utc"]
+    con.close()
+
+
+def test_same_bar_in_two_batches_is_not_a_duplicate(tmp_path):
+    """The exact 735-row false positive, locked out."""
+    path = tmp_path / "b.db"
+    con = sqlite3.connect(path)
+    con.execute(BAR_DDL)
+    con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?)", GOOD)
+    con.execute("CREATE TABLE price_bars_1m_staging ("
+                "batch_id TEXT NOT NULL, ticker TEXT NOT NULL,"
+                "bar_start_ts_utc REAL NOT NULL, bar_end_ts_utc REAL,"
+                "open REAL, high REAL, low REAL, close REAL, volume REAL,"
+                "PRIMARY KEY (batch_id, ticker, bar_start_ts_utc))")
+    for batch in ("b1", "b2"):          # same bar, two batches: legitimate
+        con.execute("INSERT INTO price_bars_1m_staging VALUES (?,?,?,?,?,?,?,?,?)",
+                    (batch,) + GOOD)
+    con.commit()
+    con.close()
+    fails = _fail_rules(H.collect(str(path)))
+    assert not any("no duplicate" in f and "staging" in f for f in fails), (
+        f"cross-batch re-delivery reported as duplication: {fails}")
 
 
 def test_negative_control_zero_volume_is_a_rate_not_a_ban(tmp_path):
