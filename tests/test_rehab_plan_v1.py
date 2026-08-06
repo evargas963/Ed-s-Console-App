@@ -64,6 +64,48 @@ def test_every_item_has_a_numeric_target():
         assert isinstance(item.target, (int, float)), item.ident
 
 
+def test_no_measurement_returns_a_constant(monkeypatch, tmp_path):
+    """A measure() that ignores the repository is a stored status in disguise.
+
+    RC-268: item G2 shipped
+        measure=lambda: (1.0, "check written, 19 controls pass, not committed")
+    and kept printing that after the check landed in 6c9f64cb, because nothing
+    re-evaluates a constant. test_no_item_stores_a_status_field passed the
+    whole time -- it inspects the dataclass FIELDS and never asks whether a
+    callable actually reads anything.
+
+    Detection is STRUCTURAL, not behavioural. Comparing results against an
+    empty repository was the first attempt and it produced false positives:
+    three honest measurements returned the same value because the true answer
+    happened to coincide, not because they ignored the tree. Instead, inspect
+    the callable -- a function that reads anything must reference at least one
+    name that touches state. A lambda returning a literal tuple references
+    nothing at all.
+    """
+    READS_STATE = {
+        "REPO", "_read", "_git", "_get", "_files", "open", "server_up",
+        "glob", "os", "sqlite3", "subprocess", "urllib", "re", "ast",
+        "hashlib", "json", "sys", "check_institutional_correctness",
+        "_faucet_census", "_faucets", "BLOCKING_TOOLS", "SURFACES",
+        "DERIVED", "PROD_SKIP", "SKIP_DIRS",
+    }
+    constant = []
+    for item in P.PLAN:
+        if item.manual:
+            continue
+        code = getattr(item.measure, "__code__", None)
+        if code is None:
+            constant.append(f"{item.ident} (not a function)")
+            continue
+        referenced = set(code.co_names) | set(code.co_freevars)
+        if not (referenced & READS_STATE):
+            constant.append(
+                f"{item.ident} references only {sorted(referenced) or 'nothing'}")
+    assert constant == [], (
+        "these measurements read no state and are constants in disguise "
+        f"(RC-268): {constant}")
+
+
 def test_no_item_stores_a_status_field():
     """Status must be derived. A stored status is a status that can be stale."""
     fields = set(P.Item.__dataclass_fields__)

@@ -80,3 +80,46 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      # RC-268: these three take a MEASUREMENT and return exit 1 on findings, but
+      # nothing ran them, so a commit could regress everything they measure. A tool
+      # nobody runs is a comment with an exit code. Wired here rather than as CHECKS
+      # inside the institutional gate because each reads a source that gate does not:
+      # the running server, and the 27GB database on disk.
+      #
+      # duplication_audit is deliberately scoped to the classes that are already at
+      # zero. The remaining classes (D-FUNC 27, D-FIELD, D-SQL, D-DEAD, D-CSS,
+      # D-DBCOL, D-CONCEPT, D-UNIVERSE) are open debt with real counts; blocking on
+      # them today would make every commit impossible and the hook would be disabled
+      # within a day. Move a class into --kind as it reaches zero — that is the
+      # ratchet, and each move is a deliberate act.
+      - id: duplication-ratchet
+        name: duplication ratchet (classes already at zero must stay at zero)
+        entry: python tools/run_with_repo_venv.py tools/duplication_audit.py --kind D-FILE
+        language: system
+        pass_filenames: false
+        always_run: true
+      # Reads the database on disk. Skips itself when the file is absent (CI, fresh
+      # clone) rather than failing a commit for a database that was never there.
+      - id: db-health
+        name: database health (DAMA dimensions + OHLC invariants, cited sources)
+        entry: python tools/run_with_repo_venv.py tools/check_db_health.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      # RC-262: the only check in this repo that compares produced VALUES rather
+      # than source text. It caught spot disagreeing across 14 endpoints and
+      # book_imbalance_5 returning opposite signs at one instant.
+      # --skip-if-down because no server means no measurement: refusing every
+      # commit made outside market hours would get this removed within a week.
+      # A stopped server is not a pass, and an interactive run still exits 2.
+      - id: one-faucet-live
+        name: one faucet per field (live values, not spelling)
+      # --max 13 is a RATCHET holding today's measured debt, not an allowance.
+      # The first wiring of this hook blocked its own commit on 12 pre-existing
+      # disagreements, which is how a useful hook gets deleted in a week. The
+      # count fluctuates 9-13 with live data, so 13 is the observed ceiling.
+      # Lower it as fields are fixed. It must never be raised.
+        entry: python tools/run_with_repo_venv.py tools/check_one_faucet_live.py --skip-if-down --max 13
+        language: system
+        pass_filenames: false
+        always_run: true

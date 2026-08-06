@@ -248,6 +248,51 @@ def m_open_rc() -> tuple[float, str]:
     return (len(op), f"{len(op)} non-closed of {len(rows)}: {', '.join(op)}")
 
 
+def m_status_vocabulary_enforced() -> tuple[float, str]:
+    """Registered, ENFORCED, and green -- read, never asserted.
+
+    RC-268: this item previously returned the constant string "check written,
+    19 controls pass, not committed". It kept saying that after the check
+    landed in 6c9f64cb, because nothing re-evaluates a constant. That is the
+    property RC-264 built this file to eliminate, reproduced inside the file.
+    """
+    try:
+        sys.path.insert(0, os.path.join(REPO, "tools"))
+        import check_institutional_correctness as K
+    except Exception as exc:                                    # noqa: BLE001
+        return (1.0, f"checker unimportable: {type(exc).__name__}")
+    entry = [(n, e) for n, _fn, e in getattr(K, "CHECKS", [])
+             if n == "rc_status_vocabulary"]
+    if not entry:
+        return (1.0, "rc_status_vocabulary is not registered")
+    if not entry[0][1]:
+        return (1.0, "rc_status_vocabulary is registered but NOT enforced")
+    violations = len(K.check_rc_status_vocabulary())
+    if violations:
+        return (float(violations), f"{violations} undeclared status token(s) in the ledger")
+    return (0.0, "registered, ENFORCED, 0 violations on the live ledger")
+
+
+#: Tools that take a measurement and must be wired to something that blocks.
+BLOCKING_TOOLS = ("duplication_audit", "check_db_health", "check_one_faucet_live")
+
+
+def m_tools_unwired() -> tuple[float, str]:
+    """How many measuring tools nothing actually runs."""
+    config = _read(os.path.join(REPO, ".pre-commit-config.yaml"))
+    try:
+        sys.path.insert(0, os.path.join(REPO, "tools"))
+        import check_institutional_correctness as K
+        registry = " ".join(n for n, _f, _e in getattr(K, "CHECKS", []))
+    except Exception:                                           # noqa: BLE001
+        registry = ""
+    unwired = [t for t in BLOCKING_TOOLS
+               if t not in config and t not in registry]
+    return (len(unwired),
+            f"{len(unwired)} of {len(BLOCKING_TOOLS)} unwired: "
+            f"{', '.join(unwired) or 'none'}")
+
+
 def m_server_lines() -> tuple[float, str]:
     n = _read(os.path.join(REPO, "server.py")).count("\n")
     return (n, f"server.py is {n:,} lines in one module")
@@ -349,10 +394,16 @@ PLAN: list[Item] = [
          0, m_open_rc),
     Item("G2", 5, "Unrecognised RC status fails instead of skipping",
          "DONE, FINISHED and the typo CLOSE each took a deficient row from 2 "
-         "violations to 0. Written and verified; cannot land without consent.",
-         0, lambda: (1.0, "check written, 19 controls pass, not committed"),
-         blocked_on="governance/operator_go.json granted=true",
+         "violations to 0. The gate must be registered, ENFORCED, and green.",
+         0, m_status_vocabulary_enforced,
          evidence="check_institutional_correctness.py::check_rc_status_vocabulary"),
+    Item("G3", 5, "The measuring tools are wired to something that blocks",
+         "rehab_plan, duplication_audit, check_db_health and "
+         "check_one_faucet_live were all executable and none was enforced: "
+         "absent from the CHECKS registry and from .pre-commit-config.yaml. A "
+         "tool nobody runs is a comment with an exit code, and nothing stopped "
+         "a commit from regressing every measurement they take.",
+         0, m_tools_unwired),
 ]
 
 PHASE_NAMES = {

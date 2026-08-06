@@ -151,12 +151,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", default=DEFAULT_BASE)
     parser.add_argument("--ticker", default=DEFAULT_TICKER)
     parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--skip-if-down", action="store_true",
+                        dest="skip_if_down",
+                        help="exit 0 instead of 2 when the server is not "
+                             "running (for commit hooks; no server means no "
+                             "measurement, not a pass)")
+    parser.add_argument("--max", type=int, default=0, dest="max_disagreeing",
+                        help="ratchet: fail only ABOVE this many disagreeing "
+                             "fields. The repository carries real debt today, "
+                             "and a hook that blocks every commit is a hook "
+                             "that gets deleted. Lower it as the debt clears; "
+                             "0 is the target and the default.")
     args = parser.parse_args(argv)
 
     if fetch(args.base, "/api/spot", args.ticker) is None:
         sys.stderr.write(
             f"one-faucet: server unreachable at {args.base}. This check needs a "
             "running server -- it verifies behaviour, not source text.\n")
+        # A stopped server is NOT a passing repository, so an interactive run
+        # still reports 2. But wired as a commit hook it must not block: no
+        # server means no measurement, and refusing every commit made outside
+        # market hours would get the hook removed. --skip-if-down states that
+        # choice out loud at the call site rather than hiding it here.
+        if args.skip_if_down:
+            sys.stderr.write("one-faucet: --skip-if-down, not blocking\n")
+            return 0
         return 2
 
     produced, unreachable = census(args.base, args.ticker)
@@ -208,6 +227,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print(f"\n  {len(disagreeing)} field(s) disagree. Two screens can show "
           "contradictory numbers with nothing to detect it (RC-262).")
+    if args.max_disagreeing and len(disagreeing) <= args.max_disagreeing:
+        print(f"  RATCHET: {len(disagreeing)} <= --max {args.max_disagreeing}, "
+              "not blocking. This is DEBT being held, not a pass. Lower --max "
+              "as fields are fixed; it must never be raised.")
+        return 0
     return 1
 
 

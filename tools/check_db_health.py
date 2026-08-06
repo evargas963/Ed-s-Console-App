@@ -275,8 +275,16 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if not os.path.exists(args.db):
-        sys.stderr.write(f"db-health: {args.db} not found\n")
-        return 2
+        # An ABSENT default database is not a failure: a fresh clone or CI has
+        # no 27GB file and blocking its first commit would get this hook
+        # disabled within a day. An absent database the caller NAMED is user
+        # error and still fails, because silently passing a path someone typed
+        # is how a check gets pointed at nothing and reports success.
+        explicit = args.db != DEFAULT_DB
+        sys.stderr.write(
+            f"db-health: {args.db} not found"
+            f"{' (explicit --db)' if explicit else ' -- nothing to check'}\n")
+        return 2 if explicit else 0
     try:
         checks = collect(args.db)
     except sqlite3.Error as exc:
