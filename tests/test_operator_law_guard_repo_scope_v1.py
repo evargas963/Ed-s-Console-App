@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -573,11 +574,127 @@ def test_negative_control_pre_fix_counted_a_rejected_edit_as_production_change(t
 
 
 def test_negative_control_pre_fix_had_no_repository_resolution():
-    """The pre-fix module exposed no identity surface at all — the defect in one assertion."""
+    """The pre-fix module exposed no identity surface at all — the defect in one assertion.
+
+    The comparison is against the PARENT of the commit that introduced
+    ``resolve_target_repo``, not against HEAD. Reading HEAD made this control
+    true for exactly one commit: the moment the fix landed, HEAD became the
+    post-fix state and the control failed on its own success. A negative
+    control that expires when the thing it guards is fixed is not a control.
+    """
     for name in ("resolve_target_repo", "normalize_repo", "repo_root_of", "rc93_applies_to"):
         assert hasattr(G, name), name
-    head = subprocess.run(["git", "show", "HEAD:tools/operator_law_guard.py"],
-                          capture_output=True, cwd=str(REPO))
-    if head.returncode == 0:
-        src = head.stdout.decode("utf-8", "replace")
-        assert "def resolve_target_repo" not in src, "HEAD already had the fix — rebase the claim"
+
+    introduced = subprocess.run(
+        ["git", "log", "--reverse", "--format=%H", "-S", "def resolve_target_repo",
+         "--", "tools/operator_law_guard.py"],
+        capture_output=True, text=True, cwd=str(REPO))
+    if introduced.returncode != 0 or not introduced.stdout.split():
+        pytest.skip("history unavailable: cannot locate the introducing commit")
+    first = introduced.stdout.split()[0]
+
+    before = subprocess.run(["git", "show", f"{first}~1:tools/operator_law_guard.py"],
+                            capture_output=True, cwd=str(REPO))
+    if before.returncode != 0:
+        pytest.skip("the introducing commit has no parent revision of this file")
+    src = before.stdout.decode("utf-8", "replace")
+    assert "def resolve_target_repo" not in src, (
+        f"{first[:8]} is not where the identity surface was introduced")
+
+    after = subprocess.run(["git", "show", f"{first}:tools/operator_law_guard.py"],
+                           capture_output=True, cwd=str(REPO))
+    assert after.returncode == 0
+    assert "def resolve_target_repo" in after.stdout.decode("utf-8", "replace"), (
+        "the located commit does not actually introduce the surface")
+
+
+_MOVING_REF = re.compile(
+    r"""["']?git["']?[^\n]{0,80}?\bshow\b[^\n]{0,80}?["']\s*"""
+    r"""(HEAD|main|master|origin/\w+)\s*[:~^]""")
+
+
+def _moving_ref_offenders(text, label):
+    """Lines inside NEGATIVE-CONTROL functions that pin a historical claim to a moving ref.
+
+    Scoped to negative controls on purpose. Reading ``HEAD:<file>`` to compare
+    what is committed against what is staged is a legitimate and common shape
+    (tests/test_ui_mockup_lock_v1.py does exactly that). The decaying shape is
+    specifically a control asserting a HISTORICAL ABSENCE against a ref that
+    moves when the fix lands.
+    """
+    import ast
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+    lines = text.splitlines()
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if "negative_control" not in node.name:
+            continue
+        end = getattr(node, "end_lineno", node.lineno) or node.lineno
+        for num in range(node.lineno, min(end, len(lines)) + 1):
+            line = lines[num - 1]
+            if line.lstrip().startswith("#") or "moving-ref-ok" in line:
+                continue
+            if _MOVING_REF.search(line):
+                offenders.append(f"{label}:{num}: {line.strip()[:100]}")
+    return offenders
+
+
+def test_no_negative_control_compares_against_a_moving_reference():
+    """Class-level lock for RC-260, not a second copy of the same one-site fix.
+
+    RC-260 was one test comparing against ``git show HEAD:<file>``. The bug is
+    not that one test picked the wrong revision -- it is that a proof bound to
+    a MOVING reference inverts the moment the work it guards succeeds, and goes
+    red for the one reason that should have made it green. Every negative
+    control in this repository carries that decay risk, so the check sweeps
+    them all rather than repairing one site.
+
+    Pinned revisions, ``<sha>~1`` forms and ``-S`` lookups are all fine, and a
+    line may opt out with ``# moving-ref-ok`` when it is a fixture rather than
+    a claim.
+    """
+    offenders = []
+    for path in sorted((REPO / "tests").rglob("test_*.py")):
+        offenders += _moving_ref_offenders(
+            path.read_text(encoding="utf-8", errors="replace"),
+            str(path.relative_to(REPO)))
+    assert offenders == [], (
+        "negative controls must name the revision they mean, not a moving ref "
+        "(RC-260):\n  " + "\n  ".join(offenders))
+
+
+def test_moving_reference_lock_rejects_only_its_target():
+    """The lock above must reject the shape it exists to reject, and only that shape.
+
+    Deliberately NOT named ``*negative_control*``: the fixtures below contain
+    the very shape the scanner refuses, and a scanner that read its own test
+    data as a finding would be unfixable.
+    """
+    bad = (
+        "def test_negative_control_x():\n"
+        "    subprocess.run(['git', 'show', 'HEAD:tools/x.py'])\n"
+        "    run(['git', 'show', 'origin/main:tools/x.py'])\n")
+    assert len(_moving_ref_offenders(bad, "f.py")) == 2
+
+    # the same shape OUTSIDE a negative control is legitimate and must not trip
+    elsewhere = (
+        "def test_committed_matches_worktree():\n"
+        "    _git(['show', 'HEAD:governance/root_cause_log.md'])\n")
+    assert _moving_ref_offenders(elsewhere, "f.py") == []
+
+    # pinned and derived forms are the accepted shapes
+    good = (
+        "def test_negative_control_y():\n"
+        "    subprocess.run(['git', 'show', f'{first}~1:tools/x.py'])\n"
+        "    subprocess.run(['git', 'show', f'{sha}:tools/x.py'])\n"
+        "    git('log', '--reverse', '-S', 'def resolve_target_repo')\n")
+    assert _moving_ref_offenders(good, "f.py") == []
+
+    # and this very file must be clean under its own lock
+    here = Path(__file__).read_text(encoding="utf-8")
+    assert _moving_ref_offenders(here, "self") == []
