@@ -52,6 +52,37 @@ ALWAYS_ALLOWED_PREFIXES = (
 PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
 
 
+def is_foreign_path(p: str) -> bool:
+    """True when the target lives OUTSIDE this repository (RC-259).
+
+    This guard enforces THIS repository's root-cause law. A path in another
+    checkout is governed by that repository's own rules, and blocking it is
+    both an over-reach and — measured 2026-08-05/06 — actively harmful:
+    `_rel()` falls back to the absolute path when `relative_to` raises, and an
+    absolute path matches NO entry in ALWAYS_ALLOWED_PREFIXES. So the guard
+    applied its strictest rule to a foreign tree while silently disabling the
+    `tests/`, `governance/`, `docs/`, `reports/`, `.claude/` and `calibration/`
+    escape hatches that make the rule survivable. An edit to
+    <other-repo>/tests/test_x.py was refused as a PRODUCTION file.
+
+    Fails CLOSED for this repository: anything that resolves under REPO, or
+    that cannot be resolved at all, is treated as ours and stays governed.
+    """
+    try:
+        resolved = Path(p).resolve()
+    except (OSError, ValueError):
+        return False                      # unresolvable -> assume ours, stay strict
+    try:
+        resolved.relative_to(REPO)
+        return False                      # inside this repository
+    except ValueError:
+        pass
+    # Outside REPO. Only treat it as foreign when it is genuinely another
+    # checkout or genuinely outside any repository -- never merely a sibling
+    # path that still resolves back into REPO through a link.
+    return True
+
+
 def _rel(p: str) -> str:
     try:
         return Path(p).resolve().relative_to(REPO).as_posix()
@@ -212,6 +243,18 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return 0                         # unreadable hook input is never a block
+    return decide(payload)
+
+
+def decide(payload: dict) -> int:
+    """Decide one hook payload. Split out of main() so it can be TESTED.
+
+    Until RC-259 the whole decision lived inside a function that read stdin,
+    so nothing could exercise it without a subprocess -- which is why an
+    over-reach into another repository, and the allowlist being void for
+    foreign paths, both survived unnoticed. A guard nobody can unit-test is a
+    guard nobody verifies.
+    """
     tool = payload.get("tool_name") or ""
     # Cursor continuum: Write/StrReplace/Delete (+ path); Claude: Edit/Write (+ file_path).
     if tool not in ("Edit", "Write", "StrReplace", "NotebookEdit", "MultiEdit", "Delete", "EditNotebook"):
@@ -225,6 +268,15 @@ def main() -> int:
     )
     if not fp:
         return 0
+
+    # RC-259: this guard enforces THIS repository's root-cause law. A path in
+    # another checkout is governed by that repository's rules. Blocking it was
+    # not merely over-reach: _rel() falls back to the absolute path, which
+    # matches no ALWAYS_ALLOWED_PREFIXES entry, so the guard applied its
+    # strictest rule to a foreign tree while disabling every compliance route.
+    if is_foreign_path(fp):
+        return 0
+
     rel = _rel(fp)
 
     # RC-160 / RC-163 run BEFORE the RC-66 allowlist — residual drafts under reports/ still gate.

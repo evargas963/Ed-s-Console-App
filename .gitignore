@@ -193,3 +193,10 @@ reports/rehab_queue.jsonl
 # The raw machine dump embeds absolute operator-home paths and verbatim mission text
 # (the credential-leak hook refused it, correctly). The markdown carries the same findings.
 reports/rehab_latest.json
+
+# RC-263: scratch has no lifecycle. 7,793 tracked files / 485,275,039 bytes -- 75% of the
+# repository -- was throwaway debugging output, including six committed Chrome browser
+# profiles and a 98.5%-identical second copy of server.py. Nothing imports it; the only
+# reference outside it is a docstring citation in math_levels.py. Untracked 2026-08-06.
+# Files stay on disk; git history retains them. Nothing here may be imported by production.
+scratchpad/
