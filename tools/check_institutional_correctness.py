@@ -2735,6 +2735,74 @@ def check_adversarial_audits_are_answered() -> list[Violation]:
         f"audit loop has no delivery guarantee.")]
 
 
+#: The ONLY status tokens an RC row may carry. Measured from the live ledger on
+#: 2026-08-06: OPEN 4, CLOSED 227, REMEDIATED 1. Adding a token here is a
+#: deliberate act that must also decide whether it belongs in CLOSED_CLASS.
+DECLARED_RC_STATUSES: frozenset[str] = frozenset({"OPEN", "CLOSED", "REMEDIATED"})
+
+#: Statuses that assert the defect is dealt with, and therefore must satisfy
+#: the full close contract. Six independent clauses key on this classification.
+CLOSED_CLASS_RC_STATUSES: frozenset[str] = frozenset({"CLOSED"})
+
+
+def check_rc_status_vocabulary() -> list[Violation]:
+    """An unrecognised RC status must FAIL, never fall through (RC-257).
+
+    WHAT WAS MEASURED (2026-08-05, reproduced and widened 2026-08-06). Six
+    independent clauses -- the measured-evidence rule, the END-TO-END
+    declaration, the named-victims rule, the defers-its-own-proof rule, the
+    fix-crosswalk rule and the code-not-shipped rule -- each gate themselves on
+    `status == "CLOSED"`. One deliberately deficient row, carrying no
+    END-TO-END declaration and no observed evidence, run through
+    `_five_why_lock_violations` and `_rc_row_violations`:
+
+        CLOSED                -> 1 + 1 violations   BLOCKED
+        CLOSED_WITH_EVIDENCE  -> 0 + 0 violations   passes freely
+        DONE                  -> 0 + 0 violations   passes freely
+        FINISHED              -> 0 + 0 violations   passes freely
+        totally_closed        -> 0 + 0 violations   passes freely
+
+    So inventing a status token was not merely easier than satisfying the close
+    contract -- it was indistinguishable from having satisfied it, and the
+    token that defeats every clause reads STRONGER to a human than the one that
+    triggers them. A plain typo does the same thing silently.
+
+    The root cause is that the vocabulary was emergent: each checker
+    re-derived it by literal equality and no check asked whether an
+    unrecognised status should fail. Constraining the vocabulary at the source
+    makes the six downstream equality comparisons safe by construction rather
+    than by coincidence.
+
+    HOW VALIDATED: negative controls in tests/test_rc_status_vocabulary_v1.py
+    assert that CLOSED_WITH_EVIDENCE is REFUSED here, that every emergent
+    token in the live ledger is declared, and that the declared set and the
+    closed-class set stay consistent.
+    """
+    out: list[Violation] = []
+    log = REPO / "governance" / "root_cause_log.md"
+    if not log.exists():
+        return out
+    for n, line in enumerate(log.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 2:
+            continue                  # 7-cell schema is check_rc_log_rows_keep_schema
+        rc_id, status = cells[0], cells[1]
+        if status in DECLARED_RC_STATUSES:
+            continue
+        out.append(Violation(
+            log, n,
+            f"{rc_id} carries status {status!r}, which is not in the declared "
+            f"vocabulary {sorted(DECLARED_RC_STATUSES)}. An unrecognised status "
+            "SKIPS every close-contract clause instead of failing them "
+            "(RC-257: CLOSED_WITH_EVIDENCE took a deficient row from 2 "
+            "violations to 0). Use a declared token, or add this one to "
+            "DECLARED_RC_STATUSES and decide explicitly whether it belongs in "
+            "CLOSED_CLASS_RC_STATUSES."))
+    return out
+
+
 def check_rc_log_rows_keep_schema() -> list[Violation]:
     """Every RC row in the governance log keeps the 7-cell schema (RC-105).
 
@@ -4255,6 +4323,7 @@ CHECKS = [
     ("agents_laws_name_their_enforcer", check_agents_laws_name_their_enforcer, True),
     ("scheduled_producers_are_not_inert", check_scheduled_producers_are_not_inert, True),
     ("rc_citations_resolve", check_rc_citations_resolve, True),
+    ("rc_status_vocabulary", check_rc_status_vocabulary, True),  # RC-257: unknown status must fail, not skip
     ("rc_log_rows_keep_schema", check_rc_log_rows_keep_schema, True),
     ("adversarial_audits_are_answered", check_adversarial_audits_are_answered, True),
     ("collect_window_single_law", check_collect_window_single_law, True),  # RC-183: 08:15-15:15 CT at the ONE write seam

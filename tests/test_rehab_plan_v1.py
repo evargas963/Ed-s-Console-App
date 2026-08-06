@@ -125,6 +125,34 @@ def test_negative_control_blocked_item_cannot_be_marked_done_by_meeting_target()
 
 # ------------------------------------------------------- live shape -------
 
+def test_empty_files_are_not_counted_as_duplication(tmp_path, monkeypatch):
+    """Three empty __init__.py files were reported as a duplication group.
+
+    Empty package markers are correct Python. A check that cries wolf on them
+    is a check the reader learns to skip, which is how a live item dies quietly.
+    """
+    pkg = tmp_path / "a"
+    pkg.mkdir()
+    for name in ("a", "b", "c"):
+        d = tmp_path / name
+        d.mkdir(exist_ok=True)
+        (d / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.setattr(P, "REPO", str(tmp_path), raising=True)
+    count, detail = P.m_identical_files()
+    assert count == 0, f"empty files counted as duplication: {detail}"
+
+
+def test_genuinely_identical_files_are_still_counted(tmp_path, monkeypatch):
+    """Skipping empty files must not become skipping duplication."""
+    for name in ("one", "two"):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "mod.py").write_text("def f():\n    return 42\n", encoding="utf-8")
+    monkeypatch.setattr(P, "REPO", str(tmp_path), raising=True)
+    count, _ = P.m_identical_files()
+    assert count == 1, "a real byte-identical pair must still be reported"
+
+
 def test_main_runs_and_returns_zero():
     assert P.main(["--json"]) == 0
 

@@ -174,9 +174,15 @@ def m_identical_files() -> tuple[float, str]:
     by_hash: dict[str, list[str]] = defaultdict(list)
     for p in _files(("**/*.py", "**/*.html", "**/*.js", "**/*.css", "**/*.sql")):
         try:
-            by_hash[hashlib.sha256(open(p, "rb").read()).hexdigest()].append(p)
+            raw = open(p, "rb").read()
         except OSError:
-            pass
+            continue
+        # Empty package markers are correct Python, not duplication. Counting
+        # every __init__.py against every other one was a false positive, and a
+        # check that cries wolf is a check nobody reads.
+        if not raw.strip():
+            continue
+        by_hash[hashlib.sha256(raw).hexdigest()].append(p)
     groups = [ps for ps in by_hash.values() if len(ps) > 1]
     wasted = sum(os.path.getsize(ps[0]) * (len(ps) - 1) for ps in groups)
     return (len(groups), f"{len(groups)} groups, {wasted:,} bytes duplicated")
