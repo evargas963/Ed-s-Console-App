@@ -1684,6 +1684,36 @@ def _record_analytics_bg_failure(
         _analytics_bg_fail_counts.pop(inflight_key, None)
 
 
+def _charm_book_scope(contracts: object) -> str:
+    """Which BOOK a charm figure was summed over, counted from the contracts themselves.
+
+    RC-288: this was the literal `"full_chain_banked"`, and `static/exposure.html` carries
+    the same literal as its fallback — a label written identically at both ends can never
+    disagree with itself, so it could not detect the one thing it exists for.
+
+    It is worth detecting. `compute_net_charm` runs on ONE selected expiry while
+    `compute_charm_by_strike` runs on the whole chain, so "charm" names two different
+    quantities depending on which producer answered, and the Exposure tab renders them
+    under one heading. Counting distinct expirations reports the book actually used and
+    changes on its own if the producer changes.
+
+    Absence is reported as absence: an empty or unreadable chain yields "unknown", never a
+    confident "full_chain_banked" for a book nobody looked at (RC-274).
+    """
+    if not isinstance(contracts, list) or not contracts:
+        return "unknown"
+    expiries = {
+        str(c.get("expirationDate") or c.get("expiry") or "").strip()
+        for c in contracts if isinstance(c, dict)
+    }
+    expiries.discard("")
+    if not expiries:
+        return "unknown"
+    if len(expiries) == 1:
+        return f"single_expiry_banked:{sorted(expiries)[0][:10]}"
+    return "full_chain_banked"
+
+
 def _analytics_generated_ts(entry: dict) -> float | None:
     """When this entry was computed, or None when it carries no usable timestamp.
 
@@ -12456,7 +12486,15 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
                     _g(v, "net_dex_dollars") for k, v in per1.items() if k > spot1)),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
-                "charm_book_scope": "full_chain_banked",
+                # RC-288: DERIVED from the chain actually summed, not asserted. This was the
+                # string literal "full_chain_banked", and static/exposure.html hardcodes the
+                # same literal as its fallback — a label identical on both sides of the wire
+                # can never disagree with itself, so it could not detect the one thing it
+                # exists for. It matters because the repo computes charm two ways:
+                # compute_net_charm on ONE selected expiry, compute_charm_by_strike on the
+                # whole book. Counting the distinct expiries in `contracts` reports which
+                # book these numbers came from and changes if the producer ever changes.
+                "charm_book_scope": _charm_book_scope(contracts),
                 "charm_error": charm_err,
                 "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
                 "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "
