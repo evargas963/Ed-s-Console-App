@@ -330,7 +330,10 @@ tbody tr:hover{background:var(--cv-sf2)}
     b.blocks.forEach(function(x){
       h+='<tr class="'+(x.stale?"hid":"")+'"><td>'+esc(x.heading||x.kind||"—")+'</td><td>'+
          esc((x.text||"").slice(0,120))+'</td><td class="num">'+
-         (x.age_sec/3600).toFixed(1)+'</td><td class="'+(x.stale?"wn":"mu")+'">'+
+         // RC-274: age_sec is null when the block carries no as_of_utc. JS null/3600 is 0, so
+         // the old expression printed an unknown age as "0.0" — the freshest reading on the table.
+         (x.age_sec==null?'—':(Number(x.age_sec)/3600).toFixed(1))+
+         '</td><td class="'+(x.stale?"wn":"mu")+'">'+
          (x.stale?"stale":"fresh")+'</td></tr>';
     });
     h+='</tbody></table></div>';

@@ -1,0 +1,462 @@
+{
+  "study": "liquidity_gamma_levels_experiment_v1",
+  "mission": "Find & Prove \u2014 DISCUSSION/EXPERIMENT only",
+  "decision_path": "NONE \u2014 Decide WAIT; no admission",
+  "seed": 20260730,
+  "label": {
+    "type": "triple_barrier_bounce",
+    "horizon_min": 30,
+    "k_atr": 1.0,
+    "width_atr_frac": 0.25,
+    "touch_start_et": "10:15",
+    "obs_window_et": "09:45-10:15",
+    "costs": "ABSENT"
+  },
+  "pass_gate": {
+    "min_events_per_arm": 150,
+    "min_win_rate_edge_pp": 0.05,
+    "min_halves_agreeing": 2,
+    "min_regime_resolved": 150
+  },
+  "source": {
+    "faucet_priority": [
+      "option_chain_morning_full (prefer \u2014 wide TRUSTED; flip+regime)",
+      "snapshots.option_chain_json nearest 10:00 ET (fill \u2014 walls/pin)"
+    ],
+    "recompute": "terrain_engine.compute_terrain",
+    "levels": [
+      "CALL_WALL",
+      "PUT_WALL",
+      "GAMMA_FLIP",
+      "GAMMA_PIN"
+    ],
+    "trading_days_only": true
+  },
+  "sample": {
+    "tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "obs_days_available": {
+      "SPY": 70,
+      "QQQ": 66,
+      "IWM": 66
+    },
+    "n_ticker_days_reconstructed": 198,
+    "n_recon_fail": 0,
+    "n_recon_empty_levels": 3,
+    "level_presence_days": {
+      "CALL_WALL": 198,
+      "PUT_WALL": 198,
+      "GAMMA_FLIP": 26,
+      "GAMMA_PIN": 198
+    },
+    "confidence_counts": {
+      "UNAVAILABLE": 171,
+      "TRUSTED": 27
+    },
+    "regime_day_counts": {
+      "SHORT_GAMMA": 27
+    },
+    "faucet_counts": {
+      "snapshots_1000et": 171,
+      "morning_full": 27
+    },
+    "date_min": "2026-03-27",
+    "date_max": "2026-07-30",
+    "n_sessions_scored": 195,
+    "LIMIT": "Sessions with reconstructable gamma levels: n=195 (2026-03-27\u21922026-07-30). Faucet mix: {'snapshots_1000et': 171, 'morning_full': 27}. GAMMA_FLIP / regime available primarily on morning_full days (TRUSTED wide chain); snapshot fill usually has walls+pin only (confidence UNAVAILABLE, flip=None). No invented levels."
+  },
+  "experiments": {
+    "G_approach": {
+      "name": "approach",
+      "question": "Do gamma structure levels (call/put wall, flip, pin) as touch zones beat random same-width zones on triple-barrier bounce labels? Direction = approach-side bounce.",
+      "n_real_events": 2208,
+      "n_placebo_events": 3667,
+      "real": {
+        "n": 2208,
+        "wins": 902,
+        "fails": 1303,
+        "timeouts": 3,
+        "resolved": 2205,
+        "win_rate": 0.4090702947845805,
+        "mean_rr_when_win": 1.2846172602827053,
+        "E": 0.5254987613492065
+      },
+      "placebo": {
+        "n": 3667,
+        "wins": 1518,
+        "fails": 2145,
+        "timeouts": 4,
+        "resolved": 3663,
+        "win_rate": 0.4144144144144144,
+        "mean_rr_when_win": 1.3252470928520481,
+        "E": 0.5492014979386866
+      },
+      "win_rate_edge": -0.005344119629833888,
+      "oos": {
+        "evaluated": true,
+        "split_date": "2026-06-09",
+        "halves_agree": false,
+        "n_agree": 0,
+        "halves": {
+          "first": {
+            "edge_pp": -0.0045295221169036615,
+            "real_win_rate": 0.4036458333333333,
+            "placebo_win_rate": 0.408175355450237,
+            "real_resolved": 1152,
+            "placebo_resolved": 1688
+          },
+          "second": {
+            "edge_pp": -0.004742087104956327,
+            "real_win_rate": 0.41500474833808165,
+            "placebo_win_rate": 0.419746835443038,
+            "real_resolved": 1053,
+            "placebo_resolved": 1975
+          }
+        }
+      },
+      "by_kind": {
+        "CALL_WALL": {
+          "n": 742,
+          "wins": 317,
+          "fails": 424,
+          "timeouts": 1,
+          "resolved": 741,
+          "win_rate": 0.42780026990553305,
+          "mean_rr_when_win": 1.3039195384542779,
+          "E": 0.5578171304858381
+        },
+        "PUT_WALL": {
+          "n": 619,
+          "wins": 230,
+          "fails": 388,
+          "timeouts": 1,
+          "resolved": 618,
+          "win_rate": 0.37216828478964403,
+          "mean_rr_when_win": 1.2577760991667377,
+          "E": 0.468104373476294
+        },
+        "GAMMA_FLIP": {
+          "n": 0,
+          "wins": 0,
+          "fails": 0,
+          "timeouts": 0,
+          "resolved": 0,
+          "win_rate": null,
+          "mean_rr_when_win": null,
+          "E": null
+        },
+        "GAMMA_PIN": {
+          "n": 847,
+          "wins": 355,
+          "fails": 491,
+          "timeouts": 1,
+          "resolved": 846,
+          "win_rate": 0.41962174940898345,
+          "mean_rr_when_win": 1.2847711895116747,
+          "E": 0.5391179341331496
+        },
+        "RAND": {
+          "n": 3667,
+          "wins": 1518,
+          "fails": 2145,
+          "timeouts": 4,
+          "resolved": 3663,
+          "win_rate": 0.4144144144144144,
+          "mean_rr_when_win": 1.3252470928520481,
+          "E": 0.5492014979386866
+        }
+      },
+      "by_regime": {
+        "LONG_GAMMA": {
+          "real": {
+            "n": 0,
+            "wins": 0,
+            "fails": 0,
+            "timeouts": 0,
+            "resolved": 0,
+            "win_rate": null,
+            "mean_rr_when_win": null,
+            "E": null
+          },
+          "placebo": {
+            "n": 0,
+            "wins": 0,
+            "fails": 0,
+            "timeouts": 0,
+            "resolved": 0,
+            "win_rate": null,
+            "mean_rr_when_win": null,
+            "E": null
+          }
+        },
+        "SHORT_GAMMA": {
+          "real": {
+            "n": 232,
+            "wins": 94,
+            "fails": 138,
+            "timeouts": 0,
+            "resolved": 232,
+            "win_rate": 0.4051724137931034,
+            "mean_rr_when_win": 1.2032785926679535,
+            "E": 0.4875352918568432
+          },
+          "placebo": {
+            "n": 643,
+            "wins": 262,
+            "fails": 381,
+            "timeouts": 0,
+            "resolved": 643,
+            "win_rate": 0.40746500777604977,
+            "mean_rr_when_win": 1.2603488920651953,
+            "E": 0.5135480711058805
+          }
+        }
+      },
+      "regime_note": "Regime split too thin for PASS gate (need \u2265150 resolved/arm/regime); pooled primary stands. Per-regime numbers are descriptive only.",
+      "verdict": "FAIL",
+      "costs": "ABSENT"
+    },
+    "G_role_walls": {
+      "name": "role_walls",
+      "question": "Do gamma structure levels (call/put wall, flip, pin) as touch zones beat random same-width zones on triple-barrier bounce labels? Walls use role direction (call\u2192resistance, put\u2192support); flip/pin use approach.",
+      "n_real_events": 2070,
+      "n_placebo_events": 3602,
+      "real": {
+        "n": 2070,
+        "wins": 803,
+        "fails": 1264,
+        "timeouts": 3,
+        "resolved": 2067,
+        "win_rate": 0.3884857281083696,
+        "mean_rr_when_win": 1.4229787275523476,
+        "E": 0.5528069270558951
+      },
+      "placebo": {
+        "n": 3602,
+        "wins": 1518,
+        "fails": 2078,
+        "timeouts": 6,
+        "resolved": 3596,
+        "win_rate": 0.4221357063403782,
+        "mean_rr_when_win": 1.3106106983263455,
+        "E": 0.5532555728752482
+      },
+      "win_rate_edge": -0.033649978232008604,
+      "oos": {
+        "evaluated": true,
+        "split_date": "2026-06-09",
+        "halves_agree": false,
+        "n_agree": 0,
+        "halves": {
+          "first": {
+            "edge_pp": -0.041390486663888726,
+            "real_win_rate": 0.38468634686346864,
+            "placebo_win_rate": 0.42607683352735737,
+            "real_resolved": 1084,
+            "placebo_resolved": 1718
+          },
+          "second": {
+            "edge_pp": -0.025854868223050664,
+            "real_win_rate": 0.392675483214649,
+            "placebo_win_rate": 0.4185303514376997,
+            "real_resolved": 983,
+            "placebo_resolved": 1878
+          }
+        }
+      },
+      "by_kind": {
+        "CALL_WALL": {
+          "n": 669,
+          "wins": 256,
+          "fails": 412,
+          "timeouts": 1,
+          "resolved": 668,
+          "win_rate": 0.38323353293413176,
+          "mean_rr_when_win": 1.5477414562729546,
+          "E": 0.5931464263561024
+        },
+        "PUT_WALL": {
+          "n": 554,
+          "wins": 192,
+          "fails": 361,
+          "timeouts": 1,
+          "resolved": 553,
+          "win_rate": 0.3471971066907776,
+          "mean_rr_when_win": 1.5121684017813244,
+          "E": 0.5250204939276931
+        },
+        "GAMMA_FLIP": {
+          "n": 0,
+          "wins": 0,
+          "fails": 0,
+          "timeouts": 0,
+          "resolved": 0,
+          "win_rate": null,
+          "mean_rr_when_win": null,
+          "E": null
+        },
+        "GAMMA_PIN": {
+          "n": 847,
+          "wins": 355,
+          "fails": 491,
+          "timeouts": 1,
+          "resolved": 846,
+          "win_rate": 0.41962174940898345,
+          "mean_rr_when_win": 1.2847711895116747,
+          "E": 0.5391179341331496
+        },
+        "RAND": {
+          "n": 3602,
+          "wins": 1518,
+          "fails": 2078,
+          "timeouts": 6,
+          "resolved": 3596,
+          "win_rate": 0.4221357063403782,
+          "mean_rr_when_win": 1.3106106983263455,
+          "E": 0.5532555728752482
+        }
+      },
+      "by_regime": {
+        "LONG_GAMMA": {
+          "real": {
+            "n": 0,
+            "wins": 0,
+            "fails": 0,
+            "timeouts": 0,
+            "resolved": 0,
+            "win_rate": null,
+            "mean_rr_when_win": null,
+            "E": null
+          },
+          "placebo": {
+            "n": 0,
+            "wins": 0,
+            "fails": 0,
+            "timeouts": 0,
+            "resolved": 0,
+            "win_rate": null,
+            "mean_rr_when_win": null,
+            "E": null
+          }
+        },
+        "SHORT_GAMMA": {
+          "real": {
+            "n": 212,
+            "wins": 81,
+            "fails": 131,
+            "timeouts": 0,
+            "resolved": 212,
+            "win_rate": 0.38207547169811323,
+            "mean_rr_when_win": 1.4042914974934226,
+            "E": 0.5365453363064493
+          },
+          "placebo": {
+            "n": 675,
+            "wins": 270,
+            "fails": 402,
+            "timeouts": 3,
+            "resolved": 672,
+            "win_rate": 0.4017857142857143,
+            "mean_rr_when_win": 1.234607185465212,
+            "E": 0.4960475298744156
+          }
+        }
+      },
+      "regime_note": "Regime split too thin for PASS gate (need \u2265150 resolved/arm/regime); pooled primary stands. Per-regime numbers are descriptive only.",
+      "verdict": "FAIL",
+      "costs": "ABSENT"
+    }
+  },
+  "verdicts": {
+    "G_approach": "FAIL",
+    "G_role_walls": "FAIL"
+  },
+  "pack_verdict": "FAIL",
+  "runtime_sec": 59.2,
+  "day_ledger_head": [
+    {
+      "ticker": "IWM",
+      "day": "2026-03-27",
+      "spot": 244.72,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 245.0,
+        "PUT_WALL": 245.0,
+        "GAMMA_PIN": 245.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    },
+    {
+      "ticker": "QQQ",
+      "day": "2026-03-27",
+      "spot": 567.18,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 575.0,
+        "PUT_WALL": 570.0,
+        "GAMMA_PIN": 570.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    },
+    {
+      "ticker": "SPY",
+      "day": "2026-03-27",
+      "spot": 638.96,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 645.0,
+        "PUT_WALL": 640.0,
+        "GAMMA_PIN": 640.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    },
+    {
+      "ticker": "IWM",
+      "day": "2026-03-30",
+      "spot": 241.95,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 246.0,
+        "PUT_WALL": 240.0,
+        "GAMMA_PIN": 246.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    },
+    {
+      "ticker": "QQQ",
+      "day": "2026-03-30",
+      "spot": 562.57,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 570.0,
+        "PUT_WALL": 562.0,
+        "GAMMA_PIN": 562.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    }
+  ],
+  "day_ledger_n": 195
+}

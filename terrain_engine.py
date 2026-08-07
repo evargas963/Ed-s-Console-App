@@ -199,7 +199,15 @@ def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
         g = bucket_metric(b, "net_gex_1pct")
         if g is None:
             g = total_gamma_raw_at_strike(b)
-        rows.append([round(sk, 2), round(float(g or 0.0), 1), int(vol_by_k.get(sk, 0))])
+        if g is None:
+            # RC-274: the same law as the NaN strike four lines up. With both the metric and the
+            # raw fallback absent, `float(g or 0.0)` drew a bar at zero — visually identical to a
+            # strike measured at flat gamma, on the surface used to read where dealers are short.
+            continue
+        gf = float_finite_or_none(g)
+        if gf is None:
+            continue
+        rows.append([round(sk, 2), round(gf, 1), int(vol_by_k.get(sk, 0))])
     rows.sort(key=lambda r: r[0])
     return rows
 

@@ -1,0 +1,690 @@
+{
+  "study": "liquidity_gamma_hold_horizon_experiments_v1",
+  "mission": "Find & Prove \u2014 DISCUSSION/EXPERIMENT only",
+  "decision_path": "NONE \u2014 Decide WAIT; no admission",
+  "seed": 20260730,
+  "pass_gate": {
+    "min_events_per_arm": 150,
+    "min_hold_edge_pp": 0.05,
+    "min_win_rate_edge_pp": 0.05,
+    "min_halves_agreeing": 2,
+    "min_regime_resolved": 150,
+    "min_morning_full_days_per_ticker": 20
+  },
+  "definitions": {
+    "E3_session_respect": {
+      "approach_atr": 0.5,
+      "close_through_atr": 0.25,
+      "touch_hold_horizon_min": 30,
+      "placebo": "same |distance from morning spot|, role-preserving"
+    },
+    "E3_touch_and_hold": {
+      "hold": "no close-through by 0.25\u00d7ATR within 30m after first touch",
+      "break": "close-through within horizon"
+    },
+    "E7_horizons": {
+      "15m": 15,
+      "60m": 60,
+      "EOD": null
+    },
+    "costs": "ABSENT",
+    "no_lookahead": "levels \u226410:15 ET obs; scoring after 10:15 ET"
+  },
+  "source": {
+    "faucet_priority": [
+      "option_chain_morning_full (prefer)",
+      "snapshots.option_chain_json nearest 10:00 ET (fill)"
+    ],
+    "recompute": "terrain_engine.compute_terrain",
+    "levels": [
+      "CALL_WALL",
+      "PUT_WALL",
+      "GAMMA_FLIP",
+      "GAMMA_PIN"
+    ],
+    "trading_days_only": true
+  },
+  "sample": {
+    "tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "obs_days_available": {
+      "SPY": 70,
+      "QQQ": 66,
+      "IWM": 66
+    },
+    "morning_full_exact_counts": {
+      "SPY": {
+        "n_days": 9,
+        "date_min": "2026-07-20",
+        "date_max": "2026-07-30",
+        "meets_ops_target_20": false
+      },
+      "QQQ": {
+        "n_days": 9,
+        "date_min": "2026-07-20",
+        "date_max": "2026-07-30",
+        "meets_ops_target_20": false
+      },
+      "IWM": {
+        "n_days": 9,
+        "date_min": "2026-07-20",
+        "date_max": "2026-07-30",
+        "meets_ops_target_20": false
+      }
+    },
+    "n_ticker_days_reconstructed": 198,
+    "n_recon_fail": 0,
+    "n_recon_empty_levels": 3,
+    "level_presence_days": {
+      "CALL_WALL": 198,
+      "PUT_WALL": 198,
+      "GAMMA_FLIP": 26,
+      "GAMMA_PIN": 198
+    },
+    "confidence_counts": {
+      "UNAVAILABLE": 171,
+      "TRUSTED": 27
+    },
+    "regime_day_counts": {
+      "SHORT_GAMMA": 27
+    },
+    "faucet_counts": {
+      "snapshots_1000et": 171,
+      "morning_full": 27
+    },
+    "date_min": "2026-03-27",
+    "date_max": "2026-07-30",
+    "n_sessions_scored": 195,
+    "LIMIT": "Sessions with reconstructable gamma levels: n=195 (2026-03-27\u21922026-07-30). Faucet mix: {'snapshots_1000et': 171, 'morning_full': 27}. morning_full exact: SPY=9, QQQ=9, IWM=9. No invented levels / no invented future accrual."
+  },
+  "experiments": {
+    "E3_session_respect": {
+      "name": "session_respect",
+      "question": "Given morning CALL_WALL / PUT_WALL / PIN, when post-10:15 price approaches within 0.5\u00d7ATR, does the session hold (no close-through by 0.25\u00d7ATR / pin-close magnet) better than same-distance random levels?",
+      "real": {
+        "n": 273,
+        "holds": 14,
+        "hold_rate": 0.05128205128205128
+      },
+      "placebo": {
+        "n": 291,
+        "holds": 46,
+        "hold_rate": 0.15807560137457044
+      },
+      "hold_rate_edge": -0.10679355009251916,
+      "mean_mae_atr_real": 10.597831097558549,
+      "mean_mae_atr_placebo": 9.280217995198594,
+      "oos": {
+        "evaluated": true,
+        "split_date": "2026-06-09",
+        "halves_agree": false,
+        "n_agree": 0,
+        "halves": {
+          "first": {
+            "edge_pp": -0.09645753307725138,
+            "real_hold_rate": 0.030303030303030304,
+            "placebo_hold_rate": 0.1267605633802817,
+            "real_n": 132,
+            "placebo_n": 142
+          },
+          "second": {
+            "edge_pp": -0.11699747727164549,
+            "real_hold_rate": 0.07092198581560284,
+            "placebo_hold_rate": 0.18791946308724833,
+            "real_n": 141,
+            "placebo_n": 149
+          }
+        }
+      },
+      "by_kind": {
+        "CALL_WALL": {
+          "n": 76,
+          "holds": 6,
+          "hold_rate": 0.07894736842105263
+        },
+        "PUT_WALL": {
+          "n": 76,
+          "holds": 5,
+          "hold_rate": 0.06578947368421052
+        },
+        "GAMMA_PIN": {
+          "n": 121,
+          "holds": 3,
+          "hold_rate": 0.024793388429752067
+        },
+        "RAND": {
+          "n": 291,
+          "holds": 46,
+          "hold_rate": 0.15807560137457044
+        }
+      },
+      "verdict": "FAIL",
+      "costs": "ABSENT",
+      "definition": {
+        "approach_atr": 0.5,
+        "close_through_atr": 0.25,
+        "touch_hold_horizon_min": 30,
+        "placebo": "same |distance from morning spot|, role-preserving"
+      }
+    },
+    "E3_touch_and_hold": {
+      "name": "touch_and_hold",
+      "question": "On first post-10:15 zone touch, does price avoid close-through within 30m more often than same-distance placebo?",
+      "real": {
+        "n": 2460,
+        "holds": 282,
+        "hold_rate": 0.11463414634146342
+      },
+      "placebo": {
+        "n": 2650,
+        "holds": 351,
+        "hold_rate": 0.13245283018867923
+      },
+      "hold_rate_edge": -0.017818683847215813,
+      "mean_mae_atr_real": null,
+      "mean_mae_atr_placebo": null,
+      "oos": {
+        "evaluated": true,
+        "split_date": "2026-06-09",
+        "halves_agree": false,
+        "n_agree": 0,
+        "halves": {
+          "first": {
+            "edge_pp": -0.0024386964717374032,
+            "real_hold_rate": 0.1164225134926754,
+            "placebo_hold_rate": 0.11886120996441281,
+            "real_n": 1297,
+            "placebo_n": 1405
+          },
+          "second": {
+            "edge_pp": -0.035151439809107454,
+            "real_hold_rate": 0.11263972484952708,
+            "placebo_hold_rate": 0.14779116465863454,
+            "real_n": 1163,
+            "placebo_n": 1245
+          }
+        }
+      },
+      "by_kind": {
+        "CALL_WALL": {
+          "n": 815,
+          "holds": 164,
+          "hold_rate": 0.20122699386503068
+        },
+        "PUT_WALL": {
+          "n": 709,
+          "holds": 116,
+          "hold_rate": 0.16361071932299012
+        },
+        "GAMMA_PIN": {
+          "n": 936,
+          "holds": 2,
+          "hold_rate": 0.002136752136752137
+        },
+        "RAND": {
+          "n": 2650,
+          "holds": 351,
+          "hold_rate": 0.13245283018867923
+        }
+      },
+      "verdict": "FAIL",
+      "costs": "ABSENT",
+      "definition": {
+        "approach_atr": 0.5,
+        "close_through_atr": 0.25,
+        "touch_hold_horizon_min": 30,
+        "placebo": "same |distance from morning spot|, role-preserving"
+      }
+    },
+    "E4_flip_regime": {
+      "name": "morning_full_flip_regime",
+      "question": "On TRUSTED morning_full (+ causal snapshot fill for walls), do flip touches exist and does wall-hold differ by LONG/SHORT gamma?",
+      "morning_full_exact_counts": {
+        "SPY": {
+          "n_days": 9,
+          "date_min": "2026-07-20",
+          "date_max": "2026-07-30",
+          "meets_ops_target_20": false
+        },
+        "QQQ": {
+          "n_days": 9,
+          "date_min": "2026-07-20",
+          "date_max": "2026-07-30",
+          "meets_ops_target_20": false
+        },
+        "IWM": {
+          "n_days": 9,
+          "date_min": "2026-07-20",
+          "date_max": "2026-07-30",
+          "meets_ops_target_20": false
+        }
+      },
+      "ops_note": "Accrue to N\u226520 TRUSTED morning_full days/ticker is an ops Collect target \u2014 not synthetic history.",
+      "faucet_counts": {
+        "snapshots_1000et": 171,
+        "morning_full": 27
+      },
+      "regime_day_counts_all_faucets": {
+        "SHORT_GAMMA": 27
+      },
+      "regime_day_counts_morning_full_only": {
+        "SHORT_GAMMA": 27
+      },
+      "mf_level_presence": {
+        "CALL_WALL": 27,
+        "PUT_WALL": 27,
+        "GAMMA_FLIP": 26,
+        "GAMMA_PIN": 27
+      },
+      "mf_confidence": {
+        "TRUSTED": 27
+      },
+      "flip_touches": {
+        "n_real": 0,
+        "n_placebo": 21,
+        "real": {
+          "n": 0,
+          "wins": 0,
+          "fails": 0,
+          "timeouts": 0,
+          "resolved": 0,
+          "win_rate": null,
+          "mean_rr_when_win": null,
+          "E": null
+        },
+        "placebo": {
+          "n": 21,
+          "wins": 21,
+          "fails": 0,
+          "timeouts": 0,
+          "resolved": 21,
+          "win_rate": 1.0,
+          "mean_rr_when_win": 0.8529703388160702,
+          "E": 0.8529703388160702
+        },
+        "win_rate_edge": null,
+        "verdict": "BLOCKED",
+        "oos_halves_agree": false
+      },
+      "wall_hold_by_regime": {
+        "LONG_GAMMA": {
+          "real": {
+            "n": 0,
+            "holds": 0,
+            "hold_rate": null
+          },
+          "placebo": {
+            "n": 0,
+            "holds": 0,
+            "hold_rate": null
+          },
+          "hold_rate_edge": null
+        },
+        "SHORT_GAMMA": {
+          "real": {
+            "n": 12,
+            "holds": 1,
+            "hold_rate": 0.08333333333333333
+          },
+          "placebo": {
+            "n": 7,
+            "holds": 1,
+            "hold_rate": 0.14285714285714285
+          },
+          "hold_rate_edge": -0.05952380952380952
+        }
+      },
+      "LIMITS": [
+        "morning_full days/ticker below ops target 20: SPY=9, QQQ=9, IWM=9. Accrue more TRUSTED morning_full sessions (ops) \u2014 do not invent.",
+        "GAMMA_FLIP post-10:15 touches = 0 in this sample (flip typically outside traded range). Flip bounce arm BLOCKED.",
+        "LONG_GAMMA reconstructed days = 0 in scored sample (SHORT_GAMMA days=27; morning_full regime days LONG=0 SHORT=27). Regime split one-sided; SHORT-only wall-hold numbers are descriptive with caveat.",
+        "Regime-conditional hold n below PASS min_regime_resolved=150; no PASS claim on regime split."
+      ],
+      "verdict": "BLOCKED",
+      "costs": "ABSENT"
+    },
+    "E7_multi_horizon": {
+      "name": "multi_horizon_barriers",
+      "horizons": {
+        "15m": {
+          "horizon": "15m",
+          "horizon_min": 15,
+          "n_real": 2208,
+          "n_placebo": 3650,
+          "real": {
+            "n": 2208,
+            "wins": 901,
+            "fails": 1293,
+            "timeouts": 14,
+            "resolved": 2194,
+            "win_rate": 0.410665451230629,
+            "mean_rr_when_win": 1.2850779173780347,
+            "E": 0.5277371028065676
+          },
+          "placebo": {
+            "n": 3650,
+            "wins": 1517,
+            "fails": 2109,
+            "timeouts": 24,
+            "resolved": 3626,
+            "win_rate": 0.41836734693877553,
+            "mean_rr_when_win": 1.3160966056456733,
+            "E": 0.5506118452191082
+          },
+          "win_rate_edge": -0.0077018957081465556,
+          "oos": {
+            "evaluated": true,
+            "split_date": "2026-06-09",
+            "halves_agree": false,
+            "n_agree": 0
+          },
+          "by_kind": {
+            "CALL_WALL": {
+              "n": 742,
+              "wins": 316,
+              "fails": 420,
+              "timeouts": 6,
+              "resolved": 736,
+              "win_rate": 0.42934782608695654,
+              "mean_rr_when_win": 1.3052940774449842,
+              "E": 0.5604251745551835
+            },
+            "PUT_WALL": {
+              "n": 619,
+              "wins": 230,
+              "fails": 386,
+              "timeouts": 3,
+              "resolved": 616,
+              "win_rate": 0.37337662337662336,
+              "mean_rr_when_win": 1.2577760991667377,
+              "E": 0.4696241928706975
+            },
+            "GAMMA_FLIP": {
+              "n": 0,
+              "wins": 0,
+              "fails": 0,
+              "timeouts": 0,
+              "resolved": 0,
+              "win_rate": null,
+              "mean_rr_when_win": null,
+              "E": null
+            },
+            "GAMMA_PIN": {
+              "n": 847,
+              "wins": 355,
+              "fails": 487,
+              "timeouts": 5,
+              "resolved": 842,
+              "win_rate": 0.42161520190023755,
+              "mean_rr_when_win": 1.2847711895116747,
+              "E": 0.5416790644615731
+            }
+          },
+          "verdict": "FAIL",
+          "costs": "ABSENT"
+        },
+        "60m": {
+          "horizon": "60m",
+          "horizon_min": 60,
+          "n_real": 2208,
+          "n_placebo": 3690,
+          "real": {
+            "n": 2208,
+            "wins": 903,
+            "fails": 1303,
+            "timeouts": 2,
+            "resolved": 2206,
+            "win_rate": 0.40933816863100636,
+            "mean_rr_when_win": 1.2835158339623023,
+            "E": 0.5253920208830276
+          },
+          "placebo": {
+            "n": 3690,
+            "wins": 1578,
+            "fails": 2106,
+            "timeouts": 6,
+            "resolved": 3684,
+            "win_rate": 0.42833876221498374,
+            "mean_rr_when_win": 1.2868684477824865,
+            "E": 0.5512156380566677
+          },
+          "win_rate_edge": -0.019000593583977377,
+          "oos": {
+            "evaluated": true,
+            "split_date": "2026-06-09",
+            "halves_agree": false,
+            "n_agree": 0
+          },
+          "by_kind": {
+            "CALL_WALL": {
+              "n": 742,
+              "wins": 317,
+              "fails": 424,
+              "timeouts": 1,
+              "resolved": 741,
+              "win_rate": 0.42780026990553305,
+              "mean_rr_when_win": 1.3039195384542779,
+              "E": 0.5578171304858381
+            },
+            "PUT_WALL": {
+              "n": 619,
+              "wins": 231,
+              "fails": 388,
+              "timeouts": 0,
+              "resolved": 619,
+              "win_rate": 0.37318255250403876,
+              "mean_rr_when_win": 1.2535867190532828,
+              "E": 0.4678166916014674
+            },
+            "GAMMA_FLIP": {
+              "n": 0,
+              "wins": 0,
+              "fails": 0,
+              "timeouts": 0,
+              "resolved": 0,
+              "win_rate": null,
+              "mean_rr_when_win": null,
+              "E": null
+            },
+            "GAMMA_PIN": {
+              "n": 847,
+              "wins": 355,
+              "fails": 491,
+              "timeouts": 1,
+              "resolved": 846,
+              "win_rate": 0.41962174940898345,
+              "mean_rr_when_win": 1.2847711895116747,
+              "E": 0.5391179341331496
+            }
+          },
+          "verdict": "FAIL",
+          "costs": "ABSENT"
+        },
+        "EOD": {
+          "horizon": "EOD",
+          "horizon_min": null,
+          "n_real": 2208,
+          "n_placebo": 3613,
+          "real": {
+            "n": 2208,
+            "wins": 903,
+            "fails": 1303,
+            "timeouts": 2,
+            "resolved": 2206,
+            "win_rate": 0.40933816863100636,
+            "mean_rr_when_win": 1.2835158339623023,
+            "E": 0.5253920208830276
+          },
+          "placebo": {
+            "n": 3613,
+            "wins": 1506,
+            "fails": 2102,
+            "timeouts": 5,
+            "resolved": 3608,
+            "win_rate": 0.4174057649667406,
+            "mean_rr_when_win": 1.2982938617431294,
+            "E": 0.5419153425125147
+          },
+          "win_rate_edge": -0.008067596335734228,
+          "oos": {
+            "evaluated": true,
+            "split_date": "2026-06-09",
+            "halves_agree": false,
+            "n_agree": 0
+          },
+          "by_kind": {
+            "CALL_WALL": {
+              "n": 742,
+              "wins": 317,
+              "fails": 424,
+              "timeouts": 1,
+              "resolved": 741,
+              "win_rate": 0.42780026990553305,
+              "mean_rr_when_win": 1.3039195384542779,
+              "E": 0.5578171304858381
+            },
+            "PUT_WALL": {
+              "n": 619,
+              "wins": 231,
+              "fails": 388,
+              "timeouts": 0,
+              "resolved": 619,
+              "win_rate": 0.37318255250403876,
+              "mean_rr_when_win": 1.2535867190532828,
+              "E": 0.4678166916014674
+            },
+            "GAMMA_FLIP": {
+              "n": 0,
+              "wins": 0,
+              "fails": 0,
+              "timeouts": 0,
+              "resolved": 0,
+              "win_rate": null,
+              "mean_rr_when_win": null,
+              "E": null
+            },
+            "GAMMA_PIN": {
+              "n": 847,
+              "wins": 355,
+              "fails": 491,
+              "timeouts": 1,
+              "resolved": 846,
+              "win_rate": 0.41962174940898345,
+              "mean_rr_when_win": 1.2847711895116747,
+              "E": 0.5391179341331496
+            }
+          },
+          "verdict": "FAIL",
+          "costs": "ABSENT"
+        }
+      },
+      "verdicts": {
+        "15m": "FAIL",
+        "60m": "FAIL",
+        "EOD": "FAIL"
+      },
+      "horizon_changes_verdict": {
+        "15m": "FAIL",
+        "60m": "FAIL",
+        "EOD": "FAIL"
+      },
+      "any_horizon_pass": false,
+      "question": "On the same morning gamma zones, do 15m / 60m / EOD triple-barrier bounce labels beat placebo, and does horizon change FAIL\u2192PASS?",
+      "pack_verdict": "FAIL"
+    }
+  },
+  "verdicts": {
+    "E3_session_respect": "FAIL",
+    "E3_touch_and_hold": "FAIL",
+    "E4_flip_regime": "BLOCKED",
+    "E7_multi_horizon": "FAIL"
+  },
+  "pack_verdict": "FAIL",
+  "runtime_sec": 50.9,
+  "day_ledger_head": [
+    {
+      "ticker": "IWM",
+      "day": "2026-03-27",
+      "spot": 244.72,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 245.0,
+        "PUT_WALL": 245.0,
+        "GAMMA_PIN": 245.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    },
+    {
+      "ticker": "QQQ",
+      "day": "2026-03-27",
+      "spot": 567.18,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 575.0,
+        "PUT_WALL": 570.0,
+        "GAMMA_PIN": 570.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    },
+    {
+      "ticker": "SPY",
+      "day": "2026-03-27",
+      "spot": 638.96,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 645.0,
+        "PUT_WALL": 640.0,
+        "GAMMA_PIN": 640.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    },
+    {
+      "ticker": "IWM",
+      "day": "2026-03-30",
+      "spot": 241.95,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 246.0,
+        "PUT_WALL": 240.0,
+        "GAMMA_PIN": 246.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    },
+    {
+      "ticker": "QQQ",
+      "day": "2026-03-30",
+      "spot": 562.57,
+      "regime": null,
+      "confidence": "UNAVAILABLE",
+      "faucet": "snapshots_1000et",
+      "levels": {
+        "CALL_WALL": 570.0,
+        "PUT_WALL": 562.0,
+        "GAMMA_PIN": 562.0
+      },
+      "n_levels": 3,
+      "net_gex_at_spot": null,
+      "n_contracts": 40
+    }
+  ],
+  "day_ledger_n": 195
+}

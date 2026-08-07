@@ -335,7 +335,14 @@ def test_spot_endpoint_shape_single_authority():
 def test_scorecard_endpoint_serves_live_coach_numbers_or_empty():
     """Coach copy law: measured numbers come LIVE from the latest daily
     scorecard, never frozen into the page. Absent/broken report -> {} and the
-    UI says 'measuring' (fail-closed, no stale rate)."""
+    UI says 'measuring' (fail-closed, no stale rate).
+
+    RC-275: this asserted a closed key set that predated RC-78, so it failed on
+    `stale` and `age_trading_days` — the two fields that MAKE the docstring's
+    "no stale rate" true. The test was failing because the code had started
+    obeying it. A key list cannot tell a correct addition from a regression;
+    the invariant can, so the invariant is what is asserted now.
+    """
     import server as srv
     from fastapi.testclient import TestClient
 
@@ -344,9 +351,74 @@ def test_scorecard_endpoint_serves_live_coach_numbers_or_empty():
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body, dict)
-    if body:   # report exists on this machine — shape contract
-        assert set(body) <= {"generated_utc", "wall_hold_trusted",
-                             "weighting_scorecard", "pdca"}
+    if not body:
+        return          # no report on this machine — fail-closed empty is the contract
+
+    figures = ("wall_hold_trusted", "weighting_scorecard", "pdca")
+    assert "stale" in body, (
+        "the freshness verdict must be published, not left for the client to compute "
+        "from generated_utc — that is what served a 111.6-hour-old hold rate (RC-78)")
+
+    if body["stale"]:
+        # Age is a precondition to SERVE, not a footnote to display: a date printed
+        # beside a number does not stop the number being read.
+        for key in figures:
+            assert key not in body, (
+                f"served {key} on a stale scorecard — the coach will quote it as "
+                f"'measured on our own history'")
+        assert body.get("stale_reason"), "withheld the figures without saying why"
+    else:
+        assert set(figures) <= set(body), (
+            "a fresh scorecard must carry the figures the coach is allowed to claim")
+
+    assert set(body) <= {"generated_utc", "stale", "age_trading_days",
+                         "max_trading_days", "stale_reason", *figures}
+
+
+def _scorecard_body(tmp_path, monkeypatch, generated_utc):
+    """Drive /api/terrain/scorecard against a report we control, in a temp APP_DIR."""
+    import json as _json
+
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    (tmp_path / "reports").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "reports" / "terrain_backtest_latest.json").write_text(
+        _json.dumps({
+            "generated_utc": generated_utc,
+            "wall_hold_trusted": {"call": 0.61},
+            "weighting_scorecard": {"n": 20},
+            "pdca": {"plan": "x"},
+        }), encoding="utf-8")
+    monkeypatch.setattr(srv, "APP_DIR", str(tmp_path), raising=True)
+    r = TestClient(srv.app).get("/api/terrain/scorecard")
+    assert r.status_code == 200
+    return r.json()
+
+
+def test_a_stale_scorecard_withholds_every_figure(tmp_path, monkeypatch):
+    """RC-275: the branch this machine's own report may never take.
+
+    RC-78 was found serving hold-rates 111.6 trading-hours old under the coach's
+    "Measured on our own history". Age gates the SERVE, so a stale report must
+    carry the verdict and the reason and none of the numbers.
+    """
+    body = _scorecard_body(tmp_path, monkeypatch, "2019-01-02T12:00:00+00:00")
+    assert body["stale"] is True
+    assert body["stale_reason"]
+    for key in ("wall_hold_trusted", "weighting_scorecard", "pdca"):
+        assert key not in body, f"a stale scorecard served {key}"
+
+
+def test_a_fresh_scorecard_serves_its_figures(tmp_path, monkeypatch):
+    """The negative control: fail-closed must not mean fail-always."""
+    import server as srv
+
+    today_et = srv.now_et().date().isoformat()
+    body = _scorecard_body(tmp_path, monkeypatch, today_et)
+    assert body["stale"] is False
+    assert body["age_trading_days"] == 0
+    assert body["wall_hold_trusted"] == {"call": 0.61}
 
 
 def test_terrain_strikes_endpoint_shape_and_scopes():

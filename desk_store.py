@@ -35,6 +35,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+# RC-274: every read of a nullable column goes through these. `float(x or 0.0)` turns an absent
+# measurement into the number zero, and a fact table cannot tell the two apart afterwards.
+from numeric_contract import (
+    float_finite_or_none,
+    float_nonnegative_or_none,
+    float_positive_or_none,
+)
+
 #: Evidence tier. The Desk renders these; nothing below ESTIMATED may drive an action.
 #: MEASURED  — a fetched fact carrying its own source and vintage.
 #: DERIVED   — arithmetic over MEASURED facts (no forecast, no free parameter).
@@ -393,11 +401,18 @@ def materialize_short_volume(db_path: str | Path, *, limit_symbols: int = 0) -> 
             if et is None:
                 skipped += 1
                 continue
-            tot = float(r["total_volume"] or 0.0)
-            if tot <= 0:
+            tot = float_positive_or_none(r["total_volume"])
+            if tot is None:
                 skipped += 1
                 continue
-            ratio = float(r["short_volume"] or 0.0) / tot
+            # RC-274: a NULL short_volume is FINRA not reporting, which is not the same fact as
+            # zero shares sold short. Divided into total it used to publish a 0.0 ratio under
+            # tier "MEASURED" — a number no one measured.
+            short = float_nonnegative_or_none(r["short_volume"])
+            if short is None:
+                skipped += 1
+                continue
+            ratio = short / tot
             batch.append((
                 sym, "short_volume_ratio", et, max(kt, et), "finra.daily_short_volume",
                 str(r["date"]), "MEASURED", ratio,
@@ -523,9 +538,9 @@ def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> 
     skipped_non_rth = skipped_incomplete = 0
     complete: dict[str, bool] = {}
     for r in raw:
-        ts = float(r["bar_end_ts_utc"] or 0.0)
+        ts = float_positive_or_none(r["bar_end_ts_utc"])
         sym = str(r["ticker"] or "").upper()
-        if not sym or ts <= 0:
+        if not sym or ts is None:
             continue
         # RC-176: both clock AND calendar. `price_bars_1m` really does carry weekend/holiday
         # rows (2026-07-03/04/05/11/18 measured), and the clock-only filter counted them as
@@ -541,7 +556,15 @@ def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> 
         if not complete[d]:
             skipped_incomplete += 1
             continue
-        per_day.setdefault((sym, d), []).append(float(r["close"] or 0.0) * float(r["volume"]))
+        # RC-274: a NULL close used to contribute 0 dollars, quietly deflating the very turnover
+        # ADV ranks names on — while a NULL volume raised TypeError two characters later. Same
+        # absence, two behaviours. A bar we cannot price is a bar we do not count.
+        close = float_positive_or_none(r["close"])
+        vol = float_nonnegative_or_none(r["volume"])
+        if close is None or vol is None:
+            skipped_incomplete += 1
+            continue
+        per_day.setdefault((sym, d), []).append(close * vol)
         if ts > last_bar.get(sym, 0.0):
             last_bar[sym] = ts
 
@@ -621,14 +644,20 @@ def materialize_options_listed(db_path: str | Path) -> dict[str, int]:
         target.execute(DESK_FACTS_INDEX_SQL)
         batch = []
         for r in rows:
-            ts = float(r["ts"] or 0.0)
+            ts = float_positive_or_none(r["ts"])
             sym = str(r["ticker"] or "").upper()
-            if ts <= 0 or not sym:
+            if ts is None or not sym:
+                skipped += 1
+                continue
+            # RC-274: tier "MEASURED" is a claim about provenance. A NULL n_strikes written as
+            # 0 makes that claim about a number nobody produced.
+            n_strikes = float_nonnegative_or_none(r["n_strikes"])
+            if n_strikes is None:
                 skipped += 1
                 continue
             batch.append((
                 sym, "options_listed", ts, ts, "schwab.option_chain_accrual", None,
-                "MEASURED", float(r["n_strikes"] or 0),
+                "MEASURED", n_strikes,
                 json.dumps({"session_volume": r["session_volume"]}, separators=(",", ":")),
                 time.time(),
             ))
@@ -680,11 +709,19 @@ def effective_spread_bps(
     finally:
         con.close()
 
-    bps = sorted(
-        (float(r["spread"]) / float(r["spot"])) * 10_000.0
-        for r in rows
-        if is_rth_trading_ts(float(r["ts_utc"] or 0.0)) and float(r["spread"]) >= 0
-    )
+    bps: list[float] = []
+    for r in rows:
+        # RC-274: the SQL already excludes NULL spread and non-positive spot, so a row failing
+        # here is a row the SELECT could not have returned — which is exactly why it is checked.
+        ts = float_positive_or_none(r["ts_utc"])
+        spread = float_nonnegative_or_none(r["spread"])
+        spot = float_positive_or_none(r["spot"])
+        if ts is None or spread is None or spot is None:
+            continue
+        if not is_rth_trading_ts(ts):
+            continue
+        bps.append((spread / spot) * 10_000.0)
+    bps.sort()
     if len(bps) < _MIN_QUOTES_FOR_SPREAD:
         return None
     mid = len(bps) // 2
@@ -777,10 +814,13 @@ def daily_sigma_bps(db_path: str | Path, subject: str, as_of_utc: float, *,
 
     closes: dict[str, float] = {}
     for r in rows:
-        ts = float(r["bar_end_ts_utc"] or 0.0)
-        if not is_rth_trading_ts(ts):  # RC-176: clock AND calendar
+        ts = float_positive_or_none(r["bar_end_ts_utc"])
+        if ts is None or not is_rth_trading_ts(ts):  # RC-176: clock AND calendar
             continue
-        closes[et_date_str_from_ts_utc(ts)] = float(r["close"])
+        close = float_positive_or_none(r["close"])  # RC-274
+        if close is None:
+            continue
+        closes[et_date_str_from_ts_utc(ts)] = close
     # RC-173: a session still in progress has no close. Including it turns the newest daily
     # return into a partial-day move.
     series = [closes[d] for d in sorted(closes) if session_is_complete(d, as_of_utc)]
@@ -962,8 +1002,13 @@ def _rth_log_returns(db_path: str | Path, subject: str, as_of_utc: float,
         con.close()
     # RC-176: clock AND calendar — a weekend bar in the return series injects a fake flat (or
     # blown) minute into the bootstrap's block distribution.
-    closes = [float(r["close"]) for r in rows
-              if is_rth_trading_ts(float(r["bar_end_ts_utc"] or 0))]
+    closes: list[float] = []
+    for r in rows:
+        ts = float_positive_or_none(r["bar_end_ts_utc"])  # RC-274
+        close = float_positive_or_none(r["close"])
+        if ts is None or close is None or not is_rth_trading_ts(ts):
+            continue
+        closes.append(close)
     import math
     return [math.log(b / a) for a, b in zip(closes, closes[1:], strict=False)
             if a > 0 and b > 0]
@@ -1189,7 +1234,11 @@ def put_brief(db_path: str | Path, *, et_date: str, title: str, producer: str,
              json.dumps(list(blocks), separators=(",", ":")),
              json.dumps(list(sources), separators=(",", ":")), time.time()))
         con.commit()
-        return int(cur.lastrowid or 0)
+        # RC-274: rowid 0 is not a rowid. Returning it hands the caller a handle that resolves
+        # to no row, and the failure surfaces later somewhere with no connection to this INSERT.
+        if cur.lastrowid is None:
+            raise DeskFactError("brief INSERT reported no rowid — the write did not land")
+        return int(cur.lastrowid)
     finally:
         con.close()
 
@@ -1213,7 +1262,15 @@ def latest_brief(db_path: str | Path, as_of_utc: float) -> dict[str, Any] | None
     d = dict(row)
     blocks = json.loads(d.pop("blocks_json"))
     for b in blocks:
-        age = float(as_of_utc) - float(b.get("as_of_utc") or 0.0)
+        # RC-274: write-time refuses a block with no as_of_utc, so reaching this branch means an
+        # older or hand-edited row. `or 0.0` dated it to 1970 and called it stale, which is the
+        # right verdict reached by fabricating a 56-year age the UI then divided by 3600.
+        block_ts = float_finite_or_none(b.get("as_of_utc"))
+        if block_ts is None:
+            b["age_sec"] = None
+            b["stale"] = True
+            continue
+        age = float(as_of_utc) - block_ts
         b["age_sec"] = age
         b["stale"] = age > _BRIEF_BLOCK_SHELF_LIFE_SEC
     d["blocks"] = blocks

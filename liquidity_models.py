@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from numeric_contract import float_nonnegative_or_none  # RC-274: absence is not zero volume
+
 #: LP-01 Step 1 (RC-152) — the ONE volume-profile construction.
 #: A bar's volume did not trade at one price. It traded ACROSS [low, high], and the profile is
 #: the record of where. Both prior implementations dumped a bar's entire volume into a single
@@ -59,8 +61,10 @@ def volume_profile_poc_vah_val(
         try:
             hi = float(b["high"])
             lo = float(b["low"])
-            vol = float(b.get("volume") or 0.0)
+            vol = float_nonnegative_or_none(b.get("volume"))  # RC-274
         except (KeyError, TypeError, ValueError):
+            continue
+        if vol is None:
             continue
         # NaN/inf must never enter the profile: a NaN bin key poisons every comparison after it
         if not (hi == hi and lo == lo and vol == vol):        # NaN check without importing math

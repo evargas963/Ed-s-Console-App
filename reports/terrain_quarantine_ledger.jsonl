@@ -1,0 +1,977 @@
+{"ts_utc": 1785424888.2409503, "et": "2026-07-30T11:21:28.240955-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785424888.2438383, "et": "2026-07-30T11:21:28.243843-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785424888.239965, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785424888.2456853, "et": "2026-07-30T11:21:28.245687-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785424888.2599318, "et": "2026-07-30T11:21:28.259936-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785424888.2611449, "et": "2026-07-30T11:21:28.261148-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785424888.2622273, "et": "2026-07-30T11:21:28.262229-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785424888.274115, "et": "2026-07-30T11:21:28.274119-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785424888.285262, "et": "2026-07-30T11:21:28.285267-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785424888.2874165, "et": "2026-07-30T11:21:28.287418-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785424888.2842295, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785425291.6516957, "et": "2026-07-30T11:28:11.651699-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785425291.6530087, "et": "2026-07-30T11:28:11.653012-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785425291.6510644, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785425291.6542258, "et": "2026-07-30T11:28:11.654227-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785425291.6679778, "et": "2026-07-30T11:28:11.667982-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785425291.669197, "et": "2026-07-30T11:28:11.669200-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785425291.6702135, "et": "2026-07-30T11:28:11.670215-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785425291.6820576, "et": "2026-07-30T11:28:11.682061-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785425291.6993976, "et": "2026-07-30T11:28:11.699418-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785425291.702364, "et": "2026-07-30T11:28:11.702366-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785425291.6980078, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785425387.3940852, "et": "2026-07-30T11:29:47.394092-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785425387.3956406, "et": "2026-07-30T11:29:47.395645-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785425387.392904, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785425387.39727, "et": "2026-07-30T11:29:47.397273-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785425387.4089367, "et": "2026-07-30T11:29:47.408944-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785425387.411705, "et": "2026-07-30T11:29:47.411715-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785425387.4136343, "et": "2026-07-30T11:29:47.413639-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785425387.421916, "et": "2026-07-30T11:29:47.421920-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785425387.4322772, "et": "2026-07-30T11:29:47.432285-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785425387.433955, "et": "2026-07-30T11:29:47.433958-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785425387.4313843, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785425402.8295348, "et": "2026-07-30T11:30:02.829539-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785425402.830763, "et": "2026-07-30T11:30:02.830767-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785425402.827554, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785425402.8321745, "et": "2026-07-30T11:30:02.832176-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785425402.8445659, "et": "2026-07-30T11:30:02.844571-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785425402.8459148, "et": "2026-07-30T11:30:02.845918-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785425402.846951, "et": "2026-07-30T11:30:02.846954-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785425402.8565693, "et": "2026-07-30T11:30:02.856574-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785425402.8683715, "et": "2026-07-30T11:30:02.868376-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785425402.8705459, "et": "2026-07-30T11:30:02.870548-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785425402.867449, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785425553.8188663, "et": "2026-07-30T11:32:33.818871-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785425553.8202627, "et": "2026-07-30T11:32:33.820266-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785425553.817884, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785425553.8217492, "et": "2026-07-30T11:32:33.821751-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785425553.834237, "et": "2026-07-30T11:32:33.834242-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785425553.8354917, "et": "2026-07-30T11:32:33.835495-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785425553.8365538, "et": "2026-07-30T11:32:33.836556-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785425553.8469222, "et": "2026-07-30T11:32:33.846927-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785425553.8570852, "et": "2026-07-30T11:32:33.857088-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785425553.8589818, "et": "2026-07-30T11:32:33.858983-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785425553.856445, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785426025.6992362, "et": "2026-07-30T11:40:25.699243-04:00", "event": "backoff", "ticker": "$SPX", "failures": 3, "reason": "chain fetch failed (HTTP 502)", "wait_sec": 60.0}
+{"ts_utc": 1785426033.0673563, "et": "2026-07-30T11:40:33.067361-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785426036.7249863, "et": "2026-07-30T11:40:36.724991-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785426134.657204, "et": "2026-07-30T11:42:14.657208-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785426142.2758927, "et": "2026-07-30T11:42:22.275900-04:00", "event": "backoff", "ticker": "$SPX", "failures": 4, "reason": "chain fetch failed (HTTP 502)", "wait_sec": 120.0}
+{"ts_utc": 1785426320.8547468, "et": "2026-07-30T11:45:20.854752-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785426328.6832774, "et": "2026-07-30T11:45:28.683282-04:00", "event": "backoff", "ticker": "$SPX", "failures": 5, "reason": "chain fetch failed (HTTP 502)", "wait_sec": 240.0}
+{"ts_utc": 1785426330.5383058, "et": "2026-07-30T11:45:30.538310-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785426330.5396051, "et": "2026-07-30T11:45:30.539609-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785426330.5374928, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785426330.540872, "et": "2026-07-30T11:45:30.540875-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785426330.551619, "et": "2026-07-30T11:45:30.551623-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785426330.55278, "et": "2026-07-30T11:45:30.552782-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785426330.553691, "et": "2026-07-30T11:45:30.553692-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785426330.563754, "et": "2026-07-30T11:45:30.563758-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785426330.5703213, "et": "2026-07-30T11:45:30.570325-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785426330.5716846, "et": "2026-07-30T11:45:30.571686-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785426330.5698066, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785426419.9106977, "et": "2026-07-30T11:46:59.910705-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785426419.9123185, "et": "2026-07-30T11:46:59.912323-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785426419.909438, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785426419.9140832, "et": "2026-07-30T11:46:59.914086-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785426419.9242692, "et": "2026-07-30T11:46:59.924273-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785426419.9252522, "et": "2026-07-30T11:46:59.925256-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785426419.9262576, "et": "2026-07-30T11:46:59.926259-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785426419.9363425, "et": "2026-07-30T11:46:59.936346-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785426419.9482462, "et": "2026-07-30T11:46:59.948250-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785426419.9498017, "et": "2026-07-30T11:46:59.949803-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785426419.9475818, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785426572.1552377, "et": "2026-07-30T11:49:32.155241-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785426770.9244852, "et": "2026-07-30T11:52:50.924489-04:00", "event": "backoff", "ticker": "$SPX", "failures": 3, "reason": "chain fetch failed (HTTP 502)", "wait_sec": 60.0}
+{"ts_utc": 1785426884.1128955, "et": "2026-07-30T11:54:44.112901-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785426900.5259185, "et": "2026-07-30T11:55:00.525925-04:00", "event": "backoff", "ticker": "$SPX", "failures": 4, "reason": "chain fetch failed (HTTP 502)", "wait_sec": 120.0}
+{"ts_utc": 1785427009.1744504, "et": "2026-07-30T11:56:49.174457-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785427009.1759536, "et": "2026-07-30T11:56:49.175957-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785427009.1692915, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785427009.1776712, "et": "2026-07-30T11:56:49.177676-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785427009.2033448, "et": "2026-07-30T11:56:49.203348-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785427009.208301, "et": "2026-07-30T11:56:49.208306-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785427009.2102706, "et": "2026-07-30T11:56:49.210274-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785427009.2245383, "et": "2026-07-30T11:56:49.224558-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785427009.2501452, "et": "2026-07-30T11:56:49.250150-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785427009.2527628, "et": "2026-07-30T11:56:49.252765-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785427009.2364357, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785427085.038281, "et": "2026-07-30T11:58:05.038286-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785427091.483455, "et": "2026-07-30T11:58:11.483459-04:00", "event": "backoff", "ticker": "$SPX", "failures": 5, "reason": "chain fetch failed (HTTP 502)", "wait_sec": 240.0}
+{"ts_utc": 1785427244.436597, "et": "2026-07-30T12:00:44.436602-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785427246.6033926, "et": "2026-07-30T12:00:46.603397-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785427484.5202994, "et": "2026-07-30T12:04:44.520302-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785427484.5213308, "et": "2026-07-30T12:04:44.521332-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785427484.5191448, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785427484.5224926, "et": "2026-07-30T12:04:44.522494-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785427484.5320637, "et": "2026-07-30T12:04:44.532069-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785427484.533193, "et": "2026-07-30T12:04:44.533196-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785427484.533907, "et": "2026-07-30T12:04:44.533908-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785427484.541329, "et": "2026-07-30T12:04:44.541331-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785427484.5502286, "et": "2026-07-30T12:04:44.550231-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785427484.551643, "et": "2026-07-30T12:04:44.551644-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785427484.549568, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785427789.7392292, "et": "2026-07-30T12:09:49.739233-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785427789.7400274, "et": "2026-07-30T12:09:49.740030-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785427789.738534, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785427789.740859, "et": "2026-07-30T12:09:49.740860-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785427789.7472537, "et": "2026-07-30T12:09:49.747259-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785427789.748378, "et": "2026-07-30T12:09:49.748382-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785427789.749349, "et": "2026-07-30T12:09:49.749351-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785427789.7595892, "et": "2026-07-30T12:09:49.759593-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785427789.767505, "et": "2026-07-30T12:09:49.767509-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785427789.7703733, "et": "2026-07-30T12:09:49.770376-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785427789.7669015, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785428002.4100654, "et": "2026-07-30T12:13:22.410069-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785428002.4112687, "et": "2026-07-30T12:13:22.411272-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785428002.409387, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785428002.4123986, "et": "2026-07-30T12:13:22.412400-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785428002.4193747, "et": "2026-07-30T12:13:22.419377-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785428002.4202392, "et": "2026-07-30T12:13:22.420241-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785428002.420963, "et": "2026-07-30T12:13:22.420965-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785428002.4288306, "et": "2026-07-30T12:13:22.428834-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785428002.436096, "et": "2026-07-30T12:13:22.436098-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785428002.437416, "et": "2026-07-30T12:13:22.437418-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785428002.435602, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785428038.5200558, "et": "2026-07-30T12:13:58.520059-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785428038.5211735, "et": "2026-07-30T12:13:58.521176-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785428038.5192938, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785428038.523384, "et": "2026-07-30T12:13:58.523391-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785428038.5326595, "et": "2026-07-30T12:13:58.532662-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785428038.5336053, "et": "2026-07-30T12:13:58.533608-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785428038.5343409, "et": "2026-07-30T12:13:58.534342-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785428038.5437768, "et": "2026-07-30T12:13:58.543780-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785428038.5506704, "et": "2026-07-30T12:13:58.550673-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785428038.5520692, "et": "2026-07-30T12:13:58.552070-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785428038.550124, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785428158.3114116, "et": "2026-07-30T12:15:58.311417-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785428265.4000218, "et": "2026-07-30T12:17:45.400025-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785429161.4504776, "et": "2026-07-30T12:32:41.450482-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785429161.4516027, "et": "2026-07-30T12:32:41.451605-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785429161.4495718, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785429161.452746, "et": "2026-07-30T12:32:41.452748-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785429161.4587758, "et": "2026-07-30T12:32:41.458779-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785429161.4599159, "et": "2026-07-30T12:32:41.459919-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785429161.461283, "et": "2026-07-30T12:32:41.461286-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785429161.4708507, "et": "2026-07-30T12:32:41.470857-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785429161.4808269, "et": "2026-07-30T12:32:41.480833-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785429161.4825046, "et": "2026-07-30T12:32:41.482506-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785429161.4800382, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785431945.3875723, "et": "2026-07-30T13:19:05.387578-04:00", "event": "quarantine_permanent", "ticker": "MTEA", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785435150.4736512, "et": "2026-07-30T14:12:30.473655-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785435152.995235, "et": "2026-07-30T14:12:32.995239-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785440875.0483882, "et": "2026-07-30T15:47:55.048393-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785440875.8743215, "et": "2026-07-30T15:47:55.874326-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785442716.4326608, "et": "2026-07-30T16:18:36.432666-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785442717.4852676, "et": "2026-07-30T16:18:37.485270-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785445608.5033238, "et": "2026-07-30T17:06:48.503328-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785447370.221458, "et": "2026-07-30T17:36:10.221465-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785448147.047124, "et": "2026-07-30T17:49:07.047128-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785468521.1839051, "et": "2026-07-30T23:28:41.183909-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785468521.1850848, "et": "2026-07-30T23:28:41.185088-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785468521.1828237, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785468521.1859548, "et": "2026-07-30T23:28:41.185956-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785468521.1934545, "et": "2026-07-30T23:28:41.193457-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785468521.194324, "et": "2026-07-30T23:28:41.194327-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785468521.1951292, "et": "2026-07-30T23:28:41.195131-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785468521.2217846, "et": "2026-07-30T23:28:41.221788-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785468521.2303214, "et": "2026-07-30T23:28:41.230325-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785468521.2318258, "et": "2026-07-30T23:28:41.231828-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785468521.2295082, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785471275.7091935, "et": "2026-07-31T00:14:35.709198-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785471275.7105024, "et": "2026-07-31T00:14:35.710506-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785471275.7081206, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785471275.711899, "et": "2026-07-31T00:14:35.711901-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785471275.7233293, "et": "2026-07-31T00:14:35.723334-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785471275.7245848, "et": "2026-07-31T00:14:35.724588-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785471275.7257187, "et": "2026-07-31T00:14:35.725722-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785471275.7384408, "et": "2026-07-31T00:14:35.738445-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785471275.7496984, "et": "2026-07-31T00:14:35.749704-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785471275.7525744, "et": "2026-07-31T00:14:35.752577-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785471275.7486258, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785502967.9147904, "et": "2026-07-31T09:02:47.914795-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785502969.1978173, "et": "2026-07-31T09:02:49.197822-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785504575.1416624, "et": "2026-07-31T09:29:35.141666-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785504594.6827285, "et": "2026-07-31T09:29:54.682733-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785507641.2548215, "et": "2026-07-31T10:20:41.254826-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785507644.2843857, "et": "2026-07-31T10:20:44.284391-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785517183.1993494, "et": "2026-07-31T12:59:43.199354-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785517183.2005622, "et": "2026-07-31T12:59:43.200565-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785517183.198406, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785517183.2017674, "et": "2026-07-31T12:59:43.201769-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785517183.2342422, "et": "2026-07-31T12:59:43.234246-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785517183.236666, "et": "2026-07-31T12:59:43.236671-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785517183.2427576, "et": "2026-07-31T12:59:43.242763-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785517183.2597616, "et": "2026-07-31T12:59:43.259767-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785517183.2703352, "et": "2026-07-31T12:59:43.270339-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785517183.2723289, "et": "2026-07-31T12:59:43.272332-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785517183.2697937, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785517234.5365367, "et": "2026-07-31T13:00:34.536542-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785517234.5378025, "et": "2026-07-31T13:00:34.537805-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785517234.5354595, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785517234.5391, "et": "2026-07-31T13:00:34.539102-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785517234.5508125, "et": "2026-07-31T13:00:34.550815-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785517234.551951, "et": "2026-07-31T13:00:34.551953-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785517234.5528233, "et": "2026-07-31T13:00:34.552824-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785517234.5633123, "et": "2026-07-31T13:00:34.563316-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785517234.5730689, "et": "2026-07-31T13:00:34.573073-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785517234.5754955, "et": "2026-07-31T13:00:34.575497-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785517234.5719957, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785517389.167054, "et": "2026-07-31T13:03:09.167058-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785517389.1690555, "et": "2026-07-31T13:03:09.169060-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785517389.165074, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785517389.170617, "et": "2026-07-31T13:03:09.170621-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785517389.2252781, "et": "2026-07-31T13:03:09.225284-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785517389.2316127, "et": "2026-07-31T13:03:09.231617-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785517389.2354643, "et": "2026-07-31T13:03:09.235470-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785517389.2530298, "et": "2026-07-31T13:03:09.253034-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785517389.2728138, "et": "2026-07-31T13:03:09.272818-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785517389.2765946, "et": "2026-07-31T13:03:09.276597-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785517389.271702, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785518201.5533457, "et": "2026-07-31T13:16:41.553368-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785518201.5545425, "et": "2026-07-31T13:16:41.554546-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785518201.5525258, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785518201.5556464, "et": "2026-07-31T13:16:41.555648-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785518201.5753403, "et": "2026-07-31T13:16:41.575345-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785518201.5776448, "et": "2026-07-31T13:16:41.577649-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785518201.579201, "et": "2026-07-31T13:16:41.579205-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785518201.595998, "et": "2026-07-31T13:16:41.596002-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785518201.6086798, "et": "2026-07-31T13:16:41.608685-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785518201.6127505, "et": "2026-07-31T13:16:41.612754-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785518201.6072905, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785522747.4673557, "et": "2026-07-31T14:32:27.467362-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785522752.9651277, "et": "2026-07-31T14:32:32.965133-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785680880.240808, "et": "2026-08-02T10:28:00.240812-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785680880.2424955, "et": "2026-08-02T10:28:00.242499-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785680880.2398162, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785680880.2453475, "et": "2026-08-02T10:28:00.245351-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785680880.267059, "et": "2026-08-02T10:28:00.267063-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785680880.2681224, "et": "2026-08-02T10:28:00.268125-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785680880.2744484, "et": "2026-08-02T10:28:00.274453-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785680880.2988234, "et": "2026-08-02T10:28:00.298827-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785680880.3144126, "et": "2026-08-02T10:28:00.314416-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785680880.316275, "et": "2026-08-02T10:28:00.316277-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785680880.3136244, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785701816.2192159, "et": "2026-08-02T16:16:56.219221-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785701816.2208226, "et": "2026-08-02T16:16:56.220827-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785701816.2182634, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785701816.2222016, "et": "2026-08-02T16:16:56.222203-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785701816.2383654, "et": "2026-08-02T16:16:56.238370-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785701816.2395284, "et": "2026-08-02T16:16:56.239531-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785701816.2405217, "et": "2026-08-02T16:16:56.240524-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785701816.2556567, "et": "2026-08-02T16:16:56.255661-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785701816.268524, "et": "2026-08-02T16:16:56.268528-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785701816.2718596, "et": "2026-08-02T16:16:56.271863-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785701816.2676215, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785763528.4312494, "et": "2026-08-03T09:25:28.431255-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785763531.8794234, "et": "2026-08-03T09:25:31.879428-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785765202.9400713, "et": "2026-08-03T09:53:22.940077-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785765323.0527132, "et": "2026-08-03T09:55:23.052718-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785780249.1645124, "et": "2026-08-03T14:04:09.164518-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785780249.16573, "et": "2026-08-03T14:04:09.165733-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785780249.1636662, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785780249.1669037, "et": "2026-08-03T14:04:09.166906-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785780249.1797116, "et": "2026-08-03T14:04:09.179716-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785780249.180971, "et": "2026-08-03T14:04:09.180975-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785780249.182012, "et": "2026-08-03T14:04:09.182015-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785780249.1983497, "et": "2026-08-03T14:04:09.198354-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785780249.2117777, "et": "2026-08-03T14:04:09.211781-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785780249.2136223, "et": "2026-08-03T14:04:09.213624-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785780249.2110505, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785796893.6190279, "et": "2026-08-03T18:41:33.619032-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785796893.619964, "et": "2026-08-03T18:41:33.619967-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785796893.6183739, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785796893.6208427, "et": "2026-08-03T18:41:33.620844-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785796893.6313233, "et": "2026-08-03T18:41:33.631327-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785796893.6319911, "et": "2026-08-03T18:41:33.631994-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785796893.6325622, "et": "2026-08-03T18:41:33.632563-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785796893.6385863, "et": "2026-08-03T18:41:33.638589-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785796893.6451187, "et": "2026-08-03T18:41:33.645122-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785796893.646624, "et": "2026-08-03T18:41:33.646625-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785796893.6443768, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785819984.7787604, "et": "2026-08-04T01:06:24.778765-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785819984.779766, "et": "2026-08-04T01:06:24.779769-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785819984.777963, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785819984.7821584, "et": "2026-08-04T01:06:24.782163-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785819984.8114028, "et": "2026-08-04T01:06:24.811406-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785819984.8124845, "et": "2026-08-04T01:06:24.812487-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785819984.8137288, "et": "2026-08-04T01:06:24.813732-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785819984.8332593, "et": "2026-08-04T01:06:24.833265-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785819984.8546236, "et": "2026-08-04T01:06:24.854628-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785819984.8571548, "et": "2026-08-04T01:06:24.857157-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785819984.8538105, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785820782.157311, "et": "2026-08-04T01:19:42.157314-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785820782.1581922, "et": "2026-08-04T01:19:42.158195-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785820782.156873, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785820782.1590962, "et": "2026-08-04T01:19:42.159098-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785820782.171847, "et": "2026-08-04T01:19:42.171851-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785820782.1725118, "et": "2026-08-04T01:19:42.172514-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785820782.1730428, "et": "2026-08-04T01:19:42.173044-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785820782.1797059, "et": "2026-08-04T01:19:42.179708-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785820782.1857657, "et": "2026-08-04T01:19:42.185769-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785820782.1868763, "et": "2026-08-04T01:19:42.186878-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785820782.1853502, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785848696.1678748, "et": "2026-08-04T09:04:56.167881-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785848701.124331, "et": "2026-08-04T09:05:01.124336-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785850018.0876076, "et": "2026-08-04T09:26:58.087611-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785850021.0943308, "et": "2026-08-04T09:27:01.094338-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785854608.6652951, "et": "2026-08-04T10:43:28.665301-04:00", "event": "backoff", "ticker": "$SPX", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.679338, "et": "2026-08-04T10:43:28.679343-04:00", "event": "backoff", "ticker": "ASTS", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7051585, "et": "2026-08-04T10:43:28.705163-04:00", "event": "backoff", "ticker": "CIFR", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7096038, "et": "2026-08-04T10:43:28.709609-04:00", "event": "backoff", "ticker": "GOOG", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7256646, "et": "2026-08-04T10:43:28.725668-04:00", "event": "backoff", "ticker": "MET", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7337952, "et": "2026-08-04T10:43:28.733799-04:00", "event": "backoff", "ticker": "MRVL", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7446926, "et": "2026-08-04T10:43:28.744696-04:00", "event": "backoff", "ticker": "MU", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7510264, "et": "2026-08-04T10:43:28.751031-04:00", "event": "backoff", "ticker": "NFLX", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7610137, "et": "2026-08-04T10:43:28.761018-04:00", "event": "backoff", "ticker": "PCG", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7615657, "et": "2026-08-04T10:43:28.761568-04:00", "event": "backoff", "ticker": "PLTR", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7716901, "et": "2026-08-04T10:43:28.771693-04:00", "event": "backoff", "ticker": "RKLB", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7732546, "et": "2026-08-04T10:43:28.773257-04:00", "event": "backoff", "ticker": "SMCI", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.786662, "et": "2026-08-04T10:43:28.786666-04:00", "event": "backoff", "ticker": "TSL", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.7869754, "et": "2026-08-04T10:43:28.786978-04:00", "event": "backoff", "ticker": "AMD", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.8029768, "et": "2026-08-04T10:43:28.802979-04:00", "event": "backoff", "ticker": "CRWD", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854608.813066, "et": "2026-08-04T10:43:28.813071-04:00", "event": "backoff", "ticker": "DELL", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.0936086, "et": "2026-08-04T10:43:34.093614-04:00", "event": "backoff", "ticker": "MTA", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.1957078, "et": "2026-08-04T10:43:34.195712-04:00", "event": "backoff", "ticker": "NBIS", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.224255, "et": "2026-08-04T10:43:34.224259-04:00", "event": "backoff", "ticker": "NBIX", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.2248385, "et": "2026-08-04T10:43:34.224840-04:00", "event": "backoff", "ticker": "INTC", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.2304215, "et": "2026-08-04T10:43:34.230424-04:00", "event": "backoff", "ticker": "NET", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.2520685, "et": "2026-08-04T10:43:34.252220-04:00", "event": "backoff", "ticker": "NOW", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.2539325, "et": "2026-08-04T10:43:34.253935-04:00", "event": "backoff", "ticker": "ORCL", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.25926, "et": "2026-08-04T10:43:34.259262-04:00", "event": "backoff", "ticker": "SPCX", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.2616987, "et": "2026-08-04T10:43:34.261701-04:00", "event": "backoff", "ticker": "SKHY", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.2711308, "et": "2026-08-04T10:43:34.271136-04:00", "event": "backoff", "ticker": "TSM", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.2747247, "et": "2026-08-04T10:43:34.274727-04:00", "event": "backoff", "ticker": "UNH", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.325811, "et": "2026-08-04T10:43:34.325815-04:00", "event": "backoff", "ticker": "XOM", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854614.3269713, "et": "2026-08-04T10:43:34.326974-04:00", "event": "backoff", "ticker": "XLE", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854670.7307608, "et": "2026-08-04T10:44:30.730767-04:00", "event": "backoff", "ticker": "SPY", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854670.8030732, "et": "2026-08-04T10:44:30.803078-04:00", "event": "backoff", "ticker": "IWM", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854670.936713, "et": "2026-08-04T10:44:30.936719-04:00", "event": "backoff", "ticker": "QQQ", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854670.9622838, "et": "2026-08-04T10:44:30.962288-04:00", "event": "backoff", "ticker": "NVDA", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854673.2111669, "et": "2026-08-04T10:44:33.211175-04:00", "event": "backoff", "ticker": "AAPL", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854673.2587113, "et": "2026-08-04T10:44:33.258716-04:00", "event": "backoff", "ticker": "AMZN", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854673.3591733, "et": "2026-08-04T10:44:33.359178-04:00", "event": "backoff", "ticker": "MSFT", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854673.3732586, "et": "2026-08-04T10:44:33.373263-04:00", "event": "backoff", "ticker": "META", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854673.4801915, "et": "2026-08-04T10:44:33.480196-04:00", "event": "backoff", "ticker": "TSLA", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854673.4965003, "et": "2026-08-04T10:44:33.496505-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854673.522913, "et": "2026-08-04T10:44:33.522918-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854673.539509, "et": "2026-08-04T10:44:33.539514-04:00", "event": "backoff", "ticker": "AVGO", "failures": 3, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 60.0}
+{"ts_utc": 1785854673.5599184, "et": "2026-08-04T10:44:33.559924-04:00", "event": "backoff", "ticker": "$SPX", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854673.5751302, "et": "2026-08-04T10:44:33.575134-04:00", "event": "soft_release", "ticker": "ASTS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854673.6238117, "et": "2026-08-04T10:44:33.623816-04:00", "event": "soft_release", "ticker": "CIFR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854673.6549127, "et": "2026-08-04T10:44:33.654917-04:00", "event": "backoff", "ticker": "ASTS", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854673.7443557, "et": "2026-08-04T10:44:33.744361-04:00", "event": "soft_release", "ticker": "GOOG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854673.7685251, "et": "2026-08-04T10:44:33.768532-04:00", "event": "backoff", "ticker": "GOOG", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854673.8025484, "et": "2026-08-04T10:44:33.802554-04:00", "event": "soft_release", "ticker": "MET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854673.82551, "et": "2026-08-04T10:44:33.825515-04:00", "event": "backoff", "ticker": "MET", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854673.8647532, "et": "2026-08-04T10:44:33.864758-04:00", "event": "soft_release", "ticker": "MRVL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854673.879787, "et": "2026-08-04T10:44:33.879793-04:00", "event": "backoff", "ticker": "MRVL", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854673.9023893, "et": "2026-08-04T10:44:33.902394-04:00", "event": "soft_release", "ticker": "MU", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854673.9157093, "et": "2026-08-04T10:44:33.915714-04:00", "event": "backoff", "ticker": "MU", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854673.9301164, "et": "2026-08-04T10:44:33.930122-04:00", "event": "soft_release", "ticker": "NFLX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854673.9531717, "et": "2026-08-04T10:44:33.953178-04:00", "event": "backoff", "ticker": "NFLX", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854673.9805913, "et": "2026-08-04T10:44:33.980596-04:00", "event": "soft_release", "ticker": "PCG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854674.0022736, "et": "2026-08-04T10:44:34.002279-04:00", "event": "backoff", "ticker": "PCG", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854674.008569, "et": "2026-08-04T10:44:34.008573-04:00", "event": "soft_release", "ticker": "PLTR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854674.0119555, "et": "2026-08-04T10:44:34.011958-04:00", "event": "backoff", "ticker": "PLTR", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854674.0221686, "et": "2026-08-04T10:44:34.022172-04:00", "event": "soft_release", "ticker": "RKLB", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854674.0287654, "et": "2026-08-04T10:44:34.028769-04:00", "event": "backoff", "ticker": "RKLB", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854674.044517, "et": "2026-08-04T10:44:34.044522-04:00", "event": "soft_release", "ticker": "SMCI", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854674.076107, "et": "2026-08-04T10:44:34.076113-04:00", "event": "backoff", "ticker": "SMCI", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854674.0879855, "et": "2026-08-04T10:44:34.087991-04:00", "event": "soft_release", "ticker": "TSL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.1399708, "et": "2026-08-04T10:44:35.139977-04:00", "event": "backoff", "ticker": "CIFR", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.1605682, "et": "2026-08-04T10:44:35.160574-04:00", "event": "soft_release", "ticker": "AMD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.2187355, "et": "2026-08-04T10:44:35.218742-04:00", "event": "backoff", "ticker": "AMD", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.3854892, "et": "2026-08-04T10:44:35.385494-04:00", "event": "soft_release", "ticker": "CRWD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.575386, "et": "2026-08-04T10:44:35.575392-04:00", "event": "backoff", "ticker": "CRWD", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.6390214, "et": "2026-08-04T10:44:35.639025-04:00", "event": "soft_release", "ticker": "DELL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.6520455, "et": "2026-08-04T10:44:35.652050-04:00", "event": "backoff", "ticker": "TSL", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.6582944, "et": "2026-08-04T10:44:35.658298-04:00", "event": "backoff", "ticker": "DELL", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.6820772, "et": "2026-08-04T10:44:35.682082-04:00", "event": "soft_release", "ticker": "INTC", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.6842456, "et": "2026-08-04T10:44:35.684249-04:00", "event": "soft_release", "ticker": "MTA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.6942666, "et": "2026-08-04T10:44:35.694271-04:00", "event": "backoff", "ticker": "INTC", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.7075217, "et": "2026-08-04T10:44:35.707527-04:00", "event": "backoff", "ticker": "MTA", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.724006, "et": "2026-08-04T10:44:35.724011-04:00", "event": "soft_release", "ticker": "NBIS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.7392468, "et": "2026-08-04T10:44:35.739251-04:00", "event": "soft_release", "ticker": "NBIX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.7460477, "et": "2026-08-04T10:44:35.746053-04:00", "event": "backoff", "ticker": "NBIS", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.7526433, "et": "2026-08-04T10:44:35.752648-04:00", "event": "backoff", "ticker": "NBIX", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.7570965, "et": "2026-08-04T10:44:35.757100-04:00", "event": "soft_release", "ticker": "NET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.7639728, "et": "2026-08-04T10:44:35.763977-04:00", "event": "backoff", "ticker": "NET", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.7711391, "et": "2026-08-04T10:44:35.771143-04:00", "event": "soft_release", "ticker": "NOW", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.7800581, "et": "2026-08-04T10:44:35.780063-04:00", "event": "soft_release", "ticker": "ORCL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.784723, "et": "2026-08-04T10:44:35.784728-04:00", "event": "backoff", "ticker": "NOW", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.7903206, "et": "2026-08-04T10:44:35.790325-04:00", "event": "backoff", "ticker": "ORCL", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.795846, "et": "2026-08-04T10:44:35.795849-04:00", "event": "soft_release", "ticker": "SKHY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.8409085, "et": "2026-08-04T10:44:35.840917-04:00", "event": "soft_release", "ticker": "SPCX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.841394, "et": "2026-08-04T10:44:35.841396-04:00", "event": "backoff", "ticker": "SKHY", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.8437614, "et": "2026-08-04T10:44:35.843763-04:00", "event": "backoff", "ticker": "SPCX", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.846875, "et": "2026-08-04T10:44:35.846877-04:00", "event": "soft_release", "ticker": "TSM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.8493538, "et": "2026-08-04T10:44:35.849357-04:00", "event": "soft_release", "ticker": "UNH", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.8518133, "et": "2026-08-04T10:44:35.851816-04:00", "event": "backoff", "ticker": "TSM", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.8536816, "et": "2026-08-04T10:44:35.853684-04:00", "event": "backoff", "ticker": "UNH", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.85728, "et": "2026-08-04T10:44:35.857285-04:00", "event": "soft_release", "ticker": "XLE", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.859517, "et": "2026-08-04T10:44:35.859519-04:00", "event": "soft_release", "ticker": "XOM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854675.8636518, "et": "2026-08-04T10:44:35.863654-04:00", "event": "backoff", "ticker": "XLE", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854675.8639185, "et": "2026-08-04T10:44:35.863921-04:00", "event": "backoff", "ticker": "XOM", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854789.699969, "et": "2026-08-04T10:46:29.699973-04:00", "event": "soft_release", "ticker": "SPY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854789.7149734, "et": "2026-08-04T10:46:29.714979-04:00", "event": "soft_release", "ticker": "QQQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854789.7487655, "et": "2026-08-04T10:46:29.748771-04:00", "event": "backoff", "ticker": "SPY", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854789.7803874, "et": "2026-08-04T10:46:29.780392-04:00", "event": "backoff", "ticker": "QQQ", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854789.810333, "et": "2026-08-04T10:46:29.810338-04:00", "event": "soft_release", "ticker": "IWM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854789.8237166, "et": "2026-08-04T10:46:29.823721-04:00", "event": "soft_release", "ticker": "NVDA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854789.8800325, "et": "2026-08-04T10:46:29.880036-04:00", "event": "backoff", "ticker": "IWM", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854789.9165292, "et": "2026-08-04T10:46:29.916534-04:00", "event": "backoff", "ticker": "NVDA", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854789.9568985, "et": "2026-08-04T10:46:29.956903-04:00", "event": "soft_release", "ticker": "AAPL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854789.9715803, "et": "2026-08-04T10:46:29.971584-04:00", "event": "soft_release", "ticker": "MSFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854790.0410106, "et": "2026-08-04T10:46:30.041015-04:00", "event": "backoff", "ticker": "AAPL", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854790.061443, "et": "2026-08-04T10:46:30.061448-04:00", "event": "backoff", "ticker": "MSFT", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854790.0750382, "et": "2026-08-04T10:46:30.075044-04:00", "event": "soft_release", "ticker": "AMZN", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854790.1084049, "et": "2026-08-04T10:46:30.108410-04:00", "event": "soft_release", "ticker": "META", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854790.1799395, "et": "2026-08-04T10:46:30.179945-04:00", "event": "backoff", "ticker": "AMZN", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854790.1967099, "et": "2026-08-04T10:46:30.196715-04:00", "event": "backoff", "ticker": "META", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854790.208654, "et": "2026-08-04T10:46:30.208658-04:00", "event": "soft_release", "ticker": "TSLA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854790.2234437, "et": "2026-08-04T10:46:30.223447-04:00", "event": "soft_release", "ticker": "GOOGL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854790.2574902, "et": "2026-08-04T10:46:30.257496-04:00", "event": "backoff", "ticker": "TSLA", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854790.2753117, "et": "2026-08-04T10:46:30.275317-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854790.3075304, "et": "2026-08-04T10:46:30.307536-04:00", "event": "soft_release", "ticker": "AVGO", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854792.5224535, "et": "2026-08-04T10:46:32.522458-04:00", "event": "backoff", "ticker": "AVGO", "failures": 4, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 120.0}
+{"ts_utc": 1785854849.8569343, "et": "2026-08-04T10:47:29.856939-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854849.8573472, "et": "2026-08-04T10:47:29.857351-04:00", "event": "soft_release", "ticker": "ASTS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854849.9404664, "et": "2026-08-04T10:47:29.940472-04:00", "event": "backoff", "ticker": "$SPX", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854849.9659572, "et": "2026-08-04T10:47:29.965962-04:00", "event": "backoff", "ticker": "ASTS", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.055284, "et": "2026-08-04T10:47:30.055288-04:00", "event": "soft_release", "ticker": "CIFR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.0707135, "et": "2026-08-04T10:47:30.070717-04:00", "event": "soft_release", "ticker": "GOOG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.088675, "et": "2026-08-04T10:47:30.088679-04:00", "event": "backoff", "ticker": "CIFR", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.0981374, "et": "2026-08-04T10:47:30.098142-04:00", "event": "backoff", "ticker": "GOOG", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.109638, "et": "2026-08-04T10:47:30.109645-04:00", "event": "soft_release", "ticker": "MET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.1234462, "et": "2026-08-04T10:47:30.123451-04:00", "event": "soft_release", "ticker": "MRVL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.1390147, "et": "2026-08-04T10:47:30.139018-04:00", "event": "backoff", "ticker": "MET", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.1557178, "et": "2026-08-04T10:47:30.155723-04:00", "event": "backoff", "ticker": "MRVL", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.1600928, "et": "2026-08-04T10:47:30.160097-04:00", "event": "soft_release", "ticker": "MU", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.167857, "et": "2026-08-04T10:47:30.167860-04:00", "event": "soft_release", "ticker": "NFLX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.1759858, "et": "2026-08-04T10:47:30.175990-04:00", "event": "backoff", "ticker": "MU", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.1893356, "et": "2026-08-04T10:47:30.189340-04:00", "event": "backoff", "ticker": "NFLX", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.2017238, "et": "2026-08-04T10:47:30.201729-04:00", "event": "soft_release", "ticker": "PCG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.2173836, "et": "2026-08-04T10:47:30.217388-04:00", "event": "soft_release", "ticker": "PLTR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.226732, "et": "2026-08-04T10:47:30.226736-04:00", "event": "backoff", "ticker": "PCG", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.2386076, "et": "2026-08-04T10:47:30.238611-04:00", "event": "backoff", "ticker": "PLTR", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.255049, "et": "2026-08-04T10:47:30.255053-04:00", "event": "soft_release", "ticker": "RKLB", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.262979, "et": "2026-08-04T10:47:30.262983-04:00", "event": "soft_release", "ticker": "SMCI", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.2673595, "et": "2026-08-04T10:47:30.267363-04:00", "event": "backoff", "ticker": "RKLB", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.2810957, "et": "2026-08-04T10:47:30.281100-04:00", "event": "backoff", "ticker": "SMCI", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.3077047, "et": "2026-08-04T10:47:30.307710-04:00", "event": "soft_release", "ticker": "TSL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.331554, "et": "2026-08-04T10:47:30.331558-04:00", "event": "soft_release", "ticker": "AMD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.3417187, "et": "2026-08-04T10:47:30.341724-04:00", "event": "backoff", "ticker": "TSL", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.3542488, "et": "2026-08-04T10:47:30.354253-04:00", "event": "backoff", "ticker": "AMD", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.3775113, "et": "2026-08-04T10:47:30.377516-04:00", "event": "soft_release", "ticker": "CRWD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.3847604, "et": "2026-08-04T10:47:30.384765-04:00", "event": "soft_release", "ticker": "DELL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.3879633, "et": "2026-08-04T10:47:30.387966-04:00", "event": "backoff", "ticker": "CRWD", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.3998895, "et": "2026-08-04T10:47:30.399894-04:00", "event": "backoff", "ticker": "DELL", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.4071286, "et": "2026-08-04T10:47:30.407133-04:00", "event": "soft_release", "ticker": "INTC", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.4092898, "et": "2026-08-04T10:47:30.409292-04:00", "event": "soft_release", "ticker": "MTA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.4176805, "et": "2026-08-04T10:47:30.417684-04:00", "event": "backoff", "ticker": "INTC", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.4315896, "et": "2026-08-04T10:47:30.431595-04:00", "event": "backoff", "ticker": "MTA", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.5129704, "et": "2026-08-04T10:47:30.512974-04:00", "event": "soft_release", "ticker": "NBIS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.5638342, "et": "2026-08-04T10:47:30.563839-04:00", "event": "soft_release", "ticker": "NBIX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.5776289, "et": "2026-08-04T10:47:30.577634-04:00", "event": "backoff", "ticker": "NBIS", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.6210282, "et": "2026-08-04T10:47:30.621032-04:00", "event": "backoff", "ticker": "NBIX", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854850.6302032, "et": "2026-08-04T10:47:30.630209-04:00", "event": "soft_release", "ticker": "NET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854850.6677835, "et": "2026-08-04T10:47:30.667789-04:00", "event": "soft_release", "ticker": "NOW", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854852.5537317, "et": "2026-08-04T10:47:32.553737-04:00", "event": "backoff", "ticker": "NET", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854852.5916984, "et": "2026-08-04T10:47:32.591704-04:00", "event": "soft_release", "ticker": "ORCL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854854.2870734, "et": "2026-08-04T10:47:34.287078-04:00", "event": "backoff", "ticker": "ORCL", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854854.354605, "et": "2026-08-04T10:47:34.354609-04:00", "event": "soft_release", "ticker": "SKHY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854854.401046, "et": "2026-08-04T10:47:34.401052-04:00", "event": "backoff", "ticker": "SKHY", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854854.4313219, "et": "2026-08-04T10:47:34.431326-04:00", "event": "soft_release", "ticker": "SPCX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854854.4487739, "et": "2026-08-04T10:47:34.448779-04:00", "event": "backoff", "ticker": "SPCX", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854854.4793642, "et": "2026-08-04T10:47:34.479370-04:00", "event": "soft_release", "ticker": "TSM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854854.501596, "et": "2026-08-04T10:47:34.501601-04:00", "event": "backoff", "ticker": "TSM", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854854.5627172, "et": "2026-08-04T10:47:34.562722-04:00", "event": "soft_release", "ticker": "UNH", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854854.5947425, "et": "2026-08-04T10:47:34.594747-04:00", "event": "backoff", "ticker": "UNH", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854854.60734, "et": "2026-08-04T10:47:34.607345-04:00", "event": "soft_release", "ticker": "XLE", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854854.6675763, "et": "2026-08-04T10:47:34.667582-04:00", "event": "backoff", "ticker": "XLE", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854854.7051935, "et": "2026-08-04T10:47:34.705198-04:00", "event": "soft_release", "ticker": "XOM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854854.7350216, "et": "2026-08-04T10:47:34.735027-04:00", "event": "backoff", "ticker": "XOM", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854855.1037252, "et": "2026-08-04T10:47:35.103731-04:00", "event": "backoff", "ticker": "NOW", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854909.8947508, "et": "2026-08-04T10:48:29.894757-04:00", "event": "soft_release", "ticker": "SPY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854909.9450564, "et": "2026-08-04T10:48:29.945062-04:00", "event": "soft_release", "ticker": "QQQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854912.9558496, "et": "2026-08-04T10:48:32.955855-04:00", "event": "backoff", "ticker": "SPY", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854912.9896593, "et": "2026-08-04T10:48:32.989664-04:00", "event": "soft_release", "ticker": "IWM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.0247085, "et": "2026-08-04T10:48:33.024715-04:00", "event": "backoff", "ticker": "IWM", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854913.0557814, "et": "2026-08-04T10:48:33.055785-04:00", "event": "soft_release", "ticker": "NVDA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.0831742, "et": "2026-08-04T10:48:33.083179-04:00", "event": "backoff", "ticker": "NVDA", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854913.1046505, "et": "2026-08-04T10:48:33.104655-04:00", "event": "soft_release", "ticker": "AAPL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.1276686, "et": "2026-08-04T10:48:33.127673-04:00", "event": "backoff", "ticker": "AAPL", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854913.173182, "et": "2026-08-04T10:48:33.173186-04:00", "event": "soft_release", "ticker": "MSFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.1928153, "et": "2026-08-04T10:48:33.192819-04:00", "event": "backoff", "ticker": "MSFT", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854913.2056737, "et": "2026-08-04T10:48:33.205678-04:00", "event": "soft_release", "ticker": "AMZN", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.2284539, "et": "2026-08-04T10:48:33.228459-04:00", "event": "backoff", "ticker": "AMZN", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854913.2741294, "et": "2026-08-04T10:48:33.274134-04:00", "event": "soft_release", "ticker": "META", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.399783, "et": "2026-08-04T10:48:33.399788-04:00", "event": "backoff", "ticker": "QQQ", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854913.4328065, "et": "2026-08-04T10:48:33.432811-04:00", "event": "soft_release", "ticker": "TSLA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.477811, "et": "2026-08-04T10:48:33.477817-04:00", "event": "backoff", "ticker": "TSLA", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854913.4990187, "et": "2026-08-04T10:48:33.499022-04:00", "event": "soft_release", "ticker": "GOOGL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.5251634, "et": "2026-08-04T10:48:33.525168-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854913.5389082, "et": "2026-08-04T10:48:33.538914-04:00", "event": "soft_release", "ticker": "AVGO", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785854913.5791066, "et": "2026-08-04T10:48:33.579110-04:00", "event": "backoff", "ticker": "AVGO", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785854916.2298727, "et": "2026-08-04T10:48:36.229947-04:00", "event": "backoff", "ticker": "META", "failures": 5, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 240.0}
+{"ts_utc": 1785855090.5820742, "et": "2026-08-04T10:51:30.582075-04:00", "event": "soft_release", "ticker": "ASTS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855090.5866086, "et": "2026-08-04T10:51:30.586613-04:00", "event": "backoff", "ticker": "$SPX", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855090.5877416, "et": "2026-08-04T10:51:30.587744-04:00", "event": "backoff", "ticker": "ASTS", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855090.5964026, "et": "2026-08-04T10:51:30.596408-04:00", "event": "soft_release", "ticker": "CIFR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855090.5993817, "et": "2026-08-04T10:51:30.599386-04:00", "event": "soft_release", "ticker": "GOOG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855090.6018932, "et": "2026-08-04T10:51:30.601896-04:00", "event": "backoff", "ticker": "CIFR", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855090.6044703, "et": "2026-08-04T10:51:30.604473-04:00", "event": "backoff", "ticker": "GOOG", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855090.6163158, "et": "2026-08-04T10:51:30.616320-04:00", "event": "soft_release", "ticker": "MET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855090.619708, "et": "2026-08-04T10:51:30.619711-04:00", "event": "soft_release", "ticker": "MRVL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855090.6253362, "et": "2026-08-04T10:51:30.625340-04:00", "event": "backoff", "ticker": "MRVL", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855090.6225653, "et": "2026-08-04T10:51:30.622569-04:00", "event": "backoff", "ticker": "MET", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855090.6555414, "et": "2026-08-04T10:51:30.655547-04:00", "event": "soft_release", "ticker": "MU", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855090.6855505, "et": "2026-08-04T10:51:30.685556-04:00", "event": "soft_release", "ticker": "NFLX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855090.7370803, "et": "2026-08-04T10:51:30.737086-04:00", "event": "backoff", "ticker": "MU", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855090.7691903, "et": "2026-08-04T10:51:30.769195-04:00", "event": "backoff", "ticker": "NFLX", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855090.7758515, "et": "2026-08-04T10:51:30.775856-04:00", "event": "soft_release", "ticker": "PCG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855090.8332884, "et": "2026-08-04T10:51:30.833294-04:00", "event": "soft_release", "ticker": "PLTR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.4195845, "et": "2026-08-04T10:51:34.419590-04:00", "event": "backoff", "ticker": "PCG", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.5438673, "et": "2026-08-04T10:51:34.543872-04:00", "event": "soft_release", "ticker": "RKLB", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.5440996, "et": "2026-08-04T10:51:34.544102-04:00", "event": "backoff", "ticker": "PLTR", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.5696373, "et": "2026-08-04T10:51:34.569642-04:00", "event": "backoff", "ticker": "RKLB", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.6437593, "et": "2026-08-04T10:51:34.643764-04:00", "event": "soft_release", "ticker": "SMCI", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.7014277, "et": "2026-08-04T10:51:34.701432-04:00", "event": "soft_release", "ticker": "TSL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.749409, "et": "2026-08-04T10:51:34.749416-04:00", "event": "backoff", "ticker": "SMCI", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.765273, "et": "2026-08-04T10:51:34.765277-04:00", "event": "backoff", "ticker": "TSL", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.8292243, "et": "2026-08-04T10:51:34.829229-04:00", "event": "soft_release", "ticker": "AMD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.8933415, "et": "2026-08-04T10:51:34.893348-04:00", "event": "soft_release", "ticker": "CRWD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.9559486, "et": "2026-08-04T10:51:34.955953-04:00", "event": "backoff", "ticker": "AMD", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.959332, "et": "2026-08-04T10:51:34.959337-04:00", "event": "backoff", "ticker": "CRWD", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.97467, "et": "2026-08-04T10:51:34.974675-04:00", "event": "soft_release", "ticker": "DELL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.9777944, "et": "2026-08-04T10:51:34.977798-04:00", "event": "soft_release", "ticker": "INTC", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.9844272, "et": "2026-08-04T10:51:34.984432-04:00", "event": "backoff", "ticker": "DELL", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.9936361, "et": "2026-08-04T10:51:34.993647-04:00", "event": "backoff", "ticker": "INTC", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855094.9967325, "et": "2026-08-04T10:51:34.996736-04:00", "event": "soft_release", "ticker": "MTA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855094.9989564, "et": "2026-08-04T10:51:34.998959-04:00", "event": "soft_release", "ticker": "NBIS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.0006628, "et": "2026-08-04T10:51:35.000665-04:00", "event": "backoff", "ticker": "MTA", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.0019226, "et": "2026-08-04T10:51:35.001925-04:00", "event": "backoff", "ticker": "NBIS", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.005994, "et": "2026-08-04T10:51:35.005996-04:00", "event": "soft_release", "ticker": "NBIX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.0090752, "et": "2026-08-04T10:51:35.009079-04:00", "event": "soft_release", "ticker": "NET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.016468, "et": "2026-08-04T10:51:35.016472-04:00", "event": "backoff", "ticker": "NBIX", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.0205963, "et": "2026-08-04T10:51:35.020600-04:00", "event": "backoff", "ticker": "NET", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.0264525, "et": "2026-08-04T10:51:35.026457-04:00", "event": "soft_release", "ticker": "ORCL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.0282032, "et": "2026-08-04T10:51:35.028212-04:00", "event": "soft_release", "ticker": "SKHY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.032418, "et": "2026-08-04T10:51:35.032421-04:00", "event": "backoff", "ticker": "ORCL", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.0416803, "et": "2026-08-04T10:51:35.041686-04:00", "event": "backoff", "ticker": "SKHY", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.0540771, "et": "2026-08-04T10:51:35.054083-04:00", "event": "soft_release", "ticker": "SPCX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.0676706, "et": "2026-08-04T10:51:35.067675-04:00", "event": "soft_release", "ticker": "TSM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.079693, "et": "2026-08-04T10:51:35.079697-04:00", "event": "backoff", "ticker": "SPCX", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.0943239, "et": "2026-08-04T10:51:35.094329-04:00", "event": "backoff", "ticker": "TSM", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.1053915, "et": "2026-08-04T10:51:35.105397-04:00", "event": "soft_release", "ticker": "UNH", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.1114807, "et": "2026-08-04T10:51:35.111484-04:00", "event": "soft_release", "ticker": "XLE", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.1162229, "et": "2026-08-04T10:51:35.116227-04:00", "event": "backoff", "ticker": "UNH", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.1195896, "et": "2026-08-04T10:51:35.119593-04:00", "event": "soft_release", "ticker": "XOM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855095.1257324, "et": "2026-08-04T10:51:35.125736-04:00", "event": "backoff", "ticker": "XLE", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855095.1315434, "et": "2026-08-04T10:51:35.131548-04:00", "event": "backoff", "ticker": "XOM", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855150.7506566, "et": "2026-08-04T10:52:30.750661-04:00", "event": "soft_release", "ticker": "NOW", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855150.7567966, "et": "2026-08-04T10:52:30.756801-04:00", "event": "backoff", "ticker": "NOW", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855211.013199, "et": "2026-08-04T10:53:31.013204-04:00", "event": "soft_release", "ticker": "SPY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855211.0183969, "et": "2026-08-04T10:53:31.018401-04:00", "event": "soft_release", "ticker": "QQQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855211.019048, "et": "2026-08-04T10:53:31.019051-04:00", "event": "backoff", "ticker": "SPY", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855211.0230114, "et": "2026-08-04T10:53:31.023014-04:00", "event": "soft_release", "ticker": "IWM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855211.0249083, "et": "2026-08-04T10:53:31.024911-04:00", "event": "backoff", "ticker": "QQQ", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855211.0267622, "et": "2026-08-04T10:53:31.026766-04:00", "event": "backoff", "ticker": "IWM", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855211.0302794, "et": "2026-08-04T10:53:31.030284-04:00", "event": "soft_release", "ticker": "NVDA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855211.0320532, "et": "2026-08-04T10:53:31.032055-04:00", "event": "soft_release", "ticker": "AAPL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855211.0337114, "et": "2026-08-04T10:53:31.033713-04:00", "event": "backoff", "ticker": "NVDA", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855211.0401092, "et": "2026-08-04T10:53:31.040113-04:00", "event": "backoff", "ticker": "AAPL", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855211.0542495, "et": "2026-08-04T10:53:31.054255-04:00", "event": "soft_release", "ticker": "MSFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855211.098859, "et": "2026-08-04T10:53:31.098864-04:00", "event": "soft_release", "ticker": "AMZN", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855211.1494687, "et": "2026-08-04T10:53:31.149473-04:00", "event": "backoff", "ticker": "MSFT", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855211.3998084, "et": "2026-08-04T10:53:31.399815-04:00", "event": "backoff", "ticker": "AMZN", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855211.423447, "et": "2026-08-04T10:53:31.423452-04:00", "event": "soft_release", "ticker": "META", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855211.4902668, "et": "2026-08-04T10:53:31.490272-04:00", "event": "soft_release", "ticker": "TSLA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855213.3509307, "et": "2026-08-04T10:53:33.350935-04:00", "event": "backoff", "ticker": "META", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855213.3792045, "et": "2026-08-04T10:53:33.379208-04:00", "event": "soft_release", "ticker": "GOOGL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855213.4304023, "et": "2026-08-04T10:53:33.430406-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855213.4737272, "et": "2026-08-04T10:53:33.473732-04:00", "event": "soft_release", "ticker": "AVGO", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855213.5143077, "et": "2026-08-04T10:53:33.514312-04:00", "event": "backoff", "ticker": "AVGO", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855215.1980512, "et": "2026-08-04T10:53:35.198057-04:00", "event": "backoff", "ticker": "TSLA", "failures": 6, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 480.0}
+{"ts_utc": 1785855572.4418716, "et": "2026-08-04T10:59:32.441877-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855572.4502285, "et": "2026-08-04T10:59:32.450232-04:00", "event": "soft_release", "ticker": "ASTS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855580.879241, "et": "2026-08-04T10:59:40.879248-04:00", "event": "backoff", "ticker": "ASTS", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855581.1386313, "et": "2026-08-04T10:59:41.138637-04:00", "event": "soft_release", "ticker": "CIFR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855581.280018, "et": "2026-08-04T10:59:41.280023-04:00", "event": "backoff", "ticker": "$SPX", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855581.4441721, "et": "2026-08-04T10:59:41.444177-04:00", "event": "backoff", "ticker": "CIFR", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855581.756237, "et": "2026-08-04T10:59:41.756242-04:00", "event": "soft_release", "ticker": "GOOG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855581.796161, "et": "2026-08-04T10:59:41.796165-04:00", "event": "soft_release", "ticker": "MET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855582.0146298, "et": "2026-08-04T10:59:42.014634-04:00", "event": "backoff", "ticker": "MET", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855582.087765, "et": "2026-08-04T10:59:42.087771-04:00", "event": "backoff", "ticker": "GOOG", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855582.2190952, "et": "2026-08-04T10:59:42.219100-04:00", "event": "soft_release", "ticker": "MRVL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855582.3920197, "et": "2026-08-04T10:59:42.392024-04:00", "event": "soft_release", "ticker": "MU", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855582.4610455, "et": "2026-08-04T10:59:42.461050-04:00", "event": "backoff", "ticker": "MRVL", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855582.4614732, "et": "2026-08-04T10:59:42.461476-04:00", "event": "backoff", "ticker": "MU", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855582.5474062, "et": "2026-08-04T10:59:42.547410-04:00", "event": "soft_release", "ticker": "NFLX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855582.6889632, "et": "2026-08-04T10:59:42.688968-04:00", "event": "soft_release", "ticker": "PCG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855582.808453, "et": "2026-08-04T10:59:42.808459-04:00", "event": "backoff", "ticker": "NFLX", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855582.8144677, "et": "2026-08-04T10:59:42.814473-04:00", "event": "backoff", "ticker": "PCG", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855582.931613, "et": "2026-08-04T10:59:42.931618-04:00", "event": "soft_release", "ticker": "PLTR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855582.977628, "et": "2026-08-04T10:59:42.977633-04:00", "event": "soft_release", "ticker": "RKLB", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855583.0222142, "et": "2026-08-04T10:59:43.022219-04:00", "event": "backoff", "ticker": "PLTR", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855583.0439026, "et": "2026-08-04T10:59:43.043908-04:00", "event": "backoff", "ticker": "RKLB", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855583.106766, "et": "2026-08-04T10:59:43.106772-04:00", "event": "soft_release", "ticker": "SMCI", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855583.120322, "et": "2026-08-04T10:59:43.120328-04:00", "event": "soft_release", "ticker": "TSL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855583.122136, "et": "2026-08-04T10:59:43.122139-04:00", "event": "backoff", "ticker": "SMCI", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855583.2717764, "et": "2026-08-04T10:59:43.271781-04:00", "event": "backoff", "ticker": "TSL", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855583.3834782, "et": "2026-08-04T10:59:43.383483-04:00", "event": "soft_release", "ticker": "AMD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855583.5641603, "et": "2026-08-04T10:59:43.564166-04:00", "event": "soft_release", "ticker": "CRWD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855583.5906758, "et": "2026-08-04T10:59:43.590680-04:00", "event": "backoff", "ticker": "AMD", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855584.602223, "et": "2026-08-04T10:59:44.602228-04:00", "event": "soft_release", "ticker": "DELL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855584.8319542, "et": "2026-08-04T10:59:44.831961-04:00", "event": "backoff", "ticker": "DELL", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855585.0103478, "et": "2026-08-04T10:59:45.010353-04:00", "event": "soft_release", "ticker": "INTC", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855585.161347, "et": "2026-08-04T10:59:45.161353-04:00", "event": "backoff", "ticker": "INTC", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855585.5215414, "et": "2026-08-04T10:59:45.521547-04:00", "event": "soft_release", "ticker": "MTA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855585.6805952, "et": "2026-08-04T10:59:45.680600-04:00", "event": "backoff", "ticker": "MTA", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855585.7636056, "et": "2026-08-04T10:59:45.763610-04:00", "event": "soft_release", "ticker": "NBIS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855585.7698472, "et": "2026-08-04T10:59:45.769852-04:00", "event": "backoff", "ticker": "NBIS", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855585.8309546, "et": "2026-08-04T10:59:45.831203-04:00", "event": "soft_release", "ticker": "NBIX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855585.9038284, "et": "2026-08-04T10:59:45.903835-04:00", "event": "backoff", "ticker": "NBIX", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855585.9466717, "et": "2026-08-04T10:59:45.946676-04:00", "event": "soft_release", "ticker": "NET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855585.9813297, "et": "2026-08-04T10:59:45.981334-04:00", "event": "backoff", "ticker": "NET", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855586.0203624, "et": "2026-08-04T10:59:46.020367-04:00", "event": "soft_release", "ticker": "ORCL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855586.0728512, "et": "2026-08-04T10:59:46.072856-04:00", "event": "backoff", "ticker": "ORCL", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855586.076243, "et": "2026-08-04T10:59:46.076247-04:00", "event": "soft_release", "ticker": "SKHY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855586.081544, "et": "2026-08-04T10:59:46.081548-04:00", "event": "backoff", "ticker": "SKHY", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855586.0935862, "et": "2026-08-04T10:59:46.093591-04:00", "event": "soft_release", "ticker": "SPCX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855586.105219, "et": "2026-08-04T10:59:46.105224-04:00", "event": "backoff", "ticker": "SPCX", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855586.1319292, "et": "2026-08-04T10:59:46.131935-04:00", "event": "soft_release", "ticker": "TSM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855586.1819673, "et": "2026-08-04T10:59:46.181973-04:00", "event": "backoff", "ticker": "TSM", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855586.2972143, "et": "2026-08-04T10:59:46.297221-04:00", "event": "soft_release", "ticker": "UNH", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855586.3235958, "et": "2026-08-04T10:59:46.323602-04:00", "event": "backoff", "ticker": "UNH", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855586.3607228, "et": "2026-08-04T10:59:46.360727-04:00", "event": "soft_release", "ticker": "XLE", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855589.8125942, "et": "2026-08-04T10:59:49.812599-04:00", "event": "backoff", "ticker": "CRWD", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855589.827454, "et": "2026-08-04T10:59:49.827459-04:00", "event": "soft_release", "ticker": "XOM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855589.848205, "et": "2026-08-04T10:59:49.848210-04:00", "event": "backoff", "ticker": "XOM", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855592.171826, "et": "2026-08-04T10:59:52.171832-04:00", "event": "backoff", "ticker": "XLE", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855632.9065187, "et": "2026-08-04T11:00:32.906523-04:00", "event": "soft_release", "ticker": "NOW", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855633.455975, "et": "2026-08-04T11:00:33.455982-04:00", "event": "backoff", "ticker": "NOW", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855695.5484593, "et": "2026-08-04T11:01:35.548465-04:00", "event": "soft_release", "ticker": "SPY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855695.683577, "et": "2026-08-04T11:01:35.683581-04:00", "event": "soft_release", "ticker": "QQQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855695.7334394, "et": "2026-08-04T11:01:35.733444-04:00", "event": "backoff", "ticker": "SPY", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855695.9126441, "et": "2026-08-04T11:01:35.912649-04:00", "event": "backoff", "ticker": "QQQ", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855696.1579933, "et": "2026-08-04T11:01:36.158002-04:00", "event": "soft_release", "ticker": "IWM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855696.4961874, "et": "2026-08-04T11:01:36.496193-04:00", "event": "soft_release", "ticker": "NVDA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855696.996417, "et": "2026-08-04T11:01:36.996422-04:00", "event": "backoff", "ticker": "IWM", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855697.131525, "et": "2026-08-04T11:01:37.131534-04:00", "event": "backoff", "ticker": "NVDA", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855697.6323984, "et": "2026-08-04T11:01:37.632403-04:00", "event": "soft_release", "ticker": "AAPL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855697.6380172, "et": "2026-08-04T11:01:37.638022-04:00", "event": "soft_release", "ticker": "MSFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855697.6465476, "et": "2026-08-04T11:01:37.646551-04:00", "event": "backoff", "ticker": "AAPL", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855697.6474762, "et": "2026-08-04T11:01:37.647479-04:00", "event": "backoff", "ticker": "MSFT", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855697.6512733, "et": "2026-08-04T11:01:37.651276-04:00", "event": "soft_release", "ticker": "AMZN", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855697.659682, "et": "2026-08-04T11:01:37.659686-04:00", "event": "soft_release", "ticker": "META", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855697.6600325, "et": "2026-08-04T11:01:37.660035-04:00", "event": "backoff", "ticker": "AMZN", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855697.6618788, "et": "2026-08-04T11:01:37.661880-04:00", "event": "backoff", "ticker": "META", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855697.6653683, "et": "2026-08-04T11:01:37.665370-04:00", "event": "soft_release", "ticker": "TSLA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855697.6660874, "et": "2026-08-04T11:01:37.666089-04:00", "event": "soft_release", "ticker": "GOOGL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855697.727145, "et": "2026-08-04T11:01:37.727150-04:00", "event": "backoff", "ticker": "TSLA", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855697.7338521, "et": "2026-08-04T11:01:37.733856-04:00", "event": "soft_release", "ticker": "AVGO", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785855697.9115517, "et": "2026-08-04T11:01:37.911557-04:00", "event": "backoff", "ticker": "AVGO", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785855698.2617915, "et": "2026-08-04T11:01:38.261797-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 7, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856481.005014, "et": "2026-08-04T11:14:41.005019-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856481.0066803, "et": "2026-08-04T11:14:41.006683-04:00", "event": "soft_release", "ticker": "ASTS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856483.264969, "et": "2026-08-04T11:14:43.264975-04:00", "event": "backoff", "ticker": "$SPX", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856483.2873151, "et": "2026-08-04T11:14:43.287319-04:00", "event": "soft_release", "ticker": "CIFR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856483.3054287, "et": "2026-08-04T11:14:43.305434-04:00", "event": "backoff", "ticker": "CIFR", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856483.3388033, "et": "2026-08-04T11:14:43.338809-04:00", "event": "soft_release", "ticker": "GOOG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856484.0041287, "et": "2026-08-04T11:14:44.004133-04:00", "event": "backoff", "ticker": "ASTS", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856484.0211952, "et": "2026-08-04T11:14:44.021200-04:00", "event": "soft_release", "ticker": "MET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856485.8663535, "et": "2026-08-04T11:14:45.866359-04:00", "event": "backoff", "ticker": "GOOG", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856485.9371517, "et": "2026-08-04T11:14:45.937157-04:00", "event": "soft_release", "ticker": "MRVL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856485.9858181, "et": "2026-08-04T11:14:45.985823-04:00", "event": "backoff", "ticker": "MRVL", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856485.9980247, "et": "2026-08-04T11:14:45.998030-04:00", "event": "soft_release", "ticker": "MU", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.0412724, "et": "2026-08-04T11:14:46.041277-04:00", "event": "backoff", "ticker": "MU", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.0572724, "et": "2026-08-04T11:14:46.057277-04:00", "event": "soft_release", "ticker": "NFLX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.088762, "et": "2026-08-04T11:14:46.088767-04:00", "event": "backoff", "ticker": "NFLX", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.110382, "et": "2026-08-04T11:14:46.110387-04:00", "event": "soft_release", "ticker": "PCG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.1319635, "et": "2026-08-04T11:14:46.131968-04:00", "event": "backoff", "ticker": "PCG", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.1561646, "et": "2026-08-04T11:14:46.156170-04:00", "event": "soft_release", "ticker": "PLTR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.1966014, "et": "2026-08-04T11:14:46.196606-04:00", "event": "backoff", "ticker": "PLTR", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.2150881, "et": "2026-08-04T11:14:46.215093-04:00", "event": "soft_release", "ticker": "RKLB", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.2309349, "et": "2026-08-04T11:14:46.230940-04:00", "event": "backoff", "ticker": "RKLB", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.2603836, "et": "2026-08-04T11:14:46.260387-04:00", "event": "soft_release", "ticker": "SMCI", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.301374, "et": "2026-08-04T11:14:46.301379-04:00", "event": "backoff", "ticker": "SMCI", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.3237681, "et": "2026-08-04T11:14:46.323772-04:00", "event": "soft_release", "ticker": "TSL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.344715, "et": "2026-08-04T11:14:46.344721-04:00", "event": "backoff", "ticker": "TSL", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.3789768, "et": "2026-08-04T11:14:46.378982-04:00", "event": "soft_release", "ticker": "AMD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.40736, "et": "2026-08-04T11:14:46.407364-04:00", "event": "backoff", "ticker": "AMD", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.4943447, "et": "2026-08-04T11:14:46.494350-04:00", "event": "soft_release", "ticker": "DELL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.5243003, "et": "2026-08-04T11:14:46.524305-04:00", "event": "backoff", "ticker": "DELL", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.555371, "et": "2026-08-04T11:14:46.555376-04:00", "event": "soft_release", "ticker": "INTC", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.585239, "et": "2026-08-04T11:14:46.585245-04:00", "event": "backoff", "ticker": "INTC", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.6129832, "et": "2026-08-04T11:14:46.612989-04:00", "event": "soft_release", "ticker": "MTA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.6210928, "et": "2026-08-04T11:14:46.621097-04:00", "event": "backoff", "ticker": "MTA", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.6708734, "et": "2026-08-04T11:14:46.670878-04:00", "event": "soft_release", "ticker": "NBIS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.706162, "et": "2026-08-04T11:14:46.706166-04:00", "event": "backoff", "ticker": "NBIS", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.7322118, "et": "2026-08-04T11:14:46.732217-04:00", "event": "soft_release", "ticker": "NBIX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.762187, "et": "2026-08-04T11:14:46.762191-04:00", "event": "backoff", "ticker": "NBIX", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.7842648, "et": "2026-08-04T11:14:46.784270-04:00", "event": "soft_release", "ticker": "NET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.7956607, "et": "2026-08-04T11:14:46.795664-04:00", "event": "backoff", "ticker": "NET", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.8160055, "et": "2026-08-04T11:14:46.816011-04:00", "event": "soft_release", "ticker": "ORCL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.8478942, "et": "2026-08-04T11:14:46.847898-04:00", "event": "backoff", "ticker": "ORCL", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.8565052, "et": "2026-08-04T11:14:46.856510-04:00", "event": "soft_release", "ticker": "SKHY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.8822386, "et": "2026-08-04T11:14:46.882243-04:00", "event": "backoff", "ticker": "SKHY", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.8905096, "et": "2026-08-04T11:14:46.890515-04:00", "event": "soft_release", "ticker": "SPCX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856486.9280622, "et": "2026-08-04T11:14:46.928066-04:00", "event": "backoff", "ticker": "SPCX", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856486.9802532, "et": "2026-08-04T11:14:46.980257-04:00", "event": "soft_release", "ticker": "TSM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856487.0224862, "et": "2026-08-04T11:14:47.022490-04:00", "event": "backoff", "ticker": "TSM", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856487.0451872, "et": "2026-08-04T11:14:47.045191-04:00", "event": "soft_release", "ticker": "UNH", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856487.0594985, "et": "2026-08-04T11:14:47.059503-04:00", "event": "backoff", "ticker": "UNH", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856487.3302526, "et": "2026-08-04T11:14:47.330257-04:00", "event": "backoff", "ticker": "MET", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856541.0451145, "et": "2026-08-04T11:15:41.045120-04:00", "event": "soft_release", "ticker": "CRWD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856541.0609715, "et": "2026-08-04T11:15:41.060974-04:00", "event": "soft_release", "ticker": "NOW", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856541.0783143, "et": "2026-08-04T11:15:41.078319-04:00", "event": "backoff", "ticker": "CRWD", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856541.132103, "et": "2026-08-04T11:15:41.132108-04:00", "event": "backoff", "ticker": "NOW", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856541.1702642, "et": "2026-08-04T11:15:41.170269-04:00", "event": "soft_release", "ticker": "XLE", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856541.1976104, "et": "2026-08-04T11:15:41.197616-04:00", "event": "soft_release", "ticker": "XOM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856541.1989133, "et": "2026-08-04T11:15:41.198916-04:00", "event": "backoff", "ticker": "XLE", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856541.2065408, "et": "2026-08-04T11:15:41.206547-04:00", "event": "backoff", "ticker": "XOM", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856601.5215476, "et": "2026-08-04T11:16:41.521552-04:00", "event": "soft_release", "ticker": "SPY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856601.6008558, "et": "2026-08-04T11:16:41.600862-04:00", "event": "soft_release", "ticker": "QQQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.6309443, "et": "2026-08-04T11:16:43.630950-04:00", "event": "backoff", "ticker": "SPY", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.661417, "et": "2026-08-04T11:16:43.661422-04:00", "event": "backoff", "ticker": "QQQ", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.7012644, "et": "2026-08-04T11:16:43.701272-04:00", "event": "soft_release", "ticker": "IWM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.721719, "et": "2026-08-04T11:16:43.721725-04:00", "event": "soft_release", "ticker": "NVDA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.741956, "et": "2026-08-04T11:16:43.741960-04:00", "event": "backoff", "ticker": "IWM", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.7752483, "et": "2026-08-04T11:16:43.775253-04:00", "event": "backoff", "ticker": "NVDA", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.800398, "et": "2026-08-04T11:16:43.800403-04:00", "event": "soft_release", "ticker": "AAPL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.8682492, "et": "2026-08-04T11:16:43.868254-04:00", "event": "soft_release", "ticker": "MSFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.9135923, "et": "2026-08-04T11:16:43.913596-04:00", "event": "backoff", "ticker": "AAPL", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.9222765, "et": "2026-08-04T11:16:43.922281-04:00", "event": "backoff", "ticker": "MSFT", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.929642, "et": "2026-08-04T11:16:43.929646-04:00", "event": "soft_release", "ticker": "AMZN", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.933143, "et": "2026-08-04T11:16:43.933145-04:00", "event": "soft_release", "ticker": "META", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.9336443, "et": "2026-08-04T11:16:43.933646-04:00", "event": "backoff", "ticker": "AMZN", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.9351754, "et": "2026-08-04T11:16:43.935177-04:00", "event": "backoff", "ticker": "META", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.9390976, "et": "2026-08-04T11:16:43.939102-04:00", "event": "soft_release", "ticker": "TSLA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.9425066, "et": "2026-08-04T11:16:43.942510-04:00", "event": "soft_release", "ticker": "GOOGL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.9483225, "et": "2026-08-04T11:16:43.948326-04:00", "event": "backoff", "ticker": "TSLA", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.9552627, "et": "2026-08-04T11:16:43.955267-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785856603.9620728, "et": "2026-08-04T11:16:43.962077-04:00", "event": "soft_release", "ticker": "AVGO", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785856603.9816065, "et": "2026-08-04T11:16:43.981611-04:00", "event": "backoff", "ticker": "AVGO", "failures": 8, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.5452805, "et": "2026-08-04T11:29:46.545283-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.5446744, "et": "2026-08-04T11:29:46.544679-04:00", "event": "soft_release", "ticker": "ASTS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.558446, "et": "2026-08-04T11:29:46.558450-04:00", "event": "backoff", "ticker": "$SPX", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.5628667, "et": "2026-08-04T11:29:46.562871-04:00", "event": "backoff", "ticker": "ASTS", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.5939307, "et": "2026-08-04T11:29:46.593935-04:00", "event": "soft_release", "ticker": "CIFR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.6085308, "et": "2026-08-04T11:29:46.608536-04:00", "event": "soft_release", "ticker": "GOOG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.627865, "et": "2026-08-04T11:29:46.627870-04:00", "event": "backoff", "ticker": "CIFR", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.6397135, "et": "2026-08-04T11:29:46.639718-04:00", "event": "backoff", "ticker": "GOOG", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.649048, "et": "2026-08-04T11:29:46.649052-04:00", "event": "soft_release", "ticker": "MRVL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.659861, "et": "2026-08-04T11:29:46.659865-04:00", "event": "soft_release", "ticker": "MU", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.6740043, "et": "2026-08-04T11:29:46.674008-04:00", "event": "backoff", "ticker": "MRVL", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.6905444, "et": "2026-08-04T11:29:46.690550-04:00", "event": "backoff", "ticker": "MU", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.6999166, "et": "2026-08-04T11:29:46.699922-04:00", "event": "soft_release", "ticker": "NFLX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.7125492, "et": "2026-08-04T11:29:46.712554-04:00", "event": "soft_release", "ticker": "PCG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.7449057, "et": "2026-08-04T11:29:46.744911-04:00", "event": "backoff", "ticker": "NFLX", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.7553318, "et": "2026-08-04T11:29:46.755337-04:00", "event": "backoff", "ticker": "PCG", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.7617955, "et": "2026-08-04T11:29:46.761801-04:00", "event": "soft_release", "ticker": "PLTR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.7719574, "et": "2026-08-04T11:29:46.771961-04:00", "event": "soft_release", "ticker": "RKLB", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857386.7733722, "et": "2026-08-04T11:29:46.773375-04:00", "event": "backoff", "ticker": "PLTR", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857386.786751, "et": "2026-08-04T11:29:46.786755-04:00", "event": "soft_release", "ticker": "SMCI", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857388.776423, "et": "2026-08-04T11:29:48.776429-04:00", "event": "backoff", "ticker": "RKLB", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.1186588, "et": "2026-08-04T11:29:49.118666-04:00", "event": "soft_release", "ticker": "TSL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.311588, "et": "2026-08-04T11:29:49.311592-04:00", "event": "backoff", "ticker": "SMCI", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.316002, "et": "2026-08-04T11:29:49.316007-04:00", "event": "backoff", "ticker": "TSL", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.3454978, "et": "2026-08-04T11:29:49.345503-04:00", "event": "soft_release", "ticker": "AMD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.4181097, "et": "2026-08-04T11:29:49.418114-04:00", "event": "soft_release", "ticker": "DELL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.4456804, "et": "2026-08-04T11:29:49.445686-04:00", "event": "backoff", "ticker": "DELL", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.4594662, "et": "2026-08-04T11:29:49.459470-04:00", "event": "backoff", "ticker": "AMD", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.5038757, "et": "2026-08-04T11:29:49.503881-04:00", "event": "soft_release", "ticker": "INTC", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.5375688, "et": "2026-08-04T11:29:49.537573-04:00", "event": "soft_release", "ticker": "MTA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.553515, "et": "2026-08-04T11:29:49.553526-04:00", "event": "backoff", "ticker": "INTC", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.5579467, "et": "2026-08-04T11:29:49.557951-04:00", "event": "backoff", "ticker": "MTA", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.580559, "et": "2026-08-04T11:29:49.580564-04:00", "event": "soft_release", "ticker": "NBIS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.595637, "et": "2026-08-04T11:29:49.595642-04:00", "event": "soft_release", "ticker": "NBIX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.5959713, "et": "2026-08-04T11:29:49.595974-04:00", "event": "backoff", "ticker": "NBIS", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.610462, "et": "2026-08-04T11:29:49.610467-04:00", "event": "soft_release", "ticker": "NET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.6225467, "et": "2026-08-04T11:29:49.622551-04:00", "event": "backoff", "ticker": "NBIX", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.6476974, "et": "2026-08-04T11:29:49.647702-04:00", "event": "backoff", "ticker": "NET", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857389.6786253, "et": "2026-08-04T11:29:49.678629-04:00", "event": "soft_release", "ticker": "ORCL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857389.7413006, "et": "2026-08-04T11:29:49.741307-04:00", "event": "soft_release", "ticker": "SKHY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857392.0475116, "et": "2026-08-04T11:29:52.047516-04:00", "event": "backoff", "ticker": "ORCL", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857392.063369, "et": "2026-08-04T11:29:52.063373-04:00", "event": "soft_release", "ticker": "SPCX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857392.1026824, "et": "2026-08-04T11:29:52.102687-04:00", "event": "backoff", "ticker": "SPCX", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857392.1268334, "et": "2026-08-04T11:29:52.126838-04:00", "event": "soft_release", "ticker": "TSM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857392.1369824, "et": "2026-08-04T11:29:52.136988-04:00", "event": "backoff", "ticker": "SKHY", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857392.1570365, "et": "2026-08-04T11:29:52.157041-04:00", "event": "backoff", "ticker": "TSM", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857392.1775098, "et": "2026-08-04T11:29:52.177515-04:00", "event": "soft_release", "ticker": "UNH", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857392.179849, "et": "2026-08-04T11:29:52.179852-04:00", "event": "backoff", "ticker": "UNH", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857447.3429403, "et": "2026-08-04T11:30:47.342945-04:00", "event": "soft_release", "ticker": "MET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857447.369209, "et": "2026-08-04T11:30:47.369214-04:00", "event": "soft_release", "ticker": "CRWD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857449.7784119, "et": "2026-08-04T11:30:49.778416-04:00", "event": "backoff", "ticker": "MET", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857449.9088337, "et": "2026-08-04T11:30:49.908839-04:00", "event": "soft_release", "ticker": "NOW", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857449.9923549, "et": "2026-08-04T11:30:49.992362-04:00", "event": "backoff", "ticker": "NOW", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857450.0474896, "et": "2026-08-04T11:30:50.047495-04:00", "event": "soft_release", "ticker": "XLE", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857452.2808123, "et": "2026-08-04T11:30:52.280817-04:00", "event": "backoff", "ticker": "XLE", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857452.6422923, "et": "2026-08-04T11:30:52.642297-04:00", "event": "soft_release", "ticker": "XOM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857454.9027777, "et": "2026-08-04T11:30:54.902783-04:00", "event": "backoff", "ticker": "XOM", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857456.1457498, "et": "2026-08-04T11:30:56.145755-04:00", "event": "backoff", "ticker": "CRWD", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857507.1628244, "et": "2026-08-04T11:31:47.162828-04:00", "event": "soft_release", "ticker": "SPY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857507.1811516, "et": "2026-08-04T11:31:47.181157-04:00", "event": "soft_release", "ticker": "QQQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857508.8811312, "et": "2026-08-04T11:31:48.881136-04:00", "event": "backoff", "ticker": "SPY", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857509.1168783, "et": "2026-08-04T11:31:49.116883-04:00", "event": "soft_release", "ticker": "IWM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857509.3477883, "et": "2026-08-04T11:31:49.347793-04:00", "event": "backoff", "ticker": "IWM", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857509.3778133, "et": "2026-08-04T11:31:49.377817-04:00", "event": "backoff", "ticker": "QQQ", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857509.5323408, "et": "2026-08-04T11:31:49.532346-04:00", "event": "soft_release", "ticker": "NVDA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857509.6501997, "et": "2026-08-04T11:31:49.650204-04:00", "event": "soft_release", "ticker": "AAPL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857509.7599268, "et": "2026-08-04T11:31:49.759933-04:00", "event": "backoff", "ticker": "NVDA", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857509.8924325, "et": "2026-08-04T11:31:49.892438-04:00", "event": "backoff", "ticker": "AAPL", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857510.1499312, "et": "2026-08-04T11:31:50.149936-04:00", "event": "soft_release", "ticker": "MSFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857510.4715738, "et": "2026-08-04T11:31:50.471579-04:00", "event": "soft_release", "ticker": "AMZN", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857513.1821208, "et": "2026-08-04T11:31:53.182124-04:00", "event": "backoff", "ticker": "MSFT", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857513.1913638, "et": "2026-08-04T11:31:53.191368-04:00", "event": "soft_release", "ticker": "META", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857513.1943886, "et": "2026-08-04T11:31:53.194392-04:00", "event": "backoff", "ticker": "META", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857513.200314, "et": "2026-08-04T11:31:53.200319-04:00", "event": "soft_release", "ticker": "TSLA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857513.204737, "et": "2026-08-04T11:31:53.204741-04:00", "event": "backoff", "ticker": "TSLA", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857513.2108886, "et": "2026-08-04T11:31:53.210893-04:00", "event": "soft_release", "ticker": "GOOGL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857513.2127113, "et": "2026-08-04T11:31:53.212715-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857513.2172928, "et": "2026-08-04T11:31:53.217298-04:00", "event": "soft_release", "ticker": "AVGO", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785857516.9652781, "et": "2026-08-04T11:31:56.965285-04:00", "event": "backoff", "ticker": "AMZN", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785857517.9871278, "et": "2026-08-04T11:31:57.987133-04:00", "event": "backoff", "ticker": "AVGO", "failures": 9, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858300.6954465, "et": "2026-08-04T11:45:00.695454-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858300.6956615, "et": "2026-08-04T11:45:00.695664-04:00", "event": "soft_release", "ticker": "ASTS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858300.9948835, "et": "2026-08-04T11:45:00.994888-04:00", "event": "backoff", "ticker": "$SPX", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858301.0124884, "et": "2026-08-04T11:45:01.012492-04:00", "event": "backoff", "ticker": "ASTS", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858301.0457788, "et": "2026-08-04T11:45:01.045783-04:00", "event": "soft_release", "ticker": "CIFR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858301.1271055, "et": "2026-08-04T11:45:01.127112-04:00", "event": "soft_release", "ticker": "GOOG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858301.156469, "et": "2026-08-04T11:45:01.156475-04:00", "event": "backoff", "ticker": "CIFR", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858301.2603655, "et": "2026-08-04T11:45:01.260371-04:00", "event": "backoff", "ticker": "GOOG", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858301.3277185, "et": "2026-08-04T11:45:01.327723-04:00", "event": "soft_release", "ticker": "MRVL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858301.5600562, "et": "2026-08-04T11:45:01.560062-04:00", "event": "soft_release", "ticker": "MU", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858303.8980494, "et": "2026-08-04T11:45:03.898055-04:00", "event": "backoff", "ticker": "MRVL", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858304.0541606, "et": "2026-08-04T11:45:04.054166-04:00", "event": "soft_release", "ticker": "NFLX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858306.325986, "et": "2026-08-04T11:45:06.325992-04:00", "event": "backoff", "ticker": "NFLX", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858306.9383795, "et": "2026-08-04T11:45:06.938385-04:00", "event": "soft_release", "ticker": "PCG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858308.0073805, "et": "2026-08-04T11:45:08.007389-04:00", "event": "backoff", "ticker": "MU", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858308.2222443, "et": "2026-08-04T11:45:08.222249-04:00", "event": "soft_release", "ticker": "PLTR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858308.5964808, "et": "2026-08-04T11:45:08.596486-04:00", "event": "backoff", "ticker": "PLTR", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858308.6253068, "et": "2026-08-04T11:45:08.625315-04:00", "event": "soft_release", "ticker": "RKLB", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858308.9746008, "et": "2026-08-04T11:45:08.974606-04:00", "event": "backoff", "ticker": "RKLB", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858309.2242835, "et": "2026-08-04T11:45:09.224288-04:00", "event": "soft_release", "ticker": "SMCI", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858309.5957212, "et": "2026-08-04T11:45:09.595728-04:00", "event": "backoff", "ticker": "SMCI", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858309.762702, "et": "2026-08-04T11:45:09.762707-04:00", "event": "backoff", "ticker": "PCG", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858310.0100055, "et": "2026-08-04T11:45:10.010011-04:00", "event": "soft_release", "ticker": "TSL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858310.0496137, "et": "2026-08-04T11:45:10.049618-04:00", "event": "soft_release", "ticker": "AMD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858310.2740088, "et": "2026-08-04T11:45:10.274014-04:00", "event": "backoff", "ticker": "TSL", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858310.2933574, "et": "2026-08-04T11:45:10.293362-04:00", "event": "backoff", "ticker": "AMD", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858310.623809, "et": "2026-08-04T11:45:10.623814-04:00", "event": "soft_release", "ticker": "DELL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858310.7502387, "et": "2026-08-04T11:45:10.750246-04:00", "event": "soft_release", "ticker": "INTC", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858312.980698, "et": "2026-08-04T11:45:12.980703-04:00", "event": "backoff", "ticker": "INTC", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858312.9951274, "et": "2026-08-04T11:45:12.995132-04:00", "event": "soft_release", "ticker": "MTA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858313.0222323, "et": "2026-08-04T11:45:13.022238-04:00", "event": "backoff", "ticker": "MTA", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858313.0644116, "et": "2026-08-04T11:45:13.064416-04:00", "event": "soft_release", "ticker": "NBIS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858313.3660753, "et": "2026-08-04T11:45:13.366082-04:00", "event": "backoff", "ticker": "NBIS", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858313.3916032, "et": "2026-08-04T11:45:13.391609-04:00", "event": "soft_release", "ticker": "NBIX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858313.4096704, "et": "2026-08-04T11:45:13.409675-04:00", "event": "backoff", "ticker": "NBIX", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858313.4271386, "et": "2026-08-04T11:45:13.427143-04:00", "event": "soft_release", "ticker": "NET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858313.4552977, "et": "2026-08-04T11:45:13.455303-04:00", "event": "backoff", "ticker": "NET", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858313.477344, "et": "2026-08-04T11:45:13.477348-04:00", "event": "soft_release", "ticker": "ORCL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858313.5241678, "et": "2026-08-04T11:45:13.524173-04:00", "event": "backoff", "ticker": "ORCL", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858313.5555205, "et": "2026-08-04T11:45:13.555524-04:00", "event": "soft_release", "ticker": "SKHY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858313.5942147, "et": "2026-08-04T11:45:13.594220-04:00", "event": "backoff", "ticker": "SKHY", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858313.6615157, "et": "2026-08-04T11:45:13.661521-04:00", "event": "soft_release", "ticker": "SPCX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858313.7557921, "et": "2026-08-04T11:45:13.755797-04:00", "event": "backoff", "ticker": "SPCX", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858313.7816978, "et": "2026-08-04T11:45:13.781703-04:00", "event": "soft_release", "ticker": "TSM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858313.8297296, "et": "2026-08-04T11:45:13.829734-04:00", "event": "backoff", "ticker": "TSM", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858313.8853652, "et": "2026-08-04T11:45:13.885370-04:00", "event": "soft_release", "ticker": "UNH", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858314.0075078, "et": "2026-08-04T11:45:14.007514-04:00", "event": "backoff", "ticker": "UNH", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858316.2312427, "et": "2026-08-04T11:45:16.231249-04:00", "event": "backoff", "ticker": "DELL", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858361.1141677, "et": "2026-08-04T11:46:01.114172-04:00", "event": "soft_release", "ticker": "CRWD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858361.114285, "et": "2026-08-04T11:46:01.114287-04:00", "event": "soft_release", "ticker": "MET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858361.1174412, "et": "2026-08-04T11:46:01.117444-04:00", "event": "backoff", "ticker": "MET", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858361.126003, "et": "2026-08-04T11:46:01.126007-04:00", "event": "backoff", "ticker": "CRWD", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858361.1284199, "et": "2026-08-04T11:46:01.128424-04:00", "event": "soft_release", "ticker": "NOW", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858361.1297812, "et": "2026-08-04T11:46:01.129784-04:00", "event": "soft_release", "ticker": "XLE", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858361.1303704, "et": "2026-08-04T11:46:01.130373-04:00", "event": "backoff", "ticker": "NOW", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858361.1339555, "et": "2026-08-04T11:46:01.133960-04:00", "event": "backoff", "ticker": "XLE", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858361.1348178, "et": "2026-08-04T11:46:01.134821-04:00", "event": "soft_release", "ticker": "XOM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858361.147761, "et": "2026-08-04T11:46:01.147764-04:00", "event": "backoff", "ticker": "XOM", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.2983606, "et": "2026-08-04T11:47:01.298365-04:00", "event": "soft_release", "ticker": "SPY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.3269494, "et": "2026-08-04T11:47:01.326955-04:00", "event": "soft_release", "ticker": "QQQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.4476314, "et": "2026-08-04T11:47:01.447635-04:00", "event": "backoff", "ticker": "QQQ", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.4821188, "et": "2026-08-04T11:47:01.482123-04:00", "event": "soft_release", "ticker": "IWM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.499836, "et": "2026-08-04T11:47:01.499841-04:00", "event": "backoff", "ticker": "IWM", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.5307746, "et": "2026-08-04T11:47:01.530779-04:00", "event": "soft_release", "ticker": "NVDA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.5326078, "et": "2026-08-04T11:47:01.532610-04:00", "event": "backoff", "ticker": "NVDA", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.5602694, "et": "2026-08-04T11:47:01.560273-04:00", "event": "soft_release", "ticker": "AAPL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.5724785, "et": "2026-08-04T11:47:01.572551-04:00", "event": "backoff", "ticker": "AAPL", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.6114666, "et": "2026-08-04T11:47:01.611471-04:00", "event": "soft_release", "ticker": "MSFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.6255238, "et": "2026-08-04T11:47:01.625529-04:00", "event": "backoff", "ticker": "MSFT", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.6323488, "et": "2026-08-04T11:47:01.632354-04:00", "event": "soft_release", "ticker": "AMZN", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.6487286, "et": "2026-08-04T11:47:01.648734-04:00", "event": "backoff", "ticker": "AMZN", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.6663232, "et": "2026-08-04T11:47:01.666327-04:00", "event": "soft_release", "ticker": "META", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.6717708, "et": "2026-08-04T11:47:01.671776-04:00", "event": "backoff", "ticker": "META", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.6810923, "et": "2026-08-04T11:47:01.681097-04:00", "event": "soft_release", "ticker": "TSLA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.732696, "et": "2026-08-04T11:47:01.732701-04:00", "event": "backoff", "ticker": "TSLA", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.7593412, "et": "2026-08-04T11:47:01.759347-04:00", "event": "soft_release", "ticker": "GOOGL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.784058, "et": "2026-08-04T11:47:01.784063-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858421.7925231, "et": "2026-08-04T11:47:01.792527-04:00", "event": "soft_release", "ticker": "AVGO", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785858421.8000588, "et": "2026-08-04T11:47:01.800064-04:00", "event": "backoff", "ticker": "AVGO", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785858426.9499612, "et": "2026-08-04T11:47:06.949966-04:00", "event": "backoff", "ticker": "SPY", "failures": 10, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859206.2382596, "et": "2026-08-04T12:00:06.238264-04:00", "event": "soft_release", "ticker": "$SPX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859206.238376, "et": "2026-08-04T12:00:06.238379-04:00", "event": "soft_release", "ticker": "ASTS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859206.2567005, "et": "2026-08-04T12:00:06.256706-04:00", "event": "backoff", "ticker": "$SPX", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859206.2625499, "et": "2026-08-04T12:00:06.262554-04:00", "event": "backoff", "ticker": "ASTS", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859206.2757015, "et": "2026-08-04T12:00:06.275706-04:00", "event": "soft_release", "ticker": "CIFR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859206.2977881, "et": "2026-08-04T12:00:06.297793-04:00", "event": "soft_release", "ticker": "GOOG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859206.300005, "et": "2026-08-04T12:00:06.300008-04:00", "event": "backoff", "ticker": "CIFR", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859206.3032978, "et": "2026-08-04T12:00:06.303301-04:00", "event": "backoff", "ticker": "GOOG", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859206.3235865, "et": "2026-08-04T12:00:06.323591-04:00", "event": "soft_release", "ticker": "MRVL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859206.3314166, "et": "2026-08-04T12:00:06.331421-04:00", "event": "soft_release", "ticker": "NFLX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859206.3459878, "et": "2026-08-04T12:00:06.345992-04:00", "event": "backoff", "ticker": "MRVL", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859206.3666885, "et": "2026-08-04T12:00:06.366694-04:00", "event": "backoff", "ticker": "NFLX", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859266.8952293, "et": "2026-08-04T12:01:06.895234-04:00", "event": "soft_release", "ticker": "MU", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859266.8953454, "et": "2026-08-04T12:01:06.895348-04:00", "event": "soft_release", "ticker": "MET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859269.9116323, "et": "2026-08-04T12:01:09.911637-04:00", "event": "backoff", "ticker": "MET", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859269.9276533, "et": "2026-08-04T12:01:09.927658-04:00", "event": "soft_release", "ticker": "PCG", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859272.5262365, "et": "2026-08-04T12:01:12.526241-04:00", "event": "backoff", "ticker": "PCG", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859272.5304668, "et": "2026-08-04T12:01:12.530470-04:00", "event": "soft_release", "ticker": "PLTR", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859274.911965, "et": "2026-08-04T12:01:14.911971-04:00", "event": "backoff", "ticker": "PLTR", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859274.9199138, "et": "2026-08-04T12:01:14.919920-04:00", "event": "soft_release", "ticker": "RKLB", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859274.9234967, "et": "2026-08-04T12:01:14.923500-04:00", "event": "backoff", "ticker": "RKLB", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859274.9264262, "et": "2026-08-04T12:01:14.926431-04:00", "event": "soft_release", "ticker": "SMCI", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859274.9283562, "et": "2026-08-04T12:01:14.928359-04:00", "event": "backoff", "ticker": "SMCI", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859274.9331036, "et": "2026-08-04T12:01:14.933107-04:00", "event": "soft_release", "ticker": "TSL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859274.935952, "et": "2026-08-04T12:01:14.935955-04:00", "event": "backoff", "ticker": "TSL", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859274.9397783, "et": "2026-08-04T12:01:14.939782-04:00", "event": "soft_release", "ticker": "AMD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859274.9415576, "et": "2026-08-04T12:01:14.941561-04:00", "event": "backoff", "ticker": "AMD", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859274.9456904, "et": "2026-08-04T12:01:14.945694-04:00", "event": "soft_release", "ticker": "CRWD", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859274.9474285, "et": "2026-08-04T12:01:14.947430-04:00", "event": "backoff", "ticker": "CRWD", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859274.9510207, "et": "2026-08-04T12:01:14.951025-04:00", "event": "soft_release", "ticker": "DELL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859274.9597077, "et": "2026-08-04T12:01:14.959713-04:00", "event": "backoff", "ticker": "DELL", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859274.964201, "et": "2026-08-04T12:01:14.964206-04:00", "event": "soft_release", "ticker": "INTC", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859275.0840147, "et": "2026-08-04T12:01:15.084020-04:00", "event": "backoff", "ticker": "INTC", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859275.3347578, "et": "2026-08-04T12:01:15.334765-04:00", "event": "soft_release", "ticker": "MTA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859278.3664336, "et": "2026-08-04T12:01:18.366441-04:00", "event": "backoff", "ticker": "MTA", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859278.6069217, "et": "2026-08-04T12:01:18.606926-04:00", "event": "soft_release", "ticker": "NBIS", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859279.3048859, "et": "2026-08-04T12:01:19.304894-04:00", "event": "backoff", "ticker": "NBIS", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859279.334707, "et": "2026-08-04T12:01:19.334712-04:00", "event": "soft_release", "ticker": "NBIX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859280.9267693, "et": "2026-08-04T12:01:20.926775-04:00", "event": "backoff", "ticker": "MU", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859281.0750911, "et": "2026-08-04T12:01:21.075098-04:00", "event": "soft_release", "ticker": "NET", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859282.7650487, "et": "2026-08-04T12:01:22.765055-04:00", "event": "backoff", "ticker": "NBIX", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859283.7298403, "et": "2026-08-04T12:01:23.729844-04:00", "event": "soft_release", "ticker": "NOW", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859285.873125, "et": "2026-08-04T12:01:25.873132-04:00", "event": "backoff", "ticker": "NOW", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859286.2745628, "et": "2026-08-04T12:01:26.274569-04:00", "event": "soft_release", "ticker": "ORCL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859286.3619068, "et": "2026-08-04T12:01:26.361913-04:00", "event": "backoff", "ticker": "ORCL", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859286.459983, "et": "2026-08-04T12:01:26.459988-04:00", "event": "soft_release", "ticker": "SKHY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859286.4986584, "et": "2026-08-04T12:01:26.498663-04:00", "event": "backoff", "ticker": "SKHY", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859286.5206165, "et": "2026-08-04T12:01:26.520621-04:00", "event": "soft_release", "ticker": "SPCX", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859286.6397893, "et": "2026-08-04T12:01:26.639796-04:00", "event": "backoff", "ticker": "SPCX", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859286.7613919, "et": "2026-08-04T12:01:26.761397-04:00", "event": "soft_release", "ticker": "TSM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859286.8066583, "et": "2026-08-04T12:01:26.806664-04:00", "event": "backoff", "ticker": "TSM", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859286.861502, "et": "2026-08-04T12:01:26.861508-04:00", "event": "soft_release", "ticker": "UNH", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859286.931491, "et": "2026-08-04T12:01:26.931497-04:00", "event": "backoff", "ticker": "UNH", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859286.9675283, "et": "2026-08-04T12:01:26.967533-04:00", "event": "soft_release", "ticker": "XLE", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859287.106286, "et": "2026-08-04T12:01:27.106293-04:00", "event": "backoff", "ticker": "XLE", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859287.264897, "et": "2026-08-04T12:01:27.264903-04:00", "event": "soft_release", "ticker": "XOM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859287.2979295, "et": "2026-08-04T12:01:27.297936-04:00", "event": "backoff", "ticker": "XOM", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859289.839054, "et": "2026-08-04T12:01:29.839058-04:00", "event": "backoff", "ticker": "NET", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859326.9639907, "et": "2026-08-04T12:02:06.963995-04:00", "event": "soft_release", "ticker": "SPY", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859327.1282916, "et": "2026-08-04T12:02:07.128297-04:00", "event": "backoff", "ticker": "SPY", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859327.131527, "et": "2026-08-04T12:02:07.131532-04:00", "event": "soft_release", "ticker": "QQQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859327.1978405, "et": "2026-08-04T12:02:07.197845-04:00", "event": "soft_release", "ticker": "IWM", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859327.2670574, "et": "2026-08-04T12:02:07.267063-04:00", "event": "backoff", "ticker": "QQQ", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859327.3931699, "et": "2026-08-04T12:02:07.393177-04:00", "event": "backoff", "ticker": "IWM", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859327.644046, "et": "2026-08-04T12:02:07.644052-04:00", "event": "soft_release", "ticker": "NVDA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859327.7253833, "et": "2026-08-04T12:02:07.725389-04:00", "event": "soft_release", "ticker": "AAPL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859328.2822165, "et": "2026-08-04T12:02:08.282221-04:00", "event": "backoff", "ticker": "NVDA", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859328.311133, "et": "2026-08-04T12:02:08.311138-04:00", "event": "backoff", "ticker": "AAPL", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859329.0381293, "et": "2026-08-04T12:02:09.038135-04:00", "event": "soft_release", "ticker": "MSFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859329.314432, "et": "2026-08-04T12:02:09.314437-04:00", "event": "soft_release", "ticker": "AMZN", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859329.5323699, "et": "2026-08-04T12:02:09.532375-04:00", "event": "backoff", "ticker": "MSFT", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859329.6166155, "et": "2026-08-04T12:02:09.616620-04:00", "event": "backoff", "ticker": "AMZN", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859329.639042, "et": "2026-08-04T12:02:09.639047-04:00", "event": "soft_release", "ticker": "META", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859329.6844335, "et": "2026-08-04T12:02:09.684439-04:00", "event": "backoff", "ticker": "META", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859329.7642183, "et": "2026-08-04T12:02:09.764224-04:00", "event": "soft_release", "ticker": "TSLA", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859329.8555954, "et": "2026-08-04T12:02:09.855602-04:00", "event": "soft_release", "ticker": "GOOGL", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859330.1476445, "et": "2026-08-04T12:02:10.147650-04:00", "event": "backoff", "ticker": "TSLA", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859330.559581, "et": "2026-08-04T12:02:10.559589-04:00", "event": "soft_release", "ticker": "AVGO", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785859331.5642288, "et": "2026-08-04T12:02:11.564236-04:00", "event": "backoff", "ticker": "AVGO", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785859338.5990634, "et": "2026-08-04T12:02:18.599069-04:00", "event": "backoff", "ticker": "GOOGL", "failures": 11, "reason": "SchwabAuthError: Schwab auth latched after prior token failure \u2014 option chain withheld", "wait_sec": 900.0}
+{"ts_utc": 1785860789.0841513, "et": "2026-08-04T12:26:29.084157-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785860791.1403735, "et": "2026-08-04T12:26:31.140379-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785861542.0579445, "et": "2026-08-04T12:39:02.057950-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785861542.0623157, "et": "2026-08-04T12:39:02.062322-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785861542.057088, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785861542.0639188, "et": "2026-08-04T12:39:02.063923-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785861542.1047924, "et": "2026-08-04T12:39:02.104797-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785861542.1063786, "et": "2026-08-04T12:39:02.106382-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785861542.1078346, "et": "2026-08-04T12:39:02.107838-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785861542.1244016, "et": "2026-08-04T12:39:02.124407-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785861542.1378553, "et": "2026-08-04T12:39:02.137871-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785861542.140474, "et": "2026-08-04T12:39:02.140476-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785861542.1366622, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785863278.3718657, "et": "2026-08-04T13:07:58.371871-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785863278.3735714, "et": "2026-08-04T13:07:58.373576-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785863278.3710132, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1785863278.377706, "et": "2026-08-04T13:07:58.377711-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1785863278.4133613, "et": "2026-08-04T13:07:58.413366-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1785863278.4159007, "et": "2026-08-04T13:07:58.415906-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1785863278.4178417, "et": "2026-08-04T13:07:58.417846-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1785863278.4433951, "et": "2026-08-04T13:07:58.443403-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1785863278.461845, "et": "2026-08-04T13:07:58.461850-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785863278.4642596, "et": "2026-08-04T13:07:58.464262-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1785863278.460793, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1785865078.3193543, "et": "2026-08-04T13:37:58.319360-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785865082.3530552, "et": "2026-08-04T13:38:02.353061-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785866061.0039926, "et": "2026-08-04T13:54:21.003997-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785866061.8848627, "et": "2026-08-04T13:54:21.884869-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785867894.6322331, "et": "2026-08-04T14:24:54.632239-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785867897.0970085, "et": "2026-08-04T14:24:57.097013-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785936125.495237, "et": "2026-08-05T09:22:05.495241-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785936128.2984421, "et": "2026-08-05T09:22:08.298450-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785951481.461373, "et": "2026-08-05T13:38:01.461377-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1785951482.6303654, "et": "2026-08-05T13:38:02.630371-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}

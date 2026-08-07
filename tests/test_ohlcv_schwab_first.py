@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -104,9 +105,28 @@ def _file_allowlisted(rel_posix: str) -> bool:
     return False
 
 
+def _tracked_py_files() -> list[Path]:
+    """RC-274: 'repo-wide' means what git tracks — nothing looser, nothing hand-maintained.
+
+    `rglob` walked `scratchpad/`, which `.gitignore:202` excludes and which holds 0 tracked
+    files, so ~25 of this gate's 38 hits were throwaway audit scripts. The temptation is an
+    allowlist entry, but that is a list somebody has to keep true. The index already answers
+    'is this repository code', it answers it for every future directory nobody thought of, and
+    a staged file counts the moment it is staged.
+    """
+    proc = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "git ls-files failed, so the scan scope is unknown: " + proc.stderr.strip())
+    return [ROOT / p for p in proc.stdout.split("\0") if p]
+
+
 def _iter_repo_py_files() -> list[Path]:
     out: list[Path] = []
-    for path in ROOT.rglob("*.py"):
+    for path in _tracked_py_files():
         if set(path.parts) & SKIP_DIR_PARTS:
             continue
         if "tools" in set(path.parts) and path.name != "__init__.py":

@@ -1,0 +1,526 @@
+{
+  "study": "liquidity_synthesis_experiments_v1",
+  "mission_class": "Find & Prove \u2014 DISCUSSION/EXPERIMENT only",
+  "decision_path_effect": "NONE \u2014 Decide WAIT; no admission",
+  "lp01_touch_magnitude": "FAIL locked \u2014 not reopened",
+  "label": {
+    "type": "triple_barrier",
+    "horizon_min": 30,
+    "k_atr": 1.0,
+    "session_bound": true,
+    "costs": "ABSENT"
+  },
+  "pass_criteria": {
+    "min_events_per_arm": 150,
+    "min_win_rate_edge_pp": 0.05,
+    "min_halves_agreeing": 2
+  },
+  "sample": {
+    "tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "n_sessions": 298,
+    "bar_counts": {
+      "SPY": 106891,
+      "QQQ": 94667,
+      "IWM": 81784
+    },
+    "date_min": "2026-02-23",
+    "date_max": "2026-07-30",
+    "exact_bar_counts_sql": "SELECT ticker, COUNT(*) FROM price_bars_1m GROUP BY ticker"
+  },
+  "experiments": {
+    "A": {
+      "id": "A_family_count",
+      "question": "Does zone touch with n_families\u22652 beat (i) n_families==1 and (ii) placebo zones built with shuffled family labels?",
+      "band_pct": 0.0015,
+      "n_real_events": 7027,
+      "n_placebo_events": 7027,
+      "real_families_ge2": {
+        "n": 3022,
+        "wins": 2122,
+        "fails": 744,
+        "timeouts": 156,
+        "resolved": 2866,
+        "win_rate": 0.7404047452896022,
+        "mean_rr_when_win": 0.3406878361750414,
+        "E": 0.2522468905664472
+      },
+      "real_families_eq1": {
+        "n": 4005,
+        "wins": 2774,
+        "fails": 1061,
+        "timeouts": 170,
+        "resolved": 3835,
+        "win_rate": 0.7233376792698827,
+        "mean_rr_when_win": 0.3960291047647477,
+        "E": 0.2864627735638618
+      },
+      "placebo_families_ge2": {
+        "n": 2810,
+        "wins": 1992,
+        "fails": 662,
+        "timeouts": 156,
+        "resolved": 2654,
+        "win_rate": 0.7505651846269782,
+        "mean_rr_when_win": 0.3391289379954501,
+        "E": 0.25453837395890605
+      },
+      "placebo_families_eq1": {
+        "n": 4217,
+        "wins": 2904,
+        "fails": 1143,
+        "timeouts": 170,
+        "resolved": 4047,
+        "win_rate": 0.7175685693106004,
+        "mean_rr_when_win": 0.3946210332279309,
+        "E": 0.2831676502332373
+      },
+      "real_by_tag_count": {
+        "tags_1": {
+          "n": 3501,
+          "wins": 2418,
+          "fails": 940,
+          "timeouts": 143,
+          "resolved": 3358,
+          "win_rate": 0.7200714711137582,
+          "mean_rr_when_win": 0.40022999753206145,
+          "E": 0.2881942031067673
+        },
+        "tags_2": {
+          "n": 2046,
+          "wins": 1427,
+          "fails": 531,
+          "timeouts": 88,
+          "resolved": 1958,
+          "win_rate": 0.7288049029622063,
+          "mean_rr_when_win": 0.38141546209404603,
+          "E": 0.2779774588397363
+        },
+        "tags_ge3": {
+          "n": 1480,
+          "wins": 1051,
+          "fails": 334,
+          "timeouts": 95,
+          "resolved": 1385,
+          "win_rate": 0.7588447653429603,
+          "mean_rr_when_win": 0.29447033923893395,
+          "E": 0.22345727548023075
+        }
+      },
+      "family_ge2_minus_eq1_win_rate": 0.017067066019719523,
+      "oos": {
+        "evaluated": true,
+        "split_date": "2026-05-26",
+        "halves": {
+          "first": {
+            "real": {
+              "n": 1288,
+              "wins": 904,
+              "fails": 313,
+              "timeouts": 71,
+              "resolved": 1217,
+              "win_rate": 0.7428101889893179,
+              "mean_rr_when_win": 0.2990635097652501,
+              "E": 0.22214742220853415
+            },
+            "placebo": {
+              "n": 1210,
+              "wins": 860,
+              "fails": 277,
+              "timeouts": 73,
+              "resolved": 1137,
+              "win_rate": 0.7563764291996482,
+              "mean_rr_when_win": 0.3072885534828366,
+              "E": 0.2324258188172731
+            },
+            "edge_pp": -0.01356624021033026
+          },
+          "second": {
+            "real": {
+              "n": 1734,
+              "wins": 1218,
+              "fails": 431,
+              "timeouts": 85,
+              "resolved": 1649,
+              "win_rate": 0.7386294724075197,
+              "mean_rr_when_win": 0.371581424906118,
+              "E": 0.27446099183484035
+            },
+            "placebo": {
+              "n": 1600,
+              "wins": 1132,
+              "fails": 385,
+              "timeouts": 83,
+              "resolved": 1517,
+              "win_rate": 0.7462096242584048,
+              "mean_rr_when_win": 0.36331862940962634,
+              "E": 0.2711118579378359
+            },
+            "edge_pp": -0.0075801518508850085
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "verdict": "FAIL",
+      "note": "Causal families only: PRIOR_DAY, OVERNIGHT, ORB. TODAY_VP/VWAP/GAMMA excluded (lookahead or BLOCKED)."
+    },
+    "B": {
+      "id": "B_width_Ev",
+      "question": "As zone width rises, does bounce win-rate rise while E(w)=P(win)\u00d7R fails to beat random-center zones? (Tsinaslanidis discipline)",
+      "table": [
+        {
+          "width_atr_frac": 0.1,
+          "real": {
+            "n": 9620,
+            "wins": 3330,
+            "fails": 6281,
+            "timeouts": 9,
+            "resolved": 9611,
+            "win_rate": 0.34647799396524814,
+            "mean_rr_when_win": 1.7439591213951042,
+            "E": 0.6042434579383724
+          },
+          "placebo": {
+            "n": 16939,
+            "wins": 5859,
+            "fails": 11065,
+            "timeouts": 15,
+            "resolved": 16924,
+            "win_rate": 0.34619475301347197,
+            "mean_rr_when_win": 1.7306144572701856,
+            "E": 0.5991296445961958
+          },
+          "win_rate_edge": 0.0002832409517761758,
+          "E_real": 0.6042434579383724,
+          "E_placebo": 0.5991296445961958
+        },
+        {
+          "width_atr_frac": 0.25,
+          "real": {
+            "n": 10887,
+            "wins": 4415,
+            "fails": 6452,
+            "timeouts": 20,
+            "resolved": 10867,
+            "win_rate": 0.4062758811079415,
+            "mean_rr_when_win": 1.3616933583928124,
+            "E": 0.5532231689798718
+          },
+          "placebo": {
+            "n": 18455,
+            "wins": 7606,
+            "fails": 10823,
+            "timeouts": 26,
+            "resolved": 18429,
+            "win_rate": 0.41271908405230884,
+            "mean_rr_when_win": 1.3329977635653745,
+            "E": 0.5501536160224775
+          },
+          "win_rate_edge": -0.006443202944367343,
+          "E_real": 0.5532231689798718,
+          "E_placebo": 0.5501536160224775
+        },
+        {
+          "width_atr_frac": 0.5,
+          "real": {
+            "n": 11822,
+            "wins": 5835,
+            "fails": 5945,
+            "timeouts": 42,
+            "resolved": 11780,
+            "win_rate": 0.4953310696095076,
+            "mean_rr_when_win": 0.9363441155721466,
+            "E": 0.4638003322889198
+          },
+          "placebo": {
+            "n": 20159,
+            "wins": 10325,
+            "fails": 9766,
+            "timeouts": 68,
+            "resolved": 20091,
+            "win_rate": 0.5139117017570056,
+            "mean_rr_when_win": 0.9007121987066354,
+            "E": 0.4628865388306212
+          },
+          "win_rate_edge": -0.018580632147498,
+          "E_real": 0.4638003322889198,
+          "E_placebo": 0.4628865388306212
+        },
+        {
+          "width_atr_frac": 1.0,
+          "real": {
+            "n": 12454,
+            "wins": 7833,
+            "fails": 4439,
+            "timeouts": 182,
+            "resolved": 12272,
+            "win_rate": 0.6382822685788787,
+            "mean_rr_when_win": 0.5291796618380525,
+            "E": 0.33776599504379606
+          },
+          "placebo": {
+            "n": 20923,
+            "wins": 13783,
+            "fails": 6812,
+            "timeouts": 328,
+            "resolved": 20595,
+            "win_rate": 0.6692401068220442,
+            "mean_rr_when_win": 0.5004693349644117,
+            "E": 0.3349341511927403
+          },
+          "win_rate_edge": -0.030957838243165448,
+          "E_real": 0.33776599504379606,
+          "E_placebo": 0.3349341511927403
+        },
+        {
+          "width_atr_frac": 1.5,
+          "real": {
+            "n": 12586,
+            "wins": 8878,
+            "fails": 3188,
+            "timeouts": 520,
+            "resolved": 12066,
+            "win_rate": 0.7357865075418532,
+            "mean_rr_when_win": 0.3623405356797335,
+            "E": 0.26660527728863537
+          },
+          "placebo": {
+            "n": 21570,
+            "wins": 15475,
+            "fails": 5061,
+            "timeouts": 1034,
+            "resolved": 20536,
+            "win_rate": 0.7535547331515388,
+            "mean_rr_when_win": 0.34274672437107173,
+            "E": 0.25827841642200694
+          },
+          "win_rate_edge": -0.017768225609685606,
+          "E_real": 0.26660527728863537,
+          "E_placebo": 0.25827841642200694
+        }
+      ],
+      "tsinaslanidis_trap_flag": true,
+      "best_width_passing": null,
+      "verdict": "FAIL",
+      "costs": "ABSENT"
+    },
+    "C": {
+      "id": "C_gamma_regime",
+      "question": "Do structure-zone barrier outcomes differ under LONG vs SHORT gamma (morning_full terrain sign)?",
+      "morning_full_coverage": {
+        "IWM": {
+          "n_days": 12,
+          "min": "2026-07-19",
+          "max": "2026-07-30"
+        },
+        "QQQ": {
+          "n_days": 11,
+          "min": "2026-07-20",
+          "max": "2026-07-30"
+        },
+        "SPY": {
+          "n_days": 12,
+          "min": "2026-07-19",
+          "max": "2026-07-30"
+        }
+      },
+      "n_ticker_days": 35,
+      "min_days_per_ticker": 11,
+      "threshold_days": 20,
+      "status": "BLOCKED",
+      "reason": "option_chain_morning_full has only 11 days on the thinnest sentinel (need \u226520 for regime-stratified barrier inference). Bars span ~100 RTH sessions; joining would shrink the sample into an underpowered mixture. No invented gamma.",
+      "verdict": "BLOCKED"
+    },
+    "D": {
+      "id": "D_order_block",
+      "question": "Do objective order-block zones beat random same-width zones on triple-barrier bounce labels?",
+      "definition": {
+        "bullish_ob": "last bearish candle before close displacement \u2265 1.5\u00d7causal_ATR within 5 bars; zone=[L,H] of that candle",
+        "bearish_ob": "mirror",
+        "ict_disclaimer": "[UNVERIFIED] operationalization \u2014 not vendor ICT equivalence"
+      },
+      "n_zones_detected": 22350,
+      "n_real_events": 12379,
+      "n_placebo_events": 12111,
+      "real": {
+        "n": 12379,
+        "wins": 6522,
+        "fails": 5721,
+        "timeouts": 136,
+        "resolved": 12243,
+        "win_rate": 0.5327125704484195,
+        "mean_rr_when_win": 0.8275400043863398,
+        "E": 0.44084096288554336
+      },
+      "placebo": {
+        "n": 12111,
+        "wins": 6654,
+        "fails": 5258,
+        "timeouts": 199,
+        "resolved": 11912,
+        "win_rate": 0.5585963734049698,
+        "mean_rr_when_win": 0.7644045968052313,
+        "E": 0.4269936355894904
+      },
+      "win_rate_edge": -0.02588380295655035,
+      "oos": {
+        "evaluated": true,
+        "split_date": "2026-05-22",
+        "halves": {
+          "first": {
+            "real": {
+              "n": 5443,
+              "wins": 2867,
+              "fails": 2513,
+              "timeouts": 63,
+              "resolved": 5380,
+              "win_rate": 0.5328996282527881,
+              "mean_rr_when_win": 0.8070854346163142,
+              "E": 0.4300955280752738
+            },
+            "placebo": {
+              "n": 5435,
+              "wins": 2950,
+              "fails": 2396,
+              "timeouts": 89,
+              "resolved": 5346,
+              "win_rate": 0.5518144407033296,
+              "mean_rr_when_win": 0.7833755296127278,
+              "E": 0.43227792973392204
+            },
+            "edge_pp": -0.018914812450541496
+          },
+          "second": {
+            "real": {
+              "n": 6936,
+              "wins": 3655,
+              "fails": 3208,
+              "timeouts": 73,
+              "resolved": 6863,
+              "win_rate": 0.5325659332653359,
+              "mean_rr_when_win": 0.8435846696478072,
+              "E": 0.4492644568793145
+            },
+            "placebo": {
+              "n": 6676,
+              "wins": 3704,
+              "fails": 2862,
+              "timeouts": 110,
+              "resolved": 6566,
+              "win_rate": 0.5641181845872677,
+              "mean_rr_when_win": 0.7492954575552003,
+              "E": 0.42269119323552573
+            },
+            "edge_pp": -0.031552251321931846
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "verdict": "FAIL",
+      "costs": "ABSENT"
+    },
+    "E": {
+      "id": "E_fvg",
+      "question": "Do objective 3-candle FVG zones beat random same-width zones on triple-barrier bounce labels?",
+      "definition": {
+        "bull_fvg": "low[i] > high[i-2]; zone=[high[i-2], low[i]]; min gap 0.15\u00d7ATR",
+        "bear_fvg": "high[i] < low[i-2]; zone=[high[i], low[i-2]]",
+        "ict_disclaimer": "[UNVERIFIED] operationalization \u2014 not ICT course equivalence"
+      },
+      "n_zones_detected": 21294,
+      "n_real_events": 19419,
+      "n_placebo_events": 17496,
+      "real": {
+        "n": 19419,
+        "wins": 8315,
+        "fails": 11058,
+        "timeouts": 46,
+        "resolved": 19373,
+        "win_rate": 0.42920559541630104,
+        "mean_rr_when_win": 1.2249230828514115,
+        "E": 0.5257438411144111
+      },
+      "placebo": {
+        "n": 17496,
+        "wins": 7958,
+        "fails": 9444,
+        "timeouts": 94,
+        "resolved": 17402,
+        "win_rate": 0.45730375818871394,
+        "mean_rr_when_win": 1.1206529720215777,
+        "E": 0.5124788157308191
+      },
+      "win_rate_edge": -0.028098162772412894,
+      "oos": {
+        "evaluated": true,
+        "split_date": "2026-05-22",
+        "halves": {
+          "first": {
+            "real": {
+              "n": 8627,
+              "wins": 3615,
+              "fails": 4988,
+              "timeouts": 24,
+              "resolved": 8603,
+              "win_rate": 0.42020225502731606,
+              "mean_rr_when_win": 1.239411324250761,
+              "E": 0.5208034333565618
+            },
+            "placebo": {
+              "n": 8031,
+              "wins": 3660,
+              "fails": 4321,
+              "timeouts": 50,
+              "resolved": 7981,
+              "win_rate": 0.45858914922941985,
+              "mean_rr_when_win": 1.1418648845816066,
+              "E": 0.5236468459552287
+            },
+            "edge_pp": -0.03838689420210378
+          },
+          "second": {
+            "real": {
+              "n": 10792,
+              "wins": 4700,
+              "fails": 6070,
+              "timeouts": 22,
+              "resolved": 10770,
+              "win_rate": 0.436397400185701,
+              "mean_rr_when_win": 1.213779467392125,
+              "E": 0.5296902039687081
+            },
+            "placebo": {
+              "n": 9465,
+              "wins": 4298,
+              "fails": 5123,
+              "timeouts": 44,
+              "resolved": 9421,
+              "win_rate": 0.45621483918904576,
+              "mean_rr_when_win": 1.1025897798462159,
+              "E": 0.5030178191040268
+            },
+            "edge_pp": -0.01981743900334476
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "verdict": "FAIL",
+      "costs": "ABSENT"
+    }
+  },
+  "verdicts": {
+    "A": "FAIL",
+    "B": "FAIL",
+    "C": "BLOCKED",
+    "D": "FAIL",
+    "E": "FAIL"
+  },
+  "pack_verdict": "ALL_FAIL_OR_BLOCKED",
+  "seed": 20260730
+}
