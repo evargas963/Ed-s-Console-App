@@ -9213,6 +9213,15 @@ def _fetch_state(
             version = _m.get(version_key, _m.get("model_version", "—"))
         except Exception:
             edge, version = None, "—"
+        # RC-293: compliant with NO edge measurement is not APPROVED. RC-291 made `edge`
+        # an honest None and left status LIVE, and static/index.html counts every LIVE model
+        # toward "N approved" — so a model nobody scored still read as approved, which was
+        # the substance of the finding rather than the field's type.
+        if edge is None:
+            return {"model": display_name, "status": "UNSCORED",
+                    "status_reason": "Binary + metadata + provenance compliant, but no edge "
+                                     "metric recorded — not scored, so not approved",
+                    "edge": None, "version": version or "—", "ticker": _dashboard_ticker}
         return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "version": version or "—", "ticker": _dashboard_ticker}
 
     _xgb_meta = _active_dir / f"xgb_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
@@ -13392,10 +13401,12 @@ def get_l1_diagnostics():
     reasons = {str(k): int(v) for k, v in _l1_instrumentation["l1_build_by_reason"].items()}
     uptime_sec = max(0.0, time.monotonic() - _l1_diag_start_mono)
     operational = build_l1_operational_assessment(
-        # RC-291: the assessor divides sum by total internally, so it must receive the
-        # MEASURED count as its denominator or it reproduces the dilution this row fixes.
-        # `bt` still reaches the caller below as the true build count.
-        l1_build_total=bt_measured,
+        # RC-293: the TRUE build count drives the rate alarm; the TIMED count drives the
+        # latency average. RC-291 passed bt_measured as l1_build_total, which fixed the
+        # average and made builds_per_min report timed builds — a true 500/min read as
+        # 100/min and graded healthy. Two questions, two inputs.
+        l1_build_total=bt,
+        timing_sample_count=bt_measured,
         l1_build_ms_sum=float(_l1_instrumentation["l1_build_ms_sum"]),
         reasons=reasons,
         l1_http_cache_hit_total=int(_l1_instrumentation["l1_http_cache_hit_total"]),

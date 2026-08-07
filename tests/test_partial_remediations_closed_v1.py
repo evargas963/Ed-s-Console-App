@@ -41,6 +41,10 @@ def _assessment(build_total: int, ms_sum: float) -> dict:
     kw["uptime_sec"] = 600.0
     kw["l1_build_total"] = build_total
     kw["l1_build_ms_sum"] = ms_sum
+    # RC-293 added timing_sample_count, which this helper's blanket `0` would supply as a
+    # zero sample count rather than "not given". None means "use l1_build_total", which is
+    # the shape this RC-291 test is asserting about.
+    kw["timing_sample_count"] = None
     return B(**kw)
 
 

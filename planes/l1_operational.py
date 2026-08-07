@@ -66,6 +66,14 @@ def build_l1_operational_assessment(
     *,
     l1_build_total: int,
     l1_build_ms_sum: float,
+    #: RC-293: builds whose pipeline timing was actually READ. Separate from l1_build_total
+    #: because this function uses that count for TWO unrelated quantities — the latency
+    #: average and the build RATE. RC-291 fixed the average by passing the measured count as
+    #: l1_build_total, which silently fed the rate calculation a timed-build count: a true
+    #: 500 builds/min reported as 100 and graded healthy where it should grade critical.
+    #: One parameter cannot serve two questions; defaults to l1_build_total when omitted so
+    #: existing callers keep their previous behaviour rather than silently changing it.
+    timing_sample_count: int | None = None,
     reasons: dict[str, int],
     l1_http_cache_hit_total: int,
     l1_quote_material_skip_total: int,
@@ -99,7 +107,11 @@ def build_l1_operational_assessment(
         "L1_OP_MAX_STALE_REBUILDS_PER_MIN_WARN": L1_OP_MAX_STALE_REBUILDS_PER_MIN_WARN,
     }
 
-    avg_ms = float(l1_build_ms_sum) / max(1, l1_build_total)
+    # RC-293: two questions, two denominators. The average divides by builds whose timing
+    # was measured; the RATE counts every build that happened. Sharing one count made a fix
+    # to the first a corruption of the second.
+    _timed = int(l1_build_total if timing_sample_count is None else timing_sample_count)
+    avg_ms = float(l1_build_ms_sum) / max(1, _timed)
     builds_per_min = (l1_build_total / max(uptime_sec, 1e-6)) * 60.0
     evictions_per_min = (l1_cache_eviction_total / max(uptime_sec, 1e-6)) * 60.0
 
@@ -127,7 +139,7 @@ def build_l1_operational_assessment(
     # --- build_load (latency vs rate evaluated separately, then merged) ---
     lat_status = "unknown"
     lat_msg = f"Need ≥{L1_OP_MIN_BUILDS_FOR_LATENCY} builds for rolling average latency."
-    if l1_build_total >= L1_OP_MIN_BUILDS_FOR_LATENCY:
+    if _timed >= L1_OP_MIN_BUILDS_FOR_LATENCY:      # RC-293: latency needs TIMED samples
         if avg_ms >= L1_OP_MAX_AVG_BUILD_MS_CRITICAL:
             lat_status = "critical"
             lat_msg = (
