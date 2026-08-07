@@ -9149,23 +9149,28 @@ def _fetch_state(
         art = _artifacts.get(name, {"exists": False, "has_provenance": False, "issues": []})
         meta_exists = meta_path.exists()
         if not meta_exists:
-            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": 0, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": None, "version": "—", "ticker": _dashboard_ticker}
         if not art.get("exists", False):
-            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": 0, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": None, "version": "—", "ticker": _dashboard_ticker}
         if not art.get("has_provenance", False):
             issues = "; ".join(art.get("issues", [])) or "Metadata lacks provenance"
-            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": 0, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": None, "version": "—", "ticker": _dashboard_ticker}
         try:
             _m = json.loads(meta_path.read_text())
-            raw = _m.get(edge_key, _m.get("val_accuracy", 0))
-            # RC-276 residual: the ML dashboard, not the trading path. This endpoint already
-            # returns edge=0 for BINARY MISSING, NON-COMPLIANT and the except branch, so
-            # changing this one line would make the field mean two things at once. Owed work,
-            # named in the RC-276 row rather than left implicit.
-            edge = float(raw) * 100 if edge_key == "val_accuracy" else float(raw or 0)  # silent-zero-ok: RC-276 residual, dashboard-only, edge=0 is this endpoint's existing missing convention
+            # RC-285: no `, 0` default. A model whose metadata omits the metric has not
+            # scored zero edge, it has not been scored — and my earlier annotation defending
+            # 0 as "this endpoint's existing missing convention" described the defect rather
+            # than justifying it. `status` is no longer load-bearing for reading `edge`.
+            from numeric_contract import float_finite_or_none as _fin_edge
+            raw = _fin_edge(_m.get(edge_key))
+            if raw is None:
+                raw = _fin_edge(_m.get("val_accuracy"))
+                edge = None if raw is None else raw * 100
+            else:
+                edge = raw * 100 if edge_key == "val_accuracy" else raw
             version = _m.get(version_key, _m.get("model_version", "—"))
         except Exception:
-            edge, version = 0, "—"
+            edge, version = None, "—"
         return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "version": version or "—", "ticker": _dashboard_ticker}
 
     _xgb_meta = _active_dir / f"xgb_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
@@ -9174,15 +9179,15 @@ def _fetch_state(
     try:
         _model_health.append(_model_status_from_artifact("xgb", "XGBoost", _xgb_meta, "edge_pp", "model_version"))
     except Exception:
-        _model_health.append({"model": "XGBoost", "status": "ERROR", "status_reason": "Check failed", "edge": 0, "version": "—", "ticker": _dashboard_ticker})
+        _model_health.append({"model": "XGBoost", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
     try:
         _model_health.append(_model_status_from_artifact("transformer", "Transformer", _tf_meta, "edge_pp"))
     except Exception:
-        _model_health.append({"model": "Transformer", "status": "ERROR", "status_reason": "Check failed", "edge": 0, "version": "—", "ticker": _dashboard_ticker})
+        _model_health.append({"model": "Transformer", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
     try:
         _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "val_accuracy", "model_type"))
     except Exception:
-        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": 0, "version": "—", "ticker": _dashboard_ticker})
+        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
 
     # MC + Rules + Regime + Fusion (always live)
     for m in [{"model": "Monte Carlo", "version": "10K paths"}, {"model": "Regime Engine", "version": "8 families"}, {"model": "Bayesian Fusion", "version": "6 posteriors"}]:
