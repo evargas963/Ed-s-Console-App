@@ -448,10 +448,36 @@ def caps_register_markdown() -> str:
     return "\n".join(rows)
 
 
+#: RC-287: the per-line escape, the same shape RC-276 gave the silent-zero gate as
+#: `# silent-zero-ok:`. It exists because the gate's only other escapes address a hit by
+#: LOCATION: CAPS_PREFIX_ALLOWLIST is file-scoped and would exempt 400+ lines of
+#: terrain_engine.py to excuse two of them (RC-276's exact defect), while
+#: CAPS_LINE_ALLOWLIST pins a LINE NUMBER and hands its exemption to a different statement
+#: the moment anything above it shifts. A marker in the source travels with the code it
+#: excuses. The reason is mandatory — a marker you can type without saying anything is the
+#: file allowlist again, per line. Presence is machine-checked here; TRUTH is not
+#: checkable, and RC-281 records what happens when I write reasons that are false, so
+#: these are review surface, not proof.
+_CAPS_OK_RE = re.compile(r"#\s*caps-ok:\s*(\S.*)$")
+
+
+def line_carries_caps_marker(rel: str, lineno: int) -> bool:
+    """True when the source line itself states why this hit is not a defect."""
+    try:
+        lines = (ROOT / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    if not (1 <= lineno <= len(lines)):
+        return False
+    return bool(_CAPS_OK_RE.search(lines[lineno - 1]))
+
+
 def find_unallowlisted_hits(*, production_only: bool = True) -> list[str]:
     out: list[str] = []
     for lineno, rel, vid, expr in scan_all(production_only=production_only):
         if caps_hit_allowed(rel, lineno, vid):
+            continue
+        if line_carries_caps_marker(rel, lineno):
             continue
         out.append(format_hit(lineno, rel, vid, expr))
     return out

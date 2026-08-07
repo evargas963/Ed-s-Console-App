@@ -216,7 +216,7 @@ def _dte_of(ct: object) -> float:
     """Finite DTE; junk sorts as far-dated rather than poisoning the comparison with NaN."""
     from numeric_contract import float_finite_or_none
     d = float_finite_or_none(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
-    return d if d is not None else 999.0
+    return d if d is not None else 999.0  # caps-ok: SORT KEY only, never rendered — 999 places an unparseable DTE last, where a missing DTE already sorts; the alternative is a NaN that makes every comparison against it false and silently scrambles the order
 
 
 def compute_wall_value_area(
@@ -358,7 +358,7 @@ def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[
         sk = float_finite_or_none(k)
         if sk is None:
             continue
-        out[sk] = {"strike": sk, "net_gex": getattr(ex, "net_gex", None), "volume": 0.0}
+        out[sk] = {"strike": sk, "net_gex": getattr(ex, "net_gex", None), "volume": 0.0}  # caps-ok: IDENTITY of the sum accumulated at the loop below, not a default — a strike with no contract volume genuinely traded zero, and RC-277 is the record of what happens when this shape is "repaired"
     for ct in contracts or []:
         if not isinstance(ct, dict):
             continue
