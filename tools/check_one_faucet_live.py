@@ -132,10 +132,26 @@ def fetch(base: str, endpoint: str, ticker: str) -> dict[str, Any] | None:
 
 
 def census(base: str, ticker: str) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Poll every endpoint CONCURRENTLY, so the sample is one instant.
+
+    RC-269: polling nineteen endpoints in sequence takes about fifteen seconds.
+    During active trading that window IS the apparent disagreement -- the first
+    endpoint is asked at t=0 and the last at t=15, so every field derived from
+    spot differs for no reason but the clock. The count swung 6, 12, 13, 14 for
+    an unchanged repository, and no post-hoc correction repairs a sampling
+    method that spans the thing it is trying to hold still.
+
+    Concurrency collapses the window from the SUM of the latencies to roughly
+    the SLOWEST one. What remains after that is structural disagreement.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
     produced: dict[str, dict[str, Any]] = defaultdict(dict)
     unreachable: list[str] = []
-    for endpoint in SINGLE_SUBJECT:
-        payload = fetch(base, endpoint, ticker)
+    with ThreadPoolExecutor(max_workers=len(SINGLE_SUBJECT)) as pool:
+        results = list(zip(SINGLE_SUBJECT, pool.map(
+            lambda e: fetch(base, e, ticker), SINGLE_SUBJECT)))
+    for endpoint, payload in results:
         if payload is None:
             unreachable.append(endpoint)
             continue
@@ -144,6 +160,48 @@ def census(base: str, ticker: str) -> tuple[dict[str, dict[str, Any]], list[str]
                 continue
             produced[name][endpoint] = value
     return produced, unreachable
+
+
+def confirm_disagreements(base: str, ticker: str,
+                          multi: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Cross-endpoint disagreement that EXCEEDS the field's own drift.
+
+    RC-269: a single pass reported 14 disagreements and then 6 seconds later,
+    because polling nineteen endpoints takes seconds and the price moves
+    between the first call and the last -- so every field derived from spot
+    "disagrees" purely from being sampled at different instants. A count that
+    swings 6-14 for the same repository cannot carry an exact-equality ratchet,
+    and it is noisiest during market hours, which is when it matters.
+
+    So each field is measured against ITSELF first. A second full pass gives
+    every field a self-drift: how far it moved with no faucet disagreement
+    involved. Only spread LARGER than that drift is reported, and the field
+    must still disagree on the second pass. A structural disagreement survives
+    both; a moving price cancels.
+
+    Fails toward REPORTING: with no drift measurement available, any spread is
+    reported rather than assumed benign.
+    """
+    second, _ = census(base, ticker)
+    confirmed: dict[str, dict[str, Any]] = {}
+    for field, faucets in multi.items():
+        values = list(faucets.values())
+        if len(set(values)) < 2:
+            continue
+        spread = max(values) - min(values)
+
+        other = second.get(field, {})
+        drift = 0.0
+        for endpoint, value in faucets.items():
+            if endpoint in other:
+                drift = max(drift, abs(other[endpoint] - value))
+
+        if drift and spread <= drift:
+            continue                        # moved, did not disagree
+        if other and len(set(other.values())) < 2:
+            continue                        # agreed on the confirming pass
+        confirmed[field] = faucets
+    return confirmed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -156,12 +214,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="exit 0 instead of 2 when the server is not "
                              "running (for commit hooks; no server means no "
                              "measurement, not a pass)")
-    parser.add_argument("--max", type=int, default=0, dest="max_disagreeing",
-                        help="ratchet: fail only ABOVE this many disagreeing "
-                             "fields. The repository carries real debt today, "
-                             "and a hook that blocks every commit is a hook "
-                             "that gets deleted. Lower it as the debt clears; "
-                             "0 is the target and the default.")
+    # RC-270: there is deliberately NO --max, --tolerance or ceiling. One was
+    # added twice this session -- 13, then 6 -- and both were wrong, because a
+    # count that measures 5, 12, 12, 13 across consecutive runs cannot carry a
+    # threshold at all. More importantly the operator never asked for one. Any
+    # disagreement fails. If that blocks a commit, the answer is to fix the
+    # field, not to widen the gate.
     args = parser.parse_args(argv)
 
     if fetch(args.base, "/api/spot", args.ticker) is None:
@@ -180,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
 
     produced, unreachable = census(args.base, args.ticker)
     multi = {f: m for f, m in produced.items() if len(m) > 1}
-    disagreeing = {f: m for f, m in multi.items() if len(set(m.values())) > 1}
+    disagreeing = confirm_disagreements(args.base, args.ticker, multi)
 
     findings = []
     for field, faucets in sorted(disagreeing.items(), key=lambda kv: -len(kv[1])):
@@ -227,11 +285,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print(f"\n  {len(disagreeing)} field(s) disagree. Two screens can show "
           "contradictory numbers with nothing to detect it (RC-262).")
-    if args.max_disagreeing and len(disagreeing) <= args.max_disagreeing:
-        print(f"  RATCHET: {len(disagreeing)} <= --max {args.max_disagreeing}, "
-              "not blocking. This is DEBT being held, not a pass. Lower --max "
-              "as fields are fixed; it must never be raised.")
-        return 0
     return 1
 
 

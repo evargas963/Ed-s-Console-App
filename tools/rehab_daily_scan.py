@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -292,8 +293,138 @@ def _head() -> str:
     return _git("rev-parse", "--short", "HEAD").strip() or "UNKNOWN"
 
 
+def _product_findings() -> list[dict]:
+    """Product defects, from the scanners that read the running system (RC-271).
+
+    Every finding this scan could previously emit was about PROCESS --
+    dirty_tree_sprawl, index_wt_drift, pm_not_cursor, staged_only_checks. Ten
+    ids, all governance. Meanwhile direct measurement of the product found 850
+    multi-producer fields with 12 disagreeing, a function at cyclomatic
+    complexity 608 against a review threshold of 15, coverage unmeasured across
+    544 test files, and p95 latency of 1560ms against a 200ms budget. The
+    nightly report the operator asked for reported none of it.
+
+    These call the existing scanners rather than reimplementing them, so there
+    is one queue and one report and no second surface to drift.
+    """
+    out: list[dict] = []
+    py = str(REPO / ".venv" / "Scripts" / "python.exe")
+    if not os.path.exists(py):
+        py = sys.executable
+
+    # --- one faucet per field: does the product contradict itself? ---------
+    code, text = _run([py, "tools/check_one_faucet_live.py", "--skip-if-down"],
+                      timeout=180)
+    hit = re.search(r"DISAGREEING\s*:\s*(\d+)", text or "")
+    if hit and int(hit.group(1)) > 0:
+        fields = re.findall(r"FAIL\s+(\S+)\s+\[", text)
+        out.append({
+            "id": "rehab.product.faucets_disagree",
+            "severity": "P0",
+            "facet": "one_faucet",
+            "summary": f"{hit.group(1)} field(s) disagree across endpoints "
+                       f"right now: {', '.join(fields[:6])}",
+            "recommendation": "Two screens can show contradictory numbers with "
+                              "nothing to detect it. One producer per field "
+                              "(RC-262).",
+            "evidence": {"fields": fields[:20]},
+        })
+
+    # --- database health against published standards -----------------------
+    code, text = _run([py, "tools/check_db_health.py"], timeout=300)
+    if code == 1:
+        fails = re.findall(r"\[FAIL\] ([^\n]+)", text or "")
+        out.append({
+            "id": "rehab.product.db_health",
+            "severity": "P1",
+            "facet": "data_quality",
+            "summary": f"{len(fails)} database health rule(s) failing",
+            "recommendation": "DAMA dimensions and OHLC invariants; see "
+                              "tools/check_db_health.py for the cited source.",
+            "evidence": {"failing": fails[:12]},
+        })
+
+    # --- duplication register ----------------------------------------------
+    code, text = _run([py, "tools/duplication_audit.py"], timeout=600)
+    hit = re.search(r"TOTAL\s+(\d+)", text or "")
+    if hit and int(hit.group(1)) > 0:
+        rows = re.findall(r"!(\S+)\s+(\d+)\s", text or "")
+        out.append({
+            "id": "rehab.product.duplication",
+            "severity": "P1",
+            "facet": "multi_faucet",
+            "summary": f"{hit.group(1)} duplications across "
+                       f"{len(rows)} class(es)",
+            "recommendation": "One implementation of everything. Run "
+                              "tools/duplication_audit.py for the register.",
+            "evidence": {"by_class": dict(rows)},
+        })
+
+    # --- complexity outliers, threshold from the published standard ---------
+    try:
+        import ast
+
+        DECISION = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler,
+                    ast.With, ast.AsyncWith, ast.Assert, ast.BoolOp, ast.IfExp,
+                    ast.comprehension)
+        worst: list[tuple[int, str, int, str]] = []
+        skip = {".venv", "node_modules", "__pycache__", "site-packages",
+                "backups", "scratchpad", "tests"}
+        for path in REPO.rglob("*.py"):
+            if any(part in skip for part in path.parts):
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, SyntaxError):
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                cc = 1 + sum(1 for n in ast.walk(node) if isinstance(n, DECISION))
+                if cc > 15:            # codeant: flag above 15
+                    worst.append((cc, _display_path(path), node.lineno, node.name))
+        if worst:
+            worst.sort(reverse=True)
+            top = [f"CC {c} {p}:{ln} {n}()" for c, p, ln, n in worst[:5]]
+            out.append({
+                "id": "rehab.product.complexity",
+                "severity": "P1" if worst[0][0] > 100 else "P2",
+                "facet": "codebase_quality",
+                "summary": f"{len(worst)} function(s) above the CC>15 review "
+                           f"threshold; worst is {worst[0][0]}",
+                "recommendation": "Median CC under 10, flag above 15 "
+                                  "(codeant seven axes). The worst outliers "
+                                  "carry the risk, not the median.",
+                "evidence": {"worst": top},
+            })
+    except Exception as exc:            # noqa: BLE001 — scan must not die
+        out.append({
+            "id": "rehab.product.complexity_unmeasured",
+            "severity": "P2",
+            "facet": "codebase_quality",
+            "summary": f"complexity scan failed: {type(exc).__name__}",
+            "recommendation": "Fix the scanner; an unmeasured axis reads as clean.",
+            "evidence": {},
+        })
+
+    # --- coverage: unmeasured is not the same as good ----------------------
+    has_cov = (REPO / ".coverage").exists() or any(
+        REPO.rglob("coverage*.xml"))
+    if not has_cov:
+        out.append({
+            "id": "rehab.product.coverage_unmeasured",
+            "severity": "P1",
+            "facet": "codebase_quality",
+            "summary": "no coverage artefact: test coverage is unmeasured",
+            "recommendation": "544 test files prove tests EXIST, not that they "
+                              "cover anything. Target >=80% on core modules.",
+            "evidence": {},
+        })
+    return out
+
+
 def _collect_findings(measure: dict, status: dict) -> list[dict]:
-    findings: list[dict] = []
+    findings: list[dict] = _product_findings()
     now = datetime.now(timezone.utc).isoformat()
 
     live = measure.get("live_collect_disk_only")

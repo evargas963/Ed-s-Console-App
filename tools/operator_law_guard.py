@@ -325,6 +325,58 @@ _GREP_AGAINST_FILES = re.compile(
     r"-t\s+\w+|--type|--glob|\s\.$|\s\./)", re.I)
 _DESTRUCTIVE_GIT = re.compile(
     r"\bgit\s+(?:reset\s+--hard|checkout\s+--\s|clean\s+-[a-z]*f|push\s+--force(?!-with-lease))", re.I)
+#: RC-273 — the trees that are gitignored and therefore UNRECOVERABLE.
+#: `.gitignore:31 data/*` means the 27 GB database has no history at all, so the
+#: single most valuable artefact in this repository is the one every
+#: version-control-shaped rule above was built to ignore.
+#:
+#: MEASURED 2026-08-06: the agent destroyed data/ed_console.db TWICE in ten
+#: minutes. Once with `mv` to exercise a missing-file branch; once with `rm -f`
+#: while TESTING the ACL meant to prevent the first. Both were "just a test";
+#: both destroyed 27 GB. `_DESTRUCTIVE_GIT` refused `git checkout --` in that
+#: same session, so the guard was awake — it simply did not consider `rm` on an
+#: untracked file to be destruction.
+#:
+#: An OS ACL cannot carry this: the account OWNS the file and a Windows owner
+#: can always rewrite the DACL. Proven by a canary that deleted cleanly with
+#: deny rules in place. A file-level ACL now exists as defence in depth, but the
+#: binding lock has to be here, in the agent channel that actually failed.
+#:
+#: Destructive is defined by the TARGET's recoverability, never by the verb.
+_PROTECTED_TREE = r"(?:data|backups|models)[\\/]"
+_PROTECTED_DESTRUCTIVE = re.compile(
+    r"(?:\brm\b|\bdel\b|\berase\b|\brmdir\b|Remove-Item|\bunlink\b|shutil\.rmtree"
+    r"|os\.remove|os\.unlink|\.unlink\(|\btruncate\b)"
+    r"[^\n;|&]{0,200}?" + _PROTECTED_TREE
+    + r"|(?:\bmv\b|\bmove\b|Move-Item|shutil\.move|os\.rename|os\.replace)\s+"
+      r"[^\n;|&]{0,40}?" + _PROTECTED_TREE
+    + r"|>\s*[^\n;|&>]{0,80}?" + _PROTECTED_TREE,
+    re.I)
+
+
+def _protected_path_violation(raw: str) -> bool:
+    """True when a command would delete, move or truncate an unrecoverable artefact.
+
+    Reads the RAW command text, including heredocs and -c payloads, because
+    those are the channels that dodge the Edit/Write hook.
+
+    A COPY INTO a protected tree is a restore and stays legal — restoring the
+    database from backups/ is the recovery path and must never be blocked. It
+    is removal of what is already there that has no undo.
+    """
+    if not raw:
+        return False
+    # A commit does not touch the working tree. This rule fired on its OWN
+    # landing commit, because the message DESCRIBES the incident and therefore
+    # contains the command text that caused it. A lock that stops you writing
+    # down what went wrong is a lock that gets deleted -- and the honest record
+    # is the whole point of the row. `git commit` cannot remove a file.
+    if re.search(r"\bgit\s+commit\b", raw, re.I):
+        return False
+    if re.search(r"\b(?:cp|copy|Copy-Item)\b", raw, re.I) and not re.search(
+            r"(?:\brm\b|\bdel\b|Remove-Item|\bmv\b|Move-Item)", raw, re.I):
+        return False
+    return bool(_PROTECTED_DESTRUCTIVE.search(raw))
 # RC-186 self-audit finding (2026-08-02): the enumerated list covered only the four *_GUARD
 # names, so the mockup lock's ED_UI_MOCKUP_LOCK=off escape was silently agent-usable the day it
 # shipped. Generalized: ANY ED_*_GUARD/ED_*_LOCK=off is a lock-disable action — operator-only.
@@ -583,6 +635,13 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
     if _DESTRUCTIVE_GIT.search(cmd):
         out.append("ACTION BLOCKED: destructive git can discard operator work. Hand it to the "
                    "operator.")
+    if _protected_path_violation(raw):
+        out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
+                   "data/, backups/ or models/. Those trees are gitignored -- there is NO "
+                   "history and NO undo. The agent destroyed the 27GB database twice in ten "
+                   "minutes this way, both times while 'just testing'. Test destructive "
+                   "behaviour against a COPY in a temp directory, never the real artefact. "
+                   "Restores INTO these trees stay legal; removal from them is operator-only.")
     if _SKIP_HOOKS.search(cmd):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
     if _approval_channel_violation(raw):

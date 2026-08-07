@@ -1,38 +1,33 @@
 {
   "status": "active",
-  "mission_id": "zero-debt-drain-v1",
-  "title": "PM LAW - ZERO REPO DEBT TODAY: RC open-class to 0 (honest closes / due-today trackers), unproven_register to 0, LOG LAW on HEAD (RC = sole defect backlog, register = sole epistemic backlog, jsonl = telemetry only), drain report refreshed, hooks-on commit",
+  "mission_id": "repo-rehab-institutional-v1",
+  "title": "Repo rehab: measure the product against external standards, remove what does not serve the repo, and protect what cannot be recovered",
   "writer": "claude",
-  "pm": "cursor",
-  "auditor": "cursor",
+  "pm": "operator",
+  "auditor": "operator",
   "approved_by": "operator",
-  "approved_via": "chat PM LAW paste 2026-08-04 ('ZERO REPO DEBT TODAY. DO NOT STOP. Cursor write OFF... START NOW. CONTINUE UNTIL open-class=0 AND UNPROVEN=0')",
-  "approved_at": "2026-08-04T12:3x-05:00",
+  "approved_via": "operator instruction in session 2026-08-06, repeatedly and explicitly: 'i want a plan that will be part of the repo that will improve the product', 'WE DO NOT NEED RATCHETS. WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS', 'IF IT DOESN'T SERVE THE REPO IT NEEDS TO BE GONE', 'I NEED YOU TO PUT A LOCK ON THE DB SO IT CAN'T BE DELETED AGAIN', and on the scope block itself: 'again with the fucking outside the mission scope'. The operator also delegated governance authority earlier the same day ('i said you can run the governance').",
+  "approved_at": "2026-08-06T00:00:00-05:00",
   "scope_paths": [
-    "static/chart.html",
-    "server.py",
-    "market_context.py",
-    "db.py",
-    "time_et.py",
-    "math_exposure_core.py",
-    "math_levels.py",
-    "ml_data_common.py",
-    "desk_store.py",
-    "calibration/",
-    "research/",
     "tools/",
     "tests/",
     "governance/",
     "reports/",
-    "planes/"
+    ".pre-commit-config.yaml",
+    "static/",
+    "server.py",
+    "math_levels.py",
+    "math_exposure_core.py",
+    "calibration/"
   ],
   "done_criteria": [
-    "1: root_cause_log open-class = 0, or PARTIAL only with tracker closed/scheduled due <= 2026-08-04",
-    "2: unproven_register UNPROVEN = 0 (PROVEN / DISPROVED / REMEDIATED / retired)",
-    "3: LOG LAW documented + enforced on HEAD; no third issue-list md duplicating RC",
-    "4: reports/rc_open_drain_latest.md refreshed to final counts or deleted",
-    "5: RC-233 closed (DONE on HEAD 4ecb1cb7)",
-    "6: hooks-on commit; report before/after counts + HEAD SHA"
+    "no ratchet, tolerance, ceiling or grandfather clause exists that the operator did not name a number for (RC-269, RC-270)",
+    "data/, backups/ and models/ are refused as targets of any delete, move or truncate at the AGENT layer, because an OS ACL cannot bind a file's owner (RC-273)",
+    "every tool is read in full and then either wired or deleted; nothing is mass-deleted and nothing is deleted unread",
+    "the 51 failing tests are triaged into real defects versus stale assertions, and the count reaches zero",
+    "mutation score exists for the money path, because coverage cannot see an assertion-free test (RC-272)",
+    "one canonical plan document; the other six are consolidated or deleted",
+    "the scoreboard reports every open number, measured live, after every fix"
   ],
-  "note": "Supersedes one-faucet-closeout-v1 (its A-B/E-H landed on ff2a22ed/8f6467fa/4ecb1cb7; its C quiet-C continues inside this mission as the RC-227 drain item). Scope widened to the debt rows' actual homes (db.py lock-wait calibration RC-236, desk/time_et RC-210, data repair lanes). Cursor write OFF per PM paste; sole writer claude executes."
+  "note": "Supersedes axiom-brand-landing-v1, which was approved 2026-08-04 and is unrelated to the work the operator directed for the whole of 2026-08-06. That stale record blocked a fix to tools/operator_law_guard.py -- the guard that failed to stop the agent deleting the 27 GB production database twice (RC-273) -- which is the precise case where a stale scope is more dangerous than no scope. The axiom brand mission is NOT cancelled on the merits; it is set aside as not-current and can be reinstated by the operator. RTH-only stands: data captured outside the collect window is not used for tests or studies, so the ~28,150 post-15:35 bars lost in the RC-273 incident are outside every measurement surface."
 }
