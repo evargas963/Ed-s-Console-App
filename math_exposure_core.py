@@ -814,13 +814,35 @@ def compute_net_charm(
     Locked by tests/test_charm_sign_finite_difference.py (parity + put-heavy sign-flip).
 
     Dealer position: market makers are typically SHORT options (sold to retail).
-    SHORT call → delta hedge = SHORT stock. As charm decays, they BUY back stock.
-    SHORT put  → delta hedge = LONG stock. As charm decays, they SELL stock.
+
+    RC-294 — BOTH LEGS BELOW WERE INVERTED until 2026-08-07, and the inversion was
+    self-consistent ("short stock, then buy back"), which is why it read plausibly and
+    survived. Derive it rather than trusting the sentence:
+
+      SHORT call → the dealer holds delta −Δ, so they BUY stock to reach neutral
+                   → hedge is LONG stock. As that delta decays toward zero they need
+                   less of it and SELL stock.
+      SHORT put  → the dealer holds delta +Δ, so they SELL stock to reach neutral
+                   → hedge is SHORT stock. As that delta decays they BUY stock back.
+
     Net charm > 0 → net dealer delta buying  → Bullish flow
     Net charm < 0 → net dealer delta selling → Bearish flow
 
-    drift_toward_strike: institutional pin from pick_pin_and_strength (caller-supplied).
-    Charm flow direction is independent of pin location.
+    The SIGN CONVENTION below (`net = call_charm - put_charm`, +call/−put, shared with
+    net GEX) is NOT derived from this paragraph. It is convention-locked by RC-179 and
+    measured against the real book — see the parity figures above and
+    tests/test_charm_sign_finite_difference.py. Correcting this prose does not and must
+    not move the arithmetic.
+
+    drift_toward_strike: caller-supplied, and the caller (server.py `_institutional_pin`)
+        passes `pick_net_gex_peak_strike` over the SELECTED EXPIRY — NOT
+        `pick_pin_and_strength`, which is terrain's max-TOTAL-gamma strike over the wide
+        multi-expiry book. This docstring named the wrong function until RC-294 and the
+        two differ whenever magnitude and signed-net peak separate (RC-292).
+        Charm performs NO computation with this value: it is republished unchanged as
+        both `drift_toward` and `gamma_pin`. Charm measures directional hedge DECAY; it
+        does not compute a price attractor, so treat this as a caller's label travelling
+        through, never as charm's own target.
 
     Returns:
         net_charm_daily  : net delta-equivalents unwound per day (negative = selling)
