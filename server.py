@@ -5597,6 +5597,10 @@ _l1_of_last_engine_mono_by_ticker: dict[str, float] = {}
 _l1_instrumentation: dict[str, Any] = {
     "l1_build_total": 0,
     "l1_build_ms_sum": 0.0,
+    #: RC-291: builds whose pipeline timing was actually READ. The average divides by this,
+    #: not by l1_build_total, so an unmeasured build cannot dilute the latency figure the
+    #: warn threshold is compared against.
+    "l1_build_ms_measured": 0,
     "l1_build_by_reason": defaultdict(int),
     "l1_http_cache_hit_total": 0,
     "l1_quote_material_skip_total": 0,
@@ -5874,7 +5878,14 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     ms = _fin_ms(out.get("l1_pipeline_ms"))
     _l1_instrumentation["l1_build_total"] += 1
     if ms is not None:
+        # RC-291: the numerator AND its own denominator move together. RC-281 stopped an
+        # absent timing entering the sum and left l1_build_total dividing it, so 19 builds
+        # at 26 ms plus one unmeasured published 24.7 ms — under the 25 ms warn threshold.
+        # Excluding a value from a mean while counting it in the divisor is the fabricated
+        # zero written a different way. l1_build_total still counts BUILDS, which is a
+        # different and correct question; the average now uses what was measured.
         _l1_instrumentation["l1_build_ms_sum"] = float(_l1_instrumentation["l1_build_ms_sum"]) + ms
+        _l1_instrumentation["l1_build_ms_measured"] += 1
     _l1_instrumentation["l1_build_by_reason"][reason] += 1
     out["l1_instrumentation"] = {
         "l1_build_total": int(_l1_instrumentation["l1_build_total"]),
@@ -9191,13 +9202,14 @@ def _fetch_state(
             # scored zero edge, it has not been scored — and my earlier annotation defending
             # 0 as "this endpoint's existing missing convention" described the defect rather
             # than justifying it. `status` is no longer load-bearing for reading `edge`.
+            # RC-291: NO val_accuracy fallback. RC-285 removed the `, 0` default and then
+            # substituted a DIFFERENT METRIC — accuracy is not edge over a baseline, so a
+            # coin-flip model with val_accuracy 0.55 published `edge: 55.0` and the UI counts
+            # every LIVE model toward "N approved". Substituting a different measurement is
+            # worse than reporting none, because none is legible and a wrong one is not.
             from numeric_contract import float_finite_or_none as _fin_edge
             raw = _fin_edge(_m.get(edge_key))
-            if raw is None:
-                raw = _fin_edge(_m.get("val_accuracy"))
-                edge = None if raw is None else raw * 100
-            else:
-                edge = raw * 100 if edge_key == "val_accuracy" else raw
+            edge = None if raw is None else (raw * 100 if edge_key == "val_accuracy" else raw)
             version = _m.get(version_key, _m.get("model_version", "—"))
         except Exception:
             edge, version = None, "—"
@@ -13372,11 +13384,18 @@ def get_l1_diagnostics():
     from planes.l1_operational import build_l1_operational_assessment
 
     bt = int(_l1_instrumentation["l1_build_total"])
-    avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt)
+    # RC-291: divide by builds whose timing was MEASURED, not by all builds. Dividing a sum
+    # that excludes unmeasured builds by a count that includes them understates the average
+    # and can hold it under the warn threshold — measured at 24.7 ms for a true 26.0 ms.
+    bt_measured = int(_l1_instrumentation["l1_build_ms_measured"])
+    avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt_measured)
     reasons = {str(k): int(v) for k, v in _l1_instrumentation["l1_build_by_reason"].items()}
     uptime_sec = max(0.0, time.monotonic() - _l1_diag_start_mono)
     operational = build_l1_operational_assessment(
-        l1_build_total=bt,
+        # RC-291: the assessor divides sum by total internally, so it must receive the
+        # MEASURED count as its denominator or it reproduces the dilution this row fixes.
+        # `bt` still reaches the caller below as the true build count.
+        l1_build_total=bt_measured,
         l1_build_ms_sum=float(_l1_instrumentation["l1_build_ms_sum"]),
         reasons=reasons,
         l1_http_cache_hit_total=int(_l1_instrumentation["l1_http_cache_hit_total"]),
