@@ -38,17 +38,42 @@ PROD_SUFFIXES = (".py", ".html", ".js", ".css", ".ts", ".sql")
 NON_PROD_PREFIXES = ("tests/", "governance/", "docs/", "reports/", ".claude/", "scratchpad/")
 
 
-def _run(args: list[str], timeout: int = 600) -> tuple[int, str]:
+#: RC-284: what actually happened to a subprocess, kept separate from its exit code.
+#: A timeout and a test failure both arrived as exit 1, so the ledger recorded
+#: `fails: ['attack suites failed']` for 15 runs that never measured anything. An
+#: instrument that cannot say "I did not measure" is the one place this repo's
+#: absence-becomes-a-value defect must not live, because it is what judges every other fix.
+OUTCOME_OK = "ok"
+OUTCOME_TIMEOUT = "timeout"
+OUTCOME_LAUNCH_FAILURE = "launch_failure"
+
+
+def _run(args: list[str], timeout: int = 600) -> tuple[int, str, str]:
+    """Return (exit_code, combined_output, outcome).
+
+    `outcome` is the channel the exit code does not have. A process that never finished has
+    no exit code of its own — inheriting 1 makes "did not run" indistinguishable from "ran
+    and failed", which is exactly what happened on 2026-08-07: 181 suites blew the 1800s
+    ceiling and the audit reported that my tests had failed. They had not.
+    """
     try:
         r = subprocess.run(args, cwd=str(REPO), capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        partial = ""
+        for stream in (getattr(e, "stdout", None), getattr(e, "stderr", None)):
+            if stream:
+                partial += stream if isinstance(stream, str) else stream.decode(
+                    "utf-8", "replace")
+        return 1, f"TIMED OUT after {timeout}s (nothing was measured)\n{partial}", \
+            OUTCOME_TIMEOUT
     except (OSError, subprocess.SubprocessError) as e:
-        return 1, f"RUN FAILED: {e}"
-    return r.returncode, (r.stdout or "") + (r.stderr or "")
+        return 1, f"RUN FAILED: {e}", OUTCOME_LAUNCH_FAILURE
+    return (r.returncode, (r.stdout or "") + (r.stderr or ""), OUTCOME_OK)
 
 
 def changed_production_files() -> list[str]:
-    code, out = _run(["git", "diff", "HEAD", "--name-only"])
+    code, out, _outcome = _run(["git", "diff", "HEAD", "--name-only"])
     if code != 0:
         return []
     files = []
@@ -139,11 +164,14 @@ def main() -> int:
 
     py_changed = [c for c in changed if c.endswith(".py")]
     if py_changed:
-        code, out = _run([sys.executable, "-m", "ruff", "check", *py_changed,
-                          "--select", "F401,F821,E9"])
-        record["steps"].append({"step": "ruff", "files": py_changed, "exit": code})
+        code, out, outcome = _run([sys.executable, "-m", "ruff", "check", *py_changed,
+                                   "--select", "F401,F821,E9"])
+        record["steps"].append({"step": "ruff", "files": py_changed, "exit": code,
+                                "outcome": outcome})
         print(out.strip() or f"ruff exit {code}")
-        if code != 0:
+        if outcome != OUTCOME_OK:
+            fails.append(f"ruff did not run ({outcome}) — no correctness result was obtained")
+        elif code != 0:
             fails.append("ruff correctness failed on changed files")
 
     suites, uncovered = matching_attack_suites(changed)
@@ -154,12 +182,21 @@ def main() -> int:
                      f"write the lock test or name it via --tests (a lock nobody attacks "
                      f"is green-and-inert)")
     if suites:
-        code, out = _run([sys.executable, "-m", "pytest", *suites, "-q"], timeout=1800)
+        code, out, outcome = _run([sys.executable, "-m", "pytest", *suites, "-q"],
+                                  timeout=1800)
         tail = "\n".join(out.strip().splitlines()[-3:])
         record["steps"].append({"step": "pytest", "suites": suites, "exit": code,
-                                "tail": tail})
+                                "outcome": outcome, "tail": tail})
         print(tail)
-        if code != 0:
+        # RC-284: a timeout still FAILS the turn — an unmeasured turn is not a clean one —
+        # but the record must not assert a test result it never obtained.
+        if outcome == OUTCOME_TIMEOUT:
+            fails.append(f"attack suites TIMED OUT after 1800s ({len(suites)} suites; "
+                         f"NOTHING was measured — this is not a test failure)")
+        elif outcome == OUTCOME_LAUNCH_FAILURE:
+            fails.append(f"attack suites could not be LAUNCHED ({len(suites)} suites; "
+                         f"no test result exists)")
+        elif code != 0:
             fails.append("attack suites failed")
     elif changed and not fails:
         fails.append("production changed but zero suites ran — name the lock via --tests")
