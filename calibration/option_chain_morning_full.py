@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from time_et import ET
+from time_et import ET, is_trading_day_et  # RC-278: the calendar authority, on the WRITE side
 
 log = logging.getLogger(__name__)
 
@@ -191,6 +191,12 @@ def persist_chain_accrual(
     fabricated or empty-but-present observation is worse than a gap, because a gap is visible.
     """
     et_date, mins = et_date_and_mins(ts_utc)
+    # RC-278: calendar BEFORE clock. `accrual_window(mins)` asks whether the clock is inside the
+    # span; 10:00 ET is inside it on a Saturday too. MEASURED: this wrote 600 minutes for
+    # 2026-08-01, a Saturday. Whether a session exists at all is a precondition to where we are
+    # inside one, and `is_trading_day_et` is the single authority get_forces already reads with.
+    if not is_trading_day_et(et_date):
+        return {"status": "skipped", "reason": "non_trading_day", "et_date": et_date}
     tk = str(ticker).upper().strip()
     if not tk:
         return {"status": "skipped", "reason": "no_ticker"}
@@ -331,6 +337,12 @@ def maybe_persist_morning_full_chain(
     capture was a silent no-op). Sentinel in-window path is a subset, unchanged.
     """
     et_date, mins = et_date_and_mins(ts_utc)
+    # RC-278: calendar BEFORE clock — 09:40 ET falls inside the capture span on every day of
+    # the week, including days the exchange is shut. MEASURED: this wrote 40 contracts for
+    # 2026-08-02, a Sunday. get_forces already filters these dates out on the READ side, which
+    # is what kept the leak invisible from every surface while the table filled.
+    if not is_trading_day_et(et_date):
+        return {"status": "skipped", "reason": "non_trading_day", "et_date": et_date}
     ticker_u = str(ticker).upper()
     if mins < MORNING_START_MINS or mins > UNIVERSAL_CAPTURE_END_MINS:
         return {"status": "skipped", "reason": "outside_capture_span", "et_date": et_date, "mins": mins}

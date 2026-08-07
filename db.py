@@ -5091,8 +5091,22 @@ def _refresh_governed_outcomes_after_bar_mutation(
     )
 
 
-def market_session(et_hour: int, et_minute: int) -> str:
-    """Classify current time as market session."""
+def market_session(et_hour: int, et_minute: int, *, et_date: Optional[str] = None) -> str:
+    """Classify an ET clock reading as a market session. With `et_date`, the CALENDAR decides first.
+
+    RC-278: this returned "rth" for 10:00 on a Saturday, because minutes-since-midnight is not a
+    session test — on five days in seven the two questions happen to agree. Every row this
+    labelled fed `market_session` into `snapshots` and into the training filters, so a weekend
+    reading entered the sample wearing the same label as a real one.
+
+    `et_date` is optional and keyword-only so the (hour, minute) callers keep working, but a
+    caller that HAS the date is expected to pass it: without one this function cannot know
+    whether a session exists at all, and it says "rth" rather than admitting that.
+    """
+    if et_date is not None:
+        from time_et import is_trading_day_et
+        if not is_trading_day_et(str(et_date)):
+            return "closed"
     mins = et_hour * 60 + et_minute
     if mins < 570:    # before 9:30
         return "premarket"
@@ -5321,7 +5335,8 @@ if __name__ == "__main__":
                     build_ts_et(et_now),
                     et_now.hour,
                     et_now.minute,
-                    market_session(et_now.hour, et_now.minute),
+                    market_session(et_now.hour, et_now.minute,
+                                   et_date=et_now.strftime("%Y-%m-%d")),  # RC-278
                     682.43,
                     HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                 ),

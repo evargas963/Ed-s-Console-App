@@ -146,7 +146,7 @@ def main() -> None:
             ts_et=build_ts_et(et_dt),
             et_hour=eh,
             et_minute=em,
-            market_session=market_session(eh, em),
+            market_session=market_session(eh, em, et_date=et_dt.strftime("%Y-%m-%d")),  # RC-278
             spot=float(spot),
             session_bucket=session_bucket(eh, em),
             zone=ms.zone,

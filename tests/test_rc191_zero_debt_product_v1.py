@@ -66,7 +66,12 @@ def test_bar_accumulator_gap_resets_volume_delta():
     cur = acc._current["MSFT"]
     assert cur["ts"] == acc._bar_start(t_gap)
     assert cur.get("v") is None
-    assert cur.get("volume_source") == "schwab_quote_totalVolume_gap_reset"
+    # RC-278: two tests disagreed on this label and production shipped one of them.
+    # server.py:3672 emits "..._gap_unattributable" and the COMMITTED, passing
+    # tests/test_horizon_bar_outcomes.py:411 asserts that exact string. "gap_reset" says the
+    # counter restarted; "gap_unattributable" says the span's volume cannot be assigned to any
+    # one bar, which is the RC-168 finding this branch exists for. The accurate word wins.
+    assert cur.get("volume_source") == "schwab_quote_totalVolume_gap_unattributable"
 
 
 def test_cost_aware_and_survival_fallback_not_raw_npdiff():

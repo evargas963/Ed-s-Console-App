@@ -141,7 +141,10 @@ def market_session_from_ts_utc(ts_utc: float) -> str:
     from db import market_session
 
     h, m, _ = et_clock_from_ts_utc(ts_utc)
-    return market_session(h, m)
+    # RC-278: the timestamp carries the DATE, so withholding it from the classifier threw away
+    # the only thing that can tell a Saturday 10:00 from a Friday 10:00. Every ts-based caller
+    # inherits the calendar through this one line.
+    return market_session(h, m, et_date=et_date_str_from_ts_utc(ts_utc))
 
 
 def row_market_session_from_ts_utc(row: Any) -> str:

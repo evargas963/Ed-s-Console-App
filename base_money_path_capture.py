@@ -89,7 +89,7 @@ def build_lightweight_snapshot_row_from_quote(
         ts_et=build_ts_et(now_et),
         et_hour=et_h,
         et_minute=et_m,
-        market_session=market_session(et_h, et_m),
+        market_session=market_session(et_h, et_m, et_date=now_et.strftime("%Y-%m-%d")),  # RC-278
         spot=spot_f,
         spread=spread,
         bid_price=bid,
