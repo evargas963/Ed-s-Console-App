@@ -330,6 +330,28 @@ def _product_findings() -> list[dict]:
             "evidence": {"fields": fields[:20]},
         })
 
+    # --- rows banked on a day the market was shut (RC-278 / RC-283) --------
+    # The RC-278 guards stop NEW weekend rows; nothing watches for a leak from a path
+    # that does not go through them. Cursor's audit is how the last one was found, and an
+    # audit is not a monitor. Dry-run only: this reports, the operator executes.
+    code, text = _run([py, "tools/relabel_non_trading_sessions_v1.py"], timeout=300)
+    leaked = sum(int(n) for n in re.findall(r"'non_trading':\s*(\d+)", text or ""))
+    mislabelled = int((re.search(r"'non_trading_mislabeled':\s*(\d+)", text or "")
+                       or [0, 0])[1] or 0)
+    if leaked or mislabelled:
+        out.append({
+            "id": "rehab.product.non_trading_rows",
+            "severity": "P1",
+            "facet": "data_quality",
+            "summary": f"{leaked} option-chain row(s) banked on a non-trading day and "
+                       f"{mislabelled} snapshot(s) mislabelled — the market was shut",
+            "recommendation": "Run `tools/relabel_non_trading_sessions_v1.py --execute`: "
+                              "snapshots are relabelled 'closed', option-chain rows move "
+                              "to <table>_quarantine with the evidence intact. Then find "
+                              "the write path that bypassed the RC-278 calendar guards.",
+            "evidence": {"report": (text or "").strip()[:600]},
+        })
+
     # --- database health against published standards -----------------------
     code, text = _run([py, "tools/check_db_health.py"], timeout=300)
     if code == 1:
