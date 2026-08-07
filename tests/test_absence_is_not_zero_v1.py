@@ -24,6 +24,7 @@ source table and read what comes out the other end.
 
 from __future__ import annotations
 
+import inspect
 import json
 import sqlite3
 import sys
@@ -265,6 +266,49 @@ def test_the_repo_wide_gate_scopes_itself_to_what_git_tracks():
     assert not [r for r in rels if r.startswith("scratchpad/")], (
         "untracked scratch is back in a repo-wide product gate")
     assert not G._repo_wide_silent_zero_hits()
+
+
+def test_server_py_is_judged_like_every_other_file():
+    """RC-276: the product's main file was exempt from the gate that guards this defect.
+
+    A one-line reason -- "L1/SSE instrumentation timestamps, generations, volume deltas" --
+    honestly described 16 sites and silently covered 7 more, two of which were the SAME
+    per-strike gamma builder RC-274 had just removed from terrain_engine. An exemption's
+    scope must match the scope of its justification, and a file entry cannot do that.
+    """
+    sys.path.insert(0, str(REPO / "tests"))
+    import test_ohlcv_schwab_first as G
+
+    assert not G._file_allowlisted("server.py"), (
+        "server.py is exempt from the silent-zero gate again — 15,092 lines including the "
+        "money path, silenced by one line of prose about instrumentation")
+
+
+def test_the_per_line_escape_demands_an_actual_reason():
+    """A marker that can be typed without saying anything is the file allowlist, per line."""
+    sys.path.insert(0, str(REPO / "tests"))
+    import test_ohlcv_schwab_first as G
+
+    bare = 'x = float(a.get("b") or 0.0)  # silent-zero-ok:'
+    with_reason = 'x = float(a.get("b") or 0.0)  # silent-zero-ok: absent means no rows counted'
+    assert any(G._line_counts_as_violation(bare, s) for s in G.SILENT_ZERO_PATTERN_FAMILY), (
+        "a reasonless escape suppressed the finding")
+    assert not any(G._line_counts_as_violation(with_reason, s)
+                   for s in G.SILENT_ZERO_PATTERN_FAMILY)
+
+
+def test_the_server_strike_row_builder_draws_no_bar_for_unknown_gamma():
+    """RC-276: server.py's own copy of the terrain_engine:202 defect, behind the allowlist.
+
+    Driven through the real endpoint helper rather than asserted about the source text,
+    because the source text was what the allowlist was hiding.
+    """
+    import server as srv
+
+    src = inspect.getsource(srv.get_terrain_strikes)
+    assert "round(float(g or 0.0), 1)" not in src, (
+        "the per-strike row builder fabricates a 0.0 gamma bar again")
+    assert "if g is None:" in src and "continue" in src
 
 
 def test_the_silent_zero_pattern_is_still_detectable():

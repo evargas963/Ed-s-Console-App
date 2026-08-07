@@ -1240,7 +1240,7 @@ def _l1_payload_fingerprint(payload: dict) -> str:
 def _l1_record_payload_identity(sk: tuple[str, str | None], gen: int, payload: dict) -> tuple[float, str]:
     """Update per-scope identity; increment violation if same (gen, ts) yields a different fingerprint."""
     warn_l1_payload_key_drift(payload, logger=log)
-    ts = float(payload.get("_server_build_ts") or payload.get("as_of_ts") or 0.0)
+    ts = float(payload.get("_server_build_ts") or payload.get("as_of_ts") or 0.0)  # silent-zero-ok: epoch-0 is the ANCIENT sentinel — a missing build stamp must read as maximally stale, never fresh
     fp = _l1_payload_fingerprint(payload)
     prev = _l1_last_emit_identity.get(sk)
     if prev is not None:
@@ -1685,7 +1685,7 @@ def _record_analytics_bg_failure(
 
 
 def _analytics_generated_ts(entry: dict) -> float:
-    return float(entry.get("generated_at") or entry.get("ts") or 0.0)
+    return float(entry.get("generated_at") or entry.get("ts") or 0.0)  # silent-zero-ok: epoch-0 sentinel — an undated cache entry sorts as oldest and is evicted first
 
 
 # ── ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 ────────────────────────────────
@@ -2197,8 +2197,8 @@ def _record_tier_c_broadcast_identity(payload: dict) -> None:
             return
         key = (str(t).upper().strip(), payload.get("selected_exp"))
         _last_tier_c_broadcast_identity[key] = (
-            float(payload.get("_server_build_ts") or 0.0),
-            int(payload.get("analytics_version") or 0),
+            float(payload.get("_server_build_ts") or 0.0),  # silent-zero-ok: epoch-0 ancient sentinel, compared not displayed
+            int(payload.get("analytics_version") or 0),  # silent-zero-ok: version 0 means "no analytics version yet", the pre-first-run state this comparison exists to detect
             _sse_conn_epoch,
         )
     except Exception as e:
@@ -2217,8 +2217,8 @@ def _tier_c_fanout_is_duplicate(ticker: str, expiry: Optional[str]) -> bool:
     md = entry["ms_dict"]
     ck = data_cache_key or (ticker.upper().strip(), md.get("selected_exp"))
     ident = (
-        float(md.get("_server_build_ts") or 0.0),
-        int(entry.get("analytics_version") or 0),
+        float(md.get("_server_build_ts") or 0.0),  # silent-zero-ok: epoch-0 ancient sentinel, compared not displayed
+        int(entry.get("analytics_version") or 0),  # silent-zero-ok: version 0 means "no analytics version yet", the pre-first-run state this comparison exists to detect
         _sse_conn_epoch,
     )
     return _last_tier_c_broadcast_identity.get(ck) == ident
@@ -3418,7 +3418,7 @@ def _latest_cached_ms_and_key_for_ticker(ticker: str) -> tuple[Optional[dict], O
         md = entry.get("ms_dict")
         if not isinstance(md, dict) or not md:
             continue
-        ts = float(entry.get("ts") or 0.0)
+        ts = float(entry.get("ts") or 0.0)  # silent-zero-ok: epoch-0 ancient sentinel — an undated entry must never win a freshest-wins comparison
         if ts > best_ts:
             best_ts = ts
             best_md = md
@@ -3717,7 +3717,12 @@ class _CandleAccumulator:
             cur["l"] = min(cur["l"], price)
             cur["c"] = price
             if vol_delta is not None:
-                cur["v"] = (cur.get("v") or 0.0) + vol_delta
+                # RC-276: a bar starts at "v": vol_delta, which can be None when the tick that
+                # opened it carried no volume. `(None or 0.0) + delta` then reported the
+                # deltas we happened to see as if they were the bar's whole turnover. A total
+                # with a missing term is not a smaller total, it is an unknown one.
+                prev = cur.get("v")
+                cur["v"] = None if prev is None else prev + vol_delta
             cur["volume_source"] = vol_source
 
     def get_bars(self, ticker: str) -> list[Candle]:
@@ -5807,7 +5812,7 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
-    ms = float(out.get("l1_pipeline_ms") or 0.0)
+    ms = float(out.get("l1_pipeline_ms") or 0.0)  # silent-zero-ok: SSE latency gauge — 0 ms reads as "no pipeline time recorded" and the caller gates on ms > 0 before reporting
     _l1_instrumentation["l1_build_total"] += 1
     _l1_instrumentation["l1_build_ms_sum"] = float(_l1_instrumentation["l1_build_ms_sum"]) + ms
     _l1_instrumentation["l1_build_by_reason"][reason] += 1
@@ -6027,7 +6032,7 @@ def _l1_notify_sse_after_authoritative_build(ticker: str, expiry: Optional[str])
             return
         _l1_sse_last_emit_mono[sk] = now_m
     payload = _l1_http_get_projection(ticker, expiry, force=False)
-    gen = int(payload.get("l1_generation") or 0)
+    gen = int(payload.get("l1_generation") or 0)  # silent-zero-ok: generation 0 is the pre-first-publish state; every real generation is >= 1 so 0 can never impersonate one
     ts, fp = _l1_record_payload_identity(sk, gen, payload)
     env = {
         "l1_sse_schema": 1,
@@ -6086,7 +6091,7 @@ def _latest_cache_entry_for_ticker(ticker: str) -> Optional[tuple[tuple, dict]]:
             continue
         if not v.get("ms_dict"):
             continue
-        ts = float(v.get("ts") or 0.0)
+        ts = float(v.get("ts") or 0.0)  # silent-zero-ok: epoch-0 ancient sentinel — an undated entry sorts oldest, never freshest
         if ts >= best_ts:
             best_ts = ts
             best_k = k
@@ -9123,7 +9128,11 @@ def _fetch_state(
         try:
             _m = json.loads(meta_path.read_text())
             raw = _m.get(edge_key, _m.get("val_accuracy", 0))
-            edge = float(raw) * 100 if edge_key == "val_accuracy" else float(raw or 0)
+            # RC-276 residual: the ML dashboard, not the trading path. This endpoint already
+            # returns edge=0 for BINARY MISSING, NON-COMPLIANT and the except branch, so
+            # changing this one line would make the field mean two things at once. Owed work,
+            # named in the RC-276 row rather than left implicit.
+            edge = float(raw) * 100 if edge_key == "val_accuracy" else float(raw or 0)  # silent-zero-ok: RC-276 residual, dashboard-only, edge=0 is this endpoint's existing missing convention
             version = _m.get(version_key, _m.get("model_version", "—"))
         except Exception:
             edge, version = 0, "—"
@@ -10014,7 +10023,7 @@ def api_ops_calibration_rowcount():
             "calibration_decision_log rate WARN: last_24h=%d expected=%.0f ratio=%.2f (threshold=%.2f)",
             health.get("last_24h_count", 0),
             health.get("expected_per_24h", 0.0),
-            health.get("ratio") or 0.0,
+            health.get("ratio") or 0.0,  # silent-zero-ok: log.warning argument only — the same line already prints last_24h and expected, so a 0.00 ratio cannot be mistaken for a measurement
             health.get("warn_ratio", 0.0),
         )
     return JSONResponse({"ok": True, **health})
@@ -10732,7 +10741,7 @@ def terrain_quarantine_reason(ticker: str | None) -> str:
                     f"{e.get('reason')}. The vendor refuses this symbol, so the loop has stopped "
                     f"requesting it; it stays out until an operator re-admits it "
                     f"(POST /api/terrain/quarantine/release?ticker={tk})")
-        left = max(0.0, float(e.get("until_ts") or 0.0) - time.time())
+        left = max(0.0, float(e.get("until_ts") or 0.0) - time.time())  # silent-zero-ok: no recorded expiry means no cooldown is in force, so 0 seconds remaining is the correct reading, not a fabricated one
         return (f"backing off after {e.get('failures')} consecutive failures — {e.get('reason')}; "
                 f"next attempt in {left:.0f}s")
 
@@ -10747,7 +10756,7 @@ def _terrain_quarantine_blocks(tk: str) -> bool:
         if e.get("permanent"):
             _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
             return True
-        if now < float(e.get("until_ts") or 0.0):
+        if now < float(e.get("until_ts") or 0.0):  # silent-zero-ok: no recorded expiry means no cooldown is in force; epoch-0 is already past so the branch correctly does not fire
             _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
             return True
         _terrain_quarantine.pop(tk, None)      # soft hold expired — back into the rotation
@@ -12112,7 +12121,13 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
                 g = bucket_metric(b, "net_gex_1pct")
                 if g is None:
                     g = total_gamma_raw_at_strike(b)
-                out.append([round(float(k), 2), round(float(g or 0.0), 1),
+                if g is None:
+                    # RC-276: the second copy of the terrain_engine:202 bar RC-274 removed. A
+                    # strike whose gamma resolves nowhere drew a bar at 0.0, indistinguishable
+                    # from a strike measured at flat gamma on the surface used to read dealer
+                    # positioning. Hidden here because server.py was allowlisted wholesale.
+                    continue
+                out.append([round(float(k), 2), round(float(g), 1),
                             int(vol_by_k.get(float(k), 0))])
             out.sort(key=lambda r: r[0])
             return out
@@ -12177,7 +12192,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     # The prior-day morning_full archive is untouched and still serves ONLY the ghost — a bank
     # row is this session's own wide book, which is exactly what the archive is not.
     try:
-        _live_ts = float(_snap.get("computed_ts_utc") or 0.0) if isinstance(_snap, dict) else 0.0
+        _live_ts = float(_snap.get("computed_ts_utc") or 0.0) if isinstance(_snap, dict) else 0.0  # silent-zero-ok: epoch-0 ancient sentinel — an undated snapshot must lose every freshness comparison
         _live_stale = (today is None) or (
             _live_ts <= 0.0) or ((time.time() - _live_ts) > TERRAIN_STALE_AFTER_SEC)
         if _live_stale:
@@ -12228,11 +12243,19 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     # browser from the same rows (a second aggregation site that breaks silently when the
     # payload changes, and can straddle a different spot than the server's). One aggregator.
     def _side_sums(rows, s):
+        from numeric_contract import float_finite_or_none, float_nonnegative_or_none
         if not rows or s is None:
             return None
         gb = ga = vb = va = 0.0
         for r in rows:
-            k, g, v = float(r[0]), float(r[1] or 0.0), float(r[2] or 0)
+            # RC-276: the third copy. A row with no gamma used to add 0.0 to a side sum, which
+            # is not neutral -- it drags the below/above comparison toward whichever side holds
+            # the unmeasured strikes. Absence is dropped, not counted as flat.
+            k = float_finite_or_none(r[0])
+            g = float_finite_or_none(r[1])
+            v = float_nonnegative_or_none(r[2])
+            if k is None or g is None or v is None:
+                continue
             if k < s:
                 gb += g; vb += v
             elif k > s:
@@ -12353,12 +12376,20 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
                 if not per_ch:
                     charm_err = "charm_by_strike empty on newer banked chain"
                 else:
+                    # RC-276: a strike with no net_charm is not a strike with zero charm.
+                    # Summed as 0.0 it silently tilted the below/above pair the Exposure tab
+                    # renders as dealer charm pressure.
+                    from numeric_contract import float_finite_or_none as _fin_ch
+
+                    def _ch(v: dict) -> float | None:
+                        return _fin_ch(v.get("net_charm"))
+
                     charm_below = round(sum(
-                        float(v.get("net_charm") or 0.0)
-                        for k, v in per_ch.items() if k < spot1), 4)
+                        c for c in (_ch(v) for k, v in per_ch.items() if k < spot1)
+                        if c is not None), 4)
                     charm_above = round(sum(
-                        float(v.get("net_charm") or 0.0)
-                        for k, v in per_ch.items() if k > spot1), 4)
+                        c for c in (_ch(v) for k, v in per_ch.items() if k > spot1)
+                        if c is not None), 4)
             except Exception as _ce:
                 charm_err = str(_ce)[:120]
             payload = {
@@ -13185,7 +13216,7 @@ async def post_streaming_active_ticker(payload: dict = Body(default={})):
 def _l1_sse_light_diag_payload() -> dict[str, Any]:
     """Authoritative counters + derived health hints for operators (see l1_sse_field_semantics)."""
     now_m = time.monotonic()
-    drop_m = float(_l1_sse_last_drop_mono or 0.0)
+    drop_m = float(_l1_sse_last_drop_mono or 0.0)  # silent-zero-ok: 0 means "no drop ever recorded" and every consumer below gates on drop_m > 0.0 before deriving an age
     drop_age_sec = float(now_m - drop_m) if drop_m > 0.0 else None
     out: dict[str, Any] = {**dict(_l1_sse_diag)}
     out["l1_sse_backpressure_policy"] = (
@@ -13197,7 +13228,7 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
     )
     out["l1_sse_last_drop_age_sec"] = drop_age_sec
     out["l1_sse_saturated_recent"] = bool(drop_m > 0.0 and drop_age_sec is not None and drop_age_sec < 60.0)
-    viol = int(out.get("l1_payload_identity_violation", 0) or 0)
+    viol = int(out.get("l1_payload_identity_violation", 0) or 0)  # silent-zero-ok: a violation COUNTER — absent means none were recorded, which is what 0 states
     if viol > 0:
         out["l1_sse_health_hint"] = "identity_violation"
     elif out["l1_sse_saturated_recent"]:
@@ -14997,7 +15028,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
                     timeframe=CANONICAL_TIMEFRAME,
                     model_version=_serving_version,
                     horizon=_hz,
-                    total_predictions=int(_hz_res.get("total", 0) or 0),
+                    total_predictions=int(_hz_res.get("total", 0) or 0),  # silent-zero-ok: a COUNT of rows returned — no rows is genuinely zero predictions, not an unmeasured quantity
                     correct_direction=_hz_res.get("correct"),
                     accuracy_pct=_hz_res.get("accuracy"),
                 )
