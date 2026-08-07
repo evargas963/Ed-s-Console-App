@@ -212,11 +212,20 @@ def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
     return rows
 
 
-def _dte_of(ct: object) -> float:
-    """Finite DTE; junk sorts as far-dated rather than poisoning the comparison with NaN."""
+def _dte_of(ct: object) -> float | None:
+    """Days to expiration, or None when the contract does not say.
+
+    RC-290: this returned 999.0 for an unreadable DTE and I annotated it "SORT KEY only,
+    never rendered". Cursor executed the claim: `_per_strike_scopes` classifies contracts
+    with `_dte_of(c) > 7` as `far`, so 999.0 put every unknown-maturity contract into the
+    FAR scope and rendered it there. The reason was false and the fabricated number was
+    reaching the operator as a maturity claim.
+
+    None cannot be compared to 7 by accident — a caller must decide what unknown means,
+    which for a maturity SPLIT is "belongs to neither side".
+    """
     from numeric_contract import float_finite_or_none
-    d = float_finite_or_none(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
-    return d if d is not None else 999.0  # caps-ok: SORT KEY only, never rendered — 999 places an unparseable DTE last, where a missing DTE already sorts; the alternative is a NaN that makes every comparison against it false and silently scrambles the order
+    return float_finite_or_none(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
 
 
 def compute_wall_value_area(
@@ -292,9 +301,15 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
 
     if spot is None or spot <= 0 or not contracts:
         return None
-    # nearest expiry present in the chain (weekends/junk sort far-dated via _dte_of)
-    front = min((_dte_of(c) for c in contracts if isinstance(c, dict)), default=None)
-    if front is None or front >= 999.0:
+    # RC-290: nearest expiry present in the chain. `_dte_of` now returns None for a contract
+    # that does not state its DTE instead of a 999.0 stand-in, so those are dropped BEFORE
+    # the min rather than being carried through it and screened out afterwards by a
+    # magic-number comparison — which also means an all-unreadable chain yields None here
+    # (no front expiry) rather than a confident 999.
+    _dtes = [d for d in (_dte_of(c) for c in contracts if isinstance(c, dict))
+             if d is not None]
+    front = min(_dtes, default=None)
+    if front is None:
         return None
     ivs: dict[str, tuple[float, float]] = {}   # side -> (|strike-spot|, iv_frac)
     for c in contracts:
@@ -331,8 +346,13 @@ def _per_strike_scopes(exposures: dict, contracts: list[dict], spot: float | Non
     out = {"all": _per_strike_rows(exposures, contracts), "near": [], "far": []}
     if not contracts or spot is None:
         return out
-    for name, subset in (("near", [c for c in contracts if _dte_of(c) <= 7]),
-                         ("far", [c for c in contracts if _dte_of(c) > 7])):
+    # RC-290: a contract whose DTE cannot be read belongs to NEITHER maturity side. It used
+    # to arrive here as 999.0 and land in `far`, so unknown maturity was rendered under the
+    # MONTHLY+ chip as if it had been measured. `all` still carries it — that chip claims
+    # no maturity — but a split the contract cannot answer must not be answered for it.
+    _dted = [(c, _dte_of(c)) for c in contracts]
+    for name, subset in (("near", [c for c, d in _dted if d is not None and d <= 7]),
+                         ("far", [c for c, d in _dted if d is not None and d > 7])):
         if not subset:
             continue
         try:
@@ -358,7 +378,13 @@ def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[
         sk = float_finite_or_none(k)
         if sk is None:
             continue
-        out[sk] = {"strike": sk, "net_gex": getattr(ex, "net_gex", None), "volume": 0.0}  # caps-ok: IDENTITY of the sum accumulated at the loop below, not a default — a strike with no contract volume genuinely traded zero, and RC-277 is the record of what happens when this shape is "repaired"
+        # RC-290: None, not 0.0. I annotated this `caps-ok: a strike with no contract volume
+        # genuinely traded zero` and Cursor executed the claim — a MISSING totalVolume and a
+        # REAL zero both produced 0.0, so the rendered per-strike volume could not tell "no
+        # contract reported" from "nobody traded". That is RC-274's defect, reintroduced by
+        # me inside a comment excusing it. A strike only gets a number once a contract
+        # actually supplies one.
+        out[sk] = {"strike": sk, "net_gex": getattr(ex, "net_gex", None), "volume": None}  # caps-ok: the getattr default is None, which PRESERVES absence rather than substituting a value — the exact opposite of the pattern family; verified by test_absent_net_gex_stays_none_not_zero
     for ct in contracts or []:
         if not isinstance(ct, dict):
             continue
@@ -367,7 +393,8 @@ def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[
             continue
         v = float_nonnegative_or_none(ct.get("totalVolume"))
         if v is not None:
-            out[sk]["volume"] += v
+            prev = out[sk]["volume"]
+            out[sk]["volume"] = v if prev is None else prev + v
     return out
 
 

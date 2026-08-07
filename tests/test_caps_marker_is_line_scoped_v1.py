@@ -91,18 +91,60 @@ def test_the_marker_travels_with_the_line_not_the_line_number(tmp_path, monkeypa
         "the excused statement moved to line 2 and its marker did not follow it")
 
 
-def test_both_terrain_sites_state_a_real_reason():
-    """Presence is machine-checked; TRUTH is not, and RC-281 is what happens then.
+def test_the_two_false_reasons_are_gone_and_their_sites_are_repaired():
+    """RC-290: BOTH reasons I wrote here were false, and Cursor executed both claims.
 
-    So this asserts the reasons name the MECHANISM — sort key, sum identity — rather than
-    being any non-empty string, which is the most a machine can do here.
+    "SORT KEY only, never rendered" — `_per_strike_scopes` classified a missing DTE as
+    `far` and rendered it there. "a strike with no contract volume genuinely traded zero" —
+    a missing totalVolume and a real zero both produced 0.0.
+
+    Neither was reworded. Both sites were REPAIRED, so the markers are deleted: `_dte_of`
+    returns None and unknown maturity joins neither side of the split, and an unreported
+    strike volume stays None until a contract supplies a number.
     """
     src = (REPO / "terrain_engine.py").read_text(encoding="utf-8", errors="replace")
-    marked = [ln for ln in src.splitlines() if "caps-ok:" in ln]
-    assert len(marked) == 2, f"expected exactly the two known sites, saw {len(marked)}"
-    joined = " ".join(marked)
-    assert "SORT KEY" in joined and "never rendered" in joined
-    assert "IDENTITY of the sum" in joined and "RC-277" in joined
+    live = [ln.strip() for ln in src.splitlines()
+            if "caps-ok:" in ln and not ln.strip().startswith("#")]
+    for dead in ("SORT KEY only", "genuinely traded zero"):
+        assert not [ln for ln in live if dead in ln], (
+            f"a reason Cursor proved false is an active exemption again: {dead!r}")
+    assert "return d if d is not None else 999.0" not in src, "the 999.0 stand-in is back"
+    assert '"volume": 0.0}' not in src, "the fabricated zero volume is back"
+
+
+def test_the_surviving_marker_states_a_reason_that_is_true():
+    """One marker remains and its claim is checkable: the default IS None."""
+    src = (REPO / "terrain_engine.py").read_text(encoding="utf-8", errors="replace")
+    live = [ln.strip() for ln in src.splitlines()
+            if "caps-ok:" in ln and not ln.strip().startswith("#")]
+    assert len(live) == 1, f"expected one surviving marker, saw {len(live)}: {live}"
+    assert 'getattr(ex, "net_gex", None)' in live[0], (
+        "the surviving marker is on a different line than the one whose reason was verified")
+    assert "PRESERVES absence" in live[0]
+
+
+def test_absent_net_gex_stays_none_not_zero():
+    """The claim the surviving marker makes, executed rather than believed."""
+    from types import SimpleNamespace
+
+    import terrain_engine as T
+
+    m = T._per_strike_map({740.0: SimpleNamespace()}, [])
+    assert m[740.0]["net_gex"] is None, "an exposure with no net_gex acquired a value"
+
+
+def test_unknown_maturity_joins_neither_side_of_the_split():
+    """Cursor's probe: a contract with no DTE was classified `far` and rendered there."""
+    from types import SimpleNamespace
+
+    import terrain_engine as T
+
+    scopes = T._per_strike_scopes(
+        {740.0: SimpleNamespace(net_gex=1.0)},
+        [{"strikePrice": 740.0, "totalVolume": 10}],      # no daysToExpiration
+        spot=740.0)
+    assert scopes["near"] == [], "unknown maturity rendered under the <=7DTE chip"
+    assert scopes["far"] == [], "unknown maturity rendered under the MONTHLY+ chip"
 
 
 def test_the_marker_is_checked_at_the_hit_site():

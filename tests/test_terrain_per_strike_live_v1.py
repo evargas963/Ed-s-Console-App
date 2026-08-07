@@ -54,7 +54,10 @@ def test_per_strike_map_ignores_strikes_outside_the_exposure_universe():
     m = _per_strike_map({740.0: _exp(net_gex=1.0)},
                         [{"strikePrice": 999.0, "totalVolume": 5000}])
     assert 999.0 not in m
-    assert m[740.0]["volume"] == 0.0
+    # RC-290: no contract reported volume for 740.0, so its volume is UNKNOWN, not zero.
+    # This asserted 0.0, which is the fabricated-zero contract Cursor's audit executed:
+    # a missing totalVolume and a real zero both rendered 0.0 on the strike-volume panel.
+    assert m[740.0]["volume"] is None, "absent volume is being reported as a measured zero"
 
 
 def test_per_strike_is_excluded_from_to_dict_but_timestamp_is_not():
