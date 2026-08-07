@@ -5807,14 +5807,20 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
-    ms = float(out.get("l1_pipeline_ms") or 0.0)  # silent-zero-ok: SSE latency gauge — 0 ms reads as "no pipeline time recorded" and the caller gates on ms > 0 before reporting
+    # RC-281: my earlier reason claimed "the caller gates on ms > 0". There is no such gate —
+    # the value is accumulated below and published as l1_build_ms, so an absent timing was a
+    # measured zero that drags the latency average down and can mask an alarm. Absent timing
+    # now contributes NOTHING to the sum and publishes as null.
+    from numeric_contract import float_finite_or_none as _fin_ms
+    ms = _fin_ms(out.get("l1_pipeline_ms"))
     _l1_instrumentation["l1_build_total"] += 1
-    _l1_instrumentation["l1_build_ms_sum"] = float(_l1_instrumentation["l1_build_ms_sum"]) + ms
+    if ms is not None:
+        _l1_instrumentation["l1_build_ms_sum"] = float(_l1_instrumentation["l1_build_ms_sum"]) + ms
     _l1_instrumentation["l1_build_by_reason"][reason] += 1
     out["l1_instrumentation"] = {
         "l1_build_total": int(_l1_instrumentation["l1_build_total"]),
         "l1_build_reason": reason,
-        "l1_build_ms": round(ms, 3),
+        "l1_build_ms": None if ms is None else round(ms, 3),  # RC-281: absent != 0 ms
         "l1_build_scope": {"ticker": tkr, "expiry": key[1]},
         "l2_merge_acknowledged": bool(out.get("l2_merge_acknowledged")),
         "l1_http_cache_hit_total": int(_l1_instrumentation["l1_http_cache_hit_total"]),
@@ -10736,7 +10742,17 @@ def terrain_quarantine_reason(ticker: str | None) -> str:
                     f"{e.get('reason')}. The vendor refuses this symbol, so the loop has stopped "
                     f"requesting it; it stays out until an operator re-admits it "
                     f"(POST /api/terrain/quarantine/release?ticker={tk})")
-        left = max(0.0, float(e.get("until_ts") or 0.0) - time.time())  # silent-zero-ok: no recorded expiry means no cooldown is in force, so 0 seconds remaining is the correct reading, not a fabricated one
+        # RC-281: every constructor supplies until_ts, so absence is MALFORMED STATE, not
+        # "no cooldown". My earlier reason claimed the latter; Cursor's runtime probe showed
+        # it releases the hold and erases the entry, turning an invariant failure into an
+        # immediate vendor retry with the evidence gone.
+        from numeric_contract import float_finite_or_none as _fin_q
+        until = _fin_q(e.get("until_ts"))
+        if until is None:
+            return (f"backing off after {e.get('failures')} consecutive failures — "
+                    f"{e.get('reason')}; hold has NO expiry recorded (malformed entry), "
+                    f"so it is held until an operator releases it")
+        left = max(0.0, until - time.time())
         return (f"backing off after {e.get('failures')} consecutive failures — {e.get('reason')}; "
                 f"next attempt in {left:.0f}s")
 
@@ -10751,7 +10767,12 @@ def _terrain_quarantine_blocks(tk: str) -> bool:
         if e.get("permanent"):
             _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
             return True
-        if now < float(e.get("until_ts") or 0.0):  # silent-zero-ok: no recorded expiry means no cooldown is in force; epoch-0 is already past so the branch correctly does not fire
+        # RC-281: fail CLOSED on a malformed hold. `or 0.0` dated the expiry to 1970, so the
+        # branch never fired, the entry was popped, and the ticker went straight back into
+        # rotation — the opposite of a quarantine, reached by a missing field.
+        from numeric_contract import float_finite_or_none as _fin_qb
+        until = _fin_qb(e.get("until_ts"))
+        if until is None or now < until:
             _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
             return True
         _terrain_quarantine.pop(tk, None)      # soft hold expired — back into the rotation

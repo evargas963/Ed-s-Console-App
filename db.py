@@ -5091,7 +5091,7 @@ def _refresh_governed_outcomes_after_bar_mutation(
     )
 
 
-def market_session(et_hour: int, et_minute: int, *, et_date: Optional[str] = None) -> str:
+def market_session(et_hour: int, et_minute: int, *, et_date: str) -> str:
     """Classify an ET clock reading as a market session. With `et_date`, the CALENDAR decides first.
 
     RC-278: this returned "rth" for 10:00 on a Saturday, because minutes-since-midnight is not a
@@ -5099,14 +5099,16 @@ def market_session(et_hour: int, et_minute: int, *, et_date: Optional[str] = Non
     labelled fed `market_session` into `snapshots` and into the training filters, so a weekend
     reading entered the sample wearing the same label as a real one.
 
-    `et_date` is optional and keyword-only so the (hour, minute) callers keep working, but a
-    caller that HAS the date is expected to pass it: without one this function cannot know
-    whether a session exists at all, and it says "rth" rather than admitting that.
+    RC-281: `et_date` is REQUIRED, not optional. It was optional for one commit and Cursor's
+    audit measured the hole — `market_session(10, 0)` still returned "rth" on a Saturday, so
+    the next caller could silently reintroduce weekend RTH labels and the training
+    contamination of RC-54/57/58. Cursor confirmed no production caller omits it, so
+    requiring it costs nothing and closes the reintroduction path. Without the date this
+    function cannot know whether a session exists at all, and it must not guess.
     """
-    if et_date is not None:
-        from time_et import is_trading_day_et
-        if not is_trading_day_et(str(et_date)):
-            return "closed"
+    from time_et import is_trading_day_et
+    if not is_trading_day_et(str(et_date)):
+        return "closed"
     mins = et_hour * 60 + et_minute
     if mins < 570:    # before 9:30
         return "premarket"
