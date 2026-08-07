@@ -46,6 +46,11 @@ class Row:
     state: str                      # OK · OPEN · UNMEASURED · STALE
     source: str = ""
     note: str = ""
+    #: RC-289: `source` is overloaded — for most rows it is the ARTEFACT the value was read
+    #: from, but `row_db` runs its checker live and names the TOOL for provenance. The
+    #: staleness rule needs those apart and a path convention would be a guess, so the row
+    #: states it. A live row measured the tree in front of it and can never be stale.
+    live: bool = False
 
 
 def _read(rel: str) -> str:
@@ -220,7 +225,7 @@ def row_db() -> list[Row]:
     size = os.path.getsize(db) / 1073741824
     return [
         Row("DB", "data", "database health rules failing", "0" if code == 0 else ">=1",
-            "0", "OK" if code == 0 else "OPEN", "tools/check_db_health.py"),
+            "0", "OK" if code == 0 else "OPEN", "tools/check_db_health.py", live=True),
         Row("DBSZ", "data", "ed_console.db size", f"{size:.1f} GB", "—", "OK",
             note="per-table bytes unavailable: this SQLite build omits dbstat"),
     ]
@@ -283,6 +288,65 @@ BUILDERS = (row_coverage, row_suite, row_mutation, row_complexity, row_server_si
             row_unwired, row_faucets, row_db, row_rc, row_plans, row_surfaces, row_ui)
 
 
+def _newest_tracked_source_mtime() -> float:
+    """When the tree this board describes last changed.
+
+    RC-289: staleness is DERIVED, not budgeted. The question that matters is not "is this
+    artefact older than N hours" -- a number nobody chose -- but "does this measurement
+    still describe THIS tree". If any tracked source file was modified after an artefact
+    was written, the artefact describes a different repository.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", REPO, "ls-files", "-z", "--", "*.py", "*.html", "*.js", "*.sql"],
+            capture_output=True, text=True, check=True).stdout
+    except (subprocess.SubprocessError, OSError):
+        return 0.0
+    newest = 0.0
+    for rel in out.split("\0"):
+        if not rel:
+            continue
+        try:
+            newest = max(newest, os.path.getmtime(os.path.join(REPO, rel)))
+        except OSError:
+            continue
+    return newest
+
+
+def _mark_stale_rows(rows: list[Row], tree_mtime: float) -> list[Row]:
+    """Withhold the VALUE of any row whose artefact predates the tree.
+
+    RC-289: `STALE` was declared at the top of this file and never assigned, so a
+    17-hour-old `failing tests 51 of 5313` was rendered, ranked and coloured exactly like a
+    live figure with the age as a footnote beside it -- and I read it to the operator as
+    the current state. `test_unmeasured_is_never_reported_as_ok` already forbids this for a
+    MISSING artefact; a stale one is the same lie with more decimal places, so it gets the
+    same rule. The note says why the cell is blank and which command refills it.
+    """
+    if tree_mtime <= 0:
+        return rows
+    out: list[Row] = []
+    for r in rows:
+        if r.live or not r.source or r.state in ("UNMEASURED", "ERROR"):
+            out.append(r)
+            continue
+        p = os.path.join(REPO, r.source)
+        try:
+            art_mtime = os.path.getmtime(p)
+        except OSError:
+            out.append(r)
+            continue
+        if art_mtime >= tree_mtime:
+            out.append(r)
+            continue
+        out.append(Row(
+            r.key, r.area, r.metric, "—", r.target, "STALE", r.source,
+            note=(f"{r.source} predates the working tree ({_age(r.source)}); "
+                  f"it measured {r.value!r} of a DIFFERENT tree. Re-measure, then re-read."),
+        ))
+    return out
+
+
 def collect() -> list[Row]:
     rows: list[Row] = []
     for build in BUILDERS:
@@ -291,7 +355,7 @@ def collect() -> list[Row]:
         except Exception as exc:                                # noqa: BLE001
             rows.append(Row(build.__name__, "?", build.__name__, "—", "—", "ERROR",
                             note=f"{type(exc).__name__}: {exc}"))
-    return rows
+    return _mark_stale_rows(rows, _newest_tracked_source_mtime())
 
 
 def main(argv: list[str] | None = None) -> int:
