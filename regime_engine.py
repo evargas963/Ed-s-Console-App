@@ -137,16 +137,25 @@ def _score_pinning(inp: SignalInput, micro_regime: str, mr: dict, mvp: dict) -> 
         score += 2.0
         support.append(f"micro regime = {micro_regime} (non-directional)")
 
-    # Charm attracting toward pin
-    _spot = mvp_spot(mvp)
-    if inp.charm_direction == "buying" and inp.charm_drift_toward is not None and _spot is not None:
-        if inp.charm_drift_toward > _spot:
-            score += 1.0
-            support.append("charm drifting upward toward pin")
-    elif inp.charm_direction == "selling" and inp.charm_drift_toward is not None and _spot is not None:
-        if inp.charm_drift_toward < _spot:
-            score += 1.0
-            support.append("charm drifting downward toward pin")
+    # RC-295: REMOVED — "charm attracting toward pin" scored 1.0 for a geometric agreement
+    # with no pinning mechanism behind it.
+    #
+    # `charm_drift_toward` is NOT a pin. It is pick_net_gex_peak_strike over the SELECTED
+    # expiry, borrowed from the analytics faucet (RC-292), and charm performs no computation
+    # with it — it republishes the caller's label unchanged (RC-294). Pinning is a MAGNITUDE
+    # mechanism: price is held where total hedging volume is greatest, which is
+    # pick_pin_and_strength over the wide book. The signed-net peak answers a different
+    # question, so "charm flow points toward the signed-net peak" is not evidence of pinning,
+    # and the support string asserted a relationship the inputs cannot establish.
+    #
+    # It is REMOVED rather than repaired because it cannot be repaired here: SignalInput
+    # carries charm_drift_toward, pin_width_pts and the gamma-wall distances but no gamma-pin
+    # field, so this test was scoring against the only strike it happened to have. The right
+    # test — charm flow toward the ACTUAL pinning magnet — needs terrain's max-total-gamma
+    # strike plumbed onto SignalInput, and that field does not exist yet (RC-292).
+    #
+    # A pinning score must not include evidence its inputs cannot support. A lower score that
+    # is honest beats a higher one that is not.
 
     # Positive gamma = dealers dampening movement
     ng = mvp_net_gamma(mvp)
