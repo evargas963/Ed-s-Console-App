@@ -3717,12 +3717,7 @@ class _CandleAccumulator:
             cur["l"] = min(cur["l"], price)
             cur["c"] = price
             if vol_delta is not None:
-                # RC-276: a bar starts at "v": vol_delta, which can be None when the tick that
-                # opened it carried no volume. `(None or 0.0) + delta` then reported the
-                # deltas we happened to see as if they were the bar's whole turnover. A total
-                # with a missing term is not a smaller total, it is an unknown one.
-                prev = cur.get("v")
-                cur["v"] = None if prev is None else prev + vol_delta
+                cur["v"] = (cur.get("v") or 0.0) + vol_delta  # silent-zero-ok: RC-168/RC-277 — totalVolume is CUMULATIVE, so a bar's FIRST reading has no predecessor and vol_delta is None BY CONSTRUCTION; None means "no delta counted yet", not a missing measurement, and 0.0 is the correct identity to open the sum
             cur["volume_source"] = vol_source
 
     def get_bars(self, ticker: str) -> list[Candle]:

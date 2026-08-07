@@ -311,6 +311,46 @@ def test_the_server_strike_row_builder_draws_no_bar_for_unknown_gamma():
     assert "if g is None:" in src and "continue" in src
 
 
+def test_a_cumulative_counters_first_reading_is_not_a_missing_measurement():
+    """RC-277: the boundary of this whole law, learned by breaking it.
+
+    While fixing the silent-zero class I rewrote server.py:3720 to propagate None, because
+    a bar opens at `"v": vol_delta` and vol_delta can be None. It can -- but totalVolume is
+    CUMULATIVE (RC-168), so a delta exists only BETWEEN two readings and the first reading
+    inside any bar has no predecessor. None there means "no delta counted yet", and 0.0 is
+    the identity the sum opens with. The change made every bar whose first tick set the
+    baseline report volume None forever.
+
+    This test exists so the next sweep through this file does not repair the same line
+    again. `or 0.0` carries two meanings; only the data's semantics tell them apart, and
+    the semantics are not visible at the call site.
+    """
+    from server import _CandleAccumulator
+
+    acc = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    base = 1_800_000_000.0
+    acc.tick("ZZR", 100.0, base, total_volume=1_000.0)          # baseline: no delta yet
+    assert acc._current["ZZR"]["v"] is None, "the premise changed — re-derive before editing"
+    acc.tick("ZZR", 100.5, base + 2.0, total_volume=1_600.0)    # first real delta
+    assert acc._current["ZZR"]["v"] == 600.0, (
+        "a normal-cadence delta stopped being counted — absence-propagation was reapplied "
+        "to a cumulative counter, which is RC-277")
+
+
+def test_the_cumulative_counter_site_states_why_it_is_exempt():
+    """A silence with no reason at the site is what made RC-277 possible to write."""
+    import inspect
+
+    import server as srv
+
+    src = inspect.getsource(srv._CandleAccumulator)
+    assert 'cur["v"] = (cur.get("v") or 0.0) + vol_delta' in src
+    line = next(ln for ln in src.splitlines() if 'cur["v"] = (cur.get("v") or 0.0)' in ln)
+    assert "silent-zero-ok:" in line and "CUMULATIVE" in line, (
+        "the accumulator no longer says why its `or 0.0` is correct, so the next sweep "
+        "will judge it by shape and break it again")
+
+
 def test_the_silent_zero_pattern_is_still_detectable():
     """A gate that passes because it stopped looking is worse than one that fails."""
     sys.path.insert(0, str(REPO / "tests"))
