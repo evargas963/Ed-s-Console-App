@@ -1,0 +1,101 @@
+{
+  "summary": {
+    "rounds": 7,
+    "import_minus_baseline_s": {
+      "n": 7,
+      "min": 1.418,
+      "median": 1.499,
+      "max": 2.357
+    },
+    "accept_s": {
+      "n": 7,
+      "min": 2.511,
+      "median": 2.826,
+      "max": 4.694
+    },
+    "http200_s": {
+      "n": 7,
+      "min": 2.582,
+      "median": 2.896,
+      "max": 4.832
+    },
+    "readiness_tail_s": {
+      "n": 7,
+      "min": 0.059,
+      "median": 0.08,
+      "max": 0.139
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "baseline_interpreter_s": 0.059,
+      "import_s": 2.416,
+      "import_minus_baseline_s": 2.357,
+      "accept_s": 4.694,
+      "http200_s": 4.832,
+      "readiness_tail_s": 0.139,
+      "note": "ok"
+    },
+    {
+      "round": 2,
+      "baseline_interpreter_s": 0.047,
+      "import_s": 1.592,
+      "import_minus_baseline_s": 1.545,
+      "accept_s": 2.826,
+      "http200_s": 2.896,
+      "readiness_tail_s": 0.07,
+      "note": "ok"
+    },
+    {
+      "round": 3,
+      "baseline_interpreter_s": 0.049,
+      "import_s": 1.472,
+      "import_minus_baseline_s": 1.423,
+      "accept_s": 2.782,
+      "http200_s": 2.862,
+      "readiness_tail_s": 0.08,
+      "note": "ok"
+    },
+    {
+      "round": 4,
+      "baseline_interpreter_s": 0.064,
+      "import_s": 1.563,
+      "import_minus_baseline_s": 1.499,
+      "accept_s": 2.511,
+      "http200_s": 2.582,
+      "readiness_tail_s": 0.071,
+      "note": "ok"
+    },
+    {
+      "round": 5,
+      "baseline_interpreter_s": 0.066,
+      "import_s": 1.514,
+      "import_minus_baseline_s": 1.447,
+      "accept_s": 3.103,
+      "http200_s": 3.185,
+      "readiness_tail_s": 0.082,
+      "note": "ok"
+    },
+    {
+      "round": 6,
+      "baseline_interpreter_s": 0.046,
+      "import_s": 1.609,
+      "import_minus_baseline_s": 1.563,
+      "accept_s": 2.815,
+      "http200_s": 2.897,
+      "readiness_tail_s": 0.083,
+      "note": "ok"
+    },
+    {
+      "round": 7,
+      "baseline_interpreter_s": 0.048,
+      "import_s": 1.467,
+      "import_minus_baseline_s": 1.418,
+      "accept_s": 2.827,
+      "http200_s": 2.886,
+      "readiness_tail_s": 0.059,
+      "note": "ok"
+    }
+  ]
+}
