@@ -1684,8 +1684,23 @@ def _record_analytics_bg_failure(
         _analytics_bg_fail_counts.pop(inflight_key, None)
 
 
-def _analytics_generated_ts(entry: dict) -> float:
-    return float(entry.get("generated_at") or entry.get("ts") or 0.0)  # silent-zero-ok: epoch-0 sentinel — an undated cache entry sorts as oldest and is evicted first
+def _analytics_generated_ts(entry: dict) -> float | None:
+    """When this entry was computed, or None when it carries no usable timestamp.
+
+    RC-282: this returned 0.0 for an undated entry and each caller invented its own meaning
+    for the sentinel. Cursor's audit executed both and they DISAGREE — the freshness
+    contract computed `age = 0.0 if gen_ts <= 0` and published `analytics_stale: False`, a
+    bundle nobody can date served as brand new, while the stale-serve marker computed
+    `now - 0.0`, got ~1.8e9 seconds, and published stale. One sentinel, two opposite
+    verdicts about the same cache entry, and the fresh one is on the operator's card.
+
+    None forces each caller to SAY what absence means instead of inheriting a number that
+    points whichever way its arithmetic happens to fall.
+    """
+    from numeric_contract import float_positive_or_none
+
+    return (float_positive_or_none(entry.get("generated_at"))
+            or float_positive_or_none(entry.get("ts")))
 
 
 # ── ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 ────────────────────────────────
@@ -1781,16 +1796,30 @@ def _attach_analytics_freshness_contract(
         in_prog = inflight_key in _analytics_inflight
     if entry and entry.get("ms_dict"):
         gen_ts = _analytics_generated_ts(entry)
-        age = max(0.0, now - gen_ts) if gen_ts > 0 else 0.0
         ver = int(entry.get("analytics_version", 0))
+        if gen_ts is None:
+            # RC-282: a bundle that exists but cannot be DATED is not a fresh bundle. The
+            # old `else 0.0` published age zero and analytics_stale False. This is the same
+            # verdict the missing-bundle branch below already reaches, and for the same
+            # reason: an age nobody can compute is not an age of nothing.
+            md["analytics_version"] = ver
+            md["analytics_generated_at"] = None
+            md["analytics_age_sec"] = None
+            md["analytics_stale_after_sec"] = round(
+                float(ttl) * ANALYTICS_STALE_GRACE_CYCLES, 3)
+            md["analytics_stale"] = True
+            md["analytics_refresh_due"] = True
+            md["analytics_refresh_in_progress"] = bool(in_prog)
+            return
+        age = max(0.0, now - gen_ts)
         # Operator-facing stale = a recompute cycle was MISSED (age past the grace
         # window) or explicit error — not merely "older than one cadence beat".
         stale_after = float(ttl) * ANALYTICS_STALE_GRACE_CYCLES
         refresh_due = bool(sse_live or (age >= ttl))
         stale = bool(age >= stale_after) or bool(md.get("state_error"))
-        iso = None
-        if gen_ts > 0:
-            iso = datetime.fromtimestamp(gen_ts, tz=timezone.utc).isoformat()
+        # RC-282: gen_ts is a real positive timestamp by here — the undatable case returned
+        # above rather than falling through with a zero standing in for one.
+        iso = datetime.fromtimestamp(gen_ts, tz=timezone.utc).isoformat()
         md["analytics_version"] = ver
         md["analytics_generated_at"] = iso
         md["analytics_age_sec"] = round(age, 3)
@@ -2551,7 +2580,7 @@ def _stamp_analytics_freshness_on_completed_fetch(
     md["analytics_refresh_in_progress"] = False
     if ent:
         gen_ts = _analytics_generated_ts(ent)
-        if gen_ts > 0:
+        if gen_ts is not None:      # RC-282: None is undatable, not "timestamp zero"
             md["analytics_age_sec"] = max(
                 0.0, round(analytics_freshness_eval_wall_ts - gen_ts, 3)
             )
@@ -10359,15 +10388,18 @@ def _tier_c_analytics_json_response(
         ticker,
         data_cache_key[1] if data_cache_key else expiry,
     )
-    age = 0.0
-    if entry:
-        age = max(0.0, now - _analytics_generated_ts(entry))
+    # RC-282: this reached the RIGHT verdict for an undated entry by accident — `now - 0.0`
+    # is ~1.8e9 seconds, which trips the grace window. The rule is now stated instead of
+    # emerging from arithmetic on 1970, so it cannot flip if the sentinel ever changes.
+    gen_ts = _analytics_generated_ts(entry) if entry else None
+    age = None if gen_ts is None else max(0.0, now - gen_ts)
 
     has_body = bool(entry and entry.get("ms_dict"))
     # Stale-serve marker follows the honest grace window (missed cycle), same
     # authority as _attach_analytics_freshness_contract.
     stale = bool(
-        (not has_body) or (age >= float(ttl) * ANALYTICS_STALE_GRACE_CYCLES)
+        (not has_body) or age is None
+        or (age >= float(ttl) * ANALYTICS_STALE_GRACE_CYCLES)
     )
 
     # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: when a live SSE
@@ -10375,7 +10407,8 @@ def _tier_c_analytics_json_response(
     # and REST is a read-only cache view. force=true (manual REFRESH) and the
     # cold/no-viewer poll path still self-schedule.
     need_refresh = bool(
-        force or (not has_body) or ((not sse_live) and (age >= ttl))
+        force or (not has_body) or age is None       # RC-282: undatable => recompute
+        or ((not sse_live) and (age >= ttl))
     )
 
     if has_body:
