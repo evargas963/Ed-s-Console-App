@@ -870,35 +870,30 @@ def check_open_item_cap() -> list[Violation]:
     # registered from the 2026-07-20 audit remainder); the ceiling was re-baselined
     # 10 -> 49 IN THE SAME CHANGE (scope expansion, not backsliding) and
     # may only fall from there.
-    open_items += [
-        f"OPEN_ITEMS:{m.group(1)[:60]}"
-        for m in re.finditer(r"^- \[ \] \*\*([^*]+)\*\*",
-                             (REPO / "OPEN_ITEMS.md").read_text(encoding="utf-8"),
-                             re.M)
-    ] if (REPO / "OPEN_ITEMS.md").exists() else []
-
-    ceiling_path = REPO / "governance" / "open_item_ceiling.json"
-    count = len(open_items)
-    if not ceiling_path.exists():
-        if _ratchet_may_write():
-            ceiling_path.write_text(json.dumps({"open_items": count}, indent=2) + "\n",
-                                    encoding="utf-8")
-        return out
-    try:
-        ceiling = int(json.loads(ceiling_path.read_text(encoding="utf-8"))["open_items"])
-    except (ValueError, KeyError, TypeError):
-        out.append(Violation(ceiling_path, 0, "open_item_ceiling.json is unparseable"))
-        return out
-
-    if count > ceiling:
+    # RC-280: RATCHET REMOVED 2026-08-07 on operator instruction ("WE DO NOT NEED RATCHETS.
+    # WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS"), and this mission's done_criteria:
+    # no ceiling the operator did not name a number for. This check used to store a
+    # high-water mark in governance/open_item_ceiling.json and block whenever the count rose
+    # above it. MEASURED cost of that design: the ceiling stood at 37 against 39 items and
+    # blocked the commit carrying the adversarial-audit request the operator had already sent
+    # to Cursor, while 34 tests were red -- the control was spending the session on itself.
+    # An invented number also invites an invented remedy: the cheapest way past a count is to
+    # close a row rather than fix a defect, which is the opposite of the intent.
+    #
+    # What survives is the LAW without the number: a dated item may not rot. Zero overdue is
+    # a standard, not a tolerance, and it needs no baseline to compare against.
+    #
+    # DELIBERATELY DROPPED: the unchecked OPEN_ITEMS.md rows this also counted. They carry no
+    # due date, so they were pure parking-lot volume -- the quantity a ratchet measures and a
+    # law cannot. Requiring a due date on every parked row is the honest successor and is a
+    # separate change, not something to smuggle in here.
+    if open_items:
         out.append(Violation(
             rc, 0,
-            f"{count} open governance items > ceiling of {ceiling}. Close one before "
-            f"opening another - the ledger may only shrink. "
-            f"Open: {', '.join(open_items[:8])}{'...' if count > 8 else ''}"))
-    elif count < ceiling and _ratchet_may_write():
-        ceiling_path.write_text(json.dumps({"open_items": count}, indent=2) + "\n",
-                                encoding="utf-8")
+            f"{len(open_items)} governance item(s) are PAST their due date: "
+            f"{', '.join(open_items[:8])}{'...' if len(open_items) > 8 else ''}. "
+            f"Finish it, or re-date it with the reason stated in the row. A due date that "
+            f"passes silently is a deferral wearing a schedule."))
     return out
 
 
