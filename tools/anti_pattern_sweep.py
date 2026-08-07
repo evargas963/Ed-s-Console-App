@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,9 +140,31 @@ def _line_is_doc_or_comment(line: str) -> bool:
     return False
 
 
+def _tracked_py_files() -> list[Path]:
+    """RC-286: 'repo-wide' means what git tracks, the same definition RC-274 gave the
+    silent-zero gate.
+
+    This walked the filesystem and subtracted a hand-maintained `SKIP_DIR_PARTS`, which is
+    correct exactly once — on the day it is written. `scratchpad/` was never added, so this
+    gate has been failing on throwaway audit scripts that `.gitignore:202` excludes and that
+    git does not track at all. The index already answers "is this repository code", answers
+    it for directories nobody has invented yet, and counts a staged file the moment it is
+    staged. SKIP_DIR_PARTS survives for the tracked-but-not-product trees it legitimately
+    names, where it is a scope choice rather than a stand-in for the index.
+    """
+    proc = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "git ls-files failed, so the scan scope is unknown: " + proc.stderr.strip())
+    return [ROOT / p for p in proc.stdout.split("\0") if p]
+
+
 def iter_py_files(*, production_only: bool) -> list[Path]:
     out: list[Path] = []
-    for path in ROOT.rglob("*.py"):
+    for path in _tracked_py_files():
         if set(path.parts) & SKIP_DIR_PARTS:
             continue
         rel = path.relative_to(ROOT).as_posix()
