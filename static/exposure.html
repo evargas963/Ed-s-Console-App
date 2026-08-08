@@ -234,45 +234,33 @@ function etParts(tSec) {
   let h = Number(p.hour); if (h === 24) h = 0;
   return { date: `${p.year}-${p.month}-${p.day}`, mins: h * 60 + Number(p.minute) };
 }
-function computeVwapSeries() {
-  // RC-198: VWAP_t = Σ(tp·v)/Σv, σ_t² = Σ(tp²·v)/Σv − VWAP_t², bands = VWAP_t ± kσ_t —
-  // cumulative SERIES over the latest ET session that has RTH bars (weekend → Friday),
-  // from the same canonical 1m bars the candles use. Curves, never tip scalars.
-  vwapSeries = null;
-  if (!bars.length) return;
-  const byDate = new Map();
-  for (const b of bars) { const p = etParts(b.t);
-    if (!byDate.has(p.date)) byDate.set(p.date, []);
-    byDate.get(p.date).push({ ...b, _m: p.mins }); }
-  const dates = [...byDate.keys()].sort();
-  let sess = null;
-  for (let i = dates.length - 1; i >= 0; i--) {
-    if ((byDate.get(dates[i]) || []).some(b => b._m >= 570 && b._m < 960)) { sess = dates[i]; break; }
-  }
-  if (!sess) return;
-  const rth = byDate.get(sess).filter(b => b._m >= 570 && b._m < 960);
-  let pv = 0, vv = 0, p2v = 0; const out = [];
-  for (const b of rth) {
-    const tp = (b.h + b.l + b.c) / 3, v = b.v || 0;
-    pv += tp * v; vv += v; p2v += tp * tp * v;
-    if (!vv) continue;
-    const w = pv / vv, varr = Math.max(0, p2v / vv - w * w), sd = Math.sqrt(varr);
-    out.push({ t: b.t, vwap: w, u1: w + sd, d1: w - sd, u2: w + 2 * sd, d2: w - 2 * sd });
-  }
-  vwapSeries = out.length ? out : null;
+function adoptVwapSeries(lv) {
+  /* # ui-mockup-ok: Phase 2A (operator 2026-08-08) — same curves, same style; they are
+     now CARRIED, not computed here. This function used to run its own
+     VWAP_t = Σ(tp·v)/Σv, σ_t² = Σ(tp²·v)/Σv − VWAP_t² accumulation over /api/bars1m,
+     which made this page a third producer of one session's VWAP: the chart tab drew a
+     fourth, and the served VWAP level was a fifth. /api/levels now serves `vwap_series`
+     as [t, vwap, +1σ, -1σ, +2σ, -2σ] out of the one canonical snapshot, whose last
+     point IS the served VWAP/VWAP_P1/M1/P2/M2 levels. Absent series draws nothing. */
+  const rows = lv && Array.isArray(lv.vwap_series) ? lv.vwap_series : null;
+  vwapSeries = (rows && rows.length)
+    ? rows.map(r => ({ t: r[0], vwap: r[1], u1: r[2], d1: r[3], u2: r[4], d2: r[5] }))
+    : null;
 }
 
 async function load() {
   const tk = ($('tk').value || 'SPY').trim().toUpperCase();
   try {
     // # ui-mockup-ok: RC-208 — six producers: the accrual flow frames join the five
-    const [b, s, t, f, lq, fl] = await Promise.all([
+    const [b, s, t, f, lq, fl, lv] = await Promise.all([
       j(`/api/bars1m?ticker=${tk}&limit=780`),
       j(`/api/terrain/strikes?ticker=${tk}`),
       j(`/api/terrain?ticker=${tk}`).catch(() => null),
       j(`/api/forces?ticker=${tk}`).catch(() => null),
       j(`/api/liquidity-snapshot?ticker=${tk}`).catch(() => null),
       j(`/api/exposure/flow?ticker=${tk}`).catch(() => null),
+      // Phase 2A: the VWAP curves come from the canonical levels contract.
+      j(`/api/levels?ticker=${tk}`).catch(() => null),
     ]);
     if (lq && typeof lq === 'object')
       $('livedot').title = 'feed state · liquidity snapshot ' + (lq.available === false ? 'unavailable' : 'served');
@@ -282,7 +270,7 @@ async function load() {
     // # ui-mockup-ok: RC-202 — a view narrower than the clamp's own minimum is an artifact
     // (no user gesture can produce it); refit rather than trap the operator in 1 bar
     if (view && bars.length > 50 && (view.i1 - view.i0) < 5) { view = null; yLock = null; }
-    computeVwapSeries();
+    adoptVwapSeries(lv);
     /* # ui-mockup-ok: RC-208 — historical bubbles come from the FRAMES (volume deltas at
        the minute they printed, top movers per frame); right-gutter session seeds survive
        only when a ticker has no banked frames yet */

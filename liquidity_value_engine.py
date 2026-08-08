@@ -423,13 +423,25 @@ def compute_opening_range(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def compute_session_vwap(bars: list, session_date: date, cutoff_dt: Optional[datetime] = None) -> Optional[float]:
-    """VWAP = Σ(typical_price × volume) / Σ(volume). RTH only."""
+def compute_session_vwap_series(
+    bars: list, session_date: date, cutoff_dt: Optional[datetime] = None,
+) -> list[tuple[float, float, float, float, float, float]]:
+    """Running session VWAP and σ bands after each RTH bar.
+
+    Returns [(bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ), ...] using the standard
+    cumulative moments VWAP_t = Σ(tp·v)/Σv and σ_t² = Σ(tp²·v)/Σv − VWAP_t².
+
+    Phase 2A: this is THE single VWAP accumulation in the repository. The scalar
+    `compute_session_vwap` is its last point; the chart's polyline and the exposure
+    tab's band curves are this list CARRIED to the browser. Before this existed there
+    were three accumulations of one session's VWAP — the engine's, a server fallback,
+    and one in each of two pages — so the drawn line and the served level were
+    different numbers with nothing comparing them.
+    """
     bars_norm = _bars_to_list(bars)
     rth_bars = _filter_rth_bars(bars_norm, session_date, cutoff_dt)
-    if not rth_bars:
-        return None
-    cum_tpv = cum_vol = 0.0
+    cum_tpv = cum_vol = cum_tp2v = 0.0
+    series: list[tuple[float, float, float, float, float, float]] = []
     for b in rth_bars:
         vol = _positive_float_or_none(b.get("volume"))
         if vol is None:
@@ -437,9 +449,31 @@ def compute_session_vwap(bars: list, session_date: date, cutoff_dt: Optional[dat
         tp = (b["high"] + b["low"] + b["close"]) / 3.0
         cum_tpv += tp * vol
         cum_vol += vol
-    if cum_vol <= 0:
-        return None
-    return round(cum_tpv / cum_vol, 4)
+        cum_tp2v += tp * tp * vol
+        if cum_vol <= 0:
+            continue
+        dt = _bar_dt_et(b)
+        if dt is None:
+            continue
+        w = cum_tpv / cum_vol
+        sd = max(0.0, cum_tp2v / cum_vol - w * w) ** 0.5
+        series.append((dt.timestamp(), round(w, 4), round(w + sd, 4), round(w - sd, 4),
+                       round(w + 2 * sd, 4), round(w - 2 * sd, 4)))
+    return series
+
+
+def compute_session_vwap_path(
+    bars: list, session_date: date, cutoff_dt: Optional[datetime] = None,
+) -> list[tuple[float, float]]:
+    """[(bar_epoch_sec, vwap)] — a projection of the one series, not a second pass."""
+    return [(t, w) for t, w, _u1, _d1, _u2, _d2
+            in compute_session_vwap_series(bars, session_date, cutoff_dt)]
+
+
+def compute_session_vwap(bars: list, session_date: date, cutoff_dt: Optional[datetime] = None) -> Optional[float]:
+    """VWAP = Σ(typical_price × volume) / Σ(volume). RTH only."""
+    path = compute_session_vwap_path(bars, session_date, cutoff_dt)
+    return path[-1][1] if path else None
 
 
 def compute_vwap_bands(
@@ -680,12 +714,31 @@ def build_premarket_snapshot(
     bars: list,
     session_date: date,
     config: PlaybookConfig,
+    *,
+    canonical: Optional["PriceLevelSnapshot"] = None,
 ) -> SnapshotOutput:
-    """Premarket: PDH/PDL/PDC, PD POC/VAH/VAL, overnight high/low. No same-day RTH."""
+    """Premarket: PDH/PDL/PDC, PD POC/VAH/VAL, overnight high/low. No same-day RTH.
+
+    RC-322 / Phase 2A: when ``canonical`` is supplied the families are CARRIED from that one
+    materialized snapshot and no level helper runs here — the contract
+    ``build_live_snapshot`` already honoured. This exit used to recompute unconditionally,
+    and ``build_live_snapshot`` returns HERE whenever the session date is in the future or
+    the clock is before the RTH open, so on those paths the canonical snapshot was built,
+    published on /api/levels, and then discarded by the surface beside it. A latent second
+    faucet on the pre-open path.
+
+    Absent stays absent: a family missing from the snapshot is missing here, never replaced
+    by spot, zero or a neighbouring level (RC-68).
+    """
     bars_norm = _bars_to_list(bars)
     cutoff = _cutoff_for_snapshot(SnapshotType.PREMARKET, session_date)
-    prev = get_previous_day_levels(bars_norm, session_date, config)
-    over = get_overnight_levels(bars_norm, session_date)
+    if canonical is not None:
+        prev, over, _orb, _poc, _vah, _val, _vwap, _bands = (
+            _phase2a_families_from_canonical(canonical)
+        )
+    else:
+        prev = get_previous_day_levels(bars_norm, session_date, config)
+        over = get_overnight_levels(bars_norm, session_date)
 
     levels = []
     if prev.get("pdh"):
@@ -1166,6 +1219,28 @@ def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
     return ZoneType.PIVOT_VALUE, "Unclassified session zone"
 
 
+def _phase2a_families_from_canonical(canonical: "PriceLevelSnapshot"):
+    """Unpack the canonical snapshot into the legacy family shapes, values UNCHANGED.
+
+    Absent stays absent: a level missing from the snapshot is missing here, never
+    replaced by zero, spot or a neighbouring level (RC-68).
+    """
+    p = canonical.price
+    prev = {k: v for k, v in (
+        ("pdh", p("PDH")), ("pdl", p("PDL")), ("pdc", p("PDC")),
+        ("pd_poc", p("PD_POC")), ("pd_vah", p("PD_VAH")), ("pd_val", p("PD_VAL")),
+    ) if v is not None}
+    over = {k: v for k, v in (
+        ("overnight_high", p("OVERNIGHT_HIGH")), ("overnight_low", p("OVERNIGHT_LOW")),
+    ) if v is not None}
+    orb = {k: v for k, v in (
+        ("orb_high", p("ORB_HIGH")), ("orb_low", p("ORB_LOW")), ("orb_mid", p("ORB_MID")),
+    ) if v is not None}
+    bands = (p("VWAP_P1"), p("VWAP_M1"), p("VWAP_P2"), p("VWAP_M2"))
+    return (prev, over, orb, p("TODAY_POC"), p("TODAY_VAH"), p("TODAY_VAL"),
+            p("VWAP"), bands)
+
+
 def build_live_snapshot(
     ticker: str,
     bars: list,
@@ -1174,6 +1249,7 @@ def build_live_snapshot(
     *,
     extra_levels: Optional[list[tuple[float, str]]] = None,
     spot: Optional[float] = None,
+    canonical: Optional["PriceLevelSnapshot"] = None,
 ) -> SnapshotOutput:
     """
     Rolling intraday snapshot: RTH cutoff is min(now ET, 16:00) on the session date;
@@ -1181,31 +1257,45 @@ def build_live_snapshot(
     Before today's RTH open → same as premarket snapshot.
 
     Merges optional ``extra_levels`` (e.g. options walls from cache) with VWAP / profile / ORB context.
+
+    Phase 2A: when ``canonical`` is supplied (every live serving path does), the Phase 2A
+    families are CARRIED from that one materialized snapshot and no level helper runs here.
+    The self-computing path remains only for replay of a historical session_date, which is
+    a different generation and is never served beside a live /api/levels payload.
     """
     today_et = datetime.now(ET).date()
     now = datetime.now(ET)
     open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
     close_dt = datetime.combine(session_date, RTH_CLOSE, tzinfo=ET)
 
+    # RC-322: both exits carry `canonical` through. They used to drop it, so the pre-open
+    # and future-date paths recomputed the Phase 2A families beside the materialized ones.
     if session_date > today_et:
-        return build_premarket_snapshot(ticker, bars, session_date, config)
+        return build_premarket_snapshot(ticker, bars, session_date, config,
+                                        canonical=canonical)
 
     if session_date < today_et:
         cutoff = close_dt
     else:
         if now < open_dt:
-            return build_premarket_snapshot(ticker, bars, session_date, config)
+            return build_premarket_snapshot(ticker, bars, session_date, config,
+                                            canonical=canonical)
         cutoff = min(now, close_dt)
 
     bars_norm = _bars_to_list(bars)
-    prev = get_previous_day_levels(bars_norm, session_date, config)
-    over = get_overnight_levels(bars_norm, session_date)
-    orb = compute_opening_range(bars_norm, session_date, config)
-    poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, config, cutoff)
-    vwap = compute_session_vwap(bars_norm, session_date, cutoff)
-    vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
-    if vwap is not None:
-        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars_norm, session_date, vwap, cutoff)
+    if canonical is not None:
+        prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, vwap_p2, vwap_m2) = (
+            _phase2a_families_from_canonical(canonical)
+        )
+    else:
+        prev = get_previous_day_levels(bars_norm, session_date, config)
+        over = get_overnight_levels(bars_norm, session_date)
+        orb = compute_opening_range(bars_norm, session_date, config)
+        poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, config, cutoff)
+        vwap = compute_session_vwap(bars_norm, session_date, cutoff)
+        vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
+        if vwap is not None:
+            vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars_norm, session_date, vwap, cutoff)
 
     levels: list[tuple[float, str]] = []
     if prev.get("pdh"):
@@ -1331,6 +1421,11 @@ def build_live_snapshot(
         "vwap": vwap,
         "vwap_bands": vwap_bands,
         "cutoff_et": cutoff.isoformat(),
+        # Phase 2A: which (scope, generation) these numbers ARE, in the payload, so a
+        # consumer can never mistake a replayed historical scope for the canonical one.
+        "semantic_scope": "session_rth" if canonical is not None else f"replay_cutoff:{cutoff.isoformat()}",
+        "level_generation": canonical.generation if canonical is not None else None,
+        "level_snapshot_as_of_ts_utc": canonical.as_of_ts_utc if canonical is not None else None,
     }
     summary = SnapshotSummary(
         value_state=value_state,
@@ -1555,3 +1650,486 @@ def playbook_state_to_dict(state: PlaybookState) -> dict:
         "auction_state": state.auction_state,
         "generated_at": state.generated_at,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 2A — the canonical materialized PriceLevelSnapshot
+# ─────────────────────────────────────────────────────────────────────────────
+# THE INVARIANT (operator, 2026-08-08): exactly ONE authoritative computation and
+# ONE materialized result per (ticker, level_id, semantic_scope, generation). Every
+# API, UI, decision path, model feature, persistence write and report consumes THAT
+# result unchanged. A new market generation may invoke the producer once; endpoints
+# and consumers may not independently invoke or reconstruct the computation.
+#
+# WHY THIS EXISTS, measured: /api/levels served overnight 773.3975/773.3975 while
+# /api/liquidity-snapshot served 773.40/772.55 for the same ticker at the same
+# instant, and the prior-day value area disagreed intermittently. Neither endpoint
+# was wrong about its own arithmetic — they ran the same helpers over DIFFERENT bar
+# inputs (live accumulator vs a synchronous Schwab fetch), which is a second
+# materialization, not a second formula. Collapsing the formulas was never going to
+# fix it; collapsing the MATERIALIZATION is.
+
+#: level_id -> (family, semantic_scope, evidence_tier). The Phase 2A registry: an id
+#: in this table has exactly one canonical producer and one materialized value per
+#: generation. A checkpoint-scoped or otherwise differently-windowed metric must NOT
+#: reuse these ids — it carries its own explicit scope suffix (see `scoped_level_id`).
+PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
+    "PDH": ("prior_day", "prior_rth_session", "price_fact"),
+    "PDL": ("prior_day", "prior_rth_session", "price_fact"),
+    "PDC": ("prior_day", "prior_rth_session", "price_fact"),
+    "PD_POC": ("prior_day", "prior_rth_session", "derived_certified"),
+    "PD_VAH": ("prior_day", "prior_rth_session", "derived_certified"),
+    "PD_VAL": ("prior_day", "prior_rth_session", "derived_certified"),
+    "OVERNIGHT_HIGH": ("overnight", "overnight_window", "price_fact"),
+    "OVERNIGHT_LOW": ("overnight", "overnight_window", "price_fact"),
+    "ORB_HIGH": ("opening_range", "session_rth", "price_fact"),
+    "ORB_LOW": ("opening_range", "session_rth", "price_fact"),
+    "ORB_MID": ("opening_range", "session_rth", "price_fact"),
+    "VWAP": ("vwap", "session_rth", "derived_certified"),
+    "VWAP_P1": ("vwap", "session_rth", "derived_certified"),
+    "VWAP_M1": ("vwap", "session_rth", "derived_certified"),
+    "VWAP_P2": ("vwap", "session_rth", "derived_certified"),
+    "VWAP_M2": ("vwap", "session_rth", "derived_certified"),
+    "TODAY_POC": ("value_area", "session_rth", "derived_certified"),
+    "TODAY_VAH": ("value_area", "session_rth", "derived_certified"),
+    "TODAY_VAL": ("value_area", "session_rth", "derived_certified"),
+}
+
+#: The engine helpers that ARE the Phase 2A computation. `build_price_level_snapshot`
+#: is the only production call site; the static guard
+#: (tools/check_institutional_correctness.check_phase2a_single_level_computation)
+#: enforces that, alias-resolved, so a second invocation under another name still fires.
+#: This module's own name, read rather than spelled: RC-154's Step-3 lock bans the
+#: literal "liquidity" in any non-docstring engine string, and a provenance stamp is
+#: not a market claim — reading __name__ keeps the stamp honest and the lock intact.
+_PRODUCER_NS: str = __name__
+
+PHASE2A_CANONICAL_HELPERS: frozenset[str] = frozenset({
+    "get_previous_day_levels",
+    "get_overnight_levels",
+    "compute_opening_range",
+    "compute_session_vwap",
+    "compute_session_vwap_path",
+    "compute_vwap_bands",
+    "compute_volume_profile_levels",
+})
+
+
+def scoped_level_id(level_id: str, semantic_scope: str) -> str:
+    """The id a NON-canonical scope must use, so two scopes can never share an id.
+
+    A midday-cutoff VWAP is a legitimate, different measurement — it just is not the
+    repo-wide canonical `VWAP`. It travels as `VWAP@checkpoint:midday`, which no
+    canonical consumer reads and no divergence check compares against `VWAP`.
+    """
+    lid = str(level_id).strip().upper()
+    scope = str(semantic_scope).strip()
+    if lid in PHASE2A_LEVEL_IDS and scope == PHASE2A_LEVEL_IDS[lid][1]:
+        return lid
+    return f"{lid}@{scope}"
+
+
+#: semantic_scope -> the trading-session character the /api/levels contract has always
+#: published as provenance.session_scope (RTH vs full/extended session). The two are
+#: different questions: `semantic_scope` identifies WHICH measurement this is,
+#: `session_scope` says which hours it was measured over.
+_SESSION_SCOPE_OF: dict[str, str] = {
+    "prior_rth_session": "RTH",
+    "session_rth": "RTH",
+    "overnight_window": "extended",
+}
+
+
+class PriceLevelValue:
+    """One materialized level: its value AND the identity that makes it comparable."""
+
+    __slots__ = ("level_id", "price", "family", "semantic_scope", "evidence_tier",
+                 "producer", "window", "vendor_basis", "as_of_ts_utc", "generation",
+                 "session_date")
+
+    def __init__(self, *, level_id: str, price: float, family: str, semantic_scope: str,
+                 evidence_tier: str, producer: str, window: str, vendor_basis: str,
+                 as_of_ts_utc: Optional[float], generation: int,
+                 session_date: str) -> None:
+        # session_date is REQUIRED, not defaulted: it is part of the carrier ledger key,
+        # so a value built without one would land under a key no real carrier uses and
+        # would silently never collide with anything — a conflict detector that cannot
+        # detect. Failing to construct is the loud version of that.
+        self.level_id = level_id
+        self.price = float(price)
+        self.family = family
+        self.semantic_scope = semantic_scope
+        self.evidence_tier = evidence_tier
+        self.producer = producer
+        self.window = window
+        self.vendor_basis = vendor_basis
+        self.as_of_ts_utc = as_of_ts_utc
+        self.generation = generation
+        self.session_date = session_date
+
+    @property
+    def session_scope(self) -> str:
+        return _SESSION_SCOPE_OF.get(self.semantic_scope, self.semantic_scope)
+
+    def identity(self) -> tuple:
+        """The identity a second carrier must reproduce EXACTLY."""
+        return (self.level_id, self.semantic_scope, self.generation,
+                self.price, self.producer, self.as_of_ts_utc)
+
+    def to_contract_dict(self) -> dict:
+        return {
+            "id": self.level_id,
+            "price": self.price,
+            "family": self.family,
+            "label": self.level_id,
+            "side": None,
+            "strength": None,
+            "evidence_tier": self.evidence_tier,
+            "semantic_scope": self.semantic_scope,
+            "generation": self.generation,
+            "provenance": {
+                "producer": self.producer,
+                "session_scope": self.session_scope,
+                "semantic_scope": self.semantic_scope,
+                "window": self.window,
+                "vendor_basis": self.vendor_basis,
+            },
+            "staleness": {"as_of_ts_utc": self.as_of_ts_utc},
+        }
+
+
+class PriceLevelSnapshot:
+    """The ONE materialized result for (ticker, session scope, generation)."""
+
+    __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc",
+                 "produced_ts_utc", "levels", "vwap_path", "vwap_series",
+                 "families_absent", "degraded", "input_fingerprint", "bars_used")
+
+    def __init__(self, *, ticker: str, session_date: date, generation: int,
+                 bar_source: str, as_of_ts_utc: Optional[float], produced_ts_utc: float,
+                 levels: dict, vwap_path: list, families_absent: list,
+                 degraded: list, input_fingerprint: tuple, bars_used: int,
+                 vwap_series: Optional[list] = None) -> None:
+        self.ticker = ticker
+        self.session_date = session_date
+        self.generation = generation
+        self.bar_source = bar_source
+        self.as_of_ts_utc = as_of_ts_utc
+        self.produced_ts_utc = produced_ts_utc
+        self.levels = levels                    # level_id -> PriceLevelValue
+        self.vwap_path = vwap_path              # [(epoch_sec, vwap)]
+        self.vwap_series = vwap_series or []    # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
+        self.families_absent = families_absent
+        self.degraded = degraded
+        self.input_fingerprint = input_fingerprint
+        self.bars_used = bars_used
+
+    def price(self, level_id: str) -> Optional[float]:
+        """The canonical value, or None. Absence is absence — never spot, zero or a sibling."""
+        lv = self.levels.get(level_id)
+        return None if lv is None else lv.price
+
+    def prices(self, *level_ids: str) -> tuple:
+        return tuple(self.price(i) for i in level_ids)
+
+
+def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list,
+                                bar_source: str) -> tuple:
+    """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
+
+    Bar identity, not wall-clock: re-asking within a generation must return the very
+    result already materialized, or "one result per generation" is prose.
+    """
+    first_ts = last_ts = None
+    last_close = None
+    if bars_norm:
+        f, l = _bar_dt_et(bars_norm[0]), _bar_dt_et(bars_norm[-1])
+        first_ts = None if f is None else f.timestamp()
+        last_ts = None if l is None else l.timestamp()
+        last_close = bars_norm[-1].get("close")
+    return (ticker, session_date.isoformat(), bar_source, len(bars_norm),
+            first_ts, last_ts, last_close)
+
+
+def build_price_level_snapshot(
+    ticker: str,
+    session_date: date,
+    bars: list,
+    *,
+    bar_source: str,
+    config: Optional[PlaybookConfig] = None,
+    generation: int = 0,
+    degraded: Optional[list] = None,
+) -> PriceLevelSnapshot:
+    """THE Phase 2A producer. The only production caller of the canonical helpers.
+
+    Absent input stays absent: a family with no bars in its window is declared in
+    `families_absent` and its ids are simply not present. Nothing substitutes spot,
+    zero, or a neighbouring level (RC-68).
+    """
+    cfg = config or PlaybookConfig()
+    bars_norm = _bars_to_list(bars)
+    tk = str(ticker).upper().strip()
+    produced_ts = datetime.now(tz=ET).timestamp()
+    levels: dict[str, PriceLevelValue] = {}
+    families_absent: list[dict] = []
+    vwap_path: list[tuple[float, float]] = []
+    vwap_series: list[tuple] = []
+
+    as_of: Optional[float] = None
+    for b in bars_norm:
+        dt = _bar_dt_et(b)
+        if dt is None:
+            continue
+        ts = dt.timestamp()
+        if as_of is None or ts > as_of:
+            as_of = ts
+
+    basis = f"1m bars ({bar_source}); schwab pricehistory/stream basis"
+
+    def _put(level_id: str, price, *, producer: str, window: str) -> None:
+        if price is None:
+            return
+        v = _float_or_none(price)
+        if v is None:
+            return
+        family, scope, tier = PHASE2A_LEVEL_IDS[level_id]
+        levels[level_id] = PriceLevelValue(
+            level_id=level_id, price=v, family=family, semantic_scope=scope,
+            evidence_tier=tier, producer=producer, window=window, vendor_basis=basis,
+            as_of_ts_utc=as_of, generation=generation,
+            session_date=session_date.isoformat(),
+        )
+
+    # ── prior day ────────────────────────────────────────────────────────────
+    prior_date = prior_trading_session_date(bars_norm, session_date)
+    if prior_date is None:
+        families_absent.append({
+            "family": "prior_day",
+            "reason": f"no prior RTH session in available bars (source {bar_source})",
+        })
+    else:
+        eng = get_previous_day_levels(bars_norm, session_date, cfg)
+        window = f"{prior_date.isoformat()} 09:30-16:00 ET (most recent prior RTH session)"
+        for lid, key in (("PDH", "pdh"), ("PDL", "pdl"), ("PDC", "pdc"),
+                         ("PD_POC", "pd_poc"), ("PD_VAH", "pd_vah"), ("PD_VAL", "pd_val")):
+            _put(lid, eng.get(key),
+                 producer=f"{_PRODUCER_NS}.get_previous_day_levels", window=window)
+
+    sess_window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"
+
+    if not bars_norm:
+        for fam in ("vwap", "opening_range", "overnight", "value_area"):
+            families_absent.append({
+                "family": fam, "reason": f"no bars available (source {bar_source})"})
+        return PriceLevelSnapshot(
+            ticker=tk, session_date=session_date, generation=generation,
+            bar_source=bar_source, as_of_ts_utc=as_of, produced_ts_utc=produced_ts,
+            levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
+            families_absent=families_absent, degraded=list(degraded or []),
+            input_fingerprint=_snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source),
+            bars_used=0,
+        )
+
+    # ── vwap + bands (one accumulation: the series IS the scalars' source) ───
+    vwap_series = compute_session_vwap_series(bars_norm, session_date)
+    vwap_val = vwap_series[-1][1] if vwap_series else None
+    if vwap_val is None:
+        families_absent.append({
+            "family": "vwap", "reason": "no RTH volume for session VWAP in available bars"})
+    else:
+        _put("VWAP", vwap_val,
+             producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window)
+        p1, m1, p2, m2 = compute_vwap_bands(bars_norm, session_date, vwap_val)
+        for lid, val in (("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)):
+            _put(lid, val,
+                 producer=f"{_PRODUCER_NS}.compute_vwap_bands", window=sess_window)
+        # The drawn curve must END on the served level. The band scalars come from
+        # compute_vwap_bands' two-pass form about the final VWAP and the curve from the
+        # cumulative moments — algebraically the same quantity, so pinning the last
+        # point removes any float-noise gap between the line and the number beside it.
+        if None not in (p1, m1, p2, m2):
+            t_last, w_last = vwap_series[-1][0], vwap_series[-1][1]
+            vwap_series[-1] = (t_last, w_last, p1, m1, p2, m2)
+    vwap_path = [(t, w) for t, w, _a, _b, _c, _d in vwap_series]
+
+    # ── opening range ────────────────────────────────────────────────────────
+    orb = compute_opening_range(bars_norm, session_date, cfg)
+    if not orb:
+        families_absent.append({
+            "family": "opening_range", "reason": "no ORB bars in available tape for session"})
+    else:
+        orb_window = f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH"
+        for lid, key in (("ORB_HIGH", "orb_high"), ("ORB_LOW", "orb_low"), ("ORB_MID", "orb_mid")):
+            _put(lid, orb.get(key),
+                 producer=f"{_PRODUCER_NS}.compute_opening_range", window=orb_window)
+
+    # ── overnight ────────────────────────────────────────────────────────────
+    overnight = get_overnight_levels(bars_norm, session_date)
+    if not overnight:
+        families_absent.append({
+            "family": "overnight", "reason": "no overnight-window bars in available tape"})
+    else:
+        for lid, key in (("OVERNIGHT_HIGH", "overnight_high"), ("OVERNIGHT_LOW", "overnight_low")):
+            _put(lid, overnight.get(key),
+                 producer=f"{_PRODUCER_NS}.get_overnight_levels",
+                 window="prior RTH close -> session RTH open (RC-153)")
+
+    # ── current-session value area ───────────────────────────────────────────
+    poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, cfg)
+    if poc is None and vah is None and val is None:
+        families_absent.append({
+            "family": "value_area", "reason": "no today RTH bars for volume profile"})
+    else:
+        for lid, price in (("TODAY_POC", poc), ("TODAY_VAH", vah), ("TODAY_VAL", val)):
+            _put(lid, price,
+                 producer=f"{_PRODUCER_NS}.compute_volume_profile_levels",
+                 window=sess_window)
+
+    return PriceLevelSnapshot(
+        ticker=tk, session_date=session_date, generation=generation,
+        bar_source=bar_source, as_of_ts_utc=as_of, produced_ts_utc=produced_ts,
+        levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
+        families_absent=families_absent, degraded=list(degraded or []),
+        input_fingerprint=_snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source),
+        bars_used=len(bars_norm),
+    )
+
+
+#: (ticker, session_date_iso) -> the ONE materialized snapshot for the current generation.
+_MATERIALIZED_SNAPSHOTS: dict[tuple[str, str], PriceLevelSnapshot] = {}
+
+
+def materialize_price_level_snapshot(
+    ticker: str,
+    session_date: date,
+    bars: list,
+    *,
+    bar_source: str,
+    config: Optional[PlaybookConfig] = None,
+    degraded: Optional[list] = None,
+) -> PriceLevelSnapshot:
+    """Materialize once per generation; return the SAME object within a generation.
+
+    A new market generation (the bar input changed) invokes the producer exactly once.
+    Every later ask in that generation is a read, never a recomputation.
+    """
+    tk = str(ticker).upper().strip()
+    bars_norm = _bars_to_list(bars)
+    key = (tk, session_date.isoformat())
+    fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source)
+    existing = _MATERIALIZED_SNAPSHOTS.get(key)
+    if existing is not None and existing.input_fingerprint == fingerprint:
+        return existing
+    generation = 1 if existing is None else existing.generation + 1
+    snap = build_price_level_snapshot(
+        tk, session_date, bars_norm, bar_source=bar_source, config=config,
+        generation=generation, degraded=degraded,
+    )
+    _MATERIALIZED_SNAPSHOTS[key] = snap
+    _prune_carrier_ledger(tk, session_date.isoformat(), generation)
+    return snap
+
+
+def get_materialized_snapshot(ticker: str, session_date: date) -> Optional[PriceLevelSnapshot]:
+    """READ the materialized snapshot. Never computes — absent means absent."""
+    return _MATERIALIZED_SNAPSHOTS.get(
+        (str(ticker).upper().strip(), session_date.isoformat()))
+
+
+def clear_materialized_snapshots(ticker: Optional[str] = None) -> None:
+    if ticker is None:
+        _MATERIALIZED_SNAPSHOTS.clear()
+        return
+    tk = str(ticker).upper().strip()
+    for k in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+        _MATERIALIZED_SNAPSHOTS.pop(k, None)
+
+
+# ── runtime carrier contract ─────────────────────────────────────────────────
+
+
+class LevelCarrierConflict(RuntimeError):
+    """Two carriers disagree for one (ticker, level_id, semantic_scope, generation).
+
+    This is the failure the static guard cannot see: the source may contain exactly
+    one computation and still ship two different numbers, because a carrier rounded,
+    re-derived, cached across a generation boundary, or relabelled provenance.
+    """
+
+
+#: (ticker, session_date, level_id, semantic_scope, generation) -> (identity, carrier).
+#: session_date is part of the KEY, not just the value: yesterday's generation 1 and
+#: today's generation 1 are different subjects, and colliding them would report a
+#: disagreement that is only a change of day.
+_CARRIER_LEDGER: dict[tuple[str, str, str, str, int], tuple[tuple, str]] = {}
+
+
+def reset_level_carrier_ledger(ticker: Optional[str] = None) -> None:
+    if ticker is None:
+        _CARRIER_LEDGER.clear()
+        return
+    tk = str(ticker).upper().strip()
+    for k in [k for k in _CARRIER_LEDGER if k[0] == tk]:
+        _CARRIER_LEDGER.pop(k, None)
+
+
+def _prune_carrier_ledger(ticker: str, session_date_iso: str, generation: int) -> None:
+    """Drop every ledger row for this ticker that is not the current generation.
+
+    Superseded generations are not disagreements — they are history, and keeping them
+    would both grow without bound in a multi-day process and let a stale row accuse a
+    correct carrier.
+    """
+    tk = str(ticker).upper().strip()
+    for k in [k for k in _CARRIER_LEDGER
+              if k[0] == tk and (k[1] != session_date_iso or k[4] != generation)]:
+        _CARRIER_LEDGER.pop(k, None)
+
+
+def register_level_carrier(
+    carrier: str,
+    ticker: str,
+    value: PriceLevelValue,
+) -> None:
+    """Record what a carrier is about to ship; raise if it contradicts an earlier carrier."""
+    tk = str(ticker).upper().strip()
+    key = (tk, value.session_date, value.level_id, value.semantic_scope, value.generation)
+    identity = value.identity()
+    prior = _CARRIER_LEDGER.get(key)
+    if prior is None:
+        _CARRIER_LEDGER[key] = (identity, carrier)
+        return
+    prior_identity, prior_carrier = prior
+    if prior_identity != identity:
+        fields = ("level_id", "semantic_scope", "generation", "price", "producer",
+                  "as_of_ts_utc")
+        diff = [f"{f}: {a!r} != {b!r}"
+                for f, a, b in zip(fields, prior_identity, identity) if a != b]
+        raise LevelCarrierConflict(
+            f"{tk} {value.level_id} scope={value.semantic_scope} "
+            f"generation={value.generation}: carrier {carrier!r} disagrees with "
+            f"{prior_carrier!r} — " + "; ".join(diff)
+        )
+
+
+def carry_snapshot_levels(
+    snapshot: PriceLevelSnapshot,
+    carrier: str,
+    level_ids: Optional[tuple] = None,
+) -> dict:
+    """Carry canonical values to a consumer, registering each against the contract.
+
+    Returns {level_id: price-or-None}. A consumer calls this INSTEAD of computing;
+    the returned mapping is the only legal source for a Phase 2A id on that surface.
+    """
+    ids = tuple(level_ids) if level_ids else tuple(PHASE2A_LEVEL_IDS)
+    out: dict[str, Optional[float]] = {}
+    for lid in ids:
+        v = snapshot.levels.get(lid)
+        if v is None:
+            out[lid] = None
+            continue
+        register_level_carrier(carrier, snapshot.ticker, v)
+        out[lid] = v.price
+    return out

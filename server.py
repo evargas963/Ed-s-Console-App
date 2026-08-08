@@ -5543,30 +5543,14 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HELPER — compute VWAP from candle bars (seeded from price history)
-# Used as fallback when fetch_price_levels returns vwap=None (individual equities).
+# Phase 2A (operator 2026-08-08): `_compute_vwap_from_bars` was DELETED here.
+# It was a second, independent VWAP implementation — a fallback for
+# fetch_price_levels returning vwap=None — and it wrote into the snapshot table
+# and from there into model features, so a persisted row could carry a VWAP that
+# /api/levels never served. The one VWAP accumulation is now
+# liquidity_value_engine.compute_session_vwap_path, reached only through the
+# canonical PriceLevelSnapshot. Absent VWAP persists NULL (RC-68).
 # ─────────────────────────────────────────────────────────────────────────────
-def _compute_vwap_from_bars(
-    bars: list,
-    *,
-    source_bars: str = "schwab_quote_totalVolume_delta",
-) -> tuple[Optional[float], str]:
-    """Compute VWAP = Σ(typical_price × volume) / Σ(volume) from completed bars.
-
-    Returns (vwap, source_bars). ``source_bars`` documents Schwab leaf lineage
-    (pricehistory vs quote totalVolume delta per Day 1 OHLCV contract).
-    """
-    cum_tp_vol = 0.0
-    cum_vol = 0.0
-    for b in bars:
-        if b.volume is None or float(b.volume) <= 0:
-            continue
-        tp = (float(b.high) + float(b.low) + float(b.close)) / 3.0
-        cum_tp_vol += tp * float(b.volume)
-        cum_vol += float(b.volume)
-    if cum_vol > 0:
-        return round(cum_tp_vol / cum_vol, 4), source_bars
-    return None, source_bars
 
 
 # Per-ticker previous DPI normalized score (dealer pressure trend between refreshes)
@@ -6957,7 +6941,13 @@ def _fetch_state(
         price_levels = _pl_cache_entry
     else:
         try:
-            price_levels = fetch_price_levels(client, symbol=ticker, quote_raw=q_json)
+            # Phase 2A: /api/state carries the SAME materialized snapshot /api/levels
+            # serves — the snapshot is resolved here and handed in, so this pipeline
+            # cannot drift onto its own bar input or its own generation.
+            price_levels = fetch_price_levels(
+                client, symbol=ticker, quote_raw=q_json,
+                level_snapshot=canonical_price_level_snapshot(ticker),
+            )
             if price_levels.error:
                 log.warning(f"PriceLevels: {ticker} partial error: {price_levels.error}")
             if price_levels.vwap is None and price_levels.bars_today > 0:
@@ -7963,38 +7953,23 @@ def _fetch_state(
                     _c_range = round(_c_high - _c_low, 4) if (_c_high and _c_low) else None
                     # _c_vol computed above before build_market_state
     
-                    # VWAP distance
+                    # VWAP distance — the PERSISTED vwap is the carried canonical value.
+                    # Phase 2A: the old `_compute_vwap_from_bars` fallback here was a
+                    # SECOND VWAP materialization writing into the snapshot table and
+                    # from there into model features, so a row's vwap could be a number
+                    # /api/levels never served. A fallback that produces a different
+                    # answer is not resilience; absence is the honest output (RC-68).
                     _vwap = getattr(price_levels, "vwap", None)
                     _vwap_f = float(_vwap) if _vwap is not None else None
-                    # Fallback: compute VWAP from seeded candle bars when price_levels has none.
-                    # This fixes ~87% NaN rate for individual equities whose price_levels.vwap
-                    # comes back empty because the API call fails or returns no intraday data.
                     if _vwap_f is None:
-                        _bars_for_vwap = _candles_1m.get_bars(ticker)
-                        if _bars_for_vwap:
-                            _vwap_f, _vwap_source_bars = _compute_vwap_from_bars(
-                                _bars_for_vwap,
-                                source_bars=_candles_1m.get_bars_source(ticker),
-                            )
-                            if _vwap_f is not None:
-                                log.debug(
-                                    "VWAP: %s computed from %s bars: %.4f",
-                                    ticker,
-                                    _vwap_source_bars,
-                                    _vwap_f,
-                                )
-                    if _vwap_f is None:
-                        _pl_vwap = getattr(price_levels, "vwap", None)
-                        _n_bars = len(_bars_for_vwap) if _bars_for_vwap else 0
                         # Schwab index symbols ($SPX, $VIX, $NDX, etc.) don't carry intraday
                         # volume data; VWAP (price × volume sum) cannot compute by definition.
-                        # Steady-state DEBUG for those; WARNING for real tickers where bars
-                        # present + VWAP failed indicates a data-quality issue.
+                        # Steady-state DEBUG for those; WARNING for real tickers.
                         _is_index_symbol = isinstance(ticker, str) and ticker.startswith("$")
                         _vwap_log = log.debug if _is_index_symbol else log.warning
                         _vwap_log(
-                            "VWAP failed for %s: price_levels=%s bars=%s — writing NULL",
-                            ticker, _pl_vwap, _n_bars,
+                            "VWAP absent for %s (canonical snapshot generation=%s) — writing NULL",
+                            ticker, getattr(price_levels, "level_generation", None),
                         )
                     _vwap_dist = round(spot_f - _vwap_f, 4) if _vwap_f else None
     
@@ -14373,40 +14348,21 @@ def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours
     }, status_code=410)
 
 
-@app.get("/api/levels")
-# RC-213 B1 (mission levels-faucet-v1, design authority reports/levels_single_faucet_design_v1.md §5):
-# pure READ-ADAPTER — no math moves, no producer changes, and NEVER a synchronous vendor
-# fan-out (measured cost of that: ~27 s). B1 serves the prior_day family — the family that
-# diverged on screen — from the ONE RC-153 window authority over bars we already hold
-# (live accumulator first, banked price_bars_1m fallback). Every other family is declared
-# in families_absent rather than substituted (RC-68: absence reads as absence).
-def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
+def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]:
+    """Resolve the ONE bar input for the canonical snapshot: accumulator, else banked.
+
+    Phase 2A: this is the only bar-input resolution for the Phase 2A level ids. The
+    second materialization that produced overnight 773.3975 on /api/levels and 773.40
+    on /api/liquidity-snapshot at the same instant was a second BAR INPUT (a
+    synchronous Schwab fetch), not a second formula — so the input is resolved once,
+    here, and every surface reads what came out of it.
+    """
     import sqlite3 as _sq
-    import time as _time
 
-    from liquidity_value_engine import (
-        PlaybookConfig,
-        _bars_to_list,
-        compute_opening_range,
-        compute_session_vwap,
-        compute_volume_profile_levels,
-        compute_vwap_bands,
-        get_overnight_levels,
-        get_previous_day_levels,
-        prior_trading_session_date,
-    )
-    from time_et import now_et
+    from liquidity_value_engine import _bars_to_list, prior_trading_session_date
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    served_ts = _time.time()
-    spot, spot_source, spot_ts = resolve_spot(tk)
-    session_date = now_et().date()
     degraded: list[dict] = []
-    cfg = PlaybookConfig()
-
-    bars = _liquidity_live_1m_overlay_bars(tk)
-    bars_norm = _bars_to_list(bars)
+    bars_norm = _bars_to_list(_liquidity_live_1m_overlay_bars(tk))
     bar_source = "live_accumulator"
     # t12 (RC-227 residual, MEASURED): the accumulator's rolling buffer can hold a
     # TRUNCATED prior session — the prior date resolves but min()/max() run over a
@@ -14445,166 +14401,66 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
                              "reason": f"banked bar read failed: {str(e)[:80]}",
                              "last_good_ts_utc": None})
             bars_norm = []
+    return bars_norm, bar_source, degraded
+
+
+def canonical_price_level_snapshot(ticker: str):
+    """THE Phase 2A entry point for every server surface.
+
+    Materializes once per generation and returns the SAME object for the rest of that
+    generation. No endpoint may call the engine's level helpers directly — the static
+    guard `check_phase2a_single_level_computation` fails the build if one does, alias
+    or not.
+    """
+    from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
+    from time_et import now_et
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    session_date = now_et().date()
+    bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
+    return materialize_price_level_snapshot(
+        tk, session_date, bars_norm, bar_source=bar_source,
+        config=PlaybookConfig(), degraded=degraded,
+    )
+
+
+@app.get("/api/levels")
+# Phase 2A (operator 2026-08-08): /api/levels is the canonical SERVING CONTRACT for the
+# one materialized PriceLevelSnapshot — it serializes, it does not compute. Every other
+# surface (liquidity-snapshot, market_context, /api/state, ML features, persistence,
+# chart) carries the values out of the same snapshot object and generation.
+def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
+    import time as _time
+
+    from liquidity_value_engine import carry_snapshot_levels
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    served_ts = _time.time()
+    spot, spot_source, spot_ts = resolve_spot(tk)
+    snap = canonical_price_level_snapshot(tk)
+    # Register this surface against the runtime carrier contract: if any other carrier
+    # already shipped a different value/generation/provenance for this generation, the
+    # disagreement raises here instead of reaching two screens (RC-262 pattern).
+    carry_snapshot_levels(snap, "api.levels")
 
     levels: list[dict] = []
-    families_absent: list[dict] = []
+    for lid, value in snap.levels.items():
+        row = value.to_contract_dict()
+        as_of = value.as_of_ts_utc
+        row["staleness"] = {
+            "as_of_ts_utc": as_of,
+            "age_sec": None if as_of is None else round(served_ts - as_of, 1),
+            "stale_after_sec": None,
+            "stale": False,
+            "reason": f"carried from canonical snapshot generation {snap.generation}",
+        }
+        levels.append(row)
 
-    def _as_of_from_bars() -> float | None:
-        prior_bar_ts = [b.get("_ts") or b.get("timestamp") for b in bars_norm]
-        vals = []
-        for t in prior_bar_ts:
-            if t is None:
-                continue
-            vals.append(
-                float(t) / 1000.0 if isinstance(t, (int, float)) and t > 1e12 else float(t)
-            )
-        return max(vals) if vals else None
-
-    as_of = _as_of_from_bars()
-
-    def _append_level(
-        lid: str,
-        price: float | None,
-        family: str,
-        *,
-        producer: str,
-        window: str,
-        tier: str,
-        session_scope: str,
-        stale_reason: str,
-    ) -> None:
-        if price is None:
-            return
-        levels.append({
-            "id": lid, "price": float(price), "family": family, "label": lid,
-            "side": None, "strength": None, "evidence_tier": tier,
-            "provenance": {
-                "producer": producer,
-                "session_scope": session_scope,
-                "window": window,
-                "vendor_basis": f"1m bars ({bar_source}); schwab pricehistory/stream basis",
-            },
-            "staleness": {
-                "as_of_ts_utc": as_of,
-                "age_sec": None if as_of is None else round(served_ts - as_of, 1),
-                "stale_after_sec": None,
-                "stale": False,
-                "reason": stale_reason,
-            },
-        })
-
-    prior_date = prior_trading_session_date(bars_norm, session_date)
-    if prior_date is None:
-        families_absent.append({
-            "family": "prior_day",
-            "reason": f"no prior RTH session in available bars (source {bar_source})",
-        })
-    else:
-        eng = get_previous_day_levels(bars_norm, session_date, cfg)
-        window = f"{prior_date.isoformat()} 09:30-16:00 ET (most recent prior RTH session)"
-        id_map = [
-            ("PDH", "pdh", "price_fact"), ("PDL", "pdl", "price_fact"),
-            ("PDC", "pdc", "price_fact"), ("PD_POC", "pd_poc", "derived_certified"),
-            ("PD_VAH", "pd_vah", "derived_certified"), ("PD_VAL", "pd_val", "derived_certified"),
-        ]
-        for lid, key, tier in id_map:
-            _append_level(
-                lid, eng.get(key), "prior_day",
-                producer="liquidity_value_engine.get_previous_day_levels",
-                window=window, tier=tier, session_scope="RTH",
-                stale_reason="prior-day facts are static after their session closes",
-            )
-
-    # RC-213 Tier-B (mission levels-tierb-session-collapse-v1): session families from the
-    # ONE engine authority over held bars — never market_context inline duals.
-    if not bars_norm:
-        for fam in ("vwap", "opening_range", "overnight", "value_area"):
-            families_absent.append({
-                "family": fam,
-                "reason": f"no bars available (source {bar_source})",
-            })
-    else:
-        sess_window = f"{session_date.isoformat()} RTH (engine Tier-B over {bar_source})"
-        vwap_val = compute_session_vwap(bars_norm, session_date)
-        if vwap_val is None:
-            families_absent.append({
-                "family": "vwap",
-                "reason": "no RTH volume for session VWAP in available bars",
-            })
-        else:
-            _append_level(
-                "VWAP", vwap_val, "vwap",
-                producer="liquidity_value_engine.compute_session_vwap",
-                window=sess_window, tier="derived_certified", session_scope="RTH",
-                stale_reason="session VWAP recomputed from held 1m bars",
-            )
-            p1, m1, p2, m2 = compute_vwap_bands(bars_norm, session_date, vwap_val)
-            for lid, val in (
-                ("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2),
-            ):
-                _append_level(
-                    lid, val, "vwap",
-                    producer="liquidity_value_engine.compute_vwap_bands",
-                    window=sess_window, tier="derived_certified", session_scope="RTH",
-                    stale_reason="session VWAP bands recomputed from held 1m bars",
-                )
-
-        orb = compute_opening_range(bars_norm, session_date, cfg)
-        if not orb:
-            families_absent.append({
-                "family": "opening_range",
-                "reason": "no ORB bars in available tape for session",
-            })
-        else:
-            for lid, key in (
-                ("ORB_HIGH", "orb_high"), ("ORB_LOW", "orb_low"), ("ORB_MID", "orb_mid"),
-            ):
-                _append_level(
-                    lid, orb.get(key), "opening_range",
-                    producer="liquidity_value_engine.compute_opening_range",
-                    window=f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH",
-                    tier="price_fact", session_scope="RTH",
-                    stale_reason="ORB is fixed after the opening-range window closes",
-                )
-
-        overnight = get_overnight_levels(bars_norm, session_date)
-        if not overnight:
-            families_absent.append({
-                "family": "overnight",
-                "reason": "no overnight-window bars in available tape",
-            })
-        else:
-            for lid, key in (
-                ("OVERNIGHT_HIGH", "overnight_high"), ("OVERNIGHT_LOW", "overnight_low"),
-            ):
-                _append_level(
-                    lid, overnight.get(key), "overnight",
-                    producer="liquidity_value_engine.get_overnight_levels",
-                    window="prior RTH close -> session RTH open (RC-153)",
-                    tier="price_fact", session_scope="extended",
-                    stale_reason="overnight range is fixed after the cash open",
-                )
-
-        poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, cfg)
-        if poc is None and vah is None and val is None:
-            families_absent.append({
-                "family": "value_area",
-                "reason": "no today RTH bars for volume profile",
-            })
-        else:
-            for lid, price in (
-                ("TODAY_POC", poc), ("TODAY_VAH", vah), ("TODAY_VAL", val),
-            ):
-                _append_level(
-                    lid, price, "value_area",
-                    producer="liquidity_value_engine.compute_volume_profile_levels",
-                    window=sess_window, tier="derived_certified", session_scope="RTH",
-                    stale_reason="today value area recomputed from held 1m bars",
-                )
-
+    families_absent = list(snap.families_absent)
     for fam, why in (
-        ("gamma", "Tier-B slice excludes gamma — served by /api/terrain until migration"),
-        ("expected_move", "Tier-B slice excludes EM — served by /api/state until migration"),
+        ("gamma", "Phase 2A slice excludes gamma — served by /api/terrain until migration"),
+        ("expected_move", "Phase 2A slice excludes EM — served by /api/state until migration"),
     ):
         families_absent.append({"family": fam, "reason": why})
 
@@ -14615,15 +14471,31 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
         "spot": spot,
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
+        "generation": snap.generation,
+        "snapshot_as_of_ts_utc": snap.as_of_ts_utc,
+        "bar_source": snap.bar_source,
         "levels": levels,
+        # The VWAP curve and its σ bands, CARRIED. chart.html and exposure.html each
+        # used to accumulate their own from /api/bars1m — two more VWAPs for one
+        # session, drawn beside a level neither of them agreed with.
+        # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
+        "vwap_series": [list(row) for row in snap.vwap_series],
         "families_absent": families_absent,
-        "degraded": degraded,
+        "degraded": list(snap.degraded),
     })
 
 
 def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
-    """Flatten raw_levels into [{tag, value}] for display, ordered by price."""
+    """Flatten raw_levels into [{tag, value}] for display, ordered by price.
+
+    Phase 2A scope rule: a canonical id names the canonical (ticker, scope, generation)
+    value and nothing else. A CHECKPOINT snapshot (premarket/opening/midday/afternoon)
+    measures the same concept through a different cutoff — a legitimately different
+    number — so it travels under an explicitly distinct id (`VWAP@checkpoint:midday`)
+    and is never compared against, or mistaken for, the canonical `VWAP`.
+    """
     items = []
+    _scope = "" if snapshot_type == "live" else f"@checkpoint:{snapshot_type}"
     tag_map = {
         "pdh": "PDH", "pdl": "PDL", "pdc": "PDC",
         "pd_poc": "PD_POC", "pd_vah": "PD_VAH", "pd_val": "PD_VAL",
@@ -14636,25 +14508,25 @@ def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
     prev = raw_levels.get("prev_day") or raw_levels.get("prev") or {}
     for k, v in prev.items():
         if v is not None and isinstance(v, (int, float)) and k in tag_map:
-            items.append({"tag": tag_map[k], "value": float(v)})
+            items.append({"tag": tag_map[k] + _scope, "value": float(v)})
     for k in ["overnight_high", "overnight_low"]:
         v = (raw_levels.get("overnight") or {}).get(k)
         if v is not None:
-            items.append({"tag": tag_map[k], "value": float(v)})
+            items.append({"tag": tag_map[k] + _scope, "value": float(v)})
     orb = raw_levels.get("orb") or {}
     for k in ["orb_high", "orb_low", "orb_mid"]:
         if orb.get(k) is not None:
-            items.append({"tag": tag_map[k], "value": float(orb[k])})
+            items.append({"tag": tag_map[k] + _scope, "value": float(orb[k])})
     if raw_levels.get("vwap") is not None and snapshot_type != "premarket":
-        items.append({"tag": "VWAP", "value": float(raw_levels["vwap"])})
+        items.append({"tag": "VWAP" + _scope, "value": float(raw_levels["vwap"])})
     vwap_bands = raw_levels.get("vwap_bands") or {}
     for k, tag in [("plus2", "VWAP_P2"), ("plus1", "VWAP_P1"),
                    ("minus1", "VWAP_M1"), ("minus2", "VWAP_M2")]:
         if vwap_bands.get(k) is not None:
-            items.append({"tag": tag, "value": float(vwap_bands[k])})
+            items.append({"tag": tag + _scope, "value": float(vwap_bands[k])})
     for k in ["poc", "vah", "val"]:
         if raw_levels.get(k) is not None:
-            items.append({"tag": tag_map[k], "value": float(raw_levels[k])})
+            items.append({"tag": tag_map[k] + _scope, "value": float(raw_levels[k])})
     return sorted(items, key=lambda x: x["value"])
 
 
@@ -14858,6 +14730,15 @@ def get_liquidity_snapshot(
             _extra_for_build = list(extra) if fusion else []
             if spot_for_zones is not None and fusion:
                 _extra_for_build.append((spot_for_zones, "SPOT_LIVE"))
+            # Phase 2A: this endpoint CARRIES the canonical snapshot; it does not compute
+            # the Phase 2A families. MEASURED before this change, same instant, same
+            # ticker: /api/levels overnight 773.3975/773.3975 vs this endpoint
+            # 773.40/772.55 — one concept, two bar inputs, two answers on two screens.
+            _canon = None
+            if session_date_obj == now_et().date():
+                from liquidity_value_engine import carry_snapshot_levels
+                _canon = canonical_price_level_snapshot(ticker_upper)
+                carry_snapshot_levels(_canon, "api.liquidity_snapshot")
             out = build_live_snapshot(
                 ticker_upper,
                 bars,
@@ -14865,6 +14746,7 @@ def get_liquidity_snapshot(
                 config,
                 extra_levels=_extra_for_build if fusion else None,
                 spot=spot_for_zones,
+                canonical=_canon,
             )
             if spot_for_zones is None:
                 _rv = (out.raw_levels or {}).get("vwap")
@@ -14929,6 +14811,14 @@ def get_liquidity_snapshot(
             result["as_of_cutoff_et"] = (out.raw_levels or {}).get("cutoff_et")
             result["expiry_used_for_fusion"] = expiry.strip() if expiry else None
             result["spot_used_for_scoring"] = spot_for_zones
+            # Phase 2A carriage stamp: which snapshot generation these level values ARE.
+            # Two carriers that agree on the number but not on the generation are still
+            # two answers — the generation travels so the skew is visible, never silent.
+            result["level_generation"] = _canon.generation if _canon is not None else None
+            result["level_semantic_scope"] = (out.raw_levels or {}).get("semantic_scope")
+            result["level_snapshot_as_of_ts_utc"] = (
+                _canon.as_of_ts_utc if _canon is not None else None)
+            result["level_bar_source"] = _canon.bar_source if _canon is not None else None
         if out.summary:
             result["summary"] = {
                 "value_state": out.summary.value_state,

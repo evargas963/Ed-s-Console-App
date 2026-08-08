@@ -320,7 +320,7 @@ let view = null;          // {i0, i1} visible bar index range (fractional)
 let yLock = null;         // {lo, hi} manual price domain when user pans/zooms Y
 let cross = null;         // {mx, my} crosshair position
 let scale = null;
-let daily = null;         // {vwap:[[t,w]…], pdh, pdl, pdc} from canonical 1m rows
+let daily = null;         // {vwap:[[t,w]…]} — CARRIED from /api/levels vwap_path, never computed here
 let scorecard = null;     // latest daily scorecard — coach numbers update with it
 let scorecardStale = null;// present but PAST its freshness budget (RC-78): the reason,
                           // never the numbers, so staleness is stated not implied
@@ -420,26 +420,13 @@ function aggregate(src, tfv) {
   return out;
 }
 
-function computeDaily() {
-  // # ui-mockup-ok: RC-213 B3 data-integrity kill (one-faucet-closeout-v1) — no visual
-  // redesign; the prior-day lines keep their exact style, they just single-source.
-  // canonical-1m-only derivation (plan §5 main chart): session VWAP polyline for the
-  // CURRENT ET session only. Session buckets use ET date keys — never browser TZ.
-  // RC-213 B3: the prior-day family (PDH/PDL/PDC) is NOT computed here anymore — the
-  // client fallback faucet is DELETED. Engine raw levels are the sole prior_day
-  // source; absent engine values render absent (RC-68).
-  daily = null;
-  if (!raw.length) return;
-  const days = []; let cur = null, ck = null;
-  for (const b of raw) { const k = etDateKey(b.t);
-    if (k !== ck) { cur = []; days.push(cur); ck = k; } cur.push(b); }
-  const today = days[days.length - 1];
-  let pv = 0, vv = 0; const vwap = [];
-  for (const b of today) { const tp = (b.h + b.l + b.c) / 3;
-    pv += tp * (b.v || 0); vv += (b.v || 0);
-    vwap.push([b.t, vv ? pv / vv : null]); }
-  daily = { vwap };
-}
+/* # ui-mockup-ok: Phase 2A data-integrity kill (operator 2026-08-08) — no visual
+   redesign; the VWAP line keeps its exact style, it just stops being a second
+   producer. `computeDaily()` used to accumulate Σ(tp·v)/Σv over /api/bars1m in the
+   browser, so the operator's VWAP line and the served VWAP level were two numbers
+   from two tapes. The polyline is now CARRIED: /api/levels serves `vwap_path` out of
+   the same canonical snapshot that produces the VWAP level, and the browser draws it.
+   The chart computes NOTHING for the Phase 2A families. */
 
 function enginePD() {
   // RC-213 B3: prior_day values come ONLY from the engine's raw levels (the same
@@ -471,8 +458,8 @@ function clampView() {
 }
 
 function rawWithForming() {
-  // canonical rows stay PURE (raw feeds VWAP/PDH/PDL/PDC); synthetic minutes
-  // append only while the server has no bar for that minute yet
+  // canonical rows stay PURE (they feed candles only — no level is derived from them
+  // any more); synthetic minutes append only while the server has no bar for that minute
   const tip = raw.length ? raw[raw.length - 1].t : null;
   if (sealedForming && tip != null && tip >= sealedForming.t) sealedForming = null;
   if (forming && tip != null && tip >= forming.t) forming = null;
@@ -521,36 +508,39 @@ function currentChartTicker() {
 let rawLevelsTicker = null;
 
 /* RC-156 (LP-01 Step 4) — the raw structure levels, made visible.
-   ORDER OF EXTRACTION IS THE CONTRACT: each tag is pulled from ONE named field of
-   /api/liquidity-snapshot's raw_levels. No level is computed here — the client must never
-   become a second producer of a number the engine already owns (RC-80). Absent fields are
-   simply absent; a missing level is omitted, never rendered as 0 or a dash pretending to be
-   a price. */
-/* The 5th column is the DOM id token, stated EXPLICITLY and matching the server's own tag
-   vocabulary (PDH, VWAP_P2, TODAY_POC, ...). Deriving it from the display label instead —
-   `label.replace(/[^A-Za-z0-9]+/g,'_')` — collapsed "VWAP +2σ" and "VWAP −2σ" onto one token,
-   because +, − and σ are all non-alphanumeric: two rows, one id, invalid DOM and a surface that
-   cannot be checked by the ids it advertises. An identifier is not a derived convenience. */
+   Phase 2A (operator 2026-08-08): the source is now /api/levels, the canonical serving
+   contract for the ONE materialized PriceLevelSnapshot, and extraction is BY LEVEL ID.
+   It used to read /api/liquidity-snapshot's raw_levels by (group, key), which is a
+   second carrier of the same concepts and measured 773.40/772.55 against the levels
+   endpoint's 773.3975/773.3975 for one ticker at one instant. No level is computed
+   here — the browser draws carried server results only (RC-80). Absent ids are simply
+   absent; a missing level is omitted, never rendered as 0 or a dash pretending to be a
+   price.
+   The LAST column is the DOM id token AND the canonical level id, stated EXPLICITLY
+   rather than derived from the display label — `label.replace(/[^A-Za-z0-9]+/g,'_')`
+   collapsed "VWAP +2σ" and "VWAP −2σ" onto one token, because +, − and σ are all
+   non-alphanumeric: two rows, one id, invalid DOM and a surface that cannot be checked
+   by the ids it advertises. ORDER IS THE CONTRACT: this array is the render order. */
 const RL_SPEC = [
-  ['prev',      'pdh',            'PDH',       'prior-day high',                        'PDH'],
-  ['prev',      'pdl',            'PDL',       'prior-day low',                         'PDL'],
-  ['prev',      'pdc',            'PDC',       'prior-day close',                       'PDC'],
-  ['prev',      'pd_poc',         'PD POC',    'prior-day point of control',            'PD_POC'],
-  ['prev',      'pd_vah',         'PD VAH',    'prior-day value-area high',             'PD_VAH'],
-  ['prev',      'pd_val',         'PD VAL',    'prior-day value-area low',              'PD_VAL'],
-  ['overnight', 'overnight_high', 'ON HIGH',   'overnight high',                        'OVERNIGHT_HIGH'],
-  ['overnight', 'overnight_low',  'ON LOW',    'overnight low',                         'OVERNIGHT_LOW'],
-  ['orb',       'orb_high',       'ORB HIGH',  'opening-range high',                    'ORB_HIGH'],
-  ['orb',       'orb_mid',        'ORB MID',   'opening-range mid',                     'ORB_MID'],
-  ['orb',       'orb_low',        'ORB LOW',   'opening-range low',                     'ORB_LOW'],
-  ['@',         'vah',            'VAH',       "today's value-area high",               'TODAY_VAH'],
-  ['@',         'poc',            'POC',       "today's point of control",              'TODAY_POC'],
-  ['@',         'val',            'VAL',       "today's value-area low",                'TODAY_VAL'],
-  ['vwap_bands', 'plus2',         'VWAP +2σ', 'VWAP plus two standard deviations',  'VWAP_P2'],
-  ['vwap_bands', 'plus1',         'VWAP +1σ', 'VWAP plus one standard deviation',   'VWAP_P1'],
-  ['vwap_bands', 'vwap',          'VWAP',      'session volume-weighted average price',  'VWAP'],
-  ['vwap_bands', 'minus1',        'VWAP −1σ', 'VWAP minus one standard deviation', 'VWAP_M1'],
-  ['vwap_bands', 'minus2',        'VWAP −2σ', 'VWAP minus two standard deviations', 'VWAP_M2'],
+  ['PDH',       'prior-day high',                        'PDH'],
+  ['PDL',       'prior-day low',                         'PDL'],
+  ['PDC',       'prior-day close',                       'PDC'],
+  ['PD POC',    'prior-day point of control',            'PD_POC'],
+  ['PD VAH',    'prior-day value-area high',             'PD_VAH'],
+  ['PD VAL',    'prior-day value-area low',              'PD_VAL'],
+  ['ON HIGH',   'overnight high',                        'OVERNIGHT_HIGH'],
+  ['ON LOW',    'overnight low',                         'OVERNIGHT_LOW'],
+  ['ORB HIGH',  'opening-range high',                    'ORB_HIGH'],
+  ['ORB MID',   'opening-range mid',                     'ORB_MID'],
+  ['ORB LOW',   'opening-range low',                     'ORB_LOW'],
+  ['VAH',       "today's value-area high",               'TODAY_VAH'],
+  ['POC',       "today's point of control",              'TODAY_POC'],
+  ['VAL',       "today's value-area low",                'TODAY_VAL'],
+  ['VWAP +2σ', 'VWAP plus two standard deviations',  'VWAP_P2'],
+  ['VWAP +1σ', 'VWAP plus one standard deviation',   'VWAP_P1'],
+  ['VWAP',      'session volume-weighted average price',  'VWAP'],
+  ['VWAP −1σ', 'VWAP minus one standard deviation', 'VWAP_M1'],
+  ['VWAP −2σ', 'VWAP minus two standard deviations', 'VWAP_M2'],
 ];
 
 /* v6 (RC-192) # ui-mockup-ok: operator BUILD GO — the engine levels no longer render as a
@@ -559,6 +549,7 @@ const RL_SPEC = [
    computed client-side (RC-80). */
 let rawLevelDefs = [];    // [{id, tag, v, title, fam}] for the current ticker
 let rawLevelsMsg = '';    // absence reason — shown in the manager, absence stays absence
+let levelGeneration = null; // canonical snapshot generation these values came out of
 //: engine-id -> manager family (state key). One family toggle governs its members.
 const RL_FAM = { PDH: 'pd', PDL: 'pd', PDC: 'pd', PD_POC: 'va', PD_VAH: 'va', PD_VAL: 'va',
   OVERNIGHT_HIGH: 'onhl', OVERNIGHT_LOW: 'onhl', ORB_HIGH: 'orb', ORB_MID: 'orb',
@@ -611,7 +602,9 @@ function famLiveValues(fam) {
   else if (fam === 'kds') push(T.key_delta_strike);
   else if (fam === 'hvplvp') { push(T.hvp); push(T.lvp); }
   else if (fam === 'charmw') { push(T.call_charm_wall); push(T.put_charm_wall); }
-  else if (fam === 'vwap') { if (daily && daily.vwap && daily.vwap.length) push(daily.vwap[daily.vwap.length - 1][1]); }
+  // Phase 2A: the VWAP the menu reports is the CARRIED level, not the tail of a
+  // client-side accumulation — the menu and the drawn line must be one number.
+  else if (fam === 'vwap') { for (const r of rawLevelDefs) if (r.id === 'VWAP') push(r.v); }
   else if (fam === 'em') { const em = T.implied_1d_move; const s = currentSpot();
     if (em && em.points != null && s != null) { push(Number(s) + em.points); push(Number(s) - em.points); } }
   else if (fam === 'pd') {
@@ -664,20 +657,27 @@ function renderProxMenu() {
   }
 }
 function renderEngineLevels(ls, tk, err) {
-  const raw = ls && ls.raw_levels;
+  // Phase 2A: `ls` is the /api/levels payload — the canonical snapshot, serialized.
+  // Values are READ by id and drawn; nothing here derives a price.
+  const rows = ls && Array.isArray(ls.levels) ? ls.levels : null;
   rawLevelDefs = [];
-  if (!raw) {
+  levelGeneration = ls && ls.generation != null ? ls.generation : null;
+  // the carried VWAP curve replaces the browser's own accumulation
+  daily = (ls && Array.isArray(ls.vwap_series) && ls.vwap_series.length)
+    ? { vwap: ls.vwap_series.map(s => [s[0], s[1]]) } : null;
+  if (!rows) {
     rawLevelsMsg = err ? ('levels unavailable — ' + String(err.message || err).slice(0, 90))
                        : ('no structure levels for ' + tk + ' in this session yet');
     renderLvlMenu(); return;
   }
-  for (const [group, key, tag, title, id] of RL_SPEC) {
-    const bag = group === '@' ? raw : raw[group];
-    if (!bag || typeof bag !== 'object') continue;
-    const v = Number(bag[key]);
-    // # ui-mockup-ok: v6.2 audit finding — the engine sends 0 for not-yet-computed session
-    // levels (VAH/POC/VAL premarket); a zero PRICE is a placeholder, never a level, and the
-    // old card drew "VAH 0.00" the same way. Absence reads as absence.
+  const byId = new Map();
+  for (const r of rows) if (r && r.id != null) byId.set(String(r.id), r);
+  for (const [tag, title, id] of RL_SPEC) {
+    const row = byId.get(id);
+    if (!row) continue;
+    const v = Number(row.price);
+    // # ui-mockup-ok: v6.2 audit finding — a zero PRICE is a placeholder, never a level,
+    // and the old card drew "VAH 0.00" the same way. Absence reads as absence.
     if (!isFinite(v) || v <= 0) continue;
     rawLevelDefs.push({ tag, title, v, id, fam: RL_FAM[id] || 'va' });
   }
@@ -803,9 +803,12 @@ async function load() {
       // wrong ticker is the one failure this surface must never have, however briefly).
       rawLevelsTicker = tk;
       rawLevelDefs = []; rawLevelsMsg = 'loading ' + tk + ' levels…';
+      daily = null; levelGeneration = null;
       firedIds = new Set(); renderLvlMenu();
     }
-    j(`/api/liquidity-snapshot?ticker=${tk}&snapshot=live`)
+    // Phase 2A: the canonical serving contract. The chart no longer reads levels from
+    // /api/liquidity-snapshot — one snapshot, one carrier for this surface.
+    j(`/api/levels?ticker=${tk}`)
       .then(ls => { if (currentChartTicker() === tk) { renderEngineLevels(ls, tk); draw(); } })
       .catch(err => { if (currentChartTicker() === tk) renderEngineLevels(null, tk, err); });
     j(`/api/forces?ticker=${tk}`)
@@ -847,7 +850,7 @@ async function load() {
     // reason reach the payload; this is what kept it off the screen. The bars and the diagnosis
     // are separate facts and now travel in separate variables.
     strikesMeta = s || null;
-    computeDaily(); setBars();
+    setBars();
     if (atEnd && view) { const w = view.i1 - view.i0;
       view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
     document.getElementById('narrator').textContent = t.headline || '—';
@@ -1414,7 +1417,7 @@ function draw() {
     dotEl.style.display = 'block';
   } else dotEl.style.display = 'none';
 
-  // session VWAP — computed on canonical 1m rows only, sampled per visible bar
+  // session VWAP — the CARRIED server path (/api/levels vwap_path), sampled per visible bar
   if (daily && daily.vwap.length) {
     const t0 = daily.vwap[0][0];
     g.strokeStyle = PAL.orange; g.lineWidth = 2; g.beginPath();   // # ui-mockup-ok: v6.2

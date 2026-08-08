@@ -690,9 +690,15 @@ def test_chart_forces_card_cannot_be_flex_collapsed():
 
 def test_chart_reads_levels_from_the_engine_never_recomputes_them():
     """RC-80 discipline: the client must not become a second producer of a number the engine
-    owns. The manager may only READ raw_levels off /api/liquidity-snapshot."""
+    owns. The manager may only READ carried level rows.
+
+    Phase 2A moved the read to /api/levels, the canonical serving contract for the
+    materialized PriceLevelSnapshot. Reading the levels off a snapshot endpoint that
+    ALSO carried its own separately-materialized copy is precisely how the browser came
+    to show a different overnight high from the levels endpoint at the same instant.
+    """
     src = _chart_src()
-    assert "/api/liquidity-snapshot?ticker=" in src, "the chart does not read the levels endpoint"
+    assert "/api/levels?ticker=" in src, "the chart does not read the canonical levels contract"
     i = src.find("function renderEngineLevels")
     assert i > 0, "the engine-level reader is gone"
     body = src[i:i + 1600]

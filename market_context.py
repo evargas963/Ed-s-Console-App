@@ -940,6 +940,13 @@ class PriceLevels:
     bars_today:   int             = 0      # Number of 1-min bars for today
     error:        str             = ""
 
+    # Phase 2A carriage identity — WHICH canonical snapshot these values came out of.
+    # Carried, never recomputed; a consumer comparing two surfaces compares generations
+    # too, so agreement-by-coincidence is distinguishable from agreement-by-identity.
+    level_generation:     Optional[int]   = None
+    level_semantic_scope: Optional[str]   = None
+    level_as_of_ts_utc:   Optional[float] = None
+
 
 def fetch_price_levels(
     client,
@@ -948,18 +955,27 @@ def fetch_price_levels(
     orb_minutes: int = 15,
     *,
     include_extended_hours: bool = False,
+    level_snapshot=None,
 ) -> PriceLevels:
     """
-    Fetch VWAP, PDH/PDL/PDC, ORB, POC/VAH/VAL, VWAP bands from Schwab price history + quote.
-    Never raises. Returns best available data with graceful fallback.
+    Tier 1 (today open/high/low) from the quote; every Phase 2A level CARRIED from the
+    one canonical PriceLevelSnapshot. Never raises.
 
-    quote_raw: the raw quote JSON dict (from safe_get_quote response.json())
-               Used for Tier 1 fallback (today open/high/low/PDC).
-    include_extended_hours: if True, fetches pre-market for overnight high/low.
+    Phase 2A (operator 2026-08-08): this function used to fetch its OWN Schwab
+    TWO_DAYS minute history and run the level helpers over it. That was a second
+    materialization of the same concepts — the same helpers, a different tape — and it
+    is what put a different PDC/VWAP in the console header from the one /api/levels
+    served. The vendor fetch is DELETED, not kept as a fallback: a fallback is exactly
+    the second answer this invariant forbids.
+
+    quote_raw: the raw quote JSON dict (from safe_get_quote response.json()).
+    level_snapshot: the canonical snapshot. When absent, the materialized store is READ;
+        when that is empty too, the Phase 2A fields stay absent (never substituted).
+    ``client``, ``orb_minutes`` and ``include_extended_hours`` are retained for call-site
+    compatibility; the canonical producer owns the bar input and the ORB window now.
     """
-    from datetime import datetime, timezone
-
-    from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, now_et
+    from liquidity_value_engine import LevelCarrierConflict
+    from time_et import now_et
 
     pl = PriceLevels(orb_minutes=orb_minutes)
 
@@ -981,138 +997,53 @@ def fetch_price_levels(
         except Exception as e:
             pl.error = f"quote parse: {e}"
 
-    # ── Tier 2: price history for VWAP + PDH/PDL + ORB ──────────────────────
+    # ── Tier 2: CARRIED from the canonical PriceLevelSnapshot ────────────────
     try:
-        # schwab-py uses nested enums on the Client class.
-        # Try enum-based call first, then fall back to raw string kwargs.
-        resp = None
-        try:
-            import schwab as _schwab
-            PH = _schwab.client.Client.PriceHistory
-            resp = client.get_price_history(
-                symbol,
-                period_type=PH.PeriodType.DAY,
-                period=PH.Period.TWO_DAYS,
-                frequency_type=PH.FrequencyType.MINUTE,
-                frequency=PH.Frequency.EVERY_MINUTE,
-                need_extended_hours_data=include_extended_hours,
-            )
-        except Exception:
-            try:
-                resp = client.get_price_history(
-                    symbol,
-                    periodType="day",
-                    period=2,
-                    frequencyType="minute",
-                    frequency=1,
-                    needExtendedHoursData=include_extended_hours,
-                )
-            except Exception:
-                resp = None
+        from liquidity_value_engine import carry_snapshot_levels, get_materialized_snapshot
 
-        if resp is None or resp.status_code != 200:
-            raise ValueError(f"price history fetch failed (status {getattr(resp,'status_code','?')})")
+        snap = level_snapshot
+        if snap is None:
+            snap = get_materialized_snapshot(symbol, now_et().date())
+        if snap is None:
+            # Absence reads as absence (RC-68). There is deliberately no local
+            # recomputation here — that fallback WAS the second faucet.
+            pl.error = (pl.error + " | levels: no canonical snapshot materialized "
+                                   "for this ticker/session yet").strip(" |")
+            return pl
 
-        candles = resp.json().get("candles", [])
-        if not candles:
-            raise ValueError("empty candles")
+        carried = carry_snapshot_levels(snap, "market_context.fetch_price_levels")
+        pl.pdh = carried["PDH"]
+        pl.pdl = carried["PDL"]
+        # RC-213 PDC reconciliation, decided in the open and now enforced by the one
+        # snapshot: PDC is the last RTH 1m bar close of the single prior session. The
+        # Schwab quote closePrice read into Tier 1 above is overwritten whenever the
+        # canonical value exists — two defensible definitions, one served.
+        if carried["PDC"] is not None:
+            pl.pdc = carried["PDC"]
+        pl.pd_poc, pl.pd_vah, pl.pd_val = (
+            carried["PD_POC"], carried["PD_VAH"], carried["PD_VAL"])
+        pl.overnight_high, pl.overnight_low = (
+            carried["OVERNIGHT_HIGH"], carried["OVERNIGHT_LOW"])
+        pl.orb_high, pl.orb_low = carried["ORB_HIGH"], carried["ORB_LOW"]
+        pl.orb_midpoint = carried["ORB_MID"]
+        pl.vwap = carried["VWAP"]
+        pl.vwap_p1, pl.vwap_m1, pl.vwap_p2, pl.vwap_m2 = (
+            carried["VWAP_P1"], carried["VWAP_M1"], carried["VWAP_P2"], carried["VWAP_M2"])
+        pl.today_poc, pl.today_vah, pl.today_val = (
+            carried["TODAY_POC"], carried["TODAY_VAH"], carried["TODAY_VAL"])
+        pl.bars_today = snap.bars_used
+        pl.level_generation = snap.generation
+        pl.level_semantic_scope = "session_rth"
+        pl.level_as_of_ts_utc = snap.as_of_ts_utc
 
-        today_date = now_et().date()
-        today_bars = []
-        prev_bars  = []
-        engine_bars: list[dict] = []
-
-        for c in candles:
-            dt_ms = c.get("datetime")
-            if dt_ms is None:
-                continue
-            try:
-                dt_ms = float(dt_ms)
-            except (TypeError, ValueError):
-                continue
-            if dt_ms <= 0:
-                continue
-            dt_utc = datetime.fromtimestamp(dt_ms / 1000, tz=timezone.utc)
-            dt_et  = dt_utc.astimezone(ET)
-            dt_mins = dt_et.hour * 60 + dt_et.minute
-            is_rth = RTH_OPEN_MINS <= dt_mins < RTH_END_MINS
-            # Engine bar basis for Tier-B session families (RC-213 levels-tierb-session-collapse-v1).
-            # include_extended_hours still controls the vendor request; overnight uses the
-            # engine's prior-close→open window over whatever bars arrived.
-            engine_bars.append({
-                "timestamp": dt_ms / 1000.0,
-                "open": c.get("open"),
-                "high": c.get("high"),
-                "low": c.get("low"),
-                "close": c.get("close"),
-                "volume": c.get("volume"),
-            })
-            if not is_rth:
-                continue
-            if dt_et.date() == today_date:
-                today_bars.append((dt_et, c))
-            elif dt_et.date() < today_date:
-                prev_bars.append((dt_et, c))
-
-        # ── PDH / PDL / POC / VAH / VAL from previous session ────────────────
-        if prev_bars:
-            # RC-213 (mission levels-faucet-v1): the prior-day family is the SINGLE most
-            # recent prior RTH session — never a union of every prior date the vendor
-            # window holds (TWO_DAYS merged Thursday AND Friday into "previous day" on
-            # Mondays; measured 56/59 tickers divergent, worst 11.81% of price). Window
-            # selection delegates to the RC-153 authority so this producer and
-            # liquidity_value_engine can never again disagree about WHICH session was
-            # "the prior day".
-            from liquidity_value_engine import prior_trading_session_date
-            prior_date = prior_trading_session_date(
-                [{"_ts": dt} for dt, _ in prev_bars], today_date
-            )
-            prev_bars = [(dt, c) for dt, c in prev_bars if dt.date() == prior_date]
-        if prev_bars:
-            prev_candles = [c for _, c in prev_bars]
-            pl.pdh = max(c["high"] for _, c in prev_bars)
-            pl.pdl = min(c["low"] for _, c in prev_bars)
-            # RC-213 PDC reconciliation, decided in the open: PDC is the last RTH 1m bar
-            # close of the single prior session — the same window and basis as every other
-            # prior-day level. The Schwab quote closePrice (Tier 1) is now only the
-            # fallback when history is unavailable; the two definitions measured 0.21
-            # apart on SPY and had never been reconciled.
-            pl.pdc = prev_bars[-1][1]["close"]
-            pl.pd_poc, pl.pd_vah, pl.pd_val = _volume_profile_poc_vah_val(prev_candles)
-
-        # ── Tier-B session families: ONE engine authority (no inline dual computes) ──
-        # Census concepts 2–5 (vwap/ORB/overnight/today VA). Former inline VWAP/ORB/
-        # today-premarket overnight / local today profile DELETED — not kept as fallback.
-        from liquidity_value_engine import (
-            PlaybookConfig,
-            compute_opening_range,
-            compute_session_vwap,
-            compute_volume_profile_levels,
-            compute_vwap_bands,
-            get_overnight_levels,
-        )
-        cfg = PlaybookConfig(opening_range_minutes=orb_minutes)
-        on = get_overnight_levels(engine_bars, today_date)
-        pl.overnight_high = on.get("overnight_high")
-        pl.overnight_low = on.get("overnight_low")
-        if today_bars:
-            pl.bars_today = len(today_bars)
-            pl.vwap = compute_session_vwap(engine_bars, today_date)
-            if pl.vwap is not None:
-                pl.vwap_p1, pl.vwap_m1, pl.vwap_p2, pl.vwap_m2 = compute_vwap_bands(
-                    engine_bars, today_date, pl.vwap
-                )
-            orb = compute_opening_range(engine_bars, today_date, cfg)
-            pl.orb_high = orb.get("orb_high")
-            pl.orb_low = orb.get("orb_low")
-            pl.orb_midpoint = orb.get("orb_mid")
-            pl.today_poc, pl.today_vah, pl.today_val = compute_volume_profile_levels(
-                engine_bars, today_date, cfg
-            )
-
+    except LevelCarrierConflict:
+        # NEVER swallowed: two carriers disagreeing for one (ticker, level_id, scope,
+        # generation) is the exact failure this architecture exists to make impossible.
+        # Degrading it to a string in `error` would restore the silent divergence.
+        raise
     except Exception as e:
         err_str = str(e)[:120]
-        pl.error = (pl.error + f" | history: {err_str}").strip(" |")
+        pl.error = (pl.error + f" | levels: {err_str}").strip(" |")
 
     return pl
 

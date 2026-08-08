@@ -4392,6 +4392,40 @@ def check_domain_faucet_registry() -> list[Violation]:
     return out
 
 
+def check_phase2a_single_level_computation() -> list[Violation]:
+    """ONE computation and ONE materialization per (ticker, level_id, scope, generation).
+
+    WHAT WAS OBSERVED (operator, 2026-08-08, measured live on one ticker at one instant):
+    /api/levels served overnight 773.3975/773.3975 while /api/liquidity-snapshot served
+    773.40/772.55, and the prior-day value area disagreed intermittently between them.
+    Both endpoints ran the SAME engine helpers — over different bar inputs. The existing
+    single-writer lock (tests/test_levels_single_producer_v1.py) was green throughout,
+    because no forbidden payload KEY was written; the duplication was one layer down, in
+    the call graph, where no check was looking.
+
+    Rule: the Phase 2A helpers are invoked only from
+    liquidity_value_engine.build_price_level_snapshot and the declared checkpoint/replay
+    sites; every other surface CARRIES the materialized value. Alias-resolved, so the
+    same helper under another import name, another variable, or a forwarding wrapper
+    still fires. Level rows — including entries inside `levels: [{"id", "price"}]` —
+    must take their number from the snapshot. Browsers must not reconstruct the family.
+
+    HOW VALIDATED: negative controls in tests/test_phase2a_price_level_snapshot_v1.py
+    inject (a) a second endpoint computation, (b) the same helper aliased and called from
+    a wrapper, (c) a levels[] row carrying a computed/hardcoded price, and (d) an in-page
+    VWAP accumulation, and assert each one screams; the legal carriage forms stay silent.
+    """
+    try:
+        from tools.phase2a_level_lock import scan_repo
+    except ImportError:  # pragma: no cover - import shape differs under the hook runner
+        from phase2a_level_lock import scan_repo  # type: ignore
+    out: list[Violation] = []
+    for reason in scan_repo(REPO):
+        head = str(reason).split(":", 1)[0]
+        out.append(Violation(REPO / head, 0, str(reason)))
+    return out
+
+
 def check_log_law() -> list[Violation]:
     """LOG LAW (operator/PM 2026-08-04, RC-237): closable work has exactly TWO homes.
 
@@ -4493,6 +4527,7 @@ CHECKS = [
     ("ui_mockup_approval", check_ui_mockup_approval, True),  # RC-186: no UI redesign code before an approved mockup
     ("research_before_act", check_research_before_act, True),  # RC-203/RC-205 ULTIMATE LAW: named reference before commit
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
+    ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     ("rc_document_without_resolve", check_rc_document_without_resolve, True),  # RC-228/RC-230 LOCK-6: added OPEN rows must carry a resolve path
     ("writer_no_drift", check_writer_no_drift, True),  # RC-232 LOCK-1: staged paths must come from the mission's resolved writer
     # LOG LAW (RC-237) — ARMED under the PM GO of 2026-08-04T18:58Z, scope staged_lock_surface

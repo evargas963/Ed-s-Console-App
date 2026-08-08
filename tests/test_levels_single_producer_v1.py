@@ -630,9 +630,20 @@ def test_api_levels_registered_in_faucet_registry():
     )
 
 
-def test_market_context_session_families_delegate_to_engine():
-    """Tier-B kill lock: fetch_price_levels must call engine session functions and must
-    NOT retain the inline cum_tpv / ORB dual loops (census concepts 2–5)."""
+def test_market_context_session_families_carry_the_canonical_snapshot():
+    """Tier-B kill lock, tightened by Phase 2A.
+
+    The original form of this test demanded that `fetch_price_levels` DELEGATE to the
+    engine helpers instead of running its own inline `cum_tpv` / ORB loops. Delegation
+    killed the duplicate formulas but not the duplicate MATERIALIZATION: calling the
+    same helper over a privately fetched bar window still produced a second answer, and
+    that is exactly how /api/liquidity-snapshot came to serve overnight 773.40/772.55
+    against /api/levels' 773.3975/773.3975 for one ticker at one instant.
+
+    So the requirement is now strictly stronger — not "call the helper" but "call
+    nothing": carry the canonical PriceLevelSnapshot. Every inline-dual assertion from
+    the delegation era is kept below, because carriage must not reintroduce them.
+    """
     import inspect
 
     from market_context import fetch_price_levels
@@ -645,7 +656,17 @@ def test_market_context_session_families_delegate_to_engine():
         "get_overnight_levels",
         "compute_volume_profile_levels",
     ):
-        assert name in src, f"fetch_price_levels missing engine delegate {name}"
+        assert f"{name}(" not in src, (
+            f"fetch_price_levels INVOKES {name} — a second materialization of a Phase 2A "
+            f"level. It must carry the canonical snapshot's value instead."
+        )
+    assert "carry_snapshot_levels" in src, (
+        "fetch_price_levels no longer carries the canonical PriceLevelSnapshot"
+    )
+    assert "get_price_history" not in src, (
+        "the private vendor bar fetch is back — that is the alternate bar input that made "
+        "the two endpoints disagree, not a fallback"
+    )
     assert "cum_tpv =" not in src, "inline VWAP dual still present"
     assert "orb_bars_seen" not in src, "inline ORB dual still present"
     assert "overnight_bars =" not in src and "overnight_bars.append" not in src, (

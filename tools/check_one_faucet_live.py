@@ -102,12 +102,56 @@ def is_volatile(name: str) -> bool:
     return name in VOLATILE_EXACT or name.endswith(VOLATILE_SUFFIXES)
 
 
+#: Keys whose value NAMES the subject of the row it sits in. A list of such rows is
+#: not "many subjects" — it is a keyed map written as a list, and each id is one
+#: comparable subject. Phase 2A: /api/levels ships `levels: [{"id","price"}, ...]`,
+#: which the list rule below made invisible to this check — the exact payload shape
+#: the operator asked it to compare.
+ROW_ID_KEYS: tuple[str, ...] = ("id", "level_id", "tag", "name")
+#: Keys carrying that row's number.
+ROW_VALUE_KEYS: tuple[str, ...] = ("price", "value", "level", "px")
+
+
+def keyed_row_leaves(obj: Any, out: dict[str, Any] | None = None,
+                     depth: int = 0) -> dict[str, Any]:
+    """Numeric values from id-keyed rows inside lists, keyed `<id>` (lowercased).
+
+    Deliberately narrow: only a row that NAMES itself is descended into. A radar row
+    or a history frame has no self-naming id key and is still skipped, so this does
+    not reintroduce the "row zero of two collections" comparison the list rule exists
+    to prevent.
+    """
+    if out is None:
+        out = {}
+    if depth > 6:
+        return out
+    if isinstance(obj, dict):
+        for value in obj.values():
+            if isinstance(value, (dict, list)):
+                keyed_row_leaves(value, out, depth + 1)
+        return out
+    if isinstance(obj, list):
+        for item in obj:
+            if not isinstance(item, dict):
+                continue
+            rid = next((item[k] for k in ROW_ID_KEYS
+                        if isinstance(item.get(k), str)), None)
+            val = next((item[k] for k in ROW_VALUE_KEYS
+                        if isinstance(item.get(k), (int, float))
+                        and not isinstance(item.get(k), bool)), None)
+            if rid is not None and val is not None:
+                out.setdefault(f"level:{rid.strip().lower()}", val)
+            keyed_row_leaves(item, out, depth + 1)
+    return out
+
+
 def numeric_leaves(obj: Any, out: dict[str, Any] | None = None,
                    depth: int = 0) -> dict[str, Any]:
-    """Scalar numeric leaves keyed by bare field name.
+    """Scalar numeric leaves keyed by bare field name, plus id-keyed level rows.
 
-    Lists are NOT descended into. A list element is one row among many and
-    comparing row zero of two different collections is not a faucet comparison.
+    Bare lists are NOT descended into for anonymous rows: a list element is one row
+    among many and comparing row zero of two different collections is not a faucet
+    comparison. Rows that NAME themselves are the exception — see keyed_row_leaves.
     """
     if out is None:
         out = {}
@@ -119,11 +163,22 @@ def numeric_leaves(obj: Any, out: dict[str, Any] | None = None,
                 numeric_leaves(value, out, depth + 1)
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
                 out.setdefault(key.lower(), value)
+    if depth == 0:
+        keyed_row_leaves(obj, out, 0)
     return out
 
 
+#: Extra query needed to put an endpoint in the SAME semantic scope as the others.
+#: /api/liquidity-snapshot defaults to the PREMARKET checkpoint, which is a different
+#: cutoff and therefore legitimately different numbers; asking it for `live` is what
+#: makes its level rows comparable with /api/levels at all (Phase 2A).
+ENDPOINT_PARAMS: dict[str, str] = {
+    "/api/liquidity-snapshot": "&snapshot=live",
+}
+
+
 def fetch(base: str, endpoint: str, ticker: str) -> dict[str, Any] | None:
-    url = f"{base}{endpoint}?ticker={ticker}"
+    url = f"{base}{endpoint}?ticker={ticker}{ENDPOINT_PARAMS.get(endpoint, '')}"
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT_SEC) as response:
             return json.loads(response.read().decode("utf-8", "replace"))
