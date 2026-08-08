@@ -1523,6 +1523,45 @@ def check_absence_has_a_type() -> list[Violation]:
     return out
 
 
+def check_five_why_reaches_bedrock() -> list[Violation]:
+    """RC-321 — a five-why terminates on a DEFECT, never on an EXPLANATION.
+
+    OPERATOR LAW (2026-08-09, non-negotiable): "we do 5 whys to bedrock."
+
+    WHAT WAS OBSERVED. RC-315's chain was five levels deep, ended `ROOT: TERMINAL` with a
+    real justification, and PASSED `five_why_recursive_lock` — while its level (4) read
+    "because the operator's instruction ... removed the one check that had been catching
+    me". An outside audit rejected it in one line: being asked to decide never suspended the
+    evidence-before-assertion law.
+
+    WHY THE EXISTING LOCK CANNOT SEE IT. `five_why_recursive_lock` enforces a chain's SHAPE
+    — five levels, a terminal root with a justification or a spawned child that exists — and
+    all of it held. Shape was enforced; OWNERSHIP of the cause was not.
+
+    THE RULE. A why-step may not hand causation to another actor's instruction, request or
+    message. Those are circumstances, not defects this repository can repair. Quoting a
+    blame-shift in order to REJECT it is required of a corrected row, so a rejection marker
+    in the same cell clears it.
+
+    VALIDATED BEFORE WIRING: 290 rows scanned; a first pattern matched bare "time pressure"
+    and produced one FALSE POSITIVE (RC-290 uses pressure to describe an incentive gradient
+    and its root correctly names my own defect), so the RULE was narrowed rather than the
+    ROW exempted. Zero on merit. Fires on RC-315 as first written, recovered with
+    `git show e1bc6793:governance/root_cause_log.md`, and stays silent on it as corrected.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_five_why_reaches_bedrock import violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / "governance" / "root_cause_log.md", 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_five_why_reaches_bedrock.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
 def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
     """RC-319 — a claim about how the MARKET behaves must be checkable by a reader.
 
@@ -4507,6 +4546,9 @@ CHECKS = [
     ("rc_numeric_claims_cite_a_command", check_rc_numeric_claims_cite_a_command, True),
     # RC-319: numbers had to cite a command; a MECHANISM claim could say anything.
     ("rc_mechanism_claims_cite_a_source", check_rc_mechanism_claims_cite_a_source, True),
+    # RC-321: the depth rule measured how FAR a chain went, never whose action was at the
+    # bottom of it. Five levels ending on the operator's instruction is not bedrock.
+    ("five_why_reaches_bedrock", check_five_why_reaches_bedrock, True),
     # RC-137: a CLOSED row must ship the code it names (the ledger cannot outrun HEAD).
     ("closed_rows_ship_their_code", check_closed_rows_ship_their_code, True),
     ("verdicts_declare_their_power", check_verdicts_declare_their_power, True),  # provenance, not the word "MEASURED" (RC-6)
