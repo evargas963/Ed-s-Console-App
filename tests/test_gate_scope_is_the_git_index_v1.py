@@ -121,8 +121,8 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     sight: the number is asserted, so the next person to add one has to come here.
     """
     found = _filesystem_enumerating_scanners()
-    assert len(found) == 48, (
-        f"the filesystem-enumerating scanner count moved from the 48 measured under RC-307 "
+    assert len(found) == 44, (
+        f"the filesystem-enumerating scanner count moved from the 44 measured under RC-307 "
         f"to {len(found)}. If you FIXED some, lower this number and say so in the row. If "
         f"you ADDED one, use `git ls-files` instead — this is the RC-274 -> RC-286 loop.\n"
         + "\n".join(found))
@@ -131,6 +131,13 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # lives 27 more times under tests/ — where it had already turned
     # tests/test_coh_sa2_et_authority.py red on untracked scratch. Both directories are
     # counted from the git index now, so neither can hide the other's drift.
+    #
+    # 48 -> 44, and how it was found is the point. The RC-307 commit set 48 and its own
+    # sibling repair — three rglob sites in tests/test_calibration_bypass_closure.py — had
+    # already made it 45, which I did not re-measure; RC-312's index-scoping of the
+    # moving-reference sweep took it to 44. Pre-commit does not run this file, so the stale
+    # number survived a commit. It did not survive the next run of the alarm, which is what
+    # a counted sweep is for: the drift it caught was mine.
     by_dir = {rel.split("/")[0] for rel in found}
     assert by_dir <= {"tools", "tests"}, f"the sweep reached outside its scope: {by_dir}"
     assert "tests/test_coh_sa2_et_authority.py" not in {f.split(":")[0] for f in found}, (
