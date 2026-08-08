@@ -231,6 +231,14 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
 # legitimately DESCRIBES removing workarounds - RC-19); ROOT-terminality and
 # reference integrity were already clean across all 32 rows and enforce globally.
 FIVE_WHY_LOCK_CUTOVER = "2026-07-24"
+
+#: RC-299 — the RECURSION cutover, separate from the 2026-07-24 structural one because it
+#: adds a NEW requirement and must not retroactively invalidate rows written before the
+#: rule existed. Operator law 2026-08-08: the five whys must be RECURSIVE. Depth and the
+#: literal token ROOT were already enforced; neither asks whether the root is IRREDUCIBLE,
+#: so a chain could name a new defect at why-2 and keep going in prose. RC-298's own why-4
+#: named a defect in the RC-49 gate and spawned nothing, and the lock stayed silent.
+FIVE_WHY_RECURSION_CUTOVER = "2026-08-08"
 _PATCH_BANNED_PHRASES = (
     "workaround", "band-aid", "bandaid", "stopgap", "quick fix",
     "temporary fix", "papered over", "route around the",
@@ -300,6 +308,41 @@ def _five_why_lock_violations(
                     f"{rc_id}: references {ref} which has no row. A why that names a new "
                     f"defect SPAWNS that defect's own five-why entry - dangling children "
                     f"break the recursive regime."))
+        # RC-299: RECURSION. Depth and the token ROOT were already required; neither asks
+        # whether the root is IRREDUCIBLE. A chain ending "ROOT: the repo does not enforce
+        # X" reads terminal while X is plainly another defect with its own causes. The row
+        # format had no way to say which, so both were written identically. Now the author
+        # must declare at the terminus: bedrock WITH a reason, or the child it points at.
+        if opened >= FIVE_WHY_RECURSION_CUTOVER:
+            up_why = why.upper()
+            has_terminal = "ROOT: TERMINAL" in up_why
+            spawns = _re.findall(r"ROOT:\s*SPAWNS\s+(RC-\d+)", why, _re.I)
+            if not has_terminal and not spawns:
+                out.append(Violation(
+                    log_path, n,
+                    f"{rc_id}: the why-chain names a ROOT but does not say whether it is "
+                    f"BEDROCK or a POINTER. Recursion is not optional (operator law "
+                    f"2026-08-08): end the chain with 'ROOT: TERMINAL — <why it cannot be "
+                    f"reduced further>' or 'ROOT: SPAWNS RC-nnn — <the child defect>'. A "
+                    f"cause found at why-2 is not a root, it is a new defect that gets its "
+                    f"own five whys (RC-299)."))
+            for child in spawns:
+                if child not in ids:
+                    out.append(Violation(
+                        log_path, n,
+                        f"{rc_id}: ROOT SPAWNS {child}, which has no row. A spawned child "
+                        f"must carry its own five whys — that is what makes the regime "
+                        f"recursive rather than a chain of promises (RC-299)."))
+            if has_terminal:
+                seg = why[up_why.find("ROOT: TERMINAL") + len("ROOT: TERMINAL"):]
+                if len(seg.strip(" —-:").strip()) < 40:
+                    out.append(Violation(
+                        log_path, n,
+                        f"{rc_id}: ROOT declared TERMINAL with no justification. Bedrock is "
+                        f"a claim and it is the one place the recursion stops, so it must "
+                        f"say WHY no further why exists — otherwise TERMINAL is just the "
+                        f"word ROOT again (RC-299)."))
+
         if opened < FIVE_WHY_LOCK_CUTOVER:
             continue
         low_fix = fix.lower()
