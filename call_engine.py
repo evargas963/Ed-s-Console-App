@@ -465,7 +465,19 @@ def _greek_notes(inp: SignalInput) -> list:
             notes.append("Dealers are amplifying moves — trend/momentum mode")
 
     if inp.charm_direction and inp.charm_drift_toward:
-        notes.append(f"Time decay pushing dealers to {inp.charm_direction} toward {inp.charm_drift_toward:.2f}")
+        # RC-313: this read "Time decay pushing dealers to {dir} toward {strike}", which
+        # credits time decay with a PRICE TARGET charm never computed. RC-295 deleted the
+        # identical claim from the pinning score — charm_drift_toward is
+        # pick_net_gex_peak_strike over the SELECTED expiry, republished unchanged
+        # (RC-292/RC-302) — and left this sentence, which makes the same assertion to a
+        # reader who has no score to check it against. Charm measured the direction. The
+        # strike is a gamma quantity, and the note now says which one it is. Pinning is a
+        # MAGNITUDE mechanism, so a magnet claim would need the absolute-gamma strike, not
+        # the signed-net peak; unifying the value needs a gamma-pin field on SignalInput,
+        # which does not exist yet (RC-292 NEXT-DEPTH).
+        notes.append(
+            f"Time decay has dealers {inp.charm_direction}; "
+            f"net-GEX peak (selected expiry) at {inp.charm_drift_toward:.2f}")
 
     if inp.iv_direction == "expanding":
         notes.append("Volatility rising — moves may be larger than expected")
