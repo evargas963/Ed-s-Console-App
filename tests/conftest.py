@@ -13,6 +13,7 @@ not set outside pytest. Fail-closed without secrets is locked by
 from __future__ import annotations
 
 import os
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -111,6 +112,34 @@ def _decision_path_admitted_by_default(monkeypatch, _admitted_decision_registry_
     WAIT) is locked explicitly by tests/test_decision_gate.py, which overrides
     ED_DECISION_ADMISSIONS_PATH / passes explicit paths (its setenv wins)."""
     monkeypatch.setenv("ED_DECISION_ADMISSIONS_PATH", str(_admitted_decision_registry_path))
+
+
+def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
+    """The newest ET date the market calendar admits, at or before `on_or_before` (today).
+
+    RC-306. Fixtures that need a session date had two obvious sources and both are wrong.
+    A hard-coded date goes stale against readers that default to today — that broke twice
+    across 2026-07-30. The wall clock does not go stale, but it does not know about
+    weekends or holidays, and RC-278 gave the accrual writers `is_trading_day_et` as their
+    calendar authority, so on a Saturday a clock-derived fixture hands the writer a date
+    the writer is REQUIRED to reject. Five tests then failed two days in seven while
+    reporting nothing about the code.
+
+    The third source is the authority itself. Drawing the fixture date from the same
+    function the code validates against means the test can no longer disagree with the
+    calendar, and there is no literal to rot.
+    """
+    from time_et import ET, is_trading_day_et
+
+    day = on_or_before or datetime.now(ET).date()
+    for _ in range(14):          # the longest market closure gap is far under two weeks
+        if is_trading_day_et(day.isoformat()):
+            return day
+        day -= timedelta(days=1)
+    raise AssertionError(
+        f"no trading day found in the 14 ET days before {on_or_before or 'today'} — "
+        "the market calendar authority (time_et.is_trading_day_et) is answering False "
+        "for every date, which is a calendar defect, not a fixture one")
 
 
 @pytest.fixture

@@ -853,8 +853,9 @@ def compute_net_charm(
     Returns:
         net_charm_daily  : net delta-equivalents unwound per day (negative = selling)
         charm_direction  : "buying" | "selling" | "neutral"  (for signals engine)
-        drift_toward     : drift_toward_strike when provided
-        gamma_pin        : same as drift_toward
+        drift_toward     : drift_toward_strike when provided — the caller's strike,
+                           republished unchanged. RC-302 removed the duplicate `gamma_pin`
+                           key that carried the same value under terrain's name.
         contracts_used   : number of contracts that contributed
     """
     try:
@@ -988,8 +989,11 @@ def compute_net_charm(
             "put_charm_daily": None,
             "charm_direction": None,
             "charm_magnitude": None,
+            # RC-302: `gamma_pin` REMOVED. It duplicated drift_toward exactly, had zero
+            # readers repo-wide, and collided with terrain's gamma_pin — which is the
+            # max-TOTAL-gamma strike over the wide book, a different metric on a different
+            # chain scope from the selected-expiry net-GEX peak charm is handed here.
             "drift_toward": drift_toward_strike,
-            "gamma_pin": drift_toward_strike,
             "contracts_used": 0,
             "error": _err,
         }
@@ -1020,16 +1024,16 @@ def compute_net_charm(
     else:
         magnitude = "negligible"
 
-    gamma_pin = drift_toward_strike
-
     return {
         "net_charm_daily": round(net, 2),
         "call_charm_daily": round(call_charm, 2),
         "put_charm_daily": round(put_charm, 2),
         "charm_direction": direction,
         "charm_magnitude": magnitude,
-        "drift_toward": gamma_pin,
-        "gamma_pin": gamma_pin,
+        # RC-302: ONE name for a value charm republishes but does not compute. The
+        # `gamma_pin` alias and its intermediate variable are gone — zero readers, and the
+        # name belongs to terrain's max-total-gamma strike over the wide book.
+        "drift_toward": drift_toward_strike,
         "contracts_used": used,
         "error": "",
     }

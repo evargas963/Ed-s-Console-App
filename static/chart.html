@@ -292,6 +292,9 @@
 <div id="tip"></div>
 <div id="foldwarn">▼ GAMMA PANEL BELOW — click to jump</div>
 <div id="coachlines"></div>
+<!-- # ui-mockup-ok: RC-304 correctness fix, no redesign — same rows, same cells; only the
+     FORCES source text becomes true of the data each row actually sums. -->
+<script src="/static/js/forces_provenance.js"></script>
 <script>
 /* CR-03 screen 1 v2 — TradingView-grade interaction (operator directive 2026-07-23):
    wheel = zoom time axis at cursor · drag = pan time AND price · double-click/FIT =
@@ -721,9 +724,15 @@ function renderForces() {
       + `<div>${c(above, acol)}</div><div class="fsrc">${esc(srcTxt)}</div>`;
   };
   const liveSrc = rows.length ? `live · ${rows.length} strikes` : 'live cache empty — says so';
-  const bankSrc = fz && fz.available
-    ? `banked ${esc(String(fz.older_et_date))}→${esc(String(fz.newer_et_date))}`
-    : (fz && fz.reason ? String(fz.reason).slice(0, 60) : 'banked chains — loading');
+  // # ui-mockup-ok: RC-304 correctness fix, no redesign — ONE label said "banked older→newer"
+  // for all three banked rows, and only ΔOI spans two captures. DEX and CHARM are summed on
+  // the newer capture alone, and charm additionally carries the book it covered
+  // (charm_book_scope, RC-288) and its own failure (charm_error) — both served and, until
+  // now, unread here. The derivation lives in static/js/forces_provenance.js so a test can
+  // EXECUTE it (RC-298) instead of string-matching this file.
+  const rowSrc = (row) => window.EdForcesProvenance
+    ? window.EdForcesProvenance.forcesRowSource(fz, row)
+    : 'provenance module not loaded';
   grid.innerHTML =
     rowH('gex', 'GEX $', gB, gA, sgn(gB), sgn(gA), liveSrc,
          'Net dealer gamma dollars per 1% move, summed per side of spot from the live per-strike book.')
@@ -732,12 +741,16 @@ function renderForces() {
     + rowH('doi', '&Delta;OI', fz && fz.available ? fz.doi_below : null,
            fz && fz.available ? fz.doi_above : null,
            grn(fz && fz.available ? fz.doi_below : null), grn(fz && fz.available ? fz.doi_above : null),
-           bankSrc, fz && fz.available ? String(fz.method || '') :
+           // # ui-mockup-ok: RC-304 correctness fix, no redesign — ΔOI keeps the two-date
+           // span because it is the one row that genuinely differences two captures.
+           rowSrc('doi'), fz && fz.available ? String(fz.method || '') :
            'Day-over-day open-interest change per side. Fills from the two newest banked chains.')
     + rowH('dex', 'DEX $', fz && fz.available ? fz.dex_below_dollars : null,
            fz && fz.available ? fz.dex_above_dollars : null,
            sgn(fz && fz.available ? fz.dex_below_dollars : null),
-           sgn(fz && fz.available ? fz.dex_above_dollars : null), bankSrc,
+           // # ui-mockup-ok: RC-304 correctness fix, no redesign — DEX is summed on the
+           // newer capture ALONE, so it no longer advertises a two-date span.
+           sgn(fz && fz.available ? fz.dex_above_dollars : null), rowSrc('dex'),
            'Dealer delta dollars per side (newer banked capture). Conditioning context, never a standalone direction.')
     // # ui-mockup-ok: RC-199 — the operator REVOKED the DIR-01(i) charm vote-gate
     // ("nothing locked"); charm renders real numbers everywhere its fields serve, and
@@ -746,7 +759,11 @@ function renderForces() {
     + rowH('charm', 'CHARM', fz && fz.available ? fz.charm_below : null,
            fz && fz.available ? fz.charm_above : null,
            sgn(fz && fz.available ? fz.charm_below : null),
-           sgn(fz && fz.available ? fz.charm_above : null), bankSrc,
+           // # ui-mockup-ok: RC-304 correctness fix, no redesign — the charm source now
+           // carries the BOOK it was summed over (charm_book_scope, RC-288) and states a
+           // charm_error instead of leaving a failed charm as an em-dash under a confident
+           // banked label. Both fields were already served and simply never read here.
+           sgn(fz && fz.available ? fz.charm_above : null), rowSrc('charm'),
            'Dealer-signed net charm per side of spot (newer banked chain, bs_charm faucet). Hedge-decay flow context.');
   src.textContent = spotBindingAgeLabel();
   const bits = [];

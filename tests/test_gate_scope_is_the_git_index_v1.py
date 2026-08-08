@@ -63,10 +63,23 @@ def test_tools_and_tests_stay_out_of_the_production_scan():
 
 
 def _filesystem_enumerating_scanners() -> list[str]:
-    """Every `tools/` module that builds its own Python-file list from the filesystem."""
+    """Every TRACKED module under tools/ or tests/ that builds its own file list from disk.
+
+    RC-307 widened this. It read `(REPO / "tools").glob("*.py")` — the directory the RC-286
+    instance happened to live in — so the same shape inside `tests/` went uncounted, and
+    `tests/test_coh_sa2_et_authority.py` spent that time failing on 93 untracked scratch
+    scripts. A sweep that inherits its instance's neighbourhood cannot find the class, which
+    is the exact failure RC-286's docstring names. The scope is now the git index, which is
+    also the answer this whole file is about.
+    """
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "tools/*.py", "tests/*.py"],
+        cwd=REPO, capture_output=True, text=True, check=True).stdout
     found: list[str] = []
-    for path in sorted((REPO / "tools").glob("*.py")):
-        rel = path.relative_to(REPO).as_posix()
+    for rel in sorted(p for p in tracked.split("\0") if p):
+        path = REPO / rel
+        if not path.exists():
+            continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
         except SyntaxError:
@@ -108,10 +121,19 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     sight: the number is asserted, so the next person to add one has to come here.
     """
     found = _filesystem_enumerating_scanners()
-    assert len(found) == 21, (
-        f"the filesystem-enumerating scanner count moved from the 21 measured under RC-286 "
+    assert len(found) == 48, (
+        f"the filesystem-enumerating scanner count moved from the 48 measured under RC-307 "
         f"to {len(found)}. If you FIXED some, lower this number and say so in the row. If "
         f"you ADDED one, use `git ls-files` instead — this is the RC-274 -> RC-286 loop.\n"
         + "\n".join(found))
+    # RC-307: the number moved from 21 to 48 because the SCOPE moved, not because 27
+    # scanners appeared. RC-286 counted `(REPO / "tools").glob("*.py")` and the same shape
+    # lives 27 more times under tests/ — where it had already turned
+    # tests/test_coh_sa2_et_authority.py red on untracked scratch. Both directories are
+    # counted from the git index now, so neither can hide the other's drift.
+    by_dir = {rel.split("/")[0] for rel in found}
+    assert by_dir <= {"tools", "tests"}, f"the sweep reached outside its scope: {by_dir}"
+    assert "tests/test_coh_sa2_et_authority.py" not in {f.split(":")[0] for f in found}, (
+        "the ET-authority scanner is walking the filesystem again (RC-307)")
     assert "tools/anti_pattern_sweep.py" not in {f.split(':')[0] for f in found}, (
         "the gate RC-286 repaired is enumerating the filesystem again")

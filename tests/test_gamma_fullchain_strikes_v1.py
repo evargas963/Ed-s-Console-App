@@ -122,11 +122,20 @@ from calibration.option_chain_morning_full import (  # noqa: F811 — span const
 )
 from time_et import ET as _ET
 
+from tests.conftest import most_recent_trading_day_et
+
 
 def _ts_at_et_minutes(mins: int) -> float:
-    """A weekday timestamp at exactly `mins` past midnight ET (today's ET date)."""
-    now = _dt.now(_ET)
-    t = now.replace(hour=mins // 60, minute=mins % 60, second=0, microsecond=0)
+    """A TRADING-day timestamp at exactly `mins` past midnight ET.
+
+    RC-306: the docstring said "weekday" and the code said `_dt.now(_ET)`, which is a
+    weekday five days in seven. `maybe_persist_morning_full_chain` consults the market
+    calendar (RC-278), so on a Saturday both tests below received `reason: non_trading_day`
+    and asserted against it — reporting the day of the week rather than the span logic they
+    exist to pin. The date now comes from the same authority the writer validates against.
+    """
+    day = most_recent_trading_day_et()
+    t = _dt(day.year, day.month, day.day, mins // 60, mins % 60, tzinfo=_ET)
     return t.timestamp()
 
 

@@ -11,7 +11,7 @@ complete.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
 
@@ -22,21 +22,28 @@ from calibration.option_chain_morning_full import (  # noqa: E402
 )
 from time_et import ET  # noqa: E402
 
+from tests.conftest import most_recent_trading_day_et  # noqa: E402
+
 #: RC-160: a sentinel AND a non-sentinel enrolled ticker. One of each, never SPY alone.
 SENTINEL = "SPY"
 NON_SENTINEL = "MSFT"
 
 
 def _ts_at(h: int, m: int) -> float:
-    """A timestamp at h:m ET on TODAY's ET date.
+    """A timestamp at h:m ET on the most recent TRADING day.
 
-    Deliberately not a hard-coded calendar date: `latest_accrual_rows` defaults to today's ET
-    date, so a fixture pinned to a fixed day stops matching the moment the clock rolls over.
-    That happened twice — 2026-07-30 -> 07-31 — turning a correct date-scoping guarantee into a
-    red test. A test file that hard-codes a date goes stale by construction.
+    RC-306. This used TODAY's ET date, deliberately: `latest_accrual_rows` defaults to today,
+    so a fixture pinned to a literal stops matching the moment the clock rolls over, which
+    happened twice — 2026-07-30 -> 07-31. But the clock is not the calendar. RC-278 gave
+    `persist_chain_accrual` the market-calendar authority, so on a Saturday today's date is
+    one the writer is REQUIRED to refuse, and all three tests here failed two days in seven
+    with `reason: non_trading_day` — a true statement about the weekend, not about the code.
+
+    The fixture date now comes from the same authority the writer validates against. Nothing
+    to go stale, and nothing for the calendar to disagree with.
     """
-    today = datetime.now(ET).date()
-    return datetime(today.year, today.month, today.day, h, m, tzinfo=ET).timestamp()
+    day = most_recent_trading_day_et()
+    return datetime(day.year, day.month, day.day, h, m, tzinfo=ET).timestamp()
 
 
 def _bank(db, ticker: str, h: int, m: int, rows):
@@ -44,6 +51,29 @@ def _bank(db, ticker: str, h: int, m: int, rows):
                               ts_utc=_ts_at(h, m))
     assert r["status"] == "written", r
     return r
+
+
+def test_the_fixture_date_comes_from_the_calendar_the_writer_uses():
+    """RC-306, driven directly: the helper the fixtures above depend on.
+
+    Three tests in this file failed every Saturday because their date came from the clock
+    and the writer's admission rule comes from the market calendar. This asserts the two now
+    agree, and it is the case that would go red first if the helper ever drifted back.
+    """
+    from time_et import is_trading_day_et
+
+    day = most_recent_trading_day_et()
+    assert is_trading_day_et(day.isoformat()), (
+        f"{day} is not a trading day — the writers will refuse every fixture built on it")
+    assert day <= datetime.now(ET).date(), "a fixture date in the future is not a session"
+    assert (datetime.now(ET).date() - day).days <= 5, (
+        f"{day} is more than a business week back; the calendar authority is answering "
+        "False for dates that were sessions")
+
+    # Given a Saturday, it must walk BACK to Friday rather than accept it.
+    saturday = date(2026, 8, 8)
+    assert not is_trading_day_et(saturday.isoformat()), "2026-08-08 is not a Saturday"
+    assert most_recent_trading_day_et(on_or_before=saturday) == date(2026, 8, 7)
 
 
 def test_reader_returns_the_newest_row_for_each_ticker(tmp_path):
@@ -66,7 +96,9 @@ def test_reader_shape_is_what_the_chart_already_paints(tmp_path):
     session_volume] triples the Chart already reads as r[1] (blue/red) and r[2] (yellow)."""
     db = tmp_path / "t.db"
     _bank(db, NON_SENTINEL, 11, 0, [[420.0, -7.5e6, 3300.0]])
-    got = latest_accrual_rows(db, NON_SENTINEL)
+    # RC-306: read the session that was banked. The reader's today-default is a different
+    # guarantee and is covered below, where a bank from another day must NOT be served.
+    got = latest_accrual_rows(db, NON_SENTINEL, et_date_and_mins(_ts_at(11, 0))[0])
     row = got["rows"][0]
     assert len(row) == 3, f"row is not a [strike, gex, volume] triple: {row}"
     strike, gex, vol = row
@@ -80,7 +112,13 @@ def test_reader_fails_closed_and_never_serves_another_day(tmp_path):
     assert latest_accrual_rows(tmp_path / "missing.db", SENTINEL) is None
     assert latest_accrual_rows(db, SENTINEL) is None, "empty DB produced rows"
     _bank(db, SENTINEL, 10, 0, [[100.0, 1.0, 1.0]])
-    other_day = (datetime.now(ET).date() - timedelta(days=2)).isoformat()
+    # RC-306: a different SESSION, taken from the calendar rather than from arithmetic on
+    # the clock — two days back from a Monday is a Saturday, which was never a session and
+    # so proves nothing about date scoping.
+    banked_day = most_recent_trading_day_et()
+    other_day = most_recent_trading_day_et(
+        on_or_before=banked_day - timedelta(days=1)).isoformat()
+    assert other_day != banked_day.isoformat()
     assert latest_accrual_rows(db, SENTINEL, other_day) is None, (
         "the reader served a different et_date — that is the RC-68 failure class"
     )

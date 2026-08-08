@@ -23,7 +23,15 @@ REPO = Path(__file__).resolve().parents[1]
 PROMPT_PATH = REPO / "reports" / "monday_debt_wake_prompt.md"
 MARKER_DIR = REPO / "reports" / "_wake"
 CT = ZoneInfo("America/Chicago")
-ET = ZoneInfo("America/New_York")
+#: RC-307: ET comes from the COH-SA-2 authority, never from a second local literal. This file
+#: constructed its own eastern ZoneInfo, which is what that law forbids — two
+#: definitions of the same zone drift independently and the older one is invisible. The
+#: violation survived because the test enforcing it was walking the filesystem and drowning
+#: in untracked scratch, so its genuine finding never reached a reader. CT stays local: the
+#: operator's wall clock is Central and time_et is the MARKET calendar, which has no CT.
+if str(REPO) not in sys.path:            # this module runs standalone from tools/
+    sys.path.insert(0, str(REPO))
+from time_et import ET  # noqa: E402
 
 
 def _now_ct() -> datetime:
