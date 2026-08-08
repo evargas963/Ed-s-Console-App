@@ -61,6 +61,13 @@ def test_market_state_contract_context_does_not_derive_dte_when_schwab_field_mis
 
 
 def test_parity_filter_skips_missing_schwab_days_to_expiration():
+    """Both contracts are filtered out, so there is NO residual to report.
+
+    RC-301: this asserted `== 0.0`, which was asserting the fabricated value rather than
+    the intent. Zero is the specific market claim that the forward equals spot and there
+    is no basis; "every contract was filtered out" is absence. The filter behaviour under
+    test is unchanged — what changes is that the function now says which one it means.
+    """
     missing_dte_call = _contract(putCall="CALL", daysToExpiration=None)
     missing_dte_put = _contract(putCall="PUT", daysToExpiration=None)
 
@@ -68,7 +75,17 @@ def test_parity_filter_skips_missing_schwab_days_to_expiration():
         [missing_dte_call, missing_dte_put],
         spot=500.0,
         dte_max=0,
-    ) == 0.0
+    ) is None
+
+
+def test_parity_still_returns_a_number_when_the_chain_supports_one():
+    """Negative control: absence handling must not blank out real residuals."""
+    call = _contract(putCall="CALL", daysToExpiration=0, mark=12.0)
+    put = _contract(putCall="PUT", daysToExpiration=0, mark=10.0)
+
+    resid = parity_f_minus_spot_from_contracts([call, put], spot=500.0, dte_max=0)
+    assert resid is not None, "a priceable pair produced no residual"
+    assert isinstance(resid, float)
 
 
 def test_charm_filter_skips_missing_schwab_days_to_expiration_when_expiry_date_absent():

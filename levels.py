@@ -308,8 +308,11 @@ def key_levels_to_plot_rows(
         try:
             from math_exposure import parity_f_minus_spot_from_contracts
             parity_resid = parity_f_minus_spot_from_contracts(contracts, spot=float(spot))
-            synth_fwd = float(spot) + parity_resid
-            if abs(parity_resid) > 0.10:
+            # RC-301: None means the residual could not be computed. Previously this
+            # arrived as 0.0 and produced synth_fwd == spot, which then failed the 0.10
+            # test — a real answer reached by adding a number nobody measured.
+            synth_fwd = None if parity_resid is None else float(spot) + parity_resid
+            if parity_resid is not None and abs(parity_resid) > 0.10:
                 r = _row(
                     "Synthetic Fwd",
                     synth_fwd,

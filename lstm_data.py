@@ -652,7 +652,7 @@ def _safe_float(v) -> float:
     try:
         return float(v)
     except (ValueError, TypeError):
-        return 0.0
+        return 0.0  # absence-ok: RC-301 — this helper's contract is "non-nullable columns only", so 0.0 is meant to be unreachable rather than a substitute; that contract is ASSERTED by the docstring above and NOT verified by anything, and the sibling _raw_finite_float already returns Optional for the nullable case. Recorded as unverified rather than dressed as safe (RC-296).
 
 
 def _raw_finite_float(v) -> Optional[float]:

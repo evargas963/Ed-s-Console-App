@@ -8945,7 +8945,10 @@ def _fetch_state(
     try:
         from math_exposure import parity_f_minus_spot_from_contracts
         _parity_resid = parity_f_minus_spot_from_contracts(contracts_use, spot=spot_f)
-        if abs(_parity_resid) > PARITY_RESID_MIN:
+        # RC-301: None means the residual could not be computed from this chain, which is
+        # not the same as a residual of zero. It used to arrive as 0.0 and fall under the
+        # threshold, so the right thing happened for the wrong reason.
+        if _parity_resid is not None and abs(_parity_resid) > PARITY_RESID_MIN:
             ms_dict["kl_synth_fwd"]       = round(spot_f + _parity_resid, 2)
             ms_dict["kl_synth_fwd_resid"] = round(_parity_resid, 4)
             ms_dict["kl_synth_fwd_side"]  = "CALL" if _parity_resid > 0 else "PUT"

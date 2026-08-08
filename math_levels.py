@@ -604,11 +604,20 @@ def parity_f_minus_spot_from_contracts(
     *,
     spot: float,
     dte_max = None,
-) -> float:
+) -> float | None:
+    """Put-call parity residual (synthetic forward minus spot), or None when it cannot be
+    computed from this chain.
+
+    RC-301: every absence path here returned 0.0, and 0.0 is not "unknown" — it is the
+    specific market claim that the forward equals spot and there is NO basis. Both callers
+    happen to gate on `abs(resid) > threshold`, so the fabricated zero fell below the bar
+    and rendered nothing; the behaviour was right for the wrong reason and would invert the
+    moment a caller compared it any other way. None makes the intent explicit.
+    """
     try:
         spot_f = float(spot)
     except Exception:
-        return 0.0
+        return None
     from numeric_contract import float_finite_or_none as _fin
     use = []
     for c in contracts or []:
@@ -619,7 +628,7 @@ def parity_f_minus_spot_from_contracts(
             continue
         use.append(c)
     if not use:
-        return 0.0
+        return None                      # RC-301: no usable contracts is not a zero basis
     strikes = []
     for c in use:
         # single source: reject NaN/inf/junk strikes (raw float() silently admitted NaN)
@@ -628,7 +637,7 @@ def parity_f_minus_spot_from_contracts(
             continue
         strikes.append(sp)
     if not strikes:
-        return 0.0
+        return None                      # RC-301: no strikes is not a zero basis
     strikes = sorted(set(strikes))
     atm = min(strikes, key=lambda k: (abs(k - spot_f), k))
     idx = strikes.index(atm)
@@ -659,7 +668,7 @@ def parity_f_minus_spot_from_contracts(
         if call_mid is None or put_mid is None: continue
         resid = (call_mid - put_mid) - (spot_f - float(k))
         resids.append(float(resid))
-    if not resids: return 0.0
+    if not resids: return None           # RC-301: no priceable pair is not a zero basis
     resids = sorted(resids)
     if len(resids) >= 5: resids = resids[1:-1]
     return float(sum(resids) / len(resids))

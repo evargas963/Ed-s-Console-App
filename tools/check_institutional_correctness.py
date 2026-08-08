@@ -1489,6 +1489,40 @@ def check_ruff_quality() -> list[Violation]:
 _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\.5|100)\s*\)")
 
 
+def check_absence_has_a_type() -> list[Violation]:
+    """RC-301 — a function that can fail must be able to SAY so in its return type.
+
+    THE CLASS: `absence-coerced-to-a-value` has been found SEVEN times in three days
+    (RC-274, RC-277, RC-282, RC-284, RC-285, RC-289, RC-301). Each predecessor was found by
+    an auditor pointing at one line, and each repair fixed the value while leaving the SHAPE
+    producible — which is why the count kept climbing.
+
+    WHY THE EXISTING GATES CANNOT SEE IT: `no_fake_defaults` and the silent-zero family
+    match EXPRESSIONS (`x or 0.0`, `.get(k, 0)`). This defect lives in the RETURN TYPE. A
+    function annotated `-> float` has already declared absence inexpressible, so `return
+    0.0` in the except handler reads as the only way to satisfy the signature.
+
+    HOW THE RULE WAS VALIDATED: PROTOTYPED before enforcing. A first pass over all
+    non-Optional scalar returns found 78 and was almost entirely legitimate — `main() ->
+    int` returning exit code 2, and predicates like `is_canonical_bar_start_ts_utc() ->
+    bool` returning False, which is a real answer. Restricting to `-> float` MEASUREMENTS
+    left TWO, both real: `math_levels.parity_f_minus_spot_from_contracts` (repaired to
+    `float | None`; 0.0 there asserts the forward equals spot with no basis) and
+    `lstm_data._safe_float` (marked, with its unverified contract stated). Zero on merit.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_absence_has_a_type import violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / msg.split(":")[0], 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_absence_has_a_type.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
 def check_test_claims_are_executed() -> list[Violation]:
     """RC-298 — a test that string-matches prose cannot detect a false claim.
 
@@ -4472,6 +4506,12 @@ CHECKS = [
     # because it was driven to zero before wiring (one real offender repaired, zero
     # exemptions used), so it binds on merit rather than on a baseline.
     ("test_claims_are_executed", check_test_claims_are_executed, True),
+    # RC-301: the seventh occurrence of absence-coerced-to-a-value, attacked as a CLASS.
+    # The existing gates match expressions; this one matches the RETURN TYPE, which is
+    # where the honest option gets foreclosed before the literal is ever written.
+    # Prototyped 78 -> 2 (exit codes and predicates excluded), both repaired or marked, so
+    # it binds at zero on merit rather than on a baseline.
+    ("absence_has_a_type", check_absence_has_a_type, True),
     ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
 ]
 
