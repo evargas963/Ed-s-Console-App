@@ -468,17 +468,35 @@ def _pick_strike_max_metric(
 def pick_pin_and_strength(
     exposures: Dict[float, dict], strikes: List[float]
 ) -> tuple[float | None, float | None]:
-    """RC-124: THE standard gamma pin — max TOTAL gamma (|call GEX$| + |put GEX$|) — plus its
-    decisiveness.
+    """RC-124/RC-315/RC-320: max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its
+    decisiveness. NOT a demonstrated magnet.
 
-    This is SpotGamma's Absolute Gamma / "sticky pin" definition and the Avellaneda–Lipkin
-    mechanism: hedging MAGNITUDE pins price regardless of net sign, so calls-plus-puts is the
-    magnet measure. The previous pin used the NET book (calls minus puts), which can crown a
-    put-heavy strike while the true two-sided magnet sits elsewhere — that measure lives on,
-    honestly named, as net_gex_peak (pick_net_gex_peak_strike below).
+    WHAT IT MEASURES. The strike carrying the largest absolute call GEX dollars plus
+    absolute put GEX dollars — i.e. where the most dealer re-hedging activity sits. This is
+    the quantity SpotGamma publishes as Absolute Gamma.
+
+    WHAT IT DOES NOT ESTABLISH, and what this docstring wrongly claimed until RC-320. The
+    previous text read "hedging MAGNITUDE pins price regardless of net sign, so
+    calls-plus-puts is the magnet measure". That does not follow. Magnitude sets the SIZE of
+    the hedging flow at a strike; the SIGN of the dealer position sets whether that flow is
+    stabilising or destabilising — a dealer long gamma sells rallies and buys dips, a dealer
+    short gamma does the opposite — and this metric discards the sign. Two strikes with equal
+    absolute gamma can behave oppositely. The sign is also not observable: public open
+    interest does not reveal contract ownership
+    (https://spotgamma.com/what-is-gex-gamma-exposure/), so dealer direction is MODELLED.
+    Expiration-date clustering in the literature turns on NET positioning — Ni, Pearson and
+    Poteshman, Journal of Financial Economics, doi:10.1016/j.jfineco.2004.08.005.
+
+    Cursor's independent audit refuted the original sentence on 2026-08-09; RC-315 corrected
+    the derivation register and MISSED this docstring, which is where the register's wording
+    came from. Treat the result as a pin CANDIDATE.
+
+    The NET book (calls minus puts) is a different question — where the signed book leans —
+    and lives under its own name as net_gex_peak (pick_net_gex_peak_strike below).
 
     strength_pct = the leader's margin over the runner-up on the same metric. A 1% lead is a
-    coin flip and the label should say so; a 40% lead is a real magnet.
+    coin flip and the label should say so; a 40% lead is a decisive CONCENTRATION, which is
+    still not a claim about where price goes.
     Fail-closed: no dollarized GEX -> (None, None), never a raw-gamma fallback.
     """
     if not exposures_have_dollar_gex(exposures):

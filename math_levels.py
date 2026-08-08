@@ -1016,6 +1016,18 @@ def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | 
     This -- not the flip -- is what determines the regime: positive means dealers are net
     long gamma there and will dampen moves; negative means they amplify. The flip is
     simply where this value crosses zero, and a chain need not contain such a crossing.
+
+    RC-320: the claim above is SIGN-based, and that is why it is defensible — a dealer long
+    gamma sells rallies and buys dips, which dampens; short gamma does the opposite. Source:
+    Ni, Pearson and Poteshman, Journal of Financial Economics,
+    doi:10.1016/j.jfineco.2004.08.005, where expiration-date clustering turns on NET
+    positioning; and https://spotgamma.com/what-is-gex-gamma-exposure/ on the sign
+    convention and on dealer ownership being modelled rather than observed.
+
+    Worth recording because of how it was found: this correct statement was already in the
+    repository, uncited, while I wrote the CONTRADICTING claim -- that magnitude pins
+    regardless of sign -- into pick_pin_and_strength one file away. The refutation was
+    already here. Nothing compared the two, because neither carried a source.
     """
     if not profile or price is None:
         return None

@@ -1523,6 +1523,47 @@ def check_absence_has_a_type() -> list[Violation]:
     return out
 
 
+def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
+    """RC-319 — a claim about how the MARKET behaves must be checkable by a reader.
+
+    WHAT WAS OBSERVED (2026-08-09). "Hedging MAGNITUDE pins price regardless of net sign"
+    went into governance/mega2_traceable_inventory.py and a decision was built on it. It is
+    false — magnitude sets the SIZE of the re-hedging flow, the SIGN of the dealer position
+    sets whether it stabilises or repels — and an independent Cursor audit overturned it the
+    next day. The claim was not unknowable. It was UNCITED, so the only way to catch it was
+    to already know the mechanism.
+
+    WHY THE EXISTING LOCKS DID NOT FIRE. `rc_numeric_claims_cite_a_command` demands
+    provenance for NUMBERS and this claim has none. `five_why_recursive_lock` enforces a
+    chain's SHAPE, and RC-315's chain was five deep with a clean terminal root while resting
+    on a false premise. Depth was enforced; checkability was not — which is the gap the
+    operator named: "if we are not enforcing correctness then what the hell are we doing?"
+
+    THE RULE. Not "is the claim true" — no static check can know that, and asserting
+    otherwise would repeat the overreach. A row or a derivation justification that asserts a
+    market mechanism in the VERB sense must carry a DOI, a URL, a named paper, or a
+    backticked reproducible command. It makes the claim refutable in place.
+
+    VALIDATED BEFORE WIRING: 288 rows scanned, 36 mechanism mentions, one uncited; narrowed
+    to the verb sense because the noun "pin" is how the field is NAMED and matching it would
+    teach rewording instead of citing. Zero on merit in both scopes after the one real hit —
+    the corrected RC-315 line — was repaired by adding its sources, not exempted. The
+    negative control recovers the REAL false sentence with `git show 6f95a237:...` rather
+    than reconstructing it, which is the failure RC-317 records.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_rc_mechanism_claims_cite_a_source import violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / msg.split(":")[0], 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_rc_mechanism_claims_cite_a_source.py",
+                             0, f"checker unavailable ({type(exc).__name__}: {exc}) — a "
+                                f"gate that cannot run is not a gate"))
+    return out
+
+
 def check_test_claims_are_executed() -> list[Violation]:
     """RC-298 — a test that string-matches prose cannot detect a false claim.
 
@@ -4464,6 +4505,8 @@ CHECKS = [
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
     ("rc_numeric_claims_cite_a_command", check_rc_numeric_claims_cite_a_command, True),
+    # RC-319: numbers had to cite a command; a MECHANISM claim could say anything.
+    ("rc_mechanism_claims_cite_a_source", check_rc_mechanism_claims_cite_a_source, True),
     # RC-137: a CLOSED row must ship the code it names (the ledger cannot outrun HEAD).
     ("closed_rows_ship_their_code", check_closed_rows_ship_their_code, True),
     ("verdicts_declare_their_power", check_verdicts_declare_their_power, True),  # provenance, not the word "MEASURED" (RC-6)

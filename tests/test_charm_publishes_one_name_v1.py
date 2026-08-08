@@ -89,11 +89,17 @@ def test_the_two_pin_metrics_are_different_quantities():
     """
     from math_exposure_core import pick_net_gex_peak_strike, pick_pin_and_strength
 
+    # RC-320: the PRODUCTION sign convention, verified against the real captured SPY chain
+    # rather than assumed — `compute_exposures_by_strike` stores put_gex_1pct NONNEGATIVE
+    # (14 positive buckets, 0 negative on that chain) and net = call - put. A first version
+    # of this fixture used negative put values, which no producer emits, so it exercised the
+    # pickers on data the repo cannot generate.
+    #
     # 800: enormous and nearly BALANCED — the biggest gross concentration, tiny net.
     # 810: smaller book, entirely one-sided — the biggest signed-net peak.
     exposures = {
-        800.0: {"call_gex_1pct": 9.0e9, "put_gex_1pct": -8.6e9, "net_gex_1pct": 0.4e9},
-        810.0: {"call_gex_1pct": 4.0e9, "put_gex_1pct": -0.1e9, "net_gex_1pct": 3.9e9},
+        800.0: {"call_gex_1pct": 9.0e9, "put_gex_1pct": 8.6e9, "net_gex_1pct": 0.4e9},
+        810.0: {"call_gex_1pct": 4.0e9, "put_gex_1pct": 0.1e9, "net_gex_1pct": 3.9e9},
     }
     strikes = [800.0, 810.0]
 
