@@ -1446,6 +1446,50 @@ def check_ruff_quality() -> list[Violation]:
 _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\.5|100)\s*\)")
 
 
+def check_test_claims_are_executed() -> list[Violation]:
+    """RC-298 — a test that string-matches prose cannot detect a false claim.
+
+    WHAT WAS MEASURED (2026-08-07). tests/test_charm_docstring_states_the_physics_v1.py, as
+    shipped under RC-294, contained EIGHT assertions and every one read
+    `assert "<a sentence I wrote>" in DOC`. It confirmed only that I had written what I had
+    written. The claim it locked — "calls sell, puts buy" — was false, and the suite was
+    green, because a string match cannot disagree with the string. One line of execution
+    refuted the file: `math_levels.bs_charm` takes no call/put argument, and its sign tracks
+    moneyness (+0.7654 at K=90 versus −1.5684 at K=105 for spot 100).
+
+    RC-281 (three `# silent-zero-ok:` reasons) and RC-290 (both `# caps-ok:` reasons) are
+    the same shape. In each case the verification method for a CLAIM was reading, and
+    reading is what produced the claim.
+
+    WHAT THIS DOES NOT DO. It cannot judge whether a claim is true. It refuses a file that
+    could never find out — prose assertions with no call to the subject anywhere. Text
+    assertions stay legal and this repo needs them (a marker carries a reason, a retired
+    pattern has not returned, a gate is wired into a live path); what is refused is a file
+    made entirely of them while standing in as a behavioural lock under RC-49.
+
+    HOW THE RULE WAS VALIDATED: PROTOTYPED against this repository before enforcing, twice.
+    The first shape counted a subject call only INSIDE the assert expression and produced
+    six hits, five of them FALSE POSITIVES — tests/test_pred_1c_horizon_persistence_v1.py
+    calls `_build_snapshot_dict(...)` and then asserts on the returned dict, the ordinary
+    shape of a good test. Recounting calls at MODULE scope left ONE real offender,
+    tests/test_stack_wire_5_v1.py (13 prose assertions, 0 calls), which was REPAIRED by
+    adding an executed boundary check on `is_rth_open` rather than exempted. The rule
+    therefore binds at zero on merit with no exemption used, which is why it is ENFORCED
+    from the start rather than ratcheted.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_test_claims_are_executed import violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / msg.split(":")[0], 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_test_claims_are_executed.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
 def check_no_fake_defaults() -> list[Violation]:
     """Silent neutral/magic fallbacks (a 0.5/100 default or a two-arg .get) can hide absence
     as a fabricated value. Review each — absence should read as absence. Annotate a
@@ -4377,6 +4421,14 @@ CHECKS = [
     # bar the operator set. Driven to 0 by RC-47, so it binds cleanly and judges the CODE, not a
     # counter. Legitimate config parameters declare `# fake-default-ok: <reason>`.
     ("no_fake_defaults", check_no_fake_defaults, True),
+    # RC-298: a test that only string-matches prose cannot detect a false claim. Measured:
+    # tests/test_charm_docstring_states_the_physics_v1.py shipped eight assertions, all of
+    # the form `assert "<sentence>" in DOC`, locking "calls sell, puts buy" — which one call
+    # to bs_charm refutes. Same shape produced RC-281 and RC-290. This does NOT judge whether
+    # a claim is true; it refuses a file that could never find out. ENFORCED from the start
+    # because it was driven to zero before wiring (one real offender repaired, zero
+    # exemptions used), so it binds on merit rather than on a baseline.
+    ("test_claims_are_executed", check_test_claims_are_executed, True),
     ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
 ]
 
