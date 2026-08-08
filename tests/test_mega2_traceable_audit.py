@@ -53,7 +53,14 @@ CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 #   206 — +1 big-audit inventory sync: _weighted_mean_present (order_flow_engine.py)
 #   208 — +2 streaming disconnect/cache gate: streaming_l1_cache_usable, _is_stream_disconnect_error
 #   211 — +1 classify_direction_pts (math_probabilities.py)
-MEGA2_ROW_COUNT = 229  # +4 -1 (added pick_key_delta_strike + nested _total_dex + pick_volatility_point_strikes + _dealer_sign; removed compute_net_charm._resolve_T which was deleted by the intraday-T single-source RC-42) 2026-07-26  # +2 strike-width derivation (infer_strike_increment, required_strike_count) 2026-07-20  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
+#   241 — RC-297 inventory drift repair 2026-08-09: +13 (nine terrain_engine functions the
+#         inventory never gained — _per_strike_rows, _dte_of, compute_wall_value_area,
+#         compute_implied_one_day_move, _per_strike_scopes, _per_strike_map,
+#         strongest_strike_storm1 and its nested _inv_ranks, wall_geometry_state — plus
+#         math_levels.bs_vanna, math_exposure_core.compute_net_charm._tte_memo, and RC-124's
+#         two successors pick_pin_and_strength / pick_net_gex_peak_strike), −1 (the retired
+#         pick_gamma_pin_strike, whose single name carried both of those metrics).
+MEGA2_ROW_COUNT = 241  # +4 -1 (added pick_key_delta_strike + nested _total_dex + pick_volatility_point_strikes + _dealer_sign; removed compute_net_charm._resolve_T which was deleted by the intraday-T single-source RC-42) 2026-07-26  # +2 strike-width derivation (infer_strike_increment, required_strike_count) 2026-07-20  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
 #         _contract_inputs, compute_gamma_profile, gamma_flip_from_profile; compute_gamma_flip
 #         removed and its row reused by compute_gamma_flip_v2)
 #         +1 gamma_is_plausible (math_exposure_core.py) — pre-existing inventory gap from the
