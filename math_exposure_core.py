@@ -845,10 +845,14 @@ def compute_net_charm(
         `pick_pin_and_strength`, which is terrain's max-TOTAL-gamma strike over the wide
         multi-expiry book. This docstring named the wrong function until RC-294 and the
         two differ whenever magnitude and signed-net peak separate (RC-292).
-        Charm performs NO computation with this value: it is republished unchanged as
-        both `drift_toward` and `gamma_pin`. Charm measures directional hedge DECAY; it
-        does not compute a price attractor, so treat this as a caller's label travelling
-        through, never as charm's own target.
+        Charm performs NO computation with this value: it is republished unchanged, under
+        the single name `drift_toward` (RC-302 deleted the `gamma_pin` duplicate; this
+        paragraph still claimed both names until RC-315, contradicting the Returns section
+        four lines below it). Charm measures directional hedge DECAY; it does not compute a
+        price attractor, so treat this as a caller's label travelling through, never as
+        charm's own target. RC-315: charm should publish NO "toward" strike at all without
+        an independently validated directional mechanism — neither the net-GEX peak nor the
+        absolute-gamma strike is a demonstrated magnet.
 
     Returns:
         net_charm_daily  : net delta-equivalents unwound per day (negative = selling)
