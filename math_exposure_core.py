@@ -815,24 +815,30 @@ def compute_net_charm(
 
     Dealer position: market makers are typically SHORT options (sold to retail).
 
-    RC-294 — BOTH LEGS BELOW WERE INVERTED until 2026-08-07, and the inversion was
-    self-consistent ("short stock, then buy back"), which is why it read plausibly and
-    survived. Derive it rather than trusting the sentence:
+    RC-296 — READ THIS BEFORE WRITING A PER-SIDE HEDGING STORY HERE. Two previous
+    revisions of this paragraph were wrong in opposite ways: the original inverted both
+    hedge legs, and RC-294's correction replaced that with "calls sell, puts buy", which
+    is also false. Both mistakes came from reasoning about the option SIDE instead of
+    reading the function that computes the number.
 
-      SHORT call → the dealer holds delta −Δ, so they BUY stock to reach neutral
-                   → hedge is LONG stock. As that delta decays toward zero they need
-                   less of it and SELL stock.
-      SHORT put  → the dealer holds delta +Δ, so they SELL stock to reach neutral
-                   → hedge is SHORT stock. As that delta decays they BUY stock back.
+    PER-CONTRACT CHARM IS SIDE-INDEPENDENT. `math_levels.bs_charm(spot, strike, t_years,
+    sigma, rate)` takes NO call/put argument — one strike yields one charm value — and at
+    q=0 charm_put equals charm_call, which the DEALER SIGN CONVENTION comment further down
+    has always said. There is no "call behaviour" and "put behaviour" to describe.
+
+    ITS SIGN IS A FUNCTION OF MONEYNESS, not of side. MEASURED at spot 100, T=0.08,
+    sigma=0.20: K=90 → +0.7654, K=100 → −0.0705, K=105 → −1.5684. Positive below spot,
+    negative above.
+
+    DEALER DIRECTION ENTERS ONLY THROUGH THE BOOK. Because the per-contract value is equal
+    on both sides, the direction in `net = call_charm - put_charm` comes from the OI
+    IMBALANCE between the call and put books at each strike — not from a story about how
+    one side hedges. That convention (+call/−put, shared with net GEX) is RC-179-locked and
+    measured; see the parity figures above and tests/test_charm_sign_finite_difference.py.
+    Correcting this prose does not and must not move the arithmetic.
 
     Net charm > 0 → net dealer delta buying  → Bullish flow
     Net charm < 0 → net dealer delta selling → Bearish flow
-
-    The SIGN CONVENTION below (`net = call_charm - put_charm`, +call/−put, shared with
-    net GEX) is NOT derived from this paragraph. It is convention-locked by RC-179 and
-    measured against the real book — see the parity figures above and
-    tests/test_charm_sign_finite_difference.py. Correcting this prose does not and must
-    not move the arithmetic.
 
     drift_toward_strike: caller-supplied, and the caller (server.py `_institutional_pin`)
         passes `pick_net_gex_peak_strike` over the SELECTED EXPIRY — NOT

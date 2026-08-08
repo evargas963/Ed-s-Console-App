@@ -46,31 +46,60 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s)
 
 
-def test_the_short_call_hedge_is_long_stock():
-    """Dealer short a call holds delta −Δ, buys stock to neutralise → LONG."""
+def test_per_contract_charm_takes_no_side_argument():
+    """The structural proof. RC-296: `bs_charm` cannot distinguish call from put.
+
+    Two revisions of this docstring described per-side behaviour. The function that
+    computes the number has no parameter for the side, so any sentence contrasting "call
+    behaviour" with "put behaviour" is describing something that does not exist.
+    """
+    from math_levels import bs_charm
+
+    params = set(inspect.signature(bs_charm).parameters)
+    for banned in ("right", "put_call", "putCall", "side", "option_type"):
+        assert banned not in params, (
+            f"bs_charm now takes {banned!r} — the side-independence premise changed and "
+            f"the docstring must be re-derived")
+    assert {"spot", "strike"} <= params
+
+
+def test_the_sign_flips_with_moneyness_not_with_side():
+    """The numeric proof, run rather than asserted from memory."""
+    from math_levels import bs_charm
+
+    below = bs_charm(100.0, 90.0, 0.08, 0.20, 0.0)
+    above = bs_charm(100.0, 105.0, 0.08, 0.20, 0.0)
+    assert below is not None and above is not None
+    assert below > 0 > above, (
+        f"charm no longer changes sign across spot (K=90 -> {below}, K=105 -> {above}); "
+        f"the docstring's moneyness claim must be re-derived")
+
+
+def test_the_docstring_makes_no_per_side_decay_claim():
+    """RC-296: the enforced falsehood must not return in either direction.
+
+    The original said calls buy / puts sell; RC-294 said calls sell / puts buy. Both are
+    claims about a distinction the code cannot make, so BOTH are refused here.
+    """
     d = _norm(DOC)
-    assert "SHORT call → the dealer holds delta −Δ" in d
-    assert "hedge is LONG stock" in d
-    assert "SHORT call → delta hedge = SHORT stock" not in d, (
-        "the inverted short-call hedge is back in the docstring")
+    for lie in (
+        "SHORT call → delta hedge = SHORT stock",
+        "SHORT put → delta hedge = LONG stock",
+        "less of it and SELL stock",
+        "decays they BUY stock back",
+        "As charm decays, they BUY back stock",
+        "As charm decays, they SELL stock",
+    ):
+        assert lie not in d, f"a per-side charm decay claim is back in the docstring: {lie!r}"
 
 
-def test_the_short_put_hedge_is_short_stock():
-    """Dealer short a put holds delta +Δ, sells stock to neutralise → SHORT."""
+def test_the_docstring_states_side_independence_and_moneyness():
     d = _norm(DOC)
-    assert "SHORT put → the dealer holds delta +Δ" in d
-    assert "hedge is SHORT stock" in d
-    assert "SHORT put → delta hedge = LONG stock" not in d, (
-        "the inverted short-put hedge is back in the docstring")
-
-
-def test_the_decay_directions_follow_the_corrected_hedges():
-    """The old prose was self-consistent while wrong; the new one must be consistent AND right."""
-    d = _norm(DOC)
-    assert "less of it and SELL stock" in d, "call decay must SELL, not buy back"
-    assert "decays they BUY stock back" in d, "put decay must BUY, not sell"
-    assert "As charm decays, they BUY back stock" not in d
-    assert "As charm decays, they SELL stock" not in d
+    assert "PER-CONTRACT CHARM IS SIDE-INDEPENDENT" in d
+    assert "takes NO call/put argument" in d
+    assert "SIGN IS A FUNCTION OF MONEYNESS" in d
+    assert "OI IMBALANCE" in d, (
+        "the docstring no longer says where dealer direction actually comes from")
 
 
 def test_the_pin_source_names_the_function_the_caller_actually_passes():
