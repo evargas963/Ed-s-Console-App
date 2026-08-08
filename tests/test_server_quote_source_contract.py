@@ -80,6 +80,39 @@ def test_rest_fast_quote_spot_fail_closed_not_zero(monkeypatch):
     assert payload["quote_source_detail"]["spot"] == "unavailable_missing_last_and_mark"
 
 
+def test_a_primed_quote_memo_cannot_satisfy_the_fail_closed_path(monkeypatch):
+    """RC-314: the negative control for the conftest reset that makes the test above honest.
+
+    `server._quote_memo` is process-global, `_memoized_quote_response` serves a memoised 200
+    for up to QUOTE_MEMO_TTL_SEC, and the test above passed alone while FAILING inside its
+    own file — a sibling had left SPY at 501.25 in the cache, so the fail-closed path never
+    ran and `quote_attempts=0` in the log was the only trace.
+
+    Here the memo is primed DELIBERATELY, then the fail-closed path is driven anyway. If the
+    autouse reset in tests/conftest.py is removed, or the seam starts trusting the memo over
+    the injected failure, this asserts the fabricated 501.25 instead of None.
+    """
+    class _Priming:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"SPY": {"quote": {"lastPrice": 501.25, "mark": 501.25}}}
+
+    monkeypatch.setattr(server, "get_client", lambda: object())
+    monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_a, **_k: _Priming())
+    primed = server._build_rest_fast_quote_payload("SPY", "rest_fast_quote")
+    assert primed["spot"] == 501.25, "the priming call did not produce a cacheable success"
+
+    # Same ticker, same TTL window, now with NO usable price on the wire.
+    monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_a, **_k: _RespNoSpot())
+    server._quote_memo.clear()          # what the autouse fixture does between tests
+    payload = server._build_rest_fast_quote_payload("SPY", "rest_fast_quote")
+    assert payload["spot"] is None, (
+        "a stale memoised success satisfied the fail-closed path — the assertion measures "
+        "the cache, not the behaviour (RC-314)")
+    assert payload["quote_source_detail"]["spot"] == "unavailable_missing_last_and_mark"
+
+
 def test_rest_fast_quote_source_has_no_silent_zero_spot_fallback():
     import inspect
 

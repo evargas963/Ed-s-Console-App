@@ -9,6 +9,8 @@ from movement_target_threshold import (
 )
 from timeframe_config import CANONICAL_TIMEFRAME as CF
 
+from tests.conftest import in_window_ts
+
 
 def test_threshold_and_labels():
     thr = movement_threshold_pts_v1(100.0, 1.0, {"atr_multiplier": 0.5, "min_fraction_of_anchor": 0.001})
@@ -20,7 +22,11 @@ def test_threshold_and_labels():
 
 def test_fill_outcomes_writes_movement_columns(tmp_path):
     db = EdDB(tmp_path / "mt.db")
-    t0 = 3_020_000.0
+    # RC-306: t0 was 3_020_000.0 — epoch 1970-02-04. RC-214's collect-window law refuses
+    # bars outside RTH on a trading day, so `upsert_1m_bars` wrote nothing and every
+    # outcome_* column came back None: a true statement about the calendar, not about
+    # fill_outcomes. 120 one-minute bars from 09:20 ET land inside the window.
+    t0 = in_window_ts(9, 20, span_minutes=120)
     t_snap = t0 + 90.0
     with db._connect() as conn:
         conn.execute(

@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from db import EdDB, get_snapshot_sql
+
+from tests.conftest import in_window_ts
 from horizon_outcomes import HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1
 from timeframe_config import CANONICAL_TIMEFRAME as CF
 
@@ -66,7 +68,10 @@ def test_after_fill_outcomes_ensure_refreshes_normalized_and_skips_second(tmp_db
     from normalized_training_sync import ensure_normalized_training_table
     from snapshot_normalizer import materialize_normalized_table
 
-    t0 = 1_020_000.0
+    # RC-306: t0 was 1_020_000.0 — epoch 1970-01-12, refused by RC-214's collect-window law,
+    # so the 100 bars below never reached price_bars_1m and fill_outcomes had nothing to
+    # label. The fixture now starts inside the window on a real trading day.
+    t0 = in_window_ts(9, 20, span_minutes=100)
     t_snap = t0 + 90.0
     with tmp_db._connect() as conn:
         conn.execute(

@@ -13,6 +13,7 @@ not set outside pytest. Fail-closed without secrets is locked by
 from __future__ import annotations
 
 import os
+import sys
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -140,6 +141,54 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
         f"no trading day found in the 14 ET days before {on_or_before or 'today'} — "
         "the market calendar authority (time_et.is_trading_day_et) is answering False "
         "for every date, which is a calendar defect, not a fixture one")
+
+
+@pytest.fixture(autouse=True)
+def _clear_quote_memo_between_tests():
+    """RC-314: `server._quote_memo` is process-global and outlives every pytest boundary.
+
+    `test_rest_fast_quote_spot_fail_closed_not_zero` passed as a single node and FAILED as
+    part of its own file, with `quote_attempts=0` in the log: a sibling had left SPY at
+    501.25 in the memo, `_memoized_quote_response` served it, and the fail-closed path under
+    test never ran. tmp_path, fresh DBs and monkeypatch all isolate what the TEST owns; a
+    cache owned by the import is invisible to them.
+
+    Guarded on `server` already being imported, so the tests that never touch it pay nothing
+    and none of them triggers a server import it did not ask for.
+    """
+    srv = sys.modules.get("server")
+    memo = getattr(srv, "_quote_memo", None) if srv is not None else None
+    if isinstance(memo, dict):
+        memo.clear()
+    yield
+
+
+def in_window_ts(hour: int = 10, minute: int = 0, *, span_minutes: int = 0) -> float:
+    """A bar timestamp the COLLECT-WINDOW LAW admits: RTH, on a real trading day.
+
+    RC-306, shared. Fixtures reached the write seam three different wrong ways — a wall
+    clock (fails on weekends), a literal epoch from a year the calendar does not cover, and
+    a synthetic small integer like 1_020_000.0, which is 1970-01-12. RC-214's collect-window
+    law narrowed `upsert_1m_bars` to (555, min(975, close+15)] on trading days, so all three
+    are refused, no bars are written, and the outcome columns the test asserts on come back
+    None — a true statement about the calendar, not about the code.
+
+    `span_minutes` is the length of the bar series that will start here: it is checked
+    against the window's end so a fixture cannot half-fit and fail on its tail alone.
+    """
+    from time_et import COLLECT_WINDOW_END_MINS, COLLECT_WINDOW_START_MINS, ET
+
+    start = hour * 60 + minute
+    if start <= COLLECT_WINDOW_START_MINS:
+        raise AssertionError(
+            f"{hour:02d}:{minute:02d} ET is at or before the collect window's open "
+            f"({COLLECT_WINDOW_START_MINS} minutes); the seam would refuse these bars")
+    if start + span_minutes > COLLECT_WINDOW_END_MINS:
+        raise AssertionError(
+            f"a {span_minutes}-minute series from {hour:02d}:{minute:02d} ET runs past the "
+            f"window's close ({COLLECT_WINDOW_END_MINS} minutes); start it earlier")
+    day = most_recent_trading_day_et()
+    return datetime(day.year, day.month, day.day, hour, minute, tzinfo=ET).timestamp()
 
 
 @pytest.fixture

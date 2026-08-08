@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from db import EdDB, get_snapshot_sql
+
+from tests.conftest import in_window_ts
 from horizon_outcomes import HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, forward_bar_start_utc
 from snapshot_normalizer import materialize_normalized_table
 from timeframe_config import CANONICAL_TIMEFRAME as CF
@@ -26,7 +28,10 @@ def test_normalized_table_has_horizon_schema_column(tmp_db: EdDB):
 
 def test_materialize_copies_outcome_15c_60c_from_snapshots(tmp_db: EdDB):
     """Same bar contract as test_horizon_bar_outcomes: fill snapshots then materialize; normalized matches."""
-    t0 = 1_020_000.0
+    # RC-306: t0 was 1_020_000.0 — epoch 1970-01-12. RC-214's collect-window law refuses
+    # bars outside RTH on a trading day, so upsert_1m_bars wrote none of the 100 below and
+    # every outcome_* column came back None. The fixture now starts inside the window.
+    t0 = in_window_ts(9, 20, span_minutes=100)
     t_snap = t0 + 90.0
     with tmp_db._connect() as conn:
         conn.execute(
@@ -379,7 +384,8 @@ def test_backfill_price_action_columns_fills_both_tables(tmp_path):
 
     dbp = tmp_path / "pa.db"
     db = EdDB(dbp)
-    t0 = 1_020_000.0
+    # RC-306: same synthetic 1970 epoch as above — the 80 bars were refused at the seam.
+    t0 = in_window_ts(9, 20, span_minutes=80)
     n_bars = 80
     bars = [
         {"datetime": t0 + i * 60.0, "open": 100.0 + 0.05 * i, "high": 100.2 + 0.05 * i,
