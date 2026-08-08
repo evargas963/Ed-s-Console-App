@@ -126,6 +126,42 @@ def test_every_allowlist_entry_states_a_reason():
             f"{path} is exempt without a real reason — RC-281 is what unverified reasons do")
 
 
+def test_the_module_scope_blind_spot_is_measured_not_silent():
+    """RC-311: the gate judges FILES; the defect lives in FUNCTIONS. Count what it misses.
+
+    This gate landed ENFORCED and green, and the next day RC-308 found six tests asserting a
+    spelling, a count, a byte offset and the absence of a name — every one of them in a file
+    this gate passes, because each sits beside a healthy test and the scope is module-wide.
+    The widening to module scope was deliberate (the per-function form produced five false
+    positives), and this is what it gave up.
+
+    The number is asserted, not enforced at zero: most of the 261 are the inventory, register
+    and wiring audits the checker's own docstring defends, and exempting them one by one
+    would be the allowlist habit RC-276 removed. Asserting it means the next person who
+    widens this gate's scope moves a visible figure instead of extending a silence.
+    """
+    fns = C.source_text_only_functions()
+    assert len(fns) == 261, (
+        f"the per-function source-text-only count moved from the 261 measured under RC-311 "
+        f"to {len(fns)}. If you REPAIRED some, lower this number and say so in the row. If "
+        f"you ADDED one, assert the property instead of a rendering of it — that is RC-308.\n"
+        + "\n".join(fns[:20]))
+    # The two RC-308 repairs that became executable in PYTHON are out of the list and must
+    # stay out. The other four kept a source-text half on purpose — a correct function nobody
+    # calls paints nothing, so the WIRING stays a source check — and moved their behavioural
+    # half into node harnesses, which this Python-AST scan cannot see. Naming them here is
+    # the honest form: two left the list, four did not, and the four are accounted for.
+    names = {f.rsplit(" ", 1)[-1] for f in fns}
+    for gone in ("test_accumulator_rejects_a_nonpositive_price_at_the_service_boundary",
+                 "test_terrain_level_set_includes_new_levels_each_with_tooltip"):
+        assert gone not in names, f"{gone} went back to asserting only source text (RC-308)"
+    for harness in ("tests/index_html_contracts_node.mjs",
+                    "tests/forces_provenance_node.mjs"):
+        assert (REPO / harness).exists(), (
+            f"{harness} is gone, so the behavioural half of the RC-308 repairs it holds is "
+            "gone with it and the surviving source checks stand alone")
+
+
 def test_the_gate_is_registered_as_enforced():
     """A rule nobody calls is a comment."""
     src = (REPO / "tools" / "check_institutional_correctness.py").read_text(

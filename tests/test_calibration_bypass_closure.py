@@ -8,11 +8,28 @@ signals.py may only reference the table name in log strings (no SQL).
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 
 _NEEDLE = "calibration_decision_log"
 _ROOT = Path(__file__).resolve().parents[1]
+
+
+def _tracked_py_files() -> list[Path]:
+    """Repo-wide is the GIT INDEX (RC-274, RC-286, RC-307).
+
+    All three scanners below walked the disk behind a hand-written skip list of
+    `__pycache__`, `.venv`, `node_modules`, `.claude` — and not `scratchpad/`, which holds 93
+    untracked throwaway scripts. `scratchpad/_server_RELANDED_20260802.py` is a saved copy of
+    an old server, so it mentions `calibration_decision_log` and has been failing this gate as
+    an unauthorized production reference to code the repository does not contain. Every
+    hand-maintained skip list is correct on the day it is written; the index is the definition.
+    """
+    out = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
+                         cwd=_ROOT, capture_output=True, text=True, check=True).stdout
+    return [_ROOT / rel for rel in sorted(p for p in out.split("\0") if p)
+            if (_ROOT / rel).exists()]
 
 
 def _allowed_path(rel: Path) -> bool:
@@ -121,7 +138,7 @@ def _allowed_path(rel: Path) -> bool:
 
 def test_no_unauthorized_python_references_to_calibration_decision_log() -> None:
     offenders: list[str] = []
-    for p in _ROOT.rglob("*.py"):
+    for p in _tracked_py_files():
         parts = set(p.parts)
         if "__pycache__" in parts or ".venv" in parts or "node_modules" in parts or ".claude" in parts:
             continue
@@ -143,7 +160,7 @@ def test_no_unauthorized_python_references_to_calibration_decision_log() -> None
 def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
     """INSERT must not appear outside writer (production) and calibration tests."""
     bad: list[str] = []
-    for p in _ROOT.rglob("*.py"):
+    for p in _tracked_py_files():
         if "__pycache__" in p.parts or ".claude" in p.parts:
             continue
         try:
@@ -179,7 +196,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
 
 def test_update_calibration_decision_log_only_backfill_and_tests() -> None:
     bad: list[str] = []
-    for p in _ROOT.rglob("*.py"):
+    for p in _tracked_py_files():
         if "__pycache__" in p.parts or ".claude" in p.parts:
             continue
         try:

@@ -32,6 +32,8 @@ from time_et import (  # noqa: E402
     is_collect_window_bar_end_ts_utc,
 )
 
+from tests.conftest import most_recent_trading_day_et  # noqa: E402
+
 
 def _bar(ts_end: float, px: float = 100.0, vol: float = 10.0) -> dict:
     return {"datetime": (ts_end - 60.0) * 1000.0, "open": px, "high": px, "low": px,
@@ -92,16 +94,62 @@ def test_completeness_grid_is_the_law_grid(tmp_path):
     con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, "
                 "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
                 "volume REAL, source TEXT)")
-    ts = datetime(2026, 8, 3, 9, 20, tzinfo=ET).timestamp()
+    # RC-306/RC-309: a literal session date ages out of the enrolment fallback's lookback and
+    # the ticker silently vanishes from the report — the KeyError this line used to raise said
+    # nothing about the grid it exists to check. The session comes from the calendar authority.
+    day = most_recent_trading_day_et()
+    ts = datetime(day.year, day.month, day.day, 9, 20, tzinfo=ET).timestamp()
     con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
                 ("ZZZ", ts - 60, ts, 1, 1, 1, 100.0, 10.0, "unit"))
     con.commit()
     con.close()
-    rep = session_completeness(str(db), "2026-08-03")
+    rep = session_completeness(str(db), day.isoformat())
     assert rep["expected_per_ticker"] == 975 - 555 == 420, (
         f"grid expects {rep['expected_per_ticker']} minutes — not the law's 420"
     )
     assert rep["tickers"]["ZZZ"]["present"] == 1
+
+
+def test_the_enrolment_fallback_counts_sessions_not_days():
+    """RC-309: the fallback universe's lookback is the market calendar, driven directly.
+
+    `WHERE bar_end_ts_utc >= strftime('%s','now') - 5*86400` reached back five 86400-second
+    steps from the current instant. That is not five sessions and not a session boundary:
+    from a Saturday it clipped the earliest session's first hours, so which tickers qualified
+    depended on the hour the checker ran, and from a Monday morning it reached four sessions
+    at all. A ticker outside the universe is not reported as a hole — it is simply an absent
+    key, which reads as nothing to report.
+    """
+    from datetime import timedelta
+
+    from time_et import is_trading_day_et
+    from tools.rth_completeness_check_v1 import (
+        ENROLLMENT_FALLBACK_SESSIONS,
+        session_lookback_bound_ts_utc,
+    )
+
+    bound = datetime.fromtimestamp(session_lookback_bound_ts_utc(
+        ENROLLMENT_FALLBACK_SESSIONS), tz=ET)
+    assert (bound.hour, bound.minute, bound.second) == (0, 0, 0), (
+        f"the bound is {bound:%H:%M:%S} ET — a session starts at midnight ET, so a "
+        "mid-session bound admits part of a day and excludes the rest of it")
+    assert is_trading_day_et(bound.date().isoformat()), (
+        f"{bound.date()} is not a trading day, so the lookback does not end on a session")
+
+    # Exactly N sessions inclusive, counting back from today.
+    seen, day = 0, datetime.now(ET).date()
+    while day >= bound.date():
+        if is_trading_day_et(day.isoformat()):
+            seen += 1
+        day -= timedelta(days=1)
+    assert seen == ENROLLMENT_FALLBACK_SESSIONS, (
+        f"the lookback spans {seen} sessions, not {ENROLLMENT_FALLBACK_SESSIONS}")
+
+    # And it is strictly wider than the arithmetic it replaced, which is the whole point.
+    old = datetime.now(ET).timestamp() - ENROLLMENT_FALLBACK_SESSIONS * 86400
+    assert session_lookback_bound_ts_utc(ENROLLMENT_FALLBACK_SESSIONS) <= old, (
+        "the calendar bound is later than the seconds bound — it lost coverage instead of "
+        "gaining it")
 
 
 def test_institutional_check_fires_when_the_law_is_unplugged(tmp_path, monkeypatch):

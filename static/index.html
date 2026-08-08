@@ -13032,6 +13032,17 @@ function edCheckRadarAlerts(rows) {
     return null;
   }
   function n2(v) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(2) : null; }
+  /* # ui-mockup-ok: RC-310 correctness fix, no redesign — risk units as TEXT for the Call
+     card's size slot, which previously handed a raw NUMBER to fstr() above and could never
+     render it, because fstr returns the first non-empty STRING. ZERO IS A REAL SIZE and
+     prints as "0.00 R"; only a missing or non-finite value is withheld, and withheld returns
+     null so the slot keeps its em-dash. Exported so the contract can be executed rather than
+     string-matched (RC-298/RC-308). */
+  function rUnitsText(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return null;
+    return v.toFixed(2) + ' R';
+  }
+  try { window.rUnitsText = rUnitsText; } catch (e) {}
   function money(v) {
     if (typeof v !== 'number' || !isFinite(v)) return null;
     var a = Math.abs(v), s = v < 0 ? '−' : '';
@@ -13267,7 +13278,12 @@ function edCheckRadarAlerts(rows) {
     T('cv2-c-stop', fstr(s.stop_disp) || n2(fnum(s.stop)));
     T('cv2-c-tgt', fstr(s.target_disp) || n2(fnum(s.target)));
     T('cv2-c-rr', fstr(s.rr_disp) || n2(fnum(s.reward_risk)));
-    T('cv2-c-size', fstr(s.size_cue, s.sizing_summary, s.r_units));
+    /* # ui-mockup-ok: RC-310 correctness fix, no redesign — same slot, same card. The third
+       argument was DEAD: fstr() returns the first non-empty STRING, so a numeric r_units
+       could never render through it and this sizing fallback silently never fired. It now
+       renders risk units when the producer has a finite number and stays withheld when it
+       does not: 0 R is a real size, absence is not 0. */
+    T('cv2-c-size', fstr(s.size_cue, s.sizing_summary) || rUnitsText(s.r_units));
     T('cv2-c-inval', fstr(s.invalidation, s.wait_reason));
     var card = el('cv2-call-card');
     if (card) {

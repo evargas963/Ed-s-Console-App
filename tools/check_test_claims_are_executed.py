@@ -114,6 +114,79 @@ def analyse(tree: ast.AST) -> tuple[int, int]:
     return prose_asserts, subject_calls
 
 
+#: Calls whose RESULT is file text, for the per-function taint below.
+_TEXT_READERS = frozenset({"read_text", "getsource", "getdoc", "getcomments", "readlines"})
+
+
+def source_text_only_functions() -> list[str]:
+    """Every test FUNCTION whose every assertion is about file text. The gate's blind spot.
+
+    RC-311. `violations()` above judges at MODULE scope, so one executing test anywhere in a
+    file satisfies the rule for every sibling. That was a deliberate widening — the
+    per-function form produced five false positives on ordinary tests — and it is why the
+    gate reported PASS on all six shadow-assertion tests RC-308 found the next day, each of
+    them sitting beside a healthy test in the same file.
+
+    This function measures what the widening gave up. It is NOT enforced: the count was 264
+    when RC-308 opened and is 261 with its six repairs landed, and most of those functions are the inventory, register and wiring audits RC-298's own
+    docstring defends, which have no value to compute. Enforcing at 264 exemptions would be
+    the allowlist habit RC-276 removed. What the number does is make a future widening of
+    this gate's scope visible as a moved figure rather than as continued silence — the same
+    device RC-286 used for its filesystem-scanner sweep.
+    """
+    out: list[str] = []
+    for path in _tracked_test_files():
+        rel = path.relative_to(REPO).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not fn.name.startswith("test_"):
+                continue
+            tainted = _names_holding_file_text(fn)
+            asserts = [a for a in ast.walk(fn) if isinstance(a, ast.Assert)]
+            if len(asserts) < 2:
+                continue
+            if all(_asserts_on_text(a, tainted) for a in asserts):
+                out.append(f"{rel}:{fn.lineno} {fn.name}")
+    return out
+
+
+def _names_holding_file_text(fn: ast.AST) -> set[str]:
+    """Local names bound, transitively, from a file-text read inside this function."""
+    tainted: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Assign) or not isinstance(node.targets[0], ast.Name):
+                continue
+            name = node.targets[0].id
+            if name in tainted:
+                continue
+            hit = any(isinstance(s, ast.Attribute) and s.attr in _TEXT_READERS
+                      for s in ast.walk(node.value))
+            if not hit:
+                hit = any(isinstance(s, ast.Name) and s.id in tainted
+                          for s in ast.walk(node.value))
+            if hit:
+                tainted.add(name)
+                changed = True
+    return tainted
+
+
+def _asserts_on_text(node: ast.Assert, tainted: set[str]) -> bool:
+    for sub in ast.walk(node.test):
+        if isinstance(sub, ast.Name) and sub.id in tainted:
+            return True
+        if isinstance(sub, ast.Attribute) and sub.attr in _TEXT_READERS:
+            return True
+    return False
+
+
 def violations() -> list[str]:
     out: list[str] = []
     for path in _tracked_test_files():
@@ -142,7 +215,15 @@ def violations() -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--measure", action="store_true",
+                    help="RC-311: also report the per-FUNCTION count this module-scope "
+                         "gate does not see, so PASS cannot read as 'none in the repo'")
     args = ap.parse_args(argv)
+    if args.measure:
+        fns = source_text_only_functions()
+        print(f"per-function source-text-only tests (MEASURED, not enforced): {len(fns)}")
+        for f in fns:
+            print("  " + f)
     v = violations()
     if v:
         print("check_test_claims_are_executed: FAIL — prose-only test files:")

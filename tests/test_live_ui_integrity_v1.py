@@ -1154,7 +1154,17 @@ def test_terrain_level_set_includes_new_levels_each_with_tooltip():
                   "'KEY DELTA'", "'HVP'", "'LVP'"):
         assert token in body, token + " missing from edLevelSet"
     # Every level entry carries a tip — the single source both surfaces render.
-    assert body.count("tip:") >= 11, "every edLevelSet entry needs a tip"
+    #
+    # RC-308: this read `body.count("tip:") >= 11`, a COUNT standing in for the property the
+    # test is named after. RC-132 (A3) then deleted the HVL row on purpose — it was the same
+    # metric as GAMMA PIN under a second name — leaving 10 entries, each with a tip, and a
+    # test called "each with tooltip" failing while every entry had one. A hard-coded count
+    # cannot tell a removed row from a missing tooltip. Count the entries instead.
+    entries = body.count("{ t: '")
+    assert entries >= 10, f"the level set collapsed to {entries} entries"
+    assert body.count("tip:") == entries, (
+        f"{entries} level entries but {body.count('tip:')} tips — every edLevelSet entry "
+        "needs exactly one tip, and the two surfaces render it from this single source")
 
 
 def test_terrain_tooltips_reach_both_surfaces_and_periphery():

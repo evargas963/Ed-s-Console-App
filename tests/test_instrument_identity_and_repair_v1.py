@@ -2,13 +2,35 @@
 from __future__ import annotations
 
 import inspect
-import time
 
 from adaptive_shadow_v2_calibration import load_survivorship_anchors_v1
 from db import EdDB, CANONICAL_TIMEFRAME, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, get_snapshot_sql
 from timeframe_config import DERIVED_TIMEFRAME
 from instrument_identity import ticker_storage_key
 from market_data_adapter import schwab_candles_to_bars
+
+from tests.conftest import most_recent_trading_day_et
+
+
+def _in_window_ts(hour: int = 10, minute: int = 0) -> float:
+    """A bar timestamp the COLLECT-WINDOW LAW admits: RTH, on a real trading day.
+
+    RC-306, third file. These fixtures used literal epochs — 1_700_000_040 (2023-11-14
+    17:14 ET, after the close, in a year the calendar authority does not even cover) and
+    1_771_848_000_000 ms (2026-02-23 07:00 ET, before the open). Both were admissible when
+    written. RC-183/RC-214 then narrowed the writer's domain to the collect window, so
+    `upsert_1m_bars` began refusing them and three tests measured the law instead of the
+    identity behaviour they exist to pin. The timestamp now comes from the same calendar the
+    seam validates against, at an ET minute inside the window.
+    """
+    from datetime import datetime
+
+    from time_et import COLLECT_WINDOW_START_MINS, ET
+
+    day = most_recent_trading_day_et()
+    mins = hour * 60 + minute
+    assert mins > COLLECT_WINDOW_START_MINS, "fixture minute is outside the law's window"
+    return datetime(day.year, day.month, day.day, hour, minute, tzinfo=ET).timestamp()
 
 
 def test_get_similar_setups_issue19_uses_zone_not_regime_primary():
@@ -28,7 +50,7 @@ def test_upsert_1m_bars_uses_ticker_storage_key_for_spx_family(tmp_path):
     dbp = tmp_path / "bars_id.db"
     db = EdDB(dbp)
     # Canonical 60s UTC grid (BAR_ANCHOR_V1); upsert snaps near-grid floats to the minute open.
-    ts = 1_700_000_040.0
+    ts = _in_window_ts()
     bars = [
         {
             "datetime": ts * 1000.0,
@@ -53,7 +75,7 @@ def test_schwab_candles_to_bars_round_trips_through_upsert_1m(tmp_path):
     """Adapter must emit fields upsert_1m_bars reads (regression: missing datetime skipped all rows)."""
     dbp = tmp_path / "schwab_bars.db"
     db = EdDB(dbp)
-    ms = 1_771_848_000_000.0
+    ms = _in_window_ts(11, 0) * 1000.0
     candles = [{"datetime": int(ms), "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 100.0}]
     bars = schwab_candles_to_bars(candles)
     n = db.upsert_1m_bars("COP", bars)
@@ -146,7 +168,12 @@ def test_get_similar_setups_normalizes_spx_alias(tmp_path):
 def test_pin_neutral_backfill_writes_when_bars_exist(tmp_path):
     dbp = tmp_path / "t2.db"
     db = EdDB(dbp)
-    t_snap = float((int(time.time()) // 60) * 60) - 120 * 60.0
+    # RC-306: the snapshot row below declares et_hour=10, et_minute=30, and the bars run from
+    # t_snap-30min to t_snap+200min. Off the wall clock that span leaves the collect window
+    # whenever the suite runs outside a narrow slice of the day — and leaves the market
+    # calendar entirely on a weekend — so `upsert_1m_bars` wrote nothing and the outcome came
+    # back None. Anchored to the same calendar the write seam validates against.
+    t_snap = _in_window_ts(10, 30)
 
     with db._connect() as conn:
         cur = conn.execute(
@@ -186,7 +213,11 @@ def test_pin_neutral_backfill_excludes_legacy_5m_timeframe(tmp_path):
     """Canonical repair is 1m-only; legacy 5m rows are counted as excluded, not updated."""
     dbp = tmp_path / "t5m.db"
     db = EdDB(dbp)
-    t_snap = float((int(time.time()) // 60) * 60) - 120 * 60.0
+    # RC-306: same clock-derived span as the test above. This one stayed green because it
+    # asserts EXCLUSION, which holds whether or not the bars were written — a latent version
+    # of the same defect, and fixing only the red one would be the fix-the-instance failure
+    # this row exists to stop.
+    t_snap = _in_window_ts(10, 30)
 
     with db._connect() as conn:
         cur = conn.execute(

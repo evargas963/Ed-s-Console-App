@@ -50,11 +50,49 @@ from time_et import (  # noqa: E402
 RTH_START_MINS = COLLECT_WINDOW_START_MINS  # 555 = 09:15 ET = 08:15 CT
 
 
+#: How many SESSIONS back the fallback universe reaches when the authoritative helper is
+#: unavailable. RC-309: this was five days of seconds arithmetic and is now five sessions.
+ENROLLMENT_FALLBACK_SESSIONS = 5
+
+
+def session_lookback_bound_ts_utc(sessions: int, *, now: float | None = None) -> float:
+    """Epoch seconds at ET midnight of the Nth most recent trading day (today counted first).
+
+    RC-309. The market calendar, not seconds arithmetic: five 86400-second steps back from a
+    Saturday reaches four sessions, and after a holiday Monday it reaches three, so a bound
+    described as "5 sessions" silently narrowed the universe it was defining.
+    """
+    from datetime import datetime, timedelta
+
+    from time_et import ET
+
+    day = (datetime.fromtimestamp(now, tz=ET) if now is not None else now_et()).date()
+    found = 0
+    for _ in range(40):          # far beyond the longest market closure
+        if is_trading_day_et(day.isoformat()):
+            found += 1
+            if found >= sessions:
+                break
+        day -= timedelta(days=1)
+    else:
+        raise RuntimeError(
+            f"could not find {sessions} trading days in the 40 ET days before "
+            f"{day.isoformat()} — the calendar authority is answering False for every date")
+    return datetime(day.year, day.month, day.day, tzinfo=ET).timestamp()
+
+
 def enrolled_tickers(db_path: str) -> list[str]:
     """The enrolled universe — RC-160: never a sentinel subset framed as complete.
 
     Falls back to every ticker that logged bars in the last 5 sessions when the authoritative
     universe helper is unavailable, and SAYS SO in the payload rather than silently narrowing.
+
+    RC-309: "5 sessions" used to be `strftime('%s','now') - 5*86400`, which is five CALENDAR
+    days. Measured 2026-08-08: that window spans 08-04 to 08-08 and contains FOUR trading
+    days, and after a holiday Monday it contains three. A ticker whose newest bars are five
+    sessions old fell out of the universe, and `session_completeness` then said nothing about
+    it at all — an absent key reads as "nothing to report", not as "not examined". The bound
+    now comes from the market calendar, so the docstring's claim and the query agree.
     """
     try:
         from db import EdDB  # heavy import kept local
@@ -68,8 +106,8 @@ def enrolled_tickers(db_path: str) -> list[str]:
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=15.0)
     try:
         rows = con.execute(
-            "SELECT DISTINCT ticker FROM price_bars_1m "
-            "WHERE bar_end_ts_utc >= strftime('%s','now') - 5*86400").fetchall()
+            "SELECT DISTINCT ticker FROM price_bars_1m WHERE bar_end_ts_utc >= ?",
+            (session_lookback_bound_ts_utc(ENROLLMENT_FALLBACK_SESSIONS),)).fetchall()
     finally:
         con.close()
     return sorted({str(r[0]) for r in rows if r and r[0]})
