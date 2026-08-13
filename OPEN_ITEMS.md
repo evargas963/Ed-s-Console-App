@@ -1,12 +1,12 @@
 # Open items
 
-Open-work ledger for the charter phases (Collect / Find & Prove / Decide). Rows close only with a
-commit SHA (and test cite where code changed). History lives in git — closed and superseded rows
-are removed, not accumulated; the pre-slimming ledger is preserved at tag-time in history
-(`git log --follow OPEN_ITEMS.md`).
+**Closure rule (binding):** a checkbox may be `[x]` ONLY with an exact commit SHA (and test cite where code changed); absent that SHA it is `[ ]` with status text. No closure is inferred from prose, CLOSED_WITH_EVIDENCE labels, CI, neighbouring rows, parent status, another ticker/horizon, or memory.
 
-**Last rewritten:** 2026-07-16 — post-slimming reconciliation (PR #44 merged @ `8f4c922`).
-**Operator NOW (2026-07-27):** **LP-01** is the top open item — see `ACTIVE_PROGRAM.md` Operator NOW table. Work this before residual GEX/F2 queue rows.
+**Board scope:** the canonical Project A denominator is the `# PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD` section below. Nothing is considered closed merely because it is absent from an older list. The single current execution queue is **PA-46** (a pointer view, not an independent closable copy).
+
+**Last rewritten:** 2026-08-12 — Project A atomic master board + freeze-audit defect repair (audit branch `cursor/project-a-board-audit`).
+
+The rows in the "## LEGACY LEDGER (historical)" region below preserve pre-Project-A work as history only; they are NOT part of the closable Project A denominator.
 
 ---
 
@@ -30,7 +30,10 @@ This is the single ruling standard. Everything specific is a CHECK under it, nev
 2. **ONE computation.** Every job (research/backtest/training/scoreboard) IMPORTS and CALLS the live functions (`compute_exposures_by_strike` → `aggregate_net_gex` / `math_levels.*`); it must NEVER reimplement them. "Validated in research" = "runs live" by construction. First unification DONE 2026-07-17: `research/gex_r1_screen_v1/signal.py::gex_0dte_from_chain` now delegates to the live `compute_exposures_by_strike`→`aggregate_net_gex` (numerically identical, ratio 1.0000, tests green, screen unchanged at 204 signals). Sweep the rest of research/training for the same pattern next.
 3. **ONE lock = the Institutional Correctness gate — BUILT 2026-07-17: `tools/check_institutional_correctness.py`.** Institutional = logic + math + fidelity + single-source, repo-wide. New correctness requirements are REGISTERED AS CHECKS inside this one gate — never a new lock. Check 1 live: `no_synthetic_domain_fixtures_in_tests` (AST — inline option-chain contracts in tests must load REAL data from `tests/fixtures/`, or declare `# institutional-synthetic-ok: <reason>` for genuine fail-closed/edge cases; `tests/archive/` out of scope). **DONE 2026-07-17: found systemic (44 violations across 20 files) and driven to ZERO — gate PASSES, 213 touched tests green, correctness tests moved to a real captured chain (`tests/fixtures/real_spy_0dte_chain_with_poison.json`), fail-closed tests justified in-line, nothing weakened to pass. WIRED as blocking pre-commit (`.pre-commit-config.yaml` id: institutional-correctness).** Each check is ENFORCED (must be zero, blocks pre-commit) or ADVISORY (visible debt → drive to zero → flip to enforced; the ratchet). Whole-codebase baseline: `python tools/check_institutional_correctness.py`. Registered 2026-07-17 (9 checks; inventory `reports/institutional_debt_inventory.md`): **ENFORCED (block commits, all 0)** = no_synthetic_domain_fixtures, no_silent_swallow (3 sites justified), no_todo_without_tracking_id. **ADVISORY debt to drive down** = function_complexity 455, function_length 393, file_length 38, ruff_quality 1147, no_fake_defaults 10, mypy_types (DORMANT until mypy installed). single-source stays review-enforced (a general auto-detector cries wolf; the GEX reimplementation was fixed manually). Worst file by far: `server.py` (81 items). Fix plan = batches, worst-file-first, WITH operator review + tests — NOT autonomous. NOTE: Layer 1 mechanical is ~complete; Layer 2 (design) partly mechanical + partly review; Layer 3 (real-fix-vs-workaround / elegance) is human by definition — not mechanizable, never claim otherwise.
 
-## Now — post-slimming sequence
+## LEGACY LEDGER (historical — NOT part of the Project A closable denominator)
+> The rows below predate the Project A master board. They are retained as history/pointers only and are deliberately rendered as plain bullets (no `[ ]`/`[x]` state) so they are never counted in the Project A closable denominator. Material work they name is represented in the PA/F/RC sections below (e.g. LP-01 → F15 POC/VAH/VAL + F31 price-level snapshot + PA-27; UI rows → PA-36; ECON-01 → PA-21). Full original text with checkbox state is preserved in git history at `8e594900:OPEN_ITEMS.md`.
+
+### Now — post-slimming sequence (historical)
 
 - [ ] **LP-01 Institutional session liquidity / value levels** — **TOP OF QUEUE (operator 2026-07-27).** Not SMC “liquidity pools.” Fix VP (volume across bar range, not typical-price dump); overnight = prior trading close→open; demote sell/buy-side liquidity labels until stop-cluster levels are proven; surface POC/VAH/VAL + PDH/PDL + ORB + VWAP on Chart and/or Console v2 (Liquidity Map is in hidden `#main`); touch→forward-return proof vs TOD base rate before any Decide influence. Code: `liquidity_value_engine.py`, `liquidity_models.py`, `/api/liquidity-snapshot`. Program row: `ACTIVE_PROGRAM.md` LP-01. Related residual: UI-04 P1D (PDH walk-back — prior trading day already fixed; overnight still calendar-blind).
 - [x] **RECON-01 Operator-doc reconciliation** — `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closed @ `5c5f239` (PR #45).
@@ -48,7 +51,7 @@ This is the single ruling standard. Everything specific is a CHECK under it, nev
 - [ ] **FIND-LIVE-FLIP-WIDE-CHAIN-V1** (the UI flip is still wrong even after Fix 3) — verified 2026-07-17: `option_chain_morning_full` (wide capture) is **write-only research** — nothing reads it — and the LIVE level compute (`compute_exposures_by_strike`) still runs on the per-cycle 20-strike chain. So the Gamma Flip (and walls/pin) shown ON THE UI stay narrow-limited even after the wide morning capture works. To make the DISPLAYED flip correct, a wide chain must feed the live level compute (periodic wide fetch → live exposures), overlapping GAMMA-INTRADAY-CADENCE-V1. Until then: research/backtest flip can be correct (from the wide table) while the UI flip is not. **ALSO IN SCOPE (2026-07-26, RC-43 reopened): WING-IV TREATMENT.** MEASURED (`python tools/flip_iv_sensitivity_v1.py`, 173 wide chains): the flip's IV sensitivity is almost entirely in the wings — flattening only |moneyness|>3% moves the flip a median **0.3627% of spot** (max 3.80) vs **0.0144%** for near-ATM-only (93.6% within 0.1%). Raw vendor IV is least reliable exactly there, so a wide-chain flip inherits wing-IV noise. Sequenced, NOT a now-task: first validate against an EXTERNAL flip (operator has Barchart access) on a date with a morning wide capture; if a smoothed-wing flip lands closer to Barchart than raw per-strike, wing smoothing is a proven accuracy fix and ships with the wide-chain live compute. Bounding caveat: the measured figures come from aggressive FLATTENINGS, which over-state a real smoothed-surface difference.
 - [ ] **CHECK: levels self-declare trust** (a check registered under the ONE Institutional Correctness gate — NOT its own lock). The finite correctness contract every level must meet: (1) sanitized greeks [DONE], (2) single source of truth = one `compute_exposures_by_strike` [TRUE, verified server.py:6083 — all of flip/pin/walls/HVL/max_pain/net_gex/voids derive from it; EM is a separate IV band by design], (3) canonical methods [flip cumulative DONE], (4) full strike coverage to negligible OI/gamma [research Fix 3; live pending FIND-LIVE-FLIP-WIDE-CHAIN], (5) near-term expiries [≤37d], (6) chain fresh. Mechanical lock: each level self-declares `TRUSTED` only if 1–6 hold, else `LOW_CONFIDENCE_NARROW_CHAIN` / `STALE` / `UNSANITIZED`, surfaced in the Key Levels UI (dim/badge) and gated by ONE test asserting the flag derives from input quality. Flip self-declares LOW_CONFIDENCE until FIND-LIVE-FLIP-WIDE-CHAIN lands. This benchmark IS the anti-churn: a bounded checklist, not open-ended.
 - [ ] **FIND-GAMMA-FULLCHAIN-STRIKES-V1** (makes the flip actually trustworthy) — audit 2026-07-17: `option_chain_morning_full` capture (server.py:7684) reuses the live UI chain, which is hardwired to `CHAIN_STRIKE_COUNT=20` (server.py:3062) ≈ ±10 strikes (~±1.3% for SPY). It captures multi-expiry (≤37d ✓) but strike-narrow, so the gamma flip still can't see far-OTM put walls and will hug spot regardless of method. Fix: `maybe_persist_morning_full_chain` does its OWN once-daily `safe_get_chain(client, ticker, strike_count=BIG)` (≈100–200 or full range), independent of the 20-strike live fetch (keep UI at 20 for latency). Cursor implements, Claude verifies. Unblocks trustworthy FIND-GAMMA-FLIP-METHOD-V1 output.
-- [~] **FIND-GREEK-SANITIZATION-V1** — LANDED 2026-07-17, **Claude-verified on real data** (`gamma_is_plausible` wired at 6 sites; test green; the −91965 SPY-748P day recomputes from net_gamma +1.99e9 → −10,779, sign-flip neutralized). Close on commit SHA. — audit 2026-07-17 (`reports/gex_gamma_flip_audit.md` Finding 0): raw Schwab per-contract gamma is occasionally poisoned on **0DTE deep-ITM** contracts (|delta|≈1, true gamma≈0) where Schwab's near-expiry engine returns garbage (e.g. SPY 748P gamma **−91965**, OI 21605). Rare (SPY 0.11%, QQQ/IWM ~0.02%) but OI-weighted it obliterates net_gamma/GEX/flip for the whole snapshot. Aggregation pipeline itself is faithful (pin/walls reconstructed 25/25). Fix: sanitize greeks before aggregation — hard-reject `gamma<0`, cap/drop `gamma>~0.5–1.0`, optionally `|delta|≥0.98 ⇒ gamma≈0`; apply in live level compute AND research GEX build; unit test with the −91965 fixture. Cursor implements, Claude verifies. Do FIRST (blocks trustworthy FIND-GAMMA-FLIP-METHOD-V1 and FP-64).
+- [ ] **FIND-GREEK-SANITIZATION-V1** — STATUS: NOT_PROVEN (no commit SHA per closure rule). LANDED 2026-07-17, **Claude-verified on real data** (`gamma_is_plausible` wired at 6 sites; test green; the −91965 SPY-748P day recomputes from net_gamma +1.99e9 → −10,779, sign-flip neutralized). Close on commit SHA. — audit 2026-07-17 (`reports/gex_gamma_flip_audit.md` Finding 0): raw Schwab per-contract gamma is occasionally poisoned on **0DTE deep-ITM** contracts (|delta|≈1, true gamma≈0) where Schwab's near-expiry engine returns garbage (e.g. SPY 748P gamma **−91965**, OI 21605). Rare (SPY 0.11%, QQQ/IWM ~0.02%) but OI-weighted it obliterates net_gamma/GEX/flip for the whole snapshot. Aggregation pipeline itself is faithful (pin/walls reconstructed 25/25). Fix: sanitize greeks before aggregation — hard-reject `gamma<0`, cap/drop `gamma>~0.5–1.0`, optionally `|delta|≥0.98 ⇒ gamma≈0`; apply in live level compute AND research GEX build; unit test with the −91965 fixture. Cursor implements, Claude verifies. Do FIRST (blocks trustworthy FIND-GAMMA-FLIP-METHOD-V1 and FP-64).
 - [x] **FIND-GAMMA-FLIP-METHOD-V1** — CLOSED 2026-07-19. The audited method was not just mis-ordered, it was wrong: cumulative-sum of net GEX does not reproduce the gamma profile (measured on a real SPY reference chain: corr 0.086, cumsum never crosses zero, divergence 2.19e9). Replaced by the canonical construction — total dealer gamma **recomputed at every hypothetical spot** (`math_levels.py::compute_gamma_profile`), zero-crossing interpolated (`gamma_flip_from_profile`), served through `compute_gamma_flip_v2` which returns a **confidence flag** so a narrow chain can never be displayed as trustworthy. Live path rewired (`server.py`); old `compute_gamma_flip` and `tests/test_gamma_flip_method_v1.py` deleted (zero production callers). Wide-chain agreement with Barchart remains UNPROVEN — tracked in `governance/unproven_register.md`, due 2026-07-21.
 - [ ] **FIND-SNAPSHOT-BAR-STAMP-V1** (durable fix for the timestamp-jitter class) — forensic 2026-07-17 (read-only): host clock, timezone, and `ts_et` are all CORRECT, and `price_bars_1m` is 100% minute-aligned (60s bars). The dislocation is that **snapshot/decision write-timestamps are stamped at arbitrary poll-seconds**, not on the bar edge (second-of-minute is uniform, not clustered at :00). This is the root of the 29s join tolerance (`daily_scoreboard.BACKFILL_JOIN_TOL_SEC=29`), the ±29–30s residual (FP-18), and the FP-24/32 colocation work — those refuse *new* mis-aligned live writes but don't retire the class. Bites hardest on the 1-candle (60s) outcome join; minor at 5c+. **Fix direction:** stamp each snapshot/decision with the `bar_start_ts_utc` of the minute it was computed in (floor the poll instant to its 1m bar), so snapshot↔`price_bars_1m`↔outcome joins are **exact by construction** instead of tolerance-based; then the join tol can drop to 0 and the residual class retires at the source. Separate Collect-hardening track — do NOT fold into the GEX-R1 bet (which sidesteps it by running on `price_bars_1m` and joining by ET day). Connects to **FIND-LABEL-INTEGRITY-FORENSICS** (`TIMESTAMP_IDENTITY_NOT_PROVEN`).
 
@@ -234,10 +237,7 @@ open; the charm VOTE stays UNAPPROVED until it closes.
 
 ---
 
-*Everything not listed here was either closed with evidence (see git history), superseded by the
-2026-07 slimming (retired programs: Schwab V4 register, ablation grid law, governance stage plans,
-mega walks), or is intentionally not tracked. If a removed concern turns out to be live, it comes
-back as a new row with fresh evidence.*
+*(Historical note only: the 2026-07 slimming retired the Schwab V4 register, ablation grid law, governance stage plans, and mega walks. This note does NOT narrow the Project A denominator below — nothing is closed merely by being absent from an older list.)*
 
 ---
 
@@ -1259,23 +1259,24 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] Board updated immediately after material proof
 - [ ] **BOARD_INTEGRITY_STATUS = PASS**
 
-## PA-46 — CURRENT TOP ACTIVE EXECUTION QUEUE (priority items, not the whole board)
-- [ ] F10 — candle-direction host retrain
-- [ ] F15 — POC/VAH/VAL
-- [ ] F25 — ticker/artifact identity
-- [ ] F31 — price-level snapshot
-- [ ] F32 — cf_* conflict (RC-328)
-- [ ] F39 — missingness zero-collapse
-- [ ] RC-292 — gamma-pin semantics
-- [ ] RC-282
-- [ ] RC-285
-- [ ] RC-297
-- [ ] RC-301
-- [ ] RC-329
-- [ ] F35 broader DB identity parent
-- [ ] Historical/disputed F04/F16/F19/F28/F30/F37
-- [ ] Discovery denominator
-- [ ] Universal runtime proof
+## PA-46 — CURRENT TOP ACTIVE EXECUTION QUEUE (POINTER VIEW — not independently closable)
+> Pointers to canonical rows; status derives from those rows. No independent `[ ]`/`[x]` state — never counted as engineering completion.
+- F10 → canonical F10 row (OPEN / host retrain)
+- F15 → canonical F15 row (OPEN)
+- F25 → canonical F25 row (OPEN)
+- F31 → canonical F31 row (OPEN)
+- F32 → canonical F32 row (NOT_PROVEN; RC-328)
+- F39 → canonical F39 row (OPEN)
+- RC-292 → canonical RC-292 row (OPEN)
+- RC-282 → canonical RC-282 row
+- RC-285 → canonical RC-285 row
+- RC-297 → canonical RC-297 row
+- RC-301 → canonical RC-301 row
+- RC-329 → canonical RC-329 row
+- F35 broader DB-identity parent → PA-3 F35 row
+- Historical/disputed F04/F16/F19/F28/F30/F37 → PA-3 gap rows
+- Discovery denominator → PA-41
+- Universal runtime proof → PA-43
 
 ## PA-47 — PROJECT A FINAL CLOSURE (all must be satisfied)
 - [ ] All canonical F rows closed
