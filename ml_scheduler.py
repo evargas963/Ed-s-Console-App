@@ -1437,16 +1437,17 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
         TARGET_CLASSES,
         _safe_float,
         canonical_reference_spot_from_sequence_window_first_bar,
-        compute_confluence_features,
         encode_snapshot_1m,
         encode_snapshot_5m,
         extract_rth_snapshots,
     )
+    from ml_data_common import confluence_features_for_bar
     from ml_train import engineer_single_snapshot
     from features.training_canonical_input import training_snapshot_for_sequence_encode
     from transformer_train import SEQUENCE_LENGTH
     from timeframe_config import CANONICAL_TIMEFRAME
 
+    _conf_cache: dict = {}          # one canonical-history pool per (ticker, UTC day)
     hz = normalize_ml_horizon_slug(hz)
     label_col = outcome_column(hz)
     t = ticker.upper()
@@ -1534,19 +1535,13 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
                 encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
                 for s in micro
             ]
-            snapshots_flat = [s for _, snaps in sorted(days_lstm.items()) for s in snaps]
-            day_idx = min(
-                next(
-                    (
-                        i
-                        for i, s in enumerate(snapshots_flat)
-                        if s.get("ts_et") == current_lstm.get("ts_et")
-                    ),
-                    len(snapshots_flat) - 1,
-                ),
-                len(snapshots_flat) - 1,
-            )
-            conf = compute_confluence_features(snapshots_flat, day_idx)
+            # cf_* history is the single authority's population, not this lane's flattened
+            # RTH-filtered days. Flattening days_lstm produced a THIRD population shape for
+            # one feature name, and the linear ts_et scan it needed to locate the bar was
+            # O(n) per row on top of that. Both go away: the lane supplies the bar, the
+            # authority owns the history.
+            conf = confluence_features_for_bar(
+                ticker, current_lstm.get("ts_utc"), str(db_path), cache=_conf_cache)
             conf_vec = np.array([conf[k] for k in CONFLUENCE_FEATURES], dtype=np.float32)
             conf_vec = np.hstack([conf_vec, xgb_p]).astype(np.float32)
 
@@ -1868,7 +1863,6 @@ def train_cascade_candidate(
         extract_rth_snapshots,
         encode_snapshot_5m,
         encode_snapshot_1m,
-        compute_confluence_features,
         STREAM_5M_LOOKBACK,
         STREAM_1M_LOOKBACK,
         CONFLUENCE_FEATURES,
@@ -1876,6 +1870,9 @@ def train_cascade_candidate(
         TARGET_CLASSES,
         canonical_reference_spot_from_sequence_window_first_bar,
     )
+    from ml_data_common import confluence_features_for_bar
+
+    _conf_cache: dict = {}          # one canonical-history pool per (ticker, UTC day)
     from transformer_train import train_transformer, prepare_transformer_data, SEQUENCE_LENGTH
     import pickle
     import numpy as np
@@ -2227,12 +2224,10 @@ def train_cascade_candidate(
                         encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
                         for s in micro
                     ]
-                    snapshots_flat = [s for _, snaps in sorted(days_data.items()) for s in snaps]
-                    day_idx = min(
-                        next((i for i, s in enumerate(snapshots_flat) if s.get("ts_et") == current.get("ts_et")), len(snapshots_flat) - 1),
-                        len(snapshots_flat) - 1,
-                    )
-                    conf = compute_confluence_features(snapshots_flat, day_idx)
+                    # same rewire as the parallel path above — one population authority for
+                    # cf_*, and the O(n) ts_et scan disappears with it.
+                    conf = confluence_features_for_bar(
+                        ticker, current.get("ts_utc"), str(db_path), cache=_conf_cache)
                     conf_vec = np.array([conf[k] for k in CONFLUENCE_FEATURES], dtype=np.float32)
                     conf_vec = np.hstack([conf_vec, xgb_p]).astype(np.float32)
 

@@ -199,19 +199,34 @@ def test_rc206_confluence_serve_survives_malformed_db(tmp_path):
 
 
 def test_rc207_serve_readers_use_snapshots_not_normalized():
-    """RC-207 quarantine: live serve SQL must bind SERVE_SNAPSHOT_TABLE, not SNAPSHOT_TABLE_1M."""
+    """RC-207 quarantine: live serve SQL must bind SERVE_SNAPSHOT_TABLE, not SNAPSHOT_TABLE_1M.
+
+    The confluence read moved out of ``attach_confluence_features_for_serve`` and into
+    ``fetch_confluence_history``, the single population authority, so the SQL this guards now
+    lives one call down. The guarantee is asserted where the table is actually bound — and
+    the delegating wrapper is separately required to bind NO table of its own, so the
+    quarantine cannot be re-opened by a lane quietly growing its own query back.
+    """
     import inspect
 
     import ml_data_common as m
 
     assert m.SERVE_SNAPSHOT_TABLE == "snapshots"
-    for fn in (m.fetch_prior_net_gamma, m.attach_confluence_features_for_serve):
+    for fn in (m.fetch_prior_net_gamma, m.fetch_confluence_history):
         src = inspect.getsource(fn)
-        assert "SERVE_SNAPSHOT_TABLE" in src
+        assert "SERVE_SNAPSHOT_TABLE" in src, f"{fn.__name__} does not bind the serve table"
         assert "SNAPSHOT_TABLE_1M" not in src
         # SQL f-strings must interpolate the serve table name, not the training mirror.
         assert "FROM {SERVE_SNAPSHOT_TABLE}" in src
         assert "FROM {SNAPSHOT_TABLE_1M}" not in src
+
+    # The serve wrapper delegates; it must not carry a table binding of its own.
+    wrapper = inspect.getsource(m.attach_confluence_features_for_serve)
+    assert "SNAPSHOT_TABLE_1M" not in wrapper
+    assert "FROM " not in wrapper, (
+        "attach_confluence_features_for_serve grew its own query again — the population "
+        "belongs to fetch_confluence_history")
+    assert "confluence_features_for_bar" in wrapper
 
 
 def test_rc207_fetch_prior_net_gamma_reads_snapshots_table(tmp_path):

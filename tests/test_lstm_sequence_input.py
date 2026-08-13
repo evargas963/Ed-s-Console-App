@@ -301,22 +301,32 @@ def test_extract_rth_snapshots_hoists_imports_outside_row_loop():
 
 
 def test_build_lstm_dataset_uses_end_idx_minus_one_for_confluence(monkeypatch):
-    """Regression: snapshots.index(current) inside the slide loop is O(n²) and hung 40-session builds."""
-    from lstm_data import STREAM_5M_LOOKBACK, build_lstm_dataset, compute_confluence_features
+    """Regression: snapshots.index(current) inside the slide loop is O(n²) and hung 40-session builds.
 
-    seen: list[int] = []
-    real_conf = compute_confluence_features
+    The population choice moved out of this lane — it now asks
+    ``ml_data_common.confluence_features_for_bar`` for a BAR instead of handing
+    ``compute_confluence_features`` its own rows and an index. The guarantee under test is
+    unchanged and still the point of the regression: the confluence value must belong to
+    the CURRENT bar, ``snapshots[end_idx - 1]``, and must be located without an O(n) scan.
+    Asserting on the ts_utc the lane requests proves the same off-by-one it always did,
+    at the boundary the lane now uses.
+    """
+    from lstm_data import STREAM_5M_LOOKBACK, build_lstm_dataset
 
-    def _spy_conf(snaps, idx):
-        seen.append(idx)
-        return real_conf(snaps, idx)
+    seen_ts: list[float] = []
+
+    def _spy_for_bar(ticker, ts_utc, db_path=None, *, cache=None):
+        seen_ts.append(float(ts_utc))
+        from lstm_data import CONFLUENCE_FEATURES
+
+        return {k: 0.0 for k in CONFLUENCE_FEATURES}
 
     n_snaps = STREAM_5M_LOOKBACK + 5
     day_snaps = [{"ts_utc": float(i), "spot": 100.0 + i * 0.01, "outcome_5c": "up"} for i in range(n_snaps)]
     for s in day_snaps:
         s["ts_et"] = "2026-01-02 10:00:00"
 
-    monkeypatch.setattr("lstm_data.compute_confluence_features", _spy_conf)
+    monkeypatch.setattr("ml_data_common.confluence_features_for_bar", _spy_for_bar)
     monkeypatch.setattr(
         "lstm_data.extract_rth_snapshots",
         lambda *a, **k: {"2026-01-02": day_snaps},
@@ -338,7 +348,9 @@ def test_build_lstm_dataset_uses_end_idx_minus_one_for_confluence(monkeypatch):
 
     ds = build_lstm_dataset(["SPY"], require_outcome=True, ml_horizon_slug="5c")
     assert ds.n_samples == 5
-    assert seen == list(range(STREAM_5M_LOOKBACK - 1, n_snaps - 1))
+    # day_snaps[i]["ts_utc"] == float(i), so the requested bar's ts IS its index — the same
+    # end_idx-1 sequence the pre-change assertion checked, read through the new boundary.
+    assert seen_ts == [float(i) for i in range(STREAM_5M_LOOKBACK - 1, n_snaps - 1)]
 
 
 def test_train_lstm_b3_reports_out_of_sample_holdout(tmp_path, monkeypatch):

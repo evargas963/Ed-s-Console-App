@@ -1010,30 +1010,25 @@ def _predict_xgb(
 
     reg = _xgb_registry[_model_registry_key(ticker)]
     try:
-        from features.xgb_model_input import (
-            assert_not_raw_l1_payload,
-            inference_snapshot_v1_to_engineering_snapshot,
-            merge_xgb_fusion_overlay,
-        )
-        from ml_data_common import attach_net_gamma_prev_for_dgex
         from ml_train import (
             apply_xgb_imputation_matrix,
             engineer_single_snapshot,
-            DB_PATH as _ML_DB,
         )
 
         if xgb_pre_engineering_snapshot is not None:
             snap = _apply_serve_ablation_snapshot(dict(xgb_pre_engineering_snapshot), "xgb")
         else:
-            assert_not_raw_l1_payload(inference_snapshot_v1)
-            if fusion_feature_overlay is not None:
-                assert_not_raw_l1_payload(fusion_feature_overlay)
-
-            base = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
-            snap = merge_xgb_fusion_overlay(base, fusion_feature_overlay)
-
-            snap = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
-            snap = _apply_serve_ablation_snapshot(snap, "xgb")
+            # ONE preparation sequence. This branch used to re-implement it inline and
+            # omitted ``attach_confluence_features_for_serve``, so whenever a caller did not
+            # pass a pre-built snapshot the six cf_* keys were simply absent — and
+            # ``engineer_single_snapshot`` turns an absent cf_* into 0.0, i.e. "confluence
+            # measured, and it is exactly flat". Training supplies real confluence for those
+            # same columns, so every prediction down this branch fed the model a vector the
+            # model was never trained on. Delegating means the sequence cannot be partially
+            # reproduced again: net_gamma_prev, confluence and serve ablation are whatever the
+            # one preparer says they are.
+            snap = build_xgb_pre_engineering_snapshot_for_tick(
+                inference_snapshot_v1, fusion_feature_overlay)
         X = engineer_single_snapshot(
             snapshot=snap,
             category_maps=reg["category_maps"],
@@ -1152,25 +1147,20 @@ def _predict_xgb_movement_heads(
         if reg is None:
             continue
         try:
-            from features.xgb_model_input import (
-                assert_not_raw_l1_payload,
-                inference_snapshot_v1_to_engineering_snapshot,
-                merge_xgb_fusion_overlay,
-            )
-            from ml_data_common import attach_net_gamma_prev_for_dgex
             from ml_train import (
-                DB_PATH as _ML_DB,
                 apply_xgb_imputation_matrix,
                 engineer_single_snapshot,
             )
 
             if _m5_snap_cached is None:
-                assert_not_raw_l1_payload(inference_snapshot_v1)
-                if fusion_feature_overlay is not None:
-                    assert_not_raw_l1_payload(fusion_feature_overlay)
-                base_snap = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
-                snap = merge_xgb_fusion_overlay(base_snap, fusion_feature_overlay)
-                _m5_snap_cached = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
+                # same delegation as ``_predict_xgb``. This branch also rebuilt the sequence
+                # by hand and also dropped confluence, so the movement heads were served cf_*
+                # = 0.0 on every tick. It additionally skipped serve ablation, which the one
+                # preparer applies — so the heads were scoring a feature set the ablation
+                # contract says should not be scored. Both are corrected by having a single
+                # definition of "a prepared XGB snapshot".
+                _m5_snap_cached = build_xgb_pre_engineering_snapshot_for_tick(
+                    inference_snapshot_v1, fusion_feature_overlay)
             snap = _m5_snap_cached
             X = engineer_single_snapshot(
                 snapshot=snap,
@@ -1301,7 +1291,6 @@ def _predict_lstm(
         )
         from lstm_data import (
             CANONICAL_TIMEFRAME,
-            compute_confluence_features,
             CONFLUENCE_FEATURES,
             STREAM_5M_LOOKBACK,
             STREAM_1M_LOOKBACK,
@@ -1380,7 +1369,16 @@ def _predict_lstm(
             )
             return None
 
-        conf = compute_confluence_features(merged_days, len(merged_days) - 1)
+        # cf_* comes from the single population authority, not from this lane's merged
+        # window. ``merged_days`` is masked and merged for SEQUENCE encoding; using it as
+        # confluence history made the live LSTM read a different population than offline
+        # training, which diverged on 179 of 4956 sampled cells (cf_alignment_score by up to
+        # 3.0 of its -4..+4 range). The bar is this lane's; the history is canonical.
+        from ml_data_common import confluence_features_for_bar
+        from ml_train import DB_PATH as _conf_db
+
+        conf = confluence_features_for_bar(
+            ticker, merged_days[-1].get("ts_utc") if merged_days else None, _conf_db)
         conf_vec = [conf[k] for k in CONFLUENCE_FEATURES]
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
