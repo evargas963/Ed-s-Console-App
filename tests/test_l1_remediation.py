@@ -278,6 +278,12 @@ def test_index_html_tier_b_paints_kl_flip_from_light_payload():
     assert "exec-em-high" in body
     assert "exec-em-low" in body
     assert "kl_gamma_voids" in body
+    assert "exec-support" in body
+    assert "exec-resistance" in body
+    assert "exec-liq-above" in body
+    assert "exec-liq-below" in body
+    assert "nearest_below_val" in body
+    assert "nearest_above_val" in body
     assert "renderDecisionCommandRail" not in body
 
 

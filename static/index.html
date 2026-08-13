@@ -6255,6 +6255,65 @@ function renderTierBLight(d, fullRenderSource) {
       domIf('exec-em-low', el => { el.textContent = _klPx(_bEmL); });
       domIf('dr-lvl-eml', el => { el.textContent = _klPx(_bEmL); });
     }
+    var _supN = (merged.nearest_below_val == null || Number.isNaN(Number(merged.nearest_below_val)))
+      ? null : Number(merged.nearest_below_val);
+    var _resN = (merged.nearest_above_val == null || Number.isNaN(Number(merged.nearest_above_val)))
+      ? null : Number(merged.nearest_above_val);
+    var _supTxt = null;
+    var _resTxt = null;
+    if (_supN != null) {
+      _supTxt = (merged.nearest_below_dist != null && !Number.isNaN(Number(merged.nearest_below_dist)))
+        ? ((_supN - Number(merged.nearest_below_dist)).toFixed(2) + '–' + _supN.toFixed(2))
+        : _supN.toFixed(2);
+      domIf('exec-support', el => { el.textContent = _supTxt; });
+      domIf('dr-lvl-support', el => { el.textContent = _supTxt; });
+    }
+    if (_resN != null) {
+      _resTxt = (merged.nearest_above_dist != null && !Number.isNaN(Number(merged.nearest_above_dist)))
+        ? (_resN.toFixed(2) + '–' + (_resN + Number(merged.nearest_above_dist)).toFixed(2))
+        : _resN.toFixed(2);
+      domIf('exec-resistance', el => { el.textContent = _resTxt; });
+      domIf('dr-lvl-resistance', el => { el.textContent = _resTxt; });
+    }
+    var _voids = Array.isArray(merged.kl_gamma_voids) ? merged.kl_gamma_voids : [];
+    var _spotN = (merged.spot == null || Number.isNaN(Number(merged.spot))) ? null : Number(merged.spot);
+    var _aboveVoid = null, _belowVoid = null;
+    for (var _vi = 0; _vi < _voids.length; _vi++) {
+      var _vz = _voids[_vi];
+      var _lo = (_vz && (_vz.lower != null ? _vz.lower : (_vz.low != null ? _vz.low : _vz.start)));
+      var _hi = (_vz && (_vz.upper != null ? _vz.upper : (_vz.high != null ? _vz.high : _vz.end)));
+      _lo = (_lo == null || Number.isNaN(Number(_lo))) ? null : Number(_lo);
+      _hi = (_hi == null || Number.isNaN(Number(_hi))) ? null : Number(_hi);
+      if (_lo == null || _hi == null) continue;
+      var _vr = Math.min(_lo, _hi).toFixed(2) + '–' + Math.max(_lo, _hi).toFixed(2);
+      var _mid = (_lo + _hi) / 2;
+      if (_spotN != null && _mid > _spotN && _aboveVoid == null) _aboveVoid = _vr;
+      if (_spotN != null && _mid < _spotN) _belowVoid = _vr;
+    }
+    if (_aboveVoid != null) {
+      domIf('exec-liq-above', el => { el.textContent = _aboveVoid; });
+    }
+    if (_belowVoid != null) {
+      domIf('exec-liq-below', el => { el.textContent = _belowVoid; });
+    }
+    if (_resTxt != null || _aboveVoid != null) {
+      var _lpA = _resTxt != null
+        ? (_resTxt + (_aboveVoid != null ? ' | void ' + _aboveVoid : ''))
+        : _aboveVoid;
+      domIf('lp-above', el => { el.textContent = _lpA; });
+    }
+    if (_supTxt != null || _belowVoid != null) {
+      var _lpB = _supTxt != null
+        ? (_supTxt + (_belowVoid != null ? ' | void ' + _belowVoid : ''))
+        : _belowVoid;
+      domIf('lp-below', el => { el.textContent = _lpB; });
+    }
+    if (_bEmH != null) {
+      domIf('lp-upper', el => { el.textContent = _klPx(_bEmH); });
+    }
+    if (_bEmL != null) {
+      domIf('lp-lower', el => { el.textContent = _klPx(_bEmL); });
+    }
   } catch (e) {}
   try {
     window._edRtDiag = Object.assign(window._edRtDiag || {}, {
