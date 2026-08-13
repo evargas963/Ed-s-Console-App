@@ -1,3 +1,5 @@
+> **SUPERSEDED as a work queue (2026-08-13).** Do not treat this file as current "now." Canonical ledger: `OPEN_ITEMS.md`. Pointer: `ACTIVE_PROGRAM.md` → PA-46. Retained as history/evidence only.
+
 # Schwab Derived Field Replacement Register V1
 
 **Status:** Draft replacement register - repo-wide closure OPEN  

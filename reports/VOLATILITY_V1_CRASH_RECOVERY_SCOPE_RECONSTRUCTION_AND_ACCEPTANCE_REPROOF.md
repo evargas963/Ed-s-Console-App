@@ -1,3 +1,5 @@
+> **EVIDENCE / CONTRACT — not a second "now."** Outstanding work from this file, if material, lives on `OPEN_ITEMS.md` PA-48. Pointer: `ACTIVE_PROGRAM.md` → PA-46. Do not open a parallel program from this file.
+
 > **Classification:** Evidence Artifact | **Scope:** VOLATILITY_V1_CRASH_RECOVERY_SCOPE_RECONSTRUCTION_AND_ACCEPTANCE_REPROOF session-evidence packet (read-only mission report)
 
 # VOLATILITY_V1_CRASH_RECOVERY_SCOPE_RECONSTRUCTION_AND_ACCEPTANCE_REPROOF

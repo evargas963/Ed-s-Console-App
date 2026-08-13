@@ -1,3 +1,5 @@
+> **EVIDENCE / CONTRACT — not a second "now."** Outstanding work from this file, if material, lives on `OPEN_ITEMS.md` PA-48. Pointer: `ACTIVE_PROGRAM.md` → PA-46. Do not open a parallel program from this file.
+
 > **Classification:** Operational Ledger | **Scope:** Governance register/inventory `TRADE_IMPACTING_ROUTE_INVENTORY.md`.
 
 # Trade-Impacting Route Inventory
