@@ -222,6 +222,18 @@ def test_render_tier_c_pending_shell_repaints_cards_when_mhap_present():
     assert "renderDecisionCommandRail(merged)" in h
 
 
+def test_b_light_paints_structure_from_kl_without_decision_rail():
+    """B_light live path must paint exec/dr-lvl PIN from kl_* without opening the model rail."""
+    h = _html()
+    b_idx = h.find("function renderTierBLight(d, fullRenderSource)")
+    assert b_idx != -1
+    b_end = h.find("function updateAnalyticsFreshnessUI", b_idx)
+    assert b_end != -1
+    b_chunk = h[b_idx:b_end]
+    assert "paintStructureLevelsFromKl(merged)" in b_chunk
+    assert "renderDecisionCommandRail" not in b_chunk
+
+
 def test_timeframe_cards_show_loading_when_analytics_pending_without_mhap():
     h = _html()
     assert "tf-signal-card--analytics-loading" in h
@@ -1791,6 +1803,8 @@ def test_t4_quote_context_cannot_arm_stale_money_path_cards():
     assert "ingestMoneyPathSnapshot" not in mtm_chunk
     assert "renderTimeframeSignalRow" not in mtm_chunk
     assert "__renderKeyLevelsLive" in mtm_chunk
+    assert "paintStructureLevelsFromKl(d)" in mtm_chunk
+    assert "renderDecisionCommandRail" not in mtm_chunk
 
     ets_idx = h.find("function engineTradeableSetup")
     ets_chunk = h[ets_idx : ets_idx + 520]

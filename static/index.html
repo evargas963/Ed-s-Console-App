@@ -6641,6 +6641,7 @@ function scheduleMtmSpotDerivedCardsRefresh() {
     if (!d || typeof d !== 'object') return;
     try {
       if (typeof window.__renderKeyLevelsLive === 'function') window.__renderKeyLevelsLive(d);
+      paintStructureLevelsFromKl(d);
       patchLiquidityMapSummaryFromLivePlane();
     } catch (e) { console.warn('[mtm spot refresh]', e); }
   }, 150);
@@ -7034,6 +7035,9 @@ function renderTierBLight(d, fullRenderSource) {
       bStructuralStale: d.b_structural_stale === true,
     });
   } catch (e) {}
+
+  // Structure levels are kl_* facts (same helper as pending shell / MTM refresh).
+  try { paintStructureLevelsFromKl(merged); } catch (e) {}
 
   const zbadge = $('sb-zone-badge');
   if (zbadge && (d.zone != null || d.zone_label != null)) {
