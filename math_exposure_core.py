@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List
+import datetime as _dt
 import math
 import logging
 
@@ -44,6 +45,117 @@ def charm_compute_unavailable_log_level(error: str | None) -> int:
     if error and CHARM_QUALITY_GATE_ERROR_MARKER in error:
         return logging.DEBUG
     return logging.WARNING
+
+
+def _resolve_charm_T(dte_raw) -> float | None:
+    """Year-fraction to expiry for dealer charm. 0DTE uses hours-to-close, not T→0."""
+    if dte_raw is None:
+        return None
+    dte_f = float(dte_raw)
+    if dte_f <= 0:
+        try:
+            from time_et import now_et
+
+            now_et_dt = now_et()
+        except Exception:
+            now_et_dt = _dt.datetime.now()
+        hours_left = max(0.5, 16.0 - (now_et_dt.hour + now_et_dt.minute / 60.0))
+        return hours_left / 24.0 / 365.0
+    return dte_f / 365.0
+
+
+def _charm_daily_weighted(
+    *,
+    spot: float,
+    strike: float,
+    gamma: float | None,
+    iv: float | None,
+    oi: float | None,
+    mult: float | None,
+    dte_raw,
+    rate: float = 0.05,
+) -> tuple[float | None, str | None]:
+    """Dealer charm exposure (delta-equivalents per day) for one contract.
+
+    Schwab has no charm leaf. Returns (None, skip_reason) when a quality gate
+    fails. ``rate`` is accepted for call-site stability; the bounded dealer
+    form does not use the r/(iv·√T) term (it explodes for 0DTE).
+    """
+    del rate
+    if gamma is None or strike is None:
+        return None, "fields"
+    if oi is None or oi <= 0:
+        return None, "oi"
+    if mult is None or mult <= 0:
+        return None, "mult"
+    if gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
+        return None, "gamma"
+    if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):
+        return None, "iv"
+    T = _resolve_charm_T(dte_raw)
+    if T is None or T <= 0:
+        return None, "T"
+    try:
+        iv_dec = iv / 100.0
+        ln_sk = math.log(float(spot) / float(strike))
+        sqrt_t = math.sqrt(T)
+        d1 = (ln_sk + 0.5 * iv_dec ** 2 * T) / (iv_dec * sqrt_t)
+        d2 = d1 - iv_dec * sqrt_t
+        phi_d1 = (1.0 / math.sqrt(2.0 * math.pi)) * math.exp(-0.5 * d1 ** 2)
+        charm_unit = -phi_d1 * d2 / (2.0 * T)
+        return charm_unit / 365.0 * oi * mult, None
+    except Exception:
+        return None, "math"
+
+
+def _charm_fail_closed_dict(
+    *,
+    error: str,
+    drift_toward_strike: float | None = None,
+) -> dict:
+    return {
+        "net_charm_daily": None,
+        "call_charm_daily": None,
+        "put_charm_daily": None,
+        "charm_direction": None,
+        "charm_magnitude": None,
+        "drift_toward": drift_toward_strike,
+        "gamma_pin": drift_toward_strike,
+        "contracts_used": 0,
+        "error": error,
+    }
+
+
+def _charm_success_dict(
+    *,
+    call_charm: float,
+    put_charm: float,
+    contracts_used: int,
+    drift_toward_strike: float | None,
+) -> dict:
+    net = call_charm + put_charm
+    direction = "neutral" if abs(net) < 1.0 else ("buying" if net > 0 else "selling")
+    abs_net = abs(net)
+    if abs_net >= 5000:
+        magnitude = "large"
+    elif abs_net >= 1000:
+        magnitude = "moderate"
+    elif abs_net >= 100:
+        magnitude = "small"
+    else:
+        magnitude = "negligible"
+    return {
+        "net_charm_daily": round(net, 2),
+        "call_charm_daily": round(call_charm, 2),
+        "put_charm_daily": round(put_charm, 2),
+        "charm_direction": direction,
+        "charm_magnitude": magnitude,
+        "drift_toward": drift_toward_strike,
+        "gamma_pin": drift_toward_strike,
+        "contracts_used": contracts_used,
+        "error": "",
+    }
+
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -84,6 +196,8 @@ class ExposureDiagnostics:
     contracts_used: int
     greeks_missing: int
     note: str
+    charm_contracts_used: int = 0
+    charm_error: str = ""
 
 
 # ── Exposure primitives ──────────────────────────────────────────────────────
@@ -98,8 +212,12 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # NOTE: These are exposure-scaled buckets (gamma*OI*mult, delta*OI*mult)
             "call_gamma": 0.0,
             "put_gamma": 0.0,
-            "call_vanna": 0.0,
-            "put_vanna": 0.0,
+            # None until a contract actually contributes (missing vega/IV/charm
+            # gates ≠ measured zero). Walls and net aggregators treat None as absence.
+            "call_vanna": None,
+            "put_vanna": None,
+            "call_charm": None,
+            "put_charm": None,
             "call_delta": 0.0,
             "put_delta": 0.0,
             "net_gamma": 0.0,
@@ -132,10 +250,12 @@ def compute_exposures_by_strike(
     require_oi: bool = True,
 ) -> tuple[Dict[float, dict], ExposureDiagnostics]:
     """
-    Produces per-strike aggregated:
+    Produces per-strike aggregated dealer exposures from Schwab leaves:
       - call/put OI
       - call/put delta exposure (scaled)
       - call/put gamma exposure (scaled)
+      - call/put vanna exposure (vega / (S·IV) proxy — Schwab has no vanna leaf)
+      - call/put charm exposure (dΔ/dt dealer unwind — Schwab has no charm leaf)
       - net delta, net gamma (Call + Put; puts keep signed delta)
 
     Scaling (Option A):
@@ -143,11 +263,16 @@ def compute_exposures_by_strike(
       gamma_exposure = gamma * OI * multiplier
 
     NOTE: Dollarized fields (DEX$, GEX$ per 1%, OI$) are computed when `spot` is provided. Net gamma follows Call - Put convention.
+    Vanna and charm stay None until a contract contributes; they are not initialized to 0.0.
     """
     exposures: Dict[float, dict] = {}
     total = 0
     used = 0
     missing = 0
+    charm_used = 0
+    charm_skips: dict[str, int] = {
+        "oi": 0, "gamma": 0, "iv": 0, "mult": 0, "T": 0, "fields": 0, "side": 0, "math": 0,
+    }
 
     for ct in contracts:
         total += 1
@@ -162,11 +287,13 @@ def compute_exposures_by_strike(
         oi = _f(ct.get("openInterest"))
         side = (ct.get("putCall") or "").upper()
         if side not in ("CALL", "PUT"):
+            charm_skips["side"] += 1
             continue
 
         mult = _f(ct.get("multiplier"))
         if mult is None or mult <= 0:
             missing += 1
+            charm_skips["mult"] += 1
             continue
 
         b = _strike_bucket(exposures, strike)
@@ -193,6 +320,7 @@ def compute_exposures_by_strike(
         if oi is None:
             missing += 1
         if require_oi and (oi is None or oi <= 0):
+            charm_skips["oi"] += 1
             continue
 
         delta = _f(ct.get("delta"))
@@ -221,12 +349,6 @@ def compute_exposures_by_strike(
                     b["call_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
                     b["call_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
-                _vega = _f(ct.get("vega"))
-                _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
-                _iv = _f(ct.get("volatility"))
-                _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
-                if _vega_ok and _iv_ok:
-                    b["call_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
         elif side == "PUT":
             if oi is not None:
                 prev = b.get("put_oi")
@@ -243,14 +365,36 @@ def compute_exposures_by_strike(
                     b["put_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
                     b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
-                _vega = _f(ct.get("vega"))
-                _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
-                _iv = _f(ct.get("volatility"))
-                _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
-                if _vega_ok and _iv_ok:
-                    b["put_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
         else:
             continue
+
+        if oi is not None and spot is not None:
+            spt = float(spot)
+            _vega = _f(ct.get("vega"))
+            _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
+            _iv = _f(ct.get("volatility"))
+            _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
+            if _vega_ok and _iv_ok:
+                vkey = "call_vanna" if side == "CALL" else "put_vanna"
+                prev_v = b.get(vkey)
+                contrib = (_vega / (spt * (_iv / 100.0))) * oi * mult
+                b[vkey] = contrib if prev_v is None else float(prev_v) + contrib
+            weighted, skip = _charm_daily_weighted(
+                spot=spt,
+                strike=strike,
+                gamma=gamma,
+                iv=_iv,
+                oi=oi,
+                mult=mult,
+                dte_raw=ct.get("daysToExpiration"),
+            )
+            if weighted is not None:
+                charm_used += 1
+                ckey = "call_charm" if side == "CALL" else "put_charm"
+                prev_c = b.get(ckey)
+                b[ckey] = weighted if prev_c is None else float(prev_c) + weighted
+            elif skip:
+                charm_skips[skip] = charm_skips.get(skip, 0) + 1
 
     for strike, b in exposures.items():
         b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
@@ -259,6 +403,10 @@ def compute_exposures_by_strike(
         b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) + b.get("put_dex_dollars", 0.0)
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
         b["total_oi_dollars"] = b.get("call_oi_dollars", 0.0) + b.get("put_oi_dollars", 0.0)
+        cv, pv = b.get("call_vanna"), b.get("put_vanna")
+        b["net_vanna"] = (None if cv is None and pv is None else (cv or 0.0) + (pv or 0.0))
+        cc, pc = b.get("call_charm"), b.get("put_charm")
+        b["net_charm"] = (None if cc is None and pc is None else (cc or 0.0) + (pc or 0.0))
 
     note = "OK"
     if used == 0:
@@ -266,11 +414,24 @@ def compute_exposures_by_strike(
     elif missing == used:
         note = "All greeks missing (-999). You will still get OI center; gamma/delta pin/inf may be N/A until RTH."
 
+    charm_error = ""
+    if charm_used <= 0:
+        charm_error = (
+            f"No contracts passed charm quality gates "
+            f"(input={total}, skipped: expiry=0, oi={charm_skips['oi']}, "
+            f"gamma={charm_skips['gamma']}, iv={charm_skips['iv']}, "
+            f"mult={charm_skips['mult']}, T={charm_skips['T']}, "
+            f"fields={charm_skips['fields']}, side={charm_skips['side']}, "
+            f"math={charm_skips['math']})"
+        )
+
     return exposures, ExposureDiagnostics(
         contracts_total=total,
         contracts_used=used,
         greeks_missing=missing,
         note=note,
+        charm_contracts_used=charm_used,
+        charm_error=charm_error,
     )
 
 
@@ -533,6 +694,61 @@ def aggregate_net_dex(exposures: Dict[float, dict], strikes: List[float]) -> flo
     return float(total) if any_d else None
 
 
+def aggregate_net_vanna(exposures: Dict[float, dict]) -> float | None:
+    """Sum call_vanna + put_vanna across strikes.
+
+    Returns None when no strike carried a vanna contribution (bucket fields
+    stay None until vega/IV contribute). Do not report missing as 'balanced'.
+    A contributed net of 0.0 is returned as 0.0.
+    """
+    if not exposures:
+        return None
+    total = 0.0
+    present = False
+    for bkt in exposures.values():
+        for key in ("call_vanna", "put_vanna"):
+            v = bucket_metric(bkt, key)
+            if v is None:
+                continue
+            total += float(v)
+            present = True
+    return float(total) if present else None
+
+
+def charm_result_from_exposures(
+    exposures: Dict[float, dict],
+    *,
+    drift_toward_strike: float | None = None,
+    contracts_used: int | None = None,
+    error: str = "",
+) -> dict:
+    """Net dealer charm exposure from the per-strike cube (same shape as compute_net_charm)."""
+    call_c = 0.0
+    put_c = 0.0
+    present = False
+    for bkt in (exposures or {}).values():
+        cc = bucket_metric(bkt, "call_charm")
+        pc = bucket_metric(bkt, "put_charm")
+        if cc is not None:
+            call_c += float(cc)
+            present = True
+        if pc is not None:
+            put_c += float(pc)
+            present = True
+    used = int(contracts_used) if contracts_used is not None else (1 if present else 0)
+    if used <= 0 or not present:
+        return _charm_fail_closed_dict(
+            error=error or "No contracts passed charm quality gates",
+            drift_toward_strike=drift_toward_strike,
+        )
+    return _charm_success_dict(
+        call_charm=call_c,
+        put_charm=put_c,
+        contracts_used=used,
+        drift_toward_strike=drift_toward_strike,
+    )
+
+
 def gex_magnitude_label(net_gex: float | None) -> str:
     if net_gex is None:
         return "negligible"
@@ -647,9 +863,11 @@ def compute_net_charm(
         drift_toward     : drift_toward_strike when provided
         gamma_pin        : same as drift_toward
         contracts_used   : number of contracts that contributed
-    """
-    import datetime as _dt2, math as _m
 
+    Formula lives in ``_charm_daily_weighted`` (same helper the exposure cube uses).
+    Debug / tests keep this walk for expiry-mismatch skip strings. The live
+    KEY LEVELS path aggregates from the cube via ``charm_result_from_exposures``.
+    """
     try:
         _target_exp = str(expiry)[:10]
         if len(_target_exp) != 10:
@@ -657,30 +875,15 @@ def compute_net_charm(
     except Exception:
         _target_exp = None
 
-    # For 0DTE: use remaining hours to close as T
-    # Prevents formula explosion as T → 0
-    def _resolve_T(dte_raw):
-        if dte_raw is None: return None
-        dte_f = float(dte_raw)
-        if dte_f <= 0:
-            try:
-                from time_et import now_et
-
-                _now_et = now_et()
-            except Exception:
-                _now_et = _dt2.datetime.now()
-            hours_left = max(0.5, 16.0 - (_now_et.hour + _now_et.minute / 60.0))
-            return hours_left / 24.0 / 365.0
-        return dte_f / 365.0
-
     call_charm = put_charm = 0.0
     used = 0
     _input_n = len(contracts)
-    _skip_expiry = _skip_side = _skip_fields = _skip_oi = _skip_mult = 0
-    _skip_gamma = _skip_iv = _skip_T = _skip_math = 0
+    _skip_expiry = _skip_side = 0
+    _skip_counts: dict[str, int] = {
+        "fields": 0, "oi": 0, "mult": 0, "gamma": 0, "iv": 0, "T": 0, "math": 0,
+    }
 
     for ct in contracts:
-        # Filter to target expiry
         ct_exp = ct.get("expirationDate")
         if ct_exp and _target_exp:
             if str(ct_exp)[:10] != _target_exp:
@@ -690,84 +893,29 @@ def compute_net_charm(
             _skip_expiry += 1
             continue
 
-        side    = (ct.get("putCall") or "").upper().strip()
+        side = (ct.get("putCall") or "").upper().strip()
         if side not in ("CALL", "PUT"):
             _skip_side += 1
             continue
 
-        strike  = _f(ct.get("strikePrice"))
-        gamma   = _f(ct.get("gamma"))
-        iv      = _f(ct.get("volatility"))
-        oi      = _f(ct.get("openInterest"))
-        mult    = _f(ct.get("multiplier"))
-        dte_raw = ct.get("daysToExpiration")
-
-        if gamma is None or strike is None:
-            _skip_fields += 1
+        weighted, skip = _charm_daily_weighted(
+            spot=float(spot),
+            strike=_f(ct.get("strikePrice")),
+            gamma=_f(ct.get("gamma")),
+            iv=_f(ct.get("volatility")),
+            oi=_f(ct.get("openInterest")),
+            mult=_f(ct.get("multiplier")),
+            dte_raw=ct.get("daysToExpiration"),
+            rate=rate,
+        )
+        if weighted is None:
+            if skip:
+                _skip_counts[skip] = _skip_counts.get(skip, 0) + 1
             continue
-        if oi is None or oi <= 0:
-            _skip_oi += 1
-            continue
-        if mult is None or mult <= 0:
-            _skip_mult += 1
-            continue
-        if gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
-            _skip_gamma += 1
-            continue
-        if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):
-            _skip_iv += 1
-            continue
-
-        T = _resolve_T(dte_raw)
-        if T is None or T <= 0:
-            _skip_T += 1
-            continue
-
-        iv_dec = iv / 100.0
-        S      = float(spot)
-        K      = float(strike)
-        r      = rate
-
-        # charm = dDelta/dt using the standard dealer-positioning form:
-        #   charm = -phi(d1) * d2 / (2*T)
-        #
-        # This form (not the full BS expansion) stays bounded as T→0 because
-        # d2 → 0 at the same rate. The full expansion includes r/(iv*sqrt(T))
-        # which explodes for 0DTE (e.g. 0.05/0.005 = 10 → billions).
-        #
-        # Units: delta/year per unit contract. Scale to daily:
-        #   weighted = charm/year / 365 * OI * mult
-        #
-        # Sign: negative charm = delta decaying = dealers buying back delta = bullish.
-        # We flip sign below: net > 0 means dealers net BUYING (bullish flow).
-        try:
-            ln_SK = _m.log(S / K)
-            sqrt_T = _m.sqrt(T)
-            d1 = (ln_SK + 0.5 * iv_dec**2 * T) / (iv_dec * sqrt_T)
-            d2 = d1 - iv_dec * sqrt_T
-            phi_d1 = (1.0 / _m.sqrt(2.0 * _m.pi)) * _m.exp(-0.5 * d1**2)
-        except Exception:
-            _skip_math += 1
-            continue
-
-        if T <= 0: continue
-
-        # charm per unit in delta/year
-        charm_unit = -phi_d1 * d2 / (2.0 * T)
-
-        # For puts: by put-call parity, charm_put = charm_call (same sign, same magnitude
-        # at ATM; put delta decays symmetrically to call delta). Use same formula.
-        # The sign difference between calls and puts is already captured in the
-        # direction of net_delta (calls positive, puts negative).
-
-        # Daily aggregate: charm_unit/365 * OI * mult
-        weighted = charm_unit / 365.0 * oi * mult
-
         if side == "CALL":
             call_charm += weighted
         else:
-            put_charm  += weighted
-
+            put_charm += weighted
         used += 1
 
     if used <= 0:
@@ -778,49 +926,20 @@ def compute_net_charm(
         else:
             _err = (
                 f"No contracts passed charm quality gates for expiry={_target_exp} "
-                f"(input={_input_n}, skipped: expiry={_skip_expiry}, oi={_skip_oi}, "
-                f"gamma={_skip_gamma}, iv={_skip_iv}, mult={_skip_mult}, T={_skip_T}, "
-                f"fields={_skip_fields}, side={_skip_side}, math={_skip_math})"
+                f"(input={_input_n}, skipped: expiry={_skip_expiry}, oi={_skip_counts['oi']}, "
+                f"gamma={_skip_counts['gamma']}, iv={_skip_counts['iv']}, "
+                f"mult={_skip_counts['mult']}, T={_skip_counts['T']}, "
+                f"fields={_skip_counts['fields']}, side={_skip_side}, "
+                f"math={_skip_counts['math']})"
             )
-        return {
-            "net_charm_daily": None,
-            "call_charm_daily": None,
-            "put_charm_daily": None,
-            "charm_direction": None,
-            "charm_magnitude": None,
-            "drift_toward": drift_toward_strike,
-            "gamma_pin": drift_toward_strike,
-            "contracts_used": 0,
-            "error": _err,
-        }
+        return _charm_fail_closed_dict(error=_err, drift_toward_strike=drift_toward_strike)
 
-    net = call_charm + put_charm
-
-    # Direction: positive net = dealers net buying delta (bullish), negative = selling (bearish)
-    direction = "neutral" if abs(net) < 1.0 else ("buying" if net > 0 else "selling")
-    abs_net = abs(net)
-    if abs_net >= 5000:
-        magnitude = "large"
-    elif abs_net >= 1000:
-        magnitude = "moderate"
-    elif abs_net >= 100:
-        magnitude = "small"
-    else:
-        magnitude = "negligible"
-
-    gamma_pin = drift_toward_strike
-
-    return {
-        "net_charm_daily": round(net, 2),
-        "call_charm_daily": round(call_charm, 2),
-        "put_charm_daily": round(put_charm, 2),
-        "charm_direction": direction,
-        "charm_magnitude": magnitude,
-        "drift_toward": gamma_pin,
-        "gamma_pin": gamma_pin,
-        "contracts_used": used,
-        "error": "",
-    }
+    return _charm_success_dict(
+        call_charm=call_charm,
+        put_charm=put_charm,
+        contracts_used=used,
+        drift_toward_strike=drift_toward_strike,
+    )
 
 
 # ── Greek bias ────────────────────────────────────────────────────────────────

@@ -167,9 +167,10 @@ from math_exposure import (
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
     compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
-    compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
-    pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
-    aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
+    compute_hvl, compute_max_pain,
+    pick_gamma_pin_strike, exposures_have_dollar_gex,
+    aggregate_net_gex, charm_result_from_exposures, stamp_key_levels_from_cube,
+    total_gex_dollars_at_strike, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -2256,7 +2257,6 @@ def _publish_progressive_tier_c_cache(
             return
 
     t = ticker.upper().strip()
-    w0 = walls[0] if walls else None
     cs = consensus_summary
     now = time.time()
 
@@ -2279,25 +2279,6 @@ def _publish_progressive_tier_c_cache(
         "walls": _exposure_dataclass_rows_to_dict(walls),
         "totals_rows": _exposure_dataclass_rows_to_dict(totals),
         "pcr_val": pcr_val,
-        "charm_net": charm_net,
-        "charm_direction": charm_dir,
-        "charm_drift_toward": charm_toward,
-        "kl_expiry_source": kl_expiry_source,
-        "kl_gamma_flip": _float_key_level(gamma_flip),
-        "kl_gamma_voids": gamma_voids or [],
-        "kl_hvl": _float_key_level(hvl),
-        "kl_max_pain": _float_key_level(max_pain),
-        "kl_call_gamma_wall": _float_key_level(getattr(w0, "call_gamma_wall", None)),
-        "kl_put_gamma_wall": _float_key_level(getattr(w0, "put_gamma_wall", None)),
-        "kl_gamma_inflection": _float_key_level(getattr(cs, "gamma_inflection", None)),
-        "kl_call_delta_wall": _float_key_level(getattr(w0, "call_delta_wall", None)),
-        "kl_put_delta_wall": _float_key_level(getattr(w0, "put_delta_wall", None)),
-        "kl_delta_inflection": _float_key_level(getattr(cs, "delta_inflection", None)),
-        "kl_call_oi_wall": _float_key_level(getattr(w0, "call_oi_wall", None)),
-        "kl_put_oi_wall": _float_key_level(getattr(w0, "put_oi_wall", None)),
-        "kl_gamma_pin": _float_key_level(getattr(cs, "gamma_pin", None)),
-        "kl_oi_center": _float_key_level(getattr(cs, "oi_center", None)),
-        "kl_metrics_dollarized": bool(exposures and exposures_have_dollar_gex(exposures)),
         "spread": quote_spread_pts,
         "spread_source": quote_spread_source,
         "fusion_available": False,
@@ -2310,6 +2291,22 @@ def _publish_progressive_tier_c_cache(
         "_pipeline_ms": 0,
         "_endpoint": "/api/analytics/state",
     }
+    stamp_key_levels_from_cube(
+        md,
+        walls=walls,
+        consensus=cs,
+        exposures=exposures,
+        charm={
+            "net_charm_daily": charm_net,
+            "charm_direction": charm_dir,
+            "drift_toward": charm_toward,
+        },
+        gamma_flip=gamma_flip,
+        gamma_voids=gamma_voids,
+        hvl=hvl,
+        max_pain=max_pain,
+        expiry_source=kl_expiry_source,
+    )
     if update_source is not None:
         md["_update_source"] = update_source
     from planes.context_light import stamp_analytics_cache_identity
@@ -6139,12 +6136,17 @@ def _fetch_state(
     _charm_mag    = None
     _charm_drivers = []
     try:
-        from math_exposure import compute_net_charm
-        # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
-        # outcome, no operator-actionable signal (success and failure logs below carry it).
-        log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
-        _charm_raw = compute_net_charm(
-            contracts_use, spot_f, selected_exp, drift_toward_strike=_institutional_pin
+        log.debug(
+            "Charm: %s aggregating from exposure cube (%s contracts, exp=%s)",
+            ticker,
+            len(contracts_use),
+            selected_exp,
+        )
+        _charm_raw = charm_result_from_exposures(
+            exposures,
+            drift_toward_strike=_institutional_pin,
+            contracts_used=int(getattr(diag, "charm_contracts_used", 0) or 0),
+            error=getattr(diag, "charm_error", "") or "",
         )
         _charm_used = _charm_raw.get("contracts_used", 0)
         _charm_err  = _charm_raw.get("error", "")
@@ -8018,86 +8020,30 @@ def _fetch_state(
         "news": getattr(ms, "news_context", None),
     }
 
-    # ── Key level prices (wall values not on MarketState dataclass fields) ────
-    w0 = walls[0] if walls else None
-    cs = consensus_summary
-
+    # ── Key levels from the exposure cube (same stamp as progressive C) ────
     def _fv(v):
         try:
             return round(float(v), 2)
         except (TypeError, ValueError):
             return None
 
-    ms_dict["kl_call_gamma_wall"]  = _fv(getattr(w0, "call_gamma_wall",  None))
-    ms_dict["kl_put_gamma_wall"]   = _fv(getattr(w0, "put_gamma_wall",   None))
-    ms_dict["kl_gamma_inflection"] = _fv(getattr(cs, "gamma_inflection", None))
-    ms_dict["kl_call_delta_wall"]  = _fv(getattr(w0, "call_delta_wall",  None))
-    ms_dict["kl_put_delta_wall"]   = _fv(getattr(w0, "put_delta_wall",   None))
-    ms_dict["kl_delta_inflection"] = _fv(getattr(cs, "delta_inflection", None))
-    ms_dict["kl_call_oi_wall"]     = _fv(getattr(w0, "call_oi_wall",     None))
-    ms_dict["kl_put_oi_wall"]      = _fv(getattr(w0, "put_oi_wall",      None))
-    ms_dict["kl_call_vanna_wall"]  = _fv(getattr(w0, "call_vanna_wall",  None))
-    ms_dict["kl_put_vanna_wall"]   = _fv(getattr(w0, "put_vanna_wall",   None))
-
-    # ── Wall strengths (formatted strings) ────────────────────────────────────
-    def _fs(v):
-        try:
-            f = float(v)
-            if f >= 1_000_000: return f"${f/1_000_000:.1f}M/pt"
-            if f >= 1_000:     return f"${f/1_000:.0f}K/pt"
-            return f"${f:.0f}/pt"
-        except (TypeError, ValueError):
-            return "—"
-
-    def _foi(v):
-        try:
-            f = float(v)
-            if f >= 1_000_000: return f"{f/1_000_000:.1f}M OI"
-            if f >= 1_000:     return f"{f/1_000:.0f}K OI"
-            return f"{f:.0f} OI"
-        except (TypeError, ValueError):
-            return "—"
-
-    ms_dict["kl_call_gamma_str"]  = _fs(getattr(w0, "call_gamma_strength", None))
-    ms_dict["kl_put_gamma_str"]   = _fs(getattr(w0, "put_gamma_strength",  None))
-    ms_dict["kl_call_delta_str"]  = _fs(getattr(w0, "call_delta_strength", None))
-    ms_dict["kl_put_delta_str"]   = _fs(getattr(w0, "put_delta_strength",  None))
-    ms_dict["kl_call_oi_str"]     = _fs(getattr(w0, "call_oi_strength",    None))
-    ms_dict["kl_put_oi_str"]      = _fs(getattr(w0, "put_oi_strength",     None))
-    ms_dict["kl_call_vanna_str"]  = _fs(getattr(w0, "call_vanna_strength", None))
-    ms_dict["kl_put_vanna_str"]   = _fs(getattr(w0, "put_vanna_strength",  None))
-
-    # ── New institutional levels ───────────────────────────────────────────────
-    ms_dict["kl_gamma_pin"]    = _fv(getattr(cs, "gamma_pin", None))
-    ms_dict["kl_hvl"]          = _fv(_hvl)
-    ms_dict["kl_max_pain"]     = _fv(_max_pain)
-    ms_dict["kl_hvl_str"]      = _fs(hvl_gamma_strength(exposures, _hvl))
-    ms_dict["kl_max_pain_str"] = _foi(max_pain_oi_strength(exposures, _max_pain))
-    ms_dict["kl_oi_center"]    = _fv(getattr(cs, "oi_center", None))
-    ms_dict["kl_gamma_flip"]   = _fv(_gamma_flip)
-    _net_gex_raw = getattr(cs, "net_gamma", None) if cs else None
-    try:
-        _net_gex_f = float(_net_gex_raw) if _net_gex_raw is not None else None
-    except (TypeError, ValueError):
-        _net_gex_f = None
-    ms_dict["kl_net_gex"] = round(_net_gex_f, 2) if _net_gex_f is not None else None
-    if _net_gex_f is not None:
-        from math_exposure import fmt_money as _fmt_gex_money
-        ms_dict["kl_net_gex_disp"] = _fmt_gex_money(_net_gex_f)
-        ms_dict["kl_net_gex_mag"] = gex_magnitude_label(_net_gex_f)
-        ms_dict["kl_net_gex_regime"] = gex_regime_label(_net_gex_f)
-    else:
-        ms_dict["kl_net_gex_disp"] = "—"
-        ms_dict["kl_net_gex_mag"] = "negligible"
-        ms_dict["kl_net_gex_regime"] = "neutral"
-    ms_dict["kl_expiry_source"] = _kl_expiry_source
-    ms_dict["kl_level_window"] = "selected_expiry"
-    ms_dict["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))
-    ms_dict["kl_institutional_ready"] = ms_dict["kl_metrics_dollarized"]
-    _kl_contracts_total = max(int(getattr(diag, "contracts_total", 0) or 0), 1)
-    ms_dict["kl_gex_input_completeness"] = round(
-        float(getattr(diag, "contracts_used", 0) or 0) / _kl_contracts_total,
-        4,
+    stamp_key_levels_from_cube(
+        ms_dict,
+        walls=walls,
+        consensus=consensus_summary,
+        exposures=exposures,
+        charm={
+            "net_charm_daily": _charm_net,
+            "charm_direction": _charm_dir,
+            "drift_toward": _charm_toward,
+            "charm_magnitude": _charm_mag,
+        },
+        gamma_flip=_gamma_flip,
+        gamma_voids=_gamma_voids,
+        hvl=_hvl,
+        max_pain=_max_pain,
+        diag=diag,
+        expiry_source=_kl_expiry_source,
     )
     _em_up_straddle = _fv(_em_straddle.get("upper"))
     _em_lo_straddle = _fv(_em_straddle.get("lower"))

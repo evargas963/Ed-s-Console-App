@@ -83,8 +83,10 @@ _STRUCTURAL_KEYS = (
     "nearest_below_val",
     "nearest_below_dist",
     "charm_net",
+    "charm_direction",
     "charm_direction_display",
     "charm_drift_toward",
+    "charm_magnitude",
     "kl_gamma_pin",
     "kl_hvl",
     "kl_max_pain",
@@ -124,6 +126,9 @@ _STRUCTURAL_KEYS = (
     "kl_net_gex",
     "kl_net_gex_disp",
     "kl_net_gex_regime",
+    "kl_net_vanna",
+    "kl_net_vanna_disp",
+    "kl_net_vanna_regime",
 )
 
 _ORDER_FLOW_KEYS = (
@@ -294,8 +299,14 @@ def build_l1_context(
 
     structural: dict[str, Any] = {}
     for k in _STRUCTURAL_KEYS:
-        if k in md and md[k] is not None:
-            structural[k] = md[k]
+        if k not in md:
+            continue
+        v = md[k]
+        if v is None:
+            continue
+        if isinstance(v, str) and v.strip() in ("", "—"):
+            continue
+        structural[k] = v
     # List-valued KL field — copy as-is. Must stay off _STRUCTURAL_KEYS:
     # that set is scalar fingerprint material, and str(list-of-dicts) is not a
     # stable identity. Empty list is omitted (same as None): do not paint a

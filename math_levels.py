@@ -14,12 +14,15 @@ from math_exposure_core import (
     ExposureRow,
     KEY_LEVEL_STRIKE_WINDOW,
     _f,
+    aggregate_net_vanna,
     bucket_metric,
     bucket_metric_abs,
     _window_strikes,
     aggregate_net_dex,
     aggregate_net_gex,
     exposures_have_dollar_gex,
+    gex_magnitude_label,
+    gex_regime_label,
     key_level_strikes_with_gamma,
     key_level_strikes_with_oi,
     net_gex_dollars_at_strike,
@@ -304,6 +307,8 @@ def _pick_wall_abs(exposures: Dict[float, dict], strikes: List[float], key: str)
         if v0 is None:
             continue
         v = abs(float(v0))
+        if v == 0:
+            continue
         if best_s is None or (best_v is not None and v > best_v):
             best_s = s
             best_v = v
@@ -1060,6 +1065,171 @@ def compute_level_density(
         "density_label": label,
         "radius": radius_pts,
     }
+
+
+def _kl_float(v) -> float | None:
+    try:
+        return round(float(v), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _kl_strength_per_pt(v) -> str | None:
+    """None when missing — do not stamp an em-dash as a measured strength."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if f >= 1_000_000:
+        return f"${f/1_000_000:.1f}M/pt"
+    if f >= 1_000:
+        return f"${f/1_000:.0f}K/pt"
+    return f"${f:.0f}/pt"
+
+
+def _kl_oi_strength(v) -> str | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if f >= 1_000_000:
+        return f"{f/1_000_000:.1f}M OI"
+    if f >= 1_000:
+        return f"{f/1_000:.0f}K OI"
+    return f"{f:.0f} OI"
+
+
+def _kl_fmt_money(x: float) -> str:
+    sgn = "-" if x < 0 else ("+" if x > 0 else "")
+    v = abs(x)
+    if v >= 1e9:
+        return f"{sgn}${v/1e9:.2f}B"
+    if v >= 1e6:
+        return f"{sgn}${v/1e6:.2f}M"
+    if v >= 1e3:
+        return f"{sgn}${v/1e3:.1f}K"
+    return f"{sgn}${v:.0f}"
+
+
+def stamp_key_levels_from_cube(
+    target: dict,
+    *,
+    walls,
+    consensus,
+    exposures: dict | None,
+    charm: dict | None,
+    gamma_flip,
+    gamma_voids,
+    hvl,
+    max_pain,
+    diag=None,
+    expiry_source: str | None = None,
+) -> dict:
+    """Stamp KEY LEVELS fields derived from the exposure cube onto ``target``.
+
+    Progressive C and full C call this with the same cube outputs so Console /
+    Chart / API share one schema. EM and synthetic forward are not cube fields
+    and are stamped by the caller when those producers have run.
+
+    Missing nets are omitted (not fabricated as negligible / Neutral / balanced).
+    Strength strings are omitted when the underlying strength is missing.
+    """
+    w0 = walls[0] if walls else None
+    cs = consensus
+
+    target["kl_call_gamma_wall"] = _kl_float(getattr(w0, "call_gamma_wall", None))
+    target["kl_put_gamma_wall"] = _kl_float(getattr(w0, "put_gamma_wall", None))
+    target["kl_gamma_inflection"] = _kl_float(getattr(cs, "gamma_inflection", None))
+    target["kl_call_delta_wall"] = _kl_float(getattr(w0, "call_delta_wall", None))
+    target["kl_put_delta_wall"] = _kl_float(getattr(w0, "put_delta_wall", None))
+    target["kl_delta_inflection"] = _kl_float(getattr(cs, "delta_inflection", None))
+    target["kl_call_oi_wall"] = _kl_float(getattr(w0, "call_oi_wall", None))
+    target["kl_put_oi_wall"] = _kl_float(getattr(w0, "put_oi_wall", None))
+    target["kl_call_vanna_wall"] = _kl_float(getattr(w0, "call_vanna_wall", None))
+    target["kl_put_vanna_wall"] = _kl_float(getattr(w0, "put_vanna_wall", None))
+
+    cg_s = _kl_strength_per_pt(getattr(w0, "call_gamma_strength", None))
+    pg_s = _kl_strength_per_pt(getattr(w0, "put_gamma_strength", None))
+    cd_s = _kl_strength_per_pt(getattr(w0, "call_delta_strength", None))
+    pd_s = _kl_strength_per_pt(getattr(w0, "put_delta_strength", None))
+    co_s = _kl_strength_per_pt(getattr(w0, "call_oi_strength", None))
+    po_s = _kl_strength_per_pt(getattr(w0, "put_oi_strength", None))
+    cv_s = _kl_strength_per_pt(getattr(w0, "call_vanna_strength", None))
+    pv_s = _kl_strength_per_pt(getattr(w0, "put_vanna_strength", None))
+    if cg_s is not None:
+        target["kl_call_gamma_str"] = cg_s
+    if pg_s is not None:
+        target["kl_put_gamma_str"] = pg_s
+    if cd_s is not None:
+        target["kl_call_delta_str"] = cd_s
+    if pd_s is not None:
+        target["kl_put_delta_str"] = pd_s
+    if co_s is not None:
+        target["kl_call_oi_str"] = co_s
+    if po_s is not None:
+        target["kl_put_oi_str"] = po_s
+    if cv_s is not None:
+        target["kl_call_vanna_str"] = cv_s
+    if pv_s is not None:
+        target["kl_put_vanna_str"] = pv_s
+
+    target["kl_gamma_pin"] = _kl_float(getattr(cs, "gamma_pin", None))
+    target["kl_hvl"] = _kl_float(hvl)
+    target["kl_max_pain"] = _kl_float(max_pain)
+    hvl_s = _kl_strength_per_pt(hvl_gamma_strength(exposures or {}, hvl))
+    mp_s = _kl_oi_strength(max_pain_oi_strength(exposures or {}, max_pain))
+    if hvl_s is not None:
+        target["kl_hvl_str"] = hvl_s
+    if mp_s is not None:
+        target["kl_max_pain_str"] = mp_s
+    target["kl_oi_center"] = _kl_float(getattr(cs, "oi_center", None))
+    target["kl_gamma_flip"] = _kl_float(gamma_flip)
+    target["kl_gamma_voids"] = gamma_voids or []
+
+    net_gex_raw = getattr(cs, "net_gamma", None) if cs else None
+    try:
+        net_gex_f = float(net_gex_raw) if net_gex_raw is not None else None
+    except (TypeError, ValueError):
+        net_gex_f = None
+    target["kl_net_gex"] = round(net_gex_f, 2) if net_gex_f is not None else None
+    if net_gex_f is not None:
+        target["kl_net_gex_disp"] = _kl_fmt_money(net_gex_f)
+        target["kl_net_gex_mag"] = gex_magnitude_label(net_gex_f)
+        target["kl_net_gex_regime"] = gex_regime_label(net_gex_f)
+
+    net_vanna_f = aggregate_net_vanna(exposures or {})
+    if net_vanna_f is not None:
+        target["kl_net_vanna"] = round(net_vanna_f, 4)
+        target["kl_net_vanna_disp"] = _kl_fmt_money(net_vanna_f)
+        target["kl_net_vanna_regime"] = gex_regime_label(net_vanna_f)
+
+    charm = charm or {}
+    charm_dir = charm.get("charm_direction")
+    target["charm_net"] = charm.get("net_charm_daily")
+    target["charm_direction"] = charm_dir
+    target["charm_magnitude"] = charm.get("charm_magnitude")
+    target["charm_drift_toward"] = charm.get("drift_toward")
+    if charm_dir == "buying":
+        target["charm_direction_display"] = "Bullish"
+    elif charm_dir == "selling":
+        target["charm_direction_display"] = "Bearish"
+    elif charm_dir == "neutral":
+        target["charm_direction_display"] = "Neutral"
+    else:
+        target["charm_direction_display"] = None
+
+    if expiry_source is not None:
+        target["kl_expiry_source"] = expiry_source
+    target["kl_level_window"] = "selected_expiry"
+    target["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))
+    target["kl_institutional_ready"] = target["kl_metrics_dollarized"]
+    if diag is not None:
+        contracts_total = max(int(getattr(diag, "contracts_total", 0) or 0), 1)
+        target["kl_gex_input_completeness"] = round(
+            float(getattr(diag, "contracts_used", 0) or 0) / contracts_total,
+            4,
+        )
+    return target
 
 
 

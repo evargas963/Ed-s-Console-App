@@ -173,6 +173,9 @@ def test_l1_copies_remaining_key_levels_from_acknowledged_l2():
         "kl_put_oi_wall",
         "kl_call_vanna_wall",
         "kl_put_vanna_wall",
+        "kl_net_vanna",
+        "charm_direction",
+        "charm_magnitude",
         "kl_oi_center",
         "kl_call_gamma_str",
         "kl_hvl_str",
@@ -285,6 +288,81 @@ def test_index_html_tier_b_paints_kl_flip_from_light_payload():
     assert "nearest_below_val" in body
     assert "nearest_above_val" in body
     assert "renderDecisionCommandRail" not in body
+    assert "charm_net" in body
+    assert "kl_net_vanna" in body
+
+
+def test_l1_copies_vanna_charm_and_omits_emdash_display():
+    from math_snapshot_derive import derive_vwap_side
+
+    from planes.context_light import L1BuildContext, _STRUCTURAL_KEYS, build_l1_context
+
+    assert "charm_direction" in _STRUCTURAL_KEYS
+    assert "kl_net_vanna" in _STRUCTURAL_KEYS
+    now = time.time()
+    ctx = L1BuildContext(
+        ticker="SPY",
+        request_expiry=None,
+        l0_row={"spot": 779.5, "bid": 779.4, "ask": 779.6},
+        l2_cache_entry={
+            "analytics_version": 12,
+            "generated_at": now,
+            "ts": now,
+            "ms_dict": {
+                "charm_net": -4200.0,
+                "charm_direction": "selling",
+                "charm_direction_display": "Bearish",
+                "charm_magnitude": "moderate",
+                "kl_gamma_pin": 780.0,
+                "kl_net_vanna": -12.5,
+                "kl_net_vanna_regime": "negative",
+            },
+        },
+        now_ts=now,
+        l2_analytics_refresh_in_progress=True,
+        l1_generation=8,
+    )
+    out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side, order_flow_compact={})
+    assert out["charm_net"] == -4200.0
+    assert out["charm_direction"] == "selling"
+    assert out["kl_net_vanna"] == -12.5
+    ctx_dash = L1BuildContext(
+        ticker="SPY",
+        request_expiry=None,
+        l0_row={"spot": 779.5, "bid": 779.4, "ask": 779.6},
+        l2_cache_entry={
+            "analytics_version": 12,
+            "generated_at": now,
+            "ts": now,
+            "ms_dict": {
+                "kl_gamma_pin": 780.0,
+                "charm_direction_display": "—",
+                "kl_net_vanna_disp": "—",
+            },
+        },
+        now_ts=now,
+        l2_analytics_refresh_in_progress=True,
+        l1_generation=9,
+    )
+    out_dash = build_l1_context(
+        ctx_dash, derive_vwap_side_fn=derive_vwap_side, order_flow_compact={}
+    )
+    assert "charm_direction_display" not in out_dash
+    assert "kl_net_vanna_disp" not in out_dash
+    assert "kl_net_vanna" not in out_dash
+
+
+def test_index_html_key_levels_paints_exposures_not_tabs():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
+    assert 'data-kl-tab="vanna"' not in html
+    assert 'data-kl-tab="charm"' not in html
+    start = html.index("function renderKeyLevels")
+    end = html.index("\n  window.__renderKeyLevelsLive", start)
+    body = html[start:end]
+    assert "Net Vanna (vega/S·IV proxy)" in body
+    assert "kl_institutional_ready && pinStrike" not in body
+    vn = body[body.index("Net Vanna (vega/S·IV proxy)") : body.index("Charm Drift")]
+    assert "balanced" not in vn.lower()
 
 
 def test_l1_stale_truth_spot_unusable():

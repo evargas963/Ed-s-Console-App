@@ -6227,6 +6227,7 @@ function renderTierBLight(d, fullRenderSource) {
       || merged.kl_call_vanna_wall != null || merged.kl_put_vanna_wall != null
       || merged.kl_oi_center != null || merged.kl_hvl != null || merged.kl_max_pain != null
       || merged.kl_synth_fwd != null
+      || merged.charm_net != null || merged.kl_net_vanna != null
       || (Array.isArray(merged.kl_gamma_voids) && merged.kl_gamma_voids.length)
     )) {
       window.__renderKeyLevelsLive(merged);
@@ -7709,14 +7710,15 @@ function _renderMoneyPathCore(d, fullRenderSource) {
     // Net GEX — aggregate dealer gamma regime (not a price level)
     {
       const gexRaw = d.kl_net_gex != null ? parseFloat(d.kl_net_gex) : (d.net_gamma != null ? parseFloat(d.net_gamma) : NaN);
-      const gexDisp = d.kl_net_gex_disp || (Number.isFinite(gexRaw)
+      const gexOk = Number.isFinite(gexRaw);
+      const gexDisp = d.kl_net_gex_disp || (gexOk
         ? (gexRaw >= 0 ? '+' : '') + (Math.abs(gexRaw) >= 1e6 ? `$${(gexRaw / 1e6).toFixed(2)}M` : Math.abs(gexRaw) >= 1e3 ? `$${(gexRaw / 1e3).toFixed(1)}K` : `$${gexRaw.toFixed(0)}`)
         : '—');
       const regime = (d.kl_net_gex_regime || '').toLowerCase();
-      const regimeLbl = regime === 'positive' ? 'Positive Γ' : regime === 'negative' ? 'Negative Γ' : 'Neutral';
+      const regimeLbl = !gexOk ? '—' : (regime === 'positive' ? 'Positive Γ' : regime === 'negative' ? 'Negative Γ' : 'Neutral');
       const regimeSr = regime === 'positive' ? 'bull' : regime === 'negative' ? 'bear' : 'net';
-      const mag = d.kl_net_gex_mag || 'negligible';
-      const magLbl = mag.charAt(0).toUpperCase() + mag.slice(1);
+      const mag = (d.kl_net_gex_mag && String(d.kl_net_gex_mag).trim() !== '—') ? d.kl_net_gex_mag : '';
+      const magLbl = mag ? (mag.charAt(0).toUpperCase() + mag.slice(1)) : '—';
       html += `<div class="kl-grid">
         <div class="kl-prox" style="background:${regime === 'negative' ? '#ef4444' : regime === 'positive' ? '#22c55e' : 'transparent'}"></div>
         <div class="kl-name">Net GEX</div>
@@ -7727,26 +7729,48 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       </div>`;
     }
 
-    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as Gamma Pin row)
     {
-      const pinStrike = parseFloat(d.kl_gamma_pin || 0);
-      const charmTarget = (d.kl_institutional_ready && pinStrike > 0)
-        ? pinStrike
-        : (d.charm_drift_toward != null && !Number.isNaN(Number(d.charm_drift_toward)) ? Number(d.charm_drift_toward) : 0);
+      const vnRaw = d.kl_net_vanna != null ? parseFloat(d.kl_net_vanna) : NaN;
+      const vnOk = Number.isFinite(vnRaw);
+      const vnDisp = d.kl_net_vanna_disp || (vnOk
+        ? ((vnRaw >= 0 ? '+' : '') + (Math.abs(vnRaw) >= 1e6 ? vnRaw.toExponential(2) : vnRaw.toFixed(2)))
+        : '—');
+      const vnRegime = (d.kl_net_vanna_regime || '').toLowerCase();
+      const vnLbl = !vnOk ? '—' : (vnRegime === 'positive' ? 'Positive' : vnRegime === 'negative' ? 'Negative' : 'Neutral');
+      const vnSr = vnRegime === 'positive' ? 'bull' : vnRegime === 'negative' ? 'bear' : 'net';
+      html += `<div class="kl-grid">
+        <div class="kl-prox" style="background:${vnRegime === 'negative' ? '#ef4444' : vnRegime === 'positive' ? '#22c55e' : 'transparent'}"></div>
+        <div class="kl-name">Net Vanna (vega/S·IV proxy)</div>
+        <div class="kl-price">${vnDisp}</div>
+        <div style="text-align:center"><span class="kl-sr ${vnSr}">${vnLbl}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${vnOk ? 'proxy' : '—'}</div>
+      </div>`;
+    }
+
+    // Charm Drift — dealer charm exposure (dΔ/dt unwind). Target = pin when present.
+    {
+      const pinStrike = parseFloat(d.kl_gamma_pin);
+      const toward = d.charm_drift_toward != null ? Number(d.charm_drift_toward) : NaN;
+      const charmTarget = (Number.isFinite(pinStrike) && pinStrike > 0) ? pinStrike
+        : (Number.isFinite(toward) && toward > 0 ? toward : 0);
       const charmNetRaw = d.charm_net != null && !Number.isNaN(Number(d.charm_net)) ? Number(d.charm_net) : null;
+      const disp = (d.charm_direction_display && String(d.charm_direction_display).trim() !== '—')
+        ? String(d.charm_direction_display).trim() : null;
       const flowBull = charmNetRaw != null && charmNetRaw > 0;
       const flowBear = charmNetRaw != null && charmNetRaw < 0;
-      const flowLbl = flowBull ? 'Bullish' : flowBear ? 'Bearish' : (charmNetRaw == null ? '—' : 'Neutral');
+      const flowLbl = flowBull ? 'Bullish' : flowBear ? 'Bearish' : (charmNetRaw == null ? (disp || '—') : 'Neutral');
       const flowSr = flowBull ? 'bull' : flowBear ? 'bear' : 'net';
       const tgtStr = charmTarget > 0 ? charmTarget.toFixed(2) : '—';
       const dist = (charmTarget > 0 && spot) ? (charmTarget - spot) : null;
       const distStr = dist !== null ? (dist > 0 ? '+' : '') + dist.toFixed(2) : '—';
       const charmAbs = charmNetRaw != null ? Math.abs(charmNetRaw) : 0;
       const charmSign = charmNetRaw != null && charmNetRaw >= 0 ? '+' : '-';
-      const rateStr = charmNetRaw != null && charmNetRaw !== 0
-        ? (charmAbs >= 1000000 ? `${charmSign}${(charmAbs/1000000).toFixed(2)}M Δ/day`
+      const mag = (d.charm_magnitude && String(d.charm_magnitude).trim() !== '—') ? String(d.charm_magnitude) : '';
+      const rateStr = charmNetRaw != null
+        ? ((charmNetRaw === 0 ? '0 Δ/day' : (charmAbs >= 1000000 ? `${charmSign}${(charmAbs/1000000).toFixed(2)}M Δ/day`
            : charmAbs >= 1000 ? `${charmSign}${(charmAbs/1000).toFixed(0)}K Δ/day`
-           : `${charmSign}${charmAbs.toFixed(1)} Δ/day`)
+           : `${charmSign}${charmAbs.toFixed(1)} Δ/day`)) + (mag ? ` · ${mag}` : ''))
         : '—';
 
       const charmProxColor = (charmTarget > 0 && spot && Math.abs(charmTarget - spot) <= prox) ? '#f97316'
