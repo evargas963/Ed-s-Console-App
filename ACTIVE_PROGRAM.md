@@ -38,6 +38,8 @@ These were **missing from `main`**. Restored on the ledger branch with SOURCE NA
 
 No tracked `*.log` files. Host logs are on the operator machine. `reports/rehab_latest.md` / `tools/rehab_daily_scan.py` are still absent — do not invent them.
 
+Do **not** create a second canonical file for `governance/` or `reports/`. Those directories are source/evidence. Outstanding work is ADDed to `OPEN_ITEMS.md` PA-48. F-rows labeled CLOSED_WITH_EVIDENCE stay `[ ]` until an exact SHA is on the row — `git log --all` has no RC-344/339/342/340/343 close commits.
+
 ## Standing runtime law (mechanically enforced — do not restate, just don't break)
 
 ### Feature placement matrix

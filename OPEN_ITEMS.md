@@ -4,7 +4,7 @@
 
 **Board scope (single denominator):** the canonical Project A denominator is the ENTIRE board under the file H1 `# PROJECT A — MASTER BOARD`. Every active section belongs to that one denominator — all PA sections (PA-1..PA-48, including the PA-48 canonical atomic homes), the F/RC defect board, the `## OPEN ROOT-CAUSE LEDGER DENOMINATOR`, and the `## EXISTING REPO WORK-ITEM SYSTEM RECONCILIATION`. The denominator is NOT any single internal `##` section. The `## LEGACY / HISTORICAL MATERIAL` region is non-closable history (plain bullets, no checkbox state) that lives under this board but contributes no closable items. Nothing is considered closed merely because it is absent from an older list. The single current execution queue is **PA-46** (a pointer view, not an independent closable copy).
 
-**Last rewritten:** 2026-08-13 — Project A master board landed onto `main` (canonical file from `cursor/project-a-board-audit` @ `0e93624`); STATUS_CHANGE / ADD only for slim-`main` leftovers. Board not shrunk. Competing slim ledger (~63 lines, last rewritten 2026-07-16) is superseded as a second "now"; its leftover rows live in **PA-48**, not as a parallel program. `ACTIVE_PROGRAM.md` is a pointer: now = **PA-46**. Charter remains `AGENTS.md`. **2026-08-13 discovery:** six source files the board cited were **absent from `main`** (they only lived on feature branches). Restored onto this branch with SOURCE NAMESPACE banners. How to read the ~1125 `[ ]` boxes: most are parent acceptance criteria (PA-1..PA-47), not 1125 independent jobs. Execution queue = **PA-46**. Leftover atomic work = **PA-48** (29 open). F-rows labeled CLOSED_WITH_EVIDENCE stay `[ ]` until an exact SHA is on the row — that is the closure rule, not proof they still need doing.
+**Last rewritten:** 2026-08-13 — Project A master board landed onto `main` (canonical file from `cursor/project-a-board-audit` @ `0e93624`); STATUS_CHANGE / ADD only for slim-`main` leftovers. Board not shrunk. Competing slim ledger (~63 lines, last rewritten 2026-07-16) is superseded as a second "now"; its leftover rows live in **PA-48**, not as a parallel program. `ACTIVE_PROGRAM.md` is a pointer: now = **PA-46**. Charter remains `AGENTS.md`. **2026-08-13 discovery:** six source files the board cited were **absent from `main`** (they only lived on feature branches). Restored onto this branch with SOURCE NAMESPACE banners. **Second census (same day):** governance/reports grepped; material leftovers ADDed to PA-48; F-series CLOSED_WITH_EVIDENCE still `[ ]` because no SHA exists on `main` (RC-344/339/342/340/343 commits are empty in `git log --all`). How to read the ~1125 `[ ]` boxes: most are parent acceptance criteria (PA-1..PA-47), not 1125 independent jobs. Execution queue = **PA-46**. Leftover atomic work = **PA-48**. F-rows labeled CLOSED_WITH_EVIDENCE stay `[ ]` until an exact SHA is on the row — that is the closure rule, not proof they still need doing. **Not 100% complete:** PA-41 stays open; archive/artifacts/`docs/issue19_*` bodies were not fully Read.
 
 The rows in the "## LEGACY / HISTORICAL MATERIAL" region below preserve pre-Project-A work as history only; they are NOT part of the closable Project A denominator.
 
@@ -1449,7 +1449,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **FIND-GAMMA-FULLCHAIN** — `maybe_persist_morning_full_chain` performs its OWN once-daily wide `safe_get_chain(strike_count=BIG)` independent of the 20-strike live UI fetch (UI stays 20 for latency)
 - [ ] **FIND-SNAPSHOT-BAR-STAMP** — each snapshot/decision stamped with the `bar_start_ts_utc` of the minute it was computed in (poll instant floored to its 1m bar) so snapshot↔`price_bars_1m`↔outcome joins are exact by construction and the 29s join tolerance can drop to 0
 - [x] **UI-01 analytics key identity** — server stamps `analytics_cache_key` on A/B/C payloads; client uses one key-builder for SSE/REST and generation-guarded adopt of server `selected_exp`. Closed @ `bc1b635`. Tests: `tests/test_ui01_analytics_cache_key.py`.
-- [ ] **UI-05 guest cold-fusion SLA** — RTH open-burst reproof + guest-universe repeatability + SLA regression enforcement for the open-burst path
+- [ ] **UI-05 guest cold-fusion SLA** — cold P50 8.79s / P95 10.21s vs 15s SLA measured @ `6a74331`, board-recorded @ `5506185` (on `main`). Remaining: RTH open-burst reproof + guest-universe repeatability + SLA regression enforcement. Do not `[x]` on the cold-SLA SHA alone.
 - [ ] **AUDIT-TAPE-OVERFLOW-SHORT-VIEWPORTS** — ALERT TAPE tile no longer overflows at 1440×810 and 1366×768 (short-height media query slims padding/font or caps visible entries with a count badge)
 - [ ] **OPS-PLAYWRIGHT-E2E-RERUN** — a real `npm run test:e2e` run lands (retiring the stale 2026-05-25 marker) and `tests/test_playwright_must_run.py` passes on that real run
 - [ ] **GOV-REMOTE-ENFORCEMENT** — operator settings decision on `enforce_admins` recorded and executed (admin direct-push channel closed or explicitly accepted with rationale); external-boundary item until the operator acts
@@ -1469,7 +1469,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **STAGE-2 Target/label foundation** — continue `docs/stage1_target_label_foundation/` Stage 2: retire the confirmed placeholder thresholds and design the governed target so scoreboard accuracy becomes decision-valid. Preregistered protocol; no outcome mining.
 - [ ] **ML-PIPE-V1 predictive-validity closeout** — operator-host shuffled-label runs on real capture data per model-family×horizon, then a clean governed retrain, then per-ticker/per-horizon validity classification. Until then the standing NOT_PROVEN verdict holds.
 - [ ] **SIG-01 scoreboard/actionability accrual** — sessions 2–5 of segmented multi-day evidence toward signal-outcome validation; logger ~32 tickers, snapshot rows landing all session.
-- [ ] **ECON-01 residual — calibration-version pinning** — replay/serve pins the exact calibration version used, with no silent drift
+- [ ] **ECON-01 residual — calibration-version pinning** — replay/serve pins the exact calibration version used, with no silent drift. Parent denominator defect closed @ `e400570` (board `6c29a7f` on `main`); these four residuals remain.
 - [ ] **ECON-01 residual — purged/embargo execution** — the purged/embargoed walk-forward is actually executed in the replay-context path, not merely specified
 - [ ] **ECON-01 residual — LSTM/Transformer point-in-time windowing** — the broader sequence-model point-in-time windowing carries no lookahead across replay/backfill
 - [ ] **ECON-01 residual — RTH producer-guard observation** — the RTH producer-guard observed live doing its job on the replay-context path
@@ -1478,6 +1478,12 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **UI-EXPLAIN orphan payload surfaces** — `pred_headline` rendered to the explanation rail and `reversal_risk`/`reversal_label` rendered as a paired risk chip, closing with rendered DOM + universal RTH runtime proof for every dispositioned field
 - [ ] **GAMMA-INTRADAY-CADENCE** — the live intraday gamma product refreshes the WIDE chain periodically (≈5–15 min) on a separate low-priority track, decoupled from the per-cycle 20-strike UI fetch (sequenced after FP-64 proves the morning hypothesis)
 - [ ] **LEVELS-SELF-DECLARE-TRUST** — every displayed level self-declares `TRUSTED` only when its finite correctness contract (sanitized greeks · single `compute_exposures_by_strike` source · canonical method · full strike coverage · near-term expiries · fresh chain) holds, else `LOW_CONFIDENCE_NARROW_CHAIN` / `STALE` / `UNSANITIZED`, surfaced in the Key Levels UI and gated by one test asserting the flag derives from input quality
+- [ ] **SCOREBOARD-ECONOMIC-REWORK** — change the scoreboard metric from direction-accuracy-vs-placeholder to dollars-after-costs of the gamma-conditioned strategy, per regime (fp_levelset F2). Historical prose only until this row. Does not itself admit anything to TRADE.
+- [ ] **MODEL-STACK MSD-001..005** — five CONFIRMED_DEFECT items in `reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md` (vix_direction/vix_vs_prev parity, native vol semantics, 5c hardcoded isotonic, 5c meta bypass, net_vanna=None) each fixed or killed with a SHA + test. Report is evidence, not a second queue.
+- [ ] **REAL-GATE:VOL-CTX-SINGLE-SOURCE** — cache `"vix"` + `vix_bucket` raw reads retired or governed; report claimed this row existed on OPEN_ITEMS and it did not. Home is this checkbox. Source: `reports/VOLATILITY_V1_CRASH_RECOVERY_SCOPE_RECONSTRUCTION_AND_ACCEPTANCE_REPROOF.md`.
+- [ ] **CHAIN-OF-TRUST / TraceableDerivation** — 290 consumer reads without producer link (`governance/CHAIN_OF_TRUST_GAP_INTEL_290.md`) classified; every MATERIAL_TECHNICAL gap mapped here or to an existing F/RC row. Do not open a 290-box program.
+- [ ] **ISSUE-19 $SPX 190-row forward-grid** — dense forward 1m at the documented hole filled or the 190 `pin_neutral` / `outcome_filled=0` rows dispositioned. Parent homes stay FIND-LABEL-INTEGRITY-FORENSICS / F25 / STAGE-2. Source: `docs/issue19_post_rehydration_eligibility_audit.md`.
+- [ ] **A1/A2 residual gaps** — leftover named gaps in the A1 conformal/isotonic and A2 lifecycle contracts (calendar freshness / multi-exchange / extended hours; conformal scheduler; ml_predict↔v2 bridge) either closed with SHA or classified NOT_MATERIAL. Contracts stay contracts, not a second queue.
 
 ## OPEN ROOT-CAUSE LEDGER DENOMINATOR
 > Technical state preservation only — do NOT turn this into process work. `governance/root_cause_log.md` was **absent from `main`**. Restored 2026-08-13 from `a2b5112` (feature/cf-one-faucet-land-f32-rc328). Last measurable table on that blob = **64 OPEN / 229 CLOSED**. The 2026-08-12 count of **72 OPEN / 55 past due** cannot be re-verified — that file never reached `main`. Do not infer 8 closes from the difference. If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
@@ -1543,7 +1549,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | `[x]` on this board | 6 | Only the 2026-08-13 STATUS_CHANGE rows (UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META). |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE but still `[ ]` | most of PA-3 | Prior program called them closed; this board's closure rule requires a SHA on the row. **Do not re-do the work from the label. Do not `[x]` without the SHA.** |
 | **PA-46** | 16 pointers | **The execution queue.** Status derives from the canonical F/RC/PA rows. |
-| **PA-48 still `[ ]`** | 29 | Leftover atomic work that still applies (or is an operator-held decision). |
+| **PA-48 still `[ ]`** | 35 | Leftover atomic work that still applies (or is an operator-held decision), including six ADDs from the second census. |
 | LEGACY / HISTORICAL bullets | many | History only. Not closable. Work they name lives in PA-48 / F15 / F31. |
 
 **Error logs / other logs in this workspace:**
@@ -1583,3 +1589,24 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | FIND-SCHWAB-WORKER-LEAK, FIND-LIVE-FLIP-WIDE-CHAIN, WING-IV, FIND-GAMMA-FULLCHAIN, FIND-SNAPSHOT-BAR-STAMP, UI-05, AUDIT-TAPE-OVERFLOW, OPS-PLAYWRIGHT-E2E-RERUN, FIND-LABEL-INTEGRITY-FORENSICS, SCOREBOARD-TARGET-TRUTH A/B, QUALITY_CIRCLE, STAGE-2, ML-PIPE-V1, SIG-01, ECON-01 residuals, OPS-OPERABLE-SURFACE-JOB, UI-EXPLAIN, GAMMA-INTRADAY-CADENCE, LEVELS-SELF-DECLARE-TRUST, PHASE-5 (after this is the only list) | GOV-REMOTE-ENFORCEMENT, BUILD-IDENTITY, RECON-02 (purge word), MODEL-04, DIR-01 (nothing to Chart until placebo) | RH-F1..F8, Desk F-01…, June operator-trust, training PR5–PR7 as a named program, STACK-WIRE, Schwab derived-field register, Issue 19 folder |
 
 **What we do next (unchanged):** execute **PA-46**. Do not start PHASE-5 or a UI redesign in this land. Do not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292 from paint.
+
+### 2026-08-13 second census — not 100%, no second canonical file
+
+> Honest limit: a full Read of every `governance/` and `reports/` file was not completed. This pass grepped the live (non-archive) set and read the files that still looked like queues. That is **not** proof that nothing else is hiding in archive, artifacts JSON, or `docs/issue19_*` bodies. PA-41 (discovery denominator) stays open for that reason.
+
+**Do not create a second canonical file for governance/reports.** Those directories are source/evidence. Outstanding *work* lands here as ADD. Creating `GOVERNANCE_CANONICAL.md` / `REPORTS_BOARD.md` would be a fourth list.
+
+**Completed items — proof pass (STATUS_CHANGE only where `main` has the SHA):**
+
+| Row | Proof on `main` | Action |
+|---|---|---|
+| UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META | SHAs already on the `[x]` rows | already `[x]` |
+| UI-05 cold SLA | `6a74331` / `5506185` | recorded on the row; checkbox stays `[ ]` (RTH burst remains) |
+| ECON-01 parent denominator | `e400570` / `6c29a7f` | recorded on the residual rows; four residuals stay `[ ]` |
+| F01–F42 labeled CLOSED_WITH_EVIDENCE | **no SHA on any F-row; `git log --all --grep=RC-344` (and RC-339/342/340/343) is empty** | stay `[ ]`. The 2026-08-12 freeze unchecked 37 non-SHA `[x]`. Do not put the check back. |
+| SCOREBOARD-TARGET-TRUTH Lane A | scoreboard v3 @ `06a3f9e`; no v4 close SHA found | stay `[ ]` |
+| QUALITY_CIRCLE | `06a3f9e` is the *dependency*, not the refinement loop | stay `[ ]` ENABLED / NOT_STARTED |
+
+**ADD this census (material leftovers that had no PA-48 home):** SCOREBOARD-ECONOMIC-REWORK, MODEL-STACK MSD-001..005, REAL-GATE:VOL-CTX-SINGLE-SOURCE, CHAIN-OF-TRUST / TraceableDerivation, ISSUE-19 $SPX 190-row forward-grid, A1/A2 residual gaps.
+
+**Not added (evidence only, or already parented):** PRODUCTION_CLAIMS_REGISTER, TRADE_IMPACTING_ROUTE_INVENTORY, PILOT_1B, FULL_PRIMARY_HORIZON audit snapshot, FIELD_SOURCE / SCHWAB normalization audits, INF-1..4 transition policy (deferred; not a new program), unproven_register individual studies (register exists), ADMIN_BYPASS June CI triage, derived-analytics scaffolds (unadmitted Decide-adjacent).
