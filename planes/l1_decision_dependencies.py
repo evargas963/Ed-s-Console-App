@@ -138,6 +138,7 @@ L1_KNOWN_NON_MATERIAL_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
         "spread_source",
         "spread_pts_source",
         "kl_gamma_voids",
+        "summary_rows",
     }
 )
 

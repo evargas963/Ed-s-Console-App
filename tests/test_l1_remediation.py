@@ -285,6 +285,97 @@ def test_index_html_tier_b_paints_kl_flip_from_light_payload():
     assert "nearest_below_val" in body
     assert "nearest_above_val" in body
     assert "renderDecisionCommandRail" not in body
+    assert "charm_net" in body
+    assert "kl_net_vanna" in body
+    assert "summary_rows" in body
+
+
+def test_index_html_key_levels_greeks_tabs_and_no_vanna_balanced_fallback():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
+    assert 'data-kl-tab="vanna"' in html
+    assert 'data-kl-tab="charm"' in html
+    assert 'data-kl-tab="exposure"' in html
+    start = html.index("function renderKeyLevels")
+    end = html.index("\n  window.__renderKeyLevelsLive", start)
+    body = html[start:end]
+    assert "htmlNetVanna" in body
+    assert "htmlCharm" in body
+    assert "klTab === 'exposure'" in body
+    assert "kl_institutional_ready && pinStrike" not in body
+    vn = body[body.index("function htmlNetVanna") : body.index("function htmlCharm")]
+    assert "balanced" not in vn.lower()
+
+
+def test_l1_copies_charm_vanna_exposure_and_omits_emdash_display():
+    from math_snapshot_derive import derive_vwap_side
+
+    from planes.context_light import L1BuildContext, _STRUCTURAL_KEYS, build_l1_context
+
+    assert "charm_direction" in _STRUCTURAL_KEYS
+    assert "kl_net_vanna" in _STRUCTURAL_KEYS
+    assert "summary_rows" not in _STRUCTURAL_KEYS
+    now = time.time()
+    rows = [{"label": "CONSENSUS", "net_gamma": 1.2e9, "net_delta": 0.0, "gamma_pin": 780.0, "bias_signal": "Balanced"}]
+    ctx = L1BuildContext(
+        ticker="SPY",
+        request_expiry=None,
+        l0_row={"spot": 779.5, "bid": 779.4, "ask": 779.6},
+        l2_cache_entry={
+            "analytics_version": 12,
+            "generated_at": now,
+            "ts": now,
+            "ms_dict": {
+                "charm_net": -4200.0,
+                "charm_direction": "selling",
+                "charm_direction_display": "Bearish",
+                "charm_magnitude": "moderate",
+                "kl_gamma_pin": 780.0,
+                "kl_net_vanna": -12.5,
+                "kl_net_vanna_regime": "negative",
+                "summary_rows": rows,
+            },
+        },
+        now_ts=now,
+        l2_analytics_refresh_in_progress=True,
+        l1_generation=8,
+    )
+    out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side, order_flow_compact={})
+    assert out["charm_net"] == -4200.0
+    assert out["charm_direction"] == "selling"
+    assert out["kl_net_vanna"] == -12.5
+    assert out["summary_rows"] == rows
+    ctx_dash = L1BuildContext(
+        ticker="SPY",
+        request_expiry=None,
+        l0_row={"spot": 779.5, "bid": 779.4, "ask": 779.6},
+        l2_cache_entry={
+            "analytics_version": 12,
+            "generated_at": now,
+            "ts": now,
+            "ms_dict": {
+                "kl_gamma_pin": 780.0,
+                "charm_direction_display": "—",
+                "kl_net_vanna_disp": "—",
+            },
+        },
+        now_ts=now,
+        l2_analytics_refresh_in_progress=True,
+        l1_generation=9,
+    )
+    out_dash = build_l1_context(
+        ctx_dash, derive_vwap_side_fn=derive_vwap_side, order_flow_compact={}
+    )
+    assert "charm_direction_display" not in out_dash
+    assert "kl_net_vanna" not in out_dash
+    assert "summary_rows" not in out_dash
+
+
+def test_aggregate_net_vanna_none_when_all_zero_defaults():
+    from math_exposure_core import aggregate_net_vanna
+
+    assert aggregate_net_vanna({}) is None
+    assert aggregate_net_vanna({100.0: {"call_vanna": 0.0, "put_vanna": 0.0}}) is None
+    assert aggregate_net_vanna({100.0: {"call_vanna": 2.0, "put_vanna": -0.5}}) == 1.5
 
 
 def test_l1_stale_truth_spot_unusable():

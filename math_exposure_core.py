@@ -533,6 +533,29 @@ def aggregate_net_dex(exposures: Dict[float, dict], strikes: List[float]) -> flo
     return float(total) if any_d else None
 
 
+def aggregate_net_vanna(exposures: Dict[float, dict]) -> float | None:
+    """Sum call_vanna + put_vanna across strikes.
+
+    Returns None when no strike carried a non-zero vanna contribution (bucket
+    defaults are 0.0, so an all-zero sum is indistinguishable from missing
+    vega/IV — fail-closed, do not report that as 'balanced').
+    """
+    if not exposures:
+        return None
+    total = 0.0
+    present = False
+    for bkt in exposures.values():
+        for key in ("call_vanna", "put_vanna"):
+            v = bucket_metric(bkt, key)
+            if v is None:
+                continue
+            fv = float(v)
+            total += fv
+            if fv != 0.0:
+                present = True
+    return float(total) if present else None
+
+
 def gex_magnitude_label(net_gex: float | None) -> str:
     if net_gex is None:
         return "negligible"

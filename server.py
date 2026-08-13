@@ -169,7 +169,7 @@ from math_exposure import (
     compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
     pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
-    aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
+    aggregate_net_gex, aggregate_net_vanna, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -2295,8 +2295,16 @@ def _publish_progressive_tier_c_cache(
         "kl_delta_inflection": _float_key_level(getattr(cs, "delta_inflection", None)),
         "kl_call_oi_wall": _float_key_level(getattr(w0, "call_oi_wall", None)),
         "kl_put_oi_wall": _float_key_level(getattr(w0, "put_oi_wall", None)),
+        "kl_call_vanna_wall": _float_key_level(getattr(w0, "call_vanna_wall", None)),
+        "kl_put_vanna_wall": _float_key_level(getattr(w0, "put_vanna_wall", None)),
         "kl_gamma_pin": _float_key_level(getattr(cs, "gamma_pin", None)),
         "kl_oi_center": _float_key_level(getattr(cs, "oi_center", None)),
+        "charm_direction_display": (
+            "Bullish" if charm_dir == "buying"
+            else "Bearish" if charm_dir == "selling"
+            else "Neutral" if charm_dir == "neutral"
+            else None
+        ),
         "kl_metrics_dollarized": bool(exposures and exposures_have_dollar_gex(exposures)),
         "spread": quote_spread_pts,
         "spread_source": quote_spread_source,
@@ -2310,6 +2318,10 @@ def _publish_progressive_tier_c_cache(
         "_pipeline_ms": 0,
         "_endpoint": "/api/analytics/state",
     }
+    _nv_prog = aggregate_net_vanna(exposures) if exposures else None
+    if _nv_prog is not None:
+        md["kl_net_vanna"] = round(_nv_prog, 4)
+        md["kl_net_vanna_regime"] = gex_regime_label(_nv_prog)
     if update_source is not None:
         md["_update_source"] = update_source
     from planes.context_light import stamp_analytics_cache_identity
@@ -8090,6 +8102,12 @@ def _fetch_state(
         ms_dict["kl_net_gex_disp"] = "—"
         ms_dict["kl_net_gex_mag"] = "negligible"
         ms_dict["kl_net_gex_regime"] = "neutral"
+    _net_vanna_f = aggregate_net_vanna(exposures) if exposures else None
+    if _net_vanna_f is not None:
+        from math_exposure import fmt_money as _fmt_vanna_money
+        ms_dict["kl_net_vanna"] = round(_net_vanna_f, 4)
+        ms_dict["kl_net_vanna_disp"] = _fmt_vanna_money(_net_vanna_f)
+        ms_dict["kl_net_vanna_regime"] = gex_regime_label(_net_vanna_f)
     ms_dict["kl_expiry_source"] = _kl_expiry_source
     ms_dict["kl_level_window"] = "selected_expiry"
     ms_dict["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))

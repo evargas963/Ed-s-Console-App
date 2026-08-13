@@ -2145,6 +2145,13 @@
   .kl-legend-item { display: flex; align-items: center; gap: 5px; }
   .kl-legend-bar { width: 3px; height: 12px; border-radius: 1px; }
   .kl-legend-label { font-family: var(--sans); font-size: 10px; font-weight: 500; color: #cccccc; letter-spacing: 0.3px; }
+  .kl-tab-bar { display: flex; gap: 4px; flex-wrap: wrap; }
+  .kl-tab {
+    font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+    color: var(--text3); background: var(--bg3); border: 1px solid var(--border);
+    padding: 5px 10px; border-radius: 4px; cursor: pointer;
+  }
+  .kl-tab.active { color: var(--text); background: var(--bg2); border-color: var(--accent, #6366f1); }
 
   /* ── Confluence ──────────────────────────────────────────────────────────── */
   .cf-inst-cell {
@@ -3163,7 +3170,15 @@
               <div class="kl-legend-item"><div class="kl-legend-bar" style="background:#ec4899"></div><span class="kl-legend-label">SYNTHETIC FORWARD</span></div>
             </div>
           </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+          <div id="kl-tabs" class="kl-tab-bar">
+            <button type="button" class="kl-tab active" data-kl-tab="levels" onclick="window._setKlGreekTab && window._setKlGreekTab('levels')">LEVELS</button>
+            <button type="button" class="kl-tab" data-kl-tab="vanna" onclick="window._setKlGreekTab && window._setKlGreekTab('vanna')">VANNA</button>
+            <button type="button" class="kl-tab" data-kl-tab="charm" onclick="window._setKlGreekTab && window._setKlGreekTab('charm')">CHARM</button>
+            <button type="button" class="kl-tab" data-kl-tab="exposure" onclick="window._setKlGreekTab && window._setKlGreekTab('exposure')">EXPOSURE</button>
+          </div>
           <div id="kl-toggle-ref" style="font-family:var(--sans);font-size:11px;font-weight:600;color:var(--text);background:var(--bg3);padding:5px 14px;border-radius:4px;cursor:pointer;border:1px solid var(--border)" onclick="window._klShowRef=!window._klShowRef;renderKeyLevels(window._lastData||{})">HIDE REFERENCE</div>
+          </div>
         </div>
         <!-- Column headers -->
         <div class="kl-grid" style="background:var(--bg2,#0c0c18);border-bottom:1px solid var(--border);padding:8px 12px">
@@ -6227,6 +6242,8 @@ function renderTierBLight(d, fullRenderSource) {
       || merged.kl_call_vanna_wall != null || merged.kl_put_vanna_wall != null
       || merged.kl_oi_center != null || merged.kl_hvl != null || merged.kl_max_pain != null
       || merged.kl_synth_fwd != null
+      || merged.charm_net != null || merged.kl_net_vanna != null
+      || (Array.isArray(merged.summary_rows) && merged.summary_rows.length)
       || (Array.isArray(merged.kl_gamma_voids) && merged.kl_gamma_voids.length)
     )) {
       window.__renderKeyLevelsLive(merged);
@@ -7610,6 +7627,13 @@ function _renderMoneyPathCore(d, fullRenderSource) {
   // ── Key Levels Table (approved mockup design) ──────────────────────────────
   const PROXIMITY_PCT = 0.0015;
   if (typeof window._klShowRef === 'undefined') window._klShowRef = true;
+  if (typeof window._klGreekTab === 'undefined') window._klGreekTab = 'levels';
+  window._setKlGreekTab = function(tab) {
+    window._klGreekTab = tab;
+    if (typeof window.__renderKeyLevelsLive === 'function') {
+      window.__renderKeyLevelsLive(window._lastData || {});
+    }
+  };
 
   // Level definitions organized into groups
   const KL_PRIMARY = [
@@ -7700,6 +7724,119 @@ function _renderMoneyPathCore(d, fullRenderSource) {
     }
 
     let html = '';
+    const klTab = window._klGreekTab || 'levels';
+    document.querySelectorAll('#kl-tabs .kl-tab').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-kl-tab') === klTab);
+    });
+    if (toggleBtn) toggleBtn.style.display = klTab === 'levels' ? '' : 'none';
+
+    function htmlNetVanna() {
+      const vnRaw = d.kl_net_vanna != null ? parseFloat(d.kl_net_vanna) : NaN;
+      const vnOk = Number.isFinite(vnRaw);
+      const vnDisp = d.kl_net_vanna_disp || (vnOk
+        ? ((vnRaw >= 0 ? '+' : '') + (Math.abs(vnRaw) >= 1e6 ? vnRaw.toExponential(2) : vnRaw.toFixed(2)))
+        : '—');
+      const vnRegime = (d.kl_net_vanna_regime || '').toLowerCase();
+      const vnLbl = !vnOk ? '—' : (vnRegime === 'positive' ? 'Positive' : vnRegime === 'negative' ? 'Negative' : 'Neutral');
+      const vnSr = vnRegime === 'positive' ? 'bull' : vnRegime === 'negative' ? 'bear' : 'net';
+      return `<div class="kl-grid">
+        <div class="kl-prox" style="background:${vnRegime === 'negative' ? '#ef4444' : vnRegime === 'positive' ? '#22c55e' : 'transparent'}"></div>
+        <div class="kl-name">Net Vanna (vega/S·IV proxy)</div>
+        <div class="kl-price">${vnDisp}</div>
+        <div style="text-align:center"><span class="kl-sr ${vnSr}">${vnLbl}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${vnOk ? 'proxy' : '—'}</div>
+      </div>`;
+    }
+
+    function htmlCharm() {
+      const pinStrike = parseFloat(d.kl_gamma_pin);
+      const toward = d.charm_drift_toward != null ? Number(d.charm_drift_toward) : NaN;
+      const charmTarget = (Number.isFinite(pinStrike) && pinStrike > 0) ? pinStrike
+        : (Number.isFinite(toward) && toward > 0 ? toward : 0);
+      const charmNetRaw = d.charm_net != null && !Number.isNaN(Number(d.charm_net)) ? Number(d.charm_net) : null;
+      const disp = (d.charm_direction_display && String(d.charm_direction_display).trim() !== '—')
+        ? String(d.charm_direction_display).trim() : null;
+      const flowBull = charmNetRaw != null && charmNetRaw > 0;
+      const flowBear = charmNetRaw != null && charmNetRaw < 0;
+      const flowLbl = flowBull ? 'Bullish' : flowBear ? 'Bearish' : (charmNetRaw == null ? (disp || '—') : 'Neutral');
+      const flowSr = flowBull ? 'bull' : flowBear ? 'bear' : 'net';
+      const tgtStr = charmTarget > 0 ? charmTarget.toFixed(2) : '—';
+      const dist = (charmTarget > 0 && spot) ? (charmTarget - spot) : null;
+      const distStr = dist !== null ? (dist > 0 ? '+' : '') + dist.toFixed(2) : '—';
+      const charmAbs = charmNetRaw != null ? Math.abs(charmNetRaw) : 0;
+      const charmSign = charmNetRaw != null && charmNetRaw >= 0 ? '+' : '-';
+      const mag = (d.charm_magnitude && String(d.charm_magnitude).trim() !== '—') ? String(d.charm_magnitude) : '';
+      const rateStr = charmNetRaw != null
+        ? ((charmNetRaw === 0 ? '0 Δ/day' : (charmAbs >= 1000000 ? `${charmSign}${(charmAbs/1000000).toFixed(2)}M Δ/day`
+           : charmAbs >= 1000 ? `${charmSign}${(charmAbs/1000).toFixed(0)}K Δ/day`
+           : `${charmSign}${charmAbs.toFixed(1)} Δ/day`)) + (mag ? ` · ${mag}` : ''))
+        : '—';
+      const charmProxColor = (charmTarget > 0 && spot && Math.abs(charmTarget - spot) <= prox) ? '#f97316'
+        : (charmTarget > 0 && spot && charmTarget > spot && (charmTarget - spot) <= 3 && !nearAboveKey) ? '#818cf8'
+        : (charmTarget > 0 && spot && charmTarget < spot && (spot - charmTarget) <= 3 && !nearBelowKey) ? '#22c55e'
+        : 'transparent';
+      return `<div class="kl-grid">
+        <div class="kl-prox" style="background:${charmProxColor}"></div>
+        <div class="kl-name charm">Charm Drift</div>
+        <div class="kl-price">${tgtStr}</div>
+        <div style="text-align:center"><span class="kl-sr ${flowSr}">${flowLbl}</span></div>
+        <div class="kl-dist ${distClass(dist)}">${distStr}</div>
+        <div class="kl-str">${rateStr}</div>
+      </div>`;
+    }
+
+    if (klTab === 'vanna') {
+      html += '<div class="kl-section-hdr">VANNA<span>vega/S·IV proxy — dash when no strike contributed</span></div>';
+      html += htmlNetVanna();
+      KL_REFERENCE.filter(function(level) { return level.key.indexOf('vanna') !== -1; })
+        .forEach(function(level) { html += renderRow(level, d, false); });
+      container.innerHTML = html;
+      return;
+    }
+    if (klTab === 'charm') {
+      html += '<div class="kl-section-hdr">CHARM<span>dΔ/dt dealer unwind — dash when compute used 0 contracts</span></div>';
+      html += htmlCharm();
+      container.innerHTML = html;
+      return;
+    }
+    if (klTab === 'exposure') {
+      html += '<div class="kl-section-hdr">EXPOSURE<span>CONSENSUS + strike windows (GEX / DEX) — not a vanna label</span></div>';
+      const expRows = Array.isArray(d.summary_rows) ? d.summary_rows : [];
+      if (!expRows.length) {
+        html += `<div class="kl-grid">
+          <div class="kl-prox" style="background:transparent"></div>
+          <div class="kl-name">Exposure windows</div>
+          <div class="kl-price">—</div>
+          <div style="text-align:center"><span class="kl-sr net">—</span></div>
+          <div class="kl-dist">—</div>
+          <div class="kl-str">—</div>
+        </div>`;
+      } else {
+        expRows.forEach(function(row) {
+          const label = row.label || row.Label || '—';
+          const ng = row.net_gamma != null ? Number(row.net_gamma) : NaN;
+          const nd = row.net_delta != null ? Number(row.net_delta) : NaN;
+          const pin = row.gamma_pin != null ? Number(row.gamma_pin) : NaN;
+          const bias = row.bias_signal || row.biasSignal || '—';
+          const ngStr = Number.isFinite(ng)
+            ? ((ng >= 0 ? '+' : '') + (Math.abs(ng) >= 1e6 ? `$${(ng/1e6).toFixed(2)}M` : ng.toFixed(0)))
+            : '—';
+          const pinStr = Number.isFinite(pin) && pin > 0 ? pin.toFixed(2) : '—';
+          const dexStr = Number.isFinite(nd) ? nd.toFixed(0) : '—';
+          html += `<div class="kl-grid">
+            <div class="kl-prox" style="background:transparent"></div>
+            <div class="kl-name">${label}</div>
+            <div class="kl-price">${pinStr}</div>
+            <div style="text-align:center"><span class="kl-sr net">${bias}</span></div>
+            <div class="kl-dist">${dexStr}</div>
+            <div class="kl-str">${ngStr}</div>
+          </div>`;
+        });
+      }
+      container.innerHTML = html;
+      return;
+    }
 
     // ── ALWAYS CHART section ──────────────────────────────────────────────────
     html += '<div class="kl-section-hdr">ALWAYS CHART<span>Primary institutional structure + acceleration zones</span></div>';
@@ -7713,10 +7850,11 @@ function _renderMoneyPathCore(d, fullRenderSource) {
         ? (gexRaw >= 0 ? '+' : '') + (Math.abs(gexRaw) >= 1e6 ? `$${(gexRaw / 1e6).toFixed(2)}M` : Math.abs(gexRaw) >= 1e3 ? `$${(gexRaw / 1e3).toFixed(1)}K` : `$${gexRaw.toFixed(0)}`)
         : '—');
       const regime = (d.kl_net_gex_regime || '').toLowerCase();
-      const regimeLbl = regime === 'positive' ? 'Positive Γ' : regime === 'negative' ? 'Negative Γ' : 'Neutral';
+      const gexOk = Number.isFinite(gexRaw);
+      const regimeLbl = !gexOk ? '—' : (regime === 'positive' ? 'Positive Γ' : regime === 'negative' ? 'Negative Γ' : 'Neutral');
       const regimeSr = regime === 'positive' ? 'bull' : regime === 'negative' ? 'bear' : 'net';
-      const mag = d.kl_net_gex_mag || 'negligible';
-      const magLbl = mag.charAt(0).toUpperCase() + mag.slice(1);
+      const mag = d.kl_net_gex_mag;
+      const magLbl = mag ? (mag.charAt(0).toUpperCase() + mag.slice(1)) : '—';
       html += `<div class="kl-grid">
         <div class="kl-prox" style="background:${regime === 'negative' ? '#ef4444' : regime === 'positive' ? '#22c55e' : 'transparent'}"></div>
         <div class="kl-name">Net GEX</div>
@@ -7726,43 +7864,8 @@ function _renderMoneyPathCore(d, fullRenderSource) {
         <div class="kl-str">${magLbl}</div>
       </div>`;
     }
-
-    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as Gamma Pin row)
-    {
-      const pinStrike = parseFloat(d.kl_gamma_pin || 0);
-      const charmTarget = (d.kl_institutional_ready && pinStrike > 0)
-        ? pinStrike
-        : (d.charm_drift_toward != null && !Number.isNaN(Number(d.charm_drift_toward)) ? Number(d.charm_drift_toward) : 0);
-      const charmNetRaw = d.charm_net != null && !Number.isNaN(Number(d.charm_net)) ? Number(d.charm_net) : null;
-      const flowBull = charmNetRaw != null && charmNetRaw > 0;
-      const flowBear = charmNetRaw != null && charmNetRaw < 0;
-      const flowLbl = flowBull ? 'Bullish' : flowBear ? 'Bearish' : (charmNetRaw == null ? '—' : 'Neutral');
-      const flowSr = flowBull ? 'bull' : flowBear ? 'bear' : 'net';
-      const tgtStr = charmTarget > 0 ? charmTarget.toFixed(2) : '—';
-      const dist = (charmTarget > 0 && spot) ? (charmTarget - spot) : null;
-      const distStr = dist !== null ? (dist > 0 ? '+' : '') + dist.toFixed(2) : '—';
-      const charmAbs = charmNetRaw != null ? Math.abs(charmNetRaw) : 0;
-      const charmSign = charmNetRaw != null && charmNetRaw >= 0 ? '+' : '-';
-      const rateStr = charmNetRaw != null && charmNetRaw !== 0
-        ? (charmAbs >= 1000000 ? `${charmSign}${(charmAbs/1000000).toFixed(2)}M Δ/day`
-           : charmAbs >= 1000 ? `${charmSign}${(charmAbs/1000).toFixed(0)}K Δ/day`
-           : `${charmSign}${charmAbs.toFixed(1)} Δ/day`)
-        : '—';
-
-      const charmProxColor = (charmTarget > 0 && spot && Math.abs(charmTarget - spot) <= prox) ? '#f97316'
-        : (charmTarget > 0 && spot && charmTarget > spot && (charmTarget - spot) <= 3 && !nearAboveKey) ? '#818cf8'
-        : (charmTarget > 0 && spot && charmTarget < spot && (spot - charmTarget) <= 3 && !nearBelowKey) ? '#22c55e'
-        : 'transparent';
-
-      html += `<div class="kl-grid">
-        <div class="kl-prox" style="background:${charmProxColor}"></div>
-        <div class="kl-name charm">Charm Drift</div>
-        <div class="kl-price">${tgtStr}</div>
-        <div style="text-align:center"><span class="kl-sr ${flowSr}">${flowLbl}</span></div>
-        <div class="kl-dist ${distClass(dist)}">${distStr}</div>
-        <div class="kl-str">${rateStr}</div>
-      </div>`;
-    }
+    html += htmlNetVanna();
+    html += htmlCharm();
 
     // Gamma Void Zones — always show above and below
     const voids = Array.isArray(d.kl_gamma_voids) ? d.kl_gamma_voids : [];
