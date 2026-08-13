@@ -3,3 +3,5 @@ description: EdWebConsole — AGENTS.md is the single governing law
 alwaysApply: true
 ---
 Read and follow /AGENTS.md before repository work.
+
+Coder, auditor, and PM are one agent (`AGENTS.md` three-role loop). After code, audit, then land, then the next row in `ACTIVE_PROGRAM.md` Sequence. A PR is not the board. Changes to `AGENTS.md`, `ACTIVE_PROGRAM.md`, `OPEN_ITEMS.md`, or `.cursor/rules/` are material — spawn a read-only audit subagent before claiming done.
