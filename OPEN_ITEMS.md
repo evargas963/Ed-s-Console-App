@@ -43,7 +43,7 @@ are removed, not accumulated; the pre-slimming ledger is preserved at tag-time i
 
 ## Defects and held decisions
 
-- [ ] **ML-META-JSON-VERIFICATION-ASYMMETRY** — `_load_lstm` verifies only the `.pt` checkpoint; its `lstm_*_meta.json` is consumed inside `lstm_model.load_lstm` without the Item-4 pre-deserialization verification that xgb/transformer metas get. Found 2026-07-16 while fixing the meta-stack role regression. Fix direction: verify `lstm_meta` in `_load_lstm` before `load_lstm` reads it (same pattern as `transformer_meta` at `ml_predict.py::_load_transformer`).
+- [x] **ML-META-JSON-VERIFICATION-ASYMMETRY** — `_load_lstm` now verifies `lstm_*_meta.json` (presence + Item-4 manifest hash) before `lstm_model.load_lstm` reads it, matching `xgb_meta` / `transformer_meta`. Tests: `tests/test_model_contract_enforcement.py` (`test_load_lstm_verifies_lstm_meta_before_load_lstm`, `test_load_lstm_refuses_when_meta_file_absent`, `test_load_lstm_refuses_when_lstm_meta_hash_mismatches`). Closes with this commit SHA.
 
 - [x] **UI-01 analytics key identity** — server stamps `analytics_cache_key` on A/B/C payloads; client uses one key-builder for SSE/REST and generation-guarded adopt of server `selected_exp` (no silent SSE drop on auto-scope). Tests: `tests/test_ui01_analytics_cache_key.py`. Closed @ `bc1b635`.
 - [x] **UI-04 key-levels display honesty** — P1B vanna proxy labeled in UI; P1C charm vote gated (`CHARM_VOTE_VALIDATION_STATUS == "UNAPPROVED"`); P1D PDH uses previous trading day (`liquidity_value_engine.py`). Tests: `tests/test_charm_vote_gate.py`. Closed @ `29ea1e4` (P1B/P1C) + `8686e68` (P1D).

@@ -95,6 +95,63 @@ def test_load_lstm_blocked_when_meta_missing_contract(tmp_path, monkeypatch):
     mp._lstm_registry.clear()
 
 
+def test_load_lstm_verifies_lstm_meta_before_load_lstm():
+    """ML-META-JSON-VERIFICATION-ASYMMETRY: Item-4 lstm_meta verify precedes load_lstm."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "ml_predict.py").read_text(encoding="utf-8")
+    start = src.index("def _load_lstm")
+    end = src.index("def _predict_lstm")
+    body = src[start:end]
+    meta_i = body.index('_verify_governed_artifact(base, bt, hz, "lstm_meta"')
+    load_i = body.index("model, checkpoint = load_lstm(")
+    assert meta_i < load_i
+    missing_i = body.index("missing meta")
+    assert missing_i < meta_i
+
+
+def test_load_lstm_refuses_when_meta_file_absent(tmp_path, monkeypatch):
+    """Serve path must refuse LSTM when lstm_*_meta.json is missing (transformer parity)."""
+    import ml_predict as mp
+
+    mp._lstm_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+    ticker = "ZZLM"
+    base = tmp_path / ticker
+    base.mkdir(parents=True)
+    (base / f"lstm_{ticker}_1c.pt").write_bytes(b"not_torch")
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: base)
+    monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: "1c")
+    assert mp._load_lstm(ticker) is False
+    rk = mp._model_registry_key(ticker, "1c")
+    assert mp._lstm_registry.get(rk) is None
+    mp._lstm_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+
+
+def test_load_lstm_refuses_when_lstm_meta_hash_mismatches(tmp_path, monkeypatch):
+    """Item-4: mutated lstm_meta bytes fail closed before load_lstm reads the JSON."""
+    from active_bundle_contract import write_bundle_integrity_manifest
+
+    import ml_predict as mp
+
+    mp._lstm_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+    ticker, hz = "ZZLH", "1c"
+    base = tmp_path / ticker
+    base.mkdir(parents=True)
+    (base / f"lstm_{ticker}_{hz}.pt").write_bytes(b"pt-bytes")
+    meta_p = base / f"lstm_{ticker}_{hz}_meta.json"
+    meta_p.write_text('{"model_type":"dual_stream_lstm"}', encoding="utf-8")
+    write_bundle_integrity_manifest(base, ticker, hz, allow_missing_required=True)
+    meta_p.write_text('{"model_type":"dual_stream_lstm","tampered":true}', encoding="utf-8")
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: base)
+    monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: hz)
+    assert mp._load_lstm(ticker) is False
+    mp._lstm_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+
+
 def test_load_transformer_blocked_when_meta_missing_contract(tmp_path, monkeypatch):
     import ml_predict as mp
 
