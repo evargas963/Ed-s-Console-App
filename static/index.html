@@ -3361,7 +3361,10 @@
 //
 // ARCHITECTURAL CONTRACT:
 //   activeTicker   — the ONLY canonical ticker. ONLY setActiveTicker() writes it.
-//   activeExpiry   — companion to activeTicker. Same ownership rule.
+//   activeExpiry   — companion to activeTicker. setActiveTicker() writes it on user
+//                   commit. adoptServerAnalyticsIdentity() may normalize it to the
+//                   server-resolved selected_exp / analytics_cache_key without
+//                   bumping requestGeneration (UI-01 — identity alignment, not a switch).
 //   requestGeneration — monotonic counter, incremented on every ticker commit.
 //                   Every in-flight request captures its generation at launch.
 //                   Responses from earlier generations are UNCONDITIONALLY discarded.
@@ -4062,6 +4065,66 @@ function expiryMatchesStream(serverExp, clientExp) {
   const c10 = c.length >= 10 ? c.slice(0, 10) : c;
   const s10 = s.length >= 10 ? s.slice(0, 10) : s;
   return c10 === s10;
+}
+
+/** UI-01 — single client key-builder. Must match planes.context_light.format_analytics_cache_key. */
+function buildAnalyticsCacheKey(ticker, expiry) {
+  const t = (ticker || '').trim().toUpperCase() || 'SPY';
+  const e = (expiry == null || expiry === '') ? '' : String(expiry).trim();
+  if (!e || e === '__auto__') return t + '|';
+  return t + '|' + (e.length >= 10 ? e.slice(0, 10) : e);
+}
+
+function _analyticsExpiryQuery(expiry) {
+  const e = (expiry == null || expiry === '') ? '' : String(expiry).trim();
+  if (!e || e === '__auto__') return '';
+  const e10 = e.length >= 10 ? e.slice(0, 10) : e;
+  return '&expiry=' + encodeURIComponent(e10);
+}
+
+function buildAnalyticsRequestUrl(path, ticker, expiry, extraQuery) {
+  const t = (ticker || '').trim().toUpperCase() || 'SPY';
+  const extra = extraQuery ? String(extraQuery) : '';
+  return path + '?ticker=' + encodeURIComponent(t) + _analyticsExpiryQuery(expiry) + extra;
+}
+
+/**
+ * UI-01 — generation-guarded adopt of server-resolved selected_exp / analytics_cache_key.
+ * Does not bump requestGeneration. Returns false when an explicit client expiry
+ * disagrees with the payload (do not silently drop a matching cache key).
+ */
+function adoptServerAnalyticsIdentity(data, gen) {
+  if (gen !== requestGeneration) return false;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const tk = data.ticker != null ? String(data.ticker).trim().toUpperCase() : '';
+  if (!tk || tk !== (activeTicker || '').trim().toUpperCase()) return false;
+  const rawExp = data.selected_exp;
+  const serverExp = (rawExp == null || rawExp === '') ? null : String(rawExp).trim();
+  const serverExp10 = serverExp ? (serverExp.length >= 10 ? serverExp.slice(0, 10) : serverExp) : null;
+  const echoed = data.analytics_cache_key != null ? String(data.analytics_cache_key) : '';
+  const clientKey = buildAnalyticsCacheKey(activeTicker, activeExpiry);
+  const payloadKey = echoed || buildAnalyticsCacheKey(tk, serverExp10);
+  if (payloadKey === clientKey) return true;
+  if (!activeExpiry) {
+    if (serverExp10) {
+      activeExpiry = serverExp10;
+      const expSel = $('expiry-select');
+      if (expSel) {
+        const opt = expSel.querySelector('option[value="' + serverExp10 + '"]');
+        if (opt) opt.selected = true;
+      }
+      try { connectSSE(); } catch (eSse) {}
+      try { connectL1LightSSE(); } catch (eL1) {}
+    }
+    return true;
+  }
+  if (expiryMatchesStream(serverExp10, activeExpiry)) {
+    if (serverExp10 && String(activeExpiry).trim().slice(0, 10) !== serverExp10) {
+      activeExpiry = serverExp10;
+    }
+    return true;
+  }
+  return false;
 }
 
 
@@ -6005,6 +6068,10 @@ function l1TierBPayloadMatchesActiveScope(d) {
   if (!pt) return false;
   const at = (activeTicker || '').trim().toUpperCase() || 'SPY';
   if (pt !== at) return false;
+  const echoed = d.analytics_cache_key != null ? String(d.analytics_cache_key) : '';
+  const clientKey = buildAnalyticsCacheKey(at, typeof activeExpiry !== 'undefined' ? activeExpiry : null);
+  if (echoed && echoed === clientKey) return true;
+  if (!activeExpiry) return true;
   const pk = guards.normL1ExpiryKey(d.selected_exp != null ? d.selected_exp : null);
   const ck = guards.normL1ExpiryKey(typeof activeExpiry !== 'undefined' ? activeExpiry : null);
   return pk === ck;
@@ -6101,8 +6168,7 @@ function renderTierBLight(d, fullRenderSource) {
     }
     return false;
   }
-  const wantExp = (typeof activeExpiry !== 'undefined' && activeExpiry) ? String(activeExpiry).trim() : '';
-  const scopeKey = activeTicker + '|' + wantExp;
+  const scopeKey = buildAnalyticsCacheKey(activeTicker, typeof activeExpiry !== 'undefined' ? activeExpiry : null);
   const g = d.l1_generation;
   const src = fullRenderSource || '';
   const isL1Sse = src === 'l1_sse';
@@ -8015,14 +8081,8 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       expSel.appendChild(opt);
     });
   }
-  // Keep dropdown in sync with server's selected_exp (fixes stale expiry requests)
-  if (expSel && d.selected_exp && expSel.value !== d.selected_exp) {
-    const opt = expSel.querySelector(`option[value="${d.selected_exp}"]`);
-    if (opt) {
-      opt.selected = true;
-      connectSSE();  // reconnect with corrected expiry
-    }
-  }
+  // Keep dropdown + activeExpiry in sync with server's selected_exp (UI-01).
+  try { adoptServerAnalyticsIdentity(d, requestGeneration); } catch (eAdopt) {}
   } catch (err) {
     console.error('render()', err);
     const eb = $('error-bar');
@@ -8992,7 +9052,7 @@ async function _fetchTierCRestAndApply(ctx) {
   } = ctx;
   const _analyticsT0 = ctx._analyticsT0 != null ? ctx._analyticsT0
     : ((typeof performance !== 'undefined' ? performance.now() : Date.now()));
-  const url = `/api/analytics/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}${force ? '&force=true' : ''}`;
+  const url = buildAnalyticsRequestUrl('/api/analytics/state', ticker, expiry, force ? '&force=true' : '');
   const tierCTimeoutMs = force ? 120000 : 15000;
   try {
     const resp = await fetchJsonWithTimeout(url, { signal: tierCSignal }, tierCTimeoutMs);
@@ -9025,6 +9085,17 @@ async function _fetchTierCRestAndApply(ctx) {
       if (DIAG) console.warn('[fetchState] DISCARDED — ticker mismatch', { requested: ticker, received: data.ticker, active: activeTicker });
       _bumpSwitchDiagRejection('wrong_ticker');
       if (willChange) _finalizeSwitchDiag({ ticker_mismatch_discarded: true });
+      return;
+    }
+    if (!adoptServerAnalyticsIdentity(data, myGen)) {
+      if (DIAG) console.warn('[fetchState] DISCARDED — analytics_cache_key mismatch', {
+        requested: ticker,
+        expiry: expiry,
+        receivedKey: data.analytics_cache_key,
+        clientKey: buildAnalyticsCacheKey(activeTicker, activeExpiry),
+        serverExp: data.selected_exp,
+      });
+      _bumpSwitchDiagRejection('wrong_expiry');
       return;
     }
 
@@ -9214,15 +9285,16 @@ async function fetchState(forceOrOpts) {
     // tier responses are safe.
     (async () => {
       try {
-        const liveUrl = `/api/live/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}`;
+        const liveUrl = buildAnalyticsRequestUrl('/api/live/state', ticker, expiry, '');
         const lResp = await fetchJsonWithTimeout(liveUrl, { signal: fetchAbortSignal }, 2800);
         if (lResp.ok) {
           const ld = await lResp.json();
           if (ld && typeof ld === 'object' && !Array.isArray(ld)
               && ld.error !== 'token_invalid'
               && myGen === requestGeneration
-              && (!ld.ticker || ld.ticker.toUpperCase() === activeTicker)
-              && ld._tier === 'A_live') {
+            && (!ld.ticker || ld.ticker.toUpperCase() === activeTicker)
+            && ld._tier === 'A_live'
+            && adoptServerAnalyticsIdentity(ld, myGen)) {
             acceptAndScheduleMoneyPathRender(ld, 'rest_manual');
             if (dot) dot.className = 'status-dot live';
             if (label) label.textContent = 'LIVE';
@@ -9241,14 +9313,15 @@ async function fetchState(forceOrOpts) {
     // Tier B — do not block on this path; it is opportunistic for structure/OF context.
     (async () => {
       try {
-        const bUrl = `/api/analytics/light?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}`;
+        const bUrl = buildAnalyticsRequestUrl('/api/analytics/light', ticker, expiry, '');
         const bResp = await fetchJsonWithTimeout(bUrl, { signal: fetchAbortSignal }, 1400);
         if (!bResp.ok) return;
         const bd = await bResp.json();
         if (bd && typeof bd === 'object' && !Array.isArray(bd)
             && (bd._tier === 'B_light' || bd.plane === 'L1_context')
             && myGen === requestGeneration
-            && (!bd.ticker || bd.ticker.toUpperCase() === activeTicker)) {
+            && (!bd.ticker || bd.ticker.toUpperCase() === activeTicker)
+            && adoptServerAnalyticsIdentity(bd, myGen)) {
           acceptAndScheduleMoneyPathRender(bd, 'rest_manual', function (didB) {
             if (didB && willChange && _switchDiagSession && !_switchDiagSession._timingLightPaint && window.ED_SWITCH_TIMING === true) {
               _switchDiagSession._timingLightPaint = true;
@@ -9365,7 +9438,7 @@ async function pollStateFallback() {
   if (DIAG) console.log('[pollFallback] run', { ticker, gen: myGen, sseOpen });
 
   try {
-    const url = `/api/analytics/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}`;
+    const url = buildAnalyticsRequestUrl('/api/analytics/state', ticker, expiry, '');
     const resp = await fetch(url);
     if (!resp.ok) {
       if (resp.status === 401) {
@@ -9394,6 +9467,15 @@ async function pollStateFallback() {
     if (data.ticker && data.ticker.toUpperCase() !== activeTicker) {
       if (DIAG) console.warn('[pollFallback] DISCARDED — ticker mismatch', { fetched: ticker, received: data.ticker, active: activeTicker });
       _bumpSwitchDiagRejection('wrong_ticker');
+      return;
+    }
+    if (!adoptServerAnalyticsIdentity(data, myGen)) {
+      if (DIAG) console.warn('[pollFallback] DISCARDED — analytics_cache_key mismatch', {
+        fetched: ticker,
+        expiry: expiry,
+        receivedKey: data.analytics_cache_key,
+        clientKey: buildAnalyticsCacheKey(activeTicker, activeExpiry),
+      });
       return;
     }
 
@@ -10124,9 +10206,7 @@ function manualFullRefresh() { fetchState(true); }
 //   derivation, or emission changed.
 
 function _buildSseStreamUrl(ticker, expiry) {
-  const t = (ticker || '').trim().toUpperCase() || 'SPY';
-  const e = expiry || null;
-  return `/api/stream?ticker=${encodeURIComponent(t)}${e ? '&expiry=' + encodeURIComponent(e) : ''}`;
+  return buildAnalyticsRequestUrl('/api/stream', ticker, expiry, '');
 }
 
 function _clearSseReconnectTimer() {
@@ -10144,9 +10224,7 @@ function _clearL1LightReconnectTimer() {
 }
 
 function _buildL1LightSseUrl(ticker, expiry) {
-  const t = (ticker || '').trim().toUpperCase() || 'SPY';
-  const e = expiry || null;
-  return `/api/analytics/light/stream?ticker=${encodeURIComponent(t)}${e ? '&expiry=' + encodeURIComponent(e) : ''}`;
+  return buildAnalyticsRequestUrl('/api/analytics/light/stream', ticker, expiry, '');
 }
 
 /** Exponential backoff + jitter (cap 30s) — limits reconnect storms vs fixed 3s. */
@@ -10295,8 +10373,11 @@ function connectL1LightSSE(opts) {
         _bumpL1SseDiag('rejectedParse');
         return;
       }
-      const wantExp0 = (typeof activeExpiry !== 'undefined' && activeExpiry) ? String(activeExpiry).trim() : '';
-      const scopeKey0 = activeTicker + '|' + wantExp0;
+      if (!adoptServerAnalyticsIdentity(payload, l1ConnGen)) {
+        _bumpL1SseDiag('rejectedScope');
+        return;
+      }
+      const scopeKey0 = buildAnalyticsCacheKey(activeTicker, activeExpiry);
       const genVal0 = payload.l1_generation != null ? Number(payload.l1_generation) : NaN;
       const tsVal0 = payload._server_build_ts != null ? Number(payload._server_build_ts) : NaN;
       const fp0 = env.l1_payload_fingerprint != null ? String(env.l1_payload_fingerprint) : '';
@@ -10576,9 +10657,9 @@ function connectSSE(opts) {
         }
         return;
       }
-      if (!expiryMatchesStream(data.selected_exp, activeExpiry)) {
+      if (!adoptServerAnalyticsIdentity(data, sseGen)) {
         if (typeof DIAG !== 'undefined' && DIAG) {
-          console.log(`SSE_ONMESSAGE_REJECTED reason=expiry serverExp=${data.selected_exp == null ? '' : data.selected_exp} activeExpiry=${activeExpiry == null ? '' : activeExpiry} generation=${sseGen}`);
+          console.log(`SSE_ONMESSAGE_REJECTED reason=analytics_cache_key serverKey=${data.analytics_cache_key == null ? '' : data.analytics_cache_key} clientKey=${buildAnalyticsCacheKey(activeTicker, activeExpiry)} serverExp=${data.selected_exp == null ? '' : data.selected_exp} activeExpiry=${activeExpiry == null ? '' : activeExpiry} generation=${sseGen}`);
         }
         return;
       }
