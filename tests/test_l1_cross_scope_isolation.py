@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 
+from planes.context_light import format_analytics_cache_key
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -25,9 +27,12 @@ def norm_l1_expiry_key(exp: Any) -> str:
 
 
 def scope_key(ticker: str, active_exp: Any) -> str:
-    """Client renderTierBLight: activeTicker + '|' + wantExp (raw active expiry string or '')."""
-    want = str(active_exp).strip() if active_exp else ""
-    return f"{ticker.strip().upper()}|{want}"
+    """Client renderTierBLight: buildAnalyticsCacheKey(activeTicker, activeExpiry)."""
+    return format_analytics_cache_key(ticker, active_exp)
+
+
+def build_analytics_cache_key(ticker: str, expiry: Any) -> str:
+    return format_analytics_cache_key(ticker, expiry)
 
 
 def l1_tier_b_payload_matches_active_scope(
@@ -42,6 +47,12 @@ def l1_tier_b_payload_matches_active_scope(
     at = (active_ticker or "").strip().upper() or "SPY"
     if pt != at:
         return False
+    echoed = d.get("analytics_cache_key")
+    client_key = build_analytics_cache_key(at, active_exp)
+    if echoed and str(echoed) == client_key:
+        return True
+    if not active_exp:
+        return True
     pk = norm_l1_expiry_key(d.get("selected_exp"))
     ck = norm_l1_expiry_key(active_exp)
     return pk == ck
@@ -125,6 +136,31 @@ def test_e_auto_expiry_matches_empty_selected():
         None,
     )
     assert norm_l1_expiry_key(None) == norm_l1_expiry_key("__auto__")
+
+
+def test_ui01_auto_scope_accepts_resolved_selected_exp():
+    """Client auto-expiry must not drop a same-ticker payload that echoes a resolved date."""
+    assert l1_tier_b_payload_matches_active_scope(
+        {
+            "ticker": "SPY",
+            "selected_exp": "2026-08-15",
+            "analytics_cache_key": "SPY|2026-08-15",
+        },
+        "SPY",
+        None,
+    )
+
+
+def test_ui01_echoed_cache_key_match_accepted():
+    assert l1_tier_b_payload_matches_active_scope(
+        {
+            "ticker": "SPY",
+            "selected_exp": "2026-08-15T00:00:00",
+            "analytics_cache_key": "SPY|2026-08-15",
+        },
+        "SPY",
+        "2026-08-15",
+    )
 
 
 # --- Regression: no global Tier B gen in client source --------------------------------------

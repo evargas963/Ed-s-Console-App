@@ -1388,6 +1388,9 @@ def _attach_analytics_freshness_contract(
         last_err = _analytics_bg_last_error.get(inflight_key)
         if last_err:
             md["analytics_last_error"] = last_err
+    from planes.context_light import stamp_analytics_cache_identity
+
+    stamp_analytics_cache_identity(md)
 
 
 # Schwab CSV authority checked: yes
@@ -2154,7 +2157,7 @@ def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
     _analytics_cache_observability["pending_shell_builds"] += 1
     t = ticker.upper().strip()
     pending_shell_ingestion_wall_ts = time.time()
-    return {
+    md = {
         "_tier": "C_analytics",
         "analytics_pending_shell": True,
         "ticker": t,
@@ -2168,6 +2171,10 @@ def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
         "_pipeline_ms": 0,
         "_endpoint": "/api/analytics/state",
     }
+    from planes.context_light import stamp_analytics_cache_identity
+
+    stamp_analytics_cache_identity(md, t, expiry)
+    return md
 
 
 def _attach_db_contention_operator_surface(ms_dict: dict) -> None:
@@ -2305,6 +2312,9 @@ def _publish_progressive_tier_c_cache(
     }
     if update_source is not None:
         md["_update_source"] = update_source
+    from planes.context_light import stamp_analytics_cache_identity
+
+    stamp_analytics_cache_identity(md, t, selected_exp)
     _lmp.merge_into_state(md, t)
 
     _state_cache[cache_key] = {
@@ -5377,6 +5387,9 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
         "l1_projection_read": True,
     }
     _l1_attach_freshness_semantics(out, l1_eval_wall_ts)
+    from planes.context_light import stamp_analytics_cache_identity
+
+    stamp_analytics_cache_identity(out)
     return out
 
 
@@ -5489,7 +5502,9 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     except HTTPException as he:
         if not _plane_fast_quote_has_spot(row):
             if _schwab_auth_http_unavailable(he):
-                return {
+                from planes.context_light import stamp_analytics_cache_identity
+
+                out_auth = {
                     "_tier": "A_live",
                     "ticker": tkr,
                     "selected_exp": expiry,
@@ -5502,6 +5517,8 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
                     "_endpoint": "/api/live/state",
                 }
+                stamp_analytics_cache_identity(out_auth, tkr, expiry)
+                return out_auth
             raise
     if (not row or row.get("spot") is None) and client:
         q_resp = _safe_get_quote_with_retry(client, tkr)
@@ -5564,7 +5581,9 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     except (TypeError, ValueError):
                         pass
     if not row or row.get("spot") is None:
-        return {
+        from planes.context_light import stamp_analytics_cache_identity
+
+        out_miss = {
             "_tier": "A_live",
             "ticker": tkr,
             "selected_exp": expiry,
@@ -5575,6 +5594,8 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
             "_endpoint": "/api/live/state",
         }
+        stamp_analytics_cache_identity(out_miss, tkr, expiry)
+        return out_miss
     spot_f = float(row["spot"])
     bid = row.get("bid")
     ask = row.get("ask")
@@ -5655,6 +5676,9 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     if lw:
         out["analytics_lightweight"] = lw
     _lmp.merge_into_state(out, tkr)
+    from planes.context_light import stamp_analytics_cache_identity
+
+    stamp_analytics_cache_identity(out, tkr, expiry)
     return out
 
 
@@ -7945,6 +7969,9 @@ def _fetch_state(
     ms_dict["analytics_partial_tier_c"] = False
     ms_dict["expiries"] = [e for e in expiries if e >= _today_str]
     ms_dict["selected_exp"] = selected_exp
+    from planes.context_light import stamp_analytics_cache_identity
+
+    stamp_analytics_cache_identity(ms_dict, ticker, selected_exp)
     ms_dict["quote_source_detail"] = {
         "spot": "lastPrice" if parsed_last and parsed_last > 0 else ("mark" if parsed_mark and parsed_mark > 0 else "unavailable_missing_last_and_mark"),
         "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",

@@ -33,6 +33,32 @@ PLANE_L1 = "L1_context"
 L1_SCHEMA_VERSION = 1
 MERGE_RULE_L1 = "L0_plus_acknowledged_L2_snapshot"
 
+
+def format_analytics_cache_key(ticker: str, selected_exp: Optional[str]) -> str:
+    """Canonical (ticker, expiry) identity echoed on A/B/C payloads (UI-01).
+
+    Format matches the client key-builder: ``TICKER|YYYY-MM-DD`` or ``TICKER|``
+    when expiry is unresolved / auto. Display/transport only — not a trade gate.
+    """
+    t = (ticker or "").upper().strip() or "SPY"
+    if selected_exp is None:
+        return f"{t}|"
+    s = str(selected_exp).strip()
+    if not s or s == "__auto__":
+        return f"{t}|"
+    return f"{t}|{s[:10]}"
+
+
+def stamp_analytics_cache_identity(
+    md: dict,
+    ticker: Optional[str] = None,
+    selected_exp: Optional[str] = None,
+) -> None:
+    """Stamp ``analytics_cache_key`` from ticker + selected_exp already on the payload."""
+    t = ticker if ticker is not None else md.get("ticker")
+    exp = selected_exp if selected_exp is not None else md.get("selected_exp")
+    md["analytics_cache_key"] = format_analytics_cache_key(str(t or ""), exp)
+
 # Max age (seconds) for the acknowledged L2 ms_dict before structural_context_stale
 # flips True. Operator-tunable policy threshold (not market data); named so the value
 # is grep-discoverable and consumer-facing diagnostics can reference the same constant.
@@ -62,6 +88,9 @@ _STRUCTURAL_KEYS = (
     "kl_gamma_pin",
     "kl_hvl",
     "kl_max_pain",
+    "kl_gamma_flip",
+    "kl_call_gamma_wall",
+    "kl_put_gamma_wall",
     "kl_net_gex",
     "kl_net_gex_disp",
     "kl_net_gex_regime",
@@ -311,4 +340,5 @@ def build_l1_context(
         "dist_to_vwap_pts": dist_vwap,
     }
     out.update(structural)
+    stamp_analytics_cache_identity(out, tkr, selected_exp_out)
     return out

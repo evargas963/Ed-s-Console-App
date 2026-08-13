@@ -91,6 +91,83 @@ def test_l1_inflight_semantics(l1_clean_spy, monkeypatch):
     assert out.get("l2_analytics_refresh_in_progress") is True
 
 
+def test_l1_copies_gamma_flip_and_gamma_walls_from_acknowledged_l2():
+    """B_light must copy flip/walls from L2 ms_dict the same way it copies PIN/HVL."""
+    from math_snapshot_derive import derive_vwap_side
+
+    from planes.context_light import L1BuildContext, _STRUCTURAL_KEYS, build_l1_context
+
+    for k in ("kl_gamma_flip", "kl_call_gamma_wall", "kl_put_gamma_wall"):
+        assert k in _STRUCTURAL_KEYS, k
+
+    now = time.time()
+    ctx = L1BuildContext(
+        ticker="SPY",
+        request_expiry=None,
+        l0_row={"spot": 779.5, "bid": 779.4, "ask": 779.6},
+        l2_cache_entry={
+            "analytics_version": 9,
+            "generated_at": now,
+            "ts": now,
+            "ms_dict": {
+                "kl_gamma_pin": 780.0,
+                "kl_gamma_flip": 768.36,
+                "kl_call_gamma_wall": 780.0,
+                "kl_put_gamma_wall": 770.0,
+                "kl_hvl": 780.0,
+                "kl_net_gex": 4.41e9,
+            },
+        },
+        now_ts=now,
+        l2_analytics_refresh_in_progress=True,
+        l1_generation=4,
+    )
+    out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side, order_flow_compact={})
+    assert out["_tier"] == "B_light"
+    assert out["kl_gamma_pin"] == 780.0
+    assert out["kl_gamma_flip"] == 768.36
+    assert out["kl_call_gamma_wall"] == 780.0
+    assert out["kl_put_gamma_wall"] == 770.0
+    structural = out["tier_b_structural"]
+    assert structural["kl_gamma_flip"] == 768.36
+    assert structural["kl_call_gamma_wall"] == 780.0
+    assert structural["kl_put_gamma_wall"] == 770.0
+    ctx_missing = L1BuildContext(
+        ticker="SPY",
+        request_expiry=None,
+        l0_row={"spot": 779.5, "bid": 779.4, "ask": 779.6},
+        l2_cache_entry={
+            "analytics_version": 9,
+            "generated_at": now,
+            "ts": now,
+            "ms_dict": {"kl_gamma_pin": 780.0, "kl_gamma_flip": None},
+        },
+        now_ts=now,
+        l2_analytics_refresh_in_progress=True,
+        l1_generation=5,
+    )
+    out_missing = build_l1_context(
+        ctx_missing, derive_vwap_side_fn=derive_vwap_side, order_flow_compact={}
+    )
+    assert "kl_gamma_flip" not in out_missing
+    assert "kl_gamma_flip" not in out_missing["tier_b_structural"]
+    assert out_missing["kl_gamma_pin"] == 780.0
+
+
+def test_index_html_tier_b_paints_kl_flip_from_light_payload():
+    """renderTierBLight must paint KEY LEVELS + exec-gflip once B_light carries the fields."""
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
+    start = html.index("function renderTierBLight")
+    end = html.index("\nfunction ", start + 1)
+    body = html[start:end]
+    assert "__renderKeyLevelsLive" in body
+    assert "exec-gflip" in body
+    assert "kl_gamma_flip" in body
+    assert "kl_call_gamma_wall" in body
+    assert "kl_put_gamma_wall" in body
+    assert "renderDecisionCommandRail" not in body
+
+
 def test_l1_stale_truth_spot_unusable():
     from math_snapshot_derive import derive_vwap_side
 
