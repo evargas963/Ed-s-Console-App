@@ -6213,12 +6213,21 @@ function renderTierBLight(d, fullRenderSource) {
   }
   window._lastData = merged;
   // Structural KL copied from acknowledged L2 (same list as PIN/HVL). Paint the
-  // existing Console KEY LEVELS + exec pin/flip from this merge. Sparse B_light
-  // must not run the full decision rail (fusion/WAIT stay on Tier C).
+  // existing Console KEY LEVELS + exec pin/flip/EM from this merge. Sparse
+  // B_light must not run the full decision rail (fusion/WAIT stay on Tier C).
   try {
     if (typeof window.__renderKeyLevelsLive === 'function' && (
       merged.kl_gamma_pin != null || merged.kl_gamma_flip != null
       || merged.kl_call_gamma_wall != null || merged.kl_put_gamma_wall != null
+      || merged.kl_em_upper != null || merged.kl_em_lower != null
+      || merged.em_straddle_upper != null || merged.em_straddle_lower != null
+      || merged.kl_gamma_inflection != null || merged.kl_delta_inflection != null
+      || merged.kl_call_delta_wall != null || merged.kl_put_delta_wall != null
+      || merged.kl_call_oi_wall != null || merged.kl_put_oi_wall != null
+      || merged.kl_call_vanna_wall != null || merged.kl_put_vanna_wall != null
+      || merged.kl_oi_center != null || merged.kl_hvl != null || merged.kl_max_pain != null
+      || merged.kl_synth_fwd != null
+      || (Array.isArray(merged.kl_gamma_voids) && merged.kl_gamma_voids.length)
     )) {
       window.__renderKeyLevelsLive(merged);
     }
@@ -6235,6 +6244,16 @@ function renderTierBLight(d, fullRenderSource) {
     if (merged.kl_gamma_flip != null) {
       domIf('exec-gflip', el => { el.textContent = _klPx(merged.kl_gamma_flip); });
       domIf('dr-lvl-gflip', el => { el.textContent = _klPx(merged.kl_gamma_flip); });
+    }
+    var _bEmH = (merged.em_straddle_upper != null) ? merged.em_straddle_upper : merged.kl_em_upper;
+    var _bEmL = (merged.em_straddle_lower != null) ? merged.em_straddle_lower : merged.kl_em_lower;
+    if (_bEmH != null) {
+      domIf('exec-em-high', el => { el.textContent = _klPx(_bEmH); });
+      domIf('dr-lvl-emh', el => { el.textContent = _klPx(_bEmH); });
+    }
+    if (_bEmL != null) {
+      domIf('exec-em-low', el => { el.textContent = _klPx(_bEmL); });
+      domIf('dr-lvl-eml', el => { el.textContent = _klPx(_bEmL); });
     }
   } catch (e) {}
   try {

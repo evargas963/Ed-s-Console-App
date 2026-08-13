@@ -154,6 +154,115 @@ def test_l1_copies_gamma_flip_and_gamma_walls_from_acknowledged_l2():
     assert out_missing["kl_gamma_pin"] == 780.0
 
 
+def test_l1_copies_remaining_key_levels_from_acknowledged_l2():
+    """B_light must copy the rest of the Console KEY LEVELS table from L2, not just flip/walls."""
+    from math_snapshot_derive import derive_vwap_side
+
+    from planes.context_light import L1BuildContext, _STRUCTURAL_KEYS, build_l1_context
+
+    remaining = (
+        "kl_em_upper",
+        "kl_em_lower",
+        "em_straddle_upper",
+        "em_straddle_lower",
+        "kl_gamma_inflection",
+        "kl_delta_inflection",
+        "kl_call_delta_wall",
+        "kl_put_delta_wall",
+        "kl_call_oi_wall",
+        "kl_put_oi_wall",
+        "kl_call_vanna_wall",
+        "kl_put_vanna_wall",
+        "kl_oi_center",
+        "kl_call_gamma_str",
+        "kl_hvl_str",
+        "kl_synth_fwd",
+    )
+    for k in remaining:
+        assert k in _STRUCTURAL_KEYS, k
+    assert "kl_gamma_voids" not in _STRUCTURAL_KEYS
+    assert "net_gex_at_spot" not in _STRUCTURAL_KEYS
+
+    voids = [{"lower": 772.0, "upper": 774.0, "above_spot": True, "avg_gex_pct": 8.0}]
+    now = time.time()
+    ctx = L1BuildContext(
+        ticker="SPY",
+        request_expiry=None,
+        l0_row={"spot": 779.5, "bid": 779.4, "ask": 779.6},
+        l2_cache_entry={
+            "analytics_version": 11,
+            "generated_at": now,
+            "ts": now,
+            "ms_dict": {
+                "kl_gamma_pin": 780.0,
+                "kl_em_upper": 781.7,
+                "kl_em_lower": 774.3,
+                "em_straddle_upper": 781.7,
+                "em_straddle_lower": 774.3,
+                "kl_gamma_inflection": 776.0,
+                "kl_call_oi_wall": 785.0,
+                "kl_put_oi_wall": 770.0,
+                "kl_call_gamma_str": "$1.2M/pt",
+                "kl_hvl_str": "$900K/pt",
+                "kl_synth_fwd": 779.8,
+                "kl_gamma_voids": voids,
+                "kl_net_gex": 4.41e9,
+                "net_gex_at_spot": 1.0,
+            },
+        },
+        now_ts=now,
+        l2_analytics_refresh_in_progress=True,
+        l1_generation=6,
+    )
+    out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side, order_flow_compact={})
+    assert out["_tier"] == "B_light"
+    assert out["kl_em_upper"] == 781.7
+    assert out["kl_em_lower"] == 774.3
+    assert out["em_straddle_upper"] == 781.7
+    assert out["kl_gamma_inflection"] == 776.0
+    assert out["kl_call_oi_wall"] == 785.0
+    assert out["kl_put_oi_wall"] == 770.0
+    assert out["kl_call_gamma_str"] == "$1.2M/pt"
+    assert out["kl_synth_fwd"] == 779.8
+    assert out["kl_gamma_voids"] == voids
+    assert out["kl_net_gex"] == 4.41e9
+    assert "net_gex_at_spot" not in out
+    structural = out["tier_b_structural"]
+    assert structural["kl_em_upper"] == 781.7
+    assert structural["kl_call_oi_wall"] == 785.0
+    assert structural["kl_gamma_voids"] == voids
+    from planes.l1_decision_dependencies import warn_l1_payload_key_drift
+
+    assert "kl_gamma_voids" not in warn_l1_payload_key_drift(out)
+
+    ctx_empty = L1BuildContext(
+        ticker="SPY",
+        request_expiry=None,
+        l0_row={"spot": 779.5, "bid": 779.4, "ask": 779.6},
+        l2_cache_entry={
+            "analytics_version": 11,
+            "generated_at": now,
+            "ts": now,
+            "ms_dict": {
+                "kl_gamma_pin": 780.0,
+                "kl_em_upper": None,
+                "kl_gamma_voids": [],
+            },
+        },
+        now_ts=now,
+        l2_analytics_refresh_in_progress=True,
+        l1_generation=7,
+    )
+    out_empty = build_l1_context(
+        ctx_empty, derive_vwap_side_fn=derive_vwap_side, order_flow_compact={}
+    )
+    assert "kl_em_upper" not in out_empty
+    assert "kl_em_upper" not in out_empty["tier_b_structural"]
+    assert "kl_gamma_voids" not in out_empty
+    assert "kl_gamma_voids" not in out_empty["tier_b_structural"]
+    assert out_empty["kl_gamma_pin"] == 780.0
+
+
 def test_index_html_tier_b_paints_kl_flip_from_light_payload():
     """renderTierBLight must paint KEY LEVELS + exec-gflip once B_light carries the fields."""
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
@@ -165,6 +274,10 @@ def test_index_html_tier_b_paints_kl_flip_from_light_payload():
     assert "kl_gamma_flip" in body
     assert "kl_call_gamma_wall" in body
     assert "kl_put_gamma_wall" in body
+    assert "kl_em_upper" in body
+    assert "exec-em-high" in body
+    assert "exec-em-low" in body
+    assert "kl_gamma_voids" in body
     assert "renderDecisionCommandRail" not in body
 
 
