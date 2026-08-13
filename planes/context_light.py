@@ -91,6 +91,36 @@ _STRUCTURAL_KEYS = (
     "kl_gamma_flip",
     "kl_call_gamma_wall",
     "kl_put_gamma_wall",
+    "kl_em_upper",
+    "kl_em_lower",
+    "kl_em_anchor",
+    "em_straddle_upper",
+    "em_straddle_lower",
+    "kl_gamma_inflection",
+    "kl_delta_inflection",
+    "kl_call_delta_wall",
+    "kl_put_delta_wall",
+    "kl_call_oi_wall",
+    "kl_put_oi_wall",
+    "kl_call_vanna_wall",
+    "kl_put_vanna_wall",
+    "kl_oi_center",
+    "kl_call_gamma_str",
+    "kl_put_gamma_str",
+    "kl_call_delta_str",
+    "kl_put_delta_str",
+    "kl_call_oi_str",
+    "kl_put_oi_str",
+    "kl_call_vanna_str",
+    "kl_put_vanna_str",
+    "kl_hvl_str",
+    "kl_max_pain_str",
+    "kl_net_gex_mag",
+    "kl_institutional_ready",
+    "kl_synth_fwd",
+    "kl_synth_fwd_resid",
+    "kl_synth_fwd_side",
+    "kl_synth_fwd_label",
     "kl_net_gex",
     "kl_net_gex_disp",
     "kl_net_gex_regime",
@@ -266,6 +296,13 @@ def build_l1_context(
     for k in _STRUCTURAL_KEYS:
         if k in md and md[k] is not None:
             structural[k] = md[k]
+    # List-valued KL field — copy as-is. Must stay off _STRUCTURAL_KEYS:
+    # that set is scalar fingerprint material, and str(list-of-dicts) is not a
+    # stable identity. Empty list is omitted (same as None): do not paint a
+    # fabricated void zone. L1 rebuilds when other copied KL scalars change.
+    voids = md.get("kl_gamma_voids")
+    if isinstance(voids, list) and voids:
+        structural["kl_gamma_voids"] = voids
 
     lb = md.get("liquidity_behavior")
     liquidity_summary: Optional[dict[str, Any]] = None
