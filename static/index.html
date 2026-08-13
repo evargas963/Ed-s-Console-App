@@ -3056,7 +3056,7 @@
               <div class="decision-block">
                 <div class="decision-block-hd"><div class="decision-block-title">Execution levels (chartable)</div></div>
                 <div class="decision-kv">
-                  <div class="decision-k">PIN</div><div class="decision-v" id="dr-lvl-pin">—</div>
+                  <div class="decision-k" title="Largest |net GEX$| per 1% on the selected expiry. Not the total-gamma magnet (that is HVL).">NET Γ</div><div class="decision-v" id="dr-lvl-pin">—</div>
                   <div class="decision-k">Gamma flip</div><div class="decision-v" id="dr-lvl-gflip">—</div>
                   <div class="decision-k">Support</div><div class="decision-v" id="dr-lvl-support">—</div>
                   <div class="decision-k">Resistance</div><div class="decision-v" id="dr-lvl-resistance">—</div>
@@ -3097,7 +3097,7 @@
             <div class="signal-card-header"><span class="signal-card-title">Execution Levels</span></div>
             <div class="signal-card-body">
               <div class="decision-kv">
-                <div class="decision-k">PIN</div><div class="decision-v" id="exec-pin">—</div>
+                <div class="decision-k" title="Largest |net GEX$| per 1% on the selected expiry. Not the total-gamma magnet (that is HVL).">NET Γ</div><div class="decision-v" id="exec-pin">—</div>
                 <div class="decision-k">GAMMA FLIP</div><div class="decision-v" id="exec-gflip">—</div>
                 <div class="decision-k">SUPPORT</div><div class="decision-v" id="exec-support">—</div>
                 <div class="decision-k">RESISTANCE</div><div class="decision-v" id="exec-resistance">—</div>
@@ -6212,7 +6212,7 @@ function renderTierBLight(d, fullRenderSource) {
     if (d[k] !== undefined) merged[k] = d[k];
   }
   window._lastData = merged;
-  // Structural KL copied from acknowledged L2 (same list as PIN/HVL). Paint the
+  // Structural KL copied from acknowledged L2 (same list as NET Γ/HVL). Paint the
   // existing Console KEY LEVELS + exec pin/flip/EM from this merge. Sparse
   // B_light must not run the full decision rail (fusion/WAIT stay on Tier C).
   try {
@@ -7615,7 +7615,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
   const KL_PRIMARY = [
     { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444' },
     { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e' },
-    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7' },
+    { key: 'kl_gamma_pin', strKey: null, label: 'Net Γ Peak', sr: 'pin', srLabel: 'Net Γ', proxColor: '#a855f7', title: 'Largest |net GEX$| per 1% on the selected expiry. Not the total-gamma magnet (that is HVL).' },
     { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef' },
     { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316' },
@@ -7689,9 +7689,10 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       const sr = level.sr || (isNull ? 'net' : v > (spot||0) ? 'res' : 'sup');
       const srLbl = level.srLabel || (isNull ? '—' : v > (spot||0) ? 'Resistance' : 'Support');
       const pColor = proxColor(v, level);
+      const tip = level.title ? ` title="${String(level.title).replace(/"/g, '&quot;')}"` : '';
       return `<div class="kl-grid">
         <div class="kl-prox" style="background:${pColor}"></div>
-        <div class="kl-name${dimmed ? ' dimmed' : ''}">${level.label}</div>
+        <div class="kl-name${dimmed ? ' dimmed' : ''}"${tip}>${level.label}</div>
         <div class="kl-price">${isNull ? '—' : v.toFixed(2)}</div>
         <div style="text-align:center"><span class="kl-sr ${sr}">${srLbl}</span></div>
         <div class="kl-dist ${distClass(dist)}">${distStr}</div>
@@ -7727,7 +7728,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       </div>`;
     }
 
-    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as Gamma Pin row)
+    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as Net Γ Peak row)
     {
       const pinStrike = parseFloat(d.kl_gamma_pin || 0);
       const charmTarget = (d.kl_institutional_ready && pinStrike > 0)
