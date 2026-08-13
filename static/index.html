@@ -6146,6 +6146,31 @@ function renderTierBLight(d, fullRenderSource) {
     if (d[k] !== undefined) merged[k] = d[k];
   }
   window._lastData = merged;
+  // Structural KL copied from acknowledged L2 (same list as PIN/HVL). Paint the
+  // Console consumers that already read these keys; do not run the full rail
+  // (sparse B_light must not reset fusion/WAIT chrome).
+  try {
+    if (typeof window.__renderKeyLevelsLive === 'function' && (
+      merged.kl_gamma_pin != null || merged.kl_gamma_flip != null
+      || merged.kl_call_gamma_wall != null || merged.kl_put_gamma_wall != null
+    )) {
+      window.__renderKeyLevelsLive(merged);
+    }
+  } catch (e) {}
+  try {
+    const _klPx = (x) => {
+      const n = (x == null || x === '' || Number.isNaN(Number(x))) ? null : Number(x);
+      return n == null ? '—' : n.toFixed(2);
+    };
+    if (merged.kl_gamma_pin != null) {
+      domIf('exec-pin', el => { el.textContent = _klPx(merged.kl_gamma_pin); });
+      domIf('dr-lvl-pin', el => { el.textContent = _klPx(merged.kl_gamma_pin); });
+    }
+    if (merged.kl_gamma_flip != null) {
+      domIf('exec-gflip', el => { el.textContent = _klPx(merged.kl_gamma_flip); });
+      domIf('dr-lvl-gflip', el => { el.textContent = _klPx(merged.kl_gamma_flip); });
+    }
+  } catch (e) {}
   try {
     window._edRtDiag = Object.assign(window._edRtDiag || {}, {
       lastFullRenderSource: fullRenderSource || 'tier_b_light',
