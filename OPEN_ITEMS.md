@@ -1,8 +1,8 @@
-# Open items
+# PROJECT A — MASTER BOARD (single structural denominator)
 
 **Closure rule (binding):** a checkbox may be `[x]` ONLY with an exact commit SHA (and test cite where code changed); absent that SHA it is `[ ]` with status text. No closure is inferred from prose, CLOSED_WITH_EVIDENCE labels, CI, neighbouring rows, parent status, another ticker/horizon, or memory.
 
-**Board scope:** the canonical Project A denominator is the `# PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD` section below. Nothing is considered closed merely because it is absent from an older list. The single current execution queue is **PA-46** (a pointer view, not an independent closable copy).
+**Board scope:** the canonical Project A denominator is the `## PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD` section below. Nothing is considered closed merely because it is absent from an older list. The single current execution queue is **PA-46** (a pointer view, not an independent closable copy).
 
 **Last rewritten:** 2026-08-12 — Project A atomic master board + freeze-audit defect repair (audit branch `cursor/project-a-board-audit`).
 
@@ -31,7 +31,7 @@ This is the single ruling standard. Everything specific is a CHECK under it, nev
 3. **ONE lock = the Institutional Correctness gate — BUILT 2026-07-17: `tools/check_institutional_correctness.py`.** Institutional = logic + math + fidelity + single-source, repo-wide. New correctness requirements are REGISTERED AS CHECKS inside this one gate — never a new lock. Check 1 live: `no_synthetic_domain_fixtures_in_tests` (AST — inline option-chain contracts in tests must load REAL data from `tests/fixtures/`, or declare `# institutional-synthetic-ok: <reason>` for genuine fail-closed/edge cases; `tests/archive/` out of scope). **DONE 2026-07-17: found systemic (44 violations across 20 files) and driven to ZERO — gate PASSES, 213 touched tests green, correctness tests moved to a real captured chain (`tests/fixtures/real_spy_0dte_chain_with_poison.json`), fail-closed tests justified in-line, nothing weakened to pass. WIRED as blocking pre-commit (`.pre-commit-config.yaml` id: institutional-correctness).** Each check is ENFORCED (must be zero, blocks pre-commit) or ADVISORY (visible debt → drive to zero → flip to enforced; the ratchet). Whole-codebase baseline: `python tools/check_institutional_correctness.py`. Registered 2026-07-17 (9 checks; inventory `reports/institutional_debt_inventory.md`): **ENFORCED (block commits, all 0)** = no_synthetic_domain_fixtures, no_silent_swallow (3 sites justified), no_todo_without_tracking_id. **ADVISORY debt to drive down** = function_complexity 455, function_length 393, file_length 38, ruff_quality 1147, no_fake_defaults 10, mypy_types (DORMANT until mypy installed). single-source stays review-enforced (a general auto-detector cries wolf; the GEX reimplementation was fixed manually). Worst file by far: `server.py` (81 items). Fix plan = batches, worst-file-first, WITH operator review + tests — NOT autonomous. NOTE: Layer 1 mechanical is ~complete; Layer 2 (design) partly mechanical + partly review; Layer 3 (real-fix-vs-workaround / elegance) is human by definition — not mechanizable, never claim otherwise.
 
 ## LEGACY LEDGER (historical — NOT part of the Project A closable denominator)
-> The rows below predate the Project A master board. They are retained as history/pointers only and are deliberately rendered as plain bullets (no `[ ]`/`[x]` state) so they are never counted in the Project A closable denominator. Material work they name is represented in the PA/F/RC sections below (e.g. LP-01 → F15 POC/VAH/VAL + F31 price-level snapshot + PA-27; UI rows → PA-36; ECON-01 → PA-21). Full original text with checkbox state is preserved in git history at `8e594900:OPEN_ITEMS.md`.
+> The rows below predate the Project A master board. They are retained as history/pointers only and are deliberately rendered as plain bullets (no `[ ]`/`[x]` state) so they are never counted in the Project A closable denominator. Material work they name is NOT left as history — it has a canonical, closable home on the board below: LP-01 → F15 POC/VAH/VAL + F31 price-level snapshot + PA-27; UI rows → PA-36; ECON-01 → PA-21; and the remaining material legacy items (FIND-SCHWAB-WORKER-LEAK, FIND-LIVE-FLIP-WIDE-CHAIN, WING-IV, FIND-GAMMA-FULLCHAIN, FIND-SNAPSHOT-BAR-STAMP, UI-01, UI-05, AUDIT-TAPE, OPS-PLAYWRIGHT, GOV-REMOTE-ENFORCEMENT, BUILD-IDENTITY, DIR-01, RECON-02, PHASE-4, PHASE-5) each carry an atomic checkbox in **`## PA-48 — LEGACY MATERIAL WORK — CANONICAL ATOMIC HOMES`**. Full original text with checkbox state is preserved in git history at `b7178549a499f8b84c5b4dfb51b69d3058e9a89d:OPEN_ITEMS.md` (blob `90c0f23ec7de63df274e9c5c12184debbb1d317a`).
 
 ### Now — post-slimming sequence (historical)
 
@@ -241,13 +241,16 @@ open; the charm VOTE stays UNAPPROVED until it closes.
 
 ---
 
-# PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD
+## PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD
 
 > **Added 2026-08-12 (operator-authorized documentation-preservation write).** This is the durable
 > Project A master checklist. It is deliberately expansive and must not be shrunk. Rows are never
 > silently deleted — future changes use ADD / STATUS_CHANGE / RECONCILIATION. Checkbox rule:
-> `[x]` ONLY for CLOSED_WITH_EVIDENCE (or a proven PASS); `[ ]` for everything else
-> (OPEN / FAIL / BLOCKED / NOT_PROVEN / HISTORICAL / GAP / unproven acceptance target).
+> exactly one closure rule governs this board — the **binding Closure rule at the top of this file**:
+> a checkbox is `[x]` ONLY when it is fully proven AND an exact commit SHA (plus test cite where code
+> changed) is recorded on the row; every other state — OPEN / FAIL / BLOCKED / NOT_PROVEN / HISTORICAL /
+> GAP / unproven acceptance target, and any "CLOSED_WITH_EVIDENCE"/"proven PASS" label lacking that SHA —
+> stays `[ ]`. No second or weaker closure rule exists here.
 >
 > **Governing mission:** SEARCH → FIND → PROVE → FIX → TEST → IMPROVE → NEXT. Work the repo, not the
 > board. The board is durable memory of everything that still needs technical proof. This is NOT a
@@ -325,20 +328,43 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **F08** — ATR (standard TR+SMA authority; feature variant distinct; Wilder quarantined) — CLOSED_WITH_EVIDENCE
 - [ ] **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — CLOSED_WITH_EVIDENCE
 - [ ] **F10** — Candle direction — OPEN / WAITING_FOR_HOST_RETRAIN
-  - [ ] One dead-band authority; live producer count = 1; server + normalization delegate
-  - [ ] Historical normalized rows rebuilt under dead-band; production training population corrected
-  - [ ] SPY/QQQ/IWM retrained; non-anchor/universal retrain routing proven; force-retrain/cache-bypass proven
-  - [ ] PREPROCESSING_VERSION bumped atomically; compatible artifacts; governed eval; calibration compatibility
-  - [ ] Atomic promotion; runtime restarted on compatible generation; runtime train/serve parity; replay/backfill compatibility; universality
+  - [ ] One dead-band classifier authority (`classify_direction`)
+  - [ ] Live producer count = 1 (no second encoder)
+  - [ ] Server + normalization delegate to the one authority
+  - [ ] Historical normalized rows rebuilt under the dead-band definition
+  - [ ] Production training population corrected
+  - [ ] SPY/QQQ/IWM retrained under the corrected definition
+  - [ ] Non-anchor / universal retrain routing proven
+  - [ ] Force-retrain / cache-bypass proven
+  - [ ] PREPROCESSING_VERSION bumped atomically with the retrained artifacts
+  - [ ] Compatible artifacts published
+  - [ ] Governed eval on the retrained generation
+  - [ ] Calibration compatibility proven
+  - [ ] Atomic promotion of the retrained generation
+  - [ ] Runtime restarted on the compatible generation
+  - [ ] Runtime train/serve parity proven
+  - [ ] Replay/backfill compatibility proven
+  - [ ] Universality across tickers proven
 - [ ] **F11** — Flow imbalance (one persisted authority; source travels; kwargs contract locked) — CLOSED_WITH_EVIDENCE
 - [ ] **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
 - [ ] **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
 - [ ] **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE
 - [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine)
-  - [ ] Exact semantic contract; one canonical population; no alternate population masquerading; session/as-of; live/replay/backfill/frontend paths; fallback + missingness; mutation proof; universality; runtime proof
+  - [ ] Exact semantic contract defined for POC/VAH/VAL
+  - [ ] One canonical population site
+  - [ ] No alternate population masquerading as the canonical one
+  - [ ] Session / as-of boundary specified
+  - [ ] Live path populates from the canonical producer
+  - [ ] Replay path populates from the canonical producer
+  - [ ] Backfill path populates from the canonical producer
+  - [ ] Frontend path carries the canonical value (no reconstruction)
+  - [ ] Fallback + missingness semantics governed
+  - [ ] Mutation proof (changed inputs change outputs)
+  - [ ] Universality across tickers proven
+  - [ ] Runtime proof on loaded code
+- [ ] **F16** — Reserved/disputed VIX-regime row — HISTORICAL / NOT_PROVEN (identity reconciled; producer `vix_bucket`/`vix_level`; consumers/missingness/fallback/universality/defect-status unproven)
 - [ ] **F17** — Realized volatility cadence (`bar_minutes` required; no silent default) — CLOSED_WITH_EVIDENCE
 - [ ] **F18** — Charm drift target (not substituted with pin/net-GEX; governed absence; real UI path fixed) — CLOSED_WITH_EVIDENCE
-- [ ] **F16** — Reserved/disputed VIX-regime row — HISTORICAL / NOT_PROVEN (identity reconciled; producer `vix_bucket`/`vix_level`; consumers/missingness/fallback/universality/defect-status unproven)
 - [ ] **F19** — Reserved/disputed freshness/actionability row — HISTORICAL / NOT_PROVEN (actionability F05 closed; freshness → RC-282 OPEN)
 - [ ] **F20** — Pin width (one authority; market_state + server delegate) — CLOSED_WITH_EVIDENCE
 - [ ] **F21** — VWAP side (one `derive_vwap_side`; consumers delegate) — CLOSED_WITH_EVIDENCE
@@ -346,42 +372,141 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **F23** — Crossed spread (withheld at source; dead helper retired) — CLOSED_WITH_EVIDENCE
 - [ ] **F24** — VWAP distance (signed `spot - vwap`; train/serve parity) — CLOSED_WITH_EVIDENCE
 - [ ] **F25** — Canonical ticker storage and artifact identity — OPEN / BLOCKED / PRIOR CLOSURES PREMATURE
-  - [ ] `ticker_storage_key` authority; SPX/`$SPX` adjudicated; readers/writers/logging-universe normalized; train-write/resume/cache/artifact-dir/arch-eval/guest-anchor/DB-key/replay canonical; focused tests pass
-  - [ ] Entire-repo denominator reverified (remaining identity faucets = 0); non-anchor/universal proven; clean scoped commit lands + exact SHA; integrated into production line; runtime loaded on F25 code + runtime identity proof; parent RC-345/F25 closure
+  - [ ] `ticker_storage_key` single authority established
+  - [ ] SPX / `$SPX` identity adjudicated
+  - [ ] Readers / writers / logging-universe normalized to the authority
+  - [ ] Train-write path canonical
+  - [ ] Resume path canonical
+  - [ ] Cache path canonical
+  - [ ] Artifact-dir path canonical
+  - [ ] Arch-eval path canonical
+  - [ ] Guest-anchor path canonical
+  - [ ] DB-key path canonical
+  - [ ] Replay path canonical
+  - [ ] Focused tests pass
+  - [ ] Entire-repo denominator reverified (remaining identity faucets = 0)
+  - [ ] Non-anchor / universal proven
+  - [ ] Clean scoped commit lands + exact SHA recorded
+  - [ ] Integrated into the production line
+  - [ ] Runtime loaded on F25 code + runtime identity proof
+  - [ ] Parent RC-345 / F25 closure recorded
 - [ ] **F26** — Empirical horizon probability (one authority; UI withholds; no client argmax) — CLOSED_WITH_EVIDENCE
 - [ ] **F27** — Higher-timeframe OHLC (one batch synthesizer; live accumulator distinct) — CLOSED_WITH_EVIDENCE
 - [ ] **F28** — Reserved/disputed absorption score — HISTORICAL / NOT_PROVEN (producer `liquidity.absorption_score`; consumers/missingness/fallback/dup-search/universality/defect unproven)
 - [ ] **F29** — Movement-target threshold (one per-horizon selector; no local reconstruction) — CLOSED_WITH_EVIDENCE
 - [ ] **F30** — Reserved/disputed current spot — HISTORICAL / NOT_PROVEN (live spot authority / fast quote / candle-mark-last / train-serve-replay sources / fallbacks / staleness / universality unproven)
 - [ ] **F31** — Price-level snapshot fallback — OPEN (Phase 2A)
-  - [ ] Canonical population + producer; pre-open/RTH/replay semantics; stale-cache; input fingerprint; mutual exclusion; governed fallback; no second truth; universality; runtime proof
+  - [ ] Canonical population + single producer
+  - [ ] Pre-open / RTH / replay semantics specified
+  - [ ] Stale-cache handling defined
+  - [ ] Input fingerprint governs freshness
+  - [ ] Mutual exclusion of sources enforced
+  - [ ] Governed fallback semantics
+  - [ ] No second truth for the snapshot
+  - [ ] Universality across tickers proven
+  - [ ] Runtime proof on loaded code
 - [ ] **F32** — Confluence `cf_*` authority — NOT_PROVEN (Cursor refuses upgrade while RC-328 OPEN)
-  - [ ] Canonical `confluence_features_for_bar` exists; current code routes train/serve through it; wall-clock windows
-  - [ ] RC-328 OPEN conflict reconciled; train+serve population parity proven; caller fallback semantics; universality; ledger contradiction eliminated
+  - [ ] Canonical `confluence_features_for_bar` exists
+  - [ ] Current code routes train through it
+  - [ ] Current code routes serve through it
+  - [ ] Wall-clock window semantics defined
+  - [ ] RC-328 OPEN conflict reconciled
+  - [ ] Train + serve population parity proven
+  - [ ] Caller fallback semantics defined
+  - [ ] Universality across tickers proven
+  - [ ] Ledger contradiction eliminated
 - [ ] **F33** — `net_gamma_prev` (raw prior 1m; batch+serve unified; inline producer removed) — CLOSED_WITH_EVIDENCE (RC-342)
 - [ ] **F34** — XGB pre-engineering enrichment (five scheduler routes use canonical preparer) — CLOSED_WITH_EVIDENCE (RC-340)
 - [ ] **F35** — Training/serving DB identity — children CLOSED_WITH_EVIDENCE; broader DB-authority parent NOT_PROVEN
-  - [ ] `train_ticker` forwards `db_path`; confluence cache carries DB identity; six callers wired
-  - [ ] Repo-wide parent DB-identity universality audit; every DB-reading lane binds intended DB; no default DB silently replaces caller DB; sandbox cannot become production authority; replay/backfill/artifact-lineage DB identity; universal ticker/data-source proof
+  - [ ] `train_ticker` forwards `db_path`
+  - [ ] Confluence cache carries DB identity
+  - [ ] Six callers wired to pass DB identity
+  - [ ] Repo-wide parent DB-identity universality audit complete
+  - [ ] Every DB-reading lane binds its intended DB
+  - [ ] No default DB silently replaces the caller DB
+  - [ ] Sandbox DB cannot become production authority
+  - [ ] Replay / backfill / artifact-lineage DB identity proven
+  - [ ] Universal ticker / data-source proof
 - [ ] **F36** — Signal-layer VWAP anchor (source-tagged session preferred; rolling labeled) — CLOSED_WITH_EVIDENCE
 - [ ] **F37** — Reserved parent slot — GAP / NOT_PROVEN (parent semantic unproven; F37b exists)
 - [ ] **F37b** — LSTM zone encoding (shared `encode_zone`; both sites delegate) — CLOSED_WITH_EVIDENCE (RC-343)
 - [ ] **F38** — Training tensor cache identity (content hash; changed labels ⇒ miss; negative control) — CLOSED_WITH_EVIDENCE (universal cache-key inventory remains part of parent)
 - [ ] **F39** — Confluence missingness — OPEN (explicitly OPEN despite omission from a shorter RC-345 master-open summary)
-  - [ ] Measured-neutral separated from unavailable / missing-history / missing-clock / missing-input; caller fallback cannot collapse absence
-  - [ ] Train/serve/replay/backfill encoding explicit; active artifact impact measured; retrain requirement proven; root code fix; version change if required; retrain if required; calibration compatibility; runtime proof; universality
+  - [ ] Measured-neutral separated from unavailable
+  - [ ] Measured-neutral separated from missing-history
+  - [ ] Measured-neutral separated from missing-clock
+  - [ ] Measured-neutral separated from missing-input
+  - [ ] Caller fallback cannot collapse absence into a value
+  - [ ] Train / serve / replay / backfill encoding explicit
+  - [ ] Active artifact impact measured
+  - [ ] Retrain requirement proven
+  - [ ] Root code fix landed
+  - [ ] Version change applied if required
+  - [ ] Retrain executed if required
+  - [ ] Calibration compatibility proven
+  - [ ] Runtime proof on loaded code
+  - [ ] Universality across tickers proven
 - [ ] **F40** — MC/GARCH sigma cadence (MC own `BAR_MINUTES`; 5m hardcode removed; live reproof) — CLOSED_WITH_EVIDENCE
 - [ ] **F41** — Selected DTE / expiry (selectors require expiry; empty fails closed; no search-all) — CLOSED_WITH_EVIDENCE
 - [ ] **F42** — GEX dollars (`gex_dollars_per_1pct_at_strike`; one `compute_exposures_by_strike`; γ×OI×mult×spot²×0.01; one-producer lock) — CLOSED_WITH_EVIDENCE
 
 ## PA-4 — MATERIAL NON-F / RC DEFECT BOARD (stay until technically resolved or proven duplicate children)
-- [ ] **RC-292** — Gamma-pin semantic collision — OPEN (product-decision bedrock; do NOT resolve during a board-write). **Cursor-verified collision (2026-08-12):** (1) terrain `kl_gamma_pin` = total-gamma pin, correctly labeled; (2) analytics `consensus_summary.gamma_pin` = net-GEX absolute peak; (3) `pin_score` currently uses the analytics/net-GEX peak; (4) persisted `gamma_pin` receives the analytics/net-GEX peak; (5) `static/index.html` ladder row labeled "GAMMA PIN" binds `d.gamma_pin`/analytics net-GEX peak while its tooltip describes total-gamma semantics; (6) Key Levels `kl_gamma_pin` = total-gamma, correctly labeled; (7) `chart.html` PIN = terrain total-gamma and chart has a SEPARATE "NET Γ PEAK" row. **CORRECTION:** `chart.html` PIN is NOT mislabeled (Cursor disproved that). Remaining live collision = index-ladder GAMMA PIN + pin_score + persisted gamma_pin (net-GEX peak) vs terrain/`kl_gamma_pin` total-gamma. Sub-items: pin_score intended semantic recovered; UI-label/tooltip/persistence made consistent; backward-safe migration; behavioral+mutation lock; universality; runtime.
-- [ ] **RC-282** — Freshness / stale actionability (semantic; live+UI impact; stale cannot remain actionable; fallback; universal; root fix; runtime) — OPEN
-- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero (semantic; live path; root cause; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
-- [ ] **RC-297** — derivation inventory drifted from code (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
-- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
-- [ ] **RC-329** — one-producer gate blind to consumer-name→semantic (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
-- [ ] **RC-328** — Confluence train/serve population (verify current code closes original defect; canonical/train/serve population; window semantics; time-based lookback; missingness; universal; reconcile F32; close ledger honestly) — OPEN
+- [ ] **RC-292** — Gamma-pin semantic collision — OPEN (product-decision bedrock; do NOT resolve during a board-write). **Cursor-verified collision (2026-08-12):** (1) terrain `kl_gamma_pin` = total-gamma pin, correctly labeled; (2) analytics `consensus_summary.gamma_pin` = net-GEX absolute peak; (3) `pin_score` currently uses the analytics/net-GEX peak; (4) persisted `gamma_pin` receives the analytics/net-GEX peak; (5) `static/index.html` ladder row labeled "GAMMA PIN" binds `d.gamma_pin`/analytics net-GEX peak while its tooltip describes total-gamma semantics; (6) Key Levels `kl_gamma_pin` = total-gamma, correctly labeled; (7) `chart.html` PIN = terrain total-gamma and chart has a SEPARATE "NET Γ PEAK" row. **CORRECTION:** `chart.html` PIN is NOT mislabeled (Cursor disproved that). Remaining live collision = index-ladder GAMMA PIN + pin_score + persisted gamma_pin (net-GEX peak) vs terrain/`kl_gamma_pin` total-gamma.
+  - [ ] `pin_score` intended semantic recovered
+  - [ ] UI label made consistent with the bound semantic
+  - [ ] Tooltip made consistent with the bound semantic
+  - [ ] Persisted `gamma_pin` made consistent with the bound semantic
+  - [ ] Backward-safe migration for persisted values
+  - [ ] Behavioral + mutation lock in place
+  - [ ] Universality across tickers proven
+  - [ ] Runtime proof on loaded code
+- [ ] **RC-282** — Freshness / stale actionability — OPEN
+  - [ ] Semantic of freshness / actionability defined
+  - [ ] Live + UI impact characterized
+  - [ ] Stale data cannot remain actionable
+  - [ ] Fallback semantics defined
+  - [ ] Universality across tickers proven
+  - [ ] Root code fix landed
+  - [ ] Runtime proof on loaded code
+- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero — OPEN / NOT_PROVEN DETAILS
+  - [ ] Semantic of the fabricated-zero defect defined
+  - [ ] Live path characterized
+  - [ ] Root cause identified
+  - [ ] Fix landed
+  - [ ] Proof recorded
+  - [ ] Universality across tickers proven
+- [ ] **RC-297** — derivation inventory drifted from code — OPEN / NOT_PROVEN DETAILS
+  - [ ] Semantic of the inventory-drift defect defined
+  - [ ] Live path characterized
+  - [ ] Root cause identified
+  - [ ] Fix landed
+  - [ ] Proof recorded
+  - [ ] Universality across tickers proven
+- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS — OPEN / NOT_PROVEN DETAILS
+  - [ ] Semantic of the absence-coercion class defined
+  - [ ] Live path characterized
+  - [ ] Root cause identified
+  - [ ] Fix landed
+  - [ ] Proof recorded
+  - [ ] Universality across tickers proven
+- [ ] **RC-329** — one-producer gate blind to consumer-name→semantic — OPEN / NOT_PROVEN DETAILS
+  - [ ] Semantic of the gate blindness defect defined
+  - [ ] Live path characterized
+  - [ ] Root cause identified
+  - [ ] Fix landed
+  - [ ] Proof recorded
+  - [ ] Universality across tickers proven
+- [ ] **RC-328** — Confluence train/serve population — OPEN
+  - [ ] Verify current code closes the original defect
+  - [ ] Canonical population site established
+  - [ ] Train population routes through the canonical site
+  - [ ] Serve population routes through the canonical site
+  - [ ] Window semantics defined
+  - [ ] Time-based lookback specified
+  - [ ] Missingness semantics defined
+  - [ ] Universality across tickers proven
+  - [ ] Reconcile with F32
+  - [ ] Close ledger honestly (no contradiction)
 
 ### RC-324 — Price-Level Snapshot Identity / Atomic Materialization
 > CODE_APPEARS_FIXED != CLOSED_WITH_EVIDENCE — RC-324 stays OPEN in the ledger even though current code looks repaired.
@@ -1315,7 +1440,25 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] Real-money readiness proven
 - [ ] **PROJECT A = CLOSED_WITH_EVIDENCE**
 
-# OPEN ROOT-CAUSE LEDGER DENOMINATOR
+## PA-48 — LEGACY MATERIAL WORK — CANONICAL ATOMIC HOMES
+> Every material work item named in the `## LEGACY LEDGER (historical)` region above has its canonical, closable home here as one atomic requirement per checkbox. The legacy prose stays history-only; the *work* is not — it lives on this board. Closure obeys the single binding Closure rule at the top of this file (exact commit SHA / evidence, else `[ ]`). Items proven already closed/superseded are recorded with their canonical replacement rather than a new box.
+- [ ] **FIND-SCHWAB-WORKER-LEAK** — explicit Schwab client close/terminate added to every scheduled entry point (scoreboard/backfill runners), and zero orphaned `multiprocess.spawn` workers observed across a full week of scheduled runs
+- [ ] **FIND-LIVE-FLIP-WIDE-CHAIN** — the LIVE level compute (`compute_exposures_by_strike`) reads a wide chain (periodic wide fetch → live exposures), so the displayed Gamma Flip / walls / pin are no longer 20-strike-narrow-limited (relates to F42; maps to FIND-GAMMA-FULLCHAIN below)
+- [ ] **WING-IV (RC-43 reopened)** — wide-chain flip validated against an external Barchart flip on a date with a morning wide capture; wing-IV smoothing then proven an accuracy fix (ships) or rejected — no smoothing asserted without that comparison
+- [ ] **FIND-GAMMA-FULLCHAIN** — `maybe_persist_morning_full_chain` performs its OWN once-daily wide `safe_get_chain(strike_count=BIG)` independent of the 20-strike live UI fetch (UI stays 20 for latency)
+- [ ] **FIND-SNAPSHOT-BAR-STAMP** — each snapshot/decision stamped with the `bar_start_ts_utc` of the minute it was computed in (poll instant floored to its 1m bar) so snapshot↔`price_bars_1m`↔outcome joins are exact by construction and the 29s join tolerance can drop to 0
+- [ ] **UI-01 analytics key identity** — server-resolved `selected_exp` (generation-guarded) + single client key-builder + `analytics_cache_key` payload echo, retiring the frozen-cards divergence (UI section / PA-36)
+- [ ] **UI-05 guest cold-fusion SLA** — RTH open-burst reproof + guest-universe repeatability + SLA regression enforcement for the open-burst path (UI section / PA-36)
+- [ ] **AUDIT-TAPE-OVERFLOW-SHORT-VIEWPORTS** — ALERT TAPE tile no longer overflows at 1440×810 and 1366×768 (short-height media query slims padding/font or caps visible entries with a count badge)
+- [ ] **OPS-PLAYWRIGHT-E2E-RERUN** — a real `npm run test:e2e` run lands (retiring the stale 2026-05-25 marker) and `tests/test_playwright_must_run.py` passes on that real run
+- [ ] **GOV-REMOTE-ENFORCEMENT** — operator settings decision on `enforce_admins` recorded and executed (admin direct-push channel closed or explicitly accepted with rationale); external-boundary item until the operator acts
+- [ ] **BUILD-IDENTITY `git_sha` semantics** — legacy top-level `/api/build.git_sha` flipped to process identity (startup SHA + PID), or the operator decision to keep request-time HEAD recorded on the row
+- [ ] **DIR-01 directional-bias discriminator** — the facet-(g) study (net DEX sign / ΔOI asymmetry / charm-projected flow / distance-weighted mass) run under the clean protocol, placebo-controlled, and dispositioned; nothing reaches `decision_path_admissions.json` and the Chart renders no directional arrow until it clears a placebo
+- [ ] **RECON-02 disk-cleanup purge** — full purge executed only after one clean trading session AND the operator's purge word; `_backup_pre_exec_identity_v1` released only after 5 clean trading days from 2026-07-26
+- [ ] **PHASE-4 decision-path gate** — `decision_gate.py` + admissions + `call_engine.compute_call` gate + tests merged to the mainline; closes with the merge SHA
+- [ ] **PHASE-5 restructure** — deliberate directory reorganization for a legible repo completed after Phase 4, with no functional changes mixed in
+
+## OPEN ROOT-CAUSE LEDGER DENOMINATOR
 > Technical state preservation only — do NOT turn this into process work. Measured OPEN RC denominator = **72** OPEN rows in `governance/root_cause_log.md` (counted 2026-08-12; of which 55 are past due). If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
 - [ ] Enumerate every currently OPEN RC row in `governance/root_cause_log.md`
 - [ ] Record current measured OPEN RC denominator (= 72 as of 2026-08-12)
@@ -1339,7 +1482,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] No material technical defect disappears because it belongs to another historical numbering system
 - [ ] OPEN material technical RC count = 0 before Project A closure
 
-# EXISTING REPO WORK-ITEM SYSTEM RECONCILIATION
+## EXISTING REPO WORK-ITEM SYSTEM RECONCILIATION
 > These identifiers are DISTINCT namespaces. Do NOT conflate them with canonical Project A F01–F42. Keep this reconciliation LIGHT — no registries, crosswalk DBs, YAML/JSON mirrors, CI, parsers, or governance frameworks. A simple checklist here is enough. Namespaces: (1) unpadded **F1/F2/F3** = Find & Prove system (`reports/fp_levelset_directive_for_cursor.md`, also referenced in this OPEN_ITEMS.md); (2) hyphenated **F-01…** = Desk audit findings (`reports/cursor_desk_audit_v1.md`); (3) **RH-F1…RH-F8** = rehab facets (`governance/REHAB_PROGRAM.md`).
 - [ ] Unpadded F1/F2/F3 Find & Prove items reviewed
 - [ ] Hyphenated F-01… Desk audit findings reviewed
