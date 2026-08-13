@@ -1403,6 +1403,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - Historical/disputed F04/F16/F19/F28/F30/F37 → PA-3 gap rows
 - Discovery denominator → PA-41
 - Universal runtime proof → PA-43
+- UX-WORLD-CLASS-CONSOLE → PA-48 (**NOT NOW.** AFTER PA-2 + PA-36 + RC-292 + F15 + LEVELS-SELF-DECLARE-TRUST)
 
 ## PA-47 — PROJECT A FINAL CLOSURE (all must be satisfied)
 - [ ] All canonical F rows closed
@@ -1484,6 +1485,12 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **CHAIN-OF-TRUST / TraceableDerivation** — 290 consumer reads without producer link (`governance/CHAIN_OF_TRUST_GAP_INTEL_290.md`) classified; every MATERIAL_TECHNICAL gap mapped here or to an existing F/RC row. Do not open a 290-box program.
 - [ ] **ISSUE-19 $SPX 190-row forward-grid** — dense forward 1m at the documented hole filled or the 190 `pin_neutral` / `outcome_filled=0` rows dispositioned. Parent homes stay FIND-LABEL-INTEGRITY-FORENSICS / F25 / STAGE-2. Source: `docs/issue19_post_rehydration_eligibility_audit.md`.
 - [ ] **A1/A2 residual gaps** — leftover named gaps in the A1 conformal/isotonic and A2 lifecycle contracts (calendar freshness / multi-exchange / extended hours; conformal scheduler; ml_predict↔v2 bridge) either closed with SHA or classified NOT_MATERIAL. Contracts stay contracts, not a second queue.
+- [ ] **EXPOSURE-CONFLUENCE-CUBE** — one stamp, one walk: per-strike **GEX + DEX + VEX + CHEX + ΔOI + EM + value (POC/VAH/VAL)** from `compute_exposures_by_strike` / existing morning-full OI. DEX and `net_delta` already exist; ΔOI is computable from stored `openInterest` (DIR-01 b). Missing ≠ 0.0. This is Collect / one-faucet work, not a signal. Does not admit TRADE. Sequenced after PA-2’s single walk is the only live producer.
+- [ ] **ΔOI-PER-STRIKE** — day-over-day open-interest change per strike from `option_chain_morning_full` (already on disk). Distinguishes a wall forming from a wall dissolving. Collect-side derivation; Chart yellow-bar meaning, not a new paint. Home for DIR-01(b) so it is not only historical prose.
+- [ ] **TRUE-VANNA-VEX** — replace the labeled vega/(S·iv) proxy with true vanna / VEX on the cube, or keep the proxy forever and never call it vanna. UI-04 P1B closed the *label*; this row is the exposure. Charm vote stays UNAPPROVED until its own proof. Not TRADE.
+- [ ] **EXPIRY-STACK-VIEW** — operator can read 0DTE / this week / monthly / all from the **same** cube without a second producer. AFTER EXPOSURE-CONFLUENCE-CUBE and PA-2. Do not build expiry filters on three faucets.
+- [ ] **NO-OPTIONS-TAPE** — standing constraint, not a feature. Schwab carries **no options trade prints**; Alpaca IEX is equities only. Kill any HIRO / per-trade quote-rule / tape clone before it is built. Interval Δ`totalVolume` vs bid/ask at snapshot bounds is the honest weak substitute (DIR-01 c). Anyone proposing prints must name the feed first.
+- [ ] **UX-WORLD-CLASS-CONSOLE** — **AFTER (all must be `[x]` or PASS):** PA-2 `ONE_FAUCET_STATUS = PASS`, PA-36 `OPERATOR_TRUTH_STATUS = PASS`, RC-292 closed, F15 closed, LEVELS-SELF-DECLARE-TRUST closed. **THEN** Chart + Console get the bells and whistles: one KEY LEVELS / exposure card (no greeks tabs), Chart PIN labeled for the bound semantic, value levels on Chart/Console (F15/LP-01), expiry stack, trust chips, GEX+DEX+VEX+CHEX+ΔOI+EM+value on one surface, six-pill lock stays (`tests/test_issue18_ui_contract.py`), no resurrected surfaces, no options tape. PHASE-5 (repo directories) is a different row and may run earlier. This row is **look-and-feel + layout only after the number is true**. Predictive validity stays NOT_PROVEN; nothing here admits TRADE.
 
 ## OPEN ROOT-CAUSE LEDGER DENOMINATOR
 > Technical state preservation only — do NOT turn this into process work. `governance/root_cause_log.md` was **absent from `main`**. Restored 2026-08-13 from `a2b5112` (feature/cf-one-faucet-land-f32-rc328). Last measurable table on that blob = **64 OPEN / 229 CLOSED**. The 2026-08-12 count of **72 OPEN / 55 past due** cannot be re-verified — that file never reached `main`. Do not infer 8 closes from the difference. If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
@@ -1549,7 +1556,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | `[x]` on this board | 6 | Only the 2026-08-13 STATUS_CHANGE rows (UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META). |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE but still `[ ]` | most of PA-3 | Prior program called them closed; this board's closure rule requires a SHA on the row. **Do not re-do the work from the label. Do not `[x]` without the SHA.** |
 | **PA-46** | 16 pointers | **The execution queue.** Status derives from the canonical F/RC/PA rows. |
-| **PA-48 still `[ ]`** | 35 | Leftover atomic work that still applies (or is an operator-held decision), including six ADDs from the second census. |
+| **PA-48 still `[ ]`** | 41 | Leftover atomic work, including second-census ADDs and the 2026-08-13 product/UX rows. UX-WORLD-CLASS-CONSOLE is gated AFTER X. |
 | LEGACY / HISTORICAL bullets | many | History only. Not closable. Work they name lives in PA-48 / F15 / F31. |
 
 **Error logs / other logs in this workspace:**
@@ -1608,5 +1615,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | QUALITY_CIRCLE | `06a3f9e` is the *dependency*, not the refinement loop | stay `[ ]` ENABLED / NOT_STARTED |
 
 **ADD this census (material leftovers that had no PA-48 home):** SCOREBOARD-ECONOMIC-REWORK, MODEL-STACK MSD-001..005, REAL-GATE:VOL-CTX-SINGLE-SOURCE, CHAIN-OF-TRUST / TraceableDerivation, ISSUE-19 $SPX 190-row forward-grid, A1/A2 residual gaps.
+
+**ADD 2026-08-13 product/UX (operator: roadmap must name the later bells-and-whistles, and what data a world-class exposure console actually uses):** EXPOSURE-CONFLUENCE-CUBE, ΔOI-PER-STRIKE, TRUE-VANNA-VEX, EXPIRY-STACK-VIEW, NO-OPTIONS-TAPE, UX-WORLD-CLASS-CONSOLE. UX is **NOT NOW** — AFTER PA-2 + PA-36 + RC-292 + F15 + LEVELS-SELF-DECLARE-TRUST. Research basis (not edge claims): dealer-positioning consoles that work are GEX+DEX+VEX+CHEX plus walls/flip/pin, expiry stack, and value levels — not gamma alone (SpotGamma TRACE/HIRO/charm-delta; FlashAlpha GEX/DEX/VEX/CHEX; Gamma Sonar pressure-field stack). We already have the math for GEX/DEX/charm and morning-full OI; we do **not** have options prints. Nothing in this ADD admits TRADE.
 
 **Not added (evidence only, or already parented):** PRODUCTION_CLAIMS_REGISTER, TRADE_IMPACTING_ROUTE_INVENTORY, PILOT_1B, FULL_PRIMARY_HORIZON audit snapshot, FIELD_SOURCE / SCHWAB normalization audits, INF-1..4 transition policy (deferred; not a new program), unproven_register individual studies (register exists), ADMIN_BYPASS June CI triage, derived-analytics scaffolds (unadmitted Decide-adjacent).
