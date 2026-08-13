@@ -1,3 +1,5 @@
+> **SUPERSEDED as a work queue (2026-08-13).** Do not treat this file as current "now." Canonical ledger: `OPEN_ITEMS.md`. Pointer: `ACTIVE_PROGRAM.md` → PA-46. Retained as history/evidence only.
+
 > **Classification:** Policy Specification | **Scope:** Execution plan; binding when ACTIVE_PROGRAM points here.
 
 # EdWebConsole Governance Consolidation & Repo Cleanup — Final Execution-Ready Plan

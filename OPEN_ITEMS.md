@@ -4,7 +4,7 @@
 
 **Board scope (single denominator):** the canonical Project A denominator is the ENTIRE board under the file H1 `# PROJECT A — MASTER BOARD`. Every active section belongs to that one denominator — all PA sections (PA-1..PA-48, including the PA-48 canonical atomic homes), the F/RC defect board, the `## OPEN ROOT-CAUSE LEDGER DENOMINATOR`, and the `## EXISTING REPO WORK-ITEM SYSTEM RECONCILIATION`. The denominator is NOT any single internal `##` section. The `## LEGACY / HISTORICAL MATERIAL` region is non-closable history (plain bullets, no checkbox state) that lives under this board but contributes no closable items. Nothing is considered closed merely because it is absent from an older list. The single current execution queue is **PA-46** (a pointer view, not an independent closable copy).
 
-**Last rewritten:** 2026-08-13 — Project A master board landed onto `main` (canonical file from `cursor/project-a-board-audit` @ `0e93624`); STATUS_CHANGE / ADD only for slim-`main` leftovers. Board not shrunk. Competing slim ledger (~63 lines, last rewritten 2026-07-16) is superseded as a second "now"; its leftover rows live in **PA-48**, not as a parallel program. `ACTIVE_PROGRAM.md` is a pointer: now = **PA-46**. Charter remains `AGENTS.md`.
+**Last rewritten:** 2026-08-13 — Project A master board landed onto `main` (canonical file from `cursor/project-a-board-audit` @ `0e93624`); STATUS_CHANGE / ADD only for slim-`main` leftovers. Board not shrunk. Competing slim ledger (~63 lines, last rewritten 2026-07-16) is superseded as a second "now"; its leftover rows live in **PA-48**, not as a parallel program. `ACTIVE_PROGRAM.md` is a pointer: now = **PA-46**. Charter remains `AGENTS.md`. **2026-08-13 discovery:** six source files the board cited were **absent from `main`** (they only lived on feature branches). Restored onto this branch with SOURCE NAMESPACE banners. How to read the ~1125 `[ ]` boxes: most are parent acceptance criteria (PA-1..PA-47), not 1125 independent jobs. Execution queue = **PA-46**. Leftover atomic work = **PA-48** (29 open). F-rows labeled CLOSED_WITH_EVIDENCE stay `[ ]` until an exact SHA is on the row — that is the closure rule, not proof they still need doing.
 
 The rows in the "## LEGACY / HISTORICAL MATERIAL" region below preserve pre-Project-A work as history only; they are NOT part of the closable Project A denominator.
 
@@ -1480,9 +1480,9 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **LEVELS-SELF-DECLARE-TRUST** — every displayed level self-declares `TRUSTED` only when its finite correctness contract (sanitized greeks · single `compute_exposures_by_strike` source · canonical method · full strike coverage · near-term expiries · fresh chain) holds, else `LOW_CONFIDENCE_NARROW_CHAIN` / `STALE` / `UNSANITIZED`, surfaced in the Key Levels UI and gated by one test asserting the flag derives from input quality
 
 ## OPEN ROOT-CAUSE LEDGER DENOMINATOR
-> Technical state preservation only — do NOT turn this into process work. Measured OPEN RC denominator = **72** OPEN rows in `governance/root_cause_log.md` (counted 2026-08-12; of which 55 are past due). If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
+> Technical state preservation only — do NOT turn this into process work. `governance/root_cause_log.md` was **absent from `main`**. Restored 2026-08-13 from `a2b5112` (feature/cf-one-faucet-land-f32-rc328). Last measurable table on that blob = **64 OPEN / 229 CLOSED**. The 2026-08-12 count of **72 OPEN / 55 past due** cannot be re-verified — that file never reached `main`. Do not infer 8 closes from the difference. If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
 - [ ] Enumerate every currently OPEN RC row in `governance/root_cause_log.md`
-- [ ] Record current measured OPEN RC denominator (= 72 as of 2026-08-12)
+- [ ] Record current measured OPEN RC denominator (= 64 as of restored `a2b5112`; prior 72 count UNVERIFIED)
 - [ ] Recompute denominator when the ledger changes
 - [ ] Classify each OPEN RC into exactly one category (MATERIAL_TECHNICAL, DUPLICATE_CHILD, SUPERSEDED_WITH_EVIDENCE, STALE_LEDGER_AFTER_PROVEN_FIX, PROCESS_ONLY, EXTERNAL_BOUNDARY, NOT_PROVEN)
 - [ ] Every MATERIAL_TECHNICAL RC appears explicitly on this Project A master board
@@ -1532,3 +1532,54 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - **ADD this land (historical Find & Prove had them; PA-48 did not):** QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1, STAGE-2, ML-PIPE-V1, SIG-01.
 - **KEY LEVELS / B_light paint on `main` (PRs #53–#58 merged; #59 SUPERSEDED do-not-merge; #60 cube-honesty for charm/vanna only) does not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292.** Paint ≠ one faucet. Charm vote stays UNAPPROVED. Predictive validity stays NOT_PROVEN.
 - **`origin/feature/cf-one-faucet-land-f32-rc328`** remains the F32/RC-328 code branch. It is not this ledger PR and is not closed by KEY LEVELS paint.
+
+### 2026-08-13 discovery — documented rehab record (RECONCILIATION)
+
+**How to read `OPEN_ITEMS.md` (so 1125 boxes are not 1125 jobs):**
+
+| What you are looking at | Count | What it is |
+|---|---|---|
+| `[ ]` checkboxes on this board | ~1125 | Mostly **parent acceptance criteria** (PA-1..PA-47). Close only with an exact SHA. |
+| `[x]` on this board | 6 | Only the 2026-08-13 STATUS_CHANGE rows (UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META). |
+| F01–F42 labeled CLOSED_WITH_EVIDENCE but still `[ ]` | most of PA-3 | Prior program called them closed; this board's closure rule requires a SHA on the row. **Do not re-do the work from the label. Do not `[x]` without the SHA.** |
+| **PA-46** | 16 pointers | **The execution queue.** Status derives from the canonical F/RC/PA rows. |
+| **PA-48 still `[ ]`** | 29 | Leftover atomic work that still applies (or is an operator-held decision). |
+| LEGACY / HISTORICAL bullets | many | History only. Not closable. Work they name lives in PA-48 / F15 / F31. |
+
+**Error logs / other logs in this workspace:**
+
+- **No `*.log` files** and no `logs/` directory are tracked. Host job logs (`reports/scorecard_run.log`, stream-capture status) are gitignored; they live on the operator host.
+- The defect log is `governance/root_cause_log.md` (restored; 64 OPEN). That is the "error log" the rehab program actually kept.
+- `governance/audits/repo_sweep_error_propagation_v1..v3_202605*.json` — May 2026 completed silent-exception sweeps (archive; 27→0). Not a forward queue.
+- `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — June pytest-full matrix. SUPERSEDED as a queue; evidence only.
+- `reports/rehab_latest.md` and `tools/rehab_daily_scan.py` — **still absent**. REHAB_PROGRAM named them as queue authority; they never landed on `main`. Do not invent them. Queue authority is PA-46.
+
+**Source files the board cited that were missing from `main` — restored this land (SOURCE NAMESPACE banners, not a second now):**
+
+| File | Restored from | Still applies? |
+|---|---|---|
+| `governance/root_cause_log.md` | `a2b5112` | **Yes** as the defect log. 64 OPEN. Material technical RCs already on PA-4 (RC-292/282/285/297/301/328/329). Remainder is PA-41/RC-denominator work — classify, do not start a second RC program. |
+| `governance/REHAB_PROGRAM.md` | `7ab5e0c` | **Facets still apply; file is not the default program.** RH-F1 = PA-2 one faucet. RH-F2..F8 map to PA-36 / Collect / Decide / institutional lock. |
+| `governance/host_scheduled_jobs.md` | `76b6c0e` | **Yes** as inventory. Last host reading on the file (2026-08-04) showed Last Result **3221225786** (terminated) on all three Ed tasks — OPS-OPERABLE-SURFACE-JOB still open. |
+| `reports/fp_levelset_directive_for_cursor.md` | `f6efeeb` | **Premise still applies** (wrong objective / placeholder target). Direction-label studies stay paused. Work homes: STAGE-2, ML-PIPE-V1, FIND-LABEL-INTEGRITY, SCOREBOARD-TARGET-TRUTH. |
+| `reports/cursor_desk_audit_v1.md` | `4bd9c5f` | **One 2026-08-06 report**, not a standing queue. Material leftovers (bitemporality, weekend RTH, Desk SLA) go through PA-41 if still live — do not re-open a Desk program. |
+| `reports/institutional_debt_inventory.md` | `f6efeeb` | **Advisory snapshot (July 19).** Worst file still `server.py`. PHASE-5 / institutional lock. Regenerate; do not treat 2804 as current. |
+| `governance/unproven_register.md` | `8f6467f` | **Yes** as the claims-about-the-world register (boundary vs root_cause). Not a defect queue. |
+
+**Competing docs that still looked like "now" — SUPERSEDED banners added; they do not still apply as queues:**
+
+- `docs/OPEN_ITEMS_OPERATOR_TRUST.md` + `governance/OPERATOR_TRUST_STABILIZATION_GATE.json` + June RTH runbooks — June 2026 operator-trust stack. Overlap: UI-05, PA-36, card fidelity NOT_PROVEN. Do not run the June "next step = resolve_pytest_full_failures" ladder.
+- `docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md` — PR5–PR7 / auto-promote. Maps to PA-16 / PA-35 if still live. Do not enable `ED_SCHEDULER_AUTO_PROMOTE`.
+- `docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md` — claimed authority until ACTIVE_PROGRAM Phase 1a. That sentence is false as of this pointer rewrite.
+- `governance/STACK_WIRING_INTEGRITY_MAP.md` — May STACK-WIRE rider. One-faucet work is PA-2 / F-series, not a wiring-map program.
+- `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md` — May Schwab-first register. Collect law still holds; not a second remediation program.
+- `governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md` / `governance/COVERAGE_JUSTIFICATION.md` — G4 / I-01..I-22. Map to PA-16 / PA-42 if material; not current queues.
+- `docs/issue19_*.md` — pin_neutral / `$SPX` / bar path. Homes: FIND-LABEL-INTEGRITY-FORENSICS, F25, STAGE-2. Not a third Issue-19 program.
+
+**PA-48 leftovers — do they still apply?**
+
+| Still applies (do the work) | Operator-held / external (not agent-closable) | Do not treat as a second program |
+|---|---|---|
+| FIND-SCHWAB-WORKER-LEAK, FIND-LIVE-FLIP-WIDE-CHAIN, WING-IV, FIND-GAMMA-FULLCHAIN, FIND-SNAPSHOT-BAR-STAMP, UI-05, AUDIT-TAPE-OVERFLOW, OPS-PLAYWRIGHT-E2E-RERUN, FIND-LABEL-INTEGRITY-FORENSICS, SCOREBOARD-TARGET-TRUTH A/B, QUALITY_CIRCLE, STAGE-2, ML-PIPE-V1, SIG-01, ECON-01 residuals, OPS-OPERABLE-SURFACE-JOB, UI-EXPLAIN, GAMMA-INTRADAY-CADENCE, LEVELS-SELF-DECLARE-TRUST, PHASE-5 (after this is the only list) | GOV-REMOTE-ENFORCEMENT, BUILD-IDENTITY, RECON-02 (purge word), MODEL-04, DIR-01 (nothing to Chart until placebo) | RH-F1..F8, Desk F-01…, June operator-trust, training PR5–PR7 as a named program, STACK-WIRE, Schwab derived-field register, Issue 19 folder |
+
+**What we do next (unchanged):** execute **PA-46**. Do not start PHASE-5 or a UI redesign in this land. Do not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292 from paint.

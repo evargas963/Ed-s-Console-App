@@ -24,6 +24,20 @@
 
 Competing code that is **not** this pointer and is **not** closed by KEY LEVELS paint: `origin/feature/cf-one-faucet-land-f32-rc328` (F32 / RC-328). PR #59 is SUPERSEDED — do not merge. PR #60 is cube honesty for charm/vanna, not "KEY LEVELS done."
 
+## Source files (not a second now)
+
+These were **missing from `main`**. Restored on the ledger branch with SOURCE NAMESPACE banners. Read them as record, not as a parallel queue.
+
+- `governance/root_cause_log.md` — defect log (64 OPEN @ `a2b5112`)
+- `governance/REHAB_PROGRAM.md` — RH-F1..RH-F8 facets (= PA-2 spine)
+- `governance/host_scheduled_jobs.md` — host-task inventory
+- `governance/unproven_register.md` — claims-about-the-world (not defects)
+- `reports/fp_levelset_directive_for_cursor.md` — Find & Prove premise
+- `reports/cursor_desk_audit_v1.md` — one Desk report
+- `reports/institutional_debt_inventory.md` — July advisory snapshot
+
+No tracked `*.log` files. Host logs are on the operator machine. `reports/rehab_latest.md` / `tools/rehab_daily_scan.py` are still absent — do not invent them.
+
 ## Standing runtime law (mechanically enforced — do not restate, just don't break)
 
 ### Feature placement matrix
