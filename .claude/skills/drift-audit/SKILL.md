@@ -14,7 +14,7 @@ A sign-off ("MET", "clean", "verified", "no callers break", "100%", "stage passe
 - Open the written plan. Does this change still serve it? Did scope or goal slip? Did a stage get marked done that isn't? Is the acceptance GATE actually equal to the principle, or weaker (e.g., presence-only)?
 
 ## Phase 2 — Mechanical scans (MANDATORY — never skip)
-- **AST scan every changed signature/arity/return:** `python tools/enforce_all_rules.py --ast-callsites <FUNC>`. Confirm every call site's binding. (Catches multi-line + two-step unpacks regex misses.)
+- **AST scan every changed signature/arity/return:** `python3 -c` + `ast.parse` on each changed file, or Read every call site of each changed function. Confirm every call site's binding. (Catches multi-line + two-step unpacks regex misses.) There is no `tools/enforce_all_rules.py` — do not skip this step because that path is absent.
 - Run the relevant gate(s) + tests **myself** (`--ablation-bias`, pytest) — never cite Cursor's pass count.
 
 ## Phase 3 — Known failure-class checklist (check EACH explicitly; cite evidence)

@@ -1,12 +1,7 @@
 ---
-description: Ed Console — charter plus three-role loop
+description: EdWebConsole — AGENTS.md is the single governing law
 alwaysApply: true
 ---
 Read and follow /AGENTS.md before repository work.
 
-You are coder, auditor, and project manager in the same turn. Do not hand coding to another model as the standing method.
-
-After you code, and before you claim done:
-1. Audit — is the claim true on `origin/main`? Would an auditor reject this as unfinished? Run `.claude/skills/drift-audit/SKILL.md` before any MET/clean/verified claim. On a material change, spawn a read-only audit subagent.
-2. Land — system-of-record claims (board, pointer, closures) are not done until the SHA is on `main`. A PR is not the board.
-3. PM — next work is the next `OPEN_ITEMS.md` PA-46 child only. Pure fix. No paint. No UX-WORLD-CLASS-CONSOLE before its AFTER gate.
+Coder, auditor, and PM are one agent (`AGENTS.md` three-role loop). After code, audit, then land, then the next row in `ACTIVE_PROGRAM.md` Sequence. A PR is not the board. Changes to `AGENTS.md`, `ACTIVE_PROGRAM.md`, `OPEN_ITEMS.md`, or `.cursor/rules/` are material — spawn a read-only audit subagent before claiming done.
