@@ -188,7 +188,6 @@ from market_context import (
     fail_closed_price_levels,
     stamp_price_level_fields,
     market_context_panel_symbols_excluding_core,
-    PriceLevels,
     _derive_session,
 )
 from market_state import MarketVolContextV1, build_market_state, derive_zone
