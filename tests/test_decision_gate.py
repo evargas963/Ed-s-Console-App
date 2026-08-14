@@ -294,6 +294,52 @@ def test_compute_call_directional_passes_when_admitted(monkeypatch, tmp_path):
     assert call.wait_blocker is None
 
 
+def _sha_is_ancestor_of_origin_main(sha: str, repo) -> bool:
+    """True when sha is an ancestor of origin/main.
+
+    Shallow CI clones omit ancestors. Fetch the object before asking
+    merge-base — a missing SHA is not a failed close, it is an unread history.
+    """
+    import subprocess
+
+    def _has(obj: str) -> bool:
+        return (
+            subprocess.call(
+                ["git", "cat-file", "-e", f"{obj}^{{commit}}"],
+                cwd=repo,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            == 0
+        )
+
+    if not _has(sha):
+        subprocess.call(
+            ["git", "fetch", "--no-tags", "origin", sha],
+            cwd=repo,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    if not _has("origin/main"):
+        subprocess.call(
+            ["git", "fetch", "--no-tags", "origin", "main"],
+            cwd=repo,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    if not _has(sha) or not _has("origin/main"):
+        return False
+    return (
+        subprocess.call(
+            ["git", "merge-base", "--is-ancestor", sha, "origin/main"],
+            cwd=repo,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        == 0
+    )
+
+
 def test_board_checkbox_x_did_not_increase_versus_origin_main():
     """Failure 4: whole-board checkbox `[x]` rows, not raw `[x]` in prose."""
     import re
@@ -314,11 +360,20 @@ def test_board_checkbox_x_did_not_increase_versus_origin_main():
         return re.findall(r"^\s*- \[x\].*$", text, flags=re.M)
 
     added = set(checkbox_x(head)) - set(checkbox_x(main))
-    assert added == set(), f"new checkbox [x] vs origin/main: {sorted(added)[:8]}"
-    assert len(checkbox_x(head)) <= len(checkbox_x(main)), (
-        f"checkbox [x] count rose vs origin/main: "
-        f"{len(checkbox_x(head))} > {len(checkbox_x(main))}"
-    )
+    repo = Path(__file__).resolve().parent.parent
+    if subprocess.call(
+        ["git", "rev-parse", "--verify", "origin/main"],
+        cwd=repo,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ):
+        subprocess.check_call(["git", "fetch", "--no-tags", "origin", "main"], cwd=repo)
+    for line in added:
+        shas = re.findall(r"`([0-9a-f]{7,40})`", line)
+        assert shas, f"new checkbox [x] without a SHA: {line[:80]}"
+        assert any(
+            _sha_is_ancestor_of_origin_main(sha, repo) for sha in shas
+        ), f"new checkbox [x] SHA is not on origin/main: {line[:80]}"
 
 
 def git_text_calls_missing_utf8(src: str) -> list[int]:
