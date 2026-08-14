@@ -8406,19 +8406,20 @@ def _fetch_state(
         art = _artifacts.get(name, {"exists": False, "has_provenance": False, "issues": []})
         meta_exists = meta_path.exists()
         if not meta_exists:
-            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": 0, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": None, "version": "—", "ticker": _dashboard_ticker}
         if not art.get("exists", False):
-            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": 0, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": None, "version": "—", "ticker": _dashboard_ticker}
         if not art.get("has_provenance", False):
             issues = "; ".join(art.get("issues", [])) or "Metadata lacks provenance"
-            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": 0, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": None, "version": "—", "ticker": _dashboard_ticker}
         try:
             _m = json.loads(meta_path.read_text())
-            raw = _m.get(edge_key, _m.get("val_accuracy", 0))
-            edge = float(raw) * 100 if edge_key == "val_accuracy" else float(raw or 0)
+            from verify_active_models import model_health_edge_from_meta
+
+            edge = model_health_edge_from_meta(_m, edge_key)
             version = _m.get(version_key, _m.get("model_version", "—"))
         except Exception:
-            edge, version = 0, "—"
+            edge, version = None, "—"
         return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "version": version or "—", "ticker": _dashboard_ticker}
 
     _xgb_meta = _active_dir / f"xgb_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
@@ -8427,15 +8428,15 @@ def _fetch_state(
     try:
         _model_health.append(_model_status_from_artifact("xgb", "XGBoost", _xgb_meta, "edge_pp", "model_version"))
     except Exception:
-        _model_health.append({"model": "XGBoost", "status": "ERROR", "status_reason": "Check failed", "edge": 0, "version": "—", "ticker": _dashboard_ticker})
+        _model_health.append({"model": "XGBoost", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
     try:
         _model_health.append(_model_status_from_artifact("transformer", "Transformer", _tf_meta, "edge_pp"))
     except Exception:
-        _model_health.append({"model": "Transformer", "status": "ERROR", "status_reason": "Check failed", "edge": 0, "version": "—", "ticker": _dashboard_ticker})
+        _model_health.append({"model": "Transformer", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
     try:
         _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "val_accuracy", "model_type"))
     except Exception:
-        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": 0, "version": "—", "ticker": _dashboard_ticker})
+        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
 
     # MC + Rules + Regime + Fusion (always live)
     for m in [{"model": "Monte Carlo", "version": "10K paths"}, {"model": "Regime Engine", "version": "8 families"}, {"model": "Bayesian Fusion", "version": "6 posteriors"}]:
