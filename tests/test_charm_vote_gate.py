@@ -61,9 +61,18 @@ def test_charm_research_surfaces_preserved():
 
 
 def test_vanna_proxy_labeled_honestly_in_ui():
-    """P1B: every user-facing vanna wall label discloses the proxy formula."""
+    """P1B: every user-facing vanna wall label discloses the proxy formula.
+
+    Live labels are stamped from KEY_LEVEL_CONSUMER_REGISTRY, not hardcoded
+    in index.html. The HTML negative checks stay so a dishonest short label
+    cannot return via paint.
+    """
+    from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+
+    call_label, _ = KEY_LEVEL_CONSUMER_REGISTRY["kl_call_vanna_wall"]
+    put_label, _ = KEY_LEVEL_CONSUMER_REGISTRY["kl_put_vanna_wall"]
+    assert "vega/S·IV proxy" in call_label
+    assert "vega/S·IV proxy" in put_label
     ui = (_REPO / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "Vanna Wall Call (vega/S·IV proxy)" in ui
-    assert "Vanna Wall Put (vega/S·IV proxy)" in ui
     assert "label: 'Vanna Wall Call'" not in ui
     assert "label: 'Vanna Wall Put'" not in ui

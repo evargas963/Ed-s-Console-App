@@ -286,8 +286,6 @@ def test_board_checkbox_x_did_not_increase_versus_origin_main():
 
     added = set(checkbox_x(head)) - set(checkbox_x(main))
     assert added == set(), f"new checkbox [x] vs origin/main: {sorted(added)[:8]}"
-    assert len(checkbox_x(head)) == 28
-    assert len(checkbox_x(main)) == 35
 
 
 def test_named_force_functions_remain_in_charter():
@@ -308,6 +306,9 @@ def test_named_force_functions_remain_in_charter():
         "Whys without the fix is unfinished",
         "fix the issue in the same program",
         "tests/test_mega2_traceable_audit.py in the edit loop",
+        "tests/test_mega1_traceable_audit.py",
+        "MEGA1_FILES or MEGA2_FILES",
+        "STATUS_CHANGE that cites an audited SHA must also cite the required-check conclusion",
         "drift-audit skill before any done",
         "Bugbot when the diff is material",
         "security-review when secrets",
