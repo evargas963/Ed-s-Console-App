@@ -281,16 +281,17 @@ def test_fetch_state_live_path_uses_engine_volume_profile():
 
 
 def _frozen_close_price_12bin(bars, n):
-    """origin/main signal_layer algorithm — the feature the models were trained on."""
-    from features.signal_layer_v1 import EPS, _clip, _f
+    """origin/main signal_layer algorithm — independent of live helpers."""
+    from numeric_contract import float_finite_or_none
 
+    eps = 1e-12
     sl = bars[-n:] if len(bars) >= n else bars
     if len(sl) < 5:
         return None, None, None
     prices, vols = [], []
     for b in sl:
-        c = _f(b.get("close"))
-        v = _f(b.get("volume"))
+        c = float_finite_or_none(b.get("close"))
+        v = float_finite_or_none(b.get("volume"))
         if c is None or v is None:
             continue
         prices.append(c)
@@ -298,13 +299,14 @@ def _frozen_close_price_12bin(bars, n):
     if len(prices) < 5:
         return None, None, None
     pmin, pmax = min(prices), max(prices)
-    if abs(pmax - pmin) < EPS:
+    if abs(pmax - pmin) < eps:
         return pmin, pmin, pmax
     nbin = min(12, len(prices))
     width = (pmax - pmin) / nbin
     bins = [0.0] * nbin
     for p, v in zip(prices, vols):
-        idx = _clip(int((p - pmin) / (width + EPS)), 0, nbin - 1)
+        idx = int((p - pmin) / (width + eps))
+        idx = 0 if idx < 0 else nbin - 1 if idx > nbin - 1 else idx
         bins[idx] += v
     imax = max(range(nbin), key=lambda i: bins[i])
     poc = pmin + (imax + 0.5) * width
@@ -400,16 +402,49 @@ def test_fusion_does_not_consume_engine_volume_profile():
 _POC_ENGINE_CALLEES = frozenset(
     {"_volume_profile_poc_vah_val", "compute_volume_profile_levels"}
 )
-_POC_ALG_NAMES = frozenset({"vol_by_price", "nbin"})
-# RC-330: fusion feature path is a close-price 12-bin, not the display engine.
+# Trained fusion feature — identity locked by live==frozen, not by invisibility.
 _FEATURE_PATH_POC = frozenset({("features/signal_layer_v1.py", "_volume_profile_proxy")})
 
 
-def _fn_delegates_to_poc_engine(src: str, fn) -> bool:
+def _fn_delegates_to_poc_engine(fn) -> bool:
+    for node in __import__("ast").walk(fn):
+        if _call_name(node) in _POC_ENGINE_CALLEES:
+            return True
+    return False
+
+
+def _fn_builds_histogram(fn) -> bool:
+    """Volume-into-bin: `bins[i] += v` or `at_price[p] = at_price.get(p, 0) + v`."""
     import ast
 
-    seg = ast.get_source_segment(src, fn) or ""
-    return "liquidity_value_engine" in seg or "_volume_profile_poc_vah_val" in seg
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.AugAssign)
+            and isinstance(node.target, ast.Subscript)
+            and isinstance(node.target.value, ast.Name)
+        ):
+            return True
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.BinOp):
+            if isinstance(node.value.op, ast.Add):
+                for target in node.targets:
+                    if isinstance(target, ast.Subscript) and isinstance(
+                        target.value, ast.Name
+                    ):
+                        return True
+    return False
+
+
+def _fn_returns_three(fn) -> bool:
+    import ast
+
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Return)
+            and isinstance(node.value, ast.Tuple)
+            and len(node.value.elts) == 3
+        ):
+            return True
+    return False
 
 
 def _assign_target_names(target) -> list[str]:
@@ -466,14 +501,15 @@ def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[s
     }
     offenders: list[str] = []
     for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-        names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
-        if names & _POC_ALG_NAMES:
-            if is_engine and fn.name in _POC_ENGINE_CALLEES:
-                continue
-            if (filename, fn.name) in _FEATURE_PATH_POC:
-                continue
-            if not _fn_delegates_to_poc_engine(src, fn):
-                offenders.append(f"{filename}:{fn.name}")
+        if not (_fn_builds_histogram(fn) and _fn_returns_three(fn)):
+            continue
+        if is_engine and fn.name in _POC_ENGINE_CALLEES:
+            continue
+        if (filename, fn.name) in _FEATURE_PATH_POC:
+            continue
+        if _fn_delegates_to_poc_engine(fn):
+            continue
+        offenders.append(f"{filename}:{fn.name}")
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
@@ -489,7 +525,7 @@ def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[s
             if (filename, callee) in _FEATURE_PATH_POC:
                 continue
             local = local_defs.get(callee)
-            if local is not None and _fn_delegates_to_poc_engine(src, local):
+            if local is not None and _fn_delegates_to_poc_engine(local):
                 continue
             offenders.append(f"{filename}:{callee}")
     return sorted(set(offenders))
@@ -520,14 +556,27 @@ def test_volume_profile_class_flags_undelegated_def_in_uncited_file():
     """Defect-learning: class fires on a helper that is not named volume_profile."""
     plant = (
         "def _value_area_from_closes(bars):\n"
-        "    nbin = 12\n"
-        "    vol_by_price = {}\n"
+        "    n_buckets = 12\n"
+        "    at_price = {}\n"
+        "    for p, v in bars:\n"
+        "        at_price[p] = at_price.get(p, 0) + v\n"
         "    return bars[-1]['close'], bars[-1]['close'], bars[-1]['close']\n"
         "\n"
         "poc, vah, val = _value_area_from_closes(bars)\n"
     )
     found = undelegated_volume_profile_defs(plant, "features/unrelated_layer.py")
     assert "features/unrelated_layer.py:_value_area_from_closes" in found, found
+    comment_only = (
+        "def _looks_delegated(bars):\n"
+        "    # liquidity_value_engine\n"
+        "    n_buckets = 12\n"
+        "    at_price = {}\n"
+        "    for p, v in bars:\n"
+        "        at_price[p] = at_price.get(p, 0) + v\n"
+        "    return 1.0, 1.0, 1.0\n"
+    )
+    found_comment = undelegated_volume_profile_defs(comment_only, "features/sneaky.py")
+    assert "features/sneaky.py:_looks_delegated" in found_comment, found_comment
 
 
 def test_cluster_price_levels():

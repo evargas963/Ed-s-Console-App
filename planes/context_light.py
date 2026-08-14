@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
+from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+
 log = logging.getLogger("ed.planes.l1")
 
 # Single engine for L1 path — avoids per-request allocation (OrderFlowEngine is stateless per compute inputs).
@@ -105,40 +107,11 @@ _STRUCTURAL_KEYS = (
     "kl_call_vanna_wall",
     "kl_put_vanna_wall",
     "kl_oi_center",
-    "kl_call_gamma_wall_label",
-    "kl_call_gamma_wall_tip",
-    "kl_put_gamma_wall_label",
-    "kl_put_gamma_wall_tip",
-    "kl_gamma_pin_label",
-    "kl_gamma_pin_tip",
-    "kl_hvl_label",
-    "kl_hvl_tip",
-    "kl_max_pain_label",
-    "kl_max_pain_tip",
-    "kl_gamma_flip_label",
-    "kl_gamma_flip_tip",
-    "kl_em_upper_label",
-    "kl_em_upper_tip",
-    "kl_em_lower_label",
-    "kl_em_lower_tip",
-    "kl_gamma_inflection_label",
-    "kl_gamma_inflection_tip",
-    "kl_delta_inflection_label",
-    "kl_delta_inflection_tip",
-    "kl_call_delta_wall_label",
-    "kl_call_delta_wall_tip",
-    "kl_put_delta_wall_label",
-    "kl_put_delta_wall_tip",
-    "kl_call_oi_wall_label",
-    "kl_call_oi_wall_tip",
-    "kl_put_oi_wall_label",
-    "kl_put_oi_wall_tip",
-    "kl_call_vanna_wall_label",
-    "kl_call_vanna_wall_tip",
-    "kl_put_vanna_wall_label",
-    "kl_put_vanna_wall_tip",
-    "kl_oi_center_label",
-    "kl_oi_center_tip",
+    *(
+        f"{k}_{sfx}"
+        for k in KEY_LEVEL_CONSUMER_REGISTRY
+        for sfx in ("label", "tip")
+    ),
     "kl_call_gamma_str",
     "kl_put_gamma_str",
     "kl_call_delta_str",

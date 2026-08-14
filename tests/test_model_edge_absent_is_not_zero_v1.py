@@ -18,10 +18,10 @@ from verify_active_models import model_health_edge_from_meta
 REPO = Path(__file__).resolve().parent.parent
 
 def functions_that_get_unrelated_literal_on_key_miss(src: str) -> list[str]:
-    """Functions that look up a mapping by a parameter and on miss read another literal.
+    """Functions that look up a mapping by a name and on miss read another literal.
 
     The class is substituting field V when the caller asked for field K.
-    The `*_key` suffix and the words edge/score/accuracy are not the universe.
+    Mapping may be a Name or Attribute. The requested key may be any Name.
     """
     import ast
 
@@ -32,7 +32,7 @@ def functions_that_get_unrelated_literal_on_key_miss(src: str) -> list[str]:
 
     found: list[str] = []
     for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-        key_args = {a.arg for a in (*fn.args.args, *fn.args.kwonlyargs)}
+        key_args = {a.arg for a in (*fn.args.args, *fn.args.kwonlyargs)} - {"self", "cls"}
         if not key_args:
             continue
         if _reads_unrelated_literal_on_key_miss(fn, key_args):
@@ -51,17 +51,40 @@ def _is_get_call(node: object) -> bool:
     )
 
 
-def _lookup_mapping_and_key(expr):
-    """Return (mapping_name, key_node) for mapping.get(k) / mapping[k], else None."""
+def _mapping_id(node) -> str | None:
     import ast
 
-    if _is_get_call(expr) and isinstance(expr.func.value, ast.Name):
-        return expr.func.value.id, expr.args[0]
-    if (
-        isinstance(expr, ast.Subscript)
-        and isinstance(expr.value, ast.Name)
-    ):
-        return expr.value.id, expr.slice
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _mapping_id(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    return None
+
+
+def _lookup_mapping_and_key(expr):
+    """Return (mapping_id, key_node) for mapping.get(k) / mapping[k], else None."""
+    import ast
+
+    if _is_get_call(expr):
+        mid = _mapping_id(expr.func.value)
+        if mid:
+            return mid, expr.args[0]
+    if isinstance(expr, ast.Subscript):
+        mid = _mapping_id(expr.value)
+        if mid:
+            return mid, expr.slice
+    return None
+
+
+def _unwrap_lookup(expr):
+    looked = _lookup_mapping_and_key(expr)
+    if looked:
+        return looked
+    import ast
+
+    if isinstance(expr, ast.Call) and expr.args:
+        return _lookup_mapping_and_key(expr.args[0])
     return None
 
 
@@ -69,7 +92,7 @@ def _key_kind(key_node, key_args: set[str]) -> str | None:
     import ast
 
     if isinstance(key_node, ast.Name) and key_node.id in key_args:
-        return "param"
+        return "name"
     if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
         return "literal"
     return None
@@ -81,7 +104,36 @@ def _returned_lookup(stmts: list):
 
     if len(stmts) != 1 or not isinstance(stmts[0], ast.Return) or stmts[0].value is None:
         return None
-    return _lookup_mapping_and_key(stmts[0].value)
+    return _unwrap_lookup(stmts[0].value)
+
+
+def _is_none_test(test, name: str) -> bool:
+    import ast
+
+    if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+        return False
+    if not isinstance(test.ops[0], ast.Is):
+        return False
+    if not (isinstance(test.left, ast.Name) and test.left.id == name):
+        return False
+    return (
+        isinstance(test.comparators[0], ast.Constant)
+        and test.comparators[0].value is None
+    )
+
+
+def _body_has_literal_key_on(stmts: list, mapping: str) -> bool:
+    import ast
+
+    for stmt in stmts:
+        for node in ast.walk(stmt):
+            looked = _lookup_mapping_and_key(node)
+            if looked is None:
+                continue
+            mid, key = looked
+            if mid == mapping and isinstance(key, ast.Constant) and isinstance(key.value, str):
+                return True
+    return False
 
 
 def _reads_unrelated_literal_on_key_miss(fn, key_args: set[str]) -> bool:
@@ -100,12 +152,9 @@ def _reads_unrelated_literal_on_key_miss(fn, key_args: set[str]) -> bool:
             and isinstance(inner.args[0].value, str)
         ):
             continue
-        # Same mapping: meta.get(field, meta.get("other"))
-        if (
-            isinstance(node.func.value, ast.Name)
-            and isinstance(inner.func.value, ast.Name)
-            and node.func.value.id == inner.func.value.id
-        ):
+        outer_id = _mapping_id(node.func.value)
+        inner_id = _mapping_id(inner.func.value)
+        if outer_id and outer_id == inner_id:
             return True
     for node in ast.walk(fn):
         if not (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)):
@@ -117,8 +166,7 @@ def _reads_unrelated_literal_on_key_miss(fn, key_args: set[str]) -> bool:
         uses_key = False
         has_lit = False
         for g in gets:
-            if isinstance(g.func.value, ast.Name):
-                bases.append(g.func.value.id)
+            bases.append(_mapping_id(g.func.value))
             first = g.args[0]
             if isinstance(first, ast.Name) and first.id in key_args:
                 uses_key = True
@@ -127,23 +175,52 @@ def _reads_unrelated_literal_on_key_miss(fn, key_args: set[str]) -> bool:
         if uses_key and has_lit and len(set(bases)) == 1 and bases[0] is not None:
             return True
     for node in ast.walk(fn):
+        if isinstance(node, ast.IfExp):
+            a = _unwrap_lookup(node.body)
+            b = _unwrap_lookup(node.orelse)
+            if a and b and a[0] == b[0]:
+                if {_key_kind(a[1], key_args), _key_kind(b[1], key_args)} == {
+                    "name",
+                    "literal",
+                }:
+                    return True
         if not isinstance(node, ast.If):
             continue
         a = _returned_lookup(node.body)
         b = _returned_lookup(node.orelse)
         if a and b and a[0] == b[0]:
-            kinds = {_key_kind(a[1], key_args), _key_kind(b[1], key_args)}
-            if kinds == {"param", "literal"}:
+            if {_key_kind(a[1], key_args), _key_kind(b[1], key_args)} == {
+                "name",
+                "literal",
+            }:
                 return True
     for i, stmt in enumerate(fn.body):
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+            target = stmt.targets[0]
+            looked = _unwrap_lookup(stmt.value)
+            if (
+                isinstance(target, ast.Name)
+                and looked
+                and _key_kind(looked[1], key_args) == "name"
+            ):
+                for nxt in fn.body[i + 1 :]:
+                    if not isinstance(nxt, ast.If):
+                        continue
+                    if _is_none_test(nxt.test, target.id) and _body_has_literal_key_on(
+                        nxt.body, looked[0]
+                    ):
+                        return True
+                    break
         if not isinstance(stmt, ast.If) or i + 1 >= len(fn.body):
             continue
         a = _returned_lookup(stmt.body)
         nxt = fn.body[i + 1]
         b = _returned_lookup([nxt])
         if a and b and a[0] == b[0]:
-            kinds = {_key_kind(a[1], key_args), _key_kind(b[1], key_args)}
-            if kinds == {"param", "literal"}:
+            if {_key_kind(a[1], key_args), _key_kind(b[1], key_args)} == {
+                "name",
+                "literal",
+            }:
                 return True
     return False
 
@@ -205,6 +282,27 @@ def test_edge_key_miss_class_flags_uncited_function():
     assert functions_that_get_unrelated_literal_on_key_miss(subscript) == [
         "published_via_subscript"
     ]
+    assign_none = (
+        "def assign_then_none(meta, requested):\n"
+        "    raw = meta.get(requested)\n"
+        "    if raw is None:\n"
+        "        return meta.get('val_accuracy')\n"
+    )
+    assert functions_that_get_unrelated_literal_on_key_miss(assign_none) == [
+        "assign_then_none"
+    ]
+    attr_map = (
+        "def reading_from_self(self, requested):\n"
+        "    return self.meta.get(requested, self.meta.get('val_accuracy', 0))\n"
+    )
+    assert functions_that_get_unrelated_literal_on_key_miss(attr_map) == [
+        "reading_from_self"
+    ]
+    ternary = (
+        "def via_ternary(blob, requested):\n"
+        "    return blob[requested] if requested in blob else blob['train_accuracy']\n"
+    )
+    assert functions_that_get_unrelated_literal_on_key_miss(ternary) == ["via_ternary"]
 
 
 def test_repo_has_no_measurement_key_literal_fallback():

@@ -233,6 +233,22 @@ def test_all_seventeen_kl_labels_come_from_the_registry():
         encoding="utf-8"
     )
     assert "KEY_LEVEL_CONSUMER_REGISTRY" in server
+    render = html[html.find("function renderKeyLevels") : html.find("function renderKeyLevels") + 2500]
+    assert "level.label ||" not in render
+    assert "level.label)" not in render
+
+
+def test_l1_structural_keys_include_every_registry_label_and_tip():
+    """An 18th registry row must copy onto L1 or this fails."""
+    from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+    from planes.context_light import _STRUCTURAL_KEYS
+
+    needed = {
+        f"{k}_{sfx}"
+        for k in KEY_LEVEL_CONSUMER_REGISTRY
+        for sfx in ("label", "tip")
+    }
+    assert needed <= set(_STRUCTURAL_KEYS)
 
 
 def test_l1_cache_hit_block_restamps_all_seventeen_labels():

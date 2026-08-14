@@ -7691,7 +7691,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       const pColor = proxColor(v, level);
       const tipSrc = (level.tipKey && d[level.tipKey]) ? d[level.tipKey] : (level.title || '');
       const tip = tipSrc ? ` title="${String(tipSrc).replace(/"/g, '&quot;')}"` : '';
-      const rowLabel = (level.labelKey && d[level.labelKey]) ? d[level.labelKey] : (level.label || '—');
+      const rowLabel = (level.labelKey && d[level.labelKey]) ? d[level.labelKey] : '—';
       return `<div class="kl-grid">
         <div class="kl-prox" style="background:${pColor}"></div>
         <div class="kl-name${dimmed ? ' dimmed' : ''}"${tip}>${rowLabel}</div>
