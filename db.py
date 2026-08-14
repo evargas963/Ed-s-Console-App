@@ -2733,6 +2733,19 @@ class EdDB:
             except sqlite3.OperationalError:
                 pass
 
+        # Issue 16 class: NEW_COLUMNS only ALTERs snapshots. Existing
+        # snapshots_1m_normalized tables miss gamma_pin_semantic and the
+        # column-intersection INSERT silently drops the stamp.
+        for col_name, col_type in (("gamma_pin_semantic", "TEXT"),):
+            try:
+                with self._connect() as conn:
+                    conn.execute(
+                        f"ALTER TABLE snapshots_1m_normalized ADD COLUMN {col_name} {col_type}"
+                    )
+                log.info("DB migration: added %s to snapshots_1m_normalized", col_name)
+            except sqlite3.OperationalError:
+                pass
+
         for col_name, col_type in (
             ("pressure_label", "TEXT"),
             ("pressure_trend", "TEXT"),
