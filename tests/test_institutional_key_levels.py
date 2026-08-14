@@ -12,8 +12,10 @@ from pathlib import Path
 from math_exposure_core import (
     GAMMA_PIN_CONSUMER_LABEL,
     GAMMA_PIN_CONSUMER_TIP,
+    GAMMA_PIN_LABEL_PAYLOAD_KEY,
     GAMMA_PIN_PAYLOAD_KEY,
     GAMMA_PIN_SEMANTIC,
+    GAMMA_PIN_TIP_PAYLOAD_KEY,
     aggregate_net_gex,
     bucket_metric_abs,
     compute_exposures_by_strike,
@@ -125,23 +127,26 @@ def test_kl_gamma_pin_consumer_semantic_matches_registry():
     html = _INDEX.read_text(encoding="utf-8")
     assert GAMMA_PIN_SEMANTIC == "net_gex_peak"
     assert f"key: '{GAMMA_PIN_PAYLOAD_KEY}'" in html
-    assert f"label: '{GAMMA_PIN_CONSUMER_LABEL}'" in html
     pin_block = html[
         html.find(f"key: '{GAMMA_PIN_PAYLOAD_KEY}'") : html.find(
             f"key: '{GAMMA_PIN_PAYLOAD_KEY}'"
         )
         + 400
     ]
-    assert GAMMA_PIN_CONSUMER_TIP in pin_block
+    assert f"labelKey: '{GAMMA_PIN_LABEL_PAYLOAD_KEY}'" in pin_block
+    assert f"tipKey: '{GAMMA_PIN_TIP_PAYLOAD_KEY}'" in pin_block
+    assert "label: '" not in pin_block
+    assert "title: '" not in pin_block
 
 
 def test_console_kl_gamma_pin_label_matches_bound_net_gex():
     """RC-292 UI label child: Console must not call the net-GEX peak 'Gamma Pin'."""
     html = _INDEX.read_text(encoding="utf-8")
     assert "key: 'kl_gamma_pin'" in html
-    assert "label: 'Net Γ Peak'" in html
-    assert "srLabel: 'Net Γ'" in html
+    pin_block = html[html.find("key: 'kl_gamma_pin'") : html.find("key: 'kl_gamma_pin'") + 400]
+    assert "label: 'Net Γ Peak'" not in pin_block
     assert "label: 'Gamma Pin'" not in html
+    assert "srLabel: 'Net Γ'" in html
     assert "label: 'HVL'" in html
     assert "srLabel: 'Peak Γ'" in html
 
@@ -149,13 +154,26 @@ def test_console_kl_gamma_pin_label_matches_bound_net_gex():
 def test_console_pin_tooltip_matches_bound_net_gex():
     """RC-292 tooltip child: operator text names |net GEX$|, not total-gamma."""
     html = _INDEX.read_text(encoding="utf-8")
-    assert _PIN_TIP in html
-    assert html.count(_PIN_TIP) >= 3  # KEY LEVELS + decision rail + exec card
     pin_block = html[html.find("key: 'kl_gamma_pin'") : html.find("key: 'kl_gamma_pin'") + 400]
-    assert _PIN_TIP in pin_block
-    assert "total-gamma magnet" in pin_block
+    assert _PIN_TIP not in pin_block
+    assert "tipKey: 'kl_gamma_pin_tip'" in pin_block
     assert "title: 'Largest net-gamma strike'" not in html
     assert "title: 'Largest total gamma" not in html
+    assert GAMMA_PIN_CONSUMER_LABEL == "Net Γ Peak"
+    assert "total-gamma magnet" in GAMMA_PIN_CONSUMER_TIP
+
+
+def test_server_emits_gamma_pin_label_from_registry():
+    """RC-329 bedrock: one source — payload carries the registry copy."""
+    server = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(
+        encoding="utf-8"
+    )
+    assert "GAMMA_PIN_LABEL_PAYLOAD_KEY" in server
+    assert "GAMMA_PIN_TIP_PAYLOAD_KEY" in server
+    assert "GAMMA_PIN_CONSUMER_LABEL" in server
+    assert "GAMMA_PIN_CONSUMER_TIP" in server
+    assert GAMMA_PIN_LABEL_PAYLOAD_KEY == "kl_gamma_pin_label"
+    assert GAMMA_PIN_TIP_PAYLOAD_KEY == "kl_gamma_pin_tip"
 
 
 def test_decision_exec_pin_labeled_net_gamma():

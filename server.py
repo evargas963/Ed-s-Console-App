@@ -170,6 +170,10 @@ from math_exposure import (
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
     pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     GAMMA_PIN_SEMANTIC,
+    GAMMA_PIN_CONSUMER_LABEL,
+    GAMMA_PIN_CONSUMER_TIP,
+    GAMMA_PIN_LABEL_PAYLOAD_KEY,
+    GAMMA_PIN_TIP_PAYLOAD_KEY,
     aggregate_net_gex, total_gamma_raw_at_strike,
     gex_at_bound_pin_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
@@ -2298,6 +2302,8 @@ def _publish_progressive_tier_c_cache(
         "kl_call_oi_wall": _float_key_level(getattr(w0, "call_oi_wall", None)),
         "kl_put_oi_wall": _float_key_level(getattr(w0, "put_oi_wall", None)),
         "kl_gamma_pin": _float_key_level(getattr(cs, "gamma_pin", None)),
+        GAMMA_PIN_LABEL_PAYLOAD_KEY: GAMMA_PIN_CONSUMER_LABEL,
+        GAMMA_PIN_TIP_PAYLOAD_KEY: GAMMA_PIN_CONSUMER_TIP,
         "kl_oi_center": _float_key_level(getattr(cs, "oi_center", None)),
         "kl_metrics_dollarized": bool(exposures and exposures_have_dollar_gex(exposures)),
         "spread": quote_spread_pts,
@@ -8073,6 +8079,8 @@ def _fetch_state(
 
     # ── New institutional levels ───────────────────────────────────────────────
     ms_dict["kl_gamma_pin"]    = _fv(getattr(cs, "gamma_pin", None))
+    ms_dict[GAMMA_PIN_LABEL_PAYLOAD_KEY] = GAMMA_PIN_CONSUMER_LABEL
+    ms_dict[GAMMA_PIN_TIP_PAYLOAD_KEY] = GAMMA_PIN_CONSUMER_TIP
     ms_dict["kl_hvl"]          = _fv(_hvl)
     ms_dict["kl_max_pain"]     = _fv(_max_pain)
     ms_dict["kl_hvl_str"]      = _fs(hvl_gamma_strength(exposures, _hvl))

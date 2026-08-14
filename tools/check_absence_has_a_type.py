@@ -15,11 +15,19 @@ annotated `-> float` has already declared that absence cannot be expressed, so b
 `return 0.0` appears in the `except` handler the type has foreclosed the honest option and
 the literal reads as the only way to satisfy the signature.
 
-WHAT THIS FLAGS. A function annotated `-> float` that returns a numeric literal from an
-`except` handler. Deliberately narrow: predicates returning False are giving a real answer,
-and `main() -> int` returning an exit code is not a measurement. The first prototype over
-all scalar returns found 78 and was almost entirely those two shapes; restricting to float
-measurements left TWO, both real.
+WHAT THIS FLAGS. A function annotated `-> float` (exact, non-Optional) that returns a
+numeric *literal* from an `except` handler. Deliberately narrow: predicates returning
+False are giving a real answer, and `main() -> int` returning an exit code is not a
+measurement. The first prototype over all scalar returns found 78 and was almost
+entirely those two shapes; restricting to float measurements left TWO, both real.
+
+WHAT THIS DOES NOT CATCH (RC-318 — named so a green gate is not the CLASS):
+  (a) unannotated functions (`def f(x):` with no return annotation);
+  (b) `-> float | None` / `Optional[float]` functions that still return 0.0 from except;
+  (c) non-literal fabrications (`return x or 0.0`, `return float(x or 0)`);
+  (d) None-branch zeros outside except (`if v is None: return 0.0`);
+  (e) `# absence-ok:` escapes — the marker silences the hit; truth is review surface.
+A green run of this gate proves the except-literal `-> float` shape only.
 
     .venv/Scripts/python.exe tools/check_absence_has_a_type.py
 """

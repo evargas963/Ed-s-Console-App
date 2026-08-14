@@ -22,3 +22,43 @@ def test_parity_except_no_longer_returns_zero_literal():
     block = src[start : start + 400]
     assert "return None" in block
     assert "-> float | None" in block
+
+
+def test_absence_gate_docstring_names_what_it_does_not_catch():
+    """RC-301/318: a green gate is the except-literal shape, not the CLASS."""
+    src = (REPO / "tools" / "check_absence_has_a_type.py").read_text(encoding="utf-8")
+    assert "WHAT THIS DOES NOT CATCH" in src
+    for needle in (
+        "unannotated functions",
+        "float | None",
+        "return x or 0.0",
+        "if v is None: return 0.0",
+        "# absence-ok:",
+    ):
+        assert needle in src, needle
+
+
+def test_rc318_board_lists_every_absence_ok_site():
+    """Z2 acceptance: every # absence-ok site is a named RC-318 row (file:line)."""
+    import re
+    import subprocess
+
+    board = (REPO / "OPEN_ITEMS.md").read_text(encoding="utf-8")
+    proc = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    sites: list[str] = []
+    for rel in [p for p in proc.stdout.split("\0") if p]:
+        if rel.startswith(("tests/", "tools/")):
+            continue
+        text = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+        for i, line in enumerate(text.splitlines(), 1):
+            if re.search(r"#\s*absence-ok", line):
+                sites.append(f"{rel}:{i}")
+    assert sites, "expected at least the encoder # absence-ok site"
+    for site in sites:
+        assert site in board, f"RC-318 board missing {site}"

@@ -289,5 +289,35 @@ def test_named_force_functions_remain_in_charter():
         "drift-audit skill before any done",
         "Bugbot when the diff is material",
         "security-review when secrets",
+        "acceptance line is a measurement of the stated principle",
+        "Presence of a test, a green proxy gate, or a SHA cite is not the principle",
     ):
         assert needle in charter, f"named force function missing from AGENTS.md: {needle!r}"
+
+
+def test_five_zone_acceptance_lines_are_operative():
+    """Zone-close lock: the five rejected closures stay measured, not asserted."""
+    from pathlib import Path
+
+    from governance.mega2_traceable_inventory import uninventoried_engine_modules
+    from liquidity_value_engine import _volume_profile_poc_vah_val
+    from verify_active_models import model_health_edge_from_meta
+
+    # Z1 — unmeasured edge is None, not accuracy·100
+    assert model_health_edge_from_meta({"val_accuracy": 0.55}, "edge_pp") is None
+    # Z2 — gate names what it does not catch
+    gate = Path(__file__).resolve().parent.parent.joinpath(
+        "tools/check_absence_has_a_type.py"
+    ).read_text(encoding="utf-8")
+    assert "WHAT THIS DOES NOT CATCH" in gate
+    # Z3 — dirty bar fails closed in the engine
+    assert _volume_profile_poc_vah_val([{"volume": 1}]) == (None, None, None)
+    # Z4 — planted producer outside MEGA2_FILES fails today
+    assert uninventoried_engine_modules(["terrain_engine.py"]) == ["terrain_engine.py"]
+    # Z5 — no hardcoded kl_gamma_pin label in the KEY LEVELS row
+    html = Path(__file__).resolve().parent.parent.joinpath(
+        "static/index.html"
+    ).read_text(encoding="utf-8")
+    pin_block = html[html.find("key: 'kl_gamma_pin'") : html.find("key: 'kl_gamma_pin'") + 400]
+    assert "label: '" not in pin_block
+    assert "labelKey: 'kl_gamma_pin_label'" in pin_block

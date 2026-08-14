@@ -86,6 +86,8 @@ _STRUCTURAL_KEYS = (
     "charm_direction_display",
     "charm_drift_toward",
     "kl_gamma_pin",
+    "kl_gamma_pin_label",
+    "kl_gamma_pin_tip",
     "kl_hvl",
     "kl_max_pain",
     "kl_gamma_flip",

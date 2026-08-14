@@ -22,6 +22,7 @@ from governance.mega2_traceable_inventory import (  # noqa: E402
     MEGA2_FILES,
     MEGA2_TRACEABLE_INVENTORY,
     Mega2TraceableDerivation,
+    uninventoried_engine_modules,
 )
 from governance.mega_chain_of_trust import (  # noqa: E402
     MegaInventoryBundle,
@@ -167,15 +168,31 @@ def test_mega2_allowlist_entries_complete():
         assert entry.category in REQUIRED_CATEGORIES
 
 
-def test_mega2_files_exist_and_terrain_engine_cannot_return_uninventoried():
-    """RC-297: the 2026-08-07 gap was terrain_engine outside MEGA2_FILES.
-
-    That file is absent on this main. If it returns, it must be inventoried.
-    """
+def test_mega2_files_exist():
     for rel in MEGA2_FILES:
         assert (ROOT / rel).is_file(), rel
-    if (ROOT / "terrain_engine.py").is_file():
-        assert "terrain_engine.py" in MEGA2_FILES
+
+
+def test_uninventoried_engine_module_is_rejected_when_planted():
+    """RC-297 bedrock: the guard runs today, not only if terrain_engine returns."""
+    planted = ["terrain_engine.py"]
+    assert uninventoried_engine_modules(planted) == ["terrain_engine.py"]
+    assert uninventoried_engine_modules(["order_flow_engine.py"]) == []
+    assert uninventoried_engine_modules(["liquidity_value_engine.py"]) == []
+
+
+def test_repo_has_no_uninventoried_engine_modules():
+    import subprocess
+
+    proc = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    files = [p for p in proc.stdout.split("\0") if p]
+    assert uninventoried_engine_modules(files) == []
 
 
 def test_mega2_schwab_leaf_regex_rejects_aggregate():

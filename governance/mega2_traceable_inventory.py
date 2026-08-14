@@ -35,6 +35,39 @@ MEGA2_FILES = frozenset(
     }
 )
 
+# Engines that are not Mega2 KEY-LEVELS / order-flow producers. Named so a new
+# *_engine.py cannot land uninventoried by hiding next to these.
+MEGA2_ENGINE_OUT_OF_SCOPE = frozenset(
+    {
+        "adaptive_similarity_engine.py",
+        "arch_competition/promotion_engine.py",
+        "call_engine.py",
+        "liquidity_value_engine.py",
+        "prediction_engine.py",
+        "regime_engine.py",
+        "rules_engine.py",
+    }
+)
+
+
+def uninventoried_engine_modules(
+    repo_files: list[str],
+    mega2_files: frozenset[str] = MEGA2_FILES,
+    out_of_scope: frozenset[str] = MEGA2_ENGINE_OUT_OF_SCOPE,
+) -> list[str]:
+    """RC-297: any *_engine.py / terrain_engine.py not inventoried and not named out-of-scope."""
+    from pathlib import Path
+
+    offenders: list[str] = []
+    for rel in repo_files:
+        if rel.startswith("tests/"):
+            continue
+        name = Path(rel).name
+        if name.endswith("_engine.py") or name == "terrain_engine.py":
+            if rel not in mega2_files and rel not in out_of_scope:
+                offenders.append(rel)
+    return sorted(offenders)
+
 MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("debug_flow_snapshot.py", 32, "_contracts_from_chain_json", "SCHWAB_LEAF", 'chains.callExpDateMap.*.openInterest', (), None, "Parses option chain JSON for debug snapshot."),
     Mega2TraceableDerivation("debug_flow_snapshot.py", 63, "main", "NONE", None, (), None, "No market-field derivation: CLI debug entry; reads persisted snapshots."),

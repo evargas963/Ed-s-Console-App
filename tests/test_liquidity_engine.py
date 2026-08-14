@@ -241,11 +241,43 @@ def test_market_context_volume_profile_delegates_to_engine():
     block = src[start:end]
     assert "from liquidity_value_engine import" in block
     assert "vol_by_price" not in block
+    assert "_float_or_none" not in block
+    assert "_positive_float_or_none" not in block
     bars = [
         {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
         {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 200.0},
     ]
     assert ctx_vp(bars) == engine_vp(bars)
+
+
+def test_engine_volume_profile_dirty_bar_fails_closed():
+    """F15 bedrock: missing OHLC is absence, not KeyError / None-arithmetic."""
+    from liquidity_value_engine import _volume_profile_poc_vah_val as engine_vp
+    from market_context import _volume_profile_poc_vah_val as ctx_vp
+
+    dirty = [
+        {"volume": 1},
+        {"high": None, "low": 99.0, "close": 100.0, "volume": 10.0},
+        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 0},
+    ]
+    assert engine_vp([{"volume": 1}]) == (None, None, None)
+    assert engine_vp(dirty) == (None, None, None)
+    assert ctx_vp(dirty) == engine_vp(dirty)
+
+
+def test_fetch_state_live_path_uses_engine_volume_profile():
+    """F15 live cite: _fetch_state → fetch_price_levels → engine pass-through."""
+    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    start = server.find("def _fetch_state(")
+    assert start != -1
+    end = server.find("\ndef ", start + 1)
+    # _fetch_state is huge; bound the first 2500 lines of the def by char budget.
+    block = server[start : start + 80_000]
+    assert "price_levels = fetch_price_levels(" in block
+    ctx = (ROOT / "market_context.py").read_text(encoding="utf-8")
+    fetch = ctx[ctx.find("def fetch_price_levels") : ctx.find("def fetch_price_levels") + 12_000]
+    assert "pl.pd_poc, pl.pd_vah, pl.pd_val = _volume_profile_poc_vah_val(" in fetch
+    assert "pl.today_poc, pl.today_vah, pl.today_val = _volume_profile_poc_vah_val(" in fetch
 
 
 def test_cluster_price_levels():

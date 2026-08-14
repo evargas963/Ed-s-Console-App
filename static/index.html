@@ -7615,7 +7615,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
   const KL_PRIMARY = [
     { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444' },
     { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e' },
-    { key: 'kl_gamma_pin', strKey: null, label: 'Net Γ Peak', sr: 'pin', srLabel: 'Net Γ', proxColor: '#a855f7', title: 'Largest |net GEX$| per 1% on the selected expiry. Not the total-gamma magnet (that is HVL).' },
+    { key: 'kl_gamma_pin', strKey: null, labelKey: 'kl_gamma_pin_label', tipKey: 'kl_gamma_pin_tip', sr: 'pin', srLabel: 'Net Γ', proxColor: '#a855f7' },
     { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef' },
     { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316' },
@@ -7689,10 +7689,12 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       const sr = level.sr || (isNull ? 'net' : v > (spot||0) ? 'res' : 'sup');
       const srLbl = level.srLabel || (isNull ? '—' : v > (spot||0) ? 'Resistance' : 'Support');
       const pColor = proxColor(v, level);
-      const tip = level.title ? ` title="${String(level.title).replace(/"/g, '&quot;')}"` : '';
+      const tipSrc = (level.tipKey && d[level.tipKey]) ? d[level.tipKey] : (level.title || '');
+      const tip = tipSrc ? ` title="${String(tipSrc).replace(/"/g, '&quot;')}"` : '';
+      const rowLabel = (level.labelKey && d[level.labelKey]) ? d[level.labelKey] : (level.label || '—');
       return `<div class="kl-grid">
         <div class="kl-prox" style="background:${pColor}"></div>
-        <div class="kl-name${dimmed ? ' dimmed' : ''}"${tip}>${level.label}</div>
+        <div class="kl-name${dimmed ? ' dimmed' : ''}"${tip}>${rowLabel}</div>
         <div class="kl-price">${isNull ? '—' : v.toFixed(2)}</div>
         <div style="text-align:center"><span class="kl-sr ${sr}">${srLbl}</span></div>
         <div class="kl-dist ${distClass(dist)}">${distStr}</div>
@@ -7728,7 +7730,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       </div>`;
     }
 
-    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as Net Γ Peak row)
+    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as payload-labeled pin row)
     {
       const pinStrike = parseFloat(d.kl_gamma_pin || 0);
       const charmTarget = (d.kl_institutional_ready && pinStrike > 0)
@@ -8123,6 +8125,12 @@ function _renderMoneyPathCore(d, fullRenderSource) {
   }
 
   // ── Model Health (governance-aware status with tooltips) ───────────────────
+  function formatModelHealthEdge(edge) {
+    if (edge === null || edge === undefined) return '—';
+    const n = Number(edge);
+    if (!Number.isFinite(n)) return '—';
+    return String(n);
+  }
   const mhList = $('model-health-list');
   const mhSum = $('model-health-summary');
   const mhSyncWarn = $('model-sync-warning');
@@ -8136,7 +8144,8 @@ function _renderMoneyPathCore(d, fullRenderSource) {
         const reason = (m.status_reason || '').replace(/"/g, '&quot;');
         const mname = m.model != null ? String(m.model) : '—';
         const st = m.status != null ? String(m.status) : '—';
-        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px" title="${reason}"><span>${mname}</span><span style="${statusCls(m.status)};font-weight:600">${st}</span></div>`;
+        const edgeTxt = formatModelHealthEdge(m.edge);
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px" title="${reason}"><span>${mname}</span><span style="${statusCls(m.status)};font-weight:600">${st}</span><span class="mh-edge">${edgeTxt}</span></div>`;
       }).join('');
     } else {
       mhList.innerHTML = '';

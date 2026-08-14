@@ -466,10 +466,14 @@ def _volume_profile_poc_vah_val(
         return None, None, None
     vol_by_price: dict[float, float] = defaultdict(float)
     for b in bars:
-        vol = _positive_float_or_none(b.get("volume"))
-        if vol is None:
+        if not isinstance(b, dict):
             continue
-        h, l_, c = b["high"], b["low"], b["close"]
+        vol = _positive_float_or_none(b.get("volume"))
+        h = _float_or_none(b.get("high"))
+        l_ = _float_or_none(b.get("low"))
+        c = _float_or_none(b.get("close"))
+        if vol is None or h is None or l_ is None or c is None:
+            continue
         typical = (h + l_ + c) / 3.0
         price_bin = round(typical / tick_size) * tick_size
         vol_by_price[price_bin] += vol

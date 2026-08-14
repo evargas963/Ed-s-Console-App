@@ -304,6 +304,8 @@ KEY_LEVEL_STRIKE_WINDOW: int | None = None
 # already the analytics |net GEX$| peak. NULL semantic on old rows means the same.
 GAMMA_PIN_SEMANTIC = "net_gex_peak"
 GAMMA_PIN_PAYLOAD_KEY = "kl_gamma_pin"
+GAMMA_PIN_LABEL_PAYLOAD_KEY = "kl_gamma_pin_label"
+GAMMA_PIN_TIP_PAYLOAD_KEY = "kl_gamma_pin_tip"
 GAMMA_PIN_CONSUMER_LABEL = "Net Γ Peak"
 GAMMA_PIN_CONSUMER_TIP = (
     "Largest |net GEX$| per 1% on the selected expiry. "

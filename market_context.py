@@ -844,22 +844,13 @@ def proximity_alerts(
 
 def _volume_profile_poc_vah_val(bars: list, value_area_pct: float = 0.70,
                                  tick_size: float = 0.01) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """F15: one math producer — liquidity_value_engine._volume_profile_poc_vah_val.
+    """F15: one math producer — pass-through to liquidity_value_engine.
 
-    This wrapper only sanitizes bar fields. It does not recompute the profile.
+    Input sanitization lives in the engine (single input contract).
     """
     from liquidity_value_engine import _volume_profile_poc_vah_val as _engine_vp
 
-    norm: list[dict] = []
-    for c in bars or []:
-        h = _float_or_none(c.get("high"))
-        l = _float_or_none(c.get("low"))
-        cl = _float_or_none(c.get("close"))
-        vol = _positive_float_or_none(c.get("volume"))
-        if h is None or l is None or cl is None or vol is None:
-            continue
-        norm.append({"high": h, "low": l, "close": cl, "volume": vol})
-    return _engine_vp(norm, value_area_pct, tick_size)
+    return _engine_vp(bars, value_area_pct, tick_size)
 
 
 def _vwap_bands(bars: list, vwap_val: float) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
