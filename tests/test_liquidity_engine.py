@@ -306,7 +306,7 @@ def test_api_state_stamps_engine_poc_keys():
 def test_stamped_engine_poc_keys_have_a_dom_consumer():
     """Served-but-unconsumed is not a close: every stamped key is bound in the DOM."""
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    for key in ENGINE_POC_STATE_KEYS:
+    for key in ENGINE_POC_STATE_KEYS + ("pdc",):
         assert f"d.{key}" in html, key
     for el_id in (
         "dr-lvl-poc",
@@ -315,8 +315,10 @@ def test_stamped_engine_poc_keys_have_a_dom_consumer():
         "dr-lvl-pdpoc",
         "dr-lvl-pdvah",
         "dr-lvl-pdval",
+        "dr-lvl-pdc",
         "exec-poc",
         "exec-pdpoc",
+        "exec-pdc",
     ):
         assert f'id="{el_id}"' in html, el_id
 
@@ -360,6 +362,48 @@ def test_dom_receives_engine_today_poc_value():
     assert "ok" in proc.stdout
 
 
+def test_dom_receives_pdc_value():
+    """F31 residual: stamped pdc renders on #dr-lvl-pdc; absent/0 → —."""
+    import re
+    import subprocess
+
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    assert "d.pdc" in html
+    assert 'id="dr-lvl-pdc"' in html
+    assert 'id="exec-pdc"' in html
+    assert "el.textContent = pxTxt(d.pdc)" in html
+    match = re.search(
+        r"const pxTxt = \(x\) => \{.*?\n  \};",
+        html,
+        flags=re.S,
+    )
+    assert match, "pxTxt must be extractable from index.html"
+    px_fn = re.search(r"const px = \(x\) => [^;]+;", html)
+    assert px_fn, "px must be extractable from index.html"
+    script = (
+        px_fn.group(0)
+        + "\n"
+        + match.group(0)
+        + "\n"
+        + "function bind(d){ return pxTxt(d.pdc); }\n"
+        + "const fail = (m) => { console.error(m); process.exit(1); };\n"
+        + "if (bind({pdc: 498.50}) !== '498.50') fail('pdc');\n"
+        + "if (bind({pdc: null}) !== '—') fail('absent');\n"
+        + "if (bind({pdc: 0}) !== '—') fail('zero');\n"
+        + "console.log('ok');\n"
+    )
+    proc = subprocess.run(
+        ["node", "-e", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "ok" in proc.stdout
+
+
 F31_LEVEL_DOM_IDS = (
     "dr-lvl-poc",
     "dr-lvl-vah",
@@ -370,6 +414,7 @@ F31_LEVEL_DOM_IDS = (
     "dr-lvl-vwap",
     "dr-lvl-pdh",
     "dr-lvl-pdl",
+    "dr-lvl-pdc",
     "exec-poc",
     "exec-vah",
     "exec-val",
@@ -379,6 +424,7 @@ F31_LEVEL_DOM_IDS = (
     "exec-vwap",
     "exec-pdh",
     "exec-pdl",
+    "exec-pdc",
 )
 
 F31_WALL_KEYS = ("kl_call_gamma_wall", "kl_put_gamma_wall")
@@ -426,7 +472,7 @@ def test_f31_absent_snapshot_yields_dash_not_zero_or_stale():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     for el_id in F31_LEVEL_DOM_IDS:
         assert f'id="{el_id}"' in html, el_id
-    for key in ("d.vwap", "d.pdh", "d.pdl", "d.today_poc", "d.pd_poc"):
+    for key in ("d.vwap", "d.pdh", "d.pdl", "d.pdc", "d.today_poc", "d.pd_poc"):
         assert key in html, key
     assert "kl_call_gamma_wall" in html and "kl_put_gamma_wall" in html
     assert "const isNull = !v;" in html
@@ -447,6 +493,7 @@ def test_f31_absent_snapshot_yields_dash_not_zero_or_stale():
             "vwap",
             "pdh",
             "pdl",
+            "pdc",
         )
     )
     wall_null = " ".join(
@@ -460,14 +507,14 @@ def test_f31_absent_snapshot_yields_dash_not_zero_or_stale():
         + "function isNullWall(v){ const x = parseFloat(v); return !x; }\n"
         + "const fail = (m) => { console.error(m); process.exit(1); };\n"
         + "const d = {today_poc:null,today_vah:null,today_val:null,"
-        "pd_poc:null,pd_vah:null,pd_val:null,vwap:null,pdh:null,pdl:null,"
+        "pd_poc:null,pd_vah:null,pd_val:null,vwap:null,pdh:null,pdl:null,pdc:null,"
         "kl_call_gamma_wall:null,kl_put_gamma_wall:null};\n"
         + binds
         + "\n"
         + wall_null
         + "\n"
         + "const z = {today_poc:0,today_vah:0,today_val:0,pd_poc:0,pd_vah:0,pd_val:0,"
-        "vwap:0,pdh:0,pdl:0,kl_call_gamma_wall:0,kl_put_gamma_wall:0};\n"
+        "vwap:0,pdh:0,pdl:0,pdc:0,kl_call_gamma_wall:0,kl_put_gamma_wall:0};\n"
         + binds.replace("d.", "z.")
         + "\n"
         + wall_null.replace("d.", "z.")
