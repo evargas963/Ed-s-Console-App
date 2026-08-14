@@ -294,57 +294,63 @@ def test_compute_call_directional_passes_when_admitted(monkeypatch, tmp_path):
     assert call.wait_blocker is None
 
 
-def _fetch_origin_main(repo) -> None:
-    """Refresh origin/main. A present ref can still be stale in shallow CI."""
+def _git_ok(args: list[str], repo) -> int:
     import subprocess
 
-    subprocess.call(
-        ["git", "fetch", "--no-tags", "origin", "main"],
+    return subprocess.call(
+        args,
         cwd=repo,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
 
 
+def _fetch_origin_main(repo) -> None:
+    """Force-update origin/main. A present ref can still be stale in CI."""
+    _git_ok(
+        ["git", "fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"],
+        repo,
+    )
+
+
 def _sha_is_ancestor_of_origin_main(sha: str, repo) -> bool:
     """True when sha is an ancestor of origin/main.
 
-    Shallow CI clones omit ancestors and keep a stale origin/main. Fetch
-    the object and refresh origin/main before asking merge-base — a
-    missing or stale ref is not a failed close, it is unread history.
+    Shallow CI clones omit the path from origin/main back to a just-merged
+    SHA. Fetch the object, refresh origin/main, then deepen until
+    merge-base can walk the path — unread history is not a failed close.
     """
     import subprocess
 
     def _has(obj: str) -> bool:
-        return (
-            subprocess.call(
-                ["git", "cat-file", "-e", f"{obj}^{{commit}}"],
-                cwd=repo,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            == 0
-        )
+        return _git_ok(["git", "cat-file", "-e", f"{obj}^{{commit}}"], repo) == 0
+
+    def _is_ancestor() -> bool:
+        return _git_ok(["git", "merge-base", "--is-ancestor", sha, "origin/main"], repo) == 0
 
     if not _has(sha):
-        subprocess.call(
-            ["git", "fetch", "--no-tags", "origin", sha],
-            cwd=repo,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        _git_ok(["git", "fetch", "--no-tags", "origin", sha], repo)
     _fetch_origin_main(repo)
     if not _has(sha) or not _has("origin/main"):
         return False
-    return (
-        subprocess.call(
-            ["git", "merge-base", "--is-ancestor", sha, "origin/main"],
+    if _is_ancestor():
+        return True
+    shallow = (
+        subprocess.check_output(
+            ["git", "rev-parse", "--is-shallow-repository"],
             cwd=repo,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        == 0
+            text=True,
+            encoding="utf-8",
+        ).strip()
+        == "true"
     )
+    if not shallow:
+        return False
+    for deepen in (50, 150, 400):
+        _git_ok(["git", "fetch", "--no-tags", f"--deepen={deepen}", "origin", "main"], repo)
+        if _is_ancestor():
+            return True
+    return False
 
 
 def test_board_checkbox_x_did_not_increase_versus_origin_main():
