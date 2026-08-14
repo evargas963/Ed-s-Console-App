@@ -430,6 +430,34 @@ def pick_gamma_pin_strike(
     return round(s, 2) if s is not None else None
 
 
+def gex_at_bound_pin_strike(
+    exposures: Dict[float, dict],
+    strike: float | None,
+) -> float | None:
+    """|net GEX$| (or |net γ| fallback) at the bound pin strike.
+
+    Bound pin is pick_gamma_pin_strike — largest |net GEX$| per 1%.
+    pin_score must read this magnitude. Not total-gamma (|call|+|put|), which is HVL.
+    """
+    if strike is None or not exposures:
+        return None
+    try:
+        key = float(strike)
+    except (TypeError, ValueError):
+        return None
+    bucket = exposures.get(key) or exposures.get(strike) or {}
+    if exposures_have_dollar_gex(exposures):
+        raw = net_gex_dollars_at_strike(bucket)
+    else:
+        raw = net_gamma_raw_at_strike(bucket)
+    if raw is None:
+        return None
+    try:
+        return abs(float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
 def pick_hvl_strike(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
     """
     HVL: strike with largest total gamma concentration.
