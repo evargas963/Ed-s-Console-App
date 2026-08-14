@@ -329,6 +329,80 @@ def test_repo_has_no_measurement_key_literal_fallback():
     assert offenders == []
 
 
+def test_lstm_is_not_requested_as_val_accuracy_edge_key():
+    """RC-291: LSTM must not pass val_accuracy as the model-health edge_key."""
+    src = (REPO / "server.py").read_text(encoding="utf-8")
+    assert '_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "val_accuracy"' not in src
+    assert '_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "edge_pp"' in src
+
+
+def test_lstm_row_label_is_val_accuracy_not_edge():
+    """RC-291: the LSTM metric span is labeled val_accuracy, never class=mh-edge."""
+    ui = (REPO / "static" / "index.html").read_text(encoding="utf-8")
+    i = ui.find("d.model_health")
+    assert i > 0
+    block = ui[i : i + 2200]
+    assert "m.model === 'LSTM'" in block
+    assert "mh-val-accuracy" in block
+    assert "val_accuracy ${formatModelHealthEdge(m.val_accuracy)}" in block
+    assert "mh-edge" in block
+    lstm_span = [ln for ln in block.splitlines() if "mh-val-accuracy" in ln]
+    assert lstm_span, block
+    assert "mh-edge" not in lstm_span[0]
+
+
+def test_operator_never_sees_lstm_accuracy_inside_mh_edge():
+    """DOM contract: LSTM 0.55 accuracy is labeled val_accuracy, not painted as edge."""
+    import re
+    import subprocess
+
+    ui = (REPO / "static" / "index.html").read_text(encoding="utf-8")
+    match = re.search(
+        r"function formatModelHealthEdge\(edge\) \{.*?\n  \}",
+        ui,
+        flags=re.S,
+    )
+    assert match, "formatModelHealthEdge must be extractable from index.html"
+    i = ui.find("d.model_health")
+    block = ui[i : i + 2200]
+    assert "mh-val-accuracy" in block
+    script = (
+        match.group(0)
+        + "\n"
+        + "function metricHtml(m) {\n"
+        + "  const isLstm = m.model === 'LSTM';\n"
+        + "  return isLstm\n"
+        + "    ? `<span class=\"mh-val-accuracy\">val_accuracy ${formatModelHealthEdge(m.val_accuracy)}</span>`\n"
+        + "    : `<span class=\"mh-edge\">${formatModelHealthEdge(m.edge)}</span>`;\n"
+        + "}\n"
+        + "const fail = (m) => { console.error(m); process.exit(1); };\n"
+        + "const lstm = metricHtml({model:'LSTM', edge:null, val_accuracy:0.55});\n"
+        + "if (!lstm.includes('class=\"mh-val-accuracy\"')) fail('lstm class');\n"
+        + "if (!lstm.includes('val_accuracy 0.55')) fail('lstm label+value');\n"
+        + "if (lstm.includes('mh-edge')) fail('lstm mislabeled as edge');\n"
+        + "const xgb = metricHtml({model:'XGBoost', edge:3.5, val_accuracy:0.55});\n"
+        + "if (!xgb.includes('class=\"mh-edge\"')) fail('xgb class');\n"
+        + "if (xgb.includes('val_accuracy')) fail('xgb should not print val_accuracy');\n"
+        + "if (xgb.includes('0.55')) fail('xgb must not print accuracy as edge');\n"
+        + "console.log('ok');\n"
+    )
+    proc = subprocess.run(
+        ["node", "-e", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "ok" in proc.stdout
+
+
+def test_lstm_meta_has_no_edge_pp_so_edge_is_none():
+    """Relabel path: LSTM has no true edge until promotion writes edge_pp."""
+    assert model_health_edge_from_meta({"val_accuracy": 0.55, "model_type": "lstm"}, "edge_pp") is None
+
+
 def test_model_health_edge_null_renders_em_dash():
     """DOM contract: formatModelHealthEdge(null) is — , not 0 / NaN / throw."""
     import re

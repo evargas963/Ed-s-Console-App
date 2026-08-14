@@ -469,7 +469,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [ ] Universality across tickers proven
   - [ ] Root code fix landed
   - [ ] Runtime proof on loaded code
-- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero — OPEN (parent stays open). **2026-08-14 adversarial REJECT:** `1117f19` forbade fabricating edge as 0 then permitted fabricating it as `val_accuracy·100`. Write-site `None` stands. Accuracy fallback removed; UI renders `edge === null` as `—`. LSTM still *requests* `val_accuracy` as its key (RC-291). `[x]` only on `origin/main` SHA.
+- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero — OPEN (parent stays open). **2026-08-14 adversarial REJECT:** `1117f19` forbade fabricating edge as 0 then permitted fabricating it as `val_accuracy·100`. Write-site `None` stands. Accuracy fallback removed; UI renders `edge === null` as `—`. LSTM accuracy-as-edge is **RC-291** (OPEN). `[x]` only on `origin/main` SHA.
   - [x] Semantic of the fabricated-zero defect defined — Closed @ `1117f19`. Absent metric ≠ measured zero.
   - [x] Live path characterized — Closed @ `1117f19`. `_fetch_state` → `model_health` → `/api/state`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
   - [x] Root cause identified — Closed @ `1117f19`. Unread field; `.get(..., 0)` / `float(raw or 0)` / literal `"edge": 0`.
@@ -492,7 +492,11 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [x] Fix landed — Closed @ `5d68d93` for the two except-literal sites the gate measures. Not the CLASS.
   - [x] Proof recorded — Closed @ `5d68d93`. Tests: `tests/test_absence_has_a_type_gate_v1.py`.
   - [ ] Universality across tickers proven
-- [ ] **RC-318** — absence-coerced-to-a-value shapes the RC-301 gate cannot see — OPEN. Spawned by RC-301. Gate flags only `-> float` + except + numeric *literal*. Due dates below are disposition dates, not close licenses.
+- [ ] **RC-291** — LSTM reports `val_accuracy` as "edge" — OPEN. Spawned by RC-285. Accuracy is not edge. Relabel path: LSTM `edge_key` is `edge_pp` (None until a true edge exists); the row prints `val_accuracy` under that name, never inside `.mh-edge`. Do not `[x]` until measured on `origin/main` (producer + consumer). Retrain-for-`edge_pp` is a later child, not this relabel.
+  - [ ] LSTM `edge_key` is `edge_pp`, not `val_accuracy`
+  - [ ] LSTM row label is `val_accuracy`, not edge
+  - [ ] DOM/test: operator never sees accuracy inside `.mh-edge`
+- [ ] **RC-318** — absence-coerced-to-a-value shapes the RC-301 gate cannot see — OPEN. Spawned by RC-301. Gate flags only `-> float` + except + numeric *literal*. Due dates below are disposition dates, not close licenses. Absence-mask + retrain not executed this program; `lstm_data._safe_float` still returns `0.0`. Due 2026-08-21 slips if the mask+retrain table is not on `origin/main` by that date — reason: changing tensor width on live models without a non-degrading retrain is the RC-330 class.
   - [ ] `lstm_data.py:648` `# absence-ok` except-literal `return 0.0` into a non-nullable encoder. Honest fix: absence mask channel, not 0.0. Due 2026-08-21.
   - [ ] `lstm_data.py:644` None-branch `if v is None: return 0.0` (unmarked; same `_safe_float`). Honest fix: absence mask channel. Due 2026-08-21.
   - [ ] Unannotated functions returning a numeric literal from `except` — gate misses (a). 0 sites on this tree 2026-08-14. Due 2026-08-21 to re-scan / decide.
@@ -1407,7 +1411,8 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - F39 → canonical F39 row (OPEN)
 - RC-292 → canonical RC-292 row (OPEN; label/tooltip/lock @ `0e304f6`; pin_score @ `6d14ee2`; persist/migration @ `d71bb5e` + `053251e`)
 - RC-282 → canonical RC-282 row
-- RC-285 → canonical RC-285 row (OPEN; write-site `None` @ `1117f19`; accuracy fallback REOPENED; universality remains)
+- RC-285 → canonical RC-285 row (OPEN; write-site `None` @ `1117f19`; accuracy fallback REOPENED; LSTM accuracy-as-edge is RC-291; universality remains)
+- RC-291 → canonical RC-291 row (OPEN; LSTM `val_accuracy` must not render as edge; relabel path, not a fabricated `edge_pp`)
 - RC-297 → canonical RC-297 row (OPEN; dormant lock REOPENED; plant-guard this branch)
 - RC-301 → canonical RC-301 row (OPEN; except-literal gate @ `5d68d93`; CLASS / RC-318 remain)
 - RC-318 → canonical RC-318 row (OPEN; `# absence-ok` + uncovered shapes; due 2026-08-21)
