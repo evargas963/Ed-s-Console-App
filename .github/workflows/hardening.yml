@@ -48,6 +48,8 @@ jobs:
 
       - name: institutional closure gate (no inflated parent closures)
         run: python tools/check_institutional_closure_gate.py
+      - name: absence has a type (RC-301 except-literal class)
+        run: python tools/check_absence_has_a_type.py
       - name: no-grep subprocess
         run: python tools/check_no_grep_subprocess.py
 

@@ -69,6 +69,14 @@ def test_parity_filter_skips_missing_schwab_days_to_expiration():
     ) == 0.0
 
 
+def test_parity_invalid_spot_is_none_not_zero():
+    """RC-301: unparseable spot is absence, not a measured 0.0 residual."""
+    assert parity_f_minus_spot_from_contracts(
+        [_contract()],
+        spot="not-a-spot",  # type: ignore[arg-type]
+    ) is None
+
+
 def test_charm_filter_skips_missing_schwab_days_to_expiration_when_expiry_date_absent():
     contract = _contract(expirationDate=None)
     contract.pop("daysToExpiration")

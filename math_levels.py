@@ -603,11 +603,11 @@ def parity_f_minus_spot_from_contracts(
     *,
     spot: float,
     dte_max = None,
-) -> float:
+) -> float | None:
     try:
         spot_f = float(spot)
     except Exception:
-        return 0.0
+        return None
     use = []
     for c in contracts or []:
         try:

@@ -645,7 +645,7 @@ def _safe_float(v) -> float:
     try:
         return float(v)
     except (ValueError, TypeError):
-        return 0.0
+        return 0.0  # absence-ok: encoder tensor is non-nullable; None is unrepresentable here (RC-301/318)
 
 
 def _raw_finite_float(v) -> Optional[float]:
