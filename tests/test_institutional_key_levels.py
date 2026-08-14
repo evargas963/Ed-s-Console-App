@@ -235,6 +235,35 @@ def test_all_seventeen_kl_labels_come_from_the_registry():
     assert "KEY_LEVEL_CONSUMER_REGISTRY" in server
 
 
+def test_l1_cache_hit_block_restamps_all_seventeen_labels():
+    """Failure 5: cache-hit path restamps every registry label, not the pin pair."""
+    from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+
+    server = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(
+        encoding="utf-8"
+    )
+    start = server.find("def _stamp_gamma_pin_consumer_copy")
+    end = server.find("\ndef ", start + 1)
+    ns: dict = {"KEY_LEVEL_CONSUMER_REGISTRY": KEY_LEVEL_CONSUMER_REGISTRY}
+    exec(server[start:end], ns)  # noqa: S102 — run the live stamp, not a copy
+    cached = {"kl_gamma_pin_label": "ONLY_PIN"}
+    ns["_stamp_gamma_pin_consumer_copy"](cached)
+    assert len(KEY_LEVEL_CONSUMER_REGISTRY) == 17
+    for key, (label, tip) in KEY_LEVEL_CONSUMER_REGISTRY.items():
+        assert cached[f"{key}_label"] == label, key
+        assert cached[f"{key}_tip"] == tip, key
+    assert cached["kl_gamma_pin_label"] != "ONLY_PIN"
+    proj = server[
+        server.find("def _l1_http_get_projection") : server.find(
+            "def _l1_http_get_projection"
+        )
+        + 3500
+    ]
+    hit_at = proj.find('l1_http_cache_hit_total"] += 1')
+    assert hit_at != -1
+    assert "_stamp_gamma_pin_consumer_copy(out)" in proj[hit_at : hit_at + 500]
+
+
 def test_kl_hardcoded_label_class_flags_uncited_key():
     """Defect-learning: paint class fires without the observed `kl_` prefix."""
     plant = (

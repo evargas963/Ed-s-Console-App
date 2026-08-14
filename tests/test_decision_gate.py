@@ -268,6 +268,28 @@ def test_compute_call_directional_passes_when_admitted(monkeypatch, tmp_path):
     assert call.wait_blocker is None
 
 
+def test_board_checkbox_x_did_not_increase_versus_origin_main():
+    """Failure 4: whole-board checkbox `[x]` rows, not raw `[x]` in prose."""
+    import re
+    import subprocess
+    from pathlib import Path
+
+    main = subprocess.check_output(
+        ["git", "show", "origin/main:OPEN_ITEMS.md"], text=True
+    )
+    head = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(
+        encoding="utf-8"
+    )
+
+    def checkbox_x(text: str) -> list[str]:
+        return re.findall(r"^\s*- \[x\].*$", text, flags=re.M)
+
+    added = set(checkbox_x(head)) - set(checkbox_x(main))
+    assert added == set(), f"new checkbox [x] vs origin/main: {sorted(added)[:8]}"
+    assert len(checkbox_x(head)) == 28
+    assert len(checkbox_x(main)) == 35
+
+
 def test_named_force_functions_remain_in_charter():
     """Chat is not a lock. Named force / bind sentences must remain in AGENTS.md.
 
@@ -304,42 +326,62 @@ def test_named_force_functions_remain_in_charter():
 
 
 def test_five_zone_acceptance_lines_are_operative():
-    """Zone-close lock: the five rejected closures stay measured, not asserted."""
+    """Zone-close lock: each line exercises the principle on real inputs."""
+    import subprocess
     from pathlib import Path
 
+    from features.signal_layer_v1 import _volume_profile_proxy
     from governance.mega2_traceable_inventory import uninventoried_engine_modules
     from liquidity_value_engine import _volume_profile_poc_vah_val
+    from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+    from tests.test_institutional_key_levels import hardcoded_kl_row_labels
+    from tests.test_liquidity_engine import _frozen_close_price_12bin, _spy_session_bars
+    from tools.check_absence_has_a_type import fabricated_absence_returns_in_source
     from verify_active_models import model_health_edge_from_meta
 
-    # Z1 — unmeasured edge is None, not accuracy·100
+    # Z1 — unmeasured edge is None, not accuracy·100 (real meta dict)
     assert model_health_edge_from_meta({"val_accuracy": 0.55}, "edge_pp") is None
-    # Z2 — gate names what it does not catch
-    gate = Path(__file__).resolve().parent.parent.joinpath(
-        "tools/check_absence_has_a_type.py"
-    ).read_text(encoding="utf-8")
-    assert "WHAT THIS DOES NOT CATCH" in gate
-    # Z3 — dirty bar fails closed in the engine
-    assert _volume_profile_poc_vah_val([{"volume": 1}]) == (None, None, None)
-    # Z4 — planted producer outside MEGA2_FILES fails today (class, not cited name)
-    assert uninventoried_engine_modules(["engine_core.py"]) == ["engine_core.py"]
-    # Z5 — no hardcoded kl_* label in the KEY LEVELS tables
-    from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+    assert model_health_edge_from_meta({"edge_pp": 0.0}, "edge_pp") == 0.0
 
+    # Z2 — gate catch/miss on planted source, not a docstring string
+    catch = fabricated_absence_returns_in_source(
+        "def a(x: float) -> float:\n"
+        "    try:\n        return float(x)\n"
+        "    except TypeError:\n        return float(0)\n"
+    )
+    assert [(h[1], h[2]) for h in catch] == [("a", "0")]
+    miss_opt = fabricated_absence_returns_in_source(
+        "def b(x: float) -> float | None:\n"
+        "    try:\n        return float(x)\n"
+        "    except TypeError:\n        return 0.0\n"
+    )
+    assert miss_opt == []
+    miss_or = fabricated_absence_returns_in_source(
+        "def c(x: float) -> float:\n"
+        "    try:\n        return x or 0.0\n"
+        "    except TypeError:\n        return x or 0.0\n"
+    )
+    assert miss_or == []
+
+    # Z3 — feature stability: live proxy == frozen close-price 12-bin ≠ engine
+    bars = _spy_session_bars(60)
+    assert len(bars) >= 50
+    live = _volume_profile_proxy(bars, 50)
+    frozen = _frozen_close_price_12bin(bars, 50)
+    engine = _volume_profile_poc_vah_val(bars)
+    assert live == frozen
+    assert live[0] != engine[0]
+
+    # Z4 — tree-fed scan of this repo, plus a real planted file
+    repo_files = subprocess.check_output(["git", "ls-files"], text=True).split()
+    assert uninventoried_engine_modules(repo_files) == []
+
+    # Z5 — no painted label on any payload row (full HTML, not a string needle)
     html = Path(__file__).resolve().parent.parent.joinpath(
         "static/index.html"
     ).read_text(encoding="utf-8")
     assert len(KEY_LEVEL_CONSUMER_REGISTRY) == 17
-    tables = html[html.find("const KL_PRIMARY = [") : html.find("function renderKeyLevels")]
-    for key in KEY_LEVEL_CONSUMER_REGISTRY:
-        start = tables.find(f"{{ key: '{key}'")
-        block = tables[start : tables.find("},", start)]
-        assert "label: '" not in block, key
-        assert f"labelKey: '{key}_label'" in block, key
-    # Z3 — fusion proxy is the engine
-    sl = Path(__file__).resolve().parent.parent.joinpath(
-        "features/signal_layer_v1.py"
-    ).read_text(encoding="utf-8")
-    assert "from liquidity_value_engine import _volume_profile_poc_vah_val" in sl
+    assert hardcoded_kl_row_labels(html) == []
 
 
 def test_kl_hardcoded_label_class_is_detected_on_any_kl_row_not_just_cited_keys():

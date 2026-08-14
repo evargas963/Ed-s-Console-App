@@ -69,6 +69,8 @@ def uninventoried_engine_modules(
         if rel.startswith("tests/"):
             continue
         name = Path(rel).name
+        if not name.endswith(".py"):
+            continue
         if _ENGINE_FILENAME_TOKEN.search(name):
             if rel not in mega2_files and rel not in out_of_scope:
                 offenders.append(rel)

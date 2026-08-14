@@ -280,44 +280,129 @@ def test_fetch_state_live_path_uses_engine_volume_profile():
     assert "pl.today_poc, pl.today_vah, pl.today_val = _volume_profile_poc_vah_val(" in fetch
 
 
-def test_signal_layer_volume_profile_is_the_engine():
-    """F15: fusion's POC producer is the engine, not a close-price 12-bin."""
+def _frozen_close_price_12bin(bars, n):
+    """origin/main signal_layer algorithm — the feature the models were trained on."""
+    from features.signal_layer_v1 import EPS, _clip, _f
+
+    sl = bars[-n:] if len(bars) >= n else bars
+    if len(sl) < 5:
+        return None, None, None
+    prices, vols = [], []
+    for b in sl:
+        c = _f(b.get("close"))
+        v = _f(b.get("volume"))
+        if c is None or v is None:
+            continue
+        prices.append(c)
+        vols.append(v)
+    if len(prices) < 5:
+        return None, None, None
+    pmin, pmax = min(prices), max(prices)
+    if abs(pmax - pmin) < EPS:
+        return pmin, pmin, pmax
+    nbin = min(12, len(prices))
+    width = (pmax - pmin) / nbin
+    bins = [0.0] * nbin
+    for p, v in zip(prices, vols):
+        idx = _clip(int((p - pmin) / (width + EPS)), 0, nbin - 1)
+        bins[idx] += v
+    imax = max(range(nbin), key=lambda i: bins[i])
+    poc = pmin + (imax + 0.5) * width
+    total_v = sum(bins)
+    target = 0.70 * total_v
+    cum = 0.0
+    lo_i, hi_i = imax, imax
+    while cum < target and (lo_i > 0 or hi_i < nbin - 1):
+        left = bins[lo_i - 1] if lo_i > 0 else 0.0
+        right = bins[hi_i + 1] if hi_i < nbin - 1 else 0.0
+        if right >= left and hi_i < nbin - 1:
+            cum += right
+            hi_i += 1
+        elif lo_i > 0:
+            cum += left
+            lo_i -= 1
+        else:
+            break
+    return poc, pmin + lo_i * width, pmin + (hi_i + 1) * width
+
+
+def _spy_session_bars(n: int = 60) -> list[dict]:
+    """≥50 1m OHLCV bars in the recorded 2026-04-02 SPY session range (653–658.52).
+
+    This environment's ``price_bars_1m`` is empty; the series is a deterministic
+    reconstruction of that session's range, not a live tape.
+    """
+    import sqlite3
+
+    db = ROOT / "data" / "ed_console.db"
+    if db.is_file():
+        con = sqlite3.connect(str(db))
+        rows = con.execute(
+            "SELECT open, high, low, close, volume FROM price_bars_1m "
+            "WHERE ticker IN ('SPY','spy') ORDER BY bar_end_ts_utc DESC LIMIT 200"
+        ).fetchall()
+        if len(rows) >= n:
+            return [
+                {"open": o, "high": h, "low": lo, "close": c, "volume": v}
+                for o, h, lo, c, v in reversed(rows[:n])
+            ]
+    bars = []
+    for i in range(n):
+        close = 654.0 + (i % 17) * 0.25 - 2.0
+        high = close + 0.40
+        low = close - 0.35
+        bars.append(
+            {
+                "open": close - 0.10,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": 800.0 + (i % 9) * 150.0,
+            }
+        )
+    return bars
+
+
+def test_signal_layer_volume_profile_stays_close_price_12bin():
+    """RC-330: fusion POC is the close-price 12-bin, not the display engine."""
     from features.signal_layer_v1 import _volume_profile_proxy
     from liquidity_value_engine import _volume_profile_poc_vah_val as engine_vp
 
     src = (ROOT / "features" / "signal_layer_v1.py").read_text(encoding="utf-8")
     start = src.find("def _volume_profile_proxy")
     block = src[start : src.find("\ndef ", start + 1)]
-    assert "from liquidity_value_engine import" in block
-    assert "nbin" not in block
-    assert "(imax + 0.5)" not in block
-    bars = [
-        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
-        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
-        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
-        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
-        {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 200.0},
-    ]
-    poc, val, vah = _volume_profile_proxy(bars, 20)
+    assert "from liquidity_value_engine import" not in block
+    assert "nbin" in block
+    assert "(imax + 0.5)" in block
+    bars = _spy_session_bars(60)
+    assert len(bars) >= 50
+    poc, val, vah = _volume_profile_proxy(bars, 50)
+    frozen = _frozen_close_price_12bin(bars, 50)
     e_poc, e_vah, e_val = engine_vp(bars)
-    assert (poc, val, vah) == (e_poc, e_val, e_vah)
-    assert _volume_profile_proxy([{"volume": 1}] * 5, 20) == (None, None, None)
-
-
-def test_fusion_call_graph_reaches_engine_volume_profile():
-    """F15: bayesian_fusion → signal_layer_v1 → engine. One algorithm."""
+    assert (poc, val, vah) == frozen
+    assert poc != e_poc
     fusion = (ROOT / "bayesian_fusion.py").read_text(encoding="utf-8")
     assert "from features.signal_layer_v1 import" in fusion
     assert "signal_layer_v1_to_direction_probs" in fusion
     sl = (ROOT / "features" / "signal_layer_v1.py").read_text(encoding="utf-8")
     assert "poc, val, vah = _volume_profile_proxy(" in sl
-    assert "from liquidity_value_engine import _volume_profile_poc_vah_val" in sl
+
+
+def test_fusion_does_not_consume_engine_volume_profile():
+    """No live model path calls the engine POC as a feature."""
+    fusion = (ROOT / "bayesian_fusion.py").read_text(encoding="utf-8")
+    assert "from liquidity_value_engine import" not in fusion
+    assert "_volume_profile_poc_vah_val" not in fusion
+    sl = (ROOT / "features" / "signal_layer_v1.py").read_text(encoding="utf-8")
+    assert "from liquidity_value_engine import _volume_profile_poc_vah_val" not in sl
 
 
 _POC_ENGINE_CALLEES = frozenset(
     {"_volume_profile_poc_vah_val", "compute_volume_profile_levels"}
 )
 _POC_ALG_NAMES = frozenset({"vol_by_price", "nbin"})
+# RC-330: fusion feature path is a close-price 12-bin, not the display engine.
+_FEATURE_PATH_POC = frozenset({("features/signal_layer_v1.py", "_volume_profile_proxy")})
 
 
 def _fn_delegates_to_poc_engine(src: str, fn) -> bool:
@@ -385,6 +470,8 @@ def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[s
         if names & _POC_ALG_NAMES:
             if is_engine and fn.name in _POC_ENGINE_CALLEES:
                 continue
+            if (filename, fn.name) in _FEATURE_PATH_POC:
+                continue
             if not _fn_delegates_to_poc_engine(src, fn):
                 offenders.append(f"{filename}:{fn.name}")
     for node in ast.walk(tree):
@@ -398,6 +485,8 @@ def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[s
             if callee is None:
                 continue
             if callee in _POC_ENGINE_CALLEES:
+                continue
+            if (filename, callee) in _FEATURE_PATH_POC:
                 continue
             local = local_defs.get(callee)
             if local is not None and _fn_delegates_to_poc_engine(src, local):

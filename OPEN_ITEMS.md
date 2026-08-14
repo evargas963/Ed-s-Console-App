@@ -350,7 +350,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
 - [ ] **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
 - [ ] **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE
-- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine). **2026-08-14 second audit:** three producers existed — engine, market_context wrapper, and `features/signal_layer_v1._volume_profile_proxy` (close-price 12-bin) on the fusion path. Proxy now windows last-n then calls the engine (one algorithm). Wrapper is a pass-through. Dirty bars fail closed. Children stay `[ ]` until acceptance is measured on `origin/main`. Remaining: one population site, replay/backfill/frontend, fallback, universality, runtime.
+- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine). **2026-08-14 third audit:** swapping the fusion proxy onto the engine changed a live model feature (780.25 → 780.75). Reverted: `signal_layer_v1._volume_profile_proxy` is again the close-price 12-bin. Display path stays the engine. Divergence filed as **RC-330**. Dirty bars fail closed in the engine. Children stay `[ ]` until acceptance is measured on `origin/main`. Remaining: one population site, replay/backfill/frontend, fallback, universality, runtime, retrain-if-unified.
   - [x] Exact semantic contract defined for POC/VAH/VAL — Closed @ `462a581`. Typical-price bin, 70% VA, engine 4dp. Tests: `tests/test_liquidity_engine.py`.
   - [ ] One canonical population site
   - [ ] No alternate population masquerading as the canonical one — REOPENED 2026-08-14. Two input contracts @ `462a581`. Engine now sanitizes dirty bars; wrapper is pass-through. Acceptance measured on this branch (`engine_vp([{'volume':1}])==(None,None,None)`); `[x]` only on `origin/main` SHA.
@@ -483,7 +483,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [x] Live path characterized — Closed @ `8ca1f18`. Gate is `tests/test_mega2_traceable_audit.py` (offline).
   - [x] Root cause identified — Closed @ `8ca1f18`. Hand-maintained register; out-of-scope file uninventoried.
   - [ ] Fix landed — REOPENED 2026-08-14. Inert + redundant test is not enforcement. Active plant-guard this branch.
-  - [ ] Proof recorded — REOPENED 2026-08-14. Acceptance: `uninventoried_engine_modules(['terrain_engine.py']) == ['terrain_engine.py']`.
+  - [ ] Proof recorded — REOPENED 2026-08-14. Acceptance: tree-fed `uninventoried_engine_modules(git ls-files) == []` AND a real `zzz_engine.py` plant in a tmp git repo is flagged.
   - [ ] Universality across tickers proven
 - [ ] **RC-301** — absence-coerced-to-a-value as a CLASS — OPEN (parent stays open). **2026-08-14 adversarial CONDITIONAL:** except-literal fix @ `5d68d93` is real; the gate is a proxy. Docstring now enumerates what it does NOT catch. Uncovered shapes live in **RC-318**. Remaining: class-wide disposition, universality.
   - [x] Semantic of the absence-coercion class defined — Closed @ `5d68d93`. `-> float` + except literal.
@@ -504,6 +504,10 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [x] Root cause identified — Closed @ `bb85651`. No registry linking payload key to semantic.
   - [ ] Fix landed — REOPENED 2026-08-14. Two-copy bind is not one source. Payload emit this branch.
   - [ ] Proof recorded — REOPENED 2026-08-14. Acceptance: no hardcoded `label:` on the `kl_gamma_pin` KEY LEVELS row; pin-fix branch label equals main.
+  - [ ] Universality across tickers proven
+- [ ] **RC-330** — display POC and fusion-feature POC are different algorithms — OPEN. Spawned by F15. Display: `liquidity_value_engine` typical-price tick-bin. Fusion feature: `signal_layer_v1._volume_profile_proxy` close-price 12-bin (restored 2026-08-14 after a silent swap changed the live stack). Do not unify without retrain + non-degradation of every model that consumes `signal_layer_v1`. Due: retrain plan before any engine-delegate on the feature path.
+  - [ ] Retrain + validate every model that consumes `signal_layer_v1` if the feature algorithm is changed
+  - [ ] Or keep the two algorithms and document the split (current)
   - [ ] Universality across tickers proven
 - [ ] **RC-328** — Confluence train/serve population — OPEN
   - [ ] Verify current code closes the original defect
@@ -1396,7 +1400,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 ## PA-46 — CURRENT TOP ACTIVE EXECUTION QUEUE (POINTER VIEW — not independently closable)
 > Pointers to canonical rows; status derives from those rows. No independent `[ ]`/`[x]` state — never counted as engineering completion.
 - F10 → canonical F10 row (OPEN / host retrain)
-- F15 → canonical F15 row (OPEN; two-contract defect reopened; engine sanitizes this branch; live cite exists; `[x]` only on `origin/main`)
+- F15 → canonical F15 row (OPEN; fusion feature restored to close-price 12-bin; display engine unchanged; RC-330)
 - F25 → canonical F25 row (OPEN)
 - F31 → canonical F31 row (OPEN)
 - F32 → canonical F32 row (NOT_PROVEN; RC-328)
@@ -1408,6 +1412,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - RC-301 → canonical RC-301 row (OPEN; except-literal gate @ `5d68d93`; CLASS / RC-318 remain)
 - RC-318 → canonical RC-318 row (OPEN; `# absence-ok` + uncovered shapes; due 2026-08-21)
 - RC-329 → canonical RC-329 row (OPEN; two-copy bind REOPENED; payload emit this branch)
+- RC-330 → canonical RC-330 row (OPEN; display vs fusion-feature POC; do not unify without retrain)
 - F35 broader DB-identity parent → PA-3 F35 row
 - Historical/disputed F04/F16/F19/F28/F30/F37 → PA-3 gap rows
 - Discovery denominator → PA-41
@@ -1559,6 +1564,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - **STATUS_CHANGE 2026-08-14 five-zone adversarial REOPEN:** operator audit @ `8ccddb17`. RC-285 Fix/Proof reopened (accuracy-as-edge). F15 "no alternate population" reopened (two input contracts). RC-297 Fix/Proof reopened (dormant guard). RC-329 Fix/Proof reopened (two-copy bind). RC-301 except-literal children stay `[x]`; uncovered shapes filed as RC-318. `[x]` 35 → 28. No new `[x]` until acceptance is measured on `origin/main`.
 - **STATUS_CHANGE 2026-08-14 defect-learning class plants:** `a83219a` — uncited-instance plants now fail for hardcoded `kl_*` label, undelegated `*volume_profile*`, measurement-`*_key` literal fallback, uninventoried `*_engine.py`, and except-literal `-> float`. Charter sentence in `AGENTS.md`. No new `[x]`. Parents stay OPEN.
 - **STATUS_CHANGE 2026-08-14 no example-locking:** `132c238` — detectors moved off observed tokens (`kl_` prefix, `volume_profile` name, `*_key` suffix, `*_engine.py` suffix, `return 0.0` Constant). Plants now use `structural_unlisted`, `_value_area_from_closes`, `requested`/`field`, `engine_core.py`, `return float(0)`. Version-key miss no longer substitutes `model_version`. No new `[x]`. Parents stay OPEN.
+- **STATUS_CHANGE 2026-08-14 five-zone re-audit:** F15 fusion proxy reverted (RC-330). Checkbox `[x]` rows: origin/main 35 → this branch 28 (seven reopens, zero new checkbox closes). Raw string `[x]` rose 58 → 60 at `d3e2f51` because STATUS_CHANGE prose mentioned the token, not because boxes were checked. No new checkbox `[x]`. Parents stay OPEN.
 - **ADD then STATUS_CHANGE this land:** UI-04 P1D @ `8686e68` (overnight residual stays LP-01 / F15); ML-META-JSON-VERIFICATION-ASYMMETRY @ `a107412` (PR #55; slim cite `7ec0bf6` was the pre-rebase feature SHA, not on `main`).
 - **ADD this land (historical Find & Prove had them; PA-48 did not):** QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1, STAGE-2, ML-PIPE-V1, SIG-01.
 - **KEY LEVELS / B_light paint on `main` (PRs #53–#58 merged; #59 SUPERSEDED do-not-merge; #60 cube-honesty for charm/vanna only) does not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292.** Paint ≠ one faucet. Charm vote stays UNAPPROVED. Predictive validity stays NOT_PROVEN.
@@ -1571,7 +1577,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | What you are looking at | Count | What it is |
 |---|---|---|
 | `[ ]` checkboxes on this board | ~1125 | Mostly **parent acceptance criteria** (PA-1..PA-47). Close only with an exact SHA. |
-| `[x]` on this board | 28 | 35 minus seven false closes reopened 2026-08-14 (RC-285 Fix/Proof, F15 no-alternate, RC-297 Fix/Proof, RC-329 Fix/Proof). RC-301 five except-literal children stay. Parents stay `[ ]`. |
+| `[x]` on this board | 28 checkbox rows | origin/main had 35 checkbox `[x]` rows (raw string `[x]` = 58 because prose cites the token). This branch: 28 checkbox rows, 0 new checkbox closes, 7 reopens. Raw string `[x]` can rise when STATUS_CHANGE prose mentions the token — that is not a close. |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE but still `[ ]` | most of PA-3 | Prior program called them closed; this board's closure rule requires a SHA on the row. **Do not re-do the work from the label. Do not `[x]` without the SHA.** |
 | **PA-46** | 16 pointers | **The execution queue.** Status derives from the canonical F/RC/PA rows. |
 | **PA-48 still `[ ]`** | 41 | Leftover atomic work, including second-census ADDs and the 2026-08-13 product/UX rows. UX-WORLD-CLASS-CONSOLE is gated AFTER X. |

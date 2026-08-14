@@ -5240,6 +5240,7 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
         l1_generation=gen,
     )
     out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side)
+    _stamp_gamma_pin_consumer_copy(out)
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
@@ -5383,6 +5384,7 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
 
     _l1_instrumentation["l1_http_cache_hit_total"] += 1
     out = deepcopy(cached)
+    _stamp_gamma_pin_consumer_copy(out)
     _lmp.apply_l1_live_quote_overlay(out, tkr)
     _l1_touch_scope(key)
     built = float(out.get("as_of_ts") or out.get("_server_build_ts") or l1_eval_wall_ts)

@@ -227,16 +227,55 @@ def _sign_trend(slope: Optional[float], eps: float = 1e-8) -> float:
 def _volume_profile_proxy(
     bars: Sequence[Mapping[str, Any]], n: int
 ) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """F15: last-n window, then the one engine algorithm.
+    """Close-price 12-bin POC for the fusion feature path.
 
-    Returns ``(poc, val, vah)`` — engine order is ``(poc, vah, val)``.
+    Display POC/VAH/VAL is the engine (typical-price tick-bin). This helper is a
+    model feature producer — swapping it for the engine changes the live stack
+    (RC-330). Returns ``(poc, val, vah)``.
     """
-    sl = list(bars[-n:] if len(bars) >= n else bars)
+    sl = bars[-n:] if len(bars) >= n else bars
     if len(sl) < 5:
         return None, None, None
-    from liquidity_value_engine import _volume_profile_poc_vah_val
-
-    poc, vah, val = _volume_profile_poc_vah_val(sl)
+    prices: list[float] = []
+    vols: list[float] = []
+    for b in sl:
+        c = _f(b.get("close"))
+        v = _f(b.get("volume"))
+        if c is None or v is None:
+            continue
+        prices.append(c)
+        vols.append(v)
+    if len(prices) < 5:
+        return None, None, None
+    pmin, pmax = min(prices), max(prices)
+    if abs(pmax - pmin) < EPS:
+        return pmin, pmin, pmax
+    nbin = min(12, len(prices))
+    width = (pmax - pmin) / nbin
+    bins = [0.0] * nbin
+    for p, v in zip(prices, vols):
+        idx = int((p - pmin) / (width + EPS))
+        idx = _clip(idx, 0, nbin - 1)
+        bins[idx] += v
+    imax = max(range(nbin), key=lambda i: bins[i])
+    poc = pmin + (imax + 0.5) * width
+    total_v = sum(bins)
+    target = 0.70 * total_v
+    cum = 0.0
+    lo_i, hi_i = imax, imax
+    while cum < target and (lo_i > 0 or hi_i < nbin - 1):
+        left = bins[lo_i - 1] if lo_i > 0 else 0.0
+        right = bins[hi_i + 1] if hi_i < nbin - 1 else 0.0
+        if right >= left and hi_i < nbin - 1:
+            cum += right
+            hi_i += 1
+        elif lo_i > 0:
+            cum += left
+            lo_i -= 1
+        else:
+            break
+    val = pmin + lo_i * width
+    vah = pmin + (hi_i + 1) * width
     return poc, val, vah
 
 
