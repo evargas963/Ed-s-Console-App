@@ -1158,6 +1158,53 @@ def missing_confluence_weighted_pushes(ctx: MarketContext) -> list[str]:
     return missing
 
 
+def _confluence_push_or_none(read: ConfluenceRead | None) -> float | None:
+    """Typed absence: missing/non-finite push is None. Measured 0.0 stays 0.0."""
+    raw = getattr(read, "weighted_push", None) if read is not None else None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(val):
+        return None
+    return val
+
+
+def stamp_confluence_display_fields(mkt_ctx: MarketContext | None) -> dict[str, object]:
+    """Map MarketContext confluence reads to /api/state. Absent push → None, not 0."""
+    ctx = mkt_ctx
+    _cf = getattr(ctx, "confluence", None) if ctx is not None else None
+    _qcf = getattr(ctx, "qqq_confluence", None) if ctx is not None else None
+    _icf = getattr(ctx, "iwm_confluence", None) if ctx is not None else None
+    _ihcf = getattr(ctx, "iwm_holdings_confluence", None) if ctx is not None else None
+
+    spy_push = _confluence_push_or_none(_cf)
+    out: dict[str, object] = {
+        "cf_weighted_push": spy_push,
+        "cf_label": getattr(_cf, "label", "—") if _cf is not None else "—",
+        "cf_color": getattr(_cf, "color", "#9ca3af") if _cf is not None else "#9ca3af",
+        "qqq_cf_weighted_push": _confluence_push_or_none(_qcf),
+        "qqq_cf_label": getattr(_qcf, "label", "—") if _qcf is not None else "—",
+        "qqq_cf_color": getattr(_qcf, "color", "#9ca3af") if _qcf is not None else "#9ca3af",
+        "iwm_holdings_cf_push": _confluence_push_or_none(_ihcf),
+        "iwm_holdings_cf_label": getattr(_ihcf, "label", "—") if _ihcf is not None else "—",
+        "iwm_holdings_cf_color": getattr(_ihcf, "color", "#9ca3af") if _ihcf is not None else "#9ca3af",
+        "iwm_cf_push": _confluence_push_or_none(_icf),
+        "iwm_cf_label": getattr(_icf, "label", "—") if _icf is not None else "—",
+        "iwm_cf_color": getattr(_icf, "color", "#9ca3af") if _icf is not None else "#9ca3af",
+        "iwm_participation_push": (
+            iwm_blended_participation_push(ctx) if ctx is not None else None
+        ),
+    }
+    if spy_push is None:
+        out["cf_dot_green"] = None
+        out["cf_dot_total"] = None
+    else:
+        out["cf_dot_green"] = getattr(_cf, "dot_count_green", None)
+        out["cf_dot_total"] = getattr(_cf, "dot_count_total", None)
+    return out
+
+
 def confluence_quote_rows_from_context(
     ctx: MarketContext,
     *,

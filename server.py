@@ -187,6 +187,7 @@ from market_context import (
     fetch_price_levels,
     fail_closed_price_levels,
     stamp_price_level_fields,
+    stamp_confluence_display_fields,
     market_context_panel_symbols_excluding_core,
     _derive_session,
 )
@@ -8486,29 +8487,8 @@ def _fetch_state(
     ms_dict["fut_rty_chg_pct"] = getattr(mkt_ctx, "fut_rty_chg_pct", None)
     ms_dict["vix_implication"] = getattr(mkt_ctx, "vix_implication", "")
 
-    _cf  = getattr(mkt_ctx, "confluence",     None)
-    _qcf = getattr(mkt_ctx, "qqq_confluence", None)
-    _icf = getattr(mkt_ctx, "iwm_confluence", None)
-    _ihcf = getattr(mkt_ctx, "iwm_holdings_confluence", None)
-    ms_dict["cf_weighted_push"] = getattr(_cf,  "weighted_push",   None)
-    ms_dict["cf_label"]         = getattr(_cf,  "label",           "—")
-    ms_dict["cf_color"]         = getattr(_cf,  "color",           "#9ca3af")
-    ms_dict["cf_dot_green"]     = getattr(_cf,  "dot_count_green", 0)
-    ms_dict["cf_dot_total"]     = getattr(_cf,  "dot_count_total", 0)
-    ms_dict["qqq_cf_weighted_push"] = getattr(_qcf, "weighted_push", None)
-    ms_dict["qqq_cf_label"]        = getattr(_qcf, "label", "—")
-    ms_dict["qqq_cf_color"]        = getattr(_qcf, "color", "#9ca3af")
-    ms_dict["iwm_holdings_cf_push"]  = getattr(_ihcf, "weighted_push", None)
-    ms_dict["iwm_holdings_cf_label"] = getattr(_ihcf, "label", "—")
-    ms_dict["iwm_holdings_cf_color"] = getattr(_ihcf, "color", "#9ca3af")
-    try:
-        from market_context import iwm_blended_participation_push
-        ms_dict["iwm_participation_push"] = iwm_blended_participation_push(mkt_ctx)
-    except Exception:
-        ms_dict["iwm_participation_push"] = None
-    ms_dict["iwm_cf_label"]     = getattr(_icf, "label",           "—")
-    ms_dict["iwm_cf_color"]     = getattr(_icf, "color",           "#9ca3af")
-    ms_dict["iwm_cf_push"]      = getattr(_icf, "weighted_push",   None)
+    # F39: absent weighted_push stays None (not 0). Dots None when the push is absent.
+    ms_dict.update(stamp_confluence_display_fields(mkt_ctx))
 
     # Constituent dots
     _constituents = []

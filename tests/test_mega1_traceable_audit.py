@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 436  # +2 F31 fail_closed_price_levels + stamp_price_level_fields
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 438  # +2 F39 _confluence_push_or_none + stamp_confluence_display_fields
 
 
 def test_mega1_row_schema_valid():
