@@ -296,9 +296,11 @@ def test_api_state_stamps_engine_poc_keys():
     start = server.find("def _fetch_state(")
     nxt = server.find("\n@app.", start + 1)
     block = server[start : nxt if nxt != -1 else start + 200_000]
+    from market_context import F31_LEVEL_KEYS
+
+    assert "stamp_price_level_fields(price_levels)" in block
     for key in ENGINE_POC_STATE_KEYS:
-        assert f'ms_dict["{key}"]' in block, key
-        assert f'getattr(price_levels, "{key}"' in block, key
+        assert key in F31_LEVEL_KEYS, key
 
 
 def test_stamped_engine_poc_keys_have_a_dom_consumer():
@@ -344,6 +346,133 @@ def test_dom_receives_engine_today_poc_value():
         + "const fail = (m) => { console.error(m); process.exit(1); };\n"
         + "if (bind({today_poc: 780.75}) !== '780.75') fail('today_poc');\n"
         + "if (bind({today_poc: null}) !== '—') fail('absent');\n"
+        + "console.log('ok');\n"
+    )
+    proc = subprocess.run(
+        ["node", "-e", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "ok" in proc.stdout
+
+
+F31_LEVEL_DOM_IDS = (
+    "dr-lvl-poc",
+    "dr-lvl-vah",
+    "dr-lvl-val",
+    "dr-lvl-pdpoc",
+    "dr-lvl-pdvah",
+    "dr-lvl-pdval",
+    "dr-lvl-vwap",
+    "dr-lvl-pdh",
+    "dr-lvl-pdl",
+    "exec-poc",
+    "exec-vah",
+    "exec-val",
+    "exec-pdpoc",
+    "exec-pdvah",
+    "exec-pdval",
+    "exec-vwap",
+    "exec-pdh",
+    "exec-pdl",
+)
+
+F31_WALL_KEYS = ("kl_call_gamma_wall", "kl_put_gamma_wall")
+
+
+def test_f31_absent_snapshot_yields_dash_not_zero_or_stale():
+    """F31: None/stale PriceLevels → /api/state None; DOM —; failed fetch ≠ last-good."""
+    import re
+    import subprocess
+
+    from market_context import (
+        F31_LEVEL_KEYS,
+        PriceLevels,
+        fail_closed_price_levels,
+        stamp_price_level_fields,
+    )
+
+    empty = stamp_price_level_fields(PriceLevels())
+    assert set(empty) == set(F31_LEVEL_KEYS)
+    assert all(v is None for v in empty.values()), empty
+    none_pl = stamp_price_level_fields(None)
+    assert all(v is None for v in none_pl.values()), none_pl
+
+    zeroed = stamp_price_level_fields(
+        PriceLevels(vwap=0.0, pdh=0.0, pdl=0.0, today_poc=0.0, pd_poc=0.0)
+    )
+    assert all(v is None for v in zeroed.values()), zeroed
+
+    live = stamp_price_level_fields(PriceLevels(vwap=500.25, pdh=510.0, today_poc=501.5))
+    assert live["vwap"] == 500.25
+    assert live["pdh"] == 510.0
+    assert live["today_poc"] == 501.5
+    assert live["pdl"] is None
+
+    last_good = PriceLevels(vwap=499.0, pdh=505.0)
+    wiped = fail_closed_price_levels(None)
+    assert wiped.vwap is None and wiped.pdh is None
+    assert wiped is not last_good
+    assert stamp_price_level_fields(wiped)["vwap"] is None
+
+    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    assert "price_levels = fail_closed_price_levels(None)" in server
+    assert "ms_dict.update(stamp_price_level_fields(price_levels))" in server
+
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    for el_id in F31_LEVEL_DOM_IDS:
+        assert f'id="{el_id}"' in html, el_id
+    for key in ("d.vwap", "d.pdh", "d.pdl", "d.today_poc", "d.pd_poc"):
+        assert key in html, key
+    assert "kl_call_gamma_wall" in html and "kl_put_gamma_wall" in html
+    assert "const isNull = !v;" in html
+    assert "${isNull ? '—' : v.toFixed(2)}" in html
+
+    px_fn = re.search(r"const px = \(x\) => [^;]+;", html)
+    match = re.search(r"const pxTxt = \(x\) => \{.*?\n  \};", html, flags=re.S)
+    assert px_fn and match
+    binds = " ".join(
+        f"if (pxTxt(d.{k}) !== '—') fail('{k}');"
+        for k in (
+            "today_poc",
+            "today_vah",
+            "today_val",
+            "pd_poc",
+            "pd_vah",
+            "pd_val",
+            "vwap",
+            "pdh",
+            "pdl",
+        )
+    )
+    wall_null = " ".join(
+        f"if (isNullWall(d.{k}) !== true) fail('{k}');" for k in F31_WALL_KEYS
+    )
+    script = (
+        px_fn.group(0)
+        + "\n"
+        + match.group(0)
+        + "\n"
+        + "function isNullWall(v){ const x = parseFloat(v); return !x; }\n"
+        + "const fail = (m) => { console.error(m); process.exit(1); };\n"
+        + "const d = {today_poc:null,today_vah:null,today_val:null,"
+        "pd_poc:null,pd_vah:null,pd_val:null,vwap:null,pdh:null,pdl:null,"
+        "kl_call_gamma_wall:null,kl_put_gamma_wall:null};\n"
+        + binds
+        + "\n"
+        + wall_null
+        + "\n"
+        + "const z = {today_poc:0,today_vah:0,today_val:0,pd_poc:0,pd_vah:0,pd_val:0,"
+        "vwap:0,pdh:0,pdl:0,kl_call_gamma_wall:0,kl_put_gamma_wall:0};\n"
+        + binds.replace("d.", "z.")
+        + "\n"
+        + wall_null.replace("d.", "z.")
+        + "\n"
+        + "if (pxTxt(500.25) !== '500.25') fail('live');\n"
         + "console.log('ok');\n"
     )
     proc = subprocess.run(

@@ -1105,6 +1105,44 @@ def fetch_price_levels(
     return pl
 
 
+# F31 — price-level snapshot fields that /api/state stamps for DOM consumers.
+# A 0 is not a level (same class as fabricated edge=0).
+F31_LEVEL_KEYS: tuple[str, ...] = (
+    "vwap",
+    "pdh",
+    "pdl",
+    "pdc",
+    "today_poc",
+    "today_vah",
+    "today_val",
+    "pd_poc",
+    "pd_vah",
+    "pd_val",
+)
+
+
+def fail_closed_price_levels(fetched: PriceLevels | None) -> PriceLevels:
+    """Stale/absent canonical snapshot → empty PriceLevels, never last-good."""
+    if fetched is None:
+        return PriceLevels()
+    return fetched
+
+
+def stamp_price_level_fields(price_levels: PriceLevels | None) -> dict[str, float | None]:
+    """Map a PriceLevels (or None) to /api/state keys. Absent or <=0 → None."""
+    pl = fail_closed_price_levels(price_levels)
+    out: dict[str, float | None] = {}
+    for key in F31_LEVEL_KEYS:
+        raw = getattr(pl, key, None)
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            out[key] = None
+            continue
+        out[key] = round(val, 2) if val > 0 else None
+    return out
+
+
 def missing_confluence_weighted_pushes(ctx: MarketContext) -> list[str]:
     """DB column names missing from MarketContext (empty = all three pushes present)."""
     missing: list[str] = []

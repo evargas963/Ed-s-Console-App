@@ -185,6 +185,8 @@ from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
 from market_context import (
     fetch_market_context,
     fetch_price_levels,
+    fail_closed_price_levels,
+    stamp_price_level_fields,
     market_context_panel_symbols_excluding_core,
     PriceLevels,
     _derive_session,
@@ -6304,7 +6306,7 @@ def _fetch_state(
                 log.debug(f"PriceLevels: {ticker} VWAP={price_levels.vwap:.2f} bars={price_levels.bars_today}")
         except Exception as e:
             log.warning(f"PriceLevels: {ticker} FAILED: {e}")
-            price_levels = PriceLevels()
+            price_levels = fail_closed_price_levels(None)
         # Cache with date key so PDH/PDL/ORB survive restarts within the same day
         _sc = _state_cache.get(_cache_key, {})
         _sc["price_levels"] = price_levels
@@ -8194,21 +8196,11 @@ def _fetch_state(
     except Exception:
         ms_dict["kl_synth_fwd"] = None
 
-    # ── Price levels (VWAP / PDH / PDL / PDC / ORB) ───────────────────────────
-    ms_dict["vwap"]     = _fv(getattr(price_levels, "vwap",     None))
-    ms_dict["pdh"]      = _fv(getattr(price_levels, "pdh",      None))
-    ms_dict["pdl"]      = _fv(getattr(price_levels, "pdl",      None))
-    ms_dict["pdc"]      = _fv(getattr(price_levels, "pdc",      None))
+    # ── Price levels (VWAP / PDH / PDL / PDC / POC/VAH/VAL) ───────────────────
+    # F31: absent/zero → None (DOM renders —). F15: engine POC/VAH/VAL reach /api/state.
+    ms_dict.update(stamp_price_level_fields(price_levels))
     ms_dict["orb_high"] = _fv(getattr(price_levels, "orb_high", None))
     ms_dict["orb_low"]  = _fv(getattr(price_levels, "orb_low",  None))
-    # F15: engine POC/VAH/VAL must reach a live consumer. /api/price-levels
-    # already serves them; /api/state dropped them. Stamp the engine fields.
-    ms_dict["pd_poc"]    = _fv(getattr(price_levels, "pd_poc",    None))
-    ms_dict["pd_vah"]    = _fv(getattr(price_levels, "pd_vah",    None))
-    ms_dict["pd_val"]    = _fv(getattr(price_levels, "pd_val",    None))
-    ms_dict["today_poc"] = _fv(getattr(price_levels, "today_poc", None))
-    ms_dict["today_vah"] = _fv(getattr(price_levels, "today_vah", None))
-    ms_dict["today_val"] = _fv(getattr(price_levels, "today_val", None))
 
     # ── Expected Move ────────────────────────────────────────────────────────
     ms_dict["em_straddle"]       = _fv(_em_straddle.get("straddle"))
