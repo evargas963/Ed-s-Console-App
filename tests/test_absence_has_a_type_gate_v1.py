@@ -38,6 +38,21 @@ def test_absence_gate_docstring_names_what_it_does_not_catch():
         assert needle in src, needle
 
 
+def test_absence_gate_flags_except_literal_on_uncited_function():
+    """Defect-learning: except-literal `-> float` fires on a def the last audit did not name."""
+    from tools.check_absence_has_a_type import fabricated_absence_returns_in_source
+
+    plant = (
+        "def unrelated_score(x: float) -> float:\n"
+        "    try:\n"
+        "        return float(x)\n"
+        "    except ValueError:\n"
+        "        return 0.0\n"
+    )
+    hits = fabricated_absence_returns_in_source(plant)
+    assert [(h[1], h[2]) for h in hits] == [("unrelated_score", "0.0")]
+
+
 def test_rc318_board_lists_every_absence_ok_site():
     """Z2 acceptance: every # absence-ok site is a named RC-318 row (file:line)."""
     import re

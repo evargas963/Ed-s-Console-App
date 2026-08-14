@@ -7,6 +7,7 @@ bound pin via gex_at_bound_pin_strike. Persisted snapshots.gamma_pin is that
 same strike, stamped gamma_pin_semantic=net_gex_peak.
 """
 
+import re
 from pathlib import Path
 
 from math_exposure_core import (
@@ -28,6 +29,31 @@ from math_exposure_core import (
 from math_levels import build_summary_rows, compute_gamma_flip, pick_gamma_wall_strikes
 
 _INDEX = Path(__file__).resolve().parent.parent / "static" / "index.html"
+
+_KL_ROW_RE = re.compile(
+    r"\{\s*key:\s*['\"](kl_[^'\"]+)['\"]([^}]*)\}",
+    re.S,
+)
+_HARDCODED_KL_LABEL_RE = re.compile(
+    r"(?<![A-Za-z_])label:\s*['\"]([^'\"]+)['\"]"
+)
+
+
+def hardcoded_kl_row_labels(html: str) -> list[tuple[str, str]]:
+    """Every `{ key: 'kl_*', label: '...' }` — the paint class, any key.
+
+    Cite-scoped repair checked kl_gamma_pin / the 17 registry keys. A new
+    `kl_*` row with a hardcoded label is the same class.
+    """
+    found: list[tuple[str, str]] = []
+    for match in _KL_ROW_RE.finditer(html):
+        key, body = match.group(1), match.group(2)
+        label = _HARDCODED_KL_LABEL_RE.search(body)
+        if label:
+            found.append((key, label.group(1)))
+    return found
+
+
 _PIN_TIP = GAMMA_PIN_CONSUMER_TIP
 
 
@@ -196,6 +222,7 @@ def test_all_seventeen_kl_labels_come_from_the_registry():
     tables = html[start:end]
     keys = re.findall(r"key: '(kl_[^']+)'", tables)
     assert set(keys) == set(KEY_LEVEL_CONSUMER_REGISTRY)
+    assert hardcoded_kl_row_labels(html) == []
     for key in keys:
         block_start = tables.find(f"{{ key: '{key}'")
         block = tables[block_start : tables.find("},", block_start)]
@@ -206,6 +233,16 @@ def test_all_seventeen_kl_labels_come_from_the_registry():
         encoding="utf-8"
     )
     assert "KEY_LEVEL_CONSUMER_REGISTRY" in server
+
+
+def test_kl_hardcoded_label_class_flags_uncited_key():
+    """Defect-learning: paint class fires on a kl_* key the last audit did not name."""
+    plant = (
+        "const KL_PRIMARY = [\n"
+        "  { key: 'kl_new_unlisted', label: 'Planted Label', tip: 'x' },\n"
+        "];\n"
+    )
+    assert hardcoded_kl_row_labels(plant) == [("kl_new_unlisted", "Planted Label")]
 
 
 def test_decision_exec_pin_labeled_net_gamma():

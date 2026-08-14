@@ -292,6 +292,9 @@ def test_named_force_functions_remain_in_charter():
         "acceptance line is a measurement of the stated principle",
         "Presence of a test, a green proxy gate, or a SHA cite is not the principle",
         "enumerates every producer of that quantity across the tree",
+        "do not merely patch the reported instance",
+        "recurrence of the same failure class is mechanically prevented or detected",
+        "not the specific file, ticker, route, value, or example",
     ):
         assert needle in charter, f"named force function missing from AGENTS.md: {needle!r}"
 
@@ -313,8 +316,8 @@ def test_five_zone_acceptance_lines_are_operative():
     assert "WHAT THIS DOES NOT CATCH" in gate
     # Z3 — dirty bar fails closed in the engine
     assert _volume_profile_poc_vah_val([{"volume": 1}]) == (None, None, None)
-    # Z4 — planted producer outside MEGA2_FILES fails today
-    assert uninventoried_engine_modules(["terrain_engine.py"]) == ["terrain_engine.py"]
+    # Z4 — planted producer outside MEGA2_FILES fails today (class, not cited name)
+    assert uninventoried_engine_modules(["mystery_engine.py"]) == ["mystery_engine.py"]
     # Z5 — no hardcoded kl_* label in the KEY LEVELS tables
     from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
 
@@ -333,3 +336,44 @@ def test_five_zone_acceptance_lines_are_operative():
         "features/signal_layer_v1.py"
     ).read_text(encoding="utf-8")
     assert "from liquidity_value_engine import _volume_profile_poc_vah_val" in sl
+
+
+def test_kl_hardcoded_label_class_is_detected_on_any_kl_row_not_just_cited_keys():
+    """Z5 class: any `{ key: 'kl_*', label: '...' }` in JS is the paint class."""
+    from tests.test_institutional_key_levels import hardcoded_kl_row_labels
+
+    plant = (
+        "const KL_PRIMARY = [\n"
+        "  { key: 'kl_new_unlisted', label: 'Planted Label', tip: 'x' },\n"
+        "];\n"
+    )
+    found = hardcoded_kl_row_labels(plant)
+    assert found == [("kl_new_unlisted", "Planted Label")], found
+
+
+def test_volume_profile_class_is_detected_on_any_undelegated_def_not_just_cited_file():
+    """Z3 class: any `*volume_profile*` that does not import the engine."""
+    from tests.test_liquidity_engine import undelegated_volume_profile_defs
+
+    plant = (
+        "def _volume_profile_proxy(bars):\n"
+        "    return bars[-1]['close'] if bars else None\n"
+    )
+    found = undelegated_volume_profile_defs(plant, filename="features/unrelated_layer.py")
+    assert found == ["features/unrelated_layer.py:_volume_profile_proxy"], found
+
+
+def test_edge_key_miss_class_is_detected_on_any_meta_get_not_just_cited_function():
+    """Z1 class: a function that takes `*_key` and `.get`s a different literal on miss."""
+    from tests.test_model_edge_absent_is_not_zero_v1 import (
+        functions_that_get_unrelated_literal_on_key_miss,
+    )
+
+    plant = (
+        "def score_from_meta(meta, score_key):\n"
+        "    if score_key and score_key in meta:\n"
+        "        return meta[score_key]\n"
+        "    return meta.get('val_accuracy')\n"
+    )
+    found = functions_that_get_unrelated_literal_on_key_miss(plant)
+    assert found == ["score_from_meta"], found

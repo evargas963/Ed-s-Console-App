@@ -314,9 +314,34 @@ def test_fusion_call_graph_reaches_engine_volume_profile():
     assert "from liquidity_value_engine import _volume_profile_poc_vah_val" in sl
 
 
+def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[str]:
+    """F15 class: any `*volume_profile*` def that is not the engine and does not delegate.
+
+    Cite-scoped repair named signal_layer_v1 / market_context. A new file with
+    its own binning loop is the same class.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return []
+    engine_names = {"_volume_profile_poc_vah_val", "compute_volume_profile_levels"}
+    is_engine = filename.endswith("liquidity_value_engine.py") or filename == "liquidity_value_engine.py"
+    offenders: list[str] = []
+    for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        if "volume_profile" not in fn.name:
+            continue
+        if is_engine and fn.name in engine_names:
+            continue
+        src_seg = ast.get_source_segment(src, fn) or ""
+        if "liquidity_value_engine" not in src_seg and "_volume_profile_poc_vah_val" not in src_seg:
+            offenders.append(f"{filename}:{fn.name}")
+    return offenders
+
+
 def test_all_volume_profile_function_defs_are_engine_or_passthrough():
     """F15 producer enumeration: every _volume_profile* def is the engine or delegates."""
-    import ast
     import subprocess
 
     proc = subprocess.run(
@@ -332,22 +357,19 @@ def test_all_volume_profile_function_defs_are_engine_or_passthrough():
         if rel.startswith(skip):
             continue
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
-        try:
-            tree = ast.parse(text)
-        except SyntaxError:
-            continue
-        for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-            if "volume_profile" not in fn.name:
-                continue
-            if rel == "liquidity_value_engine.py" and fn.name in {
-                "_volume_profile_poc_vah_val",
-                "compute_volume_profile_levels",
-            }:
-                continue
-            src_seg = ast.get_source_segment(text, fn) or ""
-            if "liquidity_value_engine" not in src_seg and "_volume_profile_poc_vah_val" not in src_seg:
-                offenders.append(f"{rel}:{fn.lineno}:{fn.name}")
+        offenders.extend(undelegated_volume_profile_defs(text, rel))
     assert offenders == []
+
+
+def test_volume_profile_class_flags_undelegated_def_in_uncited_file():
+    """Defect-learning: the class fires on a file the last audit did not name."""
+    plant = (
+        "def _volume_profile_proxy(bars):\n"
+        "    return bars[-1]['close'] if bars else None\n"
+    )
+    assert undelegated_volume_profile_defs(plant, "features/unrelated_layer.py") == [
+        "features/unrelated_layer.py:_volume_profile_proxy"
+    ]
 
 
 def test_cluster_price_levels():

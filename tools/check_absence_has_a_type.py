@@ -63,12 +63,14 @@ def _tracked_py() -> list[Path]:
     return [REPO / p for p in proc.stdout.split("\0") if p]
 
 
-def fabricated_absence_returns(path: Path) -> list[tuple[int, str, str]]:
-    """(lineno, function, literal) for each numeric literal returned from an except."""
+def fabricated_absence_returns_in_source(text: str) -> list[tuple[int, str, str]]:
+    """(lineno, function, literal) for each numeric literal returned from an except.
+
+    Class detector: any `-> float` def, not the last-cited function name.
+    """
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(text)
-    except (OSError, SyntaxError):
+    except SyntaxError:
         return []
     lines = text.splitlines()
     out: list[tuple[int, str, str]] = []
@@ -92,6 +94,15 @@ def fabricated_absence_returns(path: Path) -> list[tuple[int, str, str]]:
                     continue
                 out.append((r.lineno, fn.name, repr(v.value)))
     return out
+
+
+def fabricated_absence_returns(path: Path) -> list[tuple[int, str, str]]:
+    """(lineno, function, literal) for each numeric literal returned from an except."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return fabricated_absence_returns_in_source(text)
 
 
 def violations() -> list[str]:
