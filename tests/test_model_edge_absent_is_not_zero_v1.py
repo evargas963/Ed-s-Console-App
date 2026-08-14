@@ -11,7 +11,6 @@ The field is kept and made optional rather than deleted.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from verify_active_models import model_health_edge_from_meta
