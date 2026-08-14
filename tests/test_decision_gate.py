@@ -266,3 +266,25 @@ def test_compute_call_directional_passes_when_admitted(monkeypatch, tmp_path):
         f"blocker={call.wait_blocker!r}"
     )
     assert call.wait_blocker is None
+
+
+def test_named_force_functions_remain_in_charter():
+    """Chat is not a lock. Named force / bind sentences must remain in AGENTS.md.
+
+    This proves the sentences still exist. It does not prove the agent ran
+    drift-audit, Five Whys, Bugbot, or security-review on a given slice.
+    """
+    from pathlib import Path
+
+    charter = Path(__file__).resolve().parent.parent.joinpath("AGENTS.md").read_text(
+        encoding="utf-8"
+    )
+    for needle in (
+        "chat is not a lock",
+        "git merge-base --is-ancestor",
+        "Five Whys",
+        "drift-audit skill before any done",
+        "Bugbot when the diff is material",
+        "security-review when secrets",
+    ):
+        assert needle in charter, f"named force function missing from AGENTS.md: {needle!r}"
