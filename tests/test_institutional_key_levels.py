@@ -169,10 +169,7 @@ def test_server_emits_gamma_pin_label_from_registry():
     server = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(
         encoding="utf-8"
     )
-    assert "GAMMA_PIN_LABEL_PAYLOAD_KEY" in server
-    assert "GAMMA_PIN_TIP_PAYLOAD_KEY" in server
-    assert "GAMMA_PIN_CONSUMER_LABEL" in server
-    assert "GAMMA_PIN_CONSUMER_TIP" in server
+    assert "KEY_LEVEL_CONSUMER_REGISTRY" in server
     assert GAMMA_PIN_LABEL_PAYLOAD_KEY == "kl_gamma_pin_label"
     assert GAMMA_PIN_TIP_PAYLOAD_KEY == "kl_gamma_pin_tip"
     assert "def _stamp_gamma_pin_consumer_copy" in server
@@ -183,6 +180,7 @@ def test_server_emits_gamma_pin_label_from_registry():
         + 900
     ]
     assert "_stamp_gamma_pin_consumer_copy(md)" in attach
+    assert server.count("_stamp_gamma_pin_consumer_copy(") >= 3
 
 
 def test_all_seventeen_kl_labels_come_from_the_registry():
