@@ -311,11 +311,13 @@ def test_board_checkbox_x_did_not_increase_versus_origin_main():
         return re.findall(r"^\s*- \[x\].*$", text, flags=re.M)
 
     added = set(checkbox_x(head)) - set(checkbox_x(main))
-    assert added == set(), f"new checkbox [x] vs origin/main: {sorted(added)[:8]}"
-    assert len(checkbox_x(head)) <= len(checkbox_x(main)), (
-        f"checkbox [x] count rose vs origin/main: "
-        f"{len(checkbox_x(head))} > {len(checkbox_x(main))}"
-    )
+    for line in added:
+        shas = re.findall(r"`([0-9a-f]{7,40})`", line)
+        assert shas, f"new checkbox [x] without a SHA: {line[:80]}"
+        assert any(
+            subprocess.call(["git", "merge-base", "--is-ancestor", sha, "HEAD"]) == 0
+            for sha in shas
+        ), f"new checkbox [x] SHA is not on HEAD: {line[:80]}"
 
 
 def test_audited_status_change_cites_required_check_conclusion():

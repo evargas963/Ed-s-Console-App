@@ -355,7 +355,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [ ] One canonical population site
   - [ ] No alternate population masquerading as the canonical one — REOPENED 2026-08-14. Two input contracts @ `462a581`. Engine now sanitizes dirty bars; wrapper is pass-through. Acceptance measured on this branch (`engine_vp([{'volume':1}])==(None,None,None)`); `[x]` only on `origin/main` SHA.
   - [ ] Session / as-of boundary specified
-  - [ ] Live path populates from the canonical producer — `_fetch_state` calls `fetch_price_levels` which calls the engine pass-through. Test: `test_fetch_state_live_path_uses_engine_volume_profile`. `[x]` only on `origin/main` SHA.
+  - [x] Live path populates from the canonical producer — Closed @ `1e09445`. `_fetch_state` → `fetch_price_levels` → engine. Test: `test_fetch_state_live_path_uses_engine_volume_profile`. Feature-path 12-bin is RC-330, not this display path.
   - [ ] Replay path populates from the canonical producer
   - [ ] Backfill path populates from the canonical producer
   - [ ] Frontend path carries the canonical value (no reconstruction)
@@ -473,17 +473,17 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [x] Semantic of the fabricated-zero defect defined — Closed @ `1117f19`. Absent metric ≠ measured zero.
   - [x] Live path characterized — Closed @ `1117f19`. `_fetch_state` → `model_health` → `/api/state`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
   - [x] Root cause identified — Closed @ `1117f19`. Unread field; `.get(..., 0)` / `float(raw or 0)` / literal `"edge": 0`.
-  - [ ] Fix landed — REOPENED 2026-08-14. Accuracy-as-edge fallback violated the principle. Fallback removed this branch; close on `origin/main`.
-  - [ ] Proof recorded — REOPENED 2026-08-14. Acceptance: `model_health_edge_from_meta({'val_accuracy':0.55}, 'edge_pp') is None` AND DOM `edge:null` → `—`.
-  - [ ] Unmeasured `edge_pp` is not published as `val_accuracy·100`
-  - [ ] Model-health UI renders `edge === null` as `—` (not 0 / NaN / throw)
+  - [x] Fix landed — Closed @ `1e09445`. `model_health_edge_from_meta` returns None when `edge_key` is absent; no `val_accuracy` substitute.
+  - [x] Proof recorded — Closed @ `1e09445`. Measured on `origin/main`: `model_health_edge_from_meta({'val_accuracy':0.55}, 'edge_pp') is None`; `formatModelHealthEdge(null)` is `—`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
+  - [x] Unmeasured `edge_pp` is not published as `val_accuracy·100` — Closed @ `1e09445`.
+  - [x] Model-health UI renders `edge === null` as `—` (not 0 / NaN / throw) — Closed @ `1e09445`.
   - [ ] Universality across tickers proven
 - [ ] **RC-297** — derivation inventory drifted from code — OPEN (parent stays open). **2026-08-14 adversarial REJECT:** `8ca1f18` added a dormant `if terrain_engine.py exists` clause plus a file-exists loop subsumed by `test_mega2_inventory_covers_every_function`. Guard is now active: planted `*_engine.py` / `terrain_engine.py` outside `MEGA2_FILES` fails today. `[x]` only on `origin/main` SHA.
   - [x] Semantic of the inventory-drift defect defined — Closed @ `8ca1f18`. Drift = inventory AST mismatch in `MEGA2_FILES`.
   - [x] Live path characterized — Closed @ `8ca1f18`. Gate is `tests/test_mega2_traceable_audit.py` (offline).
   - [x] Root cause identified — Closed @ `8ca1f18`. Hand-maintained register; out-of-scope file uninventoried.
-  - [ ] Fix landed — REOPENED 2026-08-14. Inert + redundant test is not enforcement. Active plant-guard this branch.
-  - [ ] Proof recorded — REOPENED 2026-08-14. Acceptance: tree-fed `uninventoried_engine_modules(git ls-files) == []` AND a real `zzz_engine.py` plant in a tmp git repo is flagged.
+  - [x] Fix landed — Closed @ `1e09445`. Tree-fed `uninventoried_engine_modules(git ls-files)`. Filename token `engine` is not the producer class; parent stays OPEN.
+  - [x] Proof recorded — Closed @ `1e09445`. Measured on `origin/main`: `uninventoried_engine_modules(...) == []`; `test_real_planted_engine_file_is_rejected_by_tree_scan` passed.
   - [ ] Universality across tickers proven
 - [ ] **RC-301** — absence-coerced-to-a-value as a CLASS — OPEN (parent stays open). **2026-08-14 adversarial CONDITIONAL:** except-literal fix @ `5d68d93` is real; the gate is a proxy. Docstring now enumerates what it does NOT catch. Uncovered shapes live in **RC-318**. Remaining: class-wide disposition, universality.
   - [x] Semantic of the absence-coercion class defined — Closed @ `5d68d93`. `-> float` + except literal.
@@ -502,12 +502,12 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [x] Semantic of the gate blindness defect defined — Closed @ `bb85651`. One writer per name ≠ one (definition, scope).
   - [x] Live path characterized — Closed @ `bb85651`. Console KEY LEVELS `kl_gamma_pin` row.
   - [x] Root cause identified — Closed @ `bb85651`. No registry linking payload key to semantic.
-  - [ ] Fix landed — REOPENED 2026-08-14. Two-copy bind is not one source. Payload emit this branch.
-  - [ ] Proof recorded — REOPENED 2026-08-14. Acceptance: no hardcoded `label:` on the `kl_gamma_pin` KEY LEVELS row; pin-fix branch label equals main.
+  - [x] Fix landed — Closed @ `1e09445`. `KEY_LEVEL_CONSUMER_REGISTRY` stamps all 17 labels/tips; L1 copy keys are derived from the registry; `renderKeyLevels` has no `level.label` fallback.
+  - [ ] Proof recorded — REOPENED 2026-08-14. No hardcoded `label:` on KEY LEVELS rows measured @ `1e09445`. Pin-fix rebase still OPEN (`ef5c0a2` re-paints `label:`). Do not land the paint lineage.
   - [ ] Universality across tickers proven
 - [ ] **RC-330** — display POC and fusion-feature POC are different algorithms — OPEN. Spawned by F15. Display: `liquidity_value_engine` typical-price tick-bin. Fusion feature: `signal_layer_v1._volume_profile_proxy` close-price 12-bin (restored 2026-08-14 after a silent swap changed the live stack). Do not unify without retrain + non-degradation of every model that consumes `signal_layer_v1`. Due: retrain plan before any engine-delegate on the feature path.
   - [ ] Retrain + validate every model that consumes `signal_layer_v1` if the feature algorithm is changed
-  - [ ] Or keep the two algorithms and document the split (current)
+  - [x] Or keep the two algorithms and document the split (current) — Closed @ `1e09445`. Display = engine; fusion feature = close-price 12-bin; live==frozen and live!=engine measured on `origin/main`.
   - [ ] Universality across tickers proven
 - [ ] **RC-328** — Confluence train/serve population — OPEN
   - [ ] Verify current code closes the original defect
@@ -1567,7 +1567,8 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - **STATUS_CHANGE 2026-08-14 five-zone re-audit:** `c869521` — F15 fusion proxy reverted (RC-330). Required checks at `c869521`: pytest-full run 31804804500 RED; hardening run 31804804720 RED. Checkbox `[x]` rows: origin/main 35 → this branch 28 (seven reopens, zero new checkbox closes). Raw string `[x]` rose 58 → 60 at `d3e2f51` because STATUS_CHANGE prose mentioned the token, not because boxes were checked. No new checkbox `[x]`. Pin-fix rebase remains OPEN. Parents stay OPEN.
 - **STATUS_CHANGE 2026-08-14 dual read-only audit @ `efe73f1`:** two independent audits agree. Z1 write-site + Z5 17-key payload stay accepted as instance repairs; do not regress. Class-prevention is NOT_PROVEN for Z1/Z3/Z4/Z5 (example-locked plants; high escape rates on renamed-equivalent variants). Z3 keep-the-split is accepted as the live-feature repair; `_FEATURE_PATH_POC` file+function exemption is a regression of RC-330's own class. Z2 gate is honestly scoped. Required checks at `efe73f1`: pytest-full run 31804847117 RED (`_stamp_gamma_pin_consumer_copy` uninventoried; vanna HTML needle); hardening run 31804846856 RED (ruff F401 unused `import re`). Board-count `== 28` / `== 35` pins passed at this SHA and were not a CI failure; they were removed later for post-merge durability. No new `[x]`. Do not merge. Parents stay OPEN.
 - **STATUS_CHANGE 2026-08-14 CI fix-forward after `efe73f1`:** MEGA1 row for `_stamp_gamma_pin_consumer_copy`; vanna P1B guard re-pointed at `KEY_LEVEL_CONSUMER_REGISTRY`; unused `import re` dropped; board-count test keeps `added == set()` plus `len(head) <= len(main)`. Required checks at `dc5a942`: pytest-full run 31806369793 GREEN; hardening run 31806369777 GREEN. Charter slice lock (2) now names MEGA1_FILES / MEGA2_FILES + `test_mega1_traceable_audit.py`; slice lock (4) requires a STATUS_CHANGE that cites an audited SHA to cite required-check conclusion. Residual: the detector catches omit-the-conclusion only; run-id-belongs-to-SHA stays operator review (Actions API). No new `[x]`. Parents stay OPEN.
-- **STATUS_CHANGE 2026-08-14 instance repairs ready to land:** Z1 origin shape (assign-then-None, attribute mapping, ternary) now fails the class plant; Z3 delegation is a Call, histogram shape is name-independent, frozen 12-bin no longer imports live helpers; Z5 L1 copy keys come from `KEY_LEVEL_CONSUMER_REGISTRY` and `renderKeyLevels` has no `level.label` fallback. Z4 stays tree-fed; filename token `engine` is not the producer class. F15 keep-the-split / RC-330 stay OPEN. No new `[x]` until the land SHA is on `origin/main`. Parents stay OPEN.
+- **STATUS_CHANGE 2026-08-14 instance repairs ready to land:** Z1 origin shape (assign-then-None, attribute mapping, ternary) now fails the class plant; Z3 delegation is a Call, histogram shape is name-independent, frozen 12-bin no longer imports live helpers; Z5 L1 copy keys come from `KEY_LEVEL_CONSUMER_REGISTRY` and `renderKeyLevels` has no `level.label` fallback. Z4 stays tree-fed; filename token `engine` is not the producer class. F15 keep-the-split / RC-330 stay OPEN. Landed on `origin/main` @ `1e09445`. Required checks at `1e09445`: pytest-full run 31811016589 GREEN; hardening run 31811016566 GREEN.
+- **STATUS_CHANGE 2026-08-14 five-zone land on main:** `1e09445` is an ancestor of `origin/main`. Measured then closed: RC-285 Fix/Proof + two consumer children; RC-297 Fix/Proof (engine-token class remains OPEN on the parent); RC-329 Fix (Proof stays open — pin-fix rebase); F15 live display path; RC-330 keep-the-split. Not closed: F15 no-alternate (second algorithm is RC-330), RC-329 Proof, parents, universality. `[x]` 28 → 37 versus `8ccddb17`. Parents stay OPEN.
 - **ADD then STATUS_CHANGE this land:** UI-04 P1D @ `8686e68` (overnight residual stays LP-01 / F15); ML-META-JSON-VERIFICATION-ASYMMETRY @ `a107412` (PR #55; slim cite `7ec0bf6` was the pre-rebase feature SHA, not on `main`).
 - **ADD this land (historical Find & Prove had them; PA-48 did not):** QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1, STAGE-2, ML-PIPE-V1, SIG-01.
 - **KEY LEVELS / B_light paint on `main` (PRs #53–#58 merged; #59 SUPERSEDED do-not-merge; #60 cube-honesty for charm/vanna only) does not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292.** Paint ≠ one faucet. Charm vote stays UNAPPROVED. Predictive validity stays NOT_PROVEN.
