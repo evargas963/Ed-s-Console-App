@@ -37,8 +37,9 @@ def model_health_edge_from_meta(meta: dict, edge_key: str) -> float | None:
     """RC-285: recorded edge metric, or None when unmeasured.
 
     A genuine measured zero stays 0. Missing keys are not defaulted to 0
-    and are not substituted with ``val_accuracy`` (accuracy is not edge;
-    RC-291 remains OPEN for callers that *request* val_accuracy as the key).
+    and are not substituted with ``val_accuracy`` (accuracy is not edge).
+    Callers that need accuracy must stamp ``val_accuracy`` under that name,
+    not pass ``val_accuracy`` as ``edge_key``.
     """
     from numeric_contract import float_finite_or_none
 

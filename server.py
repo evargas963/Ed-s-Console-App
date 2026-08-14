@@ -8432,21 +8432,23 @@ def _fetch_state(
         art = _artifacts.get(name, {"exists": False, "has_provenance": False, "issues": []})
         meta_exists = meta_path.exists()
         if not meta_exists:
-            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": None, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": None, "val_accuracy": None, "metric_name": None, "version": "—", "ticker": _dashboard_ticker}
         if not art.get("exists", False):
-            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": None, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": None, "val_accuracy": None, "metric_name": None, "version": "—", "ticker": _dashboard_ticker}
         if not art.get("has_provenance", False):
             issues = "; ".join(art.get("issues", [])) or "Metadata lacks provenance"
-            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": None, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": None, "val_accuracy": None, "metric_name": None, "version": "—", "ticker": _dashboard_ticker}
         try:
             _m = json.loads(meta_path.read_text())
+            from numeric_contract import float_finite_or_none
             from verify_active_models import model_health_edge_from_meta
 
             edge = model_health_edge_from_meta(_m, edge_key)
             version = _m.get(version_key) or "—"
+            val_accuracy = float_finite_or_none(_m.get("val_accuracy"))
         except Exception:
-            edge, version = None, "—"
-        return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "version": version or "—", "ticker": _dashboard_ticker}
+            edge, version, val_accuracy = None, "—", None
+        return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "val_accuracy": val_accuracy, "metric_name": "val_accuracy" if display_name == "LSTM" else edge_key, "version": version or "—", "ticker": _dashboard_ticker}
 
     _xgb_meta = _active_dir / f"xgb_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
     _lstm_meta = _active_dir / f"lstm_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
@@ -8460,9 +8462,9 @@ def _fetch_state(
     except Exception:
         _model_health.append({"model": "Transformer", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
     try:
-        _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "val_accuracy", "model_type"))
+        _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "edge_pp", "model_type"))
     except Exception:
-        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
+        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": None, "val_accuracy": None, "metric_name": "val_accuracy", "version": "—", "ticker": _dashboard_ticker})
 
     # MC + Rules + Regime + Fusion (always live)
     for m in [{"model": "Monte Carlo", "version": "10K paths"}, {"model": "Regime Engine", "version": "8 families"}, {"model": "Bayesian Fusion", "version": "6 posteriors"}]:
