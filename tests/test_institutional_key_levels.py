@@ -17,6 +17,7 @@ from math_exposure_core import (
     GAMMA_PIN_PAYLOAD_KEY,
     GAMMA_PIN_SEMANTIC,
     GAMMA_PIN_TIP_PAYLOAD_KEY,
+    KEY_LEVEL_CONSUMER_REGISTRY,
     aggregate_net_gex,
     bucket_metric_abs,
     compute_exposures_by_strike,
@@ -188,6 +189,48 @@ def test_console_pin_tooltip_matches_bound_net_gex():
     assert "title: 'Largest total gamma" not in html
     assert GAMMA_PIN_CONSUMER_LABEL == "Net Γ Peak"
     assert "total-gamma magnet" in GAMMA_PIN_CONSUMER_TIP
+
+
+def test_pin_fix_rewrite_has_no_hardcoded_kl_labels():
+    """Pin-fix rewrite: labels come from the registry, not painted `label:`."""
+    html = _INDEX.read_text(encoding="utf-8")
+    assert hardcoded_kl_row_labels(html) == []
+    assert GAMMA_PIN_CONSUMER_LABEL == "Net Γ Peak"
+    assert KEY_LEVEL_CONSUMER_REGISTRY["kl_gamma_pin"][0] == "Net Γ Peak"
+
+
+def test_pin_fix_rewrite_merges_onto_five_zone_without_key_levels_conflict():
+    """Acceptance: merge-tree onto origin/main has no index.html conflict.
+
+    Five-zone (`1e09445`) is an ancestor of current `origin/main`. A short
+    SHA merge-tree fails on shallow CI clones (unrelated histories). The
+    principle is: this rewrite does not conflict on KEY LEVELS HTML.
+    """
+    import subprocess
+
+    repo = _INDEX.parent.parent
+    tip = "origin/main"
+    if subprocess.call(
+        ["git", "rev-parse", "--verify", tip],
+        cwd=repo,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ):
+        subprocess.check_call(
+            ["git", "fetch", "--no-tags", "origin", "main"],
+            cwd=repo,
+        )
+    proc = subprocess.run(
+        ["git", "merge-tree", "--write-tree", tip, "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+    )
+    out = (proc.stdout or "") + (proc.stderr or "")
+    assert "CONFLICT (content): Merge conflict in static/index.html" not in out, out
+    assert proc.returncode == 0, out
 
 
 def test_server_emits_gamma_pin_label_from_registry():
