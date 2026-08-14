@@ -280,6 +280,84 @@ def test_fetch_state_live_path_uses_engine_volume_profile():
     assert "pl.today_poc, pl.today_vah, pl.today_val = _volume_profile_poc_vah_val(" in fetch
 
 
+ENGINE_POC_STATE_KEYS = (
+    "today_poc",
+    "today_vah",
+    "today_val",
+    "pd_poc",
+    "pd_vah",
+    "pd_val",
+)
+
+
+def test_api_state_stamps_engine_poc_keys():
+    """F15 (a): /api/state carries engine POC/VAH/VAL, not a second algorithm."""
+    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    start = server.find("def _fetch_state(")
+    nxt = server.find("\n@app.", start + 1)
+    block = server[start : nxt if nxt != -1 else start + 200_000]
+    for key in ENGINE_POC_STATE_KEYS:
+        assert f'ms_dict["{key}"]' in block, key
+        assert f'getattr(price_levels, "{key}"' in block, key
+
+
+def test_stamped_engine_poc_keys_have_a_dom_consumer():
+    """Served-but-unconsumed is not a close: every stamped key is bound in the DOM."""
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    for key in ENGINE_POC_STATE_KEYS:
+        assert f"d.{key}" in html, key
+    for el_id in (
+        "dr-lvl-poc",
+        "dr-lvl-vah",
+        "dr-lvl-val",
+        "dr-lvl-pdpoc",
+        "dr-lvl-pdvah",
+        "dr-lvl-pdval",
+        "exec-poc",
+        "exec-pdpoc",
+    ):
+        assert f'id="{el_id}"' in html, el_id
+
+
+def test_dom_receives_engine_today_poc_value():
+    """Named consumer: today_poc 780.75 renders on #dr-lvl-poc, not a playbook string."""
+    import re
+    import subprocess
+
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    assert "d.today_poc" in html
+    assert 'id="dr-lvl-poc"' in html
+    match = re.search(
+        r"const pxTxt = \(x\) => \{.*?\n  \};",
+        html,
+        flags=re.S,
+    )
+    assert match, "pxTxt must be extractable from index.html"
+    px_fn = re.search(r"const px = \(x\) => [^;]+;", html)
+    assert px_fn, "px must be extractable from index.html"
+    script = (
+        px_fn.group(0)
+        + "\n"
+        + match.group(0)
+        + "\n"
+        + "function bind(d){ return pxTxt(d.today_poc); }\n"
+        + "const fail = (m) => { console.error(m); process.exit(1); };\n"
+        + "if (bind({today_poc: 780.75}) !== '780.75') fail('today_poc');\n"
+        + "if (bind({today_poc: null}) !== '—') fail('absent');\n"
+        + "console.log('ok');\n"
+    )
+    proc = subprocess.run(
+        ["node", "-e", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "ok" in proc.stdout
+
+
 def _frozen_close_price_12bin(bars, n):
     """origin/main signal_layer algorithm — independent of live helpers."""
     from numeric_contract import float_finite_or_none

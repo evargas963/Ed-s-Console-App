@@ -350,12 +350,12 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
 - [ ] **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
 - [ ] **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE
-- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine). **2026-08-14 third audit:** swapping the fusion proxy onto the engine changed a live model feature (780.25 → 780.75). Reverted: `signal_layer_v1._volume_profile_proxy` is again the close-price 12-bin. Display path stays the engine. Divergence filed as **RC-330**. Dirty bars fail closed in the engine. Children stay `[ ]` until acceptance is measured on `origin/main`. Remaining: one population site, replay/backfill/frontend, fallback, universality, runtime, retrain-if-unified.
+- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine). **2026-08-14 fourth audit:** engine POC had no live consumer (`/api/state` dropped `pd_poc`/`today_poc`; index.html had only playbook strings). Decision (a): display metric — carry engine POC/VAH/VAL on `/api/state` and render `#dr-lvl-poc` / `#exec-poc`. Not (b) retrain, not (c) delete. RC-330 stays `[ ]` until a named consumer receives the engine value on `origin/main`. Remaining: one population site, replay/backfill, fallback, universality, runtime.
   - [x] Exact semantic contract defined for POC/VAH/VAL — Closed @ `462a581`. Typical-price bin, 70% VA, engine 4dp. Tests: `tests/test_liquidity_engine.py`.
   - [ ] One canonical population site
   - [ ] No alternate population masquerading as the canonical one — REOPENED 2026-08-14. Two input contracts @ `462a581`. Engine now sanitizes dirty bars; wrapper is pass-through. Acceptance measured on this branch (`engine_vp([{'volume':1}])==(None,None,None)`); `[x]` only on `origin/main` SHA.
   - [ ] Session / as-of boundary specified
-  - [ ] Live path populates from the canonical producer — `_fetch_state` calls `fetch_price_levels` which calls the engine pass-through. Test: `test_fetch_state_live_path_uses_engine_volume_profile`. `[x]` only on `origin/main` SHA.
+  - [ ] Live path populates from the canonical producer — Decision (a) on `cursor/f15-engine-poc-consumer-556d`: `/api/state` stamps `today_poc`/`pd_poc` from `price_levels`; `#dr-lvl-poc` / `#exec-poc` bind `d.today_poc`. `[x]` only when that SHA is an ancestor of `origin/main` and a named consumer receives the engine value.
   - [ ] Replay path populates from the canonical producer
   - [ ] Backfill path populates from the canonical producer
   - [ ] Frontend path carries the canonical value (no reconstruction)
