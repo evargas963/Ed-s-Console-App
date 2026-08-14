@@ -280,6 +280,76 @@ def test_fetch_state_live_path_uses_engine_volume_profile():
     assert "pl.today_poc, pl.today_vah, pl.today_val = _volume_profile_poc_vah_val(" in fetch
 
 
+def test_signal_layer_volume_profile_is_the_engine():
+    """F15: fusion's POC producer is the engine, not a close-price 12-bin."""
+    from features.signal_layer_v1 import _volume_profile_proxy
+    from liquidity_value_engine import _volume_profile_poc_vah_val as engine_vp
+
+    src = (ROOT / "features" / "signal_layer_v1.py").read_text(encoding="utf-8")
+    start = src.find("def _volume_profile_proxy")
+    block = src[start : src.find("\ndef ", start + 1)]
+    assert "from liquidity_value_engine import" in block
+    assert "nbin" not in block
+    assert "(imax + 0.5)" not in block
+    bars = [
+        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
+        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
+        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
+        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
+        {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 200.0},
+    ]
+    poc, val, vah = _volume_profile_proxy(bars, 20)
+    e_poc, e_vah, e_val = engine_vp(bars)
+    assert (poc, val, vah) == (e_poc, e_val, e_vah)
+    assert _volume_profile_proxy([{"volume": 1}] * 5, 20) == (None, None, None)
+
+
+def test_fusion_call_graph_reaches_engine_volume_profile():
+    """F15: bayesian_fusion → signal_layer_v1 → engine. One algorithm."""
+    fusion = (ROOT / "bayesian_fusion.py").read_text(encoding="utf-8")
+    assert "from features.signal_layer_v1 import" in fusion
+    assert "signal_layer_v1_to_direction_probs" in fusion
+    sl = (ROOT / "features" / "signal_layer_v1.py").read_text(encoding="utf-8")
+    assert "poc, val, vah = _volume_profile_proxy(" in sl
+    assert "from liquidity_value_engine import _volume_profile_poc_vah_val" in sl
+
+
+def test_all_volume_profile_function_defs_are_engine_or_passthrough():
+    """F15 producer enumeration: every _volume_profile* def is the engine or delegates."""
+    import ast
+    import subprocess
+
+    proc = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    skip = ("tests/", "tools/", "research/", "governance/", "arch_competition/")
+    offenders: list[str] = []
+    for rel in [p for p in proc.stdout.split("\0") if p]:
+        if rel.startswith(skip):
+            continue
+        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+            if "volume_profile" not in fn.name:
+                continue
+            if rel == "liquidity_value_engine.py" and fn.name in {
+                "_volume_profile_poc_vah_val",
+                "compute_volume_profile_levels",
+            }:
+                continue
+            src_seg = ast.get_source_segment(text, fn) or ""
+            if "liquidity_value_engine" not in src_seg and "_volume_profile_poc_vah_val" not in src_seg:
+                offenders.append(f"{rel}:{fn.lineno}:{fn.name}")
+    assert offenders == []
+
+
 def test_cluster_price_levels():
     """Levels within threshold clustered into zones."""
     from liquidity_value_engine import cluster_price_levels_into_zones

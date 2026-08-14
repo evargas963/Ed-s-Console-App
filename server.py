@@ -174,6 +174,7 @@ from math_exposure import (
     GAMMA_PIN_CONSUMER_TIP,
     GAMMA_PIN_LABEL_PAYLOAD_KEY,
     GAMMA_PIN_TIP_PAYLOAD_KEY,
+    KEY_LEVEL_CONSUMER_REGISTRY,
     aggregate_net_gex, total_gamma_raw_at_strike,
     gex_at_bound_pin_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
@@ -1350,12 +1351,13 @@ def _log_only_cache_touch(
 
 
 def _stamp_gamma_pin_consumer_copy(md: dict) -> None:
-    """RC-329: every outbound payload carries the registry label/tip.
+    """RC-329: every outbound payload carries the registry label/tip for all 17 kl_*.
 
-    Cache hits of a pre-key ms_dict must not drop the KEY LEVELS pin row to —.
+    Cache hits of a pre-key ms_dict must not drop a KEY LEVELS row to —.
     """
-    md[GAMMA_PIN_LABEL_PAYLOAD_KEY] = GAMMA_PIN_CONSUMER_LABEL
-    md[GAMMA_PIN_TIP_PAYLOAD_KEY] = GAMMA_PIN_CONSUMER_TIP
+    for key, (label, tip) in KEY_LEVEL_CONSUMER_REGISTRY.items():
+        md[f"{key}_label"] = label
+        md[f"{key}_tip"] = tip
 
 
 def _attach_analytics_freshness_contract(

@@ -291,6 +291,7 @@ def test_named_force_functions_remain_in_charter():
         "security-review when secrets",
         "acceptance line is a measurement of the stated principle",
         "Presence of a test, a green proxy gate, or a SHA cite is not the principle",
+        "enumerates every producer of that quantity across the tree",
     ):
         assert needle in charter, f"named force function missing from AGENTS.md: {needle!r}"
 
@@ -314,11 +315,21 @@ def test_five_zone_acceptance_lines_are_operative():
     assert _volume_profile_poc_vah_val([{"volume": 1}]) == (None, None, None)
     # Z4 — planted producer outside MEGA2_FILES fails today
     assert uninventoried_engine_modules(["terrain_engine.py"]) == ["terrain_engine.py"]
-    # Z5 — no hardcoded kl_gamma_pin label in the KEY LEVELS row
+    # Z5 — no hardcoded kl_* label in the KEY LEVELS tables
+    from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+
     html = Path(__file__).resolve().parent.parent.joinpath(
         "static/index.html"
     ).read_text(encoding="utf-8")
-    start = html.find("{ key: 'kl_gamma_pin'")
-    pin_block = html[start : html.find("},", start)]
-    assert "label: '" not in pin_block
-    assert "labelKey: 'kl_gamma_pin_label'" in pin_block
+    assert len(KEY_LEVEL_CONSUMER_REGISTRY) == 17
+    tables = html[html.find("const KL_PRIMARY = [") : html.find("function renderKeyLevels")]
+    for key in KEY_LEVEL_CONSUMER_REGISTRY:
+        start = tables.find(f"{{ key: '{key}'")
+        block = tables[start : tables.find("},", start)]
+        assert "label: '" not in block, key
+        assert f"labelKey: '{key}_label'" in block, key
+    # Z3 — fusion proxy is the engine
+    sl = Path(__file__).resolve().parent.parent.joinpath(
+        "features/signal_layer_v1.py"
+    ).read_text(encoding="utf-8")
+    assert "from liquidity_value_engine import _volume_profile_poc_vah_val" in sl

@@ -146,7 +146,8 @@ def test_console_kl_gamma_pin_label_matches_bound_net_gex():
     assert "label: 'Net Γ Peak'" not in pin_block
     assert "label: 'Gamma Pin'" not in html
     assert "srLabel: 'Net Γ'" in html
-    assert "label: 'HVL'" in html
+    assert "labelKey: 'kl_hvl_label'" in html
+    assert "label: 'HVL'" not in html
     assert "srLabel: 'Peak Γ'" in html
 
 
@@ -182,6 +183,31 @@ def test_server_emits_gamma_pin_label_from_registry():
         + 900
     ]
     assert "_stamp_gamma_pin_consumer_copy(md)" in attach
+
+
+def test_all_seventeen_kl_labels_come_from_the_registry():
+    """RC-329 bedrock: one registry, 17 keys, no hardcoded kl_* label in the table."""
+    import re
+
+    from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+
+    assert len(KEY_LEVEL_CONSUMER_REGISTRY) == 17
+    html = _INDEX.read_text(encoding="utf-8")
+    start = html.find("const KL_PRIMARY = [")
+    end = html.find("function renderKeyLevels", start)
+    tables = html[start:end]
+    keys = re.findall(r"key: '(kl_[^']+)'", tables)
+    assert set(keys) == set(KEY_LEVEL_CONSUMER_REGISTRY)
+    for key in keys:
+        block_start = tables.find(f"{{ key: '{key}'")
+        block = tables[block_start : tables.find("},", block_start)]
+        assert "label: '" not in block, key
+        assert f"labelKey: '{key}_label'" in block, key
+        assert f"tipKey: '{key}_tip'" in block, key
+    server = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(
+        encoding="utf-8"
+    )
+    assert "KEY_LEVEL_CONSUMER_REGISTRY" in server
 
 
 def test_decision_exec_pin_labeled_net_gamma():

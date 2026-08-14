@@ -312,6 +312,28 @@ GAMMA_PIN_CONSUMER_TIP = (
     "Not the total-gamma magnet (that is HVL)."
 )
 
+# One registry for every KEY LEVELS consumer name. UI renders payload
+# ``{key}_label`` / ``{key}_tip`` — no hardcoded kl_* label strings.
+KEY_LEVEL_CONSUMER_REGISTRY: dict[str, tuple[str, str]] = {
+    "kl_call_gamma_wall": ("Gamma Wall Call", "Strike with the largest call GEX$."),
+    "kl_put_gamma_wall": ("Gamma Wall Put", "Strike with the largest put GEX$."),
+    "kl_gamma_pin": (GAMMA_PIN_CONSUMER_LABEL, GAMMA_PIN_CONSUMER_TIP),
+    "kl_hvl": ("HVL", "Total-gamma concentration. Not the |net GEX$| peak (that is Net Γ Peak)."),
+    "kl_max_pain": ("Max Pain", "Strike where the most options expire worthless."),
+    "kl_gamma_flip": ("Gamma Flip", "Zero-gamma level. Above: dealers dampen. Below: dealers amplify."),
+    "kl_em_upper": ("EM Upper", "Expected-move ceiling."),
+    "kl_em_lower": ("EM Lower", "Expected-move floor."),
+    "kl_gamma_inflection": ("Gamma Inflection", "Gamma inflection strike."),
+    "kl_delta_inflection": ("Delta Inflection", "Delta inflection strike."),
+    "kl_call_delta_wall": ("Delta Wall Call", "Strike with the largest call DEX."),
+    "kl_put_delta_wall": ("Delta Wall Put", "Strike with the largest put DEX."),
+    "kl_call_oi_wall": ("OI Wall Call", "Strike with the largest call open interest."),
+    "kl_put_oi_wall": ("OI Wall Put", "Strike with the largest put open interest."),
+    "kl_call_vanna_wall": ("Vanna Wall Call (vega/S·IV proxy)", "Call vanna wall (vega/S·IV proxy)."),
+    "kl_put_vanna_wall": ("Vanna Wall Put (vega/S·IV proxy)", "Put vanna wall (vega/S·IV proxy)."),
+    "kl_oi_center": ("OI Center", "Open-interest center of mass."),
+}
+
 # Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
 
 

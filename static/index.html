@@ -7613,29 +7613,29 @@ function _renderMoneyPathCore(d, fullRenderSource) {
 
   // Level definitions organized into groups
   const KL_PRIMARY = [
-    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444' },
-    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e' },
+    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', labelKey: 'kl_call_gamma_wall_label', tipKey: 'kl_call_gamma_wall_tip', proxColor: '#ef4444' },
+    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', labelKey: 'kl_put_gamma_wall_label', tipKey: 'kl_put_gamma_wall_tip', proxColor: '#22c55e' },
     { key: 'kl_gamma_pin', strKey: null, labelKey: 'kl_gamma_pin_label', tipKey: 'kl_gamma_pin_tip', sr: 'pin', srLabel: 'Net Γ', proxColor: '#a855f7' },
-    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9' },
-    { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef' },
-    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316' },
-    { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6' },
-    { key: 'kl_em_lower', strKey: null, label: 'EM Lower', sr: 'em', srLabel: 'EM Floor', proxColor: '#3b82f6' },
+    { key: 'kl_hvl', strKey: 'kl_hvl_str', labelKey: 'kl_hvl_label', tipKey: 'kl_hvl_tip', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9' },
+    { key: 'kl_max_pain', strKey: 'kl_max_pain_str', labelKey: 'kl_max_pain_label', tipKey: 'kl_max_pain_tip', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef' },
+    { key: 'kl_gamma_flip', strKey: null, labelKey: 'kl_gamma_flip_label', tipKey: 'kl_gamma_flip_tip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316' },
+    { key: 'kl_em_upper', strKey: null, labelKey: 'kl_em_upper_label', tipKey: 'kl_em_upper_tip', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6' },
+    { key: 'kl_em_lower', strKey: null, labelKey: 'kl_em_lower_label', tipKey: 'kl_em_lower_tip', sr: 'em', srLabel: 'EM Floor', proxColor: '#3b82f6' },
   ];
 
   const KL_CONDITIONAL = [
-    { key: 'kl_gamma_inflection', strKey: null, label: 'Gamma Inflection', proxColor: '#a78bfa' },
-    { key: 'kl_delta_inflection', strKey: null, label: 'Delta Inflection', proxColor: '#a78bfa' },
-    { key: 'kl_call_delta_wall', strKey: 'kl_call_delta_str', label: 'Delta Wall Call', proxColor: '#f87171' },
-    { key: 'kl_put_delta_wall', strKey: 'kl_put_delta_str', label: 'Delta Wall Put', proxColor: '#4ade80' },
+    { key: 'kl_gamma_inflection', strKey: null, labelKey: 'kl_gamma_inflection_label', tipKey: 'kl_gamma_inflection_tip', proxColor: '#a78bfa' },
+    { key: 'kl_delta_inflection', strKey: null, labelKey: 'kl_delta_inflection_label', tipKey: 'kl_delta_inflection_tip', proxColor: '#a78bfa' },
+    { key: 'kl_call_delta_wall', strKey: 'kl_call_delta_str', labelKey: 'kl_call_delta_wall_label', tipKey: 'kl_call_delta_wall_tip', proxColor: '#f87171' },
+    { key: 'kl_put_delta_wall', strKey: 'kl_put_delta_str', labelKey: 'kl_put_delta_wall_label', tipKey: 'kl_put_delta_wall_tip', proxColor: '#4ade80' },
   ];
 
   const KL_REFERENCE = [
-    { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', label: 'OI Wall Call', proxColor: '#aaaaaa' },
-    { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', label: 'OI Wall Put', proxColor: '#aaaaaa' },
-    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Vanna Wall Call (vega/S·IV proxy)', proxColor: '#aaaaaa' },
-    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Vanna Wall Put (vega/S·IV proxy)', proxColor: '#aaaaaa' },
-    { key: 'kl_oi_center', strKey: null, label: 'OI Center', sr: 'pin', srLabel: 'Pin', proxColor: '#aaaaaa' },
+    { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', labelKey: 'kl_call_oi_wall_label', tipKey: 'kl_call_oi_wall_tip', proxColor: '#aaaaaa' },
+    { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', labelKey: 'kl_put_oi_wall_label', tipKey: 'kl_put_oi_wall_tip', proxColor: '#aaaaaa' },
+    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', labelKey: 'kl_call_vanna_wall_label', tipKey: 'kl_call_vanna_wall_tip', proxColor: '#aaaaaa' },
+    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', labelKey: 'kl_put_vanna_wall_label', tipKey: 'kl_put_vanna_wall_tip', proxColor: '#aaaaaa' },
+    { key: 'kl_oi_center', strKey: null, labelKey: 'kl_oi_center_label', tipKey: 'kl_oi_center_tip', sr: 'pin', srLabel: 'Pin', proxColor: '#aaaaaa' },
   ];
 
   function renderKeyLevels(d) {
