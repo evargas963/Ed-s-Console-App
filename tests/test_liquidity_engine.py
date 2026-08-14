@@ -212,6 +212,42 @@ def test_compute_volume_profile_levels():
     assert val <= poc <= vah
 
 
+def test_volume_profile_mutation_changes_poc():
+    """F15 mutation: concentrating volume at one typical price moves POC."""
+    from liquidity_value_engine import _volume_profile_poc_vah_val
+
+    base = [
+        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 100.0},
+        {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 100.0},
+    ]
+    poc_a, _, _ = _volume_profile_poc_vah_val(base)
+    mutated = [
+        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 100.0},
+        {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 10_000.0},
+    ]
+    poc_b, _, _ = _volume_profile_poc_vah_val(mutated)
+    assert poc_a is not None and poc_b is not None
+    assert poc_a != poc_b
+
+
+def test_market_context_volume_profile_delegates_to_engine():
+    """F15: fetch_price_levels path uses the engine math, not a second loop."""
+    from liquidity_value_engine import _volume_profile_poc_vah_val as engine_vp
+    from market_context import _volume_profile_poc_vah_val as ctx_vp
+
+    src = (ROOT / "market_context.py").read_text(encoding="utf-8")
+    start = src.find("def _volume_profile_poc_vah_val")
+    end = src.find("\ndef ", start + 1)
+    block = src[start:end]
+    assert "from liquidity_value_engine import" in block
+    assert "vol_by_price" not in block
+    bars = [
+        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
+        {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 200.0},
+    ]
+    assert ctx_vp(bars) == engine_vp(bars)
+
+
 def test_cluster_price_levels():
     """Levels within threshold clustered into zones."""
     from liquidity_value_engine import cluster_price_levels_into_zones
