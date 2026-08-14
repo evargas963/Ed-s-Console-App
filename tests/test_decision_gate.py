@@ -14,6 +14,7 @@ Locks, fail-closed:
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -30,6 +31,27 @@ from decision_gate import (
     evaluate_decision_path_admission,
     registry_path,
 )
+
+
+def audited_status_changes_missing_required_check(text: str) -> list[str]:
+    """STATUS_CHANGE that names an audit and a SHA must cite run + RED/GREEN.
+
+    Does not prove the run id belongs to that SHA (needs the Actions API).
+    Catches the omit-the-conclusion shape that slice lock (4) names.
+    """
+    sha = re.compile(r"`[0-9a-f]{7,40}`")
+    audit = re.compile(r"\baudit\b|\bre-audit\b", re.I)
+    run_id = re.compile(r"\brun\s+\d{8,}\b")
+    verdict = re.compile(r"\b(RED|GREEN)\b")
+    missing: list[str] = []
+    for line in text.splitlines():
+        if not line.lstrip().startswith("- **STATUS_CHANGE"):
+            continue
+        if not audit.search(line) or not sha.search(line):
+            continue
+        if not (run_id.search(line) and verdict.search(line)):
+            missing.append(line[:120])
+    return missing
 
 
 def _full_evidence() -> dict:
@@ -286,6 +308,31 @@ def test_board_checkbox_x_did_not_increase_versus_origin_main():
 
     added = set(checkbox_x(head)) - set(checkbox_x(main))
     assert added == set(), f"new checkbox [x] vs origin/main: {sorted(added)[:8]}"
+    assert len(checkbox_x(head)) <= len(checkbox_x(main)), (
+        f"checkbox [x] count rose vs origin/main: "
+        f"{len(checkbox_x(head))} > {len(checkbox_x(main))}"
+    )
+
+
+def test_audited_status_change_cites_required_check_conclusion():
+    """Slice lock (4): audit STATUS_CHANGE + SHA must carry run id and RED/GREEN."""
+    from pathlib import Path
+
+    good = (
+        "- **STATUS_CHANGE 2026-08-14 dual read-only audit @ `abc1234`:** "
+        "Required checks at `abc1234`: pytest-full run 31804847117 RED."
+    )
+    omit = "- **STATUS_CHANGE 2026-08-14 dual read-only audit @ `abc1234`:** no CI cited."
+    no_verdict = (
+        "- **STATUS_CHANGE 2026-08-14 re-audit:** `abc1234` — pytest-full run 31804847117."
+    )
+    assert audited_status_changes_missing_required_check(good) == []
+    assert audited_status_changes_missing_required_check(omit)
+    assert audited_status_changes_missing_required_check(no_verdict)
+    board = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(
+        encoding="utf-8"
+    )
+    assert audited_status_changes_missing_required_check(board) == []
 
 
 def test_named_force_functions_remain_in_charter():

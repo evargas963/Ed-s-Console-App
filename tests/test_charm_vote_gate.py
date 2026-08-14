@@ -61,11 +61,11 @@ def test_charm_research_surfaces_preserved():
 
 
 def test_vanna_proxy_labeled_honestly_in_ui():
-    """P1B: every user-facing vanna wall label discloses the proxy formula.
+    """P1B: registry vanna labels disclose the proxy formula.
 
-    Live labels are stamped from KEY_LEVEL_CONSUMER_REGISTRY, not hardcoded
-    in index.html. The HTML negative checks stay so a dishonest short label
-    cannot return via paint.
+    This test reads KEY_LEVEL_CONSUMER_REGISTRY and rejects two dishonest
+    short `label:` spellings in index.html. It does not prove the render
+    path; that bind is tests/test_institutional_key_levels.py.
     """
     from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
 
