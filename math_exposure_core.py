@@ -300,6 +300,9 @@ def _window_strikes(strikes: List[float], spot: float, window: int) -> List[floa
 # ── Institutional key-level primitives (single source of truth) ───────────────
 # Window policy for UI/chart key levels: full option chain (CONSENSUS), not ATM±N.
 KEY_LEVEL_STRIKE_WINDOW: int | None = None
+# Bound pin persist stamp. Historical snapshots.gamma_pin from this writer was
+# already the analytics |net GEX$| peak. NULL semantic on old rows means the same.
+GAMMA_PIN_SEMANTIC = "net_gex_peak"
 
 # Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
 
@@ -673,7 +676,6 @@ def compute_net_charm(
         net_charm_daily  : net delta-equivalents unwound per day (negative = selling)
         charm_direction  : "buying" | "selling" | "neutral"  (for signals engine)
         drift_toward     : drift_toward_strike when provided
-        gamma_pin        : same as drift_toward
         contracts_used   : number of contracts that contributed
     """
     import datetime as _dt2, math as _m
@@ -817,7 +819,6 @@ def compute_net_charm(
             "charm_direction": None,
             "charm_magnitude": None,
             "drift_toward": drift_toward_strike,
-            "gamma_pin": drift_toward_strike,
             "contracts_used": 0,
             "error": _err,
         }
@@ -836,16 +837,13 @@ def compute_net_charm(
     else:
         magnitude = "negligible"
 
-    gamma_pin = drift_toward_strike
-
     return {
         "net_charm_daily": round(net, 2),
         "call_charm_daily": round(call_charm, 2),
         "put_charm_daily": round(put_charm, 2),
         "charm_direction": direction,
         "charm_magnitude": magnitude,
-        "drift_toward": gamma_pin,
-        "gamma_pin": gamma_pin,
+        "drift_toward": drift_toward_strike,
         "contracts_used": used,
         "error": "",
     }

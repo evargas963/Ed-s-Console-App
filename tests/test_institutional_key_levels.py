@@ -3,8 +3,8 @@
 RC-292 honesty: Console `kl_gamma_pin` is bound to `pick_gamma_pin_strike`
 (|net GEX$| peak). Labels/tooltips must say that — not "Gamma Pin" / total-gamma.
 HVL remains the total-gamma concentration. pin_score reads |net GEX$| at the
-bound pin via gex_at_bound_pin_strike. This file does not recover persisted
-`gamma_pin`.
+bound pin via gex_at_bound_pin_strike. Persisted snapshots.gamma_pin is that
+same strike, stamped gamma_pin_semantic=net_gex_peak.
 """
 
 from pathlib import Path
@@ -182,3 +182,106 @@ def test_server_pin_score_reads_bound_net_gex_helper():
     assert "gex_at_bound_pin_strike" in block
     assert "total_gex_dollars_at_strike" not in block
     assert "total_gamma_raw_at_strike" not in block
+
+
+def test_persisted_gamma_pin_is_bound_net_gex_and_stamped():
+    """RC-292 persist + migration: write path is cs.gamma_pin; semantic is net_gex_peak."""
+    from math_exposure_core import GAMMA_PIN_SEMANTIC
+
+    server = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(
+        encoding="utf-8"
+    )
+    db_src = Path(__file__).resolve().parent.parent.joinpath("db.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'gamma_pin=getattr(consensus_summary, "gamma_pin", None)' in server
+    assert "GAMMA_PIN_SEMANTIC" in server
+    assert "gamma_pin_semantic" in server
+    assert 'if ticker' not in server[server.find("gamma_pin=getattr(consensus_summary") : server.find("gamma_pin=getattr(consensus_summary") + 400]
+    assert GAMMA_PIN_SEMANTIC == "net_gex_peak"
+    assert '("gamma_pin_semantic",       "TEXT")' in db_src or '("gamma_pin_semantic"' in db_src
+    assert 'ALTER TABLE snapshots_1m_normalized ADD COLUMN {col_name}' in db_src
+    assert "strike with highest gamma" not in db_src
+    assert "|net GEX$| peak strike" in db_src
+
+
+def test_gamma_pin_semantic_column_migrates_and_round_trips(tmp_path):
+    """Backward-safe: ALTER adds TEXT; old NULL means net_gex_peak; new rows stamp it."""
+    from db import CANONICAL_TIMEFRAME, EdDB, SnapshotRow, build_ts_et, market_session, now_et
+    from math_exposure_core import GAMMA_PIN_SEMANTIC
+
+    db = EdDB(tmp_path / "pin_semantic.db", allow_noncanonical=True)
+    cols = {str(r[1]) for r in db._connect().execute("PRAGMA table_info(snapshots)")}
+    norm = {str(r[1]) for r in db._connect().execute("PRAGMA table_info(snapshots_1m_normalized)")}
+    assert "gamma_pin" in cols
+    assert "gamma_pin_semantic" in cols
+    assert "gamma_pin_semantic" in norm
+    et = now_et()
+    snap = SnapshotRow(
+        ticker="SPY",
+        timeframe=CANONICAL_TIMEFRAME,
+        ts_utc=1_700_000_000.0,
+        ts_et=build_ts_et(et),
+        et_hour=et.hour,
+        et_minute=et.minute,
+        market_session=market_session(et.hour, et.minute),
+        spot=500.0,
+        gamma_pin=510.0,
+        gamma_pin_semantic=GAMMA_PIN_SEMANTIC,
+    )
+    sid = db.insert_snapshot(snap)
+    row = db._connect().execute(
+        "SELECT gamma_pin, gamma_pin_semantic FROM snapshots WHERE snapshot_id=?",
+        (sid,),
+    ).fetchone()
+    assert row[0] == 510.0
+    assert row[1] == "net_gex_peak"
+
+
+def test_gamma_pin_semantic_alters_existing_normalized_table(tmp_path):
+    """Issue 16 class: existing snapshots_1m_normalized missing the stamp gets ALTER."""
+    from db import EdDB
+
+    db = EdDB(tmp_path / "pin_semantic_norm.db", allow_noncanonical=True)
+    with db._connect() as conn:
+        cols = [
+            str(r[1])
+            for r in conn.execute("PRAGMA table_info(snapshots_1m_normalized)")
+            if str(r[1]) != "gamma_pin_semantic"
+        ]
+        conn.execute("ALTER TABLE snapshots_1m_normalized RENAME TO snapshots_1m_normalized_old")
+        conn.execute(
+            f"CREATE TABLE snapshots_1m_normalized AS SELECT {', '.join(cols)} "
+            "FROM snapshots_1m_normalized_old"
+        )
+        conn.execute("DROP TABLE snapshots_1m_normalized_old")
+        stripped = {str(r[1]) for r in conn.execute("PRAGMA table_info(snapshots_1m_normalized)")}
+    assert "gamma_pin_semantic" not in stripped
+    db._migrate_schema()
+    restored = {str(r[1]) for r in db._connect().execute("PRAGMA table_info(snapshots_1m_normalized)")}
+    assert "gamma_pin_semantic" in restored
+
+
+def test_gamma_pin_semantic_in_normalized_insert_intersection(tmp_path):
+    """Issue 16: missing normalized column would silently drop the stamp on INSERT."""
+    from db import EdDB
+    from snapshot_normalizer import _normalized_insert_columns
+
+    db = EdDB(tmp_path / "pin_semantic_intersect.db", allow_noncanonical=True)
+    with db._connect() as conn:
+        assert "gamma_pin_semantic" in _normalized_insert_columns(conn)
+        cols = [
+            str(r[1])
+            for r in conn.execute("PRAGMA table_info(snapshots_1m_normalized)")
+            if str(r[1]) != "gamma_pin_semantic"
+        ]
+        conn.execute("ALTER TABLE snapshots_1m_normalized RENAME TO snapshots_1m_normalized_old")
+        conn.execute(
+            f"CREATE TABLE snapshots_1m_normalized AS SELECT {', '.join(cols)} "
+            "FROM snapshots_1m_normalized_old"
+        )
+        conn.execute("DROP TABLE snapshots_1m_normalized_old")
+        assert "gamma_pin_semantic" not in _normalized_insert_columns(conn)
+    db._migrate_schema()
+    with db._connect() as conn:
+        assert "gamma_pin_semantic" in _normalized_insert_columns(conn)
