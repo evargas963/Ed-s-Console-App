@@ -2,8 +2,9 @@
 
 RC-292 honesty: Console `kl_gamma_pin` is bound to `pick_gamma_pin_strike`
 (|net GEX$| peak). Labels/tooltips must say that — not "Gamma Pin" / total-gamma.
-HVL remains the total-gamma concentration. This file does not recover pin_score
-or persisted `gamma_pin`.
+HVL remains the total-gamma concentration. pin_score reads |net GEX$| at the
+bound pin via gex_at_bound_pin_strike. This file does not recover persisted
+`gamma_pin`.
 """
 
 from pathlib import Path
@@ -13,6 +14,7 @@ from math_exposure_core import (
     bucket_metric_abs,
     compute_exposures_by_strike,
     exposures_have_dollar_gex,
+    gex_at_bound_pin_strike,
     pick_gamma_pin_strike,
     pick_hvl_strike,
     total_gex_dollars_at_strike,
@@ -87,11 +89,11 @@ def _split_net_vs_total_exposures():
          "gamma": 0.10, "delta": 0.55, "daysToExpiration": 1},
         {"strikePrice": 490, "putCall": "PUT", "openInterest": 8000, "multiplier": 100,
          "gamma": 0.10, "delta": -0.45, "daysToExpiration": 1},
-        # 510: one-sided call → lower total, larger |net|
-        {"strikePrice": 510, "putCall": "CALL", "openInterest": 4000, "multiplier": 100,
-         "gamma": 0.08, "delta": 0.35, "daysToExpiration": 1},
-        {"strikePrice": 510, "putCall": "PUT", "openInterest": 200, "multiplier": 100,
-         "gamma": 0.02, "delta": -0.15, "daysToExpiration": 1},
+        # 510: call-heavy → lower total than 490, |net| >> 490, and |net| != total
+        {"strikePrice": 510, "putCall": "CALL", "openInterest": 5000, "multiplier": 100,
+         "gamma": 0.10, "delta": 0.35, "daysToExpiration": 1},
+        {"strikePrice": 510, "putCall": "PUT", "openInterest": 2000, "multiplier": 100,
+         "gamma": 0.08, "delta": -0.15, "daysToExpiration": 1},
     ]
     exposures, _ = compute_exposures_by_strike(contracts, spot=spot, require_oi=True)
     return exposures, spot
@@ -149,3 +151,34 @@ def test_decision_exec_pin_labeled_net_gamma():
     assert 'decision-k">PIN</div><div class="decision-v" id="exec-pin"' not in html
     assert ">NET Γ</div><div class=\"decision-v\" id=\"dr-lvl-pin\">" in html
     assert ">NET Γ</div><div class=\"decision-v\" id=\"exec-pin\">" in html
+
+
+def test_pin_score_gex_is_abs_net_not_total_gamma():
+    """RC-292 pin_score child: magnitude at the bound pin is |net GEX$|, not HVL total."""
+    exposures, _ = _split_net_vs_total_exposures()
+    strikes = sorted(exposures.keys())
+    pin = pick_gamma_pin_strike(exposures, strikes)
+    hvl = pick_hvl_strike(exposures, strikes)
+    assert pin == 510.0 and hvl == 490.0
+    bound = gex_at_bound_pin_strike(exposures, pin)
+    net_at_pin = bucket_metric_abs(exposures[pin], "net_gex_1pct")
+    total_at_pin = total_gex_dollars_at_strike(exposures[pin])
+    assert bound == net_at_pin
+    assert total_at_pin is not None and bound != total_at_pin
+    assert gex_at_bound_pin_strike(exposures, None) is None
+
+
+def test_server_pin_score_reads_bound_net_gex_helper():
+    """Mutation lock: server pin_score block must not score total-gamma at the pin."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(
+        encoding="utf-8"
+    )
+    start = src.find("# 5. Pin Score")
+    end = src.find("compute_pin_score", start)
+    assert start != -1 and end != -1
+    block = src[start:end]
+    assert "gex_at_bound_pin_strike" in block
+    assert "total_gex_dollars_at_strike" not in block
+    assert "total_gamma_raw_at_strike" not in block

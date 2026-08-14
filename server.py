@@ -169,7 +169,8 @@ from math_exposure import (
     compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
     pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
-    aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
+    aggregate_net_gex, total_gamma_raw_at_strike,
+    gex_at_bound_pin_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -6543,16 +6544,13 @@ def _fetch_state(
             log.warning(f"breakout_score failed: {e}")
             _breakout_score = {}
 
-        # 5. Pin Score
+        # 5. Pin Score — |net GEX$| at the bound pin (not total-gamma / HVL)
         _pin_strike = getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None
         _gex_at_pin = None
         _oi_at_pin = None
         if _pin_strike and exposures:
             _pin_bkt = exposures.get(float(_pin_strike), {})
-            if exposures_have_dollar_gex(exposures):
-                _gex_at_pin = total_gex_dollars_at_strike(_pin_bkt)
-            else:
-                _gex_at_pin = total_gamma_raw_at_strike(_pin_bkt)
+            _gex_at_pin = gex_at_bound_pin_strike(exposures, _pin_strike)
             _oi_at_pin = _bucket_total_oi(_pin_bkt)
         _oi_concentration = (_oi_at_pin / _sum_oi) if _oi_at_pin is not None and _sum_oi and _sum_oi > 0 else None
         try:

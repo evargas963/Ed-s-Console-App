@@ -686,7 +686,8 @@ def compute_pin_score(
     High pin score suggests price will settle near that strike.
 
     Args:
-        gex_at_pin:       absolute GEX at the gamma pin strike
+        gex_at_pin:       |net GEX$| at the bound pin strike
+                          (gex_at_bound_pin_strike — not total-gamma / HVL)
         oi_concentration: fraction of total OI at/near pin (0-1)
 
     Returns dict with raw_score, normalized (0-100), label.
