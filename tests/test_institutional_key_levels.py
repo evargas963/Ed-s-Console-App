@@ -10,6 +10,10 @@ same strike, stamped gamma_pin_semantic=net_gex_peak.
 from pathlib import Path
 
 from math_exposure_core import (
+    GAMMA_PIN_CONSUMER_LABEL,
+    GAMMA_PIN_CONSUMER_TIP,
+    GAMMA_PIN_PAYLOAD_KEY,
+    GAMMA_PIN_SEMANTIC,
     aggregate_net_gex,
     bucket_metric_abs,
     compute_exposures_by_strike,
@@ -22,10 +26,7 @@ from math_exposure_core import (
 from math_levels import build_summary_rows, compute_gamma_flip, pick_gamma_wall_strikes
 
 _INDEX = Path(__file__).resolve().parent.parent / "static" / "index.html"
-_PIN_TIP = (
-    "Largest |net GEX$| per 1% on the selected expiry. "
-    "Not the total-gamma magnet (that is HVL)."
-)
+_PIN_TIP = GAMMA_PIN_CONSUMER_TIP
 
 
 def _dollarized_exposures():
@@ -117,6 +118,21 @@ def test_gamma_pin_is_abs_net_gex_peak_not_total_gamma():
     )
     rows = build_summary_rows(exposures, 500.0, windows=[5])
     assert rows[0].gamma_pin == pin
+
+
+def test_kl_gamma_pin_consumer_semantic_matches_registry():
+    """RC-329: consumer name for kl_gamma_pin is bound to GAMMA_PIN_SEMANTIC."""
+    html = _INDEX.read_text(encoding="utf-8")
+    assert GAMMA_PIN_SEMANTIC == "net_gex_peak"
+    assert f"key: '{GAMMA_PIN_PAYLOAD_KEY}'" in html
+    assert f"label: '{GAMMA_PIN_CONSUMER_LABEL}'" in html
+    pin_block = html[
+        html.find(f"key: '{GAMMA_PIN_PAYLOAD_KEY}'") : html.find(
+            f"key: '{GAMMA_PIN_PAYLOAD_KEY}'"
+        )
+        + 400
+    ]
+    assert GAMMA_PIN_CONSUMER_TIP in pin_block
 
 
 def test_console_kl_gamma_pin_label_matches_bound_net_gex():
