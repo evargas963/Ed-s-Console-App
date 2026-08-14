@@ -303,6 +303,12 @@ KEY_LEVEL_STRIKE_WINDOW: int | None = None
 # Bound pin persist stamp. Historical snapshots.gamma_pin from this writer was
 # already the analytics |net GEX$| peak. NULL semantic on old rows means the same.
 GAMMA_PIN_SEMANTIC = "net_gex_peak"
+GAMMA_PIN_PAYLOAD_KEY = "kl_gamma_pin"
+GAMMA_PIN_CONSUMER_LABEL = "Net Γ Peak"
+GAMMA_PIN_CONSUMER_TIP = (
+    "Largest |net GEX$| per 1% on the selected expiry. "
+    "Not the total-gamma magnet (that is HVL)."
+)
 
 # Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
 
