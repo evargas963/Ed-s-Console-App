@@ -318,6 +318,7 @@ def test_five_zone_acceptance_lines_are_operative():
     html = Path(__file__).resolve().parent.parent.joinpath(
         "static/index.html"
     ).read_text(encoding="utf-8")
-    pin_block = html[html.find("key: 'kl_gamma_pin'") : html.find("key: 'kl_gamma_pin'") + 400]
+    start = html.find("{ key: 'kl_gamma_pin'")
+    pin_block = html[start : html.find("},", start)]
     assert "label: '" not in pin_block
     assert "labelKey: 'kl_gamma_pin_label'" in pin_block

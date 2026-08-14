@@ -127,12 +127,10 @@ def test_kl_gamma_pin_consumer_semantic_matches_registry():
     html = _INDEX.read_text(encoding="utf-8")
     assert GAMMA_PIN_SEMANTIC == "net_gex_peak"
     assert f"key: '{GAMMA_PIN_PAYLOAD_KEY}'" in html
-    pin_block = html[
-        html.find(f"key: '{GAMMA_PIN_PAYLOAD_KEY}'") : html.find(
-            f"key: '{GAMMA_PIN_PAYLOAD_KEY}'"
-        )
-        + 400
-    ]
+    start = html.find(f"{{ key: '{GAMMA_PIN_PAYLOAD_KEY}'")
+    assert start != -1
+    end = html.find("},", start)
+    pin_block = html[start:end]
     assert f"labelKey: '{GAMMA_PIN_LABEL_PAYLOAD_KEY}'" in pin_block
     assert f"tipKey: '{GAMMA_PIN_TIP_PAYLOAD_KEY}'" in pin_block
     assert "label: '" not in pin_block
@@ -143,7 +141,8 @@ def test_console_kl_gamma_pin_label_matches_bound_net_gex():
     """RC-292 UI label child: Console must not call the net-GEX peak 'Gamma Pin'."""
     html = _INDEX.read_text(encoding="utf-8")
     assert "key: 'kl_gamma_pin'" in html
-    pin_block = html[html.find("key: 'kl_gamma_pin'") : html.find("key: 'kl_gamma_pin'") + 400]
+    start = html.find("{ key: 'kl_gamma_pin'")
+    pin_block = html[start : html.find("},", start)]
     assert "label: 'Net Γ Peak'" not in pin_block
     assert "label: 'Gamma Pin'" not in html
     assert "srLabel: 'Net Γ'" in html
@@ -154,7 +153,8 @@ def test_console_kl_gamma_pin_label_matches_bound_net_gex():
 def test_console_pin_tooltip_matches_bound_net_gex():
     """RC-292 tooltip child: operator text names |net GEX$|, not total-gamma."""
     html = _INDEX.read_text(encoding="utf-8")
-    pin_block = html[html.find("key: 'kl_gamma_pin'") : html.find("key: 'kl_gamma_pin'") + 400]
+    start = html.find("{ key: 'kl_gamma_pin'")
+    pin_block = html[start : html.find("},", start)]
     assert _PIN_TIP not in pin_block
     assert "tipKey: 'kl_gamma_pin_tip'" in pin_block
     assert "title: 'Largest net-gamma strike'" not in html
