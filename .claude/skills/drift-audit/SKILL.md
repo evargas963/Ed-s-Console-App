@@ -37,8 +37,8 @@ A sign-off ("MET", "clean", "verified", "no callers break", "100%", "stage passe
 
 ## Phase 6 — Self-correct loop (if any finding)
 0. **Five Whys (mandatory before the fix).** Write Why-1…Why-5 in the same turn. Why-5 must be a mechanism, not a person. If you cannot name a prevention that would have caught this class, you are still on a symptom.
-1. Write the precise **Cursor fix directive** (file:line, exact change, acceptance).
-2. Set a **self-directed rule** (AGENTS.md + memory) so this class is caught next time.
+1. **Fix the issue in the same program.** Whys without the fix is unfinished. Write the precise Cursor fix directive (file:line, exact change, acceptance) and land it.
+2. Set a **self-directed rule** (AGENTS.md + memory) so this class is caught next time. The prevention is additional, not a substitute.
 3. **Mechanize** the check if possible (extend `check_zero_bias_ablation_contract` / a detector) so the build catches it, not just me.
 
 ## Phase 7 — Sign-off

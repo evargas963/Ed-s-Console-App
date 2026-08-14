@@ -283,6 +283,8 @@ def test_named_force_functions_remain_in_charter():
         "chat is not a lock",
         "git merge-base --is-ancestor",
         "Five Whys",
+        "Whys without the fix is unfinished",
+        "fix the issue in the same program",
         "drift-audit skill before any done",
         "Bugbot when the diff is material",
         "security-review when secrets",

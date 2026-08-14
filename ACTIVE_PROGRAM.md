@@ -13,7 +13,7 @@
 4. Close a checkbox only with an exact commit SHA (and test cite where code changed). Paint does not close one-faucet / identity / operator-truth rows.
 5. Do not start **PHASE-5** (repo layout) while a second ledger still exists. After this pointer lands, PHASE-5 is its own PA-48 slice — no functional changes mixed in.
 6. **UX-WORLD-CLASS-CONSOLE is not now.** It fires only AFTER PA-2 + PA-36 + RC-292 + F15 + LEVELS-SELF-DECLARE-TRUST. Until then: no bells-and-whistles redesign, no KEY LEVELS tabs, no options tape (Schwab has no prints). Exposures, not raw greeks. F15 / LP-01 / EXPOSURE-CONFLUENCE-CUBE are the data queue.
-7. **Three-role loop** — see `AGENTS.md`. After code: audit → land on `main` when the claim is system-of-record → next row in Sequence above. A PR is not done. Finish = SHA on `origin/main`. Chat is not a lock. Named force functions live in `AGENTS.md` plus a test. On any issue: five Whys to a mechanism, then a prevention, before repeating the class. Subagents are a second-pass audit, not a second owner.
+7. **Three-role loop** — see `AGENTS.md`. After code: audit → land on `main` when the claim is system-of-record → next row in Sequence above. A PR is not done. Finish = SHA on `origin/main`. Chat is not a lock. Named force functions live in `AGENTS.md` plus a test. On any issue: five Whys to a mechanism, then fix the issue in the same program, then the prevention. Whys without the fix is unfinished. Subagents are a second-pass audit, not a second owner.
 
 ## Sequence (derived from PA-46 — not a competing now)
 
