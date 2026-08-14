@@ -294,11 +294,24 @@ def test_compute_call_directional_passes_when_admitted(monkeypatch, tmp_path):
     assert call.wait_blocker is None
 
 
+def _fetch_origin_main(repo) -> None:
+    """Refresh origin/main. A present ref can still be stale in shallow CI."""
+    import subprocess
+
+    subprocess.call(
+        ["git", "fetch", "--no-tags", "origin", "main"],
+        cwd=repo,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def _sha_is_ancestor_of_origin_main(sha: str, repo) -> bool:
     """True when sha is an ancestor of origin/main.
 
-    Shallow CI clones omit ancestors. Fetch the object before asking
-    merge-base — a missing SHA is not a failed close, it is an unread history.
+    Shallow CI clones omit ancestors and keep a stale origin/main. Fetch
+    the object and refresh origin/main before asking merge-base — a
+    missing or stale ref is not a failed close, it is unread history.
     """
     import subprocess
 
@@ -320,13 +333,7 @@ def _sha_is_ancestor_of_origin_main(sha: str, repo) -> bool:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-    if not _has("origin/main"):
-        subprocess.call(
-            ["git", "fetch", "--no-tags", "origin", "main"],
-            cwd=repo,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+    _fetch_origin_main(repo)
     if not _has(sha) or not _has("origin/main"):
         return False
     return (
@@ -346,28 +353,21 @@ def test_board_checkbox_x_did_not_increase_versus_origin_main():
     import subprocess
     from pathlib import Path
 
+    repo = Path(__file__).resolve().parent.parent
+    _fetch_origin_main(repo)
     main = subprocess.check_output(
         ["git", "show", "origin/main:OPEN_ITEMS.md"],
         text=True,
         encoding="utf-8",
         errors="strict",
+        cwd=repo,
     )
-    head = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(
-        encoding="utf-8"
-    )
+    head = repo.joinpath("OPEN_ITEMS.md").read_text(encoding="utf-8")
 
     def checkbox_x(text: str) -> list[str]:
         return re.findall(r"^\s*- \[x\].*$", text, flags=re.M)
 
     added = set(checkbox_x(head)) - set(checkbox_x(main))
-    repo = Path(__file__).resolve().parent.parent
-    if subprocess.call(
-        ["git", "rev-parse", "--verify", "origin/main"],
-        cwd=repo,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    ):
-        subprocess.check_call(["git", "fetch", "--no-tags", "origin", "main"], cwd=repo)
     for line in added:
         shas = re.findall(r"`([0-9a-f]{7,40})`", line)
         assert shas, f"new checkbox [x] without a SHA: {line[:80]}"
