@@ -67,10 +67,15 @@ def _has_literal_get(nodes: list) -> bool:
 
     for node in nodes:
         for child in ast.walk(node):
-            if not _is_get_call(child):
-                continue
-            first = child.args[0]
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            if _is_get_call(child):
+                first = child.args[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    return True
+            if (
+                isinstance(child, ast.Subscript)
+                and isinstance(child.slice, ast.Constant)
+                and isinstance(child.slice.value, str)
+            ):
                 return True
     return False
 
@@ -172,6 +177,15 @@ def test_edge_key_miss_class_flags_uncited_function():
         "    return meta.get(edge_key, meta.get('val_accuracy', 0))\n"
     )
     assert functions_that_get_unrelated_literal_on_key_miss(nested) == ["edge_from_blob"]
+    subscript = (
+        "def score_via_subscript(meta, score_key):\n"
+        "    if score_key in meta:\n"
+        "        return meta[score_key]\n"
+        "    return meta['val_accuracy']\n"
+    )
+    assert functions_that_get_unrelated_literal_on_key_miss(subscript) == [
+        "score_via_subscript"
+    ]
 
 
 def test_repo_has_no_measurement_key_literal_fallback():
