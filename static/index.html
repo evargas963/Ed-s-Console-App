@@ -3062,6 +3062,12 @@
                   <div class="decision-k">Resistance</div><div class="decision-v" id="dr-lvl-resistance">—</div>
                   <div class="decision-k">EM high</div><div class="decision-v" id="dr-lvl-emh">—</div>
                   <div class="decision-k">EM low</div><div class="decision-v" id="dr-lvl-eml">—</div>
+                  <div class="decision-k" title="Engine typical-price tick-bin POC (today).">Today POC</div><div class="decision-v" id="dr-lvl-poc">—</div>
+                  <div class="decision-k" title="Engine typical-price tick-bin VAH (today).">Today VAH</div><div class="decision-v" id="dr-lvl-vah">—</div>
+                  <div class="decision-k" title="Engine typical-price tick-bin VAL (today).">Today VAL</div><div class="decision-v" id="dr-lvl-val">—</div>
+                  <div class="decision-k" title="Engine typical-price tick-bin POC (prior day).">PD POC</div><div class="decision-v" id="dr-lvl-pdpoc">—</div>
+                  <div class="decision-k" title="Engine typical-price tick-bin VAH (prior day).">PD VAH</div><div class="decision-v" id="dr-lvl-pdvah">—</div>
+                  <div class="decision-k" title="Engine typical-price tick-bin VAL (prior day).">PD VAL</div><div class="decision-v" id="dr-lvl-pdval">—</div>
                 </div>
               </div>
               <div class="decision-block">
@@ -3105,6 +3111,12 @@
                 <div class="decision-k">LIQ BELOW</div><div class="decision-v" id="exec-liq-below">—</div>
                 <div class="decision-k">EM HIGH</div><div class="decision-v" id="exec-em-high">—</div>
                 <div class="decision-k">EM LOW</div><div class="decision-v" id="exec-em-low">—</div>
+                <div class="decision-k" title="Engine typical-price tick-bin POC (today).">TODAY POC</div><div class="decision-v" id="exec-poc">—</div>
+                <div class="decision-k" title="Engine typical-price tick-bin VAH (today).">TODAY VAH</div><div class="decision-v" id="exec-vah">—</div>
+                <div class="decision-k" title="Engine typical-price tick-bin VAL (today).">TODAY VAL</div><div class="decision-v" id="exec-val">—</div>
+                <div class="decision-k" title="Engine typical-price tick-bin POC (prior day).">PD POC</div><div class="decision-v" id="exec-pdpoc">—</div>
+                <div class="decision-k" title="Engine typical-price tick-bin VAH (prior day).">PD VAH</div><div class="decision-v" id="exec-pdvah">—</div>
+                <div class="decision-k" title="Engine typical-price tick-bin VAL (prior day).">PD VAL</div><div class="decision-v" id="exec-pdval">—</div>
               </div>
             </div>
           </div>
@@ -5503,6 +5515,12 @@ function renderDecisionCommandRail(d) {
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
   domIf('dr-lvl-emh', el => { el.textContent = pxTxt(d.em_straddle_upper || d.kl_em_upper); });
   domIf('dr-lvl-eml', el => { el.textContent = pxTxt(d.em_straddle_lower || d.kl_em_lower); });
+  domIf('dr-lvl-poc', el => { el.textContent = pxTxt(d.today_poc); });
+  domIf('dr-lvl-vah', el => { el.textContent = pxTxt(d.today_vah); });
+  domIf('dr-lvl-val', el => { el.textContent = pxTxt(d.today_val); });
+  domIf('dr-lvl-pdpoc', el => { el.textContent = pxTxt(d.pd_poc); });
+  domIf('dr-lvl-pdvah', el => { el.textContent = pxTxt(d.pd_vah); });
+  domIf('dr-lvl-pdval', el => { el.textContent = pxTxt(d.pd_val); });
 
   // Order flow compact operator read.
   const ofDirRaw = d.order_flow_direction;
@@ -5555,6 +5573,12 @@ function renderDecisionCommandRail(d) {
   domIf('exec-liq-below', el => { el.textContent = belowVoid; });
   domIf('exec-em-high', el => { el.textContent = pxTxt(d.em_straddle_upper || d.kl_em_upper); });
   domIf('exec-em-low', el => { el.textContent = pxTxt(d.em_straddle_lower || d.kl_em_lower); });
+  domIf('exec-poc', el => { el.textContent = pxTxt(d.today_poc); });
+  domIf('exec-vah', el => { el.textContent = pxTxt(d.today_vah); });
+  domIf('exec-val', el => { el.textContent = pxTxt(d.today_val); });
+  domIf('exec-pdpoc', el => { el.textContent = pxTxt(d.pd_poc); });
+  domIf('exec-pdvah', el => { el.textContent = pxTxt(d.pd_vah); });
+  domIf('exec-pdval', el => { el.textContent = pxTxt(d.pd_val); });
   domIf('lp-above', el => { el.textContent = resR !== '—' ? `${resR}${aboveVoid !== '—' ? ` | void ${aboveVoid}` : ''}` : aboveVoid; });
   domIf('lp-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('lp-upper', el => { el.textContent = pxTxt(d.em_straddle_upper || d.kl_em_upper); });
