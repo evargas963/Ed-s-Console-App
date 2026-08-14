@@ -308,8 +308,8 @@ def key_levels_to_plot_rows(
         try:
             from math_exposure import parity_f_minus_spot_from_contracts
             parity_resid = parity_f_minus_spot_from_contracts(contracts, spot=float(spot))
-            synth_fwd = float(spot) + parity_resid
-            if abs(parity_resid) > 0.10:
+            if parity_resid is not None and abs(parity_resid) > 0.10:
+                synth_fwd = float(spot) + parity_resid
                 r = _row(
                     "Synthetic Fwd",
                     synth_fwd,
