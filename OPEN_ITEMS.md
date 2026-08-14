@@ -350,17 +350,17 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
 - [ ] **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
 - [ ] **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE
-- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine)
-  - [ ] Exact semantic contract defined for POC/VAH/VAL
+- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine). **2026-08-14:** second math loop removed @ `462a581`. `market_context._volume_profile_poc_vah_val` delegates to the engine. Live `_fetch_state` still calls `fetch_price_levels` (same math, not yet the engine snapshot). Remaining: one population site, live/replay/backfill/frontend, fallback, universality, runtime.
+  - [x] Exact semantic contract defined for POC/VAH/VAL — Closed @ `462a581`. Typical-price bin, 70% VA, engine 4dp. Tests: `tests/test_liquidity_engine.py`.
   - [ ] One canonical population site
-  - [ ] No alternate population masquerading as the canonical one
+  - [x] No alternate population masquerading as the canonical one — Closed @ `462a581`. Second `vol_by_price` loop removed.
   - [ ] Session / as-of boundary specified
   - [ ] Live path populates from the canonical producer
   - [ ] Replay path populates from the canonical producer
   - [ ] Backfill path populates from the canonical producer
   - [ ] Frontend path carries the canonical value (no reconstruction)
   - [ ] Fallback + missingness semantics governed
-  - [ ] Mutation proof (changed inputs change outputs)
+  - [x] Mutation proof (changed inputs change outputs) — Closed @ `462a581`. Tests: `tests/test_liquidity_engine.py`.
   - [ ] Universality across tickers proven
   - [ ] Runtime proof on loaded code
 - [ ] **F16** — Reserved/disputed VIX-regime row — HISTORICAL / NOT_PROVEN (identity reconciled; producer `vix_bucket`/`vix_level`; consumers/missingness/fallback/universality/defect-status unproven)
@@ -476,26 +476,26 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [x] Fix landed — Closed @ `1117f19`.
   - [x] Proof recorded — Closed @ `1117f19`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
   - [ ] Universality across tickers proven
-- [ ] **RC-297** — derivation inventory drifted from code — OPEN / NOT_PROVEN DETAILS
-  - [ ] Semantic of the inventory-drift defect defined
-  - [ ] Live path characterized
-  - [ ] Root cause identified
-  - [ ] Fix landed
-  - [ ] Proof recorded
+- [ ] **RC-297** — derivation inventory drifted from code — OPEN (parent stays open). **2026-08-14 measured:** MEGA2 AST coverage is 100% on this `main`. `terrain_engine.py` is absent. Lock @ `8ca1f18`: if that file returns it must be in `MEGA2_FILES`. Remaining: universality; Mega1 line-metadata drift is not this close.
+  - [x] Semantic of the inventory-drift defect defined — Closed @ `8ca1f18`. Drift = inventory AST mismatch in `MEGA2_FILES`.
+  - [x] Live path characterized — Closed @ `8ca1f18`. Gate is `tests/test_mega2_traceable_audit.py` (offline).
+  - [x] Root cause identified — Closed @ `8ca1f18`. Hand-maintained register; out-of-scope file uninventoried.
+  - [x] Fix landed — Closed @ `8ca1f18`. Scope lock + existing coverage.
+  - [x] Proof recorded — Closed @ `8ca1f18`. Tests: `tests/test_mega2_traceable_audit.py`.
   - [ ] Universality across tickers proven
-- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS — OPEN / NOT_PROVEN DETAILS
-  - [ ] Semantic of the absence-coercion class defined
-  - [ ] Live path characterized
-  - [ ] Root cause identified
-  - [ ] Fix landed
-  - [ ] Proof recorded
+- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS — OPEN (parent stays open). **2026-08-14:** except-literal gate restored @ `5d68d93`. Invalid parity spot is `None`. `_safe_float` encoder `0.0` marked `# absence-ok`. RC-318 None-branch sites remain. Remaining: class-wide disposition, universality.
+  - [x] Semantic of the absence-coercion class defined — Closed @ `5d68d93`. `-> float` + except literal.
+  - [x] Live path characterized — Closed @ `5d68d93`. `parity_f_minus_spot_from_contracts` + `tools/check_absence_has_a_type.py` in hardening.
+  - [x] Root cause identified — Closed @ `5d68d93`. Return type forecloses `None`.
+  - [x] Fix landed — Closed @ `5d68d93` for the two except-literal sites the gate measures. Not the CLASS.
+  - [x] Proof recorded — Closed @ `5d68d93`. Tests: `tests/test_absence_has_a_type_gate_v1.py`.
   - [ ] Universality across tickers proven
-- [ ] **RC-329** — one-producer gate blind to consumer-name→semantic — OPEN / NOT_PROVEN DETAILS
-  - [ ] Semantic of the gate blindness defect defined
-  - [ ] Live path characterized
-  - [ ] Root cause identified
-  - [ ] Fix landed
-  - [ ] Proof recorded
+- [ ] **RC-329** — one-producer gate blind to consumer-name→semantic — OPEN (parent stays open). **2026-08-14:** `kl_gamma_pin` consumer label/tooltip bound to `GAMMA_PIN_SEMANTIC` @ `bb85651`. Other RC-303 faucet conflicts remain.
+  - [x] Semantic of the gate blindness defect defined — Closed @ `bb85651`. One writer per name ≠ one (definition, scope).
+  - [x] Live path characterized — Closed @ `bb85651`. Console KEY LEVELS `kl_gamma_pin` row.
+  - [x] Root cause identified — Closed @ `bb85651`. No registry linking payload key to semantic.
+  - [x] Fix landed — Closed @ `bb85651` for `kl_gamma_pin` only.
+  - [x] Proof recorded — Closed @ `bb85651`. Tests: `tests/test_institutional_key_levels.py`.
   - [ ] Universality across tickers proven
 - [ ] **RC-328** — Confluence train/serve population — OPEN
   - [ ] Verify current code closes the original defect
@@ -1388,7 +1388,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 ## PA-46 — CURRENT TOP ACTIVE EXECUTION QUEUE (POINTER VIEW — not independently closable)
 > Pointers to canonical rows; status derives from those rows. No independent `[ ]`/`[x]` state — never counted as engineering completion.
 - F10 → canonical F10 row (OPEN / host retrain)
-- F15 → canonical F15 row (OPEN)
+- F15 → canonical F15 row (OPEN; math one-producer @ `462a581`; live routing remains)
 - F25 → canonical F25 row (OPEN)
 - F31 → canonical F31 row (OPEN)
 - F32 → canonical F32 row (NOT_PROVEN; RC-328)
@@ -1396,9 +1396,9 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - RC-292 → canonical RC-292 row (OPEN; label/tooltip/lock @ `0e304f6`; pin_score @ `6d14ee2`; persist/migration @ `d71bb5e` + `053251e`)
 - RC-282 → canonical RC-282 row
 - RC-285 → canonical RC-285 row (OPEN; write-site fix @ `1117f19`; universality remains)
-- RC-297 → canonical RC-297 row
-- RC-301 → canonical RC-301 row
-- RC-329 → canonical RC-329 row
+- RC-297 → canonical RC-297 row (OPEN; MEGA2 lock @ `8ca1f18`; universality remains)
+- RC-301 → canonical RC-301 row (OPEN; except-literal gate @ `5d68d93`; CLASS / RC-318 remain)
+- RC-329 → canonical RC-329 row (OPEN; `kl_gamma_pin` consumer bind @ `bb85651`)
 - F35 broader DB-identity parent → PA-3 F35 row
 - Historical/disputed F04/F16/F19/F28/F30/F37 → PA-3 gap rows
 - Discovery denominator → PA-41
@@ -1546,6 +1546,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - **STATUS_CHANGE 2026-08-14 RC-292 persist + migration:** `d71bb5e`. Parent / universality / runtime stay `[ ]`.
 - **STATUS_CHANGE 2026-08-14 RC-292 normalized stamp:** `053251e` (Issue 16: `snapshots_1m_normalized` ALTER). Parent / universality / runtime stay `[ ]`. `[x]` count unchanged.
 - **STATUS_CHANGE 2026-08-14 RC-285 write sites:** `1117f19`. Five children `[x]`; parent / universality stay `[ ]`. `[x]` 12 → 17.
+- **STATUS_CHANGE 2026-08-14 five-zone pass:** RC-301 except-literal @ `5d68d93`; F15 math one-producer @ `462a581`; RC-297 MEGA2 lock @ `8ca1f18`; RC-329 `kl_gamma_pin` consumer bind @ `bb85651`. Parents stay `[ ]`. `[x]` 17 → 35.
 - **ADD then STATUS_CHANGE this land:** UI-04 P1D @ `8686e68` (overnight residual stays LP-01 / F15); ML-META-JSON-VERIFICATION-ASYMMETRY @ `a107412` (PR #55; slim cite `7ec0bf6` was the pre-rebase feature SHA, not on `main`).
 - **ADD this land (historical Find & Prove had them; PA-48 did not):** QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1, STAGE-2, ML-PIPE-V1, SIG-01.
 - **KEY LEVELS / B_light paint on `main` (PRs #53–#58 merged; #59 SUPERSEDED do-not-merge; #60 cube-honesty for charm/vanna only) does not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292.** Paint ≠ one faucet. Charm vote stays UNAPPROVED. Predictive validity stays NOT_PROVEN.
@@ -1558,7 +1559,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | What you are looking at | Count | What it is |
 |---|---|---|
 | `[ ]` checkboxes on this board | ~1125 | Mostly **parent acceptance criteria** (PA-1..PA-47). Close only with an exact SHA. |
-| `[x]` on this board | 17 | 2026-08-13 STATUS_CHANGE rows (UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META) plus six RC-292 children (label / tooltip / lock @ `0e304f6`; pin_score @ `6d14ee2`; persist / migration @ `d71bb5e` + `053251e`) plus five RC-285 children @ `1117f19`. Parents RC-292 / RC-285 stay `[ ]`. |
+| `[x]` on this board | 35 | Prior 17 plus F15 three children @ `462a581`, RC-297 five @ `8ca1f18`, RC-301 five @ `5d68d93`, RC-329 five @ `bb85651`. Parents F15 / RC-292 / RC-285 / RC-297 / RC-301 / RC-329 stay `[ ]`. |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE but still `[ ]` | most of PA-3 | Prior program called them closed; this board's closure rule requires a SHA on the row. **Do not re-do the work from the label. Do not `[x]` without the SHA.** |
 | **PA-46** | 16 pointers | **The execution queue.** Status derives from the canonical F/RC/PA rows. |
 | **PA-48 still `[ ]`** | 41 | Leftover atomic work, including second-census ADDs and the 2026-08-13 product/UX rows. UX-WORLD-CLASS-CONSOLE is gated AFTER X. |
@@ -1617,6 +1618,10 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | RC-292 `pin_score` | `6d14ee2` | child `[x]`; parent stays `[ ]` |
 | RC-292 persist + migration | `d71bb5e` + `053251e` | two children `[x]`; parent stays `[ ]` |
 | RC-285 write-site fabricated zero | `1117f19` | five children `[x]`; parent / universality stay `[ ]` |
+| RC-301 except-literal sites + gate | `5d68d93` | five children `[x]`; CLASS / parent stay `[ ]` |
+| F15 one POC math producer | `462a581` | three children `[x]`; parent / live routing stay `[ ]` |
+| RC-297 MEGA2 file-set lock | `8ca1f18` | five children `[x]`; parent stay `[ ]` |
+| RC-329 `kl_gamma_pin` consumer bind | `bb85651` | five children `[x]`; parent / other faucets stay `[ ]` |
 | UI-05 cold SLA | `6a74331` / `5506185` | recorded on the row; checkbox stays `[ ]` (RTH burst remains) |
 | ECON-01 parent denominator | `e400570` / `6c29a7f` | recorded on the residual rows; four residuals stay `[ ]` |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE | **no SHA on any F-row; `git log --all --grep=RC-344` (and RC-339/342/340/343) is empty** | stay `[ ]`. The 2026-08-12 freeze unchecked 37 non-SHA `[x]`. Do not put the check back. |
