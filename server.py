@@ -8201,6 +8201,14 @@ def _fetch_state(
     ms_dict["pdc"]      = _fv(getattr(price_levels, "pdc",      None))
     ms_dict["orb_high"] = _fv(getattr(price_levels, "orb_high", None))
     ms_dict["orb_low"]  = _fv(getattr(price_levels, "orb_low",  None))
+    # F15: engine POC/VAH/VAL must reach a live consumer. /api/price-levels
+    # already serves them; /api/state dropped them. Stamp the engine fields.
+    ms_dict["pd_poc"]    = _fv(getattr(price_levels, "pd_poc",    None))
+    ms_dict["pd_vah"]    = _fv(getattr(price_levels, "pd_vah",    None))
+    ms_dict["pd_val"]    = _fv(getattr(price_levels, "pd_val",    None))
+    ms_dict["today_poc"] = _fv(getattr(price_levels, "today_poc", None))
+    ms_dict["today_vah"] = _fv(getattr(price_levels, "today_vah", None))
+    ms_dict["today_val"] = _fv(getattr(price_levels, "today_val", None))
 
     # ── Expected Move ────────────────────────────────────────────────────────
     ms_dict["em_straddle"]       = _fv(_em_straddle.get("straddle"))
