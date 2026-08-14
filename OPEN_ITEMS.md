@@ -469,12 +469,12 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [ ] Universality across tickers proven
   - [ ] Root code fix landed
   - [ ] Runtime proof on loaded code
-- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero — OPEN / NOT_PROVEN DETAILS
-  - [ ] Semantic of the fabricated-zero defect defined
-  - [ ] Live path characterized
-  - [ ] Root cause identified
-  - [ ] Fix landed
-  - [ ] Proof recorded
+- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero — OPEN (parent stays open). **2026-08-14 measured:** `_model_status_from_artifact` published `edge=0` when the metric was absent. Fix @ `1117f19`: six write sites use `None`; `model_health_edge_from_meta` keeps genuine zero. UI still does not render `m.edge`. `val_accuracy` fallback remains (RC-291). Remaining: universality.
+  - [x] Semantic of the fabricated-zero defect defined — Closed @ `1117f19`. Absent metric ≠ measured zero.
+  - [x] Live path characterized — Closed @ `1117f19`. `_fetch_state` → `model_health` → `/api/state`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
+  - [x] Root cause identified — Closed @ `1117f19`. Unread field; `.get(..., 0)` / `float(raw or 0)` / literal `"edge": 0`.
+  - [x] Fix landed — Closed @ `1117f19`.
+  - [x] Proof recorded — Closed @ `1117f19`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
   - [ ] Universality across tickers proven
 - [ ] **RC-297** — derivation inventory drifted from code — OPEN / NOT_PROVEN DETAILS
   - [ ] Semantic of the inventory-drift defect defined
@@ -1395,7 +1395,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - F39 → canonical F39 row (OPEN)
 - RC-292 → canonical RC-292 row (OPEN; label/tooltip/lock @ `0e304f6`; pin_score @ `6d14ee2`; persist/migration @ `d71bb5e` + `053251e`)
 - RC-282 → canonical RC-282 row
-- RC-285 → canonical RC-285 row
+- RC-285 → canonical RC-285 row (OPEN; write-site fix @ `1117f19`; universality remains)
 - RC-297 → canonical RC-297 row
 - RC-301 → canonical RC-301 row
 - RC-329 → canonical RC-329 row
@@ -1545,6 +1545,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - **STATUS_CHANGE 2026-08-14 RC-292 `pin_score`:** intended semantic recovered @ `6d14ee2` (`gex_at_bound_pin_strike` = `|net GEX$|`). Parent stays `[ ]`.
 - **STATUS_CHANGE 2026-08-14 RC-292 persist + migration:** `d71bb5e`. Parent / universality / runtime stay `[ ]`.
 - **STATUS_CHANGE 2026-08-14 RC-292 normalized stamp:** `053251e` (Issue 16: `snapshots_1m_normalized` ALTER). Parent / universality / runtime stay `[ ]`. `[x]` count unchanged.
+- **STATUS_CHANGE 2026-08-14 RC-285 write sites:** `1117f19`. Five children `[x]`; parent / universality stay `[ ]`. `[x]` 12 → 17.
 - **ADD then STATUS_CHANGE this land:** UI-04 P1D @ `8686e68` (overnight residual stays LP-01 / F15); ML-META-JSON-VERIFICATION-ASYMMETRY @ `a107412` (PR #55; slim cite `7ec0bf6` was the pre-rebase feature SHA, not on `main`).
 - **ADD this land (historical Find & Prove had them; PA-48 did not):** QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1, STAGE-2, ML-PIPE-V1, SIG-01.
 - **KEY LEVELS / B_light paint on `main` (PRs #53–#58 merged; #59 SUPERSEDED do-not-merge; #60 cube-honesty for charm/vanna only) does not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292.** Paint ≠ one faucet. Charm vote stays UNAPPROVED. Predictive validity stays NOT_PROVEN.
@@ -1557,7 +1558,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | What you are looking at | Count | What it is |
 |---|---|---|
 | `[ ]` checkboxes on this board | ~1125 | Mostly **parent acceptance criteria** (PA-1..PA-47). Close only with an exact SHA. |
-| `[x]` on this board | 12 | 2026-08-13 STATUS_CHANGE rows (UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META) plus six RC-292 children (label / tooltip / lock @ `0e304f6`; pin_score @ `6d14ee2`; persist / migration @ `d71bb5e` + `053251e`). Parent RC-292 stays `[ ]`. |
+| `[x]` on this board | 17 | 2026-08-13 STATUS_CHANGE rows (UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META) plus six RC-292 children (label / tooltip / lock @ `0e304f6`; pin_score @ `6d14ee2`; persist / migration @ `d71bb5e` + `053251e`) plus five RC-285 children @ `1117f19`. Parents RC-292 / RC-285 stay `[ ]`. |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE but still `[ ]` | most of PA-3 | Prior program called them closed; this board's closure rule requires a SHA on the row. **Do not re-do the work from the label. Do not `[x]` without the SHA.** |
 | **PA-46** | 16 pointers | **The execution queue.** Status derives from the canonical F/RC/PA rows. |
 | **PA-48 still `[ ]`** | 41 | Leftover atomic work, including second-census ADDs and the 2026-08-13 product/UX rows. UX-WORLD-CLASS-CONSOLE is gated AFTER X. |
@@ -1615,6 +1616,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | RC-292 UI label + tooltip + mutation lock | `0e304f6` | three children `[x]`; parent stays `[ ]` |
 | RC-292 `pin_score` | `6d14ee2` | child `[x]`; parent stays `[ ]` |
 | RC-292 persist + migration | `d71bb5e` + `053251e` | two children `[x]`; parent stays `[ ]` |
+| RC-285 write-site fabricated zero | `1117f19` | five children `[x]`; parent / universality stay `[ ]` |
 | UI-05 cold SLA | `6a74331` / `5506185` | recorded on the row; checkbox stays `[ ]` (RTH burst remains) |
 | ECON-01 parent denominator | `e400570` / `6c29a7f` | recorded on the residual rows; four residuals stay `[ ]` |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE | **no SHA on any F-row; `git log --all --grep=RC-344` (and RC-339/342/340/343) is empty** | stay `[ ]`. The 2026-08-12 freeze unchecked 37 non-SHA `[x]`. Do not put the check back. |

@@ -33,6 +33,22 @@ ACTIVE_DIR = APP_DIR / "models" / "active"
 MODELS_DIR = APP_DIR / "models"
 
 
+def model_health_edge_from_meta(meta: dict, edge_key: str) -> float | None:
+    """RC-285: recorded edge metric, or None when unmeasured.
+
+    A genuine measured zero stays 0. Missing keys are not defaulted to 0.
+    When ``edge_key`` is absent, ``val_accuracy`` is a last-resort
+    scale-to-percent fallback (RC-291 still OPEN: accuracy is not edge).
+    """
+    from numeric_contract import float_finite_or_none
+
+    raw = float_finite_or_none(meta.get(edge_key))
+    if raw is None:
+        raw = float_finite_or_none(meta.get("val_accuracy"))
+        return None if raw is None else raw * 100.0
+    return raw * 100.0 if edge_key == "val_accuracy" else raw
+
+
 def _get_active_tickers() -> list[str]:
     """
     ML-training tickers that require active bundles under models/active/.
