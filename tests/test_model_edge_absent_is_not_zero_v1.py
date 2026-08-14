@@ -314,6 +314,8 @@ def test_repo_has_no_measurement_key_literal_fallback():
         cwd=REPO,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         check=True,
     )
     skip = ("tests/", "tools/", "research/", "governance/", "arch_competition/")

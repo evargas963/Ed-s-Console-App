@@ -64,6 +64,8 @@ def test_rc318_board_lists_every_absence_ok_site():
         cwd=REPO,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         check=True,
     )
     sites: list[str] = []

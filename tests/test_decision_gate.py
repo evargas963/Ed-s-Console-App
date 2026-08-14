@@ -301,7 +301,10 @@ def test_board_checkbox_x_did_not_increase_versus_origin_main():
     from pathlib import Path
 
     main = subprocess.check_output(
-        ["git", "show", "origin/main:OPEN_ITEMS.md"], text=True
+        ["git", "show", "origin/main:OPEN_ITEMS.md"],
+        text=True,
+        encoding="utf-8",
+        errors="strict",
     )
     head = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(
         encoding="utf-8"
@@ -315,6 +318,105 @@ def test_board_checkbox_x_did_not_increase_versus_origin_main():
     assert len(checkbox_x(head)) <= len(checkbox_x(main)), (
         f"checkbox [x] count rose vs origin/main: "
         f"{len(checkbox_x(head))} > {len(checkbox_x(main))}"
+    )
+
+
+def git_text_calls_missing_utf8(src: str) -> list[int]:
+    """subprocess check_output/run that decode git stdout as locale text.
+
+    `text=True` without encoding=utf-8 uses cp1252 on Windows and crashes
+    on the board's UTF-8 em-dash before the assertion runs.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return []
+    bad: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = None
+        if isinstance(func, ast.Name):
+            name = func.id
+        elif isinstance(func, ast.Attribute):
+            name = func.attr
+        if name not in {"check_output", "run"}:
+            continue
+        kwargs = {
+            k.arg: k.value
+            for k in node.keywords
+            if k.arg
+        }
+        text_true = False
+        if "text" in kwargs:
+            t = kwargs["text"]
+            text_true = isinstance(t, ast.Constant) and t.value is True
+        if "universal_newlines" in kwargs:
+            u = kwargs["universal_newlines"]
+            text_true = text_true or (
+                isinstance(u, ast.Constant) and u.value is True
+            )
+        if not text_true:
+            continue
+        enc = kwargs.get("encoding")
+        utf8 = (
+            isinstance(enc, ast.Constant)
+            and isinstance(enc.value, str)
+            and enc.value.lower() == "utf-8"
+        )
+        argv = node.args[0] if node.args else None
+        git = False
+        if isinstance(argv, ast.List):
+            git = any(
+                isinstance(elt, ast.Constant) and elt.value == "git"
+                for elt in argv.elts
+            )
+        if git and not utf8:
+            bad.append(node.lineno)
+    return bad
+
+
+def test_git_text_subprocess_requires_utf8():
+    """Windows cp1252: text=True without encoding= crashes the board lock."""
+    from pathlib import Path
+
+    plant = (
+        "import subprocess\n"
+        "subprocess.check_output(['git', 'show', 'origin/main:OPEN_ITEMS.md'], text=True)\n"
+    )
+    assert git_text_calls_missing_utf8(plant)
+    good = (
+        "import subprocess\n"
+        "subprocess.check_output(['git', 'ls-files'], text=True, encoding='utf-8', errors='strict')\n"
+    )
+    assert git_text_calls_missing_utf8(good) == []
+    root = Path(__file__).resolve().parent
+    offenders: list[str] = []
+    for rel in (
+        "test_decision_gate.py",
+        "test_mega2_traceable_audit.py",
+        "test_model_edge_absent_is_not_zero_v1.py",
+        "test_liquidity_engine.py",
+        "test_absence_has_a_type_gate_v1.py",
+    ):
+        src = (root / rel).read_text(encoding="utf-8")
+        for lineno in git_text_calls_missing_utf8(src):
+            offenders.append(f"{rel}:{lineno}")
+    assert offenders == []
+
+
+def test_board_bytes_decode_as_utf8():
+    """The board is UTF-8. `text=True` without encoding= uses the locale codec."""
+    import re
+    import subprocess
+
+    raw = subprocess.check_output(["git", "show", "origin/main:OPEN_ITEMS.md"])
+    text = raw.decode("utf-8", errors="strict")
+    assert re.search(r"^- \[x\]", text, flags=re.M) or re.search(
+        r"^- \[ \]", text, flags=re.M
     )
 
 
@@ -431,7 +533,9 @@ def test_five_zone_acceptance_lines_are_operative():
     assert live[0] != engine[0]
 
     # Z4 — tree-fed scan of this repo, plus a real planted file
-    repo_files = subprocess.check_output(["git", "ls-files"], text=True).split()
+    repo_files = subprocess.check_output(
+        ["git", "ls-files"], text=True, encoding="utf-8", errors="strict"
+    ).split()
     assert uninventoried_engine_modules(repo_files) == []
 
     # Z5 — no painted label on any payload row (full HTML, not a string needle)

@@ -188,7 +188,9 @@ def test_uninventoried_engine_module_is_rejected_when_planted():
 def test_repo_has_no_uninventoried_engine_modules():
     import subprocess
 
-    files = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).split()
+    files = subprocess.check_output(
+        ["git", "ls-files"], cwd=ROOT, text=True, encoding="utf-8", errors="strict"
+    ).split()
     assert uninventoried_engine_modules(files) == []
 
 
@@ -200,7 +202,9 @@ def test_real_planted_engine_file_is_rejected_by_tree_scan(tmp_path):
     (repo / "zzz_engine.py").write_text("# plant — uninventoried engine\n", encoding="utf-8")
     subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "add", "zzz_engine.py"], cwd=repo, check=True, capture_output=True)
-    files = subprocess.check_output(["git", "ls-files"], cwd=repo, text=True).split()
+    files = subprocess.check_output(
+        ["git", "ls-files"], cwd=repo, text=True, encoding="utf-8", errors="strict"
+    ).split()
     assert "zzz_engine.py" in files
     assert uninventoried_engine_modules(files) == ["zzz_engine.py"]
 

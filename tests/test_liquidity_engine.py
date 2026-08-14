@@ -540,6 +540,8 @@ def test_all_volume_profile_function_defs_are_engine_or_passthrough():
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         check=True,
     )
     skip = ("tests/", "tools/", "research/", "governance/", "arch_competition/")
