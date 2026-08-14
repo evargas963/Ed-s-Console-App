@@ -452,8 +452,8 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **F42** — GEX dollars (`gex_dollars_per_1pct_at_strike`; one `compute_exposures_by_strike`; γ×OI×mult×spot²×0.01; one-producer lock) — CLOSED_WITH_EVIDENCE
 
 ## PA-4 — MATERIAL NON-F / RC DEFECT BOARD (stay until technically resolved or proven duplicate children)
-- [ ] **RC-292** — Gamma-pin semantic collision — OPEN (parent stays open; do not close from a label land). **2026-08-13 measured on this `main`:** Console `kl_gamma_pin` is stamped from `cs.gamma_pin` (`server.py`) = `pick_gamma_pin_strike` = largest `|net GEX$|` per 1% on the selected expiry. HVL is the total-gamma concentration. `pick_pin_and_strength` / `pick_net_gex_peak_strike` / `chart.html` are absent on this `main`. The 2026-08-12 claim that Key Levels `kl_gamma_pin` = total-gamma is stale after KEY LEVELS paint. **Label/tooltip honesty landed @ `0e304f6`.** Remaining: `pin_score` (uses the net-GEX strike, scores total-gamma at that strike), persisted `gamma_pin`, migration, universality, runtime proof.
-  - [ ] `pin_score` intended semantic recovered
+- [ ] **RC-292** — Gamma-pin semantic collision — OPEN (parent stays open). **2026-08-13/14 measured on this `main`:** Console `kl_gamma_pin` is stamped from `cs.gamma_pin` (`server.py`) = `pick_gamma_pin_strike` = largest `|net GEX$|` per 1% on the selected expiry. HVL is the total-gamma concentration. `pick_pin_and_strength` / `pick_net_gex_peak_strike` / `chart.html` are absent on this `main`. **Label/tooltip/lock @ `0e304f6`. `pin_score` reads `|net GEX$|` at that strike @ `6d14ee2`.** Remaining: persisted `gamma_pin`, migration, universality, runtime proof.
+  - [x] `pin_score` intended semantic recovered — Closed @ `6d14ee2`. Tests: `tests/test_institutional_key_levels.py`.
   - [x] UI label made consistent with the bound semantic — Closed @ `0e304f6`. Tests: `tests/test_institutional_key_levels.py`.
   - [x] Tooltip made consistent with the bound semantic — Closed @ `0e304f6`. Tests: `tests/test_institutional_key_levels.py`.
   - [ ] Persisted `gamma_pin` made consistent with the bound semantic
@@ -1393,7 +1393,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - F31 → canonical F31 row (OPEN)
 - F32 → canonical F32 row (NOT_PROVEN; RC-328)
 - F39 → canonical F39 row (OPEN)
-- RC-292 → canonical RC-292 row (OPEN; label/tooltip/lock children closed @ `0e304f6`)
+- RC-292 → canonical RC-292 row (OPEN; label/tooltip/lock @ `0e304f6`; pin_score @ `6d14ee2`)
 - RC-282 → canonical RC-282 row
 - RC-285 → canonical RC-285 row
 - RC-297 → canonical RC-297 row
@@ -1541,7 +1541,8 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - **Slim leftovers already on PA-48 (do not add a second row):** RECON-02, PHASE-4, PHASE-5, FIND-SCHWAB-WORKER-LEAK, FIND-LABEL-INTEGRITY-FORENSICS, SCOREBOARD-TARGET-TRUTH Lane A/B, UI-01, UI-05, UI-04 P1B/P1C, ECON-01 residuals, MODEL-04, BUILD-IDENTITY, GOV-REMOTE-ENFORCEMENT, UI-EXPLAIN, OPS-OPERABLE-SURFACE-JOB, DIR-01, GAMMA-INTRADAY-CADENCE, LEVELS-SELF-DECLARE-TRUST, FIND-LIVE-FLIP-WIDE-CHAIN / FIND-GAMMA-FULLCHAIN.
 - **FIND-SCHEDULED-JOBS-VISIBILITY** — inventory already exists (`governance/host_scheduled_jobs.md`, historical close 2026-07-27). Remaining host-task registration lives under **OPS-OPERABLE-SURFACE-JOB**. Slim `main` still showed this `[ ]` because that ledger predates the inventory close. Do not add a second closable row.
 - **STATUS_CHANGE this land:** UI-01 @ `bc1b635`; PHASE-4 @ `e009aa2`; UI-04 P1B + P1C @ `29ea1e4`.
-- **STATUS_CHANGE 2026-08-13 RC-292 children (not the parent):** UI label + tooltip + behavioral/mutation lock @ `0e304f6`. Parent RC-292 / `pin_score` / persisted `gamma_pin` stay `[ ]`.
+- **STATUS_CHANGE 2026-08-13 RC-292 children (not the parent):** UI label + tooltip + behavioral/mutation lock @ `0e304f6`. Parent RC-292 / persisted `gamma_pin` stay `[ ]`.
+- **STATUS_CHANGE 2026-08-14 RC-292 `pin_score`:** intended semantic recovered @ `6d14ee2` (`gex_at_bound_pin_strike` = `|net GEX$|`). Parent stays `[ ]`.
 - **ADD then STATUS_CHANGE this land:** UI-04 P1D @ `8686e68` (overnight residual stays LP-01 / F15); ML-META-JSON-VERIFICATION-ASYMMETRY @ `a107412` (PR #55; slim cite `7ec0bf6` was the pre-rebase feature SHA, not on `main`).
 - **ADD this land (historical Find & Prove had them; PA-48 did not):** QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1, STAGE-2, ML-PIPE-V1, SIG-01.
 - **KEY LEVELS / B_light paint on `main` (PRs #53–#58 merged; #59 SUPERSEDED do-not-merge; #60 cube-honesty for charm/vanna only) does not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292.** Paint ≠ one faucet. Charm vote stays UNAPPROVED. Predictive validity stays NOT_PROVEN.
@@ -1554,7 +1555,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 | What you are looking at | Count | What it is |
 |---|---|---|
 | `[ ]` checkboxes on this board | ~1125 | Mostly **parent acceptance criteria** (PA-1..PA-47). Close only with an exact SHA. |
-| `[x]` on this board | 9 | 2026-08-13 STATUS_CHANGE rows (UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META) plus three RC-292 children (label / tooltip / lock) @ `0e304f6`. Parent RC-292 stays `[ ]`. |
+| `[x]` on this board | 10 | 2026-08-13 STATUS_CHANGE rows (UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META) plus four RC-292 children (label / tooltip / lock @ `0e304f6`; pin_score @ `6d14ee2`). Parent RC-292 stays `[ ]`. |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE but still `[ ]` | most of PA-3 | Prior program called them closed; this board's closure rule requires a SHA on the row. **Do not re-do the work from the label. Do not `[x]` without the SHA.** |
 | **PA-46** | 16 pointers | **The execution queue.** Status derives from the canonical F/RC/PA rows. |
 | **PA-48 still `[ ]`** | 41 | Leftover atomic work, including second-census ADDs and the 2026-08-13 product/UX rows. UX-WORLD-CLASS-CONSOLE is gated AFTER X. |
@@ -1610,6 +1611,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 |---|---|---|
 | UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META | SHAs already on the `[x]` rows | already `[x]` |
 | RC-292 UI label + tooltip + mutation lock | `0e304f6` | three children `[x]`; parent stays `[ ]` |
+| RC-292 `pin_score` | `6d14ee2` | child `[x]`; parent stays `[ ]` |
 | UI-05 cold SLA | `6a74331` / `5506185` | recorded on the row; checkbox stays `[ ]` (RTH burst remains) |
 | ECON-01 parent denominator | `e400570` / `6c29a7f` | recorded on the residual rows; four residuals stay `[ ]` |
 | F01–F42 labeled CLOSED_WITH_EVIDENCE | **no SHA on any F-row; `git log --all --grep=RC-344` (and RC-339/342/340/343) is empty** | stay `[ ]`. The 2026-08-12 freeze unchecked 37 non-SHA `[x]`. Do not put the check back. |
