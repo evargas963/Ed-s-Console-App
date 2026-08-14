@@ -8135,8 +8135,8 @@ function renderTierALive(d, fullRenderSource) {
         : d.kl_put_wall_state === 'contains'
           ? 'Strike with the largest put gamma. Support while spot holds above it — dealer hedging cushions selloffs there.'
           : 'Strike with the largest put gamma. Geometry state unavailable — no containment claim.' },
-    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'THE standard pin — largest TOTAL gamma (calls+puts), the SpotGamma Absolute Gamma / sticky-pin measure; strongest into expiry. Lead % on the chart label shows its margin over the runner-up (RC-124).' },
-    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net Γ peak', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9', tip: 'Largest |net| dealer GEX strike (calls minus puts) — where the SIGNED book peaks. Previously labeled PIN/HVL; renamed because no vendor defines the pin on the net book (RC-124).' },
+    { key: 'kl_gamma_pin', strKey: null, label: 'Net Γ Peak', sr: 'pin', srLabel: 'Net Γ', proxColor: '#a855f7', tip: 'Largest |net GEX$| per 1% on the selected expiry. Not the total-gamma magnet (that is HVL).' },
+    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9', tip: 'Total-gamma concentration. Not the |net GEX$| peak (that is Net Γ Peak).' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
     { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level. Above it dealers dampen moves (choppy). Below it dealers amplify moves (trending).' },
     { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6', tip: 'Expected-move ceiling: the options-implied top of the range.' },
@@ -8251,7 +8251,7 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
     }
 
-    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as Gamma Pin row)
+    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as Net Γ Peak row)
     {
       const pinStrike = parseFloat(d.kl_gamma_pin || 0);
       const charmTarget = (d.kl_institutional_ready && pinStrike > 0)
