@@ -40,12 +40,16 @@ def audited_status_changes_missing_required_check(text: str) -> list[str]:
     Catches the omit-the-conclusion shape that slice lock (4) names.
     """
     sha = re.compile(r"`[0-9a-f]{7,40}`")
-    audit = re.compile(r"\baudit\b|\bre-audit\b", re.I)
+    audit = re.compile(r"\baudit(ed|s|or|ing)?\b|\bre-audit(ed)?\b", re.I)
     run_id = re.compile(r"\brun\s+\d{8,}\b")
     verdict = re.compile(r"\b(RED|GREEN)\b")
     missing: list[str] = []
     for line in text.splitlines():
-        if not line.lstrip().startswith("- **STATUS_CHANGE"):
+        stripped = line.lstrip()
+        if not (
+            stripped.startswith("- **STATUS_CHANGE")
+            or stripped.startswith("- STATUS_CHANGE")
+        ):
             continue
         if not audit.search(line) or not sha.search(line):
             continue
@@ -326,9 +330,15 @@ def test_audited_status_change_cites_required_check_conclusion():
     no_verdict = (
         "- **STATUS_CHANGE 2026-08-14 re-audit:** `abc1234` — pytest-full run 31804847117."
     )
+    audited_omit = (
+        "- **STATUS_CHANGE 2026-08-14 audited five zones @ `abc1234`:** clean."
+    )
+    plain = "- STATUS_CHANGE 2026-08-14 audit @ `abc1234`: no CI cited."
     assert audited_status_changes_missing_required_check(good) == []
     assert audited_status_changes_missing_required_check(omit)
     assert audited_status_changes_missing_required_check(no_verdict)
+    assert audited_status_changes_missing_required_check(audited_omit)
+    assert audited_status_changes_missing_required_check(plain)
     board = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(
         encoding="utf-8"
     )
