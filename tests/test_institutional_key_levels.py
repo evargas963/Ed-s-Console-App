@@ -191,9 +191,6 @@ def test_console_pin_tooltip_matches_bound_net_gex():
     assert "total-gamma magnet" in GAMMA_PIN_CONSUMER_TIP
 
 
-FIVE_ZONE_SHA = "1e09445"
-
-
 def test_pin_fix_rewrite_has_no_hardcoded_kl_labels():
     """Pin-fix rewrite: labels come from the registry, not painted `label:`."""
     html = _INDEX.read_text(encoding="utf-8")
@@ -203,12 +200,29 @@ def test_pin_fix_rewrite_has_no_hardcoded_kl_labels():
 
 
 def test_pin_fix_rewrite_merges_onto_five_zone_without_key_levels_conflict():
-    """Acceptance: merge-tree onto the five-zone SHA has no index.html conflict."""
+    """Acceptance: merge-tree onto origin/main has no index.html conflict.
+
+    Five-zone (`1e09445`) is an ancestor of current `origin/main`. A short
+    SHA merge-tree fails on shallow CI clones (unrelated histories). The
+    principle is: this rewrite does not conflict on KEY LEVELS HTML.
+    """
     import subprocess
 
+    repo = _INDEX.parent.parent
+    tip = "origin/main"
+    if subprocess.call(
+        ["git", "rev-parse", "--verify", tip],
+        cwd=repo,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ):
+        subprocess.check_call(
+            ["git", "fetch", "--no-tags", "origin", "main"],
+            cwd=repo,
+        )
     proc = subprocess.run(
-        ["git", "merge-tree", "--write-tree", FIVE_ZONE_SHA, "HEAD"],
-        cwd=_INDEX.parent.parent,
+        ["git", "merge-tree", "--write-tree", tip, "HEAD"],
+        cwd=repo,
         capture_output=True,
         text=True,
         encoding="utf-8",
