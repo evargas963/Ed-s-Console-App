@@ -8144,8 +8144,11 @@ function _renderMoneyPathCore(d, fullRenderSource) {
         const reason = (m.status_reason || '').replace(/"/g, '&quot;');
         const mname = m.model != null ? String(m.model) : '—';
         const st = m.status != null ? String(m.status) : '—';
-        const edgeTxt = formatModelHealthEdge(m.edge);
-        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px" title="${reason}"><span>${mname}</span><span style="${statusCls(m.status)};font-weight:600">${st}</span><span class="mh-edge">${edgeTxt}</span></div>`;
+        const isLstm = m.model === 'LSTM';
+        const metricHtml = isLstm
+          ? `<span class="mh-val-accuracy">val_accuracy ${formatModelHealthEdge(m.val_accuracy)}</span>`
+          : `<span class="mh-edge">${formatModelHealthEdge(m.edge)}</span>`;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px" title="${reason}"><span>${mname}</span><span style="${statusCls(m.status)};font-weight:600">${st}</span>${metricHtml}</div>`;
       }).join('');
     } else {
       mhList.innerHTML = '';
