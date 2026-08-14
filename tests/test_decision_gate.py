@@ -285,6 +285,7 @@ def test_named_force_functions_remain_in_charter():
         "Five Whys",
         "Whys without the fix is unfinished",
         "fix the issue in the same program",
+        "tests/test_mega2_traceable_audit.py in the edit loop",
         "drift-audit skill before any done",
         "Bugbot when the diff is material",
         "security-review when secrets",

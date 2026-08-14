@@ -169,6 +169,7 @@ from math_exposure import (
     compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
     pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
+    GAMMA_PIN_SEMANTIC,
     aggregate_net_gex, total_gamma_raw_at_strike,
     gex_at_bound_pin_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
@@ -7491,6 +7492,11 @@ def _fetch_state(
                         put_call_oi_ratio=pcr_val,
                         oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
                         gamma_pin=getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None,
+                        gamma_pin_semantic=(
+                            GAMMA_PIN_SEMANTIC
+                            if consensus_summary and getattr(consensus_summary, "gamma_pin", None) is not None
+                            else None
+                        ),
                         spy_spot=mkt_ctx.spy_last, spy_chg_pct=mkt_ctx.spy_chg_pct,
                         spy_zone=_etf_zone(mkt_ctx.spy_chg_pct), spy_vwap_side=None, spy_net_delta=None,
                         qqq_spot=mkt_ctx.qqq_last, qqq_chg_pct=mkt_ctx.qqq_chg_pct,

@@ -435,7 +435,8 @@ class SnapshotRow:
     vix_bucket:         Optional[str] = None
     put_call_oi_ratio:  Optional[float] = None
     oi_center:          Optional[float] = None
-    gamma_pin:          Optional[float] = None  # strike with highest gamma
+    gamma_pin:          Optional[float] = None  # |net GEX$| peak strike (bound pin); not total-gamma / HVL
+    gamma_pin_semantic: Optional[str] = None  # 'net_gex_peak'; NULL on pre-stamp rows means the same writer semantic
 
     # ── Cross-instrument (SPY when not primary, else NULL) ────────────────────
     spy_spot:           Optional[float] = None
@@ -1116,6 +1117,7 @@ class EdDB:
                 put_call_oi_ratio   REAL,
                 oi_center           REAL,
                 gamma_pin           REAL,
+                gamma_pin_semantic  TEXT,
 
                 -- Cross-instrument SPY
                 spy_spot            REAL,
@@ -2609,6 +2611,7 @@ class EdDB:
             ("pa_mtf_alignment",         "REAL"),
             ("pa_relative_volume",       "REAL"),
             ("pa_move_efficiency",       "REAL"),
+            ("gamma_pin_semantic",       "TEXT"),
         ]
         # Normalized training table must carry the same price-action columns or the
         # normalizer's column-intersection INSERT silently drops them (Issue 16 class).

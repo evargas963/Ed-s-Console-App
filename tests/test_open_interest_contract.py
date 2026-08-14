@@ -55,3 +55,10 @@ def test_gamma_void_does_not_classify_missing_oi_as_low_oi():
 
 def test_pin_score_reports_missing_oi_instead_of_negligible():
     assert compute_pin_score(10_000.0, None) == {"raw": None, "normalized": None, "label": "missing_oi"}
+
+
+def test_compute_net_charm_does_not_publish_gamma_pin_alias():
+    """RC-292 same-zone: charm publishes drift_toward only — not a second gamma_pin name."""
+    out = compute_net_charm([_charm_contract()], 500.0, "2099-05-05", drift_toward_strike=510.0)
+    assert "gamma_pin" not in out
+    assert out.get("drift_toward") == 510.0
