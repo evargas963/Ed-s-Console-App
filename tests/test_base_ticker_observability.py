@@ -267,6 +267,8 @@ def test_check_base_ticker_observability_cli_passes_on_dense_fixture(tmp_path: P
         cwd=str(repo),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         timeout=60,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr

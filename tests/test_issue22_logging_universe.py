@@ -409,6 +409,8 @@ def test_db_write_path_d_import_does_not_trigger_db_universe_load():
         cwd=str(ROOT),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         timeout=180,
     )
     assert proc.returncode == 0, f"stdout={proc.stdout!r}\nstderr={proc.stderr!r}"

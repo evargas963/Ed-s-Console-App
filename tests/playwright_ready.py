@@ -47,6 +47,8 @@ def ensure_playwright_ready(*, install_browsers: bool = True) -> None:
         cwd=str(ROOT),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         shell=True,
         timeout=120,
         env=os.environ.copy(),
@@ -64,6 +66,8 @@ def ensure_playwright_ready(*, install_browsers: bool = True) -> None:
             cwd=str(ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="strict",
             shell=True,
             timeout=600,
         )

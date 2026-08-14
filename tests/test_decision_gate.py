@@ -322,10 +322,10 @@ def test_board_checkbox_x_did_not_increase_versus_origin_main():
 
 
 def git_text_calls_missing_utf8(src: str) -> list[int]:
-    """subprocess check_output/run that decode git stdout as locale text.
+    """subprocess check_output/run that decode stdout as locale text.
 
     `text=True` without encoding=utf-8 uses cp1252 on Windows and crashes
-    on the board's UTF-8 em-dash before the assertion runs.
+    on UTF-8 bytes (board em-dash) before the assertion runs.
     """
     import ast
 
@@ -367,20 +367,14 @@ def git_text_calls_missing_utf8(src: str) -> list[int]:
             and isinstance(enc.value, str)
             and enc.value.lower() == "utf-8"
         )
-        argv = node.args[0] if node.args else None
-        git = False
-        if isinstance(argv, ast.List):
-            git = any(
-                isinstance(elt, ast.Constant) and elt.value == "git"
-                for elt in argv.elts
-            )
-        if git and not utf8:
+        if not utf8:
             bad.append(node.lineno)
     return bad
 
 
 def test_git_text_subprocess_requires_utf8():
     """Windows cp1252: text=True without encoding= crashes the board lock."""
+    import subprocess
     from pathlib import Path
 
     plant = (
@@ -393,16 +387,19 @@ def test_git_text_subprocess_requires_utf8():
         "subprocess.check_output(['git', 'ls-files'], text=True, encoding='utf-8', errors='strict')\n"
     )
     assert git_text_calls_missing_utf8(good) == []
-    root = Path(__file__).resolve().parent
+    repo = Path(__file__).resolve().parent.parent
+    listed = subprocess.check_output(
+        ["git", "ls-files", "-z", "tests/"],
+        cwd=repo,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+    ).split("\0")
     offenders: list[str] = []
-    for rel in (
-        "test_decision_gate.py",
-        "test_mega2_traceable_audit.py",
-        "test_model_edge_absent_is_not_zero_v1.py",
-        "test_liquidity_engine.py",
-        "test_absence_has_a_type_gate_v1.py",
-    ):
-        src = (root / rel).read_text(encoding="utf-8")
+    for rel in listed:
+        if not rel.endswith(".py"):
+            continue
+        src = (repo / rel).read_text(encoding="utf-8")
         for lineno in git_text_calls_missing_utf8(src):
             offenders.append(f"{rel}:{lineno}")
     assert offenders == []

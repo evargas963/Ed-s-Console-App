@@ -31,7 +31,7 @@ SHA_B_MSG = "identity commit B"
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, text=True, check=True, timeout=30.0
+        ["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="strict", check=True, timeout=30.0
     )
     return (proc.stdout or "").strip()
 

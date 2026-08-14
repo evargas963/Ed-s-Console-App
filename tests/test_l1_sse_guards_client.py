@@ -23,6 +23,8 @@ def test_l1_sse_guards_node_script():
         cwd=str(ROOT),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         timeout=60,
     )
     assert r.returncode == 0, r.stdout + "\n" + r.stderr

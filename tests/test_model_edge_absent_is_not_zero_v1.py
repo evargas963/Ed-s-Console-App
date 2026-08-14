@@ -362,6 +362,8 @@ def test_model_health_edge_null_renders_em_dash():
         ["node", "-e", script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="strict",
         check=False,
     )
     assert proc.returncode == 0, proc.stderr or proc.stdout
