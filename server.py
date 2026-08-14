@@ -1349,6 +1349,15 @@ def _log_only_cache_touch(
     return action
 
 
+def _stamp_gamma_pin_consumer_copy(md: dict) -> None:
+    """RC-329: every outbound payload carries the registry label/tip.
+
+    Cache hits of a pre-key ms_dict must not drop the KEY LEVELS pin row to —.
+    """
+    md[GAMMA_PIN_LABEL_PAYLOAD_KEY] = GAMMA_PIN_CONSUMER_LABEL
+    md[GAMMA_PIN_TIP_PAYLOAD_KEY] = GAMMA_PIN_CONSUMER_TIP
+
+
 def _attach_analytics_freshness_contract(
     md: dict,
     *,
@@ -1363,6 +1372,7 @@ def _attach_analytics_freshness_contract(
     analytics_version, analytics_generated_at, analytics_age_sec,
     analytics_stale, analytics_refresh_in_progress
     """
+    _stamp_gamma_pin_consumer_copy(md)
     ttl = _sse_viewer_cache_ttl(data_cache_key[0], data_cache_key[1])
     with _analytics_bg_lock:
         in_prog = inflight_key in _analytics_inflight

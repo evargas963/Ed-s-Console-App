@@ -174,6 +174,14 @@ def test_server_emits_gamma_pin_label_from_registry():
     assert "GAMMA_PIN_CONSUMER_TIP" in server
     assert GAMMA_PIN_LABEL_PAYLOAD_KEY == "kl_gamma_pin_label"
     assert GAMMA_PIN_TIP_PAYLOAD_KEY == "kl_gamma_pin_tip"
+    assert "def _stamp_gamma_pin_consumer_copy" in server
+    attach = server[
+        server.find("def _attach_analytics_freshness_contract") : server.find(
+            "def _attach_analytics_freshness_contract"
+        )
+        + 900
+    ]
+    assert "_stamp_gamma_pin_consumer_copy(md)" in attach
 
 
 def test_decision_exec_pin_labeled_net_gamma():
