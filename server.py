@@ -8433,7 +8433,7 @@ def _fetch_state(
             from verify_active_models import model_health_edge_from_meta
 
             edge = model_health_edge_from_meta(_m, edge_key)
-            version = _m.get(version_key, _m.get("model_version", "—"))
+            version = _m.get(version_key) or "—"
         except Exception:
             edge, version = None, "—"
         return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "version": version or "—", "ticker": _dashboard_ticker}

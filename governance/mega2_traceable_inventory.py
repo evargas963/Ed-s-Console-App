@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -50,12 +51,17 @@ MEGA2_ENGINE_OUT_OF_SCOPE = frozenset(
 )
 
 
+# Token, not the cited suffix: engine_core.py and terrain_engine.py are the
+# same class. signal_engineering.py is not (engine is not a path token).
+_ENGINE_FILENAME_TOKEN = re.compile(r"(^|_)engine(\.|_|$)")
+
+
 def uninventoried_engine_modules(
     repo_files: list[str],
     mega2_files: frozenset[str] = MEGA2_FILES,
     out_of_scope: frozenset[str] = MEGA2_ENGINE_OUT_OF_SCOPE,
 ) -> list[str]:
-    """RC-297: any *_engine.py / terrain_engine.py not inventoried and not named out-of-scope."""
+    """RC-297: any module whose filename contains an `engine` token, uninventoried."""
     from pathlib import Path
 
     offenders: list[str] = []
@@ -63,7 +69,7 @@ def uninventoried_engine_modules(
         if rel.startswith("tests/"):
             continue
         name = Path(rel).name
-        if name.endswith("_engine.py") or name == "terrain_engine.py":
+        if _ENGINE_FILENAME_TOKEN.search(name):
             if rel not in mega2_files and rel not in out_of_scope:
                 offenders.append(rel)
     return sorted(offenders)

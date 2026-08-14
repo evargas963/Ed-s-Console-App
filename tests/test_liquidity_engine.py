@@ -314,11 +314,58 @@ def test_fusion_call_graph_reaches_engine_volume_profile():
     assert "from liquidity_value_engine import _volume_profile_poc_vah_val" in sl
 
 
-def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[str]:
-    """F15 class: any `*volume_profile*` def that is not the engine and does not delegate.
+_POC_ENGINE_CALLEES = frozenset(
+    {"_volume_profile_poc_vah_val", "compute_volume_profile_levels"}
+)
+_POC_ALG_NAMES = frozenset({"vol_by_price", "nbin"})
 
-    Cite-scoped repair named signal_layer_v1 / market_context. A new file with
-    its own binning loop is the same class.
+
+def _fn_delegates_to_poc_engine(src: str, fn) -> bool:
+    import ast
+
+    seg = ast.get_source_segment(src, fn) or ""
+    return "liquidity_value_engine" in seg or "_volume_profile_poc_vah_val" in seg
+
+
+def _assign_target_names(target) -> list[str]:
+    import ast
+
+    out: list[str] = []
+    if isinstance(target, ast.Name):
+        out.append(target.id)
+    elif isinstance(target, ast.Attribute):
+        out.append(target.attr)
+    elif isinstance(target, ast.Tuple):
+        for elt in target.elts:
+            out.extend(_assign_target_names(elt))
+    return out
+
+
+def _is_poc_vah_val_triple(names: list[str]) -> bool:
+    low = [n.lower() for n in names]
+    has_poc = any("poc" in n for n in low)
+    has_va = any(n == "vah" or n.endswith("vah") or n == "val" or n.endswith("_val") for n in low)
+    return has_poc and has_va
+
+
+def _call_name(node) -> str | None:
+    import ast
+
+    if not isinstance(node, ast.Call):
+        return None
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[str]:
+    """F15 class: a second POC/VAH/VAL algorithm or unpack, any function name.
+
+    The name `volume_profile` is not the universe. A `_value_area_*` helper
+    that bins locally, or `poc, vah, val = <other>()`, is the same class.
     """
     import ast
 
@@ -326,18 +373,37 @@ def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[s
         tree = ast.parse(src)
     except SyntaxError:
         return []
-    engine_names = {"_volume_profile_poc_vah_val", "compute_volume_profile_levels"}
     is_engine = filename.endswith("liquidity_value_engine.py") or filename == "liquidity_value_engine.py"
+    local_defs = {
+        n.name: n
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
     offenders: list[str] = []
     for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-        if "volume_profile" not in fn.name:
+        names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
+        if names & _POC_ALG_NAMES:
+            if is_engine and fn.name in _POC_ENGINE_CALLEES:
+                continue
+            if not _fn_delegates_to_poc_engine(src, fn):
+                offenders.append(f"{filename}:{fn.name}")
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
             continue
-        if is_engine and fn.name in engine_names:
-            continue
-        src_seg = ast.get_source_segment(src, fn) or ""
-        if "liquidity_value_engine" not in src_seg and "_volume_profile_poc_vah_val" not in src_seg:
-            offenders.append(f"{filename}:{fn.name}")
-    return offenders
+        for target in node.targets:
+            ns = _assign_target_names(target)
+            if not _is_poc_vah_val_triple(ns):
+                continue
+            callee = _call_name(node.value)
+            if callee is None:
+                continue
+            if callee in _POC_ENGINE_CALLEES:
+                continue
+            local = local_defs.get(callee)
+            if local is not None and _fn_delegates_to_poc_engine(src, local):
+                continue
+            offenders.append(f"{filename}:{callee}")
+    return sorted(set(offenders))
 
 
 def test_all_volume_profile_function_defs_are_engine_or_passthrough():
@@ -362,14 +428,17 @@ def test_all_volume_profile_function_defs_are_engine_or_passthrough():
 
 
 def test_volume_profile_class_flags_undelegated_def_in_uncited_file():
-    """Defect-learning: the class fires on a file the last audit did not name."""
+    """Defect-learning: class fires on a helper that is not named volume_profile."""
     plant = (
-        "def _volume_profile_proxy(bars):\n"
-        "    return bars[-1]['close'] if bars else None\n"
+        "def _value_area_from_closes(bars):\n"
+        "    nbin = 12\n"
+        "    vol_by_price = {}\n"
+        "    return bars[-1]['close'], bars[-1]['close'], bars[-1]['close']\n"
+        "\n"
+        "poc, vah, val = _value_area_from_closes(bars)\n"
     )
-    assert undelegated_volume_profile_defs(plant, "features/unrelated_layer.py") == [
-        "features/unrelated_layer.py:_volume_profile_proxy"
-    ]
+    found = undelegated_volume_profile_defs(plant, "features/unrelated_layer.py")
+    assert "features/unrelated_layer.py:_value_area_from_closes" in found, found
 
 
 def test_cluster_price_levels():

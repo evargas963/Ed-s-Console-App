@@ -177,8 +177,10 @@ def test_uninventoried_engine_module_is_rejected_when_planted():
     """RC-297 bedrock: the guard runs today, not only if terrain_engine returns."""
     planted = ["terrain_engine.py"]
     assert uninventoried_engine_modules(planted) == ["terrain_engine.py"]
-    # Class, not the cited name: any uninventoried *_engine.py.
+    # Class, not the cited suffix: engine as a filename token.
+    assert uninventoried_engine_modules(["engine_core.py"]) == ["engine_core.py"]
     assert uninventoried_engine_modules(["mystery_engine.py"]) == ["mystery_engine.py"]
+    assert uninventoried_engine_modules(["calibration/signal_engineering.py"]) == []
     assert uninventoried_engine_modules(["order_flow_engine.py"]) == []
     assert uninventoried_engine_modules(["liquidity_value_engine.py"]) == []
 

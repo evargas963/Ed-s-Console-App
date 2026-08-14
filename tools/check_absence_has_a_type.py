@@ -86,13 +86,25 @@ def fabricated_absence_returns_in_source(text: str) -> list[tuple[int, str, str]
         for handler in [n for n in ast.walk(fn) if isinstance(n, ast.ExceptHandler)]:
             for r in [n for n in ast.walk(handler) if isinstance(n, ast.Return)]:
                 v = r.value
-                if not (isinstance(v, ast.Constant) and isinstance(v.value, (int, float))
-                        and not isinstance(v.value, bool)):
+                lit = None
+                if isinstance(v, ast.Constant) and isinstance(v.value, (int, float)) and not isinstance(v.value, bool):
+                    lit = v.value
+                elif (
+                    isinstance(v, ast.Call)
+                    and isinstance(v.func, ast.Name)
+                    and v.func.id == "float"
+                    and v.args
+                    and isinstance(v.args[0], ast.Constant)
+                    and isinstance(v.args[0].value, (int, float))
+                    and not isinstance(v.args[0].value, bool)
+                ):
+                    lit = v.args[0].value
+                if lit is None:
                     continue
                 src_line = lines[r.lineno - 1] if r.lineno <= len(lines) else ""
                 if _ABSENCE_OK_RE.search(src_line):
                     continue
-                out.append((r.lineno, fn.name, repr(v.value)))
+                out.append((r.lineno, fn.name, repr(lit)))
     return out
 
 

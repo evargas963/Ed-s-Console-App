@@ -30,25 +30,25 @@ from math_levels import build_summary_rows, compute_gamma_flip, pick_gamma_wall_
 
 _INDEX = Path(__file__).resolve().parent.parent / "static" / "index.html"
 
-_KL_ROW_RE = re.compile(
-    r"\{\s*key:\s*['\"](kl_[^'\"]+)['\"]([^}]*)\}",
+_PAYLOAD_ROW_RE = re.compile(
+    r"\{\s*key:\s*['\"]([^'\"]+)['\"]([^}]*)\}",
     re.S,
 )
-_HARDCODED_KL_LABEL_RE = re.compile(
+_HARDCODED_LABEL_RE = re.compile(
     r"(?<![A-Za-z_])label:\s*['\"]([^'\"]+)['\"]"
 )
 
 
 def hardcoded_kl_row_labels(html: str) -> list[tuple[str, str]]:
-    """Every `{ key: 'kl_*', label: '...' }` — the paint class, any key.
+    """Every `{ key: '...', label: '...' }` — painted consumer copy, any key.
 
-    Cite-scoped repair checked kl_gamma_pin / the 17 registry keys. A new
-    `kl_*` row with a hardcoded label is the same class.
+    The class is UI-painted consumer copy. The `kl_` prefix is not the
+    universe: a row that omits it is the same two-copy bind.
     """
     found: list[tuple[str, str]] = []
-    for match in _KL_ROW_RE.finditer(html):
+    for match in _PAYLOAD_ROW_RE.finditer(html):
         key, body = match.group(1), match.group(2)
-        label = _HARDCODED_KL_LABEL_RE.search(body)
+        label = _HARDCODED_LABEL_RE.search(body)
         if label:
             found.append((key, label.group(1)))
     return found
@@ -236,13 +236,13 @@ def test_all_seventeen_kl_labels_come_from_the_registry():
 
 
 def test_kl_hardcoded_label_class_flags_uncited_key():
-    """Defect-learning: paint class fires on a kl_* key the last audit did not name."""
+    """Defect-learning: paint class fires without the observed `kl_` prefix."""
     plant = (
         "const KL_PRIMARY = [\n"
-        "  { key: 'kl_new_unlisted', label: 'Planted Label', tip: 'x' },\n"
+        "  { key: 'structural_unlisted', label: 'Planted Label', tip: 'x' },\n"
         "];\n"
     )
-    assert hardcoded_kl_row_labels(plant) == [("kl_new_unlisted", "Planted Label")]
+    assert hardcoded_kl_row_labels(plant) == [("structural_unlisted", "Planted Label")]
 
 
 def test_decision_exec_pin_labeled_net_gamma():

@@ -46,11 +46,11 @@ def test_absence_gate_flags_except_literal_on_uncited_function():
         "def unrelated_score(x: float) -> float:\n"
         "    try:\n"
         "        return float(x)\n"
-        "    except ValueError:\n"
-        "        return 0.0\n"
+        "    except TypeError:\n"
+        "        return float(0)\n"
     )
     hits = fabricated_absence_returns_in_source(plant)
-    assert [(h[1], h[2]) for h in hits] == [("unrelated_score", "0.0")]
+    assert [(h[1], h[2]) for h in hits] == [("unrelated_score", "0")]
 
 
 def test_rc318_board_lists_every_absence_ok_site():

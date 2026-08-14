@@ -18,17 +18,11 @@ from verify_active_models import model_health_edge_from_meta
 
 REPO = Path(__file__).resolve().parent.parent
 
-_MEASUREMENT_KEY_RE = re.compile(
-    r"(edge|score|metric|acc|accuracy|promotion)_key$"
-)
-
-
 def functions_that_get_unrelated_literal_on_key_miss(src: str) -> list[str]:
-    """Functions that take a measurement `*_key` and on miss `.get` a different literal.
+    """Functions that look up a mapping by a parameter and on miss read another literal.
 
-    The class is substituting metric V when the caller asked for metric K.
-    Cite-scoped repair named `model_health_edge_from_meta`. A new `score_key`
-    helper that falls back to `val_accuracy` is the same class.
+    The class is substituting field V when the caller asked for field K.
+    The `*_key` suffix and the words edge/score/accuracy are not the universe.
     """
     import ast
 
@@ -39,11 +33,7 @@ def functions_that_get_unrelated_literal_on_key_miss(src: str) -> list[str]:
 
     found: list[str] = []
     for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-        key_args = {
-            a.arg
-            for a in (*fn.args.args, *fn.args.kwonlyargs)
-            if _MEASUREMENT_KEY_RE.search(a.arg)
-        }
+        key_args = {a.arg for a in (*fn.args.args, *fn.args.kwonlyargs)}
         if not key_args:
             continue
         if _reads_unrelated_literal_on_key_miss(fn, key_args):
@@ -62,38 +52,37 @@ def _is_get_call(node: object) -> bool:
     )
 
 
-def _has_literal_get(nodes: list) -> bool:
+def _lookup_mapping_and_key(expr):
+    """Return (mapping_name, key_node) for mapping.get(k) / mapping[k], else None."""
     import ast
 
-    for node in nodes:
-        for child in ast.walk(node):
-            if _is_get_call(child):
-                first = child.args[0]
-                if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                    return True
-            if (
-                isinstance(child, ast.Subscript)
-                and isinstance(child.slice, ast.Constant)
-                and isinstance(child.slice.value, str)
-            ):
-                return True
-    return False
+    if _is_get_call(expr) and isinstance(expr.func.value, ast.Name):
+        return expr.func.value.id, expr.args[0]
+    if (
+        isinstance(expr, ast.Subscript)
+        and isinstance(expr.value, ast.Name)
+    ):
+        return expr.value.id, expr.slice
+    return None
 
 
-def _uses_key_as_lookup(nodes: list, key_args: set[str]) -> bool:
+def _key_kind(key_node, key_args: set[str]) -> str | None:
     import ast
 
-    for node in nodes:
-        for child in ast.walk(node):
-            if _is_get_call(child) and isinstance(child.args[0], ast.Name) and child.args[0].id in key_args:
-                return True
-            if (
-                isinstance(child, ast.Subscript)
-                and isinstance(child.slice, ast.Name)
-                and child.slice.id in key_args
-            ):
-                return True
-    return False
+    if isinstance(key_node, ast.Name) and key_node.id in key_args:
+        return "param"
+    if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
+        return "literal"
+    return None
+
+
+def _returned_lookup(stmts: list):
+    """If stmts is a single `return mapping[key]`, return that lookup."""
+    import ast
+
+    if len(stmts) != 1 or not isinstance(stmts[0], ast.Return) or stmts[0].value is None:
+        return None
+    return _lookup_mapping_and_key(stmts[0].value)
 
 
 def _reads_unrelated_literal_on_key_miss(fn, key_args: set[str]) -> bool:
@@ -103,30 +92,60 @@ def _reads_unrelated_literal_on_key_miss(fn, key_args: set[str]) -> bool:
         if not _is_get_call(node):
             continue
         first = node.args[0]
-        if (
+        inner = node.args[1] if len(node.args) >= 2 else None
+        if not (
             isinstance(first, ast.Name)
             and first.id in key_args
-            and len(node.args) >= 2
-            and _is_get_call(node.args[1])
-            and isinstance(node.args[1].args[0], ast.Constant)
-            and isinstance(node.args[1].args[0].value, str)
+            and _is_get_call(inner)
+            and isinstance(inner.args[0], ast.Constant)
+            and isinstance(inner.args[0].value, str)
+        ):
+            continue
+        # Same mapping: meta.get(field, meta.get("other"))
+        if (
+            isinstance(node.func.value, ast.Name)
+            and isinstance(inner.func.value, ast.Name)
+            and node.func.value.id == inner.func.value.id
         ):
             return True
     for node in ast.walk(fn):
-        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
-            uses_key = _uses_key_as_lookup(node.values, key_args)
-            has_lit = _has_literal_get(node.values)
-            if uses_key and has_lit:
-                return True
+        if not (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)):
+            continue
+        gets = [v for v in node.values if _is_get_call(v)]
+        if len(gets) < 2:
+            continue
+        bases = []
+        uses_key = False
+        has_lit = False
+        for g in gets:
+            if isinstance(g.func.value, ast.Name):
+                bases.append(g.func.value.id)
+            first = g.args[0]
+            if isinstance(first, ast.Name) and first.id in key_args:
+                uses_key = True
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                has_lit = True
+        if uses_key and has_lit and len(set(bases)) == 1 and bases[0] is not None:
+            return True
     for node in ast.walk(fn):
         if not isinstance(node, ast.If):
             continue
-        if _uses_key_as_lookup(node.body, key_args) and _has_literal_get(node.orelse):
-            return True
-        if _has_literal_get(node.body) and _uses_key_as_lookup(node.orelse, key_args):
-            return True
-    if _uses_key_as_lookup(fn.body, key_args) and _has_literal_get(fn.body):
-        return True
+        a = _returned_lookup(node.body)
+        b = _returned_lookup(node.orelse)
+        if a and b and a[0] == b[0]:
+            kinds = {_key_kind(a[1], key_args), _key_kind(b[1], key_args)}
+            if kinds == {"param", "literal"}:
+                return True
+    for i, stmt in enumerate(fn.body):
+        if not isinstance(stmt, ast.If) or i + 1 >= len(fn.body):
+            continue
+        a = _returned_lookup(stmt.body)
+        nxt = fn.body[i + 1]
+        b = _returned_lookup([nxt])
+        if a and b and a[0] == b[0]:
+            kinds = {_key_kind(a[1], key_args), _key_kind(b[1], key_args)}
+            if kinds == {"param", "literal"}:
+                return True
     return False
 
 
@@ -138,6 +157,7 @@ def test_no_write_site_fabricates_a_zero_edge():
 def test_the_metadata_read_has_no_zero_default():
     src = (REPO / "server.py").read_text(encoding="utf-8")
     assert '_m.get(edge_key, _m.get("val_accuracy", 0))' not in src
+    assert '_m.get(version_key, _m.get("model_version"' not in src
     assert "float(raw or 0)" not in src
     assert "model_health_edge_from_meta" in src
 
@@ -164,27 +184,27 @@ def test_absent_edge_pp_is_none_even_when_val_accuracy_is_present():
 
 
 def test_edge_key_miss_class_flags_uncited_function():
-    """Defect-learning: accuracy-as-edge fires on a helper the last audit did not name."""
+    """Defect-learning: substitute-on-miss fires without a `*_key` suffix."""
     plant = (
-        "def score_from_meta(meta, score_key):\n"
-        "    if score_key and score_key in meta:\n"
-        "        return meta[score_key]\n"
-        "    return meta.get('val_accuracy')\n"
+        "def published_from_blob(blob, requested):\n"
+        "    if requested in blob:\n"
+        "        return blob[requested]\n"
+        "    return blob.get('train_accuracy')\n"
     )
-    assert functions_that_get_unrelated_literal_on_key_miss(plant) == ["score_from_meta"]
+    assert functions_that_get_unrelated_literal_on_key_miss(plant) == ["published_from_blob"]
     nested = (
-        "def edge_from_blob(meta, edge_key):\n"
-        "    return meta.get(edge_key, meta.get('val_accuracy', 0))\n"
+        "def reading_from_meta(meta, field):\n"
+        "    return meta.get(field, meta.get('train_accuracy', 0))\n"
     )
-    assert functions_that_get_unrelated_literal_on_key_miss(nested) == ["edge_from_blob"]
+    assert functions_that_get_unrelated_literal_on_key_miss(nested) == ["reading_from_meta"]
     subscript = (
-        "def score_via_subscript(meta, score_key):\n"
-        "    if score_key in meta:\n"
-        "        return meta[score_key]\n"
-        "    return meta['val_accuracy']\n"
+        "def published_via_subscript(blob, requested):\n"
+        "    if requested in blob:\n"
+        "        return blob[requested]\n"
+        "    return blob['train_accuracy']\n"
     )
     assert functions_that_get_unrelated_literal_on_key_miss(subscript) == [
-        "score_via_subscript"
+        "published_via_subscript"
     ]
 
 
