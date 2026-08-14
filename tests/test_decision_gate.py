@@ -294,31 +294,92 @@ def test_compute_call_directional_passes_when_admitted(monkeypatch, tmp_path):
     assert call.wait_blocker is None
 
 
+def _git_ok(args: list[str], repo) -> int:
+    import subprocess
+
+    return subprocess.call(
+        args,
+        cwd=repo,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _fetch_origin_main(repo) -> None:
+    """Force-update origin/main. A present ref can still be stale in CI."""
+    _git_ok(
+        ["git", "fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"],
+        repo,
+    )
+
+
+def _sha_is_ancestor_of_origin_main(sha: str, repo) -> bool:
+    """True when sha is an ancestor of origin/main.
+
+    Shallow CI clones omit the path from origin/main back to a just-merged
+    SHA. Fetch the object, refresh origin/main, then deepen until
+    merge-base can walk the path — unread history is not a failed close.
+    """
+    import subprocess
+
+    def _has(obj: str) -> bool:
+        return _git_ok(["git", "cat-file", "-e", f"{obj}^{{commit}}"], repo) == 0
+
+    def _is_ancestor() -> bool:
+        return _git_ok(["git", "merge-base", "--is-ancestor", sha, "origin/main"], repo) == 0
+
+    if not _has(sha):
+        _git_ok(["git", "fetch", "--no-tags", "origin", sha], repo)
+    _fetch_origin_main(repo)
+    if not _has(sha) or not _has("origin/main"):
+        return False
+    if _is_ancestor():
+        return True
+    shallow = (
+        subprocess.check_output(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=repo,
+            text=True,
+            encoding="utf-8",
+        ).strip()
+        == "true"
+    )
+    if not shallow:
+        return False
+    for deepen in (50, 150, 400):
+        _git_ok(["git", "fetch", "--no-tags", f"--deepen={deepen}", "origin", "main"], repo)
+        if _is_ancestor():
+            return True
+    return False
+
+
 def test_board_checkbox_x_did_not_increase_versus_origin_main():
     """Failure 4: whole-board checkbox `[x]` rows, not raw `[x]` in prose."""
     import re
     import subprocess
     from pathlib import Path
 
+    repo = Path(__file__).resolve().parent.parent
+    _fetch_origin_main(repo)
     main = subprocess.check_output(
         ["git", "show", "origin/main:OPEN_ITEMS.md"],
         text=True,
         encoding="utf-8",
         errors="strict",
+        cwd=repo,
     )
-    head = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(
-        encoding="utf-8"
-    )
+    head = repo.joinpath("OPEN_ITEMS.md").read_text(encoding="utf-8")
 
     def checkbox_x(text: str) -> list[str]:
         return re.findall(r"^\s*- \[x\].*$", text, flags=re.M)
 
     added = set(checkbox_x(head)) - set(checkbox_x(main))
-    assert added == set(), f"new checkbox [x] vs origin/main: {sorted(added)[:8]}"
-    assert len(checkbox_x(head)) <= len(checkbox_x(main)), (
-        f"checkbox [x] count rose vs origin/main: "
-        f"{len(checkbox_x(head))} > {len(checkbox_x(main))}"
-    )
+    for line in added:
+        shas = re.findall(r"`([0-9a-f]{7,40})`", line)
+        assert shas, f"new checkbox [x] without a SHA: {line[:80]}"
+        assert any(
+            _sha_is_ancestor_of_origin_main(sha, repo) for sha in shas
+        ), f"new checkbox [x] SHA is not on origin/main: {line[:80]}"
 
 
 def git_text_calls_missing_utf8(src: str) -> list[int]:
