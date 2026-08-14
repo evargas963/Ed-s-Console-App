@@ -167,6 +167,17 @@ def test_mega2_allowlist_entries_complete():
         assert entry.category in REQUIRED_CATEGORIES
 
 
+def test_mega2_files_exist_and_terrain_engine_cannot_return_uninventoried():
+    """RC-297: the 2026-08-07 gap was terrain_engine outside MEGA2_FILES.
+
+    That file is absent on this main. If it returns, it must be inventoried.
+    """
+    for rel in MEGA2_FILES:
+        assert (ROOT / rel).is_file(), rel
+    if (ROOT / "terrain_engine.py").is_file():
+        assert "terrain_engine.py" in MEGA2_FILES
+
+
 def test_mega2_schwab_leaf_regex_rejects_aggregate():
     row = Mega2TraceableDerivation(
         file="math_levels.py",
