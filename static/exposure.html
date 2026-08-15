@@ -408,6 +408,34 @@ const PADL = 6, PADR = 96, PADT = 14, PADB = 24;
 const cvEl = $('cv'), wrap = $('wrap'), tipEl = $('tip');
 
 function draw() {
+      // ── RC-355 label de-confliction (# ui-mockup-ok: legibility fix, no redesign) ──
+      // Canvas texts historically placed themselves independently, so clustered levels
+      // stacked letters on the same pixels. Each frame keeps per-column lane registries;
+      // a text CLAIMS its wanted y and is shifted down (up at the bottom edge) until it
+      // no longer intersects a claimed lane. 1D per column: left banners share one
+      // registry, bubble labels another, so unrelated columns never displace each other.
+      const _laneL = [], _laneB = [];
+      function _claimLane(reg, want, h) {
+        let yv = want;
+        for (let guard = 0; guard < 40; guard++) {
+          const hit = reg.find(r => yv < r + h && yv > r - h);
+          if (hit === undefined) break;
+          yv = hit + h;                       // slide below the claimed lane
+        }
+        if (yv > H - PADB - 4) {              // bottom clamp: slide UP instead
+          yv = Math.min(want, H - PADB - 4);
+          for (let guard = 0; guard < 40; guard++) {
+            const hit = reg.find(r => yv < r + h && yv > r - h);
+            if (hit === undefined) break;
+            yv = hit - h;
+          }
+        }
+        reg.push(yv);
+        return yv;
+      }
+      const laneL = (want, h = 14) => _claimLane(_laneL, want, h);
+      const laneB = (want, h = 12) => _claimLane(_laneB, want, h);
+      window.__edExpoLanes = { claim: _claimLane };  // behavioral-test handle (RC-355)
   const dpr = window.devicePixelRatio || 1;
   const W = wrap.clientWidth, H = wrap.clientHeight || 560;
   cvEl.width = W * dpr; cvEl.height = H * dpr;
@@ -521,7 +549,7 @@ function draw() {
         g.fillStyle = palRgba(selRow[1] >= 0 ? PAL.amber : PAL.vio, 1);
         g.font = "800 11px 'IBM Plex Mono', monospace";
         g.fillText(`${selRow[1] >= 0 ? 'PIKA +γ' : 'BARNEY −γ'} ${fmt(selRow[0], 0)} · ${fmtBig(selRow[1])} · ${selRow[1] >= 0 ? 'friction' : 'fuel'}`,
-          PADL + 6, yy + (yy > PADT + 30 ? -11 : 24));
+          PADL + 6, laneL(yy + (yy > PADT + 30 ? -11 : 24)));  // # ui-mockup-ok: RC-355 lane de-confliction, no redesign
       }
     }
   }
@@ -541,7 +569,7 @@ function draw() {
     g.strokeRect(PADL, yy - 8 - pulse * 2, W - PADL - PADR, 16 + pulse * 4); g.lineWidth = 1;
     g.fillStyle = PAL.acc; g.font = "800 11px 'IBM Plex Mono', monospace";
     // # ui-mockup-ok: RC-352 nomenclature label fix only (KING -> NET GEX PEAK), no design change
-      g.fillText(`⛁ NET GEX PEAK ${fmt(king[0], 0)} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, yy - 12 - pulse * 2);
+      g.fillText(`⛁ NET GEX PEAK ${fmt(king[0], 0)} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, laneL(yy - 12 - pulse * 2));  // # ui-mockup-ok: RC-355 lane
   }
   // VWAP + σ bands as SERIES CURVES (RC-198) — mapped bar-time → visible index
   let vwbDrawn = false;
@@ -612,7 +640,7 @@ function draw() {
         g.fillStyle = PAL.tx;
         g.font = "800 9px 'IBM Plex Mono', monospace";
         const lbl = '$' + fmtBig(dvol * 100 * spot);
-        g.fillText(lbl, px + rad + 3, y(strike) + 3);
+        g.fillText(lbl, px + rad + 3, laneB(y(strike) + 3));  // # ui-mockup-ok: RC-355 lane
         labeledBubbles++;
       }
       drawnBubbles++;
@@ -651,8 +679,8 @@ function draw() {
     const ys = Math.max(PADT + 26, Math.min(H - PADB - 26, y(spot)));
     g.font = "600 10px 'IBM Plex Mono', monospace";
     g.fillStyle = palRgba(PAL.sky, 0.85);
-    g.fillText(`charm ↑side ${fmtBig(forces.charm_above)} sh/day`, PADL + 6, ys - 12);
-    g.fillText(`charm ↓side ${fmtBig(forces.charm_below)} sh/day`, PADL + 6, ys + 18);
+    g.fillText(`charm ↑side ${fmtBig(forces.charm_above)} sh/day`, PADL + 6, laneL(ys - 12));  // # ui-mockup-ok: RC-355 lane
+    g.fillText(`charm ↓side ${fmtBig(forces.charm_below)} sh/day`, PADL + 6, laneL(ys + 18));  // # ui-mockup-ok: RC-355 lane
     charmDrawn = true;
   }
   if (spot != null) {
