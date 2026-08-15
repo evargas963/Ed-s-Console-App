@@ -9053,7 +9053,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
       const mlModels = d.model_health.filter(m => m && ['XGBoost','LSTM','Transformer'].includes(m.model));
       const liveCount = mlModels.filter(m => m.status === 'LIVE').length;
       if (mhSum) mhSum.textContent = `${liveCount}/${mlModels.length} approved`;
-      const statusCls = s => s === 'LIVE' ? 'color:var(--green)' : s === 'NON-COMPLIANT' ? 'color:var(--amber)' : s === 'BINARY MISSING' ? 'color:var(--red)' : 'color:var(--text3)';
+      const statusCls = s => s === 'LIVE' ? 'color:var(--green)' : s === 'NON-COMPLIANT' ? 'color:var(--amber)' : (s === 'BINARY MISSING' || s === 'INTEGRITY FAILED') ? 'color:var(--red)' : 'color:var(--text3)'; // ui-mockup-ok: label-color-only, RC-377 fail-closed status must not render muted
       mhList.innerHTML = mlModels.map(m => {
         const reason = (m.status_reason || '').replace(/"/g, '&quot;');
         const mname = m.model != null ? String(m.model) : '—';

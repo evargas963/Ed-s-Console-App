@@ -152,6 +152,40 @@ def test_producer_slice_has_no_arithmetic_translation_ast():
             "every model requests edge_pp, never an accuracy metric")
 
 
+def test_producer_slice_call_surface_is_a_closed_whitelist():
+    """RC-378 (Cursor gate-width residual: `edge = operator.mul(_fin_edge(...), 1)` is a
+    Call, not a BinOp — the arithmetic ban alone never sees it). An enumerated blacklist
+    loses to the next reshape by construction, so the lock is a CLOSED WHITELIST over the
+    real slice: every call in the producer must be listed here, and ANY new callable —
+    operator.mul, float, round, sum, whatever arrives next — trips the gate and forces a
+    deliberate update at this site."""
+    import ast as _ast
+    import textwrap
+
+    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    i = src.index("def _model_status_from_artifact(")
+    j = src.index("_xgb_meta = ", i)
+    tree = _ast.parse(textwrap.dedent(src[i:j]))
+    allowed_attrs = {"get", "exists", "read_text", "loads", "join"}
+    allowed_names = {"_fin_edge", "_item4_verify"}
+    for n in _ast.walk(tree):
+        if not isinstance(n, _ast.Call):
+            continue
+        f = n.func
+        if isinstance(f, _ast.Attribute):
+            assert f.attr in allowed_attrs, (
+                f"unlisted attribute call .{f.attr}(...) in the model-health producer — "
+                "a numeric translation smuggled as a call is the RC-291 class reshaped")
+        elif isinstance(f, _ast.Name):
+            assert f.id in allowed_names, (
+                f"unlisted call {f.id}(...) in the model-health producer — "
+                "a numeric translation smuggled as a call is the RC-291 class reshaped")
+        else:
+            raise AssertionError(
+                "call through a computed expression in the producer slice — nothing "
+                "in this function may call anything the whitelist cannot name")
+
+
 def test_the_field_still_has_no_consumer_and_that_is_recorded():
     """If a surface starts reading `edge`, this test should be the thing that notices.
 
