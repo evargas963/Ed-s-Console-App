@@ -364,6 +364,9 @@ def dominant_direction(up: float, down: float, flat: float) -> tuple:
     from numeric_contract import direction_from_normalized_triplet
     probs = {"up": up, "down": down, "flat": flat}
     dom = direction_from_normalized_triplet(up, down, flat)
+    if dom is None:
+        # RC-363 WITHHELD: non-finite leg — no dominant direction to report.
+        return None, None
     return dom, probs[dom]
 
 

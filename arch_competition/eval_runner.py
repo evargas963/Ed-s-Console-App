@@ -129,15 +129,23 @@ def _metrics_from_detail(detail: dict[str, Any]) -> tuple[float, float, int, Opt
 
     from numeric_contract import direction_from_normalized_triplet
 
-    y_true = detail.get("y_true") or []
-    prob_rows = detail.get("prob_rows") or []
+    y_true_raw = detail.get("y_true") or []
+    prob_rows_raw = detail.get("prob_rows") or []
+    # RC-363 WITHHELD-aware alignment: drop any row whose triplet is non-finite
+    # so it never corrupts preds/y_true/log_loss (all three must stay index-aligned).
+    y_true: list[int] = []
+    prob_rows: list[list[float]] = []
+    preds: list[int] = []
+    for yt, (pu, pd, pf) in zip(y_true_raw, prob_rows_raw):
+        dom = direction_from_normalized_triplet(float(pu), float(pd), float(pf))
+        if dom is None:
+            continue
+        preds.append({"up": 0, "down": 1, "flat": 2}[dom])
+        y_true.append(yt)
+        prob_rows.append([pu, pd, pf])
     n = len(y_true)
     if n < 10:
         return 0.0, 0.0, n, None
-    preds: list[int] = []
-    for pu, pd, pf in prob_rows:
-        dom = direction_from_normalized_triplet(float(pu), float(pd), float(pf))
-        preds.append({"up": 0, "down": 1, "flat": 2}[dom])
     acc = float(accuracy_score(y_true, preds))
     bal = float(balanced_accuracy_score(y_true, preds))
     ll = float(log_loss(y_true, np.array(prob_rows, dtype=np.float64), labels=[0, 1, 2]))

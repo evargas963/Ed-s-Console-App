@@ -76,6 +76,35 @@ def test_direction_from_triplet_tie_break_up_first():
     assert direction_from_normalized_triplet(1 / 3, 1 / 3, 1 / 3) == "up"
 
 
+@pytest.mark.parametrize(
+    "up,down,flat",
+    [
+        (None, 0.2, 0.2),
+        (0.6, None, 0.2),
+        (0.6, 0.2, None),
+        (None, None, None),
+        (float("nan"), 0.2, 0.2),
+        (0.6, float("inf"), 0.2),
+        (0.6, 0.2, float("-inf")),
+        ("0.6", 0.2, 0.2),
+    ],
+)
+def test_direction_from_normalized_triplet_withholds_on_bad_leg(up, down, flat):
+    """RC-363: single producer is defensive — any None / non-finite / non-numeric
+    leg returns None (WITHHELD) instead of raising TypeError or emitting an
+    order-dependent garbage label."""
+    assert direction_from_normalized_triplet(up, down, flat) is None
+
+
+def test_dominant_direction_withholds_on_nan_leg():
+    """RC-363: math_probabilities.dominant_direction mirrors the WITHHELD policy
+    instead of KeyError on the None label."""
+    from math_probabilities import dominant_direction
+
+    assert dominant_direction(float("nan"), 0.2, 0.2) == (None, None)
+    assert dominant_direction(0.5, 0.3, 0.2) == ("up", 0.5)
+
+
 def test_direction_from_triplet_dict_insertion_order_independent():
     """Tie-break is label order (up, down, flat), not caller dict order."""
     assert direction_from_triplet(0.4, 0.4, 0.2) == "up"
