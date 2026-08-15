@@ -490,11 +490,22 @@ def _verify_governed_artifact(base: Path, bt: str, hz: str, role: str, filename:
     Canonical pre-deserialization integrity boundary for serve-path model loads.
 
     Verifies artifact bytes against the bundle integrity manifest BEFORE any
-    pickle/torch deserialization. Absent manifest -> explicit legacy provenance
-    (pre-Item-4 bundles; production authorization stays the MODEL-04 strict serve
-    gate upstream) unless ED_ARTIFACT_INTEGRITY_STRICT=1. Every governed failure
-    fails closed and is recorded with a stable reason code. Returns provenance on
-    success, None when the load must be refused.
+    pickle/torch deserialization. Every governed failure fails closed and is
+    recorded with a stable reason code. Returns provenance on success, None when
+    the load must be refused.
+
+    ABSENT MANIFEST (RC-377 F3 correction, 2026-08-15): this docstring used to say
+    absence yields legacy provenance "unless ED_ARTIFACT_INTEGRITY_STRICT=1", and
+    that sentence misled two independent audits into recording a hole that is not
+    open. The environment flag is NOT the only lever and is no longer the operative
+    one. `artifact_integrity_strict_absence()` resolves the COMMITTED policy in
+    governance/ML_ITEM4_MIGRATION_POLICY.json, which carries strict_default=true
+    with legacy_allowance.enabled=false, expired 2026-07-12. Measured: strict is
+    True with the flag unset, AND True at ED_ARTIFACT_INTEGRITY_STRICT=0 — once the
+    allowance is disabled the environment cannot reopen legacy serving. So a bundle
+    with no manifest RAISES MANIFEST_MISSING and the load is refused today. Legacy
+    provenance is reachable only if the committed policy is changed to re-enable an
+    unexpired allowance, which is an operator-lane commit.
     """
     from active_bundle_contract import (
         ArtifactVerificationError,
