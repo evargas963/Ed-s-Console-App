@@ -29,6 +29,7 @@ from typing import Any
 from math_exposure_core import (
     compute_exposures_by_strike,
     compute_net_dex_dollars,
+    compute_net_vanna,
     compute_zero_dte_gamma_share,
     exposures_have_dollar_gex,
     pick_delta_wall_strikes,
@@ -124,6 +125,10 @@ class TerrainSnapshot:
     #: RC-361: aggregate dealer DEX $ — {net_dex, call_dex, put_dex} or None. The
     #: directional hedge-inventory complement to GEX-per-1%. Fail-closed None.
     dex_dollars: dict | None = None
+
+    #: RC-362: aggregate dealer vanna — {net_vanna_dollars_per_volpt, net_vanna_shares_per_volpt}
+    #: or None. Sizes the IV-driven hedge flow (vol-crush tailwind / vol-spike selling).
+    vanna_agg: dict | None = None
 
     #: RC-113: the institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
@@ -626,6 +631,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         oi_by_strike={float(k): (b.get("call_oi"), b.get("put_oi"))
                       for k, b in exposures.items() if isinstance(b, dict)},
         dex_dollars=compute_net_dex_dollars(exposures),   # RC-361: same book, one sum
+        vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
         call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115

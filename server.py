@@ -11078,6 +11078,9 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     # RC-361: aggregate dealer DEX $ — directional inventory beside the GEX-per-1% row.
     _dex = _g("dex_dollars") or {}
     md["kl_dex_net"] = _dex.get("net_dex") if isinstance(_dex, dict) else None
+    # RC-362: aggregate dealer vanna $ per vol-pt — the IV-driven hedge-flow size.
+    _vna = _g("vanna_agg") or {}
+    md["kl_vanna_net_dollars"] = _vna.get("net_vanna_dollars_per_volpt") if isinstance(_vna, dict) else None
     md["kl_max_pain"] = _g("max_pain")
     md["kl_call_delta_wall"] = _g("call_delta_wall")
     md["kl_put_delta_wall"] = _g("put_delta_wall")

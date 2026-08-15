@@ -8327,6 +8327,23 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
     }
 
+    // RC-362: Net Vanna — the IV-driven hedge-flow size ($ per vol-point).
+    {
+      const vn = d.kl_vanna_net_dollars;
+      const vnOk = vn != null && Number.isFinite(Number(vn));
+      const vv = vnOk ? Number(vn) : null;
+      const fmtV = (n) => { const a = Math.abs(n); const s = n >= 0 ? '+' : '−';
+        return a >= 1e9 ? `${s}$${(a/1e9).toFixed(2)}B` : a >= 1e6 ? `${s}$${(a/1e6).toFixed(1)}M` : `${s}$${(a/1e3).toFixed(0)}K`; };
+      html += `<div class="kl-grid" title="Net Vanna: how many dollars of delta dealers must re-hedge per 1-point IV move (vega/(S·IV) proxy, +call/−put convention). Positive: an IV CRUSH forces dealer BUYING — the vanna-tailwind rally mechanic; an IV spike forces selling. Sizes the vol-driven hedge flow beside GEX (spot-driven) and DEX (inventory).">
+        <div class="kl-prox" style="background:transparent"></div>
+        <div class="kl-name">Net Vanna</div>
+        <div class="kl-price">${vnOk ? fmtV(vv) + '/vol-pt' : '—'}</div>
+        <div style="text-align:center"><span class="kl-sr ${vnOk ? (vv >= 0 ? 'bull' : 'bear') : 'net'}">${vnOk ? (vv >= 0 ? 'Crush = buy' : 'Crush = sell') : '—'}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${vnOk ? 'IV-driven flow' : '—'}</div>
+      </div>`;
+    }
+
     // RC-357: 0DTE Gamma Share — level persistence. Fail-closed: row renders — when the
     // share is unavailable, never a fabricated 0%.
     {
@@ -8407,10 +8424,19 @@ function renderTierALive(d, fullRenderSource) {
       const distStr = dist !== null ? (dist > 0 ? '+' : '') + dist.toFixed(2) : '—';
       const charmAbs = charmNetRaw != null ? Math.abs(charmNetRaw) : 0;
       const charmSign = charmNetRaw != null && charmNetRaw >= 0 ? '+' : '-';
+      // RC-362: dollarize the charm rate (shares/day × spot) so it reads beside GEX/DEX/
+      // vanna in the same unit; falls back to Δ-shares/day when spot is unusable.
+      const _cSpot = Number(d.spot);
+      const _cDol = charmNetRaw != null && Number.isFinite(_cSpot) && _cSpot > 0
+        ? Math.abs(charmNetRaw) * _cSpot : null;
       const rateStr = charmNetRaw != null && charmNetRaw !== 0
-        ? (charmAbs >= 1000000 ? `${charmSign}${(charmAbs/1000000).toFixed(2)}M Δ/day`
-           : charmAbs >= 1000 ? `${charmSign}${(charmAbs/1000).toFixed(0)}K Δ/day`
-           : `${charmSign}${charmAbs.toFixed(1)} Δ/day`)
+        ? (_cDol != null
+            ? (_cDol >= 1e9 ? `${charmSign}$${(_cDol/1e9).toFixed(2)}B/day`
+               : _cDol >= 1e6 ? `${charmSign}$${(_cDol/1e6).toFixed(1)}M/day`
+               : `${charmSign}$${(_cDol/1e3).toFixed(0)}K/day`)
+            : (charmAbs >= 1000000 ? `${charmSign}${(charmAbs/1000000).toFixed(2)}M Δ/day`
+               : charmAbs >= 1000 ? `${charmSign}${(charmAbs/1000).toFixed(0)}K Δ/day`
+               : `${charmSign}${charmAbs.toFixed(1)} Δ/day`))
         : '—';
 
       const charmProxColor = (charmTarget != null && charmTarget > 0 && spot && Math.abs(charmTarget - spot) <= prox) ? '#f97316'
