@@ -926,6 +926,133 @@ def gamma_flip_from_profile(
     return min(crossings, key=lambda c: abs(c - spot))
 
 
+#: RC-354 Gamma Support Floor / Gamma Resistance Ceiling — construction constants.
+#: phi: the support-decay fraction (research 2026-08-15, Barbon & Buraschi gamma-fragility
+#: framing): the level where the dealer stabilization cushion N(s) has decayed to phi of its
+#: at-spot value. 0.5 = "half-support", communicable and parameter-honest; calibratable in
+#: [0.25, 0.6] on banked bars later (placebo-tested), never silently re-tuned.
+GSF_PHI = 0.5
+#: eps guard: below this fraction of the profile's max |N|, the at-spot cushion is too small
+#: for a ratio to mean anything — the regime is effectively at/below zero support and the
+#: honest output is a STATE, not a fabricated price.
+GSF_EPS_FRAC = 0.005
+GSF_STATE_OK = "OK"
+GSF_STATE_BELOW_SUPPORT = "BELOW_SUPPORT"
+GSF_STATE_UNAVAILABLE = "UNAVAILABLE"
+
+
+def _interp_profile_at(profile: List[tuple[float, float]], s: float) -> float | None:
+    """Linear interpolation of net GEX$ at price s on an ascending profile."""
+    if not profile:
+        return None
+    if s <= profile[0][0]:
+        return profile[0][1]
+    if s >= profile[-1][0]:
+        return profile[-1][1]
+    for i in range(1, len(profile)):
+        (p0, v0), (p1, v1) = profile[i - 1], profile[i]
+        if p0 <= s <= p1:
+            if p1 == p0:
+                return v0
+            return v0 + (v1 - v0) * (s - p0) / (p1 - p0)
+    return None
+
+
+def compute_gamma_support_levels(
+    profile: List[tuple[float, float]],
+    spot: float | None,
+    *,
+    phi: float = GSF_PHI,
+    eps_frac: float = GSF_EPS_FRAC,
+) -> dict:
+    """RC-354: Gamma Support Floor (GSF) + Gamma Resistance Ceiling (GRC) — ONE producer.
+
+    On the repriced net-GEX profile N(s) (`compute_gamma_profile`; the SAME materialized
+    profile the flip/regime use — RC-345 one-profile rule):
+
+      GSF = the HIGHEST s < spot where N(s) <= phi * N(spot)
+            — where the dealers' positive-gamma stabilization cushion is substantially
+            exhausted BELOW spot. Sits at/above the Gamma Flip by construction (N(flip)=0):
+            support effectively ends here BEFORE net gamma mathematically crosses zero.
+      GRC = the LOWEST s > spot where N(s) <= phi * N(spot)
+            — where vol-SUPPRESSION is exhausted ABOVE spot; beyond it dealer selling no
+            longer dampens rallies. ASYMMETRIES (research 2026-08-15, encoded honestly):
+            (1) N(s) often RISES into the call wall before decaying, so the GRC frequently
+            sits AT/BEYOND the wall — resistance strengthens before it exhausts; (2) an
+            upside breach is typically a vanna-supported grind/extension, not a mirror-image
+            crash-up — the two levels are NOT symmetric in breach violence.
+
+    FAIL-CLOSED: when N(spot) <= eps (already negative/negligible-gamma regime) the honest
+    output is state=BELOW_SUPPORT with BOTH levels None — never a fabricated price. An empty
+    or unusable profile returns state=UNAVAILABLE.
+    """
+    if not profile or spot is None or spot <= 0:
+        return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE, "n_at_spot": None}
+    n_spot = _interp_profile_at(profile, float(spot))
+    if n_spot is None:
+        return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE, "n_at_spot": None}
+    max_abs = max(abs(v) for _, v in profile)
+    eps = eps_frac * max_abs if max_abs > 0 else 0.0
+    if n_spot <= eps:
+        return {"gsf": None, "grc": None, "state": GSF_STATE_BELOW_SUPPORT,
+                "n_at_spot": round(n_spot, 2)}
+    target = phi * n_spot
+
+    def _cross(p0: float, v0: float, p1: float, v1: float) -> float:
+        # price where the segment crosses `target` (v0 and v1 straddle it)
+        if v1 == v0:
+            return p0
+        return p0 + (p1 - p0) * (target - v0) / (v1 - v0)
+
+    gsf: float | None = None
+    grc: float | None = None
+    # walk DOWN from spot: the FIRST crossing below spot is the highest such s
+    below = [(p, v) for p, v in profile if p < spot]
+    prev_p, prev_v = float(spot), float(n_spot)
+    for p, v in reversed(below):
+        if v <= target < prev_v or v <= target and prev_v > target:
+            gsf = round(_cross(p, v, prev_p, prev_v), 2)
+            break
+        prev_p, prev_v = p, v
+    # walk UP from spot: the FIRST crossing above spot is the lowest such s
+    above = [(p, v) for p, v in profile if p > spot]
+    prev_p, prev_v = float(spot), float(n_spot)
+    for p, v in above:
+        if v <= target < prev_v or v <= target and prev_v > target:
+            grc = round(_cross(prev_p, prev_v, p, v), 2)
+            break
+        prev_p, prev_v = p, v
+    return {"gsf": gsf, "grc": grc, "state": GSF_STATE_OK, "n_at_spot": round(n_spot, 2)}
+
+
+def snap_level_to_shelf_strike(
+    level: float | None,
+    strike_gex: dict[float, float] | None,
+    *,
+    side: str,
+    spot: float | None,
+    theta: float,
+    snap_pct: float = 0.0025,
+) -> float | None:
+    """RC-354 snap-to-shelf: if a SIGNIFICANT positive-GEX strike (G_K >= theta) lies within
+    snap_pct of the profile-derived level on the relevant side of spot, snap the display to
+    that strike — a real OI shelf is tradeable, an abstract profile point is not. theta comes
+    from the caller (85th percentile of trailing positive strike GEX$ — self-calibrating,
+    nobody's proprietary output). Returns the (possibly snapped) level; None passes through.
+    """
+    if level is None or not strike_gex or spot is None or spot <= 0:
+        return level
+    tol = spot * snap_pct
+    candidates = [
+        k for k, g in strike_gex.items()
+        if g is not None and g >= theta and abs(k - level) <= tol
+        and ((side == "below" and k < spot) or (side == "above" and k > spot))
+    ]
+    if not candidates:
+        return level
+    return round(min(candidates, key=lambda k: abs(k - level)), 2)
+
+
 GAMMA_FLIP_TRUSTED = "TRUSTED"
 GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
 GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
