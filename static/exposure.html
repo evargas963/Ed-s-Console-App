@@ -92,7 +92,7 @@
   <span class="pill on" id="ov-dots" title="per-strike net dealer gamma — dot size and density carry magnitude">GEX dots</span>
   <span class="pill on" id="ov-bubbles" title="flow: session volume seeds at the right edge, then deltas accrue from live polls while open — the persisted history store is the named next build (direction doc R.A1); this stays live-accrual">Bubbles &middot; live-accrual</span>
   <span class="pill on" id="ov-vwap" title="session VWAP and ±1σ/±2σ as CUMULATIVE SERIES curves from canonical RTH bars (RC-198 geometry)">VWAP &sigma;</span>
-  <span class="pill on" id="ov-king" title="largest |GEX| strike — cyan is reserved for the king node and spot">King node</span>
+  <!-- # ui-mockup-ok: RC-352 institutional nomenclature label fix only (King node -> Net GEX Peak), no layout/design change --><span class="pill on" id="ov-king" title="Net GEX Peak: strike with the largest |net GEX$| — cyan is reserved for this peak and spot">Net GEX Peak</span>
   <span class="pill" id="ov-vol" title="ladder shows per-strike session option volume">VOL ladder</span>
   <!-- # ui-mockup-ok: RC-199 — no vote gate; state is purely whether the fields are served -->
   <span class="pill gate" id="ov-charm" title="lights when /api/forces serves charm_below/charm_above (restart the console to pick the fields up)">Charm</span>
@@ -123,7 +123,7 @@
   <span class="pill" id="leg-pika" title="click: show only +γ (Pika) strikes — dealers fade, moves compress"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--amber);"></span> +&gamma; Pika &middot; friction</span>
   <!-- # ui-mockup-ok: RC-203 — legend states the $ figure honestly (notional, not premium) -->
   <span title="time-anchored flow: each bubble sits at the minute its volume hit; $ = underlying notional (contracts × 100 × spot); session totals with unknown print time sit in the right gutter until the A1 store backfills"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--green);"></span>/<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);"></span> bubbles: activity at +&gamma; / &minus;&gamma; strikes &middot; $ notional</span>
-  <span><span style="display:inline-block;width:9px;height:9px;border:1.5px solid var(--accent);border-radius:50%;"></span> king + spot only</span>
+  <!-- # ui-mockup-ok: RC-352 nomenclature label fix only --><span><span style="display:inline-block;width:9px;height:9px;border:1.5px solid var(--accent);border-radius:50%;"></span> peak + spot only</span>
   <span style="margin-left:auto;" class="lz">structure facts only &middot; signal rules UNPROVEN (register) &middot; Decide WAIT</span>
 </div>
 <div id="tip"></div>
@@ -540,7 +540,8 @@ function draw() {
     g.strokeStyle = palRgba(PAL.acc, 0.35 + 0.6 * pulse); g.lineWidth = 1.5 + pulse;
     g.strokeRect(PADL, yy - 8 - pulse * 2, W - PADL - PADR, 16 + pulse * 4); g.lineWidth = 1;
     g.fillStyle = PAL.acc; g.font = "800 11px 'IBM Plex Mono', monospace";
-    g.fillText(`⛁ KING ${fmt(king[0], 0)} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, yy - 12 - pulse * 2);
+    // # ui-mockup-ok: RC-352 nomenclature label fix only (KING -> NET GEX PEAK), no design change
+      g.fillText(`⛁ NET GEX PEAK ${fmt(king[0], 0)} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, yy - 12 - pulse * 2);
   }
   // VWAP + σ bands as SERIES CURVES (RC-198) — mapped bar-time → visible index
   let vwbDrawn = false;

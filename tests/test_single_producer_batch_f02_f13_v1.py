@@ -1019,12 +1019,13 @@ def test_rc345_net_gex_books_are_consumer_separated() -> None:
     html = _read("static/index.html")
     # both books referenced by their distinct names in the client (not a single net_gex)
     assert "net_gex_at_spot" in html or "gamma_at_spot" in html
-    # F02 END-TO-END: the Key-Levels vendor-aggregate label is EXPLICIT ("Net GEX · Agg"), so
+    # F02 END-TO-END: the Key-Levels vendor-aggregate label is EXPLICIT — RC-352 renamed it to
+    # the institutional "Total Net GEX (per 1%)" (the per-1% unit is part of the meaning), so
     # the operator cannot confuse it with the theoretical profile-at-spot. Both kl_net_gex and
     # net_gamma are the SAME vendor book (kl_net_gex = consensus_summary.net_gamma on server),
     # so the fallback stays within one semantic.
-    assert "Net GEX · Agg" in html, (
-        "the Key-Levels vendor-aggregate GEX must carry an explicit label (F02/RC-345)")
+    assert "Total Net GEX (per 1%)" in html, (
+        "the Key-Levels vendor-aggregate GEX must carry an explicit label (F02/RC-345; RC-352 name)")
     srv = _read("server.py")
     assert '_net_gex_raw = getattr(cs, "net_gamma", None)' in srv, (
         "kl_net_gex must be the vendor aggregate (cs.net_gamma), same book as net_gamma")

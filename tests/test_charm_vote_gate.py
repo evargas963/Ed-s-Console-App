@@ -61,9 +61,11 @@ def test_charm_research_surfaces_preserved():
 
 
 def test_vanna_proxy_labeled_honestly_in_ui():
-    """P1B: every user-facing vanna wall label discloses the proxy formula."""
+    """P1B + RC-352: the vanna strike labels use the institutional name and the tip
+    discloses the vega/(S·IV) proxy formula ("Vanna Wall" is not a vendor level class)."""
     ui = (_REPO / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "Vanna Wall Call (vega/S·IV proxy)" in ui
-    assert "Vanna Wall Put (vega/S·IV proxy)" in ui
+    assert "label: 'Largest Vanna Strike (Call)'" in ui
+    assert "label: 'Largest Vanna Strike (Put)'" in ui
+    assert ui.count("vega/(S·IV) proxy") >= 2  # proxy disclosed in both tips
     assert "label: 'Vanna Wall Call'" not in ui
     assert "label: 'Vanna Wall Put'" not in ui
