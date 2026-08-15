@@ -3461,7 +3461,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
           <div class="cv-card"><h4 class="cv-h4">Levels <span class="cv-badge" id="ct-trust">—</span></h4>
             <div class="cv-li"><span class="cv-dim">Call wall</span><b class="cv-n cv-up" id="ct-cwall">—</b></div>
             <div class="cv-li"><span class="cv-dim">Gamma flip</span><b class="cv-n cv-ac" id="ct-flip">—</b></div>
-            <div class="cv-li"><span class="cv-dim" title="Largest |net| dealer GEX strike — the former PIN, renamed (RC-124)">Net Γ peak</span><b class="cv-n" id="ct-hvl">—</b></div>
+            <div class="cv-li"><span class="cv-dim" title="Net GEX Peak: strike with the largest |net| dealer GEX$ (call minus put gamma). Distinct from Absolute Gamma (total) and the Gamma Flip (zero-crossing).">Net GEX Peak</span><b class="cv-n" id="ct-hvl">—</b></div>
             <div class="cv-li"><span class="cv-dim">Gamma pin</span><b class="cv-n cv-up" id="ct-pin">—</b></div>
             <div class="cv-li"><span class="cv-dim">Max pain</span><b class="cv-n" id="ct-maxpain">—</b></div>
             <div class="cv-li"><span class="cv-dim">Put wall</span><b class="cv-n cv-dn" id="ct-pwall">—</b></div>
@@ -8175,20 +8175,20 @@ function renderTierALive(d, fullRenderSource) {
     // conditioned on the carried geometry state, never asserted unconditionally.
     // RC-131 (v25): FAIL-CLOSED — containment is earned only by a positive === 'contains';
     // an absent state (payload predating the fields) makes NO behavioral claim.
-    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444',
+    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Call Wall', proxColor: '#ef4444',
       tip: d => d.kl_call_wall_state === 'breached'
-        ? 'Strike with the largest call gamma — BREACHED: spot is at/above it. Dealer hedging flips from capping to chasing; a distinct acceleration state, not resistance.'
+        ? 'Call Wall (largest call gamma strike) — BREACHED: spot is at/above it. Dealer hedging flips from capping to chasing; a distinct acceleration state, not resistance.'
         : d.kl_call_wall_state === 'contains'
-          ? 'Strike with the largest call gamma. Resistance while spot holds below it — dealer hedging caps rallies there.'
-          : 'Strike with the largest call gamma. Geometry state unavailable — no containment claim.' },
-    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e',
+          ? 'Call Wall: strike with the largest call gamma. Resistance while spot holds below it — dealer hedging caps rallies there.'
+          : 'Call Wall: strike with the largest call gamma. Geometry state unavailable — no containment claim.' },
+    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Put Wall', proxColor: '#22c55e',
       tip: d => d.kl_put_wall_state === 'breached'
-        ? 'Strike with the largest put gamma — BREACHED: spot is at/below it. Dealer hedging flips from supporting to selling; a high-volatility state, not support.'
+        ? 'Put Wall (largest put gamma strike) — BREACHED: spot is at/below it. Dealer hedging flips from supporting to selling; a high-volatility state, not support.'
         : d.kl_put_wall_state === 'contains'
-          ? 'Strike with the largest put gamma. Support while spot holds above it — dealer hedging cushions selloffs there.'
-          : 'Strike with the largest put gamma. Geometry state unavailable — no containment claim.' },
-    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'THE standard pin — largest TOTAL gamma (calls+puts), the SpotGamma Absolute Gamma / sticky-pin measure; strongest into expiry. Lead % on the chart label shows its margin over the runner-up (RC-124).' },
-    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net Γ peak', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9', tip: 'Largest |net| dealer GEX strike (calls minus puts) — where the SIGNED book peaks. Previously labeled PIN/HVL; renamed because no vendor defines the pin on the net book (RC-124).' },
+          ? 'Put Wall: strike with the largest put gamma. Support while spot holds above it — dealer hedging cushions selloffs there.'
+          : 'Put Wall: strike with the largest put gamma. Geometry state unavailable — no containment claim.' },
+    { key: 'kl_gamma_pin', strKey: null, label: 'Absolute Gamma', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'Absolute Gamma Strike (SpotGamma): the strike with the largest TOTAL gamma (calls+puts) — the sticky-pin/magnet level, strongest into expiry. Lead % on the chart label shows its margin over the runner-up (RC-352; formerly "Gamma Pin").' },
+    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net GEX Peak', sr: 'pin', srLabel: 'Net GEX', proxColor: '#e879f9', tip: 'Strike with the largest |net| dealer GEX$ (call gamma minus put gamma) — where the SIGNED book peaks. Distinct from Absolute Gamma (total) and from the Gamma Flip (zero-crossing).' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
     { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level. Above it dealers dampen moves (choppy). Below it dealers amplify moves (trending).' },
     { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6', tip: (d) => emTipFromSource(d, 'ceiling') },
@@ -8196,18 +8196,18 @@ function renderTierALive(d, fullRenderSource) {
   ];
 
   const KL_CONDITIONAL = [
-    { key: 'kl_gamma_inflection', strKey: null, label: 'Gamma Inflection', proxColor: '#a78bfa', tip: 'Strike where per-strike gamma changes fastest, a transition in hedging pressure.' },
-    { key: 'kl_delta_inflection', strKey: null, label: 'Delta Inflection', proxColor: '#a78bfa', tip: 'Strike where dealer delta changes fastest.' },
-    { key: 'kl_call_delta_wall', strKey: 'kl_call_delta_str', label: 'Delta Wall Call', proxColor: '#f87171', tip: 'Strike with the largest call delta exposure.' },
-    { key: 'kl_put_delta_wall', strKey: 'kl_put_delta_str', label: 'Delta Wall Put', proxColor: '#4ade80', tip: 'Strike with the largest put delta exposure.' },
+    { key: 'kl_gamma_inflection', strKey: null, label: 'Max Γ Slope', proxColor: '#a78bfa', tip: 'Strike where per-strike gamma changes fastest (max |dΓ/dK|) — a transition in hedging pressure. Not the Gamma Flip (that is the zero-gamma crossing).' },
+    { key: 'kl_delta_inflection', strKey: null, label: 'Max Δ Slope', proxColor: '#a78bfa', tip: 'Strike where dealer delta changes fastest (max |dΔ/dK|). Not a zero-crossing level.' },
+    { key: 'kl_call_delta_wall', strKey: 'kl_call_delta_str', label: 'Key Delta Strike (Call)', proxColor: '#f87171', tip: 'Strike with the largest call delta exposure (DEX).' },
+    { key: 'kl_put_delta_wall', strKey: 'kl_put_delta_str', label: 'Key Delta Strike (Put)', proxColor: '#4ade80', tip: 'Strike with the largest put delta exposure (DEX).' },
   ];
 
   const KL_REFERENCE = [
-    { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', label: 'OI Wall Call', proxColor: '#aaaaaa', tip: 'Strike with the most call open interest, positioning concentration above.' },
-    { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', label: 'OI Wall Put', proxColor: '#aaaaaa', tip: 'Strike with the most put open interest, positioning concentration below.' },
-    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Vanna Wall Call (vega/S·IV proxy)', proxColor: '#aaaaaa', tip: 'Strike with the largest call vanna: how dealer delta shifts when IV moves. Matters on IV spikes.' },
-    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Vanna Wall Put (vega/S·IV proxy)', proxColor: '#aaaaaa', tip: 'Strike with the largest put vanna. Matters on IV spikes.' },
-    { key: 'kl_oi_center', strKey: null, label: 'OI Center', sr: 'pin', srLabel: 'Pin', proxColor: '#aaaaaa', tip: 'Open-interest-weighted center strike.' },
+    { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', label: 'Call OI Wall', proxColor: '#aaaaaa', tip: 'Strike with the most call open interest, positioning concentration above.' },
+    { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', label: 'Put OI Wall', proxColor: '#aaaaaa', tip: 'Strike with the most put open interest, positioning concentration below.' },
+    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Largest Vanna Strike (Call)', proxColor: '#aaaaaa', tip: 'Strike with the largest call vanna (computed via vega/(S·IV) proxy): how dealer delta shifts when IV moves. Matters on IV spikes.' },
+    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Largest Vanna Strike (Put)', proxColor: '#aaaaaa', tip: 'Strike with the largest put vanna (vega/(S·IV) proxy). Matters on IV spikes.' },
+    { key: 'kl_oi_center', strKey: null, label: 'OI-Weighted Center', sr: 'pin', srLabel: 'Center', proxColor: '#aaaaaa', tip: 'Open-interest-weighted center strike. Not Max Pain (different computation).' },
   ];
 
   function renderKeyLevels(d) {
@@ -8300,7 +8300,7 @@ function renderTierALive(d, fullRenderSource) {
       const magLbl = mag.charAt(0).toUpperCase() + mag.slice(1);
       html += `<div class="kl-grid" title="VENDOR AGGREGATE dealer gamma summed across ALL strikes (Schwab-reported gamma). Distinct from the theoretical repriced gamma AT SPOT shown in the terrain regime. Positive means dealers stabilize (choppy days); negative means they amplify (trending days). Not a price level.">
         <div class="kl-prox" style="background:${regime === 'negative' ? '#ef4444' : regime === 'positive' ? '#22c55e' : 'transparent'}"></div>
-        <div class="kl-name">Net GEX · Agg</div>
+        <div class="kl-name">Total Net GEX (per 1%)</div>
         <div class="kl-price">${gexDisp}</div>
         <div style="text-align:center"><span class="kl-sr ${regimeSr}">${regimeLbl}</span></div>
         <div class="kl-dist">—</div>
@@ -8340,7 +8340,7 @@ function renderTierALive(d, fullRenderSource) {
 
       html += `<div class="kl-grid" title="Charm = time-decay drift of dealer hedging (direction), not a price target. Strike shown only if the backend charm_drift_toward is a real charm strike; otherwise —. Never the gamma pin.">
         <div class="kl-prox" style="background:${charmProxColor}"></div>
-        <div class="kl-name charm">Charm Drift · ${flowLbl}</div>
+        <div class="kl-name charm">Charm Flow · ${flowLbl}</div>
         <div class="kl-price">${tgtStr}</div>
         <div style="text-align:center"><span class="kl-sr ${flowSr}">${flowLbl}</span></div>
         <div class="kl-dist ${distClass(dist)}">${distStr}</div>
@@ -8427,7 +8427,7 @@ function renderTierALive(d, fullRenderSource) {
 
         html += `<div class="kl-grid">
           <div class="kl-prox" style="background:${sfProxColor}"></div>
-          <div class="kl-name synth dimmed">Synthetic Fwd</div>
+          <div class="kl-name synth dimmed">Synthetic Forward</div>
           <div class="kl-price">${sf.toFixed(2)}</div>
           <div style="text-align:center"><span class="kl-sr fv">Fair Value</span></div>
           <div class="kl-dist ${distClass(dist)}">${distStr}</div>
@@ -8456,7 +8456,7 @@ function renderTierALive(d, fullRenderSource) {
 
       if (mcEfe) html += `<div class="kl-grid">
         <div class="kl-prox" style="background:#06b6d4"></div>
-        <div class="kl-name mc">EFE (${mcLiveLbl})</div>
+        <div class="kl-name mc">Exp. MFE (${mcLiveLbl})</div>
         <div class="kl-price">${efePrice}</div>
         <div style="text-align:center"><span class="kl-sr sup">Target</span></div>
         <div class="kl-dist above">+${mcEfe}</div>
@@ -8464,7 +8464,7 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
       if (mcEae) html += `<div class="kl-grid">
         <div class="kl-prox" style="background:#f59e0b"></div>
-        <div class="kl-name mc-risk">EAE (${mcLiveLbl})</div>
+        <div class="kl-name mc-risk">Exp. MAE (${mcLiveLbl})</div>
         <div class="kl-price">${eaePrice}</div>
         <div style="text-align:center"><span class="kl-sr res">Risk</span></div>
         <div class="kl-dist below">-${mcEae}</div>
@@ -8483,7 +8483,7 @@ function renderTierALive(d, fullRenderSource) {
         const eaeN = eaeRaw != null && !Number.isNaN(parseFloat(eaeRaw)) ? parseFloat(eaeRaw) : null;
         if (efeN != null && spot) html += `<div class="kl-grid">
           <div class="kl-prox" style="background:#06b6d4;opacity:0.55"></div>
-          <div class="kl-name mc">EFE ${lbl}</div>
+          <div class="kl-name mc">Exp. MFE ${lbl}</div>
           <div class="kl-price">${(spot + efeN).toFixed(2)}</div>
           <div style="text-align:center"><span class="kl-sr sup">Target</span></div>
           <div class="kl-dist above">+${efeN.toFixed(2)}</div>
@@ -8491,7 +8491,7 @@ function renderTierALive(d, fullRenderSource) {
         </div>`;
         if (eaeN != null && spot) html += `<div class="kl-grid">
           <div class="kl-prox" style="background:#f59e0b;opacity:0.55"></div>
-          <div class="kl-name mc-risk">EAE ${lbl}</div>
+          <div class="kl-name mc-risk">Exp. MAE ${lbl}</div>
           <div class="kl-price">${(spot - eaeN).toFixed(2)}</div>
           <div style="text-align:center"><span class="kl-sr res">Risk</span></div>
           <div class="kl-dist below">-${eaeN.toFixed(2)}</div>
