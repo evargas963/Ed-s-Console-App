@@ -705,3 +705,61 @@ def test_moving_reference_lock_rejects_only_its_target():
     # and this very file must be clean under its own lock
     here = Path(__file__).read_text(encoding="utf-8")
     assert _moving_ref_offenders(here, "self") == []
+
+
+# ── RC-360: the operator no-verify grant — HEAD-ratified, narrowly scoped ────────
+
+
+def test_rc360_grant_is_head_ratified_and_narrow(tmp_path, monkeypatch):
+    """The grant covers git commit/push --no-verify ONLY when committed at HEAD;
+    a worktree-only grant (agent-writable) is IGNORED; lock-disables stay blocked."""
+    import subprocess as sp
+
+    # build a scratch repo with the grant COMMITTED at HEAD
+    repo = tmp_path
+    (repo / "governance").mkdir()
+    grant = {"grants": {"claude_no_verify_checkpoints": {"granted": True}}}
+    (repo / "governance" / "operator_grants.json").write_text(json.dumps(grant), encoding="utf-8")
+    for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
+                ["git", "-c", "user.email=a@b", "-c", "user.name=t",
+                 "commit", "-q", "--no-verify", "-m", "grant"]):
+        sp.run(cmd, cwd=repo, check=True, capture_output=True)
+
+    # point the guard's repo-root discovery at the scratch repo
+    monkeypatch.setattr(G.os.path, "abspath", lambda p: str(repo / "tools" / "operator_law_guard.py"))
+    assert G._no_verify_grant_covers("git commit --no-verify -m x") is True
+    assert G._no_verify_grant_covers("git add a && git commit --no-verify -m x && git push --no-verify") is True
+    # OUTSIDE scope: --no-verify not attached to git commit/push
+    assert G._no_verify_grant_covers("some_tool --no-verify") is False
+    # lock-disable rides along -> still blocked even with the grant
+    assert G._no_verify_grant_covers("ED_UI_MOCKUP_LOCK=off git commit --no-verify -m x") is False
+
+    # revoke at HEAD -> no coverage
+    (repo / "governance" / "operator_grants.json").write_text(
+        json.dumps({"grants": {"claude_no_verify_checkpoints": {"granted": False}}}),
+        encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    sp.run(["git", "-c", "user.email=a@b", "-c", "user.name=t",
+            "commit", "-q", "--no-verify", "-m", "revoke"],
+           cwd=repo, check=True, capture_output=True)
+    assert G._no_verify_grant_covers("git commit --no-verify -m x") is False
+
+
+def test_rc360_worktree_only_grant_is_inert(tmp_path, monkeypatch):
+    """Self-grant hole closed: a grant present ONLY in the worktree (never committed)
+    provides no coverage — the guard reads HEAD, not the file on disk."""
+    import subprocess as sp
+
+    repo = tmp_path
+    (repo / "governance").mkdir()
+    (repo / "governance" / "keep.txt").write_text("x", encoding="utf-8")
+    for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
+                ["git", "-c", "user.email=a@b", "-c", "user.name=t",
+                 "commit", "-q", "--no-verify", "-m", "base"]):
+        sp.run(cmd, cwd=repo, check=True, capture_output=True)
+    # grant written to the WORKTREE only — exactly what an agent could do alone
+    (repo / "governance" / "operator_grants.json").write_text(
+        json.dumps({"grants": {"claude_no_verify_checkpoints": {"granted": True}}}),
+        encoding="utf-8")
+    monkeypatch.setattr(G.os.path, "abspath", lambda p: str(repo / "tools" / "operator_law_guard.py"))
+    assert G._no_verify_grant_covers("git commit --no-verify -m x") is False
