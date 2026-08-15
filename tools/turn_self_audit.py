@@ -422,7 +422,18 @@ def resolve_test_ownership(
     unknown: list[str] = []
     reasons: dict[str, list[str]] = {}
     excluded_production: dict[str, str] = {}
-    for entry in scope.production_entries:
+    # RC-369: subject paths are FIRST-CLASS subject — a declared subject file whose
+    # worktree happens to be clean still gets its owner set resolved (the owner-set
+    # question is about the subject, not about whether it is dirty right now).
+    entries = list(scope.production_entries)
+    if subject_paths is not None:
+        represented = {e.path for e in entries} | {
+            e.old_path for e in entries if e.old_path
+        }
+        for rel in sorted(set(subject_paths) - represented):
+            if is_production_path(rel) and (Path(repo) / rel).is_file():
+                entries.append(ScopeEntry("SESSION_EDIT", rel, tracked=True))
+    for entry in entries:
         candidates = {entry.path}
         if entry.old_path:
             candidates.add(entry.old_path)

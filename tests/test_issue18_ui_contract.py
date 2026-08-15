@@ -165,7 +165,7 @@ def test_all_and_plan_trust_engine_final_tradeable_only():
     assert "function engineTradeableSetup" in h
     idx = h.find("function engineTradeableSetup")
     assert idx != -1
-    chunk = h[idx : idx + 520]
+    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
     assert "d.final_tradeable" in chunk
     assert "MIN_TRADEABLE_HORIZONS_FOR_ALL_PLAN" not in h
     assert "function alignedDirectionalHorizonCount" not in h
@@ -875,7 +875,7 @@ def test_card_consumer_contract_final_tradeable_gates_all_plan():
     h = _html()
     idx = h.find("function engineTradeableSetup")
     assert idx != -1
-    chunk = h[idx : idx + 520]
+    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
     assert "d.final_tradeable" in chunk
     assert "resolveCardTrustGate" in chunk
     idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
@@ -915,7 +915,7 @@ def test_card_trust_gate_wired_before_trusted_timeframe_paint():
 def test_engine_tradeable_setup_requires_card_trust():
     h = _html()
     idx = h.find("function engineTradeableSetup")
-    chunk = h[idx : idx + 420]
+    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
     assert "resolveCardTrustGate(d, { checkTicker: false }).trusted" in chunk
 
 
@@ -1175,7 +1175,7 @@ def test_mirror_absent_falls_back_to_analytics_card_trust_gate():
 def test_final_tradeable_cannot_override_operator_false():
     h = _html()
     idx = h.find("function engineTradeableSetup")
-    chunk = h[idx : idx + 520]
+    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
     assert "resolveCardTrustGate" in chunk
     assert "d.final_tradeable" in chunk
     gate_idx = h.find("function resolveCardTrustGate")
@@ -1282,7 +1282,7 @@ def test_t0_instrumentation_does_not_remove_card_trust_gate():
     assert "function resolveCardTrustGate(d, opts)" in h
     assert "function engineTradeableSetup(d)" in h
     idx = h.find("function engineTradeableSetup")
-    chunk = h[idx : idx + 520]
+    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
     assert "resolveCardTrustGate" in chunk
     assert "d.final_tradeable" in chunk
 
@@ -1460,7 +1460,7 @@ def test_t2_preserves_card_trust_and_fail_closed_surface():
     chunk = h[idx : end if end != -1 else idx + 9000]
     assert "_renderCoherenceGuards" in chunk
     idx2 = h.find("function engineTradeableSetup")
-    chunk2 = h[idx2 : idx2 + 520]
+    chunk2 = h[idx2 : idx2 + 1400]  # RC-369: window widened past the F05 authority comment
     assert "resolveCardTrustGate" in chunk2
     assert "d.final_tradeable" in chunk2
 
@@ -1793,7 +1793,7 @@ def test_t4_quote_context_cannot_arm_stale_money_path_cards():
     assert "__renderKeyLevelsLive" in mtm_chunk
 
     ets_idx = h.find("function engineTradeableSetup")
-    ets_chunk = h[ets_idx : ets_idx + 520]
+    ets_chunk = h[ets_idx : ets_idx + 1400]  # RC-369: window widened past the F05 authority comment
     fresh_pos = ets_chunk.find("_edMplFreshnessActionabilityBlocked")
     trust_pos = ets_chunk.find("resolveCardTrustGate")
     trade_pos = ets_chunk.find("d.final_tradeable")

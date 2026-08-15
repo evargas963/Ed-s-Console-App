@@ -52,17 +52,18 @@ def test_extract_quote_returns_none_on_bad_payload() -> None:
 
 
 def test_fetch_price_levels_uses_rth_open_mins_authority() -> None:
-    """FIND-MC-1: market_context.fetch_price_levels imports time_et RTH authority
-    (RTH_OPEN_MINS / RTH_END_MINS) rather than inlining RTH_OPEN_HOUR / RTH_OPEN_MIN /
-    RTH_CLOSE_HOUR. 5th consumer of the time_et minute-of-day authority after
-    order_flow_live_state (STACK-WIRE-5 FIND-WIRE5-1)."""
+    """FIND-MC-1, re-anchored for Phase 2A (RC-369): the RTH window authority
+    (time_et RTH_OPEN_MINS / RTH_END_MINS) now lives in the ONE canonical producer
+    (liquidity_value_engine); fetch_price_levels is a CARRIER and must contain no
+    window math at all — inline hour constants reappearing here is the regression."""
     src = inspect.getsource(fetch_price_levels)
     assert "RTH_OPEN_HOUR" not in src
     assert "RTH_OPEN_MIN " not in src
     assert "RTH_CLOSE_HOUR" not in src
     assert "9 * 60 + 30" not in src
-    assert "RTH_OPEN_MINS" in src
-    assert "RTH_END_MINS" in src
+    engine_src = (_REPO_ROOT / "liquidity_value_engine.py").read_text(encoding="utf-8")
+    assert "RTH_OPEN_MINS" in engine_src
+    assert "RTH_END_MINS" in engine_src
 
 
 def test_prior_day_family_single_session_dual_faucet_agreement(monkeypatch) -> None:
@@ -96,27 +97,24 @@ def test_prior_day_family_single_session_dual_faucet_agreement(monkeypatch) -> N
         _candle(_ms(2026, 8, 3, 9, 45), 103, 104, 102, 103),
     ]
 
-    class _HistClient:
-        def get_price_history(self, symbol, **kw):
-            return _MockQuoteResponse({"candles": candles})
-
-    monkeypatch.setattr(mc, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET), raising=False)
-    # fetch_price_levels imports now_et from time_et inside the function body:
-    import time_et as te
-    real_now_et = te.now_et
-    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
-    try:
-        # Quote closePrice 999.0 proves the RC-213 PDC reconciliation: bar-basis wins.
-        quote_raw = {"SPY": {"quote": {"closePrice": 999.0}}}
-        pl = mc.fetch_price_levels(_HistClient(), "SPY", quote_raw=quote_raw)
-    finally:
-        monkeypatch.setattr(te, "now_et", real_now_et)
-
     engine_bars = [
         {"timestamp": c["datetime"] / 1000.0, "open": c["open"], "high": c["high"],
          "low": c["low"], "close": c["close"], "volume": c["volume"]}
         for c in candles
     ]
+    # Phase 2A (RC-369 re-anchor): the ONE snapshot is materialized from the tape and
+    # fetch_price_levels CARRIES it — agreement is by construction, and this seam
+    # proves the carrier serves exactly the engine's single-prior-session answer.
+    from liquidity_value_engine import materialize_price_level_snapshot
+
+    snap = materialize_price_level_snapshot(
+        "SPY", _dt(2026, 8, 3).date(), engine_bars,
+        bar_source="test_tape", config=PlaybookConfig(), degraded=[],
+    )
+    # Quote closePrice 999.0 proves the RC-213 PDC reconciliation: bar-basis wins.
+    quote_raw = {"SPY": {"quote": {"closePrice": 999.0}}}
+    pl = mc.fetch_price_levels(None, "SPY", quote_raw=quote_raw, level_snapshot=snap)
+
     eng = get_previous_day_levels(engine_bars, _dt(2026, 8, 3).date(), PlaybookConfig())
 
     # Agreement across the former dual faucets, level by level:
@@ -130,13 +128,21 @@ def test_prior_day_family_single_session_dual_faucet_agreement(monkeypatch) -> N
 
 
 def test_fetch_price_levels_window_delegates_to_rc153_authority() -> None:
-    """RC-213 lock: the prior-day window in fetch_price_levels comes from the RC-153
-    authority (prior_trading_session_date) — reintroducing an inline multi-session
-    sweep is the regression this string lock screams on."""
+    """RC-213 lock, re-anchored for Phase 2A (RC-369): the prior-day window lives in
+    the RC-153 authority (prior_trading_session_date) INSIDE the one canonical
+    producer; fetch_price_levels is a pure carrier — it must not fetch its own tape
+    (the deleted vendor fetch WAS the dual faucet) and must carry from the snapshot."""
     src = inspect.getsource(fetch_price_levels)
-    assert "prior_trading_session_date" in src, (
-        "fetch_price_levels no longer delegates its prior-day window to the RC-153 "
-        "authority — the dual-faucet defect (RC-213) is reopening"
+    assert "get_price_history" not in src, (
+        "fetch_price_levels fetches its own tape again — the dual-faucet defect "
+        "(RC-213) is reopening"
+    )
+    assert "carry_snapshot_levels" in src, (
+        "fetch_price_levels no longer carries from the canonical snapshot"
+    )
+    engine_src = (_REPO_ROOT / "liquidity_value_engine.py").read_text(encoding="utf-8")
+    assert "prior_trading_session_date" in engine_src, (
+        "the RC-153 prior-session authority left the canonical producer"
     )
 
 
