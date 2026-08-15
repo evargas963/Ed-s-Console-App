@@ -110,6 +110,11 @@ class TerrainSnapshot:
     #: None (fail-closed) when the book is empty, never a fabricated 0%.
     zero_dte_gamma_share_pct: float | None = None
 
+    #: RC-358: 25Δ risk reversal — {rr_pts, call_iv_25d, put_iv_25d, dte} or None.
+    #: Skew steepness on the front expiry; deterioration toward −6 = the put bid
+    #: building (the same-session GSF-breach confirm). Fail-closed None, never fabricated.
+    rr_25d: dict | None = None
+
     #: RC-113: the institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
     #: one-sigma half-width; the client centers it on the live spot. The wall RANGE itself
@@ -566,6 +571,9 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     _exp_0dte, _ = compute_exposures_by_strike(
         contracts, spot=spot, require_oi=True, use_only_dte_max=0)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
+    # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
+    from math_volatility import compute_25d_risk_reversal
+    _rr25 = compute_25d_risk_reversal(contracts)
     charm_by_strike = compute_charm_by_strike(contracts, spot, now=_terrain_now)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
@@ -601,6 +609,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         grc=_gsl["grc"],
         gsf_state=_gsl["state"],
         zero_dte_gamma_share_pct=_zero_dte_share,
+        rr_25d=_rr25,
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
         call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
