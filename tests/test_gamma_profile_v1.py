@@ -15,11 +15,16 @@ from pathlib import Path
 from math_levels import (
     GAMMA_FLIP_NARROW,
     GAMMA_FLIP_UNAVAILABLE,
+    GSF_STATE_BELOW_SUPPORT,
+    GSF_STATE_OK,
+    GSF_STATE_UNAVAILABLE,
     bs_gamma,
     compute_gamma_flip_v2,
     compute_gamma_profile,
+    compute_gamma_support_levels,
     gamma_at_price,
     gamma_flip_from_profile,
+    snap_level_to_shelf_strike,
 )
 
 import pytest
@@ -272,3 +277,75 @@ def test_empirical_prior_flips_puts_to_dealer_long_on_real_chain():
     # calls-only chain: the models agree exactly (the flip only touches puts)
     co_prior = compute_gamma_profile(calls, spot, sign_model=SIGN_MODEL_EMPIRICAL_PRIOR)
     assert co_prior == calls_only
+
+
+# ── RC-354: Gamma Support Floor / Gamma Resistance Ceiling ──────────────────────
+
+
+def _linear_profile(lo_px, hi_px, lo_v, hi_v, steps=100):
+    """Synthetic ascending profile with net GEX linear from lo_v to hi_v."""
+    return [
+        (round(lo_px + (hi_px - lo_px) * i / steps, 4),
+         lo_v + (hi_v - lo_v) * i / steps)
+        for i in range(steps + 1)
+    ]
+
+
+def test_gsf_sits_between_flip_and_spot_and_grc_mirrors_above():
+    # N(s) rises linearly from -2e9 at 90 to +6e9 at 110; spot 105 -> N(spot)=+4e9.
+    # target = 0.5*N(spot) = 2e9. Crossing below spot at s where N=2e9 -> s=100.
+    # Flip (N=0) at 95: GSF must sit ABOVE the flip (support ends before the zero).
+    prof = _linear_profile(90.0, 110.0, -2e9, 6e9)
+    out = compute_gamma_support_levels(prof, 105.0)
+    assert out["state"] == GSF_STATE_OK
+    assert out["gsf"] is not None
+    flip = gamma_flip_from_profile(prof, 105.0)
+    assert flip is not None and out["gsf"] > flip           # above the flip
+    assert flip < out["gsf"] < 105.0                        # between flip and spot
+    assert abs(out["gsf"] - 100.0) < 0.5                    # analytic crossing
+    # monotone-rising profile above spot never decays below target -> no ceiling
+    assert out["grc"] is None
+
+
+def test_grc_found_when_cushion_decays_above_spot():
+    # Tent profile: rises to a peak above spot then decays — the ceiling lands on the
+    # DECAYING shoulder past the peak (resistance strengthens before it exhausts).
+    up = _linear_profile(100.0, 106.0, 4e9, 8e9, steps=60)
+    down = _linear_profile(106.1, 112.0, 7.9e9, 0.0, steps=59)
+    prof = up + down
+    out = compute_gamma_support_levels(prof, 102.0)
+    assert out["state"] == GSF_STATE_OK
+    assert out["grc"] is not None and out["grc"] > 106.0    # beyond the peak/wall
+    n_spot = out["n_at_spot"]
+    # value at the ceiling is ~phi * N(spot)
+    from math_levels import _interp_profile_at
+    assert abs(_interp_profile_at(prof, out["grc"]) - 0.5 * n_spot) / n_spot < 0.05
+
+
+def test_below_support_state_never_fabricates_a_price():
+    # Negative-gamma regime at spot: honest STATE, both levels None.
+    prof = _linear_profile(90.0, 110.0, -6e9, -1e9)
+    out = compute_gamma_support_levels(prof, 100.0)
+    assert out["state"] == GSF_STATE_BELOW_SUPPORT
+    assert out["gsf"] is None and out["grc"] is None
+
+
+def test_unavailable_on_empty_or_bad_inputs():
+    assert compute_gamma_support_levels([], 100.0)["state"] == GSF_STATE_UNAVAILABLE
+    assert compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), None)["state"] == GSF_STATE_UNAVAILABLE
+    assert compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), -5)["state"] == GSF_STATE_UNAVAILABLE
+
+
+def test_snap_to_shelf_only_within_tolerance_and_side():
+    # significant shelf strike at 99.90 within 0.25% of a 100.05 level -> snaps below spot
+    snapped = snap_level_to_shelf_strike(
+        100.05, {99.90: 5e9, 101.0: 6e9}, side="below", spot=105.0, theta=1e9)
+    assert snapped == 99.90
+    # insignificant strike (below theta) never snaps
+    assert snap_level_to_shelf_strike(
+        100.05, {99.90: 1e8}, side="below", spot=105.0, theta=1e9) == 100.05
+    # wrong side (above spot for a floor) never snaps
+    assert snap_level_to_shelf_strike(
+        104.9, {105.2: 5e9}, side="below", spot=105.0, theta=1e9) == 104.9
+    # None passes through fail-closed
+    assert snap_level_to_shelf_strike(None, {100.0: 5e9}, side="below", spot=105.0, theta=1e9) is None
