@@ -119,20 +119,26 @@ def test_agents_law_check_screams_on_a_law_with_no_enforcer():
     13 of 35 catalogued lock failures are 'goodwill instead of a mechanical lock' (RC-41/49/56):
     a law in prose reads exactly like a law with a hook."""
     agents = ROOT / "AGENTS.md"
+    # RC-372: this control round-trips the REAL charter file, so the restore must be
+    # BYTE-faithful. `io.open(..., "w")` with default newline translation rewrote every
+    # \n as CRLF on Windows — the charter mutated on every test run and the turn audit
+    # correctly read that as subject drift. All writes pin newline="\n"; the original
+    # bytes are captured and asserted restored.
+    orig_bytes = agents.read_bytes()
     orig = agents.read_text(encoding="utf-8")
     baseline = len(C.check_agents_laws_name_their_enforcer())
     law = "\n\n**Zebra quorum rule (test):** every quorum must be witnessed."
     try:
-        with io.open(agents, "w", encoding="utf-8") as fh:
+        with io.open(agents, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(orig + law + "\n")
         injected = len(C.check_agents_laws_name_their_enforcer())
         # ...and the SAME law becomes acceptable the moment it declares itself JUDGMENT-ONLY.
-        with io.open(agents, "w", encoding="utf-8") as fh:
+        with io.open(agents, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(orig + law + " JUDGMENT-ONLY.\n")
         softened = len(C.check_agents_laws_name_their_enforcer())
     finally:
-        with io.open(agents, "w", encoding="utf-8") as fh:
-            fh.write(orig)
+        agents.write_bytes(orig_bytes)
+    assert agents.read_bytes() == orig_bytes, "charter restore was not byte-faithful"
     assert injected == baseline + 1, "an unenforced AGENTS.md law was not flagged"
     assert softened == baseline, "declaring a law JUDGMENT-ONLY must satisfy the rule"
     assert len(C.check_agents_laws_name_their_enforcer()) == baseline
