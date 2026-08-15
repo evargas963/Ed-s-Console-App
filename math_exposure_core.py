@@ -526,9 +526,9 @@ def compute_delta_oi_walls(
     for k, (c, p) in today.items():
         pc, pp = prev.get(k, (0.0, 0.0))
         if c is not None:
-            d_call[k] = float(c) - float(pc or 0.0)
+            d_call[k] = float(c) - float(pc or 0.0)  # silent-zero-ok: RC-369 — a strike absent from yesterday's banked book had NO positioning; the diff from a true 0 baseline IS the build, not injected absence
         if p is not None:
-            d_put[k] = float(p) - float(pp or 0.0)
+            d_put[k] = float(p) - float(pp or 0.0)  # silent-zero-ok: RC-369 — same true-zero baseline for the put side
     out: dict[str, float | None] = {
         "call_build_strike": None, "call_build_doi": None,
         "put_build_strike": None, "put_build_doi": None,
@@ -564,12 +564,26 @@ def compute_zero_dte_gamma_share(
     """
     if not exposures_all:
         return None
-    total = sum(abs(v.get("net_gex_1pct") or 0.0) for v in exposures_all.values()
-                if isinstance(v, dict))
+    # RC-369: a bucket MISSING its net-GEX field must not contribute a fabricated zero
+    # weight to a share-of-book ratio — absence WITHHOLDS the whole metric.
+    total = 0.0
+    for v in exposures_all.values():
+        if not isinstance(v, dict):
+            continue
+        x = float_finite_or_none(v.get("net_gex_1pct"))
+        if x is None:
+            return None
+        total += abs(x)
     if total <= 0:
         return None
-    zero = sum(abs(v.get("net_gex_1pct") or 0.0) for v in (exposures_0dte or {}).values()
-               if isinstance(v, dict))
+    zero = 0.0
+    for v in (exposures_0dte or {}).values():
+        if not isinstance(v, dict):
+            continue
+        x = float_finite_or_none(v.get("net_gex_1pct"))
+        if x is None:
+            return None
+        zero += abs(x)
     return round(100.0 * zero / total, 1)
 
 
