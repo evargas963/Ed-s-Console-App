@@ -8310,6 +8310,23 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
     }
 
+    // RC-361: Net DEX $ — the directional hedge-inventory complement to GEX-per-1%.
+    {
+      const dex = d.kl_dex_net;
+      const dexOk = dex != null && Number.isFinite(Number(dex));
+      const dv = dexOk ? Number(dex) : null;
+      const fmtD = (n) => { const a = Math.abs(n); const s = n >= 0 ? '+' : '−';
+        return a >= 1e9 ? `${s}$${(a/1e9).toFixed(2)}B` : a >= 1e6 ? `${s}$${(a/1e6).toFixed(1)}M` : `${s}$${(a/1e3).toFixed(0)}K`; };
+      html += `<div class="kl-grid" title="Net DEX (Delta Exposure): the aggregate dollar delta notional dealers carry under the same +call/−put convention as GEX. Positive = dealers net long delta (they SELL into rallies to stay hedged); negative = net short (they BUY dips). Sizes the directional hedge inventory; GEX-per-1% sizes how fast it changes.">
+        <div class="kl-prox" style="background:transparent"></div>
+        <div class="kl-name">Net DEX</div>
+        <div class="kl-price">${dexOk ? fmtD(dv) : '—'}</div>
+        <div style="text-align:center"><span class="kl-sr ${dexOk ? (dv >= 0 ? 'bull' : 'bear') : 'net'}">${dexOk ? (dv >= 0 ? 'Long Δ' : 'Short Δ') : '—'}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${dexOk ? 'dealer delta book' : '—'}</div>
+      </div>`;
+    }
+
     // RC-357: 0DTE Gamma Share — level persistence. Fail-closed: row renders — when the
     // share is unavailable, never a fabricated 0%.
     {

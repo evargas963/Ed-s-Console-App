@@ -11075,6 +11075,9 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_doi_put_oi"] = _doi.get("put_build_doi") if _doi_ok else None
     md["kl_doi_unwind_strike"] = _doi.get("unwind_strike") if _doi_ok else None
     md["kl_doi_unwind_oi"] = _doi.get("unwind_doi") if _doi_ok else None
+    # RC-361: aggregate dealer DEX $ — directional inventory beside the GEX-per-1% row.
+    _dex = _g("dex_dollars") or {}
+    md["kl_dex_net"] = _dex.get("net_dex") if isinstance(_dex, dict) else None
     md["kl_max_pain"] = _g("max_pain")
     md["kl_call_delta_wall"] = _g("call_delta_wall")
     md["kl_put_delta_wall"] = _g("put_delta_wall")
