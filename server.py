@@ -9267,11 +9267,15 @@ def _fetch_state(
             # every LIVE model toward "N approved". Substituting a different measurement is
             # worse than reporting none, because none is legible and a wrong one is not.
             from numeric_contract import float_finite_or_none as _fin_edge
-            raw = _fin_edge(_m.get(edge_key))
-            edge = None if raw is None else (raw * 100 if edge_key == "val_accuracy" else raw)
+            # RC-364/RC-291 port: edge comes ONLY from the requested edge metric — never a
+            # val_accuracy translation (accuracy is not edge over a baseline; a coin-flip
+            # model with val_accuracy 0.55 must not publish edge 55.0 and read as approved).
+            # val_accuracy is stamped under its OWN name for any consumer that wants it.
+            edge = _fin_edge(_m.get(edge_key))
+            val_accuracy = _fin_edge(_m.get("val_accuracy"))
             version = _m.get(version_key, _m.get("model_version", "—"))
         except Exception:
-            edge, version = None, "—"
+            edge, version, val_accuracy = None, "—", None
         # RC-293: compliant with NO edge measurement is not APPROVED. RC-291 made `edge`
         # an honest None and left status LIVE, and static/index.html counts every LIVE model
         # toward "N approved" — so a model nobody scored still read as approved, which was
@@ -9280,8 +9284,9 @@ def _fetch_state(
             return {"model": display_name, "status": "UNSCORED",
                     "status_reason": "Binary + metadata + provenance compliant, but no edge "
                                      "metric recorded — not scored, so not approved",
-                    "edge": None, "version": version or "—", "ticker": _dashboard_ticker}
-        return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "version": version or "—", "ticker": _dashboard_ticker}
+                    "edge": None, "val_accuracy": val_accuracy, "metric_name": edge_key,
+                    "version": version or "—", "ticker": _dashboard_ticker}
+        return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "val_accuracy": val_accuracy, "metric_name": edge_key, "version": version or "—", "ticker": _dashboard_ticker}
 
     _xgb_meta = _active_dir / f"xgb_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
     _lstm_meta = _active_dir / f"lstm_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
@@ -9295,7 +9300,9 @@ def _fetch_state(
     except Exception:
         _model_health.append({"model": "Transformer", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
     try:
-        _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "val_accuracy", "model_type"))
+        # RC-364/RC-291 port: request edge_pp for LSTM like every other model — absent
+        # edge_pp → edge None → UNSCORED, never val_accuracy masquerading as edge.
+        _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "edge_pp", "model_type"))
     except Exception:
         _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
 

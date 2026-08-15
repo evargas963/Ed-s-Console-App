@@ -95,14 +95,27 @@ def test_a_genuine_zero_edge_survives(tmp_path):
         "accepts zero, float_positive_or_none would not, and this site needs the former")
 
 
-def test_val_accuracy_is_still_scaled_to_percent(tmp_path):
+def test_val_accuracy_is_never_published_as_edge(tmp_path):
+    """RC-364/RC-291 port: accuracy is not edge. A meta with only val_accuracy has NO
+    edge (None → UNSCORED); val_accuracy is stamped under its own name, unscaled."""
     from numeric_contract import float_finite_or_none
 
     meta = json.loads(_meta(tmp_path, {"val_accuracy": 0.62}).read_text(encoding="utf-8"))
-    raw = float_finite_or_none(meta.get("edge_pp"))
-    assert raw is None
-    raw = float_finite_or_none(meta.get("val_accuracy"))
-    assert raw is not None and round(raw * 100, 6) == 62.0
+    edge = float_finite_or_none(meta.get("edge_pp"))
+    assert edge is None, "val_accuracy must not fill the edge slot"
+    val_accuracy = float_finite_or_none(meta.get("val_accuracy"))
+    assert val_accuracy == 0.62
+
+
+def test_lstm_requests_edge_pp_not_val_accuracy():
+    """RC-364/RC-291 port: the LSTM registration passes edge_key='edge_pp' like every
+    other model, and the ×100 accuracy-as-edge translation is gone from the producer."""
+    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    assert '_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "edge_pp"' in src, (
+        "LSTM model-health registration no longer requests edge_pp — val_accuracy "
+        "masquerading as edge is the RC-291 defect")
+    assert 'raw * 100 if edge_key == "val_accuracy"' not in src, (
+        "the accuracy-as-edge ×100 translation is back in the producer")
 
 
 def test_the_field_still_has_no_consumer_and_that_is_recorded():
