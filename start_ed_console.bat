@@ -31,6 +31,15 @@ echo.
 set ED_OPS_RUNNER=1
 set ED_CALIBRATION_LOG=1
 
+REM RC-350 ONE-APP LOCK (operator yes 2026-08-14): the desk may only run a committed,
+REM non-divergent build of origin/main. Emergency bypass: set ED_LIVE_PATH_UNLOCKED=1.
+python tools\check_live_path_is_main.py
+if errorlevel 1 (
+    echo  LAUNCH BLOCKED: the desk is not running origin/main. See RC-350.
+    pause
+    exit /b 1
+)
+
 REM Stop any prior instance still bound to port 8000 (plain-line for /f — safe batch syntax)
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do taskkill /F /PID %%P 2>nul
 
