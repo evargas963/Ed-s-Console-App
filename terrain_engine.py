@@ -40,6 +40,7 @@ from math_levels import (
     compute_charm_by_strike,
     compute_gamma_flip_v2,
     compute_gamma_profile,
+    compute_gamma_support_levels,
     compute_max_pain,
     key_level_strikes_with_gamma,
     pick_charm_wall_strikes,
@@ -91,6 +92,17 @@ class TerrainSnapshot:
     #: Signed net dealer GEX$ per 1% move AT SPOT — the regime's own number
     #: (regime = its sign). Disambiguates walls that share a strike.
     net_gex_at_spot: float | None = None
+
+    #: RC-354: Gamma Support Floor / Gamma Resistance Ceiling — computed from the SAME
+    #: materialized profile as the flip (RC-345 one-profile rule). GSF = highest level
+    #: below spot where the positive-gamma cushion has decayed to half its at-spot value
+    #: (support ends BEFORE the flip's zero-crossing); GRC = the upside mirror, often
+    #: at/beyond the call wall (resistance strengthens before it exhausts). gsf_state is
+    #: the fail-closed verdict: OK | BELOW_SUPPORT (negative regime — no fabricated
+    #: price) | UNAVAILABLE.
+    gsf: float | None = None
+    grc: float | None = None
+    gsf_state: str = "UNAVAILABLE"
 
     #: RC-113: the institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
@@ -539,6 +551,10 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now)
     flip, confidence, flip_diag = compute_gamma_flip_v2(
         contracts, spot, now=_terrain_now, profile=profile)
+    # RC-354: GSF/GRC from the SAME materialized profile — no second materialization.
+    # Snap-to-shelf deliberately deferred until strike-GEX history is banked (theta wants a
+    # trailing-60-session percentile; a session-local stand-in would be a fake calibration).
+    _gsl = compute_gamma_support_levels(profile, spot)
     charm_by_strike = compute_charm_by_strike(contracts, spot, now=_terrain_now)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
@@ -570,6 +586,9 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         hvp=hvp,
         lvp=lvp,
         net_gex_at_spot=flip_diag.get("gamma_at_spot"),
+        gsf=_gsl["gsf"],
+        grc=_gsl["grc"],
+        gsf_state=_gsl["state"],
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
         call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
