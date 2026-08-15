@@ -24,7 +24,6 @@ for _p in (REPO, REPO / "tools"):
         sys.path.insert(0, str(_p))
 
 import deep_duplicate_probe_v1 as DUP  # noqa: E402
-import phase2a_before_after_probe as BEFORE_AFTER  # noqa: E402
 import phase2a_inprocess_sample_v1 as INPROC  # noqa: E402
 import phase2a_live_sample_v1 as LIVE  # noqa: E402
 import producer_inventory_v1 as INV  # noqa: E402

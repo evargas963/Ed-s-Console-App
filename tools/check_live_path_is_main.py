@@ -97,7 +97,10 @@ def main() -> int:
     try:
         subprocess.run(["git", "fetch", "origin", "main", "--quiet"], timeout=30)
     except Exception:
-        pass  # offline: fall back to the last-known origin/main ref
+        # institutional-swallow-ok: offline/unreachable-remote launch must not brick the
+        # desk; checks A-C still run against the last-fetched origin/main ref, so the
+        # guard degrades to last-known-truth rather than failing open or crashing.
+        pass
     viol = violations()
     if not viol:
         print("ONE-APP LOCK: PASS — the running app is a provable build of origin/main.")

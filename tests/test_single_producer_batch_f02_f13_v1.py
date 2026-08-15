@@ -1206,7 +1206,6 @@ def test_rc345_f25_current_tree_residuals_canonical():
     Covers: lineage manifest+fingerprint, eval/audit manifest ticker, governance/policy row filters,
     parallel/ablation dir callees, stack hist_db row filter, ml_predict inference ticker,
     feature-curation meta_present/cell keys."""
-    from instrument_identity import ticker_storage_key
     import ml_predict as mp
     import tools.feature_curation_gate as fc
     import arch_competition.lineage as ln
