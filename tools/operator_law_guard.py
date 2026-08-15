@@ -959,6 +959,16 @@ def stop_violations(ledger: list[dict]) -> list[str]:
         out.append(f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
                    f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
                    f"a live probe before ending the turn.")
+    # RC-190 (restored per the RC-368 contract): a production change obliges a same-turn
+    # tools/turn_self_audit.py run by the agent itself — affected tests alone are not the
+    # typed audit. The Stop-time supervised child re-proves it, but the obligation is the
+    # agent's; the recorded command is the evidence.
+    if edits and not any(
+        e.get("kind") == "bash" and "turn_self_audit" in str(e.get("detail") or "")
+        for e in ledger
+    ):
+        out.append("ACTION BLOCKED (RC-190): production changed and tools/turn_self_audit.py "
+                   "never ran this turn. Run the typed self audit, then end the turn.")
     # RC-125: every answer stands on a same-turn observation of the live session — the morning
     # of 2026-07-29 was lost to an answer reasoned from a screenshot while the live payload sat
     # one command away. Absolute by operator order: probe first, then answer.
@@ -1100,6 +1110,11 @@ def main() -> int:
                 required_session_paths=sorted(set(session_paths)),
             )
             bad.extend(audit_bad)
+            if not audit_bad:
+                # RC-190/RC-368: the obligation is that the typed audit RAN on this
+                # turn's production change — a valid supervised run with a clean
+                # verdict IS that run, so it discharges the session-ledger clause.
+                bad = [b for b in bad if "RC-190" not in b]
     if bad:
         _record(sid, "stop_blocked", "operator_law_guard", payload_repo or "")
         sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"

@@ -77,6 +77,12 @@ class OwnershipResult:
     unknown: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     reasons: dict[str, list[str]] = field(default_factory=dict)
+    # RC-368 contract: mechanical dispositions instead of silent inclusion/omission —
+    # a CHANGED test file with no changed-production ownership evidence is excluded
+    # (it must not smuggle itself into the owned run), and a changed production file
+    # outside the authoritative session subject is surfaced, not silently covered.
+    excluded_changed_tests: dict[str, str] = field(default_factory=dict)
+    excluded_production: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -372,7 +378,11 @@ def _test_ownership_evidence(path: Path) -> tuple[set[str], set[str], str | None
     return imports, explicit, None
 
 
-def resolve_test_ownership(repo: Path, scope: ScopeResult) -> OwnershipResult:
+def resolve_test_ownership(
+    repo: Path,
+    scope: ScopeResult,
+    subject_paths: set[str] | frozenset[str] | None = None,
+) -> OwnershipResult:
     root = Path(repo).resolve()
     tests_root = root / "tests"
     if not tests_root.is_dir():
@@ -404,34 +414,58 @@ def resolve_test_ownership(repo: Path, scope: ScopeResult) -> OwnershipResult:
     if errors:
         return OwnershipResult(status=STATUS_INCOMPLETE, errors=errors)
 
-    suites: set[str] = {
-        path for path in scope.changed_tests if (root / path).is_file()
-    }
+    # RC-368 contract: changed tests are NOT automatic suites — a changed test joins the
+    # owned run only through ownership evidence for changed production, else it gets a
+    # mechanical exclusion disposition (it must not smuggle itself into its own audit).
+    changed_tests = {path for path in scope.changed_tests if (root / path).is_file()}
+    suites: set[str] = set()
     unknown: list[str] = []
     reasons: dict[str, list[str]] = {}
+    excluded_production: dict[str, str] = {}
     for entry in scope.production_entries:
         candidates = {entry.path}
         if entry.old_path:
             candidates.add(entry.old_path)
+        if subject_paths is not None and not (candidates & set(subject_paths)):
+            # RC-368: outside the authoritative session subject — fail-closed surface,
+            # never silent import-fanout coverage.
+            excluded_production[entry.path] = "outside authoritative session subject"
+            unknown.append(entry.path)
+            continue
         modules = set().union(*(_module_names(path) for path in candidates))
-        owners: list[str] = []
+        explicit_owners: list[str] = []
+        import_owners: list[str] = []
         for rel, imports, explicit in evidence:
-            import_hit = bool(modules & imports)
-            explicit_hit = bool(candidates & explicit)
-            if import_hit or explicit_hit:
-                suites.add(rel)
-                owners.append(
-                    f"{rel}:{'import' if import_hit else 'TURN_AUDIT_OWNS'}"
-                )
+            if candidates & explicit:
+                explicit_owners.append(rel)
+            elif modules & imports:
+                import_owners.append(rel)
+        # RC-368: explicit precedence is PER CHANGED ENTRY — a declared TURN_AUDIT_OWNS
+        # owner set replaces incidental import owners for that entry, so the owned run
+        # is the declared contract, not the import fan-out.
+        if explicit_owners:
+            chosen = explicit_owners
+            owners = [f"{rel}:TURN_AUDIT_OWNS" for rel in explicit_owners]
+        else:
+            chosen = import_owners
+            owners = [f"{rel}:import" for rel in import_owners]
+        suites.update(chosen)
         if owners:
             reasons[entry.path] = sorted(owners)
         else:
             unknown.append(entry.path)
+    excluded_changed_tests = {
+        rel: "no changed production ownership evidence"
+        for rel in sorted(changed_tests)
+        if rel not in suites
+    }
     return OwnershipResult(
         status=STATUS_NOT_PROVEN if unknown else STATUS_PASS,
         suites=sorted(suites),
         unknown=sorted(set(unknown)),
         reasons=reasons,
+        excluded_changed_tests=excluded_changed_tests,
+        excluded_production=excluded_production,
     )
 
 
@@ -561,9 +595,12 @@ def run_audit(
 
     if relevant and scope_status == STATUS_PASS:
         if py_files:
+            # RC-368: the observer leaves no footprint — a .ruff_cache written into the
+            # subject flips worktree identity between start and end and self-INCOMPLETEs
+            # the audit (same class as the RC-331 receipt exclusion below).
             command = [
                 sys.executable, "-m", "ruff", "check", *py_files,
-                "--select", "F401,F821,E9",
+                "--select", "F401,F821,E9", "--no-cache",
             ]
             check_started = time.time()
             code, output, outcome = _run(command, timeout=600, cwd=root)
@@ -590,7 +627,13 @@ def run_audit(
 
         check_started = time.time()
         if ownership.status == STATUS_PASS and ownership.suites:
-            command = [sys.executable, "-m", "pytest", *ownership.suites, "-q"]
+            # RC-368: -B (no __pycache__) + no:cacheprovider (no .pytest_cache) — the
+            # audit's own pytest child must not mutate the subject it is measuring, or
+            # identity start != end and every clean audit self-INCOMPLETEs.
+            command = [
+                sys.executable, "-B", "-m", "pytest",
+                "-p", "no:cacheprovider", *ownership.suites, "-q",
+            ]
             code, output, outcome = _run(command, timeout=pytest_timeout, cwd=root)
             pytest_status = _status_for_process(code, outcome)
             checks.append(_check_record(
@@ -1063,6 +1106,29 @@ def main(argv: list[str] | None = None) -> int:
         )
     if not args.authoritative:
         _append_preview_telemetry(result)
+    # RC-284/RC-368: the JSON ledger is the artefact; this stderr tail distinguishes the
+    # three process outcomes for a human reader. A timeout or launch failure measured
+    # NOTHING, so it can never read as a pass — each one fails the turn.
+    fails: list[str] = []
+    for check in result.get("checks", []):
+        outcome = check.get("outcome")
+        if outcome == OUTCOME_TIMEOUT:
+            fails.append(
+                f"{check.get('check_id')}: TIMED OUT after 1800s pytest budget — "
+                f"NOTHING was measured, so the turn is not proven clean"
+            )
+        elif outcome == OUTCOME_LAUNCH_FAILURE:
+            fails.append(
+                f"{check.get('check_id')}: could not be LAUNCHED — NOTHING was measured"
+            )
+    for check, line in zip(
+        [c for c in result.get("checks", [])
+         if c.get("outcome") in (OUTCOME_TIMEOUT, OUTCOME_LAUNCH_FAILURE)],
+        fails,
+    ):
+        outcome = check.get("outcome")
+        step = {"check_id": check.get("check_id"), "outcome": outcome}
+        sys.stderr.write(line + " " + json.dumps(step, sort_keys=True) + "\n")
     print(json.dumps(result, sort_keys=True))
     return int(result["exit_code"])
 

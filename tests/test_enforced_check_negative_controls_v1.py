@@ -20,6 +20,12 @@ if str(ROOT) not in sys.path:
 
 import tools.check_institutional_correctness as C  # noqa: E402
 
+# RC-368: declared direct owner — the negative-control battery drives the guard's
+# action clauses (test_operator_law_guard_action_battery).
+TURN_AUDIT_OWNS = [
+    "tools/operator_law_guard.py",
+]
+
 
 def test_meta_check_screams_on_an_uncovered_enforced_check():
     """The negative-control law must itself have a negative control."""

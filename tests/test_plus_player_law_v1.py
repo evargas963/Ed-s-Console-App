@@ -8,6 +8,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
+# RC-368: declared direct owner — this suite drives research_violation in the audit tool.
+TURN_AUDIT_OWNS = [
+    "tools/turn_self_audit.py",
+]
+
 
 def test_plus_player_law_blocks_incomplete_catalog():
     from tools.check_institutional_correctness import plus_player_law_violations

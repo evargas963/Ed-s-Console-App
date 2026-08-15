@@ -17,6 +17,12 @@ from tools.ui_mockup_lock import (
     mockup_gated_entry,
 )
 
+# RC-368: declared direct owner — this suite drives stop_violations (RC-190) and the
+# mockup-lock clauses that live in the guard.
+TURN_AUDIT_OWNS = [
+    "tools/operator_law_guard.py",
+]
+
 
 def _write_registry(root: Path, status: str, variant: str | None,
                     quote: str | None = "operator said: approved, variant v6") -> None:

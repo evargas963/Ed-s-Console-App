@@ -33,6 +33,11 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import turn_self_audit as A  # noqa: E402
 
+# RC-368: declared direct owner — this suite drives the audit runner's typed outcomes.
+TURN_AUDIT_OWNS = [
+    "tools/turn_self_audit.py",
+]
+
 
 def test_a_timeout_is_not_reported_as_a_failure():
     """The defect, driven directly: a process that outlives its budget."""
