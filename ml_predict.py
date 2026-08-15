@@ -1238,13 +1238,23 @@ def _load_lstm(ticker: str) -> bool:
         _lstm_registry[rk] = None
         return False
     mp = base / f"lstm_{bt}_{hz}.pt"
+    mtp = base / f"lstm_{bt}_{hz}_meta.json"
     if not mp.exists():
         logger.debug("LSTM model not found for %s (bundle=%s) at %s", ticker, bt, mp)
         _lstm_registry[rk] = None
         return False
+    if not mtp.exists():
+        logger.error("LSTM %s: missing meta %s; refusing load.", ticker, mtp.name)
+        _lstm_registry[rk] = None
+        return False
 
-    # Item 4: verify checkpoint bytes vs bundle integrity manifest before torch.load.
-    if _verify_governed_artifact(base, bt, hz, "lstm", mp.name) is None:
+    # Item 4 (RC-376 port of a107412): verify checkpoint + meta bytes vs bundle
+    # integrity manifest BEFORE load_lstm reads lstm_*_meta.json — the same
+    # pre-deserialization boundary xgb_meta / transformer_meta already have.
+    if (
+        _verify_governed_artifact(base, bt, hz, "lstm", mp.name) is None
+        or _verify_governed_artifact(base, bt, hz, "lstm_meta", mtp.name) is None
+    ):
         _lstm_registry[rk] = None
         return False
 

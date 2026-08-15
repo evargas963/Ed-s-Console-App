@@ -115,10 +115,17 @@ def test_f39_missing_confluence_is_none_not_zero_at_consumer():
     for key in ("cf_weighted_push", "cf_label", "cf_color", "cf_dot_green",
                 "cf_dot_total", "qqq_cf_weighted_push", "iwm_cf_push",
                 "iwm_holdings_cf_push", "iwm_participation_push"):
-        direct = _re.findall(rf'ms_dict\[\s*"{key}"\s*\]\s*=', server)
+        # RC-376 widening (Cursor gate-width note): both quote styles for the
+        # subscript write, plus dict-literal update forms — a reshaped second
+        # stamp must not slip a double-quote-only regex.
+        direct = _re.findall(rf'ms_dict\[\s*[\'"]{key}[\'"]\s*\]\s*=', server)
         assert direct == [], (
             f"a second /api/state confluence stamp writes {key!r} directly — the "
             "typed mapper must stay the ONLY faucet (F39/RC-365)")
+        dict_form = _re.findall(rf'ms_dict\.update\(\s*\{{[^)]*[\'"]{key}[\'"]', server)
+        assert dict_form == [], (
+            f"a dict-literal ms_dict.update writes {key!r} outside the typed mapper "
+            "(F39/RC-365)")
 
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     assert 'id="cf-push-val"' in html
