@@ -9256,6 +9256,14 @@ def _fetch_state(
         if not art.get("has_provenance", False):
             issues = "; ".join(art.get("issues", [])) or "Metadata lacks provenance"
             return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": None, "version": "—", "ticker": _dashboard_ticker}
+        # RC-377 (Cursor drift-audit F1): this display path parses the SAME governed
+        # meta the serve path refuses when tampered — without the Item-4 verify here,
+        # the weakest parser of the artifact defines the real integrity boundary.
+        from ml_predict import _verify_governed_artifact as _item4_verify
+        if _item4_verify(_active_dir, _dashboard_ticker, _dashboard_ml_hz, f"{name}_meta", meta_path.name) is None:
+            return {"model": display_name, "status": "INTEGRITY FAILED",
+                    "status_reason": "Metadata failed bundle integrity verification — not parsed",
+                    "edge": None, "version": "—", "ticker": _dashboard_ticker}
         try:
             _m = json.loads(meta_path.read_text())
             # RC-285: no `, 0` default. A model whose metadata omits the metric has not

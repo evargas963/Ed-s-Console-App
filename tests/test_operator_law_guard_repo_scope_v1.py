@@ -846,3 +846,112 @@ def test_rc367_live_path_lock_flags_detached_head(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
     out = violations()
     assert any("DETACHED HEAD" in v for v in out), out
+
+
+# ── RC-379: a sibling hook's Stop block is not this guard's forgery ────────────────────────
+#
+# MEASURED LIVE 2026-08-15: honesty_guard (RC-209) blocked a Stop, the HOST then set
+# stop_hook_active=True on every retry, and this guard refused each one because ITS OWN
+# ledger held no stop_blocked entry — 15+ identical blocks naming no unmet obligation, with
+# no output the agent could produce to clear it. The clauses below are driven through the
+# REAL entrypoint as a subprocess: the deadlock message must be gone AND the genuine Stop
+# policy must still fire under the same flag, proving the fix fell THROUGH to the policy
+# rather than past it.
+
+FORGERY_MSG = "a caller-controlled retry flag is not authority"
+UNVERIFIED_EDIT_MSG = "changed production code and ran NOTHING"
+
+
+def _write_ledger(sid: str, entries: list[dict]) -> Path:
+    path = G._ledger_path(sid)
+    with path.open("w", encoding="utf-8") as fh:
+        for e in entries:
+            fh.write(json.dumps(e) + "\n")
+    return path
+
+
+def _run_stop(sid: str, cwd: Path, *, retry_flag: bool):
+    """Drive the guard's Stop path exactly as the host does: JSON on stdin, no tool_name.
+
+    `cwd` is a CLEAN scratch repository on purpose. Pointing it at Ed Console would put the
+    working tree's own production changes in scope, and main() then spawns the full
+    supervised turn audit (~15 min) — measured while writing this test. The deadlock under
+    test lives ABOVE that branch, so a clean subject isolates it.
+    """
+    payload = {"session_id": sid, "cwd": str(cwd)}
+    if retry_flag:
+        payload["stop_hook_active"] = True
+    env = {k: v for k, v in os.environ.items() if k != "ED_OPERATOR_LAW_GUARD"}
+    proc = subprocess.run(
+        [sys.executable, str(REPO / "tools" / "operator_law_guard.py")],
+        input=json.dumps(payload), capture_output=True, text=True, env=env,
+        check=False, timeout=120,
+    )
+    return proc.returncode, (proc.stderr or "")
+
+
+#: A turn that owes nothing: clean tree, no production edits, and the RC-125 live probe
+#: actually recorded. Measured while writing this test — an EMPTY ledger is not "clean",
+#: it still owes the probe, and the guard names it. PROBE_PROOF alone does NOT satisfy
+#: RC-125 (it matches _VERIFICATION, not _LIVE_PROBE), so the entry below carries a real
+#: live-session command that _LIVE_PROBE recognises.
+LIVE_PROBE_CMD = 'curl -s -m 5 http://127.0.0.1:8000/api/build'
+SATISFIED_LEDGER = [led("bash", LIVE_PROBE_CMD)]
+
+
+@pytest.fixture()
+def clean_stop_subject(tmp_path, request):
+    """A clean repo and a ledger whose obligations are genuinely discharged."""
+    repo, _g = _lock_scratch_repo(tmp_path)
+    sid = f"rc379-{request.node.name}"
+    _write_ledger(sid, SATISFIED_LEDGER)
+    yield sid, repo
+    G._ledger_path(sid).unlink(missing_ok=True)
+
+
+def test_rc379_sibling_retry_flag_does_not_block_a_satisfied_turn(clean_stop_subject):
+    """THE DEADLOCK: pre-fix this returned 2 forever once any sibling hook had blocked,
+    no matter what the turn had actually done."""
+    sid, repo = clean_stop_subject
+    rc, err = _run_stop(sid, repo, retry_flag=True)
+    assert FORGERY_MSG not in err, (
+        "RC-379 regression: a sibling hook's Stop block is being read as a forged retry, "
+        f"which deadlocks every later Stop in the session. stderr={err!r}")
+    assert rc == 0, f"a turn that owes nothing must not be blocked by the retry flag: {err!r}"
+
+
+def test_rc379_the_flag_changes_nothing_about_the_verdict(clean_stop_subject):
+    sid, repo = clean_stop_subject
+    rc_flag, err_flag = _run_stop(sid, repo, retry_flag=True)
+    _write_ledger(sid, SATISFIED_LEDGER)
+    rc_plain, err_plain = _run_stop(sid, repo, retry_flag=False)
+    assert rc_flag == rc_plain == 0, (rc_flag, err_flag, rc_plain, err_plain)
+
+
+def test_rc379_the_policy_below_still_bites_under_the_flag(tmp_path, request):
+    """Fell THROUGH to the policy, not PAST it: an unverified production edit still blocks."""
+    repo, g = _lock_scratch_repo(tmp_path)
+    sid = f"rc379-{request.node.name}"
+    # An edit recorded against the scratch repo, with no verification command in the ledger.
+    _write_ledger(sid, [led("edit", str(repo / "app.py"), str(repo))])
+    try:
+        rc, err = _run_stop(sid, repo, retry_flag=True)
+        assert FORGERY_MSG not in err, err
+        assert rc == 2, f"the real Stop policy must still block an unverified edit: {err!r}"
+        assert UNVERIFIED_EDIT_MSG in err or "TURN AUDIT" in err, (
+            f"blocked, but named no genuine obligation: {err!r}")
+    finally:
+        G._ledger_path(sid).unlink(missing_ok=True)
+
+
+def test_rc379_sibling_retry_is_recorded_not_swallowed(clean_stop_subject):
+    """Absence of an own stop_blocked entry becomes evidence, never a fatal verdict."""
+    sid, repo = clean_stop_subject
+    _run_stop(sid, repo, retry_flag=True)
+    # A clean Stop clears the ledger on success, so read the record the guard wrote during
+    # the run rather than after it: re-run with a poisoned ledger kept alive by the block.
+    _write_ledger(sid, [led("edit", str(repo / "app.py"), str(repo))])
+    _run_stop(sid, repo, retry_flag=True)
+    kinds = [e.get("kind") for e in G._ledger(sid)]
+    assert "sibling_stop_retry" in kinds, (
+        f"the fall-through must leave an audit trail of the sibling retry; kinds={kinds}")

@@ -153,6 +153,107 @@ def test_load_lstm_refuses_when_lstm_meta_hash_mismatches(tmp_path, monkeypatch)
     mp._active_bundle_dir_cache.clear()
 
 
+def test_load_lstm_never_enters_load_lstm_on_refusal(tmp_path, monkeypatch):
+    """RC-378 (Cursor F6: the ordering lock above is a source-index — it proves layout,
+    not control flow). Live trace: lstm_model is faked in sys.modules with a recording
+    load_lstm and the REAL _load_lstm is driven through both refusal paths — the parser
+    must NEVER be entered; a verified bundle control proves the instrument sees calls."""
+    import sys
+    import types
+
+    from active_bundle_contract import write_bundle_integrity_manifest
+
+    import ml_predict as mp
+
+    entered = []
+    fake = types.ModuleType("lstm_model")
+    fake.load_lstm = lambda **kw: entered.append(kw) or (None, "sentinel")
+    monkeypatch.setitem(sys.modules, "lstm_model", fake)
+
+    mp._lstm_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+    ticker, hz = "ZZLT", "1c"
+    base = tmp_path / ticker
+    base.mkdir(parents=True)
+    (base / f"lstm_{ticker}_{hz}.pt").write_bytes(b"pt-bytes")
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: base)
+    monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: hz)
+
+    # refusal 1: meta file absent
+    assert mp._load_lstm(ticker) is False
+    assert entered == [], "load_lstm was entered with the meta file absent"
+
+    # refusal 2: tampered meta bytes vs manifest
+    mp._lstm_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+    meta_p = base / f"lstm_{ticker}_{hz}_meta.json"
+    meta_p.write_text('{"model_type":"dual_stream_lstm"}', encoding="utf-8")
+    write_bundle_integrity_manifest(base, ticker, hz, allow_missing_required=True)
+    meta_p.write_text('{"model_type":"dual_stream_lstm","tampered":true}', encoding="utf-8")
+    assert mp._load_lstm(ticker) is False
+    assert entered == [], "load_lstm was entered with tampered lstm_meta bytes"
+
+    # control: a verified bundle DOES reach load_lstm (the trace instrument works)
+    mp._lstm_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+    meta_p.write_text('{"model_type":"dual_stream_lstm"}', encoding="utf-8")
+    write_bundle_integrity_manifest(base, ticker, hz, allow_missing_required=True)
+    assert mp._load_lstm(ticker) is False  # sentinel returns model=None → load reports failure
+    assert len(entered) == 1, "control: a verified bundle must reach load_lstm"
+    mp._lstm_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+
+
+def test_item4_display_path_meta_verify_before_parse(tmp_path, monkeypatch):
+    """RC-377 (Cursor F1): /api/state model-health parses the SAME governed meta the
+    serve path refuses when tampered. The REAL producer slice is extracted from
+    server.py and driven: a refusing verifier fails closed BEFORE json.loads (the
+    trapping json proves the parser is never reached), and the success path runs
+    verify THEN parse (ordered-sequence control)."""
+    import json as _json
+    import textwrap
+    import types
+    from pathlib import Path
+
+    import ml_predict
+
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    i = src.index("def _model_status_from_artifact(")
+    j = src.index("_xgb_meta = ", i)
+    fn_src = textwrap.dedent(src[i:j])
+
+    meta_p = tmp_path / "lstm_SPY_1c_meta.json"
+    meta_p.write_text('{"edge_pp": 1.25, "model_type": "dual_stream_lstm"}', encoding="utf-8")
+
+    def build(seq, verify_result):
+        trap = types.SimpleNamespace(loads=lambda s: seq.append("loads") or _json.loads(s))
+        ns = {
+            "_artifacts": {"lstm": {"exists": True, "has_provenance": True, "issues": []}},
+            "_dashboard_ticker": "SPY",
+            "_dashboard_ml_hz": "1c",
+            "_active_dir": tmp_path,
+            "json": trap,
+            "Path": Path,
+        }
+        monkeypatch.setattr(
+            ml_predict, "_verify_governed_artifact",
+            lambda base, bt, hz, role, fn: seq.append(f"verify:{role}:{fn}") or verify_result)
+        exec(compile(fn_src, "server.py::_model_status_from_artifact", "exec"), ns)
+        return ns["_model_status_from_artifact"]
+
+    # refusal: verifier returns None → fail closed, json.loads NEVER reached
+    seq: list = []
+    out = build(seq, None)("lstm", "LSTM", meta_p, "edge_pp", "model_type")
+    assert out["status"] == "INTEGRITY FAILED" and out["edge"] is None
+    assert seq == [f"verify:lstm_meta:{meta_p.name}"], seq
+
+    # control: verified → verify strictly precedes the parse, the real edge serves
+    seq2: list = []
+    out2 = build(seq2, {"verified": True})("lstm", "LSTM", meta_p, "edge_pp", "model_type")
+    assert seq2 == [f"verify:lstm_meta:{meta_p.name}", "loads"], seq2
+    assert out2["status"] == "LIVE" and out2["edge"] == 1.25
+
+
 def test_load_transformer_blocked_when_meta_missing_contract(tmp_path, monkeypatch):
     import ml_predict as mp
 

@@ -1038,11 +1038,18 @@ def main() -> int:
         # authorization: the complete Stop policy, including a fresh supervised audit,
         # is evaluated again against the current subject below.
         if not any(entry.get("kind") == "stop_blocked" for entry in ledger):
-            sys.stderr.write(
-                "BLOCKED: stop_hook_active was not preceded by this guard's Stop block; "
-                "a caller-controlled retry flag is not authority.\n"
-            )
-            return 2
+            # RC-379: the HOST sets this flag after ANY Stop hook in the chain blocks, so a
+            # SIBLING guard's block (honesty_guard, RC-209) arrives here as a retry THIS guard
+            # never recorded. Reading that as forgery returned before stop_violations ever ran
+            # and deadlocked every later Stop for the rest of the session — measured live,
+            # 15+ identical blocks naming no unmet obligation while the turn's work was done.
+            # Absence of an own entry is now RECORDED and never fatal; the clauses below stay
+            # the sole gate, which is exactly what the comment above already promises. The
+            # entry is written with an empty repo, so it can never satisfy a repository-scoped
+            # rule (RC-258) — it is observability, not authority.
+            _record(sid, "sibling_stop_retry",
+                    "stop_hook_active with no own stop_blocked entry — a sibling Stop hook "
+                    "blocked first; falling through to the full Stop policy")
     bad = stop_violations(ledger)
     edits = _production_edits(ledger)
     payload_repo = repo_root_of(payload_cwd) if payload_cwd else ""
