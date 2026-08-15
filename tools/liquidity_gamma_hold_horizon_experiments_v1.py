@@ -368,12 +368,20 @@ def _levels_from_snap(ticker: str, spot: float, chain_raw: str) -> dict | None:
         return {"error": f"{type(exc).__name__}: {exc}"}
     gex = snap.net_gex_at_spot
     regime = None
-    if gex is not None and gex != 0:
-        regime = "LONG_GAMMA" if gex > 0 else "SHORT_GAMMA"
+    # RC-345 / F07: the gamma-regime SIGN is classified by the ONE authority,
+    # terrain_read.regime_from_signed_gamma — this backtest does not re-derive `gex > 0`
+    # locally. It maps the canonical verdict into its own two-token research vocabulary
+    # (LONG_GAMMA / SHORT_GAMMA), the way institutional_behavior maps to its hint labels.
+    from terrain_read import regime_from_signed_gamma, REGIME_LONG_GAMMA
+    _canon = regime_from_signed_gamma(gex)
+    if _canon is not None:
+        regime = "LONG_GAMMA" if _canon == REGIME_LONG_GAMMA else "SHORT_GAMMA"
     elif snap.regime in ("LONG_GAMMA_CHOP", "SHORT_GAMMA_TREND"):
+        # Carry the canonical terrain regime (also produced by terrain_read._regime_for).
         regime = "LONG_GAMMA" if snap.regime.startswith("LONG") else "SHORT_GAMMA"
-    elif snap.gamma_flip is not None:
-        regime = "LONG_GAMMA" if float(spot) > float(snap.gamma_flip) else "SHORT_GAMMA"
+    # RC-345 / F07: NO local `spot > gamma_flip` reconstruction. When neither the signed
+    # gamma nor the canonical terrain regime is available, the regime is WITHHELD (None) —
+    # the backtest does not manufacture a second gamma-regime authority from spot vs flip.
     levels = {}
     if snap.call_wall is not None and math.isfinite(float(snap.call_wall)):
         levels["CALL_WALL"] = float(snap.call_wall)

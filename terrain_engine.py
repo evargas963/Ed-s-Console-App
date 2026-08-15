@@ -530,9 +530,16 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # every operator surface until this producer computes them.
     (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(
         exposures, strikes)
-    flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot)
-    profile = compute_gamma_profile(contracts, spot)
-    charm_by_strike = compute_charm_by_strike(contracts, spot)
+    # RC-345 / F03: the gamma profile is materialized ONCE, at one pinned instant, and shared
+    # by both the flip verdict and the regime/gamma-at-spot read. Previously the flip built a
+    # profile inside compute_gamma_flip_v2 and this function built a SECOND one, each defaulting
+    # `now` to its own wall-clock read — two materializations of the same curve at two instants.
+    from time_et import now_et as _now_et
+    _terrain_now = _now_et()
+    profile = compute_gamma_profile(contracts, spot, now=_terrain_now)
+    flip, confidence, flip_diag = compute_gamma_flip_v2(
+        contracts, spot, now=_terrain_now, profile=profile)
+    charm_by_strike = compute_charm_by_strike(contracts, spot, now=_terrain_now)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
     read = build_terrain_read(

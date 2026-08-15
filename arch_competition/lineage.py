@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from training_cache import load_run_manifest
+# RC-345/F25: lineage manifest + fingerprint ticker identity consumes the ONE canonical authority
+# so 'SPX' and '$SPX' are the SAME instrument (no false-reject across the parity boundary).
+from instrument_identity import ticker_storage_key
 
 from arch_competition.exceptions import EvaluationLineageError
 from features.canonical_contract import CANONICAL_FEATURE_CONTRACT_VERSION, CANONICAL_FEATURE_TIMEFRAME
@@ -25,7 +28,7 @@ def _normalize_fp(a: Any, b: Any) -> bool:
             and a.get("row_count") == b.get("row_count")
             and a.get("table") == b.get("table")
             and a.get("timeframe") == b.get("timeframe")
-            and t_a.upper() == t_b.upper()
+            and ticker_storage_key(t_a) == ticker_storage_key(t_b)  # RC-345/F25
         )
     return a == b
 
@@ -59,8 +62,8 @@ def validate_parallel_cascade_manifest_lineage(
         raise EvaluationLineageError("parallel manifest missing ticker")
     if mc_ticker is None or not str(mc_ticker).strip():
         raise EvaluationLineageError("cascade manifest missing ticker")
-    tku = str(ticker).strip().upper()
-    if str(mp_ticker).strip().upper() != tku or str(mc_ticker).strip().upper() != tku:
+    tku = ticker_storage_key(ticker)  # RC-345/F25
+    if ticker_storage_key(mp_ticker) != tku or ticker_storage_key(mc_ticker) != tku:
         raise EvaluationLineageError("manifest ticker does not match evaluation ticker")
 
     fcp = mp.get("feature_cache_key")

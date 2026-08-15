@@ -1,25 +1,29 @@
-# Rehab latest — 2026-08-05T09:59:21.123062+00:00
+# Rehab latest — 2026-08-14T00:17:18.508880+00:00
 
-**HEAD:** `29713756` · **PM:** Cursor · **Mode:** recommend only (no auto-edit)
+**HEAD:** `5609617d` · **PM:** Cursor · **Mode:** recommend only (no auto-edit)
 
-Findings: **1**
+Findings: **5**
 
 | Sev | ID | Facet | Summary | Recommendation |
 |-----|----|-------|---------|----------------|
-| P2 | `rehab.dirty_tree_sprawl` | worktree_hygiene | Dirty tree sprawl: 340 porcelain lines | PM: sequence landings; avoid multi-mission dirt; path-limited commits only. |
+| P0 | `rehab.index_wt_drift` | worktree_integrity | 20 enforcement path(s) index≠WT | Reconcile WT from index (or re-stage intentional WT) before any green claim or commit. |
+| P1 | `rehab.product.db_health` | data_quality | 1 database health rule(s) failing | DAMA dimensions and OHLC invariants; see tools/check_db_health.py for the cited source. |
+| P1 | `rehab.product.complexity` | codebase_quality | 1353 function(s) above the CC>15 review threshold; worst is 609 | Median CC under 10, flag above 15 (codeant seven axes). The worst outliers carry the risk, not the median. |
+| P1 | `rehab.code_health_blocking` | static_quality | code_health_panel --check non-zero (BLOCKING defects or unmeasurable) | Run /code-health quality circle; drive BLOCKING to 0. |
+| P2 | `rehab.dirty_tree_sprawl` | worktree_hygiene | Dirty tree sprawl: 203 porcelain lines | PM: sequence landings; avoid multi-mission dirt; path-limited commits only. |
 
 ## Advisory debt (P1/RC-246 moved these off the blocking commit path)
 
-**Total: 3367** · prior: 3367 · delta: = 0
+**Total: 3451** · prior: 3367 · delta: ▲ +84
 
 | Check | Count |
 |---|---:|
-| `ruff_quality` | 1269 |
-| `mypy_types` | 796 |
-| `function_complexity` | 592 |
-| `function_length` | 474 |
-| `orphan_dict_keys` | 188 |
-| `file_length` | 47 |
+| `ruff_quality` | 1304 |
+| `mypy_types` | 812 |
+| `function_complexity` | 603 |
+| `function_length` | 484 |
+| `orphan_dict_keys` | 197 |
+| `file_length` | 50 |
 | `debt_ratchet` | 1 |
 
 ### Top hotspots (file · rule · count)

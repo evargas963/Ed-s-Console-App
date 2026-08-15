@@ -41,6 +41,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+
 MODEL_SERVE_POLICY_VERSION = "1.0.0"
 
 SERVE_APPROVED = "SERVE_APPROVED"
@@ -80,7 +82,7 @@ def parse_trained_at(raw: Any) -> Optional[date]:
 
 def classify_trained_at(ticker: str, trained_at: Optional[date]) -> tuple[str, str]:
     """(status, reason) for one bundle vintage under the approved policy."""
-    sym = (ticker or "").strip().upper()
+    sym = ticker_storage_key(ticker)  # RC-345/F25: canonical membership vs _APPROVED_BASE_TICKERS
     if trained_at is None:
         return (
             NOT_PROVEN,
@@ -122,7 +124,7 @@ def bundle_serve_eligibility(ticker: str, hz: str, bundle_dir: Path) -> dict[str
     one per horizon). Missing/unreadable manifest -> NOT_PROVEN (fail closed
     for direct serving); the artifact itself remains inspectable by tooling.
     """
-    sym = (ticker or "").strip().upper()
+    sym = ticker_storage_key(ticker)  # RC-345/F25: artifact meta filename identity is canonical (bare SPX must find $SPX meta)
     meta_path = Path(bundle_dir) / f"xgb_{sym}_{hz}_meta.json"
     trained_at_raw: Any = None
     provenance_source = "xgb_meta_manifest"

@@ -43,6 +43,7 @@ from typing import Any, Optional
 from db import DB_PATH, get_snapshot_sql
 from timeframe_config import CANONICAL_TIMEFRAME
 from math_snapshot_derive import derive_vwap_side
+from math_probabilities import classify_direction
 import logging
 
 log = logging.getLogger(__name__)
@@ -182,9 +183,14 @@ def resample_to_1m(
         # Recompute OHLC-derived fields from normalized OHLC
         norm["candle_body_pts"] = abs(c - o) if (c is not None and o is not None) else None
         norm["candle_range_pts"] = (h - l) if (h is not None and l is not None) else None
+        # RC-345 / F10: candle direction (up/down/flat) is classified in exactly one place —
+        # math_probabilities.classify_direction — with its 0.05%-of-open dead-band. This
+        # rehydration path used a strict `c > o` sign with no dead-band, a second contract
+        # that disagreed with the live server path near zero. Carry the one authority, called
+        # with the same (move, open) convention server.py uses.
         norm["candle_direction"] = (
-            "up" if c > o else ("down" if c < o else "flat")
-        ) if (c is not None and o is not None) else None
+            classify_direction(c - o, o) if (c is not None and o is not None) else None
+        )
         vs = derive_vwap_side(norm.get("spot"), norm.get("vwap"))
         if vs:
             norm["vwap_side"] = vs

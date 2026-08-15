@@ -42,6 +42,7 @@ from typing import Any, Iterator, Optional
 from zoneinfo import ZoneInfo
 
 from arch_competition.atomic_io import write_json_file_atomically
+from instrument_identity import ticker_storage_key
 from calibration.backfill_outcomes import backfill
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
@@ -434,7 +435,7 @@ def _production_tallies(
 
     out: dict[str, dict[str, Any]] = {}
     for row in conn.execute(sql, params):
-        t = out.setdefault(str(row["ticker"]).upper(), _new_t())
+        t = out.setdefault(ticker_storage_key(row["ticker"]), _new_t())  # RC-345/F25: canonical scoreboard key
         t["n_rows_total"] += 1
         if not is_rth_ts_utc(float(row["decision_ts_utc"])):
             t["n_non_rth"] += 1
@@ -1298,7 +1299,7 @@ def build_daily_scoreboard(
     roster, roster_source = _eligible_roster(conn)
     tallies, snapshot_tickers = _production_tallies(conn, et_date, tickers)
     if tickers:
-        roster = [t for t in roster if t in {x.upper() for x in tickers}]
+        roster = [t for t in roster if ticker_storage_key(t) in {ticker_storage_key(x) for x in tickers}]  # RC-345/F25: canonical roster membership
 
     cells: dict[tuple[str, str], dict[str, Any]] = {}
     rollup: dict[str, dict[str, Any]] = {
@@ -1997,7 +1998,7 @@ def main() -> int:
     require_canonical_db_target(args, tool_name="calibration.daily_scoreboard", write_capable=True)
 
     et_date = args.date or datetime.now(tz=ET).strftime("%Y-%m-%d")
-    tickers = [t.strip().upper() for t in args.tickers if t.strip()] or None
+    tickers = [ticker_storage_key(t) for t in args.tickers if t.strip()] or None  # RC-345/F25: canonical CLI ticker list
     # Fail-closed for the whole production entrypoint: contract violation aborts
     # before computation, emission, or console output (non-zero exit for the
     # scheduled task; error is explicit in its log).

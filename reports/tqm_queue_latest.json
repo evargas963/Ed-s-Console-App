@@ -1,18 +1,18 @@
 {
-  "advisory_total": 3367,
+  "advisory_total": 3451,
   "cap": 5,
   "checks": {
     "debt_ratchet": 1,
-    "file_length": 47,
-    "function_complexity": 592,
-    "function_length": 474,
-    "mypy_types": 796,
-    "orphan_dict_keys": 188,
-    "ruff_quality": 1269
+    "file_length": 50,
+    "function_complexity": 603,
+    "function_length": 484,
+    "mypy_types": 812,
+    "orphan_dict_keys": 197,
+    "ruff_quality": 1304
   },
-  "delta": 0,
-  "generated_at_iso": "2026-08-05T09:59:21.110869+00:00",
-  "generated_at_utc": 1785923961.110843,
+  "delta": 84,
+  "generated_at_iso": "2026-08-14T00:17:18.507975+00:00",
+  "generated_at_utc": 1786666638.507957,
   "note": "TRIAGE stage of the TQM loop. Work ONLY these items. Mass-rewriting the advisory backlog is banned: every change needs a reproduce command and a test.",
   "prior_total": 3367,
   "top_items": [

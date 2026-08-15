@@ -1,8 +1,8 @@
 {
   "bars_workers": 2,
-  "go_granted": false,
-  "head_sha": "795e0bc673fd4bd212a4daaddd5157ac108f4530",
-  "measured_at_utc": 1785951677.7652729,
+  "go_granted": true,
+  "head_sha": "5609617d2f23f9a7f516864248bfcbf99e68335c",
+  "measured_at_utc": 1786584288.3140125,
   "on_head": {
     "commit_pipe": true,
     "go_closeout": true,
@@ -12,7 +12,7 @@
     "reset_guard": true,
     "writer_drift": true
   },
-  "open_class": 2,
+  "open_class": 63,
   "quiet_verdict": "PASS",
   "rules_on_head": {
     ".cursor/rules/07-cursor-pm.mdc": true,

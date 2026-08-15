@@ -65,6 +65,15 @@ FEATURE_SCHEMA_VERSION: str = "v7_m5_strip"
 # leaked-feature bundles are already fail-closed by Phase 1's LABEL_CONFIG_VERSION bump (the one clean
 # retrain has not run yet); making a preprocessing-only change fail-close serving is a contract-field
 # decision recorded in OPEN_ITEMS (closeout #1 row).
+# RC-345 / F10: NOT bumped for the candle-direction dead-band alignment. The parity test
+# test_feature_schema_version_matches_trained_artifacts enforces a HARD rule learned from the
+# 2026-06-11 live-stack outage: PREPROCESSING_VERSION flips only WITH the retrained artifacts,
+# never AHEAD of them — bumping it standalone (as a code edit) makes the deployed artifacts
+# version-mismatch and takes the live stack down. The F10 migration is therefore a COORDINATED
+# retrain-then-bump SCHEDULER operation, not a code edit: the canonical dead-band is already the
+# one authority on every producer (server + snapshot_normalizer), so the retrain runs on aligned
+# data; the version bump lands atomically with those artifacts. This row stays OPEN until that
+# coordinated retrain executes.
 PREPROCESSING_VERSION: str = "v5_no_m5_lag"
 # v5 (FEATURE EPIC m5 strip, 2026-06-01): load_data no longer merges m5_* via attach_5m_additive_context.
 # Bump when label column, horizon definition, or outcome filter semantics change (invalidates training cache).

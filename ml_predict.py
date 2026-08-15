@@ -44,6 +44,10 @@ from ml_horizon import (
     live_inference_horizon_slug,
     normalize_ml_horizon_slug,
 )
+# RC-345/F25: serving-side artifact/registry ticker identity delegates to the ONE
+# canonical authority (same key the DB, cache, and on-disk $SPX bundle use). No local
+# .upper() second faucet — bare 'SPX' and '$SPX' resolve to the identical bundle.
+from instrument_identity import ticker_storage_key
 
 from features.lstm_sequence_input import (
     LstmSequenceInputError,
@@ -78,7 +82,7 @@ _INFER_ARCHITECTURE: ContextVar[str] = ContextVar("ml_predict_infer_architecture
 
 
 def _reg_key(ticker: str) -> str:
-    return f"{_INFER_ARCHITECTURE.get()}:{ticker.upper()}"
+    return f"{_INFER_ARCHITECTURE.get()}:{ticker_storage_key(ticker)}"
 
 
 def _model_registry_key(ticker: str, hz: str | None = None) -> str:
@@ -117,7 +121,7 @@ def ml_bundle_ticker_scope(bundle_ticker: str | None):
     if not bundle_ticker:
         yield
         return
-    tok = _ml_bundle_ticker_cv.set(str(bundle_ticker).upper().strip())
+    tok = _ml_bundle_ticker_cv.set(ticker_storage_key(str(bundle_ticker)))
     try:
         yield
     finally:
@@ -127,8 +131,8 @@ def ml_bundle_ticker_scope(bundle_ticker: str | None):
 def _bundle_ticker_for_artifacts(feature_ticker: str) -> str:
     override = _ml_bundle_ticker_cv.get()
     if override:
-        return override
-    return (feature_ticker or "").upper().strip()
+        return override  # already canonical: set via ticker_storage_key in ml_bundle_ticker_scope
+    return ticker_storage_key(feature_ticker or "")
 
 
 def get_ml_infer_horizon_slug() -> str:
@@ -164,8 +168,9 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
         from governed_stack_contract import active_guest_anchor_context
         from model_contract import meta_matches_system_contract
 
-        rt = (requested_ticker or "").upper().strip()
-        bt = _bundle_ticker_for_artifacts(rt)
+        rt = (requested_ticker or "").upper().strip()  # display echo of the request
+        canon = ticker_storage_key(requested_ticker)    # RC-345/F25: canonical routing identity
+        bt = _bundle_ticker_for_artifacts(canon)
         hz = get_ml_infer_horizon_slug()
         ctx = active_guest_anchor_context()
         strict_active_only = os.environ.get(
@@ -202,7 +207,7 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
         model_load_status = "dir_resolved"
         fail_closed_reason = None
         try:
-            _model_dir_for_ticker(rt)
+            _model_dir_for_ticker(canon)
         except Exception as ex:
             model_load_status = "fail_closed"
             fail_closed_reason = f"{type(ex).__name__}: {str(ex)[:300]}"
@@ -234,9 +239,11 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
         return {
             "requested_ticker": rt,
             "bundle_ticker": bt,
-            "guest_anchor": ctx is not None or bt != rt,
+            # RC-345/F25: guest-anchor is a CANONICAL-vs-CANONICAL comparison — a bare index alias
+            # (SPX vs $SPX) is the SAME instrument and must not falsely trip guest_anchor.
+            "guest_anchor": ctx is not None or bt != canon,
             "guest_anchor_ticker": (
-                ctx.anchor_ticker if ctx is not None else (bt if bt != rt else None)
+                ctx.anchor_ticker if ctx is not None else (bt if bt != canon else None)
             ),
             "horizon": hz,
             "bundle_dir": str(bd),
@@ -753,6 +760,7 @@ def _model_dir_for_ticker(ticker: str) -> Path:
 
 def _model_dir_for_ticker_relaxed(ticker: str, hz: str) -> Path:
     """Non-strict resolution: cascade challenger, arch_state, or parallel default."""
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: callee consumes canonical directly (no caller masking)
     if _INFER_ARCHITECTURE.get() == "cascade":
         cd = MODEL_DIR / "cascade" / ticker
         if not cd.is_dir():
@@ -1010,30 +1018,25 @@ def _predict_xgb(
 
     reg = _xgb_registry[_model_registry_key(ticker)]
     try:
-        from features.xgb_model_input import (
-            assert_not_raw_l1_payload,
-            inference_snapshot_v1_to_engineering_snapshot,
-            merge_xgb_fusion_overlay,
-        )
-        from ml_data_common import attach_net_gamma_prev_for_dgex
         from ml_train import (
             apply_xgb_imputation_matrix,
             engineer_single_snapshot,
-            DB_PATH as _ML_DB,
         )
 
         if xgb_pre_engineering_snapshot is not None:
             snap = _apply_serve_ablation_snapshot(dict(xgb_pre_engineering_snapshot), "xgb")
         else:
-            assert_not_raw_l1_payload(inference_snapshot_v1)
-            if fusion_feature_overlay is not None:
-                assert_not_raw_l1_payload(fusion_feature_overlay)
-
-            base = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
-            snap = merge_xgb_fusion_overlay(base, fusion_feature_overlay)
-
-            snap = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
-            snap = _apply_serve_ablation_snapshot(snap, "xgb")
+            # RC-336: ONE preparation sequence. This branch used to re-implement it inline
+            # and omitted `attach_confluence_features_for_serve`, so whenever a caller did
+            # not pass a pre-built snapshot the six cf_* keys were simply absent — and
+            # `engineer_single_snapshot` turns an absent cf_* into 0.0, i.e. "confluence
+            # measured, and it is exactly flat". Training supplies real confluence for those
+            # same columns, so every prediction down this branch fed the model a vector the
+            # model was never trained on. Delegating means the sequence cannot be partially
+            # reproduced again: net_gamma_prev, confluence and serve ablation are whatever
+            # the one preparer says they are.
+            snap = build_xgb_pre_engineering_snapshot_for_tick(
+                inference_snapshot_v1, fusion_feature_overlay)
         X = engineer_single_snapshot(
             snapshot=snap,
             category_maps=reg["category_maps"],
@@ -1101,8 +1104,7 @@ def _predict_xgb_movement_heads(
     restrict to valid_dir rows for outcome_dir calibration; move head uses the full labeled row set.
     """
     hz = get_ml_infer_horizon_slug()
-    ticker.strip().upper()
-    bt = _bundle_ticker_for_artifacts(ticker)
+    bt = _bundle_ticker_for_artifacts(ticker)  # RC-345/F25: canonical bundle identity (dead .upper() no-op removed)
     out: dict[str, float] = {}
     _m5_snap_cached: dict | None = xgb_pre_engineering_snapshot
     _artifact_registry_entry_stale(_model_registry_key(bt, hz))
@@ -1152,25 +1154,20 @@ def _predict_xgb_movement_heads(
         if reg is None:
             continue
         try:
-            from features.xgb_model_input import (
-                assert_not_raw_l1_payload,
-                inference_snapshot_v1_to_engineering_snapshot,
-                merge_xgb_fusion_overlay,
-            )
-            from ml_data_common import attach_net_gamma_prev_for_dgex
             from ml_train import (
-                DB_PATH as _ML_DB,
                 apply_xgb_imputation_matrix,
                 engineer_single_snapshot,
             )
 
             if _m5_snap_cached is None:
-                assert_not_raw_l1_payload(inference_snapshot_v1)
-                if fusion_feature_overlay is not None:
-                    assert_not_raw_l1_payload(fusion_feature_overlay)
-                base_snap = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
-                snap = merge_xgb_fusion_overlay(base_snap, fusion_feature_overlay)
-                _m5_snap_cached = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
+                # RC-336: same delegation as `_predict_xgb`. This branch also rebuilt the
+                # sequence by hand and also dropped confluence, so the movement heads were
+                # served cf_* = 0.0 on every tick. It additionally skipped serve ablation,
+                # which the one preparer applies — so the heads were scoring a feature set
+                # the ablation contract says should not be scored. Both are corrected by
+                # having a single definition of "a prepared XGB snapshot".
+                _m5_snap_cached = build_xgb_pre_engineering_snapshot_for_tick(
+                    inference_snapshot_v1, fusion_feature_overlay)
             snap = _m5_snap_cached
             X = engineer_single_snapshot(
                 snapshot=snap,
@@ -1301,7 +1298,6 @@ def _predict_lstm(
         )
         from lstm_data import (
             CANONICAL_TIMEFRAME,
-            compute_confluence_features,
             CONFLUENCE_FEATURES,
             STREAM_5M_LOOKBACK,
             STREAM_1M_LOOKBACK,
@@ -1380,7 +1376,16 @@ def _predict_lstm(
             )
             return None
 
-        conf = compute_confluence_features(merged_days, len(merged_days) - 1)
+        # RC-332: cf_* comes from the single population authority, not from this lane's
+        # merged window. `merged_days` is masked and merged for SEQUENCE encoding; using it
+        # as confluence history made the live LSTM read a different population than offline
+        # training, which diverged on 179 of 4956 sampled cells (cf_alignment_score by up to
+        # 3.0 of its -4..+4 range). The bar is this lane's; the history is canonical.
+        from ml_data_common import confluence_features_for_bar
+        from ml_train import DB_PATH as _conf_db
+
+        conf = confluence_features_for_bar(
+            ticker, merged_days[-1].get("ts_utc") if merged_days else None, _conf_db)
         conf_vec = [conf[k] for k in CONFLUENCE_FEATURES]
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
@@ -2162,7 +2167,7 @@ def _resolve_ml_inference_ticker(
         inference_snapshot_v1.get("ticker") if isinstance(inference_snapshot_v1, dict) else None,
     ):
         if raw is not None and str(raw).strip():
-            return str(raw).strip().upper()
+            return ticker_storage_key(str(raw))  # RC-345/F25: inference identity canonical ($SPX, not SPX)
     raise ValueError(
         "ML inference requires a resolvable ticker (ticker=, snapshot['ticker'], or "
         "inference_snapshot_v1['ticker'])"
@@ -2547,6 +2552,7 @@ def predict_all_horizons(
 
 def is_available(ticker: str) -> bool:
     """True if ANY of xgb, LSTM, or Transformer model exists for this ticker."""
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: artifact-name identity canonical
     hz = get_ml_infer_horizon_slug()
     base = _active_bundle_dir_for_load(ticker)
     if base is None:
@@ -2560,6 +2566,7 @@ def is_available(ticker: str) -> bool:
 
 def get_model_version(ticker: str) -> str:
     """Version string for dashboard display."""
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: artifact-name identity canonical
     hz = get_ml_infer_horizon_slug()
     base = _active_bundle_dir_for_load(ticker)
     if base is None:
@@ -2632,7 +2639,7 @@ def prewarm_inference_models_for_ticker(ticker: str) -> dict[str, bool]:
         resolve_guest_anchor_for_ticker,
     )
 
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: guest-anchor routing identity is canonical
     if not t:
         return {}
     guest_ctx = resolve_guest_anchor_for_ticker(t)

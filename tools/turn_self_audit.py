@@ -1,223 +1,1071 @@
-"""Per-turn self adversarial audit — the machine-detectable ARTIFACT of the audit loop (RC-190).
+"""Typed, identity-bound per-turn audit transaction (RC-330).
 
-WHY THIS EXISTS. Operator (non-negotiable, 2026-08-02): the 5-whys AND the self adversarial
-audit run EACH TIME, not when the author judges the work big enough. The 5-why half was already
-machine-forced at edit time (RC-66). The audit half had no per-turn artifact, so no hook could
-demand it — v53's misses and Cursor's three guns all shipped through turns whose audit never
-ran. This tool IS the artifact: it re-derives the turn's blast radius and runs the adversarial
-checks against it, and `operator_law_guard` refuses to end a production-editing turn whose
-ledger never ran it.
-
-WHAT IT RUNS (fail-closed — anything unrunnable is a FAIL, not a skip):
-  1. Blast radius: `git diff HEAD --name-only` filtered to production suffixes.
-  2. ruff correctness (F401, F821, E9) on every changed .py.
-  3. The negative-control suites: every tests/test_*.py whose TEXT names a changed module's
-     stem — the attack tests are where a lock proves it can still fail. No matching suite for
-     a changed module is itself a finding (exit 1) unless `--tests` names the lock explicitly.
-  4. Appends a JSONL record (reports/turn_self_audit_log.jsonl) of the radius, the commands,
-     and the outcome, so audits leave evidence instead of memories.
-
-HONEST LIMIT (same clause as RC-49's check): this forces the audit ARTIFACT — the attack
-suites re-run against the changed surface every turn. The cognitive depth of a fresh
-adversarial pass remains the drift-audit protocol and the independent Cursor re-audit; this
-lock makes SKIPPING the loop fail the turn, it does not make a shallow loop deep.
+The authoritative result is the JSON document returned to the Stop supervisor
+for that supervisor's own child process.  Command history and repository JSONL
+files are telemetry only and never authorize Stop.
 """
 from __future__ import annotations
 
 import argparse
+import ast
+import hashlib
 import json
 import subprocess
 import sys
 import time
+import uuid
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 REPO = Path(__file__).resolve().parent.parent
 LOG_REL = "reports/turn_self_audit_log.jsonl"
-PROD_SUFFIXES = (".py", ".html", ".js", ".css", ".ts", ".sql")
-#: Paths whose changes are governance/evidence, not production behaviour.
-NON_PROD_PREFIXES = ("tests/", "governance/", "docs/", "reports/", ".claude/", "scratchpad/")
+CONTRACT_ID = "CLEAN_FOR_TURN_CONTRACT_V1"
+SCHEMA_VERSION = 1
 
+PROD_SUFFIXES = (".py", ".html", ".js", ".jsx", ".css", ".ts", ".tsx", ".sql")
+NON_PROD_PREFIXES = (
+    "tests/", "governance/", "docs/", "reports/", ".claude/", ".cursor/",
+    "scratchpad/", "calibration/",
+)
 
-#: RC-284: what actually happened to a subprocess, kept separate from its exit code.
-#: A timeout and a test failure both arrived as exit 1, so the ledger recorded
-#: `fails: ['attack suites failed']` for 15 runs that never measured anything. An
-#: instrument that cannot say "I did not measure" is the one place this repo's
-#: absence-becomes-a-value defect must not live, because it is what judges every other fix.
+STATUS_PASS = "PASS"
+STATUS_FAIL = "FAIL"
+STATUS_NOT_PROVEN = "NOT_PROVEN"
+STATUS_INCOMPLETE = "INCOMPLETE"
+CHECK_STATUSES = {STATUS_PASS, STATUS_FAIL, STATUS_NOT_PROVEN, STATUS_INCOMPLETE}
+
+VERDICT_CLEAN = "CLEAN"
+VERDICT_FAIL = "FAIL"
+VERDICT_NOT_PROVEN = "NOT_PROVEN"
+VERDICT_INCOMPLETE = "INCOMPLETE"
+VERDICT_NO_CHANGE = "NO_RELEVANT_PRODUCTION_CHANGE"
+VERDICT_EXIT = {
+    VERDICT_CLEAN: 0,
+    VERDICT_NO_CHANGE: 0,
+    VERDICT_FAIL: 1,
+    VERDICT_NOT_PROVEN: 2,
+    VERDICT_INCOMPLETE: 3,
+}
+
 OUTCOME_OK = "ok"
 OUTCOME_TIMEOUT = "timeout"
 OUTCOME_LAUNCH_FAILURE = "launch_failure"
 
 
-def _run(args: list[str], timeout: int = 600) -> tuple[int, str, str]:
-    """Return (exit_code, combined_output, outcome).
+@dataclass(frozen=True)
+class ScopeEntry:
+    kind: str
+    path: str
+    old_path: str | None = None
+    tracked: bool = True
 
-    `outcome` is the channel the exit code does not have. A process that never finished has
-    no exit code of its own — inheriting 1 makes "did not run" indistinguishable from "ran
-    and failed", which is exactly what happened on 2026-08-07: 181 suites blew the 1800s
-    ceiling and the audit reported that my tests had failed. They had not.
-    """
+
+@dataclass
+class ScopeResult:
+    status: str
+    entries: list[ScopeEntry] = field(default_factory=list)
+    production_entries: list[ScopeEntry] = field(default_factory=list)
+    changed_tests: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class OwnershipResult:
+    status: str
+    suites: list[str] = field(default_factory=list)
+    unknown: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    reasons: dict[str, list[str]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CheckSpec:
+    """Typed registration record consumed by the audit transaction."""
+
+    check_id: str
+    applicability: str
+
+
+CORE_CHECK_SPECS = (
+    CheckSpec("scope_integrity", "always"),
+    CheckSpec("ruff_changed", "changed_existing_python"),
+    CheckSpec("test_ownership", "production_change"),
+    CheckSpec("owned_pytest", "production_change"),
+)
+
+
+def _norm(path: str) -> str:
+    return path.replace("\\", "/").removeprefix("./")
+
+
+def is_production_path(path: str) -> bool:
+    rel = _norm(path)
+    return rel.endswith(PROD_SUFFIXES) and not rel.startswith(NON_PROD_PREFIXES)
+
+
+def _run(
+    args: list[str],
+    timeout: int | float = 600,
+    *,
+    cwd: Path | None = None,
+) -> tuple[int, str, str]:
+    """Return (exit_code, combined_output, typed process outcome)."""
     try:
-        r = subprocess.run(args, cwd=str(REPO), capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=timeout)
-    except subprocess.TimeoutExpired as e:
+        r = subprocess.run(
+            args,
+            cwd=str(cwd or REPO),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
         partial = ""
-        for stream in (getattr(e, "stdout", None), getattr(e, "stderr", None)):
+        for stream in (getattr(exc, "stdout", None), getattr(exc, "stderr", None)):
             if stream:
-                partial += stream if isinstance(stream, str) else stream.decode(
-                    "utf-8", "replace")
-        return 1, f"TIMED OUT after {timeout}s (nothing was measured)\n{partial}", \
-            OUTCOME_TIMEOUT
-    except (OSError, subprocess.SubprocessError) as e:
-        return 1, f"RUN FAILED: {e}", OUTCOME_LAUNCH_FAILURE
-    return (r.returncode, (r.stdout or "") + (r.stderr or ""), OUTCOME_OK)
+                partial += stream if isinstance(stream, str) else stream.decode("utf-8", "replace")
+        return 1, f"TIMED OUT after {timeout}s (nothing was measured)\n{partial}", OUTCOME_TIMEOUT
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 1, f"RUN FAILED: {exc}", OUTCOME_LAUNCH_FAILURE
+    return r.returncode, (r.stdout or "") + (r.stderr or ""), OUTCOME_OK
+
+
+def _git_z(repo: Path, args: list[str]) -> tuple[list[str], str | None]:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [], f"git {' '.join(args)} launch failed: {type(exc).__name__}: {exc}"
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()[:300]
+        return [], f"git {' '.join(args)} failed with exit {proc.returncode}: {detail}"
+    return proc.stdout.split("\0"), None
+
+
+def discover_scope(
+    repo: Path,
+    required_session_paths: list[str] | tuple[str, ...] | None = None,
+) -> ScopeResult:
+    """Return a NUL-safe typed HEAD-to-worktree scope, including untracked files."""
+    root = Path(repo).resolve()
+    tokens, error = _git_z(root, ["diff", "--name-status", "-z", "--find-renames", "HEAD"])
+    if error:
+        return ScopeResult(status=STATUS_INCOMPLETE, errors=[error])
+
+    entries: list[ScopeEntry] = []
+    i = 0
+    while i < len(tokens):
+        status = tokens[i]
+        i += 1
+        if not status:
+            continue
+        code = status[0]
+        if code in ("R", "C"):
+            if i + 1 >= len(tokens):
+                return ScopeResult(
+                    status=STATUS_INCOMPLETE,
+                    errors=[f"malformed git rename/copy status record {status!r}"],
+                )
+            old_path, new_path = _norm(tokens[i]), _norm(tokens[i + 1])
+            i += 2
+            entries.append(ScopeEntry("RENAME" if code == "R" else "COPY", new_path, old_path))
+            continue
+        if i >= len(tokens):
+            return ScopeResult(
+                status=STATUS_INCOMPLETE,
+                errors=[f"malformed git status record {status!r}"],
+            )
+        path = _norm(tokens[i])
+        i += 1
+        kind = {
+            "A": "ADD", "M": "MODIFY", "D": "DELETE", "T": "TYPECHANGE",
+            "U": "UNMERGED",
+        }.get(code)
+        if kind is None:
+            return ScopeResult(
+                status=STATUS_INCOMPLETE,
+                errors=[f"unknown git status {status!r} for {path!r}"],
+            )
+        entries.append(ScopeEntry(kind, path))
+
+    untracked, error = _git_z(root, ["ls-files", "--others", "--exclude-standard", "-z"])
+    if error:
+        return ScopeResult(status=STATUS_INCOMPLETE, errors=[error])
+    for path in untracked:
+        if path:
+            entries.append(ScopeEntry("UNTRACKED", _norm(path), tracked=False))
+
+    represented = {
+        candidate
+        for entry in entries
+        for candidate in (entry.path, entry.old_path)
+        if candidate
+    }
+    for raw_path in required_session_paths or ():
+        rel = _norm(raw_path)
+        if not rel or rel in represented or not is_production_path(rel):
+            continue
+        entries.append(ScopeEntry(
+            "SESSION_EDIT" if (root / rel).is_file() else "SESSION_DELETE",
+            rel,
+            tracked=True,
+        ))
+        represented.add(rel)
+
+    # RC-331: the audit's OWN telemetry receipt is not a change to the subject. It is
+    # written under reports/ inside the tree the identity hash covers, so in any repository
+    # where it does not already exist the write lands between worktree_identity_start and
+    # worktree_identity_end and the audit reports its own footprint as drift — verdict
+    # INCOMPLETE with every check PASS and checks_failed empty. That is what the ten
+    # actual-path controls in tests/test_turn_self_audit_contract_v1.py were hitting: each
+    # builds a clean fixture repo, so the receipt is new every time. An observer must not
+    # count its own recording as an observation.
+    entries = [e for e in entries if e.path != LOG_REL]
+    unique = {
+        (entry.kind, entry.path, entry.old_path, entry.tracked): entry for entry in entries
+    }
+    ordered = sorted(unique.values(), key=lambda e: (e.path, e.kind, e.old_path or ""))
+    production = [
+        entry for entry in ordered
+        if is_production_path(entry.path)
+        or (entry.old_path is not None and is_production_path(entry.old_path))
+    ]
+    tests = sorted({
+        entry.path for entry in ordered
+        if entry.path.startswith("tests/") and Path(entry.path).name.startswith("test_")
+        and entry.path.endswith(".py")
+    })
+    return ScopeResult(
+        status=STATUS_PASS,
+        entries=ordered,
+        production_entries=production,
+        changed_tests=tests,
+    )
+
+
+def _hash_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _path_identity(repo: Path, entry: ScopeEntry) -> dict[str, Any]:
+    path = repo / entry.path
+    if path.is_file():
+        try:
+            content = _hash_bytes(path.read_bytes())
+        except OSError as exc:
+            content = f"UNREADABLE:{type(exc).__name__}:{exc}"
+    elif entry.kind == "DELETE":
+        content = "DELETED"
+    else:
+        content = "MISSING"
+    result = {
+        "kind": entry.kind,
+        "path": entry.path,
+        "old_path": entry.old_path,
+        "tracked": entry.tracked,
+        "content_sha256": content,
+    }
+    return result
+
+
+def _git_scalar(repo: Path, args: list[str]) -> tuple[str, str | None]:
+    code, out, outcome = _run(["git", *args], timeout=30, cwd=repo)
+    if outcome != OUTCOME_OK or code != 0:
+        return "", f"git {' '.join(args)} unavailable ({outcome}, exit={code}): {out.strip()[:240]}"
+    value = out.strip()
+    if not value:
+        return "", f"git {' '.join(args)} returned an empty identity"
+    return value, None
+
+
+def capture_identity(repo: Path, scope: ScopeResult | None = None) -> tuple[dict[str, str], list[str]]:
+    root = Path(repo).resolve()
+    errors: list[str] = []
+    canonical, err = _git_scalar(root, ["rev-parse", "--show-toplevel"])
+    if err:
+        errors.append(err)
+        canonical = str(root)
+    else:
+        canonical = str(Path(canonical).resolve())
+    head, err = _git_scalar(root, ["rev-parse", "HEAD"])
+    if err:
+        errors.append(err)
+    index, err = _git_scalar(root, ["write-tree"])
+    if err:
+        errors.append(err)
+    current_scope = scope or discover_scope(root)
+    if current_scope.status != STATUS_PASS:
+        errors.extend(current_scope.errors)
+    manifest = [_path_identity(root, entry) for entry in current_scope.entries]
+    worktree = _hash_bytes(json.dumps(manifest, sort_keys=True).encode("utf-8"))
+    prod_manifest = [
+        _path_identity(root, entry) for entry in current_scope.production_entries
+    ]
+    scope_digest = _hash_bytes(json.dumps(prod_manifest, sort_keys=True).encode("utf-8"))
+    return {
+        "repo_root": canonical,
+        "repo_head": head,
+        "index_tree": index,
+        "worktree_identity": worktree,
+        "scope_digest": scope_digest,
+    }, errors
+
+
+def _module_names(path: str) -> set[str]:
+    rel = _norm(path)
+    if not rel.endswith(".py"):
+        return set()
+    parts = list(Path(rel[:-3]).parts)
+    if parts and parts[-1] == "__init__":
+        parts.pop()
+    dotted = ".".join(parts)
+    names = {dotted} if dotted else set()
+    # tools are also intentionally importable as bare modules in this repository.
+    if len(parts) == 2 and parts[0] == "tools":
+        names.add(parts[-1])
+    return names
+
+
+def _test_ownership_evidence(path: Path) -> tuple[set[str], set[str], str | None]:
+    try:
+        source = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return set(), set(), f"{path}: read failed: {type(exc).__name__}: {exc}"
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        return set(), set(), f"{path}: AST parse failed at line {exc.lineno}: {exc.msg}"
+
+    imports: set[str] = set()
+    explicit: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module)
+            imports.update(f"{node.module}.{alias.name}" for alias in node.names)
+        elif isinstance(node, ast.Call):
+            fn = node.func
+            name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+            if name in ("import_module", "__import__") and node.args:
+                value = node.args[0]
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    imports.add(value.value)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if not any(isinstance(t, ast.Name) and t.id == "TURN_AUDIT_OWNS" for t in targets):
+                continue
+            value = node.value
+            if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+                for item in value.elts:
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str):
+                        explicit.add(_norm(item.value))
+    return imports, explicit, None
+
+
+def resolve_test_ownership(repo: Path, scope: ScopeResult) -> OwnershipResult:
+    root = Path(repo).resolve()
+    tests_root = root / "tests"
+    if not tests_root.is_dir():
+        return OwnershipResult(
+            status=STATUS_INCOMPLETE,
+            errors=["tests/ directory is missing; ownership cannot be established"],
+        )
+
+    evidence: list[tuple[str, set[str], set[str]]] = []
+    errors: list[str] = []
+    # SCOPE IS THE GIT INDEX, not the filesystem (RC-274 -> RC-286 -> RC-307). An rglob here
+    # walked whatever happened to be on disk, so untracked scratch files counted as evidence
+    # and the audit's own scope moved with the working directory's litter. `git ls-files`
+    # gives the same answer on every machine and after every clean.
+    _tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "tests/**/test_*.py", "tests/test_*.py"],
+        cwd=root, capture_output=True, text=True, check=False).stdout
+    for rel in sorted({p for p in _tracked.split("\0") if p}):
+        test_path = root / rel
+        if not test_path.is_file():
+            continue
+        if "archive" in Path(rel).parts:
+            continue
+        imports, explicit, error = _test_ownership_evidence(test_path)
+        if error:
+            errors.append(error)
+        else:
+            evidence.append((rel, imports, explicit))
+    if errors:
+        return OwnershipResult(status=STATUS_INCOMPLETE, errors=errors)
+
+    suites: set[str] = {
+        path for path in scope.changed_tests if (root / path).is_file()
+    }
+    unknown: list[str] = []
+    reasons: dict[str, list[str]] = {}
+    for entry in scope.production_entries:
+        candidates = {entry.path}
+        if entry.old_path:
+            candidates.add(entry.old_path)
+        modules = set().union(*(_module_names(path) for path in candidates))
+        owners: list[str] = []
+        for rel, imports, explicit in evidence:
+            import_hit = bool(modules & imports)
+            explicit_hit = bool(candidates & explicit)
+            if import_hit or explicit_hit:
+                suites.add(rel)
+                owners.append(
+                    f"{rel}:{'import' if import_hit else 'TURN_AUDIT_OWNS'}"
+                )
+        if owners:
+            reasons[entry.path] = sorted(owners)
+        else:
+            unknown.append(entry.path)
+    return OwnershipResult(
+        status=STATUS_NOT_PROVEN if unknown else STATUS_PASS,
+        suites=sorted(suites),
+        unknown=sorted(set(unknown)),
+        reasons=reasons,
+    )
+
+
+def _check_record(
+    check_id: str,
+    status: str,
+    *,
+    started: float,
+    exit_code: int | None,
+    outcome: str,
+    command: list[str] | None = None,
+    detail: str = "",
+) -> dict[str, Any]:
+    ended = time.time()
+    return {
+        "check_id": check_id,
+        "status": status,
+        "started_at": started,
+        "ended_at": ended,
+        "duration_ms": round((ended - started) * 1000, 3),
+        "exit_code": exit_code,
+        "outcome": outcome,
+        "command": command or [],
+        "detail": detail[-4000:],
+    }
+
+
+def _status_for_process(code: int, outcome: str) -> str:
+    if outcome != OUTCOME_OK:
+        return STATUS_INCOMPLETE
+    return STATUS_PASS if code == 0 else STATUS_FAIL
+
+
+def required_check_ids(repo: Path, scope: ScopeResult) -> list[str]:
+    """Independently derive the complete required check set for this subject."""
+    has_production = bool(scope.production_entries)
+    has_existing_python = any(
+        entry.path.endswith(".py")
+        and entry.kind != "DELETE"
+        and (Path(repo) / entry.path).is_file()
+        for entry in scope.production_entries
+    )
+    required: list[str] = []
+    for spec in CORE_CHECK_SPECS:
+        applies = (
+            spec.applicability == "always"
+            or (spec.applicability == "production_change" and has_production)
+            or (spec.applicability == "changed_existing_python" and has_existing_python)
+        )
+        if applies:
+            required.append(spec.check_id)
+    return required
+
+
+def _aggregate_verdict(
+    checks: list[dict[str, Any]],
+    *,
+    has_production_change: bool,
+    internal_errors: list[str],
+    stable: bool,
+) -> str:
+    statuses = [str(check.get("status")) for check in checks]
+    if internal_errors or not stable or STATUS_INCOMPLETE in statuses:
+        return VERDICT_INCOMPLETE
+    if STATUS_FAIL in statuses:
+        return VERDICT_FAIL
+    if STATUS_NOT_PROVEN in statuses:
+        return VERDICT_NOT_PROVEN
+    if not has_production_change:
+        return VERDICT_NO_CHANGE
+    return VERDICT_CLEAN
+
+
+def _scope_payload(scope: ScopeResult) -> dict[str, Any]:
+    return {
+        "status": scope.status,
+        "entries": [asdict(entry) for entry in scope.entries],
+        "production_entries": [asdict(entry) for entry in scope.production_entries],
+        "changed_tests": scope.changed_tests,
+        "errors": scope.errors,
+    }
+
+
+def _ownership_payload(ownership: OwnershipResult) -> dict[str, Any]:
+    return asdict(ownership)
+
+
+def run_audit(
+    repo: Path,
+    session_id: str,
+    *,
+    authoritative: bool = True,
+    research: str = "",
+    pytest_timeout: int = 1800,
+    required_session_paths: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    """Execute one complete typed audit transaction."""
+    started = time.time()
+    run_id = str(uuid.uuid4())
+    root = Path(repo).resolve()
+    internal_errors: list[str] = []
+    checks: list[dict[str, Any]] = []
+
+    session_paths = sorted({_norm(path) for path in required_session_paths or ()})
+    scope = discover_scope(root, session_paths)
+    start_identity, identity_errors = capture_identity(root, scope)
+    internal_errors.extend(identity_errors)
+
+    check_started = time.time()
+    scope_status = STATUS_PASS if scope.status == STATUS_PASS and not identity_errors \
+        else STATUS_INCOMPLETE
+    checks.append(_check_record(
+        "scope_integrity",
+        scope_status,
+        started=check_started,
+        exit_code=0 if scope_status == STATUS_PASS else None,
+        outcome=OUTCOME_OK if scope_status == STATUS_PASS else "scope_error",
+        detail="; ".join(scope.errors + identity_errors),
+    ))
+
+    ownership = OwnershipResult(status=STATUS_PASS)
+    relevant = bool(scope.production_entries)
+    py_files = sorted({
+        entry.path for entry in scope.production_entries
+        if entry.path.endswith(".py") and entry.kind != "DELETE" and (root / entry.path).is_file()
+    })
+
+    if relevant and scope_status == STATUS_PASS:
+        if py_files:
+            command = [
+                sys.executable, "-m", "ruff", "check", *py_files,
+                "--select", "F401,F821,E9",
+            ]
+            check_started = time.time()
+            code, output, outcome = _run(command, timeout=600, cwd=root)
+            checks.append(_check_record(
+                "ruff_changed",
+                _status_for_process(code, outcome),
+                started=check_started,
+                exit_code=code if outcome == OUTCOME_OK else None,
+                outcome=outcome,
+                command=command,
+                detail=output,
+            ))
+
+        check_started = time.time()
+        ownership = resolve_test_ownership(root, scope)
+        checks.append(_check_record(
+            "test_ownership",
+            ownership.status,
+            started=check_started,
+            exit_code=0 if ownership.status == STATUS_PASS else None,
+            outcome="resolved" if ownership.status == STATUS_PASS else "unresolved",
+            detail=json.dumps(_ownership_payload(ownership), sort_keys=True),
+        ))
+
+        check_started = time.time()
+        if ownership.status == STATUS_PASS and ownership.suites:
+            command = [sys.executable, "-m", "pytest", *ownership.suites, "-q"]
+            code, output, outcome = _run(command, timeout=pytest_timeout, cwd=root)
+            pytest_status = _status_for_process(code, outcome)
+            checks.append(_check_record(
+                "owned_pytest",
+                pytest_status,
+                started=check_started,
+                exit_code=code if outcome == OUTCOME_OK else None,
+                outcome=outcome,
+                command=command,
+                detail=output,
+            ))
+        elif ownership.status == STATUS_INCOMPLETE:
+            checks.append(_check_record(
+                "owned_pytest", STATUS_INCOMPLETE, started=check_started,
+                exit_code=None, outcome="ownership_incomplete",
+                detail="test ownership could not be parsed",
+            ))
+        else:
+            checks.append(_check_record(
+                "owned_pytest", STATUS_NOT_PROVEN, started=check_started,
+                exit_code=None, outcome="ownership_not_proven",
+                detail=f"unknown production owners: {ownership.unknown}",
+            ))
+
+    end_scope = discover_scope(root, session_paths)
+    end_identity, end_errors = capture_identity(root, end_scope)
+    internal_errors.extend(end_errors)
+    stable = (
+        not internal_errors
+        and scope.status == STATUS_PASS
+        and end_scope.status == STATUS_PASS
+        and start_identity == end_identity
+    )
+    if not stable:
+        internal_errors.append("repository identity or scope changed during audit")
+
+    required = required_check_ids(root, scope)
+    executed = [str(check["check_id"]) for check in checks]
+    verdict = _aggregate_verdict(
+        checks,
+        has_production_change=relevant,
+        internal_errors=internal_errors,
+        stable=stable,
+    )
+    passed = [c["check_id"] for c in checks if c["status"] == STATUS_PASS]
+    failed = [c["check_id"] for c in checks if c["status"] == STATUS_FAIL]
+    not_proven = [c["check_id"] for c in checks if c["status"] == STATUS_NOT_PROVEN]
+    incomplete = [c["check_id"] for c in checks if c["status"] == STATUS_INCOMPLETE]
+    ruff = next((c for c in checks if c["check_id"] == "ruff_changed"), {
+        "check_id": "ruff_changed", "status": "NOT_APPLICABLE",
+    })
+    pytest_result = next((c for c in checks if c["check_id"] == "owned_pytest"), {
+        "check_id": "owned_pytest",
+        "status": "NOT_APPLICABLE" if not relevant else STATUS_NOT_PROVEN,
+    })
+    result = {
+        "schema_version": SCHEMA_VERSION,
+        "contract_id": CONTRACT_ID,
+        "audit_run_id": run_id,
+        "session_id": session_id,
+        "authoritative": bool(authoritative),
+        "completed": True,
+        "start_time": started,
+        "end_time": time.time(),
+        "requested_scope": "AUTO_CURRENT_WORKTREE",
+        "session_required_files": session_paths,
+        "actual_scope": _scope_payload(scope),
+        "changed_tracked_files": sorted(
+            e.path for e in scope.entries if e.tracked
+        ),
+        "untracked_production_files": sorted(
+            e.path for e in scope.production_entries if not e.tracked
+        ),
+        "repo_root": start_identity.get("repo_root", str(root)),
+        "repo_head": start_identity.get("repo_head", ""),
+        "index_tree": start_identity.get("index_tree", ""),
+        "worktree_identity_start": start_identity.get("worktree_identity", ""),
+        "worktree_identity_end": end_identity.get("worktree_identity", ""),
+        "scope_digest": start_identity.get("scope_digest", ""),
+        "requirements_digest": _hash_bytes(
+            json.dumps(required, separators=(",", ":")).encode("utf-8")
+        ),
+        "runner_digest": _hash_bytes(Path(__file__).read_bytes()),
+        "checks_required": required,
+        "checks_executed": executed,
+        "checks_passed": passed,
+        "checks_failed": failed,
+        "checks_not_proven": not_proven,
+        "checks_incomplete": incomplete,
+        "checks_skipped": [],
+        "checks": checks,
+        "ownership": _ownership_payload(ownership),
+        "ruff_result": ruff,
+        "pytest_result": pytest_result,
+        "timeouts": [c["check_id"] for c in checks if c["outcome"] == OUTCOME_TIMEOUT],
+        "internal_errors": sorted(set(internal_errors)),
+        "research": research.strip(),
+        "verdict": verdict,
+        "exit_code": VERDICT_EXIT[verdict],
+        "assurance_claims": [
+            "TURN_CONTRACT_V1 required checks executed against the exact recorded subject",
+            "no repository-wide or mission-specific correctness is implied",
+        ],
+    }
+    result["result_identity"] = _hash_bytes(
+        json.dumps(result, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    return result
+
+
+def _canonical_repo(repo: Path) -> str:
+    value, error = _git_scalar(Path(repo).resolve(), ["rev-parse", "--show-toplevel"])
+    return str(Path(value).resolve()) if not error else str(Path(repo).resolve())
+
+
+def validate_result(
+    result: Any,
+    *,
+    repo: Path,
+    session_id: str,
+    observed_exit_code: int | None,
+    required_session_paths: list[str] | tuple[str, ...] | None = None,
+) -> list[str]:
+    """Strictly validate one result against the subject as it exists now."""
+    if not isinstance(result, dict):
+        return ["malformed structured result: expected a JSON object"]
+    errors: list[str] = []
+    required_fields = {
+        "schema_version", "contract_id", "audit_run_id", "session_id", "authoritative",
+        "completed", "repo_root", "repo_head", "index_tree", "worktree_identity_start",
+        "worktree_identity_end", "scope_digest", "checks_required", "checks_executed",
+        "requirements_digest", "runner_digest", "result_identity", "checks", "verdict",
+        "exit_code", "internal_errors", "session_required_files",
+    }
+    missing = sorted(required_fields - set(result))
+    if missing:
+        errors.append(f"malformed structured result: missing fields {missing}")
+        return errors
+    scalar_types = {
+        "schema_version": int,
+        "contract_id": str,
+        "audit_run_id": str,
+        "session_id": str,
+        "authoritative": bool,
+        "completed": bool,
+        "repo_root": str,
+        "repo_head": str,
+        "index_tree": str,
+        "worktree_identity_start": str,
+        "worktree_identity_end": str,
+        "scope_digest": str,
+        "requirements_digest": str,
+        "runner_digest": str,
+        "result_identity": str,
+        "verdict": str,
+        "exit_code": int,
+    }
+    for key, expected_type in scalar_types.items():
+        if not isinstance(result.get(key), expected_type):
+            errors.append(
+                f"malformed structured result: {key} must be {expected_type.__name__}"
+            )
+    list_fields = (
+        "checks_required", "checks_executed", "checks", "checks_passed",
+        "checks_failed", "checks_not_proven", "checks_incomplete",
+        "checks_skipped", "internal_errors", "session_required_files",
+    )
+    for key in list_fields:
+        if not isinstance(result.get(key), list):
+            errors.append(f"malformed structured result: {key} must be list")
+    if not isinstance(result.get("actual_scope"), dict):
+        errors.append("malformed structured result: actual_scope must be object")
+    if errors:
+        return errors
+    if result.get("schema_version") != SCHEMA_VERSION:
+        errors.append("schema version mismatch")
+    if result.get("contract_id") != CONTRACT_ID:
+        errors.append("contract id mismatch")
+    identity_copy = dict(result)
+    claimed_result_identity = identity_copy.pop("result_identity", "")
+    actual_result_identity = _hash_bytes(
+        json.dumps(identity_copy, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    if claimed_result_identity != actual_result_identity:
+        errors.append("structured result identity mismatch")
+    try:
+        current_runner_digest = _hash_bytes(Path(__file__).read_bytes())
+    except OSError:
+        current_runner_digest = ""
+    if result.get("runner_digest") != current_runner_digest:
+        errors.append("audit runner identity mismatch")
+    if not result.get("authoritative"):
+        errors.append("result is not authoritative")
+    if result.get("completed") is not True:
+        errors.append("audit did not complete")
+    if not session_id or result.get("session_id") != session_id:
+        errors.append("session identity mismatch")
+    if not str(result.get("audit_run_id") or ""):
+        errors.append("audit run identity missing")
+
+    expected_repo = _canonical_repo(repo)
+    try:
+        result_repo = str(Path(str(result.get("repo_root"))).resolve())
+    except (OSError, ValueError):
+        result_repo = ""
+    if result_repo != expected_repo:
+        errors.append(f"wrong repository/worktree result: {result_repo!r} != {expected_repo!r}")
+
+    expected_session_paths = sorted({
+        _norm(path) for path in required_session_paths or ()
+    })
+    if result.get("session_required_files") != expected_session_paths:
+        errors.append("session-required file inventory mismatch")
+    scope = discover_scope(repo, expected_session_paths)
+    identity, identity_errors = capture_identity(repo, scope)
+    errors.extend(identity_errors)
+    expected_scope_payload = _scope_payload(scope)
+    if result.get("actual_scope") != expected_scope_payload:
+        errors.append("actual scope does not match independent current scope discovery")
+    expected_tracked = sorted(e.path for e in scope.entries if e.tracked)
+    if result.get("changed_tracked_files") != expected_tracked:
+        errors.append("changed tracked-file inventory mismatch")
+    expected_untracked_production = sorted(
+        e.path for e in scope.production_entries if not e.tracked
+    )
+    if result.get("untracked_production_files") != expected_untracked_production:
+        errors.append("untracked production-file inventory mismatch")
+    for result_key, identity_key in (
+        ("repo_head", "repo_head"),
+        ("index_tree", "index_tree"),
+        ("worktree_identity_end", "worktree_identity"),
+        ("scope_digest", "scope_digest"),
+    ):
+        if result.get(result_key) != identity.get(identity_key):
+            errors.append(f"current identity mismatch for {result_key}")
+    if result.get("worktree_identity_start") != result.get("worktree_identity_end"):
+        errors.append("worktree identity changed during audit")
+
+    required = result.get("checks_required")
+    executed = result.get("checks_executed")
+    checks = result.get("checks")
+    if not isinstance(required, list) or not isinstance(executed, list) \
+            or not isinstance(checks, list):
+        errors.append("required/executed/check records must be lists")
+        return errors
+    malformed_checks: list[str] = []
+    for index, check in enumerate(checks):
+        if not isinstance(check, dict):
+            malformed_checks.append(f"checks[{index}] must be object")
+            continue
+        if not isinstance(check.get("check_id"), str) or not check.get("check_id"):
+            malformed_checks.append(f"checks[{index}].check_id must be non-empty string")
+        if not isinstance(check.get("status"), str):
+            malformed_checks.append(f"checks[{index}].status must be string")
+    if malformed_checks:
+        errors.extend(
+            f"malformed structured result: {message}" for message in malformed_checks
+        )
+        return errors
+    if len(required) != len(set(required)):
+        errors.append("duplicate required check id")
+    if len(executed) != len(set(executed)):
+        errors.append("duplicate executed check id")
+    expected_required = required_check_ids(Path(repo), scope)
+    if required != expected_required:
+        errors.append(
+            f"required check set mismatch: result={required}, current={expected_required}"
+        )
+    expected_requirements_digest = _hash_bytes(
+        json.dumps(expected_required, separators=(",", ":")).encode("utf-8")
+    )
+    if result.get("requirements_digest") != expected_requirements_digest:
+        errors.append("required check-set identity mismatch")
+    if required != executed:
+        errors.append(f"required checks do not exactly equal executed checks: {required} != {executed}")
+    check_ids = [c.get("check_id") for c in checks if isinstance(c, dict)]
+    if check_ids != executed:
+        errors.append("executed checks do not exactly equal structured check records")
+    statuses = [c.get("status") for c in checks if isinstance(c, dict)]
+    unknown_status = [status for status in statuses if status not in CHECK_STATUSES]
+    if unknown_status:
+        errors.append(f"unknown check status(es): {unknown_status}")
+    expected_status_lists = {
+        "checks_passed": [c.get("check_id") for c in checks if c.get("status") == STATUS_PASS],
+        "checks_failed": [c.get("check_id") for c in checks if c.get("status") == STATUS_FAIL],
+        "checks_not_proven": [
+            c.get("check_id") for c in checks if c.get("status") == STATUS_NOT_PROVEN
+        ],
+        "checks_incomplete": [
+            c.get("check_id") for c in checks if c.get("status") == STATUS_INCOMPLETE
+        ],
+    }
+    for key, expected in expected_status_lists.items():
+        if result.get(key) != expected:
+            errors.append(f"{key} disagrees with typed check records")
+    if result.get("checks_skipped"):
+        errors.append("required check was skipped")
+
+    stable = result.get("worktree_identity_start") == result.get("worktree_identity_end")
+    has_prod = bool(scope.production_entries)
+    expected_verdict = _aggregate_verdict(
+        checks,
+        has_production_change=has_prod,
+        internal_errors=list(result.get("internal_errors") or []),
+        stable=stable,
+    )
+    if result.get("verdict") != expected_verdict:
+        errors.append(
+            f"verdict/status disagreement: {result.get('verdict')!r} != {expected_verdict!r}"
+        )
+    expected_exit = VERDICT_EXIT.get(str(result.get("verdict")))
+    if expected_exit is None or result.get("exit_code") != expected_exit:
+        errors.append("result verdict and declared exit code disagree")
+    if observed_exit_code is not None and observed_exit_code != result.get("exit_code"):
+        errors.append(
+            f"observed process exit {observed_exit_code} disagrees with result "
+            f"{result.get('exit_code')}"
+        )
+    if result.get("verdict") == VERDICT_CLEAN:
+        if any(status != STATUS_PASS for status in statuses):
+            errors.append("CLEAN contains a required non-PASS check")
+        if result.get("internal_errors"):
+            errors.append("CLEAN contains internal errors")
+    return errors
 
 
 def changed_production_files() -> list[str]:
-    code, out, _outcome = _run(["git", "diff", "HEAD", "--name-only"])
-    if code != 0:
-        return []
-    files = []
-    for ln in out.splitlines():
-        rel = ln.strip().replace("\\", "/")
-        if not rel or rel.startswith(NON_PROD_PREFIXES):
-            continue
-        if rel.endswith(PROD_SUFFIXES):
-            files.append(rel)
-    return sorted(set(files))
+    """Compatibility API backed by canonical scope; scope failure is never hidden."""
+    scope = discover_scope(REPO)
+    if scope.status != STATUS_PASS:
+        raise RuntimeError("; ".join(scope.errors))
+    return sorted({entry.path for entry in scope.production_entries})
 
 
 def matching_attack_suites(changed: list[str]) -> tuple[list[str], list[str]]:
-    """Test files whose text names a changed module's stem; and the changed stems no suite
-    names (each of those is a finding, not a silent skip)."""
-    stems = {Path(c).stem for c in changed if c.endswith(".py")}
-    tests_dir = REPO / "tests"
-    hits: set[str] = set()
-    covered: set[str] = set()
-    if tests_dir.exists():
-        for tp in sorted(tests_dir.glob("test_*.py")):
-            try:
-                text = tp.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            for stem in stems:
-                if stem in text:
-                    hits.add(f"tests/{tp.name}")
-                    covered.add(stem)
-    return sorted(hits), sorted(stems - covered)
+    """Compatibility API using deterministic imports/metadata, not source substrings."""
+    entries = [
+        ScopeEntry("MODIFY", _norm(path)) for path in changed if is_production_path(path)
+    ]
+    scope = ScopeResult(status=STATUS_PASS, entries=entries, production_entries=entries)
+    ownership = resolve_test_ownership(REPO, scope)
+    uncovered = [Path(path).stem for path in ownership.unknown]
+    return ownership.suites, sorted(uncovered)
 
 
 def research_violation(research: str, changed: list[str]) -> str | None:
-    """RC-203/RC-205: production change must NAME a resolvable reference consulted first.
-
-    Concrete markers alone are not enough (RC-205): a stale-generic string with '.py' in it
-    used to pass. The reference must resolve to an existing repo path or an http(s) URL
-    (tools.plus_player_locks.research_path_resolves)."""
+    """Legacy research telemetry validation; it is not Stop authorization."""
     if not changed:
         return None
-    r = (research or "").strip()
-    concrete = ("/" in r) or ("§" in r) or ("http" in r) or (".md" in r) or (".py" in r) \
-        or (".html" in r) or (".js" in r)
-    if len(r) < 20 or not concrete:
-        return ("no research record (RC-203/RC-205): name the reference consulted before acting "
-                "via --research '<path/§section/URL + what it settled>' — a concrete artifact, "
-                "not a vibe")
+    value = (research or "").strip()
+    concrete = any(token in value for token in ("/", "§", "http", ".md", ".py", ".html", ".js"))
+    if len(value) < 20 or not concrete:
+        return (
+            "no research record (RC-203/RC-205): name a concrete reference consulted "
+            "before acting"
+        )
     try:
         from tools.plus_player_locks import research_path_resolves
     except ImportError:
         from plus_player_locks import research_path_resolves  # type: ignore
-    if not research_path_resolves(r):
-        return ("research does not resolve (RC-205): cite an existing repo path "
-                "(e.g. static/chart.html) or an http(s) URL — unresolved references are theater")
+    if not research_path_resolves(value):
+        return "research does not resolve (RC-205): cite an existing repo path or http(s) URL"
     return None
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="per-turn self adversarial audit (RC-190)")
-    ap.add_argument("--tests", default="",
-                    help="comma-separated test paths that lock changed non-.py surfaces or "
-                         "modules the stem scan cannot match")
-    ap.add_argument("--files", default="",
-                    help="comma-separated production files to audit — REQUIRED narrowing in a "
-                         "shared worktree where `git diff HEAD` carries another mission's "
-                         "in-flight files; the choice is written into the audit record, so a "
-                         "dishonest narrowing is visible, never silent")
-    ap.add_argument("--research", default="",
-                    help="RC-203 (operator law 2026-08-02: research THEN act, institutional "
-                         "level, universal): NAME the reference consulted before the change — "
-                         "a spec section, a reference implementation path, a direction doc, a "
-                         "vendor source. Required whenever production files changed; must "
-                         "contain at least one concrete artifact (a path, a §section, or a "
-                         "URL), because 'I thought about it' is not research")
-    args = ap.parse_args()
+def _incomplete_cli_result(repo: Path, session_id: str, message: str) -> dict[str, Any]:
+    scope = discover_scope(repo)
+    identity, _ = capture_identity(repo, scope)
+    check = _check_record(
+        "scope_integrity", STATUS_INCOMPLETE, started=time.time(),
+        exit_code=None, outcome="protocol_error", detail=message,
+    )
+    result = {
+        "schema_version": SCHEMA_VERSION,
+        "contract_id": CONTRACT_ID,
+        "audit_run_id": str(uuid.uuid4()),
+        "session_id": session_id,
+        "authoritative": True,
+        "completed": True,
+        "start_time": time.time(),
+        "end_time": time.time(),
+        "requested_scope": "REJECTED_CALLER_NARROWING",
+        "session_required_files": [],
+        "actual_scope": _scope_payload(scope),
+        "changed_tracked_files": [],
+        "untracked_production_files": [],
+        "repo_root": identity.get("repo_root", str(Path(repo).resolve())),
+        "repo_head": identity.get("repo_head", ""),
+        "index_tree": identity.get("index_tree", ""),
+        "worktree_identity_start": identity.get("worktree_identity", ""),
+        "worktree_identity_end": identity.get("worktree_identity", ""),
+        "scope_digest": identity.get("scope_digest", ""),
+        "requirements_digest": _hash_bytes(
+            json.dumps(["scope_integrity"], separators=(",", ":")).encode("utf-8")
+        ),
+        "runner_digest": _hash_bytes(Path(__file__).read_bytes()),
+        "checks_required": ["scope_integrity"],
+        "checks_executed": ["scope_integrity"],
+        "checks_passed": [],
+        "checks_failed": [],
+        "checks_not_proven": [],
+        "checks_incomplete": ["scope_integrity"],
+        "checks_skipped": [],
+        "checks": [check],
+        "ownership": asdict(OwnershipResult(status=STATUS_INCOMPLETE)),
+        "ruff_result": {"check_id": "ruff_changed", "status": "NOT_APPLICABLE"},
+        "pytest_result": {"check_id": "owned_pytest", "status": "NOT_APPLICABLE"},
+        "timeouts": [],
+        "internal_errors": [message],
+        "research": "",
+        "verdict": VERDICT_INCOMPLETE,
+        "exit_code": VERDICT_EXIT[VERDICT_INCOMPLETE],
+        "assurance_claims": ["no assurance: caller attempted to narrow authoritative scope"],
+    }
+    result["result_identity"] = _hash_bytes(
+        json.dumps(result, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    return result
 
-    changed = changed_production_files()
-    if args.files:
-        named = [f.strip().replace("\\", "/") for f in args.files.split(",") if f.strip()]
-        changed = [c for c in changed if c in named] or named
-    record: dict = {"ts_utc": time.time(), "changed": changed, "steps": [], "verdict": None,
-                    "research": args.research.strip()}
-    fails: list[str] = []
 
-    rv = research_violation(args.research, changed)
-    if rv:
-        fails.append(rv)
-
-    py_changed = [c for c in changed if c.endswith(".py")]
-    if py_changed:
-        code, out, outcome = _run([sys.executable, "-m", "ruff", "check", *py_changed,
-                                   "--select", "F401,F821,E9"])
-        record["steps"].append({"step": "ruff", "files": py_changed, "exit": code,
-                                "outcome": outcome})
-        print(out.strip() or f"ruff exit {code}")
-        if outcome != OUTCOME_OK:
-            fails.append(f"ruff did not run ({outcome}) — no correctness result was obtained")
-        elif code != 0:
-            fails.append("ruff correctness failed on changed files")
-
-    suites, uncovered = matching_attack_suites(changed)
-    extra = [t.strip() for t in args.tests.split(",") if t.strip()]
-    suites = sorted(set(suites) | set(extra))
-    if uncovered and not extra:
-        fails.append(f"changed modules with NO attack suite naming them: {uncovered} — "
-                     f"write the lock test or name it via --tests (a lock nobody attacks "
-                     f"is green-and-inert)")
-    if suites:
-        code, out, outcome = _run([sys.executable, "-m", "pytest", *suites, "-q"],
-                                  timeout=1800)
-        tail = "\n".join(out.strip().splitlines()[-3:])
-        record["steps"].append({"step": "pytest", "suites": suites, "exit": code,
-                                "outcome": outcome, "tail": tail})
-        print(tail)
-        # RC-284: a timeout still FAILS the turn — an unmeasured turn is not a clean one —
-        # but the record must not assert a test result it never obtained.
-        if outcome == OUTCOME_TIMEOUT:
-            fails.append(f"attack suites TIMED OUT after 1800s ({len(suites)} suites; "
-                         f"NOTHING was measured — this is not a test failure)")
-        elif outcome == OUTCOME_LAUNCH_FAILURE:
-            fails.append(f"attack suites could not be LAUNCHED ({len(suites)} suites; "
-                         f"no test result exists)")
-        elif code != 0:
-            fails.append("attack suites failed")
-    elif changed and not fails:
-        fails.append("production changed but zero suites ran — name the lock via --tests")
-
-    record["verdict"] = "fail" if fails else ("clean" if changed else "no_production_change")
-    record["fails"] = fails
+def _append_preview_telemetry(result: dict[str, Any]) -> None:
     try:
-        with (REPO / LOG_REL).open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record) + "\n")
-    except OSError as e:
-        print(f"AUDIT LOG UNWRITABLE ({e}) — an audit that leaves no evidence did not happen")
-        return 2
-    if fails:
-        print("TURN SELF-AUDIT: FAIL")
-        for f in fails:
-            print(f"  - {f}")
-        return 1
-    print(f"TURN SELF-AUDIT: {record['verdict'].upper()} "
-          f"({len(changed)} changed production file(s), {len(suites)} suite(s))")
-    return 0
+        path = REPO / LOG_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "ts_utc": time.time(),
+                "changed": [e["path"] for e in result["actual_scope"]["production_entries"]],
+                "research": result.get("research", ""),
+                "verdict": result.get("verdict", "").lower(),
+                "contract_id": CONTRACT_ID,
+                "authoritative": False,
+            }, sort_keys=True) + "\n")
+    except OSError:
+        pass
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="typed per-turn self audit (RC-330)")
+    parser.add_argument("--authoritative", action="store_true")
+    parser.add_argument("--repo", default=str(REPO))
+    parser.add_argument("--session-id", default="")
+    parser.add_argument("--research", default="")
+    parser.add_argument(
+        "--required-session-file",
+        action="append",
+        default=[],
+        help="Stop-owned additive session scope; independently revalidated by the parent",
+    )
+    parser.add_argument("--files", default=None, help="REJECTED in v1: scope is mechanically derived")
+    parser.add_argument("--tests", default=None, help="REJECTED in v1: ownership is mechanically derived")
+    args = parser.parse_args(argv)
+
+    repo = Path(args.repo).resolve()
+    if args.files is not None or args.tests is not None:
+        result = _incomplete_cli_result(
+            repo,
+            args.session_id,
+            "authoritative scope/test narrowing is rejected; --files/--tests cannot subtract proof",
+        )
+    elif args.authoritative and not args.session_id:
+        result = _incomplete_cli_result(repo, "", "authoritative audit requires session identity")
+    else:
+        result = run_audit(
+            repo,
+            args.session_id or "PREVIEW",
+            authoritative=args.authoritative,
+            research=args.research,
+            required_session_paths=args.required_session_file,
+        )
+    if not args.authoritative:
+        _append_preview_telemetry(result)
+    print(json.dumps(result, sort_keys=True))
+    return int(result["exit_code"])
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

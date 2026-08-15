@@ -9,6 +9,12 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from terrain_read import (
+    REGIME_LONG_GAMMA,
+    REGIME_SHORT_GAMMA,
+    regime_from_signed_gamma,
+)
+
 
 def _clip01(x: float) -> float:
     return max(0.0, min(1.0, float(x)))
@@ -79,17 +85,21 @@ def compute_liquidity_behavior_row(
     abs_core = _clip01((imb_a / 0.52) * stall * (0.55 + 0.45 * vol_n) * (0.7 + 0.3 * ofs_n))
     cont_core = _clip01((imb_a / 0.48) * push * (0.5 + 0.5 * vol_n) * (0.65 + 0.35 * ofs_n))
 
+    # RC-345 / F07: the SIGN of dealer gamma is classified in exactly one place —
+    # terrain_read.regime_from_signed_gamma. This module carries that verdict; it does not
+    # re-derive `ng > 0` locally.
+    _reg = None
     if net_gamma is not None:
         try:
-            ng = float(net_gamma)
+            _reg = regime_from_signed_gamma(float(net_gamma))
         except (TypeError, ValueError):
-            ng = 0.0
-        if ng > 0:
-            abs_core = _clip01(abs_core * 1.08)
-            cont_core = _clip01(cont_core * 0.92)
-        elif ng < 0:
-            cont_core = _clip01(cont_core * 1.06)
-            abs_core = _clip01(abs_core * 0.94)
+            _reg = None
+    if _reg == REGIME_LONG_GAMMA:
+        abs_core = _clip01(abs_core * 1.08)
+        cont_core = _clip01(cont_core * 0.92)
+    elif _reg == REGIME_SHORT_GAMMA:
+        cont_core = _clip01(cont_core * 1.06)
+        abs_core = _clip01(abs_core * 0.94)
 
     label = "balanced"
     if abs_core >= cont_core + 0.12:
@@ -111,12 +121,13 @@ def compute_liquidity_behavior_row(
     else:
         vol_ctx = "unknown"
 
-    if net_gamma is not None:
-        try:
-            ng = float(net_gamma)
-            gam_hint = "mean_reversion_bias" if ng > 0 else "trend_bias" if ng < 0 else "unknown"
-        except (TypeError, ValueError):
-            pass
+    # Same single sign authority (_reg above), relabelled into this module's hint
+    # vocabulary. LONG_GAMMA (dealers damp) reads as mean-reversion bias; SHORT_GAMMA
+    # (dealers amplify) as trend bias. No local `ng > 0` re-derivation.
+    if _reg == REGIME_LONG_GAMMA:
+        gam_hint = "mean_reversion_bias"
+    elif _reg == REGIME_SHORT_GAMMA:
+        gam_hint = "trend_bias"
 
     return {
         "absorption_score": round(abs_core, 4),

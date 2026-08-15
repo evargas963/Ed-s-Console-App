@@ -287,14 +287,17 @@ def _levels_from_snap(ticker: str, spot: float, chain_raw: str) -> dict | None:
     except Exception as exc:  # noqa: BLE001 — research: skip bad day, never invent
         return {"error": f"{type(exc).__name__}: {exc}"}
     gex = snap.net_gex_at_spot
-    # Research scoring: raw sign even when UI demotes (mirrors terrain_backtest_report_v1).
+    # RC-345 / F07: the gamma-regime SIGN is classified by the ONE authority,
+    # terrain_read.regime_from_signed_gamma. This research tool maps that verdict into its
+    # LONG_GAMMA/SHORT_GAMMA vocabulary and carries snap.regime when the signed gamma is
+    # absent; it does NOT reconstruct the regime from spot>gamma_flip (withheld instead).
+    from terrain_read import regime_from_signed_gamma, REGIME_LONG_GAMMA
     regime = None
-    if gex is not None and gex != 0:
-        regime = "LONG_GAMMA" if gex > 0 else "SHORT_GAMMA"
+    _canon = regime_from_signed_gamma(gex)
+    if _canon is not None:
+        regime = "LONG_GAMMA" if _canon == REGIME_LONG_GAMMA else "SHORT_GAMMA"
     elif snap.regime in ("LONG_GAMMA_CHOP", "SHORT_GAMMA_TREND"):
         regime = "LONG_GAMMA" if snap.regime.startswith("LONG") else "SHORT_GAMMA"
-    elif snap.gamma_flip is not None:
-        regime = "LONG_GAMMA" if float(spot) > float(snap.gamma_flip) else "SHORT_GAMMA"
     levels = {}
     if snap.call_wall is not None and math.isfinite(float(snap.call_wall)):
         levels["CALL_WALL"] = float(snap.call_wall)

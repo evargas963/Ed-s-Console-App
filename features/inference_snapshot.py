@@ -21,6 +21,7 @@ _INFERENCE_SNAPSHOT_ALLOWED_SOURCES: frozenset[str] = frozenset(
 )
 from features.db_feature_adapter import build_db_mvp_feature_row
 from features.live_feature_adapter import build_live_mvp_feature_row
+from instrument_identity import ticker_storage_key
 
 
 def build_feature_lineage_map(
@@ -80,7 +81,7 @@ def build_inference_snapshot_v1_from_feature_row(
         "snapshot_type": INFERENCE_SNAPSHOT_TYPE,
         "feature_contract_version": CANONICAL_FEATURE_CONTRACT_VERSION,
         "canonical_timeframe": CANONICAL_FEATURE_TIMEFRAME,
-        "ticker": (ticker or "").upper().strip(),
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25: canonical serving-snapshot identity
         "expiry": expiry,
         "as_of_ts": ts_f,
         "features": features,
@@ -197,7 +198,7 @@ def build_inference_snapshot_v1(
         "snapshot_type": INFERENCE_SNAPSHOT_TYPE,
         "feature_contract_version": CANONICAL_FEATURE_CONTRACT_VERSION,
         "canonical_timeframe": CANONICAL_FEATURE_TIMEFRAME,
-        "ticker": (ticker or "").upper().strip(),
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25: canonical serving-snapshot identity
         "expiry": expiry,
         "as_of_ts": ts_f,
         "features": features,

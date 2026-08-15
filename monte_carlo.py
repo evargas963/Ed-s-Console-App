@@ -134,7 +134,13 @@ def _blend_sigma(iv, realized_vol, atr, spot):
     """Blend realized vol + IV + ATR into a single base sigma.
     Weights per consultant recommendation: 50% RV + 30% IV + 20% ATR-scaled.
     Falls back gracefully when components are missing."""
-    bars_per_year = 252 * 78
+    # RC-345 / F40: annualize the ATR leg at the MC's OWN cadence (BAR_MINUTES), the same
+    # 252 x (390 / bar_minutes) convention compute_realized_vol uses — NOT a hardcoded
+    # 252*78 (5-minute) factor. With BAR_MINUTES=1 the old constant under-scaled the 1-minute
+    # ATR by sqrt(5) and mixed a 5m-annualized ATR leg with the 1m-annualized realized-vol and
+    # GARCH legs. One cadence across the blend so a 5m sigma can never silently stand in for
+    # the 1m MC/GARCH sigma.
+    bars_per_year = 252 * (390.0 / BAR_MINUTES)
     atr_vol = None
     if atr is not None and atr > 0 and spot > 0:
         atr_vol = (atr / spot) * math.sqrt(bars_per_year)

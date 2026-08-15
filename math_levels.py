@@ -344,6 +344,17 @@ def _dominant(call_strike, call_strength, put_strike, put_strength) -> tuple[str
 
 # ── Wall rows builder ────────────────────────────────────────────────────────
 
+def compute_pin_width_pts(call_gamma_wall: float | None,
+                          put_gamma_wall: float | None) -> float | None:
+    """RC-345 / F20: THE one authority for pin width (call_gamma_wall - put_gamma_wall, in
+    price points, rounded to 4). market_state and server both computed this subtraction
+    independently — one unrounded, one rounded — a duplicate producer of the same semantic.
+    Returns None (governed absence) unless BOTH walls are present and truthy."""
+    if not call_gamma_wall or not put_gamma_wall:
+        return None
+    return round(call_gamma_wall - put_gamma_wall, 4)
+
+
 def build_walls_rows(
     exposures: Dict[float, dict],
     spot: float,
@@ -1046,7 +1057,8 @@ def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | 
 
 
 def compute_gamma_flip_v2(
-    contracts: List[dict], spot: float, *, min_span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT, now=None
+    contracts: List[dict], spot: float, *, min_span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT,
+    now=None, profile: List[tuple[float, float]] | None = None
 ) -> tuple[float | None, str, dict]:
     """Canonical gamma flip (profile zero-crossing) plus an honest confidence verdict.
 
@@ -1071,7 +1083,13 @@ def compute_gamma_flip_v2(
         "min_span_pct": min_span_pct,
     }
     covers = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
-    profile = compute_gamma_profile(contracts, spot, now=now)
+    # RC-345 / F03: accept a pre-built profile so the caller can materialize the gamma
+    # profile ONCE (one producer, one pinned `now`) and share it between the flip and the
+    # regime/gamma-at-spot read. When None, build it here (single-call callers). Passing a
+    # profile pins its `now`, so terrain no longer materializes the same curve twice at two
+    # wall-clock instants.
+    if profile is None:
+        profile = compute_gamma_profile(contracts, spot, now=now)
     flip = gamma_flip_from_profile(profile, spot)   # nearest crossing, EITHER direction
 
     # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where

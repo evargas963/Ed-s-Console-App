@@ -19,6 +19,30 @@ def ci_schwab_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCHWAB_TOKEN_PATH", str(REPO / "nonexistent_ci_schwab_token.json"))
 
 
+@pytest.fixture(autouse=True)
+def _restore_server_module_binding():
+    """Put `sys.modules["server"]` back exactly as found.
+
+    `_reload_server_module` below pops `server` and re-imports it, which is the point of
+    these tests. It never restored the original, so every suite that ran afterwards in the
+    same process saw a DIFFERENT module object than the one it had imported — its
+    module-level caches and any references captured at import time belonged to the discarded
+    copy. MEASURED: `test_server_quote_source_contract.py` passes alone (8 passed) and this
+    file passes alone (9 passed), but run in this order two of its tests fail; that pair is
+    exactly the failure the authoritative turn audit reported twice. A test may reload a
+    module; it may not leave the interpreter holding a different one than it found.
+    """
+    had = "server" in sys.modules
+    original = sys.modules.get("server")
+    try:
+        yield
+    finally:
+        if had:
+            sys.modules["server"] = original
+        else:
+            sys.modules.pop("server", None)
+
+
 def _reload_server_module() -> object:
     sys.modules.pop("server", None)
     return importlib.import_module("server")

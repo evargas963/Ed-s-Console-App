@@ -553,7 +553,12 @@ def test_monte_carlo_v2():
             _g_raw = compute_garch_forecast(_fake_closes, horizon=13)
             if _g_raw and len(_g_raw) == 13:
                 _pass(f"GARCH forecast: 13 bars, bar1={_g_raw[0]:.6f} bar13={_g_raw[-1]:.6f}")
-                _g_blend = blend_garch_sigma(_g_raw, iv=0.18, realized_vol=0.15, spot=570.0)
+                # RC-334: the bar interval is stated, not assumed. monte_carlo consumes the
+                # result as per-bar sigma at its own BAR_MINUTES, so this check uses that.
+                _g_blend = blend_garch_sigma(
+                    _g_raw, iv=0.18, realized_vol=0.15, spot=570.0,
+                    bar_minutes=float(monte_carlo.BAR_MINUTES),
+                )
                 if _g_blend and len(_g_blend) == 13 and all(s > 0 for s in _g_blend):
                     _pass("GARCH blend: 13 bars, floor enforced")
                 else:

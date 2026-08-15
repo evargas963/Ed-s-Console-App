@@ -104,6 +104,18 @@ calibration/trading_data.db
 logs/
 reports/daily_scoreboard/
 
+# One-off audit / probe / turn-dump artifacts (generated evidence, never source)
+reports/_*
+reports/coverage.xml
+reports/console_monitor_tail.jsonl
+reports/charm_surface_*
+reports/claude_finish_*
+reports/cursor_*_audit_*
+reports/*_audit_v*.md
+reports/*_latest.json
+reports/*_latest.txt
+reports/turn_self_audit_log.jsonl
+
 # Local analysis / audit scratch outputs (repo root)
 feature_ablation_universe.xlsx
 feature_analysis.xlsx

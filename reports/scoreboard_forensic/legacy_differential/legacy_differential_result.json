@@ -1,9 +1,9 @@
 {
  "schema": "LANE_A_LEGACY_DIFFERENTIAL_RESULT",
- "base_sha": "8f6467fa90aeb3f1be065af87468e0ba5ea83381",
+ "base_sha": "5609617d2f23f9a7f516864248bfcbf99e68335c",
  "fixture_content_sha256": "fcf6e68f4f3537833f94cad2ab44100a6066fc7ca0f1cddc05c443a0b7b9593f",
  "old_source_sha256": "5de542cc4b13b39771950cb5c6eedc00a6827acf2b16cf085ac827b8a28e8e36",
- "new_source_sha256": "35167480d5f1fe9ed556ff89fa2959d0d75248bb529313d3e20bebdf3ad17757",
+ "new_source_sha256": "e72df9636e77f836672074dd9f8efb079488e72eae64aaffc65c64d7c35f6b2e",
  "comparison_program_sha256": "7b37527581200e6a542127b45eb12368fd200b8b27c236a8fef5dd6863177fb2",
  "field_allowlist": [
   "et_date",

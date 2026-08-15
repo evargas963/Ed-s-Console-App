@@ -11,11 +11,14 @@ All calculations derived from bars; no Schwab-specific logic.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import threading
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any, Optional
 
+from instrument_identity import ticker_storage_key
 from liquidity_models import (
     PlaybookConfig,
     PlaybookState,
@@ -32,9 +35,16 @@ if TYPE_CHECKING:  # forward-ref only — the "pd.DataFrame" annotations; no run
 
 log = logging.getLogger(__name__)
 
-from time_et import ET, now_et
-RTH_OPEN = time(9, 30)
-RTH_CLOSE = time(16, 0)
+from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, now_et
+
+# RC-324: DERIVED from the time_et minute-of-day authority, not inlined. These were
+# `time(9, 30)` and `time(16, 0)` written here, and FIND-MC-1 had already removed exactly
+# that shape from market_context.fetch_price_levels — which then delegated to the
+# authority. Phase 2A moved the level computation INTO this module and the inline window
+# came with it, so the dual authority the earlier fix closed had quietly reopened one file
+# over. One place decides the session; every producer reads it.
+RTH_OPEN = time(RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60)
+RTH_CLOSE = time(RTH_END_MINS // 60, RTH_END_MINS % 60)
 
 
 def _positive_float_or_none(value) -> Optional[float]:
@@ -587,28 +597,13 @@ def compute_atr_from_bars(
         return None
 
     rth_bars = sorted(rth_bars, key=lambda x: (x.get("_ts") or 0))
-    trs = []
-    prev_close = None
-    for b in sorted(rth_bars, key=lambda x: x.get("_ts") or 0):
-        h = _float_or_none(b.get("high"))
-        l_ = _float_or_none(b.get("low"))
-        c = _float_or_none(b.get("close"))
-        if h is None or l_ is None or c is None:
-            prev_close = c if c is not None else prev_close
-            continue
-        if prev_close is not None:
-            tr = max(
-                h - l_,
-                abs(h - prev_close),
-                abs(l_ - prev_close),
-            )
-            trs.append(tr)
-        prev_close = c
-
-    if len(trs) < period:
-        return None
-    atr = sum(trs[-period:]) / period
-    return round(atr, 4)
+    # RC-345 / F08: the TR + SMA arithmetic is owned by the ONE ATR authority,
+    # math_volatility.compute_atr. This function owns only the RTH-session SCOPE
+    # (filtering, no-lookahead cutoff, prev-day fallback) — it is not a second ATR formula.
+    # compute_atr skips bars with missing h/l/c and averages sum(trs[-period:]) / period,
+    # exactly as the inlined loop did, so the RTH-scoped value is unchanged.
+    from math_volatility import compute_atr
+    return compute_atr(rth_bars, period=period)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1839,16 +1834,30 @@ def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list
 
     Bar identity, not wall-clock: re-asking within a generation must return the very
     result already materialized, or "one result per generation" is prose.
+
+    RC-324: this used to be (ticker, date, source, len, first_ts, last_ts, last_close) — a
+    SAMPLE of the input, not a cover of it. Cursor proved the consequence by execution:
+    changing PDH from 105 to 999 leaves the length, both endpoints and the last close
+    untouched, so the fingerprint matched, the cached object was returned, and the stale 105
+    was served under generation 1. A cache key shorter than its input is a claim of equality
+    that cannot always hold. Every bar now enters a stable digest, so no interior edit can
+    survive it, and the digest is fixed-width so the key stays cheap to compare.
     """
-    first_ts = last_ts = None
-    last_close = None
-    if bars_norm:
-        f, l = _bar_dt_et(bars_norm[0]), _bar_dt_et(bars_norm[-1])
-        first_ts = None if f is None else f.timestamp()
-        last_ts = None if l is None else l.timestamp()
-        last_close = bars_norm[-1].get("close")
-    return (ticker, session_date.isoformat(), bar_source, len(bars_norm),
-            first_ts, last_ts, last_close)
+    h = hashlib.blake2b(digest_size=16)
+    h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f"
+             f"{len(bars_norm)}".encode())
+    for b in bars_norm:
+        dt = _bar_dt_et(b)
+        h.update(b"\x1e")
+        # Both the PARSED instant and the RAW time fields. `_bar_dt_et` returns None for
+        # shapes it cannot read, and hashing only the parse would then cover no time at
+        # all — a bar could be moved in the series without moving the key.
+        h.update(repr((
+            None if dt is None else dt.timestamp(),
+            b.get("datetime"), b.get("ts_utc"), b.get("bar_start_ts_utc"),
+            b.get("open"), b.get("high"), b.get("low"), b.get("close"), b.get("volume"),
+        )).encode())
+    return (ticker, session_date.isoformat(), bar_source, len(bars_norm), h.hexdigest())
 
 
 def build_price_level_snapshot(
@@ -1869,7 +1878,7 @@ def build_price_level_snapshot(
     """
     cfg = config or PlaybookConfig()
     bars_norm = _bars_to_list(bars)
-    tk = str(ticker).upper().strip()
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
     produced_ts = datetime.now(tz=ET).timestamp()
     levels: dict[str, PriceLevelValue] = {}
     families_absent: list[dict] = []
@@ -1998,6 +2007,10 @@ def build_price_level_snapshot(
 
 #: (ticker, session_date_iso) -> the ONE materialized snapshot for the current generation.
 _MATERIALIZED_SNAPSHOTS: dict[tuple[str, str], PriceLevelSnapshot] = {}
+#: RC-324: guards the whole read-decide-build-write of materialize_price_level_snapshot.
+#: Deciding a generation from a value you then overwrite is a check-then-act, and a
+#: check-then-act is a race unless something serialises it.
+_MATERIALIZE_LOCK = threading.Lock()
 
 
 def materialize_price_level_snapshot(
@@ -2014,34 +2027,40 @@ def materialize_price_level_snapshot(
     A new market generation (the bar input changed) invokes the producer exactly once.
     Every later ask in that generation is a read, never a recomputation.
     """
-    tk = str(ticker).upper().strip()
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
     bars_norm = _bars_to_list(bars)
     key = (tk, session_date.isoformat())
     fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source)
-    existing = _MATERIALIZED_SNAPSHOTS.get(key)
-    if existing is not None and existing.input_fingerprint == fingerprint:
-        return existing
-    generation = 1 if existing is None else existing.generation + 1
-    snap = build_price_level_snapshot(
-        tk, session_date, bars_norm, bar_source=bar_source, config=config,
-        generation=generation, degraded=degraded,
-    )
-    _MATERIALIZED_SNAPSHOTS[key] = snap
-    _prune_carrier_ledger(tk, session_date.isoformat(), generation)
-    return snap
+    # RC-324: the read, the generation decision, the build and the write-back are ONE
+    # critical section. Unguarded, this is a check-then-act: Cursor proved two concurrent
+    # callers both observed `existing is None`, both computed generation 1, and produced two
+    # different objects carrying PDH 105 and 205 — two results under one generation, which
+    # is the exact half of the invariant this producer exists to guarantee.
+    with _MATERIALIZE_LOCK:
+        existing = _MATERIALIZED_SNAPSHOTS.get(key)
+        if existing is not None and existing.input_fingerprint == fingerprint:
+            return existing
+        generation = 1 if existing is None else existing.generation + 1
+        snap = build_price_level_snapshot(
+            tk, session_date, bars_norm, bar_source=bar_source, config=config,
+            generation=generation, degraded=degraded,
+        )
+        _MATERIALIZED_SNAPSHOTS[key] = snap
+        _prune_carrier_ledger(tk, session_date.isoformat(), generation)
+        return snap
 
 
 def get_materialized_snapshot(ticker: str, session_date: date) -> Optional[PriceLevelSnapshot]:
     """READ the materialized snapshot. Never computes — absent means absent."""
     return _MATERIALIZED_SNAPSHOTS.get(
-        (str(ticker).upper().strip(), session_date.isoformat()))
+        (ticker_storage_key(ticker), session_date.isoformat()))  # RC-345/F25: read key matches canonical write
 
 
 def clear_materialized_snapshots(ticker: Optional[str] = None) -> None:
     if ticker is None:
         _MATERIALIZED_SNAPSHOTS.clear()
         return
-    tk = str(ticker).upper().strip()
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
     for k in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
         _MATERIALIZED_SNAPSHOTS.pop(k, None)
 
@@ -2069,7 +2088,7 @@ def reset_level_carrier_ledger(ticker: Optional[str] = None) -> None:
     if ticker is None:
         _CARRIER_LEDGER.clear()
         return
-    tk = str(ticker).upper().strip()
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
     for k in [k for k in _CARRIER_LEDGER if k[0] == tk]:
         _CARRIER_LEDGER.pop(k, None)
 
@@ -2081,7 +2100,7 @@ def _prune_carrier_ledger(ticker: str, session_date_iso: str, generation: int) -
     would both grow without bound in a multi-day process and let a stale row accuse a
     correct carrier.
     """
-    tk = str(ticker).upper().strip()
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
     for k in [k for k in _CARRIER_LEDGER
               if k[0] == tk and (k[1] != session_date_iso or k[4] != generation)]:
         _CARRIER_LEDGER.pop(k, None)
@@ -2093,7 +2112,7 @@ def register_level_carrier(
     value: PriceLevelValue,
 ) -> None:
     """Record what a carrier is about to ship; raise if it contradicts an earlier carrier."""
-    tk = str(ticker).upper().strip()
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
     key = (tk, value.session_date, value.level_id, value.semantic_scope, value.generation)
     identity = value.identity()
     prior = _CARRIER_LEDGER.get(key)

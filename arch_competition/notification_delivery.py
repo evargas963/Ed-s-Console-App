@@ -9,6 +9,8 @@ operational_policy alert_routing dedup_semantics (suppression_key coalescing per
 
 from __future__ import annotations
 
+from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+
 import hashlib
 import json
 import logging
@@ -84,12 +86,12 @@ def summarize_notification_config_safe(cfg: NotificationDeliveryConfig) -> dict[
 
 def notification_delivery_log_path(model_dir: Path, ml_horizon_slug: str, ticker: str) -> Path:
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    return model_dir / "arch_competition" / hz / ticker.upper() / "notification_delivery_log.jsonl"
+    return model_dir / "arch_competition" / hz / ticker_storage_key(ticker) / "notification_delivery_log.jsonl"
 
 
 def notification_dedup_state_path(model_dir: Path, ml_horizon_slug: str, ticker: str) -> Path:
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    return model_dir / "arch_competition" / hz / ticker.upper() / "notification_dedup_state.json"
+    return model_dir / "arch_competition" / hz / ticker_storage_key(ticker) / "notification_dedup_state.json"
 
 
 def _now_iso() -> str:
@@ -304,7 +306,7 @@ def process_notification_deliveries(
     Does not mutate architecture, promotion state, or policy content.
     """
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)
     cfg = config if config is not None else load_notification_delivery_config_from_env()
     log_path = notification_delivery_log_path(model_dir, hz, tku)
     dedup_path = notification_dedup_state_path(model_dir, hz, tku)

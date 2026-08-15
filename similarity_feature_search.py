@@ -26,6 +26,7 @@ from adaptive_similarity_engine import (
     _overlap_metrics,
 )
 from math_exposure import bucket_hi, bucket_lo, dist_bucket
+from instrument_identity import ticker_storage_key
 
 SCHEMA_STAGED = "similarity_feature_staged_search_v1"
 SCHEMA_DIVERGENCE = "similarity_baseline_divergence_v1"
@@ -105,7 +106,7 @@ def run_staged_shadow_search(
       - \"full\": all weight bands × all ORDERING_PRESETS (audit / single-anchor)
       - \"multi_anchor\": subset for batch survivorship (faster, still deterministic)
     """
-    ticker = (ticker or "").upper().strip()
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     if search_profile == "multi_anchor":
         bands = ["MEDIUM", "HIGH", "EXPLORATORY"]
         preset_names = ["", "drop_vwap_first_soft", "drop_zone_last_soft"]
@@ -232,7 +233,7 @@ def analyze_baseline_feature_outcome_divergence(
     timeframe = require_snapshot_timeframe(
         timeframe, caller="analyze_baseline_feature_outcome_divergence"
     )
-    ticker = (ticker or "").upper().strip()
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     with db._connect() as conn:
         rows = conn.execute(
             get_snapshot_sql("similarity_feature_search.py:229"),
@@ -410,7 +411,7 @@ def latest_snapshot_as_anchor_overlay(
     For replay at decision time T, pass ``as_of_ts_utc=T`` so the anchor cannot come from the future.
     """
     rows = db.get_recent_snapshots(
-        (ticker or "").upper().strip(),
+        ticker_storage_key(ticker),  # RC-345/F25: canonical snapshots bind
         timeframe,
         n=1,
         as_of_ts_utc=as_of_ts_utc,
@@ -450,7 +451,7 @@ def _zone_predicate_for_overlay_lookup(
     Returns (SQL boolean expr for zone column, bind values, note).
     Cohort `zone` in anchors is unchanged elsewhere; this is overlay-row lookup only.
     """
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     z = (zone or "").strip()
     sub = _OVERLAY_ZONE_SUBSTITUTION.get((t, z))
     if sub:
@@ -475,7 +476,7 @@ def diagnose_overlay_match_counts(
     from snapshot_access import require_snapshot_timeframe
 
     timeframe = require_snapshot_timeframe(timeframe, caller="diagnose_overlay_match_counts")
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     vs = (vwap_side or "").strip()
     z = (zone or "").strip()
     stages: list[dict[str, Any]] = []
@@ -570,7 +571,7 @@ def resolve_overlay_for_anchor(
     from snapshot_access import require_snapshot_timeframe
 
     timeframe = require_snapshot_timeframe(timeframe, caller="matching_snapshot_overlay_for_anchor")
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     vs = (vwap_side or "").strip()
     zpred, zvals, znote = _zone_predicate_for_overlay_lookup(ticker, zone)
     tries: list[dict[str, Any]] = []

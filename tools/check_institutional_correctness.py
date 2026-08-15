@@ -1523,6 +1523,39 @@ def check_absence_has_a_type() -> list[Violation]:
     return out
 
 
+def check_one_producer() -> list[Violation]:
+    """SP-01..SP-07 (RC-325) — ONE authorized production producer per canonical concept.
+
+    OPERATOR MANDATE 2026-08-09, roughly the tenth instruction: "we need one and only one
+    producer." Many consumers are expected; a consumer CARRIES the canonical value and may
+    not reconstruct it from upstream primitives.
+
+    WHY THE EARLIER LOCKS DID NOT SATISFY IT. `single_faucet_provenance` inspects `kl_*`
+    and sees THREE keys in server.py; `phase2a_level_lock` governs NINETEEN price-level
+    ids; server.py emits FIVE HUNDRED AND NINETY-TWO distinct payload keys. Worse,
+    single_faucet_provenance checks which function WRITES a field name, not which computes
+    the value, so it passes while a quantity is derived in several places.
+
+    THIS CHECK is registry-driven: `governance/computation_registry.json` names the one
+    permitted producer per concept, and a registered concept computed at 2+ sites FAILS.
+    Unregistered fields are NOT_PROVEN — counted and reported by `--measure`, never
+    silently passed, so "green" means "the mandate holds over this much" rather than "the
+    mandate holds". Clone detection is a candidate generator (`deep_duplicate_probe_v1`);
+    producer authority is the enforcement decision.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_one_producer import violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / "governance" / "computation_registry.json", 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_one_producer.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
 def check_five_why_reaches_bedrock() -> list[Violation]:
     """RC-321 — a five-why terminates on a DEFECT, never on an EXPLANATION.
 
@@ -4584,6 +4617,10 @@ CHECKS = [
     # RC-321: the depth rule measured how FAR a chain went, never whose action was at the
     # bottom of it. Five levels ending on the operator's instruction is not bedrock.
     ("five_why_reaches_bedrock", check_five_why_reaches_bedrock, True),
+    # RC-325 SP-01: one authorized production producer per canonical concept. ENFORCED
+    # because an unregistered gate enforces nothing — it sat at zero registrations while
+    # being reported as a lock.
+    ("one_producer", check_one_producer, True),
     # RC-137: a CLOSED row must ship the code it names (the ledger cannot outrun HEAD).
     ("closed_rows_ship_their_code", check_closed_rows_ship_their_code, True),
     ("verdicts_declare_their_power", check_verdicts_declare_their_power, True),  # provenance, not the word "MEASURED" (RC-6)

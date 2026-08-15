@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
+
+from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
 from pathlib import Path
 from typing import Any, Optional
 
@@ -259,7 +261,7 @@ def sequence_bundle_lineage_admissible(
 
 
 def try_load_lstm_offline(ticker: str, hz: str, bundle_dir: Path) -> Optional[tuple[Any, dict]]:
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)
     su = normalize_ml_horizon_slug(hz)
     mp = bundle_dir / f"lstm_{t}_{su}.pt"
     mtp = bundle_dir / f"lstm_{t}_{su}_meta.json"
@@ -289,7 +291,7 @@ def try_load_lstm_offline(ticker: str, hz: str, bundle_dir: Path) -> Optional[tu
 
 
 def try_load_transformer_offline(ticker: str, hz: str, bundle_dir: Path) -> Optional[tuple[Any, dict]]:
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)
     su = normalize_ml_horizon_slug(hz)
     mp = bundle_dir / f"transformer_{t}_{su}.pt"
     mtp = bundle_dir / f"transformer_{t}_{su}_meta.json"
@@ -610,7 +612,7 @@ def score_unified_ablation_fusion_from_wire_row(
         return None, yt, f"rules_regime:{type(e).__name__}", {}
 
     direction_hint = getattr(rules, "signal", "wait") or "wait"
-    tku = ticker.strip().upper()
+    tku = ticker_storage_key(ticker)
     hz = mp.get_ml_infer_horizon_slug()
     bundle_dir = _ablation_ticker_bundle_dir(tku)
 

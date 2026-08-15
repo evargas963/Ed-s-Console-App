@@ -18,6 +18,12 @@ import logging
 import sys
 from pathlib import Path
 
+# RC-345/F25: the VERIFIER must resolve artifact identity through the exact SAME
+# authority that created/loaded the bundle (instrument_identity.ticker_storage_key).
+# A verifier inventing its own .upper() normalization is a second faucet that would
+# pass 'SPX'-named lookups against '$SPX'-named artifacts (or miss them entirely).
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 # Windows cp1252: avoid UnicodeEncodeError for console
@@ -139,11 +145,11 @@ def check_artifact_compliance(ticker: str) -> dict:
 
             result["artifacts"][key] = art
 
-        meta_pkl = bundle_dir / f"meta_{ticker.upper()}_{hz}.pkl"
+        meta_pkl = bundle_dir / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl"
         meta_key = f"{hz}:meta_stack"
         meta_art = {"exists": meta_pkl.is_file(), "has_provenance": meta_pkl.is_file(), "issues": []}
         if not meta_pkl.is_file():
-            meta_art["issues"].append(f"meta_{ticker.upper()}_{hz}.pkl missing")
+            meta_art["issues"].append(f"meta_{ticker_storage_key(ticker)}_{hz}.pkl missing")
             result["compliant"] = False
         result["artifacts"][meta_key] = meta_art
 
@@ -164,7 +170,7 @@ def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None
 
     models_dir = models_dir or MODELS_DIR
     result: dict = {
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),
         "horizon": hz,
         "compliant": True,
         "artifacts": {},
@@ -178,12 +184,12 @@ def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None
 
     bundle_dir = Path(bundle["bundle_dir"])
     triple = [
-        ("xgb", f"xgb_{ticker.upper()}_{hz}.pkl", f"xgb_{ticker.upper()}_{hz}_meta.json"),
-        ("lstm", f"lstm_{ticker.upper()}_{hz}.pt", f"lstm_{ticker.upper()}_{hz}_meta.json"),
+        ("xgb", f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl", f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json"),
+        ("lstm", f"lstm_{ticker_storage_key(ticker)}_{hz}.pt", f"lstm_{ticker_storage_key(ticker)}_{hz}_meta.json"),
         (
             "transformer",
-            f"transformer_{ticker.upper()}_{hz}.pt",
-            f"transformer_{ticker.upper()}_{hz}_meta.json",
+            f"transformer_{ticker_storage_key(ticker)}_{hz}.pt",
+            f"transformer_{ticker_storage_key(ticker)}_{hz}_meta.json",
         ),
     ]
     for name, model_file, meta_file in triple:
@@ -206,10 +212,10 @@ def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None
         result["artifacts"][name] = art
         result["issues"].extend(art["issues"])
 
-    meta_pkl = bundle_dir / f"meta_{ticker.upper()}_{hz}.pkl"
+    meta_pkl = bundle_dir / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl"
     meta_art = {"exists": meta_pkl.is_file(), "has_provenance": meta_pkl.is_file(), "issues": []}
     if not meta_pkl.is_file():
-        meta_art["issues"].append(f"meta_{ticker.upper()}_{hz}.pkl missing")
+        meta_art["issues"].append(f"meta_{ticker_storage_key(ticker)}_{hz}.pkl missing")
         result["compliant"] = False
     result["artifacts"]["meta_stack"] = meta_art
     result["issues"].extend(meta_art["issues"])

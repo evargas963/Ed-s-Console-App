@@ -51,6 +51,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 ENVELOPE_SCHEMA_VERSION = "1"
@@ -204,10 +206,14 @@ def build_execution_envelope(
             "build_generation": release.get("build_generation"),
         },
         "routing": {
-            "requested_ticker": str(requested_ticker).upper(),
-            "bundle_ticker": str(bundle_ticker).upper(),
+            # requested_ticker = REQUEST ECHO (what was asked for); explicitly NOT the canonical
+            # routing identity and never substituted for it (RC-345/F25).
+            "requested_ticker": str(requested_ticker).strip().upper(),
+            # bundle_ticker / guest_anchor_ticker = CANONICAL instrument used for bundle/model/
+            # storage/routing → the one storage-key authority.
+            "bundle_ticker": ticker_storage_key(bundle_ticker),
             "guest_anchor": bool(guest_anchor),
-            "guest_anchor_ticker": (str(guest_anchor_ticker).upper()
+            "guest_anchor_ticker": (ticker_storage_key(guest_anchor_ticker)
                                      if guest_anchor_ticker else None),
             "horizons_attempted": sorted(horizons_attempted),
             "horizons_executed": sorted(bundles_by_horizon),
@@ -736,7 +742,9 @@ def anchor_production_execution(
         )
 
     prov = serving_provenance or {}
-    bundle_ticker = str(prov.get("bundle_ticker") or requested_ticker).upper()
+    # RC-345/F25: bundle_ticker is canonical routing identity — even when it falls back to the
+    # request echo, it resolves through the one storage-key authority (echo never leaks raw).
+    bundle_ticker = ticker_storage_key(prov.get("bundle_ticker") or requested_ticker)
     runtime_class = str(prov.get("runtime_class") or "UNKNOWN")
 
     import ml_predict as mp

@@ -4,6 +4,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
+from instrument_identity import ticker_storage_key
+
 
 class TrainingOutcome(str, Enum):
     trained = "trained"
@@ -47,11 +49,11 @@ def is_training_anchor_ticker(ticker: str) -> bool:
 def core_tickers_upper() -> frozenset[str]:
     from server import CORE_TICKERS
 
-    return frozenset(t.upper() for t in CORE_TICKERS)
+    return frozenset(ticker_storage_key(t) for t in CORE_TICKERS)  # RC-345/F25: canonical membership
 
 
 def is_core_ticker(ticker: str) -> bool:
-    return ticker.upper() in core_tickers_upper()
+    return ticker_storage_key(ticker) in core_tickers_upper()  # RC-345/F25: canonical membership
 
 
 def outcome_fails_core_run(
@@ -77,7 +79,7 @@ def outcome_fails_core_run(
 def compute_run_exit_code(ticker_outcomes: list[dict[str, Any]]) -> int:
     anchors = training_anchor_tickers_upper()
     for entry in ticker_outcomes:
-        ticker = str(entry.get("ticker") or "").upper()
+        ticker = ticker_storage_key(entry.get("ticker"))  # RC-345/F25: canonical vs canonical anchor set
         if ticker not in anchors:
             continue
         raw = entry.get("outcome")
@@ -97,7 +99,7 @@ def outcome_entry(
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25: canonical outcome-record identity
         "horizon": horizon,
         "outcome": outcome.value,
     }

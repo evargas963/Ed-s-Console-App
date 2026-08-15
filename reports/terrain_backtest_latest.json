@@ -1,18 +1,18 @@
 {
-  "generated_utc": "2026-07-28T03:26:45+00:00",
+  "generated_utc": "2026-08-14T21:52:53+00:00",
   "since": null,
-  "runtime_sec": 242.6,
-  "observations": 1306,
-  "scored_ticker_days": 0,
-  "tickers": 0,
+  "runtime_sec": 472.6,
+  "observations": 1527,
+  "scored_ticker_days": 21,
+  "tickers": 4,
   "claim": "SHORT_GAMMA_TREND -> above-own-median range; LONG_GAMMA_CHOP -> below",
   "overall": {
-    "n": 0,
-    "hit_pct": null
+    "n": 21,
+    "hit_pct": 57.1
   },
   "trusted_only": {
-    "n": 0,
-    "hit_pct": null
+    "n": 21,
+    "hit_pct": 57.1
   },
   "narrow_chain_only": {
     "n": 0,
@@ -23,26 +23,26 @@
     "hit_pct": null
   },
   "single_names": {
-    "n": 0,
-    "hit_pct": null
+    "n": 21,
+    "hit_pct": 57.1
   },
   "long_gamma_days": {
-    "n": 0,
-    "hit_pct": null
+    "n": 18,
+    "hit_pct": 55.6
   },
   "short_gamma_days": {
-    "n": 0,
-    "hit_pct": null
+    "n": 3,
+    "hit_pct": 66.7
   },
   "placebo_persistence": {
-    "n": 0,
-    "hit_pct": null
+    "n": 17,
+    "hit_pct": 52.9
   },
   "sign_ab_single_names": {
-    "n": 0,
-    "naive_hit_pct": null,
-    "prior_hit_pct": null,
-    "prior_always_long_pct": null
+    "n": 21,
+    "naive_hit_pct": 57.1,
+    "prior_hit_pct": 52.4,
+    "prior_always_long_pct": 100.0
   },
   "sign_split_gex_r1": {
     "sentinels": {
@@ -51,9 +51,9 @@
       "p_one_sided_neg": null
     },
     "single_names": {
-      "n": 0,
-      "spearman_gamma_vs_range": null,
-      "p_one_sided_neg": null
+      "n": 21,
+      "spearman_gamma_vs_range": -0.6792,
+      "p_one_sided_neg": 0.001
     }
   },
   "weighting_head_to_head": {
@@ -64,16 +64,16 @@
       "winner": null
     },
     "single_names": {
-      "n": 0,
-      "rho_oi": null,
-      "rho_vol": null,
-      "winner": null
+      "n": 18,
+      "rho_oi": -0.6636,
+      "rho_vol": -0.195,
+      "winner": "OI"
     },
     "all": {
-      "n": 0,
-      "rho_oi": null,
-      "rho_vol": null,
-      "winner": null
+      "n": 18,
+      "rho_oi": -0.6636,
+      "rho_vol": -0.195,
+      "winner": "OI"
     }
   },
   "weighting_scorecard": {
@@ -89,6 +89,8 @@
         "put_n": 0,
         "put_held_pct": null,
         "put_close_above_pct": null,
+        "call_excluded_breached_at_obs": 0,
+        "put_excluded_breached_at_obs": 0,
         "spotgamma_spx_benchmark": {
           "call_held": 83.0,
           "call_close_below": 88.0,
@@ -103,6 +105,8 @@
         "put_n": 0,
         "put_held_pct": null,
         "put_close_above_pct": null,
+        "call_excluded_breached_at_obs": 0,
+        "put_excluded_breached_at_obs": 0,
         "spotgamma_spx_benchmark": {
           "call_held": 83.0,
           "call_close_below": 88.0,
@@ -112,17 +116,19 @@
       }
     },
     "single_names": {
-      "n_both_classified": 0,
-      "hit_oi_pct": null,
-      "hit_vol_pct": null,
-      "placebo_pct": null,
+      "n_both_classified": 18,
+      "hit_oi_pct": 55.6,
+      "hit_vol_pct": 44.4,
+      "placebo_pct": 50.0,
       "wall_hold_oi": {
-        "call_n": 1,
-        "call_held_pct": 100.0,
-        "call_close_below_pct": 100.0,
-        "put_n": 2,
-        "put_held_pct": 100.0,
-        "put_close_above_pct": 100.0,
+        "call_n": 11,
+        "call_held_pct": 72.7,
+        "call_close_below_pct": 81.8,
+        "put_n": 13,
+        "put_held_pct": 84.6,
+        "put_close_above_pct": 92.3,
+        "call_excluded_breached_at_obs": 10,
+        "put_excluded_breached_at_obs": 8,
         "spotgamma_spx_benchmark": {
           "call_held": 83.0,
           "call_close_below": 88.0,
@@ -131,12 +137,14 @@
         }
       },
       "wall_hold_vol": {
-        "call_n": 1,
-        "call_held_pct": 100.0,
-        "call_close_below_pct": 100.0,
-        "put_n": 1,
-        "put_held_pct": 100.0,
-        "put_close_above_pct": 100.0,
+        "call_n": 9,
+        "call_held_pct": 88.9,
+        "call_close_below_pct": 88.9,
+        "put_n": 6,
+        "put_held_pct": 83.3,
+        "put_close_above_pct": 83.3,
+        "call_excluded_breached_at_obs": 8,
+        "put_excluded_breached_at_obs": 3,
         "spotgamma_spx_benchmark": {
           "call_held": 83.0,
           "call_close_below": 88.0,
@@ -147,12 +155,14 @@
     }
   },
   "wall_hold_all": {
-    "call_n": 1,
-    "call_held_pct": 100.0,
-    "call_close_below_pct": 100.0,
-    "put_n": 2,
-    "put_held_pct": 100.0,
-    "put_close_above_pct": 100.0,
+    "call_n": 11,
+    "call_held_pct": 72.7,
+    "call_close_below_pct": 81.8,
+    "put_n": 13,
+    "put_held_pct": 84.6,
+    "put_close_above_pct": 92.3,
+    "call_excluded_breached_at_obs": 10,
+    "put_excluded_breached_at_obs": 8,
     "spotgamma_spx_benchmark": {
       "call_held": 83.0,
       "call_close_below": 88.0,
@@ -161,12 +171,14 @@
     }
   },
   "wall_hold_trusted": {
-    "call_n": 1,
-    "call_held_pct": 100.0,
-    "call_close_below_pct": 100.0,
-    "put_n": 2,
-    "put_held_pct": 100.0,
-    "put_close_above_pct": 100.0,
+    "call_n": 11,
+    "call_held_pct": 72.7,
+    "call_close_below_pct": 81.8,
+    "put_n": 13,
+    "put_held_pct": 84.6,
+    "put_close_above_pct": 92.3,
+    "call_excluded_breached_at_obs": 10,
+    "put_excluded_breached_at_obs": 8,
     "spotgamma_spx_benchmark": {
       "call_held": 83.0,
       "call_close_below": 88.0,
@@ -174,22 +186,22 @@
       "put_close_above": 93.0
     }
   },
-  "median_trendiness_short": null,
-  "median_trendiness_long": null,
+  "median_trendiness_short": 0.393,
+  "median_trendiness_long": 0.307,
   "pdca": {
-    "coverage": 37,
-    "window_sessions": 4,
-    "rolling_gap_pts": -1.6,
+    "coverage": 42,
+    "window_sessions": 6,
+    "rolling_gap_pts": -1.48,
     "verdict": [
       "YELLOW",
-      "ACCUMULATE \u2014 4/20 sessions in window; no ACT decision until it fills (Deming: don't tamper on common-cause noise)"
+      "ACCUMULATE \u2014 6/20 sessions in window; no ACT decision until it fills (Deming: don't tamper on common-cause noise)"
     ]
   },
   "run_provenance": {
-    "git_commit": "2c2141428b5a74507f590b730cc32837e11ddc33",
+    "git_commit": "5609617d2f23f9a7f516864248bfcbf99e68335c",
     "git_dirty": true,
     "python_version": "3.13.9",
     "python_executable": ".venv/Scripts/python.exe",
-    "timestamp_utc": "2026-07-28T03:26:45+00:00"
+    "timestamp_utc": "2026-08-14T21:52:54+00:00"
   }
 }

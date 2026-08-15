@@ -6,6 +6,8 @@ Does not promote, copy artifacts, or change ``run_unified_stack_ml_once`` / prod
 
 from __future__ import annotations
 
+from instrument_identity import ticker_storage_key  # RC-345/F25: eval manifest identity canonical
+
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -467,7 +469,7 @@ def run_architecture_pair_evaluation(
     manifest: dict[str, Any] = {
         "schema_version": EVALUATION_MANIFEST_SCHEMA_VERSION,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25
         "ml_horizon_slug": hz,
         "target_column": target_column,
         "db_path": str(Path(db_path).resolve()),

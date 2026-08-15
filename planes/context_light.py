@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
+from instrument_identity import ticker_storage_key
 
 log = logging.getLogger("ed.planes.l1")
 
@@ -124,7 +125,7 @@ def build_order_flow_input_probe(ticker: str, l0_row: Optional[dict[str, Any]]) 
     """
     from order_flow_live_state import get_l1_stream_input_probe
 
-    tkr = (ticker or "").upper().strip()
+    tkr = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 context key
     sp = _safe_float(l0_row.get("spot")) if l0_row else None
     bd = _safe_float(l0_row.get("bid")) if l0_row else None
     ak = _safe_float(l0_row.get("ask")) if l0_row else None
@@ -196,7 +197,7 @@ def build_l1_context(
     importing heavy graph here at module load.
     """
     t0 = time.perf_counter()
-    tkr = ctx.ticker.upper().strip()
+    tkr = ticker_storage_key(ctx.ticker)  # RC-345/F25: canonical L1 context key
     md: dict[str, Any] = {}
     ent = ctx.l2_cache_entry
 

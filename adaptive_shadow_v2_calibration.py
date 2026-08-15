@@ -62,7 +62,7 @@ def load_survivorship_anchors_v1(path: Optional[Path] = None) -> list[dict[str, 
         out.append(
             {
                 "anchor_id": a.get("anchor_id") or f"{tid}__{a.get('zone')}__{a.get('vwap_side')}",
-                "ticker": tid.upper(),
+                "ticker": ticker_storage_key(tid),  # RC-345/F25: canonical calibration-record identity
                 "timeframe": CANONICAL_TIMEFRAME,
                 "zone": a.get("zone"),
                 "vwap_side": a.get("vwap_side"),

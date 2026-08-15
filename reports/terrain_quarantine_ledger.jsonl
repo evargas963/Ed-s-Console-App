@@ -975,3 +975,49 @@
 {"ts_utc": 1785936128.2984421, "et": "2026-08-05T09:22:08.298450-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
 {"ts_utc": 1785951481.461373, "et": "2026-08-05T13:38:01.461377-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
 {"ts_utc": 1785951482.6303654, "et": "2026-08-05T13:38:02.630371-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786501503.97146, "et": "2026-08-11T22:25:03.971465-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786501503.972622, "et": "2026-08-11T22:25:03.972625-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1786501503.9705672, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1786501503.9738305, "et": "2026-08-11T22:25:03.973834-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1786501503.9782445, "et": "2026-08-11T22:25:03.978247-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1786501503.9792027, "et": "2026-08-11T22:25:03.979205-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1786501503.9797049, "et": "2026-08-11T22:25:03.979706-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1786501503.98345, "et": "2026-08-11T22:25:03.983452-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1786501503.9872484, "et": "2026-08-11T22:25:03.987253-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786501503.9892378, "et": "2026-08-11T22:25:03.989240-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1786501503.986925, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1786501518.4537432, "et": "2026-08-11T22:25:18.453746-04:00", "event": "soft_release", "ticker": "ZZQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1786541277.7542381, "et": "2026-08-12T09:27:57.754244-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786541278.8892212, "et": "2026-08-12T09:27:58.889226-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786562159.0356715, "et": "2026-08-12T15:15:59.035677-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786562159.0368905, "et": "2026-08-12T15:15:59.036893-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1786562159.0348437, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1786562159.0379803, "et": "2026-08-12T15:15:59.037982-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1786562159.0477629, "et": "2026-08-12T15:15:59.047767-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1786562159.048676, "et": "2026-08-12T15:15:59.048679-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1786562159.0497854, "et": "2026-08-12T15:15:59.049789-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1786562159.0624273, "et": "2026-08-12T15:15:59.062434-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1786562159.0713792, "et": "2026-08-12T15:15:59.071384-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786562159.0729833, "et": "2026-08-12T15:15:59.072985-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1786562159.07088, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1786562191.2100172, "et": "2026-08-12T15:16:31.210024-04:00", "event": "soft_release", "ticker": "ZZQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1786563221.4663057, "et": "2026-08-12T15:33:41.466310-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTHARD", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786563221.4674573, "et": "2026-08-12T15:33:41.467461-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1786563221.4653642, "until_ts": 0.0, "kind": "hard"}}
+{"ts_utc": 1786563221.468748, "et": "2026-08-12T15:33:41.468755-04:00", "event": "operator_release", "ticker": "ZZTESTHARD", "was": {}}
+{"ts_utc": 1786563221.483648, "et": "2026-08-12T15:33:41.483651-04:00", "event": "backoff", "ticker": "ZZTESTSOFT", "failures": 3, "reason": "chain fetch failed (HTTP timeout)", "wait_sec": 60.0}
+{"ts_utc": 1786563221.4845562, "et": "2026-08-12T15:33:41.484559-04:00", "event": "soft_release", "ticker": "ZZTESTSOFT", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1786563221.485589, "et": "2026-08-12T15:33:41.485591-04:00", "event": "operator_release", "ticker": "ZZTESTSOFT", "was": {}}
+{"ts_utc": 1786563221.4979365, "et": "2026-08-12T15:33:41.497940-04:00", "event": "operator_release", "ticker": "ZZTESTSTREAK", "was": {}}
+{"ts_utc": 1786563221.5050588, "et": "2026-08-12T15:33:41.505062-04:00", "event": "quarantine_permanent", "ticker": "ZZTESTFLAGS", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786563221.5066807, "et": "2026-08-12T15:33:41.506682-04:00", "event": "operator_release", "ticker": "ZZTESTFLAGS", "was": {"reason": "chain fetch failed (HTTP 400)", "failures": 3, "permanent": true, "since_ts": 1786563221.5044289, "until_ts": null, "kind": "hard"}}
+{"ts_utc": 1786563244.7797983, "et": "2026-08-12T15:34:04.779804-04:00", "event": "soft_release", "ticker": "ZZQ", "note": "backoff elapsed, retrying"}
+{"ts_utc": 1786626610.768653, "et": "2026-08-13T09:10:10.768657-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786626613.4568424, "et": "2026-08-13T09:10:13.456846-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786637832.315381, "et": "2026-08-13T12:17:12.315386-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786637833.9033182, "et": "2026-08-13T12:17:13.903324-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786639670.9068232, "et": "2026-08-13T12:47:50.906830-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786639673.2259858, "et": "2026-08-13T12:47:53.225991-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786644144.5301282, "et": "2026-08-13T14:02:24.530136-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786644147.6274974, "et": "2026-08-13T14:02:27.627503-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786644886.5702655, "et": "2026-08-13T14:14:46.570268-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786644887.179159, "et": "2026-08-13T14:14:47.179167-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786650958.3273966, "et": "2026-08-13T15:55:58.327401-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786650960.6718292, "et": "2026-08-13T15:56:00.671835-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786713854.8890693, "et": "2026-08-14T09:24:14.889074-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1786713858.196412, "et": "2026-08-14T09:24:18.196416-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}

@@ -24,6 +24,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+
 from lifecycle_rule_core import SameBarResolution, fire_exit, resolve_same_bar_conflict
 from market_state import recommend_option_expression
 from math_levels import WallsRow, TotalsRow
@@ -602,7 +604,7 @@ def compute_replay_coverage_stats(
     params: list[Any] = [CANONICAL_TIMEFRAME]
     if ticker:
         wh += " AND ticker = ?"
-        params.append(ticker.upper())
+        params.append(ticker_storage_key(ticker))  # RC-345/F25: canonical DB bind (table stores $-index canonical)
     rows = conn.execute(
         f"""
         SELECT
@@ -641,7 +643,7 @@ def save_replay_coverage_report(db_path: str, table: str, *, ticker: str | None 
     conn.row_factory = sqlite3.Row
     by_ticker: dict[str, Any] = {}
     if ticker:
-        by_ticker[ticker.upper()] = compute_replay_coverage_stats(conn, table, ticker)
+        by_ticker[ticker_storage_key(ticker)] = compute_replay_coverage_stats(conn, table, ticker)  # RC-345/F25: canonical report key
     else:
         cur = conn.execute(
             f"SELECT DISTINCT ticker FROM {table} WHERE timeframe = ? ORDER BY ticker",
@@ -1261,7 +1263,7 @@ def save_eval_aggregate_merge(ticker: str, architecture_type: str, agg: dict[str
     by_t = cur.get("by_ticker")
     if not isinstance(by_t, dict):
         by_t = {}
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)  # RC-345/F25: canonical by_ticker merge key
     entry = by_t.get(tku) or {}
     entry[architecture_type] = agg
     by_t[tku] = entry

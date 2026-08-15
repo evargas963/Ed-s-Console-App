@@ -238,3 +238,1119 @@ open; the charm VOTE stays UNAPPROVED until it closes.
 2026-07 slimming (retired programs: Schwab V4 register, ablation grid law, governance stage plans,
 mega walks), or is intentionally not tracked. If a removed concern turns out to be live, it comes
 back as a new row with fresh evidence.*
+
+---
+
+# PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD
+
+> **Added 2026-08-12 (operator-authorized documentation-preservation write).** This is the durable
+> Project A master checklist. It is deliberately expansive and must not be shrunk. Rows are never
+> silently deleted — future changes use ADD / STATUS_CHANGE / RECONCILIATION. Checkbox rule:
+> `[x]` ONLY for CLOSED_WITH_EVIDENCE (or a proven PASS); `[ ]` for everything else
+> (OPEN / FAIL / BLOCKED / NOT_PROVEN / HISTORICAL / GAP / unproven acceptance target).
+>
+> **Governing mission:** SEARCH → FIND → PROVE → FIX → TEST → IMPROVE → NEXT. Work the repo, not the
+> board. The board is durable memory of everything that still needs technical proof. This is NOT a
+> governance project; parent closure requires every material child closed. SPY/QQQ/IWM are anchors,
+> not scope boundaries — all fixes repo-wide and ticker-universal unless a proven economic reason
+> requires otherwise.
+
+## PA-1 — UNIVERSALITY (HARD PARENT REQUIREMENT)
+The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
+- [ ] All fixes are repo-wide by default
+- [ ] All fixes are ticker-agnostic by default
+- [ ] No SPY-only closure
+- [ ] No SPY/QQQ/IWM-only closure
+- [ ] Anchor tickers used only as representative validation/control points
+- [ ] Guest/non-anchor ticker path proven where applicable
+- [ ] Newly introduced ticker follows same canonical semantic authority
+- [ ] No hardcoded anchor-ticker branch changes semantic truth
+- [ ] Same preprocessing semantics across tickers
+- [ ] Same train/serve semantics across tickers
+- [ ] Same replay/backfill semantics across tickers
+- [ ] Same artifact identity rules across tickers
+- [ ] Same cache identity rules across tickers
+- [ ] Same missingness semantics across tickers
+- [ ] Same fallback rules across tickers
+- [ ] Same decision rules across tickers unless intentionally ticker-specific
+- [ ] Same UI semantics across tickers
+- [ ] Same provenance contract across tickers
+- [ ] Same runtime routing rules across tickers
+- [ ] Any legitimate ticker-specific exception explicitly identified
+- [ ] Any legitimate ticker-specific exception economically justified
+- [ ] Any legitimate ticker-specific exception versioned/tested separately
+- [ ] Anchor success never substitutes for universal construction proof
+- [ ] At least one non-anchor/guest behavioral test where ticker-specific routing is material
+- [ ] **UNIVERSALITY_STATUS = PASS**
+
+## PA-2 — ONE FAUCET / SINGLE SEMANTIC AUTHORITY  (LIVE_REACHABLE_PRODUCERS(C) == 1)
+- [ ] Every material semantic concept identified
+- [ ] Backend producers identified
+- [ ] Training producers identified
+- [ ] Serving producers identified
+- [ ] Replay producers identified
+- [ ] Backfill producers identified
+- [ ] SQL-derived producers identified
+- [ ] Frontend-derived producers identified
+- [ ] Cache/reconstruction producers identified
+- [ ] Compatibility-shim producers identified
+- [ ] Helpers counted when they independently compute truth
+- [ ] Wrappers counted when they independently compute truth
+- [ ] Builders counted when they independently compute truth
+- [ ] Resolvers counted when they independently compute truth
+- [ ] Selectors counted when they independently compute truth
+- [ ] Normalizers counted when they independently compute truth
+- [ ] Transformers counted when they independently compute truth
+- [ ] Properties/getters counted when they independently compute truth
+- [ ] Inline calculations counted
+- [ ] Same meaning under different names searched
+- [ ] Same name with different meaning separated
+- [ ] Legitimately distinct economic concepts explicitly named distinctly
+- [ ] Fallbacks do not silently become second faucets
+- [ ] Frontend is never an independent money-path truth authority
+- [ ] Replay does not independently re-derive semantics differently
+- [ ] Backfill does not independently reinterpret semantics
+- [ ] Cache identity never substitutes stale semantic truth
+- [ ] **ONE_FAUCET_STATUS = PASS**
+
+## PA-3 — CURRENT CANONICAL / EVIDENCED F-SERIES (F01–F42, gaps)
+> **Count (repo-grounded, corrected):** LOWEST = F01, HIGHEST = F42, **EVIDENCED ITEMS = 37** (supersedes Claude's earlier 34 — the difference is F33/F34/F37b, which ARE evidenced F-rows, not merely RC mappings). GAPS = F04, F16, F19, F28, F30, F37-parent (F37b exists). Explicit OPEN = **F10, F15, F25, F31, F39**. F32 = one-authority lock evidenced BUT broader RC-328/artifact-compatibility state NOT_PROVEN. F33/F34/F37b preserved; F35 kept distinct from F01.
+- [x] **F01** — Model denominator / XGB engineered-row parity — CLOSED_WITH_EVIDENCE (RC-344/RC-339; broader universality reproof remains part of parent)
+- [x] **F02** — Net GEX at spot (vendor aggregate vs repriced; distinct books, consumers separated) — CLOSED_WITH_EVIDENCE
+- [x] **F03** — Gamma profile (one formula authority; terrain materializes once; one pinned `now`) — CLOSED_WITH_EVIDENCE
+- [ ] **F04** — Reserved/disputed historical slot (gamma/delta walls & pin) — HISTORICAL / NOT_PROVEN (literal ID not repo-tracked; RC-292 overlap; semantic live)
+- [x] **F05** — Trade actionability (one authority; frontend carries; mirror-absent withholds; reopen relocked) — CLOSED_WITH_EVIDENCE
+- [x] **F06** — Expected move semantics (distinct methodologies, source-tagged) — CLOSED_WITH_EVIDENCE
+- [x] **F07** — Gamma regime (one backend sign classifier; client does not reconstruct/write) — CLOSED_WITH_EVIDENCE
+- [x] **F08** — ATR (standard TR+SMA authority; feature variant distinct; Wilder quarantined) — CLOSED_WITH_EVIDENCE
+- [x] **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — CLOSED_WITH_EVIDENCE
+- [ ] **F10** — Candle direction — OPEN / WAITING_FOR_HOST_RETRAIN
+  - [x] One dead-band authority; live producer count = 1; server + normalization delegate
+  - [ ] Historical normalized rows rebuilt under dead-band; production training population corrected
+  - [ ] SPY/QQQ/IWM retrained; non-anchor/universal retrain routing proven; force-retrain/cache-bypass proven
+  - [ ] PREPROCESSING_VERSION bumped atomically; compatible artifacts; governed eval; calibration compatibility
+  - [ ] Atomic promotion; runtime restarted on compatible generation; runtime train/serve parity; replay/backfill compatibility; universality
+- [x] **F11** — Flow imbalance (one persisted authority; source travels; kwargs contract locked) — CLOSED_WITH_EVIDENCE
+- [x] **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
+- [x] **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
+- [x] **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE
+- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine)
+  - [ ] Exact semantic contract; one canonical population; no alternate population masquerading; session/as-of; live/replay/backfill/frontend paths; fallback + missingness; mutation proof; universality; runtime proof
+- [x] **F17** — Realized volatility cadence (`bar_minutes` required; no silent default) — CLOSED_WITH_EVIDENCE
+- [x] **F18** — Charm drift target (not substituted with pin/net-GEX; governed absence; real UI path fixed) — CLOSED_WITH_EVIDENCE
+- [ ] **F16** — Reserved/disputed VIX-regime row — HISTORICAL / NOT_PROVEN (identity reconciled; producer `vix_bucket`/`vix_level`; consumers/missingness/fallback/universality/defect-status unproven)
+- [ ] **F19** — Reserved/disputed freshness/actionability row — HISTORICAL / NOT_PROVEN (actionability F05 closed; freshness → RC-282 OPEN)
+- [x] **F20** — Pin width (one authority; market_state + server delegate) — CLOSED_WITH_EVIDENCE
+- [x] **F21** — VWAP side (one `derive_vwap_side`; consumers delegate) — CLOSED_WITH_EVIDENCE
+- [x] **F22** — Dominant direction (one triplet authority; DB+UI delegate; missing guarded) — CLOSED_WITH_EVIDENCE, latent hardening verification retained
+- [x] **F23** — Crossed spread (withheld at source; dead helper retired) — CLOSED_WITH_EVIDENCE
+- [x] **F24** — VWAP distance (signed `spot - vwap`; train/serve parity) — CLOSED_WITH_EVIDENCE
+- [ ] **F25** — Canonical ticker storage and artifact identity — OPEN / BLOCKED / PRIOR CLOSURES PREMATURE
+  - [x] `ticker_storage_key` authority; SPX/`$SPX` adjudicated; readers/writers/logging-universe normalized; train-write/resume/cache/artifact-dir/arch-eval/guest-anchor/DB-key/replay canonical; focused tests pass
+  - [ ] Entire-repo denominator reverified (remaining identity faucets = 0); non-anchor/universal proven; clean scoped commit lands + exact SHA; integrated into production line; runtime loaded on F25 code + runtime identity proof; parent RC-345/F25 closure
+- [x] **F26** — Empirical horizon probability (one authority; UI withholds; no client argmax) — CLOSED_WITH_EVIDENCE
+- [x] **F27** — Higher-timeframe OHLC (one batch synthesizer; live accumulator distinct) — CLOSED_WITH_EVIDENCE
+- [ ] **F28** — Reserved/disputed absorption score — HISTORICAL / NOT_PROVEN (producer `liquidity.absorption_score`; consumers/missingness/fallback/dup-search/universality/defect unproven)
+- [x] **F29** — Movement-target threshold (one per-horizon selector; no local reconstruction) — CLOSED_WITH_EVIDENCE
+- [ ] **F30** — Reserved/disputed current spot — HISTORICAL / NOT_PROVEN (live spot authority / fast quote / candle-mark-last / train-serve-replay sources / fallbacks / staleness / universality unproven)
+- [ ] **F31** — Price-level snapshot fallback — OPEN (Phase 2A)
+  - [ ] Canonical population + producer; pre-open/RTH/replay semantics; stale-cache; input fingerprint; mutual exclusion; governed fallback; no second truth; universality; runtime proof
+- [ ] **F32** — Confluence `cf_*` authority — NOT_PROVEN (Cursor refuses upgrade while RC-328 OPEN)
+  - [x] Canonical `confluence_features_for_bar` exists; current code routes train/serve through it; wall-clock windows
+  - [ ] RC-328 OPEN conflict reconciled; train+serve population parity proven; caller fallback semantics; universality; ledger contradiction eliminated
+- [x] **F33** — `net_gamma_prev` (raw prior 1m; batch+serve unified; inline producer removed) — CLOSED_WITH_EVIDENCE (RC-342)
+- [x] **F34** — XGB pre-engineering enrichment (five scheduler routes use canonical preparer) — CLOSED_WITH_EVIDENCE (RC-340)
+- [ ] **F35** — Training/serving DB identity — children CLOSED_WITH_EVIDENCE; broader DB-authority parent NOT_PROVEN
+  - [x] `train_ticker` forwards `db_path`; confluence cache carries DB identity; six callers wired
+  - [ ] Repo-wide parent DB-identity universality audit; every DB-reading lane binds intended DB; no default DB silently replaces caller DB; sandbox cannot become production authority; replay/backfill/artifact-lineage DB identity; universal ticker/data-source proof
+- [x] **F36** — Signal-layer VWAP anchor (source-tagged session preferred; rolling labeled) — CLOSED_WITH_EVIDENCE
+- [ ] **F37** — Reserved parent slot — GAP / NOT_PROVEN (parent semantic unproven; F37b exists)
+- [x] **F37b** — LSTM zone encoding (shared `encode_zone`; both sites delegate) — CLOSED_WITH_EVIDENCE (RC-343)
+- [x] **F38** — Training tensor cache identity (content hash; changed labels ⇒ miss; negative control) — CLOSED_WITH_EVIDENCE (universal cache-key inventory remains part of parent)
+- [ ] **F39** — Confluence missingness — OPEN (explicitly OPEN despite omission from a shorter RC-345 master-open summary)
+  - [ ] Measured-neutral separated from unavailable / missing-history / missing-clock / missing-input; caller fallback cannot collapse absence
+  - [ ] Train/serve/replay/backfill encoding explicit; active artifact impact measured; retrain requirement proven; root code fix; version change if required; retrain if required; calibration compatibility; runtime proof; universality
+- [x] **F40** — MC/GARCH sigma cadence (MC own `BAR_MINUTES`; 5m hardcode removed; live reproof) — CLOSED_WITH_EVIDENCE
+- [x] **F41** — Selected DTE / expiry (selectors require expiry; empty fails closed; no search-all) — CLOSED_WITH_EVIDENCE
+- [x] **F42** — GEX dollars (`gex_dollars_per_1pct_at_strike`; one `compute_exposures_by_strike`; γ×OI×mult×spot²×0.01; one-producer lock) — CLOSED_WITH_EVIDENCE
+
+## PA-4 — MATERIAL NON-F / RC DEFECT BOARD (stay until technically resolved or proven duplicate children)
+- [ ] **RC-292** — Gamma-pin semantic collision — OPEN (product-decision bedrock; do NOT resolve during a board-write). **Cursor-verified collision (2026-08-12):** (1) terrain `kl_gamma_pin` = total-gamma pin, correctly labeled; (2) analytics `consensus_summary.gamma_pin` = net-GEX absolute peak; (3) `pin_score` currently uses the analytics/net-GEX peak; (4) persisted `gamma_pin` receives the analytics/net-GEX peak; (5) `static/index.html` ladder row labeled "GAMMA PIN" binds `d.gamma_pin`/analytics net-GEX peak while its tooltip describes total-gamma semantics; (6) Key Levels `kl_gamma_pin` = total-gamma, correctly labeled; (7) `chart.html` PIN = terrain total-gamma and chart has a SEPARATE "NET Γ PEAK" row. **CORRECTION:** `chart.html` PIN is NOT mislabeled (Cursor disproved that). Remaining live collision = index-ladder GAMMA PIN + pin_score + persisted gamma_pin (net-GEX peak) vs terrain/`kl_gamma_pin` total-gamma. Sub-items: pin_score intended semantic recovered; UI-label/tooltip/persistence made consistent; backward-safe migration; behavioral+mutation lock; universality; runtime.
+- [ ] **RC-282** — Freshness / stale actionability (semantic; live+UI impact; stale cannot remain actionable; fallback; universal; root fix; runtime) — OPEN
+- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero (semantic; live path; root cause; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-297** — derivation inventory drifted from code (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-329** — one-producer gate blind to consumer-name→semantic (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-328** — Confluence train/serve population (verify current code closes original defect; canonical/train/serve population; window semantics; time-based lookback; missingness; universal; reconcile F32; close ledger honestly) — OPEN
+
+### RC-324 — Price-Level Snapshot Identity / Atomic Materialization
+> CODE_APPEARS_FIXED != CLOSED_WITH_EVIDENCE — RC-324 stays OPEN in the ledger even though current code looks repaired.
+- [ ] RC-324 formally CLOSED_WITH_EVIDENCE
+- [x] Snapshot input fingerprint includes full material OHLCV/time content
+- [x] Interior bar-data changes alter the fingerprint
+- [x] Read → decide → build → write is protected by `_MATERIALIZE_LOCK`
+- [ ] Behavioral regression proof confirmed against the actual materialization path
+- [ ] Concurrent same-generation duplicate-result negative control confirmed
+- [ ] Stale snapshot reuse negative control confirmed
+- [ ] Same-generation double-materialization cannot mint conflicting truths
+- [ ] Cache/fingerprint semantics proven universal across applicable tickers
+- [ ] Session/pre-open/RTH variants cannot bypass the canonical snapshot identity
+- [ ] Replay/backfill path cannot independently materialize a conflicting semantic
+- [ ] root_cause_log RC-324 reconciled with exact FIXED evidence
+- [ ] Parent/child status consistent
+- STATUS: OPEN
+
+### F32 / RC-328 — Active artifact compatibility with the repaired cf_* population (REQUIRED)
+> CURRENT CODE PARITY DOES NOT PROVE CURRENT ARTIFACT PARITY. The active artifacts may have been trained BEFORE the RC-332/RC-340 confluence-population repair; if so, serve now uses a semantic population different from what the loaded model learned. Do NOT assume "serve moved toward what train learned" — PROVE what the active artifact actually learned.
+- [ ] Exact active artifact generation identified
+- [ ] Exact artifact training timestamp identified
+- [ ] Exact artifact training code SHA identified
+- [ ] Exact artifact preprocessing version identified
+- [ ] Exact artifact feature-schema version identified
+- [ ] Exact artifact training DB identified
+- [ ] Exact artifact training confluence population identified
+- [ ] Determine whether active artifact predates RC-332 / canonical confluence-population repair
+- [ ] Determine whether active artifact predates RC-340 related confluence fixes
+- [ ] Prove artifact learned the same cf_* semantic now produced at serve time
+- [ ] Compare old vs current cf_* population semantics if artifact predates repair
+- [ ] Quantify material feature divergence on real data if generations differ
+- [ ] Quantify effect by ticker
+- [ ] Quantify effect by horizon where applicable
+- [ ] Include at least one non-anchor/guest ticker if the path applies
+- [ ] Determine whether retraining is REQUIRED
+- [ ] Determine whether recalibration is REQUIRED
+- [ ] Determine whether preprocessing/semantic version bump is REQUIRED
+- [ ] If retraining required: rebuild training data under canonical semantics
+- [ ] If retraining required: force cache bypass
+- [ ] If retraining required: retrain all applicable supported ticker paths
+- [ ] If retraining required: governed evaluation
+- [ ] If retraining required: calibration compatibility proof
+- [ ] If retraining required: atomic artifact promotion
+- [ ] If retraining required: runtime restart/load proof
+- [ ] Runtime train/serve/artifact semantic parity proven
+- [ ] Replay/backfill compatibility proven
+- [ ] RC-328 cannot close from code wiring alone
+- [ ] F32 cannot close while artifact semantic compatibility is NOT_PROVEN
+- UNIVERSALITY_STATUS: NOT_PROVEN until proven
+
+## PA-5 — DATA TRUTH / MARKET DATA
+- [ ] One canonical production DB authority
+- [ ] Sandbox DB mechanically non-production
+- [ ] All runtime DB paths explicit
+- [ ] All training DB paths explicit
+- [ ] All replay DB paths explicit
+- [ ] All backfill DB paths explicit
+- [ ] DB identity travels into artifact lineage
+- [ ] No silent default DB
+- [ ] No competing production truth
+- [ ] Timestamp units canonical
+- [ ] UTC/ET conversion canonical
+- [ ] RTH classification canonical
+- [ ] Holiday calendar correct
+- [ ] Early-close calendar correct
+- [ ] DST handling correct
+- [ ] Bar durations correct
+- [ ] No overlapping bars
+- [ ] No duplicate bars
+- [ ] No out-of-order bars
+- [ ] Gap detection
+- [ ] Staleness detection
+- [ ] Repair provenance
+- [ ] Live vs repaired/backfilled distinction
+- [ ] Corporate-action handling
+- [ ] Splits
+- [ ] Dividends where relevant
+- [ ] Symbol changes
+- [ ] Delistings where relevant
+- [ ] Underlying/index identity
+- [ ] SPX and `$SPX` same-instrument identity
+- [ ] Options chain timestamp fidelity
+- [ ] NBBO fidelity
+- [ ] Bid/ask sizes
+- [ ] Last trade timing
+- [ ] L2 where used
+- [ ] Greeks provenance
+- [ ] OI provenance
+- [ ] Volume provenance
+- [ ] DTE/expiry provenance
+- [ ] No revised/future-known vendor data masquerading as historical observation
+- [ ] **DATA_TRUTH_STATUS = PASS**
+
+## PA-6 — POINT-IN-TIME / TEMPORAL INTEGRITY
+- [ ] Every decision has exact `AS_OF`
+- [ ] Every feature has source timestamp
+- [ ] Every feature available by decision `AS_OF`
+- [ ] No lookahead from future bars
+- [ ] No future label leakage
+- [ ] No corrected-future-data leakage
+- [ ] Options OI timing honest
+- [ ] Options Greeks timing honest
+- [ ] Corporate-action knowledge point-in-time honest
+- [ ] Reference data point-in-time honest
+- [ ] Replay uses only information available then
+- [ ] Backtest uses point-in-time data
+- [ ] Training joins are causal
+- [ ] As-of joins are causal
+- [ ] Session boundaries causal
+- [ ] Historical repair timestamps distinguish observation vs later correction
+- [ ] **POINT_IN_TIME_STATUS = PASS**
+
+## PA-7 — TRAIN / SERVE / REPLAY / BACKFILL PARITY (every material feature)
+- [ ] Same producer
+- [ ] Same formula
+- [ ] Same units
+- [ ] Same ticker normalization
+- [ ] Same population
+- [ ] Same lookback
+- [ ] Same as-of
+- [ ] Same session filter
+- [ ] Same missingness
+- [ ] Same categorical map
+- [ ] Same imputation
+- [ ] Same scaling
+- [ ] Same ordering
+- [ ] Same feature name
+- [ ] Same feature schema version
+- [ ] Same preprocessing version
+- [ ] Same DB identity
+- [ ] Same fallback policy
+- [ ] Same source methodology
+- [ ] Same time resolution
+- [ ] Replay parity
+- [ ] Backfill parity
+- [ ] Non-anchor ticker parity
+- [ ] **PARITY_STATUS = PASS**
+
+## PA-8 — FEATURE LINEAGE
+- [ ] Every live model feature inventoried
+- [ ] Producer known
+- [ ] Raw source known
+- [ ] Transformation known
+- [ ] Units known
+- [ ] Lookback known
+- [ ] Population known
+- [ ] Missingness known
+- [ ] Timestamp known
+- [ ] Category map known
+- [ ] Imputation known
+- [ ] Train route known
+- [ ] Serve route known
+- [ ] Replay route known
+- [ ] Backfill route known
+- [ ] Artifact schema known
+- [ ] No unused/dead feature masquerading as live
+- [ ] No live feature missing from training
+- [ ] No training feature missing from serving
+- [ ] No duplicate semantics under different names
+- [ ] **FEATURE_LINEAGE_STATUS = PASS**
+
+## PA-9 — SEMANTIC VERSIONING / MIGRATION
+- [ ] Material semantic versions explicit where meaning changed
+- [ ] Preprocessing version tied to artifacts
+- [ ] Dataset semantic generation identifiable
+- [ ] Persisted historical values interpretable
+- [ ] Backfill semantic changes versioned
+- [ ] Mixed generations detectable
+- [ ] Consumers reject incompatible generation
+- [ ] No version bump ahead of artifacts
+- [ ] No artifacts ahead of runtime code
+- [ ] Migration preserves provenance
+- [ ] Rollback supported
+- [ ] **SEMANTIC_VERSION_STATUS = PASS**
+
+## PA-10 — TRAINING DATASET LINEAGE
+- [ ] Exact source DB
+- [ ] Exact ticker universe
+- [ ] Exact date range
+- [ ] Exact row count
+- [ ] Exact query/filter
+- [ ] Exact RTH/session contract
+- [ ] Exact labels
+- [ ] Exact feature schema
+- [ ] Exact preprocessing version
+- [ ] Exact content hash
+- [ ] Exact exclusion rules
+- [ ] Exact corporate-action version
+- [ ] Exact missingness treatment
+- [ ] Exact train/validation/test splits
+- [ ] Exact folds
+- [ ] Exact embargo
+- [ ] Exact random seeds
+- [ ] Reproducible dataset
+- [ ] Artifact contains/links lineage
+- [ ] **DATASET_LINEAGE_STATUS = PASS**
+
+## PA-11 — MODEL-CODE CORRECTNESS (every decision-influencing model)
+- [ ] Mathematical implementation matches intended algorithm
+- [ ] Input tensor shape correct
+- [ ] Output semantics correct
+- [ ] Class order correct
+- [ ] Horizon mapping correct
+- [ ] Loss function correct
+- [ ] Training target correct
+- [ ] No label inversion
+- [ ] No class-order inversion
+- [ ] No silent fallback model
+- [ ] No stale artifact
+- [ ] No incompatible pickle/model load
+- [ ] No hidden reduced model path masquerading as full stack
+- [ ] Deterministic preprocessing
+- [ ] Golden-file tests
+- [ ] Numerical invariants
+- [ ] Behavioral mutation tests
+- [ ] **MODEL_CODE_CORRECTNESS = PASS**
+
+## PA-12 — MODEL VALIDATION (each model × ticker × horizon)
+- [ ] Shuffle-label test
+- [ ] Lookahead test
+- [ ] Purged K-fold
+- [ ] Embargo
+- [ ] Walk-forward
+- [ ] True out-of-sample
+- [ ] Beat random baseline
+- [ ] Beat majority-class baseline
+- [ ] Beat persistence baseline
+- [ ] Beat simple technical baseline where applicable
+- [ ] Ablation
+- [ ] Feature importance stability
+- [ ] Calibration
+- [ ] Per-ticker calibration
+- [ ] Per-horizon calibration
+- [ ] Reliability diagrams
+- [ ] Brier score
+- [ ] ECE
+- [ ] Confidence calibration
+- [ ] Regime robustness
+- [ ] Liquidity-regime robustness
+- [ ] Volatility-regime robustness
+- [ ] Cost-adjusted edge
+- [ ] Slippage-adjusted edge
+- [ ] Multiple-testing correction where needed
+- [ ] Holm-Bonferroni where appropriate
+- [ ] Promotion threshold justified
+- [ ] Demotion threshold justified
+- [ ] **MODEL_VALIDATION_STATUS = PASS**
+
+## PA-13 — META / FUSION LEAKAGE
+- [ ] Base-model predictions truly out-of-fold for meta training
+- [ ] Meta learner never trains on base in-sample predictions
+- [ ] Purging respected across base/meta
+- [ ] Embargo respected
+- [ ] Calibration does not leak
+- [ ] Ensemble selection does not leak
+- [ ] Horizon overlap leakage examined
+- [ ] Same-day/time dependence handled
+- [ ] Artifact-generation separation
+- [ ] Training/serving feature-order parity
+- [ ] **META_LEAKAGE_STATUS = PASS**
+
+## PA-14 — CALIBRATION
+- [ ] Calibration dataset independent
+- [ ] Calibration generation versioned
+- [ ] Per ticker where evidence supports
+- [ ] Per horizon
+- [ ] Sparse-support handling
+- [ ] Regime dependence tested
+- [ ] Stale calibration rejected
+- [ ] Artifact/calibration compatibility enforced
+- [ ] Calibration cannot silently default
+- [ ] Calibration rollback
+- [ ] Reliability continuously monitored
+- [ ] **CALIBRATION_STATUS = PASS**
+
+## PA-15 — MODEL REPRODUCIBILITY
+- [ ] Random seeds recorded
+- [ ] Python version recorded
+- [ ] Library versions recorded
+- [ ] Hardware/runtime differences characterized
+- [ ] Dataset hash recorded
+- [ ] Feature schema recorded
+- [ ] Preprocessing version recorded
+- [ ] Training configuration recorded
+- [ ] Fold definitions recorded
+- [ ] Calibration data recorded
+- [ ] Repeated runs statistically equivalent within declared tolerance
+- [ ] Instability blocks promotion
+- [ ] **REPRODUCIBILITY_STATUS = PASS**
+
+## PA-16 — MODEL PROMOTION / DEMOTION
+- [ ] Candidate must beat baseline
+- [ ] Candidate must prove OOS edge
+- [ ] Candidate must pass leakage checks
+- [ ] Candidate must pass calibration
+- [ ] Candidate must pass cost/slippage
+- [ ] Candidate must pass universality
+- [ ] Candidate artifact lineage complete
+- [ ] Candidate can run shadow
+- [ ] Champion/challenger comparison
+- [ ] Promotion atomic
+- [ ] Rollback atomic
+- [ ] Decayed model demoted
+- [ ] Broken artifact fail-closed
+- [ ] **PROMOTION_STATUS = PASS**
+
+## PA-17 — EDGE DECAY / DRIFT
+- [ ] Rolling OOS edge
+- [ ] Feature drift
+- [ ] Label drift
+- [ ] Probability drift
+- [ ] Calibration drift
+- [ ] Regime drift
+- [ ] Ticker-specific decay
+- [ ] Horizon-specific decay
+- [ ] Artifact age vs edge
+- [ ] Empirical model half-life
+- [ ] Retraining cadence empirically justified
+- [ ] Automatic retraining never substitutes for validation
+- [ ] Demotion on decay
+- [ ] **EDGE_DECAY_STATUS = PASS**
+
+## PA-18 — ABSTENTION / TRADE-WAIT-AVOID
+- [ ] TRADE definition proven
+- [ ] WAIT definition proven
+- [ ] AVOID definition proven
+- [ ] Abstention-by-default
+- [ ] WAIT improves loss avoidance
+- [ ] AVOID filters low-quality regimes
+- [ ] Coverage vs edge frontier measured
+- [ ] Abstention by ticker
+- [ ] Abstention by horizon
+- [ ] Abstention by regime
+- [ ] Abstention by data-quality state
+- [ ] False abstention cost measured
+- [ ] No incentive to maximize trade count
+- [ ] **ABSTENTION_EDGE_STATUS = PASS**
+
+## PA-19 — DECISION ENGINE
+- [ ] Inputs canonical
+- [ ] Probability triplets canonical
+- [ ] Confidence canonical
+- [ ] Fusion canonical
+- [ ] Policy canonical
+- [ ] Risk vetoes canonical
+- [ ] Entry state canonical
+- [ ] Final bias canonical
+- [ ] Final tradeable canonical
+- [ ] WAIT reason canonical
+- [ ] AVOID reason canonical
+- [ ] No UI override
+- [ ] No fallback override
+- [ ] Missing input lowers/withholds decision rather than invents certainty
+- [ ] Stale data lowers/withholds decision
+- [ ] Incompatible artifacts block actionability
+- [ ] **DECISION_ENGINE_STATUS = PASS**
+
+## PA-20 — DECISION ATTRIBUTION (every decision)
+- [ ] Exact timestamp
+- [ ] Exact ticker
+- [ ] Exact expiry/context
+- [ ] Exact source data
+- [ ] Exact feature values
+- [ ] Exact model generation
+- [ ] Exact model probabilities
+- [ ] Exact calibration
+- [ ] Exact fusion result
+- [ ] Exact policy rule
+- [ ] Exact veto
+- [ ] Exact risk computation
+- [ ] Exact final decision
+- [ ] Exact reason for WAIT/AVOID
+- [ ] Offline replay reproduces same result
+- [ ] **DECISION_ATTRIBUTION_STATUS = PASS**
+
+## PA-21 — DECISION LEDGER / REPLAY
+- [ ] Every decision stored
+- [ ] Inputs recoverable
+- [ ] Model generation stored
+- [ ] Semantic generation stored
+- [ ] Artifact identity stored
+- [ ] DB/source identity stored
+- [ ] Outcome joined causally
+- [ ] Exact replay possible
+- [ ] Replay cannot use future-corrected truth
+- [ ] Differences explainable
+- [ ] Replay universal across tickers
+- [ ] **DECISION_REPLAY_STATUS = PASS**
+
+## PA-22 — ECONOMIC INVARIANTS
+- [ ] Probabilities sum correctly
+- [ ] Probabilities bounded
+- [ ] Confidence bounded
+- [ ] Volatility non-negative
+- [ ] Spread non-negative or withheld
+- [ ] DTE non-negative or withheld
+- [ ] Stop lies on loss side
+- [ ] Target lies on profit side
+- [ ] Worse liquidity cannot improve execution quality
+- [ ] Higher estimated costs cannot increase net edge
+- [ ] Lower risk budget cannot increase allowed size
+- [ ] Missing evidence cannot increase conviction
+- [ ] Stale evidence cannot increase conviction
+- [ ] Gamma sign economically consistent
+- [ ] Call/put wall identities preserved
+- [ ] Distance sign conventions consistent
+- [ ] Unit invariants preserved
+- [ ] **ECONOMIC_INVARIANTS_STATUS = PASS**
+
+## PA-23 — NUMERICAL UNITS / PRECISION
+- [ ] Dollars vs points explicit
+- [ ] Percent vs decimal explicit
+- [ ] Annualized vs per-bar volatility explicit
+- [ ] Shares vs contracts explicit
+- [ ] Option multiplier explicit
+- [ ] Raw gamma vs GEX explicit
+- [ ] Gamma per $1 vs per 1% explicit
+- [ ] Seconds/ms/ns explicit
+- [ ] Calendar DTE vs trading-time T explicit
+- [ ] Rounding only at presentation boundary where possible
+- [ ] No float truncation changing decision semantics
+- [ ] No mixed units under same field name
+- [ ] **UNITS_PRECISION_STATUS = PASS**
+
+## PA-24 — SENSITIVITY / COUNTERFACTUAL ROBUSTNESS
+- [ ] Small price perturbation
+- [ ] Small spread perturbation
+- [ ] IV perturbation
+- [ ] Gamma-wall perturbation
+- [ ] Volume perturbation
+- [ ] Missing feature
+- [ ] Stale feature
+- [ ] Probability perturbation
+- [ ] Threshold-nearby behavior
+- [ ] Regime transition
+- [ ] No pathological discontinuity
+- [ ] Monotonic behavior where economically expected
+- [ ] **SENSITIVITY_STATUS = PASS**
+
+## PA-25 — DECISION STABILITY / CHURN
+- [ ] LONG↔SHORT flip frequency measured
+- [ ] TRADE↔WAIT churn measured
+- [ ] Confidence oscillation measured
+- [ ] Entry-state churn measured
+- [ ] One-tick-noise sensitivity measured
+- [ ] Hysteresis justified where used
+- [ ] Smoothing never hides genuine risk
+- [ ] UI state never more authoritative than decision truth
+- [ ] **DECISION_STABILITY_STATUS = PASS**
+
+## PA-26 — ORDER FLOW / OPTIONS MICROSTRUCTURE
+- [ ] NBBO inputs correct
+- [ ] Bid/ask size use correct
+- [ ] Last trade use correct
+- [ ] Trade-sign inference justified
+- [ ] Customer/firm/MM flow distinctions correct if used
+- [ ] OI semantics correct
+- [ ] Options volume semantics correct
+- [ ] Delta/gamma/vanna/charm semantics correct
+- [ ] DTE filtering correct
+- [ ] Expiry selection correct
+- [ ] Contract multiplier correct
+- [ ] Dealer-sign assumptions explicit/tested
+- [ ] Gamma flip semantics correct
+- [ ] Gamma walls semantics correct
+- [ ] Delta walls semantics correct
+- [ ] Vanna/charm semantics correct
+- [ ] Pin semantics correct
+- [ ] Flow acceleration semantics correct
+- [ ] Missing/stale chain handling
+- [ ] **OPTIONS_MICROSTRUCTURE_STATUS = PASS**
+
+## PA-27 — LIQUIDITY / VALUE ENGINE
+- [ ] PDH
+- [ ] PDL
+- [ ] PDC
+- [ ] Prior POC
+- [ ] Prior VAH
+- [ ] Prior VAL
+- [ ] Overnight high
+- [ ] Overnight low
+- [ ] ORB high
+- [ ] ORB low
+- [ ] ORB midpoint
+- [ ] VWAP
+- [ ] VWAP ±1σ
+- [ ] VWAP ±2σ
+- [ ] Today POC
+- [ ] Today VAH
+- [ ] Today VAL
+- [ ] Support liquidity
+- [ ] Resistance liquidity
+- [ ] Fair value
+- [ ] Breakout trigger
+- [ ] Breakdown trigger
+- [ ] VWAP supply
+- [ ] VWAP demand
+- [ ] Sweep/deep sweep
+- [ ] Afternoon value
+- [ ] One authority for each semantic
+- [ ] No stale-value substitution
+- [ ] Pre-open behavior governed
+- [ ] Missingness explicit
+- [ ] Universality
+- [ ] **LIQUIDITY_VALUE_STATUS = PASS**
+
+## PA-28 — EXECUTION REALISM
+- [ ] Entry defined precisely
+- [ ] Next-bar timing correct
+- [ ] Stop logic
+- [ ] Target logic
+- [ ] Timeout
+- [ ] Vertical barrier
+- [ ] Same-bar stop/target ambiguity
+- [ ] Force-flat
+- [ ] Session close
+- [ ] Spread
+- [ ] Slippage
+- [ ] Commission
+- [ ] Fees
+- [ ] Partial fills
+- [ ] Queue assumptions if relevant
+- [ ] Latency
+- [ ] Market impact
+- [ ] Opening auction
+- [ ] Closing auction
+- [ ] Halt handling
+- [ ] Locked market
+- [ ] Crossed market
+- [ ] One-sided market
+- [ ] Option liquidity
+- [ ] **EXECUTION_REALISM_STATUS = PASS**
+
+## PA-29 — RISK ENGINE
+- [ ] Position size calculation
+- [ ] Risk budget
+- [ ] Volatility scaling
+- [ ] Stop distance
+- [ ] Portfolio exposure
+- [ ] Correlation exposure
+- [ ] Max trade risk
+- [ ] Max ticker risk
+- [ ] Max sector risk where applicable
+- [ ] Max daily loss
+- [ ] Consecutive-loss controls
+- [ ] Drawdown control
+- [ ] Gap risk
+- [ ] Expiry risk
+- [ ] Extreme-volatility risk
+- [ ] Model uncertainty
+- [ ] Missing-data risk
+- [ ] Staleness risk
+- [ ] **RISK_ENGINE_STATUS = PASS**
+
+## PA-30 — KILL SWITCHES / FAILURE MODES
+- [ ] Manual emergency stop
+- [ ] Data stale kill
+- [ ] Data missing kill
+- [ ] Artifact incompatible kill
+- [ ] Model failure kill
+- [ ] DB failure kill
+- [ ] Vendor failure kill
+- [ ] Abnormal spread kill
+- [ ] Runtime exception kill
+- [ ] Excess latency kill
+- [ ] Excess daily loss kill
+- [ ] Corrupted-state kill
+- [ ] Tested behaviorally
+- [ ] Fail closed
+- [ ] **KILL_SWITCH_STATUS = PASS**
+
+## PA-31 — VENDOR / DEPENDENCY FAILURE
+- [ ] Schwab outage
+- [ ] Partial Schwab response
+- [ ] Auth expiration
+- [ ] Timeout
+- [ ] Rate limit
+- [ ] Missing field
+- [ ] Field becomes null
+- [ ] Field becomes zero
+- [ ] Structurally valid but implausible value
+- [ ] Stale chain
+- [ ] Fresh-quote-stale-Greeks mismatch
+- [ ] Fresh-underlying-stale-options mismatch
+- [ ] Fallback source provenance
+- [ ] No silent semantic substitution
+- [ ] **VENDOR_FAILURE_STATUS = PASS**
+
+## PA-32 — ADVERSARIAL MARKET STATES
+- [ ] Zero volume
+- [ ] Huge spread
+- [ ] Crossed quote
+- [ ] Locked quote
+- [ ] One-sided quote
+- [ ] Missing chain
+- [ ] Partial chain
+- [ ] Extreme IV
+- [ ] Invalid IV
+- [ ] Zero IV
+- [ ] Near expiry
+- [ ] Expired contract
+- [ ] Huge overnight gap
+- [ ] Missing bars
+- [ ] Duplicate bars
+- [ ] Out-of-order bars
+- [ ] Halt
+- [ ] Early close
+- [ ] DST transition
+- [ ] Vendor field disappears
+- [ ] Corrupted cache
+- [ ] Mixed artifact generations
+- [ ] **ADVERSARIAL_MARKET_STATE_STATUS = PASS**
+
+## PA-33 — ARTIFACT IDENTITY (every active artifact)
+- [ ] Exact ticker
+- [ ] Exact horizon
+- [ ] Exact model type
+- [ ] Exact training dataset hash
+- [ ] Exact feature schema
+- [ ] Exact preprocessing version
+- [ ] Exact semantic version
+- [ ] Exact category maps
+- [ ] Exact imputation
+- [ ] Exact calibration generation
+- [ ] Exact code SHA
+- [ ] Exact training DB identity
+- [ ] Exact promotion generation
+- [ ] Exact creation timestamp
+- [ ] Compatible runtime requirements
+- [ ] Fail-close on mismatch
+- [ ] Atomic promotion
+- [ ] Atomic rollback
+- [ ] **ARTIFACT_IDENTITY_STATUS = PASS**
+
+## PA-34 — CACHE CORRECTNESS
+- [ ] Material input identity included
+- [ ] Content changes invalidate
+- [ ] DB identity included
+- [ ] Ticker identity included
+- [ ] Horizon included
+- [ ] Semantic generation included
+- [ ] Feature schema included
+- [ ] Preprocessing version included
+- [ ] No stale tensor reuse
+- [ ] No cross-ticker collision
+- [ ] No SPX-$SPX collision except intentional canonicalization
+- [ ] No cross-DB collision
+- [ ] No stale decision cache
+- [ ] No stale price-level cache
+- [ ] Negative-control mutation tests
+- [ ] **CACHE_STATUS = PASS**
+
+## PA-35 — CHAMPION / CHALLENGER
+- [ ] Champion immutable during comparison
+- [ ] Challenger runs shadow
+- [ ] Same inputs
+- [ ] Same as-of
+- [ ] Same costs
+- [ ] Decision delta recorded
+- [ ] Edge delta measured
+- [ ] Calibration compared
+- [ ] Abstention compared
+- [ ] Stability compared
+- [ ] Latency compared
+- [ ] Universal ticker comparison
+- [ ] Promotion only on evidence
+- [ ] **CHAMPION_CHALLENGER_STATUS = PASS**
+
+## PA-36 — UI / OPERATOR TRUTH
+- [ ] Every displayed value has canonical backend source
+- [ ] No frontend recomputation of semantic truth
+- [ ] Direction carried, not recomputed
+- [ ] Confidence carried, not recomputed
+- [ ] Gamma regime carried, not recomputed
+- [ ] Gamma pin carried, not recomputed
+- [ ] Charm target carried, not recomputed
+- [ ] Expected move carried, not recomputed
+- [ ] VWAP carried, not recomputed
+- [ ] Price levels carried, not recomputed
+- [ ] Risk carried, not recomputed
+- [ ] Entry state carried, not recomputed
+- [ ] Tradeable state carried, not recomputed
+- [ ] WAIT reason carried, not recomputed
+- [ ] AVOID reason carried, not recomputed
+- [ ] Stale state carried, not recomputed
+- [ ] Withheld state carried, not recomputed
+- [ ] Missing state carried, not recomputed
+- [ ] Source/methodology visible where materially necessary
+- [ ] Ticker switch clears stale values
+- [ ] Expiry switch clears stale values
+- [ ] SSE/REST race safe
+- [ ] Fast surface consistent with full state
+- [ ] No fake or default confidence
+- [ ] No fake or default price level
+- [ ] No UI green/actionable state when backend says stale/non-actionable
+- [ ] **OPERATOR_TRUTH_STATUS = PASS**
+
+## PA-37 — OBSERVABILITY
+- [ ] Runtime SHA visible
+- [ ] Artifact generation visible
+- [ ] DB identity visible internally
+- [ ] Data freshness visible
+- [ ] Last successful market-data update visible
+- [ ] Last model inference visible
+- [ ] Last decision visible
+- [ ] Inference latency visible
+- [ ] Feature failures visible
+- [ ] Artifact failures visible
+- [ ] Fallback usage visible
+- [ ] Withhold reasons visible
+- [ ] Cache hit-miss visible
+- [ ] Recompute reasons visible
+- [ ] Vendor failures visible
+- [ ] Model degradation visible
+- [ ] Kill-switch state visible
+- [ ] **OBSERVABILITY_STATUS = PASS**
+
+## PA-38 — PERFORMANCE / LATENCY
+- [ ] Data ingest latency
+- [ ] Normalization latency
+- [ ] Feature computation latency
+- [ ] Model inference latency
+- [ ] Fusion latency
+- [ ] Decision latency
+- [ ] API latency
+- [ ] UI update latency
+- [ ] Cache effectiveness
+- [ ] Cold-start latency
+- [ ] Warm latency
+- [ ] P50
+- [ ] P95
+- [ ] P99 where relevant
+- [ ] No correctness compromise to meet SLA
+- [ ] **PERFORMANCE_STATUS = PASS**
+
+## PA-39 — SECURITY / SECRETS
+- [ ] API secrets not committed
+- [ ] Tokens protected
+- [ ] Logs do not leak credentials
+- [ ] Debug endpoints gated
+- [ ] File paths safe
+- [ ] SQL injection reviewed
+- [ ] Unsafe deserialization reviewed
+- [ ] Artifact loading threat model
+- [ ] Dependency vulnerabilities reviewed
+- [ ] Local network exposure intentional
+- [ ] **SECURITY_STATUS = PASS**
+
+## PA-40 — DEAD CODE / RETIREMENT
+- [ ] Dead producers removed
+- [ ] Legacy semantic authorities retired
+- [ ] Old fallbacks removed
+- [ ] Obsolete compatibility shims have retirement conditions
+- [ ] Dead models removed
+- [ ] Dead artifact formats removed
+- [ ] Dead UI paths removed
+- [ ] Dead research code cannot reach production
+- [ ] No duplicate implementation retained "just in case"
+- [ ] **RETIREMENT_STATUS = PASS**
+
+## PA-41 — DISCOVERY DENOMINATOR (critical — F01–F42 is not proof of no other duplicate semantics)
+- [ ] Independent file census
+- [ ] All tracked Python
+- [ ] JavaScript
+- [ ] HTML inline scripts
+- [ ] CSS if semantic behavior exists
+- [ ] SQL
+- [ ] PowerShell
+- [ ] Batch files
+- [ ] Makefiles
+- [ ] Shell scripts
+- [ ] Templates
+- [ ] Config with executable expressions
+- [ ] Training scripts
+- [ ] Scheduler scripts
+- [ ] Research scripts capable of feeding production
+- [ ] Backtest
+- [ ] Replay
+- [ ] Cache
+- [ ] Migration
+- [ ] Compatibility shims
+- [ ] Generated execution surfaces
+- [ ] Unknown extensions classified
+- [ ] Excluded files justified
+- [ ] Zero-candidate sampling
+- [ ] Structural clones
+- [ ] Semantic clones
+- [ ] Different-name same-truth producers
+- [ ] SQL-derived producers
+- [ ] Frontend-derived producers
+- [ ] New material defects added to board
+- [ ] No unclassified material candidates remain
+- [ ] **DISCOVERY_DENOMINATOR_STATUS = PASS**
+
+## PA-42 — TESTING / MUTATION
+- [ ] Behavioral tests hit actual code path
+- [ ] Mutation tests reintroduce second producer
+- [ ] Mutation tests reintroduce fallback
+- [ ] Mutation tests reintroduce frontend recomputation
+- [ ] Mutation tests reintroduce missing→zero collapse
+- [ ] Mutation tests reintroduce wrong units
+- [ ] Mutation tests reintroduce train/serve divergence
+- [ ] Mutation tests reintroduce stale-cache reuse
+- [ ] Mutation tests reintroduce wrong ticker normalization
+- [ ] Mutation tests reintroduce wrong DB identity
+- [ ] Golden files
+- [ ] Economic invariants
+- [ ] Universal ticker tests
+- [ ] Runtime tests
+- [ ] Negative controls
+- [ ] **TESTING_STATUS = PASS**
+
+## PA-43 — RUNTIME / PRODUCTION PROOF
+- [ ] Exact HEAD SHA
+- [ ] Exact origin/main SHA
+- [ ] Clean/known worktree state
+- [ ] Runtime PID
+- [ ] Runtime command
+- [ ] Runtime SHA == tested SHA
+- [ ] Runtime artifacts == approved generation
+- [ ] Runtime DB == canonical production DB
+- [ ] SPY runtime proof
+- [ ] QQQ runtime proof
+- [ ] IWM runtime proof
+- [ ] Non-anchor ticker runtime proof
+- [ ] Guest ticker runtime proof
+- [ ] Ticker switching
+- [ ] Expiry switching
+- [ ] Stale-data behavior
+- [ ] Withholding behavior
+- [ ] Missing-data behavior
+- [ ] Cache invalidation
+- [ ] SSE
+- [ ] REST
+- [ ] Restart reproducibility
+- [ ] Live decision fidelity
+- [ ] Live operator fidelity
+- [ ] **RUNTIME_PROOF_STATUS = PASS**
+
+## PA-44 — REAL-MONEY READINESS
+- [ ] Data truth complete
+- [ ] Point-in-time integrity complete
+- [ ] Semantic authority complete
+- [ ] Universality complete
+- [ ] Train parity complete
+- [ ] Serve parity complete
+- [ ] Replay parity complete
+- [ ] Backfill parity complete
+- [ ] Model correctness complete
+- [ ] OOS edge complete
+- [ ] Calibration complete
+- [ ] Costs complete
+- [ ] Slippage complete
+- [ ] Risk engine complete
+- [ ] Kill switches complete
+- [ ] Decision replay complete
+- [ ] Runtime proof complete
+- [ ] Operator truth complete
+- [ ] No material NOT_PROVEN
+- [ ] No material open F-row
+- [ ] No material open RC defect
+- [ ] No material unclassified producer
+- [ ] **REAL_MONEY_READY = YES**
+
+## PA-45 — BOARD HISTORY / PRESERVATION (lightweight bookkeeping only)
+- [ ] No row silently deleted
+- [ ] New defect → ADD
+- [ ] Status transition → STATUS_CHANGE
+- [ ] Renamed/merged/superseded → RECONCILIATION
+- [ ] Reopened row retains reason
+- [ ] Old closure evidence preserved
+- [ ] False closure explicitly backtracked
+- [ ] Historical disputed rows retained until adjudicated
+- [ ] Board updated immediately after material proof
+- [ ] **BOARD_INTEGRITY_STATUS = PASS**
+
+## PA-46 — CURRENT TOP ACTIVE EXECUTION QUEUE (priority items, not the whole board)
+- [ ] F10 — candle-direction host retrain
+- [ ] F15 — POC/VAH/VAL
+- [ ] F25 — ticker/artifact identity
+- [ ] F31 — price-level snapshot
+- [ ] F32 — cf_* conflict (RC-328)
+- [ ] F39 — missingness zero-collapse
+- [ ] RC-292 — gamma-pin semantics
+- [ ] RC-282
+- [ ] RC-285
+- [ ] RC-297
+- [ ] RC-301
+- [ ] RC-329
+- [ ] F35 broader DB identity parent
+- [ ] Historical/disputed F04/F16/F19/F28/F30/F37
+- [ ] Discovery denominator
+- [ ] Universal runtime proof
+
+## PA-47 — PROJECT A FINAL CLOSURE (all must be satisfied)
+- [ ] All canonical F rows closed
+- [ ] All disputed F rows adjudicated
+- [ ] All material non-F RC defects closed
+- [ ] All material NOT_PROVEN = 0
+- [ ] All parent/child status contradictions eliminated
+- [ ] One Faucet proven universally
+- [ ] Universality proven across supported ticker paths
+- [ ] Data truth proven
+- [ ] Point-in-time truth proven
+- [ ] Train parity proven
+- [ ] Serve parity proven
+- [ ] Replay parity proven
+- [ ] Backfill parity proven
+- [ ] Feature lineage proven
+- [ ] Artifact lineage proven
+- [ ] Cache correctness proven
+- [ ] Model-code correctness proven
+- [ ] OOS predictive edge proven
+- [ ] Calibration proven
+- [ ] Meta leakage eliminated
+- [ ] Economic invariants proven
+- [ ] Execution realism proven
+- [ ] Risk engine proven
+- [ ] Kill switches proven
+- [ ] Decision attribution proven
+- [ ] Decision replay proven
+- [ ] Operator/UI truth proven
+- [ ] Observability proven
+- [ ] Performance proven
+- [ ] Security proven
+- [ ] Discovery denominator exhausted/adjudicated
+- [ ] Current runtime proof complete
+- [ ] Clean reproducible production state
+- [ ] Real-money readiness proven
+- [ ] **PROJECT A = CLOSED_WITH_EVIDENCE**
+
+# OPEN ROOT-CAUSE LEDGER DENOMINATOR
+> Technical state preservation only — do NOT turn this into process work. Measured OPEN RC denominator = **72** OPEN rows in `governance/root_cause_log.md` (counted 2026-08-12; of which 55 are past due). If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
+- [ ] Enumerate every currently OPEN RC row in `governance/root_cause_log.md`
+- [ ] Record current measured OPEN RC denominator (= 72 as of 2026-08-12)
+- [ ] Recompute denominator when the ledger changes
+- [ ] Classify each OPEN RC into exactly one category (MATERIAL_TECHNICAL, DUPLICATE_CHILD, SUPERSEDED_WITH_EVIDENCE, STALE_LEDGER_AFTER_PROVEN_FIX, PROCESS_ONLY, EXTERNAL_BOUNDARY, NOT_PROVEN)
+- [ ] Every MATERIAL_TECHNICAL RC appears explicitly on this Project A master board
+- [ ] Every MATERIAL_TECHNICAL RC has semantic/title recorded
+- [ ] Every MATERIAL_TECHNICAL RC has live/train/serve/replay/backfill applicability recorded
+- [ ] Every MATERIAL_TECHNICAL RC has decision-path impact recorded
+- [ ] Every MATERIAL_TECHNICAL RC has universality status
+- [ ] Every MATERIAL_TECHNICAL RC is searched
+- [ ] Every MATERIAL_TECHNICAL RC is proved
+- [ ] Every MATERIAL_TECHNICAL RC is fixed
+- [ ] Every MATERIAL_TECHNICAL RC is tested
+- [ ] Every stale OPEN RC whose code is actually fixed is reconciled with exact evidence
+- [ ] No stale ledger row remains OPEN merely because no one updated the ledger
+- [ ] No code-only fix is called CLOSED while the governing RC remains materially unresolved
+- [ ] No parent RC closes while a material child remains open
+- [ ] No material RC is hidden solely inside a summary string
+- [ ] No material RC is omitted because a different F-row "sounds similar"
+- [ ] No material technical defect disappears because it belongs to another historical numbering system
+- [ ] OPEN material technical RC count = 0 before Project A closure
+
+# EXISTING REPO WORK-ITEM SYSTEM RECONCILIATION
+> These identifiers are DISTINCT namespaces. Do NOT conflate them with canonical Project A F01–F42. Keep this reconciliation LIGHT — no registries, crosswalk DBs, YAML/JSON mirrors, CI, parsers, or governance frameworks. A simple checklist here is enough. Namespaces: (1) unpadded **F1/F2/F3** = Find & Prove system (`reports/fp_levelset_directive_for_cursor.md`, also referenced in this OPEN_ITEMS.md); (2) hyphenated **F-01…** = Desk audit findings (`reports/cursor_desk_audit_v1.md`); (3) **RH-F1…RH-F8** = rehab facets (`governance/REHAB_PROGRAM.md`).
+- [ ] Unpadded F1/F2/F3 Find & Prove items reviewed
+- [ ] Hyphenated F-01… Desk audit findings reviewed
+- [ ] RH-F1…RH-F8 rehab facets reviewed
+- [ ] Existing OPEN_ITEMS.md Find & Prove references reviewed
+- [ ] Existing OPEN_ITEMS.md GEX-F2 references reviewed
+- [ ] Every unresolved MATERIAL TECHNICAL item from those systems mapped onto this Project A master board
+- [ ] Original source ID preserved when mapped
+- [ ] Duplicate semantic mapped without duplicating engineering work
+- [ ] A closed item in another system is not assumed closed here without evidence
+- [ ] An OPEN material item in another system cannot be ignored because it lacks a canonical F01–F42 ID
+- [ ] No technical work remains hidden only in reports/directives/rehab files
+- [ ] No numbering collision causes one item to overwrite another
+- [ ] Universality requirements apply to imported material technical items
+- [ ] Parent Project A cannot close while a materially applicable imported item remains unresolved

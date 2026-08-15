@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Optional
 import logging
 
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 # Operator: bottom-panel / panel_auto symbols are confluence features only (SPY/QQQ/IWM context).
@@ -33,16 +35,17 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
 def training_anchor_tickers_upper() -> frozenset[str]:
-    return frozenset(t.upper() for t in TRAINING_ANCHOR_TICKERS)
+    # RC-345/F25: anchor membership set is canonical-keyed (SPY/QQQ/IWM unchanged; SPX↔$SPX collapse)
+    return frozenset(ticker_storage_key(t) for t in TRAINING_ANCHOR_TICKERS)
 
 
 def is_training_anchor_ticker(ticker: str) -> bool:
-    return (ticker or "").upper() in training_anchor_tickers_upper()
+    return ticker_storage_key(ticker) in training_anchor_tickers_upper()  # RC-345/F25: canonical membership
 
 
 def require_ml_training_ticker_allowed(ticker: str) -> str:
     """Fail-closed guard for explicit single-ticker train entry points."""
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: returned training identity is canonical
     if not t:
         raise ValueError("require_ml_training_ticker_allowed: empty ticker")
     if ml_scheduler_training_expansion_enabled():
@@ -115,7 +118,7 @@ def panel_auto_ticker_set(db_path: str) -> frozenset[str]:
         log.warning("panel_auto_ticker_set: cannot read logging_universe (%s)", e)
         return frozenset()
     return frozenset(
-        str(row.get("ticker") or "").upper()
+        ticker_storage_key(str(row.get("ticker") or ""))  # RC-345/F25: canonical membership key
         for row in rows
         if str(row.get("category") or "") in CONFLUENCE_ONLY_UNIVERSE_CATEGORIES
     )
@@ -129,8 +132,8 @@ def filter_tickers_for_background_logging(tickers: list[str], db_path: str) -> l
     skip = panel_auto_ticker_set(db_path) - training_anchor_tickers_upper()
     if not skip:
         return list(tickers)
-    out = [t for t in tickers if t.upper() not in skip]
-    excluded = sorted(skip & {t.upper() for t in tickers})
+    out = [t for t in tickers if ticker_storage_key(t) not in skip]  # RC-345/F25: canonical membership
+    excluded = sorted(skip & {ticker_storage_key(t) for t in tickers})
     if excluded:
         log.info(
             "Background logging excludes %d confluence-only (panel_auto) from full snapshots: %s",
@@ -150,17 +153,17 @@ def filter_tickers_for_ml_training(tickers: list[str], db_path: str) -> list[str
         log.warning("filter_tickers_for_ml_training: cannot read logging_universe (%s)", e)
         return tickers
     skip = {
-        str(row.get("ticker") or "").upper()
+        ticker_storage_key(str(row.get("ticker") or ""))  # RC-345/F25: canonical membership key
         for row in rows
         if str(row.get("category") or "") in CONFLUENCE_ONLY_UNIVERSE_CATEGORIES
     }
     if not skip:
         return tickers
-    enrolled = {t.upper() for t in tickers}
+    enrolled = {ticker_storage_key(t) for t in tickers}
     excluded = sorted(skip & enrolled)
     if not excluded:
         return tickers
-    out = [t for t in tickers if t.upper() not in skip]
+    out = [t for t in tickers if ticker_storage_key(t) not in skip]
     log.info(
         "ML training excludes %d confluence-only (panel_auto) tickers: %s",
         len(excluded),
@@ -183,8 +186,8 @@ def resolve_ml_training_roster(enrolled: list[str], db_path: str) -> list[str]:
     """
     pool = filter_tickers_for_ml_training(list(enrolled), db_path)
     if not ml_scheduler_training_expansion_enabled():
-        enrolled_upper = {t.upper() for t in enrolled}
-        pool = [t for t in TRAINING_ANCHOR_TICKERS if t in enrolled_upper]
+        enrolled_upper = {ticker_storage_key(t) for t in enrolled}  # RC-345/F25: canonical membership
+        pool = [ticker_storage_key(t) for t in TRAINING_ANCHOR_TICKERS if ticker_storage_key(t) in enrolled_upper]
         if len(pool) < len(TRAINING_ANCHOR_TICKERS):
             missing = [t for t in TRAINING_ANCHOR_TICKERS if t not in enrolled_upper]
             if missing:
@@ -194,7 +197,7 @@ def resolve_ml_training_roster(enrolled: list[str], db_path: str) -> list[str]:
                 )
     explicit = (os.environ.get("ED_ML_SCHEDULER_TICKERS") or "").strip()
     if explicit:
-        want = {t.strip().upper() for t in explicit.split(",") if t.strip()}
+        want = {ticker_storage_key(t) for t in explicit.split(",") if t.strip()}  # RC-345/F25: canonical membership
         if not ml_scheduler_training_expansion_enabled():
             dropped = sorted(want - training_anchor_tickers_upper())
             if dropped:
@@ -204,7 +207,7 @@ def resolve_ml_training_roster(enrolled: list[str], db_path: str) -> list[str]:
                 )
             want &= training_anchor_tickers_upper()
         before = len(pool)
-        pool = [t for t in pool if t.upper() in want]
+        pool = [t for t in pool if ticker_storage_key(t) in want]  # RC-345/F25: canonical membership
         log.info(
             "ED_ML_SCHEDULER_TICKERS filter: %d of %d roster tickers selected",
             len(pool),

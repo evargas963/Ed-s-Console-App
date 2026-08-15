@@ -1116,7 +1116,7 @@ def test_terrain_net_gex_chip_dom_and_render_wiring():
     assert "function edNetGexOf(" in html
     # The chip is fed from the single painter; sign selects the regime colours.
     assert "function edPaintNetGex(" in html
-    assert "chip.textContent = crossed ? 'NET GEX ≈0 · CROSSED FLIP' : 'NET GEX ' + edFmtGex(g)" in html
+    assert "chip.textContent = crossed ? 'NET GEX WITHHELD · CROSSED FLIP' : 'NET GEX ' + edFmtGex(g)" in html
     assert ".tv-chip.gpos" in html and ".tv-chip.gneg" in html
     # The dealer tile renders the same number formatted, not raw exponent.
     assert "'NET GEX (1%)', edFmtGex(gas)" in html
@@ -1126,21 +1126,28 @@ def test_terrain_net_gex_never_keeps_wrong_sign_across_flip():
     """Bugbot 2026-07-21 (both findings): ONE painter drives BOTH NET GEX surfaces,
     repainting on every cross-state CHANGE — so the header chip and the dealer tile
     can never split, the chip cannot stick after an uncross, and no magnitude is ever
-    fabricated across the flip (no profile client-side; ≈0 by continuity only)."""
+    fabricated across the flip. RC-345 / F07: a live cross now WITHHOLDS (no client-side
+    profile, so the net GEX at the new spot is unknown) rather than fabricating a ≈0."""
     html = _html()
     painter = html.split("function edPaintNetGex(")[1].split("async function edLoadTerrain(")[0]
-    # Both surfaces painted from the single source, neutral text on crossed.
+    # Both surfaces painted from the single source, WITHHELD text on crossed (not a fake ≈0).
     assert "getElementById('tv-gex')" in painter
     assert "getElementById('tv-dealer-gex')" in painter
-    assert "NET GEX ≈0 · CROSSED FLIP" in painter
-    assert "'≈0 · crossed flip'" in painter
+    assert "NET GEX WITHHELD · CROSSED FLIP" in painter
+    assert "'— · crossed flip'" in painter
+    assert "≈0" not in painter, "a crossed flip must WITHHOLD, never fabricate a ≈0 (F07/RC-345)"
     # Reconcile repaints on state CHANGE (both directions) BEFORE the regime
     # early-return — the uncross path short-circuits there, which is exactly where
     # the chip used to get stuck.
     rec = html.split("function edReconcileRegime(")[1].split("function edPaintLadderSpot(")[0]
     change_idx = rec.index("!!d._gexCrossed !== crossed")
-    early_return_idx = rec.index("if (want === d.regime) return;")
-    assert change_idx < early_return_idx, "cross-state repaint must precede the regime early-return"
+    # RC-345 / F07: the frontend no longer SUBSTITUTES the regime — `d.regime = want` is
+    # deleted, because the sign is owned by the backend (terrain_read._regime_for). The
+    # cross-state NET GEX repaint must still precede the presentation-only crossed
+    # early-return, so an uncross re-paints the chip instead of sticking (the original bug).
+    early_return_idx = rec.index("if (!!d._crossedFlip === crossed) return;")
+    assert change_idx < early_return_idx, "cross-state repaint must precede the crossed early-return"
+    assert "d.regime =" not in rec, "edReconcileRegime must never assign d.regime (F07/RC-345)"
     # Fresh payload re-anchors the state; periphery re-applies after kv() rebuilds its row.
     assert "d._gexCrossed = false;" in html
     assert "'tv-dealer-gex'" in html

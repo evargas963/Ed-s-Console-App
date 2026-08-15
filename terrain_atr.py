@@ -74,7 +74,8 @@ def _et():
 
 def compute_atr_pair(db_path: str, ticker: str) -> AtrPair:
     """Daily and 15-minute ATR for one ticker. Never raises; returns None legs on failure."""
-    tk = (ticker or "").upper().strip()
+    from instrument_identity import ticker_storage_key
+    tk = ticker_storage_key(ticker)  # RC-345/F25: ATR DB query owner consumes canonical identity (callee, not caller-masked)
     if not tk:
         return AtrPair(None, None)
     try:

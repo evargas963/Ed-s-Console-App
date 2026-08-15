@@ -14,6 +14,7 @@ import warnings
 from typing import Any
 
 from db import sql_select_snapshots_columns
+from instrument_identity import ticker_storage_key
 
 log = logging.getLogger(__name__)
 
@@ -460,7 +461,7 @@ def fetch_m5_additive_dict(
     Returns {} if no 1m row exists — never reads native timeframe='5m' snapshots.
     """
     path = db_path or _db_default_path()
-    t = str(ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: DB bind consumes canonical storage identity
     if not t:
         return {}
 
@@ -495,7 +496,7 @@ def fetch_prior_net_gamma(
     prior net_gamma matches the normalized last-in-bucket copy used at train time.
     """
     path = db_path or _db_default_path()
-    t = str(ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: DB bind consumes canonical storage identity
     if not t:
         return None
 
@@ -517,9 +518,142 @@ def fetch_prior_net_gamma(
         return None
 
 
-def attach_confluence_feature_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Add cf_* columns per (ticker, ts_utc) — same formula as LSTM ``X_conf`` (``compute_confluence_features``)."""
-    from lstm_data import CONFLUENCE_FEATURES, compute_confluence_features
+def confluence_history_lookback_s() -> float:
+    """Seconds of history the cf_* producer can require. Derived from its declared windows."""
+    from lstm_data import CONFLUENCE_WINDOW_MINUTES, _anchor_tolerance_s
+
+    widest = max(CONFLUENCE_WINDOW_MINUTES.values())
+    return widest * 60.0 + _anchor_tolerance_s(widest)
+
+
+def fetch_confluence_history(
+    ticker: str,
+    ts_from: float,
+    ts_to: float,
+    db_path: str | None = None,
+) -> list[dict]:
+    """THE producer of the row population cf_* is derived from. One producer, two consumers.
+
+    RC-328 part A: the training lane derived cf_* from the already-label-and-RTH-filtered
+    training frame while the serve lane derived it from unfiltered `snapshots`, so one
+    function emitted two quantities under one name. The filters exist to choose which rows
+    get LABELLED; they were never a statement about which rows constitute market HISTORY,
+    and reusing the labelled frame as the history pool silently made them one.
+
+    Both lanes now call this. The population is the canonical 1m series, UNFILTERED —
+    premarket and afterhours rows are real market history and are in range whenever the
+    clock window reaches them. Reads SERVE_SNAPSHOT_TABLE in both lanes, so the two lanes
+    cannot diverge by table either (RC-207 quarantines serve off the normalized mirror;
+    training must therefore come to serve's table, not the reverse).
+    """
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    rows = _read_with_retry(
+        db_path or _db_default_path(),
+        f"SELECT * FROM {SERVE_SNAPSHOT_TABLE} "
+        "WHERE ticker = ? AND timeframe = ? AND ts_utc >= ? AND ts_utc <= ? "
+        "ORDER BY ts_utc ASC",
+        (ticker_storage_key(ticker), CANONICAL_TIMEFRAME, float(ts_from), float(ts_to)),  # RC-345/F25: canonical DB bind
+        op="fetch_confluence_history", all_rows=True,
+    )
+    return [dict(r) for r in (rows or [])]
+
+
+def confluence_features_for_bar(
+    ticker: str,
+    ts_utc: float,
+    db_path: str | None = None,
+    *,
+    cache: dict | None = None,
+) -> dict:
+    """THE single production authority for cf_* at one bar. RC-332.
+
+    CONCEPT        multi-timeframe confluence read for one instrument at one instant
+    SCOPE          canonical 1m series, UNFILTERED (premarket and afterhours are market
+                   history); windows selected by wall clock, never by list position
+    UNITS          cf_momentum_5m / cf_structure_15m / cf_trend_1h in [-1, 1];
+                   cf_vwap_distance_pct signed fraction; cf_alignment_score in [-4, 4]
+    INPUT POP.     fetch_confluence_history over SERVE_SNAPSHOT_TABLE
+    METHODOLOGY    lstm_data.compute_confluence_features
+
+    WHY CALLERS MAY NO LONGER SUPPLY THE POPULATION. `compute_confluence_features` takes a
+    list and an index, so each lane passed whatever its own query produced: the XGB training
+    frame (label + weekday + RTH filtered), the XGB serve read, the LSTM offline extractor
+    (normalized table, RTH filtered, sliced PER DAY), the LSTM live merged window, and two
+    scheduler paths. One function, six populations, one feature name. MEASURED between the
+    LSTM offline and live populations over 826 SPY bars: 179 divergent cells, with
+    cf_alignment_score differing by up to 3.0 on a -4..+4 scale, cf_structure_15m by the
+    full 1.0, and cf_trend_1h on 9.6% of bars. Passing a population WAS the defect, so the
+    authority does not accept one.
+
+    `cache` is a caller-owned dict for batch work (training slides a window over every bar
+    of every day); it holds one UTC-day pool per ticker and changes no value.
+    """
+    import bisect
+
+    from lstm_data import CONFLUENCE_FEATURES, _snapshot_ts, compute_confluence_features
+
+    absent = {k: 0.0 for k in CONFLUENCE_FEATURES}
+    try:
+        ts = float(ts_utc)
+    except (TypeError, ValueError):
+        return absent
+    tk = ticker_storage_key(ticker)  # RC-345/F25: DB bind + cache identity consume canonical storage key
+    if not tk:
+        return absent
+
+    lookback = confluence_history_lookback_s()
+    day0 = (ts // 86400.0) * 86400.0
+    # RC-341 (F35): DB identity is part of the cached truth's identity. The key was
+    # (ticker, UTC-day), so once db_path became forwardable (RC-340) a shared cache could
+    # serve DB-A's pool to a DB-B request for the same ticker/day — a silent cross-source
+    # substitution. None (process default) is its own identity, distinct from any explicit
+    # path; no resolution/normalization is attempted, so distinct spellings of one path
+    # are cache MISSES (correct, never wrong).
+    key = (tk, day0, str(db_path) if db_path is not None else None)
+    entry = cache.get(key) if cache is not None else None
+    if entry is None:
+        pool = [r for r in fetch_confluence_history(
+            tk, day0 - lookback, day0 + 86400.0, db_path) if _snapshot_ts(r) is not None]
+        entry = (pool, [float(r["ts_utc"]) for r in pool])
+        if cache is not None:
+            cache[key] = entry
+    pool, pool_ts = entry
+    if not pool:
+        return absent
+    j = bisect.bisect_right(pool_ts, ts) - 1
+    if j < 0:
+        return absent
+    return compute_confluence_features(pool, j)
+
+
+def prepare_row_for_xgb_features(row: dict, db_path: str | None = None,
+                                 *, cache: dict | None = None) -> dict:
+    """THE enrichment for a DB-shaped row before ``engineer_single_snapshot`` (RC-340).
+
+    Five scheduler/cascade routes called the serve feature builder on RAW rows — no
+    net_gamma_prev, no cf_* — so dgex went NaN and all six confluence features went 0.0
+    ("measured flat") in every OOF/bridge/cascade vector those routes built, while the
+    training matrix carried real values. One delegation point; callers may not re-author
+    the sequence (that is exactly how ml_predict's two entrypoints diverged in RC-336).
+    ``cache`` is the confluence authority's per-(ticker, UTC-day) pool cache for loops.
+    """
+    snap = attach_net_gamma_prev_for_dgex(dict(row), db_path)
+    snap.update(confluence_features_for_bar(
+        str(snap.get("ticker") or ""), snap.get("ts_utc"), db_path,
+        cache=cache if cache is not None else {}))
+    return snap
+
+
+def attach_confluence_feature_columns(
+    df: pd.DataFrame, db_path: str | None = None
+) -> pd.DataFrame:
+    """Add cf_* columns per (ticker, ts_utc) — same formula AND same row population as the
+    serve path (``compute_confluence_features`` over ``fetch_confluence_history``)."""
+
+    from lstm_data import (
+        CONFLUENCE_FEATURES,
+    )
 
     if df is None or len(df) == 0:
         return df
@@ -528,11 +662,39 @@ def attach_confluence_feature_columns(df: pd.DataFrame) -> pd.DataFrame:
         out[cf] = 0.0
     if "ticker" not in out.columns or "ts_utc" not in out.columns:
         return out
-    for _, grp in out.sort_values(["ticker", "ts_utc"]).groupby("ticker", sort=False):
-        snaps = [dict(r) for r in grp.to_dict("records")]
-        for local_i, idx in enumerate(grp.index):
-            cf_vals = compute_confluence_features(snaps, local_i)
-            for k, v in cf_vals.items():
+
+    # RC-332: route every row through the ONE authority. This lane used to build its own
+    # pool here, which was correct but was a second place the population could be chosen —
+    # and a second place is how six of them accumulated in the first place.
+    conf_cache: dict = {}
+    lookback = confluence_history_lookback_s()
+    for tk, grp in out.sort_values(["ticker", "ts_utc"]).groupby("ticker", sort=False):
+        ts_vals = pd.to_numeric(grp["ts_utc"], errors="coerce")
+        lo, hi = float(ts_vals.min()) - lookback, float(ts_vals.max())
+        pool = fetch_confluence_history(str(tk), lo, hi, db_path)
+        if not pool:
+            # RC-340 (DEFECT C): the canonical population has nothing for this ticker/range.
+            # This used to fall back to the CALLER'S OWN ROWS — a second population
+            # authority for the same cf_* semantic (RC-328's fallback, now removed). The
+            # governed absence contract is EXPLICIT 0.0, declared at
+            # compute_confluence_features' docstring ("ABSENT is encoded 0.0"; the LSTM
+            # lane cannot consume NaN) and honored by every serve path — so the columns
+            # keep their initialized 0.0 and the event stays LOUD. One population
+            # authority; a frame outside it gets governed absence, never a lookalike.
+            log.warning(  # noqa: G010
+                "confluence history absent in %s for ticker=%s over [%.0f, %.0f] — cf_* "
+                "reported as GOVERNED ABSENCE (0.0) for %d row(s); no substitute "
+                "population is permitted (RC-340)",
+                SERVE_SNAPSHOT_TABLE, tk, lo, hi, len(grp),
+            )
+            continue
+
+        # CANONICAL PATH: one authority, one population (RC-332).
+        for idx, ts in zip(grp.index, ts_vals):
+            if pd.isna(ts):
+                continue
+            for k, v in confluence_features_for_bar(
+                    str(tk), float(ts), db_path, cache=conf_cache).items():
                 out.at[idx, k] = v
     return out
 
@@ -542,7 +704,9 @@ def attach_confluence_features_for_serve(
     db_path: str | None = None,
 ) -> dict:
     """Attach cf_* for XGB serve path (history-aware; fail-closed 0.0 when history thin)."""
-    from lstm_data import CONFLUENCE_FEATURES, compute_confluence_features
+    from lstm_data import (
+        CONFLUENCE_FEATURES,
+    )
 
     out = dict(snapshot)
     ts = out.get("ts_utc")
@@ -552,39 +716,60 @@ def attach_confluence_features_for_serve(
             out.setdefault(cf, 0.0)
         return out
 
-    from timeframe_config import CANONICAL_TIMEFRAME
 
     path = db_path or _db_default_path()
     # RC-206 retry contract + RC-207 serve quarantine: read healthy `snapshots`, never the
     # malformed `snapshots_1m_normalized` b-tree (quiet-window FAIL 2026-08-03).
-    rows = _read_with_retry(
-        path,
-        f"SELECT * FROM {SERVE_SNAPSHOT_TABLE} "
-        "WHERE ticker = ? AND timeframe = ? AND ts_utc <= ? "
-        "ORDER BY ts_utc DESC LIMIT 60",
-        (str(tk).upper(), CANONICAL_TIMEFRAME, float(ts)),
-        op="attach_confluence_features_for_serve", all_rows=True,
-    )
-    if not rows:
-        for cf in CONFLUENCE_FEATURES:
-            out.setdefault(cf, 0.0)
-        return out
-    snaps = [dict(r) for r in reversed(rows)]
-    out.update(compute_confluence_features(snaps, len(snaps) - 1))
+    # RC-332: this lane no longer chooses a population either. It had its own time-bounded
+    # SELECT — correct, and still a second place the choice was made. The authority owns the
+    # query, the window and the absent encoding; the serve path supplies the bar.
+    out.update(confluence_features_for_bar(str(tk), float(ts), path))
     return out
 
 
-def attach_net_gamma_prev_column(df: pd.DataFrame) -> pd.DataFrame:
-    """Add net_gamma_prev per (ticker, ts_utc) for ΔGEX train/serve formula parity."""
+def attach_net_gamma_prev_column(df: pd.DataFrame, db_path: str | None = None) -> pd.DataFrame:
+    """Add net_gamma_prev = the RAW immediately-prior 1m bar's net_gamma per (ticker, ts).
+
+    RC-342: THE batch authority for the same semantic serve reads one row at a time via
+    ``fetch_prior_net_gamma`` — the prior bar in the raw ``SERVE_SNAPSHOT_TABLE``, ts_utc
+    strictly less, NOT a shift over the caller's (RTH-filtered) frame. The old shift
+    gap-jumped to the prior day's RTH close at each 09:30 while serve saw the true prior
+    1m bar, so the same feature name carried two population definitions (the RC-328 class).
+    One raw as-of merge per ticker gives every frame row the identical value serve would.
+    """
     if df is None or len(df) == 0 or "net_gamma" not in df.columns:
         return df
     if "ticker" not in df.columns or "ts_utc" not in df.columns:
         return df
+    from timeframe_config import CANONICAL_TIMEFRAME
+
     out = df.copy()
-    order = out.sort_values(["ticker", "ts_utc"]).index
-    ng = pd.to_numeric(out["net_gamma"], errors="coerce")
-    prev = ng.loc[order].groupby(out.loc[order, "ticker"]).shift(1)
-    out["net_gamma_prev"] = prev.reindex(out.index).to_numpy(dtype=float)
+    ts_all = pd.to_numeric(out["ts_utc"], errors="coerce")
+    prev = pd.Series(np.nan, index=out.index, dtype=float)
+    path = db_path or _db_default_path()
+    for tk, grp in out.groupby("ticker", sort=False):
+        gts = pd.to_numeric(grp["ts_utc"], errors="coerce").dropna()
+        if gts.empty:
+            continue
+        rows = _read_with_retry(
+            path,
+            f"SELECT ts_utc, net_gamma FROM {SERVE_SNAPSHOT_TABLE} "
+            "WHERE ticker = ? AND timeframe = ? AND ts_utc < ? ORDER BY ts_utc ASC",
+            (ticker_storage_key(tk), CANONICAL_TIMEFRAME, float(gts.max())),  # RC-345/F25: canonical DB bind (net_gamma prior flow)
+            op="attach_net_gamma_prev_column", all_rows=True,
+        )
+        raw = pd.DataFrame(
+            [(float(r[0]), r[1]) for r in (rows or []) if r[0] is not None],
+            columns=["ts_utc", "net_gamma"])
+        if raw.empty:
+            continue
+        raw["net_gamma"] = pd.to_numeric(raw["net_gamma"], errors="coerce")
+        left = pd.DataFrame({"ts_utc": gts.to_numpy(dtype=float)}, index=gts.index
+                            ).sort_values("ts_utc")
+        merged = pd.merge_asof(left, raw.sort_values("ts_utc"), on="ts_utc",
+                               direction="backward", allow_exact_matches=False)
+        prev.loc[left.index] = merged["net_gamma"].to_numpy(dtype=float)
+    out["net_gamma_prev"] = prev.to_numpy(dtype=float)
     return out
 
 
@@ -629,7 +814,7 @@ def attach_5m_additive_context(
         return df
 
     path = db_path or _db_default_path()
-    tickers = sorted({str(x).upper().strip() for x in df["ticker"].dropna().unique()})
+    tickers = sorted({ticker_storage_key(x) for x in df["ticker"].dropna().unique() if str(x).strip()})  # RC-345/F25: canonical DB bind (deprecated path, kept consistent)
     if not tickers:
         return df
 
@@ -667,7 +852,7 @@ def attach_5m_additive_context(
     work = df.copy()
     work["_asof_row_order"] = np.arange(len(work), dtype=np.int64)
     work["ticker"] = work["ticker"].map(
-        lambda x: str(x).upper().strip() if pd.notna(x) and str(x).strip() else x
+        lambda x: ticker_storage_key(x) if pd.notna(x) and str(x).strip() else x  # RC-345/F25: join key == canonical DB identity
     )
     work["ts_utc"] = pd.to_numeric(work["ts_utc"], errors="coerce").astype("float64")
     if work["ts_utc"].isna().any():
@@ -679,7 +864,7 @@ def attach_5m_additive_context(
 
     m5_keys = m5.copy()
     m5_keys["ticker"] = m5_keys["ticker"].map(
-        lambda x: str(x).upper().strip() if pd.notna(x) and str(x).strip() else x
+        lambda x: ticker_storage_key(x) if pd.notna(x) and str(x).strip() else x  # RC-345/F25: join key == canonical DB identity
     )
     m5_keys["ts_utc"] = pd.to_numeric(m5_keys["ts_utc"], errors="coerce").astype("float64")
     m5_keys = m5_keys.loc[m5_keys["ts_utc"].notna()].copy()

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from time_et import ET, is_trading_day_et  # RC-278: the calendar authority, on the WRITE side
+from instrument_identity import ticker_storage_key
 
 log = logging.getLogger(__name__)
 
@@ -137,7 +138,7 @@ def latest_accrual_rows(
             "SELECT ts_utc, et_minute, spot, n_strikes, session_volume, per_strike_json, source "
             "FROM option_chain_accrual WHERE ticker=? AND et_date=? "
             "ORDER BY ts_utc DESC LIMIT 1",
-            (str(ticker).upper().strip(), day),
+            (ticker_storage_key(ticker), day),  # RC-345/F25: canonical DB bind
         ).fetchone()
     except sqlite3.Error:
         return None
@@ -197,7 +198,7 @@ def persist_chain_accrual(
     # inside one, and `is_trading_day_et` is the single authority get_forces already reads with.
     if not is_trading_day_et(et_date):
         return {"status": "skipped", "reason": "non_trading_day", "et_date": et_date}
-    tk = str(ticker).upper().strip()
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical option-chain storage identity
     if not tk:
         return {"status": "skipped", "reason": "no_ticker"}
     if not accrual_window(mins):
@@ -279,7 +280,7 @@ def has_morning_full_capture(
             return False
         hit = conn.execute(
             "SELECT 1 FROM option_chain_morning_full WHERE ticker=? AND et_date=?",
-            (str(ticker).upper(), str(et_date)),
+            (ticker_storage_key(ticker), str(et_date)),  # RC-345/F25: canonical DB bind
         ).fetchone()
         return hit is not None
     except sqlite3.Error:
@@ -343,7 +344,7 @@ def maybe_persist_morning_full_chain(
     # is what kept the leak invisible from every surface while the table filled.
     if not is_trading_day_et(et_date):
         return {"status": "skipped", "reason": "non_trading_day", "et_date": et_date}
-    ticker_u = str(ticker).upper()
+    ticker_u = ticker_storage_key(ticker)  # RC-345/F25: canonical option-chain storage identity
     if mins < MORNING_START_MINS or mins > UNIVERSAL_CAPTURE_END_MINS:
         return {"status": "skipped", "reason": "outside_capture_span", "et_date": et_date, "mins": mins}
     if has_morning_full_capture(db_path, ticker_u, et_date):

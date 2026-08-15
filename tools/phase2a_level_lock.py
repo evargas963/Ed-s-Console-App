@@ -378,20 +378,27 @@ def _tracked_or_staged(repo: Path) -> set[str]:
 
 
 def _python_files(repo: Path) -> list[Path]:
-    tracked = _tracked_or_staged(repo)
+    """Tracked .py files under SCAN_DIRS. SCOPE IS THE INDEX (RC-274 -> RC-286 -> RC-307).
+
+    This used to walk the filesystem and then drop whatever was not tracked. That produced
+    the right answer, but it still enumerated disk to do it — so the gate's cost, and its
+    exposure to scratch litter, scaled with the working directory rather than the
+    repository. Iterating the tracked set directly is the same answer without the walk.
+    Root ("" in SCAN_DIRS) stays NON-recursive, as the glob/rglob split encoded.
+    """
     seen: list[Path] = []
-    for d in SCAN_DIRS:
-        base = repo / d if d else repo
-        if not base.is_dir():
+    for rel_s in _tracked_or_staged(repo):
+        if not rel_s.endswith(".py"):
             continue
-        it = base.glob("*.py") if not d else base.rglob("*.py")
-        for p in it:
-            rel = p.relative_to(repo)
-            if set(rel.parts[:-1]) & SKIP_PARTS:
-                continue
-            if rel.as_posix() not in tracked:
-                continue                       # untracked scratch is not this repository
-            seen.append(p)
+        rel = Path(rel_s)
+        parents = rel.parts[:-1]
+        if set(parents) & SKIP_PARTS:
+            continue
+        in_scope = (not parents and "" in SCAN_DIRS) or (
+            bool(parents) and parents[0] in SCAN_DIRS)
+        if not in_scope:
+            continue
+        seen.append(repo / rel)
     return sorted(set(seen))
 
 

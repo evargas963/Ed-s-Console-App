@@ -20,6 +20,7 @@ from calibration.v2_a1_calibration import (
 from calibration.v2_a1_conformal import (
     build_a1_conformal_artifact,
 )
+from instrument_identity import ticker_storage_key
 from v2_decision.a1_conformal_artifact_contract import (
     ARTIFACT_LIFECYCLE_SCHEMA_VERSION,
     artifact_output_path,
@@ -123,7 +124,7 @@ def produce_a1_conformal_artifact(
     rows = [
         row
         for row in load_a1_calibration_rows(Path(db_path), horizon=str(horizon))
-        if str(row.get("ticker") or "").upper() == str(ticker).upper()
+        if ticker_storage_key(row.get("ticker")) == ticker_storage_key(ticker)  # RC-345/F25: canonical calibration-row match (index built on right rows)
     ]
     calibration_artifact = fit_a1_isotonic_artifact(rows, horizon=str(horizon), split=split)
     model = calibration_artifact.get("model")

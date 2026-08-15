@@ -34,6 +34,10 @@ Usage: python tools/feature_curation_gate.py [--tickers SPY,QQQ,IWM] [--null-thr
 """
 from __future__ import annotations
 
+# RC-345/F25: stack-eval model-dir identity consumes the ONE canonical ticker authority so
+# bare 'SPX' and '$SPX' resolve to the same bundle the writers/promotion produced.
+from instrument_identity import ticker_storage_key
+
 import argparse
 import json
 import os
@@ -604,10 +608,10 @@ def _ablation_pool_tickers(manifest: dict, tickers: list[str] | None = None) -> 
     from governed_stack_contract import ABLATION_ANCHOR_TICKERS
 
     if tickers:
-        return [t.strip().upper() for t in tickers if t.strip()]
+        return [ticker_storage_key(t) for t in tickers if t.strip()]  # RC-345/F25
     method = manifest.get("ablation_method") or {}
     pool = method.get("pool_tickers") or method.get("anchors") or list(ABLATION_ANCHOR_TICKERS)
-    return [str(t).strip().upper() for t in pool if str(t).strip()]
+    return [ticker_storage_key(str(t)) for t in pool if str(t).strip()]  # RC-345/F25
 
 
 def _atomic_column_for_group(group: dict) -> str | None:
@@ -792,7 +796,7 @@ def build_ablation_enriched_row_sample(
     opts = StackBundleEvalOptions(max_rows=max_rows_per_ticker)
     rows: list[dict] = []
     for t in pool:
-        tu = t.strip().upper()
+        tu = ticker_storage_key(t)  # RC-345/F25
         chunk = _load_chronological_rth_rows(db_path, tu, target_column=target, options=opts)
         for r in chunk:
             tagged = dict(r)
@@ -879,7 +883,7 @@ def audit_ablation_ingest_purity(
     opts = StackBundleEvalOptions(max_rows=40)
     raw_rows: list[dict] = []
     for t in pool:
-        tu = t.strip().upper()
+        tu = ticker_storage_key(t)  # RC-345/F25
         chunk = _load_chronological_rth_rows(db_path, tu, target_column=target, options=opts)
         for r in chunk[:20]:
             tagged = dict(r)
@@ -1125,7 +1129,7 @@ def _active_model_dir_for_ablation(
 
     models_dir = _repo_models_dir()
     hz = normalize_ml_horizon_slug(horizon_slug)
-    t = ticker.strip().upper()
+    t = ticker_storage_key(ticker)  # RC-345/F25: callee consumes canonical identity directly
     bundle = active_bundle_dir(t, hz, models_dir=models_dir)
     if not bundle.is_dir():
         return None, [f"missing bundle dir: {bundle}"]
@@ -1141,7 +1145,7 @@ def _active_model_dir_for_ablation(
 
 
 def _parallel_model_dir_for_stack_eval(ticker: str) -> Path:
-    return _repo_models_dir() / "parallel" / ticker.strip().upper()
+    return _repo_models_dir() / "parallel" / ticker_storage_key(ticker)  # RC-345/F25: callee canonical, no caller masking
 
 
 def _bundle_has_scorable_base_artifacts(ticker: str, horizon_slug: str, bundle: Path) -> bool:
@@ -1159,7 +1163,7 @@ def _resolve_model_dir_for_stack_eval(ticker: str, horizon_slug: str) -> Path | 
     from ml_horizon import normalize_ml_horizon_slug
 
     prefer = (os.environ.get("ED_STACK_EVAL_BUNDLE") or "").strip().lower()
-    t = ticker.strip().upper()
+    t = ticker_storage_key(ticker)  # RC-345/F25: one canonical model-dir identity
     hz = normalize_ml_horizon_slug(horizon_slug)
     models_dir = _repo_models_dir()
     parallel = _parallel_model_dir_for_stack_eval(t)
@@ -1216,7 +1220,7 @@ def _whole_stack_cell_key(
     if model_family:
         return f"{model_family}|{horizon_slug}|{group_id}"
     if anchor_ticker:
-        return f"{anchor_ticker.strip().upper()}|{horizon_slug}|{group_id}"
+        return f"{ticker_storage_key(anchor_ticker)}|{horizon_slug}|{group_id}"  # RC-345/F25
     return f"{horizon_slug}|{group_id}"
 
 
@@ -1247,7 +1251,7 @@ def _whole_stack_resume_cell(
 
 
 def _stack_authority_cell_key(anchor_ticker: str, horizon_slug: str) -> str:
-    return f"{anchor_ticker.strip().upper()}|{horizon_slug}|stack_authority"
+    return f"{ticker_storage_key(anchor_ticker)}|{horizon_slug}|stack_authority"  # RC-345/F25
 
 
 def _index_whole_stack_cells(cells: list[dict]) -> dict[str, dict]:
@@ -1313,7 +1317,7 @@ def run_ablation_preflight(
         try:
             row = con.execute(
                 "SELECT COUNT(*) FROM snapshots WHERE ticker=?",
-                (anchors[0].upper(),),
+                (ticker_storage_key(anchors[0]),),  # RC-345/F25: DB bind consumes canonical identity
             ).fetchone()
             result["snapshot_rows_sample_ticker"] = int(row[0]) if row else 0
             if result["snapshot_rows_sample_ticker"] < 100:
@@ -2036,7 +2040,7 @@ def run_stack_layer_ablation_cell(
     # of emitting a misleading zero (the 'reads as zero' failure mode at the stack layer).
     from ml_horizon import normalize_ml_horizon_slug as _norm_hz
 
-    _t = ticker.strip().upper()
+    _t = ticker_storage_key(ticker)  # RC-345/F25: meta_present identity canonical
     _hz = _norm_hz(horizon_slug)
     meta_present = (model_dir / f"meta_{_t}_{_hz}.pkl").is_file()
     if "meta" in lifts and not meta_present:
@@ -2229,7 +2233,7 @@ def build_stack_layer_ablation_section(
 
 
 def _per_model_cell_key(anchor: str, model: str, horizon: str, group_id: str) -> str:
-    return f"{anchor.strip().upper()}|{model}|{horizon}|{group_id}"
+    return f"{ticker_storage_key(anchor)}|{model}|{horizon}|{group_id}"  # RC-345/F25: canonical identity in the key-builder itself
 
 
 def _index_per_model_cells(cells: list[dict]) -> dict[str, dict]:
@@ -2320,7 +2324,7 @@ def build_whole_stack_feature_ablation_section(
                     if bundle is None:
                         missing.append(t)
                     else:
-                        model_dir_by_ticker[t] = bundle
+                        model_dir_by_ticker[ticker_storage_key(t)] = bundle  # RC-345/F25: canonical key
                 if missing:
                     cached = {
                         "status": "skipped",
@@ -2547,7 +2551,7 @@ def _drop_members_for_model(
 
 
 def _confirm_cell_key(anchor: str, model: str, horizon: str) -> str:
-    return f"{anchor.strip().upper()}|{model}|{horizon}"
+    return f"{ticker_storage_key(anchor)}|{model}|{horizon}"  # RC-345/F25: canonical identity in the key-builder itself
 
 
 def _holdout_early_stop_patience(*, model: str) -> int:
@@ -2579,7 +2583,7 @@ def build_per_model_confirm_pass_section(
     TOL = 0.005
     from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
 
-    anchors = [t.strip().upper() for t in (tickers or manifest["ablation_method"]["anchors"])]
+    anchors = [ticker_storage_key(t) for t in (tickers or manifest["ablation_method"]["anchors"]) if str(t).strip()]  # RC-345/F25: anchor identity canonical, not local .upper()
     cells = cells_out if cells_out is not None else []
     resume_cells = resume_cells or {}
     _prep = {
@@ -2661,7 +2665,7 @@ def build_per_model_confirm_pass_section(
 
 
 def _whole_stack_confirm_cell_key(anchor: str, horizon: str, group_id: str) -> str:
-    return f"{anchor.strip().upper()}|{horizon}|{group_id}"
+    return f"{ticker_storage_key(anchor)}|{horizon}|{group_id}"  # RC-345/F25: canonical identity in the key-builder itself
 
 
 def build_whole_stack_confirm_pass_section(
@@ -2682,7 +2686,7 @@ def build_whole_stack_confirm_pass_section(
     )
 
     groups_by_id = {g["group_id"]: g for g in manifest.get("groups", [])}
-    anchors = [t.strip().upper() for t in (tickers or manifest["ablation_method"]["anchors"])]
+    anchors = [ticker_storage_key(t) for t in (tickers or manifest["ablation_method"]["anchors"]) if str(t).strip()]  # RC-345/F25: anchor identity canonical, not local .upper()
     cells = cells_out if cells_out is not None else []
     resume_cells = resume_cells or {}
     eval_opts = _ablation_eval_options()
@@ -4464,7 +4468,7 @@ def run_survivor_stack_refit_backtest(
     )
 
     _db = db_path or str(DB_PATH)
-    anchors = [t.strip().upper() for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS)]
+    anchors = [ticker_storage_key(t) for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS) if str(t).strip()]  # RC-345/F25: anchor identity canonical, not local .upper()
     min_n = int(
         min_paired_rows
         if min_paired_rows is not None
@@ -4623,7 +4627,7 @@ def run_survivor_validation_run(
     from ml_train import engineer_features, load_data
 
     _db = db_path or str(DB_PATH)
-    anchors = [t.strip().upper() for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS)]
+    anchors = [ticker_storage_key(t) for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS) if str(t).strip()]  # RC-345/F25: anchor identity canonical, not local .upper()
     manifest = load_ablation_manifest()
     edge = run_survivor_edge_probe(tickers=anchors)
     out: dict = {
@@ -4738,7 +4742,7 @@ def run_survivor_edge_probe(
         COMPOUND_ABLATION_VOID_REASON,
     )
 
-    anchors = [t.strip().upper() for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS)]
+    anchors = [ticker_storage_key(t) for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS) if str(t).strip()]  # RC-345/F25: anchor identity canonical, not local .upper()
     out: dict = {
         "schema_version": "1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -4879,7 +4883,7 @@ def validate_survivor_retrain_gate_env(environ: dict | None = None) -> dict:
     if not tickers_raw:
         issues.append("missing:ED_ML_SCHEDULER_TICKERS")
     else:
-        got = {t.strip().upper() for t in tickers_raw.split(",") if t.strip()}
+        got = {ticker_storage_key(t) for t in tickers_raw.split(",") if t.strip()}  # RC-345/F25: identity comparison uses canonical key
         want = set(SURVIVOR_RETRAIN_DEFAULT_TICKERS)
         if got != want:
             issues.append(f"ED_ML_SCHEDULER_TICKERS must be exactly {sorted(want)} got {sorted(got)}")
@@ -4898,7 +4902,7 @@ def run_survivor_retrain_preflight(
         resolve_ablation_drop_group_ids,
     )
 
-    anchors = [t.strip().upper() for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS)]
+    anchors = [ticker_storage_key(t) for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS) if str(t).strip()]  # RC-345/F25: anchor identity canonical, not local .upper()
     dbp = Path(db_path)
     out: dict = {
         "ready": True,
@@ -5023,7 +5027,7 @@ def build_survivor_retrain_monitor_report(
 
     from active_bundle_contract import check_active_bundle_complete, scheduler_active_root
 
-    anchors = [t.strip().upper() for t in (tickers or list(SURVIVOR_RETRAIN_DEFAULT_TICKERS))]
+    anchors = [ticker_storage_key(t) for t in (tickers or list(SURVIVOR_RETRAIN_DEFAULT_TICKERS)) if str(t).strip()]  # RC-345/F25: anchor identity canonical, not local .upper()
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     lines: list[str] = ["=" * 72, f"SURVIVOR RETRAIN MONITOR  {ts}", "=" * 72]
 
@@ -5101,7 +5105,8 @@ def build_survivor_retrain_monitor_report(
     lines.extend(["", "Incumbent promotion_score:"])
     for t in anchors:
         for hz in REQUIRED_ABLATION_HORIZONS:
-            mp = scheduler_active_root(models, hz) / t / f"xgb_{t}_{hz}_meta.json"
+            _tc = ticker_storage_key(t)  # RC-345/F25: artifact-dir identity canonical
+            mp = scheduler_active_root(models, hz) / _tc / f"xgb_{_tc}_{hz}_meta.json"
             if not mp.is_file():
                 continue
             d = json.loads(mp.read_text(encoding="utf-8"))
@@ -5276,19 +5281,19 @@ def main():
         raise SystemExit(0 if chk["ok"] else 1)
 
     if a.survivor_retrain_preflight:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         pf = run_survivor_retrain_preflight(db_path=str(DB_PATH), tickers=tickers)
         print(json.dumps(pf, indent=2))
         raise SystemExit(0 if pf["ready"] else 1)
 
     if a.survivor_inference_backtest:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         bt = run_survivor_inference_backtest(tickers=tickers, db_path=str(DB_PATH))
         print(json.dumps(bt, indent=2))
         raise SystemExit(0 if bt.get("ready") else 1)
 
     if a.survivor_stack_refit_backtest:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         bt = run_survivor_stack_refit_backtest(tickers=tickers, db_path=str(DB_PATH))
         print(json.dumps(bt, indent=2))
         raise SystemExit(0 if bt.get("ready_for_production") else 1)
@@ -5325,19 +5330,19 @@ def main():
         raise SystemExit(0)
 
     if a.survivor_edge_probe:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         probe = run_survivor_edge_probe(tickers=tickers, min_mcc_edge=float(a.survivor_edge_min_mcc))
         print(json.dumps(probe, indent=2))
         raise SystemExit(0 if probe.get("ready_for_full_retrain") else 1)
 
     if a.survivor_validation_run:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         val = run_survivor_validation_run(tickers=tickers)
         print(json.dumps(val, indent=2))
         raise SystemExit(0 if val.get("ready_for_full_retrain") else 1)
 
     if a.survivor_retrain_monitor:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         run_survivor_retrain_monitor_loop(
             tickers=tickers or None,
             interval_min=float(a.monitor_interval_min),
@@ -5346,7 +5351,7 @@ def main():
         raise SystemExit(0)
 
     if a.stack_authority_rescore:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         result = build_stack_authority_rescore_report(
             manifest_path=Path(a.manifest_path),
             report_path=Path(a.report_path),
@@ -5365,7 +5370,7 @@ def main():
     if a.ablation_audit:
         from tools.ablation_integrity import run_ablation_integrity_audit
 
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         result = run_ablation_integrity_audit(
             db_path=str(DB_PATH),
             tickers=tickers or None,
@@ -5396,13 +5401,13 @@ def main():
 
     if a.ablation_preflight:
         manifest = load_ablation_manifest(Path(a.manifest_path))
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         pf = run_ablation_preflight(manifest, db_path=str(DB_PATH), tickers=tickers)
         print(json.dumps(pf, indent=2))
         raise SystemExit(0 if pf["ready"] else 1)
 
     if a.ablation_confirm:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         report_path = Path(a.report_path)
         manifest = load_ablation_manifest(Path(a.manifest_path))
         pf = run_ablation_preflight(manifest, db_path=str(DB_PATH), tickers=tickers)
@@ -5440,7 +5445,7 @@ def main():
         raise SystemExit(0)
 
     if a.ablation or a.ablation_dry_run:
-        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        tickers = [ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()]  # RC-345/F25: CLI ticker list canonical
         report_path = Path(a.report_path)
         if a.ablation_dry_run:
             # FOOTGUN FIX: a dry-run has no scored data — it must NEVER overwrite the live scored
@@ -5488,7 +5493,7 @@ def main():
         )
         return
 
-    out = run([t.strip().upper() for t in a.tickers.split(",")], a.null_thresh, a.cluster_thresh)
+    out = run([ticker_storage_key(t) for t in a.tickers.split(",") if t.strip()], a.null_thresh, a.cluster_thresh)  # RC-345/F25: CLI ticker list canonical
     c = out["counts"]
     print(f"rows={out['rows_analyzed']}  registered={c['registered_candidates']}")
     print(f"DEAD missing-col={c['missing_columns_DEAD']}  near-null={c['near_null_DEAD']}")

@@ -1,6 +1,10 @@
 """Governed active promotion execution (PR4 P3-3) — shared manual + scheduler path."""
 from __future__ import annotations
 
+# RC-345/F25: promotion artifact/bundle identity consumes the ONE canonical ticker authority
+# (bare 'SPX' and '$SPX' resolve to the same promotion source/destination the writers/readers use).
+from instrument_identity import ticker_storage_key
+
 import contextvars
 import json
 import logging
@@ -231,7 +235,7 @@ def reconcile_pre_b_incumbent_scores(
     targets: list[tuple[str, str, Path, float, Any]] = []
 
     for ticker in tickers:
-        tku = str(ticker).upper()
+        tku = ticker_storage_key(ticker)  # RC-345/F25
         for horizon in horizons:
             hz = normalize_ml_horizon_slug(horizon)
             meta_path = scheduler_active_root(Path(model_dir), hz) / tku / f"xgb_{tku}_{hz}_meta.json"
@@ -314,7 +318,7 @@ def ensure_survivor_retrain_incumbent_reset_at_run_start(
     if _survivor_retrain_run_reset_done:
         return {"skipped": True, "reason": "already_reset_this_process", "reset_count": 0}
     _survivor_retrain_run_reset_done = True
-    tickers_u = [str(t).upper() for t in tickers]
+    tickers_u = [ticker_storage_key(t) for t in tickers]  # RC-345/F25
     result = reconcile_pre_b_incumbent_scores(
         model_dir,
         tickers_u,
@@ -344,7 +348,7 @@ def meta_basis_blocks_auto_promotion(src_dir, ticker: str, hz: str):
     from ml_scheduler import read_meta_training_basis_manifest
 
     d = _P(src_dir)
-    if not (d / f"meta_{str(ticker).upper()}_{hz}.pkl").is_file():
+    if not (d / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl").is_file():  # RC-345/F25
         return None  # no meta artifact in the bundle — nothing to gate
     doc = read_meta_training_basis_manifest(d, ticker, hz)
     if doc is None:
@@ -475,7 +479,7 @@ def execute_promotion_if_eligible(
 
     is_manual = manual_intent is not None
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)  # RC-345/F25
 
     if manifest is None or promotion_record is None:
         manifest, promotion_record = validate_persisted_governed_artifacts_or_raise(model_dir, hz, tku)

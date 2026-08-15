@@ -416,7 +416,7 @@ RV_RTH_MINUTES_PER_DAY: int = RTH_SESSION_MINUTES
 
 
 def compute_realized_vol(
-    closes: List[float], *, annualize: bool = True, bar_minutes: float = 5.0
+    closes: List[float], *, annualize: bool = True, bar_minutes: float
 ) -> float | None:
     """
     Realized (historical) volatility from close prices.
@@ -432,9 +432,10 @@ def compute_realized_vol(
     Args:
         closes:      list of close prices (chronological order)
         annualize:   if True, annualize; if False, return per-bar vol
-        bar_minutes: bar interval in minutes for the annualization factor
-                     (callers must pass the interval their closes come from;
-                     default 5.0 preserves the legacy 5-minute factor)
+        bar_minutes: REQUIRED bar interval in minutes for the annualization factor
+                     (callers MUST pass the interval their closes come from). RC-345 / F17:
+                     the former default 5.0 was a silent-default hazard — a caller passing
+                     1-minute closes without it under-scaled RV by sqrt(5). No default now.
 
     Returns annualized realized volatility as percentage (e.g. 18.5 for 18.5%),
     or None if insufficient data.
@@ -791,6 +792,8 @@ def blend_garch_sigma(
     iv: float | None,
     realized_vol: float | None,
     spot: float | None = None,
+    *,
+    bar_minutes: float,
 ) -> list:
     """
     Blend GARCH per-bar forecasts with IV and realized vol.
@@ -799,20 +802,42 @@ def blend_garch_sigma(
     Weights: 60% GARCH + 25% IV + 15% realized vol.
     Includes sigma floor at 0.5 × realized_vol to prevent collapse.
 
+    UNIT CONTRACT (RC-334). Every term here is a sigma PER BAR, and a bar is
+    ``bar_minutes`` long. `garch_sigmas` already arrive in that unit because
+    `compute_garch_forecast` returns sigma per input bar; `iv` and `realized_vol` arrive
+    ANNUALIZED and are de-annualized here, so this function must be told the interval.
+
+    `bar_minutes` is a REQUIRED KEYWORD with no default, deliberately. It was previously
+    hardcoded to 5.0 while the only caller passes one-minute closes from the 1m candle
+    accumulator, so the IV and RV components — 40% of the blend — entered sqrt(5) = 2.236x
+    too large, and the sigma FLOOR with them. Measured on a realistic SPY input (20%
+    annualized GARCH sigma, IV 15%, RV 13%): the blend returned 0.00078934 where the
+    correct one-minute value is 0.00056460, an overstatement of 1.3981x. Monte Carlo
+    consumes the result directly as per-bar sigma at ``monte_carlo.BAR_MINUTES``, so that
+    error propagated into every simulated band. A default value is what let the mismatch
+    sit unnoticed; requiring the caller to state the interval is the fix.
+
     Args:
-        garch_sigmas: list of per-bar sigma values from compute_garch_forecast
+        garch_sigmas: per-bar sigma values from compute_garch_forecast, at `bar_minutes`
         iv:           annualized implied volatility (decimal, e.g. 0.20)
         realized_vol: annualized realized volatility (decimal)
         spot:         current price (for annualization context)
+        bar_minutes:  length of one bar, and therefore the unit of every sigma here.
+                      MUST equal the interval of the closes given to
+                      `compute_garch_forecast` AND `monte_carlo.BAR_MINUTES`.
 
     Returns:
         List of blended per-bar sigma values (same length as garch_sigmas).
     """
+    if not bar_minutes or float(bar_minutes) <= 0:
+        raise ValueError(
+            f"blend_garch_sigma: bar_minutes must be a positive interval, got "
+            f"{bar_minutes!r}. Without it the annualized IV/RV terms cannot be placed on "
+            f"the same scale as the GARCH terms (RC-334).")
     # Convert IV and RV from annualized to per-bar scale
     # Per-bar: sigma_bar = sigma_annual * sqrt(dt)
-    # dt = 5 minutes / (252 * 6.5 * 60 minutes)
-    minutes_per_year = 252 * 6.5 * 60
-    dt = 5.0 / minutes_per_year
+    minutes_per_year = TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY * 60
+    dt = float(bar_minutes) / minutes_per_year
     sqrt_dt = _math.sqrt(dt)
 
     iv_bar = (iv * sqrt_dt) if (iv is not None and iv > 0) else None

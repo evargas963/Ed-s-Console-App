@@ -251,6 +251,7 @@ from math_exposure import (
     compute_iwm_confluence,
     compute_volume_oi_ratio, compute_option_flow_imbalance,
     compute_smart_money_signal,
+    flow_imbalance_normalized_with_fallback,
 )
 from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
 from market_context import (
@@ -3622,8 +3623,24 @@ GEX_NEAR_SPOT_RADIUS: float = 2.0   # strikes within $2 of spot are "near spot"
 # Void factor distance falloff
 VOID_DIST_FALLOFF:   float = 5.0    # $5 from void edge → factor decays to 0
 
-# GARCH horizon
-GARCH_HORIZON_BARS:  int   = 13     # forward-looking bars for GARCH forecast (~1hr RTH)
+# GARCH horizon — DERIVED from the governed horizons, never a literal (RC-334).
+#
+# This was `13  # ~1hr RTH`, a comment that was true when BAR_MINUTES was 5 and false after
+# the 2026-07-08 realignment to BAR_MINUTES=1, where 13 bars is 13 minutes. Monte Carlo only
+# uses the GARCH sigmas when it receives at least `horizon_bars` of them and otherwise falls
+# back to the flat IV/RV blend WITHOUT saying so, so the shortfall did not surface as an
+# error — it surfaced as a different volatility model. MEASURED against
+# `horizon_slug_to_mc_bars`: 1c->1 and 5c->5 were covered, while 15c->15 and 60c->60 — half
+# of ALL_GOVERNED_HORIZONS — plus the 15-minute Key Levels display row never used GARCH at
+# all. Sizing this from the horizon set means adding a horizon cannot silently un-GARCH it.
+def _garch_horizon_bars() -> int:
+    from governed_stack_contract import horizon_slug_to_mc_bars
+    from ml_horizon import ALL_GOVERNED_HORIZONS
+
+    return max(horizon_slug_to_mc_bars(s) for s in ALL_GOVERNED_HORIZONS)
+
+
+GARCH_HORIZON_BARS:  int   = _garch_horizon_bars()   # 60 bars = the longest governed horizon
 
 # IV history lookback for IV rank / percentile
 IV_HISTORY_LOOKBACK: int   = 5000   # max rows pulled from DB for IV rank calc
@@ -4097,7 +4114,7 @@ def _load_persisted_tickers() -> list[str]:
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         for row in db.logging_universe_list_rows():
             if row.get("category") in ("user_persisted", "pinned"):
-                t = (row.get("ticker") or "").upper().strip()
+                t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical enrolled-ticker identity
                 if t and t not in tickers:
                     tickers.append(t)
         try:
@@ -4143,10 +4160,10 @@ def _hydrate_logger_tickers_from_db() -> None:
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
-        merged = list(CORE_TICKERS)
+        merged = [ticker_storage_key(t) for t in CORE_TICKERS]  # RC-345/F25: canonical logger hydration
         for row in db.logging_universe_list_rows():
             if row.get("category") in ("user_persisted", "pinned"):
-                t = (row.get("ticker") or "").upper().strip()
+                t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical (legacy bare rows resolve on-read)
                 if t and t not in merged:
                     merged.append(t)
         try:
@@ -4310,7 +4327,7 @@ def _register_tracked_ticker(ticker: str, *, enrollment_source: str = "ui_auto")
     Issue 22: user symbols persist in EdDB.logging_universe (survives restarts).
     Returns True if newly added to the logger rotation list.
     """
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: in-memory logger identity == canonical DB enrollment identity
     if not t or len(t) > 10:
         return False
     added = _add_logger_ticker(t, enrollment_source=enrollment_source)
@@ -5104,7 +5121,7 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
         arch_path = Path(APP_DIR) / "models" / "arch_state.json"
         if arch_path.exists():
             arch = json.loads(arch_path.read_text(encoding="utf-8"))
-            ent = arch.get(str(ticker).upper().strip()) if isinstance(arch, dict) else None
+            ent = arch.get(ticker_storage_key(ticker)) if isinstance(arch, dict) else None  # RC-345/F25: reader key == canonical writer key
             if isinstance(ent, dict):
                 arch_ent = ent
                 active = str(ent.get("active_architecture") or "").strip().lower()
@@ -5304,7 +5321,13 @@ def _selected_schwab_days_to_expiration(
     preferred_strike: float | None = None,
     preferred_side: str | None = None,
 ) -> int | None:
+    # RC-345 / F41: selected-expiry identity is MANDATORY. Without it there is NO selected
+    # contract to read a DTE from — return governed absence, never search every expiry
+    # (which would answer with some other expiry's DTE). The side/strike-less fallback below
+    # is legitimate ONLY because exp_key is proven present here.
     exp_key = str(selected_exp or "")[:10]
+    if len(exp_key) != 10:
+        return None
     side_key = str(preferred_side or "").upper().strip()
     try:
         strike_key = float(preferred_strike) if preferred_strike is not None else None
@@ -5315,7 +5338,7 @@ def _selected_schwab_days_to_expiration(
     matches: list[dict] = []
     for ct in contracts or []:
         exp = str(ct.get("expirationDate") or "")[:10]
-        if exp_key and exp != exp_key:
+        if exp != exp_key:
             continue
         if side_key in ("CALL", "PUT") and str(ct.get("putCall") or "").upper().strip() != side_key:
             continue
@@ -6799,8 +6822,12 @@ def _fetch_state(
         # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
         # outcome, no operator-actionable signal (success and failure logs below carry it).
         log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
+        # RC-345 / F18: charm measures the net-charm DIRECTION, not a target STRIKE. It must
+        # NOT borrow the net-GEX peak (a gamma quantity) as its drift target — that was a
+        # different-Greek substitution masquerading under the charm name. drift_toward is
+        # WITHHELD (governed absence); the net-GEX peak keeps its own field, net_gex_peak.
         _charm_raw = compute_net_charm(
-            contracts_use, spot_f, selected_exp, drift_toward_strike=_institutional_pin
+            contracts_use, spot_f, selected_exp, drift_toward_strike=None
         )
         _charm_used = _charm_raw.get("contracts_used", 0)
         _charm_err  = _charm_raw.get("error", "")
@@ -6976,6 +7003,7 @@ def _fetch_state(
     }
     _em_up = None
     _em_lo = None
+    _em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
     _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
     _kl_em_anchor = "unavailable"
     _mc_iv_level = None
@@ -7020,8 +7048,18 @@ def _fetch_state(
             _em_iv = compute_expected_move_iv(spot_f, _atm_iv, _hours_rem)
 
         # EM progress (use straddle EM if available, fall back to IV) — no synthetic 6.5h session fill.
-        _em_up = _em_straddle.get("upper") or _em_iv.get("upper")
-        _em_lo = _em_straddle.get("lower") or _em_iv.get("lower")
+        # RC-345 / F06: the operator-facing EM band is ONE of two economically distinct
+        # methodologies — STRADDLE_IMPLIED (market ATM straddle premium) or IV_MODEL
+        # (spot x IV x sqrt(T)). Record WHICH produced the band so no consumer treats the
+        # generic _em_up/_em_lo as method-agnostic or silently mistakes one for the other.
+        if _em_straddle.get("upper") is not None and _em_straddle.get("lower") is not None:
+            _em_up, _em_lo, _em_band_source = (
+                _em_straddle.get("upper"), _em_straddle.get("lower"), "STRADDLE_IMPLIED")
+        elif _em_iv.get("upper") is not None and _em_iv.get("lower") is not None:
+            _em_up, _em_lo, _em_band_source = (
+                _em_iv.get("upper"), _em_iv.get("lower"), "IV_MODEL")
+        else:
+            _em_up, _em_lo, _em_band_source = None, None, "unavailable"
         if _em_up and _em_lo and _today_open:
             _em_progress = compute_em_progress(spot_f, _today_open, _em_up, _em_lo)
 
@@ -7116,8 +7154,26 @@ def _fetch_state(
 
                 _iv_dec = vol_percent_to_decimal(_atm_iv)
                 _rv_dec = vol_percent_to_decimal(_realized_vol)
+                # RC-334: _closes are ONE-MINUTE closes — `_candles_1m.get_bars` above, and
+                # the realized-vol call on this same list passes bar_minutes=1.0 — so the
+                # GARCH sigmas are per-minute and the IV/RV terms must be de-annualized to
+                # the same minute. Monte Carlo then consumes this list DIRECTLY as per-bar
+                # sigma at monte_carlo.BAR_MINUTES, so a third party has to agree too. The
+                # interval is stated from the DATA, not borrowed from MC's constant, and the
+                # agreement is asserted: if MC's bar ever moves, this must fail loudly rather
+                # than keep feeding it minute sigmas under a five-minute name.
+                from monte_carlo import BAR_MINUTES as _MC_BAR_MINUTES
+
+                _GARCH_BAR_MINUTES = 1.0          # _candles_1m is one-minute by construction
+                if float(_MC_BAR_MINUTES) != _GARCH_BAR_MINUTES:
+                    raise RuntimeError(
+                        f"GARCH/Monte-Carlo bar mismatch: sigmas built on "
+                        f"{_GARCH_BAR_MINUTES}-minute closes but monte_carlo.BAR_MINUTES is "
+                        f"{_MC_BAR_MINUTES}. MC consumes these as per-bar sigma, so the "
+                        f"units must match (RC-334).")
                 _garch_sigma_bars = blend_garch_sigma(
-                    _garch_raw, _iv_dec, _rv_dec, spot_f
+                    _garch_raw, _iv_dec, _rv_dec, spot_f,
+                    bar_minutes=_GARCH_BAR_MINUTES,
                 )
     except Exception as e:
         log.debug(f"GARCH forecast calc: {e}")
@@ -7135,6 +7191,20 @@ def _fetch_state(
         _flow_imbalance = compute_option_flow_imbalance(exposures, spot_f)
     except Exception as e:
         log.warning(f"flow_imbalance failed: {e}")
+    # RC-345 / F11: the PERSISTED flow_imbalance field has ONE producer — the fallback
+    # authority math_probabilities.flow_imbalance_normalized_with_fallback — shared by this
+    # live path and backfill_flow_imbalance. Persisting compute_option_flow_imbalance's
+    # book-only 'normalized' left a NULL whenever ATM book size was ~0, which backfill later
+    # filled with the volume fallback: two producers for one column, and a train/serve skew
+    # (models train on backfilled rows, serve on live). When book size is present the wrapper
+    # returns exactly the book value, so live rows with a book are unchanged. The dict
+    # `_flow_imbalance` is still used for its label/display fields.
+    _flow_imb_norm = None
+    _flow_imb_source = "none"  # RC-345 / F11: which economic book produced the value
+    try:
+        _flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback(exposures, spot_f)
+    except Exception as e:
+        log.warning(f"flow_imbalance (one-producer authority) failed: {e}")
     try:
         _smart_money = compute_smart_money_signal(exposures, spot_f)
     except Exception as e:
@@ -7332,6 +7402,9 @@ def _fetch_state(
         if _gamma_flip: _all_levels['gamma_flip'] = float(_gamma_flip)
         if _em_up: _all_levels['em_upper'] = float(_em_up)
         if _em_lo: _all_levels['em_lower'] = float(_em_lo)
+        # RC-345 / F06: the EM band carries its methodology so no consumer treats it as
+        # method-agnostic (STRADDLE_IMPLIED market premium vs IV_MODEL spot*IV*sqrt(T)).
+        if _em_up and _em_lo: _all_levels['em_band_source'] = _em_band_source
         _level_density = compute_level_density(_all_levels, spot_f)
 
         # Sector strength — 3 groups
@@ -7637,7 +7710,7 @@ def _fetch_state(
         atr=_atr,
         garch_sigma_bars=_garch_sigma_bars,
         candle_volume=_c_vol,
-        flow_imbalance=_flow_imbalance.get("normalized") if _flow_imbalance else None,
+        flow_imbalance=_flow_imb_norm,
         spread=_quote_spread,
         iv_rank=_iv_rank,
         smart_money_score=_smart_money.get("score") if _smart_money else None,
@@ -7693,7 +7766,7 @@ def _fetch_state(
             candle_low=_c_low,
             candle_close=_c_close,
             candle_volume=_c_vol,
-            flow_imbalance=(_flow_imbalance.get("normalized") if _flow_imbalance else None),
+            flow_imbalance=_flow_imb_norm,
             net_gamma=ms.net_gamma,
             atr=_atr,
             candle_range_pts=_c_range,
@@ -8021,8 +8094,9 @@ def _fetch_state(
                     _dist_gi  = _d(_gi)
                     _dist_di  = _d(_di)
     
-                    # Pin width (call gamma wall - put gamma wall)
-                    _pin_w = round(_cgw - _pgw, 4) if (_cgw and _pgw) else None
+                    # Pin width (call gamma wall - put gamma wall) — RC-345/F20 one authority
+                    from math_levels import compute_pin_width_pts
+                    _pin_w = compute_pin_width_pts(_cgw, _pgw)
     
                     # Constituents from market context — wrap each fetch independently for partial results
                     mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)
@@ -8331,7 +8405,8 @@ def _fetch_state(
                         bond_signal=getattr(mkt_ctx, 'bond_signal', None),
                         # ── Order Flow Signals ─────────────────────────────────
                         vol_oi_ratio=_vol_oi_ratio.get("ratio"),
-                        flow_imbalance=_flow_imbalance.get("normalized"),
+                        flow_imbalance=_flow_imb_norm,
+                        flow_imbalance_source=_flow_imb_source,  # RC-345/F11: persist economic book identity
                         smart_money_score=_smart_money.get("score"),
                         smart_money_direction=_smart_money.get("direction"),
                         iv_model_spread=_iv_model_spread.get("spread"),
@@ -9081,7 +9156,13 @@ def _fetch_state(
     # ── Order Flow Signals ────────────────────────────────────────────────────
     ms_dict["vol_oi_ratio"]          = _vol_oi_ratio.get("ratio")
     ms_dict["vol_oi_label"]          = _vol_oi_ratio.get("label")
-    ms_dict["flow_imbalance"]        = _flow_imbalance.get("normalized")
+    ms_dict["flow_imbalance"]        = _flow_imb_norm
+    # RC-345 / F11: the SOURCE book travels beside the value so a consumer knows whether this
+    # flow_imbalance is 'book' (bid/ask size), 'volume' (call/put traded volume) or 'none'.
+    # Book and volume imbalance are different economic truths; the numeric value alone cannot
+    # tell them apart, and this authority returns book-preferred with a governed volume
+    # fallback — the same on the live and backfill paths, so the union is train/serve-consistent.
+    ms_dict["flow_imbalance_source"] = _flow_imb_source
     ms_dict["flow_imbalance_label"]  = _flow_imbalance.get("label")
     ms_dict["smart_money_score"]     = _smart_money.get("score")
     ms_dict["smart_money_direction"] = _smart_money.get("direction")
@@ -10951,7 +11032,7 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     only one book for those concepts.
     """
     with _terrain_cache_lock:
-        t = dict(_terrain_cache.get((ticker or "").upper().strip()) or {})
+        t = dict(_terrain_cache.get(ticker_storage_key(ticker)) or {})  # RC-345/F25: read key matches canonical write (tk)
     fresh = bool(t) and not t.get("levels_stale")
     # RC-124: kl_gamma_pin carries the STANDARD pin (total gamma); kl_hvl carries the
     # net-GEX peak (the former "pin", honestly renamed on the card) — the key name is
@@ -10991,8 +11072,16 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     if _em_pts is not None and _em_spot:
         md["kl_em_upper"] = round(float(_em_spot) + float(_em_pts), 2)
         md["kl_em_lower"] = round(float(_em_spot) - float(_em_pts), 2)
+        # RC-345 / F06: the operator-facing kl_em band comes from the terrain implied-1d-move
+        # (IV sigma band: S x sigma_ATM x sqrt(1/252)). Carry its methodology to the payload so
+        # the operator never receives an EM number without knowing which EM semantic produced
+        # it — the terrain `method` string travels beside the band, not dropped.
+        md["kl_em_source"] = "IV_SIGMA_1D"
+        md["kl_em_method_detail"] = em.get("method") or "S x sigma_ATM x sqrt(1/252)"
     else:
         md["kl_em_upper"] = md["kl_em_lower"] = None
+        md["kl_em_source"] = "unavailable"
+        md["kl_em_method_detail"] = None
     # terrain does not compute these yet — absence, never a second book
     md["kl_call_oi_wall"] = None
     md["kl_put_oi_wall"] = None
@@ -11018,7 +11107,7 @@ _terrain_loop_thread: threading.Thread | None = None
 
 def terrain_cache_get(ticker: str) -> dict | None:
     with _terrain_cache_lock:
-        return _terrain_cache.get((ticker or "").upper())
+        return _terrain_cache.get(ticker_storage_key(ticker))  # RC-345/F25: read key matches canonical write (tk)
 
 
 def terrain_cache_size() -> int:
@@ -11806,7 +11895,7 @@ def _radar_atr(ticker: str | None) -> "AtrPair":
     Only a ticker with NO cached value at all can still compute inline; the boot prewarm
     fills those, and the dedicated pool bounds it at 2 threads regardless.
     """
-    tk = (ticker or "").upper().strip()
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical — cache key AND compute_atr_pair DB query hit $-index bars
     if not tk:
         return AtrPair(None, None)
     now = time.time()
@@ -12098,7 +12187,7 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     out["call_wall_state"] = wall_geometry_state(spot, payload.get("call_wall"), "call")
     out["put_wall_state"] = wall_geometry_state(spot, payload.get("put_wall"), "put")
 
-    profile = _terrain_profile_cache.get(ticker)
+    profile = _terrain_profile_cache.get(ticker_storage_key(ticker))  # RC-345/F25: read key matches canonical write (tk)
     if not profile:
         return out                      # levels stand; regime left as cached
 
@@ -13828,7 +13917,7 @@ def logger_status():
     if _HAS_SIGNALS:
         try:
             for row in get_db().logging_universe_list_rows():
-                db_rows[(row.get("ticker") or "").upper().strip()] = row
+                db_rows[ticker_storage_key(row.get("ticker"))] = row  # RC-345/F25: canonical join key
         except Exception as e:
             log.debug("logger_status DB join: %s", e)
 
@@ -13941,14 +14030,14 @@ def logger_universe_by_category(
 def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core only)")):
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
-    t = ticker.upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical pin identity (matches enrollment + dedup)
     if not t or len(t) > 10:
         raise HTTPException(status_code=400, detail="invalid ticker")
     if t in CORE_TICKERS:
         raise HTTPException(status_code=400, detail="core symbols are already protected; pin not applicable")
     db = get_db()
     is_already_pinned = any(
-        (r.get("ticker") or "").upper() == t and r.get("category") == "pinned"
+        ticker_storage_key(r.get("ticker")) == t and r.get("category") == "pinned"  # RC-345/F25: canonical pin-dedup
         for r in db.logging_universe_list_rows()
     )
     if (

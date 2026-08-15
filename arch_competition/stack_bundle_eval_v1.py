@@ -15,6 +15,10 @@ No naive random split: rows are ts_utc ascending from DB (same contract as ml_sc
 
 from __future__ import annotations
 
+# RC-345/F25: bundle-eval artifact/model identity consumes the ONE canonical ticker authority
+# so eval lookups resolve to the same artifact the writers/promotion/readers produced.
+from instrument_identity import ticker_storage_key
+
 import json
 import logging
 import math
@@ -708,7 +712,7 @@ def run_stack_bundle_evaluation(
         },
         "mode_definitions": {k: MODE_DEFINITIONS[k] for k in modes if k in MODE_DEFINITIONS},
         "db_path": str(Path(db_path).resolve()),
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25
         "model_dir": str(Path(model_dir).resolve()),
         "allowed_et_dates": sorted(opts.allowed_et_dates) if opts.allowed_et_dates else None,
         "ml_horizon_slug": hz,
@@ -872,7 +876,7 @@ def permute_snapshot_columns_pooled_by_ticker(
     out = [dict(r) for r in rows]
     by_ticker: dict[str, list[int]] = defaultdict(list)
     for i, row in enumerate(rows):
-        t = str(row.get(ticker_field) or row.get("ticker") or "").strip().upper()
+        t = ticker_storage_key(str(row.get(ticker_field) or row.get("ticker") or ""))  # RC-345/F25
         by_ticker[t].append(i)
     for indices in by_ticker.values():
         if len(indices) < 2:
@@ -981,7 +985,7 @@ def ablation_experiment_serve_masks_active() -> bool:
 
 def bundle_dir_has_unified_stack_artifacts(bundle_dir: Path, ticker: str, hz: str) -> bool:
     """Minimum xgb+lstm+transformer artifacts for unified seven-layer stack scoring."""
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)  # RC-345/F25
     su = normalize_ml_horizon_slug(hz)
     names = (
         f"xgb_{t}_{su}.pkl",
@@ -993,7 +997,7 @@ def bundle_dir_has_unified_stack_artifacts(bundle_dir: Path, ticker: str, hz: st
 
 def resolve_experiment_bundle_dir(ticker: str, hz: str, *, models_dir: Path) -> Path:
     """Pre-train observe path: models/parallel/{ticker} before scheduler promotion to models/active/."""
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)  # RC-345/F25
     su = normalize_ml_horizon_slug(hz)
     parallel = models_dir / "parallel" / t
     if bundle_dir_has_unified_stack_artifacts(parallel, t, su):
@@ -1036,7 +1040,7 @@ def _load_sequence_checkpoint_meta(
     """Return (meta_json, checkpoint_dict, issues) for lstm or transformer."""
     import torch
 
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)  # RC-345/F25
     su = normalize_ml_horizon_slug(hz)
     model_path = bundle_dir / f"{kind}_{t}_{su}.pt"
     meta_path = bundle_dir / f"{kind}_{t}_{su}_meta.json"
@@ -1080,7 +1084,7 @@ def assess_bundle_ablation_lineage(
     prod = check_active_bundle_complete(ticker, hz, bundle_dir=bd, models_dir=models_dir)
     compliant = bool(prod.get("compliant"))
     result: dict[str, Any] = {
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25
         "horizon": normalize_ml_horizon_slug(hz),
         "bundle_dir": str(bd),
         "production_compliant": compliant,
@@ -1096,7 +1100,7 @@ def assess_bundle_ablation_lineage(
         result["issues"].append(f"missing bundle dir: {bd}")
         return result
 
-    xgb_meta_path = bd / f"xgb_{ticker.upper()}_{normalize_ml_horizon_slug(hz)}_meta.json"
+    xgb_meta_path = bd / f"xgb_{ticker_storage_key(ticker)}_{normalize_ml_horizon_slug(hz)}_meta.json"  # RC-345/F25
     if xgb_meta_path.is_file():
         try:
             xgb_meta = json.loads(xgb_meta_path.read_text(encoding="utf-8"))
@@ -2079,7 +2083,7 @@ def probe_whole_stack_seven_layers(
     for layer in required:
         layers.setdefault(layer, {"status": "pending_probe", "reason": None})
 
-    t = ticker.strip().upper()
+    t = ticker_storage_key(ticker)  # RC-345/F25
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
     target_column = outcome_column(hz)
 
@@ -2222,7 +2226,7 @@ def prepare_whole_stack_pooled_baseline_cache(
     target_column = outcome_column(hz)
     pooled_rows: list[dict] = []
     for ticker in tickers:
-        t = ticker.strip().upper()
+        t = ticker_storage_key(ticker)  # RC-345/F25
         chunk = _load_chronological_rth_rows(
             db_path, t, target_column=target_column, options=opts
         )
@@ -2246,10 +2250,10 @@ def prepare_whole_stack_pooled_baseline_cache(
     htok = mp.set_ml_infer_horizon_slug(hz)
     skip_reasons: dict[str, int] = {}
     model_root_by_ticker = {
-        t.strip().upper(): _models_root_from_bundle_dir(Path(model_dir_by_ticker[t.strip().upper()]))
+        ticker_storage_key(t): _models_root_from_bundle_dir(Path(model_dir_by_ticker[ticker_storage_key(t)]))
         for t in tickers
-        if t.strip().upper() in model_dir_by_ticker
-    }
+        if ticker_storage_key(t) in model_dir_by_ticker
+    }  # RC-345/F25: model-dir identity keyed canonically
     hist_db_by_ticker: dict[str, Any] = {}
     baseline_probs: list[Optional[list[float]]] = [None] * len(pooled_rows)
     y_outcome: list[Optional[int]] = [None] * len(pooled_rows)
@@ -2262,7 +2266,7 @@ def prepare_whole_stack_pooled_baseline_cache(
 
     try:
         for i, row in enumerate(pooled_rows):
-            ticker = str(row.get(ABLATION_ROW_TICKER_FIELD) or row.get("ticker") or "").strip().upper()
+            ticker = ticker_storage_key(str(row.get(ABLATION_ROW_TICKER_FIELD) or row.get("ticker") or ""))  # RC-345/F25
             if ticker != active_ticker:
                 mp.MODEL_DIR = model_root_by_ticker.get(ticker, mp.MODEL_DIR)
                 mp.reset_caches()
@@ -2575,9 +2579,9 @@ def run_whole_stack_feature_group_ablation(
                 if baseline_probs[i] is None or y_outcome[i] is None:
                     continue
                 clean_row = rows[i]
-                row_ticker = str(
+                row_ticker = ticker_storage_key(str(
                     clean_row.get(ABLATION_ROW_TICKER_FIELD) or clean_row.get("ticker") or ""
-                ).strip().upper()
+                ))  # RC-345/F25: row identity canonical to match model_root_by_ticker keys
                 if row_ticker != active_ticker:
                     mp.MODEL_DIR = model_root_by_ticker.get(row_ticker, mp.MODEL_DIR)
                     mp.reset_caches()
@@ -2586,10 +2590,9 @@ def run_whole_stack_feature_group_ablation(
                     _tss = [
                         float(r["ts_utc"])
                         for r in rows
-                        if str(r.get(ABLATION_ROW_TICKER_FIELD) or r.get("ticker") or "")
-                        .strip()
-                        .upper()
-                        == row_ticker
+                        if ticker_storage_key(str(r.get(ABLATION_ROW_TICKER_FIELD) or r.get("ticker") or ""))
+                        == row_ticker  # RC-345/F25: canonical row identity
+
                         and r.get("ts_utc") is not None
                     ]
                     hist_db_by_ticker[row_ticker] = (

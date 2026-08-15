@@ -7,6 +7,8 @@ and governance audit records. Does not promote, rollback, or change production d
 
 from __future__ import annotations
 
+from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+
 import hashlib
 import json
 import logging
@@ -72,7 +74,7 @@ ACTION_REVIEW_AUDIT = "Review governance_audit.jsonl failure record; retry manua
 
 def operational_policy_artifact_path(model_dir: Path, ml_horizon_slug: str, ticker: str) -> Path:
     hz = str(ml_horizon_slug).strip().lower()
-    return model_dir / "arch_competition" / hz / ticker.upper() / "operational_policy_state.json"
+    return model_dir / "arch_competition" / hz / ticker_storage_key(ticker) / "operational_policy_state.json"
 
 
 def persist_operational_policy_payload(
@@ -142,7 +144,7 @@ def build_operational_policy_payload(
     for those dimensions in ``drift_dependency``).
     """
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)
     now = datetime.now(timezone.utc).isoformat()
 
     out: dict[str, Any] = {
@@ -257,7 +259,7 @@ def build_operational_policy_payload(
 
     # Audit failures (governed log only)
     for a in recent_audit_records:
-        if str(a.get("ticker", "")).upper() != tku:
+        if ticker_storage_key(str(a.get("ticker", ""))) != tku:  # RC-345/F25
             continue
         if "action" not in a or "outcome" not in a:
             log.warning(

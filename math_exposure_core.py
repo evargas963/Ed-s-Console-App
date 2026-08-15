@@ -200,6 +200,20 @@ def compute_exposures_by_strike(
     used = 0
     missing = 0
 
+    # RC-345 / F13: T for the BS-vanna faucet comes from the ONE valuation-T authority,
+    # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
+    # whole-day `dte / 365.0`. `now` is pinned once so every contract in the aggregate is
+    # priced at one instant, and T is memoised per distinct expiry string.
+    from time_et import time_to_expiry_years as _tte, now_et as _now_et
+    _tte_now = _now_et()
+    _tte_cache: dict[str, float | None] = {}
+
+    def _tte_memo(exp_raw) -> float | None:
+        key = str(exp_raw)
+        if key not in _tte_cache:
+            _tte_cache[key] = _tte(exp_raw, now=_tte_now)
+        return _tte_cache[key]
+
     for ct in contracts:
         total += 1
         strike = _f(ct.get("strikePrice"))
@@ -277,9 +291,10 @@ def compute_exposures_by_strike(
                 # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
                 _iv = _f(ct.get("volatility"))
                 _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
-                if _iv_ok and dte is not None and dte > 0:
+                _T = _tte_memo(ct.get("expirationDate"))
+                if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
-                    _vn = _bsv(spt, float(strike), float(dte) / 365.0, _iv / 100.0)
+                    _vn = _bsv(spt, float(strike), _T, _iv / 100.0)
                     if _vn is not None:
                         b["call_vanna"] += _vn * oi * mult
         elif side == "PUT":
@@ -302,9 +317,10 @@ def compute_exposures_by_strike(
                 # calls and puts at a strike/expiry — any split comes from OI, never math).
                 _iv = _f(ct.get("volatility"))
                 _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
-                if _iv_ok and dte is not None and dte > 0:
+                _T = _tte_memo(ct.get("expirationDate"))
+                if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
-                    _vn = _bsv(spt, float(strike), float(dte) / 365.0, _iv / 100.0)
+                    _vn = _bsv(spt, float(strike), _T, _iv / 100.0)
                     if _vn is not None:
                         b["put_vanna"] += _vn * oi * mult
         else:
@@ -870,7 +886,10 @@ def compute_net_charm(
         price attractor, so treat this as a caller's label travelling through, never as
         charm's own target. RC-315: charm should publish NO "toward" strike at all without
         an independently validated directional mechanism — neither the net-GEX peak nor the
-        absolute-gamma strike is a demonstrated magnet.
+        absolute-gamma strike is a demonstrated magnet. RC-345 / F18: the server caller now
+        passes drift_toward_strike=None (the net-GEX-peak substitution was removed end-to-end,
+        including the Key Levels "Charm Drift" UI row), so drift_toward is WITHHELD. Charm
+        publishes DIRECTION (charm_direction / net_charm sign), never a borrowed target strike.
 
     Returns:
         net_charm_daily  : net delta-equivalents unwound per day (negative = selling)

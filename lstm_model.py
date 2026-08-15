@@ -17,6 +17,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
+# RC-345/F25 (train-write faucet): LSTM model/meta writers consume the ONE canonical
+# ticker-artifact identity so bare 'SPX' and '$SPX' write the same basename the readers expect.
+from instrument_identity import ticker_storage_key
 from training_cache_policy import (
     EARLY_STOP_ENABLED,
     EARLY_STOP_MIN_DELTA,
@@ -88,7 +91,7 @@ def lstm_model_path(
 ) -> Path:
     base = model_dir or MODELS_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    t = str(ticker).strip().upper()
+    t = ticker_storage_key(ticker)
     return base / f"lstm_{t}_{hz}.pt"
 
 
@@ -97,7 +100,7 @@ def lstm_meta_path(
 ) -> Path:
     base = model_dir or MODELS_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    t = str(ticker).strip().upper()
+    t = ticker_storage_key(ticker)
     return base / f"lstm_{t}_{hz}_meta.json"
 
 EPOCHS          = LSTM_TRAIN_EPOCHS   # canonical 50; env ED_TRAIN_EPOCHS_LSTM overrides (runtime lever)
@@ -418,7 +421,7 @@ def train_lstm(
     # low-data tickers (12-19 RTH days) all failed at this exact path.
     _validate_lstm_dataset_shape(dataset, ticker=ticker)
 
-    save_ticker = (ticker or (dataset.tickers[0] if dataset.tickers else "unknown")).strip().upper()
+    save_ticker = ticker_storage_key(ticker or (dataset.tickers[0] if dataset.tickers else "unknown"))  # RC-345/F25: resume+meta+model identity one authority
     hz = normalize_ml_horizon_slug(getattr(dataset, "ml_horizon_slug", None) or ml_horizon_slug)
 
     X_conf = dataset.X_conf.copy()
@@ -866,7 +869,7 @@ if __name__ == "__main__":
     require_canonical_db_target(args, tool_name="lstm_model", write_capable=False)
 
     from lstm_data import build_lstm_dataset
-    tickers = [args.ticker.upper()] if args.ticker else None
+    tickers = [ticker_storage_key(args.ticker)] if args.ticker else None  # RC-345/F25
     if not tickers:
         ds = build_lstm_dataset(db_path=args.db)
         tickers = sorted(set(ds.tickers)) if ds.tickers else []

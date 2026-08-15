@@ -41,7 +41,13 @@ def _contract(**overrides) -> dict:
 def test_market_state_contract_context_uses_schwab_days_to_expiration():
     contracts = [_contract(daysToExpiration=3)]
 
-    assert _schwab_days_to_expiration_for_contract(contracts, 500.0, "CALL") == 3
+    # RC-345 / F41: selected expiry is mandatory — supply it explicitly.
+    assert _schwab_days_to_expiration_for_contract(
+        contracts, 500.0, "CALL", expiry="2099-05-05") == 3
+    # Mutation: empty/missing expiry must FAIL CLOSED (governed absence), never search-all.
+    assert _schwab_days_to_expiration_for_contract(contracts, 500.0, "CALL") is None
+    assert _schwab_days_to_expiration_for_contract(
+        contracts, 500.0, "CALL", expiry="") is None
     assert "3DTE" in _build_contract_context_ms(_MarketStateStub(), contracts)
 
 

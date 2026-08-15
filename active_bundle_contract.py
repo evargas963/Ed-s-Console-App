@@ -22,6 +22,20 @@ from pathlib import Path
 from typing import Any
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
+from instrument_identity import ticker_storage_key
+
+
+def artifact_ticker_key(ticker: str) -> str:
+    """RC-345 / F25: THE one canonical ticker identity for model-artifact / bundle-dir keys —
+    delegates to instrument_identity.ticker_storage_key (the SAME authority the DB storage key
+    uses), so a model directory can never independently normalize a ticker differently from the
+    row storage. For the production ETF universe (SPY/QQQ/IWM) this equals the uppercased root;
+    for a $-indexed root it yields the $-prefixed canonical key ($SPX). This does NOT
+    independently decide ticker truth — it is a delegation to the one authority. Legacy note:
+    the $-indexed bundles on disk are ALREADY stored under the canonical $-prefixed identity
+    (e.g. models/active/$SPX/), so routing a bare index root here RESOLVES to the existing
+    artifact rather than orphaning it — no dual-read shim is required."""
+    return ticker_storage_key(ticker)
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 ACTIVE_DIR = MODELS_DIR / "active"
@@ -175,7 +189,7 @@ def bundle_integrity_manifest_path(bundle_dir: Path) -> Path:
 
 def bundle_role_filenames(ticker: str, hz: str, *, include_optional: bool = False) -> dict[str, str]:
     """{artifact_role: canonical filename} for one (ticker, horizon) bundle."""
-    t = ticker.upper()
+    t = artifact_ticker_key(ticker)  # RC-345/F25: one canonical ticker-identity authority
     su = normalize_ml_horizon_slug(hz)
     patterns: dict[str, str] = dict(_BUNDLE_ROLE_PATTERNS)
     if include_optional:
@@ -228,7 +242,7 @@ def write_bundle_integrity_manifest(
     """
     from training_cache import file_sha256_hex
 
-    t = ticker.upper()
+    t = artifact_ticker_key(ticker)  # RC-345/F25: one canonical ticker-identity authority
     su = normalize_ml_horizon_slug(hz)
     bd = Path(bundle_dir)
     required = bundle_role_filenames(t, su)
@@ -400,7 +414,7 @@ def verify_artifact_against_manifest(
     """
     from training_cache import file_sha256_hex
 
-    t = ticker.upper()
+    t = artifact_ticker_key(ticker)  # RC-345/F25: one canonical ticker-identity authority
     su = normalize_ml_horizon_slug(hz)
     bd = Path(bundle_dir)
     identity: dict[str, Any] = {
@@ -552,7 +566,7 @@ def classify_legacy_absent_manifest(
     behavior: absence is recorded as MANIFEST_MISSING provenance, and the
     ED_ARTIFACT_INTEGRITY_STRICT=1 operator lever fails closed instead.
     """
-    t = ticker.upper()
+    t = artifact_ticker_key(ticker)  # RC-345/F25: one canonical ticker-identity authority
     su = normalize_ml_horizon_slug(hz)
     bd = Path(bundle_dir)
     identity = {
@@ -622,12 +636,12 @@ def scheduler_active_root(models_dir: Path, ml_horizon_slug: str) -> Path:
 def active_bundle_dir(ticker: str, hz: str, *, models_dir: Path | None = None) -> Path:
     """Production active directory for (ticker, horizon) under the canonical root."""
     root = models_dir or MODELS_DIR
-    return scheduler_active_root(root, hz) / ticker.upper()
+    return scheduler_active_root(root, hz) / artifact_ticker_key(ticker)  # RC-345/F25: one authority
 
 
 def meta_stack_artifact_filename(ticker: str, hz: str) -> str:
     """Trained meta-learner on stacked base probabilities (Layer 2)."""
-    t = ticker.upper()
+    t = artifact_ticker_key(ticker)  # RC-345/F25: one canonical ticker-identity authority
     su = normalize_ml_horizon_slug(hz)
     return META_STACK_MODEL_PATTERN.format(ticker=t, hz=su)
 
@@ -641,7 +655,7 @@ def horizon_bundle_filenames(ticker: str, hz: str) -> tuple[str, ...]:
 
 def bundle_artifact_paths(ticker: str, hz: str, bundle_dir: Path) -> list[tuple[str, Path, Path]]:
     """Return (kind, model_path, meta_path) for each artifact in the bundle."""
-    t = ticker.upper()
+    t = artifact_ticker_key(ticker)  # RC-345/F25: one canonical ticker-identity authority
     su = normalize_ml_horizon_slug(hz)
     out: list[tuple[str, Path, Path]] = []
     for kind, model_pat, meta_pat in BUNDLE_ARTIFACT_TRIPLE:
@@ -667,7 +681,7 @@ def legacy_layout_source_dirs(
     Non-1c horizons may have weights under models/active/{T}/ instead of active_{hz}/{T}/.
     """
     root = models_dir or MODELS_DIR
-    t = ticker.upper()
+    t = artifact_ticker_key(ticker)  # RC-345/F25: one canonical ticker-identity authority
     su = normalize_ml_horizon_slug(hz)
     canonical = active_bundle_dir(ticker, hz, models_dir=root)
     legacy: list[Path] = []
@@ -709,7 +723,7 @@ def check_active_bundle_complete(
     """
     bd = bundle_dir or active_bundle_dir(ticker, hz, models_dir=models_dir)
     result: dict[str, Any] = {
-        "ticker": ticker.upper(),
+        "ticker": artifact_ticker_key(ticker),  # RC-345/F25: one canonical ticker identity
         "horizon": normalize_ml_horizon_slug(hz),
         "bundle_dir": str(bd),
         "compliant": True,
@@ -909,7 +923,7 @@ def consolidate_horizon_layout_plan(
                 moves.append({"file": fname, "from": str(src), "to": str(dest)})
                 break
     return {
-        "ticker": ticker.upper(),
+        "ticker": artifact_ticker_key(ticker),  # RC-345/F25: one canonical ticker identity
         "horizon": normalize_ml_horizon_slug(hz),
         "canonical_dir": str(canonical),
         "moves": moves,

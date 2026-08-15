@@ -35,6 +35,9 @@ from ml_horizon import (
     outcome_column,
 )
 from time_et import RTH_OPEN_MINS, RTH_SESSION_MINUTES
+# RC-345/F25 (train-write faucet): the model/meta WRITERS must emit the identical artifact
+# identity the readers/verifier/predictor expect — one canonical authority, no local .upper().
+from instrument_identity import ticker_storage_key
 
 TARGET_COL = DEFAULT_TRAINING_LABEL_COLUMN  # Default tabular label; training uses outcome_column(ml_horizon_slug).
 
@@ -88,7 +91,7 @@ def model_path(
     base = model_dir or MODEL_DIR
     base.mkdir(parents=True, exist_ok=True)
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    t = str(ticker).strip().upper()
+    t = ticker_storage_key(ticker)
     if target_mode == TARGET_MODE_TRICLASS:
         return base / f"xgb_{t}_{hz}.pkl"
     if target_mode == TARGET_MODE_DIR:
@@ -106,7 +109,7 @@ def meta_path(
 ) -> Path:
     base = model_dir or MODEL_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    t = str(ticker).strip().upper()
+    t = ticker_storage_key(ticker)
     if target_mode == TARGET_MODE_TRICLASS:
         return base / f"xgb_{t}_{hz}_meta.json"
     if target_mode == TARGET_MODE_DIR:
@@ -204,6 +207,9 @@ def load_data(
     min_ts_utc: if set, only rows with ts_utc >= this value (rolling RTH session window).
     allowed_et_dates: if set, only rows whose ts_et date (YYYY-MM-DD) is in this set.
     """
+    # RC-345/F25: the DB-facing function itself consumes the canonical storage identity —
+    # SPX and $SPX bind the same stored key ("$SPX"). Do NOT push this up to callers only.
+    ticker = ticker_storage_key(ticker) if ticker else ticker
     from ml_data_common import (
         filter_df_to_rth_ts_utc,
         stamp_et_clock_columns,
@@ -272,7 +278,7 @@ def load_data(
         return df
     from ml_data_common import attach_net_gamma_prev_column
 
-    df = attach_net_gamma_prev_column(df)
+    df = attach_net_gamma_prev_column(df, db_path)  # RC-342: raw-prior authority, DB-scoped
     print(f"  Loaded {len(df):,} RTH rows  "
           f"[{df['ts_et'].iloc[0]} -> {df['ts_et'].iloc[-1]}]")
     if not ticker:
@@ -395,7 +401,130 @@ def _mutable_float_ndarray(values) -> np.ndarray:
     return out.copy() if not out.flags.writeable else out
 
 
-def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
+# ═══════════════════════════════════════════════════════════════════════════════════════
+# RC-339 — ONE COMPUTATION AUTHORITY PER SHARED TRAIN/SERVE FEATURE SEMANTIC
+# ═══════════════════════════════════════════════════════════════════════════════════════
+# Until 2026-08-10, `engineer_features` (batch/train) and `engineer_single_snapshot`
+# (scalar/serve) each carried a full private encoding of the same feature formulas — the
+# pct-of-spot conversion, session-time trig, body/range ratio, ΔGEX, NaN-preserving sign
+# flags, cross-market products and stats, volume log/ratio, imbalance pressure thresholds
+# and categorical coding. RC-335 proved the cost: three of those twin encodings had
+# silently diverged (8 of 94 features) and only executing both sides exposed it. Parity
+# tests catch divergence AFTER it ships; this removes the second author. Each kernel below
+# is dtype-polymorphic — numpy broadcasting lets ONE body serve the vectorised training
+# frame and the scalar serve row — so the two builders own SHAPE ONLY: column extraction,
+# index alignment, fit mechanics and row packaging. Fitted semantics (the volume-median
+# FIT, the category-map FIT) remain train-only concepts; only their APPLICATION is shared.
+import warnings
+
+IMBALANCE_BUY_PRESSURE_MIN: float = 0.65
+IMBALANCE_SELL_PRESSURE_MAX: float = 0.35
+VOLUME_RATIO_CAP: float = 10.0
+
+
+def fk_pct_of_spot(points, spot):
+    """Points expressed as percent of spot — THE pct formula for every *_pct feature."""
+    return np.asarray(points, dtype=float) / spot * 100.0
+
+
+def fk_body_range_ratio(body_pct, range_pct):
+    """|body| / range; a non-positive range is not a range — absent, never a sign flip."""
+    rng = np.asarray(range_pct, dtype=float)
+    rng = np.where(rng > 0, rng, np.nan)
+    return np.abs(np.asarray(body_pct, dtype=float)) / rng
+
+
+def fk_session_time_features(minutes_of_day):
+    """(time_sin, time_cos, time_progress, minutes_since_open) from ET minutes-of-day.
+
+    NaN in -> NaN out for all four: no canonical clock means no session position.
+    """
+    mod = np.asarray(minutes_of_day, dtype=float)
+    prog = np.clip((mod - RTH_OPEN_MINS) / float(RTH_SESSION_MINUTES), 0, 1)
+    mins_open = np.clip(mod - RTH_OPEN_MINS, 0, float(RTH_SESSION_MINUTES))
+    return np.sin(2 * np.pi * prog), np.cos(2 * np.pi * prog), prog, mins_open
+
+
+def fk_dgex(net_gamma, net_gamma_prev):
+    """ΔGEX = current minus previous same-ticker net_gamma; NaN propagates."""
+    return np.asarray(net_gamma, dtype=float) - np.asarray(net_gamma_prev, dtype=float)
+
+
+def fk_sign_positive(values):
+    """1.0 if value > 0, 0.0 if not, NaN if ABSENT — missing is never 'not positive'."""
+    arr = np.asarray(values, dtype=float)
+    return np.where(np.isfinite(arr), (arr > 0).astype(float), np.nan)
+
+
+def fk_agreement_positive(a, b):
+    """1.0 when both sides share a sign, 0.0 when not; either side absent -> NaN."""
+    aa = np.asarray(a, dtype=float)
+    bb = np.asarray(b, dtype=float)
+    return np.where(np.isfinite(aa) & np.isfinite(bb),
+                    ((aa > 0) == (bb > 0)).astype(float), np.nan)
+
+
+def fk_alignment(a, b):
+    """Signed co-movement product; NaN propagates from either leg."""
+    return np.asarray(a, dtype=float) * np.asarray(b, dtype=float)
+
+
+def fk_cross_change_stats(*changes):
+    """(mean, population std) across market change legs; a 'cross' needs >= 2 real legs.
+
+    Rows with fewer than two finite legs yield NaN — one market's move is not a
+    cross-market statistic. (The serve side always encoded this; the train side let a
+    single surviving leg masquerade as the cross mean. The stricter contract is the one
+    that matches the feature's name, so it is now the only one.)
+    """
+    stack = np.array(np.broadcast_arrays(*[np.asarray(c, dtype=float) for c in changes]))
+    n_ok = np.sum(np.isfinite(stack), axis=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        mean = np.nanmean(stack, axis=0)
+        std = np.nanstd(stack, axis=0)
+    return (np.where(n_ok >= 2, mean, np.nan), np.where(n_ok >= 2, std, np.nan))
+
+
+def fk_volume_log(volume):
+    """log1p(volume) with non-positive/absent volume contributing log1p(0) = 0.0."""
+    v = np.asarray(volume, dtype=float)
+    v = np.where(v > 0, v, np.nan)
+    return np.log1p(np.nan_to_num(v, nan=0.0))
+
+
+def fk_volume_ratio(volume, median):
+    """volume / fitted time-of-day median, capped; unusable inputs -> NaN, never a fake 1."""
+    v = np.asarray(volume, dtype=float)
+    m = np.asarray(median, dtype=float)
+    ok = np.isfinite(v) & (v > 0) & np.isfinite(m) & (m > 0)
+    return np.where(ok, np.clip(v / np.where(ok, m, 1.0), 0, VOLUME_RATIO_CAP), np.nan)
+
+
+def fk_imbalance_pressures(imbalance):
+    """(buy_pressure, sell_pressure) flags; absent imbalance -> NaN flags (0.0 is a reading)."""
+    arr = np.asarray(imbalance, dtype=float)
+    fin = np.isfinite(arr)
+    buy = np.where(fin, (arr > IMBALANCE_BUY_PRESSURE_MIN).astype(float), np.nan)
+    sell = np.where(fin, (arr < IMBALANCE_SELL_PRESSURE_MAX).astype(float), np.nan)
+    return buy, sell
+
+
+def fk_category_code(value, mapping: dict):
+    """Fitted category -> float code APPLICATION (the fit itself is a train-only concept)."""
+    if value is None:
+        return np.nan
+    if value in mapping:
+        return float(mapping[value])
+    s = str(value)
+    return float(mapping[s]) if s in mapping else np.nan
+
+
+def engineer_features(
+    df: pd.DataFrame,
+    fit_end: Optional[int] = None,
+    db_path: Optional[str] = None,
+) -> tuple:
     """Build normalized feature matrix. Returns (X, feature_names, category_maps, aux_stats).
 
     ``fit_end`` (B3 closeout #1): when set, the two stateful transforms — the per-(ticker,hr,min)
@@ -409,7 +538,12 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
     from ml_data_common import attach_confluence_feature_columns, et_hour_minute_arrays_from_ts_utc
     from lstm_data import CONFLUENCE_FEATURES
 
-    df_cf = attach_confluence_feature_columns(df)
+    # RC-335: `db_path` is threaded so the cf_* population can be STATED. Training could
+    # previously only take the process default while serving was handed an explicit path,
+    # which meant the two lanes' population was the same only as long as nobody pointed
+    # either somewhere else — and it is what makes a train/serve parity control possible
+    # against a fixture database. Default None preserves the existing behaviour exactly.
+    df_cf = attach_confluence_feature_columns(df, db_path)
 
     spot  = pd.to_numeric(df["spot"], errors="coerce").values
     feats = {}
@@ -427,18 +561,18 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
                 v = pd.to_numeric(df[raw], errors="coerce").values
                 if raw in ("nearest_above_dist", "nearest_below_dist"):
                     v = np.abs(v)
-                feats[pct] = v / spot * 100.0
+                feats[pct] = fk_pct_of_spot(v, spot)
 
         for col in WALL_DISTANCE_COLS:
             if col in df.columns:
                 v = pd.to_numeric(df[col], errors="coerce").values
                 pct_name = "pin_width_pct" if col == "pin_width_pts" else f"{col}_pct"
-                feats[pct_name] = v / spot * 100.0
+                feats[pct_name] = fk_pct_of_spot(v, spot)
 
         if "vwap_dist_pts" in df.columns:
             v = pd.to_numeric(df["vwap_dist_pts"], errors="coerce").values
             feats["vwap_dist_pts"] = v
-            feats["vwap_dist_pct"] = v / spot * 100.0
+            feats["vwap_dist_pct"] = fk_pct_of_spot(v, spot)
 
     skip = {"candle_volume", "bid_ask_imbalance", "vwap_dist_pts"}
     for col in SCALE_INVARIANT_COLS:
@@ -447,64 +581,81 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
 
     hrs, mns = et_hour_minute_arrays_from_ts_utc(df)
     if np.any(np.isfinite(hrs)) and np.any(np.isfinite(mns)):
-        prog = np.clip((hrs * 60 + mns - RTH_OPEN_MINS) / float(RTH_SESSION_MINUTES), 0, 1)
-        feats["time_sin"]      = np.sin(2 * np.pi * prog)
-        feats["time_cos"]      = np.cos(2 * np.pi * prog)
-        feats["time_progress"] = prog
-        feats["minutes_since_open"] = np.clip(
-            hrs * 60 + mns - RTH_OPEN_MINS, 0, RTH_SESSION_MINUTES
-        ).astype(float)
+        _tsin, _tcos, _tprog, _mopen = fk_session_time_features(hrs * 60 + mns)
+        feats["time_sin"] = _tsin
+        feats["time_cos"] = _tcos
+        feats["time_progress"] = _tprog
+        feats["minutes_since_open"] = _mopen.astype(float)
 
     if "candle_body_pct" in feats and "candle_range_pct" in feats:
-        rng = feats["candle_range_pct"].copy()
-        rng[rng == 0] = np.nan
-        feats["body_range_ratio"] = np.abs(feats["candle_body_pct"]) / rng
+        feats["body_range_ratio"] = fk_body_range_ratio(
+            feats["candle_body_pct"], feats["candle_range_pct"])
 
     if "net_gamma" in df.columns:
+        # Adapter mechanics: locate the PREVIOUS same-ticker net_gamma (alignment only);
+        # the ΔGEX semantic itself is fk_dgex, shared with the serve row.
+        # RC-342: net_gamma_prev has ONE authority (attach_net_gamma_prev_column, raw prior
+        # 1m bar). engineer_features must CONSUME that column, never reconstruct it — the
+        # old inline groupby-shift fallback was a third producer of the same semantic and
+        # gap-jumped differently than the serve path. Absent column -> dgex NaN (RC-335).
         ng_s = pd.to_numeric(df["net_gamma"], errors="coerce")
         if "net_gamma_prev" in df.columns:
             prev_s = pd.to_numeric(df["net_gamma_prev"], errors="coerce")
-            feats["dgex"] = (ng_s - prev_s).to_numpy(dtype=float)
-        elif "ticker" in df.columns and "ts_utc" in df.columns:
-            order = df.sort_values(["ticker", "ts_utc"]).index
-            dgex = ng_s.loc[order].groupby(df.loc[order, "ticker"]).diff()
-            feats["dgex"] = dgex.reindex(df.index).to_numpy(dtype=float)
         else:
-            feats["dgex"] = ng_s.diff().to_numpy(dtype=float)
-        dg = feats["dgex"]
-        feats["dgex_positive"] = np.where(np.isfinite(dg), (dg > 0).astype(float), np.nan)
+            prev_s = pd.Series(np.nan, index=df.index)
+        feats["dgex"] = fk_dgex(ng_s.to_numpy(dtype=float), prev_s.to_numpy(dtype=float))
+        feats["dgex_positive"] = fk_sign_positive(feats["dgex"])
 
+    # RC-335: preserve MISSING as missing, exactly as `dgex_positive` does two lines above
+    # and exactly as the serve builder does at `engineer_single_snapshot` (ml_train.py:655-
+    # 657, `float(ng>0) if not np.isnan(ng) else np.nan`).
+    #
+    # `(series > 0).astype(float)` evaluates NaN > 0 as False and writes 0.0, so an ABSENT
+    # net_gamma became a positive assertion that gamma is not positive — while serving, on
+    # the identical bar, emitted NaN. XGBoost routes NaN down its learned default branch and
+    # 0.0 down a real split, so the two lanes sent the same bar down different trees.
+    # MEASURED over 60 bars across SPY, QQQ and IWM: all three flags disagreed on 40 of them.
     if "net_gamma" in feats:
-        feats["gamma_positive"] = (feats["net_gamma"] > 0).astype(float)
+        feats["gamma_positive"] = fk_sign_positive(feats["net_gamma"])
     if "net_delta" in feats:
-        feats["delta_positive"] = (feats["net_delta"] > 0).astype(float)
+        feats["delta_positive"] = fk_sign_positive(feats["net_delta"])
     if "net_delta" in feats and "charm_net" in feats:
-        feats["charm_delta_agree"] = (
-            (feats["net_delta"] > 0) == (feats["charm_net"] > 0)).astype(float)
+        feats["charm_delta_agree"] = fk_agreement_positive(
+            feats["net_delta"], feats["charm_net"])
 
     for c1, c2, nm in [("spy_chg_pct","qqq_chg_pct","spy_qqq_align"),
                         ("spy_chg_pct","iwm_chg_pct","spy_iwm_align")]:
         if c1 in feats and c2 in feats:
-            feats[nm] = feats[c1] * feats[c2]
+            feats[nm] = fk_alignment(feats[c1], feats[c2])
 
     cross = [c for c in ["spy_chg_pct","qqq_chg_pct","iwm_chg_pct"] if c in feats]
-    if len(cross) >= 2:
-        arr = np.column_stack([feats[c] for c in cross])
-        feats["cross_avg_chg"] = np.nanmean(arr, axis=1)
-        feats["cross_std_chg"] = np.nanstd(arr, axis=1)
+    if len(cross) >= 2:          # column presence gates the SCHEMA (adapter decision);
+        feats["cross_avg_chg"], feats["cross_std_chg"] = fk_cross_change_stats(
+            *[feats[c] for c in cross])          # the row semantic is the kernel's
 
     if "candle_volume" in df.columns:
         vol = pd.to_numeric(df["candle_volume"], errors="coerce").values.copy()
-        vol[vol <= 0] = np.nan
-        feats["candle_volume_log"] = np.log1p(np.nan_to_num(vol, nan=0.0))
+        vol[vol <= 0] = np.nan               # fit-series hygiene (train-only mechanics)
+        feats["candle_volume_log"] = fk_volume_log(vol)
         hrs_s, mns_s = et_hour_minute_arrays_from_ts_utc(df)
-        if np.any(np.isfinite(hrs_s)) and np.any(np.isfinite(mns_s)):
+        _valid_clock = np.isfinite(hrs_s) & np.isfinite(mns_s)
+        if np.any(_valid_clock):
+            # RC-336: a row with NO canonical clock gets NO time-of-day bucket. This was
+            # `np.nan_to_num(hrs_s, nan=0)`, which filed every clockless row under hour 0
+            # minute 0 — so it joined a midnight bucket, frequently became its own median,
+            # and emitted volume_ratio = 1.0, i.e. "exactly average volume for this minute",
+            # from a minute that was never observed. Serving, which cannot look up a median
+            # without a clock, emitted NaN for the same row: MEASURED as 3 divergences in
+            # the adversarial matrix. It also polluted the median of genuine 00:00 rows.
+            # Setting the key to NaN both excludes these rows from the fit (groupby drops
+            # NaN keys) and makes the later .map() yield NaN, which is the honest answer.
             hrs_i = np.nan_to_num(hrs_s, nan=0).astype(int)
             mns_i = np.nan_to_num(mns_s, nan=0).astype(int)
             tkr_s = df["ticker"].astype(str) if "ticker" in df.columns else pd.Series(["?"]*len(df))
             tod   = tkr_s + "_" + hrs_i.astype(str) + "_" + mns_i.astype(str)
             vseries    = pd.Series(vol, index=df.index)
             tod_series = pd.Series(np.asarray(tod), index=df.index)
+            tod_series = tod_series.where(pd.Series(_valid_clock, index=df.index), other=np.nan)
             # B3 train-only fit: per-(ticker,hr,min) median fit on the TRAIN partition only,
             # applied to all rows. fit_end=None => full-df (legacy / serving-equiv / eval-only).
             # tod_series.map(full_median) is numerically identical to the old transform("median")
@@ -514,8 +665,7 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
             else:
                 fit_med = vseries.groupby(tod_series).median()
             avg_vol = _mutable_float_ndarray(tod_series.map(fit_med))
-            avg_vol[~(avg_vol > 0)] = np.nan                         # NaN-safe <=0 + nan guard
-            feats["volume_ratio"] = np.clip(vol / avg_vol, 0, 10)
+            feats["volume_ratio"] = fk_volume_ratio(vol, avg_vol)
             for key, med in fit_med.items():
                 if not np.isnan(med):
                     aux_stats[f"vol_median_{key}"] = float(med)
@@ -523,13 +673,9 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
     imb_col = "bid_ask_imbalance" if "bid_ask_imbalance" in df.columns else "flow_imbalance" if "flow_imbalance" in df.columns else None
     if imb_col:
         imb = pd.to_numeric(df[imb_col], errors="coerce").values
-        nm  = np.isnan(imb)
         feats["bid_ask_imbalance"] = imb
-        for k, fn in [("imbalance_buy_pressure",  lambda x: x > 0.65),
-                      ("imbalance_sell_pressure", lambda x: x < 0.35)]:
-            arr = _mutable_float_ndarray(fn(imb))
-            arr[nm] = np.nan
-            feats[k] = arr
+        feats["imbalance_buy_pressure"], feats["imbalance_sell_pressure"] = (
+            fk_imbalance_pressures(imb))
 
     category_maps = {}
     for col in CATEGORICALS:
@@ -542,7 +688,9 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
                        if (fit_end is not None and 0 < fit_end < len(df)) else col_full)
             mapping = {v: i for i, v in enumerate(pd.Categorical(fit_col).categories)}
             category_maps[col] = mapping
-            feats[f"cat_{col}"] = col_full.map(mapping).to_numpy(dtype=float)
+            # FIT is a train-only concept (above); APPLICATION is the shared kernel.
+            feats[f"cat_{col}"] = col_full.map(
+                lambda v, _m=mapping: fk_category_code(v, _m)).to_numpy(dtype=float)
 
     for cf in CONFLUENCE_FEATURES:
         if cf in df_cf.columns:
@@ -585,20 +733,18 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
             return np.nan
 
     def _pct(key):
-        v = _f(key)
-        return (v / spot * 100.0) if not np.isnan(v) else np.nan
+        # Scalar adapter over THE pct authority (RC-339) — no second encoding here.
+        return float(fk_pct_of_spot(_f(key), spot))
 
     row["candle_body_pct"]   = _pct("candle_body_pts")
     row["candle_range_pct"]  = _pct("candle_range_pts")
     _nad0, _nbd0 = canonicalize_distance_read(
         snapshot.get("nearest_above_dist"), snapshot.get("nearest_below_dist")
     )
-    row["nearest_above_pct"] = (
-        (_nad0 / spot * 100.0) if _nad0 is not None else np.nan
-    )
-    row["nearest_below_pct"] = (
-        (_nbd0 / spot * 100.0) if _nbd0 is not None else np.nan
-    )
+    row["nearest_above_pct"] = float(
+        fk_pct_of_spot(_nad0 if _nad0 is not None else np.nan, spot))
+    row["nearest_below_pct"] = float(
+        fk_pct_of_spot(_nbd0 if _nbd0 is not None else np.nan, spot))
 
     for col in WALL_DISTANCE_COLS:
         pct_name = "pin_width_pct" if col == "pin_width_pts" else f"{col}_pct"
@@ -606,7 +752,7 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
 
     vd = _f("vwap_dist_pts")
     row["vwap_dist_pts"] = vd
-    row["vwap_dist_pct"] = (vd / spot * 100.0) if not np.isnan(vd) else np.nan
+    row["vwap_dist_pct"] = float(fk_pct_of_spot(vd, spot))
 
     skip = {"candle_volume", "bid_ask_imbalance", "vwap_dist_pts"}
     for col in SCALE_INVARIANT_COLS:
@@ -619,75 +765,102 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
         # the numeric spread (server snapshot writer). Use the numeric twin for serve parity.
         row["qqq_vs_spy"] = _f("qqq_vs_spy_delta")
 
-    eh = snapshot.get("et_hour")
-    em = snapshot.get("et_minute")
-    if eh is not None and em is not None:
-        prog = max(
-            0.0,
-            min(1.0, (float(eh) * 60 + float(em) - RTH_OPEN_MINS) / float(RTH_SESSION_MINUTES)),
-        )
-        row["time_sin"]      = np.sin(2 * np.pi * prog)
-        row["time_cos"]      = np.cos(2 * np.pi * prog)
-        row["time_progress"] = prog
-        mins_open = max(
-            0.0,
-            min(float(RTH_SESSION_MINUTES), float(eh) * 60 + float(em) - RTH_OPEN_MINS),
-        )
-        row["minutes_since_open"] = mins_open
-    else:
-        row["time_sin"] = row["time_cos"] = row["time_progress"] = np.nan
-        row["minutes_since_open"] = np.nan
+    # RC-335: derive the ET clock from ts_utc, the same authority training uses
+    # (`et_hour_minute_arrays_from_ts_utc` at ml_train.py:448 and :521). Reading the STORED
+    # et_hour/et_minute here made this the only lane trusting a column the repo has already
+    # ruled untrustworthy — `ml_data_common.et_hour_minute_arrays_from_ts_utc` says "never
+    # trust stored et_hour on old rows" and `rth_where_clause` is deprecated because those
+    # columns "were logged under fixed EST" and skew EDT cohorts. MEASURED over 60 bars on
+    # SPY/QQQ/IWM: time_sin, time_cos, time_progress and minutes_since_open each disagreed
+    # with training on 6 bars, minutes_since_open by exactly one minute — and volume_ratio
+    # broke with them on 4, because its median key `vol_median_{tkr}_{eh}_{em}` is built
+    # from this clock while the medians were FIT under the derived one, so the lookup missed
+    # and the feature went absent. The stored columns remain the fallback for rows that
+    # carry no usable ts_utc, which is the only case training cannot cover either.
+    # RC-336: ts_utc is the ONLY clock authority here, with NO fallback to the stored
+    # et_hour/et_minute columns. RC-335 derived from ts_utc but kept the stored columns as a
+    # fallback, and that fallback fires exactly when the canonical clock is absent — the one
+    # case real market rows almost never exercise and the one case training cannot match,
+    # because `et_hour_minute_arrays_from_ts_utc` yields NaN there. MEASURED over an
+    # adversarial matrix: 15 divergences. With ts_utc missing, training emitted NaN for
+    # time_sin/time_cos/time_progress/minutes_since_open while serving emitted 0.4647 /
+    # 0.8855 / 0.0769 / 30.0 from the stored clock; with the stored clock ALSO stale at
+    # 03:17, serving emitted minutes_since_open = 0.0 — a confident "the session just
+    # opened" manufactured from a column this repo already documents as untrustworthy.
+    # Absent canonical time is ABSENT: the clock features go NaN, exactly as training does.
+    eh = em = None
+    _ts_for_clock = snapshot.get("ts_utc")
+    if _ts_for_clock is not None:
+        try:
+            _ts_f = float(_ts_for_clock)
+        except (TypeError, ValueError):
+            _ts_f = float("nan")
+        if np.isfinite(_ts_f):
+            from time_et import et_clock_from_ts_utc
 
-    cb = row.get("candle_body_pct", np.nan)
-    cr = row.get("candle_range_pct", np.nan)
-    row["body_range_ratio"] = (abs(cb)/cr) if (not np.isnan(cb) and cr and cr>0) else np.nan
+            eh, em, _ = et_clock_from_ts_utc(_ts_f)
+    # Scalar adapter: compose minutes-of-day from the canonical clock; the session-time
+    # semantic itself is fk_session_time_features, shared with training (RC-339).
+    _mod = (float(eh) * 60 + float(em)) if (eh is not None and em is not None) else np.nan
+    _tsin, _tcos, _tprog, _mopen = fk_session_time_features(_mod)
+    row["time_sin"] = float(_tsin)
+    row["time_cos"] = float(_tcos)
+    row["time_progress"] = float(_tprog)
+    row["minutes_since_open"] = float(_mopen)
+
+    row["body_range_ratio"] = float(fk_body_range_ratio(
+        row.get("candle_body_pct", np.nan), row.get("candle_range_pct", np.nan)))
 
     ng = row.get("net_gamma", np.nan)
-    ng_prev = _f("net_gamma_prev")
-    if not np.isnan(ng) and not np.isnan(ng_prev):
-        row["dgex"] = ng - ng_prev
-        row["dgex_positive"] = float(row["dgex"] > 0)
-    else:
-        row["dgex"] = np.nan
-        row["dgex_positive"] = np.nan
+    row["dgex"] = float(fk_dgex(ng, _f("net_gamma_prev")))
+    row["dgex_positive"] = float(fk_sign_positive(row["dgex"]))
     nd = row.get("net_delta", np.nan)
     cn = row.get("charm_net", np.nan)
-    row["gamma_positive"]    = float(ng>0) if not np.isnan(ng) else np.nan
-    row["delta_positive"]    = float(nd>0) if not np.isnan(nd) else np.nan
-    row["charm_delta_agree"] = float((nd>0)==(cn>0)) if not(np.isnan(nd) or np.isnan(cn)) else np.nan
+    row["gamma_positive"] = float(fk_sign_positive(ng))
+    row["delta_positive"] = float(fk_sign_positive(nd))
+    row["charm_delta_agree"] = float(fk_agreement_positive(nd, cn))
 
     sc = row.get("spy_chg_pct", np.nan)
     qc = row.get("qqq_chg_pct", np.nan)
     ic = row.get("iwm_chg_pct", np.nan)
-    row["spy_qqq_align"] = (sc*qc) if not(np.isnan(sc) or np.isnan(qc)) else np.nan
-    row["spy_iwm_align"] = (sc*ic) if not(np.isnan(sc) or np.isnan(ic)) else np.nan
-    cv = [v for v in [sc,qc,ic] if not np.isnan(v)]
-    row["cross_avg_chg"] = float(np.mean(cv)) if len(cv)>=2 else np.nan
-    row["cross_std_chg"] = float(np.std(cv))  if len(cv)>=2 else np.nan
+    row["spy_qqq_align"] = float(fk_alignment(sc, qc))
+    row["spy_iwm_align"] = float(fk_alignment(sc, ic))
+    _cavg, _cstd = fk_cross_change_stats(sc, qc, ic)
+    row["cross_avg_chg"] = float(_cavg)
+    row["cross_std_chg"] = float(_cstd)
 
-    vol = snapshot.get("candle_volume")
-    if vol is not None and float(vol) > 0:
-        vf = float(vol)
-        row["candle_volume_log"] = float(np.log1p(vf))
-        if vol_medians and eh is not None and em is not None:
-            med = vol_medians.get(f"vol_median_{tkr}_{int(eh)}_{int(em)}")
-            if med and med > 0:
-                row["volume_ratio"] = min(10.0, vf/med)
-    else:
-        row["candle_volume_log"] = 0.0
+    _vf = _f("candle_volume")
+    row["candle_volume_log"] = float(fk_volume_log(_vf))
+    if vol_medians and eh is not None and em is not None:
+        # Artifact SELECTION is adapter work; the ratio semantic is the kernel's.
+        med = vol_medians.get(f"vol_median_{tkr}_{int(eh)}_{int(em)}")
+        _vr = float(fk_volume_ratio(_vf, med if med is not None else np.nan))
+        if not np.isnan(_vr):
+            row["volume_ratio"] = _vr
 
-    imb = snapshot.get("bid_ask_imbalance") or snapshot.get("flow_imbalance")
+    # RC-333: choose the source column by PRESENCE, exactly as the training lane does at
+    # `engineer_features` (ml_train.py:523). This was `snapshot.get("bid_ask_imbalance") or
+    # snapshot.get("flow_imbalance")`, which selects by TRUTHINESS — so a legitimate 0.0 in
+    # the first key silently switches the feature to a different source, while training,
+    # selecting on column presence, would have kept it. 0.0 is a real imbalance reading and
+    # the extreme one: the thresholds below are 0.65 and 0.35, so 0.0 is maximal sell-side
+    # pressure, the single most informative value the expression could discard. It is latent
+    # rather than firing today only because `bid_ask_imbalance` exists in neither `snapshots`
+    # nor `snapshots_1m_normalized` (measured), so the first key is always absent — and
+    # `flow_imbalance` is exactly 0.0 in 15.5% of SPY rows, so the hazard is real the moment
+    # the column lands. Absence, not falsiness, is what "no reading" means.
+    imb = (snapshot.get("bid_ask_imbalance")
+           if snapshot.get("bid_ask_imbalance") is not None
+           else snapshot.get("flow_imbalance"))
     if imb is not None:
         imb_f = float(imb)
-        row["bid_ask_imbalance"]       = imb_f
-        row["imbalance_buy_pressure"]  = float(imb_f > 0.65)
-        row["imbalance_sell_pressure"] = float(imb_f < 0.35)
+        row["bid_ask_imbalance"] = imb_f
+        _buy, _sell = fk_imbalance_pressures(imb_f)
+        row["imbalance_buy_pressure"] = float(_buy)
+        row["imbalance_sell_pressure"] = float(_sell)
 
     for col in CATEGORICALS:
-        val     = snapshot.get(col)
-        mapping = category_maps.get(col, {})
-        row[f"cat_{col}"] = float(mapping[str(val)]) if (
-            val is not None and str(val) in mapping) else np.nan
+        row[f"cat_{col}"] = fk_category_code(snapshot.get(col), category_maps.get(col, {}))
 
     from lstm_data import CONFLUENCE_FEATURES
 
@@ -749,7 +922,7 @@ def _xgb_append_only_ok(prev_fp: dict, curr_fp: dict) -> bool:
     from training_cache import _normalize_data_fp
 
     a, b = _normalize_data_fp(prev_fp), _normalize_data_fp(curr_fp)
-    if str(a.get("ticker", "")).upper() != str(b.get("ticker", "")).upper():
+    if ticker_storage_key(str(a.get("ticker", ""))) != ticker_storage_key(str(b.get("ticker", ""))):
         return False
     if a.get("min_ts_utc") is None or b.get("min_ts_utc") is None:
         return False
@@ -779,6 +952,7 @@ def train_ticker(
     current_data_fingerprint: Optional[dict] = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
     target_mode: str = TARGET_MODE_TRICLASS,
+    db_path: Optional[str] = None,
 ) -> dict:
     base_dir = model_dir or MODEL_DIR
     base_dir.mkdir(parents=True, exist_ok=True)
@@ -826,7 +1000,13 @@ def train_ticker(
 
     train_end, n_val = (len(df), 0) if evaluate_only else time_ordered_tail_split(len(df))
     _fit_end = train_end if (n_val > 0 and not evaluate_only) else None
-    X, feat_names, cat_maps, aux_stats = engineer_features(df, fit_end=_fit_end)
+    # RC-340 (DEFECT B): forward the caller's DB so the confluence authority queries the
+    # SAME source the training rows came from. This call previously dropped it, so a
+    # custom/scratch training DB silently sourced cf_* from the process-default DB —
+    # a different population under the same feature names. Default None preserves the
+    # default-DB path exactly.
+    X, feat_names, cat_maps, aux_stats = engineer_features(
+        df, fit_end=_fit_end, db_path=db_path)
     y = df[target_col].map(class_map).values
     if np.any(pd.isna(y)):
         bad = int(np.sum(pd.isna(y)))
@@ -1145,6 +1325,7 @@ def main():
                 evaluate_only=args.evaluate_only,
                 ml_horizon_slug=hz_arg,
                 target_mode=tm_arg,
+                db_path=args.db,  # RC-344/F35: same DB as load_data(args.db) above
             )
             results[tkr] = r
         except Exception as e:

@@ -11,6 +11,7 @@ import threading
 from collections import deque
 from typing import Any, Optional
 from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
+from instrument_identity import ticker_storage_key
 
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20
@@ -67,7 +68,7 @@ def push_book(symbol: str, content_item: dict) -> None:
     asks = content_item.get("ASKS")
     if not bids or not asks:
         return
-    sym = (symbol or content_item.get("key") or "").upper().strip()
+    sym = ticker_storage_key(symbol or content_item.get("key"))  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     if not sym:
         return
     # Ensure format matches engine: BIDS/ASKS with BID_PRICE, TOTAL_VOLUME, etc.
@@ -89,7 +90,7 @@ def push_level_one(symbol: str, content_item: dict) -> None:
     """
     if not content_item or not isinstance(content_item, dict):
         return
-    sym = (symbol or content_item.get("key") or "").upper().strip()
+    sym = ticker_storage_key(symbol or content_item.get("key"))  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     if not sym:
         return
 
@@ -186,7 +187,7 @@ def get_content_for_symbol(symbol: str) -> list[dict]:
     3. Latest top-of-book as a content item (BID_PRICE, ASK_PRICE, BID_SIZE, ASK_SIZE)
     Engine expects content.*.BIDS, content.*.ASKS, content.*.LAST_PRICE, etc.
     """
-    sym = (symbol or "").upper().strip()
+    sym = ticker_storage_key(symbol)  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     if not sym:
         return []
 
@@ -212,7 +213,7 @@ def get_l1_stream_input_probe(symbol: str) -> tuple[Any, ...]:
     Cheap snapshot of streaming buffers for L1 quote-hook OF gating (no OrderFlowEngine).
     Book/tape lengths, last tape id/timestamp, top-of-book bid/ask when present.
     """
-    sym = (symbol or "").upper().strip()
+    sym = ticker_storage_key(symbol)  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     if not sym:
         return (0, 0, None, None, None)
     with _lock:
@@ -234,7 +235,7 @@ def get_l1_stream_input_probe(symbol: str) -> tuple[Any, ...]:
 
 def clear_symbol(symbol: str) -> None:
     """Clear stored data for a symbol (e.g. on unsubscribe)."""
-    sym = (symbol or "").upper().strip()
+    sym = ticker_storage_key(symbol)  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     with _lock:
         if sym in _book:
             _book[sym].clear()
@@ -252,7 +253,7 @@ def clear_symbol(symbol: str) -> None:
 
 def get_stream_volume(symbol: str) -> Optional[float]:
     """Return latest TOTAL_VOLUME from WebSocket level_one_equity for symbol, or None."""
-    sym = (symbol or "").upper().strip()
+    sym = ticker_storage_key(symbol)  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     if not sym:
         return None
     with _lock:
@@ -261,7 +262,7 @@ def get_stream_volume(symbol: str) -> Optional[float]:
 
 def get_stream_chg_pct(symbol: str) -> Optional[float]:
     """Return REGULAR_MARKET_CHANGE_PERCENT or CHANGE_PERCENT from WebSocket for symbol, or None."""
-    sym = (symbol or "").upper().strip()
+    sym = ticker_storage_key(symbol)  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     if not sym:
         return None
     with _lock:
@@ -270,7 +271,7 @@ def get_stream_chg_pct(symbol: str) -> Optional[float]:
 
 def get_top_of_book_sizes(symbol: str) -> dict[str, Optional[int]]:
     """Latest L1 BID_SIZE / ASK_SIZE from streaming top-of-book, if present."""
-    sym = (symbol or "").upper().strip()
+    sym = ticker_storage_key(symbol)  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     if not sym:
         return {"bid_size": None, "ask_size": None}
 

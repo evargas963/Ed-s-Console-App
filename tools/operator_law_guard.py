@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -566,15 +567,24 @@ def _edit_took_effect(entry: dict) -> bool:
 
 def _production_edits(ledger: list[dict], confirm=None) -> list[str]:
     """Production surfaces this turn actually CHANGED — attempts that were refused drop out."""
+    try:
+        from tools.turn_self_audit import is_production_path
+    except ImportError:
+        from turn_self_audit import is_production_path  # type: ignore
     confirm = _edit_took_effect if confirm is None else confirm
     out = []
     for e in ledger:
         if e.get("kind") not in ("edit", "edit_attempt"):
             continue
         p = e.get("detail", "").replace("\\", "/")
-        if any(seg in p for seg in _NON_PRODUCTION):
-            continue
-        if not p.endswith(_PRODUCTION_SUFFIX):
+        rel = p
+        repo = str(e.get("repo") or "")
+        if repo:
+            try:
+                rel = Path(p).resolve().relative_to(Path(repo).resolve()).as_posix()
+            except (OSError, ValueError):
+                rel = p
+        if not is_production_path(rel):
             continue
         if not confirm(e):
             continue
@@ -714,19 +724,6 @@ def _has_live_probe(ledger: list[dict]) -> bool:
                for e in ledger if e.get("kind") == "bash")
 
 
-#: RC-190 (operator non-negotiable, 2026-08-02, "self audit is a non negotiable universally
-#: repo wide"): a turn that changed ANY production surface must have RUN the per-turn self
-#: adversarial audit — tools/turn_self_audit.py re-derives the turn's blast radius and re-runs
-#: the attack suites against it, leaving a JSONL record. Ordinary pytest is verification;
-#: it does not satisfy the audit, whose artifact is this tool's ledger entry.
-_TURN_SELF_AUDIT = re.compile(r"turn_self_audit\.py", re.I)
-
-
-def _has_turn_self_audit(ledger: list[dict]) -> bool:
-    return any(_TURN_SELF_AUDIT.search(e.get("detail", ""))
-               for e in ledger if e.get("kind") == "bash")
-
-
 #: RC-203 (operator non-negotiable, 2026-08-02: "always research and then act... at an
 #: institutional/mit/bloomberg manner... universal throughout the entire repo"): the audit
 #: record of a production-editing turn must NAME the reference researched before acting.
@@ -763,6 +760,164 @@ def _latest_audit_lacks_research(log: Path | None = None) -> bool:
     return research_violation(str(rec.get("research", "") or ""), changed) is not None
 
 
+def _supervisor_incomplete(message: str) -> dict:
+    """A typed parent-owned result for a child that produced no valid audit result."""
+    return {
+        "schema_version": 1,
+        "contract_id": "CLEAN_FOR_TURN_CONTRACT_V1",
+        "authoritative": True,
+        "completed": False,
+        "verdict": "INCOMPLETE",
+        "exit_code": 3,
+        "internal_errors": [message],
+    }
+
+
+def _write_turn_audit_receipt(
+    session_id: str,
+    result: dict,
+    *,
+    observed_exit_code: int,
+    validation_errors: list[str],
+) -> str | None:
+    """Persist parent-observed evidence atomically outside the repository.
+
+    Receipts are diagnostics, never inputs to Stop authorization.
+    """
+    safe_session = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:80]
+    run_id = re.sub(
+        r"[^A-Za-z0-9_.-]", "_", str(result.get("audit_run_id") or "unknown")
+    )[:80]
+    directory = Path(tempfile.gettempdir()) / "ed_turn_audit_receipts" / safe_session
+    target = directory / f"{run_id}.json"
+    payload = {
+        "observed_exit_code": observed_exit_code,
+        "validation_errors": validation_errors,
+        "result": result,
+        "recorded_at": __import__("time").time(),
+    }
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(payload, sort_keys=True), encoding="utf-8"
+        )
+        temporary.replace(target)
+    except OSError as exc:
+        return f"authoritative receipt write failed: {type(exc).__name__}: {exc}"
+    return None
+
+
+def supervise_turn_audit(
+    repo: str | Path,
+    session_id: str,
+    *,
+    command: list[str] | None = None,
+    timeout: float = 1800,
+    required_session_paths: list[str] | tuple[str, ...] | None = None,
+) -> tuple[list[str], dict]:
+    """Launch, observe, and validate the authoritative audit child for this Stop.
+
+    A repository artifact is never read here.  The only candidate result is the
+    stdout of this exact child process, whose actual exit status the parent owns.
+    """
+    root = Path(repo).resolve()
+    if not session_id:
+        result = _supervisor_incomplete("missing session identity")
+        return ["TURN AUDIT INCOMPLETE: missing session identity"], result
+    session_paths = sorted({
+        path.replace("\\", "/").removeprefix("./")
+        for path in required_session_paths or ()
+        if path
+    })
+    argv = command or [
+        sys.executable,
+        str(REPO / "tools" / "turn_self_audit.py"),
+        "--authoritative",
+        "--repo",
+        str(root),
+        "--session-id",
+        session_id,
+        *[
+            item
+            for path in session_paths
+            for item in ("--required-session-file", path)
+        ],
+    ]
+    try:
+        proc = subprocess.run(
+            argv,
+            cwd=str(REPO),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        result = _supervisor_incomplete(f"audit child timed out after {timeout}s")
+        return [f"TURN AUDIT INCOMPLETE: audit child timed out after {timeout}s"], result
+    except (OSError, subprocess.SubprocessError) as exc:
+        result = _supervisor_incomplete(
+            f"audit child launch failed: {type(exc).__name__}: {exc}"
+        )
+        return [f"TURN AUDIT INCOMPLETE: {result['internal_errors'][0]}"], result
+
+    raw = (proc.stdout or "").strip()
+    if proc.returncode not in (0, 1, 2, 3) and not raw:
+        message = (
+            f"audit child did not complete successfully (unexpected exit {proc.returncode})"
+        )
+        return [f"TURN AUDIT INCOMPLETE: {message}"], _supervisor_incomplete(message)
+    try:
+        result = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        message = (
+            f"malformed structured audit result from child exit {proc.returncode}: "
+            f"{raw[:200]!r}"
+        )
+        result = _supervisor_incomplete(message)
+        return [f"TURN AUDIT INCOMPLETE: {message}"], result
+    if not isinstance(result, dict):
+        message = "malformed structured audit result: top level is not an object"
+        return [f"TURN AUDIT INCOMPLETE: {message}"], _supervisor_incomplete(message)
+
+    try:
+        from tools.turn_self_audit import validate_result
+    except ImportError:
+        from turn_self_audit import validate_result  # type: ignore
+    try:
+        validation = validate_result(
+            result,
+            repo=root,
+            session_id=session_id,
+            observed_exit_code=proc.returncode,
+            required_session_paths=session_paths,
+        )
+    except Exception as exc:  # fail closed if the validator itself encounters hostile structure
+        validation = [
+            f"structured result validation crashed: {type(exc).__name__}: {exc}"
+        ]
+    violations = [f"TURN AUDIT RESULT REJECTED: {item}" for item in validation]
+    receipt_error = _write_turn_audit_receipt(
+        session_id,
+        result,
+        observed_exit_code=proc.returncode,
+        validation_errors=validation,
+    )
+    if receipt_error:
+        violations.append(f"TURN AUDIT INCOMPLETE: {receipt_error}")
+    verdict = str(result.get("verdict") or "")
+    if proc.returncode not in (0, 1, 2, 3):
+        violations.append(
+            f"TURN AUDIT INCOMPLETE: audit child did not complete successfully "
+            f"(unexpected exit {proc.returncode})"
+        )
+    if verdict not in ("CLEAN", "NO_RELEVANT_PRODUCTION_CHANGE"):
+        violations.append(f"TURN AUDIT BLOCKED: authoritative verdict is {verdict or 'UNKNOWN'}")
+    return violations, result
+
+
 def stop_violations(ledger: list[dict]) -> list[str]:
     out: list[str] = []
     # Stop clauses stay SESSION-scoped and behaviourally unchanged: they ask whether this TURN
@@ -772,17 +927,6 @@ def stop_violations(ledger: list[dict]) -> list[str]:
         out.append(f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
                    f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
                    f"a live probe before ending the turn.")
-    if edits and not _has_turn_self_audit(ledger):
-        out.append("ACTION BLOCKED (RC-190): this turn changed production code and the "
-                   "per-turn self adversarial audit never RAN. Universal, repo-wide, "
-                   "non-negotiable: run `.venv/Scripts/python.exe tools/turn_self_audit.py` "
-                   "(add --tests for surfaces the stem scan cannot match), fix what it finds, "
-                   "then end the turn.")
-    if edits and _has_turn_self_audit(ledger) and _latest_audit_lacks_research():
-        out.append("ACTION BLOCKED (RC-203): the turn's self-audit record names NO research. "
-                   "Operator law: research THEN act, institutional level, universal. Re-run "
-                   "`tools/turn_self_audit.py --research '<the spec/reference consulted and "
-                   "what it settled>'` — a concrete artifact (path, §section, URL).")
     # RC-125: every answer stands on a same-turn observation of the live session — the morning
     # of 2026-07-29 was lost to an answer reasoned from a screenshot while the live payload sat
     # one command away. Absolute by operator order: probe first, then answer.
@@ -800,7 +944,8 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        return 0
+        sys.stderr.write("BLOCKED: invalid hook payload — unmeasurable is not compliant.\n")
+        return 2
 
     sid = payload.get("session_id") or ""
     tool = payload.get("tool_name") or ""
@@ -837,11 +982,94 @@ def main() -> int:
         return 0
 
     # Stop
+    if not sid:
+        sys.stderr.write("BLOCKED: Stop payload has no session identity.\n")
+        return 2
+    if not payload_cwd:
+        sys.stderr.write(
+            "BLOCKED: Stop payload has no working-directory identity; "
+            "the repository/worktree subject cannot be proven.\n"
+        )
+        return 2
     if payload.get("stop_hook_active") is True:
-        _clear(sid)
-        return 0
+        # The flag proves only that the host is retrying a blocked Stop. It grants no
+        # authorization: the complete Stop policy, including a fresh supervised audit,
+        # is evaluated again against the current subject below.
+        if not any(entry.get("kind") == "stop_blocked" for entry in ledger):
+            sys.stderr.write(
+                "BLOCKED: stop_hook_active was not preceded by this guard's Stop block; "
+                "a caller-controlled retry flag is not authority.\n"
+            )
+            return 2
     bad = stop_violations(ledger)
+    edits = _production_edits(ledger)
+    payload_repo = repo_root_of(payload_cwd) if payload_cwd else ""
+    repos = {
+        str(entry.get("repo") or "")
+        for entry in ledger
+        if entry.get("kind") in ("edit", "edit_attempt")
+        and entry.get("detail") in edits
+        and entry.get("repo")
+    }
+    # Applicability is a property of the current Git subject, not of whether an Edit
+    # command happened to be recorded. This catches pre-existing and out-of-band dirty
+    # production files, including untracked files, before Stop can authorize the turn.
+    if payload_repo:
+        try:
+            from tools.turn_self_audit import STATUS_PASS, discover_scope
+        except ImportError:
+            from turn_self_audit import STATUS_PASS, discover_scope  # type: ignore
+        current_scope = discover_scope(Path(payload_repo))
+        if current_scope.status != STATUS_PASS:
+            bad.append(
+                "TURN AUDIT INCOMPLETE: canonical Stop scope discovery failed: "
+                + "; ".join(current_scope.errors)
+            )
+        elif current_scope.production_entries:
+            repos.add(payload_repo)
+    if edits and not repos:
+        if payload_repo:
+            repos.add(payload_repo)
+        else:
+            bad.append(
+                "TURN AUDIT INCOMPLETE: production edits were recorded but their "
+                "repository/worktree cannot be resolved"
+            )
+    if repos:
+        if len(repos) > 1:
+            bad.append(
+                "TURN AUDIT INCOMPLETE: one Stop contains production edits in multiple "
+                f"repositories/worktrees: {sorted(repos)}"
+            )
+            audit_repo = ""
+        else:
+            audit_repo = next(iter(repos))
+        if not audit_repo:
+            bad.append(
+                "TURN AUDIT INCOMPLETE: cannot resolve the repository/worktree for this Stop"
+            )
+        else:
+            session_paths: list[str] = []
+            audit_root = Path(audit_repo).resolve()
+            for raw_path in edits:
+                try:
+                    candidate = Path(raw_path)
+                    rel = (
+                        candidate.resolve().relative_to(audit_root).as_posix()
+                        if candidate.is_absolute()
+                        else raw_path.replace("\\", "/").removeprefix("./")
+                    )
+                except (OSError, ValueError):
+                    continue
+                session_paths.append(rel)
+            audit_bad, _result = supervise_turn_audit(
+                audit_repo,
+                sid,
+                required_session_paths=sorted(set(session_paths)),
+            )
+            bad.extend(audit_bad)
     if bad:
+        _record(sid, "stop_blocked", "operator_law_guard", payload_repo or "")
         sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                          + "\n".join(f"    {b}" for b in bad)
                          + "\n\nRun it, then end the turn.\n")

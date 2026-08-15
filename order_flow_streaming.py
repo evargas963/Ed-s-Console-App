@@ -17,6 +17,7 @@ import logging
 import threading
 import time
 from typing import Any, Callable, Optional
+from instrument_identity import ticker_storage_key
 
 from order_flow_live_state import push_book, push_level_one
 
@@ -84,7 +85,7 @@ def get_plane_authority_for_ticker(ticker: str) -> str:
     """
     rest_only | streaming | rest_fallback_explicit | rest_mismatch
     """
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical stream key (idempotent on Schwab stream symbols)
     if not (_stream_running and _streaming_logged_in):
         return "rest_only"
     if not _active_streaming_ticker or _active_streaming_ticker.upper() != t:
@@ -104,7 +105,7 @@ def streaming_l1_cache_usable(ticker: str) -> bool:
     recent L1 tick. Prevents serving a stale cached row after the websocket died
     but before STREAMING_STALE_MS (25s) expires.
     """
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical stream key (idempotent on Schwab stream symbols)
     if get_plane_authority_for_ticker(t) != "streaming":
         return False
     last = _streaming_last_update_ts
@@ -204,7 +205,7 @@ def get_streaming_diagnostics() -> dict[str, Any]:
 
 async def _resubscribe_to_ticker(sc: Any, ticker: str) -> None:
     global _subscribed_equity_syms, _active_streaming_ticker, _last_subscribe_completed_ts, _streaming_last_update_ts
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical stream key (idempotent on Schwab stream symbols)
     if not t:
         return
     old = list(_subscribed_equity_syms)
@@ -246,7 +247,7 @@ async def _resubscribe_coro(ticker: str) -> None:
 def set_streaming_active_ticker(ticker: str) -> bool:
     """Switch Schwab L1+book to this symbol. Safe from any thread after the stream loop exists."""
     global _stream_loop, _pending_post_login_ticker
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical stream key (idempotent on Schwab stream symbols)
     if not t:
         return False
     loop = _stream_loop

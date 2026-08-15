@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from math_levels import GAMMA_FLIP_TRUSTED
+from instrument_identity import ticker_storage_key
 
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
 REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
@@ -47,7 +48,7 @@ SENTINEL_TICKERS = _base_upper()
 def dealer_sign_is_proven(ticker: str | None) -> bool:
     """Single authority for regime-label eligibility. Fail-closed: an unknown or
     missing ticker is UNPROVEN — a forgotten call site demotes, never promotes."""
-    return bool(ticker) and str(ticker).upper().strip() in SENTINEL_TICKERS
+    return bool(ticker) and ticker_storage_key(ticker) in SENTINEL_TICKERS  # RC-345/F25: canonical sentinel membership
 
 POSTURE_FADE = "FADE_EDGES"
 POSTURE_FOLLOW = "FOLLOW_BREAKS"
@@ -85,11 +86,23 @@ def _fmt(label: str, level: float | None, spot: float) -> str:
     return f"{label} {level:.2f} ({_pct_from(spot, level) * 100:+.2f}%)"
 
 
+def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
+    """THE authority for the gamma-regime SIGN THRESHOLD (RC-345 / F07). Positive dealer
+    gamma is LONG_GAMMA_CHOP (dealers damp moves); negative is SHORT_GAMMA_TREND (dealers
+    amplify). Returns None when the sign is absent or exactly zero, so every caller shares
+    one threshold instead of re-deriving `> 0` locally. `_regime_for` and
+    institutional_behavior both consume this — there is no second sign authority."""
+    if signed_gamma is None or signed_gamma == 0:
+        return None
+    return REGIME_LONG_GAMMA if signed_gamma > 0 else REGIME_SHORT_GAMMA
+
+
 def _regime_for(spot: float, flip: float | None, gamma_at_spot: float | None) -> str:
     """Regime = sign of dealer gamma at spot. Falls back to spot-vs-flip only when the
     signed value is unavailable (the two always agree when both are present)."""
-    if gamma_at_spot is not None and gamma_at_spot != 0:
-        return REGIME_LONG_GAMMA if gamma_at_spot > 0 else REGIME_SHORT_GAMMA
+    signed = regime_from_signed_gamma(gamma_at_spot)
+    if signed is not None:
+        return signed
     if flip is not None:
         return REGIME_LONG_GAMMA if spot > flip else REGIME_SHORT_GAMMA
     return REGIME_UNAVAILABLE

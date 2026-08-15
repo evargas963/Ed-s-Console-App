@@ -357,8 +357,13 @@ def compute_probs(similar: list, outcome_col: str,
 
 
 def dominant_direction(up: float, down: float, flat: float) -> tuple:
+    # RC-345 / F22: the dominant-direction ARGMAX over a probability triplet is owned by ONE
+    # authority — numeric_contract.direction_from_normalized_triplet (same up>down>flat
+    # tie-break). This carries that label plus its probability; it does not re-implement the
+    # argmax (the old `max(probs, key=probs.get)` was a second projection of the same vector).
+    from numeric_contract import direction_from_normalized_triplet
     probs = {"up": up, "down": down, "flat": flat}
-    dom = max(probs, key=probs.get)
+    dom = direction_from_normalized_triplet(up, down, flat)
     return dom, probs[dom]
 
 
