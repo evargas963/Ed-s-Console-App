@@ -1320,29 +1320,11 @@ function draw() {
     }
   }
 
-  // ── RC-113: WALL RANGE + sigma band, to the named institutional standard ──────────────
-  // SpotGamma — whose levels product ships on Bloomberg — defines the wall as ONE strike
-  // and THE range as the corridor BETWEEN the put wall and the call wall (the dealer-
-  // hedging containment zone; their published hold rates: call wall 83%, put wall 89% of
-  // sessions). The sigma overlay is the Implied 1-Day Move: a one-standard-deviation band.
-  // Nothing here is invented client-side: the corridor is the two walls the server already
-  // certified, and the band half-width comes from the payload's ATM-IV computation.
-  if (T.call_wall != null && T.put_wall != null
-      && Number(T.call_wall) !== Number(T.put_wall)) {
-    const wLo = Math.min(Number(T.put_wall), Number(T.call_wall));
-    const wHi = Math.max(Number(T.put_wall), Number(T.call_wall));
-    if (wLo < hi && wHi > lo) {
-      const yA = y(Math.min(wHi, hi)), yB = y(Math.max(wLo, lo));
-      g.fillStyle = 'rgba(143,168,255,0.055)';
-      g.fillRect(PADL, yA, W - PADL - PADR, yB - yA);
-      // v6 # ui-mockup-ok: no mid-chart text — the corridor keeps its shade + hover tip only
-      zones.push({ y0: yA, y1: yB, tipHtml:
-        `<b>WALL RANGE ${fmt(wLo)} ↔ ${fmt(wHi)}</b><br>` +
-        `The dealer-hedging containment corridor between the put wall and the call wall — ` +
-        `the institutional range definition (SpotGamma standard, as shipped on Bloomberg: ` +
-        `the wall is one strike; THE range is between the walls).` });
-    }
-  }
+  // ── RC-356 (# ui-mockup-ok: operator-directed declutter, no redesign): the RC-113 wall-
+  // range corridor SHADE (translucent fill between put wall and call wall + its hover zone)
+  // is REMOVED — the operator wants a clean candle field. The boundary information is fully
+  // preserved by the two wall LEVEL LINES themselves (drawn via band() with tooltips); the
+  // range remains readable as the space between those lines without painting over candles.
   const _em = T.implied_1d_move;
   // v6 # ui-mockup-ok: EM rides the manager ('em' family) with axis tags, no mid-chart text
   if (_em && _em.points != null && spot != null && isFinite(Number(spot))) {
