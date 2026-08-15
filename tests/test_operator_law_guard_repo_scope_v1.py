@@ -386,10 +386,14 @@ def test_stop_raises_no_audit_obligation_for_a_rejected_edit(tmp_path):
 
 
 def test_stop_still_raises_the_audit_obligation_for_a_real_change(tmp_path):
+    # RC-367 repair: the obligation text moved from an RC-190 cite to the plain
+    # "changed production code and ran NOTHING" clause when the supervised audit
+    # took over turn verification — assert the real current clause.
     f = tmp_path / "thing.py"
     f.write_text("x", encoding="utf-8")
     ledger = [_attempt(str(f), f.stat().st_mtime_ns - 1)]
-    assert any("RC-190" in v for v in G.stop_violations(ledger))
+    assert any("changed production code and ran NOTHING" in v
+               for v in G.stop_violations(ledger))
 
 
 def test_legacy_edit_row_keeps_its_old_meaning():
@@ -415,7 +419,6 @@ def test_governance_and_test_paths_are_still_not_production():
     ("git reset --hard HEAD~1", "destructive git"),
     ("git clean -fd", "destructive git"),
     ("git push --force origin main", "destructive git"),
-    ("git commit --no-verify -m x", "disables a mechanical lock"),
     ("$env:ED_OPERATOR_LAW_GUARD='off'", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
     ("grep -r foo *.py", "shell grep"),
@@ -423,6 +426,19 @@ def test_governance_and_test_paths_are_still_not_production():
 def test_universal_protections_fire_in_this_repository(cmd, needle):
     out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
     assert any(needle in v for v in out), (cmd, out)
+
+
+def test_rc360_head_grant_governs_no_verify_in_this_repository():
+    """RC-367 repair of a stale expectation: since RC-360, a commit/push no-verify
+    segment is allowed in THIS repository iff the HEAD-ratified operator grant covers
+    it — the guard's verdict must agree with the grant reader either way. The
+    revoke/worktree-inert paths are locked by the RC-360 tests above; the
+    lock-disable env case stays unconditionally blocked (separate param)."""
+    cmd = "git commit --no-verify -m x"
+    covered = G._no_verify_grant_covers(cmd)
+    out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
+    fired = any("disables a mechanical lock" in v for v in out)
+    assert fired == (not covered), (covered, out)
 
 
 @pytest.mark.parametrize("cmd,needle", [
@@ -763,3 +779,64 @@ def test_rc360_worktree_only_grant_is_inert(tmp_path, monkeypatch):
         encoding="utf-8")
     monkeypatch.setattr(G.os.path, "abspath", lambda p: str(repo / "tools" / "operator_law_guard.py"))
     assert G._no_verify_grant_covers("git commit --no-verify -m x") is False
+
+
+# ── RC-367: the RC-350 one-app launch lock gets an owning suite ──────────────────────────
+# tools/check_live_path_is_main.py shipped as a launch preflight with no test importing it,
+# so the turn audit's ownership scan reported it unowned. These tests drive the REAL
+# violations() against a scratch repo in every state the lock exists to catch.
+
+def _lock_scratch_repo(tmp_path):
+    import subprocess as sp
+    repo = tmp_path / "lockrepo"
+    repo.mkdir()
+    def g(*args):
+        return sp.run(["git", *args], cwd=str(repo), capture_output=True,
+                      text=True, encoding="utf-8")
+    g("init", "-b", "main")
+    g("config", "user.email", "t@t.t")
+    g("config", "user.name", "t")
+    (repo / "app.py").write_text("x = 1\n", encoding="utf-8")
+    g("add", "app.py")
+    g("commit", "-m", "seed")
+    # fabricate origin/main == HEAD (released state)
+    head = g("rev-parse", "HEAD").stdout.strip()
+    g("update-ref", "refs/remotes/origin/main", head)
+    return repo, g
+
+
+def test_rc367_live_path_lock_clean_released_tree_passes(tmp_path, monkeypatch):
+    from tools.check_live_path_is_main import violations
+    repo, _g = _lock_scratch_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    assert violations() == []
+
+
+def test_rc367_live_path_lock_flags_uncommitted_app_code(tmp_path, monkeypatch):
+    from tools.check_live_path_is_main import violations
+    repo, _g = _lock_scratch_repo(tmp_path)
+    (repo / "app.py").write_text("x = 2\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    out = violations()
+    assert any("uncommitted APP file" in v for v in out), out
+
+
+def test_rc367_live_path_lock_flags_private_divergent_lineage(tmp_path, monkeypatch):
+    from tools.check_live_path_is_main import violations
+    repo, g = _lock_scratch_repo(tmp_path)
+    (repo / "app.py").write_text("x = 3\n", encoding="utf-8")
+    g("add", "app.py")
+    g("commit", "-m", "private")
+    monkeypatch.chdir(repo)
+    out = violations()
+    assert any("NOT on origin/main" in v for v in out), out
+
+
+def test_rc367_live_path_lock_flags_detached_head(tmp_path, monkeypatch):
+    from tools.check_live_path_is_main import violations
+    repo, g = _lock_scratch_repo(tmp_path)
+    head = g("rev-parse", "HEAD").stdout.strip()
+    g("checkout", "--detach", head)
+    monkeypatch.chdir(repo)
+    out = violations()
+    assert any("DETACHED HEAD" in v for v in out), out
