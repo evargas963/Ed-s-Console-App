@@ -279,25 +279,44 @@ def enforcement_paths(repo: Path | None = None) -> list[str]:
 
 
 def _blob_hash(repo: Path, path: Path) -> str | None:
+    # RC-370: parity is a CONTENT property under git's text semantics, not a raw-byte
+    # property. This repo's history swapped effective autocrlf true->false, leaving
+    # CRLF worktree files over LF index blobs — raw hashing read that config artifact
+    # as permanent enforcement drift on 16 paths while `git status` called the tree
+    # clean. CRLF is normalized to LF before hashing (the committed blobs are LF), so
+    # EOL noise clears while ANY real edit — one changed byte of content — still
+    # produces a different blob hash and trips the lock.
     if not path.is_file():
         return None
-    r = subprocess.run(
-        ["git", "hash-object", str(path)],
-        cwd=str(repo),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=15,
-    )
-    return r.stdout.strip() if r.returncode == 0 else None
+    try:
+        data = path.read_bytes().replace(b"\r\n", b"\n")
+    except OSError:
+        return None
+    import hashlib
+
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
 def _index_hash(repo: Path, rel: str) -> str | None:
+    # RC-370: some blobs in this repo's history were COMMITTED with CRLF (i/crlf in
+    # `git ls-files --eol`), so parity must normalize the INDEX side too — both sides
+    # hash over CRLF->LF-normalized content, and only real content edits differ.
     r = _git(["ls-files", "-s", "--", rel], cwd=repo)
     if r.returncode != 0 or not r.stdout.strip():
         return None
-    return r.stdout.strip().split()[1]
+    sha = r.stdout.strip().split()[1]
+    blob = subprocess.run(
+        ["git", "cat-file", "blob", sha],
+        cwd=str(repo),
+        capture_output=True,
+        timeout=15,
+    )
+    if blob.returncode != 0:
+        return None
+    data = blob.stdout.replace(b"\r\n", b"\n")
+    import hashlib
+
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
 def index_worktree_mismatches(
