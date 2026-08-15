@@ -478,6 +478,7 @@ def _evaluate_parallel_on_full_rth(
                     "transformer_unavailable": 0,
                     "ensemble_failed": 0,
                     "scored_full_triplet": 0,
+                    "nonfinite_triplet": 0,
                 }
 
                 for row in rows:
@@ -559,8 +560,13 @@ def _evaluate_parallel_on_full_rth(
                     s = pu + pd + pf
                     if s > 0:
                         pu, pd, pf = pu / s, pd / s, pf / s
-                    prob_rows.append([pu, pd, pf])
                     dom = direction_from_normalized_triplet(pu, pd, pf)
+                    if dom is None:
+                        # RC-363 WITHHELD: non-finite probability leg — skip the row so
+                        # it never corrupts preds/y_true/log_loss alignment.
+                        skip_stats["nonfinite_triplet"] += 1
+                        continue
+                    prob_rows.append([pu, pd, pf])
                     preds.append({"up": 0, "down": 1, "flat": 2}[dom])
                     y_true.append(yt)
                     rows_used.append(row_db)
@@ -698,10 +704,14 @@ def _evaluate_cascade_on_full_rth(
                     s = pu + pd + pf
                     if s > 0:
                         pu, pd, pf = pu / s, pd / s, pf / s
+                    dom = direction_from_normalized_triplet(pu, pd, pf)
+                    if dom is None:
+                        # RC-363 WITHHELD: non-finite probability leg — skip the row so
+                        # it never corrupts preds/y_true/log_loss alignment.
+                        continue
                     prob_rows.append([pu, pd, pf])
                     yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
                     y_true.append(yt)
-                    dom = direction_from_normalized_triplet(pu, pd, pf)
                     preds.append({"up": 0, "down": 1, "flat": 2}[dom])
                     rows_used.append(row_db)
 

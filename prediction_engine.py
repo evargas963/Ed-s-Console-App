@@ -337,7 +337,11 @@ def _pack_horizon_row(
         # in exactly one place.
         if u is not None and d is not None and f is not None:
             from numeric_contract import direction_from_normalized_triplet
-            row["dominant"] = direction_from_normalized_triplet(u, d, f)
+            _dom_lbl = direction_from_normalized_triplet(u, d, f)
+            if _dom_lbl is not None:
+                # RC-363: stamp only a real label — a WITHHELD (non-finite leg)
+                # triplet leaves "dominant" absent, same as the missing branch.
+                row["dominant"] = _dom_lbl
         # Card-fidelity audit (2026-07-05): labeled_count was stamped ONLY on the
         # withheld branch, so the EMPIRICAL source chip's operator text could
         # never render its sample count ("N similar setups") for a POPULATED
@@ -917,9 +921,14 @@ def compute_prediction_core(
             empirical_confidence = None
         else:
             emp_dom, emp_prob = dominant_direction(_pu, _pd, _pf)
-            empirical_confidence = determine_confidence(
-                match_tier, n_used, emp_prob, similar=similar, outcome_col="outcome_5c"
-            )
+            if emp_dom is None:
+                # RC-363 WITHHELD: non-finite triplet leg — same no-empirical
+                # disposition as the missing-probs branch above.
+                empirical_confidence = None
+            else:
+                empirical_confidence = determine_confidence(
+                    match_tier, n_used, emp_prob, similar=similar, outcome_col="outcome_5c"
+                )
 
     avg5 = _avg_outcome_pts(similar, "outcome_5c_pts")
     avg15 = _avg_outcome_pts(similar, "outcome_15c_pts")

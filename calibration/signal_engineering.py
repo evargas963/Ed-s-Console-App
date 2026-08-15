@@ -78,6 +78,9 @@ def signal_fusion_margin_factory(margin: float) -> SignalFn:
         if srt[0] - srt[1] < margin:
             return "wait"
         best_lab = direction_from_normalized_triplet(float(pu), float(pd), float(pf))
+        if best_lab is None:
+            # RC-363: non-finite leg — WITHHELD, no directional signal.
+            return "wait"
         return {"up": "long", "down": "short", "flat": "wait"}[best_lab]
 
     _fn.__name__ = f"fusion_margin_{margin}"

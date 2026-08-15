@@ -1630,7 +1630,9 @@ def build_market_state(
                 _pd = float_finite_or_none(getattr(ms, f"down_prob_{_hz}", None))
                 _pf = float_finite_or_none(getattr(ms, f"flat_prob_{_hz}", None))
                 if _pu is not None and _pd is not None and _pf is not None:
-                    _pdbh[_hz] = _dom(_pu, _pd, _pf)
+                    _lbl = _dom(_pu, _pd, _pf)
+                    if _lbl is not None:  # RC-363: WITHHELD triplet never renders
+                        _pdbh[_hz] = _lbl
             ms.pred_dominant_by_horizon = _pdbh
             ms.movement_head_probs = getattr(_pred, "movement_head_probs", None)
             ms.fusion_policy_snapshot_cols = getattr(_pred, "fusion_policy_snapshot_cols", None)

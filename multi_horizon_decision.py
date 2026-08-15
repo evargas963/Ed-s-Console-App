@@ -1121,7 +1121,11 @@ def _pooled_consensus(
     margin = dom - q_sorted[1]
     label = direction_from_normalized_triplet(q[0], q[1], q[2])
 
-    if label == "flat":
+    if label is None:
+        # RC-363 WITHHELD: non-finite pooled leg — never fall through to a
+        # directional bias on a garbage triplet.
+        bias, reason = "wait", WAIT_REASON_POOLED_FLAT
+    elif label == "flat":
         bias, reason = "wait", WAIT_REASON_POOLED_FLAT
     elif dom < TRADEABLE_DOM_MIN or margin < TRADEABLE_MARGIN_MIN:
         bias, reason = "wait", _wait_reason_pooled_below_gate(dom, margin)
