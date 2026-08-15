@@ -11060,6 +11060,8 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_grc"] = _g("grc")
     md["kl_gsf_state"] = _g("gsf_state")
     md["kl_gsf_state_disp"] = "BELOW SUPPORT" if _g("gsf_state") == "BELOW_SUPPORT" else None
+    # RC-357: 0DTE share of the gamma book — level persistence, same SSOT terrain book.
+    md["kl_zero_dte_share"] = _g("zero_dte_gamma_share_pct")
     md["kl_max_pain"] = _g("max_pain")
     md["kl_call_delta_wall"] = _g("call_delta_wall")
     md["kl_put_delta_wall"] = _g("put_delta_wall")

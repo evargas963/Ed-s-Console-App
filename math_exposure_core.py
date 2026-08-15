@@ -446,6 +446,29 @@ def net_gex_dollars_at_strike(bucket: dict) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
 
 
+def compute_zero_dte_gamma_share(
+    exposures_all: dict, exposures_0dte: dict
+) -> float | None:
+    """RC-357: % of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
+
+    share = sum(|net_gex_1pct|) over the 0DTE book / sum(|net_gex_1pct|) over the full book,
+    BOTH books from the ONE producer (compute_exposures_by_strike; the 0DTE book is the same
+    call with use_only_dte_max=0 — same parser, same sign model, zero new math). High share
+    means today's walls/flip decay into the close (0DTE gamma dies at 4pm); low share means
+    the levels are carried by dated gamma and persist. FAIL-CLOSED: None when the full book
+    is empty or has no measurable gamma — never a fabricated 0%.
+    """
+    if not exposures_all:
+        return None
+    total = sum(abs(v.get("net_gex_1pct") or 0.0) for v in exposures_all.values()
+                if isinstance(v, dict))
+    if total <= 0:
+        return None
+    zero = sum(abs(v.get("net_gex_1pct") or 0.0) for v in (exposures_0dte or {}).values()
+               if isinstance(v, dict))
+    return round(100.0 * zero / total, 1)
+
+
 def total_gamma_raw_at_strike(bucket: dict) -> float | None:
     c = bucket_metric_abs(bucket, "call_gamma")
     p = bucket_metric_abs(bucket, "put_gamma")
