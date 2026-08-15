@@ -8426,7 +8426,9 @@ function renderTierALive(d, fullRenderSource) {
       const charmSign = charmNetRaw != null && charmNetRaw >= 0 ? '+' : '-';
       // RC-362: dollarize the charm rate (shares/day × spot) so it reads beside GEX/DEX/
       // vanna in the same unit; falls back to Δ-shares/day when spot is unusable.
-      const _cSpot = Number(d.spot);
+      // RC-366 (RC-81/RC-225 one-faucet): spot comes from the declared display faucet
+      // (effectiveDisplaySpot via the in-scope `spot`), never a raw d.spot read.
+      const _cSpot = spot;
       const _cDol = charmNetRaw != null && Number.isFinite(_cSpot) && _cSpot > 0
         ? Math.abs(charmNetRaw) * _cSpot : null;
       const rateStr = charmNetRaw != null && charmNetRaw !== 0
