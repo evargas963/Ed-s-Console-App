@@ -461,20 +461,16 @@ def test_vwap_failed_log_demoted_to_debug_for_index_symbols():
     """
     from pathlib import Path
 
+    # RC-371 re-anchor: Phase 2A deleted the second VWAP implementation ALONG WITH its
+    # 'VWAP failed for' log site — the WARN-spam this test suppressed cannot recur
+    # because the block no longer exists. The lock now holds two things: the deleted
+    # log site stays deleted, and the one-VWAP deletion record remains in place.
     src = Path(__file__).resolve().parents[1].joinpath("server.py").read_text(encoding="utf-8")
-    # Locate the VWAP-failed log block by anchor string.
-    anchor = 'VWAP failed for'
-    assert anchor in src, "VWAP-failed log block missing from server.py"
-    # Slice ~30 lines around the anchor to verify the discriminator landed adjacent.
-    idx = src.index(anchor)
-    window_start = src.rfind("\n", 0, idx - 600)
-    window = src[window_start : idx + 200]
-    assert '_is_index_symbol' in window or 'startswith("$")' in window, (
-        f"VWAP log site has no index-symbol discriminator:\n{window!r}"
+    assert "VWAP failed for" not in src, (
+        "the deleted VWAP-failed log block is back in server.py — a second VWAP "
+        "path (and its index-symbol WARN spam) is reopening"
     )
-    assert "log.debug" in window, "DEBUG branch missing — index symbols would still WARN"
-    assert "log.warning" in window, "WARNING branch missing — real ticker case would not surface"
-    # Lazy %-formatting (avoids f-string eval cost on suppressed DEBUG).
-    assert '"VWAP failed for %s' in window, (
-        "VWAP log should use lazy %-formatting so DEBUG-suppressed string interpolation is skipped"
+    assert "It was a second, independent VWAP implementation" in src, (
+        "the Phase 2A one-VWAP deletion record left server.py — re-derive where the "
+        "VWAP authority lives before trusting this lock"
     )

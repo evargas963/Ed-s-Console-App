@@ -60,7 +60,7 @@ def require_ml_training_ticker_allowed(ticker: str) -> str:
 
 def ml_scheduler_training_expansion_enabled() -> bool:
     """Opt-in: train full enrolled roster minus panel_auto (legacy expansion path)."""
-    return os.environ.get("ED_ML_SCHEDULER_TRAINING_EXPAND", "").strip().lower() in _TRUTHY
+    return os.environ.get("ED_ML_SCHEDULER_TRAINING_EXPAND", "").strip().lower() in _TRUTHY  # caps-ok: opt-in operator flag; unset means disabled BY DESIGN, not coerced absence
 
 
 _ROOT = Path(__file__).resolve().parent

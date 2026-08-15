@@ -65,7 +65,7 @@ def observability_thresholds() -> dict[str, Any]:
 
 def base_money_path_capture_interval_sec() -> float:
     """Seconds between dedicated base-ticker capture cycles (~1 RTH snapshot/min per symbol)."""
-    raw = os.environ.get("ED_BASE_MONEY_PATH_CAPTURE_INTERVAL_SEC", "").strip()
+    raw = os.environ.get("ED_BASE_MONEY_PATH_CAPTURE_INTERVAL_SEC", "").strip()  # caps-ok: operator config read; empty sentinel falls through to the declared default below, not market data
     if raw:
         try:
             v = float(raw)

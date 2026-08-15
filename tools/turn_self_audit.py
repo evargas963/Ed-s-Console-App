@@ -311,7 +311,15 @@ def capture_identity(repo: Path, scope: ScopeResult | None = None) -> tuple[dict
     current_scope = scope or discover_scope(root)
     if current_scope.status != STATUS_PASS:
         errors.extend(current_scope.errors)
-    manifest = [_path_identity(root, entry) for entry in current_scope.entries]
+    # RC-371 (extends RC-331): reports/ artifacts are RECORDINGS — test observability
+    # ledgers and telemetry written while the audit observes. An observer must not
+    # count its own recording: hashing them made every owned run that logged anything
+    # read as subject mutation. The production scope digest below is untouched.
+    manifest = [
+        _path_identity(root, entry)
+        for entry in current_scope.entries
+        if not entry.path.startswith("reports/")
+    ]
     worktree = _hash_bytes(json.dumps(manifest, sort_keys=True).encode("utf-8"))
     prod_manifest = [
         _path_identity(root, entry) for entry in current_scope.production_entries
