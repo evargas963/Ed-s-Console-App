@@ -171,7 +171,6 @@ def test_browser_dom_parity_implemented_in_source():
 
 
 def test_orphan_field_table_includes_all_required_fields(ucf):
-    required = set(ucf.ORPHAN_FIELD_NAMES) | {"EM_bounds"}
     payload = {
         "pred_headline": "Fusion: UP",
         "reversal_risk": 0.33,
@@ -374,7 +373,7 @@ def test_harness_arg_parser_defaults(ucf):
 
 
 def test_harness_module_is_valid_python():
-    ast.parse(_harness_source())
+    assert ast.parse(_harness_source()).body  # parses to a non-empty module (raises SyntaxError otherwise)
 
 
 def test_evaluate_institutional_proof_all_green_with_guest(ucf):

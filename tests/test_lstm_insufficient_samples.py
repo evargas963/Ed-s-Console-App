@@ -50,8 +50,8 @@ def test_validator_passes_on_valid_3d_dataset() -> None:
         y=np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0]),
         n_days=5,
     )
-    # Must not raise.
-    _validate_lstm_dataset_shape(ds, ticker="SPY")
+    # Valid shape -> returns None (raises on bad shape).
+    assert _validate_lstm_dataset_shape(ds, ticker="SPY") is None
 
 
 def test_validator_raises_on_zero_samples() -> None:

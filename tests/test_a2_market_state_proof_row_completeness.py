@@ -6,6 +6,8 @@ from v2_decision.module_a_adapter import build_module_a_a1_decision
 
 
 def _rich_contract(**overrides) -> dict:
+    # institutional-synthetic-ok: proof-row-completeness test needs a controlled, fully
+    # populated contract to assert every field flows into the proof row.
     base = {
         "symbol": "SPY260505C00500000",
         "putCall": "CALL",

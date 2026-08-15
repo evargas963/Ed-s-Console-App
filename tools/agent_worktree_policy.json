@@ -1,0 +1,17 @@
+{
+  "schema": "agent_worktree_policy_v1",
+  "mode": "shared-root",
+  "mode_reason": "RC-129: operator delegated the isolate-vs-share call 2026-07-29; decided SHARED. The probe-live law (RC-125) and rendered-DOM verification need Claude's edits in the tree the running server serves, and git forbids one branch checked out in two worktrees, so sibling isolation breaks the edit->restart->probe loop. Role explicitness and the dirty-protected-source handoff block are unchanged. Flip back by setting mode to 'isolated'.",
+  "description": "Shared-root operation (see mode_reason). The isolated design remains available: Cursor uses the primary checkout; Claude uses <primary>-Claude via git worktree (shared .git object store). No absolute operator-home paths — suffix + ED_AGENT_ROLE only.",
+  "env_role_var": "ED_AGENT_ROLE",
+  "claude_root_suffix": "-Claude",
+  "roles": {
+    "cursor": "Primary worktree; must NOT end with claude_root_suffix. ED_AGENT_ROLE=cursor required.",
+    "claude": "Dedicated worktree; directory name MUST end with claude_root_suffix. ED_AGENT_ROLE=claude required."
+  },
+  "fail_fast": "ED_AGENT_ROLE unset or invalid → exit 1. No inference from directory name.",
+  "venv": "Per-worktree .venv via tools/bootstrap_worktree_venv.py (no shared symlink).",
+  "db": "Claude → data/ed_console_claude.db; Cursor → data/ed_console.db.",
+  "git_lock": "tools/check_git_index_lock.py clears index.lock older than 60s.",
+  "handoff": "Commit or stash in the active worktree before the other agent reads shared HEAD. tools/check_worktree_handoff.py enforces dirty-source + boundary."
+}

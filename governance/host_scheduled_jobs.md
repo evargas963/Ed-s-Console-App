@@ -1,5 +1,3 @@
-> **SOURCE NAMESPACE — not a second "now."** Current execution queue is `OPEN_ITEMS.md` **PA-46**. Charter: `AGENTS.md`. This file was **missing from `main`** (last lived on a feature branch). Restored 2026-08-13 from `76b6c0e` so the rehab record sits on the same branch as the board. Inventory the board already claimed existed. Remaining registration stays PA-48 OPS-OPERABLE-SURFACE-JOB. Do not open a parallel program from this file.
-
 # Host Scheduled Jobs — the single visible inventory
 
 **Closes OPEN_ITEMS `FIND-SCHEDULED-JOBS-VISIBILITY`** (agent-registered Windows tasks ran outside

@@ -1,0 +1,51 @@
+{
+  "schema": "fp10_schwab_rehydration_v1",
+  "generated_utc": "2026-07-17T13:15:47Z",
+  "join_tol_sec": 29.0,
+  "fp01_after_baseline": {
+    "trusted_anchor_attached": 70304,
+    "trusted_old_missing_attached": 10614
+  },
+  "pre_decision_backfill_counts": {
+    "spy_bars": 101694,
+    "qqq_bars": 89653,
+    "iwm_bars": 76765,
+    "snapshots_outcome_filled": 175612,
+    "trusted_anchor_attached": 70304,
+    "trusted_old_missing_attached": 10614
+  },
+  "backfill": {
+    "candidates": 13339,
+    "updated": 45,
+    "tol_sec": 29.0,
+    "skipped_ambiguous_duplicate_snapshots": 0,
+    "skipped_ambiguous_nearest_tie": 0,
+    "skipped_no_exact_match": 0,
+    "skipped_no_candidate_in_tol": 11444,
+    "skipped_snapshot_outcomes_not_filled": 1850,
+    "skipped_internal_inconsistent": 0,
+    "skipped_unknown": 0,
+    "resynced": 100254,
+    "resync_skipped_no_snapshot": 176,
+    "resync_skipped_duplicate_snapshots": 0,
+    "resync_skipped_snapshot_outcomes_not_filled": 0
+  },
+  "after": {
+    "spy_bars": 101696,
+    "qqq_bars": 89655,
+    "iwm_bars": 76769,
+    "snapshots_outcome_filled": 175613,
+    "trusted_anchor_attached": 70349,
+    "trusted_old_missing_attached": 10571
+  },
+  "delta_vs_fp01": {
+    "trusted_anchor_attached": 45,
+    "trusted_old_missing_attached": -43
+  },
+  "schwab_backfill": {
+    "candles_fetched": 125487,
+    "bars_upsert_count": 125487,
+    "final_status": "SUCCESS",
+    "note": "tools/historical_backfill_enrolled_1m_v1.py --tickers SPY QQQ IWM --lookback-days 120; tool also refreshes all enrolled tickers' governed outcomes"
+  }
+}

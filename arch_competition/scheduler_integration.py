@@ -6,6 +6,8 @@ Does not copy artifacts to models/active/ or call run_unified_stack_ml_once.
 
 from __future__ import annotations
 
+from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -73,7 +75,7 @@ def _blocked_promotion_flags_from_sources(
 
 def arch_competition_ticker_dir(model_dir: Path, ml_horizon_slug: str, ticker: str) -> Path:
     su = normalize_ml_horizon_slug(ml_horizon_slug)
-    return model_dir / "arch_competition" / su / ticker.upper()
+    return model_dir / "arch_competition" / su / ticker_storage_key(ticker)
 
 
 def evaluation_manifest_path(model_dir: Path, ml_horizon_slug: str, ticker: str) -> Path:
@@ -175,7 +177,7 @@ def build_arch_competition_summary_tick(
     """Single-ticker summary fragment for merged summary file + arch_state."""
     lineage = manifest.get("lineage") or {}
     return {
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),
         "ml_horizon_suffix": ml_horizon_slug,
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
         "incumbent_architecture": promotion_record.get("incumbent_architecture"),
@@ -268,7 +270,7 @@ def _merge_summary_file(path: Path, ticker: str, tick_summary: dict[str, Any]) -
             f"(got {type(prev_tickers).__name__}); schema v1 violation"
         )
     tickers = prev_tickers
-    tickers[ticker.upper()] = tick_summary
+    tickers[ticker_storage_key(ticker)] = tick_summary
     out = {
         "schema_version": "1",
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -321,7 +323,7 @@ def load_architecture_competition_visibility(
 
     tickers_summary = summary_blob.get("tickers") if isinstance(summary_blob.get("tickers"), dict) else {}
     if ticker:
-        tku = ticker.upper()
+        tku = ticker_storage_key(ticker)
         ts = tickers_summary.get(tku)
         gv = (state.get(tku) or {}).get("governed_competition") if isinstance(state.get(tku), dict) else None
         return {

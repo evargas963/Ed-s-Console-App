@@ -79,8 +79,6 @@ print(get_ablation_static_lock_index_build_count())
         cwd=REPO,
         capture_output=True,
         text=True,
-        encoding="utf-8",
-        errors="strict",
         check=False,
     )
     assert proc.returncode == 0, proc.stderr

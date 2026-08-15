@@ -102,8 +102,6 @@ def test_cli_smoke_writes_csv(tmp_path: Path, monkeypatch) -> None:
         ],
         capture_output=True,
         text=True,
-        encoding="utf-8",
-        errors="strict",
         timeout=60,
     )
     assert r.returncode == 0, r.stderr

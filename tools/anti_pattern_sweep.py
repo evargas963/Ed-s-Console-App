@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,9 +140,31 @@ def _line_is_doc_or_comment(line: str) -> bool:
     return False
 
 
+def _tracked_py_files() -> list[Path]:
+    """RC-286: 'repo-wide' means what git tracks, the same definition RC-274 gave the
+    silent-zero gate.
+
+    This walked the filesystem and subtracted a hand-maintained `SKIP_DIR_PARTS`, which is
+    correct exactly once — on the day it is written. `scratchpad/` was never added, so this
+    gate has been failing on throwaway audit scripts that `.gitignore:202` excludes and that
+    git does not track at all. The index already answers "is this repository code", answers
+    it for directories nobody has invented yet, and counts a staged file the moment it is
+    staged. SKIP_DIR_PARTS survives for the tracked-but-not-product trees it legitimately
+    names, where it is a scope choice rather than a stand-in for the index.
+    """
+    proc = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "git ls-files failed, so the scan scope is unknown: " + proc.stderr.strip())
+    return [ROOT / p for p in proc.stdout.split("\0") if p]
+
+
 def iter_py_files(*, production_only: bool) -> list[Path]:
     out: list[Path] = []
-    for path in ROOT.rglob("*.py"):
+    for path in _tracked_py_files():
         if set(path.parts) & SKIP_DIR_PARTS:
             continue
         rel = path.relative_to(ROOT).as_posix()
@@ -384,7 +407,15 @@ CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     ("schwab_client.py", 372, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
     ("schwab_client.py", 403, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
     ("timing_probe2.py", 23, "GET_WITH_DEFAULT", "diagnostic probe display fallback"),
-    ("trade_impacting_gate.py", 218, "GET_WITH_DEFAULT", "env config only"),
+    # 218 -> 217: RC-64 removed a dead `reasons: list[str] = []` initialisation earlier in this
+    # file, shifting every following line up by one. The reviewed site is unchanged.
+    ("trade_impacting_gate.py", 217, "GET_WITH_DEFAULT", "env config only"),
+    # Log-line labels, not data: `msg.get("src", "?")` fills a DISPLAY string in a diagnostic
+    # log record. No decision, model input, or persisted field reads these — absence genuinely
+    # is "unknown source" for a log line, so "?" is the honest rendering, not a fabricated value.
+    ("stream_spine.py", 229, "GET_WITH_DEFAULT", "log-line source label only"),
+    ("stream_spine.py", 236, "GET_WITH_DEFAULT", "log-line source label only"),
+    ("stream_spine.py", 243, "GET_WITH_DEFAULT", "log-line source label only"),
 )
 
 
@@ -417,10 +448,36 @@ def caps_register_markdown() -> str:
     return "\n".join(rows)
 
 
+#: RC-287: the per-line escape, the same shape RC-276 gave the silent-zero gate as
+#: `# silent-zero-ok:`. It exists because the gate's only other escapes address a hit by
+#: LOCATION: CAPS_PREFIX_ALLOWLIST is file-scoped and would exempt 400+ lines of
+#: terrain_engine.py to excuse two of them (RC-276's exact defect), while
+#: CAPS_LINE_ALLOWLIST pins a LINE NUMBER and hands its exemption to a different statement
+#: the moment anything above it shifts. A marker in the source travels with the code it
+#: excuses. The reason is mandatory — a marker you can type without saying anything is the
+#: file allowlist again, per line. Presence is machine-checked here; TRUTH is not
+#: checkable, and RC-281 records what happens when I write reasons that are false, so
+#: these are review surface, not proof.
+_CAPS_OK_RE = re.compile(r"#\s*caps-ok:\s*(\S.*)$")
+
+
+def line_carries_caps_marker(rel: str, lineno: int) -> bool:
+    """True when the source line itself states why this hit is not a defect."""
+    try:
+        lines = (ROOT / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    if not (1 <= lineno <= len(lines)):
+        return False
+    return bool(_CAPS_OK_RE.search(lines[lineno - 1]))
+
+
 def find_unallowlisted_hits(*, production_only: bool = True) -> list[str]:
     out: list[str] = []
     for lineno, rel, vid, expr in scan_all(production_only=production_only):
         if caps_hit_allowed(rel, lineno, vid):
+            continue
+        if line_carries_caps_marker(rel, lineno):
             continue
         out.append(format_hit(lineno, rel, vid, expr))
     return out

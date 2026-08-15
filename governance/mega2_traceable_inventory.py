@@ -28,6 +28,7 @@ MEGA2_FILES = frozenset(
         "math_exposure.py",
         "math_exposure_core.py",
         "math_levels.py",
+        "terrain_engine.py",
         "math_probabilities.py",
         "math_volatility.py",
         "order_flow_engine.py",
@@ -36,8 +37,8 @@ MEGA2_FILES = frozenset(
     }
 )
 
-# Engines that are not Mega2 KEY-LEVELS / order-flow producers. Named so a new
-# *_engine.py cannot land uninventoried by hiding next to these.
+# RC-297: engine modules that are legitimately OUTSIDE the Mega2 (§D+§E) scope —
+# they are inventoried by other megas / lanes, not uninventoried producers.
 MEGA2_ENGINE_OUT_OF_SCOPE = frozenset(
     {
         "adaptive_similarity_engine.py",
@@ -76,6 +77,7 @@ def uninventoried_engine_modules(
                 offenders.append(rel)
     return sorted(offenders)
 
+
 MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("debug_flow_snapshot.py", 32, "_contracts_from_chain_json", "SCHWAB_LEAF", 'chains.callExpDateMap.*.openInterest', (), None, "Parses option chain JSON for debug snapshot."),
     Mega2TraceableDerivation("debug_flow_snapshot.py", 63, "main", "NONE", None, (), None, "No market-field derivation: CLI debug entry; reads persisted snapshots."),
@@ -102,21 +104,31 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_exposure_core.py", 20, "_f", "NONE", None, (), None, "No market-field derivation in _f; Safe float parse."),
     Mega2TraceableDerivation("math_exposure_core.py", 26, "charm_compute_unavailable_log_level", "NONE", None, (), None, "No market-field derivation: two-state charm withhold log level (quality-gate DEBUG, else WARNING)."),
     Mega2TraceableDerivation("math_exposure_core.py", 29, "bucket_metric", "DERIVED", None, ("server.py:_fetch_state",), None, "Fail-closed; no .get(k,0)."),
+    Mega2TraceableDerivation("math_exposure_core.py", 34, "gamma_is_plausible", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike",), None, "Rejects poisoned Schwab per-contract gamma (negative or implausibly large) before aggregation."),
+    Mega2TraceableDerivation("math_exposure_core.py", 34, "schwab_iv_to_sigma", "SCHWAB_LEAF", 'chains.callExpDateMap.*.volatility', (), None, "Single conversion of Schwab IV (reported in percent) to decimal sigma; guards a vendor units change."),
     Mega2TraceableDerivation("math_exposure_core.py", 36, "bucket_metric_abs", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Abs of bucket_metric."),
     Mega2TraceableDerivation("math_exposure_core.py", 66, "_strike_bucket", "SCHWAB_LEAF", 'chains.callExpDateMap.*.openInterest', (), None, "Strike dict lookup."),
     Mega2TraceableDerivation("math_exposure_core.py", 102, "compute_exposures_by_strike", "DERIVED", None, ("server.py:_fetch_state",), None, "Core Schwab chain aggregation; skip -999 greeks."),
+    Mega2TraceableDerivation("math_exposure_core.py", 211, "compute_exposures_by_strike._tte_memo", "NONE", None, (), None, "No market-field derivation: per-expiry TTE memo cache nested in compute_exposures_by_strike; parent row owns derivation semantics."),
     Mega2TraceableDerivation("math_exposure_core.py", 255, "_nearest_strike", "SCHWAB_LEAF", 'chains.*.strikePrice', (), None, "ATM strike selection."),
     Mega2TraceableDerivation("math_exposure_core.py", 266, "_window_strikes", "SCHWAB_LEAF", 'chains.*.strikePrice', (), None, "Strike window filter."),
     Mega2TraceableDerivation("math_exposure_core.py", 282, "exposures_have_dollar_gex", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Detects dollarized GEX availability."),
     Mega2TraceableDerivation("math_exposure_core.py", 292, "key_level_strikes_with_oi", "SCHWAB_LEAF", 'chains.*.openInterest', (), None, "Strikes with OI leaf."),
     Mega2TraceableDerivation("math_exposure_core.py", 305, "key_level_strikes_with_gamma", "SCHWAB_LEAF", 'chains.*.gamma', (), None, "Strikes with usable gamma."),
     Mega2TraceableDerivation("math_exposure_core.py", 321, "total_gex_dollars_at_strike", "DERIVED", None, ("math_exposure_core.py:bucket_metric_abs",), None, "Sum |call|+|put| GEX$."),
+    Mega2TraceableDerivation("math_exposure_core.py", 496, "pick_key_delta_strike", "DERIVED", None, ("math_exposure_core.py:bucket_metric_abs",), None, "Selects the strike with the largest total delta notional (|call DEX$|+|put DEX$|) from derived exposures; no raw leaf read."),
+    Mega2TraceableDerivation("math_exposure_core.py", 507, "pick_key_delta_strike._total_dex", "DERIVED", None, ("math_exposure_core.py:bucket_metric_abs",), None, "Nested: sums |call DEX$|+|put DEX$| per strike bucket for the key-delta selection."),
+    Mega2TraceableDerivation("math_exposure_core.py", 518, "pick_volatility_point_strikes", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "(HVP, LVP): strikes holding the most-negative / most-positive net GEX$ from derived exposures."),
     Mega2TraceableDerivation("math_exposure_core.py", 333, "net_gex_dollars_at_strike", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Net GEX$ at strike."),
     Mega2TraceableDerivation("math_exposure_core.py", 337, "total_gamma_raw_at_strike", "DERIVED", None, ("math_exposure_core.py:bucket_metric_abs",), None, "Raw gamma magnitude fallback."),
     Mega2TraceableDerivation("math_exposure_core.py", 348, "net_gamma_raw_at_strike", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Raw net gamma."),
     Mega2TraceableDerivation("math_exposure_core.py", 352, "_pick_strike_max_metric", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Max-metric strike picker."),
-    Mega2TraceableDerivation("math_exposure_core.py", 370, "pick_gamma_pin_strike", "DERIVED", None, ("math_exposure_core.py:exposures_have_dollar_gex", "math_exposure_core.py:_pick_strike_max_metric", "math_exposure_core.py:bucket_metric_abs",), None, "Institutional pin; no raw fallback when dollarized."),
-    Mega2TraceableDerivation("math_exposure_core.py", 433, "gex_at_bound_pin_strike", "DERIVED", None, ("math_exposure_core.py:net_gex_dollars_at_strike", "math_exposure_core.py:net_gamma_raw_at_strike", "math_exposure_core.py:exposures_have_dollar_gex",), None, "|net GEX$| at bound pin for pin_score; not total-gamma / HVL."),
+    # RC-297: `pick_gamma_pin_strike` no longer exists. RC-124 split it in two because ONE
+    # name was carrying two metrics — the total-gamma magnet and the signed-book peak — and
+    # this row was the last place the retired name survived. Both successors are inventoried
+    # below, each stating which book it measures.
+    Mega2TraceableDerivation("math_exposure_core.py", 468, "pick_pin_and_strength", "DERIVED", None, ("terrain_engine.py:compute_terrain",), None, "RC-124/RC-315: the strike with maximum TOTAL gamma (|call GEX$| + |put GEX$|) — a GROSS GAMMA CONCENTRATION, i.e. where the most dealer re-hedging activity sits — plus strength_pct, the leader's margin over the runner-up on the same metric. It is a pin CANDIDATE and NOT a demonstrated magnet: magnitude sets the SIZE of the hedging flow while the SIGN of the dealer position sets whether that flow stabilises or repels, and this metric discards the sign, so two strikes with equal absolute gamma can behave oppositely. The sign is also not observable — public open interest does not say who owns the contracts, so dealer direction is modelled (https://spotgamma.com/what-is-gex-gamma-exposure/). Expiration-date clustering turns on NET positioning, not gross: Ni, Pearson and Poteshman, Journal of Financial Economics, doi:10.1016/j.jfineco.2004.08.005. An earlier version of this row asserted that magnitude pins regardless of sign; that was refuted (RC-315) and must not return. Fail-closed: no dollarized GEX gives (None, None), never a raw-gamma fallback."),
+    Mega2TraceableDerivation("math_exposure_core.py", 499, "pick_net_gex_peak_strike", "DERIVED", None, ("math_levels.py:_pick_gamma_pin", "server.py:_fetch_state", "terrain_engine.py:compute_terrain",), None, "RC-124: the strike with the largest |net GEX$| per 1% (calls MINUS puts) — a real measure of where the signed book concentrates, and the one that used to be displayed under the name 'gamma pin'. It keeps its row under its own name; institutional=True returns None rather than falling back to raw gamma."),
     Mega2TraceableDerivation("math_exposure_core.py", 393, "pick_hvl_strike", "DERIVED", None, ("math_exposure_core.py:exposures_have_dollar_gex", "math_exposure_core.py:_pick_strike_max_metric",), None, "High-vol level strike."),
     Mega2TraceableDerivation("math_exposure_core.py", 405, "pick_gamma_wall_strikes", "DERIVED", None, ("math_exposure_core.py:exposures_have_dollar_gex", "math_exposure_core.py:_pick_strike_max_metric", "math_exposure_core.py:bucket_metric_abs",), None, "Call/put gamma walls."),
     Mega2TraceableDerivation("math_exposure_core.py", 428, "pick_delta_wall_strikes", "DERIVED", None, ("math_exposure_core.py:exposures_have_dollar_gex", "math_exposure_core.py:_pick_strike_max_metric", "math_exposure_core.py:bucket_metric_abs",), None, "Call/put delta walls."),
@@ -129,7 +141,7 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_exposure_core.py", 541, "window_summary", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Window-level DEX/GEX/OI summary."),
     Mega2TraceableDerivation("math_exposure_core.py", 567, "strike_agg", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Delegates to Schwab transport producers for strike_agg."),
     Mega2TraceableDerivation("math_exposure_core.py", 573, "compute_net_charm", "DERIVED", None, ("server.py:_fetch_state",), None, "Net charm from chain; Schwab charm leaf when present."),
-    Mega2TraceableDerivation("math_exposure_core.py", 622, "compute_net_charm._resolve_T", "SCHWAB_LEAF", 'chains.*.daysToExpiration', (), None, "Nested DTE parse for charm window."),
+    Mega2TraceableDerivation("math_exposure_core.py", 890, "compute_net_charm._tte_memo", "DERIVED", None, ("math_exposure_core.py:compute_net_charm",), None, "Nested: memoises time_et.time_to_expiry_years per distinct expiry against a `now` pinned once for the aggregate (RC-245). Not an optimisation only — with now=None each per-contract call re-read the clock, so T drifted across the loop and one reported figure described several moments."),
     Mega2TraceableDerivation("math_exposure_core.py", 745, "greek_bias", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Bias string from greeks."),
     Mega2TraceableDerivation("math_exposure_core.py", 778, "compute_beta", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Beta from return series; inputs from Schwab candles."),
     Mega2TraceableDerivation("math_exposure_core.py", 820, "compute_beta_residual", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Residual vs SPY; quote-derived inputs."),
@@ -141,6 +153,7 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_levels.py", 157, "_pin_strength", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Pin strength vs neighbors."),
     Mega2TraceableDerivation("math_levels.py", 194, "_bias_from_net", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Bias signal taxonomy."),
     Mega2TraceableDerivation("math_levels.py", 215, "build_summary_rows", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike", "market_state.py:build_market_state",), None, "KEY LEVELS summary table rows."),
+    Mega2TraceableDerivation("math_levels.py", 347, "compute_pin_width_pts", "DERIVED", None, ("market_state.py:build_market_state", "server.py:_fetch_state",), None, "RC-345/F20 one authority for pin width: call_gamma_wall - put_gamma_wall in points; None unless both walls present."),
     Mega2TraceableDerivation("math_levels.py", 231, "build_summary_rows.aggregate", "DERIVED", None, ("math_levels.py:build_summary_rows",), None, "Nested strike-window aggregate inside build_summary_rows."),
     Mega2TraceableDerivation("math_levels.py", 289, "_pick_wall_abs", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Legacy abs wall picker."),
     Mega2TraceableDerivation("math_levels.py", 305, "_pick_wall_pos", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Positive-metric wall picker."),
@@ -152,15 +165,25 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_levels.py", 575, "is_pin_zone", "ALLOWLISTED", None, (), 'mega2_internal_helper', "Zone classifier constant check."),
     Mega2TraceableDerivation("math_levels.py", 581, "parity_f_minus_spot_from_contracts", "SCHWAB_LEAF", 'chains.callExpDateMap.*.mark', (), None, "Parity residual; mark-only mid per strike."),
     Mega2TraceableDerivation("math_levels.py", 618, "parity_f_minus_spot_from_contracts._mid", "SCHWAB_LEAF", 'chains.callExpDateMap.*.mark', (), None, "Nested mid from Schwab bid/ask/mark only."),
-    Mega2TraceableDerivation("math_levels.py", 652, "compute_gamma_flip", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike",), None, "Zero-cross interpolation."),
-    Mega2TraceableDerivation("math_levels.py", 675, "compute_gamma_flip._find_crossing", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike",), None, "Nested zero-cross search inside compute_gamma_flip."),
+    Mega2TraceableDerivation("math_levels.py", 680, "_norm_pdf", "DERIVED", None, ("math_levels.py:bs_gamma",), None, "Standard normal PDF; pure math constant, no market field."),
+    Mega2TraceableDerivation("math_levels.py", 684, "bs_gamma", "DERIVED", None, ("math_levels.py:compute_gamma_profile",), None, "Black-Scholes gamma N'(d1)/(S*sigma*sqrt(T)); refuses T<=0 or sigma<=0."),
+    Mega2TraceableDerivation("math_levels.py", 698, "_contract_inputs", "SCHWAB_LEAF", 'chains.callExpDateMap.*.volatility', (), None, "Reads strike/IV/OI/DTE/putCall leaves from the Schwab contract; normalizes IV-in-percent."),
+    Mega2TraceableDerivation("math_levels.py", 698, "bs_charm", "DERIVED", None, ("math_levels.py:compute_charm_by_strike",), None, "Black-Scholes charm dDelta/dt per share; verified against a finite-difference derivative of BS delta."),
+    Mega2TraceableDerivation("math_levels.py", 704, "bs_vanna", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike",), None, "Black-Scholes vanna dDelta/dSigma per share, closed form -e^(-qT) phi(d1) d2 / sigma — identical for calls and puts, sign driven entirely by -d2 so it flips through SPOT and never through the call/put boundary. Independently verified 2026-08-02 against a central finite difference of BS delta over 27 (K,T,sigma) points to max |err| 9.1e-9, and against both the vega and gamma identities; the gamma identity is a standing cross-check in tests/test_charm_sign_finite_difference.py. Units are delta-change per 1.00 of IV."),
+    Mega2TraceableDerivation("math_levels.py", 721, "compute_gamma_profile", "DERIVED", None, ("server.py:_fetch_state",), None, "Dealer gamma recomputed at each hypothetical spot (+call/-put); canonical profile."),
+    Mega2TraceableDerivation("math_levels.py", 809, "_dealer_sign", "NONE", None, (), None, "No market-field derivation: maps the +1 call / -1 put naive side sign to the dealer sign per sign_model (naive vs empirical-prior GPO)."),
+    Mega2TraceableDerivation("math_levels.py", 725, "compute_charm_by_strike", "DERIVED", None, ("terrain_engine.py:compute_terrain",), None, "Per-strike dealer charm exposure in delta-shares/day, +call/-put convention."),
     Mega2TraceableDerivation("math_levels.py", 729, "_total_gamma_at_strike", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Total gamma measure at strike."),
     Mega2TraceableDerivation("math_levels.py", 737, "compute_hvl", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike", "market_state.py:build_market_state",), None, "Delegates pick_hvl_strike."),
+    Mega2TraceableDerivation("math_levels.py", 748, "gamma_flip_from_profile", "DERIVED", None, ("math_levels.py:compute_gamma_flip_v2",), None, "Interpolated zero-crossing of the gamma profile."),
     Mega2TraceableDerivation("math_levels.py", 750, "hvl_gamma_strength", "DERIVED", None, ("math_levels.py:_total_gamma_at_strike",), None, "Strength at HVL."),
+    Mega2TraceableDerivation("math_levels.py", 758, "pick_charm_wall_strikes", "DERIVED", None, ("terrain_engine.py:compute_terrain",), None, "Strikes of maximum call-side and put-side charm exposure."),
     Mega2TraceableDerivation("math_levels.py", 762, "compute_max_pain", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike", "server.py:_fetch_state",), None, "Max pain from OI; no Schwab max-pain leaf."),
+    Mega2TraceableDerivation("math_levels.py", 763, "compute_gamma_flip_v2", "DERIVED", None, ("server.py:_fetch_state",), None, "Gamma flip plus chain-span confidence flag; narrow chains are never served as trustworthy."),
     Mega2TraceableDerivation("math_levels.py", 776, "compute_max_pain._pain_at", "DERIVED", None, ("math_levels.py:compute_max_pain",), None, "Nested pain calc at settlement inside compute_max_pain."),
     Mega2TraceableDerivation("math_levels.py", 806, "max_pain_oi_strength", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "OI at max pain strike."),
     Mega2TraceableDerivation("math_levels.py", 824, "compute_gamma_void_zones", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike",), None, "Delegates to Schwab transport producers for compute_gamma_void_zones."),
+    Mega2TraceableDerivation("math_levels.py", 840, "gamma_at_price", "DERIVED", None, ("math_levels.py:compute_gamma_flip_v2",), None, "Net dealer gamma interpolated at a price; the SIGN of this value defines the regime, independent of whether a flip exists."),
     Mega2TraceableDerivation("math_levels.py", 859, "compute_gamma_void_zones._get_gex", "DERIVED", None, ("math_levels.py:compute_gamma_void_zones",), None, "Nested GEX reader; parent REPLACED forbids or-zero synthesis."),
     Mega2TraceableDerivation("math_levels.py", 876, "compute_gamma_void_zones._get_oi", "DERIVED", None, ("math_levels.py:compute_gamma_void_zones",), None, "Nested OI reader inside compute_gamma_void_zones."),
     Mega2TraceableDerivation("math_levels.py", 976, "compute_level_density", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Density metric for level bands."),
@@ -289,5 +312,24 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("order_flow_streaming.py", 476, "start_order_flow_stream", "DERIVED", None, ("order_flow_live_state.py:get_content_for_symbol",), None, "Delegates to Schwab transport producers for start_order_flow_stream."),
     Mega2TraceableDerivation("order_flow_streaming.py", 507, "stop_order_flow_stream", "ALLOWLISTED", None, (), 'mega2_schwab_stream_l1', "Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (stop_order_flow_stream)."),
     Mega2TraceableDerivation("order_flow_streaming.py", 544, "get_stream_thread", "ALLOWLISTED", None, (), 'mega2_schwab_stream_l1', "Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (get_stream_thread)."),
+    Mega2TraceableDerivation("terrain_engine.py", 80, "TerrainSnapshot.to_dict", "NONE", None, (), None, "No market-field derivation: dataclass-to-dict serialization for the API response."),
+    Mega2TraceableDerivation("terrain_engine.py", 84, "_unavailable", "NONE", None, (), None, "No market-field derivation: builds the fail-closed terrain payload from caller-supplied ticker/spot only."),
+    Mega2TraceableDerivation("terrain_engine.py", 93, "compute_terrain", "DERIVED", None, ("server.py:_latest_chain_and_spot",), None, "Assembles the terrain payload (regime, walls, pin, HVL, max pain, charm walls) from one chain; no model stack."),
+    # RC-297: nine terrain functions and four exposure/levels functions had drifted out of
+    # this inventory, and one entry named a function that no longer exists. Traced 2026-08-09
+    # by AST — callers resolved across the tracked index, vendor leaves read out of each
+    # body — rather than by pattern-matching neighbouring rows.
+    Mega2TraceableDerivation("terrain_engine.py", 169, "_per_strike_rows", "SCHWAB_LEAF", 'chains.*.totalVolume', (), None, "Builds the [[strike, net_gex_1pct$, session_volume], ...] triples the per-strike panel renders; volume is summed from the chain's own totalVolume through float_nonnegative_or_none, strikes through float_finite_or_none, so a NaN can never become a key or a bar."),
+    Mega2TraceableDerivation("terrain_engine.py", 215, "_dte_of", "SCHWAB_LEAF", 'chains.*.daysToExpiration', (), None, "Reads the contract's own daysToExpiration and returns None when it cannot be read; RC-290 removed the 999.0 sentinel that was putting unknown-maturity contracts into the FAR scope and rendering them there."),
+    Mega2TraceableDerivation("terrain_engine.py", 231, "compute_wall_value_area", "DERIVED", None, ("terrain_engine.py:compute_terrain",), None, "RC-115 Market-Profile value area over SIDE gamma mass — the wall's earned range. Consumes exposures already derived upstream; reads no vendor leaf itself."),
+    Mega2TraceableDerivation("terrain_engine.py", 282, "compute_implied_one_day_move", "SCHWAB_LEAF", 'chains.*.volatility', (), None, "RC-113 institutional sigma band EM_1d = S x sigma_ATM x sqrt(1/252); selects the ATM contract by putCall and strikePrice and takes its volatility leaf directly."),
+    Mega2TraceableDerivation("terrain_engine.py", 339, "_per_strike_scopes", "DERIVED", None, ("terrain_engine.py:compute_terrain",), None, "Splits the per-strike rows into the {all, near, far} sets the ALL / <=7DTE / MONTHLY+ chips switch between; the maturity split comes from _dte_of and a contract that cannot answer it lands in NEITHER side (RC-290)."),
+    Mega2TraceableDerivation("terrain_engine.py", 366, "_per_strike_map", "SCHWAB_LEAF", 'chains.*.totalVolume', (), None, "Per-strike net GEX$ and session volume from the chain that just built `exposures`; volume stays None until a contract supplies one, so a missing totalVolume cannot render as a real zero (RC-290)."),
+    Mega2TraceableDerivation("terrain_engine.py", 401, "strongest_strike_storm1", "DERIVED", None, ("terrain_engine.py:compute_terrain",), None, "RC-159 spot-independent strongest strike, ranked over the [[strike, net_gex, volume], ...] triples _per_strike_rows already produced; reads no vendor leaf."),
+    Mega2TraceableDerivation("terrain_engine.py", 439, "strongest_strike_storm1._inv_ranks", "DERIVED", None, ("terrain_engine.py:strongest_strike_storm1",), None, "Nested: n+1-rank with AVERAGE ranks for ties (rank 1 = highest), so tied strikes cannot be ordered by list position."),
+    Mega2TraceableDerivation("terrain_engine.py", 477, "wall_geometry_state", "DERIVED", None, ("server.py:get_terrain", "terrain_engine.py:compute_terrain",), None, "RC-130: answers whether a wall is in the configuration its support/resistance label claims (contains / breached / unknown) from spot and the wall strike; the UI renders NO behavioural claim without a positive state."),    # Strike-width derivation added 2026-07-20 (RC-12 root fix).
+    Mega2TraceableDerivation("math_levels.py", 870, "infer_strike_increment", "SCHWAB_LEAF", 'chains.callExpDateMap.*.strikePrice', (), None, "Median adjacent difference of strikePrice values from an already-fetched chain; junk rows skipped, thin chains return None."),
+    Mega2TraceableDerivation("math_levels.py", 902, "required_strike_count", "NONE", None, (), None, "No market-field derivation: pure arithmetic from spot, strike increment and GAMMA_FLIP_MIN_SPAN_PCT; sizes the NEXT fetch request."),
+
 )
 

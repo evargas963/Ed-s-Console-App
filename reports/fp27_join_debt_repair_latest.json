@@ -1,0 +1,42 @@
+{
+  "schema": "fp27_historical_join_debt_repair_v1",
+  "generated_utc": "2026-07-17T15:43:58Z",
+  "production_tol_unchanged": 29.0,
+  "historical_repair_tol_sec": 59.0,
+  "before": {
+    "trusted_attached": 70403,
+    "trusted_old_missing": 10937,
+    "trusted_missing_any_age": 11391,
+    "snapshots_outcome_5c_filled": 176380
+  },
+  "refresh_updates_executed": 176611,
+  "backfill_tol_29": {
+    "updated": 1200,
+    "candidates": 14782,
+    "skipped_no_candidate_in_tol": 11678,
+    "skipped_snapshot_outcomes_not_filled": 1904,
+    "skipped_ambiguous_nearest_tie": 0
+  },
+  "backfill_tol_59_historical": {
+    "updated": 10284,
+    "candidates": 13603,
+    "skipped_no_candidate_in_tol": 1305,
+    "skipped_snapshot_outcomes_not_filled": 2014,
+    "skipped_ambiguous_nearest_tie": 0
+  },
+  "after": {
+    "trusted_attached": 78840,
+    "trusted_old_missing": 2937,
+    "trusted_missing_any_age": 2969,
+    "snapshots_outcome_5c_filled": 176435
+  },
+  "delta": {
+    "trusted_attached": 8437,
+    "trusted_old_missing": -8000
+  },
+  "answer": {
+    "can_fix_now": true,
+    "fixed_this_run": 8437,
+    "remaining_old_missing": 2937
+  }
+}

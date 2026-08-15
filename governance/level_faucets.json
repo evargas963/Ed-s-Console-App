@@ -1,0 +1,22 @@
+{
+  "charter": "ONE faucet per domain (operator law 2026-08-02: two faucets 'in any other way they can manifest' are strictly prohibited). This registry enumerates every AUTHORIZED producer of the levels/exposure domain and the single authorized home of greek formulas. Adding a producer requires an operator_quote in the same staged change to THIS file. Target state: the level producers collapse into one /api/levels service (mission levels-faucet-v1).",
+  "operator_quote": "OPERATOR GO — MISSION levels-tierb-session-collapse-v1 (PM Cursor, 2026-08-03 continue-dont-stop): Collapse vwap/ORB/overnight/today value_area onto /api/levels Tier-B via liquidity_value_engine; delete market_context inline duals (no fallback); hard-fail backfill typical-price vwap substitution. Prior mission levels-faucet-v1 quote retained as Phase-1 authority for prior_day. ALSO: MISSION charm-bs-faucet-migrate-v1 — migrate compute_net_charm onto math_levels.bs_charm; delete inline formula; clear grandfathered_inline_greeks.",
+  "greek_formula_faucet": "math_levels.py",
+  "grandfathered_inline_greeks": {},
+
+  "prior_day_window_authority": "liquidity_value_engine.prior_trading_session_date (RC-153/RC-213: the ONE definition of 'the prior session' — single most recent prior RTH date; market_context.fetch_price_levels delegates to it as of mission levels-faucet-v1; PDC basis reconciled to last RTH 1m bar close of that session, Schwab quote closePrice is fallback-only when history is absent)",
+  "level_domain_producers": {
+    "/api/levels": "CANONICAL SERVING CONTRACT for the materialized PriceLevelSnapshot (Phase 2A), keyed by (ticker, level_id, semantic_scope, generation). Serializer only: it reads liquidity_value_engine.materialize_price_level_snapshot and never invokes a level helper itself. Sole producer of PDH/PDL/PDC, PD_POC/PD_VAH/PD_VAL, OVERNIGHT_HIGH/LOW, ORB_HIGH/LOW/MID, VWAP +/-1s/2s, TODAY_POC/VAH/VAL and the vwap_series curve. Enforced by tools/phase2a_level_lock.py. Design authority: reports/levels_single_faucet_design_v1.md 5",
+    "/api/liquidity-snapshot": "CARRIER, not a producer (Phase 2A): serves liquidity engine raw levels by carrying the /api/levels PriceLevelSnapshot values unchanged, under the same generation. It formerly re-invoked the same engine helpers over its own synchronous vendor bar fetch, which is how it served overnight 773.40/772.55 against the levels endpoint's 773.3975/773.3975 at one instant. Checkpoint (non-live) snapshots measure through a fixed cutoff and therefore travel under distinct ids '<ID>@checkpoint:<type>', never under the canonical id.",
+    "/api/price-levels": "REGISTERED FOR RETIREMENT (RC-213 B6): zero client consumers; prior-day family delegates to prior_day_window_authority as of mission levels-faucet-v1; retire after consumer migration",
+    "/api/level_crosses": "NOT a level producer — history of level-cross EVENTS; becomes a consumer of /api/levels ids in a later phase",
+    "/api/terrain": "terrain walls / flip / regime",
+    "/api/terrain/strikes": "per-strike GEX / volume",
+    "/api/terrain/radar": "activity radar (registered 2026-08-03 census — previously shipping unregistered)",
+    "/api/terrain/scorecard": "terrain scorecard (registered 2026-08-03 census — previously shipping unregistered)",
+    "/api/forces": "banked dOI / DEX / charm side sums",
+    "/api/exposure/flow": "banked intraday accrual frames",
+    "/api/exposure/book": "banked call/put split + DEX per strike",
+    "/api/exposure/history": "banked per-day structure"
+  }
+}

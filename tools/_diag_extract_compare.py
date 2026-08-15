@@ -65,7 +65,7 @@ def main():
             first = ("C_horizon_triplets", hz, a, b)
     print()
 
-    hpb_s = SPY.get("timeframe_reads")  # wrong - horizon_prob_bars might not be top-level
+    SPY.get("timeframe_reads")  # wrong - horizon_prob_bars might not be top-level
     # MarketState may not serialize horizon_prob_bars - check
     for key in ("horizon_prob_bars",):
         if key in SPY or key in QQQ:

@@ -381,7 +381,5 @@ def test_cli_script_invocation_smoke(tmp_path: Path) -> None:
         cwd=str(Path(__file__).resolve().parents[1]),
         capture_output=True,
         text=True,
-        encoding="utf-8",
-        errors="strict",
     )
     assert r.returncode == 0, r.stdout + r.stderr

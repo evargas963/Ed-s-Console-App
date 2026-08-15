@@ -239,6 +239,98 @@ def test_t5_sse_loop_cadence_calls_cache_fanout_before_recompute(srv_module, mon
     assert order == ["fanout", "recompute"]
 
 
+def test_t5_1_fanout_suppresses_duplicate_and_resends_on_new_connection(srv_module):
+    """T5.1 — the REAL fanout chain: first cadence fanout delivers the cached
+    bundle to a REAL registered client queue; the second fanout of the SAME
+    bundle identity is suppressed (the client's monotonic gate would reject it
+    anyway); a new connection epoch makes it deliverable again."""
+    srv = srv_module
+    ticker, expiry, ck = _seed_spy_cache(srv)
+    inflight_key = srv._tier_c_inflight_key(ticker, expiry)
+    srv._last_tier_c_broadcast_identity.pop((ticker, expiry), None)
+    client_q: asyncio.Queue = asyncio.Queue(maxsize=10)
+    suppressed0 = int(
+        srv._analytics_cache_observability["sse_fanout_suppressed_duplicate"]
+    )
+
+    async def _drive():
+        srv._main_event_loop = asyncio.get_running_loop()
+        with srv._sse_lock:
+            srv._sse_clients.append(client_q)
+            srv._sse_subscribers[ck] = 1
+        first = srv._maybe_broadcast_sse_cache_fanout(
+            ticker, expiry, inflight_key=inflight_key, fanout_reason="sse_loop_cadence"
+        )
+        # same event-loop turn — the in-flight fanout shape; must already be suppressed
+        second = srv._maybe_broadcast_sse_cache_fanout(
+            ticker, expiry, inflight_key=inflight_key, fanout_reason="fetch_in_flight"
+        )
+        await asyncio.sleep(0.05)  # let _broadcast_snapshot drain to the client queue
+        srv._sse_conn_epoch += 1   # a new client connected
+        third = srv._maybe_broadcast_sse_cache_fanout(
+            ticker, expiry, inflight_key=inflight_key, fanout_reason="sse_loop_cadence"
+        )
+        await asyncio.sleep(0.05)
+        return first, second, third
+
+    try:
+        first, second, third = asyncio.run(_drive())
+        assert first is True
+        assert second is False, "identical bundle re-broadcast in the same tick must be suppressed"
+        assert third is True, "a new connection epoch must make the bundle deliverable again"
+        assert (
+            int(srv._analytics_cache_observability["sse_fanout_suppressed_duplicate"])
+            == suppressed0 + 1
+        )
+        delivered = []
+        while not client_q.empty():
+            delivered.append(client_q.get_nowait())
+        assert len(delivered) == 2  # one per deliverable fanout, zero duplicates
+        assert all(p.get("ticker") == ticker for p in delivered)
+    finally:
+        srv._main_event_loop = None
+        with srv._sse_lock:
+            if client_q in srv._sse_clients:
+                srv._sse_clients.remove(client_q)
+            srv._sse_subscribers.pop(ck, None)
+        srv._last_tier_c_broadcast_identity.pop((ticker, expiry), None)
+
+
+def test_t5_1_completed_fetch_broadcast_suppresses_next_cadence_fanout(srv_module):
+    """T5.1 — the completed-fetch broadcast (the _work path) records the bundle
+    identity synchronously, so the cadence fanout that follows it is a no-op."""
+    srv = srv_module
+    ticker, expiry, ck = _seed_spy_cache(srv)
+    inflight_key = srv._tier_c_inflight_key(ticker, expiry)
+    srv._last_tier_c_broadcast_identity.pop((ticker, expiry), None)
+
+    async def _drive():
+        srv._main_event_loop = asyncio.get_running_loop()
+        with srv._sse_lock:
+            srv._sse_subscribers[ck] = 1
+        # completed-fetch broadcast: same identity fields the cache entry carries
+        md = srv._state_cache[ck]["ms_dict"]
+        srv._schedule_sse_broadcast(
+            {
+                "ticker": ticker,
+                "selected_exp": expiry,
+                "_server_build_ts": md["_server_build_ts"],
+                "analytics_version": srv._state_cache[ck]["analytics_version"],
+            }
+        )
+        return srv._maybe_broadcast_sse_cache_fanout(
+            ticker, expiry, inflight_key=inflight_key, fanout_reason="sse_loop_cadence"
+        )
+
+    try:
+        assert asyncio.run(_drive()) is False
+    finally:
+        srv._main_event_loop = None
+        with srv._sse_lock:
+            srv._sse_subscribers.pop(ck, None)
+        srv._last_tier_c_broadcast_identity.pop((ticker, expiry), None)
+
+
 def test_t5_sse_fetch_bounded_uses_timeout_executor(srv_module, monkeypatch):
     srv = srv_module
     calls: list[float] = []

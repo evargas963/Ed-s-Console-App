@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass as _oe_dc
 import math
 
-from math_exposure_core import MISSING_GREEK_SENTINEL, _f, bucket_metric
+from math_exposure_core import MISSING_GREEK_SENTINEL, _f, bucket_metric, gamma_is_plausible
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -184,9 +184,11 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     candidates = [
         ct
         for ct in contracts
+        # single source: parse the strike once via the canonical finite reader (was
+        # _f for the filter + raw float() for the value — the last such double-parse).
         if str(ct.get("putCall", "")).upper().strip() == side_up
-        and _f(ct.get("strikePrice")) is not None
-        and abs(float(ct.get("strikePrice")) - strike_f) < 0.01
+        and (sp := _f(ct.get("strikePrice"))) is not None
+        and abs(sp - strike_f) < 0.01
     ]
     if not candidates:
         return None
@@ -194,9 +196,9 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     bid = _f(ct.get("bid"))
     ask = _f(ct.get("ask"))
     gamma_raw = _f(ct.get("gamma"))
-    gamma = gamma_raw if (gamma_raw is not None and gamma_raw != MISSING_GREEK_SENTINEL and math.isfinite(gamma_raw)) else None
     delta_raw = _f(ct.get("delta"))
     delta = delta_raw if (delta_raw is not None and delta_raw != MISSING_GREEK_SENTINEL and math.isfinite(delta_raw)) else None
+    gamma = gamma_raw if gamma_is_plausible(gamma_raw, delta_raw) else None
     volume = _f(ct.get("totalVolume"))
     oi = _f(ct.get("openInterest"))
     a_px, b_px = ask, bid
@@ -212,7 +214,8 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
         if str(c.get("putCall", "")).upper().strip() != side_up:
             continue
         g_raw = _f(c.get("gamma"))
-        if g_raw is None or g_raw == MISSING_GREEK_SENTINEL or not math.isfinite(g_raw):
+        d_raw = _f(c.get("delta"))
+        if not gamma_is_plausible(g_raw, d_raw):
             continue
         if abs(g_raw) > abs(max_g):
             max_g = g_raw
@@ -354,8 +357,13 @@ def compute_probs(similar: list, outcome_col: str,
 
 
 def dominant_direction(up: float, down: float, flat: float) -> tuple:
+    # RC-345 / F22: the dominant-direction ARGMAX over a probability triplet is owned by ONE
+    # authority — numeric_contract.direction_from_normalized_triplet (same up>down>flat
+    # tie-break). This carries that label plus its probability; it does not re-implement the
+    # argmax (the old `max(probs, key=probs.get)` was a second projection of the same vector).
+    from numeric_contract import direction_from_normalized_triplet
     probs = {"up": up, "down": down, "flat": flat}
-    dom = max(probs, key=probs.get)
+    dom = direction_from_normalized_triplet(up, down, flat)
     return dom, probs[dom]
 
 
@@ -686,8 +694,7 @@ def compute_pin_score(
     High pin score suggests price will settle near that strike.
 
     Args:
-        gex_at_pin:       |net GEX$| at the bound pin strike
-                          (gex_at_bound_pin_strike — not total-gamma / HVL)
+        gex_at_pin:       absolute GEX at the gamma pin strike
         oi_concentration: fraction of total OI at/near pin (0-1)
 
     Returns dict with raw_score, normalized (0-100), label.

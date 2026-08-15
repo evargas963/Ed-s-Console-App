@@ -6,6 +6,8 @@ Does not promote, rollback, or change ``run_unified_stack_ml_once`` / production
 
 from __future__ import annotations
 
+from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+
 import json
 import logging
 import sqlite3
@@ -150,7 +152,7 @@ def build_live_drift_monitoring_payload(
     Raises nothing: returns ``ok: False`` + error on missing prerequisites.
     """
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)
     target_column = outcome_column(hz)
 
     out: dict[str, Any] = {

@@ -118,6 +118,12 @@ def _tr(bar: Mapping[str, Any]) -> float:
 
 
 def _atr(bars: Sequence[Mapping[str, Any]], period: int) -> Optional[float]:
+    """RC-345 / F08: EPS-FLOORED, missing-tolerant ATR — an EXPLICITLY DISTINCT contract
+    from the standard math_volatility.compute_atr. `_tr` floors true range at EPS and
+    substitutes close for a missing high/low so a partial feature bar still yields a finite
+    range; compute_atr instead skips such bars. These are different quantities on incomplete
+    data, so this feature-layer variant is NOT collapsed into the standard authority — doing
+    so would silently shift trained feature values. It is named here, not generic `atr`."""
     if len(bars) < period + 1:
         return None
     trs: list[float] = []
@@ -227,12 +233,7 @@ def _sign_trend(slope: Optional[float], eps: float = 1e-8) -> float:
 def _volume_profile_proxy(
     bars: Sequence[Mapping[str, Any]], n: int
 ) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """Close-price 12-bin POC for the fusion feature path.
-
-    Display POC/VAH/VAL is the engine (typical-price tick-bin). This helper is a
-    model feature producer — swapping it for the engine changes the live stack
-    (RC-330). Returns ``(poc, val, vah)``.
-    """
+    """Return (poc, val, vah) price levels from last n bars (volume-weighted histogram)."""
     sl = bars[-n:] if len(bars) >= n else bars
     if len(sl) < 5:
         return None, None, None
@@ -418,6 +419,11 @@ def compute_signal_layer_v1(
             vol_sum += v
     vwap_roll = _safe_div(typ_vol_sum, vol_sum) if vol_sum > EPS else None
 
+    # RC-345 / F36: the caller SESSION vwap (vwap_inp) and the local ROLLING 60-bar
+    # typical-price vwap (vwap_roll) are DIFFERENT reference points, so the price-vs-vwap
+    # features carry meta.vwap_source ('inp' | 'roll') — the fallback is never an anonymous
+    # mix. Session vwap is preferred; the rolling vwap is a governed, source-tagged
+    # degradation, exactly like the flow_imbalance book/volume fallback (F11).
     vwap_inp = _f(getattr(inp, "vwap", None)) if inp is not None else None
     if vwap_inp is not None:
         vwap_use = vwap_inp
@@ -448,6 +454,13 @@ def compute_signal_layer_v1(
         out["vl.vwap_zscore"] = None
 
     if vwap_use is not None and len(resid) >= 5:
+        # RC-345 / F14: this is an EXPLICITLY DISTINCT band from the canonical operator/terrain
+        # VWAP band (liquidity_value_engine.compute_vwap_bands). That one is a VOLUME-WEIGHTED
+        # session dispersion of typical price (H+L+C)/3; this is a SIMPLE unweighted std of
+        # close-vs-VWAP residuals over the last W_VWAP_STATS bars — a different population,
+        # window and weighting, serving a model feature (vl.dist_to_vwap_band_*), not the
+        # displayed band. It is NOT collapsed into the canonical band (that would be a
+        # retrain-coupled feature change); it is named here so no consumer conflates the two.
         m = sum(resid) / len(resid)
         var = sum((x - m) ** 2 for x in resid) / max(len(resid) - 1, 1)
         std = math.sqrt(max(var, EPS))

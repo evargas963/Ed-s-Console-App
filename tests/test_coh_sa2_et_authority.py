@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
-
-_SKIP_PY_TREE_DIRS = frozenset(
-    {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
-)
 _NY_LITERAL = 'ZoneInfo("America/New_York")'
 _ET_ASSIGN = re.compile(
     r"^\s*(?:ET|_ET)\s*=\s*ZoneInfo\s*\(\s*[\"']America/New_York[\"']\s*\)",
@@ -23,13 +20,24 @@ def _repo_root() -> Path:
 
 
 def _iter_repo_py_files(root: Path):
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+    """Repo-wide means the GIT INDEX (RC-274, RC-286, RC-307).
+
+    This walked the filesystem with `rglob` behind a hand-written skip list of `.git`,
+    `.venv`, `node_modules` and friends. `scratchpad/` was not on that list — it holds 93
+    throwaway audit scripts, `git ls-files scratchpad` returns nothing, and `.gitignore:202`
+    excludes it — so two tests here have been failing on code the repository does not
+    contain. Every hand-maintained skip list is correct on the day it is written; the index
+    cannot drift, because it is the definition.
+    """
+    out = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
+                         cwd=root, capture_output=True, text=True, check=True).stdout
+    for relstr in sorted(p for p in out.split("\0") if p):
+        rel = Path(relstr)
         if rel.parts and rel.parts[0] == "tests":
             continue
-        if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
-            continue
-        yield path, rel
+        path = root / rel
+        if path.exists():        # tracked-but-absent (a mid-rebase worktree) is not an offender
+            yield path, rel
 
 
 def test_only_time_et_defines_ny_zoneinfo_literal():

@@ -12,6 +12,7 @@ import server
 
 
 def test_snapshot_dte_uses_selected_schwab_days_to_expiration():
+    # institutional-synthetic-ok: DTE-selection test needs controlled per-contract DTEs.
     contracts = [
         {
             "expirationDate": "2099-05-05",
@@ -36,6 +37,7 @@ def test_snapshot_dte_uses_selected_schwab_days_to_expiration():
 
 
 def test_snapshot_dte_fails_closed_when_schwab_days_to_expiration_missing():
+    # institutional-synthetic-ok: fail-closed test omits daysToExpiration deliberately.
     contracts = [
         {
             "expirationDate": "2099-05-05",

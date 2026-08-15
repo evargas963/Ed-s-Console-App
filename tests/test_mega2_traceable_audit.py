@@ -53,7 +53,19 @@ CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 #         +1 (a00e78e): _sector_strength_unavailable
 #   206 — +1 big-audit inventory sync: _weighted_mean_present (order_flow_engine.py)
 #   208 — +2 streaming disconnect/cache gate: streaming_l1_cache_usable, _is_stream_disconnect_error
-MEGA2_ROW_COUNT = 212  # + gex_at_bound_pin_strike (math_exposure_core.py)
+#   211 — +1 classify_direction_pts (math_probabilities.py)
+#   241 — RC-297 inventory drift repair 2026-08-09: +13 (nine terrain_engine functions the
+#         inventory never gained — _per_strike_rows, _dte_of, compute_wall_value_area,
+#         compute_implied_one_day_move, _per_strike_scopes, _per_strike_map,
+#         strongest_strike_storm1 and its nested _inv_ranks, wall_geometry_state — plus
+#         math_levels.bs_vanna, math_exposure_core.compute_net_charm._tte_memo, and RC-124's
+#         two successors pick_pin_and_strength / pick_net_gex_peak_strike), −1 (the retired
+#         pick_gamma_pin_strike, whose single name carried both of those metrics).
+MEGA2_ROW_COUNT = 243  # +2 (compute_exposures_by_strike._tte_memo NONE memo-cache; compute_pin_width_pts DERIVED RC-345/F20 pin-width one-producer) 2026-08-14 RC-350 reconciliation  # +4 -1 (added pick_key_delta_strike + nested _total_dex + pick_volatility_point_strikes + _dealer_sign; removed compute_net_charm._resolve_T which was deleted by the intraday-T single-source RC-42) 2026-07-26  # +2 strike-width derivation (infer_strike_increment, required_strike_count) 2026-07-20  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
+#         _contract_inputs, compute_gamma_profile, gamma_flip_from_profile; compute_gamma_flip
+#         removed and its row reused by compute_gamma_flip_v2)
+#         +1 gamma_is_plausible (math_exposure_core.py) — pre-existing inventory gap from the
+#         greek-sanitization work, closed 2026-07-19
 
 
 def _mega_bundles() -> tuple[MegaInventoryBundle, ...]:
@@ -168,45 +180,22 @@ def test_mega2_allowlist_entries_complete():
         assert entry.category in REQUIRED_CATEGORIES
 
 
-def test_mega2_files_exist():
-    for rel in MEGA2_FILES:
-        assert (ROOT / rel).is_file(), rel
+def test_no_uninventoried_engine_module_in_tree():
+    """RC-297: tree-fed scan — every `engine`-token module is inventoried or out-of-scope.
 
-
-def test_uninventoried_engine_module_is_rejected_when_planted():
-    """RC-297 bedrock: the guard runs today, not only if terrain_engine returns."""
-    planted = ["terrain_engine.py"]
-    assert uninventoried_engine_modules(planted) == ["terrain_engine.py"]
-    # Class, not the cited suffix: engine as a filename token.
-    assert uninventoried_engine_modules(["engine_core.py"]) == ["engine_core.py"]
-    assert uninventoried_engine_modules(["mystery_engine.py"]) == ["mystery_engine.py"]
-    assert uninventoried_engine_modules(["calibration/signal_engineering.py"]) == []
-    assert uninventoried_engine_modules(["order_flow_engine.py"]) == []
-    assert uninventoried_engine_modules(["liquidity_value_engine.py"]) == []
-
-
-def test_repo_has_no_uninventoried_engine_modules():
+    Fed the REAL repo file list (git ls-files), not a canned list: a genuinely
+    uninventoried engine module committed anywhere fails this test today.
+    """
     import subprocess
 
     files = subprocess.check_output(
-        ["git", "ls-files"], cwd=ROOT, text=True, encoding="utf-8", errors="strict"
+        ["git", "ls-files"], text=True, encoding="utf-8", errors="replace", cwd=ROOT
     ).split()
     assert uninventoried_engine_modules(files) == []
-
-
-def test_real_planted_engine_file_is_rejected_by_tree_scan(tmp_path):
-    """RC-297: a real zzz_engine.py in a git tree is flagged by ls-files → scan."""
-    import subprocess
-
-    repo = tmp_path
-    (repo / "zzz_engine.py").write_text("# plant — uninventoried engine\n", encoding="utf-8")
-    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
-    subprocess.run(["git", "add", "zzz_engine.py"], cwd=repo, check=True, capture_output=True)
-    files = subprocess.check_output(
-        ["git", "ls-files"], cwd=repo, text=True, encoding="utf-8", errors="strict"
-    ).split()
-    assert "zzz_engine.py" in files
-    assert uninventoried_engine_modules(files) == ["zzz_engine.py"]
+    # detector sanity: a planted engine module IS flagged; inventoried ones are not
+    assert uninventoried_engine_modules(["zzz_engine.py"]) == ["zzz_engine.py"]
+    assert uninventoried_engine_modules(["terrain_engine.py"]) == []
+    assert uninventoried_engine_modules(["signal_engineering.py"]) == []
 
 
 def test_mega2_schwab_leaf_regex_rejects_aggregate():

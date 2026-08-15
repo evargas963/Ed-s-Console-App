@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Mapping, Optional
 
+from instrument_identity import ticker_storage_key
 from lstm_data import CANONICAL_TIMEFRAME, STREAM_5M_LOOKBACK
 from ml_horizon import ALL_GOVERNED_HORIZONS
 
@@ -24,7 +25,7 @@ _DEFAULT_TRANSFORMER_SEQ_LEN = 20
 def _require_ticker(ticker: str) -> str:
     if not ticker or not str(ticker).strip():
         raise ValueError("ticker is required")
-    return str(ticker).strip().upper()
+    return ticker_storage_key(ticker)  # RC-345/F25: transformer/lstm meta + dir + DB identity share ONE canonical key
 
 
 @dataclass(frozen=True)

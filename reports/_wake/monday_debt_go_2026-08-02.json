@@ -1,0 +1,14 @@
+{
+  "status": "GO",
+  "written_at_ct": "2026-08-02T10:08:59-05:00",
+  "written_at_et": "2026-08-02T11:08:59-04:00",
+  "next_rth_proof": "2026-08-03",
+  "residue": [
+    "RC-166",
+    "RC-180",
+    "RC-181"
+  ],
+  "prompt_path": "reports/monday_debt_wake_prompt.md",
+  "force": true,
+  "operator_message": "MONDAY DEBT WAKE \u2014 finish RC-166/180/181 live proofs. Paste reports/monday_debt_wake_prompt.md into Cursor or Claude. Halt words only: STOP / PAUSE / HANG IT UP / DO NOT CONTINUE."
+}

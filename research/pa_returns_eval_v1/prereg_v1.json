@@ -1,0 +1,28 @@
+{
+  "prereg_id": "pa_returns_eval_v1_prereg_v1",
+  "sibling_precedent": "research/iv_context_eval_v1/prereg_v1.json",
+  "study_question": "Do short-horizon price-action returns and VWAP z-score from snapshots_1m_normalized predict production ternary outcome_{hz} walk-forward beyond trivial baselines?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only."
+  },
+  "model": {
+    "features": [
+      "pa_ret_1m_pct",
+      "pa_ret_3m_pct",
+      "pa_ret_5m_pct",
+      "pa_ret_15m_pct",
+      "pa_ret_30m_pct",
+      "pa_vwap_zscore",
+      "pa_relative_volume"
+    ],
+    "classifier": "LogisticRegression elasticnet saga (frozen as Study #4)"
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {"name": "MCC", "screen": "same advancement screen as elastic_net_eval_v1"},
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/pa_returns_eval/pa_returns_eval_<date>_<runid>.json"}
+}

@@ -1,0 +1,22 @@
+{
+  "authority": "tools/operable_surface_gate.py",
+  "disclosed": {
+    "nearest_band_29_59": 10452
+  },
+  "gates": {
+    "G1_operable_old_missing_zero": true,
+    "G2_no_clock_anomalies": true,
+    "G3_no_attach_gap_gt_59": true,
+    "G4_live_colocated_ge_95pct": true
+  },
+  "generated_utc": "2026-07-17T20:16:27Z",
+  "live_30m": {
+    "colocated": 16,
+    "n": 16,
+    "rate": 1.0
+  },
+  "old_missing": 0,
+  "old_missing_sentinel": 0,
+  "research_excluded": 1422,
+  "verdict": "OPERABLE_SURFACE_CLEAN"
+}

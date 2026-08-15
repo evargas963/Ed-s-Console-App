@@ -32,9 +32,44 @@ def canonical_console_db_path() -> Path:
     return (project_root() / "data" / "ed_console.db").resolve()
 
 
+def agent_worktree_console_db_path() -> Path | None:
+    """Claude / *-Claude worktrees get a dedicated DB file under their own data/.
+
+    Physical worktrees already have separate working trees; the distinct filename
+    makes agent isolation explicit and prevents accidental ED_CONSOLE_DB pointing
+    both agents at the primary file. Cursor / primary keeps ed_console.db.
+    """
+    root = project_root()
+    role = os.environ.get("ED_AGENT_ROLE", "").strip().lower()
+    if role == "claude" or root.name.endswith("-Claude"):
+        return (root / "data" / "ed_console_claude.db").resolve()
+    return None
+
+
+def default_console_db_path() -> Path:
+    """Resolved default DB for this process (worktree-aware)."""
+    scoped = agent_worktree_console_db_path()
+    if scoped is not None:
+        return scoped
+    return canonical_console_db_path()
+
+
 def is_canonical_db_path(p: Path | str) -> bool:
     try:
         return Path(p).resolve() == canonical_console_db_path()
+    except OSError:
+        return False
+
+
+def is_agent_worktree_db_path(p: Path | str) -> bool:
+    """True for ``data/ed_console*.db`` under this worktree's project root."""
+    try:
+        rp = Path(p).resolve()
+        data = (project_root() / "data").resolve()
+        if rp.parent != data:
+            return False
+        name = rp.name
+        return name.startswith("ed_console") and name.endswith(".db")
     except OSError:
         return False
 
@@ -45,6 +80,8 @@ def classify_db_path(p: Path | str) -> Classification:
     s = str(rp).replace("\\", "/")
     if is_canonical_db_path(rp):
         return "canonical"
+    if is_agent_worktree_db_path(rp):
+        return "unknown"  # agent-scoped: allowed via assert path below; not harness/proof
     if "calibration_accumulation_validation.db" in s:
         return "harness"
     if "calibration_anchor_proof.db" in s:
@@ -64,12 +101,15 @@ def env_allows_noncanonical_db() -> bool:
 
 def assert_ed_console_db_env_resolves_safely(resolved_path: Path) -> None:
     """
-    When ED_CONSOLE_DB is set: path must exist. If not the canonical file,
+    When ED_CONSOLE_DB / ED_DB_PATH is set: path must exist. If not the canonical
+    file, either it is this worktree's agent-scoped ``data/ed_console*.db``, or
     ED_CONSOLE_ALLOW_NONCANONICAL_DB must be set (alternate deployment / recovery).
     """
     if not resolved_path.exists():
         raise FileNotFoundError(f"ED_CONSOLE_DB path does not exist: {resolved_path}")
     if is_canonical_db_path(resolved_path):
+        return
+    if is_agent_worktree_db_path(resolved_path):
         return
     if not env_allows_noncanonical_db():
         raise ValueError(

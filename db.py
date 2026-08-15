@@ -40,7 +40,6 @@ from datetime import datetime, timezone
 
 from db_authority import (
     assert_ed_console_db_env_resolves_safely,
-    canonical_console_db_path,
     classify_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
@@ -97,6 +96,18 @@ log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+
+def _dedup_preserve(items: list[str]) -> list[str]:
+    """Order-preserving unique — used when canonicalizing enrollment reads can collapse a legacy
+    bare-root alias (``SPX``) and its canonical form (``$SPX``) onto one identity (RC-345/F25)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for it in items:
+        if it and it not in seen:
+            seen.add(it)
+            out.append(it)
+    return out
+
 # Tier 1 only: insert_snapshot + upsert_1m_bars (short transactions on the live console DB).
 # Heavy work (fill_outcomes, logging_universe, training materialize) must NOT share this lock
 # or the UI/SSE path waits tens of seconds behind background writers.
@@ -111,11 +122,22 @@ SQLITE_BUSY_MAX_RETRIES = max(1, int(os.environ.get("ED_SQLITE_BUSY_RETRIES", "8
 SQLITE_BUSY_BASE_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_BASE_SLEEP_SEC", "0.02"))
 SQLITE_BUSY_MAX_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_MAX_SLEEP_SEC", "0.4"))
 SQLITE_LOCK_WAIT_WARN_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_WARN_MS", "100"))
+# RC-236: the distress bar separating routine absorbed waits (INFO) from real contention
+# (WARNING). 2s ~ 5x the retry ladder's max sleep; attempt 4+ means the ladder is failing.
+SQLITE_LOCK_WAIT_DISTRESS_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_DISTRESS_MS", "2000"))
+SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT = int(os.environ.get("ED_SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT", "4"))
 SQLITE_WRITE_SLOW_MS = float(os.environ.get("ED_SQLITE_WRITE_SLOW_MS", "500"))
 # Live bar-upsert incremental window: closed bars already persisted are immutable on the
 # live path; only the in-progress bar plus this overlap is rewritten each cycle. Three
 # minutes covers the in-flight bar and clock skew between the accumulator and the DB grid.
 LIVE_BARS_REUPSERT_OVERLAP_SEC = 180.0
+
+# Live fill_outcomes caps work per call (newest-first). MEASURED 2026-08-03: EXACT 5394
+# unfilled SPY BAR_ANCHOR_V1 rows on ~26.7GB DB made unbounded scans hit ~23s WARNING.
+# Backlog drains across successive bg submits; do not demote WARNING to hide the cost.
+FILL_OUTCOMES_LIVE_BATCH_LIMIT = max(
+    1, int(os.environ.get("ED_FILL_OUTCOMES_LIVE_BATCH", "250"))
+)
 
 # In-process tier-1 contention counters (audit/diagnostics; does not change retry policy).
 _SQLITE_CONTENTION_METRICS_LOCK = threading.Lock()
@@ -217,6 +239,15 @@ def _sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
     return code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
 
 
+#: RC-50 SQLite access tuning (read-side accelerants for the ~30 GB WAL DB).
+#: mmap_size is a memory-mapped window over the DB file, backed by the shared OS page
+#: cache (NOT per-connection heap), so a large value is cheap; 2 GiB covers the hot
+#: index/recent-rows working set. cache_size is per-connection page cache — SQLite reads
+#: a NEGATIVE value as KiB, so -131072 == 128 MiB (vs the ~2 MiB / -2000 default).
+SQLITE_MMAP_SIZE_BYTES = 2 * 1024 ** 3   # 2 GiB
+SQLITE_CACHE_SIZE_KIB = -131072          # 128 MiB (negative = KiB in SQLite's PRAGMA convention)
+
+
 def configure_sqlite_connection(
     conn: sqlite3.Connection, *, busy_timeout_ms: int = 30000
 ) -> None:
@@ -235,6 +266,15 @@ def configure_sqlite_connection(
         "PRAGMA synchronous=NORMAL",
         f"PRAGMA busy_timeout={int(busy_timeout_ms)}",
         "PRAGMA foreign_keys=ON",
+        # RC-50 access tuning for a ~30 GB DB: the defaults (2 MB page cache, no
+        # memory-mapping) re-fault every read from disk through a tiny per-connection
+        # cache. mmap_size maps the hot working set (shared via the OS page cache — not
+        # per-connection RAM), and a 128 MB page cache holds hot index/data pages across
+        # a query. Both are read-side accelerants; neither changes durability (WAL +
+        # synchronous=NORMAL unchanged). Measured: wide-row read 8.55 -> 6.59 ms; the
+        # larger win is cold-start / concurrency, which the 2 MB default starved.
+        f"PRAGMA mmap_size={SQLITE_MMAP_SIZE_BYTES}",
+        f"PRAGMA cache_size={SQLITE_CACHE_SIZE_KIB}",
     ):
         try:
             conn.execute(pragma)
@@ -266,20 +306,26 @@ def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
         return False
     return all(n >= MIN_SAMPLES_STATISTICAL for n in labeled_by_col.values())
 
-# ── Database location (single canonical file per deployment) ────────────────
-# Default: data/ed_console.db (see db_authority.canonical_console_db_path).
-# ED_CONSOLE_DB: optional override; non-canonical targets require
-# ED_CONSOLE_ALLOW_NONCANONICAL_DB=1 (see db_authority).
+# ── Database location (worktree-aware; one file per agent process) ──────────
+# Default: data/ed_console.db (Cursor/primary) or data/ed_console_claude.db
+# (ED_AGENT_ROLE=claude / *-Claude worktree). See db_authority.default_console_db_path.
+# ED_CONSOLE_DB or ED_DB_PATH: optional override; non-canonical targets require
+# ED_CONSOLE_ALLOW_NONCANONICAL_DB=1 unless they are this worktree's agent DB.
 DB_DIR = Path(__file__).parent / "data"
 
 
 def _resolve_console_db_path() -> Path:
-    env = os.environ.get("ED_CONSOLE_DB", "").strip()
+    from db_authority import default_console_db_path
+
+    env = (
+        os.environ.get("ED_CONSOLE_DB", "").strip()
+        or os.environ.get("ED_DB_PATH", "").strip()
+    )
     if env:
         p = Path(env).expanduser().resolve()
         assert_ed_console_db_env_resolves_safely(p)
         return p
-    return canonical_console_db_path()
+    return default_console_db_path()
 
 
 DB_PATH = _resolve_console_db_path()
@@ -294,7 +340,8 @@ def ensure_console_db_training_schema(db_path: Path | None = None) -> Path:
     """
     path = Path(db_path if db_path is not None else DB_PATH).resolve()
     if path.is_file():
-        with sqlite3.connect(str(path)) as conn:
+        with sqlite3.connect(str(path), timeout=30.0) as conn:
+            configure_sqlite_connection(conn)
             if conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshots_1m_normalized'"
             ).fetchone():
@@ -304,6 +351,11 @@ def ensure_console_db_training_schema(db_path: Path | None = None) -> Path:
 
 # ── ET timezone (DST-aware; see time_et.py) ───────────────────────────────────
 from time_et import now_et  # noqa: E402  — re-export for legacy `from db import now_et`
+from time_et import is_collect_window_bar_end_ts_utc  # noqa: E402  — RC-183 collect-window law
+from time_et import (  # noqa: E402  — RC-345/F09: single RTH-boundary authority
+    RTH_START_MINS as _RTH_START_MINS_AUTH,
+    RTH_END_MINS as _RTH_END_MINS_AUTH,
+)
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -435,8 +487,7 @@ class SnapshotRow:
     vix_bucket:         Optional[str] = None
     put_call_oi_ratio:  Optional[float] = None
     oi_center:          Optional[float] = None
-    gamma_pin:          Optional[float] = None  # |net GEX$| peak strike (bound pin); not total-gamma / HVL
-    gamma_pin_semantic: Optional[str] = None  # 'net_gex_peak'; NULL on pre-stamp rows means the same writer semantic
+    gamma_pin:          Optional[float] = None  # strike with highest gamma
 
     # ── Cross-instrument (SPY when not primary, else NULL) ────────────────────
     spy_spot:           Optional[float] = None
@@ -684,6 +735,7 @@ class SnapshotRow:
     # ── Order Flow Signals ────────────────────────────────────────────────────
     vol_oi_ratio:           Optional[float] = None  # volume/OI near ATM
     flow_imbalance:         Optional[float] = None  # -1 to +1 bid/ask imbalance
+    flow_imbalance_source:  Optional[str] = None  # RC-345/F11: 'book'|'volume'|'none' economic identity
     smart_money_score:      Optional[float] = None  # 0-100 composite
     smart_money_direction:  Optional[str]   = None  # 'bullish', 'bearish', 'neutral'
     iv_model_spread:        Optional[float] = None  # market IV - theoretical IV
@@ -896,7 +948,16 @@ class EdDB:
                     db_path=db_s,
                 )
             if lock_wait_ms >= SQLITE_LOCK_WAIT_WARN_MS:
-                log.warning(
+                # RC-236: severity calibrated like the SSE-duplicate precedent — a wait the
+                # retry contract absorbs on an early attempt is NORMAL WAL contention under
+                # 42 writers (SQLite busy_timeout doctrine) and logs INFO; WARNING is reserved
+                # for genuine distress (a wait past the distress bar, or a deep retry), so the
+                # quiet gate measures real defects instead of routine mid-RTH lock traffic.
+                # Escalation retained: distress still WARNs and the contention telemetry event
+                # above records EVERY wait regardless of severity.
+                distress = (lock_wait_ms >= SQLITE_LOCK_WAIT_DISTRESS_MS
+                            or attempt >= SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT)
+                (log.warning if distress else log.info)(
                     "sqlite_tier1_lock_wait op=%s ticker=%s db_path=%s wait_ms=%.1f "
                     "attempt=%s/%s thread=%s",
                     op,
@@ -1117,7 +1178,6 @@ class EdDB:
                 put_call_oi_ratio   REAL,
                 oi_center           REAL,
                 gamma_pin           REAL,
-                gamma_pin_semantic  TEXT,
 
                 -- Cross-instrument SPY
                 spy_spot            REAL,
@@ -1322,6 +1382,7 @@ class EdDB:
                 -- Order Flow Signals
                 vol_oi_ratio            REAL,
                 flow_imbalance          REAL,
+                flow_imbalance_source   TEXT,   -- RC-345/F11: book|volume|none economic identity
                 smart_money_score       REAL,
                 smart_money_direction   TEXT,
                 iv_model_spread         REAL,
@@ -1673,7 +1734,7 @@ class EdDB:
         def _do() -> None:
             with self._connect() as conn:
                 for raw in core_tickers:
-                    t = (raw or "").upper().strip()
+                    t = ticker_storage_key(raw)  # RC-345/F25: canonical enrollment write identity
                     if not t:
                         continue
                     conn.execute(
@@ -1795,7 +1856,7 @@ class EdDB:
 
     def logging_universe_unpin_to_user_persisted(self, ticker: str, now_ts: float) -> bool:
         """Downgrade pinned → user_persisted (evictable). Core unchanged."""
-        t = (ticker or "").upper().strip()
+        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — update hits the $-canonical row via any alias
 
         def _do() -> bool:
             with self._connect() as conn:
@@ -1820,7 +1881,7 @@ class EdDB:
         return _do()
 
     def logging_universe_remove_user_persisted(self, ticker: str) -> bool:
-        t = (ticker or "").upper().strip()
+        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — delete hits the $-canonical row via any alias
 
         def _do() -> bool:
             with self._connect() as conn:
@@ -1837,7 +1898,7 @@ class EdDB:
 
     def logging_universe_remove_non_core(self, ticker: str) -> bool:
         """Remove pinned or user_persisted row; never core."""
-        t = (ticker or "").upper().strip()
+        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — delete hits the $-canonical row via any alias
 
         def _do() -> bool:
             with self._connect() as conn:
@@ -1897,7 +1958,8 @@ class EdDB:
         incoming_ticker: Optional[str] = None,
         incoming_enrollment_source: Optional[str] = None,
     ) -> None:
-        ev = evicted_ticker.upper().strip()
+        ev = ticker_storage_key(evicted_ticker)  # RC-345/F25: canonical eviction-audit identity
+        inc = ticker_storage_key(incoming_ticker) if incoming_ticker else incoming_ticker
 
         def _do() -> None:
             with self._connect() as conn:
@@ -1913,7 +1975,7 @@ class EdDB:
                         evicted_ts_utc,
                         reason,
                         cap_limit,
-                        incoming_ticker,
+                        inc,
                         incoming_enrollment_source,
                     ),
                 )
@@ -1942,7 +2004,7 @@ class EdDB:
                 ORDER BY enrolled_ts_utc ASC, ticker COLLATE NOCASE
                 """
             ).fetchall()
-            return [str(r[0]).upper() for r in rows]
+            return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity
 
     def logging_universe_protected_tickers(self) -> list[str]:
         with self._connect() as conn:
@@ -1953,7 +2015,7 @@ class EdDB:
                 ORDER BY ticker COLLATE NOCASE
                 """
             ).fetchall()
-            return [str(r[0]).upper() for r in rows]
+            return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity
 
     def logging_universe_pinned_count(self) -> int:
         with self._connect() as conn:
@@ -2005,7 +2067,7 @@ class EdDB:
                     ticker COLLATE NOCASE
                 """
             ).fetchall()
-            return [str(r[0]).upper() for r in rows]
+            return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity (legacy bare rows resolve on-read)
 
     def logging_universe_scheduler_tickers(self) -> list[str]:
         """Alias for scheduler paths — identical to logging_universe_authoritative_tickers."""
@@ -2320,7 +2382,7 @@ class EdDB:
         return out
 
     def logging_universe_touch_seen(self, ticker: str, now_ts: float) -> None:
-        t = (ticker or "").upper().strip()
+        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — touch hits the $-canonical row via any alias
         nt = now_ts
 
         def _do() -> None:
@@ -2333,7 +2395,7 @@ class EdDB:
         _do()
 
     def logging_universe_touch_background_log(self, ticker: str, ts_utc: float) -> None:
-        t = (ticker or "").upper().strip()
+        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — touch hits the $-canonical row via any alias
         tu = ts_utc
 
         def _do() -> None:
@@ -2392,13 +2454,152 @@ class EdDB:
                 d["eviction_fifo_position"] = None
             elif cat == "user_persisted":
                 d["eviction_status"] = "eligible"
-                d["eviction_fifo_position"] = fifo_pos.get(d["ticker"].upper().strip())
+                d["eviction_fifo_position"] = fifo_pos.get(ticker_storage_key(d["ticker"]))  # RC-345/F25: canonical audit key
             else:
                 d["eviction_status"] = "unknown"
                 d["eviction_fifo_position"] = None
-            d["is_protected"] = d["ticker"].upper().strip() in prot
+            d["is_protected"] = ticker_storage_key(d["ticker"]) in prot  # RC-345/F25: canonical audit key
             out.append(d)
         return out
+
+    # Category protection priority — the SAME hierarchy the eviction/protection logic already uses.
+    # Used as the deterministic collision-merge rule when a legacy alias row (e.g. "SPX") must fold
+    # into its canonical form ("$SPX") that already exists.
+    _LU_CATEGORY_PRIORITY = {"core": 0, "pinned": 1, "panel_auto": 2, "user_persisted": 3}
+
+    def logging_universe_migrate_canonical_ticker_identity(
+        self, *, dry_run: bool = True
+    ) -> dict[str, Any]:
+        """RC-345/F25 — bring persisted ``logging_universe`` rows onto the ONE canonical ticker
+        identity (``ticker_storage_key``). Legacy bare-root index rows (e.g. ``SPX``) become
+        ``$SPX``; a legacy row that collides with an existing canonical row is MERGED by a
+        deterministic, evidence-based rule.
+
+        Properties (institutional-grade):
+          * deterministic + transactional (single transaction; ``dry_run`` rolls back)
+          * idempotent (a re-run after a real run reports zero changes)
+          * explicit before/after counts + per-ticker rewrite report
+          * collision detection with a proven merge rule (never invents state)
+          * fail-closed: an unresolvable collision aborts the whole transaction, mutating nothing
+
+        Merge rule for ``legacy_alias -> canonical`` when BOTH exist (all deterministic):
+          category         = stronger of the two (core > pinned > panel_auto > user_persisted)
+          enrollment_source= the stronger-category row's source (ties: canonical row's)
+          enrolled_ts_utc  = MIN (earliest original enrollment preserved)
+          last_seen_ts_utc = MAX (most recent activity preserved)
+          last_background_log_ts_utc = MAX (most recent activity preserved)
+        No row field is silently discarded — the surviving row is the field-wise best of both.
+        """
+        self._ensure_logging_universe_table()
+        self._ensure_logging_universe_aux_tables()
+
+        def _do() -> dict[str, Any]:
+            report: dict[str, Any] = {
+                "dry_run": bool(dry_run),
+                "rows_before": 0,
+                "rows_after": 0,
+                "renames": [],       # legacy -> canonical (no collision)
+                "merges": [],        # legacy -> canonical (collision merged)
+                "unchanged": 0,
+                "aborted_collision": None,
+            }
+            with self._connect() as conn:
+                conn.execute("BEGIN")
+                try:
+                    rows = conn.execute(
+                        "SELECT ticker, category, enrollment_source, enrolled_ts_utc, "
+                        "last_seen_ts_utc, last_background_log_ts_utc FROM logging_universe"
+                    ).fetchall()
+                    report["rows_before"] = len(rows)
+                    by_ticker = {str(r[0]): dict(zip(
+                        ("ticker", "category", "enrollment_source", "enrolled_ts_utc",
+                         "last_seen_ts_utc", "last_background_log_ts_utc"), r)) for r in rows}
+
+                    for stored, row in list(by_ticker.items()):
+                        canon = ticker_storage_key(stored)
+                        if canon == stored:
+                            report["unchanged"] += 1
+                            continue
+                        # A COLLATE NOCASE PK already folds pure-case variants; the only rewrites
+                        # are true alias changes (bare index root -> $-prefixed canonical).
+                        if canon in by_ticker and canon != stored:
+                            other = by_ticker[canon]
+                            merged = self._lu_merge_rows(row, other)
+                            if merged is None:
+                                report["aborted_collision"] = {
+                                    "legacy": stored, "canonical": canon,
+                                    "reason": "no proven safe merge",
+                                }
+                                conn.execute("ROLLBACK")
+                                return report
+                            conn.execute(
+                                "DELETE FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
+                                (stored,),
+                            )
+                            conn.execute(
+                                """
+                                UPDATE logging_universe SET
+                                    category = ?, enrollment_source = ?, enrolled_ts_utc = ?,
+                                    last_seen_ts_utc = ?, last_background_log_ts_utc = ?
+                                WHERE ticker = ? COLLATE NOCASE
+                                """,
+                                (merged["category"], merged["enrollment_source"],
+                                 merged["enrolled_ts_utc"], merged["last_seen_ts_utc"],
+                                 merged["last_background_log_ts_utc"], canon),
+                            )
+                            by_ticker[canon] = {**merged, "ticker": canon}
+                            del by_ticker[stored]
+                            report["merges"].append({"legacy": stored, "canonical": canon,
+                                                     "category": merged["category"]})
+                        else:
+                            conn.execute(
+                                "UPDATE logging_universe SET ticker = ? WHERE ticker = ? COLLATE NOCASE",
+                                (canon, stored),
+                            )
+                            by_ticker[canon] = {**row, "ticker": canon}
+                            del by_ticker[stored]
+                            report["renames"].append({"legacy": stored, "canonical": canon})
+
+                    report["rows_after"] = conn.execute(
+                        "SELECT COUNT(*) FROM logging_universe"
+                    ).fetchone()[0]
+
+                    if dry_run:
+                        conn.execute("ROLLBACK")
+                    else:
+                        conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
+            return report
+
+        return _do()
+
+    def _lu_merge_rows(self, a: dict, b: dict) -> Optional[dict]:
+        """Deterministic field-wise merge of a legacy-alias row and its canonical row.
+        Returns None only if neither category is recognized (fail-closed)."""
+        pa = self._LU_CATEGORY_PRIORITY.get(str(a.get("category")))
+        pb = self._LU_CATEGORY_PRIORITY.get(str(b.get("category")))
+        if pa is None or pb is None:
+            return None
+        strong = a if pa < pb else b  # lower priority number = stronger; ties -> b (canonical row)
+
+        def _min(x, y):
+            xs = [v for v in (x, y) if v is not None]
+            return min(xs) if xs else None
+
+        def _max(x, y):
+            xs = [v for v in (x, y) if v is not None]
+            return max(xs) if xs else None
+
+        return {
+            "category": strong["category"],
+            "enrollment_source": strong.get("enrollment_source"),
+            "enrolled_ts_utc": _min(a.get("enrolled_ts_utc"), b.get("enrolled_ts_utc")),
+            "last_seen_ts_utc": _max(a.get("last_seen_ts_utc"), b.get("last_seen_ts_utc")),
+            "last_background_log_ts_utc": _max(
+                a.get("last_background_log_ts_utc"), b.get("last_background_log_ts_utc")),
+        }
 
     def _migrate_schema(self):
         """Add columns that may be missing from older databases.
@@ -2535,6 +2736,7 @@ class EdDB:
             # ── Order Flow Signals ─────────────────────────────────
             ("vol_oi_ratio",            "REAL"),
             ("flow_imbalance",          "REAL"),
+            ("flow_imbalance_source",   "TEXT"),   # RC-345/F11: economic book identity
             ("smart_money_score",       "REAL"),
             ("smart_money_direction",   "TEXT"),
             ("iv_model_spread",         "REAL"),
@@ -2611,7 +2813,6 @@ class EdDB:
             ("pa_mtf_alignment",         "REAL"),
             ("pa_relative_volume",       "REAL"),
             ("pa_move_efficiency",       "REAL"),
-            ("gamma_pin_semantic",       "TEXT"),
         ]
         # Normalized training table must carry the same price-action columns or the
         # normalizer's column-intersection INSERT silently drops them (Issue 16 class).
@@ -2705,8 +2906,15 @@ class EdDB:
 
         for tbl in ("snapshots_1m_normalized",):
             for col_name, col_type in (
-                ("option_chain_json", "TEXT"),
-                ("replay_context_json", "TEXT"),
+                # RC-6 (reopened 2026-07-28): option_chain_json and replay_context_json are
+                # DELIBERATELY ABSENT from this list. They are the normalized table's SECOND
+                # copy of multi-MB blobs the cull ledger retired — yet this migrate re-ADDed
+                # them on every boot where they were missing, and the normalizer's
+                # column-intersection INSERT refilled them (measured regrowth: 1,097 rows /
+                # 187,193,762 bytes). The intersection DROPS absent columns silently by
+                # design, so their absence is safe; the raw `snapshots` table keeps the one
+                # authoritative copy. Re-introducing them here requires the supervised
+                # migration (operator, due 2026-08-09) — never a silent boot-time ADD.
                 # Raw Schwab quote primitives — must exist here too or the
                 # normalizer's column-intersection INSERT silently drops them.
                 ("bid_price", "REAL"),
@@ -2724,19 +2932,6 @@ class EdDB:
                     pass
 
         for col_name, col_type in _PA_NEW_COLUMNS:
-            try:
-                with self._connect() as conn:
-                    conn.execute(
-                        f"ALTER TABLE snapshots_1m_normalized ADD COLUMN {col_name} {col_type}"
-                    )
-                log.info("DB migration: added %s to snapshots_1m_normalized", col_name)
-            except sqlite3.OperationalError:
-                pass
-
-        # Issue 16 class: NEW_COLUMNS only ALTERs snapshots. Existing
-        # snapshots_1m_normalized tables miss gamma_pin_semantic and the
-        # column-intersection INSERT silently drops the stamp.
-        for col_name, col_type in (("gamma_pin_semantic", "TEXT"),):
             try:
                 with self._connect() as conn:
                     conn.execute(
@@ -3244,6 +3439,11 @@ class EdDB:
             if bar_start <= 0:
                 continue
             bar_end = bar_start + 60.0
+            # RC-183 collect-window law (operator, non-negotiable): price_bars_1m persists ET
+            # bar-END minutes (555, min(975, cash_close+15)] on trading days only. This is the
+            # ONE write seam for the table; every producer inherits the gate here.
+            if not is_collect_window_bar_end_ts_utc(bar_end):
+                continue
             rows.append((tkr, bar_start, bar_end, o, h, lo, c, vol, src))
         if not rows:
             return 0
@@ -3315,18 +3515,40 @@ class EdDB:
                     write_rows,
                 )
                 n_written = len(write_rows)
-                if refresh_governed_outcomes:
-                    changed_bar_starts = {float(r[1]) for r in write_rows}
-                    tz_eval = float(_wall_time.time())
-                    _refresh_governed_outcomes_after_bar_mutation(
-                        conn,
-                        tkr=tkr,
-                        changed_bar_starts=changed_bar_starts,
-                        tz=tz_eval,
-                    )
+                if refresh_governed_outcomes and write_rows:
+                    # RC-166/RC-243: the refresh is DEFERRED to after the tier-1 lock is
+                    # released — see the post-unlock block below. Only the bar starts travel
+                    # out of the critical section.
+                    _pending_refresh["starts"] = {float(r[1]) for r in write_rows}
                 return n_written
 
-        return self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
+        # RC-166 (root reached 2026-08-04, RC-243): the governed-outcome recompute used to run
+        # INSIDE _do(), i.e. while _TIER1_SNAPSHOT_WRITE_LOCK was held, so every bar upsert held
+        # the one global write lock for the whole recompute. On a 27 GB file that is precisely
+        # the 38–180 s holds measured on the live console, and it is why adding bar workers made
+        # the console slower rather than faster: they queue behind one another's refreshes.
+        # tests/test_db_perf_rc166_v1.py has asserted this contract ("outcome refresh must not
+        # hold the tier-1 lock") since 2026-07-31 and had been RED — the fix was specified and
+        # never landed. Bars commit under the lock; labels are recomputed after release on a
+        # separate connection, so a concurrent writer can proceed between the two.
+        _pending_refresh: dict[str, set[float]] = {}
+
+        def _post_unlock_refresh() -> None:
+            """post-unlock governed outcome refresh — runs with tier-1 RELEASED."""
+            starts = _pending_refresh.get("starts")
+            if not starts:
+                return
+            with self._connect() as refresh_conn:
+                _refresh_governed_outcomes_after_bar_mutation(
+                    refresh_conn,
+                    tkr=tkr,
+                    changed_bar_starts=starts,
+                    tz=float(_wall_time.time()),
+                )
+
+        n_written_total = self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
+        _post_unlock_refresh()
+        return n_written_total
 
     def fill_outcomes(self, ticker: str, timeframe: str, ts_utc_now: float) -> None:
         """
@@ -3382,14 +3604,19 @@ class EdDB:
                 bar_ends = [float(r["bar_end_ts_utc"]) for r in bar_end_rows]
                 bar_end_closes = [float(r["close"]) for r in bar_end_rows]
 
+                # Prefetch outcome/valid_dir cols so _apply skips N+1 per-horizon SELECTs.
+                _odir_cols = ", ".join(s[0] for s in OUTCOME_BAR_SPECS)
+                _vd_cols = ", ".join(s[2] for s in OUTCOME_MOVEMENT_V1_SPECS)
                 unfilled = conn.execute(
-                    """
-                    SELECT snapshot_id, ts_utc, atr
+                    f"""
+                    SELECT snapshot_id, ts_utc, atr, {_odir_cols}, {_vd_cols}
                     FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
                       AND outcome_filled = 0
                       AND COALESCE(horizon_outcome_schema_version, ?) = ?
                       AND ts_utc < ? AND ts_utc > ?
+                    ORDER BY ts_utc DESC
+                    LIMIT ?
                     """,
                     (
                         tkr,
@@ -3398,6 +3625,7 @@ class EdDB:
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         tz,
                         min_snap_ts,
+                        int(FILL_OUTCOMES_LIVE_BATCH_LIMIT),
                     ),
                 ).fetchall()
 
@@ -3415,23 +3643,20 @@ class EdDB:
         _exec_ms = (_wall_time.perf_counter() - _t0) * 1000.0
         _th = threading.current_thread().name
         _db_s = str(self.db_path)
-        if _exec_ms >= 10000.0:
+        # Honest SLA: 5s+/10s+ remain WARNING (quiet-window FAIL). Perf fix is the
+        # live batch + N+1 cut above — do not demote severity to greenwash 23s runs.
+        _level, _tier = _fill_outcomes_latency_log(_exec_ms)
+        if _level is logging.WARNING:
             log.warning(
-                "sqlite_bg_write_slow op=fill_outcomes tier=10s+ ticker=%s exec_ms=%.1f thread=%s db_path=%s",
+                "sqlite_bg_write_slow op=fill_outcomes tier=%s ticker=%s exec_ms=%.1f "
+                "thread=%s db_path=%s",
+                _tier,
                 tkr,
                 _exec_ms,
                 _th,
                 _db_s,
             )
-        elif _exec_ms >= 5000.0:
-            log.warning(
-                "sqlite_bg_write_slow op=fill_outcomes tier=5s+ ticker=%s exec_ms=%.1f thread=%s db_path=%s",
-                tkr,
-                _exec_ms,
-                _th,
-                _db_s,
-            )
-        elif _exec_ms >= 1000.0:
+        elif _level is logging.INFO:
             log.info(
                 "sqlite_bg_write op=fill_outcomes ticker=%s exec_ms=%.1f thread=%s db_path=%s",
                 tkr,
@@ -4249,7 +4474,7 @@ class EdDB:
         placeholders = ", ".join("?" for _ in d)
         sql = f"INSERT INTO level_crosses ({cols}) VALUES ({placeholders})"
         vals = list(d.values())
-        tk = str(d.get("ticker", "") or "")
+        str(d.get("ticker", "") or "")
 
         def _do() -> int:
             with self._connect() as conn:
@@ -4368,7 +4593,7 @@ class EdDB:
             r = dict(row)
             zone = r.get("zone")
             if zone is not None:
-                out[str(zone)] = int(r.get("cnt") or 0)
+                out[str(zone)] = int(r.get("cnt") or 0)   # external-key-ok: SQL alias (GROUP BY zone / ORDER BY cnt)
         return out
 
     def count_level_tests(self, ticker: str, level_name: str,
@@ -4401,10 +4626,11 @@ class EdDB:
     # MODEL ACCURACY
     # ════════════════════════════════════════════════════════════════════════
 
-    # RTH window for accuracy scoping: 9:30 (570 min) inclusive to 16:00 (960 min)
-    # exclusive, using the row's stamped et_hour/et_minute.
-    ACCURACY_RTH_START_MIN: int = 570
-    ACCURACY_RTH_END_MIN: int = 960
+    # RTH window for accuracy scoping: 9:30 inclusive to 16:00 exclusive, using the row's
+    # stamped et_hour/et_minute. RC-345 / F09: the boundary is owned by the one authority,
+    # time_et.RTH_START_MINS / RTH_END_MINS — not a second 570/960 literal here.
+    ACCURACY_RTH_START_MIN: int = _RTH_START_MINS_AUTH
+    ACCURACY_RTH_END_MIN: int = _RTH_END_MINS_AUTH
 
     def compute_accuracy(self, ticker: str, timeframe: str,
                           model_version: str = "statistical_v1",
@@ -4459,24 +4685,31 @@ class EdDB:
                 continue
 
             correct = 0
+            scored = 0
+            from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
             outcome_counts: dict[str, int] = {}
             for row in rows:
-                # Predicted direction = argmax of up/down/flat probs
-                probs = {
-                    "up":   row[f"pred_{horizon}_up_prob"]   or 0,
-                    "down": row[f"pred_{horizon}_down_prob"] or 0,
-                    "flat": row[f"pred_{horizon}_flat_prob"] or 0,
-                }
-                predicted = max(probs, key=probs.get)
+                # RC-345 / F22: predicted direction = the ONE argmax authority
+                # numeric_contract.direction_from_normalized_triplet (same up>down>flat
+                # tie-break), not a local max(probs, key=...). A row whose pred triplet is
+                # MISSING is SKIPPED — never scored as a fabricated 'up' via `or 0`.
+                _pu = float_finite_or_none(row[f"pred_{horizon}_up_prob"])
+                _pd = float_finite_or_none(row[f"pred_{horizon}_down_prob"])
+                _pf = float_finite_or_none(row[f"pred_{horizon}_flat_prob"])
+                if _pu is None or _pd is None or _pf is None:
+                    continue
+                predicted = direction_from_normalized_triplet(_pu, _pd, _pf)
                 actual    = row[outcome_col]
                 outcome_counts[actual] = outcome_counts.get(actual, 0) + 1
+                scored += 1
                 if predicted == actual:
                     correct += 1
 
-            total    = len(rows)
+            total    = scored  # only rows with a real predicted triplet are scored (F22)
             accuracy = round(correct / total * 100, 1) if total > 0 else None
-            baseline_label = max(outcome_counts, key=outcome_counts.get)
-            baseline_pct = round(outcome_counts[baseline_label] / total * 100, 1)
+            baseline_label = max(outcome_counts, key=outcome_counts.get) if outcome_counts else None
+            baseline_pct = (round(outcome_counts[baseline_label] / total * 100, 1)
+                            if (total > 0 and baseline_label is not None) else None)
             results[horizon] = {
                 "total": total,
                 "correct": correct,
@@ -4603,7 +4836,7 @@ class EdDB:
             model_version=model_version, horizon=horizon,
         )
         if latest is not None:
-            prev = latest.get("accuracy_pct")
+            prev = latest.get("accuracy_pct")   # external-key-ok: sqlite column from get_latest_model_accuracy()
             if prev is not None and abs(float(prev) - float(accuracy_pct)) < self.MODEL_ACCURACY_DEDUP_EPSILON:
                 return None
         return self.log_model_accuracy(
@@ -4702,6 +4935,30 @@ def _snapshot_update_key(row) -> tuple[str, int | None]:
         if sid > 0:
             return "snapshot_id", sid
     return "snapshot_id", None
+
+
+def _fill_outcomes_latency_log(exec_ms: float) -> tuple[int | None, str | None]:
+    """Classify fill_outcomes wall time → (logging level, tier label).
+
+    SLA: >=5s and >=10s are WARNING (operator quiet-window FAIL). 1s+ is INFO.
+    Live path must stay under SLA via FILL_OUTCOMES_LIVE_BATCH_LIMIT — not by
+    demoting multi-second runs to INFO.
+    """
+    if exec_ms >= 10_000.0:
+        return logging.WARNING, "10s+"
+    if exec_ms >= 5_000.0:
+        return logging.WARNING, "5s+"
+    if exec_ms >= 1_000.0:
+        return logging.INFO, "1s+"
+    return None, None
+
+
+def _row_has_nonnull(row, col: str) -> bool | None:
+    """True/False if *col* present on *row*; None if the column is absent (fallback)."""
+    try:
+        return row[col] is not None
+    except (KeyError, IndexError, TypeError):
+        return None
 
 
 def _already_filled(conn: sqlite3.Connection, row_key_col: str, row_key: int, col: str) -> bool:
@@ -4880,12 +5137,18 @@ def _apply_bar_based_outcome_updates(
         for odir, opt, n_min in OUTCOME_BAR_SPECS:
             spec = next(s for s in OUTCOME_MOVEMENT_V1_SPECS if s[5] == n_min)
             dcol, mcol, vdcol, tmcol, legtcol, _nm, slug = spec
-            if _already_filled(conn, row_key_col, row_key, odir):
-                ex_v = conn.execute(
-                    f"SELECT {vdcol} FROM snapshots WHERE {row_key_col} = ?",
-                    (row_key,),
-                ).fetchone()
-                if ex_v is not None and ex_v[0] is not None:
+            odir_filled = _row_has_nonnull(row, odir)
+            if odir_filled is None:
+                odir_filled = _already_filled(conn, row_key_col, row_key, odir)
+            if odir_filled:
+                vd_filled = _row_has_nonnull(row, vdcol)
+                if vd_filled is None:
+                    ex_v = conn.execute(
+                        f"SELECT {vdcol} FROM snapshots WHERE {row_key_col} = ?",
+                        (row_key,),
+                    ).fetchone()
+                    vd_filled = ex_v is not None and ex_v[0] is not None
+                if vd_filled:
                     continue
             b_start = forward_bar_start_utc(t_snap, n_min)
             if not bar_complete_by_utc(b_start, tz):
@@ -4912,15 +5175,26 @@ def _apply_bar_based_outcome_updates(
         if not updates:
             continue
 
-        _outcome_dir_cols = ", ".join(s[0] for s in OUTCOME_BAR_SPECS)
-        existing = conn.execute(
-            f"""
-            SELECT {_outcome_dir_cols}
-            FROM snapshots WHERE {row_key_col} = ?
-            """,
-            (row_key,),
-        ).fetchone()
-        all_filled = all(updates.get(c) or existing[c] for c in _outcome_cols)
+        # Prefer prefetched outcome cols on *row* (live fill_outcomes batch path).
+        existing_vals: dict[str, Any] = {}
+        need_select = False
+        for c in _outcome_cols:
+            present = _row_has_nonnull(row, c)
+            if present is None:
+                need_select = True
+                break
+            existing_vals[c] = row[c] if present else None
+        if need_select:
+            _outcome_dir_cols = ", ".join(_outcome_cols)
+            existing = conn.execute(
+                f"""
+                SELECT {_outcome_dir_cols}
+                FROM snapshots WHERE {row_key_col} = ?
+                """,
+                (row_key,),
+            ).fetchone()
+            existing_vals = {c: existing[c] for c in _outcome_cols}
+        all_filled = all(updates.get(c) or existing_vals.get(c) for c in _outcome_cols)
         if all_filled:
             updates["outcome_filled"] = 1
 
@@ -4984,14 +5258,32 @@ def _refresh_governed_outcomes_after_bar_mutation(
     )
 
 
-def market_session(et_hour: int, et_minute: int) -> str:
-    """Classify current time as market session."""
+def market_session(et_hour: int, et_minute: int, *, et_date: str) -> str:
+    """Classify an ET clock reading as a market session. With `et_date`, the CALENDAR decides first.
+
+    RC-278: this returned "rth" for 10:00 on a Saturday, because minutes-since-midnight is not a
+    session test — on five days in seven the two questions happen to agree. Every row this
+    labelled fed `market_session` into `snapshots` and into the training filters, so a weekend
+    reading entered the sample wearing the same label as a real one.
+
+    RC-281: `et_date` is REQUIRED, not optional. It was optional for one commit and Cursor's
+    audit measured the hole — `market_session(10, 0)` still returned "rth" on a Saturday, so
+    the next caller could silently reintroduce weekend RTH labels and the training
+    contamination of RC-54/57/58. Cursor confirmed no production caller omits it, so
+    requiring it costs nothing and closes the reintroduction path. Without the date this
+    function cannot know whether a session exists at all, and it must not guess.
+    """
+    from time_et import is_trading_day_et
+    if not is_trading_day_et(str(et_date)):
+        return "closed"
     mins = et_hour * 60 + et_minute
-    if mins < 570:    # before 9:30
+    # RC-345 / F09: the RTH open/close boundary is the ONE authority time_et.RTH_START_MINS /
+    # RTH_END_MINS (aliased _RTH_*_MINS_AUTH), not a second 570/960 literal in this classifier.
+    if mins < _RTH_START_MINS_AUTH:    # before 9:30
         return "premarket"
-    elif mins < 960:  # before 4:00pm
+    elif mins < _RTH_END_MINS_AUTH:    # before 4:00pm
         return "rth"
-    elif mins < 1200: # before 8:00pm
+    elif mins < 1200:                  # before 8:00pm (extended-hours end)
         return "afterhours"
     return "closed"
 
@@ -5214,7 +5506,8 @@ if __name__ == "__main__":
                     build_ts_et(et_now),
                     et_now.hour,
                     et_now.minute,
-                    market_session(et_now.hour, et_now.minute),
+                    market_session(et_now.hour, et_now.minute,
+                                   et_date=et_now.strftime("%Y-%m-%d")),  # RC-278
                     682.43,
                     HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                 ),

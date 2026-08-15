@@ -112,9 +112,9 @@ def record_market_vol_observation(mkt_ctx: Any, vol_ctx: Any) -> None:
                     "quality_status": "VALID" if cur is not None else "UNAVAILABLE",
                 }
     except Exception:
-        # Fail-open for observability only: a recording defect must never
-        # break the serve cycle. The payload's absence semantics stay honest
-        # (missing observation -> UNAVAILABLE), nothing is fabricated.
+        # institutional-swallow-ok: fail-open for observability only — a recording defect
+        # must never break the serve cycle; absence stays honest (-> UNAVAILABLE),
+        # nothing is fabricated.
         pass
 
 

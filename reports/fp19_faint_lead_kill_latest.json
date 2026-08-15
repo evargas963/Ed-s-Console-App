@@ -1,0 +1,35 @@
+{
+  "schema": "fp19_faint_lead_economic_kill_v1",
+  "generated_utc": "2026-07-17T19:16:24.882946+00:00",
+  "run_id": "b62087e0c472",
+  "cost_model_id": "COST_V1_UNDERLYING_SPY",
+  "cells": {
+    "l1_book:IWM:1c": {
+      "n_scored": 11719,
+      "n_trades": 7629,
+      "mean_net_bp": -0.6169725572649805,
+      "bootstrap_ci95_mean_net_bp": [
+        -0.7808837243030637,
+        -0.48174489152368954
+      ],
+      "cost_round_trip_bp": 1.0,
+      "verdict": "KILL"
+    },
+    "order_flow:IWM:1c": {
+      "n_scored": 5177,
+      "n_trades": 2083,
+      "mean_net_bp": -0.20472986374062913,
+      "bootstrap_ci95_mean_net_bp": [
+        -0.3464793865779507,
+        -0.06279343085348259
+      ],
+      "cost_round_trip_bp": 1.0,
+      "verdict": "KILL"
+    }
+  },
+  "summary": {
+    "verdict": "ECONOMIC_KILL",
+    "n_kill": 2,
+    "n_survive": 0
+  }
+}

@@ -267,7 +267,7 @@ def derive_db_contention_operator_status(
     db_locked = int(metrics.get("sqlite_database_locked_count") or 0)
     tier1_fail = int(metrics.get("sqlite_tier1_fail_count") or 0)
     cfg = metrics.get("config") if isinstance(metrics.get("config"), dict) else {}
-    warn_ms = float(cfg.get("lock_wait_warn_ms") or 100.0)
+    warn_ms = float(cfg.get("lock_wait_warn_ms") or 100.0)  # fake-default-ok: config warn-threshold default; read-only audit tool
 
     recent_busy_retries = [e for e in recent if str(e.get("kind") or "") == "busy_retry"]
     recent_meaningful_waits = [

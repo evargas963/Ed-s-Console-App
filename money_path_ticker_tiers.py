@@ -15,6 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from instrument_identity import ticker_storage_key
 from scheduler_user_tickers import TRAINING_ANCHOR_TICKERS
 
 _REPO_ROOT = Path(__file__).resolve().parent
@@ -38,11 +39,12 @@ def load_base_ticker_contract() -> dict[str, Any]:
 
 
 def base_money_path_tickers_upper() -> frozenset[str]:
-    return frozenset(t.upper() for t in BASE_MONEY_PATH_TICKERS)
+    # RC-345/F25: canonical membership set (SPY/QQQ/IWM unchanged; index aliases collapse)
+    return frozenset(ticker_storage_key(t) for t in BASE_MONEY_PATH_TICKERS)
 
 
 def is_base_money_path_ticker(ticker: str) -> bool:
-    return (ticker or "").upper() in base_money_path_tickers_upper()
+    return ticker_storage_key(ticker) in base_money_path_tickers_upper()  # RC-345/F25: canonical membership
 
 
 def is_guest_ticker(ticker: str) -> bool:
@@ -79,7 +81,7 @@ def should_skip_background_full_snapshot(
     panel_auto_symbols: frozenset[str],
 ) -> bool:
     """Base money-path tickers always receive full _fetch_state snapshot logging."""
-    t = (ticker or "").upper()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical — matches panel_auto_ticker_set's canonical keys
     if is_base_money_path_ticker(t):
         return False
     return t in panel_auto_symbols

@@ -12,15 +12,66 @@ from typing import Dict, List
 import math
 import logging
 
-from numeric_contract import float_finite_or_none
+from numeric_contract import float_finite_or_none, float_nonnegative_or_none
 
 log = logging.getLogger(__name__)
 
 # Schwab options API missing-greek sentinel (documented wire value).
 MISSING_GREEK_SENTINEL: float = -999.0
 
+# Per-share vanilla equity-option gamma is always ≥ 0 and rarely above ~1.0.
+# Schwab occasionally returns finite garbage on 0DTE deep-ITM (e.g. gamma=-91965)
+# that would otherwise dominate OI-weighted net_gamma / GEX / walls.
+GAMMA_PLAUSIBLE_MAX: float = 1.0
+# Deep ITM/OTM: true gamma ≈ 0; reject non-near-zero gamma when |delta| is extreme.
+DELTA_DEEP_ABS_FOR_GAMMA: float = 0.98
+GAMMA_DEEP_DELTA_MAX: float = 1e-4
+
 # compute_net_charm zero-used error when contracts matched expiry but failed OI/gamma/IV gates.
 CHARM_QUALITY_GATE_ERROR_MARKER = "quality gates"
+
+
+def schwab_iv_to_sigma(iv: float | None) -> float | None:
+    """The ONE conversion from Schwab's `volatility` field to a decimal sigma.
+
+    Schwab reports implied volatility in PERCENT. Verified 2026-07-19 on 1,600 contract
+    greeks from the 40 most recent chain snapshots: min 23.7550, median 50.4315, max
+    174.2260 — 1,600 of 1,600 above 3.0, none at or below it.
+
+    The `> 3.0` test is a defensive guard against a silent vendor unit change (a 300%
+    IV is possible but vanishingly rare; a 3.0 decimal sigma is not). It is kept because
+    a units flip would otherwise corrupt every gamma silently rather than loudly.
+
+    This existed as two different inline expressions — `iv / 100.0` unconditionally in
+    compute_net_charm and the guarded form in math_levels._contract_inputs — i.e. two
+    modules encoding different assumptions about one vendor field. One definition now.
+    """
+    if iv is None or iv <= 0:
+        return None
+    return iv / 100.0 if iv > 3.0 else iv
+
+
+def gamma_is_plausible(gamma: float | None, delta: float | None = None) -> bool:
+    """True when ``gamma`` is usable in OI-weighted gamma aggregation.
+
+    Rejects: None, MISSING_GREEK_SENTINEL, non-finite, negative, above
+    ``GAMMA_PLAUSIBLE_MAX``, and non-near-zero gamma when ``|delta|`` is deep
+    ITM/OTM (``>= DELTA_DEEP_ABS_FOR_GAMMA``). OI-only metrics should still
+    include the contract when gamma is rejected.
+    """
+    if gamma is None or gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
+        return False
+    if gamma < 0.0 or gamma > GAMMA_PLAUSIBLE_MAX:
+        return False
+    if (
+        delta is not None
+        and delta != MISSING_GREEK_SENTINEL
+        and math.isfinite(delta)
+        and abs(delta) >= DELTA_DEEP_ABS_FOR_GAMMA
+        and gamma > GAMMA_DEEP_DELTA_MAX
+    ):
+        return False
+    return True
 
 
 def charm_compute_unavailable_log_level(error: str | None) -> int:
@@ -149,6 +200,20 @@ def compute_exposures_by_strike(
     used = 0
     missing = 0
 
+    # RC-345 / F13: T for the BS-vanna faucet comes from the ONE valuation-T authority,
+    # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
+    # whole-day `dte / 365.0`. `now` is pinned once so every contract in the aggregate is
+    # priced at one instant, and T is memoised per distinct expiry string.
+    from time_et import time_to_expiry_years as _tte, now_et as _now_et
+    _tte_now = _now_et()
+    _tte_cache: dict[str, float | None] = {}
+
+    def _tte_memo(exp_raw) -> float | None:
+        key = str(exp_raw)
+        if key not in _tte_cache:
+            _tte_cache[key] = _tte(exp_raw, now=_tte_now)
+        return _tte_cache[key]
+
     for ct in contracts:
         total += 1
         strike = _f(ct.get("strikePrice"))
@@ -170,7 +235,7 @@ def compute_exposures_by_strike(
             continue
 
         b = _strike_bucket(exposures, strike)
-        vol = _f(ct.get("totalVolume"))
+        vol = float_nonnegative_or_none(ct.get("totalVolume"))  # volume: 0 valid, negatives are corruption
         bsz = _f(ct.get("bidSize"))
         asz = _f(ct.get("askSize"))
         if side == "CALL":
@@ -198,7 +263,7 @@ def compute_exposures_by_strike(
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
         delta_ok = delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
-        gamma_ok = gamma is not None and gamma != MISSING_GREEK_SENTINEL and math.isfinite(gamma)
+        gamma_ok = gamma_is_plausible(gamma, delta)
 
         if not delta_ok or not gamma_ok:
             missing += 1
@@ -221,12 +286,17 @@ def compute_exposures_by_strike(
                     b["call_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
                     b["call_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
-                _vega = _f(ct.get("vega"))
-                _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
+                # RC-211: exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna,
+                # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
+                # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
                 _iv = _f(ct.get("volatility"))
                 _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
-                if _vega_ok and _iv_ok:
-                    b["call_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
+                _T = _tte_memo(ct.get("expirationDate"))
+                if _iv_ok and _T is not None and _T > 0:
+                    from math_levels import bs_vanna as _bsv
+                    _vn = _bsv(spt, float(strike), _T, _iv / 100.0)
+                    if _vn is not None:
+                        b["call_vanna"] += _vn * oi * mult
         elif side == "PUT":
             if oi is not None:
                 prev = b.get("put_oi")
@@ -243,12 +313,16 @@ def compute_exposures_by_strike(
                     b["put_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
                     b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
-                _vega = _f(ct.get("vega"))
-                _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
+                # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
+                # calls and puts at a strike/expiry — any split comes from OI, never math).
                 _iv = _f(ct.get("volatility"))
                 _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
-                if _vega_ok and _iv_ok:
-                    b["put_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
+                _T = _tte_memo(ct.get("expirationDate"))
+                if _iv_ok and _T is not None and _T > 0:
+                    from math_levels import bs_vanna as _bsv
+                    _vn = _bsv(spt, float(strike), _T, _iv / 100.0)
+                    if _vn is not None:
+                        b["put_vanna"] += _vn * oi * mult
         else:
             continue
 
@@ -300,39 +374,6 @@ def _window_strikes(strikes: List[float], spot: float, window: int) -> List[floa
 # ── Institutional key-level primitives (single source of truth) ───────────────
 # Window policy for UI/chart key levels: full option chain (CONSENSUS), not ATM±N.
 KEY_LEVEL_STRIKE_WINDOW: int | None = None
-# Bound pin persist stamp. Historical snapshots.gamma_pin from this writer was
-# already the analytics |net GEX$| peak. NULL semantic on old rows means the same.
-GAMMA_PIN_SEMANTIC = "net_gex_peak"
-GAMMA_PIN_PAYLOAD_KEY = "kl_gamma_pin"
-GAMMA_PIN_LABEL_PAYLOAD_KEY = "kl_gamma_pin_label"
-GAMMA_PIN_TIP_PAYLOAD_KEY = "kl_gamma_pin_tip"
-GAMMA_PIN_CONSUMER_LABEL = "Net Γ Peak"
-GAMMA_PIN_CONSUMER_TIP = (
-    "Largest |net GEX$| per 1% on the selected expiry. "
-    "Not the total-gamma magnet (that is HVL)."
-)
-
-# One registry for every KEY LEVELS consumer name. UI renders payload
-# ``{key}_label`` / ``{key}_tip`` — no hardcoded kl_* label strings.
-KEY_LEVEL_CONSUMER_REGISTRY: dict[str, tuple[str, str]] = {
-    "kl_call_gamma_wall": ("Gamma Wall Call", "Strike with the largest call GEX$."),
-    "kl_put_gamma_wall": ("Gamma Wall Put", "Strike with the largest put GEX$."),
-    "kl_gamma_pin": (GAMMA_PIN_CONSUMER_LABEL, GAMMA_PIN_CONSUMER_TIP),
-    "kl_hvl": ("HVL", "Total-gamma concentration. Not the |net GEX$| peak (that is Net Γ Peak)."),
-    "kl_max_pain": ("Max Pain", "Strike where the most options expire worthless."),
-    "kl_gamma_flip": ("Gamma Flip", "Zero-gamma level. Above: dealers dampen. Below: dealers amplify."),
-    "kl_em_upper": ("EM Upper", "Expected-move ceiling."),
-    "kl_em_lower": ("EM Lower", "Expected-move floor."),
-    "kl_gamma_inflection": ("Gamma Inflection", "Gamma inflection strike."),
-    "kl_delta_inflection": ("Delta Inflection", "Delta inflection strike."),
-    "kl_call_delta_wall": ("Delta Wall Call", "Strike with the largest call DEX."),
-    "kl_put_delta_wall": ("Delta Wall Put", "Strike with the largest put DEX."),
-    "kl_call_oi_wall": ("OI Wall Call", "Strike with the largest call open interest."),
-    "kl_put_oi_wall": ("OI Wall Put", "Strike with the largest put open interest."),
-    "kl_call_vanna_wall": ("Vanna Wall Call (vega/S·IV proxy)", "Call vanna wall (vega/S·IV proxy)."),
-    "kl_put_vanna_wall": ("Vanna Wall Put (vega/S·IV proxy)", "Put vanna wall (vega/S·IV proxy)."),
-    "kl_oi_center": ("OI Center", "Open-interest center of mass."),
-}
 
 # Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
 
@@ -440,14 +481,66 @@ def _pick_strike_max_metric(
     return best_s, best_v
 
 
-def pick_gamma_pin_strike(
+def pick_pin_and_strength(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> tuple[float | None, float | None]:
+    """RC-124/RC-315/RC-320: max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its
+    decisiveness. NOT a demonstrated magnet.
+
+    WHAT IT MEASURES. The strike carrying the largest absolute call GEX dollars plus
+    absolute put GEX dollars — i.e. where the most dealer re-hedging activity sits. This is
+    the quantity SpotGamma publishes as Absolute Gamma.
+
+    WHAT IT DOES NOT ESTABLISH, and what this docstring wrongly claimed until RC-320. The
+    previous text read "hedging MAGNITUDE pins price regardless of net sign, so
+    calls-plus-puts is the magnet measure". That does not follow. Magnitude sets the SIZE of
+    the hedging flow at a strike; the SIGN of the dealer position sets whether that flow is
+    stabilising or destabilising — a dealer long gamma sells rallies and buys dips, a dealer
+    short gamma does the opposite — and this metric discards the sign. Two strikes with equal
+    absolute gamma can behave oppositely. The sign is also not observable: public open
+    interest does not reveal contract ownership
+    (https://spotgamma.com/what-is-gex-gamma-exposure/), so dealer direction is MODELLED.
+    Expiration-date clustering in the literature turns on NET positioning — Ni, Pearson and
+    Poteshman, Journal of Financial Economics, doi:10.1016/j.jfineco.2004.08.005.
+
+    Cursor's independent audit refuted the original sentence on 2026-08-09; RC-315 corrected
+    the derivation register and MISSED this docstring, which is where the register's wording
+    came from. Treat the result as a pin CANDIDATE.
+
+    The NET book (calls minus puts) is a different question — where the signed book leans —
+    and lives under its own name as net_gex_peak (pick_net_gex_peak_strike below).
+
+    strength_pct = the leader's margin over the runner-up on the same metric. A 1% lead is a
+    coin flip and the label should say so; a 40% lead is a decisive CONCENTRATION, which is
+    still not a claim about where price goes.
+    Fail-closed: no dollarized GEX -> (None, None), never a raw-gamma fallback.
+    """
+    if not exposures_have_dollar_gex(exposures):
+        return None, None
+    s, v = _pick_strike_max_metric(exposures, strikes, total_gex_dollars_at_strike)
+    if s is None or v is None or v <= 0:
+        return None, None
+    second = 0.0
+    for k in strikes:
+        if float(k) == s:
+            continue
+        t = total_gex_dollars_at_strike(exposures.get(k, {}))
+        if t is not None and t > second:
+            second = t
+    return round(s, 2), round((v - second) / v * 100.0, 1)
+
+
+def pick_net_gex_peak_strike(
     exposures: Dict[float, dict],
     strikes: List[float],
     *,
     institutional: bool = True,
 ) -> float | None:
     """
-    Gamma pin: strike with largest |net GEX$| per 1% (institutional).
+    Net-GEX peak: strike with largest |net GEX$| per 1% (calls minus puts).
+    RC-124: this WAS displayed as "gamma pin" — a non-standard use of that name; the standard
+    pin is total gamma (pick_pin_and_strength). The net peak remains a real measure of where
+    the SIGNED book concentrates, and it keeps its row under its own name.
     When institutional=True and spot/dollar GEX unavailable, returns None (no raw fallback).
   """
     if exposures_have_dollar_gex(exposures):
@@ -463,34 +556,6 @@ def pick_gamma_pin_strike(
     return round(s, 2) if s is not None else None
 
 
-def gex_at_bound_pin_strike(
-    exposures: Dict[float, dict],
-    strike: float | None,
-) -> float | None:
-    """|net GEX$| (or |net γ| fallback) at the bound pin strike.
-
-    Bound pin is pick_gamma_pin_strike — largest |net GEX$| per 1%.
-    pin_score must read this magnitude. Not total-gamma (|call|+|put|), which is HVL.
-    """
-    if strike is None or not exposures:
-        return None
-    try:
-        key = float(strike)
-    except (TypeError, ValueError):
-        return None
-    bucket = exposures.get(key) or exposures.get(strike) or {}
-    if exposures_have_dollar_gex(exposures):
-        raw = net_gex_dollars_at_strike(bucket)
-    else:
-        raw = net_gamma_raw_at_strike(bucket)
-    if raw is None:
-        return None
-    try:
-        return abs(float(raw))
-    except (TypeError, ValueError):
-        return None
-
-
 def pick_hvl_strike(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
     """
     HVL: strike with largest total gamma concentration.
@@ -501,6 +566,57 @@ def pick_hvl_strike(exposures: Dict[float, dict], strikes: List[float]) -> float
         return round(s, 2) if s is not None else None
     s, _ = _pick_strike_max_metric(exposures, strikes, total_gamma_raw_at_strike)
     return round(s, 2) if s is not None else None
+
+
+def pick_key_delta_strike(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> float | None:
+    """Key Delta Strike: largest total delta notional (|call DEX$| + |put DEX$|).
+
+    Institutional only — no raw-delta fallback: delta notional needs spot, and a
+    unit mix here would rank strikes on incomparable numbers.
+    """
+    if not exposures_have_dollar_gex(exposures):
+        return None
+
+    def _total_dex(b: dict) -> float | None:
+        c = bucket_metric_abs(b, "call_dex_dollars")
+        p = bucket_metric_abs(b, "put_dex_dollars")
+        if c is None and p is None:
+            return None
+        return (c or 0.0) + (p or 0.0)
+
+    s, _ = _pick_strike_max_metric(exposures, strikes, _total_dex)
+    return round(s, 2) if s is not None else None
+
+
+def pick_volatility_point_strikes(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> tuple[float | None, float | None]:
+    """(HVP, LVP): strike holding the most NEGATIVE / most POSITIVE net GEX$.
+
+    Signed extremes, not magnitudes: HVP exists only where net dealer gamma is
+    actually negative at some strike (amplification pocket), LVP only where
+    positive (damping pocket). A one-sided chain returns None for the absent side.
+    """
+    if not exposures_have_dollar_gex(exposures):
+        return None, None
+    hvp_s: float | None = None
+    hvp_v: float | None = None
+    lvp_s: float | None = None
+    lvp_v: float | None = None
+    for s in strikes:
+        v = net_gex_dollars_at_strike(exposures.get(s, {}))
+        if v is None:
+            continue
+        if v < 0 and (hvp_v is None or v < hvp_v):
+            hvp_s, hvp_v = float(s), float(v)
+        if v > 0 and (lvp_v is None or v > lvp_v):
+            lvp_s, lvp_v = float(s), float(v)
+    return (
+        round(hvp_s, 2) if hvp_s is not None else None,
+        round(lvp_s, 2) if lvp_s is not None else None,
+    )
 
 
 def pick_gamma_wall_strikes(
@@ -678,6 +794,7 @@ def compute_net_charm(
     *,
     rate: float = 0.05,
     drift_toward_strike: float | None = None,
+    now=None,
 ) -> dict:
     """
     Compute dealer net charm exposure for a given expiry.
@@ -686,30 +803,102 @@ def compute_net_charm(
     As expiry approaches, dealers must unwind their delta hedges. The NET direction
     of that unwind creates mechanical buying or selling pressure independent of price.
 
-    Formula (Black-Scholes):
-        For calls:  charm = -phi(d1) * [d2/(2*S*iv*sqrt(T)) + r/(iv*sqrt(T))]
-        For puts:   charm_put = charm_call - phi(d1) (by put-call parity)
-        phi = standard normal PDF
-        d1 = [ln(S/K) + (r + iv²/2)*T] / (iv*sqrt(T))
+    Formula ACTUALLY IMPLEMENTED (see line ~788) — corrected 2026-07-19 to match the code:
+
+        charm_unit = -phi(d1) * d2 / (2*T)          # delta per YEAR
+        d1 = [ln(S/K) + (iv^2/2)*T] / (iv*sqrt(T))
         d2 = d1 - iv*sqrt(T)
+        phi = standard normal PDF
+
+    Relation to the textbook (Haug) charm, dDelta/dT for a call with q=0:
+
+        dDelta/dT = -phi(d1) * [ r/(iv*sqrt(T)) - d2/(2T) ]
+
+    Ours is dDelta/dt (CALENDAR time — as the trading day passes and T shrinks), with the
+    r/(iv*sqrt(T)) term DELIBERATELY OMITTED because it explodes as T->0 (0DTE). At r=0
+    that leaves  charm = +phi(d1) * d2 / (2T)  — exactly the formula above evaluated at
+    r=0, which IS the calendar-time charm.
+    SIGN CORRECTED 2026-07-25: a prior revision negated this to -phi*d2/(2T) on the claim
+    "ours = -dDelta/dT", which INVERTED the direction — charm_direction reported "buying"
+    when the dealer flow was selling (measured: sign-inverted vs the correct convention on
+    70-79% of real SPY/QQQ/IWM states, exact-negation of the per-strike bs_charm path). A
+    direct finite-difference of Black-Scholes delta as calendar time advances,
+    (delta(T-1d)-delta(T))/dt, proves calendar charm = +phi*d2/(2T) (= math_levels.bs_charm
+    at r=0) for ATM/ITM/OTM alike. The r-omission still costs accuracy that grows with T and
+    rate (~6% 0DTE ATM, ~17% 7d, ~71% 3-month ATM at r=0.05); acceptable for the near-expiry
+    use this feeds. The scalar here and the per-strike compute_charm_by_strike agree on
+    DIRECTION and, since RC-42 unified both on time_et.time_to_expiry_years, on T as well —
+    the once-tracked "hours-to-close vs 0.5-day floor" magnitude gap no longer exists in
+    code (RC-179 closed it as a stale claim; parity measured at 0.02% on a real 0DTE book).
+
+    NOTE: the ``rate`` parameter is therefore NOT used in the charm computation.
+
+    Put charm: with q=0, Delta_put = Delta_call - 1, and the constant vanishes under
+    d/dt, so charm_put == charm_call. That identity is why both sides use one formula.
+    AGGREGATION IS DEALER-SIGNED (RC-179, convention pinned 2026-08-01 by operator order):
+    ``net = call_charm - put_charm`` — the SAME +call/-put dealer book assumption as net
+    GEX and the per-strike compute_charm_by_strike path, so ``net_charm_daily`` IS a
+    dealer-signed directional flow and its sign may be read as dealer direction. An older
+    revision of this paragraph claimed the two sides were summed with the same sign; the
+    code below never did that after the 2026-07-25 correction, and the claim survived only
+    in prose. MEASURED parity on the real SPY 2026-07-31 0DTE book (put-heavy, 782,222 put
+    OI vs 530,996 call): scalar -3,529,621.8 vs per-strike dealer-signed sum -3,528,882.8
+    (0.02%, the scalar's extra plausibility gates account for the gap), against a same-sign
+    gross of +5,907,087.6 — the sign itself is the proof the dealer convention is live.
+    Locked by tests/test_charm_sign_finite_difference.py (parity + put-heavy sign-flip).
 
     Dealer position: market makers are typically SHORT options (sold to retail).
-    SHORT call → delta hedge = SHORT stock. As charm decays, they BUY back stock.
-    SHORT put  → delta hedge = LONG stock. As charm decays, they SELL stock.
+
+    RC-296 — READ THIS BEFORE WRITING A PER-SIDE HEDGING STORY HERE. Two previous
+    revisions of this paragraph were wrong in opposite ways: the original inverted both
+    hedge legs, and RC-294's correction replaced that with "calls sell, puts buy", which
+    is also false. Both mistakes came from reasoning about the option SIDE instead of
+    reading the function that computes the number.
+
+    PER-CONTRACT CHARM IS SIDE-INDEPENDENT. `math_levels.bs_charm(spot, strike, t_years,
+    sigma, rate)` takes NO call/put argument — one strike yields one charm value — and at
+    q=0 charm_put equals charm_call, which the DEALER SIGN CONVENTION comment further down
+    has always said. There is no "call behaviour" and "put behaviour" to describe.
+
+    ITS SIGN IS A FUNCTION OF MONEYNESS, not of side. MEASURED at spot 100, T=0.08,
+    sigma=0.20: K=90 → +0.7654, K=100 → −0.0705, K=105 → −1.5684. Positive below spot,
+    negative above.
+
+    DEALER DIRECTION ENTERS ONLY THROUGH THE BOOK. Because the per-contract value is equal
+    on both sides, the direction in `net = call_charm - put_charm` comes from the OI
+    IMBALANCE between the call and put books at each strike — not from a story about how
+    one side hedges. That convention (+call/−put, shared with net GEX) is RC-179-locked and
+    measured; see the parity figures above and tests/test_charm_sign_finite_difference.py.
+    Correcting this prose does not and must not move the arithmetic.
+
     Net charm > 0 → net dealer delta buying  → Bullish flow
     Net charm < 0 → net dealer delta selling → Bearish flow
 
-    drift_toward_strike: institutional gamma pin from pick_gamma_pin_strike (caller-supplied).
-    Charm flow direction is independent of pin location.
+    drift_toward_strike: caller-supplied, and the caller (server.py `_institutional_pin`)
+        passes `pick_net_gex_peak_strike` over the SELECTED EXPIRY — NOT
+        `pick_pin_and_strength`, which is terrain's max-TOTAL-gamma strike over the wide
+        multi-expiry book. This docstring named the wrong function until RC-294 and the
+        two differ whenever magnitude and signed-net peak separate (RC-292).
+        Charm performs NO computation with this value: it is republished unchanged, under
+        the single name `drift_toward` (RC-302 deleted the `gamma_pin` duplicate; this
+        paragraph still claimed both names until RC-315, contradicting the Returns section
+        four lines below it). Charm measures directional hedge DECAY; it does not compute a
+        price attractor, so treat this as a caller's label travelling through, never as
+        charm's own target. RC-315: charm should publish NO "toward" strike at all without
+        an independently validated directional mechanism — neither the net-GEX peak nor the
+        absolute-gamma strike is a demonstrated magnet. RC-345 / F18: the server caller now
+        passes drift_toward_strike=None (the net-GEX-peak substitution was removed end-to-end,
+        including the Key Levels "Charm Drift" UI row), so drift_toward is WITHHELD. Charm
+        publishes DIRECTION (charm_direction / net_charm sign), never a borrowed target strike.
 
     Returns:
         net_charm_daily  : net delta-equivalents unwound per day (negative = selling)
         charm_direction  : "buying" | "selling" | "neutral"  (for signals engine)
-        drift_toward     : drift_toward_strike when provided
+        drift_toward     : drift_toward_strike when provided — the caller's strike,
+                           republished unchanged. RC-302 removed the duplicate `gamma_pin`
+                           key that carried the same value under terrain's name.
         contracts_used   : number of contracts that contributed
     """
-    import datetime as _dt2, math as _m
-
     try:
         _target_exp = str(expiry)[:10]
         if len(_target_exp) != 10:
@@ -717,21 +906,33 @@ def compute_net_charm(
     except Exception:
         _target_exp = None
 
-    # For 0DTE: use remaining hours to close as T
-    # Prevents formula explosion as T → 0
-    def _resolve_T(dte_raw):
-        if dte_raw is None: return None
-        dte_f = float(dte_raw)
-        if dte_f <= 0:
-            try:
-                from time_et import now_et
+    # SINGLE SOURCE of T: intraday time-to-session-close (time_et.time_to_expiry_years),
+    # ACT/365, from `now` (defaults to now_et()). Replaces the old hours-to-close / day-count
+    # split — the 0DTE branch only approximated it (hardcoded 16:00, 0.5h floor) and the
+    # dte/365 branch ignored the intraday fraction entirely, so the two charm engines
+    # disagreed near expiry (RC-42 / RC-37; validated against Schwab-reported gamma).
+    from time_et import time_to_expiry_years as _tte
+    # RC-224 / census #6: unit charm from the ONE greek-formula faucet (not inline).
+    from math_levels import bs_charm as _bs_charm
 
-                _now_et = now_et()
-            except Exception:
-                _now_et = _dt2.datetime.now()
-            hours_left = max(0.5, 16.0 - (_now_et.hour + _now_et.minute / 60.0))
-            return hours_left / 24.0 / 365.0
-        return dte_f / 365.0
+    # RC-245: T is a pure function of (expirationDate, now) and every contract in this
+    # aggregate resolves the SAME expiry, so the per-contract call did the work of one 188
+    # times (MEASURED: 21% of warm runtime). Worse than the cost: with now=None each call
+    # re-read the clock, so contracts summed into ONE number were priced at instants that
+    # drifted across the loop. Pinning `now` once makes the aggregate internally consistent
+    # — a single figure now describes a single moment — and memoising per distinct expiry
+    # string makes it cheap. Values are unchanged: same inputs, same formula, same faucet.
+    if now is None:
+        from time_et import now_et as _now_et
+
+        now = _now_et()
+    _tte_cache: dict[str, float | None] = {}
+
+    def _tte_memo(exp_raw) -> float | None:
+        key = str(exp_raw)
+        if key not in _tte_cache:
+            _tte_cache[key] = _tte(exp_raw, now=now)
+        return _tte_cache[key]
 
     call_charm = put_charm = 0.0
     used = 0
@@ -757,10 +958,10 @@ def compute_net_charm(
 
         strike  = _f(ct.get("strikePrice"))
         gamma   = _f(ct.get("gamma"))
+        delta   = _f(ct.get("delta"))
         iv      = _f(ct.get("volatility"))
         oi      = _f(ct.get("openInterest"))
         mult    = _f(ct.get("multiplier"))
-        dte_raw = ct.get("daysToExpiration")
 
         if gamma is None or strike is None:
             _skip_fields += 1
@@ -771,55 +972,35 @@ def compute_net_charm(
         if mult is None or mult <= 0:
             _skip_mult += 1
             continue
-        if gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
+        if not gamma_is_plausible(gamma, delta):
             _skip_gamma += 1
             continue
         if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):
             _skip_iv += 1
             continue
 
-        T = _resolve_T(dte_raw)
+        T = _tte_memo(ct.get("expirationDate"))
         if T is None or T <= 0:
             _skip_T += 1
             continue
 
-        iv_dec = iv / 100.0
+        iv_dec = schwab_iv_to_sigma(iv)
+        if iv_dec is None or iv_dec <= 0:
+            _skip_iv += 1
+            continue
         S      = float(spot)
         K      = float(strike)
-        r      = rate
 
-        # charm = dDelta/dt using the standard dealer-positioning form:
-        #   charm = -phi(d1) * d2 / (2*T)
-        #
-        # This form (not the full BS expansion) stays bounded as T→0 because
-        # d2 → 0 at the same rate. The full expansion includes r/(iv*sqrt(T))
-        # which explodes for 0DTE (e.g. 0.05/0.005 = 10 → billions).
-        #
-        # Units: delta/year per unit contract. Scale to daily:
-        #   weighted = charm/year / 365 * OI * mult
-        #
-        # Sign: negative charm = delta decaying = dealers buying back delta = bullish.
-        # We flip sign below: net > 0 means dealers net BUYING (bullish flow).
-        try:
-            ln_SK = _m.log(S / K)
-            sqrt_T = _m.sqrt(T)
-            d1 = (ln_SK + 0.5 * iv_dec**2 * T) / (iv_dec * sqrt_T)
-            d2 = d1 - iv_dec * sqrt_T
-            phi_d1 = (1.0 / _m.sqrt(2.0 * _m.pi)) * _m.exp(-0.5 * d1**2)
-        except Exception:
+        # RC-224 / census #6: ONE greek-formula faucet — math_levels.bs_charm.
+        # rate=0 keeps the deliberate r-term omission for 0DTE stability (same numeric
+        # identity the prior inline +phi(d1)*d2/(2T) encoded; RC-179 parity locks).
+        charm_unit = _bs_charm(S, K, float(T), float(iv_dec), rate=0.0)
+        if charm_unit is None:
             _skip_math += 1
             continue
 
-        if T <= 0: continue
-
-        # charm per unit in delta/year
-        charm_unit = -phi_d1 * d2 / (2.0 * T)
-
         # For puts: by put-call parity, charm_put = charm_call (same sign, same magnitude
         # at ATM; put delta decays symmetrically to call delta). Use same formula.
-        # The sign difference between calls and puts is already captured in the
-        # direction of net_delta (calls positive, puts negative).
-
         # Daily aggregate: charm_unit/365 * OI * mult
         weighted = charm_unit / 365.0 * oi * mult
 
@@ -827,6 +1008,7 @@ def compute_net_charm(
             call_charm += weighted
         else:
             put_charm  += weighted
+        del weighted  # summed with the dealer convention below, never here
 
         used += 1
 
@@ -848,12 +1030,28 @@ def compute_net_charm(
             "put_charm_daily": None,
             "charm_direction": None,
             "charm_magnitude": None,
+            # RC-302: `gamma_pin` REMOVED. It duplicated drift_toward exactly, had zero
+            # readers repo-wide, and collided with terrain's gamma_pin — which is the
+            # max-TOTAL-gamma strike over the wide book, a different metric on a different
+            # chain scope from the selected-expiry net-GEX peak charm is handed here.
             "drift_toward": drift_toward_strike,
             "contracts_used": 0,
             "error": _err,
         }
 
-    net = call_charm + put_charm
+    # DEALER SIGN CONVENTION (fixed 2026-07-19 — was `call_charm + put_charm`).
+    #
+    # charm_put == charm_call per contract (q=0), so summing the two sides produced an
+    # OI-WEIGHTED MAGNITUDE with no dealer direction in it, while `charm_direction`
+    # below labelled its sign "buying"/"selling" and fed that to the signals engine.
+    # A prior comment claimed the sign difference was "captured in net_delta" — net_delta
+    # is never referenced in this function, so no such compensation occurred.
+    #
+    # Charm exposure must use the SAME dealer book assumption as net GEX (+call / -put;
+    # see math_levels.compute_gamma_profile). Per-strike charm exposure with this
+    # convention is standard institutional practice (SpotGamma / Unusual Whales publish
+    # it, and attribute the end-of-day pin to charm pressure).
+    net = call_charm - put_charm
 
     # Direction: positive net = dealers net buying delta (bullish), negative = selling (bearish)
     direction = "neutral" if abs(net) < 1.0 else ("buying" if net > 0 else "selling")
@@ -873,6 +1071,9 @@ def compute_net_charm(
         "put_charm_daily": round(put_charm, 2),
         "charm_direction": direction,
         "charm_magnitude": magnitude,
+        # RC-302: ONE name for a value charm republishes but does not compute. The
+        # `gamma_pin` alias and its intermediate variable are gone — zero readers, and the
+        # name belongs to terrain's max-total-gamma strike over the wide book.
         "drift_toward": drift_toward_strike,
         "contracts_used": used,
         "error": "",

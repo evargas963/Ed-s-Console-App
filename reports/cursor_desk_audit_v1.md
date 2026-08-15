@@ -1,5 +1,3 @@
-> **SOURCE NAMESPACE — not a second "now."** Current execution queue is `OPEN_ITEMS.md` **PA-46**. Charter: `AGENTS.md`. This file was **missing from `main`** (last lived on a feature branch). Restored 2026-08-13 from `4bd9c5f` so the rehab record sits on the same branch as the board. Desk F-01… namespace. One 2026-08-06 adversarial report, not a standing queue. Do not open a parallel program from this file.
-
 # Cursor adversarial audit — Desk tab (`6c47b89b..1c1fad7e`)
 
 **Auditor:** Cursor · **this turn** (full re-run on real `:8000`)  

@@ -1,0 +1,245 @@
+{
+  "scanned_files": 7766,
+  "detail": {
+    "tools/_section11_register_snippet.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/archive/2026-Q2/memory_archive/feedback_schwab_full_repo_directive.md"
+      ],
+      "NOISE": [
+        "reports/repo_wide_adversarial_audit_wave1.json",
+        "tools/verify_dead_code_orphans_v1.py"
+      ]
+    },
+    "tools/_sweep3_apply_silent_pass_logging.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/archive/2026-Q2/memory_archive/feedback_fiduciary_duty.md",
+        "governance/archive/2026-Q2/memory_archive/project_gate_b_state_2026_05_21.md"
+      ],
+      "NOISE": [
+        "reports/repo_wide_adversarial_audit_wave1.json",
+        "tools/verify_dead_code_orphans_v1.py"
+      ]
+    },
+    "tools/_phase4_fill_outcomes.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "docs/db_authority_enforcement_v2_global_closure.md"
+      ],
+      "NOISE": [
+        "reports/repo_wide_adversarial_audit_wave1.json",
+        "tools/verify_dead_code_orphans_v1.py"
+      ]
+    },
+    "tools/_phase4_bar_check.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "docs/db_authority_enforcement_v2_global_closure.md",
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": [
+        "reports/repo_wide_adversarial_audit_wave1.json",
+        "tools/verify_dead_code_orphans_v1.py"
+      ]
+    },
+    "tools/_phase4_snapshot_detail.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "docs/db_authority_enforcement_v2_global_closure.md",
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": [
+        "reports/repo_wide_adversarial_audit_wave1.json",
+        "tools/verify_dead_code_orphans_v1.py"
+      ]
+    },
+    "tools/_phase4a_proof_not_exists.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "docs/phase4a_canonical_1m_full_closure.md",
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": [
+        "reports/repo_wide_adversarial_audit_wave1.json",
+        "tools/verify_dead_code_orphans_v1.py"
+      ]
+    },
+    "tools/_phase4a_quantify_anchor_miss.py": {
+      "CODE": [],
+      "TEST": [
+        "tests/test_calibration_bypass_closure.py"
+      ],
+      "PROVENANCE": [
+        "governance/root_cause_log.md",
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": [
+        "reports/repo_wide_adversarial_audit_wave1.json",
+        "tools/verify_dead_code_orphans_v1.py"
+      ]
+    },
+    "tools/_phase4b_audits.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": [
+        "reports/repo_wide_adversarial_audit_wave1.json",
+        "tools/verify_dead_code_orphans_v1.py"
+      ]
+    },
+    "tools/_build_section1_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "reports/claude_finish_adversarial_audit_v5.md",
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section2_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section3_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section5_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section6_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section7_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section8_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section9_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section11_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section12_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section13_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section14_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    },
+    "tools/_build_section15_inventory.py": {
+      "CODE": [],
+      "TEST": [],
+      "PROVENANCE": [
+        "governance/artifacts/snapshot_column_cull_ledger.json"
+      ],
+      "NOISE": []
+    }
+  },
+  "deletable_now": [],
+  "blocked_by_code_or_test": [
+    "tools/_phase4a_quantify_anchor_miss.py"
+  ],
+  "blocked_by_provenance": [
+    "tools/_section11_register_snippet.py",
+    "tools/_sweep3_apply_silent_pass_logging.py",
+    "tools/_phase4_fill_outcomes.py",
+    "tools/_phase4_bar_check.py",
+    "tools/_phase4_snapshot_detail.py",
+    "tools/_phase4a_proof_not_exists.py",
+    "tools/_phase4b_audits.py",
+    "tools/_build_section1_inventory.py",
+    "tools/_build_section2_inventory.py",
+    "tools/_build_section3_inventory.py",
+    "tools/_build_section5_inventory.py",
+    "tools/_build_section6_inventory.py",
+    "tools/_build_section7_inventory.py",
+    "tools/_build_section8_inventory.py",
+    "tools/_build_section9_inventory.py",
+    "tools/_build_section11_inventory.py",
+    "tools/_build_section12_inventory.py",
+    "tools/_build_section13_inventory.py",
+    "tools/_build_section14_inventory.py",
+    "tools/_build_section15_inventory.py"
+  ],
+  "already_absent": [
+    "tools/_tmp_ablation_status.py",
+    "tools/_ablation_progress_snapshot.py",
+    "tools/_enumerate_all_defs.py",
+    "tools/_phase_b_index_html_cleanup.py",
+    "tools/_converge_interior_gaps_v1.py",
+    "tools/emit_operator_trust_backtrack_reports.py",
+    "tools/_build_section10_inventory.py",
+    "tools/_build_section16_inventory.py"
+  ],
+  "fenced": {
+    "tools/_diag_extract_compare.py": true,
+    "tools/_issue16_schema_diff.py": true
+  }
+}

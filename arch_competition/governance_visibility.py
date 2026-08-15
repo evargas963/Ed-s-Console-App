@@ -6,6 +6,8 @@ Uses only approved loaders and on-disk artifacts — no ad hoc derivation of gov
 
 from __future__ import annotations
 
+from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+
 import json
 import logging
 from pathlib import Path
@@ -90,7 +92,7 @@ def _load_arch_state_ticker(
             "detail": str(e),
             "path": str(p),
         }
-    ent = st.get(ticker.upper())
+    ent = st.get(ticker_storage_key(ticker))
     return (ent if isinstance(ent, dict) else {}), None
 
 
@@ -225,7 +227,7 @@ def build_governance_panel_payload(
     recent_audit_actions contains only records matching the requested ticker (may be empty).
     """
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)
     base: dict[str, Any] = {
         "schema_version": GOVERNANCE_PANEL_SCHEMA_VERSION,
         "ok": False,
@@ -292,7 +294,7 @@ def build_governance_panel_payload(
     gc = arch_t.get("governed_competition") if isinstance(arch_t.get("governed_competition"), dict) else None
 
     audits = load_recent_audit_records(model_dir, limit=audit_limit)
-    audits_ticker = [a for a in audits if str(a.get("ticker", "")).upper() == tku]
+    audits_ticker = [a for a in audits if ticker_storage_key(str(a.get("ticker", ""))) == tku]  # RC-345/F25
 
     rollback_ok = _rollback_checkpoint_available(model_dir, hz, tku)
 

@@ -16,7 +16,12 @@ def contract_spread_pts_from_bid_ask(bid: float | None, ask: float | None) -> fl
         return None
     try:
         bf, af = float(bid), float(ask)
-        if af > 0 and bf >= 0:
+        # RC-345 / F23: a CROSSED quote (ask < bid) is INVALID and must be WITHHELD (None),
+        # never returned as a negative spread. This is the LIVE A2 authority
+        # (resolve_a2_contract_spread -> here); without the `af >= bf` guard a crossed market
+        # produced a negative spread that _spread_exceeds_hard_threshold read as acceptable
+        # (`negative > threshold` is False), passing a crossed quote through the gate.
+        if af > 0 and bf >= 0 and af >= bf:
             return round(af - bf, 4)
     except (TypeError, ValueError):
         return None
@@ -36,7 +41,10 @@ def resolve_a2_contract_mid(*, chain_row: dict[str, Any]) -> tuple[float | None,
     if bid is not None and ask is not None:
         try:
             bf, af = float(bid), float(ask)
-            if af > 0 and bf >= 0:
+            # RC-345 / F23: a CROSSED quote (ask < bid) is invalid — do not derive a mid from
+            # it. Same withholding rule as contract_spread_pts_from_bid_ask; a crossed market
+            # falls through to (None, None).
+            if af > 0 and bf >= 0 and af >= bf:
                 calc = (af + bf) / 2.0
                 if calc > 0:
                     return round(calc, 4), "derived_bid_ask_mid"

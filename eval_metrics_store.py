@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 def metrics_path() -> Path:
@@ -45,7 +47,7 @@ def save_arch_eval_proof_merge(ticker: str, entry: dict[str, Any]) -> None:
     tickers = cur.get("by_ticker")
     if not isinstance(tickers, dict):
         tickers = {}
-    tickers[ticker.upper()] = entry
+    tickers[ticker_storage_key(ticker)] = entry  # RC-345/F25: canonical proof key (WRITE side; readers canonicalize the lookup)
     cur["by_ticker"] = tickers
     cur["updated_at"] = entry.get("updated_at")
     tmp = p.with_suffix(".json.tmp")

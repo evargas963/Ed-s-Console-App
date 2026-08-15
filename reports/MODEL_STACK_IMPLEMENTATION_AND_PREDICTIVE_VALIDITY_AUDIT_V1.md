@@ -1,5 +1,3 @@
-> **EVIDENCE / CONTRACT — not a second "now."** Outstanding work from this file, if material, lives on `OPEN_ITEMS.md` PA-48. Pointer: `ACTIVE_PROGRAM.md` → PA-46. Do not open a parallel program from this file.
-
 > **Classification:** Evidence Artifact | **Scope:** MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1 session-evidence packet (read-only mission report)
 
 # MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1

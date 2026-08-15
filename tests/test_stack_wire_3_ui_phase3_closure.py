@@ -77,11 +77,45 @@ def test_wire3_ui_r_units_none_treated_as_withheld():
     Current UI does not consume r_units (no DOM bind) — withhold is trivially satisfied. This
     guard locks that contract.
     """
-    assert "r_units" not in HTML, (
-        "If r_units is bound to UI, you MUST guard on null/undefined and render as withheld "
-        "(em-dash), never substitute 0. r_units=0 means 'zero risk-units' which is a real value; "
-        "r_units=None means 'withheld'."
-    )
+    # RC-308/RC-310: this asserted `"r_units" not in HTML` — absence of the NAME standing in
+    # for the withhold contract. The Call card now passes `s.r_units` to the size slot, so the
+    # test went red on a binding, not on a violation. Worse, the binding it found was DEAD:
+    # `fstr(...)` returns the first argument that is a non-empty STRING, so a numeric r_units
+    # could never be rendered by it under any value — the fallback silently never fired. The
+    # rule is now stated as the rule: bound is fine, fabricating 0 is not.
+    idx = HTML.find("T('cv2-c-size'")
+    assert idx != -1, "the Call card's size slot is gone"
+    slot = HTML[idx : idx + 200]
+    assert "fstr(s.r_units" not in slot and ", s.r_units)" not in slot, (
+        "r_units is passed to fstr(), which only returns STRINGS — a numeric risk-unit count "
+        "can never render through it, so the fallback is dead code that reads as a binding")
+    if "r_units" in slot:
+        assert "rUnitsText" in HTML, (
+            "If r_units is bound to UI, you MUST guard on null/undefined and render as "
+            "withheld (em-dash), never substitute 0. r_units=0 means 'zero risk-units', "
+            "which is a real value; r_units=None means 'withheld'.")
+
+
+def test_wire3_the_size_slot_contract_runs():
+    """RC-310: the withhold rule, EXECUTED against the real renderer.
+
+    `rUnitsText` is driven over 0, positive, negative, null, NaN and inf in
+    tests/index_html_contracts_node.mjs — the property this file could only ever gesture at
+    by checking whether a field name appeared in the page.
+    """
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    node = shutil.which("node")
+    if not node:
+        import pytest
+
+        pytest.fail("Node.js is required on PATH (runs tests/index_html_contracts_node.mjs)")
+    r = subprocess.run([node, str(repo / "tests" / "index_html_contracts_node.mjs")],
+                       cwd=str(repo), capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + "\n" + r.stderr
 
 
 def test_wire3_ui_signals_engine_failed_badge_present():

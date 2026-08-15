@@ -1,0 +1,22 @@
+{
+  "prereg_id": "kalman_eval_v1_prereg_v1",
+  "sibling_precedent": "research/elastic_net_eval_v1/prereg_v1.json",
+  "study_question": "Do causal Kalman latent states (level, slope) extracted from 1m log-returns, fed to a frozen multinomial logistic, predict production ternary outcome_{hz} walk-forward beyond trivial baselines?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only."
+  },
+  "model": {
+    "state": "local linear trend Kalman on log-price; features at t = [level, slope, innovation] using only bars with bar_end<=t",
+    "classifier": "LogisticRegression elasticnet saga (same frozen hyperparams as Study #4)",
+    "process_var": 1e-6,
+    "obs_var": 1e-4
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {"name": "MCC", "screen": "same as elastic_net_eval_v1"},
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/kalman_eval/kalman_eval_<date>_<runid>.json"}
+}

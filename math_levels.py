@@ -7,6 +7,7 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Dict, List
 
@@ -24,7 +25,7 @@ from math_exposure_core import (
     key_level_strikes_with_oi,
     net_gex_dollars_at_strike,
     pick_delta_wall_strikes,
-    pick_gamma_pin_strike,
+    pick_net_gex_peak_strike,
     pick_gamma_wall_strikes,
     pick_hvl_strike,
     total_gex_dollars_at_strike,
@@ -125,8 +126,8 @@ def _strike_total_oi(bucket: dict) -> float | None:
 # ── Pin / inflection / OI helpers ─────────────────────────────────────────────
 
 def _pick_gamma_pin(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
-    """Institutional gamma pin — delegates to math_exposure_core.pick_gamma_pin_strike."""
-    return pick_gamma_pin_strike(exposures, strikes)
+    """Net-GEX peak (RC-124: formerly displayed as the pin) — delegates to pick_net_gex_peak_strike."""
+    return pick_net_gex_peak_strike(exposures, strikes)
 
 def _pick_oi_center(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
     # strike with max total OI (call+put)
@@ -342,6 +343,17 @@ def _dominant(call_strike, call_strength, put_strike, put_strength) -> tuple[str
 
 
 # ── Wall rows builder ────────────────────────────────────────────────────────
+
+def compute_pin_width_pts(call_gamma_wall: float | None,
+                          put_gamma_wall: float | None) -> float | None:
+    """RC-345 / F20: THE one authority for pin width (call_gamma_wall - put_gamma_wall, in
+    price points, rounded to 4). market_state and server both computed this subtraction
+    independently — one unrounded, one rounded — a duplicate producer of the same semantic.
+    Returns None (governed absence) unless BOTH walls are present and truthy."""
+    if not call_gamma_wall or not put_gamma_wall:
+        return None
+    return round(call_gamma_wall - put_gamma_wall, 4)
+
 
 def build_walls_rows(
     exposures: Dict[float, dict],
@@ -604,30 +616,39 @@ def parity_f_minus_spot_from_contracts(
     spot: float,
     dte_max = None,
 ) -> float | None:
+    """Put-call parity residual (synthetic forward minus spot), or None when it cannot be
+    computed from this chain.
+
+    RC-301: every absence path here returned 0.0, and 0.0 is not "unknown" — it is the
+    specific market claim that the forward equals spot and there is NO basis. Both callers
+    happen to gate on `abs(resid) > threshold`, so the fabricated zero fell below the bar
+    and rendered nothing; the behaviour was right for the wrong reason and would invert the
+    moment a caller compared it any other way. None makes the intent explicit.
+    """
     try:
         spot_f = float(spot)
     except Exception:
         return None
+    from numeric_contract import float_finite_or_none as _fin
     use = []
     for c in contracts or []:
-        try:
-            raw_dte = c.get("daysToExpiration")
-            dte = int(float(raw_dte)) if raw_dte is not None else None
-        except Exception:
-            dte = None
+        # single source: finite DTE (canonical reader rejects NaN/±inf that int(float()) raised on)
+        dte_f = _fin(c.get("daysToExpiration"))
+        dte = int(dte_f) if dte_f is not None else None
         if dte_max is not None and dte != int(dte_max):
             continue
         use.append(c)
     if not use:
-        return 0.0
+        return None                      # RC-301: no usable contracts is not a zero basis
     strikes = []
     for c in use:
-        try:
-            strikes.append(float(c.get("strikePrice")))
-        except Exception:
+        # single source: reject NaN/inf/junk strikes (raw float() silently admitted NaN)
+        sp = _fin(c.get("strikePrice"))
+        if sp is None:
             continue
+        strikes.append(sp)
     if not strikes:
-        return 0.0
+        return None                      # RC-301: no strikes is not a zero basis
     strikes = sorted(set(strikes))
     atm = min(strikes, key=lambda k: (abs(k - spot_f), k))
     idx = strikes.index(atm)
@@ -645,13 +666,10 @@ def parity_f_minus_spot_from_contracts(
     for k in band:
         def _chain_match(c: dict, right: str) -> bool:
             pc = c.get("putCall")
-            sp = c.get("strikePrice")
+            sp = _fin(c.get("strikePrice"))  # single source: finite strike (removes the last raw float() in this function)
             if pc is None or sp is None:
                 return False
-            try:
-                return str(pc).upper() == right and float(sp) == k
-            except (TypeError, ValueError):
-                return False
+            return str(pc).upper() == right and sp == k
 
         calls = [c for c in use if _chain_match(c, "CALL")]
         puts = [c for c in use if _chain_match(c, "PUT")]
@@ -661,87 +679,438 @@ def parity_f_minus_spot_from_contracts(
         if call_mid is None or put_mid is None: continue
         resid = (call_mid - put_mid) - (spot_f - float(k))
         resids.append(float(resid))
-    if not resids: return 0.0
+    if not resids: return None           # RC-301: no priceable pair is not a zero basis
     resids = sorted(resids)
     if len(resids) >= 5: resids = resids[1:-1]
     return float(sum(resids) / len(resids))
 
 
-# ── Gamma Flip — zero-crossing of cumulative net GEX ─────────────────────────
+# ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
+# CANONICAL method (FIND-GAMMA-FLIP-METHOD-V1). Proven 2026-07-19 against a real SPY
+# reference chain: the cumulative-sum approach does NOT reproduce the profile
+# (corr 0.086, never crosses zero, 2.19e9 divergence). Only recomputing every contract's
+# gamma at each candidate price reproduces the published flip (SPY 745.61, SKHY 124.44).
 
-def compute_gamma_flip(exposures_by_strike: Dict[float, dict], spot: float) -> float | None:
-    """
-    Find the price level where net gamma exposure crosses zero.
+_SQRT_2PI = math.sqrt(2.0 * math.pi)
 
-    Above gamma flip → positive gamma → dealers dampen movement (mean reversion).
-    Below gamma flip → negative gamma → dealers amplify movement (acceleration).
 
-    Method: Walk strikes near spot. Per-strike net_gamma = call_gamma - put_gamma.
-    Below spot, puts dominate (negative). Above spot, calls dominate (positive).
-    Find the zero-crossing and interpolate.
+def _norm_pdf(x: float) -> float:
+    return math.exp(-0.5 * x * x) / _SQRT_2PI
 
-    Falls back to dollarized net_gex_1pct if net_gamma has no crossing.
 
-    Returns strike price of the flip, or None if no crossing found.
-    """
-    if not exposures_by_strike or not spot:
+def bs_gamma(spot: float, strike: float, t_years: float, sigma: float,
+             rate: float = 0.0, div: float = 0.0) -> float | None:
+    """Black-Scholes gamma per share (identical for calls and puts)."""
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
         return None
+    try:
+        vt = sigma * math.sqrt(t_years)
+        d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
+        g = _norm_pdf(d1) / (spot * vt)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return g if math.isfinite(g) else None
 
-    strikes = sorted(float(k) for k in exposures_by_strike.keys())
+
+def bs_vanna(spot: float, strike: float, t_years: float, sigma: float,
+             rate: float = 0.0, div: float = 0.0) -> float | None:
+    """Black-Scholes vanna (dDelta/dSigma) per share — identical for calls and puts.
+
+    Closed form: -e^(-qT) * phi(d1) * d2 / sigma. Sign is driven entirely by -d2, so it
+    flips through SPOT (strikes above spot positive, below negative) — never through the
+    call/put boundary. INDEPENDENTLY VERIFIED 2026-08-02 (scratchpad/_vanna_independent_verify.py):
+    central finite difference of the BS delta across 27 (K,T,sigma) points agrees to
+    max |err| 9.1e-9, as do both identities vanna = (vega/S)(1 - d1/(sigma*sqrt(T)))
+    and vanna = -Gamma * S * sqrt(T) * d2 (the gamma identity is wired into
+    tests/test_charm_sign_finite_difference.py as a standing cross-check).
+    Units: delta-change per 1.00 of IV (100 vol points); multiply by 0.01 for per-vol-point
+    — the sigma-scaling convention is LOCKED here beside the dealer convention (RC-179).
+    """
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    try:
+        vt = sigma * math.sqrt(t_years)
+        d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
+        d2 = d1 - vt
+        v = -math.exp(-div * t_years) * _norm_pdf(d1) * d2 / sigma
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
+             rate: float = 0.0) -> float | None:
+    """Black-Scholes charm (dDelta/dt, calendar time) per share, q=0.
+
+    Textbook (Haug) charm is dDelta/dT = -phi(d1) * [ r/(sigma*sqrt(T)) - d2/(2T) ].
+    Calendar-time charm is the negative of that. Callers that want the deliberate
+    0DTE-stable r-omission (compute_net_charm) pass rate=0.0; the r term is otherwise
+    retained and guarded by the t_years floor applied upstream.
+
+    Identical for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant
+    vanishes under differentiation with respect to time.
+    """
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    try:
+        vt = sigma * math.sqrt(t_years)
+        d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / vt
+        d2 = d1 - vt
+        # dDelta/dt (calendar time). Sign verified against a finite-difference
+        # derivative of the BS delta -- an earlier draft returned the negation and was
+        # caught by that check (exact magnitude, inverted sign) before shipping.
+        c = -_norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return c if math.isfinite(c) else None
+
+
+def compute_charm_by_strike(contracts: List[dict], spot: float, now=None) -> Dict[float, dict]:
+    """Per-strike dealer CHARM exposure, in delta-shares per day.
+
+    Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
+    VannaCharm all publish charm-by-strike alongside GEX), and charm pressure is the
+    mechanism attributed to the end-of-day pin: dealers bleeding delta into the close.
+
+    Convention matches net GEX exactly (+call / -put), so a positive net value means the
+    dealer book's delta decay creates BUYING pressure at that strike.
+
+    Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
+    """
+    out: Dict[float, dict] = {}
+    if not contracts or not spot or spot <= 0:
+        return out
+    for ct in contracts:
+        parsed = _contract_inputs(ct, now=now)
+        if parsed is None:
+            continue
+        strike, oi, mult, t_years, sigma, sign = parsed
+        c = bs_charm(float(spot), strike, t_years, sigma)
+        if c is None:
+            continue
+        exposure = c * oi * mult / 365.0
+        b = out.setdefault(strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
+        if sign > 0:
+            b["call_charm"] += exposure
+        else:
+            b["put_charm"] += exposure
+        b["net_charm"] = b["call_charm"] - b["put_charm"]
+    return out
+
+
+def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
+                            ) -> tuple[float | None, float | None]:
+    """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side
+    charm exposure. These are the strikes whose delta decay exerts the most mechanical
+    pressure into the close."""
+    if not charm_by_strike:
+        return None, None
+    call_k = max(charm_by_strike, key=lambda k: abs(charm_by_strike[k]["call_charm"]))
+    put_k = max(charm_by_strike, key=lambda k: abs(charm_by_strike[k]["put_charm"]))
+    cw = call_k if abs(charm_by_strike[call_k]["call_charm"]) > 0 else None
+    pw = put_k if abs(charm_by_strike[put_k]["put_charm"]) > 0 else None
+    return (round(cw, 2) if cw is not None else None,
+            round(pw, 2) if pw is not None else None)
+
+
+def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, float, int] | None:
+    """(strike, oi, mult, t_years, sigma, sign) or None when unusable.
+
+    `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
+    option's session close (16:00 ET / 13:00 early-close), ACT/365, from `now` (defaults to
+    now_et()). Replaces the old max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to
+    24x near the close and flattened the real 1/sqrt(T) gamma/charm spike (RC-42; validated
+    against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
+    """
+    from math_exposure_core import _f, schwab_iv_to_sigma
+    from time_et import time_to_expiry_years
+
+    strike = _f(ct.get("strikePrice"))
+    oi = _f(ct.get("openInterest"))
+    mult = _f(ct.get("multiplier"))
+    side = str(ct.get("putCall") or "").upper()
+    if strike is None or strike <= 0 or oi is None or oi <= 0:
+        return None
+    if mult is None or mult <= 0 or side not in ("CALL", "PUT"):
+        return None
+    # schwab_iv_to_sigma already rejects None/non-positive, so no separate iv guard.
+    sigma = schwab_iv_to_sigma(_f(ct.get("volatility")))  # single source: math_exposure_core
+    if sigma is None or sigma <= 0:
+        return None
+    t_years = time_to_expiry_years(ct.get("expirationDate"), now=now)  # single source: intraday-to-close
+    if t_years is None or t_years <= 0:
+        return None  # expired / holiday / missing-or-unparseable expiry -> fail closed
+    return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
+
+
+#: TU-04 sign models. NAIVE (+call/−put) is validated at INDEX level (Baltussen JFE 2021
+#: reproduced the SqueezeMetrics convention on OptionMetrics data). EMPIRICAL_PRIOR
+#: encodes Garleanu-Pedersen-Poteshman Table 1 for SINGLE NAMES: end users net-WRITE
+#: both calls and puts on equities, so dealers are net LONG both sides (+call/+put).
+#: A/B ONLY — production stays naive until the scorecard promotes (never a silent swap).
+SIGN_MODEL_NAIVE = "naive"
+SIGN_MODEL_EMPIRICAL_PRIOR = "empirical_prior"
+
+
+def _dealer_sign(side_sign: int, sign_model: str) -> int:
+    """side_sign is +1 CALL / −1 PUT from _contract_inputs (the naive convention)."""
+    if sign_model == SIGN_MODEL_EMPIRICAL_PRIOR:
+        return 1                     # dealers long BOTH legs on single names (GPO Table 1)
+    if sign_model == SIGN_MODEL_NAIVE:
+        return side_sign
+    raise ValueError(f"unknown sign_model: {sign_model!r}")
+
+
+def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float = 0.15,
+                          steps: int = 240,
+                          sign_model: str = SIGN_MODEL_NAIVE, now=None) -> List[tuple[float, float]]:
+    """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
+
+    Dealer convention per `sign_model` (default naive +call/−put — the only model in
+    production; empirical_prior exists for the TU-04 A/B scorecard). Returns
+    [(price, total_gex)] ascending. The zero crossing of this curve is the gamma flip.
+    """
+    if not contracts or spot is None or spot <= 0:
+        return []
+    parsed = [p for p in (_contract_inputs(c, now=now) for c in contracts if isinstance(c, dict)) if p]
+    if not parsed:
+        return []
+    lo, hi = spot * (1.0 - span_pct), spot * (1.0 + span_pct)
+    steps = max(int(steps), 2)
+    out: List[tuple[float, float]] = []
+    for i in range(steps + 1):
+        s = lo + (hi - lo) * i / steps
+        total = 0.0
+        for strike, oi, mult, t_years, sigma, sign in parsed:
+            g = bs_gamma(s, strike, t_years, sigma)
+            if g is None:
+                continue
+            total += _dealer_sign(sign, sign_model) * g * oi * mult * s * s * 0.01
+        out.append((round(s, 4), total))
+    return out
+
+
+def gamma_flip_from_profile(
+    profile: List[tuple[float, float]], spot: float | None = None
+) -> float | None:
+    """Interpolated price where net dealer gamma changes SIGN — in either direction.
+
+    Bugbot 2026-07-20 (HIGH, confirmed): the original condition `v0 < 0 <= v1` detected
+    only negative->positive crossings as price rises. A chain that is long-gamma BELOW
+    and short-gamma ABOVE (positive->negative) has a real regime boundary that this
+    returned None for — the flip vanished and the verdict read "no crossing" on a chain
+    that crosses. Both directions are boundaries; the direction only changes what lies on
+    each side, which the caller derives from gamma_at_price at spot (RC-11).
+
+    When `spot` is given and several crossings exist, the one NEAREST SPOT is returned:
+    regime is the sign AT spot, so the closest sign change is the boundary that governs
+    the move the operator is actually trading.
+    """
+    crossings: list[float] = []
+    for i in range(1, len(profile)):
+        (p0, v0), (p1, v1) = profile[i - 1], profile[i]
+        if v1 == v0:
+            continue
+        # v0 == 0 is itself the boundary (Cursor audit 2026-07-20: a profile STARTING at
+        # exactly zero returned None — both strict-sign conditions are false when v0==0,
+        # so a zero-touching profile dropped its flip). The v1==0 side was already
+        # handled: v0<0<=v1 / v0>0>=v1 interpolate to p1 when the segment ENDS at zero.
+        if v0 == 0:
+            crossings.append(round(p0, 2))
+        elif (v0 < 0 <= v1) or (v0 > 0 >= v1):
+            crossings.append(round(p0 + (p1 - p0) * (-v0) / (v1 - v0), 2))
+    if not crossings:
+        return None
+    if spot is None:
+        return crossings[0]
+    return min(crossings, key=lambda c: abs(c - spot))
+
+
+GAMMA_FLIP_TRUSTED = "TRUSTED"
+GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
+GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
+#: Span a chain must cover around spot before its flip may be called TRUSTED.
+#: PROVENANCE (RC-62, operator challenge "what is scientific about this number?"): the 0.05 was
+#: ASSERTED, never derived — its original comment merely restated it, while it governs both every
+#: live chain-fetch width and every TRUSTED-vs-LOW_CONFIDENCE verdict.
+#: MEASURED 2026-07-26 by `python tools/study_flip_span_convergence_v1.py` (convergence against the
+#: flip on each stored wide chain's FULL delivered strike set, trading days only, fixed cohort of
+#: 15 chains that yield a flip at every ladder point): the flip has NOT converged at this value —
+#: median error vs the full-chain flip is 1.38% of spot at +/-5%, falling ~10x to 0.117% at +/-10%
+#: and 0.257% at +/-15%; no ladder point reaches 95% of chains inside a 0.05%-of-spot tolerance.
+#: So 0.05 is measurably INSUFFICIENT, not merely unjustified.
+#: HELD AT 0.05 PENDING, deliberately not silently re-tuned: the cohort is only n=15 and the
+#: reference is our WIDEST AVAILABLE chain (Schwab caps strikeCount), so the study bounds the
+#: requirement from below rather than pinning it. Raising it also widens every fetch, which is a
+#: cost/latency decision. Re-set it once `python tools/probe_chain_depth_v1.py` establishes the
+#: real vendor ceiling and the cohort is large enough to pin a value.
+GAMMA_FLIP_MIN_SPAN_PCT = 0.05
+
+#: Overshoot on the derived count. Schwab centres `strikeCount` strikes near ATM but not
+#: exactly on it, so a count that exactly equals the span requirement can land asymmetric
+#: and miss the bar on one side. 1.2 buys that tolerance without a second round trip.
+STRIKE_COUNT_MARGIN = 1.2
+
+
+def infer_strike_increment(contracts: List[dict]) -> float | None:
+    """The strike spacing this instrument actually uses, from its own chain.
+
+    MEDIAN of adjacent differences, not mean: real chains carry occasional wide gaps
+    (illiquid far strikes, split-adjusted odd strikes) that drag a mean upward and would
+    understate the count needed. Returns None when the chain is too thin to tell.
+    """
+    if not contracts:
+        return None
+    from numeric_contract import float_finite_or_none as _fin
+    strikes_set: set[float] = set()
+    for c in contracts:
+        if not isinstance(c, dict):
+            continue
+        # single source: reject NaN/inf as well as junk. Raw float() only caught the
+        # non-numeric case (strikePrice='x', audit 2026-07-20); float('nan') slipped
+        # through and corrupted the sorted set the spacing inference pairs over.
+        sp = _fin(c.get("strikePrice"))
+        if sp is None:
+            continue
+        strikes_set.add(sp)
+    strikes = sorted(strikes_set)
     if len(strikes) < 3:
         return None
-
-    # Try per-strike net_gamma first (always available, no spot dependency)
-    def _find_crossing(field: str) -> float | None:
-        prev_strike = None
-        prev_val = None
-        for strike in strikes:
-            bucket = exposures_by_strike.get(strike, {})
-            val = bucket_metric(bucket, field)
-            if val is None:
-                continue
-            if val == 0:
-                continue
-            if prev_val is not None and prev_val * val < 0:
-                denom = abs(val - prev_val)
-                if denom > 0:
-                    frac = abs(prev_val) / denom
-                    flip = prev_strike + frac * (strike - prev_strike)
-                    return round(flip, 2)
-            prev_strike = strike
-            prev_val = val
+    # strict=False is the intent: strikes[1:] is deliberately one shorter, so the pairing
+    # of each strike with its successor must stop at the last pair rather than raise.
+    diffs = sorted(
+        round(b - a, 4) for a, b in zip(strikes, strikes[1:], strict=False) if b > a
+    )
+    if not diffs:
         return None
+    mid = len(diffs) // 2
+    incr = diffs[mid] if len(diffs) % 2 else (diffs[mid - 1] + diffs[mid]) / 2.0
+    return float(incr) if incr > 0 else None
 
-    # Institutional: prefer per-strike net_gex_1pct (dollar GEX) when populated.
-    if exposures_have_dollar_gex(exposures_by_strike):
-        result = _find_crossing("net_gex_1pct")
-        if result is not None:
-            return result
 
-    # Fallback: per-strike net_gamma (γ×OI×mult)
-    result = _find_crossing("net_gamma")
-    if result is not None:
-        return result
+def required_strike_count(spot: float | None, increment: float | None, *,
+                          span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT,
+                          margin: float = STRIKE_COUNT_MARGIN) -> int | None:
+    """How many strikes it takes to span +/-`span_pct` around spot at this spacing.
 
-    # Last resort: cumulative net_gex_1pct along strike chain
-    cum_gex = 0.0
-    prev_strike = None
-    prev_cum = None
-    for strike in strikes:
-        bucket = exposures_by_strike.get(strike, {})
-        net_gex = bucket_metric(bucket, "net_gex_1pct")
-        if net_gex is None:
-            continue
-        cum_gex += net_gex
-        if prev_cum is not None and prev_cum * cum_gex < 0:
-            if abs(cum_gex - prev_cum) > 0:
-                frac = abs(prev_cum) / abs(cum_gex - prev_cum)
-                flip = prev_strike + frac * (strike - prev_strike)
-                return round(flip, 2)
-        prev_strike = strike
-        prev_cum = cum_gex
+    ROOT FIX for RC-12. That entry found the cause -- "a fixed strike count cannot satisfy
+    a percentage-based span requirement across instruments with different strike spacing"
+    -- and then answered it with a hardcoded table for three tickers, which is the same
+    defect one layer down: every other ticker still got a fixed 40.
 
+    MEASURED across 52 stored chains 2026-07-20
+    (`SELECT spot, option_chain_json FROM snapshots ... ORDER BY ts_utc DESC LIMIT 1`):
+    the fixed table is wrong in BOTH directions. $SPX at 7457.69 with $5 strikes needs 150
+    and was given 40; IWM at 294.32 with $1 strikes needs 30 and was given 80; ~48 equities
+    need under 20 and were given 40. Over-fetching is not free -- it saturates the 2-slot
+    chain gate, and every payload is persisted twice (RC-6).
+
+    The count is a function of the span bar, spot, and the instrument's own spacing, so it
+    is derived here rather than tabulated anywhere. Returns None when spot or increment is
+    unknown; the caller decides the cold-start default rather than getting a fabricated one.
+    """
+    if spot is None or increment is None:
+        return None
+    try:
+        s, inc = float(spot), float(increment)
+    except (TypeError, ValueError):
+        return None
+    if s <= 0 or inc <= 0 or span_pct <= 0:
+        return None
+    span_points = 2.0 * span_pct * s          # full width: spot-5% .. spot+5%
+    return int(math.ceil(span_points / inc * margin)) + 1
+
+
+def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | None:
+    """Net dealer gamma at `price`, linearly interpolated from the profile.
+
+    This -- not the flip -- is what determines the regime: positive means dealers are net
+    long gamma there and will dampen moves; negative means they amplify. The flip is
+    simply where this value crosses zero, and a chain need not contain such a crossing.
+
+    RC-320: the claim above is SIGN-based, and that is why it is defensible — a dealer long
+    gamma sells rallies and buys dips, which dampens; short gamma does the opposite. Source:
+    Ni, Pearson and Poteshman, Journal of Financial Economics,
+    doi:10.1016/j.jfineco.2004.08.005, where expiration-date clustering turns on NET
+    positioning; and https://spotgamma.com/what-is-gex-gamma-exposure/ on the sign
+    convention and on dealer ownership being modelled rather than observed.
+
+    Worth recording because of how it was found: this correct statement was already in the
+    repository, uncited, while I wrote the CONTRADICTING claim -- that magnitude pins
+    regardless of sign -- into pick_pin_and_strength one file away. The refutation was
+    already here. Nothing compared the two, because neither carried a source.
+    """
+    if not profile or price is None:
+        return None
+    pts = sorted(profile)
+    if price <= pts[0][0]:
+        return pts[0][1]
+    if price >= pts[-1][0]:
+        return pts[-1][1]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if x0 <= price <= x1:
+            if x1 == x0:
+                return y0
+            t = (price - x0) / (x1 - x0)
+            return y0 + t * (y1 - y0)
     return None
+
+
+def compute_gamma_flip_v2(
+    contracts: List[dict], spot: float, *, min_span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT,
+    now=None, profile: List[tuple[float, float]] | None = None
+) -> tuple[float | None, str, dict]:
+    """Canonical gamma flip (profile zero-crossing) plus an honest confidence verdict.
+
+    Returns (flip | None, confidence, diagnostics). A chain that does not span at least
+    +/-min_span_pct around spot is reported LOW_CONFIDENCE_NARROW_CHAIN: a narrow chain
+    provably misplaces the flip (measured 2026-07-19 - a 40-contract chain returned 770.35
+    against a full-chain reference of 745.61, a 3.6% error). Never present a narrow-chain
+    flip as if it were trustworthy.
+    """
+    if not contracts or not spot or spot <= 0:
+        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
+    strikes = [k for k in (_f(c.get("strikePrice")) for c in contracts if isinstance(c, dict)) if k]
+    if not strikes:
+        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_strikes"}
+    lo, hi = min(strikes), max(strikes)
+    diag = {
+        "strike_lo": lo,
+        "strike_hi": hi,
+        "n_strikes": len(set(strikes)),
+        "span_below_pct": round((spot - lo) / spot, 4),
+        "span_above_pct": round((hi - spot) / spot, 4),
+        "min_span_pct": min_span_pct,
+    }
+    covers = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
+    # RC-345 / F03: accept a pre-built profile so the caller can materialize the gamma
+    # profile ONCE (one producer, one pinned `now`) and share it between the flip and the
+    # regime/gamma-at-spot read. When None, build it here (single-call callers). Passing a
+    # profile pins its `now`, so terrain no longer materializes the same curve twice at two
+    # wall-clock instants.
+    if profile is None:
+        profile = compute_gamma_profile(contracts, spot, now=now)
+    flip = gamma_flip_from_profile(profile, spot)   # nearest crossing, EITHER direction
+
+    # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where
+    # that sign changes -- it is a landmark, not a prerequisite.
+    #
+    # Corrected 2026-07-19 (RC-11): a profile that never crosses zero inside the window
+    # used to return UNAVAILABLE, so 20 of 51 tickers displayed "TERRAIN UNAVAILABLE --
+    # STAND ASIDE" while their dealer gamma was unambiguously one-signed at every price
+    # (e.g. TSM all-negative, MET all-positive across a wide chain). No crossing nearby
+    # means there is no regime boundary to worry about, which is MORE certain than a flip
+    # sitting next to spot -- not less. Only the flip level is unknown, never the regime.
+    at_spot = gamma_at_price(profile, spot)
+    diag = {**diag, "gamma_at_spot": at_spot,
+            "no_crossing_in_window": flip is None and at_spot is not None}
+
+    if at_spot is None:
+        return None, GAMMA_FLIP_UNAVAILABLE, {**diag, "reason": "empty_profile"}
+    if flip is None:
+        # regime is knowable; the flip level is not
+        return None, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW),                {**diag, "reason": "no_zero_crossing_regime_still_defined"}
+    return flip, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW), diag
 
 
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────

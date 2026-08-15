@@ -23,6 +23,9 @@ from typing import Optional, Set, Tuple
 log = logging.getLogger("transformer_train")
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug, outcome_column
+# RC-345/F25 (train-write faucet): transformer model/meta writers consume the ONE canonical
+# ticker-artifact identity so bare 'SPX' and '$SPX' write the same basename the readers expect.
+from instrument_identity import ticker_storage_key
 from training_cache_policy import (
     EARLY_STOP_ENABLED,
     EARLY_STOP_MIN_DELTA,
@@ -50,7 +53,7 @@ def transformer_model_path(
 ) -> Path:
     base = model_dir or MODELS_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    t = str(ticker).strip().upper()
+    t = ticker_storage_key(ticker)
     return base / f"transformer_{t}_{hz}.pt"
 
 
@@ -59,7 +62,7 @@ def transformer_meta_path(
 ) -> Path:
     base = model_dir or MODELS_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    t = str(ticker).strip().upper()
+    t = ticker_storage_key(ticker)
     return base / f"transformer_{t}_{hz}_meta.json"
 
 
@@ -444,7 +447,7 @@ def train_transformer(
     best_state = None
     start_epoch = 1
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    save_ticker_early = (ticker or (sorted(set(tickers_arr.tolist()))[0] if len(tickers_arr) else "") or "").strip().upper()
+    save_ticker_early = ticker_storage_key(ticker or (sorted(set(tickers_arr.tolist()))[0] if len(tickers_arr) else "") or "")  # RC-345/F25: resume identity canonical
     resume_path = (
         (base_dir / f"transformer_{save_ticker_early}_{hz}_train_resume.pt") if save_ticker_early else None
     )
@@ -611,7 +614,7 @@ def train_transformer(
         "  [SINGLE-CLASS COLLAPSE]" if tr_deg["single_class_collapse"] else "",
     )
 
-    save_ticker = ticker or (sorted(set(tickers_arr))[0] if len(tickers_arr) else "unknown")
+    save_ticker = ticker_storage_key(ticker or (sorted(set(tickers_arr))[0] if len(tickers_arr) else "unknown"))  # RC-345/F25: meta+model identity canonical
 
     from training_provenance import build_transformer_provenance
 
@@ -705,7 +708,7 @@ if __name__ == "__main__":
 
     if args.ticker:
         model_dir = Path(args.model_dir) if args.model_dir else None
-        result = train_transformer(db_path=args.db, ticker=args.ticker.upper(), model_dir=model_dir)
+        result = train_transformer(db_path=args.db, ticker=ticker_storage_key(args.ticker), model_dir=model_dir)  # RC-345/F25
     else:
         from lstm_data import build_lstm_dataset
         ds = build_lstm_dataset(db_path=args.db)

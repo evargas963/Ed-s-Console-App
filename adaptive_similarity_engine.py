@@ -23,6 +23,7 @@ from db import sql_adaptive_broad_similarity_pool, sql_issue19_tier1_candidate_r
 from timeframe_config import CANONICAL_TIMEFRAME
 from similarity_audit import query_context_for_similarity
 
+from instrument_identity import ticker_storage_key  # noqa: E402
 from db import (  # noqa: E402
     similarity_empirically_viable,
     similarity_labeled_counts,
@@ -125,7 +126,7 @@ def _fetch_issue19_tier1_candidate_rows(
             CANONICAL_TIMEFRAME,
         )
         return []
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     above_bucket = dist_bucket(nearest_above_dist)
     below_bucket = dist_bucket(nearest_below_dist)
     _asof_sql = "" if as_of_ts_utc is None else " AND ts_utc < ? "
@@ -228,7 +229,7 @@ def run_adaptive_shadow_v2(
     Tier 3 uses only ADAPTIVE_SHADOW_V2_TIER3_COLUMNS; anchor labels from resolve_overlay
     when anchor_overlay is omitted (lazy import avoids circular dependency).
     """
-    ticker = (ticker or "").upper().strip()
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     if timeframe != CANONICAL_TIMEFRAME:
         _log_sim.warning(
             "run_adaptive_shadow_v2: timeframe=%r rejected — shadow Issue 19 pool is %r only",
@@ -564,7 +565,7 @@ def run_weighted_selection(
     anchor_overlay: Optional[dict[str, Any]] = None,
     extra_soft_weights: Optional[dict[str, float]] = None,
 ) -> AdaptiveShadowRun:
-    ticker = (ticker or "").upper().strip()
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     w = dict(weights or default_equal_weights())
     anchor = query_context_for_similarity(
         ticker=ticker,
@@ -639,7 +640,7 @@ def run_baseline_control(
     as_of_ts_utc: Optional[float] = None,
 ) -> AdaptiveShadowRun:
     """Heuristic — identical to production selection."""
-    ticker = (ticker or "").upper().strip()
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
     rows = db.get_similar_setups(
         ticker=ticker,
         timeframe=timeframe,

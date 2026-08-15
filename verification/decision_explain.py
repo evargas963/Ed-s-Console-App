@@ -14,7 +14,7 @@ def explain_reason_ladder(ms_dict: dict) -> list[str]:
         for k in ("1m", "5m", "15m", "60m"):
             row = hpb.get(k)
             if isinstance(row, dict):
-                u, d, f = row.get("up"), row.get("down"), row.get("flat")
+                u = row.get("up")
                 lc, mn = row.get("labeled_count"), row.get("min_samples_required")
                 src = row.get("source") or ""
                 if u is None and lc is not None and mn is not None:

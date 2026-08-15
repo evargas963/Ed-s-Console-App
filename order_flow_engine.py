@@ -73,30 +73,29 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _safe_float(val: Any) -> Optional[float]:
-    """Convert to float; return None if invalid."""
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return None
+    """Convert to float; None if invalid. SINGLE SOURCE: delegates to the canonical
+    numeric_contract.float_finite_or_none so a NaN/±inf field is rejected identically
+    everywhere — this used to accept NaN/inf, counting a bad field the exposure engine
+    drops (so the same contract diverged across order-flow vs exposures)."""
+    from numeric_contract import float_finite_or_none
+    return float_finite_or_none(val)
 
 
 def _nonnegative_float(val: Any) -> Optional[float]:
-    out = _safe_float(val)
-    if out is None or out < 0:
-        return None
-    return out
+    """Non-negative vendor quantity (size/volume): 0 valid, negatives+non-finite dropped.
+    SINGLE SOURCE: delegates to numeric_contract.float_nonnegative_or_none so totalVolume
+    reads identically here, in the exposure engine, and in the REST aggregation."""
+    from numeric_contract import float_nonnegative_or_none
+    return float_nonnegative_or_none(val)
 
 
 def _safe_int(val: Any) -> Optional[int]:
-    """Convert to int; return None if invalid."""
-    if val is None:
-        return None
-    try:
-        return int(val)
-    except (TypeError, ValueError):
-        return None
+    """Convert to int; None if invalid. SINGLE SOURCE: finite-gates through
+    numeric_contract.float_finite_or_none first, so NaN/±inf are rejected — raw int()
+    caught only TypeError/ValueError and leaked an uncaught OverflowError on +inf."""
+    from numeric_contract import float_finite_or_none
+    v = float_finite_or_none(val)
+    return int(v) if v is not None else None
 
 
 def _collect_from_nested(obj: Any, key: str, collector: list) -> None:
@@ -987,7 +986,7 @@ class OrderFlowEngine:
         order_flow_readiness = (
             "red" if order_flow_score is None else _readiness(order_flow_score, rvol)
         )
-        order_flow_readiness_rvol = (
+        _order_flow_readiness_rvol = (
             "unavailable" if rvol is None and order_flow_score is not None else None
         )
 

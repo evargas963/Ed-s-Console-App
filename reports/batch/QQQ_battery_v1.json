@@ -1,0 +1,45 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "QQQ",
+  "generated_utc": "2026-07-24T05:38:36.167242+00:00",
+  "loader": {
+    "n_rows": 92207,
+    "n_tradable_bars": 31542,
+    "n_sessions": 85,
+    "n_events_total": 789
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "QQQ": {
+      "n_candidates": 789,
+      "n_labeled": 723,
+      "n_withheld": 66,
+      "class_counts": {
+        "WIN": 269,
+        "LOSS": 452,
+        "TIMEOUT": 0,
+        "FORCE_FLAT": 2
+      },
+      "class_rates": {
+        "WIN": 0.37206085753803597,
+        "LOSS": 0.6251728907330567,
+        "TIMEOUT": 0.0,
+        "FORCE_FLAT": 0.0027662517289073307
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 6,
+        "synthetic_bar_in_window": 60
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.07604562737642585
+    }
+  },
+  "run_sec": 3.27
+}

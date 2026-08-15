@@ -46,6 +46,9 @@ class Bar1m:
     low: float
     close: float
     volume: float | None = None
+    # F1 S3 (additive): provenance tag from price_bars_1m.source. None = not
+    # loaded — the S3 gate treats that as UNKNOWN and fails closed.
+    source: str | None = None
 
 
 @dataclass
@@ -121,9 +124,11 @@ def load_spy_1m_bars(
                 (batch_id, tkr),
             )
         else:
+            # F1 S5: carry provenance. NULL/legacy/unrecognized tags classify as
+            # UNKNOWN downstream and fail closed (f1_input_gates.classify_bar_source).
             cur = conn.execute(
                 """
-                SELECT bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume
+                SELECT bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume, source
                 FROM price_bars_1m
                 WHERE ticker = ?
                 ORDER BY bar_start_ts_utc ASC
@@ -135,6 +140,9 @@ def load_spy_1m_bars(
         conn.close()
 
     rep.n_rows = len(rows)
+    # Staging rows carry no source column; canonical rows do (F1 S5).
+    row_cols = set(rows[0].keys()) if rows else set()
+    has_source = "source" in row_cols
     prev_start: float | None = None
     bars_all: list[Bar1m] = []
     for r in rows:
@@ -150,7 +158,8 @@ def load_spy_1m_bars(
         prev_start = st
         if h < max(o, c) or lo > min(o, c) or h < lo:
             rep.ohlc_violations += 1
-        bars_all.append(Bar1m(st, en, o, h, lo, c, vol))
+        src = r["source"] if has_source else None
+        bars_all.append(Bar1m(st, en, o, h, lo, c, vol, source=src))
 
     if require_rth_only:
         rep.bars = [b for b in bars_all if _is_rth_bar_start(b.bar_start_ts_utc)]

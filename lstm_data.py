@@ -54,10 +54,14 @@ STREAM_1M_LOOKBACK  = 20    # 1-min bars: ~20 min of micro context
 STREAM_5M_LOOKBACK  = 60    # 5-min bars: ~5 hours (full RTH session)
 TARGET_HORIZON      = DEFAULT_TRAINING_LABEL_COLUMN  # Default label column; callers pass outcome_column(slug) for non-default horizons.
 TARGET_CLASSES      = {"up": 0, "down": 1, "flat": 2}
-RTH_START_HOUR      = 9
-RTH_START_MIN       = 30
-RTH_END_HOUR        = 16
-RTH_END_MIN         = 0
+# RC-345 / F09: the RTH clock boundary (09:30–16:00 ET) is owned by exactly one authority,
+# time_et.RTH_START_MINS / RTH_END_MINS. These names are minute-of-day aliases OF that
+# authority, not an independent 9/30/16/0 redefinition.
+from time_et import RTH_START_MINS as _RTH_START_MINS, RTH_END_MINS as _RTH_END_MINS
+RTH_START_HOUR      = _RTH_START_MINS // 60
+RTH_START_MIN       = _RTH_START_MINS % 60
+RTH_END_HOUR        = _RTH_END_MINS // 60
+RTH_END_MIN         = _RTH_END_MINS % 60
 
 # ── Feature definitions (Stage 2: full XGB tabular universe on both streams) ──
 
@@ -85,11 +89,18 @@ ZONE_MISSING_ENCODED = -1.0
 VWAP_SIDE_UNKNOWN_ENCODED = 2.0
 
 
-def _encode_zone_feature(snap: dict) -> float:
-    zr = snap.get("zone")
-    if zr is None:
+def encode_zone(value) -> float:
+    """THE zone->float encoding (RC-343). One authority: absent -> ZONE_MISSING_ENCODED,
+    unknown label -> pin_neutral(2), else ZONE_MAP. Both the offline builder and
+    features/lstm_sequence_input call this — the logic was written twice with a repeated
+    magic `2`, so a changed fallback in one would silently diverge the other."""
+    if value is None:
         return ZONE_MISSING_ENCODED
-    return float(ZONE_MAP.get(str(zr).lower(), 2))
+    return float(ZONE_MAP.get(str(value).lower(), ZONE_MAP["pin_neutral"]))
+
+
+def _encode_zone_feature(snap: dict) -> float:
+    return encode_zone(snap.get("zone"))
 
 
 def _encode_vwap_side_feature(snap: dict) -> float:
@@ -297,24 +308,81 @@ def sequence_encoder_checkpoint_issues(model_path: Path) -> list[str]:
 # CONFLUENCE FEATURES — computed per snapshot from raw data
 # ════════════════════════════════════════════════════════════════════════════════
 
+#: RC-328 — every windowed cf_* declares its span in MINUTES, the unit its NAME asserts.
+#: These windows were slot counts until 2026-08-09. A slot count is not a duration: the same
+#: `snaps[-12:]` measured a median of 11.1 minutes and a maximum of 5424.4 minutes (90.4
+#: hours, across a weekend) over 27315 SPY RTH training bars, and it measured something
+#: different again on the serve path, whose query is filtered differently. Selection is by
+#: wall clock so the value no longer depends on how the caller's SELECT was written.
+CONFLUENCE_WINDOW_MINUTES: dict[str, float] = {
+    "cf_momentum_5m": 5.0,
+    "cf_structure_15m": 15.0,
+    "cf_trend_1h": 60.0,
+}
+
+#: Slots scanned back from the current row. A PERFORMANCE bound only — correctness comes
+#: from the timestamp filter below. 300 slots reaches 300 minutes at the measured 1.00
+#: rows/minute cadence of both source tables, well past the 60-minute widest window; if it
+#: ever does not reach, the anchor is absent and the feature reports absent (fail-closed).
+_CONFLUENCE_POOL_SLOTS = 300
+
+#: How much staler than its declared offset an anchor row may be before it is rejected.
+#: Without this, "the newest row at least 60 minutes old" happily returns a row from the
+#: previous session — which is precisely the 90.4-hour reach-back RC-328 measured.
+def _anchor_tolerance_s(minutes_back: float) -> float:
+    return max(120.0, 0.5 * minutes_back * 60.0)
+
+
+def _snapshot_ts(row: dict) -> float | None:
+    try:
+        t = row.get("ts_utc")
+        return None if t is None else float(t)
+    except (TypeError, ValueError):
+        return None
+
+
+def _spot_at_minutes_back(
+    pool: list[dict], current_ts: float, minutes_back: float
+) -> float | None:
+    """Spot from the newest row at least `minutes_back` old, or None if no such row is
+    within tolerance. None means ABSENT and is never silently widened to an older row."""
+    target = current_ts - minutes_back * 60.0
+    oldest_ok = target - _anchor_tolerance_s(minutes_back)
+    found: float | None = None
+    for row in pool:                      # ascending: the last match is the newest one
+        t = _snapshot_ts(row)
+        if t is None or t > target or t < oldest_ok:
+            continue
+        s = _positive_float_or_none(row.get("spot"))
+        if s is not None:
+            found = s
+    return found
+
+
 def compute_confluence_features(snapshots_5m: list[dict], current_idx: int) -> dict:
     """
     Compute multi-timeframe confluence features for a given snapshot.
 
-    Uses the 5m snapshot history to derive higher-timeframe reads:
-      - 1m/5m momentum:  from last 3 bars (candle direction)
-      - 15m structure:   from last 3-6 groups of 3 bars (swing pattern)
-      - 1h trend:        from last 12 bars (directional drift)
-      - VWAP confluence:  distance + direction of distance
-      - Greek support:    do Greeks confirm the direction?
-      - Timeframe alignment score: -4 to +4
+    Every window is selected by WALL CLOCK from the current row's ``ts_utc``, not by list
+    position (RC-328). Callers may therefore pass any row spacing and any filtering —
+    RTH-only training frames and unfiltered serve reads included — and get the same value
+    for the same bar. A window whose span is not present in the supplied rows reports
+    ABSENT rather than reaching further back.
+
+      - cf_momentum_5m:   spot change over 5 minutes
+      - cf_structure_15m: directional lean of four equal sub-periods across 15 minutes
+      - cf_trend_1h:      spot change over 60 minutes
+      - cf_vwap_distance_pct / cf_greek_support: current row only, no window
+      - cf_alignment_score: -4 to +4, composed from the four directional reads
 
     Args:
-        snapshots_5m: list of snapshot dicts ordered by ts_utc ascending
+        snapshots_5m: snapshot dicts ordered by ts_utc ascending, each carrying ``ts_utc``
         current_idx:  index of the current (most recent) snapshot
 
     Returns:
-        dict of confluence feature values
+        dict of confluence feature values. ABSENT is encoded 0.0, the encoding this feature
+        family already declares at ``ml_data_common.attach_confluence_features_for_serve``;
+        NaN would be the better signal but the LSTM lane cannot consume it.
     """
     result = {
         "cf_momentum_5m": 0.0,       # -1 to +1: recent 5m direction
@@ -325,52 +393,43 @@ def compute_confluence_features(snapshots_5m: list[dict], current_idx: int) -> d
         "cf_alignment_score": 0.0,    # -4 to +4: all timeframes
     }
 
-    if current_idx < 12:
-        # Not enough history for meaningful confluence
+    if current_idx < 0 or current_idx >= len(snapshots_5m):
         return result
 
-    snaps = snapshots_5m[max(0, current_idx - 59):current_idx + 1]
-    if len(snaps) < 12:
-        return result
-
-    current = snaps[-1]
+    pool = snapshots_5m[max(0, current_idx - _CONFLUENCE_POOL_SLOTS):current_idx + 1]
+    current = pool[-1]
     spot = _positive_float_or_none(current.get("spot"))
-    if spot is None:
+    current_ts = _snapshot_ts(current)
+    if spot is None or current_ts is None:
+        # No clock on the current row means no window can be defined. Absent, not widened.
         return result
 
-    # ── 5m momentum (last 3 bars: ~15 min) ────────────────────────────────
-    recent_3 = snaps[-3:]
-    spot_start = _positive_float_or_none(recent_3[0].get("spot"))
-    if spot_start is None:
-        spot_start = spot
-    mom_5m = (spot - spot_start) / spot_start if spot_start > 0 else 0.0
-    # Normalize to roughly -1 to +1 range (0.5% move = strong)
-    result["cf_momentum_5m"] = max(-1.0, min(1.0, mom_5m / 0.005))
+    # ── 5m momentum ───────────────────────────────────────────────────────
+    spot_start = _spot_at_minutes_back(pool, current_ts,
+                                       CONFLUENCE_WINDOW_MINUTES["cf_momentum_5m"])
+    if spot_start is not None:
+        # Normalize to roughly -1 to +1 range (0.5% move = strong)
+        result["cf_momentum_5m"] = max(-1.0, min(1.0, ((spot - spot_start) / spot_start)
+                                                 / 0.005))
 
-    # ── 15m structure (last 12 bars = 4 groups of 3 = four 15m periods) ───
-    if len(snaps) >= 12:
-        bars_12 = snaps[-12:]
-        # Look at direction of each 3-bar group
-        group_dirs = []
-        for i in range(0, 12, 3):
-            group = bars_12[i:i+3]
-            if len(group) == 3:
-                g_start = _positive_float_or_none(group[0].get("spot"))
-                g_end = _positive_float_or_none(group[-1].get("spot"))
-                if g_start is not None and g_end is not None:
-                    group_dirs.append(1 if g_end > g_start else -1 if g_end < g_start else 0)
+    # ── 15m structure: four equal sub-periods across the declared span ────
+    span_15 = CONFLUENCE_WINDOW_MINUTES["cf_structure_15m"]
+    edges_min = [span_15 * (4 - k) / 4.0 for k in range(5)]      # 15, 11.25, 7.5, 3.75, 0
+    edge_spots = [spot if m == 0.0 else _spot_at_minutes_back(pool, current_ts, m)
+                  for m in edges_min]
+    group_dirs = [1 if b > a else -1 if b < a else 0
+                  for a, b in zip(edge_spots, edge_spots[1:])
+                  if a is not None and b is not None]
+    if group_dirs:
+        # Are groups making higher highs (bullish structure) or lower lows?
+        result["cf_structure_15m"] = max(-1.0, min(1.0, sum(group_dirs) / len(group_dirs)))
 
-        if group_dirs:
-            # Are groups making higher highs (bullish structure) or lower lows?
-            result["cf_structure_15m"] = max(-1.0, min(1.0, sum(group_dirs) / len(group_dirs)))
-
-    # ── 1h trend (last 12 bars = 60 min of 5m data) ──────────────────────
-    if len(snaps) >= 12:
-        trend_start = _positive_float_or_none(snaps[-12].get("spot"))
-        if trend_start is None:
-            trend_start = spot
-        trend_pct = (spot - trend_start) / trend_start if trend_start > 0 else 0.0
-        result["cf_trend_1h"] = max(-1.0, min(1.0, trend_pct / 0.01))
+    # ── 1h trend ──────────────────────────────────────────────────────────
+    trend_start = _spot_at_minutes_back(pool, current_ts,
+                                        CONFLUENCE_WINDOW_MINUTES["cf_trend_1h"])
+    if trend_start is not None:
+        result["cf_trend_1h"] = max(-1.0, min(1.0, ((spot - trend_start) / trend_start)
+                                              / 0.01))
 
     # ── VWAP confluence ───────────────────────────────────────────────────
     vwap = current.get("vwap")
@@ -440,7 +499,7 @@ def _connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
 def _is_rth(et_hour: int, et_minute: int) -> bool:
     """True if the timestamp falls within RTH (9:30 AM - 4:00 PM ET)."""
     mins = et_hour * 60 + et_minute
-    return (RTH_START_HOUR * 60 + RTH_START_MIN) <= mins < (RTH_END_HOUR * 60 + RTH_END_MIN)
+    return _RTH_START_MINS <= mins < _RTH_END_MINS
 
 
 def _snapshot_table_for_timeframe(timeframe: str) -> str:
@@ -552,7 +611,15 @@ def extract_rth_snapshots(
 
     log.info("extract_rth_snapshots: sql_rows=%d ticker=%s", len(rows), ticker)
 
-    from time_et import et_clock_from_ts_utc, et_date_str_from_ts_utc, is_rth_ts_utc
+    # RC-57: is_tradable_session_ts_utc (weekday + holiday + RTH), NOT the clock-only
+    # is_rth_ts_utc, which returns True on Saturday 10:00 and Memorial Day 10:00 and was
+    # admitting market-closed rows into LSTM training sequences.
+    from time_et import (
+        et_clock_from_ts_utc,
+        et_date_str_from_ts_utc,
+        is_tradable_session_ts_utc,
+        is_trading_day_et,   # RC-345 / F09: calendar-aware no-ts_utc fallback (hoisted)
+    )
 
     ablation_enabled = False
     apply_ablation_fn = None
@@ -593,7 +660,7 @@ def extract_rth_snapshots(
         ts_u = d.get("ts_utc")
         if ts_u is not None:
             try:
-                if not is_rth_ts_utc(float(ts_u)):
+                if not is_tradable_session_ts_utc(float(ts_u)):
                     skipped_non_rth += 1
                     continue
                 h, m, _ = et_clock_from_ts_utc(float(ts_u))
@@ -604,11 +671,15 @@ def extract_rth_snapshots(
         else:
             h = d.get("et_hour", 0)
             m = d.get("et_minute", 0)
-            if not _is_rth(h, m):
-                skipped_non_rth += 1
-                continue
             ts_et = d.get("ts_et", "")
             day_key = ts_et[:10] if len(ts_et) >= 10 else "unknown"
+            # RC-345 / F09: with no ts_utc this path used a CLOCK-ONLY _is_rth, which admits a
+            # weekend/holiday reading (the RC-278 hole). Use the row's ET DATE for the calendar
+            # test so the fallback is calendar-aware like the canonical is_tradable_session_ts_utc,
+            # and FAIL CLOSED when the date is unusable — never a silent clock-only RTH.
+            if day_key == "unknown" or not is_trading_day_et(day_key) or not _is_rth(h, m):
+                skipped_non_rth += 1
+                continue
 
         rth_rows += 1
 
@@ -645,7 +716,7 @@ def _safe_float(v) -> float:
     try:
         return float(v)
     except (ValueError, TypeError):
-        return 0.0  # absence-ok: encoder tensor is non-nullable; None is unrepresentable here (RC-301/318)
+        return 0.0  # absence-ok: RC-301 — this helper's contract is "non-nullable columns only", so 0.0 is meant to be unreachable rather than a substitute; that contract is ASSERTED by the docstring above and NOT verified by anything, and the sibling _raw_finite_float already returns Optional for the nullable case. Recorded as unverified rather than dressed as safe (RC-296).
 
 
 def _raw_finite_float(v) -> Optional[float]:
@@ -1008,6 +1079,9 @@ def build_lstm_dataset(
     skipped = {"no_outcome": 0, "insufficient_bars": 0, "nan_target": 0}
     nan_counts = {}
     unique_days = set()
+    # RC-332: one UTC-day pool of canonical history per ticker, reused across the slide.
+    from ml_data_common import confluence_features_for_bar
+    _conf_cache: dict = {}
 
     for ticker in tickers:
         days_data = extract_rth_snapshots(
@@ -1079,8 +1153,17 @@ def build_lstm_dataset(
                 # ── Confluence features ───────────────────────────────────
                 # window = snapshots[start_idx:end_idx] → current is snapshots[end_idx - 1].
                 # Avoid snapshots.index(current): O(n) dict equality per slide → hours on 40 days.
-                day_idx = end_idx - 1
-                conf = compute_confluence_features(snapshots, day_idx)
+                #
+                # RC-332: the BAR comes from `snapshots`, but the confluence HISTORY must not.
+                # `snapshots` here is one day's rows from extract_rth_snapshots — normalized
+                # table, label-filtered, weekday-filtered, RTH-filtered and sliced per day —
+                # while the live lane reads the unfiltered canonical series. Feeding the
+                # producer this frame diverged from live on 179 of 4956 sampled cells. The
+                # population is now the single authority's, and this lane supplies only the
+                # bar it wants a value for. `_conf_cache` keeps the slide O(1) per bar.
+                current_bar = snapshots[end_idx - 1]
+                conf = confluence_features_for_bar(
+                    ticker, current_bar.get("ts_utc"), str(_db), cache=_conf_cache)
                 conf_vec = [conf[k] for k in CONFLUENCE_FEATURES]
 
                 # ── Track NaN counts for diagnostics (vectorized) ─────────

@@ -6,6 +6,8 @@ All mutations require manual_promote_to_active_explicit / manual_rollback_to_che
 
 from __future__ import annotations
 
+from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+
 import json
 import logging
 import os
@@ -88,7 +90,7 @@ def _validate_manifest_record_lineage(manifest: dict[str, Any], record: dict[str
 
 
 def _canonical_candidate_dirs(model_dir: Path, ticker: str) -> tuple[Path, Path]:
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)
     return (model_dir / "parallel" / tku).resolve(), (model_dir / "cascade" / tku).resolve()
 
 
@@ -263,7 +265,7 @@ def manual_promote_to_active_explicit(
     manifest, record = validate_persisted_governed_artifacts_or_raise(
         model_dir,
         normalize_ml_horizon_slug(ml_horizon_slug),
-        ticker.upper(),
+        ticker_storage_key(ticker),
     )
     result = execute_promotion_if_eligible(
         model_dir,
@@ -301,7 +303,7 @@ def manual_rollback_to_checkpoint_explicit(
     if manual_intent != MANUAL_ROLLBACK_INTENT:
         raise ManualGovernanceError(f"manual_intent must be exactly {MANUAL_ROLLBACK_INTENT!r}")
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)
     base = rollback_checkpoints_dir(model_dir, hz, tku)
 
     if not base.is_dir():
@@ -445,7 +447,7 @@ def load_governance_visibility(
         "audit_log_path": str(governance_audit_log_path(model_dir).resolve()),
     }
     if ticker:
-        st = _load_arch_state(model_dir, hz).get(ticker.upper()) or {}
+        st = _load_arch_state(model_dir, hz).get(ticker_storage_key(ticker)) or {}
         gc = st.get("governed_competition") if isinstance(st, dict) else None
         out["manual_promotion"] = st.get("manual_promotion")
         out["manual_rollback"] = st.get("manual_rollback")

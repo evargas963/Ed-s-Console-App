@@ -1,0 +1,9 @@
+{
+  "pm": "cursor",
+  "writer": "claude",
+  "auditor": "cursor",
+  "held_commit": null,
+  "updated_at": "2026-08-04T05:0x-05:00",
+  "standing_law": "Any code that needs writing: Cursor PMs, Claude codes. Cursor never writes feature/kill/implementation code.",
+  "note": "SoD standing: Claude sole writer, Cursor PM/auditor. Conflict markers (stale 21:30/21:35 ours-vs-theirs) repaired AGAIN 2026-08-04 05:0x by sole writer under operator order item 4 — the file had re-corrupted after the earlier repair."
+}

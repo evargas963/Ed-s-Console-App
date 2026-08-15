@@ -1,0 +1,26 @@
+{
+  "prereg_id": "quantile_eval_v1_prereg_v1",
+  "sibling_precedent": "research/har_rv_eval_v1/prereg_v1.json",
+  "study_question": "Does a causal quantile model for forward outcome_*_pts (q=0.5), mapped to up/down/flat by the same movement threshold sign rule, clear the MCC advancement screen walk-forward?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only."
+  },
+  "model": {
+    "name": "sklearn.ensemble.HistGradientBoostingRegressor",
+    "loss": "quantile",
+    "quantile": 0.5,
+    "max_depth": 4,
+    "max_iter": 100,
+    "learning_rate": 0.05,
+    "features": "HAR rv_1/5/15 + last 5 log-returns (causal)",
+    "label_map": "pred_pts > +thr → up; pred_pts < -thr → down; else flat; thr = median |train pts| of non-zero moves or 0 if empty"
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {"name": "MCC", "screen": "same as elastic_net_eval_v1"},
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/quantile_eval/quantile_eval_<date>_<runid>.json"}
+}

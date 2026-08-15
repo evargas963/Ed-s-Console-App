@@ -753,7 +753,9 @@ def test_chain_fetch_gate_serializes_concurrent_fetches(monkeypatch):
     active = {"n": 0, "max": 0}
     lk = th.Lock()
 
-    def _slow_chain(client, ticker, *, strike_count):
+    # RC-239: the production call site passes `to_date=` as well; a stub that omits it does
+    # not stand in for the real callee, it just raises TypeError inside the gate.
+    def _slow_chain(client, ticker, *, strike_count, to_date=None):
         with lk:
             active["n"] += 1
             active["max"] = max(active["max"], active["n"])
@@ -778,12 +780,19 @@ def test_chain_fetch_gate_fail_open_on_timeout(monkeypatch):
     """Gate held elsewhere + short timeout: fetch still executes; timeout counter increments."""
     import server as srv
 
+    # Order-independence: use a FRESH gate, never the process-global one. This test
+    # asserts the gate starts fully free; any earlier test that leaks a slot on the
+    # shared instance would otherwise fail it (observed 2026-07-19 only inside the
+    # full 301-file run, never standalone). Same construction as the sibling
+    # concurrency test above.
+    monkeypatch.setattr(srv, "_schwab_chain_fetch_gate", srv._ChainGateV2())
+    monkeypatch.setattr(srv, "_chain_inflight", {})
     monkeypatch.setattr(srv, "CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC", 0.05)
     calls: list[str] = []
     monkeypatch.setattr(
         srv,
         "safe_get_chain",
-        lambda client, ticker, *, strike_count: (calls.append(ticker), "RESP")[1],
+        lambda client, ticker, *, strike_count, to_date=None: (calls.append(ticker), "RESP")[1],
     )
     # CHAIN_GATE_V2: two slots — saturate both to force the timeout path.
     assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
@@ -810,7 +819,13 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
     """Uncontended gate: response + non-negative gate wait + fetch duration."""
     import server as srv
 
-    monkeypatch.setattr(srv, "safe_get_chain", lambda client, ticker, *, strike_count: "OK")
+    # Order-independence: fresh gate (see the timeout test above). The final
+    # "immediately acquirable" assertion requires a gate no other test has touched.
+    monkeypatch.setattr(srv, "_schwab_chain_fetch_gate", srv._ChainGateV2())
+    monkeypatch.setattr(srv, "_chain_inflight", {})
+    monkeypatch.setattr(
+        srv, "safe_get_chain",
+        lambda client, ticker, *, strike_count, to_date=None: "OK")
     resp, gate_wait_sec, fetch_sec = srv._gated_safe_get_chain(None, "ZZZ_NORM", strike_count=5)
     assert resp == "OK"
     assert gate_wait_sec >= 0.0
@@ -823,14 +838,31 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
 def test_chain_fetch_call_shape_and_gated_site_source_lock():
     """Fidelity lock: helper preserves the exact Schwab call shape; _fetch_state routes through it.
 
-    UI_05_OPERATOR_PRIORITY_ADMISSION_V1 threads a priority flag into the
-    gated call — the Schwab call shape inside the helper is unchanged."""
+    UI_05_OPERATOR_PRIORITY_ADMISSION_V1 threads a priority flag into the gated call — the Schwab
+    call shape inside the helper is unchanged.
+
+    RC-59 UPDATE: the WIDTH source changed deliberately. _fetch_state used to pass the hardcoded
+    CHAIN_STRIKE_COUNT (20), which analysed the console on a ~±6.6%-of-spot chain while terrain
+    used geometry-sized widths — the same ticker measured two ways. Width now comes from the ONE
+    faucet, resolve_chain_strike_count(). This lock therefore asserts the INTENT (gated helper +
+    priority flag + faucet-sourced width) rather than a frozen literal, so a genuine improvement
+    does not read as a regression while a real drift still fails.
+    """
     from pathlib import Path
 
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    assert "resp = safe_get_chain(client, ticker, strike_count=strike_count)" in src
+    # RC-239: the call shape gained `to_date=` (expiry scoping). The lock asserts the SHAPE —
+    # gated helper, faucet-sourced width, and every kwarg named — rather than a frozen literal
+    # that goes stale the moment a legitimate argument is added.
+    assert "resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date)" in src
     assert "_gated_safe_get_chain, client, ticker," in src
-    assert "strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority," in src
+    # Width comes from the faucet, never a bare constant (enforced repo-wide by
+    # tools/check_institutional_correctness.py::check_chain_width_single_faucet).
+    assert "strike_count=resolve_chain_strike_count(ticker)" in src
+    assert "CHAIN_STRIKE_COUNT, priority=_chain_priority" not in src, (
+        "the console chain fetch regressed to the hardcoded 20-strike width (RC-59)"
+    )
+    assert "priority=_chain_priority," in src
     assert 'ms_dict["chain_gate_wait_sec"]' in src
     assert '_stage_ms["chain_gate_wait_ms"]' in src
 
@@ -2084,22 +2116,35 @@ def test_mkt_ctx_stale_serve_never_pays_sweep_inline(monkeypatch):
     old_ctx = MarketContext()
     _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
     calls = {"n": 0}
-    done = th.Event()
+    entered = th.Event()
+    release = th.Event()
+    sweep_threads: list = []
 
+    # RC-17: no wall-clock assertions. "Not inline" is proven MECHANICALLY:
+    # (a) callers return the OLD context while the sweep is still held open
+    # (an inline sweep would hand back the new one), and (b) the sweep
+    # records its executing thread, which must not be the caller's. Holding
+    # the fake sweep open until after the herd of calls finishes prevents a
+    # fast executor from publishing a fresh cache mid-loop (which would
+    # correctly return the NEW object on later calls — not an inline pay).
     def _fake_sweep(client, **kwargs):
         calls["n"] += 1
-        time.sleep(0.2)
-        done.set()
+        sweep_threads.append(th.current_thread())
+        entered.set()
+        assert release.wait(30), "test never released the held sweep"
         return MarketContext()
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
-    t0 = time.perf_counter()
-    served = [srv._get_mkt_ctx(None) for _ in range(5)]
-    inline_elapsed = time.perf_counter() - t0
-    assert all(s is old_ctx for s in served)
-    assert inline_elapsed < 0.15, "a caller paid the sweep inline"
-    assert done.wait(5)
-    deadline = time.time() + 5
+    caller_thread = th.current_thread()
+    first = srv._get_mkt_ctx(None)
+    assert first is old_ctx
+    assert entered.wait(30), "background sweep never entered"
+    served = [first] + [srv._get_mkt_ctx(None) for _ in range(4)]
+    assert all(s is old_ctx for s in served), "a caller was handed the new context inline"
+    assert sweep_threads and all(t is not caller_thread for t in sweep_threads), \
+        "sweep executed inline on the caller thread"
+    release.set()
+    deadline = time.time() + 30
     while time.time() < deadline:
         with srv._cached_mkt_ctx_lock:
             if srv._cached_mkt_ctx is not old_ctx and not srv._mkt_ctx_refresh_inflight:
@@ -2125,10 +2170,14 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
     lk = th.Lock()
     done = th.Event()
 
+    # RC-17: the barrier makes overlap CERTAIN instead of hoping threads
+    # collide inside a scheduling window; waits are generous upper bounds.
+    barrier = th.Barrier(8, timeout=30)
+
     def _fake_sweep(client, **kwargs):
         with lk:
             calls["n"] += 1
-        time.sleep(0.3)
+        time.sleep(0.25)   # hold the inflight window open so a herd CAN collide
         done.set()
         return MarketContext()
 
@@ -2137,6 +2186,7 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
     slock = th.Lock()
 
     def _call():
+        barrier.wait()
         out = srv._get_mkt_ctx(None)
         with slock:
             served.append(out)
@@ -2145,11 +2195,12 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
     for t in threads:
         t.start()
     for t in threads:
-        t.join(timeout=10)
+        t.join(timeout=30)
+    assert not any(t.is_alive() for t in threads), "caller thread hung"
     assert len(served) == 8
     assert all(s is old_ctx for s in served)
-    assert done.wait(5)
-    deadline = time.time() + 5
+    assert done.wait(30), "background sweep never executed"
+    deadline = time.time() + 30
     while time.time() < deadline:
         with srv._cached_mkt_ctx_lock:
             if not srv._mkt_ctx_refresh_inflight:
@@ -2171,10 +2222,14 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
     calls = {"n": 0}
     lk = th.Lock()
 
+    # RC-17: barrier guarantees the callers actually overlap; joins are
+    # generous upper bounds with an explicit liveness assert.
+    barrier = th.Barrier(6, timeout=30)
+
     def _fake_sweep(client, **kwargs):
         with lk:
             calls["n"] += 1
-        time.sleep(0.3)
+        time.sleep(0.25)   # hold the sweep open so boot joiners CAN overlap
         return MarketContext()
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
@@ -2182,6 +2237,7 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
     slock = th.Lock()
 
     def _call():
+        barrier.wait()
         out = srv._get_mkt_ctx(None)
         with slock:
             served.append(out)
@@ -2190,7 +2246,8 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
     for t in threads:
         t.start()
     for t in threads:
-        t.join(timeout=10)
+        t.join(timeout=30)
+    assert not any(t.is_alive() for t in threads), "caller thread hung"
     assert len(served) == 6
     assert calls["n"] == 1
     assert all(s is served[0] for s in served), "boot joiners got different contexts"

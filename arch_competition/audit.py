@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from instrument_identity import ticker_storage_key  # RC-345/F25: audit record identity canonical
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -97,7 +99,7 @@ def build_audit_record(
         "outcome": outcome,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "operator_id": operator_id,
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25
         "ml_horizon_suffix": str(ml_horizon_suffix).lower(),
         "prior_active_architecture": prior_active_architecture,
         "target_architecture": target_architecture,

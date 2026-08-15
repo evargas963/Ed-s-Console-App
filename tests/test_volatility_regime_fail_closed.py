@@ -68,9 +68,63 @@ def test_blend_garch_sigma_realized_vol_must_be_decimal() -> None:
     from math_volatility import blend_garch_sigma
 
     garch = [0.001]
-    with_decimal_rv = blend_garch_sigma(garch, iv=0.20, realized_vol=0.0615, spot=500.0)[0]
-    with_percent_rv = blend_garch_sigma(garch, iv=0.20, realized_vol=6.15, spot=500.0)[0]
+    with_decimal_rv = blend_garch_sigma(
+        garch, iv=0.20, realized_vol=0.0615, spot=500.0, bar_minutes=1.0)[0]
+    with_percent_rv = blend_garch_sigma(
+        garch, iv=0.20, realized_vol=6.15, spot=500.0, bar_minutes=1.0)[0]
     assert with_percent_rv > with_decimal_rv * 5
+
+
+def test_blend_garch_sigma_bar_interval_must_be_stated_and_is_honoured() -> None:
+    """RC-334 unit contract: the de-annualization interval is the caller's to state.
+
+    `bar_minutes` was hardcoded to 5.0 while the only production caller supplies
+    one-minute closes, so the IV and RV terms — 40% of the blend — entered sqrt(5) too
+    large and Monte Carlo consumed the result directly as per-minute sigma. Measured
+    overstatement on a realistic SPY input: 1.3981x.
+    """
+    import math
+
+    import pytest as _pytest
+
+    from math_volatility import (
+        GARCH_BLEND_GARCH,
+        GARCH_BLEND_IV,
+        GARCH_BLEND_RV,
+        TRADING_DAYS_PER_YEAR,
+        TRADING_HOURS_PER_DAY,
+        blend_garch_sigma,
+    )
+
+    # 1. The interval cannot be omitted, and cannot be nonsense.
+    with _pytest.raises(TypeError):
+        blend_garch_sigma([0.001], iv=0.2, realized_vol=0.1, spot=500.0)
+    with _pytest.raises(ValueError):
+        blend_garch_sigma([0.001], iv=0.2, realized_vol=0.1, spot=500.0, bar_minutes=0)
+
+    # 2. It is actually USED: the IV/RV terms must scale as sqrt(bar_minutes).
+    mpy = TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY * 60
+    g = 0.20 / math.sqrt(mpy)
+    iv, rv = 0.15, 0.13
+    got = blend_garch_sigma([g], iv, rv, 500.0, bar_minutes=1.0)[0]
+    sq1 = math.sqrt(1.0 / mpy)
+    want = max(GARCH_BLEND_GARCH * g + GARCH_BLEND_IV * (iv * sq1) + GARCH_BLEND_RV * (rv * sq1),
+               (rv * sq1) * 0.5)
+    # blend_garch_sigma rounds its output to 8 decimals, so the tolerance must sit above
+    # that rounding rather than below it; the error this guards against is sqrt(5) = 2.24x.
+    assert got == _pytest.approx(want, rel=1e-6), (
+        f"one-minute blend is {got}, expected {want} — the stated interval is not honoured")
+
+    five = blend_garch_sigma([g], iv, rv, 500.0, bar_minutes=5.0)[0]
+    assert five > got, "a longer bar must not produce a smaller per-bar sigma"
+
+    # 3. The production chain agrees end to end: server builds these on 1-minute closes and
+    #    Monte Carlo consumes them at BAR_MINUTES, so the two constants must match.
+    import monte_carlo
+
+    assert float(monte_carlo.BAR_MINUTES) == 1.0, (
+        "monte_carlo.BAR_MINUTES moved away from the 1-minute closes server.py feeds GARCH; "
+        "the GARCH sigmas would be per-minute under a different name (RC-334)")
 
 
 def test_garch_trend_warns_on_non_float_entries(caplog: pytest.LogCaptureFixture) -> None:
@@ -163,10 +217,12 @@ def test_realized_vol_sqrt5_underscale_regression_lock():
 
     closes = _rv_closes()
     rv_1m = compute_realized_vol(closes, bar_minutes=1.0)
-    rv_legacy_default = compute_realized_vol(closes)  # legacy 5m default factor
-    assert rv_1m is not None and rv_legacy_default is not None
-    assert rv_1m == pytest.approx(rv_legacy_default * math.sqrt(5.0), rel=0.01)
-    assert rv_1m > rv_legacy_default  # the corrected 1m value is strictly larger
+    # RC-345 / F17: bar_minutes is now REQUIRED (the silent 5.0 default is gone); pass 5m
+    # explicitly to keep exercising the 1m-vs-5m sqrt(5) relationship this lock guards.
+    rv_5m = compute_realized_vol(closes, bar_minutes=5.0)
+    assert rv_1m is not None and rv_5m is not None
+    assert rv_1m == pytest.approx(rv_5m * math.sqrt(5.0), rel=0.01)
+    assert rv_1m > rv_5m  # the corrected 1m value is strictly larger
 
 
 def test_realized_vol_invalid_bar_minutes_fails_closed():

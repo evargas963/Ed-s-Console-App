@@ -158,6 +158,59 @@ def build_plan(*, db_path: str, ticker: str, hz: str, seed: int) -> dict:
     }
 
 
+def _prepare_control_models(
+    *,
+    db_path: str,
+    ticker: str,
+    hz: str,
+    seed: int,
+    label_col: str,
+    train_days,
+    control_db: str,
+    model_dir: Path,
+    eval_only: bool,
+) -> dict:
+    """eval_only: reuse the existing copy + trained models (the models were trained
+    on the permuted control DB, so evaluating them vs ORIGINAL true labels is the
+    identical control); raises FileNotFoundError if none exist. Otherwise build the
+    permuted control DB and train. Returns the permutation/provenance dict."""
+    if eval_only:
+        trained = (
+            sorted(p.name for p in model_dir.glob("*") if p.is_file())
+            if model_dir.exists()
+            else []
+        )
+        if not any(name.endswith((".pkl", ".pt")) for name in trained):
+            raise FileNotFoundError(
+                f"eval-only: no trained models at {model_dir}; run a full pass first"
+            )
+        return {
+            "reused_prior_run": True,
+            "control_db": control_db,
+            "models_reused": trained,
+            "note": "eval-only: existing control-DB copy + trained models reused; no re-copy/retrain",
+        }
+    from ml_scheduler import _train_parallel
+
+    perm = build_control_db(
+        source_db=db_path,
+        control_db=control_db,
+        ticker=ticker,
+        label_col=label_col,
+        train_days=set(train_days),
+        seed=seed,
+    )
+    _train_parallel(
+        ticker.upper(),
+        control_db,
+        out_dir=model_dir,
+        allowed_et_dates=set(train_days),
+        bypass_cache=True,
+        ml_horizon_slug=hz,
+    )
+    return perm
+
+
 def run_control(
     *,
     db_path: str,
@@ -166,9 +219,10 @@ def run_control(
     seed: int,
     work_dir: str,
     evidence_path: str,
+    eval_only: bool = False,
 ) -> dict:
     from ml_horizon import outcome_column
-    from ml_scheduler import _evaluate_parallel_on_full_rth, _train_parallel
+    from ml_scheduler import _evaluate_parallel_on_full_rth
     from training_cache import db_distinct_rth_et_dates_for_ticker, split_sessions_walk_forward
 
     plan = build_plan(db_path=db_path, ticker=ticker, hz=hz, seed=seed)
@@ -181,23 +235,15 @@ def run_control(
     wd = Path(work_dir)
     wd.mkdir(parents=True, exist_ok=True)
     control_db = str(wd / f"control_{ticker.upper()}_{hz}_seed{seed}.db")
-    perm = build_control_db(
-        source_db=db_path,
-        control_db=control_db,
-        ticker=ticker,
-        label_col=label_col,
-        train_days=set(train_days),
-        seed=seed,
-    )
     model_dir = wd / f"models_{ticker.upper()}_{hz}_seed{seed}"
-    _train_parallel(
-        ticker.upper(),
-        control_db,
-        out_dir=model_dir,
-        allowed_et_dates=set(train_days),
-        bypass_cache=True,
-        ml_horizon_slug=hz,
-    )
+    try:
+        perm = _prepare_control_models(
+            db_path=db_path, ticker=ticker, hz=hz, seed=seed, label_col=label_col,
+            train_days=train_days, control_db=control_db, model_dir=model_dir,
+            eval_only=eval_only,
+        )
+    except FileNotFoundError as exc:
+        return {**plan, "ok": False, "error": str(exc)}
     acc, bal, n, ll, realized = _evaluate_parallel_on_full_rth(
         db_path,
         ticker.upper(),
@@ -208,6 +254,7 @@ def run_control(
     upper = CHANCE + SHUFFLED_BALANCED_ACC_UPPER_TOLERANCE
     evidence = {
         **plan,
+        "mode": "eval_only" if eval_only else "full",
         "permutation": perm,
         "control_db": control_db,
         "model_dir": str(model_dir),
@@ -237,6 +284,8 @@ def main() -> int:
     ap.add_argument("--work-dir", default=str(REPO_ROOT / "models" / "shuffled_label_control"))
     ap.add_argument("--evidence", default=None, help="evidence JSON output path")
     ap.add_argument("--dry-run", action="store_true", help="validate plan only (no copy/training)")
+    ap.add_argument("--eval-only", action="store_true",
+                    help="reuse existing control-DB copy + trained models; re-run ONLY the eval (no re-copy/retrain)")
     args = ap.parse_args()
 
     from ml_horizon import normalize_ml_horizon_slug
@@ -256,6 +305,7 @@ def main() -> int:
         seed=args.seed,
         work_dir=args.work_dir,
         evidence_path=evidence_path,
+        eval_only=args.eval_only,
     )
     print(json.dumps({k: out[k] for k in out if k not in ("val_days",)}, indent=2, sort_keys=True, default=str))
     return 0 if out.get("ok") else 1

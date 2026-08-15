@@ -409,8 +409,6 @@ def test_db_write_path_d_import_does_not_trigger_db_universe_load():
         cwd=str(ROOT),
         capture_output=True,
         text=True,
-        encoding="utf-8",
-        errors="strict",
         timeout=180,
     )
     assert proc.returncode == 0, f"stdout={proc.stdout!r}\nstderr={proc.stderr!r}"
@@ -547,3 +545,147 @@ def test_step3_fetch_state_does_not_enroll_viewed_ticker():
     assert "_touch_tracked_ticker_view(ticker)" in src
     add_src = inspect.getsource(srv.logger_add)
     assert "_register_tracked_ticker(" in add_src, "explicit track route remains the enrollment path"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RC-345 / F25 — logging_universe canonical ticker identity (SPX == $SPX == "$SPX").
+# The PK is COLLATE NOCASE (case folds) but "SPX" and "$SPX" are distinct rows; the enrollment
+# semantic must resolve every alias to ONE canonical instrument identity across write/read/dedup/
+# membership/update/delete, and a migration must fold legacy bare-root rows onto the canonical key.
+# ─────────────────────────────────────────────────────────────────────────────
+import sqlite3 as _sqlite3
+from instrument_identity import ticker_storage_key as _K
+
+
+def _lu_rows(dbp) -> list[str]:
+    con = _sqlite3.connect(str(dbp))
+    try:
+        return [r[0] for r in con.execute("SELECT ticker FROM logging_universe").fetchall()]
+    finally:
+        con.close()
+
+
+def _insert_legacy_lu_row(dbp, ticker, category, ts):
+    """Insert a raw (possibly non-canonical) enrollment row, bypassing the canonical upsert —
+    simulates persisted legacy state (e.g. a bare 'SPX' enrolled before the F25 fix)."""
+    con = _sqlite3.connect(str(dbp))
+    try:
+        con.execute(
+            "INSERT INTO logging_universe (ticker, category, enrollment_source, "
+            "enrolled_ts_utc, last_seen_ts_utc) VALUES (?,?,?,?,?)",
+            (ticker, category, "legacy", ts, ts),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def test_f25_lu_enroll_index_alias_is_one_identity(tmp_path):
+    """A + B + C: enroll via any alias, the row IS the canonical '$SPX'; the reverse alias hits it;
+    enrolling both aliases yields ONE semantic instrument (no duplicate)."""
+    now = time.time()
+    db = EdDB(tmp_path / "f25a.db")
+    db.logging_universe_upsert_user_persisted("SPX", "t", now)          # A: enroll bare
+    assert _lu_rows(tmp_path / "f25a.db") == ["$SPX"], "enroll('SPX') must store canonical $SPX"
+    # C: enrolling the $-alias must not create a second instrument row
+    db.logging_universe_upsert_user_persisted("$SPX", "t", now + 1)
+    idx_rows = [r for r in _lu_rows(tmp_path / "f25a.db") if r in ("SPX", "$SPX", "spx", "$spx")]
+    assert idx_rows == ["$SPX"], f"SPX/$SPX collapsed to one row expected, got {idx_rows}"
+
+
+def test_f25_lu_delete_and_touch_via_alternate_alias(tmp_path):
+    """E: a row enrolled as '$SPX' is removable/updatable through the bare 'SPX' alias."""
+    now = time.time()
+    db = EdDB(tmp_path / "f25e.db")
+    db.logging_universe_upsert_user_persisted("$SPX", "t", now)
+    assert "$SPX" in _lu_rows(tmp_path / "f25e.db")
+    # touch via bare alias updates the canonical row (no error, no new row)
+    db.logging_universe_touch_seen("SPX", now + 5)
+    assert _lu_rows(tmp_path / "f25e.db").count("$SPX") == 1
+    # delete via bare alias removes the canonical row
+    assert db.logging_universe_remove_user_persisted("SPX") is True
+    assert "$SPX" not in _lu_rows(tmp_path / "f25e.db")
+
+
+def test_f25_lu_reads_and_membership_are_canonical(tmp_path):
+    """D: authoritative/scheduler reads and protection membership return canonical identity;
+    equities (SPY/QQQ/IWM) are unchanged."""
+    now = time.time()
+    db = EdDB(tmp_path / "f25d.db")
+    db.logging_universe_sync_core(["SPY", "QQQ", "IWM"], now)
+    db.logging_universe_upsert_pinned("SPX", "t", now)
+    auth = db.logging_universe_authoritative_tickers()
+    assert "$SPX" in auth and "SPX" not in auth
+    for eq in ("SPY", "QQQ", "IWM"):
+        assert eq in auth, f"equity {eq} must remain unchanged"
+    prot = set(db.logging_universe_protected_tickers())
+    assert "$SPX" in prot  # pinned is protected, under canonical identity
+
+
+def test_f25_lu_migration_renames_legacy_bare_row(tmp_path):
+    """F + H: a persisted legacy 'SPX' row migrates to '$SPX'; a re-run is a no-op (idempotent).
+    dry-run mutates nothing."""
+    dbp = tmp_path / "f25f.db"
+    db = EdDB(dbp)
+    db._ensure_logging_universe_table()
+    _insert_legacy_lu_row(dbp, "SPX", "user_persisted", 100.0)
+    assert "SPX" in _lu_rows(dbp)
+
+    dry = db.logging_universe_migrate_canonical_ticker_identity(dry_run=True)
+    assert dry["renames"] == [{"legacy": "SPX", "canonical": "$SPX"}]
+    assert "SPX" in _lu_rows(dbp), "dry-run must NOT mutate the DB"
+
+    real = db.logging_universe_migrate_canonical_ticker_identity(dry_run=False)
+    assert real["renames"] == [{"legacy": "SPX", "canonical": "$SPX"}]
+    assert _lu_rows(dbp) == ["$SPX"]
+
+    again = db.logging_universe_migrate_canonical_ticker_identity(dry_run=False)
+    assert again["renames"] == [] and again["merges"] == [], "migration must be idempotent"
+    assert again["unchanged"] >= 1
+
+
+def test_f25_lu_migration_merges_collision_deterministically(tmp_path):
+    """G: legacy 'SPX' (user_persisted) + canonical '$SPX' (pinned) already coexist. The migration
+    folds them into ONE '$SPX' row, keeping the STRONGER category (pinned), earliest enroll, latest
+    seen — deterministic, no silent loss, and the row count drops by exactly one."""
+    dbp = tmp_path / "f25g.db"
+    db = EdDB(dbp)
+    db._ensure_logging_universe_table()
+    _insert_legacy_lu_row(dbp, "SPX", "user_persisted", 100.0)   # earlier enroll, weaker cat
+    _insert_legacy_lu_row(dbp, "$SPX", "pinned", 200.0)          # later enroll, stronger cat
+    assert set(_lu_rows(dbp)) == {"SPX", "$SPX"}
+
+    rep = db.logging_universe_migrate_canonical_ticker_identity(dry_run=False)
+    assert rep["merges"] == [{"legacy": "SPX", "canonical": "$SPX", "category": "pinned"}]
+    assert _lu_rows(dbp) == ["$SPX"], "collision folded to a single canonical row"
+    assert rep["rows_after"] == rep["rows_before"] - 1
+
+    con = _sqlite3.connect(str(dbp))
+    try:
+        cat, enr, seen = con.execute(
+            "SELECT category, enrolled_ts_utc, last_seen_ts_utc FROM logging_universe "
+            "WHERE ticker = '$SPX'").fetchone()
+    finally:
+        con.close()
+    assert cat == "pinned"          # stronger category survives
+    assert enr == 100.0             # earliest enrollment preserved
+    assert seen == 200.0            # latest activity preserved
+
+
+def test_f25_lu_write_identity_mutation_killed():
+    """Mutation: reverting the canonical write producer to a raw local one splits SPX from $SPX.
+    Proven behaviorally against the storage authority the enrollment writes consume."""
+    # canonical authority: both aliases map to one identity
+    assert _K("SPX") == _K("$SPX") == _K("spx") == _K("$spx") == "$SPX"
+    # the raw local producer the fix replaced would NOT collapse them:
+    assert ("SPX".upper().strip()) != ("$SPX".upper().strip())  # 'SPX' != '$SPX' -> would split
+
+    # Source guard: the live enrollment read/update/delete/touch consume the authority, not .upper()
+    from pathlib import Path as _P
+    src = (_P(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
+    for needle in (
+        "t = ticker_storage_key(ticker)  # RC-345/F25",           # unpin/remove/touch
+        "ticker_storage_key(r[0]) for r in rows",                 # canonical reads
+        "def logging_universe_migrate_canonical_ticker_identity",  # migration exists
+    ):
+        assert needle in src, f"db.py logging_universe missing canonical routing: {needle!r}"

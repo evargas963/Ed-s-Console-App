@@ -21,7 +21,7 @@ def threshold_stress_on_similar(similar: list, thresholds: tuple[int, ...] = DEF
     by_thr: dict[str, Any] = {}
     for thr in thresholds:
         hz_states = {hz: _horizon_status(counts[hz], thr) for hz in counts}
-        withheld_any = any(hz_states[hz] == "withheld" for hz in ("1c", "5c", "15c", "60c"))
+        any(hz_states[hz] == "withheld" for hz in ("1c", "5c", "15c", "60c"))
         by_thr[str(thr)] = {
             "per_horizon": hz_states,
             "labeled_counts": counts,

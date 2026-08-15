@@ -1,0 +1,31 @@
+---
+description: Cursor must not absorb sole-writer work — SoD is mechanically enforced (RC-226)
+alwaysApply: true
+---
+
+# No writer drift (RC-226)
+
+Standing model: **Cursor = PM/auditor**, **Claude = sole writer** (unless `sole_writer.json` / `pm_mission.json` explicitly names `writer: cursor`).
+
+## Law
+
+When `pm_mission.json` is in-progress (`active` / `ready_for_claude` / `ready_for_writer` / `in_progress`) and `writer` ≠ cursor, **do not Edit/Write/StrReplace mission `scope_paths`**. PM-only surfaces: `governance/pm_mission.json`, `sole_writer.json`, RC log, rehab, audit/handoff reports, Cursor PM rules, process-lock modules.
+
+## Mechanical enforcers (not this `.mdc`)
+
+- `tools/writer_drift_lock.py` + `pm_mission_edit_violation` via `process_lock_guard.py` (PreToolUse — deny message starts `SOD_DRIFT:`)
+- `check_writer_no_drift` in `tools/check_institutional_correctness.py` (staged scope by non-writer → BLOCK)
+- Escape: `ED_WRITER_DRIFT_GUARD=off` / `ED_PM_MISSION_GUARD=off` (operator only, visible)
+
+## Self-heal (no operator prompt required)
+
+On detecting own role drift, false-green claims, or making the operator act as PM:
+
+1. **STOP** writing features / faucet kills immediately.
+2. Restore SoD (`sole_writer.json` / `pm_mission.json` roles; hand implementation to the named writer).
+3. Open or amend an RC row naming the drift.
+4. Tighten the lock if a detection gap remains (mandate-to-mechanism — same turn).
+
+## Halt
+
+`STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`

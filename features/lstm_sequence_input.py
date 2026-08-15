@@ -58,6 +58,7 @@ from lstm_data import (  # noqa: F401
     STREAM_5M_LOOKBACK,
     VWAP_SIDE_MAP,
     ZONE_MAP,
+    encode_zone,
     encoded_width_5m,
     encoded_width_1m,
     encode_snapshot_1m,
@@ -98,11 +99,7 @@ def _patch_lstm_categoricals(
     for zkey in zone_keys:
         if zkey in feature_names:
             zi = feature_names.index(zkey)
-            z = canonical_features.get("structure.zone")
-            if z is None:
-                features[zi] = ZONE_MISSING_ENCODED
-            else:
-                features[zi] = float(ZONE_MAP.get(str(z).lower(), 2))
+            features[zi] = encode_zone(canonical_features.get("structure.zone"))  # RC-343
             break
     for vkey in vwap_keys:
         if vkey in feature_names:

@@ -15,19 +15,11 @@ annotated `-> float` has already declared that absence cannot be expressed, so b
 `return 0.0` appears in the `except` handler the type has foreclosed the honest option and
 the literal reads as the only way to satisfy the signature.
 
-WHAT THIS FLAGS. A function annotated `-> float` (exact, non-Optional) that returns a
-numeric *literal* from an `except` handler. Deliberately narrow: predicates returning
-False are giving a real answer, and `main() -> int` returning an exit code is not a
-measurement. The first prototype over all scalar returns found 78 and was almost
-entirely those two shapes; restricting to float measurements left TWO, both real.
-
-WHAT THIS DOES NOT CATCH (RC-318 — named so a green gate is not the CLASS):
-  (a) unannotated functions (`def f(x):` with no return annotation);
-  (b) `-> float | None` / `Optional[float]` functions that still return 0.0 from except;
-  (c) non-literal fabrications (`return x or 0.0`, `return float(x or 0)`);
-  (d) None-branch zeros outside except (`if v is None: return 0.0`);
-  (e) `# absence-ok:` escapes — the marker silences the hit; truth is review surface.
-A green run of this gate proves the except-literal `-> float` shape only.
+WHAT THIS FLAGS. A function annotated `-> float` that returns a numeric literal from an
+`except` handler. Deliberately narrow: predicates returning False are giving a real answer,
+and `main() -> int` returning an exit code is not a measurement. The first prototype over
+all scalar returns found 78 and was almost entirely those two shapes; restricting to float
+measurements left TWO, both real.
 
     .venv/Scripts/python.exe tools/check_absence_has_a_type.py
 """
@@ -63,14 +55,12 @@ def _tracked_py() -> list[Path]:
     return [REPO / p for p in proc.stdout.split("\0") if p]
 
 
-def fabricated_absence_returns_in_source(text: str) -> list[tuple[int, str, str]]:
-    """(lineno, function, literal) for each numeric literal returned from an except.
-
-    Class detector: any `-> float` def, not the last-cited function name.
-    """
+def fabricated_absence_returns(path: Path) -> list[tuple[int, str, str]]:
+    """(lineno, function, literal) for each numeric literal returned from an except."""
     try:
+        text = path.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(text)
-    except SyntaxError:
+    except (OSError, SyntaxError):
         return []
     lines = text.splitlines()
     out: list[tuple[int, str, str]] = []
@@ -86,35 +76,14 @@ def fabricated_absence_returns_in_source(text: str) -> list[tuple[int, str, str]
         for handler in [n for n in ast.walk(fn) if isinstance(n, ast.ExceptHandler)]:
             for r in [n for n in ast.walk(handler) if isinstance(n, ast.Return)]:
                 v = r.value
-                lit = None
-                if isinstance(v, ast.Constant) and isinstance(v.value, (int, float)) and not isinstance(v.value, bool):
-                    lit = v.value
-                elif (
-                    isinstance(v, ast.Call)
-                    and isinstance(v.func, ast.Name)
-                    and v.func.id == "float"
-                    and v.args
-                    and isinstance(v.args[0], ast.Constant)
-                    and isinstance(v.args[0].value, (int, float))
-                    and not isinstance(v.args[0].value, bool)
-                ):
-                    lit = v.args[0].value
-                if lit is None:
+                if not (isinstance(v, ast.Constant) and isinstance(v.value, (int, float))
+                        and not isinstance(v.value, bool)):
                     continue
                 src_line = lines[r.lineno - 1] if r.lineno <= len(lines) else ""
                 if _ABSENCE_OK_RE.search(src_line):
                     continue
-                out.append((r.lineno, fn.name, repr(lit)))
+                out.append((r.lineno, fn.name, repr(v.value)))
     return out
-
-
-def fabricated_absence_returns(path: Path) -> list[tuple[int, str, str]]:
-    """(lineno, function, literal) for each numeric literal returned from an except."""
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    return fabricated_absence_returns_in_source(text)
 
 
 def violations() -> list[str]:

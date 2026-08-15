@@ -65,6 +65,81 @@ def test_fetch_price_levels_uses_rth_open_mins_authority() -> None:
     assert "RTH_END_MINS" in src
 
 
+def test_prior_day_family_single_session_dual_faucet_agreement(monkeypatch) -> None:
+    """RC-213 seam test (mission levels-faucet-v1): drives BOTH real producers of the
+    prior-day family on the same two-prior-session tape and asserts they agree on the
+    SINGLE most recent prior RTH session — the multi-session union answer is dead.
+
+    Tape: Thu 2026-07-30 holds BOTH extremes (high 110 / low 90), Fri 2026-07-31 is the
+    most recent prior session (high 105 / low 95, close 102). The pre-fix defect merged
+    both days, so any union value (110 / 90) appearing is the regression."""
+    from datetime import datetime as _dt
+
+    from liquidity_value_engine import PlaybookConfig, get_previous_day_levels
+    from time_et import ET
+    import market_context as mc
+
+    def _ms(y, mo, d, h, mi):
+        return _dt(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000.0
+
+    def _candle(ts_ms, o, h, lo, c, v=1000.0):
+        return {"datetime": ts_ms, "open": o, "high": h, "low": lo, "close": c, "volume": v}
+
+    candles = [
+        # Thursday 2026-07-30 (older prior session — holds BOTH extremes)
+        _candle(_ms(2026, 7, 30, 10, 0), 100, 110, 90, 100),
+        _candle(_ms(2026, 7, 30, 14, 0), 100, 101, 99, 100),
+        # Friday 2026-07-31 (most recent prior RTH session)
+        _candle(_ms(2026, 7, 31, 10, 0), 96, 105, 95, 97),
+        _candle(_ms(2026, 7, 31, 15, 59), 101, 103, 100, 102),
+        # "today" 2026-08-03
+        _candle(_ms(2026, 8, 3, 9, 45), 103, 104, 102, 103),
+    ]
+
+    class _HistClient:
+        def get_price_history(self, symbol, **kw):
+            return _MockQuoteResponse({"candles": candles})
+
+    monkeypatch.setattr(mc, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET), raising=False)
+    # fetch_price_levels imports now_et from time_et inside the function body:
+    import time_et as te
+    real_now_et = te.now_et
+    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
+    try:
+        # Quote closePrice 999.0 proves the RC-213 PDC reconciliation: bar-basis wins.
+        quote_raw = {"SPY": {"quote": {"closePrice": 999.0}}}
+        pl = mc.fetch_price_levels(_HistClient(), "SPY", quote_raw=quote_raw)
+    finally:
+        monkeypatch.setattr(te, "now_et", real_now_et)
+
+    engine_bars = [
+        {"timestamp": c["datetime"] / 1000.0, "open": c["open"], "high": c["high"],
+         "low": c["low"], "close": c["close"], "volume": c["volume"]}
+        for c in candles
+    ]
+    eng = get_previous_day_levels(engine_bars, _dt(2026, 8, 3).date(), PlaybookConfig())
+
+    # Agreement across the former dual faucets, level by level:
+    assert pl.pdh == eng["pdh"] == 105, (pl.pdh, eng.get("pdh"))
+    assert pl.pdl == eng["pdl"] == 95, (pl.pdl, eng.get("pdl"))
+    assert pl.pdc == eng["pdc"] == 102, (pl.pdc, eng.get("pdc"))
+    # The union answers are DEAD: 110/90 belong to the merged-session defect.
+    assert pl.pdh != 110 and pl.pdl != 90
+    # Quote closePrice did not override the bar-basis PDC.
+    assert pl.pdc != 999.0
+
+
+def test_fetch_price_levels_window_delegates_to_rc153_authority() -> None:
+    """RC-213 lock: the prior-day window in fetch_price_levels comes from the RC-153
+    authority (prior_trading_session_date) — reintroducing an inline multi-session
+    sweep is the regression this string lock screams on."""
+    src = inspect.getsource(fetch_price_levels)
+    assert "prior_trading_session_date" in src, (
+        "fetch_price_levels no longer delegates its prior-day window to the RC-153 "
+        "authority — the dual-faucet defect (RC-213) is reopening"
+    )
+
+
 def test_fetch_market_context_vol_indices_all_present() -> None:
     ctx = fetch_market_context(
         None,

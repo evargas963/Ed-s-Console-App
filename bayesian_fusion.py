@@ -639,7 +639,6 @@ def _fuse_impl(
         dir_sources.append(triplet)
         dir_weights.append(w)
 
-    fusion_mc_contribution = None
     prob_up = prob_down = prob_flat = None
     dominant_dir = None
     if dir_sources and dir_weights:

@@ -11,6 +11,8 @@ from calibration.v2_advisory_backfill import (
 )
 from calibration.v2_live_logging import (
     LIVE_ADVISORY_V2_DECISION_LOG_COLUMNS,
+    LIVE_ADVISORY_V2_REFUSED_MISSING_COLOCATED_SNAPSHOT_TS,
+    LIVE_ADVISORY_V2_REFUSED_SNAPSHOT_TS_MISMATCH,
     LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS,
     LIVE_ADVISORY_V2_SKIP_NO_PAYLOAD,
     append_live_v2_calibration_decision,
@@ -63,11 +65,25 @@ def test_live_v2_logging_inserts_single_row_with_v1_and_v2_metadata(tmp_path, mo
     conn.close()
     signal_output = _signal_output()
 
+    # Missing colocated snapshot ts refuses before identity check.
+    refused_clock = append_live_v2_calibration_decision(
+        db_path=db_path,
+        calibration_payload=signal_output.calibration_payload,
+        v2_decision=_v2_decision(),
+        decision_id="d-live-test",
+        execution_identity_sha256="e" * 64,
+    )
+    assert refused_clock == {
+        "status": "refused",
+        "reason": LIVE_ADVISORY_V2_REFUSED_MISSING_COLOCATED_SNAPSHOT_TS,
+    }
+
     # execution_identity_v1: a live write WITHOUT identity is refused (fail closed)
     refused = append_live_v2_calibration_decision(
         db_path=db_path,
         calibration_payload=signal_output.calibration_payload,
         v2_decision=_v2_decision(),
+        colocated_snapshot_ts_utc=DECISION_TS,
     )
     assert refused == {
         "status": "refused",
@@ -80,6 +96,7 @@ def test_live_v2_logging_inserts_single_row_with_v1_and_v2_metadata(tmp_path, mo
         v2_decision=_v2_decision(),
         decision_id="d-live-test",
         execution_identity_sha256="e" * 64,
+        colocated_snapshot_ts_utc=DECISION_TS,
     )
 
     conn = sqlite3.connect(str(db_path))
@@ -118,6 +135,7 @@ def test_live_v2_logging_skips_when_refresh_ts_utc_missing(tmp_path, monkeypatch
         db_path=db_path,
         calibration_payload=payload,
         v2_decision=_v2_decision(),
+        colocated_snapshot_ts_utc=DECISION_TS,
     )
 
     conn = sqlite3.connect(str(db_path))
@@ -129,6 +147,26 @@ def test_live_v2_logging_skips_when_refresh_ts_utc_missing(tmp_path, monkeypatch
         "reason": LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS,
     }
     assert n == 0
+
+
+def test_live_v2_logging_refuses_snapshot_ts_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setenv("ED_CALIBRATION_LOG", "1")
+    db_path, conn = _seed_db(tmp_path)
+    conn.close()
+    signal_output = _signal_output()
+
+    result = append_live_v2_calibration_decision(
+        db_path=db_path,
+        calibration_payload=signal_output.calibration_payload,
+        v2_decision=_v2_decision(),
+        decision_id="d-live-test",
+        execution_identity_sha256="e" * 64,
+        colocated_snapshot_ts_utc=DECISION_TS + 1.0,
+    )
+    assert result == {
+        "status": "refused",
+        "reason": LIVE_ADVISORY_V2_REFUSED_SNAPSHOT_TS_MISMATCH,
+    }
 
 
 def test_live_v2_logging_skips_gracefully_without_signal_payload(tmp_path, monkeypatch):
@@ -158,6 +196,7 @@ def test_live_v2_logging_is_noop_when_calibration_logging_disabled(tmp_path, mon
         db_path=db_path,
         calibration_payload=signal_output.calibration_payload,
         v2_decision=_v2_decision(),
+        colocated_snapshot_ts_utc=DECISION_TS,
     )
 
     conn = sqlite3.connect(str(db_path))

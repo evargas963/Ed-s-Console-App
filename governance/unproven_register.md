@@ -1,5 +1,3 @@
-> **SOURCE NAMESPACE — not a second "now."** Current execution queue is `OPEN_ITEMS.md` **PA-46**. Charter: `AGENTS.md`. This file was **missing from `main`** (last lived on a feature branch). Restored 2026-08-13 from `8f6467f` so the rehab record sits on the same branch as the board. Claims-about-the-world register (boundary named by root_cause_log). Not a defect queue. Do not open a parallel program from this file.
-
 # Unproven register — every claim ends at proven, or at a landed fix
 
 **Law (operator 2026-07-19):** every factual claim about the system, the data, or the market

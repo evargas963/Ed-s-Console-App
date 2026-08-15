@@ -148,6 +148,8 @@ def _walls_row(spot: float) -> WallsRow:
 
 
 def _chain(spot: float, expiry: str) -> list[dict]:
+    # institutional-synthetic-ok: golden end-to-end eval test needs a controlled tradeable
+    # setup (chain + walls + forward bars engineered to hit the target) — not real-sourceable.
     rows = []
     for k in (-1.0, 0.0, 1.0):
         strike = spot + k

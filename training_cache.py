@@ -30,6 +30,12 @@ import numpy as np
 log = logging.getLogger("training_cache")
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, DEFAULT_TRAINING_LABEL_COLUMN
+# RC-345/F25: ONE canonical ticker→storage/artifact identity. Every artifact filename,
+# cache key, DB-query bind, and meta ticker field below consumes this authority instead of
+# a local .upper() so a model/cache identity can NEVER diverge from the DB storage key
+# (bare 'SPX' and '$SPX' both resolve to the '$SPX' the bars/snapshots tables and the
+# on-disk $SPX bundle already use). This is a delegation, not a second normalizer.
+from instrument_identity import ticker_storage_key
 
 MANIFEST_FILENAME = "scheduler_run_manifest.json"
 FEATURE_CACHE_ROOT = Path(__file__).parent / "models" / "cache" / "features"
@@ -111,20 +117,27 @@ def db_training_fingerprint(
     from ml_data_common import filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
-    t = ticker
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity for SQL bind AND fingerprint["ticker"]
     conn = sqlite3.connect(db_path)
     if not _snapshots_1m_normalized_table_exists(conn):
         conn.close()
         return _empty_db_training_fingerprint(t)
     where = training_base_where_clause(label_column, include_ticker=True)
+    # RC-345 / F38: read the LABEL alongside ts_utc so the fingerprint captures IN-PLACE
+    # mutation (the force_refresh outcome backfill recomputes outcome_* at the SAME ts range
+    # and row count). min/max/row_count alone are blind to it — a mutated dataset would keep
+    # the same cache key and a STALE tensor would be reused. A content hash over the
+    # (ts_utc, label) pairs changes on any label recompute, so the cache MISSES.
     rows = conn.execute(
-        f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",
+        f"SELECT ts_utc, {label_column} FROM snapshots_1m_normalized WHERE {where}",
         (CANONICAL_TIMEFRAME, t),
     ).fetchall()
     conn.close()
-    ts_list = filter_ts_utc_list_to_rth(
-        [float(r[0]) for r in rows if r[0] is not None]
-    )
+    valid = [(float(r[0]), r[1]) for r in rows if r[0] is not None]
+    rth_ts = set(filter_ts_utc_list_to_rth([p[0] for p in valid]))
+    rth_pairs = sorted(p for p in valid if p[0] in rth_ts)
+    content_hash = hashlib.sha256(repr(rth_pairs).encode()).hexdigest()[:16]
+    ts_list = [p[0] for p in rth_pairs]
     if not ts_list:
         return {
             "table": "snapshots_1m_normalized",
@@ -133,6 +146,7 @@ def db_training_fingerprint(
             "min_ts_utc": None,
             "max_ts_utc": None,
             "row_count": 0,
+            "content_hash": content_hash,
         }
     return {
         "table": "snapshots_1m_normalized",
@@ -141,6 +155,7 @@ def db_training_fingerprint(
         "min_ts_utc": float(min(ts_list)),
         "max_ts_utc": float(max(ts_list)),
         "row_count": len(ts_list),
+        "content_hash": content_hash,
     }
 
 
@@ -158,6 +173,7 @@ def db_training_floor_stats(
     from timeframe_config import CANONICAL_TIMEFRAME
     from training_provenance import USABLE_RTH_DAY_MIN_ROWS
 
+    ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical identity for SQL bind AND emitted ticker field
     conn = sqlite3.connect(db_path)
     if not _snapshots_1m_normalized_table_exists(conn):
         conn.close()
@@ -224,13 +240,14 @@ def compute_scheduler_cache_key(
 
     raw = "|".join(
         [
-            ticker.upper(),
+            ticker_storage_key(ticker),
             architecture,
             CANONICAL_FEATURE_CONTRACT_VERSION,
             CANONICAL_FEATURE_TIMEFRAME,
             _fingerprint_key_part(data_fp, "min_ts_utc"),
             _fingerprint_key_part(data_fp, "max_ts_utc"),
             _fingerprint_row_count_part(data_fp),
+            _fingerprint_key_part(data_fp, "content_hash"),  # RC-345/F38: in-place-mutation identity
             _fingerprint_key_part(data_fp, "table"),
             _fingerprint_key_part(data_fp, "timeframe"),
             FEATURE_SCHEMA_VERSION,
@@ -265,13 +282,14 @@ def compute_feature_cache_key(
 
     raw = "|".join(
         [
-            ticker.upper(),
+            ticker_storage_key(ticker),
             "shared_features",
             CANONICAL_FEATURE_CONTRACT_VERSION,
             CANONICAL_FEATURE_TIMEFRAME,
             _fingerprint_key_part(data_fp, "min_ts_utc"),
             _fingerprint_key_part(data_fp, "max_ts_utc"),
             _fingerprint_row_count_part(data_fp),
+            _fingerprint_key_part(data_fp, "content_hash"),  # RC-345/F38: in-place-mutation identity
             _fingerprint_key_part(data_fp, "table"),
             _fingerprint_key_part(data_fp, "timeframe"),
             FEATURE_SCHEMA_VERSION,
@@ -299,7 +317,7 @@ def db_distinct_rth_et_dates_for_ticker(
     from ml_data_common import et_date_str_from_ts_utc, filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)
     conn = sqlite3.connect(db_path)
     where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
@@ -421,7 +439,7 @@ def min_ts_utc_for_last_n_rth_sessions(
     where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
         f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",
-        (CANONICAL_TIMEFRAME, ticker.upper()),
+        (CANONICAL_TIMEFRAME, ticker_storage_key(ticker)),
     ).fetchall()
     conn.close()
     keep_set = set(keep)
@@ -442,7 +460,7 @@ def compare_tabular_data_fingerprint_from_df(df, ticker: str) -> dict:
     import pandas as pd
     from timeframe_config import CANONICAL_TIMEFRAME
 
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)
     if df is None or len(df) == 0:
         return {
             "table": "compare_train_slice",
@@ -456,6 +474,14 @@ def compare_tabular_data_fingerprint_from_df(df, ticker: str) -> dict:
     s = pd.to_numeric(ts, errors="coerce")
     mn = float(s.min())
     mx = float(s.max())
+    # RC-345 / F38: content identity over (ts_utc, label) so an in-place label mutation on the
+    # same slice misses the cache — parity with the DB fingerprint's content_hash.
+    _lbl = DEFAULT_TRAINING_LABEL_COLUMN
+    if _lbl in df.columns:
+        pairs = sorted(zip((float(x) for x in s.fillna(-1.0)), (str(v) for v in df[_lbl])))
+    else:
+        pairs = sorted(float(x) for x in s.fillna(-1.0))
+    content_hash = hashlib.sha256(repr(pairs).encode()).hexdigest()[:16]
     return {
         "table": "compare_train_slice",
         "timeframe": CANONICAL_TIMEFRAME,
@@ -463,6 +489,7 @@ def compare_tabular_data_fingerprint_from_df(df, ticker: str) -> dict:
         "min_ts_utc": mn,
         "max_ts_utc": mx,
         "row_count": int(len(df)),
+        "content_hash": content_hash,
     }
 
 
@@ -503,7 +530,7 @@ def _normalize_data_fp(d: Optional[dict]) -> dict:
     return {
         "table": str(d.get("table", "")),
         "timeframe": str(d.get("timeframe", "")),
-        "ticker": str(d.get("ticker", "")),
+        "ticker": ticker_storage_key(str(d.get("ticker", ""))),  # RC-345/F25: normalize converges on canonical identity so SPX/$SPX fps compare equal
         "min_ts_utc": _num(d.get("min_ts_utc")),
         "max_ts_utc": _num(d.get("max_ts_utc")),
         "row_count": row_count,
@@ -545,7 +572,7 @@ def _write_feature_identity(cache_dir: Path, ticker: str, data_fp: dict, feature
     from features.training_canonical_input import training_canonical_lineage_header
 
     payload = {
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),
         "feature_cache_key": feature_key,
         "data_fingerprint": data_fp,
         "feature_version": FEATURE_SCHEMA_VERSION,
@@ -568,7 +595,7 @@ def _feature_identity_matches(cache_dir: Path, ticker: str, data_fp: dict, featu
         return False
     return (
         d.get("feature_cache_key") == feature_key
-        and d.get("ticker") == ticker.upper()
+        and d.get("ticker") == ticker_storage_key(ticker)
         and _normalize_data_fp(d.get("data_fingerprint")) == _normalize_data_fp(data_fp)
     )
 
@@ -706,7 +733,7 @@ def copy_parallel_xgb_artifacts_to_cascade(
     """Copy parallel XGB weights into cascade candidate dir (same-run bridge reuse)."""
     import shutil
 
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)
     hz = horizon_suffix
     cascade_dir.mkdir(parents=True, exist_ok=True)
     ok = True
@@ -737,7 +764,7 @@ def save_parallel_cascade_bridge(
     probs = np.ascontiguousarray(xgb_probs, dtype=np.float32)
     np.savez_compressed(cache_dir / PARALLEL_CASCADE_BRIDGE_NPZ_NAME, xgb_probs=probs)
     payload = {
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),
         "feature_cache_key": feature_key,
         "data_fingerprint": data_fp,
         "n_samples": int(probs.shape[0]),
@@ -784,7 +811,7 @@ def load_parallel_cascade_bridge(
     if not _canonical_lineage_identity_ok(meta):
         log.info("parallel→cascade bridge canonical lineage mismatch: %s", cache_dir)
         return None
-    if meta.get("feature_cache_key") != feature_key or meta.get("ticker") != ticker.upper():
+    if meta.get("feature_cache_key") != feature_key or meta.get("ticker") != ticker_storage_key(ticker):
         return None
     if _normalize_data_fp(meta.get("data_fingerprint")) != _normalize_data_fp(data_fp):
         return None
@@ -884,7 +911,7 @@ def _cascade_identity_matches(
     if not _canonical_lineage_identity_ok(d):
         return False
     return (
-        d.get("ticker") == ticker.upper()
+        d.get("ticker") == ticker_storage_key(ticker)
         and d.get("feature_cache_key") == feature_key
         and d.get("training_code_fingerprint") == code_fp
         and d.get("xgb_meta_sha256") == xgb_meta_sha
@@ -919,7 +946,7 @@ def save_cascade_transformer_tensor_cache(
     from features.training_canonical_input import training_canonical_lineage_header
 
     payload = {
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),
         "feature_cache_key": feature_key,
         "training_code_fingerprint": code_fp,
         "data_fingerprint": data_fp,
@@ -1136,7 +1163,7 @@ def archive_candidate_directory_before_train(
     from datetime import datetime, timezone
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    dest = models_root / MODEL_ARCHIVE_SUBDIR / arch_label / ticker.upper() / ts
+    dest = models_root / MODEL_ARCHIVE_SUBDIR / arch_label / ticker_storage_key(ticker) / ts
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(candidate_dir, dest, dirs_exist_ok=False)
@@ -1278,7 +1305,7 @@ def sync_candidate_manifest_lineage_before_governed_eval(
     patched.update(
         {
             "schema_version": existing.get("schema_version") or MSV,
-            "ticker": ticker.upper(),
+            "ticker": ticker_storage_key(ticker),
             "architecture": architecture,
             "ml_horizon_suffix": hz,
             "scheduler_cache_key": scheduler_cache_key,
@@ -1315,7 +1342,7 @@ def save_compare_aggregate_manifest(payload: dict) -> Path:
 
 
 def parallel_artifact_basenames(ticker: str, horizon_suffix: str = DEFAULT_ML_HORIZON_SLUG) -> list[str]:
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)
     hz = (horizon_suffix or DEFAULT_ML_HORIZON_SLUG).strip().lower()
     return [
         f"xgb_{t}_{hz}.pkl",
@@ -1422,7 +1449,7 @@ def build_manifest(
 
     return {
         "schema_version": MSV,
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),
         "architecture": architecture,
         "ml_horizon_suffix": str(ml_horizon_suffix or DEFAULT_ML_HORIZON_SLUG).lower(),
         "scheduler_cache_key": scheduler_cache_key,

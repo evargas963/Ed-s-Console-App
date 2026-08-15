@@ -19,13 +19,38 @@ def ci_schwab_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCHWAB_TOKEN_PATH", str(REPO / "nonexistent_ci_schwab_token.json"))
 
 
+@pytest.fixture(autouse=True)
+def _restore_server_module_binding():
+    """Put `sys.modules["server"]` back exactly as found.
+
+    `_reload_server_module` below pops `server` and re-imports it, which is the point of
+    these tests. It never restored the original, so every suite that ran afterwards in the
+    same process saw a DIFFERENT module object than the one it had imported — its
+    module-level caches and any references captured at import time belonged to the discarded
+    copy. MEASURED: `test_server_quote_source_contract.py` passes alone (8 passed) and this
+    file passes alone (9 passed), but run in this order two of its tests fail; that pair is
+    exactly the failure the authoritative turn audit reported twice. A test may reload a
+    module; it may not leave the interpreter holding a different one than it found.
+    """
+    had = "server" in sys.modules
+    original = sys.modules.get("server")
+    try:
+        yield
+    finally:
+        if had:
+            sys.modules["server"] = original
+        else:
+            sys.modules.pop("server", None)
+
+
 def _reload_server_module() -> object:
     sys.modules.pop("server", None)
     return importlib.import_module("server")
 
 
 def test_schwab_py_package_importable() -> None:
-    import schwab.auth  # noqa: F401
+    import schwab.auth
+    assert schwab.auth.__name__ == "schwab.auth"
 
 
 def test_schwab_client_imports_without_constructing_live_client() -> None:
@@ -62,10 +87,17 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
 
 
 def test_server_imports_in_ci_without_live_credentials() -> None:
-    import server
+    """Importing server in a CI env must not build a client.
 
-    assert server._client is None
-    assert server.app is not None
+    Uses a fresh module load rather than whatever `server` the suite already imported:
+    `_client` is a module-level global, so asserting on the shared instance made this
+    test depend on suite order (observed 2026-07-19 inside the full run only). The
+    reload tests the actual intent - a clean import builds no client.
+    """
+    srv = _reload_server_module()
+
+    assert srv._client is None
+    assert srv.app is not None
 
 
 def test_server_import_does_not_build_client_or_run_login_flow() -> None:

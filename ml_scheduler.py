@@ -26,6 +26,16 @@ import logging
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+
+# RC-345/F25: the trainer/scheduler writes artifact filenames and enrollment identity —
+# every one delegates to the ONE canonical authority (instrument_identity.ticker_storage_key)
+# so the files it WRITES ('$SPX') match what the verifier and predictor LOOK FOR, and match
+# the DB storage key. No local .upper() second faucet for artifact/enrollment identity.
+from instrument_identity import ticker_storage_key
+
+# RC-340: THE row-enrichment authority for every engineer_single_snapshot call in this
+# module — five cascade/bridge routes previously fed RAW rows (cf_* -> 0.0, dgex -> NaN).
+from ml_data_common import prepare_row_for_xgb_features
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, Set
 import argparse
@@ -309,8 +319,10 @@ def _diagnostic_db_tickers_not_enrolled(
         )
     except Exception:
         return []
-    e = {x.upper() for x in enrolled if x}
-    return sorted({t for t in have if t.upper() not in e})
+    # RC-345/F25: enrollment identity through the one authority — enrolled 'SPX' and
+    # DB-stored '$SPX' must compare equal, not diverge under bare .upper().
+    e = {ticker_storage_key(x) for x in enrolled if x}
+    return sorted({t for t in have if ticker_storage_key(t) not in e})
 
 
 def _load_rth_rows_for_ticker(
@@ -839,6 +851,7 @@ def _train_parallel_ml_stack_layers_into(
         return False
     train_ticker(
         ticker, df, model_dir=temp_dir, current_data_fingerprint=data_fp, ml_horizon_slug=hz,
+        db_path=db_path,  # RC-344/F35: same DB as load_data above
     )
     ds = build_lstm_dataset(
         tickers=[ticker], db_path=Path(db_path), allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz,
@@ -857,7 +870,7 @@ def _train_parallel_ml_stack_layers_into(
             preloaded_sequences=(Xp, yp, daysp, tickp, nfp), allowed_et_dates=allowed_et_dates,
             data_fp=data_fp, architecture="parallel", bypass_torch_resume=True, ml_horizon_slug=hz,
         )
-    return (temp_dir / f"xgb_{ticker.upper()}_{hz}.pkl").exists()
+    return (temp_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl").exists()
 
 
 def _write_meta_training_basis_manifest(
@@ -886,8 +899,8 @@ def _write_meta_training_basis_manifest(
       reader; meta pickle contents and serving paths are byte-identical.
     SCHWAB_CSV_CHECKED"""
     manifest = {
-        "artifact": f"meta_{ticker.upper()}_{hz}.pkl",
-        "ticker": ticker.upper(),
+        "artifact": f"meta_{ticker_storage_key(ticker)}_{hz}.pkl",
+        "ticker": ticker_storage_key(ticker),
         "horizon_slug": hz,
         "architecture": architecture,
         "meta_training_basis": basis,
@@ -896,7 +909,7 @@ def _write_meta_training_basis_manifest(
         "written_at_epoch": time.time(),
         "schema": "META_TRAINING_BASIS_MANIFEST_V1",
     }
-    out_path = out_dir / f"meta_{ticker.upper()}_{hz}_training_manifest.json"
+    out_path = out_dir / f"meta_{ticker_storage_key(ticker)}_{hz}_training_manifest.json"
     out_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return out_path
 
@@ -909,7 +922,7 @@ def read_meta_training_basis_manifest(
     Returns None when absent (pre-manifest legacy bundle). Downstream promotion
     / predictive-validity surfaces MUST treat ``oof_governed is not True`` as
     not-OOF-governed evidence (legacy absence never upgrades to governed)."""
-    p = Path(out_dir) / f"meta_{ticker.upper()}_{hz}_training_manifest.json"
+    p = Path(out_dir) / f"meta_{ticker_storage_key(ticker)}_{hz}_training_manifest.json"
     if not p.is_file():
         return None
     try:
@@ -1019,7 +1032,6 @@ def train_parallel_candidate(
     import numpy as np
 
     used_feature_cache = False
-    used_parallel_cascade_bridge = False
     if data_fp is None:
         data_fp = db_training_fingerprint(db_path, ticker, label_column=target_column)
     if not code_fp:
@@ -1083,6 +1095,7 @@ def train_parallel_candidate(
         prior_data_fingerprint=prior_fp,
         current_data_fingerprint=data_fp,
         ml_horizon_slug=hz,
+        db_path=db_path,  # RC-344/F35: same DB as load_data
     )
 
     # LSTM tensors: load from feature cache or build + save
@@ -1106,8 +1119,8 @@ def train_parallel_candidate(
     try:
         from training_cache import save_parallel_cascade_bridge
 
-        xgb_pkl = out_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
-        xgb_meta_p = out_dir / f"xgb_{ticker.upper()}_{hz}_meta.json"
+        xgb_pkl = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl"
+        xgb_meta_p = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json"
         if (
             ds is not None
             and getattr(ds, "n_samples", 0) >= 10
@@ -1264,7 +1277,7 @@ def train_parallel_candidate(
     if len(X_meta) >= 10:
         meta_mdl = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
         meta_mdl.fit(np.array(X_meta), np.array(y_meta))
-        with open(out_dir / f"meta_{ticker.upper()}_{hz}.pkl", "wb") as f:
+        with open(out_dir / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl", "wb") as f:
             pickle.dump(meta_mdl, f)
         _write_meta_training_basis_manifest(
             out_dir, ticker, hz, architecture="parallel", basis=meta_basis, n_rows=len(X_meta),
@@ -1296,7 +1309,7 @@ def _train_parallel(
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
 ) -> dict[str, Any]:
     """Production entry: same as nightly scheduler; optional out_dir / allowed_et_dates for compare tooling."""
-    dest = out_dir if out_dir is not None else PARALLEL_DIR / ticker
+    dest = out_dir if out_dir is not None else PARALLEL_DIR / ticker_storage_key(ticker)  # RC-345/F25
     return train_parallel_candidate(
         ticker,
         db_path,
@@ -1362,13 +1375,14 @@ def _train_cascade_xgb_lstm_into(
     df = load_data(db_path, ticker=ticker, allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz)
     if len(df) == 0:
         return False
-    train_ticker(ticker, df, model_dir=temp_dir, current_data_fingerprint=data_fp, ml_horizon_slug=hz)
-    xgb_path = temp_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
+    train_ticker(ticker, df, model_dir=temp_dir, current_data_fingerprint=data_fp,
+                 ml_horizon_slug=hz, db_path=db_path)  # RC-344/F35
+    xgb_path = temp_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl"
     if not xgb_path.exists():
         return False
     with open(xgb_path, "rb") as f:
         xgb_model = pickle.load(f)
-    with open(temp_dir / f"xgb_{ticker.upper()}_{hz}_meta.json") as f:
+    with open(temp_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json") as f:
         xgb_meta = json.load(f)
 
     days_data = extract_rth_snapshots(
@@ -1389,7 +1403,8 @@ def _train_cascade_xgb_lstm_into(
             if ref_spot <= 0:
                 continue
             X_row = engineer_single_snapshot(
-                current, xgb_meta.get("category_maps", {}), xgb_meta.get("features", []),
+                prepare_row_for_xgb_features(current),  # RC-340 (no cache var in this scope)
+                xgb_meta.get("category_maps", {}), xgb_meta.get("features", []),
                 xgb_meta.get("vol_medians", {}), ticker,
             )
             if X_row is None:
@@ -1412,7 +1427,7 @@ def _train_cascade_xgb_lstm_into(
             dataset=ds, db_path=db_path, ticker=ticker, model_dir=temp_dir, data_fp=data_fp,
             architecture="cascade", bypass_torch_resume=True, ml_horizon_slug=hz,
         )
-    return (temp_dir / f"lstm_{ticker.upper()}_{hz}.pt").exists()
+    return (temp_dir / f"lstm_{ticker_storage_key(ticker)}_{hz}.pt").exists()
 
 
 def _build_in_sample_cascade_xgb_lstm_tensor(
@@ -1438,19 +1453,20 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
         TARGET_CLASSES,
         _safe_float,
         canonical_reference_spot_from_sequence_window_first_bar,
-        compute_confluence_features,
         encode_snapshot_1m,
         encode_snapshot_5m,
         extract_rth_snapshots,
     )
+    from ml_data_common import confluence_features_for_bar
     from ml_train import engineer_single_snapshot
     from features.training_canonical_input import training_snapshot_for_sequence_encode
     from transformer_train import SEQUENCE_LENGTH
     from timeframe_config import CANONICAL_TIMEFRAME
 
+    _conf_cache: dict = {}          # RC-332: one canonical-history pool per (ticker, UTC day)
     hz = normalize_ml_horizon_slug(hz)
     label_col = outcome_column(hz)
-    t = ticker.upper()
+    t = ticker_storage_key(ticker)
     xgb_path = model_dir / f"xgb_{t}_{hz}.pkl"
     xgb_meta_path = model_dir / f"xgb_{t}_{hz}_meta.json"
     if not xgb_path.is_file() or not xgb_meta_path.is_file():
@@ -1505,12 +1521,12 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
             if current_lstm.get(label_col) not in TARGET_CLASSES:
                 continue
             try:
-                ref_spot = canonical_reference_spot_from_sequence_window_first_bar(window)
+                canonical_reference_spot_from_sequence_window_first_bar(window)
             except ValueError:
                 continue
             current_xgb = snapshots_xgb[end_idx - 1]
             X_row = engineer_single_snapshot(
-                current_xgb,
+                prepare_row_for_xgb_features(current_xgb, cache=_conf_cache),  # RC-340
                 xgb_meta.get("category_maps", {}),
                 xgb_meta.get("features", []),
                 xgb_meta.get("vol_medians", {}),
@@ -1535,19 +1551,13 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
                 encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
                 for s in micro
             ]
-            snapshots_flat = [s for _, snaps in sorted(days_lstm.items()) for s in snaps]
-            day_idx = min(
-                next(
-                    (
-                        i
-                        for i, s in enumerate(snapshots_flat)
-                        if s.get("ts_et") == current_lstm.get("ts_et")
-                    ),
-                    len(snapshots_flat) - 1,
-                ),
-                len(snapshots_flat) - 1,
-            )
-            conf = compute_confluence_features(snapshots_flat, day_idx)
+            # RC-332: cf_* history is the single authority's population, not this lane's
+            # flattened RTH-filtered days. Flattening days_lstm produced a THIRD population
+            # shape for one feature name, and the linear ts_et scan it needed to locate the
+            # bar was O(n) per row on top of that. Both go away: the lane supplies the bar,
+            # the authority owns the history.
+            conf = confluence_features_for_bar(
+                ticker, current_lstm.get("ts_utc"), str(db_path), cache=_conf_cache)
             conf_vec = np.array([conf[k] for k in CONFLUENCE_FEATURES], dtype=np.float32)
             conf_vec = np.hstack([conf_vec, xgb_p]).astype(np.float32)
 
@@ -1670,7 +1680,7 @@ def _train_cascade_ml_stack_layers_into(
         bypass_torch_resume=True,
         ml_horizon_slug=hz,
     )
-    return (temp_dir / f"transformer_{ticker.upper()}_{hz}.pt").exists()
+    return (temp_dir / f"transformer_{ticker_storage_key(ticker)}_{hz}.pt").exists()
 
 
 def _train_cascade_meta_oof(
@@ -1810,7 +1820,7 @@ def _xgb_probs_aligned_to_lstm_dataset(
             )
             return None
         X_row = engineer_single_snapshot(
-            current,
+            prepare_row_for_xgb_features(current),  # RC-340
             xgb_meta.get("category_maps", {}),
             xgb_meta.get("features", []),
             xgb_meta.get("vol_medians", {}),
@@ -1869,7 +1879,6 @@ def train_cascade_candidate(
         extract_rth_snapshots,
         encode_snapshot_5m,
         encode_snapshot_1m,
-        compute_confluence_features,
         STREAM_5M_LOOKBACK,
         STREAM_1M_LOOKBACK,
         CONFLUENCE_FEATURES,
@@ -1877,6 +1886,9 @@ def train_cascade_candidate(
         TARGET_CLASSES,
         canonical_reference_spot_from_sequence_window_first_bar,
     )
+    from ml_data_common import confluence_features_for_bar
+
+    _conf_cache: dict = {}          # RC-332: one canonical-history pool per (ticker, UTC day)
     from transformer_train import train_transformer, prepare_transformer_data, SEQUENCE_LENGTH
     import pickle
     import numpy as np
@@ -1938,8 +1950,8 @@ def train_cascade_candidate(
         and parallel_out is not None
         and copy_parallel_xgb_artifacts_to_cascade(parallel_out, out_dir, ticker, horizon_suffix=hz)
     ):
-        xgb_path = out_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
-        xgb_meta_path = out_dir / f"xgb_{ticker.upper()}_{hz}_meta.json"
+        xgb_path = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl"
+        xgb_meta_path = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json"
         with open(xgb_path, "rb") as f:
             xgb_model = pickle.load(f)
         with open(xgb_meta_path) as f:
@@ -1987,10 +1999,11 @@ def train_cascade_candidate(
             prior_data_fingerprint=prior_fp,
             current_data_fingerprint=data_fp,
             ml_horizon_slug=hz,
+            db_path=db_path,  # RC-344/F35: same DB as load_data
         )
 
-        xgb_path = out_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
-        xgb_meta_path = out_dir / f"xgb_{ticker.upper()}_{hz}_meta.json"
+        xgb_path = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl"
+        xgb_meta_path = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json"
         if not xgb_path.exists():
             return {
                 "used_feature_cache": False,
@@ -2032,7 +2045,8 @@ def train_cascade_candidate(
                 if ref_spot <= 0:
                     continue
                 X_row = engineer_single_snapshot(
-                    current, xgb_meta.get("category_maps", {}),
+                    prepare_row_for_xgb_features(current, cache=_conf_cache),  # RC-340
+                    xgb_meta.get("category_maps", {}),
                     xgb_meta.get("features", []),
                     xgb_meta.get("vol_medians", {}), ticker,
                 )
@@ -2117,7 +2131,7 @@ def train_cascade_candidate(
             "warm_resume": lstm_rr,
         }
 
-    lstm_pt_path = out_dir / f"lstm_{ticker.upper()}_{hz}.pt"
+    lstm_pt_path = out_dir / f"lstm_{ticker_storage_key(ticker)}_{hz}.pt"
 
     # Workstream B2 (commit 2) — train the cascade TRANSFORMER (final stacker) on EXPANDING-
     # WINDOW OUT-OF-FOLD [xgb|lstm] ML layer predictions. Each kept row is scored by xgb/lstm layers
@@ -2201,11 +2215,12 @@ def train_cascade_candidate(
                     if current.get(label_col) not in TARGET_CLASSES:
                         continue
                     try:
-                        ref_spot = canonical_reference_spot_from_sequence_window_first_bar(window)
+                        canonical_reference_spot_from_sequence_window_first_bar(window)
                     except ValueError:
                         continue
                     X_row = engineer_single_snapshot(
-                        current, xmeta_m.get("category_maps", {}),
+                        prepare_row_for_xgb_features(current, cache=_conf_cache),  # RC-340
+                        xmeta_m.get("category_maps", {}),
                         xmeta_m.get("features", []),
                         xmeta_m.get("vol_medians", {}), ticker,
                     )
@@ -2228,12 +2243,10 @@ def train_cascade_candidate(
                         encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
                         for s in micro
                     ]
-                    snapshots_flat = [s for _, snaps in sorted(days_data.items()) for s in snaps]
-                    day_idx = min(
-                        next((i for i, s in enumerate(snapshots_flat) if s.get("ts_et") == current.get("ts_et")), len(snapshots_flat) - 1),
-                        len(snapshots_flat) - 1,
-                    )
-                    conf = compute_confluence_features(snapshots_flat, day_idx)
+                    # RC-332: same rewire as the parallel path above — one population
+                    # authority for cf_*, and the O(n) ts_et scan disappears with it.
+                    conf = confluence_features_for_bar(
+                        ticker, current.get("ts_utc"), str(db_path), cache=_conf_cache)
                     conf_vec = np.array([conf[k] for k in CONFLUENCE_FEATURES], dtype=np.float32)
                     conf_vec = np.hstack([conf_vec, xgb_p]).astype(np.float32)
 
@@ -2296,9 +2309,9 @@ def train_cascade_candidate(
                     log.warning("%s cascade OOF: fold %d base train incomplete — skip", ticker, fi)
                     continue
                 try:
-                    with open(fdir_fold / f"xgb_{ticker.upper()}_{hz}.pkl", "rb") as f:
+                    with open(fdir_fold / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl", "rb") as f:
                         _xm = pickle.load(f)
-                    with open(fdir_fold / f"xgb_{ticker.upper()}_{hz}_meta.json") as f:
+                    with open(fdir_fold / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json") as f:
                         _xmeta = _json.load(f)
                     _lm, _lck = _load_lstm_fold(model_dir=fdir_fold, ticker=ticker, ml_horizon_slug=hz)
                 except Exception as _fe:  # noqa: BLE001 — fold load is best-effort; row degrades to seed
@@ -2402,7 +2415,7 @@ def train_cascade_candidate(
     if len(X_meta) >= 10:
         meta_mdl = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
         meta_mdl.fit(np.array(X_meta), np.array(y_meta))
-        with open(out_dir / f"meta_{ticker.upper()}_{hz}.pkl", "wb") as f:
+        with open(out_dir / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl", "wb") as f:
             pickle.dump(meta_mdl, f)
         _write_meta_training_basis_manifest(
             out_dir, ticker, hz, architecture="cascade", basis=meta_basis, n_rows=len(X_meta),
@@ -2440,7 +2453,7 @@ def _train_cascade(
     parallel_out: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Production entry: same as nightly scheduler; optional out_dir / allowed_et_dates for compare tooling."""
-    dest = out_dir if out_dir is not None else CASCADE_DIR / ticker
+    dest = out_dir if out_dir is not None else CASCADE_DIR / ticker_storage_key(ticker)  # RC-345/F25
     return train_cascade_candidate(
         ticker,
         db_path,
@@ -2879,10 +2892,10 @@ def run_once(
             cascade_key = compute_scheduler_cache_key(
                 ticker, "cascade", data_fp, code_fp, target_column=target_column,
             )
-            parallel_out = PARALLEL_DIR / ticker
-            cascade_out = CASCADE_DIR / ticker
+            parallel_out = PARALLEL_DIR / ticker_storage_key(ticker)  # RC-345/F25: one identity
+            cascade_out = CASCADE_DIR / ticker_storage_key(ticker)
             if preflip_candidate_root is not None:
-                frozen_t = preflip_candidate_root / ticker.upper()
+                frozen_t = preflip_candidate_root / ticker_storage_key(ticker)
                 parallel_out = frozen_t / "parallel"
                 cascade_out = frozen_t / "cascade"
             run_ts = _now_et().isoformat()
@@ -2912,14 +2925,14 @@ def run_once(
                 mf_hz = normalize_ml_horizon_slug(
                     parallel_man.get("ml_horizon_suffix") or cascade_man.get("ml_horizon_suffix") or hz_sched
                 )
-                if not (parallel_out / f"xgb_{ticker.upper()}_{mf_hz}.pkl").exists():
+                if not (parallel_out / f"xgb_{ticker_storage_key(ticker)}_{mf_hz}.pkl").exists():
                     log.warning(
                         "%s: --promote-from-manifests skipped (parallel xgb missing for horizon %s)",
                         ticker,
                         mf_hz,
                     )
                     continue
-                if not (cascade_out / f"xgb_{ticker.upper()}_{mf_hz}.pkl").exists():
+                if not (cascade_out / f"xgb_{ticker_storage_key(ticker)}_{mf_hz}.pkl").exists():
                     log.warning(
                         "%s: --promote-from-manifests skipped (cascade xgb missing for horizon %s)",
                         ticker,
@@ -3336,11 +3349,11 @@ def run_once(
                 log.warning("realized aggregate save: %s", _sa_e)
 
             active_root = scheduler_active_root(hz_sched)
-            active_dir = active_root / ticker
+            active_dir = active_root / ticker_storage_key(ticker)  # RC-345/F25: one identity
             active_dir.mkdir(parents=True, exist_ok=True)
 
-            parallel_xgb_meta = parallel_out / f"xgb_{ticker.upper()}_{hz_sched}_meta.json"
-            cascade_xgb_meta = cascade_out / f"xgb_{ticker.upper()}_{hz_sched}_meta.json"
+            parallel_xgb_meta = parallel_out / f"xgb_{ticker_storage_key(ticker)}_{hz_sched}_meta.json"
+            cascade_xgb_meta = cascade_out / f"xgb_{ticker_storage_key(ticker)}_{hz_sched}_meta.json"
             parallel_prov = load_provenance(parallel_xgb_meta) if parallel_xgb_meta.exists() else None
             cascade_prov = load_provenance(cascade_xgb_meta) if cascade_xgb_meta.exists() else None
 
@@ -3447,7 +3460,7 @@ def run_once(
                 elif promoted:
                     reason = "governed_auto_promote_ok"
                     if auto_exec_result.get("post_promote_verify_passed") is not False:
-                        live_reload_batch.append({"ticker": ticker.upper(), "horizon": hz_sched})
+                        live_reload_batch.append({"ticker": ticker_storage_key(ticker), "horizon": hz_sched})
                 else:
                     reason = str(auto_exec_result.get("skipped_reason") or "promote_skipped")
 
@@ -3465,16 +3478,17 @@ def run_once(
                 governed_slice["auto_promote_executed"] = promoted
                 report["governed_competition"] = governed_slice
 
-            prior_arch = arch_state.get(ticker, {}).get("active_architecture", "none")
+            arch_key = ticker_storage_key(ticker)  # RC-345/F25: arch_state writer key == canonical identity (reader in server.py matches)
+            prior_arch = arch_state.get(arch_key, {}).get("active_architecture", "none")
             new_arch = prior_arch
             if promoted and auto_exec_result.get("target_architecture"):
                 new_arch = auto_exec_result["target_architecture"]
-            prov_dict = arch_state.get(ticker, {}).get("provenance")
+            prov_dict = arch_state.get(arch_key, {}).get("provenance")
             if promoted:
                 win_prov = cascade_prov if new_arch == "cascade" else parallel_prov
                 if win_prov:
                     prov_dict = win_prov.to_dict()
-            arch_state[ticker] = {
+            arch_state[arch_key] = {
                 "active_architecture": new_arch,
                 "parallel_acc": round(parallel_acc, 4),
                 "cascade_acc": round(cascade_acc, 4),
@@ -3492,7 +3506,7 @@ def run_once(
                 log.info("%s: auto-promote held: %s", ticker, reason)
 
             if governed_slice is not None:
-                arch_state[ticker]["governed_competition"] = governed_slice
+                arch_state[arch_key]["governed_competition"] = governed_slice
 
             promotion_decision_record = {
                 "scheduler_log_loss_winner": "parallel" if parallel_wins else "cascade",
@@ -3527,7 +3541,7 @@ def run_once(
                     "entry=ask exit=bid; underlying stop/target/time exit per Call plan; "
                     "trade logs: models/realized_contract_trade_log_parallel.csv + _cascade.csv"
                 )
-                _prev[ticker] = {
+                _prev[ticker_storage_key(ticker)] = {  # RC-345/F25: dashboard-metrics key canonical (reader matches)
                     "parallel": {
                         "eval_accuracy": parallel_acc,
                         "balanced_accuracy": parallel_bal,

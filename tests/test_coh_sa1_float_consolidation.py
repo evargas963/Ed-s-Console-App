@@ -137,7 +137,7 @@ def test_coh_sa1_f_wrappers_reject_nan_and_inf(module_name: str, attr: str):
 
 @pytest.mark.parametrize("module_name,attr", _COH_SA1_F_DELEGATE)
 def test_coh_sa1_f_wrappers_delegate_to_numeric_contract(module_name: str, attr: str):
-    mod = importlib.import_module(module_name)
+    importlib.import_module(module_name)
     src = Path(importlib.util.find_spec(module_name).origin)  # type: ignore[union-attr]
     text = src.read_text(encoding="utf-8")
     assert "float_finite_or_none" in text

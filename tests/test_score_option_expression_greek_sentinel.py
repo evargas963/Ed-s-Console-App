@@ -24,6 +24,8 @@ def _row(
     volume: int = 1200,
     open_interest: int = 4300,
 ) -> dict:
+    # institutional-synthetic-ok: sentinel-rejection tests must inject the Schwab -999
+    # greek sentinel and controlled max-gamma layouts; not sourceable from real data.
     return {
         "putCall": side,
         "strikePrice": strike,

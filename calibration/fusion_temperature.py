@@ -38,6 +38,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 HORIZON_SLUGS = ("1c", "5c", "15c", "60c")
@@ -291,7 +293,7 @@ def main() -> int:
         return 1
     require_canonical_db_target(args, tool_name="calibration.fusion_temperature", write_capable=False)
 
-    tickers = [t.strip().upper() for t in args.tickers if t.strip()] or None
+    tickers = [ticker_storage_key(t) for t in args.tickers if t.strip()] or None  # RC-345/F25: canonical CLI ticker list
     artifact = fit_fusion_temperature_artifact(
         args.db, tickers=tickers, min_decision_ts_utc=float(args.fit_window_floor)
     )

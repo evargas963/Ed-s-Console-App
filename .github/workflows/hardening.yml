@@ -14,6 +14,9 @@ jobs:
   hardening:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Worktree boundary gate: no silent ED_AGENT_ROLE default (primary CI = cursor).
+      ED_AGENT_ROLE: cursor
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,10 +49,13 @@ jobs:
           python tools/check_market_correctness.py --self-test
           python tools/check_market_correctness.py
 
+      # BLOCKING: same institutional gate as local pre-commit — catches --no-verify
+      # commits that skip tools/check_institutional_correctness.py on the laptop.
+      - name: institutional correctness (one gate — pre-commit parity)
+        run: python tools/check_institutional_correctness.py
+
       - name: institutional closure gate (no inflated parent closures)
         run: python tools/check_institutional_closure_gate.py
-      - name: absence has a type (RC-301 except-literal class)
-        run: python tools/check_absence_has_a_type.py
       - name: no-grep subprocess
         run: python tools/check_no_grep_subprocess.py
 

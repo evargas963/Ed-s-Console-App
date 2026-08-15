@@ -1,0 +1,76 @@
+
+==============================================================================
+REPO EXPOSURE AUDIT
+==============================================================================
+This tool reports numbers, not verdicts. UNMEASURABLE is a finding, never a pass.
+
+ΓöÇΓöÇ INSTITUTIONAL GATE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   enforced: 37 entries, 5 non-zero
+      root_cause_log: 1
+      five_why_recursive_lock: 1
+      enforced_checks_have_negative_controls: 2
+      rc_citations_resolve: 8
+      rc_numeric_claims_cite_a_command: 1
+   advisory: 7 entries, 7 non-zero
+      debt_ratchet: 1
+      orphan_dict_keys: 164
+      function_complexity: 466
+      function_length: 394
+      file_length: 37
+      ruff_quality: 1085
+      mypy_types: 759
+   checks_that_crashed: 0 entries, 0 non-zero
+   _sec: 86.6
+
+ΓöÇΓöÇ GOVERNANCE LEDGER ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   rows_total: 97
+   not_closed: 8
+   open: 8 item(s)
+   overdue: 0
+   self_declared_unfinished: 2
+      RC-31: NOT FIXED
+      RC-58: PARTIALLY
+   status_contradicts_text: 2
+      RC-43: status=OPEN but fix cell opens 'CLOSED, no code change warranted, decided by'
+      RC-55: status=REMEDIATED but fix cell opens 'REFUTED BY FORENSIC AUDIT, same day: all fiv'
+   _sec: 0.0
+
+ΓöÇΓöÇ LIVE CONSOLE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   reachable: False
+   note: no console on 127.0.0.1:8000 ΓÇö every liveness claim below is UNVERIFIED
+   _sec: 2.1
+
+ΓöÇΓöÇ DATA FAUCETS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   violations: 0
+   detail: 0
+   stale_sources: 3
+      price_bars_1m age=5.2h > limit 0.1h
+      snapshots age=2.7h > limit 0.1h
+      level_crosses age=3.3h > limit 0.1h
+   _sec: 1.5
+
+ΓöÇΓöÇ DATABASE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   size_gb: 21.04
+   integrity: ok
+   tables: 26
+   largest_tables: 6 item(s)
+   level_crosses_duplication: 4,767 of 8,151 rows are repeats of another row's (ticker, ts, level_value) ΓÇö 58.5%
+   _sec: 230.2
+
+ΓöÇΓöÇ GIT ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   head: 0a3d2c7a RC-94..RC-96: close the operator's ranked lock gaps 1-5; his catalog verified true.
+   branch: fp-institutional-repair-and-study4
+   uncommitted_tracked: 7
+   uncommitted_detail: 7 item(s)
+   untracked: 7
+   _sec: 0.2
+
+ΓöÇΓöÇ TESTS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   test_files: 461
+   collection: 4564 tests collected in 8.47s
+   _sec: 10.4
+
+==============================================================================
+No --check mode by design: the moment this is something to pass, it becomes
+something to satisfy ΓÇö and everything else was already being satisfied.
+==============================================================================

@@ -24,6 +24,8 @@ import threading
 import time
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 
@@ -40,7 +42,7 @@ _fast_lane_gen_by_ticker: dict[str, int] = {}
 
 def next_fast_generation(ticker: str) -> int:
     """Monotonic per-ticker generation for SSE coalescing (independent of decision_generation_id)."""
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
     with _gen_lock:
         n = _fast_lane_gen_by_ticker.get(t, 0) + 1
         _fast_lane_gen_by_ticker[t] = n
@@ -88,7 +90,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     """
     if not item or not isinstance(item, dict):
         return False
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
     if not t:
         return False
 
@@ -195,7 +197,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
 
 def record_quote(ticker: str, payload: dict[str, Any]) -> None:
     """Persist a full plane row (e.g. REST fast-quote). Replaces prior row for ticker."""
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
     if not t:
         return
     with _lock:
@@ -210,7 +212,7 @@ def record_quote(ticker: str, payload: dict[str, Any]) -> None:
 
 def get_quote(ticker: str) -> Optional[dict[str, Any]]:
     """Copy of latest plane row for ticker, or None."""
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
     with _lock:
         row = _by_ticker.get(t)
         return dict(row) if row else None
@@ -241,6 +243,11 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
         "spread_source",
         "spread_pts_source",
         "quote_ingestion",
+        # W3-C4 / RC-121: the provenance DETAIL travels with the quote it describes. Omitting
+        # it here meant Tier C payloads carried Layer A's spot while STRIPPING its degradation
+        # flags (carried_forward / schwab_auth_degraded) — the exact fields that say whether
+        # the number can be trusted.
+        "quote_source_detail",
     ):
         if k in q and q[k] is not None:
             ms_dict[k] = q[k]
@@ -282,6 +289,7 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
         "spread_source",
         "spread_pts_source",
         "quote_ingestion",
+        "quote_source_detail",   # W3-C4 / RC-121: same carriage as merge_into_state
     ):
         if k in q and q[k] is not None:
             l1_payload[k] = q[k]
@@ -297,7 +305,7 @@ def take_fresh_sse_quote_payload(ticker: str) -> Optional[dict[str, Any]]:
     If the plane has a quote row not yet sent on SSE for this ticker (by fast_generation_id),
     return a payload for event: live_quote. Otherwise None.
     """
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
     with _lock:
         row = _by_ticker.get(t)
         if not row:
@@ -317,6 +325,6 @@ def take_fresh_sse_quote_payload(ticker: str) -> Optional[dict[str, Any]]:
 
 def reset_sse_push_cursor(ticker: str) -> None:
     """Force next SSE live_quote push (e.g. after ticker change)."""
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
     with _lock:
         _last_sse_pushed_gen.pop(t, None)

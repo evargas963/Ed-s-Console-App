@@ -1,0 +1,22 @@
+{
+  "prereg_id": "l1_book_eval_v1_prereg_v1",
+  "sibling_precedent": "research/order_flow_eval_v1/prereg_v1.json",
+  "study_question": "Does L1 book imbalance (bid_size-ask_size)/(bid_size+ask_size) plus spread and last_size, when present on snapshots_1m_normalized, predict production ternary outcome_{hz} walk-forward beyond trivial baselines?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only.",
+    "coverage_limit": "bid_size/ask_size/last_size are sparsely populated (~40–70% by ticker); incomplete rows dropped, not imputed."
+  },
+  "model": {
+    "features": ["l1_book_imbalance", "spread", "last_size"],
+    "l1_book_imbalance": "(bid_size - ask_size) / (bid_size + ask_size) when sizes finite and sum>0",
+    "classifier": "LogisticRegression elasticnet saga (frozen as Study #4)"
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {"name": "MCC", "screen": "same advancement screen as elastic_net_eval_v1"},
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/l1_book_eval/l1_book_eval_<date>_<runid>.json"}
+}

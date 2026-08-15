@@ -10,6 +10,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from instrument_identity import ticker_storage_key
+
 LOGGER_SOURCE_BASE_MONEY_PATH = "base_money_path"
 LOGGER_SOURCE_BACKGROUND = "background_logger"
 LOGGER_SOURCE_UI_SSE = "ui_sse"
@@ -69,18 +71,18 @@ def build_lightweight_snapshot_row_from_quote(
     from math_exposure import session_bucket
     from timeframe_config import CANONICAL_TIMEFRAME
 
-    t = ticker.upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: SnapshotRow storage identity is canonical
     spot_f = float(quote_fields["spot_f"])
     et_h = int(now_et.hour)
     et_m = int(now_et.minute)
-    bid = quote_fields.get("bid")
-    ask = quote_fields.get("ask")
+    from numeric_contract import float_finite_or_none as _fin
+    # single source: finite bid/ask (raw float() admitted NaN into spread AND the stored
+    # bid_price/ask_price below); canonical reader also removes the need for try/except.
+    bid = _fin(quote_fields.get("bid"))
+    ask = _fin(quote_fields.get("ask"))
     spread = None
     if bid is not None and ask is not None:
-        try:
-            spread = round(float(ask) - float(bid), 4)
-        except (TypeError, ValueError):
-            spread = None
+        spread = round(ask - bid, 4)
 
     return SnapshotRow(
         ticker=t,
@@ -89,7 +91,7 @@ def build_lightweight_snapshot_row_from_quote(
         ts_et=build_ts_et(now_et),
         et_hour=et_h,
         et_minute=et_m,
-        market_session=market_session(et_h, et_m),
+        market_session=market_session(et_h, et_m, et_date=now_et.strftime("%Y-%m-%d")),  # RC-278
         spot=spot_f,
         spread=spread,
         bid_price=bid,
@@ -120,7 +122,7 @@ def run_base_money_path_capture_cycle(
 
     Slow SPY fetch must not block QQQ/IWM attempts (bounded timeout per future).
     """
-    symbols = tuple(t.upper() for t in tickers)
+    symbols = tuple(ticker_storage_key(t) for t in tickers)  # RC-345/F25: canonical capture/fetch + storage identity
     if not symbols:
         return []
 

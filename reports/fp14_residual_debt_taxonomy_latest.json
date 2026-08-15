@@ -1,0 +1,24 @@
+{
+  "schema": "fp14_residual_debt_taxonomy_v1",
+  "generated_utc": "2026-07-17T13:21:32Z",
+  "join_tol_sec": 29.0,
+  "trusted_old_missing_attached": 10571,
+  "by_ticker": {
+    "IWM": 1158,
+    "QQQ": 2434,
+    "SPY": 6979
+  },
+  "nearest_snapshot_distance_buckets": {
+    "no_snapshot_any": 0,
+    "nearest_gt_29s_le_60s": 7724,
+    "nearest_gt_60s_le_300s": 54,
+    "nearest_gt_300s_le_3600s": 525,
+    "nearest_gt_3600s": 611,
+    "nearest_le_29s_but_unattached": 1657
+  },
+  "of_in_tol_unattached_outcomes_unfilled": 1657,
+  "interpretation": {
+    "no_snapshot / far": "Collect gap \u2014 decision clock has no snapshot near it; bar backfill cannot attach",
+    "in_tol_unattached": "Snapshot present in tol but backfill skipped (outcomes not filled or other skip)"
+  }
+}

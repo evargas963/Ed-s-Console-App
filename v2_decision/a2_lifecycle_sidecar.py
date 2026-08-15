@@ -464,13 +464,73 @@ def _selected_strike(ms: dict[str, Any], winner: dict[str, Any]) -> float | None
     return _first_number(ms, "rec_strike", "strike", "call_strike", "selected_strike") or _float_or_none(winner.get("strike"))
 
 
+#: RC-337 — the unit of each accepted source, proven from its PRODUCER, not from magnitude.
+#: A magnitude heuristic ("> 1e11 means ms") is forbidden: it guesses, and it silently
+#: reclassifies the value the day the epoch or the field changes.
+_DECISION_TS_SOURCE_UNITS: tuple[tuple[str, str], ...] = (
+    ("decision_time_ms", "ms"),          # server.py:7763  int(_refresh_ts_utc * 1000)
+    ("decision_timestamp_utc", "s"),     # live_decision_bundle.py:122  float(time.time())
+    ("_server_build_ts", "s"),           # server.py:7764 / :9480  time.time()
+    ("refresh_ts_utc", "s"),             # server.py:7627  _utc_ts_refresh()
+)
+
+
 def _decision_timestamp(ms: dict[str, Any]) -> Any:
-    return (
-        ms.get("decision_time_ms")
-        or ms.get("decision_timestamp_utc")
-        or ms.get("_server_build_ts")
-        or ms.get("refresh_ts_utc")
-    )
+    """The decision instant as INTEGER EPOCH MILLISECONDS, or None.
+
+    RC-337. This was a bare `or` chain returning whichever source was first non-falsy, in
+    that source's own unit — so `would_apply_if_entered_at_time` (:251, a pass-through)
+    emitted epoch-ms when `decision_time_ms` was present and epoch-SECONDS when it was not.
+    MEASURED on one live SPY state: 1786383424954 against 1786383424.2295866 for the same
+    instant. The canonical unit is epoch-ms, proven three ways — the assertion at
+    tests/test_v2_a2_lifecycle_sidecar.py:242 (`_epoch_ms_et`), PILOT_1B_A2_LIFECYCLE_
+    CONTRACT.md:277, and ~70 historical payloads in reports/ui_transport/, every one
+    13-digit.
+
+    This function is the normalization authority because it is the only place that both
+    SELECTS the source and therefore KNOWS which unit arrived; line 251 receives a number
+    with no provenance and could only guess. Fixing there would mask the mixed-unit
+    producer rather than remove it, and would not cover a future fifth source.
+
+    Source precedence is unchanged, including its falsy-skip semantics, so this is a pure
+    unit fix. (A source valued exactly 0 still falls through to the next; epoch 0 is not a
+    real decision instant, and changing that is a separate question this row does not open.)
+    """
+    for field, unit in _DECISION_TS_SOURCE_UNITS:
+        raw = ms.get(field)
+        if not raw:                       # preserve the original `or` precedence exactly
+            continue                      # (None / 0 / 0.0 / False / "" skip to next source)
+        # A clock is an int or float from the producers proven above — never a bool
+        # (True is `1`, not an instant) and never a string (no producer emits one).
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            continue
+        # NaN, +/-inf and negatives are not instants. Zero already skipped as falsy.
+        if raw != raw or raw in (float("inf"), float("-inf")) or raw <= 0:
+            continue
+        if unit == "ms":
+            # Canonical positive integer epoch-ms passes through UNTOUCHED — no float
+            # round-trip, so values above 2**53 cannot lose precision.
+            if isinstance(raw, int):
+                return raw
+            try:
+                return int(raw)           # float ms: truncate, same convention as below
+            except (OverflowError, ValueError):
+                continue
+        # TRUNCATE, not round. The repository's established seconds->epoch-ms convention,
+        # proven from 12 `int(seconds * 1000)` sites against 1 `round(...)` — and that one
+        # is a display latency metric, not an epoch conversion. The three that bind this
+        # field directly: server.py:7763 `int(_refresh_ts_utc * 1000)` produces
+        # decision_time_ms itself; calibration/v2_advisory_backfill.py:129 does the same
+        # for the same field; the contract test's `_epoch_ms_et` (tests/test_v2_a2_
+        # lifecycle_sidecar.py:12) is `int(... * 1000)`. Rounding would let a seconds-
+        # sourced value disagree with the ms-sourced one by up to 1ms for one instant.
+        # Overflow/unrepresentability is decided by Python's own arithmetic (float
+        # overflow -> inf -> int() raises OverflowError), not by an invented bound.
+        try:
+            return int(raw * 1000)
+        except (OverflowError, ValueError):
+            continue
+    return None
 
 
 def _first_number(ms: dict[str, Any], *keys: str) -> float | None:

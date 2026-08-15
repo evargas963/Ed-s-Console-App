@@ -104,6 +104,18 @@ calibration/trading_data.db
 logs/
 reports/daily_scoreboard/
 
+# One-off audit / probe / turn-dump artifacts (generated evidence, never source)
+reports/_*
+reports/coverage.xml
+reports/console_monitor_tail.jsonl
+reports/charm_surface_*
+reports/claude_finish_*
+reports/cursor_*_audit_*
+reports/*_audit_v*.md
+reports/*_latest.json
+reports/*_latest.txt
+reports/turn_self_audit_log.jsonl
+
 # Local analysis / audit scratch outputs (repo root)
 feature_ablation_universe.xlsx
 feature_analysis.xlsx
@@ -129,3 +141,74 @@ data_proof/
 reports/incumbent_eval/
 reports/challenger_eval/
 reports/structural_eval/
+reports/elastic_net_eval/
+reports/lightgbm_eval/
+reports/tcn_eval/
+reports/kalman_eval/
+reports/har_rv_eval/
+reports/survival_eval/
+reports/quantile_eval/
+reports/cost_aware_eval/
+reports/order_flow_eval/
+reports/l1_book_eval/
+reports/tod_eval/
+reports/regime_har_eval/
+reports/cross_asset_eval/
+reports/vol_regime_har_eval/
+reports/iv_context_eval/
+reports/abstention_eval/
+reports/interaction_eval/
+reports/gamma_walls_eval/
+reports/pa_returns_eval/
+reports/hedging_flow_eval/
+reports/zone_vwap_eval/
+reports/divergence_eval/
+reports/session_range_eval/
+reports/micro_stack_eval/
+reports/har_micro_eval/
+reports/lgbm_micro_eval/
+reports/mlp_micro_eval/
+
+reports/quantile_eval/
+
+# Local agent/tooling state — machine-specific, never shared (2026-07-20).
+# settings.local.json is already ignored at the top of this file but is still TRACKED,
+# so gitignore cannot apply to it — the commit must `git rm --cached` it once.
+.claude/launch.json
+
+# RC-89: generated audit artifacts carry absolute operator-home paths, so the credential-leak
+# hook rejects them on every commit. They were unstaged by hand three times on 2026-07-27 —
+# fixing the instance instead of the cause. They are regenerated output, never source.
+governance/audits/
+
+# RC-89 pattern: generated lock/stream artifacts embed the absolute repo path, so the
+# credential-leak hook rejects them on every commit. They are regenerable output, never source:
+#   python -m tools.locks_inventory_v1 / locks_violation_audit_v1 / locks_violation_monitor_v1
+reports/locks_inventory_v1.json
+reports/locks_violation_audit_v1.json
+reports/locks_violation_monitor_v1.json
+reports/locks_violation_monitor_prev_v1.json
+reports/stream_raw_sample_*.json
+reports/stream_capture_status.json
+
+# RC-101: the scorecard artifacts are COMMITTED again — run_provenance now records the
+# interpreter repo-relatively, so the artifacts carry no home paths. Only the run log stays
+# ignored (it is a log). Gitignoring the artifacts was treating the symptom: it left a fresh
+# clone with NO coach data while a local leftover silently served the API.
+reports/scorecard_run.log
+
+# runtime measurement log (RC-54 producer) - grows every session, never a repo artifact
+reports/flip_drift_log.jsonl
+# RC-251: append-only per-run TQM telemetry. The reviewable artifacts are
+# reports/rehab_latest.md and reports/tqm_queue_latest.json, which ARE tracked.
+reports/rehab_queue.jsonl
+# The raw machine dump embeds absolute operator-home paths and verbatim mission text
+# (the credential-leak hook refused it, correctly). The markdown carries the same findings.
+reports/rehab_latest.json
+
+# RC-263: scratch has no lifecycle. 7,793 tracked files / 485,275,039 bytes -- 75% of the
+# repository -- was throwaway debugging output, including six committed Chrome browser
+# profiles and a 98.5%-identical second copy of server.py. Nothing imports it; the only
+# reference outside it is a docstring citation in math_levels.py. Untracked 2026-08-06.
+# Files stay on disk; git history retains them. Nothing here may be imported by production.
+scratchpad/

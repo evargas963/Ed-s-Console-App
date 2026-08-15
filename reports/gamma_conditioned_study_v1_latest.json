@@ -1,0 +1,209 @@
+{
+  "schema": "gamma_conditioned_study_v1",
+  "status": "COMPLETE",
+  "validity": "SINGLE_REGIME_VALIDITY (89-session window; F2 VIX-tercile floor unmet)",
+  "not_an_admission": "conditioning study, report-only; admission requires operator sign-off",
+  "generated_utc": "2026-07-24T12:33:12.594685+00:00",
+  "declared_filter": {
+    "staleness_max_sec": 900.0,
+    "z_strong": 1.0,
+    "trailing_sessions": 20,
+    "conditions": [
+      "NEG",
+      "POS",
+      "NEG_STRONG",
+      "POS_STRONG"
+    ],
+    "trust": "low_trust=0 rows only; missing fresh gamma excludes the candidate"
+  },
+  "loader": {
+    "n_rows": 104449,
+    "n_tradable_bars": 33717,
+    "n_sessions": 89,
+    "n_events_total": 855
+  },
+  "n_candidates": 827,
+  "n_trusted_gamma_rows": 31580,
+  "conditioning_stats": {
+    "n_no_fresh_gamma": 243,
+    "n_no_z_baseline": 122
+  },
+  "baseline_unconditioned": {
+    "n": 827,
+    "mean_net_bp": -0.9247485024252501,
+    "bootstrap": {
+      "ci95": [
+        -1.3975931047561931,
+        -0.22227100203131925
+      ],
+      "p_value": 0.008,
+      "n": 86,
+      "n_boot": 1000
+    }
+  },
+  "conditions": {
+    "NEG": {
+      "n_selected": 243,
+      "n_sessions": 38,
+      "mean_net_bp": -1.2201508580531775,
+      "bootstrap": {
+        "ci95": [
+          -2.440473838883642,
+          -0.4172197630850475
+        ],
+        "p_value": 0.006,
+        "n": 38,
+        "n_boot": 1000
+      },
+      "stress_bootstrap": {
+        "ci95": [
+          -3.4117313204370903,
+          -1.3937089885504192
+        ],
+        "p_value": 0.002,
+        "n": 38,
+        "n_boot": 1000
+      },
+      "shuffle": {
+        "null_q975": 0.9945390596218252,
+        "n_shuffles": 200
+      },
+      "holm": {
+        "p_raw": 0.006,
+        "p_adjusted": 0.012,
+        "significant": true
+      },
+      "dsr_prob": 2.777361907685405e-05,
+      "screen": {
+        "mean_positive": false,
+        "ci95_above_zero": false,
+        "holm_significant": true,
+        "dsr_ok": false,
+        "stress_2x_ok": false,
+        "sign_shuffle_ok": false
+      },
+      "anti_signal": true,
+      "verdict": "KILL",
+      "beats_unconditioned_baseline": false
+    },
+    "NEG_STRONG": {
+      "n_selected": 69,
+      "n_sessions": 14,
+      "mean_net_bp": -0.7868066928790436,
+      "bootstrap": {
+        "ci95": [
+          -3.5830324136905096,
+          -0.021387296866156685
+        ],
+        "p_value": 0.046,
+        "n": 14,
+        "n_boot": 1000
+      },
+      "stress_bootstrap": {
+        "ci95": [
+          -4.719911506832885,
+          -0.8687155377778125
+        ],
+        "p_value": 0.004,
+        "n": 14,
+        "n_boot": 1000
+      },
+      "shuffle": {
+        "null_q975": 1.4777256191981436,
+        "n_shuffles": 200
+      },
+      "holm": {
+        "p_raw": null,
+        "p_adjusted": null,
+        "significant": null
+      },
+      "verdict": "UNDER_SAMPLED"
+    },
+    "POS": {
+      "n_selected": 341,
+      "n_sessions": 61,
+      "mean_net_bp": -0.9596461182502759,
+      "bootstrap": {
+        "ci95": [
+          -2.007246405979952,
+          0.3833339826960261
+        ],
+        "p_value": 0.16,
+        "n": 61,
+        "n_boot": 1000
+      },
+      "stress_bootstrap": {
+        "ci95": [
+          -2.9444055867597823,
+          -0.7097614787721066
+        ],
+        "p_value": 0.006,
+        "n": 61,
+        "n_boot": 1000
+      },
+      "shuffle": {
+        "null_q975": 0.5817656058206978,
+        "n_shuffles": 200
+      },
+      "holm": {
+        "p_raw": 0.16,
+        "p_adjusted": 0.16,
+        "significant": false
+      },
+      "dsr_prob": 0.004943560795757473,
+      "screen": {
+        "mean_positive": false,
+        "ci95_above_zero": false,
+        "holm_significant": false,
+        "dsr_ok": false,
+        "stress_2x_ok": false,
+        "sign_shuffle_ok": false
+      },
+      "anti_signal": false,
+      "verdict": "KILL",
+      "beats_unconditioned_baseline": false
+    },
+    "POS_STRONG": {
+      "n_selected": 62,
+      "n_sessions": 13,
+      "mean_net_bp": -1.9174922609506777,
+      "bootstrap": {
+        "ci95": [
+          -4.343310025099767,
+          -0.5167679887680129
+        ],
+        "p_value": 0.012,
+        "n": 13,
+        "n_boot": 1000
+      },
+      "stress_bootstrap": {
+        "ci95": [
+          -5.2580314930955945,
+          -1.571255392802325
+        ],
+        "p_value": 0.002,
+        "n": 13,
+        "n_boot": 1000
+      },
+      "shuffle": {
+        "null_q975": 1.5508857780747722,
+        "n_shuffles": 200
+      },
+      "holm": {
+        "p_raw": null,
+        "p_adjusted": null,
+        "significant": null
+      },
+      "verdict": "UNDER_SAMPLED"
+    }
+  },
+  "n_survivors": 0,
+  "survivors": [],
+  "placebo_day_shuffle": {
+    "n_survivors": 0,
+    "survivors": [],
+    "hard_halt_engaged": false
+  },
+  "run_sec": 3.06,
+  "next_depth": "GEX-R1 s8.5 Rule A reversion candidate generator (fade-to-VWAP in positive-gamma tape) under its own prereg; regime accrual toward the F2 VIX-tercile floor; QQQ replication via the batch pipeline."
+}

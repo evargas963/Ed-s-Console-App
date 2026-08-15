@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from numeric_contract import float_finite_or_none
+from instrument_identity import ticker_storage_key
 
 # Conservative index ETF bounds — wrong-but-finite prices outside these quarantine.
 _PRICE_SANITY_BOUNDS: dict[str, tuple[float, float]] = {
@@ -184,14 +185,13 @@ def resolve_fetch_state_decision_route(update_source: str | None) -> str:
 
 
 def _price_bounds(ticker: str) -> tuple[float, float]:
-    t = str(ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical bounds-lookup identity
     return _PRICE_SANITY_BOUNDS.get(t, _DEFAULT_BOUNDS)
 
 
 def assess_spot_price(ticker: str, spot: Any) -> tuple[bool, list[str]]:
     """Return (acceptable, reasons). Rejects missing, non-finite, non-positive, out-of-range."""
-    reasons: list[str] = []
-    t = str(ticker or "").upper().strip() or "UNKNOWN"
+    t = ticker_storage_key(ticker) or "UNKNOWN"  # RC-345/F25: canonical gate identity
     if spot is None:
         return False, ["missing_price"]
     f = float_finite_or_none(spot)
@@ -231,7 +231,7 @@ def validate_trade_impacting_gate(
     """Validate ms_dict for trade-impacting emission. Does not mutate."""
     reasons: list[str] = []
     route_class = classify_route(route)
-    ticker = str(ms_dict.get("ticker") or "").upper().strip()
+    ticker = ticker_storage_key(ms_dict.get("ticker"))  # RC-345/F25: canonical gate identity
     if not ticker:
         reasons.append("missing_ticker")
 

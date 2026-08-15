@@ -40,6 +40,41 @@ assert.strictEqual(
   false,
 );
 
+// l1PayloadMatchesActiveScope — L1-SSE-AUTO-ACCEPT (2026-07-22)
+// THE live defect case: auto mode (activeExpiry null) + payload carrying the
+// RESOLVED expiry must be ACCEPTED (old strict equality rejected 100% of
+// delivered payloads: rejectedTierBRender=2076 / accepted=0 on a live tab).
+assert.strictEqual(
+  G.l1PayloadMatchesActiveScope('SPY', '2026-07-22', 'SPY', null),
+  true,
+  'auto mode must accept the resolved-expiry payload',
+);
+assert.strictEqual(
+  G.l1PayloadMatchesActiveScope('SPY', null, 'SPY', null),
+  true,
+  'auto mode accepts unresolved payloads too',
+);
+assert.strictEqual(
+  G.l1PayloadMatchesActiveScope('QQQ', '2026-07-22', 'SPY', null),
+  false,
+  'wrong ticker never accepted',
+);
+assert.strictEqual(
+  G.l1PayloadMatchesActiveScope('SPY', '2026-07-22', 'SPY', '2026-07-22'),
+  true,
+  'pinned expiry accepts matching payload',
+);
+assert.strictEqual(
+  G.l1PayloadMatchesActiveScope('SPY', '2026-07-25', 'SPY', '2026-07-22'),
+  false,
+  'pinned expiry stays strict — mismatched payload rejected',
+);
+assert.strictEqual(
+  G.l1PayloadMatchesActiveScope('', '2026-07-22', 'SPY', null),
+  false,
+  'missing payload ticker rejected',
+);
+
 // Monotonic generation — same rule as renderTierBLight / HTTP+SSE coherence
 const store = {};
 const sk = 'SPY|';

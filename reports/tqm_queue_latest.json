@@ -1,0 +1,70 @@
+{
+  "advisory_total": 3451,
+  "cap": 5,
+  "checks": {
+    "debt_ratchet": 1,
+    "file_length": 50,
+    "function_complexity": 603,
+    "function_length": 484,
+    "mypy_types": 812,
+    "orphan_dict_keys": 197,
+    "ruff_quality": 1304
+  },
+  "delta": 84,
+  "generated_at_iso": "2026-08-14T00:17:18.507975+00:00",
+  "generated_at_utc": 1786666638.507957,
+  "note": "TRIAGE stage of the TQM loop. Work ONLY these items. Mass-rewriting the advisory backlog is banned: every change needs a reproduce command and a test.",
+  "prior_total": 3367,
+  "top_items": [
+    {
+      "check": "debt_ratchet",
+      "count": 1,
+      "id": "tqm.debt_ratchet.governance.advisory_debt_baseline.json",
+      "kill_criteria": "kill if the rise is a deliberate, reviewed addition already justified in an RC row",
+      "path": "governance/advisory_debt_baseline.json",
+      "severity": "P1",
+      "suggested_smallest_change": "read the ratchet delta and revert whichever change raised it, or record why the rise is correct",
+      "why_now": "1 debt_ratchet finding(s) concentrated in one file \u2014 a bounded change, not a sweep"
+    },
+    {
+      "check": "mypy_types",
+      "count": 45,
+      "id": "tqm.mypy_types.calibration.phase65_edge_isolation_v1.py",
+      "kill_criteria": "kill if the annotation forces a runtime change, or if the error is in a vendored/legacy tree scheduled for deletion",
+      "path": "calibration/phase65_edge_isolation_v1.py",
+      "severity": "P2",
+      "suggested_smallest_change": "annotate the single function the error names; do not restructure call sites",
+      "why_now": "45 mypy_types finding(s) concentrated in one file \u2014 a bounded change, not a sweep"
+    },
+    {
+      "check": "mypy_types",
+      "count": 22,
+      "id": "tqm.mypy_types.db.py",
+      "kill_criteria": "kill if the annotation forces a runtime change, or if the error is in a vendored/legacy tree scheduled for deletion",
+      "path": "db.py",
+      "severity": "P2",
+      "suggested_smallest_change": "annotate the single function the error names; do not restructure call sites",
+      "why_now": "22 mypy_types finding(s) concentrated in one file \u2014 a bounded change, not a sweep"
+    },
+    {
+      "check": "mypy_types",
+      "count": 22,
+      "id": "tqm.mypy_types.features.signal_layer_v1.py",
+      "kill_criteria": "kill if the annotation forces a runtime change, or if the error is in a vendored/legacy tree scheduled for deletion",
+      "path": "features/signal_layer_v1.py",
+      "severity": "P2",
+      "suggested_smallest_change": "annotate the single function the error names; do not restructure call sites",
+      "why_now": "22 mypy_types finding(s) concentrated in one file \u2014 a bounded change, not a sweep"
+    },
+    {
+      "check": "ruff_quality",
+      "count": 20,
+      "id": "tqm.ruff_quality.call_engine.py",
+      "kill_criteria": "kill if the file has no test module, or if --fix touches money-path semantics (greeks, levels, decisions) rather than style",
+      "path": "call_engine.py",
+      "severity": "P2",
+      "suggested_smallest_change": "ruff --fix on THIS FILE only, then run the file's own test module; commit the autofix alone",
+      "why_now": "20 ruff_quality finding(s) concentrated in one file \u2014 a bounded change, not a sweep"
+    }
+  ]
+}

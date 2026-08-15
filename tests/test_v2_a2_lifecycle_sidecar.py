@@ -13,6 +13,7 @@ def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int
 
 
 def _winner() -> dict:
+    # institutional-synthetic-ok: v2 lifecycle-sidecar test needs a controlled winner row.
     return {
         "expression": "500 CALL",
         "strike": 500.0,
@@ -482,3 +483,94 @@ def _projected_values(preview: dict) -> dict:
             "projected_eod_force_exit_time",
         )
     }
+
+
+# ── RC-337: decision-timestamp unit contract (retained enforcement) ──────────────────────
+#
+# `would_apply_if_entered_at_time` (a2_lifecycle_sidecar.py:251) is a pass-through of
+# `_decision_timestamp(ms)`, which selects among FOUR sources with PROVEN units:
+#   decision_time_ms        epoch-ms  (server.py:7763  int(_refresh_ts_utc * 1000))
+#   decision_timestamp_utc  epoch-s   (live_decision_bundle.py:122  float(time.time()))
+#   _server_build_ts        epoch-s   (server.py:7764 / :9480  time.time())
+#   refresh_ts_utc          epoch-s   (server.py:7627  _utc_ts_refresh())
+# The pre-fix resolver returned the first non-falsy source IN THAT SOURCE'S UNIT, so the
+# same field was epoch-ms on one route and epoch-SECONDS on another (measured live:
+# 1786383424954 vs 1786383424.2295866). Canonical unit is epoch-ms; fractional policy is
+# TRUNCATE (`int(s * 1000)`), the repo convention at 12 sites incl. `_epoch_ms_et` above.
+# These tests are the recurrence lock: they exercise the REAL resolver and each changed
+# seconds-fallback branch, and they must fail if any source can again pass through in its
+# native unit, get rounded, or be double-converted.
+
+from v2_decision.a2_lifecycle_sidecar import _decision_timestamp  # noqa: E402
+
+_RC337_SECONDS = 1786383424.2295866          # the live-measured seconds-path value
+
+
+def test_decision_timestamp_ms_int_preserved_exactly_without_float_round_trip():
+    big = 2**53 + 1                          # would corrupt through a float round-trip
+    assert _decision_timestamp({"decision_time_ms": big}) == big
+    assert _decision_timestamp({"decision_time_ms": 1786383424954}) == 1786383424954
+
+
+def test_decision_timestamp_every_seconds_source_truncates_exactly_once():
+    want = int(_RC337_SECONDS * 1000)        # 1786383424229 — truncate, NOT round (…230)
+    for field in ("decision_timestamp_utc", "_server_build_ts", "refresh_ts_utc"):
+        got = _decision_timestamp({field: _RC337_SECONDS})
+        assert got == want, f"{field}: {got} != {want} (unit or rounding drift)"
+        assert isinstance(got, int)
+
+
+def test_decision_timestamp_precedence_unchanged():
+    assert _decision_timestamp(
+        {"decision_time_ms": 123, "_server_build_ts": _RC337_SECONDS}) == 123
+    assert _decision_timestamp(
+        {"decision_timestamp_utc": 2.0, "_server_build_ts": 9.0}) == 2000
+
+
+def test_decision_timestamp_rejects_non_clock_values_per_source_contract():
+    # bool: True is `1`, not an instant — must fall through, not become 1000.
+    assert _decision_timestamp({"_server_build_ts": True}) is None
+    assert _decision_timestamp({"decision_time_ms": True, "refresh_ts_utc": 5.0}) == 5000
+    # string: no proven producer emits one — numeric strings included.
+    assert _decision_timestamp({"decision_time_ms": "1786383424954"}) is None
+    assert _decision_timestamp({"refresh_ts_utc": "5.0"}) is None
+    # zero and negative are not instants.
+    assert _decision_timestamp({"decision_time_ms": 0}) is None
+    assert _decision_timestamp({"decision_time_ms": -5}) is None
+    assert _decision_timestamp({"refresh_ts_utc": -1.0}) is None
+    # NaN / +inf / -inf fall through to the next usable source.
+    assert _decision_timestamp(
+        {"_server_build_ts": float("nan"), "refresh_ts_utc": 7.0}) == 7000
+    assert _decision_timestamp(
+        {"_server_build_ts": float("inf"), "refresh_ts_utc": 8.0}) == 8000
+    assert _decision_timestamp({"refresh_ts_utc": float("-inf")}) is None
+
+
+def test_decision_timestamp_overflow_is_handled_not_raised():
+    # Python's own arithmetic decides unrepresentability: 1e307 * 1000 -> inf ->
+    # int(inf) raises OverflowError, which must be handled as fall-through.
+    assert _decision_timestamp({"_server_build_ts": 1e307}) is None
+    assert _decision_timestamp({"_server_build_ts": 1e307, "refresh_ts_utc": 5.0}) == 5000
+
+
+def test_decision_timestamp_absent_is_none_and_input_never_mutated():
+    assert _decision_timestamp({}) is None
+    snap = {"decision_time_ms": None, "_server_build_ts": 3.0}
+    frozen = dict(snap)
+    assert _decision_timestamp(snap) == 3000
+    assert snap == frozen
+
+
+def test_downstream_would_apply_field_is_epoch_ms_on_the_seconds_fallback_route():
+    """The REAL production path, seconds branch: decision_time_ms absent, so the resolver
+    must serve _server_build_ts as truncated epoch-ms — never raw seconds (the measured
+    live defect) and never a rounded value."""
+    ms = _ms()
+    ms.pop("decision_time_ms", None)
+    ms["_server_build_ts"] = _RC337_SECONDS
+    preview = _a2(ms)["lifecycle"]["sidecar"]["projected_preview"]
+    got = preview["would_apply_if_entered_at_time"]
+    assert got == int(_RC337_SECONDS * 1000), (
+        f"seconds route emitted {got!r} — expected truncated epoch-ms "
+        f"{int(_RC337_SECONDS * 1000)} (raw seconds pass-through or rounding regressed)")
+    assert isinstance(got, int)

@@ -1,0 +1,22 @@
+{
+  "prereg_id": "order_flow_eval_v1_prereg_v1",
+  "sibling_precedent": "research/har_rv_eval_v1/prereg_v1.json",
+  "study_question": "Do already-collected snapshot microstructure/flow fields (spread, flow_imbalance, smart_money_score, absorption_score, continuation_score, candle_volume) predict production ternary outcome_{hz} walk-forward beyond trivial baselines?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only.",
+    "not_live_order_flow_engine": "Uses persisted snapshot columns only; live order_flow_engine metrics are not in DB."
+  },
+  "model": {
+    "features": ["spread", "flow_imbalance", "smart_money_score", "absorption_score", "continuation_score", "candle_volume"],
+    "row_policy": "drop row if any feature non-finite; no median impute (avoids fabricating sparse QQQ/IWM holes)",
+    "classifier": "LogisticRegression elasticnet saga (frozen as Study #4)"
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {"name": "MCC", "screen": "same advancement screen as elastic_net_eval_v1"},
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/order_flow_eval/order_flow_eval_<date>_<runid>.json"}
+}

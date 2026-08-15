@@ -1,0 +1,419 @@
+{
+  "schema": "backfill_greeks_p0_census_v1",
+  "generated_utc": "2026-07-24T11:57:18.987876+00:00",
+  "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+  "era_floor_ts_utc": 1784502281.0,
+  "blob_len_floor": 10,
+  "census_stride": 25,
+  "per_ticker_counts": [
+    {
+      "ticker": "$SPX",
+      "n_chain_rows": 5729,
+      "ts_min": 1774445204.8418226,
+      "ts_max": 1784837145.9419787,
+      "blob_bytes": 191767792
+    },
+    {
+      "ticker": "$VIX",
+      "n_chain_rows": 707,
+      "ts_min": 1776435782.6294367,
+      "ts_max": 1779912329.2120633,
+      "blob_bytes": 33070633
+    },
+    {
+      "ticker": "AAPL",
+      "n_chain_rows": 4820,
+      "ts_min": 1774445133.8661947,
+      "ts_max": 1784838217.864009,
+      "blob_bytes": 153540210
+    },
+    {
+      "ticker": "AEIS",
+      "n_chain_rows": 660,
+      "ts_min": 1777915510.7975187,
+      "ts_max": 1779912363.523401,
+      "blob_bytes": 32107584
+    },
+    {
+      "ticker": "AMD",
+      "n_chain_rows": 45,
+      "ts_min": 1784554993.8696606,
+      "ts_max": 1784837680.3841054,
+      "blob_bytes": 2336026
+    },
+    {
+      "ticker": "AMZN",
+      "n_chain_rows": 4179,
+      "ts_min": 1774445153.5329432,
+      "ts_max": 1784838256.524666,
+      "blob_bytes": 120023447
+    },
+    {
+      "ticker": "ASTS",
+      "n_chain_rows": 1524,
+      "ts_min": 1777334353.1117914,
+      "ts_max": 1784837192.9633658,
+      "blob_bytes": 69394430
+    },
+    {
+      "ticker": "AVGO",
+      "n_chain_rows": 4042,
+      "ts_min": 1774445192.7296054,
+      "ts_max": 1784837077.4701934,
+      "blob_bytes": 112863189
+    },
+    {
+      "ticker": "BBIO",
+      "n_chain_rows": 659,
+      "ts_min": 1777915516.1991255,
+      "ts_max": 1779912381.5888991,
+      "blob_bytes": 31877724
+    },
+    {
+      "ticker": "BE",
+      "n_chain_rows": 661,
+      "ts_min": 1777915535.986806,
+      "ts_max": 1779912392.1224523,
+      "blob_bytes": 32209345
+    },
+    {
+      "ticker": "CDE",
+      "n_chain_rows": 658,
+      "ts_min": 1777915542.7774544,
+      "ts_max": 1779912372.7389288,
+      "blob_bytes": 31918458
+    },
+    {
+      "ticker": "CIFR",
+      "n_chain_rows": 3968,
+      "ts_min": 1774445042.3715966,
+      "ts_max": 1784837234.9081142,
+      "blob_bytes": 110250872
+    },
+    {
+      "ticker": "CRDO",
+      "n_chain_rows": 656,
+      "ts_min": 1777915559.5312586,
+      "ts_max": 1779912424.2484152,
+      "blob_bytes": 32018745
+    },
+    {
+      "ticker": "CRWD",
+      "n_chain_rows": 1695,
+      "ts_min": 1775837480.0635104,
+      "ts_max": 1784837716.5639043,
+      "blob_bytes": 77428142
+    },
+    {
+      "ticker": "DELL",
+      "n_chain_rows": 246,
+      "ts_min": 1784729599.6825268,
+      "ts_max": 1784744985.6725721,
+      "blob_bytes": 12833846
+    },
+    {
+      "ticker": "FN",
+      "n_chain_rows": 658,
+      "ts_min": 1777916183.031878,
+      "ts_max": 1779912448.1405668,
+      "blob_bytes": 32028969
+    },
+    {
+      "ticker": "GOOG",
+      "n_chain_rows": 3935,
+      "ts_min": 1774445073.7791038,
+      "ts_max": 1784837269.8239021,
+      "blob_bytes": 110076566
+    },
+    {
+      "ticker": "GOOGL",
+      "n_chain_rows": 4214,
+      "ts_min": 1774445183.2177384,
+      "ts_max": 1784837023.5875783,
+      "blob_bytes": 122860558
+    },
+    {
+      "ticker": "INTC",
+      "n_chain_rows": 280,
+      "ts_min": 1784727613.443713,
+      "ts_max": 1784744949.953242,
+      "blob_bytes": 14538136
+    },
+    {
+      "ticker": "IWM",
+      "n_chain_rows": 10016,
+      "ts_min": 1774445115.5712316,
+      "ts_max": 1784872215.6649554,
+      "blob_bytes": 413741226
+    },
+    {
+      "ticker": "KRE",
+      "n_chain_rows": 654,
+      "ts_min": 1777915592.6441216,
+      "ts_max": 1779912467.6279619,
+      "blob_bytes": 31691159
+    },
+    {
+      "ticker": "KTOS",
+      "n_chain_rows": 656,
+      "ts_min": 1777915599.6108818,
+      "ts_max": 1779912480.630166,
+      "blob_bytes": 31829909
+    },
+    {
+      "ticker": "MET",
+      "n_chain_rows": 2644,
+      "ts_min": 1775745871.849905,
+      "ts_max": 1784837321.1708176,
+      "blob_bytes": 89786987
+    },
+    {
+      "ticker": "META",
+      "n_chain_rows": 5222,
+      "ts_min": 1774445160.5967877,
+      "ts_max": 1784838283.1247826,
+      "blob_bytes": 173947299
+    },
+    {
+      "ticker": "MRVL",
+      "n_chain_rows": 3964,
+      "ts_min": 1774445215.155508,
+      "ts_max": 1784837355.6250904,
+      "blob_bytes": 110243677
+    },
+    {
+      "ticker": "MSFT",
+      "n_chain_rows": 4361,
+      "ts_min": 1774445145.5588298,
+      "ts_max": 1784838242.4916348,
+      "blob_bytes": 129968315
+    },
+    {
+      "ticker": "MU",
+      "n_chain_rows": 1509,
+      "ts_min": 1777334169.721616,
+      "ts_max": 1784837381.514164,
+      "blob_bytes": 69327432
+    },
+    {
+      "ticker": "NBIS",
+      "n_chain_rows": 291,
+      "ts_min": 1783695196.421889,
+      "ts_max": 1784837768.2355332,
+      "blob_bytes": 15132622
+    },
+    {
+      "ticker": "NBIX",
+      "n_chain_rows": 579,
+      "ts_min": 1783695190.2508965,
+      "ts_max": 1784837809.7668242,
+      "blob_bytes": 26328729
+    },
+    {
+      "ticker": "NET",
+      "n_chain_rows": 557,
+      "ts_min": 1781463803.25833,
+      "ts_max": 1784837833.7150455,
+      "blob_bytes": 28856590
+    },
+    {
+      "ticker": "NFLX",
+      "n_chain_rows": 2647,
+      "ts_min": 1775826094.5839534,
+      "ts_max": 1784837416.7700684,
+      "blob_bytes": 97706689
+    },
+    {
+      "ticker": "NVDA",
+      "n_chain_rows": 4760,
+      "ts_min": 1774445123.8999808,
+      "ts_max": 1784838183.749769,
+      "blob_bytes": 151022715
+    },
+    {
+      "ticker": "NXT",
+      "n_chain_rows": 652,
+      "ts_min": 1777915615.3169181,
+      "ts_max": 1779912498.9357486,
+      "blob_bytes": 31701934
+    },
+    {
+      "ticker": "ORCL",
+      "n_chain_rows": 415,
+      "ts_min": 1781191175.3315701,
+      "ts_max": 1784837874.3634193,
+      "blob_bytes": 21453599
+    },
+    {
+      "ticker": "PCG",
+      "n_chain_rows": 4050,
+      "ts_min": 1774455564.4295297,
+      "ts_max": 1784837451.9719813,
+      "blob_bytes": 117324205
+    },
+    {
+      "ticker": "PLTR",
+      "n_chain_rows": 4132,
+      "ts_min": 1774445058.1980612,
+      "ts_max": 1784837485.453888,
+      "blob_bytes": 119639964
+    },
+    {
+      "ticker": "PSCI",
+      "n_chain_rows": 653,
+      "ts_min": 1777915620.2578878,
+      "ts_max": 1779912510.7646563,
+      "blob_bytes": 31327314
+    },
+    {
+      "ticker": "QQQ",
+      "n_chain_rows": 11783,
+      "ts_min": 1774445103.0233245,
+      "ts_max": 1784872206.5940506,
+      "blob_bytes": 457984256
+    },
+    {
+      "ticker": "RKLB",
+      "n_chain_rows": 1503,
+      "ts_min": 1777334265.1203682,
+      "ts_max": 1784837519.5963287,
+      "blob_bytes": 68618134
+    },
+    {
+      "ticker": "SATS",
+      "n_chain_rows": 657,
+      "ts_min": 1777915627.7924383,
+      "ts_max": 1779912525.5097368,
+      "blob_bytes": 31963863
+    },
+    {
+      "ticker": "SKHY",
+      "n_chain_rows": 878,
+      "ts_min": 1784053100.7525434,
+      "ts_max": 1784837905.9010355,
+      "blob_bytes": 45593142
+    },
+    {
+      "ticker": "SMCI",
+      "n_chain_rows": 4166,
+      "ts_min": 1774455557.5311482,
+      "ts_max": 1784837574.5330446,
+      "blob_bytes": 124479662
+    },
+    {
+      "ticker": "SPCX",
+      "n_chain_rows": 861,
+      "ts_min": 1781617802.333792,
+      "ts_max": 1784838256.9102316,
+      "blob_bytes": 45047740
+    },
+    {
+      "ticker": "SPY",
+      "n_chain_rows": 39109,
+      "ts_min": 1774418560.3157036,
+      "ts_max": 1784872206.667947,
+      "blob_bytes": 1491487223
+    },
+    {
+      "ticker": "STRL",
+      "n_chain_rows": 653,
+      "ts_min": 1777915637.4959333,
+      "ts_max": 1779912540.1239417,
+      "blob_bytes": 31936103
+    },
+    {
+      "ticker": "TSL",
+      "n_chain_rows": 3572,
+      "ts_min": 1774618502.8014605,
+      "ts_max": 1784837628.0848114,
+      "blob_bytes": 101448912
+    },
+    {
+      "ticker": "TSLA",
+      "n_chain_rows": 6949,
+      "ts_min": 1774445173.181262,
+      "ts_max": 1784836995.6363313,
+      "blob_bytes": 264216693
+    },
+    {
+      "ticker": "TSM",
+      "n_chain_rows": 204,
+      "ts_min": 1784213344.2113993,
+      "ts_max": 1784837977.76489,
+      "blob_bytes": 10660854
+    },
+    {
+      "ticker": "UNH",
+      "n_chain_rows": 66,
+      "ts_min": 1784208832.8506098,
+      "ts_max": 1784838051.2812314,
+      "blob_bytes": 3416867
+    },
+    {
+      "ticker": "WMT",
+      "n_chain_rows": 912,
+      "ts_min": 1777915656.3669019,
+      "ts_max": 1784505258.0623696,
+      "blob_bytes": 45080340
+    },
+    {
+      "ticker": "XBI",
+      "n_chain_rows": 656,
+      "ts_min": 1777915663.2709296,
+      "ts_max": 1779912577.7562258,
+      "blob_bytes": 31845016
+    },
+    {
+      "ticker": "XLE",
+      "n_chain_rows": 105,
+      "ts_min": 1783104779.519722,
+      "ts_max": 1784838063.4770997,
+      "blob_bytes": 5440172
+    },
+    {
+      "ticker": "XOM",
+      "n_chain_rows": 373,
+      "ts_min": 1781460444.3276808,
+      "ts_max": 1784838091.1954525,
+      "blob_bytes": 19273370
+    },
+    {
+      "ticker": "XRT",
+      "n_chain_rows": 944,
+      "ts_min": 1777915668.6972163,
+      "ts_max": 1784505242.7660725,
+      "blob_bytes": 46472301
+    }
+  ],
+  "n_chain_rows_total": 160489,
+  "blob_bytes_total": 5839139685,
+  "sampled": {
+    "n_sampled": 6420,
+    "n_pre_epoch": 6075,
+    "parse_fail_share": 0.0,
+    "n_contracts_histogram": {
+      "22": 6,
+      "30": 2,
+      "32": 1,
+      "34": 34,
+      "36": 37,
+      "38": 21,
+      "40": 6315,
+      "120": 3,
+      "122": 1
+    },
+    "dominant_mode": 40,
+    "multi_modal_slice_types": false,
+    "span_pct_p5": 0.025043496599356778,
+    "span_pct_p50": 0.11795088276923842,
+    "span_pct_p95": 0.6987863184994483,
+    "expiry_not_0dte_share": 0.44704,
+    "strike_floor_fail_share": 0.01713
+  },
+  "gates": {
+    "parse_failure_stop": false,
+    "expected_slice_contracts": 40
+  },
+  "verdict": "P0_OK",
+  "run_sec": 46.84
+}

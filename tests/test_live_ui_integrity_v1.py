@@ -1068,3 +1068,142 @@ def test_client_ticker_cache_refresh_fail_closed_vs_syncing_non_cache():
         _update_source="sse_tier_c",
     )
     assert analytics_card_trust_gate(syncing, active_ticker="SPY")["trusted"] is True
+
+
+# ── TERRAIN COMMAND DECK — layout contract ──────────────────────────────────
+# Caught by Cursor's audit 2026-07-20: `grid-template-rows: minmax(0,1fr) minmax(0,auto)`
+# collapsed the row-2 context tiles to ~40px — header visible, every value clipped.
+# `.tv-z` carries `overflow:auto`, whose min-content contribution is zero, so a
+# content-sized row resolves to nothing. The page then reports "no scroll" while the
+# content is simply cut off, which reads as fitted when it is truncated.
+#
+# These assert the CONTRACT (row 2 is explicitly sized), not the pixel outcome, which
+# only a browser can measure.
+
+def _tv_deck_rule() -> str:
+    html = _html()
+    i = html.find(".tv-deck { display:grid;")
+    assert i != -1, ".tv-deck grid rule not found in static/index.html"
+    return html[i : html.find("}", i)]
+
+
+def test_terrain_deck_row2_is_explicitly_sized_not_content_sized():
+    """A content-sized row 2 collapses because .tv-z is overflow:auto (min-content 0)."""
+    rule = _tv_deck_rule()
+    assert "grid-template-rows" in rule
+    rows = rule.split("grid-template-rows:")[1].split(";")[0]
+    assert "auto" not in rows, (
+        "row 2 must not be content-sized — it collapses the context tiles to header height: "
+        + rows.strip()
+    )
+    assert "min-content" not in rows, rows.strip()
+    assert "--tv-row2-h" in rows, "row 2 should come from the explicit --tv-row2-h token"
+
+
+def test_terrain_deck_is_twelve_columns():
+    """Concept A's tile weighting depends on a 12-track grid."""
+    assert "repeat(12,minmax(0,1fr))" in _tv_deck_rule()
+
+
+# ── TERRAIN v2 — NET GEX chip, pill tooltips, KDS/HVP/LVP (operator 2026-07-21:
+# "insert the gamma exposure whether it is positive or negative … tooltips at the
+# pills") ────────────────────────────────────────────────────────────────────
+
+def test_terrain_net_gex_chip_dom_and_render_wiring():
+    html = _html()
+    assert 'id="tv-gex"' in html
+    assert "function edFmtGex(" in html
+    assert "function edNetGexOf(" in html
+    # The chip is fed from the single painter; sign selects the regime colours.
+    assert "function edPaintNetGex(" in html
+    assert "chip.textContent = crossed ? 'NET GEX WITHHELD · CROSSED FLIP' : 'NET GEX ' + edFmtGex(g)" in html
+    assert ".tv-chip.gpos" in html and ".tv-chip.gneg" in html
+    # The dealer tile renders the same number formatted, not raw exponent.
+    assert "'NET GEX (1%)', edFmtGex(gas)" in html
+
+
+def test_terrain_net_gex_never_keeps_wrong_sign_across_flip():
+    """Bugbot 2026-07-21 (both findings): ONE painter drives BOTH NET GEX surfaces,
+    repainting on every cross-state CHANGE — so the header chip and the dealer tile
+    can never split, the chip cannot stick after an uncross, and no magnitude is ever
+    fabricated across the flip. RC-345 / F07: a live cross now WITHHOLDS (no client-side
+    profile, so the net GEX at the new spot is unknown) rather than fabricating a ≈0."""
+    html = _html()
+    painter = html.split("function edPaintNetGex(")[1].split("async function edLoadTerrain(")[0]
+    # Both surfaces painted from the single source, WITHHELD text on crossed (not a fake ≈0).
+    assert "getElementById('tv-gex')" in painter
+    assert "getElementById('tv-dealer-gex')" in painter
+    assert "NET GEX WITHHELD · CROSSED FLIP" in painter
+    assert "'— · crossed flip'" in painter
+    assert "≈0" not in painter, "a crossed flip must WITHHOLD, never fabricate a ≈0 (F07/RC-345)"
+    # Reconcile repaints on state CHANGE (both directions) BEFORE the regime
+    # early-return — the uncross path short-circuits there, which is exactly where
+    # the chip used to get stuck.
+    rec = html.split("function edReconcileRegime(")[1].split("function edPaintLadderSpot(")[0]
+    change_idx = rec.index("!!d._gexCrossed !== crossed")
+    # RC-345 / F07: the frontend no longer SUBSTITUTES the regime — `d.regime = want` is
+    # deleted, because the sign is owned by the backend (terrain_read._regime_for). The
+    # cross-state NET GEX repaint must still precede the presentation-only crossed
+    # early-return, so an uncross re-paints the chip instead of sticking (the original bug).
+    early_return_idx = rec.index("if (!!d._crossedFlip === crossed) return;")
+    assert change_idx < early_return_idx, "cross-state repaint must precede the crossed early-return"
+    assert "d.regime =" not in rec, "edReconcileRegime must never assign d.regime (F07/RC-345)"
+    # Fresh payload re-anchors the state; periphery re-applies after kv() rebuilds its row.
+    assert "d._gexCrossed = false;" in html
+    assert "'tv-dealer-gex'" in html
+    assert html.count("edPaintNetGex(d)") >= 3  # load, reconcile, periphery
+
+
+def test_terrain_level_set_includes_new_levels_each_with_tooltip():
+    html = _html()
+    body = html.split("function edLevelSet(")[1].split("function edRenderLevels(")[0]
+    for token in ("d.key_delta_strike", "d.hvp", "d.lvp",
+                  "'KEY DELTA'", "'HVP'", "'LVP'"):
+        assert token in body, token + " missing from edLevelSet"
+    # Every level entry carries a tip — the single source both surfaces render.
+    #
+    # RC-308: this read `body.count("tip:") >= 11`, a COUNT standing in for the property the
+    # test is named after. RC-132 (A3) then deleted the HVL row on purpose — it was the same
+    # metric as GAMMA PIN under a second name — leaving 10 entries, each with a tip, and a
+    # test called "each with tooltip" failing while every entry had one. A hard-coded count
+    # cannot tell a removed row from a missing tooltip. Count the entries instead.
+    entries = body.count("{ t: '")
+    assert entries >= 10, f"the level set collapsed to {entries} entries"
+    assert body.count("tip:") == entries, (
+        f"{entries} level entries but {body.count('tip:')} tips — every edLevelSet entry "
+        "needs exactly one tip, and the two surfaces render it from this single source")
+
+
+def test_terrain_tooltips_reach_both_surfaces_and_periphery():
+    html = _html()
+    # Ladder chips
+    assert "if (it.tip) chip.title = it.tip;" in html
+    # Levels table cell
+    assert "(r.tip ? ' title=\"' + r.tip + '\"' : '')" in html
+    # Periphery kv rows accept a 4th element rendered as a title on the key
+    assert "(r[3] ? ' title=\"' + r[3] + '\"' : '')" in html
+
+
+def test_terrain_header_pills_carry_static_tooltips():
+    html = _html()
+    i = html.find('id="tv-trust"')
+    assert i != -1 and 'title=' in html[html.rfind('<span', 0, i):html.find('>', i)]
+    j = html.find('id="tv-contracts"')
+    assert j != -1 and 'title=' in html[html.rfind('<span', 0, j):html.find('>', j)]
+    k = html.find('id="tv-gex"')
+    assert k != -1 and 'title=' in html[html.rfind('<span', 0, k):html.find('>', k)]
+
+
+def test_terrain_zone_spans_match_concept_a():
+    html = _html()
+    for cls, span in (
+        ("tv-z-radar", "span 2"), ("tv-z-ladder", "span 6"), ("tv-z-levels", "span 4"),
+        ("tv-z-session", "span 3"), ("tv-z-dealer", "span 3"),
+        ("tv-z-tape", "span 2"), ("tv-z-posture", "span 2"),
+    ):
+        i = html.find("." + cls + " ")
+        assert i != -1, cls + " rule missing"
+        assert span in html[i : html.find("}", i)], cls + " should be grid-column:" + span
+    # the radar tile is the only one spanning both rows
+    i = html.find(".tv-z-radar ")
+    assert "grid-row:span 2" in html[i : html.find("}", i)]

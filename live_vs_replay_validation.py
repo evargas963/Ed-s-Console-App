@@ -190,17 +190,25 @@ def run_live_vs_replay_validation(
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    wh_t = "ticker = ?" if ticker_u else "1=1"
+    # RC-6: the option_chain_json / replay_context_json blobs live ONLY in `snapshots`
+    # (the byte-identical duplicate in snapshots_1m_normalized was dropped). Read them from
+    # snapshots via a JOIN on the aligned key (ticker, timeframe, ts_utc); every other column
+    # still comes from the validation table `n`. When {table} IS snapshots this is a 1:1
+    # self-join (no duplicate keys), so the query is correct for both validation tables.
+    wh_t = "n.ticker = ?" if ticker_u else "1=1"
     params_count: list[Any] = [CANONICAL_TIMEFRAME]
     if ticker_u:
         params_count.append(ticker_u)
     cnt_row = conn.execute(
         f"""
-        SELECT COUNT(*) AS c FROM {table}
-        WHERE timeframe = ?
+        SELECT COUNT(*) AS c
+        FROM {table} n
+        JOIN snapshots s
+          ON s.ticker = n.ticker AND s.timeframe = n.timeframe AND s.ts_utc = n.ts_utc
+        WHERE n.timeframe = ?
           AND {wh_t}
-          AND replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
-          AND option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+          AND s.replay_context_json IS NOT NULL AND length(s.replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+          AND s.option_chain_json IS NOT NULL AND length(s.option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
         """,
         tuple(params_count),
     ).fetchone()
@@ -213,15 +221,18 @@ def run_live_vs_replay_validation(
     params_sel.append(take_n)
 
     sql = f"""
-        SELECT snapshot_id, ticker, timeframe, ts_utc, ts_et, expiry, spot, combined_signal,
-               option_chain_json, replay_context_json,
-               rules_entry, rules_stop, rules_target
-        FROM {table}
-        WHERE timeframe = ?
+        SELECT n.snapshot_id, n.ticker, n.timeframe, n.ts_utc, n.ts_et, n.expiry, n.spot,
+               n.combined_signal,
+               s.option_chain_json, s.replay_context_json,
+               n.rules_entry, n.rules_stop, n.rules_target
+        FROM {table} n
+        JOIN snapshots s
+          ON s.ticker = n.ticker AND s.timeframe = n.timeframe AND s.ts_utc = n.ts_utc
+        WHERE n.timeframe = ?
           AND {wh_t}
-          AND replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
-          AND option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
-        ORDER BY ts_utc DESC
+          AND s.replay_context_json IS NOT NULL AND length(s.replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+          AND s.option_chain_json IS NOT NULL AND length(s.option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+        ORDER BY n.ts_utc DESC
         LIMIT ?
     """
     rows = conn.execute(sql, tuple(params_sel)).fetchall()

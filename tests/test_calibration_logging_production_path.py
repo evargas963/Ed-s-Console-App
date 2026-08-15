@@ -96,6 +96,7 @@ def _compute_then_log(inp, *, db_path: Path, edb: EdDB):
         v2_decision=_v2_for_output(out, getattr(inp, "ticker", "SPY")),
         decision_id=_did,
         execution_identity_sha256=_sha,
+        colocated_snapshot_ts_utc=float(_ts) if _ts else None,
     )
     return out
 

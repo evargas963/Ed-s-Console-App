@@ -20,6 +20,34 @@ def test_order_flow_live_state_rth_uses_rth_open_mins_authority():
     assert RTH_END_MINS == 960
 
 
+def test_order_flow_live_state_rth_actually_behaves_at_the_boundaries(monkeypatch):
+    """RC-298: the test above reads the SOURCE. This one runs the FUNCTION.
+
+    Source assertions prove `is_rth_open` NAMES the authority constants; only calling it
+    proves it USES them correctly. A file that only matches text cannot detect a false
+    claim — that is how RC-294 locked "calls sell, puts buy", which one call refuted.
+
+    Driven by pinning the clock, because the real one makes the answer depend on when the
+    suite happens to run.
+    """
+    import datetime as _dt
+
+    from time_et import ET
+
+    def _at(y, m, d, hh, mm):
+        monkeypatch.setattr(ofls, "now_et",
+                            lambda: _dt.datetime(y, m, d, hh, mm, tzinfo=ET), raising=True)
+        return ofls.is_rth_open()
+
+    # 2026-08-07 is a Friday; 2026-08-08 a Saturday.
+    assert _at(2026, 8, 7, 9, 29) is False, "one minute before the open must not be RTH"
+    assert _at(2026, 8, 7, 9, 30) is True, "the open itself is RTH (inclusive lower bound)"
+    assert _at(2026, 8, 7, 12, 0) is True
+    assert _at(2026, 8, 7, 15, 59) is True
+    assert _at(2026, 8, 7, 16, 0) is False, "16:00 is the exclusive upper bound"
+    assert _at(2026, 8, 8, 12, 0) is False, "Saturday is never RTH regardless of clock"
+
+
 def test_order_flow_engine_composite_constants_exist_and_used():
     assert ofe.OF_COMPOSITE_WEIGHT_BOOK == 0.25
     assert ofe.OF_DIRECTION_BULLISH_THRESHOLD == 0.15

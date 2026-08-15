@@ -1,0 +1,550 @@
+{
+  "rows_total": 562,
+  "split_day": "2026-06-04",
+  "cells": {
+    "regime": {
+      "long": {
+        "DISCOVER": {
+          "n": 285,
+          "cont_pct": 47.0,
+          "mean_tail_bps": -8.8,
+          "med_tail_bps": -4.0
+        },
+        "CONFIRM": {
+          "n": 145,
+          "cont_pct": 47.6,
+          "mean_tail_bps": -4.7,
+          "med_tail_bps": -1.2
+        }
+      },
+      "short": {
+        "DISCOVER": {
+          "n": 62,
+          "cont_pct": 48.4,
+          "mean_tail_bps": -15.9,
+          "med_tail_bps": -1.5
+        },
+        "CONFIRM": {
+          "n": 70,
+          "cont_pct": 54.3,
+          "mean_tail_bps": 2.6,
+          "med_tail_bps": 5.7
+        }
+      }
+    },
+    "regime_x_bucket": {
+      "long|big": {
+        "DISCOVER": {
+          "n": 95,
+          "cont_pct": 49.5,
+          "mean_tail_bps": -7.9,
+          "med_tail_bps": -1.3
+        },
+        "CONFIRM": {
+          "n": 60,
+          "cont_pct": 40.0,
+          "mean_tail_bps": -14.3,
+          "med_tail_bps": -9.4
+        }
+      },
+      "long|mid": {
+        "DISCOVER": {
+          "n": 90,
+          "cont_pct": 52.2,
+          "mean_tail_bps": -11.4,
+          "med_tail_bps": 1.5
+        },
+        "CONFIRM": {
+          "n": 42,
+          "cont_pct": 54.8,
+          "mean_tail_bps": 8.9,
+          "med_tail_bps": 8.1
+        }
+      },
+      "long|quiet": {
+        "DISCOVER": {
+          "n": 100,
+          "cont_pct": 40.0,
+          "mean_tail_bps": -7.2,
+          "med_tail_bps": -8.3
+        },
+        "CONFIRM": {
+          "n": 43,
+          "cont_pct": 51.2,
+          "mean_tail_bps": -4.5,
+          "med_tail_bps": 0.4
+        }
+      },
+      "short|big": {
+        "DISCOVER": {
+          "n": 26,
+          "cont_pct": 53.8,
+          "mean_tail_bps": 2.8,
+          "med_tail_bps": 13.0
+        },
+        "CONFIRM": {
+          "n": 27,
+          "cont_pct": 44.4,
+          "mean_tail_bps": -17.7,
+          "med_tail_bps": -2.6
+        }
+      },
+      "short|mid": {
+        "DISCOVER": {
+          "n": 14,
+          "cont_pct": 35.7,
+          "mean_tail_bps": -32.6,
+          "med_tail_bps": -17.1
+        },
+        "CONFIRM": {
+          "n": 25,
+          "cont_pct": 64.0,
+          "mean_tail_bps": 21.1,
+          "med_tail_bps": 20.7
+        }
+      },
+      "short|quiet": {
+        "DISCOVER": {
+          "n": 22,
+          "cont_pct": 50.0,
+          "mean_tail_bps": -27.4,
+          "med_tail_bps": -0.1
+        },
+        "CONFIRM": {
+          "n": 18,
+          "cont_pct": 55.6,
+          "mean_tail_bps": 7.4,
+          "med_tail_bps": 7.4
+        }
+      }
+    },
+    "regime_x_bucket_x_dir": {
+      "long|big|down": {
+        "DISCOVER": {
+          "n": 31,
+          "cont_pct": 54.8,
+          "mean_tail_bps": -13.8,
+          "med_tail_bps": 5.5
+        },
+        "CONFIRM": {
+          "n": 27,
+          "cont_pct": 37.0,
+          "mean_tail_bps": -0.0,
+          "med_tail_bps": -9.1
+        }
+      },
+      "long|big|up": {
+        "DISCOVER": {
+          "n": 64,
+          "cont_pct": 46.9,
+          "mean_tail_bps": -5.1,
+          "med_tail_bps": -2.9
+        },
+        "CONFIRM": {
+          "n": 33,
+          "cont_pct": 42.4,
+          "mean_tail_bps": -26.0,
+          "med_tail_bps": -9.7
+        }
+      },
+      "long|mid|down": {
+        "DISCOVER": {
+          "n": 47,
+          "cont_pct": 44.7,
+          "mean_tail_bps": -24.7,
+          "med_tail_bps": -11.9
+        },
+        "CONFIRM": {
+          "n": 17,
+          "cont_pct": 64.7,
+          "mean_tail_bps": 47.8,
+          "med_tail_bps": 32.0
+        }
+      },
+      "long|mid|up": {
+        "DISCOVER": {
+          "n": 43,
+          "cont_pct": 60.5,
+          "mean_tail_bps": 3.2,
+          "med_tail_bps": 9.3
+        },
+        "CONFIRM": {
+          "n": 25,
+          "cont_pct": 48.0,
+          "mean_tail_bps": -17.6,
+          "med_tail_bps": -0.7
+        }
+      },
+      "long|quiet|down": {
+        "DISCOVER": {
+          "n": 51,
+          "cont_pct": 37.3,
+          "mean_tail_bps": -3.1,
+          "med_tail_bps": -7.2
+        },
+        "CONFIRM": {
+          "n": 22,
+          "cont_pct": 54.5,
+          "mean_tail_bps": 2.3,
+          "med_tail_bps": 0.9
+        }
+      },
+      "long|quiet|up": {
+        "DISCOVER": {
+          "n": 49,
+          "cont_pct": 42.9,
+          "mean_tail_bps": -11.5,
+          "med_tail_bps": -8.5
+        },
+        "CONFIRM": {
+          "n": 21,
+          "cont_pct": 47.6,
+          "mean_tail_bps": -11.7,
+          "med_tail_bps": -1.2
+        }
+      },
+      "short|big|down": {
+        "DISCOVER": {
+          "n": 18,
+          "cont_pct": 55.6,
+          "mean_tail_bps": 2.0,
+          "med_tail_bps": 13.0
+        },
+        "CONFIRM": {
+          "n": 19,
+          "cont_pct": 31.6,
+          "mean_tail_bps": -28.6,
+          "med_tail_bps": -8.3
+        }
+      },
+      "short|big|up": {
+        "DISCOVER": {
+          "n": 8,
+          "cont_pct": 50.0,
+          "mean_tail_bps": 4.6,
+          "med_tail_bps": 9.5
+        },
+        "CONFIRM": {
+          "n": 8,
+          "cont_pct": 75.0,
+          "mean_tail_bps": 8.2,
+          "med_tail_bps": 21.3
+        }
+      },
+      "short|mid|down": {
+        "DISCOVER": {
+          "n": 10,
+          "cont_pct": 40.0,
+          "mean_tail_bps": -15.1,
+          "med_tail_bps": -8.7
+        },
+        "CONFIRM": {
+          "n": 18,
+          "cont_pct": 66.7,
+          "mean_tail_bps": 27.3,
+          "med_tail_bps": 25.8
+        }
+      },
+      "short|mid|up": {
+        "DISCOVER": {
+          "n": 4,
+          "cont_pct": 25.0,
+          "mean_tail_bps": -76.3,
+          "med_tail_bps": -75.1
+        },
+        "CONFIRM": {
+          "n": 7,
+          "cont_pct": 57.1,
+          "mean_tail_bps": 5.0,
+          "med_tail_bps": 3.0
+        }
+      },
+      "short|quiet|down": {
+        "DISCOVER": {
+          "n": 12,
+          "cont_pct": 66.7,
+          "mean_tail_bps": 19.7,
+          "med_tail_bps": 18.5
+        },
+        "CONFIRM": {
+          "n": 11,
+          "cont_pct": 36.4,
+          "mean_tail_bps": -17.5,
+          "med_tail_bps": -32.7
+        }
+      },
+      "short|quiet|up": {
+        "DISCOVER": {
+          "n": 10,
+          "cont_pct": 30.0,
+          "mean_tail_bps": -84.0,
+          "med_tail_bps": -25.1
+        },
+        "CONFIRM": {
+          "n": 7,
+          "cont_pct": 85.7,
+          "mean_tail_bps": 46.6,
+          "med_tail_bps": 25.9
+        }
+      }
+    },
+    "bucket": {
+      "big": {
+        "DISCOVER": {
+          "n": 121,
+          "cont_pct": 50.4,
+          "mean_tail_bps": -5.6,
+          "med_tail_bps": 1.0
+        },
+        "CONFIRM": {
+          "n": 87,
+          "cont_pct": 41.4,
+          "mean_tail_bps": -15.4,
+          "med_tail_bps": -6.7
+        }
+      },
+      "mid": {
+        "DISCOVER": {
+          "n": 104,
+          "cont_pct": 50.0,
+          "mean_tail_bps": -14.2,
+          "med_tail_bps": -1.9
+        },
+        "CONFIRM": {
+          "n": 67,
+          "cont_pct": 58.2,
+          "mean_tail_bps": 13.4,
+          "med_tail_bps": 12.9
+        }
+      },
+      "quiet": {
+        "DISCOVER": {
+          "n": 122,
+          "cont_pct": 41.8,
+          "mean_tail_bps": -10.9,
+          "med_tail_bps": -7.6
+        },
+        "CONFIRM": {
+          "n": 61,
+          "cont_pct": 52.5,
+          "mean_tail_bps": -1.0,
+          "med_tail_bps": 1.4
+        }
+      }
+    },
+    "dow": {
+      "F4": {
+        "DISCOVER": {
+          "n": 52,
+          "cont_pct": 40.4,
+          "mean_tail_bps": -14.3,
+          "med_tail_bps": -14.6
+        },
+        "CONFIRM": {
+          "n": 17,
+          "cont_pct": 35.3,
+          "mean_tail_bps": 0.5,
+          "med_tail_bps": -19.2
+        }
+      },
+      "M0": {
+        "DISCOVER": {
+          "n": 70,
+          "cont_pct": 42.9,
+          "mean_tail_bps": -16.9,
+          "med_tail_bps": -6.9
+        },
+        "CONFIRM": {
+          "n": 55,
+          "cont_pct": 54.5,
+          "mean_tail_bps": 3.8,
+          "med_tail_bps": 1.4
+        }
+      },
+      "T1": {
+        "DISCOVER": {
+          "n": 73,
+          "cont_pct": 49.3,
+          "mean_tail_bps": -12.4,
+          "med_tail_bps": -4.3
+        },
+        "CONFIRM": {
+          "n": 27,
+          "cont_pct": 59.3,
+          "mean_tail_bps": 30.7,
+          "med_tail_bps": 14.4
+        }
+      },
+      "T3": {
+        "DISCOVER": {
+          "n": 84,
+          "cont_pct": 47.6,
+          "mean_tail_bps": -8.6,
+          "med_tail_bps": -1.5
+        },
+        "CONFIRM": {
+          "n": 49,
+          "cont_pct": 40.8,
+          "mean_tail_bps": -33.1,
+          "med_tail_bps": -9.7
+        }
+      },
+      "W2": {
+        "DISCOVER": {
+          "n": 68,
+          "cont_pct": 54.4,
+          "mean_tail_bps": 1.0,
+          "med_tail_bps": 8.7
+        },
+        "CONFIRM": {
+          "n": 67,
+          "cont_pct": 52.2,
+          "mean_tail_bps": 1.2,
+          "med_tail_bps": 3.0
+        }
+      }
+    },
+    "regime_x_dow": {
+      "long|0": {
+        "DISCOVER": {
+          "n": 48,
+          "cont_pct": 43.8,
+          "mean_tail_bps": -10.7,
+          "med_tail_bps": -6.6
+        },
+        "CONFIRM": {
+          "n": 42,
+          "cont_pct": 52.4,
+          "mean_tail_bps": -2.3,
+          "med_tail_bps": 0.7
+        }
+      },
+      "long|1": {
+        "DISCOVER": {
+          "n": 62,
+          "cont_pct": 50.0,
+          "mean_tail_bps": -15.2,
+          "med_tail_bps": -1.2
+        },
+        "CONFIRM": {
+          "n": 22,
+          "cont_pct": 59.1,
+          "mean_tail_bps": 23.3,
+          "med_tail_bps": 11.7
+        }
+      },
+      "long|2": {
+        "DISCOVER": {
+          "n": 54,
+          "cont_pct": 55.6,
+          "mean_tail_bps": 2.7,
+          "med_tail_bps": 9.5
+        },
+        "CONFIRM": {
+          "n": 47,
+          "cont_pct": 46.8,
+          "mean_tail_bps": -7.0,
+          "med_tail_bps": -1.1
+        }
+      },
+      "long|3": {
+        "DISCOVER": {
+          "n": 71,
+          "cont_pct": 46.5,
+          "mean_tail_bps": -5.4,
+          "med_tail_bps": -2.0
+        },
+        "CONFIRM": {
+          "n": 24,
+          "cont_pct": 41.7,
+          "mean_tail_bps": -28.1,
+          "med_tail_bps": -7.6
+        }
+      },
+      "long|4": {
+        "DISCOVER": {
+          "n": 50,
+          "cont_pct": 38.0,
+          "mean_tail_bps": -16.0,
+          "med_tail_bps": -15.0
+        },
+        "CONFIRM": {
+          "n": 10,
+          "cont_pct": 20.0,
+          "mean_tail_bps": -9.6,
+          "med_tail_bps": -19.7
+        }
+      },
+      "short|0": {
+        "DISCOVER": {
+          "n": 22,
+          "cont_pct": 40.9,
+          "mean_tail_bps": -30.2,
+          "med_tail_bps": -11.3
+        },
+        "CONFIRM": {
+          "n": 13,
+          "cont_pct": 61.5,
+          "mean_tail_bps": 23.6,
+          "med_tail_bps": 16.5
+        }
+      },
+      "short|1": {
+        "DISCOVER": {
+          "n": 11,
+          "cont_pct": 45.5,
+          "mean_tail_bps": 3.1,
+          "med_tail_bps": -4.3
+        },
+        "CONFIRM": {
+          "n": 5,
+          "cont_pct": 60.0,
+          "mean_tail_bps": 63.1,
+          "med_tail_bps": 83.5
+        }
+      },
+      "short|2": {
+        "DISCOVER": {
+          "n": 14,
+          "cont_pct": 50.0,
+          "mean_tail_bps": -5.5,
+          "med_tail_bps": 2.0
+        },
+        "CONFIRM": {
+          "n": 20,
+          "cont_pct": 65.0,
+          "mean_tail_bps": 20.4,
+          "med_tail_bps": 10.0
+        }
+      },
+      "short|3": {
+        "DISCOVER": {
+          "n": 13,
+          "cont_pct": 53.8,
+          "mean_tail_bps": -25.8,
+          "med_tail_bps": 5.6
+        },
+        "CONFIRM": {
+          "n": 25,
+          "cont_pct": 40.0,
+          "mean_tail_bps": -38.0,
+          "med_tail_bps": -13.3
+        }
+      },
+      "short|4": {
+        "DISCOVER": {
+          "n": 2,
+          "cont_pct": 100.0,
+          "mean_tail_bps": 27.9,
+          "med_tail_bps": 27.9
+        },
+        "CONFIRM": {
+          "n": 7,
+          "cont_pct": 57.1,
+          "mean_tail_bps": 14.8,
+          "med_tail_bps": 52.4
+        }
+      }
+    }
+  }
+}

@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Optional
 from planes.l1_runtime import L1_SPREAD_FRAC_ABS_EPS, L1_SPOT_REL_EPS
 from time_et import ET as _ET
+from instrument_identity import ticker_storage_key
 
 # --- Absolute bounds (guardrails) ---
 L1_SPOT_REL_EPS_MIN = 8e-5
@@ -267,7 +268,7 @@ def _sensitivity_label(eps: float, baseline: float) -> str:
 
 
 def _instrument_kind(ticker: str) -> str:
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 threshold key
     if t in _BROAD_ETFS:
         return "broad_etf"
     if t in _INDEXISH or t.startswith("^"):
@@ -302,7 +303,7 @@ def resolve_l1_materiality_engine(
     Full adaptive materiality: regime labels, smooth VIX scaling, session ramps,
     spread instability, bounded eps. Single resolver for L1 materiality.
     """
-    tkr = (ticker or "").upper().strip() or "SPY"
+    tkr = ticker_storage_key(ticker) or "SPY"  # RC-345/F25: canonical L1 threshold key
     if context is None:
         return AdaptiveThresholdResolution(
             spot_rel_eps=L1_SPOT_REL_EPS,

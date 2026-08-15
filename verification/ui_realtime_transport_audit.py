@@ -237,7 +237,7 @@ def lane_stale_operator_label(
     gen = decision_generation_id
     gen_stale = gen is not None and gen > tier_c_painted_at_gen
     slow_stale_vs_fast = bundle_ts > 0 and last_fast_ts > 0 and bundle_ts < last_fast_ts
-    integrity = {
+    _integrity = {
         "quoteAhead": quote_ahead,
         "pending": pending_full_analytics,
         "genStale": gen_stale,

@@ -1,0 +1,45 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "SPY",
+  "generated_utc": "2026-07-24T05:38:43.892169+00:00",
+  "loader": {
+    "n_rows": 104448,
+    "n_tradable_bars": 33716,
+    "n_sessions": 89,
+    "n_events_total": 855
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "SPY": {
+      "n_candidates": 855,
+      "n_labeled": 827,
+      "n_withheld": 28,
+      "class_counts": {
+        "WIN": 327,
+        "LOSS": 495,
+        "TIMEOUT": 1,
+        "FORCE_FLAT": 4
+      },
+      "class_rates": {
+        "WIN": 0.3954050785973398,
+        "LOSS": 0.5985489721886336,
+        "TIMEOUT": 0.0012091898428053204,
+        "FORCE_FLAT": 0.0048367593712212815
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 12,
+        "synthetic_bar_in_window": 16
+      },
+      "cost_floor_binding_rate": 0.0012091898428053204,
+      "bar_source_withheld_rate": 0.01871345029239766
+    }
+  },
+  "run_sec": 2.4
+}

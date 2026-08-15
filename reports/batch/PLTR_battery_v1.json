@@ -1,0 +1,44 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "PLTR",
+  "generated_utc": "2026-07-24T05:38:31.170663+00:00",
+  "loader": {
+    "n_rows": 51632,
+    "n_tradable_bars": 30839,
+    "n_sessions": 84,
+    "n_events_total": 454
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "PLTR": {
+      "n_candidates": 454,
+      "n_labeled": 440,
+      "n_withheld": 14,
+      "class_counts": {
+        "WIN": 175,
+        "LOSS": 260,
+        "TIMEOUT": 3,
+        "FORCE_FLAT": 2
+      },
+      "class_rates": {
+        "WIN": 0.3977272727272727,
+        "LOSS": 0.5909090909090909,
+        "TIMEOUT": 0.006818181818181818,
+        "FORCE_FLAT": 0.004545454545454545
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 14
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.0
+    }
+  },
+  "run_sec": 2.1
+}

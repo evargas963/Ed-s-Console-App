@@ -36,6 +36,7 @@ def _sample_a1() -> dict:
 
 
 def _winner() -> dict:
+    # institutional-synthetic-ok: v2 option-expression test needs a controlled winner row.
     return {
         "expression": "500 CALL",
         "strike": 500.0,
@@ -840,7 +841,11 @@ def test_a2_falls_back_to_bs_only_when_schwab_theta_missing(monkeypatch):
     winner["chain_row"].pop("theta")
 
     a2 = build_a2_option_expression(
-        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        # RC-345 / F13: valuation T is now the canonical time_et intraday-to-close, so the
+        # as-of must be a real pre-close trading moment (14:00 ET, 2h to the 16:00 close),
+        # not the old fixture's 18:00 (post-close) paired with a mins_to_close=120 stub.
+        _ms(decision_time_ms=_epoch_ms_et(2026, 5, 5, 14, 0),
+            option_chain_selection_proof={"status": "ok", "winner": winner}),
         _sample_a1(),
     )
 
@@ -981,7 +986,9 @@ def test_a2_theta_falls_back_to_bs_when_chain_theta_is_missing_sentinel(monkeypa
     winner["chain_row"]["theta"] = -999.0
 
     a2 = build_a2_option_expression(
-        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        # RC-345 / F13: canonical T needs a real pre-close as-of (see sibling test).
+        _ms(decision_time_ms=_epoch_ms_et(2026, 5, 5, 14, 0),
+            option_chain_selection_proof={"status": "ok", "winner": winner}),
         _sample_a1(),
     )
 

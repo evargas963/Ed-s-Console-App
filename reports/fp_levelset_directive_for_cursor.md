@@ -1,5 +1,3 @@
-> **SOURCE NAMESPACE — not a second "now."** Current execution queue is `OPEN_ITEMS.md` **PA-46**. Charter: `AGENTS.md`. This file was **missing from `main`** (last lived on a feature branch). Restored 2026-08-13 from `f6efeeb` so the rehab record sits on the same branch as the board. Find & Prove F1/F2/F3 namespace. Direction-label studies stay paused here; STAGE-2 / ML-PIPE-V1 live on PA-48. Do not open a parallel program from this file.
-
 # LEVEL-SET DIRECTIVE — reset the premise, fix the structure, run one real bet
 
 **From:** Claude (for the operator) · **To:** Cursor · **Date (UTC):** 2026-07-17

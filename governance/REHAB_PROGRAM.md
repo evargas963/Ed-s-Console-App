@@ -1,5 +1,3 @@
-> **SOURCE NAMESPACE — not a second "now."** Current execution queue is `OPEN_ITEMS.md` **PA-46**. Charter: `AGENTS.md`. This file was **missing from `main`** (last lived on a feature branch). Restored 2026-08-13 from `7ab5e0c` so the rehab record sits on the same branch as the board. RH-F1..RH-F8 are facets of PA-2 / one faucet, not a second default program. Do not open a parallel program from this file.
-
 # Repo Rehab Program (standing — RC-220)
 
 **PM:** Cursor. **Operator does not have to remind the PM to rehab the whole repo.**

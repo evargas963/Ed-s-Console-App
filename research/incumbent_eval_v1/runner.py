@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from research.incumbent_eval_v1 import stats
+from calibration.operable_surface_quarantine import operable_filter_sql
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 _HZ_MINUTES = {"1c": 1, "5c": 5, "15c": 15, "60c": 60}
@@ -87,6 +88,7 @@ def load_cell_rows(
             " outcome_1c, outcome_5c, outcome_15c, outcome_60c"
             " FROM calibration_decision_log"
             " WHERE calibration_trust='trusted' AND outcomes_attached_ts_utc IS NOT NULL"
+            f" AND {operable_filter_sql(conn)}"
             f" AND ticker IN ({','.join('?' * len(tickers))})"
             " ORDER BY decision_ts_utc"
         )

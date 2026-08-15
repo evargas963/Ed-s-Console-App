@@ -1,0 +1,44 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "AAPL",
+  "generated_utc": "2026-07-24T05:37:45.814439+00:00",
+  "loader": {
+    "n_rows": 49723,
+    "n_tradable_bars": 31576,
+    "n_sessions": 85,
+    "n_events_total": 576
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "AAPL": {
+      "n_candidates": 576,
+      "n_labeled": 540,
+      "n_withheld": 36,
+      "class_counts": {
+        "WIN": 219,
+        "LOSS": 316,
+        "TIMEOUT": 2,
+        "FORCE_FLAT": 3
+      },
+      "class_rates": {
+        "WIN": 0.40555555555555556,
+        "LOSS": 0.5851851851851851,
+        "TIMEOUT": 0.003703703703703704,
+        "FORCE_FLAT": 0.005555555555555556
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 36
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.0
+    }
+  },
+  "run_sec": 1.99
+}

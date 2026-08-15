@@ -8,11 +8,28 @@ signals.py may only reference the table name in log strings (no SQL).
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 
 _NEEDLE = "calibration_decision_log"
 _ROOT = Path(__file__).resolve().parents[1]
+
+
+def _tracked_py_files() -> list[Path]:
+    """Repo-wide is the GIT INDEX (RC-274, RC-286, RC-307).
+
+    All three scanners below walked the disk behind a hand-written skip list of
+    `__pycache__`, `.venv`, `node_modules`, `.claude` — and not `scratchpad/`, which holds 93
+    untracked throwaway scripts. `scratchpad/_server_RELANDED_20260802.py` is a saved copy of
+    an old server, so it mentions `calibration_decision_log` and has been failing this gate as
+    an unauthorized production reference to code the repository does not contain. Every
+    hand-maintained skip list is correct on the day it is written; the index is the definition.
+    """
+    out = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
+                         cwd=_ROOT, capture_output=True, text=True, check=True).stdout
+    return [_ROOT / rel for rel in sorted(p for p in out.split("\0") if p)
+            if (_ROOT / rel).exists()]
 
 
 def _allowed_path(rel: Path) -> bool:
@@ -59,6 +76,14 @@ def _allowed_path(rel: Path) -> bool:
     # /api/ops/calibration_rowcount health probe, which delegates the SELECT to
     # calibration.writer.compute_calibration_rate_health (no SQL in server.py).
     if s == "server.py":
+        return True
+    # operable_surface_gate: G1-G4 reporting tool. READ-ONLY by construction as of
+    # 2026-07-19 — its ALTER/UPDATE quarantine writer was moved into
+    # calibration/operable_surface_quarantine.py so every write to this table stays inside
+    # the audited surface. Its test seeds fixtures in tmp_path only, never production.
+    if s == "tools/operable_surface_gate.py":
+        return True
+    if s == "tests/test_operable_surface_gate.py":
         return True
     # Read-only audit / observability tooling and probes (SELECT/COUNT, sqlite_master,
     # or table name in help/provenance/audit strings — never INSERT/UPDATE).
@@ -113,7 +138,7 @@ def _allowed_path(rel: Path) -> bool:
 
 def test_no_unauthorized_python_references_to_calibration_decision_log() -> None:
     offenders: list[str] = []
-    for p in _ROOT.rglob("*.py"):
+    for p in _tracked_py_files():
         parts = set(p.parts)
         if "__pycache__" in parts or ".venv" in parts or "node_modules" in parts or ".claude" in parts:
             continue
@@ -135,7 +160,7 @@ def test_no_unauthorized_python_references_to_calibration_decision_log() -> None
 def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
     """INSERT must not appear outside writer (production) and calibration tests."""
     bad: list[str] = []
-    for p in _ROOT.rglob("*.py"):
+    for p in _tracked_py_files():
         if "__pycache__" in p.parts or ".claude" in p.parts:
             continue
         try:
@@ -162,6 +187,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             or rel == "tests/test_incumbent_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
             or rel == "tests/test_challenger_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
             or rel == "tests/test_structural_eval_v1.py"  # tmp-path fixture DB only; production runner is SELECT-only (mode=ro)
+            or rel == "tests/test_operable_surface_gate.py"  # tmp-path fixture DB only; the gate tool itself is SELECT-only
         )
         if not ok:
             bad.append(rel)
@@ -170,7 +196,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
 
 def test_update_calibration_decision_log_only_backfill_and_tests() -> None:
     bad: list[str] = []
-    for p in _ROOT.rglob("*.py"):
+    for p in _tracked_py_files():
         if "__pycache__" in p.parts or ".claude" in p.parts:
             continue
         try:
@@ -181,11 +207,13 @@ def test_update_calibration_decision_log_only_backfill_and_tests() -> None:
             continue
         rel = p.relative_to(_ROOT).as_posix()
         ok = (
-            rel == "calibration/backfill_outcomes.py"
+            rel == "calibration/operable_surface_quarantine.py"  # sole writer of research_excluded; moved here 2026-07-19 out of tools/
+            or rel == "calibration/backfill_outcomes.py"
             or rel == "calibration/backfill_signal_layer_v1_bundle.py"
             or rel == "calibration/v2_advisory_backfill.py"
             or rel == "calibration/v2_live_logging.py"
             or rel.startswith("tests/test_calibration")
+            or rel == "tests/test_operable_surface_gate.py"  # tmp-path fixture DB only
         )
         if not ok:
             bad.append(rel)

@@ -68,7 +68,7 @@ def main() -> int:
     if p_reconciled.is_file():
         reconciled = json.loads(p_reconciled.read_text(encoding="utf-8"))
 
-    allowed_tickers = sorted(
+    _allowed_tickers = sorted(
         r["ticker"]
         for r in readiness["tickers"]
         if r.get("final_readiness_verdict") == "READY_GLOBAL_STANDARD" and r.get("policy_status") == "POLICY_ELIGIBLE"
@@ -197,7 +197,7 @@ def main() -> int:
 
     # policy health from phase9 remediated
     sig_rate = float(phase9.get("sanity_new_policy", {}).get("signal_rate") or 0.0)
-    sig_count = int(phase9.get("sanity_new_policy", {}).get("signals_generated") or 0)
+    int(phase9.get("sanity_new_policy", {}).get("signals_generated") or 0)
     no_trade_rate = max(0.0, 1.0 - sig_rate)
     thr_pass_rate_h = {}
     for hz in phase9.get("edge_positive_horizons", []):

@@ -1,12 +1,12 @@
-# PROJECT A — MASTER BOARD (single structural denominator)
+# Open items
 
-**Closure rule (binding):** a checkbox may be `[x]` ONLY with an exact commit SHA (and test cite where code changed); absent that SHA it is `[ ]` with status text. No closure is inferred from prose, CLOSED_WITH_EVIDENCE labels, CI, neighbouring rows, parent status, another ticker/horizon, or memory.
+Open-work ledger for the charter phases (Collect / Find & Prove / Decide). Rows close only with a
+commit SHA (and test cite where code changed). History lives in git — closed and superseded rows
+are removed, not accumulated; the pre-slimming ledger is preserved at tag-time in history
+(`git log --follow OPEN_ITEMS.md`).
 
-**Board scope (single denominator):** the canonical Project A denominator is the ENTIRE board under the file H1 `# PROJECT A — MASTER BOARD`. Every active section belongs to that one denominator — all PA sections (PA-1..PA-48, including the PA-48 canonical atomic homes), the F/RC defect board, the `## OPEN ROOT-CAUSE LEDGER DENOMINATOR`, and the `## EXISTING REPO WORK-ITEM SYSTEM RECONCILIATION`. The denominator is NOT any single internal `##` section. The `## LEGACY / HISTORICAL MATERIAL` region is non-closable history (plain bullets, no checkbox state) that lives under this board but contributes no closable items. Nothing is considered closed merely because it is absent from an older list. The single current execution queue is **PA-46** (a pointer view, not an independent closable copy).
-
-**Last rewritten:** 2026-08-13 — Project A master board landed onto `main` (canonical file from `cursor/project-a-board-audit` @ `0e93624`); STATUS_CHANGE / ADD only for slim-`main` leftovers. Board not shrunk. Competing slim ledger (~63 lines, last rewritten 2026-07-16) is superseded as a second "now"; its leftover rows live in **PA-48**, not as a parallel program. `ACTIVE_PROGRAM.md` is a pointer: now = **PA-46**. Charter remains `AGENTS.md`. **2026-08-13 discovery:** six source files the board cited were **absent from `main`** (they only lived on feature branches). Restored onto this branch with SOURCE NAMESPACE banners. **Second census (same day):** governance/reports grepped; material leftovers ADDed to PA-48; F-series CLOSED_WITH_EVIDENCE still `[ ]` because no SHA exists on `main` (RC-344/339/342/340/343 commits are empty in `git log --all`). How to read the ~1125 `[ ]` boxes: most are parent acceptance criteria (PA-1..PA-47), not 1125 independent jobs. Execution queue = **PA-46**. Leftover atomic work = **PA-48**. F-rows labeled CLOSED_WITH_EVIDENCE stay `[ ]` until an exact SHA is on the row — that is the closure rule, not proof they still need doing. **Not 100% complete:** PA-41 stays open; archive/artifacts/`docs/issue19_*` bodies were not fully Read.
-
-The rows in the "## LEGACY / HISTORICAL MATERIAL" region below preserve pre-Project-A work as history only; they are NOT part of the closable Project A denominator.
+**Last rewritten:** 2026-07-16 — post-slimming reconciliation (PR #44 merged @ `8f4c922`).
+**Operator NOW (2026-07-27):** **LP-01** is the top open item — see `ACTIVE_PROGRAM.md` Operator NOW table. Work this before residual GEX/F2 queue rows.
 
 ---
 
@@ -30,42 +30,38 @@ This is the single ruling standard. Everything specific is a CHECK under it, nev
 2. **ONE computation.** Every job (research/backtest/training/scoreboard) IMPORTS and CALLS the live functions (`compute_exposures_by_strike` → `aggregate_net_gex` / `math_levels.*`); it must NEVER reimplement them. "Validated in research" = "runs live" by construction. First unification DONE 2026-07-17: `research/gex_r1_screen_v1/signal.py::gex_0dte_from_chain` now delegates to the live `compute_exposures_by_strike`→`aggregate_net_gex` (numerically identical, ratio 1.0000, tests green, screen unchanged at 204 signals). Sweep the rest of research/training for the same pattern next.
 3. **ONE lock = the Institutional Correctness gate — BUILT 2026-07-17: `tools/check_institutional_correctness.py`.** Institutional = logic + math + fidelity + single-source, repo-wide. New correctness requirements are REGISTERED AS CHECKS inside this one gate — never a new lock. Check 1 live: `no_synthetic_domain_fixtures_in_tests` (AST — inline option-chain contracts in tests must load REAL data from `tests/fixtures/`, or declare `# institutional-synthetic-ok: <reason>` for genuine fail-closed/edge cases; `tests/archive/` out of scope). **DONE 2026-07-17: found systemic (44 violations across 20 files) and driven to ZERO — gate PASSES, 213 touched tests green, correctness tests moved to a real captured chain (`tests/fixtures/real_spy_0dte_chain_with_poison.json`), fail-closed tests justified in-line, nothing weakened to pass. WIRED as blocking pre-commit (`.pre-commit-config.yaml` id: institutional-correctness).** Each check is ENFORCED (must be zero, blocks pre-commit) or ADVISORY (visible debt → drive to zero → flip to enforced; the ratchet). Whole-codebase baseline: `python tools/check_institutional_correctness.py`. Registered 2026-07-17 (9 checks; inventory `reports/institutional_debt_inventory.md`): **ENFORCED (block commits, all 0)** = no_synthetic_domain_fixtures, no_silent_swallow (3 sites justified), no_todo_without_tracking_id. **ADVISORY debt to drive down** = function_complexity 455, function_length 393, file_length 38, ruff_quality 1147, no_fake_defaults 10, mypy_types (DORMANT until mypy installed). single-source stays review-enforced (a general auto-detector cries wolf; the GEX reimplementation was fixed manually). Worst file by far: `server.py` (81 items). Fix plan = batches, worst-file-first, WITH operator review + tests — NOT autonomous. NOTE: Layer 1 mechanical is ~complete; Layer 2 (design) partly mechanical + partly review; Layer 3 (real-fix-vs-workaround / elegance) is human by definition — not mechanizable, never claim otherwise.
 
-## LEGACY / HISTORICAL MATERIAL
-> (historical — NOT part of the Project A closable denominator; every section below is a `###` subordinate of this one heading)
-> The rows below predate the Project A master board. They are retained as history/pointers only and are deliberately rendered as plain bullets (no `[ ]`/`[x]` state) so they are never counted in the Project A closable denominator. Material work they name is NOT left as history — every material item has an explicit, closable atomic home on the board below. LP-01's level requirement maps to the atomic technical rows **F15** (POC/VAH/VAL) and **F31** (price-level snapshot fallback); every other named material legacy item carries its own atomic checkbox in **`## PA-48 — LEGACY MATERIAL WORK — CANONICAL ATOMIC HOMES`** (no generic "→ PA-nn parent" pointers — each home names the material requirement itself). Full original text with checkbox state is preserved in git history at `b7178549a499f8b84c5b4dfb51b69d3058e9a89d:OPEN_ITEMS.md` (blob `90c0f23ec7de63df274e9c5c12184debbb1d317a`).
+## Now — post-slimming sequence
 
-### Now — post-slimming sequence (historical)
+- [ ] **LP-01 Institutional session liquidity / value levels** — **TOP OF QUEUE (operator 2026-07-27).** Not SMC “liquidity pools.” Fix VP (volume across bar range, not typical-price dump); overnight = prior trading close→open; demote sell/buy-side liquidity labels until stop-cluster levels are proven; surface POC/VAH/VAL + PDH/PDL + ORB + VWAP on Chart and/or Console v2 (Liquidity Map is in hidden `#main`); touch→forward-return proof vs TOD base rate before any Decide influence. Code: `liquidity_value_engine.py`, `liquidity_models.py`, `/api/liquidity-snapshot`. Program row: `ACTIVE_PROGRAM.md` LP-01. Related residual: UI-04 P1D (PDH walk-back — prior trading day already fixed; overnight still calendar-blind).
+- [x] **RECON-01 Operator-doc reconciliation** — `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closed @ `5c5f239` (PR #45).
+- [ ] **RECON-02 Disk-cleanup purge** — ~53.3 GB quarantined (moved, not deleted) 2026-07-15/16. Purge only after one clean trading session AND the operator gives the purge word. Separately: `_backup_pre_exec_identity_v1_20260713.db` (19.29 GB) holds until ~5 clean trading days after the slimming merge. **UPDATE 2026-07-26: the slimming merge landed — RC-6 blob-dedup slimmed the live DB 29.74 → 22.06 GB (verified on a copy, swapped live; original preserved as `data/ed_console.pre_rc6_20260726.db`). The 5-clean-day clock for the pre_exec backup now RUNS from 2026-07-26.** Full purge candidate set + gates: `reports/fp_db_deletion_gating_latest.json`.
+- [ ] **OPS-OPERABLE-SURFACE-JOB** — ALSO covers (2026-07-20, operator-approved): daily terrain scorecard at 15:30 CT — `python tools/terrain_backtest_report_v1.py` → `reports/terrain_backtest_latest.md`; host task to be registered by the operator with this row as its visible record (`schtasks /Create /SC DAILY /TN EdTerrainScorecard /TR "cmd /c cd /d C:\Users\evarg\Documents\Trading\EdWebConsole && python tools\terrain_backtest_report_v1.py" /ST 15:30`). Recurring Collect job not yet registered on the host: `python -m tools.run_operable_surface_ops --db data/ed_console.db` (production backfill tol=29 + gate). Optional end-of-day: `--refresh-outcomes --repair59 --quarantine`. Durable gate: `python -m tools.operable_surface_gate --db data/ed_console.db --write-report`. Do not create a silent Windows task without an operator-visible inventory row (see FIND-SCHEDULED-JOBS-VISIBILITY).
+- [x] **OPS-GEX-MORNING-FULL-MONDAY-GATE** — CLOSED 2026-08-01. The row's ask was "confirm live collector is up on code that includes `option_chain_morning_full` before counting forward GEX days." Confirmed by query: the table carries fresh daily captures — 2026-07-27 through 2026-07-31 at 37–38 tickers/day (`select et_date,count(*) from option_chain_morning_full group by et_date order by et_date desc limit 5`). The collector is demonstrably up and writing on current code (wide-capture writer landed pre-`6c47b89b`; RC-162 @ `202237c7` reads the same pipeline). The forward-counting question the gate protected is itself moot: GEX-R1's day-level bet was KILLED on certified greeks (§8.6), so no forward GEX days are being counted.
+- [ ] **PHASE-4 Decision-path gate (mechanical)** — `decision_gate.py` (fail-closed admission verdict) + empty `governance/decision_path_admissions.json` + gate block in `call_engine.compute_call` (last directional authority; would-be direction preserved in `wait_blocker.gated_signal` for the scoring loop) + `tests/test_decision_gate.py`. Landed on branch `decision-path-gate-v1`; closes with the merge SHA. Runtime activation: on the next live-server restart every directional call shows `WAIT — decision path not admitted` until the Find & Prove program earns the first admission.
+- [ ] **PHASE-5 Restructure** — deliberate directory reorganization for a legible repo. After Phase 4; no functional changes mixed in.
 
-- **LP-01 Institutional session liquidity / value levels** — **TOP OF QUEUE (operator 2026-07-27).** Not SMC “liquidity pools.” Fix VP (volume across bar range, not typical-price dump); overnight = prior trading close→open; demote sell/buy-side liquidity labels until stop-cluster levels are proven; surface POC/VAH/VAL + PDH/PDL + ORB + VWAP on Chart and/or Console v2 (Liquidity Map is in hidden `#main`); touch→forward-return proof vs TOD base rate before any Decide influence. Code: `liquidity_value_engine.py`, `liquidity_models.py`, `/api/liquidity-snapshot`. Program row: `ACTIVE_PROGRAM.md` LP-01. Related residual: UI-04 P1D (PDH walk-back — prior trading day already fixed; overnight still calendar-blind).
-- **RECON-01 Operator-doc reconciliation** — `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closed @ `5c5f239` (PR #45).
-- **RECON-02 Disk-cleanup purge** — ~53.3 GB quarantined (moved, not deleted) 2026-07-15/16. Purge only after one clean trading session AND the operator gives the purge word. Separately: `_backup_pre_exec_identity_v1_20260713.db` (19.29 GB) holds until ~5 clean trading days after the slimming merge. **UPDATE 2026-07-26: the slimming merge landed — RC-6 blob-dedup slimmed the live DB 29.74 → 22.06 GB (verified on a copy, swapped live; original preserved as `data/ed_console.pre_rc6_20260726.db`). The 5-clean-day clock for the pre_exec backup now RUNS from 2026-07-26.** Full purge candidate set + gates: `reports/fp_db_deletion_gating_latest.json`.
-- **OPS-OPERABLE-SURFACE-JOB** — ALSO covers (2026-07-20, operator-approved): daily terrain scorecard at 15:30 CT — `python tools/terrain_backtest_report_v1.py` → `reports/terrain_backtest_latest.md`; host task to be registered by the operator with this row as its visible record (`schtasks /Create /SC DAILY /TN EdTerrainScorecard /TR "cmd /c cd /d C:\Users\evarg\Documents\Trading\EdWebConsole && python tools\terrain_backtest_report_v1.py" /ST 15:30`). Recurring Collect job not yet registered on the host: `python -m tools.run_operable_surface_ops --db data/ed_console.db` (production backfill tol=29 + gate). Optional end-of-day: `--refresh-outcomes --repair59 --quarantine`. Durable gate: `python -m tools.operable_surface_gate --db data/ed_console.db --write-report`. Do not create a silent Windows task without an operator-visible inventory row (see FIND-SCHEDULED-JOBS-VISIBILITY).
-- **OPS-GEX-MORNING-FULL-MONDAY-GATE** — CLOSED 2026-08-01. The row's ask was "confirm live collector is up on code that includes `option_chain_morning_full` before counting forward GEX days." Confirmed by query: the table carries fresh daily captures — 2026-07-27 through 2026-07-31 at 37–38 tickers/day (`select et_date,count(*) from option_chain_morning_full group by et_date order by et_date desc limit 5`). The collector is demonstrably up and writing on current code (wide-capture writer landed pre-`6c47b89b`; RC-162 @ `202237c7` reads the same pipeline). The forward-counting question the gate protected is itself moot: GEX-R1's day-level bet was KILLED on certified greeks (§8.6), so no forward GEX days are being counted.
-- **PHASE-4 Decision-path gate (mechanical)** — `decision_gate.py` (fail-closed admission verdict) + empty `governance/decision_path_admissions.json` + gate block in `call_engine.compute_call` (last directional authority; would-be direction preserved in `wait_blocker.gated_signal` for the scoring loop) + `tests/test_decision_gate.py`. Landed on branch `decision-path-gate-v1`; closes with the merge SHA. Runtime activation: on the next live-server restart every directional call shows `WAIT — decision path not admitted` until the Find & Prove program earns the first admission.
-- **PHASE-5 Restructure** — deliberate directory reorganization for a legible repo. After Phase 4; no functional changes mixed in.
+## Post-slimming FINDs (host + ops)
 
-### Post-slimming FINDs (host + ops)
+- [ ] **FIND-SCHWAB-WORKER-LEAK** — `schwab-py` (via `multiprocess`) leaks spawn workers: 15 orphaned Python processes accumulated from scheduled runs before the 2026-07-16 kill; RE-OBSERVED 2026-07-20 — 13 live `multiprocess.spawn` zombies from Jul 17–18 (~39 CPU-s each, PIDs in Cursor's audit); kill after confirming no parent trainer, then the root fix below. Root cause: Schwab client processes not shut down cleanly at end of scheduled jobs. Fix direction: explicit client close/terminate in the scheduled entry points (scoreboard/backfill runners), then observe zero orphans across a week of scheduled runs.
+- [x] **FIND-SCHEDULED-JOBS-VISIBILITY** — CLOSED 2026-07-27. The demanded inventory exists: `governance/host_scheduled_jobs.md` — all three Ed tasks (TerrainScorecard, Stream Capture, Daily Scoreboard) with schedule, command, log path, and same-day Last Result = 0 measured live via Get-ScheduledTask/Info. The file carries the standing rule: any task create/rewire/remove updates the inventory in the same change. Motivating incident recorded there: EdTerrainScorecard was scheduled-but-inert for weeks (RC-97) precisely because its definition lived outside version control and outside any inventory.
+- [ ] **GAMMA-INTRADAY-CADENCE-V1** (product-stage, NOT for the morning-regime screen) — gamma levels (flip/pin/walls/net_gamma) change intraday as spot moves, 0DTE decays, and OI shifts. The once-daily `option_chain_morning_full` capture is correct for the GEX-R1 morning-regime hypothesis (set stance at open), but a live intraday gamma product needs the WIDE chain refreshed periodically (e.g. every 5–15 min) on a separate low-priority track, decoupled from the per-cycle 20-strike UI fetch. Note: the app ALREADY computes per-snapshot narrow-chain levels every cycle — so intraday levels exist but are narrow/untrustworthy until FIND-GAMMA-FULLCHAIN-STRIKES + sanitization + flip-method land. Sequence AFTER FP-64 proves the morning hypothesis pays; do not scope into tonight.
+- [ ] **FIND-LIVE-FLIP-WIDE-CHAIN-V1** (the UI flip is still wrong even after Fix 3) — verified 2026-07-17: `option_chain_morning_full` (wide capture) is **write-only research** — nothing reads it — and the LIVE level compute (`compute_exposures_by_strike`) still runs on the per-cycle 20-strike chain. So the Gamma Flip (and walls/pin) shown ON THE UI stay narrow-limited even after the wide morning capture works. To make the DISPLAYED flip correct, a wide chain must feed the live level compute (periodic wide fetch → live exposures), overlapping GAMMA-INTRADAY-CADENCE-V1. Until then: research/backtest flip can be correct (from the wide table) while the UI flip is not. **ALSO IN SCOPE (2026-07-26, RC-43 reopened): WING-IV TREATMENT.** MEASURED (`python tools/flip_iv_sensitivity_v1.py`, 173 wide chains): the flip's IV sensitivity is almost entirely in the wings — flattening only |moneyness|>3% moves the flip a median **0.3627% of spot** (max 3.80) vs **0.0144%** for near-ATM-only (93.6% within 0.1%). Raw vendor IV is least reliable exactly there, so a wide-chain flip inherits wing-IV noise. Sequenced, NOT a now-task: first validate against an EXTERNAL flip (operator has Barchart access) on a date with a morning wide capture; if a smoothed-wing flip lands closer to Barchart than raw per-strike, wing smoothing is a proven accuracy fix and ships with the wide-chain live compute. Bounding caveat: the measured figures come from aggressive FLATTENINGS, which over-state a real smoothed-surface difference.
+- [ ] **CHECK: levels self-declare trust** (a check registered under the ONE Institutional Correctness gate — NOT its own lock). The finite correctness contract every level must meet: (1) sanitized greeks [DONE], (2) single source of truth = one `compute_exposures_by_strike` [TRUE, verified server.py:6083 — all of flip/pin/walls/HVL/max_pain/net_gex/voids derive from it; EM is a separate IV band by design], (3) canonical methods [flip cumulative DONE], (4) full strike coverage to negligible OI/gamma [research Fix 3; live pending FIND-LIVE-FLIP-WIDE-CHAIN], (5) near-term expiries [≤37d], (6) chain fresh. Mechanical lock: each level self-declares `TRUSTED` only if 1–6 hold, else `LOW_CONFIDENCE_NARROW_CHAIN` / `STALE` / `UNSANITIZED`, surfaced in the Key Levels UI (dim/badge) and gated by ONE test asserting the flag derives from input quality. Flip self-declares LOW_CONFIDENCE until FIND-LIVE-FLIP-WIDE-CHAIN lands. This benchmark IS the anti-churn: a bounded checklist, not open-ended.
+- [ ] **FIND-GAMMA-FULLCHAIN-STRIKES-V1** (makes the flip actually trustworthy) — audit 2026-07-17: `option_chain_morning_full` capture (server.py:7684) reuses the live UI chain, which is hardwired to `CHAIN_STRIKE_COUNT=20` (server.py:3062) ≈ ±10 strikes (~±1.3% for SPY). It captures multi-expiry (≤37d ✓) but strike-narrow, so the gamma flip still can't see far-OTM put walls and will hug spot regardless of method. Fix: `maybe_persist_morning_full_chain` does its OWN once-daily `safe_get_chain(client, ticker, strike_count=BIG)` (≈100–200 or full range), independent of the 20-strike live fetch (keep UI at 20 for latency). Cursor implements, Claude verifies. Unblocks trustworthy FIND-GAMMA-FLIP-METHOD-V1 output.
+- [~] **FIND-GREEK-SANITIZATION-V1** — LANDED 2026-07-17, **Claude-verified on real data** (`gamma_is_plausible` wired at 6 sites; test green; the −91965 SPY-748P day recomputes from net_gamma +1.99e9 → −10,779, sign-flip neutralized). Close on commit SHA. — audit 2026-07-17 (`reports/gex_gamma_flip_audit.md` Finding 0): raw Schwab per-contract gamma is occasionally poisoned on **0DTE deep-ITM** contracts (|delta|≈1, true gamma≈0) where Schwab's near-expiry engine returns garbage (e.g. SPY 748P gamma **−91965**, OI 21605). Rare (SPY 0.11%, QQQ/IWM ~0.02%) but OI-weighted it obliterates net_gamma/GEX/flip for the whole snapshot. Aggregation pipeline itself is faithful (pin/walls reconstructed 25/25). Fix: sanitize greeks before aggregation — hard-reject `gamma<0`, cap/drop `gamma>~0.5–1.0`, optionally `|delta|≥0.98 ⇒ gamma≈0`; apply in live level compute AND research GEX build; unit test with the −91965 fixture. Cursor implements, Claude verifies. Do FIRST (blocks trustworthy FIND-GAMMA-FLIP-METHOD-V1 and FP-64).
+- [x] **FIND-GAMMA-FLIP-METHOD-V1** — CLOSED 2026-07-19. The audited method was not just mis-ordered, it was wrong: cumulative-sum of net GEX does not reproduce the gamma profile (measured on a real SPY reference chain: corr 0.086, cumsum never crosses zero, divergence 2.19e9). Replaced by the canonical construction — total dealer gamma **recomputed at every hypothetical spot** (`math_levels.py::compute_gamma_profile`), zero-crossing interpolated (`gamma_flip_from_profile`), served through `compute_gamma_flip_v2` which returns a **confidence flag** so a narrow chain can never be displayed as trustworthy. Live path rewired (`server.py`); old `compute_gamma_flip` and `tests/test_gamma_flip_method_v1.py` deleted (zero production callers). Wide-chain agreement with Barchart remains UNPROVEN — tracked in `governance/unproven_register.md`, due 2026-07-21.
+- [ ] **FIND-SNAPSHOT-BAR-STAMP-V1** (durable fix for the timestamp-jitter class) — forensic 2026-07-17 (read-only): host clock, timezone, and `ts_et` are all CORRECT, and `price_bars_1m` is 100% minute-aligned (60s bars). The dislocation is that **snapshot/decision write-timestamps are stamped at arbitrary poll-seconds**, not on the bar edge (second-of-minute is uniform, not clustered at :00). This is the root of the 29s join tolerance (`daily_scoreboard.BACKFILL_JOIN_TOL_SEC=29`), the ±29–30s residual (FP-18), and the FP-24/32 colocation work — those refuse *new* mis-aligned live writes but don't retire the class. Bites hardest on the 1-candle (60s) outcome join; minor at 5c+. **Fix direction:** stamp each snapshot/decision with the `bar_start_ts_utc` of the minute it was computed in (floor the poll instant to its 1m bar), so snapshot↔`price_bars_1m`↔outcome joins are **exact by construction** instead of tolerance-based; then the join tol can drop to 0 and the residual class retires at the source. Separate Collect-hardening track — do NOT fold into the GEX-R1 bet (which sidesteps it by running on `price_bars_1m` and joining by ET day). Connects to **FIND-LABEL-INTEGRITY-FORENSICS** (`TIMESTAMP_IDENTITY_NOT_PROVEN`).
 
-- **FIND-SCHWAB-WORKER-LEAK** — `schwab-py` (via `multiprocess`) leaks spawn workers: 15 orphaned Python processes accumulated from scheduled runs before the 2026-07-16 kill; RE-OBSERVED 2026-07-20 — 13 live `multiprocess.spawn` zombies from Jul 17–18 (~39 CPU-s each, PIDs in Cursor's audit); kill after confirming no parent trainer, then the root fix below. Root cause: Schwab client processes not shut down cleanly at end of scheduled jobs. Fix direction: explicit client close/terminate in the scheduled entry points (scoreboard/backfill runners), then observe zero orphans across a week of scheduled runs.
-- **FIND-SCHEDULED-JOBS-VISIBILITY** — CLOSED 2026-07-27. The demanded inventory exists: `governance/host_scheduled_jobs.md` — all three Ed tasks (TerrainScorecard, Stream Capture, Daily Scoreboard) with schedule, command, log path, and same-day Last Result = 0 measured live via Get-ScheduledTask/Info. The file carries the standing rule: any task create/rewire/remove updates the inventory in the same change. Motivating incident recorded there: EdTerrainScorecard was scheduled-but-inert for weeks (RC-97) precisely because its definition lived outside version control and outside any inventory.
-- **GAMMA-INTRADAY-CADENCE-V1** (product-stage, NOT for the morning-regime screen) — gamma levels (flip/pin/walls/net_gamma) change intraday as spot moves, 0DTE decays, and OI shifts. The once-daily `option_chain_morning_full` capture is correct for the GEX-R1 morning-regime hypothesis (set stance at open), but a live intraday gamma product needs the WIDE chain refreshed periodically (e.g. every 5–15 min) on a separate low-priority track, decoupled from the per-cycle 20-strike UI fetch. Note: the app ALREADY computes per-snapshot narrow-chain levels every cycle — so intraday levels exist but are narrow/untrustworthy until FIND-GAMMA-FULLCHAIN-STRIKES + sanitization + flip-method land. Sequence AFTER FP-64 proves the morning hypothesis pays; do not scope into tonight.
-- **FIND-LIVE-FLIP-WIDE-CHAIN-V1** (the UI flip is still wrong even after Fix 3) — verified 2026-07-17: `option_chain_morning_full` (wide capture) is **write-only research** — nothing reads it — and the LIVE level compute (`compute_exposures_by_strike`) still runs on the per-cycle 20-strike chain. So the Gamma Flip (and walls/pin) shown ON THE UI stay narrow-limited even after the wide morning capture works. To make the DISPLAYED flip correct, a wide chain must feed the live level compute (periodic wide fetch → live exposures), overlapping GAMMA-INTRADAY-CADENCE-V1. Until then: research/backtest flip can be correct (from the wide table) while the UI flip is not. **ALSO IN SCOPE (2026-07-26, RC-43 reopened): WING-IV TREATMENT.** MEASURED (`python tools/flip_iv_sensitivity_v1.py`, 173 wide chains): the flip's IV sensitivity is almost entirely in the wings — flattening only |moneyness|>3% moves the flip a median **0.3627% of spot** (max 3.80) vs **0.0144%** for near-ATM-only (93.6% within 0.1%). Raw vendor IV is least reliable exactly there, so a wide-chain flip inherits wing-IV noise. Sequenced, NOT a now-task: first validate against an EXTERNAL flip (operator has Barchart access) on a date with a morning wide capture; if a smoothed-wing flip lands closer to Barchart than raw per-strike, wing smoothing is a proven accuracy fix and ships with the wide-chain live compute. Bounding caveat: the measured figures come from aggressive FLATTENINGS, which over-state a real smoothed-surface difference.
-- **CHECK: levels self-declare trust** (a check registered under the ONE Institutional Correctness gate — NOT its own lock). The finite correctness contract every level must meet: (1) sanitized greeks [DONE], (2) single source of truth = one `compute_exposures_by_strike` [TRUE, verified server.py:6083 — all of flip/pin/walls/HVL/max_pain/net_gex/voids derive from it; EM is a separate IV band by design], (3) canonical methods [flip cumulative DONE], (4) full strike coverage to negligible OI/gamma [research Fix 3; live pending FIND-LIVE-FLIP-WIDE-CHAIN], (5) near-term expiries [≤37d], (6) chain fresh. Mechanical lock: each level self-declares `TRUSTED` only if 1–6 hold, else `LOW_CONFIDENCE_NARROW_CHAIN` / `STALE` / `UNSANITIZED`, surfaced in the Key Levels UI (dim/badge) and gated by ONE test asserting the flag derives from input quality. Flip self-declares LOW_CONFIDENCE until FIND-LIVE-FLIP-WIDE-CHAIN lands. This benchmark IS the anti-churn: a bounded checklist, not open-ended.
-- **FIND-GAMMA-FULLCHAIN-STRIKES-V1** (makes the flip actually trustworthy) — audit 2026-07-17: `option_chain_morning_full` capture (server.py:7684) reuses the live UI chain, which is hardwired to `CHAIN_STRIKE_COUNT=20` (server.py:3062) ≈ ±10 strikes (~±1.3% for SPY). It captures multi-expiry (≤37d ✓) but strike-narrow, so the gamma flip still can't see far-OTM put walls and will hug spot regardless of method. Fix: `maybe_persist_morning_full_chain` does its OWN once-daily `safe_get_chain(client, ticker, strike_count=BIG)` (≈100–200 or full range), independent of the 20-strike live fetch (keep UI at 20 for latency). Cursor implements, Claude verifies. Unblocks trustworthy FIND-GAMMA-FLIP-METHOD-V1 output.
-- **FIND-GREEK-SANITIZATION-V1** — STATUS: NOT_PROVEN (no commit SHA per closure rule). LANDED 2026-07-17, **Claude-verified on real data** (`gamma_is_plausible` wired at 6 sites; test green; the −91965 SPY-748P day recomputes from net_gamma +1.99e9 → −10,779, sign-flip neutralized). Close on commit SHA. — audit 2026-07-17 (`reports/gex_gamma_flip_audit.md` Finding 0): raw Schwab per-contract gamma is occasionally poisoned on **0DTE deep-ITM** contracts (|delta|≈1, true gamma≈0) where Schwab's near-expiry engine returns garbage (e.g. SPY 748P gamma **−91965**, OI 21605). Rare (SPY 0.11%, QQQ/IWM ~0.02%) but OI-weighted it obliterates net_gamma/GEX/flip for the whole snapshot. Aggregation pipeline itself is faithful (pin/walls reconstructed 25/25). Fix: sanitize greeks before aggregation — hard-reject `gamma<0`, cap/drop `gamma>~0.5–1.0`, optionally `|delta|≥0.98 ⇒ gamma≈0`; apply in live level compute AND research GEX build; unit test with the −91965 fixture. Cursor implements, Claude verifies. Do FIRST (blocks trustworthy FIND-GAMMA-FLIP-METHOD-V1 and FP-64).
-- **FIND-GAMMA-FLIP-METHOD-V1** — CLOSED 2026-07-19. The audited method was not just mis-ordered, it was wrong: cumulative-sum of net GEX does not reproduce the gamma profile (measured on a real SPY reference chain: corr 0.086, cumsum never crosses zero, divergence 2.19e9). Replaced by the canonical construction — total dealer gamma **recomputed at every hypothetical spot** (`math_levels.py::compute_gamma_profile`), zero-crossing interpolated (`gamma_flip_from_profile`), served through `compute_gamma_flip_v2` which returns a **confidence flag** so a narrow chain can never be displayed as trustworthy. Live path rewired (`server.py`); old `compute_gamma_flip` and `tests/test_gamma_flip_method_v1.py` deleted (zero production callers). Wide-chain agreement with Barchart remains UNPROVEN — tracked in `governance/unproven_register.md`, due 2026-07-21.
-- **FIND-SNAPSHOT-BAR-STAMP-V1** (durable fix for the timestamp-jitter class) — forensic 2026-07-17 (read-only): host clock, timezone, and `ts_et` are all CORRECT, and `price_bars_1m` is 100% minute-aligned (60s bars). The dislocation is that **snapshot/decision write-timestamps are stamped at arbitrary poll-seconds**, not on the bar edge (second-of-minute is uniform, not clustered at :00). This is the root of the 29s join tolerance (`daily_scoreboard.BACKFILL_JOIN_TOL_SEC=29`), the ±29–30s residual (FP-18), and the FP-24/32 colocation work — those refuse *new* mis-aligned live writes but don't retire the class. Bites hardest on the 1-candle (60s) outcome join; minor at 5c+. **Fix direction:** stamp each snapshot/decision with the `bar_start_ts_utc` of the minute it was computed in (floor the poll instant to its 1m bar), so snapshot↔`price_bars_1m`↔outcome joins are **exact by construction** instead of tolerance-based; then the join tol can drop to 0 and the residual class retires at the source. Separate Collect-hardening track — do NOT fold into the GEX-R1 bet (which sidesteps it by running on `price_bars_1m` and joining by ET day). Connects to **FIND-LABEL-INTEGRITY-FORENSICS** (`TIMESTAMP_IDENTITY_NOT_PROVEN`).
+## Gamma product directions (candidate — chase to see if they earn their place; sequence after FP-64 proves harvest)
 
-### Gamma product directions (candidate — chase to see if they earn their place; sequence after FP-64 proves harvest)
+- [ ] **GAMMA-SCANNER-RADAR** — background scanner computing the gamma regime + a "popping" flag (unusual move/vol/short-gamma) across ALL ~32 collected tickers, alerting the operator regardless of which ticker the UI shows. Best-fit monitoring product; TOS scanners can't compute our gamma-regime signal. Operator-requested 2026-07-17.
+- [ ] **GAMMA-STRIKE-PICKER** — trade-construction helper: given operator intent (fast day-trade → max gamma near ATM; higher-probability → target-delta ITM), suggest the strike. Separate from the regime signal; a helper, not the edge.
+- [x] **GAMMA-PROFILE-CHARTS** — CLOSED 2026-08-01: delivered across two shipped surfaces. GEX by strike renders on the Chart tab as the blue/red per-strike bars (accrual pipeline, RC-159/RC-161/RC-162 @ `202237c7`, tests `tests/test_chart_accrual_consumer_v1.py` = 10 passed reading the rendered file); flip level, call/put walls and pin render on the Terrain tab (SSOT `/api/terrain` wide capture, per RC-33). Both dependencies the row named are satisfied: full-chain capture exists (`option_chain_morning_full`, daily rows through 2026-07-31) and the flip formula was corrected under FIND-GAMMA-FLIP-METHOD-V1 (closed 2026-07-19, below).
+- [ ] **SCOREBOARD-ECONOMIC-REWORK** — keep the scoreboard's purpose (measure → refine inputs → improve signal) but change the metric from direction-accuracy-vs-placeholder to dollars-after-costs of the gamma-conditioned strategy, per regime. Ties to F1/F2 in `reports/fp_levelset_directive_for_cursor.md`.
+- [ ] **UNIVERSE-EXPAND-NEWS-NAMES** — extend beyond SPY/QQQ/IWM sentinels to liquid single names (NVDA/TSLA/META/AAPL…), where short-gamma trend days on news may pay best; per-ticker calibration required. Operator: SPY/QQQ/IWM were never binding, just his early starting point.
+- [ ] **TOS-SLIPPAGE-CALIBRATION** — calibrate the FP-64 cost model's slippage/leakage to the operator's REAL ThinkOrSwim fills (not theoretical option spread), so the economic gate is honest to his execution.
 
-- **GAMMA-SCANNER-RADAR** — background scanner computing the gamma regime + a "popping" flag (unusual move/vol/short-gamma) across ALL ~32 collected tickers, alerting the operator regardless of which ticker the UI shows. Best-fit monitoring product; TOS scanners can't compute our gamma-regime signal. Operator-requested 2026-07-17.
-- **GAMMA-STRIKE-PICKER** — trade-construction helper: given operator intent (fast day-trade → max gamma near ATM; higher-probability → target-delta ITM), suggest the strike. Separate from the regime signal; a helper, not the edge.
-- **GAMMA-PROFILE-CHARTS** — CLOSED 2026-08-01: delivered across two shipped surfaces. GEX by strike renders on the Chart tab as the blue/red per-strike bars (accrual pipeline, RC-159/RC-161/RC-162 @ `202237c7`, tests `tests/test_chart_accrual_consumer_v1.py` = 10 passed reading the rendered file); flip level, call/put walls and pin render on the Terrain tab (SSOT `/api/terrain` wide capture, per RC-33). Both dependencies the row named are satisfied: full-chain capture exists (`option_chain_morning_full`, daily rows through 2026-07-31) and the flip formula was corrected under FIND-GAMMA-FLIP-METHOD-V1 (closed 2026-07-19, below).
-- **SCOREBOARD-ECONOMIC-REWORK** — keep the scoreboard's purpose (measure → refine inputs → improve signal) but change the metric from direction-accuracy-vs-placeholder to dollars-after-costs of the gamma-conditioned strategy, per regime. Ties to F1/F2 in `reports/fp_levelset_directive_for_cursor.md`.
-- **UNIVERSE-EXPAND-NEWS-NAMES** — extend beyond SPY/QQQ/IWM sentinels to liquid single names (NVDA/TSLA/META/AAPL…), where short-gamma trend days on news may pay best; per-ticker calibration required. Operator: SPY/QQQ/IWM were never binding, just his early starting point.
-- **TOS-SLIPPAGE-CALIBRATION** — calibrate the FP-64 cost model's slippage/leakage to the operator's REAL ThinkOrSwim fills (not theoretical option spread), so the economic gate is honest to his execution.
-
-### Directional bias on the Chart — DIR-** (operator 2026-08-01; discussion-stage, NOTHING built)
+## Directional bias on the Chart — DIR-** (operator 2026-08-01; discussion-stage, NOTHING built)
 
 **Operator's question, exactly:** GEX dollars roughly equal and options volume roughly equal on
 *both* sides of spot — what breaks the tie and says which way spot goes? **Constraint: the existing
@@ -76,7 +72,7 @@ additive or research-only.
 studies returned 0 PASS cells, and GEX-R1 was retired at −0.02 (p=0.88) on certified greeks. No row
 here may be described as edge until it clears a placebo. All of them start `UNPROVEN`.
 
-- **DIR-01 (ONE open item — sub-points a–g are facets of it, deliberately not separate rows;
+- [ ] **DIR-01 (ONE open item — sub-points a–g are facets of it, deliberately not separate rows;
   the ledger is over its cap and may only shrink).**
 
   **a) DEX as the tie-breaker (the direct answer to the operator's question).** GEX ≈ ∂DEX/∂S:
@@ -183,7 +179,7 @@ here may be described as edge until it clears a placebo. All of them start `UNPR
   below −173,741, SPY 2026-07-30→31). Reproduce: two latest SPY `option_chain_morning_full`
   rows, per-strike OI delta, bucket by the newer spot.
 
-### Validity — probing notes (operator + Claude, 2026-08-01; prose on purpose, not queue rows)
+## Validity — probing notes (operator + Claude, 2026-08-01; prose on purpose, not queue rows)
 
 **Citation rule (operator 2026-08-01):** a study run on contaminated data is NOT citable
 evidence — in either direction — until re-run under a clean protocol. Falling under it today:
@@ -204,54 +200,54 @@ one (intraday flip-drift magnitude) OVERDUE since 2026-07-31 · root-cause log �
 RC-168 OPEN and RC-102/110/115/117/124/165/166 PARTIAL · charm — near-expiry T-convention faucet
 open; the charm VOTE stays UNAPPROVED until it closes.
 
-### Find & Prove queue
+## Find & Prove queue
 
-- **FIND-LABEL-INTEGRITY-FORENSICS** — 2026-07-16 scoreboard shows cells too extreme in both directions to be noise: `$SPX` 60c **0.0% on n=108** (0/61 directional), `UNH` 0–6.6% across all horizons (n=244), `MSFT` 60c directional 99.0% (n=101), QQQ 60c 72.3%. Extreme-both-ways is the signature of a labeling/join artifact (inverted labels, timestamp misalignment, broken outcome join), not model quality; every horizon carries `TIMESTAMP_IDENTITY_NOT_PROVEN`. Resolve whether these cells are artifacts before trusting any accuracy number. First Find & Prove work item post-merge; feeds the target-truth lane below.
-- **SCOREBOARD-TARGET-TRUTH SCOREBOARD_SEMANTICS_TARGET_TRUTH_AND_60C_ROOT_CAUSE_FORENSIC_V1** — two separate lanes (branch `scoreboard-target-truth-60c-forensic-v1`). Lane A (scoreboard schema v4, operator-semantic safety: trade-decision ALL card, confusion matrices, baselines, fail-closed accuracy presentation, invalid-threshold exclusion) contains HEAD backfill behavior only — no identity-first attachment code is part of the Lane-A package. Lane B (identity-first outcome attachment, `calibration/backfill_outcomes.py` + tests) is NOT in the Lane-A patch — it exists only as uncommitted worktree design; LANE B COMMIT_READY = NO (requires the separate data-impact mission: compound identity, production-copy reconciliation, old-vs-new weights/decisions, migration/rollback, RTH proof). Forensic packet: `reports/scoreboard_forensic/july13_2026_target_truth_forensic.json` — LEGACY_PLACEHOLDER_THRESHOLD CONFIRMED (100% of labeled July-13 rows; 60c threshold spans 0.86–416 bps of spot); target redesign OPEN via the preregistered research protocol.
-- **QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1** — ENABLED / NOT_STARTED (operator 2026-07-09) — DEPENDS ON DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1: input layer VALID as of `06a3f9e8e73811d61364b2829ff462d7b90474de`. The continuous signal-refinement loop consumes the denominator-first scoreboard (eligible grid + quality_circle section) as its measurement substrate. Boundary (binding): the scoreboard identifies weak tickers/horizons/coverage gaps; it does NOT itself approve model or signal-rule changes — any refinement requires a separate audited lane.
-- **STAGE-2 Target/label foundation** — continue `docs/stage1_target_label_foundation/` Stage 2: retire the confirmed placeholder thresholds and design the governed target so scoreboard accuracy becomes decision-valid. Preregistered protocol; no outcome mining.
-- **ML-PIPE-V1 predictive-validity closeout** — remaining from the correctness program: operator-host shuffled-label runs on real capture data per model-family×horizon, then a clean governed retrain, then per-ticker/per-horizon validity classification. Until then the standing NOT_PROVEN verdict holds.
-- **SIG-01 scoreboard/actionability accrual** — sessions 2–5 of segmented multi-day evidence toward signal-outcome validation; logger ~32 tickers, snapshot rows landing all session.
+- [ ] **FIND-LABEL-INTEGRITY-FORENSICS** — 2026-07-16 scoreboard shows cells too extreme in both directions to be noise: `$SPX` 60c **0.0% on n=108** (0/61 directional), `UNH` 0–6.6% across all horizons (n=244), `MSFT` 60c directional 99.0% (n=101), QQQ 60c 72.3%. Extreme-both-ways is the signature of a labeling/join artifact (inverted labels, timestamp misalignment, broken outcome join), not model quality; every horizon carries `TIMESTAMP_IDENTITY_NOT_PROVEN`. Resolve whether these cells are artifacts before trusting any accuracy number. First Find & Prove work item post-merge; feeds the target-truth lane below.
+- [ ] **SCOREBOARD-TARGET-TRUTH SCOREBOARD_SEMANTICS_TARGET_TRUTH_AND_60C_ROOT_CAUSE_FORENSIC_V1** — two separate lanes (branch `scoreboard-target-truth-60c-forensic-v1`). Lane A (scoreboard schema v4, operator-semantic safety: trade-decision ALL card, confusion matrices, baselines, fail-closed accuracy presentation, invalid-threshold exclusion) contains HEAD backfill behavior only — no identity-first attachment code is part of the Lane-A package. Lane B (identity-first outcome attachment, `calibration/backfill_outcomes.py` + tests) is NOT in the Lane-A patch — it exists only as uncommitted worktree design; LANE B COMMIT_READY = NO (requires the separate data-impact mission: compound identity, production-copy reconciliation, old-vs-new weights/decisions, migration/rollback, RTH proof). Forensic packet: `reports/scoreboard_forensic/july13_2026_target_truth_forensic.json` — LEGACY_PLACEHOLDER_THRESHOLD CONFIRMED (100% of labeled July-13 rows; 60c threshold spans 0.86–416 bps of spot); target redesign OPEN via the preregistered research protocol.
+- [ ] **QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1** — ENABLED / NOT_STARTED (operator 2026-07-09) — DEPENDS ON DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1: input layer VALID as of `06a3f9e8e73811d61364b2829ff462d7b90474de`. The continuous signal-refinement loop consumes the denominator-first scoreboard (eligible grid + quality_circle section) as its measurement substrate. Boundary (binding): the scoreboard identifies weak tickers/horizons/coverage gaps; it does NOT itself approve model or signal-rule changes — any refinement requires a separate audited lane.
+- [ ] **STAGE-2 Target/label foundation** — continue `docs/stage1_target_label_foundation/` Stage 2: retire the confirmed placeholder thresholds and design the governed target so scoreboard accuracy becomes decision-valid. Preregistered protocol; no outcome mining.
+- [ ] **ML-PIPE-V1 predictive-validity closeout** — remaining from the correctness program: operator-host shuffled-label runs on real capture data per model-family×horizon, then a clean governed retrain, then per-ticker/per-horizon validity classification. Until then the standing NOT_PROVEN verdict holds.
+- [ ] **SIG-01 scoreboard/actionability accrual** — sessions 2–5 of segmented multi-day evidence toward signal-outcome validation; logger ~32 tickers, snapshot rows landing all session.
 
-### Audit remainder 2026-07-20 (Cursor sweeping + Bugbot; every non-fixed finding is a row here — prose closes nothing)
+## Audit remainder 2026-07-20 (Cursor sweeping + Bugbot; every non-fixed finding is a row here — prose closes nothing)
 
-- **AUDIT-QUOTE-MEMO-V1** (CLOSED 2026-07-28, RC-112: `_memoized_quote_response` shared by fast lane + `resolve_spot`; acceptance test `test_quote_memo_one_vendor_call_serves_both_paths` passing) — one fix, two audit risks: `/api/terrain` does an unmemoised `safe_get_quote` per poll while the fast lane fetches the same ticker independently (double Schwab fetch, Bugbot/Cursor risk #9), and `get_terrain_radar` ranks on ≤60s loop-time spot while the card reprices live (risk #2). Fix: short-TTL (~1s) server-side quote memo shared by fast lane + `resolve_spot`; memoised quotes then make repricing the radar's top rows affordable. Claude drafts next; closes with commit SHA + a test proving one vendor call serves both paths inside the TTL.
-- **AUDIT-TAPE-OVERFLOW-SHORT-VIEWPORTS** — at 1440×810 the ALERT TAPE tile overflows 30px and at 1366×768 44px (scrollable, not clipped-blind, but the operator wants visible data); radar rail scrolling is intended-by-design and stays. Fix: short-height media query slims tape row padding/font or caps visible entries with a count badge.
-- **AUDIT-CEILING-NARROW-VERDICT-UNOBSERVED** — a ticker needing >TERRAIN_STRIKE_COUNT_MAX(=100) strikes must fetch the ceiling and report LOW_CONFIDENCE_NARROW_CHAIN. UNOBSERVED: $SPX, the only current >100-need ticker, is UNAVAILABLE via empty profile (RC-11 — no contract with OI+plausible gamma) so it never reaches the span verdict. Closes when a >100-need ticker WITH usable greeks is observed reporting NARROW off a live cycle, or a governed synthetic-free test drives the endpoint with a real wide chain truncated to 100.
-- **OPS-PLAYWRIGHT-E2E-RERUN** — operator host: `npm run test:e2e` (marker stale since 2026-05-25; `tests/test_playwright_must_run.py` fails honestly until a REAL run lands). Blocks the first fully-green pytest since May.
-- **OPS-FULL-SUITE-STAMP** — operator host: fresh `python -m pytest -q tests/` after the E2E run. Prior full run 2026-07-20: 4237 passed / 4 failed; the 3 code failures are fixed but the 4240/4241 tally is UNVERIFIED until a fresh complete run (Cursor veracity audit: "not re-proven").
+- [x] **AUDIT-QUOTE-MEMO-V1** (CLOSED 2026-07-28, RC-112: `_memoized_quote_response` shared by fast lane + `resolve_spot`; acceptance test `test_quote_memo_one_vendor_call_serves_both_paths` passing) — one fix, two audit risks: `/api/terrain` does an unmemoised `safe_get_quote` per poll while the fast lane fetches the same ticker independently (double Schwab fetch, Bugbot/Cursor risk #9), and `get_terrain_radar` ranks on ≤60s loop-time spot while the card reprices live (risk #2). Fix: short-TTL (~1s) server-side quote memo shared by fast lane + `resolve_spot`; memoised quotes then make repricing the radar's top rows affordable. Claude drafts next; closes with commit SHA + a test proving one vendor call serves both paths inside the TTL.
+- [ ] **AUDIT-TAPE-OVERFLOW-SHORT-VIEWPORTS** — at 1440×810 the ALERT TAPE tile overflows 30px and at 1366×768 44px (scrollable, not clipped-blind, but the operator wants visible data); radar rail scrolling is intended-by-design and stays. Fix: short-height media query slims tape row padding/font or caps visible entries with a count badge.
+- [ ] **AUDIT-CEILING-NARROW-VERDICT-UNOBSERVED** — a ticker needing >TERRAIN_STRIKE_COUNT_MAX(=100) strikes must fetch the ceiling and report LOW_CONFIDENCE_NARROW_CHAIN. UNOBSERVED: $SPX, the only current >100-need ticker, is UNAVAILABLE via empty profile (RC-11 — no contract with OI+plausible gamma) so it never reaches the span verdict. Closes when a >100-need ticker WITH usable greeks is observed reporting NARROW off a live cycle, or a governed synthetic-free test drives the endpoint with a real wide chain truncated to 100.
+- [ ] **OPS-PLAYWRIGHT-E2E-RERUN** — operator host: `npm run test:e2e` (marker stale since 2026-05-25; `tests/test_playwright_must_run.py` fails honestly until a REAL run lands). Blocks the first fully-green pytest since May.
+- [ ] **OPS-FULL-SUITE-STAMP** — operator host: fresh `python -m pytest -q tests/` after the E2E run. Prior full run 2026-07-20: 4237 passed / 4 failed; the 3 code failures are fixed but the 4240/4241 tally is UNVERIFIED until a fresh complete run (Cursor veracity audit: "not re-proven").
 
-### Defects and held decisions
+## Defects and held decisions
 
-- **HELD-RECONCILE-MULTICROSS** — `edReconcileRegime` is exact only for the served (nearest-spot) flip; on multi-crossing profiles a live spot crossing a DIFFERENT boundary shows the old regime for ≤5s until the poll re-anchors. ACCEPTED-DESIGN (operator may overrule): closing it means shipping the 241-point profile to the browser per poll to close a ≤5s cosmetic window; the server recomputes exactly every poll. Revisit only if a real mis-display is observed live.
+- [ ] **HELD-RECONCILE-MULTICROSS** — `edReconcileRegime` is exact only for the served (nearest-spot) flip; on multi-crossing profiles a live spot crossing a DIFFERENT boundary shows the old regime for ≤5s until the poll re-anchors. ACCEPTED-DESIGN (operator may overrule): closing it means shipping the 241-point profile to the browser per poll to close a ≤5s cosmetic window; the server recomputes exactly every poll. Revisit only if a real mis-display is observed live.
 
-- **ML-META-JSON-VERIFICATION-ASYMMETRY** — `_load_lstm` verifies only the `.pt` checkpoint; its `lstm_*_meta.json` is consumed inside `lstm_model.load_lstm` without the Item-4 pre-deserialization verification that xgb/transformer metas get. Found 2026-07-16 while fixing the meta-stack role regression. Fix direction: verify `lstm_meta` in `_load_lstm` before `load_lstm` reads it (same pattern as `transformer_meta` at `ml_predict.py::_load_transformer`).
+- [ ] **ML-META-JSON-VERIFICATION-ASYMMETRY** — `_load_lstm` verifies only the `.pt` checkpoint; its `lstm_*_meta.json` is consumed inside `lstm_model.load_lstm` without the Item-4 pre-deserialization verification that xgb/transformer metas get. Found 2026-07-16 while fixing the meta-stack role regression. Fix direction: verify `lstm_meta` in `_load_lstm` before `load_lstm` reads it (same pattern as `transformer_meta` at `ml_predict.py::_load_transformer`).
 
-- **UI-01 analytics key identity** — root cause of the 2026-07-08 frozen-cards incident: client-retained `activeExpiry` diverges → silent SSE rejection + exact-key GET misses → pending-shell churn. Fix design approved, not started: server-resolved `selected_exp` (generation-guarded), single client key-builder, `analytics_cache_key` payload echo.
-- **UI-04 key-levels display honesty** — P1B: vanna shown is a vega/(S·iv) proxy (label or replace); P1C: charm analytic sign unproven while feeding the call-engine Greeks vote (prove or gate); P1D: PDH prior-trading-day path fixed; overnight calendar-blind residual folded into **LP-01**.
-- **UI-05 guest cold-fusion SLA at the open burst** — mechanism fixes landed (priority pools, chain gate, mkt-ctx single-flight); remaining: RTH open-burst reproof, guest-universe repeatability, SLA regression enforcement.
-- **ECON-01 replay-context residuals** — denominator defect fixed and locked; parent stays open on calibration-version pinning, purged/embargo execution, broader LSTM/Transformer point-in-time windowing, RTH producer-guard observation.
-- **MODEL-04 stale-model serving policy** — evidence delivered (per-ticker vintage table 2026-07-10; ten tickers on pre-correctness 2026-04-30 bundles; guests route through governed anchors). Serve/unserve/retrain policy = operator decision, held.
-- **BUILD-IDENTITY git_sha semantics** — `/api/build.git_sha` reads repo HEAD at request time, not the running process. `process_identity` block (startup SHA + PID) is the working method. Remaining: flip legacy top-level `git_sha` to process identity — operator call.
-- **GOV-REMOTE-ENFORCEMENT** — branch protection verified (PR + required checks + no force-push) but `enforce_admins=false` leaves the admin direct-push channel open. Operator settings decision.
-- **UI-EXPLAIN orphan payload surfaces** — design approved, not rendered: `pred_headline` → explanation rail; `reversal_risk`/`reversal_label` → paired risk chip; closes with rendered DOM + RTH proof for all dispositioned fields. Universal RTH runtime proof (all enrolled tickers, browser DOM, live transport) remains open behind an RTH session window.
-
----
-
-*(Historical note only: the 2026-07 slimming retired the Schwab V4 register, ablation grid law, governance stage plans, and mega walks. This note does NOT narrow the Project A denominator below — nothing is closed merely by being absent from an older list.)*
+- [ ] **UI-01 analytics key identity** — root cause of the 2026-07-08 frozen-cards incident: client-retained `activeExpiry` diverges → silent SSE rejection + exact-key GET misses → pending-shell churn. Fix design approved, not started: server-resolved `selected_exp` (generation-guarded), single client key-builder, `analytics_cache_key` payload echo.
+- [ ] **UI-04 key-levels display honesty** — P1B: vanna shown is a vega/(S·iv) proxy (label or replace); P1C: charm analytic sign unproven while feeding the call-engine Greeks vote (prove or gate); P1D: PDH prior-trading-day path fixed; overnight calendar-blind residual folded into **LP-01**.
+- [ ] **UI-05 guest cold-fusion SLA at the open burst** — mechanism fixes landed (priority pools, chain gate, mkt-ctx single-flight); remaining: RTH open-burst reproof, guest-universe repeatability, SLA regression enforcement.
+- [ ] **ECON-01 replay-context residuals** — denominator defect fixed and locked; parent stays open on calibration-version pinning, purged/embargo execution, broader LSTM/Transformer point-in-time windowing, RTH producer-guard observation.
+- [ ] **MODEL-04 stale-model serving policy** — evidence delivered (per-ticker vintage table 2026-07-10; ten tickers on pre-correctness 2026-04-30 bundles; guests route through governed anchors). Serve/unserve/retrain policy = operator decision, held.
+- [ ] **BUILD-IDENTITY git_sha semantics** — `/api/build.git_sha` reads repo HEAD at request time, not the running process. `process_identity` block (startup SHA + PID) is the working method. Remaining: flip legacy top-level `git_sha` to process identity — operator call.
+- [ ] **GOV-REMOTE-ENFORCEMENT** — branch protection verified (PR + required checks + no force-push) but `enforce_admins=false` leaves the admin direct-push channel open. Operator settings decision.
+- [ ] **UI-EXPLAIN orphan payload surfaces** — design approved, not rendered: `pred_headline` → explanation rail; `reversal_risk`/`reversal_label` → paired risk chip; closes with rendered DOM + RTH proof for all dispositioned fields. Universal RTH runtime proof (all enrolled tickers, browser DOM, live transport) remains open behind an RTH session window.
 
 ---
 
-## PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD
+*Everything not listed here was either closed with evidence (see git history), superseded by the
+2026-07 slimming (retired programs: Schwab V4 register, ablation grid law, governance stage plans,
+mega walks), or is intentionally not tracked. If a removed concern turns out to be live, it comes
+back as a new row with fresh evidence.*
+
+---
+
+# PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD
 
 > **Added 2026-08-12 (operator-authorized documentation-preservation write).** This is the durable
 > Project A master checklist. It is deliberately expansive and must not be shrunk. Rows are never
 > silently deleted — future changes use ADD / STATUS_CHANGE / RECONCILIATION. Checkbox rule:
-> exactly one closure rule governs this board — the **binding Closure rule at the top of this file**:
-> a checkbox is `[x]` ONLY when it is fully proven AND an exact commit SHA (plus test cite where code
-> changed) is recorded on the row; every other state — OPEN / FAIL / BLOCKED / NOT_PROVEN / HISTORICAL /
-> GAP / unproven acceptance target, and any "CLOSED_WITH_EVIDENCE"/"proven PASS" label lacking that SHA —
-> stays `[ ]`. No second or weaker closure rule exists here.
+> `[x]` ONLY for CLOSED_WITH_EVIDENCE (or a proven PASS); `[ ]` for everything else
+> (OPEN / FAIL / BLOCKED / NOT_PROVEN / HISTORICAL / GAP / unproven acceptance target).
 >
 > **Governing mission:** SEARCH → FIND → PROVE → FIX → TEST → IMPROVE → NEXT. Work the repo, not the
 > board. The board is durable memory of everything that still needs technical proof. This is NOT a
@@ -319,219 +315,80 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 
 ## PA-3 — CURRENT CANONICAL / EVIDENCED F-SERIES (F01–F42, gaps)
 > **Count (repo-grounded, corrected):** LOWEST = F01, HIGHEST = F42, **EVIDENCED ITEMS = 37** (supersedes Claude's earlier 34 — the difference is F33/F34/F37b, which ARE evidenced F-rows, not merely RC mappings). GAPS = F04, F16, F19, F28, F30, F37-parent (F37b exists). Explicit OPEN = **F10, F15, F25, F31, F39**. F32 = one-authority lock evidenced BUT broader RC-328/artifact-compatibility state NOT_PROVEN. F33/F34/F37b preserved; F35 kept distinct from F01.
-- [ ] **F01** — Model denominator / XGB engineered-row parity — CLOSED_WITH_EVIDENCE (RC-344/RC-339; broader universality reproof remains part of parent)
-- [ ] **F02** — Net GEX at spot (vendor aggregate vs repriced; distinct books, consumers separated) — CLOSED_WITH_EVIDENCE
-- [ ] **F03** — Gamma profile (one formula authority; terrain materializes once; one pinned `now`) — CLOSED_WITH_EVIDENCE
+- [x] **F01** — Model denominator / XGB engineered-row parity — CLOSED_WITH_EVIDENCE (RC-344/RC-339; broader universality reproof remains part of parent)
+- [x] **F02** — Net GEX at spot (vendor aggregate vs repriced; distinct books, consumers separated) — CLOSED_WITH_EVIDENCE
+- [x] **F03** — Gamma profile (one formula authority; terrain materializes once; one pinned `now`) — CLOSED_WITH_EVIDENCE
 - [ ] **F04** — Reserved/disputed historical slot (gamma/delta walls & pin) — HISTORICAL / NOT_PROVEN (literal ID not repo-tracked; RC-292 overlap; semantic live)
-- [ ] **F05** — Trade actionability (one authority; frontend carries; mirror-absent withholds; reopen relocked) — CLOSED_WITH_EVIDENCE
-- [ ] **F06** — Expected move semantics (distinct methodologies, source-tagged) — CLOSED_WITH_EVIDENCE
-- [ ] **F07** — Gamma regime (one backend sign classifier; client does not reconstruct/write) — CLOSED_WITH_EVIDENCE
-- [ ] **F08** — ATR (standard TR+SMA authority; feature variant distinct; Wilder quarantined) — CLOSED_WITH_EVIDENCE
-- [ ] **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — CLOSED_WITH_EVIDENCE
+- [x] **F05** — Trade actionability (one authority; frontend carries; mirror-absent withholds; reopen relocked) — CLOSED_WITH_EVIDENCE
+- [x] **F06** — Expected move semantics (distinct methodologies, source-tagged) — CLOSED_WITH_EVIDENCE
+- [x] **F07** — Gamma regime (one backend sign classifier; client does not reconstruct/write) — CLOSED_WITH_EVIDENCE
+- [x] **F08** — ATR (standard TR+SMA authority; feature variant distinct; Wilder quarantined) — CLOSED_WITH_EVIDENCE
+- [x] **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — CLOSED_WITH_EVIDENCE
 - [ ] **F10** — Candle direction — OPEN / WAITING_FOR_HOST_RETRAIN
-  - [ ] One dead-band classifier authority (`classify_direction`)
-  - [ ] Live producer count = 1 (no second encoder)
-  - [ ] Server + normalization delegate to the one authority
-  - [ ] Historical normalized rows rebuilt under the dead-band definition
-  - [ ] Production training population corrected
-  - [ ] SPY/QQQ/IWM retrained under the corrected definition
-  - [ ] Non-anchor / universal retrain routing proven
-  - [ ] Force-retrain / cache-bypass proven
-  - [ ] PREPROCESSING_VERSION bumped atomically with the retrained artifacts
-  - [ ] Compatible artifacts published
-  - [ ] Governed eval on the retrained generation
-  - [ ] Calibration compatibility proven
-  - [ ] Atomic promotion of the retrained generation
-  - [ ] Runtime restarted on the compatible generation
-  - [ ] Runtime train/serve parity proven
-  - [ ] Replay/backfill compatibility proven
-  - [ ] Universality across tickers proven
-- [ ] **F11** — Flow imbalance (one persisted authority; source travels; kwargs contract locked) — CLOSED_WITH_EVIDENCE
-- [ ] **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
-- [ ] **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
-- [ ] **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE
-- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine). **2026-08-14 fourth audit:** engine POC had no live consumer. Decision (a): display metric — carry engine POC/VAH/VAL on `/api/state` and render `#dr-lvl-poc` / `#exec-poc` (#82). Not (b) retrain, not (c) delete. Display consumer ≠ model consumer. Live-path child `[x]` @ `45b28c33c050fd5c66c2dd790c29d7b716d44753` (ancestor of `origin/main` via #82 `43869ae`). RC-330 stays `[ ]` — fusion still uses the close-price 12-bin proxy (780.25 ≠ engine 780.75); no retrain table. Remaining: one population site, replay/backfill, fallback, universality, runtime.
-  - [x] Exact semantic contract defined for POC/VAH/VAL — Closed @ `462a581`. Typical-price bin, 70% VA, engine 4dp. Tests: `tests/test_liquidity_engine.py`.
-  - [ ] One canonical population site
-  - [ ] No alternate population masquerading as the canonical one — REOPENED 2026-08-14. Two input contracts @ `462a581`. Engine now sanitizes dirty bars; wrapper is pass-through. Acceptance measured on this branch (`engine_vp([{'volume':1}])==(None,None,None)`); `[x]` only on `origin/main` SHA.
-  - [ ] Session / as-of boundary specified
-  - [x] Live path populates from the canonical producer — Closed @ `45b28c33c050fd5c66c2dd790c29d7b716d44753` (tip `a9fb51ea8bc6115a98b718cd7e9c051c3286b222`; #82 merge `43869ae` on `origin/main`). `/api/state` stamps `today_poc`/`pd_poc` from `price_levels`; `#dr-lvl-poc` / `#exec-poc` bind `d.today_poc`. Measured on `origin/main`: `test_dom_receives_engine_today_poc_value`.
-  - [ ] Replay path populates from the canonical producer
-  - [ ] Backfill path populates from the canonical producer
-  - [ ] Frontend path carries the canonical value (no reconstruction)
-  - [ ] Fallback + missingness semantics governed
-  - [x] Mutation proof (changed inputs change outputs) — Closed @ `462a581`. Tests: `tests/test_liquidity_engine.py`.
-  - [ ] Universality across tickers proven
-  - [ ] Runtime proof on loaded code
+  - [x] One dead-band authority; live producer count = 1; server + normalization delegate
+  - [ ] Historical normalized rows rebuilt under dead-band; production training population corrected
+  - [ ] SPY/QQQ/IWM retrained; non-anchor/universal retrain routing proven; force-retrain/cache-bypass proven
+  - [ ] PREPROCESSING_VERSION bumped atomically; compatible artifacts; governed eval; calibration compatibility
+  - [ ] Atomic promotion; runtime restarted on compatible generation; runtime train/serve parity; replay/backfill compatibility; universality
+- [x] **F11** — Flow imbalance (one persisted authority; source travels; kwargs contract locked) — CLOSED_WITH_EVIDENCE
+- [x] **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
+- [x] **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
+- [x] **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE
+- [ ] **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine)
+  - [ ] Exact semantic contract; one canonical population; no alternate population masquerading; session/as-of; live/replay/backfill/frontend paths; fallback + missingness; mutation proof; universality; runtime proof
+- [x] **F17** — Realized volatility cadence (`bar_minutes` required; no silent default) — CLOSED_WITH_EVIDENCE
+- [x] **F18** — Charm drift target (not substituted with pin/net-GEX; governed absence; real UI path fixed) — CLOSED_WITH_EVIDENCE
 - [ ] **F16** — Reserved/disputed VIX-regime row — HISTORICAL / NOT_PROVEN (identity reconciled; producer `vix_bucket`/`vix_level`; consumers/missingness/fallback/universality/defect-status unproven)
-- [ ] **F17** — Realized volatility cadence (`bar_minutes` required; no silent default) — CLOSED_WITH_EVIDENCE
-- [ ] **F18** — Charm drift target (not substituted with pin/net-GEX; governed absence; real UI path fixed) — CLOSED_WITH_EVIDENCE
 - [ ] **F19** — Reserved/disputed freshness/actionability row — HISTORICAL / NOT_PROVEN (actionability F05 closed; freshness → RC-282 OPEN)
-- [ ] **F20** — Pin width (one authority; market_state + server delegate) — CLOSED_WITH_EVIDENCE
-- [ ] **F21** — VWAP side (one `derive_vwap_side`; consumers delegate) — CLOSED_WITH_EVIDENCE
-- [ ] **F22** — Dominant direction (one triplet authority; DB+UI delegate; missing guarded) — CLOSED_WITH_EVIDENCE, latent hardening verification retained
-- [ ] **F23** — Crossed spread (withheld at source; dead helper retired) — CLOSED_WITH_EVIDENCE
-- [ ] **F24** — VWAP distance (signed `spot - vwap`; train/serve parity) — CLOSED_WITH_EVIDENCE
+- [x] **F20** — Pin width (one authority; market_state + server delegate) — CLOSED_WITH_EVIDENCE
+- [x] **F21** — VWAP side (one `derive_vwap_side`; consumers delegate) — CLOSED_WITH_EVIDENCE
+- [x] **F22** — Dominant direction (one triplet authority; DB+UI delegate; missing guarded) — CLOSED_WITH_EVIDENCE, latent hardening verification retained
+- [x] **F23** — Crossed spread (withheld at source; dead helper retired) — CLOSED_WITH_EVIDENCE
+- [x] **F24** — VWAP distance (signed `spot - vwap`; train/serve parity) — CLOSED_WITH_EVIDENCE
 - [ ] **F25** — Canonical ticker storage and artifact identity — OPEN / BLOCKED / PRIOR CLOSURES PREMATURE
-  - [ ] `ticker_storage_key` single authority established
-  - [ ] SPX / `$SPX` identity adjudicated
-  - [ ] Readers / writers / logging-universe normalized to the authority
-  - [ ] Train-write path canonical
-  - [ ] Resume path canonical
-  - [ ] Cache path canonical
-  - [ ] Artifact-dir path canonical
-  - [ ] Arch-eval path canonical
-  - [ ] Guest-anchor path canonical
-  - [ ] DB-key path canonical
-  - [ ] Replay path canonical
-  - [ ] Focused tests pass
-  - [ ] Entire-repo denominator reverified (remaining identity faucets = 0)
-  - [ ] Non-anchor / universal proven
-  - [ ] Clean scoped commit lands + exact SHA recorded
-  - [ ] Integrated into the production line
-  - [ ] Runtime loaded on F25 code + runtime identity proof
-  - [ ] Parent RC-345 / F25 closure recorded
-- [ ] **F26** — Empirical horizon probability (one authority; UI withholds; no client argmax) — CLOSED_WITH_EVIDENCE
-- [ ] **F27** — Higher-timeframe OHLC (one batch synthesizer; live accumulator distinct) — CLOSED_WITH_EVIDENCE
+  - [x] `ticker_storage_key` authority; SPX/`$SPX` adjudicated; readers/writers/logging-universe normalized; train-write/resume/cache/artifact-dir/arch-eval/guest-anchor/DB-key/replay canonical; focused tests pass
+  - [ ] Entire-repo denominator reverified (remaining identity faucets = 0); non-anchor/universal proven; clean scoped commit lands + exact SHA; integrated into production line; runtime loaded on F25 code + runtime identity proof; parent RC-345/F25 closure
+- [x] **F26** — Empirical horizon probability (one authority; UI withholds; no client argmax) — CLOSED_WITH_EVIDENCE
+- [x] **F27** — Higher-timeframe OHLC (one batch synthesizer; live accumulator distinct) — CLOSED_WITH_EVIDENCE
 - [ ] **F28** — Reserved/disputed absorption score — HISTORICAL / NOT_PROVEN (producer `liquidity.absorption_score`; consumers/missingness/fallback/dup-search/universality/defect unproven)
-- [ ] **F29** — Movement-target threshold (one per-horizon selector; no local reconstruction) — CLOSED_WITH_EVIDENCE
+- [x] **F29** — Movement-target threshold (one per-horizon selector; no local reconstruction) — CLOSED_WITH_EVIDENCE
 - [ ] **F30** — Reserved/disputed current spot — HISTORICAL / NOT_PROVEN (live spot authority / fast quote / candle-mark-last / train-serve-replay sources / fallbacks / staleness / universality unproven)
-- [ ] **F31** — Price-level snapshot fallback — OPEN (Phase 2A). Collect-display fail-closed `[x]` @ `16faa71ccd4e46e5a51ca167366928cb60e66b96` (#83 merge `a2732b3`). Parent / fingerprint / universality / mutual exclusion stay `[ ]`. `pdc` DOM bind residual: #84.
-  - [ ] Canonical population + single producer
-  - [ ] Pre-open / RTH / replay semantics specified
-  - [ ] Stale-cache handling defined
-  - [ ] Input fingerprint governs freshness
-  - [ ] Mutual exclusion of sources enforced
-  - [ ] Governed fallback semantics
-  - [ ] No second truth for the snapshot
-  - [ ] Universality across tickers proven
-  - [ ] Runtime proof on loaded code
-  - [x] Collect-display fail-closed (bound DOM consumers) — Closed @ `16faa71ccd4e46e5a51ca167366928cb60e66b96` (tip `19ecb9a7ab0be8f9124556091561ca714caa45bb`; #83 merge `a2732b3ca81cd34ce41282b702997d2a746c8f6f` on `origin/main`). Required checks at `19ecb9a`: hardening 31850186034 + 31850183229 GREEN; pytest-full 31850185917 + 31850183239 GREEN. `stamp_price_level_fields` maps `F31_LEVEL_KEYS` absent/<=0 → None; fetch **exception** → `fail_closed_price_levels(None)`; `pxTxt` + KEY LEVELS walls render — for bound consumers (VWAP/PDH/PDL + F15 POC/VAH/VAL path). Measured on `origin/main`: `tests/test_liquidity_engine.py::test_f31_absent_snapshot_yields_dash_not_zero_or_stale`. NOTE: `pdc` stamped on `/api/state` but DOM consumer not bound on `origin/main` (bind in progress #84 / `cursor/f31-pdc-consumer-556d`); do not drop `pdc` from `F31_LEVEL_KEYS`. Carry `PRICE_LEVELS_CACHE_SEC` (15s successful-fetch TTL) to RC-282 — do not `[x]` RC-282 or stale-cache here.
+- [ ] **F31** — Price-level snapshot fallback — OPEN (Phase 2A)
+  - [ ] Canonical population + producer; pre-open/RTH/replay semantics; stale-cache; input fingerprint; mutual exclusion; governed fallback; no second truth; universality; runtime proof
 - [ ] **F32** — Confluence `cf_*` authority — NOT_PROVEN (Cursor refuses upgrade while RC-328 OPEN)
-  - [ ] Canonical `confluence_features_for_bar` exists
-  - [ ] Current code routes train through it
-  - [ ] Current code routes serve through it
-  - [ ] Wall-clock window semantics defined
-  - [ ] RC-328 OPEN conflict reconciled
-  - [ ] Train + serve population parity proven
-  - [ ] Caller fallback semantics defined
-  - [ ] Universality across tickers proven
-  - [ ] Ledger contradiction eliminated
-- [ ] **F33** — `net_gamma_prev` (raw prior 1m; batch+serve unified; inline producer removed) — CLOSED_WITH_EVIDENCE (RC-342)
-- [ ] **F34** — XGB pre-engineering enrichment (five scheduler routes use canonical preparer) — CLOSED_WITH_EVIDENCE (RC-340)
+  - [x] Canonical `confluence_features_for_bar` exists; current code routes train/serve through it; wall-clock windows
+  - [ ] RC-328 OPEN conflict reconciled; train+serve population parity proven; caller fallback semantics; universality; ledger contradiction eliminated
+- [x] **F33** — `net_gamma_prev` (raw prior 1m; batch+serve unified; inline producer removed) — CLOSED_WITH_EVIDENCE (RC-342)
+- [x] **F34** — XGB pre-engineering enrichment (five scheduler routes use canonical preparer) — CLOSED_WITH_EVIDENCE (RC-340)
 - [ ] **F35** — Training/serving DB identity — children CLOSED_WITH_EVIDENCE; broader DB-authority parent NOT_PROVEN
-  - [ ] `train_ticker` forwards `db_path`
-  - [ ] Confluence cache carries DB identity
-  - [ ] Six callers wired to pass DB identity
-  - [ ] Repo-wide parent DB-identity universality audit complete
-  - [ ] Every DB-reading lane binds its intended DB
-  - [ ] No default DB silently replaces the caller DB
-  - [ ] Sandbox DB cannot become production authority
-  - [ ] Replay / backfill / artifact-lineage DB identity proven
-  - [ ] Universal ticker / data-source proof
-- [ ] **F36** — Signal-layer VWAP anchor (source-tagged session preferred; rolling labeled) — CLOSED_WITH_EVIDENCE
+  - [x] `train_ticker` forwards `db_path`; confluence cache carries DB identity; six callers wired
+  - [ ] Repo-wide parent DB-identity universality audit; every DB-reading lane binds intended DB; no default DB silently replaces caller DB; sandbox cannot become production authority; replay/backfill/artifact-lineage DB identity; universal ticker/data-source proof
+- [x] **F36** — Signal-layer VWAP anchor (source-tagged session preferred; rolling labeled) — CLOSED_WITH_EVIDENCE
 - [ ] **F37** — Reserved parent slot — GAP / NOT_PROVEN (parent semantic unproven; F37b exists)
-- [ ] **F37b** — LSTM zone encoding (shared `encode_zone`; both sites delegate) — CLOSED_WITH_EVIDENCE (RC-343)
-- [ ] **F38** — Training tensor cache identity (content hash; changed labels ⇒ miss; negative control) — CLOSED_WITH_EVIDENCE (universal cache-key inventory remains part of parent)
+- [x] **F37b** — LSTM zone encoding (shared `encode_zone`; both sites delegate) — CLOSED_WITH_EVIDENCE (RC-343)
+- [x] **F38** — Training tensor cache identity (content hash; changed labels ⇒ miss; negative control) — CLOSED_WITH_EVIDENCE (universal cache-key inventory remains part of parent)
 - [ ] **F39** — Confluence missingness — OPEN (explicitly OPEN despite omission from a shorter RC-345 master-open summary)
-  - [ ] Measured-neutral separated from unavailable
-  - [ ] Measured-neutral separated from missing-history
-  - [ ] Measured-neutral separated from missing-clock
-  - [ ] Measured-neutral separated from missing-input
-  - [ ] Caller fallback cannot collapse absence into a value
-  - [ ] Train / serve / replay / backfill encoding explicit
-  - [ ] Active artifact impact measured
-  - [ ] Retrain requirement proven
-  - [ ] Root code fix landed
-  - [ ] Version change applied if required
-  - [ ] Retrain executed if required
-  - [ ] Calibration compatibility proven
-  - [ ] Runtime proof on loaded code
-  - [ ] Universality across tickers proven
-- [ ] **F40** — MC/GARCH sigma cadence (MC own `BAR_MINUTES`; 5m hardcode removed; live reproof) — CLOSED_WITH_EVIDENCE
-- [ ] **F41** — Selected DTE / expiry (selectors require expiry; empty fails closed; no search-all) — CLOSED_WITH_EVIDENCE
-- [ ] **F42** — GEX dollars (`gex_dollars_per_1pct_at_strike`; one `compute_exposures_by_strike`; γ×OI×mult×spot²×0.01; one-producer lock) — CLOSED_WITH_EVIDENCE
+  - [ ] Measured-neutral separated from unavailable / missing-history / missing-clock / missing-input; caller fallback cannot collapse absence
+  - [ ] Train/serve/replay/backfill encoding explicit; active artifact impact measured; retrain requirement proven; root code fix; version change if required; retrain if required; calibration compatibility; runtime proof; universality
+- [x] **F40** — MC/GARCH sigma cadence (MC own `BAR_MINUTES`; 5m hardcode removed; live reproof) — CLOSED_WITH_EVIDENCE
+- [x] **F41** — Selected DTE / expiry (selectors require expiry; empty fails closed; no search-all) — CLOSED_WITH_EVIDENCE
+- [x] **F42** — GEX dollars (`gex_dollars_per_1pct_at_strike`; one `compute_exposures_by_strike`; γ×OI×mult×spot²×0.01; one-producer lock) — CLOSED_WITH_EVIDENCE
 
 ## PA-4 — MATERIAL NON-F / RC DEFECT BOARD (stay until technically resolved or proven duplicate children)
-- [ ] **RC-292** — Gamma-pin semantic collision — OPEN (parent stays open). **2026-08-13/14 measured on this `main`:** Console `kl_gamma_pin` is stamped from `cs.gamma_pin` (`server.py`) = `pick_gamma_pin_strike` = largest `|net GEX$|` per 1% on the selected expiry. HVL is the total-gamma concentration. `pick_pin_and_strength` / `pick_net_gex_peak_strike` / `chart.html` are absent on this `main`. **Label/tooltip/lock @ `0e304f6`. `pin_score` @ `6d14ee2`. Persist + semantic stamp @ `d71bb5e`. Normalized-table stamp @ `053251e`.** Remaining: universality, runtime proof. Charm no longer emits a colliding `gamma_pin` alias.
-  - [x] `pin_score` intended semantic recovered — Closed @ `6d14ee2`. Tests: `tests/test_institutional_key_levels.py`.
-  - [x] UI label made consistent with the bound semantic — Closed @ `0e304f6`. Tests: `tests/test_institutional_key_levels.py`.
-  - [x] Tooltip made consistent with the bound semantic — Closed @ `0e304f6`. Tests: `tests/test_institutional_key_levels.py`.
-  - [x] Persisted `gamma_pin` made consistent with the bound semantic — Closed @ `d71bb5e`. Tests: `tests/test_institutional_key_levels.py`.
-  - [x] Backward-safe migration for persisted values — Closed @ `d71bb5e` + `053251e`. `gamma_pin_semantic=net_gex_peak`; NULL on old rows means the same writer semantic; numbers not rewritten. Existing `snapshots_1m_normalized` gets the same ALTER (Issue 16). Tests: `tests/test_institutional_key_levels.py`.
-  - [x] Behavioral + mutation lock in place — Closed @ `0e304f6`. Tests: `tests/test_institutional_key_levels.py`.
-  - [ ] Universality across tickers proven
-  - [ ] Runtime proof on loaded code
-- [ ] **RC-282** — Freshness / stale actionability — OPEN. **F31 carry (2026-08-14):** `PRICE_LEVELS_CACHE_SEC` (15s successful-fetch TTL in `_fetch_state`) is unlabeled — a carried last-good price-level snapshot is not stamped stale. Not an F31 Collect-display close. Do not `[x]` this row from the #83 land.
-  - [ ] Semantic of freshness / actionability defined
-  - [ ] Live + UI impact characterized
-  - [ ] Stale data cannot remain actionable
-  - [ ] Fallback semantics defined
-  - [ ] Universality across tickers proven
-  - [ ] Root code fix landed
-  - [ ] Runtime proof on loaded code
-- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero — OPEN (parent stays open). **2026-08-14 adversarial REJECT:** `1117f19` forbade fabricating edge as 0 then permitted fabricating it as `val_accuracy·100`. Write-site `None` stands. Accuracy fallback removed; UI renders `edge === null` as `—`. Fix/Proof + two consumer children `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0` on `origin/main`. LSTM accuracy-as-edge is **RC-291** (relabel `[x]` @ `d9ddc8ac2e3f5c24ffd9ca8ca0711f11126d4546` on `origin/main` via #79). Universality stays `[ ]`.
-  - [x] Semantic of the fabricated-zero defect defined — Closed @ `1117f19`. Absent metric ≠ measured zero.
-  - [x] Live path characterized — Closed @ `1117f19`. `_fetch_state` → `model_health` → `/api/state`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
-  - [x] Root cause identified — Closed @ `1117f19`. Unread field; `.get(..., 0)` / `float(raw or 0)` / literal `"edge": 0`.
-  - [x] Fix landed — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. `model_health_edge_from_meta` returns None when `edge_key` is absent; no `val_accuracy` substitute. Measured on `origin/main`: `model_health_edge_from_meta({'val_accuracy':0.55}, 'edge_pp') is None`.
-  - [x] Proof recorded — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Measured on `origin/main`: `model_health_edge_from_meta({'val_accuracy':0.55}, 'edge_pp') is None`; `formatModelHealthEdge(null)` is `—`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
-  - [x] Unmeasured `edge_pp` is not published as `val_accuracy·100` — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Measured on `origin/main`: `model_health_edge_from_meta({'val_accuracy':0.55}, 'edge_pp') is None`.
-  - [x] Model-health UI renders `edge === null` as `—` (not 0 / NaN / throw) — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Measured on `origin/main`: `formatModelHealthEdge(null)` is `—`.
-  - [ ] Universality across tickers proven
-- [ ] **RC-297** — derivation inventory drifted from code — OPEN (parent stays open). **2026-08-14 adversarial REJECT:** `8ca1f18` added a dormant `if terrain_engine.py exists` clause plus a file-exists loop subsumed by `test_mega2_inventory_covers_every_function`. Guard is now active: planted `*_engine.py` / `terrain_engine.py` outside `MEGA2_FILES` fails today. Fix/Proof `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0` on `origin/main`. Filename token `engine` is not the producer class; parent / universality stay `[ ]`.
-  - [x] Semantic of the inventory-drift defect defined — Closed @ `8ca1f18`. Drift = inventory AST mismatch in `MEGA2_FILES`.
-  - [x] Live path characterized — Closed @ `8ca1f18`. Gate is `tests/test_mega2_traceable_audit.py` (offline).
-  - [x] Root cause identified — Closed @ `8ca1f18`. Hand-maintained register; out-of-scope file uninventoried.
-  - [x] Fix landed — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Tree-fed `uninventoried_engine_modules(git ls-files)`. Filename token `engine` is not the producer class; parent stays OPEN.
-  - [x] Proof recorded — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Measured on `origin/main`: `uninventoried_engine_modules(...) == []`; `test_real_planted_engine_file_is_rejected_by_tree_scan` passed.
-  - [ ] Universality across tickers proven
-- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS — OPEN (parent stays open). **2026-08-14 adversarial CONDITIONAL:** except-literal fix @ `5d68d93` is real; the gate is a proxy. Docstring now enumerates what it does NOT catch. Uncovered shapes live in **RC-318**. Remaining: class-wide disposition, universality.
-  - [x] Semantic of the absence-coercion class defined — Closed @ `5d68d93`. `-> float` + except literal.
-  - [x] Live path characterized — Closed @ `5d68d93`. `parity_f_minus_spot_from_contracts` + `tools/check_absence_has_a_type.py` in hardening.
-  - [x] Root cause identified — Closed @ `5d68d93`. Return type forecloses `None`.
-  - [x] Fix landed — Closed @ `5d68d93` for the two except-literal sites the gate measures. Not the CLASS.
-  - [x] Proof recorded — Closed @ `5d68d93`. Tests: `tests/test_absence_has_a_type_gate_v1.py`.
-  - [ ] Universality across tickers proven
-- [x] **RC-291** — LSTM reports `val_accuracy` as "edge" — Closed @ `d9ddc8ac2e3f5c24ffd9ca8ca0711f11126d4546` (#79 merge `b3ae058` on `origin/main`). Relabel only: LSTM `edge_key` is `edge_pp` (None until a true edge exists); the row prints `val_accuracy` under that name, never inside `.mh-edge`. Retrain-for-`edge_pp` is a later child, not this relabel. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
-  - [x] LSTM `edge_key` is `edge_pp`, not `val_accuracy` — Closed @ `d9ddc8ac2e3f5c24ffd9ca8ca0711f11126d4546`.
-  - [x] LSTM row label is `val_accuracy`, not edge — Closed @ `d9ddc8ac2e3f5c24ffd9ca8ca0711f11126d4546`.
-  - [x] DOM/test: operator never sees accuracy inside `.mh-edge` — Closed @ `d9ddc8ac2e3f5c24ffd9ca8ca0711f11126d4546`.
-- [ ] **RC-318** — absence-coerced-to-a-value shapes the RC-301 gate cannot see — OPEN. Spawned by RC-301. Gate flags only `-> float` + except + numeric *literal*. Due 2026-08-21 **slips**: absence-mask widens the LSTM tensor; no silent width change on a live model; retrain not executed this program.
-  - [ ] `lstm_data.py:648` `# absence-ok` except-literal `return 0.0` into a non-nullable encoder. Honest fix: absence mask channel, not 0.0. Due 2026-08-21.
-  - [ ] `lstm_data.py:644` None-branch `if v is None: return 0.0` (unmarked; same `_safe_float`). Honest fix: absence mask channel. Due 2026-08-21.
-  - [ ] Unannotated functions returning a numeric literal from `except` — gate misses (a). 0 sites on this tree 2026-08-14. Due 2026-08-21 to re-scan / decide.
-  - [ ] `-> float | None` functions returning `0.0` from `except` — gate misses (b). 0 sites on this tree 2026-08-14. Due 2026-08-21 to re-scan / decide.
-  - [ ] Non-literal fabrications (`return x or 0.0`) — gate misses (c). Measured 2026-08-14 money-path: `db.py:1963`, `db.py:2356`, `liquidity_value_engine.py:249` (sort key), `planes/l1_runtime.py:55`, `server.py:1271`, `training_provenance.py:294`. Due 2026-08-21.
-- [ ] **RC-329** — one-producer gate blind to consumer-name→semantic — OPEN (parent stays open). **2026-08-14 second audit:** 1/17 was not one source. `KEY_LEVEL_CONSUMER_REGISTRY` now drives all 17 `kl_*` labels/tips in the payload; KEY LEVELS tables have no hardcoded `label:`. Fix `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0` on `origin/main`. Pin-fix rewrite `[x]` Proof @ `30b67f06b37412a5332306f67bb4c2629f957adb` (#80 merge `0723fa5` on `origin/main`). Do not rebase or land `cursor/pin-fix-net-gex-label-556d` / `ef5c0a2` (339-commit paint). Remaining: universality.
-  - [x] Semantic of the gate blindness defect defined — Closed @ `bb85651`. One writer per name ≠ one (definition, scope).
-  - [x] Live path characterized — Closed @ `bb85651`. Console KEY LEVELS `kl_gamma_pin` row.
-  - [x] Root cause identified — Closed @ `bb85651`. No registry linking payload key to semantic.
-  - [x] Fix landed — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. `KEY_LEVEL_CONSUMER_REGISTRY` stamps all 17 labels/tips; L1 copy keys are derived from the registry; `renderKeyLevels` has no `level.label` fallback. Measured on `origin/main`: `hardcoded_kl_row_labels(html) == []`.
-  - [x] Proof recorded — Closed @ `30b67f06b37412a5332306f67bb4c2629f957adb` (#80 merge `0723fa5` on `origin/main`). Measured on `origin/main`: `hardcoded_kl_row_labels(html) == []`; `kl_gamma_pin` = `Net Γ Peak` from the registry. Do not merge `ef5c0a2`.
-  - [ ] Universality across tickers proven
-- [ ] **RC-330** — display POC and fusion-feature POC are different algorithms — OPEN. Spawned by F15. Display consumer (#82) receives the engine. Model consumer (`bayesian_fusion`) still uses `signal_layer_v1._volume_profile_proxy` (close-price 12-bin; 780.25 ≠ engine 780.75). Do not switch the fusion feature without a committed `reports/*rc330_nondegradation*` table (model × horizon × metric_proxy × metric_engine × delta). No such table exists. Do not fabricate it. Due: retrain before any engine-delegate on the feature path.
-  - [ ] Retrain + validate every model that consumes `signal_layer_v1` if the feature algorithm is changed
-  - [ ] Or keep the two algorithms and document the split (current)
-  - [ ] Universality across tickers proven
-- [ ] **RC-328** — Confluence train/serve population — OPEN
-  - [ ] Verify current code closes the original defect
-  - [ ] Canonical population site established
-  - [ ] Train population routes through the canonical site
-  - [ ] Serve population routes through the canonical site
-  - [ ] Window semantics defined
-  - [ ] Time-based lookback specified
-  - [ ] Missingness semantics defined
-  - [ ] Universality across tickers proven
-  - [ ] Reconcile with F32
-  - [ ] Close ledger honestly (no contradiction)
+- [ ] **RC-292** — Gamma-pin semantic collision — OPEN (product-decision bedrock; do NOT resolve during a board-write). **Cursor-verified collision (2026-08-12):** (1) terrain `kl_gamma_pin` = total-gamma pin, correctly labeled; (2) analytics `consensus_summary.gamma_pin` = net-GEX absolute peak; (3) `pin_score` currently uses the analytics/net-GEX peak; (4) persisted `gamma_pin` receives the analytics/net-GEX peak; (5) `static/index.html` ladder row labeled "GAMMA PIN" binds `d.gamma_pin`/analytics net-GEX peak while its tooltip describes total-gamma semantics; (6) Key Levels `kl_gamma_pin` = total-gamma, correctly labeled; (7) `chart.html` PIN = terrain total-gamma and chart has a SEPARATE "NET Γ PEAK" row. **CORRECTION:** `chart.html` PIN is NOT mislabeled (Cursor disproved that). Remaining live collision = index-ladder GAMMA PIN + pin_score + persisted gamma_pin (net-GEX peak) vs terrain/`kl_gamma_pin` total-gamma. Sub-items: pin_score intended semantic recovered; UI-label/tooltip/persistence made consistent; backward-safe migration; behavioral+mutation lock; universality; runtime.
+- [ ] **RC-282** — Freshness / stale actionability (semantic; live+UI impact; stale cannot remain actionable; fallback; universal; root fix; runtime) — OPEN
+- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero (semantic; live path; root cause; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-297** — derivation inventory drifted from code (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-329** — one-producer gate blind to consumer-name→semantic (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-328** — Confluence train/serve population (verify current code closes original defect; canonical/train/serve population; window semantics; time-based lookback; missingness; universal; reconcile F32; close ledger honestly) — OPEN
 
 ### RC-324 — Price-Level Snapshot Identity / Atomic Materialization
 > CODE_APPEARS_FIXED != CLOSED_WITH_EVIDENCE — RC-324 stays OPEN in the ledger even though current code looks repaired.
 - [ ] RC-324 formally CLOSED_WITH_EVIDENCE
-- [ ] Snapshot input fingerprint includes full material OHLCV/time content
-- [ ] Interior bar-data changes alter the fingerprint
-- [ ] Read → decide → build → write is protected by `_MATERIALIZE_LOCK`
+- [x] Snapshot input fingerprint includes full material OHLCV/time content
+- [x] Interior bar-data changes alter the fingerprint
+- [x] Read → decide → build → write is protected by `_MATERIALIZE_LOCK`
 - [ ] Behavioral regression proof confirmed against the actual materialization path
 - [ ] Concurrent same-generation duplicate-result negative control confirmed
 - [ ] Stale snapshot reuse negative control confirmed
@@ -1402,28 +1259,23 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] Board updated immediately after material proof
 - [ ] **BOARD_INTEGRITY_STATUS = PASS**
 
-## PA-46 — CURRENT TOP ACTIVE EXECUTION QUEUE (POINTER VIEW — not independently closable)
-> Pointers to canonical rows; status derives from those rows. No independent `[ ]`/`[x]` state — never counted as engineering completion.
-- F10 → canonical F10 row (OPEN / host retrain)
-- F15 → canonical F15 row (OPEN; live-path `[x]` @ `45b28c33c050fd5c66c2dd790c29d7b716d44753`; fusion still close-price 12-bin; RC-330)
-- F25 → canonical F25 row (OPEN)
-- F31 → canonical F31 row (OPEN; Collect-display `[x]` @ `16faa71ccd4e46e5a51ca167366928cb60e66b96`; #83 merge `a2732b3`; pdc bind #84; fingerprint / universality / mutual exclusion stay `[ ]`)
-- F32 → canonical F32 row (NOT_PROVEN; RC-328)
-- F39 → canonical F39 row (OPEN)
-- RC-292 → canonical RC-292 row (OPEN; label/tooltip/lock @ `0e304f6`; pin_score @ `6d14ee2`; persist/migration @ `d71bb5e` + `053251e`)
-- RC-282 → canonical RC-282 row
-- RC-285 → canonical RC-285 row (OPEN; Fix/Proof + two consumer children `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`; LSTM accuracy-as-edge is RC-291 `[x]`; universality remains)
-- RC-291 → canonical RC-291 row (`[x]` @ `d9ddc8ac2e3f5c24ffd9ca8ca0711f11126d4546`; relabel, not a fabricated `edge_pp`)
-- RC-297 → canonical RC-297 row (OPEN; Fix/Proof `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`; engine-token class remains)
-- RC-301 → canonical RC-301 row (OPEN; except-literal gate @ `5d68d93`; CLASS / RC-318 remain)
-- RC-318 → canonical RC-318 row (OPEN; `# absence-ok` + uncovered shapes; due 2026-08-21 slips — mask widens tensor)
-- RC-329 → canonical RC-329 row (OPEN; Fix `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`; Proof `[x]` @ `30b67f06b37412a5332306f67bb4c2629f957adb`; universality remains)
-- RC-330 → canonical RC-330 row (OPEN; display vs fusion-feature POC; do not unify without retrain)
-- F35 broader DB-identity parent → PA-3 F35 row
-- Historical/disputed F04/F16/F19/F28/F30/F37 → PA-3 gap rows
-- Discovery denominator → PA-41
-- Universal runtime proof → PA-43
-- UX-WORLD-CLASS-CONSOLE → PA-48 (**NOT NOW.** AFTER PA-2 + PA-36 + RC-292 + F15 + LEVELS-SELF-DECLARE-TRUST)
+## PA-46 — CURRENT TOP ACTIVE EXECUTION QUEUE (priority items, not the whole board)
+- [ ] F10 — candle-direction host retrain
+- [ ] F15 — POC/VAH/VAL
+- [ ] F25 — ticker/artifact identity
+- [ ] F31 — price-level snapshot
+- [ ] F32 — cf_* conflict (RC-328)
+- [ ] F39 — missingness zero-collapse
+- [ ] RC-292 — gamma-pin semantics
+- [ ] RC-282
+- [ ] RC-285
+- [ ] RC-297
+- [ ] RC-301
+- [ ] RC-329
+- [ ] F35 broader DB identity parent
+- [ ] Historical/disputed F04/F16/F19/F28/F30/F37
+- [ ] Discovery denominator
+- [ ] Universal runtime proof
 
 ## PA-47 — PROJECT A FINAL CLOSURE (all must be satisfied)
 - [ ] All canonical F rows closed
@@ -1462,60 +1314,10 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] Real-money readiness proven
 - [ ] **PROJECT A = CLOSED_WITH_EVIDENCE**
 
-## PA-48 — LEGACY MATERIAL WORK — CANONICAL ATOMIC HOMES
-> Every material work item named in the `## LEGACY / HISTORICAL MATERIAL` region above has its canonical, closable home here as one atomic requirement per checkbox. The legacy prose stays history-only; the *work* is not — it lives on this board. Closure obeys the single binding Closure rule at the top of this file (exact commit SHA / evidence, else `[ ]`). Items proven already closed/superseded are recorded with their canonical replacement rather than a new box.
-- [ ] **FIND-SCHWAB-WORKER-LEAK** — explicit Schwab client close/terminate added to every scheduled entry point (scoreboard/backfill runners), and zero orphaned `multiprocess.spawn` workers observed across a full week of scheduled runs
-- [ ] **FIND-LIVE-FLIP-WIDE-CHAIN** — the LIVE level compute (`compute_exposures_by_strike`) reads a wide chain (periodic wide fetch → live exposures), so the displayed Gamma Flip / walls / pin are no longer 20-strike-narrow-limited (relates to F42; maps to FIND-GAMMA-FULLCHAIN below)
-- [ ] **WING-IV (RC-43 reopened)** — wide-chain flip validated against an external Barchart flip on a date with a morning wide capture; wing-IV smoothing then proven an accuracy fix (ships) or rejected — no smoothing asserted without that comparison
-- [ ] **FIND-GAMMA-FULLCHAIN** — `maybe_persist_morning_full_chain` performs its OWN once-daily wide `safe_get_chain(strike_count=BIG)` independent of the 20-strike live UI fetch (UI stays 20 for latency)
-- [ ] **FIND-SNAPSHOT-BAR-STAMP** — each snapshot/decision stamped with the `bar_start_ts_utc` of the minute it was computed in (poll instant floored to its 1m bar) so snapshot↔`price_bars_1m`↔outcome joins are exact by construction and the 29s join tolerance can drop to 0
-- [x] **UI-01 analytics key identity** — server stamps `analytics_cache_key` on A/B/C payloads; client uses one key-builder for SSE/REST and generation-guarded adopt of server `selected_exp`. Closed @ `bc1b635`. Tests: `tests/test_ui01_analytics_cache_key.py`.
-- [ ] **UI-05 guest cold-fusion SLA** — cold P50 8.79s / P95 10.21s vs 15s SLA measured @ `6a74331`, board-recorded @ `5506185` (on `main`). Remaining: RTH open-burst reproof + guest-universe repeatability + SLA regression enforcement. Do not `[x]` on the cold-SLA SHA alone.
-- [ ] **AUDIT-TAPE-OVERFLOW-SHORT-VIEWPORTS** — ALERT TAPE tile no longer overflows at 1440×810 and 1366×768 (short-height media query slims padding/font or caps visible entries with a count badge)
-- [ ] **OPS-PLAYWRIGHT-E2E-RERUN** — a real `npm run test:e2e` run lands (retiring the stale 2026-05-25 marker) and `tests/test_playwright_must_run.py` passes on that real run
-- [ ] **GOV-REMOTE-ENFORCEMENT** — operator settings decision on `enforce_admins` recorded and executed (admin direct-push channel closed or explicitly accepted with rationale); external-boundary item until the operator acts
-- [ ] **BUILD-IDENTITY `git_sha` semantics** — legacy top-level `/api/build.git_sha` flipped to process identity (startup SHA + PID), or the operator decision to keep request-time HEAD recorded on the row
-- [ ] **DIR-01 directional-bias discriminator** — the facet-(g) study (net DEX sign / ΔOI asymmetry / charm-projected flow / distance-weighted mass) run under the clean protocol, placebo-controlled, and dispositioned; nothing reaches `decision_path_admissions.json` and the Chart renders no directional arrow until it clears a placebo
-- [ ] **RECON-02 disk-cleanup purge** — full purge executed only after one clean trading session AND the operator's purge word; `_backup_pre_exec_identity_v1` released only after 5 clean trading days from 2026-07-26
-- [x] **PHASE-4 decision-path gate** — `decision_gate.py` + empty admissions + `call_engine.compute_call` gate + `tests/test_decision_gate.py` merged to the mainline. Closed @ `e009aa2` (PR #46). Runtime: directional calls stay `WAIT — decision path not admitted` until Find & Prove earns the first admission.
-- [ ] **PHASE-5 restructure** — deliberate directory reorganization for a legible repo completed after Phase 4, with no functional changes mixed in
-- [ ] **FIND-LABEL-INTEGRITY-FORENSICS** — the extreme scoreboard cells ($SPX 60c 0.0% n=108, MSFT 60c 99.0% n=101, UNH 0–6.6%, QQQ 60c 72.3%) proven to be labeling/join/timestamp artifacts or genuine, before any accuracy number is trusted; `TIMESTAMP_IDENTITY_NOT_PROVEN` resolved per horizon
-- [ ] **SCOREBOARD-TARGET-TRUTH — Lane A** — scoreboard schema v4 landed: trade-decision ALL card, confusion matrices, baselines, fail-closed accuracy presentation, invalid-threshold exclusion (independently falsifiable from Lane B)
-- [ ] **SCOREBOARD-TARGET-TRUTH — Lane B** — identity-first outcome attachment (`calibration/backfill_outcomes.py` + tests) proven end-to-end: compound identity, production-copy reconciliation, old-vs-new weights/decisions, migration/rollback, RTH proof (currently LANE B COMMIT_READY = NO)
-- [x] **UI-04 P1B — vanna honesty** — UI labels the shown value as a vega/(S·iv) proxy (not true vanna). Closed @ `29ea1e4`. Tests: `tests/test_charm_vote_gate.py`.
-- [x] **UI-04 P1C — charm sign gate** — charm vote gated (`CHARM_VOTE_VALIDATION_STATUS == "UNAPPROVED"`) until analytic sign is proven. Closed @ `29ea1e4`. Tests: `tests/test_charm_vote_gate.py`. Sign proof itself is still NOT_PROVEN — the gate is the close, not a validity claim.
-- [x] **UI-04 P1D — PDH prior trading day** — PDH uses previous trading day (`liquidity_value_engine.py`), fail-closed without prior RTH bars. Closed @ `8686e68`. Overnight calendar-blind residual stays in **LP-01 / F15** — do not treat this close as overnight-session proof.
-- [x] **ML-META-JSON-VERIFICATION-ASYMMETRY** — `_load_lstm` verifies `lstm_*_meta.json` (presence + Item-4 manifest hash) before `lstm_model.load_lstm` reads it, matching `xgb_meta` / `transformer_meta`. Closed @ `a107412` (PR #55 merge `bc1e078`). Tests: `tests/test_model_contract_enforcement.py`. Slim-ledger cite `7ec0bf6` was the pre-rebase feature SHA and is not on `main`.
-- [ ] **QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1** — ENABLED / NOT_STARTED (operator 2026-07-09) — DEPENDS ON DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1: input layer VALID as of `06a3f9e8e73811d61364b2829ff462d7b90474de`. Continuous signal-refinement loop consumes the denominator-first scoreboard as measurement substrate. Boundary (binding): the scoreboard identifies weak tickers/horizons/coverage gaps; it does NOT itself approve model or signal-rule changes.
-- [ ] **STAGE-2 Target/label foundation** — continue `docs/stage1_target_label_foundation/` Stage 2: retire the confirmed placeholder thresholds and design the governed target so scoreboard accuracy becomes decision-valid. Preregistered protocol; no outcome mining.
-- [ ] **ML-PIPE-V1 predictive-validity closeout** — operator-host shuffled-label runs on real capture data per model-family×horizon, then a clean governed retrain, then per-ticker/per-horizon validity classification. Until then the standing NOT_PROVEN verdict holds.
-- [ ] **SIG-01 scoreboard/actionability accrual** — sessions 2–5 of segmented multi-day evidence toward signal-outcome validation; logger ~32 tickers, snapshot rows landing all session.
-- [ ] **ECON-01 residual — calibration-version pinning** — replay/serve pins the exact calibration version used, with no silent drift. Parent denominator defect closed @ `e400570` (board `6c29a7f` on `main`); these four residuals remain.
-- [ ] **ECON-01 residual — purged/embargo execution** — the purged/embargoed walk-forward is actually executed in the replay-context path, not merely specified
-- [ ] **ECON-01 residual — LSTM/Transformer point-in-time windowing** — the broader sequence-model point-in-time windowing carries no lookahead across replay/backfill
-- [ ] **ECON-01 residual — RTH producer-guard observation** — the RTH producer-guard observed live doing its job on the replay-context path
-- [ ] **OPS-OPERABLE-SURFACE-JOB** — the daily terrain scorecard (15:30 CT) AND the recurring Collect job registered as operator-visible host tasks in `governance/host_scheduled_jobs.md`, with the durable operable-surface gate green
-- [ ] **MODEL-04 stale-model serving policy** — the serve/unserve/retrain policy for pre-correctness bundles (ten tickers on 2026-04-30 vintages; guests via governed anchors) decided and recorded (operator decision, currently held)
-- [ ] **UI-EXPLAIN orphan payload surfaces** — `pred_headline` rendered to the explanation rail and `reversal_risk`/`reversal_label` rendered as a paired risk chip, closing with rendered DOM + universal RTH runtime proof for every dispositioned field
-- [ ] **GAMMA-INTRADAY-CADENCE** — the live intraday gamma product refreshes the WIDE chain periodically (≈5–15 min) on a separate low-priority track, decoupled from the per-cycle 20-strike UI fetch (sequenced after FP-64 proves the morning hypothesis)
-- [ ] **LEVELS-SELF-DECLARE-TRUST** — every displayed level self-declares `TRUSTED` only when its finite correctness contract (sanitized greeks · single `compute_exposures_by_strike` source · canonical method · full strike coverage · near-term expiries · fresh chain) holds, else `LOW_CONFIDENCE_NARROW_CHAIN` / `STALE` / `UNSANITIZED`, surfaced in the Key Levels UI and gated by one test asserting the flag derives from input quality
-- [ ] **SCOREBOARD-ECONOMIC-REWORK** — change the scoreboard metric from direction-accuracy-vs-placeholder to dollars-after-costs of the gamma-conditioned strategy, per regime (fp_levelset F2). Historical prose only until this row. Does not itself admit anything to TRADE.
-- [ ] **MODEL-STACK MSD-001..005** — five CONFIRMED_DEFECT items in `reports/MODEL_STACK_IMPLEMENTATION_AND_PREDICTIVE_VALIDITY_AUDIT_V1.md` (vix_direction/vix_vs_prev parity, native vol semantics, 5c hardcoded isotonic, 5c meta bypass, net_vanna=None) each fixed or killed with a SHA + test. Report is evidence, not a second queue.
-- [ ] **REAL-GATE:VOL-CTX-SINGLE-SOURCE** — cache `"vix"` + `vix_bucket` raw reads retired or governed; report claimed this row existed on OPEN_ITEMS and it did not. Home is this checkbox. Source: `reports/VOLATILITY_V1_CRASH_RECOVERY_SCOPE_RECONSTRUCTION_AND_ACCEPTANCE_REPROOF.md`.
-- [ ] **CHAIN-OF-TRUST / TraceableDerivation** — 290 consumer reads without producer link (`governance/CHAIN_OF_TRUST_GAP_INTEL_290.md`) classified; every MATERIAL_TECHNICAL gap mapped here or to an existing F/RC row. Do not open a 290-box program.
-- [ ] **ISSUE-19 $SPX 190-row forward-grid** — dense forward 1m at the documented hole filled or the 190 `pin_neutral` / `outcome_filled=0` rows dispositioned. Parent homes stay FIND-LABEL-INTEGRITY-FORENSICS / F25 / STAGE-2. Source: `docs/issue19_post_rehydration_eligibility_audit.md`.
-- [ ] **A1/A2 residual gaps** — leftover named gaps in the A1 conformal/isotonic and A2 lifecycle contracts (calendar freshness / multi-exchange / extended hours; conformal scheduler; ml_predict↔v2 bridge) either closed with SHA or classified NOT_MATERIAL. Contracts stay contracts, not a second queue.
-- [ ] **EXPOSURE-CONFLUENCE-CUBE** — one stamp, one walk: per-strike **GEX + DEX + VEX + CHEX + ΔOI + EM + value (POC/VAH/VAL)** from `compute_exposures_by_strike` / existing morning-full OI. DEX and `net_delta` already exist; ΔOI is computable from stored `openInterest` (DIR-01 b). Missing ≠ 0.0. This is Collect / one-faucet work, not a signal. Does not admit TRADE. Sequenced after PA-2’s single walk is the only live producer.
-- [ ] **ΔOI-PER-STRIKE** — day-over-day open-interest change per strike from `option_chain_morning_full` (already on disk). Distinguishes a wall forming from a wall dissolving. Collect-side derivation; Chart yellow-bar meaning, not a new paint. Home for DIR-01(b) so it is not only historical prose.
-- [ ] **TRUE-VANNA-VEX** — replace the labeled vega/(S·iv) proxy with true vanna / VEX on the cube, or keep the proxy forever and never call it vanna. UI-04 P1B closed the *label*; this row is the exposure. Charm vote stays UNAPPROVED until its own proof. Not TRADE.
-- [ ] **EXPIRY-STACK-VIEW** — operator can read 0DTE / this week / monthly / all from the **same** cube without a second producer. AFTER EXPOSURE-CONFLUENCE-CUBE and PA-2. Do not build expiry filters on three faucets.
-- [ ] **NO-OPTIONS-TAPE** — standing constraint, not a feature. Schwab carries **no options trade prints**; Alpaca IEX is equities only. Kill any HIRO / per-trade quote-rule / tape clone before it is built. Interval Δ`totalVolume` vs bid/ask at snapshot bounds is the honest weak substitute (DIR-01 c). Anyone proposing prints must name the feed first.
-- [ ] **UX-WORLD-CLASS-CONSOLE** — **AFTER (all must be `[x]` or PASS):** PA-2 `ONE_FAUCET_STATUS = PASS`, PA-36 `OPERATOR_TRUTH_STATUS = PASS`, RC-292 closed, F15 closed, LEVELS-SELF-DECLARE-TRUST closed. **THEN** Chart + Console get the bells and whistles: one KEY LEVELS / exposure card (no greeks tabs), Chart PIN labeled for the bound semantic, value levels on Chart/Console (F15/LP-01), expiry stack, trust chips, GEX+DEX+VEX+CHEX+ΔOI+EM+value on one surface, six-pill lock stays (`tests/test_issue18_ui_contract.py`), no resurrected surfaces, no options tape. PHASE-5 (repo directories) is a different row and may run earlier. This row is **look-and-feel + layout only after the number is true**. Predictive validity stays NOT_PROVEN; nothing here admits TRADE.
-
-## OPEN ROOT-CAUSE LEDGER DENOMINATOR
-> Technical state preservation only — do NOT turn this into process work. `governance/root_cause_log.md` was **absent from `main`**. Restored 2026-08-13 from `a2b5112` (feature/cf-one-faucet-land-f32-rc328). Last measurable table on that blob = **64 OPEN / 229 CLOSED**. The 2026-08-12 count of **72 OPEN / 55 past due** cannot be re-verified — that file never reached `main`. Do not infer 8 closes from the difference. If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
+# OPEN ROOT-CAUSE LEDGER DENOMINATOR
+> Technical state preservation only — do NOT turn this into process work. Measured OPEN RC denominator = **72** OPEN rows in `governance/root_cause_log.md` (counted 2026-08-12; of which 55 are past due). If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
 - [ ] Enumerate every currently OPEN RC row in `governance/root_cause_log.md`
-- [ ] Record current measured OPEN RC denominator (= 64 as of restored `a2b5112`; prior 72 count UNVERIFIED)
+- [ ] Record current measured OPEN RC denominator (= 72 as of 2026-08-12)
 - [ ] Recompute denominator when the ledger changes
 - [ ] Classify each OPEN RC into exactly one category (MATERIAL_TECHNICAL, DUPLICATE_CHILD, SUPERSEDED_WITH_EVIDENCE, STALE_LEDGER_AFTER_PROVEN_FIX, PROCESS_ONLY, EXTERNAL_BOUNDARY, NOT_PROVEN)
 - [ ] Every MATERIAL_TECHNICAL RC appears explicitly on this Project A master board
@@ -1536,7 +1338,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] No material technical defect disappears because it belongs to another historical numbering system
 - [ ] OPEN material technical RC count = 0 before Project A closure
 
-## EXISTING REPO WORK-ITEM SYSTEM RECONCILIATION
+# EXISTING REPO WORK-ITEM SYSTEM RECONCILIATION
 > These identifiers are DISTINCT namespaces. Do NOT conflate them with canonical Project A F01–F42. Keep this reconciliation LIGHT — no registries, crosswalk DBs, YAML/JSON mirrors, CI, parsers, or governance frameworks. A simple checklist here is enough. Namespaces: (1) unpadded **F1/F2/F3** = Find & Prove system (`reports/fp_levelset_directive_for_cursor.md`, also referenced in this OPEN_ITEMS.md); (2) hyphenated **F-01…** = Desk audit findings (`reports/cursor_desk_audit_v1.md`); (3) **RH-F1…RH-F8** = rehab facets (`governance/REHAB_PROGRAM.md`).
 - [ ] Unpadded F1/F2/F3 Find & Prove items reviewed
 - [ ] Hyphenated F-01… Desk audit findings reviewed
@@ -1552,114 +1354,3 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] No numbering collision causes one item to overwrite another
 - [ ] Universality requirements apply to imported material technical items
 - [ ] Parent Project A cannot close while a materially applicable imported item remains unresolved
-
-### 2026-08-13 land onto main (RECONCILIATION — not a second queue)
-> Maps the competing slim `main` ledger and the 2026-08-13 KEY LEVELS paint stack onto this board. Does not create a fourth list. Does not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292 from paint.
-
-- **Canonical file** is this board (from `origin/cursor/project-a-board-audit` @ `0e93624`). Slim `main` `OPEN_ITEMS.md` (~63 lines, last rewritten 2026-07-16) is superseded as a competing "now."
-- **`ACTIVE_PROGRAM.md`** is a pointer: now = PA-46. Charter remains `AGENTS.md`. Locks table stays.
-- **Slim leftovers already on PA-48 (do not add a second row):** RECON-02, PHASE-4, PHASE-5, FIND-SCHWAB-WORKER-LEAK, FIND-LABEL-INTEGRITY-FORENSICS, SCOREBOARD-TARGET-TRUTH Lane A/B, UI-01, UI-05, UI-04 P1B/P1C, ECON-01 residuals, MODEL-04, BUILD-IDENTITY, GOV-REMOTE-ENFORCEMENT, UI-EXPLAIN, OPS-OPERABLE-SURFACE-JOB, DIR-01, GAMMA-INTRADAY-CADENCE, LEVELS-SELF-DECLARE-TRUST, FIND-LIVE-FLIP-WIDE-CHAIN / FIND-GAMMA-FULLCHAIN.
-- **FIND-SCHEDULED-JOBS-VISIBILITY** — inventory already exists (`governance/host_scheduled_jobs.md`, historical close 2026-07-27). Remaining host-task registration lives under **OPS-OPERABLE-SURFACE-JOB**. Slim `main` still showed this `[ ]` because that ledger predates the inventory close. Do not add a second closable row.
-- **STATUS_CHANGE this land:** UI-01 @ `bc1b635`; PHASE-4 @ `e009aa2`; UI-04 P1B + P1C @ `29ea1e4`.
-- **STATUS_CHANGE 2026-08-13 RC-292 children (not the parent):** UI label + tooltip + behavioral/mutation lock @ `0e304f6`. Parent RC-292 / persisted `gamma_pin` stay `[ ]`.
-- **STATUS_CHANGE 2026-08-14 RC-292 `pin_score`:** intended semantic recovered @ `6d14ee2` (`gex_at_bound_pin_strike` = `|net GEX$|`). Parent stays `[ ]`.
-- **STATUS_CHANGE 2026-08-14 RC-292 persist + migration:** `d71bb5e`. Parent / universality / runtime stay `[ ]`.
-- **STATUS_CHANGE 2026-08-14 RC-292 normalized stamp:** `053251e` (Issue 16: `snapshots_1m_normalized` ALTER). Parent / universality / runtime stay `[ ]`. `[x]` count unchanged.
-- **STATUS_CHANGE 2026-08-14 RC-285 write sites:** `1117f19`. Five children `[x]`; parent / universality stay `[ ]`. `[x]` 12 → 17.
-- **STATUS_CHANGE 2026-08-14 five-zone pass:** RC-301 except-literal @ `5d68d93`; F15 math one-producer @ `462a581`; RC-297 MEGA2 lock @ `8ca1f18`; RC-329 `kl_gamma_pin` consumer bind @ `bb85651`. Parents stay `[ ]`. `[x]` 17 → 35.
-- **STATUS_CHANGE 2026-08-14 five-zone adversarial REOPEN:** operator audit @ `8ccddb17`. Required checks at `8ccddb17`: pytest-full run 31769090459 GREEN; hardening run 31769090409 GREEN. RC-285 Fix/Proof reopened (accuracy-as-edge). F15 "no alternate population" reopened (two input contracts). RC-297 Fix/Proof reopened (dormant guard). RC-329 Fix/Proof reopened (two-copy bind). RC-301 except-literal children stay `[x]`; uncovered shapes filed as RC-318. `[x]` 35 → 28. No new `[x]` until acceptance is measured on `origin/main`.
-- **STATUS_CHANGE 2026-08-14 defect-learning class plants:** `a83219a` — uncited-instance plants now fail for hardcoded `kl_*` label, undelegated `*volume_profile*`, measurement-`*_key` literal fallback, uninventoried `*_engine.py`, and except-literal `-> float`. Charter sentence in `AGENTS.md`. No new `[x]`. Parents stay OPEN.
-- **STATUS_CHANGE 2026-08-14 no example-locking:** `132c238` — detectors moved off observed tokens (`kl_` prefix, `volume_profile` name, `*_key` suffix, `*_engine.py` suffix, `return 0.0` Constant). Plants now use `structural_unlisted`, `_value_area_from_closes`, `requested`/`field`, `engine_core.py`, `return float(0)`. Version-key miss no longer substitutes `model_version`. No new `[x]`. Parents stay OPEN.
-- **STATUS_CHANGE 2026-08-14 five-zone re-audit:** `c869521` — F15 fusion proxy reverted (RC-330). Required checks at `c869521`: pytest-full run 31804804500 RED; hardening run 31804804720 RED. Checkbox `[x]` rows: origin/main 35 → this branch 28 (seven reopens, zero new checkbox closes). Raw string `[x]` rose 58 → 60 at `d3e2f51` because STATUS_CHANGE prose mentioned the token, not because boxes were checked. No new checkbox `[x]`. Pin-fix rebase remains OPEN. Parents stay OPEN.
-- **STATUS_CHANGE 2026-08-14 dual read-only audit @ `efe73f1`:** two independent audits agree. Z1 write-site + Z5 17-key payload stay accepted as instance repairs; do not regress. Class-prevention is NOT_PROVEN for Z1/Z3/Z4/Z5 (example-locked plants; high escape rates on renamed-equivalent variants). Z3 keep-the-split is accepted as the live-feature repair; `_FEATURE_PATH_POC` file+function exemption is a regression of RC-330's own class. Z2 gate is honestly scoped. Required checks at `efe73f1`: pytest-full run 31804847117 RED (`_stamp_gamma_pin_consumer_copy` uninventoried; vanna HTML needle); hardening run 31804846856 RED (ruff F401 unused `import re`). Board-count `== 28` / `== 35` pins passed at this SHA and were not a CI failure; they were removed later for post-merge durability. No new `[x]`. Do not merge. Parents stay OPEN.
-- **STATUS_CHANGE 2026-08-14 CI fix-forward after `efe73f1`:** MEGA1 row for `_stamp_gamma_pin_consumer_copy`; vanna P1B guard re-pointed at `KEY_LEVEL_CONSUMER_REGISTRY`; unused `import re` dropped; board-count test keeps `added == set()` plus `len(head) <= len(main)`. Required checks at `dc5a942`: pytest-full run 31806369793 GREEN; hardening run 31806369777 GREEN. Charter slice lock (2) now names MEGA1_FILES / MEGA2_FILES + `test_mega1_traceable_audit.py`; slice lock (4) requires a STATUS_CHANGE that cites an audited SHA to cite required-check conclusion. Residual: the detector catches omit-the-conclusion only; run-id-belongs-to-SHA stays operator review (Actions API). No new `[x]`. Parents stay OPEN.
-- **STATUS_CHANGE 2026-08-14 instance repairs ready to land:** Z1 origin shape (assign-then-None, attribute mapping, ternary) now fails the class plant; Z3 delegation is a Call, histogram shape is name-independent, frozen 12-bin no longer imports live helpers; Z5 L1 copy keys come from `KEY_LEVEL_CONSUMER_REGISTRY` and `renderKeyLevels` has no `level.label` fallback. Z4 stays tree-fed; filename token `engine` is not the producer class. F15 keep-the-split / RC-330 stay OPEN. Landed on `origin/main` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Required checks at `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`: pytest-full run 31811842559 GREEN; hardening run 31811842571 GREEN.
-- **STATUS_CHANGE 2026-08-14 five-zone measured child closes:** `1e09445259b1c0b1392cccdaa7b5b26d922af8d0` and `46513e3` are ancestors of `origin/main`. Required checks at `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`: pytest-full run 31811842559 GREEN; hardening run 31811842571 GREEN. Required checks at `46513e3`: pytest-full run 31814077076 GREEN; hardening run 31814077109 GREEN. Rebased after #82/#79/#80 so the seven `[x]` sit on the new RC rows. Closed: RC-285 Fix/Proof + two consumer children; RC-297 Fix/Proof; RC-329 Fix. New `[x]` rows cite `1e09445259b1c0b1392cccdaa7b5b26d922af8d0` on `origin/main`.
-- **STATUS_CHANGE 2026-08-14 five-zone code PRs on `origin/main`:** #82 merge `43869ae` (`a9fb51e` / `45b28c33c050fd5c66c2dd790c29d7b716d44753`); #79 merge `b3ae058` (`d9ddc8ac2e3f5c24ffd9ca8ca0711f11126d4546`); #80 merge `0723fa5` (`30b67f06b37412a5332306f67bb4c2629f957adb`). Each cited SHA is an ancestor of `origin/main`. Additional `[x]` now that those SHAs are on `origin/main`: F15 live-path; RC-291 parent + three children; RC-329 Proof. Still `[ ]`: RC-330 (no `reports/*rc330_nondegradation*` table; fusion still proxy); RC-318 (due slips: mask widens tensor); F15 no-alternate / remaining F15 children; RC-285/297/329 parents; universality. Do not merge #76 / `ef5c0a2`.
-- **STATUS_CHANGE 2026-08-14 F31 Collect-display on `origin/main`:** #83 merge `a2732b3ca81cd34ce41282b702997d2a746c8f6f` (`16faa71ccd4e46e5a51ca167366928cb60e66b96` / tip `19ecb9a7ab0be8f9124556091561ca714caa45bb`). `git merge-base --is-ancestor 16faa71 origin/main` exit 0. Required checks at `19ecb9a`: hardening 31850186034 + 31850183229 GREEN; pytest-full 31850185917 + 31850183239 GREEN. New `[x]`: F31 Collect-display fail-closed (bound DOM consumers). Still `[ ]`: F31 parent + fingerprint / universality / mutual exclusion / governed fallback / stale-cache; `pdc` DOM bind (#84); RC-282 (15s `PRICE_LEVELS_CACHE_SEC` unlabeled); RC-330; RC-318. Do not merge #76 / `ef5c0a2`.
-- **ADD then STATUS_CHANGE this land:** UI-04 P1D @ `8686e68` (overnight residual stays LP-01 / F15); ML-META-JSON-VERIFICATION-ASYMMETRY @ `a107412` (PR #55; slim cite `7ec0bf6` was the pre-rebase feature SHA, not on `main`).
-- **ADD this land (historical Find & Prove had them; PA-48 did not):** QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1, STAGE-2, ML-PIPE-V1, SIG-01.
-- **KEY LEVELS / B_light paint on `main` (PRs #53–#58 merged; #59 SUPERSEDED do-not-merge; #60 cube-honesty for charm/vanna only) does not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292.** Paint ≠ one faucet. Charm vote stays UNAPPROVED. Predictive validity stays NOT_PROVEN.
-- **`origin/feature/cf-one-faucet-land-f32-rc328`** remains the F32/RC-328 code branch. It is not this ledger PR and is not closed by KEY LEVELS paint.
-
-### 2026-08-13 discovery — documented rehab record (RECONCILIATION)
-
-**How to read `OPEN_ITEMS.md` (so 1125 boxes are not 1125 jobs):**
-
-| What you are looking at | Count | What it is |
-|---|---|---|
-| `[ ]` checkboxes on this board | ~1125 | Mostly **parent acceptance criteria** (PA-1..PA-47). Close only with an exact SHA. |
-| `[x]` on this board | 28 checkbox rows | origin/main had 35 checkbox `[x]` rows (raw string `[x]` = 58 because prose cites the token). This branch: 28 checkbox rows, 0 new checkbox closes, 7 reopens. Raw string `[x]` can rise when STATUS_CHANGE prose mentions the token — that is not a close. |
-| F01–F42 labeled CLOSED_WITH_EVIDENCE but still `[ ]` | most of PA-3 | Prior program called them closed; this board's closure rule requires a SHA on the row. **Do not re-do the work from the label. Do not `[x]` without the SHA.** |
-| **PA-46** | 16 pointers | **The execution queue.** Status derives from the canonical F/RC/PA rows. |
-| **PA-48 still `[ ]`** | 41 | Leftover atomic work, including second-census ADDs and the 2026-08-13 product/UX rows. UX-WORLD-CLASS-CONSOLE is gated AFTER X. |
-| LEGACY / HISTORICAL bullets | many | History only. Not closable. Work they name lives in PA-48 / F15 / F31. |
-
-**Error logs / other logs in this workspace:**
-
-- **No `*.log` files** and no `logs/` directory are tracked. Host job logs (`reports/scorecard_run.log`, stream-capture status) are gitignored; they live on the operator host.
-- The defect log is `governance/root_cause_log.md` (restored; 64 OPEN). That is the "error log" the rehab program actually kept.
-- `governance/audits/repo_sweep_error_propagation_v1..v3_202605*.json` — May 2026 completed silent-exception sweeps (archive; 27→0). Not a forward queue.
-- `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — June pytest-full matrix. SUPERSEDED as a queue; evidence only.
-- `reports/rehab_latest.md` and `tools/rehab_daily_scan.py` — **still absent**. REHAB_PROGRAM named them as queue authority; they never landed on `main`. Do not invent them. Queue authority is PA-46.
-
-**Source files the board cited that were missing from `main` — restored this land (SOURCE NAMESPACE banners, not a second now):**
-
-| File | Restored from | Still applies? |
-|---|---|---|
-| `governance/root_cause_log.md` | `a2b5112` | **Yes** as the defect log. 64 OPEN. Material technical RCs already on PA-4 (RC-292/282/285/297/301/318/328/329). Remainder is PA-41/RC-denominator work — classify, do not start a second RC program. |
-| `governance/REHAB_PROGRAM.md` | `7ab5e0c` | **Facets still apply; file is not the default program.** RH-F1 = PA-2 one faucet. RH-F2..F8 map to PA-36 / Collect / Decide / institutional lock. |
-| `governance/host_scheduled_jobs.md` | `76b6c0e` | **Yes** as inventory. Last host reading on the file (2026-08-04) showed Last Result **3221225786** (terminated) on all three Ed tasks — OPS-OPERABLE-SURFACE-JOB still open. |
-| `reports/fp_levelset_directive_for_cursor.md` | `f6efeeb` | **Premise still applies** (wrong objective / placeholder target). Direction-label studies stay paused. Work homes: STAGE-2, ML-PIPE-V1, FIND-LABEL-INTEGRITY, SCOREBOARD-TARGET-TRUTH. |
-| `reports/cursor_desk_audit_v1.md` | `4bd9c5f` | **One 2026-08-06 report**, not a standing queue. Material leftovers (bitemporality, weekend RTH, Desk SLA) go through PA-41 if still live — do not re-open a Desk program. |
-| `reports/institutional_debt_inventory.md` | `f6efeeb` | **Advisory snapshot (July 19).** Worst file still `server.py`. PHASE-5 / institutional lock. Regenerate; do not treat 2804 as current. |
-| `governance/unproven_register.md` | `8f6467f` | **Yes** as the claims-about-the-world register (boundary vs root_cause). Not a defect queue. |
-
-**Competing docs that still looked like "now" — SUPERSEDED banners added; they do not still apply as queues:**
-
-- `docs/OPEN_ITEMS_OPERATOR_TRUST.md` + `governance/OPERATOR_TRUST_STABILIZATION_GATE.json` + June RTH runbooks — June 2026 operator-trust stack. Overlap: UI-05, PA-36, card fidelity NOT_PROVEN. Do not run the June "next step = resolve_pytest_full_failures" ladder.
-- `docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md` — PR5–PR7 / auto-promote. Maps to PA-16 / PA-35 if still live. Do not enable `ED_SCHEDULER_AUTO_PROMOTE`.
-- `docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md` — claimed authority until ACTIVE_PROGRAM Phase 1a. That sentence is false as of this pointer rewrite.
-- `governance/STACK_WIRING_INTEGRITY_MAP.md` — May STACK-WIRE rider. One-faucet work is PA-2 / F-series, not a wiring-map program.
-- `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md` — May Schwab-first register. Collect law still holds; not a second remediation program.
-- `governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md` / `governance/COVERAGE_JUSTIFICATION.md` — G4 / I-01..I-22. Map to PA-16 / PA-42 if material; not current queues.
-- `docs/issue19_*.md` — pin_neutral / `$SPX` / bar path. Homes: FIND-LABEL-INTEGRITY-FORENSICS, F25, STAGE-2. Not a third Issue-19 program.
-
-**PA-48 leftovers — do they still apply?**
-
-| Still applies (do the work) | Operator-held / external (not agent-closable) | Do not treat as a second program |
-|---|---|---|
-| FIND-SCHWAB-WORKER-LEAK, FIND-LIVE-FLIP-WIDE-CHAIN, WING-IV, FIND-GAMMA-FULLCHAIN, FIND-SNAPSHOT-BAR-STAMP, UI-05, AUDIT-TAPE-OVERFLOW, OPS-PLAYWRIGHT-E2E-RERUN, FIND-LABEL-INTEGRITY-FORENSICS, SCOREBOARD-TARGET-TRUTH A/B, QUALITY_CIRCLE, STAGE-2, ML-PIPE-V1, SIG-01, ECON-01 residuals, OPS-OPERABLE-SURFACE-JOB, UI-EXPLAIN, GAMMA-INTRADAY-CADENCE, LEVELS-SELF-DECLARE-TRUST, PHASE-5 (after this is the only list) | GOV-REMOTE-ENFORCEMENT, BUILD-IDENTITY, RECON-02 (purge word), MODEL-04, DIR-01 (nothing to Chart until placebo) | RH-F1..F8, Desk F-01…, June operator-trust, training PR5–PR7 as a named program, STACK-WIRE, Schwab derived-field register, Issue 19 folder |
-
-**What we do next (unchanged):** execute **PA-46**. Do not start PHASE-5 or a UI redesign in this land. Do not close PA-2 / F42 / ONE_FAUCET / PA-36 / RC-292 from paint.
-
-### 2026-08-13 second census — not 100%, no second canonical file
-
-> Honest limit: a full Read of every `governance/` and `reports/` file was not completed. This pass grepped the live (non-archive) set and read the files that still looked like queues. That is **not** proof that nothing else is hiding in archive, artifacts JSON, or `docs/issue19_*` bodies. PA-41 (discovery denominator) stays open for that reason.
-
-**Do not create a second canonical file for governance/reports.** Those directories are source/evidence. Outstanding *work* lands here as ADD. Creating `GOVERNANCE_CANONICAL.md` / `REPORTS_BOARD.md` would be a fourth list.
-
-**Completed items — proof pass (STATUS_CHANGE only where `main` has the SHA):**
-
-| Row | Proof on `main` | Action |
-|---|---|---|
-| UI-01, PHASE-4, UI-04 P1B/P1C/P1D, ML-META | SHAs already on the `[x]` rows | already `[x]` |
-| RC-292 UI label + tooltip + mutation lock | `0e304f6` | three children `[x]`; parent stays `[ ]` |
-| RC-292 `pin_score` | `6d14ee2` | child `[x]`; parent stays `[ ]` |
-| RC-292 persist + migration | `d71bb5e` + `053251e` | two children `[x]`; parent stays `[ ]` |
-| RC-285 write-site fabricated zero | `1117f19` / `1e09445259b1c0b1392cccdaa7b5b26d922af8d0` | three children `[x]` (semantic/live/root); Fix/Proof + two consumer children `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`; LSTM accuracy-as-edge is RC-291 `[x]` @ `d9ddc8ac2e3f5c24ffd9ca8ca0711f11126d4546` |
-| RC-301 except-literal sites + gate | `5d68d93` | five children `[x]`; CLASS / parent / RC-318 stay `[ ]` |
-| F15 one POC math producer | `462a581` / `45b28c33c050fd5c66c2dd790c29d7b716d44753` | two children `[x]` (semantic + mutation); live-path `[x]` @ `45b28c33c050fd5c66c2dd790c29d7b716d44753`; no-alternate / RC-330 stay `[ ]` |
-| RC-297 MEGA2 file-set lock | `8ca1f18` / `1e09445259b1c0b1392cccdaa7b5b26d922af8d0` | three children `[x]` (semantic/live/root); Fix/Proof `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`; engine-token class remains |
-| RC-329 `kl_gamma_pin` consumer bind | `bb85651` / `1e09445259b1c0b1392cccdaa7b5b26d922af8d0` / `30b67f06b37412a5332306f67bb4c2629f957adb` | three children `[x]` (semantic/live/root); Fix `[x]` @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`; Proof `[x]` @ `30b67f06b37412a5332306f67bb4c2629f957adb`; parent / universality stay `[ ]` |
-| UI-05 cold SLA | `6a74331` / `5506185` | recorded on the row; checkbox stays `[ ]` (RTH burst remains) |
-| ECON-01 parent denominator | `e400570` / `6c29a7f` | recorded on the residual rows; four residuals stay `[ ]` |
-| F01–F42 labeled CLOSED_WITH_EVIDENCE | **no SHA on any F-row; `git log --all --grep=RC-344` (and RC-339/342/340/343) is empty** | stay `[ ]`. The 2026-08-12 freeze unchecked 37 non-SHA `[x]`. Do not put the check back. |
-| SCOREBOARD-TARGET-TRUTH Lane A | scoreboard v3 @ `06a3f9e`; no v4 close SHA found | stay `[ ]` |
-| QUALITY_CIRCLE | `06a3f9e` is the *dependency*, not the refinement loop | stay `[ ]` ENABLED / NOT_STARTED |
-
-**ADD this census (material leftovers that had no PA-48 home):** SCOREBOARD-ECONOMIC-REWORK, MODEL-STACK MSD-001..005, REAL-GATE:VOL-CTX-SINGLE-SOURCE, CHAIN-OF-TRUST / TraceableDerivation, ISSUE-19 $SPX 190-row forward-grid, A1/A2 residual gaps.
-
-**ADD 2026-08-13 product/UX (operator: roadmap must name the later bells-and-whistles, and what data a world-class exposure console actually uses):** EXPOSURE-CONFLUENCE-CUBE, ΔOI-PER-STRIKE, TRUE-VANNA-VEX, EXPIRY-STACK-VIEW, NO-OPTIONS-TAPE, UX-WORLD-CLASS-CONSOLE. UX is **NOT NOW** — AFTER PA-2 + PA-36 + RC-292 + F15 + LEVELS-SELF-DECLARE-TRUST. Research basis (not edge claims): dealer-positioning consoles that work are GEX+DEX+VEX+CHEX plus walls/flip/pin, expiry stack, and value levels — not gamma alone (SpotGamma TRACE/HIRO/charm-delta; FlashAlpha GEX/DEX/VEX/CHEX; Gamma Sonar pressure-field stack). We already have the math for GEX/DEX/charm and morning-full OI; we do **not** have options prints. Nothing in this ADD admits TRADE.
-
-**Not added (evidence only, or already parented):** PRODUCTION_CLAIMS_REGISTER, TRADE_IMPACTING_ROUTE_INVENTORY, PILOT_1B, FULL_PRIMARY_HORIZON audit snapshot, FIELD_SOURCE / SCHWAB normalization audits, INF-1..4 transition policy (deferred; not a new program), unproven_register individual studies (register exists), ADMIN_BYPASS June CI triage, derived-analytics scaffolds (unadmitted Decide-adjacent).

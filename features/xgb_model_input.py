@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from instrument_identity import ticker_storage_key
 from features.canonical_contract import (
     CANONICAL_FEATURE_CONTRACT_VERSION,
     CANONICAL_FEATURE_TIMEFRAME,
@@ -115,7 +116,7 @@ def inference_snapshot_v1_to_engineering_snapshot(
         out[leg] = feats.get(canon)
 
     tkr = inference_snapshot_v1["ticker"]
-    out["ticker"] = str(tkr).upper().strip()
+    out["ticker"] = ticker_storage_key(tkr)  # RC-345/F25: canonical feature-input identity (train/serve parity)
     ts = float(inference_snapshot_v1["as_of_ts"])
     out["ts_utc"] = ts
     eh, em = _et_from_ts_utc(ts)

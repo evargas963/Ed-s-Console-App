@@ -1,5 +1,3 @@
-> **EVIDENCE / CONTRACT — not a second "now."** Outstanding work from this file, if material, lives on `OPEN_ITEMS.md` PA-48. Pointer: `ACTIVE_PROGRAM.md` → PA-46. Do not open a parallel program from this file.
-
 > **Classification:** Policy Specification | **Scope:** Governance documentation `DERIVED_ANALYTICS_REGISTRY.md`.
 
 # Derived Analytics Registry
@@ -60,6 +58,24 @@ provenance_contract
 | `adverse_selection_score` | Normalized option contract `bid`, `ask`, `mark`, `bidSize`, `askSize`, `quoteTimeInLong`, `tradeTimeInLong`; future quote/fill outcome history | Schwab provides current quote state, not a model of unfavorable post-fill selection for the app's entries. | `calibration.v2_a1_execution_ev` scaffold; unavailable until representative post-fill/quote-path data exists |
 | `capacity_participation_cap` | Normalized option contract `totalVolume`, `openInterest`, `bidSize`, `askSize`, `bidAskSize`, `multiplier`, `symbol`; proposed order size | Schwab provides **`totalVolume`**/**`openInterest`**/size primitives, not the app's participation cap or capacity policy. | `calibration.v2_a1_execution_ev` scaffold; policy thresholds require future operator decision before promotion |
 | `contract_profit_label` | Replay trade-log `entry_price`, `exit_price`, `pnl_percent`, `pnl_dollars`, `exit_reason`, `skipped_reason`, `snapshot_id_entry`, `snapshot_id_exit`; those price inputs must originate from normalized Schwab option-chain fields before durable label use | Schwab provides option quote primitives, not the app's replay payoff label under its entry/exit and skip policy. | `v2_decision.a2_replay_labels` sidecar; consumes realized-contract trade-log rows only and flags `realized_contract_eval_raw_chain_reads_pending_normalization` until upstream raw chain reads are normalized |
+
+---
+
+## Lane Classification — greeks exposure analytics are DISPLAY/EXPLAINS ONLY (2026-07-24)
+
+**Rule:** every greeks-derived exposure analytic in the table above — `GEX`/`DEX`, `net_gex`, `gamma_wall`/`delta_wall`/`pin_rail`, `gamma_pin`/`HVL`/`max_pain`/`gamma_flip`, `vanna_proxy`, `net_charm_daily` — is classified **display/explains lane**. It may render on the console UI and chart overlays and may be cited to explain tape behavior. It may NOT enter a model training matrix, feature store, or candidate-selection rule as a predictive input unless the consuming study's frozen preregistration explicitly binds the certified greeks channel (era floor `F1_GREEKS_ERA_FLOOR_TS_UTC` = 1784502281 + `recomputed_greeks_ready()` read gate on `greeks_recomputed_v1`).
+
+**Evidence (kill-by-measurement, commit `9bfea2d5`):** the founding GEX-R1 association fails replication on certified greeks (Spearman −0.02, permutation p = 0.88, 65 sessions; the original −0.22 was measured on the pre-certification store). §8.6 day-level rule-selection: KILL (conditioned −40.9 bp/session vs best unconditional −33.1). Gamma-conditioned candidate study and Rule-A VWAP-fade: CLEAN NULL. Re-test doors per the no-terminal-null law: a genuine vol-regime change, QQQ replication, external multi-year chain data.
+
+**Enforcement:** `research.pilot_step3.f1_input_gates.assert_features_off_display_lane` — invoked at the meta-ingest matrix boundary (`meta_xgb_tb_runner.mask_and_drop`); any `DISPLAY_ONLY_GREEKS_FEATURES` name in a feature set without a `certified_prereg_id` raises before any fit.
+
+**Known bounded exception (legacy stack, disposition attached):** the legacy snapshot trainer still consumes greeks columns as features (`ml_data_common.py` — `M5_ADDITIVE_SOURCE_COLS` on the deprecated m5 path; `net_gamma_prev` ΔGEX train/serve parity helpers; `net_gamma`/`charm_net` among `snapshots_1m_normalized` feature columns). Disposition: this dies with the Round-2 KILL→DEMOTE of the legacy stack at the parked UI provenance migration. It must NOT be modified while the F3 shuffled-label control is in flight — that control certifies the trainer at SHA `9bfea2d5` exactly, and touching the feature path mid-run voids the control. At demotion, this lane rule applies with no exception.
+
+---
+
+## Terrain: single source of truth + full-chain basis (RC-33, 2026-07-24)
+
+Terrain regime/posture/headline/lines have exactly ONE producer: `/api/terrain` (`terrain_engine.compute_terrain`), computed on the **wide-capture multi-expiry chain**. Operator decision 2026-07-24: the intraday terrain verdict uses the full chain, not the near-spot 0DTE slice — dealers hedge the entire delta book across weekly/monthly expiries, and gamma walls just outside the 0DTE window still magnetize intraday price. A duplicate terrain read on `/api/analytics/state` (computed on the selected-0DTE slice, ±1.3%) was removed: it was read by nothing (whole-repo consumer audit) and emitted a contradictory `UNAVAILABLE/STAND_ASIDE` against the card's `SHORT_GAMMA_TREND` for the same ticker at the same instant. The narrow-chain confidence gate (`compute_gamma_flip_v2`, ±5% span floor) is **RETAINED** as the fail-closed backstop for when wide capture is unavailable — locking the full-chain basis does not disable the alarm. See RC-33.
 
 ---
 

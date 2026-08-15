@@ -267,8 +267,6 @@ def test_check_base_ticker_observability_cli_passes_on_dense_fixture(tmp_path: P
         cwd=str(repo),
         capture_output=True,
         text=True,
-        encoding="utf-8",
-        errors="strict",
         timeout=60,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -750,11 +748,16 @@ def test_step3_bars_and_outcomes_ride_snapshot_throttle():
     guard_idx = src.find("if _do_insert:", marker)
     assert guard_idx != -1, "Step 3 _do_insert guard missing after throttle comment"
     guard = src[guard_idx:]
-    assert "upsert_1m_bars" in guard
+    # RC-69: BARS NO LONGER LIVE HERE. Persisting them from the render path made collection a
+    # side-effect of display — MEASURED 2026-07-27: SPY (on screen) bar lag 3.1 min vs QQQ/IWM
+    # 19.1 min off screen, with ~1.0 min snapshot lag on all three. The bar collection service
+    # (_bars_loop) is now the single writer. Outcome labelling STILL rides this throttle, because
+    # it labels the snapshot this path just inserted.
+    assert "upsert_1m_bars" not in src, (
+        "RC-69 regression: _fetch_state persists bars again — collection is once more coupled "
+        "to the viewport"
+    )
     assert "_get_db_fill_outcomes_executor().submit" in guard
-    # No unthrottled duplicate CALL SITES outside the guard ("(" excludes the
-    # warning-log format string "upsert_1m_bars %s" on the except path).
-    assert src.count("upsert_1m_bars(") == 1
     assert src.count("_get_db_fill_outcomes_executor().submit") == 1
 
 

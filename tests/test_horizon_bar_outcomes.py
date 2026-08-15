@@ -48,7 +48,7 @@ def tmp_db(tmp_path: Path) -> EdDB:
 
 def test_fill_outcomes_bar_based_anchor_matches_last_completed_bar(tmp_db: EdDB):
     """Anchor = close of last bar with bar_end <= ts_utc; forward close unchanged (Issue 4)."""
-    t0 = 1_020_000.0  # on 1m grid
+    t0 = 1_785_506_400.0  # 2026-07-31 10:00 ET, on 1m grid — real PAST in-window session (RC-183)
     t_snap = t0 + 90.0  # after first bar ends (t0+60), inside second bar
     with tmp_db._connect() as conn:
         conn.execute(
@@ -102,13 +102,79 @@ def test_fill_outcomes_bar_based_anchor_matches_last_completed_bar(tmp_db: EdDB)
     assert abs(float(row["outcome_1c_pts"]) - pts) < 1e-6
 
 
+def test_fill_outcomes_live_batch_limit_caps_rows_per_call(tmp_db: EdDB, monkeypatch: pytest.MonkeyPatch):
+    """Newest-first LIMIT bounds live fill_outcomes (no unbounded 14d scan)."""
+    import db as dbmod
+
+    monkeypatch.setattr(dbmod, "FILL_OUTCOMES_LIVE_BATCH_LIMIT", 2)
+    t0 = 1_785_506_400.0  # 2026-07-31 10:00 ET
+    # Bars first (no snapshots yet) so upsert mutation-refresh cannot pre-fill labels.
+    bars = []
+    for i in range(120):
+        bs = t0 + i * 60.0
+        bars.append(
+            {
+                "datetime": bs,
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0 + 0.1 * i,
+                "volume": 1.0,
+            }
+        )
+    tmp_db.upsert_1m_bars("SPY", bars)
+    with tmp_db._connect() as conn:
+        for i in range(5):
+            t_snap = t0 + 90.0 + i * 60.0
+            conn.execute(
+                """
+                INSERT INTO snapshots (
+                    ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                    horizon_outcome_schema_version, outcome_filled
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    "SPY",
+                    CF,
+                    t_snap,
+                    "test",
+                    10,
+                    30 + i,
+                    "rth",
+                    100.0,
+                    HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                ),
+            )
+    # Eval far enough that 60c horizons are complete for all five.
+    tmp_db.fill_outcomes("SPY", CF, t0 + 90.0 + 4 * 60.0 + 5000.0)
+    with tmp_db._connect() as conn:
+        n_touched = conn.execute(
+            """
+            SELECT COUNT(*) AS n FROM snapshots
+            WHERE ticker='SPY' AND timeframe=? AND outcome_1c IS NOT NULL
+            """,
+            (CF,),
+        ).fetchone()["n"]
+        n_still = conn.execute(
+            """
+            SELECT COUNT(*) AS n FROM snapshots
+            WHERE ticker='SPY' AND timeframe=? AND outcome_filled=0
+            """,
+            (CF,),
+        ).fetchone()["n"]
+    # One call with LIMIT 2 fills at most 2 rows; at least 3 remain unfilled.
+    assert n_touched <= 2
+    assert n_still >= 3
+
+
 def test_upsert_1m_bars_normalizes_epoch_ms_for_candle_objects_and_dicts(tmp_db: EdDB):
     """2026-06-09 regression: Candle objects with epoch-ms .ts (Schwab quoteTime passthrough)
     were stored raw on an ms grid, so fill_outcomes (seconds grid) matched zero bars all day.
     Both input shapes must land on the canonical whole-minute epoch-seconds grid."""
     from types import SimpleNamespace
 
-    sec_start = 1_781_000_040.0  # already whole-minute, seconds
+    sec_start = 1_785_506_400.0  # 2026-07-31 10:00 ET — already whole-minute, seconds, past in-window (RC-183)
     obj_bar = SimpleNamespace(
         ts=sec_start * 1000.0, open=10.0, high=11.0, low=9.0, close=10.5, volume=5.0
     )
@@ -216,7 +282,7 @@ def test_outcome_fill_uses_per_horizon_threshold_all_horizons(tmp_db: EdDB):
         threshold_move_pts_for_slug,
     )
 
-    t0 = 1_020_000.0
+    t0 = 1_785_506_400.0  # 2026-07-31 10:00 ET — real PAST in-window session (RC-183 collect-window law)
     t_snap = t0 + 90.0
     atr_v = 1.0
     with tmp_db._connect() as conn:
@@ -314,6 +380,41 @@ def test_candle_accumulator_seed_refuses_stale_payload():
 
     acc.seed("ZZT", _payload(base + 3_600.0))  # newer seed still refreshes
     assert acc.get_bars("ZZT")[-1].ts == base + 3_600.0
+
+
+def test_rc168_multi_minute_volume_delta_is_not_charged_to_one_bar():
+    """RC-168 ROOT: totalVolume is CUMULATIVE, so a delta between two readings covers the whole
+    span between them. Without a staleness bound, a ticker that went unpolled for minutes (42
+    symbol rotation, stalled poll, mid-session restart) dumped its entire multi-minute delta
+    into whichever ONE bar was open — MEASURED as a 40x spike rate against the vendor's own 1m
+    bars for the same name. Past the bound the span is unknowable, so the bar must record NO
+    volume rather than a fabricated minute."""
+    from server import _CandleAccumulator
+
+    acc = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    base = 1_800_000_000.0
+    # normal polling cadence: consecutive readings inside the bound are attributed in full
+    acc.tick("ZZV", 100.0, base, total_volume=1_000.0)
+    acc.tick("ZZV", 100.5, base + 2.0, total_volume=1_600.0)
+    cur = acc._current["ZZV"]
+    assert cur["v"] == 600.0, "a normal-cadence delta must still be counted"
+
+    # a long gap (ticker unpolled for 10 minutes) must NOT charge 10 minutes to this bar
+    acc2 = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    acc2.tick("ZZG", 100.0, base, total_volume=1_000.0)
+    acc2.tick("ZZG", 101.0, base + 600.0, total_volume=25_000_000.0)
+    cur2 = acc2._current["ZZG"]
+    assert cur2["v"] is None, (
+        f"a 10-minute cumulative delta was attributed to one bar (v={cur2['v']!r}) — this is "
+        f"the RC-168 spike mechanism"
+    )
+    assert cur2["volume_source"] == "schwab_quote_totalVolume_gap_unattributable"
+
+    # the session reset (counter drops) keeps its own honest handling
+    acc3 = _CandleAccumulator(bar_seconds=60, max_bars=500)
+    acc3.tick("ZZR", 100.0, base, total_volume=9_000.0)
+    acc3.tick("ZZR", 100.0, base + 2.0, total_volume=10.0)
+    assert acc3._current["ZZR"]["volume_source"] == "schwab_quote_totalVolume_session_reset"
 
 
 def test_candle_accumulator_seed_refresh_allowed_at_equal_ts():

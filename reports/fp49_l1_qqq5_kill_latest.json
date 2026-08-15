@@ -1,0 +1,13 @@
+{
+  "generated_utc": "2026-07-17T19:19:14Z",
+  "cell": "l1_book:QQQ:5c",
+  "n_scored": 11713,
+  "n_trades": 8395,
+  "mean_net_bp": -0.7940458088976247,
+  "bootstrap_ci95_mean_net_bp": [
+    -1.0126345787496696,
+    -0.5621783918365608
+  ],
+  "cost_round_trip_bp": 1.0,
+  "verdict": "KILL"
+}

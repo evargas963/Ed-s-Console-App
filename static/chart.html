@@ -1,0 +1,2122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ed Chart — terrain on price</title>
+<style>
+  /* v6.2 (RC-195) # ui-mockup-ok: operator "the tabs don't look right, no light/dark, fonts
+     don't match" — this is the cv2 SYSTEM the operator actually sees on the Console, ported
+     wholesale: its dark tokens, its body.light overrides (ed_theme key shared across pages),
+     its sans chrome with mono reserved for numerics, and its .cv-tab component. The canvas
+     reads THESE variables through PAL so both modes truly render. */
+  :root { --bg:#0a0e15; --panel:#111826; --panel2:#0c121d; --border:#1f2a3c; --border2:#2a3850;
+          --text:#e9eef6; --text2:#c6d0e0; --dim:#93a1b8; --mut:#66748c;
+          --accent:#37d2dd; --blue:#4b8bff;
+          --green:#2fd08a; --red:#ff5c74; --amber:#f6b73c;
+          --vio:#a78bfa; --cyan:#22d3ee; --pink:#f472b6; --orange:#fb923c; --teal:#2dd4bf;
+          --skyblue:#93c5fd;
+          --gridline:rgba(147,161,184,.14); --canvas-shade:rgba(147,161,184,.06);
+          --mono:'IBM Plex Mono', ui-monospace, Consolas, monospace; }
+  body.light { --bg:#f4f7fb; --panel:#ffffff; --panel2:#eef2f8; --border:#d8dfea; --border2:#c3cddc;
+          --text:#0f172a; --text2:#1e293b; --dim:#5b6b83; --mut:#7c8aa0;
+          /* # ui-mockup-ok: v6.2 light tokens mirror body.light on the Console */
+          --accent:#0891b2; --blue:#2563eb;
+          --green:#16a34a; --red:#dc2626; --amber:#d97706;
+          --vio:#7c3aed; --cyan:#0e7490; --pink:#db2777; --orange:#ea580c; --teal:#0d9488;
+          --skyblue:#3b82f6;
+          --gridline:rgba(15,23,42,.10); --canvas-shade:rgba(15,23,42,.05); }
+  * { box-sizing: border-box; }
+  html, body { height:100%; }
+  body { margin:0; color:var(--text); display:flex; flex-direction:column;
+         overflow:auto; background:var(--bg);
+         font:14px/1.4 ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif; }
+  /* v6.2 (RC-195) # ui-mockup-ok: chrome is the app's SANS; mono is reserved for numerics.
+     The nav is the Console's .cv-tab component, cloned; the theme button matches. */
+  #top, #ctlrow { flex:none; }
+  #ctlrow { position:relative; display:flex; gap:6px; align-items:center;
+            padding:7px 14px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .vdiv { width:1px; height:18px; background:var(--border2); margin:0 4px; flex:none; }
+  #quietstat { margin-left:auto; color:var(--dim); font-size:12px;
+               font-family:var(--mono); }
+  .cv-nav { display:flex; gap:.2em; margin-left:auto; }
+  .cv-tab { padding:.45em .95em; border-radius:.5em; color:var(--dim); font-weight:600;
+            cursor:pointer; border:1px solid transparent; background:none; font:inherit;
+            text-decoration:none; }
+  .cv-tab[aria-selected="true"] { background:var(--panel); color:var(--text);
+                                  border-color:var(--border); }
+  .cv-tab:hover { color:var(--text2); }
+  #theme-btn { margin-left:.4em; }
+  #coachlines { flex:none; max-height:34px; overflow:auto; padding-top:3px;
+                padding-bottom:3px; }
+  /* if the window is still too short for everything, say so LOUDLY instead of
+     hiding the gamma panel below an unscrollable fold */
+  #foldwarn { display:none; position:fixed; bottom:8px; left:50%;
+              transform:translateX(-50%); background:var(--amber); color:#031018;
+              font-weight:800; font-size:13px; padding:6px 16px; border-radius:14px;
+              z-index:10; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.5); }
+  #top { display:flex; gap:10px; align-items:center; padding:8px 14px;
+         border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  #tk { background:var(--panel); color:var(--text); border:1px solid var(--border);
+        border-radius:6px; padding:7px 10px; width:92px; font-weight:800; font-size:15px;
+        text-transform:uppercase; }
+  #narrator { flex:1; min-width:220px; color:var(--amber); font-weight:700; font-size:15px; }
+  /* v6.1 (RC-194) # ui-mockup-ok: Console-quiet controls — subtle borders, no neon fills,
+     active state = lifted surface + accent text, exactly the Console tab treatment. */
+  .chip { border:1px solid var(--border2); background:transparent; color:var(--dim);
+          border-radius:8px; padding:4px 11px; cursor:pointer; font-size:12px;
+          font-weight:600; user-select:none; letter-spacing:.02em; white-space:nowrap;
+          transition:border-color .15s, color .15s, background .15s; }
+  /* # ui-mockup-ok: v6.1 — chips never wrap mid-label (measured: "≤7 DTE" broke to two lines) */
+  .chip:hover { border-color:var(--blue); color:var(--text2); }
+  .chip.on { color:var(--text); border-color:var(--border2); background:var(--panel2); }
+  .tf.on { color:var(--amber); border-color:var(--amber); background:transparent; }
+  #livedot { width:9px; height:9px; border-radius:50%; background:var(--green);
+             box-shadow:0 0 8px var(--green); animation:pulse 1.6s ease-in-out infinite;
+             flex:none; }
+  #livedot.stale { background:var(--amber); box-shadow:0 0 8px var(--amber); animation:none; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+  #regchip { border-radius:12px; padding:5px 13px; font-size:12px; font-weight:800;
+             letter-spacing:.04em; color:#031018; background:var(--dim); flex:none; }
+  /* # ui-mockup-ok: v6.1 — cards on the app's panel token, flat like the Console */
+  .card { border:1px solid var(--border); border-radius:12px; margin:8px 12px;
+          overflow:hidden; background:var(--panel); }
+  .sechead { display:flex; align-items:center; gap:10px; padding:10px 14px 6px;
+             font-size:13px; font-weight:800; letter-spacing:.07em; color:var(--text); }
+  .sechead::before { content:''; width:5px; height:16px; border-radius:3px;
+                     background:var(--amber); }
+  .sechead .src { margin-left:auto; color:var(--dim); font-weight:600;
+                  letter-spacing:0; font-size:12px; }
+  .legend { display:flex; gap:20px; padding:6px 16px 12px; color:var(--dim);
+            font-size:12px; font-weight:700; flex-wrap:wrap; }
+  .legend .sw { display:inline-block; width:12px; height:12px; border-radius:3px;
+                vertical-align:-2px; margin-right:6px; }
+  .legend .sw.ghostsw { background:transparent; border:1.5px dashed var(--vio); }
+  /* RC-156 raw structure levels — a price ladder, read top-down like the tape */
+  /* RC-157: the card must NOT shrink. `body` is a column flex container sized to the viewport,
+     and `.card` sets overflow:hidden — so at a default `flex: 0 1 auto` this card is the one the
+     layout chooses to compress, and its content is clipped INSIDE it where body scroll cannot
+     recover it. MEASURED at 1280x700 on e581447e: height 2px against scrollHeight 209, clipped
+     true, 19 rows in the DOM and ZERO visible. `flex:none` opts the card out of shrinking so it
+     always takes its content height; `overflow:visible` and a min-height are belt-and-braces so
+     a future flex change cannot silently re-clip it. A panel whose visibility depends on the
+     window being large enough is not a surface — it is a surface on some monitors. */
+  #rawlevels { flex:none; overflow:visible; min-height:fit-content; }
+  #rl-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr));
+             gap:4px 14px; padding:4px 16px 6px; }
+  .rl-row { display:flex; align-items:baseline; gap:8px; font-size:12.5px;
+            font-weight:700; padding:3px 6px; border-radius:6px;
+            border-left:3px solid var(--border); }
+  .rl-row.above { border-left-color:#ff3355; }
+  .rl-row.below { border-left-color:#00e07a; }
+  .rl-tag { color:var(--dim); min-width:74px; }
+  .rl-val { color:var(--fg); font-variant-numeric:tabular-nums; }
+  .rl-dist { margin-left:auto; color:var(--dim); font-weight:600;
+             font-variant-numeric:tabular-nums; }
+  #rl-empty { padding:8px 16px 12px; color:#ffc400; font-size:12.5px; font-weight:700; }
+  #gwrap { position:relative; }
+  .coach { position:absolute; right:14px; width:300px; border-radius:10px;
+           padding:11px 14px; font-size:13px; line-height:1.5; display:none;
+           border:1px solid; backdrop-filter:blur(2px); }
+  .coach b { display:block; margin-bottom:4px; font-size:13.5px; }
+  #coach1 { top:14%; background:rgba(199,146,255,.10); border-color:rgba(199,146,255,.5); }
+  #coach1 b { color:var(--vio); }
+  #coach2 { top:64%; background:rgba(255,196,0,.08); border-color:rgba(255,196,0,.5); }
+  #coach2 b { color:var(--amber); }
+  #biglegend { position:absolute; top:6px; left:10px; pointer-events:none; z-index:5;
+               line-height:1.15; text-shadow:0 2px 6px rgba(0,0,0,.85); }
+  #biglegend .sym { font-size:15px; font-weight:800; color:var(--dim); letter-spacing:.05em; }
+  #biglegend .px { font-size:30px; font-weight:800; }
+  #biglegend .chg { font-size:14px; font-weight:800; }
+  #wrap .lastdot { position:absolute; width:10px; height:10px; border-radius:50%;
+                   background:var(--amber); box-shadow:0 0 10px var(--amber);
+                   animation:pulse 1.6s ease-in-out infinite; pointer-events:none;
+                   display:none; }
+  #meta { color:var(--dim); font-size:12px; width:100%; }
+  #layout { display:flex; flex:1.4 1 0; min-height:360px; }
+  #wrap { position:relative; flex:1; min-width:0; cursor:crosshair; }
+  #histwrap { width:230px; border-left:1px solid var(--border); }
+  #gammacard { flex:1 1 0; min-height:280px; display:flex; flex-direction:column; }
+  #gammacard .sechead, #gammacard .legend { flex:none; }
+  #gwrap { flex:1; min-height:0; }
+  canvas { display:block; width:100%; height:100%; }
+  #tip { position:fixed; display:none; max-width:380px; background:var(--panel);
+         border:1px solid var(--blue); border-radius:8px; padding:11px 13px;
+         font-size:13px; line-height:1.55; pointer-events:none; z-index:9;
+         box-shadow:0 8px 28px rgba(0,0,0,.65); }
+  #tip b { color:var(--amber); }
+  /* v6 build (RC-192, operator GO) — # ui-mockup-ok: approved v6-full-page, session grant env
+     unavailable; authorization = operator BUILD order 2026-08-02 + registry approval */
+  #metaline { padding:4px 14px; font-family:'IBM Plex Mono', monospace; }
+  #meta { color:var(--dim); font-size:11px; }
+  /* fired row shows ONLY when a pill is live (quiet state lives in #quietstat, per the mock) */
+  #firedrow { display:none; gap:6px; align-items:center; padding:5px 14px; font-size:11.5px;
+              border-bottom:1px solid var(--border); color:var(--dim);
+              font-family:'IBM Plex Mono', monospace; }
+  #firedrow.live { display:flex; }
+  .fpill { background:#062015; border:1.5px solid var(--green); color:#4dffaa;
+           border-radius:11px; padding:2px 9px; font-weight:700; }
+  .menu { position:absolute; z-index:8; background:#0b1017; border:1px solid var(--border);
+          border-radius:10px; padding:8px 10px; display:none; max-width:560px;
+          box-shadow:0 8px 28px rgba(0,0,0,.6); }
+  .menu.open { display:block; }
+  .lvlrow { display:flex; align-items:center; gap:7px; padding:3px 0;
+            border-bottom:1px solid #131a24; font-size:11px; color:#cbd3dd; }
+  .lvlrow .sw2 { width:7px; height:7px; border-radius:2px; flex:none; }
+  .lvlrow .nm { width:150px; flex:none; }
+  .lvlrow .ev { flex:1; color:var(--dim); font-size:9.5px; }
+  .lvlrow .st { border:1px solid; border-radius:7px; padding:0 6px; font-size:9px;
+                cursor:pointer; user-select:none; flex:none; }
+  /* RC-157 class (# ui-mockup-ok: v6): the forces card must never be the flex layout's
+     compression victim — same clip mode that hid 19 raw-level rows at 1280x700. */
+  #forces { flex:none; overflow:visible; min-height:fit-content;
+            font-family:'IBM Plex Mono', monospace; }
+  /* v6.1 (RC-194) # ui-mockup-ok: the mock's compact below|spot|above cluster — values hug
+     the center column instead of stretching across the full card width. */
+  #forces .fgrid { display:grid; grid-template-columns:110px 160px 76px 160px 1fr;
+                   gap:4px 10px; align-items:center; font-size:12.5px; padding:2px 16px 6px; }
+  #forces .fl { color:var(--dim); } #forces .fb { text-align:right; }
+  #forces .fmid { text-align:center; color:var(--border2); }
+  #forces .fsrc { justify-self:end; text-align:right; }
+  #forces .fspot { background:var(--amber); color:#05070a; border-radius:9px;
+                   padding:1px 8px; font-size:10.5px; font-weight:800; }
+  #forces .fspot.stale { background:var(--dim); color:#05070a; }
+  #forces .fsrc { color:var(--dim); font-size:9.5px; }
+  #forces .freading { border-top:1px solid var(--border); margin:6px 12px 0;
+                      padding:6px 4px 2px; color:#cbd3dd; font-size:11.5px; }
+  #forces .fbias { padding:3px 16px 10px; font-size:10.5px; color:var(--dim); }
+  #coachlines { padding:8px 14px; color:var(--dim); font-size:13px; line-height:1.65;
+                border-top:1px solid var(--border); }
+  a { color:var(--blue); text-decoration:none; font-weight:700; }
+  a.navtab { color:var(--dim); }
+  a.navtab:hover { color:var(--text); }
+</style>
+</head>
+<body>
+<!-- v6.1 (RC-194) # ui-mockup-ok: the approved mock's two-row header — identity, then
+     controls with the quiet status right; scope chips move INTO the gamma panel header;
+     menus anchor under their buttons. -->
+<div id="top">
+  <input id="tk" value="SPY" spellcheck="false">
+  <span id="livedot" title="feed state"></span>
+  <span id="regchip">…</span>
+  <span id="narrator">loading…</span>
+  <!-- # ui-mockup-ok: v6.2 — the Console's own tab component + shared theme toggle -->
+  <div class="cv-nav" role="tablist" aria-label="View">
+    <a class="cv-tab" href="/">Console</a>
+    <a class="cv-tab" href="/#terrain">Terrain</a>
+    <span class="cv-tab" aria-selected="true">Chart</span>
+    <a class="cv-tab" href="/desk">Desk</a>
+    <!-- # ui-mockup-ok: RC-200 nav entry for the live Exposure tab -->
+    <a class="cv-tab" href="/exposure">Exposure</a>
+  </div>
+  <button type="button" class="cv-tab" id="theme-btn" title="light / dark — follows the whole app">&#9728;&#65039; LIGHT</button>
+</div>
+<div id="ctlrow">
+  <span class="chip tf on" data-tf="1">1m</span>
+  <span class="chip tf" data-tf="3">3m</span>
+  <span class="chip tf" data-tf="5">5m</span>
+  <span class="chip tf" data-tf="15">15m</span>
+  <span class="chip tf" data-tf="60">1h</span>
+  <span class="chip tf" data-tf="D">D</span>
+  <span class="vdiv"></span>
+  <span class="chip on" id="mode-candles" title="OHLC candles (default)">CANDLES</span>
+  <span class="chip" id="mode-line" title="close-price line">LINE</span>
+  <span class="chip" id="lvlbtn" title="every level: ON always &middot; AUTO fires near spot &middot; OFF">LEVELS &#9662;</span>
+  <span class="chip" id="proxbtn" title="AUTO fire distance in cents; un-fires at 2x">PROX 10&cent; &#9662;</span>
+  <span class="chip" id="fit" title="reset zoom/pan">FIT</span>
+  <span class="chip on" id="learn">COACH</span>
+  <span id="quietstat"></span>
+  <div class="menu" id="lvlmenu">
+    <div style="display:flex; gap:8px; font-size:10px; color:var(--dim); margin-bottom:5px;">
+      <b style="color:var(--text); letter-spacing:.05em;">LEVELS</b>
+      <span><i style="color:var(--green)">ON</i> always &middot; <i style="color:var(--amber)">AUTO</i> fires near &middot; OFF never</span>
+      <span style="margin-left:auto;">evidence rides each row</span></div>
+    <div id="lvlrows"></div>
+  </div>
+  <div class="menu" id="proxmenu">
+    <div style="font-size:10px; color:var(--dim); margin-bottom:4px;">AUTO fires within &middot; un-fires beyond 2&times;</div>
+    <div id="proxrows" style="display:flex; gap:6px;"></div>
+  </div>
+</div>
+<div id="metaline"><span id="meta"></span></div>
+<div id="firedrow"><span style="font-size:10px; color:var(--dim);">FIRED</span>
+  <span id="firedpills"></span></div>
+<div id="layout" class="card">
+  <div id="wrap"><canvas id="cv" height="560"></canvas><div id="biglegend"></div><div class="lastdot" id="lastdot"></div></div>
+  <div id="histwrap"><canvas id="hv" height="560"></canvas></div>
+</div>
+<!-- LP-01 Step 4 (RC-156): the raw structure levels the engine already computes, made
+     OPERATOR-VISIBLE. They existed only on /api/liquidity-snapshot and were never rendered on
+     the Chart at all — an operator reading price had no way to see the prior-day range, the
+     opening range, the volume-profile value area, or the VWAP bands they were trading through.
+     STRUCTURE CONTEXT ONLY: these are reference prices, not a signal, and nothing here feeds
+     Decide. Real ids per level so the surface is checkable, never a blob of text. -->
+<!-- v6 (RC-192) # ui-mockup-ok: operator BUILD GO — the raw-levels card is MERGED into the
+     candle canvas (levels manager + axis tags + proximity fire); its engine fetch and per-level
+     ids live on in the manager rows. This card is now the DIR-01(i) FORCES strip. -->
+<div class="card" id="forces">
+  <div class="sechead">FORCES — BELOW | SPOT | ABOVE <span style="color:var(--dim); font-weight:600; letter-spacing:0;">&nbsp;measured flows, not a trade signal &middot; hover any row for the math</span>
+    <span class="src" id="f-src"></span></div>
+  <div class="fgrid" id="f-grid"></div>
+  <div class="freading" id="f-reading"></div>
+  <!-- # ui-mockup-ok: v6.1 — the mock's banked-progress phrasing, stated honestly -->
+  <!-- # ui-mockup-ok: RC-199 — Bias renders honest WAIT, never a LOCKED badge (no vote/lock theater) -->
+  <div class="fbias" id="f-bias">Bias: <span style="border:1px solid var(--border); border-radius:8px; padding:1px 7px;">WAIT</span>
+    no admissible evidence yet &middot; balanced-session study unregistered — 0 sessions banked; placebo required before any bias renders</div>
+</div>
+<div class="card" id="gammacard">
+  <!-- # ui-mockup-ok: v6.1 — the mock puts the scope chips IN this panel's header, where the
+       data they govern lives (they never touched the candles; their old top-bar seat implied
+       they did) -->
+  <div class="sechead">GAMMA PANEL — POSITIONING MIGRATION &amp; TODAY'S VOLUME
+    <span class="src" id="gsrc"></span>
+    <span style="display:flex; gap:4px; font-family:'IBM Plex Mono', monospace;">
+      <span class="chip on" id="exp-all">ALL</span>
+      <span class="chip" id="exp-near">≤7 DTE</span>
+      <span class="chip" id="exp-far">MONTHLY+</span>
+      <span class="chip on" id="ghost">GHOST</span>
+    </span></div>
+  <div id="gwrap">
+    <canvas id="gv" height="430"></canvas>
+    <div class="coach" id="coach1"></div>
+    <div class="coach" id="coach2"></div>
+  </div>
+  <div class="legend">
+    <span><i class="sw" style="background:#33aaff"></i>positive dealer gamma</span>
+    <span><i class="sw" style="background:#ff3355"></i>negative dealer gamma</span>
+    <span><i class="sw ghostsw"></i>yesterday (ghost)</span>
+    <span><i class="sw" style="background:#ffc400"></i>today's option volume</span>
+  </div>
+</div>
+<div id="tip"></div>
+<div id="foldwarn">▼ GAMMA PANEL BELOW — click to jump</div>
+<div id="coachlines"></div>
+<!-- # ui-mockup-ok: RC-304 correctness fix, no redesign — same rows, same cells; only the
+     FORCES source text becomes true of the data each row actually sums. -->
+<script src="/static/js/forces_provenance.js"></script>
+<script>
+/* CR-03 screen 1 v2 — TradingView-grade interaction (operator directive 2026-07-23):
+   wheel = zoom time axis at cursor · drag = pan time AND price · double-click/FIT =
+   re-fit · timeframe chips aggregate client-side from canonical 1m bars · crosshair
+   with axis readouts · ALL terrain key levels plotted · bright palette, loud scales.
+   Every market sentence remains SERVER-GENERATED (terrain read / level_crosses). */
+'use strict';
+// any uncaught page error becomes VISIBLE in the narrator — never a silent blank
+window.addEventListener('error', e => {
+  const n = document.getElementById('narrator');
+  if (n) n.textContent = 'page error: ' + (e.message || 'unknown') +
+    (e.lineno ? ` (line ${e.lineno})` : '');
+});
+const cv = document.getElementById('cv'), hv = document.getElementById('hv');
+const tip = document.getElementById('tip'), wrap = document.getElementById('wrap');
+let raw = [], bars = [], terrain = null, strikes = null, crosses = [];
+//: RC-150: the /api/terrain/strikes payload ALWAYS, bars or no bars. `strikes` is nulled when
+//: there are no renderable bars (many draw sites read its truthiness as "have bars"), which also
+//: discarded the producer's reason for there being none. Two facts, two variables.
+let strikesMeta = null;
+let zones = [], scope = 'all', showGhost = true, learning = true, tf = '1';
+let view = null;          // {i0, i1} visible bar index range (fractional)
+let yLock = null;         // {lo, hi} manual price domain when user pans/zooms Y
+let cross = null;         // {mx, my} crosshair position
+let scale = null;
+let daily = null;         // {vwap:[[t,w]…]} — CARRIED from /api/levels vwap_path, never computed here
+let scorecard = null;     // latest daily scorecard — coach numbers update with it
+let scorecardStale = null;// present but PAST its freshness budget (RC-78): the reason,
+                          // never the numbers, so staleness is stated not implied
+let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
+let liveSpot = null;      // RC-225: ONLY /api/spot — never borrow strikes/terrain ages
+let forming = null;       // TradingView-style FORMING candle for the current minute:
+                          // display-only synthesis from spot ticks; the canonical 1m bar
+                          // REPLACES it the moment the server writes that minute
+let sealedForming = null; // just-finished minute kept until /api/bars1m catches up
+let chartTicker = null;   // ticker whose `raw` bars are loaded — gates forming/spot ticks
+let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
+
+/* v6.2 (RC-195) # ui-mockup-ok: PAL — the canvas reads the SAME CSS tokens as the DOM, so
+   light/dark theme both truly render. Refreshed on theme toggle, then every surface redraws. */
+let PAL = {};
+function refreshPal() {
+  const cs = getComputedStyle(document.body);
+  const v = n => cs.getPropertyValue(n).trim();
+  PAL = { bg: v('--bg'), panel: v('--panel'), tx: v('--text'), tx2: v('--text2'),
+          dim: v('--dim'), mut: v('--mut'), grid: v('--gridline'),
+          green: v('--green'), red: v('--red'), amber: v('--amber'), blue: v('--blue'),
+          vio: v('--vio'), cyan: v('--cyan'), pink: v('--pink'), orange: v('--orange'),
+          teal: v('--teal'), sky: v('--skyblue'), accent: v('--accent') };
+}
+function palRgba(hex, a) {
+  const h = (hex || '#888888').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+refreshPal();
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  const tb = document.getElementById('theme-btn');
+  if (tb) tb.innerHTML = isLight ? '&#127769; DARK' : '&#9728;&#65039; LIGHT';
+  try { localStorage.setItem('ed_theme', isLight ? 'light' : 'dark'); } catch (e) {}
+  refreshPal(); renderLvlMenu(); draw(); drawHist(); renderForces();
+}
+(function () {
+  let saved = null;
+  try { saved = localStorage.getItem('ed_theme'); } catch (e) {}
+  if (saved === 'light') {
+    document.body.classList.add('light'); refreshPal();
+    const tb = document.getElementById('theme-btn');
+    if (tb) tb.innerHTML = '&#127769; DARK';
+  }
+  const tb = document.getElementById('theme-btn');
+  if (tb) tb.addEventListener('click', toggleTheme);
+})();
+
+const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
+const j = async u => (await fetch(u)).json();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));
+const hasStrikeBars = sc => !!(sc && Array.isArray(sc.all) && sc.all.length > 0);
+
+// # ui-mockup-ok: RC-223 / census #7 clocks — explicit TZ only; not a redesign.
+// Session date keys = America/New_York (matches time_et). Display labels = America/Chicago.
+const SESSION_TZ = 'America/New_York';
+const DISPLAY_TZ = 'America/Chicago';
+
+function etDateKey(tsSec) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SESSION_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(Number(tsSec) * 1000));
+  const y = parts.find(p => p.type === 'year');
+  const mo = parts.find(p => p.type === 'month');
+  const da = parts.find(p => p.type === 'day');
+  return (y && mo && da) ? `${y.value}-${mo.value}-${da.value}` : '';
+}
+
+function displayDateLabel(tsSec) {
+  return new Date(Number(tsSec) * 1000).toLocaleDateString('en-US', {
+    timeZone: DISPLAY_TZ, month: 'short', day: 'numeric',
+  });
+}
+
+function displayTimeLabel(tsSec) {
+  return new Date(Number(tsSec) * 1000).toLocaleTimeString('en-US', {
+    timeZone: DISPLAY_TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+}
+
+function aggregate(src, tfv) {
+  if (tfv === '1') return src.slice();
+  const out = [], key = t => tfv === 'D'
+    ? etDateKey(t)
+    : Math.floor(t / (60 * Number(tfv)));
+  let cur = null, ck = null;
+  for (const b of src) {
+    const k = key(b.t);
+    if (k !== ck) { if (cur) out.push(cur);
+      cur = { t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 }; ck = k; }
+    else { cur.h = Math.max(cur.h, b.h); cur.l = Math.min(cur.l, b.l);
+      cur.c = b.c; cur.v += (b.v || 0); }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/* # ui-mockup-ok: Phase 2A data-integrity kill (operator 2026-08-08) — no visual
+   redesign; the VWAP line keeps its exact style, it just stops being a second
+   producer. `computeDaily()` used to accumulate Σ(tp·v)/Σv over /api/bars1m in the
+   browser, so the operator's VWAP line and the served VWAP level were two numbers
+   from two tapes. The polyline is now CARRIED: /api/levels serves `vwap_path` out of
+   the same canonical snapshot that produces the VWAP level, and the browser draws it.
+   The chart computes NOTHING for the Phase 2A families. */
+
+function enginePD() {
+  // RC-213 B3: prior_day values come ONLY from the engine's raw levels (the same
+  // liquidity_value_engine authority /api/levels serves). The chart computes NOTHING
+  // for this family.
+  const out = { pdh: null, pdl: null, pdc: null };
+  for (const r of rawLevelDefs) {
+    if (r.id === 'PDH') out.pdh = r.v;
+    else if (r.id === 'PDL') out.pdl = r.v;
+    else if (r.id === 'PDC') out.pdc = r.v;
+  }
+  return out;
+}
+
+function vwapAt(tEnd) {
+  if (!daily || !daily.vwap.length) return null;
+  const a = daily.vwap; let lo = 0, hi = a.length - 1, ans = null;
+  while (lo <= hi) { const m = (lo + hi) >> 1;
+    if (a[m][0] < tEnd) { ans = a[m][1]; lo = m + 1; } else hi = m - 1; }
+  return ans;
+}
+
+function clampView() {
+  const minVis = 5;
+  if (view.i0 > bars.length - minVis) {
+    const s = view.i0 - (bars.length - minVis); view.i0 -= s; view.i1 -= s; }
+  if (view.i1 < minVis) {
+    const s = minVis - view.i1; view.i0 += s; view.i1 += s; }
+}
+
+function rawWithForming() {
+  // canonical rows stay PURE (they feed candles only — no level is derived from them
+  // any more); synthetic minutes append only while the server has no bar for that minute
+  const tip = raw.length ? raw[raw.length - 1].t : null;
+  if (sealedForming && tip != null && tip >= sealedForming.t) sealedForming = null;
+  if (forming && tip != null && tip >= forming.t) forming = null;
+  let out = raw;
+  if (sealedForming && (tip == null || sealedForming.t > tip))
+    out = out.concat([sealedForming]);
+  if (forming && (tip == null || forming.t > tip))
+    out = out.concat([forming]);
+  return out;
+}
+
+function setBars() {
+  bars = aggregate(rawWithForming(), tf);
+  if (!view) {
+    const show = Math.min(bars.length, tf === '1' ? 390 : 200);
+    view = { i0: Math.max(0, bars.length - show), i1: bars.length };
+  }
+}
+
+function noteSpotTick(s) {
+  // grow the current-minute candle exactly like TradingView's forming bar
+  if (!chartTicker) return;   // bars not yet for the selected ticker
+  const v = Number(s);
+  if (!isFinite(v)) return;
+  const mt = Math.floor(Date.now() / 60000) * 60;
+  if (!forming || forming.t !== mt) {
+    // keep the just-finished synthetic minute until canonical bars catch up
+    if (forming && (!raw.length || forming.t > raw[raw.length - 1].t))
+      sealedForming = forming;
+    forming = { t: mt, o: v, h: v, l: v, c: v, v: 0 };
+  } else { forming.h = Math.max(forming.h, v); forming.l = Math.min(forming.l, v);
+         forming.c = v; }
+  const atEnd = view && view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5;
+  bars = aggregate(rawWithForming(), tf);
+  if (view && atEnd) { const w = view.i1 - view.i0;
+    view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
+  draw();
+}
+
+function currentChartTicker() {
+  return (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+}
+
+//: The ticker whose raw levels are currently painted — gates the pending-state reset so a
+//: same-ticker refresh does not blank the panel every 15s cycle.
+let rawLevelsTicker = null;
+
+/* RC-156 (LP-01 Step 4) — the raw structure levels, made visible.
+   Phase 2A (operator 2026-08-08): the source is now /api/levels, the canonical serving
+   contract for the ONE materialized PriceLevelSnapshot, and extraction is BY LEVEL ID.
+   It used to read /api/liquidity-snapshot's raw_levels by (group, key), which is a
+   second carrier of the same concepts and measured 773.40/772.55 against the levels
+   endpoint's 773.3975/773.3975 for one ticker at one instant. No level is computed
+   here — the browser draws carried server results only (RC-80). Absent ids are simply
+   absent; a missing level is omitted, never rendered as 0 or a dash pretending to be a
+   price.
+   The LAST column is the DOM id token AND the canonical level id, stated EXPLICITLY
+   rather than derived from the display label — `label.replace(/[^A-Za-z0-9]+/g,'_')`
+   collapsed "VWAP +2σ" and "VWAP −2σ" onto one token, because +, − and σ are all
+   non-alphanumeric: two rows, one id, invalid DOM and a surface that cannot be checked
+   by the ids it advertises. ORDER IS THE CONTRACT: this array is the render order. */
+const RL_SPEC = [
+  ['PDH',       'prior-day high',                        'PDH'],
+  ['PDL',       'prior-day low',                         'PDL'],
+  ['PDC',       'prior-day close',                       'PDC'],
+  ['PD POC',    'prior-day point of control',            'PD_POC'],
+  ['PD VAH',    'prior-day value-area high',             'PD_VAH'],
+  ['PD VAL',    'prior-day value-area low',              'PD_VAL'],
+  ['ON HIGH',   'overnight high',                        'OVERNIGHT_HIGH'],
+  ['ON LOW',    'overnight low',                         'OVERNIGHT_LOW'],
+  ['ORB HIGH',  'opening-range high',                    'ORB_HIGH'],
+  ['ORB MID',   'opening-range mid',                     'ORB_MID'],
+  ['ORB LOW',   'opening-range low',                     'ORB_LOW'],
+  ['VAH',       "today's value-area high",               'TODAY_VAH'],
+  ['POC',       "today's point of control",              'TODAY_POC'],
+  ['VAL',       "today's value-area low",                'TODAY_VAL'],
+  ['VWAP +2σ', 'VWAP plus two standard deviations',  'VWAP_P2'],
+  ['VWAP +1σ', 'VWAP plus one standard deviation',   'VWAP_P1'],
+  ['VWAP',      'session volume-weighted average price',  'VWAP'],
+  ['VWAP −1σ', 'VWAP minus one standard deviation', 'VWAP_M1'],
+  ['VWAP −2σ', 'VWAP minus two standard deviations', 'VWAP_M2'],
+];
+
+/* v6 (RC-192) # ui-mockup-ok: operator BUILD GO — the engine levels no longer render as a
+   card: they feed the LEVELS MANAGER (per-level ids preserved) and the candle canvas via the
+   ON/AUTO/OFF + cents-proximity system. Extraction contract unchanged: RL_SPEC only, no level
+   computed client-side (RC-80). */
+let rawLevelDefs = [];    // [{id, tag, v, title, fam}] for the current ticker
+let rawLevelsMsg = '';    // absence reason — shown in the manager, absence stays absence
+let levelGeneration = null; // canonical snapshot generation these values came out of
+//: engine-id -> manager family (state key). One family toggle governs its members.
+const RL_FAM = { PDH: 'pd', PDL: 'pd', PDC: 'pd', PD_POC: 'va', PD_VAH: 'va', PD_VAL: 'va',
+  OVERNIGHT_HIGH: 'onhl', OVERNIGHT_LOW: 'onhl', ORB_HIGH: 'orb', ORB_MID: 'orb',
+  ORB_LOW: 'orb', TODAY_VAH: 'va', TODAY_POC: 'va', TODAY_VAL: 'va', VWAP: 'vwap',
+  VWAP_P1: 'vwb', VWAP_M1: 'vwb', VWAP_P2: 'vwb', VWAP_M2: 'vwb' };
+//: [family, label, color, default state, evidence line] — evidence rides each row; unproven
+//: levels RENDER and get PROVEN via register due-dates, never hidden (RC-188).
+const LVL_META = [
+  ['wall', 'Call / put wall', '#ffc400', 'on', 'holds measured daily: scorecard'],
+  ['pin', 'Gamma pin', '#c792ff', 'on', 'SpotGamma std · re-test due 08-14'],
+  ['flip', 'Gamma flip', '#f4f6f8', 'on', 'method proven · MOVES intraday (register)'],
+  ['vwap', 'VWAP', '#ff8c00', 'on', 'price fact'],
+  // # ui-mockup-ok: v6.1 — ±1σ is in the mock's PERSIST set (v4 note), so ON by default
+  ['em', '±1σ day move', '#93c5fd', 'on', 'ATM-IV implied · calibration to be measured'],
+  ['pd', 'PDH / PDL / PDC', '#e8ecf1', 'auto', 'price fact · touch-value: clean re-run'],
+  ['onhl', 'ON high / low', '#00e07a', 'auto', 'price fact · touch-value: clean re-run'],
+  ['orb', 'Opening range', '#8b95a5', 'auto', 'price fact · touch-value: clean re-run'],
+  ['va', 'VAH / POC / VAL', '#8b95a5', 'auto', 'price fact · touch-value: clean re-run'],
+  ['vwb', 'VWAP ±1σ ±2σ', '#8b95a5', 'auto', 'price fact · touch-value: clean re-run'],
+  ['maxpain', 'Max pain', '#ff66cc', 'auto', 'UNPROVEN · register due 08-14'],
+  ['hvplvp', 'HVP / LVP', '#ffc400', 'auto', 'UNPROVEN · register due 08-14'],
+  ['netpeak', 'Net Γ peak', '#33aaff', 'off', 'UNPROVEN · the old net pin tested NULL'],
+  ['kds', 'Key delta strike', '#00e5ff', 'off', 'UNPROVEN · register due 08-14'],
+  ['charmw', 'Charm walls', '#ff9e40', 'on', 'banked charm walls · RC-199 gate revoked, default ON'],  // # ui-mockup-ok: RC-199 stale-gate text fix, no redesign
+];
+let lvlStates = {};
+try { lvlStates = JSON.parse(localStorage.getItem('ed_chart_lvl_states') || '{}'); } catch (e) {}
+for (const [fam, , , dflt] of LVL_META) if (!lvlStates[fam]) lvlStates[fam] = dflt;
+let proxCents = 10;
+try { proxCents = Number(localStorage.getItem('ed_chart_prox_cents')) || 10; } catch (e) {}
+const PROX_CHOICES = [5, 10, 15, 25];
+let firedIds = new Set();   // hysteresis: fire at ≤prox, un-fire beyond 2×prox
+const lvlState = fam => lvlStates[fam] || 'off';
+function saveLvlPrefs() {
+  try { localStorage.setItem('ed_chart_lvl_states', JSON.stringify(lvlStates));
+        localStorage.setItem('ed_chart_prox_cents', String(proxCents)); } catch (e) {}
+}
+/* v6.2 (RC-195) # ui-mockup-ok: every manager row shows the LIVE value(s) it would draw —
+   the operator clicked ON and saw nothing because that family had no data this session and
+   the menu never said so. Absence now reads as absence, in amber when the state expects data. */
+function famLiveValues(fam) {
+  const T = terrain || {};
+  const out = [];
+  const push = v => { if (v != null && isFinite(Number(v))) out.push(Number(v)); };
+  if (fam === 'wall') { push(T.call_wall); if (T.put_wall !== T.call_wall) push(T.put_wall); }
+  else if (fam === 'pin') push(T.gamma_pin);
+  else if (fam === 'flip') push(T.gamma_flip);
+  else if (fam === 'netpeak') push(T.net_gex_peak);
+  else if (fam === 'maxpain') push(T.max_pain);
+  else if (fam === 'kds') push(T.key_delta_strike);
+  else if (fam === 'hvplvp') { push(T.hvp); push(T.lvp); }
+  else if (fam === 'charmw') { push(T.call_charm_wall); push(T.put_charm_wall); }
+  // Phase 2A: the VWAP the menu reports is the CARRIED level, not the tail of a
+  // client-side accumulation — the menu and the drawn line must be one number.
+  else if (fam === 'vwap') { for (const r of rawLevelDefs) if (r.id === 'VWAP') push(r.v); }
+  else if (fam === 'em') { const em = T.implied_1d_move; const s = currentSpot();
+    if (em && em.points != null && s != null) { push(Number(s) + em.points); push(Number(s) - em.points); } }
+  else if (fam === 'pd') {
+    // # ui-mockup-ok: RC-213 B3 — engine values are the SOLE source; the client-copy
+    // fallback is deleted. Absent engine values show "no data" honestly (RC-68).
+    for (const r of rawLevelDefs.filter(r => ['PDH', 'PDL', 'PDC'].includes(r.id))) push(r.v);
+  }
+  else for (const r of rawLevelDefs) if (r.fam === fam) push(r.v);
+  return out;
+}
+function renderLvlMenu() {
+  const box = document.getElementById('lvlrows'); if (!box) return;
+  const stCol = { on: 'var(--green)', auto: 'var(--amber)', off: 'var(--mut)' };
+  window.__edChart = window.__edChart || {};
+  window.__edChart.menu = {};
+  box.innerHTML = LVL_META.map(([fam, label, col, , ev]) => {
+    const st = lvlState(fam);
+    const vals = famLiveValues(fam);
+    window.__edChart.menu[fam] = { state: st, values: vals.length };
+    const valTxt = vals.length
+      ? `<span style="font-family:var(--mono); color:var(--text2);">${vals.map(v => fmt(v)).join(' / ')}</span>`
+      : `<span style="color:${st === 'off' ? 'var(--mut)' : 'var(--amber)'};">no data this session — nothing to draw</span>`;
+    return `<div class="lvlrow"><span class="sw2" style="background:${col}"></span>`
+      + `<span class="nm">${esc(label)}</span><span class="ev">${esc(ev)} &middot; ${valTxt}</span>`
+      + `<span class="st" data-fam="${fam}" style="color:${stCol[st]};border-color:${stCol[st]}">${st.toUpperCase()}</span></div>`;
+  }).join('')
+  + `<div style="font-size:9.5px;color:var(--dim);margin-top:5px;">engine levels this session `
+  + `(${rawLevelDefs.length ? rawLevelDefs.length : esc(rawLevelsMsg || 'none yet')}): `
+  + rawLevelDefs.map(r =>
+      `<span id="rl-${esc(r.id)}" title="${esc(r.title)}" style="margin-right:7px;">${esc(r.tag)} ${esc(fmt(r.v))}</span>`
+    ).join('') + `</div>`;
+  for (const el of box.querySelectorAll('.st')) {
+    el.addEventListener('click', () => {
+      const fam = el.dataset.fam;
+      lvlStates[fam] = lvlState(fam) === 'on' ? 'auto' : lvlState(fam) === 'auto' ? 'off' : 'on';
+      saveLvlPrefs(); renderLvlMenu(); draw();
+    });
+  }
+}
+function renderProxMenu() {
+  const box = document.getElementById('proxrows'); if (!box) return;
+  box.innerHTML = PROX_CHOICES.map(c =>
+    `<span class="chip${c === proxCents ? ' on' : ''}" data-c="${c}">${c}&cent;</span>`).join('');
+  for (const el of box.querySelectorAll('.chip')) {
+    el.addEventListener('click', () => {
+      proxCents = Number(el.dataset.c); firedIds = new Set(); saveLvlPrefs();
+      document.getElementById('proxbtn').innerHTML = `PROX ${proxCents}&cent; &#9662;`;
+      renderProxMenu(); draw();
+    });
+  }
+}
+function renderEngineLevels(ls, tk, err) {
+  // Phase 2A: `ls` is the /api/levels payload — the canonical snapshot, serialized.
+  // Values are READ by id and drawn; nothing here derives a price.
+  const rows = ls && Array.isArray(ls.levels) ? ls.levels : null;
+  rawLevelDefs = [];
+  levelGeneration = ls && ls.generation != null ? ls.generation : null;
+  // the carried VWAP curve replaces the browser's own accumulation
+  daily = (ls && Array.isArray(ls.vwap_series) && ls.vwap_series.length)
+    ? { vwap: ls.vwap_series.map(s => [s[0], s[1]]) } : null;
+  if (!rows) {
+    rawLevelsMsg = err ? ('levels unavailable — ' + String(err.message || err).slice(0, 90))
+                       : ('no structure levels for ' + tk + ' in this session yet');
+    renderLvlMenu(); return;
+  }
+  const byId = new Map();
+  for (const r of rows) if (r && r.id != null) byId.set(String(r.id), r);
+  for (const [tag, title, id] of RL_SPEC) {
+    const row = byId.get(id);
+    if (!row) continue;
+    const v = Number(row.price);
+    // # ui-mockup-ok: v6.2 audit finding — a zero PRICE is a placeholder, never a level,
+    // and the old card drew "VAH 0.00" the same way. Absence reads as absence.
+    if (!isFinite(v) || v <= 0) continue;
+    rawLevelDefs.push({ tag, title, v, id, fam: RL_FAM[id] || 'va' });
+  }
+  rawLevelsMsg = rawLevelDefs.length ? '' : ('no structure levels for ' + tk + ' yet');
+  renderLvlMenu();
+}
+
+/* v6 (RC-192) # ui-mockup-ok: operator BUILD GO — DIR-01(i) forces strip. GEX/OV side sums
+   come SERVER-AGGREGATED in the strikes payload (today_side_sums — one aggregator, one spot
+   basis; the in-browser re-sum was killed in one-faucet-closeout-v1); ΔOI/DEX/CHARM come
+   from /api/forces (banked chains). RC-199: the charm vote-gate was REVOKED by the operator —
+   charm renders real numbers here. */
+let forcesBank = null;
+function renderForces() {
+  const grid = document.getElementById('f-grid'), src = document.getElementById('f-src'),
+        rd = document.getElementById('f-reading');
+  if (!grid || !src || !rd) return;
+  const spot = currentSpot();   // RC-75/RC-225: /api/spot binding only
+  // # ui-mockup-ok: STRIP kill (one-faucet-closeout-v1) — same cells, server-aggregated
+  // values. The in-browser per-side re-aggregation is DELETED: the server computes
+  // today_side_sums against the payload's own spot (ONE aggregator; the client loop could
+  // straddle a different spot and broke silently on payload changes). Absent sums render —.
+  const ss = (strikes && strikes.today_side_sums) || null;
+  const rows = ((strikes && strikes.today) || {}).all || [];
+  const gB = ss ? ss.gex_below : null, gA = ss ? ss.gex_above : null;
+  const vB = ss ? ss.vol_below : null, vA = ss ? ss.vol_above : null;
+  const fz = forcesBank;
+  const c = (v, col) => v == null ? '<i style="color:var(--dim)">—</i>'
+    : `<b style="color:${col}">${(v >= 0 && col !== '#ffc400') ? '+' : ''}${fmtBig(v)}</b>`;
+  const sgn = v => v == null ? '' : (v >= 0 ? '#33aaff' : '#ff3355');
+  const grn = v => v == null ? '' : (v >= 0 ? '#00e07a' : '#ff3355');
+  // RC-225: pill carries value; age/source sit in #f-src — never paint a borrowed cycle spot as live.
+  const spotPill = spot == null ? '—'
+    : (fmt(spot) + (spotBindingStale() ? ' STALE' : ''));
+  // v6.1 # ui-mockup-ok: mock layout — the spot pill prints ONCE (top row); later rows carry
+  // a quiet dot so the eye keeps the below|spot|above axis without pill noise.
+  let pillUsed = false;
+  const rowH = (id, lab, below, above, bcol, acol, srcTxt, title) => {
+    const mid = pillUsed ? `<div class="fmid">&middot;</div>`
+      : `<div class="fspot${spotBindingStale() ? ' stale' : ''}">${esc(spotPill)}</div>`;
+    pillUsed = true;
+    return `<div class="fl" id="fr-${id}" title="${esc(title)}">${lab}</div>`
+      + `<div class="fb">${c(below, bcol)}</div>` + mid
+      + `<div>${c(above, acol)}</div><div class="fsrc">${esc(srcTxt)}</div>`;
+  };
+  const liveSrc = rows.length ? `live · ${rows.length} strikes` : 'live cache empty — says so';
+  // # ui-mockup-ok: RC-304 correctness fix, no redesign — ONE label said "banked older→newer"
+  // for all three banked rows, and only ΔOI spans two captures. DEX and CHARM are summed on
+  // the newer capture alone, and charm additionally carries the book it covered
+  // (charm_book_scope, RC-288) and its own failure (charm_error) — both served and, until
+  // now, unread here. The derivation lives in static/js/forces_provenance.js so a test can
+  // EXECUTE it (RC-298) instead of string-matching this file.
+  const rowSrc = (row) => window.EdForcesProvenance
+    ? window.EdForcesProvenance.forcesRowSource(fz, row)
+    : 'provenance module not loaded';
+  grid.innerHTML =
+    rowH('gex', 'GEX $', gB, gA, sgn(gB), sgn(gA), liveSrc,
+         'Net dealer gamma dollars per 1% move, summed per side of spot from the live per-strike book.')
+    + rowH('ov', 'OPT VOL', vB, vA, '#ffc400', '#ffc400', 'live session',
+           'Option contracts traded this session, summed per side of spot. Activity fact only.')
+    + rowH('doi', '&Delta;OI', fz && fz.available ? fz.doi_below : null,
+           fz && fz.available ? fz.doi_above : null,
+           grn(fz && fz.available ? fz.doi_below : null), grn(fz && fz.available ? fz.doi_above : null),
+           // # ui-mockup-ok: RC-304 correctness fix, no redesign — ΔOI keeps the two-date
+           // span because it is the one row that genuinely differences two captures.
+           rowSrc('doi'), fz && fz.available ? String(fz.method || '') :
+           'Day-over-day open-interest change per side. Fills from the two newest banked chains.')
+    + rowH('dex', 'DEX $', fz && fz.available ? fz.dex_below_dollars : null,
+           fz && fz.available ? fz.dex_above_dollars : null,
+           sgn(fz && fz.available ? fz.dex_below_dollars : null),
+           // # ui-mockup-ok: RC-304 correctness fix, no redesign — DEX is summed on the
+           // newer capture ALONE, so it no longer advertises a two-date span.
+           sgn(fz && fz.available ? fz.dex_above_dollars : null), rowSrc('dex'),
+           'Dealer delta dollars per side (newer banked capture). Conditioning context, never a standalone direction.')
+    // # ui-mockup-ok: RC-199 — the operator REVOKED the DIR-01(i) charm vote-gate
+    // ("nothing locked"); charm renders real numbers everywhere its fields serve, and
+    // /api/forces charm_below/charm_above is the banked faucet. Re-encoding a vote-lock
+    // here is FORBIDDEN by that order.
+    + rowH('charm', 'CHARM', fz && fz.available ? fz.charm_below : null,
+           fz && fz.available ? fz.charm_above : null,
+           sgn(fz && fz.available ? fz.charm_below : null),
+           // # ui-mockup-ok: RC-304 correctness fix, no redesign — the charm source now
+           // carries the BOOK it was summed over (charm_book_scope, RC-288) and states a
+           // charm_error instead of leaving a failed charm as an em-dash under a confident
+           // banked label. Both fields were already served and simply never read here.
+           sgn(fz && fz.available ? fz.charm_above : null), rowSrc('charm'),
+           'Dealer-signed net charm per side of spot (newer banked chain, bs_charm faucet). Hedge-decay flow context.');
+  src.textContent = spotBindingAgeLabel();
+  const bits = [];
+  if (gB != null && gA != null && gA !== 0)
+    bits.push(`gamma ${fmtBig(gB)} below vs ${fmtBig(gA)} above (${Math.abs(gA) > 0 ? (Math.abs(gB) / Math.abs(gA)).toFixed(2) : '—'}:1)`);
+  if (vB != null && vA != null && vA !== 0)
+    bits.push(`volume ${(vB / vA).toFixed(2)}:1 below`);
+  if (fz && fz.available)
+    bits.push(`ΔOI ${fz.doi_below >= 0 ? '+' : ''}${fmtBig(fz.doi_below)} below / ${fz.doi_above >= 0 ? '+' : ''}${fmtBig(fz.doi_above)} above`);
+  rd.textContent = bits.length ? 'Reading: ' + bits.join(' · ') + '.' :
+    'Reading: fills as the live book and banked chains arrive.';
+}
+
+async function load() {
+  const tk = document.getElementById('tk').value.trim().toUpperCase() || 'SPY';
+  try {
+    const [b, t, s, c, sc] = await Promise.all([
+      j(`/api/bars1m?ticker=${tk}&limit=3000`),
+      j(`/api/terrain?ticker=${tk}`),
+      j(`/api/terrain/strikes?ticker=${tk}`).catch(() => null),
+      j(`/api/level_crosses?ticker=${tk}&n=8`).catch(() => ({ crosses: [] })),
+      j(`/api/terrain/scorecard`).catch(() => null),
+    ]);
+    // RC-156: the raw structure levels ride their OWN request and their OWN failure. This is a
+    // slow endpoint (it fetches a session of Schwab bars), so it must never hold up the price
+    // paint — the RC-68/RC-91 discipline: paint what is ready, and let the late panel say it is
+    // late rather than blocking the chart behind it. A rejection renders the panel's honest
+    // absence state, never a stale set of prices from the previous ticker.
+    // Clear to a PENDING state naming the new ticker before the request goes out. Without it
+    // the previous symbol's rows (or its absence message) sit under the new symbol for as long
+    // as the fetch takes — MEASURED in the DOM: switching RTY -> QQQ left "no structure levels
+    // for RTY" on screen while the box read QQQ. Prices under the wrong ticker is the one
+    // failure this panel must never have, however briefly.
+    if (rawLevelsTicker !== tk) {
+      // v6 (RC-192) # ui-mockup-ok: operator BUILD GO — clear to a PENDING state naming the
+      // new ticker before the request goes out (same law as the old card: prices under the
+      // wrong ticker is the one failure this surface must never have, however briefly).
+      rawLevelsTicker = tk;
+      rawLevelDefs = []; rawLevelsMsg = 'loading ' + tk + ' levels…';
+      daily = null; levelGeneration = null;
+      firedIds = new Set(); renderLvlMenu();
+    }
+    // Phase 2A: the canonical serving contract. The chart no longer reads levels from
+    // /api/liquidity-snapshot — one snapshot, one carrier for this surface.
+    j(`/api/levels?ticker=${tk}`)
+      .then(ls => { if (currentChartTicker() === tk) { renderEngineLevels(ls, tk); draw(); } })
+      .catch(err => { if (currentChartTicker() === tk) renderEngineLevels(null, tk, err); });
+    j(`/api/forces?ticker=${tk}`)
+      .then(fz => { if (currentChartTicker() === tk) { forcesBank = fz; renderForces(); } })
+      .catch(() => { if (currentChartTicker() === tk) { forcesBank = null; renderForces(); } });
+    // coach numbers: accept only a real scorecard payload (an error body or a
+    // pre-restart 404 must read as ABSENT -> tooltips say "measuring")
+    // RC-78: a STALE scorecard is not a scorecard. The server withholds the figures past its
+    // trading-day budget and sends the reason instead, so the coach says "measuring" rather than
+    // quoting a four-day-old hold rate under "measured on our own history".
+    scorecard = (sc && sc.generated_utc && !sc.stale) ? sc : null;
+    scorecardStale = (sc && sc.stale) ? sc : null;
+    const cur = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+    if (cur !== tk) return;   // superseded by a newer ticker selection
+    // follow the right edge ONLY when actually sitting on it; a view dragged
+    // past the newest bar stays where the operator placed it (snap-back class)
+    const atEnd = !view ||
+      (view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5);
+    raw = b.bars || []; terrain = t; crosses = c.crosses || [];
+    if (chartTicker !== tk) {
+      forming = null; sealedForming = null;
+      liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+    }
+    chartTicker = tk;
+    // RC-164: this line referenced `_chartCommitInflight`, declared by an Enter-key commit guard
+    // that is NOT in this file — I stripped that guard's hunk from my commits by matching the
+    // string `commitChartTicker`, and this line does not contain it, so the REFERENCE survived
+    // its DECLARATION. Every load() then threw "_chartCommitInflight is not defined" before
+    // reaching draw(), which is why the Chart showed "load failed" during a live session.
+    // Removed rather than re-declared: a variable whose owner does not exist here has no
+    // meaning, and inventing a declaration would fake state the guard needs to be correct.
+    // empty {all:[],…} shells and HTTP error bodies both read as ABSENT
+    strikes = (s && hasStrikeBars(s.today)) ? s : null;
+    // RC-150: ...but ABSENT BARS IS NOT AN ABSENT PAYLOAD. Nulling `strikes` also threw away
+    // levels_stale_reason / levels_failing / levels_quarantined — the diagnosis — at exactly the
+    // moment it became the only thing worth showing. MEASURED in the rendered DOM 2026-07-30
+    // 12:03 ET: RTY printed "feed activates at the next console start" while /api/terrain/strikes
+    // was returning `levels_failing: true` and "chain fetch failed (HTTP 400)". RC-147 made the
+    // reason reach the payload; this is what kept it off the screen. The bars and the diagnosis
+    // are separate facts and now travel in separate variables.
+    strikesMeta = s || null;
+    setBars();
+    if (atEnd && view) { const w = view.i1 - view.i0;
+      view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
+    document.getElementById('narrator').textContent = t.headline || '—';
+    // RC-81 — the spot lives in its OWN element so the 1.5s tick can repaint it. It used to be
+    // baked into this string, which is rewritten once per 15s load(): same authority as the big
+    // legend, but painted 15s apart, so the two showed different prices in the same frame
+    // (MEASURED in the rendered DOM: big legend 737.73 beside meta bar 737.67). One faucet only
+    // guarantees agreement between readers sampled at the same instant.
+    document.getElementById('meta').innerHTML =
+      `spot <span id="metapx">${esc(fmt(currentSpot()))}</span>` +
+      ` <span id="spotage" class="src">${esc(spotBindingAgeLabel())}</span> · regime ${esc(t.regime || '—')} · ` +
+      `${esc(t.confidence || '—')} · ${raw.length}×1m bars · ` +
+      `strikes ${esc((strikes && strikes.today_source) || 'restart console to activate')} ` +
+      `· scroll=wider/narrower · shift+scroll=taller/shorter · drag=move · dbl-click=fit`;
+    document.getElementById('coachlines').innerHTML = learning
+      ? (t.lines || []).map(l => '· ' + esc(l)).join('<br>') : '';
+    // LIVE only when the newest 1m bar is fresh; otherwise honest STALE
+    const lastTs = raw.length ? Number(raw[raw.length - 1].t) : 0;
+    const barAgeSec = lastTs ? (Date.now() / 1000 - lastTs) : 1e9;
+    feedFresh = !!(raw.length && barAgeSec <= 900);
+    document.getElementById('livedot').className = feedFresh ? '' : 'stale';
+    const rc = document.getElementById('regchip');
+    const reg = String(t.regime || '—');
+    rc.textContent = reg;
+    rc.style.background = /SHORT/.test(reg) ? '#ff3355'
+      : /LONG/.test(reg) ? '#00e07a'
+      : /UNPROVEN/.test(reg) ? '#ffc400' : '#aab6c4';
+    // RC-91: the SOURCE alone is not the story. The panel read `today: terrain_live_cache` while
+    // serving levels 90 MINUTES old, because the terrain loop stops at the background-logging
+    // window (16:30 ET) and nothing on screen said so. Naming the right tap proves only that it
+    // was opened. Age and staleness now ride beside the source, in the operator's language.
+    const _gsrc = document.getElementById('gsrc');
+    // RC-150: "activates at the next console start" was the catch-all for every no-bars case,
+    // including a vendor-rejected symbol that no restart can fix. Ask the payload first.
+    if (!(strikes && strikes.today_source)) {
+      const _sm = strikesMeta || {};
+      const _q = _sm.levels_quarantined, _f = _sm.levels_failing;
+      if (_sm.levels_stale_reason) {
+        _gsrc.textContent = (_q ? 'FAILING · QUARANTINED' : _f ? 'FAILING' : 'NO DATA') +
+          ` — ${_sm.levels_stale_reason}`;
+        _gsrc.style.color = (_q || _f) ? '#ff3355' : '#ffc400';
+        _gsrc.title = String(_sm.levels_stale_reason);
+      } else {
+        _gsrc.textContent = 'feed activates at the next console start';
+        _gsrc.style.color = '';
+      }
+    } else if (t && t.levels_stale) {
+      const mins = t.levels_age_sec != null ? Math.round(t.levels_age_sec / 60) : null;
+      // RC-146: "not refreshing" is two different operator actions wearing one label. A
+      // deliberate pause means WAIT (it resumes at a known time); an unexplained one means GO
+      // FIND OUT. The producer now says which, so the line says which instead of implying the
+      // alarming case for a scheduler that is working as designed.
+      // RC-147: three states, three operator actions. PAUSED = wait, it resumes at a known
+      // time. FAILING = the chain call is erroring; these levels are not coming back on their
+      // own. STALE = should be refreshing and is not, cause unrecorded. Collapsing FAILING into
+      // STALE is how $SPX served a 45-minute-old book with volume bars painting beside it.
+      // RC-148 adds the fourth: QUARANTINED — the loop has stopped REQUESTING this ticker and
+      // will not resume without an operator re-admit. It is still FAILING (the vendor refuses
+      // the symbol), so the label carries both rather than trading one truth for the other.
+      const _state = t.levels_quarantined ? 'FAILING · QUARANTINED'
+        : t.levels_failing ? 'FAILING'
+        : t.levels_paused_on_purpose ? 'PAUSED' : 'STALE';
+      _gsrc.textContent = _state +
+        ` — levels ${mins != null ? mins + ' min' : 'unknown age'} old, ` +
+        `not refreshing (source: ${strikes.today_source})` +
+        (t.levels_stale_reason ? ` · ${t.levels_stale_reason}` : '');
+      _gsrc.style.color = t.levels_failing ? '#ff3355' : '#ffc400';
+      _gsrc.title = String(t.levels_stale_reason || '');
+    } else if (String(strikes.today_source || '').startsWith('accrual_bank')) {
+      // RC-162: the bars are this session's own wide book, read from the accrual bank because
+      // the live cache was cold or stale. Say so on the panel's face — the age here is the
+      // BANK ROW's age, not the terrain loop's, and labelling banked rows "live" is exactly the
+      // RC-68 failure (a 09:47 capture served at 11:31 under a live label).
+      const bankAge = strikes.today_age_sec != null
+        ? `${Math.round(strikes.today_age_sec / 60)} min` : 'unknown age';
+      _gsrc.textContent = `BANKED — session accrual, ${bankAge} old `
+        + `(${strikes.today_source}); live chain not current`;
+      _gsrc.style.color = '#ffc400';
+      _gsrc.title = 'Per-strike gamma and volume accrued this session and read from the '
+        + 'durable bank because the live wide chain was cold or stale. Same wide book, same '
+        + 'metrics; the ≤7 DTE and MONTHLY+ chips are empty because the bank stores the ALL '
+        + 'scope only.';
+    } else {
+      const age = t && t.levels_age_sec != null ? `${Math.round(t.levels_age_sec)}s` : 'live';
+      _gsrc.textContent = `today: ${strikes.today_source} · ${age} old`;
+      _gsrc.style.color = '';
+      _gsrc.title = '';
+    }
+    // RC-225: forming candle grows only from the /api/spot binding — never from cycle payload.
+    const cs = currentSpot();
+    if (cs != null) noteSpotTick(cs);
+    draw(); drawHist(); renderForces();   // v6 # ui-mockup-ok: forces strip repaints per cycle
+  } catch (e) {
+    document.getElementById('narrator').textContent = 'load failed: ' + e.message;
+    feedFresh = false;
+    // fail-closed coach: a failed cycle cannot vouch for the numbers it would
+    // quote — tooltips say "measuring" until a cycle succeeds (Bugbot HIGH)
+    scorecard = null; scorecardStale = null;
+    document.getElementById('livedot').className = 'stale';
+    document.getElementById('lastdot').style.display = 'none';
+    // rebuild zones NOW — hover tooltips read zones built at the last draw,
+    // so clearing state without redrawing left stale rates hoverable
+    draw(); drawHist();
+  }
+}
+
+// v6 # ui-mockup-ok: wider right gutter — the axis-hugging level tags live there
+const PADL = 6, PADR = 100, PADT = 14, PADB = 26;
+let chartMode = 'candles';   // 'candles' (default, operator preference) | 'line'
+try { chartMode = localStorage.getItem('ed_chart_mode') === 'line' ? 'line' : 'candles'; } catch (e) {}
+
+function domain() {
+  const i0 = Math.max(0, Math.floor(view.i0)), i1 = Math.min(bars.length, Math.ceil(view.i1));
+  if (yLock) return { lo: yLock.lo, hi: yLock.hi };
+  let lo = Infinity, hi = -Infinity;
+  for (let i = i0; i < i1; i++) { lo = Math.min(lo, bars[i].l); hi = Math.max(hi, bars[i].h); }
+  const T = terrain || {};
+  for (const v of [T.gamma_flip, T.call_wall, T.put_wall])
+    if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  // Live spot must stay in-frame — overnight/extended moves are the honesty case (v2.7)
+  const spot = currentSpot();   // RC-75: one client spot authority
+  if (spot != null && isFinite(Number(spot))) {
+    lo = Math.min(lo, Number(spot)); hi = Math.max(hi, Number(spot));
+  }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  const span = (hi - lo) || 1;
+  return { lo: lo - span * 0.05, hi: hi + span * 0.05 };
+}
+
+/** RTH 9:30–16:00 America/New_York — matches time_et.RTH_OPEN_MINS/RTH_END_MINS. */
+function etSessionTag() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const get = t => { const p = parts.find(x => x.type === t); return p ? p.value : ''; };
+  const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[get('weekday')];
+  let h = Number(get('hour')); if (h === 24) h = 0;
+  const mm = h * 60 + Number(get('minute'));
+  if (wd >= 1 && wd <= 5 && mm >= 570 && mm < 960) return null;
+  if (wd >= 1 && wd <= 5 && mm < 570) return 'PRE-MKT';
+  return 'AFTER-HRS';
+}
+
+function niceStep(span, target) {
+  const rough = span / target, p = Math.pow(10, Math.floor(Math.log10(rough)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (rough <= m * p) return m * p;
+  return 10 * p;
+}
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = wrap.clientWidth, H = wrap.clientHeight || 560;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  if (!bars.length) {
+    // # ui-mockup-ok: v6.2 theme tokens
+    g.fillStyle = PAL.tx; g.font = '800 20px system-ui'; g.textAlign = 'center';
+    g.fillText('NO BARS YET', W / 2, H / 2 - 12);
+    g.fillStyle = PAL.dim; g.font = '700 14px system-ui';
+    g.fillText('pre-market, or the console feed is unreachable — retrying every 15s',
+      W / 2, H / 2 + 14);
+    g.textAlign = 'left';
+    document.getElementById('lastdot').style.display = 'none'; return; }
+
+  const { lo, hi } = domain();
+  const y = p => PADT + (hi - p) / (hi - lo) * (H - PADT - PADB);
+  const px2price = py => hi - (py - PADT) / (H - PADT - PADB) * (hi - lo);
+  const nVis = Math.max(view.i1 - view.i0, 1);
+  const x = i => PADL + (i - view.i0) * ((W - PADL - PADR) / nVis);
+  const px2i = px => view.i0 + (px - PADL) / ((W - PADL - PADR) / nVis);
+  scale = { lo, hi, y, x, px2price, px2i, W, H };
+
+  // v6.1 (RC-194) # ui-mockup-ok: gridLINES here; the price NUMBERS render at the end of the
+  // frame beside the level tags, dimmed and yielding to any tag within 11px — the measured
+  // collision was both tenants writing the same gutter blind to each other.
+  const step = niceStep(hi - lo, 8);
+  const gridLabels = [];
+  // # ui-mockup-ok: v6.2 — grid on the theme token
+  for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) {
+    const yy = y(p);
+    g.strokeStyle = PAL.grid;
+    g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke();
+    gridLabels.push({ p, yy });
+  }
+
+  zones = [];
+  const axisTags = [];   // v6 # ui-mockup-ok: gutter tags — word+price at the strike, no mid-chart text
+  const T = terrain || {};
+  // RC-75 one client spot authority — hoisted here (RC-113): the sigma band and off-scale
+  // pinning need the frame's spot before the level pass; every later use reads this same const.
+  const spot = currentSpot();
+  // Fail-closed lean: SIGN_UNPROVEN, UNAVAILABLE, or non-TRUSTED — never paint BUY/SELL advice
+  const withholdLean = T.regime === 'SIGN_UNPROVEN' || T.regime === 'UNAVAILABLE'
+    || T.confidence !== 'TRUSTED';
+  // RC-86 — the drawn band is the strike's HISTOGRAM BUCKET (± half the median strike spacing),
+  // which is the correct binning rule and nothing more. It carries no information about the wall:
+  // a three-billion-dollar concentration and a thin smear get the same width, because the width
+  // is a property of the strike GRID. Per SpotGamma, who originated the terms, a call/put wall is
+  // a SINGLE STRIKE, and the two walls are the bounds of ONE range between them.
+  //
+  // `half` is now null when the grid is unknown. It used to default to a hardcoded 0.5 for every
+  // instrument — measured 2026-07-27, the true half is 0.5 (SPY), 1.0 (NVDA), 1.25 (MET), so the
+  // fallback drew MET 2.5x too narrow and printed invented bounds at 2dp. That is exactly the
+  // state this page was in under RC-79 when the strikes panel served zero rows. Absence of a
+  // strike grid now renders as absence: a line, no band, no numeric range.
+  const ks = ((strikes && strikes.today && strikes.today.all) || []).map(r => r[0]);
+  let half = null;
+  if (ks.length > 2) {
+    const gaps = []; for (let i = 1; i < ks.length; i++) gaps.push(ks[i] - ks[i - 1]);
+    gaps.sort((a, b) => a - b);
+    const med = gaps[Math.floor(gaps.length / 2)];
+    if (med > 0) half = med / 2;
+  }
+  const wallLabelYs = [];
+  // RC-110: a level that exists but sits beyond the day's auto-scaled window must DEGRADE to
+  // an edge marker, never vanish — invisible walls read as "my walls are missing"
+  // (operator 2026-07-28: call wall 750 / flip 746.5 against a 734–741 traded range).
+  const offScale = [];
+  /* v6 (RC-192) # ui-mockup-ok: the ON/AUTO/OFF + cents-proximity machinery, hoisted above
+     band() so walls ride the same system as every other level. AUTO tests |level − spot|
+     against proxCents on the LIVE recomputed value every frame, 2x hysteresis. */
+  const proxPts = proxCents / 100;
+  let watching = 0;
+  const firedPills = [];
+  const autoNearest = [];   // # ui-mockup-ok: every AUTO watcher's live distance (mock: quiet state names the nearest)
+  const fireOk = (id, v) => {
+    if (spot == null || !isFinite(Number(spot))) return false;
+    const d = Math.abs(v - Number(spot));
+    if (d <= proxPts) { firedIds.add(id); return true; }
+    if (firedIds.has(id) && d <= proxPts * 2) return true;
+    firedIds.delete(id); return false;
+  };
+  const lvlVisible = (fam, id, v, tag) => {
+    const st = lvlState(fam);
+    if (st === 'on') return true;
+    if (st !== 'auto') return false;
+    watching++;
+    if (spot != null && isFinite(Number(spot)))
+      autoNearest.push({ tag, v, d: Math.abs(v - Number(spot)) });
+    if (!fireOk(id, v)) return false;
+    firedPills.push({ tag, v, d: Math.abs(v - Number(spot)) });
+    return true;
+  };
+  const lvlVisibleWall = (id, v) => lvlVisible('wall', id, v, 'WALL');
+  const band = (level, kind) => {
+    if (level == null) return;
+    // v6 (RC-192) # ui-mockup-ok: walls ride the manager too; AUTO walls fire like any level.
+    if (!lvlVisibleWall('wall_' + kind, level)) return;
+    const sell = kind === 'call';
+    // # ui-mockup-ok: v6.2 theme tokens
+    const col = kind === 'both' ? PAL.amber : sell ? PAL.red : PAL.green;
+    const name = kind === 'both' ? 'PUT + CALL WALL' : sell ? 'CALL WALL' : 'PUT WALL';
+    // Operator directive 2026-07-28 (final form): the label states THE BOX — the drawn
+    // band's own top and bottom prices. The box is the strike's nearest-strike zone
+    // (± half the median strike spacing): every price inside it is closer to this wall
+    // than to any neighboring strike, which is where its hedging flow concentrates.
+    // No grid -> no box -> no numbers (the line-only case stays honest).
+    const rangeTxt = half != null
+      ? ` · ${fmt(level - half)}–${fmt(level + half)}` : '';
+    if (level < lo || level > hi) {
+      offScale.push({ v: level, col, text: name + ' ' + fmt(level) + rangeTxt,
+        tip: name + ' ' + fmt(level) + ' — beyond today\'s traded range; the price axis fits the day\'s bars.' });
+      return;
+    }
+    // RC-86: no strike grid -> no band. A line, not an invented width.
+    const yTop = half == null ? y(level) : y(level + half);
+    const yBot = half == null ? y(level) : y(level - half);
+    if (half != null) {
+      // # ui-mockup-ok: v6.2 theme-derived translucents
+      g.fillStyle = kind === 'both' ? palRgba(PAL.amber, 0.16)
+        : sell ? palRgba(PAL.red, 0.14) : palRgba(PAL.green, 0.14);
+      g.fillRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
+      g.strokeStyle = col; g.lineWidth = 1.5;
+      g.strokeRect(PADL, yTop, W - PADL - PADR, yBot - yTop);
+    } else {
+      g.strokeStyle = col; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(PADL, yTop); g.lineTo(W - PADR, yTop); g.stroke();
+    }
+    g.fillStyle = col; g.font = '800 14px system-ui';
+    // RC-86: the label names the STRIKE. It used to print `739.50–740.50`, a range invented from
+    // the strike grid that reads as market structure — the wall is a single strike, and the only
+    // real range is the corridor BETWEEN the two walls.
+    // RC-83: when both walls land on one strike it is a two-sided concentration, a magnet rather
+    // than a barrier. Calling it CALL WALL asserts resistance-above on a level that is equally
+    // support-below. The server-side radar was fixed for this; the chart was not, and drew two
+    // identical overlapping bands with opposite labels.
+    // RC-130: the lean obeys the wall's GEOMETRY state from the payload (one producer;
+    // never recomputed here). "contains" earns the dealer lean; "breached" is the
+    // institutional distinct state — SpotGamma reports closes beyond the wall rather than
+    // moving it — so the label says BREACHED instead of asserting a cap/floor that spot
+    // has already crossed (live SPY 2026-07-29: put wall 740 over spot 735 said DEALERS BUY).
+    const wState = kind === 'both' ? null
+      : (sell ? T.call_wall_state : T.put_wall_state);
+    // RC-131 (v25): FAIL-CLOSED — the dealer lean is earned ONLY by a positive
+    // state === 'contains'; an absent/unknown state renders NO behavioral claim. The first
+    // ship made the claim the ternary's DEFAULT branch, so a payload predating the state
+    // fields fell through to DEALERS BUY on a put wall above spot — the exact lie RC-130
+    // existed to kill, reintroduced by the fallback shape (E-35 class: new static, old payload).
+    const lean = kind === 'both' ? '  · TWO-SIDED — magnet, not a barrier'
+      : wState === 'breached' ? (sell ? '  · BREACHED — spot above' : '  · BREACHED — spot below')
+      : wState === 'contains'
+        ? (withholdLean ? '' : (sell ? '  · DEALERS SELL' : '  · DEALERS BUY'))
+        : '';
+    // v6 # ui-mockup-ok: no mid-chart text — the wall becomes an axis tag; the two-sided case
+    // is ONE combined chip, and the pin merges in when it shares the strike (one tag, never
+    // an overlap). The full sentence (name, box, lean, hold rates) lives in the hover tip.
+    const pinHere = T.gamma_pin != null && Number(T.gamma_pin) === Number(level);
+    // # ui-mockup-ok: RC-124 information-loss BUG FIX, not a redesign — the merged axis tag
+    // restores the decisiveness the standalone PIN label already renders. Measured live: pin
+    // 750 coincident with the put wall rendered "750.00 PWALL·PIN" while the payload carried
+    // gamma_pin_strength_pct 19.8, so a near-tie pin and a decisive one looked identical —
+    // the same information-deleting merge RC-115 was opened for. Absent strength renders
+    // nothing (no fabricated %), exactly as the standalone label does.
+    const _pinSp = Number(T.gamma_pin_strength_pct);
+    const _pinTag = pinHere
+      ? '·PIN' + (Number.isFinite(_pinSp) ? ` ${_pinSp}%` : '')
+      : '';
+    const tagTxt = kind === 'both' ? `⬌WALL${_pinTag}`
+      : (sell ? 'CWALL' : 'PWALL') + _pinTag;
+    axisTags.push({ v: level, text: `${fmt(level)} ${tagTxt}`, col });
+    wallLabelYs.push(yTop - 5);
+    // Coach numbers are LIVE from the daily scorecard — never a frozen study
+    // figure (operator 2026-07-23). Absent scorecard = "measuring", not a
+    // stale rate.
+    const wh = scorecard && scorecard.wall_hold_trusted;
+    const measured = (wh && wh.call_held_pct != null && wh.put_held_pct != null)
+      ? `<i>Measured on our own history (updates with each daily scorecard` +
+        (scorecard.generated_utc ? `, last ${esc(String(scorecard.generated_utc).slice(0, 10))}` : '') +
+        `): call walls held ${wh.call_held_pct}%, put walls ${wh.put_held_pct}% on trusted days.</i>`
+      : scorecardStale
+        ? `<i>Hold-rate: measuring — the daily scorecard is out of date (` +
+          `${esc(String(scorecardStale.stale_reason || 'stale'))}, last ` +
+          `${esc(String(scorecardStale.generated_utc || '').slice(0, 10))}), so its numbers are ` +
+          `withheld rather than quoted as current.</i>`
+        : `<i>Hold-rate: measuring — this number fills from the daily scorecard.</i>`;
+    const leanTip = kind === 'both'
+      ? `Both walls sit on this ONE strike: heavy standing inventory on the call AND put side.<br>` +
+        `Dealer hedging pulls toward it rather than pushing off it — a magnet, not a barrier. ` +
+        `A one-sided BUY/SELL read would assert a direction the data does not support.<br>` + measured
+      : withholdLean
+        ? `Heavy standing option inventory at this strike (structure fact only).<br>` +
+          measured + `<br>` +
+          `<i>Dealer BUY/SELL lean withheld — regime ${esc(T.regime)} / ${esc(T.confidence)}.</i>`
+        : `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
+          `at this strike; acts as ${sell ? 'resistance' : 'support'}.<br>` + measured;
+    // RC-86: the tooltip states what the drawn band IS — a strike bucket from the chain's own
+    // grid — instead of implying a zone the wall operates over. With no grid there is no bucket
+    // and the width is simply not claimed.
+    const bucket = half == null
+      ? `<br><i>Strike spacing unknown for this chain, so no bucket width is drawn or claimed.</i>`
+      : `<br><i>Drawn bucket ±${fmt(half)} = half the chain's median strike spacing (chart ` +
+        `resolution, not wall size).</i>`;
+    const title = kind === 'both' ? `Two-sided gamma wall ${fmt(level)}`
+      : `${sell ? 'Call wall' : 'Put wall'} ${fmt(level)}`;
+    zones.push({ y0: yTop, y1: yBot,
+      tipHtml: `<b>${title}</b><br>` + leanTip + bucket });
+  };
+  // RC-115: each wall's EARNED range — per-side gamma value area, computed SERVER-side
+  // (Market-Profile POC expansion on that side's GEX mass to 68.2%). Shaded behind the wall
+  // bands. Never derived client-side and never from the strike grid — the RC-86 falsehood
+  // this replaces printed grid spacing as if it were market structure.
+  const rangeShade = (rg, kind) => {
+    if (!rg || rg.lo == null || rg.hi == null) return;
+    const col = kind === 'call' ? PAL.red : PAL.green;   // # ui-mockup-ok: v6.2 tokens
+    const name = kind === 'call' ? 'CALL RANGE' : 'PUT RANGE';
+    const tip = `<b>${name} ${fmt(rg.lo)}–${fmt(rg.hi)}</b><br>` +
+      `${esc(rg.method || '')} — covers ${esc(String(rg.coverage_pct))}% of that side's ` +
+      `gamma mass. Recomputed with every terrain refresh.`;
+    if (rg.hi < lo || rg.lo > hi) {   // wholly outside the window: pin, never vanish (RC-110)
+      offScale.push({ v: (rg.lo + rg.hi) / 2, col,
+        text: `${name} ${fmt(rg.lo)}–${fmt(rg.hi)}`, tip });
+      return;
+    }
+    // v6.1 (RC-194) # ui-mockup-ok: NO on-canvas text and no loud frame — the measured
+    // collision family (range labels over the legend and the time axis). Faint fill + hover
+    // tip only; the mock's canvas carries no mid-chart prose.
+    const yT = y(Math.min(rg.hi, hi)), yB = y(Math.max(rg.lo, lo));
+    g.fillStyle = palRgba(col, 0.05);   // # ui-mockup-ok: v6.2 theme-derived
+    g.fillRect(PADL, yT, W - PADL - PADR, yB - yT);
+    zones.push({ y0: yT, y1: yB, tipHtml: tip });
+  };
+  rangeShade(T.put_wall_range, 'put');
+  rangeShade(T.call_wall_range, 'call');
+
+  // RC-83: one strike carrying both walls is ONE two-sided level, not two opposing ones —
+  // but it is still BOTH walls, and the label says so (RC-115: 'GAMMA WALL' alone erased
+  // the put/call framing the operator reads).
+  if (T.call_wall != null && T.put_wall != null && Number(T.call_wall) === Number(T.put_wall)) {
+    band(T.call_wall, 'both');
+  } else {
+    band(T.call_wall, 'call'); band(T.put_wall, 'put');
+  }
+
+  // ALL other key levels — bright, labeled, each with a coach tooltip
+  const levels = [
+    ['gamma_flip', 'FLIP', '#f4f6f8', 'The regime line — amplify below, dampen above.', [7, 5]],
+    ['gamma_pin', 'PIN', '#c792ff', 'THE standard pin — largest TOTAL gamma (calls+puts): the SpotGamma Absolute Gamma / sticky-pin measure; hedging magnitude pins price regardless of net sign, strongest into expiry. Lead % = margin over the runner-up strike (a 1% lead is a coin flip). Our own touch-study on the OLD net-based pin tested NULL; this standard measure displays as structure until re-proven.', []],
+    ['net_gex_peak', 'NET Γ PEAK', '#33aaff', 'Largest |net| dealer GEX strike (calls minus puts) — where the SIGNED book peaks. This was previously labeled PIN; renamed because no originating vendor defines the pin on the net book (RC-124).', []],
+    ['max_pain', 'MAX PAIN', '#ff66cc', 'Strike minimizing option-holder value — expiry-day context only.', []],
+    ['key_delta_strike', 'KDS', '#00e5ff', 'Biggest total delta strike — hedging magnet candidate (unproven).', []],
+    ['hvp', 'HVP', '#ffc400', 'Amplification pocket — most negative dealer gamma strike.', [2, 3]],
+    ['lvp', 'LVP', '#00e07a', 'Damping pocket — most positive dealer gamma strike.', [2, 3]],
+    ['call_charm_wall', 'C-CHARM', '#ff9e40', 'Largest call charm strike — hedge decay flow into the close.', [4, 3]],
+    ['put_charm_wall', 'P-CHARM', '#40ffd0', 'Largest put charm strike — hedge decay flow into the close.', [4, 3]],
+  ];
+  // one item list (terrain levels labeled RIGHT, yesterday rows labeled LEFT);
+  // draw the lines first, then lay the labels out with a collision pass so
+  // levels sharing a price NEVER overlap (operator 2026-07-23)
+  const pdRows = [
+    ['pdh', 'PDH', [8, 4], "Yesterday's high — widely watched breakout/rejection reference."],
+    ['pdl', 'PDL', [8, 4], "Yesterday's low — widely watched breakdown/reclaim reference."],
+    ['pdc', 'PDC', [2, 3], "Yesterday's close — the gap fills or holds against this price."],
+  ];
+  const lvlItems = [];
+  for (const [key, lab, col, why, dash] of levels) {
+    const v = T[key]; if (v == null) continue;
+    if (v < lo || v > hi) {   // RC-110: degrade to an edge marker, never vanish
+      offScale.push({ v, col, text: `${lab} ${fmt(v)}`, tip: `${lab} ${fmt(v)} — ${why}` });
+      continue;
+    }
+    const leanTips = {
+      gamma_flip: 'Landmark strike only — structure fact; amplify/dampen lean withheld for this read.',
+      hvp: 'Most negative gamma strike — structure fact; amplification lean withheld.',
+      lvp: 'Most positive gamma strike — structure fact; damping lean withheld.',
+    };
+    const tipWhy = (withholdLean && leanTips[key]) || why;
+    // RC-124: the pin label carries its decisiveness — the leader's margin over the
+    // runner-up on total gamma. Absent strength renders nothing (no fabricated %).
+    // E-35: fnum() is an index.html helper that does NOT exist on this page — calling it
+    // here killed draw() before the candles. Chart-native Number check only.
+    const _sp = Number(T.gamma_pin_strength_pct);
+    const _lead = (key === 'gamma_pin' && Number.isFinite(_sp)) ? ` · lead ${_sp}%` : '';
+    lvlItems.push({ v, text: `${lab} ${fmt(v)}${_lead}`, col, dash,
+      lw: key === 'gamma_flip' ? 2 : 1.25, side: 'right',
+      tipHtml: `<b>${lab} ${fmt(v)}${_lead}</b><br>${tipWhy}` });
+  }
+  const _pdEng = enginePD();   // # ui-mockup-ok: RC-213 B3 — same lines, engine-only values
+  for (const [k, lab, dash, why] of pdRows) {
+    const v = _pdEng[k]; if (v == null) continue;
+    if (v < lo || v > hi) {   // RC-110
+      offScale.push({ v, col: '#f4f6f8', text: `${lab} ${fmt(v)}`, tip: `${lab} ${fmt(v)} — ${why}` });
+      continue;
+    }
+    lvlItems.push({ v, text: `${lab} ${fmt(v)}`, col: '#f4f6f8', dash, lw: 1.25,
+      side: 'left', tipHtml: `<b>${lab} ${fmt(v)}</b><br>${why}` });
+  }
+  for (const it of lvlItems) {
+    const yy = y(it.v);
+    g.strokeStyle = it.col; g.lineWidth = it.lw;
+    g.setLineDash(it.dash); g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy);
+    g.stroke(); g.setLineDash([]);
+    zones.push({ y0: yy - 6, y1: yy + 6, tipHtml: it.tipHtml });
+  }
+  g.font = '700 12px system-ui';
+  for (const side of ['right', 'left']) {
+    const list = lvlItems.filter(i => i.side === side).sort((a, b) => y(a.v) - y(b.v));
+    const fixed = side === 'left' ? wallLabelYs.slice().sort((a, b) => a - b) : [];
+    let prev = -Infinity;
+    for (const it of list) {
+      let pos = Math.max(y(it.v) - 4, prev + 13);
+      for (const fy of fixed) if (Math.abs(pos - fy) < 13) pos = fy + 13;
+      prev = pos;
+      g.fillStyle = it.col;
+      g.fillText(it.text, side === 'right' ? W - PADR - 92 : PADL + 8, pos);
+    }
+  }
+
+  // ── RC-113: WALL RANGE + sigma band, to the named institutional standard ──────────────
+  // SpotGamma — whose levels product ships on Bloomberg — defines the wall as ONE strike
+  // and THE range as the corridor BETWEEN the put wall and the call wall (the dealer-
+  // hedging containment zone; their published hold rates: call wall 83%, put wall 89% of
+  // sessions). The sigma overlay is the Implied 1-Day Move: a one-standard-deviation band.
+  // Nothing here is invented client-side: the corridor is the two walls the server already
+  // certified, and the band half-width comes from the payload's ATM-IV computation.
+  if (T.call_wall != null && T.put_wall != null
+      && Number(T.call_wall) !== Number(T.put_wall)) {
+    const wLo = Math.min(Number(T.put_wall), Number(T.call_wall));
+    const wHi = Math.max(Number(T.put_wall), Number(T.call_wall));
+    if (wLo < hi && wHi > lo) {
+      const yA = y(Math.min(wHi, hi)), yB = y(Math.max(wLo, lo));
+      g.fillStyle = 'rgba(143,168,255,0.055)';
+      g.fillRect(PADL, yA, W - PADL - PADR, yB - yA);
+      // v6 # ui-mockup-ok: no mid-chart text — the corridor keeps its shade + hover tip only
+      zones.push({ y0: yA, y1: yB, tipHtml:
+        `<b>WALL RANGE ${fmt(wLo)} ↔ ${fmt(wHi)}</b><br>` +
+        `The dealer-hedging containment corridor between the put wall and the call wall — ` +
+        `the institutional range definition (SpotGamma standard, as shipped on Bloomberg: ` +
+        `the wall is one strike; THE range is between the walls).` });
+    }
+  }
+  const _em = T.implied_1d_move;
+  // v6 # ui-mockup-ok: EM rides the manager ('em' family) with axis tags, no mid-chart text
+  if (_em && _em.points != null && spot != null && isFinite(Number(spot))) {
+    for (const pair of [[Number(spot) + _em.points, '+1σ'],
+                        [Number(spot) - _em.points, '−1σ']]) {
+      const v = pair[0], lab = pair[1];
+      if (!lvlVisible('em', 'em' + lab, v, lab + ' EM')) continue;
+      const tip = `${lab} EM ${fmt(v)} — Implied 1-Day Move (68.3% one-sigma band centered on ` +
+                  `the live spot): ${_em.method}. ATM IV ${_em.iv_pct_atm}%.`;
+      if (v < lo || v > hi) {
+        offScale.push({ v, col: '#8fa8ff', text: `${lab} EM ${fmt(v)}`, tip });
+        continue;
+      }
+      const yy = y(v);
+      g.strokeStyle = '#8fa8ff'; g.lineWidth = 1.25; g.setLineDash([3, 4]);
+      g.beginPath(); g.moveTo(PADL, yy); g.lineTo(W - PADR, yy); g.stroke(); g.setLineDash([]);
+      axisTags.push({ v, text: `${fmt(v)} ${lab}`, col: '#8fa8ff' });
+      zones.push({ y0: yy - 6, y1: yy + 6, tipHtml: `<b>${tip}</b>` });
+    }
+  }
+
+  // RC-110: everything collected as off-scale renders as a compact pinned row at the chart
+  // edge it sits beyond — with its real price and a tooltip — so "present but out of window"
+  // can never be confused with "absent".
+  const pinRow = (items, top) => {
+    if (!items.length) return;
+    items.sort((a, b) => a.v - b.v);
+    const yy = top ? PADT + 13 : H - PADB - 5;
+    g.font = '800 12px system-ui';
+    // The big-legend DOM overlay owns the top-left corner — start the top pin row past it.
+    let xx = top ? PADL + 400 : PADL + 8;
+    for (const o of items) {
+      const t = (top ? '▲ ' : '▼ ') + o.text;
+      g.fillStyle = o.col; g.fillText(t, xx, yy);
+      xx += g.measureText(t).width + 18;
+    }
+    zones.push({ y0: yy - 11, y1: yy + 3,
+      tipHtml: `<b>Off-scale ${top ? 'above' : 'below'} today's traded range</b><br>`
+        + items.map(o => o.tip || o.text).join('<br>') });
+  };
+  pinRow(offScale.filter(o => o.v > hi), true);
+  pinRow(offScale.filter(o => o.v < lo), false);
+
+  // candles — thick and bright; LINE mode draws the close polyline instead
+  // (v6 # ui-mockup-ok: candles are the DEFAULT, LINE is the toggle — operator preference)
+  const bw = Math.max(2, Math.min(13, (W - PADL - PADR) / nVis - 2));
+  const i0 = Math.max(0, Math.floor(view.i0)), i1 = Math.min(bars.length, Math.ceil(view.i1));
+  if (chartMode === 'line') {
+    // # ui-mockup-ok: v6.2 theme tokens
+    g.strokeStyle = PAL.sky; g.lineWidth = 1.8; g.beginPath();
+    let started = false;
+    for (let i = i0; i < i1; i++) {
+      const px = x(i) + bw / 2, py = y(bars[i].c);
+      if (!started) { g.moveTo(px, py); started = true; } else g.lineTo(px, py);
+    }
+    g.stroke();
+  } else {
+    for (let i = i0; i < i1; i++) {
+      const b = bars[i], up = b.c >= b.o, cx = x(i) + bw / 2;
+      g.strokeStyle = up ? PAL.green : PAL.red; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(cx, y(b.h)); g.lineTo(cx, y(b.l)); g.stroke();
+      g.fillStyle = up ? PAL.green : PAL.red;
+      g.fillRect(x(i), y(Math.max(b.o, b.c)), bw, Math.max(1.5, Math.abs(y(b.o) - y(b.c))));
+    }
+  }
+
+  // pulsing marker only while canonical 1m tip is fresh (same gate as #livedot)
+  const dotEl = document.getElementById('lastdot');
+  const lb = bars[bars.length - 1];
+  const ldx = x(bars.length - 1) + bw / 2, ldy = y(lb.c);
+  if (feedFresh && ldx > PADL && ldx < W - PADR && ldy > PADT && ldy < H - PADB) {
+    dotEl.style.left = (ldx - 5) + 'px'; dotEl.style.top = (ldy - 5) + 'px';
+    dotEl.style.display = 'block';
+  } else dotEl.style.display = 'none';
+
+  // session VWAP — the CARRIED server path (/api/levels vwap_path), sampled per visible bar
+  if (daily && daily.vwap.length) {
+    const t0 = daily.vwap[0][0];
+    g.strokeStyle = PAL.orange; g.lineWidth = 2; g.beginPath();   // # ui-mockup-ok: v6.2
+    let started = false, lastPt = null;
+    for (let i = i0; i < i1; i++) {
+      const b = bars[i]; if (!b || b.t < t0) continue;
+      const tEnd = i + 1 < bars.length ? bars[i + 1].t : Infinity;
+      const w = vwapAt(tEnd); if (w == null) continue;
+      const px = x(i) + bw / 2, py = y(w);
+      if (!started) { g.moveTo(px, py); started = true; } else g.lineTo(px, py);
+      lastPt = [px, py];
+    }
+    g.stroke();
+    if (lastPt) { g.fillStyle = PAL.orange; g.font = '800 13px system-ui';
+      g.fillText('VWAP', Math.min(lastPt[0] + 6, W - PADR - 46), lastPt[1] - 6); }
+  }
+
+  // time scale — # ui-mockup-ok: v6.2 tokens
+  g.fillStyle = PAL.dim; g.font = "600 11px 'IBM Plex Mono', monospace";
+  for (let k = 0; k <= 5; k++) {
+    const i = Math.round(view.i0 + (nVis - 1) * k / 5);
+    if (!bars[i]) continue;
+    const lab = tf === 'D' ? displayDateLabel(bars[i].t) : displayTimeLabel(bars[i].t);
+    g.fillText(lab, Math.min(x(i), W - PADR - 46), H - 8);
+  }
+
+  // event badges
+  for (const cr of crosses) {
+    const lv = cr.level_value; if (lv == null || lv < lo || lv > hi) continue;
+    const yv = y(lv);
+    g.fillStyle = PAL.amber;   // # ui-mockup-ok: v6.2
+    g.beginPath(); g.arc(W - PADR - 16, yv, 5, 0, 6.283); g.fill();
+    zones.push({ y0: yv - 7, y1: yv + 7,
+      tipHtml: `<b>${esc(cr.level_name || 'level')} ${fmt(lv)} crossed ${esc(cr.direction || '')}</b>` +
+        `<br><i>Recent crossing from the console's own log.</i>` });
+  }
+
+  // spot — ONE price authority app-wide (resolve_spot, RC-14). Candles end at the
+  // last regular-session bar, so outside RTH the live spot can sit far from the
+  // last close; the dashed line + session label make that gap self-explanatory.
+  // Auto domain includes spot; under yLock clamp to the pane edge so the cue never vanishes.
+  // (`spot` is hoisted to the top of draw() — RC-113 — and read here unchanged.)
+  // RC-81: every spot display repaints from THIS value in THIS frame. The meta bar used to be
+  // written only by the 15s load() cycle, so it lagged the legend below it by up to a full cycle.
+  const _mpx = document.getElementById('metapx');
+  if (_mpx) _mpx.textContent = fmt(spot);
+  const _mage = document.getElementById('spotage');
+  if (_mage) _mage.textContent = spotBindingAgeLabel();
+  // RC-111: the gamma panel's canvas SPOT marker must tick with THIS frame too — it froze at
+  // its last data-load repaint, and the screen showed two spots at once (RC-81 class; canvas
+  // markers were outside RC-81's DOM enumeration).
+  if (spot != null && _gammaSpotDrawn != null
+      && Math.abs(Number(spot) - _gammaSpotDrawn) > 1e-9) drawGamma();
+  const bl = document.getElementById('biglegend');
+  if (spot != null && isFinite(Number(spot))) {
+    // TradingView-style big legend: ticker · price · change vs yesterday's close
+    // # ui-mockup-ok: RC-213 B3 — pdc from the engine only; no client-computed close
+    const pdc = enginePD().pdc;
+    const dn = pdc ? Number(spot) - pdc : null;
+    const col = dn == null ? PAL.tx : dn >= 0 ? PAL.green : PAL.red;   // # ui-mockup-ok: v6.2
+    const sym = esc((document.getElementById('tk').value || 'SPY').trim().toUpperCase());
+    bl.innerHTML = `<span class="sym">${sym}</span> ` +
+      `<span class="px" style="color:${col}">${fmt(spot)}</span>` +
+      (dn == null ? '' : ` <span class="chg" style="color:${col}">${dn >= 0 ? '+' : ''}${dn.toFixed(2)} ` +
+        `(${(dn / pdc * 100).toFixed(2)}%) vs yday close</span>`);
+  } else bl.innerHTML = '';
+  if (spot != null && isFinite(Number(spot))) {
+    // # ui-mockup-ok: v6.2 theme tokens on the spot furniture
+    const off = Number(spot) < lo || Number(spot) > hi;
+    const ys = Math.max(PADT + 2, Math.min(H - PADB - 2, y(Number(spot))));
+    g.strokeStyle = palRgba(PAL.amber, 0.55); g.lineWidth = 1; g.setLineDash([2, 3]);
+    g.beginPath(); g.moveTo(PADL, ys); g.lineTo(W - PADR, ys); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = PAL.amber; g.font = "800 13px 'IBM Plex Mono', monospace";
+    g.fillRect(W - PADR, ys - 10, PADR - 2, 20);
+    g.fillStyle = PAL.bg;
+    g.fillText((off ? (Number(spot) > hi ? '↑ ' : '↓ ') : '') + fmt(spot), W - PADR + 4, ys + 5);
+    const sess = etSessionTag();
+    if (sess) {
+      g.fillStyle = PAL.amber; g.font = '800 11px system-ui';
+      g.fillText(sess, W - PADR + 6, ys - 14);
+    }
+    zones.push({ y0: ys - 6, y1: ys + 6,
+      tipHtml: `<b>Live price ${fmt(spot)}</b>` +
+        (off ? ' <i>(outside locked Y range)</i>' : '') + `<br>` +
+        `One price authority feeds every screen. Candles end at the last ` +
+        `regular-session bar, so outside market hours the live price can sit ` +
+        `away from the last candle — that gap is the overnight move, not a ` +
+        `disagreement between data sources.` });
+  }
+
+  // v6.1 (RC-194) # ui-mockup-ok: the gutter renders exactly like the approved mock — level
+  // tags (price + word, mono) collision-stacked, spot pill prioritized, and the dim price
+  // numbers YIELD to any tag or the spot within 11px so the two tenants can never overlap.
+  {
+    g.font = "700 11px 'IBM Plex Mono', monospace";
+    const spotY = (spot != null && isFinite(Number(spot)))
+      ? Math.max(PADT + 2, Math.min(H - PADB - 2, y(Number(spot)))) : null;
+    const taken = [];
+    if (spotY != null) taken.push(spotY);
+    const tags = axisTags.slice().sort((a, b) => y(a.v) - y(b.v));
+    let prevY = -Infinity;
+    for (const t of tags) {
+      let pos = Math.max(y(t.v) + 3, prevY + 13);
+      if (spotY != null && pos > spotY - 12 && pos < spotY + 14) pos = spotY + 15;
+      pos = Math.min(pos, H - PADB - 2);
+      prevY = pos; taken.push(pos);
+      g.fillStyle = t.col; g.fillText(t.text, W - PADR + 4, pos);
+    }
+    g.font = "600 11px 'IBM Plex Mono', monospace";
+    g.fillStyle = palRgba(PAL.dim, 0.8);   // # ui-mockup-ok: v6.2 token
+    for (const gl of gridLabels) {
+      if (taken.some(ty => Math.abs(gl.yy - ty) < 12)) continue;
+      g.fillText(gl.p.toFixed(step < 1 ? 3 : 2), W - PADR + 4, gl.yy + 4);
+    }
+    // functional-audit handle (RC-195): what THIS frame actually rendered
+    window.__edChart = window.__edChart || {};
+    window.__edChart.chart = { tags: tags.map(t => t.text), fired: firedPills.length,
+                               watching, mode: chartMode, spot: spot };
+  }
+
+  // crosshair + readout
+  if (cross) {
+    // # ui-mockup-ok: v6.2 theme tokens
+    const { mx, my } = cross;
+    g.strokeStyle = palRgba(PAL.tx, 0.45); g.setLineDash([4, 4]); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(mx, PADT); g.lineTo(mx, H - PADB); g.stroke();
+    g.beginPath(); g.moveTo(PADL, my); g.lineTo(W - PADR, my); g.stroke(); g.setLineDash([]);
+    g.fillStyle = PAL.blue; g.fillRect(W - PADR, my - 10, PADR - 2, 20);
+    g.fillStyle = PAL.bg; g.font = "800 13px 'IBM Plex Mono', monospace";
+    g.fillText(fmt(px2price(my)), W - PADR + 6, my + 5);
+    const bi = Math.floor(px2i(mx));
+    if (bars[bi]) {
+      const b = bars[bi];
+      g.fillStyle = PAL.tx; g.font = "700 12px 'IBM Plex Mono', monospace";
+      g.fillText(`O ${fmt(b.o)}  H ${fmt(b.h)}  L ${fmt(b.l)}  C ${fmt(b.c)}` +
+        (b.v ? `  V ${b.v.toLocaleString()}` : ''), PADL + 6, 72);   // below big legend
+    }
+  }
+}
+
+function drawHist() {
+  drawGamma();   // gamma panel renders in every state, including feed-absent
+  const dpr = window.devicePixelRatio || 1;
+  const W = 230, H = hv.clientHeight || 560;
+  hv.width = W * dpr; hv.height = H * dpr;
+  const g = hv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  if (!scale) return;
+  g.font = '700 12px system-ui';
+  if (!strikes) { g.fillStyle = '#aab6c4';
+    g.fillText('histogram activates at the', 12, 26);
+    g.fillText('next console start', 12, 42); return; }
+  /* v6.1 (RC-194) # ui-mockup-ok: the mock's γ/STRIKE rail — a LIST: strike number left
+     (amber when it carries the wall/pin or is nearest spot), gamma bar, volume bar under it.
+     The old form drew bars across the strike numbers (measured overlap in the live frame). */
+  const { y } = scale;
+  const rows = (strikes.today || {})[scope] || [];
+  const inView = r => r[0] >= scale.lo && r[0] <= scale.hi;
+  const vis = rows.filter(inView).sort((a, b) => b[0] - a[0]);
+  const maxG = Math.max(1, ...vis.map(r => Math.abs(r[1])));
+  const maxV = Math.max(1, ...vis.map(r => r[2] || 0));
+  const T2 = terrain || {};
+  const spotNow = currentSpot();
+  g.fillStyle = '#ffffff'; g.font = "700 11px 'IBM Plex Mono', monospace";
+  g.fillText(`γ / STRIKE (${scope.toUpperCase()})`, 8, 16);
+  const x0 = 52, wMax = 168;
+  let nearestK = null;
+  if (spotNow != null && vis.length)
+    nearestK = vis.reduce((a, r) => Math.abs(r[0] - spotNow) < Math.abs(a - spotNow) ? r[0] : a, vis[0][0]);
+  for (const r of vis) {
+    const yy = y(r[0]);
+    if (yy < 26 || yy > H - 8) continue;
+    const hot = (T2.call_wall != null && r[0] === Number(T2.call_wall))
+      || (T2.put_wall != null && r[0] === Number(T2.put_wall)) || r[0] === nearestK;
+    g.fillStyle = hot ? '#f59e0b' : '#9ca3af';
+    g.font = "600 10.5px 'IBM Plex Mono', monospace";
+    g.fillText(fmt(r[0], r[0] === Math.round(r[0]) ? 0 : 2), 8, yy + 3);
+    g.fillStyle = r[1] >= 0 ? '#3b82f6' : '#ef4444';
+    g.fillRect(x0, yy - 4, Math.max(Math.abs(r[1]) / maxG * wMax, 1.5), 5);
+    const wv = (r[2] || 0) / maxV * wMax;
+    if (wv > 0.5) { g.fillStyle = '#f59e0b'; g.fillRect(x0, yy + 2.5, wv, 2.5); }
+  }
+  g.fillStyle = '#9ca3af'; g.font = "600 10px 'IBM Plex Mono', monospace";
+  g.fillText('■ +γ  ■ −γ  ▁ volume', 8, H - 8);
+}
+
+/* ── gamma panel: the two full-size charts from the CR-03 mockup ──────────
+   1 · POSITIONING MIGRATION — today's per-strike gamma (solid) vs yesterday
+       (ghost outlines), strikes on the X axis
+   2 · WHERE TODAY'S OPTION VOLUME IS — per-strike volume vs the walls
+   scroll = more/fewer strikes · drag = slide the strike window · hover = numbers */
+const gvEl = document.getElementById('gv');
+let gWin = { n: 24, off: 0 };
+let gZones = [];
+let gHover = null;        // hovered strike band index
+let gLayout = null;       // {bandW, count} of the last gamma render
+
+const fmtBig = v => {
+  if (v == null) return '—';
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+  if (a >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if (a >= 1e3) return (v / 1e3).toFixed(0) + 'K';
+  return Number(v).toFixed(0);
+};
+
+// RC-111: the value this panel last painted its SPOT marker at. The candle pane compares the
+// live spot against it every frame and re-triggers the panel when they diverge — two rendered
+// spots on one screen is the RC-81 class, and canvas markers were outside RC-81's enumeration.
+let _gammaSpotDrawn = null;
+
+function drawGamma() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = gvEl.clientWidth, H = gvEl.clientHeight || 430;
+  gvEl.width = W * dpr; gvEl.height = H * dpr;
+  const g = gvEl.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  // # ui-mockup-ok: v6.2 theme tokens through the panel
+  g.strokeStyle = PAL.grid; g.beginPath(); g.moveTo(0, 0.5); g.lineTo(W, 0.5); g.stroke();
+  const coach1 = document.getElementById('coach1'), coach2 = document.getElementById('coach2');
+  const rows = ((strikes && strikes.today) || {})[scope] || [];
+  if (!rows.length) {
+    gZones = []; gLayout = null;
+    coach1.style.display = coach2.style.display = 'none';
+    g.fillStyle = PAL.tx; g.font = '800 14px system-ui';
+    g.fillText('GAMMA PANEL — migration + volume by strike', 14, 28);
+    // RC-147: an empty panel had ONE explanation for every cause, and it blamed the console.
+    // MEASURED 2026-07-30 10:16 ET: RTY and XXT render zero rows because Schwab rejects the
+    // symbol outright (`chain fetch failed (HTTP 400)`, no spot either) — nothing about a
+    // console restart was ever going to fix that, and the message sent the operator to the
+    // wrong remedy every cycle. The producer's reason is on the payload; print it.
+    // RC-150: read strikesMeta, not strikes — `strikes` is null in EXACTLY this branch (no
+    // renderable bars), so reading the reason off it could never work. That is why RTY rendered
+    // "activates at the next console start" while the payload said HTTP 400.
+    const _why = (strikesMeta && strikesMeta.levels_stale_reason) || '';
+    g.fillStyle = strikesMeta && strikesMeta.levels_failing ? '#ff3355' : '#aab6c4';
+    g.font = '700 13px system-ui';
+    g.fillText(_why
+      ? 'no per-strike rows — ' + _why
+      : 'activates at the next console start (per-strike feed not on the running server yet)',
+      14, 52);
+    return;
+  }
+
+  const priorRows = ((strikes && strikes.prior) || {})[scope] || [];
+  const ghost = new Map(priorRows.map(r => [r[0], r[1]]));
+  const spot = currentSpot();   // RC-75: one client spot authority
+  _gammaSpotDrawn = spot == null ? null : Number(spot);   // RC-111
+  let c = 0, best = Infinity;
+  for (let i = 0; i < rows.length; i++) {
+    const d = Math.abs(rows[i][0] - (spot ?? rows[i][0]));
+    if (d < best) { best = d; c = i; }
+  }
+  gWin.off = Math.max(-c, Math.min(rows.length - 1 - c, gWin.off));
+  const i0 = Math.max(0, c - gWin.n + gWin.off);
+  const i1 = Math.min(rows.length, c + gWin.n + gWin.off);
+  const vis = rows.slice(i0, i1);
+  if (!vis.length) return;
+  const CARDW = W > 980 ? 330 : 0;   // reserve the right rail for the coach cards
+  const bandW = (W - 24 - CARDW) / vis.length;
+  const xs = i => 12 + i * bandW;
+  gLayout = { bandW, count: vis.length };
+
+  const base1 = H * 0.45, amp1 = H * 0.30, base2 = H * 0.93, amp2 = H * 0.27;
+  const maxG = Math.max(1, ...vis.map(r => Math.abs(r[1])),
+    ...vis.map(r => Math.abs(ghost.get(r[0]) || 0)));
+  const maxV = Math.max(1, ...vis.map(r => r[2] || 0));
+
+  // # ui-mockup-ok: v6.2 theme tokens
+  g.font = '800 14px system-ui'; g.fillStyle = PAL.tx;
+  g.fillText('1 · POSITIONING MIGRATION — today (solid) vs yesterday (ghost)', 14, 24);
+  g.fillText("2 · WHERE TODAY'S OPTION VOLUME IS — vs the walls", 14, H * 0.61);
+  g.strokeStyle = palRgba(PAL.dim, 0.35);
+  g.beginPath(); g.moveTo(12, base1); g.lineTo(W - 12, base1); g.stroke();
+  g.beginPath(); g.moveTo(12, base2); g.lineTo(W - 12, base2); g.stroke();
+
+  gZones = [];
+  g.lineWidth = 1.5;
+  for (let i = 0; i < vis.length; i++) {
+    const [k, gx, vol] = vis[i], gy = ghost.get(k);
+    const x0 = xs(i), bwS = Math.max(2, bandW * 0.44), bwG = Math.max(3, bandW * 0.62);
+    // # ui-mockup-ok: v6.2 theme tokens (bars keep blue/red SIGN palette, theme-resolved)
+    if (i === gHover) { g.fillStyle = palRgba(PAL.tx, 0.08);
+      g.fillRect(x0, 30, bandW, H - 50); }
+    if (gy != null && showGhost) {
+      const h = Math.abs(gy) / maxG * amp1;
+      g.strokeStyle = PAL.vio; g.setLineDash([3, 2]);
+      g.strokeRect(x0 + (bandW - bwG) / 2, gy >= 0 ? base1 - h : base1, bwG, h);
+      g.setLineDash([]);
+    }
+    const h = Math.abs(gx) / maxG * amp1;
+    g.fillStyle = gx >= 0 ? PAL.blue : PAL.red;
+    g.fillRect(x0 + (bandW - bwS) / 2, gx >= 0 ? base1 - h : base1, bwS, h);
+    const hv2 = (vol || 0) / maxV * amp2;
+    g.fillStyle = PAL.amber;
+    g.fillRect(x0 + (bandW - bwS) / 2, base2 - hv2, bwS, hv2);
+    const dG = gy != null ? gx - gy : null;
+    // v6 # ui-mockup-ok: from -> to tooltip (operator, strike-730 lesson: the arrow shows the
+    // SIGNED change while the bar shows magnitude — the tip says the whole sentence)
+    const story = dG == null ? '' :
+      `<br>${fmtBig(gy)} → ${fmtBig(gx)} (${dG >= 0 ? '+' : ''}${fmtBig(dG)}` +
+      (gy < 0 && gx < 0 ? (dG >= 0 ? ' · short gamma shrinking' : ' · short gamma growing') : '') + ')';
+    gZones.push({ x0, x1: x0 + bandW,
+      tipHtml: `<b>Strike ${fmt(k)}</b><br>` +
+        `Dealer gamma today: ${fmtBig(gx)}<br>` +
+        `Yesterday: ${gy != null ? fmtBig(gy) : 'no wide capture'}` + story +
+        `<br>Option volume today: ${fmtBig(vol)}` });
+    if (bandW >= 12 || (Math.round(k) === k && Math.round(k) % 5 === 0)) {
+      g.fillStyle = PAL.dim; g.font = "600 10px 'IBM Plex Mono', monospace";   // # ui-mockup-ok: v6.2
+      g.fillText(fmt(k, 0), x0 + bandW / 2 - 9, H - 8);
+    }
+  }
+  // E-35 follow-up (operator: "yellow bars not rendering"): a zero-volume session start
+  // rendered as silent emptiness and read as a broken panel. Absence states its reason.
+  // RC-146: and it must state the RIGHT reason. A zero here has TWO causes that are not the
+  // same fact — (a) the session really has traded nothing yet, or (b) the chain behind these
+  // rows was read BEFORE the open and has not been refreshed since. MEASURED 2026-07-30 09:43
+  // ET: MSFT rendered volume 0 on all 44 strikes off a snapshot computed 09:29:52 ET (813 s
+  // old, 8 s before the bell) while this line asserted case (a) about a ticker that had been
+  // trading options for thirteen minutes. Age is already on the payload; the message reads it
+  // instead of assuming the innocent case.
+  const _totVol = vis.reduce((a, r) => a + (r[2] || 0), 0);
+  if (_totVol <= 0) {
+    const _st = strikes && strikes.levels_stale;
+    const _mins = strikes && strikes.today_age_sec != null
+      ? Math.max(1, Math.round(Number(strikes.today_age_sec) / 60)) + ' min' : 'an unknown time';
+    g.fillStyle = _st ? '#ffc400' : '#7f8b99'; g.font = '700 12px system-ui';
+    g.fillText(_st
+      ? `zero here is the SNAPSHOT, not the session — this chain was read ${_mins} ago and is `
+        + `not refreshing; hover the source line above for why`
+      : 'no option volume yet this session — the counter resets at the new session and fills from the open',
+      14, base2 - 8);
+  }
+  // RC-124 (operator: "hard to tell the movement"): the three largest shifts vs yesterday
+  // get printed ON the panel — migration readable at a glance, hover still has every number.
+  if (showGhost) {
+    const shifts = vis
+      .map((r, i) => ({ i, k: r[0], d: ghost.get(r[0]) != null ? r[1] - ghost.get(r[0]) : null }))
+      .filter(s => s.d != null)
+      .sort((a, b) => Math.abs(b.d) - Math.abs(a.d))
+      .slice(0, 3);
+    g.font = '800 11px system-ui';
+    for (const s of shifts) {
+      const x0 = xs(s.i);
+      // v6 # ui-mockup-ok: increases GREEN, decreases RED (operator color grammar) — the
+      // arrow is the day-over-day CHANGE; the bars keep blue/red for the SIGN of gamma.
+      g.fillStyle = s.d >= 0 ? PAL.green : PAL.red;   // # ui-mockup-ok: v6.2 tokens
+      g.fillText(`${s.d >= 0 ? '▲' : '▼'}${fmtBig(Math.abs(s.d))}`, x0 - 4, 40);
+    }
+  }
+
+  // spot + walls, marked on both charts
+  const T = terrain || {};
+  // # ui-mockup-ok: v6.2 — mark RETURNS whether it drew, so the functional audit can assert
+  // the walls are on screen instead of anyone eyeballing it (RC-195).
+  const mark2 = (price, col, lab, yTop) => {
+    if (price == null) return false;
+    let xi = null;
+    for (let i = 0; i < vis.length; i++)
+      if (Math.abs(vis[i][0] - price) < 1e-9) { xi = xs(i) + bandW / 2; break; }
+    if (xi == null) {
+      if (price < vis[0][0] || price > vis[vis.length - 1][0]) return false;
+      for (let i = 1; i < vis.length; i++)
+        if (vis[i][0] >= price) {
+          xi = xs(i - 1) + bandW / 2 +
+            (price - vis[i - 1][0]) / (vis[i][0] - vis[i - 1][0]) * bandW; break; }
+    }
+    if (xi == null) return false;
+    g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([6, 4]);
+    g.beginPath(); g.moveTo(xi, yTop); g.lineTo(xi, H - 20); g.stroke(); g.setLineDash([]);
+    g.fillStyle = col; g.font = '800 12px system-ui';
+    g.fillText(lab, Math.min(xi + 5, W - CARDW - 120), yTop + 12);
+    return true;
+  };
+  const _dbgGamma = { scope, rows: vis.length };
+  window.__edChart = window.__edChart || {};
+  window.__edChart.gamma = _dbgGamma;
+  // # ui-mockup-ok: v6.2 tokens; walls EXPOSED to the functional audit (operator report:
+  // "i don't see the call wall in the gamma panel" must be a machine-checkable assertion)
+  const _mk = (p, c, l, yy, key) => { const drew = mark2(p, c, l, yy); _dbgGamma[key] = !!drew; };
+  _mk(spot, PAL.amber, `SPOT ${fmt(spot)}`, 30, 'spot');
+  _mk(T.call_wall, PAL.red, `CALL WALL ${fmt(T.call_wall, 0)}`, 46, 'call_wall');
+  _mk(T.put_wall, PAL.green, `PUT WALL ${fmt(T.put_wall, 0)}`, 62, 'put_wall');
+
+  // measured migration line: biggest per-strike shifts vs yesterday
+  const deltas = vis.filter(r => ghost.get(r[0]) != null)
+    .map(r => [r[0], r[1] - ghost.get(r[0])])
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 3);
+  if (deltas.length && !CARDW) {
+    g.fillStyle = '#c792ff'; g.font = '700 12px system-ui';
+    g.fillText('biggest shifts vs yesterday: ' + deltas.map(([k, d]) =>
+      `${fmt(k, 0)} ${d >= 0 ? '+' : ''}${fmtBig(d)}`).join(' · '), 14, 42);
+  }
+
+  // coach cards (right rail) — every number computed from the data above
+  if (!CARDW) { coach1.style.display = coach2.style.display = 'none'; return; }
+  const withG = vis.filter(r => ghost.get(r[0]) != null);
+  if (!withG.length) {
+    coach1.innerHTML = '<b>Coach: migration view warming up</b>' +
+      'The first day-over-day comparison lands after the next wide morning capture.';
+  } else {
+    const wmean = pick => {
+      let s2 = 0, w2 = 0;
+      for (const r of withG) { const v = pick(r); if (v > 0) { s2 += r[0] * v; w2 += v; } }
+      return w2 ? s2 / w2 : null;
+    };
+    const wmT = wmean(r => r[1]), wmY = wmean(r => ghost.get(r[0]));
+    const dir = (wmT != null && wmY != null)
+      ? (wmT - wmY > 0.15 ? 'UP the chain' : wmY - wmT > 0.15 ? 'DOWN the chain' : 'with little net drift')
+      : 'with no positive-gamma mass in view';
+    const sorted = withG.map(r => [r[0], r[1] - ghost.get(r[0])])
+      .sort((a, b) => b[1] - a[1]);
+    const grew = sorted.filter(d => d[1] > 0).slice(0, 2).map(d => fmt(d[0], 0)).join('/');
+    const shrank = sorted.filter(d => d[1] < 0).slice(-2).map(d => fmt(d[0], 0)).join('/');
+    coach1.innerHTML = `<b>Coach: positive gamma mass moved ${dir}</b>` +
+      (grew ? `Grew most at ${grew}` : 'No strike grew') +
+      (shrank ? `; shrank most at ${shrank}. ` : '. ') +
+      `Opened or closed? Tomorrow's ΔOI confirms.`;
+  }
+  const byVol = vis.slice().sort((a, b) => (b[2] || 0) - (a[2] || 0)).slice(0, 2)
+    .filter(r => (r[2] || 0) > 0);
+  if (byVol.length) {
+    const kk = byVol.map(r => r[0]);
+    const loc = (T.call_wall != null && Math.min(...kk) > T.call_wall) ? 'ABOVE the call wall'
+      : (T.put_wall != null && Math.max(...kk) < T.put_wall) ? 'BELOW the put wall'
+      : 'inside the wall range';
+    coach2.innerHTML = `<b>Coach: heaviest option trading at ${kk.map(k => fmt(k, 0)).join('–')}</b>` +
+      `That is ${loc}. Activity fact only — buyer/seller split stays unproven until the ΔOI test.`;
+    coach2.style.display = 'block';
+  } else coach2.style.display = 'none';
+  coach1.style.display = 'block';
+}
+
+let gDrag = null;
+gvEl.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const d = ev.deltaY || ev.deltaX;
+  gWin.n = Math.round(Math.max(6, Math.min(400, gWin.n * (d > 0 ? 1.25 : 0.8))));
+  drawGamma();
+}, { passive: false });
+gvEl.addEventListener('mousedown', ev => { gDrag = { x: ev.clientX, off: gWin.off }; });
+window.addEventListener('mouseup', () => { gDrag = null; });
+gvEl.addEventListener('mousemove', ev => {
+  if (gDrag) {
+    const bandW = (gvEl.clientWidth - 24) / Math.max(1, gWin.n * 2);
+    gWin.off = gDrag.off - Math.round((ev.clientX - gDrag.x) / Math.max(bandW, 1));
+    drawGamma(); return;
+  }
+  const r = gvEl.getBoundingClientRect();
+  const mx = ev.clientX - r.left;
+  if (gLayout) {
+    const idx = Math.floor((mx - 12) / gLayout.bandW);
+    const h2 = (idx >= 0 && idx < gLayout.count) ? idx : null;
+    if (h2 !== gHover) { gHover = h2; drawGamma(); }
+  }
+  const z = gZones.find(z => mx >= z.x0 && mx < z.x1);
+  if (z) { tip.innerHTML = z.tipHtml; tip.style.display = 'block';
+    tip.style.left = Math.min(ev.clientX + 16, window.innerWidth - 400) + 'px';
+    tip.style.top = (ev.clientY + 16) + 'px';
+  } else tip.style.display = 'none';
+});
+gvEl.addEventListener('mouseleave', () => {
+  tip.style.display = 'none';
+  if (gHover !== null) { gHover = null; drawGamma(); }
+});
+
+/* ── interactions: wheel zoom, drag pan (x+y), dbl-click fit, crosshair ── */
+wrap.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  if (!bars.length || !scale) return;
+  const r = wrap.getBoundingClientRect();
+  const d = ev.deltaY || ev.deltaX;
+  const f = d > 0 ? 1.18 : 1 / 1.18;
+  if (ev.shiftKey) {
+    // shift+scroll: chart TALLER/SHORTER (price span), anchored at the cursor
+    const dom = yLock || domain();
+    const anchorP = scale.px2price(ev.clientY - r.top);
+    let span = (dom.hi - dom.lo) * f;
+    span = Math.max(0.02, Math.min((dom.hi - dom.lo) * 50, span));
+    const frac = (dom.hi - anchorP) / (dom.hi - dom.lo);
+    const hi = anchorP + frac * span;
+    yLock = { lo: hi - span, hi };
+  } else {
+    // plain scroll: chart WIDER (scroll up) / NARROWER (scroll down),
+    // anchored at the bar under the cursor (operator correction 2026-07-23)
+    const anchor = scale.px2i(ev.clientX - r.left);
+    let w = (view.i1 - view.i0) * f;
+    w = Math.max(12, Math.min(bars.length * 1.2, w));
+    const frac = (anchor - view.i0) / (view.i1 - view.i0);
+    view.i0 = anchor - frac * w; view.i1 = view.i0 + w;
+    clampView();
+  }
+  draw(); drawHist();
+}, { passive: false });
+
+let drag = null;
+wrap.addEventListener('mousedown', ev => {
+  drag = { mx: ev.clientX, my: ev.clientY, v: { ...view }, moved: 0,
+           dom: yLock ? { ...yLock } : domain() };
+});
+window.addEventListener('mouseup', () => {
+  if (drag && drag.moved > 3) lastDragEnd = performance.now();
+  drag = null;
+});
+wrap.addEventListener('dblclick', () => {
+  // a fast pair of drags must NOT be read as "reset view" (snap-back class)
+  if (performance.now() - lastDragEnd < 500) return;
+  yLock = null; view = null; setBars(); draw(); drawHist();
+});
+document.getElementById('fit').addEventListener('click', () => {
+  yLock = null; view = null; setBars(); draw(); drawHist(); });
+
+wrap.addEventListener('mousemove', ev => {
+  const r = wrap.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  if (drag && scale) {
+    drag.moved = Math.max(drag.moved,
+      Math.abs(ev.clientX - drag.mx) + Math.abs(ev.clientY - drag.my));
+    const dxBars = (drag.mx - ev.clientX) / ((scale.W - PADL - PADR) / (view.i1 - view.i0));
+    view.i0 = drag.v.i0 + dxBars; view.i1 = drag.v.i1 + dxBars;
+    clampView();
+    const span = drag.dom.hi - drag.dom.lo;
+    const dy = (ev.clientY - drag.my) / (scale.H - PADT - PADB) * span;
+    yLock = { lo: drag.dom.lo + dy, hi: drag.dom.hi + dy };
+    cross = { mx, my }; draw(); drawHist(); return;
+  }
+  cross = { mx, my };
+  const hits = zones.filter(z => my >= z.y0 && my <= z.y1);
+  if (hits.length) {
+    tip.innerHTML = hits.map(h => h.tipHtml)
+      .join('<div style="border-top:1px solid var(--border);margin:7px 0"></div>');
+    tip.style.display = 'block';
+    tip.style.left = Math.min(ev.clientX + 16, window.innerWidth - 400) + 'px';
+    tip.style.top = (ev.clientY + 16) + 'px';
+  } else tip.style.display = 'none';
+  draw();
+});
+wrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; cross = null; draw(); });
+
+function chip(id, fn) { document.getElementById(id).addEventListener('click', fn); }
+for (const el of document.querySelectorAll('.tf')) {
+  el.addEventListener('click', () => {
+    tf = el.dataset.tf;
+    for (const e2 of document.querySelectorAll('.tf')) e2.classList.toggle('on', e2 === el);
+    view = null; yLock = null; setBars(); draw(); drawHist();
+  });
+}
+function setScope(s) {
+  scope = s;
+  for (const [id, v] of [['exp-all', 'all'], ['exp-near', 'near'], ['exp-far', 'far']])
+    document.getElementById(id).classList.toggle('on', v === s);
+  drawHist();
+}
+chip('exp-all', () => setScope('all'));
+chip('exp-near', () => setScope('near'));
+chip('exp-far', () => setScope('far'));
+chip('ghost', () => { showGhost = !showGhost;
+  document.getElementById('ghost').classList.toggle('on', showGhost); drawHist(); });
+chip('learn', () => { learning = !learning;
+  document.getElementById('learn').classList.toggle('on', learning);
+  document.getElementById('coachlines').innerHTML = learning
+    ? ((terrain || {}).lines || []).map(l => '· ' + esc(l)).join('<br>') : ''; });
+/* v6 (RC-192) # ui-mockup-ok: candles/line toggle + the LEVELS and PROX pulldowns under the
+   timeframe row (operator placement). */
+function setMode(m) {
+  chartMode = m;
+  try { localStorage.setItem('ed_chart_mode', m); } catch (e) {}
+  document.getElementById('mode-candles').classList.toggle('on', m === 'candles');
+  document.getElementById('mode-line').classList.toggle('on', m === 'line');
+  draw();
+}
+chip('mode-candles', () => setMode('candles'));
+chip('mode-line', () => setMode('line'));
+// # ui-mockup-ok: v6.1 — menus anchor UNDER their own buttons (operator: the pulldown lives
+// right underneath the timeframe row), never at a hardcoded page offset.
+function toggleMenu(btnId, menuId, otherId) {
+  const b = document.getElementById(btnId), m = document.getElementById(menuId);
+  document.getElementById(otherId).classList.remove('open');
+  m.style.left = b.offsetLeft + 'px';
+  m.style.top = (b.offsetTop + b.offsetHeight + 6) + 'px';
+  m.classList.toggle('open');
+}
+chip('lvlbtn', () => toggleMenu('lvlbtn', 'lvlmenu', 'proxmenu'));
+chip('proxbtn', () => toggleMenu('proxbtn', 'proxmenu', 'lvlmenu'));
+renderLvlMenu(); renderProxMenu(); setMode(chartMode);
+document.getElementById('proxbtn').innerHTML = `PROX ${proxCents}&cent; &#9662;`;
+document.getElementById('tk').addEventListener('change', () => {
+  // RC-123: this page co-owns THE cross-page ticker — a change here follows the operator
+  // back to the console (and to parallel tabs via the storage event).
+  try {
+    const _v = (document.getElementById('tk').value || '').trim().toUpperCase();
+    if (_v) localStorage.setItem('ed_ticker', _v);
+  } catch (e) {}
+  view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+  forming = null; sealedForming = null; chartTicker = null; load(); });
+// RC-123: adopt the cross-page ticker BEFORE the first load, and follow parallel-tab changes.
+(function () {
+  const tkEl = document.getElementById('tk');
+  let saved = null;
+  try { saved = (localStorage.getItem('ed_ticker') || '').trim().toUpperCase(); } catch (e) {}
+  if (saved && tkEl && tkEl.value !== saved) tkEl.value = saved;
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'ed_ticker' && e.newValue && tkEl && tkEl.value !== e.newValue) {
+      tkEl.value = e.newValue;
+      view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+      forming = null; sealedForming = null; chartTicker = null; load();
+    }
+  });
+})();
+
+// fast spot poll (1.5s behind 1.25s server cache). Fail-closed on error.
+// In-flight guard + spot_as_of_ts_utc: a slow reply never overwrites a fresher tick.
+let spotPollInflight = false;
+let liveSpotAsOf = 0;
+let liveSpotSource = null;
+const SPOT_STALE_SEC = 30;   // RC-225: age > this → visible STALE (value retained, not painted as live)
+// RC-75 / RC-225 — THE CLIENT SPOT AUTHORITY. Every rendered spot reads through currentSpot()
+// and nothing else. RC-75 unified in-frame precedence; RC-225 kills the silent dual-age fallback
+// onto strikes.spot / terrain.spot. Declared payload field for this screen: /api/spot.spot
+// with spot_as_of_ts_utc + spot_source visible via spotBindingAgeLabel().
+function currentSpot() {
+  return liveSpot;
+}
+function spotBindingAgeSec() {
+  if (!liveSpotAsOf) return null;
+  return Math.max(0, (Date.now() / 1000) - liveSpotAsOf);
+}
+function spotBindingStale() {
+  const age = spotBindingAgeSec();
+  return age != null && age > SPOT_STALE_SEC;
+}
+function spotBindingAgeLabel() {
+  if (liveSpot == null) return 'waiting for /api/spot';
+  const age = spotBindingAgeSec();
+  if (age == null) return 'as_of unknown';
+  const src = liveSpotSource
+    ? String(liveSpotSource).replace('schwab_quote_last', 'quote.last') : '—';
+  const ageTxt = age < 1 ? '<1s' : (Math.round(age) + 's');
+  return (spotBindingStale() ? 'STALE ' : '') + ageTxt + ' · ' + src;
+}
+function _dropLiveSpot() {
+  // RC-225: absent binding stays absent — never borrow a slower payload's spot as "current".
+  liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+  draw(); renderForces();
+}
+let spotPollBackoffUntil = 0;   // 404 = server predates the endpoint: back off,
+                                // do not spam the operator's console log at 1.5s
+async function pollSpot() {
+  if (spotPollInflight || Date.now() < spotPollBackoffUntil) return;
+  const tk = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+  spotPollInflight = true;
+  try {
+    const r = await fetch(`/api/spot?ticker=${tk}`);
+    const cur = (document.getElementById('tk').value || 'SPY').trim().toUpperCase();
+    if (cur !== tk || chartTicker !== tk) return;
+    if (!r.ok) {
+      if (r.status === 404) spotPollBackoffUntil = Date.now() + 60000;
+      _dropLiveSpot(); return;
+    }
+    const j = await r.json();
+    if ((document.getElementById('tk').value || 'SPY').trim().toUpperCase() !== tk
+        || chartTicker !== tk) return;
+    if (j.ticker === tk && j.spot != null && isFinite(Number(j.spot))) {
+      const asOf = Number(j.spot_as_of_ts_utc) || 0;
+      if (asOf && liveSpotAsOf && asOf < liveSpotAsOf) return;
+      if (asOf) liveSpotAsOf = asOf;
+      liveSpotSource = j.spot_source != null ? String(j.spot_source) : null;
+      liveSpot = Number(j.spot);
+      noteSpotTick(liveSpot);
+      // Age label + FORCES pill must tick with the binding, not wait for the 15s cycle.
+      const _mage = document.getElementById('spotage');
+      if (_mage) _mage.textContent = spotBindingAgeLabel();
+      renderForces();
+    } else {
+      _dropLiveSpot();
+    }
+  } catch (e) { _dropLiveSpot(); }
+  finally { spotPollInflight = false; }
+}
+setInterval(pollSpot, 1500);   // server caches upstream at 1.25s — budget-safe
+
+// short-window guard: if anything overflows the viewport, a bright pill says so
+// and one click scrolls the gamma panel into view (the charts eat wheel-scroll)
+function checkFold() {
+  const fw = document.getElementById('foldwarn');
+  const gc = document.getElementById('gammacard').getBoundingClientRect();
+  const hidden = gc.bottom > window.innerHeight + 4;
+  fw.style.display = hidden ? 'block' : 'none';
+}
+document.getElementById('foldwarn').addEventListener('click', () => {
+  // the document root is the scroller (measured: scrollingElement === html);
+  // window.scrollTo drives it regardless of engine quirks
+  const el = document.getElementById('gammacard');
+  const top = Math.max(0, el.offsetTop + el.offsetHeight - window.innerHeight + 12);
+  window.scrollTo(0, top);   // instant — a jump button should jump
+  checkFold();
+});
+setInterval(checkFold, 2000);
+window.addEventListener('resize', () => { draw(); drawHist(); checkFold(); });
+load(); setInterval(load, 15000);
+</script>
+</body>
+</html>

@@ -14,6 +14,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any, Iterator, Optional
 
+from instrument_identity import ticker_storage_key
 from ml_horizon import ALL_GOVERNED_HORIZONS, ML_HORIZON_SLUGS
 
 # ── Authoritative inference stack (operator binding 2026-06-04) ──
@@ -213,7 +214,7 @@ def guest_anchor_inference_enabled() -> bool:
 
 
 def is_ml_authoritative_ticker(ticker: str) -> bool:
-    return (ticker or "").upper().strip() in {t.upper() for t in ML_AUTHORITATIVE_TICKERS}
+    return ticker_storage_key(ticker) in {ticker_storage_key(t) for t in ML_AUTHORITATIVE_TICKERS}  # RC-345/F25: canonical membership
 
 
 def resolve_guest_anchor_route(guest_ticker: str) -> tuple[str, str, str]:
@@ -223,7 +224,7 @@ def resolve_guest_anchor_route(guest_ticker: str) -> tuple[str, str, str]:
     Does NOT use QQQ_TOP or IWM sector ETF symbols — those are confluence samples,
     not ETF membership. Returns (anchor_ticker, affiliation_slug, operator_rationale).
     """
-    g = (guest_ticker or "").upper().strip()
+    g = ticker_storage_key(guest_ticker)  # RC-345/F25: canonical guest identity for routing
     if not g:
         return (
             "SPY",
@@ -238,7 +239,7 @@ def resolve_guest_anchor_route(guest_ticker: str) -> tuple[str, str, str]:
             GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
             "Broad market default — SPY anchor",
         )
-    iwm_holdings = {sym.upper() for sym, _, _ in IWM_TOP_HOLDINGS}
+    iwm_holdings = {ticker_storage_key(sym) for sym, _, _ in IWM_TOP_HOLDINGS}  # RC-345/F25: canonical membership
     if g in iwm_holdings:
         return (
             "IWM",
@@ -296,7 +297,7 @@ def resolve_guest_anchor_for_ticker(ticker: str) -> GuestAnchorContext | None:
     """None when ticker is authoritative or guest anchor mode is disabled."""
     if not guest_anchor_inference_enabled():
         return None
-    g = (ticker or "").upper().strip()
+    g = ticker_storage_key(ticker)  # RC-345/F25: canonical guest identity (callee owns the semantic)
     if not g or is_ml_authoritative_ticker(g):
         return None
     anchor, affiliation, rationale = resolve_guest_anchor_route(g)

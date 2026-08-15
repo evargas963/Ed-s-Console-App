@@ -1,0 +1,467 @@
+{
+  "card_id": "GEX-R1-SCREEN",
+  "db_path": "data\\ed_console.db",
+  "generated_utc": "2026-07-17T22:07:06Z",
+  "honesty": [
+    "n~70/ticker over ~4 months = one narrow vol regime",
+    "ATM 0DTE window only (~40 contracts)",
+    "do not pool tickers as independent n",
+    "not edge until Claude independent rebuild + verify",
+    "Nothing here is edge until Claude independently rebuilds gex_0dte, verifies sign, and clears shuffle null.",
+    "Pass/fail is money after costs (\u00a78.6), not classification accuracy."
+  ],
+  "per_index": {
+    "IWM": {
+      "et_date_first": "2026-03-25",
+      "et_date_last": "2026-07-17",
+      "n_morning_days": 68,
+      "not_edge": true,
+      "sample_floor_met": true,
+      "screen_pulse": "NULL_OR_WEAK",
+      "shuffle_null": {
+        "real_outside_shuffle_ci": false,
+        "real_sign_rule_mean": 0.1558954774357902,
+        "shuffle_ci95": [
+          0.1095116537204987,
+          0.19253046689749856
+        ],
+        "shuffle_mean_mean": 0.15065381330749955
+      },
+      "sign_validation": {
+        "mean_regime_score_neg_gex": 0.2915912324575591,
+        "mean_regime_score_pos_gex": 0.30477316364865775,
+        "n_neg_gex": 32,
+        "n_pos_gex": 36,
+        "net_gamma_sign_agreement_rate": 0.9411764705882353,
+        "note": "as_assumed means +GEX days have higher (reversion\u2212breakout) than \u2212GEX; inverted_or_null means flip convention or no separation",
+        "sign_orientation": "as_assumed"
+      },
+      "stress_2x_cost": {
+        "always_breakout": {
+          "ci95": [
+            -0.15378955999578184,
+            0.030321885603888852
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": -0.0606543987396252,
+          "n_days": 47,
+          "sum_net_dollars": -2.8507567407623844
+        },
+        "always_reversion": {
+          "ci95": [
+            0.11862576341114228,
+            0.27747074875406935
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.19824739848772976,
+          "n_days": 47,
+          "sum_net_dollars": 9.317627728923298
+        },
+        "beats_best_unconditional": false,
+        "best_unconditional": "reversion",
+        "conditioned": {
+          "ci95": [
+            0.08563882862191347,
+            0.2681442418007198
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.1749327386808272,
+          "n_days": 47,
+          "sum_net_dollars": 8.221838717998878
+        },
+        "random_choice": {
+          "ci95": [
+            -0.03235763273633036,
+            0.16333569964378258
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": 0.06087812406134963,
+          "n_days": 47,
+          "sum_net_dollars": 2.8612718308834326
+        },
+        "status": "OK"
+      },
+      "walk_forward": {
+        "always_breakout": {
+          "ci95": [
+            -0.06833259020854779,
+            0.11736228985920799
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": 0.02582205211143863,
+          "n_days": 47,
+          "sum_net_dollars": 1.2136364492376157
+        },
+        "always_reversion": {
+          "ci95": [
+            0.20569172766646143,
+            0.364581135349814
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.28533967912602765,
+          "n_days": 47,
+          "sum_net_dollars": 13.410964918923298
+        },
+        "beats_best_unconditional": false,
+        "best_unconditional": "reversion",
+        "conditioned": {
+          "ci95": [
+            0.1725038101112752,
+            0.35451875073689004
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.2620250193191251,
+          "n_days": 47,
+          "sum_net_dollars": 12.315175907998878
+        },
+        "random_choice": {
+          "ci95": [
+            0.054048787901967515,
+            0.24989620730335707
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.14735457491241347,
+          "n_days": 47,
+          "sum_net_dollars": 6.925665020883433
+        },
+        "status": "OK"
+      }
+    },
+    "QQQ": {
+      "et_date_first": "2026-03-25",
+      "et_date_last": "2026-07-17",
+      "n_morning_days": 67,
+      "not_edge": true,
+      "sample_floor_met": true,
+      "screen_pulse": "NULL_OR_WEAK",
+      "shuffle_null": {
+        "real_outside_shuffle_ci": false,
+        "real_sign_rule_mean": 0.3028615854922204,
+        "shuffle_ci95": [
+          0.17914169609475872,
+          0.38896543341342316
+        ],
+        "shuffle_mean_mean": 0.2817271037565439
+      },
+      "sign_validation": {
+        "mean_regime_score_neg_gex": 0.4799827744795638,
+        "mean_regime_score_pos_gex": 0.5604979289592317,
+        "n_neg_gex": 22,
+        "n_pos_gex": 45,
+        "net_gamma_sign_agreement_rate": 0.9552238805970149,
+        "note": "as_assumed means +GEX days have higher (reversion\u2212breakout) than \u2212GEX; inverted_or_null means flip convention or no separation",
+        "sign_orientation": "as_assumed"
+      },
+      "stress_2x_cost": {
+        "always_breakout": {
+          "ci95": [
+            -0.43432367682906053,
+            -0.01632733396405268
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": -0.2212075722123533,
+          "n_days": 46,
+          "sum_net_dollars": -10.175548321768252
+        },
+        "always_reversion": {
+          "ci95": [
+            -0.03593326162656752,
+            0.43762200203512913
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": 0.22091473266676112,
+          "n_days": 46,
+          "sum_net_dollars": 10.162077702671011
+        },
+        "beats_best_unconditional": false,
+        "best_unconditional": "reversion",
+        "conditioned": {
+          "ci95": [
+            -0.036145567370468264,
+            0.43719739054732765
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": 0.22070242692286038,
+          "n_days": 46,
+          "sum_net_dollars": 10.152311638451577
+        },
+        "random_choice": {
+          "ci95": [
+            -0.20706161654260788,
+            0.19776645156484482
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": -0.006919364163616603,
+          "n_days": 46,
+          "sum_net_dollars": -0.3182907515263637
+        },
+        "status": "OK"
+      },
+      "walk_forward": {
+        "always_breakout": {
+          "ci95": [
+            -0.22618642530884683,
+            0.19356010277507776
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": -0.015296148299309816,
+          "n_days": 46,
+          "sum_net_dollars": -0.7036228217682515
+        },
+        "always_reversion": {
+          "ci95": [
+            0.17887945706908465,
+            0.6532485026873031
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.436429026145022,
+          "n_days": 46,
+          "sum_net_dollars": 20.075735202671012
+        },
+        "beats_best_unconditional": false,
+        "best_unconditional": "reversion",
+        "conditioned": {
+          "ci95": [
+            0.1786671513251839,
+            0.6528238911995016
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.43621672040112125,
+          "n_days": 46,
+          "sum_net_dollars": 20.065969138451578
+        },
+        "random_choice": {
+          "ci95": [
+            0.003487869979131257,
+            0.4127015128691926
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.20387149453203554,
+          "n_days": 46,
+          "sum_net_dollars": 9.378088748473635
+        },
+        "status": "OK"
+      }
+    },
+    "SPY": {
+      "et_date_first": "2026-03-25",
+      "et_date_last": "2026-07-17",
+      "n_morning_days": 72,
+      "not_edge": true,
+      "sample_floor_met": true,
+      "screen_pulse": "NULL_OR_WEAK",
+      "shuffle_null": {
+        "real_outside_shuffle_ci": false,
+        "real_sign_rule_mean": 0.06994720864099363,
+        "shuffle_ci95": [
+          0.02402905761735639,
+          0.16347976945444567
+        ],
+        "shuffle_mean_mean": 0.09425483619496174
+      },
+      "sign_validation": {
+        "mean_regime_score_neg_gex": 0.5652748858899057,
+        "mean_regime_score_pos_gex": 0.44118522681406286,
+        "n_neg_gex": 20,
+        "n_pos_gex": 52,
+        "net_gamma_sign_agreement_rate": 0.9444444444444444,
+        "note": "as_assumed means +GEX days have higher (reversion\u2212breakout) than \u2212GEX; inverted_or_null means flip convention or no separation",
+        "sign_orientation": "inverted_or_null"
+      },
+      "stress_2x_cost": {
+        "always_breakout": {
+          "ci95": [
+            -0.5436059073390735,
+            -0.2873975798871566
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": -0.4189917804701176,
+          "n_days": 51,
+          "sum_net_dollars": -21.368580803976
+        },
+        "always_reversion": {
+          "ci95": [
+            -0.08895837823818435,
+            0.20506695848959303
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": 0.04555096090436791,
+          "n_days": 51,
+          "sum_net_dollars": 2.323099006122763
+        },
+        "beats_best_unconditional": false,
+        "best_unconditional": "reversion",
+        "conditioned": {
+          "ci95": [
+            -0.1090302580050233,
+            0.18563714784849092
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": 0.03269357205181173,
+          "n_days": 51,
+          "sum_net_dollars": 1.6673721746423984
+        },
+        "random_choice": {
+          "ci95": [
+            -0.28042123956844683,
+            -0.01586205048582269
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": -0.15366421071417793,
+          "n_days": 51,
+          "sum_net_dollars": -7.836874746423074
+        },
+        "status": "OK"
+      },
+      "walk_forward": {
+        "always_breakout": {
+          "ci95": [
+            -0.3252400830711297,
+            -0.07490551103576489
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": -0.20497265517599997,
+          "n_days": 51,
+          "sum_net_dollars": -10.453605413975998
+        },
+        "always_reversion": {
+          "ci95": [
+            0.13356254117358038,
+            0.4275272367248871
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.2683092626690738,
+          "n_days": 51,
+          "sum_net_dollars": 13.683772396122764
+        },
+        "beats_best_unconditional": false,
+        "best_unconditional": "reversion",
+        "conditioned": {
+          "ci95": [
+            0.11375316199497672,
+            0.4081535831426086
+          ],
+          "ci_excludes_0": true,
+          "mean_net_dollars": 0.2554518738165176,
+          "n_days": 51,
+          "sum_net_dollars": 13.0280455646424
+        },
+        "random_choice": {
+          "ci95": [
+            -0.06857742443183698,
+            0.20186454716123614
+          ],
+          "ci_excludes_0": false,
+          "mean_net_dollars": 0.06035491457993974,
+          "n_days": 51,
+          "sum_net_dollars": 3.0781006435769265
+        },
+        "status": "OK"
+      }
+    }
+  },
+  "pooled_diagnostic": {
+    "n_rows": 207,
+    "note": "same-day cross-ticker rows correlated \u2014 not 3x independent n",
+    "sign_validation": {
+      "mean_regime_score_neg_gex": 0.4215680837160866,
+      "mean_regime_score_pos_gex": 0.4446306202169051,
+      "n_neg_gex": 74,
+      "n_pos_gex": 133,
+      "net_gamma_sign_agreement_rate": 0.9468599033816425,
+      "note": "as_assumed means +GEX days have higher (reversion\u2212breakout) than \u2212GEX; inverted_or_null means flip convention or no separation",
+      "sign_orientation": "as_assumed"
+    },
+    "walk_forward": {
+      "always_breakout": {
+        "ci95": [
+          -0.16118862160622893,
+          -0.020954906037418394
+        ],
+        "ci_excludes_0": true,
+        "mean_net_dollars": -0.09385830845881352,
+        "n_days": 186,
+        "sum_net_dollars": -17.457645373339314
+      },
+      "always_reversion": {
+        "ci95": [
+          0.225198780067059,
+          0.3805949904821934
+        ],
+        "ci_excludes_0": true,
+        "mean_net_dollars": 0.3007716953575471,
+        "n_days": 186,
+        "sum_net_dollars": 55.94353533650376
+      },
+      "beats_best_unconditional": false,
+      "best_unconditional": "reversion",
+      "conditioned": {
+        "ci95": [
+          0.2260825417473749,
+          0.37823018174821404
+        ],
+        "ci_excludes_0": true,
+        "mean_net_dollars": 0.298624886195939,
+        "n_days": 186,
+        "sum_net_dollars": 55.54422883244466
+      },
+      "random_choice": {
+        "ci95": [
+          0.034028549185919126,
+          0.19362706254156833
+        ],
+        "ci_excludes_0": true,
+        "mean_net_dollars": 0.11175658618436692,
+        "n_days": 186,
+        "sum_net_dollars": 20.786725030292246
+      },
+      "status": "OK"
+    }
+  },
+  "prereg": {
+    "card_id": "GEX-R1-SCREEN",
+    "hypothesis": "0DTE dealer-gamma sign near the open separates mean-reversion days from trend days; conditioning VWAP-fade vs OR-breakout on gex_sign improves net expectancy after costs vs unconditional rules.",
+    "limits": [
+      "n~70/ticker over ~4 months = one narrow vol regime",
+      "ATM 0DTE window only (~40 contracts)",
+      "do not pool tickers as independent n",
+      "not edge until Claude independent rebuild + verify"
+    ],
+    "morning_window_et": {
+      "end_mins": 615,
+      "start_mins": 570
+    },
+    "randomness": {
+      "seed": 42
+    },
+    "rules": {
+      "cost_round_trip_bp": 1.0,
+      "m_sigma": 1.0,
+      "max_entries_per_day": 3,
+      "or_buffer_sigma_frac": 0.1,
+      "or_minutes": 30,
+      "stress_cost_mult": 2.0
+    },
+    "sample_floor_test_days": 40,
+    "schema": "gex_r1_screen_prereg_v1",
+    "signal": {
+      "formula": "sum_calls(gamma*OI*100*S^2*0.01) - sum_puts(gamma*OI*100*S^2*0.01)",
+      "gamma_source": "stored_contract_gamma",
+      "sign_convention": "calls_positive_puts_negative_SqueezeMetrics_style_ASSUMPTION"
+    },
+    "status": "SCREEN_NOT_VERDICT",
+    "tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "walk_forward": {
+      "embargo_days": 1,
+      "min_train_days": 20,
+      "test_block_days": 5
+    }
+  },
+  "schema": "gex_r1_screen_eval_v1",
+  "skipped_no_bars": 3,
+  "status_label": "SCREEN_NOT_VERDICT"
+}

@@ -35,6 +35,7 @@ def test_multiplier_consumers_have_no_or_100_default_in_source():
 def test_compute_exposures_skips_missing_multiplier():
     from math_exposure_core import compute_exposures_by_strike
 
+    # institutional-synthetic-ok: fail-closed test omits multiplier to prove the contract is skipped.
     ct = {
         "strikePrice": 500.0,
         "putCall": "CALL",

@@ -1,0 +1,21 @@
+{
+  "by_method": [
+    {
+      "method": "exact",
+      "n": 313,
+      "exact_gap0": 313
+    },
+    {
+      "method": "nearest_within_tol",
+      "n": 759,
+      "exact_gap0": 0
+    }
+  ],
+  "last6h_snap_at_decision": {
+    "hit": 313,
+    "miss": 759,
+    "nearest_but_exact_snap_exists": 0
+  },
+  "unattached_operable_last6h": 280,
+  "max_decision_age_hours": 0.00882539643181695
+}

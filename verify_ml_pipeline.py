@@ -51,7 +51,7 @@ def main() -> int:
             dominant_class="flat",
             confidence_label="low",
         )
-        r = SimpleNamespace(
+        _r = SimpleNamespace(
             available=True,
             prob_up=0.33,
             prob_down=0.33,

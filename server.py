@@ -33,20 +33,24 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import sys
 import time
 import asyncio
 import logging
+import concurrent.futures
+import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
 from typing import Any, Dict, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import now_et, RTH_OPEN_MINS, RTH_END_MINS
+from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
+                     is_trading_day_et)
 
 import html
 import hashlib
@@ -93,6 +97,53 @@ class _LevelMarkerFormatter(logging.Formatter):
         return marker + super().format(record)
 
 
+class _FlushingFileHandler(logging.FileHandler):
+    """FileHandler that flushes after every emit so quiet-window gates see live lines."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        self.flush()
+
+
+# Quiet-window / LIVE closeout sink. Root handler so ANY logger (db, ed_server,
+# uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
+ED_SERVER_LOG_PATH = Path(__file__).resolve().parent / "logs" / "ed_server.log"
+
+
+def install_ed_server_file_sink(
+    log_path: Path | None = None,
+    *,
+    level: int = logging.INFO,
+) -> logging.Handler:
+    """Attach a flushing plain FileHandler on the root logger for logs/ed_server.log.
+
+    Captures all loggers (root). INFO+ so a healthy process proves the sink is
+    alive (gate fail-closes on a stale file); WARNING+/ERROR/CRITICAL still
+    appear for the quiet-window matcher. Idempotent for this path.
+    """
+    path = Path(log_path) if log_path is not None else ED_SERVER_LOG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    abs_target = str(path.resolve())
+    for h in list(root.handlers):
+        if isinstance(h, logging.FileHandler):
+            try:
+                existing = str(Path(getattr(h, "baseFilename", "")).resolve())
+            except (OSError, TypeError, ValueError):
+                existing = ""
+            if existing == abs_target:
+                return h
+    handler = _FlushingFileHandler(path, encoding="utf-8")
+    handler.setLevel(level)
+    handler.setFormatter(
+        _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=False)
+    )
+    root.addHandler(handler)
+    if root.level == logging.NOTSET or root.level > level:
+        root.setLevel(level)
+    return handler
+
+
 def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     """Replace any default root handlers with one that adds the level marker."""
     use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())
@@ -105,6 +156,15 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
         root.removeHandler(h)
     root.addHandler(handler)
     root.setLevel(level)
+    # t6/RC-232 board (quiet-gate finding, root-caused): `import server` under pytest
+    # attached this SAME live-log file sink, so TEST-emitted warnings (the deliberate
+    # ZZQD/ZZQE failure fixtures, fresh-DB migration notices) appended to logs/ed_server.log
+    # and the quiet-window gate read them as live console noise. The ZZQD "leak" was never
+    # in any DB — it was test log pollution through the shared sink. Tests keep the stream
+    # handler; only the FILE sink is skipped under pytest (the sink's own unit test calls
+    # install_ed_server_file_sink directly with a tmp path and is unaffected).
+    if "pytest" not in sys.modules and not os.environ.get("PYTEST_CURRENT_TEST"):
+        install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
 
 
 _install_visual_severity_markers(logging.INFO)
@@ -121,6 +181,14 @@ def _log_calibration_logging_state_at_boot() -> None:
     operator never restarts into "writer silently dropping all rows" without
     knowing it.
     """
+    # RC-230 (second cut): importing config does NOT load .env — only build_config() calls
+    # _ensure_dotenv_loaded(). The first fix moved this call after the import and the false
+    # DISABLED warning still fired (measured, PID 35680). Load .env explicitly here.
+    try:
+        from config import _ensure_dotenv_loaded
+        _ensure_dotenv_loaded()
+    except ImportError:
+        pass
     try:
         from calibration.writer import calibration_logging_enabled
     except ImportError:
@@ -138,10 +206,14 @@ def _log_calibration_logging_state_at_boot() -> None:
         )
 
 
-_log_calibration_logging_state_at_boot()
-
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
 from config import build_config, DEFAULT_TICKER
+
+# RC-230 quiet-gate finding: this boot diagnostic ran BEFORE the config import that loads
+# .env, so it read a bare os.environ and warned "calibration logging DISABLED" on every
+# boot even with ED_CALIBRATION_LOG=1 correctly present in .env — a false alarm that also
+# failed the ed_server_warn_quiet_window gate. It must run AFTER dotenv is loaded.
+_log_calibration_logging_state_at_boot()
 from schwab_client import (
     auth_is_refreshable,
     build_client_from_token,
@@ -151,8 +223,10 @@ from schwab_client import (
     safe_get_price_history,
     SchwabAuthError,
 )
+from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
+    gamma_is_plausible,
     _f,
     compute_exposures_by_strike,
     build_summary_rows,
@@ -166,13 +240,10 @@ from math_exposure import (
     compute_iv_rank, compute_iv_percentile, compute_volatility_envelope,
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
-    compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
-    compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
-    pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
-    GAMMA_PIN_SEMANTIC,
-    KEY_LEVEL_CONSUMER_REGISTRY,
-    aggregate_net_gex, total_gamma_raw_at_strike,
-    gex_at_bound_pin_strike,
+    compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
+    infer_strike_increment, required_strike_count,
+    pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
+    aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -180,14 +251,14 @@ from math_exposure import (
     compute_iwm_confluence,
     compute_volume_oi_ratio, compute_option_flow_imbalance,
     compute_smart_money_signal,
+    flow_imbalance_normalized_with_fallback,
 )
 from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
 from market_context import (
     fetch_market_context,
     fetch_price_levels,
-    fail_closed_price_levels,
-    stamp_price_level_fields,
     market_context_panel_symbols_excluding_core,
+    PriceLevels,
     _derive_session,
 )
 from market_state import MarketVolContextV1, build_market_state, derive_zone
@@ -198,6 +269,9 @@ from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_r
 from v2_decision import build_module_a_a1_decision
 from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
 from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
+from terrain_read import build_terrain_read
+from terrain_engine import compute_terrain, wall_geometry_state
+from terrain_atr import RING_REGIME, AtrPair, atr_distance, compute_atr_pair, ring_for
 
 try:
     from db import get_db
@@ -294,6 +368,40 @@ def _safe_get_quote_with_retry(client, ticker: str, *, attempt_hook=None):
         refresh_client_fn=lambda: get_client(force_refresh=True),
         attempt_hook=attempt_hook,
     )
+
+
+#: AUDIT-QUOTE-MEMO-V1 (operator directive 2026-07-28, RC-112): the terrain poll and the fast
+#: lane each called Schwab independently for the SAME ticker — a double vendor fetch per tick,
+#: and display could reprice on a quote math never saw. ONE short-TTL memo now sits under BOTH
+#: paths: the vendor is read once and display + math fan out from that single read. TTL 1.0s is
+#: longer than any same-tick fan-out and far shorter than every consumer cadence, so no reader
+#: sees more staleness than the fast lane already tolerated.
+QUOTE_MEMO_TTL_SEC: float = 1.0
+_quote_memo: dict[str, tuple[float, object]] = {}
+_quote_memo_lock = threading.Lock()
+
+
+def _memoized_quote_response(ticker: str, *, client=None, attempt_hook=None):
+    """ONE Schwab quote read per ticker per TTL, shared by the fast lane AND resolve_spot.
+
+    Only a 200 response is memoized — a failure is never cached (fail-loud: the next caller
+    goes back to the vendor). Consumers treat the response as READ-ONLY; .json() re-parses
+    the already-buffered body, so cross-thread sharing is safe. No single-flight on purpose:
+    a same-instant stampede costs at most one duplicate call, and the chain-gate style
+    event plumbing is not worth that margin here.
+    """
+    tk = (ticker or "").upper().strip()
+    now = time.monotonic()
+    with _quote_memo_lock:
+        hit = _quote_memo.get(tk)
+        if hit is not None and (now - hit[0]) < QUOTE_MEMO_TTL_SEC:
+            return hit[1]
+    resp = _safe_get_quote_with_retry(
+        client if client is not None else get_client(), tk, attempt_hook=attempt_hook)
+    if resp is not None and getattr(resp, "status_code", None) == 200:
+        with _quote_memo_lock:
+            _quote_memo[tk] = (time.monotonic(), resp)
+    return resp
 
 
 # ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — serialize Schwab chain fetches ──
@@ -456,7 +564,271 @@ _chain_inflight_lock = threading.Lock()
 _chain_inflight: dict = {}
 
 
-def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False):
+def flatten_chain_contracts(c_json: dict) -> list[dict]:
+    """Flatten a Schwab chain response into a flat contract list.
+
+    Single source: this was inline inside _fetch_state and is now shared with the
+    terrain loop, so both consume the chain identically. Schwab CSV authority: reads
+    chains.callExpDateMap.* / chains.putExpDateMap.* only; no derivation.
+    """
+    out: list[dict] = []
+    if not isinstance(c_json, dict):
+        return out
+    for side_key in ("callExpDateMap", "putExpDateMap"):
+        side_map = c_json.get(side_key) or {}
+        if not isinstance(side_map, dict):
+            continue
+        for exp_map in side_map.values():
+            if not isinstance(exp_map, dict):
+                continue
+            for strike_list in exp_map.values():
+                if not isinstance(strike_list, list):
+                    continue
+                for ct in strike_list:
+                    if isinstance(ct, dict):
+                        out.append(dict(ct))
+    return out
+
+
+def chain_underlying_spot(c_json: dict) -> float | None:
+    """Underlying last price from the chain payload (include_underlying_quote).
+
+    Fails closed: returns None rather than inventing a spot, so terrain refuses to
+    publish levels priced off a missing underlying.
+    """
+    if not isinstance(c_json, dict):
+        return None
+    u = c_json.get("underlying")
+    if not isinstance(u, dict):
+        return None
+    for key in ("last", "mark", "close"):
+        v = _safe_float_quote(u.get(key))
+        if v is not None and v > 0:
+            return v
+    return None
+
+
+#: Precedence for the ONE spot authority. Highest wins; every entry records where the
+#: number came from so a caller can never silently accept a lower-confidence source.
+SPOT_SOURCE_QUOTE = "schwab_quote_last"        # quotes.{SYM}.quote.lastPrice - a real trade
+SPOT_SOURCE_REGULAR_CLOSE = "regular_close"    # regularMarketLastPrice - a CLOSE, not a spot
+SPOT_SOURCE_CHAIN = "chain_underlying"         # chains.underlying.last (== close after hours)
+SPOT_SOURCE_SNAPSHOT = "stored_snapshot"       # last persisted snapshot (may be minutes old)
+
+#: Sources that are a SESSION CLOSE rather than a live trade. Verified against the wire
+#: 2026-07-19 after hours: quote.closePrice, quote.mark, regular.regularMarketLastPrice,
+#: chains.underlying.last and chains.underlyingPrice ALL read 743.29 (Friday's regular
+#: close) while quote.lastPrice read 742.4861 (the true last trade, postMarketChange
+#: -0.8039). `chain.underlying.last` is therefore NOT a last price -- treating it as one
+#: silently serves the prior session's close as though it were spot.
+SPOT_CLOSE_SOURCES = frozenset({SPOT_SOURCE_REGULAR_CLOSE, SPOT_SOURCE_CHAIN})
+
+
+def _spot_from_quote(ticker: str) -> tuple[float | None, float | None]:
+    """Live Schwab quote leg of the spot authority. Returns (spot, trade_time)."""
+    try:
+        # RC-112: through the shared memo — math reads the SAME vendor quote the fast lane
+        # serves (and gains its token-retry semantics), never a second independent fetch.
+        q_resp = _memoized_quote_response(ticker)
+    except Exception as e:
+        log.debug("resolve_spot quote leg failed for %s: %s", ticker, e, exc_info=True)
+        return None, None
+    if q_resp is None or getattr(q_resp, "status_code", None) != 200:
+        return None, None
+    try:
+        node = (q_resp.json() or {}).get(ticker) or {}
+        parsed = _parse_quote_node_session_fields(node)
+    except Exception as e:
+        log.debug("resolve_spot quote parse failed for %s: %s", ticker, e, exc_info=True)
+        return None, None
+    # KEY NAME IS "spot" -- `_parse_quote_node_session_fields` returns spot/last/mark, NOT
+    # "spot_f" (that is the local variable name inside it). Reading the wrong key returned
+    # None on every call, so the authority silently fell through to a stale stored
+    # snapshot and the card kept disagreeing with the header. Locked by
+    # tests/test_spot_authority_v1.py::test_quote_parser_key_contract.
+    spot = parsed.get("spot")
+    if spot and spot > 0:
+        return float(spot), parsed.get("trade_time")
+    log.warning("resolve_spot: quote leg produced no usable spot for %s "
+                "(last=%s mark=%s) - falling back to a lower-precedence source",
+                ticker, parsed.get("last"), parsed.get("mark"))
+    return None, None
+
+
+#: Seconds the graceful shutdown gets before the process is killed outright. Generous
+#: enough for real teardown (the executors above cancel queued work immediately), short
+#: enough that the operator is never held hostage by one wedged vendor call.
+SHUTDOWN_DEADLINE_SEC: float = 12.0
+_shutdown_watchdog_armed = threading.Event()
+
+
+def _hard_exit(reason: str) -> None:
+    """Terminate NOW, bypassing atexit. The only thing that beats a stuck join.
+
+    `os._exit` is deliberate: `sys.exit` unwinds through the concurrent.futures atexit
+    hook, which is one of the things that hangs. Nothing here needs atexit for durability
+    -- DB writes commit inline, and every background pool is a cache/refresh whose work is
+    disposable by design.
+    """
+    try:
+        log.warning("HARD EXIT: %s", reason)
+        for h in list(getattr(log, "handlers", []) or []):
+            # A handler that cannot flush must not stop the exit — that would reintroduce
+            # exactly the hang this function exists to end.
+            with contextlib.suppress(Exception):
+                h.flush()
+        sys.stderr.write(f"\nHARD EXIT: {reason}\n")
+        sys.stderr.flush()
+    finally:
+        os._exit(0)
+
+
+def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
+    """Kill the process if graceful shutdown has not finished within the deadline.
+
+    REFUSES under pytest (RC-10 class). TestClient runs the lifespan inside the TEST
+    process; arming here left a daemon thread that outlived the test and os._exit(0)'d
+    PYTEST ITSELF 12 s later -- mid-suite, silently, exit code 0, all captured output
+    lost. OBSERVED 2026-07-20: tests/adversarial/test_remaining_route_inventory.py
+    "passed" with zero output; Cursor's full-suite run died the same way and read as a
+    hang. A watchdog that can kill the test runner is worse than the hang it prevents.
+    """
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    if _shutdown_watchdog_armed.is_set():
+        return
+    _shutdown_watchdog_armed.set()
+
+    def _watch() -> None:
+        time.sleep(deadline_sec)
+        _hard_exit(
+            f"graceful shutdown exceeded {deadline_sec:.0f}s - a background worker is "
+            f"blocked (slow vendor call or long query) and cannot be interrupted"
+        )
+
+    threading.Thread(target=_watch, name="shutdown-watchdog", daemon=True).start()
+
+
+def _install_signal_handlers() -> None:
+    """First Ctrl+C asks politely; a second one is not a request.
+
+    Without this the operator's only recourse was killing the process from another
+    window, because uvicorn's graceful path was blocked downstream of the signal.
+    """
+    def _on_signal(signum, _frame):
+        if _shutdown_watchdog_armed.is_set():
+            _hard_exit(f"second interrupt (signal {signum}) - exiting immediately")
+        log.warning("signal %s received - shutting down (press Ctrl+C again to force)", signum)
+        sys.stderr.write("\nShutting down… press Ctrl+C again to force immediate exit.\n")
+        sys.stderr.flush()
+        _arm_shutdown_watchdog()
+        raise KeyboardInterrupt
+
+    # RC-166: SIGBREAK (Ctrl+Break on Windows) was NOT registered, so it bypassed this handler
+    # entirely and the 12s hard-exit watchdog never armed. MEASURED 2026-07-31: a console sent
+    # CTRL_BREAK_EVENT took 24.8s to exit — twice the deadline that exists to bound it — because
+    # the exit fell through to Python's default and waited on whatever background worker was
+    # blocked. Ctrl+Break is the operator's second lever when Ctrl+C is being swallowed, so it
+    # must reach the same bounded path. `getattr` because SIGBREAK is Windows-only.
+    _sigs = [signal.SIGINT, signal.SIGTERM]
+    _sigbreak = getattr(signal, "SIGBREAK", None)
+    if _sigbreak is not None:
+        _sigs.append(_sigbreak)
+    for sig in _sigs:
+        try:
+            signal.signal(sig, _on_signal)
+        except (ValueError, OSError, AttributeError) as e:
+            # Not the main thread, or the platform lacks it — never fatal.
+            log.debug("could not install handler for %s: %s", sig, e)
+
+
+def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
+    """Last persisted snapshot leg. Explicitly stale — lowest precedence."""
+    import sqlite3 as _sq
+
+    try:
+        con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=30.0)
+    except Exception as e:
+        log.debug("resolve_spot stored leg failed for %s: %s", ticker, e, exc_info=True)
+        return None, None
+    row = None
+    try:
+        con.row_factory = _sq.Row
+        # `timeframe` MUST be named: idx_snap_ticker_tf_ts is (ticker, timeframe, ts_utc),
+        # so skipping the middle column makes the ts_utc ordering unusable and forces a
+        # full read of every row for this ticker into a temp B-tree. On a table whose rows
+        # carry ~50 KB inline chain blobs that is catastrophic -- the identical omission in
+        # _latest_chain_and_spot did not finish inside 300 s (MEASURED 2026-07-20).
+        for tf in _STORED_CHAIN_TIMEFRAMES:
+            row = con.execute(
+                "SELECT spot, ts_utc FROM snapshots "
+                "WHERE ticker=? AND timeframe=? AND spot IS NOT NULL "
+                "ORDER BY ts_utc DESC LIMIT 1", (ticker, tf)).fetchone()
+            if row:
+                break
+    except Exception:
+        return None, None
+    finally:
+        con.close()
+    return (float(row["spot"]), row["ts_utc"]) if row and row["spot"] else (None, None)
+
+
+def resolve_spot(ticker: str, *, chain_json: dict | None = None,
+                 allow_stored: bool = True,
+                 quote_node: dict | None = None) -> tuple[float | None, str, float | None]:
+    """THE single spot authority. Returns (spot, source, as_of_ts_utc).
+
+    RC-14: four independent spot sources existed and each consumer picked one, so the
+    terrain card and the console header displayed different prices for the same ticker at
+    the same instant (743.29 vs 742.49). Every consumer now calls this, and every payload
+    carries the source, so a divergence is impossible to hide.
+
+    Precedence is by freshness and by matching what the operator SEES:
+      1. live Schwab quote (lastPrice -> mark) -- the console header's number
+      2. the chain's own underlying node -- as fresh as the chain, no extra call
+      3. the last stored snapshot -- explicitly stale, only when nothing better exists
+    """
+    tk = (ticker or "").upper().strip()
+    if not tk:
+        return None, "none", None
+
+    # 1. the only source that is a REAL TRADE. When the caller already fetched the quote
+    #    (the hot _fetch_state path), reuse that node instead of a second round-trip — the
+    #    precedence + fallbacks below are then IDENTICAL to every other consumer, so the
+    #    analytics card can no longer derive a different spot than the header / terrain.
+    if quote_node is not None:
+        _pq = _parse_quote_node_session_fields(quote_node)
+        _sp = _pq.get("spot")
+        if _sp and _sp > 0:
+            return float(_sp), SPOT_SOURCE_QUOTE, _pq.get("trade_time")
+    else:
+        spot, ts = _spot_from_quote(tk)
+        if spot is not None:
+            return spot, SPOT_SOURCE_QUOTE, ts
+
+    # 2. stored snapshot BEFORE the chain: a persisted snapshot was itself captured from
+    #    quote.lastPrice, so it is a stale TRADE. The chain underlying is a session CLOSE
+    #    masquerading as "last", which is worse than a slightly old real price.
+    if allow_stored:
+        spot, ts = _spot_from_stored(tk)
+        if spot is not None:
+            return spot, SPOT_SOURCE_SNAPSHOT, ts
+
+    # 3. last resort, explicitly labelled as a CLOSE so no caller can mistake it for spot
+    if chain_json is not None:
+        spot = chain_underlying_spot(chain_json)
+        if spot and spot > 0:
+            return float(spot), SPOT_SOURCE_CHAIN, None
+    return None, "none", None
+
+
+def spot_is_a_close(source: str) -> bool:
+    """True when the value is a session CLOSE, not a live trade — the UI must say so."""
+    return source in SPOT_CLOSE_SOURCES
+
+
+def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False,
+                          to_date=None):
     """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
 
     Schwab CSV authority checked: yes
@@ -469,8 +841,21 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
       coalesced callers receive the owner response for the SAME ticker only.
     SCHWAB_CSV_CHECKED
     """
+    # institutional-length-ok: 85 lines, 13 of them the mandated SCHWAB_CSV_CHECKED
+    # docstring. This is ONE protocol for a single chain fetch - coalesce, gate, fetch,
+    # then bookkeep - and its stages share key/holder/is_owner/acquired/exc across a
+    # try/finally. Extracting any stage means threading five mutable variables through a
+    # boundary and splitting the lock/release and event-set bookkeeping away from the
+    # code that establishes them, which makes the concurrency harder to verify rather
+    # than easier. RC-19: a length ceiling must prompt a judgement, not a reflex split.
     global _chain_fetch_gate_timeout_count
-    key = (ticker or "").strip().upper()
+    # Coalesce key MUST include strike_count. Observed 2026-07-20: terrain's
+    # SPY strikeCount=200 got Schwab 502; UI/analytics coalesced onto that same
+    # ticker key (wanting strikeCount=20) and inherited the failure as
+    # "Chain fetch failed". Same-ticker different widths are different fetches.
+    # RC-127: to_date joins the coalesce key — a full-book fetch and a 45-day rung are
+    # DIFFERENT fetches, same as the strike-width lesson above.
+    key = ((ticker or "").strip().upper(), int(strike_count), str(to_date or ""))
     wait_started = time.monotonic()
     with _chain_inflight_lock:
         holder = _chain_inflight.get(key)
@@ -489,7 +874,10 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
                 raise holder["exc"]  # source exceptions propagate, never swallowed
             resp, _own_wait, fetch_sec = holder["result"]
             return resp, waited, fetch_sec
-        log.warning("chain coalesce wait timed out ticker=%s - issuing own fetch", key)
+        log.warning(
+            "chain coalesce wait timed out ticker=%s strike_count=%s - issuing own fetch",
+            key[0], key[1],
+        )
         # fail-open to an owned fetch WITHOUT registry (the stuck owner still
         # holds the key; never double-register)
     acquired = _schwab_chain_fetch_gate.acquire(
@@ -508,7 +896,7 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     resp = None
     exc = None
     try:
-        resp = safe_get_chain(client, ticker, strike_count=strike_count)
+        resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date)
         return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
     except SchwabAuthError as e:
         exc = e
@@ -776,12 +1164,25 @@ def _l1_light_sse_try_reserve(request: Request, key: tuple[str, str]) -> tuple[a
             _l1_sse_diag["l1_light_sse_duplicate_scope_same_client_warn_total"] = int(
                 _l1_sse_diag.get("l1_light_sse_duplicate_scope_same_client_warn_total", 0)
             ) + 1
-            log.warning(
-                "duplicate L1 light SSE connections for scope %s from client %s (existing=%s)",
-                key,
-                remote,
-                dup,
-            )
+            # RC-230 severity calibration (quiet-gate finding, reasoning on record): a SAME-client
+            # duplicate is the operator's own multi-tab/multi-monitor viewing — designed-normal,
+            # not a malfunction — so it logs INFO with the full diag counter retained. The
+            # per-scope and global CAPS above keep their WARNING+503 teeth for real floods;
+            # approaching the cap re-escalates to WARNING here so leak growth stays loud.
+            if dup + 1 >= MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE - 1:
+                log.warning(
+                    "L1 light SSE same-client duplicates approaching per-scope cap for %s from %s (existing=%s)",
+                    key,
+                    remote,
+                    dup,
+                )
+            else:
+                log.info(
+                    "duplicate L1 light SSE connections for scope %s from client %s (existing=%s) — same-client multi-tab, designed-normal",
+                    key,
+                    remote,
+                    dup,
+                )
         _l1_light_sse_remote_scope[rs_key] = dup + 1
         q: asyncio.Queue = asyncio.Queue(maxsize=8)
         _l1_light_sse_clients.append((q, key))
@@ -840,7 +1241,7 @@ def _l1_payload_fingerprint(payload: dict) -> str:
 def _l1_record_payload_identity(sk: tuple[str, str | None], gen: int, payload: dict) -> tuple[float, str]:
     """Update per-scope identity; increment violation if same (gen, ts) yields a different fingerprint."""
     warn_l1_payload_key_drift(payload, logger=log)
-    ts = float(payload.get("_server_build_ts") or payload.get("as_of_ts") or 0.0)
+    ts = float(payload.get("_server_build_ts") or payload.get("as_of_ts") or 0.0)  # silent-zero-ok: epoch-0 is the ANCIENT sentinel — a missing build stamp must read as maximally stale, never fresh
     fp = _l1_payload_fingerprint(payload)
     prev = _l1_last_emit_identity.get(sk)
     if prev is not None:
@@ -908,6 +1309,10 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
 # route offloads cannot starve the price strip during ticker switches.
 _quote_hot_executor: Optional[ThreadPoolExecutor] = None
 _route_offload_executor: Optional[ThreadPoolExecutor] = None
+# RC-166: L1 light HTTP/SSE must not share ed_route_offload with Tier C JSON copies
+# and streaming resubscribe (up to 30s). Wall ≫ _pipeline_ms was mostly that queue.
+_l1_light_executor: Optional[ThreadPoolExecutor] = None
+L1_LIGHT_EXECUTOR_MAX_WORKERS = 4
 
 # Legacy name retained for call sites that still import the route pool.
 _fast_quote_executor: Optional[ThreadPoolExecutor] = None
@@ -959,8 +1364,19 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
 
 
 def _get_fast_quote_executor() -> ThreadPoolExecutor:
-    """Route-touch pool (Tier B/C JSON, streaming POST touch, L1 SSE subscribe)."""
+    """Route-touch pool (Tier C JSON, streaming POST touch). Not L1 light (RC-166)."""
     return _get_route_offload_executor()
+
+
+def _get_l1_light_executor() -> ThreadPoolExecutor:
+    """Dedicated pool for /api/analytics/light (+ SSE touch). Isolated from Tier C/stream."""
+    global _l1_light_executor
+    if _l1_light_executor is None:
+        _l1_light_executor = ThreadPoolExecutor(
+            max_workers=L1_LIGHT_EXECUTOR_MAX_WORKERS,
+            thread_name_prefix="ed_l1_light",
+        )
+    return _l1_light_executor
 
 
 def _get_recompute_leaf_executor() -> ThreadPoolExecutor:
@@ -1269,8 +1685,53 @@ def _record_analytics_bg_failure(
         _analytics_bg_fail_counts.pop(inflight_key, None)
 
 
-def _analytics_generated_ts(entry: dict) -> float:
-    return float(entry.get("generated_at") or entry.get("ts") or 0.0)
+def _charm_book_scope(contracts: object) -> str:
+    """Which BOOK a charm figure was summed over, counted from the contracts themselves.
+
+    RC-288: this was the literal `"full_chain_banked"`, and `static/exposure.html` carries
+    the same literal as its fallback — a label written identically at both ends can never
+    disagree with itself, so it could not detect the one thing it exists for.
+
+    It is worth detecting. `compute_net_charm` runs on ONE selected expiry while
+    `compute_charm_by_strike` runs on the whole chain, so "charm" names two different
+    quantities depending on which producer answered, and the Exposure tab renders them
+    under one heading. Counting distinct expirations reports the book actually used and
+    changes on its own if the producer changes.
+
+    Absence is reported as absence: an empty or unreadable chain yields "unknown", never a
+    confident "full_chain_banked" for a book nobody looked at (RC-274).
+    """
+    if not isinstance(contracts, list) or not contracts:
+        return "unknown"
+    expiries = {
+        str(c.get("expirationDate") or c.get("expiry") or "").strip()
+        for c in contracts if isinstance(c, dict)
+    }
+    expiries.discard("")
+    if not expiries:
+        return "unknown"
+    if len(expiries) == 1:
+        return f"single_expiry_banked:{sorted(expiries)[0][:10]}"
+    return "full_chain_banked"
+
+
+def _analytics_generated_ts(entry: dict) -> float | None:
+    """When this entry was computed, or None when it carries no usable timestamp.
+
+    RC-282: this returned 0.0 for an undated entry and each caller invented its own meaning
+    for the sentinel. Cursor's audit executed both and they DISAGREE — the freshness
+    contract computed `age = 0.0 if gen_ts <= 0` and published `analytics_stale: False`, a
+    bundle nobody can date served as brand new, while the stale-serve marker computed
+    `now - 0.0`, got ~1.8e9 seconds, and published stale. One sentinel, two opposite
+    verdicts about the same cache entry, and the fresh one is on the operator's card.
+
+    None forces each caller to SAY what absence means instead of inheriting a number that
+    points whichever way its arithmetic happens to fall.
+    """
+    from numeric_contract import float_positive_or_none
+
+    return (float_positive_or_none(entry.get("generated_at"))
+            or float_positive_or_none(entry.get("ts")))
 
 
 # ── ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 ────────────────────────────────
@@ -1347,16 +1808,6 @@ def _log_only_cache_touch(
     return action
 
 
-def _stamp_gamma_pin_consumer_copy(md: dict) -> None:
-    """RC-329: every outbound payload carries the registry label/tip for all 17 kl_*.
-
-    Cache hits of a pre-key ms_dict must not drop a KEY LEVELS row to —.
-    """
-    for key, (label, tip) in KEY_LEVEL_CONSUMER_REGISTRY.items():
-        md[f"{key}_label"] = label
-        md[f"{key}_tip"] = tip
-
-
 def _attach_analytics_freshness_contract(
     md: dict,
     *,
@@ -1371,22 +1822,35 @@ def _attach_analytics_freshness_contract(
     analytics_version, analytics_generated_at, analytics_age_sec,
     analytics_stale, analytics_refresh_in_progress
     """
-    _stamp_gamma_pin_consumer_copy(md)
     ttl = _sse_viewer_cache_ttl(data_cache_key[0], data_cache_key[1])
     with _analytics_bg_lock:
         in_prog = inflight_key in _analytics_inflight
     if entry and entry.get("ms_dict"):
         gen_ts = _analytics_generated_ts(entry)
-        age = max(0.0, now - gen_ts) if gen_ts > 0 else 0.0
         ver = int(entry.get("analytics_version", 0))
+        if gen_ts is None:
+            # RC-282: a bundle that exists but cannot be DATED is not a fresh bundle. The
+            # old `else 0.0` published age zero and analytics_stale False. This is the same
+            # verdict the missing-bundle branch below already reaches, and for the same
+            # reason: an age nobody can compute is not an age of nothing.
+            md["analytics_version"] = ver
+            md["analytics_generated_at"] = None
+            md["analytics_age_sec"] = None
+            md["analytics_stale_after_sec"] = round(
+                float(ttl) * ANALYTICS_STALE_GRACE_CYCLES, 3)
+            md["analytics_stale"] = True
+            md["analytics_refresh_due"] = True
+            md["analytics_refresh_in_progress"] = bool(in_prog)
+            return
+        age = max(0.0, now - gen_ts)
         # Operator-facing stale = a recompute cycle was MISSED (age past the grace
         # window) or explicit error — not merely "older than one cadence beat".
         stale_after = float(ttl) * ANALYTICS_STALE_GRACE_CYCLES
         refresh_due = bool(sse_live or (age >= ttl))
         stale = bool(age >= stale_after) or bool(md.get("state_error"))
-        iso = None
-        if gen_ts > 0:
-            iso = datetime.fromtimestamp(gen_ts, tz=timezone.utc).isoformat()
+        # RC-282: gen_ts is a real positive timestamp by here — the undatable case returned
+        # above rather than falling through with a zero standing in for one.
+        iso = datetime.fromtimestamp(gen_ts, tz=timezone.utc).isoformat()
         md["analytics_version"] = ver
         md["analytics_generated_at"] = iso
         md["analytics_age_sec"] = round(age, 3)
@@ -1403,9 +1867,6 @@ def _attach_analytics_freshness_contract(
         last_err = _analytics_bg_last_error.get(inflight_key)
         if last_err:
             md["analytics_last_error"] = last_err
-    from planes.context_light import stamp_analytics_cache_identity
-
-    stamp_analytics_cache_identity(md)
 
 
 # Schwab CSV authority checked: yes
@@ -1768,9 +2229,65 @@ def _build_sse_cache_fanout_payload(
     return md
 
 
+# ── T5.1 SSE FANOUT DEDUP (2026-07-22) ───────────────────────────────────────
+# Measured live (RTH open, one browser tab): the 5s cadence fanout and the
+# fetch-in-flight fanout each re-broadcast the SAME cached bundle every tick —
+# identical _server_build_ts, ~161 KB apiece — and the client's monotonic gate
+# rejected every one as "duplicate" (177 rejects vs 40 accepts in ~18 min).
+# Only completed-fetch broadcasts ever carry a new identity. The fanout now
+# skips when the (build_ts, analytics_version) it would send is the identity
+# already broadcast to the current audience. _sse_conn_epoch is part of the
+# identity so a newly connected client still receives the current bundle on
+# the next tick. fetch_timeout fanouts share the same suppression: a payload
+# the client provably discards is not "keeping SSE alive".
+_sse_conn_epoch: int = 0
+_last_tier_c_broadcast_identity: dict[tuple, tuple] = {}
+
+
+def _record_tier_c_broadcast_identity(payload: dict) -> None:
+    """Record what was just broadcast so the cache fanout never re-sends it.
+
+    Called synchronously at schedule time (not inside the coroutine): the SSE
+    loop fires the cadence fanout and the in-flight fanout in the same event-
+    loop turn, so a deferred record would let the second one through.
+    """
+    try:
+        t = payload.get("ticker")
+        if not t:
+            return
+        key = (str(t).upper().strip(), payload.get("selected_exp"))
+        _last_tier_c_broadcast_identity[key] = (
+            float(payload.get("_server_build_ts") or 0.0),  # silent-zero-ok: epoch-0 ancient sentinel, compared not displayed
+            int(payload.get("analytics_version") or 0),  # silent-zero-ok: version 0 means "no analytics version yet", the pre-first-run state this comparison exists to detect
+            _sse_conn_epoch,
+        )
+    except Exception as e:
+        # Identity tracking is a suppression hint: a failed record degrades to
+        # the pre-fix behavior (one extra broadcast the client dedups), never a
+        # lost payload.
+        log.debug("tier C broadcast identity record failed: %s", e)
+
+
+def _tier_c_fanout_is_duplicate(ticker: str, expiry: Optional[str]) -> bool:
+    """True when the cached bundle the fanout would send is already on the wire
+    for the current connection epoch (client would reject it as a duplicate)."""
+    data_cache_key, entry = _resolve_tier_c_cache_entry_for_sse(ticker, expiry)
+    if not entry or not entry.get("ms_dict"):
+        return False
+    md = entry["ms_dict"]
+    ck = data_cache_key or (ticker.upper().strip(), md.get("selected_exp"))
+    ident = (
+        float(md.get("_server_build_ts") or 0.0),  # silent-zero-ok: epoch-0 ancient sentinel, compared not displayed
+        int(entry.get("analytics_version") or 0),  # silent-zero-ok: version 0 means "no analytics version yet", the pre-first-run state this comparison exists to detect
+        _sse_conn_epoch,
+    )
+    return _last_tier_c_broadcast_identity.get(ck) == ident
+
+
 def _schedule_sse_broadcast(payload: dict) -> None:
     if not payload or _main_event_loop is None or _main_event_loop.is_closed():
         return
+    _record_tier_c_broadcast_identity(payload)
     asyncio.run_coroutine_threadsafe(_broadcast_snapshot(payload), _main_event_loop)
 
 
@@ -1781,6 +2298,12 @@ def _maybe_broadcast_sse_cache_fanout(
     inflight_key: tuple,
     fanout_reason: str,
 ) -> bool:
+    # T5.1: never re-send a bundle identity the current audience already has —
+    # the client's monotonic gate rejects it, so it is pure encode/wire waste
+    # (checked BEFORE the payload build, which clones + re-attaches contracts).
+    if _tier_c_fanout_is_duplicate(ticker, expiry):
+        _analytics_cache_observability["sse_fanout_suppressed_duplicate"] += 1
+        return False
     payload = _build_sse_cache_fanout_payload(
         ticker,
         expiry,
@@ -1839,6 +2362,9 @@ _analytics_cache_observability: dict[str, int] = {
     # post-publish persistence failures (served payload is never degraded).
     "post_publish_snapshot_failures": 0,
     "post_publish_calibration_failures": 0,
+    # T5.1 — cadence/in-flight fanouts skipped because the identical bundle
+    # identity was already broadcast to the current connection epoch.
+    "sse_fanout_suppressed_duplicate": 0,
 }
 
 # EXEC-03 POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 — most recent post-publish
@@ -1883,7 +2409,8 @@ def _record_post_publish_failure(kind, ticker, published_version, exc):
             "traceback_tail": _tb.format_exc().splitlines()[-12:],
         }
     except Exception:
-        # Observability must never disturb the persistence tail.
+        # institutional-swallow-ok: recording error diagnostics is best-effort and must
+        # never disturb the persistence tail; the underlying error is handled upstream.
         pass
 
 
@@ -2084,7 +2611,7 @@ def _stamp_analytics_freshness_on_completed_fetch(
     md["analytics_refresh_in_progress"] = False
     if ent:
         gen_ts = _analytics_generated_ts(ent)
-        if gen_ts > 0:
+        if gen_ts is not None:      # RC-282: None is undatable, not "timestamp zero"
             md["analytics_age_sec"] = max(
                 0.0, round(analytics_freshness_eval_wall_ts - gen_ts, 3)
             )
@@ -2172,7 +2699,7 @@ def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
     _analytics_cache_observability["pending_shell_builds"] += 1
     t = ticker.upper().strip()
     pending_shell_ingestion_wall_ts = time.time()
-    md = {
+    return {
         "_tier": "C_analytics",
         "analytics_pending_shell": True,
         "ticker": t,
@@ -2186,10 +2713,6 @@ def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
         "_pipeline_ms": 0,
         "_endpoint": "/api/analytics/state",
     }
-    from planes.context_light import stamp_analytics_cache_identity
-
-    stamp_analytics_cache_identity(md, t, expiry)
-    return md
 
 
 def _attach_db_contention_operator_surface(ms_dict: dict) -> None:
@@ -2249,8 +2772,6 @@ def _publish_progressive_tier_c_cache(
     exposures,
     gamma_flip,
     gamma_voids,
-    hvl,
-    max_pain,
     charm_net,
     charm_dir,
     charm_toward,
@@ -2271,8 +2792,8 @@ def _publish_progressive_tier_c_cache(
             return
 
     t = ticker.upper().strip()
-    w0 = walls[0] if walls else None
-    cs = consensus_summary
+    # RC-128 cleanup: w0/cs bindings deleted — they fed only the Tier-C kl_ writes the
+    # One Levels Faucet burn removed; pure-expression RHS, nothing else read them.
     now = time.time()
 
     md: dict[str, Any] = {
@@ -2298,20 +2819,11 @@ def _publish_progressive_tier_c_cache(
         "charm_direction": charm_dir,
         "charm_drift_toward": charm_toward,
         "kl_expiry_source": kl_expiry_source,
-        "kl_gamma_flip": _float_key_level(gamma_flip),
+        # RC-128 (One Levels Faucet): every SSOT level key (walls, flip, pin, hvl, max pain,
+        # delta walls, EM, and the unowned oi/vanna/inflection set) is written ONLY by
+        # _terrain_kl_overlay below — the analytics assignments that lived here were DELETED,
+        # not overridden. Placement was the bug: any later write resurrected the dual book.
         "kl_gamma_voids": gamma_voids or [],
-        "kl_hvl": _float_key_level(hvl),
-        "kl_max_pain": _float_key_level(max_pain),
-        "kl_call_gamma_wall": _float_key_level(getattr(w0, "call_gamma_wall", None)),
-        "kl_put_gamma_wall": _float_key_level(getattr(w0, "put_gamma_wall", None)),
-        "kl_gamma_inflection": _float_key_level(getattr(cs, "gamma_inflection", None)),
-        "kl_call_delta_wall": _float_key_level(getattr(w0, "call_delta_wall", None)),
-        "kl_put_delta_wall": _float_key_level(getattr(w0, "put_delta_wall", None)),
-        "kl_delta_inflection": _float_key_level(getattr(cs, "delta_inflection", None)),
-        "kl_call_oi_wall": _float_key_level(getattr(w0, "call_oi_wall", None)),
-        "kl_put_oi_wall": _float_key_level(getattr(w0, "put_oi_wall", None)),
-        "kl_gamma_pin": _float_key_level(getattr(cs, "gamma_pin", None)),
-        "kl_oi_center": _float_key_level(getattr(cs, "oi_center", None)),
         "kl_metrics_dollarized": bool(exposures and exposures_have_dollar_gex(exposures)),
         "spread": quote_spread_pts,
         "spread_source": quote_spread_source,
@@ -2325,12 +2837,9 @@ def _publish_progressive_tier_c_cache(
         "_pipeline_ms": 0,
         "_endpoint": "/api/analytics/state",
     }
-    _stamp_gamma_pin_consumer_copy(md)
     if update_source is not None:
         md["_update_source"] = update_source
-    from planes.context_light import stamp_analytics_cache_identity
-
-    stamp_analytics_cache_identity(md, t, selected_exp)
+    _terrain_kl_overlay(md, t)   # RC-122: one wall book (terrain SSOT) on every kl_* payload
     _lmp.merge_into_state(md, t)
 
     _state_cache[cache_key] = {
@@ -2358,7 +2867,10 @@ def _publish_progressive_tier_c_cache(
             inflight_key=inflight_key,
         )
         try:
-            asyncio.run_coroutine_threadsafe(_broadcast_snapshot(payload), _main_event_loop)
+            # T5.1: routed through _schedule_sse_broadcast so the identity
+            # record covers the progressive partial too (same suppression law
+            # as the completed-fetch and fanout broadcasts).
+            _schedule_sse_broadcast(payload)
         except Exception as e:
             log.debug("progressive tier C broadcast failed ticker=%s: %s", t, e, exc_info=True)
 
@@ -2564,6 +3076,11 @@ def _session_open_anchor_warm_loop() -> None:
 #   "rest_anchor_lane_refresher" (no consumer branches on that value);
 #   card_freshness quote ages simply read fresher fast_server_ts.
 # SCHWAB_CSV_CHECKED
+#: t12 (RC-227 residual): a prior-day fact requires plausibly FULL session coverage from
+#: the live accumulator (~390 RTH minutes; floor 300) — below it, /api/levels falls
+#: through to banked canonical bars rather than serving a truncated min/max.
+LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
+
 ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC: float = 20.0
 ANCHOR_QUOTE_LANE_MAX_AGE_SEC: float = 20.0
 _anchor_quote_lane_refresh_stop = threading.Event()
@@ -2659,6 +3176,11 @@ def _stale_fast_quote_carried_forward(prev: dict, tkr: str) -> dict:
     qsd["schwab_auth_degraded"] = True
     out["quote_source_detail"] = qsd
     out["fast_generation_id"] = _lmp.next_fast_generation(tkr)
+    # W3-C4 / RC-121: the degraded row must be RECORDED, not just served. Five call sites
+    # returned this payload while the plane kept the pre-degradation row — so every plane
+    # reader (merge_into_state, SSE, L1 overlay) kept serving an undegraded picture under an
+    # advanced generation id. Recording here, inside the builder, covers every caller at once.
+    _lmp.record_quote(tkr, out)
     return out
 
 
@@ -2748,7 +3270,9 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         quote_attempts += 1
 
     t_quote0 = time.perf_counter()
-    q_resp = _safe_get_quote_with_retry(client, tkr, attempt_hook=_attempt_hook)
+    # RC-112: the fast lane reads through the same memo as resolve_spot — one vendor call
+    # serves both inside the TTL.
+    q_resp = _memoized_quote_response(tkr, client=client, attempt_hook=_attempt_hook)
     t_quote1 = time.perf_counter()
     if q_resp is None or q_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Quote fetch failed")
@@ -2954,7 +3478,7 @@ def _latest_cached_ms_and_key_for_ticker(ticker: str) -> tuple[Optional[dict], O
         md = entry.get("ms_dict")
         if not isinstance(md, dict) or not md:
             continue
-        ts = float(entry.get("ts") or 0.0)
+        ts = float(entry.get("ts") or 0.0)  # silent-zero-ok: epoch-0 ancient sentinel — an undated entry must never win a freshest-wins comparison
         if ts > best_ts:
             best_ts = ts
             best_md = md
@@ -3084,7 +3608,11 @@ VIX_DIRECTION_THRESHOLD: float = 0.3   # ±0.3 pts tick-to-tick to call rising/f
 ETF_ZONE_THRESHOLD_PCT:  float = 0.3   # chg_pct beyond ±0.3% → bullish/bearish_trend
 
 # Chain fetch
-CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab
+CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab (live UI — keep fast)
+# FIND-GAMMA-FULLCHAIN-STRIKES-V1: the wide-capture strike count is imported from
+# calibration.option_chain_morning_full below — it was ALSO defined here as a literal
+# ("aligned with calibration" by hand), i.e. two faucets for one constant. The import is
+# the single source; ruff F811 caught the duplicate the moment both were in scope.
 
 # Exposure windows
 EXPOSURE_WINDOWS:    list  = [5, 10, 15, 20]   # window sizes passed to build_*_rows
@@ -3095,8 +3623,24 @@ GEX_NEAR_SPOT_RADIUS: float = 2.0   # strikes within $2 of spot are "near spot"
 # Void factor distance falloff
 VOID_DIST_FALLOFF:   float = 5.0    # $5 from void edge → factor decays to 0
 
-# GARCH horizon
-GARCH_HORIZON_BARS:  int   = 13     # forward-looking bars for GARCH forecast (~1hr RTH)
+# GARCH horizon — DERIVED from the governed horizons, never a literal (RC-334).
+#
+# This was `13  # ~1hr RTH`, a comment that was true when BAR_MINUTES was 5 and false after
+# the 2026-07-08 realignment to BAR_MINUTES=1, where 13 bars is 13 minutes. Monte Carlo only
+# uses the GARCH sigmas when it receives at least `horizon_bars` of them and otherwise falls
+# back to the flat IV/RV blend WITHOUT saying so, so the shortfall did not surface as an
+# error — it surfaced as a different volatility model. MEASURED against
+# `horizon_slug_to_mc_bars`: 1c->1 and 5c->5 were covered, while 15c->15 and 60c->60 — half
+# of ALL_GOVERNED_HORIZONS — plus the 15-minute Key Levels display row never used GARCH at
+# all. Sizing this from the horizon set means adding a horizon cannot silently un-GARCH it.
+def _garch_horizon_bars() -> int:
+    from governed_stack_contract import horizon_slug_to_mc_bars
+    from ml_horizon import ALL_GOVERNED_HORIZONS
+
+    return max(horizon_slug_to_mc_bars(s) for s in ALL_GOVERNED_HORIZONS)
+
+
+GARCH_HORIZON_BARS:  int   = _garch_horizon_bars()   # 60 bars = the longest governed horizon
 
 # IV history lookback for IV rank / percentile
 IV_HISTORY_LOOKBACK: int   = 5000   # max rows pulled from DB for IV rank calc
@@ -3117,6 +3661,43 @@ PRICE_LEVELS_CACHE_SEC: int = 15  # intraday VWAP refresh (process-local)
 from math_exposure import CANDLE_5M_MAX_BARS, CANDLE_1M_MAX_BARS
 from micro_structure import Candle
 from timeframe_config import CANONICAL_TIMEFRAME
+# Imported at MODULE LEVEL deliberately: the terrain loop's morning-window guard depends
+# on these, and a runtime import inside the loop meant a missing module silently removed
+# the guard during the exact 30 minutes it protects. At top level, a broken module stops
+# the server AT BOOT -- loud, immediate, and impossible to trade through unnoticed. This
+# also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
+# path now has no failure mode to pick a policy for.
+from calibration.option_chain_morning_full import (
+    GEX_FULL_CHAIN_STRIKE_COUNT,
+    # RC-161: the MORNING_* aliases are gone from this import because the scheduler no longer
+    # reads them. That coupling WAS the defect — the archive's write window was steering the
+    # terrain loop's contention guard. The guard now owns TERRAIN_CONTENTION_*, and the archive
+    # keeps MORNING_* to itself, so neither can move the other by accident again.
+    accrual_window as gex_accrual_window,
+    latest_accrual_rows,
+    persist_chain_accrual,
+    SOURCE_WIDE as GEX_SOURCE_WIDE,
+    et_date_and_mins as gex_et_date_and_mins,
+    has_morning_full_capture,
+    maybe_persist_morning_full_chain,
+    universal_capture_window,
+)
+
+#: Timeframes to try, in order, when reading stored snapshot rows. The timeframe MUST be
+#: named in any query that orders by ts_utc: the only usable index is
+#: idx_snap_ticker_tf_ts (ticker, timeframe, ts_utc), and omitting the MIDDLE column makes
+#: the ordering unusable, forcing a full read of every row for that ticker (MEASURED
+#: 2026-07-20: >300 s vs 0.002 s). Defined beside the import it depends on; both readers
+#: resolve it at call time, long after module load.
+_STORED_CHAIN_TIMEFRAMES: tuple[str, ...] = (CANONICAL_TIMEFRAME, "5m")
+
+#: RC-168: the oldest a prior totalVolume reading may be and still have its delta charged to
+#: the currently open bar. Quote polls run ~1.5s apart, so a gap beyond one bar length means
+#: the cumulative delta necessarily spans bars and cannot be attributed to any single minute.
+ACCUM_VOL_MAX_ATTRIBUTION_GAP_SEC: float = float(
+    os.environ.get("ED_ACCUM_VOL_MAX_GAP_SEC", "60")
+)
+
 
 class _CandleAccumulator:
     """Accumulate spot ticks into OHLCV candle bars."""
@@ -3127,6 +3708,9 @@ class _CandleAccumulator:
         self._bars: dict[str, list[Candle]] = {}       # ticker -> completed bars
         self._current: dict[str, dict] = {}             # ticker -> {ts, o, h, l, c, v}
         self._prev_total_vol: dict[str, float] = {}    # ticker -> prior totalVolume for delta
+        # RC-168: WHEN that prior reading was taken. Without it a cumulative delta spanning
+        # minutes was attributed to one bar (see tick()).
+        self._prev_total_vol_ts: dict[str, float] = {}
         self._bars_source: dict[str, str] = {}         # ticker -> provenance for VWAP path
 
     def _bar_start(self, epoch: float) -> float:
@@ -3141,19 +3725,38 @@ class _CandleAccumulator:
         bar_ts = self._bar_start(ts)
         total_now = float(total_volume) if total_volume is not None else None
         prev = self._prev_total_vol.get(ticker)
+        prev_ts = self._prev_total_vol_ts.get(ticker)
         vol_source = "schwab_quote_totalVolume_delta"
 
         # Compute volume delta; reset if value drops (new session)
         if total_now is not None and prev is not None:
+            # RC-168 ROOT: totalVolume is CUMULATIVE, so `total_now - prev` covers the whole
+            # span between the two readings — not the current minute. The prior reading had no
+            # staleness bound, so whenever a ticker went unpolled for minutes (42-symbol
+            # rotation, a stalled poll, a mid-session restart) the entire multi-minute delta
+            # was attributed to whichever ONE bar happened to be open, producing the spikes
+            # this row was opened for. MEASURED on MSFT: the accumulator produced 601
+            # non-auction 10x-neighbourhood spikes in 24,284 bars (2.5%) while the vendor's own
+            # 1m bars over the same name and period produced 8 in 13,017 (0.06%) — a 40x rate
+            # from the same market, which isolates the attribution, not the feed. Past the
+            # bound the span is unknowable, so the bar records NO volume rather than a
+            # fabricated minute (absence over invention).
+            gap = None if prev_ts is None else (ts - float(prev_ts))
             delta = total_now - prev
-            vol_delta = max(0.0, delta) if delta >= 0 else 0.0
-            if delta < 0:
+            if gap is not None and gap > ACCUM_VOL_MAX_ATTRIBUTION_GAP_SEC:
+                vol_delta = None
+                vol_source = "schwab_quote_totalVolume_gap_unattributable"
+            elif delta >= 0:
+                vol_delta = delta
+            else:
+                vol_delta = 0.0
                 prev = None
                 vol_source = "schwab_quote_totalVolume_session_reset"
         else:
             vol_delta = None
         if total_now is not None:
             self._prev_total_vol[ticker] = total_now
+            self._prev_total_vol_ts[ticker] = ts
         if ticker not in self._bars_source or self._bars_source[ticker] != "schwab_pricehistory":
             self._bars_source[ticker] = vol_source
 
@@ -3190,7 +3793,7 @@ class _CandleAccumulator:
             cur["l"] = min(cur["l"], price)
             cur["c"] = price
             if vol_delta is not None:
-                cur["v"] = (cur.get("v") or 0.0) + vol_delta
+                cur["v"] = (cur.get("v") or 0.0) + vol_delta  # silent-zero-ok: RC-168/RC-277 — totalVolume is CUMULATIVE, so a bar's FIRST reading has no predecessor and vol_delta is None BY CONSTRUCTION; None means "no delta counted yet", not a missing measurement, and 0.0 is the correct identity to open the sum
             cur["volume_source"] = vol_source
 
     def get_bars(self, ticker: str) -> list[Candle]:
@@ -3511,7 +4114,7 @@ def _load_persisted_tickers() -> list[str]:
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         for row in db.logging_universe_list_rows():
             if row.get("category") in ("user_persisted", "pinned"):
-                t = (row.get("ticker") or "").upper().strip()
+                t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical enrolled-ticker identity
                 if t and t not in tickers:
                     tickers.append(t)
         try:
@@ -3557,10 +4160,10 @@ def _hydrate_logger_tickers_from_db() -> None:
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
-        merged = list(CORE_TICKERS)
+        merged = [ticker_storage_key(t) for t in CORE_TICKERS]  # RC-345/F25: canonical logger hydration
         for row in db.logging_universe_list_rows():
             if row.get("category") in ("user_persisted", "pinned"):
-                t = (row.get("ticker") or "").upper().strip()
+                t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical (legacy bare rows resolve on-read)
                 if t and t not in merged:
                     merged.append(t)
         try:
@@ -3613,13 +4216,18 @@ def _is_loggable_session() -> bool:
     Background snapshot logging session gate (Issue 22 — explicit product policy).
 
     When RTH_ONLY is True (default): allow ET minutes in [PRE_MARKET_MINS, LOGGER_BUFFER_MINS]
-    (see server.py constants — ≈ 9:00 pre through extended post-market buffer).
+    (see server.py constants — ≈ 9:00 pre through extended post-market buffer) AND only on a
+    capturable trading calendar day. RC-48: the minute-window alone was weekday/holiday-blind,
+    so weekend daytime leaked base-logger rows; AND-ing the one calendar authority
+    (time_et.is_capturable_session) closes that leak without changing the window.
 
     When RTH_ONLY is False: no session gate here (logging may run when markets are quiet —
     use only for diagnostics).
     """
     if not RTH_ONLY:
         return True
+    if not is_capturable_session():   # RC-48: weekend / full holiday / overnight -> never loggable
+        return False
     et = now_et()
     mins = et.hour * 60 + et.minute
     return PRE_MARKET_MINS <= mins <= LOGGER_BUFFER_MINS
@@ -3719,7 +4327,7 @@ def _register_tracked_ticker(ticker: str, *, enrollment_source: str = "ui_auto")
     Issue 22: user symbols persist in EdDB.logging_universe (survives restarts).
     Returns True if newly added to the logger rotation list.
     """
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: in-memory logger identity == canonical DB enrollment identity
     if not t or len(t) > 10:
         return False
     added = _add_logger_ticker(t, enrollment_source=enrollment_source)
@@ -3780,7 +4388,12 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
     try:
         ctx = fetch_market_context(
             client,
-            safe_get_quote_fn=_safe_get_quote_with_retry,
+            # RC-112 recurrence 2: this kwarg handed the RAW vendor fetch by reference into
+            # market-context (VIX/TICK quote legs) — invisible to a call-syntax scan. The
+            # adapter keeps the (client, ticker) signature the callee expects while routing
+            # every quote it makes through the one memoized vendor faucet.
+            safe_get_quote_fn=lambda _c, _tk, **_kw: _memoized_quote_response(
+                _tk, client=_c, **_kw),
             pcr=pcr,
             prev_pcr=prev_pcr,
             stream_chg_pct_fn=_stream_chg_fn,
@@ -4116,7 +4729,7 @@ def _base_money_path_capture_one(ticker: str):
         if client is None:
             return BaseCaptureAttempt(t, "error:no_client", time.monotonic() - t0)
 
-        q_resp = _safe_get_quote_with_retry(client, t)
+        q_resp = _memoized_quote_response(t, client=client)   # RC-112/W3-C8: one vendor faucet
         if q_resp is None or getattr(q_resp, "status_code", None) != 200:
             code = getattr(q_resp, "status_code", None)
             return BaseCaptureAttempt(
@@ -4163,6 +4776,10 @@ def _base_money_path_capture_one(ticker: str):
             raise
         _snapshot_row_insert_committed(t, snap_ts)
 
+        # RC-69: bars are NOT written here. This is a snapshot capture; bar collection is its own
+        # service (_bars_loop), so there is exactly ONE writer of price_bars_1m. An earlier fix
+        # bolted bar persistence onto this function — that only moved the defect (collection
+        # riding a capture path) instead of removing it.
         touch_ts = time.time()
         if _HAS_SIGNALS:
             try:
@@ -4504,7 +5121,7 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
         arch_path = Path(APP_DIR) / "models" / "arch_state.json"
         if arch_path.exists():
             arch = json.loads(arch_path.read_text(encoding="utf-8"))
-            ent = arch.get(str(ticker).upper().strip()) if isinstance(arch, dict) else None
+            ent = arch.get(ticker_storage_key(ticker)) if isinstance(arch, dict) else None  # RC-345/F25: reader key == canonical writer key
             if isinstance(ent, dict):
                 arch_ent = ent
                 active = str(ent.get("active_architecture") or "").strip().lower()
@@ -4516,8 +5133,11 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
                     "promoted": promoted,
                     "promotion_reason": ent.get("promotion_reason"),
                     "authority_mode": mode,
-                    "authoritative_stage": ent.get("authoritative_stage")
-                    or ent.get("signal_chain_authoritative"),
+                    # RC-85: the `or ent.get("signal_chain_authoritative")` fallback is REMOVED.
+                    # Nothing in this repo has ever written that key and the live payload does
+                    # not carry it, so the branch could never be taken — it advertised a second
+                    # source that does not exist.
+                    "authoritative_stage": ent.get("authoritative_stage"),
                 }
     except Exception:
         gov = {"available": False, "error": "arch_state_read_failed"}
@@ -4531,9 +5151,10 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
 
     sm = str(ms_dict.get("stack_runtime", {}).get("stack_mode") or "").upper()
     spot_ok = ms_dict.get("spot") is not None
+    # RC-85: `micro_5m_headline` dropped from this chain — never written anywhere in the repo
+    # and absent from the live /api/state payload, so it could only ever contribute False.
     rules_ok = bool(
         ms_dict.get("rules_headline")
-        or ms_dict.get("micro_5m_headline")
         or ms_dict.get("rules_conviction")
     )
     valp = ms_dict.get("validation_passed")
@@ -4570,7 +5191,7 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
     auth_stage: str | None = None
     try:
         if isinstance(arch_ent, dict):
-            raw_a = arch_ent.get("authoritative_stage") or arch_ent.get("signal_chain_authoritative")
+            raw_a = arch_ent.get("authoritative_stage")   # RC-85: dead alias fallback removed
             if isinstance(raw_a, str) and raw_a.strip():
                 a = raw_a.strip().lower()
                 alias = {
@@ -4700,25 +5321,32 @@ def _selected_schwab_days_to_expiration(
     preferred_strike: float | None = None,
     preferred_side: str | None = None,
 ) -> int | None:
+    # RC-345 / F41: selected-expiry identity is MANDATORY. Without it there is NO selected
+    # contract to read a DTE from — return governed absence, never search every expiry
+    # (which would answer with some other expiry's DTE). The side/strike-less fallback below
+    # is legitimate ONLY because exp_key is proven present here.
     exp_key = str(selected_exp or "")[:10]
+    if len(exp_key) != 10:
+        return None
     side_key = str(preferred_side or "").upper().strip()
     try:
         strike_key = float(preferred_strike) if preferred_strike is not None else None
     except (TypeError, ValueError):
         strike_key = None
 
+    from numeric_contract import float_finite_or_none as _fin
     matches: list[dict] = []
     for ct in contracts or []:
         exp = str(ct.get("expirationDate") or "")[:10]
-        if exp_key and exp != exp_key:
+        if exp != exp_key:
             continue
         if side_key in ("CALL", "PUT") and str(ct.get("putCall") or "").upper().strip() != side_key:
             continue
         if strike_key is not None:
-            try:
-                if abs(float(ct.get("strikePrice")) - strike_key) >= 0.01:
-                    continue
-            except (TypeError, ValueError):
+            # single source: reject NaN via the finite reader. Raw float() let a NaN
+            # strike pass (abs(nan-strike_key) >= 0.01 is False), matching the wrong contract.
+            _sp = _fin(ct.get("strikePrice"))
+            if _sp is None or abs(_sp - strike_key) >= 0.01:
                 continue
         matches.append(ct)
 
@@ -4726,11 +5354,9 @@ def _selected_schwab_days_to_expiration(
         return _selected_schwab_days_to_expiration(contracts, selected_exp)
 
     for ct in matches:
-        raw_dte = ct.get("daysToExpiration")
-        try:
-            dte = int(float(raw_dte)) if raw_dte is not None else None
-        except (TypeError, ValueError):
-            dte = None
+        # single source: finite DTE (canonical reader rejects NaN/±inf that int(float()) raised on)
+        _dte_f = _fin(ct.get("daysToExpiration"))
+        dte = int(_dte_f) if _dte_f is not None else None
         if dte is not None and dte >= 0:
             return dte
     return None
@@ -4758,9 +5384,14 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
     """
     ticker = ticker.upper().strip()
     client = get_client()
+    # RC-59 chain-width faucet EXEMPTION, declared not accidental: this path reads the EXPIRY
+    # DATE LIST only and computes no levels, so strike width is irrelevant to its output — a
+    # minimal fetch is correct here. Every LEVEL-computing fetch must use
+    # resolve_chain_strike_count(); this one may not, because widening it would only cost
+    # latency on a dropdown poll with zero effect on the result.
     c_resp = safe_get_chain(
         client, ticker,
-        strike_count=CHAIN_STRIKE_COUNT,
+        strike_count=CHAIN_STRIKE_COUNT,   # chain-width-faucet-ok: expiry list only, no level math
     )
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Option chain fetch failed")
@@ -4808,13 +5439,11 @@ def _default_expiry(expiries: list[str], ticker: str = "?") -> Optional[str]:
 # Uses quote.lastPrice, lastSize, bidPrice, askPrice. Accumulates per session.
 # ─────────────────────────────────────────────────────────────────────────────
 def _safe_float_quote(v) -> Optional[float]:
-    """Safe float for quote fields."""
-    if v is None:
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+    """Safe float for quote fields. SINGLE SOURCE: delegates to the canonical
+    numeric_contract.float_finite_or_none so NaN/±inf are rejected identically everywhere
+    (this previously accepted NaN/inf)."""
+    from numeric_contract import float_finite_or_none
+    return float_finite_or_none(v)
 
 
 def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
@@ -4937,30 +5566,14 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HELPER — compute VWAP from candle bars (seeded from price history)
-# Used as fallback when fetch_price_levels returns vwap=None (individual equities).
+# Phase 2A (operator 2026-08-08): `_compute_vwap_from_bars` was DELETED here.
+# It was a second, independent VWAP implementation — a fallback for
+# fetch_price_levels returning vwap=None — and it wrote into the snapshot table
+# and from there into model features, so a persisted row could carry a VWAP that
+# /api/levels never served. The one VWAP accumulation is now
+# liquidity_value_engine.compute_session_vwap_path, reached only through the
+# canonical PriceLevelSnapshot. Absent VWAP persists NULL (RC-68).
 # ─────────────────────────────────────────────────────────────────────────────
-def _compute_vwap_from_bars(
-    bars: list,
-    *,
-    source_bars: str = "schwab_quote_totalVolume_delta",
-) -> tuple[Optional[float], str]:
-    """Compute VWAP = Σ(typical_price × volume) / Σ(volume) from completed bars.
-
-    Returns (vwap, source_bars). ``source_bars`` documents Schwab leaf lineage
-    (pricehistory vs quote totalVolume delta per Day 1 OHLCV contract).
-    """
-    cum_tp_vol = 0.0
-    cum_vol = 0.0
-    for b in bars:
-        if b.volume is None or float(b.volume) <= 0:
-            continue
-        tp = (float(b.high) + float(b.low) + float(b.close)) / 3.0
-        cum_tp_vol += tp * float(b.volume)
-        cum_vol += float(b.volume)
-    if cum_vol > 0:
-        return round(cum_tp_vol / cum_vol, 4), source_bars
-    return None, source_bars
 
 
 # Per-ticker previous DPI normalized score (dealer pressure trend between refreshes)
@@ -4991,6 +5604,10 @@ _l1_of_last_engine_mono_by_ticker: dict[str, float] = {}
 _l1_instrumentation: dict[str, Any] = {
     "l1_build_total": 0,
     "l1_build_ms_sum": 0.0,
+    #: RC-291: builds whose pipeline timing was actually READ. The average divides by this,
+    #: not by l1_build_total, so an unmeasured build cannot dilute the latency figure the
+    #: warn threshold is compared against.
+    "l1_build_ms_measured": 0,
     "l1_build_by_reason": defaultdict(int),
     "l1_http_cache_hit_total": 0,
     "l1_quote_material_skip_total": 0,
@@ -5007,6 +5624,22 @@ _l1_instrumentation: dict[str, Any] = {
 
 # Monotonic clock anchor for L1 diagnostics rates (operational assessment per /api/diagnostics/l1).
 _l1_diag_start_mono = time.monotonic()
+
+#: RC-236: minimum 1m bars the ATR needs, and the warmup horizon during which a deficit is the
+#: designed state rather than a defect. One bar per minute means the accumulator cannot beat the
+#: clock; the horizon carries a small margin for the first partial minute and re-seed latency.
+ATR_MIN_BARS: int = 16
+ATR_WARMUP_HORIZON_SEC: float = float(ATR_MIN_BARS + 4) * 60.0
+
+
+def _seconds_since_boot() -> float:
+    """Wall seconds this server process has been up (monotonic, restart-anchored)."""
+    return max(0.0, time.monotonic() - _l1_diag_start_mono)
+
+
+def _atr_warmup_active() -> bool:
+    """True while the in-memory bar accumulator cannot yet physically hold ATR_MIN_BARS."""
+    return _seconds_since_boot() < ATR_WARMUP_HORIZON_SEC
 
 
 def _l1_generation_pop(key: tuple) -> None:
@@ -5241,18 +5874,30 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
         l1_generation=gen,
     )
     out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side)
-    _stamp_gamma_pin_consumer_copy(out)
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
-    ms = float(out.get("l1_pipeline_ms") or 0.0)
+    # RC-281: my earlier reason claimed "the caller gates on ms > 0". There is no such gate —
+    # the value is accumulated below and published as l1_build_ms, so an absent timing was a
+    # measured zero that drags the latency average down and can mask an alarm. Absent timing
+    # now contributes NOTHING to the sum and publishes as null.
+    from numeric_contract import float_finite_or_none as _fin_ms
+    ms = _fin_ms(out.get("l1_pipeline_ms"))
     _l1_instrumentation["l1_build_total"] += 1
-    _l1_instrumentation["l1_build_ms_sum"] = float(_l1_instrumentation["l1_build_ms_sum"]) + ms
+    if ms is not None:
+        # RC-291: the numerator AND its own denominator move together. RC-281 stopped an
+        # absent timing entering the sum and left l1_build_total dividing it, so 19 builds
+        # at 26 ms plus one unmeasured published 24.7 ms — under the 25 ms warn threshold.
+        # Excluding a value from a mean while counting it in the divisor is the fabricated
+        # zero written a different way. l1_build_total still counts BUILDS, which is a
+        # different and correct question; the average now uses what was measured.
+        _l1_instrumentation["l1_build_ms_sum"] = float(_l1_instrumentation["l1_build_ms_sum"]) + ms
+        _l1_instrumentation["l1_build_ms_measured"] += 1
     _l1_instrumentation["l1_build_by_reason"][reason] += 1
     out["l1_instrumentation"] = {
         "l1_build_total": int(_l1_instrumentation["l1_build_total"]),
         "l1_build_reason": reason,
-        "l1_build_ms": round(ms, 3),
+        "l1_build_ms": None if ms is None else round(ms, 3),  # RC-281: absent != 0 ms
         "l1_build_scope": {"ticker": tkr, "expiry": key[1]},
         "l2_merge_acknowledged": bool(out.get("l2_merge_acknowledged")),
         "l1_http_cache_hit_total": int(_l1_instrumentation["l1_http_cache_hit_total"]),
@@ -5351,11 +5996,25 @@ def _l1_on_quote_updated(ticker: str) -> None:
         return
     for k in keys:
         _l1_maybe_rebuild_quote_scope(k[0], k[1], of_sig=of_sig)
+    # L1-SSE-SCOPE-FIX: stream subscribers live on the __auto__ scope, which the
+    # resolved-expiry rebuilds above never touch — keep it fresh too while
+    # subscribed (same materiality gate; ~ms-scale build, no chain/DB/ML).
+    if _l1_auto_scope_has_subscribers(t):
+        _l1_maybe_rebuild_quote_scope(t, None, of_sig=of_sig)
+
+
+def _l1_on_l2_snapshot_ready_auto_scope(ticker: str) -> None:
+    """L1-SSE-SCOPE-FIX companion for the L2-ready hook: refresh the __auto__
+    scope after a resolved-expiry Tier C build when stream subscribers exist."""
+    if _l1_auto_scope_has_subscribers(ticker):
+        _project_l1(ticker, None, reason="l2_snapshot_ready")
 
 
 def _l1_on_l2_snapshot_ready(ticker: str, expiry: Optional[str]) -> None:
     """L2 acknowledged snapshot available — refresh L1 merge against new version."""
     _project_l1(ticker, expiry, reason="l2_snapshot_ready")
+    if expiry is not None:
+        _l1_on_l2_snapshot_ready_auto_scope(ticker)
 
 
 def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool = False) -> dict:
@@ -5385,7 +6044,6 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
 
     _l1_instrumentation["l1_http_cache_hit_total"] += 1
     out = deepcopy(cached)
-    _stamp_gamma_pin_consumer_copy(out)
     _lmp.apply_l1_live_quote_overlay(out, tkr)
     _l1_touch_scope(key)
     built = float(out.get("as_of_ts") or out.get("_server_build_ts") or l1_eval_wall_ts)
@@ -5405,15 +6063,31 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
         "l1_projection_read": True,
     }
     _l1_attach_freshness_semantics(out, l1_eval_wall_ts)
-    from planes.context_light import stamp_analytics_cache_identity
-
-    stamp_analytics_cache_identity(out)
     return out
 
 
 def _l1_scope_key(ticker: str, expiry: Optional[str]) -> tuple[str, str | None]:
     t = ticker.upper().strip()
     return (t, expiry if expiry is not None else "__auto__")
+
+
+def _l1_auto_scope_has_subscribers(ticker: str) -> bool:
+    """True when an /api/analytics/light/stream client is subscribed to this
+    ticker's __auto__ scope (no explicit expiry — "whatever is current").
+
+    L1-SSE-SCOPE-FIX (2026-07-22, measured live): stream clients subscribe with
+    no expiry → scope (T, "__auto__"), but once the Tier C cache warms, every
+    quote/L2-driven rebuild runs under the RESOLVED expiry scope — so the
+    exact-scope notify in _l1_notify_sse_after_authoritative_build matched
+    nothing and the light stream went silent for the rest of the session
+    (14 boot-window deliveries, then 0 across 1,194 builds). The hooks below
+    now also maintain the __auto__ scope while it has subscribers; each scope
+    keeps its own cache entry, generation counter, throttle, and identity, so
+    per-scope monotonicity is untouched.
+    """
+    auto_sk = (ticker.upper().strip(), "__auto__")
+    with _l1_light_sse_lock:
+        return any(csk == auto_sk for _, csk in _l1_light_sse_clients)
 
 
 def _l1_notify_sse_after_authoritative_build(ticker: str, expiry: Optional[str]) -> None:
@@ -5436,7 +6110,7 @@ def _l1_notify_sse_after_authoritative_build(ticker: str, expiry: Optional[str])
             return
         _l1_sse_last_emit_mono[sk] = now_m
     payload = _l1_http_get_projection(ticker, expiry, force=False)
-    gen = int(payload.get("l1_generation") or 0)
+    gen = int(payload.get("l1_generation") or 0)  # silent-zero-ok: generation 0 is the pre-first-publish state; every real generation is >= 1 so 0 can never impersonate one
     ts, fp = _l1_record_payload_identity(sk, gen, payload)
     env = {
         "l1_sse_schema": 1,
@@ -5495,7 +6169,7 @@ def _latest_cache_entry_for_ticker(ticker: str) -> Optional[tuple[tuple, dict]]:
             continue
         if not v.get("ms_dict"):
             continue
-        ts = float(v.get("ts") or 0.0)
+        ts = float(v.get("ts") or 0.0)  # silent-zero-ok: epoch-0 ancient sentinel — an undated entry sorts oldest, never freshest
         if ts >= best_ts:
             best_ts = ts
             best_k = k
@@ -5520,9 +6194,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     except HTTPException as he:
         if not _plane_fast_quote_has_spot(row):
             if _schwab_auth_http_unavailable(he):
-                from planes.context_light import stamp_analytics_cache_identity
-
-                out_auth = {
+                return {
                     "_tier": "A_live",
                     "ticker": tkr,
                     "selected_exp": expiry,
@@ -5535,11 +6207,9 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
                     "_endpoint": "/api/live/state",
                 }
-                stamp_analytics_cache_identity(out_auth, tkr, expiry)
-                return out_auth
             raise
     if (not row or row.get("spot") is None) and client:
-        q_resp = _safe_get_quote_with_retry(client, tkr)
+        q_resp = _memoized_quote_response(tkr, client=client)   # RC-112/W3-C8: one vendor faucet
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
             _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
@@ -5547,7 +6217,6 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             spot_source = pq["spot_source"]
             spot = pq["spot"]
             bid, ask = pq["bid"], pq["ask"]
-            pq_mark = pq["mark"]
             if spot and float(spot) > 0:
                 sf = float(spot)
                 quote_ts = pq["quote_ts"]
@@ -5599,9 +6268,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     except (TypeError, ValueError):
                         pass
     if not row or row.get("spot") is None:
-        from planes.context_light import stamp_analytics_cache_identity
-
-        out_miss = {
+        return {
             "_tier": "A_live",
             "ticker": tkr,
             "selected_exp": expiry,
@@ -5612,17 +6279,15 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
             "_endpoint": "/api/live/state",
         }
-        stamp_analytics_cache_identity(out_miss, tkr, expiry)
-        return out_miss
     spot_f = float(row["spot"])
-    bid = row.get("bid")
-    ask = row.get("ask")
+    from numeric_contract import float_finite_or_none as _fin
+    # single source: finite bid/ask (raw float() admitted NaN into spread AND the bid/ask
+    # echoed into `out` below); canonical reader also removes the try/except.
+    bid = _fin(row.get("bid"))
+    ask = _fin(row.get("ask"))
     spread_dollar = None
     if bid is not None and ask is not None:
-        try:
-            spread_dollar = round(float(ask) - float(bid), 4)
-        except (TypeError, ValueError):
-            pass
+        spread_dollar = round(ask - bid, 4)
     out: dict = {
         "_tier": "A_live",
         "ticker": tkr,
@@ -5694,9 +6359,6 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     if lw:
         out["analytics_lightweight"] = lw
     _lmp.merge_into_state(out, tkr)
-    from planes.context_light import stamp_analytics_cache_identity
-
-    stamp_analytics_cache_identity(out, tkr, expiry)
     return out
 
 
@@ -5790,9 +6452,10 @@ def _fetch_state(
         # route pool; operator-facing recomputes keep bounded parallelism.
         if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
-                client, ticker, strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority
+                client, ticker, strike_count=resolve_chain_strike_count(ticker),  # RC-59: one faucet
+                priority=_chain_priority,
             )
-            q_resp = _safe_get_quote_with_retry(client, ticker)
+            q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
         else:
             # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf futures run on
             # the dedicated recompute-leaf pool — never behind serve bodies.
@@ -5807,9 +6470,14 @@ def _fetch_state(
             )
             _chain_fut = _cq_pool.submit(
                 _gated_safe_get_chain, client, ticker,
-                strike_count=CHAIN_STRIKE_COUNT, priority=_chain_priority,
+                strike_count=resolve_chain_strike_count(ticker),   # RC-59: one faucet
+                priority=_chain_priority,
             )
-            _quote_fut = _cq_pool.submit(_safe_get_quote_with_retry, client, ticker)
+            # RC-112 recurrence 2 (v10 audit, server.py:6228): this pool leaf passed the raw
+            # vendor fetch BY REFERENCE, so the paren-matching structural test never saw it —
+            # the hot parallel path bypassed the memo while the inline branch above used it.
+            # The lock now counts NAME references, not call syntax.
+            _quote_fut = _cq_pool.submit(_memoized_quote_response, ticker, client=client)
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _chain_fut.result()
             q_resp = _quote_fut.result()
     except SchwabAuthError as e:
@@ -5825,21 +6493,7 @@ def _fetch_state(
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Chain fetch failed")
     c_json = c_resp.json()
-    contracts_raw: list[dict] = []
-    for _side_key in ("callExpDateMap", "putExpDateMap"):
-        _side_map = c_json.get(_side_key) or {}
-        if not isinstance(_side_map, dict):
-            continue
-        for _exp_map in _side_map.values():
-            if not isinstance(_exp_map, dict):
-                continue
-            for _strike_list in _exp_map.values():
-                if not isinstance(_strike_list, list):
-                    continue
-                for _ct in _strike_list:
-                    if isinstance(_ct, dict):
-                        contracts_raw.append(_ct)
-    contracts     = [dict(ct) for ct in contracts_raw]
+    contracts     = flatten_chain_contracts(c_json)
     _t_after_chain_mono = time.monotonic()
     _chain_window_marks.append(("chain_window_contracts_parse_ms", _t_after_chain_mono))
 
@@ -5887,9 +6541,11 @@ def _fetch_state(
     parsed_ask = _session_q["ask"]
     parsed_quote_time = _session_q["quote_time"]
     parsed_trade_time = _session_q["trade_time"]
-    spot = parsed_last if parsed_last and parsed_last > 0 else (
-        parsed_mark if parsed_mark and parsed_mark > 0 else None
-    )
+    # SINGLE SPOT AUTHORITY (RC-14): route the analytics-card spot through resolve_spot,
+    # reusing the quote node already fetched above (no extra round-trip). It now carries the
+    # same value + precedence as /api/spot and the terrain card, and gains the stored-trade
+    # fallback this path lacked (an empty live quote used to yield None / a bare mark here).
+    spot, _spot_source, _spot_ts = resolve_spot(ticker, quote_node=_node_q, chain_json=None)
     bid    = parsed_bid
     ask    = parsed_ask
 
@@ -5897,9 +6553,10 @@ def _fetch_state(
     _quote_spread_pts = (
         round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None
     )
-    _quote_mid_for_spread = None
-    if parsed_mark is not None and parsed_mark > 0:
-        _quote_mid_for_spread = float(parsed_mark)
+    # single source: finite mark (the bare `> 0` gate let +inf through -> inf mid -> inf spread_frac)
+    from numeric_contract import float_finite_or_none as _fin_mk
+    _pm = _fin_mk(parsed_mark)
+    _quote_mid_for_spread = _pm if (_pm is not None and _pm > 0) else None
     _quote_spread_frac = (
         round(_quote_spread_pts / _quote_mid_for_spread, 6)
         if (
@@ -6124,7 +6781,7 @@ def _fetch_state(
     _cons_strikes = sorted(float(k) for k in exposures.keys())
     _gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes
     _institutional_pin = (
-        pick_gamma_pin_strike(exposures, _gamma_strikes, institutional=True)
+        pick_net_gex_peak_strike(exposures, _gamma_strikes, institutional=True)
         if _gamma_strikes
         else None
     )
@@ -6134,10 +6791,14 @@ def _fetch_state(
     totals    = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
 
     # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
-    _gamma_flip = compute_gamma_flip(exposures, spot_f)
+    # FIND-GAMMA-FLIP-METHOD-V1: canonical profile (gamma recomputed at hypothetical spot).
+    # The old cumulative-sum method was DISPROVED 2026-07-19 on a real SPY reference chain
+    # (corr 0.086, never crossed zero). The confidence flag is mandatory: a narrow chain
+    # misplaces the flip by ~3.6%, so it must never be presented as trustworthy.
+    _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
     _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
-    _hvl = compute_hvl(exposures)
-    _max_pain = compute_max_pain(exposures)
+    # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
+    # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).
 
     # Feed ATM IV into tracker for direction detection (vanna context)
     _t0 = totals[0] if totals else None
@@ -6161,8 +6822,12 @@ def _fetch_state(
         # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
         # outcome, no operator-actionable signal (success and failure logs below carry it).
         log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
+        # RC-345 / F18: charm measures the net-charm DIRECTION, not a target STRIKE. It must
+        # NOT borrow the net-GEX peak (a gamma quantity) as its drift target — that was a
+        # different-Greek substitution masquerading under the charm name. drift_toward is
+        # WITHHELD (governed absence); the net-GEX peak keeps its own field, net_gex_peak.
         _charm_raw = compute_net_charm(
-            contracts_use, spot_f, selected_exp, drift_toward_strike=_institutional_pin
+            contracts_use, spot_f, selected_exp, drift_toward_strike=None
         )
         _charm_used = _charm_raw.get("contracts_used", 0)
         _charm_err  = _charm_raw.get("error", "")
@@ -6171,7 +6836,16 @@ def _fetch_state(
             _charm_dir     = _charm_raw["charm_direction"]
             _charm_toward  = _charm_raw.get("drift_toward")
             _charm_mag     = _charm_raw.get("charm_magnitude")
-            _charm_drivers = _charm_raw.get("top_drivers", [])
+            # RC-85: the read of "top_drivers" is GONE. compute_net_charm has never emitted that
+            # key — it returns call_charm_daily, charm_direction, charm_magnitude, contracts_used,
+            # drift_toward, error, gamma_pin, net_charm_daily, put_charm_daily — so
+            # `.get("top_drivers", [])` returned [] on every call since the line was written, and
+            # charm_top_drivers has been permanently empty. The default was the whole problem: []
+            # reads as "computed, no drivers found" when the truth is "never computed", so the
+            # name mismatch had no symptom. _charm_drivers stays [] from its initialiser above,
+            # which is the same value WITHOUT the claim that a producer was consulted. Populating
+            # it needs compute_net_charm to actually rank the contributing strikes; that is a
+            # feature, not a rename, and it is not being smuggled in behind a default.
             log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} pin={_charm_toward} "
                      f"({_charm_used} contracts)")
         else:
@@ -6225,8 +6899,6 @@ def _fetch_state(
             exposures=exposures,
             gamma_flip=_gamma_flip,
             gamma_voids=_gamma_voids,
-            hvl=_hvl,
-            max_pain=_max_pain,
             charm_net=_charm_net,
             charm_dir=_charm_dir,
             charm_toward=_charm_toward,
@@ -6296,7 +6968,13 @@ def _fetch_state(
         price_levels = _pl_cache_entry
     else:
         try:
-            price_levels = fetch_price_levels(client, symbol=ticker, quote_raw=q_json)
+            # Phase 2A: /api/state carries the SAME materialized snapshot /api/levels
+            # serves — the snapshot is resolved here and handed in, so this pipeline
+            # cannot drift onto its own bar input or its own generation.
+            price_levels = fetch_price_levels(
+                client, symbol=ticker, quote_raw=q_json,
+                level_snapshot=canonical_price_level_snapshot(ticker),
+            )
             if price_levels.error:
                 log.warning(f"PriceLevels: {ticker} partial error: {price_levels.error}")
             if price_levels.vwap is None and price_levels.bars_today > 0:
@@ -6305,7 +6983,7 @@ def _fetch_state(
                 log.debug(f"PriceLevels: {ticker} VWAP={price_levels.vwap:.2f} bars={price_levels.bars_today}")
         except Exception as e:
             log.warning(f"PriceLevels: {ticker} FAILED: {e}")
-            price_levels = fail_closed_price_levels(None)
+            price_levels = PriceLevels()
         # Cache with date key so PDH/PDL/ORB survive restarts within the same day
         _sc = _state_cache.get(_cache_key, {})
         _sc["price_levels"] = price_levels
@@ -6325,6 +7003,7 @@ def _fetch_state(
     }
     _em_up = None
     _em_lo = None
+    _em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
     _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
     _kl_em_anchor = "unavailable"
     _mc_iv_level = None
@@ -6334,11 +7013,14 @@ def _fetch_state(
         _today_open = getattr(price_levels, "today_open", None)
 
         # ATM straddle: find ATM call + put mark from chain
-        _all_strikes = sorted(set(
-            float(ct.get("strikePrice"))
+        # single source: reject NaN via the finite reader (raw float() admitted NaN into
+        # the strike set, corrupting sorting and the ATM-strike nearest-neighbour pick).
+        from numeric_contract import float_finite_or_none as _fin
+        _all_strikes = sorted({
+            sp
             for ct in contracts_use
-            if ct.get("strikePrice") is not None
-        ))
+            if (sp := _fin(ct.get("strikePrice"))) is not None
+        })
         if _all_strikes and spot_f > 0:
             _atm_k = min(_all_strikes, key=lambda k: abs(k - spot_f))
             _atm_calls = [
@@ -6366,8 +7048,18 @@ def _fetch_state(
             _em_iv = compute_expected_move_iv(spot_f, _atm_iv, _hours_rem)
 
         # EM progress (use straddle EM if available, fall back to IV) — no synthetic 6.5h session fill.
-        _em_up = _em_straddle.get("upper") or _em_iv.get("upper")
-        _em_lo = _em_straddle.get("lower") or _em_iv.get("lower")
+        # RC-345 / F06: the operator-facing EM band is ONE of two economically distinct
+        # methodologies — STRADDLE_IMPLIED (market ATM straddle premium) or IV_MODEL
+        # (spot x IV x sqrt(T)). Record WHICH produced the band so no consumer treats the
+        # generic _em_up/_em_lo as method-agnostic or silently mistakes one for the other.
+        if _em_straddle.get("upper") is not None and _em_straddle.get("lower") is not None:
+            _em_up, _em_lo, _em_band_source = (
+                _em_straddle.get("upper"), _em_straddle.get("lower"), "STRADDLE_IMPLIED")
+        elif _em_iv.get("upper") is not None and _em_iv.get("lower") is not None:
+            _em_up, _em_lo, _em_band_source = (
+                _em_iv.get("upper"), _em_iv.get("lower"), "IV_MODEL")
+        else:
+            _em_up, _em_lo, _em_band_source = None, None, "unavailable"
         if _em_up and _em_lo and _today_open:
             _em_progress = compute_em_progress(spot_f, _today_open, _em_up, _em_lo)
 
@@ -6437,10 +7129,20 @@ def _fetch_state(
                 )
     except Exception as e:
         log.debug(f"Volatility signals calc: {e}")
-    if _atr is None and _bars:
-        log.warning(f"ATR NULL for {ticker}: only {len(_bars)} bars, need 16")
-    elif _atr is None:
-        log.warning(f"ATR NULL for {ticker}: no bars, need 16")
+    # RC-236 (same calibration law as the tier-1 lock waits): a bar deficit during ACCUMULATOR
+    # WARMUP is the designed state — the in-memory series re-seeds from zero on every restart
+    # and cannot hold 16 one-minute bars until 16 minutes of wall clock have passed. Logging
+    # that at WARNING makes the quiet gate fail for doing exactly what it must do, and trains
+    # the operator to ignore the channel. Past the warmup horizon the SAME deficit is genuine
+    # starvation and keeps its WARNING; the deficit is always logged, only the severity moves.
+    if _atr is None:
+        _warm = _atr_warmup_active()
+        _msg = (f"ATR NULL for {ticker}: only {len(_bars)} bars, need {ATR_MIN_BARS}"
+                if _bars else f"ATR NULL for {ticker}: no bars, need {ATR_MIN_BARS}")
+        if _warm:
+            log.info("%s (accumulator warmup, %.0fs since boot)", _msg, _seconds_since_boot())
+        else:
+            log.warning(_msg)
 
     # ── GARCH Volatility Forecast ─────────────────────────────────────────────
     _garch_sigma_bars = None
@@ -6452,8 +7154,26 @@ def _fetch_state(
 
                 _iv_dec = vol_percent_to_decimal(_atm_iv)
                 _rv_dec = vol_percent_to_decimal(_realized_vol)
+                # RC-334: _closes are ONE-MINUTE closes — `_candles_1m.get_bars` above, and
+                # the realized-vol call on this same list passes bar_minutes=1.0 — so the
+                # GARCH sigmas are per-minute and the IV/RV terms must be de-annualized to
+                # the same minute. Monte Carlo then consumes this list DIRECTLY as per-bar
+                # sigma at monte_carlo.BAR_MINUTES, so a third party has to agree too. The
+                # interval is stated from the DATA, not borrowed from MC's constant, and the
+                # agreement is asserted: if MC's bar ever moves, this must fail loudly rather
+                # than keep feeding it minute sigmas under a five-minute name.
+                from monte_carlo import BAR_MINUTES as _MC_BAR_MINUTES
+
+                _GARCH_BAR_MINUTES = 1.0          # _candles_1m is one-minute by construction
+                if float(_MC_BAR_MINUTES) != _GARCH_BAR_MINUTES:
+                    raise RuntimeError(
+                        f"GARCH/Monte-Carlo bar mismatch: sigmas built on "
+                        f"{_GARCH_BAR_MINUTES}-minute closes but monte_carlo.BAR_MINUTES is "
+                        f"{_MC_BAR_MINUTES}. MC consumes these as per-bar sigma, so the "
+                        f"units must match (RC-334).")
                 _garch_sigma_bars = blend_garch_sigma(
-                    _garch_raw, _iv_dec, _rv_dec, spot_f
+                    _garch_raw, _iv_dec, _rv_dec, spot_f,
+                    bar_minutes=_GARCH_BAR_MINUTES,
                 )
     except Exception as e:
         log.debug(f"GARCH forecast calc: {e}")
@@ -6471,6 +7191,20 @@ def _fetch_state(
         _flow_imbalance = compute_option_flow_imbalance(exposures, spot_f)
     except Exception as e:
         log.warning(f"flow_imbalance failed: {e}")
+    # RC-345 / F11: the PERSISTED flow_imbalance field has ONE producer — the fallback
+    # authority math_probabilities.flow_imbalance_normalized_with_fallback — shared by this
+    # live path and backfill_flow_imbalance. Persisting compute_option_flow_imbalance's
+    # book-only 'normalized' left a NULL whenever ATM book size was ~0, which backfill later
+    # filled with the volume fallback: two producers for one column, and a train/serve skew
+    # (models train on backfilled rows, serve on live). When book size is present the wrapper
+    # returns exactly the book value, so live rows with a book are unchanged. The dict
+    # `_flow_imbalance` is still used for its label/display fields.
+    _flow_imb_norm = None
+    _flow_imb_source = "none"  # RC-345 / F11: which economic book produced the value
+    try:
+        _flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback(exposures, spot_f)
+    except Exception as e:
+        log.warning(f"flow_imbalance (one-producer authority) failed: {e}")
     try:
         _smart_money = compute_smart_money_signal(exposures, spot_f)
     except Exception as e:
@@ -6561,13 +7295,16 @@ def _fetch_state(
             log.warning(f"breakout_score failed: {e}")
             _breakout_score = {}
 
-        # 5. Pin Score — |net GEX$| at the bound pin (not total-gamma / HVL)
+        # 5. Pin Score
         _pin_strike = getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None
         _gex_at_pin = None
         _oi_at_pin = None
         if _pin_strike and exposures:
             _pin_bkt = exposures.get(float(_pin_strike), {})
-            _gex_at_pin = gex_at_bound_pin_strike(exposures, _pin_strike)
+            if exposures_have_dollar_gex(exposures):
+                _gex_at_pin = total_gex_dollars_at_strike(_pin_bkt)
+            else:
+                _gex_at_pin = total_gamma_raw_at_strike(_pin_bkt)
             _oi_at_pin = _bucket_total_oi(_pin_bkt)
         _oi_concentration = (_oi_at_pin / _sum_oi) if _oi_at_pin is not None and _sum_oi and _sum_oi > 0 else None
         try:
@@ -6665,6 +7402,9 @@ def _fetch_state(
         if _gamma_flip: _all_levels['gamma_flip'] = float(_gamma_flip)
         if _em_up: _all_levels['em_upper'] = float(_em_up)
         if _em_lo: _all_levels['em_lower'] = float(_em_lo)
+        # RC-345 / F06: the EM band carries its methodology so no consumer treats it as
+        # method-agnostic (STRADDLE_IMPLIED market premium vs IV_MODEL spot*IV*sqrt(T)).
+        if _em_up and _em_lo: _all_levels['em_band_source'] = _em_band_source
         _level_density = compute_level_density(_all_levels, spot_f)
 
         # Sector strength — 3 groups
@@ -6970,7 +7710,7 @@ def _fetch_state(
         atr=_atr,
         garch_sigma_bars=_garch_sigma_bars,
         candle_volume=_c_vol,
-        flow_imbalance=_flow_imbalance.get("normalized") if _flow_imbalance else None,
+        flow_imbalance=_flow_imb_norm,
         spread=_quote_spread,
         iv_rank=_iv_rank,
         smart_money_score=_smart_money.get("score") if _smart_money else None,
@@ -7026,7 +7766,7 @@ def _fetch_state(
             candle_low=_c_low,
             candle_close=_c_close,
             candle_volume=_c_vol,
-            flow_imbalance=(_flow_imbalance.get("normalized") if _flow_imbalance else None),
+            flow_imbalance=_flow_imb_norm,
             net_gamma=ms.net_gamma,
             atr=_atr,
             candle_range_pts=_c_range,
@@ -7130,10 +7870,14 @@ def _fetch_state(
             and bool(_v2md.get("decision_id"))
             and _xid_classify_route(_xid_route) == "production"
         )
+        # FP-24: expect calibration only when this cycle reserved a snapshot
+        # slot — otherwise decision_ts (wall clock) drifts past tol=29 from the
+        # minute's single snapshot and outcome join debt accumulates.
         _xid_expected_cal = bool(
             _cal_on()
             and getattr(ms, "_calibration_payload", None)
             and _v2_decision_for_response is not None
+            and _xid_do_snapshot_insert
         )
         _xid_surfaces = []
         if _xid_expected_decision:
@@ -7229,6 +7973,8 @@ def _fetch_state(
         # UnboundLocalError, killing every snapshot persist at that line.
         nonlocal mkt_ctx
         # ── DB snapshot logging ───────────────────────────────────────────────────
+        # Initialized outside `if _ed_db` so the calibration gate below can read it.
+        _snap_insert_landed = False
         if _ed_db:  # snapshot INSERT, bars persist + outcome backfill all throttled (see ED_DB_SNAPSHOT_THROTTLE)
             if _diag_on():
                 _diag_step("pre_db_snapshot", ticker)
@@ -7238,7 +7984,6 @@ def _fetch_state(
             # the try so the handler can never NameError.
             _snap_ts = _refresh_ts_utc
             _do_insert = False
-            _snap_insert_landed = False
             try:
                 from db import SnapshotRow, build_ts_et
                 from math_exposure import _f as _mf
@@ -7281,38 +8026,23 @@ def _fetch_state(
                     _c_range = round(_c_high - _c_low, 4) if (_c_high and _c_low) else None
                     # _c_vol computed above before build_market_state
     
-                    # VWAP distance
+                    # VWAP distance — the PERSISTED vwap is the carried canonical value.
+                    # Phase 2A: the old `_compute_vwap_from_bars` fallback here was a
+                    # SECOND VWAP materialization writing into the snapshot table and
+                    # from there into model features, so a row's vwap could be a number
+                    # /api/levels never served. A fallback that produces a different
+                    # answer is not resilience; absence is the honest output (RC-68).
                     _vwap = getattr(price_levels, "vwap", None)
                     _vwap_f = float(_vwap) if _vwap is not None else None
-                    # Fallback: compute VWAP from seeded candle bars when price_levels has none.
-                    # This fixes ~87% NaN rate for individual equities whose price_levels.vwap
-                    # comes back empty because the API call fails or returns no intraday data.
                     if _vwap_f is None:
-                        _bars_for_vwap = _candles_1m.get_bars(ticker)
-                        if _bars_for_vwap:
-                            _vwap_f, _vwap_source_bars = _compute_vwap_from_bars(
-                                _bars_for_vwap,
-                                source_bars=_candles_1m.get_bars_source(ticker),
-                            )
-                            if _vwap_f is not None:
-                                log.debug(
-                                    "VWAP: %s computed from %s bars: %.4f",
-                                    ticker,
-                                    _vwap_source_bars,
-                                    _vwap_f,
-                                )
-                    if _vwap_f is None:
-                        _pl_vwap = getattr(price_levels, "vwap", None)
-                        _n_bars = len(_bars_for_vwap) if _bars_for_vwap else 0
                         # Schwab index symbols ($SPX, $VIX, $NDX, etc.) don't carry intraday
                         # volume data; VWAP (price × volume sum) cannot compute by definition.
-                        # Steady-state DEBUG for those; WARNING for real tickers where bars
-                        # present + VWAP failed indicates a data-quality issue.
+                        # Steady-state DEBUG for those; WARNING for real tickers.
                         _is_index_symbol = isinstance(ticker, str) and ticker.startswith("$")
                         _vwap_log = log.debug if _is_index_symbol else log.warning
                         _vwap_log(
-                            "VWAP failed for %s: price_levels=%s bars=%s — writing NULL",
-                            ticker, _pl_vwap, _n_bars,
+                            "VWAP absent for %s (canonical snapshot generation=%s) — writing NULL",
+                            ticker, getattr(price_levels, "level_generation", None),
                         )
                     _vwap_dist = round(spot_f - _vwap_f, 4) if _vwap_f else None
     
@@ -7364,8 +8094,9 @@ def _fetch_state(
                     _dist_gi  = _d(_gi)
                     _dist_di  = _d(_di)
     
-                    # Pin width (call gamma wall - put gamma wall)
-                    _pin_w = round(_cgw - _pgw, 4) if (_cgw and _pgw) else None
+                    # Pin width (call gamma wall - put gamma wall) — RC-345/F20 one authority
+                    from math_levels import compute_pin_width_pts
+                    _pin_w = compute_pin_width_pts(_cgw, _pgw)
     
                     # Constituents from market context — wrap each fetch independently for partial results
                     mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)
@@ -7508,11 +8239,6 @@ def _fetch_state(
                         put_call_oi_ratio=pcr_val,
                         oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
                         gamma_pin=getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None,
-                        gamma_pin_semantic=(
-                            GAMMA_PIN_SEMANTIC
-                            if consensus_summary and getattr(consensus_summary, "gamma_pin", None) is not None
-                            else None
-                        ),
                         spy_spot=mkt_ctx.spy_last, spy_chg_pct=mkt_ctx.spy_chg_pct,
                         spy_zone=_etf_zone(mkt_ctx.spy_chg_pct), spy_vwap_side=None, spy_net_delta=None,
                         qqq_spot=mkt_ctx.qqq_last, qqq_chg_pct=mkt_ctx.qqq_chg_pct,
@@ -7679,7 +8405,8 @@ def _fetch_state(
                         bond_signal=getattr(mkt_ctx, 'bond_signal', None),
                         # ── Order Flow Signals ─────────────────────────────────
                         vol_oi_ratio=_vol_oi_ratio.get("ratio"),
-                        flow_imbalance=_flow_imbalance.get("normalized"),
+                        flow_imbalance=_flow_imb_norm,
+                        flow_imbalance_source=_flow_imb_source,  # RC-345/F11: persist economic book identity
                         smart_money_score=_smart_money.get("score"),
                         smart_money_direction=_smart_money.get("direction"),
                         iv_model_spread=_iv_model_spread.get("spread"),
@@ -7709,6 +8436,73 @@ def _fetch_state(
                         breaking_news_headline=(getattr(ms, "news_context", None) or {}).get("breaking_news_headline"),
                         pre_market_sentiment=(getattr(ms, "news_context", None) or {}).get("pre_market_sentiment"),
                     )
+                    # FIND-GAMMA-FULLCHAIN-STRIKES-V1: once/day morning *wide*
+                    # near-term chain (strike_count=GEX_FULL_CHAIN_STRIKE_COUNT).
+                    # Does NOT reuse the live UI 20-strike ``contracts`` list.
+                    # Idempotent before fetch; never widens option_chain_json;
+                    # try/except so live path is untouched on any failure.
+                    try:
+                        _gex_tk = str(ticker).upper()
+                        if _gex_tk in ("SPY", "QQQ", "IWM"):
+                            from calibration.option_chain_morning_full import (
+                                GEX_FULL_CHAIN_STRIKE_COUNT as _GEX_STRIKES,
+                                MORNING_END_MINS as _GEX_END,
+                                MORNING_START_MINS as _GEX_START,
+                                SOURCE_WIDE as _GEX_SRC,
+                                et_date_and_mins as _gex_et,
+                                has_morning_full_capture,
+                                maybe_persist_morning_full_chain,
+                            )
+                            from db import DB_PATH as _gex_db_path
+
+                            _gex_date, _gex_mins = _gex_et(float(_snap_ts))
+                            if _GEX_START <= _gex_mins <= _GEX_END and not has_morning_full_capture(
+                                _gex_db_path, _gex_tk, _gex_date
+                            ):
+                                _wide_resp, _, _ = _gated_safe_get_chain(
+                                    client,
+                                    ticker,
+                                    # The once-daily WIDE research capture deliberately takes the
+                                    # maximum vendor-safe width, not this ticker's minimum
+                                    # sufficient width: its whole purpose is to preserve strikes
+                                    # the live faucet would trim.
+                                    strike_count=_GEX_STRIKES,  # chain-width-faucet-ok: wide research capture takes max width by design
+                                    priority=False,
+                                )
+                                _wide_contracts: list = []
+                                if (
+                                    _wide_resp is not None
+                                    and getattr(_wide_resp, "status_code", None) == 200
+                                ):
+                                    _wj = _wide_resp.json()
+                                    for _side_key in ("callExpDateMap", "putExpDateMap"):
+                                        _side_map = _wj.get(_side_key) or {}
+                                        if not isinstance(_side_map, dict):
+                                            continue
+                                        for _exp_map in _side_map.values():
+                                            if not isinstance(_exp_map, dict):
+                                                continue
+                                            for _strike_list in _exp_map.values():
+                                                if not isinstance(_strike_list, list):
+                                                    continue
+                                                for _ct in _strike_list:
+                                                    if isinstance(_ct, dict):
+                                                        _wide_contracts.append(dict(_ct))
+                                if _wide_contracts:
+                                    maybe_persist_morning_full_chain(
+                                        _gex_db_path,
+                                        ticker=_gex_tk,
+                                        contracts=_wide_contracts,
+                                        spot=float(spot) if spot is not None else None,
+                                        ts_utc=float(_snap_ts),
+                                        source=_GEX_SRC,
+                                    )
+                    except Exception as _gex_chain_e:
+                        log.warning(
+                            "option_chain_morning_full persist failed ticker=%s: %s",
+                            ticker,
+                            _gex_chain_e,
+                        )
                     _mh_live = getattr(ms, "movement_head_probs", None)
                     if isinstance(_mh_live, dict):
                         for _k, _v in _mh_live.items():
@@ -7798,6 +8592,17 @@ def _fetch_state(
                         log.warning("SnapshotRow field drift detected; dropping unsupported fields: %s", _dropped_snapshot_fields)
                     if _xid_refused:
                         _snapshot_row_insert_release(ticker, _snap_ts)
+                    elif not is_capturable_session():
+                        # RC-48: off-hours (overnight / weekend / full holiday) snapshot carries
+                        # no signal — options don't trade and spot doesn't move — is excluded from
+                        # training (ml_train RTH filter) and read by nothing. The SSE _fetch_state
+                        # path had no session gate (only the 1/min throttle), so a viewer left
+                        # connected off-hours wrote a row every minute. Do not persist; release the
+                        # minute reservation so throttle bookkeeping stays clean. Premarket/RTH/
+                        # afterhours are unaffected (is_capturable_session is True for [04:00,20:00)
+                        # ET on a trading calendar day).
+                        _snapshot_row_insert_release(ticker, _snap_ts)
+                        log.debug("RC-48 off-hours snapshot skip: %s (session not capturable)", ticker)
                     else:
                         _snap = SnapshotRow(**{k: v for k, v in _snapshot_kwargs.items() if k in _snapshotrow_field_names})
                         _ed_db.insert_snapshot(_snap)
@@ -7813,15 +8618,16 @@ def _fetch_state(
                 # live path; bars re-seed from Schwab pricehistory after any gap and labels
                 # only advance when new rows exist.
                 #
-                # Lane-4 (2026-07-05): the bars upsert measured 8,090.8ms of the 10,760ms
-                # db_snapshot_write_accuracy stage (sqlite_tier1_ok op=upsert_1m_bars
-                # ticker=SPY exec_ms=8090.8; warm ~0.5s) while its return value is never
-                # read by the live payload. Bars persist + outcome backfill now run as ONE
-                # ordered task on the single-worker fill-outcomes executor: bars are durable
-                # before labels advance (same relative order as the previous synchronous
-                # form), the Tier C payload no longer blocks on persistence, and a dropped
-                # write self-heals via the re-seed contract above. _bars_persist is a fresh
-                # list copy (get_bars) of immutable completed Candles — race-free handoff.
+                # Lane-4 (2026-07-05) measured the bar write at 8,090.8ms of the 10,760ms
+                # db_snapshot_write_accuracy stage and moved it off the synchronous path onto
+                # this ordered background task.
+                # RC-69 (2026-07-27) went further and removed the bar write from this render
+                # path ENTIRELY. Persisting bars here made COLLECTION a side-effect of DISPLAY:
+                # a ticker only got bars while it was on screen. The bar collection service
+                # (_bars_loop) is now the single writer, running the whole enrolled universe on
+                # its own cadence, so bars are durable independently of any render and the
+                # old upsert-before-fill ordering race disappears with the upsert.
+                # What remains on this task is outcome labelling for the snapshot just written.
                 # Schwab CSV authority checked: yes
                 # CSV row(s): pricehistory.candles[].open/high/low/close/volume — persistence
                 #   scheduling only; no market field read, derivation, emission, or
@@ -7831,14 +8637,16 @@ def _fetch_state(
                 #   fill_outcomes ordering preserved by the max_workers=1 executor.
                 # SCHWAB_CSV_CHECKED
                 if _do_insert:
-                    _bars_persist = _candles_1m.get_bars(ticker)
-
+                    # RC-69 SINGLE BAR FAUCET: this render path no longer PERSISTS bars. It used
+                    # to be the only writer, which made bar collection a side-effect of display —
+                    # MEASURED 2026-07-27 11:59 ET: SPY (on screen) bar lag 3.1 min vs QQQ 19.1
+                    # and IWM 19.1 (off screen), while all three had ~1.0 min snapshot lag, and
+                    # 39.8% of all snapshots carry unfilled outcomes because the forward bars they
+                    # needed were never written. `_bars_loop` is now the ONE writer of
+                    # price_bars_1m, running for every enrolled ticker regardless of the viewport.
+                    # The accumulator is still ticked above for this card's own forming candle.
+                    # fill_outcomes stays here: it labels the snapshot just inserted.
                     def _bg_persist_bars_then_fill_outcomes() -> None:
-                        try:
-                            if _bars_persist:
-                                get_db().upsert_1m_bars(ticker, _bars_persist)
-                        except Exception as _pe:
-                            log.warning("upsert_1m_bars %s: %s", ticker, _pe)
                         try:
                             get_db().fill_outcomes(ticker, CANONICAL_TIMEFRAME, _snap_ts)
                         except Exception as ex:
@@ -7913,24 +8721,22 @@ def _fetch_state(
         _stage_marks.append(("db_snapshot_write_accuracy", time.perf_counter()))
 
         try:
-            from calibration.v2_live_logging import append_live_v2_calibration_decision
+            from calibration.v2_live_logging import (
+                LIVE_ADVISORY_V2_TAIL_APPEND,
+                append_live_v2_calibration_decision,
+                resolve_live_v2_calibration_tail_action,
+            )
             from db import DB_PATH as _calibration_db_path
 
             _xid_pair_cal = getattr(ms, "_execution_identity_pair", None)
-            if _xid_pair_cal is None and not _xid_model_derived:
-                # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 (idle/non-model
-                # contract): a cycle that is not model-derived performs NO
-                # governed calibration write — an EXPECTED non-write, not a
-                # refused defect (the writer's identity refusal remains the
-                # fail-closed backstop for model-derived cycles).
-                from calibration.v2_live_logging import (
-                    LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
-                )
-
-                _v2_log_result = {
-                    "status": "skipped",
-                    "reason": LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
-                }
+            _tail_action = resolve_live_v2_calibration_tail_action(
+                model_derived_cycle=bool(_xid_model_derived),
+                has_execution_identity=_xid_pair_cal is not None,
+                snap_insert_landed=bool(_snap_insert_landed),
+            )
+            if _tail_action != LIVE_ADVISORY_V2_TAIL_APPEND:
+                # Idle/non-model skip or FP-24 no-colocated-snapshot skip.
+                _v2_log_result = {"status": "skipped", "reason": _tail_action}
             else:
                 _v2_log_result = append_live_v2_calibration_decision(
                     db_path=_calibration_db_path,
@@ -7938,6 +8744,7 @@ def _fetch_state(
                     v2_decision=v2_decision_for_log,
                     decision_id=_xid_pair_cal[0] if _xid_pair_cal else None,
                     execution_identity_sha256=_xid_pair_cal[1] if _xid_pair_cal else None,
+                    colocated_snapshot_ts_utc=float(_snap_ts),
                 )
             if _v2_log_result and _v2_log_result.get("status") != "ok":
                 log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
@@ -7989,9 +8796,6 @@ def _fetch_state(
     ms_dict["analytics_partial_tier_c"] = False
     ms_dict["expiries"] = [e for e in expiries if e >= _today_str]
     ms_dict["selected_exp"] = selected_exp
-    from planes.context_light import stamp_analytics_cache_identity
-
-    stamp_analytics_cache_identity(ms_dict, ticker, selected_exp)
     ms_dict["quote_source_detail"] = {
         "spot": "lastPrice" if parsed_last and parsed_last > 0 else ("mark" if parsed_mark and parsed_mark > 0 else "unavailable_missing_last_and_mark"),
         "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
@@ -8048,16 +8852,9 @@ def _fetch_state(
         except (TypeError, ValueError):
             return None
 
-    ms_dict["kl_call_gamma_wall"]  = _fv(getattr(w0, "call_gamma_wall",  None))
-    ms_dict["kl_put_gamma_wall"]   = _fv(getattr(w0, "put_gamma_wall",   None))
-    ms_dict["kl_gamma_inflection"] = _fv(getattr(cs, "gamma_inflection", None))
-    ms_dict["kl_call_delta_wall"]  = _fv(getattr(w0, "call_delta_wall",  None))
-    ms_dict["kl_put_delta_wall"]   = _fv(getattr(w0, "put_delta_wall",   None))
-    ms_dict["kl_delta_inflection"] = _fv(getattr(cs, "delta_inflection", None))
-    ms_dict["kl_call_oi_wall"]     = _fv(getattr(w0, "call_oi_wall",     None))
-    ms_dict["kl_put_oi_wall"]      = _fv(getattr(w0, "put_oi_wall",      None))
-    ms_dict["kl_call_vanna_wall"]  = _fv(getattr(w0, "call_vanna_wall",  None))
-    ms_dict["kl_put_vanna_wall"]   = _fv(getattr(w0, "put_vanna_wall",   None))
+    # RC-128 (One Levels Faucet): the wall/level assignments that lived here were DELETED,
+    # not overridden — _terrain_kl_overlay below is the ONLY writer of every SSOT level key.
+    # Placement was the bug: any assignment after the overlay resurrected the dual book.
 
     # ── Wall strengths (formatted strings) ────────────────────────────────────
     def _fs(v):
@@ -8078,24 +8875,31 @@ def _fetch_state(
         except (TypeError, ValueError):
             return "—"
 
-    ms_dict["kl_call_gamma_str"]  = _fs(getattr(w0, "call_gamma_strength", None))
-    ms_dict["kl_put_gamma_str"]   = _fs(getattr(w0, "put_gamma_strength",  None))
-    ms_dict["kl_call_delta_str"]  = _fs(getattr(w0, "call_delta_strength", None))
-    ms_dict["kl_put_delta_str"]   = _fs(getattr(w0, "put_delta_strength",  None))
-    ms_dict["kl_call_oi_str"]     = _fs(getattr(w0, "call_oi_strength",    None))
-    ms_dict["kl_put_oi_str"]      = _fs(getattr(w0, "put_oi_strength",     None))
-    ms_dict["kl_call_vanna_str"]  = _fs(getattr(w0, "call_vanna_strength", None))
-    ms_dict["kl_put_vanna_str"]   = _fs(getattr(w0, "put_vanna_strength",  None))
+    # RC-128: strength strings deleted with their book — a dollar strength computed from the
+    # analytics chain beside an SSOT strike is the dual-book lie in a smaller cell. The
+    # overlay blanks every strength it does not own.
 
     # ── New institutional levels ───────────────────────────────────────────────
-    ms_dict["kl_gamma_pin"]    = _fv(getattr(cs, "gamma_pin", None))
-    _stamp_gamma_pin_consumer_copy(ms_dict)
-    ms_dict["kl_hvl"]          = _fv(_hvl)
-    ms_dict["kl_max_pain"]     = _fv(_max_pain)
-    ms_dict["kl_hvl_str"]      = _fs(hvl_gamma_strength(exposures, _hvl))
-    ms_dict["kl_max_pain_str"] = _foi(max_pain_oi_strength(exposures, _max_pain))
-    ms_dict["kl_oi_center"]    = _fv(getattr(cs, "oi_center", None))
-    ms_dict["kl_gamma_flip"]   = _fv(_gamma_flip)
+    # RC-128: pin/hvl/max-pain/flip/oi_center and their strength strings deleted — the
+    # overlay below is the only writer for the SSOT set and blanks unowned strengths.
+    # v23: the flip CONFIDENCE writes that lived here were the last half of the dual book —
+    # narrow-analytics confidence stamped beside a terrain flip strike. Deleted, not
+    # overridden; the overlay now writes kl_gamma_flip_confidence from the SAME terrain
+    # payload as the strike. kl_gamma_flip_diag had ZERO consumers repo-wide (client,
+    # tests, server reads all enumerated 2026-07-29) — an orphan narrow-book key, deleted.
+
+    # ── Terrain read: single source of truth (RC-33) ─────────────────────────
+    # Terrain regime/posture/headline/lines are served ONLY by /api/terrain
+    # (terrain_engine.compute_terrain) on the wide-capture multi-expiry chain.
+    # This analytics-state pipeline used to attach a SECOND terrain read computed
+    # on the selected-expiry (0DTE) slice alone — a chain too narrow to trust, so
+    # it fail-closed to UNAVAILABLE/STAND_ASIDE and contradicted the card's
+    # SHORT_GAMMA_TREND for the same ticker at the same instant. Those four
+    # terrain_* fields were read by nothing (whole-repo consumer audit) and are
+    # removed: one terrain, one chain. The narrow-chain confidence gate in
+    # compute_gamma_flip_v2 stays as the fail-closed backstop — the fix is
+    # single-source, not gate-weakening (operator decision 2026-07-24).
+
     _net_gex_raw = getattr(cs, "net_gamma", None) if cs else None
     try:
         _net_gex_f = float(_net_gex_raw) if _net_gex_raw is not None else None
@@ -8124,12 +8928,20 @@ def _fetch_state(
     _em_lo_straddle = _fv(_em_straddle.get("lower"))
     _em_up_iv = _fv(_em_iv.get("upper"))
     _em_lo_iv = _fv(_em_iv.get("lower"))
-    ms_dict["kl_em_upper"] = _em_up_straddle or _em_up_iv
-    ms_dict["kl_em_lower"] = _em_lo_straddle or _em_lo_iv
+    # RC-128 / E-34 closed: kl_em_* now comes ONLY from the terrain sigma band via the
+    # overlay. The straddle/IV figures stay published as em_straddle_* — a diagnostic that
+    # never shares the level vocabulary — and mc_em_anchor keeps its consumer.
+    ms_dict["em_straddle_upper_diag"] = _em_up_straddle or _em_up_iv
+    ms_dict["em_straddle_lower_diag"] = _em_lo_straddle or _em_lo_iv
     ms_dict["kl_em_anchor"] = _kl_em_anchor
     ms_dict["mc_em_anchor"] = _kl_em_anchor
     ms_dict["mc_iv_source"] = _mc_iv_source
     ms_dict["kl_gamma_voids"]  = _gamma_voids or []
+    # RC-122: applied AFTER every kl_* assignment above (a first placement two pages up was
+    # silently overwritten by the pin/hvl/flip writes below it — placement IS the fix here).
+    # The gamma-family values were computed from the narrow analytics chain; the screen gets
+    # ONE book (terrain SSOT) or an honest blank.
+    _terrain_kl_overlay(ms_dict, ticker)
     if not _gamma_voids:
         # Diagnostic: why no voids?
         _n_strikes = len(exposures)
@@ -8183,9 +8995,10 @@ def _fetch_state(
     try:
         from math_exposure import parity_f_minus_spot_from_contracts
         _parity_resid = parity_f_minus_spot_from_contracts(contracts_use, spot=spot_f)
-        if _parity_resid is None:
-            ms_dict["kl_synth_fwd"] = None
-        elif abs(_parity_resid) > PARITY_RESID_MIN:
+        # RC-301: None means the residual could not be computed from this chain, which is
+        # not the same as a residual of zero. It used to arrive as 0.0 and fall under the
+        # threshold, so the right thing happened for the wrong reason.
+        if _parity_resid is not None and abs(_parity_resid) > PARITY_RESID_MIN:
             ms_dict["kl_synth_fwd"]       = round(spot_f + _parity_resid, 2)
             ms_dict["kl_synth_fwd_resid"] = round(_parity_resid, 4)
             ms_dict["kl_synth_fwd_side"]  = "CALL" if _parity_resid > 0 else "PUT"
@@ -8195,11 +9008,18 @@ def _fetch_state(
     except Exception:
         ms_dict["kl_synth_fwd"] = None
 
-    # ── Price levels (VWAP / PDH / PDL / PDC / POC/VAH/VAL) ───────────────────
-    # F31: absent/zero → None (DOM renders —). F15: engine POC/VAH/VAL reach /api/state.
-    ms_dict.update(stamp_price_level_fields(price_levels))
-    ms_dict["orb_high"] = _fv(getattr(price_levels, "orb_high", None))
-    ms_dict["orb_low"]  = _fv(getattr(price_levels, "orb_low",  None))
+    # ── Price levels (VWAP / PDH / PDL / PDC / ORB) ───────────────────────────
+    # PDH_PRECISION kill (one-faucet-closeout-v1): the LEVEL family travels RAW — the state
+    # payload must never round what /api/levels serves unrounded (MEASURED same instant:
+    # state pdh 748.89 vs levels PDH 748.895 — one number, two precisions on two surfaces).
+    # Rounding is a RENDER concern; consumers format. _fv (2dp) stays for non-level fields.
+    from numeric_contract import float_finite_or_none as _raw_level
+    ms_dict["vwap"]     = _raw_level(getattr(price_levels, "vwap",     None))
+    ms_dict["pdh"]      = _raw_level(getattr(price_levels, "pdh",      None))
+    ms_dict["pdl"]      = _raw_level(getattr(price_levels, "pdl",      None))
+    ms_dict["pdc"]      = _raw_level(getattr(price_levels, "pdc",      None))
+    ms_dict["orb_high"] = _raw_level(getattr(price_levels, "orb_high", None))
+    ms_dict["orb_low"]  = _raw_level(getattr(price_levels, "orb_low",  None))
 
     # ── Expected Move ────────────────────────────────────────────────────────
     ms_dict["em_straddle"]       = _fv(_em_straddle.get("straddle"))
@@ -8336,7 +9156,13 @@ def _fetch_state(
     # ── Order Flow Signals ────────────────────────────────────────────────────
     ms_dict["vol_oi_ratio"]          = _vol_oi_ratio.get("ratio")
     ms_dict["vol_oi_label"]          = _vol_oi_ratio.get("label")
-    ms_dict["flow_imbalance"]        = _flow_imbalance.get("normalized")
+    ms_dict["flow_imbalance"]        = _flow_imb_norm
+    # RC-345 / F11: the SOURCE book travels beside the value so a consumer knows whether this
+    # flow_imbalance is 'book' (bid/ask size), 'volume' (call/put traded volume) or 'none'.
+    # Book and volume imbalance are different economic truths; the numeric value alone cannot
+    # tell them apart, and this authority returns book-preferred with a governed volume
+    # fallback — the same on the live and backfill paths, so the union is train/serve-consistent.
+    ms_dict["flow_imbalance_source"] = _flow_imb_source
     ms_dict["flow_imbalance_label"]  = _flow_imbalance.get("label")
     ms_dict["smart_money_score"]     = _smart_money.get("score")
     ms_dict["smart_money_direction"] = _smart_money.get("direction")
@@ -8423,23 +9249,39 @@ def _fetch_state(
         art = _artifacts.get(name, {"exists": False, "has_provenance": False, "issues": []})
         meta_exists = meta_path.exists()
         if not meta_exists:
-            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": None, "val_accuracy": None, "metric_name": None, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": None, "version": "—", "ticker": _dashboard_ticker}
         if not art.get("exists", False):
-            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": None, "val_accuracy": None, "metric_name": None, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": None, "version": "—", "ticker": _dashboard_ticker}
         if not art.get("has_provenance", False):
             issues = "; ".join(art.get("issues", [])) or "Metadata lacks provenance"
-            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": None, "val_accuracy": None, "metric_name": None, "version": "—", "ticker": _dashboard_ticker}
+            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": None, "version": "—", "ticker": _dashboard_ticker}
         try:
             _m = json.loads(meta_path.read_text())
-            from numeric_contract import float_finite_or_none
-            from verify_active_models import model_health_edge_from_meta
-
-            edge = model_health_edge_from_meta(_m, edge_key)
-            version = _m.get(version_key) or "—"
-            val_accuracy = float_finite_or_none(_m.get("val_accuracy"))
+            # RC-285: no `, 0` default. A model whose metadata omits the metric has not
+            # scored zero edge, it has not been scored — and my earlier annotation defending
+            # 0 as "this endpoint's existing missing convention" described the defect rather
+            # than justifying it. `status` is no longer load-bearing for reading `edge`.
+            # RC-291: NO val_accuracy fallback. RC-285 removed the `, 0` default and then
+            # substituted a DIFFERENT METRIC — accuracy is not edge over a baseline, so a
+            # coin-flip model with val_accuracy 0.55 published `edge: 55.0` and the UI counts
+            # every LIVE model toward "N approved". Substituting a different measurement is
+            # worse than reporting none, because none is legible and a wrong one is not.
+            from numeric_contract import float_finite_or_none as _fin_edge
+            raw = _fin_edge(_m.get(edge_key))
+            edge = None if raw is None else (raw * 100 if edge_key == "val_accuracy" else raw)
+            version = _m.get(version_key, _m.get("model_version", "—"))
         except Exception:
-            edge, version, val_accuracy = None, "—", None
-        return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "val_accuracy": val_accuracy, "metric_name": "val_accuracy" if display_name == "LSTM" else edge_key, "version": version or "—", "ticker": _dashboard_ticker}
+            edge, version = None, "—"
+        # RC-293: compliant with NO edge measurement is not APPROVED. RC-291 made `edge`
+        # an honest None and left status LIVE, and static/index.html counts every LIVE model
+        # toward "N approved" — so a model nobody scored still read as approved, which was
+        # the substance of the finding rather than the field's type.
+        if edge is None:
+            return {"model": display_name, "status": "UNSCORED",
+                    "status_reason": "Binary + metadata + provenance compliant, but no edge "
+                                     "metric recorded — not scored, so not approved",
+                    "edge": None, "version": version or "—", "ticker": _dashboard_ticker}
+        return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "version": version or "—", "ticker": _dashboard_ticker}
 
     _xgb_meta = _active_dir / f"xgb_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
     _lstm_meta = _active_dir / f"lstm_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
@@ -8453,9 +9295,9 @@ def _fetch_state(
     except Exception:
         _model_health.append({"model": "Transformer", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
     try:
-        _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "edge_pp", "model_type"))
+        _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "val_accuracy", "model_type"))
     except Exception:
-        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": None, "val_accuracy": None, "metric_name": "val_accuracy", "version": "—", "ticker": _dashboard_ticker})
+        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
 
     # MC + Rules + Regime + Fusion (always live)
     for m in [{"model": "Monte Carlo", "version": "10K paths"}, {"model": "Regime Engine", "version": "8 families"}, {"model": "Bayesian Fusion", "version": "6 posteriors"}]:
@@ -8809,6 +9651,9 @@ from contextlib import asynccontextmanager
 async def _app_lifespan(app):
     """Startup and shutdown: logger, order flow, SSE, ML scheduler."""
     # ── Startup ─────────────────────────────────────────────────────────────
+    # Installed FIRST: until these exist, Ctrl+C depends on uvicorn's graceful path
+    # completing, and that path joins background workers which may be blocked.
+    _install_signal_handlers()
     _startup_analytics_executor()
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
@@ -8899,6 +9744,19 @@ async def _app_lifespan(app):
     # DB-backed logging-universe load here in the lifespan (kept off the module-import path).
     start_logger()
     log.info(f"Background logger started — core tickers: {CORE_TICKERS}")
+
+    # Terrain collection — its OWN loop, never gated on operator mode. The background
+    # logger runs the full model stack and therefore had to be throttled while a viewer
+    # is connected; terrain is ~5 ms of math plus one chain call per ticker, so it keeps
+    # every ticker's levels fresh regardless of what the model stack is doing.
+    start_terrain_loop()
+    # RC-69: bar collection is its own always-on service — never a side-effect of rendering.
+    start_bars_loop()
+    start_terrain_prewarm()
+    log.info("Terrain loop started — %.0fs cadence, %d workers, per-ticker strike width "
+             "derived from measured geometry (%d..%d, cold start %d)",
+             TERRAIN_REFRESH_SEC, TERRAIN_WORKERS, TERRAIN_STRIKE_COUNT_MIN,
+             TERRAIN_STRIKE_COUNT_MAX, TERRAIN_STRIKE_COUNT_COLD_START)
 
     # ML scheduler is OPT-IN for the operator console (2026-07-03): the unconditional
     # nightly 16:15 ET run trained/promoted models from whatever console instance was
@@ -8992,6 +9850,15 @@ async def _app_lifespan(app):
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
+    # BOUNDED BY CONSTRUCTION. Everything below joins background workers
+    # (`shutdown(wait=True)`, `join_timeout=40`), and `cancel_futures=True` only drops
+    # QUEUED work -- it cannot interrupt a RUNNING one. A single worker inside a slow
+    # Schwab call or a long query therefore blocked the whole chain, so Ctrl+C was
+    # accepted and the console never exited (operator, 2026-07-20). Python then makes it
+    # worse: concurrent.futures registers an atexit hook that joins every executor's
+    # non-daemon workers, so even abandoning the lifespan would not free the interpreter.
+    # The watchdog guarantees the process dies whether or not the joins below return.
+    _arm_shutdown_watchdog()
     _session_open_anchor_warm_stop.set()
     _anchor_quote_lane_refresh_stop.set()
     _shutdown_analytics_executor(wait=True)
@@ -9004,6 +9871,8 @@ async def _app_lifespan(app):
     except Exception as e:
         log.warning("Order flow streaming shutdown: %s", e)
 
+    stop_terrain_loop()
+    stop_bars_loop()
     stop_logger()
     # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf pool shuts down AFTER
     # the analytics executor above — no new leaf submits can arrive first (the
@@ -9241,9 +10110,36 @@ def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | None =
             return JSONResponse({"ok": True, "mode": "test_count", "ticker": ticker,
                                  "level_name": level_name, "level_value": float(level_value),
                                  "lookback_hours": float(lookback_hours), **counts})
-        rows = edb.get_recent_crosses(ticker=ticker, n=int(n))
+        # RC-88: COLLAPSE COINCIDENT CROSSINGS. Price crossing one strike writes one row per
+        # NAMED level sitting there, and the producer's debounce is keyed on level_name, so it
+        # cannot see that eight names share a value. MEASURED 2026-07-27: 4,747 of 8,108 stored
+        # rows (58.5%) share a (ticker, ts_utc, level_value) with another; IWM 295.0 wrote 8 rows
+        # for a single tick. The chart asks for n=8, so one coincident crossing filled every slot
+        # and hid every other event. That several concepts coincide is real information — it is
+        # carried in `level_names` — but it is ONE crossing, not eight. Collapsed at the READ
+        # boundary so the stored history stays intact for anything that needs per-level rows.
+        raw = edb.get_recent_crosses(ticker=ticker, n=max(int(n) * 8, 64))
+        merged: list[dict] = []
+        seen: dict[tuple, dict] = {}
+        for r in raw:
+            key = (r.get("ts_utc"), r.get("level_value"), r.get("direction"))
+            hit = seen.get(key)
+            if hit is None:
+                row = dict(r)
+                row["level_names"] = [r.get("level_name")]
+                row["coincident_levels"] = 1
+                seen[key] = row
+                merged.append(row)
+                continue
+            nm = r.get("level_name")
+            if nm and nm not in hit["level_names"]:
+                hit["level_names"].append(nm)
+                hit["coincident_levels"] = len(hit["level_names"])
+                # One event, one name on screen: say what it is rather than picking one arbitrarily.
+                hit["level_name"] = f"{len(hit['level_names'])} levels @ {r.get('level_value')}"
         return JSONResponse({"ok": True, "mode": "recent", "ticker": ticker,
-                             "n": int(n), "crosses": rows})
+                             "n": int(n), "crosses": merged[:int(n)],
+                             "collapsed_from": len(raw)})
     except Exception as exc:  # pragma: no cover — defensive ops surface
         log.warning("api_level_crosses failed ticker=%s: %s", ticker, exc)
         return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
@@ -9272,7 +10168,7 @@ def api_ops_calibration_rowcount():
             "calibration_decision_log rate WARN: last_24h=%d expected=%.0f ratio=%.2f (threshold=%.2f)",
             health.get("last_24h_count", 0),
             health.get("expected_per_24h", 0.0),
-            health.get("ratio") or 0.0,
+            health.get("ratio") or 0.0,  # silent-zero-ok: log.warning argument only — the same line already prints last_24h and expected, so a 0.00 ratio cannot be mistaken for a measurement
             health.get("warn_ratio", 0.0),
         )
     return JSONResponse({"ok": True, **health})
@@ -9447,7 +10343,7 @@ def api_governance_manual_promote(request: Request, payload: dict = Body(...)):
     hz = (body.get("horizon") or body.get("ml_horizon_slug") or "1c").strip().lower()
     target = (body.get("target_architecture") or "").strip().lower()
     op = (body.get("operator_id") or "").strip()
-    intent = (body.get("manual_intent") or "").strip()
+    intent = (body.get("manual_intent") or "").strip()   # external-key-ok: operator HTTP POST body
     if not ticker or target not in ("cascade", "parallel") or not op or not intent:
         return JSONResponse(
             status_code=400,
@@ -9607,15 +10503,18 @@ def _tier_c_analytics_json_response(
         ticker,
         data_cache_key[1] if data_cache_key else expiry,
     )
-    age = 0.0
-    if entry:
-        age = max(0.0, now - _analytics_generated_ts(entry))
+    # RC-282: this reached the RIGHT verdict for an undated entry by accident — `now - 0.0`
+    # is ~1.8e9 seconds, which trips the grace window. The rule is now stated instead of
+    # emerging from arithmetic on 1970, so it cannot flip if the sentinel ever changes.
+    gen_ts = _analytics_generated_ts(entry) if entry else None
+    age = None if gen_ts is None else max(0.0, now - gen_ts)
 
     has_body = bool(entry and entry.get("ms_dict"))
     # Stale-serve marker follows the honest grace window (missed cycle), same
     # authority as _attach_analytics_freshness_contract.
     stale = bool(
-        (not has_body) or (age >= float(ttl) * ANALYTICS_STALE_GRACE_CYCLES)
+        (not has_body) or age is None
+        or (age >= float(ttl) * ANALYTICS_STALE_GRACE_CYCLES)
     )
 
     # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: when a live SSE
@@ -9623,7 +10522,8 @@ def _tier_c_analytics_json_response(
     # and REST is a read-only cache view. force=true (manual REFRESH) and the
     # cold/no-viewer poll path still self-schedule.
     need_refresh = bool(
-        force or (not has_body) or ((not sse_live) and (age >= ttl))
+        force or (not has_body) or age is None       # RC-282: undatable => recompute
+        or ((not sse_live) and (age >= ttl))
     )
 
     if has_body:
@@ -9750,6 +10650,2539 @@ async def get_live_state(
     return JSONResponse(payload)
 
 
+# ── TERRAIN COLLECTION LOOP ──────────────────────────────────────────────────
+# 5-whys root cause (2026-07-19): 24 of 31 tickers refreshed only every ~11 minutes
+# because `_live_operator_mode_active()` HARD-SKIPS non-SPY/QQQ/IWM background rotation
+# whenever a viewer is connected -- a gate that exists because `_fetch_state` runs the
+# full model stack and would otherwise compete with the live UI.
+#
+# Terrain does not run the model stack. Measured: ~5 ms of math per ticker plus one chain
+# call each, i.e. ~31 req/min against a ~120 req/min Schwab budget. So terrain gets its
+# OWN loop, is never gated on operator mode, and cannot be starved by inference work.
+TERRAIN_REFRESH_SEC: float = 60.0
+# Match the 2-slot Schwab chain gate. 4 workers × 200-strike payloads queued ~51 tickers
+# and starved the operator card (gate timeouts, Tier-C partial/STALE) at the open.
+TERRAIN_WORKERS: int = 2
+RADAR_NEAR_PCT: float = 0.0020   # at the wall
+RADAR_WATCH_PCT: float = 0.0075  # in the sector, worth watching
+# Strike count is DERIVED per instrument, never tabulated — see math_levels.
+# required_strike_count(). The bar is the flip's +/-5% span requirement
+# (GAMMA_FLIP_MIN_SPAN_PCT); how many strikes that takes depends on the instrument's own
+# strike spacing, so it is computed from measured geometry rather than assumed.
+#
+# MEASURED 2026-07-20 across 52 stored chains: the previous hardcoded table was wrong in
+# BOTH directions — $SPX needed 150 and got 40; IWM needed 30 and got 80; ~48 equities
+# needed under 20 and got 40. Over-fetching is not free: it saturates the 2-slot chain
+# gate (observed starving the operator card at the open) and every payload is persisted
+# twice (RC-6).
+#: Floor. Below this, wall/pin selection has too few strikes to be meaningful regardless
+#: of what the span arithmetic asks for; it is also the live UI's own chain width.
+TERRAIN_STRIKE_COUNT_MIN: int = 20
+#: Ceiling, set by the VENDOR not by us. Schwab returned HTTP 502 for SPY/QQQ at
+#: strikeCount=200 at the 2026-07-20 open; 100 was observed working the same session.
+#: A ticker whose requirement exceeds this is fetched at the ceiling and honestly reports
+#: LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
+#: RAISED 100 -> 120, MEASURED 2026-07-26 by `python tools/probe_chain_depth_v1.py` against the
+#: live vendor (the previous 100 was an ASSUMPTION: 200 had 502'd and nothing between was tried).
+#: Ladder result: SPY 120 OK / 150 -> HTTP 502; QQQ 120 OK / 150 -> 502; IWM OK to 250 (saturates
+#: at 246 distinct strikes = its whole chain). 120 is therefore the highest UNIVERSALLY safe
+#: request. What it delivers is far wider than the span bar suggests, because strikeCount applies
+#: PER EXPIRY across ~35 expiries: SPY at 120 returned 259 distinct strikes spanning -40.5%/+44.8%
+#: of spot (8,118 contracts), vs 219 strikes / -33.7%/+33.3% at 100.
+#: KNOWN GAP: $SPX 502s even at 100, so it is not truncated — it fails outright and needs its own
+#: LOWER ladder probe (RC-63); raising this ceiling does not help it.
+TERRAIN_STRIKE_COUNT_MAX: int = 120
+#: Used only until this ticker's geometry is known. The prewarm seeds geometry from
+#: stored chains, so this normally applies to a ticker we have never seen.
+TERRAIN_STRIKE_COUNT_COLD_START: int = 40
+
+#: ticker -> (spot, strike_increment), learned from chains we have already fetched.
+_strike_geometry: dict[str, tuple[float, float]] = {}
+_strike_geometry_lock = threading.Lock()
+#: ticker -> distinct expiry count, learned the same way (guarded by the same lock).
+_strike_expiry_count: dict[str, int] = {}
+
+#: RC-63 — the vendor's REAL limit, MEASURED 2026-07-26 (`python tools/probe_chain_depth_v1.py`).
+#: Schwab caps the number of CONTRACTS in a chain response, not strikeCount: SPY returned 8,118
+#: contracts at strikeCount=120 and HTTP 502 at 150; QQQ 7,894 at 120 then 502; $SPX 502'd at 80
+#: with only 60 working (6,950 contracts) purely because it lists 55 expiries vs SPY's 35; IWM
+#: never failed even at 250 because its whole chain is 5,492. So a single global strikeCount
+#: ceiling is structurally wrong — it starves wide-expiry instruments and under-fetches narrow
+#: ones.
+#: VALUE CHOSEN BY BACK-TEST against those four measured ceilings, not by picking a round number:
+#: `strikeCount * 2 * expiries` UNDER-predicts the real payload for some instruments ($SPX
+#: returned 6,950 contracts where the estimate said 6,600), so a budget tuned to the largest
+#: success (SPY's 8,118) would have allowed $SPX 72 — above its measured 502 threshold of 60.
+#: 6,600 is the largest budget that reproduces EVERY measured ceiling without exceeding one:
+#: SPY 94 (safe vs 120), QQQ 97 (vs 120), $SPX 60 (exactly its max), IWM 100 (vs 250).
+#: Deliberately conservative: a 502 returns NO chain at all, while a slightly narrower request
+#: still delivers far more than the span bar needs (SPY at 94 still spans ~±31% of spot).
+SCHWAB_CHAIN_CONTRACT_BUDGET: int = 6600
+
+
+def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | None,
+                           *, date_window_narrowed: bool = False) -> bool:
+    """Remember this instrument's spot and strike spacing from a chain we just read.
+
+    Returns True when a geometry was stored, so callers can count outcomes without
+    reading the shared dict outside the lock (Cursor audit 2026-07-20: the seed loop
+    compared len() across calls unlocked while workers mutate under the lock).
+
+    RC-149 — `date_window_narrowed` exists because the expiry count is the DENOMINATOR of the
+    width budget, and learning it from a date-narrowed chain inverts the safety it provides.
+    A `to_date`-limited fetch returns only the expiries inside that window, so n_exp comes back
+    SMALL; a small n_exp makes `resolve_chain_strike_count` compute a LARGER ceiling; the next
+    cycle then asks for that wider chain over the FULL date range and blows the contract budget.
+    The narrower the rung that rescued us, the more certain the next request is to fail — a
+    feedback loop that cannot recover on its own. MEASURED 2026-07-30: $SPX's last success was
+    on `chain_basis: dte<=120` with contracts_used 6785, and every fetch after it returned
+    HTTP 502 for 2h10m. A narrowed chain's count is a FLOOR, never the truth, so it may seed an
+    unknown instrument but must never overwrite a full-basis measurement.
+    """
+    tk = (ticker or "").upper().strip()
+    if not tk or not contracts or spot is None or spot <= 0:
+        return False
+    incr = infer_strike_increment(contracts)
+    if incr is None:
+        return False
+    # RC-63: also learn how many EXPIRIES this instrument lists. The vendor's real limit is on
+    # the number of CONTRACTS returned, and contracts ~= strikeCount * 2 * expiries — so the
+    # safe strikeCount depends on the expiry count, not on the ticker.
+    n_exp = len({str(c.get("expirationDate"))[:10] for c in contracts
+                 if isinstance(c, dict) and c.get("expirationDate")})
+    with _strike_geometry_lock:
+        _strike_geometry[tk] = (float(spot), float(incr))
+        if n_exp > 0:
+            if not date_window_narrowed:
+                _strike_expiry_count[tk] = n_exp
+            else:
+                # a floor: raise a missing/too-low count, never lower a full-basis one
+                _strike_expiry_count[tk] = max(_strike_expiry_count.get(tk, 0), n_exp)
+    return True
+
+
+def resolve_chain_strike_count(ticker: str) -> int:
+    """THE strike-count faucet — one authority for EVERY chain fetch that feeds level math.
+
+    RC-59: the console/analytics path (`_fetch_state`) and the terrain path used to size their
+    chains differently — `_fetch_state` on a hardcoded CHAIN_STRIKE_COUNT=20 ("keep fast") and
+    terrain on measured geometry — so the SAME ticker was analysed at two widths and the levels
+    persisted to `snapshots` were narrower than the ones served on screen. Two widths is two
+    answers; the width is now derived HERE and nowhere else.
+
+    Right-sizing is not "always wider": MEASURED across 52 stored chains 2026-07-20, the old fixed
+    count was wrong in BOTH directions — ~48 equities need UNDER 20 and were fetched at 40, while
+    $SPX needs ~150 and got 40. Routing the console through this faucet therefore makes most
+    tickers CHEAPER, not more expensive, and widens only where the +/-5% span requires it.
+
+    Fail-closed: unknown geometry returns the cold-start default rather than a guessed width.
+    The MAX is a VENDOR limit, not ours (Schwab 502s above it) — a ticker needing more is fetched
+    at the ceiling and its levels self-report LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
+    """
+    tk = (ticker or "").upper().strip()
+    with _strike_geometry_lock:
+        geom = _strike_geometry.get(tk)
+        n_exp = _strike_expiry_count.get(tk)
+    if geom is None:
+        return TERRAIN_STRIKE_COUNT_COLD_START
+    need = required_strike_count(geom[0], geom[1])
+    if need is None:
+        return TERRAIN_STRIKE_COUNT_COLD_START
+    ceiling = TERRAIN_STRIKE_COUNT_MAX
+    if n_exp and n_exp > 0:
+        # RC-63: respect the VENDOR's contract budget, which is what actually 502s. A chain
+        # returns ~ strikeCount * 2 (call+put) * expiries contracts, so an instrument listing 55
+        # expiries ($SPX) must request a far smaller strikeCount than one listing 35 (SPY) to
+        # return the same payload. Deriving the ceiling per ticker replaces a global constant
+        # that was simultaneously too high for $SPX (502) and too low for everything else.
+        ceiling = min(ceiling, max(TERRAIN_STRIKE_COUNT_MIN,
+                                   SCHWAB_CHAIN_CONTRACT_BUDGET // (2 * n_exp)))
+    return max(TERRAIN_STRIKE_COUNT_MIN, min(ceiling, need))
+
+
+#: Back-compat alias — terrain's original name for the same authority.
+_terrain_strike_count = resolve_chain_strike_count
+
+_terrain_cache: dict[str, dict] = {}
+_terrain_cache_lock = threading.Lock()
+#: RC-126: the producer's last failure per ticker, so terrain_not_ready can say WHY instead
+#: of shrugging forever (how $SPX stayed dark a full session). Cleared on the next success.
+_terrain_refresh_last_error: dict[str, str] = {}
+#: RC-146: the producer's DELIBERATE skips, per ticker. Distinct channel from the error dict
+#: above on purpose — a budget-justified pause is not a failure, and collapsing the two would
+#: report a working scheduler as broken. Written by _terrain_loop at the moment it drops a
+#: ticker from the cycle, read by terrain_staleness so every stale payload carries the real
+#: reason. A degradation that records nothing is indistinguishable from a malfunction.
+_terrain_skipped_reason: dict[str, str] = {}
+_terrain_skip_lock = threading.Lock()
+
+#: RC-148 — QUARANTINE. Visibility is not sufficiency: RTY and XXT are rejected by the vendor
+#: (`chain fetch failed (HTTP 400)`, no spot, no expiries) yet the loop re-requested them every
+#: 60 s against a 2-slot chain gate, indefinitely. A permanently-rejected symbol is not a
+#: transient error to retry — it is a symbol that will never answer, and retrying it spends a
+#: scarce vendor slot the healthy book needs. Hard rejections (HTTP 4xx: the symbol itself is
+#: refused) quarantine PERMANENTLY after TERRAIN_QUARANTINE_HARD_FAILS consecutive hits and stay
+#: out until an operator re-admits. Soft failures (timeout / 5xx / 429: the venue is busy, the
+#: symbol is fine) back off exponentially and re-admit themselves.
+TERRAIN_QUARANTINE_HARD_FAILS: int = 3
+TERRAIN_QUARANTINE_SOFT_BASE_SEC: float = 60.0
+TERRAIN_QUARANTINE_SOFT_MAX_SEC: float = 900.0
+TERRAIN_QUARANTINE_LEDGER = Path(APP_DIR) / "reports" / "terrain_quarantine_ledger.jsonl"
+
+_terrain_quarantine: dict[str, dict] = {}
+_terrain_consecutive_fails: dict[str, int] = {}
+_terrain_quarantine_skips: dict[str, int] = {}
+_terrain_quarantine_lock = threading.Lock()
+
+
+def _quarantine_ledger_append(event: str, tk: str, payload: dict) -> None:
+    """Append-only record of every quarantine decision. A control the operator cannot audit
+    after the fact is a control they have to take on trust."""
+    try:
+        TERRAIN_QUARANTINE_LEDGER.parent.mkdir(parents=True, exist_ok=True)
+        row = {"ts_utc": time.time(), "et": now_et().isoformat(), "event": event,
+               "ticker": tk, **payload}
+        with open(TERRAIN_QUARANTINE_LEDGER, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except OSError as e:                      # a ledger that cannot write must not stop the loop
+        log.warning("quarantine ledger write failed for %s: %s", tk, e)
+
+
+def _classify_chain_failure(status_code: int | None, exc_name: str | None) -> str:
+    """"hard" = the vendor refuses THIS SYMBOL (4xx); "soft" = the venue is busy (timeout/5xx/429).
+
+    Fail-closed to "soft": an unrecognised failure must never earn a permanent quarantine, because
+    a wrong permanent verdict silently removes a real instrument from the board.
+    """
+    if status_code is not None:
+        code = int(status_code)
+        if code == 429:
+            return "soft"                     # rate limit is about US, never about the symbol
+        if 400 <= code < 500:
+            return "hard"
+        return "soft"
+    if exc_name in ("ReadTimeout", "ConnectTimeout", "TimeoutException"):
+        return "soft"
+    return "soft"
+
+
+def terrain_quarantine_state(ticker: str | None = None) -> dict:
+    """Snapshot of the quarantine book (whole book, or one ticker's entry)."""
+    with _terrain_quarantine_lock:
+        if ticker:
+            tk = ticker_storage_key(ticker)
+            e = _terrain_quarantine.get(tk)
+            return dict(e) if e else {}
+        return {k: dict(v) for k, v in _terrain_quarantine.items()}
+
+
+def terrain_quarantine_reason(ticker: str | None) -> str:
+    """Why this ticker is not being requested at all, or "" when it is in the rotation."""
+    if not ticker:
+        return ""
+    tk = ticker_storage_key(ticker)
+    with _terrain_quarantine_lock:
+        e = _terrain_quarantine.get(tk)
+        if not e:
+            return ""
+        if e.get("permanent"):
+            return (f"QUARANTINED after {e.get('failures')} consecutive hard rejections — "
+                    f"{e.get('reason')}. The vendor refuses this symbol, so the loop has stopped "
+                    f"requesting it; it stays out until an operator re-admits it "
+                    f"(POST /api/terrain/quarantine/release?ticker={tk})")
+        # RC-281: every constructor supplies until_ts, so absence is MALFORMED STATE, not
+        # "no cooldown". My earlier reason claimed the latter; Cursor's runtime probe showed
+        # it releases the hold and erases the entry, turning an invariant failure into an
+        # immediate vendor retry with the evidence gone.
+        from numeric_contract import float_finite_or_none as _fin_q
+        until = _fin_q(e.get("until_ts"))
+        if until is None:
+            return (f"backing off after {e.get('failures')} consecutive failures — "
+                    f"{e.get('reason')}; hold has NO expiry recorded (malformed entry), "
+                    f"so it is held until an operator releases it")
+        left = max(0.0, until - time.time())
+        return (f"backing off after {e.get('failures')} consecutive failures — {e.get('reason')}; "
+                f"next attempt in {left:.0f}s")
+
+
+def _terrain_quarantine_blocks(tk: str) -> bool:
+    """True when this ticker must NOT be requested this cycle. Expired soft holds self-release."""
+    now = time.time()
+    with _terrain_quarantine_lock:
+        e = _terrain_quarantine.get(tk)
+        if not e:
+            return False
+        if e.get("permanent"):
+            _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
+            return True
+        # RC-281: fail CLOSED on a malformed hold. `or 0.0` dated the expiry to 1970, so the
+        # branch never fired, the entry was popped, and the ticker went straight back into
+        # rotation — the opposite of a quarantine, reached by a missing field.
+        from numeric_contract import float_finite_or_none as _fin_qb
+        until = _fin_qb(e.get("until_ts"))
+        if until is None or now < until:
+            _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
+            return True
+        _terrain_quarantine.pop(tk, None)      # soft hold expired — back into the rotation
+    _quarantine_ledger_append("soft_release", tk, {"note": "backoff elapsed, retrying"})
+    return False
+
+
+def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
+    """Record a failed refresh and quarantine when the pattern earns it.
+
+    The streak counter lives under the SAME lock as the quarantine book it feeds. TERRAIN_WORKERS
+    threads run the rotation while `/api/terrain` can drive `_terrain_refresh_one(priority=True)`
+    for the same ticker concurrently, so a read-modify-write outside the lock can drop a failure —
+    and a dropped failure is a retry storm that never reaches its own threshold.
+    """
+    log_msg: tuple | None = None
+    ledger: tuple | None = None
+    with _terrain_quarantine_lock:
+        n = _terrain_consecutive_fails.get(tk, 0) + 1
+        _terrain_consecutive_fails[tk] = n
+        if n >= TERRAIN_QUARANTINE_HARD_FAILS:
+            if kind == "hard":
+                already = bool(_terrain_quarantine.get(tk, {}).get("permanent"))
+                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "permanent": True,
+                                           "since_ts": time.time(), "until_ts": None,
+                                           "kind": kind}
+                if not already:
+                    log_msg = ("terrain QUARANTINE (permanent) %s after %d hard rejections: %s",
+                               tk, n, reason)
+                    ledger = ("quarantine_permanent", {"failures": n, "reason": reason})
+            else:
+                wait = min(TERRAIN_QUARANTINE_SOFT_MAX_SEC,
+                           TERRAIN_QUARANTINE_SOFT_BASE_SEC
+                           * (2 ** (n - TERRAIN_QUARANTINE_HARD_FAILS)))
+                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "permanent": False,
+                                           "since_ts": time.time(),
+                                           "until_ts": time.time() + wait, "kind": kind}
+                log_msg = ("terrain backoff %s for %.0fs after %d failures: %s",
+                           tk, wait, n, reason)
+                ledger = ("backoff", {"failures": n, "reason": reason,
+                                      "wait_sec": round(wait, 1)})
+    # Disk and logging stay OUTSIDE the lock: a slow ledger write must never hold the producer.
+    if log_msg:
+        log.warning(*log_msg)
+    if ledger:
+        _quarantine_ledger_append(ledger[0], tk, ledger[1])
+
+
+def _note_terrain_success(tk: str) -> None:
+    """A success clears the streak AND any soft hold — the symbol answered."""
+    with _terrain_quarantine_lock:
+        _terrain_consecutive_fails.pop(tk, None)
+        had = _terrain_quarantine.pop(tk, None)
+    if had and not had.get("permanent"):
+        _quarantine_ledger_append("cleared_by_success", tk, {})
+
+
+def terrain_quarantine_release(ticker: str) -> dict:
+    """Operator re-admission. Explicit, logged, and the ONLY way out of a permanent hold."""
+    tk = ticker_storage_key(ticker)
+    with _terrain_quarantine_lock:
+        had = _terrain_quarantine.pop(tk, None)
+        _terrain_consecutive_fails.pop(tk, None)
+        _terrain_quarantine_skips.pop(tk, None)
+    _quarantine_ledger_append("operator_release", tk, {"was": had or {}})
+    log.warning("terrain quarantine RELEASED by operator: %s (was %s)", tk, had)
+    return {"ticker": tk, "released": bool(had), "was": had or {}}
+
+
+def _note_terrain_skip(tickers: list[str], reason: str) -> None:
+    """Record WHY these tickers were dropped from a cycle; clear everyone else.
+
+    Keyed through `ticker_storage_key` — the ONE normalisation authority (RC-126) — because
+    `_terrain_refresh_last_error` beside it is keyed that way too. Two dicts describing the same
+    ticker under two different spellings is how a reader silently misses one of them.
+    """
+    keep = {ticker_storage_key(t) for t in tickers if t}
+    with _terrain_skip_lock:
+        _terrain_skipped_reason.clear()
+        for t in keep:
+            _terrain_skipped_reason[t] = reason
+
+
+def _clear_terrain_skips() -> None:
+    with _terrain_skip_lock:
+        _terrain_skipped_reason.clear()
+
+
+def terrain_skip_reason(ticker: str | None) -> str:
+    """The producer's own reason for not refreshing this ticker, or "" when none."""
+    if not ticker:
+        return ""
+    with _terrain_skip_lock:
+        return _terrain_skipped_reason.get(ticker_storage_key(ticker), "")
+
+
+def _terrain_kl_overlay(md: dict, ticker: str) -> None:
+    """W3-C1 / RC-122: ONE wall book on the screen.
+
+    The Key Levels table read kl_* gamma-family values computed from the ANALYTICS pipeline's
+    narrow chain while the terrain cards painted the wide-capture book beside them — two wall
+    books, one screen, no label saying which is which (the dual-book lie the operator's
+    audits carried since Wave-1). Terrain is THE levels SSOT (RC-33); every gamma-family kl_*
+    is overlaid from its cached payload, stamped kl_levels_source. Absent or stale terrain
+    BLANKS the keys — absence, never a silently different second book. The narrow-book wall
+    STRENGTH strings are blanked with the same stroke: a dollar figure computed from one
+    chain printed beside a strike from another is the same lie in a smaller cell.
+    Delta/OI/vanna walls stay analytics-sourced: terrain does not compute them, so there is
+    only one book for those concepts.
+    """
+    with _terrain_cache_lock:
+        t = dict(_terrain_cache.get(ticker_storage_key(ticker)) or {})  # RC-345/F25: read key matches canonical write (tk)
+    fresh = bool(t) and not t.get("levels_stale")
+    # RC-124: kl_gamma_pin carries the STANDARD pin (total gamma); kl_hvl carries the
+    # net-GEX peak (the former "pin", honestly renamed on the card) — the key name is
+    # historical, the row label and tooltip say what it is.
+    # RC-128 (One Levels Faucet): this helper is THE ONLY WRITER of every SSOT level key on
+    # a UI payload. The analytics assignments were DELETED, not overridden — placement was
+    # the bug (a write after this call resurrected the dual book). Delta walls joined the
+    # terrain producer; EM comes from the terrain sigma band; concepts terrain does not
+    # compute (OI/vanna walls, inflections, oi_center) are BLANKED with the reason — an
+    # analytics book may never stand in for an absent SSOT value.
+    # Explicit literal assignments, deliberately not a loop: the orphan-key detector (RC-84)
+    # counts literal write sites, and a loop-driven write made three honest reads look
+    # writerless. Verbosity is the price of a detector that can actually see the writer.
+    _g = (lambda k: t.get(k)) if fresh else (lambda k: None)
+    md["kl_call_gamma_wall"] = _g("call_wall")
+    md["kl_put_gamma_wall"] = _g("put_wall")
+    md["kl_gamma_flip"] = _g("gamma_flip")
+    md["kl_gamma_pin"] = _g("gamma_pin")
+    md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
+    md["kl_hvl"] = _g("net_gex_peak")
+    md["kl_max_pain"] = _g("max_pain")
+    md["kl_call_delta_wall"] = _g("call_delta_wall")
+    md["kl_put_delta_wall"] = _g("put_delta_wall")
+    # v23: the flip's CONFIDENCE rides the same book as the flip's STRIKE — it was still
+    # analytics-written while the strike was terrain's, a half-dual book.
+    md["kl_gamma_flip_confidence"] = _g("confidence")
+    # RC-130: the geometry state travels WITH the wall value it qualifies — as of the same
+    # terrain generation (kl_levels_from_computed_ts). A wall value without its state let
+    # the KL table caption "support" on a put wall sitting above spot.
+    md["kl_call_wall_state"] = _g("call_wall_state")
+    md["kl_put_wall_state"] = _g("put_wall_state")
+    # v23 Lock-3 drift visibility: which terrain generation stamped these values — the KL
+    # table and the terrain cards can only differ by generation skew, and now it is visible.
+    md["kl_levels_from_computed_ts"] = _g("computed_ts_utc")
+    em = (t.get("implied_1d_move") or {}) if fresh else {}
+    _em_pts, _em_spot = em.get("points"), (t.get("spot") if fresh else None)
+    if _em_pts is not None and _em_spot:
+        md["kl_em_upper"] = round(float(_em_spot) + float(_em_pts), 2)
+        md["kl_em_lower"] = round(float(_em_spot) - float(_em_pts), 2)
+        # RC-345 / F06: the operator-facing kl_em band comes from the terrain implied-1d-move
+        # (IV sigma band: S x sigma_ATM x sqrt(1/252)). Carry its methodology to the payload so
+        # the operator never receives an EM number without knowing which EM semantic produced
+        # it — the terrain `method` string travels beside the band, not dropped.
+        md["kl_em_source"] = "IV_SIGMA_1D"
+        md["kl_em_method_detail"] = em.get("method") or "S x sigma_ATM x sqrt(1/252)"
+    else:
+        md["kl_em_upper"] = md["kl_em_lower"] = None
+        md["kl_em_source"] = "unavailable"
+        md["kl_em_method_detail"] = None
+    # terrain does not compute these yet — absence, never a second book
+    md["kl_call_oi_wall"] = None
+    md["kl_put_oi_wall"] = None
+    md["kl_call_vanna_wall"] = None
+    md["kl_put_vanna_wall"] = None
+    md["kl_gamma_inflection"] = None
+    md["kl_delta_inflection"] = None
+    md["kl_oi_center"] = None
+    # a strength from another book beside an SSOT strike is the same lie — blanked
+    md["kl_call_delta_str"] = "—"
+    md["kl_put_delta_str"] = "—"
+    md["kl_call_oi_str"] = "—"
+    md["kl_put_oi_str"] = "—"
+    md["kl_call_vanna_str"] = "—"
+    md["kl_put_vanna_str"] = "—"
+    md["kl_levels_source"] = ("terrain_wide_chain" if fresh else
+                              "terrain_unavailable — gamma-family levels withheld")
+    for k in ("kl_call_gamma_str", "kl_put_gamma_str", "kl_hvl_str", "kl_max_pain_str"):
+        md[k] = "—"
+_terrain_loop_running: bool = False
+_terrain_loop_thread: threading.Thread | None = None
+
+
+def terrain_cache_get(ticker: str) -> dict | None:
+    with _terrain_cache_lock:
+        return _terrain_cache.get(ticker_storage_key(ticker))  # RC-345/F25: read key matches canonical write (tk)
+
+
+def terrain_cache_size() -> int:
+    with _terrain_cache_lock:
+        return len(_terrain_cache)
+
+
+#: (ticker, et_date) pairs whose morning wide capture is already persisted — in-process
+#: memo so the loop does not hit the DB with has_morning_full_capture every 60s.
+_morning_capture_done: set[tuple[str, str]] = set()
+_morning_capture_lock = threading.Lock()
+
+
+def _universal_capture_wanted(tk: str) -> tuple[bool, tuple[str, str]]:
+    """Does `tk` still need today's wide morning capture?
+
+    UNIVERSAL MORNING CAPTURE (operator 2026-07-20). The sentinel-only capture rides the
+    money-path logger, which RC-1's operator-mode gate skips for non-sentinels whenever a
+    viewer is connected — measured result: 3 of ~51 tickers captured today. The terrain
+    loop touches EVERY ticker each cycle, so it closes the gap in the post-window span
+    (10:00-11:30 ET, deliberately AFTER the money-path window): one wide fetch serves
+    both terrain and the archive. Idempotent per (ticker, ET day); DB checked once per
+    day per ticker, then memoised in-process.
+    """
+    cap_date, cap_mins = gex_et_date_and_mins()
+    key = (tk, cap_date)
+    if not universal_capture_window(cap_mins):
+        return False, key
+    with _morning_capture_lock:
+        if key in _morning_capture_done:
+            return False, key
+        attempts = _morning_capture_attempts.get(key, 0)
+        if attempts >= _MORNING_CAPTURE_MAX_ATTEMPTS:
+            # Three wide fetches produced nothing persistable — stop paying for wide
+            # width every cycle; the day is a miss for this ticker, said out loud once.
+            _morning_capture_done.add(key)
+            log.warning("morning wide capture GIVEN UP ticker=%s after %d attempts",
+                        tk, attempts)
+            return False, key
+        _morning_capture_attempts[key] = attempts + 1
+    if has_morning_full_capture(get_db().db_path, tk, cap_date):
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+        return False, key
+    return True, key
+
+
+#: Per-(ticker, et_date) persist attempts. Bugbot MEDIUM (confirmed): an empty flatten
+#: skipped persist WITHOUT memoising, so the loop re-forced the wide width every ~60s for
+#: the entire 90-minute span. Three strikes and the day is done for that ticker.
+_morning_capture_attempts: dict[tuple[str, str], int] = {}
+_MORNING_CAPTURE_MAX_ATTEMPTS = 3
+
+
+def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
+                               contracts: list, spot: float | None) -> None:
+    """Persist the wide chain just fetched. Archive concern — terrain must still serve.
+
+    Bugbot 2026-07-20 (HIGH — confirmed): the first version ignored the persist RETURN
+    DICT and memoised + logged success on any non-exception — including the status
+    dicts that mean "nothing was written". A silently-discarded capture then read as
+    captured for the rest of the ET day. The dict is now the arbiter:
+      ok / idempotent_skip            -> memoise (done for the day), log accordingly
+      too_few_near_term_contracts    -> memoise WITH WARNING (a thin chain will not
+                                         thicken intraday; retrying burns wide fetches)
+      anything else                  -> warn, do NOT memoise, bounded by the attempt cap
+    """
+    try:
+        result = maybe_persist_morning_full_chain(
+            get_db().db_path, ticker=tk, contracts=contracts,
+            spot=float(spot) if spot is not None else None,
+            ts_utc=time.time(), source=GEX_SOURCE_WIDE,
+        )
+    except Exception as e:
+        log.warning("morning wide capture persist failed ticker=%s: %s", tk, e)
+        return
+    status = str(result.get("status", ""))
+    if status == "ok":
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+        log.info("morning wide capture persisted ticker=%s width=%d n=%s",
+                 tk, width, result.get("n_contracts"))
+    elif status == "idempotent_skip":
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+    elif result.get("reason") == "too_few_near_term_contracts":
+        with _morning_capture_lock:
+            _morning_capture_done.add(key)
+        log.warning("morning wide capture SKIPPED for the day ticker=%s: only %s "
+                    "near-term contracts", tk, result.get("n"))
+    else:
+        log.warning("morning wide capture not persisted ticker=%s status=%s reason=%s",
+                    tk, status, result.get("reason"))
+
+
+#: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
+#: proven (gamma depends on spot/IV/time) but the intraday MAGNITUDE of flip movement
+#: is unmeasured. Every terrain-loop compute appends one JSONL row here so a week of
+#: cycles yields per-ticker intraday min/max/range. reports/ file, not a table — the
+#: operational DB grows by zero bytes (RC-6 discipline). flip=None is absence and is
+#: not logged; gaps read as gaps from the timestamps.
+_FLIP_DRIFT_LOG_PATH = Path(APP_DIR) / "reports" / "flip_drift_log.jsonl"
+_flip_drift_lock = threading.Lock()
+
+
+def _log_flip_drift(tk: str, payload: dict) -> None:
+    """Append one flip-drift row. Never raises — terrain refresh must stay ok:x
+    even if logging row assembly or disk write fails (measurement only)."""
+    try:
+        flip = payload.get("gamma_flip")
+        if flip is None:
+            return
+        _ts = round(float(payload.get("computed_ts_utc") or time.time()), 1)
+        # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
+        # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
+        # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
+        # would have been reported as "the flip is stable intraday". Market-closed rows do not
+        # add noise here, they manufacture the null.
+        from time_et import is_tradable_session_ts_utc as _tradable
+        if not _tradable(_ts):
+            return
+        row = {"ts_utc": _ts,
+               "ticker": tk, "flip": round(float(flip), 4),
+               "spot": payload.get("spot"), "confidence": payload.get("confidence")}
+        with _flip_drift_lock, open(_FLIP_DRIFT_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+    except Exception as e:
+        log.warning("flip drift log append failed: %s", e)
+
+
+#: How old the terrain snapshot may be before it must stop calling itself current. DERIVED from
+#: the loop's own cadence: TERRAIN_REFRESH_SEC=60 plus one full cycle's slack for fetch time, so a
+#: healthy loop never trips it and a stopped one trips within two cycles.
+TERRAIN_STALE_AFTER_SEC: float = 180.0
+
+
+#: RC-108: Schwab refresh tokens die at 7 days, hard. The 2026-07-28 open went fully dark
+#: because the expiry sat in schwab_token.json for a week with no forward warning — the system
+#: only screamed AFTER the data was lost. Warn from day 5, red from day 6.
+_SCHWAB_TOKEN_WARN_DAYS = 5.0
+_SCHWAB_TOKEN_RED_DAYS = 6.0
+
+
+def schwab_token_countdown(creation_ts: float | None) -> dict:
+    """Pure urgency computation from the token file's creation_timestamp (unit-tested)."""
+    if creation_ts is None:
+        return {"schwab_token_age_days": None, "schwab_token_urgency": "unknown",
+                "schwab_token_note": "token file unreadable — collection may be dead"}
+    age_days = round((time.time() - float(creation_ts)) / 86400.0, 2)
+    if age_days >= _SCHWAB_TOKEN_RED_DAYS:
+        urgency, note = "red", (f"Schwab token is {age_days:.1f} days old (7-day hard limit) — "
+                                f"re-auth NOW: python reauth_schwab.py --manual")
+    elif age_days >= _SCHWAB_TOKEN_WARN_DAYS:
+        urgency, note = "warn", (f"Schwab token is {age_days:.1f} days old — re-auth before "
+                                 f"day 7 kills collection: python reauth_schwab.py --manual")
+    else:
+        urgency, note = "ok", ""
+    return {"schwab_token_age_days": age_days, "schwab_token_urgency": urgency,
+            "schwab_token_note": note}
+
+
+def _schwab_token_creation_ts() -> float | None:
+    """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
+    try:
+        raw = json.loads((Path(APP_DIR) / "schwab_token.json").read_text(encoding="utf-8"))
+        return float(raw["creation_timestamp"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) -> dict:
+    """Whether the levels are current, and WHY NOT when they are not (RC-91).
+
+    RC-146 — the reason must come from the PRODUCER, not be inferred from a clock. Age alone
+    cannot tell a deliberate pause from a broken loop, so this function used to answer "inside
+    its window but not producing" for a scheduler that was working exactly as designed. When a
+    ticker was skipped on purpose, `terrain_skip_reason` has the real sentence and it wins.
+    Pass `ticker` wherever it is known; omitting it degrades to the old clock-only reason.
+
+    MEASURED 2026-07-27 18:02 ET: /api/terrain computed_ts_utc did not advance across 90s against
+    a 60s cadence, the gamma panel served data 90 MINUTES old under a `terrain_live_cache` label,
+    and spot beside it was 3 seconds old. The terrain loop refreshes only while
+    _is_loggable_session() is true, which ends at LOGGER_BUFFER_MINS (16:30 ET) — 210 minutes
+    before the capture window closes. That function is the BACKGROUND LOGGING gate; using it to
+    decide whether the screen is current answered a different question with the same switch.
+
+    Stopping the loop after the post-market buffer may well be correct. Serving its last output
+    under a live label is not: staleness that is budget-justified gets LABELLED, staleness that is
+    not gets removed (the RC-78 rule, applied to the scorecard that day and never to terrain).
+    """
+    refreshing = _is_loggable_session()
+    token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
+    skipped = terrain_skip_reason(ticker)   # RC-146: the producer's own words, when it has any
+    # RC-147: the FAILURE channel, which RC-146 left unread. `_terrain_refresh_last_error` was
+    # consulted at exactly ONE call site — the not-ready branch of /api/terrain, reachable only
+    # when NO snapshot exists. The moment a ticker has any cached snapshot, that branch is dead
+    # and the recorded exception becomes unreachable, so a ticker failing every single refresh
+    # reported `error: ""` and a generic "inside its window but not producing". MEASURED
+    # 2026-07-30 10:16 ET: $SPX served levels 2,737 s old (45.6 min) with volume bars painting
+    # beside them, chain_basis already degraded to `dte<=120`, and no surface anywhere naming
+    # the cause. Precedence: a pause recorded for THIS cycle is why it is not refreshing right
+    # now and wins; otherwise the last failure is the live reason; the clock is the last resort.
+    # RC-148: quarantine outranks both. A quarantined ticker is not merely failing — it is not
+    # being REQUESTED, which is a different fact and a different operator action (re-admit it,
+    # or accept it is gone). Precedence for the REASON: quarantine > this-cycle pause > last
+    # failure > clock. The FLAGS stay orthogonal on purpose: a hard quarantine is still FAILING
+    # (the vendor refuses the symbol) and is emphatically NOT "paused, resumes on its own", so
+    # collapsing it into either single flag would restore the ambiguity RC-146/147 removed.
+    q_entry = terrain_quarantine_state(ticker)
+    quarantined = terrain_quarantine_reason(ticker)
+    failure = "" if (skipped or quarantined) else str(_terrain_refresh_last_error.get(
+        ticker_storage_key(ticker) if ticker else "", "") or "")
+    hard_quarantine = bool(q_entry.get("permanent"))
+    if computed_ts_utc is None:
+        return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
+                "levels_stale_reason": (
+                    quarantined or skipped
+                    or (f"no terrain snapshot has been computed yet — {failure}" if failure
+                        else "no terrain snapshot has been computed yet")),
+                "levels_paused_on_purpose": bool(skipped and not quarantined),
+                "levels_quarantined": bool(quarantined),
+                "levels_failing": bool(failure or hard_quarantine), **token}
+    age = round(time.time() - float(computed_ts_utc), 1)
+    # RC-165: judge age against the cycle the loop ACTUALLY delivers, not the nominal floor.
+    # `TERRAIN_REFRESH_SEC` (60s) is a sleep floor between cycles; the delivered spacing is
+    # whatever a full sweep costs, and MEASURED 2026-07-31 12:57 ET that was a 156s median on
+    # SPY. With a fixed 180s threshold and a 60s sentence, a ticker 234s old — barely 1.5
+    # cycles, entirely healthy — was reported to the operator as "the loop is inside its window
+    # but not producing". That is RC-146's defect returning through a different door: a
+    # correctly-working scheduler described as broken, this time because the yardstick was a
+    # number the loop cannot reach rather than a silence nobody recorded.
+    observed = _terrain_last_cycle_sec if _terrain_last_cycle_sec > 0 else TERRAIN_REFRESH_SEC
+    expected = max(float(TERRAIN_REFRESH_SEC), float(observed))
+    # Stale only past the FLOOR *and* past two delivered cycles — one missed sweep is normal
+    # jitter, two is a real gap. The floor is retained so a fast loop cannot hide staleness.
+    stale_after = max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * expected)
+    stale = age > stale_after
+    reason = ""
+    if stale:
+        reason = (f"levels are {age:.0f}s old — {quarantined}" if quarantined else
+                  f"levels are {age:.0f}s old — {skipped}" if skipped else
+                  f"levels are {age:.0f}s old and every refresh since is failing — {failure}"
+                  if failure else
+                  f"levels are {age:.0f}s old; the terrain loop is not refreshing "
+                  f"(outside the background-logging window, which closes at "
+                  f"{LOGGER_BUFFER_MINS // 60:02d}:{LOGGER_BUFFER_MINS % 60:02d} ET)"
+                  if not refreshing else
+                  f"levels are {age:.0f}s old — over two full sweeps at the loop's DELIVERED "
+                  f"cycle of {expected:.0f}s (nominal floor {TERRAIN_REFRESH_SEC:.0f}s), so this "
+                  f"ticker is genuinely behind rather than merely between sweeps")
+    return {"levels_stale": stale, "levels_age_sec": age,
+            "levels_refresh_active": refreshing, "levels_stale_reason": reason,
+            # RC-146: a stale panel must be able to distinguish "paused by design, resumes at a
+            # known time" from "should be refreshing and is not". They are different operator
+            # actions — wait, versus go find out what broke.
+            "levels_paused_on_purpose": bool(stale and skipped and not quarantined),
+            # RC-147: and the third state — actively FAILING — is a different action again
+            # (the chain call is erroring, the levels will not come back on their own).
+            "levels_failing": bool(stale and (failure or hard_quarantine)),
+            # RC-148: the fourth — not even being REQUESTED. Distinct from failing: re-admission
+            # is an operator act, not something the loop will do on its own.
+            "levels_quarantined": bool(quarantined), **token}
+
+
+#: RC-159 accrual cadence, stated rather than implied. Sentinels every minute (they ARE the
+#: money path); the rest of the enrolled board every five. These are FLOORS between writes, not
+#: a schedule — the terrain loop's own cadence still governs when a chain exists to bank.
+ACCRUAL_MIN_INTERVAL_SENTINEL_SEC: float = 60.0
+ACCRUAL_MIN_INTERVAL_OTHER_SEC: float = 300.0
+ACCRUAL_SENTINELS: tuple[str, ...] = ("SPY", "QQQ", "IWM")
+_accrual_last_write: dict[str, float] = {}
+_accrual_lock = threading.Lock()
+
+
+def _accrue_chain_observation(tk: str, snap) -> None:
+    """Bank one wide-chain per-strike observation. Never raises into the producer.
+
+    A failure to ARCHIVE must never take down the loop that FEEDS the screen: collection is
+    downstream of display, and losing a row is recoverable while losing the refresh is not.
+    """
+    try:
+        _d, mins = gex_et_date_and_mins()
+        if not gex_accrual_window(mins):
+            return
+        floor = (ACCRUAL_MIN_INTERVAL_SENTINEL_SEC if tk in ACCRUAL_SENTINELS
+                 else ACCRUAL_MIN_INTERVAL_OTHER_SEC)
+        now = time.time()
+        with _accrual_lock:
+            if now - _accrual_last_write.get(tk, 0.0) < floor:
+                return
+            _accrual_last_write[tk] = now
+        rows = (getattr(snap, "per_strike", None) or {}).get("all") or []
+        if not rows:
+            return                      # absence stays absence; never bank an empty observation
+        res = persist_chain_accrual(
+            get_db().db_path, ticker=tk, per_strike_rows=rows,
+            spot=getattr(snap, "spot", None), ts_utc=now)
+        if res.get("status") != "written":
+            log.debug("chain accrual %s: %s", tk, res)
+    except Exception as e:
+        log.warning("chain accrual failed for %s: %s", tk, e)
+
+
+#: RC-161 — the morning contention guard's OWN start, decoupled from the archive write gate.
+#: RC-159 widened `MORNING_START_MINS` 570 -> 555 so the once-daily archive could open at the
+#: mandated 09:15 ET. That constant was ALSO the scheduler's sentinel-only filter, so the same
+#: edit lengthened non-sentinel starvation by 15 minutes at precisely the moment the accrual
+#: mandate begins. One constant was answering two different questions: "when may the archive
+#: accept a first write" and "when is the chain gate too busy for a full sweep".
+#: RC-165: the DELIVERED cycle time, published by `_terrain_loop` from the duration it already
+#: measures. `TERRAIN_REFRESH_SEC` is a sleep FLOOR, not a promise — a full sweep over ~40
+#: tickers on 2 workers against a 2-slot chain gate costs more than that, and judging freshness
+#: against the floor reports healthy tickers as broken. 0.0 until the first cycle completes, in
+#: which case readers fall back to the nominal floor.
+_terrain_last_cycle_sec: float = 0.0
+
+TERRAIN_CONTENTION_START_MINS: int = 570   # 09:30 ET — the cash open, where money-path fetches begin
+TERRAIN_CONTENTION_END_MINS: int = 600     # 10:00 ET
+
+
+def terrain_cycle_tickers(
+    all_tickers: list[str], mins: int, cycle_n: int
+) -> tuple[list[str], list[str]]:
+    """Which tickers this cycle refreshes, and which are DEFERRED to a later cycle.
+
+    RC-161. The morning guard used to DROP every non-sentinel for a full half hour, which made
+    the accrual mandate sentinel-only in [555, 600) — a universal claim that three tickers were
+    meeting. Exclusion is now ROTATION: no enrolled ticker is ever removed from the board, it is
+    scheduled later within the window.
+
+    The rotation depth is derived from the accrual cadence, not guessed: a non-sentinel needs one
+    refresh per ACCRUAL_MIN_INTERVAL_OTHER_SEC, so with a TERRAIN_REFRESH_SEC cycle it needs to
+    appear once every `depth` cycles. Refreshing it more often would spend vendor budget on a
+    write the accrual floor would throw away, so this rotation costs nothing the mandate does not
+    already require — and it keeps the original budget intent (RC-146: do not pile a 54-ticker
+    sweep on top of the money-path wide fetches at the open) by spreading, not by starving.
+
+    Returns (refresh_now, deferred_this_cycle). Outside the contention window every ticker
+    refreshes, exactly as before.
+    """
+    sentinels = [t for t in all_tickers if str(t).upper() in ACCRUAL_SENTINELS]
+    others = [t for t in all_tickers if str(t).upper() not in ACCRUAL_SENTINELS]
+    if not (TERRAIN_CONTENTION_START_MINS <= int(mins) <= TERRAIN_CONTENTION_END_MINS):
+        return list(all_tickers), []
+    # integer ceiling division — server.py has no module-level `math`, and adding an import for
+    # one division would be a wider change than the fix
+    _cyc = max(1, int(TERRAIN_REFRESH_SEC))
+    depth = max(1, -(-int(ACCRUAL_MIN_INTERVAL_OTHER_SEC) // _cyc))
+    idx = int(cycle_n) % depth
+    slice_now = others[idx::depth]
+    deferred = [t for t in others if t not in set(slice_now)]
+    return sentinels + slice_now, deferred
+
+
+def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
+    """Fetch one chain and compute terrain into the cache. Never raises.
+
+    RC-80 — THE SINGLE PRODUCER OF LEVELS. /api/terrain calls this on a cache miss rather than
+    computing its own snapshot, because a second producer is a second faucet even when both write
+    the same cache key. `priority` is True for that operator-facing miss (someone is waiting on
+    the response) and False for the background rotation.
+    """
+    tk = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX at the producer too — background
+    if not tk:                        # callers (radar, enroll lists) don't pass the endpoints
+        return "skip:empty"
+    # RC-148: BEFORE the client, before the gate, before any vendor budget is spent. MEASURED
+    # 2026-07-30 11:14 ET: RTY and XXT had each been re-requested every ~60 s all session for a
+    # symbol Schwab answers with HTTP 400 — two permanently-wasted slots per minute out of a
+    # 2-slot gate, against a book where $SPX could not get a chain through. Making that visible
+    # (RC-147) was necessary and not sufficient: a control that reports the burn while the burn
+    # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
+    # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
+    if _terrain_quarantine_blocks(tk):
+        return "skip:quarantined"
+    try:
+        client = get_client()
+        want_capture, cap_key = _universal_capture_wanted(tk)
+        _width = _terrain_strike_count(tk)
+        if want_capture:
+            _width = max(_width, GEX_FULL_CHAIN_STRIKE_COUNT)
+        # RC-127: the FULL multi-year index book ($SPX: weeklies + quarterlies + LEAPS) can
+        # exceed the vendor read timeout under live load — measured 2026-07-29: every $SPX
+        # refresh died in ReadTimeout while the same fetch succeeded on a quiet box. The
+        # ladder narrows the DATE WINDOW on timeout, one rung at a time, and STAMPS the
+        # basis on the payload — degraded is visible, never silent. The operator-locked
+        # full-chain basis stays the first attempt always; the rungs keep the weekly+monthly
+        # book dealers actually hedge (120d, then 45d) rather than serving nothing.
+        _chain_basis = "full"
+        resp = None
+        # RC-149: the ladder narrowed on a TIMEOUT EXCEPTION only. An over-budget index chain does
+        # not time out — the vendor answers, with HTTP 502 — so `break` fired on the first rung and
+        # the narrower rungs it exists to reach were never tried. MEASURED 2026-07-30: $SPX
+        # returned HTTP 502 on every cycle for 2h10m while a ladder built for exactly this case
+        # sat unused, because RC-127 was written from a day when the same over-width request
+        # happened to die in ReadTimeout instead. One failure, two vendor expressions; the rung
+        # must advance on the CONDITION (this window is too big), never on the expression of it.
+        _OVER_BUDGET_CODES = (502, 413, 500, 504)
+        for _basis, _to_days in (("full", None), ("dte<=120", 120), ("dte<=45", 45)):
+            try:
+                _to = ((datetime.now(timezone.utc) + timedelta(days=_to_days)).date()
+                       if _to_days else None)
+                resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
+                    client, tk, strike_count=_width, priority=priority, to_date=_to,
+                )
+                _code = getattr(resp, "status_code", None)
+                if _code in _OVER_BUDGET_CODES and _to_days != 45:
+                    _terrain_refresh_last_error[tk] = (
+                        f"chain fetch HTTP {_code} at basis {_basis!r} — trying a narrower window")
+                    resp = None          # do NOT keep a failed response as the answer
+                    continue
+                _chain_basis = _basis
+                break
+            except Exception as _fe:
+                if type(_fe).__name__ not in ("ReadTimeout", "ConnectTimeout", "TimeoutException"):
+                    raise
+                _terrain_refresh_last_error[tk] = (
+                    f"chain fetch timeout at basis {_basis!r} — trying a narrower window")
+                continue
+        if resp is None or getattr(resp, "status_code", None) != 200:
+            _code = getattr(resp, "status_code", None)
+            _msg = f"chain fetch failed (HTTP {_code if _code is not None else 'timeout-at-all-rungs'})"
+            _terrain_refresh_last_error[tk] = _msg
+            # RC-148: classify so the response fits the cause. A 4xx is the vendor refusing THIS
+            # SYMBOL and will refuse it identically forever; a timeout or 5xx is the venue being
+            # busy and deserves a backoff, not a death sentence.
+            _note_terrain_failure(tk, _msg, _classify_chain_failure(
+                _code, "timeout-at-all-rungs" if resp is None else None))
+            return "error:chain_http"
+        c_json = resp.json()
+        contracts = flatten_chain_contracts(c_json)
+        # ONE spot authority (RC-14) — never the chain underlying on its own.
+        spot, spot_source, spot_ts = resolve_spot(tk, chain_json=c_json)
+        if want_capture and contracts:
+            _persist_universal_capture(tk, cap_key, _width, contracts, spot)
+        # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
+        # requests the width its +/-5% span actually needs instead of a tabulated guess.
+        # RC-149: tell the learner WHICH basis produced this chain. A narrowed window under-counts
+        # expiries, and that count is the denominator of the next request's width budget.
+        _learn_strike_geometry(tk, contracts, spot,
+                               date_window_narrowed=(_chain_basis != "full"))
+        snap = compute_terrain(tk, contracts, spot)
+        payload = snap.to_dict()
+        payload["computed_ts_utc"] = time.time()
+        # RC-82: stamp WHICH producer computed these levels. The radar merges this loop's
+        # wide-chain output with stored-chain fallback rows and ranks them against each other;
+        # wall selection depends on chain width (RC-80 measured an 11-point difference on SPY),
+        # so an unlabelled merge sorts systematically-different numbers as if they were peers.
+        payload["levels_source"] = LEVELS_SOURCE_WIDE_CHAIN
+        # RC-127: which rung of the timeout ladder produced this book — 'full' is the
+        # operator-locked basis; a narrower rung is visible degradation, never silent.
+        payload["chain_basis"] = _chain_basis
+        payload["spot_source"] = spot_source
+        payload["spot_as_of_ts_utc"] = spot_ts
+        _atr = _radar_atr(tk)
+        payload["atr_daily"] = round(_atr.daily, 3) if _atr.daily else None
+        payload["atr_15m"] = round(_atr.m15, 3) if _atr.m15 else None
+        # RC-68: carry the LIVE per-strike map into the cache. to_dict() deliberately drops it
+        # (hundreds of entries, far too heavy for every poll — same reason `profile` is dropped),
+        # so /api/terrain/strikes reads it from the cached snapshot instead of the frozen morning
+        # archive. Underscore-prefixed so it is unmistakably an internal cache field, not payload.
+        # getattr, not attribute access: a snapshot without the map (older shape, or a stub) must
+        # degrade to an EMPTY per-strike panel, never take down the whole terrain refresh.
+        payload["_per_strike"] = getattr(snap, "per_strike", None) or {}
+        with _terrain_cache_lock:
+            _terrain_cache[tk] = payload
+            _terrain_profile_cache[tk] = snap.profile
+        # RC-159 (operator mandate 2026-07-30): ACCRUE the wide chain across
+        # [09:15, 16:15] ET == [08:15, 15:15] CT. The chain is already fetched and the
+        # per-strike map already computed above, so this costs ZERO additional vendor calls —
+        # it persists what RC-68 kept in memory and then discarded every cycle. Sentinels bank
+        # every minute; the rest of the board every five, because 40 tickers x 1/min of
+        # per-strike JSON is hundreds of MB a day for data no surface reads at that resolution.
+        _accrue_chain_observation(tk, snap)
+        _log_flip_drift(tk, payload)
+        _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
+        _note_terrain_success(tk)                   # RC-148: and the failure streak with it
+        return f"ok:{snap.confidence}"
+    except Exception as e:
+        # RC-126: DEBUG here meant $SPX failed silently for a full session while the operator
+        # stared at 'not_ready' with no reason. The failure is WARNING-visible AND kept, so
+        # the endpoint can tell the operator WHY instead of an eternal shrug.
+        _terrain_refresh_last_error[tk] = f"{type(e).__name__}: {e}"
+        # RC-148: an exception is never a symbol rejection (those arrive as a 4xx RESPONSE), so
+        # it always classifies soft — backoff, never a permanent hold. A crash in our own code
+        # must not be able to evict a real instrument from the board.
+        _note_terrain_failure(tk, f"{type(e).__name__}: {e}", "soft")
+        log.warning("terrain refresh %s failed: %s", tk, e, exc_info=True)
+        return f"error:{type(e).__name__}"
+
+
+def _terrain_loop() -> None:
+    log.info("Terrain loop started (levels only, no model stack)")
+    _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
+    # Seed strike geometry BEFORE the first fetch cycle, in THIS thread. The seed
+    # previously lived only in the prewarm worker, and _app_lifespan starts the loop
+    # first -- so the first cycle raced the seed and could fetch every ticker at the
+    # cold-start width (Cursor audit 2026-07-20: "race remains"). With the timeframe-
+    # indexed read this is ~2 ms per ticker, so doing it inline is cheap and makes the
+    # ordering deterministic instead of a race that usually goes our way.
+    try:
+        _seed_strike_geometry_from_storage()
+    except Exception as e:
+        log.warning("strike-geometry seed failed - first cycle uses cold-start width: %s", e)
+    while _terrain_loop_running:
+        cycle_start = time.monotonic()
+        tickers: list[str] = []
+        try:
+            with _logger_lock:
+                tickers = list(_logger_tickers)
+        except Exception:
+            tickers = list(CORE_TICKERS)
+        # RC-146: a skip reason is only true for the cycle that recorded it. Cleared at the TOP
+        # of every cycle so a pause that has ended cannot keep telling the operator to wait —
+        # the branch below re-records it while, and only while, it still applies.
+        _clear_terrain_skips()
+        if tickers and _is_loggable_session():
+            # During the morning wide-chain window (09:30-10:00 ET) SPY/QQQ/IWM already
+            # take 100-strike gated fetches on the money path. Do not pile a full-universe
+            # terrain sweep on top of that — refresh sentinels only until the window ends.
+            # No try/except: the imports are module-level, so this path cannot fail at
+            # runtime — a missing module stops the server at boot instead.
+            _d, _mins = gex_et_date_and_mins()
+            _terrain_cycle_n += 1
+            _all_this_cycle = list(tickers)
+            tickers, _dropped = terrain_cycle_tickers(_all_this_cycle, _mins, _terrain_cycle_n)
+            if _dropped:
+                # RC-146: SAY SO. This pause is deliberate and budget-justified, but it was a
+                # silent list filter — nothing anywhere recorded that these tickers were skipped
+                # on purpose. MEASURED 2026-07-30 09:43 ET: MSFT's per-strike panel served a
+                # chain read at 09:29:52 (8 s before the bell, so session volume was 0 on all 44
+                # strikes) under the message "no option volume yet this session", while
+                # terrain_staleness could only offer "inside its window but not producing" — a
+                # correct scheduler reported as a malfunction, and a pre-open corpse reported as
+                # a market fact. The producer knows why it skipped; now the reader can ask.
+                # RC-161: the wording follows the mechanism. This is no longer an exclusion for
+                # the whole window — the ticker is DEFERRED to a later cycle inside it, and will
+                # be refreshed within the accrual cadence rather than held until 10:00.
+                _note_terrain_skip(
+                    _dropped,
+                    f"deferred to a later cycle inside the "
+                    f"{TERRAIN_CONTENTION_START_MINS // 60:02d}:"
+                    f"{TERRAIN_CONTENTION_START_MINS % 60:02d}-"
+                    f"{TERRAIN_CONTENTION_END_MINS // 60:02d}:"
+                    f"{TERRAIN_CONTENTION_END_MINS % 60:02d} ET window, while the morning "
+                    f"wide-chain capture holds the chain slots — the enrolled board rotates at "
+                    f"the accrual cadence ({ACCRUAL_MIN_INTERVAL_OTHER_SEC:.0f}s) instead of "
+                    f"being held out, so this ticker still accrues inside the window",
+                )
+            with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
+                list(pool.map(_terrain_refresh_one, tickers))
+        elapsed = time.monotonic() - cycle_start
+        # RC-165: publish the DELIVERED cycle so freshness is judged against reality, not the
+        # sleep floor. This number was already computed and only logged; readers had no access
+        # to it, so terrain_staleness was left comparing against a cadence the loop never meets.
+        globals()["_terrain_last_cycle_sec"] = float(elapsed)
+        log.info("Terrain cycle: %d tickers in %.1fs", len(tickers), elapsed)
+        sleep_end = time.monotonic() + max(0.0, TERRAIN_REFRESH_SEC - elapsed)
+        while _terrain_loop_running and time.monotonic() < sleep_end:
+            time.sleep(0.5)
+    log.info("Terrain loop stopped")
+
+
+def _terrain_prewarm_worker() -> None:
+    """Warm the radar caches off the request path.
+
+    MEASURED: a cold radar sweep costs ~22.5 s -- ~11.5 s computing ATR for 51 tickers and
+    the rest reading 51 chain payloads out of a 23 GB snapshots table (RC-6). Paying that
+    on the operator's first click leaves the scope empty long enough to look broken. The
+    app already prewarms model bundles at boot for the same reason; this is the same move
+    for terrain. Failures are logged and ignored: a cold cache is slow, never wrong.
+    """
+    try:
+        _seed_strike_geometry_from_storage()
+    except Exception as e:
+        log.warning("strike-geometry seed failed (first cycle uses the cold-start width): %s", e)
+    try:
+        get_terrain_radar(limit=60)
+        log.info("terrain radar prewarm complete: %d cached", terrain_cache_size())
+    except Exception as e:
+        log.warning("terrain radar prewarm failed (cache stays cold): %s", e)
+
+
+def _seed_strike_geometry_from_storage() -> None:
+    """Learn every ticker's strike spacing from its last stored chain, at boot.
+
+    Without this the first cycle after a restart fetches TERRAIN_STRIKE_COUNT_COLD_START
+    for every ticker -- too narrow for SPY/QQQ, so they would report
+    LOW_CONFIDENCE_NARROW_CHAIN for one cycle on every restart. The geometry is already
+    on disk; reading it once off the request path removes that window entirely.
+    """
+    try:
+        with _logger_lock:
+            tickers = list(_logger_tickers)
+    except Exception:
+        tickers = list(CORE_TICKERS)
+    seeded = 0
+    for tk in tickers:
+        try:
+            contracts, stored_spot = _latest_chain_and_spot(tk)
+        except Exception:
+            continue
+        if _learn_strike_geometry(tk, contracts, stored_spot):
+            seeded += 1
+    log.info("strike geometry seeded for %d/%d tickers", seeded, len(tickers))
+
+
+def start_terrain_prewarm() -> None:
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    threading.Thread(target=_terrain_prewarm_worker, name="terrain-prewarm",
+                     daemon=True).start()
+
+
+#: RC-69 — BAR COLLECTION SERVICE. Collection is not a side-effect of display.
+#: Bars used to be written only inside _fetch_state (the render path), so a ticker's chart
+#: decayed to whenever it was last LOOKED AT. MEASURED 2026-07-27 11:59 ET: SPY (on screen) bar
+#: lag 3.1 min vs QQQ 19.1 and IWM 19.1 (off screen) — while all three had ~1.0 min SNAPSHOT lag.
+#: The quotes were current; the bars were not. 39.8% of all snapshots (122,795/308,796) carry
+#: unfilled outcomes because fill_outcomes reads price_bars_1m for the forward price and the bars
+#: were never written. This loop mirrors _terrain_loop (RC-1), which solved the identical problem
+#: for levels: a cheap, always-on, viewport-independent path over the WHOLE enrolled universe.
+BARS_REFRESH_SEC: float = 30.0
+#: Quotes are far cheaper than chains; this pool is deliberately small so bar collection can never
+#: contend with the operator card the way an unbounded sweep did at the open (TERRAIN_WORKERS=2).
+#:
+#: RC-243 (2026-08-04, PM GO executed post-RTH): sized DOWN 3 -> 2. The comment above reasons about
+#: the API this loop READS FROM; the binding constraint is the seam it WRITES THROUGH. Every bar
+#: upsert serializes on the single process-wide db._TIER1_SNAPSHOT_WRITE_LOCK, so workers past the
+#: first cannot parallelise — they queue, and each extra contender lengthens the queue against a
+#: file that reached 27.3 GB. MEASURED on the live console: threads ed_bars_0/1/2 took 426/407/405
+#: lock waits (1,238 of them on upsert_1m_bars vs 449 on insert_snapshot), lifetime max wait
+#: 180,340 ms, recent-window max 64,229 ms, with busy_retry_count 0 — the wait is on the Python
+#: mutex, not SQLite's busy handler. Two workers keep the loop concurrent with the quote fetch
+#: (which is the latency this pool exists to hide) while cutting write-seam contenders by a third.
+BARS_WORKERS: int = 2
+_bars_loop_running: bool = False
+_bars_loop_thread: threading.Thread | None = None
+
+
+def _bars_collect_one(tk: str) -> str:
+    """Quote -> accumulator -> price_bars_1m for ONE ticker. Never raises."""
+    try:
+        client = get_client()
+        q = _memoized_quote_response(tk, client=client)   # RC-112/W3-C8: one vendor faucet
+        if q is None or getattr(q, "status_code", None) != 200:
+            return "error:quote_http"
+        node = q.json().get(tk) or {}
+        fields = _parse_quote_node_session_fields(node)
+        # RC-38 single source: a raw float() on a Schwab leaf silently admits NaN/inf, and a NaN
+        # price would enter the bar series as a real value. One canonical reader; absence stays
+        # absence.
+        from numeric_contract import float_positive_or_none
+
+        px = float_positive_or_none(fields.get("last"))
+        if px is None:
+            px = float_positive_or_none(fields.get("mark"))
+        if px is None:
+            return "skip:no_price"      # absence reads as absence — never a fabricated tick
+        _candles_1m.tick(tk, px, time.time(), total_volume=fields.get("total_volume"))
+        bars = _candles_1m.get_bars(tk)
+        if not bars:
+            return "ok:no_completed_bar"
+        get_db().upsert_1m_bars(tk, bars)
+        return "ok:persisted"
+    except Exception as e:
+        log.debug("bars collect %s: %s", tk, e)
+        return f"error:{type(e).__name__}"
+
+
+def _bars_loop() -> None:
+    log.info("Bar collection loop started (quotes only, whole enrolled universe, viewport-independent)")
+    while _bars_loop_running:
+        cycle_start = time.monotonic()
+        try:
+            with _logger_lock:
+                tickers = list(_logger_tickers)
+        except Exception:
+            tickers = list(CORE_TICKERS)
+        # RC-48: only capturable sessions. A market-closed tick would persist a frozen bar.
+        if tickers and _is_loggable_session():
+            try:
+                with ThreadPoolExecutor(max_workers=BARS_WORKERS,
+                                        thread_name_prefix="ed_bars") as pool:
+                    list(pool.map(_bars_collect_one, tickers))
+            except Exception as e:
+                log.warning("bars loop cycle failed: %s", e)
+        sleep_end = time.monotonic() + max(1.0, BARS_REFRESH_SEC - (time.monotonic() - cycle_start))
+        while _bars_loop_running and time.monotonic() < sleep_end:
+            time.sleep(0.5)
+
+
+def start_bars_loop() -> None:
+    """Start bar collection. Refuses under pytest for the same reason as the terrain loop:
+    a production thread inside the test process mutates shared state no test controls (RC-5)."""
+    global _bars_loop_running, _bars_loop_thread
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        log.debug("bars loop not started: running under pytest")
+        return
+    if _bars_loop_running:
+        return
+    _bars_loop_running = True
+    _bars_loop_thread = threading.Thread(target=_bars_loop, name="bars-loop", daemon=True)
+    _bars_loop_thread.start()
+
+
+def stop_bars_loop() -> None:
+    global _bars_loop_running
+    _bars_loop_running = False
+
+
+def start_terrain_loop() -> None:
+    """Start the terrain collection thread.
+
+    Refuses to start under pytest. A production background thread inside the test
+    process fetches chains and consumes the shared 2-slot chain gate for the rest of
+    the session, which silently breaks any test asserting on gate concurrency -- the
+    same shared-mutable-state failure class as RC-5 in governance/root_cause_log.md.
+    Tests that need the loop call _terrain_loop / _terrain_refresh_one directly.
+    """
+    global _terrain_loop_running, _terrain_loop_thread
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        log.debug("terrain loop not started: running under pytest")
+        return
+    if _terrain_loop_running:
+        return
+    _terrain_loop_running = True
+    _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
+    _terrain_loop_thread.start()
+
+
+def stop_terrain_loop() -> None:
+    global _terrain_loop_running
+    _terrain_loop_running = False
+
+
+_radar_fallback_cache: tuple[float, list[dict]] = (0.0, [])
+RADAR_FALLBACK_TTL_SEC: float = 60.0
+
+
+#: ATR is derived from ~100 sessions of 1-minute bars, so it moves slowly. Recomputing it
+#: per radar poll would re-read the bar table for every ticker every 20 seconds.
+_radar_atr_cache: dict[str, tuple[float, "AtrPair"]] = {}
+RADAR_ATR_TTL_SEC: float = 900.0
+#: Tickers whose ATR is being computed right now, so N concurrent requests trigger ONE
+#: computation instead of N. Guards the cache fill, not the cache read.
+_radar_atr_inflight: set[str] = set()
+_radar_atr_lock = threading.Lock()
+_radar_atr_refresh_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ed_atr_refresh")
+
+
+def _radar_atr_compute_into_cache(tk: str) -> "AtrPair":
+    """Compute one ticker's ATR and publish it. Always clears the in-flight marker."""
+    try:
+        pair = compute_atr_pair(str(get_db().db_path), tk)
+    except Exception as e:
+        log.debug("radar ATR failed for %s: %s", tk, e, exc_info=True)
+        pair = AtrPair(None, None)
+    with _radar_atr_lock:
+        _radar_atr_cache[tk] = (time.time(), pair)
+        _radar_atr_inflight.discard(tk)
+    return pair
+
+
+def _radar_atr(ticker: str | None) -> "AtrPair":
+    """Cached ATR pair for a radar row. NEVER blocks on a recomputation. Never raises.
+
+    OBSERVED 2026-07-20 (py-spy dump of the live console, PID 33156): eleven AnyIO worker
+    threads were simultaneously inside compute_atr_pair via _radar_atr <- get_terrain_radar.
+
+    `get_terrain_radar` is a SYNC endpoint, so FastAPI runs it in the AnyIO threadpool.
+    The old body checked the cache and, on a miss, computed inline with NO single-flight
+    guard -- so every concurrent request that missed recomputed ATR for all 51 tickers,
+    each a 24,000-row read of price_bars_1m. That is a cache stampede, and because those
+    are the SHARED threadpool workers, exhausting them blocks every other sync endpoint in
+    the app. The operator saw the whole console hang, not just the terrain tab.
+
+    Two changes make a request incapable of causing it:
+      * SINGLE FLIGHT -- one computation per ticker at a time; concurrent callers do not
+        queue behind it.
+      * STALE WHILE REVALIDATE -- an expired entry is returned IMMEDIATELY and refreshed
+        on a small dedicated pool. ATR over ~100 sessions does not change meaningfully in
+        the seconds a refresh takes, so serving a slightly old value is correct, and it is
+        strictly better than blocking a request thread to avoid it.
+
+    Only a ticker with NO cached value at all can still compute inline; the boot prewarm
+    fills those, and the dedicated pool bounds it at 2 threads regardless.
+    """
+    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical — cache key AND compute_atr_pair DB query hit $-index bars
+    if not tk:
+        return AtrPair(None, None)
+    now = time.time()
+    with _radar_atr_lock:
+        hit = _radar_atr_cache.get(tk)
+        if hit is not None and (now - hit[0]) < RADAR_ATR_TTL_SEC:
+            return hit[1]
+        already_running = tk in _radar_atr_inflight
+        if not already_running:
+            _radar_atr_inflight.add(tk)
+    if hit is not None:
+        # STALE-WHILE-REVALIDATE: hand back the old value now, refresh off the request path.
+        if not already_running:
+            try:
+                _radar_atr_refresh_pool.submit(_radar_atr_compute_into_cache, tk)
+            except RuntimeError:  # pool shut down during teardown
+                with _radar_atr_lock:
+                    _radar_atr_inflight.discard(tk)
+        return hit[1]
+    if already_running:
+        # First-ever value for this ticker and someone else is computing it. Report
+        # absence rather than block a shared worker; ring_for() treats None as "no ring"
+        # and the contact simply does not appear until the value lands.
+        return AtrPair(None, None)
+    return _radar_atr_compute_into_cache(tk)
+
+
+#: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
+#: unlabelled merge is how systematically-different numbers get ranked as peers (RC-82).
+LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the single producer
+LEVELS_SOURCE_STORED_CHAIN = "stored_chain_fallback"  # narrower; walls sit inward
+LEVELS_SOURCE_UNKNOWN = "unknown"                 # unstamped reads as unknown, never as trusted
+
+
+def _radar_row(t: dict, spot: float, atr: "AtrPair", status: str, level_name: str,
+               level: float, gap: float | None, gap_atr: float | None,
+               sort_key: float | None) -> dict:
+    """One radar contact. `_sort` puts regime changes ahead of every wall."""
+    return {
+        "ticker": t.get("ticker"), "spot": spot, "regime": t.get("regime"),
+        "posture": t.get("posture"), "status": status,
+        "wall_name": level_name, "wall": level,
+        "distance_pct": round(gap / spot * 100, 3) if gap is not None else None,
+        "distance_atr": round(gap_atr, 3) if gap_atr is not None else None,
+        "distance_atr_15m": (round(abs(gap) / atr.m15, 2)
+                             if (atr.m15 and gap is not None) else None),
+        "atr_daily": round(atr.daily, 3) if atr.daily else None,
+        "atr_15m": round(atr.m15, 3) if atr.m15 else None,
+        "call_wall": t.get("call_wall"), "put_wall": t.get("put_wall"),
+        "gamma_flip": t.get("gamma_flip"), "confidence": t.get("confidence"),
+        # RC-82: which producer computed the walls on THIS row. Absent stamp reads as unknown,
+        # never as the trusted wide chain.
+        "levels_source": t.get("levels_source") or LEVELS_SOURCE_UNKNOWN,
+        "_sort": sort_key if sort_key is not None else (gap_atr if gap_atr is not None else 9e9),
+    }
+
+
+def _radar_contact(t: dict, spot: float, atr: "AtrPair") -> dict | None:
+    """The one contact this ticker earns on the scope, or None if it stays invisible.
+
+    A ticker about to cross its FLIP outranks every wall: a regime change alters what all
+    the other levels mean, so it sorts first regardless of wall distance.
+    """
+    flip_raw = t.get("gamma_flip")
+    if flip_raw is not None:
+        flip = float(flip_raw)
+        flip_atr = atr_distance(flip - spot, atr.daily)
+        if flip_atr is not None and flip_atr <= RING_REGIME:
+            return _radar_row(t, spot, atr, "REGIME CHANGE", "gamma flip", flip,
+                              flip - spot, flip_atr, sort_key=-1.0)
+
+    # RC-83 — a strike that is BOTH walls is not a directional level. When call_wall and put_wall
+    # land on the same strike the market has put gamma on both sides of it: that is a magnet, not
+    # a barrier. This used to resolve by tuple order — `abs(v - spot) < abs(...)` is a STRICT
+    # less-than, so on an exact tie the put never displaced the call and every such row rendered
+    # "CALL WALL". MEASURED 2026-07-27: 7 of 22 tracked rows, including NVDA 200/200 with spot at
+    # 196.49. "Call wall" reads resistance above and "put wall" reads support below, so choosing
+    # one by position in a tuple states a direction the data does not support.
+    cw, pw = t.get("call_wall"), t.get("put_wall")
+    if cw is not None and pw is not None and float(cw) == float(pw):
+        best = ("gamma wall", float(cw))
+    else:
+        best = None
+        for name, v in (("call wall", cw), ("put wall", pw)):
+            if v is not None and (best is None or abs(v - spot) < abs(best[1] - spot)):
+                best = (name, v)
+    if best is None:
+        return None
+    name, level = best[0], float(best[1])
+    gap = level - spot
+    ring = ring_for(gap, atr.daily)
+    if ring is None:
+        return None                       # beyond the scope — deliberately invisible
+    status = {"CONTACT": "AT WALL", "CLOSING": "APPROACHING", "SECTOR": "IN SECTOR"}[ring]
+    return _radar_row(t, spot, atr, status, name, level, gap,
+                      atr_distance(gap, atr.daily), sort_key=None)
+
+
+def _terrain_snapshots_for_radar() -> list[dict]:
+    """Terrain for every tracked ticker: live cache first, stored chains as fallback.
+
+    Without the fallback the radar is blank until the first loop cycle completes, so a
+    freshly started console shows an empty scope and looks broken. The fallback reads the
+    most recent stored chain per ticker (read-only, no Schwab call) and is superseded the
+    moment the loop caches a fresher one.
+    """
+    with _terrain_cache_lock:
+        cached = {t.get("ticker"): t for t in _terrain_cache.values() if t.get("ticker")}
+
+    # MERGE, never choose. Returning only the cache meant that as soon as the loop had
+    # cached its first ticker the stored-chain fallback was skipped entirely, so a warming
+    # console showed an almost-empty scope. Live cache wins per ticker; everything not yet
+    # refreshed still appears from its most recent stored chain.
+    # NEVER BLOCKS (2026-07-23 open, measured): the inline recompute cost 21.7 s while
+    # the sentinel-only morning window kept ~48 tickers on the fallback, and the terrain
+    # view polls every 20 s — the sweep monopolised the sync threadpool and the operator
+    # felt the whole app slow (favicon no-op measured 1.4 s). Same stampede class as
+    # _radar_atr, same cure: serve the LAST memo immediately and refresh it on a
+    # single-flight background thread. A stale memo beats a 21 s stall — the live cache
+    # wins per ticker, so staleness only touches tickers the loop has not refreshed.
+    ts, memo = _radar_fallback_cache
+    # Kick on never-initialized (ts<=0) or TTL expiry — NOT on empty memo.
+    # A successful recompute can legitimately land [] (live cache covers all
+    # tickers); treating that as uninitialized re-stampeded the 21s DB sweep.
+    if ts <= 0 or (time.time() - ts) >= RADAR_FALLBACK_TTL_SEC:
+        _kick_radar_fallback_refresh()
+    return list(cached.values()) + [m for m in (memo or [])
+                                    if m.get("ticker") not in cached]
+
+
+_radar_fallback_flight_lock = threading.Lock()
+_radar_fallback_inflight = False
+
+
+def _kick_radar_fallback_refresh() -> None:
+    """Start ONE background fallback recompute; concurrent callers never queue."""
+    global _radar_fallback_inflight
+    with _radar_fallback_flight_lock:
+        if _radar_fallback_inflight:
+            return
+        _radar_fallback_inflight = True
+    threading.Thread(target=_radar_fallback_refresh_worker,
+                     name="radar-fallback-refresh", daemon=True).start()
+
+
+def _radar_fallback_refresh_worker() -> None:
+    global _radar_fallback_cache, _radar_fallback_inflight
+    try:
+        out = _radar_fallback_recompute()
+        if out is not None:
+            _radar_fallback_cache = (time.time(), out)
+    except Exception as e:
+        log.warning("radar fallback refresh failed: %s", e)
+    finally:
+        with _radar_fallback_flight_lock:
+            _radar_fallback_inflight = False
+
+
+def _radar_fallback_recompute() -> list[dict] | None:
+    """The heavy sweep (runs OFF the request path). None = keep the previous memo —
+    a DB hiccup must degrade to stale data, never wipe the scope."""
+    with _terrain_cache_lock:
+        cached = {t.get("ticker"): t for t in _terrain_cache.values() if t.get("ticker")}
+    out: list[dict] = []
+    try:
+        db = get_db()
+    except Exception as e:
+        # Degrading to live-cache-only is correct, but doing it SILENTLY made a DB outage
+        # indistinguishable from a quiet market on the radar (Cursor audit 2026-07-20:
+        # empty return with no note). The scope keeps the stale memo; say so.
+        log.warning("radar fallback: DB unavailable (%s: %s) — keeping previous memo",
+                    type(e).__name__, e)
+        return None
+    import sqlite3 as _sq
+    try:
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=30.0)
+    except Exception as e:
+        log.warning("radar fallback: DB open failed (%s: %s) — keeping previous memo",
+                    type(e).__name__, e)
+        return None
+    try:
+        con.row_factory = _sq.Row
+        # Ticker LIST only — index-only aggregate, no blob touched. The per-ticker chain
+        # read goes through _latest_chain_and_spot, NOT hand-rolled SQL here: the old
+        # inline query took MAX(ts_utc) across BOTH timeframes, so a legacy 5m row could
+        # shadow a newer-in-kind canonical 1m row (Bugbot 2026-07-20, confirmed).
+        # _latest_chain_and_spot already encodes canonical-then-legacy, index-served.
+        tickers = [r["ticker"] for r in con.execute(
+            "SELECT DISTINCT ticker FROM snapshots "
+            "WHERE option_chain_json IS NOT NULL AND spot IS NOT NULL"
+        )]
+    finally:
+        con.close()
+    for tk in tickers:
+        if tk in cached:
+            continue
+        try:
+            contracts, spot = _latest_chain_and_spot(tk)
+            if not contracts or not spot:
+                continue
+            # NO live quote per ticker here. The radar sweeps ~51 symbols; calling
+            # resolve_spot on each made 51 Schwab round-trips and the cold sweep
+            # measured 40.5 s, so the first render always timed out and the scope
+            # came up empty. `snapshots.spot` is itself persisted from
+            # quote.lastPrice, i.e. a real trade, just older. Any ticker the terrain
+            # loop has refreshed already wins via the cache above, so the live value
+            # reaches the scope through the loop rather than through 51 fetches.
+            snap = compute_terrain(tk, contracts, spot)
+        except (ValueError, TypeError):
+            continue
+        # RC-82: a stored-chain row is PROVISIONAL — narrower than the loop's chain, so its
+        # walls sit systematically inward. Labelled, not hidden: it cannot be removed (per-symbol
+        # vendor calls measured a 40.5s cold sweep) and it must not masquerade as a loop row.
+        out.append(snap.to_dict() | {"spot_source": SPOT_SOURCE_SNAPSHOT,
+                                     "levels_source": LEVELS_SOURCE_STORED_CHAIN})
+    return out
+
+
+@app.get("/api/terrain/radar")
+def get_terrain_radar(limit: int = Query(default=12, ge=1, le=60)):
+    """Air-traffic radar: ONLY tickers currently in the operator's airspace.
+
+    A 51-row grid is a list, not a radar. A controller tracks the aircraft that are
+    actually in the sector, so a ticker earns a slot only by doing something:
+      * sitting at a wall (within RADAR_NEAR_PCT)
+      * having broken a wall with acceptance
+      * an unambiguous regime with a wall within RADAR_WATCH_PCT
+    Everything mid-box and quiet is deliberately invisible. Untrusted tickers are never
+    ranked as if their levels were real -- they are reported separately as blind spots.
+    """
+    # Coerced so the handler is callable directly in tests, not only over HTTP
+    # (FastAPI passes a Query object when the default is used outside a request).
+    try:
+        max_rows = int(limit)
+    except (TypeError, ValueError):
+        max_rows = 12
+
+    rows: list[dict] = []
+    blind = 0
+    cached = _terrain_snapshots_for_radar()
+    for t in cached:
+        spot = t.get("spot")
+        if t.get("confidence") != "TRUSTED" or not spot:
+            blind += 1
+            continue
+        atr = _radar_atr(t.get("ticker"))
+        if not atr.daily:
+            blind += 1                    # no scale means no ring; never guess one
+            continue
+        contact = _radar_contact(t, spot, atr)
+        if contact is not None:
+            rows.append(contact)
+
+    rows.sort(key=lambda r: r["_sort"])
+    for r in rows:
+        r.pop("_sort", None)
+    return {"rows": rows[:max_rows], "tracked": len(rows), "scanned": len(cached),
+            "blind_spots": blind, "near_pct": RADAR_NEAR_PCT, "watch_pct": RADAR_WATCH_PCT}
+
+
+#: Gamma profiles for cached tickers, keyed by ticker. Kept beside the payload cache so a
+#: cached payload can be re-priced without refetching the chain (RC-28).
+_terrain_profile_cache: dict[str, list] = {}
+
+
+def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
+    """Serve CACHED LEVELS against a LIVE SPOT.
+
+    RC-28: levels move slowly (a 60 s loop is right for them) but spot moves continuously,
+    and spot was frozen into the cached payload. The card therefore ran up to 75 s behind
+    the header -- observed 745.10 on the card against 744.88 live.
+
+    Levels, walls and the profile stay as cached. Spot is re-resolved every request, and
+    the REGIME is recomputed as the sign of the cached profile at that fresh spot, so the
+    regime can never disagree with the price shown beside it.
+    """
+    spot, spot_source, spot_ts = resolve_spot(ticker)
+    if spot is None:
+        return payload
+
+    out = dict(payload)
+    out["spot"] = spot
+    out["spot_source"] = spot_source
+    out["spot_as_of_ts_utc"] = spot_ts
+    # RC-130: wall geometry states are a function of SPOT, which was just re-resolved —
+    # recomputed with the SAME producer definition (wall_geometry_state), and BEFORE the
+    # profile early-return below, or a wall crossed intra-cycle would keep claiming the
+    # containment the painted spot contradicts. Needs only spot + the cached walls.
+    out["call_wall_state"] = wall_geometry_state(spot, payload.get("call_wall"), "call")
+    out["put_wall_state"] = wall_geometry_state(spot, payload.get("put_wall"), "put")
+
+    profile = _terrain_profile_cache.get(ticker_storage_key(ticker))  # RC-345/F25: read key matches canonical write (tk)
+    if not profile:
+        return out                      # levels stand; regime left as cached
+
+    fresh_gamma = gamma_at_price(profile, spot)
+    read = build_terrain_read(
+        spot=spot,
+        flip=payload.get("gamma_flip"),
+        flip_confidence=payload.get("confidence") or "UNAVAILABLE",
+        put_wall=payload.get("put_wall"),
+        call_wall=payload.get("call_wall"),
+        gamma_at_spot=fresh_gamma,
+        ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
+    )
+    out["regime"] = read.regime
+    out["posture"] = read.posture
+    out["headline"] = read.headline
+    out["lines"] = read.lines
+    # flip_diag travels WITH the regime it justified. The regime above was recomputed at
+    # the fresh spot but flip_diag still carried the loop-time gamma_at_spot, so the
+    # dealer tile printed a stale γ beside a live regime — the two could even disagree in
+    # sign (Bugbot 2026-07-20, confirmed: the UI renders flip_diag.gamma_at_spot).
+    out["flip_diag"] = {**(payload.get("flip_diag") or {}), "gamma_at_spot": fresh_gamma}
+    # net_gex_at_spot IS gamma_at_spot (schema v2) — reprice both or the NET GEX chip
+    # would show loop-time gamma beside a live-spot regime (same defect class as above).
+    out["net_gex_at_spot"] = fresh_gamma
+    # RC-91: the levels are cached and the spot is live, so the payload must say HOW OLD the
+    # levels are rather than let a live price imply live structure. Every consumer gets the age,
+    # a stale flag and the reason — absence of the flag is not permission to assume currency.
+    out.update(terrain_staleness(payload.get("computed_ts_utc"), ticker))
+    return out
+
+
+@app.get("/api/diagnostics/terrain-producer")
+def get_terrain_producer_diagnostics():
+    """RC-148: the producer's own state, readable. Until this existed, `_terrain_refresh_last_error`
+    was reachable only through one dead branch and the console had NO way to answer "why is this
+    ticker not refreshing" — the question that cost a session on $SPX (RC-126) and another on
+    RTY/XXT. Read-only, no Schwab call, no model stack."""
+    with _terrain_skip_lock:
+        skips = dict(_terrain_skipped_reason)
+    with _terrain_quarantine_lock:
+        quar = {k: dict(v) for k, v in _terrain_quarantine.items()}
+        avoided = dict(_terrain_quarantine_skips)
+    return JSONResponse({
+        "last_error": dict(_terrain_refresh_last_error),
+        "consecutive_failures": dict(_terrain_consecutive_fails),
+        "quarantined": quar,
+        "fetches_avoided_by_quarantine": avoided,
+        "skipped_this_cycle": skips,
+        "cache_size": terrain_cache_size(),
+        "stale_after_sec": TERRAIN_STALE_AFTER_SEC,
+        "refresh_sec": TERRAIN_REFRESH_SEC,
+        "hard_fail_threshold": TERRAIN_QUARANTINE_HARD_FAILS,
+        "ledger_path": str(TERRAIN_QUARANTINE_LEDGER),
+    })
+
+
+@app.post("/api/terrain/quarantine/release")
+def post_terrain_quarantine_release(ticker: str = Query(...)):
+    """Operator re-admission — the ONLY exit from a permanent hold, and it is logged.
+
+    A quarantine with no way back is a deletion the operator never approved, so this exists in
+    the same commit as the quarantine itself rather than as a follow-up.
+    """
+    return JSONResponse(terrain_quarantine_release(ticker))
+
+
+# ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
+# Feeds the /chart sidebar: today's per-strike dealer gamma + traded volume, plus
+# the PRIOR wide capture's bars (the day-over-day migration ghosts), each in three
+# expiry scopes (all / near<=7DTE / far). Sources are STORED chains only (wide
+# morning capture preferred, live narrow chain as fallback) — read-only, no Schwab
+# call, no model stack. Bar heights use the same exposure math as terrain.
+@app.get("/api/terrain/strikes")
+def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+
+    def _per_strike(contracts: list, spot: float) -> dict:
+        def _scope(cts: list) -> list:
+            if not cts:
+                return []
+            exposures, _diag = _cebs(cts, spot=spot, require_oi=True)
+            vol_by_k: dict[float, float] = {}
+            # SINGLE SOURCE: totalVolume read through the canonical non-negative reader so
+            # the REST aggregation drops NaN/±inf (raw float() used to admit them, poisoning
+            # the sum) and reads 0/negatives identically to the exposure and order-flow paths.
+            from numeric_contract import (
+                float_finite_or_none as _fin,
+                float_nonnegative_or_none as _vol_read,
+            )
+            for ct in cts:
+                # single source: reject NaN strike (raw float() let a NaN become a dict key)
+                k = _fin(ct.get("strikePrice"))
+                if k is None:
+                    continue
+                v = _vol_read(ct.get("totalVolume"))
+                if v:
+                    vol_by_k[k] = vol_by_k.get(k, 0.0) + v
+            out = []
+            for k, b in exposures.items():
+                g = bucket_metric(b, "net_gex_1pct")
+                if g is None:
+                    g = total_gamma_raw_at_strike(b)
+                if g is None:
+                    # RC-276: the second copy of the terrain_engine:202 bar RC-274 removed. A
+                    # strike whose gamma resolves nowhere drew a bar at 0.0, indistinguishable
+                    # from a strike measured at flat gamma on the surface used to read dealer
+                    # positioning. Hidden here because server.py was allowlisted wholesale.
+                    continue
+                out.append([round(float(k), 2), round(float(g), 1),
+                            int(vol_by_k.get(float(k), 0))])
+            out.sort(key=lambda r: r[0])
+            return out
+
+        def _dte(ct) -> float:
+            # single source: finite DTE; NaN/±inf/junk -> None -> 999.0 (sorts as far-dated,
+            # same as a missing DTE) instead of a raw NaN poisoning the sort key.
+            from numeric_contract import float_finite_or_none as _fin
+            d = _fin(ct.get("daysToExpiration"))
+            return d if d is not None else 999.0
+
+        near = [c for c in contracts if _dte(c) <= 7]
+        far = [c for c in contracts if _dte(c) > 7]
+        return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
+
+    import sqlite3 as _sq
+    today_src, prior_src = None, None
+    today, prior = None, None
+    spot_used = None
+    today_age_sec = None
+    # RC-146: bound BEFORE the try. `_snap` was assigned only inside the try body yet read
+    # unconditionally in the response dict below — a raising terrain_cache_get took the
+    # logged-and-swallowed path and then killed the endpoint with NameError on the way out,
+    # turning a degraded panel into a 500. Absence must degrade, never explode.
+    _snap: dict = {}
+    # RC-68 SINGLE SOURCE FOR TODAY'S PER-STRIKE DATA: the LIVE terrain snapshot.
+    # This panel used to render from option_chain_morning_full — MEASURED 2026-07-27 11:31 ET:
+    # a 09:47 capture served at 11:31 understated session volume by 281 percent (1,095,874 shown
+    # vs 4,176,672 live), ~500K missing on strike 740 alone, while the walls beside it moved on
+    # the 60s loop. Two clocks, one story. The terrain loop already computes this exact map from
+    # a live wide chain every cycle (terrain_engine._per_strike_map) — it was simply discarded.
+    # Reading it here costs ZERO additional vendor calls. The archive is demoted to the
+    # prior-day ghost, which is the one thing it is genuinely correct for.
+    try:
+        _snap = terrain_cache_get(tk) or {}
+        _ps = _snap.get("_per_strike") or {}
+        # RC-79: the terrain loop hands over FINISHED rows ({all,near,far} of
+        # [strike, net_gex_1pct$, volume]) and they are served as-is. This previously rebuilt
+        # synthetic contract dicts out of them and pushed those back through
+        # compute_exposures_by_strike(require_oi=True) — the synthetics had no open interest, so
+        # every row was rejected and the panel rendered EMPTY on a live, 7-second-old snapshot.
+        # Data that is already computed is never recomputed from a lossy reconstruction of its
+        # own inputs.
+        if isinstance(_ps, dict) and _ps.get("all"):
+            today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
+            spot_used = _snap.get("spot")
+            _cts_utc = _snap.get("computed_ts_utc")
+            today_age_sec = round(time.time() - float(_cts_utc), 1) if _cts_utc else None
+            today_src = "terrain_live_cache"
+    except Exception as e:
+        log.debug("terrain strikes live read failed %s: %s", tk, e)
+    # RC-162 — THE BANK'S FIRST READER. RC-159 built the accrual writer and RC-161 made the
+    # producer universal, but nothing ever read it: with a cold, thin or stale live cache the
+    # Chart painted NOTHING while this session's own gamma and volume sat in the DB. Banking is
+    # not rendering, and a bank with no reader satisfies no operator intent.
+    #
+    # This is a DECLARED SECOND SOURCE, not a silent one, and it is bounded three ways so it
+    # cannot become the RC-68 failure again (a 09:47 archive served at 11:31 under a live label):
+    #   1. It serves only when the live snapshot is ABSENT or older than TERRAIN_STALE_AFTER_SEC.
+    #   2. It serves only rows banked TODAY, and only if they are NEWER than what live has.
+    #   3. It stamps its own source and age, so no consumer can mistake it for the live cache.
+    # The prior-day morning_full archive is untouched and still serves ONLY the ghost — a bank
+    # row is this session's own wide book, which is exactly what the archive is not.
+    try:
+        _live_ts = float(_snap.get("computed_ts_utc") or 0.0) if isinstance(_snap, dict) else 0.0  # silent-zero-ok: epoch-0 ancient sentinel — an undated snapshot must lose every freshness comparison
+        _live_stale = (today is None) or (
+            _live_ts <= 0.0) or ((time.time() - _live_ts) > TERRAIN_STALE_AFTER_SEC)
+        if _live_stale:
+            _bank = latest_accrual_rows(get_db().db_path, tk)
+            if _bank and _bank.get("rows") and _bank["ts_utc"] > _live_ts:
+                # `near`/`far` stay EMPTY on purpose: the bank holds the `all` scope only, and
+                # inventing a DTE split it never measured would be a fabricated level. The scope
+                # chips render empty and say so rather than showing `all` under another name.
+                today = {"all": _bank["rows"], "near": [], "far": []}
+                spot_used = _bank.get("spot") if _bank.get("spot") is not None else spot_used
+                today_age_sec = round(time.time() - _bank["ts_utc"], 1)
+                today_src = f"accrual_bank:{_bank['et_minute']:04d}et"
+    except Exception as e:
+        log.debug("terrain strikes accrual fallback failed %s: %s", tk, e)
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            rows = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date DESC LIMIT 2", (tk,)).fetchall()
+        finally:
+            con.close()
+        if rows:
+            # ONE FAUCET FOR TODAY. The archive is NOT a fallback for today's per-strike data —
+            # a fallback IS a second faucet, and it is exactly how a 09:47 capture ended up
+            # rendering at 11:31 under the label "TODAY'S OPTION VOLUME". If the live terrain
+            # snapshot is absent (cold start), `today` stays empty and today_source stays None so
+            # the panel can say so: absence reads as absence, never as a stale substitute.
+            # The archive serves ONLY the prior-day ghost, which is what it is genuinely correct
+            # for — yesterday's close does not change.
+            _prior_row = rows[1] if len(rows) > 1 else (rows[0] if today_src else None)
+            if _prior_row is not None:
+                d1, s1, c1 = _prior_row
+                prior = _per_strike(json.loads(c1), float(s1))
+                prior_src = f"wide_capture:{d1}"
+    except Exception as e:
+        log.debug("terrain strikes wide read failed %s: %s", tk, e)
+    # The narrow-snapshot fallback is REMOVED (RC-68). It was the third faucet for one field:
+    # the same panel could be fed by the live cache, the morning archive, or a stored narrow
+    # chain — three different widths and three different clocks — with nothing on screen saying
+    # which. If the live snapshot is absent the panel renders empty and says so.
+    live_spot, live_src, _ts = resolve_spot(tk)
+    _payload_spot = live_spot if live_spot is not None else spot_used
+
+    # STRIP kill (one-faucet-closeout-v1): per-side GEX/OV sums are computed HERE, against
+    # the exact spot this payload serves — the chart strip used to re-derive them in the
+    # browser from the same rows (a second aggregation site that breaks silently when the
+    # payload changes, and can straddle a different spot than the server's). One aggregator.
+    def _side_sums(rows, s):
+        from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+        if not rows or s is None:
+            return None
+        gb = ga = vb = va = 0.0
+        for r in rows:
+            # RC-276: the third copy. A row with no gamma used to add 0.0 to a side sum, which
+            # is not neutral -- it drags the below/above comparison toward whichever side holds
+            # the unmeasured strikes. Absence is dropped, not counted as flat.
+            k = float_finite_or_none(r[0])
+            g = float_finite_or_none(r[1])
+            v = float_nonnegative_or_none(r[2])
+            if k is None or g is None or v is None:
+                continue
+            if k < s:
+                gb += g; vb += v
+            elif k > s:
+                ga += g; va += v
+        return {"gex_below": round(gb, 1), "gex_above": round(ga, 1),
+                "vol_below": int(vb), "vol_above": int(va),
+                "spot_basis": float(s)}
+
+    return JSONResponse({
+        "ticker": tk, "spot": _payload_spot,
+        "spot_source": live_src,
+        "today": today or {"all": [], "near": [], "far": []},
+        "today_side_sums": _side_sums((today or {}).get("all"), _payload_spot),
+        "today_source": today_src,
+        # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
+        # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
+        "today_age_sec": today_age_sec,
+        # RC-91: PROVENANCE IS NOT FRESHNESS. single_faucet_provenance passes here — one declared
+        # source, no fallback — while the panel served levels 90 MINUTES old under a
+        # `terrain_live_cache` label, because the terrain loop stops at the background-logging
+        # window (16:30 ET) and nothing said so. Naming the right source proves only that the
+        # right tap was opened, never that anything is still coming out of it.
+        **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk),
+        "prior": prior or {"all": [], "near": [], "far": []},
+        "prior_source": prior_src,
+    })
+
+
+# ── CR-03 pre-work (operator directive 2026-07-22 "we have plenty of time"):
+# the chart-first screen v0 at /chart reads canonical 1m bars via this endpoint.
+# Read-only, index-served (ticker+timeframe named — the idx_snap lesson applies to
+# price_bars_1m equally), no Schwab call, no model stack. The WS transport replaces
+# the page's polling when CR-CAP clears; this endpoint stays as the history hydrator.
+@app.get("/api/bars1m")
+def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
+               limit: int = Query(default=780, ge=1, le=3000)):
+    """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts."""
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+    import sqlite3 as _sq
+    try:
+        db = get_db()
+    except Exception:
+        return JSONResponse({"ticker": tk, "bars": [], "error": "db unavailable"})
+    con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+    try:
+        rows = con.execute(
+            "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
+            "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?", (tk, int(limit)),
+        ).fetchall()
+    finally:
+        con.close()
+    bars = [{"t": r[0], "o": r[1], "h": r[2], "l": r[3], "c": r[4], "v": r[5]}
+            for r in reversed(rows)]
+    return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
+
+
+#: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
+#: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
+#: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the
+#: two newest wide captures, which only the server can read.
+_FORCES_CACHE: dict = {}
+
+
+@app.get("/api/forces")
+def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
+    bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
+    boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
+    DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
+    2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
+    spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
+    """
+    import sqlite3 as _sq
+
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from math_levels import compute_charm_by_strike as _ccs
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _FORCES_CACHE.get(tk)
+    if hit and now - hit[0] < 300.0:
+        return JSONResponse(hit[1])
+    payload: dict = {"ticker": tk, "available": False,
+                     "reason": "fewer than 2 banked wide captures for this ticker"}
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            # RC-193: pull a wider candidate window and keep only trading ET dates —
+            # ORDER BY et_date DESC LIMIT 2 silently preferred Sunday stock.
+            cand = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
+        finally:
+            con.close()
+        rows = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:2]
+        if len(rows) >= 2:
+            (d1, s1, c1), (d0, s0, c0) = rows[0], rows[1]
+            per1 = _cebs(json.loads(c1), spot=float(s1))[0]
+            per0 = _cebs(json.loads(c0), spot=float(s0))[0]
+
+            def _g(v: dict, k: str) -> float:
+                x = v.get(k)
+                return float(x) if x is not None else 0.0
+
+            oi1 = {k: _g(v, "call_oi") + _g(v, "put_oi") for k, v in per1.items()}
+            oi0 = {k: _g(v, "call_oi") + _g(v, "put_oi") for k, v in per0.items()}
+            spot1 = float(s1)
+            # RC-199: CHARM below/above from the NEWER banked wide chain (full book).
+            # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
+            charm_below = charm_above = None
+            charm_err = None
+            try:
+                chain1 = json.loads(c1)
+                contracts = chain1 if isinstance(chain1, list) else (
+                    (chain1.get("contracts") if isinstance(chain1, dict) else None) or [])
+                per_ch = _ccs(contracts, spot1) if contracts else {}
+                if not per_ch:
+                    charm_err = "charm_by_strike empty on newer banked chain"
+                else:
+                    # RC-276: a strike with no net_charm is not a strike with zero charm.
+                    # Summed as 0.0 it silently tilted the below/above pair the Exposure tab
+                    # renders as dealer charm pressure.
+                    from numeric_contract import float_finite_or_none as _fin_ch
+
+                    def _ch(v: dict) -> float | None:
+                        return _fin_ch(v.get("net_charm"))
+
+                    charm_below = round(sum(
+                        c for c in (_ch(v) for k, v in per_ch.items() if k < spot1)
+                        if c is not None), 4)
+                    charm_above = round(sum(
+                        c for c in (_ch(v) for k, v in per_ch.items() if k > spot1)
+                        if c is not None), 4)
+            except Exception as _ce:
+                charm_err = str(_ce)[:120]
+            payload = {
+                "ticker": tk, "available": True,
+                "doi_below": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k < spot1)),
+                "doi_above": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k > spot1)),
+                "dex_below_dollars": round(sum(
+                    _g(v, "net_dex_dollars") for k, v in per1.items() if k < spot1)),
+                "dex_above_dollars": round(sum(
+                    _g(v, "net_dex_dollars") for k, v in per1.items() if k > spot1)),
+                "charm_below": charm_below,
+                "charm_above": charm_above,
+                # RC-288: DERIVED from the chain actually summed, not asserted. This was the
+                # string literal "full_chain_banked", and static/exposure.html hardcodes the
+                # same literal as its fallback — a label identical on both sides of the wire
+                # can never disagree with itself, so it could not detect the one thing it
+                # exists for. It matters because the repo computes charm two ways:
+                # compute_net_charm on ONE selected expiry, compute_charm_by_strike on the
+                # whole book. Counting the distinct expiries in `contracts` reports which
+                # book these numbers came from and changes if the producer ever changes.
+                "charm_book_scope": _charm_book_scope(contracts),
+                "charm_error": charm_err,
+                "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
+                "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "
+                           "DEX = net_dex_dollars side sums on the newer capture; "
+                           "CHARM = dealer-signed net_charm side sums on the newer capture"),
+            }
+    except Exception as e:
+        payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
+    _FORCES_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
+#: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
+#: per-strike exposure time series the console has.
+_EXPOSURE_FLOW_CACHE: dict = {}
+
+
+@app.get("/api/exposure/flow")
+def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
+    """RC-208: serve option_chain_accrual frames for the latest banked session so the
+    Exposure tab paints per-minute Pika/Barney structure, the intraday King path, and
+    volume-delta bubbles at the minute they happened. per_strike_json served verbatim
+    ([[strike, gex_dollars, session_volume], ...]; MEASURED: SPY 07-31 = 133 frames, ET
+    minutes 556-975), spot-windowed ±5%. 5-min cache like /api/forces."""
+    import sqlite3 as _sq
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _EXPOSURE_FLOW_CACHE.get(tk)
+    if hit and now - hit[0] < 300.0:
+        return JSONResponse(hit[1])
+    payload: dict = {"ticker": tk, "available": False,
+                     "reason": "no banked accrual frames for this ticker"}
+    try:
+        db = get_db()
+        frames: list[dict] = []
+        latest = None
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            latest = con.execute(
+                "SELECT MAX(et_date) FROM option_chain_accrual WHERE ticker=?", (tk,),
+            ).fetchone()
+            if latest and latest[0]:
+                for ts, m, spot, psj in con.execute(
+                        "SELECT ts_utc, et_minute, spot, per_strike_json "
+                        "FROM option_chain_accrual WHERE ticker=? AND et_date=? "
+                        "ORDER BY ts_utc", (tk, latest[0])):
+                    try:
+                        rows2 = json.loads(psj)
+                    except (ValueError, TypeError):
+                        continue
+                    sp = float(spot) if spot is not None else None
+                    if sp:
+                        rows2 = [r for r in rows2 if abs(float(r[0]) - sp) <= sp * 0.05]
+                    frames.append({"t": int(float(ts) // 60) * 60, "m": int(m),
+                                   "spot": sp, "rows": rows2})
+        finally:
+            con.close()
+        if frames:
+            payload = {"ticker": tk, "available": True, "et_date": latest[0],
+                       "n_frames": len(frames), "frames": frames,
+                       "method": ("option_chain_accrual per_strike_json verbatim "
+                                  "[[strike, gex_dollars, session_volume]...], "
+                                  "spot-windowed ±5%, latest banked session")}
+    except Exception as e:
+        payload = {"ticker": tk, "available": False, "reason": f"flow read failed: {e}"}
+    _EXPOSURE_FLOW_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
+#: RC-209: Split·DEX and multi-day structure were gated ONLY by missing endpoints.
+_EXPOSURE_BOOK_CACHE: dict = {}
+_EXPOSURE_HISTORY_CACHE: dict = {}
+
+
+@app.get("/api/exposure/book")
+def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
+    """RC-209: per-strike call/put GEX split + net DEX + volumes from the NEWEST banked wide
+    chain — turns the Exposure tab's Split·DEX pill live. Vendor convention researched this
+    turn (FlashAlpha): green = call side, red = put side. 5-min cache."""
+    import sqlite3 as _sq
+
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _EXPOSURE_BOOK_CACHE.get(tk)
+    if hit and now - hit[0] < 300.0:
+        return JSONResponse(hit[1])
+    payload: dict = {"ticker": tk, "available": False, "reason": "no banked wide chain"}
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            cand = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
+        finally:
+            con.close()
+        rows_t = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:1]
+        if rows_t:
+            d1, s1, c1 = rows_t[0]
+            spot1 = float(s1)
+            per, _diag = _cebs(json.loads(c1), spot=spot1)
+
+            def _f(v: dict, k: str) -> float:
+                x = v.get(k)
+                return float(x) if x is not None else 0.0
+
+            out_rows = [
+                [k, round(_f(v, "call_gex_1pct")), round(_f(v, "put_gex_1pct")),
+                 round(_f(v, "net_dex_dollars")),
+                 round(_f(v, "call_volume")), round(_f(v, "put_volume"))]
+                for k, v in sorted(per.items())
+                if abs(float(k) - spot1) <= spot1 * 0.05
+            ]
+            payload = {"ticker": tk, "available": True, "et_date": d1, "spot": spot1,
+                       "rows": out_rows,
+                       "method": ("newest banked wide chain -> compute_exposures_by_strike; "
+                                  "[strike, call_gex_1pct, put_gex_1pct, net_dex_dollars, "
+                                  "call_volume, put_volume], ±5% spot window")}
+    except Exception as e:
+        payload = {"ticker": tk, "available": False, "reason": f"book read failed: {e}"}
+    _EXPOSURE_BOOK_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
+@app.get("/api/exposure/history")
+def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
+    """RC-209 (operator: multi-day scroll-back goes live): per-day per-strike net GEX$ for
+    EVERY banked session, so scrolled-back days paint THEIR OWN structure under their own
+    candles. ±5% of each day's spot; 10-min cache (the bank changes nightly)."""
+    import sqlite3 as _sq
+
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _EXPOSURE_HISTORY_CACHE.get(tk)
+    if hit and now - hit[0] < 600.0:
+        return JSONResponse(hit[1])
+    payload: dict = {"ticker": tk, "available": False, "reason": "no banked sessions"}
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            cand = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date", (tk,)).fetchall()
+        finally:
+            con.close()
+        days = []
+        for d0, s0, c0 in cand:
+            if not d0 or not is_trading_day_et(str(d0)):
+                continue
+            sp = float(s0)
+            per, _diag = _cebs(json.loads(c0), spot=sp)
+            rws = []
+            for k, v in sorted(per.items()):
+                if abs(float(k) - sp) > sp * 0.05:
+                    continue
+                x = v.get("net_gex_1pct")
+                rws.append([k, round(float(x) if x is not None else 0.0)])
+            if rws:
+                days.append({"date": d0, "spot": sp, "rows": rws})
+        if days:
+            payload = {"ticker": tk, "available": True, "n_days": len(days), "days": days,
+                       "method": ("every banked session -> compute_exposures_by_strike "
+                                  "net_gex_1pct per strike, ±5% of that day's spot")}
+    except Exception as e:
+        payload = {"ticker": tk, "available": False, "reason": f"history read failed: {e}"}
+    _EXPOSURE_HISTORY_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
+#: /api/spot upstream guard (operator 2026-07-23: "spot needs to be the fastest
+#: polling"). Every resolve_spot is a REAL Schwab REST quote against the shared
+#: ~120 req/min budget, so the endpoint caches per ticker for a short TTL — all
+#: viewers share one upstream call per window and the client can poll at 1.5s.
+_spot_poll_cache: dict[str, tuple[float, dict]] = {}
+_spot_poll_lock = threading.Lock()
+_spot_poll_inflight: dict[str, threading.Event] = {}
+SPOT_POLL_TTL_SEC = 1.25
+
+
+@app.get("/api/spot")
+def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Featherweight live spot for fast UI polling. The ONE price authority
+    (resolve_spot, RC-14) behind a 1.25s per-ticker cache — no chain, no model
+    stack, budget-bounded regardless of poll rate or viewer count.
+
+    Concurrent cache misses single-flight: one Schwab quote; waiters join and
+    reuse the TTL-fresh cached payload. Waiters never each call resolve_spot —
+    on timeout they re-contend for leadership or serve the last cache entry
+    (stale beats a quote stampede).
+    """
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+    deadline = time.time() + 10.0
+    while True:
+        now = time.time()
+        with _spot_poll_lock:
+            hit = _spot_poll_cache.get(tk)
+            if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
+                return JSONResponse(hit[1])
+            leader = tk not in _spot_poll_inflight
+            if leader:
+                _spot_poll_inflight[tk] = threading.Event()
+            done = _spot_poll_inflight[tk]
+        if not leader:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                with _spot_poll_lock:
+                    hit = _spot_poll_cache.get(tk)
+                if hit:
+                    return JSONResponse(hit[1])  # stale > stampede
+                return JSONResponse(
+                    {"ticker": tk, "spot": None, "spot_source": None,
+                     "spot_as_of_ts_utc": None, "error": "spot_resolve_timeout"},
+                    status_code=504,
+                )
+            done.wait(timeout=remaining)
+            continue
+        try:
+            spot, source, ts = resolve_spot(tk)
+            payload = {"ticker": tk, "spot": spot, "spot_source": source,
+                       "spot_as_of_ts_utc": ts}
+            with _spot_poll_lock:
+                _spot_poll_cache[tk] = (time.time(), payload)
+            return JSONResponse(payload)
+        finally:
+            with _spot_poll_lock:
+                _spot_poll_inflight.pop(tk, None)
+            done.set()
+
+
+#: Trading days a daily scorecard may be old and still be quoted as a measurement. 1 = yesterday's
+#: run is current, the day before that is not. DERIVED from the artifact's own cadence: the job is
+#: daily, so anything older than one trading day means a run was MISSED, and a missed run is
+#: exactly the condition under which the numbers must stop speaking.
+SCORECARD_MAX_TRADING_DAY_AGE: int = 1
+
+
+def scorecard_trading_day_age(generated_utc: object) -> int | None:
+    """TRADING days between `generated_utc` (YYYY-MM-DD...) and today ET. None = unusable.
+
+    Counts sessions, not hours, so a Friday scorecard reads as 1 day old on Monday rather than 3
+    — the distinction between "the job did not run" and "the market was shut"."""
+    # RC-98: CONVERT to ET, never slice the UTC string. `generated_utc[:10]` is a UTC calendar
+    # date being compared against an ET calendar date, and after 20:00 ET the UTC date is already
+    # TOMORROW — so a scorecard that had just run successfully scored `gen > today`, returned
+    # None, and the API reported the FRESH artifact as unusable. MEASURED 2026-07-27 21:21 ET:
+    # generated_utc 2026-07-28T00:30:00+00:00 (= 20:30 ET today) returned None instead of 0.
+    # The session calendar is ET, so the timestamp must be moved onto that clock before any date
+    # arithmetic — comparing two different clocks' dates is the defect, not the comparison.
+    raw = str(generated_utc or "").strip()
+    try:
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if len(raw) == 10:
+            # A DATE-ONLY string carries no time and no zone — it is already a calendar date, so
+            # converting it is the bug, not the fix. Treating "2026-07-24" as UTC midnight and
+            # shifting to ET lands on 07-23 and ages the scorecard by an extra day. Caught by
+            # tests/test_scorecard_stale_fails_closed_v1.py the moment the ET conversion landed.
+            gen = ts.date()
+        else:
+            if ts.tzinfo is None:            # naive TIMESTAMPS are UTC by this repo's storage law
+                ts = ts.replace(tzinfo=timezone.utc)
+            gen = ts.astimezone(now_et().tzinfo).date()
+    except (TypeError, ValueError):
+        return None                          # unparseable age is NOT a fresh age
+    today = now_et().date()
+    if gen > today:
+        return None                          # a future stamp is a broken clock, never "fresh"
+    age, day = 0, gen
+    while day < today:
+        day += timedelta(days=1)
+        if is_trading_day_et(day.isoformat()):
+            age += 1
+    return age
+
+
+@app.get("/api/terrain/scorecard")
+def get_terrain_scorecard():
+    """Coach copy's measured numbers, LIVE from the latest daily scorecard.
+
+    Operator 2026-07-23: "will the coach be updated as we self-test?" — the
+    tooltip hold-rates were frozen into the page the night they were measured.
+    Now the UI reads them from reports/terrain_backtest_latest.json, so every
+    daily scorecard run updates what the coach is allowed to claim.
+
+    FAIL-CLOSED ON STALE AS WELL AS ABSENT (RC-78). This previously refused a
+    missing or malformed report and served an out-of-date one, while claiming in
+    this very docstring that it "never" served a stale rate — and it was found
+    serving hold-rates 111.6 hours (4.6 days) old under the coach's "Measured on
+    our own history". Age is a precondition to serve, not a footnote to display:
+    a date printed beside a number does not stop the number being read. Past the
+    budget the figures are WITHHELD and the reason is published, so the coach
+    says "measuring" instead of quoting a four-day-old measurement.
+
+    The budget counts TRADING days, so Friday's scorecard is still current on
+    Monday and stale on Tuesday. A wall-clock budget would condemn every
+    scorecard each weekend and teach the operator to ignore the warning."""
+    p = Path(APP_DIR) / "reports" / "terrain_backtest_latest.json"
+    try:
+        rep = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return JSONResponse({})
+    gen = rep.get("generated_utc")
+    age = scorecard_trading_day_age(gen)
+    if age is None or age > SCORECARD_MAX_TRADING_DAY_AGE:
+        return JSONResponse({
+            "generated_utc": gen,
+            "stale": True,
+            "age_trading_days": age,
+            "max_trading_days": SCORECARD_MAX_TRADING_DAY_AGE,
+            "stale_reason": (
+                "scorecard has not been regenerated" if age is None
+                else f"scorecard is {age} trading day(s) old"
+            ),
+        })
+    return JSONResponse({
+        "generated_utc": gen,
+        "stale": False,
+        "age_trading_days": age,
+        "wall_hold_trusted": rep.get("wall_hold_trusted"),
+        "weighting_scorecard": rep.get("weighting_scorecard"),
+        "pdca": rep.get("pdca"),
+    })
+
+
+@app.get("/chart", response_class=HTMLResponse)
+def chart_page():
+    """CR-03 screen-1 v0 — chart-first view (candles + terrain bands + coach)."""
+    p = static_dir / "chart.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/chart.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/exposure", response_class=HTMLResponse)
+def exposure_page():
+    """RC-200 (re-landed with RC-210) — the Exposure Overlay tab: dealer positioning on
+    price (operator #1 project, LIVE order 2026-08-02)."""
+    p = static_dir / "exposure.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/exposure.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/desk", response_class=HTMLResponse)
+def desk_page():
+    """Desk — research, candidates and book, replayable at an earlier knowledge time."""
+    p = static_dir / "desk.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/desk.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/api/desk/radar")
+def get_desk_radar(as_of: float = Query(default=0.0), limit: int = Query(default=60)):
+    """Candidate structure as it stood at `as_of` (epoch seconds; 0 = now).
+
+    The whole point of the parameter is that moving it BACKWARD must remove rows. Filtering
+    happens on knowledge time inside `desk_store.radar_rows`, never on event time — see the
+    module docstring for the six-day FINRA lag that makes the distinction load-bearing.
+    """
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    try:
+        payload = desk_store.radar_rows(_desk_db, at, limit=max(1, min(int(limit), 500)))
+    except Exception as e:  # absence reaches the surface as absence, never as zeros
+        return {"as_of_utc": at, "rows": [], "n_total": 0, "error": f"{type(e).__name__}: {e}"}
+    payload["server_now_utc"] = time.time()
+    payload["is_replay"] = bool(as_of and as_of > 0)
+    return payload
+
+
+@app.get("/api/desk/dossier")
+def get_desk_dossier(ticker: str = Query(default=DEFAULT_TICKER),
+                     as_of: float = Query(default=0.0)):
+    """One name's measured structure, as it stood at `as_of`."""
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    try:
+        payload = desk_store.dossier(_desk_db, tk, at)
+    except Exception as e:
+        return {"subject": tk, "as_of_utc": at, "error": f"{type(e).__name__}: {e}",
+                "missing": ["request failed"]}
+    payload["server_now_utc"] = time.time()
+    payload["is_replay"] = bool(as_of and as_of > 0)
+    return payload
+
+
+@app.get("/api/desk/evidence")
+def get_desk_evidence(as_of: float = Query(default=0.0)):
+    """The study scoreboard, read from reports/ rather than retyped.
+
+    RC-172: honours the replay clock. A scoreboard generated after the instant being replayed is
+    refused with its reason — on a tab whose premise is judging a screen by what was knowable,
+    the surface that adjudicates claims cannot be the one reading the future.
+    """
+    import desk_store
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    try:
+        return desk_store.evidence_rows(APP_DIR, at)
+    except Exception as e:
+        return {"rows": [], "empty_reason": f"{type(e).__name__}: {e}"}
+
+
+@app.get("/api/desk/structure")
+def get_desk_structure(
+    ticker: str = Query(default=DEFAULT_TICKER),
+    horizon_sessions: int = Query(default=5),
+    long_strike: float = Query(default=0.0),
+    short_strike: float = Query(default=0.0),
+    long_price: float = Query(default=0.0),
+    short_price: float = Query(default=0.0),
+    contracts: int = Query(default=1),
+    as_of: float = Query(default=0.0),
+):
+    """Deterministic payoff plus the PHYSICAL terminal distribution.
+
+    The risk-neutral half is refused, not approximated — see `desk_store` for the reason, which
+    is stated once so every surface refuses in the same words.
+    """
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    out: dict = {"subject": tk, "as_of_utc": at}
+    try:
+        out["distribution"] = desk_store.terminal_distribution(
+            _desk_db, tk, at, horizon_sessions=max(1, min(int(horizon_sessions), 60)))
+    except Exception as e:
+        out["distribution"] = {"available": False, "reason": f"{type(e).__name__}: {e}"}
+    if long_strike > 0 and short_strike > 0:
+        try:
+            payoff = desk_store.vertical_spread(
+                long_strike, short_strike, long_price, short_price,
+                contracts=max(1, int(contracts)))
+            out["payoff"] = payoff
+            out["pop"] = desk_store.probability_of_profit(
+                out["distribution"], payoff["breakeven"])
+        except desk_store.DeskFactError as e:
+            out["payoff_error"] = str(e)
+    out["server_now_utc"] = time.time()
+    return out
+
+
+@app.get("/api/desk/brief")
+def get_desk_brief(as_of: float = Query(default=0.0)):
+    """The newest research brief we held at `as_of`, blocks aged against that instant."""
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    at = float(as_of) if as_of and as_of > 0 else time.time()
+    try:
+        brief = desk_store.latest_brief(_desk_db, at)
+    except Exception as e:
+        return {"brief": None, "empty_reason": f"{type(e).__name__}: {e}"}
+    if brief is None:
+        return {"brief": None, "as_of_utc": at, "empty_reason": (
+            "no research brief has been ingested — the Brief is a publish target and nothing "
+            "has published to it yet")}
+    return {"brief": brief, "as_of_utc": at, "empty_reason": None}
+
+
+@app.post("/api/desk/materialize")
+def post_desk_materialize():
+    """Rebuild the fact store from tables this repo already fills. Idempotent.
+
+    RC-172: this was a GET. A GET that rewrites tens of thousands of rows against a 25 GB
+    database is fired by anything that speculatively fetches a URL — a link prefetch, a crawler,
+    a browser preconnect, an operator refreshing a saved tab — and this database already has an
+    open root cause for write contention (RC-166). POST is the fix: the method now matches what
+    the call actually does.
+    """
+    import desk_store
+    from db import DB_PATH as _desk_db
+
+    t0 = time.time()
+    try:
+        res = desk_store.materialize_all(_desk_db)
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    return {"ok": True, "elapsed_sec": round(time.time() - t0, 2), "counts": res}
+
+
+@app.get("/api/terrain")
+def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Terrain payload — levels only, NO model stack.
+
+    Deliberately separate from /api/state: that path runs the full pipeline (chain +
+    greeks + xgb/lstm/transformer x 4 horizons + fusion + decision bundle), which is why
+    background collection had to be throttled to keep it responsive. Terrain is ~5 ms of
+    math on the same chain, so it never needs to compete for that budget.
+    """
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+    cached = terrain_cache_get(tk)
+    if cached is None:
+        # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
+        # _latest_chain_and_spot(), the most recent NARROW stored snapshot chain, while the
+        # terrain loop computed from a WIDE chain sized by the resolve_chain_strike_count
+        # faucet. Wall and flip selection depends on how much of the wing is present, so the
+        # two disagreed: MEASURED 2026-07-27, /api/terrain?ticker=SPY alternated between
+        # call=750/put=740/flip=746.59 and call=739/put=736/flip=739.80 within ten seconds
+        # while spot moved four cents. The operator was reading two different sets of trade
+        # levels from one endpoint. A second producer is a second faucet even when both write
+        # the same cache key — the provenance audit only ever saw the read side.
+        #
+        # So on a miss the endpoint drives THE producer instead of imitating it, and if that
+        # cannot deliver, the terrain reads UNAVAILABLE. Absence reads as absence; it never
+        # reads as a narrower chain's answer.
+        _terrain_refresh_one(tk, priority=True)
+        cached = terrain_cache_get(tk)
+    if cached is not None:
+        # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
+        return _reprice_cached_terrain(cached, tk)
+    spot, spot_source, spot_ts = resolve_spot(tk)
+    _why = _terrain_refresh_last_error.get(tk)
+    return compute_terrain(tk, None, spot).to_dict() | {
+        "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
+        # RC-126: not_ready carries its REASON when the producer has one — an eternal
+        # unexplained shrug is how $SPX stayed dark for a session.
+        "error": ("terrain_not_ready: no wide-chain snapshot yet for this ticker"
+                  + (f" (last refresh error: {_why})" if _why else "")),
+        # RC-151: and it carries the STRUCTURED state too. The cached branch above spreads
+        # terrain_staleness while this one shipped only a prose `error` string, so
+        # levels_failing / levels_quarantined were absent on /api/terrain for precisely the
+        # tickers that were failing — MEASURED 2026-07-30 12:08 ET: RTY returned [] structured
+        # fields while SPY returned all five. A flag a consumer must parse English to discover
+        # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
+        **terrain_staleness(None, tk),
+    }
+
+
+def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:
+    """Most recent stored chain + spot for a ticker (read-only, no Schwab call).
+
+    MEASURED 2026-07-20 — this query was the single worst latency in the app.
+
+    Without `timeframe` in the predicate the plan was:
+        SEARCH snapshots USING INDEX idx_snap_ticker_tf_ts (ticker=?)
+        USE TEMP B-TREE FOR ORDER BY
+    SQLite could seek to the ticker but not use the index's ts_utc ordering, because
+    timeframe sits between them in the composite key. Satisfying ORDER BY ts_utc DESC
+    therefore meant reading EVERY row for that ticker -- 70,556 for SPY, each carrying an
+    inline ~50 KB option_chain_json -- into a temp B-tree to sort, to return one row. It
+    did not complete inside a 300 s timeout.
+
+    Naming the timeframe closes the index gap:
+        SEARCH snapshots USING INDEX idx_snap_ticker_tf_ts (ticker=? AND timeframe=?)
+    No temp B-tree, no scan. MEASURED after: SPY 0.002 s, QQQ 0.005 s, NVDA 0.002 s.
+
+    This is RC-6's root cause made concrete -- an archival blob sharing a table with the
+    operational query surface is paid for on every read that touches the rows. The index
+    fix removes the cost here; it does not remove the cause.
+    """
+    import sqlite3 as _sqlite3
+
+    try:
+        db = get_db()
+    except Exception:
+        return None, None
+    con = _sqlite3.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=30.0)
+    row = None
+    try:
+        con.row_factory = _sqlite3.Row
+        # Canonical first, legacy second. Two index-served lookups are still orders of
+        # magnitude cheaper than one unbounded scan, and a ticker whose history is all
+        # legacy 5m rows still resolves instead of silently returning nothing.
+        for tf in _STORED_CHAIN_TIMEFRAMES:
+            row = con.execute(
+                "SELECT spot, option_chain_json FROM snapshots "
+                "WHERE ticker=? AND timeframe=? "
+                "AND option_chain_json IS NOT NULL AND spot IS NOT NULL "
+                "ORDER BY ts_utc DESC LIMIT 1",
+                (ticker, tf),
+            ).fetchone()
+            if row:
+                break
+    finally:
+        con.close()
+    if not row:
+        return None, None
+    try:
+        return json.loads(row["option_chain_json"]), float(row["spot"])
+    except (ValueError, TypeError):
+        return None, None
+
+
 @app.get("/api/analytics/light")
 async def get_analytics_light(
     ticker: str = Query(default=DEFAULT_TICKER),
@@ -9766,15 +13199,38 @@ async def get_analytics_light(
     t = ticker.upper().strip()
     from planes.l1_events import notify_ticker_expiry_changed
 
-    # SWITCH-LATENCY FIX: async route — keep the symbol persist (DB write) and the L1
-    # projection build (a full recompute on a cold miss) OFF the event loop.
+    # RC-166: L1 assembly runs on ed_l1_light (not ed_route_offload). logging_universe
+    # touch is fire-and-forget on the route pool so a SQLITE wait cannot hold the L1
+    # response (L1 itself is memory-only; _pipeline_ms never included that wait).
+    route_t0 = time.perf_counter()
+    submit_ts = time.perf_counter()
+    try:
+        _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
+    except Exception:
+        log.debug("analytics_light: touch_seen submit failed ticker=%s", t, exc_info=True)
+
     def _build():
-        # TICKER-PREVIEW-NO-ENROLL: L1 light view touches last-seen only, never enrolls.
-        _touch_tracked_ticker_view(t)
         return notify_ticker_expiry_changed(t, expiry, force=force)
+
     loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_fast_quote_executor(), _build)
-    return JSONResponse(payload)
+    payload = await loop.run_in_executor(_get_l1_light_executor(), _build)
+    after_exec = time.perf_counter()
+    await_ms = (after_exec - submit_ts) * 1000.0
+    total_ms = (after_exec - route_t0) * 1000.0
+    log.info(
+        "analytics_light_route_done ticker=%s await_executor_ms=%.2f route_total_ms=%.2f "
+        "pipeline_ms=%s",
+        t,
+        await_ms,
+        total_ms,
+        (payload or {}).get("_pipeline_ms") if isinstance(payload, dict) else None,
+    )
+    # Shallow copy so route timing fields never mutate the authoritative L1 cache object.
+    out = dict(payload) if isinstance(payload, dict) else payload
+    if isinstance(out, dict):
+        out["_route_await_executor_ms"] = round(await_ms, 2)
+        out["_route_total_ms"] = round(total_ms, 2)
+    return JSONResponse(out)
 
 
 @app.get("/api/analytics/light/stream")
@@ -9789,8 +13245,11 @@ async def get_analytics_light_stream(
     """
     t = ticker.upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
-    # touch last-seen only. Offloaded because it may do a SQLite write for enrolled tickers.
-    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, t)
+    # touch last-seen only. Fire-and-forget (RC-166): do not block SSE setup on SQLite.
+    try:
+        _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
+    except Exception:
+        log.debug("analytics_light_stream: touch_seen submit failed ticker=%s", t, exc_info=True)
     exp_key = expiry if expiry is not None else "__auto__"
     key = (t, exp_key)
     q, rs_key = _l1_light_sse_try_reserve(request, key)
@@ -9937,7 +13396,7 @@ async def post_streaming_active_ticker(payload: dict = Body(default={})):
 def _l1_sse_light_diag_payload() -> dict[str, Any]:
     """Authoritative counters + derived health hints for operators (see l1_sse_field_semantics)."""
     now_m = time.monotonic()
-    drop_m = float(_l1_sse_last_drop_mono or 0.0)
+    drop_m = float(_l1_sse_last_drop_mono or 0.0)  # silent-zero-ok: 0 means "no drop ever recorded" and every consumer below gates on drop_m > 0.0 before deriving an age
     drop_age_sec = float(now_m - drop_m) if drop_m > 0.0 else None
     out: dict[str, Any] = {**dict(_l1_sse_diag)}
     out["l1_sse_backpressure_policy"] = (
@@ -9949,7 +13408,7 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
     )
     out["l1_sse_last_drop_age_sec"] = drop_age_sec
     out["l1_sse_saturated_recent"] = bool(drop_m > 0.0 and drop_age_sec is not None and drop_age_sec < 60.0)
-    viol = int(out.get("l1_payload_identity_violation", 0) or 0)
+    viol = int(out.get("l1_payload_identity_violation", 0) or 0)  # silent-zero-ok: a violation COUNTER — absent means none were recorded, which is what 0 states
     if viol > 0:
         out["l1_sse_health_hint"] = "identity_violation"
     elif out["l1_sse_saturated_recent"]:
@@ -10001,11 +13460,20 @@ def get_l1_diagnostics():
     from planes.l1_operational import build_l1_operational_assessment
 
     bt = int(_l1_instrumentation["l1_build_total"])
-    avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt)
+    # RC-291: divide by builds whose timing was MEASURED, not by all builds. Dividing a sum
+    # that excludes unmeasured builds by a count that includes them understates the average
+    # and can hold it under the warn threshold — measured at 24.7 ms for a true 26.0 ms.
+    bt_measured = int(_l1_instrumentation["l1_build_ms_measured"])
+    avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt_measured)
     reasons = {str(k): int(v) for k, v in _l1_instrumentation["l1_build_by_reason"].items()}
     uptime_sec = max(0.0, time.monotonic() - _l1_diag_start_mono)
     operational = build_l1_operational_assessment(
+        # RC-293: the TRUE build count drives the rate alarm; the TIMED count drives the
+        # latency average. RC-291 passed bt_measured as l1_build_total, which fixed the
+        # average and made builds_per_min report timed builds — a true 500/min read as
+        # 100/min and graded healthy. Two questions, two inputs.
         l1_build_total=bt,
+        timing_sample_count=bt_measured,
         l1_build_ms_sum=float(_l1_instrumentation["l1_build_ms_sum"]),
         reasons=reasons,
         l1_http_cache_hit_total=int(_l1_instrumentation["l1_http_cache_hit_total"]),
@@ -10139,7 +13607,7 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
     Fast lane: latest equity quote fields only. Independent fast_generation_id / fast_server_ts.
     Does not return chain, fusion, or decision data.
     """
-    ticker = ticker.upper().strip()
+    ticker = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX etc., ONE authority
     route_t0 = time.perf_counter()
     asyncio_thread = threading.current_thread().name
     log.info(
@@ -10212,10 +13680,15 @@ async def sse_stream(
     stream_route_t0 = time.perf_counter()
 
     async def event_generator():
+        global _sse_conn_epoch
         q = asyncio.Queue(maxsize=10)
         with _sse_lock:
             _sse_clients.append(q)
             _sse_subscribers[key] = _sse_subscribers.get(key, 0) + 1
+            # T5.1: a new connection changes the audience — the epoch bump makes
+            # the next cadence fanout deliver the current bundle to this client
+            # even when its identity is otherwise already-broadcast.
+            _sse_conn_epoch += 1
         # Immediate SSE comment chunk: first body bytes must not wait on q.get() (up to 30s) or
         # some proxies/clients defer visible connection until first chunk — CONNECTING sticks.
         yield ": ok\n\n"
@@ -10444,7 +13917,7 @@ def logger_status():
     if _HAS_SIGNALS:
         try:
             for row in get_db().logging_universe_list_rows():
-                db_rows[(row.get("ticker") or "").upper().strip()] = row
+                db_rows[ticker_storage_key(row.get("ticker"))] = row  # RC-345/F25: canonical join key
         except Exception as e:
             log.debug("logger_status DB join: %s", e)
 
@@ -10557,14 +14030,14 @@ def logger_universe_by_category(
 def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core only)")):
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
-    t = ticker.upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical pin identity (matches enrollment + dedup)
     if not t or len(t) > 10:
         raise HTTPException(status_code=400, detail="invalid ticker")
     if t in CORE_TICKERS:
         raise HTTPException(status_code=400, detail="core symbols are already protected; pin not applicable")
     db = get_db()
     is_already_pinned = any(
-        (r.get("ticker") or "").upper() == t and r.get("category") == "pinned"
+        ticker_storage_key(r.get("ticker")) == t and r.get("category") == "pinned"  # RC-345/F25: canonical pin-dedup
         for r in db.logging_universe_list_rows()
     )
     if (
@@ -10932,7 +14405,11 @@ def api_vol_observability(ticker: Optional[str] = Query(default=None)):
 def api_chain_gate_diagnostics():
     """Read-only chain-gate observability: slots, waits, coalescing, breaker."""
     with _chain_inflight_lock:
-        inflight = sorted(_chain_inflight.keys())
+        # Keys are (ticker, strike_count); render as SPY@20 for operators.
+        inflight = sorted(
+            f"{k[0]}@{k[1]}" if isinstance(k, tuple) and len(k) == 2 else str(k)
+            for k in _chain_inflight
+        )
     return {
         "gate": _schwab_chain_fetch_gate.snapshot(),
         "inflight_tickers": inflight,
@@ -10944,24 +14421,170 @@ def api_chain_gate_diagnostics():
 
 
 @app.get("/api/price-levels")
-# SWITCH-LATENCY FIX: sync def → threadpool (Schwab quote + price-levels compute, no await).
 def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
-    """Return PDH/PDL/PDC, POC/VAH/VAL, VWAP bands, ORB, overnight range as JSON."""
-    try:
-        # TICKER-PREVIEW-NO-ENROLL: price-levels is a VIEW — touch last-seen only.
-        _touch_tracked_ticker_view(ticker)
-        client = get_client()
-        q_resp = _safe_get_quote_with_retry(client, ticker)
-        q_json = q_resp.json() if q_resp and hasattr(q_resp, "json") else {}
-        pl = fetch_price_levels(client, symbol=ticker, quote_raw=q_json, include_extended_hours=extended_hours)
-        return asdict(pl)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    """RETIRED (RC-213 B6, one-faucet-closeout-v1): /api/levels is the ONE levels surface.
+
+    This route measured ZERO client consumers (census 2026-08-03) and was the second HTTP
+    producer for the level families. It hard-fails with a pointer rather than aliasing —
+    an alias is a second name for one faucet and second names are how duals grow back.
+    The compute path is untouched: _fetch_state still uses fetch_price_levels internally
+    (which delegates every family to the liquidity_value_engine authorities)."""
+    return JSONResponse({
+        "error": "retired",
+        "detail": "/api/price-levels is retired (RC-213 B6). Use /api/levels — the single "
+                  "levels contract (id/price/family/provenance/staleness per level).",
+        "replacement": f"/api/levels?ticker={(ticker or DEFAULT_TICKER).upper().strip()}",
+    }, status_code=410)
+
+
+def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]:
+    """Resolve the ONE bar input for the canonical snapshot: accumulator, else banked.
+
+    Phase 2A: this is the only bar-input resolution for the Phase 2A level ids. The
+    second materialization that produced overnight 773.3975 on /api/levels and 773.40
+    on /api/liquidity-snapshot at the same instant was a second BAR INPUT (a
+    synchronous Schwab fetch), not a second formula — so the input is resolved once,
+    here, and every surface reads what came out of it.
+    """
+    import sqlite3 as _sq
+
+    from liquidity_value_engine import _bars_to_list, prior_trading_session_date
+
+    degraded: list[dict] = []
+    bars_norm = _bars_to_list(_liquidity_live_1m_overlay_bars(tk))
+    bar_source = "live_accumulator"
+    # t12 (RC-227 residual, MEASURED): the accumulator's rolling buffer can hold a
+    # TRUNCATED prior session — the prior date resolves but min()/max() run over a
+    # partial tape (PDL served 756.84 vs the true 749.59 while PDH/PDC matched).
+    # A prior-day fact needs the FULL session: require plausible full coverage
+    # (>= 300 of ~390 RTH minutes) or fall through to banked canonical bars.
+    _prior_probe = prior_trading_session_date(bars_norm, session_date)
+    _prior_full = False
+    if _prior_probe is not None:
+        from liquidity_value_engine import _bar_dt_et as _bde
+        _n_prior = sum(
+            1 for b in bars_norm
+            if (lambda d: d is not None and d.date() == _prior_probe)(_bde(b))
+        )
+        _prior_full = _n_prior >= LEVELS_PRIOR_SESSION_MIN_BARS
+    if not _prior_full:
+        # Accumulator holds no prior RTH session or only a truncated slice —
+        # fall back to banked canonical bars. Read-only, indexed, no vendor call.
+        try:
+            db = get_db()
+            con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+            try:
+                rows = con.execute(
+                    "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
+                    "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT 2500", (tk,),
+                ).fetchall()
+            finally:
+                con.close()
+            bars_norm = _bars_to_list([
+                {"timestamp": r[0], "open": r[1], "high": r[2], "low": r[3],
+                 "close": r[4], "volume": r[5]} for r in reversed(rows)
+            ])
+            bar_source = "banked_price_bars_1m"
+        except Exception as e:
+            degraded.append({"family": "prior_day",
+                             "reason": f"banked bar read failed: {str(e)[:80]}",
+                             "last_good_ts_utc": None})
+            bars_norm = []
+    return bars_norm, bar_source, degraded
+
+
+def canonical_price_level_snapshot(ticker: str):
+    """THE Phase 2A entry point for every server surface.
+
+    Materializes once per generation and returns the SAME object for the rest of that
+    generation. No endpoint may call the engine's level helpers directly — the static
+    guard `check_phase2a_single_level_computation` fails the build if one does, alias
+    or not.
+    """
+    from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
+    from time_et import now_et
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    session_date = now_et().date()
+    bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
+    return materialize_price_level_snapshot(
+        tk, session_date, bars_norm, bar_source=bar_source,
+        config=PlaybookConfig(), degraded=degraded,
+    )
+
+
+@app.get("/api/levels")
+# Phase 2A (operator 2026-08-08): /api/levels is the canonical SERVING CONTRACT for the
+# one materialized PriceLevelSnapshot — it serializes, it does not compute. Every other
+# surface (liquidity-snapshot, market_context, /api/state, ML features, persistence,
+# chart) carries the values out of the same snapshot object and generation.
+def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
+    import time as _time
+
+    from liquidity_value_engine import carry_snapshot_levels
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    served_ts = _time.time()
+    spot, spot_source, spot_ts = resolve_spot(tk)
+    snap = canonical_price_level_snapshot(tk)
+    # Register this surface against the runtime carrier contract: if any other carrier
+    # already shipped a different value/generation/provenance for this generation, the
+    # disagreement raises here instead of reaching two screens (RC-262 pattern).
+    carry_snapshot_levels(snap, "api.levels")
+
+    levels: list[dict] = []
+    for lid, value in snap.levels.items():
+        row = value.to_contract_dict()
+        as_of = value.as_of_ts_utc
+        row["staleness"] = {
+            "as_of_ts_utc": as_of,
+            "age_sec": None if as_of is None else round(served_ts - as_of, 1),
+            "stale_after_sec": None,
+            "stale": False,
+            "reason": f"carried from canonical snapshot generation {snap.generation}",
+        }
+        levels.append(row)
+
+    families_absent = list(snap.families_absent)
+    for fam, why in (
+        ("gamma", "Phase 2A slice excludes gamma — served by /api/terrain until migration"),
+        ("expected_move", "Phase 2A slice excludes EM — served by /api/state until migration"),
+    ):
+        families_absent.append({"family": fam, "reason": why})
+
+    return JSONResponse({
+        "ticker": tk,
+        "schema_version": 1,
+        "served_ts_utc": served_ts,
+        "spot": spot,
+        "spot_source": spot_source,
+        "spot_as_of_ts_utc": spot_ts,
+        "generation": snap.generation,
+        "snapshot_as_of_ts_utc": snap.as_of_ts_utc,
+        "bar_source": snap.bar_source,
+        "levels": levels,
+        # The VWAP curve and its σ bands, CARRIED. chart.html and exposure.html each
+        # used to accumulate their own from /api/bars1m — two more VWAPs for one
+        # session, drawn beside a level neither of them agreed with.
+        # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
+        "vwap_series": [list(row) for row in snap.vwap_series],
+        "families_absent": families_absent,
+        "degraded": list(snap.degraded),
+    })
 
 
 def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
-    """Flatten raw_levels into [{tag, value}] for display, ordered by price."""
+    """Flatten raw_levels into [{tag, value}] for display, ordered by price.
+
+    Phase 2A scope rule: a canonical id names the canonical (ticker, scope, generation)
+    value and nothing else. A CHECKPOINT snapshot (premarket/opening/midday/afternoon)
+    measures the same concept through a different cutoff — a legitimately different
+    number — so it travels under an explicitly distinct id (`VWAP@checkpoint:midday`)
+    and is never compared against, or mistaken for, the canonical `VWAP`.
+    """
     items = []
+    _scope = "" if snapshot_type == "live" else f"@checkpoint:{snapshot_type}"
     tag_map = {
         "pdh": "PDH", "pdl": "PDL", "pdc": "PDC",
         "pd_poc": "PD_POC", "pd_vah": "PD_VAH", "pd_val": "PD_VAL",
@@ -10974,25 +14597,25 @@ def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
     prev = raw_levels.get("prev_day") or raw_levels.get("prev") or {}
     for k, v in prev.items():
         if v is not None and isinstance(v, (int, float)) and k in tag_map:
-            items.append({"tag": tag_map[k], "value": float(v)})
+            items.append({"tag": tag_map[k] + _scope, "value": float(v)})
     for k in ["overnight_high", "overnight_low"]:
         v = (raw_levels.get("overnight") or {}).get(k)
         if v is not None:
-            items.append({"tag": tag_map[k], "value": float(v)})
+            items.append({"tag": tag_map[k] + _scope, "value": float(v)})
     orb = raw_levels.get("orb") or {}
     for k in ["orb_high", "orb_low", "orb_mid"]:
         if orb.get(k) is not None:
-            items.append({"tag": tag_map[k], "value": float(orb[k])})
+            items.append({"tag": tag_map[k] + _scope, "value": float(orb[k])})
     if raw_levels.get("vwap") is not None and snapshot_type != "premarket":
-        items.append({"tag": "VWAP", "value": float(raw_levels["vwap"])})
+        items.append({"tag": "VWAP" + _scope, "value": float(raw_levels["vwap"])})
     vwap_bands = raw_levels.get("vwap_bands") or {}
     for k, tag in [("plus2", "VWAP_P2"), ("plus1", "VWAP_P1"),
                    ("minus1", "VWAP_M1"), ("minus2", "VWAP_M2")]:
         if vwap_bands.get(k) is not None:
-            items.append({"tag": tag, "value": float(vwap_bands[k])})
+            items.append({"tag": tag + _scope, "value": float(vwap_bands[k])})
     for k in ["poc", "vah", "val"]:
         if raw_levels.get(k) is not None:
-            items.append({"tag": tag_map[k], "value": float(raw_levels[k])})
+            items.append({"tag": tag_map[k] + _scope, "value": float(raw_levels[k])})
     return sorted(items, key=lambda x: x["value"])
 
 
@@ -11069,7 +14692,9 @@ def _liquidity_fusion_from_cache(
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
         (d.get("kl_gamma_pin"), "GAMMA_PIN"),
-        (d.get("kl_hvl"), "HVL"),
+        # RC-134: kl_hvl is the NET book (RC-124); the tag must not say HVL, since that
+        # name means total gamma, which is the pin.
+        (d.get("kl_hvl"), "NET_GEX_PEAK"),
         (d.get("kl_max_pain"), "MAX_PAIN"),
         (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
         (d.get("kl_oi_center"), "OI_CENTER"),
@@ -11194,6 +14819,15 @@ def get_liquidity_snapshot(
             _extra_for_build = list(extra) if fusion else []
             if spot_for_zones is not None and fusion:
                 _extra_for_build.append((spot_for_zones, "SPOT_LIVE"))
+            # Phase 2A: this endpoint CARRIES the canonical snapshot; it does not compute
+            # the Phase 2A families. MEASURED before this change, same instant, same
+            # ticker: /api/levels overnight 773.3975/773.3975 vs this endpoint
+            # 773.40/772.55 — one concept, two bar inputs, two answers on two screens.
+            _canon = None
+            if session_date_obj == now_et().date():
+                from liquidity_value_engine import carry_snapshot_levels
+                _canon = canonical_price_level_snapshot(ticker_upper)
+                carry_snapshot_levels(_canon, "api.liquidity_snapshot")
             out = build_live_snapshot(
                 ticker_upper,
                 bars,
@@ -11201,6 +14835,7 @@ def get_liquidity_snapshot(
                 config,
                 extra_levels=_extra_for_build if fusion else None,
                 spot=spot_for_zones,
+                canonical=_canon,
             )
             if spot_for_zones is None:
                 _rv = (out.raw_levels or {}).get("vwap")
@@ -11265,6 +14900,14 @@ def get_liquidity_snapshot(
             result["as_of_cutoff_et"] = (out.raw_levels or {}).get("cutoff_et")
             result["expiry_used_for_fusion"] = expiry.strip() if expiry else None
             result["spot_used_for_scoring"] = spot_for_zones
+            # Phase 2A carriage stamp: which snapshot generation these level values ARE.
+            # Two carriers that agree on the number but not on the generation are still
+            # two answers — the generation travels so the skew is visible, never silent.
+            result["level_generation"] = _canon.generation if _canon is not None else None
+            result["level_semantic_scope"] = (out.raw_levels or {}).get("semantic_scope")
+            result["level_snapshot_as_of_ts_utc"] = (
+                _canon.as_of_ts_utc if _canon is not None else None)
+            result["level_bar_source"] = _canon.bar_source if _canon is not None else None
         if out.summary:
             result["summary"] = {
                 "value_state": out.summary.value_state,
@@ -11329,10 +14972,11 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker)
         from math_exposure import compute_net_charm
-        import math as _charm_math
 
         cl       = get_client()
-        c_resp   = safe_get_chain(cl, ticker, strike_count=CHAIN_STRIKE_COUNT)
+        # RC-59: charm IS level math — the debug view must see the same width the product
+        # computes on, or it debugs a different chain than the one that produced the number.
+        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker))
         if c_resp is None or c_resp.status_code != 200:
             return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
         chain_json = c_resp.json()
@@ -11371,38 +15015,28 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         usable_iv = 0
         sentinel_gamma = 0
         has_oi = 0
+        from numeric_contract import float_finite_or_none as _fin
         for ct in contracts:
-            try:
-                _g = float(ct.get("gamma")) if ct.get("gamma") is not None else None
-            except (TypeError, ValueError):
-                _g = None
-            if _g is not None and _g != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_g):
+            # single source: canonical finite reader for every greek. Raw float() admitted
+            # NaN (the counts were already NaN-safe via inline isfinite gates, now folded
+            # into the reader); MISSING_GREEK_SENTINEL is finite, survives the read, and is
+            # excluded explicitly — behaviour-identical, one fewer finite-check faucet.
+            _g = _fin(ct.get("gamma"))
+            _d = _fin(ct.get("delta"))
+            if gamma_is_plausible(_g, _d):
                 usable_gamma += 1
             if ct.get("gamma") == MISSING_GREEK_SENTINEL:
                 sentinel_gamma += 1
-            try:
-                _d = float(ct.get("delta")) if ct.get("delta") is not None else None
-            except (TypeError, ValueError):
-                _d = None
-            if _d is not None and _d != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_d):
+            if _d is not None and _d != MISSING_GREEK_SENTINEL:
                 usable_delta += 1
-            try:
-                _t = float(ct.get("theta")) if ct.get("theta") is not None else None
-            except (TypeError, ValueError):
-                _t = None
-            if _t is not None and _t != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_t):
+            _t = _fin(ct.get("theta"))
+            if _t is not None and _t != MISSING_GREEK_SENTINEL:
                 usable_theta += 1
-            try:
-                _v = float(ct.get("vega")) if ct.get("vega") is not None else None
-            except (TypeError, ValueError):
-                _v = None
-            if _v is not None and _v != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_v):
+            _v = _fin(ct.get("vega"))
+            if _v is not None and _v != MISSING_GREEK_SENTINEL:
                 usable_vega += 1
-            try:
-                _iv = float(ct.get("volatility")) if ct.get("volatility") is not None else None
-            except (TypeError, ValueError):
-                _iv = None
-            if _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_iv):
+            _iv = _fin(ct.get("volatility"))
+            if _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL:
                 usable_iv += 1
             if ct.get("openInterest"):
                 has_oi += 1
@@ -11412,11 +15046,11 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         selected_exp = _default_expiry(expiries, ticker)
 
         # Try charm with all contracts, no filter
-        raw_spot = chain_json.get("underlyingPrice")
-        try:
-            spot = float(raw_spot) if raw_spot is not None else None
-        except (TypeError, ValueError):
-            spot = None
+        # single source: finite spot via the canonical reader. Raw float() admitted a NaN
+        # underlyingPrice, and the `spot <= 0` guard does NOT catch NaN (nan <= 0 is False),
+        # so a NaN spot used to flow into compute_net_charm.
+        from numeric_contract import float_finite_or_none as _fin
+        spot = _fin(chain_json.get("underlyingPrice"))   # external-key-ok: Schwab chain JSON node
         if spot is None or spot <= 0:
             return {"error": f"underlyingPrice missing or zero in chain response for {ticker}"}
         charm_all = compute_net_charm(contracts, spot, selected_exp or "")
@@ -11498,7 +15132,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
                     timeframe=CANONICAL_TIMEFRAME,
                     model_version=_serving_version,
                     horizon=_hz,
-                    total_predictions=int(_hz_res.get("total", 0) or 0),
+                    total_predictions=int(_hz_res.get("total", 0) or 0),  # silent-zero-ok: a COUNT of rows returned — no rows is genuinely zero predictions, not an unmeasured quantity
                     correct_direction=_hz_res.get("correct"),
                     accuracy_pct=_hz_res.get("accuracy"),
                 )

@@ -64,7 +64,7 @@ def test_issue19_tier_counts_mirror_sql(tmp_path):
         """
     )
     conn.commit()
-    anchors = [
+    _anchors = [
         {
             "anchor_id": "test",
             "ticker": "ZZZ",

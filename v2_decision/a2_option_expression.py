@@ -700,15 +700,31 @@ def _norm_cdf(x: float) -> float:
 
 
 def _time_to_expiry_years(ms_dict: dict[str, Any], chain_row: dict[str, Any]) -> float | None:
-    dte = _num(chain_row.get("daysToExpiration"))
-    if dte is not None and dte > 0:
-        return dte / 365.0
-    mins = _mins_to_close(ms_dict)
-    if mins is not None and mins > 0:
-        return mins / (365.0 * 24.0 * 60.0)
-    hours = _num(ms_dict.get("hours_to_expiry"))
-    if hours is not None and hours > 0:
-        return hours / (365.0 * 24.0)
+    # RC-345 / F13: the Black-Scholes valuation year-fraction has ONE authority,
+    # time_et.time_to_expiry_years (intraday ACT/365 to session close). Vendor
+    # daysToExpiration stays an INPUT (it supplies the expiry DATE); the as-of is the
+    # decision timestamp so replay is priced at its own moment, not the wall clock. T is NOT
+    # re-derived here as a local whole-day dte/365 — that was a second valuation-T authority
+    # disagreeing with the charm/gamma/vanna clock near expiry.
+    from datetime import datetime
+    from time_et import time_to_expiry_years as _tte, ET
+
+    exp = str(chain_row.get("expirationDate") or "")[:10]
+    decision_time_ms = ms_dict.get("decision_time_ms")
+    ref = None
+    if decision_time_ms is not None:
+        try:
+            ref = datetime.fromtimestamp(float(decision_time_ms) / 1000.0, tz=ET)
+        except (TypeError, ValueError, OSError, OverflowError):
+            ref = None
+    if len(exp) == 10 and ref is not None:
+        # Canonical authority (returns None at/after settlement — itself fail-closed).
+        return _tte(exp, now=ref)
+    # RC-345 / F13: the expiry DATE or the decision as-of is unavailable, so the ONE BS-T
+    # authority (time_et.time_to_expiry_years) cannot be evaluated. FAIL CLOSED. A local
+    # minutes/year or hours/year fraction here would be a second valuation-T producer of the
+    # same semantic — exactly what the one-producer law forbids — so it is deleted, not kept
+    # as a "governed" substitute. No greeks without the canonical clock.
     return None
 
 
@@ -720,11 +736,10 @@ def _dte_value(ms_dict: dict[str, Any], chain_row: dict[str, Any] | None = None)
     return None
 
 
-def _spread_from_bid_ask(bid: float | None, ask: float | None) -> float | None:
-    if bid is None or ask is None:
-        return None
-    a_leg, b_leg = ask, bid
-    return round(a_leg - b_leg, 4)
+# RC-345 / F23: _spread_from_bid_ask was RETIRED — it was a dead helper (no live caller). The
+# live spread authority is a2_price_precedence.contract_spread_pts_from_bid_ask (used by
+# resolve_a2_contract_spread at line ~175), which withholds crossed quotes. Fixing the dead
+# helper was theater; the real authority carries the invariant.
 
 
 def _breakeven(strike: float | None, option_right: str, mid: float | None) -> float | None:

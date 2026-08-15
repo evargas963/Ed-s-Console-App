@@ -19,6 +19,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 
@@ -78,7 +80,7 @@ def predict(snapshot: dict, direction_hint: str = "flat") -> XGBoostOutput:
     if not is_available():
         return _fallback("model not loaded or below approval threshold")
 
-    tkr = str(snapshot.get("ticker") or "").strip().upper()
+    tkr = ticker_storage_key(snapshot.get("ticker"))  # RC-345/F25: canonical serving model-input identity (train/serve parity)
     if not tkr:
         return _fallback("snapshot missing ticker")
 

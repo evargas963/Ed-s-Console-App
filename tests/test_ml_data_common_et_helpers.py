@@ -142,3 +142,183 @@ def test_head_rth_df_from_ts_utc_caps_after_filter():
     out = head_rth_df_from_ts_utc(df, 1)
     assert len(out) == 1
     assert float(out["ts_utc"].iloc[0]) == t_rth
+
+
+def test_rc206_reader_contract_and_retry(tmp_path):
+    """RC-206 negative control (re-applied after a shared-worktree rewrite dropped it): the
+    ML readers run under the repo connection contract (busy_timeout from
+    db.configure_sqlite_connection) and a corrupt DB degrades to None after bounded retries —
+    never a traceback into the signals loop."""
+    import sqlite3
+
+    from ml_data_common import _console_read_conn, _read_one_row_with_retry
+
+    good = tmp_path / "good.db"
+    con = sqlite3.connect(str(good))
+    con.execute("CREATE TABLE t (x REAL)")
+    con.execute("INSERT INTO t VALUES (7.5)")
+    con.commit()
+    con.close()
+    conn = _console_read_conn(str(good))
+    try:
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 30000, (
+            "reader connection does not carry the repo busy_timeout contract")
+    finally:
+        conn.close()
+    row = _read_one_row_with_retry(str(good), "SELECT x FROM t", (), op="test")
+    assert row is not None and float(row[0]) == 7.5
+
+    bad = tmp_path / "bad.db"
+    bad.write_bytes(b"SQLite format 3\x00" + b"\x00" * 400)  # header only: malformed image
+    assert _read_one_row_with_retry(str(bad), "SELECT x FROM t", (), op="test") is None
+
+
+def test_rc206_fetch_prior_net_gamma_survives_malformed_db(tmp_path):
+    """The exact caller from the traceback signature: fetch_prior_net_gamma on a malformed
+    file returns None instead of raising sqlite3.DatabaseError."""
+    from ml_data_common import fetch_prior_net_gamma
+
+    bad = tmp_path / "malformed.db"
+    bad.write_bytes(b"SQLite format 3\x00" + b"\x00" * 400)
+    assert fetch_prior_net_gamma("SPY", 1e9, db_path=str(bad)) is None
+
+
+def test_rc206_confluence_serve_survives_malformed_db(tmp_path):
+    """CLASS COMPLETION (operator caught this third raw caller live on the restarted
+    console): attach_confluence_features_for_serve on a malformed DB degrades to cf_*
+    defaults instead of raising into the signals loop."""
+    from lstm_data import CONFLUENCE_FEATURES
+    from ml_data_common import attach_confluence_features_for_serve
+
+    bad = tmp_path / "malformed.db"
+    bad.write_bytes(b"SQLite format 3\x00" + b"\x00" * 400)
+    out = attach_confluence_features_for_serve(
+        {"ticker": "SPY", "ts_utc": 1e9}, db_path=str(bad))
+    for cf in CONFLUENCE_FEATURES:
+        assert out.get(cf) == 0.0, f"{cf} not defaulted on malformed DB"
+
+
+def test_rc207_serve_readers_use_snapshots_not_normalized():
+    """RC-207 quarantine: live serve SQL must bind SERVE_SNAPSHOT_TABLE, not SNAPSHOT_TABLE_1M.
+
+    RC-332 moved the confluence read out of `attach_confluence_features_for_serve` and into
+    `fetch_confluence_history`, the single population authority, so the SQL this guards now
+    lives one call down. The guarantee is asserted where the table is actually bound — and
+    the delegating wrapper is separately required to bind NO table of its own, so the
+    quarantine cannot be re-opened by a lane quietly growing its own query back.
+    """
+    import inspect
+
+    import ml_data_common as m
+
+    assert m.SERVE_SNAPSHOT_TABLE == "snapshots"
+    for fn in (m.fetch_prior_net_gamma, m.fetch_confluence_history):
+        src = inspect.getsource(fn)
+        assert "SERVE_SNAPSHOT_TABLE" in src, f"{fn.__name__} does not bind the serve table"
+        assert "SNAPSHOT_TABLE_1M" not in src
+        # SQL f-strings must interpolate the serve table name, not the training mirror.
+        assert "FROM {SERVE_SNAPSHOT_TABLE}" in src
+        assert "FROM {SNAPSHOT_TABLE_1M}" not in src
+
+    # The serve wrapper delegates; it must not carry a table binding of its own.
+    wrapper = inspect.getsource(m.attach_confluence_features_for_serve)
+    assert "SNAPSHOT_TABLE_1M" not in wrapper
+    assert "FROM " not in wrapper, (
+        "attach_confluence_features_for_serve grew its own query again — the population "
+        "belongs to fetch_confluence_history (RC-332)")
+    assert "confluence_features_for_bar" in wrapper
+
+
+def test_rc207_fetch_prior_net_gamma_reads_snapshots_table(tmp_path):
+    """Positive control: prior net_gamma is taken from snapshots rows."""
+    import sqlite3
+
+    from ml_data_common import fetch_prior_net_gamma
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    db = tmp_path / "serve.db"
+    con = sqlite3.connect(str(db))
+    con.execute(
+        "CREATE TABLE snapshots (ticker TEXT, timeframe TEXT, ts_utc REAL, net_gamma REAL)"
+    )
+    con.execute(
+        "CREATE TABLE snapshots_1m_normalized "
+        "(ticker TEXT, timeframe TEXT, ts_utc REAL, net_gamma REAL)"
+    )
+    # Poison normalized with a different value — serve must ignore it.
+    con.execute(
+        "INSERT INTO snapshots_1m_normalized VALUES (?,?,?,?)",
+        ("SPY", CANONICAL_TIMEFRAME, 1000.0, 111.0),
+    )
+    con.execute(
+        "INSERT INTO snapshots VALUES (?,?,?,?)",
+        ("SPY", CANONICAL_TIMEFRAME, 1000.0, 222.0),
+    )
+    con.commit()
+    con.close()
+    got = fetch_prior_net_gamma("SPY", 2000.0, db_path=str(db))
+    assert got == 222.0
+
+
+def test_rc207_rebuild_tool_measure_and_dry_defaults(tmp_path):
+    """Rebuild tool measure mode writes a report and does not require --execute-clone."""
+    import json
+    import sqlite3
+    from pathlib import Path
+
+    from tools.rebuild_snapshots_1m_normalized_v1 import main
+
+    db = tmp_path / "tiny.db"
+    con = sqlite3.connect(str(db))
+    con.execute(
+        "CREATE TABLE snapshots (ticker TEXT, timeframe TEXT, ts_utc REAL, net_gamma REAL)"
+    )
+    con.execute(
+        "INSERT INTO snapshots VALUES ('SPY','1m',1000.0,1.5)"
+    )
+    con.execute(
+        "CREATE TABLE snapshots_1m_normalized AS SELECT * FROM snapshots WHERE 0"
+    )
+    con.commit()
+    con.close()
+    report = tmp_path / "r.json"
+    rc = main(["--db", str(db), "--report", str(report)])
+    assert rc == 0
+    doc = json.loads(Path(report).read_text(encoding="utf-8"))
+    assert doc["mode"] == "measure"
+    assert doc.get("snapshots_prior_net_gamma", {}).get("ok") is True
+
+
+def test_rc248_repair_tool_runs_when_invoked_BY_PATH(tmp_path):
+    """RC-248: the operator ran this tool the documented way and got a traceback.
+
+    `from db import configure_sqlite_connection` inside _connect needs the REPO root on
+    sys.path; run by PATH, Python puts tools/ there instead, so the tool died with
+    ModuleNotFoundError before it could measure anything — on a REPAIR tool, reached for when
+    something is already broken, by someone following a written instruction.
+
+    The test above imports main() and therefore CANNOT catch this: by the time it runs, pytest
+    has already put the repo root on the path. Only executing the tool as its own process, by
+    path, exercises what the operator actually typed.
+    """
+    import sqlite3
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    script = repo / "tools" / "rebuild_snapshots_1m_normalized_v1.py"
+    db = tmp_path / "probe.db"
+    sqlite3.connect(str(db)).close()
+    report = tmp_path / "rc248_report.json"
+
+    out = subprocess.run(
+        [sys.executable, str(script), "--db", str(db), "--report", str(report)],
+        capture_output=True, text=True, timeout=300,
+        cwd=str(tmp_path),          # NOT the repo root — the path form must not depend on CWD
+    )
+    assert "ModuleNotFoundError" not in out.stderr, (
+        f"the repair tool still cannot be run by path (RC-248): {out.stderr[-400:]}"
+    )
+    assert out.returncode == 0, out.stderr[-400:]
+    assert report.is_file(), "path-invoked run produced no report"

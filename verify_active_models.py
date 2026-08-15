@@ -18,6 +18,12 @@ import logging
 import sys
 from pathlib import Path
 
+# RC-345/F25: the VERIFIER must resolve artifact identity through the exact SAME
+# authority that created/loaded the bundle (instrument_identity.ticker_storage_key).
+# A verifier inventing its own .upper() normalization is a second faucet that would
+# pass 'SPX'-named lookups against '$SPX'-named artifacts (or miss them entirely).
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 # Windows cp1252: avoid UnicodeEncodeError for console
@@ -31,22 +37,6 @@ sys.path.insert(0, str(APP_DIR))
 
 ACTIVE_DIR = APP_DIR / "models" / "active"
 MODELS_DIR = APP_DIR / "models"
-
-
-def model_health_edge_from_meta(meta: dict, edge_key: str) -> float | None:
-    """RC-285: recorded edge metric, or None when unmeasured.
-
-    A genuine measured zero stays 0. Missing keys are not defaulted to 0
-    and are not substituted with ``val_accuracy`` (accuracy is not edge).
-    Callers that need accuracy must stamp ``val_accuracy`` under that name,
-    not pass ``val_accuracy`` as ``edge_key``.
-    """
-    from numeric_contract import float_finite_or_none
-
-    raw = float_finite_or_none(meta.get(edge_key))
-    if raw is None:
-        return None
-    return raw * 100.0 if edge_key == "val_accuracy" else raw
 
 
 def _get_active_tickers() -> list[str]:
@@ -155,11 +145,11 @@ def check_artifact_compliance(ticker: str) -> dict:
 
             result["artifacts"][key] = art
 
-        meta_pkl = bundle_dir / f"meta_{ticker.upper()}_{hz}.pkl"
+        meta_pkl = bundle_dir / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl"
         meta_key = f"{hz}:meta_stack"
         meta_art = {"exists": meta_pkl.is_file(), "has_provenance": meta_pkl.is_file(), "issues": []}
         if not meta_pkl.is_file():
-            meta_art["issues"].append(f"meta_{ticker.upper()}_{hz}.pkl missing")
+            meta_art["issues"].append(f"meta_{ticker_storage_key(ticker)}_{hz}.pkl missing")
             result["compliant"] = False
         result["artifacts"][meta_key] = meta_art
 
@@ -180,7 +170,7 @@ def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None
 
     models_dir = models_dir or MODELS_DIR
     result: dict = {
-        "ticker": ticker.upper(),
+        "ticker": ticker_storage_key(ticker),
         "horizon": hz,
         "compliant": True,
         "artifacts": {},
@@ -194,12 +184,12 @@ def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None
 
     bundle_dir = Path(bundle["bundle_dir"])
     triple = [
-        ("xgb", f"xgb_{ticker.upper()}_{hz}.pkl", f"xgb_{ticker.upper()}_{hz}_meta.json"),
-        ("lstm", f"lstm_{ticker.upper()}_{hz}.pt", f"lstm_{ticker.upper()}_{hz}_meta.json"),
+        ("xgb", f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl", f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json"),
+        ("lstm", f"lstm_{ticker_storage_key(ticker)}_{hz}.pt", f"lstm_{ticker_storage_key(ticker)}_{hz}_meta.json"),
         (
             "transformer",
-            f"transformer_{ticker.upper()}_{hz}.pt",
-            f"transformer_{ticker.upper()}_{hz}_meta.json",
+            f"transformer_{ticker_storage_key(ticker)}_{hz}.pt",
+            f"transformer_{ticker_storage_key(ticker)}_{hz}_meta.json",
         ),
     ]
     for name, model_file, meta_file in triple:
@@ -222,10 +212,10 @@ def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None
         result["artifacts"][name] = art
         result["issues"].extend(art["issues"])
 
-    meta_pkl = bundle_dir / f"meta_{ticker.upper()}_{hz}.pkl"
+    meta_pkl = bundle_dir / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl"
     meta_art = {"exists": meta_pkl.is_file(), "has_provenance": meta_pkl.is_file(), "issues": []}
     if not meta_pkl.is_file():
-        meta_art["issues"].append(f"meta_{ticker.upper()}_{hz}.pkl missing")
+        meta_art["issues"].append(f"meta_{ticker_storage_key(ticker)}_{hz}.pkl missing")
         result["compliant"] = False
     result["artifacts"]["meta_stack"] = meta_art
     result["issues"].extend(meta_art["issues"])
@@ -246,14 +236,13 @@ def main() -> int:
     print(f"Checking {len(tickers)} tickers: {', '.join(tickers)}")
     print()
 
-    all_ok = True
+    _all_ok = True
     non_compliant = []
 
     for ticker in tickers:
         r = check_artifact_compliance(ticker)
         status = "COMPLIANT" if r["compliant"] else "NON-COMPLIANT"
         if not r["compliant"]:
-            all_ok = False
             non_compliant.append(ticker)
 
         print(f"  {ticker}: {status}")

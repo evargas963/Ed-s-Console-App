@@ -1,0 +1,799 @@
+{
+  "study": "liquidity_oi_volume_stickiness_v1",
+  "mission_class": "Find & Prove",
+  "decision_path_effect": "WAIT \u2014 no Decide admission",
+  "costs": "ABSENT",
+  "pre_registered": {
+    "sticky_definition": "NOT touch. Stickiness = (A) time-in-band fraction of post-10:15 RTH minutes with close within 0.25\u00d7causalATR of strike; (B) failed-break rate after pierce by 0.35\u00d7ATR with reclaim \u226415m; (C) pin-to-close |close\u2212strike| vs placebo (near-expiry labeled). Optional PA rejection wick rate reported descriptive.",
+    "arms": [
+      "VOL_PEAK",
+      "OI_PEAK",
+      "PRODUCT",
+      "Z_PRODUCT",
+      "TURNOVER_HIGH_OI",
+      "GEX_WALLS"
+    ],
+    "combined_candidates": [
+      "PRODUCT",
+      "Z_PRODUCT",
+      "TURNOVER_HIGH_OI"
+    ],
+    "baselines": [
+      "VOL_PEAK",
+      "OI_PEAK",
+      "GEX_WALLS"
+    ],
+    "top_k": 3,
+    "moneyness_pct": 0.03,
+    "outcome_start_et": "10:15",
+    "volume_asof": "observation chain only (morning_full or ~10:00 snapshot) \u2014 no EOD lookahead",
+    "placebo_primary": "moneyness-matched: each real strike mirrored at same |m| (\u00b1jitter, $0.50 grid) \u2014 NOT uniform band draws",
+    "placebo_secondary": "score-shuffle of OI/vol across band strikes, re-pick top-K",
+    "pass_gates": {
+      "min_sessions": 80,
+      "min_edge_pp_time_in_band": 0.03,
+      "min_edge_pp_failed_break": 0.05,
+      "min_pin_distance_improvement": 0.1,
+      "min_halves_agreeing": 2,
+      "min_pierce_events": 40
+    },
+    "seed": 20260730
+  },
+  "sample": {
+    "tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "n_obs_days_total": 202,
+    "n_scored_day_records": 198,
+    "morning_full_exact": {
+      "SPY": {
+        "raw": 12,
+        "trading_days": 9
+      },
+      "QQQ": {
+        "raw": 11,
+        "trading_days": 9
+      },
+      "IWM": {
+        "raw": 12,
+        "trading_days": 9
+      }
+    },
+    "faucet_counts": {
+      "snapshots_1000et": 171,
+      "morning_full": 27
+    },
+    "drops": {
+      "empty_GEX_WALLS": 3,
+      "short_session": 1,
+      "atr_zero": 3
+    },
+    "n_sessions_by_arm": {
+      "VOL_PEAK": 198,
+      "OI_PEAK": 198,
+      "PRODUCT": 198,
+      "Z_PRODUCT": 198,
+      "TURNOVER_HIGH_OI": 198,
+      "GEX_WALLS": 195
+    }
+  },
+  "arm_summaries": {
+    "VOL_PEAK": {
+      "arm": "VOL_PEAK",
+      "n_sessions": 198,
+      "n_tickers": 3,
+      "time_in_band_real": 0.026867880391936962,
+      "time_in_band_placebo": 0.023174222305657344,
+      "time_in_band_shuffle": 0.010179860185436228,
+      "time_in_band_edge": 0.003693658086279618,
+      "time_in_band_edge_vs_shuffle": 0.016688020206500735,
+      "time_in_band_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": 0.005016347045332552,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.002370969127226686,
+            "n": 99
+          }
+        },
+        "halves_agree": true,
+        "n_agree": 2
+      },
+      "time_in_band_shuffle_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": 0.017127799736495388,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.01624824067650608,
+            "n": 99
+          }
+        },
+        "halves_agree": true,
+        "n_agree": 2
+      },
+      "failed_break_real_pooled": 0.5400866738894908,
+      "failed_break_placebo_pooled": 0.5167630057803468,
+      "failed_break_shuffle_pooled": 0.357773851590106,
+      "failed_break_edge": 0.02332366810914399,
+      "failed_break_edge_vs_shuffle": 0.18231282229938484,
+      "failed_break_day_mean_real": 0.37519117152955533,
+      "failed_break_day_mean_placebo": 0.3605269543400857,
+      "n_pierce_real": 1846,
+      "n_pierce_placebo": 1730,
+      "n_pierce_shuffle": 1132,
+      "failed_break_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": 0.038292926676765066,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.008964492297825631,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 1
+      },
+      "pin_abs_dist_real": 3.754426767676771,
+      "pin_abs_dist_placebo": 3.6937904040404073,
+      "pin_abs_dist_shuffle": 6.298551346801347,
+      "pin_improvement": -0.01641575644628812,
+      "pin_improvement_vs_shuffle": 0.4039221781396738,
+      "pin_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.15331705298751058,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.11896314882665718,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "pin_near_expiry_n_sessions": 195,
+      "pin_near_expiry_dist_real": 3.7807170940170973,
+      "pin_near_expiry_dist_placebo": 3.7124470085470125,
+      "pin_near_expiry_improvement": -0.018389511099528022,
+      "pa_reject_real": 0.09714980342545709,
+      "pa_reject_placebo": 0.10485798978952496,
+      "pa_reject_edge": -0.007708186364067865,
+      "verdict": "FAIL",
+      "pin_beats_placebo": false,
+      "beats_score_shuffle_tib": false,
+      "beats_score_shuffle_fb": true
+    },
+    "OI_PEAK": {
+      "arm": "OI_PEAK",
+      "n_sessions": 198,
+      "n_tickers": 3,
+      "time_in_band_real": 0.012187252560596173,
+      "time_in_band_placebo": 0.01350171861457261,
+      "time_in_band_shuffle": 0.011606581587400001,
+      "time_in_band_edge": -0.0013144660539764364,
+      "time_in_band_edge_vs_shuffle": 0.0005806709731961714,
+      "time_in_band_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.0023325037817791437,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.0002964283261737259,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "time_in_band_shuffle_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.0006050846630556776,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.001766426609448023,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 1
+      },
+      "failed_break_real_pooled": 0.39619520264681557,
+      "failed_break_placebo_pooled": 0.40222575516693165,
+      "failed_break_shuffle_pooled": 0.3639398998330551,
+      "failed_break_edge": -0.006030552520116084,
+      "failed_break_edge_vs_shuffle": 0.03225530281376049,
+      "failed_break_day_mean_real": 0.18555656371312937,
+      "failed_break_day_mean_placebo": 0.18474985545692615,
+      "n_pierce_real": 1209,
+      "n_pierce_placebo": 1258,
+      "n_pierce_shuffle": 1198,
+      "failed_break_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.03481836158603835,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.036431778098444764,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 1
+      },
+      "pin_abs_dist_real": 5.867308922558924,
+      "pin_abs_dist_placebo": 5.578891414141415,
+      "pin_abs_dist_shuffle": 6.26583585858586,
+      "pin_improvement": -0.051697996431051996,
+      "pin_improvement_vs_shuffle": 0.0636031560706859,
+      "pin_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.23060457183665195,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.11300369100235802,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "pin_near_expiry_n_sessions": 195,
+      "pin_near_expiry_dist_real": 5.873694871794874,
+      "pin_near_expiry_dist_placebo": 5.57895982905983,
+      "pin_near_expiry_improvement": -0.05282974815481212,
+      "pa_reject_real": 0.09922217947912486,
+      "pa_reject_placebo": 0.12186727488018949,
+      "pa_reject_edge": -0.02264509540106463,
+      "verdict": "FAIL",
+      "pin_beats_placebo": false,
+      "beats_score_shuffle_tib": false,
+      "beats_score_shuffle_fb": false
+    },
+    "PRODUCT": {
+      "arm": "PRODUCT",
+      "n_sessions": 198,
+      "n_tickers": 3,
+      "time_in_band_real": 0.020546677183270284,
+      "time_in_band_placebo": 0.01975434395988717,
+      "time_in_band_shuffle": 0.010209993461866318,
+      "time_in_band_edge": 0.0007923332233831133,
+      "time_in_band_edge_vs_shuffle": 0.010336683721403965,
+      "time_in_band_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": 0.0021275557507441567,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.0005428893039779315,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 1
+      },
+      "time_in_band_shuffle_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": 0.011438052017762164,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.009235315425045767,
+            "n": 99
+          }
+        },
+        "halves_agree": true,
+        "n_agree": 2
+      },
+      "failed_break_real_pooled": 0.49715009499683344,
+      "failed_break_placebo_pooled": 0.49111675126903553,
+      "failed_break_shuffle_pooled": 0.3542402826855124,
+      "failed_break_edge": 0.006033343727797902,
+      "failed_break_edge_vs_shuffle": 0.14290981231132105,
+      "failed_break_day_mean_real": 0.29950665682988914,
+      "failed_break_day_mean_placebo": 0.30340338206499823,
+      "n_pierce_real": 1579,
+      "n_pierce_placebo": 1576,
+      "n_pierce_shuffle": 1132,
+      "failed_break_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.01635899640950146,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.008565545939283317,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 1
+      },
+      "pin_abs_dist_real": 4.276918350168354,
+      "pin_abs_dist_placebo": 4.146362794612799,
+      "pin_abs_dist_shuffle": 6.258840909090913,
+      "pin_improvement": -0.03148676611829049,
+      "pin_improvement_vs_shuffle": 0.31665967991674515,
+      "pin_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.20259019457894997,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.08950013631347085,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "pin_near_expiry_n_sessions": 195,
+      "pin_near_expiry_dist_real": 4.307383760683765,
+      "pin_near_expiry_dist_placebo": 4.175332478632483,
+      "pin_near_expiry_improvement": -0.03162653099533075,
+      "pa_reject_real": 0.09278802601474496,
+      "pa_reject_placebo": 0.10026846153772898,
+      "pa_reject_edge": -0.007480435522984011,
+      "verdict": "FAIL",
+      "pin_beats_placebo": false,
+      "beats_score_shuffle_tib": false,
+      "beats_score_shuffle_fb": true
+    },
+    "Z_PRODUCT": {
+      "arm": "Z_PRODUCT",
+      "n_sessions": 198,
+      "n_tickers": 3,
+      "time_in_band_real": 0.013329578661823936,
+      "time_in_band_placebo": 0.012867632669684444,
+      "time_in_band_shuffle": 0.00996021597044615,
+      "time_in_band_edge": 0.00046194599213949215,
+      "time_in_band_edge_vs_shuffle": 0.0033693626913777856,
+      "time_in_band_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.0010052212950763674,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.001929113279355351,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 1
+      },
+      "time_in_band_shuffle_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": 0.0015907870980334754,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.005147938284722097,
+            "n": 99
+          }
+        },
+        "halves_agree": true,
+        "n_agree": 2
+      },
+      "failed_break_real_pooled": 0.4051863857374392,
+      "failed_break_placebo_pooled": 0.41437802907915994,
+      "failed_break_shuffle_pooled": 0.3436645396536007,
+      "failed_break_edge": -0.009191643341720734,
+      "failed_break_edge_vs_shuffle": 0.06152184608383848,
+      "failed_break_day_mean_real": 0.19349641193075537,
+      "failed_break_day_mean_placebo": 0.1901782374004596,
+      "n_pierce_real": 1234,
+      "n_pierce_placebo": 1238,
+      "n_pierce_shuffle": 1097,
+      "failed_break_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.03453862822549691,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.04117497728608839,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 1
+      },
+      "pin_abs_dist_real": 5.7918560606060625,
+      "pin_abs_dist_placebo": 5.981591750841753,
+      "pin_abs_dist_shuffle": 6.1442213804713806,
+      "pin_improvement": 0.03171993311128096,
+      "pin_improvement_vs_shuffle": 0.057349059880112074,
+      "pin_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.0957373978236898,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.05781660580664818,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "pin_near_expiry_n_sessions": 195,
+      "pin_near_expiry_dist_real": 5.792192307692309,
+      "pin_near_expiry_dist_placebo": 5.987923931623934,
+      "pin_near_expiry_improvement": 0.032687727193378424,
+      "pa_reject_real": 0.10299937346361641,
+      "pa_reject_placebo": 0.12221654526613022,
+      "pa_reject_edge": -0.01921717180251381,
+      "verdict": "FAIL",
+      "pin_beats_placebo": false,
+      "beats_score_shuffle_tib": false,
+      "beats_score_shuffle_fb": true
+    },
+    "TURNOVER_HIGH_OI": {
+      "arm": "TURNOVER_HIGH_OI",
+      "n_sessions": 198,
+      "n_tickers": 3,
+      "time_in_band_real": 0.017340912572369402,
+      "time_in_band_placebo": 0.018514267440052228,
+      "time_in_band_shuffle": 0.010710836706179857,
+      "time_in_band_edge": -0.0011733548676828263,
+      "time_in_band_edge_vs_shuffle": 0.006630075866189545,
+      "time_in_band_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.0018445322793148877,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.0005021774560507607,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "time_in_band_shuffle_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": 0.00602156834040892,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.00723858339197017,
+            "n": 99
+          }
+        },
+        "halves_agree": true,
+        "n_agree": 2
+      },
+      "failed_break_real_pooled": 0.4714484679665738,
+      "failed_break_placebo_pooled": 0.4654255319148936,
+      "failed_break_shuffle_pooled": 0.35714285714285715,
+      "failed_break_edge": 0.006022936051680194,
+      "failed_break_edge_vs_shuffle": 0.11430561082371665,
+      "failed_break_day_mean_real": 0.25856435932193506,
+      "failed_break_day_mean_placebo": 0.24005767894656782,
+      "n_pierce_real": 1436,
+      "n_pierce_placebo": 1504,
+      "n_pierce_shuffle": 1162,
+      "failed_break_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": 0.0016639551993087337,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.03534940555142575,
+            "n": 99
+          }
+        },
+        "halves_agree": true,
+        "n_agree": 2
+      },
+      "pin_abs_dist_real": 4.577743265993268,
+      "pin_abs_dist_placebo": 4.497527777777781,
+      "pin_abs_dist_shuffle": 6.399275252525254,
+      "pin_improvement": -0.017835462542739933,
+      "pin_improvement_vs_shuffle": 0.2846466067877267,
+      "pin_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-08",
+        "halves": {
+          "first": {
+            "mean_edge": -0.14766088650973933,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.130143325063791,
+            "n": 99
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "pin_near_expiry_n_sessions": 195,
+      "pin_near_expiry_dist_real": 4.593725641025643,
+      "pin_near_expiry_dist_placebo": 4.516549572649575,
+      "pin_near_expiry_improvement": -0.017087395396568894,
+      "pa_reject_real": 0.10271095463682196,
+      "pa_reject_placebo": 0.10258634491194654,
+      "pa_reject_edge": 0.00012460972487542132,
+      "verdict": "FAIL",
+      "pin_beats_placebo": false,
+      "beats_score_shuffle_tib": false,
+      "beats_score_shuffle_fb": true
+    },
+    "GEX_WALLS": {
+      "arm": "GEX_WALLS",
+      "n_sessions": 195,
+      "n_tickers": 3,
+      "time_in_band_real": 0.021798263668658016,
+      "time_in_band_placebo": 0.01921387540155088,
+      "time_in_band_shuffle": 0.011206175416358398,
+      "time_in_band_edge": 0.002584388267107135,
+      "time_in_band_edge_vs_shuffle": 0.010592088252299618,
+      "time_in_band_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-09",
+        "halves": {
+          "first": {
+            "mean_edge": 0.003357243936954082,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.001787380857577477,
+            "n": 96
+          }
+        },
+        "halves_agree": true,
+        "n_agree": 2
+      },
+      "time_in_band_shuffle_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-09",
+        "halves": {
+          "first": {
+            "mean_edge": 0.011960181525398916,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.009181242064415972,
+            "n": 96
+          }
+        },
+        "halves_agree": true,
+        "n_agree": 2
+      },
+      "failed_break_real_pooled": 0.48628192999053926,
+      "failed_break_placebo_pooled": 0.47774480712166173,
+      "failed_break_shuffle_pooled": 0.3617886178861789,
+      "failed_break_edge": 0.008537122868877534,
+      "failed_break_edge_vs_shuffle": 0.12449331210436038,
+      "failed_break_day_mean_real": 0.29418285418285417,
+      "failed_break_day_mean_placebo": 0.26636291296547704,
+      "n_pierce_real": 1057,
+      "n_pierce_placebo": 1011,
+      "n_pierce_shuffle": 738,
+      "failed_break_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-09",
+        "halves": {
+          "first": {
+            "mean_edge": -0.029500876975624448,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": 0.08693203497890999,
+            "n": 96
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 1
+      },
+      "pin_abs_dist_real": 4.54254102564103,
+      "pin_abs_dist_placebo": 4.596421367521371,
+      "pin_abs_dist_shuffle": 6.406166666666671,
+      "pin_improvement": 0.011722237273776415,
+      "pin_improvement_vs_shuffle": 0.29091120134645887,
+      "pin_halves": {
+        "evaluated": true,
+        "split_date": "2026-06-09",
+        "halves": {
+          "first": {
+            "mean_edge": -0.3810311430649979,
+            "n": 99
+          },
+          "second": {
+            "mean_edge": -0.3318113638791463,
+            "n": 96
+          }
+        },
+        "halves_agree": false,
+        "n_agree": 0
+      },
+      "pin_near_expiry_n_sessions": 195,
+      "pin_near_expiry_dist_real": 4.54254102564103,
+      "pin_near_expiry_dist_placebo": 4.596421367521371,
+      "pin_near_expiry_improvement": 0.011722237273776415,
+      "pa_reject_real": 0.09994756307749063,
+      "pa_reject_placebo": 0.1172188090653162,
+      "pa_reject_edge": -0.017271245987825576,
+      "verdict": "FAIL",
+      "pin_beats_placebo": false,
+      "beats_score_shuffle_tib": false,
+      "beats_score_shuffle_fb": true
+    }
+  },
+  "head_to_head": {
+    "PRODUCT": {
+      "VOL_PEAK": {
+        "tib": false,
+        "fb": false,
+        "combined_pass": false,
+        "baseline_pass": false
+      },
+      "OI_PEAK": {
+        "tib": true,
+        "fb": true,
+        "combined_pass": false,
+        "baseline_pass": false
+      },
+      "GEX_WALLS": {
+        "tib": false,
+        "fb": false,
+        "combined_pass": false,
+        "baseline_pass": false
+      }
+    },
+    "Z_PRODUCT": {
+      "VOL_PEAK": {
+        "tib": false,
+        "fb": false,
+        "combined_pass": false,
+        "baseline_pass": false
+      },
+      "OI_PEAK": {
+        "tib": true,
+        "fb": false,
+        "combined_pass": false,
+        "baseline_pass": false
+      },
+      "GEX_WALLS": {
+        "tib": false,
+        "fb": false,
+        "combined_pass": false,
+        "baseline_pass": false
+      }
+    },
+    "TURNOVER_HIGH_OI": {
+      "VOL_PEAK": {
+        "tib": false,
+        "fb": false,
+        "combined_pass": false,
+        "baseline_pass": false
+      },
+      "OI_PEAK": {
+        "tib": true,
+        "fb": true,
+        "combined_pass": false,
+        "baseline_pass": false
+      },
+      "GEX_WALLS": {
+        "tib": false,
+        "fb": false,
+        "combined_pass": false,
+        "baseline_pass": false
+      }
+    }
+  },
+  "metric_packs": {
+    "VOL_PEAK": {
+      "arm": "VOL_PEAK",
+      "verdict": "FAIL",
+      "tib_edge": 0.003693658086279618,
+      "fb_edge": 0.02332366810914399,
+      "pin_impr": -0.01641575644628812,
+      "n_sessions": 198
+    },
+    "OI_PEAK": {
+      "arm": "OI_PEAK",
+      "verdict": "FAIL",
+      "tib_edge": -0.0013144660539764364,
+      "fb_edge": -0.006030552520116084,
+      "pin_impr": -0.051697996431051996,
+      "n_sessions": 198
+    },
+    "PRODUCT": {
+      "arm": "PRODUCT",
+      "verdict": "FAIL",
+      "tib_edge": 0.0007923332233831133,
+      "fb_edge": 0.006033343727797902,
+      "pin_impr": -0.03148676611829049,
+      "n_sessions": 198
+    },
+    "Z_PRODUCT": {
+      "arm": "Z_PRODUCT",
+      "verdict": "FAIL",
+      "tib_edge": 0.00046194599213949215,
+      "fb_edge": -0.009191643341720734,
+      "pin_impr": 0.03171993311128096,
+      "n_sessions": 198
+    },
+    "TURNOVER_HIGH_OI": {
+      "arm": "TURNOVER_HIGH_OI",
+      "verdict": "FAIL",
+      "tib_edge": -0.0011733548676828263,
+      "fb_edge": 0.006022936051680194,
+      "pin_impr": -0.017835462542739933,
+      "n_sessions": 198
+    },
+    "GEX_WALLS": {
+      "arm": "GEX_WALLS",
+      "verdict": "FAIL",
+      "tib_edge": 0.002584388267107135,
+      "fb_edge": 0.008537122868877534,
+      "pin_impr": 0.011722237273776415,
+      "n_sessions": 195
+    }
+  },
+  "overall_verdict": "FAIL",
+  "overall_note": "No OI\u00d7vol combined arm beat placebo on pre-registered stickiness gates; baselines also FAIL",
+  "elapsed_sec": 67.51
+}

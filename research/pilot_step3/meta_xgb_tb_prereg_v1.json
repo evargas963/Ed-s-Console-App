@@ -1,0 +1,49 @@
+{
+  "prereg_id": "META_XGB_TB_V1_PREREG_V1",
+  "frozen_utc": "2026-07-24T05:40:00Z",
+  "study_class": "CONDITIONED_META_CLASSIFIER_ECONOMIC_STUDY",
+  "study_question": "Does an XGBoost meta-classifier, trained on session-safe candidate features to predict WIN vs LOSS of F1 triple-barrier outcomes at the declared cell, select a candidate subset whose net economic expectancy beats the unconditional fair-coin baseline under the F2 screen?",
+  "explicitly_not": {
+    "not_an_admission_packet": "Survival is not decision-path admission; admission requires operator sign-off and the CR registry.",
+    "not_production_wiring": "Report-only; no serving, no provenance migration.",
+    "not_the_greeks_study": "Stored greeks are era-floored at 1784502281 (~4 admissible sessions at freeze time); the dealer-gamma conditioning study runs when post-epoch history accrues or the chain-archive recompute lands. v1 features are price/time/CUSUM-state only."
+  },
+  "ingest_contract": {
+    "id": "META_XGB_TB_INGEST_V1",
+    "unit": "one row per labeled candidate",
+    "target": "binary WIN=1 vs LOSS=0; TIMEOUT/FORCE_FLAT/withheld excluded and counted",
+    "feature_time": "as-of signal bar close (T); entry-bar and later data forbidden",
+    "session_grouping": "every windowed feature computed from same-session bars only; incomplete windows -> None",
+    "nan_policy": "mask-and-drop before fit; a row with any None feature or label is dropped and counted; no imputation anywhere; assert no NaN reaches fit",
+    "era_floor": "greeks-derived features require ts_utc >= 1784502281 or rebuilt_from_chain_archive (f1_input_gates.greeks_era_ok); enforced structurally even while the v1 set is price-only",
+    "cross_session_features": "overnight gap enters ONLY as the named feature overnight_gap_atr (prev session close -> entry session first open, in ATR_T-1 units); None on the first session"
+  },
+  "features_v1": [
+    "side_sign", "z_trigger", "cusum_pos", "cusum_neg", "sma_spread_atr",
+    "minutes_since_open", "time_sin", "time_cos",
+    "ret_5m_atr", "ret_15m_atr", "rv_15m_atr", "range_pos_20",
+    "atr_t1_pct", "overnight_gap_atr"
+  ],
+  "labeling_cell": {"stop_atr": 1.0, "target_atr": 1.5, "vertical_minutes": 30, "cost_round_trip_bp": 1.0, "note": "the declared S5 draft cell; F2 found no surviving cell so the declared draft stands"},
+  "model": {
+    "name": "xgboost.XGBClassifier",
+    "params": {"n_estimators": 200, "max_depth": 3, "learning_rate": 0.1, "subsample": 0.9, "colsample_bytree": 0.9, "min_child_weight": 5, "objective": "binary:logistic", "eval_metric": "logloss"},
+    "sample_weights": "equal (O-55)",
+    "no_tuning": "params frozen; changing after seeing results voids the run"
+  },
+  "splits": {"scheme": "expanding session walk-forward", "n_folds": 5, "embargo_sessions": 1, "purge": "no candidate whose session touches the embargo may appear in train or test"},
+  "policy_family": {
+    "taus": [0.45, 0.5, 0.55, 0.6],
+    "rule": "select OOS candidates with P(win) >= tau; evaluate selected candidates' realized net bp",
+    "n_trials_for_multiplicity": 4
+  },
+  "screen": "F2 machinery verbatim: mean>0, session-block bootstrap CI>0 (B=1000), Holm across the tau family, DSR (n_trials=4, PSR>=0.95), 2x-cost stress, per-policy sign-shuffle null (K=200); PLUS must beat the unconditional all-candidates baseline mean",
+  "controls": {
+    "label_permutation": "per fold, train labels shuffled via placebo_shuffle_train_only (seeded); pooled OOS balanced accuracy must satisfy the TWO-SIDED verdict vs chance=0.5 tol=0.06; leakage_stop or anti_signal_stop halts the study",
+    "hard_halt": "any control breach or any policy surviving on sign-shuffled returns => HALT"
+  },
+  "sample_floors": {"min_sessions_with_selected_trades": 30, "min_selected_candidates": 60, "below_floor_action": "UNDER_SAMPLED"},
+  "randomness": {"seed": 20260724, "bootstrap_B": 1000, "sign_shuffle_K": 200},
+  "outputs": {"report_json": "reports/meta_xgb_tb_v1_latest.json"},
+  "audit": {"two_way": "both agents run the acceptance command before any survivor claim", "acceptance_command": "python -m research.pilot_step3.meta_xgb_tb_runner"}
+}

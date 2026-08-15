@@ -1,0 +1,193 @@
+{
+  "schema": "repo_wide_adversarial_audit_wave1",
+  "generated_et": "2026-07-27T20:37",
+  "verdict": "NOT_PRISTINE — dual faucets, UI paint races, lock theater, plus ~20 safe delete/quarantine orphans",
+  "method": "Four parallel explore agents + mechanical LOC inventory. All four slices complete.",
+  "agents": {
+    "money_path": "3553e95b-ea16-4f5b-a963-5117bd329534",
+    "ui_client": "5a30d83c-2aee-47f9-8b95-6abd866d2fae",
+    "governance": "09d5de5c-b8ed-4f55-997a-af51e54da77b",
+    "dead_code": "262604e1-678a-4cb1-97f8-69507a8a41b4"
+  },
+  "scale": {
+    "py_files_approx": 1137,
+    "py_loc_approx": 286535,
+    "hotspots_loc": {
+      "server.py": 13481,
+      "static/index.html": 13473,
+      "db.py": 5262,
+      "ml_scheduler.py": 3984,
+      "tools/check_institutional_correctness.py": 2772
+    }
+  },
+  "critical_backlog": [
+    {
+      "id": "W1-C1",
+      "sev": "CRITICAL",
+      "area": "money_path",
+      "title": "Two live wall/flip books (expiry-sliced analytics vs full-chain terrain)",
+      "evidence": "server.py analytics contracts_use vs terrain full contracts"
+    },
+    {
+      "id": "W1-C2",
+      "sev": "CRITICAL",
+      "area": "money_path",
+      "title": "Spot for math (resolve_spot) ≠ spot shown (live_market_plane merge)",
+      "evidence": "server.py resolve_spot + merge_into_state"
+    },
+    {
+      "id": "W1-C3",
+      "sev": "CRITICAL",
+      "area": "money_path",
+      "title": "±5% TRUSTED bar documented insufficient (~1.38% median flip error)",
+      "evidence": "math_levels.py GAMMA_FLIP_MIN_SPAN_PCT"
+    },
+    {
+      "id": "W1-C4",
+      "sev": "CRITICAL",
+      "area": "ui",
+      "title": "Visible header spot multi-writer (paintSpotDisplays vs EdCv2 paint)",
+      "evidence": "static/index.html cv2-hd-px"
+    },
+    {
+      "id": "W1-C5",
+      "sev": "CRITICAL",
+      "area": "ui",
+      "title": "Hidden #terrain-view still polled/painted while display:none",
+      "evidence": "static/index.html edLoadTerrain / edStartSpotPaint"
+    },
+    {
+      "id": "W1-H1",
+      "sev": "HIGH",
+      "area": "ui",
+      "title": "Console never reads levels_stale; footer hardcodes live",
+      "evidence": "index.html vs chart.html levels_stale"
+    },
+    {
+      "id": "W1-H2",
+      "sev": "HIGH",
+      "area": "ui",
+      "title": "Gamma bars use raw t.spot; faucet audit blind to nested fnum((t||{}).spot)",
+      "evidence": "index.html + data_faucet_audit.py"
+    },
+    {
+      "id": "W1-H3",
+      "sev": "HIGH",
+      "area": "governance",
+      "title": "Cursor unbound; Claude-only front hooks — mandate-to-mechanism theater for Cursor",
+      "evidence": ".claude/settings.json vs absent .cursor hooks"
+    },
+    {
+      "id": "W1-H4",
+      "sev": "HIGH",
+      "area": "governance",
+      "title": "Provenance green without freshness; stale_sources not in commit gate",
+      "evidence": "single_faucet_provenance vs data_faucet_audit"
+    },
+    {
+      "id": "W1-H5",
+      "sev": "HIGH",
+      "area": "governance",
+      "title": "HTML/JS continuum not on commit path (py-only front-loaded locks)",
+      "evidence": "recursive_five_why_front_loaded staged .py only"
+    },
+    {
+      "id": "W1-H6",
+      "sev": "HIGH",
+      "area": "governance",
+      "title": "debt_ratchet advisory — orphan_dict_keys rise cannot fail build",
+      "evidence": "CHECKS debt_ratchet=False"
+    }
+  ],
+  "do_not_casually_delete": [
+    "decision_gate empty admissions → WAIT",
+    "compute_gamma_flip_v2 narrow-chain non-TRUSTED",
+    "RC-80 terrain miss → refresh_one (no narrow recompute)",
+    "RC-68 morning archive not fallback for today volume",
+    "RC-69 bars DB upsert from _bars_loop only",
+    "scorecard stale refusal consumer",
+    "chart currentSpot / consoleSpot read authorities (painters still multi-clock)",
+    "SQL-anchored tools/_diag_* and _issue16_* (snapshot_sql registry)",
+    "tools/terrain_backtest_report_v1.py + run_terrain_scorecard.bat (ops entrypoints)",
+    "tools/run_operable_surface_ops.py",
+    "governance/mega*_traceable_inventory.py until audits retired together",
+    "research/*/runner.py ACTIVE_PROGRAM kill-screens",
+    "tools/legacy/.../backfill_fusion_policy_columns_v1.py (still imported)"
+  ],
+  "dead_code": {
+    "agent": "262604e1-678a-4cb1-97f8-69507a8a41b4",
+    "wave_a_safe_delete_or_quarantine": [
+      "tools/_tmp_ablation_status.py",
+      "tools/_ablation_progress_snapshot.py",
+      "tools/_enumerate_all_defs.py",
+      "tools/_phase_b_index_html_cleanup.py",
+      "tools/_section11_register_snippet.py",
+      "tools/_sweep3_apply_silent_pass_logging.py",
+      "tools/_build_section{1-3,5-16}_inventory.py (x15)",
+      "tools/_diag_extract_compare.py",
+      "tools/_converge_interior_gaps_v1.py",
+      "design_mockups/",
+      "_pipeline_scripts/step3_benchmark_AAPL_5c_postFix.ps1",
+      "tools/emit_operator_trust_backtrack_reports.py",
+      "tools/_phase4_fill_outcomes.py",
+      "tools/_phase4_bar_check.py",
+      "tools/_phase4_snapshot_detail.py",
+      "tools/_phase4a_proof_not_exists.py",
+      "tools/_phase4a_quantify_anchor_miss.py",
+      "tools/_phase4b_audits.py",
+      "tools/_issue16_schema_diff.py"
+    ],
+    "wave_b_needs_proof": [
+      "tools/_build_institutional_audit_phase{2,3,3c}.py (tests exec_module phase3c)",
+      "tools/legacy/horizon_7/* except fusion backfill helper",
+      "governance/archive/legacy_categorical_inventories_v1/",
+      "research/*_eval_v1 archive-tag (not blind delete)",
+      "mega1-4 inventories + audits retire together",
+      "SQL-anchored _diag_*/_issue16_* after key migration"
+    ],
+    "keep_but_shrink": [
+      "server.py",
+      "static/index.html",
+      "governance/mega1+mega4_traceable_inventory.py",
+      "db.py",
+      "tools/check_institutional_correctness.py",
+      "arch_competition/stack_bundle_eval_v1.py",
+      "calibration/daily_scoreboard.py",
+      "reports/ (453 files landfill)",
+      "research/*_eval_v1 DONE kill-screens"
+    ]
+  },
+  "pristine_program_waves": [
+    {
+      "wave": "A",
+      "name": "Stop lying clocks",
+      "items": ["W1-C4", "W1-C5", "W1-H1", "W1-H2", "kill hidden #main/#terrain-view painters or delete DOM"]
+    },
+    {
+      "wave": "B",
+      "name": "One level book + one spot clock",
+      "items": ["W1-C1", "W1-C2", "resolve_spot reads plane or plane is sole display+math", "retire analytics wall compute or label non-operator"]
+    },
+    {
+      "wave": "C",
+      "name": "Locks that bind Cursor + freshness",
+      "items": ["W1-H3", "W1-H4", "W1-H5", "W1-H6 orphan rise on touched files", "scheduled producer mtime fail"]
+    },
+    {
+      "wave": "D",
+      "name": "Orphan delete + right-size",
+      "items": ["dead_code.wave_a_safe_delete_or_quarantine", "split _fetch_state", "server.py extract", "index.html delete hidden legacy"]
+    },
+    {
+      "wave": "E",
+      "name": "Trust bar honesty",
+      "items": ["W1-C3 remeasure span→error; raise TRUSTED bar or rename"]
+    }
+  ],
+  "coverage_limits": [
+    "Static adversarial reads; limited same-turn faucet check on UI agent",
+    "No full RTH A/B wall divergence remeasure this wave",
+    "Dead-code: rg identity callers + snapshot_sql anchors; not full AST import graph",
+    "ML stack / research quarantine deferred to Wave 2 (archive-tag, not blind delete)"
+  ]
+}

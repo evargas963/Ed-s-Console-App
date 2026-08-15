@@ -1,0 +1,45 @@
+{
+  "schema": "batch_ticker_battery_v1",
+  "status": "RESEARCH_DRAFT_SCREEN_NOT_PREREGISTERED_NOT_AN_ADMISSION",
+  "template": "F2_TB_GRID_V1_PREREG_V1 draft cell",
+  "ticker": "AMZN",
+  "generated_utc": "2026-07-24T05:37:48.969182+00:00",
+  "loader": {
+    "n_rows": 52857,
+    "n_tradable_bars": 32150,
+    "n_sessions": 86,
+    "n_events_total": 536
+  },
+  "draft_cell": {
+    "stop_atr": 1.0,
+    "target_atr": 1.5,
+    "vertical_minutes": 30,
+    "cost_round_trip_bp": 1.0
+  },
+  "label_quality_report": {
+    "AMZN": {
+      "n_candidates": 536,
+      "n_labeled": 510,
+      "n_withheld": 26,
+      "class_counts": {
+        "WIN": 193,
+        "LOSS": 311,
+        "TIMEOUT": 3,
+        "FORCE_FLAT": 3
+      },
+      "class_rates": {
+        "WIN": 0.3784313725490196,
+        "LOSS": 0.6098039215686275,
+        "TIMEOUT": 0.0058823529411764705,
+        "FORCE_FLAT": 0.0058823529411764705
+      },
+      "withheld_reasons": {
+        "entry_on_or_after_force_flat_window": 23,
+        "synthetic_bar_in_window": 3
+      },
+      "cost_floor_binding_rate": 0.0,
+      "bar_source_withheld_rate": 0.005597014925373134
+    }
+  },
+  "run_sec": 2.08
+}

@@ -32,6 +32,8 @@ def _sample_a1() -> dict:
 
 
 def _winner() -> dict:
+    # institutional-synthetic-ok: price-precedence test needs a controlled contract row
+    # with specific bid/ask/quote fields to prove which price source wins.
     return {
         "expression": "500 CALL",
         "strike": 500.0,

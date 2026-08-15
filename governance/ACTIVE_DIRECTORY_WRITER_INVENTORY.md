@@ -1,5 +1,3 @@
-> **SUPERSEDED as a work queue (2026-08-13).** Do not treat this file as current "now." Canonical ledger: `OPEN_ITEMS.md`. Pointer: `ACTIVE_PROGRAM.md` → PA-46. Retained as history/evidence only.
-
 > **Classification:** Operational Ledger | **Scope:** Governance register/inventory `ACTIVE_DIRECTORY_WRITER_INVENTORY.md`.
 
 # Active Directory Writer Inventory

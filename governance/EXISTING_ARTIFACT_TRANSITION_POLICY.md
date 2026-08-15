@@ -1,5 +1,3 @@
-> **EVIDENCE / CONTRACT — not a second "now."** Outstanding work from this file, if material, lives on `OPEN_ITEMS.md` PA-48. Pointer: `ACTIVE_PROGRAM.md` → PA-46. Do not open a parallel program from this file.
-
 > **Classification:** Policy Specification | **Scope:** Governance policy/contract `EXISTING_ARTIFACT_TRANSITION_POLICY.md`.
 
 # Existing Artifact Transition Policy (Draft)

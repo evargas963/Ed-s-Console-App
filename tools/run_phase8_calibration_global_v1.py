@@ -165,7 +165,7 @@ def main() -> int:
 
             bins_raw = _deciles(p, y)
             raw_emp = [b["emp_rate"] for b in bins_raw]
-            raw_pred = [b["pred_mean"] for b in bins_raw]
+            _raw_pred = [b["pred_mean"] for b in bins_raw]
             raw_monotonic = _monotonic_non_decreasing(raw_emp)
             raw_sep = (max(raw_emp) - min(raw_emp)) if raw_emp else 0.0
 
@@ -184,7 +184,6 @@ def main() -> int:
             rank_cal = _ranking_diff(cp, y)
 
             # cross ticker consistency
-            per_ticker = {}
             for t in allowed_tickers:
                 idx = [i for i, _ in enumerate(y) if (i < len(y) and True)]
                 # slice by ticker via second query for precision

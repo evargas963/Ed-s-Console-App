@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,8 +82,21 @@ ZERO_INJECTION_FILE_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("snapshot_normalizer.py", "materialize row-count audit counters"),
     ("market_state.py", "wall-score audit diff (derived scores)"),
     ("db.py", "SQL COUNT aggregate int coercion"),
-    ("server.py", "L1/SSE instrumentation timestamps, generations, volume deltas"),
+    # RC-276: server.py's file entry is DELETED. Its reason honestly covered 16 instrumentation
+    # sites and silently covered 7 money-path ones, including two per-strike gamma builders
+    # identical to the terrain_engine:202 bar RC-274 removed. Each silence now states its own
+    # reason at its own line via `# silent-zero-ok:`.
 )
+
+
+#: RC-276: the per-line escape, modelled on the `# vendor-coercion-ok:` marker this repo
+#: already uses for Schwab leaves. It exists because the gate previously offered only two
+#: options -- exempt an entire FILE or leave the gate red -- and the first was chosen for
+#: server.py, where a one-line reason about "instrumentation timestamps" bought silence over
+#: 15,092 lines and hid two copies of the fake-gamma-bar defect (RC-274). A reason is
+#: mandatory: `# silent-zero-ok:` with nothing after it does not suppress, because a marker
+#: that can be typed without saying anything is the file-level allowlist again, per line.
+_SILENT_ZERO_OK_RE = re.compile(r"#\s*silent-zero-ok:\s*(\S.*)$")
 
 
 def _line_counts_as_violation(line: str, pattern: _PatternSpec) -> bool:
@@ -90,6 +104,8 @@ def _line_counts_as_violation(line: str, pattern: _PatternSpec) -> bool:
     if stripped.startswith("#"):
         return False
     if not pattern.regex.search(line):
+        return False
+    if _SILENT_ZERO_OK_RE.search(line):
         return False
     if '"""' in line or "'''" in line:
         if "silent default" in line or "without ``" in line or "pattern family" in line:
@@ -104,9 +120,28 @@ def _file_allowlisted(rel_posix: str) -> bool:
     return False
 
 
+def _tracked_py_files() -> list[Path]:
+    """RC-274: 'repo-wide' means what git tracks — nothing looser, nothing hand-maintained.
+
+    `rglob` walked `scratchpad/`, which `.gitignore:202` excludes and which holds 0 tracked
+    files, so ~25 of this gate's 38 hits were throwaway audit scripts. The temptation is an
+    allowlist entry, but that is a list somebody has to keep true. The index already answers
+    'is this repository code', it answers it for every future directory nobody thought of, and
+    a staged file counts the moment it is staged.
+    """
+    proc = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "git ls-files failed, so the scan scope is unknown: " + proc.stderr.strip())
+    return [ROOT / p for p in proc.stdout.split("\0") if p]
+
+
 def _iter_repo_py_files() -> list[Path]:
     out: list[Path] = []
-    for path in ROOT.rglob("*.py"):
+    for path in _tracked_py_files():
         if set(path.parts) & SKIP_DIR_PARTS:
             continue
         if "tools" in set(path.parts) and path.name != "__init__.py":

@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from canonical_distances import canonical_nearest_distances
+from math_snapshot_derive import derive_vwap_side  # RC-345/F21: one vwap-side authority
 from math_probabilities import OE_SPREAD_TIGHT_MAX
 from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
 from numeric_contract import float_finite_or_none
@@ -338,6 +339,10 @@ class MarketState:
     up_prob_60c:        Optional[float] = None
     down_prob_60c:      Optional[float] = None
     flat_prob_60c:      Optional[float] = None
+    # RC-345 / F22: per-horizon predicted dominant direction, projected by the ONE argmax
+    # authority (numeric_contract.direction_from_normalized_triplet) so the UI (hz) renders it
+    # instead of re-running Math.max over the triplet.
+    pred_dominant_by_horizon: Optional[dict] = None
     # Movement-target v1 XGB heads: pred_{hz}_dir_* / pred_{hz}_move_* (legacy features)
     movement_head_probs: Optional[dict] = None
     fusion_policy_snapshot_cols: Optional[dict] = None
@@ -702,8 +707,11 @@ def recommend_option_expression(
         )
 
     side_contracts = [c for c in contracts if (c.get("putCall") or "").upper() == side]
-    strikes = sorted({float(c["strikePrice"]) for c in side_contracts
-                      if _f_ms(c.get("strikePrice")) is not None})
+    # single source: parse the strike once via the canonical finite reader (was parsed
+    # twice — _f_ms for the filter, raw float() for the value — the raw path could admit
+    # a value the filter would reject if the two ever diverged).
+    strikes = sorted({sp for c in side_contracts
+                      if (sp := _f_ms(c.get("strikePrice"))) is not None})
     if not strikes:
         return (
             "NO TRADE",
@@ -827,40 +835,31 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
     for ct in contracts or []:
         if str(ct.get("putCall", "")).upper().strip() != su:
             continue
-        sp = ct.get("strikePrice")
+        # single source: finite strike via the canonical reader. A NaN strike used to pass
+        # the None check and then false-match (abs(nan-kf) >= 0.01 is False) — the #8 bug
+        # hidden behind an intermediate variable.
+        sp = _f_ms(ct.get("strikePrice"))
         if sp is None:
             continue
-        try:
-            if abs(float(sp) - kf) >= 0.01:
-                continue
-        except Exception:
+        if abs(sp - kf) >= 0.01:
             continue
-        try:
-            b = float(ct.get("bid")) if ct.get("bid") is not None else None
-            a = float(ct.get("ask")) if ct.get("ask") is not None else None
-        except (TypeError, ValueError):
-            b = a = None
+        # single source: canonical finite reader (also rejects NaN/inf, which raw float()
+        # admitted into b/a and thus into the mid/spread computed just below).
+        b = _f_ms(ct.get("bid"))
+        a = _f_ms(ct.get("ask"))
         mid: float | None = None
         mid_source: str | None = None
-        try:
-            mark_raw = ct.get("mark")
-            if mark_raw is not None:
-                mark_val = float(mark_raw)
-                if mark_val > 0:
-                    mid = mark_val
-                    mid_source = "schwab_chain_mark"
-        except (TypeError, ValueError):
-            pass
+        # single source: finite mark/last via the canonical reader. Raw float() + a bare
+        # `> 0` gate let +inf through (inf > 0 is True) and needed a try/except for junk.
+        mark_val = _f_ms(ct.get("mark"))
+        if mark_val is not None and mark_val > 0:
+            mid = mark_val
+            mid_source = "schwab_chain_mark"
         if mid is None:
-            try:
-                last_raw = ct.get("last")
-                if last_raw is not None:
-                    last_val = float(last_raw)
-                    if last_val > 0:
-                        mid = last_val
-                        mid_source = "schwab_chain_last"
-            except (TypeError, ValueError):
-                pass
+            last_val = _f_ms(ct.get("last"))
+            if last_val is not None and last_val > 0:
+                mid = last_val
+                mid_source = "schwab_chain_last"
         if mid is None and b is not None and a is not None:
             try:
                 bf, af = float(b), float(a)
@@ -875,7 +874,16 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
     return None, None, None, None
 
 
-def _schwab_days_to_expiration_for_contract(contracts, strike: float | None, side: str | None) -> int | None:
+def _schwab_days_to_expiration_for_contract(
+    contracts, strike: float | None, side: str | None, expiry: str | None = None
+) -> int | None:
+    # RC-345 / F41: this selects the selected option's Schwab DTE over the SINGLE-EXPIRY
+    # slice its callers pass (server slices contracts_use via _filter_contracts_by_selected_
+    # expiry before build_market_state). `expiry` makes that guarantee SELF-ENFORCING rather
+    # than caller-dependent: when supplied, a contract of a different expiry can never match,
+    # so this can never silently disagree with the full-chain selector
+    # (server._selected_schwab_days_to_expiration) on which expiry it read. Distinct scopes
+    # (pre-sliced vs full chain), mechanically consistent — not a silent second answer.
     if strike is None:
         return None
     side_up = str(side or "").upper().strip()
@@ -885,19 +893,26 @@ def _schwab_days_to_expiration_for_contract(contracts, strike: float | None, sid
         strike_f = float(strike)
     except Exception:
         return None
+    # RC-345 / F41: selected-expiry identity is MANDATORY. An empty/missing expiry is a
+    # governed absence — NO selected-contract DTE — never a silent search across every
+    # expiry (which could return a different contract's DTE than the operator selected).
+    exp_key = str(expiry or "")[:10]
+    if len(exp_key) != 10:
+        return None
     for ct in contracts or []:
+        if str(ct.get("expirationDate") or "")[:10] != exp_key:
+            continue
         if str(ct.get("putCall", "")).upper().strip() != side_up:
             continue
-        try:
-            if abs(float(ct.get("strikePrice")) - strike_f) >= 0.01:
-                continue
-        except Exception:
+        # single source: reject NaN via the finite reader. Raw float() let a NaN strike
+        # pass (abs(nan-strike_f) >= 0.01 is False), falsely matching the wrong contract.
+        _sp = _f_ms(ct.get("strikePrice"))
+        if _sp is None or abs(_sp - strike_f) >= 0.01:
             continue
-        raw_dte = ct.get("daysToExpiration")
-        try:
-            return int(float(raw_dte)) if raw_dte is not None else None
-        except Exception:
-            return None
+        # single source: finite DTE via the canonical reader (also rejects NaN/±inf, which
+        # int(float(...)) turned into a ValueError/OverflowError this except had to swallow).
+        _dte = _f_ms(ct.get("daysToExpiration"))
+        return int(_dte) if _dte is not None else None
     return None
 
 
@@ -910,7 +925,7 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     csig = (ms.call_signal or "wait").strip().lower()
     if csig == "wait" or ms.is_no_trade or side not in ("CALL", "PUT") or k is None or not exp:
         return ""
-    dte = _schwab_days_to_expiration_for_contract(contracts, k, side)
+    dte = _schwab_days_to_expiration_for_contract(contracts, k, side, expiry=exp)
     dte_part = " · 0DTE" if dte == 0 else (f" · {dte}DTE" if dte is not None and dte > 0 else "")
     try:
         kf = float(k)
@@ -1182,9 +1197,10 @@ def build_market_state(
             from market_context import iwm_blended_participation_push
 
             _vwap_val  = getattr(price_levels, "vwap", None)
-            _vwap_side = None
-            if _vwap_val and spot_f:
-                _vwap_side = "above" if spot_f > _vwap_val else "below"
+            # RC-345 / F21: vwap side (above/below) is classified by the ONE authority,
+            # math_snapshot_derive.derive_vwap_side — not re-derived inline here. The inline
+            # `spot > vwap` was a shadow of that exact semantic.
+            _vwap_side = derive_vwap_side(spot_f, _vwap_val)
 
             def _dist(lvl):
                 if lvl is None or spot_f is None: return None
@@ -1207,7 +1223,8 @@ def build_market_state(
                 _gi = _f(getattr(consensus_summary, "gamma_inflection", None))
                 _di = _f(getattr(consensus_summary, "delta_inflection", None))
 
-            _pin_w = ((_cgw - _pgw) if _cgw and _pgw else None)
+            from math_levels import compute_pin_width_pts
+            _pin_w = compute_pin_width_pts(_cgw, _pgw)  # RC-345/F20: one authority
 
             # Nearest above/below
             _nearest_above_name = _nearest_above_val = None
@@ -1303,7 +1320,13 @@ def build_market_state(
                 candle_close=spot_f,
                 candle_direction=candle_direction, candle_body_pts=candle_body_pts, candle_range_pts=None,
                 vwap=_vwap_val, vwap_side=_vwap_side,
-                vwap_dist_pts=round(abs(spot_f - _vwap_val), 4) if _vwap_val else None,
+                # RC-345 / F24: vwap_dist_pts is the SIGNED distance (spot - vwap), matching
+                # the one training producer (backfill_snapshot_derived writes spot - vwap). The
+                # prior abs() here made the LIVE feature absolute while training was signed — a
+                # train/serve skew that also discarded the sign the model learned. Direction is
+                # NOT lost (vwap_side carries above/below separately); the signed distance keeps
+                # magnitude AND sign in one feature, consistent train and serve.
+                vwap_dist_pts=round(spot_f - _vwap_val, 4) if _vwap_val else None,
                 zone=ms.zone, prev_zone=(prev_zone or ms.zone),
                 zone_since_bars=zone_since_bars,           # alias (model compat)
                 zone_since_bars_1m=zone_since_bars,        # execution-layer (1m)
@@ -1598,6 +1621,17 @@ def build_market_state(
             ms.up_prob_60c     = getattr(_pred, "up_prob_60c", None)
             ms.down_prob_60c   = getattr(_pred, "down_prob_60c", None)
             ms.flat_prob_60c   = getattr(_pred, "flat_prob_60c", None)
+            # RC-345 / F22: project each horizon's predicted triplet to a dominant via the ONE
+            # authority so the UI renders it (no client Math.max). Only finite triplets project.
+            from numeric_contract import direction_from_normalized_triplet as _dom
+            _pdbh: dict = {}
+            for _hz in ("1c", "5c", "15c", "60c"):
+                _pu = float_finite_or_none(getattr(ms, f"up_prob_{_hz}", None))
+                _pd = float_finite_or_none(getattr(ms, f"down_prob_{_hz}", None))
+                _pf = float_finite_or_none(getattr(ms, f"flat_prob_{_hz}", None))
+                if _pu is not None and _pd is not None and _pf is not None:
+                    _pdbh[_hz] = _dom(_pu, _pd, _pf)
+            ms.pred_dominant_by_horizon = _pdbh
             ms.movement_head_probs = getattr(_pred, "movement_head_probs", None)
             ms.fusion_policy_snapshot_cols = getattr(_pred, "fusion_policy_snapshot_cols", None)
             ms.historical_5c_dominant_dir = _pred.historical_5c_dominant_dir
@@ -1834,6 +1868,7 @@ def build_market_state(
         contracts_use,
         ms.rec_strike,
         ms.call_option_right,
+        expiry=(ms.call_option_expiry or ms.selected_exp),
     )
     ms.dte_warn, ms.dte_color = dte_style(_selected_dte)
 

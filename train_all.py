@@ -19,6 +19,10 @@ DB_PATH = str(_DB_PATH_OBJ)
 MODEL_DIR = Path("models")
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug, outcome_column
+# RC-345/F25 (train-write faucet): every identity-bearing ticker use here (DB-query key,
+# training roster identity, direct artifact basename) consumes the ONE canonical authority so
+# bare 'SPX' and '$SPX' resolve to the same rows and the same artifact the writers/readers use.
+from instrument_identity import ticker_storage_key
 import logging
 
 log = logging.getLogger(__name__)
@@ -45,13 +49,13 @@ def run_xgb(
 
     out = model_dir or MODEL_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    label_col = outcome_column(hz)
+    outcome_column(hz)
     if ticker:
         from scheduler_user_tickers import require_ml_training_ticker_allowed
 
         ticker = require_ml_training_ticker_allowed(ticker)
-        df = load_data(db_path, ticker=ticker.upper(), ml_horizon_slug=hz)
-        tickers = [ticker.upper()] if len(df) > 0 else []
+        df = load_data(db_path, ticker=ticker_storage_key(ticker), ml_horizon_slug=hz)
+        tickers = [ticker_storage_key(ticker)] if len(df) > 0 else []
     else:
         try:
             from scheduler_user_tickers import (
@@ -71,7 +75,8 @@ def run_xgb(
         if len(df) == 0:
             continue
         try:
-            r = train_ticker(tkr, df, model_dir=out, ml_horizon_slug=hz, **kw)
+            r = train_ticker(tkr, df, model_dir=out, ml_horizon_slug=hz,
+                              db_path=db_path, **kw)  # RC-344/F35: same DB as load_data
             results[tkr] = r
         except Exception as e:
             print(f"  ERROR {tkr}: {e}")
@@ -101,7 +106,7 @@ def run_lstm(
         from scheduler_user_tickers import require_ml_training_ticker_allowed
 
         ticker = require_ml_training_ticker_allowed(ticker)
-    tickers = [ticker.upper()] if ticker else None
+    tickers = [ticker_storage_key(ticker)] if ticker else None
     if not tickers:
         ds = build_lstm_dataset(db_path=db_path, ml_horizon_slug=hz)
         tickers = sorted(set(ds.tickers)) if ds.tickers else []
@@ -140,7 +145,7 @@ def run_transformer(
         from scheduler_user_tickers import require_ml_training_ticker_allowed
 
         ticker = require_ml_training_ticker_allowed(ticker)
-    tickers = [ticker.upper()] if ticker else None
+    tickers = [ticker_storage_key(ticker)] if ticker else None
     if not tickers:
         ds = build_lstm_dataset(db_path=db_path, ml_horizon_slug=hz)
         tickers = sorted(set(ds.tickers)) if ds.tickers else []
@@ -207,9 +212,10 @@ def run_meta(
     results = {}
     try:
         for tkr in tickers:
-            xgb_ok = (out / f"xgb_{tkr}_{hz}.pkl").exists()
-            lstm_ok = (out / f"lstm_{tkr}_{hz}.pt").exists()
-            tr_ok = (out / f"transformer_{tkr}_{hz}.pt").exists()
+            _tk = ticker_storage_key(tkr)  # RC-345/F25: artifact basename identity == writers
+            xgb_ok = (out / f"xgb_{_tk}_{hz}.pkl").exists()
+            lstm_ok = (out / f"lstm_{_tk}_{hz}.pt").exists()
+            tr_ok = (out / f"transformer_{_tk}_{hz}.pt").exists()
             if not xgb_ok:
                 continue
             try:
@@ -268,7 +274,7 @@ def run_meta(
                 meta_mdl = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
                 meta_mdl.fit(X, y_meta)
                 out.mkdir(parents=True, exist_ok=True)
-                with open(out / f"meta_{tkr}_{hz}.pkl", "wb") as f:
+                with open(out / f"meta_{ticker_storage_key(tkr)}_{hz}.pkl", "wb") as f:  # RC-345/F25
                     pickle.dump(meta_mdl, f)
                 results[tkr] = {"n_rows": len(stacked)}
             except Exception as e:
@@ -438,7 +444,7 @@ def main():
     if run_tr_flag:
         run_transformer(db_path=args.db, ticker=args.ticker, model_dir=model_dir, ml_horizon_slug=hz)
     if run_meta_flag:
-        tickers_arg = [args.ticker.upper()] if args.ticker else None
+        tickers_arg = [ticker_storage_key(args.ticker)] if args.ticker else None
         run_meta(db_path=args.db, tickers=tickers_arg, model_dir=model_dir, ml_horizon_slug=hz)
 
     try:

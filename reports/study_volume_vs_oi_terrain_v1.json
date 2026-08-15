@@ -1,0 +1,121 @@
+{
+  "study": "volume_vs_oi_terrain_v1",
+  "ticker": "SPY",
+  "pre_registered_bars": {
+    "regime_agree_min_pct": 75.0,
+    "flip_diff_max_pct_of_spot": 0.5,
+    "partial_below_trading_days": 5
+  },
+  "n_days_total": 4,
+  "n_trading_days": 3,
+  "n_comparable_regime_days": 3,
+  "regime_sign_agree_pct": 33.3,
+  "median_flip_diff_pct_of_spot": 0.4979,
+  "verdict": "FAIL_PARTIAL",
+  "days": [
+    {
+      "day": "2026-07-19",
+      "spot": 742.4861,
+      "non_trading_capture": true,
+      "n_contracts": 560,
+      "n_volume_contracts": 512,
+      "thin_volume_day": false,
+      "oi": {
+        "flip": null,
+        "call_wall": 750.0,
+        "put_wall": 740.0,
+        "sign_at_spot": "SHORT",
+        "confidence": "TRUSTED"
+      },
+      "vol": {
+        "flip": 745.3,
+        "call_wall": 745.0,
+        "put_wall": 740.0,
+        "sign_at_spot": "SHORT",
+        "confidence": "TRUSTED"
+      },
+      "flip_diff_pct_of_spot": null,
+      "call_wall_same_strike": false,
+      "put_wall_same_strike": true,
+      "regime_sign_agrees": true
+    },
+    {
+      "day": "2026-07-20",
+      "spot": 747.135,
+      "non_trading_capture": false,
+      "n_contracts": 2660,
+      "n_volume_contracts": 1389,
+      "thin_volume_day": false,
+      "oi": {
+        "flip": 750.59,
+        "call_wall": 750.0,
+        "put_wall": 740.0,
+        "sign_at_spot": "SHORT",
+        "confidence": "TRUSTED"
+      },
+      "vol": {
+        "flip": 746.87,
+        "call_wall": 748.0,
+        "put_wall": 747.0,
+        "sign_at_spot": "LONG",
+        "confidence": "TRUSTED"
+      },
+      "flip_diff_pct_of_spot": 0.4979,
+      "call_wall_same_strike": false,
+      "put_wall_same_strike": false,
+      "regime_sign_agrees": false
+    },
+    {
+      "day": "2026-07-21",
+      "spot": 745.37,
+      "non_trading_capture": false,
+      "n_contracts": 2660,
+      "n_volume_contracts": 924,
+      "thin_volume_day": false,
+      "oi": {
+        "flip": 748.42,
+        "call_wall": 745.0,
+        "put_wall": 740.0,
+        "sign_at_spot": "SHORT",
+        "confidence": "TRUSTED"
+      },
+      "vol": {
+        "flip": 743.7,
+        "call_wall": 747.0,
+        "put_wall": 746.0,
+        "sign_at_spot": "LONG",
+        "confidence": "TRUSTED"
+      },
+      "flip_diff_pct_of_spot": 0.6332,
+      "call_wall_same_strike": false,
+      "put_wall_same_strike": false,
+      "regime_sign_agrees": false
+    },
+    {
+      "day": "2026-07-22",
+      "spot": 746.85,
+      "non_trading_capture": false,
+      "n_contracts": 2860,
+      "n_volume_contracts": 625,
+      "thin_volume_day": false,
+      "oi": {
+        "flip": 750.29,
+        "call_wall": 750.0,
+        "put_wall": 740.0,
+        "sign_at_spot": "SHORT",
+        "confidence": "TRUSTED"
+      },
+      "vol": {
+        "flip": 749.74,
+        "call_wall": 748.0,
+        "put_wall": 745.0,
+        "sign_at_spot": "SHORT",
+        "confidence": "TRUSTED"
+      },
+      "flip_diff_pct_of_spot": 0.0736,
+      "call_wall_same_strike": false,
+      "put_wall_same_strike": false,
+      "regime_sign_agrees": true
+    }
+  ]
+}

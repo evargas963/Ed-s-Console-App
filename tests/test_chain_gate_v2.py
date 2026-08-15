@@ -8,8 +8,10 @@ shutdown-safe release.
 
 from __future__ import annotations
 
+import ast
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +25,88 @@ def _fresh_gate(monkeypatch):
     return gate
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RC-279 — a double must PROVE it can still stand in for what it replaces
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _forwarded_kwargs_at_the_gated_call_site() -> set[str]:
+    """The keywords `_gated_safe_get_chain` actually passes to `safe_get_chain`.
+
+    Read from the source rather than restated here, because a list of keywords
+    maintained by hand is the same defect one level up.
+    """
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(srv._gated_safe_get_chain).lstrip())
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "safe_get_chain"):
+            return {kw.arg for kw in node.keywords if kw.arg}
+    raise AssertionError("no call to safe_get_chain found in _gated_safe_get_chain")
+
+
+def _doubles_installed_in_this_file() -> list[tuple[int, ast.AST]]:
+    """Every callable this file monkeypatches over `safe_get_chain`, by source line."""
+    import ast as _ast
+
+    src = Path(__file__).read_text(encoding="utf-8")
+    out: list[tuple[int, _ast.AST]] = []
+    tree = _ast.parse(src)
+    funcs = {n.name: n for n in _ast.walk(tree)
+             if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))}
+    for node in _ast.walk(tree):
+        if not (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+                and node.func.attr == "setattr" and len(node.args) == 3):
+            continue
+        target = node.args[1]
+        if not (isinstance(target, _ast.Constant) and target.value == "safe_get_chain"):
+            continue
+        repl = node.args[2]
+        if isinstance(repl, _ast.Lambda):
+            out.append((repl.lineno, repl.args))
+        elif isinstance(repl, _ast.Name) and repl.id in funcs:
+            out.append((funcs[repl.id].lineno, funcs[repl.id].args))
+    return out
+
+
+def test_the_gated_call_site_still_matches_the_real_callee():
+    """If these two drift, every behavioural test below fails for the wrong reason."""
+    import inspect
+
+    forwarded = _forwarded_kwargs_at_the_gated_call_site()
+    assert forwarded, "the gated call site forwards nothing — re-read it"
+    inspect.signature(srv.safe_get_chain).bind(
+        None, "ZZZ", **{k: None for k in forwarded})
+
+
+def test_every_double_can_stand_in_for_the_real_safe_get_chain():
+    """RC-279: ten of this file's fourteen tests once failed on ONE stale double shape.
+
+    `safe_get_chain` gained `to_date`; all 13 doubles were pinned to
+    `(client, ticker, *, strike_count)`, so `TypeError: <lambda>() got an unexpected
+    keyword argument 'to_date'` was raised INSIDE the code under test — and inside a
+    worker thread — where it reads like a product failure. The concurrency behaviour
+    these tests exist to protect went unverified while the suite was loudly red.
+
+    RC-239 hit this first and repaired the three doubles that happened to be failing,
+    leaving ten identical ones. So the lock is not "add the keyword"; it is that a
+    substitute must accept whatever the real call site forwards, checked here, where
+    a failure names the double instead of blaming the subject.
+    """
+    forwarded = _forwarded_kwargs_at_the_gated_call_site()
+    doubles = _doubles_installed_in_this_file()
+    assert len(doubles) >= 10, f"expected the file's doubles to be found, saw {len(doubles)}"
+
+    for lineno, args in doubles:
+        named = {a.arg for a in list(args.args) + list(args.kwonlyargs)}
+        assert args.kwarg is not None or forwarded <= named, (
+            f"tests/test_chain_gate_v2.py:{lineno}: this double cannot accept "
+            f"{sorted(forwarded - named)}, which the gated call site forwards. It will "
+            f"raise TypeError inside the code under test and look like a product bug. "
+            f"Give it **kwargs.")
+
+
 def test_capacity_is_two_and_bounded(monkeypatch):
     gate = _fresh_gate(monkeypatch)
     assert gate.acquire(timeout=1)
@@ -34,11 +118,11 @@ def test_capacity_is_two_and_bounded(monkeypatch):
 
 
 def test_two_different_tickers_run_concurrently(monkeypatch):
-    gate = _fresh_gate(monkeypatch)
+    _fresh_gate(monkeypatch)
     active = {"n": 0, "max": 0}
     lk = threading.Lock()
 
-    def _slow_chain(client, ticker, *, strike_count):
+    def _slow_chain(client, ticker, **kwargs):
         with lk:
             active["n"] += 1
             active["max"] = max(active["max"], active["n"])
@@ -63,7 +147,7 @@ def test_same_ticker_requests_coalesce_single_fetch(monkeypatch):
     gate = _fresh_gate(monkeypatch)
     calls = {"n": 0}
 
-    def _slow_chain(client, ticker, *, strike_count):
+    def _slow_chain(client, ticker, **kwargs):
         calls["n"] += 1
         time.sleep(0.3)
         return f"RESP_{ticker}"
@@ -89,7 +173,7 @@ def test_no_cross_ticker_result_delivery(monkeypatch):
     _fresh_gate(monkeypatch)
     monkeypatch.setattr(
         srv, "safe_get_chain",
-        lambda client, ticker, *, strike_count: f"RESP_{ticker}",
+        lambda client, ticker, **kwargs: f"RESP_{ticker}",
     )
     out = {}
 
@@ -138,7 +222,7 @@ def test_timeout_fail_open_counts(monkeypatch):
     gate = _fresh_gate(monkeypatch)
     assert gate.acquire(timeout=1) and gate.acquire(timeout=1)  # saturate both slots
     monkeypatch.setattr(srv, "CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC", 0.1)
-    monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, *, strike_count: "OK")
+    monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: "OK")
     before = srv._chain_fetch_gate_timeout_count
     resp, wait_s, fetch_s = srv._gated_safe_get_chain(None, "ZZTM", strike_count=5)
     assert resp == "OK"
@@ -157,7 +241,7 @@ def test_http_throttle_degrades_to_one_slot(monkeypatch):
     class _R429:
         status_code = 429
 
-    monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, *, strike_count: _R429())
+    monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: _R429())
     srv._gated_safe_get_chain(None, "ZZTH", strike_count=5)
     snap = gate.snapshot()
     assert snap["degraded"] is True
@@ -168,7 +252,7 @@ def test_http_throttle_degrades_to_one_slot(monkeypatch):
 def test_auth_error_degrades_and_propagates(monkeypatch):
     gate = _fresh_gate(monkeypatch)
 
-    def _boom(c, t, *, strike_count):
+    def _boom(c, t, **kwargs):
         raise srv.SchwabAuthError("refresh token revoked")
 
     monkeypatch.setattr(srv, "safe_get_chain", _boom)
@@ -182,7 +266,7 @@ def test_auth_error_degrades_and_propagates(monkeypatch):
 def test_consecutive_failures_trip_breaker_and_recover(monkeypatch):
     gate = _fresh_gate(monkeypatch)
 
-    def _fail(c, t, *, strike_count):
+    def _fail(c, t, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(srv, "safe_get_chain", _fail)
@@ -197,7 +281,7 @@ def test_consecutive_failures_trip_breaker_and_recover(monkeypatch):
     assert gate.snapshot()["degraded"] is False
     assert gate.snapshot()["capacity_now"] == srv.CHAIN_GATE_GLOBAL_SLOTS_MAX
     # success resets the failure counter
-    monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, *, strike_count: "OK")
+    monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: "OK")
     srv._gated_safe_get_chain(None, "ZZOK", strike_count=5)
     assert gate.snapshot()["consecutive_failures"] == 0
 
@@ -206,7 +290,7 @@ def test_coalesced_waiters_receive_owner_exception(monkeypatch):
     _fresh_gate(monkeypatch)
     started = threading.Event()
 
-    def _slow_boom(c, t, *, strike_count):
+    def _slow_boom(c, t, **kwargs):
         started.set()
         time.sleep(0.3)
         raise RuntimeError("owner failed")
@@ -255,7 +339,7 @@ def test_diagnostics_endpoint_serves_snapshot(monkeypatch):
 
 def test_inflight_registry_cleared_after_completion(monkeypatch):
     _fresh_gate(monkeypatch)
-    monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, *, strike_count: "OK")
+    monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: "OK")
     srv._gated_safe_get_chain(None, "ZZCL", strike_count=5)
     with srv._chain_inflight_lock:
         assert "ZZCL" not in srv._chain_inflight
@@ -265,7 +349,7 @@ def test_no_deadlock_under_mixed_load(monkeypatch):
     _fresh_gate(monkeypatch)
     monkeypatch.setattr(
         srv, "safe_get_chain",
-        lambda c, t, *, strike_count: (time.sleep(0.05), f"R_{t}")[1],
+        lambda c, t, **kwargs: (time.sleep(0.05), f"R_{t}")[1],
     )
     done = []
 

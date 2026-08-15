@@ -1,0 +1,351 @@
+{
+  "after": {
+    "counts": {
+      "attach_gap_gt_59": 0,
+      "future_decisions": 0,
+      "future_snapshots": 0,
+      "live_30m_colocated": 18,
+      "live_30m_n": 18,
+      "live_30m_rate": 1.0,
+      "max_attach_gap_sec": 58.91130542755127,
+      "nearest_band_29_59": 10452,
+      "old_missing_all_ticker": 0,
+      "old_missing_sentinel": 0,
+      "research_excluded": 1422,
+      "signed_gap_max_neg": -58.91130542755127,
+      "signed_gap_max_pos": 58.67053294181824
+    },
+    "db_path": "data\\ed_console.db",
+    "definitions": {
+      "G4": "live last-30m decisions with a snapshots row at the same ts_utc",
+      "historical_attach_cap_sec": 59.0,
+      "old_missing": "operable AND decision_ts_utc < now-70m AND matched_snapshot_ts_utc IS NULL",
+      "operable": "calibration_trust='trusted' AND COALESCE(research_excluded,0)=0",
+      "production_join_tol_sec": 29.0,
+      "scope": "all tickers (not sentinel-only)"
+    },
+    "gates": {
+      "G1_operable_old_missing_zero_all_ticker": true,
+      "G2_no_clock_anomalies": true,
+      "G3_no_attach_gap_gt_59": true,
+      "G4_live_colocated_ge_95pct": true,
+      "sentinel_old_missing_zero": true
+    },
+    "generated_utc": "2026-07-17T20:16:11Z",
+    "label_law": "OPERABLE_SURFACE_CLEAN requires all-ticker G1. SENTINEL_SURFACE_CLEAN is allowed when only SPY/QQQ/IWM G1 holds; never call that OPERABLE_SURFACE_CLEAN.",
+    "schema": "operable_surface_gate_v1",
+    "verdict": "OPERABLE_SURFACE_CLEAN"
+  },
+  "backfill_29": {
+    "candidates": 1580,
+    "elapsed_sec": 34.058,
+    "resync_skipped_duplicate_snapshots": 0,
+    "resync_skipped_no_snapshot": 176,
+    "resync_skipped_snapshot_outcomes_not_filled": 0,
+    "resynced": 115102,
+    "skipped_ambiguous_duplicate_snapshots": 0,
+    "skipped_ambiguous_nearest_tie": 0,
+    "skipped_internal_inconsistent": 0,
+    "skipped_no_candidate_in_tol": 1313,
+    "skipped_no_exact_match": 0,
+    "skipped_snapshot_outcomes_not_filled": 154,
+    "skipped_unknown": 0,
+    "tol_sec": 29.0,
+    "updated": 113
+  },
+  "backfill_59_oneshot": {
+    "candidates": 1467,
+    "elapsed_sec": 21.921,
+    "note": "one-shot historical repair; production tol remains 29",
+    "resync_skipped_duplicate_snapshots": 0,
+    "resync_skipped_no_snapshot": 176,
+    "resync_skipped_snapshot_outcomes_not_filled": 0,
+    "resynced": 115102,
+    "skipped_ambiguous_duplicate_snapshots": 0,
+    "skipped_ambiguous_nearest_tie": 0,
+    "skipped_internal_inconsistent": 0,
+    "skipped_no_candidate_in_tol": 1305,
+    "skipped_no_exact_match": 0,
+    "skipped_snapshot_outcomes_not_filled": 162,
+    "skipped_unknown": 0,
+    "tol_sec": 59.0,
+    "updated": 0
+  },
+  "before": {
+    "old_missing_all_ticker": 247,
+    "old_missing_sentinel": 0,
+    "verdict": "SENTINEL_SURFACE_CLEAN"
+  },
+  "db_path": "data\\ed_console.db",
+  "generated_utc": "2026-07-17T20:13:42Z",
+  "production_tol_sec": 29.0,
+  "quarantine": {
+    "old_cut_utc": 1784315153.0473983,
+    "quarantined": 231,
+    "reason": "IRRECOVERABLE_NO_JOINABLE_SNAPSHOT_OUTCOME_V1"
+  },
+  "refresh_outcomes": {
+    "schema": "refresh_all_governed_bar_anchor_outcomes_v1",
+    "tickers": [
+      {
+        "snapshots": 6079,
+        "ticker": "$SPX",
+        "updates": 6079
+      },
+      {
+        "snapshots": 707,
+        "ticker": "$VIX",
+        "updates": 707
+      },
+      {
+        "snapshots": 5015,
+        "ticker": "AAPL",
+        "updates": 5015
+      },
+      {
+        "snapshots": 660,
+        "ticker": "AEIS",
+        "updates": 660
+      },
+      {
+        "snapshots": 4498,
+        "ticker": "AMZN",
+        "updates": 4498
+      },
+      {
+        "snapshots": 1482,
+        "ticker": "ASTS",
+        "updates": 1481
+      },
+      {
+        "snapshots": 4359,
+        "ticker": "AVGO",
+        "updates": 4359
+      },
+      {
+        "snapshots": 659,
+        "ticker": "BBIO",
+        "updates": 659
+      },
+      {
+        "snapshots": 661,
+        "ticker": "BE",
+        "updates": 661
+      },
+      {
+        "snapshots": 658,
+        "ticker": "CDE",
+        "updates": 658
+      },
+      {
+        "snapshots": 4315,
+        "ticker": "CIFR",
+        "updates": 4315
+      },
+      {
+        "snapshots": 656,
+        "ticker": "CRDO",
+        "updates": 656
+      },
+      {
+        "snapshots": 1542,
+        "ticker": "CRWD",
+        "updates": 1542
+      },
+      {
+        "snapshots": 658,
+        "ticker": "FN",
+        "updates": 658
+      },
+      {
+        "snapshots": 4282,
+        "ticker": "GOOG",
+        "updates": 4282
+      },
+      {
+        "snapshots": 4435,
+        "ticker": "GOOGL",
+        "updates": 4435
+      },
+      {
+        "snapshots": 16351,
+        "ticker": "IWM",
+        "updates": 16351
+      },
+      {
+        "snapshots": 654,
+        "ticker": "KRE",
+        "updates": 654
+      },
+      {
+        "snapshots": 656,
+        "ticker": "KTOS",
+        "updates": 656
+      },
+      {
+        "snapshots": 2602,
+        "ticker": "MET",
+        "updates": 2602
+      },
+      {
+        "snapshots": 5618,
+        "ticker": "META",
+        "updates": 5618
+      },
+      {
+        "snapshots": 4302,
+        "ticker": "MRVL",
+        "updates": 4302
+      },
+      {
+        "snapshots": 4705,
+        "ticker": "MSFT",
+        "updates": 4705
+      },
+      {
+        "snapshots": 1465,
+        "ticker": "MU",
+        "updates": 1464
+      },
+      {
+        "snapshots": 251,
+        "ticker": "NBIS",
+        "updates": 251
+      },
+      {
+        "snapshots": 254,
+        "ticker": "NBIX",
+        "updates": 254
+      },
+      {
+        "snapshots": 399,
+        "ticker": "NET",
+        "updates": 398
+      },
+      {
+        "snapshots": 2611,
+        "ticker": "NFLX",
+        "updates": 2611
+      },
+      {
+        "snapshots": 5101,
+        "ticker": "NVDA",
+        "updates": 5101
+      },
+      {
+        "snapshots": 652,
+        "ticker": "NXT",
+        "updates": 652
+      },
+      {
+        "snapshots": 374,
+        "ticker": "ORCL",
+        "updates": 374
+      },
+      {
+        "snapshots": 4011,
+        "ticker": "PCG",
+        "updates": 4011
+      },
+      {
+        "snapshots": 4486,
+        "ticker": "PLTR",
+        "updates": 4486
+      },
+      {
+        "snapshots": 653,
+        "ticker": "PSCI",
+        "updates": 653
+      },
+      {
+        "snapshots": 18003,
+        "ticker": "QQQ",
+        "updates": 18003
+      },
+      {
+        "snapshots": 1464,
+        "ticker": "RKLB",
+        "updates": 1463
+      },
+      {
+        "snapshots": 657,
+        "ticker": "SATS",
+        "updates": 657
+      },
+      {
+        "snapshots": 763,
+        "ticker": "SKHY",
+        "updates": 763
+      },
+      {
+        "snapshots": 4000,
+        "ticker": "SMCI",
+        "updates": 4000
+      },
+      {
+        "snapshots": 317,
+        "ticker": "SPCX",
+        "updates": 317
+      },
+      {
+        "snapshots": 43387,
+        "ticker": "SPY",
+        "updates": 43387
+      },
+      {
+        "snapshots": 653,
+        "ticker": "STRL",
+        "updates": 653
+      },
+      {
+        "snapshots": 3533,
+        "ticker": "TSL",
+        "updates": 3533
+      },
+      {
+        "snapshots": 7001,
+        "ticker": "TSLA",
+        "updates": 7001
+      },
+      {
+        "snapshots": 2,
+        "ticker": "TSM",
+        "updates": 2
+      },
+      {
+        "snapshots": 24,
+        "ticker": "UNH",
+        "updates": 24
+      },
+      {
+        "snapshots": 654,
+        "ticker": "WMT",
+        "updates": 654
+      },
+      {
+        "snapshots": 656,
+        "ticker": "XBI",
+        "updates": 656
+      },
+      {
+        "snapshots": 63,
+        "ticker": "XLE",
+        "updates": 62
+      },
+      {
+        "snapshots": 330,
+        "ticker": "XOM",
+        "updates": 328
+      },
+      {
+        "snapshots": 657,
+        "ticker": "XRT",
+        "updates": 657
+      }
+    ],
+    "ts_eval_utc": 1784319222.639383,
+    "updates_executed": 177968
+  },
+  "schema": "operable_surface_ops_v1",
+  "verdict": "OPERABLE_SURFACE_CLEAN"
+}

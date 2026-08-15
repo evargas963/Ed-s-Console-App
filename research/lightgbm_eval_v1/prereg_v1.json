@@ -1,0 +1,64 @@
+{
+  "prereg_id": "lightgbm_eval_v1_prereg_v1",
+  "sibling_precedent": "research/elastic_net_eval_v1/prereg_v1.json",
+  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
+  "study_question": "Does a single LightGBM classifier, trained walk-forward on the same production engineered features and ternary labels as Study #4, clear the same MCC advancement screen on SPY/QQQ/IWM x {1c,5c,15c,60c}?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only. admissions registry untouched.",
+    "not_xgb_stack_twin": "One tree challenger only; does not permanently add a second booster beside XGB."
+  },
+  "data": {
+    "features": "same as elastic_net_eval_v1 — ml_train.load_data + engineer_features(fit_end=train_end)",
+    "labels": "outcome_{hz} production ternary",
+    "row_gates": "identical to elastic_net_eval_v1"
+  },
+  "model": {
+    "name": "lightgbm.LGBMClassifier",
+    "objective": "multiclass",
+    "num_leaves": 31,
+    "learning_rate": 0.05,
+    "n_estimators": 200,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_samples": 50,
+    "reg_lambda": 1.0,
+    "no_hyperparameter_search": "frozen; changing after seeing results invalidates the run"
+  },
+  "walk_forward": {
+    "splitter": "training_cache.expanding_window_oof_folds (n_folds=3)",
+    "n_folds": 3,
+    "embargo_minutes": 61
+  },
+  "family": {
+    "tickers": ["SPY", "QQQ", "IWM"],
+    "horizons": ["1c", "5c", "15c", "60c"],
+    "n_cells": 12,
+    "declared_before_run": true
+  },
+  "primary_metric": {
+    "name": "MCC (multiclass Matthews correlation, Gorodkin)",
+    "advancement_screen_per_cell": [
+      "day-block bootstrap 95% CI of MCC excludes 0 (B=1000)",
+      "Holm-Bonferroni adjusted bootstrap p < 0.05 across 12 cells",
+      "accuracy >= always_flat AND majority_class AND persistence",
+      "shuffle control null centered at 0"
+    ]
+  },
+  "baselines": {
+    "always_flat": "predict flat",
+    "majority_class": "predict previous-row truth majority helper via stats.baseline_accuracies",
+    "persistence": "previous row truth",
+    "shuffle_control": "K=200",
+    "elastic_net_reference": "Study #4 cell MCC on same screen is context only"
+  },
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {
+    "min_scored_rows_per_cell": 300,
+    "min_distinct_days_per_cell": 10
+  },
+  "outputs": {
+    "report_json": "reports/lightgbm_eval/lightgbm_eval_<et_date>_<runid>.json"
+  }
+}

@@ -57,6 +57,7 @@ def _ev_bounds(status: str | None = None) -> dict:
 
 
 def _normalized_contract(**overrides) -> dict:
+    # institutional-synthetic-ok: v2 execution-EV test needs a controlled normalized contract.
     base = {
         "symbol": "SPY_050626C00500000",
         "bid": 1.1,

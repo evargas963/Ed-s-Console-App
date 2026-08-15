@@ -1,0 +1,153 @@
+{
+  "study": "lp01_touch_study_v1",
+  "question": "When price touches a structure level, is the forward move larger than the same clock minute produces anyway?",
+  "preregistered_pass_criteria": {
+    "min_events_per_horizon": 200,
+    "min_abs_cohens_d": 0.1,
+    "bootstrap_ci_excludes_zero": true,
+    "min_horizons_agreeing": 2,
+    "must_hold_out_of_sample": true,
+    "min_effect_over_placebo": 0.05
+  },
+  "horizons_min": [
+    5,
+    15,
+    30
+  ],
+  "levels_tested": [
+    "PDH",
+    "PDL",
+    "PDC",
+    "PD_POC",
+    "PD_VAH",
+    "PD_VAL",
+    "ON_HIGH",
+    "ON_LOW",
+    "ORB_HIGH",
+    "ORB_LOW",
+    "ORB_MID"
+  ],
+  "levels_excluded_for_lookahead": [
+    "TODAY_POC",
+    "TODAY_VAH",
+    "TODAY_VAL",
+    "VWAP",
+    "VWAP_P1",
+    "VWAP_M1",
+    "VWAP_P2",
+    "VWAP_M2"
+  ],
+  "tickers": [
+    "SPY",
+    "QQQ",
+    "IWM"
+  ],
+  "n_sessions": 299,
+  "n_touch_events": 12471,
+  "per_horizon": {
+    "5": {
+      "n_events": 12471,
+      "mean_abs_fwd_after_touch": 0.0009588702026382343,
+      "mean_abs_fwd_tod_baseline": 0.0007613730891527631,
+      "mean_diff": 0.00019749711348547125,
+      "cohens_d": 0.26373652419249677,
+      "bootstrap_ci95_of_diff": [
+        0.00018039840178685925,
+        0.0002157594244977472
+      ],
+      "placebo_n": 7717,
+      "placebo_cohens_d": 0.32682767855128075,
+      "effect_over_placebo": -0.06309115435878399,
+      "meets_n": true,
+      "meets_effect": true,
+      "ci_excludes_zero": true,
+      "direction_matches_H1": true,
+      "beats_placebo": false,
+      "horizon_pass": false
+    },
+    "15": {
+      "n_events": 12275,
+      "mean_abs_fwd_after_touch": 0.0015745111929188124,
+      "mean_abs_fwd_tod_baseline": 0.0012912807182816656,
+      "mean_diff": 0.0002832304746371469,
+      "cohens_d": 0.24030859319640524,
+      "bootstrap_ci95_of_diff": [
+        0.0002559825114719109,
+        0.00031135920357791726
+      ],
+      "placebo_n": 7544,
+      "placebo_cohens_d": 0.3122368781807254,
+      "effect_over_placebo": -0.07192828498432013,
+      "meets_n": true,
+      "meets_effect": true,
+      "ci_excludes_zero": true,
+      "direction_matches_H1": true,
+      "beats_placebo": false,
+      "horizon_pass": false
+    },
+    "30": {
+      "n_events": 12054,
+      "mean_abs_fwd_after_touch": 0.002139550680218801,
+      "mean_abs_fwd_tod_baseline": 0.0017821400826250316,
+      "mean_diff": 0.0003574105975937695,
+      "cohens_d": 0.2319813020516034,
+      "bootstrap_ci95_of_diff": [
+        0.0003205219801385817,
+        0.0003966068217839103
+      ],
+      "placebo_n": 7302,
+      "placebo_cohens_d": 0.30549051967740287,
+      "effect_over_placebo": -0.07350921762579948,
+      "meets_n": true,
+      "meets_effect": true,
+      "ci_excludes_zero": true,
+      "direction_matches_H1": true,
+      "beats_placebo": false,
+      "horizon_pass": false
+    }
+  },
+  "horizons_passing": 0,
+  "out_of_sample": {
+    "evaluated": true,
+    "split_date": "2026-05-21",
+    "halves": {
+      "first": {
+        "5": {
+          "n": 5204,
+          "cohens_d": 0.1317390032448007,
+          "positive": true
+        },
+        "15": {
+          "n": 5114,
+          "cohens_d": 0.08853898903559698,
+          "positive": true
+        },
+        "30": {
+          "n": 5011,
+          "cohens_d": 0.06213774266402474,
+          "positive": true
+        }
+      },
+      "second": {
+        "5": {
+          "n": 7267,
+          "cohens_d": 0.34422821449358326,
+          "positive": true
+        },
+        "15": {
+          "n": 7161,
+          "cohens_d": 0.3289646848467676,
+          "positive": true
+        },
+        "30": {
+          "n": 7043,
+          "cohens_d": 0.32597571439436207,
+          "positive": true
+        }
+      }
+    },
+    "consistent": true
+  },
+  "verdict": "FAIL",
+  "decision_path_effect": "NONE \u2014 structure-only regardless of verdict; this study does not admit anything to Decide."
+}

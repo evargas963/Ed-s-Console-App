@@ -1,0 +1,50 @@
+{
+  "spec": "Gemini adversarial audit 2026-07-21 \u2014 windows verbatim, seed 20260721",
+  "INDEX_SPY_QQQ_IWM": {
+    "rows": 0,
+    "big_move_days": 0,
+    "armed_short_gamma_n": 0,
+    "confidence_mix": {},
+    "verdict_gate": "UNDERPOWERED_PENDING",
+    "card_hit_pct": null,
+    "long_gamma_placebo_pct": null,
+    "permutation": {
+      "p_low": null,
+      "p_high": null
+    }
+  },
+  "SINGLE_NAMES_ALL_CONF": {
+    "rows": 626,
+    "big_move_days": 166,
+    "armed_short_gamma_n": 42,
+    "confidence_mix": {
+      "TRUSTED": 626
+    },
+    "verdict_gate": "UNDERPOWERED_PENDING",
+    "card_hit_pct": 45.2,
+    "long_gamma_placebo_pct": 43.5,
+    "permutation": {
+      "observed_short_hit": 45.2,
+      "p_low": 0.6452,
+      "p_high": 0.4888
+    }
+  },
+  "SINGLE_NAMES_TRUSTED_ONLY": {
+    "rows": 626,
+    "big_move_days": 166,
+    "armed_short_gamma_n": 42,
+    "confidence_mix": {
+      "TRUSTED": 626
+    },
+    "verdict_gate": "UNDERPOWERED_PENDING",
+    "card_hit_pct": 45.2,
+    "long_gamma_placebo_pct": 43.5,
+    "permutation": {
+      "observed_short_hit": 45.2,
+      "p_low": 0.6452,
+      "p_high": 0.4888
+    }
+  },
+  "note_earnings_exclusion": "NOT applied \u2014 no earnings calendar held; disclosed as spec deviation, to be added when calendar lands",
+  "note_all_conf_equals_trusted": "terrain_read fail-closed drops non-TRUSTED; ALL_CONF bucket == TRUSTED_ONLY by construction"
+}

@@ -1,0 +1,12 @@
+{
+  "window_min": 15,
+  "n_decisions": 55,
+  "with_exact_snap_row": 9,
+  "attached": 0,
+  "exact_gap0_among_attached": 0,
+  "sql_row": {
+    "n": 55,
+    "attached": 0,
+    "exact_gap0": 0
+  }
+}

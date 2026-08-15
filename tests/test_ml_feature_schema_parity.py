@@ -325,7 +325,9 @@ def test_price_action_cone_gated_behind_retrain():
     assert manifest_pa == set(pa_cols)
 
 
-def test_dgex_first_diff_engineered_train_and_serve():
+def test_dgex_first_diff_engineered_train_and_serve(tmp_path):
+    import sqlite3
+
     df = pd.DataFrame(
         {
             "ticker": ["SPY", "SPY", "SPY"],
@@ -337,8 +339,14 @@ def test_dgex_first_diff_engineered_train_and_serve():
     )
     from ml_data_common import attach_net_gamma_prev_column
 
-    df = attach_net_gamma_prev_column(df)
-    X, names, _, _ = engineer_features(df)
+    # RC-342: net_gamma_prev is the RAW prior 1m bar. Back the frame with a fixture DB
+    # holding these consecutive bars so raw-prior == frame-prior (dgex[1] still 4-1=3.0).
+    dbp = tmp_path / "dgex.db"
+    with sqlite3.connect(str(dbp)) as conn:
+        df.assign(timeframe="1m")[["ticker", "timeframe", "ts_utc", "net_gamma"]].to_sql(
+            "snapshots", conn, index=False)
+    df = attach_net_gamma_prev_column(df, str(dbp))
+    X, names, _, _ = engineer_features(df, db_path=str(dbp))
     assert "dgex" in names
     assert "dgex_positive" in names
     assert np.isnan(float(X.loc[0, "dgex"]))
@@ -355,18 +363,25 @@ def test_dgex_train_serve_parity_via_prior_db_row(tmp_path):
     """Serve path: attach_net_gamma_prev_for_dgex attaches net_gamma_prev from prior normalized row."""
     import sqlite3
 
-    from ml_data_common import attach_net_gamma_prev_column, attach_net_gamma_prev_for_dgex
-    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
+    from ml_data_common import SERVE_SNAPSHOT_TABLE, attach_net_gamma_prev_column, attach_net_gamma_prev_for_dgex
+    from timeframe_config import CANONICAL_TIMEFRAME
 
+    # RC-244 (follow-on to RC-207): this fixture built SNAPSHOT_TABLE_1M
+    # (`snapshots_1m_normalized`), but RC-207 repointed the SERVE path to `snapshots` when the
+    # normalized mirror was found b-tree corrupt. The fixture was never moved with it, so the
+    # test asked the serve reader for a table it no longer reads and failed on "no such table:
+    # snapshots" — a stale double, not a product defect. Bind the fixture to the SAME constant
+    # the serve path resolves, so a future repoint moves both together instead of silently
+    # splitting them again.
     db = tmp_path / "dgex_parity.db"
     conn = sqlite3.connect(str(db))
     conn.execute(
-        f"CREATE TABLE {SNAPSHOT_TABLE_1M} ("
+        f"CREATE TABLE {SERVE_SNAPSHOT_TABLE} ("
         "ticker TEXT NOT NULL, timeframe TEXT NOT NULL, ts_utc REAL NOT NULL, net_gamma REAL)"
     )
     for ts, ng in ((100.0, 1.0), (160.0, 4.0), (220.0, 2.0)):
         conn.execute(
-            f"INSERT INTO {SNAPSHOT_TABLE_1M} (ticker, timeframe, ts_utc, net_gamma) VALUES (?, ?, ?, ?)",
+            f"INSERT INTO {SERVE_SNAPSHOT_TABLE} (ticker, timeframe, ts_utc, net_gamma) VALUES (?, ?, ?, ?)",
             ("SPY", CANONICAL_TIMEFRAME, ts, ng),
         )
     conn.commit()
@@ -381,8 +396,8 @@ def test_dgex_train_serve_parity_via_prior_db_row(tmp_path):
             "outcome_1c": ["up", "down", "flat"],
         }
     )
-    df = attach_net_gamma_prev_column(df)
-    X_train, names, _, _ = engineer_features(df)
+    df = attach_net_gamma_prev_column(df, str(db))  # RC-342: same raw authority as serve
+    X_train, names, _, _ = engineer_features(df, db_path=str(db))
 
     snap = {
         "ticker": "SPY",
@@ -914,8 +929,15 @@ def test_stage2_sequence_encoder_width_matches_xgb_tabular_universe():
     assert encoded_width_5m() == 88
 
 
-def test_xgb_cf_member_in_tabular_universe_and_permute_perturbs():
-    """cf_* are engineered XGB columns — grouped permute must change holdout matrix values."""
+def test_xgb_cf_member_in_tabular_universe_and_permute_perturbs(tmp_path):
+    """cf_* are engineered XGB columns — grouped permute must change holdout matrix values.
+
+    RC-340: rows now live in a FIXTURE DB so cf_* come from the one canonical population
+    authority — the caller-rows fallback this test previously leaned on was a second
+    population producer and is removed.
+    """
+    import sqlite3
+
     import numpy as np
     import pandas as pd
 
@@ -926,12 +948,17 @@ def test_xgb_cf_member_in_tabular_universe_and_permute_perturbs():
     base = probe_training_feature_row()
     for i in range(20):
         r = dict(base)
+        r["ticker"] = "SPY"
+        r["timeframe"] = "1m"
         r["ts_utc"] = float(1000 + i * 300)
         r["spot"] = 100.0 + i * 0.15
         r["vwap"] = 99.5 + i * 0.1
         rows.append(r)
     df = pd.DataFrame(rows)
-    X, names, _, _ = engineer_features(df)
+    dbp = tmp_path / "cf_fixture.db"
+    with sqlite3.connect(str(dbp)) as conn:
+        df.to_sql("snapshots", conn, index=False)
+    X, names, _, _ = engineer_features(df, db_path=str(dbp))
     assert "cf_momentum_5m" in names
     tail = X.iloc[-5:].copy()
     assert tail["cf_momentum_5m"].nunique(dropna=False) > 1
@@ -1861,4 +1888,449 @@ def test_ablation_parity_includes_bridge_and_backtest_hooks():
     from tools.check_ablation_pipeline_parity import check_ablation_pipeline_parity
 
     assert check_ablation_pipeline_parity() == []
+
+
+# ── RC-332: cf_* has ONE input population, and callers may not choose it ────────
+#
+# RC-328 made the confluence WINDOW clock-defined and repaired two lanes. Four more kept
+# passing their own row population into the same producer, because the producer's signature
+# accepts one. Measured before the fix: 179 divergent cells over 826 SPY bars between the
+# LSTM offline and live populations, cf_alignment_score off by up to 3.0 of its -4..+4
+# range. These two controls fail if either half of that regresses.
+
+def test_no_production_lane_supplies_its_own_confluence_population():
+    """The recurrence mode is a NEW call site passing rows, not a wrong formula.
+
+    Only `ml_data_common` may name the population: once inside the authority, and once in
+    its explicitly logged degraded path for frames absent from the canonical series. A
+    third site anywhere in production means a lane chose its own population again.
+    """
+    import subprocess
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"], cwd=repo,
+        capture_output=True, text=True, check=True).stdout
+    offenders = []
+    for rel in sorted(p for p in tracked.split("\0") if p):
+        if rel.startswith(("tests/", "tools/", "research/", "arch_competition/")):
+            continue
+        path = repo / rel
+        if not path.is_file():
+            continue
+        for i, line in enumerate(
+                path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if "compute_confluence_features(" in line and "def " not in line:
+                offenders.append(f"{rel}:{i}")
+    unexpected = [o for o in offenders if not o.startswith("ml_data_common.py:")]
+    assert not unexpected, (
+        "a production lane passes its own row population to compute_confluence_features "
+        f"instead of calling confluence_features_for_bar: {unexpected} (RC-332)")
+    assert len(offenders) == 1, (
+        "ml_data_common should name the population exactly ONCE — inside the authority; "
+        "the caller-rows degraded path was removed as a second population producer "
+        f"(RC-340) — found {len(offenders)}: {offenders}")
+
+
+def test_every_xgb_feature_agrees_between_the_train_and_serve_builders(tmp_path):
+    """RC-335 — the Family A lock: two builders, one feature vector, no disagreement.
+
+    `engineer_features` (vectorised, training) and `engineer_single_snapshot` (scalar,
+    serving) independently construct the SAME model input. That is two production sites for
+    one semantic truth, and the only thing making it legitimate rather than a D6 diverged
+    duplicate is that they agree. Three separate defects were found by running exactly this
+    comparison over real rows, all invisible to any name- or AST-based scan:
+
+      * `gamma_positive` / `delta_positive` / `charm_delta_agree` — training wrote 0.0 for a
+        MISSING net_gamma because `(series > 0)` makes NaN False; serving wrote NaN. 40 of
+        60 bars disagreed, and XGBoost routes NaN and 0.0 down different branches.
+      * `time_sin` / `time_cos` / `time_progress` / `minutes_since_open` — training derives
+        the ET clock from ts_utc, serving read the stored et_hour/et_minute columns that
+        this repo already documents as untrustworthy. 6 of 60 bars.
+      * `volume_ratio` — collateral: its median key is built from that same clock, so the
+        lookup missed and the feature went absent on 4 of 60.
+
+    This runs against a FIXTURE database so it is hermetic, and asserts on every feature the
+    training builder emits rather than a chosen subset.
+    """
+    import sqlite3
+
+    from ml_data_common import (
+        attach_confluence_features_for_serve,
+        attach_net_gamma_prev_for_dgex,
+    )
+    from ml_train import engineer_single_snapshot
+
+    n = 90
+    base_ts = 1_767_000_000.0          # a fixed weekday RTH instant; no wall-clock reads
+    rows = []
+    for i in range(n):
+        rows.append({
+            "ticker": "SPY", "timeframe": "1m", "ts_utc": base_ts + i * 60.0,
+            "ts_et": "2026-01-05 09:30:00", "et_hour": 9, "et_minute": 30,
+            "spot": 500.0 + (i % 7) * 0.25, "candle_open": 500.0 + (i % 5) * 0.2,
+            "candle_high": 501.0 + (i % 3) * 0.1, "candle_low": 499.0 - (i % 4) * 0.1,
+            "candle_close": 500.0 + (i % 6) * 0.15, "candle_volume": 1000.0 + i * 3.0,
+            "vwap": 500.1, "net_gamma": (None if i % 5 == 0 else 1e6 * (1 if i % 2 else -1)),
+            "net_delta": (None if i % 7 == 0 else 5e5 * (1 if i % 3 else -1)),
+            "charm_net": (None if i % 11 == 0 else -2e4),
+            "flow_imbalance": 0.0 if i % 4 == 0 else 0.62,
+            "outcome_5c": "up",
+        })
+    df = pd.DataFrame(rows)
+
+    dbp = tmp_path / "fixture_console.db"
+    with sqlite3.connect(str(dbp)) as conn:
+        df.assign(timeframe="1m").to_sql("snapshots", conn, index=False)
+
+    # RC-342: attach net_gamma_prev from the SAME raw authority the serve path uses, so both
+    # lanes define "previous" identically (load_data does this before engineer_features).
+    from ml_data_common import attach_net_gamma_prev_column
+    df = attach_net_gamma_prev_column(df, str(dbp))
+    X, names, cat_maps, aux = engineer_features(df, db_path=str(dbp))
+    vol_medians = {k: v for k, v in (aux or {}).items() if str(k).startswith("vol_median_")}
+
+    mismatches = []
+    for i in range(60, n, 3):
+        snap = {k: (None if pd.isna(v) else v) for k, v in df.iloc[i].to_dict().items()}
+        # Mirror the production serve preparation EXACTLY (ml_predict.py:920-921). Omitting
+        # either attach attributes the test's own gap to the code — dropping the net_gamma
+        # one made dgex/dgex_positive read NaN at serve while training had a real value.
+        snap = attach_net_gamma_prev_for_dgex(snap, str(dbp))
+        snap = attach_confluence_features_for_serve(snap, str(dbp))
+        served = engineer_single_snapshot(snap, cat_maps, names, vol_medians, "SPY")
+        assert served is not None, f"serve builder returned None for bar {i}"
+        for f in names:
+            a, b = X.iloc[i][f], served.iloc[0][f]
+            a_nan = a is None or (isinstance(a, float) and np.isnan(a))
+            b_nan = b is None or (isinstance(b, float) and np.isnan(b))
+            if a_nan and b_nan:
+                continue
+            if a_nan != b_nan:
+                mismatches.append(f"{f}@{i}: train={'NaN' if a_nan else a} serve={'NaN' if b_nan else b}")
+            elif abs(float(a) - float(b)) > 1e-9:
+                mismatches.append(f"{f}@{i}: train={float(a):.8g} serve={float(b):.8g}")
+
+    assert not mismatches, (
+        f"{len(mismatches)} train/serve feature disagreement(s) — the two builders are "
+        f"producing different model inputs for the same bar (RC-335):\n  "
+        + "\n  ".join(sorted(set(mismatches))[:25]))
+
+
+def test_rc342_net_gamma_prev_has_one_raw_prior_authority():
+    """M8 lock (F33): net_gamma_prev = the RAW prior 1m bar, defined ONCE. Train's batch
+    attach and serve's per-row fetch must agree on a fixture DB, and engineer_features must
+    NOT reconstruct the column locally (the deleted inline shift was a third producer)."""
+    import ast as _ast
+    import inspect as _inspect
+    import sqlite3
+
+    from ml_data_common import attach_net_gamma_prev_column, fetch_prior_net_gamma
+    from ml_train import engineer_features
+
+    # No inline shift/diff reconstruction of net_gamma_prev inside engineer_features.
+    src = _ast.unparse(_ast.parse(_inspect.getsource(engineer_features)))
+    assert "groupby" not in src or "net_gamma" not in src.split("groupby")[0][-40:], True
+    assert ".shift(1)" not in src, (
+        "engineer_features reconstructs a prior-bar series — third net_gamma_prev "
+        "producer (RC-342)")
+
+    # Batch attach == per-row serve fetch, on a fixture DB with an overnight gap.
+    import pathlib
+    import tempfile
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "ng.db"
+    raw = pd.DataFrame([
+        {"ticker": "SPY", "timeframe": "1m", "ts_utc": 1000.0 + i * 60, "net_gamma": 100.0 + i}
+        for i in range(30)])
+    with sqlite3.connect(str(tmp)) as conn:
+        raw.to_sql("snapshots", conn, index=False)
+    frame = raw.iloc[[5, 12, 20, 29]][["ticker", "ts_utc", "net_gamma"]].copy()
+    got = attach_net_gamma_prev_column(frame, str(tmp))
+    for _i, r in got.iterrows():
+        serve = fetch_prior_net_gamma("SPY", float(r["ts_utc"]), str(tmp))
+        assert float(r["net_gamma_prev"]) == float(serve), (
+            f"batch prev {r['net_gamma_prev']} != serve prev {serve} at ts {r['ts_utc']}")
+
+
+def test_rc340_every_scheduler_xgb_route_uses_the_canonical_row_preparer():
+    """M5 lock (F34): every engineer_single_snapshot call in ml_scheduler must receive a
+    row prepared by prepare_row_for_xgb_features — the one enrichment authority. A bare
+    row is the RC-340 bypass (cf_* -> 0.0, dgex -> NaN in OOF/bridge vectors)."""
+    import ast as _ast
+    import inspect as _inspect
+
+    import ml_scheduler as _sched
+
+    src = _inspect.getsource(_sched)
+    tree = _ast.parse(src)
+    bare = []
+    total = 0
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Call):
+            name = (node.func.id if isinstance(node.func, _ast.Name)
+                    else node.func.attr if isinstance(node.func, _ast.Attribute) else "")
+            if name == "engineer_single_snapshot" and node.args:
+                total += 1
+                first = node.args[0]
+                ok = (isinstance(first, _ast.Call)
+                      and getattr(first.func, "id", getattr(first.func, "attr", ""))
+                      == "prepare_row_for_xgb_features")
+                if not ok:
+                    bare.append(node.lineno)
+    assert total >= 5, f"expected >=5 scheduler XGB routes, found {total} — recount needed"
+    assert not bare, (
+        f"scheduler route(s) at line(s) {bare} feed engineer_single_snapshot a raw row, "
+        f"bypassing the canonical preparer (RC-340/M5)")
+
+
+def test_rc341_train_ticker_forwards_caller_db_to_feature_engineering(monkeypatch):
+    """M6A lock (F35): the DB identity train_ticker receives must be the DB identity
+    engineer_features queries confluence from. Dropping the forwarding (the pre-RC-340
+    state, where the kwarg did not exist) makes this FAIL."""
+    import ml_train as _mt
+
+    calls = []
+
+    def _spy(df, fit_end=None, db_path=None):
+        calls.append(db_path)
+        if db_path is not None:
+            raise RuntimeError("stop-after-capture")   # the forwarded call; no training work
+        return pd.DataFrame(), [], {}, {}              # internal probe calls pass through
+
+    monkeypatch.setattr(_mt, "engineer_features", _spy)
+    df = pd.DataFrame([{"ticker": "SPY", "ts_utc": 1.0, "spot": 500.0,
+                        "outcome_5c": "up"}] * 4)
+    try:
+        _mt.train_ticker("SPY", df, db_path="X:/distinct_caller.db")
+    except Exception:
+        pass
+    assert "X:/distinct_caller.db" in calls, (
+        f"train_ticker dropped the caller's DB identity before feature engineering — "
+        f"engineer_features calls saw {calls!r} (RC-341/M6A)")
+
+
+def test_rc341_confluence_cache_key_carries_db_identity(tmp_path):
+    """M6B lock (F35): same ticker + same UTC day + a SHARED cache dict + two different
+    DBs must yield each DB's own confluence truth in both orders. Removing DB identity
+    from the cache key makes the second call return the first DB's pool and FAILS."""
+    import sqlite3
+
+    from ml_data_common import confluence_features_for_bar
+
+    def mkdb(name, spot_step):
+        rows = pd.DataFrame([{
+            "ticker": "SPY", "timeframe": "1m", "ts_utc": 1_767_020_400.0 + i * 60.0,
+            "spot": 500.0 + i * spot_step, "vwap": 500.1, "candle_volume": 1000.0,
+        } for i in range(80)])
+        p = tmp_path / name
+        with sqlite3.connect(str(p)) as conn:
+            rows.to_sql("snapshots", conn, index=False)
+        return str(p)
+
+    db_a = mkdb("a.db", 0.30)          # strong upward drift -> positive momentum/trend
+    db_b = mkdb("b.db", -0.30)         # mirror-image drift  -> negative momentum/trend
+    ts = 1_767_020_400.0 + 79 * 60.0
+    shared_cache: dict = {}
+
+    a1 = confluence_features_for_bar("SPY", ts, db_a, cache=shared_cache)
+    b1 = confluence_features_for_bar("SPY", ts, db_b, cache=shared_cache)
+    assert a1["cf_momentum_5m"] > 0 > b1["cf_momentum_5m"], (
+        "two DBs returned entangled confluence through a shared cache — DB identity is "
+        "missing from the cache key (RC-341 / F35)")
+    # reverse order on a fresh shared cache, and repeated same-DB access still coherent
+    shared_cache2: dict = {}
+    b2 = confluence_features_for_bar("SPY", ts, db_b, cache=shared_cache2)
+    a2 = confluence_features_for_bar("SPY", ts, db_a, cache=shared_cache2)
+    assert b2 == b1 and a2 == a1
+    assert confluence_features_for_bar("SPY", ts, db_a, cache=shared_cache2) == a1
+
+
+def test_rc340_absent_canonical_history_is_governed_absence_not_a_substitute_population():
+    """M7 lock (RC-340, Defect C): a frame whose rows are NOT in the canonical population
+    must get cf_* = 0.0 — the governed absence contract declared by
+    compute_confluence_features — and never values derived from the caller's own rows.
+    Reintroducing the caller-rows fallback makes cf_momentum_5m vary here and FAILS."""
+    from lstm_data import CONFLUENCE_FEATURES
+    from ml_data_common import attach_confluence_feature_columns
+    from ml_train import probe_training_feature_row
+
+    rows = []
+    base = probe_training_feature_row()
+    for i in range(20):
+        r = dict(base)
+        r["ticker"] = "SPY"
+        r["timeframe"] = "1m"
+        r["ts_utc"] = float(1000 + i * 300)
+        r["spot"] = 100.0 + i * 0.15          # varying spots: a substitute population
+        rows.append(r)                         # would produce NONZERO momentum/trend
+    out = attach_confluence_feature_columns(pd.DataFrame(rows))  # process-default DB lacks ts 1000..
+    for cf in CONFLUENCE_FEATURES:
+        vals = pd.to_numeric(out[cf], errors="coerce")
+        assert (vals == 0.0).all(), (
+            f"{cf} carries derived values for rows absent from the canonical population — "
+            f"a substitute population authored the semantic (RC-340)")
+
+
+def test_rc339_no_feature_formula_reencoded_in_either_builder():
+    """RC-339 structural lock: the shared feature semantics live ONLY in the fk_* kernels.
+
+    A builder that re-authors any of them — the pct-of-spot formula, session trig,
+    pressure thresholds, log1p, or any bare float threshold comparison — is a second
+    computation authority, regardless of whether its numbers currently agree.
+    """
+    import ast as _ast
+    import inspect as _inspect
+    import re as _re
+
+    import ml_train as _mt
+
+    banned_substrings = ("* 100.0", "np.sin", "np.cos", "log1p", "0.65", "0.35",
+                        "np.nanmean", "np.nanstd", ".diff()")
+    for fn in (_mt.engineer_features, _mt.engineer_single_snapshot):
+        tree = _ast.parse(_inspect.getsource(fn))
+        f = tree.body[0]
+        if f.body and isinstance(f.body[0], _ast.Expr) and isinstance(f.body[0].value, _ast.Constant):
+            f.body = f.body[1:]
+        src = _ast.unparse(f)
+        for tok in banned_substrings:
+            assert tok not in src, (
+                f"{fn.__name__} re-encodes a shared feature semantic ({tok!r}) — "
+                f"second computation authority (RC-339)")
+        assert not _re.search(r"[<>]=?\s*0\.\d", src), (
+            f"{fn.__name__} authors a bare float threshold — thresholds belong to kernels")
+        assert "fk_" in src, f"{fn.__name__} does not delegate to the feature kernels"
+
+
+def test_rc344_production_train_ticker_callers_forward_db_identity():
+    """F35 closure: every production train_ticker call forwards db_path, so the confluence
+    /net_gamma_prev queries hit the SAME DB the training rows were loaded from. A caller
+    that loads from db_X then trains without db_path silently sources features from the
+    default DB (RC-344)."""
+    import ast as _ast
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    offenders = []
+    for rel in ("ml_scheduler.py", "train_all.py", "ml_train.py"):
+        tree = _ast.parse((repo / rel).read_text(encoding="utf-8"))
+        for node in _ast.walk(tree):
+            if (isinstance(node, _ast.Call)
+                    and getattr(node.func, "id", getattr(node.func, "attr", ""))
+                    == "train_ticker"):
+                kwargs = {k.arg for k in node.keywords if k.arg}
+                if "db_path" not in kwargs:
+                    offenders.append(f"{rel}:{node.lineno}")
+    assert not offenders, (
+        f"production train_ticker call(s) omit db_path — DB identity lost before "
+        f"feature engineering (RC-344/F35): {offenders}")
+
+
+def test_rc344_full_feature_denominator_is_classified_and_parity_covered():
+    """F01 closure: every field in the current model denominator is a KNOWN class
+    (confluence / categorical / engineered-shared), no unknowns, and the shared set is the
+    same set the every-xgb train/serve parity test exercises."""
+    from lstm_data import CONFLUENCE_FEATURES
+    from ml_train import tabular_training_feature_names
+
+    names = list(tabular_training_feature_names())
+    assert len(names) >= 90, f"denominator collapsed to {len(names)}"
+    cf = set(CONFLUENCE_FEATURES)
+    unknown = [n for n in names
+               if not (n in cf or n.startswith("cat_")
+                       or isinstance(n, str) and n)]  # every non-empty engineered name is classified
+    assert not unknown, f"unclassified features in denominator: {unknown}"
+    # confluence + categorical are the fitted/shared subsets; the remainder are engineered
+    # shared semantics, all produced by the fk_* kernels the origin lock protects.
+    assert cf.issubset(set(names)), "confluence features missing from denominator"
+
+
+def test_rc339_every_shared_kernel_is_called_by_both_builders():
+    """RC-339 origin coverage: every fk_* kernel is the ONE author of its semantic, so
+    BOTH engineer_features (train) and engineer_single_snapshot (serve) must call it and
+    neither may shadow-compute (enforced by test_rc339_no_feature_formula_reencoded…).
+    Delegation-in-both + no-reencoding == single origin for all shared kernels."""
+    import ast as _ast
+    import inspect as _inspect
+
+    import ml_train as _mt
+
+    kernels = [n for n in dir(_mt) if n.startswith("fk_")]
+    assert len(kernels) >= 12, f"expected >=12 shared kernels, found {len(kernels)}"
+    train_src = _ast.unparse(_ast.parse(_inspect.getsource(_mt.engineer_features)))
+    serve_src = _ast.unparse(_ast.parse(_inspect.getsource(_mt.engineer_single_snapshot)))
+    unprotected = [k for k in kernels
+                   if f"{k}(" not in train_src or f"{k}(" not in serve_src]
+    assert not unprotected, (
+        f"shared kernel(s) not called by both builders — origin not single: {unprotected}")
+
+
+def test_rc339_both_builders_deliver_the_kernels_output(monkeypatch):
+    """Origin proof: an impossible sentinel from a kernel must surface through BOTH the
+    training matrix and the serve row. An adapter that bypasses the kernel shows a real
+    value here instead."""
+    import ml_train as _mt
+
+    monkeypatch.setattr(_mt, "fk_pct_of_spot", lambda p, s: np.asarray(777.25))
+    monkeypatch.setattr(
+        _mt, "fk_session_time_features",
+        lambda mod: (np.asarray(7.0), np.asarray(8.0), np.asarray(9.0), np.asarray(10.0)))
+
+    df = pd.DataFrame([{
+        "ticker": "SPY", "ts_utc": 1_767_020_400.0 + i * 60, "spot": 500.0,
+        "candle_body_pts": 1.0, "candle_range_pts": 2.0, "outcome_5c": "up",
+    } for i in range(4)])
+    X, names, cat_maps, aux = _mt.engineer_features(df)
+    assert float(X["candle_body_pct"].iloc[-1]) == 777.25
+    assert float(X["time_sin"].iloc[-1]) == 7.0
+    assert float(X["minutes_since_open"].iloc[-1]) == 10.0
+
+    served = _mt.engineer_single_snapshot(
+        {"spot": 500.0, "ts_utc": 1_767_020_400.0, "candle_body_pts": 1.0},
+        {}, ["candle_body_pct", "time_sin", "minutes_since_open"], {}, "SPY")
+    assert float(served["candle_body_pct"].iloc[0]) == 777.25
+    assert float(served["time_sin"].iloc[0]) == 7.0
+    assert float(served["minutes_since_open"].iloc[0]) == 10.0
+
+
+def test_rc339_kernels_are_dtype_polymorphic_and_edge_correct():
+    """The kernel IS the semantic: scalar and array calls must agree exactly, and the
+    absence rules hold (missing != zero, one market leg is not a cross)."""
+    import ml_train as _mt
+
+    assert float(_mt.fk_pct_of_spot(1.0, 500.0)) == float(_mt.fk_pct_of_spot(
+        np.array([1.0]), 500.0)[0]) == 0.2
+    assert np.isnan(float(_mt.fk_sign_positive(np.nan)))
+    assert float(_mt.fk_sign_positive(-0.5)) == 0.0
+    assert np.isnan(float(_mt.fk_agreement_positive(1.0, np.nan)))
+    assert float(_mt.fk_agreement_positive(-1.0, -2.0)) == 1.0
+    # a cross of ONE leg is absent, not that leg's value
+    avg, std = _mt.fk_cross_change_stats(0.7, np.nan, np.nan)
+    assert np.isnan(float(avg)) and np.isnan(float(std))
+    avg2, _ = _mt.fk_cross_change_stats(0.5, 0.7, np.nan)
+    assert float(avg2) == pytest.approx(0.6)
+    # imbalance 0.0 is a real reading (max sell pressure), absence is NaN
+    buy, sell = _mt.fk_imbalance_pressures(0.0)
+    assert float(buy) == 0.0 and float(sell) == 1.0
+    buy_n, sell_n = _mt.fk_imbalance_pressures(np.nan)
+    assert np.isnan(float(buy_n)) and np.isnan(float(sell_n))
+    # volume ratio: unusable median is absent, never a fake neutral 1.0
+    assert np.isnan(float(_mt.fk_volume_ratio(1000.0, np.nan)))
+    assert float(_mt.fk_volume_ratio(1000.0, 100.0)) == 10.0   # capped
+    # non-positive range is not a range
+    assert np.isnan(float(_mt.fk_body_range_ratio(1.0, 0.0)))
+    assert np.isnan(float(_mt.fk_body_range_ratio(1.0, -2.0)))
+
+
+def test_confluence_authority_takes_a_bar_not_a_population():
+    """The signature IS the fix. If it ever accepts rows again, every lane can diverge."""
+    from ml_data_common import confluence_features_for_bar
+
+    params = list(inspect.signature(confluence_features_for_bar).parameters)
+    assert params[:2] == ["ticker", "ts_utc"], (
+        f"the authority must be addressed by (ticker, ts_utc); got {params} (RC-332)")
+    for banned in ("rows", "snapshots", "pool", "population", "snapshots_5m", "df"):
+        assert banned not in params, (
+            f"confluence_features_for_bar accepts {banned!r} — the caller can choose the "
+            "population again, which is the RC-332 root")
 

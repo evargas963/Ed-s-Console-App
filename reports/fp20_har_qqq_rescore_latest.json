@@ -1,0 +1,268 @@
+{
+  "schema_version": "1",
+  "prereg_id": "har_rv_eval_v1_prereg_v1",
+  "generated_utc": "2026-07-17T14:10:06.292948+00:00",
+  "run_id": "b19516946219",
+  "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+  "cells": {
+    "QQQ:1c": {
+      "n_scored": 13627,
+      "n_distinct_days": 72,
+      "date_range": [
+        "2026-04-22",
+        "2026-07-17"
+      ],
+      "confusion_matrix": {
+        "up": {
+          "up": 4615,
+          "down": 4574,
+          "flat": 3215
+        },
+        "down": {
+          "up": 65,
+          "down": 100,
+          "flat": 28
+        },
+        "flat": {
+          "up": 146,
+          "down": 119,
+          "flat": 765
+        }
+      },
+      "mcc": 0.15850959346583973,
+      "balanced_accuracy": 0.38933683820896475,
+      "accuracy": 0.4021428047259118,
+      "baselines": {
+        "always_flat": 0.2941219637484406,
+        "majority_class": 0.35414984956336687,
+        "persistence": 0.64604432702187
+      },
+      "warnings": [],
+      "under_sampled": false,
+      "bootstrap": {
+        "ci95": [
+          0.025953286298085004,
+          0.27334674358961386
+        ],
+        "p_value": 0.008,
+        "n_days": 72,
+        "n_boot": 1000
+      },
+      "shuffle_control": {
+        "null_mean": 0.0001872347110918531,
+        "null_q025": -0.014097073427309119,
+        "null_q975": 0.01467070438821569,
+        "n_shuffles": 200
+      },
+      "secondary_nonflat_mcc": 0.0,
+      "holm": {
+        "p_raw": 0.008,
+        "p_adjusted": 0.008,
+        "significant": true
+      },
+      "screen": {
+        "ci95_excludes_zero": true,
+        "holm_significant": true,
+        "beats_all_baselines": false,
+        "shuffle_control_ok": true
+      },
+      "verdict": "FAIL"
+    },
+    "QQQ:5c": {
+      "n_scored": 13624,
+      "n_distinct_days": 72,
+      "date_range": [
+        "2026-04-22",
+        "2026-07-17"
+      ],
+      "confusion_matrix": {
+        "up": {
+          "up": 1419,
+          "down": 1483,
+          "flat": 359
+        },
+        "down": {
+          "up": 150,
+          "down": 118,
+          "flat": 43
+        },
+        "flat": {
+          "up": 2916,
+          "down": 2894,
+          "flat": 4242
+        }
+      },
+      "mcc": 0.1676891380465389,
+      "balanced_accuracy": 0.418692014268832,
+      "accuracy": 0.4241779213153259,
+      "baselines": {
+        "always_flat": 0.3408690546095126,
+        "majority_class": 0.3408690546095126,
+        "persistence": 0.7490273801658959
+      },
+      "warnings": [],
+      "under_sampled": false,
+      "bootstrap": {
+        "ci95": [
+          0.10390629922705573,
+          0.23859696116268495
+        ],
+        "p_value": 0.002,
+        "n_days": 72,
+        "n_boot": 1000
+      },
+      "shuffle_control": {
+        "null_mean": -0.00013554673506510704,
+        "null_q025": -0.012192765618611096,
+        "null_q975": 0.011325866794027376,
+        "n_shuffles": 200
+      },
+      "secondary_nonflat_mcc": 0.0,
+      "holm": {
+        "p_raw": 0.002,
+        "p_adjusted": 0.008,
+        "significant": true
+      },
+      "screen": {
+        "ci95_excludes_zero": true,
+        "holm_significant": true,
+        "beats_all_baselines": false,
+        "shuffle_control_ok": true
+      },
+      "verdict": "FAIL"
+    },
+    "QQQ:15c": {
+      "n_scored": 13614,
+      "n_distinct_days": 72,
+      "date_range": [
+        "2026-04-22",
+        "2026-07-17"
+      ],
+      "confusion_matrix": {
+        "up": {
+          "up": 922,
+          "down": 852,
+          "flat": 260
+        },
+        "down": {
+          "up": 25,
+          "down": 23,
+          "flat": 13
+        },
+        "flat": {
+          "up": 3199,
+          "down": 3233,
+          "flat": 5087
+        }
+      },
+      "mcc": 0.1516681211815973,
+      "balanced_accuracy": 0.3923496718351342,
+      "accuracy": 0.4430733068899662,
+      "baselines": {
+        "always_flat": 0.39371235492874984,
+        "majority_class": 0.39371235492874984,
+        "persistence": 0.8115771688826857
+      },
+      "warnings": [],
+      "under_sampled": false,
+      "bootstrap": {
+        "ci95": [
+          0.10555942089155035,
+          0.20498698335708437
+        ],
+        "p_value": 0.002,
+        "n_days": 72,
+        "n_boot": 1000
+      },
+      "shuffle_control": {
+        "null_mean": 0.0003632871307978292,
+        "null_q025": -0.010772740180165637,
+        "null_q975": 0.010944896719287453,
+        "n_shuffles": 200
+      },
+      "secondary_nonflat_mcc": 0.0,
+      "holm": {
+        "p_raw": 0.002,
+        "p_adjusted": 0.008,
+        "significant": true
+      },
+      "screen": {
+        "ci95_excludes_zero": true,
+        "holm_significant": true,
+        "beats_all_baselines": false,
+        "shuffle_control_ok": true
+      },
+      "verdict": "FAIL"
+    },
+    "QQQ:60c": {
+      "n_scored": 13588,
+      "n_distinct_days": 71,
+      "date_range": [
+        "2026-04-22",
+        "2026-07-16"
+      ],
+      "confusion_matrix": {
+        "up": {
+          "up": 169,
+          "down": 129,
+          "flat": 64
+        },
+        "down": {
+          "up": 14,
+          "down": 15,
+          "flat": 9
+        },
+        "flat": {
+          "up": 3630,
+          "down": 3567,
+          "flat": 5991
+        }
+      },
+      "mcc": 0.06784195810004409,
+      "balanced_accuracy": 0.3454419449117771,
+      "accuracy": 0.45444509861642624,
+      "baselines": {
+        "always_flat": 0.4462761259935237,
+        "majority_class": 0.4462761259935237,
+        "persistence": 0.8957827334952528
+      },
+      "warnings": [],
+      "under_sampled": false,
+      "bootstrap": {
+        "ci95": [
+          0.03641649885182445,
+          0.10380057610875199
+        ],
+        "p_value": 0.002,
+        "n_days": 71,
+        "n_boot": 1000
+      },
+      "shuffle_control": {
+        "null_mean": -0.00022750220511562179,
+        "null_q025": -0.01354564775473162,
+        "null_q975": 0.0112909455812328,
+        "n_shuffles": 200
+      },
+      "secondary_nonflat_mcc": 0.2469194291464157,
+      "holm": {
+        "p_raw": 0.002,
+        "p_adjusted": 0.008,
+        "significant": true
+      },
+      "screen": {
+        "ci95_excludes_zero": true,
+        "holm_significant": true,
+        "beats_all_baselines": false,
+        "shuffle_control_ok": true
+      },
+      "verdict": "FAIL"
+    }
+  },
+  "summary": {
+    "verdict": "NO_SIGNAL_DETECTED",
+    "n_pass": 0,
+    "n_fail": 4,
+    "n_under_sampled": 0,
+    "n_cells": 4
+  }
+}

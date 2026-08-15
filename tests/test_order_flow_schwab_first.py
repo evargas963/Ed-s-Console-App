@@ -11,7 +11,7 @@ from order_flow_engine import (
     _compute_spread,
     _compute_top_book_pressure,
 )
-from server import _CandleAccumulator, _compute_vwap_from_bars
+from server import _CandleAccumulator
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -127,15 +127,21 @@ def test_top_book_pressure_ignores_non_canonical_streaming_bid_ask_size_keys():
     assert tier == "unavailable"
 
 
-def test_vwap_from_bars_declares_source_bars():
-    from micro_structure import Candle
+def test_server_has_no_second_vwap_implementation():
+    """Phase 2A: the server-side VWAP fallback is DELETED, not merely unused.
 
-    bars = [
-        Candle(ts=1.0, open=100.0, high=101.0, low=99.0, close=100.5, volume=1000.0),
-    ]
-    vwap, src = _compute_vwap_from_bars(bars, source_bars="schwab_pricehistory")
-    assert vwap is not None
-    assert src == "schwab_pricehistory"
+    `_compute_vwap_from_bars` accumulated its own Σ(tp·v)/Σv from the candle
+    accumulator whenever fetch_price_levels returned vwap=None, and that number was
+    persisted into snapshots and model features — a VWAP no served endpoint carried.
+    The one accumulation is liquidity_value_engine.compute_session_vwap_path.
+    """
+    import server as S
+
+    assert not hasattr(S, "_compute_vwap_from_bars"), (
+        "the second VWAP implementation is back in server.py"
+    )
+    text = (ROOT / "server.py").read_text(encoding="utf-8")
+    assert "cum_tp_vol" not in text, "an inline VWAP accumulation reappeared in server.py"
 
 
 def test_candle_accumulator_session_reset_volume_source():

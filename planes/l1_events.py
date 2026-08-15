@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import threading
 from typing import Any, Callable, Optional
+from instrument_identity import ticker_storage_key
 
 log = logging.getLogger("ed.planes.l1_events")
 
@@ -32,7 +33,7 @@ def set_quote_rebuild_handler(fn: Optional[Callable[[str], None]]) -> None:
 
 def notify_quote_updated(ticker: str) -> None:
     """Call when L0 quote row changes (stream or REST plane). Debounced per ticker."""
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 key (write+read consistent; idempotent on stream symbols)
     if not t:
         return
 
@@ -59,7 +60,7 @@ def notify_quote_updated(ticker: str) -> None:
 
 def notify_l2_snapshot_ready(ticker: str, expiry: Optional[str]) -> None:
     """Call when L2 cache has a new acknowledged snapshot for (ticker, expiry)."""
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 key (write+read consistent; idempotent on stream symbols)
     if not t:
         return
     try:
@@ -74,7 +75,7 @@ def notify_ticker_expiry_changed(
     ticker: str, expiry: Optional[str], *, force: bool = False
 ) -> dict[str, Any]:
     """HTTP L1 read path — authoritative cache + optional explicit recompute (force)."""
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 key (write+read consistent; idempotent on stream symbols)
     if not t:
         raise ValueError("notify_ticker_expiry_changed: ticker is required")
     import server as srv

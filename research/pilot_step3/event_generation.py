@@ -54,7 +54,7 @@ def pd_ewm_std(x: np.ndarray, *, span: int, variance_eps: float = 0.0) -> np.nda
     import pandas as pd
 
     s = pd.Series(x, dtype=float)
-    m = s.ewm(span=span, adjust=False).mean()
+    s.ewm(span=span, adjust=False).mean()
     v = s.ewm(span=span, adjust=False).var(bias=True)
     eps = float(variance_eps)
     # Continuous path uses eps=0; legacy daily-reset diagnostic uses eps=1e-16 to match pre-refactor numerics.

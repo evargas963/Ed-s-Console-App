@@ -13,6 +13,7 @@ from signal_types import SignalInput
 from timeframe_config import CANONICAL_TIMEFRAME
 from time_et import RTH_END_MINS
 from volatility_regime import vol_percent_to_decimal
+from instrument_identity import ticker_storage_key
 
 # VOL_INPUT_CONTRACT 1.0.0 (lane V1 - closes VOL-UNIT-001): the snapshots table
 # persists iv_level / realized_vol in PERCENT (server.py snapshot stamp,
@@ -84,7 +85,7 @@ def signal_input_from_snapshot_row_dict(row: dict[str, Any]) -> SignalInput:
         else:
             kw[f.name] = None
 
-    kw["ticker"] = str(row.get("ticker") or "").upper().strip()
+    kw["ticker"] = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical replay-input identity
     kw["timeframe"] = str(row.get("timeframe") or CANONICAL_TIMEFRAME)
     kw["spot"] = spot
     ts = row.get("ts_utc")

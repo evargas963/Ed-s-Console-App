@@ -126,7 +126,7 @@ def main() -> int:
     tickers = _app_tickers(conn)
 
     phase65_cleanup = _load_json(ROOT / "data" / "phase65_movement_cleanup_v1_result.json")
-    phase65_isolation = _load_json(ROOT / "data" / "phase65_movement_isolation_v1_report.json")
+    _load_json(ROOT / "data" / "phase65_movement_isolation_v1_report.json")
     validate_cov = _load_json(ROOT / "data" / "validate_movement_prediction_coverage_v1.json")
 
     policy_slice_ids = {str(r.get("slice_id")) for r in phase65_cleanup.get("policy_usable", [])}

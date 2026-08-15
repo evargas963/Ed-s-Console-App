@@ -8,6 +8,7 @@ pure helpers; no I/O.
 from __future__ import annotations
 
 from typing import Any, Optional
+from instrument_identity import ticker_storage_key
 
 # --- Cache lifecycle (mandatory: bounded retention + TTL) ---
 L1_CACHE_ENTRY_TTL_SEC: float = 600.0
@@ -93,7 +94,7 @@ def input_fingerprint_materially_changed(
     """True if a full L1 recompute is justified (L0+L2 inputs moved vs last stored fingerprint)."""
     from planes.l1_thresholds import resolve_l1_materiality_engine
 
-    tkr = (ticker or "").upper().strip() or "SPY"
+    tkr = ticker_storage_key(ticker) or "SPY"  # RC-345/F25: canonical L1 runtime key
     _ = session_label
     if adaptive_context is not None:
         res = resolve_l1_materiality_engine(tkr, context=adaptive_context)

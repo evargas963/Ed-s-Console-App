@@ -1,0 +1,73 @@
+{
+  "schema": "day_level_gex_study_spy_v1",
+  "status": "COMPLETE",
+  "verdict": "KILL",
+  "validity": "SINGLE_REGIME_VALIDITY (one ~4-month vol regime; F2 VIX-tercile floor unmet)",
+  "not_an_admission": "report-only; survival requires two-way audit + operator admission",
+  "generated_utc": "2026-07-24T13:00:38.253175+00:00",
+  "declared_design": {
+    "unit": "session",
+    "trigger": "1.5 sigma VWAP extension (shared by both rules)",
+    "fade": "target back to VWAP, stop 1 sigma beyond (Rule A)",
+    "chase": "target 1.5 sigma further, stop 1 sigma back (Rule B mirror)",
+    "regime_score": "sum(fade bp) - sum(chase bp) per session",
+    "morning_gamma": "first trusted greeks_recomputed_v1 row 09:30-10:15 ET",
+    "conditioned_strategy": "g>0 -> fade day; g<0 -> chase day",
+    "success_bar": "mean>0 AND CI>0 AND beats best unconditional AND shuffle p<0.05 AND 2x cost"
+  },
+  "generator_stats": {
+    "loader": {
+      "n_rows": 104449,
+      "n_tradable_bars": 33717,
+      "n_sessions": 89,
+      "n_events_total": 855
+    },
+    "n_triggers": 3441,
+    "n_fade_labeled": 3391,
+    "n_chase_labeled": 3391
+  },
+  "n_sessions_scored": 66,
+  "n_sessions_no_morning_gamma": 23,
+  "association": {
+    "spearman_gamma_vs_regime_score": -0.05093467211082272,
+    "permutation_p": 0.6815,
+    "n_permutations": 2000
+  },
+  "conditioned_strategy": {
+    "mean_net_bp_per_session": -40.8749509766765,
+    "bootstrap": {
+      "ci95": [
+        -78.95182590405607,
+        -6.3993233175164095
+      ],
+      "p_value": 0.018,
+      "n": 66,
+      "n_boot": 2000
+    },
+    "stress_2x_bootstrap": {
+      "ci95": [
+        -80.02293571671332,
+        -5.9220055563229295
+      ],
+      "p_value": 0.026,
+      "n": 66,
+      "n_boot": 2000
+    },
+    "gamma_shuffle_p": 0.3945
+  },
+  "baselines": {
+    "always_fade_mean_bp": -37.68128727006172,
+    "always_chase_mean_bp": -33.095607732540024,
+    "best_unconditional": -33.095607732540024
+  },
+  "screen": {
+    "n_sessions_ok": true,
+    "mean_positive": false,
+    "ci95_above_zero": false,
+    "beats_best_unconditional": false,
+    "gamma_shuffle_p_lt_05": false,
+    "stress_2x_ok": false
+  },
+  "next_depth": "If null: terrain gamma-sign stays a DISPLAY conditioning lane (explains-not-predicts); QQQ replication via the batch pipeline; regime accrual toward the F2 VIX-tercile floor; external multi-year chain data for cross-regime power. If survivor: two-way audit, paper-trade card, operator admission review - never live wiring from one regime.",
+  "run_sec": 5.25
+}

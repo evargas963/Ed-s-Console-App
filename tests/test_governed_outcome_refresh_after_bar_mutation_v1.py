@@ -18,7 +18,7 @@ def test_upsert_1m_bars_recomputes_affected_governed_outcomes(tmp_path):
     governed refresh. The +0.001 nudge is far below the outcome threshold, so the
     recomputed classification equals the original correct label."""
     db = EdDB(tmp_path / "gov.db")
-    t0 = 1_020_000.0
+    t0 = 1_785_506_400.0  # 2026-07-31 10:00 ET — real PAST in-window session (RC-183; past so refresh never sees future bars)
     t_snap = t0 + 90.0
     with db._connect() as conn:
         conn.execute(
@@ -92,7 +92,7 @@ def test_upsert_1m_bars_recomputes_affected_governed_outcomes(tmp_path):
 def test_upsert_1m_bars_can_defer_governed_outcome_refresh_for_bulk_backfill(tmp_path):
     """Bulk backfill can skip per-window refresh, then repair labels with the explicit bulk refresh."""
     db = EdDB(tmp_path / "gov_bulk.db")
-    t0 = 1_520_000.0
+    t0 = 1_785_510_000.0  # 2026-07-31 11:00 ET — real PAST in-window session (RC-183; past so refresh never sees future bars)
     t_snap = t0 + 90.0
     with db._connect() as conn:
         conn.execute(
@@ -152,7 +152,7 @@ def test_upsert_1m_bars_can_defer_governed_outcome_refresh_for_bulk_backfill(tmp
 def test_refresh_all_governed_bar_anchor_outcomes_v1_aligns_with_bars(tmp_path):
     """Bulk repair forces snapshot labels to match current price_bars_1m."""
     db = EdDB(tmp_path / "gov2.db")
-    t0 = 2_020_000.0
+    t0 = 1_785_517_200.0  # 2026-07-31 13:00 ET — real PAST in-window session (RC-183; past so refresh never sees future bars)
     t_snap = t0 + 120.0
     with db._connect() as conn:
         conn.execute(

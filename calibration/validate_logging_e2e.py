@@ -155,6 +155,7 @@ def main() -> int:
             db_path=DB_PATH,
             calibration_payload=out.calibration_payload,
             v2_decision=v2_decision,
+            colocated_snapshot_ts_utc=float(rts),
         )
         t1 = time.time()
         snap = SnapshotRow(
@@ -164,7 +165,8 @@ def main() -> int:
             ts_et=build_ts_et(_et),
             et_hour=_et.hour,
             et_minute=_et.minute,
-            market_session=market_session(_et.hour, _et.minute),
+            market_session=market_session(_et.hour, _et.minute,
+                                          et_date=_et.strftime("%Y-%m-%d")),  # RC-278
             spot=450.0,
         )
         db.insert_snapshot(snap)

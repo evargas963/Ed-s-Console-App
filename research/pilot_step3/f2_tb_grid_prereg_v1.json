@@ -1,0 +1,67 @@
+{
+  "prereg_id": "F2_TB_GRID_V1_PREREG_V1",
+  "frozen_utc": "2026-07-24T05:10:00Z",
+  "study_class": "ECONOMIC_SIGNAL_EXISTENCE_GRID",
+  "study_question": "Do deterministic per-session CUSUM+SMA candidates on SPY, labeled by the F1 gated triple-barrier labeler, show positive net economic expectancy in any preregistered barrier cell, after multiplicity (Holm + DSR n_trials=175), cost stress, and a sign-shuffle placebo?",
+  "explicitly_not": {
+    "not_an_admission_packet": "SURVIVE_ECONOMIC is not decision-path admission. Admission requires operator sign-off and the CR admission registry.",
+    "not_production_wiring": "Report-only. No production columns, no serving changes.",
+    "not_a_meta_model_study": "The meta-classifier trains under META_XGB_TB_INGEST_V1 in a separate preregistered study."
+  },
+  "data": {
+    "ticker": "SPY",
+    "bars": "price_bars_1m canonical via load_spy_1m_bars (RTH clock filter) then time_et.is_tradable_session_ts_utc (weekday+calendar+minutes)",
+    "bar_source_gate": "f1_input_gates: known-real membership only; synthetic AND unknown withhold",
+    "tier_note": "SPY only per Framework Step 8; QQQ requires its own prereg"
+  },
+  "candidate_generator": {
+    "candidate_generator_id": "CUSUM_SMA_F1_DRAFT_PER_SESSION_V1",
+    "cusum": {"k": 0.7, "h_threshold": 2.5},
+    "sigma_contract": {"contract_id": "CONTINUOUS_EWM_REL_FLOOR_V1_PER_SESSION", "ewm_span_bars": 390, "relative_floor": {"enabled": true, "M": 120, "phi": 0.25}},
+    "exclude_first_30min_rth": true,
+    "min_bar_gap": 5,
+    "sma": {"fast": 8, "slow": 21, "near_equal_tolerance": 1e-09},
+    "per_session_reset": "generator sees ONE ET session at a time; overnight gaps cannot trigger events",
+    "no_tuning": "parameters frozen; changing after seeing results voids the run"
+  },
+  "labeling": {
+    "labeler": "research.pilot_step3.f1_input_gates.gated_label_event_cell_f1 (S3 gate wrapping S2 core)",
+    "atr": "Wilder-14 anchored at T-1 (LOCKED framework item; not a grid axis)",
+    "cost_floor_bp": 1.0,
+    "entry": "NEXT_BAR_OPEN",
+    "force_flat": "session close minus 5 min via S1 calendar authority"
+  },
+  "family": {
+    "stop_atr_multiples": [0.75, 1.0, 1.25, 1.5, 2.0],
+    "target_atr_multiples": [1.0, 1.5, 2.0, 2.5, 3.0],
+    "vertical_minutes": [15, 20, 25, 30, 35, 45, 60],
+    "n_cells": 175,
+    "declared_before_run": true
+  },
+  "costs": {"cost_model_id": "COST_V1_UNDERLYING_SPY", "round_trip_bp": 1.0, "application": "post_label (realized_return_bp_post_cost)"},
+  "primary_metric": {
+    "name": "mean net expectancy per candidate (bp, post-cost), session-blocked",
+    "per_cell_screen": [
+      "mean_net_bp > 0",
+      "session-block bootstrap 95% CI of mean_net_bp excludes 0 (B=1000)",
+      "Holm-adjusted bootstrap p < 0.05 across the 175-cell family",
+      "DSR: probabilistic Sharpe of per-session means vs expected-max-SR under n_trials=175 >= 0.95",
+      "2x-cost stress: CI still excludes 0 at round_trip_bp * 2",
+      "per-cell sign-shuffle null: observed mean above null q97.5 (K=200)"
+    ],
+    "anti_signal_rule": "CI entirely below 0 AND Holm-significant => STOP_ANTI_SIGNAL flag on the study (defect finding, never a quiet KILL)"
+  },
+  "placebo": {
+    "definition": "full-grid replicate with each cell's candidate net returns SIGN-SHUFFLED (seeded, per cell); the replicate runs the identical verdict pipeline",
+    "hard_halt": "any placebo-grid SURVIVE_ECONOMIC => study status HALT_PLACEBO_EDGE; no real survivors may be reported"
+  },
+  "sample_floors": {
+    "min_sessions_with_candidates_per_cell": 60,
+    "min_labeled_candidates_per_cell": 100,
+    "below_floor_action": "UNDER_SAMPLED; excluded from survive/kill"
+  },
+  "randomness": {"seed": 20260723, "bootstrap_B": 1000, "sign_shuffle_K": 200},
+  "verdicts": ["SURVIVE_ECONOMIC", "KILL", "UNDER_SAMPLED"],
+  "outputs": {"report_json": "reports/f2_tb_grid_v1_latest.json"},
+  "audit": {"two_way": "both agents run the acceptance command before any survivor claim", "acceptance_command": "python -m research.pilot_step3.f2_tb_grid_runner"}
+}

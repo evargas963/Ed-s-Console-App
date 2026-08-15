@@ -252,14 +252,16 @@ class MarketContext:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _vix_regime(vix: float) -> tuple[str, str, str]:
-    if vix < 15:
-        return "Low Vol",   "#166534", "Low vol — gamma walls stickier, pinning likely"
-    elif vix < 20:
-        return "Normal",    "#92400e", "Normal vol — gamma exposure reliable"
-    elif vix < 30:
-        return "Elevated",  "#b45309", "Elevated vol — walls less sticky, widen stops"
-    else:
-        return "High Vol",  "#991b1b", "Vol spike — gamma unreliable, reduce size"
+    # The 15/20/30 cuts are the single-source authority (math_volatility.vix_tier_token);
+    # this function owns ONLY the display mapping (label/color/implication), so the
+    # thresholds can never drift from vix_bucket / the L1 adaptive-materiality engine.
+    from math_volatility import vix_tier_token
+    return {
+        "low":      ("Low Vol",  "#166534", "Low vol — gamma walls stickier, pinning likely"),
+        "normal":   ("Normal",   "#92400e", "Normal vol — gamma exposure reliable"),
+        "elevated": ("Elevated", "#b45309", "Elevated vol — walls less sticky, widen stops"),
+        "high":     ("High Vol", "#991b1b", "Vol spike — gamma unreliable, reduce size"),
+    }.get(vix_tier_token(vix), ("Normal", "#92400e", "Normal vol — gamma exposure reliable"))
 
 
 def _dot_color(chg_pct: Optional[float]) -> str:
@@ -270,6 +272,28 @@ def _dot_color(chg_pct: Optional[float]) -> str:
     return "#dc2626"                          # strong red
 
 
+def _last_traded_price(quote: dict, ext: dict, reg: dict) -> Optional[float]:
+    """Most recent actual TRADE, or the regular close only when no trade exists.
+
+    SPOT SEMANTICS (RC-16, 2026-07-19). A "last" ladder may only contain fields that are a
+    real trade. Verified on the wire after hours: `quote.mark` and
+    `reg.regularMarketLastPrice` both read 743.29 (Friday's regular CLOSE) while
+    `quote.lastPrice` read 742.4861 (the true post-market trade). Ranking a close inside a
+    "last" ladder silently reports the previous session's number as the current price.
+
+    `or` chaining was also wrong here: a legitimate 0.0 falls through as falsy.
+    """
+    for candidate in (quote.get("lastPrice"), ext.get("lastPrice")):
+        if candidate is not None and float(candidate) > 0:
+            return candidate
+    # Nothing traded in either session -- the regular close is a DIFFERENT quantity and is
+    # acceptable only because nothing newer exists.
+    close = reg.get("regularMarketLastPrice")
+    if close is not None and float(close) > 0:
+        return close
+    return None
+
+
 def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional[float]]:
     """Return (last, chg_pct) from a single-ticker Schwab quote payload."""
     try:
@@ -277,25 +301,21 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
         quote = data.get("quote", {}) or {}
         ext = data.get("extended", {}) or {}
         reg = data.get("regular", {}) or {}
-        # Wire-first: quotes.quote.*, then extended/regular session fields (no synthetic last).
-        last = (
-            quote.get("lastPrice")
-            or ext.get("lastPrice")
-            or reg.get("regularMarketLastPrice")
-            or quote.get("mark")
-        )
-        pct_chg = quote.get("netPercentChange")
+        last = _last_traded_price(quote, ext, reg)
+        from numeric_contract import float_finite_or_none as _fin
+        pct_chg = _fin(quote.get("netPercentChange"))
         if pct_chg is None:
-            pct_chg = reg.get("regularMarketPercentChange")
-        net_chg = quote.get("netChange")
+            pct_chg = _fin(reg.get("regularMarketPercentChange"))
+        net_chg = _fin(quote.get("netChange"))
         if net_chg is None:
-            net_chg = reg.get("regularMarketNetChange")
+            net_chg = _fin(reg.get("regularMarketNetChange"))
         if last:
-            last = float(last)
+            last = _fin(last)
         if pct_chg is not None:
-            pct_chg = float(pct_chg)
-        elif net_chg is not None and last and (last - float(net_chg)) != 0:
-            pct_chg = float(net_chg) / (last - float(net_chg)) * 100.0
+            pass  # already finite via the canonical reader above
+        elif net_chg is not None and last and (last - net_chg) != 0:
+            # single source: finite netChange (a NaN change would produce a NaN pct)
+            pct_chg = net_chg / (last - net_chg) * 100.0
         return last, pct_chg
     except Exception:
         return None, None
@@ -591,25 +611,30 @@ def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
 
 
 def _derive_session() -> str:
-    """
-    Derive market session label from the ET clock.
-    Returns one of: "RTH" | "Pre-Market" | "After-Hours" | "Closed"
+    """Market session label from the ET clock — HOLIDAY / early-close aware via the one
+    time_et calendar authority. Returns "RTH" | "Pre-Market" | "After-Hours" | "Closed".
 
-    Boundaries (ET):
-      Pre-Market:  04:00 – 09:29
-      RTH:         09:30 – 15:59
-      After-Hours: 16:00 – 19:59
-      Closed:      20:00 – 03:59 (overnight)
+    No local RTH constants and no holiday blindness: the RTH close comes from
+    session_close_mins_for_et_date (960 normal, 780 early-close), and weekends / full
+    holidays / uncovered-calendar-years fail closed to "Closed" instead of falsely
+    reporting "RTH" (the served session_label used to say "RTH" on a full holiday).
     """
-    from time_et import now_et
+    from time_et import now_et, session_close_mins_for_et_date, RTH_START_MINS
 
     now = now_et()
+    if now.weekday() >= 5:                              # Sat / Sun
+        return "Closed"
+    close = session_close_mins_for_et_date(now.strftime("%Y-%m-%d"))
+    if close is None:                                  # full holiday / uncovered year
+        return "Closed"
     mins = now.hour * 60 + now.minute
-    if 570 <= mins <= 959:    # 09:30 – 15:59
-        return "RTH"
-    if 240 <= mins <= 569:    # 04:00 – 09:29
+    if mins < 240:            # before 04:00
+        return "Closed"
+    if mins < RTH_START_MINS:  # 04:00 – 09:29
         return "Pre-Market"
-    if 960 <= mins <= 1199:   # 16:00 – 19:59
+    if mins < close:           # 09:30 – close (960 normal, 780 early-close)
+        return "RTH"
+    if mins < 1200:            # close – 19:59
         return "After-Hours"
     return "Closed"
 
@@ -844,40 +869,17 @@ def proximity_alerts(
 
 def _volume_profile_poc_vah_val(bars: list, value_area_pct: float = 0.70,
                                  tick_size: float = 0.01) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """F15: one math producer — pass-through to liquidity_value_engine.
+    """POC / VAH / VAL from the ONE volume-profile construction (LP-01 Step 1, RC-152).
 
-    Input sanitization lives in the engine (single input contract).
+    This was a SECOND, independent copy of the same typical-price dump — it binned each bar's
+    entire volume at (H+L+C)/3, and its output feeds `pd_poc/pd_vah/pd_val` and
+    `today_poc/today_vah/today_val`. Two copies of a wrong construction is two wrong answers
+    that can also disagree with each other; `liquidity_models` now owns the one implementation
+    and distributes volume across [low, high]. Kept as a thin entry point so no caller changes,
+    and `ndigits=2` preserves this module's original rounding.
     """
-    from liquidity_value_engine import _volume_profile_poc_vah_val as _engine_vp
-
-    return _engine_vp(bars, value_area_pct, tick_size)
-
-
-def _vwap_bands(bars: list, vwap_val: float) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """Compute VWAP ±1σ and ±2σ. Returns (vwap_p1, vwap_m1, vwap_p2, vwap_m2)."""
-    if not bars or vwap_val is None:
-        return None, None, None, None
-    cum_var = 0.0
-    cum_vol = 0.0
-    for c in bars:
-        h = _float_or_none(c.get("high"))
-        l = _float_or_none(c.get("low"))
-        cl = _float_or_none(c.get("close"))
-        vol = _positive_float_or_none(c.get("volume"))
-        if h is None or l is None or cl is None or vol is None:
-            continue
-        typical = (h + l + cl) / 3.0
-        cum_var += (typical - vwap_val) ** 2 * vol
-        cum_vol += vol
-    if cum_vol <= 0:
-        return None, None, None, None
-    std = (cum_var / cum_vol) ** 0.5
-    return (
-        round(vwap_val + std, 2),
-        round(vwap_val - std, 2),
-        round(vwap_val + 2 * std, 2),
-        round(vwap_val - 2 * std, 2),
-    )
+    from liquidity_models import volume_profile_poc_vah_val
+    return volume_profile_poc_vah_val(bars, value_area_pct, tick_size, ndigits=2)
 
 
 @dataclass
@@ -938,6 +940,13 @@ class PriceLevels:
     bars_today:   int             = 0      # Number of 1-min bars for today
     error:        str             = ""
 
+    # Phase 2A carriage identity — WHICH canonical snapshot these values came out of.
+    # Carried, never recomputed; a consumer comparing two surfaces compares generations
+    # too, so agreement-by-coincidence is distinguishable from agreement-by-identity.
+    level_generation:     Optional[int]   = None
+    level_semantic_scope: Optional[str]   = None
+    level_as_of_ts_utc:   Optional[float] = None
+
 
 def fetch_price_levels(
     client,
@@ -946,18 +955,27 @@ def fetch_price_levels(
     orb_minutes: int = 15,
     *,
     include_extended_hours: bool = False,
+    level_snapshot=None,
 ) -> PriceLevels:
     """
-    Fetch VWAP, PDH/PDL/PDC, ORB, POC/VAH/VAL, VWAP bands from Schwab price history + quote.
-    Never raises. Returns best available data with graceful fallback.
+    Tier 1 (today open/high/low) from the quote; every Phase 2A level CARRIED from the
+    one canonical PriceLevelSnapshot. Never raises.
 
-    quote_raw: the raw quote JSON dict (from safe_get_quote response.json())
-               Used for Tier 1 fallback (today open/high/low/PDC).
-    include_extended_hours: if True, fetches pre-market for overnight high/low.
+    Phase 2A (operator 2026-08-08): this function used to fetch its OWN Schwab
+    TWO_DAYS minute history and run the level helpers over it. That was a second
+    materialization of the same concepts — the same helpers, a different tape — and it
+    is what put a different PDC/VWAP in the console header from the one /api/levels
+    served. The vendor fetch is DELETED, not kept as a fallback: a fallback is exactly
+    the second answer this invariant forbids.
+
+    quote_raw: the raw quote JSON dict (from safe_get_quote response.json()).
+    level_snapshot: the canonical snapshot. When absent, the materialized store is READ;
+        when that is empty too, the Phase 2A fields stay absent (never substituted).
+    ``client``, ``orb_minutes`` and ``include_extended_hours`` are retained for call-site
+    compatibility; the canonical producer owns the bar input and the ORB window now.
     """
-    from datetime import datetime, timezone
-
-    from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, now_et
+    from liquidity_value_engine import LevelCarrierConflict
+    from time_et import now_et
 
     pl = PriceLevels(orb_minutes=orb_minutes)
 
@@ -967,13 +985,11 @@ def fetch_price_levels(
             sym_node = quote_raw.get(symbol.upper()) or quote_raw.get(symbol) or {}
             q = sym_node.get("quote", {}) or {}
             def _sf(key):
-                # STACK-VERIFY-CAND-SILENT-FALLBACK-SWEEP: tighten exception scope to
-                # the actual float coercion failure modes; broad bare-except was hiding
-                # other bugs (AttributeError on q being non-dict, KeyError, etc.).
-                try:
-                    return float(q.get(key)) if q.get(key) is not None else None
-                except (TypeError, ValueError):
-                    return None
+                # single source: canonical finite reader. Raw float() admitted NaN/inf
+                # straight into today_open/high/low, and from there into the levels; the
+                # finite reader rejects them and needs no try/except (it never raises).
+                from numeric_contract import float_finite_or_none as _fin
+                return _fin(q.get(key))
             pl.today_open = _sf("openPrice")
             pl.today_high = _sf("highPrice")
             pl.today_low  = _sf("lowPrice")
@@ -981,166 +997,55 @@ def fetch_price_levels(
         except Exception as e:
             pl.error = f"quote parse: {e}"
 
-    # ── Tier 2: price history for VWAP + PDH/PDL + ORB ──────────────────────
+    # ── Tier 2: CARRIED from the canonical PriceLevelSnapshot ────────────────
     try:
-        # schwab-py uses nested enums on the Client class.
-        # Try enum-based call first, then fall back to raw string kwargs.
-        resp = None
-        try:
-            import schwab as _schwab
-            PH = _schwab.client.Client.PriceHistory
-            resp = client.get_price_history(
-                symbol,
-                period_type=PH.PeriodType.DAY,
-                period=PH.Period.TWO_DAYS,
-                frequency_type=PH.FrequencyType.MINUTE,
-                frequency=PH.Frequency.EVERY_MINUTE,
-                need_extended_hours_data=include_extended_hours,
-            )
-        except Exception:
-            try:
-                resp = client.get_price_history(
-                    symbol,
-                    periodType="day",
-                    period=2,
-                    frequencyType="minute",
-                    frequency=1,
-                    needExtendedHoursData=include_extended_hours,
-                )
-            except Exception:
-                resp = None
+        from liquidity_value_engine import carry_snapshot_levels, get_materialized_snapshot
 
-        if resp is None or resp.status_code != 200:
-            raise ValueError(f"price history fetch failed (status {getattr(resp,'status_code','?')})")
+        snap = level_snapshot
+        if snap is None:
+            snap = get_materialized_snapshot(symbol, now_et().date())
+        if snap is None:
+            # Absence reads as absence (RC-68). There is deliberately no local
+            # recomputation here — that fallback WAS the second faucet.
+            pl.error = (pl.error + " | levels: no canonical snapshot materialized "
+                                   "for this ticker/session yet").strip(" |")
+            return pl
 
-        candles = resp.json().get("candles", [])
-        if not candles:
-            raise ValueError("empty candles")
+        carried = carry_snapshot_levels(snap, "market_context.fetch_price_levels")
+        pl.pdh = carried["PDH"]
+        pl.pdl = carried["PDL"]
+        # RC-213 PDC reconciliation, decided in the open and now enforced by the one
+        # snapshot: PDC is the last RTH 1m bar close of the single prior session. The
+        # Schwab quote closePrice read into Tier 1 above is overwritten whenever the
+        # canonical value exists — two defensible definitions, one served.
+        if carried["PDC"] is not None:
+            pl.pdc = carried["PDC"]
+        pl.pd_poc, pl.pd_vah, pl.pd_val = (
+            carried["PD_POC"], carried["PD_VAH"], carried["PD_VAL"])
+        pl.overnight_high, pl.overnight_low = (
+            carried["OVERNIGHT_HIGH"], carried["OVERNIGHT_LOW"])
+        pl.orb_high, pl.orb_low = carried["ORB_HIGH"], carried["ORB_LOW"]
+        pl.orb_midpoint = carried["ORB_MID"]
+        pl.vwap = carried["VWAP"]
+        pl.vwap_p1, pl.vwap_m1, pl.vwap_p2, pl.vwap_m2 = (
+            carried["VWAP_P1"], carried["VWAP_M1"], carried["VWAP_P2"], carried["VWAP_M2"])
+        pl.today_poc, pl.today_vah, pl.today_val = (
+            carried["TODAY_POC"], carried["TODAY_VAH"], carried["TODAY_VAL"])
+        pl.bars_today = snap.bars_used
+        pl.level_generation = snap.generation
+        pl.level_semantic_scope = "session_rth"
+        pl.level_as_of_ts_utc = snap.as_of_ts_utc
 
-        today_date = now_et().date()
-        today_bars = []
-        prev_bars  = []
-        overnight_bars = []
-
-        for c in candles:
-            dt_ms = c.get("datetime")
-            if dt_ms is None:
-                continue
-            try:
-                dt_ms = float(dt_ms)
-            except (TypeError, ValueError):
-                continue
-            if dt_ms <= 0:
-                continue
-            dt_utc = datetime.fromtimestamp(dt_ms / 1000, tz=timezone.utc)
-            dt_et  = dt_utc.astimezone(ET)
-            dt_mins = dt_et.hour * 60 + dt_et.minute
-            is_rth = RTH_OPEN_MINS <= dt_mins < RTH_END_MINS
-            if not is_rth:
-                if include_extended_hours and dt_et.date() == today_date:
-                    if dt_mins < RTH_OPEN_MINS:
-                        overnight_bars.append((dt_et, c))
-                continue
-            if dt_et.date() == today_date:
-                today_bars.append((dt_et, c))
-            elif dt_et.date() < today_date:
-                prev_bars.append((dt_et, c))
-
-        # ── PDH / PDL / POC / VAH / VAL from previous session ────────────────
-        if prev_bars:
-            prev_candles = [c for _, c in prev_bars]
-            pl.pdh = max(c["high"] for _, c in prev_bars)
-            pl.pdl = min(c["low"] for _, c in prev_bars)
-            if pl.pdc is None:
-                pl.pdc = prev_bars[-1][1]["close"]
-            pl.pd_poc, pl.pd_vah, pl.pd_val = _volume_profile_poc_vah_val(prev_candles)
-
-        # ── Overnight high/low ────────────────────────────────────────────────
-        if overnight_bars:
-            pl.overnight_high = max(c["high"] for _, c in overnight_bars)
-            pl.overnight_low  = min(c["low"] for _, c in overnight_bars)
-
-        # ── VWAP + bands + ORB + today POC/VAH/VAL ───────────────────────────
-        if today_bars:
-            today_candles = [c for _, c in today_bars]
-            pl.bars_today = len(today_bars)
-            cum_tpv = 0.0
-            cum_vol = 0.0
-            orb_h, orb_l = -1e9, 1e9
-            orb_bars_seen = 0
-
-            for dt_et, c in today_bars:
-                o = _float_or_none(c.get("open"))
-                h = _float_or_none(c.get("high"))
-                l = _float_or_none(c.get("low"))
-                cl = _float_or_none(c.get("close"))
-                vol = _positive_float_or_none(c.get("volume"))
-                if h is not None and l is not None and cl is not None and vol is not None:
-                    typical = (h + l + cl) / 3.0
-                    cum_tpv += typical * vol
-                    cum_vol += vol
-
-                # ORB: first orb_minutes of RTH
-                mins_since_open = (dt_et.hour * 60 + dt_et.minute) - RTH_OPEN_MINS
-                if mins_since_open < orb_minutes and h is not None and l is not None:
-                    orb_h = max(orb_h, h)
-                    orb_l = min(orb_l, l)
-                    orb_bars_seen += 1
-
-            if cum_vol > 0:
-                pl.vwap = cum_tpv / cum_vol
-                pl.vwap_p1, pl.vwap_m1, pl.vwap_p2, pl.vwap_m2 = _vwap_bands(today_candles, pl.vwap)
-
-            if orb_bars_seen > 0 and orb_h > -1e9:
-                pl.orb_high = orb_h
-                pl.orb_low  = orb_l
-                pl.orb_midpoint = (orb_h + orb_l) / 2.0
-
-            pl.today_poc, pl.today_vah, pl.today_val = _volume_profile_poc_vah_val(today_candles)
-
+    except LevelCarrierConflict:
+        # NEVER swallowed: two carriers disagreeing for one (ticker, level_id, scope,
+        # generation) is the exact failure this architecture exists to make impossible.
+        # Degrading it to a string in `error` would restore the silent divergence.
+        raise
     except Exception as e:
         err_str = str(e)[:120]
-        pl.error = (pl.error + f" | history: {err_str}").strip(" |")
+        pl.error = (pl.error + f" | levels: {err_str}").strip(" |")
 
     return pl
-
-
-# F31 — price-level snapshot fields that /api/state stamps for DOM consumers.
-# A 0 is not a level (same class as fabricated edge=0).
-F31_LEVEL_KEYS: tuple[str, ...] = (
-    "vwap",
-    "pdh",
-    "pdl",
-    "pdc",
-    "today_poc",
-    "today_vah",
-    "today_val",
-    "pd_poc",
-    "pd_vah",
-    "pd_val",
-)
-
-
-def fail_closed_price_levels(fetched: PriceLevels | None) -> PriceLevels:
-    """Stale/absent canonical snapshot → empty PriceLevels, never last-good."""
-    if fetched is None:
-        return PriceLevels()
-    return fetched
-
-
-def stamp_price_level_fields(price_levels: PriceLevels | None) -> dict[str, float | None]:
-    """Map a PriceLevels (or None) to /api/state keys. Absent or <=0 → None."""
-    pl = fail_closed_price_levels(price_levels)
-    out: dict[str, float | None] = {}
-    for key in F31_LEVEL_KEYS:
-        raw = getattr(pl, key, None)
-        try:
-            val = float(raw)
-        except (TypeError, ValueError):
-            out[key] = None
-            continue
-        out[key] = round(val, 2) if val > 0 else None
-    return out
 
 
 def missing_confluence_weighted_pushes(ctx: MarketContext) -> list[str]:

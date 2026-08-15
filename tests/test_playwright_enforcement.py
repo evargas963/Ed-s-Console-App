@@ -21,7 +21,7 @@ def test_ensure_playwright_ready_passes_when_configured():
     uses install_browsers=False so the full Python suite stays fast; run `python tests/playwright_ready.py`
     for a full check including chromium install.
     """
-    ensure_playwright_ready(install_browsers=False)
+    assert ensure_playwright_ready(install_browsers=False) is None
 
 
 def test_ensure_playwright_ready_raises_when_node_missing():

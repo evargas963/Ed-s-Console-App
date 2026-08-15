@@ -1,0 +1,22 @@
+{
+  "prereg_id": "har_rv_eval_v1_prereg_v1",
+  "sibling_precedent": "research/kalman_eval_v1/prereg_v1.json",
+  "study_question": "Do causal HAR realized-volatility features (rv_1, rv_5, rv_15 of 1m squared log-returns) predict production ternary outcome_{hz} walk-forward, and secondarily predict large |move| (non-flat), beyond trivial baselines?",
+  "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
+  "explicitly_not": {
+    "not_an_admission_packet": "PASS is not decision-path admission.",
+    "not_production_wiring": "Report-only.",
+    "direction_vs_vol": "Primary screen is still direction MCC for comparability; large-move AUROC/MCC is secondary context for sizing/gating value."
+  },
+  "model": {
+    "features": "HAR: mean(r^2) over last 1/5/15 completed bars at decision time",
+    "classifier": "LogisticRegression elasticnet saga (frozen as Study #4)",
+    "secondary_target": "binary non-flat (up|down vs flat) with same features"
+  },
+  "walk_forward": {"splitter": "expanding_window_oof_folds", "n_folds": 3},
+  "family": {"tickers": ["SPY", "QQQ", "IWM"], "horizons": ["1c", "5c", "15c", "60c"], "n_cells": 12},
+  "primary_metric": {"name": "MCC", "screen": "same advancement screen as elastic_net_eval_v1"},
+  "randomness": {"seed": 20260717, "bootstrap_B": 1000, "shuffle_K": 200},
+  "sample_floors": {"min_scored_rows_per_cell": 300, "min_distinct_days_per_cell": 10},
+  "outputs": {"report_json": "reports/har_rv_eval/har_rv_eval_<date>_<runid>.json"}
+}

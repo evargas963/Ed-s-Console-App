@@ -489,6 +489,18 @@ def _compute_display_wall_clock_mc_excursions(
         garch_slice = None
         if garch_full is not None and len(garch_full) >= bars:
             garch_slice = garch_full[:bars]
+        elif garch_full is not None:
+            # RC-334: a SHORT forecast is not the same event as an absent one. When the
+            # slice cannot be filled, Monte Carlo silently switches to the flat IV/RV blend
+            # — a different volatility methodology producing the same displayed quantity.
+            # That switch used to leave no trace, which is how the 15-minute row ran on the
+            # flat blend unnoticed while the console advertised a GARCH forecast.
+            log.warning(
+                "MC display %sm: GARCH forecast too short (%d bars available, %d needed) — "
+                "falling back to the flat IV/RV blend for this row. GARCH_HORIZON_BARS must "
+                "cover the longest requested horizon (RC-334).",
+                minutes, len(garch_full), bars,
+            )
         try:
             mc_out = monte_carlo.simulate(
                 spot=spot,

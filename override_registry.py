@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+
 OVERRIDE_REGISTRY_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS decision_override_registry (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +55,7 @@ def append_override_record(
             """,
             (
                 time.time(),
-                str(ticker).upper().strip(),
+                ticker_storage_key(ticker),  # RC-345/F25: canonical override identity (WRITE)
                 route,
                 override_source,
                 override_direction,
@@ -78,7 +80,7 @@ def count_override_records(db_path: Path | str, *, ticker: Optional[str] = None)
         if ticker:
             row = conn.execute(
                 "SELECT COUNT(*) FROM decision_override_registry WHERE ticker = ?",
-                (ticker.upper().strip(),),
+                (ticker_storage_key(ticker),),  # RC-345/F25: canonical override identity (READ matches WRITE)
             ).fetchone()
         else:
             row = conn.execute("SELECT COUNT(*) FROM decision_override_registry").fetchone()

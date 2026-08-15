@@ -25,6 +25,7 @@ BASE_TS = 1_778_018_400.0
 
 
 def _proof() -> dict:
+    # institutional-synthetic-ok: v2 advisory-backfill test needs a controlled winner/chain_row.
     return {
         "status": "ok",
         "winner": {

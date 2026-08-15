@@ -17,6 +17,7 @@ from math_exposure import (
     MIN_SAMPLES_STATISTICAL,
 )
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
+from instrument_identity import ticker_storage_key
 from signal_types import SignalInput, PredictiveCard, CanonicalForecast
 from timeframe_config import CANONICAL_TIMEFRAME
 from features.regime_mvp_context import mvp_spot, mvp_zone, mvp_vwap_side
@@ -330,6 +331,13 @@ def _pack_horizon_row(
         row["up"] = u
         row["down"] = d
         row["flat"] = f
+        # RC-345 / F22+F26: emit the dominant direction from the ONE argmax authority
+        # (numeric_contract.direction_from_normalized_triplet) so the UI RENDERS it instead of
+        # re-running Math.max (biasFromEmp / hz) — the empirical-direction semantic is projected
+        # in exactly one place.
+        if u is not None and d is not None and f is not None:
+            from numeric_contract import direction_from_normalized_triplet
+            row["dominant"] = direction_from_normalized_triplet(u, d, f)
         # Card-fidelity audit (2026-07-05): labeled_count was stamped ONLY on the
         # withheld branch, so the EMPIRICAL source chip's operator text could
         # never render its sample count ("N similar setups") for a POPULATED
@@ -1039,7 +1047,6 @@ def compute_prediction_enrichment(
     del inference_snapshot_v1  # reserved for API symmetry with compute_prediction
 
     similar = state.similar
-    avg_move = state.avg_move
     mvp = state.mvp
     spot = state.spot
     match_tier = state.match_tier
@@ -1055,7 +1062,7 @@ def compute_prediction_enrichment(
     try:
         from eval_metrics_store import load_dashboard_eval_metrics
 
-        pack = load_dashboard_eval_metrics().get((inp.ticker or "").upper(), {})
+        pack = load_dashboard_eval_metrics().get(ticker_storage_key(inp.ticker), {})  # RC-345/F25: read key matches canonical writer
         par = pack.get("parallel") or {}
         if par:
             eval_acc_oos = par.get("eval_accuracy")
@@ -1095,7 +1102,7 @@ def compute_prediction_enrichment(
     if probs_5c is not None and emp_dom in ("up", "down", "flat"):
         pu, pd, pf = _tri_probs(probs_5c)
         if pu is None:
-            pu = pd = pf = None
+            pu = pd = _pf = None
         if emp_dom == "up" and pd is not None:
             reversal_risk = round(pd, 2)
         elif emp_dom == "down" and pu is not None:

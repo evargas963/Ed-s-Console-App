@@ -14,7 +14,7 @@ A sign-off ("MET", "clean", "verified", "no callers break", "100%", "stage passe
 - Open the written plan. Does this change still serve it? Did scope or goal slip? Did a stage get marked done that isn't? Is the acceptance GATE actually equal to the principle, or weaker (e.g., presence-only)?
 
 ## Phase 2 — Mechanical scans (MANDATORY — never skip)
-- **AST scan every changed signature/arity/return:** `python3 -c` + `ast.parse` on each changed file, or Read every call site of each changed function. Confirm every call site's binding. (Catches multi-line + two-step unpacks regex misses.) There is no `tools/enforce_all_rules.py` — do not skip this step because that path is absent.
+- **AST scan every changed signature/arity/return:** `python tools/enforce_all_rules.py --ast-callsites <FUNC>`. Confirm every call site's binding. (Catches multi-line + two-step unpacks regex misses.)
 - Run the relevant gate(s) + tests **myself** (`--ablation-bias`, pytest) — never cite Cursor's pass count.
 
 ## Phase 3 — Known failure-class checklist (check EACH explicitly; cite evidence)
@@ -27,6 +27,9 @@ A sign-off ("MET", "clean", "verified", "no callers break", "100%", "stage passe
 - [ ] **Stale vs live** — is the artifact derived live each run, or a frozen snapshot that can drift?
 - [ ] **Gate strength** — does the green gate PROVE the principle, or only a proxy? If proxy, harden it.
 - [ ] **Full-stack / all-N coverage** — enumerate EVERY model/layer/ticker/horizon the principle spans (e.g. the 7 stack models: xgb, lstm, transformer, meta, monte_carlo, regime, fusion). Is each ACTUALLY evaluated, or only the easy subset (base feature-consumers)? A gate that checks 3 of 7 and prints "full coverage" is a lie. Name every member; prove each is covered or flag it.
+- [ ] **Side-channel consumers of removed traffic** — when a change SUPPRESSES or dedupes messages/events/writes "nobody uses", trace what the RECEIVER does on raw receipt BEFORE discarding: liveness stamps, poll-suppression timers, health badges, retry-reset counters. Traffic that is provably discarded can still feed a signal. (Found 2026-07-22 auditing the T5.1 SSE fanout dedup: raw duplicate payloads refreshed `_lastSseAnalyticsPayloadMs`, which gates the client's REST fallback poll — outcome was benign-to-beneficial there, but only the trace proved it.)
+- [ ] **EXPLAIN-before-join on multi-GB stores** — any ad-hoc JOIN/scan against the production DB runs `EXPLAIN QUERY PLAN` FIRST and must show index SEARCH on the join key, else rewrite (e.g. join on the indexed `bar_start_ts_utc = floor(ts/60)*60-60`, never unindexed `bar_end_ts_utc`). (Found 2026-07-23 Round 1B: an unindexed anchor join ran hours in background; the index-aligned rewrite returned in 1.2s.)
+- [ ] **Classification-by-complement** — when classifying rows as "bad" via `value != <known-good tag>`, ENUMERATE the tag namespace first (`SELECT DISTINCT` / Counter) and classify by explicit membership in the bad set. A namespace with a second legitimate member silently inflates the bad count. (Found 2026-07-23, Round 1A F-4: `source != 'schwab_1m_accumulator_sqlite'` counted 133,061 REAL `schwab_pricehistory` bars as synthetic — SPY 60c "50.53% synthetic" was actually ~11% RTH; caught by this protocol's own Phase 4 before sign-off, corrected in RC-31.)
 - [ ] **Patch / gate-relax (no-patches rule)** — does the change make something pass by BYPASSING or WEAKENING a production gate rather than fixing the cause? Env flag that skips a contract (`ED_*_EVAL`), an `if X: skip`/relax branch, a silent slice/prefix/fallback forcing incompatible data through (e.g. legacy-width tensor sliced to load). **Trace the artifact/bundle LOAD lineage** — how each model/bundle is actually loaded for scoring — not just the output. A green gate over a relaxed load is a patch, and "preflight passed" then means "it booted," not "it's correct." Solid fix or fail-closed; never a money-path bypass. (Missed 2026-06-05: the `ED_ABLATION_SCORED_EVAL` + prefix-slice contamination — I audited grid shape/output, never the bundle load path.)
 
 ## Phase 4 — Completeness critic
@@ -36,9 +39,8 @@ A sign-off ("MET", "clean", "verified", "no callers break", "100%", "stage passe
 - State CLEAN or list FINDINGS with file:line + evidence. No impression-verdicts.
 
 ## Phase 6 — Self-correct loop (if any finding)
-0. **Five Whys (mandatory before the fix).** Write Why-1…Why-5 in the same turn. Why-5 must be a mechanism, not a person. If you cannot name a prevention that would have caught this class, you are still on a symptom.
-1. **Fix the issue in the same program.** Whys without the fix is unfinished. Write the precise Cursor fix directive (file:line, exact change, acceptance) and land it.
-2. Set a **self-directed rule** (AGENTS.md + memory) so this class is caught next time. The prevention is additional, not a substitute.
+1. Write the precise **Cursor fix directive** (file:line, exact change, acceptance).
+2. Set a **self-directed rule** (AGENTS.md + memory) so this class is caught next time.
 3. **Mechanize** the check if possible (extend `check_zero_bias_ablation_contract` / a detector) so the build catches it, not just me.
 
 ## Phase 7 — Sign-off

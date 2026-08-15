@@ -50,7 +50,7 @@ def movement_threshold_pts_v1(
     if ac <= 0:
         return 1e-9
     floor_frac = float(pr.get("min_fraction_of_anchor", 0.0005))
-    k_atr = float(pr.get("atr_multiplier", 0.5))
+    k_atr = float(pr.get("atr_multiplier", 0.5))  # fake-default-ok: config parameter (ATR multiplier from the threshold policy), not data absence
     t_pct = ac * floor_frac
     t_atr = 0.0
     if atr is not None:

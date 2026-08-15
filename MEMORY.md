@@ -3,11 +3,12 @@
 # MEMORY.md — thin pointer (Phase 1c)
 
 **Portable rules live in [`AGENTS.md`](AGENTS.md) and [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).**  
-**Process mechanics:** [`docs/governance/AGENT_SELF_GOVERNANCE.md`](docs/governance/AGENT_SELF_GOVERNANCE.md).  
-**Schwab program:** [`CLAUDE.md`](CLAUDE.md).
-
-**Notable AGENTS.md anchors:**
-- Mutual gatekeeping + Class A memo bundling → [`AGENTS.md` §Active agent posture](AGENTS.md#active-agent-posture) (promoted 2026-05-24 @ eda08c0)
+**Schwab program:** [`CLAUDE.md`](CLAUDE.md).  
+**Multi-agent sync:** HEAD is the shared brain — `python tools/check_worktree_handoff.py` (wired into `tools/session_closeout.py`).  
+**Physical isolation:** Cursor = primary checkout; Claude = sibling git worktree `*-Claude` (`tools/agent_worktree_policy.json`). `ED_AGENT_ROLE=cursor|claude` is **mandatory** (fail-fast if unset — no silent default). Never share one working directory.  
+**Per-worktree venv:** `python tools/bootstrap_worktree_venv.py` (isolated `.venv`; `run_with_repo_venv` re-execs into it).  
+**Per-worktree DB:** Claude → `data/ed_console_claude.db`; Cursor → `data/ed_console.db` (override: `ED_CONSOLE_DB` / `ED_DB_PATH`).  
+**Git lock defense:** `tools/check_git_index_lock.py` clears `index.lock` older than 60s (wired into `run_with_repo_venv`).
 
 Incident-context memory files are **archived, not deleted:**  
 [`governance/archive/2026-Q2/memory_archive/`](governance/archive/2026-Q2/memory_archive/) (34 files; triggers rewritten to topic names 2026-05-23).

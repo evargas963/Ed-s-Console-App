@@ -9,6 +9,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+
 log = logging.getLogger(__name__)
 
 PRODUCTION_DECISION_TABLE_SQL = """
@@ -166,7 +168,7 @@ def persist_production_decision(
         "decision_id": decision_id,
         "decision_generation_id": ms_dict.get("decision_generation_id"),
         "decision_ts_utc": float(ms_dict.get("decision_timestamp_utc") or time.time()),
-        "ticker": str(ms_dict.get("ticker") or "").upper(),
+        "ticker": ticker_storage_key(ms_dict.get("ticker")),  # RC-345/F25: canonical persisted decision identity
         "route": route,
         "release_id": release_id,
         "release_json": _json_dumps(release),

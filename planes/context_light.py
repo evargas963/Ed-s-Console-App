@@ -14,8 +14,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
-
-from math_exposure_core import KEY_LEVEL_CONSUMER_REGISTRY
+from instrument_identity import ticker_storage_key
 
 log = logging.getLogger("ed.planes.l1")
 
@@ -34,32 +33,6 @@ def _get_order_flow_engine() -> Any:
 PLANE_L1 = "L1_context"
 L1_SCHEMA_VERSION = 1
 MERGE_RULE_L1 = "L0_plus_acknowledged_L2_snapshot"
-
-
-def format_analytics_cache_key(ticker: str, selected_exp: Optional[str]) -> str:
-    """Canonical (ticker, expiry) identity echoed on A/B/C payloads (UI-01).
-
-    Format matches the client key-builder: ``TICKER|YYYY-MM-DD`` or ``TICKER|``
-    when expiry is unresolved / auto. Display/transport only — not a trade gate.
-    """
-    t = (ticker or "").upper().strip() or "SPY"
-    if selected_exp is None:
-        return f"{t}|"
-    s = str(selected_exp).strip()
-    if not s or s == "__auto__":
-        return f"{t}|"
-    return f"{t}|{s[:10]}"
-
-
-def stamp_analytics_cache_identity(
-    md: dict,
-    ticker: Optional[str] = None,
-    selected_exp: Optional[str] = None,
-) -> None:
-    """Stamp ``analytics_cache_key`` from ticker + selected_exp already on the payload."""
-    t = ticker if ticker is not None else md.get("ticker")
-    exp = selected_exp if selected_exp is not None else md.get("selected_exp")
-    md["analytics_cache_key"] = format_analytics_cache_key(str(t or ""), exp)
 
 # Max age (seconds) for the acknowledged L2 ms_dict before structural_context_stale
 # flips True. Operator-tunable policy threshold (not market data); named so the value
@@ -90,44 +63,6 @@ _STRUCTURAL_KEYS = (
     "kl_gamma_pin",
     "kl_hvl",
     "kl_max_pain",
-    "kl_gamma_flip",
-    "kl_call_gamma_wall",
-    "kl_put_gamma_wall",
-    "kl_em_upper",
-    "kl_em_lower",
-    "kl_em_anchor",
-    "em_straddle_upper",
-    "em_straddle_lower",
-    "kl_gamma_inflection",
-    "kl_delta_inflection",
-    "kl_call_delta_wall",
-    "kl_put_delta_wall",
-    "kl_call_oi_wall",
-    "kl_put_oi_wall",
-    "kl_call_vanna_wall",
-    "kl_put_vanna_wall",
-    "kl_oi_center",
-    *(
-        f"{k}_{sfx}"
-        for k in KEY_LEVEL_CONSUMER_REGISTRY
-        for sfx in ("label", "tip")
-    ),
-    "kl_call_gamma_str",
-    "kl_put_gamma_str",
-    "kl_call_delta_str",
-    "kl_put_delta_str",
-    "kl_call_oi_str",
-    "kl_put_oi_str",
-    "kl_call_vanna_str",
-    "kl_put_vanna_str",
-    "kl_hvl_str",
-    "kl_max_pain_str",
-    "kl_net_gex_mag",
-    "kl_institutional_ready",
-    "kl_synth_fwd",
-    "kl_synth_fwd_resid",
-    "kl_synth_fwd_side",
-    "kl_synth_fwd_label",
     "kl_net_gex",
     "kl_net_gex_disp",
     "kl_net_gex_regime",
@@ -190,7 +125,7 @@ def build_order_flow_input_probe(ticker: str, l0_row: Optional[dict[str, Any]]) 
     """
     from order_flow_live_state import get_l1_stream_input_probe
 
-    tkr = (ticker or "").upper().strip()
+    tkr = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 context key
     sp = _safe_float(l0_row.get("spot")) if l0_row else None
     bd = _safe_float(l0_row.get("bid")) if l0_row else None
     ak = _safe_float(l0_row.get("ask")) if l0_row else None
@@ -262,7 +197,7 @@ def build_l1_context(
     importing heavy graph here at module load.
     """
     t0 = time.perf_counter()
-    tkr = ctx.ticker.upper().strip()
+    tkr = ticker_storage_key(ctx.ticker)  # RC-345/F25: canonical L1 context key
     md: dict[str, Any] = {}
     ent = ctx.l2_cache_entry
 
@@ -303,13 +238,6 @@ def build_l1_context(
     for k in _STRUCTURAL_KEYS:
         if k in md and md[k] is not None:
             structural[k] = md[k]
-    # List-valued KL field — copy as-is. Must stay off _STRUCTURAL_KEYS:
-    # that set is scalar fingerprint material, and str(list-of-dicts) is not a
-    # stable identity. Empty list is omitted (same as None): do not paint a
-    # fabricated void zone. L1 rebuilds when other copied KL scalars change.
-    voids = md.get("kl_gamma_voids")
-    if isinstance(voids, list) and voids:
-        structural["kl_gamma_voids"] = voids
 
     lb = md.get("liquidity_behavior")
     liquidity_summary: Optional[dict[str, Any]] = None
@@ -384,5 +312,4 @@ def build_l1_context(
         "dist_to_vwap_pts": dist_vwap,
     }
     out.update(structural)
-    stamp_analytics_cache_identity(out, tkr, selected_exp_out)
     return out

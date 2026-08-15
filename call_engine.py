@@ -324,8 +324,8 @@ def _mc_reasoning_snippet(fusion, final_signal: str) -> str:
         return ""
     cont = getattr(fusion, 'mc_containment', None)
     exp = getattr(fusion, 'mc_expansion', None)
-    sim_up = getattr(fusion, 'mc_sim_prob_up', None)  # may not be on fusion
-    sim_dn = getattr(fusion, 'mc_sim_prob_down', None)
+    getattr(fusion, 'mc_sim_prob_up', None)  # may not be on fusion
+    getattr(fusion, 'mc_sim_prob_down', None)
     # Fusion gets MC from bayesian_fusion which passes mc_out — fusion doesn't have sim_prob_*
     # We get mc_containment, mc_expansion from fusion. For directional: use fusion_dominant_direction
     # vs call. MC contributes containment/expansion to fusion evidence.
@@ -413,7 +413,6 @@ def _build_call_headlines(final_signal, conviction, trade_type,
 
     # Entry/target strings
     e_s  = f"{entry:.2f}"  if entry  else "—"
-    t1_s = f"{target:.2f}" if target else "—"
 
     headline = f"{dir_word} — {type_label}"
     if mh_promoted_directional:
@@ -466,7 +465,19 @@ def _greek_notes(inp: SignalInput) -> list:
             notes.append("Dealers are amplifying moves — trend/momentum mode")
 
     if inp.charm_direction and inp.charm_drift_toward:
-        notes.append(f"Time decay pushing dealers to {inp.charm_direction} toward {inp.charm_drift_toward:.2f}")
+        # RC-313: this read "Time decay pushing dealers to {dir} toward {strike}", which
+        # credits time decay with a PRICE TARGET charm never computed. RC-295 deleted the
+        # identical claim from the pinning score — charm_drift_toward is
+        # pick_net_gex_peak_strike over the SELECTED expiry, republished unchanged
+        # (RC-292/RC-302) — and left this sentence, which makes the same assertion to a
+        # reader who has no score to check it against. Charm measured the direction. The
+        # strike is a gamma quantity, and the note now says which one it is. Pinning is a
+        # MAGNITUDE mechanism, so a magnet claim would need the absolute-gamma strike, not
+        # the signed-net peak; unifying the value needs a gamma-pin field on SignalInput,
+        # which does not exist yet (RC-292 NEXT-DEPTH).
+        notes.append(
+            f"Time decay has dealers {inp.charm_direction}; "
+            f"net-GEX peak (selected expiry) at {inp.charm_drift_toward:.2f}")
 
     if inp.iv_direction == "expanding":
         notes.append("Volatility rising — moves may be larger than expected")
@@ -1261,7 +1272,6 @@ def _validate_trade(
         result["structure_reason"] = "missing canonical spot"
         result["summary"] = "missing canonical spot"
         return result
-    reasons = []
 
     # ══════════════════════════════════════════════════════════════════════════
     # LAYER 1 — STRUCTURAL VALIDITY
@@ -1499,7 +1509,7 @@ def compute_call(
     _vol_conv_mult = getattr(vol_regime, 'conviction_multiplier', 1.0) or 1.0
     _vol_risk_mult = getattr(vol_regime, 'risk_multiplier', 1.0) or 1.0
     _vol_breakout_bias  = getattr(vol_regime, 'breakout_bias', 0.6) or 0.6
-    _vol_reversal_bias  = getattr(vol_regime, 'reversal_bias', 0.5) or 0.5
+    _vol_reversal_bias  = getattr(vol_regime, 'reversal_bias', 0.5) or 0.5  # fake-default-ok: regime-parameter default (identity-ish bias), not data absence
 
     # ══════════════════════════════════════════════════════════════════════════
     # 1. STACK-DERIVED SIGNAL — tape/structure votes + single ALL consolidated ML slot
@@ -1627,7 +1637,6 @@ def compute_call(
     # 2. CONVICTION — canonical forecast (confidence + marginal p) + env downgrades only
     # ══════════════════════════════════════════════════════════════════════════
     zone_fresh_bars_1m  = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0   # execution timing
-    zone_stable_bars_5m = inp.zone_since_bars_5m                                 # structure persistence (None if unknown)
     prev_z = (inp.prev_zone or "").lower()
 
     if final_signal == "wait":

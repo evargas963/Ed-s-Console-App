@@ -1,0 +1,26 @@
+{
+  "schema": "fp_claude_edge_collaboration_brief_v1",
+  "generated_utc": "2026-07-17T21:10:00Z",
+  "letter_path": "reports/fp_claude_edge_collaboration_letter.md",
+  "operator_status": "PAUSE",
+  "money_path": "WAIT",
+  "existence_pass_cells_sum": 0,
+  "admissions_count": 0,
+  "self_indictment": [
+    "Optimized Collect so the same decision_log→MCC treadmill could keep running",
+    "Did not close FIND-LABEL-INTEGRITY or Stage-2 target redesign before model churn",
+    "Re-screens after cleaner data still 0 PASS — framing may be null",
+    "Did not exhaust charter tools (analogs, simulation, options-native, event studies)"
+  ],
+  "triage_options_posed_to_claude": [
+    "A_fix_label_target_before_models",
+    "B_radically_different_method_on_current_labels",
+    "C_hangup_directional_redefine_product_question"
+  ],
+  "sole_economic_survivor_then_killed": {
+    "cell": "har_rv QQQ:60c",
+    "survive_at_bp": [1, 2],
+    "stress_kill_at_bp": 5,
+    "existence_pass": false
+  }
+}

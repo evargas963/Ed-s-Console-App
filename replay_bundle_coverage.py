@@ -64,21 +64,34 @@ def _coverage_for_table(
     if not _table_exists(conn, table):
         return {"table": table, "error": "table_missing"}
 
-    tf_clause = "timeframe = ?" if timeframe else "1=1"
+    tf_clause = "n.timeframe = ?" if timeframe else "1=1"
     base_params: tuple[Any, ...] = (timeframe,) if timeframe else ()
+
+    # RC-6: the bundle blobs live ONLY in `snapshots` now (the byte-identical duplicate in
+    # snapshots_1m_normalized was dropped). LEFT JOIN snapshots on the aligned key so coverage
+    # is computed against where the bundle actually is; LEFT (not INNER) preserves rows_total =
+    # COUNT(*) of the base table so a row with no matching snapshots row reads as bundle-absent
+    # rather than being silently excluded. When {table} IS snapshots this is a 1:1 self-join
+    # (no duplicate keys). s-qualified predicates are local so the shared _RC_OK/_OC_OK constants
+    # (used by base-table readers) stay unchanged.
+    _rc_s = f"s.replay_context_json IS NOT NULL AND length(s.replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}"
+    _oc_s = f"s.option_chain_json IS NOT NULL AND length(s.option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}"
+    _full_s = f"({_rc_s}) AND ({_oc_s})"
+    _join = (f"{table} n LEFT JOIN snapshots s "
+             "ON s.ticker = n.ticker AND s.timeframe = n.timeframe AND s.ts_utc = n.ts_utc")
 
     row = conn.execute(
         f"""
         SELECT
             COUNT(*) AS rows_total,
-            SUM(CASE WHEN {_RC_OK} THEN 1 ELSE 0 END) AS n_rc,
-            SUM(CASE WHEN {_OC_OK} THEN 1 ELSE 0 END) AS n_oc,
-            SUM(CASE WHEN {_FULL} THEN 1 ELSE 0 END) AS n_full,
-            MIN(CASE WHEN {_FULL} THEN ts_utc END) AS first_ts_utc,
-            MAX(CASE WHEN {_FULL} THEN ts_utc END) AS latest_ts_utc,
-            MIN(CASE WHEN {_FULL} THEN ts_et END) AS first_ts_et,
-            MAX(CASE WHEN {_FULL} THEN ts_et END) AS latest_ts_et
-        FROM {table}
+            SUM(CASE WHEN {_rc_s} THEN 1 ELSE 0 END) AS n_rc,
+            SUM(CASE WHEN {_oc_s} THEN 1 ELSE 0 END) AS n_oc,
+            SUM(CASE WHEN {_full_s} THEN 1 ELSE 0 END) AS n_full,
+            MIN(CASE WHEN {_full_s} THEN n.ts_utc END) AS first_ts_utc,
+            MAX(CASE WHEN {_full_s} THEN n.ts_utc END) AS latest_ts_utc,
+            MIN(CASE WHEN {_full_s} THEN n.ts_et END) AS first_ts_et,
+            MAX(CASE WHEN {_full_s} THEN n.ts_et END) AS latest_ts_et
+        FROM {_join}
         WHERE {tf_clause}
         """,
         base_params,
@@ -89,19 +102,19 @@ def _coverage_for_table(
     cur = conn.execute(
         f"""
         SELECT
-            ticker,
+            n.ticker AS ticker,
             COUNT(*) AS rows_total,
-            SUM(CASE WHEN {_RC_OK} THEN 1 ELSE 0 END) AS rows_with_replay_context_json,
-            SUM(CASE WHEN {_OC_OK} THEN 1 ELSE 0 END) AS rows_with_option_chain_json,
-            SUM(CASE WHEN {_FULL} THEN 1 ELSE 0 END) AS rows_with_full_bundle,
-            MIN(CASE WHEN {_FULL} THEN ts_utc END) AS first_ts_utc,
-            MAX(CASE WHEN {_FULL} THEN ts_utc END) AS latest_ts_utc,
-            MIN(CASE WHEN {_FULL} THEN ts_et END) AS first_ts_et,
-            MAX(CASE WHEN {_FULL} THEN ts_et END) AS latest_ts_et
-        FROM {table}
+            SUM(CASE WHEN {_rc_s} THEN 1 ELSE 0 END) AS rows_with_replay_context_json,
+            SUM(CASE WHEN {_oc_s} THEN 1 ELSE 0 END) AS rows_with_option_chain_json,
+            SUM(CASE WHEN {_full_s} THEN 1 ELSE 0 END) AS rows_with_full_bundle,
+            MIN(CASE WHEN {_full_s} THEN n.ts_utc END) AS first_ts_utc,
+            MAX(CASE WHEN {_full_s} THEN n.ts_utc END) AS latest_ts_utc,
+            MIN(CASE WHEN {_full_s} THEN n.ts_et END) AS first_ts_et,
+            MAX(CASE WHEN {_full_s} THEN n.ts_et END) AS latest_ts_et
+        FROM {_join}
         WHERE {tf_clause}
-        GROUP BY ticker
-        ORDER BY ticker
+        GROUP BY n.ticker
+        ORDER BY n.ticker
         """,
         base_params,
     )

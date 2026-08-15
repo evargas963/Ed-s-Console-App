@@ -42,6 +42,7 @@ from typing import Any, Iterator, Optional
 from zoneinfo import ZoneInfo
 
 from arch_competition.atomic_io import write_json_file_atomically
+from instrument_identity import ticker_storage_key
 from calibration.backfill_outcomes import backfill
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
@@ -171,6 +172,15 @@ JOIN_COHORTS = (
     "nearest_later",
     "unknown_join",
 )
+
+# RC-32 (governance/root_cause_log.md): cohorts whose rows may enter the SCORED
+# confusion matrix. `nearest_later` outcomes were attached from a snapshot whose
+# anchor bar closes AFTER the decision (measured 2026-07-23: 28,622 rows, 43.9%
+# of the nearest_within_tol cohort) — future-anchored truth. `unknown_join` has
+# no provable alignment. Both stay DISCLOSED in identity_cohorts but are
+# excluded from accuracy/MCC/confusion; exclusion is counted per cell.
+# Explicit membership, never complement (drift-audit classification rule).
+_V4_SCORED_JOIN_COHORTS = ("identity", "exact_timestamp", "nearest_earlier")
 
 
 def _join_identity_cohort(row: sqlite3.Row) -> str:
@@ -425,7 +435,7 @@ def _production_tallies(
 
     out: dict[str, dict[str, Any]] = {}
     for row in conn.execute(sql, params):
-        t = out.setdefault(str(row["ticker"]).upper(), _new_t())
+        t = out.setdefault(ticker_storage_key(row["ticker"]), _new_t())  # RC-345/F25: canonical scoreboard key
         t["n_rows_total"] += 1
         if not is_rth_ts_utc(float(row["decision_ts_utc"])):
             t["n_non_rth"] += 1
@@ -818,6 +828,7 @@ def _new_v4_cell() -> dict[str, Any]:
         "bundle_identity_unproven": 0,
         "windows": set(),
         "n_pred": 0,
+        "n_excluded_lookahead_join": 0,
     }
 
 
@@ -827,8 +838,13 @@ def _v4_accumulate(cell: dict[str, Any], r: dict[str, Any]) -> None:
     if hz_min:
         cell["windows"].add(int(r["decision_ts_utc"] // (hz_min * 60.0)))
     if r["truth"] in _CLASSES:
+        cohort = r.get("join_cohort") or "unknown_join"
+        cell["cohorts"][cohort] += 1
+        if cohort not in _V4_SCORED_JOIN_COHORTS:
+            # RC-32: future-anchored / unprovable joins are disclosed, never scored.
+            cell["n_excluded_lookahead_join"] += 1
+            return
         cell["confusion"][r["pred"]][r["truth"]] += 1
-        cell["cohorts"][r.get("join_cohort") or "unknown_join"] += 1
         if not r.get("bundle_identity_proven"):
             cell["bundle_identity_unproven"] += 1
 
@@ -915,6 +931,7 @@ def _finalize_v4_cell(cell: dict[str, Any]) -> dict[str, Any]:
         "flat_pred_rate": (pred_dist["flat"] / n_scored) if n_scored else None,
         "flat_truth_rate": always_flat,
         "identity_cohorts": dict(cell["cohorts"]),
+        "n_excluded_lookahead_join": cell["n_excluded_lookahead_join"],
         "n_bundle_identity_unproven": cell["bundle_identity_unproven"],
         "n_independent_windows": len(cell["windows"]),
     }
@@ -1282,7 +1299,7 @@ def build_daily_scoreboard(
     roster, roster_source = _eligible_roster(conn)
     tallies, snapshot_tickers = _production_tallies(conn, et_date, tickers)
     if tickers:
-        roster = [t for t in roster if t in {x.upper() for x in tickers}]
+        roster = [t for t in roster if ticker_storage_key(t) in {ticker_storage_key(x) for x in tickers}]  # RC-345/F25: canonical roster membership
 
     cells: dict[tuple[str, str], dict[str, Any]] = {}
     rollup: dict[str, dict[str, Any]] = {
@@ -1981,7 +1998,7 @@ def main() -> int:
     require_canonical_db_target(args, tool_name="calibration.daily_scoreboard", write_capable=True)
 
     et_date = args.date or datetime.now(tz=ET).strftime("%Y-%m-%d")
-    tickers = [t.strip().upper() for t in args.tickers if t.strip()] or None
+    tickers = [ticker_storage_key(t) for t in args.tickers if t.strip()] or None  # RC-345/F25: canonical CLI ticker list
     # Fail-closed for the whole production entrypoint: contract violation aborts
     # before computation, emission, or console output (non-zero exit for the
     # scheduled task; error is explicit in its log).

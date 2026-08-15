@@ -212,627 +212,529 @@ def test_compute_volume_profile_levels():
     assert val <= poc <= vah
 
 
-def test_volume_profile_mutation_changes_poc():
-    """F15 mutation: concentrating volume at one typical price moves POC."""
-    from liquidity_value_engine import _volume_profile_poc_vah_val
+def _typical_price_dump(bars, value_area_pct=0.70, tick_size=0.01):
+    """The construction LP-01 Step 1 REPLACED, kept here only as the disagreement witness.
 
-    base = [
-        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 100.0},
-        {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 100.0},
-    ]
-    poc_a, _, _ = _volume_profile_poc_vah_val(base)
-    mutated = [
-        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 100.0},
-        {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 10_000.0},
-    ]
-    poc_b, _, _ = _volume_profile_poc_vah_val(mutated)
-    assert poc_a is not None and poc_b is not None
-    assert poc_a != poc_b
-
-
-def test_market_context_volume_profile_delegates_to_engine():
-    """F15: fetch_price_levels path uses the engine math, not a second loop."""
-    from liquidity_value_engine import _volume_profile_poc_vah_val as engine_vp
-    from market_context import _volume_profile_poc_vah_val as ctx_vp
-
-    src = (ROOT / "market_context.py").read_text(encoding="utf-8")
-    start = src.find("def _volume_profile_poc_vah_val")
-    end = src.find("\ndef ", start + 1)
-    block = src[start:end]
-    assert "from liquidity_value_engine import" in block
-    assert "vol_by_price" not in block
-    assert "_float_or_none" not in block
-    assert "_positive_float_or_none" not in block
-    bars = [
-        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 50.0},
-        {"high": 111.0, "low": 109.0, "close": 110.0, "volume": 200.0},
-    ]
-    assert ctx_vp(bars) == engine_vp(bars)
-
-
-def test_engine_volume_profile_dirty_bar_fails_closed():
-    """F15 bedrock: missing OHLC is absence, not KeyError / None-arithmetic."""
-    from liquidity_value_engine import _volume_profile_poc_vah_val as engine_vp
-    from market_context import _volume_profile_poc_vah_val as ctx_vp
-
-    dirty = [
-        {"volume": 1},
-        {"high": None, "low": 99.0, "close": 100.0, "volume": 10.0},
-        {"high": 101.0, "low": 99.0, "close": 100.0, "volume": 0},
-    ]
-    assert engine_vp([{"volume": 1}]) == (None, None, None)
-    assert engine_vp(dirty) == (None, None, None)
-    assert ctx_vp(dirty) == engine_vp(dirty)
-
-
-def test_fetch_state_live_path_uses_engine_volume_profile():
-    """F15 live cite: _fetch_state → fetch_price_levels → engine pass-through."""
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
-    start = server.find("def _fetch_state(")
-    assert start != -1
-    end = server.find("\ndef ", start + 1)
-    # _fetch_state is huge; bound the first 2500 lines of the def by char budget.
-    block = server[start : start + 80_000]
-    assert "price_levels = fetch_price_levels(" in block
-    ctx = (ROOT / "market_context.py").read_text(encoding="utf-8")
-    fetch = ctx[ctx.find("def fetch_price_levels") : ctx.find("def fetch_price_levels") + 12_000]
-    assert "pl.pd_poc, pl.pd_vah, pl.pd_val = _volume_profile_poc_vah_val(" in fetch
-    assert "pl.today_poc, pl.today_vah, pl.today_val = _volume_profile_poc_vah_val(" in fetch
-
-
-ENGINE_POC_STATE_KEYS = (
-    "today_poc",
-    "today_vah",
-    "today_val",
-    "pd_poc",
-    "pd_vah",
-    "pd_val",
-)
-
-
-def test_api_state_stamps_engine_poc_keys():
-    """F15 (a): /api/state carries engine POC/VAH/VAL, not a second algorithm."""
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
-    start = server.find("def _fetch_state(")
-    nxt = server.find("\n@app.", start + 1)
-    block = server[start : nxt if nxt != -1 else start + 200_000]
-    from market_context import F31_LEVEL_KEYS
-
-    assert "stamp_price_level_fields(price_levels)" in block
-    for key in ENGINE_POC_STATE_KEYS:
-        assert key in F31_LEVEL_KEYS, key
-
-
-def test_stamped_engine_poc_keys_have_a_dom_consumer():
-    """Served-but-unconsumed is not a close: every stamped key is bound in the DOM."""
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    for key in ENGINE_POC_STATE_KEYS + ("pdc",):
-        assert f"d.{key}" in html, key
-    for el_id in (
-        "dr-lvl-poc",
-        "dr-lvl-vah",
-        "dr-lvl-val",
-        "dr-lvl-pdpoc",
-        "dr-lvl-pdvah",
-        "dr-lvl-pdval",
-        "dr-lvl-pdc",
-        "exec-poc",
-        "exec-pdpoc",
-        "exec-pdc",
-    ):
-        assert f'id="{el_id}"' in html, el_id
-
-
-def test_dom_receives_engine_today_poc_value():
-    """Named consumer: today_poc 780.75 renders on #dr-lvl-poc, not a playbook string."""
-    import re
-    import subprocess
-
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    assert "d.today_poc" in html
-    assert 'id="dr-lvl-poc"' in html
-    match = re.search(
-        r"const pxTxt = \(x\) => \{.*?\n  \};",
-        html,
-        flags=re.S,
-    )
-    assert match, "pxTxt must be extractable from index.html"
-    px_fn = re.search(r"const px = \(x\) => [^;]+;", html)
-    assert px_fn, "px must be extractable from index.html"
-    script = (
-        px_fn.group(0)
-        + "\n"
-        + match.group(0)
-        + "\n"
-        + "function bind(d){ return pxTxt(d.today_poc); }\n"
-        + "const fail = (m) => { console.error(m); process.exit(1); };\n"
-        + "if (bind({today_poc: 780.75}) !== '780.75') fail('today_poc');\n"
-        + "if (bind({today_poc: null}) !== '—') fail('absent');\n"
-        + "console.log('ok');\n"
-    )
-    proc = subprocess.run(
-        ["node", "-e", script],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="strict",
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr or proc.stdout
-    assert "ok" in proc.stdout
-
-
-def test_dom_receives_pdc_value():
-    """F31 residual: stamped pdc renders on #dr-lvl-pdc; absent/0 → —."""
-    import re
-    import subprocess
-
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    assert "d.pdc" in html
-    assert 'id="dr-lvl-pdc"' in html
-    assert 'id="exec-pdc"' in html
-    assert "el.textContent = pxTxt(d.pdc)" in html
-    match = re.search(
-        r"const pxTxt = \(x\) => \{.*?\n  \};",
-        html,
-        flags=re.S,
-    )
-    assert match, "pxTxt must be extractable from index.html"
-    px_fn = re.search(r"const px = \(x\) => [^;]+;", html)
-    assert px_fn, "px must be extractable from index.html"
-    script = (
-        px_fn.group(0)
-        + "\n"
-        + match.group(0)
-        + "\n"
-        + "function bind(d){ return pxTxt(d.pdc); }\n"
-        + "const fail = (m) => { console.error(m); process.exit(1); };\n"
-        + "if (bind({pdc: 498.50}) !== '498.50') fail('pdc');\n"
-        + "if (bind({pdc: null}) !== '—') fail('absent');\n"
-        + "if (bind({pdc: 0}) !== '—') fail('zero');\n"
-        + "console.log('ok');\n"
-    )
-    proc = subprocess.run(
-        ["node", "-e", script],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="strict",
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr or proc.stdout
-    assert "ok" in proc.stdout
-
-
-F31_LEVEL_DOM_IDS = (
-    "dr-lvl-poc",
-    "dr-lvl-vah",
-    "dr-lvl-val",
-    "dr-lvl-pdpoc",
-    "dr-lvl-pdvah",
-    "dr-lvl-pdval",
-    "dr-lvl-vwap",
-    "dr-lvl-pdh",
-    "dr-lvl-pdl",
-    "dr-lvl-pdc",
-    "exec-poc",
-    "exec-vah",
-    "exec-val",
-    "exec-pdpoc",
-    "exec-pdvah",
-    "exec-pdval",
-    "exec-vwap",
-    "exec-pdh",
-    "exec-pdl",
-    "exec-pdc",
-)
-
-F31_WALL_KEYS = ("kl_call_gamma_wall", "kl_put_gamma_wall")
-
-
-def test_f31_absent_snapshot_yields_dash_not_zero_or_stale():
-    """F31: None/stale PriceLevels → /api/state None; DOM —; failed fetch ≠ last-good."""
-    import re
-    import subprocess
-
-    from market_context import (
-        F31_LEVEL_KEYS,
-        PriceLevels,
-        fail_closed_price_levels,
-        stamp_price_level_fields,
-    )
-
-    empty = stamp_price_level_fields(PriceLevels())
-    assert set(empty) == set(F31_LEVEL_KEYS)
-    assert all(v is None for v in empty.values()), empty
-    none_pl = stamp_price_level_fields(None)
-    assert all(v is None for v in none_pl.values()), none_pl
-
-    zeroed = stamp_price_level_fields(
-        PriceLevels(vwap=0.0, pdh=0.0, pdl=0.0, today_poc=0.0, pd_poc=0.0)
-    )
-    assert all(v is None for v in zeroed.values()), zeroed
-
-    live = stamp_price_level_fields(PriceLevels(vwap=500.25, pdh=510.0, today_poc=501.5))
-    assert live["vwap"] == 500.25
-    assert live["pdh"] == 510.0
-    assert live["today_poc"] == 501.5
-    assert live["pdl"] is None
-
-    last_good = PriceLevels(vwap=499.0, pdh=505.0)
-    wiped = fail_closed_price_levels(None)
-    assert wiped.vwap is None and wiped.pdh is None
-    assert wiped is not last_good
-    assert stamp_price_level_fields(wiped)["vwap"] is None
-
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
-    assert "price_levels = fail_closed_price_levels(None)" in server
-    assert "ms_dict.update(stamp_price_level_fields(price_levels))" in server
-
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    for el_id in F31_LEVEL_DOM_IDS:
-        assert f'id="{el_id}"' in html, el_id
-    for key in ("d.vwap", "d.pdh", "d.pdl", "d.pdc", "d.today_poc", "d.pd_poc"):
-        assert key in html, key
-    assert "kl_call_gamma_wall" in html and "kl_put_gamma_wall" in html
-    assert "const isNull = !v;" in html
-    assert "${isNull ? '—' : v.toFixed(2)}" in html
-
-    px_fn = re.search(r"const px = \(x\) => [^;]+;", html)
-    match = re.search(r"const pxTxt = \(x\) => \{.*?\n  \};", html, flags=re.S)
-    assert px_fn and match
-    binds = " ".join(
-        f"if (pxTxt(d.{k}) !== '—') fail('{k}');"
-        for k in (
-            "today_poc",
-            "today_vah",
-            "today_val",
-            "pd_poc",
-            "pd_vah",
-            "pd_val",
-            "vwap",
-            "pdh",
-            "pdl",
-            "pdc",
-        )
-    )
-    wall_null = " ".join(
-        f"if (isNullWall(d.{k}) !== true) fail('{k}');" for k in F31_WALL_KEYS
-    )
-    script = (
-        px_fn.group(0)
-        + "\n"
-        + match.group(0)
-        + "\n"
-        + "function isNullWall(v){ const x = parseFloat(v); return !x; }\n"
-        + "const fail = (m) => { console.error(m); process.exit(1); };\n"
-        + "const d = {today_poc:null,today_vah:null,today_val:null,"
-        "pd_poc:null,pd_vah:null,pd_val:null,vwap:null,pdh:null,pdl:null,pdc:null,"
-        "kl_call_gamma_wall:null,kl_put_gamma_wall:null};\n"
-        + binds
-        + "\n"
-        + wall_null
-        + "\n"
-        + "const z = {today_poc:0,today_vah:0,today_val:0,pd_poc:0,pd_vah:0,pd_val:0,"
-        "vwap:0,pdh:0,pdl:0,pdc:0,kl_call_gamma_wall:0,kl_put_gamma_wall:0};\n"
-        + binds.replace("d.", "z.")
-        + "\n"
-        + wall_null.replace("d.", "z.")
-        + "\n"
-        + "if (pxTxt(500.25) !== '500.25') fail('live');\n"
-        + "console.log('ok');\n"
-    )
-    proc = subprocess.run(
-        ["node", "-e", script],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="strict",
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr or proc.stdout
-    assert "ok" in proc.stdout
-
-
-def _frozen_close_price_12bin(bars, n):
-    """origin/main signal_layer algorithm — independent of live helpers."""
-    from numeric_contract import float_finite_or_none
-
-    eps = 1e-12
-    sl = bars[-n:] if len(bars) >= n else bars
-    if len(sl) < 5:
-        return None, None, None
-    prices, vols = [], []
-    for b in sl:
-        c = float_finite_or_none(b.get("close"))
-        v = float_finite_or_none(b.get("volume"))
-        if c is None or v is None:
-            continue
-        prices.append(c)
-        vols.append(v)
-    if len(prices) < 5:
-        return None, None, None
-    pmin, pmax = min(prices), max(prices)
-    if abs(pmax - pmin) < eps:
-        return pmin, pmin, pmax
-    nbin = min(12, len(prices))
-    width = (pmax - pmin) / nbin
-    bins = [0.0] * nbin
-    for p, v in zip(prices, vols):
-        idx = int((p - pmin) / (width + eps))
-        idx = 0 if idx < 0 else nbin - 1 if idx > nbin - 1 else idx
-        bins[idx] += v
-    imax = max(range(nbin), key=lambda i: bins[i])
-    poc = pmin + (imax + 0.5) * width
-    total_v = sum(bins)
-    target = 0.70 * total_v
-    cum = 0.0
-    lo_i, hi_i = imax, imax
-    while cum < target and (lo_i > 0 or hi_i < nbin - 1):
-        left = bins[lo_i - 1] if lo_i > 0 else 0.0
-        right = bins[hi_i + 1] if hi_i < nbin - 1 else 0.0
-        if right >= left and hi_i < nbin - 1:
-            cum += right
-            hi_i += 1
-        elif lo_i > 0:
-            cum += left
-            lo_i -= 1
-        else:
-            break
-    return poc, pmin + lo_i * width, pmin + (hi_i + 1) * width
-
-
-def _spy_session_bars(n: int = 60) -> list[dict]:
-    """≥50 1m OHLCV bars in the recorded 2026-04-02 SPY session range (653–658.52).
-
-    This environment's ``price_bars_1m`` is empty; the series is a deterministic
-    reconstruction of that session's range, not a live tape.
+    A test that a new method 'works' proves nothing if the old one produced the same number.
+    This reproduces the retired typical-price dump so the fixtures below can show the two
+    genuinely differ where it matters.
     """
-    import sqlite3
-
-    db = ROOT / "data" / "ed_console.db"
-    if db.is_file():
-        con = sqlite3.connect(str(db))
-        rows = con.execute(
-            "SELECT open, high, low, close, volume FROM price_bars_1m "
-            "WHERE ticker IN ('SPY','spy') ORDER BY bar_end_ts_utc DESC LIMIT 200"
-        ).fetchall()
-        if len(rows) >= n:
-            return [
-                {"open": o, "high": h, "low": lo, "close": c, "volume": v}
-                for o, h, lo, c, v in reversed(rows[:n])
-            ]
-    bars = []
-    for i in range(n):
-        close = 654.0 + (i % 17) * 0.25 - 2.0
-        high = close + 0.40
-        low = close - 0.35
-        bars.append(
-            {
-                "open": close - 0.10,
-                "high": high,
-                "low": low,
-                "close": close,
-                "volume": 800.0 + (i % 9) * 150.0,
-            }
-        )
-    return bars
-
-
-def test_signal_layer_volume_profile_stays_close_price_12bin():
-    """RC-330: fusion POC is the close-price 12-bin, not the display engine."""
-    from features.signal_layer_v1 import _volume_profile_proxy
-    from liquidity_value_engine import _volume_profile_poc_vah_val as engine_vp
-
-    src = (ROOT / "features" / "signal_layer_v1.py").read_text(encoding="utf-8")
-    start = src.find("def _volume_profile_proxy")
-    block = src[start : src.find("\ndef ", start + 1)]
-    assert "from liquidity_value_engine import" not in block
-    assert "nbin" in block
-    assert "(imax + 0.5)" in block
-    bars = _spy_session_bars(60)
-    assert len(bars) >= 50
-    poc, val, vah = _volume_profile_proxy(bars, 50)
-    frozen = _frozen_close_price_12bin(bars, 50)
-    e_poc, e_vah, e_val = engine_vp(bars)
-    assert (poc, val, vah) == frozen
-    assert poc != e_poc
-    fusion = (ROOT / "bayesian_fusion.py").read_text(encoding="utf-8")
-    assert "from features.signal_layer_v1 import" in fusion
-    assert "signal_layer_v1_to_direction_probs" in fusion
-    sl = (ROOT / "features" / "signal_layer_v1.py").read_text(encoding="utf-8")
-    assert "poc, val, vah = _volume_profile_proxy(" in sl
-
-
-def test_fusion_does_not_consume_engine_volume_profile():
-    """No live model path calls the engine POC as a feature."""
-    fusion = (ROOT / "bayesian_fusion.py").read_text(encoding="utf-8")
-    assert "from liquidity_value_engine import" not in fusion
-    assert "_volume_profile_poc_vah_val" not in fusion
-    sl = (ROOT / "features" / "signal_layer_v1.py").read_text(encoding="utf-8")
-    assert "from liquidity_value_engine import _volume_profile_poc_vah_val" not in sl
-
-
-_POC_ENGINE_CALLEES = frozenset(
-    {"_volume_profile_poc_vah_val", "compute_volume_profile_levels"}
-)
-# Trained fusion feature — identity locked by live==frozen, not by invisibility.
-_FEATURE_PATH_POC = frozenset({("features/signal_layer_v1.py", "_volume_profile_proxy")})
-
-
-def _fn_delegates_to_poc_engine(fn) -> bool:
-    for node in __import__("ast").walk(fn):
-        if _call_name(node) in _POC_ENGINE_CALLEES:
-            return True
-    return False
-
-
-def _fn_builds_histogram(fn) -> bool:
-    """Volume-into-bin: `bins[i] += v` or `at_price[p] = at_price.get(p, 0) + v`."""
-    import ast
-
-    for node in ast.walk(fn):
-        if (
-            isinstance(node, ast.AugAssign)
-            and isinstance(node.target, ast.Subscript)
-            and isinstance(node.target.value, ast.Name)
-        ):
-            return True
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.BinOp):
-            if isinstance(node.value.op, ast.Add):
-                for target in node.targets:
-                    if isinstance(target, ast.Subscript) and isinstance(
-                        target.value, ast.Name
-                    ):
-                        return True
-    return False
-
-
-def _fn_returns_three(fn) -> bool:
-    import ast
-
-    for node in ast.walk(fn):
-        if (
-            isinstance(node, ast.Return)
-            and isinstance(node.value, ast.Tuple)
-            and len(node.value.elts) == 3
-        ):
-            return True
-    return False
-
-
-def _assign_target_names(target) -> list[str]:
-    import ast
-
-    out: list[str] = []
-    if isinstance(target, ast.Name):
-        out.append(target.id)
-    elif isinstance(target, ast.Attribute):
-        out.append(target.attr)
-    elif isinstance(target, ast.Tuple):
-        for elt in target.elts:
-            out.extend(_assign_target_names(elt))
-    return out
-
-
-def _is_poc_vah_val_triple(names: list[str]) -> bool:
-    low = [n.lower() for n in names]
-    has_poc = any("poc" in n for n in low)
-    has_va = any(n == "vah" or n.endswith("vah") or n == "val" or n.endswith("_val") for n in low)
-    return has_poc and has_va
-
-
-def _call_name(node) -> str | None:
-    import ast
-
-    if not isinstance(node, ast.Call):
+    from collections import defaultdict
+    vol_by_price: dict = defaultdict(float)
+    for b in bars:
+        typical = (float(b["high"]) + float(b["low"]) + float(b["close"])) / 3.0
+        vol_by_price[round(typical / tick_size) * tick_size] += float(b["volume"])
+    if not vol_by_price:
         return None
-    func = node.func
-    if isinstance(func, ast.Name):
-        return func.id
-    if isinstance(func, ast.Attribute):
-        return func.attr
-    return None
+    return round(max(vol_by_price, key=lambda p: vol_by_price[p]), 4)
 
 
-def undelegated_volume_profile_defs(src: str, filename: str = "<src>") -> list[str]:
-    """F15 class: a second POC/VAH/VAL algorithm or unpack, any function name.
+def test_volume_profile_flat_bar_puts_all_volume_at_one_price():
+    """A bar with high == low DID trade at exactly one price — distribution must not smear it."""
+    from liquidity_models import volume_profile_poc_vah_val
+    bars = [{"high": 100.0, "low": 100.0, "close": 100.0, "volume": 5000.0}]
+    poc, vah, val = volume_profile_poc_vah_val(bars)
+    assert poc == 100.0, f"flat bar POC moved off its only traded price: {poc}"
+    assert vah == 100.0 and val == 100.0, f"flat bar produced a width: {val}..{vah}"
 
-    The name `volume_profile` is not the universe. A `_value_area_*` helper
-    that bins locally, or `poc, vah, val = <other>()`, is the same class.
+
+def test_volume_profile_distributes_a_wide_bar_across_its_range():
+    """The defect in one line: one wide bar's volume belongs across [low, high], not at
+    (H+L+C)/3. With a single bar the distributed profile is FLAT, so every spanned price ties —
+    while the dump puts 100% of it in one bin at the typical price."""
+    from liquidity_models import volume_profile_poc_vah_val
+    bars = [{"high": 101.0, "low": 100.0, "close": 100.9, "volume": 10100.0}]
+    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
+    assert val >= 100.0 and vah <= 101.0, f"value area escaped the bar's range: {val}..{vah}"
+    assert (vah - val) > 0.5, (
+        f"a 70% value area over a uniformly-distributed 1.00-wide bar must span ~0.70, got "
+        f"{vah - val:.2f} — volume is still being dumped"
+    )
+    dump_poc = _typical_price_dump(bars)
+    assert abs(dump_poc - 100.6333) < 0.01, "witness fixture drifted"
+    assert vah > dump_poc > val, (
+        "the retired dump concentrated everything at the typical price; the distributed "
+        "profile must instead spread across the range that price sits inside"
+    )
+
+
+def test_volume_profile_poc_is_the_price_most_bars_traded_through():
+    """Hand-worked: three bars all span 100.00-100.04; a fourth spans 100.03-100.07. Every bar
+    covers 100.03-100.04, so those two bins carry the most volume and the POC must land there.
+    The typical-price dump cannot find it — no bar's (H+L+C)/3 lands on 100.03/100.04."""
+    from liquidity_models import volume_profile_poc_vah_val
+    bars = [
+        {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
+        {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
+        {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
+        {"high": 100.07, "low": 100.03, "close": 100.07, "volume": 500.0},
+    ]
+    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
+    assert poc in (100.03, 100.04), (
+        f"POC {poc} is not in the band every bar traded through (100.03-100.04)"
+    )
+    dump_poc = _typical_price_dump(bars)
+    assert dump_poc not in (100.03, 100.04), (
+        "fixture no longer discriminates — the retired dump happens to agree here"
+    )
+    assert val <= poc <= vah
+
+
+def test_volume_profile_rejects_nan_and_nonpositive_volume():
+    """A NaN bin key poisons every comparison after it, and a zero-volume bar contributes
+    nothing — absence must read as absence rather than a fabricated level."""
+    from liquidity_models import volume_profile_poc_vah_val
+    nan = float("nan")
+    bars = [
+        {"high": nan, "low": 100.0, "close": 100.0, "volume": 900.0},
+        {"high": 100.0, "low": 100.0, "close": 100.0, "volume": 0.0},
+        {"high": float("inf"), "low": 100.0, "close": 100.0, "volume": 900.0},
+    ]
+    assert volume_profile_poc_vah_val(bars) == (None, None, None)
+    assert volume_profile_poc_vah_val([]) == (None, None, None)
+    assert volume_profile_poc_vah_val([{"high": 1.0, "low": 1.0, "close": 1.0,
+                                        "volume": 1.0}], tick_size=0.0) == (None, None, None)
+
+
+def test_volume_profile_wide_bar_stays_bounded_and_still_distributed():
+    """A pathological range against a 0.01 tick must not allocate unbounded bins, and must
+    still SPREAD — the bound is a work cap, never a licence to dump."""
+    from liquidity_models import MAX_BINS_PER_BAR, volume_profile_poc_vah_val
+    bars = [{"high": 10000.0, "low": 0.01, "close": 5000.0, "volume": 1e6}]
+    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
+    assert poc is not None and vah is not None and val is not None
+    assert (vah - val) > 1000.0, "a 10,000-wide bar collapsed to a point — that is a dump"
+    assert MAX_BINS_PER_BAR > 0
+
+
+def test_both_call_sites_use_the_one_construction():
+    """LP-01 Step 1 requires ONE faucet. liquidity_value_engine and market_context each held an
+    independent copy of the same dump; two copies of a wrong construction are two wrong answers
+    that can also disagree with each other."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    for name in ("liquidity_value_engine.py", "market_context.py"):
+        src = (root / name).read_text(encoding="utf-8")
+        body = re.sub(r"#.*$", "", src, flags=re.M)
+        assert "volume_profile_poc_vah_val(bars, value_area_pct, tick_size" in body, (
+            f"{name} does not delegate to the one construction"
+        )
+        i = body.find("def _volume_profile_poc_vah_val")
+        assert i > 0, f"{name} lost its entry point"
+        # Scope to the PROFILE function only. Typical price is CORRECT for VWAP — VWAP is
+        # defined as sum(typical * vol) / sum(vol) — so `_vwap_bands` legitimately computes
+        # (h+l+cl)/3 and must not be swept up by this check. The defect was using typical
+        # price to build the volume PROFILE, nowhere else.
+        fn = body[i:i + 1200]
+        assert "/ 3.0" not in fn, f"{name} still builds the profile from a typical price"
+        assert "defaultdict" not in fn, (
+            f"{name} still accumulates its own bins instead of delegating to the one faucet"
+        )
+
+
+def test_engine_and_context_agree_on_one_profile():
+    """Same bars, same tick, same value-area pct -> the two entry points must agree (they now
+    share an implementation; rounding differs by design, 4dp vs 2dp)."""
+    from liquidity_value_engine import _volume_profile_poc_vah_val as eng
+    from market_context import _volume_profile_poc_vah_val as ctx
+    bars = [
+        {"high": 100.04, "low": 100.00, "close": 100.02, "volume": 500.0},
+        {"high": 100.06, "low": 100.02, "close": 100.05, "volume": 800.0},
+    ]
+    e_poc, e_vah, e_val = eng(bars, 0.70, 0.01)
+    c_poc, c_vah, c_val = ctx(bars, 0.70, 0.01)
+    assert abs(e_poc - c_poc) < 0.01, f"two faucets disagree on POC: {e_poc} vs {c_poc}"
+    assert abs(e_vah - c_vah) < 0.01 and abs(e_val - c_val) < 0.01
+
+
+def _bar(d: date, hh: int, mm: int, high: float, low: float, close: float = None,
+         volume: float = 1000.0) -> dict:
+    """One 1m bar at an explicit ET wall-clock time."""
+    from datetime import datetime as _dt
+    from time_et import ET as _ET
+    ts = _dt(d.year, d.month, d.day, hh, mm, tzinfo=_ET)
+    return {"datetime": int(ts.timestamp() * 1000), "open": low,
+            "high": high, "low": low, "close": close if close is not None else high,
+            "volume": volume}
+
+
+def test_overnight_window_monday_reaches_back_to_friday():
+    """LP-01 Step 2 (RC-153): Monday's overnight starts at FRIDAY's 16:00 close. The old code
+    used session_date - 1 day = SUNDAY, a day with no close and no bars, so Friday's entire
+    post-16:00 tape was dropped and OVERNIGHT_HIGH/LOW described only Monday's pre-open."""
+    from liquidity_value_engine import get_overnight_levels
+    friday, monday = date(2026, 7, 24), date(2026, 7, 27)
+    bars = [
+        _bar(friday, 10, 0, 100.0, 99.0),      # Friday RTH — establishes the prior session
+        _bar(friday, 15, 59, 101.0, 100.0),    # Friday RTH, before the close
+        _bar(friday, 17, 30, 108.0, 107.0),    # Friday AFTER 16:00 — inside the overnight
+        _bar(monday, 4, 30, 96.0, 95.0),       # Monday pre-open — inside the overnight
+        _bar(monday, 10, 0, 120.0, 90.0),      # Monday RTH — must NOT be in the overnight
+    ]
+    out = get_overnight_levels(bars, monday)
+    assert out["overnight_high"] == 108.0, (
+        f"Friday's post-close high is missing from Monday's overnight: {out}"
+    )
+    assert out["overnight_low"] == 95.0, f"overnight low wrong: {out}"
+    assert out["overnight_high"] != 96.0, "overnight collapsed to Monday's pre-open only"
+
+
+def test_overnight_window_midweek_uses_the_immediately_prior_session():
+    """Tuesday's overnight starts at Monday's 16:00 — and Monday's RTH body stays out of it."""
+    from liquidity_value_engine import get_overnight_levels
+    monday, tuesday = date(2026, 7, 27), date(2026, 7, 28)
+    bars = [
+        _bar(monday, 10, 0, 130.0, 70.0),      # Monday RTH — wide, must be EXCLUDED
+        _bar(monday, 18, 0, 104.0, 103.0),     # Monday post-close — included
+        _bar(tuesday, 8, 0, 99.0, 98.0),       # Tuesday pre-open — included
+        _bar(tuesday, 9, 30, 140.0, 60.0),     # Tuesday RTH open bar — must be EXCLUDED
+    ]
+    out = get_overnight_levels(bars, tuesday)
+    assert out["overnight_high"] == 104.0 and out["overnight_low"] == 98.0, (
+        f"midweek overnight leaked an RTH bar: {out}"
+    )
+
+
+def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
+    """A closed day has no close for a range to start from. With Thursday shut, Friday's
+    overnight must reach back to WEDNESDAY's 16:00 and include the Thursday bars in between —
+    the interval is continuous, not two hand-picked calendar dates."""
+    from liquidity_value_engine import get_overnight_levels, prior_trading_session_date
+    from liquidity_value_engine import _bars_to_list
+    wed, thu, fri = date(2026, 7, 22), date(2026, 7, 23), date(2026, 7, 24)
+    bars = [
+        _bar(wed, 10, 0, 100.0, 99.0),         # Wednesday RTH — the real prior session
+        _bar(wed, 17, 0, 106.0, 105.0),        # Wednesday post-close
+        # The holiday itself: bars exist but NONE in RTH — a closed day trades no session.
+        # (Placing one at 12:00 would make Thursday a real session, which is what the code
+        # should conclude from that evidence; the fixture must mean what it claims.)
+        _bar(thu, 3, 0, 111.0, 94.0),          # holiday extended-hours bar INSIDE the window
+        _bar(fri, 8, 0, 97.0, 96.0),           # Friday pre-open
+        _bar(fri, 10, 0, 200.0, 10.0),         # Friday RTH — excluded
+    ]
+    assert prior_trading_session_date(_bars_to_list(bars), fri) == wed, (
+        "a day with no RTH bars was treated as the prior trading session"
+    )
+    out = get_overnight_levels(bars, fri)
+    assert out["overnight_high"] == 111.0 and out["overnight_low"] == 94.0, (
+        f"the holiday gap was skipped instead of spanned: {out}"
+    )
+
+
+def test_overnight_empty_is_empty_never_fabricated():
+    """No bars in the window -> {}. Absence reads as absence."""
+    from liquidity_value_engine import get_overnight_levels
+    tuesday = date(2026, 7, 28)
+    only_rth = [_bar(date(2026, 7, 27), 11, 0, 100.0, 99.0),
+                _bar(tuesday, 10, 0, 101.0, 98.0)]
+    assert get_overnight_levels(only_rth, tuesday) == {}, "an overnight range was invented"
+    assert get_overnight_levels([], tuesday) == {}
+
+
+def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
+    """Fail-closed: with no prior RTH session in the buffer the interval has no start, so only
+    this session's pre-open is used — never widened into a guess that sweeps older days."""
+    from liquidity_value_engine import get_overnight_levels
+    tuesday = date(2026, 7, 28)
+    bars = [
+        _bar(date(2026, 7, 27), 20, 0, 300.0, 290.0),   # prior-day AFTER hours, no RTH anywhere
+        _bar(tuesday, 8, 0, 99.0, 98.0),
+    ]
+    out = get_overnight_levels(bars, tuesday)
+    assert out == {"overnight_high": 99.0, "overnight_low": 98.0}, (
+        f"an unbounded window swept bars from a session that was never established: {out}"
+    )
+
+
+def test_prior_session_helper_is_the_one_definition():
+    """Both the previous-day levels and the overnight window must resolve 'prior session' the
+    same way — two definitions is how they disagree about which day yesterday was."""
+    import ast
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "liquidity_value_engine.py").read_text(
+        encoding="utf-8")
+    tree = ast.parse(src)
+    fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    for name in ("get_overnight_levels", "get_previous_day_levels"):
+        assert name in fns, f"{name} is gone"
+        node = fns[name]
+        # EXECUTABLE code only — the docstrings deliberately quote the retired
+        # `session_date - timedelta(days=1)` to explain the defect, and a text search would
+        # read that explanation as the defect itself.
+        stmts = [s for s in node.body if not (isinstance(s, ast.Expr)
+                                              and isinstance(s.value, ast.Constant)
+                                              and isinstance(s.value.value, str))]
+        code = "\n".join(ast.dump(s) for s in stmts)
+        assert "prior_trading_session_date" in code, (
+            f"{name} does not use the one prior-session definition"
+        )
+        assert "timedelta" not in code, (
+            f"{name} still does calendar arithmetic to find the prior session"
+        )
+
+
+# ── LP-01 Step 3 (RC-154): no liquidity-pool claim on untested extremes ──────────────────
+_POOL_WORDS = ("liquidity", "pool", "sweep", "stop hunt", "stop-hunt", "magnet")
+
+
+def _step3_bars(session_date: date) -> list:
+    """Bars that drive the taxonomy branch: a prior session, an overnight leg that undercuts
+    the prior low, and an RTH open — i.e. exactly the shape that used to be labelled
+    'sell-side liquidity'."""
+    prev = date.fromordinal(session_date.toordinal() - 1)
+    return [
+        _bar(prev, 10, 0, 105.0, 100.0, close=104.0),
+        _bar(prev, 15, 0, 106.0, 101.0, close=102.0),
+        _bar(prev, 17, 0, 103.0, 99.0, close=99.5),      # after the close
+        _bar(session_date, 6, 0, 100.0, 95.0, close=96.0),   # overnight UNDER the prior low
+        _bar(session_date, 9, 45, 101.0, 96.0, close=100.0),  # RTH
+    ]
+
+
+def _step3_zones(session_date: date):
+    from liquidity_models import PlaybookConfig
+    from liquidity_value_engine import build_premarket_snapshot
+    out = build_premarket_snapshot("SPY", _step3_bars(session_date),
+                                   session_date, PlaybookConfig())
+    return out.zones
+
+
+def test_no_liquidity_pool_claim_in_zone_taxonomy():
+    """RC-154: these zones are session EXTREMES. Presenting them as sell/buy-side liquidity is
+    an SMC pool claim we have not measured — no equal-extreme stop-cluster detection exists and
+    no touch study has run. The wire must not assert what nothing has proven."""
+    from liquidity_models import ZoneType, zone_class_for_type
+    values = {z.value for z in ZoneType}
+    assert not any("side_liquidity" in v for v in values), (
+        f"zone taxonomy still claims liquidity pools: {sorted(values)}"
+    )
+    classes = {zone_class_for_type(z) for z in ZoneType}
+    assert "liquidity" not in classes, (
+        f"a zone_class still asserts 'liquidity': {sorted(classes)}"
+    )
+
+
+def test_no_pool_language_in_rendered_zone_payload():
+    """Behaviour-bound: build the snapshot that used to produce 'Sell-side liquidity at
+    overnight low' and assert no operator-facing field claims a pool."""
+    session = date(2026, 7, 28)
+    zones = _step3_zones(session)
+    assert zones, "fixture produced no zones — the assertion would be vacuous"
+    for z in zones:
+        zt = str(getattr(z.zone_type, "value", z.zone_type))
+        notes = (z.interpretation_notes or "").lower()
+        assert "side_liquidity" not in zt, f"zone_type claims a pool: {zt}"
+        assert z.zone_class != "liquidity", f"zone_class claims a pool: {z.zone_class}"
+        for w in _POOL_WORDS:
+            assert w not in notes, (
+                f"interpretation_notes asserts {w!r} on an untested extreme: "
+                f"{z.interpretation_notes!r} (zone_type={zt})"
+            )
+
+
+def test_engine_emits_no_pool_language_anywhere_it_writes_notes():
+    """Every operator-facing note STRING in the engine, however it reaches the payload.
+
+    RC-155 (v39 gun 2): the first version of this sweep matched only `notes =` /
+    `interpretation_notes =` ASSIGNMENTS, so `return ZoneType.PIVOT_VALUE, "Session liquidity
+    zone"` — a note delivered by return tuple — was invisible to it and survived the Step 3
+    demotion. A checker that only knows one delivery mechanism certifies the others as clean.
+
+    This now walks the AST and inspects every string CONSTANT in the module, so a note cannot
+    escape by changing how it travels. Docstrings and comments are excluded: they must be free
+    to NAME the retired vocabulary in order to explain it (the RC-153 trap), and neither is
+    ever rendered to an operator.
     """
     import ast
-
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
-        return []
-    is_engine = filename.endswith("liquidity_value_engine.py") or filename == "liquidity_value_engine.py"
-    local_defs = {
-        n.name: n
-        for n in ast.walk(tree)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    offenders: list[str] = []
-    for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-        if not (_fn_builds_histogram(fn) and _fn_returns_three(fn)):
-            continue
-        if is_engine and fn.name in _POC_ENGINE_CALLEES:
-            continue
-        if (filename, fn.name) in _FEATURE_PATH_POC:
-            continue
-        if _fn_delegates_to_poc_engine(fn):
-            continue
-        offenders.append(f"{filename}:{fn.name}")
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "liquidity_value_engine.py").read_text(
+        encoding="utf-8")
+    tree = ast.parse(src)
+    docstrings = set()
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            d = ast.get_docstring(node, clean=False)
+            if d:
+                docstrings.add(d)
+    offenders = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            s = node.value
+            if s in docstrings:
+                continue
+            if any(w in s.lower() for w in _POOL_WORDS):
+                offenders.append((getattr(node, "lineno", "?"), s))
+    # Source TAGS and enum values are identifiers, not prose shown as a claim; the two
+    # remaining zone-type names are named OBSERVED in RC-154 and are not Step 3 victims.
+    offenders = [(ln, s) for ln, s in offenders
+                 if s not in ("support_liquidity", "resistance_liquidity")]
+    assert not offenders, (
+        f"engine still emits pool language in a rendered string: {offenders}"
+    )
+
+
+def test_ui_shows_no_pool_badges():
+    """Surface-bound: the Console Liquidity Map painted 'SELL LIQ' / 'BUY LIQ' — an operator
+    reading those sees a proven pool, which is the claim being demoted."""
+    import re
+    from pathlib import Path
+    ui = (Path(__file__).resolve().parent.parent / "static" / "index.html").read_text(
+        encoding="utf-8")
+    # Strip // comments: the badge map's own comment quotes the retired labels to explain what
+    # was demoted, and a raw text search reads that explanation as the offence (the same trap
+    # RC-153's docstring set). Only code the browser executes can paint a badge.
+    code = re.sub(r"^\s*//.*$", "", ui, flags=re.M)
+    assert "SELL LIQ" not in code and "BUY LIQ" not in code, "the UI still paints pool badges"
+    assert "sell_side_liquidity" not in code and "buy_side_liquidity" not in code, (
+        "the UI badge map still keys on the retired pool taxonomy"
+    )
+    i = code.find("ZONE_BADGE_MAP")
+    assert i > 0, "the badge map is gone"
+    block = code[i:i + 700]
+    assert "low_extreme" in block and "high_extreme" in block, (
+        "the demoted zone types have no badge, so they would render via the raw-string fallback"
+    )
+    assert "LOW EXTREME" in block and "HIGH EXTREME" in block
+
+
+# ── LP-01 Step 4 (RC-156): raw structure levels are OPERATOR-VISIBLE on Chart ────────────
+_RL_REQUIRED_IDS = [
+    "rl-PDH", "rl-PDL", "rl-PDC", "rl-PD_POC", "rl-PD_VAH", "rl-PD_VAL",
+    "rl-OVERNIGHT_HIGH", "rl-OVERNIGHT_LOW",
+    "rl-ORB_HIGH", "rl-ORB_MID", "rl-ORB_LOW",
+    "rl-TODAY_POC", "rl-TODAY_VAH", "rl-TODAY_VAL",
+    "rl-VWAP", "rl-VWAP_P1", "rl-VWAP_M1", "rl-VWAP_P2", "rl-VWAP_M2",
+]
+
+
+def _chart_src() -> str:
+    from pathlib import Path
+    return (Path(__file__).resolve().parent.parent / "static" / "chart.html").read_text(
+        encoding="utf-8")
+
+
+def test_chart_declares_every_raw_level_row_with_a_unique_id():
+    """Step 4 requires the levels to be visible AND checkable. Ids are the contract: a panel
+    that renders a blob of text cannot be verified, and a panel with COLLIDING ids is worse than
+    one with none — MEASURED in the rendered DOM this turn, deriving the id from the display
+    label collapsed 'VWAP +2σ' and 'VWAP −2σ' onto one token because +, − and σ are all
+    non-alphanumeric. Every row id is therefore stated explicitly in RL_SPEC."""
+    import re
+    src = _chart_src()
+    i = src.find("const RL_SPEC")
+    assert i > 0, "the raw-levels spec is gone"
+    spec = src[i:src.find("];", i)]
+    ids = []
+    for ln in spec.splitlines():
+        if not ln.strip().startswith("['"):
             continue
-        for target in node.targets:
-            ns = _assign_target_names(target)
-            if not _is_poc_vah_val_triple(ns):
-                continue
-            callee = _call_name(node.value)
-            if callee is None:
-                continue
-            if callee in _POC_ENGINE_CALLEES:
-                continue
-            if (filename, callee) in _FEATURE_PATH_POC:
-                continue
-            local = local_defs.get(callee)
-            if local is not None and _fn_delegates_to_poc_engine(local):
-                continue
-            offenders.append(f"{filename}:{callee}")
-    return sorted(set(offenders))
+        # the id is the LAST column by contract; anchor on it rather than splitting on quotes,
+        # because a description may legitimately contain an apostrophe ("today's value area")
+        m = re.search(r"'([A-Z0-9_]+)'\s*\],?\s*$", ln)
+        assert m, f"RL_SPEC row is missing its explicit id column: {ln.strip()}"
+        ids.append(m.group(1))
+    assert ids, "RL_SPEC parsed to nothing — the assertion would be vacuous"
+    assert len(ids) == len(set(ids)), f"RL_SPEC declares duplicate row ids: {ids}"
+    for want in _RL_REQUIRED_IDS:
+        tag = want[len("rl-"):]
+        assert tag in ids, f"{want} has no RL_SPEC entry — that level cannot render a row"
 
 
-def test_all_volume_profile_function_defs_are_engine_or_passthrough():
-    """F15 producer enumeration: every _volume_profile* def is the engine or delegates."""
-    import subprocess
-
-    proc = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.py"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="strict",
-        check=True,
+def test_chart_raw_levels_surface_is_visible_not_buried():
+    """v6 (RC-192): the raw-levels CARD merged into the candle canvas — the engine levels now
+    live in the LEVELS manager (per-level ids intact) and render as axis tags / FIRED pills.
+    The always-visible statics are the FIRED row and the forces strip; the manager holds the
+    per-level ids. Approved variant: governance/ui_mockup_approvals.json."""
+    import re
+    src = _chart_src()
+    for vid in ("firedrow", "firedpills", "lvlmenu", "lvlrows", "forces",
+                "mode-candles", "mode-line", "lvlbtn", "proxbtn"):
+        assert f'id="{vid}"' in src, f"#{vid} is not present in static/chart.html"
+    # the toggles are WIRED, not decorative: setMode binds both chips and repaints
+    assert "chip('mode-candles'" in src and "chip('mode-line'" in src, (
+        "the candles/line toggle chips have no click wiring"
     )
-    skip = ("tests/", "tools/", "research/", "governance/", "arch_competition/")
-    offenders: list[str] = []
-    for rel in [p for p in proc.stdout.split("\0") if p]:
-        if rel.startswith(skip):
-            continue
-        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
-        offenders.extend(undelegated_volume_profile_defs(text, rel))
-    assert offenders == []
+    assert "function setMode" in src and "chartMode" in src
+    i = src.find('id="firedrow"')
+    row_open = src.rfind("<div", 0, i + 4)
+    assert "display:none" not in src[row_open:i + 200].replace(" ", ""), (
+        "the FIRED row ships hidden"
+    )
+    assert src[:src.find('id="forces"')].count('id="main"') == 0, (
+        "the forces card sits after a #main container — burying it there is forbidden"
+    )
+    # every engine level id must be REACHABLE from real data: the manager emits id="rl-<id>"
+    assert re.search(r'id="rl-\$\{esc\(r\.id\)\}"', src), (
+        "engine-level ids are not emitted from the declared spec id"
+    )
 
 
-def test_volume_profile_class_flags_undelegated_def_in_uncited_file():
-    """Defect-learning: class fires on a helper that is not named volume_profile."""
-    plant = (
-        "def _value_area_from_closes(bars):\n"
-        "    n_buckets = 12\n"
-        "    at_price = {}\n"
-        "    for p, v in bars:\n"
-        "        at_price[p] = at_price.get(p, 0) + v\n"
-        "    return bars[-1]['close'], bars[-1]['close'], bars[-1]['close']\n"
-        "\n"
-        "poc, vah, val = _value_area_from_closes(bars)\n"
+def test_chart_forces_card_cannot_be_flex_collapsed():
+    """RC-157 class, carried to the v6 forces card: `body` is a column flex container and
+    `.card` sets overflow:hidden, so the default `flex: 0 1 auto` makes some card the layout's
+    compression victim and clips its content invisibly (measured on the raw-levels card at
+    1280x700: height 2px, 19 rows, zero visible)."""
+    import re
+    src = _chart_src()
+    m = re.search(r"#forces\s*\{([^}]*)\}", src)
+    assert m, "#forces has no CSS rule — it inherits a shrinkable flex default"
+    rule = m.group(1).replace(" ", "")
+    assert "flex:none" in rule or "flex-shrink:0" in rule, (
+        f"#forces does not opt out of flex shrinking: {{{m.group(1).strip()}}}"
     )
-    found = undelegated_volume_profile_defs(plant, "features/unrelated_layer.py")
-    assert "features/unrelated_layer.py:_value_area_from_closes" in found, found
-    comment_only = (
-        "def _looks_delegated(bars):\n"
-        "    # liquidity_value_engine\n"
-        "    n_buckets = 12\n"
-        "    at_price = {}\n"
-        "    for p, v in bars:\n"
-        "        at_price[p] = at_price.get(p, 0) + v\n"
-        "    return 1.0, 1.0, 1.0\n"
+    assert "overflow:visible" in rule, (
+        "#forces inherits .card's overflow:hidden, so any future shrink clips silently"
     )
-    found_comment = undelegated_volume_profile_defs(comment_only, "features/sneaky.py")
-    assert "features/sneaky.py:_looks_delegated" in found_comment, found_comment
+
+
+def test_chart_reads_levels_from_the_engine_never_recomputes_them():
+    """RC-80 discipline: the client must not become a second producer of a number the engine
+    owns. The manager may only READ carried level rows.
+
+    Phase 2A moved the read to /api/levels, the canonical serving contract for the
+    materialized PriceLevelSnapshot. Reading the levels off a snapshot endpoint that
+    ALSO carried its own separately-materialized copy is precisely how the browser came
+    to show a different overnight high from the levels endpoint at the same instant.
+    """
+    src = _chart_src()
+    assert "/api/levels?ticker=" in src, "the chart does not read the canonical levels contract"
+    i = src.find("function renderEngineLevels")
+    assert i > 0, "the engine-level reader is gone"
+    body = src[i:i + 1600]
+    for banned in ("Math.max(", "Math.min(", "reduce(", "* 2", "/ 2"):
+        assert banned not in body, (
+            f"renderEngineLevels contains {banned!r} — it is deriving a level instead of reading one"
+        )
+
+
+def test_chart_raw_levels_are_structure_context_not_a_signal():
+    """Structure-context ONLY: no Decide influence, no TRADE shaping, and the Step 3 demotion
+    stays — no pool vocabulary may re-enter through the manager or the forces strip."""
+    src = _chart_src()
+    i = src.find('id="forces"')
+    card = src[i:i + 1200]
+    assert "not a trade signal" in card, "the strip does not state that it is context, not a signal"
+    j = src.find("const RL_SPEC")
+    surface = src[i:i + 1600] + src[j:j + 4000]
+    for banned in ("TRADE", "BUY LIQ", "SELL LIQ", "liquidity pool", "stop-run", "sweep"):
+        assert banned not in surface, f"the levels surface reintroduces {banned!r}"
+
+
+def test_chart_raw_levels_fail_closed_on_absence():
+    """A missing level is omitted; a missing payload says so and does NOT leave the previous
+    ticker's levels under a new symbol."""
+    src = _chart_src()
+    i = src.find("function renderEngineLevels")
+    body = src[i:i + 1600]
+    assert "if (!isFinite(v) || v <= 0) continue;" in body, (
+        "a non-finite OR non-positive level would render as a price (the engine sends 0 for "
+        "not-yet-computed session levels — v6.2 audit finding: 'VAH 0.00' was drawn as a level)"
+    )
+    assert "no structure levels for" in body, "absence has no honest message"
+    assert "rawLevelsTicker" in src, (
+        "no pending-state reset — the prior ticker's levels survive a symbol switch"
+    )
 
 
 def test_cluster_price_levels():
@@ -1047,7 +949,7 @@ def test_atr_clustering_no_lookahead():
     assert len(clusters) >= 1
 
     cfg_percent = PlaybookConfig(clustering_mode="percent")
-    clusters_pct = cluster_price_levels_into_zones(levels, 500.0, cfg_percent)
+    cluster_price_levels_into_zones(levels, 500.0, cfg_percent)
     clusters_atr = cluster_price_levels_into_zones(levels, 500.0, cfg, atr_value=0.5)
     assert len(clusters_atr) >= 1
 

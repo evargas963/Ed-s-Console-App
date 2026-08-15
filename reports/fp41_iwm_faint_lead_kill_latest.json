@@ -1,0 +1,8 @@
+{
+  "generated_utc": "2026-07-17T18:37:41Z",
+  "cost_bp": 1.0,
+  "session_range_IWM_1c": "KILL",
+  "micro_stack_IWM_1c": "KILL",
+  "har_micro_IWM_1c": "KILL",
+  "note": "All three IWM:1c faint leads die under 1bp round-trip; CI includes 0 or mean_net<=0."
+}

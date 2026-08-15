@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
+REPO = ROOT
 CARD_CONSUMER_CONTRACT = ROOT / "governance" / "artifacts" / "CARD_CONSUMER_CONTRACT_V1.json"
 CARD_TRUST_CONTRACT = ROOT / "docs" / "CARD_TRUST_CONTRACT.md"
 
@@ -75,31 +78,62 @@ def test_mhap_fixed_row_order_in_renderer():
     assert "{ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' }" in h
 
 
+def test_the_card_visual_contract_runs(tmp_path):
+    """RC-308: the card's direction/colour/glow contract, EXECUTED.
+
+    This replaces three tests that asserted the SPELLING of branches inside
+    `resolveHorizonCardVisualState` — `"if (!tradeable) nonActionable = true"` and
+    `"if (tradeable && dir === 'LONG')"`. RC-133 v27 rewrote those branches to be stricter
+    (nonActionable now flags only a WITHHELD LONG/SHORT; the tradeable test moved into an
+    else-if chain) and all three went red on the improvement, while an actual regression —
+    a LONG painting through under !tradeable — would have read identically. The assertions
+    now live in tests/index_html_contracts_node.mjs and call the real function.
+    """
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.fail("Node.js is required on PATH (runs tests/index_html_contracts_node.mjs)")
+    r = subprocess.run([node, str(REPO / "tests" / "index_html_contracts_node.mjs")],
+                       cwd=str(REPO), capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + "\n" + r.stderr
+
+
 def test_tf_trade_signal_cards_keep_color_under_direction_withhold():
-    """LONG/SHORT horizon cards must not be grayscale-washed when lane is stale."""
+    """The WIRING the executed contract cannot see: the resolver's output reaches the card.
+
+    A correct resolver nothing calls paints nothing, so this half stays a source check — but
+    it now pins only what is genuinely structural (the attribute write, the state classes,
+    the export), not the shape of any branch inside the function.
+    """
     h = _html()
     assert "card.setAttribute('data-tf-signal-dir', sigDir)" in h
     assert "tf-signal-card--trade-active" in h
     assert "tf-signal-card--non-actionable" in h
-    assert '[data-tf-signal-dir="long"]' in h
-    assert '[data-tf-signal-dir="short"]' in h
-    assert "function resolveHorizonCardVisualState" in h
+    # RC-308: the colour rules key on the STATE classes the resolver returns. The old
+    # assertion demanded `[data-tf-signal-dir="long"]` CSS selectors, which no longer exist —
+    # the attribute survives as a diagnostic and the paint moved to .tf-state-up/.tf-state-down.
+    assert ".tf-signal-card--trade-active.tf-state-up" in h
+    assert ".tf-signal-card--trade-active.tf-state-down" in h
     assert "window.resolveHorizonCardVisualState = resolveHorizonCardVisualState" in h
 
 
 def test_horizon_direction_decoupled_from_final_tradeable():
-    """Per-horizon pills must paint LONG/SHORT from mhap_rows.call — not final_tradeable."""
+    """Per-horizon pills read the resolver's output onto real attributes."""
     h = _html()
-    idx = h.find("function resolveHorizonCardVisualState")
-    assert idx != -1
-    chunk = h[idx : idx + 1200]
-    assert "isConsolidated" in chunk
-    assert "nonActionable" in chunk
-    assert "if (!tradeable) nonActionable = true" in chunk
     row_idx = h.find("const visual = resolveHorizonCardVisualState")
-    assert row_idx != -1
-    assert "data-horizon-direction" in h[row_idx : row_idx + 800]
-    assert "data-horizon-actionability" in h[row_idx : row_idx + 800]
+    assert row_idx != -1, "the row renderer no longer calls the resolver"
+    # RC-308: the window was 800 characters and `data-horizon-actionability` now sits at
+    # ~900 — a byte offset is a proxy for "in this renderer", and it went stale when the
+    # renderer grew. Slice to the end of the function instead.
+    end = h.find("\n  }\n", row_idx)
+    block = h[row_idx : end if end != -1 else row_idx + 3000]
+    assert "visual.dirAttr" in block, "the direction attribute no longer comes from the resolver"
+    assert "data-horizon-direction" in block
+    assert "data-horizon-actionability" in block
+    assert "visual.nonActionable" in block, (
+        "the card no longer reads the withheld-direction flag, so it cannot explain why it is dim")
 
 
 def test_render_timeframe_signal_row_includes_consolidated_slug():
@@ -141,11 +175,12 @@ def test_all_and_plan_trust_engine_final_tradeable_only():
     assert "engineTradeableSetup" in plan_chunk
     idx_row = h.find("const tradeable = engineTradeableSetup(d)")
     assert idx_row != -1
-    vis_idx = h.find("function resolveHorizonCardVisualState")
-    assert vis_idx != -1
-    vis_chunk = h[vis_idx : vis_idx + 900]
-    assert "if (tradeable && dir === 'LONG')" in vis_chunk
-    assert "isConsolidated" in vis_chunk
+    # RC-308: `"if (tradeable && dir === 'LONG')"` was asserted here as a stand-in for "the
+    # resolver only paints a direction when tradeable". RC-133 v27 moved that test into an
+    # else-if chain — same guarantee, different spelling — and this went red on a refactor
+    # that strengthened it. The guarantee itself is EXECUTED in
+    # tests/index_html_contracts_node.mjs, over every slug including consolidated.
+    assert h.find("function resolveHorizonCardVisualState") != -1
     idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
     assert idx_cons != -1
     cons_chunk = h[idx_cons : idx_cons + 520]
@@ -896,9 +931,7 @@ def test_bundle_direction_withheld_uses_card_trust_gate():
 def test_decision_rail_withholds_when_card_trust_fails():
     h = _html()
     idx = h.find("function renderDecisionCommandRail")
-    assert idx != -1
-    end = h.find("\nfunction ", idx + 1)
-    chunk = h[idx:end] if end != -1 else h[idx:]
+    chunk = h[idx : idx + 12000]
     assert "const cardTrust = resolveCardTrustGate(d)" in chunk
     assert "!cardTrust.trusted" in chunk
 

@@ -43,6 +43,7 @@ from typing import Any, Optional
 from db import DB_PATH, get_snapshot_sql
 from timeframe_config import CANONICAL_TIMEFRAME
 from math_snapshot_derive import derive_vwap_side
+from math_probabilities import classify_direction
 import logging
 
 log = logging.getLogger(__name__)
@@ -182,9 +183,14 @@ def resample_to_1m(
         # Recompute OHLC-derived fields from normalized OHLC
         norm["candle_body_pts"] = abs(c - o) if (c is not None and o is not None) else None
         norm["candle_range_pts"] = (h - l) if (h is not None and l is not None) else None
+        # RC-345 / F10: candle direction (up/down/flat) is classified in exactly one place —
+        # math_probabilities.classify_direction — with its 0.05%-of-open dead-band. This
+        # rehydration path used a strict `c > o` sign with no dead-band, a second contract
+        # that disagreed with the live server path near zero. Carry the one authority, called
+        # with the same (move, open) convention server.py uses.
         norm["candle_direction"] = (
-            "up" if c > o else ("down" if c < o else "flat")
-        ) if (c is not None and o is not None) else None
+            classify_direction(c - o, o) if (c is not None and o is not None) else None
+        )
         vs = derive_vwap_side(norm.get("spot"), norm.get("vwap"))
         if vs:
             norm["vwap_side"] = vs
@@ -280,7 +286,13 @@ def _normalized_insert_columns(conn: sqlite3.Connection) -> list[str]:
     """
     snap_cols = _get_snapshots_columns(conn)
     norm = _table_column_set(conn, "snapshots_1m_normalized")
-    body = [c for c in snap_cols if c in norm]
+    # RC-6 (v17 measured the bleed: 1,097 -> 1,373 rows / 239MB in one day): the culled blob
+    # columns still EXIST on the normalized table until the supervised 2026-08-09 drop, and
+    # this intersection kept refilling them on every pass. They are excluded by NAME so the
+    # bleed stops NOW; the raw `snapshots` table keeps the one authoritative chain copy, and
+    # the 08-09 migration removes the lingering columns + rows.
+    _RC6_CULLED = ("option_chain_json", "replay_context_json")
+    body = [c for c in snap_cols if c in norm and c not in _RC6_CULLED]
     if "normalized_from_subminute" in norm and "normalized_from_subminute" not in body:
         body.append("normalized_from_subminute")
     return ["snapshot_id"] + body

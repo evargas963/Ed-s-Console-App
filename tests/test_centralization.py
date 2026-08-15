@@ -26,6 +26,7 @@ import os
 if sys.stdout.encoding and "cp1252" in sys.stdout.encoding.lower():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import ast
+import functools
 import importlib
 import json
 import time
@@ -40,6 +41,28 @@ PASS = 0
 FAIL = 0
 WARN = 0
 
+#: Failures recorded by the current test, asserted empty by @fails_closed below —
+#: without it these checks only printed and every test passed unconditionally (587 lines,
+#: 0 asserts). A guardrail that cannot fail is not a guardrail.
+FAILURES: list[str] = []
+
+
+def fails_closed(fn):
+    """Turn recorded `_fail(...)` messages into a real test failure.
+
+    Every check below reports through `_fail`, which only printed. Without this the whole
+    file passed unconditionally (587 lines, 0 asserts). Applied per test so violations
+    surface as a failure in the test itself, not as a teardown error.
+    """
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        FAILURES.clear()
+        result = fn(*a, **kw)
+        sep = "\n  - "
+        assert not FAILURES, "centralization violations:" + sep + sep.join(FAILURES)
+        return result
+    return wrapper
+
 
 def _pass(msg):
     global PASS
@@ -49,6 +72,7 @@ def _pass(msg):
 def _fail(msg):
     global FAIL
     FAIL += 1
+    FAILURES.append(str(msg))
     print(f"  [FAIL] {msg}")
 
 def _warn(msg):
@@ -61,6 +85,7 @@ def _warn(msg):
 # TEST 1: ARCHITECTURE — correct files exist
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_architecture():
     print("\n1. ARCHITECTURE — file existence")
 
@@ -102,6 +127,7 @@ def test_architecture():
 # TEST 2: FORMULA OWNERSHIP — no duplicates
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_formula_ownership():
     print("\n2. FORMULA OWNERSHIP — no duplicate formulas")
 
@@ -109,7 +135,7 @@ def test_formula_ownership():
     FORMULAS = {
         "compute_exposures_by_strike": "math_exposure_core.py",
         "compute_net_charm": "math_exposure_core.py",
-        "compute_gamma_flip": "math_levels.py",
+        "compute_gamma_flip_v2": "math_levels.py",
         "compute_hvl": "math_levels.py",
         "compute_max_pain": "math_levels.py",
         "compute_gamma_void_zones": "math_levels.py",
@@ -170,6 +196,7 @@ def test_formula_ownership():
 # TEST 3: IMPORT CHAIN — all modules import cleanly
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_imports():
     print("\n3. IMPORT CHAIN — module imports")
 
@@ -189,7 +216,7 @@ def test_imports():
 
     for mod in MODULES:
         try:
-            m = importlib.import_module(mod)
+            importlib.import_module(mod)
             _pass(f"import {mod}")
         except Exception as e:
             _fail(f"import {mod}: {e}")
@@ -199,13 +226,14 @@ def test_imports():
 # TEST 4: DATACLASS INTEGRITY
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_dataclasses():
     print("\n4. DATACLASS INTEGRITY")
 
     # SnapshotRow
     try:
         from db import SnapshotRow
-        sr = SnapshotRow(
+        _sr = SnapshotRow(
             ticker="SPY", timeframe="5m", ts_utc=1.0, ts_et="test",
             et_hour=10, et_minute=30, market_session="rth", spot=570.0,
         )
@@ -260,6 +288,7 @@ def test_dataclasses():
 # TEST 5: GEX FORMULA CORRECTNESS
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_gex_formula():
     print("\n5. GEX FORMULA — Spot² check")
 
@@ -282,6 +311,7 @@ def test_gex_formula():
 # TEST 6: MODEL HEALTH
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_model_health():
     print("\n6. MODEL HEALTH — per-ticker 1c checkpoint files (active/SPY)")
 
@@ -330,6 +360,7 @@ def test_model_health():
 # TEST 7: DB SCHEMA ALIGNMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_db_schema(full=False):
     print("\n7. DB SCHEMA — migration alignment")
 
@@ -343,7 +374,7 @@ def test_db_schema(full=False):
             _warn(f"DB not found at {db_path}")
             return
 
-        db = EdDB(db_path)
+        EdDB(db_path)
 
         # Get actual DB columns
         import sqlite3
@@ -380,6 +411,7 @@ def test_db_schema(full=False):
 # TEST 8: SYNTAX CHECK — all .py files parse
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_syntax():
     print("\n8. SYNTAX — all Python files parse")
 
@@ -395,6 +427,7 @@ def test_syntax():
 # TEST 9: WRAPPER HEALTH — math_exposure.py re-exports correctly
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_wrapper():
     print("\n9. WRAPPER — math_exposure.py re-exports")
 
@@ -402,7 +435,7 @@ def test_wrapper():
         import math_exposure as me
         critical_exports = [
             "compute_exposures_by_strike",
-            "compute_gamma_flip",
+            "compute_gamma_flip_v2",
             "compute_gamma_void_zones",
             "compute_expected_move_straddle",
             "compute_atr",
@@ -426,6 +459,7 @@ def test_wrapper():
 # TEST 10: MONTE CARLO v2 REGIME BEHAVIOR
 # ══════════════════════════════════════════════════════════════════════════════
 
+@fails_closed
 def test_monte_carlo_v2():
     print("\n10. MONTE CARLO v2 — regime-aware behavior")
 
@@ -519,7 +553,12 @@ def test_monte_carlo_v2():
             _g_raw = compute_garch_forecast(_fake_closes, horizon=13)
             if _g_raw and len(_g_raw) == 13:
                 _pass(f"GARCH forecast: 13 bars, bar1={_g_raw[0]:.6f} bar13={_g_raw[-1]:.6f}")
-                _g_blend = blend_garch_sigma(_g_raw, iv=0.18, realized_vol=0.15, spot=570.0)
+                # RC-334: the bar interval is stated, not assumed. monte_carlo consumes the
+                # result as per-bar sigma at its own BAR_MINUTES, so this check uses that.
+                _g_blend = blend_garch_sigma(
+                    _g_raw, iv=0.18, realized_vol=0.15, spot=570.0,
+                    bar_minutes=float(monte_carlo.BAR_MINUTES),
+                )
                 if _g_blend and len(_g_blend) == 13 and all(s > 0 for s in _g_blend):
                     _pass("GARCH blend: 13 bars, floor enforced")
                 else:

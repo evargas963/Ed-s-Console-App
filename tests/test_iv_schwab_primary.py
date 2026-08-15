@@ -6,6 +6,8 @@ from math_volatility import _extract_iv_for_strike
 
 
 def test_extract_iv_uses_volatility_not_theoretical():
+    # institutional-synthetic-ok: field-precedence test needs volatility and
+    # theoreticalVolatility set to distinct controlled values to prove which wins.
     contracts = [
         {
             "strikePrice": 500.0,

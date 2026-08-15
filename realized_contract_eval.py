@@ -24,6 +24,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+
 from lifecycle_rule_core import SameBarResolution, fire_exit, resolve_same_bar_conflict
 from market_state import recommend_option_expression
 from math_levels import WallsRow, TotalsRow
@@ -307,11 +309,13 @@ def _contract_multiplier(ct: dict) -> Optional[int]:
         return None
     if "multiplier" not in ct or ct["multiplier"] is None:
         return LEGACY_CHAIN_MULTIPLIER_DEFAULT  # O-54 legacy fallback
-    raw = ct["multiplier"]
-    try:
-        n = int(float(raw))
-    except (TypeError, ValueError):
+    # single source: finite multiplier via the canonical reader. int(float(raw)) raised an
+    # UNCAUGHT OverflowError on +inf (the except only caught TypeError/ValueError); the
+    # canonical reader rejects NaN/±inf up front -> fail-closed None.
+    n_f = _f(ct["multiplier"])
+    if n_f is None:
         return None  # invalid (corrupt data) — fail-closed
+    n = int(n_f)
     if n <= 0:
         return None  # invalid (non-positive) — fail-closed
     return n
@@ -600,7 +604,7 @@ def compute_replay_coverage_stats(
     params: list[Any] = [CANONICAL_TIMEFRAME]
     if ticker:
         wh += " AND ticker = ?"
-        params.append(ticker.upper())
+        params.append(ticker_storage_key(ticker))  # RC-345/F25: canonical DB bind (table stores $-index canonical)
     rows = conn.execute(
         f"""
         SELECT
@@ -639,7 +643,7 @@ def save_replay_coverage_report(db_path: str, table: str, *, ticker: str | None 
     conn.row_factory = sqlite3.Row
     by_ticker: dict[str, Any] = {}
     if ticker:
-        by_ticker[ticker.upper()] = compute_replay_coverage_stats(conn, table, ticker)
+        by_ticker[ticker_storage_key(ticker)] = compute_replay_coverage_stats(conn, table, ticker)  # RC-345/F25: canonical report key
     else:
         cur = conn.execute(
             f"SELECT DISTINCT ticker FROM {table} WHERE timeframe = ? ORDER BY ticker",
@@ -1259,7 +1263,7 @@ def save_eval_aggregate_merge(ticker: str, architecture_type: str, agg: dict[str
     by_t = cur.get("by_ticker")
     if not isinstance(by_t, dict):
         by_t = {}
-    tku = ticker.upper()
+    tku = ticker_storage_key(ticker)  # RC-345/F25: canonical by_ticker merge key
     entry = by_t.get(tku) or {}
     entry[architecture_type] = agg
     by_t[tku] = entry
