@@ -22,6 +22,13 @@ from calibration.option_chain_morning_full import (  # noqa: E402
 )
 from time_et import ET  # noqa: E402
 
+# RC-367: this suite drives the Chart page's real reader/endpoint path — declare
+# ownership so the turn audit maps static/chart.html changes to a running suite
+# instead of an unknown owner (html cannot appear in an import graph).
+TURN_AUDIT_OWNS = [
+    "static/chart.html",
+]
+
 from tests.conftest import most_recent_trading_day_et  # noqa: E402
 
 #: RC-160: a sentinel AND a non-sentinel enrolled ticker. One of each, never SPY alone.
