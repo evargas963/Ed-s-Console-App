@@ -118,6 +118,37 @@ def test_lstm_requests_edge_pp_not_val_accuracy():
         "the accuracy-as-edge ×100 translation is back in the producer")
 
 
+def test_producer_slice_has_no_arithmetic_translation_ast():
+    """RC-375 (Cursor audit: the string lock above is weaker than the principle):
+    parse the REAL _model_status_from_artifact source and prove by AST that the
+    producer contains NO multiplication at all and that every registration call in
+    server.py passes edge_pp — a renamed/reshaped ×100 cannot slip past a string."""
+    import ast as _ast
+    import textwrap
+
+    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    anchor = "def _model_status_from_artifact("
+    i = src.index(anchor)
+    # slice to the sibling definition boundary (the meta-path assignments that follow)
+    j = src.index("_xgb_meta = ", i)
+    fn_src = textwrap.dedent(src[i:j])
+    tree = _ast.parse(fn_src)
+    mults = [n for n in _ast.walk(tree)
+             if isinstance(n, _ast.BinOp) and isinstance(n.op, _ast.Mult)]
+    assert mults == [], (
+        "the model-health producer contains a multiplication — any arithmetic "
+        "translation of a metric into the edge slot is the RC-291 class")
+    regs = [n for n in _ast.walk(_ast.parse(src))
+            if isinstance(n, _ast.Call)
+            and getattr(n.func, "id", "") == "_model_status_from_artifact"]
+    assert len(regs) == 3, f"expected 3 model registrations, found {len(regs)}"
+    for call in regs:
+        edge_key_arg = call.args[3]
+        assert isinstance(edge_key_arg, _ast.Constant) and edge_key_arg.value == "edge_pp", (
+            f"a registration passes edge_key={getattr(edge_key_arg, 'value', '?')!r} — "
+            "every model requests edge_pp, never an accuracy metric")
+
+
 def test_the_field_still_has_no_consumer_and_that_is_recorded():
     """If a surface starts reading `edge`, this test should be the thing that notices.
 
