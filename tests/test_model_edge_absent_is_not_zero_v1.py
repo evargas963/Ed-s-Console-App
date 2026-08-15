@@ -133,11 +133,14 @@ def test_producer_slice_has_no_arithmetic_translation_ast():
     j = src.index("_xgb_meta = ", i)
     fn_src = textwrap.dedent(src[i:j])
     tree = _ast.parse(fn_src)
-    mults = [n for n in _ast.walk(tree)
-             if isinstance(n, _ast.BinOp) and isinstance(n.op, _ast.Mult)]
-    assert mults == [], (
-        "the model-health producer contains a multiplication — any arithmetic "
-        "translation of a metric into the edge slot is the RC-291 class")
+    # RC-376 widening (Cursor gate-width note): ANY arithmetic — BinOp of any
+    # operator or augmented assignment — is banned in the producer, not just Mult;
+    # `edge += x` or `edge = raw + 0` is the same translation class reshaped.
+    arith = [n for n in _ast.walk(tree)
+             if isinstance(n, (_ast.BinOp, _ast.AugAssign))]
+    assert arith == [], (
+        "the model-health producer contains arithmetic — any numeric translation "
+        "of a metric into the edge slot is the RC-291 class")
     regs = [n for n in _ast.walk(_ast.parse(src))
             if isinstance(n, _ast.Call)
             and getattr(n.func, "id", "") == "_model_status_from_artifact"]
