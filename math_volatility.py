@@ -956,7 +956,7 @@ def compute_iv_model_spread(
         if k is None or abs(k - spot) > atm_window:
             continue
         mkt_iv = _fin(ct.get("volatility"))
-        mdl_iv = _fin(ct.get("theoreticalVolatility"))
+        mdl_iv = _fin(ct.get("theoreticalVolatility"))  # external-key-ok: Schwab /chains contract leaf (chains.*.theoreticalVolatility, verified live 2026-08-15)
         if mkt_iv is not None and mdl_iv is not None:
             market_ivs.append(mkt_iv)
             model_ivs.append(mdl_iv)
