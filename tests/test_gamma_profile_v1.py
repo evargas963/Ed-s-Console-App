@@ -339,7 +339,7 @@ def test_unavailable_on_empty_or_bad_inputs():
 def test_rc354_gsf_grc_wired_producer_to_consumer():
     """RC-354 end-to-end wiring: terrain carries the fields fail-closed, the /api/state
     stamp writes them from the SSOT terrain book, and both UI surfaces consume them."""
-    from terrain_engine import TerrainSnapshot, compute_terrain
+    from terrain_engine import compute_terrain
 
     # dataclass carries the fields, defaulting fail-closed
     snap = compute_terrain("SPY", [], 780.0)          # no chain -> _unavailable path
@@ -519,7 +519,7 @@ def test_rc359_oi_banking_and_prev_session_reader(tmp_path):
 
 
 def test_rc359_doi_wired_end_to_end():
-    from terrain_engine import TerrainSnapshot, compute_terrain
+    from terrain_engine import compute_terrain
 
     snap = compute_terrain("SPY", [], 780.0)
     assert hasattr(snap, "oi_by_strike")

@@ -83,10 +83,13 @@ benchmark_logs/
 host_manifest.json
 host_manifest.*.json
 
-# Cursor IDE — track project rules only
+# Cursor IDE — track project rules AND the hook continuum (RC-374: hooks.json was
+# ignored, so the enforcement wiring existed only on this machine while the parity
+# checks demanded it on every checkout)
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
+!.cursor/hooks.json
 
 
 # Operator/tool dry-run audits (local only)
