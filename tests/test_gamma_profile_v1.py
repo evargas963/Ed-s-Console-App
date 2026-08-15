@@ -358,6 +358,33 @@ def test_rc354_gsf_grc_wired_producer_to_consumer():
     assert "'gsf', 'GSF'" in chart and "'grc', 'GRC'" in chart
 
 
+def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
+    """RC-357: share = sum|0DTE net_gex_1pct| / sum|all net_gex_1pct|; None when the
+    full book is empty or has no measurable gamma — never a fabricated 0%."""
+    from math_exposure_core import compute_zero_dte_gamma_share
+
+    all_book = {700.0: {"net_gex_1pct": 6e9}, 705.0: {"net_gex_1pct": -2e9},
+                710.0: {"net_gex_1pct": 2e9}}
+    zero_book = {700.0: {"net_gex_1pct": 4e9}, 705.0: {"net_gex_1pct": -1e9}}
+    assert compute_zero_dte_gamma_share(all_book, zero_book) == 50.0   # 5e9/10e9
+    assert compute_zero_dte_gamma_share(all_book, {}) == 0.0           # genuine zero 0DTE
+    assert compute_zero_dte_gamma_share({}, zero_book) is None         # empty full book
+    assert compute_zero_dte_gamma_share({700.0: {"net_gex_1pct": 0.0}}, {}) is None
+
+
+def test_rc357_zero_dte_share_wired_end_to_end():
+    """RC-357 wiring: terrain field fail-closed, /api/state stamp, Console row."""
+    from terrain_engine import compute_terrain
+
+    snap = compute_terrain("SPY", [], 780.0)
+    assert hasattr(snap, "zero_dte_gamma_share_pct")
+    assert snap.zero_dte_gamma_share_pct is None
+    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    assert 'md["kl_zero_dte_share"]' in srv
+    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
+    assert "0DTE Gamma Share" in html and "kl_zero_dte_share" in html
+
+
 def test_rc354_iv_banking_upsert_last_write_wins(tmp_path):
     """RC-354b: iv_daily banks one row per (ticker, ET date); the LAST write of the
     session wins so the banked value converges to the closing ATM IV (IVR convention)."""

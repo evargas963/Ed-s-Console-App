@@ -8310,6 +8310,24 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
     }
 
+    // RC-357: 0DTE Gamma Share — level persistence. Fail-closed: row renders — when the
+    // share is unavailable, never a fabricated 0%.
+    {
+      const zshare = d.kl_zero_dte_share;
+      const zOk = zshare != null && Number.isFinite(Number(zshare));
+      const zv = zOk ? Number(zshare) : null;
+      const zLbl = !zOk ? '—' : zv >= 50 ? 'Levels decay by close' : zv >= 25 ? 'Partial decay by close' : 'Levels persist';
+      const zSr = !zOk ? 'net' : zv >= 50 ? 'bear' : zv >= 25 ? 'net' : 'bull';
+      html += `<div class="kl-grid" title="0DTE Gamma Share: the % of the dealer gamma book (|net GEX$|) from SAME-DAY expiry. 0DTE gamma dies at the close — a high share means today's walls, flip and GSF evaporate into the afternoon; a low share means they are carried by dated gamma and persist. The market is majority-0DTE, so this qualifies every level above.">
+        <div class="kl-prox" style="background:transparent"></div>
+        <div class="kl-name">0DTE Gamma Share</div>
+        <div class="kl-price">${zOk ? zv.toFixed(1) + '%' : '—'}</div>
+        <div style="text-align:center"><span class="kl-sr ${zSr}">${zOk ? (zv >= 50 ? 'Evaporating' : zv >= 25 ? 'Mixed' : 'Sticky') : '—'}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${zLbl}</div>
+      </div>`;
+    }
+
     // Charm Drift row — RC-345 / F18: charm measures DIRECTION (time-decay hedging drift), NOT
     // a target STRIKE. The row consumes ONLY the canonical charm_drift_toward and NEVER borrows
     // the gamma pin (kl_gamma_pin), any wall, the net-GEX peak, or the institutional pin. When

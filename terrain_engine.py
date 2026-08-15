@@ -28,6 +28,7 @@ from typing import Any
 
 from math_exposure_core import (
     compute_exposures_by_strike,
+    compute_zero_dte_gamma_share,
     exposures_have_dollar_gex,
     pick_delta_wall_strikes,
     pick_net_gex_peak_strike,
@@ -103,6 +104,11 @@ class TerrainSnapshot:
     gsf: float | None = None
     grc: float | None = None
     gsf_state: str = "UNAVAILABLE"
+
+    #: RC-357: % of |net GEX$| from SAME-DAY expiry — level persistence. High = today's
+    #: walls/flip decay into the close (0DTE gamma dies at 4pm); low = levels persist.
+    #: None (fail-closed) when the book is empty, never a fabricated 0%.
+    zero_dte_gamma_share_pct: float | None = None
 
     #: RC-113: the institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
@@ -555,6 +561,11 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # Snap-to-shelf deliberately deferred until strike-GEX history is banked (theta wants a
     # trailing-60-session percentile; a session-local stand-in would be a fake calibration).
     _gsl = compute_gamma_support_levels(profile, spot)
+    # RC-357: the 0DTE book from the SAME producer with the dte filter — same parser,
+    # same sign model; the share is pure attribution, zero new math.
+    _exp_0dte, _ = compute_exposures_by_strike(
+        contracts, spot=spot, require_oi=True, use_only_dte_max=0)
+    _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
     charm_by_strike = compute_charm_by_strike(contracts, spot, now=_terrain_now)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
@@ -589,6 +600,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gsf=_gsl["gsf"],
         grc=_gsl["grc"],
         gsf_state=_gsl["state"],
+        zero_dte_gamma_share_pct=_zero_dte_share,
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
         call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115
