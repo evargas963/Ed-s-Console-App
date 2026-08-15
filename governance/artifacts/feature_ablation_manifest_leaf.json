@@ -3328,10 +3328,10 @@
     }
   ],
   "totals": {
-    "schwab_dictionary_rows": 2393,
+    "schwab_dictionary_rows": 2411,
     "schwab_tier_counts": {
       "EXCLUDE_UI": 17,
-      "CATALOG_ONLY": 179,
+      "CATALOG_ONLY": 197,
       "ML_ABLATION_CANDIDATE": 314,
       "ML_INGEST_CANDIDATE": 10,
       "EXCLUDE_SESSION": 1873

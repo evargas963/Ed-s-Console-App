@@ -1,11 +1,11 @@
 {
   "schema_version": "1",
-  "generated_at": "2026-06-16T23:27:58.005131+00:00",
+  "generated_at": "2026-08-15T22:38:33.361179+00:00",
   "schwab_dictionary_path": "schwab_field_inventory\\schwab_field_dictionary.csv",
-  "schwab_field_count": 2393,
+  "schwab_field_count": 2411,
   "tier_counts": {
     "EXCLUDE_UI": 17,
-    "CATALOG_ONLY": 179,
+    "CATALOG_ONLY": 197,
     "ML_ABLATION_CANDIDATE": 314,
     "ML_INGEST_CANDIDATE": 10,
     "EXCLUDE_SESSION": 1873
@@ -92,6 +92,15 @@
       "priority": "high",
       "source_endpoints": "chains",
       "column_hint": "bid_size"
+    },
+    {
+      "canonical_field": "chains.callExpDateMap.*.breakEven",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "chains",
+      "column_hint": "break_even"
     },
     {
       "canonical_field": "chains.callExpDateMap.*.closePrice",
@@ -472,6 +481,15 @@
       "column_hint": "settlement_type"
     },
     {
+      "canonical_field": "chains.callExpDateMap.*.ssid",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "chains",
+      "column_hint": "ssid"
+    },
+    {
       "canonical_field": "chains.callExpDateMap.*.strikePrice",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
       "category": "options_chain",
@@ -578,6 +596,24 @@
       "priority": "medium",
       "source_endpoints": "chains",
       "column_hint": "dividend_yield"
+    },
+    {
+      "canonical_field": "chains.ethOptionEligible",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "chains",
+      "column_hint": "eth_option_eligible"
+    },
+    {
+      "canonical_field": "chains.hasBinaryOptions",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "chains",
+      "column_hint": "has_binary_options"
     },
     {
       "canonical_field": "chains.interestRate",
@@ -695,6 +731,15 @@
       "priority": "high",
       "source_endpoints": "chains",
       "column_hint": "bid_size"
+    },
+    {
+      "canonical_field": "chains.putExpDateMap.*.breakEven",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "chains",
+      "column_hint": "break_even"
     },
     {
       "canonical_field": "chains.putExpDateMap.*.closePrice",
@@ -1073,6 +1118,15 @@
       "priority": "medium",
       "source_endpoints": "chains",
       "column_hint": "settlement_type"
+    },
+    {
+      "canonical_field": "chains.putExpDateMap.*.ssid",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "chains",
+      "column_hint": "ssid"
     },
     {
       "canonical_field": "chains.putExpDateMap.*.strikePrice",
@@ -2351,6 +2405,51 @@
       "priority": "medium",
       "source_endpoints": "market_hours",
       "column_hint": "start"
+    },
+    {
+      "canonical_field": "market_hours.equity.equity",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "equity"
+    },
+    {
+      "canonical_field": "market_hours.equity.equity.date",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "date"
+    },
+    {
+      "canonical_field": "market_hours.equity.equity.isOpen",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "is_open"
+    },
+    {
+      "canonical_field": "market_hours.equity.equity.marketType",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "market_type"
+    },
+    {
+      "canonical_field": "market_hours.equity.equity.product",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "product"
     },
     {
       "canonical_field": "market_hours.forex",
@@ -19912,6 +20011,51 @@
       "column_hint": "start"
     },
     {
+      "canonical_field": "market_hours.option.option",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "option"
+    },
+    {
+      "canonical_field": "market_hours.option.option.date",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "date"
+    },
+    {
+      "canonical_field": "market_hours.option.option.isOpen",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "is_open"
+    },
+    {
+      "canonical_field": "market_hours.option.option.marketType",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "market_type"
+    },
+    {
+      "canonical_field": "market_hours.option.option.product",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "market_hours",
+      "column_hint": "product"
+    },
+    {
       "canonical_field": "movers.screeners",
       "catalog_tier": "CATALOG_ONLY",
       "category": "unknown",
@@ -20090,6 +20234,15 @@
       "priority": "medium",
       "source_endpoints": "pricehistory",
       "column_hint": "empty"
+    },
+    {
+      "canonical_field": "pricehistory.symbol",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "pricehistory",
+      "column_hint": "symbol"
     },
     {
       "canonical_field": "quotes.",
@@ -20639,6 +20792,15 @@
       "priority": "low",
       "source_endpoints": "quotes",
       "column_hint": "description"
+    },
+    {
+      "canonical_field": "quotes.reference.ethOptionEligible",
+      "catalog_tier": "CATALOG_ONLY",
+      "category": "unclassified",
+      "likely_use": "unreviewed",
+      "priority": "unreviewed",
+      "source_endpoints": "quotes",
+      "column_hint": "eth_option_eligible"
     },
     {
       "canonical_field": "quotes.reference.exchange",
