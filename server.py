@@ -11591,6 +11591,22 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _note_terrain_success(tk)                   # RC-148: and the failure streak with it
+        # RC-354: bank the day's ATM IV from the sigma band this refresh already computed
+        # (one faucet, zero added vendor calls). UPSERT — last write of the session wins,
+        # converging to the CLOSING IV that IV Rank/Percentile are defined against.
+        try:
+            _em_band = payload.get("implied_1d_move") or {}
+            _iv = _em_band.get("iv_pct_atm")
+            if _iv is not None and float(_iv) > 0:
+                from time_et import now_et as _iv_now_et
+                get_db().bank_daily_atm_iv(
+                    tk, _iv_now_et().strftime("%Y-%m-%d"), float(_iv),
+                    _em_band.get("dte_used"), _em_band.get("method"), time.time())
+        except Exception as _iv_e:
+            # institutional-swallow-ok: IV banking is an accrual side-effect — a write
+            # failure is logged but must never take down the terrain refresh that feeds
+            # the live desk. The gap simply shows as a missing day in iv_daily.
+            log.warning("iv_daily banking failed for %s: %s", tk, _iv_e)
         return f"ok:{snap.confidence}"
     except Exception as e:
         # RC-126: DEBUG here meant $SPX failed silently for a full session while the operator
