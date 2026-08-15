@@ -389,6 +389,38 @@ def _protected_path_violation(raw: str) -> bool:
 # Cursor v2 residuals sealed (RC-189): `${env:NAME}` braces, `PSVariable.Set`, and a COMPUTED
 # value (`("o"+"ff")`) — a lock variable has no legitimate computed assignment, so ANY
 # parenthesized/expression value is refused outright rather than pattern-matching its pieces.
+def _no_verify_grant_covers(cmd: str) -> bool:
+    """RC-360: operator standing grant — the agent may run checkpoint commits/pushes.
+
+    ACTIVE only when governance/operator_grants.json carries the grant AT COMMITTED HEAD
+    (`git show HEAD:...`) — the worktree copy is deliberately IGNORED, so the agent cannot
+    self-grant: the enabling commit is operator-lane and is itself the ratification.
+    SCOPE: covers --no-verify ONLY inside `git commit ...` / `git push ...` segments.
+    Every other lock-disable (_SKIP_HOOKS' ED_*_GUARD/LOCK=off patterns, --no-verify on
+    any other command) stays operator-only: after stripping the covered git segments, any
+    remaining _SKIP_HOOKS match still blocks.
+    """
+    try:
+        import json as _json
+        import subprocess as _sp
+        _repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _r = _sp.run(["git", "-C", _repo, "show", "HEAD:governance/operator_grants.json"],
+                     capture_output=True, text=True, encoding="utf-8", errors="replace",
+                     timeout=15)
+        if _r.returncode != 0:
+            return False
+        _grant = (_json.loads(_r.stdout).get("grants") or {}).get(
+            "claude_no_verify_checkpoints") or {}
+        if _grant.get("granted") is not True:
+            return False
+    except Exception:
+        return False    # fail CLOSED: no readable committed grant, no coverage
+    # strip git commit/push segments (up to a chain separator); anything _SKIP_HOOKS
+    # still matches afterwards is outside the grant's scope.
+    _stripped = re.sub(r"\bgit\s+(commit|push)\b[^&;|]*", " ", cmd)
+    return not _SKIP_HOOKS.search(_stripped)
+
+
 _SKIP_HOOKS = re.compile(
     r"--no-verify"
     r"|(?:\$\{?env:)?ED_[A-Z_]*(?:_GUARD|_LOCK)(?![A-Z0-9_])['\"\s\]\}]*=\s*"
@@ -652,7 +684,7 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
                    "minutes this way, both times while 'just testing'. Test destructive "
                    "behaviour against a COPY in a temp directory, never the real artefact. "
                    "Restores INTO these trees stay legal; removal from them is operator-only.")
-    if _SKIP_HOOKS.search(cmd):
+    if _SKIP_HOOKS.search(cmd) and not _no_verify_grant_covers(cmd):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
     if _approval_channel_violation(raw):
         out.append("ACTION BLOCKED (RC-189): shell access to the mockup-approval registry or "

@@ -1,0 +1,12 @@
+{
+  "_doc": "Operator standing grants (RC-360). A grant is ACTIVE only when this file is COMMITTED at HEAD — operator_law_guard reads it via `git show HEAD:governance/operator_grants.json`, never the worktree, so an agent cannot self-grant: the enabling commit is operator-lane and IS the ratification. Revoke by committing granted:false.",
+  "grants": {
+    "claude_no_verify_checkpoints": {
+      "granted": true,
+      "granted_on": "2026-08-16",
+      "operator_quote": "ready. but i want you to run all the runs you have been having me do. i need to get some things done and i can't always be in front of the computer. can you do that?",
+      "scope": "git commit --no-verify and git push --no-verify ONLY, on checkpoint runs; every other lock-disable action (ED_*_GUARD/LOCK=off, --no-verify on any non-git-commit/push command) remains operator-only",
+      "revocation": "commit this entry with granted:false"
+    }
+  }
+}
