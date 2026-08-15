@@ -426,6 +426,30 @@ def test_rc358_rr25_wired_end_to_end():
     assert "25Δ Risk Reversal" in html and "kl_rr25_pts" in html
 
 
+def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
+    """RC-361: net DEX = Σ call_dex − Σ put_dex (dealer +call/−put; negative put deltas
+    flip to the dealer side correctly); None on an empty/valueless book."""
+    from math_exposure_core import compute_net_dex_dollars
+
+    book = {700.0: {"call_dex_dollars": 5e8, "put_dex_dollars": -3e8},
+            705.0: {"call_dex_dollars": 2e8, "put_dex_dollars": -1e8}}
+    out = compute_net_dex_dollars(book)
+    assert out == {"net_dex": 1.1e9, "call_dex": 7e8, "put_dex": -4e8}
+    assert compute_net_dex_dollars({}) is None
+    assert compute_net_dex_dollars({700.0: {"other": 1}}) is None
+
+
+def test_rc361_dex_wired_end_to_end():
+    from terrain_engine import compute_terrain
+
+    snap = compute_terrain("SPY", [], 780.0)
+    assert hasattr(snap, "dex_dollars") and snap.dex_dollars is None
+    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    assert 'md["kl_dex_net"]' in srv
+    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
+    assert "Net DEX" in html and "kl_dex_net" in html
+
+
 def test_rc359_delta_oi_walls_build_unwind_and_fail_closed():
     """RC-359: ΔOI walls — biggest call/put OI builds + biggest unwind; None until a
     prior session exists; a strike absent yesterday diffs against 0 (genuinely new)."""
