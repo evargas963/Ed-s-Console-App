@@ -1452,6 +1452,21 @@ class EdDB:
             CREATE INDEX IF NOT EXISTS idx_cross_ticker_ts
                 ON level_crosses(ticker, ts_utc);
 
+            -- ── RC-354: daily ATM-IV history (IV Rank / IV Percentile burn-in) ──
+            -- One row per (ticker, ET date); the writer UPSERTs so the LAST write of the
+            -- session wins — the banked value converges to the day's CLOSING ATM IV, the
+            -- convention IVR/IVP are defined against. Source = the terrain sigma-band's
+            -- own ATM-IV computation (one faucet, zero added vendor calls).
+            CREATE TABLE IF NOT EXISTS iv_daily (
+                ticker        TEXT NOT NULL,
+                date_et       TEXT NOT NULL,
+                atm_iv_pct    REAL NOT NULL,
+                dte_used      INTEGER,
+                method        TEXT,
+                ts_utc        REAL NOT NULL,
+                PRIMARY KEY (ticker, date_et)
+            );
+
             -- ── Model accuracy tracking ───────────────────────────────────────
             CREATE TABLE IF NOT EXISTS model_accuracy (
                 acc_id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4482,6 +4497,22 @@ class EdDB:
                 return int(cur.lastrowid)
 
         return _do()
+
+    def bank_daily_atm_iv(self, ticker: str, date_et: str, atm_iv_pct: float,
+                          dte_used: int | None, method: str | None,
+                          ts_utc: float) -> None:
+        """RC-354: UPSERT the day's ATM IV — last write of the session wins, so the
+        banked value converges to the CLOSING ATM IV (the convention IV Rank/Percentile
+        are defined against). One row per (ticker, ET date); idempotent."""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO iv_daily (ticker, date_et, atm_iv_pct, dte_used, method, ts_utc) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(ticker, date_et) DO UPDATE SET "
+                "atm_iv_pct=excluded.atm_iv_pct, dte_used=excluded.dte_used, "
+                "method=excluded.method, ts_utc=excluded.ts_utc",
+                (ticker, date_et, float(atm_iv_pct), dte_used, method, float(ts_utc)),
+            )
 
     # Pass 4: minimum seconds between two recorded crosses of the same
     # (ticker, level_name, direction). Prevents tape-oscillation spam without

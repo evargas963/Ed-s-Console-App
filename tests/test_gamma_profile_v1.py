@@ -358,6 +358,30 @@ def test_rc354_gsf_grc_wired_producer_to_consumer():
     assert "'gsf', 'GSF'" in chart and "'grc', 'GRC'" in chart
 
 
+def test_rc354_iv_banking_upsert_last_write_wins(tmp_path):
+    """RC-354b: iv_daily banks one row per (ticker, ET date); the LAST write of the
+    session wins so the banked value converges to the closing ATM IV (IVR convention)."""
+    import sqlite3
+
+    from db import EdDB
+
+    d = EdDB(tmp_path / "iv.db", allow_noncanonical=True)
+    d.bank_daily_atm_iv("SPY", "2026-08-15", 18.5, 1, "IV_SIGMA_1D", 1.0)
+    d.bank_daily_atm_iv("SPY", "2026-08-15", 21.0, 1, "IV_SIGMA_1D", 2.0)  # later wins
+    d.bank_daily_atm_iv("SPY", "2026-08-16", 19.0, 1, "IV_SIGMA_1D", 3.0)
+    d.bank_daily_atm_iv("QQQ", "2026-08-15", 22.5, 1, "IV_SIGMA_1D", 4.0)
+    with sqlite3.connect(tmp_path / "iv.db") as conn:
+        rows = conn.execute(
+            "SELECT ticker, date_et, atm_iv_pct FROM iv_daily ORDER BY ticker, date_et"
+        ).fetchall()
+    assert rows == [("QQQ", "2026-08-15", 22.5),
+                    ("SPY", "2026-08-15", 21.0),   # upsert: closing value, not first
+                    ("SPY", "2026-08-16", 19.0)]
+    # the terrain-refresh hook is wired (source assertion on the one write site)
+    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    assert "bank_daily_atm_iv(" in srv and "iv_pct_atm" in srv
+
+
 def test_snap_to_shelf_only_within_tolerance_and_side():
     # significant shelf strike at 99.90 within 0.25% of a 100.05 level -> snaps below spot
     snapped = snap_level_to_shelf_strike(
