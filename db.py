@@ -1467,6 +1467,20 @@ class EdDB:
                 PRIMARY KEY (ticker, date_et)
             );
 
+            -- ── RC-359: daily per-strike OI (ΔOI walls: fresh vs stale positioning) ──
+            -- One row per (ticker, ET date, strike); last write of the session wins. The
+            -- overnight diff vs the prior banked session is the ΔOI read — computable only
+            -- once two sessions exist (honest burn-in, same doctrine as iv_daily).
+            CREATE TABLE IF NOT EXISTS oi_daily (
+                ticker   TEXT NOT NULL,
+                date_et  TEXT NOT NULL,
+                strike   REAL NOT NULL,
+                call_oi  REAL,
+                put_oi   REAL,
+                ts_utc   REAL NOT NULL,
+                PRIMARY KEY (ticker, date_et, strike)
+            );
+
             -- ── Model accuracy tracking ───────────────────────────────────────
             CREATE TABLE IF NOT EXISTS model_accuracy (
                 acc_id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4513,6 +4527,41 @@ class EdDB:
                 "method=excluded.method, ts_utc=excluded.ts_utc",
                 (ticker, date_et, float(atm_iv_pct), dte_used, method, float(ts_utc)),
             )
+
+    def bank_daily_strike_oi(self, ticker: str, date_et: str,
+                             rows: list[tuple[float, float | None, float | None]],
+                             ts_utc: float) -> None:
+        """RC-359: batch-UPSERT the day's per-strike OI — last write of the session wins.
+        rows = [(strike, call_oi, put_oi), ...]; empty rows write nothing (a gap is
+        visible, a fabricated observation is not)."""
+        if not rows:
+            return
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT INTO oi_daily (ticker, date_et, strike, call_oi, put_oi, ts_utc) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(ticker, date_et, strike) DO UPDATE SET "
+                "call_oi=excluded.call_oi, put_oi=excluded.put_oi, ts_utc=excluded.ts_utc",
+                [(ticker, date_et, float(k), c, p, float(ts_utc)) for k, c, p in rows],
+            )
+
+    def prev_session_strike_oi(self, ticker: str, before_date_et: str) -> dict[float, tuple[float | None, float | None]]:
+        """RC-359: the most recent banked session STRICTLY BEFORE before_date_et, as
+        {strike: (call_oi, put_oi)}. Empty dict when no prior session exists (fail-closed:
+        the ΔOI walls then render 'banking' — never a fabricated diff)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(date_et) FROM oi_daily WHERE ticker=? AND date_et<?",
+                (ticker, before_date_et)).fetchone()
+            prev = row[0] if row else None
+            if not prev:
+                return {}
+            out: dict[float, tuple[float | None, float | None]] = {}
+            for k, c, p in conn.execute(
+                    "SELECT strike, call_oi, put_oi FROM oi_daily WHERE ticker=? AND date_et=?",
+                    (ticker, prev)):
+                out[float(k)] = (c, p)
+            return out
 
     # Pass 4: minimum seconds between two recorded crosses of the same
     # (ticker, level_name, direction). Prevents tape-oscillation spam without

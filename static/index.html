@@ -8347,6 +8347,30 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
     }
 
+    // RC-359: ΔOI walls — overnight positioning change. Fail-closed 'banking' until two
+    // sessions exist; a fresh wall (built overnight) is defended, a stale one fades.
+    {
+      const fmtOI = (n) => n == null ? '—' : (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(0) + 'K' : String(n));
+      const dcs = d.kl_doi_call_strike, dps = d.kl_doi_put_strike;
+      const anyDoi = dcs != null || dps != null || d.kl_doi_unwind_strike != null;
+      html += `<div class="kl-grid" title="ΔOI Call Build: the strike where CALL open interest grew most overnight — fresh positioning, a wall with conviction behind it. OI settles overnight, so this is the morning's clean read of whether yesterday's flow built or unwound. 'banking' = fewer than two sessions of OI history exist yet.">
+        <div class="kl-prox" style="background:transparent"></div>
+        <div class="kl-name">ΔOI Call Build</div>
+        <div class="kl-price">${dcs != null ? Number(dcs).toFixed(2) : '—'}</div>
+        <div style="text-align:center"><span class="kl-sr ${dcs != null ? 'res' : 'net'}">${dcs != null ? 'Fresh' : (anyDoi ? '—' : 'banking')}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${dcs != null ? '+' + fmtOI(d.kl_doi_call_oi) + ' OI' : (anyDoi ? '—' : 'needs 2 sessions')}</div>
+      </div>`;
+      html += `<div class="kl-grid" title="ΔOI Put Build: the strike where PUT open interest grew most overnight — fresh downside positioning / hedging demand. 'banking' = fewer than two sessions of OI history exist yet.">
+        <div class="kl-prox" style="background:transparent"></div>
+        <div class="kl-name">ΔOI Put Build</div>
+        <div class="kl-price">${dps != null ? Number(dps).toFixed(2) : '—'}</div>
+        <div style="text-align:center"><span class="kl-sr ${dps != null ? 'sup' : 'net'}">${dps != null ? 'Fresh' : (anyDoi ? '—' : 'banking')}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${dps != null ? '+' + fmtOI(d.kl_doi_put_oi) + ' OI' : (anyDoi ? '—' : 'needs 2 sessions')}</div>
+      </div>`;
+    }
+
     // Charm Drift row — RC-345 / F18: charm measures DIRECTION (time-decay hedging drift), NOT
     // a target STRIKE. The row consumes ONLY the canonical charm_drift_toward and NEVER borrows
     // the gamma pin (kl_gamma_pin), any wall, the net-GEX peak, or the institutional pin. When

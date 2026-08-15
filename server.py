@@ -11066,6 +11066,15 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     _rr = _g("rr_25d") or {}
     md["kl_rr25_pts"] = _rr.get("rr_pts") if isinstance(_rr, dict) else None
     md["kl_rr25_dte"] = _rr.get("dte") if isinstance(_rr, dict) else None
+    # RC-359: ΔOI walls — fresh vs stale positioning; None until two sessions are banked.
+    _doi = _g("delta_oi_walls") or {}
+    _doi_ok = isinstance(_doi, dict)
+    md["kl_doi_call_strike"] = _doi.get("call_build_strike") if _doi_ok else None
+    md["kl_doi_call_oi"] = _doi.get("call_build_doi") if _doi_ok else None
+    md["kl_doi_put_strike"] = _doi.get("put_build_strike") if _doi_ok else None
+    md["kl_doi_put_oi"] = _doi.get("put_build_doi") if _doi_ok else None
+    md["kl_doi_unwind_strike"] = _doi.get("unwind_strike") if _doi_ok else None
+    md["kl_doi_unwind_oi"] = _doi.get("unwind_doi") if _doi_ok else None
     md["kl_max_pain"] = _g("max_pain")
     md["kl_call_delta_wall"] = _g("call_delta_wall")
     md["kl_put_delta_wall"] = _g("put_delta_wall")
@@ -11613,6 +11622,27 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             # failure is logged but must never take down the terrain refresh that feeds
             # the live desk. The gap simply shows as a missing day in iv_daily.
             log.warning("iv_daily banking failed for %s: %s", tk, _iv_e)
+        # RC-359: bank today's per-strike OI (same exposures book) and compute the ΔOI
+        # walls vs the prior banked session. Fail-closed: no prior session -> walls None
+        # (the Console says 'banking'), never a fabricated diff.
+        try:
+            _oi_map = getattr(snap, "oi_by_strike", None) or {}
+            if _oi_map:
+                from math_exposure_core import compute_delta_oi_walls as _doiw
+                from time_et import now_et as _oi_now_et
+                _oi_date = _oi_now_et().strftime("%Y-%m-%d")
+                get_db().bank_daily_strike_oi(
+                    tk, _oi_date,
+                    [(k, c, p) for k, (c, p) in _oi_map.items()], time.time())
+                _prev_oi = get_db().prev_session_strike_oi(tk, _oi_date)
+                _walls = _doiw(_oi_map, _prev_oi)
+                with _terrain_cache_lock:
+                    if tk in _terrain_cache:
+                        _terrain_cache[tk]["delta_oi_walls"] = _walls
+        except Exception as _oi_e:
+            # institutional-swallow-ok: same accrual doctrine as iv_daily above — log,
+            # never break the refresh; a missing day is a visible gap.
+            log.warning("oi_daily banking failed for %s: %s", tk, _oi_e)
         return f"ok:{snap.confidence}"
     except Exception as e:
         # RC-126: DEBUG here meant $SPX failed silently for a full session while the operator

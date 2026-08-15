@@ -115,6 +115,11 @@ class TerrainSnapshot:
     #: building (the same-session GSF-breach confirm). Fail-closed None, never fabricated.
     rr_25d: dict | None = None
 
+    #: RC-359: per-strike OI from the SAME exposures book — {strike: (call_oi, put_oi)}.
+    #: HEAVY: popped from to_dict like per_strike; the server banks it daily at refresh
+    #: time and computes the ΔOI walls vs the prior banked session.
+    oi_by_strike: dict | None = None
+
     #: RC-113: the institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
     #: one-sigma half-width; the client centers it on the live spot. The wall RANGE itself
@@ -174,6 +179,8 @@ class TerrainSnapshot:
         # `profile` is excluded. /api/terrain/strikes reads it off the cached snapshot directly.
         # computed_ts_utc DOES stay in the payload: every consumer must be able to show an age.
         d.pop("per_strike", None)
+        # RC-359: same weight class as per_strike — banked server-side, never per-poll.
+        d.pop("oi_by_strike", None)
         return d
 
 
@@ -610,6 +617,9 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gsf_state=_gsl["state"],
         zero_dte_gamma_share_pct=_zero_dte_share,
         rr_25d=_rr25,
+        # RC-359: per-strike OI exported from the SAME exposures book (no second parse)
+        oi_by_strike={float(k): (b.get("call_oi"), b.get("put_oi"))
+                      for k, b in exposures.items() if isinstance(b, dict)},
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
         call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115
         put_wall_range=compute_wall_value_area(exposures, put_wall, "put"),      # RC-115

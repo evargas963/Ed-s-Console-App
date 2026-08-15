@@ -446,6 +446,50 @@ def net_gex_dollars_at_strike(bucket: dict) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
 
 
+def compute_delta_oi_walls(
+    today: dict[float, tuple[float | None, float | None]],
+    prev: dict[float, tuple[float | None, float | None]],
+) -> dict | None:
+    """RC-359: overnight ΔOI walls — where positioning BUILT (defend) vs UNWOUND (fade).
+
+    today/prev = {strike: (call_oi, put_oi)} from the SAME exposures book, banked daily.
+    A strike absent yesterday genuinely had no positioning — its prev is 0, not a
+    fabrication. FAIL-CLOSED: None when no prior session is banked (the diff cannot
+    exist yet) or today is empty.
+    Returns {call_build_strike, call_build_doi, put_build_strike, put_build_doi,
+             unwind_strike, unwind_doi} — build fields None when nothing grew.
+    """
+    if not prev or not today:
+        return None
+    d_call: dict[float, float] = {}
+    d_put: dict[float, float] = {}
+    for k, (c, p) in today.items():
+        pc, pp = prev.get(k, (0.0, 0.0))
+        if c is not None:
+            d_call[k] = float(c) - float(pc or 0.0)
+        if p is not None:
+            d_put[k] = float(p) - float(pp or 0.0)
+    out: dict[str, float | None] = {
+        "call_build_strike": None, "call_build_doi": None,
+        "put_build_strike": None, "put_build_doi": None,
+        "unwind_strike": None, "unwind_doi": None,
+    }
+    grew_c = {k: v for k, v in d_call.items() if v > 0}
+    grew_p = {k: v for k, v in d_put.items() if v > 0}
+    if grew_c:
+        k = max(grew_c, key=lambda s: grew_c[s])
+        out["call_build_strike"], out["call_build_doi"] = k, round(grew_c[k])
+    if grew_p:
+        k = max(grew_p, key=lambda s: grew_p[s])
+        out["put_build_strike"], out["put_build_doi"] = k, round(grew_p[k])
+    total = {k: d_call.get(k, 0.0) + d_put.get(k, 0.0) for k in set(d_call) | set(d_put)}
+    shrank = {k: v for k, v in total.items() if v < 0}
+    if shrank:
+        k = min(shrank, key=lambda s: shrank[s])
+        out["unwind_strike"], out["unwind_doi"] = k, round(shrank[k])
+    return out
+
+
 def compute_zero_dte_gamma_share(
     exposures_all: dict, exposures_0dte: dict
 ) -> float | None:
