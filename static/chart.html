@@ -1504,8 +1504,10 @@ function draw() {
     const tags = axisTags.slice().sort((a, b) => y(a.v) - y(b.v));
     let prevY = -Infinity;
     for (const t of tags) {
-      let pos = Math.max(y(t.v) + 3, prevY + 13);
-      if (spotY != null && pos > spotY - 12 && pos < spotY + 14) pos = spotY + 15;
+      // # ui-mockup-ok: RC-355 — 13px pitch with 12-13px fonts left letters touching;
+      // 16px pitch gives each tag clear air. Same stagger algorithm, wider lanes.
+      let pos = Math.max(y(t.v) + 3, prevY + 16);
+      if (spotY != null && pos > spotY - 13 && pos < spotY + 15) pos = spotY + 16;
       pos = Math.min(pos, H - PADB - 2);
       prevY = pos; taken.push(pos);
       g.fillStyle = t.col; g.fillText(t.text, W - PADR + 4, pos);
@@ -1513,7 +1515,7 @@ function draw() {
     g.font = "600 11px 'IBM Plex Mono', monospace";
     g.fillStyle = palRgba(PAL.dim, 0.8);   // # ui-mockup-ok: v6.2 token
     for (const gl of gridLabels) {
-      if (taken.some(ty => Math.abs(gl.yy - ty) < 12)) continue;
+      if (taken.some(ty => Math.abs(gl.yy - ty) < 14)) continue;  // # ui-mockup-ok: RC-355 wider suppression
       g.fillText(gl.p.toFixed(step < 1 ? 3 : 2), W - PADR + 4, gl.yy + 4);
     }
     // functional-audit handle (RC-195): what THIS frame actually rendered

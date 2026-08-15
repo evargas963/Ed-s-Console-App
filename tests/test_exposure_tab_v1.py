@@ -98,3 +98,33 @@ def test_decide_untouched_admissions_empty():
     reg = json.loads((REPO / "governance" / "decision_path_admissions.json").read_text(encoding="utf-8"))
     admitted = reg.get("admissions") or reg.get("admitted") or []
     assert admitted == [], f"decision path is no longer empty: {admitted}"
+
+
+def test_rc355_lane_resolver_never_overlaps_and_is_wired():
+    """RC-355: the canvas lane resolver yields pairwise non-intersecting label lanes,
+    and every de-conflicted text draw actually routes through laneL/laneB (executed in
+    node against the REAL _claimLane extracted from exposure.html, not a re-implementation)."""
+    import re
+    import subprocess
+
+    src = (REPO / "static" / "exposure.html").read_text(encoding="utf-8")
+    m = re.search(r"function _claimLane\(reg, want, h\) \{.*?\n      \}", src, re.S)
+    assert m, "_claimLane must exist in exposure.html draw()"
+    fn = m.group(0)
+    # wired: the five de-conflicted draws route through the lanes
+    assert src.count("laneL(") >= 4, "left-column banners must claim lanes"
+    assert src.count("laneB(") >= 1, "bubble labels must claim lanes"
+    driver = (
+        "const H=600, PADB=30;\n" + fn + "\n"
+        "const reg=[]; const wants=[100,104,101,108,99,100,300,300,300,585,590,592];\n"
+        "const got=wants.map(w=>_claimLane(reg,w,14));\n"
+        "for(let i=0;i<got.length;i++)for(let j=i+1;j<got.length;j++){\n"
+        "  if(Math.abs(got[i]-got[j])<14) throw new Error('overlap '+got[i]+' vs '+got[j]);\n"
+        "  if(got[i]>H-PADB-4+0.001) throw new Error('below clamp');\n"
+        "}\n"
+        "console.log('LANES OK '+got.join(','));\n"
+    )
+    p = subprocess.run(["node", "-e", driver], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=60)
+    assert p.returncode == 0, f"lane resolver failed: {p.stderr[:400]}"
+    assert "LANES OK" in p.stdout
