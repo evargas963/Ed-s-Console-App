@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -36,6 +37,47 @@ MEGA2_FILES = frozenset(
     }
 )
 
+# RC-297: engine modules that are legitimately OUTSIDE the Mega2 (§D+§E) scope —
+# they are inventoried by other megas / lanes, not uninventoried producers.
+MEGA2_ENGINE_OUT_OF_SCOPE = frozenset(
+    {
+        "adaptive_similarity_engine.py",
+        "arch_competition/promotion_engine.py",
+        "call_engine.py",
+        "liquidity_value_engine.py",
+        "prediction_engine.py",
+        "regime_engine.py",
+        "rules_engine.py",
+    }
+)
+
+
+# Token, not the cited suffix: engine_core.py and terrain_engine.py are the
+# same class. signal_engineering.py is not (engine is not a path token).
+_ENGINE_FILENAME_TOKEN = re.compile(r"(^|_)engine(\.|_|$)")
+
+
+def uninventoried_engine_modules(
+    repo_files: list[str],
+    mega2_files: frozenset[str] = MEGA2_FILES,
+    out_of_scope: frozenset[str] = MEGA2_ENGINE_OUT_OF_SCOPE,
+) -> list[str]:
+    """RC-297: any module whose filename contains an `engine` token, uninventoried."""
+    from pathlib import Path
+
+    offenders: list[str] = []
+    for rel in repo_files:
+        if rel.startswith("tests/"):
+            continue
+        name = Path(rel).name
+        if not name.endswith(".py"):
+            continue
+        if _ENGINE_FILENAME_TOKEN.search(name):
+            if rel not in mega2_files and rel not in out_of_scope:
+                offenders.append(rel)
+    return sorted(offenders)
+
+
 MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("debug_flow_snapshot.py", 32, "_contracts_from_chain_json", "SCHWAB_LEAF", 'chains.callExpDateMap.*.openInterest', (), None, "Parses option chain JSON for debug snapshot."),
     Mega2TraceableDerivation("debug_flow_snapshot.py", 63, "main", "NONE", None, (), None, "No market-field derivation: CLI debug entry; reads persisted snapshots."),
@@ -67,6 +109,7 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_exposure_core.py", 36, "bucket_metric_abs", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Abs of bucket_metric."),
     Mega2TraceableDerivation("math_exposure_core.py", 66, "_strike_bucket", "SCHWAB_LEAF", 'chains.callExpDateMap.*.openInterest', (), None, "Strike dict lookup."),
     Mega2TraceableDerivation("math_exposure_core.py", 102, "compute_exposures_by_strike", "DERIVED", None, ("server.py:_fetch_state",), None, "Core Schwab chain aggregation; skip -999 greeks."),
+    Mega2TraceableDerivation("math_exposure_core.py", 211, "compute_exposures_by_strike._tte_memo", "NONE", None, (), None, "No market-field derivation: per-expiry TTE memo cache nested in compute_exposures_by_strike; parent row owns derivation semantics."),
     Mega2TraceableDerivation("math_exposure_core.py", 255, "_nearest_strike", "SCHWAB_LEAF", 'chains.*.strikePrice', (), None, "ATM strike selection."),
     Mega2TraceableDerivation("math_exposure_core.py", 266, "_window_strikes", "SCHWAB_LEAF", 'chains.*.strikePrice', (), None, "Strike window filter."),
     Mega2TraceableDerivation("math_exposure_core.py", 282, "exposures_have_dollar_gex", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Detects dollarized GEX availability."),
@@ -110,6 +153,7 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_levels.py", 157, "_pin_strength", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Pin strength vs neighbors."),
     Mega2TraceableDerivation("math_levels.py", 194, "_bias_from_net", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Bias signal taxonomy."),
     Mega2TraceableDerivation("math_levels.py", 215, "build_summary_rows", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike", "market_state.py:build_market_state",), None, "KEY LEVELS summary table rows."),
+    Mega2TraceableDerivation("math_levels.py", 347, "compute_pin_width_pts", "DERIVED", None, ("market_state.py:build_market_state", "server.py:_fetch_state",), None, "RC-345/F20 one authority for pin width: call_gamma_wall - put_gamma_wall in points; None unless both walls present."),
     Mega2TraceableDerivation("math_levels.py", 231, "build_summary_rows.aggregate", "DERIVED", None, ("math_levels.py:build_summary_rows",), None, "Nested strike-window aggregate inside build_summary_rows."),
     Mega2TraceableDerivation("math_levels.py", 289, "_pick_wall_abs", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Legacy abs wall picker."),
     Mega2TraceableDerivation("math_levels.py", 305, "_pick_wall_pos", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Positive-metric wall picker."),

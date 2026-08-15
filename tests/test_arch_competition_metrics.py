@@ -165,7 +165,7 @@ def test_rc247_importing_metrics_does_not_drag_sklearn_in():
         "print('sklearn' in sys.modules, 'scipy' in sys.modules)" % repo
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                         timeout=300)
+                         encoding="utf-8", errors="replace", timeout=300)
     assert out.returncode == 0, out.stderr[-400:]
     assert out.stdout.strip() == "False False", (
         f"importing arch_competition.metrics pulled sklearn/scipy: {out.stdout.strip()!r} — "

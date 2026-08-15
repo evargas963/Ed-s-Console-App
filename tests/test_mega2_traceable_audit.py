@@ -22,6 +22,7 @@ from governance.mega2_traceable_inventory import (  # noqa: E402
     MEGA2_FILES,
     MEGA2_TRACEABLE_INVENTORY,
     Mega2TraceableDerivation,
+    uninventoried_engine_modules,
 )
 from governance.mega_chain_of_trust import (  # noqa: E402
     MegaInventoryBundle,
@@ -60,7 +61,7 @@ CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 #         math_levels.bs_vanna, math_exposure_core.compute_net_charm._tte_memo, and RC-124's
 #         two successors pick_pin_and_strength / pick_net_gex_peak_strike), −1 (the retired
 #         pick_gamma_pin_strike, whose single name carried both of those metrics).
-MEGA2_ROW_COUNT = 241  # +4 -1 (added pick_key_delta_strike + nested _total_dex + pick_volatility_point_strikes + _dealer_sign; removed compute_net_charm._resolve_T which was deleted by the intraday-T single-source RC-42) 2026-07-26  # +2 strike-width derivation (infer_strike_increment, required_strike_count) 2026-07-20  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
+MEGA2_ROW_COUNT = 243  # +2 (compute_exposures_by_strike._tte_memo NONE memo-cache; compute_pin_width_pts DERIVED RC-345/F20 pin-width one-producer) 2026-08-14 RC-350 reconciliation  # +4 -1 (added pick_key_delta_strike + nested _total_dex + pick_volatility_point_strikes + _dealer_sign; removed compute_net_charm._resolve_T which was deleted by the intraday-T single-source RC-42) 2026-07-26  # +2 strike-width derivation (infer_strike_increment, required_strike_count) 2026-07-20  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
 #         _contract_inputs, compute_gamma_profile, gamma_flip_from_profile; compute_gamma_flip
 #         removed and its row reused by compute_gamma_flip_v2)
 #         +1 gamma_is_plausible (math_exposure_core.py) — pre-existing inventory gap from the
@@ -177,6 +178,24 @@ def test_mega2_allowlist_entries_complete():
         assert entry.justification and "TODO" not in entry.justification.upper()
         assert entry.added_in_sha
         assert entry.category in REQUIRED_CATEGORIES
+
+
+def test_no_uninventoried_engine_module_in_tree():
+    """RC-297: tree-fed scan — every `engine`-token module is inventoried or out-of-scope.
+
+    Fed the REAL repo file list (git ls-files), not a canned list: a genuinely
+    uninventoried engine module committed anywhere fails this test today.
+    """
+    import subprocess
+
+    files = subprocess.check_output(
+        ["git", "ls-files"], text=True, encoding="utf-8", errors="replace", cwd=ROOT
+    ).split()
+    assert uninventoried_engine_modules(files) == []
+    # detector sanity: a planted engine module IS flagged; inventoried ones are not
+    assert uninventoried_engine_modules(["zzz_engine.py"]) == ["zzz_engine.py"]
+    assert uninventoried_engine_modules(["terrain_engine.py"]) == []
+    assert uninventoried_engine_modules(["signal_engineering.py"]) == []
 
 
 def test_mega2_schwab_leaf_regex_rejects_aggregate():

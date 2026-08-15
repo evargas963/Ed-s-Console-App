@@ -1579,8 +1579,8 @@ def test_legacy_differential_artifact_reproduces():
 
     root = Path(__file__).resolve().parent.parent
     prog = root / "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py"
-    base = subprocess.run(["git", "merge-base", "HEAD", "HEAD"], capture_output=True, text=True, cwd=root).stdout.strip()
-    r = subprocess.run([sys.executable, str(prog), base], capture_output=True, text=True, cwd=root)
+    base = subprocess.run(["git", "merge-base", "HEAD", "HEAD"], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=root).stdout.strip()
+    r = subprocess.run([sys.executable, str(prog), base], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=root)
     assert r.returncode == 0, r.stdout + r.stderr
     res = json.loads((prog.parent / "legacy_differential_result.json").read_text(encoding="utf-8"))
     assert res["LEGACY_NUMERIC_SUBSET_IDENTITY"] == "PROVEN"
