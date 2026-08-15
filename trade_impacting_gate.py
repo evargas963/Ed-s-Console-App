@@ -215,7 +215,7 @@ def _spread_stale(ms_dict: dict[str, Any]) -> tuple[bool, list[str]]:
     if spread_age is not None:
         try:
             age_ms = float(spread_age)
-            max_age = float(os.environ.get("ED_GATE_MAX_SPREAD_AGE_MS", "300000"))
+            max_age = float(os.environ.get("ED_GATE_MAX_SPREAD_AGE_MS", "300000"))  # caps-ok: declared operational default (300s staleness ceiling), operator-tunable config not market data
             if age_ms > max_age:
                 reasons.append(f"spread_age_ms_exceeded:{age_ms}")
         except (TypeError, ValueError):

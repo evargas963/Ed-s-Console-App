@@ -351,7 +351,7 @@ def production_like_decision_emission(
     stamp_decision_bundle(ms, route=route)
     decision_id = persist_stamped_decision(ms, route=route, db_path=db_path)
     payload = get_production_decision_by_id(str(decision_id or ""), db_path) if decision_id else None
-    ok, missing = reconstruction_complete(payload) if payload else (False, ["no_payload"])
+    ok, missing = reconstruction_complete(payload) if payload else (False, ["no_payload"])  # caps-ok: absent payload reads as NAMED incompleteness (False + reason), never a silent default
     return {
         "source": "production_like_integration_harness",
         "route": route,
@@ -421,7 +421,7 @@ def live_path_simulation_emission(
     out = srv._finalize_production_decision(ms, route)
     decision_id = out.get("decision_id")
     payload = get_production_decision_by_id(str(decision_id or ""), path) if decision_id else None
-    ok, missing = reconstruction_complete(payload) if payload else (False, ["no_payload"])
+    ok, missing = reconstruction_complete(payload) if payload else (False, ["no_payload"])  # caps-ok: absent payload reads as NAMED incompleteness (False + reason), never a silent default
     return {
         "source": "live_path_simulation",
         "route": route,

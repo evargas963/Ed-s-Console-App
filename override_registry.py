@@ -84,6 +84,6 @@ def count_override_records(db_path: Path | str, *, ticker: Optional[str] = None)
             ).fetchone()
         else:
             row = conn.execute("SELECT COUNT(*) FROM decision_override_registry").fetchone()
-        return int(row[0]) if row else 0
+        return int(row[0]) if row else 0  # caps-ok: COUNT(*) always returns one row; the else-0 is unreachable defensive and equals the true count of an empty registry
     finally:
         conn.close()
