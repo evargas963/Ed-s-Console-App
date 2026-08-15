@@ -3071,6 +3071,7 @@
                   <div class="decision-k" title="Session VWAP from fetch_price_levels. Absent → —.">VWAP</div><div class="decision-v" id="dr-lvl-vwap">—</div>
                   <div class="decision-k" title="Previous-day high from fetch_price_levels. Absent → —.">PDH</div><div class="decision-v" id="dr-lvl-pdh">—</div>
                   <div class="decision-k" title="Previous-day low from fetch_price_levels. Absent → —.">PDL</div><div class="decision-v" id="dr-lvl-pdl">—</div>
+                  <div class="decision-k" title="Previous-day close from fetch_price_levels. Absent → —.">PDC</div><div class="decision-v" id="dr-lvl-pdc">—</div>
                 </div>
               </div>
               <div class="decision-block">
@@ -3123,6 +3124,7 @@
                 <div class="decision-k" title="Session VWAP from fetch_price_levels. Absent → —.">VWAP</div><div class="decision-v" id="exec-vwap">—</div>
                 <div class="decision-k" title="Previous-day high from fetch_price_levels. Absent → —.">PDH</div><div class="decision-v" id="exec-pdh">—</div>
                 <div class="decision-k" title="Previous-day low from fetch_price_levels. Absent → —.">PDL</div><div class="decision-v" id="exec-pdl">—</div>
+                <div class="decision-k" title="Previous-day close from fetch_price_levels. Absent → —.">PDC</div><div class="decision-v" id="exec-pdc">—</div>
               </div>
             </div>
           </div>
@@ -5530,6 +5532,7 @@ function renderDecisionCommandRail(d) {
   domIf('dr-lvl-vwap', el => { el.textContent = pxTxt(d.vwap); });
   domIf('dr-lvl-pdh', el => { el.textContent = pxTxt(d.pdh); });
   domIf('dr-lvl-pdl', el => { el.textContent = pxTxt(d.pdl); });
+  domIf('dr-lvl-pdc', el => { el.textContent = pxTxt(d.pdc); });
 
   // Order flow compact operator read.
   const ofDirRaw = d.order_flow_direction;
@@ -5591,6 +5594,7 @@ function renderDecisionCommandRail(d) {
   domIf('exec-vwap', el => { el.textContent = pxTxt(d.vwap); });
   domIf('exec-pdh', el => { el.textContent = pxTxt(d.pdh); });
   domIf('exec-pdl', el => { el.textContent = pxTxt(d.pdl); });
+  domIf('exec-pdc', el => { el.textContent = pxTxt(d.pdc); });
   domIf('lp-above', el => { el.textContent = resR !== '—' ? `${resR}${aboveVoid !== '—' ? ` | void ${aboveVoid}` : ''}` : aboveVoid; });
   domIf('lp-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('lp-upper', el => { el.textContent = pxTxt(d.em_straddle_upper || d.kl_em_upper); });
