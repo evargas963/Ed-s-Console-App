@@ -108,6 +108,17 @@ def test_f39_missing_confluence_is_none_not_zero_at_consumer():
 
     server = (ROOT / "server.py").read_text(encoding="utf-8")
     assert "ms_dict.update(stamp_confluence_display_fields(mkt_ctx))" in server
+    # RC-375 (Cursor audit: existence of the mapper line does not prove uniqueness):
+    # the mapper must be the ONLY /api/state confluence stamp — no direct ms_dict
+    # writes of any confluence display key anywhere in server.py.
+    import re as _re
+    for key in ("cf_weighted_push", "cf_label", "cf_color", "cf_dot_green",
+                "cf_dot_total", "qqq_cf_weighted_push", "iwm_cf_push",
+                "iwm_holdings_cf_push", "iwm_participation_push"):
+        direct = _re.findall(rf'ms_dict\[\s*"{key}"\s*\]\s*=', server)
+        assert direct == [], (
+            f"a second /api/state confluence stamp writes {key!r} directly — the "
+            "typed mapper must stay the ONLY faucet (F39/RC-365)")
 
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     assert 'id="cf-push-val"' in html
