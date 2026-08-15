@@ -35,6 +35,12 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import operator_law_guard as G  # noqa: E402
 
+# RC-368: declared direct owner — this suite drives the guard's repo-scope resolution
+# and the RC-360 grant reader.
+TURN_AUDIT_OWNS = [
+    "tools/operator_law_guard.py",
+]
+
 ED = G.normalize_repo(REPO)
 PYTEST_PROOF = ".venv/Scripts/python.exe -m pytest tests/test_db_safety.py -q"
 PROBE_PROOF = 'python -c "import urllib.request; print(1)"'
