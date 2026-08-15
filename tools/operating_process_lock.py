@@ -339,6 +339,11 @@ def index_worktree_mismatches(
         fp = root / rel
         idx = _index_hash(root, rel)
         if idx is None:
+            # RC-374: an enforcement path present in the WORKTREE but absent from the
+            # index is a planted/untracked enforcement surface — fail closed, never
+            # invisible (idx-None used to mean skip, which hid exactly that plant).
+            if fp.is_file():
+                out.append(f"{rel}: exists in worktree but not in the index (untracked enforcement surface)")
             continue
         wt = _blob_hash(root, fp)
         if wt is None:
