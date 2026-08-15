@@ -1248,6 +1248,9 @@ function draw() {
   // ALL other key levels — bright, labeled, each with a coach tooltip
   const levels = [
     ['gamma_flip', 'FLIP', '#f4f6f8', 'The regime line — amplify below, dampen above.', [7, 5]],
+    // # ui-mockup-ok: RC-354 new levels ride the existing row system, no design change
+    ['gsf', 'GSF', '#fb923c', 'Gamma Support Floor — dealer positive-gamma cushion half-spent below spot; support effectively ends HERE, above the flip.', [5, 4]],
+    ['grc', 'GRC', '#38bdf8', 'Gamma Resistance Ceiling — vol-suppression half-spent above spot; beyond it dealer selling stops dampening rallies (often at/beyond the call wall).', [5, 4]],
     // # ui-mockup-ok: RC-352 nomenclature label fix only (PIN -> ABS GAMMA), no design change
     ['gamma_pin', 'ABS GAMMA', '#c792ff', 'Absolute Gamma Strike (SpotGamma): largest TOTAL gamma (calls+puts) — the sticky-pin/magnet level; hedging magnitude pins price regardless of net sign, strongest into expiry. Lead % = margin over the runner-up strike (a 1% lead is a coin flip). Our own touch-study on the OLD net-based pin tested NULL; this standard measure displays as structure until re-proven.', []],
     ['net_gex_peak', 'NET Γ PEAK', '#33aaff', 'Largest |net| dealer GEX strike (calls minus puts) — where the SIGNED book peaks. This was previously labeled PIN; renamed because no originating vendor defines the pin on the net book (RC-124).', []],

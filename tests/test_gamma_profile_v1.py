@@ -336,6 +336,28 @@ def test_unavailable_on_empty_or_bad_inputs():
     assert compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), -5)["state"] == GSF_STATE_UNAVAILABLE
 
 
+def test_rc354_gsf_grc_wired_producer_to_consumer():
+    """RC-354 end-to-end wiring: terrain carries the fields fail-closed, the /api/state
+    stamp writes them from the SSOT terrain book, and both UI surfaces consume them."""
+    from terrain_engine import TerrainSnapshot, compute_terrain
+
+    # dataclass carries the fields, defaulting fail-closed
+    snap = compute_terrain("SPY", [], 780.0)          # no chain -> _unavailable path
+    assert hasattr(snap, "gsf") and hasattr(snap, "grc")
+    assert snap.gsf is None and snap.grc is None
+    assert snap.gsf_state == "UNAVAILABLE"
+
+    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    for key in ('md["kl_gsf"]', 'md["kl_grc"]', 'md["kl_gsf_state"]', 'md["kl_gsf_state_disp"]'):
+        assert key in srv, f"server must stamp {key} from the terrain book"
+
+    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
+    assert "key: 'kl_gsf'" in html and "key: 'kl_grc'" in html
+    assert "Gamma Support Floor" in html and "Gamma Resistance Ceiling" in html
+    chart = Path(__file__).resolve().parent.parent.joinpath("static", "chart.html").read_text(encoding="utf-8")
+    assert "'gsf', 'GSF'" in chart and "'grc', 'GRC'" in chart
+
+
 def test_snap_to_shelf_only_within_tolerance_and_side():
     # significant shelf strike at 99.90 within 0.25% of a 100.05 level -> snaps below spot
     snapped = snap_level_to_shelf_strike(

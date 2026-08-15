@@ -11053,6 +11053,13 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_gamma_pin"] = _g("gamma_pin")
     md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
     md["kl_hvl"] = _g("net_gex_peak")
+    # RC-354: GSF/GRC ride the same SSOT terrain book (one profile, one producer). The
+    # STATE ships beside the prices so the UI can render BELOW SUPPORT as a verdict, never
+    # a dash that reads like "unknown" when the truth is "support is already gone".
+    md["kl_gsf"] = _g("gsf")
+    md["kl_grc"] = _g("grc")
+    md["kl_gsf_state"] = _g("gsf_state")
+    md["kl_gsf_state_disp"] = "BELOW SUPPORT" if _g("gsf_state") == "BELOW_SUPPORT" else None
     md["kl_max_pain"] = _g("max_pain")
     md["kl_call_delta_wall"] = _g("call_delta_wall")
     md["kl_put_delta_wall"] = _g("put_delta_wall")
