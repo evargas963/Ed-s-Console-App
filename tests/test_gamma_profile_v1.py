@@ -385,6 +385,47 @@ def test_rc357_zero_dte_share_wired_end_to_end():
     assert "0DTE Gamma Share" in html and "kl_zero_dte_share" in html
 
 
+def test_rc358_25d_risk_reversal_front_expiry_and_fail_closed():
+    """RC-358: RR = IV(25Δ call) − IV(25Δ put) on the FRONT expiry, tolerance-gated;
+    an unusable wing yields None — never a fabricated skew."""
+    from math_volatility import compute_25d_risk_reversal
+
+    def ct(side, delta, iv, dte):
+        return {"putCall": side, "delta": delta, "volatility": iv, "daysToExpiration": dte}
+
+    chain = [
+        # front expiry (1d): usable 25Δ wings — RR = 17.0 − 21.5 = −4.5
+        ct("CALL", 0.27, 17.0, 1), ct("PUT", -0.24, 21.5, 1),
+        # noise wings far from 25Δ on the front
+        ct("CALL", 0.55, 15.0, 1), ct("PUT", -0.60, 25.0, 1),
+        # next expiry (7d) must be IGNORED even with perfect deltas
+        ct("CALL", 0.25, 30.0, 7), ct("PUT", -0.25, 10.0, 7),
+    ]
+    out = compute_25d_risk_reversal(chain)
+    assert out is not None and out["dte"] == 1
+    assert out["rr_pts"] == -4.5
+    assert out["call_iv_25d"] == 17.0 and out["put_iv_25d"] == 21.5
+
+    # tolerance gate: nearest call delta 0.45 is > 0.10 from target -> fail closed
+    bad = [ct("CALL", 0.45, 17.0, 1), ct("PUT", -0.25, 21.5, 1)]
+    assert compute_25d_risk_reversal(bad) is None
+    # one-sided chain, empty chain, missing greeks -> fail closed
+    assert compute_25d_risk_reversal([ct("CALL", 0.25, 17.0, 1)]) is None
+    assert compute_25d_risk_reversal([]) is None
+    assert compute_25d_risk_reversal([{"putCall": "CALL", "daysToExpiration": 1}]) is None
+
+
+def test_rc358_rr25_wired_end_to_end():
+    from terrain_engine import compute_terrain
+
+    snap = compute_terrain("SPY", [], 780.0)
+    assert hasattr(snap, "rr_25d") and snap.rr_25d is None
+    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    assert 'md["kl_rr25_pts"]' in srv and 'md["kl_rr25_dte"]' in srv
+    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
+    assert "25Δ Risk Reversal" in html and "kl_rr25_pts" in html
+
+
 def test_rc354_iv_banking_upsert_last_write_wins(tmp_path):
     """RC-354b: iv_daily banks one row per (ticker, ET date); the LAST write of the
     session wins so the banked value converges to the closing ATM IV (IVR convention)."""

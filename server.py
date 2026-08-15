@@ -11062,6 +11062,10 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_gsf_state_disp"] = "BELOW SUPPORT" if _g("gsf_state") == "BELOW_SUPPORT" else None
     # RC-357: 0DTE share of the gamma book — level persistence, same SSOT terrain book.
     md["kl_zero_dte_share"] = _g("zero_dte_gamma_share_pct")
+    # RC-358: 25Δ risk reversal — skew steepness; flattened for the payload, fail-closed.
+    _rr = _g("rr_25d") or {}
+    md["kl_rr25_pts"] = _rr.get("rr_pts") if isinstance(_rr, dict) else None
+    md["kl_rr25_dte"] = _rr.get("dte") if isinstance(_rr, dict) else None
     md["kl_max_pain"] = _g("max_pain")
     md["kl_call_delta_wall"] = _g("call_delta_wall")
     md["kl_put_delta_wall"] = _g("put_delta_wall")

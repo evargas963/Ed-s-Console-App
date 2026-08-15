@@ -8328,6 +8328,25 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
     }
 
+    // RC-358: 25Δ Risk Reversal — skew steepness; the same-session GSF-breach confirm.
+    // Fail-closed: — when either 25Δ wing is unusable, never a fabricated skew.
+    {
+      const rr = d.kl_rr25_pts;
+      const rrOk = rr != null && Number.isFinite(Number(rr));
+      const rrv = rrOk ? Number(rr) : null;
+      const rrLbl = !rrOk ? '—' : rrv > -2 ? 'Call-tilt / complacent' : rrv > -4 ? 'Typical put skew' : rrv > -6 ? 'Elevated put bid' : 'Fear extreme';
+      const rrSr = !rrOk ? 'net' : rrv > -2 ? 'bull' : rrv > -4 ? 'net' : 'bear';
+      const rrDte = d.kl_rr25_dte;
+      html += `<div class="kl-grid" title="25Δ Risk Reversal: IV(25Δ call) − IV(25Δ put) on the front expiry, in vol points. SPX-typical −2..−4 (puts richer). Deterioration toward −6 and beyond = the put bid BUILDING — the best same-session confirm that a Gamma Support Floor breach has real fear flow behind it. Watch the intraday CHANGE, not just the level.">
+        <div class="kl-prox" style="background:transparent"></div>
+        <div class="kl-name">25Δ Risk Reversal${rrDte != null ? ` (${rrDte}d)` : ''}</div>
+        <div class="kl-price">${rrOk ? (rrv > 0 ? '+' : '') + rrv.toFixed(2) + ' pts' : '—'}</div>
+        <div style="text-align:center"><span class="kl-sr ${rrSr}">${rrOk ? (rrv > -4 ? 'Skew' : 'Put bid') : '—'}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${rrLbl}</div>
+      </div>`;
+    }
+
     // Charm Drift row — RC-345 / F18: charm measures DIRECTION (time-decay hedging drift), NOT
     // a target STRIKE. The row consumes ONLY the canonical charm_drift_toward and NEVER borrows
     // the gamma pin (kl_gamma_pin), any wall, the net-GEX peak, or the institutional pin. When
