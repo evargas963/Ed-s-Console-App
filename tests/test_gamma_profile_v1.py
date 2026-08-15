@@ -426,6 +426,34 @@ def test_rc358_rr25_wired_end_to_end():
     assert "25Δ Risk Reversal" in html and "kl_rr25_pts" in html
 
 
+def test_rc362_net_vanna_math_and_fail_closed():
+    """RC-362: net vanna = (Σcall_vanna − Σput_vanna)/100 shares per vol-pt, ×spot in $;
+    None on empty/valueless book or missing spot."""
+    from math_exposure_core import compute_net_vanna
+
+    book = {700.0: {"call_vanna": 5000.0, "put_vanna": -3000.0},
+            705.0: {"call_vanna": 1000.0, "put_vanna": -1000.0}}
+    out = compute_net_vanna(book, 800.0)
+    # net shares/volpt = (6000 − (−4000))/100 = 100; dollars = 100×800 = 80,000
+    assert out == {"net_vanna_dollars_per_volpt": 80000.0,
+                   "net_vanna_shares_per_volpt": 100.0}
+    assert compute_net_vanna({}, 800.0) is None
+    assert compute_net_vanna(book, None) is None
+    assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None
+
+
+def test_rc362_vanna_wired_end_to_end():
+    from terrain_engine import compute_terrain
+
+    snap = compute_terrain("SPY", [], 780.0)
+    assert hasattr(snap, "vanna_agg") and snap.vanna_agg is None
+    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    assert 'md["kl_vanna_net_dollars"]' in srv
+    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
+    assert "Net Vanna" in html and "kl_vanna_net_dollars" in html
+    assert "/day" in html    # charm rate dollarized
+
+
 def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
     """RC-361: net DEX = Σ call_dex − Σ put_dex (dealer +call/−put; negative put deltas
     flip to the dealer side correctly); None on an empty/valueless book."""

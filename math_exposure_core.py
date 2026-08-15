@@ -446,6 +446,37 @@ def net_gex_dollars_at_strike(bucket: dict) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
 
 
+def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
+    """RC-362: aggregate dealer vanna — how much dealer DELTA shifts per IV point.
+
+    Same naive dealer-sign model (dealer +calls/−puts): net vanna Δ-shares per 1.00 vol
+    = Σ call_vanna − Σ put_vanna over the ONE exposures book (per-strike values are the
+    vega/(S·IV) proxy, accumulated ·OI·mult at parse time). Per VOL-POINT = /100;
+    dollars per vol-pt = × spot. Positive net: IV UP forces dealer delta up → they SELL
+    into vol spikes; IV DOWN (crush) → they BUY, the vanna-tailwind rally mechanic.
+    FAIL-CLOSED: None on an empty/valueless book or missing spot.
+    """
+    if not exposures or spot is None or spot <= 0:
+        return None
+    call_v = 0.0
+    put_v = 0.0
+    seen = False
+    for b in exposures.values():
+        if not isinstance(b, dict):
+            continue
+        c = b.get("call_vanna")
+        p = b.get("put_vanna")
+        if c is not None:
+            call_v += float(c); seen = True
+        if p is not None:
+            put_v += float(p); seen = True
+    if not seen:
+        return None
+    net_shares_per_volpt = (call_v - put_v) / 100.0
+    return {"net_vanna_dollars_per_volpt": round(net_shares_per_volpt * float(spot), 2),
+            "net_vanna_shares_per_volpt": round(net_shares_per_volpt, 2)}
+
+
 def compute_net_dex_dollars(exposures: dict) -> dict | None:
     """RC-361: aggregate dealer DELTA notional (DEX $) — the directional complement to GEX.
 
