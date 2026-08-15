@@ -346,9 +346,12 @@ def test_research_before_act_stop_clause_reads_the_audit_record(tmp_path):
     log.write_text(json.dumps({"ts_utc": _t.time(), "changed": ["server.py"],
                                "research": ""}) + "\n", encoding="utf-8")
     assert _latest_audit_lacks_research(log) is True
+    # RC-373: the resolvable reference must be a COMMITTED artifact — the old fixture
+    # cited an untracked report that existed only in the author's worktree, so the
+    # control failed on every clean checkout.
     log.write_text(json.dumps({
         "ts_utc": _t.time(), "changed": ["server.py"],
-        "research": "reports/exposure_overlay_chart_direction_v1.md §3.3 bubble stems",
+        "research": "docs/CARD_TRUST_CONTRACT.md §card truth",
     }) + "\n", encoding="utf-8")
     assert _latest_audit_lacks_research(log) is False
     log.write_text(json.dumps({"ts_utc": _t.time() - 13 * 3600, "changed": ["server.py"],

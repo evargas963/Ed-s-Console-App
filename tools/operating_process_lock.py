@@ -461,12 +461,18 @@ def _listening_pid(port: int = 8000) -> int | None:
                 except (ValueError, IndexError):
                     continue
         return None
-    r = subprocess.run(
-        ["ss", "-ltnp", f"sport = :{port}"],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
+    # RC-373: a probe must type its own absence — a host without iproute2 (`ss`)
+    # answers "cannot determine" (None), never FileNotFoundError up through
+    # completion_claim_violations / measure_report.
+    try:
+        r = subprocess.run(
+            ["ss", "-ltnp", f"sport = :{port}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return None
     if r.returncode != 0:
         return None
     m = re.search(r"pid=(\d+)", r.stdout)
