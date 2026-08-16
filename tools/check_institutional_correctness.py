@@ -634,9 +634,11 @@ def check_debt_ratchet() -> list[Violation]:
     current = {name: len(fn()) for name, fn, enforced in CHECKS if not enforced
                and name != "debt_ratchet"}
     if not path.exists():
-        if _ratchet_may_write():
-            path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n",
-                            encoding="utf-8")
+        # RC-385: READ-ONLY. Seeding is an explicit act (--rebaseline), never a side
+        # effect of asking the gate a question.
+        out.append(Violation(path, 0,
+                             "advisory_debt_baseline.json is missing. Seed it deliberately: "
+                             "python tools/check_institutional_correctness.py --rebaseline"))
         return out
     try:
         baseline = json.loads(path.read_text(encoding="utf-8"))
@@ -681,8 +683,15 @@ def check_debt_ratchet() -> list[Violation]:
                 continue
             baseline[name] = count
             improved = True
-    if improved and not out and _ratchet_may_write():
-        path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # RC-385: the ratchet READS its reference and never writes it. Measured 2026-08-15 on a
+    # pristine checkout of origin/main: one call moved file_length 37->49,
+    # function_complexity 462->547, ruff_quality 1081->1301 and flipped the file to CRLF, so
+    # the act of MEASURING left a clean clone dirty with RAISED debt ceilings — and anyone
+    # committing with blind staging would have legitimised them without deciding to. A gate
+    # may read its reference or change it, never both in one call. `improved` is still
+    # computed above because --rebaseline reuses this comparison; recording happens only
+    # there, which is what both docstrings have always claimed.
+    del improved
     return out
 
 
@@ -1581,11 +1590,35 @@ _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\
 def check_eol_style_invariant() -> list[Violation]:
     """RC-382 — a file's line-ending style must survive an edit.
 
+    WHAT WAS OBSERVED (RC-382, measured 2026-08-15): three whole-file reflows landed in a
+    single session, each turning a small intent into an unreviewable diff — the RC-372
+    charter flip; .claude/settings.json committed as 78 insertions / 71 deletions for an
+    8-line addition; and an RC-381 declaration pass committed as 2428 / 2427 for 15 lines.
+    A fourth writer (csv.DictWriter, which emits CRLF regardless of how the handle was
+    opened) was caught only by a test. No mechanism owned a file's terminator.
+
+    HOW THE RULE WAS VALIDATED — prototyped before enforcing, not asserted:
+      * Run against the live tree BEFORE registration: 0 violations, so the check was not
+        born failing and could be enforced rather than shipped advisory.
+      * Plant-verified in both directions on real git repos with core.autocrlf=false (the
+        setting under which occurrence 3 still happened): a pure reflow and a style-flip
+        hiding a real edit are both refused; an ordinary edit that preserves the terminator
+        passes, a newly added file cannot violate a style it never had, and binary and
+        `-text` paths are exempt by git attribute rather than by suffix guess.
+      * RC-383 corrected a false-positive class found during that prototyping: paths pinned
+        `text eol=lf` are normalised by git on the way into the blob, so they are judged on
+        the form git will STORE. A gate that cries wolf on the repo's own configuration
+        gets switched off, taking the real protection with it.
+      * Since registering it has caught two occurrences nobody went looking for: my own
+        .gitattributes edit, refused BEFORE it reached a commit, and
+        advisory_debt_baseline.json on the merged main tree — the latter exposing RC-385,
+        a gate that rewrites the baseline it measures.
+
     Delegates to tools/check_eol_style_invariant.py, which compares each changed file's
     bytes against its HEAD blob. Kept as a separate module because it is also the
     standalone --measure instrument, and because the rule is about BYTES rather than
     about source text: binding it to a library idiom would miss the next writer, and this
-    class already arrived through three different ones.
+    class already arrived through four different ones.
     """
     try:
         from tools.check_eol_style_invariant import violations as _eol_violations
@@ -4917,8 +4950,69 @@ def write_advisory_report(
     return out
 
 
+def rebaseline() -> int:
+    """RC-385: the ONLY writer of the advisory debt baseline. Deliberate, never a side effect.
+
+    Both `_ratchet_may_write` and `check_debt_ratchet` have pointed at `--rebaseline` as the
+    explicit recording path since RC-90 — and it was never implemented, so the only recording
+    that existed was the invisible auto-write this replaces. Raising a debt ceiling is now an
+    act someone performs and can be asked to justify.
+
+    Correctness metrics on `_RATCHET_BLOCKS_ON_RISE` are still refused a RISE here: this is a
+    recorder, not an amnesty. It lowers floors that genuinely improved, seeds a missing file,
+    and tracks shape/style counters that are allowed to float.
+    """
+    path = _debt_baseline_path()
+    current = {name: len(fn()) for name, fn, enforced in CHECKS
+               if not enforced and name != "debt_ratchet"}
+    try:
+        baseline = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        print(f"REFUSED: {path} is unparseable — repair it before rebaselining.")
+        return 1
+
+    raised, changes = [], []
+    for name, count in sorted(current.items()):
+        base = baseline.get(name)
+        if base is None:
+            baseline[name] = count
+            changes.append(f"  seed  {name}: {count}")
+            continue
+        if count == base:
+            continue
+        if count > base and name in _RATCHET_BLOCKS_ON_RISE:
+            raised.append(f"  {name}: {base} -> {count} (+{count - base})")
+            continue
+        if count == 0 and base > 10:
+            # RC-90 honesty guard: a collapse to zero is a checker failure until proven
+            # otherwise, and recording it would silently destroy the ratchet.
+            print(f"REFUSED: {name} reported 0 against a baseline of {base} — checker failure, "
+                  f"not perfection. Nothing written.")
+            return 1
+        baseline[name] = count
+        changes.append(f"  {'lower' if count < base else 'track'} {name}: {base} -> {count}")
+
+    if raised:
+        print("REFUSED: correctness debt may not be rebaselined UPWARD. Clean it, or lower "
+              "another correctness count to pay for it:")
+        print("\n".join(raised))
+        return 1
+    if not changes:
+        print("advisory_debt_baseline.json already matches the tree — nothing to record.")
+        return 0
+    # newline pinned: this file is committed LF and an EOL flip would bury the real delta
+    # under a whole-file diff (RC-382/RC-383).
+    path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8", newline="\n")
+    print(f"recorded {len(changes)} change(s) in {path}:")
+    print("\n".join(changes))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if "--rebaseline" in args:
+        return rebaseline()
     if "--enforced-only" in args:
         enforced_violations, _, _ = run_checks(mode="enforced")
         if enforced_violations:
