@@ -1489,6 +1489,36 @@ def check_ruff_quality() -> list[Violation]:
 _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\.5|100)\s*\)")
 
 
+def check_eol_style_invariant() -> list[Violation]:
+    """RC-382 — a file's line-ending style must survive an edit.
+
+    Delegates to tools/check_eol_style_invariant.py, which compares each changed file's
+    bytes against its HEAD blob. Kept as a separate module because it is also the
+    standalone --measure instrument, and because the rule is about BYTES rather than
+    about source text: binding it to a library idiom would miss the next writer, and this
+    class already arrived through three different ones.
+    """
+    try:
+        from tools.check_eol_style_invariant import violations as _eol_violations
+    except ImportError:  # pragma: no cover - import shape differs when run as a script
+        from check_eol_style_invariant import violations as _eol_violations  # type: ignore
+
+    import subprocess as _sp
+
+    out: list[Violation] = []
+    # Staged when there is an index to judge (pre-commit), worktree otherwise, so a
+    # developer running the gate by hand sees the same verdict the commit will give.
+    _staged_probe = _sp.run(
+        ["git", "diff", "--cached", "--name-only"], cwd=str(REPO),
+        capture_output=True, text=True, check=False,
+    )
+    staged = bool(_staged_probe.stdout.strip())
+    for message in _eol_violations(staged=staged):
+        path_part = message.split(":", 1)[0]
+        out.append(Violation(Path(path_part), 0, message))
+    return out
+
+
 def check_absence_has_a_type() -> list[Violation]:
     """RC-301 — a function that can fail must be able to SAY so in its return type.
 
@@ -4669,6 +4699,11 @@ CHECKS = [
     # Prototyped 78 -> 2 (exit codes and predicates excluded), both repaired or marked, so
     # it binds at zero on merit rather than on a baseline.
     ("absence_has_a_type", check_absence_has_a_type, True),
+    # RC-382: line-ending style is an invariant across an edit. Three whole-file reflows
+    # landed in one session (RC-372 charter, settings.json, RC-381 slice 1) because no
+    # mechanism owned the terminator. Tests the OUTCOME — bytes on disk vs bytes in HEAD —
+    # so it holds for any writer, not just the libraries that caused the known cases.
+    ("eol_style_invariant", check_eol_style_invariant, True),
     ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
 ]
 
