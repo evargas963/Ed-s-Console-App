@@ -959,6 +959,9 @@ _DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = (
     # read by active_bundle_contract._load_migration_policy -> _legacy_allowance_open
     # and artifact_integrity_strict_absence
     ("governance/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract._load_migration_policy"),
+    # read by v2_decision/a2_session_calendar.py — valid_through_date, regular_session,
+    # open_et, close_et are written here, verified present in the tracked file
+    ("data/trading_calendar/us_equities.json", "v2_decision.a2_session_calendar"),
 )
 
 
