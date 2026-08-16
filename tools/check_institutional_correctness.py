@@ -1581,11 +1581,35 @@ _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\
 def check_eol_style_invariant() -> list[Violation]:
     """RC-382 — a file's line-ending style must survive an edit.
 
+    WHAT WAS OBSERVED (RC-382, measured 2026-08-15): three whole-file reflows landed in a
+    single session, each turning a small intent into an unreviewable diff — the RC-372
+    charter flip; .claude/settings.json committed as 78 insertions / 71 deletions for an
+    8-line addition; and an RC-381 declaration pass committed as 2428 / 2427 for 15 lines.
+    A fourth writer (csv.DictWriter, which emits CRLF regardless of how the handle was
+    opened) was caught only by a test. No mechanism owned a file's terminator.
+
+    HOW THE RULE WAS VALIDATED — prototyped before enforcing, not asserted:
+      * Run against the live tree BEFORE registration: 0 violations, so the check was not
+        born failing and could be enforced rather than shipped advisory.
+      * Plant-verified in both directions on real git repos with core.autocrlf=false (the
+        setting under which occurrence 3 still happened): a pure reflow and a style-flip
+        hiding a real edit are both refused; an ordinary edit that preserves the terminator
+        passes, a newly added file cannot violate a style it never had, and binary and
+        `-text` paths are exempt by git attribute rather than by suffix guess.
+      * RC-383 corrected a false-positive class found during that prototyping: paths pinned
+        `text eol=lf` are normalised by git on the way into the blob, so they are judged on
+        the form git will STORE. A gate that cries wolf on the repo's own configuration
+        gets switched off, taking the real protection with it.
+      * Since registering it has caught two occurrences nobody went looking for: my own
+        .gitattributes edit, refused BEFORE it reached a commit, and
+        advisory_debt_baseline.json on the merged main tree — the latter exposing RC-385,
+        a gate that rewrites the baseline it measures.
+
     Delegates to tools/check_eol_style_invariant.py, which compares each changed file's
     bytes against its HEAD blob. Kept as a separate module because it is also the
     standalone --measure instrument, and because the rule is about BYTES rather than
     about source text: binding it to a library idiom would miss the next writer, and this
-    class already arrived through three different ones.
+    class already arrived through four different ones.
     """
     try:
         from tools.check_eol_style_invariant import violations as _eol_violations
