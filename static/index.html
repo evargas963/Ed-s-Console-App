@@ -5925,7 +5925,8 @@ function resolveSignalChain(d) {
   const fusionOk = isFusionAuthoritative(d);
   const mcOk = !!d.mc_available;
   const spotOk = d.spot != null;
-  const rulesOk = !!(d.rules_headline || d.micro_5m_headline || d.rules_conviction);
+  // RC-381: micro_5m_headline never written; 5m micro ships as rules_headline (headline_5m).
+  const rulesOk = !!(d.rules_headline || d.rules_conviction);
   const valp = d.validation_passed;
   const etRaw = d.entry_display_text;
   const etOk = !!(etRaw && String(etRaw).trim()

@@ -953,20 +953,23 @@ _ORPHAN_KEY_SKIP_RECEIVERS = frozenset({
 
 
 #: Committed data files whose keys ARE writes by this repository (RC-384). Explicit by
-#: design — each entry names the loader that reads it, so the list stays reviewable and
-#: cannot quietly grow into "scan everything", which would invent a writer for any string.
+#: design — each entry names the reader file, so the list stays reviewable and cannot
+#: quietly grow into "scan everything", which would invent a writer for any string.
+#: The second field is a repo-relative .py path: a data-file key only excuses a .get()
+#: in THAT file (Cursor audit of fd3403b2: walking every nested key into the GLOBAL
+#: write set harvested 26 names including dir/enabled/note — the glob failure at file
+#: scope). Credit is file_keys ∩ reader_.get() keys, applied only at that reader path.
 _DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = (
     # read by active_bundle_contract._load_migration_policy -> _legacy_allowance_open
     # and artifact_integrity_strict_absence
-    ("governance/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract._load_migration_policy"),
-    # read by v2_decision/a2_session_calendar.py — valid_through_date, regular_session,
-    # open_et, close_et are written here, verified present in the tracked file
-    ("data/trading_calendar/us_equities.json", "v2_decision.a2_session_calendar"),
+    ("governance/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py"),
+    # read by v2_decision.a2_session_calendar.load_a2_session_calendar / _is_valid_calendar
+    ("data/trading_calendar/us_equities.json", "v2_decision/a2_session_calendar.py"),
 )
 
 
-def _committed_data_file_keys() -> set[str]:
-    """Every key name written in the allowlisted committed data files, at any depth."""
+def _json_object_keys(path: Path) -> set[str]:
+    """Every string key in a JSON document, at any depth. Missing/malformed -> empty."""
     found: set[str] = set()
 
     def walk(node: object) -> None:
@@ -979,14 +982,48 @@ def _committed_data_file_keys() -> set[str]:
             for item in node:
                 walk(item)
 
-    for rel, _loader in _DATA_FILE_KEY_SOURCES:
-        path = REPO / rel
-        try:
-            walk(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
-            # A missing or malformed source contributes NOTHING rather than silencing the
-            # check: absence must never widen what counts as written.
+    try:
+        walk(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return set()
+    return found
+
+
+def _loader_get_keys(loader_rel: str) -> set[str]:
+    """Literal .get("k") keys in the named reader. Unreadable -> empty (never widen writes)."""
+    path = REPO / loader_rel
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return set()
+    out: set[str] = set()
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Call):
             continue
+        if not isinstance(n.func, ast.Attribute) or n.func.attr != "get" or not n.args:
+            continue
+        a0 = n.args[0]
+        if isinstance(a0, ast.Constant) and isinstance(a0.value, str):
+            out.add(a0.value)
+    return out
+
+
+def _data_file_keys_for(loader_rel: str) -> set[str]:
+    """Keys the named reader actually .get()s that exist in its named committed file."""
+    found: set[str] = set()
+    loader_rel = loader_rel.replace("\\", "/")
+    for data_rel, named in _DATA_FILE_KEY_SOURCES:
+        if named.replace("\\", "/") != loader_rel:
+            continue
+        found |= _json_object_keys(REPO / data_rel) & _loader_get_keys(named)
+    return found
+
+
+def _committed_data_file_keys() -> set[str]:
+    """Union of loader-scoped harvests — diagnostics / tests, NOT a global write set."""
+    found: set[str] = set()
+    for _data_rel, loader_rel in _DATA_FILE_KEY_SOURCES:
+        found |= _data_file_keys_for(loader_rel)
     return found
 
 
@@ -1011,14 +1048,14 @@ def check_no_orphan_dict_keys() -> list[Violation]:
     """
     reads: dict[str, tuple] = {}
     writes: set[str] = set()
-    # RC-384: this repo also writes keys in COMMITTED data files that Python then reads by
-    # name, so a Python-only scan reports them as orphans although the repo does write them
-    # — the check's own rule is "a key NOTHING in this repo ever writes". The allowlist is
-    # EXPLICIT and each entry names the loader that reads it; globbing every .json would
-    # pull in reports/, fixtures and vendor captures, invent a writer for almost any string,
-    # and hide the real RC-15/RC-20 orphans. Widening the search is the fix; widening the
-    # exemptions would be the gaming.
-    writes |= _committed_data_file_keys()
+    # RC-384: committed data-file keys are credited ONLY at the named reader path
+    # (file ∩ reader .get()), never dumped into this global write set. A global union
+    # harvested 26 keys from the policy file including dir/enabled/note — the same
+    # blindness a JSON glob would buy, at file scope (Cursor audit of fd3403b2).
+    data_by_loader = {
+        loader_rel.replace("\\", "/"): _data_file_keys_for(loader_rel)
+        for _data_rel, loader_rel in _DATA_FILE_KEY_SOURCES
+    }
 
     for path in _production_py_files():
         try:
@@ -1046,6 +1083,12 @@ def check_no_orphan_dict_keys() -> list[Violation]:
     out: list[Violation] = []
     for key, (path, line) in sorted(reads.items()):
         if key in writes:
+            continue
+        try:
+            rel = str(Path(path).resolve().relative_to(REPO.resolve())).replace("\\", "/")
+        except ValueError:
+            rel = str(path).replace("\\", "/")
+        if key in data_by_loader.get(rel, ()):
             continue
         try:
             src_line = path.read_text(encoding="utf-8", errors="replace").splitlines()[line - 1]

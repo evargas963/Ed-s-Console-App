@@ -518,10 +518,12 @@ def _quote_staleness_ms(
     ms_dict: dict[str, Any],
     chain_row: dict[str, Any],
 ) -> tuple[int | None, str]:
+    # RC-381: timestamp_ms was never written as a payload key (git log -S
+    # '"timestamp_ms":' empty). decision_time_ms is the producer; server_time_ms
+    # is a separate orphan still held (written only in a calibration scaffold).
     decision_time = _first_number(
         ms_dict.get("decision_time_ms"),
         ms_dict.get("server_time_ms"),
-        ms_dict.get("timestamp_ms"),
     )
     qt_raw = chain_row.get("quoteTimeInLong")
     if qt_raw is None:
@@ -794,10 +796,8 @@ def _gamma_x_oi(chain_row: dict[str, Any]) -> float | None:
 
 def _mins_to_close(ms_dict: dict) -> float | None:
     """Resolve minutes-to-close from explicit fields or decision timestamp."""
-    # RC-381 slice 3: the `minutes_to_close` alias that used to sit beside this was dead.
-    # `mins_to_close` IS written in production Python; `git log --all -S '"minutes_to_close":'
-    # -- '*.py'` finds ZERO non-test commits writing it as a payload key, so the alias could
-    # never contribute a value and only widened the surface for a silent None (RC-15/RC-20).
+    # RC-381: minutes_to_close was never written as a payload key (git log -S
+    # '"minutes_to_close":' empty). The producer stamps mins_to_close.
     explicit = _first_number(ms_dict.get("mins_to_close"))
     if explicit is not None:
         return explicit
