@@ -1,0 +1,65 @@
+name: Delta debt
+
+# RC-389: did THIS change add an enforced violation origin/main did not carry?
+# Local --no-verify cannot skip GitHub Actions. The comparator is taken from the
+# BASE ref so a PR cannot gut its own grader (H3 / self-graded lock).
+#
+# Operator-only remaining hole: this job is not a required check until it is
+# marked required, and an admin-merge of a missing/red required check still
+# lands. Mark `delta-debt` required and do not admin-merge it red.
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  delta-debt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ED_AGENT_ROLE: cursor
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
+
+      - name: Fetch origin/main (fail-closed if missing)
+        run: |
+          git fetch origin main
+          git rev-parse --verify origin/main
+
+      - name: Run the BASE comparator against this HEAD
+        run: |
+          set -euo pipefail
+          BASE_REF="${{ github.event.pull_request.base.sha }}"
+          if [ -z "${BASE_REF}" ]; then
+            BASE_REF="origin/main"
+          fi
+          if git cat-file -e "${BASE_REF}:tools/check_delta_adds_no_debt.py" 2>/dev/null; then
+            git show "${BASE_REF}:tools/check_delta_adds_no_debt.py" > /tmp/delta_gate.py
+          else
+            echo "base has no delta tool yet (bootstrap); using this tree's copy"
+            cp tools/check_delta_adds_no_debt.py /tmp/delta_gate.py
+          fi
+          python /tmp/delta_gate.py --base origin/main
+
+      - name: Wiring must hold on this tree
+        run: |
+          python -c "
+          from pathlib import Path
+          from tools.check_delta_adds_no_debt import wiring_violations
+          v = wiring_violations(Path('.').resolve())
+          print('\n'.join(v) if v else 'wiring clean')
+          raise SystemExit(1 if v else 0)
+          "

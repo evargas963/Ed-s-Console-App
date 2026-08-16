@@ -20,7 +20,10 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 # RC-368: declared direct owner of the tool under test.
-TURN_AUDIT_OWNS = ["tools/check_delta_adds_no_debt.py"]
+TURN_AUDIT_OWNS = [
+    "tools/check_delta_adds_no_debt.py",
+    "tools/precommit_institutional.py",
+]
 
 
 def _load():
@@ -149,3 +152,129 @@ def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree():
         "the gate must materialise both sides in clean detached worktrees")
     assert "worktree\", \"remove\"" in src or "'worktree', 'remove'" in src, (
         "the temporary worktree must be removed again")
+
+
+def test_fail_banner_with_no_parseable_lines_is_not_clean():
+    """Residual H1: banner FAIL (N) + empty parse used to compare as PAID DOWN."""
+    text = "INSTITUTIONAL CORRECTNESS GATE: FAIL (4 enforced violation(s))"
+    try:
+        GATE.interpret_gate_output(1, text, "", "HEAD")
+    except RuntimeError as exc:
+        assert "no parseable" in str(exc), str(exc)
+    else:
+        raise AssertionError("FAIL banner with empty parse was treated as a clean count")
+
+
+def test_fail_banner_empty_parse_does_not_compare_as_paid_down():
+    """The exact hole: compare({root_cause_log:71}, {}) looked like 71→0 paid down."""
+    try:
+        empty = GATE.interpret_gate_output(
+            1, "INSTITUTIONAL CORRECTNESS GATE: FAIL (71 enforced violation(s))",
+            "", "HEAD")
+    except RuntimeError:
+        empty = None
+    else:
+        raise AssertionError(f"empty parse returned {empty} and would fake a pay-down")
+    added, improved = GATE.compare({"root_cause_log": 71}, {})
+    assert improved and "71 -> 0" in improved[0]
+    # The compare itself is not the lock — interpret must refuse to produce {}.
+    assert empty is None
+
+
+def test_gate_shrink_is_not_an_improvement():
+    """H3: dropping an ENFORCED check must be visible as a named removal."""
+    assert GATE.parse_enforced_names(
+        "CHECKS = [('keep', fn, True), ('drop', fn, True)]"
+    ) == {"keep", "drop"}
+    assert GATE.parse_enforced_names(
+        "CHECKS = [('keep', fn, True), ('drop', fn, False)]"
+    ) == {"keep"}
+    assert GATE.parse_enforced_names("syntax error ((") == set()
+
+
+def test_wiring_fails_a_true_grant_and_an_unwired_precommit(tmp_path):
+    """Negative control for no_verify_cannot_hide_delta: inject the two escapes."""
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "tools" / "precommit_institutional.py").write_text(
+        "print('no delta')\n", encoding="utf-8")
+    (tmp_path / "tools" / "check_delta_adds_no_debt.py").write_text(
+        "print('no interpret')\n", encoding="utf-8")
+    (tmp_path / "governance" / "operator_grants.json").write_text(
+        '{"grants":{"claude_no_verify_checkpoints":{"granted":true}}}',
+        encoding="utf-8")
+    v = GATE.wiring_violations(tmp_path)
+    assert v, "injected grant + unwired precommit produced no wiring violation"
+    assert any("granted is true" in m for m in v), v
+    assert any("does not invoke check_delta_adds_no_debt.py" in m for m in v), v
+
+
+def test_wiring_is_clean_on_this_tree():
+    """The live bind must currently hold, or the lock is already broken."""
+    v = GATE.wiring_violations(REPO)
+    assert v == [], v
+
+
+def test_no_verify_cannot_hide_delta_fires_on_injected_grant(monkeypatch):
+    """ENFORCED check name + injection: green-and-inert is the RC-95 class."""
+    from tools.check_institutional_correctness import check_no_verify_cannot_hide_delta
+
+    monkeypatch.setattr(
+        "tools.check_delta_adds_no_debt.wiring_violations",
+        lambda root: [
+            "claude_no_verify_checkpoints.granted is true — --no-verify hides "
+            "new enforced violations inside standing red (RC-389)"
+        ],
+    )
+    v = check_no_verify_cannot_hide_delta()
+    assert len(v) >= 1, v
+    assert any("granted is true" in x.msg for x in v), v
+    assert check_no_verify_cannot_hide_delta.__name__ == "check_no_verify_cannot_hide_delta"
+
+
+def test_precommit_uses_delta_staged_and_fails_closed_without_origin_main(monkeypatch):
+    """The hook must not be the absolute-zero path that forced --no-verify."""
+    import tools.precommit_institutional as pc
+
+    calls: list[list[str]] = []
+
+    class Proc:
+        def __init__(self, rc=0):
+            self.returncode = rc
+            self.stdout = "deadbeef\n"
+            self.stderr = ""
+
+    def fake_run(args, **_kw):
+        calls.append(list(args))
+        if args[:3] == ["git", "rev-parse", "--verify"]:
+            return Proc(1)
+        return Proc(0)
+
+    monkeypatch.setattr(pc.subprocess, "run", fake_run)
+    assert pc.main() == 2, "missing origin/main must be exit 2, not a pass"
+    assert calls and calls[0][:3] == ["git", "rev-parse", "--verify"]
+
+
+def test_precommit_invokes_delta_tool_when_origin_main_exists(monkeypatch):
+    import tools.precommit_institutional as pc
+
+    class Proc:
+        def __init__(self, rc=0):
+            self.returncode = rc
+            self.stdout = "ok\n"
+            self.stderr = ""
+
+    seen = {}
+
+    def fake_run(args, **_kw):
+        if args[:3] == ["git", "rev-parse", "--verify"]:
+            return Proc(0)
+        seen["delta"] = list(args)
+        return Proc(0)
+
+    monkeypatch.setattr(pc.subprocess, "run", fake_run)
+    assert pc.main() == 0
+    joined = " ".join(seen["delta"])
+    assert "check_delta_adds_no_debt.py" in joined
+    assert "--staged" in seen["delta"]
+    assert "--base" in seen["delta"] and "origin/main" in seen["delta"]

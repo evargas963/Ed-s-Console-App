@@ -48,6 +48,24 @@ def test_writer_drift_allows_pm_governance_touch():
     assert msgs == []
 
 
+def test_rc389_lock_surfaces_are_pm_allowlisted():
+    """Cursor must be able to encode the --no-verify bind (operator 2026-08-16)."""
+    for rel in (
+        "tools/check_delta_adds_no_debt.py",
+        "tools/precommit_institutional.py",
+        "governance/operator_grants.json",
+        "tests/test_delta_adds_no_debt_v1.py",
+    ):
+        assert WDL.is_pm_allowlisted(rel), rel
+        msgs = WDL.writer_drift_violations(
+            [rel],
+            agent="cursor",
+            mission=_mission_claude_scope(),
+            sole_writer={"writer": "claude", "pm": "cursor"},
+        )
+        assert msgs == [], (rel, msgs)
+
+
 def test_writer_drift_allows_named_writer():
     msgs = WDL.writer_drift_violations(
         ["static/chart.html"],

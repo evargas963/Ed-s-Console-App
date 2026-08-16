@@ -34,18 +34,22 @@ def main() -> int:
     if ambient not in ("cursor", "claude"):
         os.environ.pop("ED_AGENT_ROLE", None)
     runner = REPO / "tools" / "run_with_repo_venv.py"
-    gate = REPO / "tools" / "check_institutional_correctness.py"
-    # RC-246: the blocking path runs ENFORCED checks only. Advisory checks cannot fail this
-    # gate by construction, and charging every commit 153s of a 244s wall for verdicts that
-    # can never veto made the gate expensive enough to route around — a cost this repo has
-    # already paid in piped commits and hooks killed mid-run. Advisory debt is not dropped:
-    # it runs via `--advisory` on the scheduled/rehab path and is recorded in
-    # reports/advisory_debt_latest.json.
-    # RC-254: was os.execv, which on Windows spawns a detached child and returns 0 to
-    # pre-commit immediately — this hook reported "Passed" without the gate's verdict ever
-    # reaching it. The gate's exit code must BE this hook's exit code.
+    # RC-389: the blocking path is DELTA vs origin/main, not "enforced must be 0".
+    # Standing backlog (~100) made every honest commit fail, which made --no-verify
+    # the default and hid NEW violations (five_why 0→4 on 1294781a) inside the red.
+    # Fail-closed if origin/main cannot be resolved — missing base is not a pass.
+    verify = subprocess.run(
+        ["git", "rev-parse", "--verify", "origin/main"],
+        cwd=str(REPO), capture_output=True, text=True,
+    )
+    if verify.returncode != 0:
+        print("RC-389: origin/main is not available; refusing to commit fail-open.",
+              file=sys.stderr)
+        return 2
+    delta = REPO / "tools" / "check_delta_adds_no_debt.py"
     return subprocess.run(
-        [sys.executable, str(runner), str(gate), "--enforced-only"], cwd=str(REPO)
+        [sys.executable, str(runner), str(delta), "--base", "origin/main", "--staged"],
+        cwd=str(REPO),
     ).returncode
 
 
