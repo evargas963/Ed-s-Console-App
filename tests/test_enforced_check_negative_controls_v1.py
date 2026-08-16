@@ -651,8 +651,17 @@ def test_rc246_precommit_path_excludes_advisory_checks():
     import tools.check_institutional_correctness as gate
 
     src = (Path(gate.__file__).parent / "precommit_institutional.py").read_text(encoding="utf-8")
-    assert '"--enforced-only"' in src, (
-        "the pre-commit wrapper no longer asks for the enforced-only path (RC-246)"
+    # RC-389: the blocking path is the delta vs origin/main, not absolute-zero
+    # --enforced-only (that zero-tolerance path is what made --no-verify the
+    # default). The delta tool still runs --enforced-only INSIDE each worktree.
+    assert "check_delta_adds_no_debt.py" in src, (
+        "the pre-commit wrapper no longer invokes the delta gate (RC-389)"
+    )
+    assert "--staged" in src
+    delta = (Path(gate.__file__).parent / "check_delta_adds_no_debt.py").read_text(
+        encoding="utf-8")
+    assert '"--enforced-only"' in delta or "'--enforced-only'" in delta, (
+        "the delta tool no longer runs the enforced-only gate inside each worktree"
     )
 
 

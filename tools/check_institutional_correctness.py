@@ -4697,6 +4697,44 @@ def check_rc_document_without_resolve() -> list[Violation]:
     return out
 
 
+def check_no_verify_cannot_hide_delta() -> list[Violation]:
+    """Standing red must not hide new debt; --no-verify is not a checkpoint (RC-389).
+
+    OBSERVED (2026-08-16, RC-389, stamp SHA 1294781a): every commit in the session
+    used `git commit --no-verify` because pre-commit ran `--enforced-only` (must be
+    zero) against ~100 standing violations. check_five_why_recursive_lock measured
+    0 on origin/main and 4 on that SHA; the author never saw the 4 because the
+    bypass made new violations indistinguishable from backlog. The same session's
+    accuracy tool shipped FAIL-OPEN (H1). Operator: "this can never happen again."
+
+    Rule (file-level, so a clean worktree of a SHA can be judged):
+      1. precommit_institutional.py invokes check_delta_adds_no_debt.py with
+         --staged and --base origin/main, and exits 2 if origin/main is missing.
+      2. claude_no_verify_checkpoints.granted must not be true.
+      3. the delta tool must refuse a FAIL banner with no parseable FAIL [name]
+         lines (residual H1).
+
+    VALIDATED: prototyped against the live tree after the wiring (0 violations
+    on this HEAD); negative controls inject an unwired precommit, a true grant,
+    and a FAIL-banner empty parse. ADVISORY is refused — a check that cannot
+    fail a re-grant is decoration.
+    """
+    try:
+        from tools.check_delta_adds_no_debt import wiring_violations
+    except ImportError:
+        try:
+            from check_delta_adds_no_debt import wiring_violations  # type: ignore
+        except ImportError:
+            return [Violation(
+                REPO / "tools" / "check_delta_adds_no_debt.py", 0,
+                "tools/check_delta_adds_no_debt.py is not importable — the "
+                "RC-389 delta bind is missing (fail-closed)")]
+    return [
+        Violation(REPO / "tools" / "precommit_institutional.py", 0, msg)
+        for msg in wiring_violations(REPO)
+    ]
+
+
 CHECKS = [
     # ENFORCED (must be zero — block pre-commit):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
@@ -4826,6 +4864,11 @@ CHECKS = [
     # mechanism owned the terminator. Tests the OUTCOME — bytes on disk vs bytes in HEAD —
     # so it holds for any writer, not just the libraries that caused the known cases.
     ("eol_style_invariant", check_eol_style_invariant, True),
+    # RC-389: --no-verify hid five_why 0→4 inside standing red. The blocking
+    # commit path is the delta vs origin/main, and the grant that made the
+    # bypass a default stays false. ENFORCED from the start because it was
+    # driven to zero before wiring (this tree after the bind).
+    ("no_verify_cannot_hide_delta", check_no_verify_cannot_hide_delta, True),
     ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
 ]
 

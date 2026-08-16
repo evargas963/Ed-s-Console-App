@@ -275,8 +275,10 @@ def test_rc255_the_committed_queue_is_not_a_fixture() -> None:
 def test_rc250_advisory_never_returns_to_the_blocking_commit_path() -> None:
     """The fix for invisibility must not undo P1: the pre-commit wrapper stays enforced-only."""
     src = (ROOT / "tools" / "precommit_institutional.py").read_text(encoding="utf-8")
-    assert '"--enforced-only"' in src
+    assert "check_delta_adds_no_debt.py" in src
     assert '"--advisory"' not in src, (
         "advisory checks are back in the blocking commit path — that re-imposes 145s/commit "
         "for verdicts that cannot veto (RC-246)"
     )
+    delta = (ROOT / "tools" / "check_delta_adds_no_debt.py").read_text(encoding="utf-8")
+    assert "--enforced-only" in delta

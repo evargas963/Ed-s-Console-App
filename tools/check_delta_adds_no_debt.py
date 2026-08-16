@@ -38,13 +38,38 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
+import json
+import os
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+def _repo_root() -> Path:
+    """Grade the caller's working tree, not the script's install path.
+
+    CI copies this file to /tmp so a PR cannot gut the grader (RC-389).
+    ``Path(__file__).parent.parent`` then becomes ``/``, and every git
+    call dies with 'not a git repository' — a job that can never be
+    green can never be marked required. Resolve via cwd's git toplevel.
+    """
+    here = Path(__file__).resolve().parent.parent
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(Path.cwd()),
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", check=False, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return here
+    top = (r.stdout or "").strip()
+    return Path(top) if r.returncode == 0 and top else here
+
+
+REPO = _repo_root()
 
 #: `FAIL [name] (ENFORCED) — N violation(s):`  — the em dash varies by console encoding,
 #: so match on the bracketed name and the trailing count rather than the separator.
@@ -53,6 +78,7 @@ _FAIL_RE = re.compile(r"FAIL \[([a-z_0-9]+)\].*?(\d+) violation")
 #: The gate prints this on every completed run, PASS or FAIL. Its ABSENCE means the run
 #: died, not that the tree is clean — see the fail-closed guard in enforced_counts.
 _BANNER = "INSTITUTIONAL CORRECTNESS GATE:"
+_BANNER_FAIL_N = re.compile(r"GATE: FAIL \((\d+) enforced")
 
 
 def _run(args: list[str], cwd: Path | None = None, timeout: int = 3600) -> subprocess.CompletedProcess:
@@ -66,8 +92,216 @@ def parse_counts(stdout: str) -> dict[str, int]:
     return {m.group(1): int(m.group(2)) for m in _FAIL_RE.finditer(stdout)}
 
 
-def enforced_counts(ref: str) -> tuple[dict[str, int], str]:
-    """{check_name: violation_count} for `ref`, measured in a CLEAN detached worktree."""
+def interpret_gate_output(returncode: int, stdout: str, stderr: str = "",
+                          ref: str = "ref") -> dict[str, int]:
+    """Fail-closed: a completed gate, or raise. Never treat silence as zero.
+
+    Residual H1 (Cursor 2026-08-16): banner present + rc in {0,1} + no parseable
+    FAIL [name] lines still rendered as {} and compared as PAID DOWN. A FAIL
+    banner with an empty parse is the same hole wearing a header.
+    """
+    out = stdout or ""
+    if returncode not in (0, 1) or _BANNER not in out:
+        raise RuntimeError(
+            f"gate did not complete for {ref} (rc={returncode}, banner "
+            f"{'present' if _BANNER in out else 'MISSING'}). Refusing to "
+            f"report a count: silence is not cleanliness.\n"
+            f"--- tail ---\n{(out or stderr)[-600:]}")
+    counts = parse_counts(out)
+    parsed = sum(counts.values())
+    m = _BANNER_FAIL_N.search(out)
+    banner_tail = out.split(_BANNER, 1)[-1] if _BANNER in out else ""
+    if returncode == 1:
+        if not m or int(m.group(1)) <= 0 or parsed == 0:
+            raise RuntimeError(
+                f"gate exited 1 for {ref} but produced no parseable "
+                f"FAIL [name] lines (parsed={parsed}, banner_n="
+                f"{m.group(1) if m else 'MISSING'}). Silence-as-clean "
+                f"is refused.")
+        n = int(m.group(1))
+        if parsed != n:
+            raise RuntimeError(
+                f"gate banner says {n} enforced for {ref} but parsed {parsed}.")
+    elif m and int(m.group(1)) > 0:
+        raise RuntimeError(
+            f"gate exited 0 for {ref} but banner says FAIL ({m.group(1)}).")
+    elif parsed > 0:
+        raise RuntimeError(
+            f"gate exited 0 for {ref} but parsed {parsed} FAIL [name] line(s).")
+    elif "FAIL" in banner_tail and parsed == 0:
+        raise RuntimeError(
+            f"gate banner contains FAIL for {ref} but no parseable "
+            f"FAIL [name] lines. Silence-as-clean is refused.")
+    return counts
+
+
+def commit_from_index() -> str:
+    """Ephemeral commit of the STAGED index (RC-389 / H2). Does not move HEAD."""
+    tree = _run(["git", "write-tree"])
+    if tree.returncode != 0 or not tree.stdout.strip():
+        raise RuntimeError(f"cannot write-tree the index: {tree.stderr[-300:]}")
+    head = _run(["git", "rev-parse", "HEAD"])
+    if head.returncode != 0 or not head.stdout.strip():
+        raise RuntimeError(f"cannot resolve HEAD: {head.stderr[-300:]}")
+    env = os.environ.copy()
+    env.setdefault("GIT_AUTHOR_NAME", "delta-gate")
+    env.setdefault("GIT_AUTHOR_EMAIL", "delta-gate@local")
+    env.setdefault("GIT_COMMITTER_NAME", "delta-gate")
+    env.setdefault("GIT_COMMITTER_EMAIL", "delta-gate@local")
+    cmt = subprocess.run(
+        ["git", "commit-tree", tree.stdout.strip(), "-p", head.stdout.strip(),
+         "-m", "delta-gate-staged"],
+        cwd=str(REPO), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", env=env, check=False,
+    )
+    if cmt.returncode != 0 or not cmt.stdout.strip():
+        raise RuntimeError(f"cannot commit-tree the index: {cmt.stderr[-300:]}")
+    return cmt.stdout.strip()
+
+
+def parse_enforced_names(source: str) -> set[str]:
+    """ENFORCED check ids from a checker source. Empty on parse failure (fail-closed)."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == "CHECKS" for t in node.targets):
+            continue
+        if not isinstance(node.value, ast.List):
+            return set()
+        names: set[str] = set()
+        for elt in node.value.elts:
+            if not (isinstance(elt, ast.Tuple) and len(elt.elts) >= 3):
+                continue
+            name_node, en_node = elt.elts[0], elt.elts[2]
+            if (
+                isinstance(name_node, ast.Constant)
+                and isinstance(name_node.value, str)
+                and isinstance(en_node, ast.Constant)
+                and en_node.value is True
+            ):
+                names.add(name_node.value)
+        return names
+    return set()
+
+
+def wiring_violations(root: Path) -> list[str]:
+    """RC-389: the commit path must grade a delta, and --no-verify must not be a default.
+
+    File reads only — this is applied to a detached worktree of HEAD/staged, so it
+    must not import that tree's modules into the running process.
+    """
+    out: list[str] = []
+    pre_path = root / "tools" / "precommit_institutional.py"
+    if not pre_path.is_file():
+        out.append("tools/precommit_institutional.py is missing")
+        return out
+    pre = pre_path.read_text(encoding="utf-8")
+    code_strings = _code_string_constants(pre)
+    if "check_delta_adds_no_debt.py" not in code_strings:
+        out.append(
+            "precommit_institutional.py does not invoke check_delta_adds_no_debt.py "
+            "— the blocking path is back to absolute-zero and will be bypassed"
+        )
+    if "--staged" not in code_strings:
+        out.append(
+            "precommit_institutional.py does not pass --staged "
+            "(H2: would grade last HEAD, not the index being committed)"
+        )
+    if "origin/main" not in code_strings:
+        out.append("precommit_institutional.py does not pin --base origin/main")
+    if not _returns_constant(pre, 2):
+        out.append(
+            "precommit_institutional.py does not fail-closed (exit 2) when "
+            "origin/main cannot be resolved"
+        )
+    wf = root / ".github" / "workflows" / "delta-debt.yml"
+    if not wf.is_file():
+        out.append(
+            ".github/workflows/delta-debt.yml is missing — local --no-verify "
+            "cannot skip CI, so deleting the workflow deletes the unskippable half"
+        )
+    else:
+        wf_text = wf.read_text(encoding="utf-8")
+        if "check_delta_adds_no_debt.py" not in wf_text:
+            out.append(
+                "delta-debt.yml does not invoke check_delta_adds_no_debt.py"
+            )
+        if "git show" not in wf_text and "BASE" not in wf_text:
+            out.append(
+                "delta-debt.yml does not run the BASE comparator "
+                "(a PR must not grade itself)"
+            )
+    grants_path = root / "governance" / "operator_grants.json"
+    if not grants_path.is_file():
+        out.append("governance/operator_grants.json is missing")
+    else:
+        try:
+            doc = json.loads(grants_path.read_text(encoding="utf-8"))
+        except ValueError:
+            out.append("governance/operator_grants.json is unparseable")
+        else:
+            grant = (doc.get("grants") or {}).get("claude_no_verify_checkpoints") or {}
+            if grant.get("granted") is True:
+                out.append(
+                    "claude_no_verify_checkpoints.granted is true — --no-verify "
+                    "hides new enforced violations inside standing red (RC-389)"
+                )
+    delta_path = root / "tools" / "check_delta_adds_no_debt.py"
+    if not delta_path.is_file():
+        out.append("tools/check_delta_adds_no_debt.py is missing")
+    else:
+        src = delta_path.read_text(encoding="utf-8")
+        if "def interpret_gate_output" not in src:
+            out.append("delta tool has no interpret_gate_output (H1 fail-open)")
+        if "no parseable" not in src:
+            out.append(
+                "delta tool does not refuse a FAIL banner with no parseable "
+                "FAIL [name] lines (residual H1)"
+            )
+    return out
+
+
+def _code_string_constants(source: str) -> set[str]:
+    """String constants in executable code, not docstrings (prose is not a bind)."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    skip: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if not (node.body and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)):
+            continue
+        skip.add(id(node.body[0].value))
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip:
+            out.add(node.value)
+    return out
+
+
+def _returns_constant(source: str, value: int) -> bool:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value == value
+        for node in ast.walk(tree)
+    )
+
+
+def inspect_ref(ref: str, *, collect_wiring: bool = False
+                ) -> tuple[dict[str, int], str, set[str], list[str]]:
+    """counts, short-sha, ENFORCED names, wiring violations — clean detached worktree."""
     sha = _run(["git", "rev-parse", "--short", ref]).stdout.strip()
     with tempfile.TemporaryDirectory(prefix="deltagate-") as tmp:
         wt = Path(tmp) / "wt"
@@ -75,23 +309,23 @@ def enforced_counts(ref: str) -> tuple[dict[str, int], str]:
         if add.returncode != 0:
             raise RuntimeError(f"cannot materialise {ref}: {add.stderr[-300:]}")
         try:
+            checker = wt / "tools" / "check_institutional_correctness.py"
+            names = parse_enforced_names(
+                checker.read_text(encoding="utf-8")) if checker.is_file() else set()
+            wiring = wiring_violations(wt) if collect_wiring else []
             proc = _run([sys.executable, "tools/check_institutional_correctness.py",
                          "--enforced-only"], cwd=wt)
-            # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
-            # parse_counts(stdout) unconditionally, and parse_counts("") is {} — so a
-            # crashed gate, an import error, or a changed output format rendered the side
-            # as ZERO violations, printed PASS, and invented a "PAID DOWN" line. A lock
-            # that cannot distinguish CLEAN from SILENT is the RC-90 class. The gate's own
-            # summary banner is the proof it actually ran to completion.
-            if proc.returncode not in (0, 1) or _BANNER not in proc.stdout:
-                raise RuntimeError(
-                    f"gate did not complete for {ref} (rc={proc.returncode}, banner "
-                    f"{'present' if _BANNER in proc.stdout else 'MISSING'}). Refusing to "
-                    f"report a count: silence is not cleanliness.\n"
-                    f"--- tail ---\n{(proc.stdout or proc.stderr)[-600:]}")
-            return parse_counts(proc.stdout), sha
+            counts = interpret_gate_output(
+                proc.returncode, proc.stdout, proc.stderr, ref)
+            return counts, sha, names, wiring
         finally:
             _run(["git", "worktree", "remove", "--force", str(wt)])
+
+
+def enforced_counts(ref: str) -> tuple[dict[str, int], str]:
+    """{check_name: violation_count} for `ref`, measured in a CLEAN detached worktree."""
+    counts, sha, _names, _wiring = inspect_ref(ref)
+    return counts, sha
 
 
 def compare(base_counts: dict[str, int], head_counts: dict[str, int]) -> tuple[list[str], list[str]]:
@@ -110,10 +344,26 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Fail if HEAD adds an enforced violation the base did not carry")
     ap.add_argument("--base", default="origin/main")
+    ap.add_argument(
+        "--staged", action="store_true",
+        help="RC-389/H2: measure the staged index, not HEAD (pre-commit path)")
     args = ap.parse_args(argv)
 
-    base_counts, base_sha = enforced_counts(args.base)
-    head_counts, head_sha = enforced_counts("HEAD")
+    base_counts, base_sha, base_names, _ = inspect_ref(args.base)
+    head_ref = commit_from_index() if args.staged else "HEAD"
+    head_counts, head_sha, head_names, wiring = inspect_ref(
+        head_ref, collect_wiring=True)
+    removed = sorted(base_names - head_names)
+    if wiring and head_counts.get("no_verify_cannot_hide_delta", 0) < len(wiring):
+        # Inject only when HEAD's own checker is missing or silent (gutted).
+        # Do not add on top of FAIL [no_verify_cannot_hide_delta] — that
+        # double-count would turn inherited wiring debt into a false ADDED.
+        head_counts = dict(head_counts)
+        head_counts["no_verify_cannot_hide_delta"] = len(wiring)
+    if removed:
+        head_counts = dict(head_counts)
+        head_counts["enforced_gate_shrink"] = (
+            head_counts.get("enforced_gate_shrink", 0) + len(removed))
     added, improved = compare(base_counts, head_counts)
 
     print(f"base {args.base} ({base_sha}): {sum(base_counts.values())} enforced "
@@ -123,6 +373,12 @@ def main(argv: list[str] | None = None) -> int:
     if improved:
         print("\nPAID DOWN by this delta:")
         print("\n".join(improved))
+    if wiring:
+        print("\nWIRING (HEAD/staged — RC-389, not inherited backlog):")
+        print("\n".join(f"  {w}" for w in wiring))
+    if removed:
+        print("\nGATE SHRINK (H3 — dropping an ENFORCED check is not an improvement):")
+        print("\n".join(f"  {n}" for n in removed))
     if not added:
         print("\n[PASS] this delta adds no enforced violation the base did not already carry.")
         return 0

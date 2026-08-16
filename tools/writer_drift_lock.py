@@ -58,6 +58,15 @@ PM_ALLOWLIST_EXACT = frozenset({
     "tools/writer_drift_lock.py",
     "tools/rc_resolve_lock.py",
     "tools/check_institutional_correctness.py",
+    # RC-389: Cursor encodes the --no-verify / standing-red hide lock the
+    # operator named ("this can never happen again"). These are the bind
+    # surfaces, not product/kill code.
+    "tools/check_delta_adds_no_debt.py",
+    "tools/precommit_institutional.py",
+    "governance/operator_grants.json",
+    "tests/test_delta_adds_no_debt_v1.py",
+    "tests/test_enforced_check_negative_controls_v1.py",
+    "tests/test_venv_wrapper_propagates_exit_v1.py",
     "tests/test_rc_document_without_resolve_v1.py",
     ".cursor/rules/07-cursor-pm.mdc",
     ".cursor/rules/08-no-writer-drift.mdc",

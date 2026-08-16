@@ -85,15 +85,12 @@ def test_no_exec_call_remains_on_the_hook_path() -> None:
         )
 
 
-def test_the_institutional_hook_carries_the_gates_verdict() -> None:
-    """End-to-end at the real seam: precommit_institutional's exit code must equal the
-    enforced gate's own. Asserts they AGREE, whatever the tree's current state — so this
-    stays honest whether the repo is green or red today."""
-    hook = subprocess.run([sys.executable, str(ROOT / "tools" / "precommit_institutional.py")],
-                          cwd=str(ROOT), capture_output=True, text=True)
-    gate = subprocess.run([sys.executable, "-m", "tools.check_institutional_correctness",
-                           "--enforced-only"], cwd=str(ROOT), capture_output=True, text=True)
-    assert (hook.returncode == 0) == (gate.returncode == 0), (
-        f"hook exit {hook.returncode} disagrees with gate exit {gate.returncode} — the "
-        f"pre-commit hook is not reporting what the gate decided"
-    )
+def test_the_institutional_hook_invokes_the_delta_gate() -> None:
+    """RC-389: the hook's verdict is the delta vs origin/main, not absolute-zero
+    --enforced-only. Agreeing with the full gate is what made every commit need
+    --no-verify on a red repo. Lock the bind, not the old identity."""
+    src = (ROOT / "tools" / "precommit_institutional.py").read_text(encoding="utf-8")
+    assert "check_delta_adds_no_debt.py" in src
+    assert "--staged" in src
+    assert "origin/main" in src
+    assert "return 2" in src
