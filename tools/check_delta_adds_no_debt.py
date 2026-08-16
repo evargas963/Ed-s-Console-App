@@ -50,6 +50,10 @@ REPO = Path(__file__).resolve().parent.parent
 #: so match on the bracketed name and the trailing count rather than the separator.
 _FAIL_RE = re.compile(r"FAIL \[([a-z_0-9]+)\].*?(\d+) violation")
 
+#: The gate prints this on every completed run, PASS or FAIL. Its ABSENCE means the run
+#: died, not that the tree is clean — see the fail-closed guard in enforced_counts.
+_BANNER = "INSTITUTIONAL CORRECTNESS GATE:"
+
 
 def _run(args: list[str], cwd: Path | None = None, timeout: int = 3600) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -73,6 +77,18 @@ def enforced_counts(ref: str) -> tuple[dict[str, int], str]:
         try:
             proc = _run([sys.executable, "tools/check_institutional_correctness.py",
                          "--enforced-only"], cwd=wt)
+            # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
+            # parse_counts(stdout) unconditionally, and parse_counts("") is {} — so a
+            # crashed gate, an import error, or a changed output format rendered the side
+            # as ZERO violations, printed PASS, and invented a "PAID DOWN" line. A lock
+            # that cannot distinguish CLEAN from SILENT is the RC-90 class. The gate's own
+            # summary banner is the proof it actually ran to completion.
+            if proc.returncode not in (0, 1) or _BANNER not in proc.stdout:
+                raise RuntimeError(
+                    f"gate did not complete for {ref} (rc={proc.returncode}, banner "
+                    f"{'present' if _BANNER in proc.stdout else 'MISSING'}). Refusing to "
+                    f"report a count: silence is not cleanliness.\n"
+                    f"--- tail ---\n{(proc.stdout or proc.stderr)[-600:]}")
             return parse_counts(proc.stdout), sha
         finally:
             _run(["git", "worktree", "remove", "--force", str(wt)])

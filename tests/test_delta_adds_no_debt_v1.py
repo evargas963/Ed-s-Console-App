@@ -88,6 +88,59 @@ def test_parser_ignores_passing_checks_and_summary_lines():
     assert GATE.parse_counts(text) == {}
 
 
+def test_a_silent_or_crashed_gate_must_raise_not_report_zero(monkeypatch):
+    """H1, the hole Cursor found: as first shipped this tool was FAIL-OPEN.
+
+    enforced_counts ignored the return code and parse_counts("") is {}, so a crashed gate,
+    an import error, or a changed output format rendered that side as ZERO violations —
+    printing PASS and a fabricated 'PAID DOWN'. A lock that cannot tell CLEAN from SILENT
+    is the RC-90 class. Each case below reproduces one way the gate can go quiet.
+    """
+    import subprocess as sp
+
+    class FakeProc:
+        def __init__(self, rc, out): self.returncode, self.stdout, self.stderr = rc, out, ""
+
+    good = ("FAIL [root_cause_log] (ENFORCED) - 71 violation(s):\n"
+            "INSTITUTIONAL CORRECTNESS GATE: FAIL (71 enforced violation(s))")
+    cases = {
+        "empty stdout (process died)": FakeProc(1, ""),
+        "traceback, no banner": FakeProc(1, "Traceback (most recent call last):\nImportError"),
+        "hard crash exit code": FakeProc(2, good),
+        "output format changed": FakeProc(0, "FAIL [root_cause_log] 71 problems"),
+    }
+    for label, proc in cases.items():
+        def fake_run(args, cwd=None, timeout=3600, _p=proc):
+            if args[:2] == ["git", "worktree"] or args[:2] == ["git", "rev-parse"]:
+                return sp.CompletedProcess(args, 0, "deadbeef\n", "")
+            return _p
+        monkeypatch.setattr(GATE, "_run", fake_run)
+        try:
+            GATE.enforced_counts("HEAD")
+        except RuntimeError as exc:
+            assert "silence is not cleanliness" in str(exc), (label, str(exc)[:200])
+        else:
+            raise AssertionError(f"{label}: a silent gate was reported as a clean count")
+
+
+def test_a_completed_gate_with_zero_violations_is_still_accepted(monkeypatch):
+    """Fail-closed must not mean fail-always: a genuinely clean run has the banner."""
+    import subprocess as sp
+
+    class FakeProc:
+        def __init__(self): self.returncode, self.stdout, self.stderr = 0, (
+            "INSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean)"), ""
+
+    def fake_run(args, cwd=None, timeout=3600):
+        if args[:2] == ["git", "worktree"] or args[:2] == ["git", "rev-parse"]:
+            return sp.CompletedProcess(args, 0, "deadbeef\n", "")
+        return FakeProc()
+
+    monkeypatch.setattr(GATE, "_run", fake_run)
+    counts, sha = GATE.enforced_counts("HEAD")
+    assert counts == {} and sha == "deadbeef"
+
+
 def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree():
     """A dirty tree carries scratch that is not the change — the source of the
     filtered-count error this tool exists to prevent."""
