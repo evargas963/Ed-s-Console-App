@@ -952,6 +952,41 @@ _ORPHAN_KEY_SKIP_RECEIVERS = frozenset({
 })
 
 
+#: Committed data files whose keys ARE writes by this repository (RC-384). Explicit by
+#: design — each entry names the loader that reads it, so the list stays reviewable and
+#: cannot quietly grow into "scan everything", which would invent a writer for any string.
+_DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = (
+    # read by active_bundle_contract._load_migration_policy -> _legacy_allowance_open
+    # and artifact_integrity_strict_absence
+    ("governance/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract._load_migration_policy"),
+)
+
+
+def _committed_data_file_keys() -> set[str]:
+    """Every key name written in the allowlisted committed data files, at any depth."""
+    found: set[str] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if isinstance(k, str):
+                    found.add(k)
+                walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    for rel, _loader in _DATA_FILE_KEY_SOURCES:
+        path = REPO / rel
+        try:
+            walk(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            # A missing or malformed source contributes NOTHING rather than silencing the
+            # check: absence must never widen what counts as written.
+            continue
+    return found
+
+
 def check_no_orphan_dict_keys() -> list[Violation]:
     """A string key read from a dict that NOTHING in this repo ever writes.
 
@@ -973,6 +1008,14 @@ def check_no_orphan_dict_keys() -> list[Violation]:
     """
     reads: dict[str, tuple] = {}
     writes: set[str] = set()
+    # RC-384: this repo also writes keys in COMMITTED data files that Python then reads by
+    # name, so a Python-only scan reports them as orphans although the repo does write them
+    # — the check's own rule is "a key NOTHING in this repo ever writes". The allowlist is
+    # EXPLICIT and each entry names the loader that reads it; globbing every .json would
+    # pull in reports/, fixtures and vendor captures, invent a writer for almost any string,
+    # and hide the real RC-15/RC-20 orphans. Widening the search is the fix; widening the
+    # exemptions would be the gaming.
+    writes |= _committed_data_file_keys()
 
     for path in _production_py_files():
         try:
