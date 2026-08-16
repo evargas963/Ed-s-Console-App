@@ -634,9 +634,11 @@ def check_debt_ratchet() -> list[Violation]:
     current = {name: len(fn()) for name, fn, enforced in CHECKS if not enforced
                and name != "debt_ratchet"}
     if not path.exists():
-        if _ratchet_may_write():
-            path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n",
-                            encoding="utf-8")
+        # RC-385: READ-ONLY. Seeding is an explicit act (--rebaseline), never a side
+        # effect of asking the gate a question.
+        out.append(Violation(path, 0,
+                             "advisory_debt_baseline.json is missing. Seed it deliberately: "
+                             "python tools/check_institutional_correctness.py --rebaseline"))
         return out
     try:
         baseline = json.loads(path.read_text(encoding="utf-8"))
@@ -681,8 +683,15 @@ def check_debt_ratchet() -> list[Violation]:
                 continue
             baseline[name] = count
             improved = True
-    if improved and not out and _ratchet_may_write():
-        path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # RC-385: the ratchet READS its reference and never writes it. Measured 2026-08-15 on a
+    # pristine checkout of origin/main: one call moved file_length 37->49,
+    # function_complexity 462->547, ruff_quality 1081->1301 and flipped the file to CRLF, so
+    # the act of MEASURING left a clean clone dirty with RAISED debt ceilings — and anyone
+    # committing with blind staging would have legitimised them without deciding to. A gate
+    # may read its reference or change it, never both in one call. `improved` is still
+    # computed above because --rebaseline reuses this comparison; recording happens only
+    # there, which is what both docstrings have always claimed.
+    del improved
     return out
 
 
@@ -4941,8 +4950,69 @@ def write_advisory_report(
     return out
 
 
+def rebaseline() -> int:
+    """RC-385: the ONLY writer of the advisory debt baseline. Deliberate, never a side effect.
+
+    Both `_ratchet_may_write` and `check_debt_ratchet` have pointed at `--rebaseline` as the
+    explicit recording path since RC-90 — and it was never implemented, so the only recording
+    that existed was the invisible auto-write this replaces. Raising a debt ceiling is now an
+    act someone performs and can be asked to justify.
+
+    Correctness metrics on `_RATCHET_BLOCKS_ON_RISE` are still refused a RISE here: this is a
+    recorder, not an amnesty. It lowers floors that genuinely improved, seeds a missing file,
+    and tracks shape/style counters that are allowed to float.
+    """
+    path = _debt_baseline_path()
+    current = {name: len(fn()) for name, fn, enforced in CHECKS
+               if not enforced and name != "debt_ratchet"}
+    try:
+        baseline = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        print(f"REFUSED: {path} is unparseable — repair it before rebaselining.")
+        return 1
+
+    raised, changes = [], []
+    for name, count in sorted(current.items()):
+        base = baseline.get(name)
+        if base is None:
+            baseline[name] = count
+            changes.append(f"  seed  {name}: {count}")
+            continue
+        if count == base:
+            continue
+        if count > base and name in _RATCHET_BLOCKS_ON_RISE:
+            raised.append(f"  {name}: {base} -> {count} (+{count - base})")
+            continue
+        if count == 0 and base > 10:
+            # RC-90 honesty guard: a collapse to zero is a checker failure until proven
+            # otherwise, and recording it would silently destroy the ratchet.
+            print(f"REFUSED: {name} reported 0 against a baseline of {base} — checker failure, "
+                  f"not perfection. Nothing written.")
+            return 1
+        baseline[name] = count
+        changes.append(f"  {'lower' if count < base else 'track'} {name}: {base} -> {count}")
+
+    if raised:
+        print("REFUSED: correctness debt may not be rebaselined UPWARD. Clean it, or lower "
+              "another correctness count to pay for it:")
+        print("\n".join(raised))
+        return 1
+    if not changes:
+        print("advisory_debt_baseline.json already matches the tree — nothing to record.")
+        return 0
+    # newline pinned: this file is committed LF and an EOL flip would bury the real delta
+    # under a whole-file diff (RC-382/RC-383).
+    path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8", newline="\n")
+    print(f"recorded {len(changes)} change(s) in {path}:")
+    print("\n".join(changes))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if "--rebaseline" in args:
+        return rebaseline()
     if "--enforced-only" in args:
         enforced_violations, _, _ = run_checks(mode="enforced")
         if enforced_violations:
