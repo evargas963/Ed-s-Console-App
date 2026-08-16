@@ -159,6 +159,47 @@ def test_binary_files_are_exempt(repo):
     assert rc == 0 and "[PASS]" in out, out
 
 
+def test_a_pinned_path_may_differ_on_disk_without_being_a_violation(repo):
+    """RC-383: `text eol=lf` means git normalises into the blob, so worktree CRLF is the
+    CONFIGURED state, not a flip. .claude/settings.json lives exactly here."""
+    root, git = repo
+    (root / ".gitattributes").write_bytes(b"pinned.json text eol=lf\n")
+    (root / "pinned.json").write_bytes(b'{\n  "a": 1\n}\n')
+    git("add", "-A")
+    git("commit", "-m", "pin a path")
+
+    # An external tool rewrites it with platform terminators - exactly what the harness
+    # does to settings.json. Nothing about the committed form has changed.
+    (root / "pinned.json").write_bytes(b'{\r\n  "a": 1\r\n}\r\n')
+    rc, out = run_in(root, "--measure")
+    assert rc == 0 and "[PASS]" in out, f"a pinned path was reported as a flip: {out}"
+
+
+def test_a_pinned_path_with_a_real_content_change_is_still_silent(repo):
+    """The case the pre-RC-383 implementation only survived by accident.
+
+    Before the fix, pinned paths escaped only because `git diff --name-only` filters
+    normalised files out of the changed list. Give the file a REAL content change and it
+    reappears in that list, and the raw byte comparison then fires on a correctly
+    configured file. This test fails against the pre-fix code.
+    """
+    root, git = repo
+    (root / ".gitattributes").write_bytes(b"pinned.json text eol=lf\n")
+    (root / "pinned.json").write_bytes(b'{\n  "a": 1\n}\n')
+    git("add", "-A")
+    git("commit", "-m", "pin a path")
+
+    # UNSTAGED and CRLF on disk. This is the discriminating case: staged mode reads the
+    # index, which git has already normalised, so the defect cannot show there. Only the
+    # worktree comparison sees raw CRLF against an LF blob.
+    (root / "pinned.json").write_bytes(b'{\r\n  "a": 2,\r\n  "b": 3\r\n}\r\n')
+    rc, out = run_in(root, "--measure")
+    assert "EOL STYLE FLIP" not in out, (
+        f"a real edit to a PINNED path was reported as a terminator flip — the check is "
+        f"judging disk bytes where git judges normalised bytes (RC-383): {out}")
+    assert "[PASS]" in out, out
+
+
 def test_the_live_repo_is_currently_clean():
     """Negative control on the real tree: the lock must not be born failing."""
     rc = subprocess.run(

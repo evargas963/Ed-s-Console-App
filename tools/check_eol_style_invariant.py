@@ -75,6 +75,31 @@ def is_text_governed(path: str) -> bool:
     return True
 
 
+def pinned_eol(path: str) -> str | None:
+    """'lf'/'crlf' when .gitattributes pins this path's committed terminator, else None.
+
+    RC-383. A pinned path is one git NORMALISES on the way into the blob, so its worktree
+    bytes are ALLOWED to differ from HEAD — that is the entire point of the pin.
+    .claude/settings.json is 78 CRLF on disk and 78 LF in the index by design, and
+    governance/artifacts/*.json has been pinned the same way for months. Comparing raw
+    worktree bytes for such a path reports a flip on a file that is behaving exactly as
+    configured, and a gate that cries wolf on a governed path gets switched off — taking
+    the real protection with it. So the comparison is made on the form git will STORE.
+    """
+    line = _text("check-attr", "eol", "--", path).strip()
+    value = line.rsplit(":", 1)[-1].strip() if ":" in line else ""
+    return value if value in ("lf", "crlf") else None
+
+
+def apply_pin(data: bytes, pin: str | None) -> bytes:
+    """The bytes git will commit for this content under its pin."""
+    if pin == "lf":
+        return data.replace(b"\r\n", b"\n")
+    if pin == "crlf":
+        return data.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    return data
+
+
 def head_bytes(path: str) -> bytes | None:
     proc = _git("show", f"HEAD:{path}")
     return proc.stdout if proc.returncode == 0 else None
@@ -115,7 +140,13 @@ def violations(staged: bool = True) -> list[str]:
         if before is None:          # newly added file: no prior style to preserve
             continue
         after = current_bytes(path, staged)
-        if after is None or before == after:
+        if after is None:
+            continue
+        # RC-383: judge a pinned path on the form git will STORE, not on what the harness
+        # left on disk — for those paths a worktree/blob terminator difference is the
+        # configured behaviour, not a violation.
+        after = apply_pin(after, pinned_eol(path))
+        if before == after:
             continue
         if is_binary(before) or is_binary(after) or not is_text_governed(path):
             continue
