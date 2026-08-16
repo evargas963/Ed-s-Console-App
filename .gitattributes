@@ -1,5 +1,13 @@
 # Governance JSON artifacts: canonical LF in git and on Linux CI (manifest SHA256 pins).
 governance/artifacts/*.json text eol=lf
+# Harness-owned config (RC-382): the Claude Code harness rewrites .claude/*.json with
+# platform terminators whenever it persists settings. MEASURED 2026-08-15: settings.json
+# was committed LF, flipped to CRLF, restored to LF by hand, and flipped BACK within a
+# minute - a file an external tool owns cannot be held to a terminator by hand-restoring
+# it, and the churn left the worktree permanently dirty, which in turn made the Stop
+# supervisor's worktree-identity check fail an otherwise-clean turn. Pinning eol=lf gives
+# git ownership: the blob stays LF no matter what the harness writes to disk.
+.claude/*.json text eol=lf
 # Model artifacts (ML-PIPE Item 4): byte-exact round-trip is mandatory - the
 # bundle integrity manifests and the drift-recovery record pin EXACT bytes,
 # so git must never EOL-normalize anything under models/ (the CRLF smudge on
