@@ -794,7 +794,11 @@ def _gamma_x_oi(chain_row: dict[str, Any]) -> float | None:
 
 def _mins_to_close(ms_dict: dict) -> float | None:
     """Resolve minutes-to-close from explicit fields or decision timestamp."""
-    explicit = _first_number(ms_dict.get("mins_to_close"), ms_dict.get("minutes_to_close"))
+    # RC-381 slice 3: the `minutes_to_close` alias that used to sit beside this was dead.
+    # `mins_to_close` IS written in production Python; `git log --all -S '"minutes_to_close":'
+    # -- '*.py'` finds ZERO non-test commits writing it as a payload key, so the alias could
+    # never contribute a value and only widened the surface for a silent None (RC-15/RC-20).
+    explicit = _first_number(ms_dict.get("mins_to_close"))
     if explicit is not None:
         return explicit
 
