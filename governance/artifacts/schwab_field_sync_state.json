@@ -1,0 +1,33 @@
+{
+  "synced_at_utc": "2026-08-15T22:38:06.098178+00:00",
+  "endpoints_observed": {
+    "quotes": 75,
+    "chains": 140,
+    "pricehistory": 10,
+    "market_hours": 12,
+    "instruments": 63,
+    "movers": 1
+  },
+  "endpoints_not_observed": [],
+  "fields_added": [
+    "chains.callExpDateMap.*.breakEven",
+    "chains.callExpDateMap.*.ssid",
+    "chains.ethOptionEligible",
+    "chains.hasBinaryOptions",
+    "chains.putExpDateMap.*.breakEven",
+    "chains.putExpDateMap.*.ssid",
+    "market_hours.equity.equity",
+    "market_hours.equity.equity.date",
+    "market_hours.equity.equity.isOpen",
+    "market_hours.equity.equity.marketType",
+    "market_hours.equity.equity.product",
+    "market_hours.option.option",
+    "market_hours.option.option.date",
+    "market_hours.option.option.isOpen",
+    "market_hours.option.option.marketType",
+    "market_hours.option.option.product",
+    "pricehistory.symbol",
+    "quotes.reference.ethOptionEligible"
+  ],
+  "note": "endpoints_not_observed and a zero count are NOT deletions \u2014 the union merge never removes a catalogued field. An endpoint returning an empty collection (movers outside trading hours) contributes zero observed fields."
+}

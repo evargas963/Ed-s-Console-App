@@ -915,10 +915,14 @@ def _cascade_identity_matches(
         and d.get("feature_cache_key") == feature_key
         and d.get("training_code_fingerprint") == code_fp
         and d.get("xgb_meta_sha256") == xgb_meta_sha
-        and (
-            d.get("lstm_checkpoint_sha256") == lstm_pt_sha
-            or d.get("lstm_1c_sha256") == lstm_pt_sha
-        )
+        # RC-381: the `or d.get("lstm_1c_sha256")` fallback that used to sit here was dead
+        # on arrival. The sole writer of cascade_transformer_identity.json emits
+        # "lstm_checkpoint_sha256" (this module, _save path), and `git log -S` proves
+        # '"lstm_1c_sha256":' was never written as a payload key in ANY commit in history —
+        # it existed only as this read. A comparison against a key nothing writes is always
+        # False, so the branch could never widen cache acceptance; deleting it changes no
+        # cache verdict and removes a silent-None (RC-15/RC-20 class).
+        and d.get("lstm_checkpoint_sha256") == lstm_pt_sha
         and d.get("xgb_lstm_tensor_sha256") == tensor_sha_expected
         and int(d.get("n_cascade_rows", -1)) == int(npz_n_rows)
         and _normalize_data_fp(d.get("data_fingerprint")) == _normalize_data_fp(data_fp)

@@ -572,7 +572,7 @@ def main() -> int:
             resp = client.get_account_numbers()
             if resp.status_code == 200 and resp.json():
                 accs = resp.json()
-                raw = accs[0].get("accountNumber") or accs[0].get("hashValue")
+                raw = accs[0].get("accountNumber") or accs[0].get("hashValue")  # external-key-ok: Schwab /accounts payload (accountNumber/hashValue are the account identity leaves)
                 if not raw and accs:
                     raw = list(accs[0].values())[0]
                 if raw:

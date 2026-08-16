@@ -759,7 +759,7 @@ def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
         if isinstance(inst, dict):
             for v in inst.values():
                 f = (v or {}).get("fundamental") if isinstance(v, dict) else {}
-                avg = _safe_float((f or {}).get("avg10DaysVolume")) or _safe_float((f or {}).get("avg1DayVolume")) or _safe_float((f or {}).get("vol10DayAvg")) or _safe_float((f or {}).get("vol1DayAvg"))
+                avg = _safe_float((f or {}).get("avg10DaysVolume")) or _safe_float((f or {}).get("avg1DayVolume")) or _safe_float((f or {}).get("vol10DayAvg")) or _safe_float((f or {}).get("vol1DayAvg"))  # external-key-ok: Schwab /quotes fundamental block (all four spellings present in schwab_field_dictionary.csv)
                 if avg and avg > 0:
                     break
     if avg is None or avg <= 0:

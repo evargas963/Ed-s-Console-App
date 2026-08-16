@@ -303,7 +303,7 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
         reg = data.get("regular", {}) or {}
         last = _last_traded_price(quote, ext, reg)
         from numeric_contract import float_finite_or_none as _fin
-        pct_chg = _fin(quote.get("netPercentChange"))
+        pct_chg = _fin(quote.get("netPercentChange"))  # external-key-ok: Schwab /quotes leaf (quotes.netPercentChange in schwab_field_dictionary.csv)
         if pct_chg is None:
             pct_chg = _fin(reg.get("regularMarketPercentChange"))
         net_chg = _fin(quote.get("netChange"))

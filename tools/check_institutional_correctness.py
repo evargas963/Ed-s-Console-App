@@ -952,6 +952,81 @@ _ORPHAN_KEY_SKIP_RECEIVERS = frozenset({
 })
 
 
+#: Committed data files whose keys ARE writes by this repository (RC-384). Explicit by
+#: design — each entry names the reader file, so the list stays reviewable and cannot
+#: quietly grow into "scan everything", which would invent a writer for any string.
+#: The second field is a repo-relative .py path: a data-file key only excuses a .get()
+#: in THAT file (Cursor audit of fd3403b2: walking every nested key into the GLOBAL
+#: write set harvested 26 names including dir/enabled/note — the glob failure at file
+#: scope). Credit is file_keys ∩ reader_.get() keys, applied only at that reader path.
+_DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = (
+    # read by active_bundle_contract._load_migration_policy -> _legacy_allowance_open
+    # and artifact_integrity_strict_absence
+    ("governance/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py"),
+    # read by v2_decision.a2_session_calendar.load_a2_session_calendar / _is_valid_calendar
+    ("data/trading_calendar/us_equities.json", "v2_decision/a2_session_calendar.py"),
+)
+
+
+def _json_object_keys(path: Path) -> set[str]:
+    """Every string key in a JSON document, at any depth. Missing/malformed -> empty."""
+    found: set[str] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if isinstance(k, str):
+                    found.add(k)
+                walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    try:
+        walk(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return set()
+    return found
+
+
+def _loader_get_keys(loader_rel: str) -> set[str]:
+    """Literal .get("k") keys in the named reader. Unreadable -> empty (never widen writes)."""
+    path = REPO / loader_rel
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return set()
+    out: set[str] = set()
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Call):
+            continue
+        if not isinstance(n.func, ast.Attribute) or n.func.attr != "get" or not n.args:
+            continue
+        a0 = n.args[0]
+        if isinstance(a0, ast.Constant) and isinstance(a0.value, str):
+            out.add(a0.value)
+    return out
+
+
+def _data_file_keys_for(loader_rel: str) -> set[str]:
+    """Keys the named reader actually .get()s that exist in its named committed file."""
+    found: set[str] = set()
+    loader_rel = loader_rel.replace("\\", "/")
+    for data_rel, named in _DATA_FILE_KEY_SOURCES:
+        if named.replace("\\", "/") != loader_rel:
+            continue
+        found |= _json_object_keys(REPO / data_rel) & _loader_get_keys(named)
+    return found
+
+
+def _committed_data_file_keys() -> set[str]:
+    """Union of loader-scoped harvests — diagnostics / tests, NOT a global write set."""
+    found: set[str] = set()
+    for _data_rel, loader_rel in _DATA_FILE_KEY_SOURCES:
+        found |= _data_file_keys_for(loader_rel)
+    return found
+
+
 def check_no_orphan_dict_keys() -> list[Violation]:
     """A string key read from a dict that NOTHING in this repo ever writes.
 
@@ -973,6 +1048,14 @@ def check_no_orphan_dict_keys() -> list[Violation]:
     """
     reads: dict[str, tuple] = {}
     writes: set[str] = set()
+    # RC-384: committed data-file keys are credited ONLY at the named reader path
+    # (file ∩ reader .get()), never dumped into this global write set. A global union
+    # harvested 26 keys from the policy file including dir/enabled/note — the same
+    # blindness a JSON glob would buy, at file scope (Cursor audit of fd3403b2).
+    data_by_loader = {
+        loader_rel.replace("\\", "/"): _data_file_keys_for(loader_rel)
+        for _data_rel, loader_rel in _DATA_FILE_KEY_SOURCES
+    }
 
     for path in _production_py_files():
         try:
@@ -1000,6 +1083,12 @@ def check_no_orphan_dict_keys() -> list[Violation]:
     out: list[Violation] = []
     for key, (path, line) in sorted(reads.items()):
         if key in writes:
+            continue
+        try:
+            rel = str(Path(path).resolve().relative_to(REPO.resolve())).replace("\\", "/")
+        except ValueError:
+            rel = str(path).replace("\\", "/")
+        if key in data_by_loader.get(rel, ()):
             continue
         try:
             src_line = path.read_text(encoding="utf-8", errors="replace").splitlines()[line - 1]
@@ -1487,6 +1576,36 @@ def check_ruff_quality() -> list[Violation]:
 
 
 _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\.5|100)\s*\)")
+
+
+def check_eol_style_invariant() -> list[Violation]:
+    """RC-382 — a file's line-ending style must survive an edit.
+
+    Delegates to tools/check_eol_style_invariant.py, which compares each changed file's
+    bytes against its HEAD blob. Kept as a separate module because it is also the
+    standalone --measure instrument, and because the rule is about BYTES rather than
+    about source text: binding it to a library idiom would miss the next writer, and this
+    class already arrived through three different ones.
+    """
+    try:
+        from tools.check_eol_style_invariant import violations as _eol_violations
+    except ImportError:  # pragma: no cover - import shape differs when run as a script
+        from check_eol_style_invariant import violations as _eol_violations  # type: ignore
+
+    import subprocess as _sp
+
+    out: list[Violation] = []
+    # Staged when there is an index to judge (pre-commit), worktree otherwise, so a
+    # developer running the gate by hand sees the same verdict the commit will give.
+    _staged_probe = _sp.run(
+        ["git", "diff", "--cached", "--name-only"], cwd=str(REPO),
+        capture_output=True, text=True, check=False,
+    )
+    staged = bool(_staged_probe.stdout.strip())
+    for message in _eol_violations(staged=staged):
+        path_part = message.split(":", 1)[0]
+        out.append(Violation(Path(path_part), 0, message))
+    return out
 
 
 def check_absence_has_a_type() -> list[Violation]:
@@ -4669,6 +4788,11 @@ CHECKS = [
     # Prototyped 78 -> 2 (exit codes and predicates excluded), both repaired or marked, so
     # it binds at zero on merit rather than on a baseline.
     ("absence_has_a_type", check_absence_has_a_type, True),
+    # RC-382: line-ending style is an invariant across an edit. Three whole-file reflows
+    # landed in one session (RC-372 charter, settings.json, RC-381 slice 1) because no
+    # mechanism owned the terminator. Tests the OUTCOME — bytes on disk vs bytes in HEAD —
+    # so it holds for any writer, not just the libraries that caused the known cases.
+    ("eol_style_invariant", check_eol_style_invariant, True),
     ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
 ]
 

@@ -202,22 +202,22 @@ def fetch_finnhub_sentiment(symbol: str) -> dict[str, Any]:
             out["buzz"] = float(bz) if bz is not None else None
         except (TypeError, ValueError):
             out["buzz"] = None
-    sent = data.get("sentiment") or {}
+    sent = data.get("sentiment") or {}  # external-key-ok: Finnhub /api/v1/news-sentiment payload (fetched this module, line ~187)
     bullish = bearish = None
     if isinstance(sent, dict):
         try:
-            bull_raw = float(sent.get("bullishPercent"))
+            bull_raw = float(sent.get("bullishPercent"))  # external-key-ok: Finnhub /api/v1/news-sentiment payload (fetched this module, line ~187)
             bullish = bull_raw / 100.0 if bull_raw > 1.0 else bull_raw
         except (TypeError, ValueError):
             bullish = None
         try:
-            bear_raw = float(sent.get("bearishPercent"))
+            bear_raw = float(sent.get("bearishPercent"))  # external-key-ok: Finnhub /api/v1/news-sentiment payload (fetched this module, line ~187)
             bearish = bear_raw / 100.0 if bear_raw > 1.0 else bear_raw
         except (TypeError, ValueError):
             bearish = None
     if bullish is not None and bearish is not None and (bullish + bearish) > 1e-6:
         out["composite"] = round((bullish - bearish) / max(1e-6, bullish + bearish), 4)
-    cns = data.get("companyNewsScore")
+    cns = data.get("companyNewsScore")  # external-key-ok: Finnhub /api/v1/news-sentiment payload (fetched this module, line ~187)
     try:
         out["company_news_score"] = float(cns) if cns is not None else None
     except (TypeError, ValueError):
@@ -267,13 +267,13 @@ def fetch_alpha_vantage_sentiment(symbols: list[str]) -> dict[str, float]:
     if err or not isinstance(data, dict) or "feed" not in data:
         return out
     agg: dict[str, list[float]] = {}
-    for art in data.get("feed") or []:
-        for ts in art.get("ticker_sentiment") or []:
+    for art in data.get("feed") or []:  # external-key-ok: AlphaVantage NEWS_SENTIMENT payload (fetched this module, line ~266)
+        for ts in art.get("ticker_sentiment") or []:  # external-key-ok: AlphaVantage NEWS_SENTIMENT payload (fetched this module, line ~266)
             sym = (ts.get("ticker") or "").upper()
             if not sym:
                 continue
-            rel_raw = ts.get("relevance_score")
-            sc_raw = ts.get("ticker_sentiment_score")
+            rel_raw = ts.get("relevance_score")  # external-key-ok: AlphaVantage NEWS_SENTIMENT payload (fetched this module, line ~266)
+            sc_raw = ts.get("ticker_sentiment_score")  # external-key-ok: AlphaVantage NEWS_SENTIMENT payload (fetched this module, line ~266)
             if rel_raw is None or sc_raw is None:
                 continue
             try:

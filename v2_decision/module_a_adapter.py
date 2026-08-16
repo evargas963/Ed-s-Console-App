@@ -127,8 +127,10 @@ def _edge_domains(ms: dict[str, Any]) -> dict[str, Any]:
             "primary_evidence": leaf(
                 [
                     _compact_none(ms.get("fusion_summary")),
+                    # RC-381: micro_5m_headline was a stale name. The 5-minute micro
+                    # signal is computed as micro_structure.headline_5m, copied to
+                    # RulesCard.headline (rules_engine.py), and stamped as rules_headline.
                     _compact_none(ms.get("rules_headline")),
-                    _compact_none(ms.get("micro_5m_headline")),
                 ],
                 "v1_approximation",
             ),
