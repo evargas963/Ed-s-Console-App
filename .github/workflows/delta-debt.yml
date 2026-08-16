@@ -46,13 +46,16 @@ jobs:
           if [ -z "${BASE_REF}" ]; then
             BASE_REF="origin/main"
           fi
+          # Write the grader into THIS checkout so cwd is a git repo. The
+          # tool resolves REPO from `git rev-parse --show-toplevel` of cwd,
+          # not from __file__ — a copy in /tmp used to grade `/` and die.
           if git cat-file -e "${BASE_REF}:tools/check_delta_adds_no_debt.py" 2>/dev/null; then
-            git show "${BASE_REF}:tools/check_delta_adds_no_debt.py" > /tmp/delta_gate.py
+            git show "${BASE_REF}:tools/check_delta_adds_no_debt.py" > "${GITHUB_WORKSPACE}/.delta_gate_from_base.py"
           else
-            echo "base has no delta tool yet (bootstrap); using this tree's copy"
-            cp tools/check_delta_adds_no_debt.py /tmp/delta_gate.py
+            echo "base has no delta tool yet (bootstrap onto origin/main); using this tree's copy"
+            cp tools/check_delta_adds_no_debt.py "${GITHUB_WORKSPACE}/.delta_gate_from_base.py"
           fi
-          python /tmp/delta_gate.py --base origin/main
+          python "${GITHUB_WORKSPACE}/.delta_gate_from_base.py" --base origin/main
 
       - name: Wiring must hold on this tree
         run: |

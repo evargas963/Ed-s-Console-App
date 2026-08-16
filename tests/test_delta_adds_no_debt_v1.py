@@ -192,6 +192,47 @@ def test_gate_shrink_is_not_an_improvement():
     assert GATE.parse_enforced_names("syntax error ((") == set()
 
 
+def test_docstring_tokens_are_not_a_precommit_bind(tmp_path):
+    """F4: a return-0 hook whose docstring names the tokens must still fail."""
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "governance").mkdir()
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / "tools" / "precommit_institutional.py").write_text(
+        '"""check_delta_adds_no_debt.py --staged origin/main return 2"""\n'
+        "def main():\n    return 0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tools" / "check_delta_adds_no_debt.py").write_text(
+        "def interpret_gate_output():\n    raise RuntimeError('no parseable')\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "governance" / "operator_grants.json").write_text(
+        '{"grants":{"claude_no_verify_checkpoints":{"granted":false}}}',
+        encoding="utf-8",
+    )
+    (tmp_path / ".github" / "workflows" / "delta-debt.yml").write_text(
+        "run: python tools/check_delta_adds_no_debt.py\n# git show BASE\n",
+        encoding="utf-8",
+    )
+    v = GATE.wiring_violations(tmp_path)
+    assert any("does not invoke check_delta_adds_no_debt.py" in m for m in v), v
+    assert any("does not pass --staged" in m for m in v), v
+
+
+def test_relocated_script_still_grades_cwd_repo(tmp_path):
+    """CI copies the grader out of tree; __file__ must not become the repo root."""
+    import importlib.util
+    src = (REPO / "tools" / "check_delta_adds_no_debt.py").read_text(encoding="utf-8")
+    relocated = tmp_path / "delta_gate.py"
+    relocated.write_text(src, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("relocated_delta", relocated)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.REPO.resolve() == REPO.resolve(), (
+        f"relocated grader used {mod.REPO} instead of cwd toplevel {REPO}"
+    )
+
+
 def test_wiring_fails_a_true_grant_and_an_unwired_precommit(tmp_path):
     """Negative control for no_verify_cannot_hide_delta: inject the two escapes."""
     (tmp_path / "tools").mkdir()

@@ -47,7 +47,29 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+def _repo_root() -> Path:
+    """Grade the caller's working tree, not the script's install path.
+
+    CI copies this file to /tmp so a PR cannot gut the grader (RC-389).
+    ``Path(__file__).parent.parent`` then becomes ``/``, and every git
+    call dies with 'not a git repository' — a job that can never be
+    green can never be marked required. Resolve via cwd's git toplevel.
+    """
+    here = Path(__file__).resolve().parent.parent
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(Path.cwd()),
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", check=False, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return here
+    top = (r.stdout or "").strip()
+    return Path(top) if r.returncode == 0 and top else here
+
+
+REPO = _repo_root()
 
 #: `FAIL [name] (ENFORCED) — N violation(s):`  — the em dash varies by console encoding,
 #: so match on the bracketed name and the trailing count rather than the separator.
@@ -178,19 +200,20 @@ def wiring_violations(root: Path) -> list[str]:
         out.append("tools/precommit_institutional.py is missing")
         return out
     pre = pre_path.read_text(encoding="utf-8")
-    if "check_delta_adds_no_debt.py" not in pre:
+    code_strings = _code_string_constants(pre)
+    if "check_delta_adds_no_debt.py" not in code_strings:
         out.append(
             "precommit_institutional.py does not invoke check_delta_adds_no_debt.py "
             "— the blocking path is back to absolute-zero and will be bypassed"
         )
-    if "--staged" not in pre:
+    if "--staged" not in code_strings:
         out.append(
             "precommit_institutional.py does not pass --staged "
             "(H2: would grade last HEAD, not the index being committed)"
         )
-    if "origin/main" not in pre:
+    if "origin/main" not in code_strings:
         out.append("precommit_institutional.py does not pin --base origin/main")
-    if "return 2" not in pre:
+    if not _returns_constant(pre, 2):
         out.append(
             "precommit_institutional.py does not fail-closed (exit 2) when "
             "origin/main cannot be resolved"
@@ -232,7 +255,7 @@ def wiring_violations(root: Path) -> list[str]:
         out.append("tools/check_delta_adds_no_debt.py is missing")
     else:
         src = delta_path.read_text(encoding="utf-8")
-        if "interpret_gate_output" not in src:
+        if "def interpret_gate_output" not in src:
             out.append("delta tool has no interpret_gate_output (H1 fail-open)")
         if "no parseable" not in src:
             out.append(
@@ -240,6 +263,40 @@ def wiring_violations(root: Path) -> list[str]:
                 "FAIL [name] lines (residual H1)"
             )
     return out
+
+
+def _code_string_constants(source: str) -> set[str]:
+    """String constants in executable code, not docstrings (prose is not a bind)."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    skip: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if not (node.body and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)):
+            continue
+        skip.add(id(node.body[0].value))
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip:
+            out.add(node.value)
+    return out
+
+
+def _returns_constant(source: str, value: int) -> bool:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value == value
+        for node in ast.walk(tree)
+    )
 
 
 def inspect_ref(ref: str, *, collect_wiring: bool = False
@@ -297,10 +354,12 @@ def main(argv: list[str] | None = None) -> int:
     head_counts, head_sha, head_names, wiring = inspect_ref(
         head_ref, collect_wiring=True)
     removed = sorted(base_names - head_names)
-    if wiring:
+    if wiring and head_counts.get("no_verify_cannot_hide_delta", 0) < len(wiring):
+        # Inject only when HEAD's own checker is missing or silent (gutted).
+        # Do not add on top of FAIL [no_verify_cannot_hide_delta] — that
+        # double-count would turn inherited wiring debt into a false ADDED.
         head_counts = dict(head_counts)
-        head_counts["no_verify_cannot_hide_delta"] = (
-            head_counts.get("no_verify_cannot_hide_delta", 0) + len(wiring))
+        head_counts["no_verify_cannot_hide_delta"] = len(wiring)
     if removed:
         head_counts = dict(head_counts)
         head_counts["enforced_gate_shrink"] = (
