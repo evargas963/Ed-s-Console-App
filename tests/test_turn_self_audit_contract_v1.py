@@ -155,8 +155,11 @@ def test_comment_or_string_does_not_create_test_ownership(tmp_path):
     assert proc.returncode == audit_exit("NOT_PROVEN")
     assert result["verdict"] == "NOT_PROVEN"
     assert "mod.py" in result["ownership"]["unknown"]
+    # V3 Step 2 added the two always-on state measurements between scope_integrity and the
+    # change-driven checks, so the executed list carries them too.
     assert result["checks_executed"] == [
-        "scope_integrity", "ruff_changed", "test_ownership", "owned_pytest"
+        "scope_integrity", "index_worktree_state", "runtime_identity_state",
+        "ruff_changed", "test_ownership", "owned_pytest"
     ]
 
 

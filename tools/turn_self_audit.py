@@ -23,11 +23,15 @@ LOG_REL = "reports/turn_self_audit_log.jsonl"
 CONTRACT_ID = "CLEAN_FOR_TURN_CONTRACT_V1"
 SCHEMA_VERSION = 1
 
-PROD_SUFFIXES = (".py", ".html", ".js", ".jsx", ".css", ".ts", ".tsx", ".sql")
-NON_PROD_PREFIXES = (
-    "tests/", "governance/", "docs/", "reports/", ".claude/", ".cursor/",
-    "scratchpad/", "calibration/",
-)
+#: FC-13: the production-surface geometry moved to tools/pretooluse_guard.classify_path so
+#: one resolve-and-compare answers governance and product-surface for every caller. These
+#: names are retained as re-exports because they are part of this module's public surface.
+try:  # guards run both as `tools.x` and as bare `x` from inside tools/ — support both
+    from tools.pretooluse_guard import NOT_PRODUCT_PREFIXES as NON_PROD_PREFIXES
+    from tools.pretooluse_guard import PRODUCTION_SUFFIXES as PROD_SUFFIXES
+except ImportError:  # pragma: no cover - exercised by the guard subprocess tests
+    from pretooluse_guard import NOT_PRODUCT_PREFIXES as NON_PROD_PREFIXES  # type: ignore # noqa: F401
+    from pretooluse_guard import PRODUCTION_SUFFIXES as PROD_SUFFIXES  # type: ignore # noqa: F401
 
 STATUS_PASS = "PASS"
 STATUS_FAIL = "FAIL"
@@ -95,6 +99,12 @@ class CheckSpec:
 
 CORE_CHECK_SPECS = (
     CheckSpec("scope_integrity", "always"),
+    # V3 Step 2: the state measurements move here from the process-lock Stop path so their
+    # result becomes typed evidence a reviewer can read, instead of a pass/fail with no
+    # artifact. The formulas are NOT reimplemented — both delegate to the functions that
+    # already own them in tools/operating_process_lock.py.
+    CheckSpec("index_worktree_state", "always"),
+    CheckSpec("runtime_identity_state", "always"),
     CheckSpec("ruff_changed", "changed_existing_python"),
     CheckSpec("test_ownership", "production_change"),
     CheckSpec("owned_pytest", "production_change"),
@@ -106,8 +116,19 @@ def _norm(path: str) -> str:
 
 
 def is_production_path(path: str) -> bool:
-    rel = _norm(path)
-    return rel.endswith(PROD_SUFFIXES) and not rel.startswith(NON_PROD_PREFIXES)
+    """Thin accessor over the single path authority (FC-13).
+
+    This used to be an independent formula: `_norm` only stripped a leading "./", so the
+    relative-prefix exemption could never match an absolute path and an absolute
+    scratchpad/*.py was classified production even though `scratchpad/` was already in the
+    exemption list. The governance step (is this path OURS) was missing entirely. Both
+    questions now come from one resolve-and-compare in tools/pretooluse_guard.classify_path.
+    """
+    try:
+        from tools.pretooluse_guard import classify_path
+    except ImportError:
+        from pretooluse_guard import classify_path  # type: ignore
+    return classify_path(path).production
 
 
 def _run(
@@ -488,6 +509,64 @@ def resolve_test_ownership(
     )
 
 
+def _state_check_records(root: Path) -> list[dict[str, Any]]:
+    """V3 Step 2 — typed evidence for the two repository-state measurements.
+
+    Both delegate to tools/operating_process_lock, which already owns the computations. A
+    measurement that cannot be taken records INCOMPLETE, never PASS: an unmeasurable state
+    is not a clean state (RC-57).
+    """
+    out: list[dict[str, Any]] = []
+
+    started = time.time()
+    try:
+        try:
+            from tools.operating_process_lock import index_worktree_mismatches
+        except ImportError:
+            from operating_process_lock import index_worktree_mismatches  # type: ignore
+        mismatches = index_worktree_mismatches(root)
+        out.append(_check_record(
+            "index_worktree_state",
+            STATUS_PASS if not mismatches else STATUS_FAIL,
+            started=started,
+            exit_code=0 if not mismatches else 1,
+            outcome=OUTCOME_OK,
+            detail=("no enforcement path differs between index and worktree"
+                    if not mismatches else "; ".join(mismatches[:10])),
+        ))
+    except Exception as exc:  # noqa: BLE001 - unmeasurable must not read as clean
+        out.append(_check_record(
+            "index_worktree_state", STATUS_INCOMPLETE, started=started,
+            exit_code=None, outcome="measurement_failed",
+            detail=f"{type(exc).__name__}: {exc}",
+        ))
+
+    started = time.time()
+    try:
+        try:
+            from tools.operating_process_lock import live_collect_disk_only
+        except ImportError:
+            from operating_process_lock import live_collect_disk_only  # type: ignore
+        disk_only = live_collect_disk_only(root)
+        out.append(_check_record(
+            "runtime_identity_state",
+            STATUS_PASS if not disk_only else STATUS_FAIL,
+            started=started,
+            exit_code=0 if not disk_only else 1,
+            outcome=OUTCOME_OK,
+            detail=("running console matches the tree, or no console is running"
+                    if not disk_only else str(disk_only)),
+        ))
+    except Exception as exc:  # noqa: BLE001
+        out.append(_check_record(
+            "runtime_identity_state", STATUS_INCOMPLETE, started=started,
+            exit_code=None, outcome="measurement_failed",
+            detail=f"{type(exc).__name__}: {exc}",
+        ))
+
+    return out
+
+
 def _check_record(
     check_id: str,
     status: str,
@@ -604,6 +683,9 @@ def run_audit(
         outcome=OUTCOME_OK if scope_status == STATUS_PASS else "scope_error",
         detail="; ".join(scope.errors + identity_errors),
     ))
+
+    for record in _state_check_records(root):
+        checks.append(record)
 
     ownership = OwnershipResult(status=STATUS_PASS)
     relevant = bool(scope.production_entries)

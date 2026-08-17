@@ -357,7 +357,18 @@ def test_absent_declaration_means_the_mechanism_governs_nothing(tmp_path, monkey
 
 
 # ── 5. attempted versus executed lifecycle ────────────────────────────────────────────────
-def _attempt(path, mtime_before, repo=ED):
+def _attempt(path, mtime_before, repo=None):
+    """A ledger row for an attempted edit.
+
+    FC-13: `repo` used to default to ED even for files written under tmp_path, so the row
+    claimed a repository that did not contain the file. That only worked because the pre-fix
+    classifier fell back to the absolute path when relativisation raised — the same fallback
+    that misclassified out-of-tree scratch files as production. The default now derives the
+    governing root from the path itself for absolute inputs, so the fixture is self-consistent;
+    relative inputs still mean "inside this repository".
+    """
+    if repo is None:
+        repo = str(Path(path).parent) if Path(path).is_absolute() else ED
     return {"kind": "edit_attempt", "detail": path, "repo": repo, "mtime_before": mtime_before}
 
 
@@ -580,9 +591,13 @@ def test_negative_control_pre_fix_counted_a_rejected_edit_as_production_change(t
             p = e.get("detail", "").replace("\\", "/")
             if e.get("kind") != "edit":
                 continue
-            if any(seg in p for seg in G._NON_PRODUCTION):
+            # Literals, not production constants: an oracle that imports the thing it is
+            # meant to independently check is not an oracle. These reproduce the pre-fix
+            # tuples verbatim so the control keeps working after FC-13 deleted them.
+            if any(seg in p for seg in ("tests/", "tests\\", "governance/", "governance\\",
+                                        "docs/", "reports/", ".claude/", "calibration/")):
                 continue
-            if p.endswith(G._PRODUCTION_SUFFIX):
+            if p.endswith((".py", ".html", ".js", ".css", ".ts", ".sql")):
                 out.append(p)
         return out
 

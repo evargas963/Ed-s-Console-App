@@ -4069,11 +4069,10 @@ def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation
         f"against actual code and an actual rendered frame BEFORE the ship claim.")]
 
 
-#: RC-205 production-surface geometry mirrors tools/pretooluse_guard.py (the front end of the
-#: same law): suffixes are the continuum, prefixes are the compliance lanes.
-_RESEARCH_PROD_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
-_RESEARCH_EXEMPT_PREFIXES = ("tests/", "governance/", "docs/", "reports/", ".claude/",
-                             "calibration/", "scratchpad/")
+#: RC-205 production-surface geometry no longer MIRRORS tools/pretooluse_guard.py — FC-13
+#: replaced the mirror with the thing itself. `classify_path` is the single authority for
+#: "is this path ours, and is it a product surface"; a mirrored copy is a second producer
+#: that drifts, which is what this consolidation exists to remove.
 
 
 def research_before_act_violations(staged: list, log_path: Path) -> list[str]:
@@ -4082,9 +4081,11 @@ def research_before_act_violations(staged: list, log_path: Path) -> list[str]:
 
     RC-205: research must pass full turn_self_audit.research_violation (resolvable path/URL),
     not merely a non-empty string."""
-    prod = [s for s in staged
-            if s.endswith(_RESEARCH_PROD_SUFFIXES)
-            and not s.startswith(_RESEARCH_EXEMPT_PREFIXES)]
+    try:
+        from tools.pretooluse_guard import classify_path
+    except ImportError:
+        from pretooluse_guard import classify_path  # type: ignore
+    prod = [s for s in staged if classify_path(s).production]
     if not prod:
         return []
     try:

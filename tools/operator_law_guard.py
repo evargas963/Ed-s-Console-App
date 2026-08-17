@@ -316,9 +316,10 @@ _VERIFICATION = re.compile(
     r"code_health_panel\.py|data_faucet_audit|repo_exposure_audit|ruff\s+check|mypy|"
     r"node\s+--check|urllib\.request|127\.0\.0\.1:8000)\b", re.I)
 
-_PRODUCTION_SUFFIX = (".py", ".html", ".js", ".css", ".ts", ".sql")
-_NON_PRODUCTION = ("tests/", "tests\\", "governance/", "governance\\", "docs/", "reports/",
-                   ".claude/", "calibration/")
+#: FC-13: this module used to carry its own production-surface geometry here. The constants
+#: were dead — nothing read them — but a dead copy of a semantic rule is still a second
+#: producer waiting to be picked up. The one authority is
+#: tools/pretooluse_guard.classify_path, reached through turn_self_audit.is_production_path.
 
 _GREP_AGAINST_FILES = re.compile(
     r"(?:^|[|;&]\s*)(?:grep|rg|egrep|fgrep)\b(?![^|;&\n]*\|)[^|;&\n]*?"
@@ -600,23 +601,22 @@ def _edit_took_effect(entry: dict) -> bool:
 def _production_edits(ledger: list[dict], confirm=None) -> list[str]:
     """Production surfaces this turn actually CHANGED — attempts that were refused drop out."""
     try:
-        from tools.turn_self_audit import is_production_path
+        from tools.pretooluse_guard import classify_path
     except ImportError:
-        from turn_self_audit import is_production_path  # type: ignore
+        from pretooluse_guard import classify_path  # type: ignore
     confirm = _edit_took_effect if confirm is None else confirm
     out = []
     for e in ledger:
         if e.get("kind") not in ("edit", "edit_attempt"):
             continue
         p = e.get("detail", "").replace("\\", "/")
-        rel = p
-        repo = str(e.get("repo") or "")
-        if repo:
-            try:
-                rel = Path(p).resolve().relative_to(Path(repo).resolve()).as_posix()
-            except (OSError, ValueError):
-                rel = p
-        if not is_production_path(rel):
+        # FC-13: the per-entry relativisation that used to sit here was a third producer of
+        # the path semantic, and it only worked when the ledger row carried a `repo` value —
+        # otherwise it fell through to the absolute path, which is exactly the case that
+        # misclassified session scratchpad files as production. The authority now owns both
+        # the relativisation and the classification, and fails closed on an unresolvable
+        # path. The ledger's own repo scope (RC-258) is passed through rather than reinvented.
+        if not classify_path(p, repo=e.get("repo") or None).production:
             continue
         if not confirm(e):
             continue
