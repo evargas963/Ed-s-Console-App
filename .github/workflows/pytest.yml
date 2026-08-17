@@ -90,7 +90,9 @@ jobs:
           # ED_CI_OFFLINE + config.is_schwab_ci_offline_mode() block live API calls.
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
-        run: python -m pytest -q
+          # TEMPORARY (RC-397): names the test that reflows a watched tracked file.
+          RC397_WATCH: "1"
+        run: python -m pytest -q -s
 
       - name: DIAG (temporary) — failure detail
         if: failure()
