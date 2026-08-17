@@ -23,14 +23,27 @@ CONSOLE = STATIC / "index.html"
 
 
 def _mutate(sub: str, rep: str, path: Path = CHART) -> list[dict]:
-    """Run the detector against a deliberately broken client file, then always restore it."""
-    orig = path.read_text(encoding="utf-8")
+    """Run the detector against a deliberately broken client file, then always restore it.
+
+    RC-398: the restore went through `write_text`, which opens with newline=None and
+    translates "\\n" to os.linesep. On Windows that round-trip is lossless, so the defect
+    was invisible to every local run; on the required Linux runner it rewrote these CRLF
+    files as LF and the "restore" did not restore. MEASURED there: static/chart.html and
+    static/index.html left pytest reflowed with diffs of exactly 2x their CRLF counts
+    (4220 = 2110*2, 28076 = 14038*2), tripping eol_style_invariant on files the change
+    never touched.
+
+    A mutation control that cannot put the tree back byte-for-byte is not a control — it
+    is a mutation. Bytes in, bytes out; the platform gets no say.
+    """
+    raw = path.read_bytes()
+    orig = raw.decode("utf-8")
     assert sub in orig, f"fixture drifted; anchor not found: {sub[:60]!r}"
     try:
-        path.write_text(orig.replace(sub, rep, 1), encoding="utf-8")
+        path.write_bytes(orig.replace(sub, rep, 1).encode("utf-8"))
         return audit_client()
     finally:
-        path.write_text(orig, encoding="utf-8")
+        path.write_bytes(raw)
 
 
 def test_shipped_client_has_one_spot_faucet():
