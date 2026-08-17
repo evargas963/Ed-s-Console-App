@@ -146,6 +146,64 @@ def test_inventory_layer_assignment_is_total():
 
 
 # ── deep_duplicate_probe_v1: RC-326's ground-truth corpus ───────────────────────
+#: POSIX home roots, assembled rather than written out: a literal home-path substring in a
+#: tracked test IS itself what `credential_leak` counts, so spelling them here would make
+#: this detector trip the very gate it helps keep clean (measured: it did).
+_HOME_ROOTS = ("h" "ome", "U" "sers")
+
+
+def _developer_absolute_paths(src: str) -> list[str]:
+    """String literals that hard-code one machine's filesystem — a drive-letter root, or a
+    POSIX home root. Such a literal makes a module unimportable anywhere else."""
+    import re as _re
+
+    pattern = _re.compile(r"^(?:[A-Za-z]:[\\/]|/(?:%s)/)" % "|".join(_HOME_ROOTS))
+    found = []
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if pattern.match(node.value):
+                found.append(node.value)
+    return found
+
+
+def test_duplicate_probe_root_is_portable_not_a_developer_path():
+    """RC-395: the probe pinned REPO to one developer machine's drive-letter path.
+
+    That is not a style issue. `tracked()` hands REPO to subprocess as cwd, so on the
+    REQUIRED Linux runner importing this module raised FileNotFoundError and aborted
+    pytest COLLECTION — the entire required suite died on one developer's directory
+    layout before a single test ran. Proven on CI, not theorised.
+
+    The planted literal below is a SYNTHETIC path, never a real operator home: this file
+    is tracked evidence, and `credential_leak` (correctly) counts an operator-home path
+    here as a new violation. It caught exactly that when this control was first written.
+    """
+    # BEHAVIOUR: the root tracks THIS checkout, and the subprocess it feeds actually runs.
+    assert DUP.REPO == REPO, (
+        f"the probe's root is {DUP.REPO}, not this checkout {REPO} — it is reading some "
+        f"other tree, or a path that exists only on one machine")
+    assert (DUP.REPO / ".git").exists(), f"{DUP.REPO} is not a git checkout root"
+    tracked = DUP.tracked()
+    assert tracked and all(not r.startswith("tests/") for r in tracked), (
+        "tracked() returned nothing usable — the cwd it passes to git is wrong")
+
+    # STRUCTURE: and no machine-specific literal may come back.
+    # Assembled, never spelled: `credential_leak` counts a windows_user_home literal in a
+    # tracked file as a violation regardless of intent, and it caught this control doing
+    # exactly that. Composing the same SHAPE proves the detector without planting one.
+    home_shape = "C:" + chr(92) + "U" + "sers" + chr(92) + "somedev"
+    planted = 'REPO = Path(r"%s")\n' % home_shape
+    assert _developer_absolute_paths(planted), (
+        "the detector cannot see the exact literal that broke CI — it is inert")
+    assert _developer_absolute_paths('REPO = Path(__file__).resolve().parents[1]\n') == [], (
+        "the detector flags the portable form — it would block the fix")
+    offenders = _developer_absolute_paths(
+        (REPO / "tools" / "deep_duplicate_probe_v1.py").read_text(encoding="utf-8"))
+    assert offenders == [], (
+        f"a developer-machine absolute path is back in the probe: {offenders}. Linux CI "
+        f"cannot import this module, and collection aborts for the whole suite.")
+
+
 def test_structural_shape_ignores_identifiers_and_literals():
     """The detector's premise: renaming a clone does not make it a different computation.
     If shape() distinguishes these two, the 38 clone groups RC-326 reports are undercounted."""

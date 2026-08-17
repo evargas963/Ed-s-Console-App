@@ -23,7 +23,14 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-REPO = Path(r"C:\Users\evarg\Documents\Trading\EdWebConsole")
+#: Derived from THIS file's location, never from a developer machine's absolute path.
+#: A baked-in drive-letter literal used to live here, which made the module unimportable
+#: on any other checkout: on the required Linux runner `tracked()` passed that path to
+#: subprocess as cwd and raised FileNotFoundError at IMPORT,
+#: which aborted pytest COLLECTION — so the entire required suite died on one developer's
+#: directory layout rather than on any test. Every other tool here resolves its root this
+#: way; this one had drifted, and nothing measured the drift until CI ran on Linux.
+REPO = Path(__file__).resolve().parents[1]
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 SKIP = ("tests/", "research/", "arch_competition/", "scratchpad/", "governance/archive/")

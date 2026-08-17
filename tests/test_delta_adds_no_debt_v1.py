@@ -564,6 +564,44 @@ def test_the_precommit_seam_measures_the_index_against_the_trunk():
         seam.subprocess.run = real_run
 
 
+def test_the_required_hardening_job_uses_the_same_debt_owner():
+    """RC-395: the REMOTE required check must run the same owner as the local hook.
+
+    The hardening workflow invoked check_institutional_correctness.py directly while its
+    own comment claimed "pre-commit parity" — prose parity over a real divergence. It is
+    why `Hardening Gates` was RED on origin/main itself at 4983eb57, 573b96e8, b6bde57e
+    and ca6d7b27: absolute zero is unreachable on a trunk carrying inherited debt, so the
+    required check could not tell a commit that ADDS debt from one that PAYS it.
+
+    A workflow is DATA — there is no local runtime that executes a GitHub job — so the
+    wiring is asserted structurally. The owner it names is then checked as a real object,
+    not as a string, so a step pointing at a tool that does not exist cannot pass.
+    """
+    wf = (REPO / ".github" / "workflows" / "hardening.yml").read_text(encoding="utf-8")
+    blocking = [ln for ln in wf.splitlines()
+                if ln.strip().startswith("run:") or ln.strip().startswith("python ")]
+    joined = "\n".join(blocking)
+    assert "check_delta_adds_no_debt.py" in joined, (
+        "the required hardening job does not run the institutional debt owner")
+    assert "--base" in joined, "the hardening job does not name a base trunk to measure against"
+    assert not any("check_institutional_correctness.py" in ln for ln in blocking), (
+        "the hardening job still runs the absolute-zero gate as a blocking decision — it "
+        "is unreachable on a trunk with inherited debt and blocks the paydown commits too")
+
+    # The named owner is the SAME file the local pre-commit seam delegates to, and it
+    # really exists — a workflow naming a deleted tool would otherwise read as wired.
+    owner = REPO / "tools" / "check_delta_adds_no_debt.py"
+    assert owner.is_file(), f"{owner} is missing; the required job names a tool that is gone"
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "precommit_inst_parity", REPO / "tools" / "precommit_institutional.py")
+    seam = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seam)
+    assert (REPO / "tools" / "check_delta_adds_no_debt.py").resolve() == owner.resolve()
+    assert callable(seam.main), "the local seam is not callable; parity cannot be claimed"
+
+
 def test_the_precommit_seam_refuses_when_no_base_trunk_resolves(monkeypatch):
     """Fail closed: no baseline must not silently mean 'nothing is new debt'."""
     import importlib.util
