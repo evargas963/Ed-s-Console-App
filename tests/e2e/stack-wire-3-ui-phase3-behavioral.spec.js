@@ -91,7 +91,17 @@ test('dr-signals-engine-fail-chip surfaces signals_engine_failed=true distinctly
     window._lastData = { stack_runtime: { signals_engine_failed: true, stack_mode: 'FULL' } };
     window._updateLiveUiAe();
   });
-  await expect(chip).toBeVisible();
+  // RC-395: this asserted toBeVisible(), i.e. VIEWPORT visibility. The chip lives inside
+  // #main, and the approved CONSOLE v2 (CR-CAP) redesign hides that whole subtree —
+  // `#app > #main { display:none !important; }` in static/index.html, with the note "the
+  // legacy console markup stays in the DOM (its JS drives the utility bar, SSE, freshness
+  // pills and terrain) but is display:none — hiding it, not deleting it, is what keeps
+  // Terrain and Chart working." So the chip can never be in-viewport, and toBeVisible() had
+  // become an assertion about a retired surface rather than about this chip's contract.
+  // The contract itself is live and still worth locking, so it is asserted where it lives:
+  // the element's own display toggle, text and class. The hidden case below is unchanged in
+  // strength — display must go back to 'none'.
+  expect(await chip.evaluate((el) => el.style.display)).toBe('');
   expect(await chip.textContent()).toBe('SIGNALS ENGINE FAILED');
   const cls = await chip.getAttribute('class');
   expect(cls || '').toContain('bad');
@@ -101,7 +111,11 @@ test('dr-signals-engine-fail-chip surfaces signals_engine_failed=true distinctly
     window._lastData = { stack_runtime: { signals_engine_failed: false, stack_mode: 'INVALID' } };
     window._updateLiveUiAe();
   });
-  await expect(chip).toBeHidden();
+  // Asserted on the same axis as the shown case above: the chip's own display toggle must go
+  // back to 'none', and it must stop claiming the failure in its text and class.
+  expect(await chip.evaluate((el) => el.style.display)).toBe('none');
+  expect(await chip.textContent()).toBe('SIGNALS —');
+  expect((await chip.getAttribute('class')) || '').not.toContain('bad');
 });
 
 test('renderContextLayer binds iv_rank / iv_percentile with em-dash withhold (not zero)', async ({ page }) => {

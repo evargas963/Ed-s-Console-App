@@ -187,8 +187,34 @@ def in_window_ts(hour: int = 10, minute: int = 0, *, span_minutes: int = 0) -> f
         raise AssertionError(
             f"a {span_minutes}-minute series from {hour:02d}:{minute:02d} ET runs past the "
             f"window's close ({COLLECT_WINDOW_END_MINS} minutes); start it earlier")
-    day = most_recent_trading_day_et()
+    day = most_recent_completed_session_et()
     return datetime(day.year, day.month, day.day, hour, minute, tzinfo=ET).timestamp()
+
+
+def most_recent_completed_session_et() -> date:
+    """The newest ET trading day whose COLLECT WINDOW has already CLOSED.
+
+    A trading day is not the same thing as a FINISHED trading day, and every fixture that
+    reaches this helper writes a forward-running bar series and then asserts on an outcome
+    computed from its tail. `most_recent_trading_day_et` answers "today" from the moment
+    the date rolls over, so between midnight and the window's close those fixtures were
+    generating bars for a session that HAS NOT HAPPENED YET: the writer accepts them, the
+    outcome columns come back None, and the test reports a true statement about the clock
+    instead of about the code.
+
+    That is the same defect a previous repair had already closed in ONE fixture. It
+    survived here because the fix was applied to the instance rather than to the shared
+    authority the other fixtures draw from — the exact "fixed the instance, not the class"
+    loop RC-286's docstring names. The completion rule now lives in one place, so a fixture
+    cannot anchor to an unfinished session by forgetting to ask.
+    """
+    from time_et import COLLECT_WINDOW_END_MINS, ET
+
+    now = datetime.now(ET)
+    day = most_recent_trading_day_et()
+    if day == now.date() and (now.hour * 60 + now.minute) <= COLLECT_WINDOW_END_MINS:
+        day = most_recent_trading_day_et(on_or_before=day - timedelta(days=1))
+    return day
 
 
 @pytest.fixture

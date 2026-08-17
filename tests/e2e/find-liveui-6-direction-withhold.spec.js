@@ -261,7 +261,15 @@ test('_updateDirectionWithheldMarkers per-horizon: tf-signal-{slug} card marked 
   if (result.five_present) expect(result.five_attr).toBeNull();
 });
 
-test('tf-signal LONG card stays full color when bundle withheld (trade-signal exempt)', async ({ page }) => {
+// RC-395 (was: 'tf-signal LONG card stays full color when bundle withheld (trade-signal
+// exempt)'). That exemption was a CSS carve-out keeping LONG/SHORT colour on withheld cards.
+// RC-133/v27 DELETED it — the revoking note is in the source at static/index.html, above the
+// [data-direction-withhold] rule: "the rules that kept LONG/SHORT color on withheld or
+// non-actionable signal cards were DELETED here ... no selector may resurrect direction
+// chrome." A withheld bundle is stale data; a full-colour trade-active card on stale data is
+// the fail-open this repo already burned once. The withhold dim now applies to every
+// direction-bearing card with no exemption, and that is what this control proves.
+test('tf-signal LONG card is dimmed like any other when bundle withheld (no trade-signal exemption)', async ({ page }) => {
   await gotoWithWithholdHelpers(page);
 
   const result = await page.evaluate(() => {
@@ -292,9 +300,11 @@ test('tf-signal LONG card stays full color when bundle withheld (trade-signal ex
   });
 
   expect(result.missing).not.toBe(true);
+  // The withhold marker is still applied to a trade-active LONG card — no exemption.
   expect(result.attr).toBeTruthy();
-  expect(Number(result.opacity)).toBeGreaterThan(0.95);
-  expect(result.filter === 'none' || result.filter === '').toBe(true);
+  // And it is actually DIMMED: the marker without the dim would be a marker nobody sees.
+  expect(Number(result.opacity)).toBeLessThan(0.95);
+  expect(result.filter).toContain('grayscale');
 });
 
 test('price DOM (#sb-spot / quote header) is NOT marked direction-withhold', async ({ page }) => {

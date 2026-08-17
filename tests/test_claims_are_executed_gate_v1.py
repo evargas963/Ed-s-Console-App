@@ -135,16 +135,45 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     The widening to module scope was deliberate (the per-function form produced five false
     positives), and this is what it gave up.
 
-    The number is asserted, not enforced at zero: most of the 261 are the inventory, register
+    The number is asserted, not enforced at zero: most of the 265 are the inventory, register
     and wiring audits the checker's own docstring defends, and exempting them one by one
     would be the allowlist habit RC-276 removed. Asserting it means the next person who
     widens this gate's scope moves a visible figure instead of extending a silence.
+
+    261 -> 265, accounted for function by function 2026-08-17. Thirteen entries appeared
+    and four left; four of the arrivals REPLACE those four (a rename, a two-into-one
+    consolidation, and a retitled edge test), leaving ten genuinely new. Each of the ten
+    was classified by reading the property it asserts, per the distinction now written
+    into the checker's `source_text_only_functions` docstring:
+
+      INHERENTLY STRUCTURAL, retained (4) — a repository property with no faithful
+      runtime call: RC-338 policy constants defined exactly once; RC-339 no feature
+      formula re-encoded in either builder; the RC-355 lane resolver's WIRING (its
+      behaviour is executed in node, which this Python AST scan cannot see); and the
+      ML_ITEM4 policy artefact carrying the keys the row claims.
+
+      AVOIDABLE SOURCE-TEXT PROXY, rewritten to assert the behaviour (6) — the delta
+      gate's clean-worktree measurement (recorded argv, not the words "worktree"/
+      "--detach"); the five-why silence on RC-315 (the checker's VERDICT, not its two
+      regexes restated); the lstm_meta/load_lstm boundary (recorded events, not three
+      `str.index` offsets); the LSTM edge slot (what the real producer PUBLISHES for a
+      val_accuracy-only meta, not a matched call string); and both fetch_price_levels
+      carriers (trapped helper modules and a no-fetch client, not name scans).
+
+    Five of those six left the count. The sixth — the five-why control — still scores as
+    source-text because its computed verdict takes a file-derived argument and the taint
+    follows the argument; that coarseness is documented in the checker, and loosening it
+    was tried and reverted rather than bent to move this number.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 261, (
-        f"the per-function source-text-only count moved from the 261 measured under RC-311 "
-        f"to {len(fns)}. If you REPAIRED some, lower this number and say so in the row. If "
-        f"you ADDED one, assert the property instead of a rendering of it — that is RC-308.\n"
+    assert len(fns) == 265, (
+        f"the per-function source-text-only count moved from the 265 measured on "
+        f"2026-08-17 to {len(fns)}. This figure is not a defect count, so do not simply "
+        f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
+        f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
+        f"duplication or absence in the repository, which no runtime call can express. If "
+        f"the property is behaviour, assert the behaviour and the entry leaves on its own; "
+        f"that is RC-308. If you REPAIRED some, lower this number and say so in the row.\n"
         + "\n".join(fns[:20]))
     # The two RC-308 repairs that became executable in PYTHON are out of the list and must
     # stay out. The other four kept a source-text half on purpose — a correct function nobody

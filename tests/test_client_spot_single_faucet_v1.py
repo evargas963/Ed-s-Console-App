@@ -419,7 +419,24 @@ def test_chart_page_binds_only_the_terrain_family():
 
 _WALL_WORD = re.compile(r"wall", re.I)
 _CLAIM_WORD = re.compile(r"resistance|support", re.I)
-_CONDITIONAL = re.compile(r"while|BREACHED|breached|holds|NOT\b|not\s+(?:resistance|support)")
+#: What makes a support/resistance claim legitimate under RC-130: the text says WHEN it
+#: holds. Two shapes qualify and both are the same requirement.
+#:   1. A state/breach condition — the original vocabulary ("while", "BREACHED", "holds").
+#:   2. An explicit SPOT-RELATIVE GEOMETRY — "above spot", "the level below which". RC-130
+#:      was a PUT WALL painted 'support' while sitting ABOVE spot, i.e. a claim with no
+#:      geometry at all; a line that states its own side of spot is not that defect, it is
+#:      the repair. This was added 2026-08-17 because the RC-354 GSF/GRC rows state their
+#:      geometry in exactly this form ("the first level above spot", "the level below
+#:      which") and were flagged anyway — the detector could not read the very condition
+#:      the test is named for, and the neighbouring row was then contaminated through the
+#:      ±1-line window. Recognising a stated geometry is not a widening: a bare
+#:      `sr: 'support'` on a wall still carries no such phrase and still trips, which the
+#:      planted-defect control below proves.
+_CONDITIONAL = re.compile(
+    r"while|BREACHED|breached|holds|NOT\b|not\s+(?:resistance|support)"
+    r"|(?:above|below)\s+spot|(?:above|below)\s+which|first\s+level\s+(?:above|below)",
+    re.I,
+)
 
 
 def _unconditional_wall_claims(src: str) -> list[tuple[int, str]]:
@@ -583,4 +600,15 @@ def test_unconditional_wall_claim_injection_is_caught():
     assert not _unconditional_wall_claims(
         "tip: 'A regime boundary, NOT support/resistance.'"
     ), "non-wall prose tripped the wall-claim lock"
+    # 2026-08-17: an explicit spot-relative GEOMETRY is the other legitimate condition
+    # (RC-354's GSF/GRC state theirs this way and mention the Call Wall descriptively).
+    assert not _unconditional_wall_claims(
+        "tip: 'GRC: the first level above spot where suppression decays; often at/beyond "
+        "the Call Wall.'"
+    ), "a level that states its own side of spot tripped the wall-claim lock"
+    # …and the geometry vocabulary must not become a free pass: naming a wall and claiming
+    # support with NO side-of-spot statement is still the RC-130 defect.
+    assert _unconditional_wall_claims(
+        "{ t: 'PUT WALL', tip: 'A durable support level for the session.' }"
+    ), "the geometry vocabulary widened the lock into accepting an unconditioned claim"
 

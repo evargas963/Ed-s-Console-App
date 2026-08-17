@@ -982,6 +982,35 @@ def compute_gamma_support_levels(
             upside breach is typically a vanna-supported grind/extension, not a mirror-image
             crash-up — the two levels are NOT symmetric in breach violence.
 
+    MECHANISM, AND WHAT BACKS IT (RC-319/RC-320: a causal claim about price must be
+    checkable, or a reader cannot refute it). Three separate standards apply here, and
+    they are NOT equally settled:
+      * That a positive net dealer gamma book DAMPENS moves is a first principles
+        derivation from the hedge rule, not an observation: a dealer long gamma gains
+        delta as spot rises and must SELL to return to flat, and must BUY as spot falls,
+        so the re-hedge always opposes the move. The word "stabilises" above means only
+        this mechanical opposition.
+      * That this hedging is large enough to MOVE the underlying is empirical, and the
+        evidence is expiration-date price clustering in Ni, Pearson and Poteshman,
+        Journal of Financial Economics, doi:10.1016/j.jfineco.2004.08.005.
+      * The dealer SIGN is MODELLED, never observed — public open interest does not say
+        who owns the contracts (https://spotgamma.com/what-is-gex-gamma-exposure/) — so
+        both levels are conditional on the naive +calls/−puts convention being right for
+        the session. When it is wrong, GSF and GRC are wrong with it.
+    The two ASYMMETRIES above are desk OBSERVATIONS recorded 2026-08-15, not derivations
+    and not citations; they are stated as what was seen, and nothing here should be read
+    as claiming they were established the way the two points above were.
+
+    WHAT IS STILL UNPROVEN, AND IT IS THE PART A TRADER CARES ABOUT (RC-320). Everything
+    above concerns the damping MECHANISM. It does NOT establish that GSF and GRC act as
+    support and resistance — that price arriving at these prices tends to hold. That is a
+    separate empirical claim, this repository has not tested it, and nothing here should be
+    read as asserting it. The two levels are MEASURED GEOMETRY: the prices at which the
+    net-gamma profile has decayed to `phi` of its at-spot value on each side. The console
+    tooltips say exactly this and mark the holding behaviour UNPROVEN; if that wording and
+    this docstring ever disagree, this one is the paraphrase and the honest reading is the
+    weaker of the two.
+
     FAIL-CLOSED: when N(spot) <= eps (already negative/negligible-gamma regime) the honest
     output is state=BELOW_SUPPORT with BOTH levels None — never a fabricated price. An empty
     or unusable profile returns state=UNAVAILABLE.

@@ -65,14 +65,25 @@ def test_it_fires_on_the_actual_chain_that_was_rejected():
         "comparing against the corrected text and is testing nothing")
 
 
-def test_it_stays_silent_on_the_corrected_row_that_rejects_the_blame_shift():
-    """A corrected row MUST be able to quote the blame-shift in order to disown it."""
+def test_it_stays_silent_on_the_corrected_row_that_rejects_the_blame_shift(tmp_path):
+    """A corrected row MUST be able to quote the blame-shift in order to disown it.
+
+    The first version of this control asserted that RC-315's live `why` cell matches
+    `_BLAME_RE` and `_REJECTION_RE` — the checker's two internal patterns, restated. That
+    is a rendering of the rule, not the rule: recombining those patterns so that a quoted
+    blame-shift fires anyway would have left both assertions true and the row flagged. The
+    silence is a VERDICT, so the verdict is what is taken here — the live cell is run
+    through `violations()` under a post-cutover date, where grandfathering cannot mask it.
+    """
     live = (REPO / "governance" / "root_cause_log.md").read_text(encoding="utf-8")
     why = next(([c.strip() for c in ln.strip("|").split("|")][5]
                 for ln in live.splitlines() if ln.startswith("| RC-315 ")), None)
     assert why, "RC-315 is gone from the live log"
+    # Precondition: the cell must still QUOTE a blame-shift, or the silence proves nothing.
     assert C._BLAME_RE.search(why), "the corrected row no longer quotes what it rejects"
-    assert C._REJECTION_RE.search(why), "the rejection is not stated in the same cell"
+    assert _hits(why, tmp_path) == [], (
+        "the checker flags RC-315's corrected wording — a row can no longer quote a "
+        "blame-shift in order to disown it, which forces rows to hide what they reject")
 
 
 def test_an_actor_blaming_chain_is_flagged(tmp_path):

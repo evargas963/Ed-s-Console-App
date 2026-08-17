@@ -60,6 +60,31 @@ function payloadAlignedLong() {
   };
 }
 
+/**
+ * RC-395 / RC-345-F05 — payloadAlignedLong() plus the S2B-1 operator mirror.
+ *
+ * server.py stamps operator_card_actionable and its siblings on EVERY Tier C payload
+ * (server.py:2158-2161), and since RC-345 the frontend treats that mirror as the FINAL
+ * actionability authority: engineTradeableSetup returns false outright when it is absent,
+ * because a display-trust gate may suppress a verdict but never substitute one. A fixture
+ * without it therefore cannot obtain actionable paint — correctly, since production never
+ * emits such a payload.
+ *
+ * Deliberately a SEPARATE builder rather than a change to payloadAlignedLong(): several
+ * tests below derive DEGRADED payloads from that base (split-brain stack_mode=INVALID,
+ * fusion-gated, fusion-WAIT), where the server would emit actionable=FALSE. Adding an
+ * actionable mirror to the shared base would hand those cases a trust authority the server
+ * would never have granted them, and would silently retarget which gate they exercise.
+ */
+function actionableAlignedLong() {
+  return Object.assign(payloadAlignedLong(), {
+    operator_card_actionable: true,
+    operator_card_trust_state: 'TRUSTED',
+    operator_stale_reason_codes: [],
+    operator_actionability_reason: null,
+  });
+}
+
 test('tf-signal cards reflect mhap_rows call direction + confidence band', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
@@ -68,7 +93,7 @@ test('tf-signal cards reflect mhap_rows call direction + confidence band', async
     { timeout: 30000 },
   );
 
-  await page.evaluate((d) => window.renderTimeframeSignalRow(d), payloadAlignedLong());
+  await page.evaluate((d) => window.renderTimeframeSignalRow(d), actionableAlignedLong());
 
   // 1c: LONG @ 0.62 → tf-state-up + tf-glow-2 (61 <= 62 < 76).
   const c1 = await page.getAttribute('#tf-signal-1c', 'class');
@@ -86,7 +111,7 @@ test('tf-signal cards reflect mhap_rows call direction + confidence band', async
   expect(c15).toContain('tf-glow-1');
 
   // Mixed-direction payload: 1c SHORT, others LONG → 1c card flips to tf-state-down.
-  const mixed = payloadAlignedLong();
+  const mixed = actionableAlignedLong();
   mixed.mhap_rows[0] = { horizon: '1c', call: 'SHORT', confidence: 0.78, row_state: 'secondary' };
   await page.evaluate((d) => window.renderTimeframeSignalRow(d), mixed);
   const c1Short = await page.getAttribute('#tf-signal-1c', 'class');
@@ -94,7 +119,7 @@ test('tf-signal cards reflect mhap_rows call direction + confidence band', async
   expect(c1Short).toContain('tf-glow-3'); // 0.78 → high band
 
   // UNAVAILABLE row → tf-state-dim (no glow).
-  const unav = payloadAlignedLong();
+  const unav = actionableAlignedLong();
   unav.mhap_rows[3] = { horizon: '60c', call: 'UNAVAILABLE', confidence: 0, row_state: 'missing' };
   await page.evaluate((d) => window.renderTimeframeSignalRow(d), unav);
   const c60Unav = await page.getAttribute('#tf-signal-60c', 'class');
@@ -102,7 +127,17 @@ test('tf-signal cards reflect mhap_rows call direction + confidence band', async
   expect(c60Unav || '').not.toMatch(/tf-glow-[123]/);
 });
 
-test('1M LONG stays visually LONG when final_tradeable=false (ALL WAIT)', async ({ page }) => {
+// RC-395 (was: '1M LONG stays visually LONG when final_tradeable=false'). That title quoted
+// the 2026-06-11 render contract sentence — "ALL final_tradeable=false may dim actionability
+// but must not erase horizon direction" — which RC-133 REVOKED and deleted from the source on
+// 2026-07-29 under the operator Decide mandate, after audits v10/v13/v26 graded Decide
+// OUTSTANDING. With the admission registry empty, final_bias is WAIT every session, so a LONG
+// pill under !tradeable was standing exposure advice from an engine with nothing admitted.
+// The current contract (static/index.html, resolveHorizonCardVisualState -> visual.dirText)
+// is: under !tradeable a horizon pill is dim, unglowed, em-dash, arrow neutral, tags null —
+// while the per-horizon CONFIDENCE still renders, because confidence is not direction.
+// Asserting LONG here would re-assert the fail-open defect RC-133 burned.
+test('1M horizon withholds direction when final_tradeable=false (ALL WAIT)', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
     () => typeof window.renderTimeframeSignalRow === 'function',
@@ -134,11 +169,17 @@ test('1M LONG stays visually LONG when final_tradeable=false (ALL WAIT)', async 
   }, payload);
 
   const c1 = await page.getAttribute('#tf-signal-1c', 'class');
-  expect(c1).toContain('tf-state-up');
+  expect(c1).toContain('tf-state-dim');
   expect(c1).toContain('tf-signal-card--non-actionable');
   expect(c1 || '').not.toContain('tf-signal-card--trade-active');
-  expect(await page.textContent('#tf-signal-1c .tf-dir')).toBe('LONG');
-  expect(await page.textContent('#tf-signal-1c .tf-arrow')).toBe('↑');
+  // No direction chrome survives !tradeable — not the word, not the arrow, not the glow.
+  expect(c1 || '').not.toMatch(/tf-glow-[123]/);
+  expect(c1 || '').not.toContain('tf-state-up');
+  expect(await page.textContent('#tf-signal-1c .tf-dir')).toBe('—');
+  expect(await page.textContent('#tf-signal-1c .tf-arrow')).toBe('→');
+  expect(await page.getAttribute('#tf-signal-1c', 'data-tf-signal-dir')).toBe('neutral');
+  expect(await page.getAttribute('#tf-signal-1c', 'data-horizon-actionability')).toBe('NON_ACTIONABLE');
+  // Confidence is NOT direction — the horizon's supporting assessment still renders.
   expect(await page.textContent('#tf-signal-1c .tf-pct')).toBe('41%');
 
   const cAll = await page.getAttribute('#tf-signal-consolidated', 'class');
@@ -161,7 +202,7 @@ test('PLAN pill card renders from payload', async ({ page }) => {
   await page.evaluate((d) => {
     window.renderDecisionCommandRail(d);
     window.renderTimeframeSignalRow(d);
-  }, payloadAlignedLong());
+  }, actionableAlignedLong());
 
   // Rail dr-align-* block retired 2026-06-10 — per-horizon direction lives on
   // the pills (covered by the tf-signal test above).
@@ -319,7 +360,13 @@ for (const ticker of ['SPY', 'QQQ', 'IWM']) {
       expect(chip.text).toBe(execState);
       expect(chip.trusted).toBe('true');
       expect(chip.className).toContain('tf-exec-chip--trusted');
-      expect(await page.textContent('#tf-signal-1c .tf-dir')).toBe('LONG');
+      // RC-395: the payload is deliberately final_tradeable=false, so RC-133 withholds the
+      // horizon direction word. That is the POINT of this test — the execution channel
+      // (WAIT/WATCH/ACTIVE) is independent of the forecast-direction channel, so the chip
+      // must read its state while the pill still refuses to name a direction. Asserting
+      // 'LONG' here proved the opposite of the separation the test is named for.
+      expect(await page.textContent('#tf-signal-1c .tf-dir')).toBe('—');
+      expect(await page.getAttribute('#tf-signal-1c', 'data-tf-signal-dir')).toBe('neutral');
     });
   }
 }

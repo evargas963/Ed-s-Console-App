@@ -337,21 +337,47 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     assert src == [], src
 
 
-def test_market_context_carries_and_never_recomputes():
-    """fetch_price_levels must have NO vendor fetch and NO helper call of its own."""
-    import inspect
+def test_market_context_carries_and_never_recomputes(monkeypatch):
+    """fetch_price_levels must make NO vendor fetch and NO helper call of its own.
 
+    The first version of this control read the function's SOURCE and asserted that six
+    helper names and `get_price_history` do not appear in it. That is a spelling check:
+    reaching the same helper through an alias, a getattr, or a re-export leaves the
+    source clean and the second materialization back. The helpers are real functions in
+    liquidity_value_engine, so they are replaced with traps here — any route to them,
+    however spelled, raises — and the carriage is then asserted to still be correct.
+    """
+    import liquidity_value_engine as lve
     from market_context import fetch_price_levels
 
-    src = inspect.getsource(fetch_price_levels)
-    assert "get_price_history" not in src, (
-        "the second bar input (a private Schwab TWO_DAYS fetch) is back in "
-        "fetch_price_levels — that is the alternate materialization, not a fallback")
+    recompute: list[str] = []
+
+    # Materialize FIRST: the canonical producer is the one place these helpers are
+    # legitimately called. The traps go in afterwards, so they can only observe a
+    # second, non-canonical call — which is the whole defect.
+    snap = materialize_price_level_snapshot(
+        "SPY", SESSION, _tape(), bar_source="unit_tape")
+
     for name in ("compute_session_vwap", "compute_vwap_bands", "compute_opening_range",
                  "get_overnight_levels", "compute_volume_profile_levels",
                  "get_previous_day_levels"):
-        assert f"{name}(" not in src, f"fetch_price_levels invokes {name} again"
-    assert "carry_snapshot_levels" in src, "fetch_price_levels no longer carries"
+        assert hasattr(lve, name), f"{name} left the canonical producer; re-derive this trap"
+
+        def trap(*a, _n=name, **k):
+            recompute.append(_n)
+            raise AssertionError(f"fetch_price_levels recomputed {_n}")
+
+        monkeypatch.setattr(lve, name, trap)
+
+    pl = fetch_price_levels(None, symbol="SPY", quote_raw=None, level_snapshot=snap)
+
+    assert recompute == [], f"fetch_price_levels recomputed {recompute} instead of carrying"
+    # …and it carried, so the silence above is carriage, not a swallowed failure.
+    assert pl.error is None or "no canonical snapshot" not in (pl.error or "")
+    assert pl.vwap == snap.price("VWAP")
+    assert pl.orb_high == snap.price("ORB_HIGH")
+    assert pl.pd_poc == snap.price("PD_POC")
+    assert pl.level_generation == snap.generation
 
 
 def test_state_and_levels_carry_one_generation(monkeypatch):
