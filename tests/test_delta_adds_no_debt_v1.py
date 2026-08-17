@@ -602,6 +602,53 @@ def test_the_required_hardening_job_uses_the_same_debt_owner():
     assert callable(seam.main), "the local seam is not callable; parity cannot be claimed"
 
 
+def test_ci_never_fabricates_an_agent_identity():
+    """RC-396: a GitHub runner has no agent identity, so it must not export one.
+
+    The hardening job exported `ED_AGENT_ROLE: cursor`. RC-240 had already ruled on this
+    exact shape for the local hook — a check whose verdict depends on WHO is acting must
+    never be handed an invented actor — and repaired it there while CI kept inventing one.
+    MEASURED: with the invented identity the required job reported
+    `writer_no_drift: 0 -> 27`, reading an entire PR as the wrong agent's drift.
+
+    `check_writer_no_drift` abstains when no identity is present and lets the PreToolUse
+    layer (which always carries a REAL identity) enforce. Absence is the truthful input.
+    """
+    import re as _re
+
+    for wf in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        text = wf.read_text(encoding="utf-8")
+        code = [ln for ln in text.splitlines() if not ln.strip().startswith("#")]
+        for ln in code:
+            m = _re.search(r"ED_AGENT_ROLE\s*:\s*(\S+)", ln)
+            assert m is None, (
+                f"{wf.name} exports a fabricated agent identity ED_AGENT_ROLE="
+                f"{m.group(1)!r}. CI is not an agent; an invented actor makes every "
+                f"identity-sensitive verdict a lie about who acted (RC-240/RC-396).")
+
+    # …and the abstention it relies on must be real, not assumed: with no identity the
+    # drift backstop returns nothing rather than judging an invented actor.
+    import importlib.util
+    import os as _os
+
+    spec = importlib.util.spec_from_file_location(
+        "cic_identity", REPO / "tools" / "check_institutional_correctness.py")
+    cic = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(cic)
+    except SystemExit:
+        pass
+    prior = _os.environ.get("ED_AGENT_ROLE")
+    try:
+        _os.environ.pop("ED_AGENT_ROLE", None)
+        assert cic.check_writer_no_drift() == [], (
+            "with NO identity the drift backstop still judged — it would convict whoever "
+            "CI pretended to be")
+    finally:
+        if prior is not None:
+            _os.environ["ED_AGENT_ROLE"] = prior
+
+
 def test_the_precommit_seam_refuses_when_no_base_trunk_resolves(monkeypatch):
     """Fail closed: no baseline must not silently mean 'nothing is new debt'."""
     import importlib.util

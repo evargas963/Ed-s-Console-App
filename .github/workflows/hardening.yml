@@ -14,9 +14,16 @@ jobs:
   hardening:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # Worktree boundary gate: no silent ED_AGENT_ROLE default (primary CI = cursor).
-      ED_AGENT_ROLE: cursor
+    # RC-396: NO ED_AGENT_ROLE here, deliberately. This job used to export
+    # `ED_AGENT_ROLE: cursor`, which is a FABRICATED actor: a GitHub runner has no agent
+    # identity to carry, and neither Cursor nor Claude is the one acting. RC-240 already
+    # ruled on exactly this shape for the local hook — "a check whose verdict depends on
+    # who is acting must never be handed an invented actor" — and fixed it there while CI
+    # kept inventing one. MEASURED consequence: with the invented identity in place the
+    # required job reported `writer_no_drift: 0 -> 27`, reading a whole PR as the wrong
+    # agent's drift; the check's own docstring says that with no identity it abstains and
+    # the PreToolUse layer (which always has a REAL identity from each agent's hook env)
+    # carries the enforcement. Absent is truthful here; "cursor" was not.
     steps:
       - uses: actions/checkout@v4
         with:
