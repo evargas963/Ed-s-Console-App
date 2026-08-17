@@ -157,11 +157,33 @@ def test_path_with_spaces_survives_quoting(tmp_path):
 
 
 def test_backslash_and_forward_slash_resolve_identically(other_repo):
+    """RC-397: separator equivalence is a WINDOWS property, asserted here unconditionally.
+
+    On POSIX a backslash is a legal filename character, not a separator, so
+    `str(path).replace("/", "\\")` does not spell the same path — it spells a different,
+    non-existent one. The required Linux runner proved it: the forward form resolved to
+    `/tmp/pytest-.../OtherRepo` while the backslash form correctly resolved to `''`, and
+    this test read the guard being RIGHT as a failure. Asserting a Windows path property
+    on POSIX does not make the guard portable; it makes the suite lie about its platform.
+
+    Each platform is now asserted for what is true there, and on POSIX the claim is the
+    STRONGER one: a backslash string must not be mistaken for the real repository.
+    """
     fwd, _ = G.resolve_target_repo('git -C "%s" commit' % str(other_repo).replace("\\", "/"),
                                    payload_cwd=str(REPO))
-    back, _ = G.resolve_target_repo('git -C "%s" commit' % str(other_repo).replace("/", "\\"),
+    assert fwd == G.normalize_repo(other_repo), (
+        "the forward-slash form must resolve on every platform")
+
+    backslashed = str(other_repo).replace("/", "\\")
+    back, _ = G.resolve_target_repo('git -C "%s" commit' % backslashed,
                                     payload_cwd=str(REPO))
-    assert fwd == back == G.normalize_repo(other_repo)
+    if os.name == "nt":
+        assert back == fwd, "on Windows both separators name the same repository"
+    else:
+        assert back != G.normalize_repo(other_repo), (
+            f"on POSIX {backslashed!r} is a DIFFERENT path (backslash is a legal filename "
+            f"character there, not a separator) — resolving it to the real repo would let "
+            f"a payload aim at one tree while naming another")
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows path casing")

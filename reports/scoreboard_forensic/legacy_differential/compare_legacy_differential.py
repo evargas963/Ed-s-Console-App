@@ -126,7 +126,13 @@ def main() -> int:
         "LEGACY_COMPLETE_OUTPUT_BYTE_IDENTITY": "NOT_PROVEN (HTML semantics are the Lane-A fix)",
     }
     out = Path(__file__).resolve().parent / "legacy_differential_result.json"
-    out.write_text(json.dumps(result, indent=1), encoding="utf-8")
+    # RC-397: pin the terminator. `write_text` opens with newline=None, which translates
+    # "\n" to os.linesep — so this writer emitted CRLF on Windows and LF on Linux for the
+    # SAME content, and the tracked blob's style then depended on who last ran it. That is
+    # the RC-382 class (a writer nobody owned), and it surfaced as an eol_style_invariant
+    # violation on the required Linux runner for a file the change never touched. Writing
+    # BYTES takes the platform out of the decision entirely.
+    out.write_bytes(json.dumps(result, indent=1).encode("utf-8"))
     print(json.dumps({k: result[k] for k in (
         "fixture_content_sha256", "numeric_fields_compared", "all_fields_compared",
         "LEGACY_NUMERIC_SUBSET_IDENTITY", "LEGACY_FIELD_VALUE_IDENTITY")}, indent=1))

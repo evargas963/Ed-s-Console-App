@@ -43,7 +43,45 @@ jobs:
       - name: Install Playwright system deps (Linux)
         run: npx playwright install-deps chromium
 
-      - name: Run Playwright E2E then full pytest
+      # ── TEMPORARY DIAGNOSTIC (RC-397) — REMOVE once the Linux-only causes are proven.
+      # Three failure classes reproduce only on this runner and pass on every local
+      # Windows checkout, so the runner is the only place the evidence exists. These steps
+      # capture WHEN the tracked files change and WHAT the audit actually says. The single
+      # `npm run test:all` step is split into its two halves for the same reason — one
+      # combined step cannot say which half rewrote a file.
+      - name: DIAG (temporary) — worktree state immediately after checkout
+        run: |
+          echo "--- git status ---"; git status --porcelain | head -40
+          echo "--- core.autocrlf / core.eol ---"
+          git config --get core.autocrlf || echo "autocrlf unset"
+          git config --get core.eol || echo "eol unset"
+          echo "--- CRLF count: worktree vs blob ---"
+          for f in static/chart.html static/index.html \
+                   reports/scoreboard_forensic/legacy_differential/legacy_differential_result.json; do
+            w=$(grep -c $'\r$' "$f" 2>/dev/null || echo 0)
+            b=$(git cat-file blob "HEAD:$f" | grep -c $'\r$' 2>/dev/null || echo 0)
+            echo "$f  worktree_crlf=$w  blob_crlf=$b"
+          done
+
+      - name: Run Playwright E2E
+        env:
+          CI: "true"
+          ED_CI_OFFLINE: "1"
+          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+          SCHWAB_API_KEY: "ci-not-live-placeholder"
+          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+        run: npm run test:e2e
+
+      - name: DIAG (temporary) — worktree state after E2E
+        if: always()
+        run: |
+          echo "--- git status after E2E ---"; git status --porcelain | head -40
+          for f in static/chart.html static/index.html; do
+            w=$(grep -c $'\r$' "$f" 2>/dev/null || echo 0)
+            echo "$f  worktree_crlf=$w"
+          done
+
+      - name: Full pytest
         env:
           CI: "true"
           ED_CI_OFFLINE: "1"
@@ -52,4 +90,18 @@ jobs:
           # ED_CI_OFFLINE + config.is_schwab_ci_offline_mode() block live API calls.
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
-        run: npm run test:all
+        run: python -m pytest -q
+
+      - name: DIAG (temporary) — failure detail
+        if: failure()
+        env:
+          CI: "true"
+          ED_CI_OFFLINE: "1"
+          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+          SCHWAB_API_KEY: "ci-not-live-placeholder"
+          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+        run: |
+          echo "--- git status at failure ---"; git status --porcelain | head -40
+          echo "--- diff stat for tracked changes ---"; git diff --stat | tail -20
+          echo "--- turn_self_audit_contract, first failure verbose ---"
+          python -m pytest tests/test_turn_self_audit_contract_v1.py -x -vv --tb=long 2>&1 | tail -110
