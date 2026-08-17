@@ -647,12 +647,24 @@ def test_rc246_precommit_path_excludes_advisory_checks():
     Advisory checks print and return 0 by construction, so charging every commit for them
     (153s of a 244s wall) bought nothing and made the gate expensive enough to route around —
     a cost this repo already paid in piped commits and hooks killed mid-run.
+
+    RC-391 moved WHERE the flag is passed without changing the property: the seam now
+    delegates its verdict to tools/check_delta_adds_no_debt.py, which is what runs the gate
+    — with --enforced-only — on each side. This control follows the seam rather than
+    asserting a literal at an address that has moved, and still fails if any link in the
+    chain starts paying for verdicts that cannot veto.
     """
     import tools.check_institutional_correctness as gate
 
-    src = (Path(gate.__file__).parent / "precommit_institutional.py").read_text(encoding="utf-8")
+    tools_dir = Path(gate.__file__).parent
+    seam = (tools_dir / "precommit_institutional.py").read_text(encoding="utf-8")
+    decider = "check_delta_adds_no_debt.py"
+    if decider in seam:
+        src = (tools_dir / decider).read_text(encoding="utf-8")
+    else:
+        src = seam
     assert '"--enforced-only"' in src, (
-        "the pre-commit wrapper no longer asks for the enforced-only path (RC-246)"
+        "the pre-commit blocking path no longer asks for the enforced-only path (RC-246)"
     )
 
 
