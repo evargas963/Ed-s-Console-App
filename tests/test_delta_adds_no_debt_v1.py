@@ -410,6 +410,51 @@ def test_the_index_candidate_still_honours_an_explicit_GIT_INDEX_FILE(tmp_path, 
         "the candidate ignored the index git actually pointed it at")
 
 
+def test_the_candidate_worktree_presents_the_change_as_STAGED(tmp_path, monkeypatch):
+    """RC-391 second order: a check removed by ACCIDENT is still a check removed.
+
+    Several enforced checks ask `git diff --cached` what is being committed. In a plain
+    materialised worktree HEAD is the candidate and the index matches it, so that question
+    answers EMPTY on both sides and those checks fall silent at the exact seam they were
+    written for. `_stage_the_delta` moves HEAD back to the parent, leaving the index holding
+    the candidate tree, so the staged set IS the change under commit.
+    """
+    repo = _seeded_repo(tmp_path)
+    (repo / "added.txt").write_text("new\n", encoding="utf-8")
+    _git(repo, "add", "added.txt")
+    monkeypatch.setattr(GATE, "REPO", repo)
+    sha = GATE.index_candidate()
+
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "--detach", str(wt), sha)
+    try:
+        assert _git(wt, "diff", "--cached", "--name-only").split() == [], (
+            "precondition: a plain materialised worktree shows NOTHING staged")
+        GATE._stage_the_delta(wt, sha)
+        assert _git(wt, "diff", "--cached", "--name-only").split() == ["added.txt"], (
+            "the change under commit is not visible to the checks that ask for it")
+        assert _git(wt, "rev-parse", "HEAD").strip() == \
+            _git(repo, "rev-parse", "HEAD").strip(), "HEAD must sit at the candidate's parent"
+    finally:
+        _git(repo, "worktree", "remove", "--force", str(wt))
+
+
+def test_local_evidence_the_checks_read_is_carried_into_the_worktree(tmp_path, monkeypatch):
+    """`research_before_act` reads a GITIGNORED log; absent, it fires on every candidate."""
+    assert "reports/turn_self_audit_log.jsonl" in GATE._LOCAL_EVIDENCE, GATE._LOCAL_EVIDENCE
+
+    repo = tmp_path / "src"
+    (repo / "reports").mkdir(parents=True)
+    (repo / "reports" / "turn_self_audit_log.jsonl").write_text('{"a":1}\n', encoding="utf-8")
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    monkeypatch.setattr(GATE, "REPO", repo)
+    GATE._copy_local_evidence(wt)
+
+    copied = wt / "reports" / "turn_self_audit_log.jsonl"
+    assert copied.is_file() and copied.read_text(encoding="utf-8") == '{"a":1}\n'
+
+
 def test_the_precommit_seam_measures_the_index_against_the_trunk():
     """The wiring, not just the capability: an unwired gate blocks nothing.
 

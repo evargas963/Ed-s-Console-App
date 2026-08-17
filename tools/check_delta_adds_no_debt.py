@@ -50,6 +50,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -180,8 +181,50 @@ def index_candidate() -> str:
     return made.stdout.strip()
 
 
-def enforced_counts(ref: str) -> tuple[dict[str, int], str, set[str]]:
-    """({check: violations}, short sha, enforced roster) measured in a CLEAN worktree."""
+#: Evidence the enforced catalogue reads that lives OUTSIDE the tree — gitignored, local,
+#: and therefore absent from any materialised worktree. `research_before_act` reads the turn
+#: audit log; with it missing, that check fires on every candidate no matter what the change
+#: is. Copied in, never written back.
+_LOCAL_EVIDENCE = ("reports/turn_self_audit_log.jsonl",)
+
+
+def _stage_the_delta(wt: Path, ref: str) -> None:
+    """Make the candidate's own change appear STAGED inside its worktree.
+
+    RC-391, second order. Several enforced checks — `research_before_act`,
+    `check_recursive_five_why_front_loaded` — ask `git diff --cached` what is being
+    committed. In a materialised worktree HEAD is the candidate and the index matches it, so
+    that question answers EMPTY and those checks fall silent on both sides. They would then
+    be structurally incapable of failing at the very seam they were written for, which is a
+    check removed by accident rather than by edit — the thing the roster comparison exists
+    to refuse. `reset --soft <parent>` moves HEAD back one commit and leaves the index
+    holding the candidate tree, so `git diff --cached` is EXACTLY the change under commit.
+    """
+    parent = _run(["git", "rev-parse", "--verify", "--quiet", f"{ref}^"], cwd=wt)
+    if parent.returncode != 0 or not parent.stdout.strip():
+        raise RuntimeError(
+            f"cannot resolve the parent of {ref}, so the change under commit cannot be "
+            f"staged for the checks that ask what is being committed: {parent.stderr[-200:]}")
+    reset = _run(["git", "reset", "--soft", parent.stdout.strip()], cwd=wt)
+    if reset.returncode != 0:
+        raise RuntimeError(f"cannot stage the delta in the worktree: {reset.stderr[-300:]}")
+
+
+def _copy_local_evidence(wt: Path) -> None:
+    for rel in _LOCAL_EVIDENCE:
+        src = REPO / rel
+        if src.is_file():
+            dst = wt / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+
+
+def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int], str, set[str]]:
+    """({check: violations}, short sha, enforced roster) measured in a CLEAN worktree.
+
+    `stage_delta` is set for the CANDIDATE side only: the base carries no change, so its
+    staged set is correctly empty, while the candidate's must be the change under commit.
+    """
     sha = _run(["git", "rev-parse", "--short", ref]).stdout.strip()
     with tempfile.TemporaryDirectory(prefix="deltagate-") as tmp:
         wt = Path(tmp) / "wt"
@@ -189,6 +232,9 @@ def enforced_counts(ref: str) -> tuple[dict[str, int], str, set[str]]:
         if add.returncode != 0:
             raise RuntimeError(f"cannot materialise {ref}: {add.stderr[-300:]}")
         try:
+            if stage_delta:
+                _stage_the_delta(wt, ref)
+            _copy_local_evidence(wt)
             proc = _run([sys.executable, "tools/check_institutional_correctness.py",
                          "--enforced-only"], cwd=wt)
             # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
@@ -269,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
         candidate_ref, candidate_label = "HEAD", "HEAD"
 
     base_counts, base_sha, base_roster = enforced_counts(args.base)
-    head_counts, head_sha, head_roster = enforced_counts(candidate_ref)
+    head_counts, head_sha, head_roster = enforced_counts(candidate_ref, stage_delta=True)
     added, improved = compare(base_counts, head_counts)
     removed = removed_enforced_checks(base_roster, head_roster)
 
