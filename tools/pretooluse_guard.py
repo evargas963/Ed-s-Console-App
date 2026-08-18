@@ -39,6 +39,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
 RC_LOG = "governance/root_cause_log.md"
@@ -50,6 +51,81 @@ ALWAYS_ALLOWED_PREFIXES = (
 )
 #: Production surfaces across the whole continuum, not just backend.
 PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
+#: NOT part of the PRODUCT surface. Deliberately NOT the same list as
+#: ALWAYS_ALLOWED_PREFIXES: that one answers "is editing this HOW you comply with RC-66",
+#: this one answers "is this file part of the product". They diverge on `scratchpad/`
+#: (3298 in-repo .py files: not product, but writing scratch is not RC-66 compliance either)
+#: and on `.cursor/` (compliance surface, and holds no production-suffix file today).
+#: Keeping them separate is what lets one resolve-and-compare serve both questions without
+#: silently loosening RC-66 or silently widening the product surface.
+NOT_PRODUCT_PREFIXES = (
+    "tests/", "governance/", "docs/", "reports/", ".claude/", ".cursor/",
+    "scratchpad/", "calibration/",
+)
+
+
+class PathFacts(NamedTuple):
+    """The answers a caller may ask about a path. One computation, three questions."""
+
+    governed: bool      # Q1 — does THIS repository's law apply to this path
+    rel: str            # repo-relative posix when governed and resolvable, else normalised input
+    production: bool    # Q2 — governed AND part of the product surface
+    rc66_exempt: bool   # governed AND editing it is how you comply with RC-66
+
+
+def _resolve_for_repo(p: str, root: Path) -> tuple[Path | None, bool]:
+    """Resolve `p` for governance. Relative input is joined to `root`, never to the CWD.
+
+    Returns (resolved, resolvable). A path that cannot be resolved returns (None, False)
+    and every caller must treat that as OURS — unmeasurable is never ungoverned.
+    """
+    try:
+        raw = Path(p)
+        if not raw.is_absolute():
+            raw = root / raw
+        return raw.resolve(), True
+    except (OSError, ValueError):
+        return None, False
+
+
+def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
+    """THE path authority (FC-13). Every caller consumes this; nobody re-derives it.
+
+    Q1 governance is answered by resolve-and-compare against the governing root — the
+    semantics proven by RC-259. Q2 is only meaningful once Q1 is true, which is the
+    distinction the previous independent classifiers lost: a relative-prefix `startswith`
+    test can never match an absolute path, so an absolute scratchpad file was classified as
+    production even though `scratchpad/` sat in the exemption list.
+
+    `repo` names the governing root and defaults to this repository. It exists because the
+    turn ledger is per-entry repo-scoped (RC-258: an unscoped row is inert rather than
+    universally valid), so "is this ours" has to be asked of a specific tree. Parameterising
+    the root keeps ONE computation of the geometry while preserving that scoping — the
+    formula lives here once; only the tree it is asked about varies.
+
+    Fails CLOSED: an unresolvable path is governed, is production, and is not exempt.
+    """
+    root = REPO if repo is None else Path(repo)
+    try:
+        root = root.resolve()
+    except (OSError, ValueError):
+        root = REPO
+    resolved, resolvable = _resolve_for_repo(p, root)
+    if not resolvable:
+        return PathFacts(governed=True, rel=Path(p).as_posix(),
+                         production=True, rc66_exempt=False)
+    try:
+        rel = resolved.relative_to(root).as_posix()
+    except ValueError:
+        # Genuinely outside the governing tree — governed by that tree's own rules, not ours.
+        return PathFacts(governed=False, rel=resolved.as_posix(),
+                         production=False, rc66_exempt=False)
+    return PathFacts(
+        governed=True,
+        rel=rel,
+        production=rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES),
+        rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
+    )
 
 
 def is_foreign_path(p: str) -> bool:
@@ -67,27 +143,14 @@ def is_foreign_path(p: str) -> bool:
 
     Fails CLOSED for this repository: anything that resolves under REPO, or
     that cannot be resolved at all, is treated as ours and stays governed.
+
+    Thin accessor over `classify_path` so the resolve-and-compare exists once.
     """
-    try:
-        resolved = Path(p).resolve()
-    except (OSError, ValueError):
-        return False                      # unresolvable -> assume ours, stay strict
-    try:
-        resolved.relative_to(REPO)
-        return False                      # inside this repository
-    except ValueError:
-        pass
-    # Outside REPO. Only treat it as foreign when it is genuinely another
-    # checkout or genuinely outside any repository -- never merely a sibling
-    # path that still resolves back into REPO through a link.
-    return True
+    return not classify_path(p).governed
 
 
 def _rel(p: str) -> str:
-    try:
-        return Path(p).resolve().relative_to(REPO).as_posix()
-    except (ValueError, OSError):
-        return Path(p).as_posix()
+    return classify_path(p).rel
 
 
 def _git(args: list[str]) -> str | None:
@@ -274,10 +337,11 @@ def decide(payload: dict) -> int:
     # not merely over-reach: _rel() falls back to the absolute path, which
     # matches no ALWAYS_ALLOWED_PREFIXES entry, so the guard applied its
     # strictest rule to a foreign tree while disabling every compliance route.
-    if is_foreign_path(fp):
+    facts = classify_path(fp)
+    if not facts.governed:
         return 0
 
-    rel = _rel(fp)
+    rel = facts.rel
 
     # RC-160 / RC-163 run BEFORE the RC-66 allowlist — residual drafts under reports/ still gate.
     blocked = _block_spy_only_prompt(rel, tool_input)
@@ -290,7 +354,11 @@ def decide(payload: dict) -> int:
     if blocked is not None:
         return blocked
 
-    if rel.startswith(ALWAYS_ALLOWED_PREFIXES):
+    # RC-66 scope comes from the path authority. `rc66_exempt` is the compliance-lane
+    # question; the suffix test stays separate from `facts.production` on purpose — RC-66
+    # governs every production-suffix file in the tree, including scratchpad/, which is
+    # exempt from the PRODUCT surface but is not an RC-66 compliance lane.
+    if facts.rc66_exempt:
         return 0
     if not rel.endswith(PRODUCTION_SUFFIXES):
         return 0
