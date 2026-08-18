@@ -126,13 +126,20 @@ def main() -> int:
         "LEGACY_COMPLETE_OUTPUT_BYTE_IDENTITY": "NOT_PROVEN (HTML semantics are the Lane-A fix)",
     }
     out = Path(__file__).resolve().parent / "legacy_differential_result.json"
-    # RC-397: pin the terminator. `write_text` opens with newline=None, which translates
-    # "\n" to os.linesep — so this writer emitted CRLF on Windows and LF on Linux for the
-    # SAME content, and the tracked blob's style then depended on who last ran it. That is
-    # the RC-382 class (a writer nobody owned), and it surfaced as an eol_style_invariant
-    # violation on the required Linux runner for a file the change never touched. Writing
-    # BYTES takes the platform out of the decision entirely.
-    out.write_bytes(json.dumps(result, indent=1).encode("utf-8"))
+    # RC-400 (completing RC-397): PRESERVE the file's existing terminator.
+    #
+    # The original bug was `write_text`, which opens newline=None and translates "\n" to
+    # os.linesep — CRLF on Windows, LF on Linux — so the tracked blob's style depended on
+    # who last ran this. RC-397 replaced it with a raw byte write, which removed the
+    # platform dependency but IMPOSED LF on a blob that is CRLF, so the flip simply became
+    # deterministic instead of random: the runner still reported one eol_style_invariant
+    # violation. "Owning the terminator" means keeping the one the file already has, not
+    # choosing a favourite.
+    payload = json.dumps(result, indent=1).encode("utf-8")
+    existing = out.read_bytes() if out.exists() else b""
+    if existing.count(b"\r\n") > existing.count(b"\n") - existing.count(b"\r\n"):
+        payload = payload.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    out.write_bytes(payload)
     print(json.dumps({k: result[k] for k in (
         "fixture_content_sha256", "numeric_fields_compared", "all_fields_compared",
         "LEGACY_NUMERIC_SUBSET_IDENTITY", "LEGACY_FIELD_VALUE_IDENTITY")}, indent=1))

@@ -135,7 +135,7 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     The widening to module scope was deliberate (the per-function form produced five false
     positives), and this is what it gave up.
 
-    The number is asserted, not enforced at zero: most of the 265 are the inventory, register
+    The number is asserted, not enforced at zero: most of the 264 are the inventory, register
     and wiring audits the checker's own docstring defends, and exempting them one by one
     would be the allowlist habit RC-276 removed. Asserting it means the next person who
     widens this gate's scope moves a visible figure instead of extending a silence.
@@ -164,10 +164,18 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     source-text because its computed verdict takes a file-derived argument and the taint
     follows the argument; that coarseness is documented in the checker, and loosening it
     was tried and reverted rather than bent to move this number.
+
+    265 -> 264 (RC-400), one entry, named: `test_rc250_advisory_never_returns_to_the_
+    blocking_commit_path` LEFT. It asserted the literal "--enforced-only" in the pre-commit
+    seam's source, which RC-391 had made an address rather than a property; RC-395 rewrote
+    it to record the seam's actual subprocess launch and assert that no advisory work runs
+    on the blocking path. Asserting the behaviour is exactly what removes an entry from
+    this census, so the figure fell on its own — nothing was re-baselined to reach it, and
+    no entry arrived.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 265, (
-        f"the per-function source-text-only count moved from the 265 measured on "
+    assert len(fns) == 264, (
+        f"the per-function source-text-only count moved from the 264 measured on "
         f"2026-08-17 to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "

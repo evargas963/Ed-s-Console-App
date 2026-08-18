@@ -33,53 +33,6 @@ os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-app-secret")
 os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")
 
 
-# ── TEMPORARY DIAGNOSTIC (RC-397) — REMOVE once the reflow source is proven ──────────
-# On the required Linux runner four tracked files leave pytest rewritten LF-for-CRLF, with
-# diff sizes exactly 2x their CRLF counts (chart.html 4220 = 2110*2, index.html
-# 28076 = 14038*2). The workflow DIAG steps proved they are INTACT after checkout and after
-# the E2E half, so the writer runs inside pytest — yet an AST sweep finds no code that
-# writes them, so the caller is indirect. Rather than guess at it, this names the exact
-# test. Costs nothing unless RC397_WATCH is set, which only the workflow does.
-_RC397_WATCH = (
-    "static/chart.html",
-    "static/index.html",
-    ".cursor/hooks.json",
-    "reports/scoreboard_forensic/legacy_differential/legacy_differential_result.json",
-)
-
-
-def _rc397_digests():
-    import hashlib
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parent.parent
-    out = {}
-    for rel in _RC397_WATCH:
-        p = root / rel
-        if p.is_file():
-            raw = p.read_bytes()
-            out[rel] = (hashlib.sha256(raw).hexdigest()[:12], raw.count(b"\r\n"))
-    return out
-
-
-@pytest.fixture(autouse=True)
-def _rc397_reflow_watch(request):
-    """Name the test that rewrites a watched tracked file. Opt-in via RC397_WATCH."""
-    if not os.environ.get("RC397_WATCH"):
-        yield
-        return
-    before = _rc397_digests()
-    yield
-    after = _rc397_digests()
-    for rel in _RC397_WATCH:
-        if before.get(rel) != after.get(rel):
-            print(
-                f"\nRC397-REFLOW {request.node.nodeid} CHANGED {rel} "
-                f"{before.get(rel)} -> {after.get(rel)}",
-                flush=True,
-            )
-
-
 @pytest.fixture(autouse=True)
 def _no_fusion_temperature_calibration(monkeypatch):
     """Hermetic tests: never read the operator's live fusion calibration artifact.
