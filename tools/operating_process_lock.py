@@ -263,7 +263,12 @@ def operator_go_granted(scope: str | None = None) -> bool:
     if scope is None:
         return bool(scopes)
     norm = {str(s).strip().lower() for s in scopes}
-    return scope.lower() in norm or "all" in norm or "staged_lock_surface" in norm
+    # RC-402: `staged_lock_surface` is a NORMAL scope token, matched only when a caller
+    # queries it. It used to appear here as a third disjunct — `or 'staged_lock_surface'
+    # in norm` — which made ANY scope query return True whenever the grant carried that
+    # token, silently disarming reset_guard_violations("git_reset_product") and every
+    # other held-surface gate. A grant that includes X must not thereby permit everything.
+    return scope.lower() in norm or "all" in norm
 
 
 def enforcement_paths(repo: Path | None = None) -> list[str]:
