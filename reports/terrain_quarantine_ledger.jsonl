@@ -1021,3 +1021,5 @@
 {"ts_utc": 1786650960.6718292, "et": "2026-08-13T15:56:00.671835-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
 {"ts_utc": 1786713854.8890693, "et": "2026-08-14T09:24:14.889074-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
 {"ts_utc": 1786713858.196412, "et": "2026-08-14T09:24:18.196416-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1787063237.715514, "et": "2026-08-18T10:27:17.715517-04:00", "event": "quarantine_permanent", "ticker": "RTY", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
+{"ts_utc": 1787063239.3077834, "et": "2026-08-18T10:27:19.307789-04:00", "event": "quarantine_permanent", "ticker": "XXT", "failures": 3, "reason": "chain fetch failed (HTTP 400)"}
