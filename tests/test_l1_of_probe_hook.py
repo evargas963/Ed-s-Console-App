@@ -1,5 +1,10 @@
-"""
-L1 quote-hook OF probe: hybrid input probe + cadence + periodic refresh — no duplicate _project_l1.
+"""RC-404 (Cursor F10): the L1 quote hook carries the SINGLE published order-flow signature and
+runs NO second OrderFlowEngine computation.
+
+The prior hybrid input-probe + thin `compute_order_flow_compact` recompute WAS the second producer
+this fix removed: it published `order_flow_score` / `book_imbalance_5` on `/api/analytics/light`
+from a chain-less input set that diverged from `/api/state`'s full computation at the same tick.
+Order flow is now one L2 computation, carried by L1.
 """
 from __future__ import annotations
 
@@ -28,59 +33,29 @@ def srv_clean_of(monkeypatch):
     yield srv
 
 
-def test_quote_hook_engine_runs_when_probe_cache_cold(srv_clean_of, monkeypatch):
+def test_l1_path_runs_no_second_orderflow_computation(srv_clean_of, monkeypatch):
+    """Neither the authoritative L1 build nor the quote hook may invoke a second OF compute."""
     import planes.context_light as cl
 
     srv = srv_clean_of
-    calls: list[int] = []
-    _real = cl.compute_order_flow_compact
 
-    def track(t, row):
-        calls.append(1)
-        return _real(t, row)
+    def boom(*a, **k):
+        raise AssertionError("RC-404: the L1 path must not run a second OrderFlowEngine compute")
 
-    monkeypatch.setattr(cl, "compute_order_flow_compact", track)
-    srv._l1_quote_hook_order_flow_signature("SPY")
-    assert len(calls) == 1
-    assert srv._l1_instrumentation["l1_of_quote_hook_engine_total"] >= 1
+    monkeypatch.setattr(cl, "compute_order_flow_compact", boom)
+    srv._project_l1("SPY", None, reason="seed")           # carrier build — must not compute OF
+    sig = srv._l1_quote_hook_order_flow_signature("SPY")  # quote hook — must not compute OF
+    assert sig is not None
 
 
-def test_quote_hook_reuses_when_probe_unchanged(srv_clean_of, monkeypatch):
-    import planes.context_light as cl
-
+def test_quote_hook_returns_the_published_of_signature(srv_clean_of):
+    """The quote-hook signature IS the published snapshot's signature (single source), so an
+    unchanged scope matches and the materiality gate skips."""
     srv = srv_clean_of
-    calls: list[int] = []
-    _real = cl.compute_order_flow_compact
-
-    def track(t, row):
-        calls.append(1)
-        return _real(t, row)
-
-    monkeypatch.setattr(cl, "compute_order_flow_compact", track)
-    srv._l1_quote_hook_order_flow_signature("SPY")
-    assert len(calls) == 1
-    srv._l1_quote_hook_order_flow_signature("SPY")
-    assert len(calls) == 1
-    assert int(srv._l1_instrumentation["l1_of_quote_hook_reuse_total"]) >= 1
-
-
-def test_project_l1_syncs_probe_cache_so_hook_reuses(srv_clean_of, monkeypatch):
-    import planes.context_light as cl
-
-    srv = srv_clean_of
-    calls: list[int] = []
-    _real = cl.compute_order_flow_compact
-
-    def track(t, row):
-        calls.append(1)
-        return _real(t, row)
-
-    monkeypatch.setattr(cl, "compute_order_flow_compact", track)
     srv._project_l1("SPY", None, reason="seed")
-    n_after_project = len(calls)
-    assert n_after_project >= 1
-    srv._l1_quote_hook_order_flow_signature("SPY")
-    assert len(calls) == n_after_project
+    snap = srv._l1_snapshot_cache.get(("SPY", "__auto__"))
+    assert snap is not None
+    assert srv._l1_quote_hook_order_flow_signature("SPY") == snap["_l1_of_signature"]
 
 
 def test_diagnostics_includes_of_hook_counters(monkeypatch):
@@ -98,5 +73,3 @@ def test_diagnostics_includes_of_hook_counters(monkeypatch):
         j = r.json()["ed_l1"]
         assert "l1_of_quote_hook_engine_total" in j
         assert "l1_of_quote_hook_reuse_total" in j
-        assert "L1_OF_MIN_COMPUTE_INTERVAL_SEC" in j["policy"]
-        assert "L1_OF_PROBE_FORCE_REFRESH_SEC" in j["policy"]

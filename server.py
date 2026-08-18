@@ -5770,50 +5770,26 @@ def _l1_sync_of_probe_cache_from_authoritative_build(
 
 
 def _l1_quote_hook_order_flow_signature(ticker: str) -> tuple[Any, ...]:
+    """RC-404 (Cursor F10): order flow is ONE L2 computation CARRIED by L1 (ONE FAUCET).
+
+    A quote tick does NOT recompute order flow. This returns the signature of the currently
+    PUBLISHED order flow — kept in sync with every authoritative L1 build by
+    `_l1_sync_of_probe_cache_from_authoritative_build` — so the quote materiality gate never
+    rebuilds on order flow that did not change. Order flow changes only when the single L2
+    OrderFlowEngine computation refreshes, which drives its own (L2) rebuild path. This replaced
+    a second, chain-less `compute_order_flow_compact` invocation whose signature diverged from the
+    value actually published on `/api/analytics/light`.
     """
-    OF signature for debounced quote materiality only — hybrid: input probe + cadence + periodic refresh.
-    Does not replace _project_l1; skips redundant OrderFlowEngine.compute when safe.
-    """
-    from planes.context_light import (
-        build_order_flow_input_probe,
-        compute_order_flow_compact,
-        order_flow_compact_signature,
-    )
-    from planes.l1_runtime import (
-        L1_OF_MIN_COMPUTE_INTERVAL_SEC,
-        L1_OF_PROBE_FORCE_REFRESH_SEC,
-    )
+    from planes.context_light import order_flow_compact_signature
 
     tkr = ticker.upper().strip()
-    row = _lmp.get_quote(tkr)
-    now_mono = time.monotonic()
-    probe = build_order_flow_input_probe(tkr, row)
-
-    last_sig = _l1_of_sig_cache_by_ticker.get(tkr)
-    last_probe = _l1_of_probe_by_ticker.get(tkr)
-    last_eng_mono = _l1_of_last_engine_mono_by_ticker.get(tkr, 0.0)
-
-    if (
-        last_sig is not None
-        and last_probe is not None
-        and probe == last_probe
-        and (now_mono - last_eng_mono) < L1_OF_PROBE_FORCE_REFRESH_SEC
-    ):
+    sig = _l1_of_sig_cache_by_ticker.get(tkr)
+    if sig is not None:
         _l1_instrumentation["l1_of_quote_hook_reuse_total"] += 1
-        return last_sig
-
-    if last_sig is not None and (now_mono - last_eng_mono) < L1_OF_MIN_COMPUTE_INTERVAL_SEC:
-        if (now_mono - last_eng_mono) < L1_OF_PROBE_FORCE_REFRESH_SEC:
-            _l1_instrumentation["l1_of_quote_hook_reuse_total"] += 1
-            return last_sig
-
-    ofc = compute_order_flow_compact(tkr, row)
-    sig = order_flow_compact_signature(ofc)
-    _l1_of_probe_by_ticker[tkr] = probe
-    _l1_of_sig_cache_by_ticker[tkr] = sig
-    _l1_of_last_engine_mono_by_ticker[tkr] = now_mono
-    _l1_instrumentation["l1_of_quote_hook_engine_total"] += 1
-    return sig
+        return sig
+    # Cold path: no authoritative build synced yet — the published OF is empty, whose signature
+    # matches a fresh build with no acknowledged L2 order flow (fail-closed, never a thin recompute).
+    return order_flow_compact_signature({})
 
 
 def _resolve_l2_cache_entry_for_l1(ticker: str, expiry: Optional[str]) -> Optional[dict]:
