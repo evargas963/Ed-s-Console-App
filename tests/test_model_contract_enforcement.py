@@ -95,20 +95,68 @@ def test_load_lstm_blocked_when_meta_missing_contract(tmp_path, monkeypatch):
     mp._lstm_registry.clear()
 
 
-def test_load_lstm_verifies_lstm_meta_before_load_lstm():
+def test_load_lstm_verifies_lstm_meta_before_load_lstm(tmp_path, monkeypatch):
     """RC-376 (a107412 port): Item-4 lstm_meta verify precedes load_lstm — the same
-    pre-deserialization boundary xgb_meta / transformer_meta already have."""
-    from pathlib import Path
+    pre-deserialization boundary xgb_meta / transformer_meta already have.
 
-    src = (Path(__file__).resolve().parent.parent / "ml_predict.py").read_text(encoding="utf-8")
-    start = src.index("def _load_lstm")
-    end = src.index("def _predict_lstm")
-    body = src[start:end]
-    meta_i = body.index('_verify_governed_artifact(base, bt, hz, "lstm_meta"')
-    load_i = body.index("model, checkpoint = load_lstm(")
-    assert meta_i < load_i
-    missing_i = body.index("missing meta")
-    assert missing_i < meta_i
+    The first version of this control read ml_predict.py and compared three
+    `str.index` offsets. That proves LAYOUT, not control flow: hoisting the verify
+    call into a branch that never executes, or returning early between the two, leaves
+    every offset in the same order and the boundary gone. The ordering is a sequence of
+    EVENTS, so the events are recorded here — the verifier and the deserializing
+    `load_lstm` both report into one list and the list is asserted.
+    """
+    import sys
+    import types
+
+    import ml_predict as mp
+
+    seq: list[str] = []
+    fake = types.ModuleType("lstm_model")
+    fake.load_lstm = lambda **kw: seq.append("load_lstm") or (None, "sentinel")
+    monkeypatch.setitem(sys.modules, "lstm_model", fake)
+
+    ticker, hz = "ZZLO", "1c"
+    base = tmp_path / ticker
+    base.mkdir(parents=True)
+    mpath = base / f"lstm_{ticker}_{hz}.pt"
+    mtpath = base / f"lstm_{ticker}_{hz}_meta.json"
+    mpath.write_bytes(b"pt-bytes")
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: base)
+    monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: hz)
+
+    def verifier(result):
+        def _v(_base, _bt, _hz, role, _fn):
+            seq.append(f"verify:{role}")
+            return result
+        return _v
+
+    def reset():
+        mp._lstm_registry.clear()
+        mp._active_bundle_dir_cache.clear()
+        seq.clear()
+
+    # 1. missing meta refuses BEFORE any verification is attempted (missing_i < meta_i)
+    reset()
+    monkeypatch.setattr(mp, "_verify_governed_artifact", verifier({"verified": True}))
+    assert mp._load_lstm(ticker) is False
+    assert seq == [], f"a refusal for absent meta ran the verifier or the loader: {seq}"
+
+    # 2. a refusing verifier stops the load (meta_i < load_i)
+    reset()
+    mtpath.write_text('{"model_type":"dual_stream_lstm"}', encoding="utf-8")
+    monkeypatch.setattr(mp, "_verify_governed_artifact", verifier(None))
+    assert mp._load_lstm(ticker) is False
+    assert "load_lstm" not in seq, f"load_lstm was entered on a refused artifact: {seq}"
+    assert seq and seq[0].startswith("verify:"), seq
+
+    # 3. control: on a verified bundle BOTH roles verify, strictly before load_lstm
+    reset()
+    monkeypatch.setattr(mp, "_verify_governed_artifact", verifier({"verified": True}))
+    assert mp._load_lstm(ticker) is False  # sentinel model=None -> load reports failure
+    assert seq == ["verify:lstm", "verify:lstm_meta", "load_lstm"], seq
+
+    reset()
 
 
 def test_load_lstm_refuses_when_meta_file_absent(tmp_path, monkeypatch):

@@ -127,23 +127,81 @@ def test_prior_day_family_single_session_dual_faucet_agreement(monkeypatch) -> N
     assert pl.pdc != 999.0
 
 
-def test_fetch_price_levels_window_delegates_to_rc153_authority() -> None:
+def test_fetch_price_levels_window_delegates_to_rc153_authority(monkeypatch) -> None:
     """RC-213 lock, re-anchored for Phase 2A (RC-369): the prior-day window lives in
     the RC-153 authority (prior_trading_session_date) INSIDE the one canonical
     producer; fetch_price_levels is a pure carrier — it must not fetch its own tape
-    (the deleted vendor fetch WAS the dual faucet) and must carry from the snapshot."""
-    src = inspect.getsource(fetch_price_levels)
-    assert "get_price_history" not in src, (
-        "fetch_price_levels fetches its own tape again — the dual-faucet defect "
-        "(RC-213) is reopening"
+    (the deleted vendor fetch WAS the dual faucet) and must carry from the snapshot.
+
+    The first version of this control asserted that the string "get_price_history"
+    is absent from the carrier's source, that "carry_snapshot_levels" is present, and
+    that "prior_trading_session_date" appears somewhere in liquidity_value_engine.py.
+    All three are spellings: a name in a file is not a call, and the third would stay
+    true if the authority sat in the engine unused. Delegation is an EVENT — who
+    consults the authority, and whether the carrier reaches for a tape — so both are
+    observed here instead.
+    """
+    from datetime import datetime as _dt
+
+    import liquidity_value_engine as lve
+    from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
+    from time_et import ET
+    import market_context as mc
+
+    def _ms(y, mo, d, h, mi):
+        return _dt(y, mo, d, h, mi, tzinfo=ET).timestamp()
+
+    bars = [
+        # Thursday 2026-07-30 — the older prior session
+        {"timestamp": _ms(2026, 7, 30, 10, 0), "open": 100, "high": 110, "low": 90,
+         "close": 100, "volume": 1000.0},
+        # Friday 2026-07-31 — the single most recent prior RTH session
+        {"timestamp": _ms(2026, 7, 31, 10, 0), "open": 96, "high": 105, "low": 95,
+         "close": 97, "volume": 1000.0},
+        {"timestamp": _ms(2026, 7, 31, 15, 59), "open": 101, "high": 103, "low": 100,
+         "close": 102, "volume": 1000.0},
+        # Monday 2026-08-03 — "today"; the weekend is why a calendar minus-one fails
+        {"timestamp": _ms(2026, 8, 3, 9, 45), "open": 103, "high": 104, "low": 102,
+         "close": 103, "volume": 1000.0},
+    ]
+
+    consulted: list[object] = []
+    real_authority = lve.prior_trading_session_date
+
+    def recording_authority(*a, **k):
+        out = real_authority(*a, **k)
+        consulted.append(out)
+        return out
+
+    monkeypatch.setattr(lve, "prior_trading_session_date", recording_authority)
+
+    snap = materialize_price_level_snapshot(
+        "SPY", _dt(2026, 8, 3).date(), bars,
+        bar_source="test_tape", config=PlaybookConfig(), degraded=[],
     )
-    assert "carry_snapshot_levels" in src, (
-        "fetch_price_levels no longer carries from the canonical snapshot"
-    )
-    engine_src = (_REPO_ROOT / "liquidity_value_engine.py").read_text(encoding="utf-8")
-    assert "prior_trading_session_date" in engine_src, (
-        "the RC-153 prior-session authority left the canonical producer"
-    )
+    # The producer consulted the RC-153 authority, and it answered Friday — not the
+    # calendar's Sunday, and not the merged two-session union.
+    assert consulted, (
+        "the canonical producer never called prior_trading_session_date — the RC-153 "
+        "authority is present in the engine but no longer decides the prior-day window")
+    assert _dt(2026, 7, 31).date() in consulted, consulted
+
+    # The carrier reaches for NO tape: any attribute touch on the client is a fetch.
+    class NoFetchClient:
+        def __getattr__(self, name):
+            raise AssertionError(
+                f"fetch_price_levels touched client.{name} — it fetches its own tape "
+                f"again and the dual-faucet defect (RC-213) is reopening")
+
+    consulted.clear()
+    pl = mc.fetch_price_levels(NoFetchClient(), "SPY", quote_raw=None, level_snapshot=snap)
+
+    assert consulted == [], (
+        "the CARRIER consulted the prior-session authority itself; the window belongs "
+        "to the canonical producer, and a second consultation is a second answer")
+    # It carried the producer's single-prior-session answer, so the silence is carriage.
+    assert (pl.pdh, pl.pdl, pl.pdc) == (105, 95, 102), (pl.pdh, pl.pdl, pl.pdc)
+    assert pl.pdh != 110 and pl.pdl != 90, "the dead multi-session union answer is back"
 
 
 def test_fetch_market_context_vol_indices_all_present() -> None:

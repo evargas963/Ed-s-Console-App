@@ -178,14 +178,61 @@ def test_a_completed_gate_with_zero_violations_is_still_accepted(monkeypatch):
     assert counts == {} and sha == "deadbeef" and roster == {"venv_parity"}
 
 
-def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree():
+def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree(monkeypatch):
     """A dirty tree carries scratch that is not the change — the source of the
-    filtered-count error this tool exists to prevent."""
-    src = (REPO / "tools" / "check_delta_adds_no_debt.py").read_text(encoding="utf-8")
-    assert "worktree" in src and "--detach" in src, (
-        "the gate must materialise both sides in clean detached worktrees")
-    assert "worktree\", \"remove\"" in src or "'worktree', 'remove'" in src, (
-        "the temporary worktree must be removed again")
+    filtered-count error this tool exists to prevent.
+
+    The first version of this control asserted that the strings "worktree", "--detach"
+    and "worktree remove" appear in the tool's SOURCE. That confirmed the words were
+    written, not that the measurement happens anywhere but the dirty tree: moving the
+    gate subprocess back to cwd=REPO while leaving the worktree calls in place would
+    have kept it green. The property is observable — every subprocess the tool launches
+    passes through `_run` — so it is observed here instead.
+    """
+    import subprocess as sp
+
+    calls: list[tuple[list[str], object]] = []
+    banner = "INSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean)"
+    # RC-391 widened enforced_counts to also read the CHECKS roster from the SAME
+    # materialised side, and an unreadable roster is fail-closed. So the stub speaks that
+    # contract too; a bare banner is (correctly) refused.
+    roster = "ROSTER_BEGIN\nvenv_parity\nroot_cause_log\nROSTER_END"
+
+    def recording_run(args, cwd=None, timeout=3600):
+        calls.append((list(args), cwd))
+        if args[:2] == ["git", "rev-parse"]:
+            return sp.CompletedProcess(args, 0, "deadbeef\n", "")
+        if args[:2] == ["git", "worktree"]:
+            return sp.CompletedProcess(args, 0, "", "")
+        if any("ROSTER_BEGIN" in str(a) for a in args):
+            return sp.CompletedProcess(args, 0, roster, "")
+        return sp.CompletedProcess(args, 0, banner, "")
+
+    monkeypatch.setattr(GATE, "_run", recording_run)
+    counts, sha, roster_names = GATE.enforced_counts("HEAD")
+    assert (counts, sha) == ({}, "deadbeef")
+    assert roster_names, "the roster was read as empty; an unreadable roster is not empty"
+
+    add = next((a for a, _ in calls if a[:3] == ["git", "worktree", "add"]), None)
+    assert add is not None, "no worktree was materialised; the tool read some other tree"
+    assert "--detach" in add, f"the worktree is not detached, so it carries a branch state: {add}"
+    wt = add[-2]
+    assert add[-1] == "HEAD", f"the worktree was not materialised at the requested ref: {add}"
+
+    gate = next(((a, c) for a, c in calls
+                 if any("check_institutional_correctness.py" in str(x) for x in a)), None)
+    assert gate is not None, "the enforced gate was never launched"
+    gate_argv, gate_cwd = gate
+    assert "--enforced-only" in gate_argv, gate_argv
+    # THE property: the measurement runs in the clean worktree, never in the live tree.
+    assert str(gate_cwd) == str(wt), (
+        f"the gate was measured in {gate_cwd!r}, not in the clean worktree {wt!r} — a "
+        f"dirty tree's scratch files would be counted as part of the delta")
+    assert str(gate_cwd) != str(REPO), "the gate was measured in the live repository tree"
+
+    removed = [a for a, _ in calls if a[:3] == ["git", "worktree", "remove"]]
+    assert removed and str(wt) in removed[-1], (
+        f"the temporary worktree was not removed; it accumulates on disk: {calls}")
 
 
 # ---------------------------------------------------------------------------
@@ -461,14 +508,145 @@ def test_the_precommit_seam_measures_the_index_against_the_trunk():
     The seam previously invoked check_institutional_correctness directly, demanding ABSOLUTE
     ZERO on a repo carrying ~70 inherited violations — so it blocked every honest commit,
     including the ones paying that debt down, and got routed around.
+
+    2026-08-17: the first form of this control matched three strings in
+    precommit_institutional.py. That is a spelling check — the delta owner could be named
+    in a branch that never runs, or the launch assembled through a variable, and all three
+    assertions stay true while the seam blocks nothing. What the hook DOES is one
+    subprocess launch, so the launch is recorded and asserted here instead.
     """
-    src = (REPO / "tools" / "precommit_institutional.py").read_text(encoding="utf-8")
-    assert "check_delta_adds_no_debt.py" in src, "the seam does not run the delta owner"
-    assert '"--index"' in src, "the seam does not measure the staged index"
-    code = [ln for ln in src.split('"""', 2)[-1].splitlines()
-            if ln.strip() and not ln.strip().startswith("#")]
-    assert not any("check_institutional_correctness.py" in ln for ln in code), (
-        "the seam still runs the absolute-zero gate as its blocking decision")
+    import importlib.util
+    import subprocess as sp
+
+    spec = importlib.util.spec_from_file_location(
+        "precommit_seam", REPO / "tools" / "precommit_institutional.py")
+    seam = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seam)
+
+    launches: list[list[str]] = []
+    real_run = sp.run
+
+    def recording_run(args, **kw):
+        if list(args[:2]) == ["git", "rev-parse"]:
+            return real_run(args, **kw)
+        launches.append([str(a) for a in args])
+        return sp.CompletedProcess(args, 0)
+
+    seam.subprocess.run = recording_run
+    try:
+        rc = seam.main()
+    finally:
+        seam.subprocess.run = real_run
+
+    assert rc == 0, "the seam did not return the gate's exit code"
+    assert len(launches) == 1, f"expected exactly one gate launch, got {launches}"
+    argv = launches[0]
+    assert any("check_delta_adds_no_debt.py" in a for a in argv), (
+        f"the seam does not run the delta owner: {argv}")
+    assert "--index" in argv, f"the seam does not measure the staged index: {argv}"
+    assert "--base" in argv, f"the seam does not name a base trunk: {argv}"
+    assert not any("check_institutional_correctness.py" in a for a in argv), (
+        f"the seam still runs the absolute-zero gate as its blocking decision: {argv}")
+
+    # …and the gate's exit code must BE the hook's (RC-254), or a failing gate sails past.
+    launches.clear()
+
+    def failing_run(args, **kw):
+        if list(args[:2]) == ["git", "rev-parse"]:
+            return real_run(args, **kw)
+        launches.append([str(a) for a in args])
+        return sp.CompletedProcess(args, 3)
+
+    seam.subprocess.run = failing_run
+    try:
+        assert seam.main() == 3, "a failing gate did not fail the hook — commits sail past"
+    finally:
+        seam.subprocess.run = real_run
+
+
+def test_the_required_hardening_job_uses_the_same_debt_owner():
+    """RC-395: the REMOTE required check must run the same owner as the local hook.
+
+    The hardening workflow invoked check_institutional_correctness.py directly while its
+    own comment claimed "pre-commit parity" — prose parity over a real divergence. It is
+    why `Hardening Gates` was RED on origin/main itself at 4983eb57, 573b96e8, b6bde57e
+    and ca6d7b27: absolute zero is unreachable on a trunk carrying inherited debt, so the
+    required check could not tell a commit that ADDS debt from one that PAYS it.
+
+    A workflow is DATA — there is no local runtime that executes a GitHub job — so the
+    wiring is asserted structurally. The owner it names is then checked as a real object,
+    not as a string, so a step pointing at a tool that does not exist cannot pass.
+    """
+    wf = (REPO / ".github" / "workflows" / "hardening.yml").read_text(encoding="utf-8")
+    blocking = [ln for ln in wf.splitlines()
+                if ln.strip().startswith("run:") or ln.strip().startswith("python ")]
+    joined = "\n".join(blocking)
+    assert "check_delta_adds_no_debt.py" in joined, (
+        "the required hardening job does not run the institutional debt owner")
+    assert "--base" in joined, "the hardening job does not name a base trunk to measure against"
+    assert not any("check_institutional_correctness.py" in ln for ln in blocking), (
+        "the hardening job still runs the absolute-zero gate as a blocking decision — it "
+        "is unreachable on a trunk with inherited debt and blocks the paydown commits too")
+
+    # The named owner is the SAME file the local pre-commit seam delegates to, and it
+    # really exists — a workflow naming a deleted tool would otherwise read as wired.
+    owner = REPO / "tools" / "check_delta_adds_no_debt.py"
+    assert owner.is_file(), f"{owner} is missing; the required job names a tool that is gone"
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "precommit_inst_parity", REPO / "tools" / "precommit_institutional.py")
+    seam = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seam)
+    assert (REPO / "tools" / "check_delta_adds_no_debt.py").resolve() == owner.resolve()
+    assert callable(seam.main), "the local seam is not callable; parity cannot be claimed"
+
+
+def test_ci_never_fabricates_an_agent_identity():
+    """RC-396: a GitHub runner has no agent identity, so it must not export one.
+
+    The hardening job exported `ED_AGENT_ROLE: cursor`. RC-240 had already ruled on this
+    exact shape for the local hook — a check whose verdict depends on WHO is acting must
+    never be handed an invented actor — and repaired it there while CI kept inventing one.
+    MEASURED: with the invented identity the required job reported
+    `writer_no_drift: 0 -> 27`, reading an entire PR as the wrong agent's drift.
+
+    `check_writer_no_drift` abstains when no identity is present and lets the PreToolUse
+    layer (which always carries a REAL identity) enforce. Absence is the truthful input.
+    """
+    import re as _re
+
+    for wf in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        text = wf.read_text(encoding="utf-8")
+        code = [ln for ln in text.splitlines() if not ln.strip().startswith("#")]
+        for ln in code:
+            m = _re.search(r"ED_AGENT_ROLE\s*:\s*(\S+)", ln)
+            assert m is None, (
+                f"{wf.name} exports a fabricated agent identity ED_AGENT_ROLE="
+                f"{m.group(1)!r}. CI is not an agent; an invented actor makes every "
+                f"identity-sensitive verdict a lie about who acted (RC-240/RC-396).")
+
+    # …and the abstention it relies on must be real, not assumed: with no identity the
+    # drift backstop returns nothing rather than judging an invented actor.
+    import importlib.util
+    import os as _os
+
+    spec = importlib.util.spec_from_file_location(
+        "cic_identity", REPO / "tools" / "check_institutional_correctness.py")
+    cic = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(cic)
+    except SystemExit:
+        pass
+    prior = _os.environ.get("ED_AGENT_ROLE")
+    try:
+        _os.environ.pop("ED_AGENT_ROLE", None)
+        assert cic.check_writer_no_drift() == [], (
+            "with NO identity the drift backstop still judged — it would convict whoever "
+            "CI pretended to be")
+    finally:
+        if prior is not None:
+            _os.environ["ED_AGENT_ROLE"] = prior
 
 
 def test_the_precommit_seam_refuses_when_no_base_trunk_resolves(monkeypatch):

@@ -19,19 +19,35 @@ F39_WEIGHTED_PUSH_PRODUCERS = frozenset(
     }
 )
 
-SKIP_PARTS = frozenset(
-    {".git", "__pycache__", "tests", "archive", "node_modules", ".venv"}
-)
+# Directories this tree-wide producer sweep does not judge: test doubles and archived
+# copies are not production compute sites. `.git`/`__pycache__`/`node_modules`/`.venv`
+# are gone from this list because the git index cannot contain them by construction —
+# a skip entry for something that cannot appear is the drift RC-286 removed.
+SKIP_PREFIXES = ("tests/", "archive/", "governance/archive/")
+SKIP_PARTS = frozenset({"archive"})
 
 
 def _py_files() -> list[Path]:
+    """RC-274 -> RC-286: repo-wide means the GIT INDEX, never a filesystem walk.
+
+    This swept `ROOT.rglob("*.py")` behind a hand-maintained SKIP_PARTS, which is the
+    exact shape RC-274 found walking gitignored `scratchpad/` and RC-286 then swept as a
+    class. Every hand-maintained skip list is correct exactly once: the moment an
+    untracked scratch script lands anywhere outside those parts, this gate starts making
+    a repo-wide CLAIM about code that is not in the repository. The index cannot drift.
+    """
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py"],
+        cwd=ROOT, capture_output=True, text=True, check=True).stdout
     out: list[Path] = []
-    for p in ROOT.rglob("*.py"):
-        if any(part in SKIP_PARTS for part in p.parts):
+    for rel in sorted(p for p in tracked.split("\0") if p):
+        if rel.startswith(SKIP_PREFIXES):
             continue
-        if "governance/archive" in "/".join(p.parts):
+        if any(part in SKIP_PARTS for part in Path(rel).parts):
             continue
-        out.append(p)
+        path = ROOT / rel
+        if path.exists():
+            out.append(path)
     return out
 
 
