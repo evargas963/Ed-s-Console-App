@@ -11,7 +11,7 @@
   },
   "fail_fast": "ED_AGENT_ROLE unset or invalid → exit 1. No inference from directory name.",
   "venv": "Per-worktree .venv via tools/bootstrap_worktree_venv.py (no shared symlink).",
-  "db": "Claude → data/ed_console_claude.db; Cursor → data/ed_console.db.",
+  "db": "ONE DB: data/ed_console.db for every role and every worktree. RC-401 removed the per-agent fork (Claude → data/ed_console_claude.db) — ambient ED_AGENT_ROLE was deciding which database the money path addressed, and it had scattered real rows into three sibling files. ED_CONSOLE_DB / ED_DB_PATH still override, and a non-canonical target still requires ED_CONSOLE_ALLOW_NONCANONICAL_DB=1.",
   "git_lock": "tools/check_git_index_lock.py clears index.lock older than 60s.",
   "handoff": "Commit or stash in the active worktree before the other agent reads shared HEAD. tools/check_worktree_handoff.py enforces dirty-source + boundary."
 }

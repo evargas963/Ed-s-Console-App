@@ -306,11 +306,13 @@ def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
         return False
     return all(n >= MIN_SAMPLES_STATISTICAL for n in labeled_by_col.values())
 
-# ── Database location (worktree-aware; one file per agent process) ──────────
-# Default: data/ed_console.db (Cursor/primary) or data/ed_console_claude.db
-# (ED_AGENT_ROLE=claude / *-Claude worktree). See db_authority.default_console_db_path.
+# ── Database location (ONE APP, ONE MAIN, ONE DB) ───────────────────────────
+# Default: data/ed_console.db, for every process and every worktree.
+# RC-401 removed the per-agent fork that returned data/ed_console_claude.db under
+# ED_AGENT_ROLE=claude — ambient process state was deciding which database the money
+# path addressed, and it had already scattered rows into three sibling files.
 # ED_CONSOLE_DB or ED_DB_PATH: optional override; non-canonical targets require
-# ED_CONSOLE_ALLOW_NONCANONICAL_DB=1 unless they are this worktree's agent DB.
+# ED_CONSOLE_ALLOW_NONCANONICAL_DB=1, with no sibling-file exemption.
 DB_DIR = Path(__file__).parent / "data"
 
 
