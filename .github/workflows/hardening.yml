@@ -87,9 +87,11 @@ jobs:
       - name: no-grep subprocess
         run: python tools/check_no_grep_subprocess.py
 
-      # --- BLOCKING: security (high-severity only at first; ratchet to medium as triaged) ---
-      - name: bandit (high severity — blocking)
-        run: python -m bandit -r . -ll -q -c pyproject.toml || true   # RATCHET: triage HIGH then make blocking
+      # --- RATCHET (visible, NON-blocking until HIGH findings are triaged) ---
+      # These end in `|| true`, so they report but cannot fail the job. The name says so —
+      # a step called "blocking" that cannot block is the security theater this repo audits for.
+      - name: bandit (high severity — non-blocking ratchet)
+        run: python -m bandit -r . -ll -q -c pyproject.toml || true   # RATCHET: triage HIGH then drop the `|| true` to make it block
 
       # --- RATCHET (visible, non-blocking until cleared) ---
       - name: lint debt — unused vars + redefs (F841/F811 ratchet, target 0 this week)

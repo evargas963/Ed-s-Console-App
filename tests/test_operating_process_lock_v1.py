@@ -102,6 +102,42 @@ def test_operator_go_suppresses_staged_check_block(tmp_path, monkeypatch):
     assert OPL.commit_violations(repo) == [] or not any("brand_new" in x for x in OPL.commit_violations(repo))
 
 
+def test_operator_go_grant_does_not_leak_to_unrelated_scopes(tmp_path, monkeypatch):
+    """RC-402: a grant of staged_lock_surface must NOT permit every other scope.
+
+    This is the deny-side control the predicate never had. Before the fix,
+    `staged_lock_surface` in the grant made every scope query return True, which
+    silently disarmed reset_guard_violations("git_reset_product").
+    """
+    go = tmp_path / "operator_go.json"
+    go.write_text(
+        json.dumps({"granted": True, "scope": ["rc_status_vocabulary", "staged_lock_surface"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
+    # ALLOW side: the two granted scopes resolve True.
+    assert OPL.operator_go_granted("staged_lock_surface")
+    assert OPL.operator_go_granted("rc_status_vocabulary")
+    # DENY side: scopes the operator never granted must be False.
+    assert not OPL.operator_go_granted("git_reset_product")
+    assert not OPL.operator_go_granted("bogus")
+    assert not OPL.operator_go_granted("all")
+
+
+def test_reset_guard_is_not_disarmed_by_the_staged_lock_grant(tmp_path, monkeypatch):
+    """RC-402: the concrete blast radius — LOCK-2 must still fire under this grant."""
+    go = tmp_path / "operator_go.json"
+    go.write_text(
+        json.dumps({"granted": True, "scope": ["rc_status_vocabulary", "staged_lock_surface"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
+    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
+    protected = OPL.PROTECTED_PATHS[0]
+    v = OPL.reset_guard_violations(f"git reset --hard HEAD -- {protected}")
+    assert v, "reset guard was waved through despite only a staged_lock_surface grant"
+
+
 def test_completion_claim_blocks_on_index_mismatch(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     checker = repo / "tools" / "check_institutional_correctness.py"
