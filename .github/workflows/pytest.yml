@@ -5,7 +5,13 @@ name: Pytest Full Suite
 
 on:
   pull_request:
+  # RC-405 (engineering-cycle latency): run the full suite once per change. `pull_request`
+  # already runs full CI before merge (branch protection's required check), so a `push` event
+  # on a FEATURE branch only duplicates it. Restrict the push trigger to `main` — that keeps
+  # post-merge validation of the trunk while removing the redundant per-feature-push run. No
+  # check is weakened or skipped; the pre-merge proof is unchanged.
   push:
+    branches: [main]
 
 jobs:
   pytest-full:

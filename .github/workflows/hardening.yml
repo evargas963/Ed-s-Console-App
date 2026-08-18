@@ -8,7 +8,11 @@ name: Hardening Gates
 
 on:
   pull_request:
+  # RC-405 (engineering-cycle latency): `pull_request` runs this job before merge (branch
+  # protection's required check), so a `push` event on a FEATURE branch only duplicates it.
+  # Restrict the push trigger to `main` for post-merge trunk validation. No check weakened.
   push:
+    branches: [main]
 
 jobs:
   hardening:
