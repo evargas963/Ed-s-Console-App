@@ -392,6 +392,7 @@ class MarketState:
     order_flow_readiness:          Optional[str]   = None
     book_imbalance_5:              Optional[float] = None
     cum_delta_proxy:               Optional[float] = None
+    tape_pressure_30s:             Optional[float] = None  # RC-404: canonical L2 producer carries every published OF field
     options_flow_score:            Optional[float] = None
     institutional_flow_proxy_score: Optional[float] = None
     # Flow Verdict (composite headline)
@@ -1125,6 +1126,7 @@ def build_market_state(
             ms.order_flow_readiness          = _of_result.get("order_flow_readiness")
             ms.book_imbalance_5              = _of_result.get("book_imbalance_5")
             ms.cum_delta_proxy               = _of_result.get("cum_delta_proxy")
+            ms.tape_pressure_30s             = _of_result.get("tape_pressure_30s")
             ms.options_flow_score            = _of_result.get("options_flow_score")
             ms.institutional_flow_proxy_score = _of_result.get("institutional_flow_proxy_score")
             ms.order_flow_verdict             = _of_result.get("order_flow_verdict")

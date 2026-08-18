@@ -147,12 +147,12 @@ def test_l1_project_never_calls_tier_c_merge_into_state(monkeypatch, l1_clean_sp
 
 
 def test_quote_material_skip_when_inputs_unchanged(l1_clean_spy):
-    from planes.context_light import compute_order_flow_compact, order_flow_compact_signature
-
+    # RC-404 (F10): the quote-hook OF signature is the PUBLISHED (single L2 computation) OF
+    # signature, not a second thin recompute. After seeding, an unchanged scope matches the
+    # cached snapshot's published signature and skips the OF-driven rebuild.
     srv = l1_clean_spy
-    row = srv._lmp.get_quote("SPY")
-    of_sig = order_flow_compact_signature(compute_order_flow_compact("SPY", row))
     srv._project_l1("SPY", None, reason="seed")
+    of_sig = srv._l1_quote_hook_order_flow_signature("SPY")
     skip0 = int(srv._l1_instrumentation["l1_quote_material_skip_total"])
     srv._l1_maybe_rebuild_quote_scope("SPY", None, of_sig=of_sig)
     assert srv._l1_instrumentation["l1_quote_material_skip_total"] > skip0

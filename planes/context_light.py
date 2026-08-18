@@ -187,11 +187,13 @@ def derive_readiness_summary(
 def build_l1_context(
     ctx: L1BuildContext,
     *,
-    order_flow_compact: Optional[dict[str, Any]] = None,
     derive_vwap_side_fn: Callable[[Optional[float], Optional[float]], Optional[str]],
 ) -> dict[str, Any]:
     """
-    Build the versioned L1 JSON object. Pure aside from optional OF compute.
+    Build the versioned L1 JSON object. Pure — no OrderFlowEngine compute here.
+
+    RC-404 (Cursor F10): the order_flow block CARRIES the single canonical L2 computation from
+    `ctx.l2_cache_entry`; it is not recomputed on thin L1 inputs. See the order_flow_block build.
 
     derive_vwap_side_fn: injected (e.g. math_snapshot_derive.derive_vwap_side) to avoid
     importing heavy graph here at module load.
@@ -230,9 +232,16 @@ def build_l1_context(
     if spot_f is not None and vwap_f is not None:
         dist_vwap = round(spot_f - vwap_f, 4)
 
-    ofc = order_flow_compact if order_flow_compact is not None else compute_order_flow_compact(
-        tkr, ctx.l0_row
-    )
+    # RC-404 (Cursor F10) — ONE FAUCET = ONE COMPUTATION. The L1 order_flow block is a CARRIER of
+    # the single canonical L2 OrderFlowEngine computation, read from the acknowledged L2 cache (`md`)
+    # exactly as the structural block below is. It is no longer a second, chain-less engine
+    # invocation on thin L1 inputs — that produced a divergent order_flow_score / book_imbalance_5
+    # under the same field names on /api/analytics/light vs /api/state at the same tick. Absent L2
+    # row → absent order_flow (fail-closed), never a thin recompute.
+    order_flow_block: dict[str, Any] = {}
+    for k in _ORDER_FLOW_KEYS:
+        if k in md and md[k] is not None:
+            order_flow_block[k] = md[k]
 
     structural: dict[str, Any] = {}
     for k in _STRUCTURAL_KEYS:
@@ -248,7 +257,7 @@ def build_l1_context(
             "continuation_score": lb.get("continuation_score"),
         }
 
-    readiness = derive_readiness_summary(ofc, structural_context_stale, l2_snapshot_present)
+    readiness = derive_readiness_summary(order_flow_block, structural_context_stale, l2_snapshot_present)
 
     # Stale when L0 spot is missing or not usable — do not treat a non-empty row with bad spot as fresh.
     l1_stale = not l0_usable
@@ -288,7 +297,7 @@ def build_l1_context(
             "vwap_side": vwap_side,
             "dist_to_vwap_pts": dist_vwap,
         },
-        "order_flow": ofc,
+        "order_flow": order_flow_block,
         "order_flow_as_of_ts": ctx.now_ts,
         "liquidity_summary": liquidity_summary,
         "liquidity_behavior_summary": liquidity_summary,
