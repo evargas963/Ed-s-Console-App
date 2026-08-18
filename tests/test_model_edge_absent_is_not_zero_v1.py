@@ -107,15 +107,57 @@ def test_val_accuracy_is_never_published_as_edge(tmp_path):
     assert val_accuracy == 0.62
 
 
-def test_lstm_requests_edge_pp_not_val_accuracy():
-    """RC-364/RC-291 port: the LSTM registration passes edge_key='edge_pp' like every
-    other model, and the ×100 accuracy-as-edge translation is gone from the producer."""
+def test_lstm_requests_edge_pp_not_val_accuracy(tmp_path, monkeypatch):
+    """RC-364/RC-291 port: an LSTM whose meta carries ONLY val_accuracy has NO edge.
+
+    The first version of this control matched two strings in server.py — the exact
+    registration call and the absence of the old `raw * 100` expression. Both are
+    renderings: the registration is already proved by AST in
+    `test_producer_slice_has_no_arithmetic_translation_ast` below (which checks all
+    three call sites, not one spelling of one of them), and a reshaped translation
+    defeats the second string, which is why RC-375/RC-378 added the AST and
+    whitelist locks. What no lock here observed was the OUTPUT. So this drives the
+    real producer slice out of server.py and asserts what it publishes.
+    """
+    import textwrap
+
+    import ml_predict
+
     src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert '_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "edge_pp"' in src, (
-        "LSTM model-health registration no longer requests edge_pp — val_accuracy "
-        "masquerading as edge is the RC-291 defect")
-    assert 'raw * 100 if edge_key == "val_accuracy"' not in src, (
-        "the accuracy-as-edge ×100 translation is back in the producer")
+    i = src.index("def _model_status_from_artifact(")
+    j = src.index("_xgb_meta = ", i)
+    fn_src = textwrap.dedent(src[i:j])
+    monkeypatch.setattr(ml_predict, "_verify_governed_artifact",
+                        lambda base, bt, hz, role, fn: {"verified": True})
+
+    def produce(payload: dict):
+        meta_p = tmp_path / "lstm_SPY_1c_meta.json"
+        meta_p.write_text(json.dumps(payload), encoding="utf-8")
+        ns = {
+            "_artifacts": {"lstm": {"exists": True, "has_provenance": True, "issues": []}},
+            "_dashboard_ticker": "SPY",
+            "_dashboard_ml_hz": "1c",
+            "_active_dir": tmp_path,
+            "json": json,
+            "Path": Path,
+        }
+        exec(compile(fn_src, "server.py::_model_status_from_artifact", "exec"), ns)
+        return ns["_model_status_from_artifact"](
+            "lstm", "LSTM", meta_p, "edge_pp", "model_type")
+
+    # THE defect: accuracy standing in for edge. 0.62 must not surface as 0.62 or 62.
+    only_accuracy = produce({"val_accuracy": 0.62, "model_type": "dual_stream_lstm"})
+    assert only_accuracy["edge"] is None, (
+        f"val_accuracy was published in the edge slot as {only_accuracy['edge']!r} — "
+        f"accuracy masquerading as edge is the RC-291 defect")
+
+    # Negative control: a real edge_pp still serves, unscaled and unrounded.
+    scored = produce({"edge_pp": 1.25, "model_type": "dual_stream_lstm"})
+    assert scored["edge"] == 1.25, (
+        f"a genuinely measured edge was altered on the way out: {scored['edge']!r}")
+
+    # A measured zero is a result, not absence (the RC-285 half of this file).
+    assert produce({"edge_pp": 0.0, "model_type": "dual_stream_lstm"})["edge"] == 0.0
 
 
 def test_producer_slice_has_no_arithmetic_translation_ast():

@@ -133,6 +133,32 @@ def source_text_only_functions() -> list[str]:
     the allowlist habit RC-276 removed. What the number does is make a future widening of
     this gate's scope visible as a moved figure rather than as continued silence — the same
     device RC-286 used for its filesystem-scanner sweep.
+
+    WHAT THE NUMBER IS NOT (2026-08-17). It is not a count of bad tests, and lowering it is
+    not by itself an improvement. Two different things are in it:
+
+      INHERENTLY STRUCTURAL — the asserted property is about the REPOSITORY: that exactly
+      one definition exists, that a formula is not independently re-encoded, that a
+      forbidden literal is absent, that a governed artefact carries the keys a row claims.
+      Uniqueness, duplication and absence have no faithful runtime call — a function that
+      behaves correctly today says nothing about whether a second copy of it exists — so
+      these belong here and are not defects.
+
+      AVOIDABLE SOURCE-TEXT PROXY — the asserted property is BEHAVIOUR, restated as a
+      spelling. `str.index` offsets standing in for call ordering, a matched call string
+      standing in for what a producer publishes, the checker's own regexes restated
+      instead of its verdict. These are the RC-308 class, and the repair is to assert the
+      value, not to register an exemption.
+
+    So a MOVE in this figure must be ACCOUNTED FOR, not merely re-baselined: each new
+    entry is either shown to be inherently structural, or it is rewritten to assert the
+    behaviour and leaves on its own. Note also that the measurement is coarser than the
+    distinction — an assertion on a value COMPUTED from file text still counts as
+    source-text here, because the taint follows the argument. Tightening that was tried
+    and reverted 2026-08-17: every candidate rule that cleared such assertions also
+    cleared `isinstance(...)`, `m.group(1)` and text-derived local helpers, i.e. widened
+    the gate instead of sharpening it. A repaired test may therefore stay in the count;
+    say so in the row rather than loosening the measurement to make the number move.
     """
     out: list[str] = []
     for path in _tracked_test_files():

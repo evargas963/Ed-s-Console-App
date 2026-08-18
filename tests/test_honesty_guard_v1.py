@@ -61,32 +61,42 @@ def test_honesty_deliverable_scores_required():
 def test_honesty_guard_wired_blocks_missing_cursor_hook():
     from tools.check_institutional_correctness import check_honesty_guard_wired
 
+    # RC-398: restore BYTES. `write_text` opens with newline=None and translates "\n" to
+    # os.linesep, so this "restore" rewrote .cursor/hooks.json LF-for-CRLF on the Linux
+    # runner while being lossless on Windows — invisible locally, and it tripped
+    # eol_style_invariant on a file the change never touched. A mutation control that
+    # cannot put the tree back byte-for-byte is a mutation, not a control.
     hooks = REPO / ".cursor" / "hooks.json"
-    orig = hooks.read_text(encoding="utf-8")
+    raw = hooks.read_bytes()
+    orig = raw.decode("utf-8")
     broken = orig.replace("honesty_guard.py", "honesty_guard_MISSING.py")
     try:
-        hooks.write_text(broken, encoding="utf-8")
+        hooks.write_bytes(broken.encode("utf-8"))
         v = check_honesty_guard_wired()
         assert v and any("hooks.json" in str(x.path).replace("\\", "/") for x in v)
         assert any("honesty_guard.py" in x.msg for x in v)
     finally:
-        hooks.write_text(orig, encoding="utf-8")
+        hooks.write_bytes(raw)
     assert check_honesty_guard_wired() == []
 
 
 def test_honesty_guard_wired_blocks_missing_claude_hook():
     from tools.check_institutional_correctness import check_honesty_guard_wired
 
+    # RC-398: same byte-exact restore. `.claude/settings.json` is pinned `text eol=lf`, so
+    # git currently absorbs a terminator flip here — but a control must not depend on a
+    # .gitattributes entry it never states, and the pin could move.
     settings = REPO / ".claude" / "settings.json"
-    orig = settings.read_text(encoding="utf-8")
+    raw = settings.read_bytes()
+    orig = raw.decode("utf-8")
     broken = orig.replace("honesty_guard.py", "honesty_guard_MISSING.py")
     try:
-        settings.write_text(broken, encoding="utf-8")
+        settings.write_bytes(broken.encode("utf-8"))
         v = check_honesty_guard_wired()
         assert v and any("settings.json" in str(x.path).replace("\\", "/") for x in v)
         assert any("honesty_guard.py" in x.msg for x in v)
     finally:
-        settings.write_text(orig, encoding="utf-8")
+        settings.write_bytes(raw)
     assert check_honesty_guard_wired() == []
 
 

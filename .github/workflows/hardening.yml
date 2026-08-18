@@ -14,9 +14,16 @@ jobs:
   hardening:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # Worktree boundary gate: no silent ED_AGENT_ROLE default (primary CI = cursor).
-      ED_AGENT_ROLE: cursor
+    # RC-396: NO ED_AGENT_ROLE here, deliberately. This job used to export
+    # `ED_AGENT_ROLE: cursor`, which is a FABRICATED actor: a GitHub runner has no agent
+    # identity to carry, and neither Cursor nor Claude is the one acting. RC-240 already
+    # ruled on exactly this shape for the local hook — "a check whose verdict depends on
+    # who is acting must never be handed an invented actor" — and fixed it there while CI
+    # kept inventing one. MEASURED consequence: with the invented identity in place the
+    # required job reported `writer_no_drift: 0 -> 27`, reading a whole PR as the wrong
+    # agent's drift; the check's own docstring says that with no identity it abstains and
+    # the PreToolUse layer (which always has a REAL identity from each agent's hook env)
+    # carries the enforcement. Absent is truthful here; "cursor" was not.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,10 +56,31 @@ jobs:
           python tools/check_market_correctness.py --self-test
           python tools/check_market_correctness.py
 
-      # BLOCKING: same institutional gate as local pre-commit — catches --no-verify
-      # commits that skip tools/check_institutional_correctness.py on the laptop.
-      - name: institutional correctness (one gate — pre-commit parity)
-        run: python tools/check_institutional_correctness.py
+      # BLOCKING: the SAME institutional debt owner the local pre-commit hook runs.
+      #
+      # RC-395: this step used to invoke check_institutional_correctness.py directly, and
+      # its own comment claimed "pre-commit parity" — which stopped being true the moment
+      # RC-391 moved the local hook to the delta owner. Parity was asserted in PROSE while
+      # the two paths diverged in FACT, and the divergence was not theoretical: this
+      # required check has been RED on origin/main itself for every recent commit
+      # (MEASURED via `gh run list --branch main`: Hardening Gates failure at 4983eb57,
+      # 573b96e8, b6bde57e, ca6d7b27), because absolute zero is unreachable on a trunk
+      # carrying ~57 inherited violations. A required check no honest change can turn
+      # green teaches people to route around it — the exact --no-verify habit RC-389 exists
+      # to stop — and it cannot distinguish a commit that ADDS debt from one that PAYS it.
+      #
+      # The delta owner enforces MORE than the old step did, not less:
+      #   NEW violation                  -> BLOCK
+      #   WORSENED count                 -> BLOCK
+      #   REMOVED/DEMOTED enforced check -> BLOCK  (deleting the failing check is not paying)
+      #   crash / unreadable output      -> BLOCK  (silence is not cleanliness)
+      #   unchanged inherited debt       -> PASS
+      #   improvement                    -> PASS
+      # One implementation, one CHECKS roster, two callers — no second delta tool.
+      - name: institutional debt delta (same owner as local pre-commit)
+        run: |
+          git fetch --no-tags origin main
+          python tools/check_delta_adds_no_debt.py --base origin/main
 
       - name: institutional closure gate (no inflated parent closures)
         run: python tools/check_institutional_closure_gate.py

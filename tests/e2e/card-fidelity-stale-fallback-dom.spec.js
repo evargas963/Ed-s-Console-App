@@ -13,6 +13,28 @@ const { test, expect } = require('@playwright/test');
 
 const ANCHOR_TICKERS = ['SPY', 'QQQ', 'IWM'];
 
+/**
+ * RC-395 / RC-345-F05 — the S2B-1 operator mirror an actionable card always carries.
+ *
+ * server.py unconditionally stamps these four top-level fields on every Tier C payload
+ * (server.py:2158-2161, `md["operator_card_actionable"] = bool(card_actionable)` and
+ * siblings). Since RC-345 the frontend treats that mirror as the FINAL actionability
+ * authority and WITHHOLDS actionable paint when it is absent — a display-trust gate may
+ * suppress a verdict, never substitute one (static/index.html, engineTradeableSetup:
+ * `if (!hasOperatorCardMirrorFields(d)) return false;`).
+ *
+ * So a fixture without the mirror is not a payload production can emit; it is a payload the
+ * gate is REQUIRED to refuse. These fixtures predate RC-345 and omitted it, which is why
+ * they asked for trusted-actionable paint and correctly got none. Adding the mirror restores
+ * the fixture to the real server contract. No assertion is relaxed.
+ */
+const ACTIONABLE_OPERATOR_MIRROR = {
+  operator_card_actionable: true,
+  operator_card_trust_state: 'TRUSTED',
+  operator_stale_reason_codes: [],
+  operator_actionability_reason: null,
+};
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     window.__ED_E2E__ = true;
@@ -252,7 +274,10 @@ for (const ticker of ANCHOR_TICKERS) {
     await setActiveTicker(page, ticker);
     const other = ANCHOR_TICKERS.find((t) => t !== ticker) || 'QQQ';
     let gen = 40;
-    const trusted = tierCRenderPayload(ticker, { decision_generation_id: gen++ });
+    const trusted = tierCRenderPayload(ticker, {
+      decision_generation_id: gen++,
+      ...ACTIONABLE_OPERATOR_MIRROR,
+    });
     expect(await renderViaProductionPath(page, trusted, 'e2e_baseline')).toMatchObject({ ok: true });
     await assertTrustedActionablePaint(page);
     const wrong = tierCRenderPayload(other, { decision_generation_id: gen++ });
@@ -265,7 +290,10 @@ for (const ticker of ANCHOR_TICKERS) {
     await gotoCardTrustSurface(page);
     await resetRenderPipelineState(page);
     await setActiveTicker(page, ticker);
-    const trusted = tierCRenderPayload(ticker, { decision_generation_id: 50 });
+    const trusted = tierCRenderPayload(ticker, {
+      decision_generation_id: 50,
+      ...ACTIONABLE_OPERATOR_MIRROR,
+    });
     expect(await renderViaProductionPath(page, trusted, 'e2e_trusted')).toMatchObject({ ok: true });
     await assertTrustedActionablePaint(page);
     const c5 = await page.getAttribute('#tf-signal-5c', 'class');
@@ -283,6 +311,9 @@ test('[render] SYNCING non-cache refresh keeps trusted actionable paint (last-kn
     analytics_refresh_in_progress: true,
     analytics_stale: false,
     _update_source: 'sse_tier_c',
+    // A non-cache refresh in flight is still an actionable card server-side (last-known-good),
+    // which is exactly the property under test — so the mirror says actionable.
+    ...ACTIONABLE_OPERATOR_MIRROR,
   });
   expect(await renderViaProductionPath(page, syncing, 'e2e_syncing')).toMatchObject({ ok: true });
   await assertTrustedActionablePaint(page);
@@ -304,7 +335,10 @@ test('[render] plane diag on _lastPlaneDiag does not alter card paint when ms_di
     };
     window._planeDiagMeta = { gen: typeof requestGeneration !== 'undefined' ? requestGeneration : 1, ticker: 'SPY', at: Date.now() };
   });
-  const trusted = tierCRenderPayload('SPY', { decision_generation_id: 70 });
+  const trusted = tierCRenderPayload('SPY', {
+    decision_generation_id: 70,
+    ...ACTIONABLE_OPERATOR_MIRROR,
+  });
   expect(await renderViaProductionPath(page, trusted, 'e2e_plane_diag_separation')).toMatchObject({ ok: true });
   await assertTrustedActionablePaint(page);
 });

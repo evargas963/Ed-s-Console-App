@@ -273,10 +273,44 @@ def test_rc255_the_committed_queue_is_not_a_fixture() -> None:
 
 
 def test_rc250_advisory_never_returns_to_the_blocking_commit_path() -> None:
-    """The fix for invisibility must not undo P1: the pre-commit wrapper stays enforced-only."""
-    src = (ROOT / "tools" / "precommit_institutional.py").read_text(encoding="utf-8")
-    assert '"--enforced-only"' in src
-    assert '"--advisory"' not in src, (
-        "advisory checks are back in the blocking commit path — that re-imposes 145s/commit "
-        "for verdicts that cannot veto (RC-246)"
-    )
+    """The fix for invisibility must not undo P1: ADVISORY work stays out of the blocking
+    commit path.
+
+    RC-395: this used to assert the literal `"--enforced-only"` in the seam's source. RC-391
+    then moved the blocking decision to the delta owner, invoked `--index --base <trunk>`,
+    which never takes that flag — so the assertion pinned an ADDRESS (one spelling of one
+    implementation) rather than the PROPERTY (advisory verdicts must not run where they
+    cannot veto). The property outlived the spelling, so the property is what is asserted,
+    and by recording the real launch rather than reading the file.
+    """
+    import importlib.util
+    import subprocess as sp
+
+    spec = importlib.util.spec_from_file_location(
+        "precommit_rc250", ROOT / "tools" / "precommit_institutional.py")
+    seam = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seam)
+
+    launches: list[list[str]] = []
+    real_run = sp.run
+
+    def recording_run(args, **kw):
+        if list(args[:2]) == ["git", "rev-parse"]:
+            return real_run(args, **kw)
+        launches.append([str(a) for a in args])
+        return sp.CompletedProcess(args, 0)
+
+    seam.subprocess.run = recording_run
+    try:
+        seam.main()
+    finally:
+        seam.subprocess.run = real_run
+
+    assert len(launches) == 1, f"expected exactly one blocking launch, got {launches}"
+    argv = launches[0]
+    assert not any("--advisory" in a for a in argv), (
+        f"advisory checks are back in the blocking commit path — that re-imposes ~145s per "
+        f"commit for verdicts that cannot veto (RC-246): {argv}")
+    # …and the blocking decision IS the delta owner measuring the staged index (RC-391).
+    assert any("check_delta_adds_no_debt.py" in a for a in argv), argv
+    assert "--index" in argv and "--base" in argv, argv

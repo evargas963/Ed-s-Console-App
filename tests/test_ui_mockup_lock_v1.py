@@ -396,8 +396,27 @@ def test_research_before_act_commit_gate(tmp_path):
 
     from tools.check_institutional_correctness import research_before_act_violations
     log = tmp_path / "turn_self_audit_log.jsonl"
-    # (a) no log at all + staged production -> scream
-    assert research_before_act_violations(["server.py"], log)
+    # (a) RC-396: NO LOG FILE AT ALL is EVIDENCE-ABSENT, not evidence-failing, so it
+    # abstains. This log is deliberately untracked per-turn scratch — a clean checkout has
+    # never held one. The required CI runner stages the candidate (so staged-scope checks
+    # can see it) while being structurally incapable of holding the log, which made every
+    # production PR score a fabricated violation: MEASURED as `research_before_act: 0 -> 1`
+    # on PR #127. Enforcement there belongs to the local PreToolUse/Stop layer, exactly as
+    # check_writer_no_drift already resolves the identity-absent case.
+    assert research_before_act_violations(["server.py"], log) == []
+    # (a2) …and that abstention is NARROW. The moment the operator context exists the law
+    # bites again: an existing-but-EMPTY log is context — the turn ran and recorded nothing.
+    log.write_text("", encoding="utf-8")
+    assert research_before_act_violations(["server.py"], log), (
+        "an existing-but-empty audit log stopped screaming — the abstention widened from "
+        "'no context' into 'no research', which is the law itself")
+    # (a3) a record from ANOTHER DAY is context too; yesterday's research is not this
+    # change's research, so stale evidence must still scream.
+    log.write_text(json.dumps({"ts_utc": _t.time() - 48 * 3600,
+                               "research": "static/chart.html clampView §486"}) + "\n",
+                   encoding="utf-8")
+    assert research_before_act_violations(["server.py"], log), (
+        "a stale record stopped screaming — research must be same-day (RC-205)")
     # (b) empty research today -> scream
     log.write_text(json.dumps({"ts_utc": _t.time(), "research": ""}) + "\n", encoding="utf-8")
     assert research_before_act_violations(["static/exposure.html"], log)

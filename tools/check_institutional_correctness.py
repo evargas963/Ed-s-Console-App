@@ -4087,6 +4087,21 @@ def research_before_act_violations(staged: list, log_path: Path) -> list[str]:
             and not s.startswith(_RESEARCH_EXEMPT_PREFIXES)]
     if not prod:
         return []
+    # RC-396 — EVIDENCE-ABSENT is not EVIDENCE-FAILING. This log is deliberately UNTRACKED:
+    # it is per-turn local scratch, so a clean checkout has never held one. On the required
+    # CI runner the delta owner stages the candidate (so staged-scope checks can see it) and
+    # the log cannot exist there by construction, which made every production PR score a
+    # fabricated `research_before_act: 0 -> 1` — the check reporting on the absence of
+    # something the environment is incapable of holding, rather than on the author's
+    # conduct. MEASURED on PR #127.
+    #
+    # Same shape `check_writer_no_drift` already resolves for identity: with no genuine
+    # context it abstains and the local PreToolUse/Stop layer carries enforcement. A log
+    # that EXISTS is the operator context this law owns, and there it still bites in full —
+    # stale day, empty research and unresolvable references all scream (negative controls
+    # in tests/test_ui_mockup_lock_v1.py drive exactly those against a temp log).
+    if not log_path.exists():
+        return []
     try:
         lines = log_path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
         rec = json.loads(lines[-1]) if lines else {}

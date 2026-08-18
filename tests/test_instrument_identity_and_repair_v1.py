@@ -9,7 +9,6 @@ from timeframe_config import DERIVED_TIMEFRAME
 from instrument_identity import ticker_storage_key
 from market_data_adapter import schwab_candles_to_bars
 
-from tests.conftest import most_recent_trading_day_et
 
 
 def _in_window_ts(hour: int = 10, minute: int = 0) -> float:
@@ -22,15 +21,17 @@ def _in_window_ts(hour: int = 10, minute: int = 0) -> float:
     `upsert_1m_bars` began refusing them and three tests measured the law instead of the
     identity behaviour they exist to pin. The timestamp now comes from the same calendar the
     seam validates against, at an ET minute inside the window.
+
+    2026-08-17: this was a SECOND copy of the shared `tests.conftest.in_window_ts`, and
+    the copy is why it kept a defect the original had lost — it anchored to
+    `most_recent_trading_day_et`, i.e. to TODAY, so whenever the suite ran before the
+    collect window closed the bars below described a session that had not happened yet and
+    `outcome_1c` came back None. It now delegates to the one authority, which anchors to
+    the most recent COMPLETED session; there is no local re-encoding left to drift.
     """
-    from datetime import datetime
+    from tests.conftest import in_window_ts
 
-    from time_et import COLLECT_WINDOW_START_MINS, ET
-
-    day = most_recent_trading_day_et()
-    mins = hour * 60 + minute
-    assert mins > COLLECT_WINDOW_START_MINS, "fixture minute is outside the law's window"
-    return datetime(day.year, day.month, day.day, hour, minute, tzinfo=ET).timestamp()
+    return in_window_ts(hour, minute)
 
 
 def test_get_similar_setups_issue19_uses_zone_not_regime_primary():

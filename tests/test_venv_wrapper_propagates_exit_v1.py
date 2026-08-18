@@ -86,14 +86,42 @@ def test_no_exec_call_remains_on_the_hook_path() -> None:
 
 
 def test_the_institutional_hook_carries_the_gates_verdict() -> None:
-    """End-to-end at the real seam: precommit_institutional's exit code must equal the
-    enforced gate's own. Asserts they AGREE, whatever the tree's current state — so this
-    stays honest whether the repo is green or red today."""
+    """End-to-end at the real seam: the hook's exit code must BE its gate's own.
+
+    RC-395: this compared the hook against `check_institutional_correctness --enforced-only`.
+    RC-391 moved the blocking decision to the delta owner, so the hook and that gate now
+    answer DIFFERENT questions — "does this change add debt" versus "is the whole tree at
+    absolute zero" — and on a trunk carrying inherited debt they legitimately disagree. The
+    property being protected is RC-254's: the gate's verdict must reach pre-commit rather
+    than being swallowed. That is now proven against the gate the seam ACTUALLY runs, and
+    in BOTH directions, which the single-sample comparison never did.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "precommit_exit", ROOT / "tools" / "precommit_institutional.py")
+    seam = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seam)
+
+    real_run = subprocess.run
+
+    def gate_returning(code: int):
+        def _run(args, **kw):
+            if list(args[:2]) == ["git", "rev-parse"]:
+                return real_run(args, **kw)
+            return subprocess.CompletedProcess(args, code)
+        return _run
+
+    for code in (0, 1, 3):
+        seam.subprocess.run = gate_returning(code)
+        try:
+            assert seam.main() == code, (
+                f"the gate decided {code} and the hook reported something else — a verdict "
+                f"that does not reach pre-commit is a hook that blocks nothing (RC-254)")
+        finally:
+            seam.subprocess.run = real_run
+
+    # …and the real, unmocked seam still runs end to end and returns an integer verdict.
     hook = subprocess.run([sys.executable, str(ROOT / "tools" / "precommit_institutional.py")],
                           cwd=str(ROOT), capture_output=True, text=True)
-    gate = subprocess.run([sys.executable, "-m", "tools.check_institutional_correctness",
-                           "--enforced-only"], cwd=str(ROOT), capture_output=True, text=True)
-    assert (hook.returncode == 0) == (gate.returncode == 0), (
-        f"hook exit {hook.returncode} disagrees with gate exit {gate.returncode} — the "
-        f"pre-commit hook is not reporting what the gate decided"
-    )
+    assert isinstance(hook.returncode, int), "the real seam did not produce an exit code"
