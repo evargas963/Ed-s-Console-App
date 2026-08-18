@@ -46,7 +46,7 @@ def test_write_outputs_appends_queue_and_md(tmp_path: Path, monkeypatch) -> None
     ]
     payload = scan._write_outputs(findings, {}, {"porcelain_lines": 1})
     assert payload["mode"] == "recommend_only"
-    assert payload["pm"] == "cursor"
+    assert payload["pm"] == "operator"
     assert q.is_file() and md.is_file() and js.is_file()
     row = json.loads(q.read_text(encoding="utf-8").strip().splitlines()[-1])
     assert row["findings"][0]["id"] == "rehab.test"
@@ -62,7 +62,7 @@ def test_main_recommend_only_exit_zero(monkeypatch, tmp_path) -> None:
 
     def _wo(findings, measure, status):
         written.append({"findings": findings})
-        return {"finding_count": 0, "mode": "recommend_only", "pm": "cursor"}
+        return {"finding_count": 0, "mode": "recommend_only", "pm": "operator"}
 
     monkeypatch.setattr(scan, "_write_outputs", _wo)
     monkeypatch.setattr(scan, "_run_advisory_debt", lambda: {"ran": True, "exit": 0,
