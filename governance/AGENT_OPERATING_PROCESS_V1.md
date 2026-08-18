@@ -2,24 +2,26 @@
 
 **Authority:** mandatory for Claude and Cursor. **Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / Stop / pre-commit). This file is the checklist; `.py` BLOCKs.
 
-**Project Manager:** Cursor — see `governance/PM_MANDATE.md` and `.cursor/rules/07-cursor-pm.mdc`. PM sequences missions, stops thrash, triages rehab; does not replace sole-writer for edits.
+> **SUPERSEDED — operator ruling 2026-08-18:** **Operator is the governing authority / PM. Cursor is an adversarial auditor only** (it audits/falsifies; it never writes feature/kill/implementation code). Everywhere this file and the PM docs say "Cursor is PM / Project Manager", read **"Operator is PM; Cursor audits."** The sequencing/no-patches/MEASURE-before-edit behaviors below are retained; only the PM-role attribution moves to the operator. See RC-403.
+
+**Project Manager:** Operator (adversarial auditor: Cursor) — see `governance/PM_MANDATE.md` and `.cursor/rules/07-cursor-pm.mdc` for the audit behaviors (now the operator-PM + Cursor-auditor process). Sequences missions, stops thrash, triages rehab; does not replace sole-writer for edits.
 
 ---
 
-## 0. PM (Cursor) + change requests (RC-219)
+## 0. PM (Operator; Cursor = adversarial auditor) + change requests (RC-219)
 
 - Every multi-agent or “what next” turn: Cursor states **mission · blockers · single next operator action**.
 - **Change requests:** operator → Cursor PM → plan → operator GO → Cursor sets `governance/pm_mission.json` `status=active` → writer executes → Cursor audits → mission `idle`.
 - Product edits without an in-progress mission are **BLOCKED** (`pm_mission_edit_violation`).
-- **Writer no-drift (RC-226):** non-writer staged `scope_paths` → BLOCK (`writer_drift_lock.py` / `check_writer_no_drift`). Cursor=PM only while Claude writes.
+- **Writer no-drift (RC-226):** non-writer staged `scope_paths` → BLOCK (`writer_drift_lock.py` / `check_writer_no_drift`). Cursor=auditor only while Claude writes.
 - One active mission; Collect/lock vs UI polish are sequenced windows, not a free-for-all.
 - Daily rehab: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` (recommend only).
-- **DONE when:** `sole_writer.json` has `"pm": "cursor"`; `pm_mission.json` reflects the only approved active work.
+- **DONE when:** `sole_writer.json` has `"pm": "operator"` (operator 2026-08-18; auditor `"cursor"`); `pm_mission.json` reflects the only approved active work.
 
 ## 1. SOLE_WRITER
 
 - **Before** editing collect seam, checker, or lock modules: read `governance/sole_writer.json`.
-- **DONE when:** `writer` names exactly one agent; `pm` is `cursor`; the non-writer is auditor-only for protected paths.
+- **DONE when:** `writer` names exactly one agent; `pm` is `operator` (operator 2026-08-18); Cursor is auditor-only for protected paths.
 - **Cursor:** do not Edit/Write protected paths (see enforcer `PROTECTED_PATHS`) while `writer` ≠ `cursor`.
 - **Operator clears** by setting `writer` to the active agent or deleting the file.
 

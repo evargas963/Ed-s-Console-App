@@ -1,6 +1,6 @@
 # Repo Rehab Program (standing — RC-220)
 
-**PM:** Cursor. **Operator does not have to remind the PM to rehab the whole repo.**
+**PM:** Operator (operator ruling 2026-08-18, RC-403). **Adversarial auditor:** Cursor. Read the former "PM: Cursor" as Cursor's standing audit/rehab-posture behaviors in service of the operator-PM.
 
 **Primary charter (operator 2026-08-03):** **repo-wide multi-faucet** — **audit → find → fix end-to-end → no patches.**  
 Not “one endpoint.” Not “leave the old producer as fallback.” Not CLOSED until the second path is dead on disk **and** proven on the live process (or honestly DISK_ONLY with restart owed).

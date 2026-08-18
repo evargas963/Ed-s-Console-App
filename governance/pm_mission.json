@@ -4,7 +4,7 @@
   "title": "Repo rehab: measure the product against external standards, remove what does not serve the repo, and protect what cannot be recovered",
   "writer": "claude",
   "pm": "operator",
-  "auditor": "operator",
+  "auditor": "cursor",
   "approved_by": "operator",
   "approved_via": "operator instruction in session 2026-08-06, repeatedly and explicitly: 'i want a plan that will be part of the repo that will improve the product', 'WE DO NOT NEED RATCHETS. WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS', 'IF IT DOESN'T SERVE THE REPO IT NEEDS TO BE GONE', 'I NEED YOU TO PUT A LOCK ON THE DB SO IT CAN'T BE DELETED AGAIN', and on the scope block itself: 'again with the fucking outside the mission scope'. The operator also delegated governance authority earlier the same day ('i said you can run the governance').",
   "approved_at": "2026-08-06T00:00:00-05:00",

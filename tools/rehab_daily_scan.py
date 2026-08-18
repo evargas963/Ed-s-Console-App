@@ -297,7 +297,7 @@ def _product_findings() -> list[dict]:
     """Product defects, from the scanners that read the running system (RC-271).
 
     Every finding this scan could previously emit was about PROCESS --
-    dirty_tree_sprawl, index_wt_drift, pm_not_cursor, staged_only_checks. Ten
+    dirty_tree_sprawl, index_wt_drift, pm_not_operator, staged_only_checks. Ten
     ids, all governance. Meanwhile direct measurement of the product found 850
     multi-producer fields with 12 disagreeing, a function at cyclomatic
     complexity 608 against a review threshold of 15, coverage unmeasured across
@@ -532,14 +532,14 @@ def _collect_findings(measure: dict, status: dict) -> list[dict]:
             sw = json.loads(sole.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             sw = {}
-        if str(sw.get("pm", "")).lower() != "cursor":
+        if str(sw.get("pm", "")).lower() != "operator":
             findings.append(
                 {
-                    "id": "rehab.pm_not_cursor",
+                    "id": "rehab.pm_not_operator",
                     "severity": "P1",
                     "facet": "process",
-                    "summary": "sole_writer.pm is not 'cursor'",
-                    "recommendation": "Set governance/sole_writer.json pm=cursor (RC-218).",
+                    "summary": "sole_writer.pm is not 'operator'",
+                    "recommendation": "Set governance/sole_writer.json pm=operator (operator 2026-08-18: operator is the governing authority/PM; Cursor is an adversarial auditor only; supersedes the RC-218 PM assignment).",
                     "evidence": {"pm": sw.get("pm")},
                 }
             )
@@ -577,7 +577,7 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
         "findings": findings,
         "measure": measure,
         "status": status,
-        "pm": "cursor",
+        "pm": "operator",
         "mode": "recommend_only",
     }
     for _artifact in (QUEUE_PATH, LATEST_JSON, LATEST_MD):
@@ -590,7 +590,7 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
     lines = [
         f"# Rehab latest — {now}",
         "",
-        f"**HEAD:** `{payload['head']}` · **PM:** Cursor · **Mode:** recommend only (no auto-edit)",
+        f"**HEAD:** `{payload['head']}` · **PM:** Operator · **Auditor:** Cursor · **Mode:** recommend only (no auto-edit)",
         "",
         f"Findings: **{len(findings)}**",
         "",
@@ -671,7 +671,7 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
             "",
             "## Operator next",
             "",
-            "1. PM (Cursor) triages this table.",
+            "1. Operator (PM) triages this table; Cursor audits/advises.",
             "2. Operator green-lights one mission.",
             "3. Sole writer executes; Cursor audits.",
             "",

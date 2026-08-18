@@ -1,10 +1,12 @@
 {
-  "granted": true,
+  "granted": false,
   "granted_at": "2026-08-06T00:00:00+00:00",
+  "revoked_at": "2026-08-18T00:00:00+00:00",
   "granted_by": "operator_delegation_in_session_2026-08-06",
+  "revoked_by": "operator_decision_in_session_2026-08-18",
   "scope": [
     "rc_status_vocabulary",
     "staged_lock_surface"
   ],
-  "note": "Operator delegated governance authority in chat on 2026-08-06: 'governance approved, however we will review at a later time' and then 'i said you can run the governance'. Recorded as DELEGATED rather than self-granted so the attribution is honest and revocable: the agent did not decide this. Scope is deliberately narrow -- it authorises landing the single ENFORCED check rc_status_vocabulary (RC-257), which refuses an RC status token outside the declared set instead of silently skipping six close-contract clauses. Measured before granting: CLOSED gave 1+1 violations and blocked, while CLOSED_WITH_EVIDENCE, DONE, FINISHED and totally_closed each gave 0+0 and passed freely. The check returns 0 violations against the live 232-row ledger, so landing it blocks nothing that exists today. The second scope token, staged_lock_surface, is the one operating_process_lock actually tests -- operator_go_granted keys on it rather than on the check name -- and it is stated here explicitly rather than left as an undocumented side effect of the first. WIDER THAN INTENDED, disclosed rather than buried: staged_lock_surface authorises ANY staged enforcement-path commit, not only this check, because the lock offers no narrower token. Set granted to false as soon as this lands if that is not wanted. Revoke by setting granted to false."
+  "note": "REVOKED 2026-08-18 per operator decision: 'Revoke the standing operator_go grant unless a current, proven operation still requires its exact scope.' No current proven operation needs scope [rc_status_vocabulary, staged_lock_surface]: RC-402 lands via PR merge (needs no local grant), and the governance reconciliation commit touches no enforcement-path .py and adds/removes no ENFORCED check, so staged_enforced_checks_not_on_head is empty and the grant is not required to commit it. RC-402 already fixed the wildcard predicate (operator_go_granted no longer treats staged_lock_surface as an allow-everything token), so with granted:false the reset guard (LOCK-2) and every staged-lock-surface gate return to fail-closed: any future staged ENFORCED-check commit must obtain a fresh, scoped GO. This flips the WIDER-THAN-INTENDED standing grant the file's own 2026-08-06 note flagged. Prior grant history preserved above (granted_at/granted_by/scope). Re-grant by setting granted:true with a scoped, dated reason."
 }
