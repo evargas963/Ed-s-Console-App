@@ -345,12 +345,15 @@ def test_terrain_native_injection_is_caught():
 
 def test_overlay_owns_the_full_concept_set(monkeypatch):
     """Fresh terrain: delta walls carried, EM from the sigma band; unowned concepts BLANK."""
+    import time
+
+    gen_ts = time.time()
     md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
                    "gamma_pin": 741.0, "gamma_pin_strength_pct": 32.5,
                    "net_gex_peak": 735.0, "max_pain": 742.0,
                    "call_delta_wall": 747.0, "put_delta_wall": 738.0,
                    "implied_1d_move": {"points": 8.5}, "spot": 741.0,
-                   "confidence": "TRUSTED", "computed_ts_utc": 1722.5,
+                   "confidence": "TRUSTED", "computed_ts_utc": gen_ts,
                    # RC-130 carriage check: states are CARRIED verbatim from the producer,
                    # never recomputed in the overlay (put deliberately 'breached' here even
                    # though 740<741 — proving no second computation exists at this seam).
@@ -360,7 +363,7 @@ def test_overlay_owns_the_full_concept_set(monkeypatch):
     assert md["kl_gamma_flip_confidence"] == "TRUSTED", (
         "v23: the flip confidence must ride the SAME terrain book as the flip strike"
     )
-    assert md["kl_levels_from_computed_ts"] == 1722.5, (
+    assert md["kl_levels_from_computed_ts"] == gen_ts, (
         "v23 Lock-3: the terrain generation stamp must travel with the values so cross-surface "
         "drift reads as generation skew, never a silent disagreement"
     )
