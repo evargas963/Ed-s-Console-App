@@ -55,3 +55,18 @@ def test_hours_until_session_close_uses_early_close_not_1600():
     wall = (datetime(2026, 3, 9, 16, 0, tzinfo=ET) - fri).total_seconds() / 3600.0
     assert wall == 77.5
     assert dst_hours != wall
+
+
+def test_time_to_expiry_years_uses_timestamp_elapsed_not_civil_timedelta():
+    from time_et import MIN_TIME_TO_EXPIRY_YEARS, YEAR_SECONDS, time_to_expiry_years
+
+    # DST spring-forward 2026-03-08: civil wall-clock span is 1h longer than elapsed.
+    fri = datetime(2026, 3, 6, 10, 30, tzinfo=ET)
+    mon_close = datetime(2026, 3, 9, 16, 0, tzinfo=ET)
+    tte = time_to_expiry_years("2026-03-09", now=fri)
+    stamp_years = (mon_close.timestamp() - fri.timestamp()) / YEAR_SECONDS
+    civil_years = (mon_close - fri).total_seconds() / YEAR_SECONDS
+    assert tte is not None
+    assert tte == max(stamp_years, MIN_TIME_TO_EXPIRY_YEARS)
+    assert civil_years > stamp_years
+    assert round((civil_years - stamp_years) * YEAR_SECONDS / 3600.0, 1) == 1.0
