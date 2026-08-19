@@ -437,6 +437,42 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     assert "dist_gamma_inflection" not in re_src
 
 
+def test_withheld_oi_vanna_dist_remain_schema_slots_live_none():
+    """F4 / RC-422: OI/vanna walls withheld live. dist_* stay in the feature
+    contract so artifact widths do not break. Live producer is None.
+
+    OUT-OF-SCOPE: dropping columns (would bump FEATURE_SCHEMA_VERSION and
+    fail-close v7 bundles). Historical snapshot rows may still hold selected-expiry
+    distances from before the withhold.
+    """
+    from pathlib import Path
+
+    withheld = (
+        "dist_call_oi_wall",
+        "dist_put_oi_wall",
+        "dist_call_vanna_wall",
+        "dist_put_vanna_wall",
+    )
+    ml = Path("ml_train.py").read_text(encoding="utf-8")
+    wall_block = ml.split("WALL_DISTANCE_COLS = [", 1)[1].split("]", 1)[0]
+    for col in withheld:
+        assert f'"{col}"' in wall_block
+    pred = Path("prediction_engine.py").read_text(encoding="utf-8")
+    lstm = Path("lstm_data.py").read_text(encoding="utf-8")
+    assert '"dist_call_oi_wall": inp.dist_call_oi_wall' in pred
+    assert '"dist_put_oi_wall": inp.dist_put_oi_wall' in pred
+    assert "dist_call_oi_wall" in lstm
+    assert "np.nan_to_num(X_5m, nan=0.0)" in lstm
+    sel_ex, spot, terrain = _wide_vs_selected_wall_books()
+    bound = consensus_walls_bind_terrain_ssot(build_walls_rows(sel_ex, spot), terrain)
+    assert bound[0].call_oi_wall is None
+    assert bound[0].put_oi_wall is None
+    assert bound[0].call_vanna_wall is None
+    assert bound[0].put_vanna_wall is None
+    live_dist = None if bound[0].call_oi_wall is None else bound[0].call_oi_wall - spot
+    assert live_dist is None
+
+
 def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
     """RC-427: /api/terrain/radar reads _terrain_snapshots_for_radar, which must merge
     terrain_staleness like terrain_cache_get — not fail-open when levels_stale absent."""

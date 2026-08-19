@@ -5371,15 +5371,24 @@ def _selected_schwab_days_to_expiration(
 def _snapshot_expiry_hours_from_schwab_dte(
     schwab_dte: int | None,
     now_et: datetime,
+    expiry_et_date: str | None = None,
 ) -> float | None:
+    """Hours to PM-settlement close. Same-day uses today's session close (13:00 ET
+    on early-close days, 16:00 otherwise). Multi-day keeps Schwab DTE*24 plus
+    remaining hours to *today's* session close — not a hardcoded 16:00 remainder.
+    """
     if schwab_dte is None:
         return None
-    market_close = now_et.replace(hour=int(MARKET_CLOSE_HOUR), minute=0, second=0, microsecond=0)
+    from time_et import hours_until_session_close_et
+
+    today_left = hours_until_session_close_et(now_et)
     if schwab_dte == 0:
-        secs = (market_close - now_et).total_seconds()
-        return round(secs / 3600.0, 2) if secs > 0 else None
+        if expiry_et_date:
+            return hours_until_session_close_et(now_et, expiry_et_date=expiry_et_date)
+        return today_left
     if schwab_dte > 0:
-        return round((schwab_dte * 24.0) + max(0.0, (market_close - now_et).total_seconds() / 3600.0), 2)
+        remainder = today_left if today_left is not None else 0.0
+        return round((schwab_dte * 24.0) + remainder, 2)
     return None
 
 
@@ -7013,7 +7022,8 @@ def _fetch_state(
     _em_up = None
     _em_lo = None
     _em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
-    _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
+    from time_et import hours_until_session_close_et as _hours_until_close
+    _hours_rem = _hours_until_close(now_et) or 0.0
     _kl_em_anchor = "unavailable"
     _mc_iv_level = None
     _mc_iv_source = "unavailable"
@@ -8032,7 +8042,9 @@ def _fetch_state(
                         preferred_strike=getattr(ms, "rec_strike", None),
                         preferred_side=getattr(ms, "call_option_right", None),
                     )
-                    _hours_to_expiry = _snapshot_expiry_hours_from_schwab_dte(_dte, _et_now)
+                    _hours_to_expiry = _snapshot_expiry_hours_from_schwab_dte(
+                        _dte, _et_now, expiry_et_date=selected_exp
+                    )
     
                     # ── Compute fields from available data ─────────────────────────────
     
