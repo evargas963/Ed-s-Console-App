@@ -11084,8 +11084,7 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     OI/vanna walls, inflections, and oi_center stay blank: terrain does not compute them,
     so analytics must never stand in for an absent SSOT value (RC-128 / RC-422).
     """
-    with _terrain_cache_lock:
-        t = dict(_terrain_cache.get(ticker_storage_key(ticker)) or {})  # RC-345/F25: read key matches canonical write (tk)
+    t = dict(terrain_cache_get(ticker) or {})
     fresh = bool(t) and not t.get("levels_stale")
     # RC-124: kl_gamma_pin carries the STANDARD pin (total gamma); kl_hvl carries the
     # net-GEX peak (the former "pin", honestly renamed on the card) — the key name is
@@ -11192,8 +11191,20 @@ _terrain_loop_thread: threading.Thread | None = None
 
 
 def terrain_cache_get(ticker: str) -> dict | None:
+    """Return the cached wide-chain terrain snapshot with staleness merged.
+
+    RC-424: the loop stores computed_ts_utc, not levels_stale. Every consumer that
+    gates pin/wall/overlay freshness must derive staleness from terrain_staleness
+    (the production authority), never treat a missing levels_stale key as fresh.
+    """
+    tk = ticker_storage_key(ticker)
     with _terrain_cache_lock:
-        return _terrain_cache.get(ticker_storage_key(ticker))  # RC-345/F25: read key matches canonical write (tk)
+        raw = _terrain_cache.get(tk)
+    if raw is None:
+        return None
+    out = dict(raw)
+    out.update(terrain_staleness(out.get("computed_ts_utc"), ticker))
+    return out
 
 
 def terrain_cache_size() -> int:

@@ -331,6 +331,65 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
     assert '(_poi, "Put OI Wall")' not in ms_src
 
 
+def test_terrain_cache_get_derives_staleness_from_computed_ts():
+    """RC-424: production cache stores computed_ts_utc, not levels_stale. terrain_cache_get
+    must merge terrain_staleness so missing levels_stale cannot fail-open as fresh."""
+    import time
+
+    import server as srv
+
+    tk = srv.ticker_storage_key("SPY")
+    old_ts = time.time() - 99999.0
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[tk] = {
+            "computed_ts_utc": old_ts,
+            "call_wall": 760.0,
+            "put_wall": 745.0,
+        }
+    got = srv.terrain_cache_get("SPY")
+    assert got is not None
+    assert got["call_wall"] == 760.0
+    assert got["levels_stale"] is True
+    assert "levels_stale_reason" in got
+    fresh_ts = time.time()
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[tk] = {"computed_ts_utc": fresh_ts, "call_wall": 760.0}
+    fresh = srv.terrain_cache_get("SPY")
+    assert fresh["levels_stale"] is False
+
+
+def test_consensus_walls_withhold_when_cache_stale_via_computed_ts():
+    """RC-424: consensus_walls_bind_terrain_ssot must withhold when terrain_cache_get
+    marks the snapshot stale — not treat absent levels_stale as fresh."""
+    import time
+
+    import server as srv
+
+    sel_ex, spot, terrain = _wide_vs_selected_wall_books()
+    walls = build_walls_rows(sel_ex, spot)
+    tk = srv.ticker_storage_key("SPY")
+    stale_entry = dict(terrain)
+    stale_entry["computed_ts_utc"] = time.time() - 99999.0
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[tk] = stale_entry
+    merged = srv.terrain_cache_get("SPY")
+    assert merged["levels_stale"] is True
+    bound = consensus_walls_bind_terrain_ssot(walls, merged)
+    assert bound[0].call_gamma_wall is None
+    assert bound[0].put_gamma_wall is None
+    assert bound[0].call_delta_wall is None
+    assert bound[0].put_delta_wall is None
+    fresh_entry = dict(terrain)
+    fresh_entry["computed_ts_utc"] = time.time()
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[tk] = fresh_entry
+    merged_fresh = srv.terrain_cache_get("SPY")
+    assert merged_fresh["levels_stale"] is False
+    bound_fresh = consensus_walls_bind_terrain_ssot(walls, merged_fresh)
+    assert bound_fresh[0].call_gamma_wall == 760.0
+    assert bound_fresh[0].put_gamma_wall == 745.0
+
+
 def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     """RC-423: selected-expiry inflections / oi_center are real analytics on
     summary_rows. Terrain does not compute them; overlay blanks kl_*.

@@ -122,9 +122,19 @@ def test_levels_producers_are_enumerated_and_declared():
 # ── RC-122 (W3-C1, operator P0b): ONE wall book on the screen ────────────────────────────────
 
 def _overlay(cache_entry, monkeypatch):
+    import time
+
     import server as S
+    if cache_entry is not None:
+        entry = dict(cache_entry)
+        if "computed_ts_utc" not in entry:
+            entry["computed_ts_utc"] = (
+                time.time() - 99999.0 if entry.get("levels_stale") else time.time()
+            )
+    else:
+        entry = None
     monkeypatch.setattr(S, "_terrain_cache",
-                        {"SPY": cache_entry} if cache_entry is not None else {})
+                        {"SPY": entry} if entry is not None else {})
     md = {"kl_call_gamma_wall": 111.0, "kl_put_gamma_wall": 222.0, "kl_gamma_flip": 333.0,
           "kl_gamma_pin": 444.0, "kl_hvl": 555.0, "kl_max_pain": 666.0,
           "kl_call_gamma_str": "$9.9M/pt", "kl_put_gamma_str": "$8.8M/pt"}
@@ -170,9 +180,15 @@ def test_absent_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
 
 def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
     """RC-292: analytics net-GEX peak (743 on the SPY 0DTE fixture) must not survive overlay."""
+    import time
+
     import server as S
     monkeypatch.setattr(S, "_terrain_cache", {
-        "SPY": {"gamma_pin": 745.0, "gamma_pin_strength_pct": 59.4, "levels_stale": False},
+        "SPY": {
+            "gamma_pin": 745.0,
+            "gamma_pin_strength_pct": 59.4,
+            "computed_ts_utc": time.time(),
+        },
     })
     md = {"gamma_pin": 743.0, "kl_gamma_pin": 743.0}
     S._terrain_kl_overlay(md, "SPY")
