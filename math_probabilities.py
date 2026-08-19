@@ -1242,6 +1242,32 @@ def compute_volume_oi_ratio(
     }
 
 
+def flow_imbalance_label_from_normalized(normalized: float | None) -> str:
+    """ONE label authority for the persisted/served flow_imbalance number.
+
+    F11 residual: the live server used to stamp flow_imbalance_label from the
+    book-only kernel while flow_imbalance itself came from
+    flow_imbalance_normalized_with_fallback (book-or-volume). Same tick could
+    publish 0.6 / source=volume beside label="balanced". The label is now a
+    function of the same normalized value that is persisted and served.
+    """
+    if normalized is None:
+        return "unknown"
+    try:
+        x = float(normalized)
+    except (TypeError, ValueError):
+        return "unknown"
+    if x > 0.3:
+        return "strong_call_demand"
+    if x > 0.1:
+        return "call_leaning"
+    if x < -0.3:
+        return "strong_put_demand"
+    if x < -0.1:
+        return "put_leaning"
+    return "balanced"
+
+
 def compute_option_flow_imbalance(
     exposures_by_strike: dict,
     spot: float,
@@ -1300,22 +1326,10 @@ def compute_option_flow_imbalance(
     total = call_bid + call_ask + put_bid + put_ask
     normalized = net / total if total > 0 else 0
     normalized = max(-1.0, min(1.0, normalized))
-
-    if normalized > 0.3:
-        label = "strong_call_demand"
-    elif normalized > 0.1:
-        label = "call_leaning"
-    elif normalized < -0.3:
-        label = "strong_put_demand"
-    elif normalized < -0.1:
-        label = "put_leaning"
-    else:
-        label = "balanced"
-
     return {
         "net_imbalance": round(net),
         "normalized": round(normalized, 3),
-        "label": label,
+        "label": flow_imbalance_label_from_normalized(normalized),
         "call_imbalance": round(call_imb),
         "put_imbalance": round(put_imb),
     }

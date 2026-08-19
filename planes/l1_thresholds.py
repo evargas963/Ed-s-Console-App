@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 from planes.l1_runtime import L1_SPREAD_FRAC_ABS_EPS, L1_SPOT_REL_EPS
-from time_et import ET as _ET
+from time_et import ET as _ET, RTH_END_MINS, RTH_START_MINS
 from instrument_identity import ticker_storage_key
 
 # --- Absolute bounds (guardrails) ---
@@ -108,11 +108,12 @@ def _session_bucket(session_label: Optional[str], now_ts: Optional[float]) -> st
     if lab != "RTH":
         return "unknown_session"
     m = _et_minutes(now_ts)
-    if 570 <= m <= 630:
+    # F09: RTH open/close edges come from time_et. Intra-session phase widths stay here.
+    if RTH_START_MINS <= m <= RTH_START_MINS + 60:
         return "rth_open"
-    if 631 <= m <= 870:
+    if RTH_START_MINS + 61 <= m <= RTH_END_MINS - 90:
         return "rth_midday"
-    if 871 <= m <= 959:
+    if RTH_END_MINS - 89 <= m <= RTH_END_MINS - 1:
         return "rth_close"
     return "rth_other"
 
@@ -203,19 +204,20 @@ def _session_intraday_ramp(session_bucket: str, et_minutes: int) -> tuple[float,
     at bucket boundaries. Returns (multiplier applied on top of base session spot mult, note).
     """
     if session_bucket == "rth_open":
-        # 9:30–9:50 ET: ramp 1.0 → ~1.04 extra sensitivity to volatility
-        if 570 <= et_minutes <= 590:
-            u = (et_minutes - 570) / 20.0
+        # First 20m after RTH open: ramp 1.0 → ~1.04 extra sensitivity to volatility
+        if RTH_START_MINS <= et_minutes <= RTH_START_MINS + 20:
+            u = (et_minutes - RTH_START_MINS) / 20.0
             ramp = 1.0 + 0.04 * min(1.0, max(0.0, u))
             return ramp, "rth_open_ramp_first_20m"
         return 1.04, "rth_open_post_ramp"
     if session_bucket == "rth_close":
-        # 3:00–3:20 PM: ramp
-        if 900 <= et_minutes <= 920:
-            u = (et_minutes - 900) / 20.0
+        # Last hour: first 20m of the close phase ramp
+        close_ramp_start = RTH_END_MINS - 60
+        if close_ramp_start <= et_minutes <= close_ramp_start + 20:
+            u = (et_minutes - close_ramp_start) / 20.0
             ramp = 1.0 + 0.05 * min(1.0, max(0.0, u))
             return ramp, "rth_close_ramp_last_window"
-        if 921 <= et_minutes <= 959:
+        if close_ramp_start + 21 <= et_minutes <= RTH_END_MINS - 1:
             return 1.05, "rth_close_steady"
         return 1.0, "rth_close_edge"
     return 1.0, "no_intraday_ramp"

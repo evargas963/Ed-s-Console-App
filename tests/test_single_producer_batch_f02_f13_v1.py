@@ -224,6 +224,39 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     assert "is_trading_day_et(day_key)" in lstm_fb, (
         "lstm RTH fallback must be calendar-aware, not clock-only (F09/RC-345)")
 
+    # F09 residual (2026-08-19, current main): live money-path still re-encoded
+    # 570/960. Those sites must alias time_et, not a second literal.
+    mv = _read("math_volatility.py")
+    mv_fn = mv[mv.index("def session_bucket"):]
+    mv_fn = mv_fn[: mv_fn.index("\ndef ", 1)]
+    mv_code = "\n".join(ln for ln in mv_fn.splitlines() if not ln.lstrip().startswith("#"))
+    assert "RTH_START_MINS" in mv_code and "RTH_END_MINS" in mv_code, (
+        "session_bucket must cut RTH open/close via time_et (F09)")
+    assert "570" not in mv_code and "960" not in mv_code, (
+        "session_bucket re-hardcodes the RTH boundary (F09)")
+
+    l1 = _read("planes/l1_thresholds.py")
+    l1_code = "\n".join(ln for ln in l1.splitlines() if not ln.lstrip().startswith("#"))
+    assert "from time_et import" in l1 and "RTH_START_MINS" in l1_code and "RTH_END_MINS" in l1_code
+    assert "570" not in l1_code, "l1_thresholds re-hardcodes RTH open (F09)"
+
+    a2 = _read("v2_decision/a2_lifecycle_sidecar.py")
+    a2_fn = a2[a2.index("def _mins_elapsed_since_open"):]
+    a2_fn = a2_fn[: a2_fn.index("\ndef ", 1)]
+    a2_code = "\n".join(ln for ln in a2_fn.splitlines() if not ln.lstrip().startswith("#"))
+    assert "RTH_START_MINS" in a2_code, "A2 minutes-since-open must alias time_et (F09)"
+    assert "- 570" not in a2_code, "A2 minutes-since-open re-hardcodes RTH open (F09)"
+
+    srv = _read("server.py")
+    assert "RTH_CLOSE_MINS:      int   = RTH_END_MINS" in srv or "RTH_CLOSE_MINS: int = RTH_END_MINS" in srv.replace(" ", "")
+    # tolerate formatting: the assignment must be the alias, not 960
+    close_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("RTH_CLOSE_MINS")]
+    assert close_assign and "RTH_END_MINS" in close_assign[0] and "960" not in close_assign[0]
+    mkt_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("MARKET_CLOSE_HOUR")]
+    assert mkt_assign and "RTH_END_MINS" in mkt_assign[0] and "16.0" not in mkt_assign[0]
+    cont_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("TERRAIN_CONTENTION_START_MINS")]
+    assert cont_assign and "RTH_OPEN_MINS" in cont_assign[0] and "570" not in cont_assign[0]
+
 
 # ------------------------------------------------------------------------- F12 relative volume
 def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
@@ -299,6 +332,31 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
         "live server must capture the flow_imbalance SOURCE, not discard it (F11/RC-345)")
     assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in srv, (
         "the flow_imbalance source must reach the payload beside the value (F11/RC-345)")
+    # F11 residual (2026-08-19): label must classify the SAME number, not a
+    # second book-only compute. MEASURED: empty ATM book + call-heavy volume
+    # used to publish 0.6 / volume beside label="balanced".
+    srv_code = "\n".join(ln for ln in srv.splitlines() if not ln.lstrip().startswith("#"))
+    assert "compute_option_flow_imbalance(" not in srv_code, (
+        "live server must not independently compute the book-only kernel (F11)")
+    assert "flow_imbalance_label_from_normalized(_flow_imb_norm)" in srv, (
+        "flow_imbalance_label must be a function of the wrapper number (F11)")
+    from math_probabilities import (
+        compute_option_flow_imbalance,
+        flow_imbalance_label_from_normalized,
+        flow_imbalance_normalized_with_fallback,
+    )
+    exposures = {
+        100.0: {
+            "call_bid_size": 0, "call_ask_size": 0,
+            "put_bid_size": 0, "put_ask_size": 0,
+            "call_volume": 80, "put_volume": 20,
+        }
+    }
+    book = compute_option_flow_imbalance(exposures, 100.0)
+    val, src = flow_imbalance_normalized_with_fallback(exposures, 100.0)
+    assert src == "volume" and val == 0.6
+    assert book.get("label") == "balanced"  # book-only zero — must not be served
+    assert flow_imbalance_label_from_normalized(val) == "strong_call_demand"
 
 
 def test_rc345_imbalance_taxonomy_is_distinct_and_named() -> None:

@@ -2,7 +2,7 @@
   "status": "active",
   "mission_id": "repo-rehab-institutional-v1",
   "title": "Repo rehab: measure the product against external standards, remove what does not serve the repo, and protect what cannot be recovered",
-  "writer": "claude",
+  "writer": "cursor",
   "pm": "operator",
   "auditor": "cursor",
   "approved_by": "operator",
@@ -26,6 +26,9 @@
     "liquidity_value_engine.py",
     "math_levels.py",
     "math_exposure_core.py",
+    "math_volatility.py",
+    "math_probabilities.py",
+    "v2_decision/",
     "market_state.py",
     "ml_data_common.py",
     "numeric_contract.py",
@@ -41,5 +44,6 @@
     "one canonical plan document; the other six are consolidated or deleted",
     "the scoreboard reports every open number, measured live, after every fix"
   ],
+  "slice": "one-faucet-f09-f11-v1 — operator 2026-08-19 assigned Cursor as writer for F09 RTH-boundary + F11 flow-imbalance one-faucet residuals on current main.",
   "note": "Supersedes axiom-brand-landing-v1, which was approved 2026-08-04 and is unrelated to the work the operator directed for the whole of 2026-08-06. That stale record blocked a fix to tools/operator_law_guard.py -- the guard that failed to stop the agent deleting the 27 GB production database twice (RC-273) -- which is the precise case where a stale scope is more dangerous than no scope. The axiom brand mission is NOT cancelled on the merits; it is set aside as not-current and can be reinstated by the operator. RTH-only stands: data captured outside the collect window is not used for tests or studies, so the ~28,150 post-15:35 bars lost in the RC-273 incident are outside every measurement surface."
 }

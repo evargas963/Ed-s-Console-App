@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from time_et import RTH_START_MINS
+
 from lifecycle_rule_core import (
     LIFECYCLE_RULE_CORE_VERSION,
     derive_stop_distance_pct,
@@ -420,7 +422,7 @@ def _mins_elapsed_since_open(ms: dict[str, Any]) -> float | None:
     et_minute = _first_number(ms, "et_minute")
     if et_hour is None or et_minute is None:
         return None
-    return max(0.0, et_hour * 60 + et_minute - 570)
+    return max(0.0, et_hour * 60 + et_minute - RTH_START_MINS)
 
 
 def _risk(

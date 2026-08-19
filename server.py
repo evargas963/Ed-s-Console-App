@@ -249,8 +249,9 @@ from math_exposure import (
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
     compute_sector_strength,
     compute_iwm_confluence,
-    compute_volume_oi_ratio, compute_option_flow_imbalance,
+    compute_volume_oi_ratio,
     compute_smart_money_signal,
+    flow_imbalance_label_from_normalized,
     flow_imbalance_normalized_with_fallback,
 )
 from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
@@ -3579,13 +3580,13 @@ def _on_tick_broadcast_sync(symbol: str, main_loop: asyncio.AbstractEventLoop) -
 
 # Market session boundaries (Eastern, minutes-since-midnight)
 # RTH_OPEN_MINS — single authority in time_et.py (STACK-WIRE-3)
-RTH_CLOSE_MINS:      int   = 960    # 4:00 PM ET  (used for mins_to_close calc)
+RTH_CLOSE_MINS:      int   = RTH_END_MINS  # F09: alias of time_et.RTH_END_MINS, not a second close literal
 PRE_MARKET_MINS:     int   = 540    # 9:00 AM ET  (logger session buffer start)
 LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
 # NOTE: session_label ("RTH"/"Pre-Market"/"After-Hours"/"Closed") is derived ONCE
 # from SPY's quote in market_context._derive_session(), stored on MarketContext.session_label,
 # and stamped on the per-request bundle as a global market state.
-MARKET_CLOSE_HOUR:   float = 16.0   # 4:00 PM ET (used for hours-remaining calc)
+MARKET_CLOSE_HOUR:   float = RTH_END_MINS / 60.0  # F09: 16:00 ET from the one RTH-close authority
 
 # Candle accumulator — max bars centralized in math_exposure (CANDLE_5M/1M_MAX_BARS)
 # Canonical timeframe: 1m. See timeframe_config.py for CANONICAL_TIMEFRAME.
@@ -7157,27 +7158,20 @@ def _fetch_state(
 
     # ── Order Flow Signals (from option volume + bid/ask size) ────────────────
     _vol_oi_ratio = {}
-    _flow_imbalance = {}
     _smart_money = {}
     _iv_model_spread = {}
     try:
         _vol_oi_ratio = compute_volume_oi_ratio(exposures, spot_f)
     except Exception as e:
         log.debug(f"Order flow signals calc: {e}")
-    try:
-        _flow_imbalance = compute_option_flow_imbalance(exposures, spot_f)
-    except Exception as e:
-        log.warning(f"flow_imbalance failed: {e}")
-    # RC-345 / F11: the PERSISTED flow_imbalance field has ONE producer — the fallback
-    # authority math_probabilities.flow_imbalance_normalized_with_fallback — shared by this
-    # live path and backfill_flow_imbalance. Persisting compute_option_flow_imbalance's
-    # book-only 'normalized' left a NULL whenever ATM book size was ~0, which backfill later
-    # filled with the volume fallback: two producers for one column, and a train/serve skew
-    # (models train on backfilled rows, serve on live). When book size is present the wrapper
-    # returns exactly the book value, so live rows with a book are unchanged. The dict
-    # `_flow_imbalance` is still used for its label/display fields.
+    # RC-345 / F11 residual: ONE computation for the served number AND its label.
+    # The live path used to call compute_option_flow_imbalance independently for
+    # flow_imbalance_label while persisting flow_imbalance_normalized_with_fallback.
+    # MEASURED on current main: empty ATM book + call-heavy volume → number 0.6
+    # (source=volume) beside label "balanced" (book-only zero). Label is now a
+    # function of the same normalized value the wrapper returns.
     _flow_imb_norm = None
-    _flow_imb_source = "none"  # RC-345 / F11: which economic book produced the value
+    _flow_imb_source = "none"
     try:
         _flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback(exposures, spot_f)
     except Exception as e:
@@ -9140,7 +9134,7 @@ def _fetch_state(
     # tell them apart, and this authority returns book-preferred with a governed volume
     # fallback — the same on the live and backfill paths, so the union is train/serve-consistent.
     ms_dict["flow_imbalance_source"] = _flow_imb_source
-    ms_dict["flow_imbalance_label"]  = _flow_imbalance.get("label")
+    ms_dict["flow_imbalance_label"]  = flow_imbalance_label_from_normalized(_flow_imb_norm)
     ms_dict["smart_money_score"]     = _smart_money.get("score")
     ms_dict["smart_money_direction"] = _smart_money.get("direction")
     ms_dict["smart_money_label"]     = _smart_money.get("label")
@@ -11423,7 +11417,7 @@ def _accrue_chain_observation(tk: str, snap) -> None:
 #: which case readers fall back to the nominal floor.
 _terrain_last_cycle_sec: float = 0.0
 
-TERRAIN_CONTENTION_START_MINS: int = 570   # 09:30 ET — the cash open, where money-path fetches begin
+TERRAIN_CONTENTION_START_MINS: int = RTH_OPEN_MINS  # F09: cash open = time_et.RTH_OPEN_MINS
 TERRAIN_CONTENTION_END_MINS: int = 600     # 10:00 ET
 
 
