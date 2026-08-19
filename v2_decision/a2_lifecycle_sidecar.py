@@ -454,10 +454,10 @@ def _structural_levels(ms: dict[str, Any], direction: str | None) -> list[float]
     if spot is None:
         return []
     if direction == "long":
-        keys = ("vwap", "call_gamma_wall", "kl_call_gamma_wall", "call_oi_wall")
+        keys = ("vwap", "call_gamma_wall", "kl_call_gamma_wall")
         return [value for key in keys if (value := _first_number(ms, key)) is not None and value > spot]
     if direction == "short":
-        keys = ("vwap", "put_gamma_wall", "kl_put_gamma_wall", "put_oi_wall")
+        keys = ("vwap", "put_gamma_wall", "kl_put_gamma_wall")
         return [value for key in keys if (value := _first_number(ms, key)) is not None and value < spot]
     return []
 

@@ -139,7 +139,7 @@ def test_projected_preview_status_policy_pending_when_entry_candidate_derivable(
     assert preview["preview_status"] == "policy_pending"
     assert preview["projected_stop"]["value"] == 498.98
     assert preview["projected_target"]["value"] == 503.5
-    assert preview["projected_target2"]["value"] == 506.0
+    assert preview["projected_target2"]["value"] == 505.0
 
 
 def test_projected_preview_status_no_entry_candidate_when_a2_has_no_trade_candidate():
