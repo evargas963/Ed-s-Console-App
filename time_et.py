@@ -361,7 +361,11 @@ def time_to_expiry_years(expiry_et_date: str, now: "datetime | None" = None) -> 
         return None
     expiry_dt = datetime(y, mo, dd, close_mins // 60, close_mins % 60, tzinfo=ET)
     ref = now if now is not None else now_et()
-    t = (expiry_dt - ref).total_seconds() / YEAR_SECONDS
+    # Instant elapsed seconds, not civil timedelta. Same-tzinfo subtraction ignores DST
+    # (spring-forward Friday→Monday expiry wall 77.5h vs UTC timestamp 76.5h).
+    ref_aware = ref if ref.tzinfo is not None else ref.replace(tzinfo=ET)
+    secs = expiry_dt.timestamp() - ref_aware.timestamp()
+    t = secs / YEAR_SECONDS
     if t <= 0.0:
         return None  # at/after settlement — no greeks for an expired contract (fail closed)
     return max(t, MIN_TIME_TO_EXPIRY_YEARS)
