@@ -64,6 +64,11 @@ repos:
       # (tests/fixtures/); fail-closed/edge tests declare themselves with
       # '# institutional-synthetic-ok: <reason>'.
       # run_with_repo_venv re-execs under .venv locally (CI falls through).
+      # RC-406 (latency): the whole-tree ADDED-VIOLATION delta (two detached worktrees +
+      # the enforced catalog run twice, ~250s/commit) is RELOCATED to CI — the SAME owner
+      # runs in .github/workflows/hardening.yml on every PR, the authority before merge. On
+      # commit this hook now runs fast; enforced-check-SURFACE edits (removing/downgrading a
+      # check) stay gated at commit by the operating-process hook below.
       - id: institutional-correctness
         name: institutional correctness (one gate — no fake tests, single source of truth)
         # Local hooks ignore env:; the wrapper passes the AMBIENT ED_AGENT_ROLE through and
