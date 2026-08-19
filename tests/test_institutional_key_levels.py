@@ -182,6 +182,8 @@ def test_walls_rows_are_consensus_only_not_strike_windows():
     src = inspect.getsource(build_walls_rows)
     assert "strikes_for" not in src
     assert "EXPOSURE_WINDOWS" not in src
+    assert "_pick_wall_pos" not in src
+    assert "_pick_wall_abs" not in src
 
 
 def _wide_vs_selected_wall_books():
@@ -246,8 +248,11 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
     assert bound[0].call_delta_strength is None
     assert bound[0].put_delta_strength is None
     assert bound[0].dom_gamma_side == ""
-    assert bound[0].call_oi_wall == walls[0].call_oi_wall
-    assert bound[0].put_oi_wall == walls[0].put_oi_wall
+    assert bound[0].call_oi_wall is None
+    assert bound[0].put_oi_wall is None
+    assert bound[0].call_vanna_wall is None
+    assert bound[0].put_vanna_wall is None
+    assert walls[0].call_oi_wall is None
     assert len(bound) == 1 and bound[0].label == "CONSENSUS"
     assert walls[0].call_gamma_wall == 745.0
 
@@ -263,11 +268,67 @@ def test_consensus_walls_bind_terrain_ssot_withholds_when_stale():
     assert withheld[0].put_gamma_wall is None
     assert withheld[0].call_delta_wall is None
     assert withheld[0].put_delta_wall is None
-    assert withheld[0].call_oi_wall == walls[0].call_oi_wall
+    assert withheld[0].call_oi_wall is None
+    assert withheld[0].call_vanna_wall is None
     empty = consensus_walls_bind_terrain_ssot(walls, {})
     assert empty[0].call_gamma_wall is None
     assert empty[0].call_delta_wall is None
     assert walls[0].call_gamma_wall == 745.0
+
+
+def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
+    """RC-422: CONSENSUS OI/vanna walls were selected-expiry max OI / abs vanna
+    while overlay blanks kl_* (terrain does not compute them). Same wall
+    fields fed SignalInput, nearest, snapshot, A2 structural_levels, and OE
+    wall_score. Withhold — not a second book.
+
+    OUT-OF-SCOPE: enrolled-universe live desk. This is the RC-80/RC-422
+    selected-expiry vs withheld-SSOT split on the captured SPY 0DTE fixture
+    plus one later-expiry CALL, not a complete operable-surface claim.
+    """
+    from pathlib import Path
+
+    from math_probabilities import compute_wall_score_components
+    from v2_decision.a2_lifecycle_sidecar import _structural_levels
+
+    sel_ex, spot, terrain = _wide_vs_selected_wall_books()
+    walls = build_walls_rows(sel_ex, spot)
+    assert walls[0].label == "CONSENSUS"
+    assert walls[0].call_oi_wall is None
+    assert walls[0].put_oi_wall is None
+    assert walls[0].call_vanna_wall is None
+    assert walls[0].put_vanna_wall is None
+    assert walls[0].dom_oi_wall is None
+    assert walls[0].call_oi_strength is None
+    assert walls[0].put_oi_strength is None
+    assert walls[0].call_vanna_strength is None
+    assert walls[0].put_vanna_strength is None
+    assert walls[0].dom_oi_side == ""
+    # Pre-fix selected-expiry pickers on this book: call/put OI 750, vanna 734
+    # with strength 0.0. Wide-chain max call OI would be 760 (500000).
+    bound = consensus_walls_bind_terrain_ssot(walls, terrain)
+    assert bound[0].call_oi_wall is None
+    assert bound[0].put_oi_wall is None
+    assert bound[0].call_vanna_wall is None
+    assert bound[0].put_vanna_wall is None
+    assert bound[0].dom_oi_wall is None
+    assert bound[0].call_gamma_wall == 760.0
+    assert bound[0].put_gamma_wall == 745.0
+    src = inspect.getsource(build_walls_rows)
+    assert "_pick_wall_pos" not in src
+    assert "_pick_wall_abs" not in src
+    assert "call_oi_wall=None" in src
+    bind_src = inspect.getsource(consensus_walls_bind_terrain_ssot)
+    assert "call_oi_wall=None" in bind_src
+    assert "call_vanna_wall=None" in bind_src
+    a2_src = inspect.getsource(_structural_levels)
+    assert "call_oi_wall" not in a2_src
+    assert "put_oi_wall" not in a2_src
+    oe_src = inspect.getsource(compute_wall_score_components)
+    assert "dom_oi_wall" not in oe_src
+    ms_src = Path("market_state.py").read_text(encoding="utf-8")
+    assert '(_coi, "Call OI Wall")' not in ms_src
+    assert '(_poi, "Put OI Wall")' not in ms_src
 
 
 def test_consensus_net_gamma_equals_aggregate_net_gex():

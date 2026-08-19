@@ -281,41 +281,6 @@ def build_summary_rows(
 
 # ── Wall selection / dominance helpers ────────────────────────────────────────
 
-def _pick_wall_abs(exposures: Dict[float, dict], strikes: List[float], key: str) -> tuple[float | None, float | None]:
-    """
-    Returns (strike, abs_strength) where abs_strength is max abs(key) across strikes.
-    """
-    best_s = None
-    best_v = None
-    for s in strikes:
-        v0 = exposures.get(s, {}).get(key)
-        if v0 is None:
-            continue
-        v = abs(float(v0))
-        if best_s is None or (best_v is not None and v > best_v):
-            best_s = s
-            best_v = v
-    return best_s, best_v
-
-def _pick_wall_pos(exposures: Dict[float, dict], strikes: List[float], key: str) -> tuple[float | None, float | None]:
-    """
-    Returns (strike, strength) where strength is max positive(key) across strikes.
-    For OI walls where values are non-negative.
-    """
-    best_s = None
-    best_v = None
-    for s in strikes:
-        v0 = bucket_metric(exposures.get(s, {}), key)
-        if v0 is None:
-            continue
-        v = float(v0)
-        if v <= 0:
-            continue
-        if best_s is None or (best_v is not None and v > best_v):
-            best_s = s
-            best_v = v
-    return best_s, best_v
-
 def _dominant(call_strike, call_strength, put_strike, put_strength) -> tuple[str, float | None, float | None]:
     """
     Chooses dominant side by strength (absolute for exposures).
@@ -346,15 +311,16 @@ def consensus_walls_bind_terrain_ssot(
     walls: List[WallsRow],
     terrain: dict | None,
 ) -> List[WallsRow]:
-    """RC-420: CONSENSUS gamma/delta wall strikes bind to terrain SSOT.
+    """RC-420 / RC-422: CONSENSUS wall strikes bind to terrain SSOT.
 
     Fresh terrain (truthy and not levels_stale) rewrites CONSENSUS call/put
     gamma and delta wall strikes from the wide-chain cache the overlay already
     paints. Stale or absent terrain withholds those four strikes rather than
     leaving selected-expiry analytics in place. Strengths are withheld so
-    selected-expiry GEX$ cannot sit beside a wide-chain strike. Windowed
-    plus-minus-N rows are unchanged. OI/vanna stay analytics because terrain
-    does not compute them.
+    selected-expiry GEX$ cannot sit beside a wide-chain strike. OI/vanna
+    wall slots are always withheld: terrain does not compute them, and a
+    selected-expiry max-OI / abs-vanna strike must not occupy the same
+    CONSENSUS wall fields the overlay already blanks.
     """
     if not walls:
         return walls
@@ -392,6 +358,17 @@ def consensus_walls_bind_terrain_ssot(
         dom_delta_side=domd_side,
         dom_delta_wall=domd_s,
         dom_delta_strength=domd_v,
+        call_oi_wall=None,
+        call_oi_strength=None,
+        put_oi_wall=None,
+        put_oi_strength=None,
+        dom_oi_side="",
+        dom_oi_wall=None,
+        dom_oi_strength=None,
+        call_vanna_wall=None,
+        call_vanna_strength=None,
+        put_vanna_wall=None,
+        put_vanna_strength=None,
     )
     out = list(walls)
     out[idx] = bound
@@ -411,6 +388,10 @@ def build_walls_rows(
     (KEY_LEVEL_STRIKE_WINDOW). Scoped strike-window analytics remain on
     summary_rows / totals_rows (aggregates, not canonical wall strikes).
     `spot` sizes KEY_LEVEL_STRIKE_WINDOW when that policy is non-None.
+    RC-422: CONSENSUS OI/vanna wall slots stay None. Terrain does not
+    compute them; selected-expiry max OI / abs vanna must not occupy the
+    same wall fields SignalInput, nearest-level, snapshot, A2, and OE
+    already treat as structural walls.
     """
     strikes_all = sorted(list(exposures.keys()))
     if not strikes_all:
@@ -421,22 +402,13 @@ def build_walls_rows(
         ]
 
     if KEY_LEVEL_STRIKE_WINDOW is None:
-        sset = strikes_all
-        g_strikes = key_level_strikes_with_gamma(exposures) or sset
+        g_strikes = key_level_strikes_with_gamma(exposures) or strikes_all
     else:
-        sset = _window_strikes(strikes_all, spot, KEY_LEVEL_STRIKE_WINDOW)
-        g_strikes = sset
+        g_strikes = _window_strikes(strikes_all, spot, KEY_LEVEL_STRIKE_WINDOW)
     (cg_s, cg_v), (pg_s, pg_v) = pick_gamma_wall_strikes(exposures, g_strikes)
     (cd_s, cd_v), (pd_s, pd_v) = pick_delta_wall_strikes(exposures, g_strikes)
     domg_side, domg_s, domg_v = _dominant(cg_s, cg_v, pg_s, pg_v)
     domd_side, domd_s, domd_v = _dominant(cd_s, cd_v, pd_s, pd_v)
-
-    coi_s, coi_v = _pick_wall_pos(exposures, sset, "call_oi")
-    poi_s, poi_v = _pick_wall_pos(exposures, sset, "put_oi")
-    domoi_side, domoi_s, domoi_v = _dominant(coi_s, coi_v, poi_s, poi_v)
-
-    cv_s, cv_v = _pick_wall_abs(exposures, sset, "call_vanna")
-    pv_s, pv_v = _pick_wall_abs(exposures, sset, "put_vanna")
 
     return [WallsRow(
         label="CONSENSUS",
@@ -458,18 +430,18 @@ def build_walls_rows(
         dom_delta_wall=domd_s,
         dom_delta_strength=domd_v,
 
-        call_oi_wall=coi_s,
-        call_oi_strength=coi_v,
-        put_oi_wall=poi_s,
-        put_oi_strength=poi_v,
-        dom_oi_side=domoi_side,
-        dom_oi_wall=domoi_s,
-        dom_oi_strength=domoi_v,
+        call_oi_wall=None,
+        call_oi_strength=None,
+        put_oi_wall=None,
+        put_oi_strength=None,
+        dom_oi_side="",
+        dom_oi_wall=None,
+        dom_oi_strength=None,
 
-        call_vanna_wall=cv_s,
-        call_vanna_strength=cv_v,
-        put_vanna_wall=pv_s,
-        put_vanna_strength=pv_v,
+        call_vanna_wall=None,
+        call_vanna_strength=None,
+        put_vanna_wall=None,
+        put_vanna_strength=None,
     )]
 
 

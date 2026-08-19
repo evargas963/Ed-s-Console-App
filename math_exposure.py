@@ -272,7 +272,7 @@ from math_exposure_core import (                                               #
 )
 from math_levels import (                                                      # noqa: F401
     _pick_oi_center, _pick_inflection_closest_zero,
-    _pin_strength, _bias_from_net, _pick_wall_abs, _pick_wall_pos, _dominant,
+    _pin_strength, _bias_from_net, _dominant,
 )
 from math_volatility import _spot_atm_strike, _extract_iv_for_strike          # noqa: F401
 from math_probabilities import _binomial_p_value                              # noqa: F401

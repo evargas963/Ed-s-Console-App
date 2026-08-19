@@ -11085,8 +11085,8 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     BLANKS the keys — absence, never a silently different second book. The narrow-book wall
     STRENGTH strings are blanked with the same stroke: a dollar figure computed from one
     chain printed beside a strike from another is the same lie in a smaller cell.
-    Delta/OI/vanna walls stay analytics-sourced: terrain does not compute them, so there is
-    only one book for those concepts.
+    OI/vanna walls, inflections, and oi_center stay blank: terrain does not compute them,
+    so analytics must never stand in for an absent SSOT value (RC-128 / RC-422).
     """
     with _terrain_cache_lock:
         t = dict(_terrain_cache.get(ticker_storage_key(ticker)) or {})  # RC-345/F25: read key matches canonical write (tk)
