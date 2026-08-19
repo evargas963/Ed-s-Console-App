@@ -8,4 +8,4 @@ test-e2e:
 # Windows without make: npm run test:all
 test-all:
 	npm run test:e2e
-	python -m pytest -n auto --dist loadfile
+	python -m pytest -n auto --dist loadfile --durations=20

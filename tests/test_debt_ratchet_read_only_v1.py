@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -40,9 +39,31 @@ def _load():
     return mod
 
 
-def test_running_the_ratchet_leaves_the_baseline_byte_identical():
+def _cheap_advisory_catalog(gate):
+    """Keep the ratchet/rebaseline WRITE path; do not re-pay the advisory catalog.
+
+    `check_debt_ratchet` / `rebaseline` compute `current` by calling every advisory
+    checker (`ruff_quality`, `mypy_types`, whole-repo AST, orphan-key walk, …).
+    MEASURED on serial required pytest-full 32227366665: this file alone was 129.0s,
+    and `test_the_cli_flag_runs_end_to_end_without_touching_the_real_baseline`
+    then invoked the full `--enforced-only` catalog on top. These tests assert
+    READ-ONLY / LF / argv wiring — not the advisory counts. The catalog stays
+    owned by hardening (`check_delta_adds_no_debt.py`) and the advisory CLI.
+    """
+
+    def _one() -> list[object]:
+        return [object()]
+
+    return tuple(
+        (name, (_one if not enforced else fn), enforced)
+        for name, fn, enforced in gate.CHECKS
+    )
+
+
+def test_running_the_ratchet_leaves_the_baseline_byte_identical(monkeypatch):
     """THE PROPERTY. Any write here is the defect, whatever the counts happen to be."""
     gate = _load()
+    monkeypatch.setattr(gate, "CHECKS", _cheap_advisory_catalog(gate))
     path = gate._debt_baseline_path()
     before = path.read_bytes()
     gate.check_debt_ratchet()
@@ -51,8 +72,9 @@ def test_running_the_ratchet_leaves_the_baseline_byte_identical():
         "reference or CHANGE it, never both in one call (RC-385)")
 
 
-def test_running_it_twice_is_still_byte_identical():
+def test_running_it_twice_is_still_byte_identical(monkeypatch):
     gate = _load()
+    monkeypatch.setattr(gate, "CHECKS", _cheap_advisory_catalog(gate))
     path = gate._debt_baseline_path()
     before = path.read_bytes()
     gate.check_debt_ratchet()
@@ -60,9 +82,10 @@ def test_running_it_twice_is_still_byte_identical():
     assert path.read_bytes() == before
 
 
-def test_a_missing_baseline_is_reported_not_silently_seeded():
+def test_a_missing_baseline_is_reported_not_silently_seeded(monkeypatch):
     """Seeding is an explicit act. Absence must surface, not self-heal."""
     gate = _load()
+    monkeypatch.setattr(gate, "CHECKS", _cheap_advisory_catalog(gate))
     real = gate._debt_baseline_path()
     saved = real.read_bytes()
     try:
@@ -81,6 +104,14 @@ def test_the_rebaseline_flag_exists_and_is_wired():
     assert hasattr(gate, "rebaseline"), "no rebaseline() implementation"
     src = GATE_SRC.read_text(encoding="utf-8", errors="replace")
     assert '"--rebaseline" in args' in src, "--rebaseline is not wired into main()"
+    # Source-lock: hermetic CLI tests must not delete the catalog call sites.
+    # Kept inside this existing reader so the RC-311 source-text census does not
+    # grow a new function for the same inspect-the-source property.
+    assert '"--enforced-only" in args' in src
+    assert 'run_checks(mode="enforced")' in src
+    assert "check_debt_ratchet" in src
+    for name in ("ruff_quality", "mypy_types", "orphan_dict_keys"):
+        assert name in src, f"advisory catalog lost {name}"
 
 
 def test_rebaseline_refuses_to_launder_a_correctness_rise(tmp_path, monkeypatch, capsys):
@@ -94,10 +125,16 @@ def test_rebaseline_refuses_to_launder_a_correctness_rise(tmp_path, monkeypatch,
     blocked = sorted(gate._RATCHET_BLOCKS_ON_RISE & advisory)[0]
     fake.write_text(json.dumps({blocked: 1}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     monkeypatch.setattr(gate, "_debt_baseline_path", lambda: fake)
-    # Force a large current count for the blocked metric.
+    # Force a large current count for the blocked metric. Other advisory
+    # checkers stay cheap — this test asserts the RISE refusal, not ruff/mypy.
+    def _count_for(name: str):
+        if name == blocked:
+            return lambda: [object()] * 99
+        return lambda: [object()]
+
     monkeypatch.setattr(
         gate, "CHECKS",
-        tuple((n, (lambda: [object()] * 99) if n == blocked else f, e)
+        tuple((n, (_count_for(n) if not e else f), e)
               for n, f, e in gate.CHECKS),
     )
     rc = gate.rebaseline()
@@ -111,19 +148,25 @@ def test_rebaseline_writes_lf_not_platform_newlines(tmp_path, monkeypatch):
     gate = _load()
     fake = tmp_path / "advisory_debt_baseline.json"
     monkeypatch.setattr(gate, "_debt_baseline_path", lambda: fake)
+    monkeypatch.setattr(gate, "CHECKS", _cheap_advisory_catalog(gate))
     gate.rebaseline()
     assert fake.exists()
     assert fake.read_bytes().count(b"\r\n") == 0, "rebaseline wrote CRLF into a governed file"
 
 
-def test_the_cli_flag_runs_end_to_end_without_touching_the_real_baseline():
-    """--help-level smoke: the flag is reachable and does not crash on argument parsing."""
+def test_the_cli_flag_runs_end_to_end_without_touching_the_real_baseline(monkeypatch, capsys):
+    """Argv path: `--enforced-only` reaches main() and does not write the baseline.
+
+    The docstring called this help-level smoke; the body used to subprocess the
+    full `--enforced-only` catalog (~100s, already owned by hardening). Drive
+    the same main() branch with a cheap run_checks so the write-guard is what
+    we time, not a second copy of the required CI gate.
+    """
+    gate = _load()
     real = GATE_SRC.parent.parent / "governance" / "advisory_debt_baseline.json"
     before = real.read_bytes()
-    proc = subprocess.run(
-        [sys.executable, str(GATE_SRC), "--enforced-only"],
-        cwd=str(REPO), capture_output=True, text=True, check=False, timeout=900,
-    )
-    assert proc.returncode in (0, 1), proc.stderr[-400:]
+    monkeypatch.setattr(gate, "run_checks", lambda mode="enforced": (0, [], []))
+    rc = gate.main(["--enforced-only"])
+    assert rc == 0, capsys.readouterr()
     assert real.read_bytes() == before, (
         "a normal gate run mutated the baseline — the RC-385 defect is back")

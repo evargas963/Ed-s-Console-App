@@ -28,7 +28,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: pip
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -39,12 +43,16 @@ jobs:
       - name: Install Python dependencies
         shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
-          python -m pip install -r requirements.txt
+          uv pip install --system -r requirements-dev.txt -r requirements.txt
 
       - name: Install Node dependencies
         run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright system deps (Linux)
         # Bound this step. Unbounded apt-get is what cancelled required pytest-full:
@@ -103,4 +111,11 @@ jobs:
           # ED_CI_OFFLINE + config.is_schwab_ci_offline_mode() block live API calls.
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
-        run: npm run test:all
+        run: |
+          # MEASURED on required pytest-full 32234684073: nproc=4 and
+          # os.cpu_count()=4 but `pytest -n auto` still created 2/2 workers
+          # (Python 3.13 `os.process_cpu_count()` is what xdist `auto` reads).
+          # Pin the worker count to the runner's nproc — same suite, more cores.
+          echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
+          npm run test:e2e
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20
