@@ -19,7 +19,7 @@ def et(ts):
     return datetime.fromtimestamp(ts, ET)
 
 rows = con.execute("""
-  SELECT ticker, ts_utc, spot, gamma_pin, call_gamma_wall, put_gamma_wall, net_gamma
+  SELECT ticker, ts_utc, spot, call_gamma_wall, put_gamma_wall, net_gamma
   FROM snapshots WHERE spot IS NOT NULL ORDER BY ticker, ts_utc""").fetchall()
 
 first_ok: dict[tuple[str, Any], int] = {}

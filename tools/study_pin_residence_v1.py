@@ -23,7 +23,12 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
-from time_et import ET, RTH_END_MINS, RTH_START_MINS
+from time_et import (
+    ET,
+    RTH_END_MINS,
+    RTH_START_MINS,
+    SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC,
+)
 
 BAND = 0.0025          # +/-0.25% of spot counts as "at the level"
 OBS_MIN = 600          # 10:00 ET
@@ -42,9 +47,21 @@ for r in con.execute("SELECT ticker,bar_start_ts_utc,high,low,close FROM price_b
         bars.setdefault((r["ticker"], d.date()), []).append((m, r["high"], r["low"], r["close"]))
 
 obs: dict[tuple[str, Any], tuple[Any, int]] = {}
-for r in con.execute("""SELECT ticker,ts_utc,spot,gamma_pin,net_gamma,dte,realized_vol
+print(
+    "GAMMA_PIN semantic: terrain_total_gamma_pin only "
+    f"(ts_utc >= {SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC})"
+)
+print(
+    "OUT-OF-SCOPE: snapshots.gamma_pin before 95a61031 is selected-expiry net-GEX peak; "
+    "land-to-pad is mixed_until_restart (RC-429). Do not mix eras under one GAMMA_PIN label."
+)
+for r in con.execute(
+    """SELECT ticker,ts_utc,spot,gamma_pin,net_gamma,dte,realized_vol
                         FROM snapshots WHERE spot IS NOT NULL AND gamma_pin IS NOT NULL
-                        ORDER BY ticker,ts_utc"""):
+                        AND ts_utc >= ?
+                        ORDER BY ticker,ts_utc""",
+    (SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC,),
+):
     d = et(r["ts_utc"])
     if d.weekday() >= 5: continue
     m = d.hour*60 + d.minute

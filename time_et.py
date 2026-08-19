@@ -15,6 +15,71 @@ COH_I_A_ET_AUTHORITY_TS_UTC = 1779237069.0
 # had not restarted yet are still corrected (FIND-CAL-TS item-6).
 COH_I_A_ET_BACKFILL_CEILING_TS_UTC = COH_I_A_ET_AUTHORITY_TS_UTC + 3600.0
 
+# RC-429: persist writer 95a61031 (2026-08-19T14:10:58Z) switched snapshots.gamma_pin
+# from selected-expiry net-GEX peak (`getattr(consensus_summary, "gamma_pin")`, later
+# ExposureRow.net_gex_peak) to terrain total-gamma pin (`terrain_cache_get` /
+# pick_pin_and_strength). Do NOT ALTER/backfill historical values. The 1h pad matches
+# COH-I-A: rows after git-land until desk restart may still be the old semantic.
+SNAPSHOTS_GAMMA_PIN_WRITER_LAND_ISO_UTC = "2026-08-19T14:10:58+00:00"
+SNAPSHOTS_GAMMA_PIN_WRITER_LAND_TS_UTC = datetime.fromisoformat(
+    SNAPSHOTS_GAMMA_PIN_WRITER_LAND_ISO_UTC
+).timestamp()
+SNAPSHOTS_GAMMA_PIN_RESTART_PAD_SEC = 3600.0
+SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC = (
+    SNAPSHOTS_GAMMA_PIN_WRITER_LAND_TS_UTC + SNAPSHOTS_GAMMA_PIN_RESTART_PAD_SEC
+)
+GAMMA_PIN_SEMANTIC_NET_GEX_PEAK = "selected_expiry_net_gex_peak"
+GAMMA_PIN_SEMANTIC_TERRAIN = "terrain_total_gamma_pin"
+GAMMA_PIN_SEMANTIC_MIXED = "mixed_until_restart"
+GAMMA_PIN_SEMANTIC_UNKNOWN = "unknown"
+
+
+def _as_unix_ts_utc(ts_utc: object) -> float | None:
+    """Parse snapshots.ts_utc (unix seconds) or an ISO-8601 string to UTC unix."""
+    if ts_utc is None:
+        return None
+    if isinstance(ts_utc, bool):
+        return None
+    if isinstance(ts_utc, (int, float)):
+        t = float(ts_utc)
+        return t if t == t else None  # NaN
+    raw = str(ts_utc).strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def snapshots_gamma_pin_semantic(ts_utc: object) -> str:
+    """Which meaning snapshots.gamma_pin holds at persist time (RC-429).
+
+    Before writer land: selected-expiry net-GEX peak. Land until land+1h: mixed
+    (desk may not have restarted). After the pad: terrain total-gamma pin for
+    analysis. Unknown timestamps do not join either series.
+    """
+    t = _as_unix_ts_utc(ts_utc)
+    if t is None:
+        return GAMMA_PIN_SEMANTIC_UNKNOWN
+    if t < SNAPSHOTS_GAMMA_PIN_WRITER_LAND_TS_UTC:
+        return GAMMA_PIN_SEMANTIC_NET_GEX_PEAK
+    if t < SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC:
+        return GAMMA_PIN_SEMANTIC_MIXED
+    return GAMMA_PIN_SEMANTIC_TERRAIN
+
+
+def snapshots_gamma_pin_is_terrain_analysis_safe(ts_utc: object) -> bool:
+    """True iff snapshots.gamma_pin may be treated as terrain total-gamma pin."""
+    return snapshots_gamma_pin_semantic(ts_utc) == GAMMA_PIN_SEMANTIC_TERRAIN
+
 # RTH 09:30–16:00 ET (minute-of-day); shared with ml_data_common.
 RTH_START_MINS = 570
 RTH_OPEN_MINS = RTH_START_MINS  # 9:30 AM ET (alias for cross-module authority)

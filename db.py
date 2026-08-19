@@ -489,7 +489,7 @@ class SnapshotRow:
     vix_bucket:         Optional[str] = None
     put_call_oi_ratio:  Optional[float] = None
     oi_center:          Optional[float] = None
-    gamma_pin:          Optional[float] = None  # strike with highest gamma
+    gamma_pin:          Optional[float] = None  # terrain total-gamma pin after SNAPSHOTS_GAMMA_PIN_WRITER_LAND_TS_UTC (RC-429); earlier rows are selected-expiry net-GEX peak — do not mix eras
 
     # ── Cross-instrument (SPY when not primary, else NULL) ────────────────────
     spy_spot:           Optional[float] = None

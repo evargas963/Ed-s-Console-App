@@ -12,7 +12,13 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
-from time_et import ET, RTH_END_MINS, RTH_START_MINS
+from time_et import (
+    ET,
+    RTH_END_MINS,
+    RTH_START_MINS,
+    SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC,
+    snapshots_gamma_pin_is_terrain_analysis_safe,
+)
 
 con = sqlite3.connect("file:data/ed_console.db?mode=ro", uri=True, timeout=120)
 con.row_factory = sqlite3.Row
@@ -31,6 +37,14 @@ for r in con.execute("SELECT ticker, bar_start_ts_utc, close FROM price_bars_1m 
     if not (RTH_START_MINS <= m < RTH_END_MINS): continue
     closes[(r["ticker"], d.date())] = r["close"]
 print(f"ticker-days with an RTH close: {len(closes):,}")
+print(
+    "GAMMA_PIN semantic: terrain_total_gamma_pin only "
+    f"(ts_utc >= {SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC}); other levels use full history"
+)
+print(
+    "OUT-OF-SCOPE: snapshots.gamma_pin before 95a61031 is selected-expiry net-GEX peak; "
+    "land-to-pad is mixed_until_restart (RC-429). Do not mix eras under one GAMMA_PIN label."
+)
 
 # ---- observation snapshots at ~T+5 and ~T+30 after the open ----
 rows = con.execute("""
@@ -70,6 +84,10 @@ for tag in ("T5", "T30"):
             close = closes.get((tk, day))
             lv = level_value(r, name)
             spot = r["spot"]
+            if name == "gamma_pin" and not snapshots_gamma_pin_is_terrain_analysis_safe(
+                r["ts_utc"]
+            ):
+                continue
             if close is None or lv is None or not spot: continue
             if abs(lv - spot)/spot > 0.10: continue          # reject absurd levels
             n += 1
