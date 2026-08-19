@@ -529,7 +529,11 @@ def test_state_level_family_serves_raw_not_rounded():
     """PDH_PRECISION: the state payload's level family uses the raw finite reader, never
     the 2dp _fv — /api/levels and state must serve the same digits."""
     import re as _re
-    for field in ("pdh", "pdl", "pdc", "vwap", "orb_high", "orb_low"):
+    for field in ("pdh", "pdl", "pdc", "vwap", "orb_high", "orb_low",
+                  "today_poc", "today_vah", "today_val",
+                  "pd_poc", "pd_vah", "pd_val",
+                  "overnight_high", "overnight_low", "orb_midpoint",
+                  "vwap_p1", "vwap_m1", "vwap_p2", "vwap_m2"):
         m = _re.search(rf'ms_dict\["{field}"\]\s*=\s*(\w+)\(', _SERVER_SRC)
         assert m, f"state no longer serves {field}"
         assert m.group(1) == "_raw_level", (

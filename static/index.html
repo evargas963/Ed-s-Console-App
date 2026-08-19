@@ -3842,6 +3842,9 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
                   <div class="decision-k">Resistance</div><div class="decision-v" id="dr-lvl-resistance">—</div>
                   <div class="decision-k">EM high</div><div class="decision-v" id="dr-lvl-emh">—</div>
                   <div class="decision-k">EM low</div><div class="decision-v" id="dr-lvl-eml">—</div>
+                  <div class="decision-k" title="Today's point of control — session volume-profile POC from the canonical PriceLevelSnapshot (same TODAY_POC /api/levels serves).">POC</div><div class="decision-v" id="dr-lvl-poc">—</div>
+                  <div class="decision-k" title="Today's value-area high — same snapshot as POC.">VAH</div><div class="decision-v" id="dr-lvl-vah">—</div>
+                  <div class="decision-k" title="Today's value-area low — same snapshot as POC.">VAL</div><div class="decision-v" id="dr-lvl-val">—</div>
                 </div>
               </div>
               <div class="decision-block">
@@ -3885,6 +3888,9 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
                 <div class="decision-k">LIQ BELOW</div><div class="decision-v" id="exec-liq-below">—</div>
                 <div class="decision-k">EM HIGH</div><div class="decision-v" id="exec-em-high">—</div>
                 <div class="decision-k">EM LOW</div><div class="decision-v" id="exec-em-low">—</div>
+                <div class="decision-k" title="Today's point of control — session volume-profile POC from the canonical PriceLevelSnapshot (same TODAY_POC /api/levels serves).">POC</div><div class="decision-v" id="exec-poc">—</div>
+                <div class="decision-k" title="Today's value-area high — same snapshot as POC.">VAH</div><div class="decision-v" id="exec-vah">—</div>
+                <div class="decision-k" title="Today's value-area low — same snapshot as POC.">VAL</div><div class="decision-v" id="exec-val">—</div>
               </div>
             </div>
           </div>
@@ -6213,6 +6219,9 @@ function paintStructureLevelsFromKl(d) {
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
   domIf('dr-lvl-emh', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('dr-lvl-eml', el => { el.textContent = pxTxt(d.kl_em_lower); });
+  domIf('dr-lvl-poc', el => { el.textContent = pxTxt(d.today_poc); });
+  domIf('dr-lvl-vah', el => { el.textContent = pxTxt(d.today_vah); });
+  domIf('dr-lvl-val', el => { el.textContent = pxTxt(d.today_val); });
   domIf('dr-liq-above', el => { el.textContent = resR !== '—' ? `${resR}${aboveVoid !== '—' ? ` | void ${aboveVoid}` : ''}` : aboveVoid; });
   domIf('dr-liq-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('dr-liq-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
@@ -6225,6 +6234,9 @@ function paintStructureLevelsFromKl(d) {
   domIf('exec-liq-below', el => { el.textContent = belowVoid; });
   domIf('exec-em-high', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('exec-em-low', el => { el.textContent = pxTxt(d.kl_em_lower); });
+  domIf('exec-poc', el => { el.textContent = pxTxt(d.today_poc); });
+  domIf('exec-vah', el => { el.textContent = pxTxt(d.today_vah); });
+  domIf('exec-val', el => { el.textContent = pxTxt(d.today_val); });
   domIf('lp-above', el => { el.textContent = resR !== '—' ? `${resR}${aboveVoid !== '—' ? ` | void ${aboveVoid}` : ''}` : aboveVoid; });
   domIf('lp-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('lp-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
@@ -6317,6 +6329,9 @@ function renderDecisionCommandRail(d) {
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
   domIf('dr-lvl-emh', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('dr-lvl-eml', el => { el.textContent = pxTxt(d.kl_em_lower); });
+  domIf('dr-lvl-poc', el => { el.textContent = pxTxt(d.today_poc); });
+  domIf('dr-lvl-vah', el => { el.textContent = pxTxt(d.today_vah); });
+  domIf('dr-lvl-val', el => { el.textContent = pxTxt(d.today_val); });
 
   // Order flow compact operator read.
   const ofDirRaw = d.order_flow_direction;
@@ -6369,6 +6384,9 @@ function renderDecisionCommandRail(d) {
   domIf('exec-liq-below', el => { el.textContent = belowVoid; });
   domIf('exec-em-high', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('exec-em-low', el => { el.textContent = pxTxt(d.kl_em_lower); });
+  domIf('exec-poc', el => { el.textContent = pxTxt(d.today_poc); });
+  domIf('exec-vah', el => { el.textContent = pxTxt(d.today_vah); });
+  domIf('exec-val', el => { el.textContent = pxTxt(d.today_val); });
   domIf('lp-above', el => { el.textContent = resR !== '—' ? `${resR}${aboveVoid !== '—' ? ` | void ${aboveVoid}` : ''}` : aboveVoid; });
   domIf('lp-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('lp-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });

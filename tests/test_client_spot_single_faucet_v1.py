@@ -570,6 +570,28 @@ def test_gamma_pin_ladder_binds_kl_ssot_not_unstamped_gamma_pin() -> None:
     )
 
 
+def test_console_today_poc_binds_state_payload_not_a_second_book() -> None:
+    """F15: console POC/VAH/VAL paint /api/state today_* carried from the snapshot.
+
+    Chart already extracts TODAY_POC by id from /api/levels. The live-path hole was
+    /api/state dropping the carry so #dr-lvl-poc / #exec-poc could not exist.
+    """
+    src = CONSOLE.read_text(encoding="utf-8")
+    for dom_id, field in (
+        ("dr-lvl-poc", "today_poc"),
+        ("dr-lvl-vah", "today_vah"),
+        ("dr-lvl-val", "today_val"),
+        ("exec-poc", "today_poc"),
+        ("exec-vah", "today_vah"),
+        ("exec-val", "today_val"),
+    ):
+        assert f'id="{dom_id}"' in src, f"missing #{dom_id}"
+        assert src.count(f"pxTxt(d.{field})") >= 2, (
+            f"{field} is not painted on both structure-level painters"
+        )
+        assert f"domIf('{dom_id}'" in src, f"#{dom_id} exists but is not bound"
+
+
 def test_terrain_hvl_is_never_painted_as_its_own_level():
     """A3/RC-134: terrain `hvl` was the pin under a second name; field removed from payload.
     Client bindings of `.hvl` stay banned. kl_hvl (net peak, 'Net Γ peak') remains legal."""
