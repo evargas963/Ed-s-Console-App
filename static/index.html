@@ -13304,6 +13304,18 @@ function edCheckRadarAlerts(rows) {
     return v.toFixed(2) + ' R';
   }
   try { window.rUnitsText = rUnitsText; } catch (e) {}
+  /* F31 / RC-414: #cv2-hd-chg is (spot − PDC) / PDC from the Phase 2A snapshot.
+     Absent or non-positive PDC withholds. spy/qqq/iwm_chg_pct are quote-book day
+     change — a different quantity — and must not fill this cell. Exported so the
+     contract can be executed (RC-298/RC-308). */
+  function headerChangeFromPdc(spot, pdc) {
+    var s = (typeof spot === 'number' && isFinite(spot)) ? spot : null;
+    var close = (typeof pdc === 'number' && isFinite(pdc)) ? pdc : null;
+    if (s === null || close === null || close === 0) return { c: null, p: null };
+    var pts = s - close;
+    return { c: pts, p: pts / close * 100 };
+  }
+  try { window.headerChangeFromPdc = headerChangeFromPdc; } catch (e) {}
   function money(v) {
     if (typeof v !== 'number' || !isFinite(v)) return null;
     var a = Math.abs(v), s = v < 0 ? '−' : '';
@@ -13773,14 +13785,9 @@ function edCheckRadarAlerts(rows) {
     // RC-117: the px cell is painted ONLY by paintSpotDisplays (one writer, one frame);
     // this header keeps computing the CHANGE cells from the same `spot` value below.
     paintSpotDisplays();
-    var pdc = fnum(s.pdc), chgEl = el('cv2-hd-chg'), tk = curTicker(), c = null, p = null;
-    if (spot !== null && pdc !== null && pdc !== 0) { c = spot - pdc; p = c / pdc * 100; }
-    else {
-      var scp = (tk === 'SPY') ? fnum(s.spy_chg_pct)
-              : (tk === 'QQQ') ? fnum(s.qqq_chg_pct)
-              : (tk === 'IWM') ? fnum(s.iwm_chg_pct) : null;
-      if (scp !== null) p = scp;
-    }
+    var chgEl = el('cv2-hd-chg');
+    var chg = headerChangeFromPdc(fnum(spot), fnum(s.pdc));
+    var c = chg.c, p = chg.p;
     if (chgEl) {
       if (p === null) { chgEl.textContent = '—'; chgEl.className = 'cv-mu'; }
       else {

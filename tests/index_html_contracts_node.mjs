@@ -101,4 +101,55 @@ assert(slot.includes('rUnitsText(s.r_units)'), 'the size slot no longer renders 
 assert(!/fstr\([^)]*r_units/.test(slot),
   'r_units is back inside fstr(), where a number can never render');
 
+// ========================================================================================
+// F31 / RC-414 — header change is (spot − PDC) / PDC. Absent PDC withholds; it must not
+// paint spy/qqq/iwm_chg_pct (quote-book day change) as if it were that quantity.
+// ========================================================================================
+const hStart = html.indexOf('function headerChangeFromPdc(');
+assert(hStart !== -1, 'headerChangeFromPdc is gone from static/index.html');
+const hEnd = html.indexOf('try { window.headerChangeFromPdc', hStart);
+assert(hEnd !== -1, 'the window export of headerChangeFromPdc is gone');
+vm.runInThisContext(html.slice(hStart, hEnd), { filename: 'index.html#headerChangeFromPdc' });
+const H = globalThis.headerChangeFromPdc;
+assert(typeof H === 'function');
+
+const vsClose = H(745.5, 740);
+assert.strictEqual(vsClose.c, 5.5);
+assert.ok(Math.abs(vsClose.p - (5.5 / 740 * 100)) < 1e-12);
+
+const withheld = [
+  H(745.5, null),
+  H(745.5, undefined),
+  H(745.5, 0),
+  H(null, 740),
+  H(NaN, 740),
+  H(745.5, NaN),
+];
+for (const v of withheld) {
+  assert.strictEqual(v.c, null, 'absent PDC/spot fabricated a point change');
+  assert.strictEqual(v.p, null, 'absent PDC/spot fabricated a percent change');
+}
+
+const phStart = html.indexOf('function paintHeader(s, spot)');
+assert(phStart !== -1, 'paintHeader is gone');
+const phEnd = html.indexOf('tickClock(); setInterval(tickClock', phStart);
+assert(phEnd !== -1, 'paintHeader body end marker drifted');
+const phBody = html.slice(phStart, phEnd);
+assert(phBody.includes("el('cv2-hd-chg')"), '#cv2-hd-chg is no longer painted here');
+assert(phBody.includes('headerChangeFromPdc'), 'paintHeader no longer calls the PDC helper');
+assert(phBody.includes('s.pdc'), 'paintHeader no longer reads snapshot PDC');
+function substitutesEtfChg(src) {
+  return /s\.spy_chg_pct|s\.qqq_chg_pct|s\.iwm_chg_pct/.test(src);
+}
+const staleHeader = "function paintHeader(s, spot) {\n"
+  + "    var pdc = fnum(s.pdc), tk = curTicker();\n"
+  + "    else {\n"
+  + "      var scp = (tk === 'SPY') ? fnum(s.spy_chg_pct)\n"
+  + "              : (tk === 'QQQ') ? fnum(s.qqq_chg_pct)\n"
+  + "              : (tk === 'IWM') ? fnum(s.iwm_chg_pct) : null;\n"
+  + "    }\n}";
+assert(substitutesEtfChg(staleHeader), 'detector is blind to the shipped F31 header fallback');
+assert(!substitutesEtfChg(phBody),
+  'paintHeader still substitutes spy/qqq/iwm_chg_pct when PDC is absent');
+
 console.log('index_html_contracts: all assertions passed');
