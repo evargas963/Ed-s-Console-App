@@ -20,7 +20,7 @@ import json
 import logging
 import sqlite3
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any, Optional
 
@@ -330,7 +330,8 @@ def _walls_from_replay(obj: dict) -> list[WallsRow] | None:
         if not isinstance(item, dict):
             return None
         try:
-            out.append(WallsRow(**item))
+            known = {f.name for f in fields(WallsRow)}
+            out.append(WallsRow(**{k: v for k, v in item.items() if k in known}))
         except (TypeError, ValueError):
             return None
     return out

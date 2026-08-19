@@ -12,7 +12,7 @@ from math_exposure_core import (
     pick_key_delta_strike,
     pick_volatility_point_strikes,
 )
-from math_levels import build_summary_rows, pick_gamma_wall_strikes
+from math_levels import build_summary_rows, build_walls_rows, pick_gamma_wall_strikes, WallsRow
 
 
 def _dollarized_exposures():
@@ -97,6 +97,58 @@ def test_hvl_and_walls_still_pick():
     assert hvl is not None
     (cg, _), (pg, _) = pick_gamma_wall_strikes(exposures, sorted(exposures.keys()))
     assert cg is not None or pg is not None
+
+
+def test_walls_row_does_not_ship_near_spot_raw_gamma_as_a_pin():
+    """RC-418: call/put_gamma_pin was max abs raw call_gamma/put_gamma in ±5 of spot —
+    not the terrain total-gamma pin and not the dollarized wall. Live /api/state asdict
+    shipped the pin name anyway. The quantity had no painter; delete the authority."""
+    from dataclasses import asdict, fields
+
+    names = {f.name for f in fields(WallsRow)}
+    for n in (
+        "call_gamma_pin", "put_gamma_pin",
+        "call_gamma_pin_strength", "put_gamma_pin_strength",
+        "call_delta_pin", "put_delta_pin",
+        "call_oi_pin", "put_oi_pin",
+    ):
+        assert n not in names
+    assert not any("pin" in n for n in names)
+
+    # institutional-synthetic-ok: three-way split needs known buckets, not a captured chain.
+    synth = {
+        100.0: {
+            "call_gamma": 1000.0, "put_gamma": 1.0,
+            "call_gex_1pct": 1.0, "put_gex_1pct": -1.0,
+            "call_delta": 1.0, "put_delta": 1.0,
+            "call_oi": 1.0, "put_oi": 1.0,
+            "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
+        },
+        101.0: {
+            "call_gamma": 10.0, "put_gamma": 1.0,
+            "call_gex_1pct": 999.0, "put_gex_1pct": -1.0,
+            "call_delta": 1.0, "put_delta": 1.0,
+            "call_oi": 1.0, "put_oi": 1.0,
+            "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
+        },
+        120.0: {
+            "call_gamma": 5.0, "put_gamma": 5.0,
+            "call_gex_1pct": 50.0, "put_gex_1pct": -5000.0,
+            "call_delta": 1.0, "put_delta": 1.0,
+            "call_oi": 1.0, "put_oi": 1.0,
+            "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
+        },
+    }
+    pin, _ = pick_pin_and_strength(synth, sorted(synth))
+    (cg, _), _pg = pick_gamma_wall_strikes(synth, sorted(synth))
+    assert pin == 120.0 and cg == 101.0
+    walls = build_walls_rows(synth, 100.5, windows=[5, 10])
+    dumped = asdict(walls[0])
+    assert "call_gamma_pin" not in dumped and "put_gamma_pin" not in dumped
+    assert walls[0].call_gamma_wall == 101.0
+    assert walls[0].put_gamma_wall == 120.0
+    # Pre-fix _pick_pin would have set call_gamma_pin=100.0 on this book.
+    assert 100.0 not in (walls[0].call_gamma_wall, walls[0].put_gamma_wall, pin)
 
 
 def test_consensus_net_gamma_equals_aggregate_net_gex():
