@@ -390,7 +390,7 @@ class SnapshotRow:
     # ── Identity (optional) ────────────────────────────────────────────────────
     expiry:             Optional[str] = None  # '2026-02-23'
     dte:                Optional[int] = None  # days to expiry (ET authority)
-    hours_to_expiry:    Optional[float] = None  # hours until 4pm ET on expiry date
+    hours_to_expiry:    Optional[float] = None  # hours until session close on expiry date (early-close 13:00 ET)
     candle_open:        Optional[float] = None
     candle_high:        Optional[float] = None
     candle_low:         Optional[float] = None
