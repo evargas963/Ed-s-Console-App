@@ -328,7 +328,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [x] **F06** — Expected move semantics (distinct methodologies, source-tagged) — CLOSED_WITH_EVIDENCE
 - [x] **F07** — Gamma regime (one backend sign classifier; client does not reconstruct/write) — CLOSED_WITH_EVIDENCE
 - [x] **F08** — ATR (standard TR+SMA authority; feature variant distinct; Wilder quarantined) — CLOSED_WITH_EVIDENCE
-- [x] **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — PARTIAL / REOPENED (RC-411): repo-wide sweep (not #139 closure) collapses frontend/research/tools/training/A2/polling onto `time_et` + served `rth_clock_authority.js`. LIVE JS projection is rewritten at app lifespan. Not CLOSED_WITH_EVIDENCE until a Schwab desk restart is proven.
+- [x] **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — PARTIAL / REOPENED (RC-411): repo-wide sweep (not #139 closure) collapses frontend/research/tools/training/A2/polling onto `time_et`. `GET /static/rth_clock_authority.js` is a request-time projection of `time_et.rth_clock_js_source` (route before StaticFiles; no committed JS blob; projection failure is 5xx, not a stale file). Not CLOSED_WITH_EVIDENCE until a Schwab desk restart is proven.
 - [ ] **F10** — Candle direction — OPEN / WAITING_FOR_HOST_RETRAIN
   - [x] One dead-band authority; live producer count = 1; server + normalization delegate
   - [ ] Historical normalized rows rebuilt under dead-band; production training population corrected

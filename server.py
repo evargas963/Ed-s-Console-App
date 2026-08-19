@@ -49,6 +49,7 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 from dataclasses import asdict, dataclass
 
+import time_et as _time_et
 from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
                      is_trading_day_et)
 
@@ -9620,16 +9621,6 @@ async def _app_lifespan(app):
     # completing, and that path joins background workers which may be blocked.
     _install_signal_handlers()
     _startup_analytics_executor()
-    # F09: project the one RTH open/close authority into the served JS the
-    # frontend consumes. time_et is the producer; this file is a projection
-    # rewritten at every desk start so a stale static blob cannot linger LIVE.
-    try:
-        from time_et import rth_clock_js_source as _rth_clock_js_source
-        (Path(APP_DIR) / "static" / "rth_clock_authority.js").write_text(
-            _rth_clock_js_source(), encoding="utf-8",
-        )
-    except OSError as _rth_js_exc:
-        log.warning("F09 rth_clock_authority.js projection failed: %s", _rth_js_exc)
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
 
@@ -9885,6 +9876,20 @@ async def _app_lifespan(app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
+
+# F09: serve the JS projection from time_et on every request. Registered BEFORE
+# the StaticFiles mount so a committed or leftover disk blob cannot become a
+# second clock authority (Starlette matches routes in order).
+app.add_api_route(
+    "/static/rth_clock_authority.js",
+    lambda: Response(
+        _time_et.rth_clock_js_source(),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    ),
+    methods=["GET"],
+    include_in_schema=False,
+)
 
 static_dir = Path(APP_DIR) / "static"
 static_dir.mkdir(exist_ok=True)

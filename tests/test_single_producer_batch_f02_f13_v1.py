@@ -16,7 +16,6 @@ from pathlib import Path
 TURN_AUDIT_OWNS = [
     "static/index.html",
     "static/chart.html",
-    "static/rth_clock_authority.js",
     "time_et.py",
     "server.py",
     "polling_adapter.py",
@@ -290,10 +289,22 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
 
     # F09 repo-wide (2026-08-19): frontend + research/tools/training consume time_et,
     # they do not re-author 570/960. Display-copy "09:30" in a stage name is not a cut.
+    # The JS projection is served at request time from time_et — a committed static
+    # blob is a second authority and must not exist.
+    from pathlib import Path as _Path
     from time_et import rth_clock_js_source
-    js_proj = _read("static/rth_clock_authority.js")
-    assert js_proj == rth_clock_js_source(), "served JS projection drifted from time_et (F09)"
-    assert "rth_clock_js_source" in srv and "rth_clock_authority.js" in srv
+    assert not (_Path("static") / "rth_clock_authority.js").exists(), (
+        "committed static/rth_clock_authority.js is a second RTH clock (F09)"
+    )
+    assert "rth_clock_js_source" in srv and '"/static/rth_clock_authority.js"' in srv
+    assert "app.add_api_route" in srv
+    route_at = srv.index('"/static/rth_clock_authority.js"')
+    mount_at = srv.index('app.mount("/static"')
+    assert route_at < mount_at, "RTH clock route must precede StaticFiles mount (F09)"
+    assert 'rth_clock_authority.js").write_text' not in srv
+    assert "projection failed" not in srv
+    js_src = rth_clock_js_source()
+    assert "window.ED_RTH_START_MINS=" in js_src and "window.ED_RTH_END_MINS=" in js_src
 
     def _exec_js(path: str) -> str:
         src = _read(path)
@@ -545,6 +556,62 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         assert body.get("flow_imbalance_source") == "volume"
         assert body.get("flow_imbalance_label") == "strong_call_demand"
         assert body["flow_imbalance_label"] != book.get("label")
+
+
+def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) -> None:
+    """Negative proof: the UI-serving path cannot return a stale disk blob or
+    a prior 570/960 constant once time_et has moved or projection fails.
+
+    Two attacks against the old fail-open lifespan write:
+      1. Plant window.ED_RTH_START_MINS=111 on disk and monkeypatch time_et to
+         400/800 — GET must return 400/800, never 111 or 570/960.
+      2. Force rth_clock_js_source to raise — GET must fail closed (5xx), not
+         fall through to StaticFiles serving the planted 111/222 blob.
+    """
+    import pytest
+
+    pytest.importorskip("fastapi")
+    import time_et
+    import server as srv
+    from pathlib import Path
+    from starlette.testclient import TestClient
+
+    disk = Path(srv.APP_DIR) / "static" / "rth_clock_authority.js"
+    stale = b"window.ED_RTH_START_MINS=111;\nwindow.ED_RTH_END_MINS=222;\n"
+    prior = disk.read_bytes() if disk.exists() else None
+    try:
+        disk.write_bytes(stale)
+        monkeypatch.setattr(time_et, "RTH_START_MINS", 400)
+        monkeypatch.setattr(time_et, "RTH_END_MINS", 800)
+        with TestClient(srv.app) as client:
+            r = client.get("/static/rth_clock_authority.js")
+            assert r.status_code == 200
+            assert r.text == (
+                "window.ED_RTH_START_MINS=400;\nwindow.ED_RTH_END_MINS=800;\n"
+            )
+            assert "111" not in r.text
+            assert "222" not in r.text
+            assert "570" not in r.text
+            assert "960" not in r.text
+
+        def _boom() -> str:
+            raise OSError("forced projection failure")
+
+        monkeypatch.setattr(time_et, "rth_clock_js_source", _boom)
+        with TestClient(srv.app, raise_server_exceptions=False) as client:
+            r = client.get("/static/rth_clock_authority.js")
+            assert r.status_code >= 500
+            body = r.text or ""
+            assert "ED_RTH_START_MINS=111" not in body
+            assert "ED_RTH_START_MINS=570" not in body
+            assert "ED_RTH_END_MINS=222" not in body
+            assert "ED_RTH_END_MINS=960" not in body
+    finally:
+        if prior is None:
+            if disk.exists():
+                disk.unlink()
+        else:
+            disk.write_bytes(prior)
 
 
 def test_rc345_imbalance_taxonomy_is_distinct_and_named() -> None:
