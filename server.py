@@ -6792,7 +6792,7 @@ def _fetch_state(
     )
 
     rows      = build_summary_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
-    walls     = build_walls_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
+    walls     = build_walls_rows(exposures, spot_f)
     # RC-420: CONSENSUS gamma/delta wall strikes are terrain SSOT (wide chain).
     # Selected-expiry analytics must not occupy walls[0] while kl_* paints terrain.
     from math_levels import consensus_walls_bind_terrain_ssot

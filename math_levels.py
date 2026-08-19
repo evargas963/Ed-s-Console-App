@@ -401,9 +401,17 @@ def consensus_walls_bind_terrain_ssot(
 def build_walls_rows(
     exposures: Dict[float, dict],
     spot: float,
-    *,
-    windows: List[int],
 ) -> List[WallsRow]:
+    """Canonical walls table: CONSENSUS only.
+
+    RC-421: plus-minus-N rows reused call_gamma_wall / call_delta_wall on the
+    same walls[] list as CONSENSUS. After RC-420 CONSENSUS is terrain SSOT
+    (wide chain) while those rows stayed selected-expiry strike-index windows
+    — same field, two books. Key-level policy is already CONSENSUS not ATM±N
+    (KEY_LEVEL_STRIKE_WINDOW). Scoped strike-window analytics remain on
+    summary_rows / totals_rows (aggregates, not canonical wall strikes).
+    `spot` sizes KEY_LEVEL_STRIKE_WINDOW when that policy is non-None.
+    """
     strikes_all = sorted(list(exposures.keys()))
     if not strikes_all:
         return [
@@ -412,75 +420,57 @@ def build_walls_rows(
                      None, None, None, None, "", None, None)
         ]
 
-    def strikes_for(window: int | None) -> List[float]:
-        if window is None:
-            return strikes_all
-        return _window_strikes(strikes_all, spot, window)
+    if KEY_LEVEL_STRIKE_WINDOW is None:
+        sset = strikes_all
+        g_strikes = key_level_strikes_with_gamma(exposures) or sset
+    else:
+        sset = _window_strikes(strikes_all, spot, KEY_LEVEL_STRIKE_WINDOW)
+        g_strikes = sset
+    (cg_s, cg_v), (pg_s, pg_v) = pick_gamma_wall_strikes(exposures, g_strikes)
+    (cd_s, cd_v), (pd_s, pd_v) = pick_delta_wall_strikes(exposures, g_strikes)
+    domg_side, domg_s, domg_v = _dominant(cg_s, cg_v, pg_s, pg_v)
+    domd_side, domd_s, domd_v = _dominant(cd_s, cd_v, pd_s, pd_v)
 
-    out: List[WallsRow] = []
+    coi_s, coi_v = _pick_wall_pos(exposures, sset, "call_oi")
+    poi_s, poi_v = _pick_wall_pos(exposures, sset, "put_oi")
+    domoi_side, domoi_s, domoi_v = _dominant(coi_s, coi_v, poi_s, poi_v)
 
-    # CONSENSUS
-    for label, w in [("CONSENSUS", None)] + [(f"±{x}", x) for x in windows]:
-        sset = strikes_for(w)
+    cv_s, cv_v = _pick_wall_abs(exposures, sset, "call_vanna")
+    pv_s, pv_v = _pick_wall_abs(exposures, sset, "put_vanna")
 
-        # Gamma / delta walls — one picker (dollarized GEX$/DEX$ when the book
-        # has them; raw greek only as that picker's documented undollarized fallback).
-        # RC-419: windowed ±N rows used to call _pick_wall_abs on raw call_gamma even
-        # when CONSENSUS used pick_gamma_wall_strikes, so asdict walls[] shipped two
-        # quantities under call_gamma_wall.
-        if label == "CONSENSUS" and KEY_LEVEL_STRIKE_WINDOW is None:
-            g_strikes = key_level_strikes_with_gamma(exposures) or sset
-        else:
-            g_strikes = sset
-        (cg_s, cg_v), (pg_s, pg_v) = pick_gamma_wall_strikes(exposures, g_strikes)
-        (cd_s, cd_v), (pd_s, pd_v) = pick_delta_wall_strikes(exposures, g_strikes)
-        domg_side, domg_s, domg_v = _dominant(cg_s, cg_v, pg_s, pg_v)
-        domd_side, domd_s, domd_v = _dominant(cd_s, cd_v, pd_s, pd_v)
+    return [WallsRow(
+        label="CONSENSUS",
+        window=None,
 
-        # OI walls: max OI (non-negative)
-        coi_s, coi_v = _pick_wall_pos(exposures, sset, "call_oi")
-        poi_s, poi_v = _pick_wall_pos(exposures, sset, "put_oi")
-        domoi_side, domoi_s, domoi_v = _dominant(coi_s, coi_v, poi_s, poi_v)
+        call_gamma_wall=cg_s,
+        call_gamma_strength=cg_v,
+        put_gamma_wall=pg_s,
+        put_gamma_strength=pg_v,
+        dom_gamma_side=domg_side,
+        dom_gamma_wall=domg_s,
+        dom_gamma_strength=domg_v,
 
-        # Vanna walls
-        cv_s, cv_v = _pick_wall_abs(exposures, sset, "call_vanna")
-        pv_s, pv_v = _pick_wall_abs(exposures, sset, "put_vanna")
+        call_delta_wall=cd_s,
+        call_delta_strength=cd_v,
+        put_delta_wall=pd_s,
+        put_delta_strength=pd_v,
+        dom_delta_side=domd_side,
+        dom_delta_wall=domd_s,
+        dom_delta_strength=domd_v,
 
-        out.append(WallsRow(
-            label=label,
-            window=w,
+        call_oi_wall=coi_s,
+        call_oi_strength=coi_v,
+        put_oi_wall=poi_s,
+        put_oi_strength=poi_v,
+        dom_oi_side=domoi_side,
+        dom_oi_wall=domoi_s,
+        dom_oi_strength=domoi_v,
 
-            call_gamma_wall=cg_s,
-            call_gamma_strength=cg_v,
-            put_gamma_wall=pg_s,
-            put_gamma_strength=pg_v,
-            dom_gamma_side=domg_side,
-            dom_gamma_wall=domg_s,
-            dom_gamma_strength=domg_v,
-
-            call_delta_wall=cd_s,
-            call_delta_strength=cd_v,
-            put_delta_wall=pd_s,
-            put_delta_strength=pd_v,
-            dom_delta_side=domd_side,
-            dom_delta_wall=domd_s,
-            dom_delta_strength=domd_v,
-
-            call_oi_wall=coi_s,
-            call_oi_strength=coi_v,
-            put_oi_wall=poi_s,
-            put_oi_strength=poi_v,
-            dom_oi_side=domoi_side,
-            dom_oi_wall=domoi_s,
-            dom_oi_strength=domoi_v,
-
-            call_vanna_wall=cv_s,
-            call_vanna_strength=cv_v,
-            put_vanna_wall=pv_s,
-            put_vanna_strength=pv_v,
-        ))
-
-    return out
+        call_vanna_wall=cv_s,
+        call_vanna_strength=cv_v,
+        put_vanna_wall=pv_s,
+        put_vanna_strength=pv_v,
+    )]
 
 
 # ── Totals rows builder ──────────────────────────────────────────────────────
