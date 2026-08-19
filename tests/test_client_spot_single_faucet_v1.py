@@ -557,8 +557,17 @@ def test_net_definition_pin_tip_injection_is_caught():
     """Negative control: the exact stale tip that shipped must fire; the total tip not."""
     stale = "{ t: 'GAMMA PIN', v: d.gamma_pin,\n  tip: 'Largest |net gamma| strike — pin.' },"
     assert _pin_tips_defining_net(stale), "the stale net-book pin tip went undetected"
-    honest = "{ t: 'GAMMA PIN', v: d.gamma_pin,\n  tip: 'Largest TOTAL gamma strike.' },"
+    honest = "{ t: 'GAMMA PIN', v: d.kl_gamma_pin,\n  tip: 'Largest TOTAL gamma strike.' },"
     assert not _pin_tips_defining_net(honest), "the total-gamma pin tip tripped the lock"
+
+
+def test_gamma_pin_ladder_binds_kl_ssot_not_unstamped_gamma_pin() -> None:
+    """RC-292: the console GAMMA PIN row must paint the terrain total-gamma key."""
+    src = CONSOLE.read_text(encoding="utf-8")
+    m = re.search(r"\{ t: 'GAMMA PIN',\s*v:\s*([^,]+)", src)
+    assert m is not None and "kl_gamma_pin" in m.group(1), (
+        f"GAMMA PIN ladder binds {m.group(1) if m else 'nothing'} — must be d.kl_gamma_pin"
+    )
 
 
 def test_terrain_hvl_is_never_painted_as_its_own_level():

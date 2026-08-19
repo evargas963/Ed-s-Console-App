@@ -12630,7 +12630,7 @@ function edLevelSet(d) {
       tip: 'OI-implied expiry magnet. Evidence supports pinning only ON expiration day — advisory the rest of the time.' },
     // RC-132 (A2): the old tip defined the pin on the NET book — the pre-RC-124 definition
     // the producer no longer computes. The tip now states the producer's actual metric.
-    { t: 'GAMMA PIN',  v: d.gamma_pin,       c: 'tv-c-pin',   g: '◆', note: 'pin',
+    { t: 'GAMMA PIN',  v: d.kl_gamma_pin,    c: 'tv-c-pin',   g: '◆', note: 'pin',
       tip: 'Largest TOTAL gamma strike (|call|+|put| GEX$) — SpotGamma Absolute Gamma, the sticky-pin magnet; strongest into expiry. Structure fact: close-prediction is unproven.' },
     { t: 'KEY DELTA',  v: d.key_delta_strike, c: 'tv-c-kds',  g: '◈', note: 'delta magnet',
       tip: 'Largest total delta notional on the board. The biggest hedge inventory — crossing it forces the most dealer rebalancing.' },

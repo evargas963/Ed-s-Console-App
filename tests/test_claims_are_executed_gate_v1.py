@@ -172,11 +172,21 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     on the blocking path. Asserting the behaviour is exactly what removes an entry from
     this census, so the figure fell on its own — nothing was re-baselined to reach it, and
     no entry arrived.
+
+    264 -> 265 (RC-292 GAMMA PIN SSOT), one entry, named:
+    `test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net` ARRIVED.
+    INHERENTLY STRUCTURAL: the pin_score strike and snapshot persist must not read
+    `getattr(consensus_summary, "gamma_pin")` (analytics net-GEX peak). That is a
+    producer-string property of server.py; driving `_fetch_state` would need a live
+    chain and would not name the deleted getattr. Overlay overwrite of payload
+    `gamma_pin` is asserted as behaviour in
+    `test_overlay_overwrites_payload_gamma_pin_with_terrain_total` and does not
+    enter this census.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 264, (
-        f"the per-function source-text-only count moved from the 264 measured on "
-        f"2026-08-17 to {len(fns)}. This figure is not a defect count, so do not simply "
+    assert len(fns) == 265, (
+        f"the per-function source-text-only count moved from the 265 measured on "
+        f"2026-08-19 to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "

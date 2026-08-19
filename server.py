@@ -7267,8 +7267,14 @@ def _fetch_state(
             log.warning(f"breakout_score failed: {e}")
             _breakout_score = {}
 
-        # 5. Pin Score
-        _pin_strike = getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None
+        # 5. Pin Score — strike is the terrain SSOT total-gamma pin (RC-124/RC-292),
+        # never consensus_summary.gamma_pin (analytics net-GEX peak).
+        _t_pin_snap = terrain_cache_get(ticker) or {}
+        _pin_strike = (
+            _t_pin_snap.get("gamma_pin")
+            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
+            else None
+        )
         _gex_at_pin = None
         _oi_at_pin = None
         if _pin_strike and exposures:
@@ -7358,10 +7364,18 @@ def _fetch_state(
 
         # Build levels dict for density check
         _all_levels = {}
+        _t_pin_snap = terrain_cache_get(ticker) or {}
+        _ssot_pin = (
+            _t_pin_snap.get("gamma_pin")
+            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
+            else None
+        )
+        if _ssot_pin:
+            _all_levels["gamma_pin"] = float(_ssot_pin)
         if consensus_summary:
-            for attr in ['gamma_pin', 'oi_center']:
-                v = getattr(consensus_summary, attr, None)
-                if v: _all_levels[attr] = float(v)
+            v = getattr(consensus_summary, "oi_center", None)
+            if v:
+                _all_levels["oi_center"] = float(v)
         for name, var in [
             ('call_gamma_wall', '_cgw'), ('put_gamma_wall', '_pgw'),
             ('call_delta_wall', '_cdw'), ('put_delta_wall', '_pdw'),
@@ -8144,6 +8158,13 @@ def _fetch_state(
                         log.warning("price-action snapshot columns failed (%s): %s", ticker, e)
                         _pa_cols = {}
 
+                    _t_pin_snap = terrain_cache_get(ticker) or {}
+                    _ssot_gamma_pin = (
+                        _t_pin_snap.get("gamma_pin")
+                        if _t_pin_snap and not _t_pin_snap.get("levels_stale")
+                        else None
+                    )
+
                     _snapshot_kwargs = dict(
                         **_pa_cols,
                         ticker=ticker,
@@ -8210,7 +8231,7 @@ def _fetch_state(
                         iv_direction=getattr(ms, "iv_direction", None),
                         put_call_oi_ratio=pcr_val,
                         oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
-                        gamma_pin=getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None,
+                        gamma_pin=_ssot_gamma_pin,
                         spy_spot=mkt_ctx.spy_last, spy_chg_pct=mkt_ctx.spy_chg_pct,
                         spy_zone=_etf_zone(mkt_ctx.spy_chg_pct), spy_vwap_side=None, spy_net_delta=None,
                         qqq_spot=mkt_ctx.qqq_last, qqq_chg_pct=mkt_ctx.qqq_chg_pct,
@@ -11032,6 +11053,11 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_gamma_flip"] = _g("gamma_flip")
     md["kl_gamma_pin"] = _g("gamma_pin")
     md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
+    # RC-292: payload `gamma_pin` is the same SSOT total-gamma pin as kl_gamma_pin.
+    # Analytics consensus_summary.gamma_pin is the net-GEX peak (math_levels._pick_gamma_pin
+    # → pick_net_gex_peak_strike) and must never occupy this key. MEASURED on the real SPY
+    # 0DTE fixture: total pin 745 vs net peak 743.
+    md["gamma_pin"] = md["kl_gamma_pin"]
     md["kl_hvl"] = _g("net_gex_peak")
     # RC-354: GSF/GRC ride the same SSOT terrain book (one profile, one producer). The
     # STATE ships beside the prices so the UI can render BELOW SUPPORT as a verdict, never
