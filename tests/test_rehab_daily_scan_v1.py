@@ -276,15 +276,15 @@ def test_rc250_advisory_never_returns_to_the_blocking_commit_path() -> None:
     """The fix for invisibility must not undo P1: ADVISORY work stays out of the blocking
     commit path.
 
-    RC-395: this used to assert the literal `"--enforced-only"` in the seam's source. RC-391
-    then moved the blocking decision to the delta owner, invoked `--index --base <trunk>`,
-    which never takes that flag — so the assertion pinned an ADDRESS (one spelling of one
-    implementation) rather than the PROPERTY (advisory verdicts must not run where they
-    cannot veto). The property outlived the spelling, so the property is what is asserted,
-    and by recording the real launch rather than reading the file.
+    RC-406: the commit seam no longer runs the whole-tree catalog delta at all — that proof is
+    RELOCATED to CI (hardening.yml runs the SAME owner). On the commit path the seam only reads
+    the enforced-check ROSTER (`git show` of the checker, base vs staged index) and blocks on a
+    removal. Advisory verdicts live inside that catalog, so if the catalog is not on the commit
+    path, advisory cannot be either. Asserted on what the seam DOES: it launches NO
+    check_delta_adds_no_debt / check_institutional_correctness subprocess and no `--advisory`,
+    recording every real launch rather than reading the file.
     """
     import importlib.util
-    import subprocess as sp
 
     spec = importlib.util.spec_from_file_location(
         "precommit_rc250", ROOT / "tools" / "precommit_institutional.py")
@@ -292,25 +292,27 @@ def test_rc250_advisory_never_returns_to_the_blocking_commit_path() -> None:
     spec.loader.exec_module(seam)
 
     launches: list[list[str]] = []
-    real_run = sp.run
+    real_run = seam.subprocess.run
 
     def recording_run(args, **kw):
-        if list(args[:2]) == ["git", "rev-parse"]:
-            return real_run(args, **kw)
         launches.append([str(a) for a in args])
-        return sp.CompletedProcess(args, 0)
+        return real_run(args, **kw)  # record AND actually run (the roster read must be real)
 
     seam.subprocess.run = recording_run
     try:
-        seam.main()
+        rc = seam.main()
     finally:
         seam.subprocess.run = real_run
 
-    assert len(launches) == 1, f"expected exactly one blocking launch, got {launches}"
-    argv = launches[0]
-    assert not any("--advisory" in a for a in argv), (
-        f"advisory checks are back in the blocking commit path — that re-imposes ~145s per "
-        f"commit for verdicts that cannot veto (RC-246): {argv}")
-    # …and the blocking decision IS the delta owner measuring the staged index (RC-391).
-    assert any("check_delta_adds_no_debt.py" in a for a in argv), argv
-    assert "--index" in argv and "--base" in argv, argv
+    assert isinstance(rc, int), "the seam did not produce an exit code"
+    # The seam does only git roster reads (rev-parse + `git show` of the checker file). A `git
+    # show ...:tools/check_institutional_correctness.py` names the checker but does NOT run it.
+    # Any NON-git subprocess would mean the whole-tree catalog/delta — where advisory verdicts
+    # live — is back on the commit path; RC-406 relocated that to CI.
+    non_git = [a for a in launches if not (a and a[0] == "git")]
+    assert not non_git, (
+        f"the commit seam launched a non-git subprocess — the whole-tree catalog/delta (and its "
+        f"advisory verdicts) is back on the commit path; RC-406 relocated it to CI: {non_git}")
+    assert not any("--advisory" in " ".join(a) for a in launches), (
+        f"advisory checks are back on the commit path — ~145s/commit for verdicts that cannot "
+        f"veto (RC-246/RC-406): {launches}")
