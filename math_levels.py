@@ -123,11 +123,7 @@ def _strike_total_oi(bucket: dict) -> float | None:
     return tot if tot > 0 else None
 
 
-# ── Pin / inflection / OI helpers ─────────────────────────────────────────────
-
-def _pick_gamma_pin(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
-    """Net-GEX peak (RC-124: formerly displayed as the pin) — delegates to pick_net_gex_peak_strike."""
-    return pick_net_gex_peak_strike(exposures, strikes)
+# ── Inflection / OI helpers ───────────────────────────────────────────────────
 
 def _pick_oi_center(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
     # strike with max total OI (call+put)
@@ -162,10 +158,14 @@ def _pick_inflection_closest_zero(exposures: Dict[float, dict], strikes: List[fl
             best_val = v
     return best
 
-def _pin_strength(exposures: Dict[float, dict], gamma_pin: float | None, strikes: List[float]) -> str:
-    if gamma_pin is None:
+def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]) -> str:
+    """High/Med/Low concentration of |net GEX$| at the analytics net-GEX peak vs the median strike.
+
+    Not the terrain total-gamma pin's lead % (`gamma_pin_strength_pct`).
+    """
+    if net_gex_peak is None:
         return "Very Low"
-    b = exposures.get(gamma_pin, {}) or exposures.get(float(gamma_pin), {})
+    b = exposures.get(net_gex_peak, {}) or exposures.get(float(net_gex_peak), {})
     if exposures_have_dollar_gex(exposures):
         gp = abs(net_gex_dollars_at_strike(b))
         vals = [abs(net_gex_dollars_at_strike(exposures.get(s, {}))) for s in strikes]
@@ -244,11 +244,11 @@ def build_summary_rows(
     cons_strikes = strikes_all
     cons_gamma_strikes = key_level_strikes_with_gamma(exposures) or cons_strikes
     cons_net_gamma, cons_net_delta = aggregate(cons_strikes)
-    cons_gamma_pin = _pick_gamma_pin(exposures, cons_gamma_strikes)
+    cons_net_gex_peak = pick_net_gex_peak_strike(exposures, cons_gamma_strikes)
     cons_delta_inf = _pick_inflection_closest_zero(exposures, cons_gamma_strikes, "net_delta")
     cons_gamma_inf = _pick_inflection_closest_zero(exposures, cons_gamma_strikes, "net_gamma")
     cons_oi_center = _pick_oi_center(exposures, cons_strikes)
-    cons_pin_strength = _pin_strength(exposures, cons_gamma_pin, cons_gamma_strikes)
+    cons_pin_strength = _pin_strength(exposures, cons_net_gex_peak, cons_gamma_strikes)
     cons_bias = _bias_from_net(cons_net_gamma, cons_net_delta, cons_pin_strength)
     rows.append(
         ExposureRow(
@@ -256,7 +256,7 @@ def build_summary_rows(
             None,
             cons_net_gamma,
             cons_net_delta,
-            cons_gamma_pin,
+            cons_net_gex_peak,
             cons_delta_inf,
             cons_gamma_inf,
             cons_oi_center,
@@ -268,11 +268,11 @@ def build_summary_rows(
     for w in windows:
         ws = _window_strikes(strikes_all, spot, w)
         net_gamma, net_delta = aggregate(ws)
-        gamma_pin = _pick_gamma_pin(exposures, ws)
+        net_gex_peak = pick_net_gex_peak_strike(exposures, ws)
         delta_inf = _pick_inflection_closest_zero(exposures, ws, "net_delta")
         gamma_inf = _pick_inflection_closest_zero(exposures, ws, "net_gamma")
         oi_center = _pick_oi_center(exposures, ws)
-        pin_strength = _pin_strength(exposures, gamma_pin, ws)
+        pin_strength = _pin_strength(exposures, net_gex_peak, ws)
         bias = _bias_from_net(net_gamma, net_delta, pin_strength)
         rows.append(
             ExposureRow(
@@ -280,7 +280,7 @@ def build_summary_rows(
                 w,
                 net_gamma,
                 net_delta,
-                gamma_pin,
+                net_gex_peak,
                 delta_inf,
                 gamma_inf,
                 oi_center,

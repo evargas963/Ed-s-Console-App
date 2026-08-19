@@ -122,7 +122,7 @@ class ExposureRow:
     window: int | None         # None = all (consensus)
     net_gamma: float | None
     net_delta: float | None
-    gamma_pin: float | None
+    net_gex_peak: float | None  # RC-417: |net GEX$| peak — never the total-gamma pin
     delta_inflection: float | None
     gamma_inflection: float | None
     oi_center: float | None

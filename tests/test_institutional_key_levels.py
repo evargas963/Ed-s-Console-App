@@ -34,12 +34,32 @@ def test_exposures_are_dollarized():
 
 
 def test_net_gex_peak_uses_net_gex_when_dollarized():
-    """RC-124: the former 'pin' — the NET book's peak — under its honest name."""
+    """RC-124/RC-417: the former 'pin' — the NET book's peak — under its honest name."""
+    from dataclasses import asdict, fields
+    from math_exposure_core import ExposureRow
+    from levels import to_display_rows
+
+    names = {f.name for f in fields(ExposureRow)}
+    assert "gamma_pin" not in names
+    assert "net_gex_peak" in names
+
     exposures, spot = _dollarized_exposures()
     peak = pick_net_gex_peak_strike(exposures, sorted(exposures.keys()))
-    assert peak is not None
+    pin, _ = pick_pin_and_strength(exposures, sorted(exposures.keys()))
+    assert peak is not None and pin is not None
+    assert peak == 743.0 and pin == 745.0, (
+        "this fixture's net-GEX peak and total-gamma pin must keep diverging — "
+        f"got peak={peak} pin={pin}"
+    )
     rows = build_summary_rows(exposures, spot, windows=[5])
-    assert rows[0].gamma_pin == peak
+    assert rows[0].net_gex_peak == peak
+    assert not hasattr(rows[0], "gamma_pin")
+    dumped = asdict(rows[0])
+    assert "gamma_pin" not in dumped
+    assert dumped["net_gex_peak"] == peak
+    disp = to_display_rows(rows)
+    assert not hasattr(disp[0], "gamma_pin")
+    assert disp[0].net_gex_peak == f"{peak:.2f}"
 
 
 def test_standard_pin_is_total_gamma_with_decisiveness():

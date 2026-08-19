@@ -15,7 +15,7 @@ class DisplayRow:
     range_label: str
     net_gamma: str
     net_delta: str
-    gamma_pin: str
+    net_gex_peak: str
     delta_inf: str
     gamma_inf: str
     oi_center: str
@@ -46,7 +46,7 @@ def to_display_rows(rows: List[ExposureRow]) -> List[DisplayRow]:
                 range_label=r.label,
                 net_gamma=_fmt_money_abbrev(r.net_gamma),
                 net_delta=_fmt_money_abbrev(r.net_delta),
-                gamma_pin=_fmt_level(r.gamma_pin),
+                net_gex_peak=_fmt_level(r.net_gex_peak),
                 delta_inf=_fmt_level(r.delta_inflection),
                 gamma_inf=_fmt_level(r.gamma_inflection),
                 oi_center=_fmt_level(r.oi_center),
