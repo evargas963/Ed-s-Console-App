@@ -367,16 +367,17 @@ def build_walls_rows(
     for label, w in [("CONSENSUS", None)] + [(f"±{x}", x) for x in windows]:
         sset = strikes_for(w)
 
-        # Gamma / delta walls — institutional dollar metrics when spot known
+        # Gamma / delta walls — one picker (dollarized GEX$/DEX$ when the book
+        # has them; raw greek only as that picker's documented undollarized fallback).
+        # RC-419: windowed ±N rows used to call _pick_wall_abs on raw call_gamma even
+        # when CONSENSUS used pick_gamma_wall_strikes, so asdict walls[] shipped two
+        # quantities under call_gamma_wall.
         if label == "CONSENSUS" and KEY_LEVEL_STRIKE_WINDOW is None:
             g_strikes = key_level_strikes_with_gamma(exposures) or sset
-            (cg_s, cg_v), (pg_s, pg_v) = pick_gamma_wall_strikes(exposures, g_strikes)
-            (cd_s, cd_v), (pd_s, pd_v) = pick_delta_wall_strikes(exposures, g_strikes)
         else:
-            cg_s, cg_v = _pick_wall_abs(exposures, sset, "call_gamma")
-            pg_s, pg_v = _pick_wall_abs(exposures, sset, "put_gamma")
-            cd_s, cd_v = _pick_wall_abs(exposures, sset, "call_delta")
-            pd_s, pd_v = _pick_wall_abs(exposures, sset, "put_delta")
+            g_strikes = sset
+        (cg_s, cg_v), (pg_s, pg_v) = pick_gamma_wall_strikes(exposures, g_strikes)
+        (cd_s, cd_v), (pd_s, pd_v) = pick_delta_wall_strikes(exposures, g_strikes)
         domg_side, domg_s, domg_v = _dominant(cg_s, cg_v, pg_s, pg_v)
         domd_side, domd_s, domd_v = _dominant(cd_s, cd_v, pd_s, pd_v)
 

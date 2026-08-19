@@ -99,24 +99,10 @@ def test_hvl_and_walls_still_pick():
     assert cg is not None or pg is not None
 
 
-def test_walls_row_does_not_ship_near_spot_raw_gamma_as_a_pin():
-    """RC-418: call/put_gamma_pin was max abs raw call_gamma/put_gamma in ±5 of spot —
-    not the terrain total-gamma pin and not the dollarized wall. Live /api/state asdict
-    shipped the pin name anyway. The quantity had no painter; delete the authority."""
-    from dataclasses import asdict, fields
-
-    names = {f.name for f in fields(WallsRow)}
-    for n in (
-        "call_gamma_pin", "put_gamma_pin",
-        "call_gamma_pin_strength", "put_gamma_pin_strength",
-        "call_delta_pin", "put_delta_pin",
-        "call_oi_pin", "put_oi_pin",
-    ):
-        assert n not in names
-    assert not any("pin" in n for n in names)
-
+def _three_way_split_exposures():
     # institutional-synthetic-ok: three-way split needs known buckets, not a captured chain.
-    synth = {
+    # 100 = max raw call_gamma; 101 = max |call GEX$|; 120 = max total GEX$ (pin).
+    return {
         100.0: {
             "call_gamma": 1000.0, "put_gamma": 1.0,
             "call_gex_1pct": 1.0, "put_gex_1pct": -1.0,
@@ -139,6 +125,25 @@ def test_walls_row_does_not_ship_near_spot_raw_gamma_as_a_pin():
             "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
         },
     }
+
+
+def test_walls_row_does_not_ship_near_spot_raw_gamma_as_a_pin():
+    """RC-418: call/put_gamma_pin was max abs raw call_gamma/put_gamma in ±5 of spot —
+    not the terrain total-gamma pin and not the dollarized wall. Live /api/state asdict
+    shipped the pin name anyway. The quantity had no painter; delete the authority."""
+    from dataclasses import asdict, fields
+
+    names = {f.name for f in fields(WallsRow)}
+    for n in (
+        "call_gamma_pin", "put_gamma_pin",
+        "call_gamma_pin_strength", "put_gamma_pin_strength",
+        "call_delta_pin", "put_delta_pin",
+        "call_oi_pin", "put_oi_pin",
+    ):
+        assert n not in names
+    assert not any("pin" in n for n in names)
+
+    synth = _three_way_split_exposures()
     pin, _ = pick_pin_and_strength(synth, sorted(synth))
     (cg, _), _pg = pick_gamma_wall_strikes(synth, sorted(synth))
     assert pin == 120.0 and cg == 101.0
@@ -149,6 +154,25 @@ def test_walls_row_does_not_ship_near_spot_raw_gamma_as_a_pin():
     assert walls[0].put_gamma_wall == 120.0
     # Pre-fix _pick_pin would have set call_gamma_pin=100.0 on this book.
     assert 100.0 not in (walls[0].call_gamma_wall, walls[0].put_gamma_wall, pin)
+
+
+def test_windowed_walls_use_dollarized_gex_not_raw_gamma():
+    """RC-419: ±N WallsRow.call_gamma_wall was _pick_wall_abs(call_gamma) while
+    CONSENSUS used pick_gamma_wall_strikes (max |call GEX$|). Same field, two
+    quantities, shipped on /api/state walls[]. Window is strike-index ±N, so
+    this 3-strike book is fully inside windows=[5,10]; the split is the metric."""
+    synth = _three_way_split_exposures()
+    walls = build_walls_rows(synth, 100.5, windows=[5, 10])
+    assert walls[0].label == "CONSENSUS" and walls[0].call_gamma_wall == 101.0
+    assert walls[0].call_gamma_strength == 999.0
+    win = [w for w in walls if w.label != "CONSENSUS"]
+    assert win, "windowed rows must still exist so the payload shape is honest"
+    for w in win:
+        # Pre-fix _pick_wall_abs(call_gamma) would have set call_gamma_wall=100.0
+        # with strength 1000.0 (raw gamma) on this book.
+        assert w.call_gamma_wall == 101.0
+        assert w.call_gamma_strength == 999.0
+        assert w.call_gamma_wall != 100.0
 
 
 def test_consensus_net_gamma_equals_aggregate_net_gex():
