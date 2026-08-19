@@ -8,7 +8,7 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, List
 
 from math_exposure_core import (
@@ -340,6 +340,62 @@ def compute_pin_width_pts(call_gamma_wall: float | None,
     if not call_gamma_wall or not put_gamma_wall:
         return None
     return round(call_gamma_wall - put_gamma_wall, 4)
+
+
+def consensus_walls_bind_terrain_ssot(
+    walls: List[WallsRow],
+    terrain: dict | None,
+) -> List[WallsRow]:
+    """RC-420: CONSENSUS gamma/delta wall strikes bind to terrain SSOT.
+
+    Fresh terrain (truthy and not levels_stale) rewrites CONSENSUS call/put
+    gamma and delta wall strikes from the wide-chain cache the overlay already
+    paints. Stale or absent terrain withholds those four strikes rather than
+    leaving selected-expiry analytics in place. Strengths are withheld so
+    selected-expiry GEX$ cannot sit beside a wide-chain strike. Windowed
+    plus-minus-N rows are unchanged. OI/vanna stay analytics because terrain
+    does not compute them.
+    """
+    if not walls:
+        return walls
+    idx = 0
+    for i, row in enumerate(walls):
+        if row.label == "CONSENSUS":
+            idx = i
+            break
+    row = walls[idx]
+    t = terrain or {}
+    fresh = bool(t) and not t.get("levels_stale")
+    if fresh:
+        cg = _f(t.get("call_wall"))
+        pg = _f(t.get("put_wall"))
+        cd = _f(t.get("call_delta_wall"))
+        pd = _f(t.get("put_delta_wall"))
+    else:
+        cg = pg = cd = pd = None
+    cg_v = pg_v = cd_v = pd_v = None
+    domg_side, domg_s, domg_v = _dominant(cg, cg_v, pg, pg_v)
+    domd_side, domd_s, domd_v = _dominant(cd, cd_v, pd, pd_v)
+    bound = replace(
+        row,
+        call_gamma_wall=cg,
+        call_gamma_strength=cg_v,
+        put_gamma_wall=pg,
+        put_gamma_strength=pg_v,
+        dom_gamma_side=domg_side,
+        dom_gamma_wall=domg_s,
+        dom_gamma_strength=domg_v,
+        call_delta_wall=cd,
+        call_delta_strength=cd_v,
+        put_delta_wall=pd,
+        put_delta_strength=pd_v,
+        dom_delta_side=domd_side,
+        dom_delta_wall=domd_s,
+        dom_delta_strength=domd_v,
+    )
+    out = list(walls)
+    out[idx] = bound
+    return out
 
 
 def build_walls_rows(

@@ -194,6 +194,13 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     assert "gamma_pin=_ssot_gamma_pin" in src
     assert 'getattr(consensus_summary, "gamma_pin"' not in src
     assert 'getattr(consensus_summary, "net_gex_peak"' not in src
+    # RC-420: CONSENSUS gamma/delta walls bind to the same terrain cache (folded
+    # into this reader so the source-text census stays 266).
+    i_walls = src.index("walls     = build_walls_rows")
+    walls_chunk = src[i_walls:i_walls + 700]
+    assert "consensus_walls_bind_terrain_ssot" in walls_chunk
+    assert "terrain_cache_get" in walls_chunk
+    assert walls_chunk.find("consensus_walls_bind_terrain_ssot") < walls_chunk.find("build_totals_rows")
 
 
 # ── RC-128 (operator mandate: ONE Levels Faucet) ─────────────────────────────────────────────
