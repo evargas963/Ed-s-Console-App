@@ -47,7 +47,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from time_et import ET, is_trading_day_et  # noqa: E402
+from time_et import ET, RTH_START_MINS, is_trading_day_et  # noqa: E402
 
 # ── Sibling IC helpers (ATM residual / Spearman) ─────────────────────────────
 _IC_PATH = REPO / "tools" / "liquidity_strike_ic_v1.py"
@@ -91,7 +91,7 @@ SEED = 20260730
 
 # Decision clocks (ET minutes from midnight)
 CLOCKS: tuple[tuple[str, int], ...] = (
-    ("10:15", 10 * 60 + 15),
+    ("10:15", int(RTH_START_MINS) + 45),
     ("11:00", 11 * 60),
     ("12:00", 12 * 60),
     ("14:00", 14 * 60),

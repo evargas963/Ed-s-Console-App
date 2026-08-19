@@ -12,10 +12,10 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
+from time_et import ET, RTH_END_MINS, RTH_START_MINS
 con = sqlite3.connect("file:data/ed_console.db?mode=ro", uri=True, timeout=120)
 con.row_factory = sqlite3.Row
 def et(ts):
-    from time_et import ET  # single ET authority (COH-SA2)
     return datetime.fromtimestamp(ts, ET)
 
 rows = con.execute("""
@@ -28,11 +28,11 @@ for r in rows:
     d = et(r["ts_utc"])
     if d.weekday() >= 5: continue
     m = d.hour*60 + d.minute
-    if not (570 <= m <= 959): continue
+    if not (RTH_START_MINS <= m < RTH_END_MINS): continue
     k = (r["ticker"], d.date())
     usable = r["net_gamma"] is not None and r["call_gamma_wall"] and r["put_gamma_wall"]
     if usable and k not in first_ok:
-        first_ok[k] = m - 570                       # minutes after the 09:30 open
+        first_ok[k] = m - RTH_START_MINS               # minutes after RTH open
     if r["net_gamma"] is not None:
         series.setdefault(k, []).append((m, r["net_gamma"]))
 

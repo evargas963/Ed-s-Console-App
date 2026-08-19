@@ -49,6 +49,7 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 from dataclasses import asdict, dataclass
 
+import time_et as _time_et
 from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
                      is_trading_day_et)
 
@@ -9875,6 +9876,20 @@ async def _app_lifespan(app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
+
+# F09: serve the JS projection from time_et on every request. Registered BEFORE
+# the StaticFiles mount so a committed or leftover disk blob cannot become a
+# second clock authority (Starlette matches routes in order).
+app.add_api_route(
+    "/static/rth_clock_authority.js",
+    lambda: Response(
+        _time_et.rth_clock_js_source(),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    ),
+    methods=["GET"],
+    include_in_schema=False,
+)
 
 static_dir = Path(APP_DIR) / "static"
 static_dir.mkdir(exist_ok=True)

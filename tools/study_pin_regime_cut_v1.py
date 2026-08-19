@@ -12,10 +12,10 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
+from time_et import ET, RTH_END_MINS, RTH_START_MINS
 con = sqlite3.connect("file:data/ed_console.db?mode=ro", uri=True, timeout=120)
 con.row_factory = sqlite3.Row
 def et(ts):
-    from time_et import ET  # single ET authority (COH-SA2)
     return datetime.fromtimestamp(ts, ET)
 
 closes = {}
@@ -23,7 +23,7 @@ for r in con.execute("SELECT ticker, bar_start_ts_utc, close FROM price_bars_1m 
     d = et(r["bar_start_ts_utc"])
     if d.weekday() >= 5: continue
     m = d.hour*60+d.minute
-    if 570 <= m <= 959: closes[(r["ticker"], d.date())] = r["close"]
+    if RTH_START_MINS <= m < RTH_END_MINS: closes[(r["ticker"], d.date())] = r["close"]
 
 rows = con.execute("""
   SELECT ticker, ts_utc, spot, gamma_pin, call_gamma_wall, put_gamma_wall, net_gamma

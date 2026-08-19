@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from time_et import ET
+from time_et import ET, RTH_END_MINS, RTH_START_MINS
 
 from v2_decision.a2_session_calendar import get_session_info, load_a2_session_calendar
 
 EOD_CADENCE_WINDOW_MINUTES = 30
-FORCE_EXIT_CLOCK_HOUR = 15
-FORCE_EXIT_CLOCK_MINUTE = 50
-RTH_OPEN_MINUTE_TOTAL = 9 * 60 + 30
-RTH_CLOSE_MINUTE_TOTAL = 16 * 60
+RTH_OPEN_MINUTE_TOTAL = RTH_START_MINS
+RTH_CLOSE_MINUTE_TOTAL = RTH_END_MINS
 A2_FORCE_EXIT_OFFSET_FROM_SESSION_CLOSE_MINUTES = 10
 A2_CADENCE_SHIFT_OFFSET_FROM_SESSION_CLOSE_MINUTES = 30
+FORCE_EXIT_CLOCK_MINUTE_TOTAL = (
+    RTH_CLOSE_MINUTE_TOTAL - A2_FORCE_EXIT_OFFSET_FROM_SESSION_CLOSE_MINUTES
+)
+FORCE_EXIT_CLOCK_HOUR = FORCE_EXIT_CLOCK_MINUTE_TOTAL // 60
+FORCE_EXIT_CLOCK_MINUTE = FORCE_EXIT_CLOCK_MINUTE_TOTAL % 60
 
 
 def derive_et_clock_from_decision_time_ms(decision_time_ms) -> tuple[int, int, int] | None:
@@ -34,7 +37,7 @@ def is_in_rth_normal_session(et_hour, et_minute, et_weekday) -> bool:
         weekday = int(et_weekday)
     except (TypeError, ValueError):
         return False
-    return 0 <= weekday <= 4 and RTH_OPEN_MINUTE_TOTAL <= minute_total <= RTH_CLOSE_MINUTE_TOTAL
+    return 0 <= weekday <= 4 and RTH_OPEN_MINUTE_TOTAL <= minute_total < RTH_CLOSE_MINUTE_TOTAL
 
 
 def is_force_exit_clock_threshold_passed(et_hour, et_minute) -> bool:

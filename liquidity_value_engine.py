@@ -694,7 +694,8 @@ def _cutoff_for_snapshot(snapshot_type: SnapshotType, session_date: date) -> Opt
       AFTERNOON: through 14:00:00 ET
     """
     if snapshot_type == SnapshotType.PREMARKET:
-        return datetime.combine(session_date, time(9, 29), tzinfo=ET)
+        last = int(RTH_OPEN_MINS) - 1  # last full minute before cash RTH open
+        return datetime.combine(session_date, time(last // 60, last % 60), tzinfo=ET)
     if snapshot_type == SnapshotType.OPENING:
         return datetime.combine(session_date, time(9, 45), tzinfo=ET)
     if snapshot_type == SnapshotType.MIDDAY:

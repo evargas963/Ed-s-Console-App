@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Chart — terrain on price</title>
+<script src="/static/rth_clock_authority.js"></script> <!-- # ui-mockup-ok: F09 consume served time_et RTH clock; no Chart redesign -->
 <style>
   /* v6.2 (RC-195) # ui-mockup-ok: operator "the tabs don't look right, no light/dark, fonts
      don't match" — this is the cv2 SYSTEM the operator actually sees on the Console, ported
@@ -980,7 +981,8 @@ function domain() {
   return { lo: lo - span * 0.05, hi: hi + span * 0.05 };
 }
 
-/** RTH 9:30–16:00 America/New_York — matches time_et.RTH_OPEN_MINS/RTH_END_MINS. */
+/** RTH open/close from the served time_et projection (static/rth_clock_authority.js).
+ *  # ui-mockup-ok: F09 consume served time_et RTH clock; PRE-MKT/AFTER-HRS labels unchanged. */
 function etSessionTag() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
@@ -990,8 +992,11 @@ function etSessionTag() {
   const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[get('weekday')];
   let h = Number(get('hour')); if (h === 24) h = 0;
   const mm = h * 60 + Number(get('minute'));
-  if (wd >= 1 && wd <= 5 && mm >= 570 && mm < 960) return null;
-  if (wd >= 1 && wd <= 5 && mm < 570) return 'PRE-MKT';
+  const open = Number(window.ED_RTH_START_MINS);
+  const close = Number(window.ED_RTH_END_MINS);
+  if (!Number.isFinite(open) || !Number.isFinite(close)) return 'UNKNOWN';
+  if (wd >= 1 && wd <= 5 && mm >= open && mm < close) return null;
+  if (wd >= 1 && wd <= 5 && mm < open) return 'PRE-MKT';
   return 'AFTER-HRS';
 }
 

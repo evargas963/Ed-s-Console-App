@@ -26,10 +26,11 @@ from ml_horizon import default_training_label_column, live_inference_horizon_slu
 
 CANONICAL_TARGET_COL = default_training_label_column()
 
-# ── RTH filter: 09:30–16:00 ET, weekdays (Mon=1..Fri=5) ───────────────────────
-RTH_WHERE = """
-    (et_hour * 60 + et_minute) >= 570
-    AND (et_hour * 60 + et_minute) < 960
+# ── RTH filter: time_et open/close, weekdays (Mon=1..Fri=5) ───────────────────
+from time_et import RTH_END_MINS, RTH_START_MINS
+RTH_WHERE = f"""
+    (et_hour * 60 + et_minute) >= {int(RTH_START_MINS)}
+    AND (et_hour * 60 + et_minute) < {int(RTH_END_MINS)}
     AND CAST(strftime('%w', substr(ts_et, 1, 10)) AS INTEGER) BETWEEN 1 AND 5
 """
 

@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 log = logging.getLogger(__name__)
 
-from time_et import ET as _ET
+from time_et import ET as _ET, RTH_START_MINS
 
 _throttle_sec = float(__import__("os").environ.get("ED_NEWS_THROTTLE_SEC", "90"))
 _lock = threading.Lock()
@@ -296,9 +296,9 @@ def _update_pre_market_store(ticker: str, composite: Optional[float]) -> None:
     now = datetime.now(tz=_ET)
     key_date = now.strftime("%Y-%m-%d")
     k = f"{ticker.upper()}|{key_date}"
-    h, m = now.hour, now.minute
-    # Pre-market window ET: treat as 04:00–09:30 anchor for "story at open"
-    if (h < 9 or (h == 9 and m < 30)) and h >= 4:
+    mins = now.hour * 60 + now.minute
+    # Pre-market news window: 04:00 ET (distinct news-anchor start) until cash RTH open.
+    if (4 * 60) <= mins < RTH_START_MINS:
         _pre_market_by_key[k] = float(composite)
 
 

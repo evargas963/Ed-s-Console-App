@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from time_et import ET, is_trading_day_et  # RC-58: the one calendar authority
+from time_et import ET, RTH_START_MINS, is_trading_day_et  # RC-58: the one calendar authority
 
 
 @dataclass(frozen=True)
@@ -93,10 +93,12 @@ def load_morning_signals(
     db_path: str,
     tickers: list[str],
     *,
-    start_mins: int = 570,
+    start_mins: int | None = None,
     end_mins: int = 615,
 ) -> list[MorningSignal]:
     """First snapshot/day with option_chain_json in the morning ET window."""
+    if start_mins is None:
+        start_mins = RTH_START_MINS
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     out: list[MorningSignal] = []

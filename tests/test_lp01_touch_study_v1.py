@@ -12,7 +12,7 @@ from datetime import date, datetime
 os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
 
 import tools.lp01_touch_study_v1 as S  # noqa: E402
-from time_et import ET  # noqa: E402
+from time_et import ET, RTH_START_MINS  # noqa: E402
 
 
 def _bar(d: date, hh: int, mm: int, o: float, h: float, lo: float, c: float) -> dict:
@@ -24,7 +24,7 @@ def _bar(d: date, hh: int, mm: int, o: float, h: float, lo: float, c: float) -> 
 def _session(d: date, n: int = 60, base: float = 100.0) -> list[dict]:
     out = []
     for i in range(n):
-        mins = 9 * 60 + 30 + i
+        mins = int(RTH_START_MINS) + i
         p = base + i * 0.01
         out.append(_bar(d, mins // 60, mins % 60, p, p + 0.05, p - 0.05, p))
     return out

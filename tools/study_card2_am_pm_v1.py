@@ -35,7 +35,7 @@ from statistics import quantiles
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from time_et import is_trading_day_et  # RC-58: the one calendar authority
+from time_et import RTH_END_MINS, RTH_START_MINS, is_trading_day_et  # RC-58: the one calendar authority
 from tools.terrain_backtest_report_v1 import (  # noqa: E402
     DB,
     SENTINELS,
@@ -62,8 +62,10 @@ def _series(con: sqlite3.Connection) -> dict:
         if not is_trading_day_et(day):
             continue          # RC-58: minute windows alone admit Saturday bars — frozen
                               # ranges bias every response stat deterministically
-        # Include the 16:00 ET bar (mins==960) so response is 15:30→16:00, not 15:59.
-        if not (9 * 60 + 30 <= mins <= 16 * 60):
+        # Inclusive of RTH_END_MINS (16:00 ET bar). Distinct from is_rth_ts_utc,
+        # which is [open, close): this study needs the session-close bar so the
+        # response is 15:30→16:00, not 15:59.
+        if not (RTH_START_MINS <= mins <= RTH_END_MINS):
             continue
         d = out[tk].setdefault(day, {"open": o, "c1000": None, "c1530": None,
                                      "close": c, "am_hl": []})
@@ -73,7 +75,7 @@ def _series(con: sqlite3.Connection) -> dict:
             d["c1000"] = c
         if mins <= 15 * 60 + 30:
             d["c1530"] = c
-        if mins <= 16 * 60:
+        if mins <= RTH_END_MINS:
             d["close"] = c
     return out
 

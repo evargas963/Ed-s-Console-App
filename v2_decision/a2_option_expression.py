@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 from v2_decision.a2_eod_force_exit import derive_et_clock_from_decision_time_ms
+from time_et import RTH_END_MINS
 
 from .a2_lifecycle_health import (
     derive_a2_pin_risk_health,
@@ -128,7 +129,7 @@ HARD_GATE_ACTION_POLICY = {
     "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md lines 155-156",
 }
 
-_RTH_CLOSE_MINUTE_TOTAL = 16 * 60
+_RTH_CLOSE_MINUTE_TOTAL = RTH_END_MINS
 
 
 def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, Any]) -> dict[str, Any]:

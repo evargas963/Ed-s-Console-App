@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from time_et import ET
+from time_et import ET, RTH_SESSION_MINUTES, RTH_START_MINS
 def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1000.0) -> dict:
     return {
         "timestamp": int(dt.timestamp() * 1000),
@@ -23,7 +23,7 @@ def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1
     }
 
 
-def _synthetic_bars(session_date: date, prev_day_bars: int = 390, today_bars: int = 300) -> list[dict]:
+def _synthetic_bars(session_date: date, prev_day_bars: int = RTH_SESSION_MINUTES, today_bars: int = 300) -> list[dict]:
     """Generate synthetic 1-min bars: prev day RTH + today RTH (partial).
     today_bars=300 gives bars through 14:30 ET (enough for afternoon cutoff 14:00)."""
     from datetime import timedelta
@@ -32,18 +32,18 @@ def _synthetic_bars(session_date: date, prev_day_bars: int = 390, today_bars: in
     base_price = 500.0
     prev_date = session_date - timedelta(days=1)
 
-    # Previous day RTH: 09:30–16:00
+    # Previous day cash RTH [open, close)
     for i in range(prev_day_bars):
-        mins = 9 * 60 + 30 + i
+        mins = int(RTH_START_MINS) + i
         h = mins // 60
         m = mins % 60
         dt = datetime(prev_date.year, prev_date.month, prev_date.day, h, m, tzinfo=ET)
         p = base_price + (i % 50) - 25
         bars.append(_mk_bar(dt, p, p + 0.5, p - 0.5, p, 1000))
 
-    # Today RTH: first N minutes
+    # Today cash RTH: first N minutes
     for i in range(today_bars):
-        mins = 9 * 60 + 30 + i
+        mins = int(RTH_START_MINS) + i
         h = mins // 60
         m = mins % 60
         dt = datetime(session_date.year, session_date.month, session_date.day, h, m, tzinfo=ET)
@@ -52,7 +52,7 @@ def _synthetic_bars(session_date: date, prev_day_bars: int = 390, today_bars: in
     return bars
 
 
-def _bars_through(session_date: date, hour: int, minute: int, prev_day_bars: int = 390) -> list[dict]:
+def _bars_through(session_date: date, hour: int, minute: int, prev_day_bars: int = RTH_SESSION_MINUTES) -> list[dict]:
     """Bars only through given ET time (exclusive of bars past that time)."""
     from datetime import timedelta
 
@@ -62,14 +62,14 @@ def _bars_through(session_date: date, hour: int, minute: int, prev_day_bars: int
     cutoff_mins = hour * 60 + minute
 
     for i in range(prev_day_bars):
-        mins = 9 * 60 + 30 + i
+        mins = int(RTH_START_MINS) + i
         h = mins // 60
         m = mins % 60
         dt = datetime(prev_date.year, prev_date.month, prev_date.day, h, m, tzinfo=ET)
         p = base_price + (i % 50) - 25
         bars.append(_mk_bar(dt, p, p + 0.5, p - 0.5, p, 1000))
 
-    today_start = 9 * 60 + 30
+    today_start = int(RTH_START_MINS)
     for i in range(cutoff_mins - today_start + 1):
         mins = today_start + i
         h = mins // 60

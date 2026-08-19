@@ -13,10 +13,13 @@ from v2_decision.a2_eod_force_exit import (
     is_force_exit_clock_threshold_passed,
     is_in_eod_cadence_window,
     is_in_rth_normal_session,
+    FORCE_EXIT_CLOCK_HOUR,
+    FORCE_EXIT_CLOCK_MINUTE,
+    A2_FORCE_EXIT_OFFSET_FROM_SESSION_CLOSE_MINUTES,
 )
 
 
-from time_et import ET
+from time_et import ET, RTH_END_MINS
 def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int:
     return int(datetime(year, month, day, hour, minute, tzinfo=ET).timestamp() * 1000)
 
@@ -62,6 +65,13 @@ def _isolate_calendar(monkeypatch):
     monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: None, raising=False)
 
 
+def test_force_exit_clock_is_derived_from_rth_close():
+    assert (
+        FORCE_EXIT_CLOCK_HOUR * 60 + FORCE_EXIT_CLOCK_MINUTE
+        == RTH_END_MINS - A2_FORCE_EXIT_OFFSET_FROM_SESSION_CLOSE_MINUTES
+    )
+
+
 def test_derive_et_clock_returns_correct_hour_minute_weekday_for_normal_input():
     assert derive_et_clock_from_decision_time_ms(_epoch_ms_et(2026, 5, 5, 15, 50)) == (15, 50, 1)
 
@@ -93,6 +103,7 @@ def test_force_exit_does_not_fire_when_clock_before_15_50():
 
 def test_force_exit_does_not_fire_outside_rth_normal_session():
     assert is_in_rth_normal_session(9, 29, 1) is False
+    assert is_in_rth_normal_session(16, 0, 1) is False
     assert is_in_rth_normal_session(16, 1, 1) is False
     assert is_in_rth_normal_session(15, 50, 5) is False
     assert evaluate_a2_eod_force_exit(_ms(decision_time_ms=_epoch_ms_et(2026, 5, 9, 15, 50))) == (

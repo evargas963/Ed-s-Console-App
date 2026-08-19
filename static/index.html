@@ -16,6 +16,7 @@
 <link rel="apple-touch-icon" href="/static/icons/axiom-256.png">
 <link rel="manifest" href="/static/site.webmanifest">
 <meta name="theme-color" content="#0A1930">
+<script src="/static/rth_clock_authority.js"></script>
 <link rel="stylesheet" href="/static/css/axiom-splash.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -9191,6 +9192,14 @@ function etHHMMtoCT(hhmm) {
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
   return String((h + 23) % 24).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
+function edRthStartMins() {
+  const n = Number(window.ED_RTH_START_MINS);
+  return Number.isFinite(n) ? n : Number.NaN;
+}
+function edRthEndMins() {
+  const n = Number(window.ED_RTH_END_MINS);
+  return Number.isFinite(n) ? n : Number.NaN;
+}
 function getETMinutes() {
   const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hour12: false });
   const parts = formatter.formatToParts(new Date());
@@ -9201,31 +9210,39 @@ function getETMinutes() {
 function getSnapshotTypeFromET() {
   /* Legacy checkpoint labels — Liquidity Map card uses live snapshot via API (rolling cutoff + fusion). */
   const m = getETMinutes();
-  if (m < 570) return 'premarket';
-  if (m < 630) return 'opening';
-  if (m < 840) return 'midday';
+  const open = edRthStartMins();
+  if (!Number.isFinite(open)) return 'unknown';
+  if (m < open) return 'premarket';
+  if (m < open + 60) return 'opening';
+  if (m < open + 270) return 'midday';
   return 'afternoon';
 }
 function getActiveStageFromET() {
   const m = getETMinutes();
-  if (m < 570) return 0;
-  if (m < 630) return 1;
-  if (m < 840) return 2;
-  if (m < 960) return 3;
+  const open = edRthStartMins();
+  const close = edRthEndMins();
+  if (!Number.isFinite(open) || !Number.isFinite(close)) return 0;
+  if (m < open) return 0;
+  if (m < open + 60) return 1;
+  if (m < open + 270) return 2;
+  if (m < close) return 3;
   return 3;
 }
 function getNextCheckpointFromET() {
   const m = getETMinutes();
+  const open = edRthStartMins();
+  const close = edRthEndMins();
   const stages = [
     { name: 'Pre-Market', time: 'Before 08:30', bullets: ['Overnight high/low vs PDH/PDL', 'Fair value from prior POC', 'Key liquidity zones above/below'] },
     { name: 'Opening Auction', time: '08:45', bullets: ['ORB high/low established', 'VWAP at 08:45', 'Breakout/breakdown triggers'] },
     { name: 'Value Formation', time: '09:30–10:30', bullets: ['POC/VAH/VAL developing', 'Value migration detection', 'VWAP supply/demand zones'] },
     { name: 'Positioning', time: '13:00–14:00', bullets: ['Updated daily profile', 'New value area check', 'Afternoon fair value zone'] },
   ];
-  if (m < 570) return stages[0];
-  if (m < 630) return stages[1];
-  if (m < 840) return stages[2];
-  if (m < 960) return stages[3];
+  if (!Number.isFinite(open) || !Number.isFinite(close)) return stages[0];
+  if (m < open) return stages[0];
+  if (m < open + 60) return stages[1];
+  if (m < open + 270) return stages[2];
+  if (m < close) return stages[3];
   return stages[3];
 }
 const ZONE_BADGE_MAP = {
@@ -12218,7 +12235,9 @@ window.edSpeak = function edSpeak(text, cancel = true) {
   function secondsUntilRthCloseEt() {
     const { hour, minute, second } = getEtClockParts();
     const nowInDay = hour * 3600 + minute * 60 + second;
-    return 16 * 3600 - nowInDay;
+    const closeMins = edRthEndMins();
+    if (!Number.isFinite(closeMins)) return Number.NaN;
+    return closeMins * 60 - nowInDay;
   }
 
   function formatTopOfHourSpeech() {
@@ -12752,9 +12771,11 @@ function edRenderTape() {
 }
 
 function edMinutesToClose() {
+  const close = edRthEndMins();
+  if (!Number.isFinite(close)) return 'unknown';
   const now = new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const mins = (16 * 60) - (et.getHours() * 60 + et.getMinutes());
+  const mins = close - (et.getHours() * 60 + et.getMinutes());
   if (mins <= 0) return 'closed';
   return Math.floor(mins / 60) + ':' + String(mins % 60).padStart(2, '0');
 }

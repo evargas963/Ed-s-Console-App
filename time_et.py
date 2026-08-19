@@ -22,6 +22,25 @@ RTH_END_MINS = 960
 RTH_SESSION_MINUTES = RTH_END_MINS - RTH_START_MINS  # 390 = single RTH session length as 1m bars
 
 
+def rth_clock_js_source() -> str:
+    """Served JS projection of the one RTH open/close authority.
+
+    Frontend must consume these names. Re-encoding 570/960 (or 9:30/16:00) in
+    HTML/JS is a second producer of the same boundary (F09). Raises rather than
+    emitting a partial assignment so a failed projection cannot look like truth.
+    """
+    start = int(RTH_START_MINS)
+    end = int(RTH_END_MINS)
+    if start != RTH_START_MINS or end != RTH_END_MINS:
+        raise TypeError("RTH clock authority must be integer minutes")
+    if not (0 <= start < end <= 24 * 60):
+        raise ValueError("RTH clock authority out of minute-of-day range")
+    return (
+        f"window.ED_RTH_START_MINS={start};\n"
+        f"window.ED_RTH_END_MINS={end};\n"
+    )
+
+
 def now_et() -> datetime:
     """Timezone-aware US/Eastern now."""
     return datetime.now(ET)
