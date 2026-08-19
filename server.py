@@ -1804,6 +1804,7 @@ def _log_only_cache_touch(
             "vix": vix,
             "price_levels": (existing or {}).get("price_levels"),
             "pl_date":      (existing or {}).get("pl_date", ""),
+            "pl_generation": (existing or {}).get("pl_generation"),
             "pl_mono":      (existing or {}).get("pl_mono"),
         }
         action = "legacy_minimal_write"
@@ -2693,6 +2694,7 @@ def _write_analytics_bg_error_shell(
         "vix": None,
         "price_levels": None,
         "pl_date": "",
+        "pl_generation": None,
         "pl_mono": None,
     }
 
@@ -2855,6 +2857,7 @@ def _publish_progressive_tier_c_cache(
         "vix": prev_ent.get("vix"),
         "price_levels": prev_ent.get("price_levels"),
         "pl_date": prev_ent.get("pl_date", ""),
+        "pl_generation": prev_ent.get("pl_generation"),
         "pl_mono": prev_ent.get("pl_mono"),
     }
 
@@ -3655,7 +3658,7 @@ PARITY_RESID_MIN:    float = 0.10   # ignore residuals smaller than 10 cents
 ACCURACY_HISTORY_LIMIT: int = 50    # rows returned by get_accuracy_history
 RECENT_CROSSES_DISPLAY_LIMIT: int = 5  # level-cross events in operator UI
 STATE_ERROR_DETAIL_MAX_CHARS: int = 120  # truncate exception detail strings for UI / log carry
-PRICE_LEVELS_CACHE_SEC: int = 15  # intraday VWAP refresh (process-local)
+PRICE_LEVELS_CACHE_SEC: int = 15  # retired as TTL (RC-416); reuse is snapshot generation
 # Builds OHLC bars from spot price ticks. Server polls every ~30s, so:
 #   5-min bars = ~10 ticks per bar
 #   1-min bars = ~2 ticks per bar
@@ -6367,6 +6370,29 @@ def _finalize_production_decision(ms_dict: dict, route: str) -> dict:
     return ms_dict
 
 
+def carried_price_levels_match_snapshot(entry, pl_date, pl_generation, today: str, snap) -> bool:
+    """Reuse the /api/state PriceLevels carry only when it is THIS snapshot generation.
+
+    Wall-clock PRICE_LEVELS_CACHE_SEC is not a generation identity: a 1s-old carry of
+    generation N is the wrong book once /api/levels has materialized N+1 (RC-416).
+    """
+    if entry is None or snap is None or not today:
+        return False
+    if str(pl_date or "") != str(today):
+        return False
+    gen = getattr(snap, "generation", None)
+    if gen is None:
+        return False
+    try:
+        cached_gen = int(pl_generation) if pl_generation is not None else None
+        entry_gen = getattr(entry, "level_generation", None)
+        entry_gen_i = int(entry_gen) if entry_gen is not None else None
+        snap_gen = int(gen)
+    except (TypeError, ValueError):
+        return False
+    return cached_gen == snap_gen and entry_gen_i == snap_gen
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -6928,31 +6954,28 @@ def _fetch_state(
         mkt_ctx.pcr = pcr_val
 
     # ── Price levels ──────────────────────────────────────────────────────────
-    # PDH / PDL / PDC / ORB don't change during a trading day — cache by date.
-    # VWAP does change intraday so we still refresh every 60s within the day.
+    # Carry the SAME canonical snapshot /api/levels serializes. Reuse the carried
+    # PriceLevels object only while its level_generation matches that snapshot.
+    # A wall-clock TTL (PRICE_LEVELS_CACHE_SEC) is not a generation identity:
+    # it let /api/state keep generation N (or an empty PriceLevels() after a
+    # swallowed fetch failure) while /api/levels had already materialized N+1.
+    from liquidity_value_engine import LevelCarrierConflict as _LevelCarrierConflict
     _today_date_str = now_et.strftime("%Y-%m-%d")
-    _pl_cache_entry = _state_cache.get(_cache_key, {}).get("price_levels")
-    _pl_cache_date  = _state_cache.get(_cache_key, {}).get("pl_date", "")
-    _pl_cache_mono = _state_cache.get(_cache_key, {}).get("pl_mono", None)
+    _pl_snap = canonical_price_level_snapshot(ticker)
+    _pl_bucket = _state_cache.get(_cache_key, {})
+    _pl_cache_entry = _pl_bucket.get("price_levels")
+    _pl_cache_date  = _pl_bucket.get("pl_date", "")
+    _pl_cache_gen   = _pl_bucket.get("pl_generation")
 
-    _now_mono = time.monotonic()
-    _pl_stale = (
-        _pl_cache_entry is None
-        or _pl_cache_date != _today_date_str          # new trading day → force refresh
-        or _pl_cache_mono is None
-        or (_now_mono - float(_pl_cache_mono)) >= PRICE_LEVELS_CACHE_SEC  # intraday VWAP refresh (process-local)
-    )
-
-    if not _pl_stale:
+    if carried_price_levels_match_snapshot(
+        _pl_cache_entry, _pl_cache_date, _pl_cache_gen, _today_date_str, _pl_snap,
+    ):
         price_levels = _pl_cache_entry
     else:
         try:
-            # Phase 2A: /api/state carries the SAME materialized snapshot /api/levels
-            # serves — the snapshot is resolved here and handed in, so this pipeline
-            # cannot drift onto its own bar input or its own generation.
             price_levels = fetch_price_levels(
                 client, symbol=ticker, quote_raw=q_json,
-                level_snapshot=canonical_price_level_snapshot(ticker),
+                level_snapshot=_pl_snap,
             )
             if price_levels.error:
                 log.warning(f"PriceLevels: {ticker} partial error: {price_levels.error}")
@@ -6960,15 +6983,18 @@ def _fetch_state(
                 log.warning(f"PriceLevels: {ticker} has {price_levels.bars_today} bars but VWAP is None")
             elif price_levels.vwap is not None:
                 log.debug(f"PriceLevels: {ticker} VWAP={price_levels.vwap:.2f} bars={price_levels.bars_today}")
+        except _LevelCarrierConflict:
+            raise
         except Exception as e:
             log.warning(f"PriceLevels: {ticker} FAILED: {e}")
             price_levels = PriceLevels()
-        # Cache with date key so PDH/PDL/ORB survive restarts within the same day
-        _sc = _state_cache.get(_cache_key, {})
-        _sc["price_levels"] = price_levels
-        _sc["pl_date"]      = _today_date_str
-        _sc["pl_mono"]      = time.monotonic()
-        _state_cache[_cache_key] = _sc
+        else:
+            _sc = _state_cache.get(_cache_key, {})
+            _sc["price_levels"] = price_levels
+            _sc["pl_date"]      = _today_date_str
+            _sc["pl_generation"] = getattr(_pl_snap, "generation", None)
+            _sc["pl_mono"]      = time.monotonic()
+            _state_cache[_cache_key] = _sc
     _stage_marks.append(("progressive_publish_price_levels", time.perf_counter()))
 
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
@@ -9628,6 +9654,7 @@ def _fetch_state(
         "vix": vol_ctx.market_iv_level,
         "price_levels": _prev_ent.get("price_levels"),
         "pl_date":      _prev_ent.get("pl_date", ""),
+        "pl_generation": _prev_ent.get("pl_generation"),
         "pl_mono":      _prev_ent.get("pl_mono"),
     }
     _evict_old_expiry_entries(ticker, selected_exp)

@@ -275,7 +275,13 @@ def test_price_levels_cache_sec_at_module_level():
     assert server.PRICE_LEVELS_CACHE_SEC == 15
     src = _fn_src("_fetch_state")
     assert "_PL_CACHE_SEC" not in src
-    assert "PRICE_LEVELS_CACHE_SEC" in src
+    assert "carried_price_levels_match_snapshot" in src
+    assert ">= PRICE_LEVELS_CACHE_SEC" not in src
+    assert "except _LevelCarrierConflict" in src
+    block = src[src.index("# ── Price levels"):src.index("# ── Expected Move")]
+    fail_arm = block[block.index("except Exception"):].split("else:", 1)[0]
+    assert '["price_levels"]' not in fail_arm
+    assert "PriceLevels()" in fail_arm
 
 
 # FIND-SERVERPY-7

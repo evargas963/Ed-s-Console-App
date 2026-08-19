@@ -383,6 +383,7 @@ def test_market_context_carries_and_never_recomputes(monkeypatch):
 def test_state_and_levels_carry_one_generation(monkeypatch):
     """/api/state's price levels and /api/levels come out of the SAME object."""
     from market_context import fetch_price_levels
+    import server as srv
 
     snap = materialize_price_level_snapshot(
         "SPY", SESSION, _tape(), bar_source="unit_tape")
@@ -393,6 +394,27 @@ def test_state_and_levels_carry_one_generation(monkeypatch):
     assert pl.vwap == snap.price("VWAP")
     assert pl.overnight_high == snap.price("OVERNIGHT_HIGH")
     assert pl.level_generation == snap.generation
+    today = SESSION.isoformat()
+    assert srv.carried_price_levels_match_snapshot(
+        pl, today, snap.generation, today, snap) is True
+
+    # Generation advance: /api/levels would serialize snap2; a wall-clock-fresh
+    # gen-1 carry must not be reused (the pre-RC-416 /api/state TTL defect).
+    tape2 = _tape() + [_bar(2026, 8, 4, 12, 0, 107, 109, 106, 108)]
+    snap2 = materialize_price_level_snapshot(
+        "SPY", SESSION, tape2, bar_source="unit_tape")
+    assert snap2.generation != snap.generation
+    assert snap2.price("VWAP") != pl.vwap
+    assert srv.carried_price_levels_match_snapshot(
+        pl, today, snap.generation, today, snap2) is False
+    pl2 = fetch_price_levels(None, symbol="SPY", quote_raw=None, level_snapshot=snap2)
+    assert pl2.vwap == snap2.price("VWAP")
+    assert pl2.level_generation == snap2.generation
+    assert srv.carried_price_levels_match_snapshot(
+        pl2, today, snap2.generation, today, snap2) is True
+    empty = fetch_price_levels(None, symbol="ZZZZ", quote_raw=None)
+    assert srv.carried_price_levels_match_snapshot(
+        empty, today, snap2.generation, today, snap2) is False
 
 
 def test_market_context_absence_is_absence_not_substitution():
