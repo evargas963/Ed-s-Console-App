@@ -86,15 +86,14 @@ def test_no_exec_call_remains_on_the_hook_path() -> None:
 
 
 def test_the_institutional_hook_carries_the_gates_verdict() -> None:
-    """End-to-end at the real seam: the hook's exit code must BE its gate's own.
+    """End-to-end at the real seam: the hook's exit code must BE its own verdict (RC-254).
 
-    RC-395: this compared the hook against `check_institutional_correctness --enforced-only`.
-    RC-391 moved the blocking decision to the delta owner, so the hook and that gate now
-    answer DIFFERENT questions — "does this change add debt" versus "is the whole tree at
-    absolute zero" — and on a trunk carrying inherited debt they legitimately disagree. The
-    property being protected is RC-254's: the gate's verdict must reach pre-commit rather
-    than being swallowed. That is now proven against the gate the seam ACTUALLY runs, and
-    in BOTH directions, which the single-sample comparison never did.
+    RC-406 relocated the whole-tree ADDED-VIOLATION delta to CI (hardening.yml, the authority
+    before merge); the commit-path hook now reads the enforced-check ROSTER — base (origin/main)
+    vs the staged index — and BLOCKS on a deletion/downgrade, the single most valuable thing to
+    catch locally (RC-391). RC-254's property is unchanged: the verdict must reach pre-commit,
+    not be swallowed. Proven here against the roster check, in BOTH directions, by driving the
+    `_git_show` seam so no real index or trunk state is needed.
     """
     import importlib.util
 
@@ -103,23 +102,30 @@ def test_the_institutional_hook_carries_the_gates_verdict() -> None:
     seam = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(seam)
 
-    real_run = subprocess.run
+    both_enforced = 'CHECKS = [("a", check_a, True), ("b", check_b, True)]'
+    real_show, real_base = seam._git_show, seam._base_ref
+    seam._base_ref = lambda: "origin/main"  # roster comparison needs no live trunk here
 
-    def gate_returning(code: int):
-        def _run(args, **kw):
-            if list(args[:2]) == ["git", "rev-parse"]:
-                return real_run(args, **kw)
-            return subprocess.CompletedProcess(args, code)
-        return _run
+    # Intact roster: candidate keeps every enforced check the base carried -> verdict 0 reaches exit.
+    seam._git_show = lambda spec: both_enforced
+    try:
+        assert seam.main() == 0, (
+            "an intact roster must pass — the 0 verdict must reach pre-commit (RC-254)")
+    finally:
+        seam._git_show = real_show
 
-    for code in (0, 1, 3):
-        seam.subprocess.run = gate_returning(code)
-        try:
-            assert seam.main() == code, (
-                f"the gate decided {code} and the hook reported something else — a verdict "
-                f"that does not reach pre-commit is a hook that blocks nothing (RC-254)")
-        finally:
-            seam.subprocess.run = real_run
+    # A DOWNGRADED check on the staged-index side -> verdict 1 reaches the exit code.
+    def _show(spec: str):
+        # the staged index (':<path>') drops "b" to advisory; base/HEAD keep both enforced.
+        return 'CHECKS = [("a", check_a, True), ("b", check_b, False)]' if spec.startswith(":") else both_enforced
+
+    seam._git_show = _show
+    try:
+        assert seam.main() == 1, (
+            "a deleted/downgraded enforced check must BLOCK — the 1 verdict must reach "
+            "pre-commit (RC-254/RC-391)")
+    finally:
+        seam._git_show, seam._base_ref = real_show, real_base
 
     # …and the real, unmocked seam still runs end to end and returns an integer verdict.
     hook = subprocess.run([sys.executable, str(ROOT / "tools" / "precommit_institutional.py")],
