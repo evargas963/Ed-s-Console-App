@@ -1,9 +1,9 @@
 {
   "pm": "operator",
-  "writer": "cursor",
+  "writer": "claude",
   "auditor": "cursor",
   "held_commit": null,
-  "updated_at": "2026-08-19T00:00:00-05:00",
-  "standing_law": "Operator is the governing authority / PM. Cursor is an adversarial auditor only and never writes feature/kill/implementation code unless the operator explicitly assigns a named slice to Cursor as writer.",
-  "note": "# sod-role-ok: operator 2026-08-19 assigned this one-faucet F09/F11 slice to Cursor: 'Work autonomously through inspect → prove → fix → tests → required CI → merge.' Writer is cursor for mission one-faucet-f09-f11-v1 only. Standing rehab writer remains Claude after this slice idles."
+  "updated_at": "2026-08-18T00:00:00-05:00",
+  "standing_law": "Operator is the governing authority / PM. Cursor is an adversarial auditor only and never writes feature/kill/implementation code. Claude is sole writer.",
+  "note": "# sod-role-ok: operator 2026-08-18 ruling. Role split reconciled to the operator's explicit decision this session: 'Operator is the governing authority/PM. Cursor is an adversarial auditor only.' pm was 'cursor' (RC-218 era); it is now 'operator', matching governance/pm_mission.json which already carried pm=operator. auditor stays 'cursor' (Cursor's role is adversarial audit). This is the minimal reconciliation of the contradictory authority surfaces the operator named; it creates no new governance mechanism. The prior 'Cursor is PM' framing in AGENT_OPERATING_PROCESS_V1.md, PM_MANDATE.md, REHAB_PROGRAM.md, .cursor/rules/07 and AGENTS.md RC-218 is superseded by this ruling (supersession banners added, behaviors unchanged). Earlier note history: SoD standing Claude sole writer, Cursor auditor; conflict markers repaired 2026-08-04."
 }

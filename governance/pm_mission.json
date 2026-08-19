@@ -2,7 +2,7 @@
   "status": "active",
   "mission_id": "repo-rehab-institutional-v1",
   "title": "Repo rehab: measure the product against external standards, remove what does not serve the repo, and protect what cannot be recovered",
-  "writer": "cursor",
+  "writer": "claude",
   "pm": "operator",
   "auditor": "cursor",
   "approved_by": "operator",
