@@ -104,6 +104,14 @@ def test_the_rebaseline_flag_exists_and_is_wired():
     assert hasattr(gate, "rebaseline"), "no rebaseline() implementation"
     src = GATE_SRC.read_text(encoding="utf-8", errors="replace")
     assert '"--rebaseline" in args' in src, "--rebaseline is not wired into main()"
+    # Source-lock: hermetic CLI tests must not delete the catalog call sites.
+    # Kept inside this existing reader so the RC-311 source-text census does not
+    # grow a new function for the same inspect-the-source property.
+    assert '"--enforced-only" in args' in src
+    assert 'run_checks(mode="enforced")' in src
+    assert "check_debt_ratchet" in src
+    for name in ("ruff_quality", "mypy_types", "orphan_dict_keys"):
+        assert name in src, f"advisory catalog lost {name}"
 
 
 def test_rebaseline_refuses_to_launder_a_correctness_rise(tmp_path, monkeypatch, capsys):
@@ -144,16 +152,6 @@ def test_rebaseline_writes_lf_not_platform_newlines(tmp_path, monkeypatch):
     gate.rebaseline()
     assert fake.exists()
     assert fake.read_bytes().count(b"\r\n") == 0, "rebaseline wrote CRLF into a governed file"
-
-
-def test_enforced_only_cli_still_delegates_to_run_checks():
-    """Source-lock: hermetic CLI tests must not delete the enforced catalog call."""
-    src = GATE_SRC.read_text(encoding="utf-8", errors="replace")
-    assert '"--enforced-only" in args' in src
-    assert 'run_checks(mode="enforced")' in src
-    assert "check_debt_ratchet" in src
-    for name in ("ruff_quality", "mypy_types", "orphan_dict_keys"):
-        assert name in src, f"advisory catalog lost {name}"
 
 
 def test_the_cli_flag_runs_end_to_end_without_touching_the_real_baseline(monkeypatch, capsys):

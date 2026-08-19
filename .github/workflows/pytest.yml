@@ -112,5 +112,10 @@ jobs:
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: |
-          echo "CI_CPUS nproc=$(nproc) os.cpu_count=$(python -c 'import os; print(os.cpu_count())')"
-          npm run test:all
+          # MEASURED on required pytest-full 32234684073: nproc=4 and
+          # os.cpu_count()=4 but `pytest -n auto` still created 2/2 workers
+          # (Python 3.13 `os.process_cpu_count()` is what xdist `auto` reads).
+          # Pin the worker count to the runner's nproc — same suite, more cores.
+          echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
+          npm run test:e2e
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20
