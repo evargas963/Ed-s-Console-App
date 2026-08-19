@@ -255,6 +255,18 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
     assert walls[0].call_oi_wall is None
     assert len(bound) == 1 and bound[0].label == "CONSENSUS"
     assert walls[0].call_gamma_wall == 745.0
+    from math_probabilities import compute_wall_score_components
+
+    prox, _, audit = compute_wall_score_components(760.0, spot, "CALL", bound)
+    levels_scored = [d["level"] for d in audit.get("proximity_detail", [])]
+    assert bound[0].dom_delta_wall is None
+    assert "call_delta_wall" in levels_scored
+    assert "put_delta_wall" in levels_scored
+    assert "dom_delta_wall" not in levels_scored
+    assert prox > 0.0
+    oe_src = inspect.getsource(compute_wall_score_components)
+    assert '"call_delta_wall"' in oe_src
+    assert '"put_delta_wall"' in oe_src
 
 
 def test_consensus_walls_bind_terrain_ssot_withholds_when_stale():

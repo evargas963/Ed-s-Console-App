@@ -112,7 +112,7 @@ def compute_wall_score_components(
 
     level_names = (
         "call_gamma_wall", "put_gamma_wall", "dom_gamma_wall",
-        "dom_delta_wall",
+        "call_delta_wall", "put_delta_wall", "dom_delta_wall",
     )
     levels: list[tuple[str, float]] = []
     for attr in level_names:
