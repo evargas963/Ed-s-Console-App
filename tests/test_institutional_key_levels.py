@@ -1,5 +1,7 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
+import inspect
+
 from math_exposure_core import (
     aggregate_net_gex,
     bucket_metric_abs,
@@ -154,7 +156,7 @@ def test_walls_row_does_not_ship_near_spot_raw_gamma_as_a_pin():
     pin, _ = pick_pin_and_strength(synth, sorted(synth))
     (cg, _), _pg = pick_gamma_wall_strikes(synth, sorted(synth))
     assert pin == 120.0 and cg == 101.0
-    walls = build_walls_rows(synth, 100.5, windows=[5, 10])
+    walls = build_walls_rows(synth, 100.5)
     dumped = asdict(walls[0])
     assert "call_gamma_pin" not in dumped and "put_gamma_pin" not in dumped
     assert walls[0].call_gamma_wall == 101.0
@@ -163,23 +165,23 @@ def test_walls_row_does_not_ship_near_spot_raw_gamma_as_a_pin():
     assert 100.0 not in (walls[0].call_gamma_wall, walls[0].put_gamma_wall, pin)
 
 
-def test_windowed_walls_use_dollarized_gex_not_raw_gamma():
-    """RC-419: ±N WallsRow.call_gamma_wall was _pick_wall_abs(call_gamma) while
-    CONSENSUS used pick_gamma_wall_strikes (max |call GEX$|). Same field, two
-    quantities, shipped on /api/state walls[]. Window is strike-index ±N, so
-    this 3-strike book is fully inside windows=[5,10]; the split is the metric."""
+def test_walls_rows_are_consensus_only_not_strike_windows():
+    """RC-421: plus-minus-N WallsRow reused call_gamma_wall on the same walls[]
+    list as CONSENSUS. After RC-420 CONSENSUS is terrain SSOT while those rows
+    stayed selected-expiry strike-index windows — same field, two books.
+    Key-level policy is CONSENSUS not ATM plus-minus-N; scoped strike-window
+    analytics stay on summary_rows / totals_rows (aggregates). This builder
+    emits one CONSENSUS row. OUT-OF-SCOPE: enrolled-universe live desk."""
     synth = _three_way_split_exposures()
-    walls = build_walls_rows(synth, 100.5, windows=[5, 10])
-    assert walls[0].label == "CONSENSUS" and walls[0].call_gamma_wall == 101.0
+    walls = build_walls_rows(synth, 100.5)
+    assert len(walls) == 1
+    assert walls[0].label == "CONSENSUS" and walls[0].window is None
+    assert walls[0].call_gamma_wall == 101.0
     assert walls[0].call_gamma_strength == 999.0
-    win = [w for w in walls if w.label != "CONSENSUS"]
-    assert win, "windowed rows must still exist so the payload shape is honest"
-    for w in win:
-        # Pre-fix _pick_wall_abs(call_gamma) would have set call_gamma_wall=100.0
-        # with strength 1000.0 (raw gamma) on this book.
-        assert w.call_gamma_wall == 101.0
-        assert w.call_gamma_strength == 999.0
-        assert w.call_gamma_wall != 100.0
+    assert all(w.label == "CONSENSUS" for w in walls)
+    src = inspect.getsource(build_walls_rows)
+    assert "strikes_for" not in src
+    assert "EXPOSURE_WINDOWS" not in src
 
 
 def _wide_vs_selected_wall_books():
@@ -226,7 +228,7 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
     On this book the two disagree 745 vs 760 / pin_width 0.0 vs 15.0.
     """
     sel_ex, spot, terrain = _wide_vs_selected_wall_books()
-    walls = build_walls_rows(sel_ex, spot, windows=[5, 10])
+    walls = build_walls_rows(sel_ex, spot)
     assert walls[0].label == "CONSENSUS"
     assert walls[0].call_gamma_wall == 745.0
     assert walls[0].put_gamma_wall == 745.0
@@ -246,16 +248,14 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
     assert bound[0].dom_gamma_side == ""
     assert bound[0].call_oi_wall == walls[0].call_oi_wall
     assert bound[0].put_oi_wall == walls[0].put_oi_wall
-    win_before = [w for w in walls if w.label != "CONSENSUS"]
-    win_after = [w for w in bound if w.label != "CONSENSUS"]
-    assert win_after == win_before
+    assert len(bound) == 1 and bound[0].label == "CONSENSUS"
     assert walls[0].call_gamma_wall == 745.0
 
 
 def test_consensus_walls_bind_terrain_ssot_withholds_when_stale():
     """RC-420: stale or absent terrain withholds CONSENSUS gamma/delta, never a substitute."""
     sel_ex, spot, terrain = _wide_vs_selected_wall_books()
-    walls = build_walls_rows(sel_ex, spot, windows=[5, 10])
+    walls = build_walls_rows(sel_ex, spot)
     stale = dict(terrain)
     stale["levels_stale"] = True
     withheld = consensus_walls_bind_terrain_ssot(walls, stale)

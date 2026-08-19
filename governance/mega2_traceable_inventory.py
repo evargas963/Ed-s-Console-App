@@ -161,7 +161,6 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_levels.py", 339, "build_walls_rows", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike", "market_state.py:build_market_state",), None, "Walls table for UI."),
     Mega2TraceableDerivation("math_levels.py", 353, "build_totals_rows.strikes_for", "DERIVED", None, ("math_levels.py:build_totals_rows",), None, "Nested strike list filter inside build_totals_rows."),
     Mega2TraceableDerivation("math_levels.py", 473, "build_totals_rows", "DERIVED", None, ("math_exposure_core.py:compute_exposures_by_strike",), None, "Totals table aggregation."),
-    Mega2TraceableDerivation("math_levels.py", 486, "build_walls_rows.strikes_for", "DERIVED", None, ("math_levels.py:build_walls_rows",), None, "Nested strike list filter inside build_walls_rows."),
     Mega2TraceableDerivation("math_levels.py", 575, "is_pin_zone", "ALLOWLISTED", None, (), 'mega2_internal_helper', "Zone classifier constant check."),
     Mega2TraceableDerivation("math_levels.py", 581, "parity_f_minus_spot_from_contracts", "SCHWAB_LEAF", 'chains.callExpDateMap.*.mark', (), None, "Parity residual; mark-only mid per strike."),
     Mega2TraceableDerivation("math_levels.py", 618, "parity_f_minus_spot_from_contracts._mid", "SCHWAB_LEAF", 'chains.callExpDateMap.*.mark', (), None, "Nested mid from Schwab bid/ask/mark only."),

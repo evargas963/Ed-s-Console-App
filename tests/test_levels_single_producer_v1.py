@@ -201,6 +201,7 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     assert "consensus_walls_bind_terrain_ssot" in walls_chunk
     assert "terrain_cache_get" in walls_chunk
     assert walls_chunk.find("consensus_walls_bind_terrain_ssot") < walls_chunk.find("build_totals_rows")
+    assert "windows=EXPOSURE_WINDOWS" not in walls_chunk.split("build_totals_rows")[0]
 
 
 # ── RC-128 (operator mandate: ONE Levels Faucet) ─────────────────────────────────────────────
