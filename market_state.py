@@ -1232,12 +1232,12 @@ def build_market_state(
             # Nearest above/below
             _nearest_above_name = _nearest_above_val = None
             _nearest_below_name = _nearest_below_val = None
-            # RC-422: selected-expiry OI walls are not structural levels.
-            # Overlay already blanks kl_call_oi_wall / kl_put_oi_wall.
+            # RC-422/RC-423: selected-expiry OI walls and inflections are not
+            # structural levels. Overlay blanks kl_* for both; summary_rows keep
+            # the analytics. Nearest races only terrain-bound walls + VWAP.
             _all_lvls = [
                 (_cgw, "Call g-Wall"), (_pgw, "Put g-Wall"),
-                (_gi,  "g-Inflection"), (_cdw, "Call d-Wall"),
-                (_pdw, "Put d-Wall"),  (_di,  "D-Inflection"),
+                (_cdw, "Call d-Wall"), (_pdw, "Put d-Wall"),
                 (_vwap_val, "VWAP"),
             ]
             for _lv, _ln in _all_lvls:

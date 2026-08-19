@@ -331,6 +331,35 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
     assert '(_poi, "Put OI Wall")' not in ms_src
 
 
+def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
+    """RC-423: selected-expiry inflections / oi_center are real analytics on
+    summary_rows. Terrain does not compute them; overlay blanks kl_*.
+    Nearest-level and level-density must not treat them as structural walls.
+
+    OUT-OF-SCOPE: enrolled-universe live desk.
+    """
+    from pathlib import Path
+
+    from math_levels import build_summary_rows
+
+    sel_ex, spot, _terrain = _wide_vs_selected_wall_books()
+    rows = build_summary_rows(sel_ex, spot, windows=[5])
+    assert rows[0].label == "CONSENSUS"
+    assert rows[0].gamma_inflection == 734.0
+    assert rows[0].delta_inflection == 743.0
+    assert rows[0].oi_center == 750.0
+    ms_src = Path("market_state.py").read_text(encoding="utf-8")
+    nearest = ms_src.split("# Nearest above/below", 1)[1].split("for _lv, _ln in _all_lvls", 1)[0]
+    assert "g-Inflection" not in nearest
+    assert "D-Inflection" not in nearest
+    assert "Call OI Wall" not in nearest
+    srv = Path("server.py").read_text(encoding="utf-8")
+    dens = srv.split("# Build levels dict for density check", 1)[1].split("_level_density", 1)[0]
+    assert 'getattr(consensus_summary, "oi_center"' not in dens
+    assert "'gamma_inflection'" not in dens
+    assert "'call_oi_wall'" not in dens
+
+
 def test_consensus_net_gamma_equals_aggregate_net_gex():
     exposures, spot = _dollarized_exposures()
     strikes = sorted(exposures.keys())
