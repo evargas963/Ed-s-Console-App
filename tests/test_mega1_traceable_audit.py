@@ -39,6 +39,31 @@ SCHWAB_API_CALL_RE = re.compile(
     r"(?<![.\w])(safe_get_quote|safe_get_chain|safe_get_price_history|schwab_candles_to_bars)\s*\("
 )
 
+# Same names the regex binds. Filter Call nodes by AST name BEFORE
+# `ast.get_source_segment` — MEASURED this turn on this tree: walking
+# MEGA1_FILES and calling get_source_segment on every Call was 41.88s
+# (6729 segments); name-filter then segment is 0.21s (7 calls). The
+# assertion is still "every safe_get_* / schwab_candles_to_bars call
+# has a transport chain". Parent Call nodes whose source merely
+# contains an inner safe_get_* are not additional call sites.
+_SCHWAB_API_FUNC_NAMES = frozenset(
+    {
+        "safe_get_quote",
+        "safe_get_chain",
+        "safe_get_price_history",
+        "schwab_candles_to_bars",
+    }
+)
+
+
+def _call_func_name(node: ast.Call) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
 SCHWAB_LEAF_RE = re.compile(
     r"^(chains|quotes|pricehistory)\.([a-zA-Z0-9_*]+\.)+([a-zA-Z0-9_*]+)$"
 )
@@ -266,6 +291,8 @@ def test_mega1_no_direct_schwab_api_outside_transport():
         tree = ast.parse(text)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
+                continue
+            if _call_func_name(node) not in _SCHWAB_API_FUNC_NAMES:
                 continue
             seg = ast.get_source_segment(text, node) or ""
             if not SCHWAB_API_CALL_RE.search(seg):

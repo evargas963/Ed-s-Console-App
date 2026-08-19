@@ -117,5 +117,22 @@ jobs:
           # (Python 3.13 `os.process_cpu_count()` is what xdist `auto` reads).
           # Pin the worker count to the runner's nproc — same suite, more cores.
           echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
-          npm run test:e2e
-          python -m pytest -n "$(nproc)" --dist loadfile --durations=20
+          # Overlap E2E with the pytest wave. MEASURED on 32235863378: E2E is
+          # 78 passed / 54.4s serial *before* pytest's 232s. The marker file
+          # is written at E2E success; the two tests in
+          # tests/test_playwright_must_run.py still run after E2E (not skipped).
+          # Local `npm run test:all` stays serial.
+          set +e
+          npm run test:e2e &
+          e2e_pid=$!
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 --ignore=tests/test_playwright_must_run.py
+          pytest_rc=$?
+          wait "$e2e_pid"
+          e2e_rc=$?
+          set -e
+          if [ "$e2e_rc" -ne 0 ]; then
+            echo "Playwright E2E failed with ${e2e_rc}"
+            exit "$e2e_rc"
+          fi
+          python -m pytest tests/test_playwright_must_run.py --tb=short
+          exit "$pytest_rc"
