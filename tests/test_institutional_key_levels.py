@@ -426,15 +426,67 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     assert "Call OI Wall" not in nearest
     srv = Path("server.py").read_text(encoding="utf-8")
     dens = srv.split("# Build levels dict for density check", 1)[1].split("_level_density", 1)[0]
-    assert 'getattr(consensus_summary, "oi_center"' not in dens
-    assert "'gamma_inflection'" not in dens
-    assert "'call_oi_wall'" not in dens
+    dens_body = dens.split("_all_levels = {}", 1)[1]
+    assert 'getattr(consensus_summary, "oi_center"' not in dens_body
+    assert "'gamma_inflection'" not in dens_body
+    assert "'call_oi_wall'" not in dens_body
+    # RC-432: density must not use selected-expiry `_gamma_flip` or locals()._cgw lookups.
+    # Assert on dens_body only — historical comments may still name the dead locals pattern.
+    assert "if _gamma_flip:" not in dens_body
+    assert "locals().get(" not in dens_body
+    assert "_w0" in dens_body
+    assert 'get("gamma_flip")' in dens_body
     ce = Path("call_engine.py").read_text(encoding="utf-8")
     rdy = ce.split("_nearest_dist = None", 1)[1].split("_level_prox =", 1)[0]
     assert "dist_gamma_inflection" not in rdy
     re_src = Path("rules_engine.py").read_text(encoding="utf-8")
     assert "regime flip zone" not in re_src
     assert "dist_gamma_inflection" not in re_src
+
+
+def test_level_density_uses_terrain_bound_walls_not_dead_locals():
+    """RC-432: pre-fix density used locals()._cgw (assigned ~700 lines later) so
+    walls never entered; label could read 'clear' while a terrain put wall sat
+    inside the radius. Density must count bound CONSENSUS walls.
+    """
+    from pathlib import Path
+
+    from math_levels import (
+        build_walls_rows,
+        compute_level_density,
+        consensus_walls_bind_terrain_ssot,
+    )
+
+    sel_ex, spot, terrain = _wide_vs_selected_wall_books()
+    walls = consensus_walls_bind_terrain_ssot(build_walls_rows(sel_ex, spot), terrain)
+    assert walls[0].put_gamma_wall == 745.0
+    # Negative: pin-only (pre-fix effective book) → clear.
+    broken = compute_level_density({"gamma_pin": float(terrain["gamma_pin"])}, spot)
+    assert broken["density_label"] == "clear"
+    assert broken["count"] == 0
+    # Legitimate: terrain-bound walls enter density.
+    ok = {
+        "gamma_pin": float(terrain["gamma_pin"]),
+        "call_gamma_wall": float(walls[0].call_gamma_wall),
+        "put_gamma_wall": float(walls[0].put_gamma_wall),
+    }
+    if walls[0].call_delta_wall is not None:
+        ok["call_delta_wall"] = float(walls[0].call_delta_wall)
+    if walls[0].put_delta_wall is not None:
+        ok["put_delta_wall"] = float(walls[0].put_delta_wall)
+    fixed = compute_level_density(ok, spot)
+    assert "put_gamma_wall" in (fixed["level_names"] or [])
+    assert fixed["density_label"] == "light"
+    assert fixed["count"] == 1
+    src = Path("server.py").read_text(encoding="utf-8")
+    dens = src.split("# Build levels dict for density check", 1)[1].split(
+        "_level_density = compute_level_density", 1
+    )[0]
+    body = dens.split("_all_levels = {}", 1)[1]
+    assert "locals().get(" not in body
+    assert "if _gamma_flip:" not in body
+    assert "_w0" in body
+    assert 'get("gamma_flip")' in dens
 
 
 def test_withheld_oi_vanna_dist_remain_schema_slots_live_none():

@@ -7408,25 +7408,30 @@ def _fetch_state(
         _vol_envelope = compute_volatility_envelope(spot_f, _atr)
 
         # Build levels dict for density check
+        # RC-432: density is a live congestion read. It must count the SAME terrain-bound
+        # walls and terrain flip the KL table paints. Pre-fix used selected-expiry
+        # `_gamma_flip` and `locals().get('_cgw')` — those wall names are assigned hundreds
+        # of lines later, so density silently counted pin/EM only and labeled "clear"
+        # while a terrain put wall sat inside the radius (PROVEN on SPY fixture: spot
+        # 743.88, put wall 745.0 → clear vs light).
         _all_levels = {}
-        _t_pin_snap = terrain_cache_get(ticker) or {}
-        _ssot_pin = (
-            _t_pin_snap.get("gamma_pin")
-            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
-            else None
-        )
-        if _ssot_pin:
-            _all_levels["gamma_pin"] = float(_ssot_pin)
-        # RC-423: oi_center / inflections / OI-vanna walls are selected-expiry
-        # analytics (or withheld). Density counts only terrain-bound walls and
-        # the SSOT pin — never a withheld KL concept.
-        for name, var in [
-            ('call_gamma_wall', '_cgw'), ('put_gamma_wall', '_pgw'),
-            ('call_delta_wall', '_cdw'), ('put_delta_wall', '_pdw'),
-        ]:
-            v = locals().get(var)
-            if v: _all_levels[name] = float(v)
-        if _gamma_flip: _all_levels['gamma_flip'] = float(_gamma_flip)
+        _t_dens = terrain_cache_get(ticker) or {}
+        _dens_fresh = bool(_t_dens) and not _t_dens.get("levels_stale")
+        if _dens_fresh and _t_dens.get("gamma_pin") is not None:
+            _all_levels["gamma_pin"] = float(_t_dens["gamma_pin"])
+        _w0 = walls[0] if walls else None
+        if _w0 is not None:
+            for _dn, _attr in (
+                ("call_gamma_wall", "call_gamma_wall"),
+                ("put_gamma_wall", "put_gamma_wall"),
+                ("call_delta_wall", "call_delta_wall"),
+                ("put_delta_wall", "put_delta_wall"),
+            ):
+                _dv = getattr(_w0, _attr, None)
+                if _dv is not None:
+                    _all_levels[_dn] = float(_dv)
+        if _dens_fresh and _t_dens.get("gamma_flip") is not None:
+            _all_levels["gamma_flip"] = float(_t_dens["gamma_flip"])
         if _em_up: _all_levels['em_upper'] = float(_em_up)
         if _em_lo: _all_levels['em_lower'] = float(_em_lo)
         # RC-345 / F06: the EM band carries its methodology so no consumer treats it as
