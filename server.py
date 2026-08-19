@@ -7409,16 +7409,12 @@ def _fetch_state(
         )
         if _ssot_pin:
             _all_levels["gamma_pin"] = float(_ssot_pin)
-        if consensus_summary:
-            v = getattr(consensus_summary, "oi_center", None)
-            if v:
-                _all_levels["oi_center"] = float(v)
+        # RC-423: oi_center / inflections / OI-vanna walls are selected-expiry
+        # analytics (or withheld). Density counts only terrain-bound walls and
+        # the SSOT pin — never a withheld KL concept.
         for name, var in [
             ('call_gamma_wall', '_cgw'), ('put_gamma_wall', '_pgw'),
             ('call_delta_wall', '_cdw'), ('put_delta_wall', '_pdw'),
-            ('gamma_inflection', '_gi'), ('delta_inflection', '_di'),
-            ('call_oi_wall', '_cow'), ('put_oi_wall', '_pow'),
-            ('call_vanna_wall', '_cvw'), ('put_vanna_wall', '_pvw'),
         ]:
             v = locals().get(var)
             if v: _all_levels[name] = float(v)
