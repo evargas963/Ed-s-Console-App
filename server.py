@@ -244,7 +244,7 @@ from math_exposure import (
     compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
-    aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
+    aggregate_net_gex, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -7267,8 +7267,9 @@ def _fetch_state(
             log.warning(f"breakout_score failed: {e}")
             _breakout_score = {}
 
-        # 5. Pin Score — strike is the terrain SSOT total-gamma pin (RC-124/RC-292),
-        # never consensus_summary.gamma_pin (analytics net-GEX peak).
+        # 5. Pin Score — strike AND GEX/OI from the terrain SSOT book (RC-124/RC-292/RC-413).
+        # Never consensus_summary.gamma_pin (analytics net-GEX peak) and never analytics
+        # `exposures` for magnitude at that strike.
         _t_pin_snap = terrain_cache_get(ticker) or {}
         _pin_strike = (
             _t_pin_snap.get("gamma_pin")
@@ -7276,15 +7277,21 @@ def _fetch_state(
             else None
         )
         _gex_at_pin = None
-        _oi_at_pin = None
-        if _pin_strike and exposures:
-            _pin_bkt = exposures.get(float(_pin_strike), {})
-            if exposures_have_dollar_gex(exposures):
-                _gex_at_pin = total_gex_dollars_at_strike(_pin_bkt)
-            else:
-                _gex_at_pin = total_gamma_raw_at_strike(_pin_bkt)
-            _oi_at_pin = _bucket_total_oi(_pin_bkt)
-        _oi_concentration = (_oi_at_pin / _sum_oi) if _oi_at_pin is not None and _sum_oi and _sum_oi > 0 else None
+        _oi_concentration = None
+        if _pin_strike is not None and _t_pin_snap and not _t_pin_snap.get("levels_stale"):
+            try:
+                _tg = _t_pin_snap.get("gamma_pin_gex_dollars")
+                _toi = _t_pin_snap.get("gamma_pin_oi")
+                _tbook = _t_pin_snap.get("book_oi_total")
+                if _tg is not None and _toi is not None and _tbook is not None:
+                    _book_oi = float(_tbook)
+                    _gex_at_pin = float(_tg)
+                    _oi_concentration = (
+                        (float(_toi) / _book_oi) if _book_oi > 0 else None
+                    )
+            except (TypeError, ValueError):
+                _gex_at_pin = None
+                _oi_concentration = None
         try:
             _pin_score_val = compute_pin_score(_gex_at_pin, _oi_concentration)
         except Exception as e:
