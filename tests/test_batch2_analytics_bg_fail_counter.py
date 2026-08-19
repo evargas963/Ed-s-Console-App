@@ -223,6 +223,8 @@ def test_api_build_exposes_git_sha(monkeypatch):
 
 
 def test_publish_progressive_tier_c_cache_non_pending_shell():
+    import time
+
     import server as srv
     from math_levels import ExposureRow, WallsRow, TotalsRow
 
@@ -237,8 +239,7 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
         srv._terrain_cache[(ticker.upper())] = {
             "call_wall": 510.0,
             "put_wall": 490.0,
-            "levels_stale": False,
-            "computed_ts_utc": 1.0,
+            "computed_ts_utc": time.time(),
         }
 
     row = ExposureRow("CONSENSUS", None, 1.0, -1.0, 500.0, None, None, None, "Low", "Neutral")
