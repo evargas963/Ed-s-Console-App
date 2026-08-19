@@ -12,7 +12,7 @@ import math
 import logging
 
 from math_exposure_core import MISSING_GREEK_SENTINEL, _f, _nearest_strike
-from time_et import RTH_SESSION_MINUTES
+from time_et import RTH_END_MINS, RTH_SESSION_MINUTES, RTH_START_MINS
 
 log = logging.getLogger(__name__)
 
@@ -150,13 +150,15 @@ def charm_intraday_context(charm_result: dict, spot: float, *, et_hour: int | No
 # ── Session / VIX bucketing ──────────────────────────────────────────────────
 
 def session_bucket(et_hour: int, et_minute: int) -> str:
+    # RC-345 / F09: the RTH open/close cuts are time_et.RTH_START_MINS / RTH_END_MINS,
+    # not a second 570/960 literal. Intra-session phase cuts stay named here.
     mins = et_hour * 60 + et_minute
-    if mins < 570:   return BUCKET_MORNING
-    if mins < 600:   return BUCKET_OPEN
+    if mins < RTH_START_MINS:   return BUCKET_MORNING
+    if mins < RTH_START_MINS + 30:   return BUCKET_OPEN
     if mins < 690:   return BUCKET_MORNING
     if mins < 810:   return BUCKET_MIDDAY
     if mins < 900:   return BUCKET_AFTERNOON
-    if mins < 960:   return BUCKET_CLOSE
+    if mins < RTH_END_MINS:   return BUCKET_CLOSE
     return BUCKET_MORNING
 
 

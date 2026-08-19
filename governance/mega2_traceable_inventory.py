@@ -214,6 +214,7 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_probabilities.py", 848, "compute_iwm_confluence", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "IWM blended participation."),
     Mega2TraceableDerivation("math_probabilities.py", 883, "_iwm_confluence_unavailable", "NONE", None, (), None, "No market-field derivation: Unavailable IWM confluence template."),
     Mega2TraceableDerivation("math_probabilities.py", 1081, "compute_volume_oi_ratio", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Volume/OI per strike."),
+    Mega2TraceableDerivation("math_probabilities.py", 1245, "flow_imbalance_label_from_normalized", "NONE", None, (), None, "No market-field derivation: label bands for the persisted/served flow_imbalance number (F11)."),
     Mega2TraceableDerivation("math_probabilities.py", 1158, "compute_option_flow_imbalance", "SCHWAB_LEAF", 'chains.callExpDateMap.*.bidSize', (), None, "Bid/ask size imbalance from Schwab leaves."),
     Mega2TraceableDerivation("math_probabilities.py", 1237, "atm_flow_window_totals", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "ATM window flow totals."),
     Mega2TraceableDerivation("math_probabilities.py", 1300, "flow_imbalance_normalized_with_fallback", "DERIVED", None, ("math_probabilities.py:atm_flow_window_totals", "math_probabilities.py:compute_option_flow_imbalance",), None, "Normalized flow with explicit fallback policy."),
