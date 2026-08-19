@@ -141,6 +141,7 @@ def test_fresh_terrain_overlays_every_gamma_family_level(monkeypatch):
                    "levels_stale": False}, monkeypatch)
     assert md["kl_call_gamma_wall"] == 745.0 and md["kl_put_gamma_wall"] == 740.0
     assert md["kl_gamma_flip"] == 746.5 and md["kl_gamma_pin"] == 741.0
+    assert md["gamma_pin"] == 741.0, "payload gamma_pin must be the terrain total-gamma SSOT (RC-292)"
     assert md["kl_gamma_pin_strength_pct"] == 32.5, "the pin's decisiveness must travel"
     assert md["kl_hvl"] == 735.0, "kl_hvl now carries net_gex_peak (RC-124 remap)"
     assert md["kl_max_pain"] == 742.0
@@ -154,7 +155,8 @@ def test_stale_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
     md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "confidence": "TRUSTED",
                    "levels_stale": True}, monkeypatch)
     for k in ("kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip",
-              "kl_gamma_pin", "kl_hvl", "kl_max_pain", "kl_gamma_flip_confidence"):
+              "kl_gamma_pin", "kl_hvl", "kl_max_pain", "kl_gamma_flip_confidence",
+              "gamma_pin"):
         assert md[k] is None, f"{k} survived a stale terrain — the second book is back"
     assert "withheld" in md["kl_levels_source"]
 
@@ -162,7 +164,29 @@ def test_stale_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
 def test_absent_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
     md = _overlay(None, monkeypatch)
     assert md["kl_call_gamma_wall"] is None and md["kl_gamma_flip"] is None
+    assert md["gamma_pin"] is None
     assert "withheld" in md["kl_levels_source"]
+
+
+def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
+    """RC-292: analytics net-GEX peak (743 on the SPY 0DTE fixture) must not survive overlay."""
+    import server as S
+    monkeypatch.setattr(S, "_terrain_cache", {
+        "SPY": {"gamma_pin": 745.0, "gamma_pin_strength_pct": 59.4, "levels_stale": False},
+    })
+    md = {"gamma_pin": 743.0, "kl_gamma_pin": 743.0}
+    S._terrain_kl_overlay(md, "SPY")
+    assert md["gamma_pin"] == 745.0 and md["kl_gamma_pin"] == 745.0
+
+
+def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
+    src = SERVER.read_text(encoding="utf-8")
+    i = src.index("# 5. Pin Score")
+    chunk = src[i:i + 900]
+    assert "terrain_cache_get" in chunk
+    assert "getattr(consensus_summary" not in chunk
+    assert "gamma_pin=_ssot_gamma_pin" in src
+    assert 'getattr(consensus_summary, "gamma_pin"' not in src
 
 
 # ── RC-128 (operator mandate: ONE Levels Faucet) ─────────────────────────────────────────────
