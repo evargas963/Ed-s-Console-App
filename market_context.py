@@ -889,8 +889,9 @@ class PriceLevels:
     Computed from Schwab price history (1-min bars) + quote OHLC.
 
     Two tiers:
-      - Tier 1 (always available): today open/high/low, PDC from quote{}
-      - Tier 2 (needs price history): VWAP, PDH, PDL, ORB high/low
+      - Tier 1 (quote{}): today open/high/low. Not PDC — quote closePrice is a
+        different book from the Phase 2A prior-session RTH close (RC-213/RC-415).
+      - Tier 2 (canonical snapshot): VWAP, PDH, PDL, PDC, ORB high/low
 
     Extended (volume profile + bands):
       - pd_poc, pd_vah, pd_val: previous day POC/VAH/VAL
@@ -903,7 +904,8 @@ class PriceLevels:
     today_open:   Optional[float] = None   # RTH open
     today_high:   Optional[float] = None   # RTH running high
     today_low:    Optional[float] = None   # RTH running low
-    pdc:          Optional[float] = None   # Previous day close
+    # PDC is the canonical snapshot's prior RTH session close, never quote closePrice.
+    pdc:          Optional[float] = None
 
     # Tier 2 — from price history
     vwap:         Optional[float] = None   # Today intraday VWAP (RTH)
@@ -993,7 +995,11 @@ def fetch_price_levels(
             pl.today_open = _sf("openPrice")
             pl.today_high = _sf("highPrice")
             pl.today_low  = _sf("lowPrice")
-            pl.pdc        = _sf("closePrice")
+            # RC-415: do not seed pdc from quote closePrice. That field is the vendor
+            # quote last close (can be extended-hours / a different session). PDC is
+            # the last RTH 1m close of the prior session from the one snapshot.
+            # Seeding here and overwriting only when carried PDC exists left closePrice
+            # painted as PDC whenever the snapshot family was absent.
         except Exception as e:
             pl.error = f"quote parse: {e}"
 
@@ -1014,12 +1020,10 @@ def fetch_price_levels(
         carried = carry_snapshot_levels(snap, "market_context.fetch_price_levels")
         pl.pdh = carried["PDH"]
         pl.pdl = carried["PDL"]
-        # RC-213 PDC reconciliation, decided in the open and now enforced by the one
-        # snapshot: PDC is the last RTH 1m bar close of the single prior session. The
-        # Schwab quote closePrice read into Tier 1 above is overwritten whenever the
-        # canonical value exists — two defensible definitions, one served.
-        if carried["PDC"] is not None:
-            pl.pdc = carried["PDC"]
+        # RC-213 / RC-415: PDC is the last RTH 1m close of the single prior session
+        # from the one snapshot. Assign even when None — absence withholds. Quote
+        # closePrice is not a fallback (that WAS the second authority).
+        pl.pdc = carried["PDC"]
         pl.pd_poc, pl.pd_vah, pl.pd_val = (
             carried["PD_POC"], carried["PD_VAH"], carried["PD_VAL"])
         pl.overnight_high, pl.overnight_low = (
