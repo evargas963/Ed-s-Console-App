@@ -931,7 +931,9 @@ def test_bundle_direction_withheld_uses_card_trust_gate():
 def test_decision_rail_withholds_when_card_trust_fails():
     h = _html()
     idx = h.find("function renderDecisionCommandRail")
-    chunk = h[idx : idx + 12000]
+    assert idx != -1
+    nxt = h.find("\nfunction ", idx + 1)
+    chunk = h[idx: nxt if nxt != -1 else None]
     assert "const cardTrust = resolveCardTrustGate(d)" in chunk
     assert "!cardTrust.trusted" in chunk
 

@@ -182,10 +182,18 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     `gamma_pin` is asserted as behaviour in
     `test_overlay_overwrites_payload_gamma_pin_with_terrain_total` and does not
     enter this census.
+
+    265 -> 266 (F15 today_poc live path), one entry, named:
+    `test_console_today_poc_binds_state_payload_not_a_second_book` ARRIVED.
+    INHERENTLY STRUCTURAL: #dr-lvl-poc/#exec-poc (and VAH/VAL) must exist and bind
+    `d.today_*` on both painters. That is markup/wiring; a live `/api/state` cycle
+    cannot prove the DOM ids are the ones named in the F15 port. The stamp itself
+    is asserted by extending `test_state_level_family_serves_raw_not_rounded`
+    (already in the census) and does not add a function.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 265, (
-        f"the per-function source-text-only count moved from the 265 measured on "
+    assert len(fns) == 266, (
+        f"the per-function source-text-only count moved from the 266 measured on "
         f"2026-08-19 to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "

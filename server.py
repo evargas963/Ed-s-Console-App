@@ -9013,6 +9013,24 @@ def _fetch_state(
     ms_dict["pdc"]      = _raw_level(getattr(price_levels, "pdc",      None))
     ms_dict["orb_high"] = _raw_level(getattr(price_levels, "orb_high", None))
     ms_dict["orb_low"]  = _raw_level(getattr(price_levels, "orb_low",  None))
+    # F15: the rest of the Phase 2A snapshot family travels RAW on /api/state the
+    # same way PDH/VWAP/ORB already do. market_context.fetch_price_levels carries
+    # TODAY_POC/VAH/VAL (and PD_POC, overnight, ORB mid, VWAP σ) from the one
+    # PriceLevelSnapshot; dropping them here left Chart (/api/levels) as the only
+    # live consumer while the console payload could not bind them.
+    ms_dict["today_poc"]      = _raw_level(getattr(price_levels, "today_poc",      None))
+    ms_dict["today_vah"]      = _raw_level(getattr(price_levels, "today_vah",      None))
+    ms_dict["today_val"]      = _raw_level(getattr(price_levels, "today_val",      None))
+    ms_dict["pd_poc"]         = _raw_level(getattr(price_levels, "pd_poc",         None))
+    ms_dict["pd_vah"]         = _raw_level(getattr(price_levels, "pd_vah",         None))
+    ms_dict["pd_val"]         = _raw_level(getattr(price_levels, "pd_val",         None))
+    ms_dict["overnight_high"] = _raw_level(getattr(price_levels, "overnight_high", None))
+    ms_dict["overnight_low"]  = _raw_level(getattr(price_levels, "overnight_low",  None))
+    ms_dict["orb_midpoint"]   = _raw_level(getattr(price_levels, "orb_midpoint",   None))
+    ms_dict["vwap_p1"]        = _raw_level(getattr(price_levels, "vwap_p1",        None))
+    ms_dict["vwap_m1"]        = _raw_level(getattr(price_levels, "vwap_m1",        None))
+    ms_dict["vwap_p2"]        = _raw_level(getattr(price_levels, "vwap_p2",        None))
+    ms_dict["vwap_m2"]        = _raw_level(getattr(price_levels, "vwap_m2",        None))
 
     # ── Expected Move ────────────────────────────────────────────────────────
     ms_dict["em_straddle"]       = _fv(_em_straddle.get("straddle"))
