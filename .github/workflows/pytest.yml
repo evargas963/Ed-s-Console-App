@@ -47,7 +47,35 @@ jobs:
         run: npm ci
 
       - name: Install Playwright system deps (Linux)
-        run: npx playwright install-deps chromium
+        # Bound this step. Unbounded apt-get is what cancelled required pytest-full:
+        # run 32223509912 (#134) and 32161696563 (main, #129) both sat ~43m on
+        # `playwright install-deps` after `Ign: azure.archive.ubuntu.com`, then the
+        # job `timeout-minutes: 45` cancelled before E2E/pytest started.
+        timeout-minutes: 8
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99ci-acquire-timeout >/dev/null <<'EOF'
+          Acquire::http::Timeout "20";
+          Acquire::https::Timeout "20";
+          Acquire::Retries "2";
+          EOF
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          old = "azure.archive.ubuntu.com"
+          new = "archive.ubuntu.com"
+          files = []
+          sl = Path("/etc/apt/sources.list")
+          if sl.is_file():
+              files.append(sl)
+          srcd = Path("/etc/apt/sources.list.d")
+          if srcd.is_dir():
+              files.extend(p for p in srcd.iterdir() if p.suffix in {".list", ".sources"})
+          for path in files:
+              text = path.read_text(encoding="utf-8")
+              if old in text:
+                  path.write_text(text.replace(old, new), encoding="utf-8")
+                  print(f"rewrote {path}")
+          PY
+          npx playwright install-deps chromium
 
       - name: Run Playwright E2E then full pytest
         env:

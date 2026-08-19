@@ -502,66 +502,43 @@ def test_local_evidence_the_checks_read_is_carried_into_the_worktree(tmp_path, m
     assert copied.is_file() and copied.read_text(encoding="utf-8") == '{"a":1}\n'
 
 
-def test_the_precommit_seam_measures_the_index_against_the_trunk():
+def test_the_precommit_seam_measures_the_check_roster_not_the_whole_tree_delta():
     """The wiring, not just the capability: an unwired gate blocks nothing.
 
-    The seam previously invoked check_institutional_correctness directly, demanding ABSOLUTE
-    ZERO on a repo carrying ~70 inherited violations — so it blocked every honest commit,
-    including the ones paying that debt down, and got routed around.
-
-    2026-08-17: the first form of this control matched three strings in
-    precommit_institutional.py. That is a spelling check — the delta owner could be named
-    in a branch that never runs, or the launch assembled through a variable, and all three
-    assertions stay true while the seam blocks nothing. What the hook DOES is one
-    subprocess launch, so the launch is recorded and asserted here instead.
+    RC-406: the commit seam no longer runs the two-worktree whole-tree ADDED-VIOLATION delta
+    (~250s/commit) — that proof is RELOCATED to CI (hardening.yml runs the SAME owner). On the
+    commit path the seam reads the enforced-check ROSTER (base origin/main vs staged index) and
+    BLOCKS on a deletion/downgrade, the single most valuable thing to catch locally (RC-391).
+    RC-254 still holds — the verdict must reach pre-commit — asserted here on what the seam DOES,
+    in both directions, by driving the `_git_show` seam so no live index or trunk is needed.
     """
     import importlib.util
-    import subprocess as sp
 
     spec = importlib.util.spec_from_file_location(
         "precommit_seam", REPO / "tools" / "precommit_institutional.py")
     seam = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(seam)
 
-    launches: list[list[str]] = []
-    real_run = sp.run
+    both = 'CHECKS = [("a", check_a, True), ("b", check_b, True)]'
+    real_show, real_base = seam._git_show, seam._base_ref
+    seam._base_ref = lambda: "origin/main"
 
-    def recording_run(args, **kw):
-        if list(args[:2]) == ["git", "rev-parse"]:
-            return real_run(args, **kw)
-        launches.append([str(a) for a in args])
-        return sp.CompletedProcess(args, 0)
-
-    seam.subprocess.run = recording_run
+    # Intact roster: candidate keeps every enforced check the base carried -> the 0 verdict reaches the exit.
+    seam._git_show = lambda spec: both
     try:
-        rc = seam.main()
+        assert seam.main() == 0, "an intact roster must pass — the 0 verdict must reach pre-commit (RC-254)"
     finally:
-        seam.subprocess.run = real_run
+        seam._git_show = real_show
 
-    assert rc == 0, "the seam did not return the gate's exit code"
-    assert len(launches) == 1, f"expected exactly one gate launch, got {launches}"
-    argv = launches[0]
-    assert any("check_delta_adds_no_debt.py" in a for a in argv), (
-        f"the seam does not run the delta owner: {argv}")
-    assert "--index" in argv, f"the seam does not measure the staged index: {argv}"
-    assert "--base" in argv, f"the seam does not name a base trunk: {argv}"
-    assert not any("check_institutional_correctness.py" in a for a in argv), (
-        f"the seam still runs the absolute-zero gate as its blocking decision: {argv}")
-
-    # …and the gate's exit code must BE the hook's (RC-254), or a failing gate sails past.
-    launches.clear()
-
-    def failing_run(args, **kw):
-        if list(args[:2]) == ["git", "rev-parse"]:
-            return real_run(args, **kw)
-        launches.append([str(a) for a in args])
-        return sp.CompletedProcess(args, 3)
-
-    seam.subprocess.run = failing_run
+    # A deleted/downgraded enforced check on the staged-index side -> the 1 verdict reaches the exit.
+    seam._git_show = lambda spec: (
+        'CHECKS = [("a", check_a, True), ("b", check_b, False)]' if spec.startswith(":") else both)
     try:
-        assert seam.main() == 3, "a failing gate did not fail the hook — commits sail past"
+        assert seam.main() == 1, (
+            "a deleted/downgraded enforced check must BLOCK — the 1 verdict must reach "
+            "pre-commit (RC-254/RC-391)")
     finally:
-        seam.subprocess.run = real_run
+        seam._git_show, seam._base_ref = real_show, real_base
 
 
 def test_the_required_hardening_job_uses_the_same_debt_owner():

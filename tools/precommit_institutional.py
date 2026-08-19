@@ -1,85 +1,132 @@
 #!/usr/bin/env python3
-"""Pre-commit entry: institutional gate, run under the AMBIENT agent identity.
+"""Pre-commit institutional gate entry.
 
-Local pre-commit hooks do not honor an ``env:`` map on ``repo: local`` entries
-(pre-commit warns and ignores it), which is why this wrapper exists at all.
+RC-406 (engineering-cycle latency): the whole-tree ADDED-VIOLATION delta — two clean detached
+worktrees (base origin/main + candidate index), the enforced catalog run in EACH — measured
+~250s on the commit path and was the dominant commit-cycle cost. It is REDUNDANT there:
+`.github/workflows/hardening.yml` runs the SAME owner (`check_delta_adds_no_debt.py --base
+origin/main`) on every PR — the authority before merge — so the whole-tree added-violation
+scan is RELOCATED to CI, NOT skipped.
 
-RC-240: it used to HARDCODE ``ED_AGENT_ROLE=cursor``. That was a fabricated identity, and
-the identity-sensitive backstop believed it: on the sole writer's own commit the gate
-reported "mission writer='claude' but agent='cursor' touched scope path …" and BLOCKED the
-writer for being himself (MEASURED on the LOG LAW arming commit, 2026-08-04). A check whose
-verdict depends on who is acting must never be handed an invented actor — the only honest
-inputs are the real ambient identity, or none at all.
-
-So: pass an already-set identity through untouched, and when the environment carries none,
-leave it unset. `check_writer_no_drift` documents exactly that contract — with no identity
-it abstains and the PreToolUse layer (which always has a real one from each agent's own hook
-env) carries the enforcement. Abstaining is correct here; guessing is not.
+What STAYS on the commit path, fast and fail-closed: the single most valuable thing to detect
+LOCALLY is an enforced check being DELETED or DOWNGRADED (RC-391) — violation counts alone read
+that as a paydown, and `operating_process_lock.staged_enforced_checks_not_on_head` only detects
+checks ADDED (`wt - head`), never removed. That comparison needs neither the whole-tree catalog
+nor a worktree: it is the enforced ROSTER of `check_institutional_correctness.py`, read from the
+base (origin/main) and the candidate (staged index) with `git show` + a static AST parse
+(milliseconds). If the candidate drops any check the base enforced, this hook BLOCKS. Everything
+else (added-violation counts across the tree) is proven in CI. Fail-closed: an unresolvable base,
+an unreadable checker on either side, or an unparseable base roster refuses the commit.
 """
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+CHECKER_REL = "tools/check_institutional_correctness.py"
 
 
-def main() -> int:
-    # RC-240: never fabricate an actor. Pass a real ambient identity through; otherwise
-    # leave it absent so the identity-sensitive backstop abstains instead of judging a
-    # commit against an invented agent.
-    ambient = os.environ.get("ED_AGENT_ROLE", "").strip().lower()
-    if ambient not in ("cursor", "claude"):
-        os.environ.pop("ED_AGENT_ROLE", None)
-    runner = REPO / "tools" / "run_with_repo_venv.py"
-    # RC-246: the blocking path runs ENFORCED checks only. Advisory checks cannot fail this
-    # gate by construction, and charging every commit 153s of a 244s wall for verdicts that
-    # can never veto made the gate expensive enough to route around — a cost this repo has
-    # already paid in piped commits and hooks killed mid-run. Advisory debt is not dropped:
-    # it runs via `--advisory` on the scheduled/rehab path and is recorded in
-    # reports/advisory_debt_latest.json.
-    #
-    # RC-391: this used to run check_institutional_correctness.py directly, which demands
-    # ABSOLUTE ZERO enforced violations. The repo carries ~70 inherited ones, so every
-    # commit was blocked for debt it did not create — including the commits paying that
-    # debt down. A gate no honest change can pass is not enforcement; it is a permanent
-    # --no-verify generator, which is exactly what it became. The question a pre-commit
-    # gate can actually answer is DELTA: does what I am about to commit carry an enforced
-    # violation the base did not, or remove an enforced check? So the decision is delegated
-    # to the existing delta owner, run in --index mode so the thing measured is the exact
-    # staged commit rather than HEAD (which predates the change) or the working tree (which
-    # carries unstaged scratch that is not part of it). Fail-closed is not weakened
-    # anywhere: the delta tool raises rather than reporting a count whenever either side
-    # cannot be measured, and any non-zero return here still blocks the commit.
-    gate = REPO / "tools" / "check_delta_adds_no_debt.py"
-    base = _base_ref()
-    # RC-254: was os.execv, which on Windows spawns a detached child and returns 0 to
-    # pre-commit immediately — this hook reported "Passed" without the gate's verdict ever
-    # reaching it. The gate's exit code must BE this hook's exit code.
-    return subprocess.run(
-        [sys.executable, str(runner), str(gate), "--index", "--base", base], cwd=str(REPO)
-    ).returncode
+def _neutralize_fabricated_identity() -> None:
+    """RC-240: the institutional gate entry must never carry a FABRICATED actor into its own
+    process. This wrapper once assigned ``ED_AGENT_ROLE = "cursor"`` unconditionally, so the
+    identity-sensitive backstop judged the sole writer's OWN commit under an invented agent
+    and blocked it ("mission writer='claude' but agent='cursor'"). A verdict that depends on
+    who is acting must be given the real identity or NONE — never a guess. Whatever this gate
+    runs now (roster read) or later, it first clears an unusable inherited role so nothing
+    downstream in THIS process abstains-or-judges under a wrong actor. RC-406 relocated the
+    catalog but this seam guarantee is independent of what runs behind it.
+    """
+    os.environ.pop("ED_AGENT_ROLE", None)
+
+
+def _git_show(spec: str) -> str | None:
+    p = subprocess.run(
+        ["git", "show", spec], cwd=str(REPO),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return p.stdout if p.returncode == 0 else None
+
+
+def _enforced_roster(source: str) -> set[str]:
+    """Enforced check names from `CHECKS = [(name, fn, enforced), ...]` — static, no import.
+
+    Mirrors operating_process_lock._parse_enforced_checks so the two locks read the roster
+    the same way; kept local to avoid a heavy import on the commit hot-path.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "CHECKS" for t in node.targets
+        ):
+            if not isinstance(node.value, ast.List):
+                continue
+            names: set[str] = set()
+            for elt in node.value.elts:
+                if isinstance(elt, ast.Tuple) and len(elt.elts) >= 3:
+                    nm, en = elt.elts[0], elt.elts[2]
+                    if (
+                        isinstance(nm, ast.Constant) and isinstance(nm.value, str)
+                        and isinstance(en, ast.Constant) and en.value is True
+                    ):
+                        names.add(nm.value)
+            return names
+    return set()
 
 
 def _base_ref() -> str:
-    """The trunk this commit is measured against. An unresolvable base means NO commit.
-
-    ONE MAIN: main is the sole accepted trunk, so the base is the remote trunk when it is
-    known locally and the local one otherwise. If NEITHER resolves there is nothing to
-    compare against, and "no baseline" must never quietly become "nothing is new debt".
-    """
+    """The trunk the roster is compared against. Unresolvable base => refuse the commit."""
     for ref in ("origin/main", "main"):
-        probe = subprocess.run(
+        p = subprocess.run(
             ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
-            cwd=str(REPO), capture_output=True, text=True)
-        if probe.returncode == 0 and probe.stdout.strip():
+            cwd=str(REPO), capture_output=True, text=True,
+        )
+        if p.returncode == 0 and p.stdout.strip():
             return ref
     raise SystemExit(
-        "institutional gate: cannot resolve a base trunk (tried origin/main, main). The "
-        "delta cannot be measured, so this commit is refused rather than waved through "
-        "unmeasured.")
+        "institutional gate: cannot resolve a base trunk (tried origin/main, main); the "
+        "enforced-check roster cannot be compared, so this commit is refused rather than "
+        "waved through unverified.")
+
+
+def main() -> int:
+    _neutralize_fabricated_identity()
+    base = _base_ref()
+    base_src = _git_show(f"{base}:{CHECKER_REL}")
+    cand_src = _git_show(f":{CHECKER_REL}")  # staged index (== HEAD when the checker is unstaged)
+    if base_src is None or cand_src is None:
+        print(
+            f"institutional gate BLOCKED: cannot read {CHECKER_REL} on "
+            f"{'base ' if base_src is None else ''}{'candidate' if cand_src is None else ''} "
+            "— refusing rather than passing an unverifiable roster.", file=sys.stderr)
+        return 1
+    base_roster = _enforced_roster(base_src)
+    cand_roster = _enforced_roster(cand_src)
+    if not base_roster:
+        print(
+            f"institutional gate BLOCKED: could not parse the enforced roster from base "
+            f"{CHECKER_REL} — an empty roster reads in the flattering direction, so refuse "
+            "(RC-390 class).", file=sys.stderr)
+        return 1
+    removed = sorted(base_roster - cand_roster)
+    if removed:
+        print(
+            "institutional gate BLOCKED: the staged change DELETES or DOWNGRADES enforced "
+            f"check(s) the base carried: {', '.join(removed)}. Removing enforcement is the "
+            "single most valuable regression to catch (RC-391); it is refused at commit. The "
+            "whole-tree added-violation delta is proven separately in CI.", file=sys.stderr)
+        return 1
+    print(
+        f"institutional correctness: enforced-check roster intact ({len(cand_roster)} enforced); "
+        "whole-tree added-violation delta enforced in CI (.github/workflows/hardening.yml, same "
+        "check_delta_adds_no_debt.py owner). (RC-406)")
+    return 0
 
 
 if __name__ == "__main__":

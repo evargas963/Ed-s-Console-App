@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -234,4 +235,23 @@ def test_rc240_precommit_wrapper_never_fabricates_an_agent_identity():
     assert 'os.environ.pop("ED_AGENT_ROLE", None)' in src, (
         "the wrapper must leave identity ABSENT when the environment carries none, so the "
         "backstop abstains instead of judging under a wrong actor"
+    )
+
+
+def test_rc240_gate_entry_actually_clears_a_fabricated_role_in_process(monkeypatch):
+    """RC-240 behavioral: source presence can rot; prove the gate entry EXECUTES the clear.
+
+    RC-406 relocated the whole-tree catalog off the commit path and rewrote this wrapper; the
+    seam guarantee (never carry a fabricated actor into the gate's own process) is independent
+    of what runs behind it, so it is asserted by BEHAVIOR — set a forged role, run the
+    neutralizer, and confirm the process no longer carries it. Mirrors the RC-406 lesson that a
+    'the seam does not do X' proof must exercise the seam, not grep its text.
+    """
+    import tools.precommit_institutional as PI
+
+    monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
+    PI._neutralize_fabricated_identity()
+    assert "ED_AGENT_ROLE" not in os.environ, (
+        "the institutional gate entry left a fabricated ED_AGENT_ROLE in its own process — "
+        "RC-240 requires it be cleared so nothing downstream judges under a wrong actor"
     )
