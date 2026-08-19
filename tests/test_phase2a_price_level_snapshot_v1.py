@@ -399,10 +399,33 @@ def test_market_context_absence_is_absence_not_substitution():
     from market_context import fetch_price_levels
 
     clear_materialized_snapshots()
-    pl = fetch_price_levels(None, symbol="ZZZZ", quote_raw=None)
-    for field in ("pdh", "pdl", "vwap", "orb_high", "overnight_high", "today_poc"):
+    # Quote closePrice is a different book from snapshot PDC. Absence of the snapshot
+    # must not publish closePrice as pdc (RC-415). today_open/high/low ARE quote fields.
+    quote_raw = {"ZZZZ": {"quote": {
+        "closePrice": 999.0, "openPrice": 10.0, "highPrice": 11.0, "lowPrice": 9.0,
+    }}}
+    pl = fetch_price_levels(None, symbol="ZZZZ", quote_raw=quote_raw)
+    for field in ("pdh", "pdl", "pdc", "vwap", "orb_high", "overnight_high", "today_poc"):
         assert getattr(pl, field) is None, f"{field} was substituted when absent"
+    assert pl.today_open == 10.0
     assert "no canonical snapshot" in pl.error
+
+    # Snapshot present but prior-day family absent: still withhold, still no closePrice.
+    today_only = [
+        _bar(2026, 8, 4, 9, 31, 103, 106, 102, 105),
+        _bar(2026, 8, 4, 11, 0, 106, 108, 105, 107),
+    ]
+    snap = materialize_price_level_snapshot(
+        "QQQ", SESSION, today_only, bar_source="unit_tape")
+    assert snap.price("PDC") is None
+    pl2 = fetch_price_levels(
+        None, symbol="QQQ",
+        quote_raw={"QQQ": {"quote": {"closePrice": 888.0}}},
+        level_snapshot=snap,
+    )
+    assert pl2.pdc is None, (
+        f"pdc substituted quote closePrice {pl2.pdc} for missing snapshot PDC"
+    )
 
 
 def test_chart_and_exposure_draw_carried_values_only():
