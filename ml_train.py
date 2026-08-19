@@ -131,6 +131,9 @@ DOLLAR_COLS = [
 WALL_DISTANCE_COLS = [
     "dist_call_gamma_wall", "dist_put_gamma_wall",
     "dist_call_delta_wall", "dist_put_delta_wall",
+    # RC-422/F4: CONSENSUS OI/vanna walls are withheld live. These four columns stay
+    # in the train/serve vector so FEATURE_SCHEMA_VERSION / artifact widths do not
+    # break. Live persist writes NULL; XGB imputes train medians; LSTM nan_to_num→0.
     "dist_call_oi_wall",    "dist_put_oi_wall",
     "dist_call_vanna_wall", "dist_put_vanna_wall",
     "dist_gamma_inflection","dist_delta_inflection",

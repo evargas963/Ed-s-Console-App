@@ -217,10 +217,10 @@ def test_filter_horizon_prob_bars_derived_from_primary_decision_horizons():
 
 
 # FIND-SERVERPY-3
-def test_market_close_uses_market_close_hour_constant():
+def test_market_close_uses_session_close_authority_not_hardcoded_1600():
     src = _fn_src("_snapshot_expiry_hours_from_schwab_dte")
     assert "hour=16" not in src
-    assert "MARKET_CLOSE_HOUR" in src
+    assert "hours_until_session_close_et" in src
 
 
 # FIND-SERVERPY-4

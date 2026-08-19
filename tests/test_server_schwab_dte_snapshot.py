@@ -59,3 +59,14 @@ def test_snapshot_hours_to_expiry_uses_schwab_dte_without_date_subtraction():
 
     assert server._snapshot_expiry_hours_from_schwab_dte(0, now_et) == 5.5
     assert server._snapshot_expiry_hours_from_schwab_dte(None, now_et) is None
+
+
+def test_snapshot_hours_to_expiry_uses_early_close_not_1600():
+    from time_et import ET
+
+    early = datetime(2026, 11, 27, 11, 0, tzinfo=ET)
+    assert server._snapshot_expiry_hours_from_schwab_dte(0, early) == 2.0
+    after_close = datetime(2026, 11, 27, 14, 0, tzinfo=ET)
+    assert server._snapshot_expiry_hours_from_schwab_dte(0, after_close) is None
+    # Pre-fix used 16:00 remainder (5.0h at 11:00). dte=1 must not keep that 16:00 pad.
+    assert server._snapshot_expiry_hours_from_schwab_dte(1, early) == 26.0

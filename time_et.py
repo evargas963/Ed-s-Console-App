@@ -179,6 +179,35 @@ def session_close_mins_for_et_date(et_date: str) -> int | None:
     return US_EQUITY_EARLY_CLOSE_MINS_ET.get(str(et_date), RTH_END_MINS)
 
 
+def hours_until_session_close_et(
+    now: datetime,
+    expiry_et_date: str | None = None,
+) -> float | None:
+    """Hours from `now` to RTH session close on `expiry_et_date` (default: now's date).
+
+    Early-close sessions use 13:00 ET; regular sessions 16:00 ET. Returns None when
+    already at/after that close, when the date is a full holiday, or when the date
+    cannot be parsed. Uncovered calendar years use the regular 16:00 close so a
+    LEAP expiry is not dropped (same as time_to_expiry_years).
+    """
+    d = str(expiry_et_date)[:10] if expiry_et_date else now.strftime("%Y-%m-%d")
+    if d in US_EQUITY_FULL_HOLIDAYS_ET:
+        return None
+    close_mins = session_close_mins_for_et_date(d)
+    if close_mins is None:
+        close_mins = US_EQUITY_EARLY_CLOSE_MINS_ET.get(d, RTH_END_MINS)
+    try:
+        y, mo, dd = int(d[0:4]), int(d[5:7]), int(d[8:10])
+    except (ValueError, IndexError):
+        return None
+    tz = now.tzinfo or ET
+    close_dt = datetime(y, mo, dd, close_mins // 60, close_mins % 60, tzinfo=tz)
+    secs = (close_dt - now).total_seconds()
+    if secs <= 0:
+        return None
+    return round(secs / 3600.0, 2)
+
+
 def is_trading_day_et(et_date: str) -> bool:
     """True iff `et_date` (YYYY-MM-DD) is a US equity TRADING day — the canonical date-level
     authority for analysis scoping (RC-54).
