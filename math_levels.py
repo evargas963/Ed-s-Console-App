@@ -64,19 +64,6 @@ class WallsRow:
     dom_oi_wall: float | None
     dom_oi_strength: float | None
     
-    # Pin levels (near spot, computed on CONSENSUS row)
-    call_gamma_pin: float | None = None
-    call_gamma_pin_strength: float | None = None
-    put_gamma_pin: float | None = None
-    put_gamma_pin_strength: float | None = None
-    call_delta_pin: float | None = None
-    call_delta_pin_strength: float | None = None
-    put_delta_pin: float | None = None
-    put_delta_pin_strength: float | None = None
-    call_oi_pin: float | None = None
-    call_oi_pin_strength: float | None = None
-    put_oi_pin: float | None = None
-    put_oi_pin_strength: float | None = None
     call_vanna_wall: float | None = None
     call_vanna_strength: float | None = None
     put_vanna_wall: float | None = None
@@ -402,39 +389,6 @@ def build_walls_rows(
         cv_s, cv_v = _pick_wall_abs(exposures, sset, "call_vanna")
         pv_s, pv_v = _pick_wall_abs(exposures, sset, "put_vanna")
 
-        # Pin levels (near spot). Only populated on CONSENSUS row.
-        call_gamma_pin = call_gamma_pin_strength = None
-        put_gamma_pin = put_gamma_pin_strength = None
-        call_delta_pin = call_delta_pin_strength = None
-        put_delta_pin = put_delta_pin_strength = None
-        call_oi_pin = call_oi_pin_strength = None
-        put_oi_pin = put_oi_pin_strength = None
-        if label == "CONSENSUS":
-            pin_window = windows[0] if windows else 2
-            pin_set = _window_strikes(strikes_all, spot, pin_window)
-
-            def _pick_pin(key: str) -> tuple[float | None, float | None]:
-                best_s: float | None = None
-                best_v: float | None = None
-                best_abs = -1.0
-                for s in pin_set:
-                    v = exposures.get(s, {}).get(key)
-                    if v is None:
-                        continue
-                    a = abs(v)
-                    if (a > best_abs + 1e-12) or (abs(a - best_abs) <= 1e-12 and (best_s is None or abs(s - spot) < abs(best_s - spot))):
-                        best_abs = a
-                        best_s = s
-                        best_v = v
-                return best_s, best_v
-
-            call_gamma_pin, call_gamma_pin_strength = _pick_pin("call_gamma")
-            put_gamma_pin, put_gamma_pin_strength = _pick_pin("put_gamma")
-            call_delta_pin, call_delta_pin_strength = _pick_pin("call_delta")
-            put_delta_pin, put_delta_pin_strength = _pick_pin("put_delta")
-            call_oi_pin, call_oi_pin_strength = _pick_pin("call_oi")
-            put_oi_pin, put_oi_pin_strength = _pick_pin("put_oi")
-
         out.append(WallsRow(
             label=label,
             window=w,
@@ -462,19 +416,6 @@ def build_walls_rows(
             dom_oi_side=domoi_side,
             dom_oi_wall=domoi_s,
             dom_oi_strength=domoi_v,
-
-            call_gamma_pin=call_gamma_pin,
-            call_gamma_pin_strength=call_gamma_pin_strength,
-            put_gamma_pin=put_gamma_pin,
-            put_gamma_pin_strength=put_gamma_pin_strength,
-            call_delta_pin=call_delta_pin,
-            call_delta_pin_strength=call_delta_pin_strength,
-            put_delta_pin=put_delta_pin,
-            put_delta_pin_strength=put_delta_pin_strength,
-            call_oi_pin=call_oi_pin,
-            call_oi_pin_strength=call_oi_pin_strength,
-            put_oi_pin=put_oi_pin,
-            put_oi_pin_strength=put_oi_pin_strength,
 
             call_vanna_wall=cv_s,
             call_vanna_strength=cv_v,

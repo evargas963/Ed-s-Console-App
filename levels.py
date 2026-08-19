@@ -165,30 +165,23 @@ def key_levels_to_plot_rows(
     if is_pin:
         call_wall_beh  = "Accelerates up → Hard ceiling (dealers sell)"
         put_wall_beh   = "Slows descent → Floor (dealers buy)"
-        call_pin_beh   = "Drifts toward → Sticky (expiry magnet)"
-        put_pin_beh    = "Drifts toward → Sticky (expiry magnet)"
         inf_beh        = "Regime boundary → Expansion if broken below"
         vanna_call_beh = "Vol crush → Mechanical dealer buying"
         vanna_put_beh  = "Vol crush → Overhead resistance eases"
     elif is_expansion:
         call_wall_beh  = "Breakout risk → Breach likely, moves amplify"
         put_wall_beh   = "Breakdown risk → Breach likely, moves amplify"
-        call_pin_beh   = "Unstable → May break cleanly"
-        put_pin_beh    = "Unstable → May break cleanly"
         inf_beh        = "Already in expansion → Pin if recaptured above"
         vanna_call_beh = "Vol spike → Dealer selling pressure"
         vanna_put_beh  = "Vol spike → Forced dealer selling, drops amplify"
     else:
         call_wall_beh  = "Watch → Ceiling or breakout depending on flow"
         put_wall_beh   = "Watch → Floor or breakdown depending on flow"
-        call_pin_beh   = "Unstable → Near regime flip"
-        put_pin_beh    = "Unstable → Near regime flip"
         inf_beh        = "Regime flip zone → Direction uncertain"
         vanna_call_beh = "IV sensitive → Watch VIX direction"
         vanna_put_beh  = "IV sensitive → Watch VIX direction"
 
     oi_wall_beh = "Expiry magnet → Pins price into close (stronger near expiry)"
-    oi_pin_beh  = "Near-term magnet → Max pain gravity"
     synth_beh   = "Parity level → Institutional arbitrage reference"
 
     def _oe_flag(level: float | None) -> str:
@@ -248,8 +241,6 @@ def key_levels_to_plot_rows(
     for level, side, strength, label, beh in [
         (w.call_gamma_wall, "CALL", w.call_gamma_strength, "Gamma Wall", call_wall_beh),
         (w.put_gamma_wall,  "PUT",  w.put_gamma_strength,  "Gamma Wall", put_wall_beh),
-        (w.call_gamma_pin,  "CALL", w.call_gamma_pin_strength, "Gamma Pin", call_pin_beh),
-        (w.put_gamma_pin,   "PUT",  w.put_gamma_pin_strength,  "Gamma Pin", put_pin_beh),
     ]:
         r = _row(label, level, side, _fmt_gamma_money_1pct(strength), beh)
         if r:
@@ -264,8 +255,6 @@ def key_levels_to_plot_rows(
     for level, side, strength, label, beh in [
         (w.call_delta_wall, "CALL", w.call_delta_strength, "Delta Wall", call_wall_beh),
         (w.put_delta_wall,  "PUT",  w.put_delta_strength,  "Delta Wall", put_wall_beh),
-        (w.call_delta_pin,  "CALL", w.call_delta_pin_strength, "Delta Pin", call_pin_beh),
-        (w.put_delta_pin,   "PUT",  w.put_delta_pin_strength,  "Delta Pin", put_pin_beh),
     ]:
         r = _row(label, level, side, _fmt_money_abbrev(strength), beh)
         if r:
@@ -280,8 +269,6 @@ def key_levels_to_plot_rows(
     for level, side, strength, label, beh in [
         (w.call_oi_wall, "CALL", w.call_oi_strength, "OI Wall", oi_wall_beh),
         (w.put_oi_wall,  "PUT",  w.put_oi_strength,  "OI Wall", oi_wall_beh),
-        (w.call_oi_pin,  "CALL", w.call_oi_pin_strength, "OI Pin", oi_pin_beh),
-        (w.put_oi_pin,   "PUT",  w.put_oi_pin_strength,  "OI Pin", oi_pin_beh),
     ]:
         r = _row(label, level, side, _fmt_money_abbrev(strength), beh)
         if r:

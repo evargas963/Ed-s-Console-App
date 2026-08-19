@@ -514,6 +514,23 @@ def test_replay_context_payload_round_trips_walls_hold_and_proof():
     assert obj["regime_primary"] == "trend" and obj["vol_regime"] == "normal"
 
 
+def test_walls_from_replay_drops_retired_near_spot_pin_keys():
+    """RC-418: archived replay JSON still carries WallsRow.call_gamma_pin etc.
+    Reconstruct must ignore unknown keys, not TypeError, and must not rehydrate a pin."""
+    from dataclasses import asdict
+
+    spot = 500.0
+    item = asdict(_walls_row(spot))
+    item["call_gamma_pin"] = 100.0
+    item["put_gamma_pin"] = 99.0
+    item["call_gamma_pin_strength"] = 12.0
+    rebuilt = rce._walls_from_replay({"walls": [item]})
+    assert rebuilt is not None and len(rebuilt) == 1
+    assert rebuilt[0].call_gamma_wall == spot + 1.0
+    dumped = asdict(rebuilt[0])
+    assert "call_gamma_pin" not in dumped and "put_gamma_pin" not in dumped
+
+
 # ── Family 9: model-version pinning source lock (scheduler eval paths) ──
 
 
