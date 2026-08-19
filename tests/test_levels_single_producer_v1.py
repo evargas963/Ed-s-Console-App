@@ -193,6 +193,7 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     assert "total_gamma_raw_at_strike" not in chunk
     assert "gamma_pin=_ssot_gamma_pin" in src
     assert 'getattr(consensus_summary, "gamma_pin"' not in src
+    assert 'getattr(consensus_summary, "net_gex_peak"' not in src
 
 
 # ── RC-128 (operator mandate: ONE Levels Faucet) ─────────────────────────────────────────────

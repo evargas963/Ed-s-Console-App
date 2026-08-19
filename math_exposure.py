@@ -271,7 +271,7 @@ from math_exposure_core import (                                               #
     _strike_bucket,
 )
 from math_levels import (                                                      # noqa: F401
-    _pick_gamma_pin, _pick_oi_center, _pick_inflection_closest_zero,
+    _pick_oi_center, _pick_inflection_closest_zero,
     _pin_strength, _bias_from_net, _pick_wall_abs, _pick_wall_pos, _dominant,
 )
 from math_volatility import _spot_atm_strike, _extract_iv_for_strike          # noqa: F401

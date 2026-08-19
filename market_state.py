@@ -8,7 +8,7 @@ any value. This eliminates discrepancies between cards.
 
 Build order (dependencies flow downward):
   1. Raw inputs    — spot, bid, ask, contracts, walls, totals
-  2. Regime        — zone, bias, pin_strength, net_delta
+  2. Regime        — zone, bias, pin_strength (net-GEX peak concentration, not terrain pin lead %), net_delta
   3. Bias gate     — bias_resolved (exact match only)
   4. OE strike     — rec_strike, rec_side
   5. Signals       — entry, stop, target, R/R (via signals engine)
@@ -1090,6 +1090,7 @@ def build_market_state(
     # ── 2. Regime — from consensus_summary ──────────────────────────────────
     if consensus_summary is not None:
         ms.bias_signal  = str(getattr(consensus_summary, "bias_signal",  "") or "Neutral")
+        # Categorical |net GEX$| concentration at ExposureRow.net_gex_peak — not terrain pin lead %.
         ms.pin_strength = str(getattr(consensus_summary, "pin_strength", "") or "Very Low")
         _nd             = _f(getattr(consensus_summary, "net_delta", None))
         _ng             = _f(getattr(consensus_summary, "net_gamma", None))

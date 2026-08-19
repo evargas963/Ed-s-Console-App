@@ -7294,7 +7294,7 @@ def _fetch_state(
             _breakout_score = {}
 
         # 5. Pin Score — strike AND GEX/OI from the terrain SSOT book (RC-124/RC-292/RC-413).
-        # Never consensus_summary.gamma_pin (analytics net-GEX peak) and never analytics
+        # Never consensus_summary.net_gex_peak (analytics |net GEX$| peak) and never analytics
         # `exposures` for magnitude at that strike.
         _t_pin_snap = terrain_cache_get(ticker) or {}
         _pin_strike = (
@@ -11105,10 +11105,10 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_gamma_flip"] = _g("gamma_flip")
     md["kl_gamma_pin"] = _g("gamma_pin")
     md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
-    # RC-292: payload `gamma_pin` is the same SSOT total-gamma pin as kl_gamma_pin.
-    # Analytics consensus_summary.gamma_pin is the net-GEX peak (math_levels._pick_gamma_pin
-    # → pick_net_gex_peak_strike) and must never occupy this key. MEASURED on the real SPY
-    # 0DTE fixture: total pin 745 vs net peak 743.
+    # RC-292/RC-417: payload `gamma_pin` is the same SSOT total-gamma pin as kl_gamma_pin.
+    # Analytics consensus_summary.net_gex_peak is pick_net_gex_peak_strike (selected-expiry
+    # |net GEX$| peak) and must never occupy this key. MEASURED on the real SPY 0DTE fixture:
+    # total pin 745 vs net peak 743.
     md["gamma_pin"] = md["kl_gamma_pin"]
     md["kl_hvl"] = _g("net_gex_peak")
     # RC-354: GSF/GRC ride the same SSOT terrain book (one profile, one producer). The
