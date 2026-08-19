@@ -94,9 +94,14 @@ repos:
       # defect is fixed:
       #     python tools/duplication_audit.py
       #     python tools/check_one_faucet_live.py
+      # RC-407 (latency, operator #4): db-health opens data/ed_console.db — in production the
+      # live ~34 GB Collect DB. `--precommit` makes it CHANGE-AWARE: it runs the full check on
+      # commit ONLY when a DB/schema/Collect file is staged, else skips fast. The daily rehab
+      # scan (tools/rehab_daily_scan.py) runs the full db-health unconditionally — its authority
+      # is unchanged. So an ordinary (docs/code) commit no longer opens the 34 GB DB.
       - id: db-health
         name: database health (DAMA dimensions + OHLC invariants, cited sources)
-        entry: python tools/run_with_repo_venv.py tools/check_db_health.py
+        entry: python tools/run_with_repo_venv.py tools/check_db_health.py --precommit
         language: system
         pass_filenames: false
         always_run: true

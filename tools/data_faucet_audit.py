@@ -265,8 +265,14 @@ def measure_ages(db_path: str) -> dict[str, float | None]:
     """Real age in seconds of each measurable faucet. None = unmeasurable/not applicable."""
     now = time.time()
     ages: dict[str, float | None] = {k: None for _, k, _, _ in SOURCE_SIGNATURES}
+    # RC-407: a read-age MEASUREMENT must never create-on-connect. sqlite3.connect(path)
+    # defaults to read-write-create and planted an empty data/ed_console.db when the file
+    # was absent — that 0-byte DB then failed db-health and blocked a commit. Absent file =
+    # unmeasurable; the connection is read-only so it can neither create nor mutate.
+    if not os.path.exists(db_path):
+        return ages
     try:
-        con = sqlite3.connect(db_path, timeout=15)
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=15)
     except sqlite3.Error:
         return ages
     try:

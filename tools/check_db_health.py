@@ -48,8 +48,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 from dataclasses import dataclass
 
@@ -268,11 +270,46 @@ def collect(db_path: str) -> list[Check]:
     return checks + run_capacity_checks(db_path)
 
 
+#: Files whose change could affect database health — the DB layer, schema/migrations, Collect
+#: writers and the bar/repair pipelines. RC-407: db-health opens the (production ~34 GB) DB, so
+#: on the COMMIT path it runs only when one of these is staged; the daily rehab scan is its
+#: unconditional authority. If the staged set can't be read, the check runs (fail-safe).
+_DB_RELEVANT_RE = re.compile(
+    r"(^|/)(db\.py|db_authority\.py|desk_store\.py|base_money_path_capture\.py)$"
+    r"|schema|migrat|collect|capture|price_bars|snapshots_1m|"
+    r"calibration/(repair_|run_production)",
+    re.IGNORECASE,
+)
+
+
+def _staged_db_relevant_files() -> list[str]:
+    """Staged paths that could change database health (RC-407). Empty => safe to skip on commit."""
+    p = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"], cwd=REPO,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if p.returncode != 0:
+        return ["<git-unavailable>"]  # fail-safe: cannot tell -> run the full check
+    return [f for f in p.stdout.splitlines() if f.strip() and _DB_RELEVANT_RE.search(f)]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--db", default=DEFAULT_DB)
     ap.add_argument("--json", action="store_true", dest="as_json")
+    ap.add_argument("--precommit", action="store_true",
+                    help="commit-scoped: skip (exit 0) unless a DB/schema/Collect file is "
+                         "staged; the full check runs in the daily rehab scan (RC-407)")
     args = ap.parse_args(argv)
+
+    if args.precommit:
+        relevant = _staged_db_relevant_files()
+        if not relevant:
+            print("db-health: no DB/schema/Collect file staged — skipped on the commit path; "
+                  "the full check runs in the daily rehab scan (RC-407).")
+            return 0
+        sys.stderr.write(
+            f"db-health: DB-relevant file(s) staged, running full check: {', '.join(relevant[:5])}\n")
 
     if not os.path.exists(args.db):
         # An ABSENT default database is not a failure: a fresh clone or CI has
