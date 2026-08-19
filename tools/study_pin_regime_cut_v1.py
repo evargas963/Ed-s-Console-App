@@ -12,7 +12,12 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
-from time_et import ET, RTH_END_MINS, RTH_START_MINS
+from time_et import (
+    ET,
+    RTH_END_MINS,
+    RTH_START_MINS,
+    SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC,
+)
 con = sqlite3.connect("file:data/ed_console.db?mode=ro", uri=True, timeout=120)
 con.row_factory = sqlite3.Row
 def et(ts):
@@ -25,10 +30,22 @@ for r in con.execute("SELECT ticker, bar_start_ts_utc, close FROM price_bars_1m 
     m = d.hour*60+d.minute
     if RTH_START_MINS <= m < RTH_END_MINS: closes[(r["ticker"], d.date())] = r["close"]
 
-rows = con.execute("""
+print(
+    "GAMMA_PIN semantic: terrain_total_gamma_pin only "
+    f"(ts_utc >= {SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC})"
+)
+print(
+    "OUT-OF-SCOPE: snapshots.gamma_pin before 95a61031 is selected-expiry net-GEX peak; "
+    "land-to-pad is mixed_until_restart (RC-429). Do not mix eras under one GAMMA_PIN label."
+)
+rows = con.execute(
+    """
   SELECT ticker, ts_utc, spot, gamma_pin, call_gamma_wall, put_gamma_wall, net_gamma
   FROM snapshots WHERE spot IS NOT NULL AND gamma_pin IS NOT NULL AND net_gamma IS NOT NULL
-  ORDER BY ticker, ts_utc""").fetchall()
+  AND ts_utc >= ?
+  ORDER BY ticker, ts_utc""",
+    (SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC,),
+).fetchall()
 obs: dict[tuple[str, Any], tuple[Any, int]] = {}
 for r in rows:
     d = et(r["ts_utc"])
