@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "test:e2e": "node scripts/run-playwright-e2e.mjs",
-    "test:all": "npm run test:e2e && python -m pytest",
+    "test:all": "npm run test:e2e && python -m pytest -n auto --dist loadfile",
     "test:e2e:install": "playwright install chromium",
     "test:e2e:verify": "python tests/playwright_ready.py"
   },

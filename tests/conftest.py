@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -31,6 +32,24 @@ os.environ.setdefault("ED_GATE_CACHE_DISABLE", "1")
 os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-api-key")
 os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-app-secret")
 os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")
+
+
+def pytest_configure(config) -> None:
+    """xdist workers must not share one console DB file.
+
+    `db.DB_PATH` is resolved at import from ED_CONSOLE_DB. Each worker is a fresh
+    process; set the override here (before test modules import db) so schema-init
+    and writes cannot collide. Serial pytest is unchanged (no PYTEST_XDIST_WORKER).
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not worker:
+        return
+    root = Path(os.environ.get("TMPDIR") or "/tmp") / f"ed-pytest-{worker}-{os.getpid()}"
+    root.mkdir(parents=True, exist_ok=True)
+    db = root / "ed_console.db"
+    db.touch()
+    os.environ["ED_CONSOLE_DB"] = str(db)
+    os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
 
 
 @pytest.fixture(autouse=True)

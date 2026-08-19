@@ -18,10 +18,31 @@ def test_collect_findings_flags_disk_only_when_present(tmp_path: Path, monkeypat
     measure = {"live_collect_disk_only": "DISK_ONLY: test", "index_worktree_mismatches": [], "staged_checks_not_on_head": []}
     status = {"porcelain_lines": 0, "staged_ish": 0, "untracked": 0, "modified_ish": 0}
     monkeypatch.setattr(scan, "_head", lambda: "deadbeef")
+    # `_collect_findings` always starts by calling `_product_findings()`, which is the
+    # daily-scan job: live faucet probe + db-health + duplication_audit + whole-repo
+    # AST complexity. MEASURED on this tree: 315.51s for THIS unit test (CI ~564s)
+    # when that callee ran for real. This test asserts only the disk_only flag.
+    monkeypatch.setattr(scan, "_product_findings", lambda: [])
     findings = scan._collect_findings(measure, status)
     ids = {f["id"] for f in findings}
     assert "rehab.live_disk_only" in ids
     assert all(f.get("recommendation") for f in findings)
+
+
+def test_product_findings_still_calls_the_existing_scanners() -> None:
+    """The daily job must keep invoking the real scanners — hermetic unit tests
+    must not become the only caller, and must not delete the call sites.
+    """
+    import inspect
+
+    src = inspect.getsource(scan._product_findings)
+    for name in (
+        "check_one_faucet_live.py",
+        "relabel_non_trading_sessions_v1.py",
+        "check_db_health.py",
+        "duplication_audit.py",
+    ):
+        assert name in src, f"_product_findings no longer invokes {name}"
 
 
 def test_write_outputs_appends_queue_and_md(tmp_path: Path, monkeypatch) -> None:
