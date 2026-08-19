@@ -12,7 +12,14 @@ from math_exposure_core import (
     pick_key_delta_strike,
     pick_volatility_point_strikes,
 )
-from math_levels import build_summary_rows, build_walls_rows, pick_gamma_wall_strikes, WallsRow
+from math_levels import (
+    build_summary_rows,
+    build_walls_rows,
+    compute_pin_width_pts,
+    consensus_walls_bind_terrain_ssot,
+    pick_gamma_wall_strikes,
+    WallsRow,
+)
 
 
 def _dollarized_exposures():
@@ -173,6 +180,94 @@ def test_windowed_walls_use_dollarized_gex_not_raw_gamma():
         assert w.call_gamma_wall == 101.0
         assert w.call_gamma_strength == 999.0
         assert w.call_gamma_wall != 100.0
+
+
+def _wide_vs_selected_wall_books():
+    """Live mixed-book construction: selected-expiry analytics vs wide-chain terrain.
+
+    OUT-OF-SCOPE: enrolled-universe live desk. This is the RC-80/RC-420 chain-width
+    split on the captured SPY 0DTE fixture plus one later-expiry CALL, not a
+    complete operable-surface claim.
+    """
+    import json
+    from pathlib import Path
+
+    from math_exposure_core import compute_exposures_by_strike
+    from terrain_engine import compute_terrain
+
+    fx = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    chain, spot = fx["chain"], float(fx["spot"])
+    src = next(
+        c for c in chain
+        if str(c.get("putCall", "")).upper() == "CALL"
+        and float(c.get("strikePrice") or 0) == 745.0
+    )
+    extra = dict(src)
+    extra["strikePrice"] = 760.0
+    extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
+    extra["expirationDate"] = "2026-08-16"
+    extra["openInterest"] = 500_000
+    extra["symbol"] = "SPY   260816C00760000"
+    wide = chain + [extra]
+    sel_ex, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
+    terr = compute_terrain("SPY", wide, spot)
+    return sel_ex, spot, terr.to_dict()
+
+
+def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
+    """RC-420: CONSENSUS gamma/delta walls follow terrain, not selected-expiry analytics.
+
+    Live path: _fetch_state builds walls on contracts_use (selected expiry) while
+    _terrain_kl_overlay paints kl_call_gamma_wall from the wide-chain cache.
+    On this book the two disagree 745 vs 760 / pin_width 0.0 vs 15.0.
+    """
+    sel_ex, spot, terrain = _wide_vs_selected_wall_books()
+    walls = build_walls_rows(sel_ex, spot, windows=[5, 10])
+    assert walls[0].label == "CONSENSUS"
+    assert walls[0].call_gamma_wall == 745.0
+    assert walls[0].put_gamma_wall == 745.0
+    assert compute_pin_width_pts(walls[0].call_gamma_wall, walls[0].put_gamma_wall) == 0.0
+    assert terrain["call_wall"] == 760.0
+    assert terrain["put_wall"] == 745.0
+    bound = consensus_walls_bind_terrain_ssot(walls, terrain)
+    assert bound[0].call_gamma_wall == 760.0
+    assert bound[0].put_gamma_wall == 745.0
+    assert compute_pin_width_pts(bound[0].call_gamma_wall, bound[0].put_gamma_wall) == 15.0
+    assert bound[0].call_delta_wall == terrain["call_delta_wall"]
+    assert bound[0].put_delta_wall == terrain["put_delta_wall"]
+    assert bound[0].call_gamma_strength is None
+    assert bound[0].put_gamma_strength is None
+    assert bound[0].call_delta_strength is None
+    assert bound[0].put_delta_strength is None
+    assert bound[0].dom_gamma_side == ""
+    assert bound[0].call_oi_wall == walls[0].call_oi_wall
+    assert bound[0].put_oi_wall == walls[0].put_oi_wall
+    win_before = [w for w in walls if w.label != "CONSENSUS"]
+    win_after = [w for w in bound if w.label != "CONSENSUS"]
+    assert win_after == win_before
+    assert walls[0].call_gamma_wall == 745.0
+
+
+def test_consensus_walls_bind_terrain_ssot_withholds_when_stale():
+    """RC-420: stale or absent terrain withholds CONSENSUS gamma/delta, never a substitute."""
+    sel_ex, spot, terrain = _wide_vs_selected_wall_books()
+    walls = build_walls_rows(sel_ex, spot, windows=[5, 10])
+    stale = dict(terrain)
+    stale["levels_stale"] = True
+    withheld = consensus_walls_bind_terrain_ssot(walls, stale)
+    assert withheld[0].call_gamma_wall is None
+    assert withheld[0].put_gamma_wall is None
+    assert withheld[0].call_delta_wall is None
+    assert withheld[0].put_delta_wall is None
+    assert withheld[0].call_oi_wall == walls[0].call_oi_wall
+    empty = consensus_walls_bind_terrain_ssot(walls, {})
+    assert empty[0].call_gamma_wall is None
+    assert empty[0].call_delta_wall is None
+    assert walls[0].call_gamma_wall == 745.0
 
 
 def test_consensus_net_gamma_equals_aggregate_net_gex():

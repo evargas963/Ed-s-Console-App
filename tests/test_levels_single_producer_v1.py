@@ -196,6 +196,16 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     assert 'getattr(consensus_summary, "net_gex_peak"' not in src
 
 
+def test_fetch_state_binds_consensus_walls_to_terrain_ssot():
+    """RC-420: after build_walls_rows, CONSENSUS gamma/delta strikes bind to terrain."""
+    src = SERVER.read_text(encoding="utf-8")
+    i = src.index("walls     = build_walls_rows")
+    chunk = src[i:i + 700]
+    assert "consensus_walls_bind_terrain_ssot" in chunk
+    assert "terrain_cache_get" in chunk
+    assert chunk.find("consensus_walls_bind_terrain_ssot") < chunk.find("build_totals_rows")
+
+
 # ── RC-128 (operator mandate: ONE Levels Faucet) ─────────────────────────────────────────────
 # The invariant, enforced structurally: for every SSOT level concept there is exactly ONE
 # writer of its payload key — the carriage helper. The analytics assignments were DELETED,
