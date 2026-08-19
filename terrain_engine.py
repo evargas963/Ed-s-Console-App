@@ -38,6 +38,7 @@ from math_exposure_core import (
     pick_gamma_wall_strikes,
     pick_key_delta_strike,
     pick_volatility_point_strikes,
+    total_gex_dollars_at_strike,
 )
 from math_levels import (
     compute_charm_by_strike,
@@ -79,6 +80,12 @@ class TerrainSnapshot:
     #: on the same metric (a 1% lead is a coin flip; the label says so).
     gamma_pin: float | None = None
     gamma_pin_strength_pct: float | None = None
+    #: RC-413: GEX$ / OI at gamma_pin plus book OI, from the SAME exposures book that
+    #: picked the pin. pin_score reads these so strike and magnitude cannot split onto
+    #: the analytics selected-expiry book. None = fail-closed (absent/stale/undollarized).
+    gamma_pin_gex_dollars: float | None = None
+    gamma_pin_oi: float | None = None
+    book_oi_total: float | None = None
     #: RC-124: the former "pin" — max |net GEX$| (calls minus puts) — kept under its honest
     #: name; a real measure of where the SIGNED book peaks, distinct from the magnet.
     net_gex_peak: float | None = None
@@ -565,6 +572,43 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
     _pin, _pin_strength = pick_pin_and_strength(exposures, strikes)   # RC-124: the standard pin
+    # RC-413: pin_score GEX/OI from THIS same exposures book — never a second analytics book.
+    _pin_gex_dollars = None
+    _pin_oi = None
+    _book_oi_total = None
+    _oi_acc = 0.0
+    _oi_seen = False
+    _pin_bucket = None
+    for _k, _v in exposures.items():
+        if not isinstance(_v, dict):
+            continue
+        _co, _po = _v.get("call_oi"), _v.get("put_oi")
+        if _co is not None or _po is not None:
+            try:
+                _oi_acc += (float(_co) if _co is not None else 0.0) + (
+                    float(_po) if _po is not None else 0.0
+                )
+                _oi_seen = True
+            except (TypeError, ValueError):
+                pass
+        if _pin is not None:
+            try:
+                if float(_k) == float(_pin):
+                    _pin_bucket = _v
+            except (TypeError, ValueError):
+                pass
+    if _oi_seen:
+        _book_oi_total = _oi_acc
+    if _pin_bucket is not None:
+        _pin_gex_dollars = total_gex_dollars_at_strike(_pin_bucket)
+        _co, _po = _pin_bucket.get("call_oi"), _pin_bucket.get("put_oi")
+        if _co is not None or _po is not None:
+            try:
+                _pin_oi = (float(_co) if _co is not None else 0.0) + (
+                    float(_po) if _po is not None else 0.0
+                )
+            except (TypeError, ValueError):
+                _pin_oi = None
     # RC-128 (One Levels Faucet): the SSOT producer owns the delta walls too — same wide
     # chain, same exposures, one book. OI/vanna walls stay unowned and therefore BLANK on
     # every operator surface until this producer computes them.
@@ -617,6 +661,9 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # as net_gex_peak. Assigned below from _pin/_pin_strength.
         gamma_pin=_pin,
         gamma_pin_strength_pct=_pin_strength,
+        gamma_pin_gex_dollars=_pin_gex_dollars,
+        gamma_pin_oi=_pin_oi,
+        book_oi_total=_book_oi_total,
         net_gex_peak=pick_net_gex_peak_strike(exposures, strikes, institutional=True),
         key_delta_strike=pick_key_delta_strike(exposures, strikes),
         hvp=hvp,

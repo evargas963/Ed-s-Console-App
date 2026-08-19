@@ -182,9 +182,15 @@ def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
 def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     src = SERVER.read_text(encoding="utf-8")
     i = src.index("# 5. Pin Score")
-    chunk = src[i:i + 900]
+    chunk = src[i:i + 1400]
     assert "terrain_cache_get" in chunk
     assert "getattr(consensus_summary" not in chunk
+    assert "gamma_pin_gex_dollars" in chunk
+    assert "gamma_pin_oi" in chunk
+    assert "book_oi_total" in chunk
+    assert "exposures.get(float(_pin_strike)" not in chunk
+    assert "_pin_bkt" not in chunk
+    assert "total_gamma_raw_at_strike" not in chunk
     assert "gamma_pin=_ssot_gamma_pin" in src
     assert 'getattr(consensus_summary, "gamma_pin"' not in src
 
