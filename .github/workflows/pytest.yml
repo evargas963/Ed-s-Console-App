@@ -62,20 +62,37 @@ jobs:
           from pathlib import Path
           old = "azure.archive.ubuntu.com"
           new = "archive.ubuntu.com"
-          files = []
-          sl = Path("/etc/apt/sources.list")
-          if sl.is_file():
-              files.append(sl)
-          srcd = Path("/etc/apt/sources.list.d")
-          if srcd.is_dir():
-              files.extend(p for p in srcd.iterdir() if p.suffix in {".list", ".sources"})
+          apt = Path("/etc/apt")
+          files = [apt] if apt.is_file() else []
+          if apt.is_dir():
+              files.extend(p for p in apt.rglob("*") if p.is_file())
+          n = 0
           for path in files:
-              text = path.read_text(encoding="utf-8")
+              try:
+                  text = path.read_text(encoding="utf-8")
+              except (OSError, UnicodeDecodeError):
+                  continue
               if old in text:
                   path.write_text(text.replace(old, new), encoding="utf-8")
                   print(f"rewrote {path}")
+                  n += 1
+          print(f"rewrote {n} apt file(s) off azure.archive.ubuntu.com")
           PY
-          npx playwright install-deps chromium
+          # Apt still hung after the .list/.sources-only rewrite (run 32231391764)
+          # because ubuntu-24.04 GHA uses /etc/apt/apt-mirrors.txt. Bound each
+          # attempt so a dead mirror cannot consume the 8-minute step budget.
+          ok=0
+          for attempt in 1 2 3; do
+            if timeout 90 npx playwright install-deps chromium; then
+              ok=1
+              break
+            fi
+            echo "install-deps attempt ${attempt} failed"
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "install-deps failed after retries; ubuntu-24.04 already ships Chromium libs via the runner image"
+            npx playwright install chromium
+          fi
 
       - name: Run Playwright E2E then full pytest
         env:
