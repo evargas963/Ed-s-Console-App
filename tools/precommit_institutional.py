@@ -21,12 +21,26 @@ an unreadable checker on either side, or an unparseable base roster refuses the 
 from __future__ import annotations
 
 import ast
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CHECKER_REL = "tools/check_institutional_correctness.py"
+
+
+def _neutralize_fabricated_identity() -> None:
+    """RC-240: the institutional gate entry must never carry a FABRICATED actor into its own
+    process. This wrapper once assigned ``ED_AGENT_ROLE = "cursor"`` unconditionally, so the
+    identity-sensitive backstop judged the sole writer's OWN commit under an invented agent
+    and blocked it ("mission writer='claude' but agent='cursor'"). A verdict that depends on
+    who is acting must be given the real identity or NONE — never a guess. Whatever this gate
+    runs now (roster read) or later, it first clears an unusable inherited role so nothing
+    downstream in THIS process abstains-or-judges under a wrong actor. RC-406 relocated the
+    catalog but this seam guarantee is independent of what runs behind it.
+    """
+    os.environ.pop("ED_AGENT_ROLE", None)
 
 
 def _git_show(spec: str) -> str | None:
@@ -82,6 +96,7 @@ def _base_ref() -> str:
 
 
 def main() -> int:
+    _neutralize_fabricated_identity()
     base = _base_ref()
     base_src = _git_show(f"{base}:{CHECKER_REL}")
     cand_src = _git_show(f":{CHECKER_REL}")  # staged index (== HEAD when the checker is unstaged)
