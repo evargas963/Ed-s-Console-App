@@ -267,7 +267,10 @@ def hours_until_session_close_et(
         return None
     tz = now.tzinfo or ET
     close_dt = datetime(y, mo, dd, close_mins // 60, close_mins % 60, tzinfo=tz)
-    secs = (close_dt - now).total_seconds()
+    # Instant elapsed hours, not civil timedelta. Same-tzinfo subtraction ignores DST
+    # (spring-forward Friday→Monday wall 77.5h vs UTC 76.5h).
+    now_aware = now if now.tzinfo is not None else now.replace(tzinfo=tz)
+    secs = close_dt.timestamp() - now_aware.timestamp()
     if secs <= 0:
         return None
     return round(secs / 3600.0, 2)

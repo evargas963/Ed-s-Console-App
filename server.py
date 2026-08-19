@@ -5373,22 +5373,20 @@ def _snapshot_expiry_hours_from_schwab_dte(
     now_et: datetime,
     expiry_et_date: str | None = None,
 ) -> float | None:
-    """Hours to PM-settlement close. Same-day uses today's session close (13:00 ET
-    on early-close days, 16:00 otherwise). Multi-day keeps Schwab DTE*24 plus
-    remaining hours to *today's* session close — not a hardcoded 16:00 remainder.
+    """Hours to PM-settlement close on the expiry date (or today when dte=0).
+
+    Early-close sessions use 13:00 ET; regular sessions 16:00 ET. Multi-day must
+    use the expiry date's own session close — not Schwab DTE*24 plus today's
+    remainder, which lands at today's close clock on the expiry date.
     """
-    if schwab_dte is None:
+    if schwab_dte is None or schwab_dte < 0:
         return None
     from time_et import hours_until_session_close_et
 
-    today_left = hours_until_session_close_et(now_et)
+    if expiry_et_date:
+        return hours_until_session_close_et(now_et, expiry_et_date=expiry_et_date)
     if schwab_dte == 0:
-        if expiry_et_date:
-            return hours_until_session_close_et(now_et, expiry_et_date=expiry_et_date)
-        return today_left
-    if schwab_dte > 0:
-        remainder = today_left if today_left is not None else 0.0
-        return round((schwab_dte * 24.0) + remainder, 2)
+        return hours_until_session_close_et(now_et)
     return None
 
 

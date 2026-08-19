@@ -221,6 +221,8 @@ def test_market_close_uses_session_close_authority_not_hardcoded_1600():
     src = _fn_src("_snapshot_expiry_hours_from_schwab_dte")
     assert "hour=16" not in src
     assert "hours_until_session_close_et" in src
+    assert "schwab_dte * 24" not in src
+    assert "24.0" not in src
 
 
 # FIND-SERVERPY-4

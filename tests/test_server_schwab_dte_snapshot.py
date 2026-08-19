@@ -68,5 +68,19 @@ def test_snapshot_hours_to_expiry_uses_early_close_not_1600():
     assert server._snapshot_expiry_hours_from_schwab_dte(0, early) == 2.0
     after_close = datetime(2026, 11, 27, 14, 0, tzinfo=ET)
     assert server._snapshot_expiry_hours_from_schwab_dte(0, after_close) is None
-    # Pre-fix used 16:00 remainder (5.0h at 11:00). dte=1 must not keep that 16:00 pad.
-    assert server._snapshot_expiry_hours_from_schwab_dte(1, early) == 26.0
+    # dte>0 without expiry date is not a clock (pre-fix DTE*24 + today's remainder).
+    assert server._snapshot_expiry_hours_from_schwab_dte(1, early) is None
+    # Early-close Friday 11:00 ET -> Monday 16:00 ET regular close.
+    assert server._snapshot_expiry_hours_from_schwab_dte(
+        3, early, expiry_et_date="2026-11-30"
+    ) == 77.0
+    # Pre-fix: DTE*24 + today's 13:00 remainder = 74.0 (lands Monday 13:00).
+    assert server._snapshot_expiry_hours_from_schwab_dte(
+        3, early, expiry_et_date="2026-11-30"
+    ) != round(3 * 24.0 + 2.0, 2)
+    # Regular Wednesday -> early-close Friday: expiry close is 13:00, not today's 16:00 + 2*24.
+    wed = datetime(2026, 11, 25, 11, 0, tzinfo=ET)
+    assert server._snapshot_expiry_hours_from_schwab_dte(
+        2, wed, expiry_et_date="2026-11-27"
+    ) == 50.0
+    assert 50.0 != round(2 * 24.0 + 5.0, 2)

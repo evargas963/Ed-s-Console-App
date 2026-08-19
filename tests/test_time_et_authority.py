@@ -48,3 +48,10 @@ def test_hours_until_session_close_uses_early_close_not_1600():
     # Negative: a regular session at 14:00 still has 2h to 16:00.
     regular_pm = datetime(2026, 5, 5, 14, 0, tzinfo=ET)
     assert hours_until_session_close_et(regular_pm) == 2.0
+    # Multi-day: instant hours, not civil timedelta (DST spring-forward 2026-03-08).
+    fri = datetime(2026, 3, 6, 10, 30, tzinfo=ET)
+    dst_hours = hours_until_session_close_et(fri, expiry_et_date="2026-03-09")
+    assert dst_hours == 76.5
+    wall = (datetime(2026, 3, 9, 16, 0, tzinfo=ET) - fri).total_seconds() / 3600.0
+    assert wall == 77.5
+    assert dst_hours != wall
