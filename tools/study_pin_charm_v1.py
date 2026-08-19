@@ -21,12 +21,12 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
+from time_et import ET, RTH_END_MINS, RTH_START_MINS
 
 BAND, OBS_MIN = 0.0025, 600
 con = sqlite3.connect("file:data/ed_console.db?mode=ro", uri=True, timeout=180)
 con.row_factory = sqlite3.Row
 def et(ts):
-    from time_et import ET  # single ET authority (COH-SA2)
     return datetime.fromtimestamp(ts, ET)
 
 bars: dict[tuple[str, Any], list[tuple[int, float, float]]] = {}
@@ -34,7 +34,7 @@ for r in con.execute("SELECT ticker,bar_start_ts_utc,high,low FROM price_bars_1m
     d = et(r["bar_start_ts_utc"])
     if d.weekday() >= 5: continue
     m = d.hour*60 + d.minute
-    if 570 <= m <= 959:
+    if RTH_START_MINS <= m < RTH_END_MINS:
         bars.setdefault((r["ticker"], d.date()), []).append((m, r["high"], r["low"]))
 
 obs: dict[tuple[str, Any], tuple[Any, int]] = {}

@@ -11,15 +11,11 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from instrument_identity import ticker_storage_key
-from time_et import ET as _ET
+from time_et import ET as _ET, RTH_END_MINS, RTH_START_MINS
 
 SOURCE_TABLE_CANONICAL = "price_bars_1m"
 SOURCE_TABLE_STAGING = "price_bars_1m_staging"
 VALID_SOURCE_TABLES = frozenset({SOURCE_TABLE_CANONICAL, SOURCE_TABLE_STAGING})
-
-# Match ml_data_common: RTH 09:30–16:00 ET, 16:00 exclusive
-RTH_START_MINS = 570
-RTH_END_MINS = 960
 
 
 def _et_minute_of_day(ts_utc: float) -> int:

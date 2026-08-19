@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from time_et import ET, now_et
+from time_et import ET, RTH_END_MINS, RTH_SESSION_MINUTES, RTH_START_MINS, now_et
 
 APP_DIR = str(Path(__file__).parent.resolve())
 
@@ -44,15 +44,15 @@ def _synthetic_bars_for_session(session_date) -> list[dict]:
         return {"timestamp": int(dt.timestamp() * 1000), "_ts": dt.timestamp(),
                 "open": o, "high": h, "low": l, "close": c, "volume": v}
 
-    # Prev day RTH 09:30-16:00
-    for i in range(390):
-        m = 9 * 60 + 30 + i
+    # Prev day cash RTH [open, close)
+    for i in range(int(RTH_SESSION_MINUTES)):
+        m = int(RTH_START_MINS) + i
         dt = __import__("datetime").datetime(prev_date.year, prev_date.month, prev_date.day,
                                              m // 60, m % 60, tzinfo=ET)
         p = base + (i % 40) - 20
         bars.append(_mk(dt, p, p + 0.4, p - 0.4, p))
-    # Overnight: prev 16:00-24:00, today 00:00-09:30
-    for h in range(16, 24):
+    # Overnight: prev RTH close–24:00, today 00:00–RTH open
+    for h in range(int(RTH_END_MINS) // 60, 24):
         for m in range(0, 60, 5):
             dt = __import__("datetime").datetime(prev_date.year, prev_date.month, prev_date.day, h, m, tzinfo=ET)
             p = base - 2 + (h + m) % 10
@@ -62,9 +62,9 @@ def _synthetic_bars_for_session(session_date) -> list[dict]:
             dt = __import__("datetime").datetime(session_date.year, session_date.month, session_date.day, h, m, tzinfo=ET)
             p = base - 1 + (h + m) % 8
             bars.append(_mk(dt, p, p + 0.2, p - 0.2, p, 200))
-    # Today RTH 09:30 onward (through 14:30 for afternoon)
+    # Today RTH open onward (through 14:30 for afternoon snapshot — not full session)
     for i in range(360):
-        m = 9 * 60 + 30 + i
+        m = int(RTH_START_MINS) + i
         dt = __import__("datetime").datetime(session_date.year, session_date.month, session_date.day,
                                              m // 60, m % 60, tzinfo=ET)
         p = base + (i % 35) - 17

@@ -22,6 +22,18 @@ RTH_END_MINS = 960
 RTH_SESSION_MINUTES = RTH_END_MINS - RTH_START_MINS  # 390 = single RTH session length as 1m bars
 
 
+def rth_clock_js_source() -> str:
+    """Served/generated JS projection of the one RTH open/close authority.
+
+    Frontend must consume these names. Re-encoding 570/960 (or 9:30/16:00) in
+    HTML/JS is a second producer of the same boundary (F09).
+    """
+    return (
+        f"window.ED_RTH_START_MINS={int(RTH_START_MINS)};\n"
+        f"window.ED_RTH_END_MINS={int(RTH_END_MINS)};\n"
+    )
+
+
 def now_et() -> datetime:
     """Timezone-aware US/Eastern now."""
     return datetime.now(ET)

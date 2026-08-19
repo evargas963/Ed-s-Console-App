@@ -15,6 +15,37 @@ from pathlib import Path
 # turn audit map the HTML change to a running suite instead of reporting an unknown owner.
 TURN_AUDIT_OWNS = [
     "static/index.html",
+    "static/chart.html",
+    "static/rth_clock_authority.js",
+    "time_et.py",
+    "server.py",
+    "polling_adapter.py",
+    "news_sentiment.py",
+    "liquidity_value_engine.py",
+    "compare_clustering_modes.py",
+    "audit_model_readiness.py",
+    "verification/daily_health.py",
+    "v2_decision/a2_eod_force_exit.py",
+    "v2_decision/a2_option_expression.py",
+    "v2_decision/a2_session_calendar.py",
+    "research/gex_r1_screen_v1/signal.py",
+    "research/pilot_step3/data_loader.py",
+    "research/tod_eval_v1/runner.py",
+    "tools/research/d2_build_dual_label_scratch_db.py",
+    "tools/study_pin_direction_v1.py",
+    "tools/study_pin_charm_v1.py",
+    "tools/study_pin_residence_v1.py",
+    "tools/study_pin_regime_cut_v1.py",
+    "tools/study_terrain_readiness_v1.py",
+    "tools/study_card2_am_pm_v1.py",
+    "tools/study_card_lateday_v1.py",
+    "tools/study_card_lateday_v2.py",
+    "tools/study_timeslice_reversal_v1.py",
+    "tools/lp01_touch_study_v1.py",
+    "tools/liquidity_synthesis_experiments_v1.py",
+    "tools/liquidity_oi_volume_stickiness_v1.py",
+    "tools/terrain_backtest_report_v1.py",
+    "tools/liquidity_intraday_volume_ic_v1.py",
     # F07: this suite's regime lock reads and asserts on the backtests' regime derivation.
     "tools/liquidity_gamma_hold_horizon_experiments_v1.py",
     "tools/liquidity_gamma_levels_experiment_v1.py",
@@ -257,6 +288,82 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     cont_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("TERRAIN_CONTENTION_START_MINS")]
     assert cont_assign and "RTH_OPEN_MINS" in cont_assign[0] and "570" not in cont_assign[0]
 
+    # F09 repo-wide (2026-08-19): frontend + research/tools/training consume time_et,
+    # they do not re-author 570/960. Display-copy "09:30" in a stage name is not a cut.
+    from time_et import rth_clock_js_source
+    js_proj = _read("static/rth_clock_authority.js")
+    assert js_proj == rth_clock_js_source(), "served JS projection drifted from time_et (F09)"
+    assert "rth_clock_js_source" in srv and "rth_clock_authority.js" in srv
+
+    def _exec_js(path: str) -> str:
+        src = _read(path)
+        return "\n".join(
+            ln for ln in src.splitlines()
+            if not ln.lstrip().startswith(("//", "*", "<!--", "*"))
+        )
+
+    idx = _exec_js("static/index.html")
+    assert 'src="/static/rth_clock_authority.js"' in _read("static/index.html")
+    assert "edRthStartMins" in idx and "edRthEndMins" in idx
+    assert "m < 570" not in idx and "m < 960" not in idx
+    assert "16 * 3600" not in idx
+    assert "16 * 60" not in idx
+    chart = _exec_js("static/chart.html")
+    assert 'src="/static/rth_clock_authority.js"' in _read("static/chart.html")
+    assert "ED_RTH_START_MINS" in chart and "ED_RTH_END_MINS" in chart
+    assert "mm >= 570" not in chart and "mm < 960" not in chart
+
+    dh = _read("verification/daily_health.py")
+    assert "from time_et import" in dh and "RTH_START_MINS" in dh
+    assert "RTH_START_MINS = 570" not in dh
+    dl = _read("research/pilot_step3/data_loader.py")
+    assert "from time_et import" in dl and "RTH_START_MINS = 570" not in dl
+    am = _read("audit_model_readiness.py")
+    assert "from time_et import" in am and "RTH_START_MINS" in am
+    assert ">= 570" not in am
+    d2 = _read("tools/research/d2_build_dual_label_scratch_db.py")
+    assert "RTH_START_MINS as RTH_START_MIN" in d2
+    assert "RTH_START_MIN, RTH_END_MIN = 570, 960" not in d2
+    for study in (
+        "tools/study_pin_direction_v1.py",
+        "tools/study_pin_charm_v1.py",
+        "tools/study_pin_residence_v1.py",
+        "tools/study_pin_regime_cut_v1.py",
+        "tools/study_terrain_readiness_v1.py",
+        "tools/study_card2_am_pm_v1.py",
+        "tools/study_card_lateday_v1.py",
+        "tools/study_card_lateday_v2.py",
+        "tools/study_timeslice_reversal_v1.py",
+        "tools/lp01_touch_study_v1.py",
+        "tools/liquidity_synthesis_experiments_v1.py",
+        "tools/liquidity_oi_volume_stickiness_v1.py",
+        "tools/liquidity_gamma_levels_experiment_v1.py",
+        "tools/liquidity_gamma_hold_horizon_experiments_v1.py",
+    ):
+        st = _read(study)
+        assert "RTH_START_MINS" in st and "9 * 60 + 30" not in st, study
+    gex = _read("research/gex_r1_screen_v1/signal.py")
+    assert "RTH_START_MINS" in gex and "start_mins: int = 570" not in gex
+    tod = _read("research/tod_eval_v1/runner.py")
+    assert "RTH_START_MINS" in tod and "9 * 60 + 30" not in tod
+    poll = _read("polling_adapter.py")
+    assert "RTH_END_MINS" in poll and "time(16, 0)" not in poll
+    a2e = _read("v2_decision/a2_eod_force_exit.py")
+    assert "RTH_OPEN_MINUTE_TOTAL = RTH_START_MINS" in a2e
+    assert "9 * 60 + 30" not in a2e and "16 * 60" not in a2e
+    a2o = _read("v2_decision/a2_option_expression.py")
+    assert "_RTH_CLOSE_MINUTE_TOTAL = RTH_END_MINS" in a2o
+    a2c = _read("v2_decision/a2_session_calendar.py")
+    assert "open_minute = int(RTH_START_MINS)" in a2c
+    ns = _read("news_sentiment.py")
+    assert "RTH_START_MINS" in ns and "m < 30" not in ns
+    lve = _read("liquidity_value_engine.py")
+    assert "RTH_OPEN_MINS" in lve and "time(9, 29)" not in lve.split("def _cutoff_for_snapshot")[1][:800]
+    ccm = _read("compare_clustering_modes.py")
+    assert "RTH_START_MINS" in ccm and "9 * 60 + 30" not in ccm
+    tbr = _read("tools/terrain_backtest_report_v1.py")
+    assert "RTH_START_MINS" in tbr and "9 * 60 + 45" not in tbr
+
 
 # ------------------------------------------------------------------------- F12 relative volume
 def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
@@ -357,6 +464,87 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     assert src == "volume" and val == 0.6
     assert book.get("label") == "balanced"  # book-only zero — must not be served
     assert flow_imbalance_label_from_normalized(val) == "strong_call_demand"
+
+    # F11 LIVE-handler contract: the /api/state assignment is these three fields
+    # from one number. A volume-fallback tick must not publish a book-only label.
+    served = {
+        "flow_imbalance": val,
+        "flow_imbalance_source": src,
+        "flow_imbalance_label": flow_imbalance_label_from_normalized(val),
+    }
+    assert served["flow_imbalance_source"] == "volume"
+    assert served["flow_imbalance_label"] == "strong_call_demand"
+    assert served["flow_imbalance_label"] != book.get("label")
+
+
+def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
+    """F11: after app lifespan (desk-start equivalent), GET /api/state serves
+    flow_imbalance + source + label from the same wrapper number on a
+    volume-fallback tick.
+
+    This image has no Schwab token. The persist stamps are the live server
+    imports (wrapper + label_from_normalized). The tick is SYNTHETIC_WIRE
+    (empty ATM book, call 80 / put 20). GET /api/state is the live cache-serve
+    path after that tick is published the way _fetch_state writes _state_cache.
+    """
+    import time
+
+    import pytest
+
+    pytest.importorskip("fastapi")
+    import server as srv
+    from math_probabilities import compute_option_flow_imbalance
+    from starlette.testclient import TestClient
+    from time_et import rth_clock_js_source
+
+    exposures = {
+        100.0: {
+            "call_bid_size": 0, "call_ask_size": 0,
+            "put_bid_size": 0, "put_ask_size": 0,
+            "call_volume": 80, "put_volume": 20,
+        }
+    }
+    book = compute_option_flow_imbalance(exposures, 100.0)
+    val, src = srv.flow_imbalance_normalized_with_fallback(exposures, 100.0)
+    label = srv.flow_imbalance_label_from_normalized(val)
+    assert src == "volume" and val == 0.6
+    assert label == "strong_call_demand"
+    assert label != book.get("label")
+
+    ms = {
+        "ticker": "SPY",
+        "spot": 100.0,
+        "flow_imbalance": val,
+        "flow_imbalance_source": src,
+        "flow_imbalance_label": label,
+        "f11_wire": "SYNTHETIC_VOLUME_FALLBACK_TICK",
+    }
+    now = time.time()
+    cache_key = ("SPY", "2099-01-01")
+    srv._state_cache[cache_key] = {
+        "ts": now,
+        "generated_at": now,
+        "analytics_version": 1,
+        "ms_dict": dict(ms),
+        "pcr_val": None,
+        "spot_f": 100.0,
+        "vix": None,
+        "price_levels": None,
+        "pl_date": "",
+        "pl_mono": None,
+    }
+
+    with TestClient(srv.app) as client:
+        js = client.get("/static/rth_clock_authority.js")
+        assert js.status_code == 200
+        assert js.text == rth_clock_js_source()
+        r = client.get("/api/state", params={"ticker": "SPY"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body.get("flow_imbalance") == 0.6
+        assert body.get("flow_imbalance_source") == "volume"
+        assert body.get("flow_imbalance_label") == "strong_call_demand"
+        assert body["flow_imbalance_label"] != book.get("label")
 
 
 def test_rc345_imbalance_taxonomy_is_distinct_and_named() -> None:

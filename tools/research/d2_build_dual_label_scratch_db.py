@@ -53,7 +53,7 @@ K_BASE_PRIOR = 0.9          # fitted downward/upward per horizon by the share se
 NO_TOUCH_TARGET = 0.30      # approved window 0.25-0.35
 NO_TOUCH_LO, NO_TOUCH_HI = 0.25, 0.35
 TRAIN_FRACTION = 0.8        # chronological — k is fitted on the train split only
-RTH_START_MIN, RTH_END_MIN = 570, 960  # 09:30-16:00 ET
+from time_et import RTH_END_MINS as RTH_END_MIN, RTH_START_MINS as RTH_START_MIN
 
 
 def et_minutes(ts_utc: float) -> tuple[str, int]:

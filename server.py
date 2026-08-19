@@ -9620,6 +9620,16 @@ async def _app_lifespan(app):
     # completing, and that path joins background workers which may be blocked.
     _install_signal_handlers()
     _startup_analytics_executor()
+    # F09: project the one RTH open/close authority into the served JS the
+    # frontend consumes. time_et is the producer; this file is a projection
+    # rewritten at every desk start so a stale static blob cannot linger LIVE.
+    try:
+        from time_et import rth_clock_js_source as _rth_clock_js_source
+        (Path(APP_DIR) / "static" / "rth_clock_authority.js").write_text(
+            _rth_clock_js_source(), encoding="utf-8",
+        )
+    except OSError as _rth_js_exc:
+        log.warning("F09 rth_clock_authority.js projection failed: %s", _rth_js_exc)
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
 

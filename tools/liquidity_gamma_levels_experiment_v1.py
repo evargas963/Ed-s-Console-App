@@ -38,13 +38,13 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from terrain_engine import compute_terrain  # noqa: E402
-from time_et import ET, is_trading_day_et  # noqa: E402
+from time_et import ET, RTH_END_MINS, RTH_START_MINS, is_trading_day_et  # noqa: E402
 
 # ── Pre-registered constants ─────────────────────────────────────────────────
-RTH_OPEN_MIN = 9 * 60 + 30
-RTH_CLOSE_MIN = 16 * 60
-OBS_LO_MIN, OBS_HI_MIN = 9 * 60 + 45, 10 * 60 + 15
-TOUCH_START_MIN = 10 * 60 + 15          # after observation — no lookahead
+RTH_OPEN_MIN = int(RTH_START_MINS)
+RTH_CLOSE_MIN = int(RTH_END_MINS)
+OBS_LO_MIN, OBS_HI_MIN = RTH_OPEN_MIN + 15, RTH_OPEN_MIN + 45  # 09:45–10:15 obs window
+TOUCH_START_MIN = OBS_HI_MIN  # after observation — no lookahead
 HORIZON_MIN = 30
 K_ATR = 1.0
 REARM_ATR_MULT = 0.25

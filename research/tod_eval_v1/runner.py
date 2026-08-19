@@ -17,10 +17,10 @@ from sklearn.preprocessing import StandardScaler
 from research.elastic_net_eval_v1.runner import apply_advancement_screen, evaluate_cell
 from research.incumbent_eval_v1.runner import invalid_threshold_horizons
 from research.tcn_eval_v1.runner import _et_date, _load_labeled_rows
-from time_et import ET
+from time_et import ET, RTH_SESSION_MINUTES, RTH_START_MINS
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
-N_BINS = 13  # 09:30–16:00 → 390 min / 30 = 13
+N_BINS = RTH_SESSION_MINUTES // 30  # cash RTH / 30-minute bins
 
 
 def load_prereg() -> dict[str, Any]:
@@ -29,8 +29,8 @@ def load_prereg() -> dict[str, Any]:
 
 def _tod_bin(ts: float) -> int | None:
     dt = datetime.fromtimestamp(float(ts), tz=ET)
-    mins = dt.hour * 60 + dt.minute - (9 * 60 + 30)
-    if mins < 0 or mins >= 390:
+    mins = dt.hour * 60 + dt.minute - RTH_START_MINS
+    if mins < 0 or mins >= RTH_SESSION_MINUTES:
         return None
     return int(mins // 30)
 

@@ -94,6 +94,14 @@ def test_load_uses_now_et_date_parameter_when_provided(tmp_path):
     assert load_a2_session_calendar(data_root=tmp_path, now_et_date=date(2026, 7, 1)) is None
 
 
+def test_classifies_16_00_as_out_of_session_exclusive_close():
+    info = get_session_info(decision_time_ms=_epoch_ms_et(2026, 6, 1, 16, 0), calendar=_calendar())
+    assert info is not None
+    assert info.session_type == "out_of_session"
+    assert info.session_open_et == "09:30"
+    assert info.session_close_et == "16:00"
+
+
 def test_classifies_normal_rth_during_regular_session():
     info = get_session_info(decision_time_ms=_epoch_ms_et(2026, 6, 1, 10, 0), calendar=_calendar())
 

@@ -43,13 +43,13 @@ from math_exposure_core import (  # noqa: E402
 )
 from numeric_contract import float_finite_or_none, float_nonnegative_or_none  # noqa: E402
 from terrain_engine import compute_terrain  # noqa: E402
-from time_et import ET, is_trading_day_et  # noqa: E402
+from time_et import ET, RTH_END_MINS, RTH_START_MINS, is_trading_day_et  # noqa: E402
 
 # ── Pre-registered constants ─────────────────────────────────────────────────
-RTH_OPEN_MIN = 9 * 60 + 30
-RTH_CLOSE_MIN = 16 * 60
-OBS_LO_MIN, OBS_HI_MIN = 9 * 60 + 45, 10 * 60 + 15
-OUTCOME_START_MIN = 10 * 60 + 15
+RTH_OPEN_MIN = int(RTH_START_MINS)
+RTH_CLOSE_MIN = int(RTH_END_MINS)
+OBS_LO_MIN, OBS_HI_MIN = RTH_OPEN_MIN + 15, RTH_OPEN_MIN + 45  # 09:45–10:15 obs window
+OUTCOME_START_MIN = OBS_HI_MIN  # post-obs; same 10:15 cut as OBS_HI
 SEED = 20260730
 
 TOP_K = 3                       # candidate sticky strikes per arm per day

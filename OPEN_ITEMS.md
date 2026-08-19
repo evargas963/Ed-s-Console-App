@@ -328,14 +328,14 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [x] **F06** — Expected move semantics (distinct methodologies, source-tagged) — CLOSED_WITH_EVIDENCE
 - [x] **F07** — Gamma regime (one backend sign classifier; client does not reconstruct/write) — CLOSED_WITH_EVIDENCE
 - [x] **F08** — ATR (standard TR+SMA authority; feature variant distinct; Wilder quarantined) — CLOSED_WITH_EVIDENCE
-- [x] **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — CLOSED_WITH_EVIDENCE
+- [x] **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — PARTIAL / REOPENED (RC-411): repo-wide sweep (not #139 closure) collapses frontend/research/tools/training/A2/polling onto `time_et` + served `rth_clock_authority.js`. LIVE JS projection is rewritten at app lifespan. Not CLOSED_WITH_EVIDENCE until a Schwab desk restart is proven.
 - [ ] **F10** — Candle direction — OPEN / WAITING_FOR_HOST_RETRAIN
   - [x] One dead-band authority; live producer count = 1; server + normalization delegate
   - [ ] Historical normalized rows rebuilt under dead-band; production training population corrected
   - [ ] SPY/QQQ/IWM retrained; non-anchor/universal retrain routing proven; force-retrain/cache-bypass proven
   - [ ] PREPROCESSING_VERSION bumped atomically; compatible artifacts; governed eval; calibration compatibility
   - [ ] Atomic promotion; runtime restarted on compatible generation; runtime train/serve parity; replay/backfill compatibility; universality
-- [x] **F11** — Flow imbalance (one persisted authority; source travels; kwargs contract locked) — CLOSED_WITH_EVIDENCE
+- [x] **F11** — Flow imbalance (one persisted authority; source travels; kwargs contract locked) — PARTIAL / REOPENED (RC-411): #139 collapsed live label onto the wrapper number. SYNTHETIC_WIRE `/api/state` volume-fallback triple is locked (empty ATM book + call 80 / put 20). A Schwab-desk vendor tick after restart remains NEXT-DEPTH. Not CLOSED_WITH_EVIDENCE.
 - [x] **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
 - [x] **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
 - [x] **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE

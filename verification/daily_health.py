@@ -25,12 +25,8 @@ from pathlib import Path
 from typing import Any
 from instrument_identity import ticker_storage_key
 from production_universe import filter_valid_tickers
-from time_et import ET as _ET
+from time_et import ET as _ET, RTH_END_MINS, RTH_START_MINS
 from timeframe_config import CANONICAL_TIMEFRAME
-
-# RTH bar-start window (align with pilot 1m loader: 09:30–16:00 ET, end exclusive)
-RTH_START_MINS = 570
-RTH_END_MINS = 960
 
 # --- Sample tier gates (fixed; reporting only) ---
 EXPLORATORY_MIN_SAMPLES = 50

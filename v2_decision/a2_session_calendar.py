@@ -7,7 +7,7 @@ import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
-from time_et import ET, now_et
+from time_et import ET, RTH_END_MINS, RTH_START_MINS, now_et
 
 logger = logging.getLogger(__name__)
 CALENDAR_RELATIVE_PATH = Path("trading_calendar") / "us_equities.json"
@@ -56,12 +56,17 @@ def get_session_info(*, decision_time_ms: int, calendar: dict) -> SessionInfo | 
         decision_minute_et = dt_et.hour * 60 + dt_et.minute
 
         regular_session = calendar.get("regular_session")
-        regular_open = _string_value(regular_session, "open_et")
-        regular_close = _string_value(regular_session, "close_et")
-        open_minute = _parse_hhmm_to_min(regular_open)
-        close_minute = _parse_hhmm_to_min(regular_close)
-        if open_minute is None or close_minute is None:
+        # Display strings and the minute cut come from the one RTH clock
+        # (time_et). The JSON still has to carry parseable regular_session
+        # HH:MM for schema validity; it is not a second open/close producer.
+        if _string_value(regular_session, "open_et") is None:
             return None
+        if _string_value(regular_session, "close_et") is None:
+            return None
+        open_minute = int(RTH_START_MINS)
+        close_minute = int(RTH_END_MINS)
+        regular_open = f"{open_minute // 60:02d}:{open_minute % 60:02d}"
+        regular_close = f"{close_minute // 60:02d}:{close_minute % 60:02d}"
 
         full_closures = _date_set(calendar.get("full_closures"))
         early_close_map = _early_close_map(calendar.get("early_closes"))
@@ -91,7 +96,11 @@ def get_session_info(*, decision_time_ms: int, calendar: dict) -> SessionInfo | 
                 decision_minute_et=decision_minute_et,
             )
 
-        session_type = "normal_rth" if open_minute <= decision_minute_et <= close_minute else "out_of_session"
+        session_type = (
+            "normal_rth"
+            if open_minute <= decision_minute_et < close_minute
+            else "out_of_session"
+        )
         return SessionInfo(
             session_type=session_type,
             session_open_et=regular_open,

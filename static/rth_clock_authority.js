@@ -1,0 +1,2 @@
+window.ED_RTH_START_MINS=570;
+window.ED_RTH_END_MINS=960;

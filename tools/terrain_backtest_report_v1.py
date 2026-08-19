@@ -47,7 +47,7 @@ from math_levels import (  # noqa: E402
     gamma_at_price,
 )
 from terrain_engine import compute_terrain  # noqa: E402
-from time_et import ET  # noqa: E402
+from time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
 
 DB = ROOT / "data" / "ed_console.db"
 OUT_MD = ROOT / "reports" / "terrain_backtest_latest.md"
@@ -56,9 +56,9 @@ OUT_JSON = ROOT / "reports" / "terrain_backtest_latest.json"
 SENTINELS = {"SPY", "QQQ", "IWM"}
 #: Chain selection window around 10:00 ET — late enough for opening OI/greeks to settle,
 #: early enough that the whole session remains to be predicted.
-OBS_LO_MIN, OBS_HI_MIN = 9 * 60 + 45, 10 * 60 + 15
+OBS_LO_MIN, OBS_HI_MIN = int(RTH_START_MINS) + 15, int(RTH_START_MINS) + 45
 #: Realized window: strictly AFTER observation (no lookahead), to just before the close.
-REAL_LO_MIN, REAL_HI_MIN = 10 * 60 + 15, 15 * 60 + 55
+REAL_LO_MIN, REAL_HI_MIN = OBS_HI_MIN, int(RTH_END_MINS) - 5
 
 
 def _et_day_and_min(ts: float) -> tuple[str, int]:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, time
 from typing import Callable
-from time_et import ET
+from time_et import ET, RTH_END_MINS
 
 from market_data_adapter import schwab_candles_to_bars
 import logging
@@ -40,11 +40,11 @@ def fetch_bars_via_schwab_for_session(
     Fetch OHLCV bars for a specific session using start_datetime/end_datetime.
     Ensures data aligns with session_date and prev trading day (no date mismatch).
 
-    Fetches: prev_trading_day 00:00 ET through session_date 16:00 ET.
+    Fetches: prev_trading_day 00:00 ET through session_date RTH close (time_et.RTH_END_MINS).
     """
     prev_date = _prev_trading_day(session_date)
     start_dt = datetime.combine(prev_date, time(0, 0), tzinfo=ET)
-    end_dt = datetime.combine(session_date, time(16, 0), tzinfo=ET)
+    end_dt = datetime.combine(session_date, time(RTH_END_MINS // 60, RTH_END_MINS % 60), tzinfo=ET)
 
     try:
         import schwab as _schwab

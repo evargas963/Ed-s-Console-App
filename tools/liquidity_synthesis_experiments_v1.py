@@ -31,10 +31,11 @@ from liquidity_value_engine import (  # noqa: E402
     get_overnight_levels,
     get_previous_day_levels,
 )
-from time_et import ET  # noqa: E402
+from time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
 
 # ── Pre-registered constants (before results) ────────────────────────────────
-RTH_OPEN_MIN, RTH_CLOSE_MIN, ORB_END_MIN = 9 * 60 + 30, 16 * 60, 9 * 60 + 45
+RTH_OPEN_MIN, RTH_CLOSE_MIN = int(RTH_START_MINS), int(RTH_END_MINS)
+ORB_END_MIN = RTH_OPEN_MIN + 15  # 09:45 ET — opening-range complete (width, not a second open)
 HORIZON_MIN = 30
 K_ATR = 1.0                    # profit target multiple of session ATR proxy
 REARM_ATR_MULT = 0.25

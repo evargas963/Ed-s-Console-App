@@ -46,7 +46,7 @@ from liquidity_value_engine import (  # noqa: E402
     get_overnight_levels,
     get_previous_day_levels,
 )
-from time_et import ET  # noqa: E402
+from time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
 
 # ── PRE-REGISTERED, before any result was seen ───────────────────────────────────────────────
 #: Forward horizons in minutes.
@@ -57,7 +57,8 @@ REARM_ATR_MULT = 0.25
 #: Levels whose value is fixed before any touch that tests them.
 CAUSAL_LEVELS = ("PDH", "PDL", "PDC", "PD_POC", "PD_VAH", "PD_VAL",
                  "ON_HIGH", "ON_LOW", "ORB_HIGH", "ORB_LOW", "ORB_MID")
-RTH_OPEN_MIN, RTH_CLOSE_MIN, ORB_END_MIN = 9 * 60 + 30, 16 * 60, 9 * 60 + 45
+RTH_OPEN_MIN, RTH_CLOSE_MIN = int(RTH_START_MINS), int(RTH_END_MINS)
+ORB_END_MIN = RTH_OPEN_MIN + 15  # 09:45 ET — opening-range complete (width, not a second open)
 
 #: PLACEBO — the control that decides whether this study measured LEVELS or measured its own
 #: selection rule. A touch requires the bar's [low, high] to CONTAIN the level, so touches
