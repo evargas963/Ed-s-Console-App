@@ -12137,7 +12137,12 @@ def _terrain_snapshots_for_radar() -> list[dict]:
     moment the loop caches a fresher one.
     """
     with _terrain_cache_lock:
-        cached = {t.get("ticker"): t for t in _terrain_cache.values() if t.get("ticker")}
+        live_tickers = [t.get("ticker") for t in _terrain_cache.values() if t.get("ticker")]
+    cached: dict[str, dict] = {}
+    for tkr in live_tickers:
+        snap = terrain_cache_get(tkr)
+        if snap is not None and snap.get("ticker"):
+            cached[snap["ticker"]] = snap
 
     # MERGE, never choose. Returning only the cache meant that as soon as the loop had
     # cached its first ticker the stored-chain fallback was skipped entirely, so a warming
