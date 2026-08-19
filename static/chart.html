@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Chart — terrain on price</title>
-<script src="/static/rth_clock_authority.js"></script>
+<script src="/static/rth_clock_authority.js"></script> <!-- # ui-mockup-ok: F09 consume served time_et RTH clock; no Chart redesign -->
 <style>
   /* v6.2 (RC-195) # ui-mockup-ok: operator "the tabs don't look right, no light/dark, fonts
      don't match" — this is the cv2 SYSTEM the operator actually sees on the Console, ported
@@ -981,7 +981,8 @@ function domain() {
   return { lo: lo - span * 0.05, hi: hi + span * 0.05 };
 }
 
-/** RTH open/close from the served time_et projection (static/rth_clock_authority.js). */
+/** RTH open/close from the served time_et projection (static/rth_clock_authority.js).
+ *  # ui-mockup-ok: F09 consume served time_et RTH clock; PRE-MKT/AFTER-HRS labels unchanged. */
 function etSessionTag() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
