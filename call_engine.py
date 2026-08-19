@@ -1941,7 +1941,7 @@ def compute_call(
         _tf = getattr(pred, "timeframe_reads", None) or {}
         _nad_c, _nbd_c = mvp_nearest_distances_for_regime(mvp_features)
         _nearest_dist = None
-        for _d in (inp.dist_call_gamma_wall, inp.dist_put_gamma_wall, inp.dist_gamma_inflection,
+        for _d in (inp.dist_call_gamma_wall, inp.dist_put_gamma_wall,
                     _nad_c, _nbd_c):
             if _d is not None:
                 _ad = abs(float(_d))

@@ -30,7 +30,6 @@ def test_rules_engine_range_regime_waits_when_vwap_side_none():
         micro=micro,
         approaching_ceiling=False,
         approaching_floor=False,
-        near_inflection=False,
         vwap_side=None,
         zone="pin_neutral",
     )
@@ -44,7 +43,6 @@ def test_rules_engine_range_regime_long_only_when_vwap_above():
         micro=micro,
         approaching_ceiling=False,
         approaching_floor=False,
-        near_inflection=False,
         vwap_side="above",
         zone="pin_neutral",
     )

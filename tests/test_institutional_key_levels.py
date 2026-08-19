@@ -417,6 +417,12 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     assert 'getattr(consensus_summary, "oi_center"' not in dens
     assert "'gamma_inflection'" not in dens
     assert "'call_oi_wall'" not in dens
+    ce = Path("call_engine.py").read_text(encoding="utf-8")
+    rdy = ce.split("_nearest_dist = None", 1)[1].split("_level_prox =", 1)[0]
+    assert "dist_gamma_inflection" not in rdy
+    re_src = Path("rules_engine.py").read_text(encoding="utf-8")
+    assert "regime flip zone" not in re_src
+    assert "dist_gamma_inflection" not in re_src
 
 
 def test_consensus_net_gamma_equals_aggregate_net_gex():

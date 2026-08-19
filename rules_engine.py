@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
-                             near_inflection, vwap_side, zone) -> tuple[str, str]:
+                             vwap_side, zone) -> tuple[str, str]:
     """
     Convert micro regime + level context into a structural bias.
 
@@ -92,8 +92,8 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
       TREND_UP, TREND_DOWN, BOS_UP, BOS_DOWN, CHOCH_BULL, CHOCH_BEAR,
       COMPRESSION, RANGE, REVERSAL_UP, REVERSAL_DOWN, CHOP
 
-    Also layers on options-level proximity alerts (approaching ceiling/floor,
-    near inflection). These alerts add context but don't override the micro read.
+    Also layers on options-level proximity alerts (approaching ceiling/floor).
+    These alerts add context but don't override the micro read.
 
     Output:
       - headline:    5-min structure read
@@ -126,7 +126,6 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
     # These are valuable context even with candle-based analysis
     cgw = inp.call_gamma_wall
     pgw = inp.put_gamma_wall
-    gi  = inp.gamma_inflection
 
     approaching_ceiling = (
         cgw is not None and
@@ -138,22 +137,12 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
         inp.dist_put_gamma_wall is not None and
         0 < abs(inp.dist_put_gamma_wall) <= APPROACH_PTS
     )
-    near_inflection = (
-        gi is not None and
-        inp.dist_gamma_inflection is not None and
-        abs(inp.dist_gamma_inflection) <= APPROACH_PTS
-    )
-
     if approaching_ceiling:
         cgw_s = f"{cgw:.2f}"
         alerts.append(f"⚠ Within {inp.dist_call_gamma_wall:.1f}pts of {cgw_s} ceiling")
     if approaching_floor:
         pgw_s = f"{pgw:.2f}"
         alerts.append(f"⚠ Within {abs(inp.dist_put_gamma_wall):.1f}pts of {pgw_s} floor")
-    if near_inflection:
-        gi_s = f"{gi:.2f}"
-        alerts.append(f"⚠ Near regime flip zone at {gi_s}")
-
     # Level test counts
     if inp.ceiling_tests_today >= 2 and approaching_ceiling:
         alerts.append(f"🔁 {_ordinal(inp.ceiling_tests_today + 1)} test of ceiling — rejection probability rising")
@@ -206,7 +195,6 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
         micro=micro,
         approaching_ceiling=approaching_ceiling,
         approaching_floor=approaching_floor,
-        near_inflection=near_inflection,
         vwap_side=mvp_vwap_side(mvp_features),
         zone=mvp_zone(mvp_features),
     )
