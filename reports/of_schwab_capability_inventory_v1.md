@@ -3,7 +3,7 @@
 **Status:** DISCOVERY / AUDIT — no UI, no new analytics  
 **RC:** RC-438  
 **Definition refresh:** `tools/refresh_schwab_native_field_inventory.py` against **schwab-py 1.5.1**  
-**Observed dictionary last live sync:** 2026-08-15 (`governance/artifacts/schwab_field_sync_state.json`) — this cloud run: **LIVE_BLOCKED** (no `schwab_token.json`)
+**Observed dictionary last live sync:** 2026-08-15 (`governance/artifacts/schwab_field_sync_state.json`) — this cloud run: **`CLOUD_SECRET_UNAVAILABLE`** (no `schwab_token.json` / `.env` in agent workspace; **not** `TOKEN_FAILURE`). Host runbook: `reports/of_schwab_live_inventory_host_runbook_v1.md`.
 
 ## Corrections (operator)
 
@@ -61,13 +61,24 @@ See `reports/of_schwab_capability_universe_map_v1.json`:
 
 ## Operator next (host)
 
+**Auth:** same as working console — `<console_root>/schwab_token.json` (or `SCHWAB_TOKEN_PATH`) + `.env` `SCHWAB_API_KEY`/`SCHWAB_APP_SECRET`. Do not copy/recreate token unless host auth itself fails.
+
+**`sync --poll` is REST-only** — pair with streaming inventory/probe for Level One + BOOK.
+
+**Stop console `order_flow_streaming` (and any `run_stream_capture`) before streaming steps** — single-streamer-owner.
+
 ```text
-# 1) Refresh observed REST dictionary (union merge)
+# From console root (where schwab_token.json already works):
+
+# 1) REST live dictionary sync (REST-ONLY; streamer may stay up)
 python tools/sync_schwab_field_dictionary.py --poll
 
-# 2) Re-run definition refresh (records LIVE_OK)
-python tools/refresh_schwab_native_field_inventory.py
+# 2) REST + brief LEVEL_ONE / NASDAQ_BOOK / CHART sample (STOP console streamer first)
+python schwab_full_field_inventory.py
 
-# 3) RTH semantic/entitlement probe (stop other streamers first)
+# 3) OF streaming probe — NYSE+NASDAQ books (+ OPTIONS_BOOK/TIMESALE/L1 options) (STOP streamer; prefer RTH)
 python tools/probe_schwab_of_capability_rth.py --symbols SPY,QQQ,IWM --duration-sec 90 --with-levelone-options
 ```
+
+Full command + blocker evidence: `reports/of_schwab_live_inventory_host_runbook_v1.md`.  
+Do **not** substitute `refresh_schwab_native_field_inventory.py` for the live authenticated reading.
