@@ -78,6 +78,22 @@ _REJECTION_RE = re.compile(
     re.I,
 )
 
+#: Causation handed to a SYMPTOM or CIRCUMSTANCE as if it were bedrock (RC-432).
+#: "Missing validation", "human error", and "I forgot" name what failed to catch the
+#: defect, not the computation/authority/lifecycle boundary that allowed it.
+_SYMPTOM_ROOT_RE = re.compile(
+    r"ROOT:\s*TERMINAL[^.]*?"
+    r"(?:"
+    r"missing\s+(?:validation|check|test|gate)|"
+    r"human\s+error|"
+    r"I\s+forgot|"
+    r"I\s+made\s+a\s+mistake|"
+    r"time\s+pressure\s+(?:caused|forced|led)|"
+    r"because\s+(?:of\s+)?(?:time\s+pressure|a\s+deadline)"
+    r")",
+    re.I,
+)
+
 
 def violations(log_path: Path | None = None) -> list[str]:
     path = log_path or (REPO / "governance" / "root_cause_log.md")
@@ -94,17 +110,24 @@ def violations(log_path: Path | None = None) -> list[str]:
         if opened < BEDROCK_CUTOVER:
             continue
         hit = _BLAME_RE.search(why)
-        if not hit or _REJECTION_RE.search(why):
-            continue
-        out.append(
-            f"{path.name}:{n}  {rc_id} hands causation to another actor "
-            f"({hit.group(0).strip()!r}) and stops there. That is an EXPLANATION, not a "
-            f"defect, and a five-why terminates on a defect. RC-315 ended exactly this way "
-            f"— five levels, a clean TERMINAL root, blaming the operator's instruction — "
-            f"and an outside audit rejected it in one line: being asked to decide never "
-            f"suspended the evidence-before-assertion law. Ask the next why: what did I do, "
-            f"or fail to build, that let that circumstance produce a defect? If you are "
-            f"QUOTING a blame-shift in order to reject it, say so in the same cell.")
+        if hit and not _REJECTION_RE.search(why):
+            out.append(
+                f"{path.name}:{n}  {rc_id} hands causation to another actor "
+                f"({hit.group(0).strip()!r}) and stops there. That is an EXPLANATION, not a "
+                f"defect, and a five-why terminates on a defect. RC-315 ended exactly this way "
+                f"— five levels, a clean TERMINAL root, blaming the operator's instruction — "
+                f"and an outside audit rejected it in one line: being asked to decide never "
+                f"suspended the evidence-before-assertion law. Ask the next why: what did I do, "
+                f"or fail to build, that let that circumstance produce a defect? If you are "
+                f"QUOTING a blame-shift in order to reject it, say so in the same cell.")
+        sym = _SYMPTOM_ROOT_RE.search(why)
+        if sym and not _REJECTION_RE.search(why):
+            out.append(
+                f"{path.name}:{n}  {rc_id} stops ROOT: TERMINAL on a symptom/circumstance "
+                f"({sym.group(0).strip()!r}). Missing validation / human error / time pressure "
+                f"are not bedrock — they are the absence of a mechanism. Name the "
+                f"computation, authority, lifecycle, train/serve, or ownership boundary that "
+                f"allowed the defect (operator law: 5 Whys to bedrock; RC-432).")
     return out
 
 

@@ -100,6 +100,27 @@ def test_an_owned_chain_is_accepted(tmp_path):
     assert _hits(why, tmp_path) == []
 
 
+def test_symptom_root_missing_validation_is_rejected(tmp_path):
+    """RC-432: ROOT: TERMINAL on 'missing validation' is a stop-short, not bedrock."""
+    why = ("(1) x -> (2) y -> (3) z -> (4) no one checked -> "
+           "(5) ROOT: TERMINAL — missing validation allowed the bad write.")
+    assert _hits(why, tmp_path), "a chain ending on missing validation survived"
+
+
+def test_symptom_root_human_error_is_rejected(tmp_path):
+    why = ("(1) x -> (2) y -> (3) z -> (4) the author mistyped -> "
+           "(5) ROOT: TERMINAL — human error.")
+    assert _hits(why, tmp_path), "a chain ending on human error survived"
+
+
+def test_legitimate_authority_boundary_root_is_accepted(tmp_path):
+    why = ("(1) density labeled clear -> (2) walls never entered the dict -> "
+           "(3) locals()._cgw assigned after density -> (4) selected-expiry flip mixed "
+           "with terrain pin -> (5) ROOT: TERMINAL — density must consume the same "
+           "terrain-bound walls and flip authority as the KL table.")
+    assert _hits(why, tmp_path) == []
+
+
 def test_describing_an_incentive_is_not_blaming_a_person(tmp_path):
     """The narrowing that made this affordable, locked so it cannot widen back.
 
