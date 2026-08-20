@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "live_probe_ran": false,
+  "status_vocab": {
+    "PASS": "Live RTH evidence captured and semantic ruling recorded",
+    "NOT_PROVEN": "Documented and/or partially observed; live proof incomplete",
+    "UNAVAILABLE": "Not offered / refused / absent in probed surfaces",
+    "DOCUMENTED": "Present in schwab-py enums or field inventory only"
+  },
+  "corrections": [
+    "Do not call nested EXCHANGE depth per-participant until identity proven.",
+    "Documented/repo-visible \u2260 live entitlement/proof."
+  ],
+  "rows": [
+    {
+      "concept": "LEVELONE_EQUITIES top-of-book",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Subscribed by order_flow_streaming; inventory has leaves; RTH confirms live"
+    },
+    {
+      "concept": "Quote time (QUOTE_TIME_MILLIS / quoteTime)",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Native field documented; clock skew vs BOOK_TIME needs RTH"
+    },
+    {
+      "concept": "Book aggregate size (price-level TOTAL_VOLUME)",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Vendor name TOTAL_VOLUME; used by OrderFlowEngine imbalance"
+    },
+    {
+      "concept": "NUM_BIDS / NUM_ASKS",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Do not call order-count or market-maker-count without proof"
+    },
+    {
+      "concept": "Nested EXCHANGE + BID_VOLUME/ASK_VOLUME",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "exchange_code_raw only \u2014 not per-participant until proven"
+    },
+    {
+      "concept": "BOOK_TIME",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Characterize monotonicity / lag vs wall clock at RTH"
+    },
+    {
+      "concept": "Nested SEQUENCE",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Update-order usefulness NOT_PROVEN"
+    },
+    {
+      "concept": "NYSE_BOOK live frames (SPY/QQQ/IWM)",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Console subscribes; raw+decoded RTH capture required"
+    },
+    {
+      "concept": "NASDAQ_BOOK live frames (SPY/QQQ/IWM)",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Console subscribes; raw+decoded RTH capture required"
+    },
+    {
+      "concept": "OPTIONS_BOOK entitlement",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Defined in schwab-py; not subscribed by console"
+    },
+    {
+      "concept": "LEVELONE_OPTIONS",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Defined; console uses REST chains instead"
+    },
+    {
+      "concept": "TIMESALE / trade prints (Schwab)",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Not wrapped in schwab-py; prior 2026-07-22 code 11 is historical \u2014 re-probe required"
+    },
+    {
+      "concept": "Native aggressor side",
+      "documented_repo_visible": "UNAVAILABLE",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "UNAVAILABLE",
+      "notes": "No field in enums; repo proxies are INFERRED"
+    },
+    {
+      "concept": "NOII / auction imbalance",
+      "documented_repo_visible": "UNAVAILABLE",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "UNAVAILABLE",
+      "notes": "No field in enums; confirm absence in live payloads"
+    },
+    {
+      "concept": "Market Maker ID / MPID",
+      "documented_repo_visible": "UNAVAILABLE",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "UNAVAILABLE",
+      "notes": "ASK/BID/LAST_ID documented as Exchange ID; MIC separate; no MPID"
+    },
+    {
+      "concept": "True Level-3 order stream",
+      "documented_repo_visible": "UNAVAILABLE",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "UNAVAILABLE",
+      "notes": "No order-id add/cancel/modify service in schwab-py"
+    },
+    {
+      "concept": "Vendor 'level two' book = full MM montage",
+      "documented_repo_visible": "DOCUMENTED",
+      "live_entitlement_proof": "NOT_PROVEN",
+      "semantics": "NOT_PROVEN",
+      "notes": "Schema is aggregated price levels + nested EXCHANGE sizes"
+    }
+  ]
+}
