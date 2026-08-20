@@ -1,0 +1,337 @@
+{
+  "generated_at_utc": "2026-08-20T09:18:53.151148+00:00",
+  "canonical_mechanisms": [
+    "schwab_full_field_inventory.py",
+    "schwab_field_dictionary_builder.py",
+    "tools/sync_schwab_field_dictionary.py --poll",
+    "tools/refresh_schwab_native_field_inventory.py (this)"
+  ],
+  "schwab_py_version": "1.5.1",
+  "live_observation": {
+    "mechanism": "skipped",
+    "status": "SKIPPED"
+  },
+  "diff_vs_prior_observed": {
+    "prior_streaming_leaf_count": 87,
+    "prior_streaming_terminal_names": 74,
+    "additions_vs_prior_observed_streaming_terminals": {
+      "LEVELONE_EQUITIES_names_not_in_prior_terminals": [
+        {
+          "name": "SYMBOL",
+          "number": 0
+        }
+      ],
+      "LEVELONE_OPTIONS_names_not_in_prior_terminals": [
+        {
+          "name": "SYMBOL",
+          "number": 0
+        },
+        {
+          "name": "OPEN_INTEREST",
+          "number": 9
+        },
+        {
+          "name": "VOLATILITY",
+          "number": 10
+        },
+        {
+          "name": "MONEY_INTRINSIC_VALUE",
+          "number": 11
+        },
+        {
+          "name": "EXPIRATION_YEAR",
+          "number": 12
+        },
+        {
+          "name": "MULTIPLIER",
+          "number": 13
+        },
+        {
+          "name": "DIGITS",
+          "number": 14
+        },
+        {
+          "name": "STRIKE_TYPE",
+          "number": 20
+        },
+        {
+          "name": "CONTRACT_TYPE",
+          "number": 21
+        },
+        {
+          "name": "UNDERLYING",
+          "number": 22
+        },
+        {
+          "name": "EXPIRATION_MONTH",
+          "number": 23
+        },
+        {
+          "name": "DELIVERABLES",
+          "number": 24
+        },
+        {
+          "name": "TIME_VALUE",
+          "number": 25
+        },
+        {
+          "name": "EXPIRATION_DAY",
+          "number": 26
+        },
+        {
+          "name": "DAYS_TO_EXPIRATION",
+          "number": 27
+        },
+        {
+          "name": "DELTA",
+          "number": 28
+        },
+        {
+          "name": "GAMMA",
+          "number": 29
+        },
+        {
+          "name": "THETA",
+          "number": 30
+        },
+        {
+          "name": "VEGA",
+          "number": 31
+        },
+        {
+          "name": "RHO",
+          "number": 32
+        },
+        {
+          "name": "THEORETICAL_OPTION_VALUE",
+          "number": 34
+        },
+        {
+          "name": "UNDERLYING_PRICE",
+          "number": 35
+        },
+        {
+          "name": "UV_EXPIRATION_TYPE",
+          "number": 36
+        },
+        {
+          "name": "LAST_TRADING_DAY",
+          "number": 42
+        },
+        {
+          "name": "SETTLEMENT_TYPE",
+          "number": 43
+        },
+        {
+          "name": "NET_PERCENT_CHANGE",
+          "number": 44
+        },
+        {
+          "name": "IMPLIED_YIELD",
+          "number": 47
+        },
+        {
+          "name": "IS_PENNY",
+          "number": 48
+        },
+        {
+          "name": "OPTION_ROOT",
+          "number": 49
+        },
+        {
+          "name": "INDICATIVE_ASKING_PRICE",
+          "number": 52
+        },
+        {
+          "name": "INDICATIVE_BID_PRICE",
+          "number": 53
+        },
+        {
+          "name": "INDICATIVE_QUOTE_TIME",
+          "number": 54
+        },
+        {
+          "name": "EXERCISE_TYPE",
+          "number": 55
+        }
+      ],
+      "BOOK_nested_names_not_in_prior_terminals": [
+        {
+          "enum": "BookFields",
+          "name": "SYMBOL",
+          "number": 0
+        }
+      ],
+      "CHART_EQUITY_names_not_in_prior_terminals": [
+        {
+          "name": "SYMBOL",
+          "number": 0
+        }
+      ],
+      "note": "Most LEVELONE_OPTIONS 'additions' mean never observed in the May-2026 streaming capture (equity+NASDAQ_BOOK+chart only), not that schwab-py added them."
+    },
+    "field_number_changes": {
+      "status": "NONE_DETECTED_VS_SELF",
+      "note": "No prior committed schwab-py enum snapshot to diff numbers against; current numbers recorded in schwab_native_schema_inventory_v1.json."
+    },
+    "nested_book_field_changes": {
+      "status": "UNCHANGED_VS_PRIOR_OBSERVED_PATHS",
+      "prior_had": [
+        "ASK_PRICE",
+        "ASK_VOLUME",
+        "BID_PRICE",
+        "BID_VOLUME",
+        "BOOK_TIME",
+        "EXCHANGE",
+        "NUM_ASKS",
+        "NUM_BIDS",
+        "SEQUENCE",
+        "TOTAL_VOLUME"
+      ],
+      "definition_now": [
+        {
+          "enum": "BookFields",
+          "name": "SYMBOL",
+          "number": 0
+        }
+      ]
+    },
+    "service_changes": {
+      "documented_subscribe_methods": [
+        {
+          "service": "LEVELONE_EQUITIES",
+          "subscribe_method": "level_one_equity_subs",
+          "method_present": true,
+          "field_enum": "LevelOneEquityFields"
+        },
+        {
+          "service": "LEVELONE_OPTIONS",
+          "subscribe_method": "level_one_option_subs",
+          "method_present": true,
+          "field_enum": "LevelOneOptionFields"
+        },
+        {
+          "service": "LEVELONE_FUTURES",
+          "subscribe_method": "level_one_futures_subs",
+          "method_present": true,
+          "field_enum": "LevelOneFuturesFields"
+        },
+        {
+          "service": "LEVELONE_FOREX",
+          "subscribe_method": "level_one_forex_subs",
+          "method_present": true,
+          "field_enum": "LevelOneForexFields"
+        },
+        {
+          "service": "LEVELONE_FUTURES_OPTIONS",
+          "subscribe_method": "level_one_futures_options_subs",
+          "method_present": true,
+          "field_enum": "LevelOneFuturesOptionsFields"
+        },
+        {
+          "service": "NYSE_BOOK",
+          "subscribe_method": "nyse_book_subs",
+          "method_present": true,
+          "field_enum": "BookFields(+Bid/Ask/PerExchange*)"
+        },
+        {
+          "service": "NASDAQ_BOOK",
+          "subscribe_method": "nasdaq_book_subs",
+          "method_present": true,
+          "field_enum": "BookFields(+Bid/Ask/PerExchange*)"
+        },
+        {
+          "service": "OPTIONS_BOOK",
+          "subscribe_method": "options_book_subs",
+          "method_present": true,
+          "field_enum": "BookFields(+Bid/Ask/PerExchange*)"
+        },
+        {
+          "service": "CHART_EQUITY",
+          "subscribe_method": "chart_equity_subs",
+          "method_present": true,
+          "field_enum": "ChartEquityFields"
+        },
+        {
+          "service": "CHART_FUTURES",
+          "subscribe_method": "chart_futures_subs",
+          "method_present": true,
+          "field_enum": "ChartFuturesFields"
+        },
+        {
+          "service": "SCREENER_EQUITY",
+          "subscribe_method": "screener_equity_subs",
+          "method_present": true,
+          "field_enum": "ScreenerFields"
+        },
+        {
+          "service": "SCREENER_OPTION",
+          "subscribe_method": "screener_option_subs",
+          "method_present": true,
+          "field_enum": "ScreenerFields"
+        }
+      ],
+      "timesale_wrapper": false,
+      "prior_inventory_stream_probe_covered": [
+        "LEVELONE_EQUITIES",
+        "NASDAQ_BOOK",
+        "CHART_EQUITY"
+      ],
+      "documented_but_not_in_prior_streaming_capture": [
+        "NYSE_BOOK",
+        "OPTIONS_BOOK",
+        "LEVELONE_OPTIONS",
+        "LEVELONE_FUTURES",
+        "LEVELONE_FOREX",
+        "LEVELONE_FUTURES_OPTIONS",
+        "CHART_FUTURES",
+        "SCREENER_EQUITY",
+        "SCREENER_OPTION"
+      ]
+    },
+    "renames": {
+      "status": "NONE_DETECTED",
+      "note": "No prior enum snapshot; cannot prove renames from observed path leaves alone."
+    },
+    "removals": {
+      "status": "NONE_FROM_DEFINITION_REFRESH",
+      "note": "Definition refresh cannot remove observed dictionary rows (RC-380 union). Unexplained prior UPPER terminals (not in equity L1/book/chart enums): []",
+      "unexplained_prior_upper_terminals": []
+    },
+    "notable_definition_facts": [
+      {
+        "field": "LevelOneForexFields.MARKET_MAKER#26",
+        "fact": "Native MARKET_MAKER exists on FOREX L1 only \u2014 not equity/options book"
+      },
+      {
+        "field": "ASK_ID/BID_ID/LAST_ID",
+        "fact": "Documented as Exchange ID on equity L1 \u2014 not Market Maker ID"
+      },
+      {
+        "field": "NUM_BIDS/NUM_ASKS",
+        "fact": "Documented native book fields; semantic interpretation needs RTH"
+      },
+      {
+        "field": "PerExchange*.EXCHANGE",
+        "fact": "Documented native; identity (MIC vs other) needs RTH \u2014 not per-participant until proven"
+      }
+    ],
+    "forex_market_maker_field": [
+      {
+        "name": "MARKET_MAKER",
+        "number": 26
+      }
+    ]
+  },
+  "artifacts_written": [
+    "schwab_field_inventory/schwab_native_schema_inventory_v1.json",
+    "reports/of_schwab_native_inventory_refresh_v1.json",
+    "reports/of_schwab_capability_universe_map_v1.json",
+    "reports/of_capability_matrix_template_v1.json"
+  ],
+  "freshness_verdict": {
+    "streamer_definitions": "FRESH_FROM_SCHWAB_PY_1_5_1",
+    "observed_rest_dictionary": "STALE_PENDING_LIVE_SYNC",
+    "note": "Book nested schema matches prior observed paths (TOTAL_VOLUME, NUM_*, EXCHANGE, SEQUENCE). LEVELONE_OPTIONS and other services are documented in schwab-py but were outside the May-2026 streaming capture set."
+  }
+}

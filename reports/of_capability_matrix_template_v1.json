@@ -1,0 +1,168 @@
+{
+  "schema_version": 2,
+  "generated_at_utc": "2026-08-20T09:18:53.151413+00:00",
+  "schwab_py_version": "1.5.1",
+  "live_observation": "SKIPPED",
+  "column_defs": {
+    "native_documented_available": "In schwab-py enums / REST section fields / observed dictionary",
+    "currently_subscribed_requested": "Console or capture requests it now",
+    "currently_retained": "Kept in plane/OF buffers after ingest",
+    "currently_persisted": "Written to ed_console.db (or stream_capture.db)",
+    "currently_consumed": "Feeds a computation or UI binding",
+    "currently_discarded_unused": "On wire or defined but dropped",
+    "runtime_population_entitlement": "Live fill/entitlement \u2014 RTH when static inventory cannot answer",
+    "semantic_interpretation": "DOCUMENTED_NATIVE | NEEDS_RTH | UNAVAILABLE \u2014 not NOT_PROVEN merely for no RTH",
+    "derivable_institutional_metric": "Useful metric if retained/proven"
+  },
+  "corrections": [
+    "Nested EXCHANGE is exchange_code_raw until identity proven \u2014 never per-participant a priori",
+    "Documented native fields stay DOCUMENTED_NATIVE / AVAILABLE even before RTH",
+    "RTH reserved for semantics/entitlement/population questions static inventory cannot answer"
+  ],
+  "rows": [
+    {
+      "concept": "LEVELONE_EQUITIES TOB (bid/ask/last/size)",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "YES (active UI ticker)",
+      "currently_retained": "YES",
+      "currently_persisted": "PARTIAL (snapshot sizes/volume; not full L1)",
+      "currently_consumed": "YES",
+      "currently_discarded_unused": "NO",
+      "runtime_population_entitlement": "OBSERVED_IN_PRODUCTION_PATH",
+      "semantic_interpretation": "DOCUMENTED_NATIVE",
+      "derivable_institutional_metric": "spread, TOB pressure"
+    },
+    {
+      "concept": "LEVELONE quote/trade/bid/ask times + MIC/exchange IDs",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "YES (full L1 field set)",
+      "currently_retained": "PARTIAL (times yes; MIC/IDs discarded)",
+      "currently_persisted": "NO (MIC/IDs)",
+      "currently_consumed": "PARTIAL",
+      "currently_discarded_unused": "YES (MIC/IDs, many fundamentals)",
+      "runtime_population_entitlement": "OBSERVED_IN_PRODUCTION_PATH",
+      "semantic_interpretation": "DOCUMENTED_NATIVE",
+      "derivable_institutional_metric": "quote aging; venue attribution"
+    },
+    {
+      "concept": "NYSE_BOOK / NASDAQ_BOOK aggregate TOTAL_VOLUME @ price",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "YES",
+      "currently_retained": "YES (memory OF)",
+      "currently_persisted": "NO",
+      "currently_consumed": "YES (imbalance)",
+      "currently_discarded_unused": "NO",
+      "runtime_population_entitlement": "OBSERVED_IN_PRODUCTION_PATH",
+      "semantic_interpretation": "DOCUMENTED_NATIVE",
+      "derivable_institutional_metric": "depth imbalance / profile (if persisted)"
+    },
+    {
+      "concept": "NUM_BIDS / NUM_ASKS",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "YES (full book fields)",
+      "currently_retained": "NO",
+      "currently_persisted": "NO",
+      "currently_consumed": "NO",
+      "currently_discarded_unused": "YES",
+      "runtime_population_entitlement": "NEEDS_RTH",
+      "semantic_interpretation": "NEEDS_RTH",
+      "derivable_institutional_metric": "breadth-at-price IF semantics proven"
+    },
+    {
+      "concept": "Nested EXCHANGE + BID_VOLUME/ASK_VOLUME",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "YES",
+      "currently_retained": "NO",
+      "currently_persisted": "NO",
+      "currently_consumed": "NO",
+      "currently_discarded_unused": "YES",
+      "runtime_population_entitlement": "NEEDS_RTH",
+      "semantic_interpretation": "NEEDS_RTH (identity)",
+      "derivable_institutional_metric": "venue-share IF identity proven \u2014 not per-participant a priori"
+    },
+    {
+      "concept": "BOOK_TIME / nested SEQUENCE",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "YES",
+      "currently_retained": "NO",
+      "currently_persisted": "NO",
+      "currently_consumed": "NO",
+      "currently_discarded_unused": "YES",
+      "runtime_population_entitlement": "NEEDS_RTH",
+      "semantic_interpretation": "DOCUMENTED_NATIVE (fields); runtime order NEEDS_RTH",
+      "derivable_institutional_metric": "staleness / gap detection"
+    },
+    {
+      "concept": "OPTIONS_BOOK",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "NO",
+      "currently_retained": "NO",
+      "currently_persisted": "NO",
+      "currently_consumed": "NO",
+      "currently_discarded_unused": "N/A (not requested)",
+      "runtime_population_entitlement": "NEEDS_RTH",
+      "semantic_interpretation": "DOCUMENTED_NATIVE (schema shared with equity books)",
+      "derivable_institutional_metric": "options depth OF if entitled"
+    },
+    {
+      "concept": "LEVELONE_OPTIONS",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "NO",
+      "currently_retained": "NO",
+      "currently_persisted": "NO (REST chain instead)",
+      "currently_consumed": "NO (stream)",
+      "currently_discarded_unused": "N/A",
+      "runtime_population_entitlement": "NEEDS_RTH (optional vs REST)",
+      "semantic_interpretation": "DOCUMENTED_NATIVE",
+      "derivable_institutional_metric": "options L1 tape vs REST chain"
+    },
+    {
+      "concept": "TIMESALE / trade prints (Schwab)",
+      "native_documented_available": "NOT_IN_SCHWAB_PY_WRAPPER",
+      "currently_subscribed_requested": "NO",
+      "currently_retained": "NO",
+      "currently_persisted": "NO",
+      "currently_consumed": "NO",
+      "currently_discarded_unused": "N/A",
+      "runtime_population_entitlement": "NEEDS_RTH",
+      "semantic_interpretation": "UNAVAILABLE_IN_WRAPPER; live status NEEDS_RTH",
+      "derivable_institutional_metric": "true prints / native side if ever available"
+    },
+    {
+      "concept": "Native aggressor / NOII / MPID / L3 orders",
+      "native_documented_available": "ABSENT_FROM_ENUMS",
+      "currently_subscribed_requested": "NO",
+      "currently_retained": "NO",
+      "currently_persisted": "NO",
+      "currently_consumed": "NO",
+      "currently_discarded_unused": "N/A",
+      "runtime_population_entitlement": "UNAVAILABLE",
+      "semantic_interpretation": "UNAVAILABLE",
+      "derivable_institutional_metric": "none from Schwab-native"
+    },
+    {
+      "concept": "LevelOneForexFields.MARKET_MAKER",
+      "native_documented_available": "AVAILABLE_IN_SCHWAB_PY",
+      "currently_subscribed_requested": "NO (forex not in console OF path)",
+      "currently_retained": "NO",
+      "currently_persisted": "NO",
+      "currently_consumed": "NO",
+      "currently_discarded_unused": "N/A",
+      "runtime_population_entitlement": "N/A_EQUITY_OF",
+      "semantic_interpretation": "DOCUMENTED_NATIVE (FOREX only)",
+      "derivable_institutional_metric": "not applicable to equity OF tab"
+    },
+    {
+      "concept": "REST quotes / option chain / pricehistory leaves",
+      "native_documented_available": "OBSERVED_DICTIONARY_UNION",
+      "currently_subscribed_requested": "YES",
+      "currently_retained": "PARTIAL (OE allowlist / quote parse)",
+      "currently_persisted": "YES (snapshots / morning_full / bars)",
+      "currently_consumed": "YES",
+      "currently_discarded_unused": "PARTIAL (many quote fundamentals unused)",
+      "runtime_population_entitlement": "OBSERVED_IN_PRODUCTION_PATH",
+      "semantic_interpretation": "DOCUMENTED_NATIVE / OBSERVED",
+      "derivable_institutional_metric": "existing Collect/Find stack"
+    }
+  ]
+}

@@ -39,6 +39,7 @@ schwab_field_inventory/**
 !schwab_field_inventory/schwab_canonical_fields.txt
 !schwab_field_inventory/schwab_field_dictionary.csv
 !schwab_field_inventory/schwab_field_dictionary_grouped.csv
+!schwab_field_inventory/schwab_native_schema_inventory_v1.json
 
 # Test artifacts
 test-results/

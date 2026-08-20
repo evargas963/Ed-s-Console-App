@@ -1,0 +1,103 @@
+{
+  "generated_at_utc": "2026-08-20T09:18:53.151339+00:00",
+  "NATIVE_USED": [
+    {
+      "field": "LEVELONE BID/ASK/LAST_PRICE + SIZE",
+      "where": "order_flow_streaming \u2192 live_market_plane / order_flow_live_state"
+    },
+    {
+      "field": "LEVELONE TOTAL_VOLUME / LAST_SIZE / QUOTE|TRADE_TIME",
+      "where": "order_flow_live_state / candle accumulator"
+    },
+    {
+      "field": "BOOK price-level TOTAL_VOLUME + BID/ASK_PRICE",
+      "where": "order_flow_engine imbalance (memory only)"
+    },
+    {
+      "field": "REST quote bid/ask/last/sizes/times/volume",
+      "where": "server._parse_quote_node_session_fields"
+    },
+    {
+      "field": "REST option chain greeks/OI/volume/sizes",
+      "where": "market_state OE snapshot / terrain / exposures"
+    },
+    {
+      "field": "REST pricehistory OHLCV",
+      "where": "price_bars_1m / VWAP"
+    }
+  ],
+  "NATIVE_UNUSED": [
+    {
+      "field": "BOOK NUM_BIDS / NUM_ASKS",
+      "status": "documented native; subscribed via full book fields; discarded by OF engine",
+      "rth_needed_for": "semantics"
+    },
+    {
+      "field": "BOOK nested EXCHANGE + BID_VOLUME/ASK_VOLUME + SEQUENCE",
+      "status": "documented native; discarded; identity/order semantics need RTH",
+      "rth_needed_for": "EXCHANGE identity + SEQUENCE behavior"
+    },
+    {
+      "field": "LEVELONE ASK/BID/LAST_MIC_ID + ASK/BID/LAST_ID",
+      "status": "documented native; not retained in plane keepers",
+      "rth_needed_for": null
+    },
+    {
+      "field": "LEVELONE day OHLC / 52w / PE / dividend / HTB / shortable / post-market",
+      "status": "documented native; mostly discarded by stream keepers",
+      "rth_needed_for": null
+    },
+    {
+      "field": "OPTIONS_BOOK entire service",
+      "status": "documented in schwab-py; not subscribed by console",
+      "rth_needed_for": "entitlement/population"
+    },
+    {
+      "field": "LEVELONE_OPTIONS entire service",
+      "status": "documented; console uses REST chains instead",
+      "rth_needed_for": "optional population vs REST"
+    },
+    {
+      "field": "LevelOneForexFields.MARKET_MAKER",
+      "status": "documented native on FOREX L1 only \u2014 not equity microstructure",
+      "rth_needed_for": null
+    }
+  ],
+  "DERIVED_TODAY": [
+    "book_imbalance_1/3/5 from price-level TOTAL_VOLUME",
+    "top_book_pressure from L1 sizes",
+    "tape_pressure / cum_delta_proxy from L1 last changes (PROXY side)",
+    "REST Lee-Ready-ish cum delta fallback",
+    "options flow / CP ratio from chain volume",
+    "VWAP/POC from price_bars_1m",
+    "terrain/GEX walls from chain"
+  ],
+  "DERIVABLE": [
+    "depth profile / refill from retained book TOTAL_VOLUME history (if persisted)",
+    "venue-mix features IF EXCHANGE identity is proven (RTH)",
+    "breadth-at-price IF NUM_* semantics proven (RTH)",
+    "quote aging from BID/ASK_TIME_MILLIS (documented native; unused)",
+    "MIC/venue attribution from *_MIC_ID / *_ID (documented native; unused)",
+    "options depth OF IF OPTIONS_BOOK entitlement PASSes (RTH)"
+  ],
+  "PROXY_INFERRED": [
+    "aggressor / trade side from uptick or Lee-Ready (not native)",
+    "Alpaca IEX prints as tape sample (external; not Schwab)",
+    "institutional_flow_proxy composite"
+  ],
+  "UNAVAILABLE": [
+    "Schwab TIMESALE wrapper (not in schwab-py); live availability needs RTH re-probe",
+    "Native aggressor / condition codes (not in enums)",
+    "NOII / auction imbalance (not in enums)",
+    "MPID / Market Maker ID on equity (not in enums; FOREX has MARKET_MAKER only)",
+    "Level-3 order id add/cancel/modify stream (not in schwab-py)"
+  ],
+  "rth_reserved_for": [
+    "NUM_BIDS / NUM_ASKS semantics",
+    "nested EXCHANGE identity semantics",
+    "OPTIONS_BOOK entitlement/population",
+    "SEQUENCE runtime behavior",
+    "TIMESALE availability",
+    "security-type / entitlement-dependent population"
+  ]
+}

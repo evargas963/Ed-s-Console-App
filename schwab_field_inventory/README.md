@@ -2,6 +2,8 @@
 
 # Schwab Field Inventory
 
+**Definition refresh:** 2026-08-20T09:18:53.151626+00:00 via `tools/refresh_schwab_native_field_inventory.py` (schwab-py 1.5.1); live observed-dictionary sync: SKIPPED.
+
 **Capture date:** 2026-05-05  
 **Capture source:** live Schwab Trader API market-data probes after local OAuth re-authentication  
 **Canonical field count:** 2,393  
