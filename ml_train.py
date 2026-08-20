@@ -458,21 +458,15 @@ def encode_tabular_feature_vector(
     )
     if row_df is None:
         return [0.0] * len(names)
-    withheld = structurally_withheld_wall_distance_feature_names()
     out: list[float] = []
     for fn in names:
         v = row_df[fn].iloc[0]
         try:
             fv = float(v)
         except (TypeError, ValueError):
-            # RC-435: preserve absence for structurally withheld wall distances so
-            # sequence serve can abstain; other columns keep the historical 0.0 fill.
-            out.append(float("nan") if fn in withheld else 0.0)
+            out.append(0.0)
             continue
-        if not math.isfinite(fv):
-            out.append(float("nan") if fn in withheld else 0.0)
-        else:
-            out.append(fv)
+        out.append(0.0 if (not math.isfinite(fv)) else fv)
     return out
 
 
