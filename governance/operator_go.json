@@ -1,12 +1,11 @@
 {
   "granted": false,
-  "granted_at": "2026-08-06T00:00:00+00:00",
-  "revoked_at": "2026-08-18T00:00:00+00:00",
-  "granted_by": "operator_delegation_in_session_2026-08-06",
-  "revoked_by": "operator_decision_in_session_2026-08-18",
+  "granted_at": "2026-08-20T02:50:00+00:00",
+  "revoked_at": "2026-08-20T02:55:00+00:00",
+  "granted_by": "operator_task_rc437_oi_vanna_adjudication_cloud_agent",
+  "revoked_by": "cursor_rc437_followup_revoke",
   "scope": [
-    "rc_status_vocabulary",
     "staged_lock_surface"
   ],
-  "note": "REVOKED 2026-08-18 per operator decision: 'Revoke the standing operator_go grant unless a current, proven operation still requires its exact scope.' No current proven operation needs scope [rc_status_vocabulary, staged_lock_surface]: RC-402 lands via PR merge (needs no local grant), and the governance reconciliation commit touches no enforcement-path .py and adds/removes no ENFORCED check, so staged_enforced_checks_not_on_head is empty and the grant is not required to commit it. RC-402 already fixed the wildcard predicate (operator_go_granted no longer treats staged_lock_surface as an allow-everything token), so with granted:false the reset guard (LOCK-2) and every staged-lock-surface gate return to fail-closed: any future staged ENFORCED-check commit must obtain a fresh, scoped GO. This flips the WIDER-THAN-INTENDED standing grant the file's own 2026-08-06 note flagged. Prior grant history preserved above (granted_at/granted_by/scope). Re-grant by setting granted:true with a scoped, dated reason."
+  "note": "REVOKED 2026-08-20 after RC-437 ENFORCED check landed on branch HEAD (commit with grant). Scope was staged_lock_surface only for check_rc436_closed_requires_ml_fleet_restore. No standing grant remains (RC-241/RC-402)."
 }
