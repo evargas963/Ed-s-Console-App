@@ -29,6 +29,7 @@ def test_measure_tool_is_report_only_and_exits_zero():
     assert proc.returncode == 0, proc.stderr
     assert "REPORT_ONLY=1" in proc.stdout
     assert "ml_fleet_restore_lock" in proc.stdout
+    assert "prove_path_a_ml_restore" in proc.stdout
     assert "require_withheld=" in proc.stdout
 
 
