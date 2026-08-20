@@ -44,10 +44,12 @@ Path B is **not** justified as the permanent institutional answer *now*. It rema
 ## Path A implementation sequence (does **not** close RC-436)
 
 1. Keep RC-435 abstain until new artifacts land (interim honesty).
-2. Operator-host: retrain enrolled universe with wall distances = `model_feature_wall_distance_cols()` (excludes the four bases).
-3. Co-land: wire live `WALL_DISTANCE_COLS` / sequence `FEATURES_*` to that list + `FEATURE_SCHEMA_VERSION` bump + promote active artifacts.
-4. Prove: measure tool shows `require_withheld=0` / `live_gate_true=0` on active fleet; stack emits layer probs on a live withheld-OI tick.
-5. Then CLOSE RC-436 (enforcement lock below refuses earlier CLOSE).
+2. Operator-host (this cloud DB is empty — `snapshots_1m_normalized` COUNT(*)=0): retrain enrolled universe with wall distances = `model_feature_wall_distance_cols()` (excludes the four bases).
+3. Co-land in the **same** promote commit: wire live `WALL_DISTANCE_COLS` / sequence `FEATURES_*` to that list + `FEATURE_SCHEMA_VERSION` bump + promote only artifacts that pass existing institutional model gates (no manual `models/active/` copy).
+4. Prove artifacts: `python ./tools/prove_path_a_ml_restore.py` → exit 0 / `RESTORED=1` (ENFORCEMENT — not the REPORT-ONLY measure tool).
+5. Prove live stack: `python ./tools/prove_path_a_ml_restore.py --require-stack-probs` → exit 0 on the operator-host console (stack_probs must return; rules-only is not restore).
+6. Then CLOSE RC-436 (enforcement lock refuses earlier CLOSE; artifact creation alone is insufficient).
+7. Do **not** start RC-423 work until RC-436 restore is proven unless a hard blocker makes Path A progress impossible (empty cloud DB is such a blocker **for cloud agents only** — host is unblocked).
 
 ## Path B (deferred Find & Prove only)
 

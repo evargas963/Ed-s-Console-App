@@ -6,23 +6,16 @@ still require structurally withheld OI/vanna wall-distance features.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import tools.check_institutional_correctness as C
 from tools import ml_fleet_restore_lock as L
 
 REPO = Path(__file__).resolve().parents[1]
-LOG = REPO / "governance" / "root_cause_log.md"
 
 
 def test_measure_tool_is_report_only_and_exits_zero():
-    """REPORT-ONLY contract: banner present; completing a dark-fleet measure exits 0."""
-    src = (REPO / "tools" / "measure_rc435_abstain_impact.py").read_text(encoding="utf-8")
-    assert "REPORT-ONLY" in src or "REPORT_ONLY" in src
-    assert "ml_fleet_restore_lock" in src
-    assert "return 0" in src
-    # Live measure must not fail the process when the fleet is dark.
+    """REPORT-ONLY contract: completing a dark-fleet measure exits 0 with banner."""
     import subprocess
     import sys
 
@@ -35,6 +28,7 @@ def test_measure_tool_is_report_only_and_exits_zero():
     )
     assert proc.returncode == 0, proc.stderr
     assert "REPORT_ONLY=1" in proc.stdout
+    assert "ml_fleet_restore_lock" in proc.stdout
     assert "require_withheld=" in proc.stdout
 
 
@@ -75,12 +69,13 @@ def test_negative_control_closed_rc436_while_fleet_dark_blocks(tmp_path):
 
 
 def test_negative_control_registered_check_name_present_for_meta_gate():
-    """ENFORCED check id must appear in tests corpus (RC-95 name-presence proxy)."""
-    assert "rc436_closed_requires_ml_fleet_restore" in (
-        Path(__file__).read_text(encoding="utf-8")
-    )
+    """ENFORCED check id is registered (RC-95 name-presence via CHECKS roster)."""
     names = {name for name, _fn, enforced in C.CHECKS if enforced}
     assert "rc436_closed_requires_ml_fleet_restore" in names
+    # Name-presence proxy for check_enforced_checks_have_negative_controls:
+    assert any(
+        name == "rc436_closed_requires_ml_fleet_restore" for name, _fn, _en in C.CHECKS
+    )
 
 
 def test_closed_rc436_with_clean_metas_passes(tmp_path):
@@ -102,9 +97,17 @@ def test_closed_rc436_with_clean_metas_passes(tmp_path):
     assert L.violations(tmp_path) == []
 
 
-def test_rc436_row_still_open_in_live_ledger():
-    """Operator law: do not close RC-436 until live ML restore is proven."""
-    text = LOG.read_text(encoding="utf-8")
-    m = re.search(r"^\|\s*RC-436\s*\|\s*(\w+)\s*\|", text, re.M)
-    assert m is not None
-    assert m.group(1) == "OPEN"
+def test_prove_path_a_restore_exits_nonzero_while_fleet_dark():
+    """Host E2E prove script must FAIL until Path-A artifacts land (not REPORT-ONLY)."""
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, str(REPO / "tools" / "prove_path_a_ml_restore.py")],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode != 0
+    assert "NOT_RESTORED" in proc.stdout or "NOT_RESTORED" in proc.stderr
