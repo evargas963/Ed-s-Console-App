@@ -267,6 +267,68 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
     oe_src = inspect.getsource(compute_wall_score_components)
     assert '"call_delta_wall"' in oe_src
     assert '"put_delta_wall"' in oe_src
+    # RC-434: dominance is not a third proximity/bias faucet.
+    assert '"dom_gamma_wall"' not in oe_src
+    assert '"dom_delta_wall"' not in oe_src
+    assert "dom_gamma_call_confluence" not in oe_src
+    assert "dom_gamma_put_confluence" not in oe_src
+    # Bias bonuses are approach/support only (0.85 / 0.55) — no strength-gated alias bonus.
+    assert "bias += 0.45" not in oe_src
+    assert "bias +=0.45" not in oe_src
+
+
+def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
+    """RC-434: +0.45 dom_gamma_*_confluence is obsolete scoring, not a missing producer.
+
+    `_dominant` aliases the stronger of call/put wall. After RC-420 bind withholds
+    strengths, live dominance is permanently empty — silent inert decision logic.
+    Even with fabricated strengths, scoring dom_gamma_wall again double-counts the
+    same strike already scored as call/put. Remove from OE proximity and bias.
+
+    OUT-OF-SCOPE: terrain stamping wall GEX$ for display-only dominance metadata;
+    enrolled-universe live desk.
+    """
+    from dataclasses import replace
+
+    from math_levels import build_walls_rows, consensus_walls_bind_terrain_ssot
+    from math_probabilities import compute_wall_score_components
+
+    sel_ex, spot, terrain = _wide_vs_selected_wall_books()
+    bound = consensus_walls_bind_terrain_ssot(build_walls_rows(sel_ex, spot), terrain)
+    assert bound[0].dom_gamma_side == ""
+    assert bound[0].dom_gamma_wall is None
+    # Live bound path: approach zone still works; confluence never appears.
+    prox, bias, audit = compute_wall_score_components(760.0, spot, "CALL", bound)
+    assert "strike_in_call_gamma_wall_approach_zone" in (audit.get("bias_notes") or [])
+    assert bias == 0.85
+    assert all("dom_gamma" not in n for n in (audit.get("bias_notes") or []))
+    assert all(d["level"] != "dom_gamma_wall" for d in audit.get("proximity_detail", []))
+    # Negative: even a fabricated dominant CALL wall at the call strike must NOT
+    # revive +0.45 or a third proximity contrib (pre-fix did both).
+    fake = replace(
+        bound[0],
+        call_gamma_strength=1_000.0,
+        put_gamma_strength=100.0,
+        dom_gamma_side="CALL",
+        dom_gamma_wall=bound[0].call_gamma_wall,
+        dom_gamma_strength=1_000.0,
+    )
+    prox2, bias2, audit2 = compute_wall_score_components(760.0, spot, "CALL", [fake])
+    notes2 = audit2.get("bias_notes") or []
+    levels2 = [d["level"] for d in audit2.get("proximity_detail", [])]
+    assert "dom_gamma_call_confluence" not in notes2
+    assert "dom_gamma_wall" not in levels2
+    assert bias2 == 0.85  # approach only — not 0.85+0.45
+    # Unbound selected-expiry row historically had dom PUT == put wall; proximity
+    # must not list dom_gamma_wall beside put_gamma_wall.
+    unbound = build_walls_rows(sel_ex, spot)
+    assert unbound[0].dom_gamma_wall is not None
+    _, _, audit3 = compute_wall_score_components(
+        float(unbound[0].dom_gamma_wall), spot, "PUT", unbound
+    )
+    levels3 = [d["level"] for d in audit3.get("proximity_detail", [])]
+    assert "dom_gamma_wall" not in levels3
+    assert all("dom_gamma" not in n for n in (audit3.get("bias_notes") or []))
 
 
 def test_consensus_walls_bind_terrain_ssot_withholds_when_stale():
