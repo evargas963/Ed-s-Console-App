@@ -68,7 +68,12 @@ def apply_xgb_imputation_matrix(
     feature_names: list,
     impute_medians: dict,
 ) -> np.ndarray:
-    """Match train_ticker: per-column training median fill, then nan_to_num(nan=0)."""
+    """Match train_ticker: per-column training median fill, then nan_to_num(nan=0).
+
+    Training may impute historical MAR gaps. Live serve must call
+    ``engineered_features_missing_withheld_wall_distances`` (RC-435) *before*
+    this helper so structurally withheld OI/vanna distances are not fabricated.
+    """
     out = np.asarray(x_mat, dtype=np.float64, order="C")
     out = out.copy()
     if impute_medians and feature_names:
@@ -79,6 +84,72 @@ def apply_xgb_imputation_matrix(
             col = out[..., j]
             out[..., j] = np.where(np.isnan(col), float(med), col)
     return np.nan_to_num(out, nan=0.0)
+
+
+# RC-422 withheld CONSENSUS OI/vanna walls live; RC-435: serve must abstain when these
+# distances (base or *_pct) are in the model vector and non-finite — not median/zero-fill.
+STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS: tuple[str, ...] = (
+    "dist_call_oi_wall",
+    "dist_put_oi_wall",
+    "dist_call_vanna_wall",
+    "dist_put_vanna_wall",
+)
+
+
+def structurally_withheld_wall_distance_feature_names() -> frozenset[str]:
+    names: set[str] = set()
+    for col in STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS:
+        names.add(col)
+        names.add(f"{col}_pct")
+    return frozenset(names)
+
+
+def _finite_number(v) -> bool:
+    if v is None:
+        return False
+    try:
+        return bool(np.isfinite(float(v)))
+    except (TypeError, ValueError):
+        return False
+
+
+def snapshot_missing_structurally_withheld_wall_distances(
+    snap: dict,
+    feature_names: list | None = None,
+) -> bool:
+    """True when a model-required withheld wall-distance feature is absent on ``snap``.
+
+    For ``*_pct`` features, a finite base ``dist_*`` also counts as present (pct is
+    derived). Feature lists that omit every withheld name never trip this gate.
+    """
+    withheld = structurally_withheld_wall_distance_feature_names()
+    names = list(feature_names) if feature_names is not None else list(withheld)
+    for name in names:
+        if name not in withheld:
+            continue
+        if name.endswith("_pct"):
+            base = name[: -len("_pct")]
+            if _finite_number(snap.get(name)) or _finite_number(snap.get(base)):
+                continue
+            return True
+        if not _finite_number(snap.get(name)):
+            return True
+    return False
+
+
+def engineered_features_missing_withheld_wall_distances(
+    x_row: np.ndarray,
+    feature_names: list,
+) -> bool:
+    """True when any withheld wall-distance column in ``feature_names`` is non-finite."""
+    withheld = structurally_withheld_wall_distance_feature_names()
+    arr = np.asarray(x_row, dtype=np.float64).reshape(-1)
+    for j, name in enumerate(feature_names):
+        if name not in withheld:
+            continue
+        if j >= arr.size or not np.isfinite(arr[j]):
+            return True
+    return False
 
 # -- Model path helpers ----------------------------------------------------------
 def model_path(
@@ -133,7 +204,8 @@ WALL_DISTANCE_COLS = [
     "dist_call_delta_wall", "dist_put_delta_wall",
     # RC-422/F4: CONSENSUS OI/vanna walls are withheld live. These four columns stay
     # in the train/serve vector so FEATURE_SCHEMA_VERSION / artifact widths do not
-    # break. Live persist writes NULL; XGB imputes train medians; LSTM nan_to_num→0.
+    # break. Live persist writes NULL. RC-435: serve abstains before median/zero fill
+    # (STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS) — do not fabricate proximity.
     "dist_call_oi_wall",    "dist_put_oi_wall",
     "dist_call_vanna_wall", "dist_put_vanna_wall",
     "dist_gamma_inflection","dist_delta_inflection",
@@ -386,15 +458,21 @@ def encode_tabular_feature_vector(
     )
     if row_df is None:
         return [0.0] * len(names)
+    withheld = structurally_withheld_wall_distance_feature_names()
     out: list[float] = []
     for fn in names:
         v = row_df[fn].iloc[0]
         try:
             fv = float(v)
         except (TypeError, ValueError):
-            out.append(0.0)
+            # RC-435: preserve absence for structurally withheld wall distances so
+            # sequence serve can abstain; other columns keep the historical 0.0 fill.
+            out.append(float("nan") if fn in withheld else 0.0)
             continue
-        out.append(0.0 if (not math.isfinite(fv)) else fv)
+        if not math.isfinite(fv):
+            out.append(float("nan") if fn in withheld else 0.0)
+        else:
+            out.append(fv)
     return out
 
 

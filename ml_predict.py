@@ -1032,6 +1032,7 @@ def _predict_xgb(
         from ml_train import (
             apply_xgb_imputation_matrix,
             engineer_single_snapshot,
+            engineered_features_missing_withheld_wall_distances,
         )
 
         if xgb_pre_engineering_snapshot is not None:
@@ -1057,9 +1058,20 @@ def _predict_xgb(
         )
         if X is None:
             return None
+        x_raw = X.values.astype(np.float64)
+        # RC-435 / F4: OI/vanna wall distances are structurally withheld live (RC-422).
+        # Median impute / nan_to_num would invent proximity the producer refused.
+        if engineered_features_missing_withheld_wall_distances(
+            x_raw[0], reg["feature_names"]
+        ):
+            logger.info(
+                "XGBoost %s: abstain — structurally withheld OI/vanna wall distance missing",
+                ticker,
+            )
+            return None
         impute = reg["meta"].get("impute_medians") or {}
         x_mat = apply_xgb_imputation_matrix(
-            X.values.astype(np.float64),
+            x_raw,
             reg["feature_names"],
             impute,
         )
@@ -1168,6 +1180,7 @@ def _predict_xgb_movement_heads(
             from ml_train import (
                 apply_xgb_imputation_matrix,
                 engineer_single_snapshot,
+                engineered_features_missing_withheld_wall_distances,
             )
 
             if _m5_snap_cached is None:
@@ -1189,9 +1202,14 @@ def _predict_xgb_movement_heads(
             )
             if X is None:
                 continue
+            x_raw = X.values.astype(np.float64)
+            if engineered_features_missing_withheld_wall_distances(
+                x_raw[0], reg["feature_names"]
+            ):
+                continue
             impute = reg["meta"].get("impute_medians") or {}
             x_mat = apply_xgb_imputation_matrix(
-                X.values.astype(np.float64),
+                x_raw,
                 reg["feature_names"],
                 impute,
             )
@@ -1320,11 +1338,15 @@ def _predict_lstm(
         from lstm_data import (
             CANONICAL_TIMEFRAME,
             CONFLUENCE_FEATURES,
+            FEATURES_5M,
+            LEGACY_ENCODER_SCHEMA_VERSION,
+            LEGACY_V2_FEATURES_5M,
             STREAM_5M_LOOKBACK,
             STREAM_1M_LOOKBACK,
             _safe_float,
-            canonical_reference_spot_from_merged_window,
             assert_lstm_encoder_checkpoint_compatible,
+            canonical_reference_spot_from_merged_window,
+            checkpoint_encoder_schema_version,
             encoded_width_5m_for_checkpoint,
             encoded_width_1m_for_checkpoint,
         )
@@ -1370,6 +1392,23 @@ def _predict_lstm(
             assert_lstm_encoder_checkpoint_compatible(checkpoint)
         except ValueError as e:
             logger.error("LSTM %s: %s", ticker, e)
+            return None
+
+        # RC-435 / F4: refuse zero-fill of structurally withheld OI/vanna wall distances.
+        from ml_train import snapshot_missing_structurally_withheld_wall_distances
+
+        _seq_feats = (
+            LEGACY_V2_FEATURES_5M
+            if checkpoint_encoder_schema_version(checkpoint) == LEGACY_ENCODER_SCHEMA_VERSION
+            else FEATURES_5M
+        )
+        if snapshot_missing_structurally_withheld_wall_distances(
+            merged_window[-1], _seq_feats
+        ):
+            logger.info(
+                "LSTM %s: abstain — structurally withheld OI/vanna wall distance missing",
+                ticker,
+            )
             return None
 
         seq_5m = [
@@ -1684,8 +1723,12 @@ def _predict_transformer(
         )
         from lstm_data import (
             CANONICAL_TIMEFRAME,
-            canonical_reference_spot_from_merged_window,
+            FEATURES_5M,
+            LEGACY_ENCODER_SCHEMA_VERSION,
+            LEGACY_V2_FEATURES_5M,
             assert_lstm_encoder_checkpoint_compatible,
+            canonical_reference_spot_from_merged_window,
+            checkpoint_encoder_schema_version,
             encoded_width_5m_for_checkpoint,
         )
 
@@ -1717,6 +1760,23 @@ def _predict_transformer(
             window, inference_snapshot_v1=inference_snapshot_v1
         )
         merged_window = _mask_sequence_bars_for_model(merged_window, "transformer")
+
+        # RC-435 / F4: same withheld-distance abstain as LSTM (encode→nan_to_num would invent 0).
+        from ml_train import snapshot_missing_structurally_withheld_wall_distances
+
+        _seq_feats = (
+            LEGACY_V2_FEATURES_5M
+            if checkpoint_encoder_schema_version(checkpoint) == LEGACY_ENCODER_SCHEMA_VERSION
+            else FEATURES_5M
+        )
+        if snapshot_missing_structurally_withheld_wall_distances(
+            merged_window[-1], _seq_feats
+        ):
+            logger.info(
+                "Transformer %s: abstain — structurally withheld OI/vanna wall distance missing",
+                ticker,
+            )
+            return None
 
         try:
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)

@@ -452,7 +452,10 @@ def wire_neutral_xgb_predict_from_row(
     """XGB predict using checkpoint feature list read directly from the permuted DB row."""
     import numpy as np
     from ml_predict import CLASS_NAMES
-    from ml_train import apply_xgb_imputation_matrix
+    from ml_train import (
+        apply_xgb_imputation_matrix,
+        snapshot_missing_structurally_withheld_wall_distances,
+    )
 
     try:
         spot = snapshot.get("spot")
@@ -463,6 +466,10 @@ def wire_neutral_xgb_predict_from_row(
 
     names = list(reg["feature_names"])
     impute = reg["meta"].get("impute_medians") or {}
+
+    # RC-435: wire-neutral ablation must not median-fill withheld OI/vanna distances.
+    if snapshot_missing_structurally_withheld_wall_distances(snapshot, names):
+        return None
     vals = wire_neutral_xgb_feature_values(
         snapshot,
         feature_names=names,

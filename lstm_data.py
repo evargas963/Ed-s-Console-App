@@ -810,8 +810,18 @@ def _encode_snapshot_v2(
             val = _safe_float(snap.get(col))
             features.append(val / ref_spot if ref_spot > 0 else 0.0)
         elif col.startswith("dist_"):
-            val = _safe_float(snap.get(col))
-            features.append(val / ref_spot if ref_spot > 0 else 0.0)
+            # RC-435: structurally withheld OI/vanna distances must not become 0.0 ("at wall").
+            from ml_train import STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS
+
+            if col in STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS:
+                raw = _raw_finite_float(snap.get(col))
+                if raw is None or ref_spot <= 0:
+                    features.append(float("nan"))
+                else:
+                    features.append(raw / ref_spot)
+            else:
+                val = _safe_float(snap.get(col))
+                features.append(val / ref_spot if ref_spot > 0 else 0.0)
         elif col in LOG_TRANSFORM_COLS:
             val = _safe_float(snap.get(col))
             features.append(_signed_log(val))
