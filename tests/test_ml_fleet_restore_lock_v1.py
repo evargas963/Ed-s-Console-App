@@ -112,3 +112,83 @@ def test_prove_path_a_restore_exits_nonzero_while_fleet_dark():
     )
     assert proc.returncode != 0
     assert "NOT_RESTORED" in proc.stdout or "NOT_RESTORED" in proc.stderr
+
+
+def test_prove_require_stack_probs_wires_real_unified_stack_not_missing_helper():
+    """--require-stack-probs must call predict_direction, not a nonexistent probe helper.
+
+    OUT-OF-SCOPE: claiming STACK_PROBS_RESTORED while the fleet is still dark — this
+    lock only proves the host acceptance surface is executable (no AttributeError /
+    soft-pass on a missing ml_predict.probe_unified_stack_probs).
+    """
+    import re
+    import subprocess
+    import sys
+
+    src = (REPO / "tools" / "prove_path_a_ml_restore.py").read_text(encoding="utf-8")
+    # Must not call a nonexistent helper (comment mentions of the old name are OK).
+    assert "getattr(ml_predict, \"probe_unified_stack_probs\"" not in src
+    assert "probe_unified_stack_probs(" not in src
+    assert re.search(r"from ml_predict import predict_direction", src)
+    assert "run_unified_stack_ml_once" in src
+    assert "stack_probs_triplet_complete" in src
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(REPO / "tools" / "prove_path_a_ml_restore.py"),
+            "--require-stack-probs",
+        ],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode != 0
+    out = proc.stdout + proc.stderr
+    assert "stack_probe:" in out
+    assert "AttributeError" not in out
+    assert "no ml_predict.probe_unified_stack_probs" not in out
+
+
+def test_stack_probs_probe_reaches_predict_direction_on_real_snapshot_row(tmp_path):
+    """With one Collect snapshot row, the probe must hit the live unified stack authority.
+
+    Expect honest fail (stack_probs=None) while RC-436 fleet is dark — not a missing
+    helper, and not a synthetic green.
+    """
+    import os
+    import shutil
+    import sqlite3
+    import time
+
+    from tools.prove_path_a_ml_restore import _stack_probs_via_unified_stack
+
+    src_db = REPO / "data" / "ed_console.db"
+    assert src_db.is_file()
+    dbp = tmp_path / "ed_console.db"
+    shutil.copy2(src_db, dbp)
+    conn = sqlite3.connect(dbp)
+    try:
+        conn.execute(
+            "INSERT INTO snapshots_1m_normalized (ticker, ts_utc) VALUES (?, ?)",
+            ("SPY", time.time()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    prev = os.environ.get("ED_CONSOLE_ALLOW_NONCANONICAL_DB")
+    os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
+    try:
+        ok, detail = _stack_probs_via_unified_stack("SPY", db_path=dbp)
+    finally:
+        if prev is None:
+            os.environ.pop("ED_CONSOLE_ALLOW_NONCANONICAL_DB", None)
+        else:
+            os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = prev
+
+    assert ok is False
+    assert "predict_direction" in detail or "run_unified_stack_ml_once" in detail
+    assert "stack_probs" in detail
+    assert "probe_unified_stack_probs" not in detail

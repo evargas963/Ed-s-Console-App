@@ -47,7 +47,7 @@ Path B is **not** justified as the permanent institutional answer *now*. It rema
 2. Operator-host (this cloud DB is empty — `snapshots_1m_normalized` COUNT(*)=0): retrain enrolled universe with wall distances = `model_feature_wall_distance_cols()` (excludes the four bases).
 3. Co-land in the **same** promote commit: wire live `WALL_DISTANCE_COLS` / sequence `FEATURES_*` to that list + `FEATURE_SCHEMA_VERSION` bump + promote only artifacts that pass existing institutional model gates (no manual `models/active/` copy).
 4. Prove artifacts: `python ./tools/prove_path_a_ml_restore.py` → exit 0 / `RESTORED=1` (ENFORCEMENT — not the REPORT-ONLY measure tool).
-5. Prove live stack: `python ./tools/prove_path_a_ml_restore.py --require-stack-probs` → exit 0 on the operator-host console (stack_probs must return; rules-only is not restore).
+5. Prove live stack: `python ./tools/prove_path_a_ml_restore.py --require-stack-probs` → exit 0 on the operator-host console. The prove calls `ml_predict.predict_direction` → `run_unified_stack_ml_once` (same authority as `signals`) against the latest Collect snapshot row and requires a complete `stack_probs` triplet; optional `--via-api` corroborates live `/api/analytics/state` `ml_layer_probs`. Rules-only / missing helper soft-pass is not restore.
 6. Then CLOSE RC-436 (enforcement lock refuses earlier CLOSE; artifact creation alone is insufficient).
 7. Do **not** start RC-423 work until RC-436 restore is proven unless a hard blocker makes Path A progress impossible (empty cloud DB is such a blocker **for cloud agents only** — host is unblocked).
 
@@ -61,6 +61,7 @@ If pursued later: define wall semantics on the **wide-chain terrain book**, impl
 |---|---|---|
 | `tools/measure_rc435_abstain_impact.py` | **REPORT-ONLY** fleet measurement | Completes → **exit 0** always |
 | `tools/ml_fleet_restore_lock.py` + `check_rc436_closed_requires_ml_fleet_restore` | **ENFORCEMENT** | Staging/closing RC-436 as CLOSED while active metas still list withheld `*_pct` → **BLOCK** |
+| `tools/prove_path_a_ml_restore.py` | **ENFORCEMENT** host accept | Exit 1 until artifacts clean; `--require-stack-probs` exercises `predict_direction` → `run_unified_stack_ml_once` (real `stack_probs`, no synthetic helper) |
 
 ## Status
 
