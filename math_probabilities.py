@@ -103,6 +103,13 @@ def compute_wall_score_components(
 ) -> tuple[float, float, dict]:
     """
     Wall materiality for OE ranking. Returns (proximity_pts, bias_pts, audit dict).
+
+    RC-434: dom_gamma_wall / dom_delta_wall are not independent levels — `_dominant`
+    aliases the stronger of call/put when strengths exist. Scoring them again as a
+    third proximity target (and +0.45 "confluence" bias) double-counts the same strike.
+    After RC-420 terrain bind withholds strengths, dominance is permanently empty on the
+    live path, so those terms were silent inert decision logic. Call/put gamma and delta
+    walls remain the sole structural proximity/bias authorities.
     """
     if not walls:
         return 0.0, 0.0, {"walls_empty": True}
@@ -111,8 +118,8 @@ def compute_wall_score_components(
         return 0.0, 0.0, {"no_consensus_row": True}
 
     level_names = (
-        "call_gamma_wall", "put_gamma_wall", "dom_gamma_wall",
-        "call_delta_wall", "put_delta_wall", "dom_delta_wall",
+        "call_gamma_wall", "put_gamma_wall",
+        "call_delta_wall", "put_delta_wall",
     )
     levels: list[tuple[str, float]] = []
     for attr in level_names:
@@ -136,10 +143,6 @@ def compute_wall_score_components(
     bias_notes: list[str] = []
     cgw = _wlevel(row, "call_gamma_wall")
     pgw = _wlevel(row, "put_gamma_wall")
-    if isinstance(row, dict):
-        dgs = str(row.get("dom_gamma_side") or "").upper()
-    else:
-        dgs = str(getattr(row, "dom_gamma_side", "") or "").upper()
 
     if side_up == "CALL":
         if cgw and spot_f < cgw and spot_f <= strike_f <= cgw + 2.0:
@@ -148,10 +151,6 @@ def compute_wall_score_components(
         if pgw and abs(strike_f - pgw) <= 2.0 and strike_f >= pgw - 0.5:
             bias += 0.55
             bias_notes.append("near_put_gamma_support")
-        dgw = _wlevel(row, "dom_gamma_wall")
-        if dgs == "CALL" and dgw is not None and abs(strike_f - dgw) <= 1.5:
-            bias += 0.45
-            bias_notes.append("dom_gamma_call_confluence")
     else:
         if pgw and spot_f > pgw and pgw - 2.0 <= strike_f <= spot_f:
             bias += 0.85
@@ -159,10 +158,6 @@ def compute_wall_score_components(
         if cgw and abs(strike_f - cgw) <= 2.0 and strike_f <= cgw + 0.5:
             bias += 0.55
             bias_notes.append("near_call_gamma_resistance")
-        dgw = _wlevel(row, "dom_gamma_wall")
-        if dgs == "PUT" and dgw is not None and abs(strike_f - dgw) <= 1.5:
-            bias += 0.45
-            bias_notes.append("dom_gamma_put_confluence")
 
     bias = min(bias, 2.0)
     return prox, bias, {
