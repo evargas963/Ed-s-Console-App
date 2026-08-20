@@ -741,6 +741,94 @@ def test_serve_abstains_on_withheld_oi_vanna_wall_distances():
     assert "snapshot_missing_structurally_withheld_wall_distances" in abl
 
 
+def test_rc435_abstain_disables_active_ml_fleet():
+    """RC-436: RC-435 abstain is fleet-wide on live withheld OI/vanna — not a niche tick.
+
+    Negative control: a feature list without withheld names must not gate.
+    Retrain blocker: model_feature_wall_distance_cols excludes the four bases but
+    is not yet the live WALL_DISTANCE_COLS contract (width/schema bump owed on host).
+    """
+    import json
+    from pathlib import Path
+
+    from lstm_data import (
+        FEATURES_5M,
+        LEGACY_ENCODER_SCHEMA_VERSION,
+        LEGACY_V2_FEATURES_5M,
+        checkpoint_encoder_schema_version,
+    )
+    from ml_train import (
+        STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS,
+        model_feature_wall_distance_cols,
+        snapshot_missing_structurally_withheld_wall_distances,
+    )
+
+    withheld_pct = {
+        "dist_call_oi_wall_pct",
+        "dist_put_oi_wall_pct",
+        "dist_call_vanna_wall_pct",
+        "dist_put_vanna_wall_pct",
+    }
+    live = {
+        "dist_call_oi_wall": None,
+        "dist_put_oi_wall": None,
+        "dist_call_vanna_wall": None,
+        "dist_put_vanna_wall": None,
+    }
+    active = Path("models/active")
+    xgb_tri = [
+        p
+        for p in sorted(active.rglob("xgb_*_meta.json"))
+        if "_dir_" not in p.name and "_move_" not in p.name
+    ]
+    assert len(xgb_tri) >= 14  # enrolled-universe floor
+    require = 0
+    for p in xgb_tri:
+        feats = json.loads(p.read_text(encoding="utf-8")).get("features") or []
+        if set(feats) & withheld_pct:
+            require += 1
+        assert snapshot_missing_structurally_withheld_wall_distances(live, feats) is True
+    assert require == len(xgb_tri)
+
+    # Negative: gamma-only feature list does not trip the withheld gate.
+    assert (
+        snapshot_missing_structurally_withheld_wall_distances(
+            live, ["dist_call_gamma_wall_pct", "dist_put_gamma_wall_pct"]
+        )
+        is False
+    )
+
+    import torch
+
+    serveable = 0
+    for pattern in ("lstm_*.pt", "transformer_*.pt"):
+        for pt in sorted(active.rglob(pattern)):
+            ck = torch.load(pt, map_location="cpu", weights_only=False)
+            ver = checkpoint_encoder_schema_version(ck)
+            if ver < LEGACY_ENCODER_SCHEMA_VERSION:
+                continue
+            serveable += 1
+            feats = (
+                LEGACY_V2_FEATURES_5M
+                if ver == LEGACY_ENCODER_SCHEMA_VERSION
+                else FEATURES_5M
+            )
+            assert snapshot_missing_structurally_withheld_wall_distances(live, feats) is True
+    assert serveable >= 8  # 5 LSTM + 5 Transformer on current main fleet
+
+    retired = model_feature_wall_distance_cols()
+    for col in STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS:
+        assert col not in retired
+        assert col + "_pct" not in retired
+    assert "dist_call_gamma_wall" in retired
+    assert "dist_put_delta_wall" in retired
+    # Live encode contract still includes withheld bases (width lock until host retrain).
+    from ml_train import WALL_DISTANCE_COLS
+
+    for col in STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS:
+        assert col in WALL_DISTANCE_COLS
+
+
 def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
     """RC-427: /api/terrain/radar reads _terrain_snapshots_for_radar, which must merge
     terrain_staleness like terrain_cache_get — not fail-open when levels_stale absent."""
