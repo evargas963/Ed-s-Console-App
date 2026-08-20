@@ -1,95 +1,73 @@
-# Order-Flow Schwab capability inventory (preserved)
+# Order-Flow Schwab capability inventory (preserved + definition-refreshed)
 
 **Status:** DISCOVERY / AUDIT — no UI, no new analytics  
 **RC:** RC-438  
-**Spec companions:** `tools/probe_schwab_of_capability_rth.py`, `tools/of_schwab_capability_lib.py`,  
-`reports/of_capability_probe/*/capability_matrix.json`
+**Definition refresh:** `tools/refresh_schwab_native_field_inventory.py` against **schwab-py 1.5.1**  
+**Observed dictionary last live sync:** 2026-08-15 (`governance/artifacts/schwab_field_sync_state.json`) — this cloud run: **LIVE_BLOCKED** (no `schwab_token.json`)
 
-## Corrections (operator 2026-08-20)
+## Corrections (operator)
 
-1. Nested book `EXCHANGE` depth is **`exchange_code_raw` only**. Do **not** call it
-   per-participant / MPID / market-maker until identity semantics are **PASS**-proven.
-2. **Documented / repo-visible** capability ≠ **live entitlement / proof**. Live cells stay
-   `NOT_PROVEN` until an RTH probe records evidence (or `UNAVAILABLE` on a refused service).
+1. Nested book `EXCHANGE` → `exchange_code_raw` only (never “per-participant” until proven).
+2. **Documented / repo-visible ≠ live entitlement.**  
+3. **Do not mark a documented native field `NOT_PROVEN` merely because RTH has not run.**  
+   Use `DOCUMENTED_NATIVE` / `AVAILABLE_IN_SCHWAB_PY` for definition presence; reserve **RTH** for semantics, entitlement, and population questions static inventory cannot answer.
 
-## Status vocabulary (OF-tab design)
+## Canonical inventory mechanisms
 
-| Status | Meaning |
+| Mechanism | Role |
 |---|---|
-| `PASS` | Live RTH evidence captured for entitlement; semantic ruling recorded where required |
-| `NOT_PROVEN` | Documented and/or partially observed; live proof or semantics incomplete |
-| `UNAVAILABLE` | Not offered / refused / absent on probed surfaces |
-| `DOCUMENTED` | Present in schwab-py enums or `schwab_field_inventory/*` only |
+| `python schwab_full_field_inventory.py` | Live REST+stream observation |
+| `python schwab_field_dictionary_builder.py` | Snapshot rebuild from master (prefer sync) |
+| `python tools/sync_schwab_field_dictionary.py --poll` | Live **union-merge** into dictionary (RC-380) |
+| `python tools/refresh_schwab_native_field_inventory.py` | Always-on **schwab-py definition** inventory + diff + matrix v2 |
 
-## Documented / repo-visible surface (not live proof)
+## Freshness result (this refresh)
 
-### Streamer (schwab-py 1.5.1)
-
-| Service | Documented | Console subscribes today |
-|---|---|---|
-| `LEVELONE_EQUITIES` | Yes (fields 0–51) | Yes (active UI ticker) |
-| `LEVELONE_OPTIONS` | Yes | No (REST chain instead) |
-| `NYSE_BOOK` / `NASDAQ_BOOK` | Yes (“level two”) | Yes (same ticker) |
-| `OPTIONS_BOOK` | Yes (same book schema) | **No** |
-| `CHART_EQUITY` | Yes | Capture daemon only |
-| `TIMESALE_*` | **Not wrapped** in schwab-py | No; prior probe code **11** (2026-07-22) — live still `NOT_PROVEN` until re-probe |
-
-### Book schema (documented)
-
-| Level | Field | Documented meaning |
-|---|---|---|
-| Top | `SYMBOL`, `BOOK_TIME`, `BIDS`, `ASKS` | Envelope |
-| Price | `BID_PRICE` / `ASK_PRICE` | Price |
-| Price | `TOTAL_VOLUME` | Aggregate size at price (vendor name) |
-| Price | `NUM_BIDS` / `NUM_ASKS` | Count field — **semantics NOT_PROVEN** (not order-count / MM-count) |
-| Nested | `EXCHANGE` | `exchange_code_raw` — **identity NOT_PROVEN** |
-| Nested | `BID_VOLUME` / `ASK_VOLUME` | Size on that exchange code |
-| Nested | `SEQUENCE` | Per-row sequence — update-order use NOT_PROVEN |
-
-### L1 equity OF-relevant (documented)
-
-Bid/ask/last + sizes; `QUOTE_TIME_MILLIS` / bid/ask/trade times; `ASK/BID/LAST_ID` =
-**Exchange ID** (not MMID); `ASK/BID/LAST_MIC_ID` = **MIC**; session `TOTAL_VOLUME`.
-
-### Explicit gaps (documented absence)
-
-| Concept | Documented status |
+| Surface | Verdict |
 |---|---|
-| MPID / Market Maker ID | UNAVAILABLE in enums |
-| Market Maker Count | UNAVAILABLE as a named field |
-| Native aggressor / condition codes | UNAVAILABLE |
-| NOII / auction imbalance | UNAVAILABLE in enums |
-| Level-3 order stream | UNAVAILABLE |
+| Streamer field numbers / nested book schema (schwab-py) | **FRESH** — written to `schwab_field_inventory/schwab_native_schema_inventory_v1.json` |
+| Observed REST leaf dictionary | **Pending live sync** on operator host (`--poll`) |
+| Book nested vs prior observed paths | **Unchanged** — `TOTAL_VOLUME`, `NUM_BIDS`/`NUM_ASKS`, `EXCHANGE`, `*_VOLUME`, `SEQUENCE`, `BOOK_TIME` still match |
+| Field-number changes vs prior enum snapshot | **None detected** (no prior enum snapshot committed; numbers recorded now for future diffs) |
+| Services documented but outside May-2026 streaming capture | `NYSE_BOOK`, `OPTIONS_BOOK`, `LEVELONE_OPTIONS`, futures/forex L1, screeners, `CHART_FUTURES` |
+| TIMESALE wrapper in schwab-py | **Absent** |
+| `MARKET_MAKER` | **FOREX L1 only** (`LevelOneForexFields#26`) — not equity book |
 
-## Current console use (gap)
+Machine-readable refresh report: `reports/of_schwab_native_inventory_refresh_v1.json`  
+Universe map: `reports/of_schwab_capability_universe_map_v1.json`  
+Capability matrix v2: `reports/of_capability_matrix_template_v1.json`
 
-| Concept | Live path today | Persisted | UI |
-|---|---|---|---|
-| L1 TOB | Stream + REST | Partial snapshots / plane | Header |
-| Book `TOTAL_VOLUME` imbalance | Memory OF engine | No raw books | Compact bias only |
-| `NUM_*`, nested `EXCHANGE`/`*_VOLUME`, `SEQUENCE` | Received then **discarded** | No | No |
-| Hidden OF metrics | Computed | API Tier C may carry | Mostly hidden |
-| Schwab timesales | None | Alpaca→`stream_capture.db` only | Alert tape ≠ prints |
+## RTH reserved for (static inventory cannot close)
 
-**ONE FAUCET:** cum-delta has stream proxy vs REST Lee-Ready fallback; `flow_imbalance` (options) ≠ `book_imbalance_*` (book).
+- `NUM_BIDS` / `NUM_ASKS` **semantics**
+- Nested `EXCHANGE` **identity** semantics
+- `OPTIONS_BOOK` entitlement / population
+- `SEQUENCE` runtime behavior
+- `TIMESALE` availability
+- Security-type / entitlement-dependent population
 
-## RTH probe (smallest)
+Probe: `tools/probe_schwab_of_capability_rth.py` (PR #168) — keep; run on host after definition refresh.
+
+## Universe map (summary)
+
+See `reports/of_schwab_capability_universe_map_v1.json`:
+
+- **NATIVE_USED** — L1 TOB/times/volume; book aggregate `TOTAL_VOLUME`; REST quote/chain/bars  
+- **NATIVE_UNUSED** — `NUM_*`, nested `EXCHANGE`/`*_VOLUME`/`SEQUENCE`, MIC/exchange IDs, OPTIONS_BOOK, LEVELONE_OPTIONS stream, many L1 fundamentals  
+- **DERIVED_TODAY** — imbalances, tape proxies, options flow, VWAP/terrain  
+- **DERIVABLE** — depth history, venue-share **if** EXCHANGE proven, breadth **if** NUM_* proven, quote aging, options depth if entitled  
+- **PROXY_INFERRED** — aggressor/uptick/Lee-Ready; Alpaca IEX prints  
+- **UNAVAILABLE** — Schwab timesales wrapper; native aggressor/NOII/MPID/L3  
+
+## Operator next (host)
 
 ```text
-# Stop console streamer / run_stream_capture first (single-streamer-owner).
+# 1) Refresh observed REST dictionary (union merge)
+python tools/sync_schwab_field_dictionary.py --poll
+
+# 2) Re-run definition refresh (records LIVE_OK)
+python tools/refresh_schwab_native_field_inventory.py
+
+# 3) RTH semantic/entitlement probe (stop other streamers first)
 python tools/probe_schwab_of_capability_rth.py --symbols SPY,QQQ,IWM --duration-sec 90 --with-levelone-options
 ```
-
-Writes `reports/of_capability_probe/<stamp>/`:
-
-- `frames/*_raw.json` — numeric-key Schwab data frames (pre relabel)
-- `frames/*_decoded.json` — schwab-py named relabel (still pre Ed Console OF normalize)
-- `analysis/*.json` — NUM_*, EXCHANGE samples, BOOK_TIME/SEQUENCE, TIMESALE, absence scan
-- `capability_matrix.json` — design matrix with PASS / NOT_PROVEN / UNAVAILABLE
-
-Offline / no token: writes a template matrix with `live_probe_ran=false` and exit 2.
-
-## Final matrix location
-
-After RTH: use the latest `reports/of_capability_probe/*/capability_matrix.json` as the
-OF-tab design authority. Until then every live cell remains **NOT_PROVEN**.
