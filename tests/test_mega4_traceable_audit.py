@@ -57,7 +57,7 @@ CATEGORICAL_JUST_RE = re.compile(
 #        _read_with_retry / _read_one_row_with_retry, ml_predict._never_trained_ticker,
 #        arch_competition/metrics._sklearn_metrics), all NONE and each traced from its own
 #        body rather than from a neighbouring row's wording.
-MEGA4_ROW_COUNT = 1065  # +21 (RC-328/332/340/343/345 one-authority consolidations that shipped without inventory rows: active_bundle_contract.artifact_ticker_key; lstm_data encode_zone/_anchor_tolerance_s/_snapshot_ts/_spot_at_minutes_back; ml_data_common confluence_history_lookback_s/fetch_confluence_history/confluence_features_for_bar/prepare_row_for_xgb_features; the twelve ml_train fk_* feature kernels) 2026-08-17  # +1 resolve_live_v2_calibration_tail_action (calibration/v2_live_logging.py) — pre-existing inventory gap in uncommitted live-logging work, closed 2026-07-19 (prior: 1038)
+MEGA4_ROW_COUNT = 1069  # +4 RC-435 structurally withheld wall-distance serve gates (ml_train)  # +21 (RC-328/332/340/343/345 one-authority consolidations that shipped without inventory rows: active_bundle_contract.artifact_ticker_key; lstm_data encode_zone/_anchor_tolerance_s/_snapshot_ts/_spot_at_minutes_back; ml_data_common confluence_history_lookback_s/fetch_confluence_history/confluence_features_for_bar/prepare_row_for_xgb_features; the twelve ml_train fk_* feature kernels) 2026-08-17  # +1 resolve_live_v2_calibration_tail_action (calibration/v2_live_logging.py) — pre-existing inventory gap in uncommitted live-logging work, closed 2026-07-19 (prior: 1038)
 MEGA4_FILE_COUNT = 88  # +3 arch_competition PR4 modules
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES | MEGA3_FILES
 

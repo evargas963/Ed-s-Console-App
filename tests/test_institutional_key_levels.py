@@ -650,6 +650,97 @@ def test_withheld_oi_vanna_dist_remain_schema_slots_live_none():
     assert live_dist is None
 
 
+def test_serve_abstains_on_withheld_oi_vanna_wall_distances():
+    """RC-435 / F4: serve must not median/zero-fill structurally withheld OI/vanna dists.
+
+    Negative control: apply_xgb_imputation_matrix with SPY-like medians would invent
+    finite proximities from an all-NaN withheld vector. Legitimate: gamma-wall NaN alone
+    does not trip the withheld gate; finite OI/vanna values do not trip it.
+    """
+    import numpy as np
+
+    from ml_train import (
+        apply_xgb_imputation_matrix,
+        engineered_features_missing_withheld_wall_distances,
+        snapshot_missing_structurally_withheld_wall_distances,
+        structurally_withheld_wall_distance_feature_names,
+    )
+
+    withheld_pct = [
+        "dist_call_oi_wall_pct",
+        "dist_put_oi_wall_pct",
+        "dist_call_vanna_wall_pct",
+        "dist_put_vanna_wall_pct",
+    ]
+    feats = withheld_pct + ["dist_call_gamma_wall_pct", "dist_put_gamma_wall_pct"]
+    # Live engineered row: withheld NaN, gamma finite (or gamma NaN — still not withheld trip).
+    x_live = np.array(
+        [[np.nan, np.nan, np.nan, np.nan, 0.12, np.nan]], dtype=np.float64
+    )
+    assert engineered_features_missing_withheld_wall_distances(x_live[0], feats) is True
+    med = {
+        "dist_call_oi_wall_pct": 0.7529267869121369,
+        "dist_put_oi_wall_pct": -0.8743320446674285,
+        "dist_call_vanna_wall_pct": 0.12341299506538662,
+        "dist_put_vanna_wall_pct": -0.20482876858755944,
+        "dist_call_gamma_wall_pct": 0.12163768173631903,
+        "dist_put_gamma_wall_pct": -0.1,
+    }
+    fabricated = apply_xgb_imputation_matrix(x_live, feats, med)[0]
+    # Negative: without the gate, serve would assert these fabricated proximities.
+    assert np.isfinite(fabricated[0]) and abs(fabricated[0] - med["dist_call_oi_wall_pct"]) < 1e-9
+    assert np.isfinite(fabricated[2]) and abs(fabricated[2] - med["dist_call_vanna_wall_pct"]) < 1e-9
+
+    # Legitimate: only gamma missing — withheld gate stays closed.
+    x_gamma_only = np.array([[0.1, -0.2, 0.05, -0.05, np.nan, np.nan]], dtype=np.float64)
+    assert engineered_features_missing_withheld_wall_distances(x_gamma_only[0], feats) is False
+
+    # Snapshot gate: producer None on bases while model lists *_pct.
+    assert snapshot_missing_structurally_withheld_wall_distances(
+        {
+            "dist_call_oi_wall": None,
+            "dist_put_oi_wall": None,
+            "dist_call_vanna_wall": None,
+            "dist_put_vanna_wall": None,
+            "dist_call_gamma_wall": 1.0,
+        },
+        feats,
+    ) is True
+    assert snapshot_missing_structurally_withheld_wall_distances(
+        {
+            "dist_call_oi_wall": 2.0,
+            "dist_put_oi_wall": -3.0,
+            "dist_call_vanna_wall": 1.0,
+            "dist_put_vanna_wall": -1.0,
+        },
+        feats,
+    ) is False
+    # Model without withheld features never abstains on this gate.
+    assert snapshot_missing_structurally_withheld_wall_distances(
+        {"dist_call_oi_wall": None},
+        ["dist_call_gamma_wall_pct"],
+    ) is False
+
+    names = structurally_withheld_wall_distance_feature_names()
+    for col in (
+        "dist_call_oi_wall",
+        "dist_put_oi_wall",
+        "dist_call_vanna_wall",
+        "dist_put_vanna_wall",
+    ):
+        assert col in names and f"{col}_pct" in names
+
+    # Serve entrypoints must gate before impute / nan_to_num.
+    from pathlib import Path
+
+    pred = Path("ml_predict.py").read_text(encoding="utf-8")
+    assert "engineered_features_missing_withheld_wall_distances" in pred
+    assert "snapshot_missing_structurally_withheld_wall_distances" in pred
+    assert pred.count("structurally withheld OI/vanna wall distance missing") >= 2
+    abl = Path("arch_competition/ablation_bundle_inference.py").read_text(encoding="utf-8")
+    assert "snapshot_missing_structurally_withheld_wall_distances" in abl
+
+
 def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
     """RC-427: /api/terrain/radar reads _terrain_snapshots_for_radar, which must merge
     terrain_staleness like terrain_cache_get — not fail-open when levels_stale absent."""
