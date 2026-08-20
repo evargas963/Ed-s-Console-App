@@ -4713,6 +4713,48 @@ def check_rc_document_without_resolve() -> list[Violation]:
     return out
 
 
+def check_rc436_closed_requires_ml_fleet_restore() -> list[Violation]:
+    """RC-437 — RC-436 may not CLOSE while the live ML fleet still requires withheld OI/vanna distances.
+
+    WHAT WAS OBSERVED (RC-436, re-measured on main 82f59282):
+    ``python ./tools/measure_rc435_abstain_impact.py`` prints
+    xgb_triclass require_withheld=32/32 and serveable LSTM/Transformer live_gate_true on all
+    serveable checkpoints, then exits 0. That exit code is REPORT-ONLY by design and was
+    being treated as if a green gate proved ML health.
+
+    WHY EXISTING LOCKS DID NOT FIRE. ``measure_rc435_abstain_impact.py`` never fails.
+    ``test_rc435_abstain_disables_active_ml_fleet`` locks the dark-fleet *fact* but does not
+    block closing the restore tracker. Completion claims about ML restore could close RC-436
+    while active metas still list ``dist_*_oi/vanna_*_pct``.
+
+    THE RULE. Delegates to ``tools/ml_fleet_restore_lock.py``: if RC-436 status is CLOSED and
+    any active triclass XGB meta still lists a structurally withheld ``*_pct`` feature, BLOCK.
+    Path A restore (reports/rc437_oi_vanna_wall_adjudication.md) must land first.
+
+    HOW VALIDATED: negative controls in tests/test_ml_fleet_restore_lock_v1.py inject a
+    CLOSED RC-436 ledger against the live withheld-feature metas and assert >= 1 violation;
+    live OPEN RC-436 returns zero.
+    """
+    out: list[Violation] = []
+    try:
+        from tools.ml_fleet_restore_lock import violations as _v
+    except ImportError:
+        from ml_fleet_restore_lock import violations as _v  # type: ignore
+    try:
+        for reason in _v(REPO):
+            out.append(Violation(REPO / "governance" / "root_cause_log.md", 0, str(reason)))
+    except Exception as exc:  # noqa: BLE001
+        out.append(
+            Violation(
+                REPO / "tools" / "ml_fleet_restore_lock.py",
+                0,
+                f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                f"that cannot run is not a gate",
+            )
+        )
+    return out
+
+
 CHECKS = [
     # ENFORCED (must be zero — block pre-commit):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
@@ -4730,6 +4772,7 @@ CHECKS = [
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     ("rc_document_without_resolve", check_rc_document_without_resolve, True),  # RC-228/RC-230 LOCK-6: added OPEN rows must carry a resolve path
+    ("rc436_closed_requires_ml_fleet_restore", check_rc436_closed_requires_ml_fleet_restore, True),  # RC-437: measure≠lock; no premature RC-436 CLOSE
     ("writer_no_drift", check_writer_no_drift, True),  # RC-232 LOCK-1: staged paths must come from the mission's resolved writer
     # LOG LAW (RC-237) — ARMED under the PM GO of 2026-08-04T18:58Z, scope staged_lock_surface
     # (governance/operator_go.json, granted_by cursor_pm). One defect ledger, one epistemic

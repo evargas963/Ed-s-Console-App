@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""RC-436 / RC-435 consequence: measure live abstain reach across active artifacts.
+"""RC-436 / RC-435 consequence: REPORT-ONLY measure of live abstain reach.
 
 Reproduce:
   python ./tools/measure_rc435_abstain_impact.py
 
-Prints counts only — does not mutate artifacts. Exit 0 always when measurement completes.
+REPORT-ONLY (RC-437): prints counts and always exits 0 when the measurement
+completes — including when the entire active fleet gates True (fleet dark).
+A zero exit here is NOT proof that ML is healthy and must not be treated as an
+enforcement lock.
+
+ENFORCEMENT (separate): ``tools/ml_fleet_restore_lock.py`` /
+``check_rc436_closed_requires_ml_fleet_restore`` BLOCKs closing RC-436 while
+active triclass metas still require structurally withheld OI/vanna distances.
+Adjudication: ``reports/rc437_oi_vanna_wall_adjudication.md``.
 """
 from __future__ import annotations
 
@@ -23,6 +31,12 @@ WITHHELD_PCT = {
     "dist_put_vanna_wall_pct",
 }
 
+_REPORT_BANNER = (
+    "REPORT_ONLY=1 ENFORCEMENT=tools/ml_fleet_restore_lock.py "
+    "(check_rc436_closed_requires_ml_fleet_restore) "
+    "ADJOURNED_RESTORE=RC-436 OPEN until Path-A retrain proven"
+)
+
 
 def _triclass_xgb_metas(active: Path) -> list[Path]:
     out: list[Path] = []
@@ -34,6 +48,7 @@ def _triclass_xgb_metas(active: Path) -> list[Path]:
 
 
 def main() -> int:
+    print(_REPORT_BANNER)
     from lstm_data import (
         FEATURES_5M,
         LEGACY_ENCODER_SCHEMA_VERSION,
