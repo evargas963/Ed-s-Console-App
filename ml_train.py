@@ -206,11 +206,26 @@ WALL_DISTANCE_COLS = [
     # in the train/serve vector so FEATURE_SCHEMA_VERSION / artifact widths do not
     # break. Live persist writes NULL. RC-435: serve abstains before median/zero fill
     # (STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS) — do not fabricate proximity.
+    # RC-436: that abstain disables the live ML fleet until host retrain uses
+    # model_feature_wall_distance_cols() (exclude these four) + schema bump.
     "dist_call_oi_wall",    "dist_put_oi_wall",
     "dist_call_vanna_wall", "dist_put_vanna_wall",
     "dist_gamma_inflection","dist_delta_inflection",
     "pin_width_pts",
 ]
+
+
+def model_feature_wall_distance_cols() -> list[str]:
+    """Wall-distance columns eligible for *new* model feature contracts (RC-436).
+
+    Excludes STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS. Not wired into live
+    ``WALL_DISTANCE_COLS`` / ``FEATURES_5M`` until a host retrain co-lands a
+    FEATURE_SCHEMA_VERSION bump — wiring early would shrink encoder widths and
+    fail-close serveable schema-v3 sequence checkpoints mid-flight.
+    """
+    withheld = set(STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS)
+    return [c for c in WALL_DISTANCE_COLS if c not in withheld]
+
 
 SCALE_INVARIANT_COLS = [
     "net_gamma", "net_delta", "charm_net", "put_call_oi_ratio",
