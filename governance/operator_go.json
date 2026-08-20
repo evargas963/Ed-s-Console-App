@@ -1,11 +1,11 @@
 {
-  "granted": true,
+  "granted": false,
   "granted_at": "2026-08-20T02:50:00+00:00",
-  "revoked_at": null,
+  "revoked_at": "2026-08-20T02:55:00+00:00",
   "granted_by": "operator_task_rc437_oi_vanna_adjudication_cloud_agent",
-  "revoked_by": null,
+  "revoked_by": "cursor_rc437_followup_revoke",
   "scope": [
     "staged_lock_surface"
   ],
-  "note": "SCOPED GO 2026-08-20 for RC-437 only: land ENFORCED check_rc436_closed_requires_ml_fleet_restore (measure≠lock). Must revoke granted=false in the immediate follow-up commit after the check is on HEAD (RC-241/RC-402 class — no standing grant)."
+  "note": "REVOKED 2026-08-20 after RC-437 ENFORCED check landed on branch HEAD (commit with grant). Scope was staged_lock_surface only for check_rc436_closed_requires_ml_fleet_restore. No standing grant remains (RC-241/RC-402)."
 }
