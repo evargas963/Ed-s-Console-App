@@ -7432,11 +7432,18 @@ def _fetch_state(
                     _all_levels[_dn] = float(_dv)
         if _dens_fresh and _t_dens.get("gamma_flip") is not None:
             _all_levels["gamma_flip"] = float(_t_dens["gamma_flip"])
-        if _em_up: _all_levels['em_upper'] = float(_em_up)
-        if _em_lo: _all_levels['em_lower'] = float(_em_lo)
-        # RC-345 / F06: the EM band carries its methodology so no consumer treats it as
-        # method-agnostic (STRADDLE_IMPLIED market premium vs IV_MODEL spot*IV*sqrt(T)).
-        if _em_up and _em_lo: _all_levels['em_band_source'] = _em_band_source
+        # RC-433 / F06: density counts the SAME EM band KL paints (terrain IV_SIGMA_1D =
+        # spot ± implied_1d_move.points). Pre-fix injected remaining-risk straddle/IV_MODEL
+        # bands, which often sit inside the 3pt radius while the operator KL band is the wider
+        # 1σ day move — congestion labeled "moderate" from a band the KL table does not show.
+        # Remaining-risk EM stays on SignalInput / em_progress.
+        if _dens_fresh:
+            _em_move = _t_dens.get("implied_1d_move") or {}
+            _em_pts = _em_move.get("points")
+            _em_spot = _t_dens.get("spot")
+            if _em_pts is not None and _em_spot is not None:
+                _all_levels["em_upper"] = float(_em_spot) + float(_em_pts)
+                _all_levels["em_lower"] = float(_em_spot) - float(_em_pts)
         _level_density = compute_level_density(_all_levels, spot_f)
 
         # Sector strength — 3 groups

@@ -489,6 +489,69 @@ def test_level_density_uses_terrain_bound_walls_not_dead_locals():
     assert 'get("gamma_flip")' in dens
 
 
+def test_level_density_uses_terrain_iv_sigma_em_not_remaining_risk_em():
+    """RC-433 / F06: density must count the same EM band KL paints (terrain
+    IV_SIGMA_1D), not remaining-risk STRADDLE_IMPLIED / IV_MODEL `_em_up`.
+
+    OUT-OF-SCOPE: enrolled-universe live desk; F10 retrain; F11 Schwab tick.
+    """
+    from pathlib import Path
+
+    from math_levels import (
+        build_walls_rows,
+        compute_level_density,
+        consensus_walls_bind_terrain_ssot,
+    )
+
+    sel_ex, spot, terrain = _wide_vs_selected_wall_books()
+    walls = consensus_walls_bind_terrain_ssot(build_walls_rows(sel_ex, spot), terrain)
+    base = {
+        "gamma_pin": float(terrain["gamma_pin"]),
+        "call_gamma_wall": float(walls[0].call_gamma_wall),
+        "put_gamma_wall": float(walls[0].put_gamma_wall),
+    }
+    # Negative: remaining-risk EM inside the 3pt radius inflates congestion.
+    broken = compute_level_density(
+        {**base, "em_upper": spot + 2.0, "em_lower": spot - 2.0},
+        spot,
+    )
+    assert broken["count"] == 3
+    assert broken["density_label"] == "moderate"
+    assert "em_upper" in (broken["level_names"] or [])
+    # Legitimate: terrain IV_SIGMA_1D band (±11.6 on this fixture) matches KL and
+    # stays outside the density radius — same count as walls-only.
+    pts = float((terrain.get("implied_1d_move") or {})["points"])
+    tsp = float(terrain["spot"])
+    assert pts > 3.0
+    ok = {
+        **base,
+        "em_upper": tsp + pts,
+        "em_lower": tsp - pts,
+    }
+    fixed = compute_level_density(ok, spot)
+    assert fixed["count"] == 1
+    assert fixed["density_label"] == "light"
+    assert "em_upper" not in (fixed["level_names"] or [])
+    # Source lock: dens body binds implied_1d_move, not `_em_up`.
+    dens = Path("server.py").read_text(encoding="utf-8").split(
+        "# Build levels dict for density check", 1
+    )[1].split("_level_density = compute_level_density", 1)[0]
+    body = dens.split("_all_levels = {}", 1)[1]
+    assert "implied_1d_move" in body
+    assert "if _em_up:" not in body
+    # Executable dens lines only — comments may name the retired remaining-risk binders.
+    code_lines = [
+        ln for ln in body.splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+    code = "\n".join(code_lines)
+    assert "_em_up" not in code
+    assert "_em_band_source" not in code
+    assert 'em_upper"] = float(_em_spot) + float(_em_pts)' in code or (
+        "em_upper" in code and "_em_pts" in code and "_em_spot" in code
+    )
+
+
 def test_withheld_oi_vanna_dist_remain_schema_slots_live_none():
     """F4 / RC-422: OI/vanna walls withheld live. dist_* stay in the feature
     contract so artifact widths do not break. Live producer is None.
