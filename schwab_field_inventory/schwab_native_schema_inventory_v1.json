@@ -1,0 +1,1469 @@
+{
+  "authority": "schwab-py StreamClient enums (installed package)",
+  "schwab_py_version": "1.5.1",
+  "extracted_at_utc": "2026-08-20T09:18:53.145062+00:00",
+  "enums": {
+    "AccountActivityFields": [
+      {
+        "name": "SUBSCRIPTION_KEY",
+        "number": 0
+      },
+      {
+        "name": "ACCOUNT",
+        "number": 1
+      },
+      {
+        "name": "MESSAGE_TYPE",
+        "number": 2
+      },
+      {
+        "name": "MESSAGE_DATA",
+        "number": 3
+      }
+    ],
+    "AskFields": [
+      {
+        "name": "ASK_PRICE",
+        "number": 0
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 1
+      },
+      {
+        "name": "NUM_ASKS",
+        "number": 2
+      },
+      {
+        "name": "ASKS",
+        "number": 3
+      }
+    ],
+    "BidFields": [
+      {
+        "name": "BID_PRICE",
+        "number": 0
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 1
+      },
+      {
+        "name": "NUM_BIDS",
+        "number": 2
+      },
+      {
+        "name": "BIDS",
+        "number": 3
+      }
+    ],
+    "BookFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "BOOK_TIME",
+        "number": 1
+      },
+      {
+        "name": "BIDS",
+        "number": 2
+      },
+      {
+        "name": "ASKS",
+        "number": 3
+      }
+    ],
+    "ChartEquityFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "SEQUENCE",
+        "number": 1
+      },
+      {
+        "name": "OPEN_PRICE",
+        "number": 2
+      },
+      {
+        "name": "HIGH_PRICE",
+        "number": 3
+      },
+      {
+        "name": "LOW_PRICE",
+        "number": 4
+      },
+      {
+        "name": "CLOSE_PRICE",
+        "number": 5
+      },
+      {
+        "name": "VOLUME",
+        "number": 6
+      },
+      {
+        "name": "CHART_TIME_MILLIS",
+        "number": 7
+      },
+      {
+        "name": "CHART_DAY",
+        "number": 8
+      }
+    ],
+    "ChartFuturesFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "CHART_TIME_MILLIS",
+        "number": 1
+      },
+      {
+        "name": "OPEN_PRICE",
+        "number": 2
+      },
+      {
+        "name": "HIGH_PRICE",
+        "number": 3
+      },
+      {
+        "name": "LOW_PRICE",
+        "number": 4
+      },
+      {
+        "name": "CLOSE_PRICE",
+        "number": 5
+      },
+      {
+        "name": "VOLUME",
+        "number": 6
+      }
+    ],
+    "LevelOneEquityFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "BID_PRICE",
+        "number": 1
+      },
+      {
+        "name": "ASK_PRICE",
+        "number": 2
+      },
+      {
+        "name": "LAST_PRICE",
+        "number": 3
+      },
+      {
+        "name": "BID_SIZE",
+        "number": 4
+      },
+      {
+        "name": "ASK_SIZE",
+        "number": 5
+      },
+      {
+        "name": "ASK_ID",
+        "number": 6
+      },
+      {
+        "name": "BID_ID",
+        "number": 7
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 8
+      },
+      {
+        "name": "LAST_SIZE",
+        "number": 9
+      },
+      {
+        "name": "HIGH_PRICE",
+        "number": 10
+      },
+      {
+        "name": "LOW_PRICE",
+        "number": 11
+      },
+      {
+        "name": "CLOSE_PRICE",
+        "number": 12
+      },
+      {
+        "name": "EXCHANGE_ID",
+        "number": 13
+      },
+      {
+        "name": "MARGINABLE",
+        "number": 14
+      },
+      {
+        "name": "DESCRIPTION",
+        "number": 15
+      },
+      {
+        "name": "LAST_ID",
+        "number": 16
+      },
+      {
+        "name": "OPEN_PRICE",
+        "number": 17
+      },
+      {
+        "name": "NET_CHANGE",
+        "number": 18
+      },
+      {
+        "name": "HIGH_PRICE_52_WEEK",
+        "number": 19
+      },
+      {
+        "name": "LOW_PRICE_52_WEEK",
+        "number": 20
+      },
+      {
+        "name": "PE_RATIO",
+        "number": 21
+      },
+      {
+        "name": "DIVIDEND_AMOUNT",
+        "number": 22
+      },
+      {
+        "name": "DIVIDEND_YIELD",
+        "number": 23
+      },
+      {
+        "name": "NAV",
+        "number": 24
+      },
+      {
+        "name": "EXCHANGE_NAME",
+        "number": 25
+      },
+      {
+        "name": "DIVIDEND_DATE",
+        "number": 26
+      },
+      {
+        "name": "REGULAR_MARKET_QUOTE",
+        "number": 27
+      },
+      {
+        "name": "REGULAR_MARKET_TRADE",
+        "number": 28
+      },
+      {
+        "name": "REGULAR_MARKET_LAST_PRICE",
+        "number": 29
+      },
+      {
+        "name": "REGULAR_MARKET_LAST_SIZE",
+        "number": 30
+      },
+      {
+        "name": "REGULAR_MARKET_NET_CHANGE",
+        "number": 31
+      },
+      {
+        "name": "SECURITY_STATUS",
+        "number": 32
+      },
+      {
+        "name": "MARK",
+        "number": 33
+      },
+      {
+        "name": "QUOTE_TIME_MILLIS",
+        "number": 34
+      },
+      {
+        "name": "TRADE_TIME_MILLIS",
+        "number": 35
+      },
+      {
+        "name": "REGULAR_MARKET_TRADE_MILLIS",
+        "number": 36
+      },
+      {
+        "name": "BID_TIME_MILLIS",
+        "number": 37
+      },
+      {
+        "name": "ASK_TIME_MILLIS",
+        "number": 38
+      },
+      {
+        "name": "ASK_MIC_ID",
+        "number": 39
+      },
+      {
+        "name": "BID_MIC_ID",
+        "number": 40
+      },
+      {
+        "name": "LAST_MIC_ID",
+        "number": 41
+      },
+      {
+        "name": "NET_CHANGE_PERCENT",
+        "number": 42
+      },
+      {
+        "name": "REGULAR_MARKET_CHANGE_PERCENT",
+        "number": 43
+      },
+      {
+        "name": "MARK_CHANGE",
+        "number": 44
+      },
+      {
+        "name": "MARK_CHANGE_PERCENT",
+        "number": 45
+      },
+      {
+        "name": "HTB_QUANTITY",
+        "number": 46
+      },
+      {
+        "name": "HTB_RATE",
+        "number": 47
+      },
+      {
+        "name": "HARD_TO_BORROW",
+        "number": 48
+      },
+      {
+        "name": "IS_SHORTABLE",
+        "number": 49
+      },
+      {
+        "name": "POST_MARKET_NET_CHANGE",
+        "number": 50
+      },
+      {
+        "name": "POST_MARKET_NET_CHANGE_PERCENT",
+        "number": 51
+      }
+    ],
+    "LevelOneForexFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "BID_PRICE",
+        "number": 1
+      },
+      {
+        "name": "ASK_PRICE",
+        "number": 2
+      },
+      {
+        "name": "LAST_PRICE",
+        "number": 3
+      },
+      {
+        "name": "BID_SIZE",
+        "number": 4
+      },
+      {
+        "name": "ASK_SIZE",
+        "number": 5
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 6
+      },
+      {
+        "name": "LAST_SIZE",
+        "number": 7
+      },
+      {
+        "name": "QUOTE_TIME_MILLIS",
+        "number": 8
+      },
+      {
+        "name": "TRADE_TIME_MILLIS",
+        "number": 9
+      },
+      {
+        "name": "HIGH_PRICE",
+        "number": 10
+      },
+      {
+        "name": "LOW_PRICE",
+        "number": 11
+      },
+      {
+        "name": "CLOSE_PRICE",
+        "number": 12
+      },
+      {
+        "name": "EXCHANGE_ID",
+        "number": 13
+      },
+      {
+        "name": "DESCRIPTION",
+        "number": 14
+      },
+      {
+        "name": "OPEN_PRICE",
+        "number": 15
+      },
+      {
+        "name": "NET_CHANGE",
+        "number": 16
+      },
+      {
+        "name": "CHANGE_PERCENT",
+        "number": 17
+      },
+      {
+        "name": "EXCHANGE_NAME",
+        "number": 18
+      },
+      {
+        "name": "DIGITS",
+        "number": 19
+      },
+      {
+        "name": "SECURITY_STATUS",
+        "number": 20
+      },
+      {
+        "name": "TICK",
+        "number": 21
+      },
+      {
+        "name": "TICK_AMOUNT",
+        "number": 22
+      },
+      {
+        "name": "PRODUCT",
+        "number": 23
+      },
+      {
+        "name": "TRADING_HOURS",
+        "number": 24
+      },
+      {
+        "name": "IS_TRADABLE",
+        "number": 25
+      },
+      {
+        "name": "MARKET_MAKER",
+        "number": 26
+      },
+      {
+        "name": "HIGH_PRICE_52_WEEK",
+        "number": 27
+      },
+      {
+        "name": "LOW_PRICE_52_WEEK",
+        "number": 28
+      },
+      {
+        "name": "MARK",
+        "number": 29
+      }
+    ],
+    "LevelOneFuturesFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "BID_PRICE",
+        "number": 1
+      },
+      {
+        "name": "ASK_PRICE",
+        "number": 2
+      },
+      {
+        "name": "LAST_PRICE",
+        "number": 3
+      },
+      {
+        "name": "BID_SIZE",
+        "number": 4
+      },
+      {
+        "name": "ASK_SIZE",
+        "number": 5
+      },
+      {
+        "name": "BID_ID",
+        "number": 6
+      },
+      {
+        "name": "ASK_ID",
+        "number": 7
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 8
+      },
+      {
+        "name": "LAST_SIZE",
+        "number": 9
+      },
+      {
+        "name": "QUOTE_TIME_MILLIS",
+        "number": 10
+      },
+      {
+        "name": "TRADE_TIME_MILLIS",
+        "number": 11
+      },
+      {
+        "name": "HIGH_PRICE",
+        "number": 12
+      },
+      {
+        "name": "LOW_PRICE",
+        "number": 13
+      },
+      {
+        "name": "CLOSE_PRICE",
+        "number": 14
+      },
+      {
+        "name": "EXCHANGE_ID",
+        "number": 15
+      },
+      {
+        "name": "DESCRIPTION",
+        "number": 16
+      },
+      {
+        "name": "LAST_ID",
+        "number": 17
+      },
+      {
+        "name": "OPEN_PRICE",
+        "number": 18
+      },
+      {
+        "name": "NET_CHANGE",
+        "number": 19
+      },
+      {
+        "name": "FUTURE_CHANGE_PERCENT",
+        "number": 20
+      },
+      {
+        "name": "EXCHANGE_NAME",
+        "number": 21
+      },
+      {
+        "name": "SECURITY_STATUS",
+        "number": 22
+      },
+      {
+        "name": "OPEN_INTEREST",
+        "number": 23
+      },
+      {
+        "name": "MARK",
+        "number": 24
+      },
+      {
+        "name": "TICK",
+        "number": 25
+      },
+      {
+        "name": "TICK_AMOUNT",
+        "number": 26
+      },
+      {
+        "name": "PRODUCT",
+        "number": 27
+      },
+      {
+        "name": "FUTURE_PRICE_FORMAT",
+        "number": 28
+      },
+      {
+        "name": "FUTURE_TRADING_HOURS",
+        "number": 29
+      },
+      {
+        "name": "FUTURE_IS_TRADABLE",
+        "number": 30
+      },
+      {
+        "name": "FUTURE_MULTIPLIER",
+        "number": 31
+      },
+      {
+        "name": "FUTURE_IS_ACTIVE",
+        "number": 32
+      },
+      {
+        "name": "FUTURE_SETTLEMENT_PRICE",
+        "number": 33
+      },
+      {
+        "name": "FUTURE_ACTIVE_SYMBOL",
+        "number": 34
+      },
+      {
+        "name": "FUTURE_EXPIRATION_DATE",
+        "number": 35
+      },
+      {
+        "name": "EXPIRATION_STYLE",
+        "number": 36
+      },
+      {
+        "name": "ASK_TIME_MILLIS",
+        "number": 37
+      },
+      {
+        "name": "BID_TIME_MILLIS",
+        "number": 38
+      },
+      {
+        "name": "QUOTED_IN_SESSION",
+        "number": 39
+      },
+      {
+        "name": "SETTLEMENT_DATE",
+        "number": 40
+      }
+    ],
+    "LevelOneFuturesOptionsFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "BID_PRICE",
+        "number": 1
+      },
+      {
+        "name": "ASK_PRICE",
+        "number": 2
+      },
+      {
+        "name": "LAST_PRICE",
+        "number": 3
+      },
+      {
+        "name": "BID_SIZE",
+        "number": 4
+      },
+      {
+        "name": "ASK_SIZE",
+        "number": 5
+      },
+      {
+        "name": "BID_ID",
+        "number": 6
+      },
+      {
+        "name": "ASK_ID",
+        "number": 7
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 8
+      },
+      {
+        "name": "LAST_SIZE",
+        "number": 9
+      },
+      {
+        "name": "QUOTE_TIME_MILLIS",
+        "number": 10
+      },
+      {
+        "name": "TRADE_TIME_MILLIS",
+        "number": 11
+      },
+      {
+        "name": "HIGH_PRICE",
+        "number": 12
+      },
+      {
+        "name": "LOW_PRICE",
+        "number": 13
+      },
+      {
+        "name": "CLOSE_PRICE",
+        "number": 14
+      },
+      {
+        "name": "LAST_ID",
+        "number": 15
+      },
+      {
+        "name": "DESCRIPTION",
+        "number": 16
+      },
+      {
+        "name": "OPEN_PRICE",
+        "number": 17
+      },
+      {
+        "name": "OPEN_INTEREST",
+        "number": 18
+      },
+      {
+        "name": "MARK",
+        "number": 19
+      },
+      {
+        "name": "TICK",
+        "number": 20
+      },
+      {
+        "name": "TICK_AMOUNT",
+        "number": 21
+      },
+      {
+        "name": "FUTURE_MULTIPLIER",
+        "number": 22
+      },
+      {
+        "name": "FUTURE_SETTLEMENT_PRICE",
+        "number": 23
+      },
+      {
+        "name": "UNDERLYING_SYMBOL",
+        "number": 24
+      },
+      {
+        "name": "STRIKE_PRICE",
+        "number": 25
+      },
+      {
+        "name": "FUTURE_EXPIRATION_DATE",
+        "number": 26
+      },
+      {
+        "name": "EXPIRATION_STYLE",
+        "number": 27
+      },
+      {
+        "name": "CONTRACT_TYPE",
+        "number": 28
+      },
+      {
+        "name": "SECURITY_STATUS",
+        "number": 29
+      },
+      {
+        "name": "EXCHANGE_ID",
+        "number": 30
+      },
+      {
+        "name": "EXCHANGE_NAME",
+        "number": 31
+      }
+    ],
+    "LevelOneOptionFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "DESCRIPTION",
+        "number": 1
+      },
+      {
+        "name": "BID_PRICE",
+        "number": 2
+      },
+      {
+        "name": "ASK_PRICE",
+        "number": 3
+      },
+      {
+        "name": "LAST_PRICE",
+        "number": 4
+      },
+      {
+        "name": "HIGH_PRICE",
+        "number": 5
+      },
+      {
+        "name": "LOW_PRICE",
+        "number": 6
+      },
+      {
+        "name": "CLOSE_PRICE",
+        "number": 7
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 8
+      },
+      {
+        "name": "OPEN_INTEREST",
+        "number": 9
+      },
+      {
+        "name": "VOLATILITY",
+        "number": 10
+      },
+      {
+        "name": "MONEY_INTRINSIC_VALUE",
+        "number": 11
+      },
+      {
+        "name": "EXPIRATION_YEAR",
+        "number": 12
+      },
+      {
+        "name": "MULTIPLIER",
+        "number": 13
+      },
+      {
+        "name": "DIGITS",
+        "number": 14
+      },
+      {
+        "name": "OPEN_PRICE",
+        "number": 15
+      },
+      {
+        "name": "BID_SIZE",
+        "number": 16
+      },
+      {
+        "name": "ASK_SIZE",
+        "number": 17
+      },
+      {
+        "name": "LAST_SIZE",
+        "number": 18
+      },
+      {
+        "name": "NET_CHANGE",
+        "number": 19
+      },
+      {
+        "name": "STRIKE_TYPE",
+        "number": 20
+      },
+      {
+        "name": "CONTRACT_TYPE",
+        "number": 21
+      },
+      {
+        "name": "UNDERLYING",
+        "number": 22
+      },
+      {
+        "name": "EXPIRATION_MONTH",
+        "number": 23
+      },
+      {
+        "name": "DELIVERABLES",
+        "number": 24
+      },
+      {
+        "name": "TIME_VALUE",
+        "number": 25
+      },
+      {
+        "name": "EXPIRATION_DAY",
+        "number": 26
+      },
+      {
+        "name": "DAYS_TO_EXPIRATION",
+        "number": 27
+      },
+      {
+        "name": "DELTA",
+        "number": 28
+      },
+      {
+        "name": "GAMMA",
+        "number": 29
+      },
+      {
+        "name": "THETA",
+        "number": 30
+      },
+      {
+        "name": "VEGA",
+        "number": 31
+      },
+      {
+        "name": "RHO",
+        "number": 32
+      },
+      {
+        "name": "SECURITY_STATUS",
+        "number": 33
+      },
+      {
+        "name": "THEORETICAL_OPTION_VALUE",
+        "number": 34
+      },
+      {
+        "name": "UNDERLYING_PRICE",
+        "number": 35
+      },
+      {
+        "name": "UV_EXPIRATION_TYPE",
+        "number": 36
+      },
+      {
+        "name": "MARK",
+        "number": 37
+      },
+      {
+        "name": "QUOTE_TIME_MILLIS",
+        "number": 38
+      },
+      {
+        "name": "TRADE_TIME_MILLIS",
+        "number": 39
+      },
+      {
+        "name": "EXCHANGE_ID",
+        "number": 40
+      },
+      {
+        "name": "EXCHANGE_NAME",
+        "number": 41
+      },
+      {
+        "name": "LAST_TRADING_DAY",
+        "number": 42
+      },
+      {
+        "name": "SETTLEMENT_TYPE",
+        "number": 43
+      },
+      {
+        "name": "NET_PERCENT_CHANGE",
+        "number": 44
+      },
+      {
+        "name": "MARK_CHANGE",
+        "number": 45
+      },
+      {
+        "name": "MARK_CHANGE_PERCENT",
+        "number": 46
+      },
+      {
+        "name": "IMPLIED_YIELD",
+        "number": 47
+      },
+      {
+        "name": "IS_PENNY",
+        "number": 48
+      },
+      {
+        "name": "OPTION_ROOT",
+        "number": 49
+      },
+      {
+        "name": "HIGH_PRICE_52_WEEK",
+        "number": 50
+      },
+      {
+        "name": "LOW_PRICE_52_WEEK",
+        "number": 51
+      },
+      {
+        "name": "INDICATIVE_ASKING_PRICE",
+        "number": 52
+      },
+      {
+        "name": "INDICATIVE_BID_PRICE",
+        "number": 53
+      },
+      {
+        "name": "INDICATIVE_QUOTE_TIME",
+        "number": 54
+      },
+      {
+        "name": "EXERCISE_TYPE",
+        "number": 55
+      }
+    ],
+    "PerExchangeAskFields": [
+      {
+        "name": "EXCHANGE",
+        "number": 0
+      },
+      {
+        "name": "ASK_VOLUME",
+        "number": 1
+      },
+      {
+        "name": "SEQUENCE",
+        "number": 2
+      }
+    ],
+    "PerExchangeBidFields": [
+      {
+        "name": "EXCHANGE",
+        "number": 0
+      },
+      {
+        "name": "BID_VOLUME",
+        "number": 1
+      },
+      {
+        "name": "SEQUENCE",
+        "number": 2
+      }
+    ],
+    "ScreenerFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "TIMESTAMP",
+        "number": 1
+      },
+      {
+        "name": "SORT_FIELD",
+        "number": 2
+      },
+      {
+        "name": "FREQUENCY",
+        "number": 3
+      },
+      {
+        "name": "ITEMS",
+        "number": 4
+      }
+    ]
+  },
+  "services": [
+    {
+      "service": "LEVELONE_EQUITIES",
+      "subscribe_method": "level_one_equity_subs",
+      "method_present": true,
+      "field_enum": "LevelOneEquityFields"
+    },
+    {
+      "service": "LEVELONE_OPTIONS",
+      "subscribe_method": "level_one_option_subs",
+      "method_present": true,
+      "field_enum": "LevelOneOptionFields"
+    },
+    {
+      "service": "LEVELONE_FUTURES",
+      "subscribe_method": "level_one_futures_subs",
+      "method_present": true,
+      "field_enum": "LevelOneFuturesFields"
+    },
+    {
+      "service": "LEVELONE_FOREX",
+      "subscribe_method": "level_one_forex_subs",
+      "method_present": true,
+      "field_enum": "LevelOneForexFields"
+    },
+    {
+      "service": "LEVELONE_FUTURES_OPTIONS",
+      "subscribe_method": "level_one_futures_options_subs",
+      "method_present": true,
+      "field_enum": "LevelOneFuturesOptionsFields"
+    },
+    {
+      "service": "NYSE_BOOK",
+      "subscribe_method": "nyse_book_subs",
+      "method_present": true,
+      "field_enum": "BookFields(+Bid/Ask/PerExchange*)"
+    },
+    {
+      "service": "NASDAQ_BOOK",
+      "subscribe_method": "nasdaq_book_subs",
+      "method_present": true,
+      "field_enum": "BookFields(+Bid/Ask/PerExchange*)"
+    },
+    {
+      "service": "OPTIONS_BOOK",
+      "subscribe_method": "options_book_subs",
+      "method_present": true,
+      "field_enum": "BookFields(+Bid/Ask/PerExchange*)"
+    },
+    {
+      "service": "CHART_EQUITY",
+      "subscribe_method": "chart_equity_subs",
+      "method_present": true,
+      "field_enum": "ChartEquityFields"
+    },
+    {
+      "service": "CHART_FUTURES",
+      "subscribe_method": "chart_futures_subs",
+      "method_present": true,
+      "field_enum": "ChartFuturesFields"
+    },
+    {
+      "service": "SCREENER_EQUITY",
+      "subscribe_method": "screener_equity_subs",
+      "method_present": true,
+      "field_enum": "ScreenerFields"
+    },
+    {
+      "service": "SCREENER_OPTION",
+      "subscribe_method": "screener_option_subs",
+      "method_present": true,
+      "field_enum": "ScreenerFields"
+    }
+  ],
+  "book_nested_schema": {
+    "BookFields": [
+      {
+        "name": "SYMBOL",
+        "number": 0
+      },
+      {
+        "name": "BOOK_TIME",
+        "number": 1
+      },
+      {
+        "name": "BIDS",
+        "number": 2
+      },
+      {
+        "name": "ASKS",
+        "number": 3
+      }
+    ],
+    "BidFields": [
+      {
+        "name": "BID_PRICE",
+        "number": 0
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 1
+      },
+      {
+        "name": "NUM_BIDS",
+        "number": 2
+      },
+      {
+        "name": "BIDS",
+        "number": 3
+      }
+    ],
+    "AskFields": [
+      {
+        "name": "ASK_PRICE",
+        "number": 0
+      },
+      {
+        "name": "TOTAL_VOLUME",
+        "number": 1
+      },
+      {
+        "name": "NUM_ASKS",
+        "number": 2
+      },
+      {
+        "name": "ASKS",
+        "number": 3
+      }
+    ],
+    "PerExchangeBidFields": [
+      {
+        "name": "EXCHANGE",
+        "number": 0
+      },
+      {
+        "name": "BID_VOLUME",
+        "number": 1
+      },
+      {
+        "name": "SEQUENCE",
+        "number": 2
+      }
+    ],
+    "PerExchangeAskFields": [
+      {
+        "name": "EXCHANGE",
+        "number": 0
+      },
+      {
+        "name": "ASK_VOLUME",
+        "number": 1
+      },
+      {
+        "name": "SEQUENCE",
+        "number": 2
+      }
+    ]
+  },
+  "timesale_wrapper_present": false,
+  "notes": [
+    "TIMESALE is not wrapped on StreamClient in schwab-py 1.5.1",
+    "MARKET_MAKER field exists on LevelOneForexFields only \u2014 not equity book",
+    "NYSE/NASDAQ/OPTIONS_BOOK share identical BookFields nested schema"
+  ],
+  "rest": {
+    "authority": "schwab-py BaseClient.Quote.Fields (section selectors, not leaf maps)",
+    "quote_section_fields": [
+      {
+        "name": "QUOTE",
+        "value": "quote"
+      },
+      {
+        "name": "FUNDAMENTAL",
+        "value": "fundamental"
+      },
+      {
+        "name": "EXTENDED",
+        "value": "extended"
+      },
+      {
+        "name": "REFERENCE",
+        "value": "reference"
+      },
+      {
+        "name": "REGULAR",
+        "value": "regular"
+      }
+    ],
+    "note": "REST leaf paths come from live observation union (schwab_field_dictionary.csv), not from schwab-py enums."
+  },
+  "definition_leaf_paths": {
+    "LEVELONE_EQUITIES": [
+      "def.LEVELONE_EQUITIES.ASK_ID#6",
+      "def.LEVELONE_EQUITIES.ASK_MIC_ID#39",
+      "def.LEVELONE_EQUITIES.ASK_PRICE#2",
+      "def.LEVELONE_EQUITIES.ASK_SIZE#5",
+      "def.LEVELONE_EQUITIES.ASK_TIME_MILLIS#38",
+      "def.LEVELONE_EQUITIES.BID_ID#7",
+      "def.LEVELONE_EQUITIES.BID_MIC_ID#40",
+      "def.LEVELONE_EQUITIES.BID_PRICE#1",
+      "def.LEVELONE_EQUITIES.BID_SIZE#4",
+      "def.LEVELONE_EQUITIES.BID_TIME_MILLIS#37",
+      "def.LEVELONE_EQUITIES.CLOSE_PRICE#12",
+      "def.LEVELONE_EQUITIES.DESCRIPTION#15",
+      "def.LEVELONE_EQUITIES.DIVIDEND_AMOUNT#22",
+      "def.LEVELONE_EQUITIES.DIVIDEND_DATE#26",
+      "def.LEVELONE_EQUITIES.DIVIDEND_YIELD#23",
+      "def.LEVELONE_EQUITIES.EXCHANGE_ID#13",
+      "def.LEVELONE_EQUITIES.EXCHANGE_NAME#25",
+      "def.LEVELONE_EQUITIES.HARD_TO_BORROW#48",
+      "def.LEVELONE_EQUITIES.HIGH_PRICE#10",
+      "def.LEVELONE_EQUITIES.HIGH_PRICE_52_WEEK#19",
+      "def.LEVELONE_EQUITIES.HTB_QUANTITY#46",
+      "def.LEVELONE_EQUITIES.HTB_RATE#47",
+      "def.LEVELONE_EQUITIES.IS_SHORTABLE#49",
+      "def.LEVELONE_EQUITIES.LAST_ID#16",
+      "def.LEVELONE_EQUITIES.LAST_MIC_ID#41",
+      "def.LEVELONE_EQUITIES.LAST_PRICE#3",
+      "def.LEVELONE_EQUITIES.LAST_SIZE#9",
+      "def.LEVELONE_EQUITIES.LOW_PRICE#11",
+      "def.LEVELONE_EQUITIES.LOW_PRICE_52_WEEK#20",
+      "def.LEVELONE_EQUITIES.MARGINABLE#14",
+      "def.LEVELONE_EQUITIES.MARK#33",
+      "def.LEVELONE_EQUITIES.MARK_CHANGE#44",
+      "def.LEVELONE_EQUITIES.MARK_CHANGE_PERCENT#45",
+      "def.LEVELONE_EQUITIES.NAV#24",
+      "def.LEVELONE_EQUITIES.NET_CHANGE#18",
+      "def.LEVELONE_EQUITIES.NET_CHANGE_PERCENT#42",
+      "def.LEVELONE_EQUITIES.OPEN_PRICE#17",
+      "def.LEVELONE_EQUITIES.PE_RATIO#21",
+      "def.LEVELONE_EQUITIES.POST_MARKET_NET_CHANGE#50",
+      "def.LEVELONE_EQUITIES.POST_MARKET_NET_CHANGE_PERCENT#51",
+      "def.LEVELONE_EQUITIES.QUOTE_TIME_MILLIS#34",
+      "def.LEVELONE_EQUITIES.REGULAR_MARKET_CHANGE_PERCENT#43",
+      "def.LEVELONE_EQUITIES.REGULAR_MARKET_LAST_PRICE#29",
+      "def.LEVELONE_EQUITIES.REGULAR_MARKET_LAST_SIZE#30",
+      "def.LEVELONE_EQUITIES.REGULAR_MARKET_NET_CHANGE#31",
+      "def.LEVELONE_EQUITIES.REGULAR_MARKET_QUOTE#27",
+      "def.LEVELONE_EQUITIES.REGULAR_MARKET_TRADE#28",
+      "def.LEVELONE_EQUITIES.REGULAR_MARKET_TRADE_MILLIS#36",
+      "def.LEVELONE_EQUITIES.SECURITY_STATUS#32",
+      "def.LEVELONE_EQUITIES.SYMBOL#0",
+      "def.LEVELONE_EQUITIES.TOTAL_VOLUME#8",
+      "def.LEVELONE_EQUITIES.TRADE_TIME_MILLIS#35"
+    ],
+    "LEVELONE_OPTIONS": [
+      "def.LEVELONE_OPTIONS.ASK_PRICE#3",
+      "def.LEVELONE_OPTIONS.ASK_SIZE#17",
+      "def.LEVELONE_OPTIONS.BID_PRICE#2",
+      "def.LEVELONE_OPTIONS.BID_SIZE#16",
+      "def.LEVELONE_OPTIONS.CLOSE_PRICE#7",
+      "def.LEVELONE_OPTIONS.CONTRACT_TYPE#21",
+      "def.LEVELONE_OPTIONS.DAYS_TO_EXPIRATION#27",
+      "def.LEVELONE_OPTIONS.DELIVERABLES#24",
+      "def.LEVELONE_OPTIONS.DELTA#28",
+      "def.LEVELONE_OPTIONS.DESCRIPTION#1",
+      "def.LEVELONE_OPTIONS.DIGITS#14",
+      "def.LEVELONE_OPTIONS.EXCHANGE_ID#40",
+      "def.LEVELONE_OPTIONS.EXCHANGE_NAME#41",
+      "def.LEVELONE_OPTIONS.EXERCISE_TYPE#55",
+      "def.LEVELONE_OPTIONS.EXPIRATION_DAY#26",
+      "def.LEVELONE_OPTIONS.EXPIRATION_MONTH#23",
+      "def.LEVELONE_OPTIONS.EXPIRATION_YEAR#12",
+      "def.LEVELONE_OPTIONS.GAMMA#29",
+      "def.LEVELONE_OPTIONS.HIGH_PRICE#5",
+      "def.LEVELONE_OPTIONS.HIGH_PRICE_52_WEEK#50",
+      "def.LEVELONE_OPTIONS.IMPLIED_YIELD#47",
+      "def.LEVELONE_OPTIONS.INDICATIVE_ASKING_PRICE#52",
+      "def.LEVELONE_OPTIONS.INDICATIVE_BID_PRICE#53",
+      "def.LEVELONE_OPTIONS.INDICATIVE_QUOTE_TIME#54",
+      "def.LEVELONE_OPTIONS.IS_PENNY#48",
+      "def.LEVELONE_OPTIONS.LAST_PRICE#4",
+      "def.LEVELONE_OPTIONS.LAST_SIZE#18",
+      "def.LEVELONE_OPTIONS.LAST_TRADING_DAY#42",
+      "def.LEVELONE_OPTIONS.LOW_PRICE#6",
+      "def.LEVELONE_OPTIONS.LOW_PRICE_52_WEEK#51",
+      "def.LEVELONE_OPTIONS.MARK#37",
+      "def.LEVELONE_OPTIONS.MARK_CHANGE#45",
+      "def.LEVELONE_OPTIONS.MARK_CHANGE_PERCENT#46",
+      "def.LEVELONE_OPTIONS.MONEY_INTRINSIC_VALUE#11",
+      "def.LEVELONE_OPTIONS.MULTIPLIER#13",
+      "def.LEVELONE_OPTIONS.NET_CHANGE#19",
+      "def.LEVELONE_OPTIONS.NET_PERCENT_CHANGE#44",
+      "def.LEVELONE_OPTIONS.OPEN_INTEREST#9",
+      "def.LEVELONE_OPTIONS.OPEN_PRICE#15",
+      "def.LEVELONE_OPTIONS.OPTION_ROOT#49",
+      "def.LEVELONE_OPTIONS.QUOTE_TIME_MILLIS#38",
+      "def.LEVELONE_OPTIONS.RHO#32",
+      "def.LEVELONE_OPTIONS.SECURITY_STATUS#33",
+      "def.LEVELONE_OPTIONS.SETTLEMENT_TYPE#43",
+      "def.LEVELONE_OPTIONS.STRIKE_TYPE#20",
+      "def.LEVELONE_OPTIONS.SYMBOL#0",
+      "def.LEVELONE_OPTIONS.THEORETICAL_OPTION_VALUE#34",
+      "def.LEVELONE_OPTIONS.THETA#30",
+      "def.LEVELONE_OPTIONS.TIME_VALUE#25",
+      "def.LEVELONE_OPTIONS.TOTAL_VOLUME#8",
+      "def.LEVELONE_OPTIONS.TRADE_TIME_MILLIS#39",
+      "def.LEVELONE_OPTIONS.UNDERLYING#22",
+      "def.LEVELONE_OPTIONS.UNDERLYING_PRICE#35",
+      "def.LEVELONE_OPTIONS.UV_EXPIRATION_TYPE#36",
+      "def.LEVELONE_OPTIONS.VEGA#31",
+      "def.LEVELONE_OPTIONS.VOLATILITY#10"
+    ],
+    "LEVELONE_FOREX": [
+      "def.LEVELONE_FOREX.ASK_PRICE#2",
+      "def.LEVELONE_FOREX.ASK_SIZE#5",
+      "def.LEVELONE_FOREX.BID_PRICE#1",
+      "def.LEVELONE_FOREX.BID_SIZE#4",
+      "def.LEVELONE_FOREX.CHANGE_PERCENT#17",
+      "def.LEVELONE_FOREX.CLOSE_PRICE#12",
+      "def.LEVELONE_FOREX.DESCRIPTION#14",
+      "def.LEVELONE_FOREX.DIGITS#19",
+      "def.LEVELONE_FOREX.EXCHANGE_ID#13",
+      "def.LEVELONE_FOREX.EXCHANGE_NAME#18",
+      "def.LEVELONE_FOREX.HIGH_PRICE#10",
+      "def.LEVELONE_FOREX.HIGH_PRICE_52_WEEK#27",
+      "def.LEVELONE_FOREX.IS_TRADABLE#25",
+      "def.LEVELONE_FOREX.LAST_PRICE#3",
+      "def.LEVELONE_FOREX.LAST_SIZE#7",
+      "def.LEVELONE_FOREX.LOW_PRICE#11",
+      "def.LEVELONE_FOREX.LOW_PRICE_52_WEEK#28",
+      "def.LEVELONE_FOREX.MARK#29",
+      "def.LEVELONE_FOREX.MARKET_MAKER#26",
+      "def.LEVELONE_FOREX.NET_CHANGE#16",
+      "def.LEVELONE_FOREX.OPEN_PRICE#15",
+      "def.LEVELONE_FOREX.PRODUCT#23",
+      "def.LEVELONE_FOREX.QUOTE_TIME_MILLIS#8",
+      "def.LEVELONE_FOREX.SECURITY_STATUS#20",
+      "def.LEVELONE_FOREX.SYMBOL#0",
+      "def.LEVELONE_FOREX.TICK#21",
+      "def.LEVELONE_FOREX.TICK_AMOUNT#22",
+      "def.LEVELONE_FOREX.TOTAL_VOLUME#6",
+      "def.LEVELONE_FOREX.TRADE_TIME_MILLIS#9",
+      "def.LEVELONE_FOREX.TRADING_HOURS#24"
+    ],
+    "LEVELONE_FUTURES": [
+      "def.LEVELONE_FUTURES.ASK_ID#7",
+      "def.LEVELONE_FUTURES.ASK_PRICE#2",
+      "def.LEVELONE_FUTURES.ASK_SIZE#5",
+      "def.LEVELONE_FUTURES.ASK_TIME_MILLIS#37",
+      "def.LEVELONE_FUTURES.BID_ID#6",
+      "def.LEVELONE_FUTURES.BID_PRICE#1",
+      "def.LEVELONE_FUTURES.BID_SIZE#4",
+      "def.LEVELONE_FUTURES.BID_TIME_MILLIS#38",
+      "def.LEVELONE_FUTURES.CLOSE_PRICE#14",
+      "def.LEVELONE_FUTURES.DESCRIPTION#16",
+      "def.LEVELONE_FUTURES.EXCHANGE_ID#15",
+      "def.LEVELONE_FUTURES.EXCHANGE_NAME#21",
+      "def.LEVELONE_FUTURES.EXPIRATION_STYLE#36",
+      "def.LEVELONE_FUTURES.FUTURE_ACTIVE_SYMBOL#34",
+      "def.LEVELONE_FUTURES.FUTURE_CHANGE_PERCENT#20",
+      "def.LEVELONE_FUTURES.FUTURE_EXPIRATION_DATE#35",
+      "def.LEVELONE_FUTURES.FUTURE_IS_ACTIVE#32",
+      "def.LEVELONE_FUTURES.FUTURE_IS_TRADABLE#30",
+      "def.LEVELONE_FUTURES.FUTURE_MULTIPLIER#31",
+      "def.LEVELONE_FUTURES.FUTURE_PRICE_FORMAT#28",
+      "def.LEVELONE_FUTURES.FUTURE_SETTLEMENT_PRICE#33",
+      "def.LEVELONE_FUTURES.FUTURE_TRADING_HOURS#29",
+      "def.LEVELONE_FUTURES.HIGH_PRICE#12",
+      "def.LEVELONE_FUTURES.LAST_ID#17",
+      "def.LEVELONE_FUTURES.LAST_PRICE#3",
+      "def.LEVELONE_FUTURES.LAST_SIZE#9",
+      "def.LEVELONE_FUTURES.LOW_PRICE#13",
+      "def.LEVELONE_FUTURES.MARK#24",
+      "def.LEVELONE_FUTURES.NET_CHANGE#19",
+      "def.LEVELONE_FUTURES.OPEN_INTEREST#23",
+      "def.LEVELONE_FUTURES.OPEN_PRICE#18",
+      "def.LEVELONE_FUTURES.PRODUCT#27",
+      "def.LEVELONE_FUTURES.QUOTED_IN_SESSION#39",
+      "def.LEVELONE_FUTURES.QUOTE_TIME_MILLIS#10",
+      "def.LEVELONE_FUTURES.SECURITY_STATUS#22",
+      "def.LEVELONE_FUTURES.SETTLEMENT_DATE#40",
+      "def.LEVELONE_FUTURES.SYMBOL#0",
+      "def.LEVELONE_FUTURES.TICK#25",
+      "def.LEVELONE_FUTURES.TICK_AMOUNT#26",
+      "def.LEVELONE_FUTURES.TOTAL_VOLUME#8",
+      "def.LEVELONE_FUTURES.TRADE_TIME_MILLIS#11"
+    ],
+    "BOOK_SHARED": [
+      "def.BOOK.AskFields.ASKS#3",
+      "def.BOOK.AskFields.ASK_PRICE#0",
+      "def.BOOK.AskFields.NUM_ASKS#2",
+      "def.BOOK.AskFields.TOTAL_VOLUME#1",
+      "def.BOOK.BidFields.BIDS#3",
+      "def.BOOK.BidFields.BID_PRICE#0",
+      "def.BOOK.BidFields.NUM_BIDS#2",
+      "def.BOOK.BidFields.TOTAL_VOLUME#1",
+      "def.BOOK.BookFields.ASKS#3",
+      "def.BOOK.BookFields.BIDS#2",
+      "def.BOOK.BookFields.BOOK_TIME#1",
+      "def.BOOK.BookFields.SYMBOL#0",
+      "def.BOOK.PerExchangeAskFields.ASK_VOLUME#1",
+      "def.BOOK.PerExchangeAskFields.EXCHANGE#0",
+      "def.BOOK.PerExchangeAskFields.SEQUENCE#2",
+      "def.BOOK.PerExchangeBidFields.BID_VOLUME#1",
+      "def.BOOK.PerExchangeBidFields.EXCHANGE#0",
+      "def.BOOK.PerExchangeBidFields.SEQUENCE#2"
+    ],
+    "CHART_EQUITY": [
+      "def.CHART_EQUITY.CHART_DAY#8",
+      "def.CHART_EQUITY.CHART_TIME_MILLIS#7",
+      "def.CHART_EQUITY.CLOSE_PRICE#5",
+      "def.CHART_EQUITY.HIGH_PRICE#3",
+      "def.CHART_EQUITY.LOW_PRICE#4",
+      "def.CHART_EQUITY.OPEN_PRICE#2",
+      "def.CHART_EQUITY.SEQUENCE#1",
+      "def.CHART_EQUITY.SYMBOL#0",
+      "def.CHART_EQUITY.VOLUME#6"
+    ]
+  },
+  "prior_observed_inventory": {
+    "canonical_fields_path": "schwab_field_inventory/schwab_canonical_fields.txt",
+    "canonical_field_count": 2393,
+    "dictionary_path": "schwab_field_inventory/schwab_field_dictionary.csv",
+    "dictionary_row_count": 2411,
+    "readme_capture_date": "2026-05-05",
+    "last_dictionary_sync_state": "governance/artifacts/schwab_field_sync_state.json (2026-08-15)"
+  }
+}
