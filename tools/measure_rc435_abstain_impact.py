@@ -32,7 +32,8 @@ WITHHELD_PCT = {
 }
 
 _REPORT_BANNER = (
-    "REPORT_ONLY=1 ENFORCEMENT=tools/ml_fleet_restore_lock.py "
+    "REPORT_ONLY=1 ENFORCEMENT=tools/ml_fleet_restore_lock.py"
+    "+tools/prove_path_a_ml_restore.py "
     "(check_rc436_closed_requires_ml_fleet_restore) "
     "ADJOURNED_RESTORE=RC-436 OPEN until Path-A retrain proven"
 )
