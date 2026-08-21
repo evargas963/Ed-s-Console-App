@@ -109,10 +109,19 @@ def test_order_flow_engine_residual_magics_named():
     assert "OF_BOOK_DEPTH_DEEP" in src_inst
     assert "_compute_book_imbalance(data, 5)" not in src_inst
 
+    # ONE CANONICAL BOOK PATH: the depth ladder is walked once, in the canonical producer,
+    # over the named ladder constant (not bare integers). OrderFlowEngine.compute no longer
+    # walks the book itself — it READS the depth imbalances from that single producer's result.
+    assert ofe.OF_MICRO_DEPTH_LADDER == (
+        ofe.OF_BOOK_DEPTH_TOP, ofe.OF_BOOK_DEPTH_SHALLOW, ofe.OF_BOOK_DEPTH_DEEP,
+    )
+    src_struct = inspect.getsource(ofe._microstructure_structural)
+    assert "OF_MICRO_DEPTH_LADDER" in src_struct
+    assert "OF_BOOK_DEPTH_DEEP" in src_struct
+
     src_compute = inspect.getsource(ofe.OrderFlowEngine.compute)
-    assert "OF_BOOK_DEPTH_TOP" in src_compute
-    assert "OF_BOOK_DEPTH_SHALLOW" in src_compute
-    assert "OF_BOOK_DEPTH_DEEP" in src_compute
+    # compute reads the canonical state, and does NOT re-invoke the depth-imbalance helper.
+    assert "compute_book_microstructure(" in src_compute
     assert "_compute_book_imbalance(data, 1)" not in src_compute
     assert "_compute_book_imbalance(data, 3)" not in src_compute
     assert "_compute_book_imbalance(data, 5)" not in src_compute

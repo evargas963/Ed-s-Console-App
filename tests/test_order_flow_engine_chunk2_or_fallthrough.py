@@ -8,11 +8,17 @@ from unittest.mock import patch
 from order_flow_engine import OrderFlowEngine, _compute_order_flow_score
 
 
-def _book_side_effect(values: dict[int, float | None]):
-    def _fn(_data: dict, depth: int) -> float | None:
-        return values.get(depth)
-
-    return _fn
+def _fake_micro(values: dict[int, float | None]) -> dict:
+    # compute() now reads book_imbalance_1/3/5 from the ONE canonical producer
+    # (compute_book_microstructure) rather than from _compute_book_imbalance, so
+    # inject the depth imbalances through that single path's return shape.
+    return {
+        "depth": {
+            "1": {"imbalance": values.get(1)},
+            "3": {"imbalance": values.get(3)},
+            "5": {"imbalance": values.get(5)},
+        }
+    }
 
 
 def _tape_side_effect(values: dict[float, float | None]):
@@ -31,8 +37,8 @@ def _run_compute_capture_score_inputs(
         if book is not None:
             stack.enter_context(
                 patch(
-                    "order_flow_engine._compute_book_imbalance",
-                    side_effect=_book_side_effect(book),
+                    "order_flow_engine.compute_book_microstructure",
+                    return_value=_fake_micro(book),
                 )
             )
         if tape is not None:

@@ -178,3 +178,123 @@ def test_every_emitted_metric_is_classified():
     for key in ("mid", "microprice", "spread_pts", "spread_frac",
                 "depth_pressure", "book_slope", "liquidity_concentration", "wall_candidates"):
         assert key in cls or f"{key}.*" in cls or any(c.startswith(key) for c in cls)
+
+
+def test_server_received_ts_is_classified_derived():
+    """server_received_ts is the server wall clock stamped at serialization, not an
+    exchange-native field — it must be labeled DERIVED, distinct from the NATIVE
+    exchange_quote_ts."""
+    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    assert m["classification"]["provenance.server_received_ts"] == "DERIVED"
+    assert m["classification"]["provenance.exchange_quote_ts"] == "NATIVE"
+    assert m["provenance"]["server_received_ts"] == 1787233772.0
+
+
+# ─── property tests: canonicalization, invalid input, crossed/one-sided, carry ───
+
+def _unsorted_data() -> dict:
+    # Same book as _book_snapshot's top-3 per side but levels supplied OUT OF ORDER.
+    return {"content": [
+        {"BIDS": [{"BID_PRICE": 712.43, "TOTAL_VOLUME": 200},
+                  {"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
+                  {"BID_PRICE": 712.45, "TOTAL_VOLUME": 40}],
+         "ASKS": [{"ASK_PRICE": 712.53, "TOTAL_VOLUME": 320},
+                  {"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960},
+                  {"ASK_PRICE": 712.51, "TOTAL_VOLUME": 710}],
+         "BOOK_TIME": 1},
+        {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": 300, "ASK_SIZE": 500}]}
+
+
+def test_unsorted_book_is_canonicalized_before_topn():
+    """Levels arriving out of order must be sorted (bids desc, asks asc) BEFORE any Top-N
+    semantics, so the touch and cumulative depth curve are correct regardless of input order."""
+    m = ofe.compute_book_microstructure(_unsorted_data(), now_ts=2.0)
+    assert m["top_of_book"]["bid"] == 712.47   # highest bid, not the 712.43 that arrived first
+    assert m["top_of_book"]["ask"] == 712.49   # lowest ask, not the 712.53 that arrived first
+    # depth-pressure is cumulative BEST-FIRST after sorting: 712.47(1000),712.45(40),712.43(200)
+    assert [round(x["cum"], 1) for x in m["depth_pressure"]["bid"]] == [1000.0, 1040.0, 1240.0]
+    # ask cumulative best-first: 712.49(960),712.51(710),712.53(320)
+    assert [round(x["cum"], 1) for x in m["depth_pressure"]["ask"]] == [960.0, 1670.0, 1990.0]
+
+
+def test_invalid_sizes_are_rejected():
+    """Negative or non-finite displayed sizes are not real quantities — they must be dropped
+    from level totals, and an invalid L1 size must not be published as a real top-of-book size."""
+    bad = {"content": [
+        {"BIDS": [{"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
+                  {"BID_PRICE": 712.46, "TOTAL_VOLUME": -40},          # negative -> dropped
+                  {"BID_PRICE": 712.45, "TOTAL_VOLUME": float("inf")},  # non-finite -> dropped
+                  {"BID_PRICE": 712.44, "TOTAL_VOLUME": 80}],
+         "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
+         "BOOK_TIME": 1},
+        {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500}]}
+    m = ofe.compute_book_microstructure(bad, now_ts=2.0)
+    # only the two valid bid levels (1000 + 80) survive into the depth total
+    assert m["depth"]["3"]["bid_total"] == 1080.0
+    # a negative L1 bid size is withheld, not published as a real size
+    assert m["top_of_book"]["bid_size"] is None
+    assert m["top_of_book"]["ask_size"] == 500
+
+
+def test_crossed_book_withholds_mid_and_microprice_in_full_payload():
+    """A crossed book (bid > ask) is invalid microstructure — the FULL payload must withhold
+    BOTH mid and microprice (not just the _microprice helper), flag crossed, and still classify."""
+    crossed = {"content": [
+        {"BIDS": [{"BID_PRICE": 712.60, "TOTAL_VOLUME": 1000}],
+         "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
+         "BOOK_TIME": 1},
+        {"BID_PRICE": 712.60, "ASK_PRICE": 712.49, "BID_SIZE": 300, "ASK_SIZE": 500}]}
+    m = ofe.compute_book_microstructure(crossed, now_ts=2.0)
+    assert m["crossed"] is True
+    assert m["mid"] is None
+    assert m["microprice"] is None
+    assert m["classification"]["microprice"] == "DERIVED"   # still explicitly classified
+
+
+def test_one_sided_book_fails_closed():
+    """With one side of the book empty, depth imbalance cannot be computed and must be None
+    (fail closed) rather than fabricated from the single populated side."""
+    one = {"content": [
+        {"BIDS": [], "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}], "BOOK_TIME": 1},
+        {"ASK_PRICE": 712.49, "ASK_SIZE": 500}]}
+    m = ofe.compute_book_microstructure(one, now_ts=2.0)
+    for n in ("1", "3", "5"):
+        assert m["depth"][n]["imbalance"] is None
+
+
+def test_route_serializes_carried_state_without_recomputing(monkeypatch):
+    """The /api/order-flow/microstructure route and the engine call the SAME producer. Once the
+    structural state is computed for (ticker, BOOK_TIME) it is memoized; a second serialization of
+    the SAME unchanged book must carry that cached state, NOT re-run the structural computation."""
+    ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
+    data = _data()
+    first = ofe.compute_book_microstructure(data, now_ts=100.0, ticker="CARRYTEST")
+
+    # If the second call recomputed instead of carrying, this would raise.
+    def _boom(_cb):
+        raise AssertionError("structural recomputed instead of carried")
+    monkeypatch.setattr(ofe, "_microstructure_structural", _boom)
+    second = ofe.compute_book_microstructure(data, now_ts=200.0, ticker="CARRYTEST")
+
+    # structural fields are identical (carried); only wall-clock ages/stamps advance.
+    assert second["depth"] == first["depth"]
+    assert second["top_of_book"] == first["top_of_book"]
+    assert second["wall_candidates"] == first["wall_candidates"]
+    assert second["ages"]["book_age_sec"] != first["ages"]["book_age_sec"]
+    assert second["provenance"]["server_received_ts"] == 200.0
+    ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
+
+
+def test_engine_and_route_read_the_same_canonical_state():
+    """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes, and its
+    book_imbalance_1/3/5 ARE that state's depth imbalances — one faucet, not two producers."""
+    from order_flow_engine import OrderFlowEngine
+    ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
+    data = _data()
+    out = OrderFlowEngine().compute(data, ticker="SAME")
+    route = ofe.compute_book_microstructure(data, ticker="SAME")
+    assert out["book_microstructure"]["depth"] == route["depth"]
+    assert out["book_imbalance_1"] == route["depth"]["1"]["imbalance"]
+    assert out["book_imbalance_3"] == route["depth"]["3"]["imbalance"]
+    assert out["book_imbalance_5"] == route["depth"]["5"]["imbalance"]
+    ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)

@@ -1120,7 +1120,7 @@ def build_market_state(
     if order_flow_data and isinstance(order_flow_data, dict):
         try:
             from order_flow_engine import OrderFlowEngine
-            _of_result = OrderFlowEngine().compute(order_flow_data)
+            _of_result = OrderFlowEngine().compute(order_flow_data, ticker=ticker)
             ms.order_flow_score              = _of_result.get("order_flow_score")
             ms.order_flow_direction          = _of_result.get("order_flow_direction")
             ms.order_flow_regime             = _of_result.get("order_flow_regime")
