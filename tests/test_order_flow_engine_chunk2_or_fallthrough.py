@@ -135,7 +135,6 @@ def test_compute_score_uses_depth_5_zero_not_depth_3_fallback():
         None,
         None,
         None,
-        None,
     )
     assert score_with_depth5_zero is not None
     assert abs(score_with_depth5_zero) < 0.01

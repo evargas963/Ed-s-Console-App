@@ -31,7 +31,12 @@ log = logging.getLogger(__name__)
 OF_COMPOSITE_WEIGHT_BOOK: float = 0.25
 OF_COMPOSITE_WEIGHT_TAPE: float = 0.20
 OF_COMPOSITE_WEIGHT_CUM_DELTA: float = 0.20
-OF_COMPOSITE_WEIGHT_ABSORPTION: float = 0.15
+# NOTE (mission TRUTH_V1): the former OF_COMPOSITE_WEIGHT_ABSORPTION leg was REMOVED. Two defects:
+# (1) `_compute_absorption` returns a NON-NEGATIVE volume/price-range density, so feeding it as a
+#     SIGNED [-1,1] leg injected a near-constant BULLISH bias (magnitude used as direction); and
+# (2) absorption is NOT_ADMITTED (proxy, dual-authored, no predictive evidence) — a signal with no
+#     out-of-sample evidence may not influence the composite/verdict. Present-weight renormalization
+#     means no re-weighting of the remaining legs is required.
 OF_COMPOSITE_WEIGHT_OPTIONS: float = 0.15
 OF_COMPOSITE_WEIGHT_RVOL: float = 0.05
 OF_COMPOSITE_MIN_LEGS: int = 2
@@ -1165,20 +1170,20 @@ def _compute_order_flow_score(
     book_imbalance: Optional[float],
     tape_pressure: Optional[float],
     cum_delta: Optional[float],
-    absorption: Optional[float],
     options_flow: Optional[float],
     rvol: Optional[float],
 ) -> Optional[float]:
     """
-    Composite score over present legs only (FIND-OF3/OF4 / STACK-WIRE-5 weights).
+    Composite score over present SIGNED legs only (FIND-OF3/OF4 / STACK-WIRE-5 weights).
     Uses OF_COMPOSITE_WEIGHT_* constants; None when fewer than OF_COMPOSITE_MIN_LEGS legs.
+    The absorption leg was removed (mission TRUTH_V1): it was a non-negative magnitude used as a
+    signed direction (constant bullish bias) and is NOT_ADMITTED (no predictive evidence).
     """
     return _weighted_mean_present(
         [
             (OF_COMPOSITE_WEIGHT_BOOK, book_imbalance, OF_CLIP_LOW, OF_CLIP_HIGH),
             (OF_COMPOSITE_WEIGHT_TAPE, tape_pressure, OF_CLIP_LOW, OF_CLIP_HIGH),
             (OF_COMPOSITE_WEIGHT_CUM_DELTA, cum_delta, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_ABSORPTION, absorption, OF_CLIP_LOW, OF_CLIP_HIGH),
             (OF_COMPOSITE_WEIGHT_OPTIONS, options_flow, OF_CLIP_LOW, OF_CLIP_HIGH),
             (
                 OF_COMPOSITE_WEIGHT_RVOL,
@@ -1302,12 +1307,13 @@ class OrderFlowEngine:
         institutional_flow_proxy_score = _compute_institutional_flow_proxy(
             data, book_imbalance_5=book_imbalance_5)
 
-        # Composite score and regime
+        # Composite score and regime. absorption_score is intentionally NOT a leg (mission
+        # TRUTH_V1): it is a non-negative density (magnitude, not direction) and NOT_ADMITTED.
+        # It is still emitted below for advisory/PROXY display only.
         order_flow_score = _compute_order_flow_score(
             book_for_score,
             tape_for_score,
             cum_delta_proxy,
-            absorption_score,
             options_flow_score,
             rvol,
         )

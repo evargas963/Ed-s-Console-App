@@ -12,24 +12,26 @@ from order_flow_engine import (
 )
 
 
-def test_all_six_legs_use_full_weight_formula():
-    book, tape, delta, abs_, opt, rvol = 0.4, -0.2, 0.1, 0.3, -0.15, 1.5
-    score = _compute_order_flow_score(book, tape, delta, abs_, opt, rvol)
-    expected = (
+def test_all_five_legs_use_full_weight_formula():
+    # TRUTH_V1: the absorption leg was removed (non-negative magnitude used as a signed direction,
+    # and NOT_ADMITTED). The composite is now five SIGNED legs; present weights renormalize to 1.0.
+    book, tape, delta, opt, rvol = 0.4, -0.2, 0.1, -0.15, 1.5
+    score = _compute_order_flow_score(book, tape, delta, opt, rvol)
+    raw = (
         0.25 * _normalize(book)
         + 0.20 * _normalize(tape)
         + 0.20 * _normalize(delta)
-        + 0.15 * _normalize(abs_)
         + 0.15 * _normalize(opt)
         + 0.05 * _normalize(rvol - 1.0, -0.5, 0.5)
     )
+    expected = raw / (0.25 + 0.20 + 0.20 + 0.15 + 0.05)  # renormalize present weights to 1.0
     assert score is not None
-    assert score == expected
+    assert abs(score - expected) < 1e-9
 
 
 def test_two_legs_renormalize_book_and_tape():
     book, tape = 0.5, 0.3
-    score = _compute_order_flow_score(book, tape, None, None, None, None)
+    score = _compute_order_flow_score(book, tape, None, None, None)
     expected = (
         _normalize(book) * (0.25 / 0.45) + _normalize(tape) * (0.20 / 0.45)
     )
@@ -37,16 +39,26 @@ def test_two_legs_renormalize_book_and_tape():
     assert abs(score - expected) < 1e-9
 
 
+def test_absorption_is_not_a_composite_leg():
+    # TRUTH_V1 lock: absorption must never influence the composite/verdict. `_compute_order_flow_score`
+    # takes exactly five signed legs (book, tape, cum_delta, options, rvol) — no absorption argument.
+    import inspect
+
+    params = list(inspect.signature(_compute_order_flow_score).parameters)
+    assert params == ["book_imbalance", "tape_pressure", "cum_delta", "options_flow", "rvol"]
+    assert "absorption" not in params
+
+
 def test_one_leg_present_returns_none():
-    assert _compute_order_flow_score(0.5, None, None, None, None, None) is None
+    assert _compute_order_flow_score(0.5, None, None, None, None) is None
 
 
 def test_zero_legs_present_returns_none():
-    assert _compute_order_flow_score(None, None, None, None, None, None) is None
+    assert _compute_order_flow_score(None, None, None, None, None) is None
 
 
 def test_single_rvol_leg_below_min_present_gate():
-    assert _compute_order_flow_score(None, None, None, None, None, 1.5) is None
+    assert _compute_order_flow_score(None, None, None, None, 1.5) is None
 
 
 def test_readiness_strong_rvol_unknown_is_yellow_not_green():
