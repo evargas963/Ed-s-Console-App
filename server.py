@@ -1875,7 +1875,7 @@ def _attach_analytics_freshness_contract(
 
 # Schwab CSV authority checked: yes
 # CSV row(s): NO_SCHWAB_EQUIVALENT — card_freshness_v1 is descriptive Tier C metadata only; reads existing plane quote via _lmp.get_quote(ticker) and existing md analytics/freshness fields; no new Schwab wire fetch or leaf derivation
-# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — quote_age_sec/bundle_age_sec/stale_reason_codes computed from existing fast_server_ts, _server_build_ts, quote_source_detail.carried_forward, quote_source_detail.schwab_auth_degraded
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — quote_age_sec/bundle_age_sec/stale_reason_codes computed from existing exchange_quote_ts, _server_build_ts, quote_source_detail.carried_forward, quote_source_detail.schwab_auth_degraded
 # All consumers checked: yes — Tier C /api/analytics/state nested block + S2B-1 operator_* mirrors only; no trade gates; UI lane S3
 # card_freshness_v1 — S2A descriptive thresholds (nested API metadata only; not trade gates).
 _CARD_FRESHNESS_V1_QUOTE_STALE_SEC = 30.0
@@ -2007,10 +2007,10 @@ def _attach_card_freshness_v1_block(
     schwab_auth_degraded = bool(qsd_plane.get("schwab_auth_degraded"))
 
     quote_ts_raw = None
-    if plane_quote and plane_quote.get("fast_server_ts") is not None:
-        quote_ts_raw = plane_quote.get("fast_server_ts")
-    elif md.get("fast_server_ts") is not None:
-        quote_ts_raw = md.get("fast_server_ts")
+    if plane_quote and plane_quote.get("exchange_quote_ts") is not None:
+        quote_ts_raw = plane_quote.get("exchange_quote_ts")
+    elif md.get("exchange_quote_ts") is not None:
+        quote_ts_raw = md.get("exchange_quote_ts")
 
     bundle_ts_raw = md.get("_server_build_ts")
     mhap_bundle_ts_raw = bundle_ts_raw
@@ -3080,7 +3080,7 @@ def _session_open_anchor_warm_loop() -> None:
 # Derived-field disposition: none required (no derived field touched).
 # All consumers checked: yes — record_quote rows carry quote_ingestion
 #   "rest_anchor_lane_refresher" (no consumer branches on that value);
-#   card_freshness quote ages simply read fresher fast_server_ts.
+#   card_freshness quote ages simply read fresher exchange_quote_ts.
 # SCHWAB_CSV_CHECKED
 #: t12 (RC-227 residual): a prior-day fact requires plausibly FULL session coverage from
 #: the live accumulator (~390 RTH minutes; floor 300) — below it, /api/levels falls
@@ -3101,7 +3101,7 @@ def _anchor_quote_lane_needs_refresh(row: Optional[dict], now: float) -> bool:
     """Ticker-agnostic lane-staleness predicate: absent row, missing ts, or old ts."""
     if not row:
         return True
-    fts = row.get("fast_server_ts")
+    fts = row.get("exchange_quote_ts")
     if fts is None:
         return True
     try:
@@ -3345,7 +3345,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         ),
         "spread_pts_source": ("derived_bid_ask_pts" if spread_pts is not None else None),
         "fast_generation_id": _lmp.next_fast_generation(tkr),
-        "fast_server_ts": quote_ts,
+        "exchange_quote_ts": quote_ts,
         "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
         "server_received_ts": server_received_ts,
         "quote_ingestion": quote_ingestion,
@@ -3355,6 +3355,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
             "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
             "spread": "schwab_bid_ask" if spread_frac is not None else "unavailable_missing_bid_or_ask",
+            "quote_ts": pq["quote_ts_clock"],  # M6: exchange clock carried in exchange_quote_ts
             "carried_forward": False,
         },
     }
@@ -5536,6 +5537,12 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
         "quote_time": quote_time,
         "trade_time": trade_time,
         "quote_ts": quote_time or trade_time,
+        # M6: which exchange clock quote_ts carries — a TRADE_TIME_MILLIS value used as the
+        # quote clock (quoteTime absent) is a LABELED proxy, never a silent conflation.
+        "quote_ts_clock": (
+            "QUOTE_TIME_MILLIS" if quote_time is not None
+            else ("TRADE_TIME_MILLIS_proxy" if trade_time is not None else "unavailable")
+        ),
         "spot_source": spot_source,
         "spot": spot_f,
         "quote_mid": quote_mid,
@@ -6221,7 +6228,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     "spread": None,
                     "spread_pts": None,
                     "quote_ingestion": "rest_tier_a",
-                    "fast_server_ts": quote_ts,
+                    "exchange_quote_ts": quote_ts,
                     "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
                     "server_received_ts": server_received_ts,
                     "fast_generation_id": _lmp.next_fast_generation(tkr),
@@ -6231,6 +6238,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                         "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
                         "mid": "unavailable_missing_mark_and_bid_ask",
                         "spread": "unavailable_missing_bid_or_ask",
+                        "quote_ts": pq["quote_ts_clock"],  # M6: exchange clock carried in exchange_quote_ts
                         "carried_forward": False,
                     },
                 }
@@ -6303,9 +6311,9 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "quote_ingestion": row.get("quote_ingestion"),
         "quote_time_source": row.get("quote_time_source"),
         "server_received_ts": row.get("server_received_ts"),
-        "fast_server_ts": row.get("fast_server_ts"),
+        "exchange_quote_ts": row.get("exchange_quote_ts"),
         "fast_generation_id": row.get("fast_generation_id"),
-        "_live_plane_fast_ts": row.get("fast_server_ts"),
+        "_live_plane_fast_ts": row.get("exchange_quote_ts"),
         "_server_build_ts": time.time(),
         "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
         "_endpoint": "/api/live/state",
@@ -13765,7 +13773,7 @@ def get_sqlite_contention_diagnostics():
 @app.get("/api/fast-quote")
 async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
     """
-    Fast lane: latest equity quote fields only. Independent fast_generation_id / fast_server_ts.
+    Fast lane: latest equity quote fields only. Independent fast_generation_id / exchange_quote_ts.
     Does not return chain, fusion, or decision data.
     """
     ticker = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX etc., ONE authority

@@ -1,6 +1,6 @@
 {
   "schema_version": "1",
-  "generated_at": "2026-08-15T22:38:33.361179+00:00",
+  "generated_at": "2026-08-21T02:15:32.872440+00:00",
   "schwab_dictionary_path": "schwab_field_inventory\\schwab_field_dictionary.csv",
   "schwab_field_count": 2411,
   "tier_counts": {
@@ -21034,7 +21034,8 @@
       "likely_use": "direct_order_flow",
       "priority": "medium",
       "source_endpoints": "streaming",
-      "column_hint": "num_asks"
+      "column_hint": "num_asks",
+      "semantic_caveat": "Market Maker Count (Schwab Streamer Guide): count of nested per-participant rows quoting at this price (market-maker MPIDs and exchange MICs); NOT an order count"
     },
     {
       "canonical_field": "streaming.content.*.ASKS.*.TOTAL_VOLUME",
@@ -21169,7 +21170,8 @@
       "likely_use": "direct_order_flow",
       "priority": "medium",
       "source_endpoints": "streaming",
-      "column_hint": "num_bids"
+      "column_hint": "num_bids",
+      "semantic_caveat": "Market Maker Count (Schwab Streamer Guide): count of nested per-participant rows quoting at this price (market-maker MPIDs and exchange MICs); NOT an order count"
     },
     {
       "canonical_field": "streaming.content.*.BIDS.*.TOTAL_VOLUME",
@@ -21228,7 +21230,7 @@
     {
       "canonical_field": "streaming.content.*.BOOK_TIME",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
-      "category": "streaming_quote",
+      "category": "streaming_book",
       "likely_use": "unknown",
       "priority": "medium",
       "source_endpoints": "streaming",
@@ -21606,7 +21608,7 @@
     {
       "canonical_field": "streaming.content.*.SEQUENCE",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
-      "category": "streaming_quote",
+      "category": "streaming_book",
       "likely_use": "unknown",
       "priority": "medium",
       "source_endpoints": "streaming",

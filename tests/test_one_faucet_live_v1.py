@@ -69,7 +69,7 @@ def test_booleans_are_not_treated_as_numbers():
 # ------------------------------------------------------ volatile fields ----
 
 @pytest.mark.parametrize("name", [
-    "fast_server_ts", "decision_timestamp_utc", "l1_build_total",
+    "exchange_quote_ts", "decision_timestamp_utc", "l1_build_total",
     "fast_generation_id", "levels_age_sec", "chain_gate_wait_ms",
     "busy_retry_count", "now", "uptime",
 ])
@@ -134,8 +134,8 @@ def test_negative_control_single_faucet_is_not_a_finding(monkeypatch):
 def test_negative_control_volatile_disagreement_is_ignored(monkeypatch):
     """Two clocks read microseconds apart must not fail the build."""
     assert _census(monkeypatch, {
-        "/api/state": {"fast_server_ts": 1786015898.808, "spot": 771.42},
-        "/api/live/state": {"fast_server_ts": 1786015904.952, "spot": 771.42},
+        "/api/state": {"exchange_quote_ts": 1786015898.808, "spot": 771.42},
+        "/api/live/state": {"exchange_quote_ts": 1786015904.952, "spot": 771.42},
     }) == {}
 
 

@@ -1,0 +1,151 @@
+{
+  "service": "OPTIONS_BOOK",
+  "timestamp": 1787234093954,
+  "command": "SUBS",
+  "content": [
+    {
+      "key": "SPY   260820C00767000",
+      "BOOK_TIME": 1787234093764,
+      "BIDS": [
+        {
+          "BID_PRICE": 1.28,
+          "TOTAL_VOLUME": 1746,
+          "NUM_BIDS": 12,
+          "BIDS": [
+            {
+              "EXCHANGE": "NYSE",
+              "BID_VOLUME": 262,
+              "SEQUENCE": 35693547
+            },
+            {
+              "EXCHANGE": "CBOE",
+              "BID_VOLUME": 220,
+              "SEQUENCE": 35693742
+            },
+            {
+              "EXCHANGE": "EDGX",
+              "BID_VOLUME": 206,
+              "SEQUENCE": 35693754
+            },
+            {
+              "EXCHANGE": "BATS",
+              "BID_VOLUME": 198,
+              "SEQUENCE": 35693741
+            },
+            {
+              "EXCHANGE": "MEMX",
+              "BID_VOLUME": 197,
+              "SEQUENCE": 35693741
+            },
+            {
+              "EXCHANGE": "BOSX",
+              "BID_VOLUME": 191,
+              "SEQUENCE": 35693764
+            },
+            {
+              "EXCHANGE": "S",
+              "BID_VOLUME": 191,
+              "SEQUENCE": 35693741
+            },
+            {
+              "EXCHANGE": "ISEX",
+              "BID_VOLUME": 111,
+              "SEQUENCE": 35693528
+            },
+            {
+              "EXCHANGE": "PHLX",
+              "BID_VOLUME": 86,
+              "SEQUENCE": 35693528
+            },
+            {
+              "EXCHANGE": "GMNI",
+              "BID_VOLUME": 63,
+              "SEQUENCE": 35693535
+            },
+            {
+              "EXCHANGE": "AMEX",
+              "BID_VOLUME": 11,
+              "SEQUENCE": 35693547
+            },
+            {
+              "EXCHANGE": "MERC",
+              "BID_VOLUME": 10,
+              "SEQUENCE": 35693528
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 1.27,
+          "TOTAL_VOLUME": 158,
+          "NUM_BIDS": 1,
+          "BIDS": [
+            {
+              "EXCHANGE": "MIAX",
+              "BID_VOLUME": 158,
+              "SEQUENCE": 35693546
+            }
+          ]
+        }
+      ],
+      "ASKS": [
+        {
+          "ASK_PRICE": 1.3,
+          "TOTAL_VOLUME": 1533,
+          "NUM_ASKS": 10,
+          "ASKS": [
+            {
+              "EXCHANGE": "EDGX",
+              "ASK_VOLUME": 346,
+              "SEQUENCE": 35693726
+            },
+            {
+              "EXCHANGE": "CBOE",
+              "ASK_VOLUME": 288,
+              "SEQUENCE": 35693764
+            },
+            {
+              "EXCHANGE": "NYSE",
+              "ASK_VOLUME": 263,
+              "SEQUENCE": 35693760
+            },
+            {
+              "EXCHANGE": "BATS",
+              "ASK_VOLUME": 222,
+              "SEQUENCE": 35693605
+            },
+            {
+              "EXCHANGE": "ISEX",
+              "ASK_VOLUME": 136,
+              "SEQUENCE": 35693528
+            },
+            {
+              "EXCHANGE": "PHLX",
+              "ASK_VOLUME": 77,
+              "SEQUENCE": 35693528
+            },
+            {
+              "EXCHANGE": "S",
+              "ASK_VOLUME": 76,
+              "SEQUENCE": 35693514
+            },
+            {
+              "EXCHANGE": "GMNI",
+              "ASK_VOLUME": 70,
+              "SEQUENCE": 35693535
+            },
+            {
+              "EXCHANGE": "AMEX",
+              "ASK_VOLUME": 46,
+              "SEQUENCE": 35693547
+            },
+            {
+              "EXCHANGE": "MERC",
+              "ASK_VOLUME": 9,
+              "SEQUENCE": 35693528
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -24,7 +24,7 @@ def test_record_from_level_one_equity_updates_plane():
             "ask_disp": "1.10",
             "spread": 0.2,
             "fast_generation_id": lmp.next_fast_generation("ZZZ"),
-            "fast_server_ts": 100.0,
+            "exchange_quote_ts": 100.0,
             "quote_ingestion": "rest_fast_quote",
         },
     )
@@ -57,9 +57,33 @@ def test_record_from_level_one_uses_schwab_quote_timestamp_for_fast_ts():
     assert ok is True
     row = lmp.get_quote("TIMEAUTH")
     assert row is not None
-    assert row["fast_server_ts"] == 1_778_018_399.0
+    assert row["exchange_quote_ts"] == 1_778_018_399.0
     assert row["quote_time_source"] == "schwab_streaming_level_one"
     assert isinstance(row["server_received_ts"], float)
+    # M6: exchange_quote_ts is the exchange QUOTE clock, and the row records WHICH clock —
+    # never a silent quote/trade conflation. server_received_ts is the distinct wall clock.
+    assert row["quote_source_detail"]["quote_ts"] == "QUOTE_TIME_MILLIS"
+    assert row["exchange_quote_ts"] != row["server_received_ts"]
+
+
+def test_record_from_level_one_trade_time_fallback_is_labeled_proxy_not_silent():
+    """M6: when QUOTE_TIME_MILLIS is absent, TRADE_TIME_MILLIS carries exchange_quote_ts but is
+    stamped a labeled PROXY, so a trade-time value is never aged as a quote time unmarked."""
+    ok = lmp.record_from_level_one_equity(
+        "TRADEPROXY",
+        {
+            "key": "TRADEPROXY",
+            "LAST_PRICE": 77.0,
+            "BID_PRICE": 76.9,
+            "ASK_PRICE": 77.1,
+            "TRADE_TIME_MILLIS": 1_778_018_500_000,
+            # no QUOTE_TIME_MILLIS
+        },
+    )
+    assert ok is True
+    row = lmp.get_quote("TRADEPROXY")
+    assert row["exchange_quote_ts"] == 1_778_018_500.0
+    assert row["quote_source_detail"]["quote_ts"] == "TRADE_TIME_MILLIS_proxy"
 
 
 def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate():
@@ -89,7 +113,7 @@ def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate(
     assert ok is True
     row = lmp.get_quote("TIMEDUP")
     assert row["fast_generation_id"] > g0
-    assert row["fast_server_ts"] == 1_778_018_400.0
+    assert row["exchange_quote_ts"] == 1_778_018_400.0
 
 
 def test_record_from_level_one_does_not_carry_forward_missing_bid_ask():
@@ -105,7 +129,7 @@ def test_record_from_level_one_does_not_carry_forward_missing_bid_ask():
             "ask_disp": "10.10",
             "spread": 0.02,
             "fast_generation_id": lmp.next_fast_generation("NOCARRY"),
-            "fast_server_ts": 100.0,
+            "exchange_quote_ts": 100.0,
             "quote_ingestion": "rest_fast_quote",
         },
     )

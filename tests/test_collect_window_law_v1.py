@@ -145,11 +145,34 @@ def test_the_enrolment_fallback_counts_sessions_not_days():
     assert seen == ENROLLMENT_FALLBACK_SESSIONS, (
         f"the lookback spans {seen} sessions, not {ENROLLMENT_FALLBACK_SESSIONS}")
 
-    # And it is strictly wider than the arithmetic it replaced, which is the whole point.
-    old = datetime.now(ET).timestamp() - ENROLLMENT_FALLBACK_SESSIONS * 86400
-    assert session_lookback_bound_ts_utc(ENROLLMENT_FALLBACK_SESSIONS) <= old, (
-        "the calendar bound is later than the seconds bound — it lost coverage instead of "
-        "gaining it")
+    # And it is strictly wider than the seconds arithmetic it replaced — the whole point of
+    # RC-309. Made deterministic (RC-444): the old form used datetime.now() and pitted a
+    # MIDNIGHT-aligned session bound against a NOW-aligned seconds clock, so on some weekdays
+    # (e.g. a fresh Friday) 5 sessions span fewer wall-clock hours than 5 calendar days and the
+    # assert flipped with the day CI ran. Pin the docstring's own example with a FIXED anchor:
+    # the Tuesday after a holiday Monday. Five 86400-second steps back from it reach only THREE
+    # sessions (the holiday + the weekend + a mid-day cut), while the calendar bound reaches the
+    # full five and strictly further back. Fixed date -> identical result on every CI day.
+    after_holiday = datetime(2026, 1, 20, 12, tzinfo=ET)  # Tue after MLK Monday 2026-01-19
+    assert is_trading_day_et(after_holiday.date().isoformat()), "anchor must be a session"
+    assert not is_trading_day_et("2026-01-19"), "anchor assumes MLK Monday 2026-01-19 is closed"
+    sess_bound = session_lookback_bound_ts_utc(
+        ENROLLMENT_FALLBACK_SESSIONS, now=after_holiday.timestamp())
+    secs_bound = after_holiday.timestamp() - ENROLLMENT_FALLBACK_SESSIONS * 86400
+
+    def _sessions_covered(bound_ts: float) -> int:
+        d0 = datetime.fromtimestamp(bound_ts, tz=ET).date()
+        end = after_holiday.date()
+        return sum(is_trading_day_et((d0 + timedelta(days=i)).isoformat())
+                   for i in range((end - d0).days + 1))
+
+    assert _sessions_covered(sess_bound) == ENROLLMENT_FALLBACK_SESSIONS, (
+        "the calendar bound must cover exactly N sessions")
+    assert _sessions_covered(secs_bound) < ENROLLMENT_FALLBACK_SESSIONS, (
+        "the N-day seconds arithmetic under-covers sessions across a holiday — the bound must "
+        "count sessions, not days (RC-309)")
+    assert sess_bound < secs_bound, (
+        "the calendar bound must reach strictly further back than the seconds bound here")
 
 
 def test_institutional_check_fires_when_the_law_is_unplugged(tmp_path, monkeypatch):

@@ -1,0 +1,13 @@
+{
+  "service": "TIMESALE_EQUITY",
+  "symbols": [
+    "SPY",
+    "QQQ",
+    "IWM"
+  ],
+  "response_code": 11,
+  "error": "UnexpectedResponseCode: unexpected response code: 11, msg is 'Service not available or temporary down.'",
+  "n_frames": 0,
+  "subs_ok": false,
+  "response_msg": "Service not available or temporary down."
+}

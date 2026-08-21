@@ -539,6 +539,12 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
         "spot": 100.0, "computed_ts_utc": 1.0,
     })
     monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
+    # RC-441: computed_ts_utc=1.0 forces the RC-162 stale-path accrual-bank read
+    # (server.get_terrain_strikes -> latest_accrual_rows). Without stubbing it, this "unit"
+    # test calls latest_accrual_rows against the live DB, so `today` is silently overridden by
+    # whatever real SPY rows exist — the test then passes on an empty DB but fails on a
+    # populated one (env-dependent, non-hermetic). Stub it so the fixture stays authoritative.
+    monkeypatch.setattr(srv, "latest_accrual_rows", lambda *a, **k: None)
     resp = srv.get_terrain_strikes(ticker="SPY")
     payload = json.loads(bytes(resp.body))
     ss = payload["today_side_sums"]

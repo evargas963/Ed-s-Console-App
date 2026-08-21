@@ -113,13 +113,28 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     if spot_f is None or spot_f <= 0:
         return False
 
-    quote_ts = (
-        _epoch_seconds_from_millis(item.get("QUOTE_TIME_MILLIS"))
-        or _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
-    )
+    # exchange_quote_ts (set below) carries the EXCHANGE quote clock — Schwab
+    # QUOTE_TIME_MILLIS in epoch seconds — NOT a server clock. The genuine server wall
+    # clock is the separate server_received_ts (time.time()). When QUOTE_TIME_MILLIS is
+    # absent we fall back to TRADE_TIME_MILLIS as a LABELED PROXY (M6) rather than
+    # conflating the two silently; the clock actually used is recorded in
+    # quote_source_detail["quote_ts"] so a trade-time value is never aged as a quote time
+    # without provenance. The name->value contract (exchange_quote_ts must never hold a
+    # server wall clock) is machine-pinned by tools/check_schwab_market_field_semantics (M5).
+    _qtm = _epoch_seconds_from_millis(item.get("QUOTE_TIME_MILLIS"))
+    _ttm = _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
+    if _qtm is not None:
+        quote_ts = _qtm
+        quote_ts_clock = "QUOTE_TIME_MILLIS"
+    elif _ttm is not None:
+        quote_ts = _ttm
+        quote_ts_clock = "TRADE_TIME_MILLIS_proxy"
+    else:
+        quote_ts = None
+        quote_ts_clock = "unavailable"
     new_sig = _plane_tuple_sig(spot_f, bid, ask)
     prev_sig = _plane_tuple_sig(pspot, pbid, pask) if prev else None
-    prev_quote_ts = (prev or {}).get("fast_server_ts")
+    prev_quote_ts = (prev or {}).get("exchange_quote_ts")
     if (
         prev_sig == new_sig
         and (prev or {}).get("quote_ingestion") == "schwab_streaming_level_one"
@@ -168,7 +183,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
             "derived_bid_ask_pts" if bid is not None and ask is not None else None
         ),
         "fast_generation_id": next_fast_generation(t),
-        "fast_server_ts": quote_ts,
+        "exchange_quote_ts": quote_ts,
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
         "server_received_ts": server_received_ts,
         "quote_ingestion": "schwab_streaming_level_one",
@@ -178,6 +193,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
             "ask": ask_source,
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
             "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
+            "quote_ts": quote_ts_clock,  # M6: which exchange clock exchange_quote_ts carries (QUOTE_TIME_MILLIS, or TRADE_TIME_MILLIS_proxy on fallback)
             "carried_forward": False,
             "previous_spot_available": pspot is not None,
             "previous_bid_available": pbid is not None,
@@ -251,10 +267,10 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     ):
         if k in q and q[k] is not None:
             ms_dict[k] = q[k]
-    fts = q.get("fast_server_ts")
+    fts = q.get("exchange_quote_ts")
     if fts is not None:
         ms_dict["_live_plane_fast_ts"] = fts
-        ms_dict["fast_server_ts"] = fts
+        ms_dict["exchange_quote_ts"] = fts
     fg = q.get("fast_generation_id")
     if fg is not None:
         ms_dict["fast_generation_id"] = fg
@@ -293,7 +309,7 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
     ):
         if k in q and q[k] is not None:
             l1_payload[k] = q[k]
-    fts = q.get("fast_server_ts")
+    fts = q.get("exchange_quote_ts")
     if fts is not None:
         l1_payload["_live_plane_fast_ts"] = fts
     l1_payload["_quote_authority"] = "live_market_plane"

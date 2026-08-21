@@ -1,0 +1,33 @@
+{
+  "service": "LEVELONE_EQUITIES",
+  "timestamp": 1787231153516,
+  "command": "SUBS",
+  "content": [
+    {
+      "key": "QQQ",
+      "LAST_PRICE": 712.48,
+      "ASK_SIZE": 200,
+      "TOTAL_VOLUME": 1952025,
+      "NET_CHANGE": -3.6,
+      "QUOTE_TIME_MILLIS": 1787231153363,
+      "TRADE_TIME_MILLIS": 1787231152657,
+      "BID_TIME_MILLIS": 1787231153363,
+      "ASK_TIME_MILLIS": 1787231153363,
+      "NET_CHANGE_PERCENT": -0.502737,
+      "POST_MARKET_NET_CHANGE": -3.6,
+      "POST_MARKET_NET_CHANGE_PERCENT": -0.502737
+    },
+    {
+      "key": "SPY",
+      "QUOTE_TIME_MILLIS": 1787231152436,
+      "ASK_TIME_MILLIS": 1787231152436
+    },
+    {
+      "key": "IWM",
+      "BID_SIZE": 160,
+      "QUOTE_TIME_MILLIS": 1787231153206,
+      "BID_TIME_MILLIS": 1787231153206,
+      "ASK_TIME_MILLIS": 1787231153012
+    }
+  ]
+}

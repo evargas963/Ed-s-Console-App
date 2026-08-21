@@ -1,0 +1,10 @@
+{
+  "n_levels": 3756,
+  "num_equals_nested_count": 3756,
+  "num_ne_nested_count": 0,
+  "agg_equals_nested_size_sum": 3756,
+  "agg_ne_nested_size_sum": 0,
+  "missing_num": 0,
+  "ruling": "NOT_PROVEN",
+  "ruling_note": "Measurable equalities only. Do not label NUM_* as order-count or market-maker-count without Schwab semantic proof."
+}

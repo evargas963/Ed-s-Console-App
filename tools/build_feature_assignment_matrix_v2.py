@@ -414,20 +414,31 @@ def _build_schwab_ablation_field_registry_payload(*, stable_time: bool = False) 
     for row in rows_in:
         tier = categorize_schwab_field(row)
         tier_counts[tier] = tier_counts.get(tier, 0) + 1
-        fields.append(
-            {
-                "canonical_field": row.get("canonical_field"),
-                "catalog_tier": tier,
-                "category": row.get("category"),
-                "likely_use": row.get("likely_use"),
-                "priority": row.get("priority"),
-                "source_endpoints": row.get("source_endpoints"),
-                "column_hint": _canonical_to_column_hint(
-                    str(row.get("canonical_field") or ""),
-                    str(row.get("example_raw_field") or ""),
-                ),
-            }
+        col_hint = _canonical_to_column_hint(
+            str(row.get("canonical_field") or ""),
+            str(row.get("example_raw_field") or ""),
         )
+        entry = {
+            "canonical_field": row.get("canonical_field"),
+            "catalog_tier": tier,
+            "category": row.get("category"),
+            "likely_use": row.get("likely_use"),
+            "priority": row.get("priority"),
+            "source_endpoints": row.get("source_endpoints"),
+            "column_hint": col_hint,
+        }
+        # M4 (RC-440) / M8 (RC-443): NUM_BIDS/NUM_ASKS are documented "Market Maker Count"
+        # (Schwab Streamer Guide) — empirically the count of nested per-PARTICIPANT rows at a
+        # book price level, where participants are market-maker MPIDs AND exchange MICs. It is
+        # NEVER an order count. Carry the caveat so no ML consumer reads it as order depth or
+        # as a literal distinct-market-making-firm count.
+        # Mechanically enforced by check_schwab_market_field_semantics.
+        if col_hint in ("num_bids", "num_asks"):
+            entry["semantic_caveat"] = (
+                "Market Maker Count (Schwab Streamer Guide): count of nested per-participant "
+                "rows quoting at this price (market-maker MPIDs and exchange MICs); NOT an order count"
+            )
+        fields.append(entry)
     return {
         "schema_version": "1",
         "generated_at": "stable" if stable_time else datetime.now(timezone.utc).isoformat(),
@@ -451,7 +462,10 @@ def load_schwab_ablation_field_registry(*, write: bool = False, stable_time: boo
     out = _build_schwab_ablation_field_registry_payload(stable_time=stable_time)
     if write:
         SCHWAB_ABLATION_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        SCHWAB_ABLATION_REGISTRY_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+        # newline="\n": governance/artifacts/*.json is pinned eol=lf (.gitattributes); the
+        # default text-mode write would emit CRLF on Windows and churn the whole file.
+        SCHWAB_ABLATION_REGISTRY_PATH.write_text(
+            json.dumps(out, indent=2), encoding="utf-8", newline="\n")
     return out
 
 
