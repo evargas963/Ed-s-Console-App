@@ -285,6 +285,53 @@ def test_route_serializes_carried_state_without_recomputing(monkeypatch):
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
 
 
+def test_changed_ladder_under_same_book_time_is_not_served_stale():
+    """CACHE INVALIDATION: the carry cache must key on canonical book CONTENT, not BOOK_TIME
+    alone. With the SAME ticker and the SAME BOOK_TIME but a MUTATED ladder, depth totals,
+    imbalance, and wall_candidates must reflect the new book — never the prior cached state."""
+    BT = 424242  # identical BOOK_TIME across both snapshots
+
+    def _book(bids, asks) -> dict:
+        return {"content": [
+            {"BIDS": [{"BID_PRICE": p, "TOTAL_VOLUME": v} for p, v in bids],
+             "ASKS": [{"ASK_PRICE": p, "TOTAL_VOLUME": v} for p, v in asks],
+             "BOOK_TIME": BT},
+            {"BID_PRICE": bids[0][0], "ASK_PRICE": asks[0][0], "BID_SIZE": 100, "ASK_SIZE": 100}]}
+
+    # v1: heavy bid book with a bid-side size wall at the touch.
+    v1 = _book(
+        bids=[(712.47, 1000), (712.46, 40), (712.45, 40), (712.44, 80), (712.43, 200)],
+        asks=[(712.49, 60), (712.51, 40), (712.53, 40), (712.75, 40), (713.00, 40)])
+    # v2: SAME BOOK_TIME, but the book has flipped — heavy ask book with an ask-side wall.
+    v2 = _book(
+        bids=[(712.47, 60), (712.46, 40), (712.45, 40), (712.44, 40), (712.43, 40)],
+        asks=[(712.49, 1000), (712.51, 40), (712.53, 40), (712.75, 80), (713.00, 200)])
+
+    ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
+    m1 = ofe.compute_book_microstructure(v1, ticker="STALE", now_ts=1.0)
+    m2 = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=2.0)
+
+    # Both snapshots genuinely carry the identical BOOK_TIME...
+    assert m1["provenance"]["book_time_ms"] == m2["provenance"]["book_time_ms"] == float(BT)
+    # ...yet the second read reflects the NEW ladder, not the cached first one.
+    assert m1["depth"]["5"]["bid_total"] == 1360.0
+    assert m2["depth"]["5"]["bid_total"] == 220.0                     # not the stale 1360
+    assert m1["depth"]["1"]["imbalance"] != m2["depth"]["1"]["imbalance"]
+    assert m2["depth"]["1"]["imbalance"] < 0                          # ask-heavy now
+    # walls flip from the bid side to the ask side — proving walls are not served stale.
+    assert [w["side"] for w in m1["wall_candidates"]] == ["bid"]
+    assert [w["side"] for w in m2["wall_candidates"]] == ["ask"]
+
+    # And an unchanged re-read of v2 (same ticker, same content) still carries without recompute.
+    def _boom(_cb):
+        raise AssertionError("recomputed despite identical canonical book")
+    import unittest.mock as _um
+    with _um.patch.object(ofe, "_microstructure_structural", _boom):
+        m2b = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=3.0)
+    assert m2b["depth"] == m2["depth"]
+    ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
+
+
 def test_engine_and_route_read_the_same_canonical_state():
     """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes, and its
     book_imbalance_1/3/5 ARE that state's depth imbalances — one faucet, not two producers."""

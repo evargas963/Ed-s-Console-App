@@ -432,9 +432,12 @@ OF_BOOK_WALL_MEDIAN_MULT: float = 3.0
 #: Depth ladder for the canonical depth totals/imbalance — the existing 1/3/5 ladder.
 OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (OF_BOOK_DEPTH_TOP, OF_BOOK_DEPTH_SHALLOW, OF_BOOK_DEPTH_DEEP)
 
-#: Per-ticker carry cache: ticker -> (book_time_ms, structural_payload). Lets the route serialize
-#: the engine's already-computed state for an unchanged book instead of re-walking raw data.
-_MICRO_STRUCTURAL_CACHE: dict[str, tuple[Optional[float], dict]] = {}
+#: Per-ticker carry cache: ticker -> (canonical_book_identity, structural_payload). Lets the route
+#: serialize the engine's already-computed state for an UNCHANGED book instead of re-walking raw
+#: data. Validity keys on the canonical book's CONTENT identity (see `_canonical_book_identity`),
+#: NOT on BOOK_TIME alone — BOOK_TIME is not assumed unique, so a changed ladder under a repeated
+#: BOOK_TIME must yield a different identity and force recompute.
+_MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
 
 
 def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool) -> list[tuple[float, float]]:
@@ -474,6 +477,19 @@ def _extract_canonical_book(data: dict) -> dict:
         "book_time_ms": _safe_float(snapshot.get("BOOK_TIME")) if snapshot else None,
         "mark": mark, "mark_leaf": mark_leaf,
     }
+
+
+def _canonical_book_identity(cb: dict) -> tuple:
+    """Hashable CONTENT identity of the canonical book — every field the structural state is
+    derived from. The carry cache validates on THIS, never on BOOK_TIME alone: if the same ticker
+    receives a changed ladder (or changed top-of-book / mark) under a repeated BOOK_TIME, the
+    identity differs and `compute_book_microstructure` recomputes instead of serving stale state.
+    BOOK_TIME is included, but only as one component — its uniqueness is not assumed."""
+    return (
+        cb["book_time_ms"],
+        cb["bid"], cb["ask"], cb["bid_size"], cb["ask_size"], cb["mark"],
+        tuple(cb["bid_levels"]), tuple(cb["ask_levels"]),
+    )
 
 
 def _microprice(bid: Optional[float], ask: Optional[float],
@@ -659,13 +675,16 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
     cb = _extract_canonical_book(data)
     book_time_ms = cb["book_time_ms"]
 
+    # Carry only when the canonical book CONTENT is byte-for-byte identical — not merely the same
+    # BOOK_TIME. A changed ladder under a repeated BOOK_TIME has a different identity and recomputes.
+    identity = _canonical_book_identity(cb)
     cached = _MICRO_STRUCTURAL_CACHE.get(ticker) if ticker else None
-    if cached is not None and book_time_ms is not None and cached[0] == book_time_ms:
-        structural = cached[1]                       # carry: same book snapshot, no recompute
+    if cached is not None and cached[0] == identity:
+        structural = cached[1]                       # carry: identical canonical book, no recompute
     else:
         structural = _microstructure_structural(cb)
-        if ticker and book_time_ms is not None:
-            _MICRO_STRUCTURAL_CACHE[ticker] = (book_time_ms, structural)
+        if ticker:
+            _MICRO_STRUCTURAL_CACHE[ticker] = (identity, structural)
 
     # Ages + per-serialization stamps are the only wall-clock-dependent fields.
     exch_ts = _safe_float(data.get("exchange_quote_ts"))
