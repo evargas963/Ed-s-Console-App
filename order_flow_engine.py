@@ -38,6 +38,10 @@ OF_COMPOSITE_WEIGHT_CUM_DELTA: float = 0.20
 #     out-of-sample evidence may not influence the composite/verdict. Present-weight renormalization
 #     means no re-weighting of the remaining legs is required.
 OF_COMPOSITE_WEIGHT_OPTIONS: float = 0.15
+# DEPRECATED (mission TRUTH_V1): the RVOL composite leg was removed. Relative volume is a
+# participation MAGNITUDE, not a direction (high/low volume is not bullish/bearish) — the same
+# magnitude-as-direction defect as the removed absorption leg. RVOL's conviction role stays in
+# `_readiness`. These three constants are retained only as historical record, no longer a leg.
 OF_COMPOSITE_WEIGHT_RVOL: float = 0.05
 OF_COMPOSITE_MIN_LEGS: int = 2
 OF_CLIP_LOW: float = -1.0
@@ -1171,13 +1175,17 @@ def _compute_order_flow_score(
     tape_pressure: Optional[float],
     cum_delta: Optional[float],
     options_flow: Optional[float],
-    rvol: Optional[float],
 ) -> Optional[float]:
     """
-    Composite score over present SIGNED legs only (FIND-OF3/OF4 / STACK-WIRE-5 weights).
-    Uses OF_COMPOSITE_WEIGHT_* constants; None when fewer than OF_COMPOSITE_MIN_LEGS legs.
-    The absorption leg was removed (mission TRUTH_V1): it was a non-negative magnitude used as a
-    signed direction (constant bullish bias) and is NOT_ADMITTED (no predictive evidence).
+    Composite score over present SIGNED, DIRECTIONAL legs only; None when fewer than
+    OF_COMPOSITE_MIN_LEGS legs. Present weights renormalize to 1.0.
+    TRUTH_V1: two magnitude-as-direction legs were removed — absorption (non-negative density)
+    and RVOL (relative volume is a participation MAGNITUDE, not a direction: high/low volume is
+    not bullish/bearish). RVOL's legitimate role is conviction and is retained in `_readiness`.
+    NOTE: the surviving legs (book/tape/cum_delta/options) are directional PROXIES; the composite
+    itself has NO out-of-sample validation (weights/thresholds were chosen, never fit), so it is
+    NOT_ADMITTED as a decision authority — it is withheld from the call_engine vote and kept
+    ADVISORY only.
     """
     return _weighted_mean_present(
         [
@@ -1185,12 +1193,6 @@ def _compute_order_flow_score(
             (OF_COMPOSITE_WEIGHT_TAPE, tape_pressure, OF_CLIP_LOW, OF_CLIP_HIGH),
             (OF_COMPOSITE_WEIGHT_CUM_DELTA, cum_delta, OF_CLIP_LOW, OF_CLIP_HIGH),
             (OF_COMPOSITE_WEIGHT_OPTIONS, options_flow, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (
-                OF_COMPOSITE_WEIGHT_RVOL,
-                (rvol - OF_RVOL_NEUTRAL_CENTER) if rvol is not None else None,
-                OF_RVOL_TERM_LOW,
-                OF_RVOL_TERM_HIGH,
-            ),
         ],
         min_present=OF_COMPOSITE_MIN_LEGS,
     )
@@ -1307,15 +1309,15 @@ class OrderFlowEngine:
         institutional_flow_proxy_score = _compute_institutional_flow_proxy(
             data, book_imbalance_5=book_imbalance_5)
 
-        # Composite score and regime. absorption_score is intentionally NOT a leg (mission
-        # TRUTH_V1): it is a non-negative density (magnitude, not direction) and NOT_ADMITTED.
-        # It is still emitted below for advisory/PROXY display only.
+        # Composite score and regime. absorption_score and rvol are intentionally NOT legs
+        # (mission TRUTH_V1): both are non-directional MAGNITUDES (a density; relative volume).
+        # absorption is still emitted below for advisory/PROXY display; rvol feeds `_readiness`
+        # (its legitimate conviction role) below.
         order_flow_score = _compute_order_flow_score(
             book_for_score,
             tape_for_score,
             cum_delta_proxy,
             options_flow_score,
-            rvol,
         )
         order_flow_direction = _direction(order_flow_score)
         order_flow_regime = order_flow_direction

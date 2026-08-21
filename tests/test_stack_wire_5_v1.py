@@ -69,11 +69,20 @@ def test_order_flow_engine_composite_constants_exist_and_used():
         assert re.search(pat, tail) is None, f"literal still in _compute_order_flow_score: {pat}"
 
 
-def test_call_engine_consumes_order_flow_direction_not_second_score():
+def test_order_flow_direction_is_withheld_from_the_decision_vote():
+    """TRUTH_V1: order_flow_direction is the sign of an UNVALIDATED composite (weights/thresholds
+    never fit or OOS-validated; two magnitude-as-direction legs removed). Per the repo's own rule,
+    a signal with no out-of-sample evidence may not influence the decision, so call_engine casts a
+    neutral order-flow vote. This locks that the direction->±1 vote is not silently reinstated, and
+    that call_engine still derives no second OF score."""
     import call_engine
 
     src = inspect.getsource(call_engine.compute_call)
-    assert "order_flow_direction" in src
+    # the vote is hard-neutralized (withheld), not mapped from direction
+    assert "of_vote = 0" in src
+    assert 'of_vote = 1 if' not in src
+    assert "WITHHELD" in src
+    # and call_engine still never re-derives an order-flow score of its own
     assert "_compute_order_flow_score" not in src
     assert "OrderFlowEngine" not in src
 
@@ -126,13 +135,16 @@ def test_order_flow_engine_residual_magics_named():
     assert "_compute_book_imbalance(data, 3)" not in src_compute
     assert "_compute_book_imbalance(data, 5)" not in src_compute
 
-    # _compute_order_flow_score uses OF_RVOL_NEUTRAL_CENTER (not bare 1.0) for the rvol term.
+    # TRUTH_V1: the RVOL leg was REMOVED from the composite (relative volume is a participation
+    # magnitude, not a direction). The score body must no longer reference rvol at all — rvol's
+    # conviction role lives only in `_readiness`. This locks that a magnitude-as-direction leg is
+    # not silently re-introduced.
     body = inspect.getsource(ofe)
     score_body = body[
         body.index("def _compute_order_flow_score") : body.index("def _direction")
     ]
-    assert "OF_RVOL_NEUTRAL_CENTER" in score_body
-    assert "(rvol - 1.0)" not in score_body
+    assert "rvol" not in score_body
+    assert "OF_RVOL_NEUTRAL_CENTER" not in score_body
 
     # _weighted_mean_present default uses the named constant, not bare 2.
     wm_src = inspect.getsource(ofe._weighted_mean_present)
