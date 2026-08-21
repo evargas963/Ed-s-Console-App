@@ -859,12 +859,24 @@ def _earliest_book_snapshot(items: list) -> Optional[dict]:
 
 
 def _compute_absorption(data: dict) -> tuple[Optional[float], Optional[float], Optional[str]]:
-    """
-    Absorption: large size at a level that doesn't move price.
-    Replenishment: bid/ask depth rebuild after a fill.
-    Uses: content.*.BIDS, ASKS with aggregated per-level TOTAL_VOLUME
-          (NOT the nested per-source BID_VOLUME/ASK_VOLUME, which this does
-          not read), plus content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
+    """PROXY density metrics — semantically NOT_ADMITTED as absorption/replenishment (ADVISORY).
+
+    This does NOT detect absorption in the microstructure sense: it never ties traded volume to
+    a specific resting price level, and `price_range` is the whole-buffer max-min of print prices,
+    not per-level price displacement. What it ACTUALLY computes (label must match measurement):
+      absorption_score    = total_traded_size / (price_range + OF_ABSORPTION_PRICE_EPS)
+                            -> a whole-buffer volume-per-price-range DENSITY (effort/result). PROXY.
+      replenishment_score = midpoint of (bid_depth_change + ask_depth_change) between the earliest
+                            and latest buffered book snapshot (source tag
+                            'derived_bid_ask_depth_change_midpoint') -> a 2-snapshot net depth delta.
+      direction           = sign of which side's aggregate DISPLAYED depth grew more.
+    No temporal window (uses whatever the deques currently hold); needs >=2 distinct book snapshots
+    AND >=1 sized print, else fail-closed (None,None,None). NOT_ADMITTED: no evidence ties these to
+    real absorption/replenishment, and a SECOND producer
+    (institutional_behavior.compute_liquidity_behavior_row) computes the model-facing
+    absorption_score — this is not a validated nor a sole authority. Do not present as native.
+    Uses aggregated per-level TOTAL_VOLUME (NOT nested per-source BID_VOLUME/ASK_VOLUME) plus
+    LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
     """
     items = _iter_content(data)
     earlier = _earliest_book_snapshot(items)
@@ -878,14 +890,14 @@ def _compute_absorption(data: dict) -> tuple[Optional[float], Optional[float], O
     bid_change = bids_later - bids_earlier if bids_earlier else 0
     ask_change = asks_later - asks_earlier if asks_earlier else 0
     replenishment = (bid_change + ask_change) / 2.0 if (bids_earlier or asks_earlier) else 0.0
-    # Absorption: when volume trades but price doesn't move much (simplified)
+    # PROXY density: traded size over whole-buffer price range. NOT level-based absorption.
     prints = _iter_tape_prints(items)
     if not prints:
         return None, None, None
     total_sz = sum(p["size"] for p in prints if p.get("size") is not None and p["size"] > 0)
     prices = [p.get("price") for p in prints if p.get("price") is not None]
     price_range = max(prices) - min(prices) if len(prices) >= 2 else 0.0
-    # absorption = high volume, low price movement
+    # volume-per-price-range density (effort/result); eps guards div-by-zero, not a level test
     absorption = (total_sz / (price_range + OF_ABSORPTION_PRICE_EPS)) if total_sz > 0 else 0.0
     direction = "bid" if bid_change > ask_change else ("ask" if ask_change > bid_change else "neutral")
     return absorption, replenishment, direction
