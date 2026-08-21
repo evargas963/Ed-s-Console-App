@@ -4152,7 +4152,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
 //                   Every in-flight request captures its generation at launch.
 //                   Responses from earlier generations are UNCONDITIONALLY discarded.
 //   lastRenderTimestamp — analytical Tier C full-render gate only (never Tier A/B).
-//   lastFastTs — quote lane monotonic fast_server_ts (never analytical _server_build_ts).
+//   lastFastTs — quote lane monotonic exchange_quote_ts (never analytical _server_build_ts).
 //
 // DOM input is READ-ONLY at commit time. It is never a source of truth.
 // Backend responses NEVER update activeTicker. Ticker flows one direction only:
@@ -6724,7 +6724,7 @@ function scheduleMtmSpotDerivedCardsRefresh() {
  * sourceTag: http_fast_quote | sse_live_plane
  */
 function _livePlaneApplyCore(f, sourceTag) {
-  const _fts = f.fast_server_ts != null ? Number(f.fast_server_ts) : NaN;
+  const _fts = f.exchange_quote_ts != null ? Number(f.exchange_quote_ts) : NaN;
   try {
     window._fastLaneSpreadFrac = f.spread != null && f.spread !== '' ? Number(f.spread) : null;
     if (window._fastLaneSpreadFrac != null && Number.isNaN(window._fastLaneSpreadFrac)) window._fastLaneSpreadFrac = null;
@@ -6792,7 +6792,7 @@ function _livePlaneApplyCore(f, sourceTag) {
 function _quoteLaneShouldApply(f) {
   if (f == null || typeof f !== 'object' || Array.isArray(f)) return false;
   const _fg = f.fast_generation_id != null ? Number(f.fast_generation_id) : NaN;
-  const _fts = f.fast_server_ts != null ? Number(f.fast_server_ts)
+  const _fts = f.exchange_quote_ts != null ? Number(f.exchange_quote_ts)
     : (f._live_plane_fast_ts != null ? Number(f._live_plane_fast_ts) : NaN);
   if (Number.isFinite(_fg) && _fg > lastFastGen) return true;
   if (Number.isFinite(_fts) && _fts > lastFastTs) return true;
@@ -6822,7 +6822,7 @@ function _quoteLaneRejectLog(tag, reason, detail) {
 
 function _commitQuoteLaneFromPayload(f) {
   const _fg = f.fast_generation_id != null ? Number(f.fast_generation_id) : NaN;
-  const _fts = f.fast_server_ts != null ? Number(f.fast_server_ts)
+  const _fts = f.exchange_quote_ts != null ? Number(f.exchange_quote_ts)
     : (f._live_plane_fast_ts != null ? Number(f._live_plane_fast_ts) : NaN);
   if (Number.isFinite(_fg)) lastFastGen = Math.max(lastFastGen, _fg);
   if (Number.isFinite(_fts)) lastFastTs = Math.max(lastFastTs, _fts);
@@ -6855,7 +6855,7 @@ function renderFast(f, laneGenCapture) {
   }
   if (!_quoteLaneShouldApply(f)) {
     const _fg = f.fast_generation_id != null ? Number(f.fast_generation_id) : NaN;
-    const _fts = f.fast_server_ts != null ? Number(f.fast_server_ts) : NaN;
+    const _fts = f.exchange_quote_ts != null ? Number(f.exchange_quote_ts) : NaN;
     _quoteLaneRejectLog('renderFast', 'no_material_change', { incoming_fg: _fg, last_fg: lastFastGen, incoming_fts: _fts, last_fts: lastFastTs });
     return false;
   }
@@ -6868,7 +6868,7 @@ function renderFast(f, laneGenCapture) {
     console.log('[renderFast] OK', {
       ticker: f.ticker,
       fg: f.fast_generation_id,
-      fts: f.fast_server_ts != null ? f.fast_server_ts : f._live_plane_fast_ts,
+      fts: f.exchange_quote_ts != null ? f.exchange_quote_ts : f._live_plane_fast_ts,
     });
   }
   _updateTierCLaneStaleMarkers();
@@ -7833,7 +7833,7 @@ function _validServerBuildTs(d) {
 }
 
 function _validQuoteLaneTs(d) {
-  const fts = d && d.fast_server_ts != null ? Number(d.fast_server_ts) : NaN;
+  const fts = d && d.exchange_quote_ts != null ? Number(d.exchange_quote_ts) : NaN;
   if (Number.isFinite(fts) && fts > 0) return fts;
   const alt = d && d._live_plane_fast_ts != null ? Number(d._live_plane_fast_ts) : NaN;
   if (Number.isFinite(alt) && alt > 0) return alt;
@@ -7975,7 +7975,7 @@ window._resetTierCCardRenderDedup = _resetTierCCardRenderDedup;
 
 function _commitQuoteLaneTimestamps(d) {
   /** Quote-lane clock only — never use analytical _server_build_ts (always newer than Schwab quote time). */
-  const ftsRaw = d && d.fast_server_ts != null ? d.fast_server_ts
+  const ftsRaw = d && d.exchange_quote_ts != null ? d.exchange_quote_ts
     : (d && d._live_plane_fast_ts != null ? d._live_plane_fast_ts : null);
   const fts = ftsRaw != null ? Number(ftsRaw) : NaN;
   if (Number.isFinite(fts) && fts > 0) lastFastTs = Math.max(lastFastTs || 0, fts);
@@ -11697,7 +11697,7 @@ function connectSSE(opts) {
       _edTransportSync({ ssePhase: 'live_quote_plane' });
       _livePlaneApplyCore(p, 'sse_live_plane');
       if (typeof DIAG !== 'undefined' && DIAG) {
-        console.log('SSE_LIVE_QUOTE_APPLIED', { ticker: p.ticker, fg: p.fast_generation_id, fts: p.fast_server_ts });
+        console.log('SSE_LIVE_QUOTE_APPLIED', { ticker: p.ticker, fg: p.fast_generation_id, fts: p.exchange_quote_ts });
       }
     } catch (err) {
       console.warn('SSE live_quote parse error:', err);

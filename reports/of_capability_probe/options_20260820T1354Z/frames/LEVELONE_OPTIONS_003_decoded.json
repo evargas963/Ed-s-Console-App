@@ -1,0 +1,21 @@
+{
+  "service": "LEVELONE_OPTIONS",
+  "timestamp": 1787234094962,
+  "command": "SUBS",
+  "content": [
+    {
+      "key": "SPY   260820C00767000",
+      "BID_PRICE": 1.27,
+      "ASK_PRICE": 1.28,
+      "TOTAL_VOLUME": 45026,
+      "BID_SIZE": 180,
+      "ASK_SIZE": 218,
+      "LAST_SIZE": 1,
+      "MARK": 1.275,
+      "QUOTE_TIME_MILLIS": 1787234094774,
+      "TRADE_TIME_MILLIS": 1787234094635,
+      "MARK_CHANGE": -1.8118,
+      "MARK_CHANGE_PERCENT": -58.69508877
+    }
+  ]
+}

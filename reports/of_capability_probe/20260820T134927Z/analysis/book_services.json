@@ -1,0 +1,20 @@
+{
+  "NYSE_BOOK": {
+    "subs_ok": true,
+    "error": null,
+    "refused": false,
+    "n_frames": 300
+  },
+  "NASDAQ_BOOK": {
+    "subs_ok": true,
+    "error": null,
+    "refused": false,
+    "n_frames": 299
+  },
+  "OPTIONS_BOOK": {
+    "subs_ok": true,
+    "error": null,
+    "refused": false,
+    "n_frames": 0
+  }
+}

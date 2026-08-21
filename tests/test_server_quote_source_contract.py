@@ -39,7 +39,7 @@ def test_rest_fast_quote_payload_exposes_field_sources(monkeypatch):
     assert payload["mid_source"] == "schwab_quote_mark"
     assert payload["spread_source"] == "derived_bid_ask_fraction_schwab_mark_denom"
     assert payload["spread_pts"] == 0.1
-    assert payload["fast_server_ts"] == 1_778_018_399.0
+    assert payload["exchange_quote_ts"] == 1_778_018_399.0
     assert payload["quote_time_source"] == "schwab_rest_quote"
     assert isinstance(payload["server_received_ts"], float)
     assert payload["quote_source_detail"] == {
@@ -48,6 +48,7 @@ def test_rest_fast_quote_payload_exposes_field_sources(monkeypatch):
         "ask": "askPrice",
         "mid": "schwab_quote_mark",
         "spread": "schwab_bid_ask",
+        "quote_ts": "QUOTE_TIME_MILLIS",  # M6: exchange_quote_ts carries the quote clock here
         "carried_forward": False,
     }
 
@@ -197,7 +198,7 @@ def test_parse_quote_node_session_fields_carries_raw_order_flow_primitives():
 
 
 def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(monkeypatch):
-    """S017: Tier A GET /api/live/state REST bootstrap must not set fast_server_ts from time.time()."""
+    """S017: Tier A GET /api/live/state REST bootstrap must not set exchange_quote_ts from time.time()."""
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: None)
     monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
     monkeypatch.setattr(server, "get_client", lambda: object())
@@ -209,6 +210,6 @@ def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(mo
     assert out["quote_ingestion"] == "rest_tier_a"
     assert out["quote_mid"] == 501.25
     assert out["mid_source"] == "schwab_quote_mark"
-    assert out["fast_server_ts"] == 1_778_018_399.0
+    assert out["exchange_quote_ts"] == 1_778_018_399.0
     assert out["quote_time_source"] == "schwab_rest_quote"
     assert isinstance(out["server_received_ts"], float)

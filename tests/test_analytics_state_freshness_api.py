@@ -163,7 +163,7 @@ def test_operator_card_actionable_true_on_trusted_payload(tier_c_cache_spy, monk
         srv._lmp,
         "get_quote",
         lambda t: {
-            "fast_server_ts": now - 3.0,
+            "exchange_quote_ts": now - 3.0,
             "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
         },
     )
@@ -206,7 +206,7 @@ def test_operator_card_actionable_false_on_revalidate_quarantine(tier_c_cache_sp
         srv._lmp,
         "get_quote",
         lambda t: {
-            "fast_server_ts": now - 1.0,
+            "exchange_quote_ts": now - 1.0,
             "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
         },
     )
@@ -240,7 +240,7 @@ def test_operator_card_actionable_false_on_quote_newer_than_signal(tier_c_cache_
     monkeypatch.setattr(
         srv._lmp,
         "get_quote",
-        lambda t: {"fast_server_ts": now - 5.0, "quote_source_detail": {"carried_forward": False}},
+        lambda t: {"exchange_quote_ts": now - 5.0, "quote_source_detail": {"carried_forward": False}},
     )
     body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
     assert body["operator_card_actionable"] is False
@@ -258,7 +258,7 @@ def test_operator_card_actionable_false_on_quote_carried_forward(tier_c_cache_sp
         srv._lmp,
         "get_quote",
         lambda t: {
-            "fast_server_ts": now - 1.0,
+            "exchange_quote_ts": now - 1.0,
             "quote_source_detail": {"carried_forward": True, "schwab_auth_degraded": False},
         },
     )
@@ -290,7 +290,7 @@ def test_regression_raw_trade_fields_unchanged_via_tier_c_response(tier_c_cache_
         srv._lmp,
         "get_quote",
         lambda t: {
-            "fast_server_ts": now - 1.0,
+            "exchange_quote_ts": now - 1.0,
             "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
         },
     )
@@ -357,7 +357,7 @@ def test_quote_carried_forward_reason_code(tier_c_cache_spy, monkeypatch):
         return {
             "ticker": t,
             "spot": 501.0,
-            "fast_server_ts": now - 1.0,
+            "exchange_quote_ts": now - 1.0,
             "quote_source_detail": {
                 "carried_forward": True,
                 "schwab_auth_degraded": True,
@@ -384,7 +384,7 @@ def test_auth_degraded_reason_code(tier_c_cache_spy, monkeypatch):
         srv._lmp,
         "get_quote",
         lambda t: {
-            "fast_server_ts": now - 1.0,
+            "exchange_quote_ts": now - 1.0,
             "quote_source_detail": {
                 "carried_forward": False,
                 "schwab_auth_degraded": True,
@@ -415,7 +415,7 @@ def test_quote_newer_than_signal_simulated(tier_c_cache_spy, monkeypatch):
     monkeypatch.setattr(
         srv._lmp,
         "get_quote",
-        lambda t: {"fast_server_ts": quote_ts, "quote_source_detail": {"carried_forward": False}},
+        lambda t: {"exchange_quote_ts": quote_ts, "quote_source_detail": {"carried_forward": False}},
     )
     codes = _response_body(
         srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
@@ -454,7 +454,7 @@ def test_regression_existing_trade_fields_unchanged(tier_c_cache_spy):
         "mhap_rows": _mhap_four(),
         "fusion_available": True,
         "_server_build_ts": now - 2.0,
-        "fast_server_ts": now - 1.0,
+        "exchange_quote_ts": now - 1.0,
     }
     before = deepcopy(md)
     srv._attach_card_freshness_v1_block(
@@ -464,7 +464,7 @@ def test_regression_existing_trade_fields_unchanged(tier_c_cache_spy):
         analytics_ttl_sec=5.0,
         tier_c_cache_stale_serve=False,
         plane_quote={
-            "fast_server_ts": now - 1.0,
+            "exchange_quote_ts": now - 1.0,
             "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
         },
     )
@@ -691,7 +691,7 @@ def test_timing_fields_do_not_affect_trust_or_actionability(tier_c_cache_spy, mo
         srv._lmp,
         "get_quote",
         lambda t: {
-            "fast_server_ts": now - 1.0,
+            "exchange_quote_ts": now - 1.0,
             "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
         },
     )
@@ -881,18 +881,18 @@ class _FakePlane:
 
 
 def test_anchor_quote_lane_needs_refresh_predicate():
-    """Absent row, missing/garbled fast_server_ts, or age > max-age ⇒ refresh; fresh ⇒ skip."""
+    """Absent row, missing/garbled exchange_quote_ts, or age > max-age ⇒ refresh; fresh ⇒ skip."""
     import server as srv
 
     now = 1_000_000.0
     max_age = srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC
     assert srv._anchor_quote_lane_needs_refresh(None, now) is True
     assert srv._anchor_quote_lane_needs_refresh({}, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": None}, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": "bogus"}, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": now - max_age - 0.1}, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": now - max_age + 0.1}, now) is False
-    assert srv._anchor_quote_lane_needs_refresh({"fast_server_ts": now}, now) is False
+    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": None}, now) is True
+    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": "bogus"}, now) is True
+    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": now - max_age - 0.1}, now) is True
+    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": now - max_age + 0.1}, now) is False
+    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": now}, now) is False
 
 
 def test_anchor_lane_refresh_bootstraps_missing_lane(monkeypatch):
@@ -915,11 +915,11 @@ def test_anchor_lane_refresh_bootstraps_missing_lane(monkeypatch):
 
 
 def test_anchor_lane_refresh_recovers_frozen_lane(monkeypatch):
-    """Frozen-lane case (QQQ shape): old fast_server_ts is refreshed, prev row passed through."""
+    """Frozen-lane case (QQQ shape): old exchange_quote_ts is refreshed, prev row passed through."""
     import server as srv
 
     now = 3_000_000.0
-    frozen = {"fast_server_ts": now - 7_120.0, "spot": 500.0}
+    frozen = {"exchange_quote_ts": now - 7_120.0, "spot": 500.0}
     monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQB",))
     monkeypatch.setattr(srv, "_lmp", _FakePlane({"ZZQB": frozen}))
     calls: list[tuple] = []
@@ -939,7 +939,7 @@ def test_anchor_lane_refresh_skips_fresh_lane_no_stream_interference(monkeypatch
     import server as srv
 
     now = 4_000_000.0
-    fresh = {"fast_server_ts": now - 1.0, "spot": 600.0}
+    fresh = {"exchange_quote_ts": now - 1.0, "spot": 600.0}
     monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQC",))
     monkeypatch.setattr(srv, "_lmp", _FakePlane({"ZZQC": fresh}))
     calls: list[tuple] = []

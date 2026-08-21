@@ -1,0 +1,507 @@
+{
+  "service": "NYSE_BOOK",
+  "timestamp": 1787233780000,
+  "command": "SUBS",
+  "content": [
+    {
+      "key": "SPY",
+      "BOOK_TIME": 1787233779561,
+      "BIDS": [
+        {
+          "BID_PRICE": 766.88,
+          "TOTAL_VOLUME": 760,
+          "NUM_BIDS": 5,
+          "BIDS": [
+            {
+              "EXCHANGE": "IEXG",
+              "BID_VOLUME": 280,
+              "SEQUENCE": 35379409
+            },
+            {
+              "EXCHANGE": "EDGX",
+              "BID_VOLUME": 240,
+              "SEQUENCE": 35379408
+            },
+            {
+              "EXCHANGE": "NSDQ",
+              "BID_VOLUME": 120,
+              "SEQUENCE": 35379411
+            },
+            {
+              "EXCHANGE": "ARCX",
+              "BID_VOLUME": 80,
+              "SEQUENCE": 35379408
+            },
+            {
+              "EXCHANGE": "BATX",
+              "BID_VOLUME": 40,
+              "SEQUENCE": 35379407
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 766.87,
+          "TOTAL_VOLUME": 520,
+          "NUM_BIDS": 2,
+          "BIDS": [
+            {
+              "EXCHANGE": "NYSE",
+              "BID_VOLUME": 320,
+              "SEQUENCE": 35379408
+            },
+            {
+              "EXCHANGE": "MEMX",
+              "BID_VOLUME": 200,
+              "SEQUENCE": 35379432
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 766.86,
+          "TOTAL_VOLUME": 960,
+          "NUM_BIDS": 4,
+          "BIDS": [
+            {
+              "EXCHANGE": "MIAX",
+              "BID_VOLUME": 320,
+              "SEQUENCE": 35378949
+            },
+            {
+              "EXCHANGE": "PHLX",
+              "BID_VOLUME": 280,
+              "SEQUENCE": 35379396
+            },
+            {
+              "EXCHANGE": "BATY",
+              "BID_VOLUME": 280,
+              "SEQUENCE": 35379407
+            },
+            {
+              "EXCHANGE": "EDGA",
+              "BID_VOLUME": 80,
+              "SEQUENCE": 35379096
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 766.7,
+          "TOTAL_VOLUME": 40,
+          "NUM_BIDS": 1,
+          "BIDS": [
+            {
+              "EXCHANGE": "CINN",
+              "BID_VOLUME": 40,
+              "SEQUENCE": 35379410
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 766.33,
+          "TOTAL_VOLUME": 40,
+          "NUM_BIDS": 1,
+          "BIDS": [
+            {
+              "EXCHANGE": "BOSX",
+              "BID_VOLUME": 40,
+              "SEQUENCE": 35379432
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 766.3,
+          "TOTAL_VOLUME": 1080,
+          "NUM_BIDS": 1,
+          "BIDS": [
+            {
+              "EXCHANGE": "MWSE",
+              "BID_VOLUME": 1080,
+              "SEQUENCE": 35363248
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 765.49,
+          "TOTAL_VOLUME": 160,
+          "NUM_BIDS": 1,
+          "BIDS": [
+            {
+              "EXCHANGE": "TXSE",
+              "BID_VOLUME": 160,
+              "SEQUENCE": 35373108
+            }
+          ]
+        }
+      ],
+      "ASKS": [
+        {
+          "ASK_PRICE": 766.91,
+          "TOTAL_VOLUME": 600,
+          "NUM_ASKS": 5,
+          "ASKS": [
+            {
+              "EXCHANGE": "IEXG",
+              "ASK_VOLUME": 200,
+              "SEQUENCE": 35379463
+            },
+            {
+              "EXCHANGE": "NSDQ",
+              "ASK_VOLUME": 160,
+              "SEQUENCE": 35379300
+            },
+            {
+              "EXCHANGE": "NYSE",
+              "ASK_VOLUME": 120,
+              "SEQUENCE": 35378692
+            },
+            {
+              "EXCHANGE": "EDGX",
+              "ASK_VOLUME": 80,
+              "SEQUENCE": 35379300
+            },
+            {
+              "EXCHANGE": "MEMX",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379283
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 766.92,
+          "TOTAL_VOLUME": 640,
+          "NUM_ASKS": 2,
+          "ASKS": [
+            {
+              "EXCHANGE": "ARCX",
+              "ASK_VOLUME": 560,
+              "SEQUENCE": 35379342
+            },
+            {
+              "EXCHANGE": "BATX",
+              "ASK_VOLUME": 80,
+              "SEQUENCE": 35379328
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 766.93,
+          "TOTAL_VOLUME": 280,
+          "NUM_ASKS": 1,
+          "ASKS": [
+            {
+              "EXCHANGE": "PHLX",
+              "ASK_VOLUME": 280,
+              "SEQUENCE": 35379408
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 766.95,
+          "TOTAL_VOLUME": 680,
+          "NUM_ASKS": 3,
+          "ASKS": [
+            {
+              "EXCHANGE": "MIAX",
+              "ASK_VOLUME": 320,
+              "SEQUENCE": 35379328
+            },
+            {
+              "EXCHANGE": "BATY",
+              "ASK_VOLUME": 280,
+              "SEQUENCE": 35379358
+            },
+            {
+              "EXCHANGE": "EDGA",
+              "ASK_VOLUME": 80,
+              "SEQUENCE": 35379343
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 767.1,
+          "TOTAL_VOLUME": 40,
+          "NUM_ASKS": 1,
+          "ASKS": [
+            {
+              "EXCHANGE": "CINN",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35378920
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 767.5,
+          "TOTAL_VOLUME": 80,
+          "NUM_ASKS": 1,
+          "ASKS": [
+            {
+              "EXCHANGE": "MWSE",
+              "ASK_VOLUME": 80,
+              "SEQUENCE": 35363397
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 767.58,
+          "TOTAL_VOLUME": 40,
+          "NUM_ASKS": 1,
+          "ASKS": [
+            {
+              "EXCHANGE": "BOSX",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379360
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "IWM",
+      "BOOK_TIME": 1787233779860,
+      "BIDS": [
+        {
+          "BID_PRICE": 299.77,
+          "TOTAL_VOLUME": 360,
+          "NUM_BIDS": 2,
+          "BIDS": [
+            {
+              "EXCHANGE": "NSDQ",
+              "BID_VOLUME": 280,
+              "SEQUENCE": 35379440
+            },
+            {
+              "EXCHANGE": "ARCX",
+              "BID_VOLUME": 80,
+              "SEQUENCE": 35379768
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 299.76,
+          "TOTAL_VOLUME": 1640,
+          "NUM_BIDS": 5,
+          "BIDS": [
+            {
+              "EXCHANGE": "BATX",
+              "BID_VOLUME": 520,
+              "SEQUENCE": 35379582
+            },
+            {
+              "EXCHANGE": "IEXG",
+              "BID_VOLUME": 520,
+              "SEQUENCE": 35379745
+            },
+            {
+              "EXCHANGE": "EDGX",
+              "BID_VOLUME": 400,
+              "SEQUENCE": 35379470
+            },
+            {
+              "EXCHANGE": "MEMX",
+              "BID_VOLUME": 120,
+              "SEQUENCE": 35379766
+            },
+            {
+              "EXCHANGE": "EDGA",
+              "BID_VOLUME": 80,
+              "SEQUENCE": 35379275
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 299.75,
+          "TOTAL_VOLUME": 1040,
+          "NUM_BIDS": 3,
+          "BIDS": [
+            {
+              "EXCHANGE": "MIAX",
+              "BID_VOLUME": 520,
+              "SEQUENCE": 35379837
+            },
+            {
+              "EXCHANGE": "BATY",
+              "BID_VOLUME": 480,
+              "SEQUENCE": 35379788
+            },
+            {
+              "EXCHANGE": "NYSE",
+              "BID_VOLUME": 40,
+              "SEQUENCE": 35379838
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 299.66,
+          "TOTAL_VOLUME": 40,
+          "NUM_BIDS": 1,
+          "BIDS": [
+            {
+              "EXCHANGE": "MWSE",
+              "BID_VOLUME": 40,
+              "SEQUENCE": 35379775
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 299.37,
+          "TOTAL_VOLUME": 160,
+          "NUM_BIDS": 2,
+          "BIDS": [
+            {
+              "EXCHANGE": "CINN",
+              "BID_VOLUME": 120,
+              "SEQUENCE": 35378720
+            },
+            {
+              "EXCHANGE": "AMEX",
+              "BID_VOLUME": 40,
+              "SEQUENCE": 35378725
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 299.23,
+          "TOTAL_VOLUME": 200,
+          "NUM_BIDS": 1,
+          "BIDS": [
+            {
+              "EXCHANGE": "PHLX",
+              "BID_VOLUME": 200,
+              "SEQUENCE": 35365493
+            }
+          ]
+        },
+        {
+          "BID_PRICE": 299.22,
+          "TOTAL_VOLUME": 280,
+          "NUM_BIDS": 1,
+          "BIDS": [
+            {
+              "EXCHANGE": "BOSX",
+              "BID_VOLUME": 280,
+              "SEQUENCE": 35347788
+            }
+          ]
+        }
+      ],
+      "ASKS": [
+        {
+          "ASK_PRICE": 299.78,
+          "TOTAL_VOLUME": 320,
+          "NUM_ASKS": 4,
+          "ASKS": [
+            {
+              "EXCHANGE": "NSDQ",
+              "ASK_VOLUME": 160,
+              "SEQUENCE": 35379718
+            },
+            {
+              "EXCHANGE": "ARCX",
+              "ASK_VOLUME": 80,
+              "SEQUENCE": 35379444
+            },
+            {
+              "EXCHANGE": "BOSX",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379770
+            },
+            {
+              "EXCHANGE": "MEMX",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379775
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 299.79,
+          "TOTAL_VOLUME": 880,
+          "NUM_ASKS": 6,
+          "ASKS": [
+            {
+              "EXCHANGE": "IEXG",
+              "ASK_VOLUME": 560,
+              "SEQUENCE": 35379810
+            },
+            {
+              "EXCHANGE": "EDGX",
+              "ASK_VOLUME": 80,
+              "SEQUENCE": 35379793
+            },
+            {
+              "EXCHANGE": "MIAX",
+              "ASK_VOLUME": 80,
+              "SEQUENCE": 35379793
+            },
+            {
+              "EXCHANGE": "BATX",
+              "ASK_VOLUME": 80,
+              "SEQUENCE": 35379808
+            },
+            {
+              "EXCHANGE": "G",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379797
+            },
+            {
+              "EXCHANGE": "MWSE",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379797
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 299.8,
+          "TOTAL_VOLUME": 40,
+          "NUM_ASKS": 1,
+          "ASKS": [
+            {
+              "EXCHANGE": "NYSE",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379638
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 299.81,
+          "TOTAL_VOLUME": 480,
+          "NUM_ASKS": 1,
+          "ASKS": [
+            {
+              "EXCHANGE": "BATY",
+              "ASK_VOLUME": 480,
+              "SEQUENCE": 35379797
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 299.83,
+          "TOTAL_VOLUME": 40,
+          "NUM_ASKS": 1,
+          "ASKS": [
+            {
+              "EXCHANGE": "EDGA",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379771
+            }
+          ]
+        },
+        {
+          "ASK_PRICE": 300.22,
+          "TOTAL_VOLUME": 240,
+          "NUM_ASKS": 2,
+          "ASKS": [
+            {
+              "EXCHANGE": "PHLX",
+              "ASK_VOLUME": 200,
+              "SEQUENCE": 35379497
+            },
+            {
+              "EXCHANGE": "AMEX",
+              "ASK_VOLUME": 40,
+              "SEQUENCE": 35379476
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -551,8 +551,9 @@ def _compute_absorption(data: dict) -> tuple[Optional[float], Optional[float], O
     """
     Absorption: large size at a level that doesn't move price.
     Replenishment: bid/ask depth rebuild after a fill.
-    Uses: content.*.BIDS, ASKS (BID_VOLUME, ASK_VOLUME at price levels),
-          content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
+    Uses: content.*.BIDS, ASKS with aggregated per-level TOTAL_VOLUME
+          (NOT the nested per-source BID_VOLUME/ASK_VOLUME, which this does
+          not read), plus content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
     """
     items = _iter_content(data)
     earlier = _earliest_book_snapshot(items)

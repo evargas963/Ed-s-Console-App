@@ -1,0 +1,88 @@
+{
+  "option_symbol": "SPY   260820C00767000",
+  "duration_sec": 90,
+  "service_counts": {
+    "LEVELONE_OPTIONS": 91,
+    "OPTIONS_BOOK": 90
+  },
+  "subscriptions": {
+    "LEVELONE_OPTIONS": {
+      "subs_ok": true,
+      "error": null,
+      "response_code": 0
+    },
+    "OPTIONS_BOOK": {
+      "subs_ok": true,
+      "error": null,
+      "response_code": 0
+    }
+  },
+  "native_fields_observed": {
+    "LEVELONE_OPTIONS": [
+      "ASK_PRICE",
+      "ASK_SIZE",
+      "BID_PRICE",
+      "BID_SIZE",
+      "CLOSE_PRICE",
+      "CONTRACT_TYPE",
+      "DAYS_TO_EXPIRATION",
+      "DELIVERABLES",
+      "DELTA",
+      "DESCRIPTION",
+      "DIGITS",
+      "EXCHANGE_ID",
+      "EXCHANGE_NAME",
+      "EXERCISE_TYPE",
+      "EXPIRATION_DAY",
+      "EXPIRATION_MONTH",
+      "EXPIRATION_YEAR",
+      "GAMMA",
+      "HIGH_PRICE",
+      "HIGH_PRICE_52_WEEK",
+      "IMPLIED_YIELD",
+      "INDICATIVE_ASKING_PRICE",
+      "INDICATIVE_BID_PRICE",
+      "INDICATIVE_QUOTE_TIME",
+      "IS_PENNY",
+      "LAST_PRICE",
+      "LAST_SIZE",
+      "LAST_TRADING_DAY",
+      "LOW_PRICE",
+      "LOW_PRICE_52_WEEK",
+      "MARK",
+      "MARK_CHANGE",
+      "MARK_CHANGE_PERCENT",
+      "MONEY_INTRINSIC_VALUE",
+      "MULTIPLIER",
+      "NET_CHANGE",
+      "NET_PERCENT_CHANGE",
+      "OPEN_INTEREST",
+      "OPEN_PRICE",
+      "OPTION_ROOT",
+      "QUOTE_TIME_MILLIS",
+      "RHO",
+      "SECURITY_STATUS",
+      "SETTLEMENT_TYPE",
+      "STRIKE_TYPE",
+      "THEORETICAL_OPTION_VALUE",
+      "THETA",
+      "TIME_VALUE",
+      "TOTAL_VOLUME",
+      "TRADE_TIME_MILLIS",
+      "UNDERLYING",
+      "UNDERLYING_PRICE",
+      "UV_EXPIRATION_TYPE",
+      "VEGA",
+      "VOLATILITY",
+      "assetMainType",
+      "delayed",
+      "key"
+    ],
+    "OPTIONS_BOOK": [
+      "ASKS",
+      "BIDS",
+      "BOOK_TIME",
+      "key"
+    ]
+  }
+}

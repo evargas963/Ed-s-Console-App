@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "stamp": "20260820T130550Z",
+  "symbols": [
+    "SPY",
+    "QQQ",
+    "IWM"
+  ],
+  "duration_sec": 90,
+  "service_counts": {
+    "NYSE_BOOK": 91,
+    "LEVELONE_EQUITIES": 90,
+    "NASDAQ_BOOK": 90
+  },
+  "n_raw_frames": 271,
+  "n_decoded_book_content_items": 430,
+  "out_dir": "reports/of_capability_probe/20260820T130550Z",
+  "single_streamer_note": "Do not run alongside server order_flow_streaming or tools/run_stream_capture.py (single-streamer-owner)."
+}

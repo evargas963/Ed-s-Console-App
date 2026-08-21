@@ -271,6 +271,67 @@ def operator_go_granted(scope: str | None = None) -> bool:
     return scope.lower() in norm or "all" in norm
 
 
+_WORKTREE_POLICY_PATH = REPO / "tools" / "agent_worktree_policy.json"
+
+
+def _worktree_policy() -> dict:
+    try:
+        return json.loads(_WORKTREE_POLICY_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def claude_isolated_edit_violation(
+    target_path: str,
+    repo: Path | None = None,
+    env: dict | None = None,
+    policy: dict | None = None,
+) -> str | None:
+    """Isolated-worktree boundary (operator 2026-08-20): in `mode: isolated`, a claude-role
+    edit whose TARGET is inside the PRODUCTION (primary) checkout is BLOCKED. Claude mutates
+    application source only in its own `<primary>-Claude` worktree; the primary is
+    production-only. Returns a block message, or None when allowed.
+
+    Shared-root mode (RC-129 legacy) returns None — the boundary is not enforced there.
+    The guard runs from whichever checkout invoked the hook (REPO); when that checkout IS a
+    -Claude worktree, edits under it are allowed (Claude editing its own tree). When the
+    hook runs from the primary, a target under the primary root blocks; a target under the
+    sibling -Claude worktree (not relative to the primary) is allowed.
+    """
+    env = env if env is not None else os.environ
+    policy = policy if policy is not None else _worktree_policy()
+    if str(policy.get("mode") or "isolated").strip().lower() != "isolated":
+        return None
+    role_var = str(policy.get("env_role_var") or "ED_AGENT_ROLE")
+    role = str(env.get(role_var) or "").strip().lower()
+    if role != "claude":
+        return None
+    suffix = str(policy.get("claude_root_suffix") or "-Claude")
+    root = (repo or REPO).resolve()
+    # The hook running FROM a -Claude worktree: edits under it are Claude's own tree → allow.
+    if root.name.endswith(suffix):
+        return None
+    if not target_path:
+        return None
+    try:
+        tgt = Path(target_path)
+        tgt = tgt if tgt.is_absolute() else (root / tgt)
+        tgt = tgt.resolve()
+    except (OSError, ValueError):
+        return None
+    # Under the PRODUCTION checkout (path-component containment, not string prefix, so the
+    # sibling `<primary>-Claude` is correctly excluded) → BLOCK.
+    if tgt == root or tgt.is_relative_to(root):
+        return (
+            f"ACTION BLOCKED (isolated worktree, operator 2026-08-20): ED_AGENT_ROLE=claude "
+            f"may not mutate '{tgt}' inside the PRODUCTION checkout '{root}'. The primary is "
+            f"production-only; edit application source only in the '{root.name}{suffix}' "
+            f"worktree. (RC-125 probe-live runs against the Claude proof server; RC-350 keeps "
+            f"the primary on clean main.)"
+        )
+    return None
+
+
 def enforcement_paths(repo: Path | None = None) -> list[str]:
     root = repo or REPO
     paths = list(ENFORCEMENT_PATHS)
@@ -490,18 +551,32 @@ def _listening_pid(port: int = 8000) -> int | None:
 
 
 def _process_start_epoch(pid: int) -> float | None:
+    # RC-438: read start-time in-process via psutil (robust, cross-platform, epoch
+    # seconds) BEFORE any interpreter shell-out. The prior win32 path cold-started
+    # powershell, importing every powershell/CLR/AMSI failure mode into a check that
+    # measures process identity — a host powershell hang made a provably-clean runtime
+    # unmeasurable. Check LOGIC (fail if start < db_mtime) is unchanged.
+    try:
+        import psutil  # already a venv dependency
+        return float(psutil.Process(pid).create_time())
+    except Exception:  # institutional-swallow-ok: psutil missing/unreadable -> fall through to the win32/proc readers below (RC-438)
+        pass
     if sys.platform == "win32":
-        r = subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).StartTime.ToUniversalTime().Subtract([datetime]'1970-01-01').TotalSeconds",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
+        # Fallback only if psutil is unavailable (see RC-438).
+        try:
+            r = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).StartTime.ToUniversalTime().Subtract([datetime]'1970-01-01').TotalSeconds",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        except (subprocess.SubprocessError, OSError):
+            return None
         if r.returncode != 0 or not r.stdout.strip():
             return None
         try:
@@ -518,15 +593,43 @@ def _process_start_epoch(pid: int) -> float | None:
         return None
 
 
+def _db_content_change_epoch(root: Path, db_path: Path) -> float | None:
+    """When db.py's CONTENT last changed. For a db.py that is CLEAN vs HEAD, this is its git
+    COMMIT time — NOT the filesystem mtime, which a fresh `git worktree add`/checkout stamps to
+    "now" even though the content did not change (that artifact created a FALSE DISK_ONLY when
+    auditing an isolated worktree: the checkout mtime was newer than a legitimately-current
+    console). For a db.py that is locally MODIFIED, the fs mtime is correct — a real local edit
+    is newer than any commit. This keeps real DISK_ONLY detection intact (a console predating
+    db.py's true change still flags) while removing the checkout artifact."""
+    try:
+        fs_mtime = db_path.stat().st_mtime
+    except OSError:
+        return None
+    try:
+        dirty = subprocess.run(
+            ["git", "diff", "--quiet", "HEAD", "--", DB_REL],
+            cwd=str(root), timeout=15,
+        ).returncode != 0
+        if not dirty:
+            r = subprocess.run(
+                ["git", "log", "-1", "--format=%ct", "HEAD", "--", DB_REL],
+                cwd=str(root), capture_output=True, text=True, timeout=15,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                return float(r.stdout.strip())
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return fs_mtime
+
+
 def live_collect_disk_only(repo: Path | None = None, port: int = 8000) -> str | None:
-    """Return violation message when disk has gate but live process predates db.py mtime."""
+    """Return violation message when disk has gate but live process predates db.py's change."""
     root = repo or REPO
     if not db_has_collect_window_gate(root):
         return None
     db_path = root / DB_REL
-    try:
-        db_mtime = db_path.stat().st_mtime
-    except OSError:
+    db_mtime = _db_content_change_epoch(root, db_path)
+    if db_mtime is None:
         return None
     pid = _listening_pid(port)
     if pid is None:

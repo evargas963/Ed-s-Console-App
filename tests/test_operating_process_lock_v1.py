@@ -385,3 +385,34 @@ def test_rc241_no_claim_leaves_an_open_go_alone(tmp_path):
 def test_rc241_live_path_wired_into_the_commit_branch():
     src = (Path(PLG.__file__)).read_text(encoding="utf-8")
     assert "go_closeout_violations" in src
+
+
+def test_rc438_process_start_epoch_reads_via_psutil_not_powershell():
+    """RC-438: _process_start_epoch reads a process start-time in-process via psutil,
+    so a host powershell/CLR cold-start hang cannot make a running process's start-time
+    unmeasurable and fail the runtime-identity audit on an environmental fault.
+    Locks: (a) the current process's start-time is readable and matches psutil, and
+    (b) the powershell shell-out is NOT reached when psutil is available."""
+    import os
+    import psutil
+
+    pid = os.getpid()
+    expected = psutil.Process(pid).create_time()
+
+    got = OPL._process_start_epoch(pid)
+    assert got is not None, "current process start-time must be readable"
+    assert abs(got - expected) < 2.0, f"{got} must match psutil create_time {expected}"
+
+    # Mutation control: if psutil is the primary reader, exploding the powershell
+    # shell-out must not affect the result.
+    orig = OPL.subprocess.run
+
+    def _boom(*a, **k):
+        raise AssertionError("powershell shell-out reached despite psutil availability")
+
+    OPL.subprocess.run = _boom
+    try:
+        got2 = OPL._process_start_epoch(pid)
+        assert got2 is not None and abs(got2 - expected) < 2.0
+    finally:
+        OPL.subprocess.run = orig

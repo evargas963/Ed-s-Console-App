@@ -2435,6 +2435,31 @@ def check_vendor_field_coercion() -> list[Violation]:
     return [Violation(REPO / rel, line, msg) for rel, line, msg in violations()]
 
 
+def check_schwab_market_field_semantics() -> list[Violation]:
+    """Truthful semantics for NUM_* and exchange_quote_ts (RC-440; M4/M5).
+
+    M4: NUM_BIDS/NUM_ASKS are documented "Market Maker Count" (Schwab Streamer Guide, RC-443);
+    empirically the count of nested per-participant rows (market-maker MPIDs + exchange MICs).
+    They are NEVER an order count; asserting the count meaning must cite the vendor source —
+    BLOCKED unless a marker cites authoritative evidence.
+    M5: exchange_quote_ts must carry the Schwab exchange quote clock (QUOTE_TIME_MILLIS/sec,
+    TRADE_TIME_MILLIS proxy), never a server wall clock (the wall clock is server_received_ts).
+    The rename from the legacy 'fast_server_ts' made the name truthful; pinning the VALUE
+    keeps it truthful — the field can never silently become a server timestamp. See the
+    semantic normalization ledger.
+
+    HOW THE RULE WAS VALIDATED: prototyped against the tree (returns [] clean) and locked by
+    a negative-control test (tests/test_schwab_market_field_semantics_lock_v1.py) that injects
+    each defect — NUM_* labeled an order/MM count, exchange_quote_ts assigned a wall clock —
+    and asserts the block fires, plus that the reasoned markers suppress.
+    """
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.check_schwab_market_field_semantics import violations
+
+    return [Violation(REPO / rel, line, msg) for rel, line, msg in violations()]
+
+
 def _git_output_lines(args: list[str]) -> list[str] | None:
     """git stdout lines, or None when not in a usable git/commit context (never a false block)."""
     import subprocess
@@ -4800,6 +4825,7 @@ CHECKS = [
     ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects
     ("ui_data_integration", check_ui_data_integration, True),  # no dead "—" placeholders (Tier 1)
     ("vendor_field_coercion", check_vendor_field_coercion, True),  # one faucet per Schwab leaf (RC-FAUCET)
+    ("schwab_market_field_semantics", check_schwab_market_field_semantics, True),  # RC-440 M4/M5: NUM_* not order-count; exchange_quote_ts not a wall clock
     # REMOVED 2026-07-25 (operator: "i don't want you on separate instances"): the
     # agent_worktree_boundary check required ED_AGENT_ROLE to be set and blocked all
     # commits from a single-instance workflow (fail-closed on unset role). Single

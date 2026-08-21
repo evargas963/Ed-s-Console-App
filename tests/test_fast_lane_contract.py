@@ -24,7 +24,7 @@ def test_fast_quote_endpoint_returns_fast_fields(monkeypatch):
             "ask_disp": "100.10",
             "spread": 0.002,
             "fast_generation_id": 1,
-            "fast_server_ts": 1_700_000_000.0,
+            "exchange_quote_ts": 1_700_000_000.0,
         }
 
     monkeypatch.setattr(srv, "_fetch_fast_quote_payload", fake_payload)
@@ -35,7 +35,7 @@ def test_fast_quote_endpoint_returns_fast_fields(monkeypatch):
         assert r.status_code == 200
         b = r.json()
         assert b["ticker"] == "SPY"
-        assert "fast_generation_id" in b and "fast_server_ts" in b
+        assert "fast_generation_id" in b and "exchange_quote_ts" in b
         assert b["spot_disp"] == "100.00"
         assert "fusion_available" not in b and "call_signal" not in b
         assert "session_label" not in b

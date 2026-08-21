@@ -1,0 +1,63 @@
+{
+  "service": "LEVELONE_EQUITIES",
+  "timestamp": 1787233775985,
+  "command": "SUBS",
+  "content": [
+    {
+      "key": "QQQ",
+      "BID_PRICE": 712.59,
+      "ASK_PRICE": 712.61,
+      "LAST_PRICE": 712.6,
+      "BID_SIZE": 40,
+      "ASK_SIZE": 200,
+      "ASK_ID": "V",
+      "BID_ID": "K",
+      "TOTAL_VOLUME": 4649233,
+      "LAST_SIZE": 100,
+      "NET_CHANGE": -3.48,
+      "REGULAR_MARKET_LAST_PRICE": 712.6,
+      "REGULAR_MARKET_LAST_SIZE": 100,
+      "REGULAR_MARKET_NET_CHANGE": -3.48,
+      "MARK": 712.6,
+      "QUOTE_TIME_MILLIS": 1787233775809,
+      "TRADE_TIME_MILLIS": 1787233775571,
+      "REGULAR_MARKET_TRADE_MILLIS": 1787233775571,
+      "BID_TIME_MILLIS": 1787233775808,
+      "ASK_TIME_MILLIS": 1787233775809,
+      "ASK_MIC_ID": "IEGX",
+      "BID_MIC_ID": "EDGX",
+      "NET_CHANGE_PERCENT": -0.485979,
+      "REGULAR_MARKET_CHANGE_PERCENT": -0.485979,
+      "MARK_CHANGE": -3.48,
+      "MARK_CHANGE_PERCENT": -0.485979
+    },
+    {
+      "key": "SPY",
+      "BID_SIZE": 160,
+      "ASK_SIZE": 1320,
+      "ASK_ID": "K",
+      "TOTAL_VOLUME": 3765405,
+      "LAST_SIZE": 120,
+      "LAST_ID": "Z",
+      "REGULAR_MARKET_LAST_SIZE": 120,
+      "QUOTE_TIME_MILLIS": 1787233775812,
+      "TRADE_TIME_MILLIS": 1787233775071,
+      "REGULAR_MARKET_TRADE_MILLIS": 1787233775071,
+      "BID_TIME_MILLIS": 1787233775812,
+      "ASK_TIME_MILLIS": 1787233775811,
+      "ASK_MIC_ID": "EDGX",
+      "LAST_MIC_ID": "BATS"
+    },
+    {
+      "key": "IWM",
+      "BID_PRICE": 299.81,
+      "BID_SIZE": 520,
+      "ASK_SIZE": 80,
+      "ASK_ID": "J",
+      "QUOTE_TIME_MILLIS": 1787233775885,
+      "BID_TIME_MILLIS": 1787233775885,
+      "ASK_TIME_MILLIS": 1787233775857,
+      "ASK_MIC_ID": "EDGA"
+    }
+  ]
+}

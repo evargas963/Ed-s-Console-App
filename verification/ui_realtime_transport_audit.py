@@ -86,7 +86,7 @@ TIER_C_REQUIRED_METADATA = (
     "decision_generation_id",
     "_update_source",
 )
-FAST_QUOTE_REQUIRED_METADATA = ("ticker", "fast_server_ts", "fast_generation_id")
+FAST_QUOTE_REQUIRED_METADATA = ("ticker", "exchange_quote_ts", "fast_generation_id")
 
 
 @dataclass
@@ -132,7 +132,7 @@ def valid_server_build_ts(payload: dict[str, Any]) -> Optional[float]:
 
 
 def valid_quote_lane_ts(payload: dict[str, Any]) -> Optional[float]:
-    for key in ("fast_server_ts", "_live_plane_fast_ts"):
+    for key in ("exchange_quote_ts", "_live_plane_fast_ts"):
         try:
             ts = float(payload.get(key))
         except (TypeError, ValueError):
@@ -449,7 +449,7 @@ def audit_payload_metadata(payload: dict[str, Any], *, tier: str = "C") -> dict[
         "missing_fields": missing,
         "complete": len(missing) == 0,
         "ticker": payload.get("ticker"),
-        "timestamp": payload.get("_server_build_ts") or payload.get("fast_server_ts"),
+        "timestamp": payload.get("_server_build_ts") or payload.get("exchange_quote_ts"),
         "generation_id": payload.get("decision_generation_id")
         or payload.get("fast_generation_id"),
         "source": payload.get("_update_source"),

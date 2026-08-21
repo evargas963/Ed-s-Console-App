@@ -62,6 +62,13 @@ CATEGORY_PATTERNS = [
     (r"\.(bids|asks|book|depth|level)\b", "streaming_book"),
     (r"\.(candles|open|high|low|close|OHLC)\b", "chart_bar"),
     (r"content\.\d+\.(BID_|ASK_|LAST_|TOTAL_|QUOTE_|TRADE_)", "streaming_quote"),
+    # M3 (RC-439): BOOK_TIME and the top-level book SEQUENCE are BOOK-stream fields
+    # (NASDAQ_BOOK/NYSE_BOOK/OPTIONS_BOOK), proven absent from LEVELONE. They carry no
+    # BID_/ASK_/QUOTE_ token, so without this rule they fall through to the `^streaming.`
+    # fallback and are mislabeled `streaming_quote`. Classify them as `streaming_book`
+    # BEFORE the fallback. (Nested per-exchange SEQUENCE already matches `.asks/.bids`.)
+    (r"\.BOOK_TIME\b", "streaming_book"),
+    (r"\.SEQUENCE\b", "streaming_book"),
     (r"^streaming\.", "streaming_quote"),  # fallback for streaming
     (r"callExpDateMap\.|putExpDateMap\.", "options_chain"),
     (r"candles\.\d+\.", "chart_bar"),

@@ -1,0 +1,50 @@
+{
+  "service": "LEVELONE_EQUITIES",
+  "timestamp": 1787231158530,
+  "command": "SUBS",
+  "content": [
+    {
+      "key": "QQQ",
+      "BID_PRICE": 712.47,
+      "ASK_PRICE": 712.54,
+      "LAST_PRICE": 712.48,
+      "BID_SIZE": 1000,
+      "ASK_SIZE": 920,
+      "TOTAL_VOLUME": 1952264,
+      "LAST_SIZE": 1,
+      "NET_CHANGE": -3.6,
+      "MARK": 712.54,
+      "QUOTE_TIME_MILLIS": 1787231158275,
+      "TRADE_TIME_MILLIS": 1787231158165,
+      "BID_TIME_MILLIS": 1787231158275,
+      "ASK_TIME_MILLIS": 1787231158275,
+      "NET_CHANGE_PERCENT": -0.502737,
+      "MARK_CHANGE": -3.54,
+      "MARK_CHANGE_PERCENT": -0.494358,
+      "POST_MARKET_NET_CHANGE": -3.6,
+      "POST_MARKET_NET_CHANGE_PERCENT": -0.502737
+    },
+    {
+      "key": "SPY",
+      "ASK_PRICE": 766.17,
+      "BID_SIZE": 40,
+      "ASK_SIZE": 520,
+      "BID_ID": "N",
+      "MARK": 766.17,
+      "QUOTE_TIME_MILLIS": 1787231157701,
+      "BID_TIME_MILLIS": 1787231157701,
+      "ASK_TIME_MILLIS": 1787231157701,
+      "BID_MIC_ID": "XNYS",
+      "MARK_CHANGE": -2.89,
+      "MARK_CHANGE_PERCENT": -0.375783
+    },
+    {
+      "key": "IWM",
+      "BID_SIZE": 160,
+      "BID_ID": "T",
+      "QUOTE_TIME_MILLIS": 1787231157701,
+      "BID_TIME_MILLIS": 1787231157701,
+      "BID_MIC_ID": "XNAS"
+    }
+  ]
+}
