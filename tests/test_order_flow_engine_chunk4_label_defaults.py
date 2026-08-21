@@ -51,7 +51,16 @@ def test_compute_order_flow_verdict_score_only_nonzero_in_band_has_verdict():
 
 def test_compute_e2e_exact_zero_score_withholds_direction_and_verdict():
     with (
-        patch("order_flow_engine._compute_book_imbalance", return_value=0.0),
+        patch(
+            "order_flow_engine.compute_book_microstructure",
+            return_value={
+                "depth": {
+                    "1": {"imbalance": 0.0},
+                    "3": {"imbalance": 0.0},
+                    "5": {"imbalance": 0.0},
+                }
+            },
+        ),
         patch("order_flow_engine._compute_tape_pressure", return_value=0.0),
         patch("order_flow_engine._compute_cum_delta_proxy", return_value=None),
         patch("order_flow_engine._compute_absorption", return_value=(None, None, None)),

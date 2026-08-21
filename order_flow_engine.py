@@ -222,25 +222,44 @@ def _latest_book_snapshot(items: list) -> Optional[dict]:
     return None
 
 
+def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> Optional[float]:
+    """Σ TOTAL_VOLUME over the best `depth` levels (best-first). None when the side has no
+    levels. THE single depth-aggregation — `_compute_book_imbalance` and the microstructure
+    depth ladder both call this, so the imbalance and the published side totals are the SAME
+    computation, not two formulas that happen to agree."""
+    if not levels:
+        return None
+    return sum(v for _, v in levels[:depth])
+
+
+def _book_imbalance_from_totals(bid_total: Optional[float], ask_total: Optional[float]) -> Optional[float]:
+    """THE single book-imbalance formula: (bid - ask) / (bid + ask). None if a side total is
+    absent or the combined depth is non-positive. Shared by the engine score path and the
+    microstructure payload so there is exactly one imbalance producer."""
+    if bid_total is None or ask_total is None:
+        return None
+    total = bid_total + ask_total
+    if total <= 0:
+        return None
+    return (bid_total - ask_total) / total
+
+
 def _compute_book_imbalance(data: dict, depth: int) -> Optional[float]:
     """
     Book imbalance at given depth: (bid_vol - ask_vol) / (bid_vol + ask_vol).
-    Uses: content.*.BIDS/ASKS with BID_PRICE, TOTAL_VOLUME, ASK_PRICE.
+    ONE CANONICAL PATH: reads the SAME `_extract_canonical_book` (sorted + validated levels)
+    and the SAME `_book_side_depth_total` + `_book_imbalance_from_totals` helpers the
+    microstructure depth ladder uses — it does not walk or sum the raw book on its own. The
+    engine's compute() no longer calls this; it reads book_imbalance from the single
+    compute_book_microstructure result. Kept for standalone/tests, consistent by construction.
     """
-    items = _iter_content(data)
-    item = _latest_book_snapshot(items)
-    if not item:
+    cb = _extract_canonical_book(data)
+    if not cb["has_book"]:
         return None
-    bids = _iter_bids_levels(item)[:depth]
-    asks = _iter_asks_levels(item)[:depth]
-    if not bids or not asks:
-        return None
-    bid_vol = sum(v for _, v in bids)
-    ask_vol = sum(v for _, v in asks)
-    total = bid_vol + ask_vol
-    if total <= 0:
-        return None
-    return (bid_vol - ask_vol) / total
+    return _book_imbalance_from_totals(
+        _book_side_depth_total(cb["bid_levels"], depth),
+        _book_side_depth_total(cb["ask_levels"], depth),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -388,6 +407,298 @@ def _compute_spread(data: dict) -> dict[str, Any]:
         "spread_bid_leaf": bid_leaf,
         "spread_ask_leaf": ask_leaf,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CANONICAL BOOK MICROSTRUCTURE  (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1)
+# ─────────────────────────────────────────────────────────────────────────────
+# ONE canonical book path. `_extract_canonical_book` walks + validates + SORTS the live
+# book EXACTLY ONCE into a normalized state; every metric — and the engine's
+# book_imbalance_1/3/5 and the institutional-flow consumer — is derived from that single
+# result. Nothing re-walks or re-sums the raw book. `compute_book_microstructure` memoizes the
+# structural state per (ticker, BOOK_TIME), so `/api/order-flow/microstructure` and the engine
+# SERIALIZE the same computed state rather than recomputing it independently.
+# Every field is classified NATIVE (a Schwab wire field), DERIVED (a deterministic function of
+# NATIVE fields), or PROXY (temporal inference). STATIC book state only — no aggressor/CVD/
+# absorption/iceberg (see `deferred`). No opaque composite score.
+
+#: HEURISTIC only: a displayed level is a WALL CANDIDATE when its size is at least this multiple
+#: of the MEDIAN level size across the ladder. A relative size-outlier convention (tunable, and
+#: blind to hidden/reserve size) — NOT an objectively-known liquidity wall. Surfaced with each
+#: candidate's `median_mult` and a self-describing `wall_method` block so the API never asserts
+#: a proven wall. magic-threshold-ok: relative (× median), carries its method in the payload.
+OF_BOOK_WALL_MEDIAN_MULT: float = 3.0
+
+#: Depth ladder for the canonical depth totals/imbalance — the existing 1/3/5 ladder.
+OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (OF_BOOK_DEPTH_TOP, OF_BOOK_DEPTH_SHALLOW, OF_BOOK_DEPTH_DEEP)
+
+#: Per-ticker carry cache: ticker -> (canonical_book_identity, structural_payload). Lets the route
+#: serialize the engine's already-computed state for an UNCHANGED book instead of re-walking raw
+#: data. Validity keys on the canonical book's CONTENT identity (see `_canonical_book_identity`),
+#: NOT on BOOK_TIME alone — BOOK_TIME is not assumed unique, so a changed ladder under a repeated
+#: BOOK_TIME must yield a different identity and force recompute.
+_MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
+
+
+def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool) -> list[tuple[float, float]]:
+    """Normalize a raw book side ONCE: drop invalid levels (non-positive price, negative or
+    non-finite displayed size — the raw reader already drops non-finite via _safe_float), then
+    SORT so `[:N]` is the true Top-N regardless of the vendor's array order: bids DESCENDING,
+    asks ASCENDING."""
+    valid = [(p, v) for (p, v) in levels if p is not None and v is not None and p > 0 and v >= 0]
+    valid.sort(key=lambda pv: pv[0], reverse=descending)
+    return valid
+
+
+def _extract_canonical_book(data: dict) -> dict:
+    """THE single extraction/normalization of the live book. Walks the content ONCE, validates
+    and sorts both sides, and resolves the L1 top-of-book. Every downstream metric reads this
+    result; nothing else re-walks the raw book."""
+    items = _iter_content(data)
+    snapshot = _latest_book_snapshot(items)
+    quote_snap = _latest_quote_snapshot(items)
+
+    bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
+    bid_size = _safe_int(quote_snap.get("BID_SIZE")) if quote_snap else None
+    ask_size = _safe_int(quote_snap.get("ASK_SIZE")) if quote_snap else None
+    if bid_size is not None and bid_size < 0:   # reject invalid displayed size
+        bid_size = None
+    if ask_size is not None and ask_size < 0:
+        ask_size = None
+
+    bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
+    ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
+    mark, mark_leaf = _resolve_quote_mark(data)
+    return {
+        "has_book": snapshot is not None,
+        "bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size,
+        "bid_leaf": bid_leaf, "ask_leaf": ask_leaf,
+        "bid_levels": bid_levels, "ask_levels": ask_levels,
+        "book_time_ms": _safe_float(snapshot.get("BOOK_TIME")) if snapshot else None,
+        "mark": mark, "mark_leaf": mark_leaf,
+    }
+
+
+def _canonical_book_identity(cb: dict) -> tuple:
+    """Hashable CONTENT identity of the canonical book — every field the structural state is
+    derived from. The carry cache validates on THIS, never on BOOK_TIME alone: if the same ticker
+    receives a changed ladder (or changed top-of-book / mark) under a repeated BOOK_TIME, the
+    identity differs and `compute_book_microstructure` recomputes instead of serving stale state.
+    BOOK_TIME is included, but only as one component — its uniqueness is not assumed."""
+    return (
+        cb["book_time_ms"],
+        cb["bid"], cb["ask"], cb["bid_size"], cb["ask_size"], cb["mark"],
+        tuple(cb["bid_levels"]), tuple(cb["ask_levels"]),
+    )
+
+
+def _microprice(bid: Optional[float], ask: Optional[float],
+                bid_size: Optional[float], ask_size: Optional[float]) -> Optional[float]:
+    """Size-weighted top-of-book fair price:
+        microprice = (bid·ask_size + ask·bid_size) / (bid_size + ask_size)
+    Each price is weighted by the OPPOSITE side's size, so heavier bid size pulls the fair
+    price toward the ask (imminent buy pressure). DERIVED. Fail-closed → None on any missing
+    leg, a non-positive price, a negative size, zero total size, or a CROSSED book (bid > ask),
+    where a size-weighted average between the quotes is meaningless."""
+    if bid is None or ask is None or bid_size is None or ask_size is None:
+        return None
+    if bid <= 0 or ask <= 0 or bid_size < 0 or ask_size < 0:
+        return None
+    if bid > ask:                      # crossed / inverted book → invalid microstructure input
+        return None
+    denom = bid_size + ask_size
+    if denom <= 0:
+        return None
+    return (bid * ask_size + ask * bid_size) / denom
+
+
+def _book_pressure_curve(levels: list[tuple[float, float]], max_levels: int) -> list[dict]:
+    """Cumulative displayed depth per level (best-first): the depth-pressure curve."""
+    out: list[dict] = []
+    cum = 0.0
+    for price, vol in levels[:max_levels]:
+        cum += vol
+        out.append({"price": price, "volume": vol, "cum": cum})
+    return out
+
+
+def _book_slope(levels: list[tuple[float, float]], depth: int, total: Optional[float]) -> Optional[float]:
+    """Displayed depth density across the best `depth` levels:
+        book_slope = (canonical top-`depth` TOTAL_VOLUME) / |best_price − last_level_price|
+    Units: shares per $1 of book depth = dVolume/dPrice (depth per unit price), NOT a
+    price-impact slope. Higher = liquidity packed near the touch. Reuses the CANONICAL depth
+    total (passed in) rather than re-summing. None if a side has <2 levels (no span), the
+    top-`depth` levels share one price (zero span), or the total is absent."""
+    lv = levels[:depth]
+    if len(lv) < 2 or total is None:
+        return None
+    span = abs(lv[0][0] - lv[-1][0])
+    if span <= 0:
+        return None
+    return total / span
+
+
+def _book_concentration(levels: list[tuple[float, float]], total: Optional[float]) -> Optional[float]:
+    """Fraction of the canonical top-`depth` displayed volume resting at the touch (best level):
+        liquidity_concentration = best_level_volume / (canonical top-`depth` TOTAL_VOLUME)
+    Range [0, 1]. 1.0 = all near-book size at the inside (fragile); low = distributed down the
+    ladder (resilient). Reuses the CANONICAL depth total (passed in), not a private re-sum. A
+    single-level side returns 1.0. None if the side is empty or the total is non-positive."""
+    if not levels or total is None or total <= 0:
+        return None
+    return levels[0][1] / total
+
+
+def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: int) -> list[dict]:
+    """HEURISTIC displayed-size anomalies — candidates, NOT objectively-known liquidity walls.
+    A level is a candidate when its size ≥ OF_BOOK_WALL_MEDIAN_MULT × the MEDIAN level size
+    across the best `depth` levels: a relative size outlier in the DISPLAYED order book only
+    (it cannot see hidden/reserve size, and the multiple is a tunable convention, not a proven
+    boundary). Each entry carries `median_mult` (its size ÷ the median) so a consumer sees HOW
+    anomalous rather than a binary truth. Empty when there is no positive median or nothing
+    clears the multiple."""
+    lv = levels[:depth]
+    vols = sorted(v for _, v in lv)
+    if not vols:
+        return []
+    n = len(vols)
+    median = vols[n // 2] if n % 2 else (vols[n // 2 - 1] + vols[n // 2]) / 2.0
+    if median <= 0:
+        return []
+    out: list[dict] = []
+    for price, vol in lv:
+        if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
+            out.append({"side": side, "price": price, "volume": vol,
+                        "median_mult": round(vol / median, 2)})
+    return out
+
+
+def _microstructure_structural(cb: dict) -> dict:
+    """Everything derivable from a single canonical book snapshot — no wall-clock `now`. Age
+    fields and the per-serialization timestamps are stamped by `compute_book_microstructure`,
+    so this structural state is safe to carry/memoize per (ticker, BOOK_TIME)."""
+    bid, ask = cb["bid"], cb["ask"]
+    bid_size, ask_size = cb["bid_size"], cb["ask_size"]
+    bid_levels, ask_levels = cb["bid_levels"], cb["ask_levels"]
+    have_quotes = bid is not None and ask is not None
+    crossed = have_quotes and bid > ask
+
+    # Crossed book WITHHOLDS both mid and microprice (a mid between inverted quotes is meaningless).
+    mid = (bid + ask) / 2.0 if (have_quotes and not crossed) else None
+    microprice = _microprice(bid, ask, bid_size, ask_size)  # also self-rejects crossed
+    spread_pts = round(ask - bid, 4) if have_quotes else None
+    mark = cb["mark"]
+    spread_frac = round(spread_pts / mark, 6) if (spread_pts is not None and mark and mark > 0) else None
+
+    # Depth ladder — totals aggregated ONCE per (side, depth); imbalance, slope and concentration
+    # all reuse these SAME canonical totals. One aggregation authority (`_book_side_depth_total`).
+    depth: dict[str, dict] = {}
+    totals: dict[int, tuple[Optional[float], Optional[float]]] = {}
+    for n in OF_MICRO_DEPTH_LADDER:
+        bt = _book_side_depth_total(bid_levels, n)
+        at = _book_side_depth_total(ask_levels, n)
+        totals[n] = (bt, at)
+        depth[str(n)] = {"bid_total": bt, "ask_total": at, "imbalance": _book_imbalance_from_totals(bt, at)}
+    deep_bt, deep_at = totals[OF_BOOK_DEPTH_DEEP]
+
+    return {
+        "status": "ok" if cb["has_book"] else "no_book",
+        "top_of_book": {"bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size},
+        "crossed": crossed,
+        "mid": mid,
+        "microprice": microprice,
+        "spread_pts": spread_pts,
+        "spread_frac": spread_frac,
+        "depth": depth,
+        "depth_pressure": {
+            "bid": _book_pressure_curve(bid_levels, OF_BOOK_DEPTH_DEEP),
+            "ask": _book_pressure_curve(ask_levels, OF_BOOK_DEPTH_DEEP),
+        },
+        "book_slope": {"bid": _book_slope(bid_levels, OF_BOOK_DEPTH_DEEP, deep_bt),
+                       "ask": _book_slope(ask_levels, OF_BOOK_DEPTH_DEEP, deep_at)},
+        "liquidity_concentration": {"bid": _book_concentration(bid_levels, deep_bt),
+                                    "ask": _book_concentration(ask_levels, deep_at)},
+        "wall_candidates": (_book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)
+                            + _book_wall_candidates(ask_levels, "ask", OF_BOOK_DEPTH_DEEP)),
+        "wall_method": {
+            "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",
+            "mult": OF_BOOK_WALL_MEDIAN_MULT,
+            "depth": OF_BOOK_DEPTH_DEEP,
+            "heuristic": True,
+            "note": "size-outlier candidates in the DISPLAYED book only; blind to hidden/reserve "
+                    "size; NOT an objectively-known liquidity wall",
+        },
+        "provenance_structural": {
+            "book_time_ms": cb["book_time_ms"],
+            "n_bid_levels": len(bid_levels),
+            "n_ask_levels": len(ask_levels),
+            "book_source": "schwab_streaming_book" if cb["has_book"] else "unavailable",
+            "top_of_book_bid_leaf": cb["bid_leaf"],
+            "top_of_book_ask_leaf": cb["ask_leaf"],
+        },
+        "classification": {
+            "top_of_book.bid": "NATIVE", "top_of_book.ask": "NATIVE",
+            "top_of_book.bid_size": "NATIVE", "top_of_book.ask_size": "NATIVE",
+            "mid": "DERIVED", "microprice": "DERIVED", "crossed": "DERIVED",
+            "spread_pts": "DERIVED", "spread_frac": "DERIVED",
+            "depth.*.bid_total": "DERIVED", "depth.*.ask_total": "DERIVED",
+            "depth.*.imbalance": "DERIVED",
+            "depth_pressure": "DERIVED", "book_slope": "DERIVED",
+            "liquidity_concentration": "DERIVED",
+            "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
+            "ages.book_age_sec": "DERIVED", "ages.quote_age_sec": "DERIVED",
+            "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
+            "provenance.server_received_ts": "DERIVED",
+        },
+        "deferred": [
+            "aggressor_side (PROXY: needs trade-vs-quote classification history)",
+            "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+            "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
+            "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)",
+        ],
+    }
+
+
+def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
+                                ticker: Optional[str] = None) -> dict:
+    """Canonical L2 book microstructure for one symbol — the ONE producer the engine's
+    book_imbalance and the `/api/order-flow/microstructure` route both read. `data.content`
+    carries the live streaming book + top-of-book (order_flow_live_state.get_content_for_symbol);
+    `data.exchange_quote_ts` (optional) is the plane's exchange quote clock. The structural state
+    is extracted/computed ONCE and memoized per (ticker, BOOK_TIME); a caller with the same
+    unchanged book SERIALIZES the cached state instead of re-walking raw data. Only the age
+    fields depend on `now` and are always stamped fresh. Fail-closed: no book snapshot -> status
+    'no_book' with null metrics (no fabricated values)."""
+    import time
+    now = time.time() if now_ts is None else now_ts
+
+    cb = _extract_canonical_book(data)
+    book_time_ms = cb["book_time_ms"]
+
+    # Carry only when the canonical book CONTENT is byte-for-byte identical — not merely the same
+    # BOOK_TIME. A changed ladder under a repeated BOOK_TIME has a different identity and recomputes.
+    identity = _canonical_book_identity(cb)
+    cached = _MICRO_STRUCTURAL_CACHE.get(ticker) if ticker else None
+    if cached is not None and cached[0] == identity:
+        structural = cached[1]                       # carry: identical canonical book, no recompute
+    else:
+        structural = _microstructure_structural(cb)
+        if ticker:
+            _MICRO_STRUCTURAL_CACHE[ticker] = (identity, structural)
+
+    # Ages + per-serialization stamps are the only wall-clock-dependent fields.
+    exch_ts = _safe_float(data.get("exchange_quote_ts"))
+    payload = dict(structural)
+    prov = dict(structural["provenance_structural"])
+    prov["exchange_quote_ts"] = exch_ts             # NATIVE (plane quote clock)
+    prov["server_received_ts"] = now                # DERIVED (server wall clock at serialization)
+    payload.pop("provenance_structural", None)
+    payload["provenance"] = prov
+    payload["ages"] = {
+        "book_age_sec": round(now - book_time_ms / 1000.0, 3) if book_time_ms else None,
+        "quote_age_sec": round(now - exch_ts, 3) if exch_ts else None,
+    }
+    return payload
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -779,13 +1090,16 @@ def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
 # INSTITUTIONAL FLOW PROXY
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _compute_institutional_flow_proxy(data: dict) -> Optional[float]:
+def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[float] = None) -> Optional[float]:
     """
     Proxy for institutional flow: large trades + options activity + book imbalance.
     Uses: tape (large LAST_SIZE), options flow, book imbalance.
+    ONE CANONICAL PATH: the deep book imbalance is READ from the single canonical
+    microstructure result (passed by the engine as `book_imbalance_5`), not re-walked here.
+    When called standalone without it, it falls back to the same canonical helper.
     """
     cum = _compute_cum_delta_proxy(data)
-    book_imb = _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
+    book_imb = book_imbalance_5 if book_imbalance_5 is not None else _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
     opt_score, _, _, delta_w, _ = _compute_options_flow(data)
     components = []
     if cum is not None:
@@ -912,7 +1226,7 @@ class OrderFlowEngine:
     identified field paths.
     """
 
-    def compute(self, data: dict) -> dict:
+    def compute(self, data: dict, *, ticker: Optional[str] = None) -> dict:
         """
         Compute all order flow metrics from the input data dict.
         Returns a dict with all metrics; missing data yields None where applicable.
@@ -920,19 +1234,21 @@ class OrderFlowEngine:
         if not isinstance(data, dict):
             return self._empty_result()
 
-        # Book metrics (from Level 2 BIDS/ASKS when streamer available)
-        book_imbalance_1 = _compute_book_imbalance(data, OF_BOOK_DEPTH_TOP)
-        book_imbalance_3 = _compute_book_imbalance(data, OF_BOOK_DEPTH_SHALLOW)
-        book_imbalance_5 = _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
+        # ONE CANONICAL BOOK PATH: extract/normalize the book ONCE via the single producer, and
+        # READ book_imbalance_1/3/5 from that result. Nothing here re-walks or re-sums the raw
+        # book. `ticker` lets the route serialize this same computed state (carry, not recompute).
+        book_micro = compute_book_microstructure(data, ticker=ticker)
+        book_imbalance_1 = book_micro["depth"]["1"]["imbalance"]
+        book_imbalance_3 = book_micro["depth"]["3"]["imbalance"]
+        book_imbalance_5 = book_micro["depth"]["5"]["imbalance"]
 
-        # Top of book (quote.bidSize/askSize — always from REST)
+        # Top of book (quote.bidSize/askSize — always from REST). This is L1 SIZE pressure —
+        # a DIFFERENT semantic than an L2 depth imbalance — so it is kept ONLY under its own
+        # field `top_book_pressure` and is NEVER written into book_imbalance_1/3/5. When the
+        # streaming book is absent those stay None: fail-closed, so the book dimension reads
+        # ABSENT rather than a top-of-book proxy mislabeled as depth-5. (Removed the former REST
+        # fallback `book_imbalance_5 = top_book_pressure`, which conflated the two under one name.)
         top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
-
-        # REST fallback: when streamer has no depth, use top-of-book only
-        # Store in same field so frontend renders without changes. Streamer takes precedence.
-        if book_imbalance_5 is None and top_book_pressure is not None:
-            book_imbalance_5 = top_book_pressure
-            log.debug("Book Imb: REST proxy (top of book only)")
 
         # Use 5-level for scoring when available (preserve measured 0.0 — FIND-OF1)
         book_for_score = next(
@@ -970,8 +1286,9 @@ class OrderFlowEngine:
         # Volume context
         rvol, rvol_unavailable_reason = _compute_rvol(data)
 
-        # Institutional proxy
-        institutional_flow_proxy_score = _compute_institutional_flow_proxy(data)
+        # Institutional proxy — reads the canonical deep book imbalance, does not re-walk.
+        institutional_flow_proxy_score = _compute_institutional_flow_proxy(
+            data, book_imbalance_5=book_imbalance_5)
 
         # Composite score and regime
         order_flow_score = _compute_order_flow_score(
@@ -1029,6 +1346,9 @@ class OrderFlowEngine:
             "book_imbalance_1": book_imbalance_1,
             "book_imbalance_3": book_imbalance_3,
             "book_imbalance_5": book_imbalance_5,
+            # Carry the single canonical microstructure state so the route serializes THIS
+            # computed result (same book) rather than recomputing from raw data.
+            "book_microstructure": book_micro,
             "top_book_pressure": top_book_pressure,
             "top_book_pressure_source": top_book_pressure_source,
             "spread": spread_pts,
@@ -1082,6 +1402,7 @@ class OrderFlowEngine:
             "book_imbalance_1": None,
             "book_imbalance_3": None,
             "book_imbalance_5": None,
+            "book_microstructure": None,
             "top_book_pressure": None,
             "top_book_pressure_source": None,
             "spread": None,
