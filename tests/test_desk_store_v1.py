@@ -61,6 +61,62 @@ def _rth_session_stamps(n: int) -> list[float]:
     return list(reversed(out))
 
 
+def _recent_non_session_stamp(window_days: int = 20) -> tuple[str, float]:
+    """The most recent NON-trading ET date (weekend or holiday) whose 11:00 ET bar still lands
+    INSIDE `materialize_dollar_volume`'s window (`now - window_days*86400`), walking back over the
+    real calendar.
+
+    Window-relative by construction, for the same reason `_rth_session_stamps` is: the original
+    fixture hard-coded a Saturday (`2026-08-01`). As real time advanced past that date + 20 days,
+    the weekend bar fell out of the rolling ADV window, so the `bar_end_ts_utc >= cutoff` filter
+    dropped it BEFORE the RTH/calendar filter (`is_rth_trading_ts`) could exclude it — leaving
+    `skipped_non_rth_bars == 0` and silently retiring the very gate the test exists to lock. That
+    is the stale-by-construction defect RC-169/RC-176 warn about, in the calendar dimension.
+    Production was never affected: an in-window weekend bar is still excluded (proven here)."""
+    from datetime import datetime, timedelta
+
+    from time_et import ET, is_trading_day_et
+
+    now = time.time()
+    cutoff = now - window_days * 86400.0
+    probe = datetime.now(ET).date() - timedelta(days=1)  # start yesterday: a past day is complete
+    guard = 0
+    while guard < window_days + 10:
+        guard += 1
+        day = probe.isoformat()
+        ts = datetime(probe.year, probe.month, probe.day, 11, 0, tzinfo=ET).timestamp()
+        if cutoff <= ts < now and not is_trading_day_et(day):
+            return day, ts
+        probe = probe - timedelta(days=1)
+    raise AssertionError("no in-window non-trading day found — window too small?")
+
+
+def _weekday_premarket_stamp(window_days: int = 20) -> tuple[str, float]:
+    """The most recent COMPLETE regular-session ET date's 08:00 ET (pre-market) bar, in-window.
+
+    Extended-hours bars live in `price_bars_1m` BY DESIGN (RC-170); ADV intentionally excludes them
+    because session membership is a `time_et` call, not a bar count. This gives a real trading-day
+    timestamp that is outside RTH, to prove the session gate excludes pre/post-market turnover
+    without deleting the underlying bars."""
+    from datetime import datetime, timedelta
+
+    from time_et import ET, is_rth_ts_utc, is_trading_day_et
+
+    now = time.time()
+    cutoff = now - window_days * 86400.0
+    probe = datetime.now(ET).date() - timedelta(days=1)
+    guard = 0
+    while guard < window_days + 10:
+        guard += 1
+        day = probe.isoformat()
+        pre = datetime(probe.year, probe.month, probe.day, 8, 0, tzinfo=ET).timestamp()
+        if (cutoff <= pre < now and is_trading_day_et(day)
+                and not is_rth_ts_utc(pre) and ds.session_is_complete(day, now)):
+            return day, pre
+        probe = probe - timedelta(days=1)
+    raise AssertionError("no in-window complete trading day with a pre-market slot found?")
+
+
 def test_reader_filters_on_knowledge_time_not_event_time(tmp_path):
     """The whole module in one assertion: an old event we learned about LATE stays invisible
     until its knowledge time passes, even though its event time is long gone."""
@@ -798,52 +854,120 @@ def test_desk_page_is_navigable_without_a_mouse():
     assert "focus-visible" in ui, "keyboard focus has no visible state"
 
 
-def test_saturday_is_not_a_session_anywhere_in_the_desk(tmp_path):
-    """RC-176 — the defect that turned the suite red the first Saturday it ran, and was REAL in
-    production: `price_bars_1m` carries rows on 2026-07-03/04/05/11/18 (a holiday and four
-    weekend dates), and every Desk reader filtered on the CLOCK alone, so those rows counted as
-    sessions. 2026-08-01 is a Saturday forever, so these assertions are deterministic."""
+def _make_bars_db(tmp_path, rows: list[tuple]):
+    """A throwaway `price_bars_1m` db seeded with (ticker, bar_end_ts, close, volume) rows."""
     import sqlite3
-    from datetime import datetime
 
-    from time_et import ET
-
-    sat = "2026-08-01"
-    sat_11et = datetime(2026, 8, 1, 11, 0, tzinfo=ET).timestamp()
-
-    # the combined authority: right clock, wrong day -> not a session
-    assert ds.is_rth_trading_ts(sat_11et) is False, (
-        "Saturday 11:00 ET passed the RTH filter — the calendar half of the question is unasked"
-    )
-    # nothing can be 'in progress' on a day with no session
-    assert ds.session_is_complete(sat, sat_11et) is True, (
-        "a Saturday read as an open session — weekend runs would freeze out the day's data"
-    )
-
-    # and a weekend bar must not become an ADV session
     db = tmp_path / "d.db"
     ds.ensure_schema(db)
     con = sqlite3.connect(str(db))
     con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, "
                 "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
                 "volume REAL, source TEXT)")
-    for ts in _rth_session_stamps(ds._MIN_SESSIONS_FOR_ADV):
-        con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
-                    ("ZZZ", ts - 60, ts, 1, 1, 1, 100.0, 10_000.0, "unit"))
-    con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
-                ("ZZZ", sat_11et - 60, sat_11et, 1, 1, 1, 100.0, 9_999_999.0, "unit"))
+    con.executemany(
+        "INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+        [(sym, ts - 60, ts, 1, 1, 1, close, vol, "unit") for (sym, ts, close, vol) in rows],
+    )
     con.commit()
     con.close()
+    return db
+
+
+def test_saturday_is_not_a_session_anywhere_in_the_desk(tmp_path):
+    """RC-176 — the defect that turned the suite red the first Saturday it ran, and was REAL in
+    production: `price_bars_1m` carries weekend/holiday rows, and every Desk reader filtered on the
+    CLOCK alone, so those rows counted as sessions.
+
+    RC-176 REPAIR (2026-08-21): the fixture used to hard-code `2026-08-01`. Once real time passed
+    that date + the 20-day ADV window, the weekend bar left the window and the `bar_end_ts_utc >=
+    cutoff` filter dropped it BEFORE `is_rth_trading_ts` could exclude it — so `skipped_non_rth_bars`
+    fell to 0 and the test failed while asserting a production defect that did not exist. The gate
+    was always correct; the fixture aged out (RC-169). The non-session bar is now WINDOW-RELATIVE,
+    so the calendar half of the gate is exercised on every run, forever."""
+    non_day, non_ts = _recent_non_session_stamp()
+
+    # the combined authority: right clock, wrong day -> not a session
+    assert ds.is_rth_trading_ts(non_ts) is False, (
+        f"{non_day} 11:00 ET passed the RTH filter — the calendar half of the question is unasked"
+    )
+    # nothing can be 'in progress' on a day with no session
+    assert ds.session_is_complete(non_day, non_ts) is True, (
+        "a non-trading day read as an open session — weekend runs would freeze out the day's data"
+    )
+
+    # and the weekend/holiday bar must not become an ADV session — the RTH filter, not the window
+    # filter, must be what excludes it (the bar is in-window by construction).
+    rows = [("ZZZ", ts, 100.0, 10_000.0) for ts in _rth_session_stamps(ds._MIN_SESSIONS_FOR_ADV)]
+    rows.append(("ZZZ", non_ts, 100.0, 9_999_999.0))
+    db = _make_bars_db(tmp_path, rows)
     res = ds.materialize_dollar_volume(db)
-    assert res["skipped_non_rth_bars"] >= 1, "the Saturday bar was not excluded"
+    assert res["skipped_non_rth_bars"] >= 1, "the in-window non-session bar was not excluded"
     row = ds.latest_by_subject(db, time.time() + 5, "adv_dollar").get("ZZZ")
     assert row is not None
     assert row["payload"]["sessions"] == ds._MIN_SESSIONS_FOR_ADV, (
-        "a weekend bar was counted as a trading session"
+        "a non-trading-day bar was counted as a trading session"
     )
     assert row["value_num"] == pytest.approx(1_000_000.0), (
-        "the weekend bar's dollars leaked into the median"
+        "the non-session bar's dollars leaked into the median"
     )
+
+
+@pytest.mark.parametrize("sym", ["ZZZ", "spy", "AaPl", "BRK.B"])
+@pytest.mark.parametrize(
+    "non_trading_ts_fn",
+    [
+        # a weekend (Saturday 2026-08-08) and two US market holidays (New Year's Day 2027;
+        # Independence Day observed 2026-07-03) — fixed calendar facts, so the CALENDAR gate is
+        # exercised independently of any rolling window. is_rth_trading_ts needs no window.
+        lambda ET, dt: dt(2026, 8, 8, 11, 0, tzinfo=ET).timestamp(),   # Saturday
+        lambda ET, dt: dt(2026, 8, 9, 14, 0, tzinfo=ET).timestamp(),   # Sunday
+        lambda ET, dt: dt(2027, 1, 1, 11, 0, tzinfo=ET).timestamp(),   # New Year's Day
+        lambda ET, dt: dt(2026, 7, 3, 11, 0, tzinfo=ET).timestamp(),   # Independence Day (obs.)
+    ],
+)
+def test_rth_calendar_gate_is_date_and_ticker_agnostic(non_trading_ts_fn, sym):
+    """The calendar gate holds for ANY non-trading day and is independent of ticker: no symbol,
+    no weekend or holiday, ever reads as a regular session."""
+    from datetime import datetime
+
+    from time_et import ET
+
+    ts = non_trading_ts_fn(ET, datetime)
+    assert ds.is_rth_trading_ts(ts) is False
+    # session_is_complete is ticker-free, but assert the full desk agrees a no-session day is done.
+    from time_et import et_date_str_from_ts_utc
+    assert ds.session_is_complete(et_date_str_from_ts_utc(ts), time.time()) is True
+
+
+@pytest.mark.parametrize("sym", ["ZZZ", "qqq", "MSFT"])
+def test_weekday_premarket_bar_is_excluded_from_adv_but_bars_are_retained(tmp_path, sym):
+    """The intended extended-hours path: pre-market bars exist in `price_bars_1m` BY DESIGN
+    (RC-170) and are NOT deleted, but ADV excludes them because session membership is a `time_et`
+    call, not a bar count. A weekday 08:00 ET bar must be skipped as non-RTH while the real RTH
+    sessions still produce the ADV — and the pre-market row must remain queryable in the table."""
+    import sqlite3
+
+    pre_day, pre_ts = _weekday_premarket_stamp()
+    assert ds.is_rth_trading_ts(pre_ts) is False, "a weekday pre-market slot is not RTH"
+
+    rows = [(sym, ts, 100.0, 10_000.0) for ts in _rth_session_stamps(ds._MIN_SESSIONS_FOR_ADV)]
+    rows.append((sym, pre_ts, 100.0, 5_000_000.0))   # huge pre-market turnover that must NOT count
+    db = _make_bars_db(tmp_path, rows)
+    res = ds.materialize_dollar_volume(db)
+
+    assert res["skipped_non_rth_bars"] >= 1, "the weekday pre-market bar was not excluded from ADV"
+    row = ds.latest_by_subject(db, time.time() + 5, "adv_dollar").get(sym.upper())
+    assert row is not None
+    assert row["payload"]["sessions"] == ds._MIN_SESSIONS_FOR_ADV
+    assert row["value_num"] == pytest.approx(1_000_000.0), "pre-market turnover leaked into ADV"
+
+    # the underlying pre-market bar is RETAINED, not deleted — extended hours are preserved.
+    con = sqlite3.connect(str(db))
+    kept = con.execute(
+        "SELECT COUNT(*) FROM price_bars_1m WHERE ticker=? AND bar_end_ts_utc=?", (sym, pre_ts)
+    ).fetchone()[0]
+    con.close()
+    assert kept == 1, "the pre-market bar was deleted from price_bars_1m; extended hours must persist"
 
 
 def test_session_stamps_only_land_on_trading_days():
