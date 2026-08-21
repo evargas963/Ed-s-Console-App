@@ -136,3 +136,27 @@ def test_compute_score_uses_depth_5_zero_not_depth_3_fallback():
     assert score_if_depth3_substituted is not None
     assert score_if_depth3_substituted > 0.1
     assert out["book_imbalance_5"] == 0.0
+
+
+def test_no_l2_book_fails_closed_and_never_substitutes_top_of_book_into_book_imbalance_5():
+    """Regression lock for the removed REST fallback: with L1 top-of-book present but NO L2
+    book, book_imbalance_1/3/5 must stay None (strict L2 depth), top_book_pressure must remain
+    available under its OWN field, and the L1 pressure must NOT be substituted into
+    book_imbalance_5. Guards against reintroducing `book_imbalance_5 = top_book_pressure`."""
+    # L1 top-of-book only — no BIDS/ASKS depth. Bid-heavy: pressure = (800-200)/1000 = 0.6.
+    data = {"content": [{"BID_PRICE": 100.0, "ASK_PRICE": 100.02,
+                         "BID_SIZE": 800, "ASK_SIZE": 200}]}
+    out = OrderFlowEngine().compute(data)
+
+    # book_imbalance_1/3/5 are strictly L2 depth imbalance → None when the book is absent.
+    assert out["book_imbalance_1"] is None
+    assert out["book_imbalance_3"] is None
+    assert out["book_imbalance_5"] is None
+
+    # top_book_pressure (L1 SIZE pressure) remains under its own field, unaffected.
+    assert out["top_book_pressure"] is not None
+    assert abs(out["top_book_pressure"] - 0.6) < 1e-9
+    assert out["top_book_pressure_source"] == "schwab_stream"
+
+    # The exact conflation is dead: the L1 value is NOT copied into book_imbalance_5.
+    assert out["book_imbalance_5"] != out["top_book_pressure"]

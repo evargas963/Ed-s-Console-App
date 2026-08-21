@@ -13539,6 +13539,34 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
     return JSONResponse(base)
 
 
+@app.get("/api/order-flow/microstructure")
+def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Canonical L2 book microstructure (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
+    spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
+    liquidity concentration, displayed walls, and ages — every field classified
+    NATIVE/DERIVED/PROXY. ONE FAUCET: computed solely by
+    order_flow_engine.compute_book_microstructure from the live streaming book + the plane's
+    exchange quote clock. No Schwab REST quote call; the client renders, never recomputes."""
+    t = (ticker or DEFAULT_TICKER).upper().strip()
+    # VIEW endpoint: touch last-seen only, never enroll (RC-160 ticker-scope discipline).
+    _touch_tracked_ticker_view(t)
+    data: dict = {}
+    try:
+        from order_flow_live_state import get_content_for_symbol
+        _content = get_content_for_symbol(t)
+        if _content:
+            data["content"] = _content
+    except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
+        log.debug("microstructure content build failed for %s: %s", t, e)
+    _row = _lmp.get_quote(t)
+    if _row and _row.get("exchange_quote_ts") is not None:
+        data["exchange_quote_ts"] = _row.get("exchange_quote_ts")
+    from order_flow_engine import compute_book_microstructure
+    payload = compute_book_microstructure(data)
+    payload["ticker"] = t
+    return JSONResponse(payload)
+
+
 @app.post("/api/streaming/active-ticker")
 async def post_streaming_active_ticker(payload: dict = Body(default={})):
     """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""
