@@ -40,6 +40,7 @@ no market field itself. SCHWAB_CSV_CHECKED / NO_SCHWAB_EQUIVALENT (tooling gate)
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -103,11 +104,25 @@ def scan_file(path: Path) -> list[tuple[int, str, str]]:
     return findings
 
 
+def _tracked_source_files() -> list[Path]:
+    """Repo-wide product scope = the git INDEX, not the filesystem (RC-286/RC-307): a scanner
+    that builds its own rglob list re-decides what "the repo" is and drifts onto untracked
+    scratch. git ls-files is the one scope that cannot drift; it also skips gitignored trees
+    (.venv, node_modules, __pycache__, scratchpad) for free."""
+    r = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.py", "*.html", "*.js"],
+        cwd=str(REPO), capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        raise RuntimeError("git ls-files failed; the semantics gate must run inside the repo")
+    return sorted(REPO / p for p in r.stdout.split("\0") if p)
+
+
 def violations() -> list[tuple[str, int, str]]:
     """(rel_path, line, message) for each overclaim — for the gate wrapper."""
     out: list[tuple[str, int, str]] = []
-    for path in sorted(REPO.rglob("*.py")) + sorted(REPO.rglob("*.html")) + sorted(REPO.rglob("*.js")):
-        if _is_excluded(path):
+    for path in _tracked_source_files():
+        if _is_excluded(path) or not path.exists():
             continue
         rel = path.relative_to(REPO).as_posix()
         for (ln, kind, code) in scan_file(path):

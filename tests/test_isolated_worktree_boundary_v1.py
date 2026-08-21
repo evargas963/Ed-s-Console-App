@@ -10,6 +10,7 @@ INJECTS the case and asserts BLOCK vs ALLOW.
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,8 +19,12 @@ if str(ROOT) not in sys.path:
 
 import tools.operating_process_lock as OPL
 
-PRIMARY = Path("C:/repo/EdWebConsole")
-CLAUDE = Path("C:/repo/EdWebConsole-Claude")
+# Absolute on BOTH Windows and POSIX. A `C:/...` literal is absolute on Windows but a
+# RELATIVE path on Linux, where the guard would join it under the runner's cwd and mis-block
+# (the CI failure this fixes). tempdir is absolute on every platform; the paths need not exist.
+_BASE = Path(tempfile.gettempdir()).resolve()
+PRIMARY = _BASE / "EdWebConsole"
+CLAUDE = _BASE / "EdWebConsole-Claude"
 ISO = {"mode": "isolated", "env_role_var": "ED_AGENT_ROLE", "claude_root_suffix": "-Claude"}
 SHARED = {**ISO, "mode": "shared-root"}
 CLAUDE_ENV = {"ED_AGENT_ROLE": "claude"}
