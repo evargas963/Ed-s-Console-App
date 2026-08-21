@@ -1,11 +1,11 @@
 {
-  "granted": true,
+  "granted": false,
   "granted_at": "2026-08-20T00:00:00+00:00",
-  "revoked_at": null,
+  "revoked_at": "2026-08-20T00:00:01+00:00",
   "granted_by": "operator_instruction_in_session_2026-08-20",
-  "revoked_by": null,
+  "revoked_by": "operator_instruction_in_session_2026-08-20_restore_fail_closed",
   "scope": [
     "staged_lock_surface"
   ],
-  "note": "Scoped GO per explicit operator instruction 2026-08-20 for the Schwab semantic-normalization v2 commit (RC-437..443). The staged change registers ONE new ENFORCED check `schwab_market_field_semantics` in check_institutional_correctness.CHECKS, which trips staged_enforced_checks_not_on_head; this GO clears exactly that gate. Scope narrowed to [staged_lock_surface] ONLY (rc_status_vocabulary intentionally dropped). Operator directed immediate restore to granted:false after the commit lands; this file is NOT staged/committed, so the committed tree never carries a standing grant."
+  "note": "RESTORED to fail-closed immediately after the RC-437..443 commit (9639b19e), per operator instruction 2026-08-20 ('immediately restore operator_go to fail-closed after the commit'). The scoped staged_lock_surface GO was used exactly once to land the new ENFORCED check schwab_market_field_semantics; with granted:false the reset guard and every staged-lock-surface gate return to fail-closed, so any future staged ENFORCED-check commit must obtain a fresh, scoped GO."
 }
