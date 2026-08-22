@@ -862,11 +862,6 @@ Regression gate: `tests/test_anti_pattern_family_repo_wide.py` (production `.py`
 | `release_object.py` | 106 | GET_WITH_DEFAULT | env config only |
 | `release_object.py` | 107 | GET_WITH_DEFAULT | env config only |
 | `scheduler_user_tickers.py` | 60 | GET_WITH_DEFAULT | env config only |
-| `schwab_client.py` | 51 | GETATTR_DEFAULT | constant base URL only |
-| `schwab_client.py` | 293 | GET_WITH_DEFAULT | OAuth/config timeout only |
-| `schwab_client.py` | 371 | GET_OR_DEFAULT | parse_qs indexing idiom only |
-| `schwab_client.py` | 372 | GET_OR_DEFAULT | parse_qs indexing idiom only |
-| `schwab_client.py` | 403 | GET_WITH_DEFAULT | OAuth/config timeout only |
 | `timing_probe2.py` | 23 | GET_WITH_DEFAULT | diagnostic probe display fallback |
 | `trade_impacting_gate.py` | 218 | GET_WITH_DEFAULT | env config only |
 <!-- CAPS_ALLOWLIST_END -->

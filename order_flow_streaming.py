@@ -561,8 +561,8 @@ def collect_level_one_receipts(
             logout = getattr(sc, "logout", None)
             if logout is not None:
                 await logout()
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("LEVELONE_COLLECT_LOGOUT_FAIL err=%s", e)
         return receipts
 
     return asyncio.run(_run())

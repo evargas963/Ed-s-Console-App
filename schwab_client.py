@@ -52,7 +52,7 @@ def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=Non
     from authlib.integrations.httpx_client import OAuth2Client
 
     if base_url is None:
-        base_url = getattr(auth, "DEFAULT_BASE_URL", "https://api.schwabapi.com")
+        base_url = getattr(auth, "DEFAULT_BASE_URL", "https://api.schwabapi.com")  # caps-ok: library authorize-host constant when older caller omits base_url; not a market leaf
     endpoint = (
         auth._auth_endpoint(base_url)
         if hasattr(auth, "_auth_endpoint")
@@ -301,7 +301,7 @@ def run_login_flow(api_key: str, app_secret: str, callback_url: str, token_path:
                 token_path=token_path,
                 enforce_enums=False,
                 interactive=False,
-                callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),
+                callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),  # caps-ok: operator OAuth wait config, not a Schwab market leaf
             )
         except BaseException as e:
             exc_holder.append(e)
@@ -379,8 +379,8 @@ def complete_oauth_from_redirect_url(
         return False, "Redirect URL is empty."
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
-    state = (qs.get("state") or [None])[0]
-    if not (qs.get("code") or [None])[0]:
+    state = (qs.get("state") or [None])[0]  # caps-ok: missing query key is None, not a fabricated OAuth state
+    if not (qs.get("code") or [None])[0]:  # caps-ok: missing code fails closed below; [None] is absence
         return False, "Redirect URL missing OAuth code query parameter."
 
     resolved = _resolve_token_path(token_path)
@@ -411,7 +411,7 @@ class SchwabAuthError(Exception):
 
 
 _schwab_auth_failure_until_mono: float = 0.0
-_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))
+_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))  # caps-ok: operator latch config, not a Schwab market leaf
 
 
 def _is_token_error(exc: BaseException) -> bool:

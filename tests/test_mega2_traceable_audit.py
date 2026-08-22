@@ -61,7 +61,7 @@ CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 #         math_levels.bs_vanna, math_exposure_core.compute_net_charm._tte_memo, and RC-124's
 #         two successors pick_pin_and_strength / pick_net_gex_peak_strike), −1 (the retired
 #         pick_gamma_pin_strike, whose single name carried both of those metrics).
-MEGA2_ROW_COUNT = 267  # +5 live_state receive/session helpers; +7 math_levels display/coverage defs already on disk but uninventoried
+MEGA2_ROW_COUNT = 273  # +6 production LEVELONE bind/subscribe/collect defs (incl. nested)
 #         _contract_inputs, compute_gamma_profile, gamma_flip_from_profile; compute_gamma_flip
 #         removed and its row reused by compute_gamma_flip_v2)
 #         +1 gamma_is_plausible (math_exposure_core.py) — pre-existing inventory gap from the
