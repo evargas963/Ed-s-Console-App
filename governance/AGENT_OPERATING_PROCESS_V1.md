@@ -2,7 +2,7 @@
 
 **Authority:** mandatory for Claude and Cursor. **Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / Stop / pre-commit). This file is the checklist; `.py` BLOCKs.
 
-> **SUPERSEDED — operator ruling 2026-08-22 (RC-452):** Operator is the governing authority / PM. Claude and Cursor may both implement. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. One writer per worktree at a time. The 2026-08-18 "Cursor is an adversarial auditor only" sentence is void.
+> **SUPERSEDED — operator ruling 2026-08-22 (RC-452/RC-457):** Operator is the governing authority / PM. Claude and Cursor may both implement. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. ONE canonical worktree total. ONE active writer at a time. The 2026-08-18 "Cursor is an adversarial auditor only" sentence is void. The one-writer-per-worktree multi-checkout architecture is void.
 
 **Project Manager:** Operator. **ACTIVE_WRITER:** per `governance/sole_writer.json` / `governance/pm_mission.json`. See `.cursor/rules/07-cursor-pm.mdc`.
 
@@ -11,7 +11,7 @@
 ## 0. PM (Operator) + ACTIVE_WRITER + change requests (RC-219 / RC-452)
 
 - Every multi-agent or “what next” turn: state **mission · active_writer · blockers · single next operator action**.
-- **Change requests:** operator → plan → operator GO → `governance/pm_mission.json` names ACTIVE_WRITER → that agent executes → the other agent must not concurrently mutate the same worktree.
+- **Change requests:** operator → plan → operator GO → `governance/pm_mission.json` names ACTIVE_WRITER → that agent executes → the other agent must not concurrently mutate the canonical worktree.
 - Product edits without an in-progress mission are **BLOCKED** (`pm_mission_edit_violation`).
 - **Writer no-drift (RC-226):** non-writer staged `scope_paths` → BLOCK (`writer_drift_lock.py` / `check_writer_no_drift`). Cursor=auditor only while Claude writes.
 - One active mission; Collect/lock vs UI polish are sequenced windows, not a free-for-all.

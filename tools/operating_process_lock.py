@@ -703,7 +703,7 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
                 f"SOD_DRIFT: {writer} is ACTIVE_WRITER — WRITER-DRIFT BLOCK: "
                 f"mission ACTIVE_WRITER={writer!r} but agent={agent!r} — "
                 f"path {rel} blocked (mission_id={mission.get('mission_id')!r}; "
-                f"status={status!r}). One writer per worktree; non-active agent "
+                f"status={status!r}). One canonical worktree; non-active agent "
                 f"cannot concurrently mutate it."
             )
         return None

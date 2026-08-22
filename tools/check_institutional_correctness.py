@@ -4689,23 +4689,44 @@ def check_active_writer_law() -> list[Violation]:
     Claude=permanent writer and Cursor=permanent auditor, so an operator assignment of
     Cursor as ACTIVE_WRITER was still a SoD violation. The operator superseded that
     identity split on 2026-08-22: both agents may implement; the operator selects the
-    active writer per mission; one writer per worktree.
+    active writer per mission; one canonical worktree total.
 
     Rule: sole_writer / pm_mission must set pm=operator, must not set permanent_writer
     or permanent_auditor, must not assert the superseded identity phrases, and
-    active_writer must agree with writer when both are present.
+    active_writer must agree with writer when both are present. A second normal
+    project worktree BLOCKS.
 
     HOW VALIDATED: tests/test_active_writer_law_v1.py injects permanent_writer=claude,
-    Cursor-auditor-only standing_law, and disagreed active_writer/writer → BLOCK; live
-    assignment with Cursor ACTIVE_WRITER and Claude ACTIVE_WRITER both PASS.
+    Cursor-auditor-only standing_law, disagreed active_writer/writer, and a second
+    normal worktree → BLOCK; live assignment with Cursor or Claude ACTIVE_WRITER PASS.
     """
     try:
-        from tools.writer_drift_lock import permanent_identity_violations
+        from tools.writer_drift_lock import (
+            canonical_worktree_violations,
+            permanent_identity_violations,
+        )
     except ImportError:
-        from writer_drift_lock import permanent_identity_violations  # type: ignore
+        from writer_drift_lock import (  # type: ignore
+            canonical_worktree_violations,
+            permanent_identity_violations,
+        )
+    msgs = list(permanent_identity_violations())
+    msgs.extend(canonical_worktree_violations())
     return [
         Violation(REPO / "governance" / "sole_writer.json", 0, m)
-        for m in permanent_identity_violations()
+        for m in msgs
+    ]
+
+
+def check_requirement_proof() -> list[Violation]:
+    """Parent/child proof authority (RC-459). Child PASS never closes a parent."""
+    try:
+        from tools.requirement_proof import TREE_PATH, requirement_proof_violations
+    except ImportError:
+        from requirement_proof import TREE_PATH, requirement_proof_violations  # type: ignore
+    return [
+        Violation(TREE_PATH, 0, m)
+        for m in requirement_proof_violations()
     ]
 
 
@@ -4814,6 +4835,7 @@ CHECKS = [
     ("writer_no_drift", check_writer_no_drift, True),  # RC-232 LOCK-1: staged paths must come from the mission's resolved writer
     ("active_writer_law", check_active_writer_law, True),  # RC-452: operator-selected ACTIVE_WRITER; no permanent identity
     ("find_it_fix_it", check_find_it_fix_it, True),  # RC-453: one RC-log authority; omission and backlog-escape BLOCK
+    ("requirement_proof", check_requirement_proof, True),  # RC-459: child PASS never closes a parent
     # LOG LAW (RC-237) — ARMED under the PM GO of 2026-08-04T18:58Z, scope staged_lock_surface
     # (governance/operator_go.json, granted_by cursor_pm). One defect ledger, one epistemic
     # ledger, telemetry stays telemetry: a THIRD markdown work queue or an OVERDUE epistemic

@@ -1,5 +1,5 @@
 ---
-description: One writer per worktree — operator selects ACTIVE_WRITER (RC-226 / RC-452)
+description: One canonical worktree — operator selects ACTIVE_WRITER (RC-226 / RC-452 / RC-457)
 alwaysApply: true
 ---
 
@@ -9,7 +9,7 @@ The operator selects **ACTIVE_WRITER** per mission. Claude and Cursor may both i
 
 ## Law
 
-When `pm_mission.json` is in-progress (`active` / `ready_for_claude` / `ready_for_writer` / `in_progress`) and `active_writer` ≠ current agent, **do not Edit/Write/StrReplace mission `scope_paths`**. Process-surface allowlist only. This is concurrency protection (one writer per worktree), not an identity ban.
+When `pm_mission.json` is in-progress (`active` / `ready_for_claude` / `ready_for_writer` / `in_progress`) and `active_writer` ≠ current agent, **do not Edit/Write/StrReplace mission `scope_paths`**. Process-surface allowlist only. This is concurrency protection (one canonical worktree, one active writer), not an identity ban.
 
 ## Mechanical enforcers (not this `.mdc`)
 

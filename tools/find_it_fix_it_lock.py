@@ -60,13 +60,57 @@ VALID_BLOCKER_TYPES = frozenset({
 BANNED_BLOCKER_PHRASES = (
     "turn budget",
     "remaining budget",
+    "token budget",
     "too large",
     "large blast radius",
     "many files",
     "many models",
     "atomic migration",
+    "too much work",
     "next pass",
     "next turn",
+)
+
+_RTH_PROBE_MARKERS = (
+    "time_et",
+    "is_rth",
+    "is_trading_day",
+    "rth_only",
+    "09:30",
+    "16:00",
+)
+
+_UNAVAILABLE_MARKERS = (
+    "unavailable",
+    "401",
+    "403",
+    "404",
+    "timeout",
+    "connection refused",
+    "no such host",
+    "dns",
+    "errno",
+    "econnrefused",
+)
+
+_UNIMPLEMENTED_MARKERS = (
+    "not implemented",
+    "unimplemented",
+    "todo",
+    "coming soon",
+)
+
+_MATERIAL_DECL = re.compile(
+    r"(?:MATERIAL_DEFECT|DISCOVERED_DEFECT)\s*:\s*(RC-\d+|[A-Za-z][\w.-]{7,80})",
+    re.I,
+)
+_PARENT_SCOPE = re.compile(
+    r"\b(end-to-end|universal|parent|all models|all tickers|operable surface)\b",
+    re.I,
+)
+_CHILD_TEST = re.compile(
+    r"(spy|qqq|iwm|chunk\d|one_route|single_ticker)",
+    re.I,
 )
 
 _SNAKE_ASSERTION = re.compile(r"^[a-z][a-z0-9_]{3,80}$")
@@ -140,6 +184,7 @@ def _dirty_paths(repo: Path | None = None) -> list[str]:
 _PROCESS_LOCK_DIRTY = (
     "tools/check_institutional_correctness.py",
     "tools/find_it_fix_it_lock.py",
+    "tools/requirement_proof.py",
     "tools/writer_drift_lock.py",
     "tools/operating_process_lock.py",
     "tools/process_lock_guard.py",
@@ -342,6 +387,12 @@ def blocker_evidence_ok(blocker: dict, *, repo: Path | None = None) -> tuple[boo
             return False, "RTH_ONLY probe file unreadable"
         if assertion not in probe_text:
             return False, "RTH_ONLY probe is not designed to test the named assertion"
+        low_probe = probe_text.lower()
+        if not any(m.lower() in low_probe for m in _RTH_PROBE_MARKERS):
+            return False, (
+                "RTH_ONLY probe must actually measure session hours "
+                "(time_et / is_rth / is_trading_day) — an arbitrary existing file is not a probe"
+            )
         complete = str(blocker.get("non_rth_complete") or blocker.get("non_rth_remediation_complete") or "").lower()
         if complete not in ("1", "true", "yes"):
             return False, "RTH_ONLY requires non_rth_complete=true (deterministic work finished)"
@@ -356,25 +407,45 @@ def blocker_evidence_ok(blocker: dict, *, repo: Path | None = None) -> tuple[boo
         if not cap or not src:
             return False, "EXTERNAL_DATA_UNAVAILABLE requires capability= and source="
         ev_path = repo / ev if ev and not ev.startswith("observed:") else None
+        ev_text = ""
         if ev_path is not None:
             if not ev_path.is_file():
                 return False, "unavailability_evidence path does not exist"
             ev_text = ev_path.read_text(encoding="utf-8", errors="replace")
             if cap not in ev_text and src not in ev_text:
                 return False, "evidence file does not name the capability/source"
-        elif not ev.startswith("observed:"):
+        elif ev.startswith("observed:"):
+            ev_text = ev
+        else:
             return False, (
                 "EXTERNAL_DATA_UNAVAILABLE requires unavailability_evidence as an existing "
                 "path or observed:<machine-failure> — absence from current implementation "
                 "is not unavailability"
             )
+        low_ev = ev_text.lower()
+        if any(m in low_ev for m in _UNIMPLEMENTED_MARKERS) and not any(
+            m in low_ev for m in _UNAVAILABLE_MARKERS
+        ):
+            return False, (
+                "EXTERNAL_DATA_UNAVAILABLE evidence shows unimplemented/TODO, not a "
+                "genuinely unavailable source"
+            )
+        if not any(m in low_ev for m in _UNAVAILABLE_MARKERS):
+            return False, (
+                "EXTERNAL_DATA_UNAVAILABLE requires machine evidence the source is "
+                "unavailable (timeout/401/404/connection refused/DNS), not a missing feature"
+            )
         return True, "ok"
 
     if typ == "DESTRUCTIVE_APPROVAL_REQUIRED":
         op = str(blocker.get("operation") or "")
-        if not re.search(r"\b(delete|truncate|drop|unlink|rmtree|destroy)\b", op, re.I):
+        obj = str(blocker.get("object") or blocker.get("target") or "")
+        blob = f"{op} {obj}"
+        if not re.search(r"\b(delete|truncate|drop|unlink|rmtree|destroy)\b", blob, re.I):
             return False, "must identify the exact destructive operation"
-        if not re.search(r"data/|backups/|models/|ed_console\.db", op, re.I):
+        if not obj.strip():
+            return False, "must name the exact object/data affected"
+        if not re.search(r"data/|backups/|models/|ed_console\.db", blob, re.I):
             return False, "destructive operation must name a protected data/models/backups target"
         return True, "ok"
 
@@ -383,14 +454,69 @@ def blocker_evidence_ok(blocker: dict, *, repo: Path | None = None) -> tuple[boo
         cmd = str(blocker.get("command") or "").strip()
         if not err or not cmd:
             return False, "ENVIRONMENT_BLOCKED requires observed_error= and command="
+        banned = _banned_blocker_language(err + " " + cmd)
+        if banned:
+            return False, f"{banned!r} is never an environment failure"
         if not re.search(
-            r"(Error|Exception|E_|exit [1-9]|errno|ConnectionRefused|FileNotFound|OSError|CalledProcessError)",
+            r"(Error|Exception|E_|exit [1-9]|errno|ConnectionRefused|FileNotFound|OSError|CalledProcessError|ModuleNotFoundError)",
             err,
         ):
             return False, "observed_error must be an observable machine/environment failure"
         return True, "ok"
 
     return False, "unknown blocker type"
+
+
+def discovery_omission_violations(
+    payload: dict | None,
+    rc_text: str,
+) -> list[tuple[str, str]]:
+    """Agent explicitly declared a material defect this turn but omitted it from the RC log.
+
+    Does not invent semantic discovery. Only tokens the agent wrote
+    (MATERIAL_DEFECT: / DISCOVERED_DEFECT:) are reconciled.
+    """
+    if not payload:
+        return []
+    chunks = [json.dumps(payload, default=str)]
+    tp = payload.get("transcript_path")
+    if tp:
+        tpath = Path(str(tp))
+        if tpath.is_file():
+            try:
+                chunks.append(tpath.read_text(encoding="utf-8", errors="replace")[-200_000:])
+            except OSError:
+                pass
+    if payload.get("last_assistant_text"):
+        chunks.append(str(payload["last_assistant_text"]))
+    text = "\n".join(chunks)
+    rows = _parse_rc_rows(rc_text)
+    rc_ids = {r["id"].upper() for r in rows}
+    bodies = [(r["id"], _row_text(r).lower()) for r in rows]
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for m in _MATERIAL_DECL.finditer(text):
+        token = m.group(1)
+        key = token.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        if key.startswith("RC-"):
+            if key not in rc_ids:
+                out.append((
+                    key,
+                    "MATERIAL_DEFECT declared in this turn but omitted from "
+                    "governance/root_cause_log.md — STOP BLOCKS",
+                ))
+        else:
+            slug = token.lower()
+            if not any(slug in body for _, body in bodies):
+                out.append((
+                    token,
+                    "DISCOVERED_DEFECT declared in this turn but omitted from "
+                    "authoritative RC state — STOP BLOCKS",
+                ))
+    return out
 
 
 def _command_exercises_defect(command: str, row: dict[str, str], *, repo: Path) -> tuple[bool, str]:
@@ -438,13 +564,47 @@ def _command_exercises_defect(command: str, row: dict[str, str], *, repo: Path) 
             exercised = True
     if not exercised:
         return False, "cited command/path does not correspond to the defect FIXED scope"
+    title = (row.get("defect") or "") + " " + (row.get("why") or "")
+    if _PARENT_SCOPE.search(title) and existing:
+        if all(_CHILD_TEST.search(rel) for rel in existing):
+            return False, (
+                "tiny child test presented as parent closure — a CHILD PASS never "
+                "closes a parent requirement"
+            )
     return True, "ok"
 
 
-def remediation_ok(row: dict[str, str], *, repo: Path | None = None) -> tuple[bool, str]:
+def _execution_evidence_ok(row: dict[str, str], payload: dict | None) -> tuple[bool, str]:
+    """When the turn supplies fix_evidence, it must have run and exited 0."""
+    if not payload:
+        return True, "ok"
+    ev = payload.get("fix_evidence")
+    if not isinstance(ev, dict):
+        return True, "ok"
+    rec = ev.get(row.get("id") or "")
+    if not rec:
+        return True, "ok"
+    if rec.get("ran") is False:
+        return False, "command exists but was not executed"
+    if rec.get("exit") not in (0, "0", None):
+        return False, f"verification command failed (exit={rec.get('exit')!r})"
+    if rec.get("exit") is None and rec.get("ran") is True:
+        return False, "verification ran but no exit status was recorded"
+    return True, "ok"
+
+
+def remediation_ok(
+    row: dict[str, str],
+    *,
+    repo: Path | None = None,
+    payload: dict | None = None,
+) -> tuple[bool, str]:
     """REMEDIATED requires FIXED: + a real command that names an existing exercising path."""
     repo = repo or REPO
     fix = row.get("fix") or ""
+    low = fix.lower()
+    if "would run" in low or "not run" in low or "not executed" in low:
+        return False, "command exists but was not executed"
     if "FIXED:" not in fix.upper().replace(" ", ""):
         if "FIXED:" not in fix:
             return False, "ACTIVE obligation lacks FIXED:"
@@ -455,6 +615,9 @@ def remediation_ok(row: dict[str, str], *, repo: Path | None = None) -> tuple[bo
     for cmd in cmds:
         ok, why = _command_exercises_defect(cmd, row, repo=repo)
         if ok:
+            ev_ok, ev_why = _execution_evidence_ok(row, payload)
+            if not ev_ok:
+                return False, ev_why
             return True, "ok"
         last_err = why
     return False, last_err
@@ -509,6 +672,7 @@ def active_obligation_offenders(
     dirty_paths: Iterable[str] | None = None,
     presented_ids: Iterable[str] | None = None,
     repo: Path | None = None,
+    payload: dict | None = None,
 ) -> list[tuple[str, str]]:
     """THE ONE authority. Gate + Stop both call this."""
     repo = repo or REPO
@@ -516,6 +680,7 @@ def active_obligation_offenders(
     mission = mission if mission is not None else _mission()
     dirty = list(dirty_paths) if dirty_paths is not None else _dirty_paths()
     out: list[tuple[str, str]] = []
+    out.extend(discovery_omission_violations(payload, rc_text))
     out.extend(illegal_passive_escape_offenders(
         rc_text, today=today, mission=mission, dirty_paths=dirty
     ))
@@ -530,7 +695,7 @@ def active_obligation_offenders(
         status = row.get("status") or ""
         fix = row.get("fix") or ""
         banned = _banned_blocker_language(fix)
-        if banned and "HARD_BLOCKER:" not in fix:
+        if banned:
             out.append((rid, f"self-authored {banned!r} is never a blocker — keep fixing"))
             continue
         blocker = _parse_hard_blocker(fix)
@@ -540,12 +705,12 @@ def active_obligation_offenders(
                 out.append((rid, f"HARD_BLOCKER evidence invalid: {why}"))
             continue
         if status == "CLOSED":
-            ok, why = remediation_ok(row, repo=repo)
+            ok, why = remediation_ok(row, repo=repo, payload=payload)
             if not ok:
                 out.append((rid, f"CLOSED active obligation lacks remediation evidence: {why}"))
             continue
         if "FIXED:" in fix:
-            ok, why = remediation_ok(row, repo=repo)
+            ok, why = remediation_ok(row, repo=repo, payload=payload)
             if not ok:
                 out.append((rid, f"ACTIVE FIXED row lacks remediation evidence: {why}"))
             continue
@@ -562,6 +727,7 @@ def fix_law_blockers(
     rc_text: str | None = None,
     today: str | None = None,
     presented_ids: Iterable[str] | None = None,
+    payload: dict | None = None,
 ) -> list[tuple[str, str]]:
     """Stop-guard entry. Same function the commit check uses."""
     if rc_text is None:
@@ -570,5 +736,5 @@ def fix_law_blockers(
         except OSError:
             return [("(rc_log)", "governance/root_cause_log.md unreadable — fail-closed")]
     return active_obligation_offenders(
-        rc_text, today=today, presented_ids=presented_ids
+        rc_text, today=today, presented_ids=presented_ids, payload=payload
     )

@@ -1,11 +1,11 @@
 ---
-description: Operator is PM; Cursor implements when assigned ACTIVE_WRITER — one writer per worktree
+description: Operator is PM; Cursor implements when assigned ACTIVE_WRITER — one canonical worktree
 alwaysApply: true
 ---
 
 # Agent roles (RC-218 / RC-220 / RC-403 / RC-452)
 
-> **SUPERSEDED — operator ruling 2026-08-22 (RC-452):** Claude and Cursor may both code, audit, design, test, fix, review, refactor, commit, and push. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. One writer per worktree at a time. Operator remains governing authority / PM.
+> **SUPERSEDED — operator ruling 2026-08-22 (RC-452/RC-457):** Claude and Cursor may both code, audit, design, test, fix, review, refactor, commit, and push. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. ONE canonical worktree total. ONE active writer at a time. Operator remains governing authority / PM.
 
 The 2026-08-18 "Cursor is an adversarial auditor only and never writes feature/kill/implementation code" sentence is **void**. Identity-bound authorization is replaced by operator-selected `active_writer` in `governance/sole_writer.json` + `governance/pm_mission.json`.
 
@@ -13,7 +13,7 @@ The 2026-08-18 "Cursor is an adversarial auditor only and never writes feature/k
 
 1. Read `governance/sole_writer.json` and `governance/pm_mission.json` for the current ACTIVE_WRITER.
 2. If you are ACTIVE_WRITER: FIND IT → FIX IT → FALSIFY → KEEP FIXING.
-3. If you are not ACTIVE_WRITER: do not mutate the protected worktree (one writer at a time). Process-surface allowlist only.
+3. If you are not ACTIVE_WRITER: do not mutate the canonical worktree (one active writer at a time). Process-surface allowlist only.
 4. Operator is PM. Do not assign yourself permanent writer or auditor status.
 5. End-to-end, no patches. Disputed facts → MEASURE before edits.
 6. Never claim LIVE_ENFORCED while DISK_ONLY.

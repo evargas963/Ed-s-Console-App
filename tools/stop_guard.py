@@ -138,11 +138,11 @@ def close_contract_blockers() -> list[str]:
                 f"fix the gate before ending the turn"]
 
 
-def fix_law_blockers() -> list[tuple[str, str]]:
-    """RC-453: FIND IT → FIX IT — same authority as check_find_it_fix_it."""
+def fix_law_blockers(payload: dict | None = None) -> list[tuple[str, str]]:
+    """RC-453/RC-458: FIND IT → FIX IT — same authority as check_find_it_fix_it."""
     try:
         from tools.find_it_fix_it_lock import fix_law_blockers as _flb
-        return list(_flb())
+        return list(_flb(payload=payload))
     except Exception as e:  # noqa: BLE001 — a broken lock must scream, not wave through
         return [("(find_it_fix_it)", f"{type(e).__name__}: {e}")]
 
@@ -154,10 +154,20 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         payload = {}
+    # Attach last-assistant text so MATERIAL_DEFECT: declarations in the wrap-up
+    # are reconciled even when transcript_path is absent from the payload.
+    transcript = payload.get("transcript_path") or ""
+    if transcript and not payload.get("last_assistant_text"):
+        try:
+            from tools.proof_only_guard import last_assistant_text
+            payload = dict(payload)
+            payload["last_assistant_text"] = last_assistant_text(transcript) or ""
+        except Exception:  # institutional-swallow-ok: discovery scan still has transcript_path
+            pass
     # FIND IT → FIX IT re-blocks on repeat Stop (an already-blocked turn cannot
     # launder an active obligation by setting stop_hook_active). Other session
     # hang-guards still honour the one-retry latch below.
-    fix_offenders = fix_law_blockers()
+    fix_offenders = fix_law_blockers(payload)
     if payload.get("stop_hook_active") is True and not fix_offenders:
         return 0
 

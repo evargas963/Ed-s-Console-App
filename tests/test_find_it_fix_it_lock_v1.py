@@ -213,3 +213,170 @@ def test_check_find_it_fix_it_name_present():
     assert "find_it_fix_it" in Path(
         ROOT / "tools" / "check_institutional_correctness.py"
     ).read_text(encoding="utf-8")
+
+
+def test_declared_material_defect_omitted_from_rc_log_blocks():
+    rows = [
+        _row("RC-9012", extra_defect="CLASS:ACTIVE", extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`"),
+    ]
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=ROOT,
+        payload={"last_assistant_text": "MATERIAL_DEFECT: RC-9999 tape same-ms loss"},
+    )
+    assert any(rid == "RC-9999" and "omitted" in why for rid, why in off)
+
+
+def test_declared_defect_present_in_rc_log_does_not_block():
+    rows = [
+        _row(
+            "RC-9013",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
+        ),
+    ]
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=ROOT,
+        payload={"last_assistant_text": "MATERIAL_DEFECT: RC-9013 lock omission"},
+    )
+    assert off == [], off
+
+
+def test_token_budget_is_never_a_blocker():
+    rows = [
+        _row(
+            "RC-9014",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="blocked by token budget and too much work",
+        ),
+    ]
+    off = _offenders(rows, presented_ids=None)
+    assert any("never a blocker" in why for _, why in off)
+
+
+def test_rth_probe_without_session_measurement_blocks(tmp_path):
+    probe = tmp_path / "probe_named.py"
+    probe.write_text("def tape_same_ms_loss():\n    return True\n", encoding="utf-8")
+    rows = [
+        _row(
+            "RC-9015",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix=(
+                "HARD_BLOCKER: RTH_ONLY assertion=tape_same_ms_loss "
+                f"probe={probe.name} non_rth_complete=true rth_observation=live_tape"
+            ),
+        ),
+    ]
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=tmp_path,
+    )
+    assert any("must actually measure session hours" in why for _, why in off)
+
+
+def test_external_unimplemented_is_not_unavailability(tmp_path):
+    ev = tmp_path / "note.txt"
+    ev.write_text("schwab tape not implemented TODO coming soon", encoding="utf-8")
+    rows = [
+        _row(
+            "RC-9016",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix=(
+                "HARD_BLOCKER: EXTERNAL_DATA_UNAVAILABLE assertion=native_tape "
+                f"capability=aggressor source=schwab unavailability_evidence={ev.name}"
+            ),
+        ),
+    ]
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=tmp_path,
+    )
+    assert any("unimplemented" in why or "unavailable" in why for _, why in off)
+
+
+def test_destructive_without_object_blocks():
+    rows = [
+        _row(
+            "RC-9017",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="HARD_BLOCKER: DESTRUCTIVE_APPROVAL_REQUIRED assertion=drop_old_db operation=delete",
+        ),
+    ]
+    off = _offenders(rows, presented_ids=None)
+    assert any("exact object" in why for _, why in off)
+
+
+def test_environment_turn_budget_rejected():
+    rows = [
+        _row(
+            "RC-9018",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix=(
+                "HARD_BLOCKER: ENVIRONMENT_BLOCKED assertion=cannot_continue "
+                "command=pytest observed_error=Error turn budget exhausted"
+            ),
+        ),
+    ]
+    off = _offenders(rows, presented_ids=None)
+    assert any("never" in why or "environment failure" in why for _, why in off)
+
+
+def test_nonexistent_command_blocks():
+    rows = [
+        _row(
+            "RC-9019",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="FIXED: renamed. VERIFIED: `tests/does_not_exist_rc9019.py`",
+        ),
+    ]
+    off = _offenders(rows, presented_ids=None)
+    assert any("do not exist" in why for _, why in off)
+
+
+def test_failed_execution_evidence_blocks():
+    rows = [
+        _row(
+            "RC-9020",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
+        ),
+    ]
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=ROOT,
+        payload={"fix_evidence": {"RC-9020": {"ran": True, "exit": 1}}},
+    )
+    assert any("failed" in why for _, why in off)
+
+
+def test_child_test_cannot_close_parent():
+    rows = [
+        _row(
+            "RC-9021",
+            extra_defect="CLASS:ACTIVE end-to-end parent order flow",
+            extra_fix="FIXED: one ticker. VERIFIED: `tests/test_order_flow_engine_chunk2_or_fallthrough.py`",
+        ),
+    ]
+    off = _offenders(rows, presented_ids=None)
+    assert any("child test" in why or "parent" in why for _, why in off)

@@ -4,9 +4,10 @@
   "writer": "cursor",
   "permanent_writer": null,
   "permanent_auditor": null,
-  "one_writer_per_worktree": true,
+  "one_canonical_worktree": true,
+  "one_writer_per_worktree": false,
   "held_commit": null,
   "updated_at": "2026-08-22T00:00:00-05:00",
-  "standing_law": "Operator is the governing authority / PM. The operator selects the ACTIVE_WRITER per mission. Claude and Cursor may both code, audit, design, test, fix, review, refactor, commit, and push. No agent has permanent writer or auditor status. One writer per worktree at a time. A non-active agent must not concurrently mutate the same protected worktree.",
-  "note": "# sod-role-ok: operator 2026-08-22 authority change. Permanent Claude-writer / Cursor-auditor identity split SUPERSEDED. For mission ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1: CURSOR = ACTIVE_WRITER. Claude is not writing this worktree concurrently. Safety invariant preserved: ONE WRITER PER WORKTREE AT A TIME. Do not restore Claude=permanent writer or Cursor=permanent auditor."
+  "standing_law": "Operator is the governing authority / PM. The operator selects the ACTIVE_WRITER per mission. Claude and Cursor may both code, audit, design, test, fix, review, refactor, commit, and push. No agent has permanent writer or auditor status. ONE canonical worktree total. ONE active writer at a time. A second normal project worktree is blocked. A non-active agent must not concurrently mutate the canonical worktree.",
+  "note": "# sod-role-ok: operator 2026-08-22 authority change. Permanent Claude-writer / Cursor-auditor identity split SUPERSEDED. Per-worktree multi-checkout architecture SUPERSEDED (RC-457): ONE canonical worktree total, not one writer per worktree. For mission ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1: CURSOR = ACTIVE_WRITER. Claude is not writing this worktree concurrently. Do not restore Claude=permanent writer, Cursor=permanent auditor, or isolated -Claude as a normal second worktree."
 }

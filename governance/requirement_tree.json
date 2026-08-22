@@ -1,0 +1,107 @@
+{
+  "authority": "governance/requirement_tree.json",
+  "derived_proof": "reports/requirement_proof_latest.json",
+  "defect_ledger": "governance/root_cause_log.md",
+  "proof_states": ["PASS", "FAIL", "NOT_PROVEN", "UNAVAILABLE"],
+  "execution_states": ["ACTIVE", "PASSIVE", "CLOSED"],
+  "note": "Machine-readable master for parent/child proof. OPEN_ITEMS.md is the human ledger. RC log is the one defect ledger. Do not treat this file as a second defect registry.",
+  "items": [
+    {
+      "id": "OF_PARENT",
+      "title": "Order Flow parent",
+      "proof": "NOT_PROVEN",
+      "closable": false,
+      "execution": "ACTIVE",
+      "children": [
+        "OF_COMPOSITE_RETIRED",
+        "OF_ENGINE_ABSORPTION_RETIRED",
+        "P2_ABSORPTION_WITHHELD",
+        "IDENTITY_SPLIT_REMOVED"
+      ]
+    },
+    {
+      "id": "P2_PARENT",
+      "title": "P2 / models parent",
+      "proof": "NOT_PROVEN",
+      "closable": false,
+      "execution": "ACTIVE",
+      "children": ["P2_ABSORPTION_WITHHELD"]
+    },
+    {
+      "id": "LP01_PARENT",
+      "title": "LP-01 Institutional session liquidity / value levels",
+      "proof": "NOT_PROVEN",
+      "closable": false,
+      "execution": "ACTIVE",
+      "children": []
+    },
+    {
+      "id": "PREDICTIVE_VALIDITY",
+      "title": "Predictive validity (any horizon beats chance, OOS, net of costs)",
+      "proof": "NOT_PROVEN",
+      "closable": false,
+      "execution": "PASSIVE"
+    },
+    {
+      "id": "REAL_MONEY_READINESS",
+      "title": "Real-money readiness",
+      "proof": "NOT_PROVEN",
+      "closable": false,
+      "execution": "PASSIVE"
+    },
+    {
+      "id": "UI_TRUTH_PARENT",
+      "title": "UI / display truth parent",
+      "proof": "NOT_PROVEN",
+      "closable": false,
+      "execution": "ACTIVE"
+    },
+    {
+      "id": "OF_COMPOSITE_RETIRED",
+      "title": "retired Order Flow composite/verdict producer family",
+      "proof": "PASS",
+      "closable": true,
+      "execution": "CLOSED",
+      "evidence": [
+        "RC-454",
+        "tests/test_stack_wire_5_v1.py",
+        "tests/test_action11_2_order_flow_verdict_fail_closed.py"
+      ]
+    },
+    {
+      "id": "OF_ENGINE_ABSORPTION_RETIRED",
+      "title": "engine _compute_absorption ratio retired",
+      "proof": "PASS",
+      "closable": true,
+      "execution": "CLOSED",
+      "evidence": [
+        "RC-456",
+        "tests/test_book_tape_batch_geometry_v1.py"
+      ]
+    },
+    {
+      "id": "P2_ABSORPTION_WITHHELD",
+      "title": "historical P2 absorption feature withheld from training / quarantined",
+      "proof": "PASS",
+      "closable": true,
+      "execution": "CLOSED",
+      "evidence": [
+        "RC-455",
+        "tests/test_range_imbalance_behavior_v1.py",
+        "training_provenance.py"
+      ]
+    },
+    {
+      "id": "IDENTITY_SPLIT_REMOVED",
+      "title": "permanent Claude-writer / Cursor-auditor identity restriction removed",
+      "proof": "PASS",
+      "closable": true,
+      "execution": "CLOSED",
+      "evidence": [
+        "RC-452",
+        "RC-457",
+        "tests/test_active_writer_law_v1.py"
+      ]
+    }
+  ]
+}

@@ -1,11 +1,12 @@
-"""Active-writer / one-writer-per-worktree lock (RC-226, superseded RC-452).
+"""Active-writer / one-canonical-worktree lock (RC-226, RC-452, RC-457).
 
 The operator selects ACTIVE_WRITER per mission. Claude and Cursor may both
 implement. Neither identity has permanent writer or auditor status.
 
-Invariant preserved: ONE WRITER PER WORKTREE AT A TIME. When an in-progress
-mission assigns active_writer≠current agent, the non-active agent must not
-mutate mission scope_paths or hard-denylist product surfaces.
+Invariant: ONE CANONICAL WORKTREE TOTAL. ONE ACTIVE WRITER AT A TIME.
+A second normal project worktree BLOCKS. When an in-progress mission assigns
+active_writer≠current agent, the non-active agent must not mutate mission
+scope_paths or hard-denylist product surfaces.
 
 Fires:
   - PreToolUse via operating_process_lock.pm_mission_edit_violation
@@ -376,7 +377,7 @@ def permanent_identity_violations(
                 out.append(
                     f"ACTIVE_WRITER: {label} still asserts identity-bound privilege {phrase!r} — "
                     f"superseded 2026-08-22. Use operator-selected ACTIVE_WRITER + "
-                    f"one-writer-per-worktree."
+                    f"one canonical worktree."
                 )
                 break
         aw = str(doc.get("active_writer") or "").strip().lower()
@@ -395,6 +396,17 @@ def permanent_identity_violations(
         out.append(
             "ACTIVE_WRITER: pm_mission.pm must be 'operator' — the operator remains "
             "governing authority."
+        )
+    if sole.get("one_writer_per_worktree") is True:
+        out.append(
+            "ACTIVE_WRITER: sole_writer.one_writer_per_worktree=true permits multiple "
+            "normal worktrees — operator law is ONE canonical worktree total "
+            "(set one_canonical_worktree=true)."
+        )
+    if sole and sole.get("one_canonical_worktree") is not True:
+        out.append(
+            "ACTIVE_WRITER: sole_writer.one_canonical_worktree must be true — "
+            "ONE canonical worktree total."
         )
     for rel in _IDENTITY_DOC_SURFACES:
         path = REPO / rel
@@ -465,7 +477,7 @@ def writer_drift_violations(
             out.append(
                 f"{sod} — WRITER-DRIFT BLOCK: mission ACTIVE_WRITER={writer!r} but "
                 f"agent={agent!r} touched scope path {rel} (mission_id={mid!r}) — "
-                f"one writer per worktree; non-active agent cannot concurrently mutate it"
+                f"one canonical worktree; non-active agent cannot concurrently mutate it"
             )
     return out
 
@@ -518,3 +530,122 @@ def live_writer_drift_violations(
     return writer_drift_violations(
         paths, agent=agent, mission=mission, sole_writer=sole_writer
     )
+
+
+_DEFAULT_WORKTREE_EXCLUDES = (
+    ".claude/worktrees",
+    "/tmp/",
+    "/var/tmp/",
+    "tmp/",
+    "deltagate-",
+)
+
+
+def _worktree_policy() -> dict:
+    override = os.environ.get("ED_WORKTREE_POLICY_PATH", "").strip()
+    path = Path(override) if override else REPO / "tools" / "agent_worktree_policy.json"
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def is_normal_project_worktree(path: Path | str, policy: dict | None = None) -> bool:
+    """True for an ordinary project checkout. Measurement/tmp/.claude trees are not."""
+    policy = policy if policy is not None else _worktree_policy()
+    raw = str(Path(path).resolve() if isinstance(path, Path) else path)
+    p = raw.replace("\\", "/")
+    excludes = list(policy.get("exclude_path_substrings") or _DEFAULT_WORKTREE_EXCLUDES)
+    for ex in excludes:
+        if ex and ex.replace("\\", "/") in p:
+            return False
+    return True
+
+
+def list_git_worktrees(repo: Path | None = None) -> list[Path]:
+    """Return worktree paths. Tests may inject via ED_WORKTREE_LIST_PATH (JSON list)."""
+    inject = os.environ.get("ED_WORKTREE_LIST_PATH", "").strip()
+    if inject:
+        try:
+            raw = json.loads(Path(inject).read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return []
+        if not isinstance(raw, list):
+            return []
+        return [Path(str(x)) for x in raw if str(x).strip()]
+    root = repo or REPO
+    try:
+        r = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if r.returncode != 0:
+        return []
+    out: list[Path] = []
+    for line in (r.stdout or "").splitlines():
+        if line.startswith("worktree "):
+            out.append(Path(line[len("worktree "):].strip()))
+    return out
+
+
+def canonical_worktree_violations(
+    *,
+    repo: Path | None = None,
+    worktrees: list[Path] | None = None,
+    policy: dict | None = None,
+    require: bool | None = None,
+) -> list[str]:
+    """ONE canonical worktree total. Second normal project worktree → BLOCK.
+
+    Zero / unreadable identity → BLOCK when execution requires one (canonical mode
+    or sole_writer.one_canonical_worktree). Injected lists never touch live git.
+    """
+    policy = policy if policy is not None else _worktree_policy()
+    mode = str(policy.get("mode") or "").strip().lower()
+    sole = _load_json(SOLE_WRITER_PATH)
+    needed = require
+    if needed is None:
+        needed = (
+            mode == "canonical"
+            or policy.get("canonical_worktree_required") is True
+            or sole.get("one_canonical_worktree") is True
+        )
+    if not needed:
+        return []
+    trees = worktrees if worktrees is not None else list_git_worktrees(repo)
+    if worktrees is None and not trees and not os.environ.get("ED_WORKTREE_LIST_PATH"):
+        return [
+            "CANONICAL_WORKTREE: zero/unreadable worktree identity — execution "
+            "requires exactly one canonical project worktree"
+        ]
+    normal = [p for p in trees if is_normal_project_worktree(p, policy)]
+    max_n = int(policy.get("max_normal_project_worktrees") or 1)
+    if len(normal) == 0:
+        return [
+            "CANONICAL_WORKTREE: zero normal project worktrees — execution "
+            "requires exactly one canonical identity"
+        ]
+    if len(normal) > max_n:
+        shown = [str(p) for p in normal[:6]]
+        return [
+            f"CANONICAL_WORKTREE: {len(normal)} normal project worktrees {shown} — "
+            f"ONE canonical worktree total (second normal worktree BLOCKS)"
+        ]
+    suffix = str(policy.get("claude_root_suffix") or "-Claude")
+    if policy.get("claude_suffix_is_legacy_forbidden") is True:
+        only = Path(normal[0])
+        if only.name.endswith(suffix) and len(normal) == 1:
+            return [
+                "CANONICAL_WORKTREE: the only checkout ends with "
+                f"{suffix!r} — leftover isolated architecture; the ACTIVE_WRITER "
+                "uses the one canonical tree, not a sibling -Claude tree"
+            ]
+    return []

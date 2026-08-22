@@ -1,6 +1,6 @@
 # Cursor Project Manager Mandate (RC-218 / RC-220)
 
-> **SUPERSEDED — operator ruling 2026-08-22 (RC-452):** Operator is the governing authority / PM. Claude and Cursor may both implement. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. One writer per worktree at a time. The 2026-08-18 "Cursor is an adversarial auditor only" sentence is void.
+> **SUPERSEDED — operator ruling 2026-08-22 (RC-452/RC-457):** Operator is the governing authority / PM. Claude and Cursor may both implement. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. ONE canonical worktree total. ONE active writer at a time. The 2026-08-18 "Cursor is an adversarial auditor only" sentence is void. The one-writer-per-worktree multi-checkout architecture is void.
 
 **PM authority:** Operator. **ACTIVE_WRITER:** per `governance/sole_writer.json`. **Default program:** whole-repo rehab (`governance/REHAB_PROGRAM.md`), spine = **multi-faucet audit/find/fix end-to-end, no patches**.
 

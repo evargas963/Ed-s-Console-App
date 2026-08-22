@@ -51,5 +51,5 @@
     "the scoreboard reports every open number, measured live, after every fix"
   ],
   "slice": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1 — operator 2026-08-22 assigned Cursor as ACTIVE_WRITER. Permanent Claude-writer / Cursor-auditor identity split superseded.",
-  "note": "# sod-role-ok: operator 2026-08-22 — CURSOR = ACTIVE_WRITER for this mission. Claude is not writing this worktree concurrently. One writer per worktree. Operator remains PM. Parent: FIND IT → FIX IT lock, order-flow retirement prove-out, P2 absorption semantic remediation."
+  "note": "# sod-role-ok: operator 2026-08-22 — CURSOR = ACTIVE_WRITER for this mission. Claude is not writing this worktree concurrently. ONE canonical worktree total. Operator remains PM. Parent: FIND IT → FIX IT lock, order-flow retirement prove-out, P2 absorption semantic remediation."
 }

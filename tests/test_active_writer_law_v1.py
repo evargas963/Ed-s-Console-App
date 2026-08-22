@@ -1,5 +1,5 @@
 # institutional-synthetic-ok: inject permanent-identity and wrong-writer assignments.
-"""Operator-selected ACTIVE_WRITER + one-writer-per-worktree (RC-452)."""
+"""Operator-selected ACTIVE_WRITER + one canonical worktree (RC-452 / RC-457)."""
 from __future__ import annotations
 
 import json
@@ -136,3 +136,70 @@ def test_live_assignment_has_no_permanent_identity():
     assert sole.get("permanent_writer") in (None, "", "null")
     assert sole.get("permanent_auditor") in (None, "", "null")
     assert (sole.get("active_writer") or sole.get("writer")) in ("cursor", "claude")
+    assert sole.get("one_canonical_worktree") is True
+    assert sole.get("one_writer_per_worktree") is not True
+
+
+def test_second_normal_worktree_blocks():
+    policy = {
+        "mode": "canonical",
+        "max_normal_project_worktrees": 1,
+        "exclude_path_substrings": ["/tmp/", "deltagate-", ".claude/worktrees"],
+    }
+    msgs = WDL.canonical_worktree_violations(
+        worktrees=[Path("/workspace"), Path("/workspace-Claude")],
+        policy=policy,
+        require=True,
+    )
+    assert msgs and any("CANONICAL_WORKTREE" in m and "2 normal" in m for m in msgs)
+
+
+def test_measurement_tmp_worktree_does_not_count():
+    policy = {
+        "mode": "canonical",
+        "max_normal_project_worktrees": 1,
+        "exclude_path_substrings": ["/tmp/", "deltagate-", ".claude/worktrees"],
+    }
+    msgs = WDL.canonical_worktree_violations(
+        worktrees=[Path("/workspace"), Path("/tmp/deltagate-abc")],
+        policy=policy,
+        require=True,
+    )
+    assert msgs == []
+
+
+def test_zero_worktrees_blocks():
+    msgs = WDL.canonical_worktree_violations(
+        worktrees=[],
+        policy={"mode": "canonical"},
+        require=True,
+    )
+    assert msgs and any("zero" in m for m in msgs)
+
+
+def test_operator_flip_active_writer_is_clean():
+    """Assignment change is a field flip — neither agent keeps privilege."""
+    cursor = WDL.resolved_writer(
+        {"active_writer": "cursor", "writer": "cursor"},
+        {"active_writer": "cursor", "writer": "cursor"},
+    )
+    claude = WDL.resolved_writer(
+        {"active_writer": "claude", "writer": "claude"},
+        {"active_writer": "claude", "writer": "claude"},
+    )
+    assert cursor == "cursor"
+    assert claude == "claude"
+    assert cursor != claude
+
+
+def test_one_writer_per_worktree_flag_blocks():
+    v = WDL.permanent_identity_violations(
+        sole={
+            "pm": "operator",
+            "writer": "cursor",
+            "one_writer_per_worktree": True,
+            "one_canonical_worktree": True,
+        },
+        mission={"pm": "operator", "writer": "cursor"},
+    )
+    assert v and any("one_writer_per_worktree" in m for m in v)
