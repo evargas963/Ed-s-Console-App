@@ -13,11 +13,9 @@ Contract:
   * BLOCKS unfinished-turn obligations from `tools/find_it_fix_it_lock.py` reading the sole
     master (`ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md`), never
     from `governance/root_cause_log.md` OPEN / ACTIVE rows (zero execution authority).
-  * Respects `stop_hook_active`: if the guard already blocked once and the agent is still going,
-    it does not block again. Without this the turn could never end — a guard that cannot be
-    satisfied is a hang, not a control.
-  * ED_STOP_GUARD=off disables it. Deliberate and visible: an operator may switch it off; an
-    agent may not silently route around it.
+  * `stop_hook_active` is an anti-loop latch for hang-risk freshness/faucet re-entry.
+    It does not convert a still-valid FIND IT / hard-law violation into a pass.
+  * ED_STOP_GUARD=off disables it only when operator_go grants scope guard_escape.
 """
 from __future__ import annotations
 
@@ -131,7 +129,11 @@ def fix_law_blockers(payload: dict | None = None) -> list[tuple[str, str]]:
 
 
 def main() -> int:
-    if os.environ.get("ED_STOP_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled, stop_reentry_bypasses_hard_laws
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled, stop_reentry_bypasses_hard_laws  # type: ignore
+    if env_guard_is_disabled("ED_STOP_GUARD"):
         return 0
     try:
         payload = json.load(sys.stdin)
@@ -152,6 +154,10 @@ def main() -> int:
     # hang-guards still honour the one-retry latch below.
     fix_offenders = fix_law_blockers(payload)
     if payload.get("stop_hook_active") is True and not fix_offenders:
+        if stop_reentry_bypasses_hard_laws(payload):
+            return 0
+        # Anti-loop: skip hang-risk freshness/faucet re-entry only. Hard-law
+        # fix_offenders already re-evaluated above and were empty.
         return 0
 
     rows = unfinished_rows_opened_today()

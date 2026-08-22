@@ -167,13 +167,17 @@ def honesty_violations(user_text: str | None, assistant_text: str) -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("ED_HONESTY_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled, stop_reentry_bypasses_hard_laws
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled, stop_reentry_bypasses_hard_laws  # type: ignore
+    if env_guard_is_disabled("ED_HONESTY_GUARD"):
         return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return 0
-    if payload.get("stop_hook_active") is True:
+    if payload.get("stop_hook_active") is True and stop_reentry_bypasses_hard_laws(payload):
         return 0
     tp = payload.get("transcript_path")
     if not tp:
@@ -188,7 +192,11 @@ def main() -> int:
     bad = honesty_violations(last_user_text(tp), text)
     # RC-233 (PM full-prompt coverage): both agents' Stop hooks run this file, so the
     # coverage law holds on the whole continuum with no separate Cursor wiring.
-    if os.environ.get("ED_PM_COVERAGE_GUARD", "").strip().lower() not in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if not _egd("ED_PM_COVERAGE_GUARD"):
         try:
             from tools.operating_process_lock import pm_coverage_violations
         except ImportError:

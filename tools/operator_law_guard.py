@@ -981,7 +981,11 @@ def stop_violations(ledger: list[dict]) -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("ED_OPERATOR_LAW_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled  # type: ignore
+    if env_guard_is_disabled("ED_OPERATOR_LAW_GUARD"):
         return 0
     try:
         payload = json.load(sys.stdin)

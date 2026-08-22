@@ -207,14 +207,18 @@ def violations(text: str) -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("ED_PROOF_ONLY_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled, stop_reentry_bypasses_hard_laws
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled, stop_reentry_bypasses_hard_laws  # type: ignore
+    if env_guard_is_disabled("ED_PROOF_ONLY_GUARD"):
         return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return 0                              # unreadable hook input is never a block
-    if payload.get("stop_hook_active") is True:
-        return 0                              # already blocked once; never loop
+    if payload.get("stop_hook_active") is True and stop_reentry_bypasses_hard_laws(payload):
+        return 0
 
     tp = payload.get("transcript_path")
     if not tp:

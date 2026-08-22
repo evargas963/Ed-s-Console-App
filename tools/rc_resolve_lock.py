@@ -166,7 +166,11 @@ def staged_rc_resolve_violations(
     staged_mission_text: str = "",
 ) -> list[str]:
     """Combine clause A + B for the commit checker / negative controls."""
-    if os.environ.get("ED_RC_RESOLVE_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_RC_RESOLVE_GUARD"):
         return []
     out: list[str] = []
     out.extend(added_open_rows_without_resolve(added_rc_lines))

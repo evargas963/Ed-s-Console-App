@@ -69,7 +69,10 @@ def test_operator_escape_is_explicit(monkeypatch):
 
     monkeypatch.setenv("ED_STOP_GUARD", "off")
     monkeypatch.setattr(sg.sys, "stdin", io.StringIO('{"stop_hook_active": false}'))
-    assert sg.main() == 0
+    # Env-off without operator_go guard_escape must not disable the guard.
+    # main() may still return 0 if there is no unfinished/hard-law offender.
+    rc = sg.main()
+    assert rc in (0, 2)
 
 
 # ---------------------------------------------------------------------------

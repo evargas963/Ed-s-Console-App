@@ -13,17 +13,21 @@ from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
-from schwab import auth
 import logging
 
 log = logging.getLogger(__name__)
 
-
-# schwab-py raises this when token expired/invalid
 try:
-    from schwab.auth import InvalidTokenError
-except ImportError:
+    from schwab import auth
+    try:
+        from schwab.auth import InvalidTokenError
+    except ImportError:
+        InvalidTokenError = type("InvalidTokenError", (Exception,), {})
+    _SCHWAB_AUTH_AVAILABLE = True
+except ImportError:  # CI-offline / inspect-only hosts
+    auth = None
     InvalidTokenError = type("InvalidTokenError", (Exception,), {})
+    _SCHWAB_AUTH_AVAILABLE = False
 
 # ── OAuth scope for authorize URL (schwab-py's get_auth_context omits scope by default).
 #    Schwab token responses may omit refresh_token without offline_access-style scope.
@@ -61,7 +65,8 @@ def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=Non
     return auth.AuthContext(callback_url, authorization_url, new_state)
 
 
-auth.get_auth_context = _get_auth_context_with_scope
+if _SCHWAB_AUTH_AVAILABLE:
+    auth.get_auth_context = _get_auth_context_with_scope
 
 
 @dataclass
@@ -200,6 +205,12 @@ def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> S
         )
     resolved = _resolve_token_path(token_path)
     inv = inspect_token_file(resolved)
+    if not _SCHWAB_AUTH_AVAILABLE:
+        return SchwabClientState(
+            ok=False,
+            message="schwab package unavailable — cannot construct a live client",
+            client=None,
+        )
     if not inv.file_exists:
         return SchwabClientState(
             ok=False,

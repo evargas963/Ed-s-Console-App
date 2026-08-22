@@ -80,6 +80,11 @@ def test_unlisted_surface_is_not_gated(tmp_path):
 def test_operator_env_escape_flows(tmp_path, monkeypatch):
     _write_registry(tmp_path, "design_pending", None)
     monkeypatch.setenv("ED_UI_MOCKUP_LOCK", "off")
+    assert mockup_approval_violation("static/chart.html", "x", repo=tmp_path) is not None
+    monkeypatch.setattr(
+        "tools.hard_law_runtime.operator_guard_escape_granted",
+        lambda name, repo=None: True,
+    )
     assert mockup_approval_violation("static/chart.html", "x", repo=tmp_path) is None
 
 

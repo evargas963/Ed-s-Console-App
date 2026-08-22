@@ -398,7 +398,11 @@ def _block_unapproved_ui_redesign(rel: str, tool_input: dict) -> int | None:
 
 
 def main() -> int:
-    if os.environ.get("ED_PRETOOLUSE_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled  # type: ignore
+    if env_guard_is_disabled("ED_PRETOOLUSE_GUARD"):
         return 0
     try:
         payload = json.load(sys.stdin)

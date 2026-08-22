@@ -1234,7 +1234,10 @@ def three_iteration_method_pivot_violations(
     *,
     repo: Path | None = None,
 ) -> list[tuple[str, str]]:
-    """Fourth same-method variation without a method pivot FAILs. Not permission to stop."""
+    """Fourth equivalent approach on a stable failure id FAILs. Not permission to stop.
+
+    Equivalence is approach_fingerprint(paths, failure_ids), not free-text counting.
+    """
     repo = repo or REPO
     out: list[tuple[str, str]] = []
     agents = repo / "AGENTS.md"
@@ -1248,12 +1251,16 @@ def three_iteration_method_pivot_violations(
                 "AGENTS.md",
                 "three-iteration method-pivot contract missing from agent authority",
             ))
-    scan = _assistant_scan_text(payload)
-    if _FOURTH_SAME_METHOD.search(scan) and not _METHOD_PIVOT.search(scan):
-        out.append((
-            "(turn)",
-            "fourth variation of the same method without method-pivot — change method",
-        ))
+    try:
+        from tools.hard_law_runtime import method_pivot_violations as _mp
+    except ImportError:
+        from hard_law_runtime import method_pivot_violations as _mp  # type: ignore
+    payload = payload or {}
+    attempts = payload.get("_method_attempts") or []
+    nxt = str(payload.get("_next_approach_fp") or "")
+    stable = str(payload.get("_stable_failure_id") or "")
+    if attempts and nxt and stable:
+        out.extend(_mp(attempts, next_fingerprint=nxt, stable_id=stable))
     return out
 
 
@@ -1354,7 +1361,8 @@ def ticker_specific_fix_scope_violations(
 
 
 _MASTER_BOX_RE = re.compile(
-    r"^\s*[-*]\s+\[(?P<mark>[ xX])\]\s+`(?P<id>[^`]+)`\s+—\s+STATUS=(?P<status>[A-Z_]+)\s+—\s+(?P<body>.*)$"
+    r"^\s*[-*]\s+\[(?P<mark>[ xX])\]\s+`(?P<id>[^`]+)`\s+—\s+STATUS=(?P<status>[A-Z_]+)\s+—\s+(?P<body>.*)$",
+    re.MULTILINE,
 )
 
 
@@ -1400,6 +1408,12 @@ def fix_law_blockers(
             rc_text = RC_LOG.read_text(encoding="utf-8", errors="replace")
         except OSError:
             rc_text = ""
-    return active_obligation_offenders(
+    out = active_obligation_offenders(
         rc_text, today=today, presented_ids=presented_ids, payload=payload
     )
+    try:
+        from tools.hard_law_runtime import stop_hard_law_violations
+    except ImportError:
+        from hard_law_runtime import stop_hard_law_violations  # type: ignore
+    out.extend(stop_hard_law_violations(payload=payload))
+    return out

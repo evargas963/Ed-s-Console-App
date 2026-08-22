@@ -808,15 +808,22 @@ def test_stale_four_status_fails_and_five_status_passes():
 
 
 def test_three_iteration_method_pivot_enforced():
+    fp = "same-approach-fingerprint"
+    attempts = [
+        {"stable_id": "OS-A1-001", "approach_fp": fp, "outcome": "fail"},
+        {"stable_id": "OS-A1-001", "approach_fp": fp, "outcome": "fail"},
+        {"stable_id": "OS-A1-001", "approach_fp": fp, "outcome": "fail"},
+    ]
     bad = FIF.three_iteration_method_pivot_violations({
-        "last_assistant_text": "fourth variation of the same method, trying again",
+        "_method_attempts": attempts,
+        "_next_approach_fp": fp,
+        "_stable_failure_id": "OS-A1-001",
     })
-    assert bad, "fourth same-method attempt without pivot must FAIL"
+    assert bad, "fourth equivalent attempt without a different fingerprint must FAIL"
     good = FIF.three_iteration_method_pivot_violations({
-        "last_assistant_text": (
-            "fourth variation of the same method is forbidden; "
-            "change method / method-pivot to the same required outcome"
-        ),
+        "_method_attempts": attempts,
+        "_next_approach_fp": "different-approach-fingerprint",
+        "_stable_failure_id": "OS-A1-001",
     })
     assert good == [], good
 

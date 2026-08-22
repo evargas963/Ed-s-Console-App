@@ -122,7 +122,11 @@ def reset_guard_violations(command: str) -> list[str]:
     Escapes: ED_RESET_GUARD=off (operator, visible) or operator_go scope git_reset_product.
     `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
     """
-    if os.environ.get("ED_RESET_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_RESET_GUARD"):
         return []
     if operator_go_granted("git_reset_product"):
         return []
@@ -680,7 +684,11 @@ def _mission_scope_allows(rel: str, scope_paths: list) -> bool:
 
 def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
     """RC-219 + RC-226: product edits need an in-progress mission; non-writer cannot touch scope."""
-    if os.environ.get("ED_PM_MISSION_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_PM_MISSION_GUARD"):
         return None
     rel = rel.replace("\\", "/")
     if rel in PROCESS_ALLOWED_PREFIXES or WDL.is_pm_allowlisted(rel):
@@ -961,7 +969,12 @@ def pm_coverage_violations(user_text: str | None, assistant_text: str) -> list[s
     ]
 
 
-def completion_claim_violations(text: str, repo: Path | None = None) -> list[str]:
+def completion_claim_violations(
+    text: str,
+    repo: Path | None = None,
+    *,
+    ci_status: dict | None = None,
+) -> list[str]:
     """BLOCK COMPLETE/LIVE/parity claims while measurable preconditions fail."""
     if not text:
         return []
@@ -970,6 +983,13 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     # LOCK-5 (RC-232) triggers on its OWN claim regex — the legacy _COMPLETION_CLAIM tails
     # missed plain forms like 'Mission COMPLETE: ...' (measured by its own fixture).
     out.extend(_quiet_pass_required_violations(text, root))
+    try:
+        from tools.hard_law_runtime import current_head_sha, load_required_ci_status, required_ci_violations
+    except ImportError:
+        from hard_law_runtime import current_head_sha, load_required_ci_status, required_ci_violations  # type: ignore
+    head = current_head_sha(root)
+    ci = load_required_ci_status(root, head_sha=head, injected=ci_status)
+    out.extend(required_ci_violations(text, head_sha=head, ci_status=ci))
     if not _COMPLETION_CLAIM.search(text):
         return out
     mism = index_worktree_mismatches(root)

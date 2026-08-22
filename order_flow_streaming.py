@@ -485,6 +485,89 @@ def _run_stream_loop(
         _stream_loop = None
 
 
+def bind_production_level_one_handler(sc: Any, on_item: Optional[Callable[[str, dict], None]] = None) -> None:
+    """Register the production LEVELONE handler on an existing StreamClient.
+
+    ONE faucet: same add_level_one_equity_handler + push_level_one path as the
+    live UI stream. on_item is optional receipt capture for --live proof.
+    """
+    def _handler(msg: dict) -> None:
+        content = msg.get("content") or []
+        for item in content:
+            if isinstance(item, dict):
+                sym = (item.get("key") or "").upper().strip()
+                if not sym:
+                    continue
+                push_level_one(sym, item)
+                if on_item is not None:
+                    on_item(sym, item)
+
+    sc.add_level_one_equity_handler(_handler)
+
+
+async def subscribe_production_level_one(sc: Any, symbols: list[str]) -> None:
+    """Production subscribe: StreamClient.level_one_equity_subs."""
+    syms = [s.upper().strip() for s in symbols if str(s).strip()]
+    if not syms:
+        raise ValueError("subscribe_production_level_one requires at least one symbol")
+    await sc.level_one_equity_subs(syms)
+
+
+def collect_level_one_receipts(
+    client: Any,
+    account_id: Any,
+    symbols: list[str],
+    *,
+    duration_sec: float = 8.0,
+    stream_client_factory: Optional[Callable[..., Any]] = None,
+    login: bool = True,
+) -> list[dict]:
+    """Authenticated LEVELONE collect via the production StreamClient path.
+
+    stream_client_factory is injectable for tests. Live callers pass the real
+    schwab.streaming.StreamClient (the same class _run_stream_loop constructs).
+    """
+    if not account_id:
+        raise ValueError("collect_level_one_receipts requires account_id")
+    syms = [s.upper().strip() for s in symbols if str(s).strip()]
+    if not syms:
+        raise ValueError("collect_level_one_receipts requires symbols")
+
+    receipts: list[dict] = []
+
+    def _on_item(sym: str, item: dict) -> None:
+        receipts.append({"symbol": sym, "item": item})
+
+    async def _run() -> list[dict]:
+        if stream_client_factory is not None:
+            sc = stream_client_factory(client, account_id)
+        else:
+            from schwab.streaming import StreamClient
+            sc = StreamClient(client, account_id=account_id)
+        bind_production_level_one_handler(sc, on_item=_on_item)
+        if login:
+            await sc.login()
+        await subscribe_production_level_one(sc, syms)
+        deadline = time.time() + max(0.05, float(duration_sec))
+        while time.time() < deadline:
+            if hasattr(sc, "handle_message"):
+                try:
+                    await sc.handle_message()
+                except Exception:
+                    break
+            else:
+                break
+        try:
+            logout = getattr(sc, "logout", None)
+            if logout is not None:
+                await logout()
+        except Exception:
+            pass
+        return receipts
+
+    return asyncio.run(_run())
+
+
 def start_order_flow_stream(
     client: Any,
     account_id: Any,

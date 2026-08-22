@@ -99,6 +99,11 @@ def test_operator_escape(tmp_path):
 
 def test_env_kill_switch(tmp_path, monkeypatch):
     monkeypatch.setenv("ED_PM_VERIFY_LOCK", "off")
+    assert pm_verify_repo_violations(VERDICT_ON_REPO, repo=tmp_path) != []
+    monkeypatch.setattr(
+        "tools.hard_law_runtime.operator_guard_escape_granted",
+        lambda name, repo=None: True,
+    )
     assert pm_verify_repo_violations(VERDICT_ON_REPO, repo=tmp_path) == []
 
 

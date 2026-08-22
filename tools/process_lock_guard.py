@@ -135,14 +135,18 @@ def stop_block(payload: dict) -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("ED_PROCESS_LOCK_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled, stop_reentry_bypasses_hard_laws
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled, stop_reentry_bypasses_hard_laws  # type: ignore
+    if env_guard_is_disabled("ED_PROCESS_LOCK_GUARD"):
         return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return 0
 
-    if payload.get("stop_hook_active") is True:
+    if payload.get("stop_hook_active") is True and stop_reentry_bypasses_hard_laws(payload):
         return 0
 
     tool = payload.get("tool_name") or ""

@@ -161,7 +161,10 @@ def test_completion_claim_blocks_on_index_mismatch(tmp_path, monkeypatch):
     checker.write_text(checker.read_text(encoding="utf-8") + "\n# drift\n", encoding="utf-8")
     monkeypatch.setattr(OPL, "REPO", repo)
     text = "We have one intentional tree ready to commit — all green."
-    v = OPL.completion_claim_violations(text, repo)
+    v = OPL.completion_claim_violations(
+        text, repo,
+        ci_status={"sha": "", "checks": {"hardening": "SUCCESS", "pytest-full": "SUCCESS"}},
+    )
     assert v and any("index≠WT" in x or "worktree" in x for x in v)
 
 
@@ -172,10 +175,12 @@ def test_live_claim_requires_disk_only_token_when_disk_only(monkeypatch):
         lambda repo=None, port=8000: "DISK_ONLY: pid old",
     )
     monkeypatch.setattr(OPL, "index_worktree_mismatches", lambda repo=None, **kw: [])
-    bad = OPL.completion_claim_violations("Collect gate is LIVE_ENFORCED now.", OPL.REPO)
+    _ci_ok = {"sha": "", "checks": {"hardening": "SUCCESS", "pytest-full": "SUCCESS"}}
+    bad = OPL.completion_claim_violations(
+        "Collect gate is LIVE_ENFORCED now.", OPL.REPO, ci_status=_ci_ok)
     assert bad and "LIVE_ENFORCED" in bad[0] or "DISK_ONLY" in bad[0]
     ok = OPL.completion_claim_violations(
-        "DISK_ONLY_UNTIL_RESTART — gate on disk only.", OPL.REPO
+        "DISK_ONLY_UNTIL_RESTART — gate on disk only.", OPL.REPO, ci_status=_ci_ok
     )
     assert not any("LIVE_ENFORCED" in x for x in ok)
 
@@ -302,7 +307,9 @@ def test_reset_guard_escapes(monkeypatch, tmp_path):
     assert not OPL.reset_guard_violations("git restore -- static/chart.html")
     go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
     monkeypatch.setenv("ED_RESET_GUARD", "off")
-    assert not OPL.reset_guard_violations("git restore -- static/chart.html")
+    assert OPL.reset_guard_violations("git restore -- static/chart.html"), (
+        "agent ED_RESET_GUARD=off must not self-disable the reset guard"
+    )
 
 
 def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
@@ -316,14 +323,18 @@ def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
     (tmp_path / "reports" / "ed_server_warn_quiet_window_latest.json").write_text(
         '{"verdict": "FAIL"}', encoding="utf-8")
     (tmp_path / "governance").mkdir()
-    v = OPL.completion_claim_violations("Mission COMPLETE: all landed.", tmp_path)
+    _ci_ok = {"sha": "", "checks": {"hardening": "SUCCESS", "pytest-full": "SUCCESS"}}
+    v = OPL.completion_claim_violations(
+        "Mission COMPLETE: all landed.", tmp_path, ci_status=_ci_ok)
     assert any(m.startswith("QUIET_PASS_REQUIRED:") for m in v), v
     ok = OPL.completion_claim_violations(
-        "Mission COMPLETE: DISK_ONLY_UNTIL_RESTART for the server half.", tmp_path)
+        "Mission COMPLETE: DISK_ONLY_UNTIL_RESTART for the server half.", tmp_path,
+        ci_status=_ci_ok)
     assert not any(m.startswith("QUIET_PASS_REQUIRED:") for m in ok)
     (tmp_path / "reports" / "ed_server_warn_quiet_window_latest.json").write_text(
         '{"verdict": "PASS"}', encoding="utf-8")
-    v2 = OPL.completion_claim_violations("Mission COMPLETE: all landed.", tmp_path)
+    v2 = OPL.completion_claim_violations(
+        "Mission COMPLETE: all landed.", tmp_path, ci_status=_ci_ok)
     assert not any(m.startswith("QUIET_PASS_REQUIRED:") for m in v2)
 
 

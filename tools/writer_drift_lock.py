@@ -116,7 +116,11 @@ def hard_denylist_violation(rel: str, *, agent: str | None = None,
                             mission: dict | None = None,
                             sole: dict | None = None) -> str | None:
     """LOCK-1: non-writer touching the hard denylist BLOCKS regardless of scope."""
-    if os.environ.get("ED_WRITER_DRIFT_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_WRITER_DRIFT_GUARD"):
         return None
     mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
     if not mission_in_progress(mission):
@@ -445,7 +449,11 @@ def writer_drift_violations(
     sole_writer: dict | None = None,
 ) -> list[str]:
     """Return BLOCK messages when non-writer dirty paths hit mission scope."""
-    if os.environ.get("ED_WRITER_DRIFT_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_WRITER_DRIFT_GUARD"):
         return []
     mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
     sole = sole_writer if sole_writer is not None else _load_json(SOLE_WRITER_PATH)
