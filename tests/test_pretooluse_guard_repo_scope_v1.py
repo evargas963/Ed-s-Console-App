@@ -269,3 +269,15 @@ def test_one_normalization_function_is_the_admission_authority():
     assert "lstrip(\"./\")" not in inspect.getsource(G.master_admits_production_edit)
     assert "canonicalize_repo_rel" in inspect.getsource(G.parse_master_surfaces)
     assert "canonicalize_repo_rel" in inspect.getsource(G.master_admits_production_edit)
+
+
+def test_root_cause_admission_is_materiality_scoped():
+    """server.py / time_et.py require admission; honesty_guard / census do not."""
+    assert G.requires_root_cause_admission("server.py") is True
+    assert G.requires_root_cause_admission("time_et.py") is True
+    assert G.requires_root_cause_admission("tools/honesty_guard.py") is False
+    assert G.requires_root_cause_admission("tools/hard_law_runtime.py") is False
+    assert G.requires_root_cause_admission("tools/pytest_trust_census_v1.py") is False
+    assert G.requires_root_cause_admission("tools/find_prove_locks.py") is False
+    assert G.requires_root_cause_admission("tests/test_x.py") is False
+    assert G.requires_root_cause_admission("governance/pm_mission.json") is False

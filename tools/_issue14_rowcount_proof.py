@@ -2,7 +2,7 @@
 Diagnostic only — not referenced by production runbooks or schedulers.
 
 Compares Issue-14 trainable row counts on snapshots_1m_normalized using RTH from ts_utc
-(DST-aware via is_rth_ts_utc), not stored et_hour SQL (FIND-CAL-TS).
+(DST-aware tradable session via is_tradable_session_ts_utc), not stored et_hour SQL (FIND-CAL-TS).
 
   python tools/_issue14_rowcount_proof.py
 """
@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from db import DB_PATH
 from ml_data_common import weekday_where_clause
-from time_et import is_rth_ts_utc
+from time_et import is_tradable_session_ts_utc
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
 p = DB_PATH
@@ -37,7 +37,7 @@ def count_rth(extra_where: str) -> int:
     n = 0
     for (ts_utc,) in rows:
         try:
-            if is_rth_ts_utc(float(ts_utc)):
+            if is_tradable_session_ts_utc(float(ts_utc)):
                 n += 1
         except (TypeError, ValueError):
             continue

@@ -164,6 +164,48 @@ def test_run_with_repo_venv_hook_fail_closed_and_runs_without_venv(tmp_path):
     assert blk.returncode == 2
 
 
+def test_required_hardening_job_has_no_or_true_and_advisory_is_named():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "hardening.yml").read_text(
+        encoding="utf-8"
+    )
+    # Split on the advisory job so required hardening cannot hide || true.
+    required, _, advisory = text.partition("advisory-hardening:")
+    assert "|| true" not in required
+    assert "NON-AUTHORITATIVE" in advisory
+    assert "cannot support PASS" in advisory
+
+
+def test_live_path_lock_is_launch_only_not_ci():
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    bat = (repo / "start_ed_console.bat").read_text(encoding="utf-8", errors="replace")
+    assert "check_live_path_is_main.py" in bat
+    for wf in (repo / ".github" / "workflows").glob("*.yml"):
+        body = wf.read_text(encoding="utf-8")
+        assert "check_live_path_is_main.py" not in body, wf.name
+    src = (repo / "tools" / "check_live_path_is_main.py").read_text(encoding="utf-8")
+    assert "the same check runs on every PR" not in src
+    assert "REQUIRED_CONTROL at Windows desk launch" in src
+
+
+def test_clock_only_session_gate_blocks_bare_filter_and_allows_composed():
+    from tools.find_prove_locks import clock_only_session_gate_violations
+
+    bare = "def load():\n    if not is_rth_ts_utc(ts):\n        return\n"
+    assert clock_only_session_gate_violations("calibration/daily_scoreboard.py", bare)
+    composed = (
+        "from time_et import is_rth_ts_utc, is_trading_day_et\n"
+        "return is_rth_ts_utc(ts) and is_trading_day_et(day)\n"
+    )
+    assert clock_only_session_gate_violations("desk_store.py", composed) == []
+    assert clock_only_session_gate_violations("time_et.py", bare) == []
+    tradable = "if not is_tradable_session_ts_utc(ts):\n    return\n"
+    assert clock_only_session_gate_violations("ml_scheduler.py", tradable) == []
+
+
 def test_claude_cursor_guard_parity_check():
     from tools.check_institutional_correctness import check_claude_cursor_guard_parity
 

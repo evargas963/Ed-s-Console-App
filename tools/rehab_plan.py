@@ -274,8 +274,10 @@ def m_status_vocabulary_enforced() -> tuple[float, str]:
     return (0.0, "registered, ENFORCED, 0 violations on the live ledger")
 
 
-#: Tools that take a measurement and must be wired to something that blocks.
-BLOCKING_TOOLS = ("duplication_audit", "check_db_health", "check_one_faucet_live")
+#: Commit-path REQUIRED controls only. duplication_audit and check_one_faucet_live
+#: are DIAGNOSTIC_TOOL (non-authoritative); listing them here was phantom enforcement.
+BLOCKING_TOOLS = ("check_db_health",)
+DIAGNOSTIC_TOOLS = ("duplication_audit", "check_one_faucet_live")
 
 
 def m_tools_unwired() -> tuple[float, str]:

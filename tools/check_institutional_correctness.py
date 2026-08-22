@@ -2735,28 +2735,24 @@ def check_recursive_five_why_front_loaded() -> list[Violation]:
     ledger. Admission is now an unresolved sole-master requirement. Root-cause / five-why
     reasoning remains mandatory on that same master item. A new RC row does not admit work.
 
-    Rule: every staged PRODUCTION file must independently resolve to an unresolved
-    master item whose SURFACES= field lists that exact repo-relative path.
-    One covered file does not admit an uncovered sibling. A new/modified unrelated
-    master item is not admission. Tests/governance/docs/reports edits are how you
-    comply and do not themselves require a SURFACES= bind. Escapes NONE by design
-    for production files.
+    Rule: every staged MATERIAL product/control-path file must independently
+    resolve to an unresolved master item whose SURFACES= field lists that exact
+    repo-relative path. Enforcement/diagnostic/compliance-lane edits do not
+    require a fabricated SURFACES= bind (Architecture A proportionality).
+    One covered file does not admit an uncovered sibling. Tests/governance/docs
+    /reports edits are how you comply.
     """
     try:
         from tools.pretooluse_guard import (
-            ALWAYS_ALLOWED_EXACT,
-            ALWAYS_ALLOWED_PREFIXES,
-            PRODUCTION_SUFFIXES,
             SOLE_MASTER,
             master_admits_production_edit,
+            requires_root_cause_admission,
         )
     except ImportError:
         from pretooluse_guard import (  # type: ignore
-            ALWAYS_ALLOWED_EXACT,
-            ALWAYS_ALLOWED_PREFIXES,
-            PRODUCTION_SUFFIXES,
             SOLE_MASTER,
             master_admits_production_edit,
+            requires_root_cause_admission,
         )
     staged = _git_output_lines(["diff", "--cached", "--name-only"])
     if staged is None:
@@ -2766,9 +2762,7 @@ def check_recursive_five_why_front_loaded() -> list[Violation]:
         return []
     prod_code = sorted(
         f for f in staged_set
-        if f.endswith(PRODUCTION_SUFFIXES)
-        and not f.startswith(ALWAYS_ALLOWED_PREFIXES)
-        and f not in ALWAYS_ALLOWED_EXACT
+        if requires_root_cause_admission(f)
         and _staged_has_real_change(f)
     )
     if not prod_code:
@@ -2788,8 +2782,9 @@ def check_recursive_five_why_front_loaded() -> list[Violation]:
     return [Violation(
         REPO / uncovered[0], 0,
         "Production changed with uncovered path(s): " + ", ".join(uncovered) +
-        ". Every staged production file must independently bind to an unresolved "
-        "master item via SURFACES=<repo-relative-path>. One covered file does not "
+        ". Every staged material product/control-path file must independently bind "
+        "to an unresolved master item via SURFACES=<repo-relative-path>. "
+        "Enforcement/diagnostic edits do not require a fabricated bind. One covered file does not "
         "admit an uncovered sibling. Search the sole master; if absent, add one "
         "atomic `- [ ]` item and bind the exact paths on that same item. Do not "
         "open a current RC debt row. Root-cause / five-why evidence belongs on "
@@ -3837,6 +3832,18 @@ def check_rth_only_market_measurement() -> list[Violation]:
             "Sunday-only sample nearly shipped as 'the flip is stable intraday'). Filter with "
             "time_et.is_trading_day_et / is_tradable_session_ts_utc (or ml_data_common's df/list "
             "filters), or declare '# rth-scope-ok: <reason>'."))
+    try:
+        from tools.find_prove_locks import clock_only_session_gate_violations
+    except ImportError:
+        from find_prove_locks import clock_only_session_gate_violations  # type: ignore
+    for path in _production_py_files():
+        rel = path.relative_to(REPO).as_posix()
+        try:
+            src = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for msg in clock_only_session_gate_violations(rel, src):
+            out.append(Violation(path, 1, msg))
     return out
 
 

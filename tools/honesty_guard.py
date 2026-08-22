@@ -51,6 +51,13 @@ MD_AS_LOCK = re.compile(
     re.I,
 )
 TEN_CLAIM = re.compile(r"\b(10\s*/\s*10|strength[:\s]+10)\b", re.I)
+ADVISORY_AS_PASS = re.compile(
+    r"\b(bandit|pip[-_ ]?audit|F841|F811|advisory-hardening)\b"
+    r".{0,48}\b(PASS|ENFORCED|required CI|blocking|merge-ready)\b|"
+    r"\b(PASS|ENFORCED|required CI|blocking|merge-ready)\b"
+    r".{0,48}\b(bandit|pip[-_ ]?audit|F841|F811|advisory-hardening)\b",
+    re.I,
+)
 SOFT_OK_CLAIM = re.compile(
     r"\bsoft_partial\b[^.!\n]{0,60}\b(fine|acceptable|enough|counts as|is (?:a )?lock)\b|"
     r"\bsoft\b[^.!\n]{0,40}\b(not a gap|owned|registered)\b[^.!\n]{0,40}\block",
@@ -121,6 +128,11 @@ def honesty_violations(user_text: str | None, assistant_text: str) -> list[str]:
         out.append(
             "claimed a mechanical lock via an .md/.mdc file — prose is never a lock "
             "(operator law: lock = .py that BLOCKs)"
+        )
+    if ADVISORY_AS_PASS.search(a):
+        out.append(
+            "cited bandit/pip-audit/F841/advisory-hardening as PASS/ENFORCED/required — "
+            "those steps are NON-AUTHORITATIVE and cannot support closure"
         )
     # LOCK-7 (RC-232): a claim of "locked/encoded via rule/mandate/process" must NAME its
     # mechanism — a CHECK id (check_*) or a guard .py — or it is process-md theater.

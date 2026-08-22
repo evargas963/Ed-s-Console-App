@@ -5,11 +5,17 @@ World-class invariant: there is exactly one lineage. What runs on the desk is a
 released commit of `main`, never a detached HEAD, never a divergent lineage, never
 an uncommitted working tree. This guard is the mechanical enforcement of that.
 
-Wire it in three places (all fail-closed):
-  1. Server launch  — start_ed_console.bat calls this BEFORE `uvicorn`; a non-zero
-     exit aborts the launch. The desk cannot run code that is not on main.
-  2. pre-push hook  — refuses to push a branch whose tip is not built on main.
-  3. CI             — the same check runs on every PR.
+Classification: REQUIRED_CONTROL at Windows desk launch only
+  (`start_ed_console.bat` calls this BEFORE uvicorn; non-zero aborts).
+
+NOT a PR/CI control: check B (`origin/main..HEAD == 0`) is true only for
+released main, so wiring this to pull_request CI would fail every honest
+feature branch. pre-push hooks are retired. Those two advertisements were
+phantom enforcement and are withdrawn.
+
+Emergency bypass: `ED_LIVE_PATH_UNLOCKED=1` skips the launch abort but STILL prints
+the violation loudly and logs it — use only to recover a downed desk, never as a
+habit. Every bypass is a visible admission that the invariant was broken.
 
 Checks (all must pass):
   A. HEAD is NOT detached (you are on a branch or a tag that resolves onto main).
@@ -18,10 +24,6 @@ Checks (all must pass):
      not a private divergent lineage.
   C. The working tree has no uncommitted APP code (server.py, *.py, static/*.html,
      static/*.js). Docs/reports/scratch are ignored; app code is not.
-
-Emergency bypass: `ED_LIVE_PATH_UNLOCKED=1` skips the launch abort but STILL prints
-the violation loudly and logs it — use only to recover a downed desk, never as a
-habit. Every bypass is a visible admission that the invariant was broken.
 """
 from __future__ import annotations
 

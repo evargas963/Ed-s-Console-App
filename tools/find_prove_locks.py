@@ -189,6 +189,32 @@ def decision_path_wired_violations(source: str | None = None) -> list[str]:
     return []
 
 
+_CLOCK_ONLY_SESSION_GATE = re.compile(r"\bif\s+(?:not\s+)?is_rth_ts_utc\s*\(")
+_CALENDAR_SESSION = re.compile(r"\b(?:is_trading_day_et|is_tradable_session_ts_utc)\b")
+
+
+def clock_only_session_gate_violations(rel: str, src: str) -> list[str]:
+    """Clock helper used as a tradable-session gate without calendar authority.
+
+    `is_rth_ts_utc` is the nominal 09:30–16:00 ET clock window. It is legal when
+    composed with `is_trading_day_et` (desk_store) or when the caller wants clock
+    only. A bare `if is_rth_ts_utc` / `if not is_rth_ts_utc` session filter is the
+    holiday/Saturday defect. Definition file is exempt.
+    """
+    rel_n = str(rel).replace("\\", "/")
+    if rel_n == "time_et.py" or rel_n.startswith("tests/"):
+        return []
+    if not src or not _CLOCK_ONLY_SESSION_GATE.search(src):
+        return []
+    if _CALENDAR_SESSION.search(src):
+        return []
+    return [
+        f"{rel_n} session-gates on clock-only is_rth_ts_utc without "
+        "is_tradable_session_ts_utc / is_trading_day_et — Saturday/holiday 10:00 ET "
+        "would be treated as a session"
+    ]
+
+
 _HOOK_GUARDS = (
     "operator_law_guard.py",
     "pretooluse_guard.py",

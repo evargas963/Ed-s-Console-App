@@ -74,6 +74,27 @@ NOT_PRODUCT_PREFIXES = (
     "tests/", "governance/", "docs/", "reports/", ".claude/", ".cursor/",
     "scratchpad/", "calibration/",
 )
+#: Enforcement / diagnostic tools. Editing them is how you comply, not a
+#: product defect that needs a ceremonial SURFACES= bind (Architecture A:
+#: filename-accounting is not root-cause prevention). NIST SSDF PW.1
+#: (https://csrc.nist.gov/pubs/sp/800/218/final); Fed/OCC SR 11-7
+#: (https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm).
+_ENFORCEMENT_OR_DIAGNOSTIC_RE = re.compile(
+    r"(?:^|/)(?:"
+    r"(?:[^/]+_)?guard\.py|"
+    r"(?:[^/]+_)?locks?\.py|"
+    r"check_[^/]+\.py|"
+    r"[^/]*census[^/]*\.py|"
+    r"hard_law_runtime\.py|"
+    r"run_with_repo_venv\.py|"
+    r"precommit_[^/]+\.py|"
+    r"pm_verify_[^/]+\.py|"
+    r"anti_pattern_sweep\.py|"
+    r"rehab_[^/]+\.py|"
+    r"duplication_audit\.py|"
+    r"_[^/]+\.py"
+    r")$"
+)
 
 
 class PathFacts(NamedTuple):
@@ -231,6 +252,30 @@ def _master_texts() -> tuple[str, str]:
         cur = ""
     head = _git(["show", f"HEAD:{SOLE_MASTER}"])
     return cur, head if head is not None else ""
+
+
+def is_enforcement_or_diagnostic_tool(rel: str) -> bool:
+    """True for lock/guard/check/census modules — not product/control-path."""
+    rel_n = canonicalize_repo_rel(rel) or str(rel).replace("\\", "/")
+    return bool(_ENFORCEMENT_OR_DIAGNOSTIC_RE.search(rel_n))
+
+
+def requires_root_cause_admission(rel: str) -> bool:
+    """True only for material product / control-path surfaces.
+
+    Negative controls (Architecture A, operator 2026-08-22):
+      * a material production/control-path edit without master admission BLOCKS
+      * an enforcement/diagnostic/compliance-lane edit must NOT require a
+        fabricated SURFACES= linkage
+    """
+    facts = classify_path(rel)
+    if not facts.governed or facts.rc66_exempt:
+        return False
+    if not rel.endswith(PRODUCTION_SUFFIXES) and not facts.rel.endswith(PRODUCTION_SUFFIXES):
+        return False
+    if is_enforcement_or_diagnostic_tool(facts.rel):
+        return False
+    return True
 
 
 def master_admits_production_edit(
@@ -462,6 +507,8 @@ def decide(payload: dict) -> int:
     if facts.rc66_exempt:
         return 0
     if not rel.endswith(PRODUCTION_SUFFIXES):
+        return 0
+    if not requires_root_cause_admission(rel):
         return 0
     if _has_admitted_master_obligation(rel):
         return 0
