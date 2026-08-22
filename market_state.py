@@ -96,10 +96,8 @@ def bias_color(bias_signal: str | None) -> str:
     return "#9ca3af"
 
 def pin_color(pin_strength: str | None) -> str:
-    p = (pin_strength or "")
-    if p == "High":            return "#166534"
-    if p == "Med":             return "#92400e"
-    if p in ("Low","Very Low"): return "#9ca3af"
+    # RC-473: High/Med/Low buckets are withheld. Do not paint leftover strings
+    # as confidence / institutional strength.
     return "#1a1a1a"
 
 def nd_color(net_delta: float | None) -> str:

@@ -27,6 +27,13 @@ def test_bias_from_net_does_not_mint_replacement_scores():
     assert ML._bias_from_net(-1.0, -1.0, "Very Low") == ML.BIAS_SIGNAL_WITHHELD
 
 
+def test_pin_color_does_not_paint_retired_buckets_as_confidence():
+    from market_state import pin_color
+
+    assert pin_color("High") == pin_color("WITHHELD") == "#1a1a1a"
+    assert pin_color("Med") == "#1a1a1a"
+
+
 def test_derive_zone_does_not_launder_withheld_bias_into_pin_neutral():
     from market_state import derive_zone
 
