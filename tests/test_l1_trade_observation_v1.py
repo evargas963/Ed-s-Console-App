@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import l1_trade_observation as l1
@@ -98,7 +99,8 @@ def test_slope_uses_same_signed_size_walk():
     # Points at t=1,2,3s with cum 0, +4, -2. Least-squares slope is -1.0.
     assert [(round(t, 6), c) for t, c in points] == [(1.0, 0.0), (2.0, 4.0), (3.0, -2.0)]
     slope = ofe._compute_cum_delta_slope({"content": content}, window_sec=60.0)
-    assert slope == -1.0
+    assert slope is not None
+    assert math.isclose(slope, -1.0, rel_tol=0.0, abs_tol=1e-9)
 
 
 def test_replay_matches_live_receive_order_semantics():
