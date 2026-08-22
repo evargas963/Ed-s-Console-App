@@ -33,7 +33,7 @@ def test_writer_drift_blocks_cursor_on_scope_path():
         sole_writer={"writer": "claude", "pm": "cursor"},
     )
     assert msgs, "expected WRITER-DRIFT BLOCK on scope path"
-    assert any("SOD_DRIFT: claude is sole writer" in m for m in msgs)
+    assert any("SOD_DRIFT: claude is ACTIVE_WRITER" in m for m in msgs)
     assert any("WRITER-DRIFT" in m for m in msgs)
     assert any("static/chart.html" in m for m in msgs)
 
@@ -78,7 +78,7 @@ def test_pretooluse_ready_for_claude_blocks_cursor_product(monkeypatch, tmp_path
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
     msg = OPL.pm_mission_edit_violation("static/chart.html", agent="cursor")
-    assert msg and "SOD_DRIFT: claude is sole writer" in msg and "WRITER-DRIFT" in msg
+    assert msg and "SOD_DRIFT: claude is ACTIVE_WRITER" in msg and "WRITER-DRIFT" in msg
 
 
 def test_pretooluse_ready_for_claude_allows_claude_writer(monkeypatch, tmp_path):
@@ -107,8 +107,8 @@ def test_lock1_lock_modules_gated_by_cursor_lock_encode_ok(monkeypatch):
     sole = {"writer": "claude"}
     msg = WDL.hard_denylist_violation(
         "tools/check_institutional_correctness.py", agent="cursor", mission=mission, sole=sole)
-    assert msg and "cursor_lock_encode_ok" in msg
-    mission_ok = dict(mission, cursor_lock_encode_ok=True)
+    assert msg and "ACTIVE_WRITER" in msg
+    mission_ok = dict(mission, non_writer_lock_encode_ok=True)
     assert WDL.hard_denylist_violation(
         "tools/check_institutional_correctness.py", agent="cursor",
         mission=mission_ok, sole=sole) is None
@@ -180,7 +180,7 @@ def test_mirror_blocks_claude_when_writer_is_cursor():
         sole_writer={"writer": "cursor"},
     )
     assert msgs and any("WRITER-DRIFT" in m for m in msgs)
-    assert any("SOD_DRIFT: cursor is sole writer" in m for m in msgs)
+    assert any("SOD_DRIFT: cursor is ACTIVE_WRITER" in m for m in msgs)
 
 
 def test_cursor_strreplace_path_field_blocked(monkeypatch, tmp_path):

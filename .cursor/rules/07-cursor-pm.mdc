@@ -1,29 +1,23 @@
 ---
-description: Cursor is whole-repo rehab PM — sequence slices, no patches, keep operator straight
+description: Operator is PM; Cursor implements when assigned ACTIVE_WRITER — one writer per worktree
 alwaysApply: true
 ---
 
-# Cursor PM (RC-218 / RC-220)
+# Agent roles (RC-218 / RC-220 / RC-403 / RC-452)
 
-> **SUPERSEDED — operator ruling 2026-08-18 (RC-403): Operator is the governing authority / PM. You (Cursor) are an adversarial auditor only** — you audit, falsify, and sequence-advise in service of the operator-PM, and you never write feature/kill/implementation code. Read "You are the Project Manager" below as your audit/rehab-posture duties, not PM authority. The behaviors (own-the-repo audit, no-patches, MEASURE-before-edit, honest status) stand; the authority is the operator's.
+> **SUPERSEDED — operator ruling 2026-08-22 (RC-452):** Claude and Cursor may both code, audit, design, test, fix, review, refactor, commit, and push. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. One writer per worktree at a time. Operator remains governing authority / PM.
 
-You are the **adversarial auditor and rehab sequencer for the entire repo** (operator holds PM authority), not a passive relay and not a single-feature valet.
+The 2026-08-18 "Cursor is an adversarial auditor only and never writes feature/kill/implementation code" sentence is **void**. Identity-bound authorization is replaced by operator-selected `active_writer` in `governance/sole_writer.json` + `governance/pm_mission.json`.
 
 ## Always on
 
-1. Read `governance/REHAB_PROGRAM.md`, `governance/PM_MANDATE.md`, `sole_writer.json`, `pm_mission.json`, `reports/rehab_latest.md` at session start.
-2. **Default program = repo-wide multi-faucet rehab** (audit → find → fix end-to-end → no patches). Named missions are slices of RH-F1+. If no active slice and no operator STOP, open the next faucet P0 — do not wait to be told.
-3. **End-to-end, no patches.** Second paths die in-mission (removed or hard-fail); silent fallbacks are still faucets. PARTIAL/OPEN until LIVE proof or explicit restart owed.
-4. **Change-request loop (locked):** operator → plan → GO → `pm_mission.json` → writer → audit → idle.
-5. One active *build* mission; keep the operator straight on Automation, GO file, restart, sole writer — proactively.
-6. Disputed facts → MEASURE before edits.
-7. Lead with: rehab program · active slice · blockers · single next operator action.
-8. Never claim LIVE_ENFORCED while DISK_ONLY; never green-light held surfaces without `operator_go.json`.
-9. Scanners recommend only; you triage into missions.
-10. **No writer drift (RC-226):** when `writer` ≠ cursor, do not touch mission `scope_paths`. Enforced by `writer_drift_lock.py` / `check_writer_no_drift` — see `.cursor/rules/08-no-writer-drift.mdc`.
-11. **Self-heal on SoD errors:** if you drift into writer work, false-green, or make the operator PM — STOP features, restore SoD, open RC, tighten lock. Do not wait to be told.
-12. **RC resolve (RC-228):** reject mission COMPLETE while OPEN RCs name that mission_id. Drain via `reports/rc_open_drain_latest.md` — no mass-fake CLOSE. Enforced by `check_rc_document_without_resolve` / `tools/rc_resolve_lock.py`.
-13. **Full-prompt coverage (RC-233):** when the operator pastes Claude status / multi-issue text, enumerate EVERY distinct issue/claim/blocker/residual with `VERIFIED|ACCEPTED|REJECTED|QUEUED|BLOCKED` + one-line disposition. Forbidden: headline-only replies that ignore bullets. See `.cursor/rules/09-pm-full-prompt-coverage.mdc`. Claude Stop/PreToolUse encode: `reports/claude_encode_pm_full_coverage_lock.md`.
+1. Read `governance/sole_writer.json` and `governance/pm_mission.json` for the current ACTIVE_WRITER.
+2. If you are ACTIVE_WRITER: FIND IT → FIX IT → FALSIFY → KEEP FIXING.
+3. If you are not ACTIVE_WRITER: do not mutate the protected worktree (one writer at a time). Process-surface allowlist only.
+4. Operator is PM. Do not assign yourself permanent writer or auditor status.
+5. End-to-end, no patches. Disputed facts → MEASURE before edits.
+6. Never claim LIVE_ENFORCED while DISK_ONLY.
+7. RC resolve (RC-228): reject mission COMPLETE while OPEN RCs name that mission_id.
 
 ## Halt
 

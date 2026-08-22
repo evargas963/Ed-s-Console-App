@@ -1,14 +1,16 @@
-"""Writer no-drift mechanical lock (RC-226).
+"""Active-writer / one-writer-per-worktree lock (RC-226, superseded RC-452).
 
-When an in-progress PM mission (or sole_writer) assigns writer≠current agent,
-the non-writer must not modify mission scope_paths. Cursor=PM/auditor;
-Claude=sole writer is the standing model — drift into writer work is a BLOCK,
-not a chat reminder.
+The operator selects ACTIVE_WRITER per mission. Claude and Cursor may both
+implement. Neither identity has permanent writer or auditor status.
+
+Invariant preserved: ONE WRITER PER WORKTREE AT A TIME. When an in-progress
+mission assigns active_writer≠current agent, the non-active agent must not
+mutate mission scope_paths or hard-denylist product surfaces.
 
 Fires:
   - PreToolUse via operating_process_lock.pm_mission_edit_violation
   - commit / pre-commit via writer_drift_violations on dirty paths
-  - check_writer_no_drift in check_institutional_correctness.py
+  - check_writer_no_drift / check_active_writer_law
 
 Escape: ED_WRITER_DRIFT_GUARD=off (operator only, visible).
 """
@@ -34,7 +36,7 @@ MISSION_IN_PROGRESS_STATUSES = frozenset({
     "in-progress",
 })
 
-#: Cursor (PM/auditor) may touch these while writer is another agent.
+#: Non-active-writer process surfaces (concurrency, not identity privilege).
 #: Product / scope_paths outside this list → WRITER-DRIFT BLOCK.
 PM_ALLOWLIST_EXACT = frozenset({
     "governance/AGENT_OPERATING_PROCESS_V1.md",
@@ -84,9 +86,8 @@ HARD_DENYLIST_TEST_MARKERS = (
     "tests/test_collect_window_law_v1.py",
 )
 
-#: LOCK-1 (RC-232): lock modules + the institutional checker are CURSOR-editable only when
-#: the mission explicitly grants "cursor_lock_encode_ok": true (default false) — encoding
-#: locks is the writer's job under the standing SoD law.
+#: Lock modules are ACTIVE_WRITER-editable. A non-active agent may encode locks only when
+#: the mission grants non_writer_lock_encode_ok (or legacy cursor_lock_encode_ok).
 LOCK_ENCODE_PATHS = frozenset({
     "tools/check_institutional_correctness.py",
     "tools/operating_process_lock.py",
@@ -98,8 +99,8 @@ LOCK_ENCODE_PATHS = frozenset({
     "tools/pretooluse_guard.py",
 })
 
-#: LOCK-1/LOCK-3: the ONLY pm_mission/sole_writer fields Cursor may change while
-#: writer != cursor (status machinery — never the role split or the scope).
+#: LOCK-1/LOCK-3: the ONLY pm_mission/sole_writer fields a non-operator agent may
+#: change without an operator escape (status machinery — never the role split).
 PM_STATUS_FIELDS = frozenset({
     "status", "note", "blocker", "updated_at", "held_commit",
     "approved_by", "approved_via", "approved_at",
@@ -128,22 +129,29 @@ def hard_denylist_violation(rel: str, *, agent: str | None = None,
     if rel in HARD_DENYLIST_EXACT or rel in HARD_DENYLIST_TEST_MARKERS:
         return (f"SOD_DRIFT: hard-denylist surface {rel} — writer={writer!r}, agent={agent!r}. "
                 f"Product/kill surfaces never open to the non-writer (LOCK-1/RC-232).")
-    if rel in LOCK_ENCODE_PATHS and agent == "cursor" and mission.get("cursor_lock_encode_ok") is not True:
-        return (f"SOD_DRIFT: lock module {rel} — Cursor may not encode locks unless the mission "
-                f"grants cursor_lock_encode_ok: true (LOCK-1/RC-232; Claude codes, Cursor PMs).")
+    if rel in LOCK_ENCODE_PATHS and agent != writer:
+        granted = (
+            mission.get("non_writer_lock_encode_ok") is True
+            or mission.get("cursor_lock_encode_ok") is True
+        )
+        if not granted:
+            return (
+                f"SOD_DRIFT: lock module {rel} — only ACTIVE_WRITER={writer!r} may encode locks "
+                f"(agent={agent!r}). Operator may grant non_writer_lock_encode_ok."
+            )
     return None
 
 
 def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = None,
                                current_text: str | None = None) -> list[str]:
-    """LOCK-1/LOCK-3: Cursor may change ONLY status fields in pm_mission/sole_writer —
-    role flips, scope expansion and remaining[] deletion BLOCK without an operator escape
-    marker (# pm-status-ok: / # sod-role-ok:) in the proposed content's note field."""
+    """LOCK-1/LOCK-3: any non-operator agent may change ONLY status fields in
+    pm_mission/sole_writer — role flips, scope expansion and remaining[] deletion
+    BLOCK without an operator escape (# pm-status-ok: / # sod-role-ok:)."""
     rel = _norm(rel)
     if rel not in ("governance/pm_mission.json", "governance/sole_writer.json"):
         return []
     agent = (agent or current_agent_role()).strip().lower()
-    if agent != "cursor":
+    if agent == "operator":
         return []
     if "# pm-status-ok:" in (new_text or "") or "# sod-role-ok:" in (new_text or ""):
         return []
@@ -163,11 +171,11 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
     except (ValueError, json.JSONDecodeError):
         cur_doc = {}
     out: list[str] = []
-    for role_field in ("writer", "pm", "auditor"):
+    for role_field in ("writer", "active_writer", "pm", "auditor", "permanent_writer", "permanent_auditor"):
         if role_field in cur_doc and new_doc.get(role_field) != cur_doc.get(role_field):
-            out.append(f"SOD_DRIFT: {rel} changes {role_field} "
-                       f"{cur_doc.get(role_field)!r} -> {new_doc.get(role_field)!r} — role flips "
-                       f"are operator-only (escape: # sod-role-ok: in note).")
+            out.append(                    f"SOD_DRIFT: {rel} changes {role_field} "
+                       f"{cur_doc.get(role_field)!r} -> {new_doc.get(role_field)!r} — ACTIVE_WRITER "
+                       f"assignment is operator-only (escape: # sod-role-ok: in note).")
     old_scope = set(map(str, cur_doc.get("scope_paths") or []))
     new_scope = set(map(str, new_doc.get("scope_paths") or []))
     if new_scope - old_scope:
@@ -178,10 +186,14 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
                    f"operator-only (escape: # pm-status-ok:).")
     changed = {k for k in set(cur_doc) | set(new_doc)
                if cur_doc.get(k) != new_doc.get(k)}
-    illegal = changed - PM_STATUS_FIELDS - {"writer", "pm", "auditor", "scope_paths", "remaining"}
+    illegal = changed - PM_STATUS_FIELDS - {
+        "writer", "active_writer", "pm", "auditor",
+        "permanent_writer", "permanent_auditor", "scope_paths", "remaining",
+    }
     if illegal:
-        out.append(f"SOD_DRIFT: {rel} changes non-status fields {sorted(illegal)!r} — Cursor "
-                   f"may touch status fields only ({sorted(PM_STATUS_FIELDS)!r}).")
+        out.append(f"SOD_DRIFT: {rel} changes non-status fields {sorted(illegal)!r} — "
+                   f"non-operator agents may touch status fields only "
+                   f"({sorted(PM_STATUS_FIELDS)!r}).")
     return out
 
 
@@ -270,7 +282,7 @@ def mission_in_progress(mission: dict | None) -> bool:
 
 
 def is_pm_allowlisted(rel: str) -> bool:
-    """PM/auditor compliance surfaces — legal for Cursor when writer≠cursor."""
+    """Process-surface allowlist — legal for the non-active agent (concurrency, not privilege)."""
     rel = _norm(rel)
     if rel in PM_ALLOWLIST_EXACT:
         return True
@@ -307,9 +319,103 @@ def path_in_mission_scope(rel: str, scope_paths: list | None) -> bool:
 
 
 def resolved_writer(mission: dict | None = None, sole: dict | None = None) -> str:
+    """Operator-selected ACTIVE_WRITER. `writer` is a synonym; `active_writer` wins."""
     m = mission if mission is not None else _load_json(PM_MISSION_PATH)
     s = sole if sole is not None else _load_json(SOLE_WRITER_PATH)
-    return str(m.get("writer") or s.get("writer") or "").strip().lower()
+    return str(
+        m.get("active_writer")
+        or m.get("writer")
+        or s.get("active_writer")
+        or s.get("writer")
+        or ""
+    ).strip().lower()
+
+
+_PERMANENT_IDENTITY_PHRASES = (
+    "claude is sole writer",
+    "cursor is an adversarial auditor only",
+    "never writes feature/kill/implementation",
+    "cursor=pm/auditor",
+    "cursor = pm/auditor",
+    "cursor prohibited from implementation",
+    "claude as implementation authority",
+)
+
+#: Docs that materially control agent behavior — must not re-teach the superseded identity split.
+_IDENTITY_DOC_SURFACES = (
+    "AGENTS.md",
+    "governance/AGENT_OPERATING_PROCESS_V1.md",
+    "governance/PM_MANDATE.md",
+    ".cursor/rules/07-cursor-pm.mdc",
+    ".cursor/rules/08-no-writer-drift.mdc",
+)
+
+
+def permanent_identity_violations(
+    *,
+    sole: dict | None = None,
+    mission: dict | None = None,
+) -> list[str]:
+    """Neither Claude nor Cursor may hold permanent writer or auditor privilege."""
+    sole = sole if sole is not None else _load_json(SOLE_WRITER_PATH)
+    mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
+    out: list[str] = []
+    for doc, label in ((sole, "governance/sole_writer.json"), (mission, "governance/pm_mission.json")):
+        if not isinstance(doc, dict):
+            continue
+        for field in ("permanent_writer", "permanent_auditor"):
+            val = doc.get(field)
+            if val not in (None, "", "null"):
+                out.append(
+                    f"ACTIVE_WRITER: {label} sets {field}={val!r} — no agent has permanent "
+                    f"writer or auditor status. Operator selects ACTIVE_WRITER per mission."
+                )
+        text = " ".join(str(doc.get(k) or "") for k in ("standing_law", "note", "auditor")).lower()
+        for phrase in _PERMANENT_IDENTITY_PHRASES:
+            if phrase in text:
+                out.append(
+                    f"ACTIVE_WRITER: {label} still asserts identity-bound privilege {phrase!r} — "
+                    f"superseded 2026-08-22. Use operator-selected ACTIVE_WRITER + "
+                    f"one-writer-per-worktree."
+                )
+                break
+        aw = str(doc.get("active_writer") or "").strip().lower()
+        wr = str(doc.get("writer") or "").strip().lower()
+        if aw and wr and aw != wr:
+            out.append(
+                f"ACTIVE_WRITER: {label} active_writer={aw!r} disagrees with writer={wr!r} — "
+                f"one assignment, no forked authority."
+            )
+    if str((sole or {}).get("pm") or "").strip().lower() not in ("", "operator"):
+        out.append(
+            "ACTIVE_WRITER: sole_writer.pm must be 'operator' — the operator remains "
+            "governing authority."
+        )
+    if str((mission or {}).get("pm") or "").strip().lower() not in ("", "operator"):
+        out.append(
+            "ACTIVE_WRITER: pm_mission.pm must be 'operator' — the operator remains "
+            "governing authority."
+        )
+    for rel in _IDENTITY_DOC_SURFACES:
+        path = REPO / rel
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace").lower()
+        except OSError:
+            continue
+        # Quoting the superseded sentence in order to void it is allowed.
+        if "2026-08-22" in text and "supersede" in text:
+            continue
+        for phrase in _PERMANENT_IDENTITY_PHRASES:
+            if phrase in text:
+                out.append(
+                    f"ACTIVE_WRITER: {rel} still teaches identity-bound privilege {phrase!r} — "
+                    f"supersede it (operator 2026-08-22) or quote it only under a 2026-08-22 "
+                    f"SUPERSEDED banner."
+                )
+                break
+    return out
 
 
 def current_agent_role() -> str:
@@ -352,14 +458,14 @@ def writer_drift_violations(
             continue
         if path_in_mission_scope(rel, scopes):
             sod = (
-                f"SOD_DRIFT: {writer} is sole writer"
+                f"SOD_DRIFT: {writer} is ACTIVE_WRITER"
                 if writer and agent != writer
                 else "SOD_DRIFT: wrong-role edit"
             )
             out.append(
-                f"{sod} — WRITER-DRIFT BLOCK: mission writer={writer!r} but agent={agent!r} "
-                f"touched scope path {rel} (mission_id={mid!r}) — Cursor=PM/auditor only; "
-                f"sole writer owns scope_paths"
+                f"{sod} — WRITER-DRIFT BLOCK: mission ACTIVE_WRITER={writer!r} but "
+                f"agent={agent!r} touched scope path {rel} (mission_id={mid!r}) — "
+                f"one writer per worktree; non-active agent cannot concurrently mutate it"
             )
     return out
 

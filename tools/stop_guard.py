@@ -138,24 +138,37 @@ def close_contract_blockers() -> list[str]:
                 f"fix the gate before ending the turn"]
 
 
+def fix_law_blockers() -> list[tuple[str, str]]:
+    """RC-453: FIND IT → FIX IT — same authority as check_find_it_fix_it."""
+    try:
+        from tools.find_it_fix_it_lock import fix_law_blockers as _flb
+        return list(_flb())
+    except Exception as e:  # noqa: BLE001 — a broken lock must scream, not wave through
+        return [("(find_it_fix_it)", f"{type(e).__name__}: {e}")]
+
+
 def main() -> int:
     if os.environ.get("ED_STOP_GUARD", "").strip().lower() in ("off", "0", "false"):
         return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        return 0                      # unreadable hook input is never a block
-    # Already blocked once this turn and the agent is still working — never loop forever.
-    if payload.get("stop_hook_active") is True:
+        payload = {}
+    # FIND IT → FIX IT re-blocks on repeat Stop (an already-blocked turn cannot
+    # launder an active obligation by setting stop_hook_active). Other session
+    # hang-guards still honour the one-retry latch below.
+    fix_offenders = fix_law_blockers()
+    if payload.get("stop_hook_active") is True and not fix_offenders:
         return 0
 
     rows = unfinished_rows_opened_today()
     faucets = faucet_violations()
     stale = freshness_blockers()          # RC-94: stale-on-a-live-console ends no turn quietly
     contract = close_contract_blockers()  # RC-106: a CLOSED row must satisfy the close contract
-    if not rows and not faucets and not stale and not contract:
+    if not rows and not faucets and not stale and not contract and not fix_offenders:
         return 0
     rows = rows + [(c, "violates the RC-106 close contract") for c in contract]
+    rows = rows + list(fix_offenders)
     faucets = faucets + [
         {"concept": v["concept"], "undeclared": [v.get("detail", "stale")]} for v in stale
     ]

@@ -1,9 +1,8 @@
 # Cursor Project Manager Mandate (RC-218 / RC-220)
 
-> **SUPERSEDED — operator ruling 2026-08-18 (RC-403):** **Operator is the governing authority / PM. Cursor is an adversarial auditor only** and never writes feature/kill/implementation code. Read "PM agent: Cursor" below as **the audit-and-sequencing behaviors Cursor performs in service of the operator-PM**; the PM *authority* is the operator's. Cursor's duties here (own-the-repo audit posture, no-patches, MEASURE-before-edit, honest status, RC-resolve gatekeeping) stand unchanged.
+> **SUPERSEDED — operator ruling 2026-08-22 (RC-452):** Operator is the governing authority / PM. Claude and Cursor may both implement. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. One writer per worktree at a time. The 2026-08-18 "Cursor is an adversarial auditor only" sentence is void.
 
-**PM authority:** Operator. **Adversarial auditor:** Cursor. **Default program:** whole-repo rehab (`governance/REHAB_PROGRAM.md`), spine = **multi-faucet audit/find/fix end-to-end, no patches**.  
-**Writer:** per `governance/sole_writer.json`. **Auditor:** Cursor (falsify after landings).
+**PM authority:** Operator. **ACTIVE_WRITER:** per `governance/sole_writer.json`. **Default program:** whole-repo rehab (`governance/REHAB_PROGRAM.md`), spine = **multi-faucet audit/find/fix end-to-end, no patches**.
 
 The operator must **not** have to tell the PM to rehab the repo or to stay on multi-faucet. If the session starts without a clear faucet/rehab slice in flight, **PM opens the next RH-F1 P0**.
 

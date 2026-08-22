@@ -4682,6 +4682,62 @@ def check_log_law() -> list[Violation]:
             for m in log_law_violations(REPO)]
 
 
+def check_active_writer_law() -> list[Violation]:
+    """Operator-selected ACTIVE_WRITER; no permanent identity privilege (RC-452).
+
+    WHAT WAS OBSERVED: governance/sole_writer.json and pm_mission.json hardcoded
+    Claude=permanent writer and Cursor=permanent auditor, so an operator assignment of
+    Cursor as ACTIVE_WRITER was still a SoD violation. The operator superseded that
+    identity split on 2026-08-22: both agents may implement; the operator selects the
+    active writer per mission; one writer per worktree.
+
+    Rule: sole_writer / pm_mission must set pm=operator, must not set permanent_writer
+    or permanent_auditor, must not assert the superseded identity phrases, and
+    active_writer must agree with writer when both are present.
+
+    HOW VALIDATED: tests/test_active_writer_law_v1.py injects permanent_writer=claude,
+    Cursor-auditor-only standing_law, and disagreed active_writer/writer → BLOCK; live
+    assignment with Cursor ACTIVE_WRITER and Claude ACTIVE_WRITER both PASS.
+    """
+    try:
+        from tools.writer_drift_lock import permanent_identity_violations
+    except ImportError:
+        from writer_drift_lock import permanent_identity_violations  # type: ignore
+    return [
+        Violation(REPO / "governance" / "sole_writer.json", 0, m)
+        for m in permanent_identity_violations()
+    ]
+
+
+def check_find_it_fix_it() -> list[Violation]:
+    """FIND IT → FIX IT: one RC-log authority, derived active view (RC-453).
+
+    WHAT WAS OBSERVED: a parallel governance/active_defects.json could read clean while
+    a material defect existed only in the RC log — omission was invisible. New discoveries
+    could be parked as PASSIVE BACKLOG to permit Stop. Blockers accepted a file path or
+    a self-authored sentence. REMEDIATED accepted an RC id + nonempty command string.
+
+    Rule: derive ACTIVE obligations from root_cause_log.md (new today, mission-tagged,
+    or implicated by dirty/mission scope). PASSIVE+implicated → ACTIVE. NEW → PASSIVE
+    BLOCKS. A presented derived view that omits an authoritative ACTIVE row BLOCKS.
+    HARD_BLOCKER types require type evidence. REMEDIATED requires FIXED: plus a command
+    that names an existing path exercising the defect.
+
+    HOW VALIDATED: tests/test_find_it_fix_it_lock_v1.py — omission negative control,
+    new-discovery-as-passive BLOCK, implicated-passive BLOCK, fake RTH/budget blockers
+    BLOCK, RC+empty-command BLOCK, valid FIXED+exercising-test PASS, Stop parity.
+    """
+    try:
+        from tools.find_it_fix_it_lock import RC_LOG, active_obligation_offenders
+    except ImportError:
+        from find_it_fix_it_lock import RC_LOG, active_obligation_offenders  # type: ignore
+    try:
+        text = RC_LOG.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [Violation(RC_LOG, 0, "root_cause_log.md unreadable — fail-closed")]
+    return [Violation(RC_LOG, 0, f"{rid}: {why}") for rid, why in active_obligation_offenders(text)]
+
+
 def check_writer_no_drift() -> list[Violation]:
     """LOCK-1 commit backstop (RC-232): staged changes must come from the mission's
     resolved writer — the maker-checker split enforced at commit, delegating to
@@ -4756,6 +4812,8 @@ CHECKS = [
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     ("rc_document_without_resolve", check_rc_document_without_resolve, True),  # RC-228/RC-230 LOCK-6: added OPEN rows must carry a resolve path
     ("writer_no_drift", check_writer_no_drift, True),  # RC-232 LOCK-1: staged paths must come from the mission's resolved writer
+    ("active_writer_law", check_active_writer_law, True),  # RC-452: operator-selected ACTIVE_WRITER; no permanent identity
+    ("find_it_fix_it", check_find_it_fix_it, True),  # RC-453: one RC-log authority; omission and backlog-escape BLOCK
     # LOG LAW (RC-237) — ARMED under the PM GO of 2026-08-04T18:58Z, scope staged_lock_surface
     # (governance/operator_go.json, granted_by cursor_pm). One defect ledger, one epistemic
     # ledger, telemetry stays telemetry: a THIRD markdown work queue or an OVERDUE epistemic

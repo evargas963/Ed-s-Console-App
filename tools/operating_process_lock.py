@@ -688,7 +688,7 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
     mission = pm_mission_record()
     status = str(mission.get("status") or "idle").strip().lower()
     agent = (agent or current_agent_role()).lower()
-    writer = str(mission.get("writer") or sole_writer_record().get("writer") or "").strip().lower()
+    writer = WDL.resolved_writer(mission, sole_writer_record())
     scopes = mission.get("scope_paths") or ["*"]
     if not isinstance(scopes, list):
         scopes = ["*"]
@@ -700,10 +700,11 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
             return None
         if WDL.path_in_mission_scope(rel, scopes) or _mission_gates_path(rel):
             return (
-                f"SOD_DRIFT: {writer} is sole writer — WRITER-DRIFT BLOCK: "
-                f"mission writer={writer!r} but agent={agent!r} — "
+                f"SOD_DRIFT: {writer} is ACTIVE_WRITER — WRITER-DRIFT BLOCK: "
+                f"mission ACTIVE_WRITER={writer!r} but agent={agent!r} — "
                 f"path {rel} blocked (mission_id={mission.get('mission_id')!r}; "
-                f"status={status!r}). Cursor=PM/auditor; sole writer owns scope_paths."
+                f"status={status!r}). One writer per worktree; non-active agent "
+                f"cannot concurrently mutate it."
             )
         return None
 
