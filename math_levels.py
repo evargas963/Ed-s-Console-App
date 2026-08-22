@@ -1229,6 +1229,21 @@ def compute_gamma_flip_v2(
     return flip, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW), diag
 
 
+def displayable_gamma_flip(flip: float | None, confidence: str | None) -> float | None:
+    """Operator-visible flip number. Narrow/unavailable chains must not look precise."""
+    if str(confidence or "") != GAMMA_FLIP_TRUSTED:
+        return None
+    try:
+        if flip is None:
+            return None
+        out = float(flip)
+    except (TypeError, ValueError):
+        return None
+    if out != out:
+        return None
+    return out
+
+
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────
 
 def _total_gamma_at_strike(bucket: dict, *, dollarized: bool = False) -> float | None:

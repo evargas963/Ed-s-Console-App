@@ -46,6 +46,20 @@ def test_tape_pressure_skips_missing_print_size():
     assert ofe._compute_tape_pressure(data, window_sec=60.0) == 1.0
 
 
+def test_tape_and_cum_delta_are_classified_reconstructed_l1_tick():
+    engine = ofe.OrderFlowEngine()
+    out = engine.compute({
+        "content": [
+            {"LAST_PRICE": 500.0, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1_000},
+            {"LAST_PRICE": 500.1, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 2_000},
+        ]
+    })
+    assert out["tape_pressure_classification"] == "PROXY_RECONSTRUCTED_L1_TICK"
+    assert out["cum_delta_classification"] == "PROXY_RECONSTRUCTED_L1_TICK"
+    assert out["institutional_flow_proxy_score"] is None
+    assert not hasattr(ofe, "OF_CUM_DELTA_NORM_DIVISOR")
+
+
 def test_batch_geometry_skips_missing_print_size_and_does_not_ratio():
     data = {
         "content": [

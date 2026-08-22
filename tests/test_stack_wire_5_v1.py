@@ -101,11 +101,11 @@ def test_order_flow_engine_residual_magics_named():
     assert ofe.OF_BOOK_DEPTH_DEEP == 5
     assert ofe.OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT == 2
 
-    # _compute_institutional_flow_proxy and OrderFlowEngine.compute use the named depths,
-    # not bare integers.
+    # RC-461: institutional_flow_proxy is retired (unvalidated mix + arbitrary CVD divisor).
     src_inst = inspect.getsource(ofe._compute_institutional_flow_proxy)
     assert "OF_BOOK_DEPTH_DEEP" in src_inst
-    assert "_compute_book_imbalance(data, 5)" not in src_inst
+    assert ofe._compute_institutional_flow_proxy({}) is None
+    assert not hasattr(ofe, "OF_CUM_DELTA_NORM_DIVISOR")
 
     # ONE CANONICAL BOOK PATH: the depth ladder is walked once, in the canonical producer,
     # over the named ladder constant (not bare integers). OrderFlowEngine.compute no longer

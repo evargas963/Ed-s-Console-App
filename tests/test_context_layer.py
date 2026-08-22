@@ -26,10 +26,11 @@ def test_liquidity_behavior_scores():
         candle_body_pts=0.05,
         order_flow_score=55.0,
     )
-    assert "range_imbalance_stall_score" in d and "range_imbalance_push_score" in d
-    assert 0.0 <= d["range_imbalance_stall_score"] <= 1.0
-    assert 0.0 <= d["range_imbalance_push_score"] <= 1.0
-    assert d["range_imbalance_label"] in ("stall_heavy", "push_heavy", "balanced")
+    assert d["range_imbalance_stall_score"] is None
+    assert d["range_imbalance_push_score"] is None
+    assert d["range_imbalance_label"] is None
+    assert d["body_ratio"] is not None and 0.0 <= d["body_ratio"] <= 1.0
+    assert d["flow_imbalance"] == 0.62
     assert d["absorption_score"] is None
     assert d["continuation_score"] is None
 

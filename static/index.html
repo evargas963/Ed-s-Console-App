@@ -4877,9 +4877,8 @@ function renderContextLayer(d) {
   const nw = cl.news || d.news_context;
   const parts = [];
   if (lb && typeof lb === 'object') {
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Range×imbalance</span><span class="ctx-v">${escHtmlCtx(lb.range_imbalance_label || lb.behavior_label)}</span></div>`);
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Stall</span><span class="ctx-v">${escHtmlCtx(fmtScore01(lb.range_imbalance_stall_score))}</span></div>`);
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Push</span><span class="ctx-v">${escHtmlCtx(fmtScore01(lb.range_imbalance_push_score))}</span></div>`);
+    parts.push(`<div class="ctx-row"><span class="ctx-k">Body ratio</span><span class="ctx-v" title="DERIVED: |close-open| / (high-low). Not stall/push.">${escHtmlCtx(fmtScore01(lb.body_ratio))}</span></div>`);
+    parts.push(`<div class="ctx-row"><span class="ctx-k">Flow imbalance</span><span class="ctx-v" title="PASSTHROUGH signed primitive. Not a stall/push product.">${escHtmlCtx(lb.flow_imbalance == null ? '—' : String(lb.flow_imbalance))}</span></div>`);
     parts.push(`<div class="ctx-row"><span class="ctx-k">Gamma hint</span><span class="ctx-v">${escHtmlCtx(lb.gamma_regime_hint)}</span></div>`);
     if (lb.range_pct_of_spot != null)
       parts.push(`<div class="ctx-row"><span class="ctx-k">Range % spot</span><span class="ctx-v">${escHtmlCtx(lb.range_pct_of_spot)}</span></div>`);
@@ -6214,7 +6213,7 @@ function paintStructureLevelsFromKl(d) {
     if (spotNow != null && mid < spotNow) belowVoid = r;
   }
   domIf('dr-lvl-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
-  domIf('dr-lvl-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
+  domIf('dr-lvl-gflip', el => { el.textContent = (function () { const c = d.kl_gamma_flip_confidence || d.confidence; if (c !== 'TRUSTED') return '—'; return pxTxt(d.kl_gamma_flip_display != null ? d.kl_gamma_flip_display : d.kl_gamma_flip); })(); });
   domIf('dr-lvl-support', el => { el.textContent = supR; });
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
   domIf('dr-lvl-emh', el => { el.textContent = pxTxt(d.kl_em_upper); });
@@ -6227,7 +6226,7 @@ function paintStructureLevelsFromKl(d) {
   domIf('dr-liq-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('dr-liq-lower', el => { el.textContent = pxTxt(d.kl_em_lower); });
   domIf('exec-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
-  domIf('exec-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
+  domIf('exec-gflip', el => { el.textContent = (function () { const c = d.kl_gamma_flip_confidence || d.confidence; if (c !== 'TRUSTED') return '—'; return pxTxt(d.kl_gamma_flip_display != null ? d.kl_gamma_flip_display : d.kl_gamma_flip); })(); });
   domIf('exec-support', el => { el.textContent = supR; });
   domIf('exec-resistance', el => { el.textContent = resR; });
   domIf('exec-liq-above', el => { el.textContent = aboveVoid; });
@@ -6324,7 +6323,7 @@ function renderDecisionCommandRail(d) {
     ? `${res.toFixed(2)}–${(res + Number(d.nearest_above_dist)).toFixed(2)}`
     : (res != null ? res.toFixed(2) : '—');
   domIf('dr-lvl-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
-  domIf('dr-lvl-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
+  domIf('dr-lvl-gflip', el => { el.textContent = (function () { const c = d.kl_gamma_flip_confidence || d.confidence; if (c !== 'TRUSTED') return '—'; return pxTxt(d.kl_gamma_flip_display != null ? d.kl_gamma_flip_display : d.kl_gamma_flip); })(); });
   domIf('dr-lvl-support', el => { el.textContent = supR; });
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
   domIf('dr-lvl-emh', el => { el.textContent = pxTxt(d.kl_em_upper); });
@@ -6377,7 +6376,7 @@ function renderDecisionCommandRail(d) {
   domIf('dr-liq-lower', el => { el.textContent = pxTxt(d.kl_em_lower); });
   // Mirror into new execution-first grid cards.
   domIf('exec-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
-  domIf('exec-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
+  domIf('exec-gflip', el => { el.textContent = (function () { const c = d.kl_gamma_flip_confidence || d.confidence; if (c !== 'TRUSTED') return '—'; return pxTxt(d.kl_gamma_flip_display != null ? d.kl_gamma_flip_display : d.kl_gamma_flip); })(); });
   domIf('exec-support', el => { el.textContent = supR; });
   domIf('exec-resistance', el => { el.textContent = resR; });
   domIf('exec-liq-above', el => { el.textContent = aboveVoid; });
@@ -8210,7 +8209,10 @@ function renderTierALive(d, fullRenderSource) {
     { key: 'kl_gamma_pin', strKey: null, label: 'Absolute Gamma', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'Absolute Gamma Strike (SpotGamma): the strike with the largest TOTAL gamma (calls+puts) — the sticky-pin/magnet level, strongest into expiry. Lead % on the chart label shows its margin over the runner-up (RC-352; formerly "Gamma Pin").' },
     { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net GEX Peak', sr: 'pin', srLabel: 'Net GEX', proxColor: '#e879f9', tip: 'Strike with the largest |net| dealer GEX$ (call gamma minus put gamma) — where the SIGNED book peaks. Distinct from Absolute Gamma (total) and from the Gamma Flip (zero-crossing). Formerly "Net Γ peak".' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
-    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level. Above it dealers dampen moves (choppy). Below it dealers amplify moves (trending).' },
+    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316',
+      tip: d => (d.kl_gamma_flip_confidence && d.kl_gamma_flip_confidence !== 'TRUSTED')
+        ? ('Gamma flip withheld: ' + d.kl_gamma_flip_confidence + ' — narrow/unavailable chain is not a precise institutional level.')
+        : 'Zero-gamma crossing from the SSOT profile. Visible only when confidence is TRUSTED. Dealer-dampen/amplify language is a regime description, not a proven predictive claim.' },
     { key: 'kl_gsf', strKey: 'kl_gsf_state_disp', label: 'Gamma Support Floor', sr: 'flip', srLabel: 'GSF', proxColor: '#fb923c', tip: 'Gamma Support Floor (GSF): the price BELOW spot where the net-gamma profile has decayed to 50% of its at-spot value. Sits at or ABOVE the Gamma Flip by construction, so that decay point is reached before net gamma crosses zero. "BELOW SUPPORT" = already in a negative-gamma regime, so no such level exists. Whether price holds at it is a geometry state and is not implied by the level itself (mechanism UNPROVEN — RC-320; see math_levels.compute_gamma_support_levels).' },
     { key: 'kl_grc', strKey: null, label: 'Gamma Resistance Ceiling', sr: 'flip', srLabel: 'GRC', proxColor: '#38bdf8', tip: 'Gamma Resistance Ceiling (GRC): the first price ABOVE spot where the net-gamma profile has decayed to half its at-spot value. Measured geometry only — whether price holds below it is a state question the profile alone does not answer (mechanism UNPROVEN — RC-320; see math_levels.compute_gamma_support_levels). It frequently sits at or beyond the Call Wall, because the profile often rises into that strike before decaying.' },
     { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6', tip: (d) => emTipFromSource(d, 'ceiling') },

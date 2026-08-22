@@ -109,17 +109,18 @@ def test_book_shape_metrics():
     assert [round(x["cum"], 1) for x in bid_curve] == [1000.0, 1040.0, 1080.0, 1160.0, 1360.0]
 
 
-def test_wall_candidates_are_flagged_heuristic():
+def test_displayed_depth_anomaly_candidates_are_flagged_heuristic():
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
     # median top-5 bid size = 80; the 1000-share touch is 12.5x median -> a candidate. None on ask.
-    bid_walls = [w for w in m["wall_candidates"] if w["side"] == "bid"]
+    bid_walls = [w for w in m["displayed_depth_anomaly_candidates"] if w["side"] == "bid"]
     assert bid_walls == [{"side": "bid", "price": 712.47, "volume": 1000.0, "median_mult": 12.5}]
-    # The API must NOT imply an objective wall: the field is 'wall_candidates', carries a
+    # The API must NOT imply an objective wall: the field is 'displayed_depth_anomaly_candidates', carries a
     # self-describing heuristic method, and is classified as a heuristic.
     assert "walls" not in m
-    assert m["wall_method"]["heuristic"] is True
-    assert m["wall_method"]["mult"] == ofe.OF_BOOK_WALL_MEDIAN_MULT
-    assert "HEURISTIC" in m["classification"]["wall_candidates"].upper()
+    assert m["displayed_depth_anomaly_method"]["heuristic"] is True
+    assert m["displayed_depth_anomaly_method"]["mult"] == ofe.OF_BOOK_WALL_MEDIAN_MULT
+    assert "HEURISTIC" in m["classification"]["displayed_depth_anomaly_candidates"].upper()
+    assert "wall_candidates" not in m
 
 
 def test_microprice_fail_closes_on_crossed_and_invalid():
@@ -159,7 +160,7 @@ def test_fail_closed_no_book():
     m = ofe.compute_book_microstructure({"content": []}, now_ts=1787233772.0)
     assert m["status"] == "no_book"
     assert m["depth"]["5"]["imbalance"] is None
-    assert m["wall_candidates"] == []
+    assert m["displayed_depth_anomaly_candidates"] == []
     assert m["provenance"]["book_source"] == "unavailable"
 
 
@@ -176,7 +177,7 @@ def test_every_emitted_metric_is_classified():
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
     cls = m["classification"]
     for key in ("mid", "microprice", "spread_pts", "spread_frac",
-                "depth_pressure", "book_slope", "liquidity_concentration", "wall_candidates"):
+                "depth_pressure", "book_slope", "liquidity_concentration", "displayed_depth_anomaly_candidates"):
         assert key in cls or f"{key}.*" in cls or any(c.startswith(key) for c in cls)
 
 
@@ -279,7 +280,7 @@ def test_route_serializes_carried_state_without_recomputing(monkeypatch):
     # structural fields are identical (carried); only wall-clock ages/stamps advance.
     assert second["depth"] == first["depth"]
     assert second["top_of_book"] == first["top_of_book"]
-    assert second["wall_candidates"] == first["wall_candidates"]
+    assert second["displayed_depth_anomaly_candidates"] == first["displayed_depth_anomaly_candidates"]
     assert second["ages"]["book_age_sec"] != first["ages"]["book_age_sec"]
     assert second["provenance"]["server_received_ts"] == 200.0
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
@@ -288,7 +289,7 @@ def test_route_serializes_carried_state_without_recomputing(monkeypatch):
 def test_changed_ladder_under_same_book_time_is_not_served_stale():
     """CACHE INVALIDATION: the carry cache must key on canonical book CONTENT, not BOOK_TIME
     alone. With the SAME ticker and the SAME BOOK_TIME but a MUTATED ladder, depth totals,
-    imbalance, and wall_candidates must reflect the new book — never the prior cached state."""
+    imbalance, and displayed_depth_anomaly_candidates must reflect the new book — never the prior cached state."""
     BT = 424242  # identical BOOK_TIME across both snapshots
 
     def _book(bids, asks) -> dict:
@@ -319,8 +320,8 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     assert m1["depth"]["1"]["imbalance"] != m2["depth"]["1"]["imbalance"]
     assert m2["depth"]["1"]["imbalance"] < 0                          # ask-heavy now
     # walls flip from the bid side to the ask side — proving walls are not served stale.
-    assert [w["side"] for w in m1["wall_candidates"]] == ["bid"]
-    assert [w["side"] for w in m2["wall_candidates"]] == ["ask"]
+    assert [w["side"] for w in m1["displayed_depth_anomaly_candidates"]] == ["bid"]
+    assert [w["side"] for w in m2["displayed_depth_anomaly_candidates"]] == ["ask"]
 
     # And an unchanged re-read of v2 (same ticker, same content) still carries without recompute.
     def _boom(_cb):

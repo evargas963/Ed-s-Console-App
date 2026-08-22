@@ -33,8 +33,10 @@ OF_CLIP_HIGH: float = 1.0
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
-OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
+# RC-461: OF_CUM_DELTA_NORM_DIVISOR retired — 10000 had no provenance.
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
+TAPE_PRESSURE_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
+CUM_DELTA_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
 # RC-456: OF_ABSORPTION_PRICE_EPS retired with the false absorption ratio.
 # Book-depth ladder for the canonical book producer: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
@@ -601,15 +603,19 @@ def _microstructure_structural(cb: dict) -> dict:
                        "ask": _book_slope(ask_levels, OF_BOOK_DEPTH_DEEP, deep_at)},
         "liquidity_concentration": {"bid": _book_concentration(bid_levels, deep_bt),
                                     "ask": _book_concentration(ask_levels, deep_at)},
-        "wall_candidates": (_book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)
-                            + _book_wall_candidates(ask_levels, "ask", OF_BOOK_DEPTH_DEEP)),
-        "wall_method": {
+        "displayed_depth_anomaly_candidates": (
+            _book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)
+            + _book_wall_candidates(ask_levels, "ask", OF_BOOK_DEPTH_DEEP)
+        ),
+        "displayed_depth_anomaly_method": {
             "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",
             "mult": OF_BOOK_WALL_MEDIAN_MULT,
             "depth": OF_BOOK_DEPTH_DEEP,
             "heuristic": True,
+            "name": "displayed_depth_anomaly_candidate",
             "note": "size-outlier candidates in the DISPLAYED book only; blind to hidden/reserve "
-                    "size; NOT an objectively-known liquidity wall",
+                    "size; NOT a liquidity wall. The median multiple is a convention without "
+                    "empirical provenance.",
         },
         "provenance_structural": {
             "book_time_ms": cb["book_time_ms"],
@@ -628,16 +634,18 @@ def _microstructure_structural(cb: dict) -> dict:
             "depth.*.imbalance": "DERIVED",
             "depth_pressure": "DERIVED", "book_slope": "DERIVED",
             "liquidity_concentration": "DERIVED",
-            "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
+            "displayed_depth_anomaly_candidates": (
+                "DERIVED-HEURISTIC (displayed-size anomaly; not a wall)"
+            ),
             "ages.book_age_sec": "DERIVED", "ages.quote_age_sec": "DERIVED",
             "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
             "provenance.server_received_ts": "DERIVED",
         },
         "deferred": [
-            "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-            "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
-            "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
-            "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)",
+            "aggressor_side (PROXY: Schwab LEVELONE has no aggressor flag)",
+            "native_cvd (engine emits PROXY_RECONSTRUCTED_L1_TICK only)",
+            "absorption / replenishment (RETIRED — not measured)",
+            "institutional_flow (RETIRED unvalidated composite)",
         ],
     }
 
@@ -689,9 +697,11 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
-    """
-    Tape pressure over a time window: sum(uptick_direction * size) / sum(size).
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
+    """PROXY reconstructed L1 tick-rule pressure, not a native aggressor tape.
+
+    Classification: PROXY_RECONSTRUCTED_L1_TICK.
+    Direction is inferred from LAST_PRICE vs the previous print. Schwab LEVELONE
+    does not provide aggressor side. Same-ms multi-print batches can collapse.
     Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
     """
     prints = _iter_tape_prints(_iter_content(data))
@@ -743,10 +753,10 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
-    """
-    Cumulative delta proxy from tape: sum of (direction * size) across prints.
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
-    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
+    """PROXY reconstructed L1 tick-rule signed size sum. Not native CVD.
+
+    Classification: PROXY_RECONSTRUCTED_L1_TICK. No aggressor flag. No
+    proven normalization divisor (the former 10000 constant is retired).
     Returns None when no print contributed a positive Schwab size.
     """
     prints = _iter_tape_prints(_iter_content(data))
@@ -1075,28 +1085,14 @@ def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[float] = None) -> Optional[float]:
+    """RETIRED (RC-461). Unvalidated mean of tape/book/options legs.
+
+    The former 10000 CVD divisor had no provenance. The mix invented a
+    headline the legs do not individually claim. Emit None. OF_BOOK_DEPTH_DEEP
+    remains the named deep book constant for any future admitted producer.
     """
-    Proxy for institutional flow: large trades + options activity + book imbalance.
-    Uses: tape (large LAST_SIZE), options flow, book imbalance.
-    ONE CANONICAL PATH: the deep book imbalance is READ from the single canonical
-    microstructure result (passed by the engine as `book_imbalance_5`), not re-walked here.
-    When called standalone without it, it falls back to the same canonical helper.
-    """
-    cum = _compute_cum_delta_proxy(data)
-    book_imb = book_imbalance_5 if book_imbalance_5 is not None else _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
-    opt_score, _, _, delta_w, _ = _compute_options_flow(data)
-    components = []
-    if cum is not None:
-        components.append(max(-1, min(1, cum / OF_CUM_DELTA_NORM_DIVISOR)))
-    if book_imb is not None:
-        components.append(book_imb)
-    if opt_score is not None:
-        components.append(opt_score)
-    if delta_w is not None and abs(delta_w) > 0:
-        components.append(max(-1, min(1, delta_w / OF_OPTIONS_DELTA_NORM_DIVISOR)))
-    if not components:
-        return None
-    return sum(components) / len(components)
+    _ = data, book_imbalance_5, OF_BOOK_DEPTH_DEEP
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1232,8 +1228,10 @@ class OrderFlowEngine:
             "tape_pressure_30s": tape_pressure_30s,
             "tape_pressure_2m": tape_pressure_2m,
             "tape_pressure_5m": tape_pressure_5m,
+            "tape_pressure_classification": TAPE_PRESSURE_CLASSIFICATION,
             "cum_delta_proxy": cum_delta_proxy,
             "cum_delta_slope": cum_delta_slope,
+            "cum_delta_classification": CUM_DELTA_CLASSIFICATION,
             "absorption_score": None,
             "replenishment_score": None,
             "replenishment_score_source": None,
@@ -1286,8 +1284,10 @@ class OrderFlowEngine:
             "tape_pressure_30s": None,
             "tape_pressure_2m": None,
             "tape_pressure_5m": None,
+            "tape_pressure_classification": TAPE_PRESSURE_CLASSIFICATION,
             "cum_delta_proxy": None,
             "cum_delta_slope": None,
+            "cum_delta_classification": CUM_DELTA_CLASSIFICATION,
             "absorption_score": None,
             "replenishment_score": None,
             "replenishment_score_source": None,

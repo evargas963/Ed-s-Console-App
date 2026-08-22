@@ -1,15 +1,16 @@
-"""RC-455: range×imbalance stall/push is not microstructure absorption."""
+"""RC-460: stall/push composites retired; emit body_ratio + signed flow_imbalance."""
 from __future__ import annotations
 
 from features.db_feature_adapter import build_db_mvp_feature_row
 from institutional_behavior import (
+    BODY_IMBALANCE_SEMANTIC_ERA,
     LEGACY_ABSORPTION_SEMANTIC_ERA,
     RANGE_IMBALANCE_SEMANTIC_ERA,
     compute_liquidity_behavior_row,
 )
 
 
-def test_doji_with_imbalance_is_stall_only():
+def test_doji_emits_body_ratio_and_signed_imbalance():
     d = compute_liquidity_behavior_row(
         high=101.0,
         low=100.0,
@@ -20,17 +21,21 @@ def test_doji_with_imbalance_is_stall_only():
         order_flow_score=99.0,
         net_gamma=1e9,
     )
-    assert d["range_imbalance_stall_score"] == 0.80
-    assert d["range_imbalance_push_score"] == 0.0
-    assert d["range_imbalance_label"] == "stall_heavy"
+    assert d["body_ratio"] == 0.0
+    assert d["flow_imbalance"] == 0.80
+    assert d["range_imbalance_stall_score"] is None
+    assert d["range_imbalance_push_score"] is None
+    assert d["range_imbalance_label"] is None
     assert d["absorption_score"] is None
     assert d["continuation_score"] is None
     assert d["legacy_absorption_quarantined"] is True
+    assert d["range_imbalance_composite_quarantined"] is True
+    assert d["semantic_era"] == BODY_IMBALANCE_SEMANTIC_ERA
     assert d["semantic_era"] == RANGE_IMBALANCE_SEMANTIC_ERA
     assert d["legacy_absorption_semantic_era"] == LEGACY_ABSORPTION_SEMANTIC_ERA
 
 
-def test_full_body_with_imbalance_is_push_only():
+def test_full_body_preserves_signed_imbalance():
     d = compute_liquidity_behavior_row(
         high=101.0,
         low=100.0,
@@ -39,12 +44,13 @@ def test_full_body_with_imbalance_is_push_only():
         volume=10_000,
         flow_imbalance=-0.50,
     )
-    assert d["range_imbalance_push_score"] == 0.50
-    assert d["range_imbalance_stall_score"] == 0.0
-    assert d["range_imbalance_label"] == "push_heavy"
+    assert d["body_ratio"] == 1.0
+    assert d["flow_imbalance"] == -0.50
+    assert d["range_imbalance_push_score"] is None
+    assert d["range_imbalance_stall_score"] is None
 
 
-def test_retired_composite_and_gamma_do_not_change_score():
+def test_retired_composite_and_gamma_do_not_change_primitives():
     a = compute_liquidity_behavior_row(
         high=101.0, low=100.0, open_=100.2, close=100.8, volume=1.0, flow_imbalance=0.4
     )
@@ -58,12 +64,16 @@ def test_retired_composite_and_gamma_do_not_change_score():
         order_flow_score=100.0,
         net_gamma=-1e12,
     )
-    assert a["range_imbalance_stall_score"] == b["range_imbalance_stall_score"]
-    assert a["range_imbalance_push_score"] == b["range_imbalance_push_score"]
+    assert a["body_ratio"] == b["body_ratio"]
+    assert a["flow_imbalance"] == b["flow_imbalance"]
+    assert a["range_imbalance_stall_score"] is None
+    assert b["range_imbalance_stall_score"] is None
 
 
 def test_missing_ohlc_fails_closed():
     d = compute_liquidity_behavior_row(flow_imbalance=0.9)
+    assert d["body_ratio"] is None
+    assert d["flow_imbalance"] == 0.9
     assert d["range_imbalance_stall_score"] is None
     assert d["range_imbalance_push_score"] is None
     assert d["range_imbalance_label"] is None
@@ -111,9 +121,16 @@ def test_historical_absorption_columns_do_not_map_into_new_features():
     assert row["liquidity.range_imbalance_push_score"] is None
 
 
-def test_new_db_columns_map_when_present():
+def test_retired_composites_are_not_a_training_identity():
+    """DB leftovers of the one-day stall/push era still occupy the withheld keys.
+
+    Training cone withholds these names (FEATURE_SCHEMA_VERSION v8). The producer
+    no longer writes them. This test pins that absorption still cannot impersonate
+    the keys.
+    """
     row = build_db_mvp_feature_row(
         {
+            "absorption_score": 0.99,
             "range_imbalance_stall_score": 0.25,
             "range_imbalance_push_score": 0.40,
         }

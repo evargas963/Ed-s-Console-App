@@ -11135,6 +11135,8 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_call_gamma_wall"] = _g("call_wall")
     md["kl_put_gamma_wall"] = _g("put_wall")
     md["kl_gamma_flip"] = _g("gamma_flip")
+    from math_levels import displayable_gamma_flip
+    md["kl_gamma_flip_display"] = displayable_gamma_flip(_g("gamma_flip"), _g("confidence"))
     md["kl_gamma_pin"] = _g("gamma_pin")
     md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
     # RC-292/RC-417: payload `gamma_pin` is the same SSOT total-gamma pin as kl_gamma_pin.
@@ -12126,7 +12128,8 @@ def _radar_contact(t: dict, spot: float, atr: "AtrPair") -> dict | None:
     A ticker about to cross its FLIP outranks every wall: a regime change alters what all
     the other levels mean, so it sorts first regardless of wall distance.
     """
-    flip_raw = t.get("gamma_flip")
+    from math_levels import displayable_gamma_flip
+    flip_raw = displayable_gamma_flip(t.get("gamma_flip"), t.get("confidence"))
     if flip_raw is not None:
         flip = float(flip_raw)
         flip_atr = atr_distance(flip - spot, atr.daily)
@@ -13546,7 +13549,7 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
 def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     """Canonical L2 book microstructure (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
-    liquidity concentration, wall_candidates, and ages — every field classified
+    liquidity concentration, displayed_depth_anomaly_candidates, and ages — every field classified
     NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
     order_flow_engine.compute_book_microstructure keyed by this ticker, which carries the
     engine's already-computed structural state for the current book (memoized per ticker +
