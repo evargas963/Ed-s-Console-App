@@ -26,7 +26,15 @@ def test_compute_always_emits_none_for_retired_composite_family():
         ),
         patch("order_flow_engine._compute_tape_pressure", return_value=0.4),
         patch("order_flow_engine._compute_cum_delta_proxy", return_value=0.2),
-        patch("order_flow_engine._compute_absorption", return_value=(0.1, None, None)),
+        patch(
+            "order_flow_engine._compute_book_tape_batch_geometry",
+            return_value={
+                "book_displayed_bid_delta": None,
+                "book_displayed_ask_delta": None,
+                "tape_print_size_sum": None,
+                "tape_print_price_range": None,
+            },
+        ),
         patch("order_flow_engine._compute_options_flow", return_value=(0.2, None, None, None, None)),
         patch("order_flow_engine._compute_rvol", return_value=(1.5, None)),
     ):
