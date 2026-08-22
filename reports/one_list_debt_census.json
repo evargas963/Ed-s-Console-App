@@ -1,15 +1,15 @@
 {
   "classification": "SEMANTIC CENSUS EVIDENCE. Zero work authority.",
-  "CONTENT_HEAD": "bf24b6876558b1c0eded0a3cf3f8de9001328b8c",
+  "CONTENT_HEAD": "4c2290f2af43778a8b8f58fcc947b890bb0109a5",
   "DIRTY": false,
   "TRACKED_FILES_TOTAL": 2878,
   "TEXT_FILES_INSPECTED": 2632,
   "NON_TEXT": 246,
-  "DEBT_BEARING_ARTIFACTS_FOUND": 27,
-  "DEBT_CANDIDATES_FOUND": 27,
+  "DEBT_BEARING_ARTIFACTS_FOUND": 24,
+  "DEBT_CANDIDATES_FOUND": 24,
   "DEBT_CANDIDATES_MAPPED_TO_MASTER": 0,
   "DEBT_CANDIDATES_EXACT_DUPLICATES": 0,
-  "DEBT_CANDIDATES_NOT_ACTIONABLE": 27,
+  "DEBT_CANDIDATES_NOT_ACTIONABLE": 24,
   "UNMAPPED_LEGITIMATE_DEBT": 0,
   "MASTER_TOTAL": 2370,
   "MASTER_PASS": 0,
@@ -22,5 +22,7 @@
   "TICKER_SPECIFIC_FIX_REQUIREMENTS": 0,
   "status_sum": 2370,
   "unmapped": [],
-  "note": "27 scanner hits are archive/history/reports/tests/lock-detector artifacts. None are a second actionable list."
+  "note": "27 scanner hits are archive/history/reports/tests/lock-detector artifacts. None are a second actionable list.",
+  "UNMAPPED_LIVE_UNPROVEN_ROWS": 0,
+  "UNMAPPED_LIVE_RC_OBLIGATIONS": 0
 }
