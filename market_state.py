@@ -77,7 +77,9 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
         if net_delta is None:
             return "expansion_unknown"
         return "breakout" if float(net_delta) >= 0 else "breakdown"
-    return "pin_neutral"  # safe default
+    if b in ("withheld", "unvalidated"):
+        return "unclassified"
+    return "unclassified"
 
 
 # is_pin_zone() lives in math_exposure.py — centralized
@@ -154,7 +156,7 @@ class MarketState:
 
     # ── Regime ────────────────────────────────────────────────────────────────
     bias_signal:        str             = "Neutral"
-    pin_strength:       str             = "Very Low"
+    pin_strength:       str             = "WITHHELD"
     net_delta:          Optional[float] = None      # share-equivalent
     net_gamma:          Optional[float] = None
     gex_magnitude:      str             = "negligible"  # large/moderate/small/negligible
@@ -1091,7 +1093,7 @@ def build_market_state(
     if consensus_summary is not None:
         ms.bias_signal  = str(getattr(consensus_summary, "bias_signal",  "") or "Neutral")
         # Categorical |net GEX$| concentration at ExposureRow.net_gex_peak — not terrain pin lead %.
-        ms.pin_strength = str(getattr(consensus_summary, "pin_strength", "") or "Very Low")
+        ms.pin_strength = str(getattr(consensus_summary, "pin_strength", "") or "WITHHELD")
         _nd             = _f(getattr(consensus_summary, "net_delta", None))
         _ng             = _f(getattr(consensus_summary, "net_gamma", None))
         ms.net_delta    = _nd
@@ -1103,8 +1105,8 @@ def build_market_state(
             ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
         ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
     else:
-        ms.bias_signal  = "Neutral"
-        ms.pin_strength = "Very Low"
+        ms.bias_signal  = "WITHHELD"
+        ms.pin_strength = "WITHHELD"
         _nd             = None
         _ng             = None
 

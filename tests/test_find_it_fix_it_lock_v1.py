@@ -260,7 +260,10 @@ def test_declared_defect_present_in_rc_log_does_not_block():
         dirty_paths=[],
         presented_ids=None,
         repo=ROOT,
-        payload={"last_assistant_text": "MATERIAL_DEFECT: RC-9013 lock omission"},
+        payload={
+            "last_assistant_text": "MATERIAL_DEFECT: RC-9013 lock omission",
+            "_requirement_tree": {"items": []},
+        },
     )
     assert off == [], off
 
@@ -416,6 +419,117 @@ def test_remaining_active_parent_defects_without_material_token_blocks_stop():
         "REMAINING ACTIVE" in why or "QUEUED" in why
         for _, why in off
     )
+
+
+def test_proof_state_not_queued_cannot_stop_active_unproven_parent():
+    """Exact packet: ACTIVE parent NOT_PROVEN + unresolved children +
+    'proof state, not queued' + no HARD_BLOCKER → Stop BLOCK.
+    """
+    tree = {
+        "items": [
+            {
+                "id": "OF_PARENT",
+                "proof": "NOT_PROVEN",
+                "execution": "ACTIVE",
+                "closable": False,
+                "children": ["OF_CHILD_UNRESOLVED"],
+            },
+            {
+                "id": "OF_CHILD_UNRESOLVED",
+                "proof": "FAIL",
+                "execution": "ACTIVE",
+                "children": [],
+            },
+        ]
+    }
+    rows = [
+        _row(
+            "RC-9200",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
+        ),
+    ]
+    payload = {
+        "_requirement_tree": tree,
+        "last_assistant_text": (
+            "Parents OF / P2 / LP-01 / UI truth stay NOT_PROVEN. "
+            "That is proof state, not a QUEUED leftover."
+        ),
+    }
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=ROOT,
+        payload=payload,
+    )
+    assert off, (
+        "ACTIVE NOT_PROVEN parent with unresolved children called "
+        "'proof state, not queued' must BLOCK Stop"
+    )
+    assert any(
+        "proof state" in why.lower() or "not queued" in why.lower()
+        for _, why in off
+    )
+
+
+def test_active_unproven_parent_blocks_stop_without_proof_state_phrase():
+    """Vocabulary is not the only detector — silence must still BLOCK."""
+    tree = {
+        "items": [
+            {
+                "id": "LP01_PARENT",
+                "proof": "NOT_PROVEN",
+                "execution": "ACTIVE",
+                "children": [],
+            },
+        ]
+    }
+    rows = [
+        _row(
+            "RC-9201",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
+        ),
+    ]
+    payload = {
+        "_requirement_tree": tree,
+        "last_assistant_text": "Wrap-up. Parents remain NOT_PROVEN as parent status.",
+    }
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=ROOT,
+        payload=payload,
+    )
+    assert off, "ACTIVE NOT_PROVEN parent with no HARD_BLOCKER must BLOCK Stop"
+    assert any("LP01_PARENT" in why for _, why in off)
+
+
+def test_commit_path_does_not_use_requirement_tree_as_permanent_block():
+    """payload=None is the commit check — do not freeze every commit on the tree."""
+    rows = [
+        _row(
+            "RC-9202",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
+        ),
+    ]
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=ROOT,
+        payload=None,
+    )
+    assert off == [], off
 
 
 def test_remaining_active_hard_blocked_items_do_not_block_from_disposition():

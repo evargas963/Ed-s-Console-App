@@ -43,6 +43,7 @@ REPO = Path(__file__).resolve().parent.parent
 RC_LOG = REPO / "governance" / "root_cause_log.md"
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 ACTIVE_DEFECTS_PATH = REPO / "governance" / "active_defects.json"
+REQUIREMENT_TREE_PATH = REPO / "governance" / "requirement_tree.json"
 
 PARENT_MISSION_TOKENS = (
     "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1",
@@ -137,6 +138,14 @@ _LINE_HARD_BLOCKED = re.compile(
 _NONE_REMAINING = re.compile(
     r"^(?:[-*•]|\d+\.)?\s*(?:none|n/a|no remaining|all remediated|no active)\b",
     re.I,
+)
+# RC-471: calling an ACTIVE FAIL/NOT_PROVEN parent "proof state" / "not queued"
+# is not a legal Stop. Vocabulary cannot convert a fixable parent into a leftover.
+_PROOF_STATE_LAUNDER = re.compile(
+    r"proof[\s-]+state.{0,160}not.{0,80}queued"
+    r"|not\s+a\s+queued\s+leftover"
+    r"|proof\s+state,\s+not\s+queued",
+    re.I | re.S,
 )
 _TURN_IMPLICATE_NEAR = re.compile(
     r"(?:implicat|remaining\s+active|QUEUED|KEEP FIXING|"
@@ -589,6 +598,93 @@ def _remaining_active_items(text: str) -> list[str]:
     return items
 
 
+def _requirement_items(payload: dict | None) -> list[dict[str, Any]]:
+    """Requirement-tree rows. Tests may inject payload['_requirement_tree']."""
+    raw: Any = None
+    if payload and isinstance(payload.get("_requirement_tree"), dict):
+        raw = payload["_requirement_tree"]
+    else:
+        try:
+            raw = json.loads(REQUIREMENT_TREE_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return []
+    if not isinstance(raw, dict):
+        return []
+    items = raw.get("items") or raw.get("requirements")
+    if not isinstance(items, list):
+        return []
+    return [i for i in items if isinstance(i, dict) and i.get("id")]
+
+
+def _unresolved_active_parents(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """ACTIVE parents whose proof is FAIL/NOT_PROVEN and still have work.
+
+    Unresolved = named children that are not PASS, or the parent itself when
+    it has no children. Closable=false does not excuse the obligation.
+    """
+    by_id = {str(i.get("id")): i for i in items}
+    out: list[dict[str, Any]] = []
+    for item in items:
+        if str(item.get("execution") or "").upper() != "ACTIVE":
+            continue
+        proof = str(item.get("proof") or "").upper()
+        if proof not in {"NOT_PROVEN", "FAIL"}:
+            continue
+        child_ids = item.get("children") or []
+        if not isinstance(child_ids, list):
+            child_ids = []
+        unresolved: list[str] = []
+        if child_ids:
+            for cid in child_ids:
+                ch = by_id.get(str(cid))
+                ch_proof = str((ch or {}).get("proof") or "").upper()
+                if ch_proof != "PASS":
+                    unresolved.append(str(cid))
+        else:
+            unresolved.append(str(item.get("id")))
+        if not unresolved:
+            unresolved.append(str(item.get("id")))
+        out.append({
+            "id": str(item.get("id")),
+            "proof": proof,
+            "unresolved": unresolved,
+        })
+    return out
+
+
+def active_parent_obligation_violations(
+    payload: dict | None,
+) -> list[tuple[str, str]]:
+    """Stop-only: ACTIVE FAIL/NOT_PROVEN parents remain obligations.
+
+    Commit (no assistant text) does not use the tree as a permanent commit block.
+    A genuine HARD_BLOCKER in the assistant text covers remaining work.
+    Calling that state 'proof state, not queued' always BLOCKS — that phrase
+    is the documented bypass, not a legal classification.
+    """
+    text = _assistant_scan_text(payload)
+    if not text:
+        return []
+    parents = _unresolved_active_parents(_requirement_items(payload))
+    if not parents:
+        return []
+    ids = ", ".join(p["id"] for p in parents)
+    if _PROOF_STATE_LAUNDER.search(text):
+        return [(
+            "(active_parent_obligation)",
+            f"response called ACTIVE parent(s) {ids} 'proof state, not queued' — "
+            "vocabulary cannot convert a FAIL/NOT_PROVEN parent with unresolved "
+            "subrequirements into a permitted Stop — FIND IT → FIX IT",
+        )]
+    if _LINE_HARD_BLOCKED.search(text):
+        return []
+    return [(
+        "(active_parent_obligation)",
+        f"ACTIVE parent(s) {ids} remain FAIL/NOT_PROVEN with unresolved "
+        "subrequirements and no genuine HARD_BLOCKER — FIND IT → FIX IT Stop BLOCK",
+    )]
+
+
 def unfinished_disposition_violations(payload: dict | None) -> list[tuple[str, str]]:
     """QUEUED / NEXT / remaining-active without a genuine hard blocker → Stop BLOCK.
 
@@ -859,6 +955,7 @@ def active_obligation_offenders(
     dirty = list(dirty_paths) if dirty_paths is not None else _dirty_paths()
     out: list[tuple[str, str]] = []
     out.extend(unfinished_disposition_violations(payload))
+    out.extend(active_parent_obligation_violations(payload))
     out.extend(discovery_omission_violations(payload, rc_text))
     out.extend(illegal_passive_escape_offenders(
         rc_text, today=today, mission=mission, dirty_paths=dirty, payload=payload

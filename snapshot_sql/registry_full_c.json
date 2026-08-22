@@ -1,5 +1,7 @@
 {
-  "calibration/backfill_outcomes.py:select_base": "SELECT outcome_1c, outcome_5c, outcome_15c, outcome_60c, outcome_1c_pts, outcome_5c_pts, outcome_15c_pts, outcome_60c_pts, ts_utc FROM snapshots WHERE ticker=? AND timeframe='1m'",
+  "calibration/backfill_outcomes.py:select_base": "SELECT outcome_1c, outcome_5c, outcome_15c, outcome_60c, outcome_1c_pts, outcome_5c_pts, outcome_15c_pts, outcome_60c_pts, ts_utc, bar_start_ts_utc FROM snapshots WHERE ticker=? AND timeframe='1m'",
+  "calibration/backfill_outcomes.py:count_bar_start": "SELECT COUNT(*) AS n FROM snapshots WHERE ticker=? AND timeframe='1m' AND bar_start_ts_utc=?",
+  "calibration/backfill_outcomes.py:select_bar_start": "SELECT outcome_1c, outcome_5c, outcome_15c, outcome_60c, outcome_1c_pts, outcome_5c_pts, outcome_15c_pts, outcome_60c_pts, ts_utc, bar_start_ts_utc FROM snapshots WHERE ticker=? AND timeframe='1m' AND bar_start_ts_utc=?",
   "tests/test_issue16_normalized_outcome_materialize.py:snapshot_outcomes": "SELECT outcome_1c, outcome_15c, outcome_60c, outcome_15c_pts, outcome_60c_pts FROM snapshots WHERE ticker='SPY' AND timeframe=?",
   "tools/pin_neutral_reachability_audit_v1.py:pin_1m": "SELECT COUNT(*) FROM snapshots WHERE zone = 'pin_neutral' AND timeframe = ?",
   "tools/pin_neutral_reachability_audit_v1.py:pin_5m": "SELECT COUNT(*) FROM snapshots WHERE zone = 'pin_neutral' AND timeframe = '5m'",

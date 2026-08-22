@@ -92,9 +92,10 @@ class TotalsRow:
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-
-WALL_MIN_MULT = 1.5
-APPROACH_PTS  = 1.5
+# WALL_MIN_MULT / APPROACH_PTS retired (RC-473): 1.5 had no vendor or empirical
+# provenance. Do not mint a replacement cutoff or score.
+PIN_STRENGTH_WITHHELD = "WITHHELD"
+BIAS_SIGNAL_WITHHELD = "WITHHELD"
 
 
 def _strike_total_oi(bucket: dict) -> float | None:
@@ -145,13 +146,15 @@ def _pick_inflection_closest_zero(exposures: Dict[float, dict], strikes: List[fl
             best_val = v
     return best
 
-def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]) -> str:
-    """High/Med/Low concentration of |net GEX$| at the analytics net-GEX peak vs the median strike.
+def _pin_peak_to_median_ratio(
+    exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]
+) -> float | None:
+    """|net GEX$| at the analytics peak vs the median strike. Measurement only.
 
-    Not the terrain total-gamma pin's lead % (`gamma_pin_strength_pct`).
+    Not a High/Med/Low score. The 3.0 / 2.0 / 1.25 cutoffs had no provenance (RC-473).
     """
     if net_gex_peak is None:
-        return "Very Low"
+        return None
     b = exposures.get(net_gex_peak, {}) or exposures.get(float(net_gex_peak), {})
     if exposures_have_dollar_gex(exposures):
         gp = abs(net_gex_dollars_at_strike(b))
@@ -159,7 +162,7 @@ def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, stri
     else:
         gp_raw = bucket_metric(b, "net_gamma")
         if gp_raw is None:
-            return "Very Low"
+            return None
         gp = abs(gp_raw)
         vals = [
             abs(v)
@@ -167,42 +170,28 @@ def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, stri
             if (v := bucket_metric(exposures.get(s, {}), "net_gamma")) is not None
         ]
     if gp <= 0:
-        return "Very Low"
-
+        return None
     vals = [v for v in vals if v > 0]
     if not vals:
-        return "Very Low"
+        return None
     vals_sorted = sorted(vals)
-    med = vals_sorted[len(vals_sorted)//2]
+    med = vals_sorted[len(vals_sorted) // 2]
     if med <= 0:
-        return "Very Low"
+        return None
+    return gp / med
 
-    ratio = gp / med
-    if ratio >= 3.0:
-        return "High"
-    if ratio >= 2.0:
-        return "Med"
-    if ratio >= 1.25:
-        return "Low"
-    return "Very Low"
+
+def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]) -> str:
+    """Categorical High/Med/Low pin labels are withheld (RC-473).
+
+    Not the terrain total-gamma pin's lead % (`gamma_pin_strength_pct`).
+    """
+    return PIN_STRENGTH_WITHHELD
+
 
 def _bias_from_net(net_gamma: float | None, net_delta: float | None, pin_strength: str) -> str:
-    if net_gamma is None or net_delta is None:
-        return "Neutral"
-    if pin_strength in ("High", "Med"):
-        if net_delta > 0 and net_gamma > 0:
-            return "Bull"
-        if net_delta < 0 and net_gamma > 0:
-            return "Bear"
-        if net_gamma < 0:
-            return "Expansion"
-    if pin_strength == "Very Low":
-        return "Chaos Zone"
-    if net_delta > 0:
-        return "Tilt Bull"
-    if net_delta < 0:
-        return "Tilt Bear"
-    return "Balanced"
+    """Bias labels that depended on unvalidated pin buckets are withheld (RC-473)."""
+    return BIAS_SIGNAL_WITHHELD
 
 
 # ── Summary rows ──────────────────────────────────────────────────────────────
@@ -216,9 +205,9 @@ def build_summary_rows(
     strikes_all = sorted(list(exposures.keys()))
     if not strikes_all:
         return [
-            ExposureRow("CONSENSUS", None, None, None, None, None, None, None, "Very Low", "Neutral"),
+            ExposureRow("CONSENSUS", None, None, None, None, None, None, None, PIN_STRENGTH_WITHHELD, BIAS_SIGNAL_WITHHELD),
             *[
-                ExposureRow(f"±{w}", w, None, None, None, None, None, None, "Very Low", "Neutral")
+                ExposureRow(f"±{w}", w, None, None, None, None, None, None, PIN_STRENGTH_WITHHELD, BIAS_SIGNAL_WITHHELD)
                 for w in windows
             ],
         ]
