@@ -239,4 +239,156 @@ def source_contract() -> dict[str, Any]:
         "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
         "tape_completeness": TAPE_COMPLETENESS,
         "tape_limitations": TAPE_LIMITATIONS,
+        "production_l1_service": "LEVELONE_EQUITIES",
+        "production_l1_subscribe": "level_one_equity_subs",
+        "silent_source_fallback": False,
+    }
+
+
+def quantify_same_ms_old_rule_loss(prints: list[dict[str, Any]]) -> dict[str, Any]:
+    """Score what first-per-TRADE_TIME_MILLIS would drop vs adjacent-restatement.
+
+    Old rule: keep the first observation for each TRADE_TIME_MILLIS; drop later
+    same-ms observations regardless of price/size. Missing vendor-ms cannot
+    collide and is never grouped.
+
+    Current rule: keep every distinct observation; drop only adjacent identical
+    vendor triples.
+
+    This scores a receive-order print list. A live rate requires an RTH census.
+    """
+    extracted: list[dict[str, Any]] = []
+    for raw in prints:
+        if not isinstance(raw, dict):
+            continue
+        if "price" in raw and "LAST_PRICE" not in raw:
+            row = {
+                "price": raw.get("price"),
+                "size": raw.get("size"),
+                "time_millis": raw.get("time_millis"),
+                "instrument": raw.get("instrument") or raw.get("key"),
+            }
+        else:
+            got = extract_vendor_print(raw)
+            if got is None:
+                continue
+            row = {
+                "price": got["price"],
+                "size": got["size"],
+                "time_millis": got["time_millis"],
+                "instrument": raw.get("key") or raw.get("instrument"),
+            }
+        extracted.append(row)
+
+    current = filter_adjacent_restatements(
+        [
+            {
+                "price": r["price"],
+                "size": r["size"],
+                "time_millis": r["time_millis"],
+            }
+            for r in extracted
+        ]
+    )
+    current_idx: set[int] = set()
+    prev_triple: Optional[tuple[Any, ...]] = None
+    for i, r in enumerate(extracted):
+        key = vendor_triple(r.get("time_millis"), r.get("price"), r.get("size"))
+        if is_adjacent_restatement(prev_triple, key):
+            continue
+        prev_triple = key
+        current_idx.add(i)
+
+    seen_ms: set[int] = set()
+    old_idx: set[int] = set()
+    for i, r in enumerate(extracted):
+        ms = r.get("time_millis")
+        if ms is None:
+            old_idx.add(i)
+            continue
+        if ms in seen_ms:
+            continue
+        seen_ms.add(int(ms))
+        old_idx.add(i)
+
+    suppressed_idx = sorted(current_idx - old_idx)
+    suppressed_size = 0
+    for i in suppressed_idx:
+        sz = extracted[i].get("size")
+        if isinstance(sz, (int, float)) and sz > 0:
+            suppressed_size += int(sz)
+
+    suppressed_px = 0
+    last_current_px: Optional[float] = None
+    for i, r in enumerate(extracted):
+        if i not in current_idx:
+            continue
+        px = r.get("price")
+        if last_current_px is not None and px is not None and px != last_current_px:
+            if i in suppressed_idx:
+                suppressed_px += 1
+        if px is not None:
+            last_current_px = px
+
+    by_ms: dict[int, list[int]] = {}
+    for i, r in enumerate(extracted):
+        ms = r.get("time_millis")
+        if ms is None:
+            continue
+        by_ms.setdefault(int(ms), []).append(i)
+    same_ms_groups = [idxs for idxs in by_ms.values() if len(idxs) >= 2]
+    distinct_in_groups = 0
+    for idxs in same_ms_groups:
+        triples = {
+            vendor_triple(
+                extracted[i].get("time_millis"),
+                extracted[i].get("price"),
+                extracted[i].get("size"),
+            )
+            for i in idxs
+        }
+        distinct_in_groups += len(triples)
+
+    by_instrument: dict[str, dict[str, int]] = {}
+    for i, r in enumerate(extracted):
+        inst = str(r.get("instrument") or "").upper() or "UNKNOWN"
+        bucket = by_instrument.setdefault(
+            inst,
+            {
+                "observations": 0,
+                "old_rule_suppressed_count": 0,
+                "old_rule_suppressed_reported_size": 0,
+                "old_rule_suppressed_price_transitions": 0,
+            },
+        )
+        bucket["observations"] += 1
+        if i in suppressed_idx:
+            bucket["old_rule_suppressed_count"] += 1
+            sz = r.get("size")
+            if isinstance(sz, (int, float)) and sz > 0:
+                bucket["old_rule_suppressed_reported_size"] += int(sz)
+    # price-transition tally by instrument (same walk as aggregate)
+    last_px_by_inst: dict[str, Optional[float]] = {}
+    for i, r in enumerate(extracted):
+        if i not in current_idx:
+            continue
+        inst = str(r.get("instrument") or "").upper() or "UNKNOWN"
+        px = r.get("price")
+        prev = last_px_by_inst.get(inst)
+        if prev is not None and px is not None and px != prev and i in suppressed_idx:
+            by_instrument[inst]["old_rule_suppressed_price_transitions"] += 1
+        if px is not None:
+            last_px_by_inst[inst] = px
+
+    return {
+        "total_observations": len(extracted),
+        "current_kept": len(current),
+        "old_kept": len(old_idx),
+        "same_ms_groups": len(same_ms_groups),
+        "distinct_observations_inside_same_ms_groups": distinct_in_groups,
+        "old_rule_suppressed_count": len(suppressed_idx),
+        "old_rule_suppressed_reported_size": suppressed_size,
+        "old_rule_suppressed_price_transitions": suppressed_px,
+        "by_instrument": by_instrument,
+        "is_live_rate": False,
     }

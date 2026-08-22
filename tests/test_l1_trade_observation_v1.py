@@ -132,6 +132,37 @@ def test_frontend_does_not_reconstruct_trade_semantics():
     assert "not native time-and-sales" in html
 
 
+def test_old_rule_quantifies_lost_same_ms_size_and_price():
+    """Old first-per-ms drops the second distinct same-ms print; current keeps it."""
+    content = _prints((500.0, 10, 1000), (500.1, 4, 1000))
+    q = l1.quantify_same_ms_old_rule_loss(content)
+    assert q["total_observations"] == 2
+    assert q["same_ms_groups"] == 1
+    assert q["distinct_observations_inside_same_ms_groups"] == 2
+    assert q["old_rule_suppressed_count"] == 1
+    assert q["old_rule_suppressed_reported_size"] == 4
+    assert q["old_rule_suppressed_price_transitions"] == 1
+    assert q["is_live_rate"] is False
+    assert l1.canonical_tape_prints(content)[1]["price"] == 500.1
+
+
+def test_old_rule_does_not_count_adjacent_restatement_as_loss():
+    content = _prints((500.0, 10, 1000), (500.0, 10, 1000))
+    q = l1.quantify_same_ms_old_rule_loss(content)
+    assert q["old_rule_suppressed_count"] == 0
+    assert q["old_rule_suppressed_reported_size"] == 0
+    assert q["old_rule_suppressed_price_transitions"] == 0
+    assert q["same_ms_groups"] == 1
+    assert q["distinct_observations_inside_same_ms_groups"] == 1
+
+
+def test_source_contract_names_production_l1_service():
+    c = l1.source_contract()
+    assert c["production_l1_service"] == "LEVELONE_EQUITIES"
+    assert c["production_l1_subscribe"] == "level_one_equity_subs"
+    assert c["silent_source_fallback"] is False
+
+
 def test_contract_identical_across_symbols():
     a = l1.canonical_tape_prints(_prints((100.0, 1, 1), (100.1, 2, 1)))
     b = l1.canonical_tape_prints(_prints((200.0, 1, 1), (200.1, 2, 1)))
