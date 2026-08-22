@@ -165,30 +165,51 @@ def test_run_with_repo_venv_hook_fail_closed_and_runs_without_venv(tmp_path):
 
 
 def test_required_hardening_job_has_no_or_true_and_advisory_is_named():
-    from pathlib import Path
+    from tools.honesty_guard import honesty_violations
 
-    text = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "hardening.yml").read_text(
-        encoding="utf-8"
+    swallowed = (
+        "jobs:\n  hardening:\n    steps:\n"
+        "      - run: python -m ruff check . || true\n"
     )
-    # Split on the advisory job so required hardening cannot hide || true.
-    required, _, advisory = text.partition("advisory-hardening:")
-    assert "|| true" not in required
-    assert "NON-AUTHORITATIVE" in advisory
-    assert "cannot support PASS" in advisory
+    required, _, _advisory = swallowed.partition("advisory-hardening:")
+    assert "|| true" in required
+    live = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "hardening.yml"
+    ).read_text(encoding="utf-8")
+    live_required, sep, live_advisory = live.partition("advisory-hardening:")
+    assert sep, "advisory-hardening job is missing"
+    assert "|| true" not in live_required
+    assert "NON-AUTHORITATIVE" in live_advisory
+    assert "cannot support PASS" in live_advisory
+    cited = honesty_violations(None, "bandit is PASS and required CI is green.")
+    assert cited and any("NON-AUTHORITATIVE" in m for m in cited)
+    honest = honesty_violations(
+        None, "advisory-hardening is non-authoritative and cannot support closure."
+    )
+    assert not any("NON-AUTHORITATIVE" in m for m in honest)
 
 
 def test_live_path_lock_is_launch_only_not_ci():
-    from pathlib import Path
+    from tools.check_live_path_is_main import launch_only_wiring_violations
 
-    repo = Path(__file__).resolve().parents[1]
-    bat = (repo / "start_ed_console.bat").read_text(encoding="utf-8", errors="replace")
-    assert "check_live_path_is_main.py" in bat
-    for wf in (repo / ".github" / "workflows").glob("*.yml"):
-        body = wf.read_text(encoding="utf-8")
-        assert "check_live_path_is_main.py" not in body, wf.name
-    src = (repo / "tools" / "check_live_path_is_main.py").read_text(encoding="utf-8")
-    assert "the same check runs on every PR" not in src
-    assert "REQUIRED_CONTROL at Windows desk launch" in src
+    missing_launch = launch_only_wiring_violations(
+        bat_text="@echo off\npython -m uvicorn server:app\n",
+        workflow_texts={"hardening.yml": "name: Hardening\n"},
+    )
+    assert missing_launch and any("unbound" in m for m in missing_launch)
+
+    ci_wired = launch_only_wiring_violations(
+        bat_text="python tools/check_live_path_is_main.py\n",
+        workflow_texts={"pytest.yml": "python tools/check_live_path_is_main.py\n"},
+    )
+    assert ci_wired and any("wires" in m for m in ci_wired)
+
+    honest = launch_only_wiring_violations(
+        bat_text="python tools\\check_live_path_is_main.py\n",
+        workflow_texts={"pytest.yml": "pytest\n"},
+    )
+    assert honest == []
+    assert launch_only_wiring_violations() == []
 
 
 def test_clock_only_session_gate_blocks_bare_filter_and_allows_composed():

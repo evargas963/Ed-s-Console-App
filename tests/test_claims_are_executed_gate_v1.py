@@ -233,6 +233,17 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     rewrite to `test_live_clock_comes_from_time_et_now_et_not_a_local_clock`
     (freezes T.now_et and asserts measured_et). COH-SA-2 already locks the NY
     literal repo-wide. Do not bump 273 → 274.
+
+    273 stays (2026-08-22 Architecture A). Two functions ARRIVED as
+    source-text and LEFT the same slice after RC-308 rewrite (do not
+    re-baseline):
+      `test_session_gate_callers_are_calendar_aware_not_clock_only` — was a
+      name scan of six session-gate files; now CALLS
+      clock_only_session_gate_violations on a clock-only mutation and the
+      live files.
+      `test_live_path_lock_is_launch_only_not_ci` — was a bat/yml/module
+      substring scan; now CALLS launch_only_wiring_violations (missing
+      launch BLOCKS, CI wire BLOCKS, honest launch-only is silent).
     """
     fns = C.source_text_only_functions()
     assert len(fns) == 273, (
@@ -256,7 +267,9 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
                  "test_order_flow_direction_is_withheld_from_the_decision_vote",
                  "test_stream_stop_clears_live_state_and_freshness",
                  "test_runner_uses_time_et_now_not_inline_ny_zoneinfo",
-                 "test_live_clock_comes_from_time_et_now_et_not_a_local_clock"):
+                 "test_live_clock_comes_from_time_et_now_et_not_a_local_clock",
+                 "test_session_gate_callers_are_calendar_aware_not_clock_only",
+                 "test_live_path_lock_is_launch_only_not_ci"):
         assert gone not in names, f"{gone} went back to asserting only source text (RC-308)"
     for harness in ("tests/index_html_contracts_node.mjs",
                     "tests/forces_provenance_node.mjs"):

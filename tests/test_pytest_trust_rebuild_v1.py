@@ -109,16 +109,20 @@ def test_ml_scheduler_rth_ticker_filter_is_calendar_aware():
     assert is_rth_ts_utc(saturday) is True
     assert is_tradable_session_ts_utc(saturday) is False
     assert is_tradable_session_ts_utc(friday) is True
+    from tools.find_prove_locks import clock_only_session_gate_violations
+
     src = (Path(__file__).resolve().parents[1] / "ml_scheduler.py").read_text(encoding="utf-8")
-    start = src.index("def _get_tickers_with_rth_data")
-    body = src[start:src.index("\ndef ", start + 1)]
-    assert "is_tradable_session_ts_utc" in body
-    assert "is_rth_ts_utc" not in body
+    assert clock_only_session_gate_violations("ml_scheduler.py", src) == []
 
 
 def test_session_gate_callers_are_calendar_aware_not_clock_only():
-    """Mutation: scoring/eval session gates must not call clock-only is_rth_ts_utc."""
+    """Scoring/eval session gates: clock-only filter BLOCKS; live files are silent."""
     from pathlib import Path
+
+    from tools.find_prove_locks import clock_only_session_gate_violations
+
+    bare = "def load():\n    if not is_rth_ts_utc(ts):\n        return\n"
+    assert clock_only_session_gate_violations("calibration/daily_scoreboard.py", bare)
 
     repo = Path(__file__).resolve().parents[1]
     session_gate_files = (
@@ -130,9 +134,9 @@ def test_session_gate_callers_are_calendar_aware_not_clock_only():
         "research/structural_eval_v1/runner.py",
     )
     for rel in session_gate_files:
-        text = (repo / rel).read_text(encoding="utf-8")
-        assert "is_tradable_session_ts_utc" in text, rel
-        assert "is_rth_ts_utc" not in text, f"{rel} still session-gates on clock-only RTH"
+        src = (repo / rel).read_text(encoding="utf-8")
+        hits = clock_only_session_gate_violations(rel, src)
+        assert hits == [], (rel, hits)
 
 
 def test_is_rth_open_uses_tradable_session_faucet(monkeypatch):

@@ -30,6 +30,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 APP_CODE_PREFIXES = ("server.py", "db.py")
 APP_CODE_SUFFIXES = (".py",)
@@ -92,6 +93,46 @@ def violations() -> list[str]:
             f"{len(dirty_app)} uncommitted APP file(s) — the running code exists only in the "
             f"working tree, not in any commit: {shown}. Commit to a branch and merge to main."
         )
+    return out
+
+
+def launch_only_wiring_violations(
+    bat_text: str | None = None,
+    workflow_texts: dict[str, str] | None = None,
+) -> list[str]:
+    """REQUIRED at Windows desk launch; must not be advertised as PR/CI.
+
+    Check B (`origin/main..HEAD == 0`) is true only on released main. Wiring this
+    script into pull_request CI fails every honest feature branch. The launch bat
+    is the binding; GitHub workflows are not.
+    """
+    repo = Path(__file__).resolve().parent.parent
+    if bat_text is None:
+        bat_path = repo / "start_ed_console.bat"
+        bat_text = (
+            bat_path.read_text(encoding="utf-8", errors="replace")
+            if bat_path.is_file()
+            else ""
+        )
+    if workflow_texts is None:
+        wf_dir = repo / ".github" / "workflows"
+        workflow_texts = (
+            {p.name: p.read_text(encoding="utf-8") for p in wf_dir.glob("*.yml")}
+            if wf_dir.is_dir()
+            else {}
+        )
+    out: list[str] = []
+    if "check_live_path_is_main.py" not in bat_text:
+        out.append(
+            "start_ed_console.bat does not invoke check_live_path_is_main.py — "
+            "REQUIRED_CONTROL at Windows desk launch is unbound"
+        )
+    for name, body in workflow_texts.items():
+        if "check_live_path_is_main.py" in body:
+            out.append(
+                f"{name} wires check_live_path_is_main.py into CI; "
+                "check B fails every honest feature branch"
+            )
     return out
 
 
