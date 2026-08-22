@@ -1,4 +1,4 @@
-> **Classification:** Governance Register | **Scope:** Vendor fields discovered by polling that are not yet consumed.
+> **Classification:** Historical evidence | **Scope:** Vendor fields discovered by polling. **Not a work queue.** INGEST residuals live on `ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md` PA-5.
 
 # Vendor Field Discovery Register (RC-388)
 

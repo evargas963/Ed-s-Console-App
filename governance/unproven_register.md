@@ -1,3 +1,10 @@
+# Unproven register — HISTORICAL EVIDENCE ONLY
+
+**Not a work queue.** Unresolved scientific claims were reconciled into
+`ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md`
+(PA-12 / PA-26 / PA-18). This file keeps PROVEN/REMEDIATED evidence and
+historical UNPROVEN wording. It must not independently create, defer, or close work.
+
 # Unproven register — every claim ends at proven, or at a landed fix
 
 **Law (operator 2026-07-19):** every factual claim about the system, the data, or the market

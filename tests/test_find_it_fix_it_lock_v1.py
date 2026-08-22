@@ -39,6 +39,9 @@ def _row(
 
 def _offenders(rows: list[str], **kwargs):
     text = "\n".join(rows)
+    payload = kwargs.pop("payload", None)
+    if payload is None:
+        payload = {"_skip_second_work_list": True}
     return FIF.active_obligation_offenders(
         text,
         today=TODAY,
@@ -46,7 +49,7 @@ def _offenders(rows: list[str], **kwargs):
         dirty_paths=kwargs.pop("dirty_paths", []),
         presented_ids=kwargs.pop("presented_ids", None),
         repo=kwargs.pop("repo", ROOT),
-        payload=kwargs.pop("payload", None),
+        payload=payload,
     )
 
 
@@ -527,7 +530,7 @@ def test_commit_path_does_not_use_requirement_tree_as_permanent_block():
         dirty_paths=[],
         presented_ids=None,
         repo=ROOT,
-        payload=None,
+        payload={"_skip_second_work_list": True},
     )
     assert off == [], off
 
@@ -608,3 +611,23 @@ def test_child_test_cannot_close_parent():
     ]
     off = _offenders(rows, presented_ids=None)
     assert any("child test" in why or "parent" in why for _, why in off)
+
+
+def test_second_work_list_clean_supported_tree_passes():
+    off = FIF.second_work_list_violations({"_check_second_list": True})
+    assert off == [], off
+
+
+def test_second_work_list_flags_unresolved_mark_outside_master(tmp_path):
+    (tmp_path / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").write_text(
+        "# master\n- [ ] stay here\n", encoding="utf-8"
+    )
+    (tmp_path / "README.md").write_text(
+        "UNRESOLVED_WORK_ITEM: fake leftover\n", encoding="utf-8"
+    )
+    import subprocess
+    subprocess.check_call(["git", "init"], cwd=tmp_path)
+    subprocess.check_call(["git", "add", "-A"], cwd=tmp_path)
+    off = FIF.second_work_list_violations({"_check_second_list": True}, repo=tmp_path)
+    assert off, "injected unresolved work outside the sole master must BLOCK"
+    assert any("README.md" in rid for rid, _ in off)

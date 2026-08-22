@@ -1,6 +1,8 @@
 """FIND IT → FIX IT lock (RC-452 / RC-453).
 
-ONE defect authority: governance/root_cause_log.md.
+ONE unresolved-work authority: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md.
+RC log is historical evidence. Active obligations still derive from mission-tagged RC rows
+for FIND IT → FIX IT discovery, but a second work list outside the sole master BLOCKs.
 
 Three states, derived from that ledger (no parallel inventory):
 
@@ -36,6 +38,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -44,6 +47,26 @@ RC_LOG = REPO / "governance" / "root_cause_log.md"
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 ACTIVE_DEFECTS_PATH = REPO / "governance" / "active_defects.json"
 REQUIREMENT_TREE_PATH = REPO / "governance" / "requirement_tree.json"
+SOLE_MASTER_REL = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+SOLE_MASTER_PATH = REPO / SOLE_MASTER_REL
+
+_UNRESOLVED_BOX = re.compile(r"(?m)^\s*[-*]\s+\[\s\]\s+")
+_UNRESOLVED_MARK = re.compile(r"UNRESOLVED_WORK_ITEM\s*:", re.I)
+_SECOND_LIST_SKIP_PREFIX = (
+    "reports/",
+    "tests/",
+    "docs/",
+    ".claude/",
+    ".cursor/",
+    "governance/register_slices/",
+    "governance/archive/",
+    "governance/design_history/",
+    "node_modules/",
+    ".venv/",
+)
+_SECOND_LIST_TEXT_EXT = frozenset({
+    ".md", ".txt", ".rst", ".json", ".yaml", ".yml", ".toml",
+})
 
 PARENT_MISSION_TOKENS = (
     "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1",
@@ -599,21 +622,71 @@ def _remaining_active_items(text: str) -> list[str]:
 
 
 def _requirement_items(payload: dict | None) -> list[dict[str, Any]]:
-    """Requirement-tree rows. Tests may inject payload['_requirement_tree']."""
+    """Requirement rows. Tests may inject payload['_requirement_tree']."""
     raw: Any = None
     if payload and isinstance(payload.get("_requirement_tree"), dict):
         raw = payload["_requirement_tree"]
     else:
         try:
-            raw = json.loads(REQUIREMENT_TREE_PATH.read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError):
-            return []
+            from tools.requirement_proof import parse_master
+            raw = parse_master()
+        except Exception:
+            try:
+                raw = json.loads(REQUIREMENT_TREE_PATH.read_text(encoding="utf-8"))
+            except (OSError, ValueError, json.JSONDecodeError):
+                return []
     if not isinstance(raw, dict):
         return []
     items = raw.get("items") or raw.get("requirements")
     if not isinstance(items, list):
         return []
     return [i for i in items if isinstance(i, dict) and i.get("id")]
+
+
+def second_work_list_violations(
+    payload: dict | None = None,
+    *,
+    repo: Path | None = None,
+) -> list[tuple[str, str]]:
+    """Unresolved work outside the sole master BLOCKs (one-list law)."""
+    if payload and payload.get("_skip_second_work_list"):
+        return []
+    if payload and "_requirement_tree" in payload and not payload.get("_check_second_list"):
+        return []
+    repo = repo or REPO
+    master_rel = SOLE_MASTER_REL
+    if not (repo / master_rel).is_file():
+        return [("(sole_master)", "sole master checklist missing — one-list law fail-closed")]
+    try:
+        import subprocess
+        listed = subprocess.check_output(
+            ["git", "ls-files"],
+            cwd=str(repo),
+            text=True,
+        ).splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        return [("(sole_master)", "git ls-files failed — cannot prove one-list completeness")]
+    out: list[tuple[str, str]] = []
+    for rel in listed:
+        rel_n = rel.replace("\\", "/")
+        if rel_n == master_rel:
+            continue
+        if any(rel_n.startswith(p) for p in _SECOND_LIST_SKIP_PREFIX):
+            continue
+        suf = Path(rel_n).suffix.lower()
+        if suf not in _SECOND_LIST_TEXT_EXT:
+            continue
+        path = repo / rel_n
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _UNRESOLVED_MARK.search(text):
+            out.append((rel_n, "UNRESOLVED_WORK_ITEM outside the sole master — one-list law"))
+            continue
+        if _UNRESOLVED_BOX.search(text):
+            out.append((rel_n, "unchecked work box outside the sole master — one-list law"))
+    return out
 
 
 def _unresolved_active_parents(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -956,6 +1029,7 @@ def active_obligation_offenders(
     out: list[tuple[str, str]] = []
     out.extend(unfinished_disposition_violations(payload))
     out.extend(active_parent_obligation_violations(payload))
+    out.extend(second_work_list_violations(payload, repo=repo))
     out.extend(discovery_omission_violations(payload, rc_text))
     out.extend(illegal_passive_escape_offenders(
         rc_text, today=today, mission=mission, dirty_paths=dirty, payload=payload

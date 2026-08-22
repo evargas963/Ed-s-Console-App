@@ -270,6 +270,9 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     selected_expiry_value, selected_expiry_source, selected_expiry_detail = _resolve_selected_expiry(
         ms_dict, chain_row
     )
+    breakeven_value, breakeven_source = _breakeven_leaf(
+        chain_row, strike, option_right, mid
+    )
 
     underlying_ticker_value = _clean_str(ms_dict.get("ticker"))
     return {
@@ -352,7 +355,11 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
                 "v2_compliant" if underlying_spread_source else "not_implemented",
             ),
             "max_loss": leaf(None, "policy_object_pending"),
-            "breakeven": leaf(_breakeven(strike, option_right, mid), "v1_approximation" if mid is not None else "not_implemented"),
+            "breakeven": leaf(
+                breakeven_value,
+                breakeven_source,
+                detail="schwab_chain_breakEven" if breakeven_source == "v2_compliant" else None,
+            ),
             # selected_contract_snapshot is the literal Schwab chain row
             # passthrough — every field on it is a Schwab wire leaf.
             "selected_contract_snapshot": leaf(
@@ -753,6 +760,30 @@ def _breakeven(strike: float | None, option_right: str, mid: float | None) -> fl
     if option_right == "PUT":
         return round(strike - mid, 4)
     return None
+
+
+def _breakeven_leaf(
+    chain_row: dict[str, Any] | None,
+    strike: float | None,
+    option_right: str,
+    mid: float | None,
+) -> tuple[float | None, str]:
+    """Schwab-first breakeven (RC-476). Vendor `breakEven` is the leaf; strike±mid is fallback only."""
+    from numeric_contract import float_finite_or_none
+
+    raw = None
+    if isinstance(chain_row, dict):
+        raw = chain_row.get("breakEven")
+        nested = chain_row.get("raw")
+        if raw is None and isinstance(nested, dict):
+            raw = nested.get("breakEven")
+    vendor = float_finite_or_none(raw)
+    if vendor is not None:
+        return vendor, "v2_compliant"
+    derived = _breakeven(strike, option_right, mid)
+    if derived is not None:
+        return derived, "v1_approximation"
+    return None, "not_implemented"
 
 
 def _resolve_selected_expiry(

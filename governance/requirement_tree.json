@@ -1,17 +1,13 @@
 {
-  "authority": "governance/requirement_tree.json",
+  "authority": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md",
   "derived_proof": "reports/requirement_proof_latest.json",
-  "defect_ledger": "governance/root_cause_log.md",
-  "proof_states": ["PASS", "FAIL", "NOT_PROVEN", "UNAVAILABLE"],
-  "execution_states": ["ACTIVE", "PASSIVE", "CLOSED"],
-  "note": "Machine-readable master for parent/child proof. OPEN_ITEMS.md is the human ledger. RC log is the one defect ledger. Do not treat this file as a second defect registry.",
   "items": [
     {
       "id": "OF_PARENT",
       "title": "Order Flow parent",
       "proof": "NOT_PROVEN",
-      "closable": false,
       "execution": "ACTIVE",
+      "closable": false,
       "children": [
         "OF_COMPOSITE_RETIRED",
         "OF_ENGINE_ABSORPTION_RETIRED",
@@ -25,38 +21,42 @@
       "id": "P2_PARENT",
       "title": "P2 / models parent",
       "proof": "NOT_PROVEN",
-      "closable": false,
       "execution": "ACTIVE",
-      "children": ["P2_ABSORPTION_WITHHELD"]
+      "closable": false,
+      "children": [
+        "P2_ABSORPTION_WITHHELD"
+      ]
     },
     {
       "id": "LP01_PARENT",
       "title": "LP-01 Institutional session liquidity / value levels",
       "proof": "NOT_PROVEN",
-      "closable": false,
       "execution": "ACTIVE",
+      "closable": false,
       "children": []
     },
     {
       "id": "PREDICTIVE_VALIDITY",
       "title": "Predictive validity (any horizon beats chance, OOS, net of costs)",
       "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": false,
-      "execution": "PASSIVE"
+      "children": []
     },
     {
       "id": "REAL_MONEY_READINESS",
       "title": "Real-money readiness",
       "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": false,
-      "execution": "PASSIVE"
+      "children": []
     },
     {
       "id": "UI_TRUTH_PARENT",
       "title": "UI / display truth parent",
       "proof": "NOT_PROVEN",
-      "closable": false,
       "execution": "ACTIVE",
+      "closable": false,
       "children": [
         "GAMMA_FLIP_DISPLAY_GATED",
         "GAMMA_WALLS_DISPLAY_GATED"
@@ -66,93 +66,65 @@
       "id": "OF_COMPOSITE_RETIRED",
       "title": "retired Order Flow composite/verdict producer family",
       "proof": "PASS",
-      "closable": true,
       "execution": "CLOSED",
-      "evidence": [
-        "RC-454",
-        "tests/test_stack_wire_5_v1.py",
-        "tests/test_action11_2_order_flow_verdict_fail_closed.py"
-      ]
+      "closable": true,
+      "children": []
     },
     {
       "id": "OF_ENGINE_ABSORPTION_RETIRED",
       "title": "engine _compute_absorption ratio retired",
       "proof": "PASS",
-      "closable": true,
       "execution": "CLOSED",
-      "evidence": [
-        "RC-456",
-        "tests/test_book_tape_batch_geometry_v1.py"
-      ]
+      "closable": true,
+      "children": []
     },
     {
       "id": "P2_ABSORPTION_WITHHELD",
-      "title": "historical P2 absorption feature withheld from training / quarantined",
+      "title": "historical P2 absorption withheld from training / quarantined",
       "proof": "PASS",
-      "closable": true,
       "execution": "CLOSED",
-      "evidence": [
-        "RC-455",
-        "tests/test_range_imbalance_behavior_v1.py",
-        "training_provenance.py"
-      ]
+      "closable": true,
+      "children": []
     },
     {
       "id": "IDENTITY_SPLIT_REMOVED",
       "title": "permanent Claude-writer / Cursor-auditor identity restriction removed",
       "proof": "PASS",
-      "closable": true,
       "execution": "CLOSED",
-      "evidence": [
-        "RC-452",
-        "RC-457",
-        "tests/test_active_writer_law_v1.py"
-      ]
+      "closable": true,
+      "children": []
     },
     {
       "id": "OF_TAPE_L1_RESTATEMENT_SUPPRESSED",
-      "title": "identical L1 observation restatements suppressed under the reconstructed-L1 convention; distinct observed same-ms triples preserved; not a native trade-identity claim",
+      "title": "identical L1 observation restatements suppressed",
       "proof": "PASS",
-      "closable": true,
       "execution": "CLOSED",
-      "evidence": [
-        "RC-463",
-        "tests/test_order_flow_tape_contract.py",
-        "tests/test_order_flow_live_state_tape_contract.py"
-      ]
-    },
-    {
-      "id": "GAMMA_FLIP_DISPLAY_GATED",
-      "title": "gamma flip operator-visible only when TRUSTED",
-      "proof": "PASS",
       "closable": true,
-      "execution": "CLOSED",
-      "evidence": [
-        "RC-462",
-        "tests/test_displayable_gamma_flip_v1.py"
-      ]
+      "children": []
     },
     {
       "id": "OF_MEDIAN_X3_RETIRED",
       "title": "median times 3 displayed-depth anomaly candidates retired",
       "proof": "PASS",
-      "closable": true,
       "execution": "CLOSED",
-      "evidence": [
-        "RC-467",
-        "tests/test_order_flow_microstructure_v1.py"
-      ]
+      "closable": true,
+      "children": []
+    },
+    {
+      "id": "GAMMA_FLIP_DISPLAY_GATED",
+      "title": "gamma flip operator-visible only when TRUSTED",
+      "proof": "PASS",
+      "execution": "CLOSED",
+      "closable": true,
+      "children": []
     },
     {
       "id": "GAMMA_WALLS_DISPLAY_GATED",
       "title": "chain-derived walls/pin/max-pain/net-peak withheld unless TRUSTED",
       "proof": "PASS",
-      "closable": true,
       "execution": "CLOSED",
-      "evidence": [
-        "RC-465",
-        "tests/test_displayable_gamma_flip_v1.py"
-      ]
+      "closable": true,
+      "children": []
     }
   ]
 }

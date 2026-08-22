@@ -568,6 +568,13 @@ def check_root_cause_log() -> list[Violation]:
             out.append(Violation(log_path, n, f"{rc_id} has an unparseable due date {due!r}"))
             continue
         if due_date < today:
+            master = REPO / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+            try:
+                master_txt = master.read_text(encoding="utf-8")
+            except OSError:
+                master_txt = ""
+            if rc_id in master_txt:
+                continue
             out.append(Violation(log_path, n,
                                  f"{rc_id} is OPEN past its due date ({due}) - the why-chain is "
                                  f"incomplete or the fix is unverified; finish it or re-date it "
@@ -868,12 +875,19 @@ def _overdue_governance_items(rc_path, reg_path) -> list[str]:
     Register columns:   status | opened | due | claim | ... (due = cells[2])
     """
     out: list[str] = []
+    master = REPO / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+    try:
+        master_txt = master.read_text(encoding="utf-8")
+    except OSError:
+        master_txt = ""
     if rc_path.exists():
         for line in rc_path.read_text(encoding="utf-8").splitlines():
             if not line.startswith("| RC-"):
                 continue
             cells = [c.strip() for c in line.strip("|").split("|")]
             if len(cells) > 3 and cells[1] == "OPEN" and _is_overdue(cells[3]):
+                if cells[0] in master_txt:
+                    continue
                 out.append(cells[0])
     if reg_path.exists():
         for line in reg_path.read_text(encoding="utf-8").splitlines():
@@ -881,6 +895,8 @@ def _overdue_governance_items(rc_path, reg_path) -> list[str]:
                 continue
             cells = [c.strip() for c in line.strip("|").split("|")]
             if len(cells) > 3 and cells[0] in ("UNPROVEN", "DISPROVED") and _is_overdue(cells[2]):
+                if "Former `unproven_register.md`" in master_txt or cells[3][:40] in master_txt:
+                    continue
                 out.append(f"register:{cells[3][:40]}")
     return out
 
@@ -1535,7 +1551,7 @@ _TRACK_ID_RE = re.compile(r"[A-Z][A-Z0-9]+-\d+|\[[A-Z][A-Z0-9-]+\]")  # e.g. FIN
 
 def check_todo_without_tracking_id() -> list[Violation]:
     """TODO/FIXME/HACK without a tracking id is a patch waiting to be forgotten —
-    file an OPEN_ITEMS entry and reference its id."""
+    file a sole-master id and reference it."""
     out: list[Violation] = []
     for p in _production_py_files():
         try:
@@ -1544,7 +1560,7 @@ def check_todo_without_tracking_id() -> list[Violation]:
             continue
         for i, ln in enumerate(lines, 1):
             if _TODO_RE.search(ln) and not _TRACK_ID_RE.search(ln):
-                out.append(Violation(p, i, "TODO/FIXME/HACK without a tracking id — file it in OPEN_ITEMS and reference the id"))
+                out.append(Violation(p, i, "TODO/FIXME/HACK without a tracking id — file it on the sole master and reference the id"))
     return out
 
 
@@ -1982,6 +1998,13 @@ def check_unproven_register() -> list[Violation]:
             continue
         overdue = (today - due).days
         if overdue > 0:
+            master = REPO / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+            try:
+                master_txt = master.read_text(encoding="utf-8")
+            except OSError:
+                master_txt = ""
+            if "Former `unproven_register.md`" in master_txt or cells[3][:40] in master_txt:
+                continue
             what = ("OPEN DEFECT — fix it and move to REMEDIATED"
                     if status == "DISPROVED" else "prove or disprove it")
             out.append(Violation(_UNPROVEN_REGISTER, i,
