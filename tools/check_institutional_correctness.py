@@ -4765,7 +4765,12 @@ def check_active_writer_law() -> list[Violation]:
 
 
 def check_requirement_proof() -> list[Violation]:
-    """Parent/child proof authority (RC-459). Child PASS never closes a parent."""
+    """Parent/child proof authority (RC-459). Child PASS never closes a parent.
+
+    WHAT WAS OBSERVED (RC-459): a child PASS was treated as parent closure.
+    HOW VALIDATED: prototyped against governance/requirement_tree.json;
+    tests/test_requirement_proof_v1.py drives both directions.
+    """
     try:
         from tools.requirement_proof import TREE_PATH, requirement_proof_violations
     except ImportError:

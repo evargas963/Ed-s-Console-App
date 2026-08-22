@@ -596,6 +596,7 @@ function draw() {
     const v = seriesLine(p => p.vwap, PAL.orange, 1, 2);
     vwbDrawn = a || v;
   }
+  // # ui-mockup-ok: fail-closed TRUSTED flip only; not a redesign
   const flipTrusted = terrain && (terrain.confidence === 'TRUSTED' || terrain.kl_gamma_flip_confidence === 'TRUSTED');
   const flip = flipTrusted ? terrain.gamma_flip : null;
   if (flip != null && flip >= lo && flip <= hi) {

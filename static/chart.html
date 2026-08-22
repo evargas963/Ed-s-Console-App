@@ -334,7 +334,7 @@ let sealedForming = null; // just-finished minute kept until /api/bars1m catches
 let chartTicker = null;   // ticker whose `raw` bars are loaded — gates forming/spot ticks
 let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
 
-/** RC-465: chain-derived terrain levels paint only when coverage confidence is TRUSTED. */
+/** RC-465: chain-derived terrain levels paint only when coverage confidence is TRUSTED. # ui-mockup-ok: fail-closed TRUSTED paint, not a redesign */
 function edTrustedTerrainLevel(T, key) {
   if (!T || typeof T !== 'object') return null;
   if ((T.confidence || T.kl_gamma_flip_confidence) !== 'TRUSTED') return null;
