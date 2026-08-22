@@ -56,6 +56,9 @@ def test_tape_and_cum_delta_are_classified_reconstructed_l1_tick():
     })
     assert out["tape_pressure_classification"] == "PROXY_RECONSTRUCTED_L1_TICK"
     assert out["cum_delta_classification"] == "PROXY_RECONSTRUCTED_L1_TICK"
+    assert out["tape_identity_convention"] == "L1_OBSERVATION_RESTATEMENT"
+    assert out["tape_native_event_id"] is False
+    assert "unique trade identifier" in out["tape_limitations"].lower()
     assert out["institutional_flow_proxy_score"] is None
     assert not hasattr(ofe, "OF_CUM_DELTA_NORM_DIVISOR")
 

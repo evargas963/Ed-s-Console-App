@@ -17,7 +17,7 @@
         "OF_ENGINE_ABSORPTION_RETIRED",
         "P2_ABSORPTION_WITHHELD",
         "IDENTITY_SPLIT_REMOVED",
-        "OF_TAPE_IDENTITY_DEDUPED",
+        "OF_TAPE_L1_RESTATEMENT_SUPPRESSED",
         "OF_MEDIAN_X3_RETIRED"
       ]
     },
@@ -110,8 +110,8 @@
       ]
     },
     {
-      "id": "OF_TAPE_IDENTITY_DEDUPED",
-      "title": "tape window uses latest print; identical L1 restatements dropped; same-ms distinct prints kept",
+      "id": "OF_TAPE_L1_RESTATEMENT_SUPPRESSED",
+      "title": "identical L1 observation restatements suppressed under the reconstructed-L1 convention; distinct observed same-ms triples preserved; not a native trade-identity claim",
       "proof": "PASS",
       "closable": true,
       "execution": "CLOSED",

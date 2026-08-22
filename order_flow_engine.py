@@ -37,6 +37,17 @@ OF_TAPE_WINDOW_5M_SEC: float = 300.0
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
 TAPE_PRESSURE_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
 CUM_DELTA_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
+# L1 TRADE_TIME + LAST_PRICE + LAST_SIZE is an observation key, not a native
+# event/sequence id. Two legitimate same-ms/same-price/same-size prints cannot
+# be distinguished from a restated LEVELONE heartbeat (RC-463 / RC-468).
+TAPE_IDENTITY_CONVENTION = "L1_OBSERVATION_RESTATEMENT"
+TAPE_NATIVE_EVENT_ID = False
+TAPE_LIMITATIONS = (
+    "Reconstructed L1 tick-rule from LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS. "
+    "Identical triples are suppressed as restatements under this convention. "
+    "Distinct observed same-ms triples are preserved. No native event or "
+    "sequence id. No aggressor. Not a unique trade identifier."
+)
 # RC-456: OF_ABSORPTION_PRICE_EPS retired with the false absorption ratio.
 # Book-depth ladder for the canonical book producer: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
@@ -196,11 +207,14 @@ def _iter_tape_prints(content_items: list) -> list[dict]:
 
 
 def _normalize_tape_prints(prints: list[dict]) -> list[dict]:
-    """Drop identical L1 restatements (same TRADE_TIME, LAST_PRICE, LAST_SIZE).
+    """Suppress identical L1 observation restatements; keep distinct same-ms triples.
 
-    Schwab LEVELONE can repeat the last print on quote heartbeats. Counting
-    each restatement as a new print inflates tape pressure and cum-delta.
-    Distinct same-ms prints (different price or size) are kept.
+    Convention: TRADE_TIME + LAST_PRICE + LAST_SIZE is an observation key, not a
+    native event id. Schwab LEVELONE can repeat the last print on quote
+    heartbeats. Counting each restatement as a new print inflates tape pressure
+    and cum-delta. Distinct same-ms observations (different price or size) are
+    kept. Two legitimate same-ms/same-price/same-size prints cannot be
+    distinguished from a restatement without a vendor sequence id.
     """
     seen: set[tuple[Any, ...]] = set()
     out: list[dict] = []
@@ -687,7 +701,8 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
 
     Classification: PROXY_RECONSTRUCTED_L1_TICK.
     Direction is inferred from LAST_PRICE vs the previous print. Schwab LEVELONE
-    does not provide aggressor side. Same-ms multi-print batches can collapse.
+    does not provide aggressor side. Identical L1 triples are treated as
+    restatements, not unique trades. Distinct same-ms triples are kept.
     Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
     """
     prints = _normalize_tape_prints(_iter_tape_prints(_iter_content(data)))
@@ -1209,6 +1224,9 @@ class OrderFlowEngine:
             "tape_pressure_2m": tape_pressure_2m,
             "tape_pressure_5m": tape_pressure_5m,
             "tape_pressure_classification": TAPE_PRESSURE_CLASSIFICATION,
+            "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
+            "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
+            "tape_limitations": TAPE_LIMITATIONS,
             "cum_delta_proxy": cum_delta_proxy,
             "cum_delta_slope": cum_delta_slope,
             "cum_delta_classification": CUM_DELTA_CLASSIFICATION,
@@ -1265,6 +1283,9 @@ class OrderFlowEngine:
             "tape_pressure_2m": None,
             "tape_pressure_5m": None,
             "tape_pressure_classification": TAPE_PRESSURE_CLASSIFICATION,
+            "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
+            "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
+            "tape_limitations": TAPE_LIMITATIONS,
             "cum_delta_proxy": None,
             "cum_delta_slope": None,
             "cum_delta_classification": CUM_DELTA_CLASSIFICATION,

@@ -86,7 +86,7 @@ def push_level_one(symbol: str, content_item: dict) -> None:
     """
     Push level_one_equity update. Extracts:
     - Top-of-book: BID_PRICE, ASK_PRICE, BID_SIZE, ASK_SIZE
-    - Tape print: when TRADE_TIME_MILLIS changes, treat as new trade (LAST_PRICE, LAST_SIZE)
+    - Tape print: identical L1 observation restatements (same TRADE_TIME + LAST_PRICE + LAST_SIZE) are dropped; distinct same-ms triples are kept. Not a native event id.
     """
     if not content_item or not isinstance(content_item, dict):
         return

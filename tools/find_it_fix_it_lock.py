@@ -104,6 +104,46 @@ _MATERIAL_DECL = re.compile(
     r"(?:MATERIAL_DEFECT|DISCOVERED_DEFECT)\s*:\s*(RC-\d+|[A-Za-z][\w.-]{7,80})",
     re.I,
 )
+# Explicit unfinished dispositions (RC-468). Magic MATERIAL_DEFECT tokens are not
+# required. An agent that writes these and then Stops is still under FIND IT → FIX IT.
+_REMAINING_ACTIVE_HEADER = re.compile(
+    r"REMAINING\s+ACTIVE(?:\s+PARENT)?\s+DEFECTS\b",
+    re.I,
+)
+_QUEUED_DISPOSITION_LINE = re.compile(
+    r"^(?P<line>[^\n]{0,240}(?:—\s*)?\bQUEUED\b(?:\s*—|\s*:|\s+\(|\s*$|\s+—)[^\n]*)$",
+    re.I | re.M,
+)
+_NEXT_DISPOSITION_LINE = re.compile(
+    r"^(?P<line>[^\n]{0,120}(?:^|[\s—\-•*])\bNEXT\s*[:—\-][^\n]*)$",
+    re.I | re.M,
+)
+_QUEUED_FALSE_POSITIVE = re.compile(
+    r"message queue|queuedMessage|queued messages|in the queue|queue length|job queue",
+    re.I,
+)
+_NEXT_FALSE_POSITIVE = re.compile(
+    r"NEXT_RTH|next RTH|next-rth|# next-rth-ok",
+    re.I,
+)
+_LINE_HARD_BLOCKED = re.compile(
+    r"HARD_BLOCKER\s*:|"
+    r"\bENVIRONMENT_BLOCKED\b|"
+    r"\bEXTERNAL_DATA_UNAVAILABLE\b|"
+    r"\bDESTRUCTIVE_APPROVAL_REQUIRED\b|"
+    r"(?<![A-Z_])RTH_ONLY(?![A-Z_])",
+    re.I,
+)
+_NONE_REMAINING = re.compile(
+    r"^(?:[-*•]|\d+\.)?\s*(?:none|n/a|no remaining|all remediated|no active)\b",
+    re.I,
+)
+_TURN_IMPLICATE_NEAR = re.compile(
+    r"(?:implicat|remaining\s+active|QUEUED|KEEP FIXING|"
+    r"still (?:open|broken|wrong|unfixed|active)|"
+    r"must fix|discovered|this mission|ACTIVE (?:PARENT )?DEFECT)",
+    re.I,
+)
 _PARENT_SCOPE = re.compile(
     r"\b(end-to-end|universal|parent|all models|all tickers|operable surface)\b",
     re.I,
@@ -221,10 +261,11 @@ def _material_dirty(dirty: Iterable[str]) -> set[str]:
     return out
 
 
-# Mega surfaces named in almost every historical display/collect row. Editing one of
-# these does not, by itself, materially implicate the entire historical backlog
-# (operator: no permanent globally-blocking backlog). Narrow module paths still
-# activate PASSIVE → ACTIVE. Mission-tagged / opened-today rows still activate.
+# Mega surfaces named in almost every historical display/collect row. Path-string
+# coincidence on these files does not, by itself, activate the historical backlog
+# (RC-466). Narrow module paths still activate PASSIVE → ACTIVE. Mission-tagged /
+# opened-today / CLASS:ACTIVE rows still activate. A wide-surface row that the
+# current turn explicitly implicates (RC id + implication language) also activates.
 _WIDE_SURFACES_NO_AUTO_IMPLICATE = frozenset({
     "static/chart.html",
     "static/index.html",
@@ -233,7 +274,45 @@ _WIDE_SURFACES_NO_AUTO_IMPLICATE = frozenset({
 })
 
 
+def _assistant_scan_text(payload: dict | None) -> str:
+    """Assistant-authored text only. User/operator packets must not self-trigger."""
+    if not payload:
+        return ""
+    parts: list[str] = []
+    for k in ("last_assistant_text", "assistant_text", "response_text"):
+        v = payload.get(k)
+        if v:
+            parts.append(str(v))
+    if parts:
+        return "\n".join(parts)
+    tp = payload.get("transcript_path")
+    if not tp:
+        return ""
+    try:
+        from tools.proof_only_guard import last_assistant_text
+        t = last_assistant_text(str(tp))
+    except Exception:
+        return ""
+    return t or ""
+
+
+def _turn_implicates_row(row: dict[str, str], payload: dict | None) -> bool:
+    """Current-turn discovery/implication of a specific RC — not path coincidence."""
+    rid = (row.get("id") or "").strip()
+    if not rid or not payload:
+        return False
+    text = _assistant_scan_text(payload)
+    if not text or rid not in text:
+        return False
+    for m in re.finditer(re.escape(rid), text):
+        window = text[max(0, m.start() - 120): m.end() + 160]
+        if _TURN_IMPLICATE_NEAR.search(window):
+            return True
+    return False
+
+
 def _path_implicated(row_paths: set[str], dirty: Iterable[str], scope: Iterable[str]) -> bool:
+    """Narrow-module dirty-path match only. Wide-surface coincidence never implicates."""
     dirty_n = _material_dirty(dirty)
     if not dirty_n:
         return False
@@ -257,6 +336,7 @@ def classify_row(
     today: str,
     mission: dict | None = None,
     dirty_paths: Iterable[str] | None = None,
+    payload: dict | None = None,
 ) -> str:
     """Return CLOSED | ACTIVE | PASSIVE for one RC row."""
     status = (row.get("status") or "").upper()
@@ -281,6 +361,8 @@ def classify_row(
     parent_tagged = any(tok in body for tok in PARENT_MISSION_TOKENS)
     if opened_today or mission_tagged or parent_tagged or implicated or declared == "ACTIVE":
         return "ACTIVE"
+    if _turn_implicates_row(row, payload):
+        return "ACTIVE"
     if declared == "PASSIVE":
         return "PASSIVE"
     # Historical OPEN/PARTIAL with no implication — passive backlog, does not block.
@@ -293,13 +375,16 @@ def derive_active_obligations(
     today: str | None = None,
     mission: dict | None = None,
     dirty_paths: Iterable[str] | None = None,
+    payload: dict | None = None,
 ) -> list[dict[str, str]]:
     today = today or datetime.date.today().isoformat()
     mission = mission if mission is not None else _mission()
     dirty = list(dirty_paths) if dirty_paths is not None else _dirty_paths()
     out: list[dict[str, str]] = []
     for row in _parse_rc_rows(rc_text):
-        if classify_row(row, today=today, mission=mission, dirty_paths=dirty) == "ACTIVE":
+        if classify_row(
+            row, today=today, mission=mission, dirty_paths=dirty, payload=payload,
+        ) == "ACTIVE":
             out.append(row)
     return out
 
@@ -310,6 +395,7 @@ def illegal_passive_escape_offenders(
     today: str | None = None,
     mission: dict | None = None,
     dirty_paths: Iterable[str] | None = None,
+    payload: dict | None = None,
 ) -> list[tuple[str, str]]:
     """ACTIVE → PASSIVE (or new discovery marked PASSIVE) is not an escape hatch."""
     today = today or datetime.date.today().isoformat()
@@ -332,13 +418,14 @@ def illegal_passive_escape_offenders(
             dirty,
             mission.get("scope_paths") or [],
         )
+        turn_implicated = _turn_implicates_row(row, payload)
         if opened_today:
             out.append((
                 row["id"],
                 "NEW MATERIAL DISCOVERY marked CLASS:PASSIVE — required transition is "
                 "NEW → ACTIVE, not NEW → PASSIVE BACKLOG",
             ))
-        elif mission_tagged or parent_tagged or implicated:
+        elif mission_tagged or parent_tagged or implicated or turn_implicated:
             out.append((
                 row["id"],
                 "CLASS:PASSIVE on a row implicated by the active mission — PASSIVE + "
@@ -483,14 +570,89 @@ def blocker_evidence_ok(blocker: dict, *, repo: Path | None = None) -> tuple[boo
     return False, "unknown blocker type"
 
 
+def _remaining_active_items(text: str) -> list[str]:
+    items: list[str] = []
+    for m in _REMAINING_ACTIVE_HEADER.finditer(text):
+        rest = text[m.end():]
+        cut = re.search(
+            r"\n(?:[A-Z][A-Z0-9 /_\-]{8,}(?:\n|$)|#{1,3}\s|\n---)",
+            rest,
+        )
+        section = rest[:cut.start()] if cut else rest
+        for raw in section.splitlines():
+            line = raw.strip()
+            if not line or re.fullmatch(r"[-*=_]+", line):
+                continue
+            if _NONE_REMAINING.match(line):
+                continue
+            items.append(line)
+    return items
+
+
+def unfinished_disposition_violations(payload: dict | None) -> list[tuple[str, str]]:
+    """QUEUED / NEXT / remaining-active without a genuine hard blocker → Stop BLOCK.
+
+    Assistant text only. Does not require MATERIAL_DEFECT / DISCOVERED_DEFECT tokens.
+    """
+    text = _assistant_scan_text(payload)
+    if not text:
+        return []
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def _note(key: str, why: str) -> None:
+        if key in seen:
+            return
+        seen.add(key)
+        out.append((key, why))
+
+    for item in _remaining_active_items(text):
+        if _LINE_HARD_BLOCKED.search(item):
+            continue
+        _note(
+            "(unfinished_disposition)",
+            "response declares REMAINING ACTIVE PARENT DEFECTS and lists a "
+            "non-hard-blocked fixable defect — FIND IT → FIX IT Stop BLOCK",
+        )
+        break
+
+    for m in _QUEUED_DISPOSITION_LINE.finditer(text):
+        line = m.group("line")
+        if _QUEUED_FALSE_POSITIVE.search(line):
+            continue
+        if _LINE_HARD_BLOCKED.search(line):
+            continue
+        _note(
+            "(unfinished_disposition)",
+            "response declares QUEUED unfinished work without a genuine "
+            "HARD_BLOCKER on that exact assertion — FIND IT → FIX IT Stop BLOCK",
+        )
+        break
+
+    for m in _NEXT_DISPOSITION_LINE.finditer(text):
+        line = m.group("line")
+        if _NEXT_FALSE_POSITIVE.search(line):
+            continue
+        if _LINE_HARD_BLOCKED.search(line):
+            continue
+        _note(
+            "(unfinished_disposition)",
+            "response declares NEXT unfinished work without a genuine "
+            "HARD_BLOCKER on that exact assertion — FIND IT → FIX IT Stop BLOCK",
+        )
+        break
+    return out
+
+
 def discovery_omission_violations(
     payload: dict | None,
     rc_text: str,
 ) -> list[tuple[str, str]]:
-    """Agent explicitly declared a material defect this turn but omitted it from the RC log.
+    """Reconcile explicit discovery tokens against the RC log.
 
-    Does not invent semantic discovery. Only tokens the agent wrote
-    (MATERIAL_DEFECT: / DISCOVERED_DEFECT:) are reconciled.
+    MATERIAL_DEFECT: / DISCOVERED_DEFECT: still bind. Unfinished dispositions
+    (REMAINING ACTIVE / QUEUED / NEXT) are handled by unfinished_disposition_violations
+    in the same FIND IT → FIX IT authority — they do not require these tokens.
     """
     if not payload:
         return []
@@ -696,12 +858,13 @@ def active_obligation_offenders(
     mission = mission if mission is not None else _mission()
     dirty = list(dirty_paths) if dirty_paths is not None else _dirty_paths()
     out: list[tuple[str, str]] = []
+    out.extend(unfinished_disposition_violations(payload))
     out.extend(discovery_omission_violations(payload, rc_text))
     out.extend(illegal_passive_escape_offenders(
-        rc_text, today=today, mission=mission, dirty_paths=dirty
+        rc_text, today=today, mission=mission, dirty_paths=dirty, payload=payload
     ))
     active = derive_active_obligations(
-        rc_text, today=today, mission=mission, dirty_paths=dirty
+        rc_text, today=today, mission=mission, dirty_paths=dirty, payload=payload
     )
     if presented_ids is None:
         presented_ids = load_optional_derived_view(ACTIVE_DEFECTS_PATH)

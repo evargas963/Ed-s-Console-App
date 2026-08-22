@@ -46,6 +46,7 @@ def _offenders(rows: list[str], **kwargs):
         dirty_paths=kwargs.pop("dirty_paths", []),
         presented_ids=kwargs.pop("presented_ids", None),
         repo=kwargs.pop("repo", ROOT),
+        payload=kwargs.pop("payload", None),
     )
 
 
@@ -381,6 +382,106 @@ def test_failed_execution_evidence_blocks():
         payload={"fix_evidence": {"RC-9020": {"ran": True, "exit": 1}}},
     )
     assert any("failed" in why for _, why in off)
+
+
+def test_remaining_active_parent_defects_without_material_token_blocks_stop():
+    """Exact RC-468 regression: remaining-active list, no MATERIAL_DEFECT, Stop BLOCK."""
+    rows = [
+        _row(
+            "RC-9100",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
+        ),
+    ]
+    payload = {
+        "last_assistant_text": (
+            "Data/DB — QUEUED — not a stop\n\n"
+            "REMAINING ACTIVE PARENT DEFECTS\n"
+            "- OF_PARENT reconstructed L1 tape pressure limitations still unstated\n"
+            "- LP-01 Chart surface incomplete\n"
+        )
+    }
+    assert "MATERIAL_DEFECT" not in payload["last_assistant_text"]
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=ROOT,
+        payload=payload,
+    )
+    assert off, "remaining-active fixable defects without MATERIAL_DEFECT must BLOCK Stop"
+    assert any(
+        "REMAINING ACTIVE" in why or "QUEUED" in why
+        for _, why in off
+    )
+
+
+def test_remaining_active_hard_blocked_items_do_not_block_from_disposition():
+    rows = [
+        _row(
+            "RC-9100b",
+            extra_defect="CLASS:ACTIVE",
+            extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
+        ),
+    ]
+    payload = {
+        "last_assistant_text": (
+            "REMAINING ACTIVE PARENT DEFECTS\n"
+            "- retrain HARD_BLOCKER: ENVIRONMENT_BLOCKED assertion=retrain_models "
+            "command=python observed_error=ModuleNotFoundError: pandas\n"
+        )
+    }
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=[],
+        presented_ids=None,
+        repo=ROOT,
+        payload=payload,
+    )
+    assert off == [], off
+
+
+def test_unrelated_historical_server_edit_stays_passive():
+    rows = [
+        _row(
+            "RC-9101",
+            opened="2026-07-01",
+            extra_defect="CLASS:PASSIVE server.py stale comment rewrite",
+            extra_fix="historical note",
+        ),
+    ]
+    off = _offenders(rows, dirty_paths=["server.py"])
+    assert off == [], "unrelated historical server.py RC + unrelated server edit must stay PASSIVE"
+
+
+def test_explicitly_implicated_server_defect_becomes_active():
+    rows = [
+        _row(
+            "RC-9102",
+            opened="2026-07-01",
+            extra_defect="CLASS:PASSIVE server.py reconnect freshness",
+            extra_fix="historical note",
+        ),
+    ]
+    off = FIF.active_obligation_offenders(
+        "\n".join(rows),
+        today=TODAY,
+        mission=MISSION,
+        dirty_paths=["server.py"],
+        presented_ids=None,
+        repo=ROOT,
+        payload={
+            "last_assistant_text": (
+                "RC-9102 server.py reconnect freshness is implicated by this mission"
+            )
+        },
+    )
+    assert off, "explicitly implicated server.py defect during current mission must become ACTIVE"
+    assert any(rid == "RC-9102" for rid, _ in off)
 
 
 def test_child_test_cannot_close_parent():
