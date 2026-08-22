@@ -1,13 +1,10 @@
 {
-  "classification": "CHECKED-STATUS AUDIT. Not a work list.",
-  "FINAL_HEAD_SHA": "a26d0dff41bfef38f4494bf4055d653bc947d30f",
-  "DIRTY": false,
-  "MASTER_CHECKED": 0,
+  "classification": "CHECKED-STATUS AUDIT. Not a work list. Zero work authority.",
+  "CONTENT_HEAD": "73bdc820de7d348a7550e2a1b45bd0cc21fbf79b",
+  "MASTER_CHECKED": 1,
+  "CHECKED_IDS": [
+    "OD-1284"
+  ],
   "CHECKED_WITHOUT_CURRENT_EVIDENCE": 0,
-  "MISSING_STATUS": [],
-  "illegal_checked": [],
-  "status_counts": {
-    "NOT_PROVEN": 2362
-  },
-  "note": "No prior [x]/DONE/CLOSED/PASS was grandfathered. All boxes STATUS=NOT_PROVEN until current complete proof exists."
+  "OD-1284": "NOT_APPLICABLE with operator retirement 2026-08-22: source wrapping/SHA is not a completeness test."
 }
