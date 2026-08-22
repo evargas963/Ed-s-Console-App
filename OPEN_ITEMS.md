@@ -39,6 +39,7 @@ Machine master: `governance/requirement_tree.json`. Derived proof: `reports/requ
 - [x] **P2_ABSORPTION_WITHHELD** — historical P2 absorption withheld from training / quarantined (RC-455). P2 parent remains NOT_PROVEN.
 - [x] **IDENTITY_SPLIT_REMOVED** — permanent Claude-writer / Cursor-auditor identity restriction removed (RC-452/RC-457; `tests/test_active_writer_law_v1.py`).
 - [x] **OF_TAPE_IDENTITY_DEDUPED** — tape window from latest print; identical L1 restatements dropped; same-ms distinct prints kept (RC-463). Parent Order Flow remains NOT_PROVEN.
+- [x] **OF_MEDIAN_X3_RETIRED** — median times 3 displayed-depth anomaly candidates retired (RC-467). Parent Order Flow remains NOT_PROVEN.
 - [x] **GAMMA_FLIP_DISPLAY_GATED** — flip number withheld unless TRUSTED (RC-462). UI truth parent remains NOT_PROVEN.
 - [x] **GAMMA_WALLS_DISPLAY_GATED** — walls/pin/max-pain/net-peak withheld unless TRUSTED (RC-465). UI truth parent remains NOT_PROVEN.
 - [ ] **OF_PARENT / P2_PARENT / LP-01 / UI truth / predictive validity / real-money readiness** — NOT_PROVEN. Not closed by the children above.

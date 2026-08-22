@@ -17,7 +17,8 @@
         "OF_ENGINE_ABSORPTION_RETIRED",
         "P2_ABSORPTION_WITHHELD",
         "IDENTITY_SPLIT_REMOVED",
-        "OF_TAPE_IDENTITY_DEDUPED"
+        "OF_TAPE_IDENTITY_DEDUPED",
+        "OF_MEDIAN_X3_RETIRED"
       ]
     },
     {
@@ -129,6 +130,17 @@
       "evidence": [
         "RC-462",
         "tests/test_displayable_gamma_flip_v1.py"
+      ]
+    },
+    {
+      "id": "OF_MEDIAN_X3_RETIRED",
+      "title": "median times 3 displayed-depth anomaly candidates retired",
+      "proof": "PASS",
+      "closable": true,
+      "execution": "CLOSED",
+      "evidence": [
+        "RC-467",
+        "tests/test_order_flow_microstructure_v1.py"
       ]
     },
     {

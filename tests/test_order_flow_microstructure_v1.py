@@ -109,18 +109,15 @@ def test_book_shape_metrics():
     assert [round(x["cum"], 1) for x in bid_curve] == [1000.0, 1040.0, 1080.0, 1160.0, 1360.0]
 
 
-def test_displayed_depth_anomaly_candidates_are_flagged_heuristic():
+def test_displayed_depth_anomaly_candidates_are_retired():
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
-    # median top-5 bid size = 80; the 1000-share touch is 12.5x median -> a candidate. None on ask.
-    bid_walls = [w for w in m["displayed_depth_anomaly_candidates"] if w["side"] == "bid"]
-    assert bid_walls == [{"side": "bid", "price": 712.47, "volume": 1000.0, "median_mult": 12.5}]
-    # The API must NOT imply an objective wall: the field is 'displayed_depth_anomaly_candidates', carries a
-    # self-describing heuristic method, and is classified as a heuristic.
-    assert "walls" not in m
-    assert m["displayed_depth_anomaly_method"]["heuristic"] is True
-    assert m["displayed_depth_anomaly_method"]["mult"] == ofe.OF_BOOK_WALL_MEDIAN_MULT
-    assert "HEURISTIC" in m["classification"]["displayed_depth_anomaly_candidates"].upper()
+    assert m["displayed_depth_anomaly_candidates"] == []
+    assert m["displayed_depth_anomaly_method"]["retired"] is True
+    assert m["displayed_depth_anomaly_method"]["mult"] is None
+    assert "RETIRED" in m["classification"]["displayed_depth_anomaly_candidates"].upper()
     assert "wall_candidates" not in m
+    assert not hasattr(ofe, "OF_BOOK_WALL_MEDIAN_MULT")
+    assert not hasattr(ofe, "_book_wall_candidates")
 
 
 def test_microprice_fail_closes_on_crossed_and_invalid():
@@ -319,9 +316,9 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     assert m2["depth"]["5"]["bid_total"] == 220.0                     # not the stale 1360
     assert m1["depth"]["1"]["imbalance"] != m2["depth"]["1"]["imbalance"]
     assert m2["depth"]["1"]["imbalance"] < 0                          # ask-heavy now
-    # walls flip from the bid side to the ask side — proving walls are not served stale.
-    assert [w["side"] for w in m1["displayed_depth_anomaly_candidates"]] == ["bid"]
-    assert [w["side"] for w in m2["displayed_depth_anomaly_candidates"]] == ["ask"]
+    # RC-467: size-outlier candidates are retired. Stale-carry proof is the depth/imbalance flip.
+    assert m1["displayed_depth_anomaly_candidates"] == []
+    assert m2["displayed_depth_anomaly_candidates"] == []
 
     # And an unchanged re-read of v2 (same ticker, same content) still carries without recompute.
     def _boom(_cb):
