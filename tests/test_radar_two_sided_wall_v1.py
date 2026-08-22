@@ -67,3 +67,12 @@ def test_a_regime_change_still_outranks_a_two_sided_wall():
     """A flip in range changes what every other level MEANS; it must keep priority."""
     row = _contact(102.0, 102.0, spot=100.0, flip=100.5)
     assert row["wall_name"] == "gamma flip"
+
+
+def test_narrow_chain_flip_is_not_a_regime_change_contact():
+    atr = server.AtrPair(daily=20.0, m15=5.0)
+    t = {"ticker": "TEST", "regime": "SHORT_GAMMA_TREND", "posture": "X",
+         "confidence": "LOW_CONFIDENCE_NARROW_CHAIN",
+         "call_wall": 120.0, "put_wall": 80.0, "gamma_flip": 100.5}
+    row = server._radar_contact(t, 100.0, atr)
+    assert row is None or row["wall_name"] != "gamma flip"

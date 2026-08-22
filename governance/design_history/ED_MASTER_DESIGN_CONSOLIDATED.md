@@ -1,4 +1,5 @@
 # ED Trading System — Consolidated Master Design Corpus
+**Not a work queue.** Sole unresolved-work authority: `ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md`. Embedded historical checkboxes are HISTORY_ONLY (H3/H4).
 **Consolidated:** 2026-07-20 (operator directive: consolidate design documents, delete originals, review against current state)
 **Source:** loose files formerly in `C:/Users/evarg/Documents/Trading/` — every document below is preserved VERBATIM; the originals are deleted.
 **Repo-internal design lineage this corpus feeds:** `AGENTS.md` (charter, active) -> `governance/archive/2026-Q2/governance_md/INSTITUTIONAL_STANDARD_V2.md` -> `INSTITUTIONAL_STANDARD_V3.md` (recover: `git show 077754d^:governance/INSTITUTIONAL_STANDARD_V3.md`) -> `governance/Framework-ED-Decision-Engine-v1.1.md` (live) -> v2.0 blueprint (recover: `git show 0148e0d^:governance/IMPLEMENTATION_BLUEPRINT_V2.md`) -> `v2_decision/` code.

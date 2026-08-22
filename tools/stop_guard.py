@@ -10,11 +10,9 @@ This runs as a Stop hook. Exit 2 BLOCKS the stop and feeds stderr back to the ag
 keeps working instead of ending the turn.
 
 Contract:
-  * BLOCKS when a root-cause row opened TODAY is still `OPEN` and its fix cell says the work is
-    unfinished ("IN PROGRESS" / "VERIFICATION PENDING" / "NOT FIXED").
-  * Does NOT block on rows opened on earlier days: those are a real backlog with due dates, and
-    `check_root_cause_log` already fails a commit on an overdue one. This guard is about work
-    started and abandoned WITHIN a session.
+  * BLOCKS unfinished-turn obligations from `tools/find_it_fix_it_lock.py` reading the sole
+    master (`ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md`), never
+    from `governance/root_cause_log.md` OPEN / ACTIVE rows (zero execution authority).
   * Respects `stop_hook_active`: if the guard already blocked once and the agent is still going,
     it does not block again. Without this the turn could never end — a guard that cannot be
     satisfied is a hang, not a control.
@@ -23,7 +21,6 @@ Contract:
 """
 from __future__ import annotations
 
-import datetime
 import json
 import os
 import re
@@ -43,26 +40,12 @@ UNFINISHED_MARKERS = ("IN PROGRESS", "VERIFICATION PENDING", "NOT FIXED", "PARTI
 
 
 def unfinished_rows_opened_today(today: str | None = None) -> list[tuple[str, str]]:
-    """(rc_id, reason) for rows opened `today` that are OPEN and self-declared unfinished."""
-    today = today or datetime.date.today().isoformat()
-    try:
-        lines = RC_LOG.read_text(encoding="utf-8", errors="ignore").splitlines()
-    except OSError:
-        return []
-    out: list[tuple[str, str]] = []
-    for line in lines:
-        if not line.startswith("| RC-"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 7:
-            continue
-        rc_id, status, opened, fix = cells[0], cells[1], cells[2], cells[6]
-        if status != "OPEN" or opened != today:
-            continue
-        hit = next((m for m in UNFINISHED_MARKERS if m in fix.upper()), None)
-        if hit:
-            out.append((rc_id, hit))
-    return out
+    """RC log does not determine Stop eligibility (RC-480). Returns empty.
+
+    Unfinished-turn obligations come from find_it_fix_it_lock.fix_law_blockers
+    reading the sole master, not from today's OPEN RC rows.
+    """
+    return []
 
 
 #: RC-235: the ONLY freshness reason exempt from the turn-block — the producer is running
@@ -138,24 +121,47 @@ def close_contract_blockers() -> list[str]:
                 f"fix the gate before ending the turn"]
 
 
+def fix_law_blockers(payload: dict | None = None) -> list[tuple[str, str]]:
+    """RC-453/RC-458: FIND IT → FIX IT — same authority as check_find_it_fix_it."""
+    try:
+        from tools.find_it_fix_it_lock import fix_law_blockers as _flb
+        return list(_flb(payload=payload))
+    except Exception as e:  # noqa: BLE001 — a broken lock must scream, not wave through
+        return [("(find_it_fix_it)", f"{type(e).__name__}: {e}")]
+
+
 def main() -> int:
     if os.environ.get("ED_STOP_GUARD", "").strip().lower() in ("off", "0", "false"):
         return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        return 0                      # unreadable hook input is never a block
-    # Already blocked once this turn and the agent is still working — never loop forever.
-    if payload.get("stop_hook_active") is True:
+        payload = {}
+    # Attach last-assistant text so MATERIAL_DEFECT: declarations in the wrap-up
+    # are reconciled even when transcript_path is absent from the payload.
+    transcript = payload.get("transcript_path") or ""
+    if transcript and not payload.get("last_assistant_text"):
+        try:
+            from tools.proof_only_guard import last_assistant_text
+            payload = dict(payload)
+            payload["last_assistant_text"] = last_assistant_text(transcript) or ""
+        except Exception:  # institutional-swallow-ok: discovery scan still has transcript_path
+            pass
+    # FIND IT → FIX IT re-blocks on repeat Stop (an already-blocked turn cannot
+    # launder an active obligation by setting stop_hook_active). Other session
+    # hang-guards still honour the one-retry latch below.
+    fix_offenders = fix_law_blockers(payload)
+    if payload.get("stop_hook_active") is True and not fix_offenders:
         return 0
 
     rows = unfinished_rows_opened_today()
     faucets = faucet_violations()
     stale = freshness_blockers()          # RC-94: stale-on-a-live-console ends no turn quietly
     contract = close_contract_blockers()  # RC-106: a CLOSED row must satisfy the close contract
-    if not rows and not faucets and not stale and not contract:
+    if not rows and not faucets and not stale and not contract and not fix_offenders:
         return 0
     rows = rows + [(c, "violates the RC-106 close contract") for c in contract]
+    rows = rows + list(fix_offenders)
     faucets = faucets + [
         {"concept": v["concept"], "undeclared": [v.get("detail", "stale")]} for v in stale
     ]

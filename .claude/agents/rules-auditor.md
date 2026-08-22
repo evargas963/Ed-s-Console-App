@@ -24,8 +24,9 @@ Your single job: read the rule surfaces end-to-end and produce a structured repo
 **Primary always-on (repo root):**
 - `AGENTS.md` — always-on agent behavior rules (BOTH agents)
 - `CLAUDE.md` — Schwab market-field program law
-- `ACTIVE_PROGRAM.md` — current epic, conflicts, deferred work
-- `MEMORY.md` — thin pointer to AGENTS/ACTIVE_PROGRAM + [OPERATOR-ONLY] archive index
+- `ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md` — sole unresolved-work / debt authority
+- `ACTIVE_PROGRAM.md` — historical pointer only; zero work authority
+- `MEMORY.md` — thin pointer to AGENTS + [OPERATOR-ONLY] archive index
 
 **Process mechanics:**
 - `tools/check_worktree_handoff.py` + `tools/session_closeout.py` (HEAD = Cursor↔Claude sync)

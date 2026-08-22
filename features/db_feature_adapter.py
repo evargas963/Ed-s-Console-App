@@ -45,11 +45,13 @@ def build_db_mvp_feature_row(snapshot_row: dict[str, Any]) -> dict[str, Any]:
         "anchor.vwap_dist_pts": read_optional_float(
             snapshot_row, "vwap_dist_pts", "anchor.vwap_dist_pts"
         ),
-        "liquidity.absorption_score": read_optional_float(
-            snapshot_row, "absorption_score", "liquidity.absorption_score"
+        # RC-455: historical absorption_score / continuation_score are a
+        # different semantic era and must not map into these fields.
+        "liquidity.range_imbalance_stall_score": read_optional_float(
+            snapshot_row, "range_imbalance_stall_score", "liquidity.range_imbalance_stall_score"
         ),
-        "liquidity.continuation_score": read_optional_float(
-            snapshot_row, "continuation_score", "liquidity.continuation_score"
+        "liquidity.range_imbalance_push_score": read_optional_float(
+            snapshot_row, "range_imbalance_push_score", "liquidity.range_imbalance_push_score"
         ),
     }
     order = get_mvp_feature_names()

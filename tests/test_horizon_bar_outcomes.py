@@ -12,6 +12,7 @@ from horizon_outcomes import (
     HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
     bar_complete_by_utc,
     forward_bar_start_utc,
+    snapshot_bar_start_ts_utc,
     OUTCOME_BAR_SPECS,
 )
 from db import EdDB, get_snapshot_sql
@@ -22,6 +23,71 @@ def test_forward_bar_start_grid():
     assert forward_bar_start_utc(100.0, 1) == math.floor(160.0 / 60.0) * 60.0
     t0 = 1700000000.0
     assert forward_bar_start_utc(t0, 60) == math.floor((t0 + 3600.0) / 60.0) * 60.0
+
+
+def test_snapshot_bar_start_floors_poll_seconds():
+    assert snapshot_bar_start_ts_utc(100.0) == 60.0
+    assert snapshot_bar_start_ts_utc(120.0) == 120.0
+    assert snapshot_bar_start_ts_utc(1_781_800_000.0) == 1_781_799_960.0
+
+
+def test_insert_snapshot_preserves_observation_and_persists_bar_start(tmp_path: Path):
+    from db import SnapshotRow
+    from horizon_outcomes import SNAPSHOT_TS_SEMANTIC_OBSERVATION
+
+    obs = 1_781_800_000.0
+    db = EdDB(tmp_path / "barstamp.db")
+    db.insert_snapshot(SnapshotRow(
+        ticker="SPY",
+        timeframe=CF,
+        ts_utc=obs,
+        ts_et="2026-06-18 10:00:40 ET",
+        et_hour=10,
+        et_minute=0,
+        market_session="rth",
+        spot=500.0,
+    ))
+    with db._connect() as conn:
+        ts, bar, sem, minute = conn.execute(
+            "SELECT ts_utc, bar_start_ts_utc, snapshot_ts_semantic, et_minute "
+            "FROM snapshots WHERE ticker='SPY'"
+        ).fetchone()
+    assert float(ts) == obs
+    assert float(bar) == snapshot_bar_start_ts_utc(obs)
+    assert float(bar) != obs
+    assert sem == SNAPSHOT_TS_SEMANTIC_OBSERVATION
+    assert int(minute) == 0
+
+
+def test_historical_poll_second_rows_get_bar_start_without_rewriting_ts(tmp_path: Path):
+    from db import SnapshotRow
+    from horizon_outcomes import SNAPSHOT_TS_SEMANTIC_HISTORICAL_UNKNOWN
+
+    obs = 1_781_800_017.0
+    db = EdDB(tmp_path / "histbar.db")
+    db.insert_snapshot(SnapshotRow(
+        ticker="QQQ",
+        timeframe=CF,
+        ts_utc=obs,
+        ts_et="2026-06-18 10:00:17 ET",
+        et_hour=10,
+        et_minute=0,
+        market_session="rth",
+        spot=400.0,
+    ))
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE snapshots SET bar_start_ts_utc = NULL, snapshot_ts_semantic = NULL"
+        )
+    db._migrate_schema()
+    with db._connect() as conn:
+        ts, bar, sem = conn.execute(
+            "SELECT ts_utc, bar_start_ts_utc, snapshot_ts_semantic "
+            "FROM snapshots WHERE ticker='QQQ'"
+        ).fetchone()
+    assert float(ts) == obs
+    assert float(bar) == snapshot_bar_start_ts_utc(obs)
+    assert sem == SNAPSHOT_TS_SEMANTIC_HISTORICAL_UNKNOWN
 
 
 def test_bar_complete():

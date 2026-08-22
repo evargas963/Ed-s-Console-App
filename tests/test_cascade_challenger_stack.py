@@ -26,8 +26,8 @@ def _minimal_inf_v1():
     feats["structure.net_gamma"] = 0.0
     feats["anchor.vwap_side"] = "above"
     feats["anchor.vwap_dist_pts"] = 0.1
-    feats["liquidity.absorption_score"] = None
-    feats["liquidity.continuation_score"] = None
+    feats["liquidity.range_imbalance_stall_score"] = None
+    feats["liquidity.range_imbalance_push_score"] = None
     return build_inference_snapshot_v1_from_feature_row(
         ticker="SPY",
         expiry=None,

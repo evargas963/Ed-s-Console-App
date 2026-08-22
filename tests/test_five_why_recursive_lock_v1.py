@@ -125,22 +125,37 @@ def test_adversarial_lock_passes_with_costaged_test(monkeypatch):
     assert cic.check_adversarial_audit_test_lock() == []
 
 
+_SOLE_MASTER = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+
+
 def test_adversarial_lock_passes_with_no_test_lock_exemption(monkeypatch):
     cic = _install_fake_git(
         monkeypatch,
-        ["scoreboard_report.py", "governance/root_cause_log.md"],
-        log_diff=["+| RC-99 | CLOSED | 2026-07-26 | 2026-08-02 | d | (1)->(2)->(3)->(4)->(5) ROOT: x | "
-                  "MEASURED, VERIFIED. END-TO-END: a->b. NO-TEST-LOCK: measurement-only closure, no code path |"],
+        ["scoreboard_report.py", _SOLE_MASTER],
+        log_diff=["+- [ ] `OD-99` — STATUS=NOT_PROVEN — measurement-only. "
+                  "NO-TEST-LOCK: measurement-only closure, no code path"],
     )
     assert cic.check_adversarial_audit_test_lock() == []
 
 
-def test_adversarial_lock_exemption_requires_the_marker_not_just_a_staged_log(monkeypatch):
-    # Log staged but the added row carries NO 'NO-TEST-LOCK:' marker -> still fires.
+def test_adversarial_lock_exemption_requires_the_marker_not_just_a_staged_master(monkeypatch):
+    # Master staged but the added line carries NO 'NO-TEST-LOCK:' marker -> still fires.
+    cic = _install_fake_git(
+        monkeypatch,
+        ["scoreboard_report.py", _SOLE_MASTER],
+        log_diff=["+- [ ] `OD-99` — STATUS=NOT_PROVEN — x without the marker"],
+    )
+    v = cic.check_adversarial_audit_test_lock()
+    assert len(v) == 1 and "NO co-staged test" in v[0].msg
+
+
+def test_adversarial_lock_rc_row_is_not_the_exemption_surface(monkeypatch):
+    """A new | RC- row, even with NO-TEST-LOCK, does not exempt a production edit."""
     cic = _install_fake_git(
         monkeypatch,
         ["scoreboard_report.py", "governance/root_cause_log.md"],
-        log_diff=["+| RC-99 | CLOSED | 2026-07-26 | 2026-08-02 | d | why | fix without the marker |"],
+        log_diff=["+| RC-99 | CLOSED | 2026-07-26 | 2026-08-02 | d | (1)->(2)->(3)->(4)->(5) ROOT: x | "
+                  "MEASURED. NO-TEST-LOCK: measurement-only closure, no code path |"],
     )
     v = cic.check_adversarial_audit_test_lock()
     assert len(v) == 1 and "NO co-staged test" in v[0].msg
@@ -155,6 +170,55 @@ def test_adversarial_lock_noops_outside_a_commit_context(monkeypatch):
     import tools.check_institutional_correctness as cic
     monkeypatch.setattr(cic, "_git_output_lines", lambda args: None)
     assert cic.check_adversarial_audit_test_lock() == []
+
+
+def test_front_loaded_blocks_production_without_master_admission(monkeypatch):
+    import tools.pretooluse_guard as G
+    monkeypatch.setattr(G, "master_admits_production_edit", lambda *a, **k: False)
+    cic = _install_fake_git(monkeypatch, ["server.py"])
+    v = cic.check_recursive_five_why_front_loaded()
+    assert v and "master" in v[0].msg.lower()
+
+
+def test_front_loaded_allows_when_master_admits(monkeypatch):
+    import tools.pretooluse_guard as G
+    monkeypatch.setattr(G, "master_admits_production_edit", lambda *a, **k: True)
+    cic = _install_fake_git(monkeypatch, ["server.py"])
+    assert cic.check_recursive_five_why_front_loaded() == []
+
+
+def test_front_loaded_new_rc_row_does_not_admit(monkeypatch):
+    import tools.pretooluse_guard as G
+    monkeypatch.setattr(G, "master_admits_production_edit", lambda *a, **k: False)
+    cic = _install_fake_git(
+        monkeypatch,
+        ["server.py", "governance/root_cause_log.md"],
+        log_diff=["+| RC-99999 | OPEN | 2026-08-22 | 2026-09-22 | d | why | FIXED: x |"],
+    )
+    v = cic.check_recursive_five_why_front_loaded()
+    assert v, "a new RC row must not admit a production edit"
+    assert "server.py" in v[0].msg
+
+
+def test_front_loaded_one_covered_file_does_not_launder_uncovered(monkeypatch):
+    import tools.pretooluse_guard as G
+
+    def admit(rel, **_k):
+        return rel.replace("\\", "/") == "server.py"
+
+    monkeypatch.setattr(G, "master_admits_production_edit", admit)
+    cic = _install_fake_git(monkeypatch, ["server.py", "prediction_engine.py"])
+    v = cic.check_recursive_five_why_front_loaded()
+    assert v, "one covered file must not authorize an uncovered sibling"
+    assert "uncovered path(s): prediction_engine.py" in v[0].msg
+    assert "uncovered path(s): server.py" not in v[0].msg
+
+
+def test_front_loaded_both_independently_covered(monkeypatch):
+    import tools.pretooluse_guard as G
+    monkeypatch.setattr(G, "master_admits_production_edit", lambda *a, **k: True)
+    cic = _install_fake_git(monkeypatch, ["server.py", "prediction_engine.py"])
+    assert cic.check_recursive_five_why_front_loaded() == []
 
 
 # ── RC-54: RTH-only market measurement (market-closed rows bias every statistic) ──

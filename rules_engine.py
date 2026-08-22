@@ -7,24 +7,17 @@ from __future__ import annotations
 
 import logging
 
-from math_exposure import is_pin_zone, APPROACH_PTS
+from math_exposure import is_pin_zone
 from signal_types import SignalInput, RulesCard
 from features.regime_mvp_context import mvp_vwap_side, mvp_zone
-from signal_helpers import _ordinal
-
 log = logging.getLogger(__name__)
 
 
-def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
-                             vwap_side, zone) -> tuple[str, str]:
+def _derive_bias_from_micro(micro, vwap_side, zone) -> tuple[str, str]:
     """
-    Convert micro regime + level context into a structural bias.
+    Convert micro regime into a structural bias.
 
-    The micro regime tells us what candles are doing.
-    Level proximity tells us where we are relative to options walls.
-    The 1-min regime acts as an early warning — if it contradicts the
-    5-min regime, conviction is reduced or lean is flipped to 'wait'.
-    Together they produce a lean for The Call to use.
+    APPROACH_PTS wall-proximity conviction cuts retired (RC-473).
     """
     from micro_structure import (
         R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
@@ -32,6 +25,7 @@ def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
         R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP,
     )
 
+    _ = zone
     regime = micro.regime
 
     # ── Chop: no bias ─────────────────────────────────────────────────────────
@@ -45,16 +39,11 @@ def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
     # ── Trend up + BOS up ─────────────────────────────────────────────────────
     if regime in (R_TREND_UP, R_BOS_UP):
         conv = "high" if regime == R_BOS_UP else "medium"
-        # Approaching ceiling in an uptrend = caution, not reversal
-        if approaching_ceiling:
-            conv = "low"   # trend is up but near resistance — be careful
         return "long", conv
 
     # ── Trend down + BOS down ─────────────────────────────────────────────────
     if regime in (R_TREND_DOWN, R_BOS_DOWN):
         conv = "high" if regime == R_BOS_DOWN else "medium"
-        if approaching_floor:
-            conv = "low"
         return "short", conv
 
     # ── CHoCH: early reversal warning ─────────────────────────────────────────
@@ -71,11 +60,6 @@ def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
 
     # ── Range: lean based on position within range + level proximity ──────────
     if regime == R_RANGE:
-        if approaching_ceiling:
-            return "short", "medium"
-        if approaching_floor:
-            return "long", "medium"
-        # Middle of range: slight lean only when canonical VWAP side is known
         if vwap_side == "above":
             return "long", "low"
         if vwap_side == "below":
@@ -122,32 +106,8 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
     # Start with alerts from the micro engine
     alerts = list(micro.alerts)
 
-    # ── Layer on options-level proximity alerts ───────────────────────────────
-    # These are valuable context even with candle-based analysis
-    cgw = inp.call_gamma_wall
-    pgw = inp.put_gamma_wall
-
-    approaching_ceiling = (
-        cgw is not None and
-        inp.dist_call_gamma_wall is not None and
-        0 < inp.dist_call_gamma_wall <= APPROACH_PTS
-    )
-    approaching_floor = (
-        pgw is not None and
-        inp.dist_put_gamma_wall is not None and
-        0 < abs(inp.dist_put_gamma_wall) <= APPROACH_PTS
-    )
-    if approaching_ceiling:
-        cgw_s = f"{cgw:.2f}"
-        alerts.append(f"⚠ Within {inp.dist_call_gamma_wall:.1f}pts of {cgw_s} ceiling")
-    if approaching_floor:
-        pgw_s = f"{pgw:.2f}"
-        alerts.append(f"⚠ Within {abs(inp.dist_put_gamma_wall):.1f}pts of {pgw_s} floor")
-    # Level test counts
-    if inp.ceiling_tests_today >= 2 and approaching_ceiling:
-        alerts.append(f"🔁 {_ordinal(inp.ceiling_tests_today + 1)} test of ceiling — rejection probability rising")
-    if inp.floor_tests_today >= 2 and approaching_floor:
-        alerts.append(f"🔁 {_ordinal(inp.floor_tests_today + 1)} test of floor — bounce probability rising")
+    # APPROACH_PTS proximity / level-test alerts retired (RC-473): 1.5pt cutoff
+    # had no provenance. Distances remain on SignalInput; do not mint a replacement.
 
     # Recent cross events
     fresh_crosses = [c for c in (inp.recent_crosses or []) if c.get("bars_ago", 99) <= 2]
@@ -193,8 +153,6 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
     # This is a LEAN, not a trade call. The Call decides what to do with it.
     signal, conviction = _derive_bias_from_micro(
         micro=micro,
-        approaching_ceiling=approaching_ceiling,
-        approaching_floor=approaching_floor,
         vwap_side=mvp_vwap_side(mvp_features),
         zone=mvp_zone(mvp_features),
     )

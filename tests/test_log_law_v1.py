@@ -77,11 +77,11 @@ def test_telemetry_is_never_debt():
     assert not is_telemetry("governance/root_cause_log.md")
 
 
-def test_overdue_epistemic_row_blocks(tmp_path):
+def test_overdue_epistemic_row_does_not_select_or_block_work(tmp_path):
+    """Register UNPROVEN/due dates have zero work authority."""
     _mk(tmp_path, EPISTEMIC_LEDGER,
         "| UNPROVEN | 2026-07-01 | 2026-07-10 | that something holds |\n")
-    bad = unproven_overdue(tmp_path, today="2026-08-04")
-    assert bad and "OVERDUE" in bad[0]
+    assert unproven_overdue(tmp_path, today="2026-08-04") == []
 
 
 def test_future_dated_hypothesis_is_not_debt(tmp_path):

@@ -688,7 +688,7 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
     mission = pm_mission_record()
     status = str(mission.get("status") or "idle").strip().lower()
     agent = (agent or current_agent_role()).lower()
-    writer = str(mission.get("writer") or sole_writer_record().get("writer") or "").strip().lower()
+    writer = WDL.resolved_writer(mission, sole_writer_record())
     scopes = mission.get("scope_paths") or ["*"]
     if not isinstance(scopes, list):
         scopes = ["*"]
@@ -700,10 +700,11 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
             return None
         if WDL.path_in_mission_scope(rel, scopes) or _mission_gates_path(rel):
             return (
-                f"SOD_DRIFT: {writer} is sole writer — WRITER-DRIFT BLOCK: "
-                f"mission writer={writer!r} but agent={agent!r} — "
+                f"SOD_DRIFT: {writer} is ACTIVE_WRITER — WRITER-DRIFT BLOCK: "
+                f"mission ACTIVE_WRITER={writer!r} but agent={agent!r} — "
                 f"path {rel} blocked (mission_id={mission.get('mission_id')!r}; "
-                f"status={status!r}). Cursor=PM/auditor; sole writer owns scope_paths."
+                f"status={status!r}). One canonical worktree; non-active agent "
+                f"cannot concurrently mutate it."
             )
         return None
 
@@ -985,24 +986,7 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     if staged_head and re.search(r"\b(iceberg ready|ready to commit|one intentional tree)\b", text, re.I):
         if not operator_go_granted("staged_lock_surface"):
             out.extend(staged_head)
-    # RC-228: COMPLETE claims while the active mission still owns OPEN RC rows.
-    if re.search(r"\b(mission\s+complete|done_criteria|COMPLETE(?:/CLOSED)?)\b", text, re.I):
-        try:
-            from tools.rc_resolve_lock import open_rcs_owned_by_mission
-        except ImportError:
-            from rc_resolve_lock import open_rcs_owned_by_mission  # type: ignore
-        mission = pm_mission_record()
-        mid = str(mission.get("mission_id") or "").strip()
-        rc_path = root / "governance" / "root_cause_log.md"
-        if mid and rc_path.is_file():
-            open_ids = open_rcs_owned_by_mission(
-                mid, rc_path.read_text(encoding="utf-8").splitlines()
-            )
-            if open_ids:
-                out.append(
-                    f"completion claim while OPEN RC(s) still name mission {mid!r}: "
-                    f"{', '.join(open_ids)} (RC-228 — CLOSE or honest PARTIAL+OUT-OF-SCOPE first)"
-                )
+    # RC OPEN / due date / classification cannot determine completion (operator 2026-08-22).
     return out
 
 

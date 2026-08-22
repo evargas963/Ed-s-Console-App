@@ -364,6 +364,31 @@ def run(
     skip_governed_outcome_refresh: bool = False,
 ) -> dict:
     db_path = db_path.resolve()
+    if not dry_run:
+        ok_probe, probe_err = probe_exclusive_sqlite_write(db_path)
+        if not ok_probe:
+            hints = gather_likely_db_writer_hints(db_path, current_pid=os.getpid())
+            audit = {
+                "schema": "historical_backfill_enrolled_1m_v1",
+                "db_path": str(db_path),
+                "lookback_days": lookback_days,
+                "window_days": window_days,
+                "dry_run": dry_run,
+                "windows": [],
+                "tickers_targeted": [],
+                "n_tickers": 0,
+                "db_locked_preflight": True,
+                "lock_probe_error": probe_err,
+                "likely_db_writers": hints,
+                "error": (
+                    f"SQLite write lock probe failed (refusing Schwab fetch): {probe_err}. "
+                    f"Hints: {len(hints.get('python_candidates') or [])} python processes enumerated."
+                ),
+                "aborted_before_schwab": True,
+            }
+            _apply_backfill_outcome_summary(audit)
+            return audit
+
     db = EdDB(db_path)
     tickers = _enrolled_tickers_with_data(db)
     excluded = sorted(
@@ -419,20 +444,6 @@ def run(
 
     if dry_run:
         audit["status"] = "dry_run"
-        _apply_backfill_outcome_summary(audit)
-        return audit
-
-    ok_probe, probe_err = probe_exclusive_sqlite_write(db_path)
-    if not ok_probe:
-        hints = gather_likely_db_writer_hints(db_path, current_pid=os.getpid())
-        audit["db_locked_preflight"] = True
-        audit["lock_probe_error"] = probe_err
-        audit["likely_db_writers"] = hints
-        audit["error"] = (
-            f"SQLite write lock probe failed (refusing Schwab fetch): {probe_err}. "
-            f"Hints: {len(hints.get('python_candidates') or [])} python processes enumerated."
-        )
-        audit["aborted_before_schwab"] = True
         _apply_backfill_outcome_summary(audit)
         return audit
 

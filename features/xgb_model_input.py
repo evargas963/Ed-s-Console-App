@@ -31,8 +31,8 @@ CANONICAL_TO_XGB_TABULAR: dict[str, str] = {
     "structure.net_gamma": "net_gamma",
     "anchor.vwap_side": "vwap_side",
     "anchor.vwap_dist_pts": "vwap_dist_pts",
-    "liquidity.absorption_score": "absorption_score",
-    "liquidity.continuation_score": "continuation_score",
+    "liquidity.range_imbalance_stall_score": "range_imbalance_stall_score",
+    "liquidity.range_imbalance_push_score": "range_imbalance_push_score",
 }
 
 MVP_LEGACY_KEYS: frozenset[str] = frozenset(CANONICAL_TO_XGB_TABULAR.values())

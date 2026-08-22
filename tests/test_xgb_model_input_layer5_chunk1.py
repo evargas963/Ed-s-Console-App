@@ -157,7 +157,7 @@ def test_merge_overlay_copies_non_mvp_keys():
 
 def test_assert_not_raw_l1_rejects_liquidity_summary_without_features():
     with pytest.raises(XgbInferenceInputError, match="liquidity_summary"):
-        assert_not_raw_l1_payload({"liquidity_summary": {"absorption_score": 1.0}})
+        assert_not_raw_l1_payload({"liquidity_summary": {"range_imbalance_stall_score": 1.0}})
 
 
 def test_assert_not_raw_l1_rejects_spot_anchors_without_snapshot_type():

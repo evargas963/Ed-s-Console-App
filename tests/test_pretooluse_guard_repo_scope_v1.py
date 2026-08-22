@@ -4,8 +4,8 @@ WHAT WAS MEASURED (2026-08-05, deepened 2026-08-06). The guard classified an
 edit target by file suffix alone, with no repository-root predicate:
 
   * An Edit to <other-checkout>/ieos/__init__.py was refused with "You are
-    editing PRODUCTION file", demanding a root-cause row in THIS repository's
-    ledger as the price of editing a file this repository does not own.
+    editing PRODUCTION file", demanding an admitted master obligation in THIS
+    repository as the price of editing a file this repository does not own.
   * Worse than over-reach: `_rel()` returns the ABSOLUTE path when
     `relative_to(REPO)` raises, and an absolute path starts with a drive
     letter, so it matches NO entry in ALWAYS_ALLOWED_PREFIXES. The guard
@@ -87,20 +87,34 @@ def test_negative_control_our_production_file_still_blocks_without_a_row(monkeyp
 
     Without this, 'stop over-reaching' would silently become 'stop enforcing'.
     """
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
     code = G.decide(_payload(str(REPO / "server.py")))
-    assert code == 2, "an in-repo production edit with no RC row must still BLOCK"
+    assert code == 2, "an in-repo production edit with no admitted master item must still BLOCK"
     assert "PRODUCTION file" in capsys.readouterr().err
 
 
-def test_negative_control_our_production_file_allowed_with_a_row(monkeypatch):
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: True, raising=True)
+def test_negative_control_our_production_file_allowed_with_master_obligation(monkeypatch):
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: True, raising=True)
     assert G.decide(_payload(str(REPO / "server.py"))) == 0
+
+
+def test_new_rc_row_does_not_authorize_production_edit(monkeypatch, capsys):
+    """A new | RC- row is not admission. Method pivot: master only."""
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
+    monkeypatch.setattr(G, "_has_new_rc_row", lambda: True, raising=True)
+    code = G.decide(_payload(str(REPO / "server.py")))
+    assert code == 2, "a new RC row must not authorize a production edit"
+    assert "PRODUCTION file" in capsys.readouterr().err
+
+
+def test_master_file_itself_is_always_allowed(monkeypatch):
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
+    assert G.decide(_payload(str(REPO / G.SOLE_MASTER))) == 0
 
 
 def test_negative_control_our_allowlisted_paths_never_block(monkeypatch):
     """Editing tests/ and governance/ is HOW you comply -- always permitted."""
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
     for rel in ("tests/test_x.py", "governance/root_cause_log.md",
                 "docs/readme.md", "reports/x.md"):
         assert G.decide(_payload(str(REPO / rel))) == 0, rel
@@ -110,6 +124,148 @@ def test_negative_control_our_allowlisted_paths_never_block(monkeypatch):
 def test_negative_control_every_production_suffix_still_governed_in_repo(
         monkeypatch, capsys, suffix):
     """The fix is scoped by REPOSITORY, never by file type."""
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
     assert G.decide(_payload(str(REPO / f"someplace/thing{suffix}"))) == 2
     capsys.readouterr()
+
+
+def _item(oid: str, body: str, *, checked: bool = False, status: str = "NOT_PROVEN") -> str:
+    mark = "x" if checked else " "
+    return f"- [{mark}] `{oid}` — STATUS={status} — {body}\n"
+
+
+def test_unrelated_new_master_item_does_not_admit_server_py():
+    head = _item("OD-1", "old obligation")
+    cur = head + _item("OD-2", "newly discovered unrelated defect")
+    assert not G.master_admits_production_edit("server.py", current_text=cur, head_text=head)
+
+
+def test_unrelated_modified_master_item_does_not_admit_server_py():
+    head = _item("OD-1", "old obligation")
+    cur = _item("OD-1", "old obligation, wording changed")
+    assert not G.master_admits_production_edit("server.py", current_text=cur, head_text=head)
+
+
+def test_existing_unrelated_not_proven_item_does_not_admit_server_py():
+    cur = _item("OD-1", "mentions server.py in prose only")
+    assert not G.master_admits_production_edit("server.py", current_text=cur, head_text=cur)
+
+
+def test_exact_surfaces_field_admits_only_listed_path():
+    cur = _item("OD-1", "universal timestamp contract SURFACES=server.py")
+    assert G.master_admits_production_edit("server.py", current_text=cur, head_text="")
+    assert not G.master_admits_production_edit(
+        "prediction_engine.py", current_text=cur, head_text=""
+    )
+
+
+def test_surfaces_foo_server_does_not_admit_bar_server():
+    cur = _item("OD-1", "SURFACES=foo/server.py")
+    assert G.master_admits_production_edit("foo/server.py", current_text=cur, head_text="")
+    assert not G.master_admits_production_edit("bar/server.py", current_text=cur, head_text="")
+    assert not G.master_admits_production_edit("server.py", current_text=cur, head_text="")
+
+
+def test_basename_and_prose_substring_are_not_admission():
+    prose = _item("OD-1", "repair tools/pretooluse_guard.py admission")
+    assert not G.master_admits_production_edit(
+        "tools/pretooluse_guard.py", current_text=prose, head_text=""
+    )
+    basename = _item("OD-1", "SURFACES=pretooluse_guard.py")
+    assert not G.master_admits_production_edit(
+        "tools/pretooluse_guard.py", current_text=basename, head_text=""
+    )
+
+
+def test_new_rc_row_without_surface_bound_master_item_does_not_admit(monkeypatch, capsys):
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
+    monkeypatch.setattr(G, "_has_new_rc_row", lambda: True, raising=True)
+    code = G.decide(_payload(str(REPO / "server.py")))
+    assert code == 2
+    assert "PRODUCTION file" in capsys.readouterr().err
+
+
+def test_master_does_not_admit_when_no_unresolved_item_exists():
+    head = _item("OD-1", "(1) a (2) b (3) c (4) d (5) ROOT: done",
+                 checked=True, status="PASS")
+    assert not G.master_admits_production_edit(
+        "server.py", current_text=head, head_text=head
+    )
+
+
+def test_live_active_item_does_not_admit_unrelated_production_file():
+    """Unresolved rows admit only their exact SURFACES= paths.
+
+    OS-A2-001 is PASS, so its SURFACES no longer admit production edits.
+    Files not listed on any unresolved SURFACES= stay closed.
+    OD-1293 currently admits server.py / db.py; those cannot be the negative.
+    """
+    cur = (REPO / G.SOLE_MASTER).read_text(encoding="utf-8")
+    assert G.master_admits_production_edit(
+        "tools/pretooluse_guard.py", current_text=cur, head_text=""
+    )
+    assert G.master_admits_production_edit(
+        "tools/check_institutional_correctness.py", current_text=cur, head_text=""
+    )
+    assert not G.master_admits_production_edit(
+        "reauth_schwab.py", current_text=cur, head_text=""
+    )
+    assert not G.master_admits_production_edit(
+        "websocket_adapter.py", current_text=cur, head_text=""
+    )
+
+
+def test_dot_slash_canonicalizes_to_repo_relative():
+    cur = _item("OD-1", "SURFACES=./server.py")
+    assert G.canonicalize_repo_rel("./server.py") == "server.py"
+    assert G.master_admits_production_edit("server.py", current_text=cur, head_text="")
+    cur2 = _item("OD-1", "SURFACES=server.py")
+    assert G.master_admits_production_edit("server.py", current_text=cur2, head_text="")
+    assert G.master_admits_production_edit("./server.py", current_text=cur2, head_text="")
+
+
+def test_leading_dot_path_identity_is_preserved():
+    hidden = _item("OD-1", "SURFACES=.hidden/module.py")
+    assert G.canonicalize_repo_rel(".hidden/module.py") == ".hidden/module.py"
+    assert G.canonicalize_repo_rel("hidden/module.py") == "hidden/module.py"
+    assert G.master_admits_production_edit(
+        ".hidden/module.py", current_text=hidden, head_text=""
+    )
+    assert not G.master_admits_production_edit(
+        "hidden/module.py", current_text=hidden, head_text=""
+    )
+    plain = _item("OD-1", "SURFACES=hidden/module.py")
+    assert not G.master_admits_production_edit(
+        ".hidden/module.py", current_text=plain, head_text=""
+    )
+
+
+def test_parent_traversal_and_absolute_surfaces_are_rejected():
+    for token in ("../server.py", "/server.py", "../../foo.py"):
+        assert G.canonicalize_repo_rel(token) is None
+        cur = _item("OD-1", f"SURFACES={token}")
+        assert G.parse_master_surfaces(cur) == frozenset()
+        assert not G.master_admits_production_edit(
+            "server.py", current_text=cur, head_text=""
+        )
+        assert not G.master_admits_production_edit(
+            "foo.py", current_text=cur, head_text=""
+        )
+
+
+def test_malformed_surface_token_does_not_alias_a_valid_path():
+    assert G.parse_master_surfaces(_item("OD-1", "SURFACES=../server.py")) == frozenset()
+    assert G.parse_master_surfaces(_item("OD-1", "SURFACES=/server.py")) == frozenset()
+    assert G.parse_master_surfaces(_item("OD-1", "SURFACES=foo/../server.py")) == frozenset()
+    assert G.canonicalize_repo_rel("foo/../server.py") is None
+    assert G.canonicalize_repo_rel("") is None
+
+
+def test_one_normalization_function_is_the_admission_authority():
+    import inspect
+    src = inspect.getsource(G)
+    assert src.count("def canonicalize_repo_rel") == 1
+    assert "lstrip(\"./\")" not in inspect.getsource(G.parse_master_surfaces)
+    assert "lstrip(\"./\")" not in inspect.getsource(G.master_admits_production_edit)
+    assert "canonicalize_repo_rel" in inspect.getsource(G.parse_master_surfaces)
+    assert "canonicalize_repo_rel" in inspect.getsource(G.master_admits_production_edit)

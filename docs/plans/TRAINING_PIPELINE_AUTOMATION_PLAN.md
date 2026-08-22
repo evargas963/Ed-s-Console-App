@@ -1,8 +1,10 @@
-> **Classification:** Policy Specification | **Scope:** Execution plan; binding when ACTIVE_PROGRAM points here.
+> **Classification:** Historical plan / evidence | **Scope:** Not a work queue.
+> Sole unresolved-work authority: `ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md`.
+> Remaining program obligations: `OD-1285` … `OD-1292`. ACTIVE_PROGRAM.md is a pointer only.
 
 # Training Pipeline Automation Plan
 
-**Goal:** End-to-end training that runs unattended, promotes winners to production automatically when governance gates pass, and fails loudly when anything is incomplete — for **SPY, QQQ, IWM** first, then the full enrolled universe.
+**Goal:** End-to-end training that runs unattended, promotes winners to production automatically when governance gates pass, and fails loudly when anything is incomplete — for the **enrolled universe**. Named tickers in this file are historical fixtures, not implementation scope.
 
 **Audience:** Claude / Cursor implementation agent  
 **Branch:** `feature/institutional-key-levels` (or dedicated `feature/training-pipeline-automation`)  
@@ -460,20 +462,22 @@ python verify_active_models.py
 
 **PR1–PR4.1 slice (push-ready on branch):**
 
-- [x] P0-0 writer inventory complete (post-PR4 refresh in `governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md`)
-- [x] SPY, QQQ, IWM compliant in `verify_active_models.py` (full universe scan may exit 1 on non-core tickers)
-- [ ] Pre-flip validation harness passed once on automation host (operator e2e — not git-gated)
-- [ ] No manual promote for routine nightly until host enables `ED_SCHEDULER_AUTO_PROMOTE=1`
-- [x] Scheduler exit 1 on any core ticker failure (**G4-3** closed, PR2)
-- [ ] Governed manifests for four horizons per core ticker after success (runtime / training cadence)
-- [x] Canonical active layout — no split-brain (PR3)
-- [ ] `qqq_weighted_push` NULL &lt; operator threshold OR documented waiver
-- [x] Docs: `TRAINING_AND_MAINTENANCE.md`, plan §7.0, OPEN_ITEMS push-review rows
-- [x] P3-4b post-promote verify + P3-9 verify-fail rollback tested (PR4.1)
-- [x] P3-10 model registry reload after promote (code + tests)
-- [ ] P3-11 strict core freshness flipped to 1 after baseline week (host steady-state; default off in code)
-- [x] Pytest green + auto-promote + panic-disable + `_promote_candidate` grep guard tests (**2619** at tip)
-- [ ] Pinned universe batch (optional Phase 4b — PR5+)
+Historical definition-of-done (not a queue; remaining work is on the sole master):
+
+- P0-0 writer inventory complete (post-PR4 refresh in `governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md`)
+- Enrolled-universe compliance in `verify_active_models.py` (SPY/QQQ/IWM were fixtures)
+- Pre-flip validation harness — see `OD-1285`
+- No manual promote for routine nightly — see `OD-1286`
+- Scheduler exit 1 on any enrolled-instrument failure (**G4-3** closed, PR2)
+- Governed manifests for every required horizon after success — see `OD-1287`
+- Canonical active layout — no split-brain (PR3)
+- Index-basket weighted-push NULL below threshold — see `OD-1288` (historical field name `qqq_weighted_push` is a fixture, not the scope)
+- Docs: `TRAINING_AND_MAINTENANCE.md`, plan §7.0 (OPEN_ITEMS is a pointer)
+- P3-4b post-promote verify + P3-9 verify-fail rollback tested (PR4.1)
+- P3-10 model registry reload after promote (code + tests)
+- Strict enrolled-universe freshness after baseline — see `OD-1289`
+- Pytest green + auto-promote + panic-disable + `_promote_candidate` grep guard tests (**2619** at tip)
+- Pinned enrolled-universe batch — see `OD-1290`
 
 ---
 

@@ -2,16 +2,16 @@
 
 **Authority:** mandatory for Claude and Cursor. **Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / Stop / pre-commit). This file is the checklist; `.py` BLOCKs.
 
-> **SUPERSEDED — operator ruling 2026-08-18:** **Operator is the governing authority / PM. Cursor is an adversarial auditor only** (it audits/falsifies; it never writes feature/kill/implementation code). Everywhere this file and the PM docs say "Cursor is PM / Project Manager", read **"Operator is PM; Cursor audits."** The sequencing/no-patches/MEASURE-before-edit behaviors below are retained; only the PM-role attribution moves to the operator. See RC-403.
+> **SUPERSEDED — operator ruling 2026-08-22 (RC-452/RC-457):** Operator is the governing authority / PM. Claude and Cursor may both implement. The operator selects ACTIVE_WRITER per mission. No agent has permanent writer or auditor status. ONE canonical worktree total. ONE active writer at a time. The 2026-08-18 "Cursor is an adversarial auditor only" sentence is void. The one-writer-per-worktree multi-checkout architecture is void.
 
-**Project Manager:** Operator (adversarial auditor: Cursor) — see `governance/PM_MANDATE.md` and `.cursor/rules/07-cursor-pm.mdc` for the audit behaviors (now the operator-PM + Cursor-auditor process). Sequences missions, stops thrash, triages rehab; does not replace sole-writer for edits.
+**Project Manager:** Operator. **ACTIVE_WRITER:** per `governance/sole_writer.json` / `governance/pm_mission.json`. See `.cursor/rules/07-cursor-pm.mdc`.
 
 ---
 
-## 0. PM (Operator; Cursor = adversarial auditor) + change requests (RC-219)
+## 0. PM (Operator) + ACTIVE_WRITER + change requests (RC-219 / RC-452)
 
-- Every multi-agent or “what next” turn: Cursor states **mission · blockers · single next operator action**.
-- **Change requests:** operator → Cursor PM → plan → operator GO → Cursor sets `governance/pm_mission.json` `status=active` → writer executes → Cursor audits → mission `idle`.
+- Every multi-agent or “what next” turn: state **mission · active_writer · blockers · single next operator action**.
+- **Change requests:** operator → plan → operator GO → `governance/pm_mission.json` names ACTIVE_WRITER → that agent executes → the other agent must not concurrently mutate the canonical worktree.
 - Product edits without an in-progress mission are **BLOCKED** (`pm_mission_edit_violation`).
 - **Writer no-drift (RC-226):** non-writer staged `scope_paths` → BLOCK (`writer_drift_lock.py` / `check_writer_no_drift`). Cursor=auditor only while Claude writes.
 - One active mission; Collect/lock vs UI polish are sequenced windows, not a free-for-all.

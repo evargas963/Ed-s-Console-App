@@ -25,8 +25,8 @@ def _minimal_db_row() -> dict:
         "net_gamma": 0.0,
         "vwap_side": "above",
         "vwap_dist_pts": 0.1,
-        "absorption_score": None,
-        "continuation_score": None,
+        "range_imbalance_stall_score": None,
+        "range_imbalance_push_score": None,
     }
 
 
@@ -91,7 +91,7 @@ def test_monte_carlo_resolve_uses_canonical_spot_only():
     feats["price.spot"] = 100.0
     snap = {
         "snapshot_type": "inference_snapshot_v1",
-        "feature_contract_version": "v1_1m_mvp",
+        "feature_contract_version": "v1_1m_range_imbalance",
         "canonical_timeframe": "1m",
         "features": feats,
     }

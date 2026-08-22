@@ -1,6 +1,6 @@
 > **Classification:** Policy Specification | **Scope:** Technical documentation `docs/feature_contract_mvp.md`.
 
-# MVP canonical feature contract (`v1_1m_mvp`) — strict boundary
+# MVP canonical feature contract (`v1_1m_range_imbalance`) — strict boundary
 
 ## Canonical timeframe
 
@@ -69,8 +69,8 @@ Must be one of:
 | `structure.net_gamma` | `int` / `float` | yes | N/A | rejected | signed OK |
 | `anchor.vwap_side` | `str` | yes | forbidden | N/A | must be in **ALLOWED_VWAP_SIDE_VALUES** |
 | `anchor.vwap_dist_pts` | `int` / `float` | yes | N/A | rejected | signed OK |
-| `liquidity.absorption_score` | `int` / `float` | yes | N/A | rejected | signed OK |
-| `liquidity.continuation_score` | `int` / `float` | yes | N/A | rejected | signed OK |
+| `liquidity.range_imbalance_stall_score` | `int` / `float` | yes | N/A | rejected | RETIRED composite (RC-460). Live producer always None. Historical absorption never maps here. |
+| `liquidity.range_imbalance_push_score` | `int` / `float` | yes | N/A | rejected | RETIRED composite (RC-460). Live producer always None. Historical continuation never maps here. |
 
 ## Adapters
 

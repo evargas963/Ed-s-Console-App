@@ -63,10 +63,9 @@ def _norm_rel(rel: str) -> str:
 
 # RC-188 NOTE: a render-ban on unproven level identifiers briefly lived here (2026-08-02) and
 # was REVERTED the same turn on operator correction: the law is "prove all the unproven",
-# never "hide the unproven". The mechanism for that law is governance/unproven_register.md —
-# every unproven level carries a row with a due date, and check_unproven_register (ENFORCED)
-# blocks commits when a row goes overdue. Render-rights are not gated on proof; proof is
-# OWED, on a clock.
+# never "hide the unproven". Unresolved scientific claims live on the sole master.
+# governance/unproven_register.md is historical evidence only and has zero commit-block
+# authority. Render-rights are not gated on proof.
 
 
 def _load_registry(repo: Path | None = None) -> dict:

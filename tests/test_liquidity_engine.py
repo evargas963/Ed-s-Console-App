@@ -456,7 +456,7 @@ def test_prior_session_helper_is_the_one_definition():
         encoding="utf-8")
     tree = ast.parse(src)
     fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
-    for name in ("get_overnight_levels", "get_previous_day_levels"):
+    for name in ("get_overnight_levels", "get_previous_day_levels", "compute_atr_from_bars"):
         assert name in fns, f"{name} is gone"
         node = fns[name]
         # EXECUTABLE code only — the docstrings deliberately quote the retired
@@ -472,6 +472,25 @@ def test_prior_session_helper_is_the_one_definition():
         assert "timedelta" not in code, (
             f"{name} still does calendar arithmetic to find the prior session"
         )
+
+
+def test_atr_fallback_uses_friday_not_sunday_on_monday():
+    """LP-01 / RC-474: Monday premarket ATR must use Friday RTH, not calendar Sunday."""
+    from liquidity_value_engine import compute_atr_from_bars
+
+    monday = date(2026, 8, 24)
+    friday = date(2026, 8, 21)
+    bars = []
+    for i in range(20):
+        mins = int(RTH_START_MINS) + i
+        dt = datetime(friday.year, friday.month, friday.day, mins // 60, mins % 60, tzinfo=ET)
+        p = 100.0 + i * 0.1
+        bars.append(_mk_bar(dt, p, p + 0.4, p - 0.4, p + 0.1, 1000))
+    pre = datetime(monday.year, monday.month, monday.day, 8, 15, tzinfo=ET)
+    bars.append(_mk_bar(pre, 110.0, 110.5, 109.5, 110.2, 100))
+    cutoff = datetime(monday.year, monday.month, monday.day, 9, 0, tzinfo=ET)
+    atr = compute_atr_from_bars(bars, monday, cutoff, period=5)
+    assert atr is not None and atr > 0
 
 
 # ── LP-01 Step 3 (RC-154): no liquidity-pool claim on untested extremes ──────────────────

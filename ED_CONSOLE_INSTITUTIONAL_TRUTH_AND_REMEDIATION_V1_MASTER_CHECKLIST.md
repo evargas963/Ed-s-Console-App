@@ -1,0 +1,2686 @@
+# ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1 — MASTER CHECKLIST
+
+**SOLE AUTHORITATIVE UNRESOLVED-WORK LIST.** A child PASS never closes a parent.
+Current-repo + required runtime/live + downstream-consumer + any required
+predictive proof is required before a box may be checked. Historical `[x]` /
+CLOSED / PASS claims are not grandfathered.
+
+**Writer law (current):** ONE WORKTREE TOTAL. ONE ACTIVE WRITER. Cursor or Claude
+eligible. Operator chooses. This worktree ACTIVE_WRITER = cursor.
+
+**Parent status:** NOT_PROVEN
+**Allowed statuses:** PASS / FAIL / NOT_PROVEN / UNAVAILABLE / NOT_APPLICABLE
+**Classification:** NATIVE / DERIVED / HEURISTIC / PROXY
+
+**RC log and unproven_register are frozen history.** They do not create, classify, promote, defer, or close obligations, and they do not determine Stop eligibility. A newly discovered material defect becomes exactly one universal atomic master requirement before any production edit. Root-cause / five-why reasoning is mandatory on that same master item.
+
+**Exact operator source (not a work list):**
+`ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_SOURCE.md`
+Source wrapping / line count / byte identity is source evidence only — not a
+completeness test and not a second authority.
+
+**Priority spine (the only execution order):** P0.1 Source/Data Truth →
+P0.2 Semantic Truth / ONE FAUCET → P0.3 Scientific / Model Correctness →
+P0.4 Decision-Path Containment → P1 Order Flow / Options / Levels / contamination →
+P2 Replay / UI / Risk / Universality → P3 Operations / Security / Observability /
+necessary maintainability → P4 Product enhancement / research expansion.
+No inherited TOP OF QUEUE, Operator NOW, or NEXT statement may override this spine.
+
+**Not a work queue:** `OPEN_ITEMS.md`, `ACTIVE_PROGRAM.md`,
+`governance/root_cause_log.md`, `governance/unproven_register.md`,
+`governance/vendor_field_discovery_register.md`. Former `unproven_register.md`
+unresolved scientific claims live as OTHER_DEBT / H-section boxes below.
+`governance/requirement_tree.json` is a derived parent/child proof-ID view of
+`<!-- REQ ... -->` comments only — not a comprehensive tree of these checkbox
+rows and not a second checklist. Reports and git are evidence.
+
+Temporary reconciliation proof (not a work list):
+`reports/one_list_operator_source_reconciliation_matrix.json`.
+
+**Evidence baseline:** identities and counts live in
+`reports/one_list_reconciliation_counts.json` (must name FINAL_HEAD_SHA and
+DIRTY=false). This file is the sole work list, not the SHA ledger.
+# next-rth-ok: 2026-08-24 Monday
+# chart-intent-ok: Collect/accrual bank is not Chart Done; Chart consumer remains
+an open P0/CHART_CONSUMER residual on LP-01 / UI parents.
+# universal-scope-ok: enrolled universe is the default; SPY-only never closes a parent.
+
+<!-- REQ id=OF_PARENT proof=NOT_PROVEN execution=ACTIVE closable=false children=OF_COMPOSITE_RETIRED,OF_ENGINE_ABSORPTION_RETIRED,P2_ABSORPTION_WITHHELD,IDENTITY_SPLIT_REMOVED,OF_TAPE_L1_RESTATEMENT_SUPPRESSED,OF_MEDIAN_X3_RETIRED title="Order Flow parent" -->
+<!-- REQ id=P2_PARENT proof=NOT_PROVEN execution=ACTIVE closable=false children=P2_ABSORPTION_WITHHELD title="P2 / models parent" -->
+<!-- REQ id=LP01_PARENT proof=NOT_PROVEN execution=ACTIVE closable=false title="LP-01 Institutional session liquidity / value levels" -->
+<!-- REQ id=PREDICTIVE_VALIDITY proof=NOT_PROVEN execution=PASSIVE closable=false title="Predictive validity (any horizon beats chance, OOS, net of costs)" -->
+<!-- REQ id=REAL_MONEY_READINESS proof=NOT_PROVEN execution=PASSIVE closable=false title="Real-money readiness" -->
+<!-- REQ id=UI_TRUTH_PARENT proof=NOT_PROVEN execution=ACTIVE closable=false children=GAMMA_FLIP_DISPLAY_GATED,GAMMA_WALLS_DISPLAY_GATED title="UI / display truth parent" -->
+<!-- REQ id=OF_COMPOSITE_RETIRED proof=NOT_PROVEN execution=PASSIVE closable=true title="retired Order Flow composite/verdict producer family" -->
+<!-- REQ id=OF_ENGINE_ABSORPTION_RETIRED proof=NOT_PROVEN execution=PASSIVE closable=true title="engine _compute_absorption ratio retired" -->
+<!-- REQ id=P2_ABSORPTION_WITHHELD proof=NOT_PROVEN execution=PASSIVE closable=true title="historical P2 absorption withheld from training / quarantined" -->
+<!-- REQ id=IDENTITY_SPLIT_REMOVED proof=NOT_PROVEN execution=PASSIVE closable=true title="permanent Claude-writer / Cursor-auditor identity restriction removed" -->
+<!-- REQ id=OF_TAPE_L1_RESTATEMENT_SUPPRESSED proof=NOT_PROVEN execution=PASSIVE closable=true title="identical L1 observation restatements suppressed" -->
+<!-- REQ id=OF_MEDIAN_X3_RETIRED proof=NOT_PROVEN execution=PASSIVE closable=true title="median times 3 displayed-depth anomaly candidates retired" -->
+<!-- REQ id=GAMMA_FLIP_DISPLAY_GATED proof=NOT_PROVEN execution=PASSIVE closable=true title="gamma flip operator-visible only when TRUSTED" -->
+<!-- REQ id=GAMMA_WALLS_DISPLAY_GATED proof=NOT_PROVEN execution=PASSIVE closable=true title="chain-derived walls/pin/max-pain/net-peak withheld unless TRUSTED" -->
+
+## Narrow child items (derived — do not read as parent PASS; not grandfathered)
+
+- see `OD-0001` (OF_COMPOSITE_RETIRED — index only; not a second checkbox)
+- see `OD-0002` (OF_ENGINE_ABSORPTION_RETIRED — index only; not a second checkbox)
+- see `OD-0003` (P2_ABSORPTION_WITHHELD — index only; not a second checkbox)
+- see `OD-0004` (IDENTITY_SPLIT_REMOVED — index only; not a second checkbox)
+- see `OD-0005` (OF_TAPE_L1_RESTATEMENT_SUPPRESSED — index only; not a second checkbox)
+- see `OD-0006` (OF_MEDIAN_X3_RETIRED — index only; not a second checkbox)
+- see `OD-0007` (GAMMA_FLIP_DISPLAY_GATED — index only; not a second checkbox)
+- see `OD-0008` (GAMMA_WALLS_DISPLAY_GATED — index only; not a second checkbox)
+
+## Known confirmed defects — execution front of the P0.1→P4 spine
+
+Index into the operator-source checkboxes below. Not extra boxes. Not a second queue.
+
+- see `OS-A2-001` (P0.1 / A2) — Known L1 defect: same-TRADE_TIME_MILLIS observations are dropped
+- see `OS-A2-009` (P0.1 / A2) — Explicitly classify reconstructed trade stream as incomplete observation unless stronger evidence exists
+- see `OS-A3-001` (P0.1 / A3) — Establish whether authenticated Schwab exposes native aggressor side
+- see `OS-E3-007` (P1 / E3) — Executed-flow proxies all marked PROXY
+- see `OS-E4-002` (P1 / E4) — Current volume÷range absorption formula renamed or retired
+- see `OS-E4-003` (P1 / E4) — Current replenishment earliest-vs-latest total-depth heuristic renamed or retired
+- see `OS-D1-001` (P0.2 / D1) — Known duplicate authority FAIL: order_flow_engine._compute_absorption
+- see `OS-D1-015` (P0.2 / D1) — Determine whether persisted same-named absorption field has changed meaning over time
+- see `OS-E2-001` (P1 / E2) — Legacy Order Flow weighted composite: inventory exact current formula
+- see `OS-B2-001` (P1 / B2) — Known L2-history defect: live book state retains only a tiny in-memory snapshot deque
+- see `OS-B3-001` (P1 / B3) — Bookmap-style heatmap: historical displayed-liquidity time×price data available
+- see `OS-E5-001` (P1 / E5) — Current microstructure regime authority inventory complete
+- see `OS-M3-001` (P3 / M3) — Automatic reconnect fully proven or implemented
+- see `OS-M4-001` (P3 / M4) — Active-ticker-only L2 behavior explicitly documented
+- see `OS-G8-001` (P1 / G8) — Gamma flip known limitation: narrow-chain live flip eliminated or clearly withheld
+- see `OS-G8-004` (P1 / G8) — Gamma flip wing-IV handling proven
+- see `OS-F3-001` (P1 / F3) — Volume Profile known defect: typical-price volume dump eliminated
+- see `OS-F4-001` (P1 / F4) — Overnight known defect: calendar-based assumptions eliminated
+- see `OS-F6-003` (P1 / F6) — Stop-cluster semantics proven or label removed
+- see `OS-H4-001` (P0.3 / H4) — At least one candidate beats trivial baselines
+- see `OS-W-023` (P0.4 / W) — Until then REAL_MONEY_READINESS = NOT_APPROVED
+- see `OS-H4-009` (P0.3 / H4) — Then and only then admitted into Decide
+- see `OS-Q-015` (P2 / Q) — Overall card fidelity remains unchecked until every money-path card satisfies this
+- see `OS-H2-007` (P0.3 / H2) — Do not cite contaminated positive or negative results
+- see `OS-M2-001` (P3 / M2) — Shared-root policy retired or corrected
+- see `OS-M5-001` (P3 / M5) — Reproduce Schwab orphan process leak
+- see `OS-N3-002` (P3 / N3) — Determine which server.py areas prevent money-path proof
+- see `OS-K1-011` (P2 / K1) — Dead hidden legacy UI removed
+- see `OS-I2-001` (P0.4 / I2) — Canonical TRADE / WAIT / AVOID authority exists
+- see `OS-I2-007` (P0.4 / I2) — Contradiction list canonical
+
+## P0.1 — Source / Data Truth
+
+### Parent / closure law
+
+- [ ] `OS-PREAMBLE-001` — STATUS=NOT_PROVEN — Parent status is NOT_PROVEN until every material money-path item is PASS or legitimately UNAVAILABLE and mechanically prevented from being represented as available or decision-grade
+- [ ] `OS-PREAMBLE-002` — STATUS=NOT_PROVEN — Allowed closure statuses are exactly PASS / FAIL / NOT_PROVEN / UNAVAILABLE / NOT_APPLICABLE
+- [ ] `OS-PREAMBLE-003` — STATUS=NOT_PROVEN — Separate classification NATIVE / DERIVED / HEURISTIC / PROXY is required for operator-visible and model-facing concepts
+- [ ] `OS-PREAMBLE-004` — STATUS=NOT_PROVEN — A checked box requires complete current-repo proof plus required runtime/live proof plus downstream consumer proof plus any required predictive proof
+- [ ] `OS-PREAMBLE-005` — STATUS=NOT_PROVEN — A child PASS may never close a parent item by itself
+### 0. Mission identity / evidence baseline
+
+- [ ] `OS-0-001` — STATUS=NOT_PROVEN — Re-fetch origin/main before each major execution phase
+- [ ] `OS-0-002` — STATUS=NOT_PROVEN — Record exact HEAD_SHA
+- [ ] `OS-0-003` — STATUS=NOT_PROVEN — Record exact origin/main SHA
+- [ ] `OS-0-004` — STATUS=NOT_PROVEN — Prove clean/dirty worktree state
+- [ ] `OS-0-005` — STATUS=NOT_PROVEN — Prove exact branch/worktree being audited
+- [ ] `OS-0-006` — STATUS=NOT_PROVEN — Prove exact production process SHA
+- [ ] `OS-0-007` — STATUS=NOT_PROVEN — Prove exact database identity
+- [ ] `OS-0-008` — STATUS=NOT_PROVEN — Prove exact model-artifact identities
+- [ ] `OS-0-009` — STATUS=NOT_PROVEN — Prove exact runtime configuration/environment
+- [ ] `OS-0-010` — STATUS=NOT_PROVEN — Establish that no prior PASS or institutional claim is grandfathered
+- [ ] `OS-0-011` — STATUS=NOT_PROVEN — Establish single machine-readable truth matrix as the authoritative mission board
+- [ ] `OS-0-012` — STATUS=NOT_PROVEN — Ensure newly discovered defects append to this same parent mission rather than creating competing governance systems
+### A1. Schwab equities L1
+
+- [ ] `OS-A1-001` — STATUS=NOT_PROVEN — Schwab equities L1 entitlement proven
+- [ ] `OS-A1-002` — STATUS=NOT_PROVEN — Schwab equities L1 subscription path proven
+- [ ] `OS-A1-003` — STATUS=NOT_PROVEN — Schwab equities L1 live RTH receipt proven
+- [ ] `OS-A1-004` — STATUS=NOT_PROVEN — Schwab equities L1 bid/ask/last field presence proven
+- [ ] `OS-A1-005` — STATUS=NOT_PROVEN — Schwab equities L1 bid/ask size semantics proven
+- [ ] `OS-A1-006` — STATUS=NOT_PROVEN — Schwab equities L1 volume semantics proven
+- [ ] `OS-A1-007` — STATUS=NOT_PROVEN — Schwab equities L1 exchange/MIC/ID semantics independently proven where used
+- [ ] `OS-A1-008` — STATUS=NOT_PROVEN — Schwab equities L1 quote timestamp semantics proven
+- [ ] `OS-A1-009` — STATUS=NOT_PROVEN — Schwab equities L1 trade timestamp semantics proven
+- [ ] `OS-A1-010` — STATUS=NOT_PROVEN — Schwab equities L1 bid/ask timestamp semantics proven
+- [ ] `OS-A1-011` — STATUS=NOT_PROVEN — Schwab equities L1 event cadence measured during RTH
+- [ ] `OS-A1-012` — STATUS=NOT_PROVEN — Schwab equities L1 duplicate behavior measured
+- [ ] `OS-A1-013` — STATUS=NOT_PROVEN — Schwab equities L1 repeated-timestamp behavior measured
+- [ ] `OS-A1-014` — STATUS=NOT_PROVEN — Schwab equities L1 out-of-order behavior measured
+- [ ] `OS-A1-015` — STATUS=NOT_PROVEN — Schwab equities L1 missing-update behavior measured
+- [ ] `OS-A1-016` — STATUS=NOT_PROVEN — Schwab equities L1 stale-feed behavior proven
+- [ ] `OS-A1-017` — STATUS=NOT_PROVEN — Schwab equities L1 disconnect behavior proven
+- [ ] `OS-A1-018` — STATUS=NOT_PROVEN — Schwab equities L1 reconnect behavior proven
+- [ ] `OS-A1-019` — STATUS=NOT_PROVEN — Schwab equities L1 data after reconnect proven complete enough for claimed uses
+- [ ] `OS-A1-020` — STATUS=NOT_PROVEN — Schwab equities L1 session transition behavior proven
+- [ ] `OS-A1-021` — STATUS=NOT_PROVEN — Schwab equities L1 extended-hours behavior proven
+- [ ] `OS-A1-022` — STATUS=NOT_PROVEN — Schwab equities L1 ticker-switch behavior proven
+- [ ] `OS-A1-023` — STATUS=NOT_PROVEN — Schwab equities L1 no silent source fallback proven
+### A2. Known L1 defect — reconstructed tape
+
+- [x] `OS-A2-001` — STATUS=PASS — Known L1 defect closed: same-TRADE_TIME_MILLIS observations are no longer dropped. (1) Distinct L1 observations sharing TRADE_TIME_MILLIS were dropped or reordered. (2) TRADE_TIME_MILLIS was treated as unique trade identity and as the sort key. (3) Schwab LEVELONE restates last print on quote heartbeats and has no SEQUENCE at L1; same vendor-ms was assumed duplicate. (4) Tests encoded that assumption instead of falsifying it with distinct same-ms triples; engine still sorted by vendor time and REST still computed a second Lee-Ready CVD. (5) ROOT: vendor event clock was conflated with observation identity and receive order. Fix landed in 4f516d7b: one faucet `l1_trade_observation.py` — adjacent-restatement only, receive_seq, receive-order CVD/tape, REST second producer removed. Evidence: `tests/test_l1_trade_observation_v1.py` distinct same-ms retained; restatements not double-counted; engine does not sort by vendor time. SURFACES=l1_trade_observation.py;order_flow_engine.py;order_flow_live_state.py;server.py;market_state.py;static/index.html;planes/context_light.py
+- [ ] `OS-A2-002` — STATUS=NOT_PROVEN — Quantify actual same-ms collision frequency during RTH. HARD_BLOCKER: RTH_ONLY. Today is Saturday 2026-08-22 (non-RTH). 2026-08-20 probe frames are max-12-per-service (43 print-bearing rows, 0 same-ms distinct in that tiny sample) — not a rate. Next RTH: 2026-08-24 Monday.
+- [ ] `OS-A2-003` — STATUS=NOT_PROVEN — Quantify lost reported size due to collision handling. HARD_BLOCKER: RTH_ONLY. Same evidence limit as OS-A2-002. After the identity fix, distinct same-ms size is retained; remaining unquantified loss is indistinguishable same-ms/same-price/same-size vs restatement.
+- [ ] `OS-A2-004` — STATUS=NOT_PROVEN — Quantify lost intra-ms price transitions. HARD_BLOCKER: RTH_ONLY. Same evidence limit as OS-A2-002. Distinct same-ms price changes are retained by contract.
+- [x] `OS-A2-005` — STATUS=PASS — Misleading "add when TRADE_TIME_MILLIS changes (new trade)" comment removed. live_state now documents adjacent-restatement + receive_seq. Evidence: `order_flow_live_state.py` `push_level_one` docstring; `tests/test_l1_trade_observation_v1.py`.
+- [x] `OS-A2-006` — STATUS=PASS — Retaining every L1 heartbeat restatement does not improve signed-flow fidelity (double-count). Highest-fidelity contract: keep every distinct observation; suppress only adjacent identical vendor triples; preserve all receipts on the receive log. Evidence: `l1_trade_observation.filter_adjacent_restatements`; `tests/test_l1_trade_observation_v1.py`.
+- [x] `OS-A2-007` — STATUS=PASS — Reconstructed L1 is labeled `PROXY_RECONSTRUCTED_L1_TICK` / `INCOMPLETE_OBSERVATION`; API+UI say not native time-and-sales. Evidence: `l1_trade_observation.source_contract`; `static/index.html` `#b-of-verdict`.
+- [x] `OS-A2-008` — STATUS=PASS — Local monotonic `receive_seq` + `server_received_ts` on every L1 last-print receipt; restatements kept on `get_receive_log`. Not a native trade id. Evidence: `order_flow_live_state.push_level_one`; `tests/test_l1_trade_observation_v1.py::test_live_receive_seq_is_monotonic_and_not_a_native_id`.
+- [x] `OS-A2-009` — STATUS=PASS — `tape_completeness=INCOMPLETE_OBSERVATION` is mechanical on the engine, MarketState, L1 carry keys, and UI title. Evidence: `l1_trade_observation.TAPE_COMPLETENESS`; `tests/test_l1_trade_observation_v1.py::test_source_contract_timesale_and_aggressor_unavailable`.
+### A3. Native aggressor / true tape
+
+- [x] `OS-A3-001` — STATUS=PASS — Native aggressor UNAVAILABLE. RTH 2026-08-20 probe: no aggressor key on L1/book/REST (`reports/of_capability_probe/20260820T134927Z/analysis/noii_aggressor_absence.json`). Mechanical: `native_aggressor_available=false`.
+- [x] `OS-A3-002` — STATUS=PASS — Native true time-and-sales UNAVAILABLE. LEVELONE is last-print restatement; SEQUENCE absent at L1. Mechanical: `native_time_and_sales_available=false`.
+- [x] `OS-A3-003` — STATUS=PASS — TIMESALE_EQUITY SUBS returned code 11 during active RTH (`reports/of_capability_probe/20260820T134927Z/analysis/timesales.json`) — not an after-hours/config miss. Service not in current Schwab streamer set.
+- [x] `OS-A3-004` — STATUS=PASS — `timesale_service_status=UNAVAILABLE` on engine/MarketState/L1 keys; `#b-of-verdict` title/text. VISIBLE_SURFACE: `b-of-verdict`. Evidence: `tests/test_l1_trade_observation_v1.py::test_frontend_does_not_reconstruct_trade_semantics`.
+- [x] `OS-A3-005` — STATUS=PASS — Tick-rule signed size is PROXY; `cum_delta_classification=PROXY_RECONSTRUCTED_L1_TICK`; unchanged price is 0.0 not a native side; missing prev price is None. Evidence: `l1_trade_observation.tick_rule_signed_size`; `test_missing_side_is_never_native_or_zero_aggressor`.
+- [x] `OS-A3-006` — STATUS=PASS — Reconstructed tape cannot be labeled complete executed flow: `INCOMPLETE_OBSERVATION` + limitations text. Evidence: `source_contract()` and UI title.
+### A4. NYSE Level 2
+
+- [ ] `OS-A4-001` — STATUS=NOT_PROVEN — NYSE Level 2 entitlement proven
+- [ ] `OS-A4-002` — STATUS=NOT_PROVEN — NYSE Level 2 live RTH receipt proven
+- [ ] `OS-A4-003` — STATUS=NOT_PROVEN — NYSE Level 2 snapshot versus incremental-update semantics proven
+- [ ] `OS-A4-004` — STATUS=NOT_PROVEN — NYSE Level 2 full visible depth behavior measured
+- [ ] `OS-A4-005` — STATUS=NOT_PROVEN — NYSE Level 2 price-level ordering proven
+- [ ] `OS-A4-006` — STATUS=NOT_PROVEN — NYSE Level 2 TOTAL_VOLUME semantics proven
+- [ ] `OS-A4-007` — STATUS=NOT_PROVEN — NYSE Level 2 nested attribution semantics proven or withheld
+- [ ] `OS-A4-008` — STATUS=NOT_PROVEN — NYSE Level 2 NUM_* semantics proven or neutralized
+- [ ] `OS-A4-009` — STATUS=NOT_PROVEN — NYSE Level 2 nested sequence semantics proven or neutralized
+- [ ] `OS-A4-010` — STATUS=NOT_PROVEN — NYSE Level 2 BOOK_TIME semantics proven
+- [ ] `OS-A4-011` — STATUS=NOT_PROVEN — NYSE Level 2 cadence measured
+- [ ] `OS-A4-012` — STATUS=NOT_PROVEN — NYSE Level 2 duplicate/gap behavior measured
+- [ ] `OS-A4-013` — STATUS=NOT_PROVEN — NYSE Level 2 reconnect behavior proven
+- [ ] `OS-A4-014` — STATUS=NOT_PROVEN — NYSE Level 2 stale-book behavior proven
+### A5. NASDAQ Level 2
+
+- [ ] `OS-A5-001` — STATUS=NOT_PROVEN — NASDAQ Level 2 entitlement proven
+- [ ] `OS-A5-002` — STATUS=NOT_PROVEN — NASDAQ Level 2 live RTH receipt proven
+- [ ] `OS-A5-003` — STATUS=NOT_PROVEN — NASDAQ Level 2 snapshot versus incremental-update semantics proven
+- [ ] `OS-A5-004` — STATUS=NOT_PROVEN — NASDAQ Level 2 full visible depth behavior measured
+- [ ] `OS-A5-005` — STATUS=NOT_PROVEN — NASDAQ Level 2 price-level ordering proven
+- [ ] `OS-A5-006` — STATUS=NOT_PROVEN — NASDAQ Level 2 TOTAL_VOLUME semantics proven
+- [ ] `OS-A5-007` — STATUS=NOT_PROVEN — NASDAQ Level 2 nested attribution semantics proven or withheld
+- [ ] `OS-A5-008` — STATUS=NOT_PROVEN — NASDAQ Level 2 NUM_* semantics proven or neutralized
+- [ ] `OS-A5-009` — STATUS=NOT_PROVEN — NASDAQ Level 2 nested sequence semantics proven or neutralized
+- [ ] `OS-A5-010` — STATUS=NOT_PROVEN — NASDAQ Level 2 BOOK_TIME semantics proven
+- [ ] `OS-A5-011` — STATUS=NOT_PROVEN — NASDAQ Level 2 cadence measured
+- [ ] `OS-A5-012` — STATUS=NOT_PROVEN — NASDAQ Level 2 duplicate/gap behavior measured
+- [ ] `OS-A5-013` — STATUS=NOT_PROVEN — NASDAQ Level 2 reconnect behavior proven
+- [ ] `OS-A5-014` — STATUS=NOT_PROVEN — NASDAQ Level 2 stale-book behavior proven
+- [ ] `OS-A5-015` — STATUS=NOT_PROVEN — NASDAQ versus NYSE Level 2 venue-specific differences documented
+- [ ] `OS-A5-016` — STATUS=NOT_PROVEN — Cross-venue L2 merging/non-merging policy proven
+### A6. Options L1
+
+- [ ] `OS-A6-001` — STATUS=NOT_PROVEN — Options L1 entitlement proven
+- [ ] `OS-A6-002` — STATUS=NOT_PROVEN — Options L1 live option subscription proven
+- [ ] `OS-A6-003` — STATUS=NOT_PROVEN — Options L1 contract identity proven
+- [ ] `OS-A6-004` — STATUS=NOT_PROVEN — Options L1 strike/expiry/DTE semantics proven
+- [ ] `OS-A6-005` — STATUS=NOT_PROVEN — Options L1 bid/ask/last/size proven
+- [ ] `OS-A6-006` — STATUS=NOT_PROVEN — Options L1 OI semantics/freshness proven
+- [ ] `OS-A6-007` — STATUS=NOT_PROVEN — Options L1 totalVolume semantics/freshness proven
+- [ ] `OS-A6-008` — STATUS=NOT_PROVEN — Options L1 IV semantics proven
+- [ ] `OS-A6-009` — STATUS=NOT_PROVEN — Options L1 Greeks semantics proven
+- [ ] `OS-A6-010` — STATUS=NOT_PROVEN — Options L1 stale/missing field behavior proven
+### A7. Options Book
+
+- [ ] `OS-A7-001` — STATUS=NOT_PROVEN — Options Book entitlement proven
+- [ ] `OS-A7-002` — STATUS=NOT_PROVEN — Options Book live receipt proven
+- [ ] `OS-A7-003` — STATUS=NOT_PROVEN — Options Book depth shape proven
+- [ ] `OS-A7-004` — STATUS=NOT_PROVEN — Options Book price aggregation semantics proven
+- [ ] `OS-A7-005` — STATUS=NOT_PROVEN — Options Book attribution semantics proven or withheld
+- [ ] `OS-A7-006` — STATUS=NOT_PROVEN — Options Book cadence/gap/reconnect behavior proven
+### A8. Option chain
+
+- [ ] `OS-A8-001` — STATUS=NOT_PROVEN — Option chain REST acquisition proven
+- [ ] `OS-A8-002` — STATUS=NOT_PROVEN — Option chain exact strike coverage proven
+- [ ] `OS-A8-003` — STATUS=NOT_PROVEN — Option chain exact expiry coverage proven
+- [ ] `OS-A8-004` — STATUS=NOT_PROVEN — Option chain freshness proven
+- [ ] `OS-A8-005` — STATUS=NOT_PROVEN — Option chain quote/greek/OI consistency proven
+- [ ] `OS-A8-006` — STATUS=NOT_PROVEN — Option chain malformed/poisoned contract handling proven
+- [ ] `OS-A8-007` — STATUS=NOT_PROVEN — Option chain pagination/range limitations proven
+- [ ] `OS-A8-008` — STATUS=NOT_PROVEN — Live narrow-chain versus wide-chain distinction eliminated or explicitly surfaced
+### A9. Historical bars
+
+- [ ] `OS-A9-001` — STATUS=NOT_PROVEN — Historical bars completeness proven
+- [ ] `OS-A9-002` — STATUS=NOT_PROVEN — Historical bars gap detection proven
+- [ ] `OS-A9-003` — STATUS=NOT_PROVEN — Historical bars repair/backfill semantics proven
+- [ ] `OS-A9-004` — STATUS=NOT_PROVEN — Historical bars synthetic/repaired-row classification proven
+- [ ] `OS-A9-005` — STATUS=NOT_PROVEN — Historical bars timestamp alignment proven
+- [ ] `OS-A9-006` — STATUS=NOT_PROVEN — Historical bars corporate actions proven
+- [ ] `OS-A9-007` — STATUS=NOT_PROVEN — Historical bars extended-hours/RTH semantics proven
+- [ ] `OS-A9-008` — STATUS=NOT_PROVEN — Historical bars duplicates proven absent or handled
+- [ ] `OS-A9-009` — STATUS=NOT_PROVEN — Historical bars OHLCV correctness proven
+### A10. Fundamentals and any other source
+
+- [ ] `OS-A10-001` — STATUS=NOT_PROVEN — Inventory every REST/live external source influencing money paths
+- [ ] `OS-A10-002` — STATUS=NOT_PROVEN — Prove source semantics and availability for each external money-path source
+- [ ] `OS-A10-003` — STATUS=NOT_PROVEN — Prove no undocumented fallback silently changes the semantic meaning of any external source
+### B. TEMPORAL SUFFICIENCY / HISTORY
+
+- [ ] `OS-B-001` — STATUS=NOT_PROVEN — Inventory every semantic concept requiring history
+- [ ] `OS-B-002` — STATUS=NOT_PROVEN — Identify exact temporal window each history-requiring concept requires
+- [ ] `OS-B-003` — STATUS=NOT_PROVEN — Prove retained data spans that required window
+- [ ] `OS-B-004` — STATUS=NOT_PROVEN — Prove resolution/cadence is sufficient for each history-requiring concept
+- [ ] `OS-B-005` — STATUS=NOT_PROVEN — Prove history survives process restart where required
+- [ ] `OS-B-006` — STATUS=NOT_PROVEN — Prove replay can reproduce calculations that require history
+
+## P0.2 — Semantic Truth / ONE FAUCET
+
+### C. SEMANTIC TRUTH / NAMING
+
+- [ ] `OS-C-001` — STATUS=NOT_PROVEN — For every operator-visible or model-facing concept: exact definition documented from code
+- [ ] `OS-C-002` — STATUS=NOT_PROVEN — For every operator-visible or model-facing concept: exact formula/algorithm identified
+- [ ] `OS-C-003` — STATUS=NOT_PROVEN — For every operator-visible or model-facing concept: label matches actual computation
+- [ ] `OS-C-004` — STATUS=NOT_PROVEN — For every operator-visible or model-facing concept: source classification assigned (NATIVE/DERIVED/HEURISTIC/PROXY)
+- [ ] `OS-C-005` — STATUS=NOT_PROVEN — For every operator-visible or model-facing concept: limitations explicitly stated
+- [ ] `OS-C-006` — STATUS=NOT_PROVEN — For every operator-visible or model-facing concept: missing-data semantics proven
+- [ ] `OS-C-007` — STATUS=NOT_PROVEN — For every operator-visible or model-facing concept: downstream meaning proven
+- [ ] `OS-C-008` — STATUS=NOT_PROVEN — For every operator-visible or model-facing concept: UI label does not overstate evidence
+### C1. High-risk labels to adjudicate
+
+- [ ] `OS-C1-001` — STATUS=NOT_PROVEN — High-risk label adjudicated: absorption
+- [ ] `OS-C1-002` — STATUS=NOT_PROVEN — High-risk label adjudicated: replenishment
+- [ ] `OS-C1-003` — STATUS=NOT_PROVEN — High-risk label adjudicated: institutional flow
+- [ ] `OS-C1-004` — STATUS=NOT_PROVEN — High-risk label adjudicated: smart money
+- [ ] `OS-C1-005` — STATUS=NOT_PROVEN — High-risk label adjudicated: CVD
+- [ ] `OS-C1-006` — STATUS=NOT_PROVEN — High-risk label adjudicated: delta / signed flow
+- [ ] `OS-C1-007` — STATUS=NOT_PROVEN — High-risk label adjudicated: tape pressure
+- [ ] `OS-C1-008` — STATUS=NOT_PROVEN — High-risk label adjudicated: selling pressure / buying pressure
+- [ ] `OS-C1-009` — STATUS=NOT_PROVEN — High-risk label adjudicated: liquidity
+- [ ] `OS-C1-010` — STATUS=NOT_PROVEN — High-risk label adjudicated: liquidity wall
+- [ ] `OS-C1-011` — STATUS=NOT_PROVEN — High-risk label adjudicated: gamma wall
+- [ ] `OS-C1-012` — STATUS=NOT_PROVEN — High-risk label adjudicated: gamma flip
+- [ ] `OS-C1-013` — STATUS=NOT_PROVEN — High-risk label adjudicated: gamma pin
+- [ ] `OS-C1-014` — STATUS=NOT_PROVEN — High-risk label adjudicated: dealer regime
+- [ ] `OS-C1-015` — STATUS=NOT_PROVEN — High-risk label adjudicated: microstructure regime
+- [ ] `OS-C1-016` — STATUS=NOT_PROVEN — High-risk label adjudicated: support
+- [ ] `OS-C1-017` — STATUS=NOT_PROVEN — High-risk label adjudicated: resistance
+- [ ] `OS-C1-018` — STATUS=NOT_PROVEN — High-risk label adjudicated: breakout
+- [ ] `OS-C1-019` — STATUS=NOT_PROVEN — High-risk label adjudicated: breakdown
+- [ ] `OS-C1-020` — STATUS=NOT_PROVEN — High-risk label adjudicated: continuation
+- [ ] `OS-C1-021` — STATUS=NOT_PROVEN — High-risk label adjudicated: reversal
+- [ ] `OS-C1-022` — STATUS=NOT_PROVEN — High-risk label adjudicated: confidence
+- [ ] `OS-C1-023` — STATUS=NOT_PROVEN — High-risk label adjudicated: confluence
+- [ ] `OS-C1-024` — STATUS=NOT_PROVEN — High-risk label adjudicated: tradeability
+- [ ] `OS-C1-025` — STATUS=NOT_PROVEN — High-risk label adjudicated: directional probability
+- [ ] `OS-C1-026` — STATUS=NOT_PROVEN — High-risk label adjudicated: recommendation
+- [ ] `OS-C1-027` — STATUS=NOT_PROVEN — High-risk label adjudicated: bias
+- [ ] `OS-C1-028` — STATUS=NOT_PROVEN — High-risk label adjudicated: edge
+### D. ONE FAUCET = ONE COMPUTATION
+
+- [ ] `OS-D-001` — STATUS=NOT_PROVEN — Complete repo-wide producer inventory
+- [ ] `OS-D-002` — STATUS=NOT_PROVEN — Backend Python inspected for duplicate authorities
+- [ ] `OS-D-003` — STATUS=NOT_PROVEN — Frontend JS inspected for duplicate authorities
+- [ ] `OS-D-004` — STATUS=NOT_PROVEN — HTML inline scripts inspected for duplicate authorities
+- [ ] `OS-D-005` — STATUS=NOT_PROVEN — SQL inspected for duplicate authorities
+- [ ] `OS-D-006` — STATUS=NOT_PROVEN — Training inspected for duplicate authorities
+- [ ] `OS-D-007` — STATUS=NOT_PROVEN — Research inspected for duplicate authorities
+- [ ] `OS-D-008` — STATUS=NOT_PROVEN — Replay inspected for duplicate authorities
+- [ ] `OS-D-009` — STATUS=NOT_PROVEN — Caches inspected for duplicate authorities
+- [ ] `OS-D-010` — STATUS=NOT_PROVEN — Compatibility shims inspected for duplicate authorities
+- [ ] `OS-D-011` — STATUS=NOT_PROVEN — Helpers/wrappers/builders inspected for duplicate authorities
+- [ ] `OS-D-012` — STATUS=NOT_PROVEN — Normalization paths inspected for duplicate authorities
+- [ ] `OS-D-013` — STATUS=NOT_PROVEN — Persistence-derived SQL expressions inspected for duplicate authorities
+- [ ] `OS-D-014` — STATUS=NOT_PROVEN — Tests inspected for shadow/reference computations that escaped into production logic
+- [ ] `OS-D-015` — STATUS=NOT_PROVEN — Every material concept has one canonical computation authority
+- [ ] `OS-D-016` — STATUS=NOT_PROVEN — Downstream consumers import/call authority rather than recompute
+- [ ] `OS-D-017` — STATUS=NOT_PROVEN — Absence/fallback behavior does not create a second authority
+- [ ] `OS-D-018` — STATUS=NOT_PROVEN — Historical/replay computation uses same authority
+- [ ] `OS-D-019` — STATUS=NOT_PROVEN — Training/serve computation uses same authority
+- [ ] `OS-D-020` — STATUS=NOT_PROVEN — UI does not recompute semantic truth
+### D1. Known duplicate authority — absorption
+
+- [ ] `OS-D1-001` — STATUS=NOT_PROVEN — Known duplicate authority FAIL: order_flow_engine._compute_absorption
+- [ ] `OS-D1-002` — STATUS=NOT_PROVEN — Known duplicate authority FAIL: institutional_behavior.compute_liquidity_behavior_row::absorption_score
+- [ ] `OS-D1-003` — STATUS=NOT_PROVEN — Trace all other absorption* producers
+- [ ] `OS-D1-004` — STATUS=NOT_PROVEN — Trace all absorption DB writers/readers
+- [ ] `OS-D1-005` — STATUS=NOT_PROVEN — Trace absorption feature contract
+- [ ] `OS-D1-006` — STATUS=NOT_PROVEN — Trace absorption live feature adapter
+- [ ] `OS-D1-007` — STATUS=NOT_PROVEN — Trace absorption model inputs
+- [ ] `OS-D1-008` — STATUS=NOT_PROVEN — Trace absorption research studies
+- [ ] `OS-D1-009` — STATUS=NOT_PROVEN — Trace absorption calibration
+- [ ] `OS-D1-010` — STATUS=NOT_PROVEN — Trace absorption replay
+- [ ] `OS-D1-011` — STATUS=NOT_PROVEN — Trace absorption reports
+- [ ] `OS-D1-012` — STATUS=NOT_PROVEN — Trace absorption UI
+- [ ] `OS-D1-013` — STATUS=NOT_PROVEN — Trace absorption decision engine
+- [ ] `OS-D1-014` — STATUS=NOT_PROVEN — Determine historical absorption semantic eras
+- [ ] `OS-D1-015` — STATUS=NOT_PROVEN — Determine whether persisted same-named absorption field has changed meaning over time
+- [ ] `OS-D1-016` — STATUS=NOT_PROVEN — Quarantine contaminated absorption artifacts/data where required
+- [ ] `OS-D1-017` — STATUS=NOT_PROVEN — Withhold all existing absorption authorities from decision-grade use
+- [ ] `OS-D1-018` — STATUS=NOT_PROVEN — Either replace absorption with one semantically valid authority or retire the concept
+
+## P0.3 — Scientific / Model Correctness
+
+### H1. Scientific pipeline itself
+
+- [ ] `OS-H1-001` — STATUS=NOT_PROVEN — Labels proven
+- [ ] `OS-H1-002` — STATUS=NOT_PROVEN — Entry timestamp proven
+- [ ] `OS-H1-003` — STATUS=NOT_PROVEN — Exit/outcome timestamp proven
+- [ ] `OS-H1-004` — STATUS=NOT_PROVEN — Future information excluded
+- [ ] `OS-H1-005` — STATUS=NOT_PROVEN — Feature availability as-of decision time proven
+- [ ] `OS-H1-006` — STATUS=NOT_PROVEN — Lookahead audit
+- [ ] `OS-H1-007` — STATUS=NOT_PROVEN — Label-shuffle test
+- [ ] `OS-H1-008` — STATUS=NOT_PROVEN — Feature-shuffle tests
+- [ ] `OS-H1-009` — STATUS=NOT_PROVEN — Leakage audit
+- [ ] `OS-H1-010` — STATUS=NOT_PROVEN — Meta-learner leakage audit
+- [ ] `OS-H1-011` — STATUS=NOT_PROVEN — Purged K-fold where applicable
+- [ ] `OS-H1-012` — STATUS=NOT_PROVEN — Embargo where applicable
+- [ ] `OS-H1-013` — STATUS=NOT_PROVEN — Time-series/walk-forward split
+- [ ] `OS-H1-014` — STATUS=NOT_PROVEN — No random temporal contamination
+- [ ] `OS-H1-015` — STATUS=NOT_PROVEN — Ticker isolation where required
+- [ ] `OS-H1-016` — STATUS=NOT_PROVEN — Cross-ticker universality where claimed
+- [ ] `OS-H1-017` — STATUS=NOT_PROVEN — Trivial baselines
+- [ ] `OS-H1-018` — STATUS=NOT_PROVEN — Persistence baseline
+- [ ] `OS-H1-019` — STATUS=NOT_PROVEN — Class-prior baseline
+- [ ] `OS-H1-020` — STATUS=NOT_PROVEN — Cost-aware baseline
+- [ ] `OS-H1-021` — STATUS=NOT_PROVEN — Multiple-hypothesis correction
+- [ ] `OS-H1-022` — STATUS=NOT_PROVEN — Holm-Bonferroni where appropriate
+- [ ] `OS-H1-023` — STATUS=NOT_PROVEN — Sample sufficiency
+- [ ] `OS-H1-024` — STATUS=NOT_PROVEN — Confidence intervals
+- [ ] `OS-H1-025` — STATUS=NOT_PROVEN — Calibration
+- [ ] `OS-H1-026` — STATUS=NOT_PROVEN — Calibration per ticker/horizon where required
+- [ ] `OS-H1-027` — STATUS=NOT_PROVEN — Regime-conditioned performance
+- [ ] `OS-H1-028` — STATUS=NOT_PROVEN — Cost/slippage sensitivity
+- [ ] `OS-H1-029` — STATUS=NOT_PROVEN — Reproducibility
+- [ ] `OS-H1-030` — STATUS=NOT_PROVEN — Exact feature version
+- [ ] `OS-H1-031` — STATUS=NOT_PROVEN — Exact model artifact version
+- [ ] `OS-H1-032` — STATUS=NOT_PROVEN — Training/serve parity
+- [ ] `OS-H1-033` — STATUS=NOT_PROVEN — Replay parity (scientific pipeline)
+### H2. Era contamination
+
+- [ ] `OS-H2-001` — STATUS=NOT_PROVEN — Inventory every study classified era-contaminated
+- [ ] `OS-H2-002` — STATUS=NOT_PROVEN — Determine contamination boundary
+- [ ] `OS-H2-003` — STATUS=NOT_PROVEN — Determine semantic-feature changes across eras
+- [ ] `OS-H2-004` — STATUS=NOT_PROVEN — Determine outcome/timestamp changes across eras
+- [ ] `OS-H2-005` — STATUS=NOT_PROVEN — Quarantine affected historical results
+- [ ] `OS-H2-006` — STATUS=NOT_PROVEN — Rerun era-contaminated studies only after scientific pipeline PASS
+- [ ] `OS-H2-007` — STATUS=NOT_PROVEN — Do not cite contaminated positive or negative results
+### H3. Existing model stack
+
+- [ ] `OS-H3-001` — STATUS=NOT_PROVEN — XGB implementation correctness
+- [ ] `OS-H3-002` — STATUS=NOT_PROVEN — LSTM implementation correctness
+- [ ] `OS-H3-003` — STATUS=NOT_PROVEN — Transformer legacy/removal effects
+- [ ] `OS-H3-004` — STATUS=NOT_PROVEN — Monte Carlo implementation correctness
+- [ ] `OS-H3-005` — STATUS=NOT_PROVEN — Fusion implementation correctness
+- [ ] `OS-H3-006` — STATUS=NOT_PROVEN — Meta-model implementation correctness
+- [ ] `OS-H3-007` — STATUS=NOT_PROVEN — Kalman implementation correctness
+- [ ] `OS-H3-008` — STATUS=NOT_PROVEN — HMM implementation correctness
+- [ ] `OS-H3-009` — STATUS=NOT_PROVEN — GARCH implementation correctness
+- [ ] `OS-H3-010` — STATUS=NOT_PROVEN — Model input semantics
+- [ ] `OS-H3-011` — STATUS=NOT_PROVEN — Model output semantics
+- [ ] `OS-H3-012` — STATUS=NOT_PROVEN — Artifact compatibility
+- [ ] `OS-H3-013` — STATUS=NOT_PROVEN — Stale artifact detection
+- [ ] `OS-H3-014` — STATUS=NOT_PROVEN — Semantic feature drift detection
+- [ ] `OS-H3-015` — STATUS=NOT_PROVEN — Safe abstention
+- [ ] `OS-H3-016` — STATUS=NOT_PROVEN — Retrain requirement after feature changes
+- [ ] `OS-H3-017` — STATUS=NOT_PROVEN — No model admitted without positive OOS evidence net of costs
+### H4. Predictive validity
+
+- [ ] `OS-H4-001` — STATUS=NOT_PROVEN — At least one candidate beats trivial baselines
+- [ ] `OS-H4-002` — STATUS=NOT_PROVEN — Predictive validity OOS
+- [ ] `OS-H4-003` — STATUS=NOT_PROVEN — Predictive validity net of costs
+- [ ] `OS-H4-004` — STATUS=NOT_PROVEN — Predictive validity sufficiently sampled
+- [ ] `OS-H4-005` — STATUS=NOT_PROVEN — Predictive validity corrected for multiple testing
+- [ ] `OS-H4-006` — STATUS=NOT_PROVEN — Predictive validity survives regime/robustness checks
+- [ ] `OS-H4-007` — STATUS=NOT_PROVEN — Predictive validity calibration acceptable
+- [ ] `OS-H4-008` — STATUS=NOT_PROVEN — Predictive validity replicated
+- [ ] `OS-H4-009` — STATUS=NOT_PROVEN — Then and only then admitted into Decide
+
+## P0.4 — Decision-Path Containment
+
+### I1. Decision inputs
+
+- [ ] `OS-I1-001` — STATUS=NOT_PROVEN — Decision input: call_signal
+- [ ] `OS-I1-002` — STATUS=NOT_PROVEN — Decision input: execution_mode
+- [ ] `OS-I1-003` — STATUS=NOT_PROVEN — Decision input: final_tradeable
+- [ ] `OS-I1-004` — STATUS=NOT_PROVEN — Decision input: is_no_trade
+- [ ] `OS-I1-005` — STATUS=NOT_PROVEN — Decision input: terrain posture
+- [ ] `OS-I1-006` — STATUS=NOT_PROVEN — Decision input: veto stack
+- [ ] `OS-I1-007` — STATUS=NOT_PROVEN — Decision input: wait reasons
+- [ ] `OS-I1-008` — STATUS=NOT_PROVEN — Decision input: decision-gate reasons
+- [ ] `OS-I1-009` — STATUS=NOT_PROVEN — Decision input: recommendation side
+- [ ] `OS-I1-010` — STATUS=NOT_PROVEN — Decision input: bias
+- [ ] `OS-I1-011` — STATUS=NOT_PROVEN — Decision input: confidence
+- [ ] `OS-I1-012` — STATUS=NOT_PROVEN — Decision input: confluence
+- [ ] `OS-I1-013` — STATUS=NOT_PROVEN — Decision input: entry
+- [ ] `OS-I1-014` — STATUS=NOT_PROVEN — Decision input: stop
+- [ ] `OS-I1-015` — STATUS=NOT_PROVEN — Decision input: target
+- [ ] `OS-I1-016` — STATUS=NOT_PROVEN — Decision input: target2
+- [ ] `OS-I1-017` — STATUS=NOT_PROVEN — Decision input: invalidation
+- [ ] `OS-I1-018` — STATUS=NOT_PROVEN — Decision input: size
+- [ ] `OS-I1-019` — STATUS=NOT_PROVEN — Decision input: trade type
+### I2. Unified decision
+
+- [ ] `OS-I2-001` — STATUS=NOT_PROVEN — Canonical TRADE / WAIT / AVOID authority exists
+- [ ] `OS-I2-002` — STATUS=NOT_PROVEN — Explicit AVOID semantics
+- [ ] `OS-I2-003` — STATUS=NOT_PROVEN — WAIT distinguished from hostile/avoid state
+- [ ] `OS-I2-004` — STATUS=NOT_PROVEN — No arbitrary weighted averaging in unified decision
+- [ ] `OS-I2-005` — STATUS=NOT_PROVEN — Disagreement remains visible
+- [ ] `OS-I2-006` — STATUS=NOT_PROVEN — Deterministic reason lineage
+- [ ] `OS-I2-007` — STATUS=NOT_PROVEN — Contradiction list canonical
+- [ ] `OS-I2-008` — STATUS=NOT_PROVEN — No frontend decision synthesis
+- [ ] `OS-I2-009` — STATUS=NOT_PROVEN — Fail-closed when required decision evidence absent
+### I3. Plan semantics
+
+- [ ] `OS-I3-001` — STATUS=NOT_PROVEN — Plan trigger primitive if required
+- [ ] `OS-I3-002` — STATUS=NOT_PROVEN — Entry populated only when meaningful
+- [ ] `OS-I3-003` — STATUS=NOT_PROVEN — Stop semantics
+- [ ] `OS-I3-004` — STATUS=NOT_PROVEN — Target semantics
+- [ ] `OS-I3-005` — STATUS=NOT_PROVEN — R:R semantics
+- [ ] `OS-I3-006` — STATUS=NOT_PROVEN — Invalidation semantics
+- [ ] `OS-I3-007` — STATUS=NOT_PROVEN — Blank/WAIT fields explained rather than misleading
+- [ ] `OS-I3-008` — STATUS=NOT_PROVEN — What changes my mind is canonical
+- [ ] `OS-I3-009` — STATUS=NOT_PROVEN — Positive tradeability requires admitted evidence
+### V. PREDICTIVE VS DESCRIPTIVE SEPARATION
+
+- [ ] `OS-V-001` — STATUS=NOT_PROVEN — For every field/panel: classify as descriptive market state or predictive signal
+- [ ] `OS-V-002` — STATUS=NOT_PROVEN — Descriptive state does not imply edge
+- [ ] `OS-V-003` — STATUS=NOT_PROVEN — Contextual level does not imply predictive edge
+- [ ] `OS-V-004` — STATUS=NOT_PROVEN — Heuristic does not imply predictive edge
+- [ ] `OS-V-005` — STATUS=NOT_PROVEN — Proxy does not imply predictive edge
+- [ ] `OS-V-006` — STATUS=NOT_PROVEN — Predictive language appears only after Find & Prove admission
+- [ ] `OS-V-007` — STATUS=NOT_PROVEN — EDGE UI label only appears when positive evidence exists
+- [ ] `OS-V-008` — STATUS=NOT_PROVEN — Confidence cannot be a synonym for mathematical certainty unless calibrated
+- [ ] `OS-V-009` — STATUS=NOT_PROVEN — Bias cannot be silently interpreted as a trade recommendation
+- [ ] `OS-V-010` — STATUS=NOT_PROVEN — SELLING PRESSURE cannot automatically imply SHORT
+- [ ] `OS-V-011` — STATUS=NOT_PROVEN — ABSORPTION cannot automatically imply LONG
+- [ ] `OS-V-012` — STATUS=NOT_PROVEN — Decision engine enforces descriptive/predictive separation mechanically
+### W. REAL-MONEY READINESS
+
+- [ ] `OS-W-001` — STATUS=NOT_PROVEN — Real-money parent remains unchecked until everything material above passes
+- [ ] `OS-W-002` — STATUS=NOT_PROVEN — Real-money requires data truth
+- [ ] `OS-W-003` — STATUS=NOT_PROVEN — Real-money requires semantic truth
+- [ ] `OS-W-004` — STATUS=NOT_PROVEN — Real-money requires one computation
+- [ ] `OS-W-005` — STATUS=NOT_PROVEN — Real-money requires live completeness
+- [ ] `OS-W-006` — STATUS=NOT_PROVEN — Real-money requires temporal sufficiency
+- [ ] `OS-W-007` — STATUS=NOT_PROVEN — Real-money requires replay
+- [ ] `OS-W-008` — STATUS=NOT_PROVEN — Real-money requires predictive validity
+- [ ] `OS-W-009` — STATUS=NOT_PROVEN — Real-money requires calibration
+- [ ] `OS-W-010` — STATUS=NOT_PROVEN — Real-money requires decision engine
+- [ ] `OS-W-011` — STATUS=NOT_PROVEN — Real-money requires risk
+- [ ] `OS-W-012` — STATUS=NOT_PROVEN — Real-money requires execution realism
+- [ ] `OS-W-013` — STATUS=NOT_PROVEN — Real-money requires UI fidelity
+- [ ] `OS-W-014` — STATUS=NOT_PROVEN — Real-money requires failure handling
+- [ ] `OS-W-015` — STATUS=NOT_PROVEN — Real-money requires operations
+- [ ] `OS-W-016` — STATUS=NOT_PROVEN — Real-money requires security
+- [ ] `OS-W-017` — STATUS=NOT_PROVEN — Real-money requires observability
+- [ ] `OS-W-018` — STATUS=NOT_PROVEN — Real-money requires reproducibility
+- [ ] `OS-W-019` — STATUS=NOT_PROVEN — Real-money requires universal runtime proof
+- [ ] `OS-W-020` — STATUS=NOT_PROVEN — Real-money requires independent falsification
+- [ ] `OS-W-021` — STATUS=NOT_PROVEN — Real-money requires final RTH end-to-end proof
+- [ ] `OS-W-022` — STATUS=NOT_PROVEN — Real-money requires final operator approval
+- [ ] `OS-W-023` — STATUS=NOT_PROVEN — Until then REAL_MONEY_READINESS = NOT_APPROVED
+### X. CLOSURE / PROOF REQUIREMENTS
+
+- [ ] `OS-X-001` — STATUS=NOT_PROVEN — No checkbox may be checked based on narrative
+- [ ] `OS-X-002` — STATUS=NOT_PROVEN — Every checked item must have exact SHA
+- [ ] `OS-X-003` — STATUS=NOT_PROVEN — Every checked item must have exact file/function producer
+- [ ] `OS-X-004` — STATUS=NOT_PROVEN — Every checked item must have exact consumer graph
+- [ ] `OS-X-005` — STATUS=NOT_PROVEN — Every checked item must have exact test(s)
+- [ ] `OS-X-006` — STATUS=NOT_PROVEN — Every checked item must have mutation or negative control where meaningful
+- [ ] `OS-X-007` — STATUS=NOT_PROVEN — Every checked item must have exact command
+- [ ] `OS-X-008` — STATUS=NOT_PROVEN — Every checked item must have exit code
+- [ ] `OS-X-009` — STATUS=NOT_PROVEN — Every checked item must have runtime proof where applicable
+- [ ] `OS-X-010` — STATUS=NOT_PROVEN — Every checked item must have RTH proof where applicable
+- [ ] `OS-X-011` — STATUS=NOT_PROVEN — Every checked item must have multi-ticker proof where applicable
+- [ ] `OS-X-012` — STATUS=NOT_PROVEN — Every checked item must have replay proof where applicable
+- [ ] `OS-X-013` — STATUS=NOT_PROVEN — Every checked item must have before/after evidence if a defect was fixed
+- [ ] `OS-X-014` — STATUS=NOT_PROVEN — Every checked item must have no downstream regression
+- [ ] `OS-X-015` — STATUS=NOT_PROVEN — Every checked item must have no alternate authority
+- [ ] `OS-X-016` — STATUS=NOT_PROVEN — Every checked item must have truth matrix updated
+- [ ] `OS-X-017` — STATUS=NOT_PROVEN — Parent remains open if any material connected requirement is unresolved
+- [ ] `OS-X-018` — STATUS=NOT_PROVEN — ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1 = PASS cannot be checked until every material money-path item is PASS or legitimately UNAVAILABLE and mechanically prevented from being represented as available or decision-grade
+- [ ] `OS-X-019` — STATUS=NOT_PROVEN — A FAIL or material NOT_PROVEN anywhere keeps the parent open
+
+## P1 — Order Flow / Options / Levels / contamination
+
+### B1. Known temporal concepts requiring proof
+
+- [ ] `OS-B1-001` — STATUS=NOT_PROVEN — Temporal sufficiency proven for persistence
+- [ ] `OS-B1-002` — STATUS=NOT_PROVEN — Temporal sufficiency proven for migration
+- [ ] `OS-B1-003` — STATUS=NOT_PROVEN — Temporal sufficiency proven for replenishment
+- [ ] `OS-B1-004` — STATUS=NOT_PROVEN — Temporal sufficiency proven for absorption
+- [ ] `OS-B1-005` — STATUS=NOT_PROVEN — Temporal sufficiency proven for add/pull
+- [ ] `OS-B1-006` — STATUS=NOT_PROVEN — Temporal sufficiency proven for liquidity depletion
+- [ ] `OS-B1-007` — STATUS=NOT_PROVEN — Temporal sufficiency proven for liquidity acceleration
+- [ ] `OS-B1-008` — STATUS=NOT_PROVEN — Temporal sufficiency proven for rolling pressure
+- [ ] `OS-B1-009` — STATUS=NOT_PROVEN — Temporal sufficiency proven for wall persistence
+- [ ] `OS-B1-010` — STATUS=NOT_PROVEN — Temporal sufficiency proven for wall migration
+- [ ] `OS-B1-011` — STATUS=NOT_PROVEN — Temporal sufficiency proven for gamma migration
+- [ ] `OS-B1-012` — STATUS=NOT_PROVEN — Temporal sufficiency proven for OI migration
+- [ ] `OS-B1-013` — STATUS=NOT_PROVEN — Temporal sufficiency proven for charm drift
+- [ ] `OS-B1-014` — STATUS=NOT_PROVEN — Temporal sufficiency proven for vanna drift
+- [ ] `OS-B1-015` — STATUS=NOT_PROVEN — Temporal sufficiency proven for regime transitions
+- [ ] `OS-B1-016` — STATUS=NOT_PROVEN — Temporal sufficiency proven for volatility transitions
+- [ ] `OS-B1-017` — STATUS=NOT_PROVEN — Temporal sufficiency proven for signal transitions
+- [ ] `OS-B1-018` — STATUS=NOT_PROVEN — Temporal sufficiency proven for alert transitions
+- [ ] `OS-B1-019` — STATUS=NOT_PROVEN — Temporal sufficiency proven for trend persistence
+- [ ] `OS-B1-020` — STATUS=NOT_PROVEN — Temporal sufficiency proven for decay
+### B2. Known L2-history defect
+
+- [ ] `OS-B2-001` — STATUS=NOT_PROVEN — Known L2-history defect: live book state retains only a tiny in-memory snapshot deque
+- [ ] `OS-B2-002` — STATUS=NOT_PROVEN — Design canonical displayed-L2 history representation
+- [ ] `OS-B2-003` — STATUS=NOT_PROVEN — Determine snapshot vs delta representation from measured Schwab semantics
+- [ ] `OS-B2-004` — STATUS=NOT_PROVEN — Add local monotonically increasing receive sequence for L2 history
+- [ ] `OS-B2-005` — STATUS=NOT_PROVEN — Preserve vendor timestamp on L2 history
+- [ ] `OS-B2-006` — STATUS=NOT_PROVEN — Preserve server receive timestamp on L2 history
+- [ ] `OS-B2-007` — STATUS=NOT_PROVEN — Preserve source/service on L2 history
+- [ ] `OS-B2-008` — STATUS=NOT_PROVEN — Preserve ticker on L2 history
+- [ ] `OS-B2-009` — STATUS=NOT_PROVEN — Preserve side/price/displayed volume on L2 history
+- [ ] `OS-B2-010` — STATUS=NOT_PROVEN — Preserve schema/provenance version on L2 history
+- [ ] `OS-B2-011` — STATUS=NOT_PROVEN — Build bounded live in-memory L2 history for visualization
+- [ ] `OS-B2-012` — STATUS=NOT_PROVEN — Build durable L2 replay/research persistence
+- [ ] `OS-B2-013` — STATUS=NOT_PROVEN — Measure expected L2 event rate
+- [ ] `OS-B2-014` — STATUS=NOT_PROVEN — Measure expected L2 daily storage
+- [ ] `OS-B2-015` — STATUS=NOT_PROVEN — Choose L2 storage architecture based on measurement, not convenience
+- [ ] `OS-B2-016` — STATUS=NOT_PROVEN — Do not blindly write high-frequency L2 history into existing oversized SQLite DB
+- [ ] `OS-B2-017` — STATUS=NOT_PROVEN — Define L2 history retention
+- [ ] `OS-B2-018` — STATUS=NOT_PROVEN — Define L2 history compression
+- [ ] `OS-B2-019` — STATUS=NOT_PROVEN — Define L2 history checkpoint/delta strategy
+- [ ] `OS-B2-020` — STATUS=NOT_PROVEN — Define L2 history crash recovery
+- [ ] `OS-B2-021` — STATUS=NOT_PROVEN — Prove deterministic L2 history reconstruction
+### B3. Bookmap-style heatmap
+
+- [ ] `OS-B3-001` — STATUS=NOT_PROVEN — Bookmap-style heatmap: historical displayed-liquidity time×price data available
+- [ ] `OS-B3-002` — STATUS=NOT_PROVEN — Heatmap generated entirely from live canonical L2 history
+- [ ] `OS-B3-003` — STATUS=NOT_PROVEN — No static/fake heatmap
+- [ ] `OS-B3-004` — STATUS=NOT_PROVEN — Heatmap time axis live-scrolls
+- [ ] `OS-B3-005` — STATUS=NOT_PROVEN — Heatmap price axis correctly normalized
+- [ ] `OS-B3-006` — STATUS=NOT_PROVEN — Liquidity intensity accurately represents displayed size
+- [ ] `OS-B3-007` — STATUS=NOT_PROVEN — Heatmap data gaps visually exposed
+- [ ] `OS-B3-008` — STATUS=NOT_PROVEN — Heatmap staleness visually exposed
+- [ ] `OS-B3-009` — STATUS=NOT_PROVEN — Heatmap restart behavior proven
+- [ ] `OS-B3-010` — STATUS=NOT_PROVEN — Historical replay reproduces live heatmap
+- [ ] `OS-B3-011` — STATUS=NOT_PROVEN — UI explicitly says displayed L2, not MBO
+- [ ] `OS-B3-012` — STATUS=NOT_PROVEN — No Level-3/queue/individual-order implication on heatmap
+### E1. Canonical point-in-time book microstructure
+
+- [ ] `OS-E1-001` — STATUS=NOT_PROVEN — Re-prove raw book → canonical normalization
+- [ ] `OS-E1-002` — STATUS=NOT_PROVEN — Re-prove bid ordering
+- [ ] `OS-E1-003` — STATUS=NOT_PROVEN — Re-prove ask ordering
+- [ ] `OS-E1-004` — STATUS=NOT_PROVEN — Re-prove invalid-size rejection
+- [ ] `OS-E1-005` — STATUS=NOT_PROVEN — Re-prove crossed-book behavior
+- [ ] `OS-E1-006` — STATUS=NOT_PROVEN — Re-prove locked-book behavior
+- [ ] `OS-E1-007` — STATUS=NOT_PROVEN — Re-prove top-of-book
+- [ ] `OS-E1-008` — STATUS=NOT_PROVEN — Re-prove mid
+- [ ] `OS-E1-009` — STATUS=NOT_PROVEN — Re-prove spread
+- [ ] `OS-E1-010` — STATUS=NOT_PROVEN — Re-prove microprice
+- [ ] `OS-E1-011` — STATUS=NOT_PROVEN — Re-prove Top-1 depth
+- [ ] `OS-E1-012` — STATUS=NOT_PROVEN — Re-prove Top-3 depth
+- [ ] `OS-E1-013` — STATUS=NOT_PROVEN — Re-prove Top-5 depth
+- [ ] `OS-E1-014` — STATUS=NOT_PROVEN — Re-prove Top-1 imbalance
+- [ ] `OS-E1-015` — STATUS=NOT_PROVEN — Re-prove Top-3 imbalance
+- [ ] `OS-E1-016` — STATUS=NOT_PROVEN — Re-prove Top-5 imbalance
+- [ ] `OS-E1-017` — STATUS=NOT_PROVEN — Re-prove depth-pressure curve
+- [ ] `OS-E1-018` — STATUS=NOT_PROVEN — Re-prove book slope
+- [ ] `OS-E1-019` — STATUS=NOT_PROVEN — Re-prove concentration
+- [ ] `OS-E1-020` — STATUS=NOT_PROVEN — Re-prove wall-candidate heuristic
+- [ ] `OS-E1-021` — STATUS=NOT_PROVEN — Re-prove book age
+- [ ] `OS-E1-022` — STATUS=NOT_PROVEN — Re-prove quote age
+- [ ] `OS-E1-023` — STATUS=NOT_PROVEN — Re-prove book provenance
+- [ ] `OS-E1-024` — STATUS=NOT_PROVEN — Re-prove no duplicate book-calculation authority
+- [ ] `OS-E1-025` — STATUS=NOT_PROVEN — Re-prove live engine and API serialize same semantic book state
+- [ ] `OS-E1-026` — STATUS=NOT_PROVEN — Re-prove fail-closed on missing book
+- [ ] `OS-E1-027` — STATUS=NOT_PROVEN — Re-prove stale-book negative control
+- [ ] `OS-E1-028` — STATUS=NOT_PROVEN — Re-prove book ticker switch
+- [ ] `OS-E1-029` — STATUS=NOT_PROVEN — Re-prove book reconnect
+- [ ] `OS-E1-030` — STATUS=NOT_PROVEN — Re-prove book RTH live proof
+- [ ] `OS-E1-031` — STATUS=NOT_PROVEN — Re-prove book replay proof
+### E2. Legacy Order Flow weighted composite
+
+- [ ] `OS-E2-001` — STATUS=NOT_PROVEN — Legacy Order Flow weighted composite: inventory exact current formula
+- [ ] `OS-E2-002` — STATUS=NOT_PROVEN — Legacy OF composite: inventory all weights
+- [ ] `OS-E2-003` — STATUS=NOT_PROVEN — Legacy OF composite: inventory fixed thresholds
+- [ ] `OS-E2-004` — STATUS=NOT_PROVEN — Prove whether each OF composite leg has equivalent semantic quality
+- [ ] `OS-E2-005` — STATUS=NOT_PROVEN — Trace all OF composite consumers
+- [ ] `OS-E2-006` — STATUS=NOT_PROVEN — Trace OF composite UI use
+- [ ] `OS-E2-007` — STATUS=NOT_PROVEN — Trace OF composite model feature use
+- [ ] `OS-E2-008` — STATUS=NOT_PROVEN — Trace OF composite decision influence
+- [ ] `OS-E2-009` — STATUS=NOT_PROVEN — Trace OF composite research use
+- [ ] `OS-E2-010` — STATUS=NOT_PROVEN — Trace OF composite calibration use
+- [ ] `OS-E2-011` — STATUS=NOT_PROVEN — Prove independent justification for OF composite weighting
+- [ ] `OS-E2-012` — STATUS=NOT_PROVEN — Prove predictive justification for combined OF composite
+- [ ] `OS-E2-013` — STATUS=NOT_PROVEN — If OF composite not proven, classify NOT_ADMITTED
+- [ ] `OS-E2-014` — STATUS=NOT_PROVEN — Safely migrate any consumers/artifacts that depend on OF composite
+- [ ] `OS-E2-015` — STATUS=NOT_PROVEN — Remove false precision from operator UI for OF composite
+- [ ] `OS-E2-016` — STATUS=NOT_PROVEN — Preserve separate OF legs where valid
+### E3. Executed-flow proxies
+
+- [ ] `OS-E3-001` — STATUS=NOT_PROVEN — tape_pressure_30s exact semantics
+- [ ] `OS-E3-002` — STATUS=NOT_PROVEN — tape_pressure_2m exact semantics
+- [ ] `OS-E3-003` — STATUS=NOT_PROVEN — tape_pressure_5m exact semantics
+- [ ] `OS-E3-004` — STATUS=NOT_PROVEN — cum_delta_proxy exact semantics. SURFACES=l1_trade_observation.py;order_flow_engine.py
+- [ ] `OS-E3-005` — STATUS=NOT_PROVEN — cum_delta_slope exact semantics
+- [ ] `OS-E3-006` — STATUS=NOT_PROVEN — institutional_flow_proxy_score exact semantics
+- [x] `OS-E3-007` — STATUS=PASS — Engine/API classification is `PROXY_RECONSTRUCTED_L1_TICK` for tape pressure and cum-delta. Evidence: `l1_trade_observation.source_contract`; `tests/test_order_flow_tape_contract.py::test_tape_and_cum_delta_are_classified_reconstructed_l1_tick`.
+- [x] `OS-E3-008` — STATUS=PASS — Native aggressor claim forbidden: `native_aggressor_available=false`; tick-rule is PROXY. Evidence: `tests/test_l1_trade_observation_v1.py::test_missing_side_is_never_native_or_zero_aggressor`.
+- [x] `OS-E3-009` — STATUS=PASS — Field is `cum_delta_proxy` with `cum_delta_classification=PROXY_RECONSTRUCTED_L1_TICK`. No `native_cvd` emit. Evidence: engine output + tape contract test.
+- [x] `OS-E3-010` — STATUS=PASS — Completeness is `INCOMPLETE_OBSERVATION`; limitations text forbids complete executed-flow / complete-volume claims.
+- [ ] `OS-E3-011` — STATUS=NOT_PROVEN — Field names corrected where proxy nature is hidden
+- [x] `OS-E3-012` — STATUS=PASS — Source contract fields travel OrderFlowEngine → MarketState → `_ms_to_dict` → L1 `_ORDER_FLOW_KEYS` carry. Evidence: `market_state.py` fields; `planes/context_light.py` `_ORDER_FLOW_KEYS`.
+- [ ] `OS-E3-013` — STATUS=NOT_PROVEN — Orphan executed-flow status source-proven, not inferred from null runtime values
+- [ ] `OS-E3-014` — STATUS=NOT_PROVEN — Executed-flow decision influence removed unless separately admitted
+- [ ] `OS-E3-015` — STATUS=NOT_PROVEN — Executed-flow predictive usefulness tested independently if retained
+### E4. Absorption / replenishment
+
+- [ ] `OS-E4-001` — STATUS=NOT_PROVEN — _compute_absorption marked NOT_ADMITTED
+- [ ] `OS-E4-002` — STATUS=NOT_PROVEN — Current volume÷range absorption formula renamed or retired
+- [ ] `OS-E4-003` — STATUS=NOT_PROVEN — Current replenishment earliest-vs-latest total-depth heuristic renamed or retired
+- [ ] `OS-E4-004` — STATUS=NOT_PROVEN — Misleading absorption/replenishment docstrings corrected
+- [ ] `OS-E4-005` — STATUS=NOT_PROVEN — Actual level-specific absorption definition designed only from available evidence
+- [ ] `OS-E4-006` — STATUS=NOT_PROVEN — Actual replenishment definition requires time/history
+- [ ] `OS-E4-007` — STATUS=NOT_PROVEN — Absorption/replenishment temporal windows defined
+- [ ] `OS-E4-008` — STATUS=NOT_PROVEN — Absorption/replenishment fail-closed behavior defined
+- [ ] `OS-E4-009` — STATUS=NOT_PROVEN — Absorption/replenishment replay reproducibility proven
+- [ ] `OS-E4-010` — STATUS=NOT_PROVEN — Absorption/replenishment semantic validity proven before predictive validity
+- [ ] `OS-E4-011` — STATUS=NOT_PROVEN — Absorption/replenishment predictive validity proven before decision admission
+### E5. Microstructure regime
+
+- [ ] `OS-E5-001` — STATUS=NOT_PROVEN — Current microstructure regime authority inventory complete
+- [ ] `OS-E5-002` — STATUS=NOT_PROVEN — No UI-only microstructure regime invention
+- [ ] `OS-E5-003` — STATUS=NOT_PROVEN — Microstructure state taxonomy derived from measurable primitives rather than invented first
+- [ ] `OS-E5-004` — STATUS=NOT_PROVEN — Balanced auction definition
+- [ ] `OS-E5-005` — STATUS=NOT_PROVEN — Buy-pressure definition
+- [ ] `OS-E5-006` — STATUS=NOT_PROVEN — Sell-pressure definition
+- [ ] `OS-E5-007` — STATUS=NOT_PROVEN — Liquidity-pull definition
+- [ ] `OS-E5-008` — STATUS=NOT_PROVEN — Replenishment definition (regime)
+- [ ] `OS-E5-009` — STATUS=NOT_PROVEN — Absorption definition (regime)
+- [ ] `OS-E5-010` — STATUS=NOT_PROVEN — Exhaustion definition
+- [ ] `OS-E5-011` — STATUS=NOT_PROVEN — Liquidity-vacuum definition
+- [ ] `OS-E5-012` — STATUS=NOT_PROVEN — Spread-expansion definition
+- [ ] `OS-E5-013` — STATUS=NOT_PROVEN — Microstructure regime exact temporal requirements
+- [ ] `OS-E5-014` — STATUS=NOT_PROVEN — Microstructure regime confidence/trust definition
+- [ ] `OS-E5-015` — STATUS=NOT_PROVEN — Microstructure regime transition logic
+- [ ] `OS-E5-016` — STATUS=NOT_PROVEN — Microstructure regime fail-closed logic
+- [ ] `OS-E5-017` — STATUS=NOT_PROVEN — Microstructure regime replay
+- [ ] `OS-E5-018` — STATUS=NOT_PROVEN — Microstructure regime predictive/decision validity separately tested
+### F1. VWAP
+
+- [ ] `OS-F1-001` — STATUS=NOT_PROVEN — VWAP source bars/trades proven
+- [ ] `OS-F1-002` — STATUS=NOT_PROVEN — VWAP formula proven
+- [ ] `OS-F1-003` — STATUS=NOT_PROVEN — VWAP session boundary proven
+- [ ] `OS-F1-004` — STATUS=NOT_PROVEN — VWAP resets proven
+- [ ] `OS-F1-005` — STATUS=NOT_PROVEN — VWAP extended-hours policy proven
+- [ ] `OS-F1-006` — STATUS=NOT_PROVEN — VWAP one faucet
+- [ ] `OS-F1-007` — STATUS=NOT_PROVEN — VWAP UI fidelity
+- [ ] `OS-F1-008` — STATUS=NOT_PROVEN — VWAP replay
+- [ ] `OS-F1-009` — STATUS=NOT_PROVEN — VWAP predictive status separately classified
+### F2. VWAP sigma bands
+
+- [ ] `OS-F2-001` — STATUS=NOT_PROVEN — VWAP sigma bands variance/σ formula proven
+- [ ] `OS-F2-002` — STATUS=NOT_PROVEN — VWAP sigma bands weighting semantics proven
+- [ ] `OS-F2-003` — STATUS=NOT_PROVEN — VWAP sigma bands session semantics proven
+- [ ] `OS-F2-004` — STATUS=NOT_PROVEN — VWAP sigma bands one faucet
+- [ ] `OS-F2-005` — STATUS=NOT_PROVEN — VWAP sigma bands replay
+- [ ] `OS-F2-006` — STATUS=NOT_PROVEN — VWAP sigma bands predictive validity separately classified
+### F3. Volume Profile
+
+- [ ] `OS-F3-001` — STATUS=NOT_PROVEN — Volume Profile known defect: typical-price volume dump eliminated
+- [ ] `OS-F3-002` — STATUS=NOT_PROVEN — Volume Profile price-distributed/tick-based methodology implemented
+- [ ] `OS-F3-003` — STATUS=NOT_PROVEN — Volume Profile POC proven
+- [ ] `OS-F3-004` — STATUS=NOT_PROVEN — Volume Profile VAH proven
+- [ ] `OS-F3-005` — STATUS=NOT_PROVEN — Volume Profile VAL proven
+- [ ] `OS-F3-006` — STATUS=NOT_PROVEN — Volume Profile session/window definition proven
+- [ ] `OS-F3-007` — STATUS=NOT_PROVEN — Volume Profile reproducibility proven
+- [ ] `OS-F3-008` — STATUS=NOT_PROVEN — Volume Profile comparison against institutional/reference calculation
+- [ ] `OS-F3-009` — STATUS=NOT_PROVEN — Volume Profile UI uses corrected authority only
+### F4. Overnight
+
+- [ ] `OS-F4-001` — STATUS=NOT_PROVEN — Overnight known defect: calendar-based assumptions eliminated
+- [ ] `OS-F4-002` — STATUS=NOT_PROVEN — Overnight prior trading session close → next open semantics
+- [ ] `OS-F4-003` — STATUS=NOT_PROVEN — Overnight Monday includes Friday correctly
+- [ ] `OS-F4-004` — STATUS=NOT_PROVEN — Overnight holidays handled
+- [ ] `OS-F4-005` — STATUS=NOT_PROVEN — Overnight half-days handled
+- [ ] `OS-F4-006` — STATUS=NOT_PROVEN — Overnight extended-session inclusion/exclusion defined
+- [ ] `OS-F4-007` — STATUS=NOT_PROVEN — ONH proven
+- [ ] `OS-F4-008` — STATUS=NOT_PROVEN — ONL proven
+### F5. Prior day / ORB
+
+- [ ] `OS-F5-001` — STATUS=NOT_PROVEN — PDH proven
+- [ ] `OS-F5-002` — STATUS=NOT_PROVEN — PDL proven
+- [ ] `OS-F5-003` — STATUS=NOT_PROVEN — PDC proven
+- [ ] `OS-F5-004` — STATUS=NOT_PROVEN — Prior trading day semantics proven
+- [ ] `OS-F5-005` — STATUS=NOT_PROVEN — ORB high proven
+- [ ] `OS-F5-006` — STATUS=NOT_PROVEN — ORB low proven
+- [ ] `OS-F5-007` — STATUS=NOT_PROVEN — ORB mid proven
+- [ ] `OS-F5-008` — STATUS=NOT_PROVEN — Exact opening-range window proven
+- [ ] `OS-F5-009` — STATUS=NOT_PROVEN — ORB/prior-day holiday/half-day behavior proven
+### F6. Liquidity/support/resistance language
+
+- [ ] `OS-F6-001` — STATUS=NOT_PROVEN — buy_side_liquidity adjudicated
+- [ ] `OS-F6-002` — STATUS=NOT_PROVEN — sell_side_liquidity adjudicated
+- [ ] `OS-F6-003` — STATUS=NOT_PROVEN — Stop-cluster semantics proven or label removed
+- [ ] `OS-F6-004` — STATUS=NOT_PROVEN — Support calculation proven
+- [ ] `OS-F6-005` — STATUS=NOT_PROVEN — Resistance calculation proven
+- [ ] `OS-F6-006` — STATUS=NOT_PROVEN — Reaction-zone ranking proven
+- [ ] `OS-F6-007` — STATUS=NOT_PROVEN — Structure verdict proven
+- [ ] `OS-F6-008` — STATUS=NOT_PROVEN — Continuation/rejection/chop classifications proven
+- [ ] `OS-F6-009` — STATUS=NOT_PROVEN — Liquidity/support/resistance predictive influence blocked until Find & Prove PASS
+### G1. Chain completeness
+
+- [ ] `OS-G1-001` — STATUS=NOT_PROVEN — Chain completeness: live UI chain range
+- [ ] `OS-G1-002` — STATUS=NOT_PROVEN — Chain completeness: wide-chain range
+- [ ] `OS-G1-003` — STATUS=NOT_PROVEN — Chain completeness: expiry coverage
+- [ ] `OS-G1-004` — STATUS=NOT_PROVEN — Chain completeness: strike coverage sufficient for each metric
+- [ ] `OS-G1-005` — STATUS=NOT_PROVEN — Chain completeness: missing strikes
+- [ ] `OS-G1-006` — STATUS=NOT_PROVEN — Chain completeness: stale chain handling
+- [ ] `OS-G1-007` — STATUS=NOT_PROVEN — Chain completeness: contract filtering
+- [ ] `OS-G1-008` — STATUS=NOT_PROVEN — Chain completeness: 0DTE handling
+- [ ] `OS-G1-009` — STATUS=NOT_PROVEN — Chain completeness: cross-expiry aggregation
+### G2. Greeks
+
+- [ ] `OS-G2-001` — STATUS=NOT_PROVEN — Greeks delta validity
+- [ ] `OS-G2-002` — STATUS=NOT_PROVEN — Greeks gamma validity
+- [ ] `OS-G2-003` — STATUS=NOT_PROVEN — Greeks vega validity
+- [ ] `OS-G2-004` — STATUS=NOT_PROVEN — Greeks theta validity
+- [ ] `OS-G2-005` — STATUS=NOT_PROVEN — Greeks IV validity
+- [ ] `OS-G2-006` — STATUS=NOT_PROVEN — Greeks poisoned-greek rejection
+- [ ] `OS-G2-007` — STATUS=NOT_PROVEN — Greeks fail-closed behavior
+- [ ] `OS-G2-008` — STATUS=NOT_PROVEN — Greeks sanitization consistent research/live
+- [ ] `OS-G2-009` — STATUS=NOT_PROVEN — Greeks exact vendor-vs-derived provenance
+### G3. OI
+
+- [ ] `OS-G3-001` — STATUS=NOT_PROVEN — OI freshness
+- [ ] `OS-G3-002` — STATUS=NOT_PROVEN — OI update cadence
+- [ ] `OS-G3-003` — STATUS=NOT_PROVEN — OI same-day limitations
+- [ ] `OS-G3-004` — STATUS=NOT_PROVEN — No false intraday OI migration claim
+### G4. GEX
+
+- [ ] `OS-G4-001` — STATUS=NOT_PROVEN — GEX exact formula
+- [ ] `OS-G4-002` — STATUS=NOT_PROVEN — GEX contract multiplier
+- [ ] `OS-G4-003` — STATUS=NOT_PROVEN — GEX sign convention
+- [ ] `OS-G4-004` — STATUS=NOT_PROVEN — GEX dealer-side assumption
+- [ ] `OS-G4-005` — STATUS=NOT_PROVEN — GEX expiration weighting if any
+- [ ] `OS-G4-006` — STATUS=NOT_PROVEN — GEX strike coverage
+- [ ] `OS-G4-007` — STATUS=NOT_PROVEN — GEX expiry coverage
+- [ ] `OS-G4-008` — STATUS=NOT_PROVEN — GEX live/research parity
+- [ ] `OS-G4-009` — STATUS=NOT_PROVEN — GEX replay
+- [ ] `OS-G4-010` — STATUS=NOT_PROVEN — GEX predictive validity separately proven
+### G5. DEX
+
+- [ ] `OS-G5-001` — STATUS=NOT_PROVEN — DEX exact formula
+- [ ] `OS-G5-002` — STATUS=NOT_PROVEN — DEX contract multiplier
+- [ ] `OS-G5-003` — STATUS=NOT_PROVEN — DEX sign convention
+- [ ] `OS-G5-004` — STATUS=NOT_PROVEN — DEX dealer-side assumption
+- [ ] `OS-G5-005` — STATUS=NOT_PROVEN — DEX expiration weighting if any
+- [ ] `OS-G5-006` — STATUS=NOT_PROVEN — DEX strike coverage
+- [ ] `OS-G5-007` — STATUS=NOT_PROVEN — DEX expiry coverage
+- [ ] `OS-G5-008` — STATUS=NOT_PROVEN — DEX live/research parity
+- [ ] `OS-G5-009` — STATUS=NOT_PROVEN — DEX replay
+- [ ] `OS-G5-010` — STATUS=NOT_PROVEN — DEX predictive validity separately proven
+### G6. Vanna
+
+- [ ] `OS-G6-001` — STATUS=NOT_PROVEN — Vanna exact definition
+- [ ] `OS-G6-002` — STATUS=NOT_PROVEN — Vanna IV surface dependence
+- [ ] `OS-G6-003` — STATUS=NOT_PROVEN — Vanna units
+- [ ] `OS-G6-004` — STATUS=NOT_PROVEN — Vanna strike/expiry completeness
+- [ ] `OS-G6-005` — STATUS=NOT_PROVEN — Vanna assumptions
+- [ ] `OS-G6-006` — STATUS=NOT_PROVEN — Vanna predictive admission
+### G7. Charm
+
+- [ ] `OS-G7-001` — STATUS=NOT_PROVEN — Charm exact definition
+- [ ] `OS-G7-002` — STATUS=NOT_PROVEN — Charm time-to-expiry semantics
+- [ ] `OS-G7-003` — STATUS=NOT_PROVEN — Charm trading-day/year fraction
+- [ ] `OS-G7-004` — STATUS=NOT_PROVEN — Charm sign convention
+- [ ] `OS-G7-005` — STATUS=NOT_PROVEN — Charm strike coverage
+- [ ] `OS-G7-006` — STATUS=NOT_PROVEN — Charm expiry coverage
+- [ ] `OS-G7-007` — STATUS=NOT_PROVEN — Charm predictive admission
+### G8. Gamma flip
+
+- [ ] `OS-G8-001` — STATUS=NOT_PROVEN — Gamma flip known limitation: narrow-chain live flip eliminated or clearly withheld
+- [ ] `OS-G8-002` — STATUS=NOT_PROVEN — Gamma flip full relevant strike coverage
+- [ ] `OS-G8-003` — STATUS=NOT_PROVEN — Gamma flip cumulative method proven
+- [ ] `OS-G8-004` — STATUS=NOT_PROVEN — Gamma flip wing-IV handling proven
+- [ ] `OS-G8-005` — STATUS=NOT_PROVEN — Gamma flip wide-chain live path wired
+- [ ] `OS-G8-006` — STATUS=NOT_PROVEN — Gamma flip freshness
+- [ ] `OS-G8-007` — STATUS=NOT_PROVEN — Gamma flip self-declared trust status
+- [ ] `OS-G8-008` — STATUS=NOT_PROVEN — Gamma flip external comparison where useful
+- [ ] `OS-G8-009` — STATUS=NOT_PROVEN — Gamma flip replay
+- [ ] `OS-G8-010` — STATUS=NOT_PROVEN — Gamma flip predictive validity separately proven
+### G9. Gamma pin / walls
+
+- [ ] `OS-G9-001` — STATUS=NOT_PROVEN — Gamma pin / walls definition
+- [ ] `OS-G9-002` — STATUS=NOT_PROVEN — Gamma pin / walls full-chain dependency
+- [ ] `OS-G9-003` — STATUS=NOT_PROVEN — Gamma pin / walls difference from size anomaly
+- [ ] `OS-G9-004` — STATUS=NOT_PROVEN — Gamma pin / walls one faucet
+- [ ] `OS-G9-005` — STATUS=NOT_PROVEN — Gamma pin / walls trust status
+- [ ] `OS-G9-006` — STATUS=NOT_PROVEN — Gamma pin / walls predictive validity
+### G10. Dealer regime
+
+- [ ] `OS-G10-001` — STATUS=NOT_PROVEN — Dealer regime long/short gamma semantics
+- [ ] `OS-G10-002` — STATUS=NOT_PROVEN — Dealer-position assumption clearly exposed
+- [ ] `OS-G10-003` — STATUS=NOT_PROVEN — No claim of actual dealer inventory
+- [ ] `OS-G10-004` — STATUS=NOT_PROVEN — Dealer regime confidence gating
+- [ ] `OS-G10-005` — STATUS=NOT_PROVEN — Stale/untrusted gamma forces withheld dealer regime
+- [ ] `OS-G10-006` — STATUS=NOT_PROVEN — Dealer regime predictive significance separately proven
+### O. SEMANTIC-ERA / HISTORICAL CONTAMINATION
+
+- [ ] `OS-O-001` — STATUS=NOT_PROVEN — For every material persisted or trained feature: identify semantic definition by code era
+- [ ] `OS-O-002` — STATUS=NOT_PROVEN — Identify first/last SHA using each feature definition
+- [ ] `OS-O-003` — STATUS=NOT_PROVEN — Identify DB rows produced under each definition
+- [ ] `OS-O-004` — STATUS=NOT_PROVEN — Identify normalized feature tables affected
+- [ ] `OS-O-005` — STATUS=NOT_PROVEN — Identify training datasets affected
+- [ ] `OS-O-006` — STATUS=NOT_PROVEN — Identify trained artifacts affected
+- [ ] `OS-O-007` — STATUS=NOT_PROVEN — Identify calibration artifacts affected
+- [ ] `OS-O-008` — STATUS=NOT_PROVEN — Identify research reports affected
+- [ ] `OS-O-009` — STATUS=NOT_PROVEN — Identify replay results affected
+- [ ] `OS-O-010` — STATUS=NOT_PROVEN — Identify decision records affected
+- [ ] `OS-O-011` — STATUS=NOT_PROVEN — Quarantine mixed-era data when semantics changed materially
+- [ ] `OS-O-012` — STATUS=NOT_PROVEN — Retrain/revalidate artifacts when input semantics changed
+- [ ] `OS-O-013` — STATUS=NOT_PROVEN — No same column name allowed to conceal materially different historical meaning
+### O1. Absorption era contamination
+
+- [ ] `OS-O1-001` — STATUS=NOT_PROVEN — Absorption era: complete producer-era graph
+- [ ] `OS-O1-002` — STATUS=NOT_PROVEN — Absorption era: exact DB population query
+- [ ] `OS-O1-003` — STATUS=NOT_PROVEN — Absorption era: exact NULL-rate calculation with date range/denominator
+- [ ] `OS-O1-004` — STATUS=NOT_PROVEN — Absorption era: identify model-facing definition
+- [ ] `OS-O1-005` — STATUS=NOT_PROVEN — Absorption era: identify order-flow-composite definition
+- [ ] `OS-O1-006` — STATUS=NOT_PROVEN — Absorption era: determine overlap
+- [ ] `OS-O1-007` — STATUS=NOT_PROVEN — Absorption era: determine mixed-era training
+- [ ] `OS-O1-008` — STATUS=NOT_PROVEN — Absorption era: invalidate/rebuild affected artifacts
+
+## P2 — Replay / UI / Risk / Universality
+
+### J. RISK / EXECUTION
+
+- [ ] `OS-J-001` — STATUS=NOT_PROVEN — Transaction-cost model
+- [ ] `OS-J-002` — STATUS=NOT_PROVEN — Spread model
+- [ ] `OS-J-003` — STATUS=NOT_PROVEN — Slippage model
+- [ ] `OS-J-004` — STATUS=NOT_PROVEN — Market/limit fill assumptions
+- [ ] `OS-J-005` — STATUS=NOT_PROVEN — Partial fills
+- [ ] `OS-J-006` — STATUS=NOT_PROVEN — Order latency
+- [ ] `OS-J-007` — STATUS=NOT_PROVEN — Signal latency
+- [ ] `OS-J-008` — STATUS=NOT_PROVEN — Data latency
+- [ ] `OS-J-009` — STATUS=NOT_PROVEN — Stop execution
+- [ ] `OS-J-010` — STATUS=NOT_PROVEN — Gaps through stop
+- [ ] `OS-J-011` — STATUS=NOT_PROVEN — Overnight gap risk if relevant
+- [ ] `OS-J-012` — STATUS=NOT_PROVEN — Position sizing
+- [ ] `OS-J-013` — STATUS=NOT_PROVEN — Max position risk
+- [ ] `OS-J-014` — STATUS=NOT_PROVEN — Max portfolio risk
+- [ ] `OS-J-015` — STATUS=NOT_PROVEN — Correlation risk
+- [ ] `OS-J-016` — STATUS=NOT_PROVEN — Sector concentration
+- [ ] `OS-J-017` — STATUS=NOT_PROVEN — Ticker concentration
+- [ ] `OS-J-018` — STATUS=NOT_PROVEN — Daily loss limit
+- [ ] `OS-J-019` — STATUS=NOT_PROVEN — Drawdown limit
+- [ ] `OS-J-020` — STATUS=NOT_PROVEN — Stale-data kill
+- [ ] `OS-J-021` — STATUS=NOT_PROVEN — Model-unavailable kill
+- [ ] `OS-J-022` — STATUS=NOT_PROVEN — Broker disconnect kill if applicable
+- [ ] `OS-J-023` — STATUS=NOT_PROVEN — Emergency kill switch
+- [ ] `OS-J-024` — STATUS=NOT_PROVEN — Execution reconciliation
+- [ ] `OS-J-025` — STATUS=NOT_PROVEN — Order-state reconciliation
+- [ ] `OS-J-026` — STATUS=NOT_PROVEN — No real-money approval until all material items PASS
+### K1. Architecture
+
+- [ ] `OS-K1-001` — STATUS=NOT_PROVEN — Dashboard role proven
+- [ ] `OS-K1-002` — STATUS=NOT_PROVEN — Levels role proven
+- [ ] `OS-K1-003` — STATUS=NOT_PROVEN — Order Flow role proven
+- [ ] `OS-K1-004` — STATUS=NOT_PROVEN — Options role proven
+- [ ] `OS-K1-005` — STATUS=NOT_PROVEN — Plan role proven
+- [ ] `OS-K1-006` — STATUS=NOT_PROVEN — Chart role proven
+- [ ] `OS-K1-007` — STATUS=NOT_PROVEN — Desk role proven
+- [ ] `OS-K1-008` — STATUS=NOT_PROVEN — Terrain consolidation decision proven
+- [ ] `OS-K1-009` — STATUS=NOT_PROVEN — Exposure consolidation decision proven
+- [ ] `OS-K1-010` — STATUS=NOT_PROVEN — Console content migration proven
+- [ ] `OS-K1-011` — STATUS=NOT_PROVEN — Dead hidden legacy UI removed
+- [ ] `OS-K1-012` — STATUS=NOT_PROVEN — Duplicate surfaces removed
+- [ ] `OS-K1-013` — STATUS=NOT_PROVEN — Ops/Governance/Diagnostics separated from trading workflow
+### K2. Every decision-facing visual
+
+- [ ] `OS-K2-001` — STATUS=NOT_PROVEN — Every decision-facing visual: exact backend source
+- [ ] `OS-K2-002` — STATUS=NOT_PROVEN — Every decision-facing visual: exact canonical producer
+- [ ] `OS-K2-003` — STATUS=NOT_PROVEN — Every decision-facing visual: no JS recomputation
+- [ ] `OS-K2-004` — STATUS=NOT_PROVEN — Every decision-facing visual: freshness visible
+- [ ] `OS-K2-005` — STATUS=NOT_PROVEN — Every decision-facing visual: stale state visible
+- [ ] `OS-K2-006` — STATUS=NOT_PROVEN — Every decision-facing visual: unavailable state visible
+- [ ] `OS-K2-007` — STATUS=NOT_PROVEN — Every decision-facing visual: proxy status visible
+- [ ] `OS-K2-008` — STATUS=NOT_PROVEN — Every decision-facing visual: heuristic status visible
+- [ ] `OS-K2-009` — STATUS=NOT_PROVEN — Every decision-facing visual: low-confidence status visible
+- [ ] `OS-K2-010` — STATUS=NOT_PROVEN — Every decision-facing visual: source classification where materially useful
+- [ ] `OS-K2-011` — STATUS=NOT_PROVEN — Every decision-facing visual: no misleading color
+- [ ] `OS-K2-012` — STATUS=NOT_PROVEN — Every decision-facing visual: no misleading precision
+- [ ] `OS-K2-013` — STATUS=NOT_PROVEN — Every decision-facing visual: no hidden fallback
+- [ ] `OS-K2-014` — STATUS=NOT_PROVEN — Every decision-facing visual: no static market-state data masquerading as live
+### K3. Storytelling
+
+- [ ] `OS-K3-001` — STATUS=NOT_PROVEN — Edge shown only where evidence supports edge
+- [ ] `OS-K3-002` — STATUS=NOT_PROVEN — Bias has exact definition
+- [ ] `OS-K3-003` — STATUS=NOT_PROVEN — Signal has exact definition
+- [ ] `OS-K3-004` — STATUS=NOT_PROVEN — Contradiction visible
+- [ ] `OS-K3-005` — STATUS=NOT_PROVEN — Uncertainty visible
+- [ ] `OS-K3-006` — STATUS=NOT_PROVEN — No opaque score hiding disagreement
+- [ ] `OS-K3-007` — STATUS=NOT_PROVEN — Decision reason visible
+- [ ] `OS-K3-008` — STATUS=NOT_PROVEN — Invalidation visible
+- [ ] `OS-K3-009` — STATUS=NOT_PROVEN — What changes the view grounded in canonical states
+### L. REPLAY / AUDITABILITY
+
+- [ ] `OS-L-001` — STATUS=NOT_PROVEN — Raw input retained where required
+- [ ] `OS-L-002` — STATUS=NOT_PROVEN — Canonical normalized input retained
+- [ ] `OS-L-003` — STATUS=NOT_PROVEN — Code SHA retained
+- [ ] `OS-L-004` — STATUS=NOT_PROVEN — Model-artifact SHA retained
+- [ ] `OS-L-005` — STATUS=NOT_PROVEN — Policy version retained
+- [ ] `OS-L-006` — STATUS=NOT_PROVEN — Feature schema/version retained
+- [ ] `OS-L-007` — STATUS=NOT_PROVEN — Thresholds retained
+- [ ] `OS-L-008` — STATUS=NOT_PROVEN — Calibration retained
+- [ ] `OS-L-009` — STATUS=NOT_PROVEN — Source timestamps retained
+- [ ] `OS-L-010` — STATUS=NOT_PROVEN — Receive timestamps retained
+- [ ] `OS-L-011` — STATUS=NOT_PROVEN — Event ordering retained
+- [ ] `OS-L-012` — STATUS=NOT_PROVEN — Decision inputs retained
+- [ ] `OS-L-013` — STATUS=NOT_PROVEN — Decision result retained
+- [ ] `OS-L-014` — STATUS=NOT_PROVEN — Explanation/lineage retained
+- [ ] `OS-L-015` — STATUS=NOT_PROVEN — Historical replay reproduces live computation
+- [ ] `OS-L-016` — STATUS=NOT_PROVEN — Replay does not call alternate formulas
+- [ ] `OS-L-017` — STATUS=NOT_PROVEN — Replay survives schema/version changes
+- [ ] `OS-L-018` — STATUS=NOT_PROVEN — Live/replay mismatch mechanically fails
+### Q. SOURCE → DISPLAY CARD FIDELITY
+
+- [ ] `OS-Q-001` — STATUS=NOT_PROVEN — Card fidelity: backend producer value correct and observation value correct
+- [ ] `OS-Q-002` — STATUS=NOT_PROVEN — Card fidelity: backend producer unit correct and observation unit correct
+- [ ] `OS-Q-003` — STATUS=NOT_PROVEN — Card fidelity: backend producer timestamp correct and observation timestamp correct
+- [ ] `OS-Q-004` — STATUS=NOT_PROVEN — Card fidelity: API value identical
+- [ ] `OS-Q-005` — STATUS=NOT_PROVEN — Card fidelity: frontend receives identical value
+- [ ] `OS-Q-006` — STATUS=NOT_PROVEN — Card fidelity: frontend does not transform semantics
+- [ ] `OS-Q-007` — STATUS=NOT_PROVEN — Card fidelity: frontend label correct
+- [ ] `OS-Q-008` — STATUS=NOT_PROVEN — Card fidelity: frontend unit correct
+- [ ] `OS-Q-009` — STATUS=NOT_PROVEN — Card fidelity: frontend direction/color correct
+- [ ] `OS-Q-010` — STATUS=NOT_PROVEN — Card fidelity: frontend missing-state correct
+- [ ] `OS-Q-011` — STATUS=NOT_PROVEN — Card fidelity: frontend stale-state correct
+- [ ] `OS-Q-012` — STATUS=NOT_PROVEN — Card fidelity: multi-ticker proof
+- [ ] `OS-Q-013` — STATUS=NOT_PROVEN — Card fidelity: multi-horizon proof where applicable
+- [ ] `OS-Q-014` — STATUS=NOT_PROVEN — Card fidelity: live RTH proof where applicable
+- [ ] `OS-Q-015` — STATUS=NOT_PROVEN — Overall card fidelity remains unchecked until every money-path card satisfies this
+### R. UNIVERSE / TICKER / HORIZON UNIVERSALITY
+
+- [ ] `OS-R-001` — STATUS=NOT_PROVEN — Universe proof includes a liquid large-cap ETF fixture (SPY is a test case, not implementation scope)
+- [ ] `OS-R-002` — STATUS=NOT_PROVEN — Universe proof includes a liquid Nasdaq-100 ETF fixture (QQQ is a test case, not implementation scope)
+- [ ] `OS-R-003` — STATUS=NOT_PROVEN — Universe proof includes a liquid small-cap ETF fixture (IWM is a test case, not implementation scope)
+- [ ] `OS-R-004` — STATUS=NOT_PROVEN — Universe proof includes representative high-price equity
+- [ ] `OS-R-005` — STATUS=NOT_PROVEN — Universe proof includes representative low-price equity
+- [ ] `OS-R-006` — STATUS=NOT_PROVEN — Universe proof includes representative high-volatility equity
+- [ ] `OS-R-007` — STATUS=NOT_PROVEN — Universe proof includes a punctuated-symbol fixture where the venue contract supports it (BRK.B is a test case, not implementation scope)
+- [ ] `OS-R-008` — STATUS=NOT_PROVEN — Universe proof includes index symbols where supported
+- [ ] `OS-R-009` — STATUS=NOT_PROVEN — Horizon proof includes 1m
+- [ ] `OS-R-010` — STATUS=NOT_PROVEN — Horizon proof includes 5m
+- [ ] `OS-R-011` — STATUS=NOT_PROVEN — Horizon proof includes 15m
+- [ ] `OS-R-012` — STATUS=NOT_PROVEN — Horizon proof includes 60m
+- [ ] `OS-R-013` — STATUS=NOT_PROVEN — Ticker-agnostic semantics
+- [ ] `OS-R-014` — STATUS=NOT_PROVEN — Horizon-specific semantics where intentional
+- [ ] `OS-R-015` — STATUS=NOT_PROVEN — No SPY-only proof closes universal parent claim
+
+## P3 — Operations / Security / Observability / necessary maintainability
+
+### M1. Production isolation
+
+- [ ] `OS-M1-001` — STATUS=NOT_PROVEN — Primary checkout production-only
+- [ ] `OS-M1-002` — STATUS=NOT_PROVEN — Clean origin/main for production
+- [ ] `OS-M1-003` — STATUS=NOT_PROVEN — Agent mutation of primary blocked
+- [ ] `OS-M1-004` — STATUS=NOT_PROVEN — Claude isolated worktree policy reconciled with one-canonical-worktree law
+- [ ] `OS-M1-005` — STATUS=NOT_PROVEN — Cursor isolated workspace/branch policy reconciled with one-canonical-worktree law
+- [ ] `OS-M1-006` — STATUS=NOT_PROVEN — Proof server isolated from production
+- [ ] `OS-M1-007` — STATUS=NOT_PROVEN — Proof port separate
+- [ ] `OS-M1-008` — STATUS=NOT_PROVEN — Proof DB cannot silently mutate canonical production DB
+- [ ] `OS-M1-009` — STATUS=NOT_PROVEN — Production port only serves clean approved SHA
+### M2. Known worktree-policy conflict
+
+- [ ] `OS-M2-001` — STATUS=NOT_PROVEN — Shared-root policy retired or corrected
+- [ ] `OS-M2-002` — STATUS=NOT_PROVEN — RC-129 assumptions reconciled with RC-350
+- [ ] `OS-M2-003` — STATUS=NOT_PROVEN — RC-125 live proof works against proof runtime
+- [ ] `OS-M2-004` — STATUS=NOT_PROVEN — Negative control: agent cannot mutate prod tree
+- [ ] `OS-M2-005` — STATUS=NOT_PROVEN — Negative control: dirty prod cannot launch
+- [ ] `OS-M2-006` — STATUS=NOT_PROVEN — Positive control: clean main launches
+- [ ] `OS-M2-007` — STATUS=NOT_PROVEN — Proof and production runtimes can coexist
+### M3. Stream reliability
+
+- [ ] `OS-M3-001` — STATUS=NOT_PROVEN — Automatic reconnect fully proven or implemented
+- [ ] `OS-M3-002` — STATUS=NOT_PROVEN — Disconnect detection
+- [ ] `OS-M3-003` — STATUS=NOT_PROVEN — Retry/backoff
+- [ ] `OS-M3-004` — STATUS=NOT_PROVEN — Resubscribe
+- [ ] `OS-M3-005` — STATUS=NOT_PROVEN — State invalidation during reconnect
+- [ ] `OS-M3-006` — STATUS=NOT_PROVEN — Stale UI state blocked during reconnect
+- [ ] `OS-M3-007` — STATUS=NOT_PROVEN — Recovery proof
+- [ ] `OS-M3-008` — STATUS=NOT_PROVEN — No silent REST semantic substitution
+### M4. Single-ticker L2 scope
+
+- [ ] `OS-M4-001` — STATUS=NOT_PROVEN — Active-ticker-only L2 behavior explicitly documented
+- [ ] `OS-M4-002` — STATUS=NOT_PROVEN — Desk does not imply multi-ticker L2 if unavailable
+- [ ] `OS-M4-003` — STATUS=NOT_PROVEN — Ticker-switch clearing/carry behavior proven
+- [ ] `OS-M4-004` — STATUS=NOT_PROVEN — History store identity correct across ticker switches
+### M5. Known Schwab worker leak
+
+- [ ] `OS-M5-001` — STATUS=NOT_PROVEN — Reproduce Schwab orphan process leak
+- [ ] `OS-M5-002` — STATUS=NOT_PROVEN — Schwab worker leak root cause proven
+- [ ] `OS-M5-003` — STATUS=NOT_PROVEN — Explicit client/process cleanup implemented
+- [ ] `OS-M5-004` — STATUS=NOT_PROVEN — Scheduled-job lifecycle fixed for Schwab workers
+- [ ] `OS-M5-005` — STATUS=NOT_PROVEN — Week-long/no-orphan observation if required
+- [ ] `OS-M5-006` — STATUS=NOT_PROVEN — No lingering worker CPU/memory leakage
+### M6. Resource / performance
+
+- [ ] `OS-M6-001` — STATUS=NOT_PROVEN — CPU budget
+- [ ] `OS-M6-002` — STATUS=NOT_PROVEN — Memory budget
+- [ ] `OS-M6-003` — STATUS=NOT_PROVEN — DB growth
+- [ ] `OS-M6-004` — STATUS=NOT_PROVEN — L2-history storage growth
+- [ ] `OS-M6-005` — STATUS=NOT_PROVEN — UI latency
+- [ ] `OS-M6-006` — STATUS=NOT_PROVEN — API latency
+- [ ] `OS-M6-007` — STATUS=NOT_PROVEN — Stream-to-state latency
+- [ ] `OS-M6-008` — STATUS=NOT_PROVEN — State-to-UI latency
+- [ ] `OS-M6-009` — STATUS=NOT_PROVEN — High-load behavior
+- [ ] `OS-M6-010` — STATUS=NOT_PROVEN — Backpressure
+- [ ] `OS-M6-011` — STATUS=NOT_PROVEN — Resource exhaustion behavior
+### M7. Backup / restore / crash
+
+- [ ] `OS-M7-001` — STATUS=NOT_PROVEN — Canonical DB backup
+- [ ] `OS-M7-002` — STATUS=NOT_PROVEN — Restore tested
+- [ ] `OS-M7-003` — STATUS=NOT_PROVEN — Schema migration rollback
+- [ ] `OS-M7-004` — STATUS=NOT_PROVEN — Crash recovery
+- [ ] `OS-M7-005` — STATUS=NOT_PROVEN — Abrupt stream loss
+- [ ] `OS-M7-006` — STATUS=NOT_PROVEN — Abrupt process termination
+- [ ] `OS-M7-007` — STATUS=NOT_PROVEN — Corrupted cache/history handling
+- [ ] `OS-M7-008` — STATUS=NOT_PROVEN — Backup identity/provenance
+### M8. Scheduled jobs
+
+- [ ] `OS-M8-001` — STATUS=NOT_PROVEN — Scheduled jobs inventory complete
+- [ ] `OS-M8-002` — STATUS=NOT_PROVEN — Scheduled jobs schedule correct
+- [ ] `OS-M8-003` — STATUS=NOT_PROVEN — Scheduled jobs commands correct
+- [ ] `OS-M8-004` — STATUS=NOT_PROVEN — Scheduled jobs environment correct
+- [ ] `OS-M8-005` — STATUS=NOT_PROVEN — Scheduled jobs logs
+- [ ] `OS-M8-006` — STATUS=NOT_PROVEN — Scheduled jobs exit codes
+- [ ] `OS-M8-007` — STATUS=NOT_PROVEN — Stale/failed task visibility
+- [ ] `OS-M8-008` — STATUS=NOT_PROVEN — No hidden host-only jobs outside repo inventory
+### N1. Existing debt
+
+- [ ] `OS-N1-001` — STATUS=NOT_PROVEN — Function-complexity findings classified
+- [ ] `OS-N1-002` — STATUS=NOT_PROVEN — Function-length findings classified
+- [ ] `OS-N1-003` — STATUS=NOT_PROVEN — File-length findings classified
+- [ ] `OS-N1-004` — STATUS=NOT_PROVEN — Ruff-quality findings classified
+- [ ] `OS-N1-005` — STATUS=NOT_PROVEN — Fake-default findings classified
+- [ ] `OS-N1-006` — STATUS=NOT_PROVEN — Type-safety gaps classified
+### N2. Promote debt to correctness defect where it
+
+- [ ] `OS-N2-001` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it obscures semantic authority
+- [ ] `OS-N2-002` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it prevents exhaustive testing
+- [ ] `OS-N2-003` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it permits hidden fallback
+- [ ] `OS-N2-004` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it permits duplicate computation
+- [ ] `OS-N2-005` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it couples unrelated money paths
+- [ ] `OS-N2-006` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it prevents review
+- [ ] `OS-N2-007` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it prevents replay
+- [ ] `OS-N2-008` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it prevents runtime isolation
+- [ ] `OS-N2-009` — STATUS=NOT_PROVEN — Promote debt to correctness defect where it prevents deterministic behavior
+### N3. server.py
+
+- [ ] `OS-N3-001` — STATUS=NOT_PROVEN — Determine which server.py size/complexity is merely maintainability debt
+- [ ] `OS-N3-002` — STATUS=NOT_PROVEN — Determine which server.py areas prevent money-path proof
+- [ ] `OS-N3-003` — STATUS=NOT_PROVEN — Refactor server.py only where required for correctness/provability
+- [ ] `OS-N3-004` — STATUS=NOT_PROVEN — No functional semantic changes hidden inside server.py cleanup
+### P. DATA QUALITY / DATABASE TRUTH
+
+- [ ] `OS-P-001` — STATUS=NOT_PROVEN — Schema inventory
+- [ ] `OS-P-002` — STATUS=NOT_PROVEN — Writer inventory
+- [ ] `OS-P-003` — STATUS=NOT_PROVEN — Reader inventory
+- [ ] `OS-P-004` — STATUS=NOT_PROVEN — Duplicated semantic columns
+- [ ] `OS-P-005` — STATUS=NOT_PROVEN — Stale columns
+- [ ] `OS-P-006` — STATUS=NOT_PROVEN — Orphan columns
+- [ ] `OS-P-007` — STATUS=NOT_PROVEN — Silent default values
+- [ ] `OS-P-008` — STATUS=NOT_PROVEN — Sentinel values
+- [ ] `OS-P-009` — STATUS=NOT_PROVEN — NULL semantics
+- [ ] `OS-P-010` — STATUS=NOT_PROVEN — Timestamps (DB truth)
+- [ ] `OS-P-011` — STATUS=NOT_PROVEN — Ticker identity (DB)
+- [ ] `OS-P-012` — STATUS=NOT_PROVEN — Option contract identity (DB)
+- [ ] `OS-P-013` — STATUS=NOT_PROVEN — Timeframe identity (DB)
+- [ ] `OS-P-014` — STATUS=NOT_PROVEN — Duplicate primary semantic keys
+- [ ] `OS-P-015` — STATUS=NOT_PROVEN — Missing rows
+- [ ] `OS-P-016` — STATUS=NOT_PROVEN — Repair provenance (DB)
+- [ ] `OS-P-017` — STATUS=NOT_PROVEN — Synthetic-row provenance (DB)
+- [ ] `OS-P-018` — STATUS=NOT_PROVEN — Corporate actions (DB)
+- [ ] `OS-P-019` — STATUS=NOT_PROVEN — Retention (DB)
+- [ ] `OS-P-020` — STATUS=NOT_PROVEN — DB bloat sources
+- [ ] `OS-P-021` — STATUS=NOT_PROVEN — Indexes
+- [ ] `OS-P-022` — STATUS=NOT_PROVEN — Integrity checks
+- [ ] `OS-P-023` — STATUS=NOT_PROVEN — Reproducible snapshot extraction
+- [ ] `OS-P-024` — STATUS=NOT_PROVEN — Write/read parity
+- [ ] `OS-P-025` — STATUS=NOT_PROVEN — No SQL-side semantic recomputation violating ONE FAUCET
+### S. FAILURE MODES / FAIL-CLOSED BEHAVIOR
+
+- [ ] `OS-S-001` — STATUS=NOT_PROVEN — Fail-closed: missing quote
+- [ ] `OS-S-002` — STATUS=NOT_PROVEN — Fail-closed: missing book
+- [ ] `OS-S-003` — STATUS=NOT_PROVEN — Fail-closed: one-sided book
+- [ ] `OS-S-004` — STATUS=NOT_PROVEN — Fail-closed: crossed book
+- [ ] `OS-S-005` — STATUS=NOT_PROVEN — Fail-closed: stale book
+- [ ] `OS-S-006` — STATUS=NOT_PROVEN — Fail-closed: stale quote
+- [ ] `OS-S-007` — STATUS=NOT_PROVEN — Fail-closed: stream disconnect
+- [ ] `OS-S-008` — STATUS=NOT_PROVEN — Fail-closed: REST failure
+- [ ] `OS-S-009` — STATUS=NOT_PROVEN — Fail-closed: option chain failure
+- [ ] `OS-S-010` — STATUS=NOT_PROVEN — Fail-closed: partial option chain
+- [ ] `OS-S-011` — STATUS=NOT_PROVEN — Fail-closed: invalid Greek
+- [ ] `OS-S-012` — STATUS=NOT_PROVEN — Fail-closed: zero/negative price
+- [ ] `OS-S-013` — STATUS=NOT_PROVEN — Fail-closed: zero/negative size
+- [ ] `OS-S-014` — STATUS=NOT_PROVEN — Fail-closed: NaN
+- [ ] `OS-S-015` — STATUS=NOT_PROVEN — Fail-closed: infinity
+- [ ] `OS-S-016` — STATUS=NOT_PROVEN — Fail-closed: missing model artifact
+- [ ] `OS-S-017` — STATUS=NOT_PROVEN — Fail-closed: stale model artifact
+- [ ] `OS-S-018` — STATUS=NOT_PROVEN — Fail-closed: semantic-version mismatch
+- [ ] `OS-S-019` — STATUS=NOT_PROVEN — Fail-closed: missing calibration
+- [ ] `OS-S-020` — STATUS=NOT_PROVEN — Fail-closed: DB lock/failure
+- [ ] `OS-S-021` — STATUS=NOT_PROVEN — Fail-closed: API exception
+- [ ] `OS-S-022` — STATUS=NOT_PROVEN — Fail-closed: frontend fetch failure
+- [ ] `OS-S-023` — STATUS=NOT_PROVEN — Fail-closed: process restart
+- [ ] `OS-S-024` — STATUS=NOT_PROVEN — Fail-closed: overnight→RTH transition
+- [ ] `OS-S-025` — STATUS=NOT_PROVEN — Fail-closed: RTH→after-hours transition
+- [ ] `OS-S-026` — STATUS=NOT_PROVEN — Fail-closed: ticker change
+- [ ] `OS-S-027` — STATUS=NOT_PROVEN — Fail-closed: clock/daylight-saving transition
+- [ ] `OS-S-028` — STATUS=NOT_PROVEN — Fail-closed: holiday/half-day
+- [ ] `OS-S-029` — STATUS=NOT_PROVEN — Every failure defaults to truthful abstention rather than fabricated normality
+### T. SECURITY / SECRETS / AUTHORIZATION
+
+- [ ] `OS-T-001` — STATUS=NOT_PROVEN — Schwab credentials storage
+- [ ] `OS-T-002` — STATUS=NOT_PROVEN — Tokens
+- [ ] `OS-T-003` — STATUS=NOT_PROVEN — Refresh-token handling
+- [ ] `OS-T-004` — STATUS=NOT_PROVEN — Log redaction
+- [ ] `OS-T-005` — STATUS=NOT_PROVEN — Environment secrets
+- [ ] `OS-T-006` — STATUS=NOT_PROVEN — No secrets in repo
+- [ ] `OS-T-007` — STATUS=NOT_PROVEN — Local file permissions where relevant
+- [ ] `OS-T-008` — STATUS=NOT_PROVEN — Debug endpoints
+- [ ] `OS-T-009` — STATUS=NOT_PROVEN — Destructive DB operations
+- [ ] `OS-T-010` — STATUS=NOT_PROVEN — Authorization for resets/cleanups
+- [ ] `OS-T-011` — STATUS=NOT_PROVEN — Production/proof environment separation (security)
+- [ ] `OS-T-012` — STATUS=NOT_PROVEN — External-facing endpoints reviewed
+### U. OBSERVABILITY
+
+- [ ] `OS-U-001` — STATUS=NOT_PROVEN — Feed health visible
+- [ ] `OS-U-002` — STATUS=NOT_PROVEN — Source authority visible
+- [ ] `OS-U-003` — STATUS=NOT_PROVEN — Freshness visible (observability)
+- [ ] `OS-U-004` — STATUS=NOT_PROVEN — Event lag visible
+- [ ] `OS-U-005` — STATUS=NOT_PROVEN — Dropped messages visible where detectable
+- [ ] `OS-U-006` — STATUS=NOT_PROVEN — Reconnect count visible
+- [ ] `OS-U-007` — STATUS=NOT_PROVEN — Calculation failures visible
+- [ ] `OS-U-008` — STATUS=NOT_PROVEN — Fail-closed reasons visible
+- [ ] `OS-U-009` — STATUS=NOT_PROVEN — Decision vetoes visible
+- [ ] `OS-U-010` — STATUS=NOT_PROVEN — Model artifact identity visible
+- [ ] `OS-U-011` — STATUS=NOT_PROVEN — DB write failures visible
+- [ ] `OS-U-012` — STATUS=NOT_PROVEN — Scheduled-job failures visible
+- [ ] `OS-U-013` — STATUS=NOT_PROVEN — Process leaks visible
+- [ ] `OS-U-014` — STATUS=NOT_PROVEN — Memory/CPU/storage visible
+- [ ] `OS-U-015` — STATUS=NOT_PROVEN — UI fetch failures visible
+- [ ] `OS-U-016` — STATUS=NOT_PROVEN — Operator sees data-quality state before trusting a value
+
+## P4 — Product enhancement / research expansion
+
+
+## OTHER_DEBT — unique leftovers not exact-duplicates of the operator source
+
+Preserved because they are not exact semantic equivalents of an operator-source
+atom. Different proof scope keeps both. Not a substitute for the operator source.
+PA-1..PA-47 is not the mission board.
+
+- [ ] `OD-0001` — STATUS=NOT_PROVEN — **OF_COMPOSITE_RETIRED** — retired Order Flow composite/verdict producer family (RC-454; `tests/test_stack_wire_5_v1.py`). Parent Order Flow remains NOT_PROVEN.
+- [ ] `OD-0002` — STATUS=NOT_PROVEN — **OF_ENGINE_ABSORPTION_RETIRED** — engine `_compute_absorption` ratio retired (RC-456; `tests/test_book_tape_batch_geometry_v1.py`).
+- [ ] `OD-0003` — STATUS=NOT_PROVEN — **P2_ABSORPTION_WITHHELD** — historical P2 absorption withheld from training / quarantined (RC-455). P2 parent remains NOT_PROVEN.
+- [ ] `OD-0004` — STATUS=NOT_PROVEN — **IDENTITY_SPLIT_REMOVED** — permanent Claude-writer / Cursor-auditor identity restriction removed (RC-452/RC-457; `tests/test_active_writer_law_v1.py`).
+- [x] `OD-0005` — STATUS=PASS — **OF_TAPE_L1_RESTATEMENT_SUPPRESSED** — adjacent identical L1 triples suppressed; distinct same-ms triples kept; receive_seq is not a native event id. Parent Order Flow remains NOT_PROVEN. Evidence: `tests/test_l1_trade_observation_v1.py`.
+- [ ] `OD-0006` — STATUS=NOT_PROVEN — **OF_MEDIAN_X3_RETIRED** — median times 3 displayed-depth anomaly candidates retired (RC-467). Parent Order Flow remains NOT_PROVEN.
+- [ ] `OD-0007` — STATUS=NOT_PROVEN — **GAMMA_FLIP_DISPLAY_GATED** — flip number withheld unless TRUSTED (RC-462). UI truth parent remains NOT_PROVEN.
+- [ ] `OD-0008` — STATUS=NOT_PROVEN — **GAMMA_WALLS_DISPLAY_GATED** — walls/pin/max-pain/net-peak withheld unless TRUSTED (RC-465). UI truth parent remains NOT_PROVEN.
+- [ ] `OD-0009` — STATUS=NOT_PROVEN — **OF_PARENT / P2_PARENT / LP-01 / UI truth / predictive validity / real-money readiness** — NOT_PROVEN. Not closed by the children above.
+- [ ] `OD-0010` — STATUS=NOT_PROVEN — One canonical production DB authority
+- [ ] `OD-0011` — STATUS=NOT_PROVEN — Sandbox DB mechanically non-production
+- [ ] `OD-0012` — STATUS=NOT_PROVEN — All runtime DB paths explicit
+- [ ] `OD-0013` — STATUS=NOT_PROVEN — All training DB paths explicit
+- [ ] `OD-0014` — STATUS=NOT_PROVEN — All replay DB paths explicit
+- [ ] `OD-0015` — STATUS=NOT_PROVEN — All backfill DB paths explicit
+- [ ] `OD-0016` — STATUS=NOT_PROVEN — DB identity travels into artifact lineage
+- [ ] `OD-0017` — STATUS=NOT_PROVEN — No silent default DB
+- [ ] `OD-0018` — STATUS=NOT_PROVEN — No competing production truth
+- [ ] `OD-0019` — STATUS=NOT_PROVEN — Timestamp units canonical
+- [ ] `OD-0020` — STATUS=NOT_PROVEN — UTC/ET conversion canonical
+- [ ] `OD-0021` — STATUS=NOT_PROVEN — RTH classification canonical
+- [ ] `OD-0022` — STATUS=NOT_PROVEN — Holiday calendar correct
+- [ ] `OD-0023` — STATUS=NOT_PROVEN — Early-close calendar correct
+- [ ] `OD-0024` — STATUS=NOT_PROVEN — DST handling correct
+- [ ] `OD-0025` — STATUS=NOT_PROVEN — Bar durations correct
+- [ ] `OD-0026` — STATUS=NOT_PROVEN — No overlapping bars
+- [ ] `OD-0027` — STATUS=NOT_PROVEN — No duplicate bars
+- [ ] `OD-0028` — STATUS=NOT_PROVEN — No out-of-order bars
+- [ ] `OD-0029` — STATUS=NOT_PROVEN — Gap detection
+- [ ] `OD-0030` — STATUS=NOT_PROVEN — Staleness detection
+- [ ] `OD-0031` — STATUS=NOT_PROVEN — Repair provenance
+- [ ] `OD-0032` — STATUS=NOT_PROVEN — Live vs repaired/backfilled distinction
+- [ ] `OD-0033` — STATUS=NOT_PROVEN — Corporate-action handling
+- [ ] `OD-0034` — STATUS=NOT_PROVEN — Splits
+- [ ] `OD-0035` — STATUS=NOT_PROVEN — Dividends where relevant
+- [ ] `OD-0036` — STATUS=NOT_PROVEN — Symbol changes
+- [ ] `OD-0037` — STATUS=NOT_PROVEN — Delistings where relevant
+- [ ] `OD-0038` — STATUS=NOT_PROVEN — Underlying/index identity
+- [ ] `OD-0039` — STATUS=NOT_PROVEN — SPX and `$SPX` same-instrument identity
+- [ ] `OD-0040` — STATUS=NOT_PROVEN — Options chain timestamp fidelity
+- [ ] `OD-0041` — STATUS=NOT_PROVEN — NBBO fidelity
+- [ ] `OD-0042` — STATUS=NOT_PROVEN — Bid/ask sizes
+- [ ] `OD-0043` — STATUS=NOT_PROVEN — Last trade timing
+- [ ] `OD-0044` — STATUS=NOT_PROVEN — L2 where used
+- [ ] `OD-0045` — STATUS=NOT_PROVEN — Greeks provenance
+- [ ] `OD-0046` — STATUS=NOT_PROVEN — OI provenance
+- [ ] `OD-0047` — STATUS=NOT_PROVEN — Volume provenance
+- [ ] `OD-0048` — STATUS=NOT_PROVEN — DTE/expiry provenance
+- [ ] `OD-0049` — STATUS=NOT_PROVEN — No revised/future-known vendor data masquerading as historical observation
+- [ ] `OD-0050` — STATUS=NOT_PROVEN — **DATA_TRUTH_STATUS = PASS**
+- [ ] `OD-0051` — STATUS=NOT_PROVEN — Every decision has exact `AS_OF`
+- [ ] `OD-0052` — STATUS=NOT_PROVEN — Every feature has source timestamp
+- [ ] `OD-0053` — STATUS=NOT_PROVEN — Every feature available by decision `AS_OF`
+- [ ] `OD-0054` — STATUS=NOT_PROVEN — No lookahead from future bars
+- [ ] `OD-0055` — STATUS=NOT_PROVEN — No future label leakage
+- [ ] `OD-0056` — STATUS=NOT_PROVEN — No corrected-future-data leakage
+- [ ] `OD-0057` — STATUS=NOT_PROVEN — Options OI timing honest
+- [ ] `OD-0058` — STATUS=NOT_PROVEN — Options Greeks timing honest
+- [ ] `OD-0059` — STATUS=NOT_PROVEN — Corporate-action knowledge point-in-time honest
+- [ ] `OD-0060` — STATUS=NOT_PROVEN — Reference data point-in-time honest
+- [ ] `OD-0061` — STATUS=NOT_PROVEN — Replay uses only information available then
+- [ ] `OD-0062` — STATUS=NOT_PROVEN — Backtest uses point-in-time data
+- [ ] `OD-0063` — STATUS=NOT_PROVEN — Training joins are causal
+- [ ] `OD-0064` — STATUS=NOT_PROVEN — As-of joins are causal
+- [ ] `OD-0065` — STATUS=NOT_PROVEN — Session boundaries causal
+- [ ] `OD-0066` — STATUS=NOT_PROVEN — Historical repair timestamps distinguish observation vs later correction
+- [ ] `OD-0067` — STATUS=NOT_PROVEN — **POINT_IN_TIME_STATUS = PASS**
+- [ ] `OD-0068` — STATUS=NOT_PROVEN — Material semantic versions explicit where meaning changed
+- [ ] `OD-0069` — STATUS=NOT_PROVEN — Preprocessing version tied to artifacts
+- [ ] `OD-0070` — STATUS=NOT_PROVEN — Dataset semantic generation identifiable
+- [ ] `OD-0071` — STATUS=NOT_PROVEN — Persisted historical values interpretable
+- [ ] `OD-0072` — STATUS=NOT_PROVEN — Backfill semantic changes versioned
+- [ ] `OD-0073` — STATUS=NOT_PROVEN — Mixed generations detectable
+- [ ] `OD-0074` — STATUS=NOT_PROVEN — Consumers reject incompatible generation
+- [ ] `OD-0075` — STATUS=NOT_PROVEN — No version bump ahead of artifacts
+- [ ] `OD-0076` — STATUS=NOT_PROVEN — No artifacts ahead of runtime code
+- [ ] `OD-0077` — STATUS=NOT_PROVEN — Migration preserves provenance
+- [ ] `OD-0078` — STATUS=NOT_PROVEN — Rollback supported
+- [ ] `OD-0079` — STATUS=NOT_PROVEN — **SEMANTIC_VERSION_STATUS = PASS**
+- [ ] `OD-0080` — STATUS=NOT_PROVEN — Exact source DB
+- [ ] `OD-0081` — STATUS=NOT_PROVEN — Exact ticker universe
+- [ ] `OD-0082` — STATUS=NOT_PROVEN — Exact date range
+- [ ] `OD-0083` — STATUS=NOT_PROVEN — Exact row count
+- [ ] `OD-0084` — STATUS=NOT_PROVEN — Exact query/filter
+- [ ] `OD-0085` — STATUS=NOT_PROVEN — Exact RTH/session contract
+- [ ] `OD-0086` — STATUS=NOT_PROVEN — Exact labels
+- [ ] `OD-0087` — STATUS=NOT_PROVEN — Exact feature schema
+- [ ] `OD-0088` — STATUS=NOT_PROVEN — Exact preprocessing version
+- [ ] `OD-0089` — STATUS=NOT_PROVEN — Exact content hash
+- [ ] `OD-0090` — STATUS=NOT_PROVEN — Exact exclusion rules
+- [ ] `OD-0091` — STATUS=NOT_PROVEN — Exact corporate-action version
+- [ ] `OD-0092` — STATUS=NOT_PROVEN — Exact missingness treatment
+- [ ] `OD-0093` — STATUS=NOT_PROVEN — Exact train/validation/test splits
+- [ ] `OD-0094` — STATUS=NOT_PROVEN — Exact folds
+- [ ] `OD-0095` — STATUS=NOT_PROVEN — Exact embargo
+- [ ] `OD-0096` — STATUS=NOT_PROVEN — Exact random seeds
+- [ ] `OD-0097` — STATUS=NOT_PROVEN — Reproducible dataset
+- [ ] `OD-0098` — STATUS=NOT_PROVEN — Artifact contains/links lineage
+- [ ] `OD-0099` — STATUS=NOT_PROVEN — **DATASET_LINEAGE_STATUS = PASS**
+- [ ] `OD-0100` — STATUS=NOT_PROVEN — **LP-01 Institutional session liquidity / value levels** — P0.1 living residual on the sole P0.1→P4 spine (not an independent Operator NOW / TOP OF QUEUE). Not SMC “liquidity pools.” VP/overnight/label steps are current-repo producers; Chart `#rawlevels` and Console v2 `#dr-lvl-*` now bind POC/VAH/VAL + PDH/PDL + overnight + ORB + VWAP from the one `/api/state` snapshot (RC-479). Residual: Liquidity Map still lives in hidden `#main`; touch→forward-return proof vs TOD base rate before any Decide influence. Code: `liquidity_value_engine.py`, `liquidity_models.py`, `/api/liquidity-snapshot`. Related residual: UI-04 P1D overnight calendar-blind claim is engine-closed (RC-153); do not treat this row as parent PASS.
+- [ ] `OD-0101` — STATUS=NOT_PROVEN — **RECON-01 Operator-doc reconciliation** — `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closed @ `5c5f239` (PR #45).
+- [ ] `OD-0102` — STATUS=NOT_PROVEN — **RECON-02 Disk-cleanup purge** — ~53.3 GB quarantined (moved, not deleted) 2026-07-15/16. Purge only after one clean trading session AND the operator gives the purge word. Separately: `_backup_pre_exec_identity_v1_20260713.db` (19.29 GB) holds until ~5 clean trading days after the slimming merge. **UPDATE 2026-07-26: the slimming merge landed — RC-6 blob-dedup slimmed the live DB 29.74 → 22.06 GB (verified on a copy, swapped live; original preserved as `data/ed_console.pre_rc6_20260726.db`). The 5-clean-day clock for the pre_exec backup now RUNS from 2026-07-26.** Full purge candidate set + gates: `reports/fp_db_deletion_gating_latest.json`.
+- [ ] `OD-0103` — STATUS=NOT_PROVEN — **OPS-OPERABLE-SURFACE-JOB** — ALSO covers (2026-07-20, operator-approved): daily terrain scorecard at 15:30 CT — `python tools/terrain_backtest_report_v1.py` → `reports/terrain_backtest_latest.md`; host task to be registered by the operator with this row as its visible record (`schtasks /Create /SC DAILY /TN EdTerrainScorecard /TR "cmd /c cd /d C:\Users\evarg\Documents\Trading\EdWebConsole && python tools\terrain_backtest_report_v1.py" /ST 15:30`). Recurring Collect job not yet registered on the host: `python -m tools.run_operable_surface_ops --db data/ed_console.db` (production backfill tol=29 + gate). Optional end-of-day: `--refresh-outcomes --repair59 --quarantine`. Durable gate: `python -m tools.operable_surface_gate --db data/ed_console.db --write-report`. Do not create a silent Windows task without an operator-visible inventory row (see FIND-SCHEDULED-JOBS-VISIBILITY). credential-leak-ok
+- [ ] `OD-0104` — STATUS=NOT_PROVEN — **OPS-GEX-MORNING-FULL-MONDAY-GATE** — CLOSED 2026-08-01. The row's ask was "confirm live collector is up on code that includes `option_chain_morning_full` before counting forward GEX days." Confirmed by query: the table carries fresh daily captures — 2026-07-27 through 2026-07-31 at 37–38 tickers/day (`select et_date,count(*) from option_chain_morning_full group by et_date order by et_date desc limit 5`). The collector is demonstrably up and writing on current code (wide-capture writer landed pre-`6c47b89b`; RC-162 @ `202237c7` reads the same pipeline). The forward-counting question the gate protected is itself moot: GEX-R1's day-level bet was KILLED on certified greeks (§8.6), so no forward GEX days are being counted.
+- [ ] `OD-0105` — STATUS=NOT_PROVEN — **PHASE-4 decision-path gate** — Decision-path admission is fail-closed: `governance/decision_path_admissions.json` must remain empty of ADMITTED influence, and any unadmitted influence on TRADE / exposure-authorizing output must yield WAIT (`decision_gate.py` + `call_engine.compute_call` + `tests/test_decision_gate.py`). Historical note (not current proof): empty-registry merge `e009aa2` (PR #46). Current emptiness + fail-closed WAIT must be re-proven on the live path before PASS. Board-reconciled 2026-08-16 from frozen f31-pdc-note-556d board is evidence of history only.
+- [ ] `OD-0106` — STATUS=NOT_PROVEN — **PHASE-5 Restructure** — deliberate directory reorganization for a legible repo. After Phase 4; no functional changes mixed in.
+- [ ] `OD-0107` — STATUS=NOT_PROVEN — **FIND-SCHWAB-WORKER-LEAK** — `schwab-py` (via `multiprocess`) leaks spawn workers: 15 orphaned Python processes accumulated from scheduled runs before the 2026-07-16 kill; RE-OBSERVED 2026-07-20 — 13 live `multiprocess.spawn` zombies from Jul 17–18 (~39 CPU-s each, PIDs in Cursor's audit); kill after confirming no parent trainer, then the root fix below. Root cause: Schwab client processes not shut down cleanly at end of scheduled jobs. Fix direction: explicit client close/terminate in the scheduled entry points (scoreboard/backfill runners), then observe zero orphans across a week of scheduled runs.
+- [ ] `OD-0108` — STATUS=NOT_PROVEN — **FIND-SCHEDULED-JOBS-VISIBILITY** — CLOSED 2026-07-27. The demanded inventory exists: `governance/host_scheduled_jobs.md` — all three Ed tasks (TerrainScorecard, Stream Capture, Daily Scoreboard) with schedule, command, log path, and same-day Last Result = 0 measured live via Get-ScheduledTask/Info. The file carries the standing rule: any task create/rewire/remove updates the inventory in the same change. Motivating incident recorded there: EdTerrainScorecard was scheduled-but-inert for weeks (RC-97) precisely because its definition lived outside version control and outside any inventory.
+- [ ] `OD-0109` — STATUS=NOT_PROVEN — **GAMMA-INTRADAY-CADENCE-V1** (product-stage, NOT for the morning-regime screen) — gamma levels (flip/pin/walls/net_gamma) change intraday as spot moves, 0DTE decays, and OI shifts. The once-daily `option_chain_morning_full` capture is correct for the GEX-R1 morning-regime hypothesis (set stance at open), but a live intraday gamma product needs the WIDE chain refreshed periodically (e.g. every 5–15 min) on a separate low-priority track, decoupled from the per-cycle 20-strike UI fetch. Note: the app ALREADY computes per-snapshot narrow-chain levels every cycle — so intraday levels exist but are narrow/untrustworthy until FIND-GAMMA-FULLCHAIN-STRIKES + sanitization + flip-method land. Sequence AFTER FP-64 proves the morning hypothesis pays; do not scope into tonight.
+- [ ] `OD-0110` — STATUS=NOT_PROVEN — **FIND-LIVE-FLIP-WIDE-CHAIN-V1** — STALE write-only claim corrected 2026-08-22: `prefer_wider_level_chain` (RC-475) reads same-session `morning_full` when the live book is too narrow. Residual: TRUSTED+interior is containment, not full-universe coverage; live fetch remains latency-capped. So the Gamma Flip (and walls/pin) shown ON THE UI stay narrow-limited even after the wide morning capture works. To make the DISPLAYED flip correct, a wide chain must feed the live level compute (periodic wide fetch → live exposures), overlapping GAMMA-INTRADAY-CADENCE-V1. Until then: research/backtest flip can be correct (from the wide table) while the UI flip is not. **ALSO IN SCOPE (2026-07-26, RC-43 reopened): WING-IV TREATMENT.** MEASURED (`python tools/flip_iv_sensitivity_v1.py`, 173 wide chains): the flip's IV sensitivity is almost entirely in the wings — flattening only |moneyness|>3% moves the flip a median **0.3627% of spot** (max 3.80) vs **0.0144%** for near-ATM-only (93.6% within 0.1%). Raw vendor IV is least reliable exactly there, so a wide-chain flip inherits wing-IV noise. Sequenced, NOT a now-task: first validate against an EXTERNAL flip (operator has Barchart access) on a date with a morning wide capture; if a smoothed-wing flip lands closer to Barchart than raw per-strike, wing smoothing is a proven accuracy fix and ships with the wide-chain live compute. Bounding caveat: the measured figures come from aggressive FLATTENINGS, which over-state a real smoothed-surface difference.
+- [ ] `OD-0111` — STATUS=NOT_PROVEN — **CHECK: levels self-declare trust** (a check registered under the ONE Institutional Correctness gate — NOT its own lock). The finite correctness contract every level must meet: (1) sanitized greeks [DONE], (2) single source of truth = one `compute_exposures_by_strike` [TRUE, verified server.py:6083 — all of flip/pin/walls/HVL/max_pain/net_gex/voids derive from it; EM is a separate IV band by design], (3) canonical methods [flip cumulative DONE], (4) full strike coverage to negligible OI/gamma [research Fix 3; live pending FIND-LIVE-FLIP-WIDE-CHAIN], (5) near-term expiries [≤37d], (6) chain fresh. Mechanical lock: each level self-declares `TRUSTED` only if 1–6 hold, else `LOW_CONFIDENCE_NARROW_CHAIN` / `STALE` / `UNSANITIZED`, surfaced in the Key Levels UI (dim/badge) and gated by ONE test asserting the flag derives from input quality. Flip self-declares LOW_CONFIDENCE until FIND-LIVE-FLIP-WIDE-CHAIN lands. This benchmark IS the anti-churn: a bounded checklist, not open-ended.
+- [ ] `OD-0112` — STATUS=NOT_PROVEN — **FIND-GAMMA-FULLCHAIN-STRIKES-V1** — STALE reuse-UI-chain claim corrected. Morning capture does its own wide `safe_get_chain` (`GEX_FULL_CHAIN_STRIKE_COUNT`) plus `_persist_universal_capture` for the enrolled universe. Evidence: `server.py` `_gex` block and `_persist_universal_capture`. Residual coverage of the live UI book stays on FIND-LIVE-FLIP-WIDE-CHAIN-V1.
+- [ ] `OD-0113` — STATUS=NOT_PROVEN — **FIND-GREEK-SANITIZATION-V1** — LANDED. `gamma_is_plausible` in `math_exposure_core.py` is the live sanitizer. Close on current-repo producer, not a historical SHA claim. — audit 2026-07-17 (`reports/gex_gamma_flip_audit.md` Finding 0): raw Schwab per-contract gamma is occasionally poisoned on **0DTE deep-ITM** contracts (|delta|≈1, true gamma≈0) where Schwab's near-expiry engine returns garbage (e.g. SPY 748P gamma **−91965**, OI 21605). Rare (SPY 0.11%, QQQ/IWM ~0.02%) but OI-weighted it obliterates net_gamma/GEX/flip for the whole snapshot. Aggregation pipeline itself is faithful (pin/walls reconstructed 25/25). Fix: sanitize greeks before aggregation — hard-reject `gamma<0`, cap/drop `gamma>~0.5–1.0`, optionally `|delta|≥0.98 ⇒ gamma≈0`; apply in live level compute AND research GEX build; unit test with the −91965 fixture. Cursor implements, Claude verifies. Do FIRST (blocks trustworthy FIND-GAMMA-FLIP-METHOD-V1 and FP-64).
+- [ ] `OD-0114` — STATUS=NOT_PROVEN — **FIND-GAMMA-FLIP-METHOD-V1** — CLOSED 2026-07-19. The audited method was not just mis-ordered, it was wrong: cumulative-sum of net GEX does not reproduce the gamma profile (measured on a real SPY reference chain: corr 0.086, cumsum never crosses zero, divergence 2.19e9). Replaced by the canonical construction — total dealer gamma **recomputed at every hypothetical spot** (`math_levels.py::compute_gamma_profile`), zero-crossing interpolated (`gamma_flip_from_profile`), served through `compute_gamma_flip_v2` which returns a **confidence flag** so a narrow chain can never be displayed as trustworthy. Live path rewired (`server.py`); old `compute_gamma_flip` and `tests/test_gamma_flip_method_v1.py` deleted (zero production callers). Wide-chain agreement with Barchart remains UNPROVEN — tracked in `governance/unproven_register.md`, due 2026-07-21.
+- [ ] `OD-0115` — STATUS=NOT_PROVEN — **FIND-SNAPSHOT-BAR-STAMP-V1** (RC-472 corrects RC-470) — `snapshots.ts_utc` is the observation/computation instant. `bar_start_ts_utc` is the containing 1m bar identity. `insert_snapshot` persists both; historical rows backfill `bar_start_ts_utc` without rewriting `ts_utc`. Outcome attach prefers exact `ts_utc`, then unique `bar_start`, then `BACKFILL_JOIN_TOL_SEC=29`. **Residual:** do not drop the production 29s default until mixed-era decision rows are rebuilt. Connects to **FIND-LABEL-INTEGRITY-FORENSICS** (`TIMESTAMP_IDENTITY_NOT_PROVEN`). # chart-intent-ok: Collect timestamp identity; Chart consumer remains an open P0/CHART_CONSUMER residual on LP-01 / UI parents. # next-rth-ok: 2026-08-24 Monday.
+- [ ] `OD-0116` — STATUS=NOT_PROVEN — **P0.1-MIXED-ERA-JOIN** — Do not drop production `BACKFILL_JOIN_TOL_SEC=29` until mixed-era decision rows are rebuilt (RC-470/472). HARD_BLOCKER type=DESTRUCTIVE_APPROVAL_REQUIRED until the operator approves a rebuild.
+- [ ] `OD-0117` — STATUS=NOT_PROVEN — All fixes are repo-wide by default
+- [ ] `OD-0118` — STATUS=NOT_PROVEN — All fixes are ticker-agnostic by default
+- [ ] `OD-0119` — STATUS=NOT_PROVEN — No SPY-only closure
+- [ ] `OD-0120` — STATUS=NOT_PROVEN — No SPY/QQQ/IWM-only closure
+- [ ] `OD-0121` — STATUS=NOT_PROVEN — Anchor tickers used only as representative validation/control points
+- [ ] `OD-0122` — STATUS=NOT_PROVEN — Guest/non-anchor ticker path proven where applicable
+- [ ] `OD-0123` — STATUS=NOT_PROVEN — Newly introduced ticker follows same canonical semantic authority
+- [ ] `OD-0124` — STATUS=NOT_PROVEN — No hardcoded anchor-ticker branch changes semantic truth
+- [ ] `OD-0125` — STATUS=NOT_PROVEN — Same preprocessing semantics across tickers
+- [ ] `OD-0126` — STATUS=NOT_PROVEN — Same train/serve semantics across tickers
+- [ ] `OD-0127` — STATUS=NOT_PROVEN — Same replay/backfill semantics across tickers
+- [ ] `OD-0128` — STATUS=NOT_PROVEN — Same artifact identity rules across tickers
+- [ ] `OD-0129` — STATUS=NOT_PROVEN — Same cache identity rules across tickers
+- [ ] `OD-0130` — STATUS=NOT_PROVEN — Same missingness semantics across tickers
+- [ ] `OD-0131` — STATUS=NOT_PROVEN — Same fallback rules across tickers
+- [ ] `OD-0132` — STATUS=NOT_PROVEN — Same decision rules across tickers unless intentionally ticker-specific
+- [ ] `OD-0133` — STATUS=NOT_PROVEN — Same UI semantics across tickers
+- [ ] `OD-0134` — STATUS=NOT_PROVEN — Same provenance contract across tickers
+- [ ] `OD-0135` — STATUS=NOT_PROVEN — Same runtime routing rules across tickers
+- [ ] `OD-0136` — STATUS=NOT_PROVEN — Any legitimate ticker-specific exception explicitly identified
+- [ ] `OD-0137` — STATUS=NOT_PROVEN — Any legitimate ticker-specific exception economically justified
+- [ ] `OD-0138` — STATUS=NOT_PROVEN — Any legitimate ticker-specific exception versioned/tested separately
+- [ ] `OD-0139` — STATUS=NOT_PROVEN — Anchor success never substitutes for universal construction proof
+- [ ] `OD-0140` — STATUS=NOT_PROVEN — At least one non-anchor/guest behavioral test where ticker-specific routing is material
+- [ ] `OD-0141` — STATUS=NOT_PROVEN — **UNIVERSALITY_STATUS = PASS**
+- [ ] `OD-0142` — STATUS=NOT_PROVEN — Every material semantic concept identified
+- [ ] `OD-0143` — STATUS=NOT_PROVEN — Backend producers identified
+- [ ] `OD-0144` — STATUS=NOT_PROVEN — Training producers identified
+- [ ] `OD-0145` — STATUS=NOT_PROVEN — Serving producers identified
+- [ ] `OD-0146` — STATUS=NOT_PROVEN — Replay producers identified
+- [ ] `OD-0147` — STATUS=NOT_PROVEN — Backfill producers identified
+- [ ] `OD-0148` — STATUS=NOT_PROVEN — SQL-derived producers identified
+- [ ] `OD-0149` — STATUS=NOT_PROVEN — Frontend-derived producers identified
+- [ ] `OD-0150` — STATUS=NOT_PROVEN — Cache/reconstruction producers identified
+- [ ] `OD-0151` — STATUS=NOT_PROVEN — Compatibility-shim producers identified
+- [ ] `OD-0152` — STATUS=NOT_PROVEN — Helpers counted when they independently compute truth
+- [ ] `OD-0153` — STATUS=NOT_PROVEN — Wrappers counted when they independently compute truth
+- [ ] `OD-0154` — STATUS=NOT_PROVEN — Builders counted when they independently compute truth
+- [ ] `OD-0155` — STATUS=NOT_PROVEN — Resolvers counted when they independently compute truth
+- [ ] `OD-0156` — STATUS=NOT_PROVEN — Selectors counted when they independently compute truth
+- [ ] `OD-0157` — STATUS=NOT_PROVEN — Normalizers counted when they independently compute truth
+- [ ] `OD-0158` — STATUS=NOT_PROVEN — Transformers counted when they independently compute truth
+- [ ] `OD-0159` — STATUS=NOT_PROVEN — Properties/getters counted when they independently compute truth
+- [ ] `OD-0160` — STATUS=NOT_PROVEN — Inline calculations counted
+- [ ] `OD-0161` — STATUS=NOT_PROVEN — Same meaning under different names searched
+- [ ] `OD-0162` — STATUS=NOT_PROVEN — Same name with different meaning separated
+- [ ] `OD-0163` — STATUS=NOT_PROVEN — Legitimately distinct economic concepts explicitly named distinctly
+- [ ] `OD-0164` — STATUS=NOT_PROVEN — Fallbacks do not silently become second faucets
+- [ ] `OD-0165` — STATUS=NOT_PROVEN — Frontend is never an independent money-path truth authority
+- [ ] `OD-0166` — STATUS=NOT_PROVEN — Replay does not independently re-derive semantics differently
+- [ ] `OD-0167` — STATUS=NOT_PROVEN — Backfill does not independently reinterpret semantics
+- [ ] `OD-0168` — STATUS=NOT_PROVEN — Cache identity never substitutes stale semantic truth
+- [ ] `OD-0169` — STATUS=NOT_PROVEN — **ONE_FAUCET_STATUS = PASS**
+- [ ] `OD-0170` — STATUS=NOT_PROVEN — **F01** — Model denominator / XGB engineered-row parity — CLOSED_WITH_EVIDENCE (RC-344/RC-339; broader universality reproof remains part of parent)
+- [ ] `OD-0171` — STATUS=NOT_PROVEN — **F02** — Net GEX at spot (vendor aggregate vs repriced; distinct books, consumers separated) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0172` — STATUS=NOT_PROVEN — **F03** — Gamma profile (one formula authority; terrain materializes once; one pinned `now`) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0173` — STATUS=NOT_PROVEN — **F04** — Reserved/disputed historical slot (gamma/delta walls & pin) — HISTORICAL / NOT_PROVEN (literal ID not repo-tracked; RC-292 overlap; semantic live)
+- [ ] `OD-0174` — STATUS=NOT_PROVEN — **F05** — Trade actionability (one authority; frontend carries; mirror-absent withholds; reopen relocked) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0175` — STATUS=NOT_PROVEN — **F06** — Expected move semantics (distinct methodologies, source-tagged) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0176` — STATUS=NOT_PROVEN — **F07** — Gamma regime (one backend sign classifier; client does not reconstruct/write) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0177` — STATUS=NOT_PROVEN — **F08** — ATR (standard TR+SMA authority; feature variant distinct; Wilder quarantined) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0178` — STATUS=NOT_PROVEN — **F09** — RTH/session (clock boundary centralized; clock vs calendar distinguished) — PARTIAL / REOPENED (RC-411): repo-wide sweep (not #139 closure) collapses frontend/research/tools/training/A2/polling onto `time_et`. `GET /static/rth_clock_authority.js` is a request-time projection of `time_et.rth_clock_js_source` (route before StaticFiles; no committed JS blob; projection failure is 5xx, not a stale file). Not CLOSED_WITH_EVIDENCE until a Schwab desk restart is proven.
+- [ ] `OD-0179` — STATUS=NOT_PROVEN — **F10** — Candle direction — OPEN / WAITING_FOR_HOST_RETRAIN
+- [ ] `OD-0180` — STATUS=NOT_PROVEN — One dead-band authority; live producer count = 1; server + normalization delegate
+- [ ] `OD-0181` — STATUS=NOT_PROVEN — Historical normalized rows rebuilt under dead-band; production training population corrected
+- [ ] `OD-0182` — STATUS=NOT_PROVEN — SPY/QQQ/IWM retrained; non-anchor/universal retrain routing proven; force-retrain/cache-bypass proven
+- [ ] `OD-0183` — STATUS=NOT_PROVEN — PREPROCESSING_VERSION bumped atomically; compatible artifacts; governed eval; calibration compatibility
+- [ ] `OD-0184` — STATUS=NOT_PROVEN — Atomic promotion; runtime restarted on compatible generation; runtime train/serve parity; replay/backfill compatibility; universality
+- [ ] `OD-0185` — STATUS=NOT_PROVEN — **F11** — Flow imbalance (one persisted authority; source travels; kwargs contract locked) — PARTIAL / REOPENED (RC-411): #139 collapsed live label onto the wrapper number. SYNTHETIC_WIRE `/api/state` volume-fallback triple is locked (empty ATM book + call 80 / put 20). A Schwab-desk vendor tick after restart remains NEXT-DEPTH. Not CLOSED_WITH_EVIDENCE.
+- [ ] `OD-0186` — STATUS=NOT_PROVEN — **F12** — Relative volume variants (distinct RVOL quantities; consumers mapped) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0187` — STATUS=NOT_PROVEN — **F13** — Black-Scholes valuation T (one `time_to_expiry_years`; expired fail closed) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0188` — STATUS=NOT_PROVEN — **F14** — VWAP bands (one canonical producer; frontend carries; signal-layer named distinct) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0189` — STATUS=NOT_PROVEN — **F15** — POC/VAH/VAL — OPEN (Phase 2A / liquidity_value_engine)
+- [ ] `OD-0190` — STATUS=NOT_PROVEN — Exact semantic contract; one canonical population; no alternate population masquerading; session/as-of; live/replay/backfill/frontend paths; fallback + missingness; mutation proof; universality; runtime proof
+- [ ] `OD-0191` — STATUS=NOT_PROVEN — Exact semantic contract defined for POC/VAH/VAL — Closed @ `462a581` (old line); live tree carries its own engine, `tests/test_liquidity_engine.py` green on the canonical tree (59 passed, RC-364 tree-verified). Typical-price bin, 70% VA, engine 4dp.
+- [ ] `OD-0192` — STATUS=NOT_PROVEN — Live path populates from the canonical producer — CLOSED-ON-OLD-LINE @ `45b28c33...` (#82), NOT IN LIVE TREE (RC-364). **Landed this turn (stamp+bind, runtime still pending):** `/api/state` stamps `today_poc/vah/val` (and the rest of the snapshot family already on `PriceLevels`: pd_poc, overnight, orb_midpoint, VWAP σ) via `_raw_level` from the same carry as PDH/VWAP/ORB; console `#dr-lvl-poc`/`#exec-poc` (and VAH/VAL) bind `d.today_*`. Chart `/api/levels` TODAY_POC consumer was already live. Snapshot-table persist still has no `today_poc` column. F15 parent stays OPEN until runtime proof.
+- [ ] `OD-0193` — STATUS=NOT_PROVEN — Mutation proof (changed inputs change outputs) — Closed @ `462a581` (old line); `tests/test_liquidity_engine.py` green on the canonical tree (RC-364 tree-verified).
+- [ ] `OD-0194` — STATUS=NOT_PROVEN — **F17** — Realized volatility cadence (`bar_minutes` required; no silent default) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0195` — STATUS=NOT_PROVEN — **F18** — Charm drift target (not substituted with pin/net-GEX; governed absence; real UI path fixed) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0196` — STATUS=NOT_PROVEN — **F16** — Reserved/disputed VIX-regime row — HISTORICAL / NOT_PROVEN (identity reconciled; producer `vix_bucket`/`vix_level`; consumers/missingness/fallback/universality/defect-status unproven)
+- [ ] `OD-0197` — STATUS=NOT_PROVEN — **F19** — Reserved/disputed freshness/actionability row — HISTORICAL / NOT_PROVEN (actionability F05 closed; freshness → RC-282 OPEN)
+- [ ] `OD-0198` — STATUS=NOT_PROVEN — **F20** — Pin width (one authority; market_state + server delegate) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0199` — STATUS=NOT_PROVEN — **F21** — VWAP side (one `derive_vwap_side`; consumers delegate) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0200` — STATUS=NOT_PROVEN — **F22** — Dominant direction (one triplet authority; DB+UI delegate; missing guarded) — CLOSED_WITH_EVIDENCE, latent hardening verification retained
+- [ ] `OD-0201` — STATUS=NOT_PROVEN — **F23** — Crossed spread (withheld at source; dead helper retired) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0202` — STATUS=NOT_PROVEN — **F24** — VWAP distance (signed `spot - vwap`; train/serve parity) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0203` — STATUS=NOT_PROVEN — **F25** — Canonical ticker storage and artifact identity — OPEN / BLOCKED / PRIOR CLOSURES PREMATURE
+- [ ] `OD-0204` — STATUS=NOT_PROVEN — `ticker_storage_key` authority; SPX/`$SPX` adjudicated; readers/writers/logging-universe normalized; train-write/resume/cache/artifact-dir/arch-eval/guest-anchor/DB-key/replay canonical; focused tests pass
+- [ ] `OD-0205` — STATUS=NOT_PROVEN — Entire-repo denominator reverified (remaining identity faucets = 0); non-anchor/universal proven; clean scoped commit lands + exact SHA; integrated into production line; runtime loaded on F25 code + runtime identity proof; parent RC-345/F25 closure
+- [ ] `OD-0206` — STATUS=NOT_PROVEN — **F26** — Empirical horizon probability (one authority; UI withholds; no client argmax) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0207` — STATUS=NOT_PROVEN — **F27** — Higher-timeframe OHLC (one batch synthesizer; live accumulator distinct) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0208` — STATUS=NOT_PROVEN — **F28** — Reserved/disputed absorption score — HISTORICAL / NOT_PROVEN (producer `liquidity.absorption_score`; consumers/missingness/fallback/dup-search/universality/defect unproven)
+- [ ] `OD-0209` — STATUS=NOT_PROVEN — **F29** — Movement-target threshold (one per-horizon selector; no local reconstruction) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0210` — STATUS=NOT_PROVEN — **F30** — Reserved/disputed current spot — HISTORICAL / NOT_PROVEN (live spot authority / fast quote / candle-mark-last / train-serve-replay sources / fallbacks / staleness / universality unproven)
+- [ ] `OD-0211` — STATUS=NOT_PROVEN — **F31** — Price-level snapshot fallback — OPEN (Phase 2A)
+- [ ] `OD-0212` — STATUS=NOT_PROVEN — Canonical population + producer; pre-open/RTH/replay semantics; stale-cache; input fingerprint; mutual exclusion; governed fallback; no second truth; universality; runtime proof
+- [ ] `OD-0213` — STATUS=NOT_PROVEN — Collect-display fail-closed (bound DOM consumers) — CLOSED-ON-OLD-LINE @ `16faa71...` (#83) + pdc @ `2a1e496...` (#84), MECHANISM NOT IN LIVE TREE (RC-364): `stamp_price_level_fields` / `F31_LEVEL_KEYS` / `fail_closed_price_levels` absent from the canonical tree; live carries its own Phase 2A canonical `PriceLevelSnapshot` (RC-322/RC-323, `tests/test_phase2a_price_level_snapshot_v1.py`). Do NOT port the old mechanism — re-verify the fail-closed display property against the Phase 2A path and close on that evidence. Old-line residuals to carry: pdc consumer semantics; `PRICE_LEVELS_CACHE_SEC` stale-cache question stays with RC-282.
+- [ ] `OD-0214` — STATUS=NOT_PROVEN — **F32** — Confluence `cf_*` authority — NOT_PROVEN (Cursor refuses upgrade while RC-328 OPEN)
+- [ ] `OD-0215` — STATUS=NOT_PROVEN — Canonical `confluence_features_for_bar` exists; current code routes train/serve through it; wall-clock windows
+- [ ] `OD-0216` — STATUS=NOT_PROVEN — RC-328 OPEN conflict reconciled; train+serve population parity proven; caller fallback semantics; universality; ledger contradiction eliminated
+- [ ] `OD-0217` — STATUS=NOT_PROVEN — **F33** — `net_gamma_prev` (raw prior 1m; batch+serve unified; inline producer removed) — CLOSED_WITH_EVIDENCE (RC-342)
+- [ ] `OD-0218` — STATUS=NOT_PROVEN — **F34** — XGB pre-engineering enrichment (five scheduler routes use canonical preparer) — CLOSED_WITH_EVIDENCE (RC-340)
+- [ ] `OD-0219` — STATUS=NOT_PROVEN — **F35** — Training/serving DB identity — children CLOSED_WITH_EVIDENCE; broader DB-authority parent NOT_PROVEN
+- [ ] `OD-0220` — STATUS=NOT_PROVEN — `train_ticker` forwards `db_path`; confluence cache carries DB identity; six callers wired
+- [ ] `OD-0221` — STATUS=NOT_PROVEN — Repo-wide parent DB-identity universality audit; every DB-reading lane binds intended DB; no default DB silently replaces caller DB; sandbox cannot become production authority; replay/backfill/artifact-lineage DB identity; universal ticker/data-source proof
+- [ ] `OD-0222` — STATUS=NOT_PROVEN — **F36** — Signal-layer VWAP anchor (source-tagged session preferred; rolling labeled) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0223` — STATUS=NOT_PROVEN — **F37** — Reserved parent slot — GAP / NOT_PROVEN (parent semantic unproven; F37b exists)
+- [ ] `OD-0224` — STATUS=NOT_PROVEN — **F37b** — LSTM zone encoding (shared `encode_zone`; both sites delegate) — CLOSED_WITH_EVIDENCE (RC-343)
+- [ ] `OD-0225` — STATUS=NOT_PROVEN — **F38** — Training tensor cache identity (content hash; changed labels ⇒ miss; negative control) — CLOSED_WITH_EVIDENCE (universal cache-key inventory remains part of parent)
+- [ ] `OD-0226` — STATUS=NOT_PROVEN — **F39** — Confluence missingness — OPEN (explicitly OPEN despite omission from a shorter RC-345 master-open summary)
+- [ ] `OD-0227` — STATUS=NOT_PROVEN — Measured-neutral separated from unavailable / missing-history / missing-clock / missing-input; caller fallback cannot collapse absence
+- [ ] `OD-0228` — STATUS=NOT_PROVEN — Train/serve/replay/backfill encoding explicit; active artifact impact measured; retrain requirement proven; root code fix; version change if required; retrain if required; calibration compatibility; runtime proof; universality
+- [ ] `OD-0229` — STATUS=NOT_PROVEN — **F40** — MC/GARCH sigma cadence (MC own `BAR_MINUTES`; 5m hardcode removed; live reproof) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0230` — STATUS=NOT_PROVEN — **F41** — Selected DTE / expiry (selectors require expiry; empty fails closed; no search-all) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0231` — STATUS=NOT_PROVEN — **F42** — GEX dollars (`gex_dollars_per_1pct_at_strike`; one `compute_exposures_by_strike`; γ×OI×mult×spot²×0.01; one-producer lock) — CLOSED_WITH_EVIDENCE
+- [ ] `OD-0232` — STATUS=NOT_PROVEN — **RC-292** — Gamma-pin semantic collision — OPEN (product-decision bedrock; do NOT resolve during a board-write). **Cursor-verified collision (2026-08-12):** (1) terrain `kl_gamma_pin` = total-gamma pin, correctly labeled; (2) analytics `consensus_summary.gamma_pin` = net-GEX absolute peak; (3) `pin_score` currently uses the analytics/net-GEX peak; (4) persisted `gamma_pin` receives the analytics/net-GEX peak; (5) `static/index.html` ladder row labeled "GAMMA PIN" binds `d.gamma_pin`/analytics net-GEX peak while its tooltip describes total-gamma semantics; (6) Key Levels `kl_gamma_pin` = total-gamma, correctly labeled; (7) `chart.html` PIN = terrain total-gamma and chart has a SEPARATE "NET Γ PEAK" row. **CORRECTION:** `chart.html` PIN is NOT mislabeled (Cursor disproved that). Remaining live collision (pre-fix): index-ladder GAMMA PIN + pin_score + persisted gamma_pin (net-GEX peak) vs terrain/`kl_gamma_pin` total-gamma. **Landed this turn:** ladder binds `d.kl_gamma_pin`; overlay stamps payload `gamma_pin` to the same value; pin_score and snapshot persist read terrain cache `gamma_pin` (stale/absent → None). ExposureRow.gamma_pin remains the analytics net peak (distinct table field). Schema `gamma_pin_semantic` column still absent. Sub-items: pin_score intended semantic recovered; UI-label/tooltip/persistence made consistent; backward-safe migration; behavioral+mutation lock; universality; runtime.
+- [ ] `OD-0233` — STATUS=NOT_PROVEN — `pin_score` intended semantic recovered — analysis close @ `6d14ee2` (old line); the recovered semantic is recorded in the parent row and is lineage-independent (RC-364 disposition).
+- [ ] `OD-0234` — STATUS=NOT_PROVEN — UI label made consistent with the bound semantic — CLOSED-ON-OLD-LINE @ `0e304f6`, NOT TREE-VERIFIED (RC-364): live's `tests/test_institutional_key_levels.py` locks pin/net-GEX-peak engine semantics but does not test the index-ladder label binding. Re-verify on live (RC-352/353 renames may already satisfy it) and close on live evidence.
+- [ ] `OD-0235` — STATUS=NOT_PROVEN — Tooltip made consistent with the bound semantic — CLOSED-ON-OLD-LINE @ `0e304f6`, NOT TREE-VERIFIED (RC-364). Same re-verify path as the label child.
+- [ ] `OD-0236` — STATUS=NOT_PROVEN — Persisted `gamma_pin` made consistent with the bound semantic — CLOSED-ON-OLD-LINE @ `d71bb5e`, NOT IN LIVE TREE (RC-364): no `gamma_pin_semantic` marker exists in the canonical tree; `db.py` still carries `pin_score`/`gamma_pin` columns without the semantic column.
+- [ ] `OD-0237` — STATUS=NOT_PROVEN — Backward-safe migration for persisted values — CLOSED-ON-OLD-LINE @ `d71bb5e` + `053251e`, NOT IN LIVE TREE (RC-364): the `gamma_pin_semantic=net_gex_peak` ALTER is absent from the canonical tree. PORT NEEDED if the persisted-semantic split still matters on live.
+- [ ] `OD-0238` — STATUS=NOT_PROVEN — Behavioral + mutation lock in place — CLOSED-ON-OLD-LINE @ `0e304f6`, NOT TREE-VERIFIED (RC-364): live locks engine semantics only.
+- [ ] `OD-0239` — STATUS=NOT_PROVEN — **RC-282** — Freshness / stale actionability (semantic; live+UI impact; stale cannot remain actionable; fallback; universal; root fix; runtime) — OPEN
+- [ ] `OD-0240` — STATUS=NOT_PROVEN — **RC-285** — model published `LIVE, edge=0` fabricated zero (semantic; live path; root cause; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] `OD-0241` — STATUS=NOT_PROVEN — Semantic of the fabricated-zero defect defined — Closed @ `1117f19`. Absent metric ≠ measured zero. (Board-reconciled 2026-08-16 from frozen f31 board; SHAs verified ancestors of main.)
+- [ ] `OD-0242` — STATUS=NOT_PROVEN — Live path characterized — Closed @ `1117f19`. `_fetch_state` → `model_health` → `/api/state`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
+- [ ] `OD-0243` — STATUS=NOT_PROVEN — Root cause identified — Closed @ `1117f19`. Unread field; `.get(..., 0)` / `float(raw or 0)` / literal `"edge": 0`.
+- [ ] `OD-0244` — STATUS=NOT_PROVEN — Fix landed — the fabricated-zero itself is fixed ON THE LIVE TREE by an equivalent mechanism (RC-364 tree-verified): `server.py::_model_status_from_artifact` uses `_fin_edge(_m.get(edge_key))` → `edge: None` on absence, no `or 0`. Old-line close @ `1e09445...` cited `model_health_edge_from_meta`, which does not exist on live — citation amended. Lock: `tests/test_model_edge_absent_is_not_zero_v1.py` green on the canonical tree.
+- [ ] `OD-0245` — STATUS=NOT_PROVEN — Proof recorded — `tests/test_model_edge_absent_is_not_zero_v1.py` green on the canonical tree (RC-364 tree-verified re-run).
+- [ ] `OD-0246` — STATUS=NOT_PROVEN — Unmeasured `edge_pp` is not published as `val_accuracy·100` — FIXED ON LIVE in the RC-364 checkpoint (board corrected RC-375): all three registrations request `edge_pp`; the ×100 translation is deleted; AST lock proves no multiplication in the producer. Suite green.
+- [ ] `OD-0247` — STATUS=NOT_PROVEN — Model-health UI renders `edge === null` safely — tree-verified live evidence (RC-375): NOTHING paints `edge` (render is model+status only), so null cannot paint as 0/NaN; `edge is None` drives status UNSCORED which is excluded from the "approved" count; the no-consumer tripwire test forces a deliberate decision the day a reader appears.
+- [ ] `OD-0248` — STATUS=NOT_PROVEN — **RC-291** — LSTM reports `val_accuracy` as "edge" — FIXED ON THE LIVE TREE in the RC-364 checkpoint itself (db2b26a5, PR #106); board sentence "defect alive" was written before the fix in the same commit and corrected here (RC-375, Cursor tree-audit catch). TREE CITES on current HEAD: LSTM registration passes `edge_pp` (`_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "edge_pp", "model_type")`); producer computes `edge = _fin_edge(_m.get(edge_key))` with NO multiplication anywhere in the function (AST-locked); `val_accuracy` stamped under its own name with `metric_name`. Lock: `tests/test_model_edge_absent_is_not_zero_v1.py` green incl. the AST no-multiply lock.
+- [ ] `OD-0249` — STATUS=NOT_PROVEN — LSTM `edge_key` is `edge_pp`, not `val_accuracy` — tree cite: the lstm registration line in server.py passes "edge_pp"; source+AST locked.
+- [ ] `OD-0250` — STATUS=NOT_PROVEN — LSTM `val_accuracy` prints under its own name — tree cite: payload fields `val_accuracy` + `metric_name` stamped in both LIVE and UNSCORED returns.
+- [ ] `OD-0251` — STATUS=NOT_PROVEN — Operator never sees accuracy in the edge slot — tree cite: the model-health render paints model+status only (nothing paints `edge`); LSTM-with-only-val_accuracy becomes UNSCORED and does not count toward "approved"; the no-consumer tripwire test (`test_the_field_still_has_no_consumer_and_that_is_recorded`) fires the day a surface starts painting `m.edge`.
+- [ ] `OD-0252` — STATUS=NOT_PROVEN — **RC-297** — derivation inventory drifted from code (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] `OD-0253` — STATUS=NOT_PROVEN — Semantic of the inventory-drift defect defined — Closed @ `8ca1f18`. Drift = inventory AST mismatch in `MEGA2_FILES`. (Board-reconciled 2026-08-16.)
+- [ ] `OD-0254` — STATUS=NOT_PROVEN — Live path characterized — Closed @ `8ca1f18`. Gate is `tests/test_mega2_traceable_audit.py` (offline).
+- [ ] `OD-0255` — STATUS=NOT_PROVEN — Root cause identified — Closed @ `8ca1f18`. Hand-maintained register; out-of-scope file uninventoried.
+- [ ] `OD-0256` — STATUS=NOT_PROVEN — Fix landed — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Tree-fed `uninventoried_engine_modules(git ls-files)`. Filename token `engine` is not the producer class; parent stays OPEN.
+- [ ] `OD-0257` — STATUS=NOT_PROVEN — Proof recorded — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Measured on `origin/main`: `uninventoried_engine_modules(...) == []`; `test_real_planted_engine_file_is_rejected_by_tree_scan` passed.
+- [ ] `OD-0258` — STATUS=NOT_PROVEN — **RC-301** — absence-coerced-to-a-value as a CLASS (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] `OD-0259` — STATUS=NOT_PROVEN — Semantic of the absence-coercion class defined — Closed @ `5d68d93`. `-> float` + except literal. (Board-reconciled 2026-08-16.)
+- [ ] `OD-0260` — STATUS=NOT_PROVEN — Live path characterized — Closed @ `5d68d93`. `parity_f_minus_spot_from_contracts` + `tools/check_absence_has_a_type.py` in hardening.
+- [ ] `OD-0261` — STATUS=NOT_PROVEN — Root cause identified — Closed @ `5d68d93`. Return type forecloses `None`.
+- [ ] `OD-0262` — STATUS=NOT_PROVEN — Fix landed — Closed @ `5d68d93` for the two except-literal sites the gate measures. Not the CLASS.
+- [ ] `OD-0263` — STATUS=NOT_PROVEN — Proof recorded — Closed @ `5d68d93`. Tests: `tests/test_absence_has_a_type_gate_v1.py`.
+- [ ] `OD-0264` — STATUS=NOT_PROVEN — **RC-329** — one-producer gate blind to consumer-name→semantic (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] `OD-0265` — STATUS=NOT_PROVEN — Semantic of the gate blindness defect defined — Closed @ `bb85651`. One writer per name ≠ one (definition, scope). (Board-reconciled 2026-08-16.)
+- [ ] `OD-0266` — STATUS=NOT_PROVEN — Live path characterized — Closed @ `bb85651`. Console KEY LEVELS `kl_gamma_pin` row.
+- [ ] `OD-0267` — STATUS=NOT_PROVEN — Root cause identified — Closed @ `bb85651`. No registry linking payload key to semantic.
+- [ ] `OD-0268` — STATUS=NOT_PROVEN — Fix landed — CLOSED-ON-OLD-LINE @ `1e09445...`, NOT IN LIVE TREE (RC-364): `KEY_LEVEL_CONSUMER_REGISTRY` / `hardcoded_kl_row_labels` absent; live carries its own KL row tables (`KL_PRIMARY`/`KL_CONDITIONAL`/`KL_REFERENCE` in `static/index.html`, institutional names per RC-352/353). Re-verify the defect (payload-key→semantic binding) against live's mechanism; port the registry idea only if live's tables leave the gap open.
+- [ ] `OD-0269` — STATUS=NOT_PROVEN — Proof recorded — reopened with the fix child (RC-364); old-line proof does not transfer across mechanisms.
+- [ ] `OD-0270` — STATUS=NOT_PROVEN — **RC-328** — Confluence train/serve population (verify current code closes original defect; canonical/train/serve population; window semantics; time-based lookback; missingness; universal; reconcile F32; close ledger honestly) — OPEN
+- [ ] `OD-0271` — STATUS=NOT_PROVEN — RC-324 formally CLOSED_WITH_EVIDENCE
+- [ ] `OD-0272` — STATUS=NOT_PROVEN — Snapshot input fingerprint includes full material OHLCV/time content
+- [ ] `OD-0273` — STATUS=NOT_PROVEN — Interior bar-data changes alter the fingerprint
+- [ ] `OD-0274` — STATUS=NOT_PROVEN — Read → decide → build → write is protected by `_MATERIALIZE_LOCK`
+- [ ] `OD-0275` — STATUS=NOT_PROVEN — Behavioral regression proof confirmed against the actual materialization path
+- [ ] `OD-0276` — STATUS=NOT_PROVEN — Concurrent same-generation duplicate-result negative control confirmed
+- [ ] `OD-0277` — STATUS=NOT_PROVEN — Stale snapshot reuse negative control confirmed
+- [ ] `OD-0278` — STATUS=NOT_PROVEN — Same-generation double-materialization cannot mint conflicting truths
+- [ ] `OD-0279` — STATUS=NOT_PROVEN — Cache/fingerprint semantics proven universal across applicable tickers
+- [ ] `OD-0280` — STATUS=NOT_PROVEN — Session/pre-open/RTH variants cannot bypass the canonical snapshot identity
+- [ ] `OD-0281` — STATUS=NOT_PROVEN — Replay/backfill path cannot independently materialize a conflicting semantic
+- [ ] `OD-0282` — STATUS=NOT_PROVEN — root_cause_log RC-324 reconciled with exact FIXED evidence
+- [ ] `OD-0283` — STATUS=NOT_PROVEN — Parent/child status consistent
+- [ ] `OD-0284` — STATUS=NOT_PROVEN — Exact active artifact generation identified
+- [ ] `OD-0285` — STATUS=NOT_PROVEN — Exact artifact training timestamp identified
+- [ ] `OD-0286` — STATUS=NOT_PROVEN — Exact artifact training code SHA identified
+- [ ] `OD-0287` — STATUS=NOT_PROVEN — Exact artifact preprocessing version identified
+- [ ] `OD-0288` — STATUS=NOT_PROVEN — Exact artifact feature-schema version identified
+- [ ] `OD-0289` — STATUS=NOT_PROVEN — Exact artifact training DB identified
+- [ ] `OD-0290` — STATUS=NOT_PROVEN — Exact artifact training confluence population identified
+- [ ] `OD-0291` — STATUS=NOT_PROVEN — Determine whether active artifact predates RC-332 / canonical confluence-population repair
+- [ ] `OD-0292` — STATUS=NOT_PROVEN — Determine whether active artifact predates RC-340 related confluence fixes
+- [ ] `OD-0293` — STATUS=NOT_PROVEN — Prove artifact learned the same cf_* semantic now produced at serve time
+- [ ] `OD-0294` — STATUS=NOT_PROVEN — Compare old vs current cf_* population semantics if artifact predates repair
+- [ ] `OD-0295` — STATUS=NOT_PROVEN — Quantify material feature divergence on real data if generations differ
+- [ ] `OD-0296` — STATUS=NOT_PROVEN — Quantify effect by ticker
+- [ ] `OD-0297` — STATUS=NOT_PROVEN — Quantify effect by horizon where applicable
+- [ ] `OD-0298` — STATUS=NOT_PROVEN — Include at least one non-anchor/guest ticker if the path applies
+- [ ] `OD-0299` — STATUS=NOT_PROVEN — Determine whether retraining is REQUIRED
+- [ ] `OD-0300` — STATUS=NOT_PROVEN — Determine whether recalibration is REQUIRED
+- [ ] `OD-0301` — STATUS=NOT_PROVEN — Determine whether preprocessing/semantic version bump is REQUIRED
+- [ ] `OD-0302` — STATUS=NOT_PROVEN — If retraining required: rebuild training data under canonical semantics
+- [ ] `OD-0303` — STATUS=NOT_PROVEN — If retraining required: force cache bypass
+- [ ] `OD-0304` — STATUS=NOT_PROVEN — If retraining required: retrain all applicable supported ticker paths
+- [ ] `OD-0305` — STATUS=NOT_PROVEN — If retraining required: governed evaluation
+- [ ] `OD-0306` — STATUS=NOT_PROVEN — If retraining required: calibration compatibility proof
+- [ ] `OD-0307` — STATUS=NOT_PROVEN — If retraining required: atomic artifact promotion
+- [ ] `OD-0308` — STATUS=NOT_PROVEN — If retraining required: runtime restart/load proof
+- [ ] `OD-0309` — STATUS=NOT_PROVEN — Runtime train/serve/artifact semantic parity proven
+- [ ] `OD-0310` — STATUS=NOT_PROVEN — Replay/backfill compatibility proven
+- [ ] `OD-0311` — STATUS=NOT_PROVEN — RC-328 cannot close from code wiring alone
+- [ ] `OD-0312` — STATUS=NOT_PROVEN — F32 cannot close while artifact semantic compatibility is NOT_PROVEN
+- [ ] `OD-0313` — STATUS=NOT_PROVEN — Independent file census
+- [ ] `OD-0314` — STATUS=NOT_PROVEN — All tracked Python
+- [ ] `OD-0315` — STATUS=NOT_PROVEN — JavaScript
+- [ ] `OD-0316` — STATUS=NOT_PROVEN — HTML inline scripts
+- [ ] `OD-0317` — STATUS=NOT_PROVEN — CSS if semantic behavior exists
+- [ ] `OD-0318` — STATUS=NOT_PROVEN — SQL
+- [ ] `OD-0319` — STATUS=NOT_PROVEN — PowerShell
+- [ ] `OD-0320` — STATUS=NOT_PROVEN — Batch files
+- [ ] `OD-0321` — STATUS=NOT_PROVEN — Makefiles
+- [ ] `OD-0322` — STATUS=NOT_PROVEN — Shell scripts
+- [ ] `OD-0323` — STATUS=NOT_PROVEN — Templates
+- [ ] `OD-0324` — STATUS=NOT_PROVEN — Config with executable expressions
+- [ ] `OD-0325` — STATUS=NOT_PROVEN — Training scripts
+- [ ] `OD-0326` — STATUS=NOT_PROVEN — Scheduler scripts
+- [ ] `OD-0327` — STATUS=NOT_PROVEN — Research scripts capable of feeding production
+- [ ] `OD-0328` — STATUS=NOT_PROVEN — Backtest
+- [ ] `OD-0329` — STATUS=NOT_PROVEN — Replay
+- [ ] `OD-0330` — STATUS=NOT_PROVEN — Cache
+- [ ] `OD-0331` — STATUS=NOT_PROVEN — Migration
+- [ ] `OD-0332` — STATUS=NOT_PROVEN — Compatibility shims
+- [ ] `OD-0333` — STATUS=NOT_PROVEN — Generated execution surfaces
+- [ ] `OD-0334` — STATUS=NOT_PROVEN — Unknown extensions classified
+- [ ] `OD-0335` — STATUS=NOT_PROVEN — Excluded files justified
+- [ ] `OD-0336` — STATUS=NOT_PROVEN — Zero-candidate sampling
+- [ ] `OD-0337` — STATUS=NOT_PROVEN — Structural clones
+- [ ] `OD-0338` — STATUS=NOT_PROVEN — Semantic clones
+- [ ] `OD-0339` — STATUS=NOT_PROVEN — Different-name same-truth producers
+- [ ] `OD-0340` — STATUS=NOT_PROVEN — SQL-derived producers
+- [ ] `OD-0341` — STATUS=NOT_PROVEN — Frontend-derived producers
+- [ ] `OD-0342` — STATUS=NOT_PROVEN — New material defects added to board
+- [ ] `OD-0343` — STATUS=NOT_PROVEN — No unclassified material candidates remain
+- [ ] `OD-0344` — STATUS=NOT_PROVEN — **DISCOVERY_DENOMINATOR_STATUS = PASS**
+- [ ] `OD-0345` — STATUS=NOT_PROVEN — Every live model feature inventoried
+- [ ] `OD-0346` — STATUS=NOT_PROVEN — Producer known
+- [ ] `OD-0347` — STATUS=NOT_PROVEN — Raw source known
+- [ ] `OD-0348` — STATUS=NOT_PROVEN — Transformation known
+- [ ] `OD-0349` — STATUS=NOT_PROVEN — Units known
+- [ ] `OD-0350` — STATUS=NOT_PROVEN — Lookback known
+- [ ] `OD-0351` — STATUS=NOT_PROVEN — Population known
+- [ ] `OD-0352` — STATUS=NOT_PROVEN — Missingness known
+- [ ] `OD-0353` — STATUS=NOT_PROVEN — Timestamp known
+- [ ] `OD-0354` — STATUS=NOT_PROVEN — Category map known
+- [ ] `OD-0355` — STATUS=NOT_PROVEN — Imputation known
+- [ ] `OD-0356` — STATUS=NOT_PROVEN — Train route known
+- [ ] `OD-0357` — STATUS=NOT_PROVEN — Serve route known
+- [ ] `OD-0358` — STATUS=NOT_PROVEN — Replay route known
+- [ ] `OD-0359` — STATUS=NOT_PROVEN — Backfill route known
+- [ ] `OD-0360` — STATUS=NOT_PROVEN — Artifact schema known
+- [ ] `OD-0361` — STATUS=NOT_PROVEN — No unused/dead feature masquerading as live
+- [ ] `OD-0362` — STATUS=NOT_PROVEN — No live feature missing from training
+- [ ] `OD-0363` — STATUS=NOT_PROVEN — No training feature missing from serving
+- [ ] `OD-0364` — STATUS=NOT_PROVEN — No duplicate semantics under different names
+- [ ] `OD-0365` — STATUS=NOT_PROVEN — **FEATURE_LINEAGE_STATUS = PASS**
+- [ ] `OD-0366` — STATUS=NOT_PROVEN — Exact ticker
+- [ ] `OD-0367` — STATUS=NOT_PROVEN — Exact horizon
+- [ ] `OD-0368` — STATUS=NOT_PROVEN — Exact model type
+- [ ] `OD-0369` — STATUS=NOT_PROVEN — Exact training dataset hash
+- [ ] `OD-0370` — STATUS=NOT_PROVEN — Exact semantic version
+- [ ] `OD-0371` — STATUS=NOT_PROVEN — Exact category maps
+- [ ] `OD-0372` — STATUS=NOT_PROVEN — Exact imputation
+- [ ] `OD-0373` — STATUS=NOT_PROVEN — Exact calibration generation
+- [ ] `OD-0374` — STATUS=NOT_PROVEN — Exact code SHA
+- [ ] `OD-0375` — STATUS=NOT_PROVEN — Exact training DB identity
+- [ ] `OD-0376` — STATUS=NOT_PROVEN — Exact promotion generation
+- [ ] `OD-0377` — STATUS=NOT_PROVEN — Exact creation timestamp
+- [ ] `OD-0378` — STATUS=NOT_PROVEN — Compatible runtime requirements
+- [ ] `OD-0379` — STATUS=NOT_PROVEN — Fail-close on mismatch
+- [ ] `OD-0380` — STATUS=NOT_PROVEN — Atomic promotion
+- [ ] `OD-0381` — STATUS=NOT_PROVEN — Atomic rollback
+- [ ] `OD-0382` — STATUS=NOT_PROVEN — **ARTIFACT_IDENTITY_STATUS = PASS**
+- [ ] `OD-0383` — STATUS=NOT_PROVEN — Material input identity included
+- [ ] `OD-0384` — STATUS=NOT_PROVEN — Content changes invalidate
+- [ ] `OD-0385` — STATUS=NOT_PROVEN — DB identity included
+- [ ] `OD-0386` — STATUS=NOT_PROVEN — Ticker identity included
+- [ ] `OD-0387` — STATUS=NOT_PROVEN — Horizon included
+- [ ] `OD-0388` — STATUS=NOT_PROVEN — Semantic generation included
+- [ ] `OD-0389` — STATUS=NOT_PROVEN — Feature schema included
+- [ ] `OD-0390` — STATUS=NOT_PROVEN — Preprocessing version included
+- [ ] `OD-0391` — STATUS=NOT_PROVEN — No stale tensor reuse
+- [ ] `OD-0392` — STATUS=NOT_PROVEN — No cross-ticker collision
+- [ ] `OD-0393` — STATUS=NOT_PROVEN — No SPX-$SPX collision except intentional canonicalization
+- [ ] `OD-0394` — STATUS=NOT_PROVEN — No cross-DB collision
+- [ ] `OD-0395` — STATUS=NOT_PROVEN — No stale decision cache
+- [ ] `OD-0396` — STATUS=NOT_PROVEN — No stale price-level cache
+- [ ] `OD-0397` — STATUS=NOT_PROVEN — Negative-control mutation tests
+- [ ] `OD-0398` — STATUS=NOT_PROVEN — **CACHE_STATUS = PASS**
+- [ ] `OD-0399` — STATUS=NOT_PROVEN — Same producer
+- [ ] `OD-0400` — STATUS=NOT_PROVEN — Same formula
+- [ ] `OD-0401` — STATUS=NOT_PROVEN — Same units
+- [ ] `OD-0402` — STATUS=NOT_PROVEN — Same ticker normalization
+- [ ] `OD-0403` — STATUS=NOT_PROVEN — Same population
+- [ ] `OD-0404` — STATUS=NOT_PROVEN — Same lookback
+- [ ] `OD-0405` — STATUS=NOT_PROVEN — Same as-of
+- [ ] `OD-0406` — STATUS=NOT_PROVEN — Same session filter
+- [ ] `OD-0407` — STATUS=NOT_PROVEN — Same missingness
+- [ ] `OD-0408` — STATUS=NOT_PROVEN — Same categorical map
+- [ ] `OD-0409` — STATUS=NOT_PROVEN — Same imputation
+- [ ] `OD-0410` — STATUS=NOT_PROVEN — Same scaling
+- [ ] `OD-0411` — STATUS=NOT_PROVEN — Same ordering
+- [ ] `OD-0412` — STATUS=NOT_PROVEN — Same feature name
+- [ ] `OD-0413` — STATUS=NOT_PROVEN — Same feature schema version
+- [ ] `OD-0414` — STATUS=NOT_PROVEN — Same preprocessing version
+- [ ] `OD-0415` — STATUS=NOT_PROVEN — Same DB identity
+- [ ] `OD-0416` — STATUS=NOT_PROVEN — Same fallback policy
+- [ ] `OD-0417` — STATUS=NOT_PROVEN — Same source methodology
+- [ ] `OD-0418` — STATUS=NOT_PROVEN — Same time resolution
+- [ ] `OD-0419` — STATUS=NOT_PROVEN — Replay parity
+- [ ] `OD-0420` — STATUS=NOT_PROVEN — Backfill parity
+- [ ] `OD-0421` — STATUS=NOT_PROVEN — Non-anchor ticker parity
+- [ ] `OD-0422` — STATUS=NOT_PROVEN — **PARITY_STATUS = PASS**
+- [ ] `OD-0423` — STATUS=NOT_PROVEN — Mathematical implementation matches intended algorithm
+- [ ] `OD-0424` — STATUS=NOT_PROVEN — Input tensor shape correct
+- [ ] `OD-0425` — STATUS=NOT_PROVEN — Output semantics correct
+- [ ] `OD-0426` — STATUS=NOT_PROVEN — Class order correct
+- [ ] `OD-0427` — STATUS=NOT_PROVEN — Horizon mapping correct
+- [ ] `OD-0428` — STATUS=NOT_PROVEN — Loss function correct
+- [ ] `OD-0429` — STATUS=NOT_PROVEN — Training target correct
+- [ ] `OD-0430` — STATUS=NOT_PROVEN — No label inversion
+- [ ] `OD-0431` — STATUS=NOT_PROVEN — No class-order inversion
+- [ ] `OD-0432` — STATUS=NOT_PROVEN — No silent fallback model
+- [ ] `OD-0433` — STATUS=NOT_PROVEN — No stale artifact
+- [ ] `OD-0434` — STATUS=NOT_PROVEN — No incompatible pickle/model load
+- [ ] `OD-0435` — STATUS=NOT_PROVEN — No hidden reduced model path masquerading as full stack
+- [ ] `OD-0436` — STATUS=NOT_PROVEN — Deterministic preprocessing
+- [ ] `OD-0437` — STATUS=NOT_PROVEN — Golden-file tests
+- [ ] `OD-0438` — STATUS=NOT_PROVEN — Numerical invariants
+- [ ] `OD-0439` — STATUS=NOT_PROVEN — Behavioral mutation tests
+- [ ] `OD-0440` — STATUS=NOT_PROVEN — **MODEL_CODE_CORRECTNESS = PASS**
+- [ ] `OD-0441` — STATUS=NOT_PROVEN — Shuffle-label test
+- [ ] `OD-0442` — STATUS=NOT_PROVEN — Lookahead test
+- [ ] `OD-0443` — STATUS=NOT_PROVEN — Purged K-fold
+- [ ] `OD-0444` — STATUS=NOT_PROVEN — Embargo
+- [ ] `OD-0445` — STATUS=NOT_PROVEN — Walk-forward
+- [ ] `OD-0446` — STATUS=NOT_PROVEN — True out-of-sample
+- [ ] `OD-0447` — STATUS=NOT_PROVEN — Beat random baseline
+- [ ] `OD-0448` — STATUS=NOT_PROVEN — Beat majority-class baseline
+- [ ] `OD-0449` — STATUS=NOT_PROVEN — Beat persistence baseline
+- [ ] `OD-0450` — STATUS=NOT_PROVEN — Beat simple technical baseline where applicable
+- [ ] `OD-0451` — STATUS=NOT_PROVEN — Ablation
+- [ ] `OD-0452` — STATUS=NOT_PROVEN — Feature importance stability
+- [ ] `OD-0453` — STATUS=NOT_PROVEN — Per-ticker calibration
+- [ ] `OD-0454` — STATUS=NOT_PROVEN — Per-horizon calibration
+- [ ] `OD-0455` — STATUS=NOT_PROVEN — Reliability diagrams
+- [ ] `OD-0456` — STATUS=NOT_PROVEN — Brier score
+- [ ] `OD-0457` — STATUS=NOT_PROVEN — ECE
+- [ ] `OD-0458` — STATUS=NOT_PROVEN — Confidence calibration
+- [ ] `OD-0459` — STATUS=NOT_PROVEN — Regime robustness
+- [ ] `OD-0460` — STATUS=NOT_PROVEN — Liquidity-regime robustness
+- [ ] `OD-0461` — STATUS=NOT_PROVEN — Volatility-regime robustness
+- [ ] `OD-0462` — STATUS=NOT_PROVEN — Cost-adjusted edge
+- [ ] `OD-0463` — STATUS=NOT_PROVEN — Slippage-adjusted edge
+- [ ] `OD-0464` — STATUS=NOT_PROVEN — Multiple-testing correction where needed
+- [ ] `OD-0465` — STATUS=NOT_PROVEN — Promotion threshold justified
+- [ ] `OD-0466` — STATUS=NOT_PROVEN — Demotion threshold justified
+- [ ] `OD-0467` — STATUS=NOT_PROVEN — **MODEL_VALIDATION_STATUS = PASS**
+- [ ] `OD-0468` — STATUS=NOT_PROVEN — Base-model predictions truly out-of-fold for meta training
+- [ ] `OD-0469` — STATUS=NOT_PROVEN — Meta learner never trains on base in-sample predictions
+- [ ] `OD-0470` — STATUS=NOT_PROVEN — Purging respected across base/meta
+- [ ] `OD-0471` — STATUS=NOT_PROVEN — Embargo respected
+- [ ] `OD-0472` — STATUS=NOT_PROVEN — Calibration does not leak
+- [ ] `OD-0473` — STATUS=NOT_PROVEN — Ensemble selection does not leak
+- [ ] `OD-0474` — STATUS=NOT_PROVEN — Horizon overlap leakage examined
+- [ ] `OD-0475` — STATUS=NOT_PROVEN — Same-day/time dependence handled
+- [ ] `OD-0476` — STATUS=NOT_PROVEN — Artifact-generation separation
+- [ ] `OD-0477` — STATUS=NOT_PROVEN — Training/serving feature-order parity
+- [ ] `OD-0478` — STATUS=NOT_PROVEN — **META_LEAKAGE_STATUS = PASS**
+- [ ] `OD-0479` — STATUS=NOT_PROVEN — Calibration dataset independent
+- [ ] `OD-0480` — STATUS=NOT_PROVEN — Calibration generation versioned
+- [ ] `OD-0481` — STATUS=NOT_PROVEN — Per ticker where evidence supports
+- [ ] `OD-0482` — STATUS=NOT_PROVEN — Per horizon
+- [ ] `OD-0483` — STATUS=NOT_PROVEN — Sparse-support handling
+- [ ] `OD-0484` — STATUS=NOT_PROVEN — Regime dependence tested
+- [ ] `OD-0485` — STATUS=NOT_PROVEN — Stale calibration rejected
+- [ ] `OD-0486` — STATUS=NOT_PROVEN — Artifact/calibration compatibility enforced
+- [ ] `OD-0487` — STATUS=NOT_PROVEN — Calibration cannot silently default
+- [ ] `OD-0488` — STATUS=NOT_PROVEN — Calibration rollback
+- [ ] `OD-0489` — STATUS=NOT_PROVEN — Reliability continuously monitored
+- [ ] `OD-0490` — STATUS=NOT_PROVEN — **CALIBRATION_STATUS = PASS**
+- [ ] `OD-0491` — STATUS=NOT_PROVEN — Random seeds recorded
+- [ ] `OD-0492` — STATUS=NOT_PROVEN — Python version recorded
+- [ ] `OD-0493` — STATUS=NOT_PROVEN — Library versions recorded
+- [ ] `OD-0494` — STATUS=NOT_PROVEN — Hardware/runtime differences characterized
+- [ ] `OD-0495` — STATUS=NOT_PROVEN — Dataset hash recorded
+- [ ] `OD-0496` — STATUS=NOT_PROVEN — Feature schema recorded
+- [ ] `OD-0497` — STATUS=NOT_PROVEN — Preprocessing version recorded
+- [ ] `OD-0498` — STATUS=NOT_PROVEN — Training configuration recorded
+- [ ] `OD-0499` — STATUS=NOT_PROVEN — Fold definitions recorded
+- [ ] `OD-0500` — STATUS=NOT_PROVEN — Calibration data recorded
+- [ ] `OD-0501` — STATUS=NOT_PROVEN — Repeated runs statistically equivalent within declared tolerance
+- [ ] `OD-0502` — STATUS=NOT_PROVEN — Instability blocks promotion
+- [ ] `OD-0503` — STATUS=NOT_PROVEN — **REPRODUCIBILITY_STATUS = PASS**
+- [ ] `OD-0504` — STATUS=NOT_PROVEN — **FIND-LABEL-INTEGRITY-FORENSICS** — 2026-07-16 scoreboard shows cells too extreme in both directions to be noise: `$SPX` 60c **0.0% on n=108** (0/61 directional), `UNH` 0–6.6% across all horizons (n=244), `MSFT` 60c directional 99.0% (n=101), QQQ 60c 72.3%. Extreme-both-ways is the signature of a labeling/join artifact (inverted labels, timestamp misalignment, broken outcome join), not model quality; every horizon carries `TIMESTAMP_IDENTITY_NOT_PROVEN`. Resolve whether these cells are artifacts before trusting any accuracy number. First Find & Prove work item post-merge; feeds the target-truth lane below.
+- [ ] `OD-0505` — STATUS=NOT_PROVEN — **SCOREBOARD-TARGET-TRUTH SCOREBOARD_SEMANTICS_TARGET_TRUTH_AND_60C_ROOT_CAUSE_FORENSIC_V1** — two separate lanes (branch `scoreboard-target-truth-60c-forensic-v1`). Lane A (scoreboard schema v4, operator-semantic safety: trade-decision ALL card, confusion matrices, baselines, fail-closed accuracy presentation, invalid-threshold exclusion) contains HEAD backfill behavior only — no identity-first attachment code is part of the Lane-A package. Lane B (identity-first outcome attachment, `calibration/backfill_outcomes.py` + tests) is NOT in the Lane-A patch — it exists only as uncommitted worktree design; LANE B COMMIT_READY = NO (requires the separate data-impact mission: compound identity, production-copy reconciliation, old-vs-new weights/decisions, migration/rollback, RTH proof). Forensic packet: `reports/scoreboard_forensic/july13_2026_target_truth_forensic.json` — LEGACY_PLACEHOLDER_THRESHOLD CONFIRMED (100% of labeled July-13 rows; 60c threshold spans 0.86–416 bps of spot); target redesign OPEN via the preregistered research protocol.
+- [ ] `OD-0506` — STATUS=NOT_PROVEN — **QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1** — ENABLED / NOT_STARTED (operator 2026-07-09) — DEPENDS ON DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1: input layer VALID as of `06a3f9e8e73811d61364b2829ff462d7b90474de`. The continuous signal-refinement loop consumes the denominator-first scoreboard (eligible grid + quality_circle section) as its measurement substrate. Boundary (binding): the scoreboard identifies weak tickers/horizons/coverage gaps; it does NOT itself approve model or signal-rule changes — any refinement requires a separate audited lane.
+- [ ] `OD-0507` — STATUS=NOT_PROVEN — **STAGE-2 Target/label foundation** — continue `docs/stage1_target_label_foundation/` Stage 2: retire the confirmed placeholder thresholds and design the governed target so scoreboard accuracy becomes decision-valid. Preregistered protocol; no outcome mining.
+- [ ] `OD-0508` — STATUS=NOT_PROVEN — **ML-PIPE-V1 predictive-validity closeout** — remaining from the correctness program: operator-host shuffled-label runs on real capture data per model-family×horizon, then a clean governed retrain, then per-ticker/per-horizon validity classification. Until then the standing NOT_PROVEN verdict holds.
+- [ ] `OD-0509` — STATUS=NOT_PROVEN — **SIG-01 scoreboard/actionability accrual** — sessions 2–5 of segmented multi-day evidence toward signal-outcome validation; logger ~32 tickers, snapshot rows landing all session.
+- [ ] `OD-0510` — STATUS=NOT_PROVEN — TRADE definition proven
+- [ ] `OD-0511` — STATUS=NOT_PROVEN — WAIT definition proven
+- [ ] `OD-0512` — STATUS=NOT_PROVEN — AVOID definition proven
+- [ ] `OD-0513` — STATUS=NOT_PROVEN — Abstention-by-default
+- [ ] `OD-0514` — STATUS=NOT_PROVEN — WAIT improves loss avoidance
+- [ ] `OD-0515` — STATUS=NOT_PROVEN — AVOID filters low-quality regimes
+- [ ] `OD-0516` — STATUS=NOT_PROVEN — Coverage vs edge frontier measured
+- [ ] `OD-0517` — STATUS=NOT_PROVEN — Abstention by ticker
+- [ ] `OD-0518` — STATUS=NOT_PROVEN — Abstention by horizon
+- [ ] `OD-0519` — STATUS=NOT_PROVEN — Abstention by regime
+- [ ] `OD-0520` — STATUS=NOT_PROVEN — Abstention by data-quality state
+- [ ] `OD-0521` — STATUS=NOT_PROVEN — False abstention cost measured
+- [ ] `OD-0522` — STATUS=NOT_PROVEN — No incentive to maximize trade count
+- [ ] `OD-0523` — STATUS=NOT_PROVEN — **ABSTENTION_EDGE_STATUS = PASS**
+- [ ] `OD-0524` — STATUS=NOT_PROVEN — Inputs canonical
+- [ ] `OD-0525` — STATUS=NOT_PROVEN — Probability triplets canonical
+- [ ] `OD-0526` — STATUS=NOT_PROVEN — Confidence canonical
+- [ ] `OD-0527` — STATUS=NOT_PROVEN — Fusion canonical
+- [ ] `OD-0528` — STATUS=NOT_PROVEN — Policy canonical
+- [ ] `OD-0529` — STATUS=NOT_PROVEN — Risk vetoes canonical
+- [ ] `OD-0530` — STATUS=NOT_PROVEN — Entry state canonical
+- [ ] `OD-0531` — STATUS=NOT_PROVEN — Final bias canonical
+- [ ] `OD-0532` — STATUS=NOT_PROVEN — Final tradeable canonical
+- [ ] `OD-0533` — STATUS=NOT_PROVEN — WAIT reason canonical
+- [ ] `OD-0534` — STATUS=NOT_PROVEN — AVOID reason canonical
+- [ ] `OD-0535` — STATUS=NOT_PROVEN — No UI override
+- [ ] `OD-0536` — STATUS=NOT_PROVEN — No fallback override
+- [ ] `OD-0537` — STATUS=NOT_PROVEN — Missing input lowers/withholds decision rather than invents certainty
+- [ ] `OD-0538` — STATUS=NOT_PROVEN — Stale data lowers/withholds decision
+- [ ] `OD-0539` — STATUS=NOT_PROVEN — Incompatible artifacts block actionability
+- [ ] `OD-0540` — STATUS=NOT_PROVEN — **DECISION_ENGINE_STATUS = PASS**
+- [ ] `OD-0541` — STATUS=NOT_PROVEN — Exact timestamp
+- [ ] `OD-0542` — STATUS=NOT_PROVEN — Exact expiry/context
+- [ ] `OD-0543` — STATUS=NOT_PROVEN — Exact source data
+- [ ] `OD-0544` — STATUS=NOT_PROVEN — Exact feature values
+- [ ] `OD-0545` — STATUS=NOT_PROVEN — Exact model generation
+- [ ] `OD-0546` — STATUS=NOT_PROVEN — Exact model probabilities
+- [ ] `OD-0547` — STATUS=NOT_PROVEN — Exact calibration
+- [ ] `OD-0548` — STATUS=NOT_PROVEN — Exact fusion result
+- [ ] `OD-0549` — STATUS=NOT_PROVEN — Exact policy rule
+- [ ] `OD-0550` — STATUS=NOT_PROVEN — Exact veto
+- [ ] `OD-0551` — STATUS=NOT_PROVEN — Exact risk computation
+- [ ] `OD-0552` — STATUS=NOT_PROVEN — Exact final decision
+- [ ] `OD-0553` — STATUS=NOT_PROVEN — Exact reason for WAIT/AVOID
+- [ ] `OD-0554` — STATUS=NOT_PROVEN — Offline replay reproduces same result
+- [ ] `OD-0555` — STATUS=NOT_PROVEN — **DECISION_ATTRIBUTION_STATUS = PASS**
+- [ ] `OD-0556` — STATUS=NOT_PROVEN — NBBO inputs correct
+- [ ] `OD-0557` — STATUS=NOT_PROVEN — Bid/ask size use correct
+- [ ] `OD-0558` — STATUS=NOT_PROVEN — Last trade use correct
+- [ ] `OD-0559` — STATUS=NOT_PROVEN — Trade-sign inference justified
+- [ ] `OD-0560` — STATUS=NOT_PROVEN — Customer/firm/MM flow distinctions correct if used
+- [ ] `OD-0561` — STATUS=NOT_PROVEN — OI semantics correct
+- [ ] `OD-0562` — STATUS=NOT_PROVEN — Options volume semantics correct
+- [ ] `OD-0563` — STATUS=NOT_PROVEN — Delta/gamma/vanna/charm semantics correct
+- [ ] `OD-0564` — STATUS=NOT_PROVEN — DTE filtering correct
+- [ ] `OD-0565` — STATUS=NOT_PROVEN — Expiry selection correct
+- [ ] `OD-0566` — STATUS=NOT_PROVEN — Contract multiplier correct
+- [ ] `OD-0567` — STATUS=NOT_PROVEN — Dealer-sign assumptions explicit/tested
+- [ ] `OD-0568` — STATUS=NOT_PROVEN — Gamma flip semantics correct
+- [ ] `OD-0569` — STATUS=NOT_PROVEN — Gamma walls semantics correct
+- [ ] `OD-0570` — STATUS=NOT_PROVEN — Delta walls semantics correct
+- [ ] `OD-0571` — STATUS=NOT_PROVEN — Vanna/charm semantics correct
+- [ ] `OD-0572` — STATUS=NOT_PROVEN — Pin semantics correct
+- [ ] `OD-0573` — STATUS=NOT_PROVEN — Flow acceleration semantics correct
+- [ ] `OD-0574` — STATUS=NOT_PROVEN — Missing/stale chain handling
+- [ ] `OD-0575` — STATUS=NOT_PROVEN — **OPTIONS_MICROSTRUCTURE_STATUS = PASS**
+- [ ] `OD-0576` — STATUS=NOT_PROVEN — PDH
+- [ ] `OD-0577` — STATUS=NOT_PROVEN — PDL
+- [ ] `OD-0578` — STATUS=NOT_PROVEN — PDC
+- [ ] `OD-0579` — STATUS=NOT_PROVEN — Prior POC
+- [ ] `OD-0580` — STATUS=NOT_PROVEN — Prior VAH
+- [ ] `OD-0581` — STATUS=NOT_PROVEN — Prior VAL
+- [ ] `OD-0582` — STATUS=NOT_PROVEN — Overnight high
+- [ ] `OD-0583` — STATUS=NOT_PROVEN — Overnight low
+- [ ] `OD-0584` — STATUS=NOT_PROVEN — ORB high
+- [ ] `OD-0585` — STATUS=NOT_PROVEN — ORB low
+- [ ] `OD-0586` — STATUS=NOT_PROVEN — ORB midpoint
+- [ ] `OD-0587` — STATUS=NOT_PROVEN — VWAP
+- [ ] `OD-0588` — STATUS=NOT_PROVEN — VWAP ±1σ
+- [ ] `OD-0589` — STATUS=NOT_PROVEN — VWAP ±2σ
+- [ ] `OD-0590` — STATUS=NOT_PROVEN — Today POC
+- [ ] `OD-0591` — STATUS=NOT_PROVEN — Today VAH
+- [ ] `OD-0592` — STATUS=NOT_PROVEN — Today VAL
+- [ ] `OD-0593` — STATUS=NOT_PROVEN — Support liquidity
+- [ ] `OD-0594` — STATUS=NOT_PROVEN — Resistance liquidity
+- [ ] `OD-0595` — STATUS=NOT_PROVEN — Fair value
+- [ ] `OD-0596` — STATUS=NOT_PROVEN — Breakout trigger
+- [ ] `OD-0597` — STATUS=NOT_PROVEN — Breakdown trigger
+- [ ] `OD-0598` — STATUS=NOT_PROVEN — VWAP supply
+- [ ] `OD-0599` — STATUS=NOT_PROVEN — VWAP demand
+- [ ] `OD-0600` — STATUS=NOT_PROVEN — Sweep/deep sweep
+- [ ] `OD-0601` — STATUS=NOT_PROVEN — Afternoon value
+- [ ] `OD-0602` — STATUS=NOT_PROVEN — One authority for each semantic
+- [ ] `OD-0603` — STATUS=NOT_PROVEN — No stale-value substitution
+- [ ] `OD-0604` — STATUS=NOT_PROVEN — Pre-open behavior governed
+- [ ] `OD-0605` — STATUS=NOT_PROVEN — Missingness explicit
+- [ ] `OD-0606` — STATUS=NOT_PROVEN — Universality
+- [ ] `OD-0607` — STATUS=NOT_PROVEN — **LIQUIDITY_VALUE_STATUS = PASS**
+- [ ] `OD-0608` — STATUS=NOT_PROVEN — **GAMMA-SCANNER-RADAR** — background scanner computing the gamma regime + a "popping" flag (unusual move/vol/short-gamma) across ALL ~32 collected tickers, alerting the operator regardless of which ticker the UI shows. Best-fit monitoring product; TOS scanners can't compute our gamma-regime signal. Operator-requested 2026-07-17.
+- [ ] `OD-0609` — STATUS=NOT_PROVEN — **GAMMA-STRIKE-PICKER** — trade-construction helper: given operator intent (fast day-trade → max gamma near ATM; higher-probability → target-delta ITM), suggest the strike. Separate from the regime signal; a helper, not the edge.
+- [ ] `OD-0610` — STATUS=NOT_PROVEN — **GAMMA-PROFILE-CHARTS** — CLOSED 2026-08-01: delivered across two shipped surfaces. GEX by strike renders on the Chart tab as the blue/red per-strike bars (accrual pipeline, RC-159/RC-161/RC-162 @ `202237c7`, tests `tests/test_chart_accrual_consumer_v1.py` = 10 passed reading the rendered file); flip level, call/put walls and pin render on the Terrain tab (SSOT `/api/terrain` wide capture, per RC-33). Both dependencies the row named are satisfied: full-chain capture exists (`option_chain_morning_full`, daily rows through 2026-07-31) and the flip formula was corrected under FIND-GAMMA-FLIP-METHOD-V1 (closed 2026-07-19, below).
+- [ ] `OD-0611` — STATUS=NOT_PROVEN — **SCOREBOARD-ECONOMIC-REWORK** — keep the scoreboard's purpose (measure → refine inputs → improve signal) but change the metric from direction-accuracy-vs-placeholder to dollars-after-costs of the gamma-conditioned strategy, per regime. Ties to F1/F2 in `reports/fp_levelset_directive_for_cursor.md`.
+- [ ] `OD-0612` — STATUS=NOT_PROVEN — **UNIVERSE-EXPAND-NEWS-NAMES** — extend beyond SPY/QQQ/IWM sentinels to liquid single names (NVDA/TSLA/META/AAPL…), where short-gamma trend days on news may pay best; per-ticker calibration required. Operator: SPY/QQQ/IWM were never binding, just his early starting point.
+- [ ] `OD-0613` — STATUS=NOT_PROVEN — **TOS-SLIPPAGE-CALIBRATION** — calibrate the FP-64 cost model's slippage/leakage to the operator's REAL ThinkOrSwim fills (not theoretical option spread), so the economic gate is honest to his execution.
+- [ ] `OD-0614` — STATUS=NOT_PROVEN — **DIR-01 (ONE open item — sub-points a–g are facets of it, deliberately not separate rows;
+- [ ] `OD-0615` — STATUS=NOT_PROVEN — Every decision stored
+- [ ] `OD-0616` — STATUS=NOT_PROVEN — Inputs recoverable
+- [ ] `OD-0617` — STATUS=NOT_PROVEN — Model generation stored
+- [ ] `OD-0618` — STATUS=NOT_PROVEN — Semantic generation stored
+- [ ] `OD-0619` — STATUS=NOT_PROVEN — Artifact identity stored
+- [ ] `OD-0620` — STATUS=NOT_PROVEN — DB/source identity stored
+- [ ] `OD-0621` — STATUS=NOT_PROVEN — Outcome joined causally
+- [ ] `OD-0622` — STATUS=NOT_PROVEN — Exact replay possible
+- [ ] `OD-0623` — STATUS=NOT_PROVEN — Replay cannot use future-corrected truth
+- [ ] `OD-0624` — STATUS=NOT_PROVEN — Differences explainable
+- [ ] `OD-0625` — STATUS=NOT_PROVEN — Replay universal across tickers
+- [ ] `OD-0626` — STATUS=NOT_PROVEN — **DECISION_REPLAY_STATUS = PASS**
+- [ ] `OD-0627` — STATUS=NOT_PROVEN — Probabilities sum correctly
+- [ ] `OD-0628` — STATUS=NOT_PROVEN — Probabilities bounded
+- [ ] `OD-0629` — STATUS=NOT_PROVEN — Confidence bounded
+- [ ] `OD-0630` — STATUS=NOT_PROVEN — Volatility non-negative
+- [ ] `OD-0631` — STATUS=NOT_PROVEN — Spread non-negative or withheld
+- [ ] `OD-0632` — STATUS=NOT_PROVEN — DTE non-negative or withheld
+- [ ] `OD-0633` — STATUS=NOT_PROVEN — Stop lies on loss side
+- [ ] `OD-0634` — STATUS=NOT_PROVEN — Target lies on profit side
+- [ ] `OD-0635` — STATUS=NOT_PROVEN — Worse liquidity cannot improve execution quality
+- [ ] `OD-0636` — STATUS=NOT_PROVEN — Higher estimated costs cannot increase net edge
+- [ ] `OD-0637` — STATUS=NOT_PROVEN — Lower risk budget cannot increase allowed size
+- [ ] `OD-0638` — STATUS=NOT_PROVEN — Missing evidence cannot increase conviction
+- [ ] `OD-0639` — STATUS=NOT_PROVEN — Stale evidence cannot increase conviction
+- [ ] `OD-0640` — STATUS=NOT_PROVEN — Gamma sign economically consistent
+- [ ] `OD-0641` — STATUS=NOT_PROVEN — Call/put wall identities preserved
+- [ ] `OD-0642` — STATUS=NOT_PROVEN — Distance sign conventions consistent
+- [ ] `OD-0643` — STATUS=NOT_PROVEN — Unit invariants preserved
+- [ ] `OD-0644` — STATUS=NOT_PROVEN — **ECONOMIC_INVARIANTS_STATUS = PASS**
+- [ ] `OD-0645` — STATUS=NOT_PROVEN — Dollars vs points explicit
+- [ ] `OD-0646` — STATUS=NOT_PROVEN — Percent vs decimal explicit
+- [ ] `OD-0647` — STATUS=NOT_PROVEN — Annualized vs per-bar volatility explicit
+- [ ] `OD-0648` — STATUS=NOT_PROVEN — Shares vs contracts explicit
+- [ ] `OD-0649` — STATUS=NOT_PROVEN — Option multiplier explicit
+- [ ] `OD-0650` — STATUS=NOT_PROVEN — Raw gamma vs GEX explicit
+- [ ] `OD-0651` — STATUS=NOT_PROVEN — Gamma per $1 vs per 1% explicit
+- [ ] `OD-0652` — STATUS=NOT_PROVEN — Seconds/ms/ns explicit
+- [ ] `OD-0653` — STATUS=NOT_PROVEN — Calendar DTE vs trading-time T explicit
+- [ ] `OD-0654` — STATUS=NOT_PROVEN — Rounding only at presentation boundary where possible
+- [ ] `OD-0655` — STATUS=NOT_PROVEN — No float truncation changing decision semantics
+- [ ] `OD-0656` — STATUS=NOT_PROVEN — No mixed units under same field name
+- [ ] `OD-0657` — STATUS=NOT_PROVEN — **UNITS_PRECISION_STATUS = PASS**
+- [ ] `OD-0658` — STATUS=NOT_PROVEN — Small price perturbation
+- [ ] `OD-0659` — STATUS=NOT_PROVEN — Small spread perturbation
+- [ ] `OD-0660` — STATUS=NOT_PROVEN — IV perturbation
+- [ ] `OD-0661` — STATUS=NOT_PROVEN — Gamma-wall perturbation
+- [ ] `OD-0662` — STATUS=NOT_PROVEN — Volume perturbation
+- [ ] `OD-0663` — STATUS=NOT_PROVEN — Missing feature
+- [ ] `OD-0664` — STATUS=NOT_PROVEN — Stale feature
+- [ ] `OD-0665` — STATUS=NOT_PROVEN — Probability perturbation
+- [ ] `OD-0666` — STATUS=NOT_PROVEN — Threshold-nearby behavior
+- [ ] `OD-0667` — STATUS=NOT_PROVEN — Regime transition
+- [ ] `OD-0668` — STATUS=NOT_PROVEN — No pathological discontinuity
+- [ ] `OD-0669` — STATUS=NOT_PROVEN — Monotonic behavior where economically expected
+- [ ] `OD-0670` — STATUS=NOT_PROVEN — **SENSITIVITY_STATUS = PASS**
+- [ ] `OD-0671` — STATUS=NOT_PROVEN — LONG↔SHORT flip frequency measured
+- [ ] `OD-0672` — STATUS=NOT_PROVEN — TRADE↔WAIT churn measured
+- [ ] `OD-0673` — STATUS=NOT_PROVEN — Confidence oscillation measured
+- [ ] `OD-0674` — STATUS=NOT_PROVEN — Entry-state churn measured
+- [ ] `OD-0675` — STATUS=NOT_PROVEN — One-tick-noise sensitivity measured
+- [ ] `OD-0676` — STATUS=NOT_PROVEN — Hysteresis justified where used
+- [ ] `OD-0677` — STATUS=NOT_PROVEN — Smoothing never hides genuine risk
+- [ ] `OD-0678` — STATUS=NOT_PROVEN — UI state never more authoritative than decision truth
+- [ ] `OD-0679` — STATUS=NOT_PROVEN — **DECISION_STABILITY_STATUS = PASS**
+- [ ] `OD-0680` — STATUS=NOT_PROVEN — Entry defined precisely
+- [ ] `OD-0681` — STATUS=NOT_PROVEN — Next-bar timing correct
+- [ ] `OD-0682` — STATUS=NOT_PROVEN — Stop logic
+- [ ] `OD-0683` — STATUS=NOT_PROVEN — Target logic
+- [ ] `OD-0684` — STATUS=NOT_PROVEN — Timeout
+- [ ] `OD-0685` — STATUS=NOT_PROVEN — Vertical barrier
+- [ ] `OD-0686` — STATUS=NOT_PROVEN — Same-bar stop/target ambiguity
+- [ ] `OD-0687` — STATUS=NOT_PROVEN — Force-flat
+- [ ] `OD-0688` — STATUS=NOT_PROVEN — Session close
+- [ ] `OD-0689` — STATUS=NOT_PROVEN — Spread
+- [ ] `OD-0690` — STATUS=NOT_PROVEN — Slippage
+- [ ] `OD-0691` — STATUS=NOT_PROVEN — Commission
+- [ ] `OD-0692` — STATUS=NOT_PROVEN — Fees
+- [ ] `OD-0693` — STATUS=NOT_PROVEN — Queue assumptions if relevant
+- [ ] `OD-0694` — STATUS=NOT_PROVEN — Latency
+- [ ] `OD-0695` — STATUS=NOT_PROVEN — Market impact
+- [ ] `OD-0696` — STATUS=NOT_PROVEN — Opening auction
+- [ ] `OD-0697` — STATUS=NOT_PROVEN — Closing auction
+- [ ] `OD-0698` — STATUS=NOT_PROVEN — Halt handling
+- [ ] `OD-0699` — STATUS=NOT_PROVEN — Locked market
+- [ ] `OD-0700` — STATUS=NOT_PROVEN — Crossed market
+- [ ] `OD-0701` — STATUS=NOT_PROVEN — One-sided market
+- [ ] `OD-0702` — STATUS=NOT_PROVEN — Option liquidity
+- [ ] `OD-0703` — STATUS=NOT_PROVEN — **EXECUTION_REALISM_STATUS = PASS**
+- [ ] `OD-0704` — STATUS=NOT_PROVEN — Position size calculation
+- [ ] `OD-0705` — STATUS=NOT_PROVEN — Risk budget
+- [ ] `OD-0706` — STATUS=NOT_PROVEN — Volatility scaling
+- [ ] `OD-0707` — STATUS=NOT_PROVEN — Stop distance
+- [ ] `OD-0708` — STATUS=NOT_PROVEN — Portfolio exposure
+- [ ] `OD-0709` — STATUS=NOT_PROVEN — Correlation exposure
+- [ ] `OD-0710` — STATUS=NOT_PROVEN — Max trade risk
+- [ ] `OD-0711` — STATUS=NOT_PROVEN — Max ticker risk
+- [ ] `OD-0712` — STATUS=NOT_PROVEN — Max sector risk where applicable
+- [ ] `OD-0713` — STATUS=NOT_PROVEN — Max daily loss
+- [ ] `OD-0714` — STATUS=NOT_PROVEN — Consecutive-loss controls
+- [ ] `OD-0715` — STATUS=NOT_PROVEN — Drawdown control
+- [ ] `OD-0716` — STATUS=NOT_PROVEN — Gap risk
+- [ ] `OD-0717` — STATUS=NOT_PROVEN — Expiry risk
+- [ ] `OD-0718` — STATUS=NOT_PROVEN — Extreme-volatility risk
+- [ ] `OD-0719` — STATUS=NOT_PROVEN — Model uncertainty
+- [ ] `OD-0720` — STATUS=NOT_PROVEN — Missing-data risk
+- [ ] `OD-0721` — STATUS=NOT_PROVEN — Staleness risk
+- [ ] `OD-0722` — STATUS=NOT_PROVEN — **RISK_ENGINE_STATUS = PASS**
+- [ ] `OD-0723` — STATUS=NOT_PROVEN — Zero volume
+- [ ] `OD-0724` — STATUS=NOT_PROVEN — Huge spread
+- [ ] `OD-0725` — STATUS=NOT_PROVEN — Crossed quote
+- [ ] `OD-0726` — STATUS=NOT_PROVEN — Locked quote
+- [ ] `OD-0727` — STATUS=NOT_PROVEN — One-sided quote
+- [ ] `OD-0728` — STATUS=NOT_PROVEN — Missing chain
+- [ ] `OD-0729` — STATUS=NOT_PROVEN — Partial chain
+- [ ] `OD-0730` — STATUS=NOT_PROVEN — Extreme IV
+- [ ] `OD-0731` — STATUS=NOT_PROVEN — Invalid IV
+- [ ] `OD-0732` — STATUS=NOT_PROVEN — Zero IV
+- [ ] `OD-0733` — STATUS=NOT_PROVEN — Near expiry
+- [ ] `OD-0734` — STATUS=NOT_PROVEN — Expired contract
+- [ ] `OD-0735` — STATUS=NOT_PROVEN — Huge overnight gap
+- [ ] `OD-0736` — STATUS=NOT_PROVEN — Missing bars
+- [ ] `OD-0737` — STATUS=NOT_PROVEN — Duplicate bars
+- [ ] `OD-0738` — STATUS=NOT_PROVEN — Out-of-order bars
+- [ ] `OD-0739` — STATUS=NOT_PROVEN — Halt
+- [ ] `OD-0740` — STATUS=NOT_PROVEN — Early close
+- [ ] `OD-0741` — STATUS=NOT_PROVEN — DST transition
+- [ ] `OD-0742` — STATUS=NOT_PROVEN — Vendor field disappears
+- [ ] `OD-0743` — STATUS=NOT_PROVEN — Corrupted cache
+- [ ] `OD-0744` — STATUS=NOT_PROVEN — Mixed artifact generations
+- [ ] `OD-0745` — STATUS=NOT_PROVEN — **ADVERSARIAL_MARKET_STATE_STATUS = PASS**
+- [ ] `OD-0746` — STATUS=NOT_PROVEN — Every displayed value has canonical backend source
+- [ ] `OD-0747` — STATUS=NOT_PROVEN — No frontend recomputation of semantic truth
+- [ ] `OD-0748` — STATUS=NOT_PROVEN — Direction carried, not recomputed
+- [ ] `OD-0749` — STATUS=NOT_PROVEN — Confidence carried, not recomputed
+- [ ] `OD-0750` — STATUS=NOT_PROVEN — Gamma regime carried, not recomputed
+- [ ] `OD-0751` — STATUS=NOT_PROVEN — Gamma pin carried, not recomputed
+- [ ] `OD-0752` — STATUS=NOT_PROVEN — Charm target carried, not recomputed
+- [ ] `OD-0753` — STATUS=NOT_PROVEN — Expected move carried, not recomputed
+- [ ] `OD-0754` — STATUS=NOT_PROVEN — VWAP carried, not recomputed
+- [ ] `OD-0755` — STATUS=NOT_PROVEN — Price levels carried, not recomputed
+- [ ] `OD-0756` — STATUS=NOT_PROVEN — Risk carried, not recomputed
+- [ ] `OD-0757` — STATUS=NOT_PROVEN — Entry state carried, not recomputed
+- [ ] `OD-0758` — STATUS=NOT_PROVEN — Tradeable state carried, not recomputed
+- [ ] `OD-0759` — STATUS=NOT_PROVEN — WAIT reason carried, not recomputed
+- [ ] `OD-0760` — STATUS=NOT_PROVEN — AVOID reason carried, not recomputed
+- [ ] `OD-0761` — STATUS=NOT_PROVEN — Stale state carried, not recomputed
+- [ ] `OD-0762` — STATUS=NOT_PROVEN — Withheld state carried, not recomputed
+- [ ] `OD-0763` — STATUS=NOT_PROVEN — Missing state carried, not recomputed
+- [ ] `OD-0764` — STATUS=NOT_PROVEN — Source/methodology visible where materially necessary
+- [ ] `OD-0765` — STATUS=NOT_PROVEN — Ticker switch clears stale values
+- [ ] `OD-0766` — STATUS=NOT_PROVEN — Expiry switch clears stale values
+- [ ] `OD-0767` — STATUS=NOT_PROVEN — SSE/REST race safe
+- [ ] `OD-0768` — STATUS=NOT_PROVEN — Fast surface consistent with full state
+- [ ] `OD-0769` — STATUS=NOT_PROVEN — No fake or default confidence
+- [ ] `OD-0770` — STATUS=NOT_PROVEN — No fake or default price level
+- [ ] `OD-0771` — STATUS=NOT_PROVEN — No UI green/actionable state when backend says stale/non-actionable
+- [ ] `OD-0772` — STATUS=NOT_PROVEN — **OPERATOR_TRUTH_STATUS = PASS**
+- [ ] `OD-0773` — STATUS=NOT_PROVEN — **AUDIT-QUOTE-MEMO-V1** (CLOSED 2026-07-28, RC-112: `_memoized_quote_response` shared by fast lane + `resolve_spot`; acceptance test `test_quote_memo_one_vendor_call_serves_both_paths` passing) — one fix, two audit risks: `/api/terrain` does an unmemoised `safe_get_quote` per poll while the fast lane fetches the same ticker independently (double Schwab fetch, Bugbot/Cursor risk #9), and `get_terrain_radar` ranks on ≤60s loop-time spot while the card reprices live (risk #2). Fix: short-TTL (~1s) server-side quote memo shared by fast lane + `resolve_spot`; memoised quotes then make repricing the radar's top rows affordable. Claude drafts next; closes with commit SHA + a test proving one vendor call serves both paths inside the TTL.
+- [ ] `OD-0774` — STATUS=NOT_PROVEN — **AUDIT-TAPE-OVERFLOW-SHORT-VIEWPORTS** — at 1440×810 the ALERT TAPE tile overflows 30px and at 1366×768 44px (scrollable, not clipped-blind, but the operator wants visible data); radar rail scrolling is intended-by-design and stays. Fix: short-height media query slims tape row padding/font or caps visible entries with a count badge.
+- [ ] `OD-0775` — STATUS=NOT_PROVEN — **AUDIT-CEILING-NARROW-VERDICT-UNOBSERVED** — a ticker needing >TERRAIN_STRIKE_COUNT_MAX(=100) strikes must fetch the ceiling and report LOW_CONFIDENCE_NARROW_CHAIN. UNOBSERVED: $SPX, the only current >100-need ticker, is UNAVAILABLE via empty profile (RC-11 — no contract with OI+plausible gamma) so it never reaches the span verdict. Closes when a >100-need ticker WITH usable greeks is observed reporting NARROW off a live cycle, or a governed synthetic-free test drives the endpoint with a real wide chain truncated to 100.
+- [ ] `OD-0776` — STATUS=NOT_PROVEN — **OPS-PLAYWRIGHT-E2E-RERUN** — operator host: `npm run test:e2e` (marker stale since 2026-05-25; `tests/test_playwright_must_run.py` fails honestly until a REAL run lands). Blocks the first fully-green pytest since May.
+- [ ] `OD-0777` — STATUS=NOT_PROVEN — **OPS-FULL-SUITE-STAMP** — operator host: fresh `python -m pytest -q tests/` after the E2E run. Prior full run 2026-07-20: 4237 passed / 4 failed; the 3 code failures are fixed but the 4240/4241 tally is UNVERIFIED until a fresh complete run (Cursor veracity audit: "not re-proven").
+- [ ] `OD-0778` — STATUS=NOT_PROVEN — **HELD-RECONCILE-MULTICROSS** — `edReconcileRegime` is exact only for the served (nearest-spot) flip; on multi-crossing profiles a live spot crossing a DIFFERENT boundary shows the old regime for ≤5s until the poll re-anchors. ACCEPTED-DESIGN (operator may overrule): closing it means shipping the 241-point profile to the browser per poll to close a ≤5s cosmetic window; the server recomputes exactly every poll. Revisit only if a real mis-display is observed live.
+- [ ] `OD-0779` — STATUS=NOT_PROVEN — **ML-META-JSON-VERIFICATION-ASYMMETRY** — PORTED TO THE LIVE TREE (RC-376, PR #118, same-turn board update per RC-375 law). TREE CITES: `_load_lstm` requires `lstm_*_meta.json` (refuses absent) and verifies role `"lstm_meta"` via `_verify_governed_artifact` BEFORE `load_lstm` parses it — transformer_meta parity. Locks: `tests/test_model_contract_enforcement.py` ordering + absent-meta refusal + tampered-bytes refusal (72 green incl. suite).
+- [ ] `OD-0780` — STATUS=NOT_PROVEN — **ML-META-DISPLAY-PATH** — Cursor drift-audit F1 of the RC-376 land, CLOSED SAME TURN (RC-377): `/api/state` model-health parsed all three governed metas (`json.loads` at the old server.py:9260) with no Item-4 verify — the display path was the weakest parser of the artifact. TREE CITES: `_model_status_from_artifact` now verifies role `f"{name}_meta"` via `ml_predict._verify_governed_artifact` BEFORE `json.loads`, fail-closed `INTEGRITY FAILED` (no parse) on refusal. Locks (RC-378 gate-width fold, all plant-verified this turn): live-driven producer-slice test (refusing verifier → parser never reached; ordered verify-then-parse control), closed call-surface whitelist on the producer AST (operator.mul-class reshapes trip), zero-count confluence-key-literal AST lock on server.py (setdefault-class reshapes trip), live call-trace proving `load_lstm` is NEVER entered on absent/tampered meta (76 green incl. suite).
+- [ ] `OD-0781` — STATUS=NOT_PROVEN — **ML-META-OFFLINE-PARSERS** — Cursor drift-audit F2, recorded threat-model row (train/offline, NOT the serve or display path): `ml_scheduler` calls `load_lstm` directly and `arch_competition/ablation_bundle_inference.py:271` parses LSTM meta offline (Transformer offline does the same) without the Item-4 verify. Held as a deliberate scope line: offline/train parsers get this explicit row rather than a silent exemption (RC-377 root); closes if the Item-4 boundary is extended to the train/offline surfaces or the operator rules the threat model out of scope. (F3 legacy absent-manifest allowance stays carried by MODEL-04/Item-4 policy — strict only under `ED_ARTIFACT_INTEGRITY_STRICT=1`.)
+- [ ] `OD-0782` — STATUS=NOT_PROVEN — **UI-01 analytics key identity** — CLOSED-ON-OLD-LINE @ `bc1b635`, NOT IN LIVE TREE (RC-364): `analytics_cache_key` and `tests/test_ui01_analytics_cache_key.py` absent from the canonical tree after the RC-350 cutover. PORT NEEDED: server-resolved `selected_exp` (generation-guarded), single client key-builder, `analytics_cache_key` payload echo — the old-line commit is the reference implementation.
+- [ ] `OD-0783` — STATUS=NOT_PROVEN — **UI-04 P1B — vanna honesty** — UI labels the shown value as a vega/(S·iv) proxy (not true vanna). Closed @ `29ea1e4`. Tests: `tests/test_charm_vote_gate.py`. (Board-reconciled 2026-08-16.)
+- [ ] `OD-0784` — STATUS=NOT_PROVEN — **UI-04 P1C — charm sign gate** — charm VOTE gated (`CHARM_VOTE_VALIDATION_STATUS == "UNAPPROVED"`, `call_engine.py:17` + `:1525-1529`, present on the live tree; tree-verified RC-364) closed @ `29ea1e4` as a gate, not a validity claim. Distinct from the operator's 2026-08-02 RC-199 ruling, which revoked the DISPLAY vote-lock — charm renders real numbers everywhere its fields serve; the call-engine vote gate is a separate mechanism and remains until the analytic sign is proven.
+- [ ] `OD-0785` — STATUS=NOT_PROVEN — **UI-04 P1D — PDH prior trading day** — PDH uses previous trading day (`liquidity_value_engine.py`), fail-closed without prior RTH bars. Closed @ `8686e68`. Overnight calendar-blind residual stays in **LP-01 / F15** — do not treat this close as overnight-session proof. (Board-reconciled 2026-08-16.)
+- [ ] `OD-0786` — STATUS=NOT_PROVEN — **UI-05 guest cold-fusion SLA at the open burst** — mechanism fixes landed (priority pools, chain gate, mkt-ctx single-flight); remaining: RTH open-burst reproof, guest-universe repeatability, SLA regression enforcement.
+- [ ] `OD-0787` — STATUS=NOT_PROVEN — **ECON-01 replay-context residuals** — denominator defect fixed and locked; parent stays open on calibration-version pinning, purged/embargo execution, broader LSTM/Transformer point-in-time windowing, RTH producer-guard observation.
+- [ ] `OD-0788` — STATUS=NOT_PROVEN — **MODEL-04 stale-model serving policy** — evidence delivered (per-ticker vintage table 2026-07-10; ten tickers on pre-correctness 2026-04-30 bundles; guests route through governed anchors). Serve/unserve/retrain policy = operator decision, held.
+- [ ] `OD-0789` — STATUS=NOT_PROVEN — **BUILD-IDENTITY git_sha semantics** — `/api/build.git_sha` reads repo HEAD at request time, not the running process. `process_identity` block (startup SHA + PID) is the working method. Remaining: flip legacy top-level `git_sha` to process identity — operator call.
+- [ ] `OD-0790` — STATUS=NOT_PROVEN — **GOV-REMOTE-ENFORCEMENT** — branch protection verified (PR + required checks + no force-push) but `enforce_admins=false` leaves the admin direct-push channel open. Operator settings decision.
+- [ ] `OD-0791` — STATUS=NOT_PROVEN — **UI-EXPLAIN orphan payload surfaces** — design approved, not rendered: `pred_headline` → explanation rail; `reversal_risk`/`reversal_label` → paired risk chip; closes with rendered DOM + RTH proof for all dispositioned fields. Universal RTH runtime proof (all enrolled tickers, browser DOM, live transport) remains open behind an RTH session window.
+- [ ] `OD-0792` — STATUS=NOT_PROVEN — **P2-V02-ORPHAN-PAYLOAD** — `pred_headline` / `reversal_risk` / `reversal_label` disposition (operator decision required — not a silent default).
+- [ ] `OD-0793` — STATUS=NOT_PROVEN — Manual emergency stop
+- [ ] `OD-0794` — STATUS=NOT_PROVEN — Data stale kill
+- [ ] `OD-0795` — STATUS=NOT_PROVEN — Data missing kill
+- [ ] `OD-0796` — STATUS=NOT_PROVEN — Artifact incompatible kill
+- [ ] `OD-0797` — STATUS=NOT_PROVEN — Model failure kill
+- [ ] `OD-0798` — STATUS=NOT_PROVEN — DB failure kill
+- [ ] `OD-0799` — STATUS=NOT_PROVEN — Vendor failure kill
+- [ ] `OD-0800` — STATUS=NOT_PROVEN — Abnormal spread kill
+- [ ] `OD-0801` — STATUS=NOT_PROVEN — Runtime exception kill
+- [ ] `OD-0802` — STATUS=NOT_PROVEN — Excess latency kill
+- [ ] `OD-0803` — STATUS=NOT_PROVEN — Excess daily loss kill
+- [ ] `OD-0804` — STATUS=NOT_PROVEN — Corrupted-state kill
+- [ ] `OD-0805` — STATUS=NOT_PROVEN — Tested behaviorally
+- [ ] `OD-0806` — STATUS=NOT_PROVEN — Fail closed
+- [ ] `OD-0807` — STATUS=NOT_PROVEN — **KILL_SWITCH_STATUS = PASS**
+- [ ] `OD-0808` — STATUS=NOT_PROVEN — Schwab outage
+- [ ] `OD-0809` — STATUS=NOT_PROVEN — Partial Schwab response
+- [ ] `OD-0810` — STATUS=NOT_PROVEN — Auth expiration
+- [ ] `OD-0811` — STATUS=NOT_PROVEN — Rate limit
+- [ ] `OD-0812` — STATUS=NOT_PROVEN — Missing field
+- [ ] `OD-0813` — STATUS=NOT_PROVEN — Field becomes null
+- [ ] `OD-0814` — STATUS=NOT_PROVEN — Field becomes zero
+- [ ] `OD-0815` — STATUS=NOT_PROVEN — Structurally valid but implausible value
+- [ ] `OD-0816` — STATUS=NOT_PROVEN — Stale chain
+- [ ] `OD-0817` — STATUS=NOT_PROVEN — Fresh-quote-stale-Greeks mismatch
+- [ ] `OD-0818` — STATUS=NOT_PROVEN — Fresh-underlying-stale-options mismatch
+- [ ] `OD-0819` — STATUS=NOT_PROVEN — Fallback source provenance
+- [ ] `OD-0820` — STATUS=NOT_PROVEN — No silent semantic substitution
+- [ ] `OD-0821` — STATUS=NOT_PROVEN — **VENDOR_FAILURE_STATUS = PASS**
+- [ ] `OD-0822` — STATUS=NOT_PROVEN — Runtime SHA visible
+- [ ] `OD-0823` — STATUS=NOT_PROVEN — Artifact generation visible
+- [ ] `OD-0824` — STATUS=NOT_PROVEN — DB identity visible internally
+- [ ] `OD-0825` — STATUS=NOT_PROVEN — Data freshness visible
+- [ ] `OD-0826` — STATUS=NOT_PROVEN — Last successful market-data update visible
+- [ ] `OD-0827` — STATUS=NOT_PROVEN — Last model inference visible
+- [ ] `OD-0828` — STATUS=NOT_PROVEN — Last decision visible
+- [ ] `OD-0829` — STATUS=NOT_PROVEN — Inference latency visible
+- [ ] `OD-0830` — STATUS=NOT_PROVEN — Feature failures visible
+- [ ] `OD-0831` — STATUS=NOT_PROVEN — Artifact failures visible
+- [ ] `OD-0832` — STATUS=NOT_PROVEN — Fallback usage visible
+- [ ] `OD-0833` — STATUS=NOT_PROVEN — Withhold reasons visible
+- [ ] `OD-0834` — STATUS=NOT_PROVEN — Cache hit-miss visible
+- [ ] `OD-0835` — STATUS=NOT_PROVEN — Recompute reasons visible
+- [ ] `OD-0836` — STATUS=NOT_PROVEN — Vendor failures visible
+- [ ] `OD-0837` — STATUS=NOT_PROVEN — Model degradation visible
+- [ ] `OD-0838` — STATUS=NOT_PROVEN — Kill-switch state visible
+- [ ] `OD-0839` — STATUS=NOT_PROVEN — **OBSERVABILITY_STATUS = PASS**
+- [ ] `OD-0840` — STATUS=NOT_PROVEN — Data ingest latency
+- [ ] `OD-0841` — STATUS=NOT_PROVEN — Normalization latency
+- [ ] `OD-0842` — STATUS=NOT_PROVEN — Feature computation latency
+- [ ] `OD-0843` — STATUS=NOT_PROVEN — Model inference latency
+- [ ] `OD-0844` — STATUS=NOT_PROVEN — Fusion latency
+- [ ] `OD-0845` — STATUS=NOT_PROVEN — Decision latency
+- [ ] `OD-0846` — STATUS=NOT_PROVEN — UI update latency
+- [ ] `OD-0847` — STATUS=NOT_PROVEN — Cache effectiveness
+- [ ] `OD-0848` — STATUS=NOT_PROVEN — Cold-start latency
+- [ ] `OD-0849` — STATUS=NOT_PROVEN — Warm latency
+- [ ] `OD-0850` — STATUS=NOT_PROVEN — P50
+- [ ] `OD-0851` — STATUS=NOT_PROVEN — P95
+- [ ] `OD-0852` — STATUS=NOT_PROVEN — P99 where relevant
+- [ ] `OD-0853` — STATUS=NOT_PROVEN — No correctness compromise to meet SLA
+- [ ] `OD-0854` — STATUS=NOT_PROVEN — **PERFORMANCE_STATUS = PASS**
+- [ ] `OD-0855` — STATUS=NOT_PROVEN — API secrets not committed
+- [ ] `OD-0856` — STATUS=NOT_PROVEN — Tokens protected
+- [ ] `OD-0857` — STATUS=NOT_PROVEN — Logs do not leak credentials
+- [ ] `OD-0858` — STATUS=NOT_PROVEN — Debug endpoints gated
+- [ ] `OD-0859` — STATUS=NOT_PROVEN — File paths safe
+- [ ] `OD-0860` — STATUS=NOT_PROVEN — SQL injection reviewed
+- [ ] `OD-0861` — STATUS=NOT_PROVEN — Unsafe deserialization reviewed
+- [ ] `OD-0862` — STATUS=NOT_PROVEN — Artifact loading threat model
+- [ ] `OD-0863` — STATUS=NOT_PROVEN — Dependency vulnerabilities reviewed
+- [ ] `OD-0864` — STATUS=NOT_PROVEN — Local network exposure intentional
+- [ ] `OD-0865` — STATUS=NOT_PROVEN — **SECURITY_STATUS = PASS**
+- [ ] `OD-0866` — STATUS=NOT_PROVEN — Dead producers removed
+- [ ] `OD-0867` — STATUS=NOT_PROVEN — Legacy semantic authorities retired
+- [ ] `OD-0868` — STATUS=NOT_PROVEN — Old fallbacks removed
+- [ ] `OD-0869` — STATUS=NOT_PROVEN — Obsolete compatibility shims have retirement conditions
+- [ ] `OD-0870` — STATUS=NOT_PROVEN — Dead models removed
+- [ ] `OD-0871` — STATUS=NOT_PROVEN — Dead artifact formats removed
+- [ ] `OD-0872` — STATUS=NOT_PROVEN — Dead UI paths removed
+- [ ] `OD-0873` — STATUS=NOT_PROVEN — Dead research code cannot reach production
+- [ ] `OD-0874` — STATUS=NOT_PROVEN — No duplicate implementation retained "just in case"
+- [ ] `OD-0875` — STATUS=NOT_PROVEN — **RETIREMENT_STATUS = PASS**
+- [ ] `OD-0876` — STATUS=NOT_PROVEN — Behavioral tests hit actual code path
+- [ ] `OD-0877` — STATUS=NOT_PROVEN — Mutation tests reintroduce second producer
+- [ ] `OD-0878` — STATUS=NOT_PROVEN — Mutation tests reintroduce fallback
+- [ ] `OD-0879` — STATUS=NOT_PROVEN — Mutation tests reintroduce frontend recomputation
+- [ ] `OD-0880` — STATUS=NOT_PROVEN — Mutation tests reintroduce missing→zero collapse
+- [ ] `OD-0881` — STATUS=NOT_PROVEN — Mutation tests reintroduce wrong units
+- [ ] `OD-0882` — STATUS=NOT_PROVEN — Mutation tests reintroduce train/serve divergence
+- [ ] `OD-0883` — STATUS=NOT_PROVEN — Mutation tests reintroduce stale-cache reuse
+- [ ] `OD-0884` — STATUS=NOT_PROVEN — Mutation tests reintroduce wrong ticker normalization
+- [ ] `OD-0885` — STATUS=NOT_PROVEN — Mutation tests reintroduce wrong DB identity
+- [ ] `OD-0886` — STATUS=NOT_PROVEN — Golden files
+- [ ] `OD-0887` — STATUS=NOT_PROVEN — Economic invariants
+- [ ] `OD-0888` — STATUS=NOT_PROVEN — Universal ticker tests
+- [ ] `OD-0889` — STATUS=NOT_PROVEN — Runtime tests
+- [ ] `OD-0890` — STATUS=NOT_PROVEN — Negative controls
+- [ ] `OD-0891` — STATUS=NOT_PROVEN — **TESTING_STATUS = PASS**
+- [ ] `OD-0892` — STATUS=NOT_PROVEN — Exact HEAD SHA
+- [ ] `OD-0893` — STATUS=NOT_PROVEN — Exact origin/main SHA
+- [ ] `OD-0894` — STATUS=NOT_PROVEN — Clean/known worktree state
+- [ ] `OD-0895` — STATUS=NOT_PROVEN — Runtime PID
+- [ ] `OD-0896` — STATUS=NOT_PROVEN — Runtime command
+- [ ] `OD-0897` — STATUS=NOT_PROVEN — Runtime SHA == tested SHA
+- [ ] `OD-0898` — STATUS=NOT_PROVEN — Runtime artifacts == approved generation
+- [ ] `OD-0899` — STATUS=NOT_PROVEN — Runtime DB == canonical production DB
+- [ ] `OD-0900` — STATUS=NOT_PROVEN — Runtime proof includes a liquid large-cap ETF fixture (SPY is a test case, not implementation scope)
+- [ ] `OD-0901` — STATUS=NOT_PROVEN — Runtime proof includes a liquid Nasdaq-100 ETF fixture (QQQ is a test case, not implementation scope)
+- [ ] `OD-0902` — STATUS=NOT_PROVEN — Runtime proof includes a liquid small-cap ETF fixture (IWM is a test case, not implementation scope)
+- [ ] `OD-0903` — STATUS=NOT_PROVEN — Non-anchor ticker runtime proof
+- [ ] `OD-0904` — STATUS=NOT_PROVEN — Guest ticker runtime proof
+- [ ] `OD-0905` — STATUS=NOT_PROVEN — Ticker switching
+- [ ] `OD-0906` — STATUS=NOT_PROVEN — Expiry switching
+- [ ] `OD-0907` — STATUS=NOT_PROVEN — Stale-data behavior
+- [ ] `OD-0908` — STATUS=NOT_PROVEN — Withholding behavior
+- [ ] `OD-0909` — STATUS=NOT_PROVEN — Missing-data behavior
+- [ ] `OD-0910` — STATUS=NOT_PROVEN — Cache invalidation
+- [ ] `OD-0911` — STATUS=NOT_PROVEN — SSE
+- [ ] `OD-0912` — STATUS=NOT_PROVEN — REST
+- [ ] `OD-0913` — STATUS=NOT_PROVEN — Restart reproducibility
+- [ ] `OD-0914` — STATUS=NOT_PROVEN — Live decision fidelity
+- [ ] `OD-0915` — STATUS=NOT_PROVEN — Live operator fidelity
+- [ ] `OD-0916` — STATUS=NOT_PROVEN — **RUNTIME_PROOF_STATUS = PASS**
+- [ ] `OD-0917` — STATUS=NOT_PROVEN — **P3-V02-BRANCH-PROTECTION** — GitHub branch-protection API proof (authenticated `gh`).
+- [ ] `OD-0918` — STATUS=NOT_PROVEN — Candidate must beat baseline
+- [ ] `OD-0919` — STATUS=NOT_PROVEN — Candidate must prove OOS edge
+- [ ] `OD-0920` — STATUS=NOT_PROVEN — Candidate must pass leakage checks
+- [ ] `OD-0921` — STATUS=NOT_PROVEN — Candidate must pass calibration
+- [ ] `OD-0922` — STATUS=NOT_PROVEN — Candidate must pass cost/slippage
+- [ ] `OD-0923` — STATUS=NOT_PROVEN — Candidate must pass universality
+- [ ] `OD-0924` — STATUS=NOT_PROVEN — Candidate artifact lineage complete
+- [ ] `OD-0925` — STATUS=NOT_PROVEN — Candidate can run shadow
+- [ ] `OD-0926` — STATUS=NOT_PROVEN — Champion/challenger comparison
+- [ ] `OD-0927` — STATUS=NOT_PROVEN — Promotion atomic
+- [ ] `OD-0928` — STATUS=NOT_PROVEN — Rollback atomic
+- [ ] `OD-0929` — STATUS=NOT_PROVEN — Decayed model demoted
+- [ ] `OD-0930` — STATUS=NOT_PROVEN — Broken artifact fail-closed
+- [ ] `OD-0931` — STATUS=NOT_PROVEN — **PROMOTION_STATUS = PASS**
+- [ ] `OD-0932` — STATUS=NOT_PROVEN — Rolling OOS edge
+- [ ] `OD-0933` — STATUS=NOT_PROVEN — Feature drift
+- [ ] `OD-0934` — STATUS=NOT_PROVEN — Label drift
+- [ ] `OD-0935` — STATUS=NOT_PROVEN — Probability drift
+- [ ] `OD-0936` — STATUS=NOT_PROVEN — Calibration drift
+- [ ] `OD-0937` — STATUS=NOT_PROVEN — Regime drift
+- [ ] `OD-0938` — STATUS=NOT_PROVEN — Ticker-specific decay
+- [ ] `OD-0939` — STATUS=NOT_PROVEN — Horizon-specific decay
+- [ ] `OD-0940` — STATUS=NOT_PROVEN — Artifact age vs edge
+- [ ] `OD-0941` — STATUS=NOT_PROVEN — Empirical model half-life
+- [ ] `OD-0942` — STATUS=NOT_PROVEN — Retraining cadence empirically justified
+- [ ] `OD-0943` — STATUS=NOT_PROVEN — Automatic retraining never substitutes for validation
+- [ ] `OD-0944` — STATUS=NOT_PROVEN — Demotion on decay
+- [ ] `OD-0945` — STATUS=NOT_PROVEN — **EDGE_DECAY_STATUS = PASS**
+- [ ] `OD-0946` — STATUS=NOT_PROVEN — Champion immutable during comparison
+- [ ] `OD-0947` — STATUS=NOT_PROVEN — Challenger runs shadow
+- [ ] `OD-0948` — STATUS=NOT_PROVEN — Same inputs
+- [ ] `OD-0949` — STATUS=NOT_PROVEN — Same costs
+- [ ] `OD-0950` — STATUS=NOT_PROVEN — Decision delta recorded
+- [ ] `OD-0951` — STATUS=NOT_PROVEN — Edge delta measured
+- [ ] `OD-0952` — STATUS=NOT_PROVEN — Calibration compared
+- [ ] `OD-0953` — STATUS=NOT_PROVEN — Abstention compared
+- [ ] `OD-0954` — STATUS=NOT_PROVEN — Stability compared
+- [ ] `OD-0955` — STATUS=NOT_PROVEN — Latency compared
+- [ ] `OD-0956` — STATUS=NOT_PROVEN — Universal ticker comparison
+- [ ] `OD-0957` — STATUS=NOT_PROVEN — Promotion only on evidence
+- [ ] `OD-0958` — STATUS=NOT_PROVEN — **CHAMPION_CHALLENGER_STATUS = PASS**
+- [ ] `OD-0959` — STATUS=NOT_PROVEN — Data truth complete
+- [ ] `OD-0960` — STATUS=NOT_PROVEN — Point-in-time integrity complete
+- [ ] `OD-0961` — STATUS=NOT_PROVEN — Semantic authority complete
+- [ ] `OD-0962` — STATUS=NOT_PROVEN — Universality complete
+- [ ] `OD-0963` — STATUS=NOT_PROVEN — Train parity complete
+- [ ] `OD-0964` — STATUS=NOT_PROVEN — Serve parity complete
+- [ ] `OD-0965` — STATUS=NOT_PROVEN — Replay parity complete
+- [ ] `OD-0966` — STATUS=NOT_PROVEN — Backfill parity complete
+- [ ] `OD-0967` — STATUS=NOT_PROVEN — Model correctness complete
+- [ ] `OD-0968` — STATUS=NOT_PROVEN — OOS edge complete
+- [ ] `OD-0969` — STATUS=NOT_PROVEN — Calibration complete
+- [ ] `OD-0970` — STATUS=NOT_PROVEN — Costs complete
+- [ ] `OD-0971` — STATUS=NOT_PROVEN — Slippage complete
+- [ ] `OD-0972` — STATUS=NOT_PROVEN — Risk engine complete
+- [ ] `OD-0973` — STATUS=NOT_PROVEN — Kill switches complete
+- [ ] `OD-0974` — STATUS=NOT_PROVEN — Decision replay complete
+- [ ] `OD-0975` — STATUS=NOT_PROVEN — Runtime proof complete
+- [ ] `OD-0976` — STATUS=NOT_PROVEN — Operator truth complete
+- [ ] `OD-0977` — STATUS=NOT_PROVEN — No material NOT_PROVEN
+- [ ] `OD-0978` — STATUS=NOT_PROVEN — No material open F-row
+- [ ] `OD-0979` — STATUS=NOT_PROVEN — No material open RC defect
+- [ ] `OD-0980` — STATUS=NOT_PROVEN — No material unclassified producer
+- [ ] `OD-0981` — STATUS=NOT_PROVEN — **REAL_MONEY_READY = YES**
+- [ ] `OD-0982` — STATUS=NOT_PROVEN — No row silently deleted
+- [ ] `OD-0983` — STATUS=NOT_PROVEN — New defect → ADD
+- [ ] `OD-0984` — STATUS=NOT_PROVEN — Status transition → STATUS_CHANGE
+- [ ] `OD-0985` — STATUS=NOT_PROVEN — Renamed/merged/superseded → RECONCILIATION
+- [ ] `OD-0986` — STATUS=NOT_PROVEN — Reopened row retains reason
+- [ ] `OD-0987` — STATUS=NOT_PROVEN — Old closure evidence preserved
+- [ ] `OD-0988` — STATUS=NOT_PROVEN — False closure explicitly backtracked
+- [ ] `OD-0989` — STATUS=NOT_PROVEN — Historical disputed rows retained until adjudicated
+- [ ] `OD-0990` — STATUS=NOT_PROVEN — Board updated immediately after material proof
+- [ ] `OD-0991` — STATUS=NOT_PROVEN — **BOARD_INTEGRITY_STATUS = PASS**
+- [ ] `OD-0992` — STATUS=NOT_PROVEN — All canonical F rows closed
+- [ ] `OD-0993` — STATUS=NOT_PROVEN — All disputed F rows adjudicated
+- [ ] `OD-0994` — STATUS=NOT_PROVEN — All material non-F RC defects closed
+- [ ] `OD-0995` — STATUS=NOT_PROVEN — All material NOT_PROVEN = 0
+- [ ] `OD-0996` — STATUS=NOT_PROVEN — All parent/child status contradictions eliminated
+- [ ] `OD-0997` — STATUS=NOT_PROVEN — One Faucet proven universally
+- [ ] `OD-0998` — STATUS=NOT_PROVEN — Universality proven across supported ticker paths
+- [ ] `OD-0999` — STATUS=NOT_PROVEN — Data truth proven
+- [ ] `OD-1000` — STATUS=NOT_PROVEN — Point-in-time truth proven
+- [ ] `OD-1001` — STATUS=NOT_PROVEN — Train parity proven
+- [ ] `OD-1002` — STATUS=NOT_PROVEN — Serve parity proven
+- [ ] `OD-1003` — STATUS=NOT_PROVEN — Replay parity proven
+- [ ] `OD-1004` — STATUS=NOT_PROVEN — Backfill parity proven
+- [ ] `OD-1005` — STATUS=NOT_PROVEN — Feature lineage proven
+- [ ] `OD-1006` — STATUS=NOT_PROVEN — Artifact lineage proven
+- [ ] `OD-1007` — STATUS=NOT_PROVEN — Cache correctness proven
+- [ ] `OD-1008` — STATUS=NOT_PROVEN — Model-code correctness proven
+- [ ] `OD-1009` — STATUS=NOT_PROVEN — OOS predictive edge proven
+- [ ] `OD-1010` — STATUS=NOT_PROVEN — Calibration proven
+- [ ] `OD-1011` — STATUS=NOT_PROVEN — Meta leakage eliminated
+- [ ] `OD-1012` — STATUS=NOT_PROVEN — Economic invariants proven
+- [ ] `OD-1013` — STATUS=NOT_PROVEN — Execution realism proven
+- [ ] `OD-1014` — STATUS=NOT_PROVEN — Risk engine proven
+- [ ] `OD-1015` — STATUS=NOT_PROVEN — Kill switches proven
+- [ ] `OD-1016` — STATUS=NOT_PROVEN — Decision attribution proven
+- [ ] `OD-1017` — STATUS=NOT_PROVEN — Decision replay proven
+- [ ] `OD-1018` — STATUS=NOT_PROVEN — Operator/UI truth proven
+- [ ] `OD-1019` — STATUS=NOT_PROVEN — Observability proven
+- [ ] `OD-1020` — STATUS=NOT_PROVEN — Performance proven
+- [ ] `OD-1021` — STATUS=NOT_PROVEN — Security proven
+- [ ] `OD-1022` — STATUS=NOT_PROVEN — Discovery denominator exhausted/adjudicated
+- [ ] `OD-1023` — STATUS=NOT_PROVEN — Current runtime proof complete
+- [ ] `OD-1024` — STATUS=NOT_PROVEN — Clean reproducible production state
+- [ ] `OD-1025` — STATUS=NOT_PROVEN — Real-money readiness proven
+- [ ] `OD-1026` — STATUS=NOT_PROVEN — **PROJECT A = CLOSED_WITH_EVIDENCE**
+- [ ] `OD-1027` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Discovery denominator
+- [ ] `OD-1028` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Universal runtime proof
+- [ ] `OD-1029` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Enumerate every currently OPEN RC row in `governance/root_cause_log.md`
+- [ ] `OD-1030` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Record current measured OPEN RC denominator (= 72 as of 2026-08-12)
+- [ ] `OD-1031` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Recompute denominator when the ledger changes
+- [ ] `OD-1032` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Classify each OPEN RC into exactly one category (MATERIAL_TECHNICAL, DUPLICATE_CHILD, SUPERSEDED_WITH_EVIDENCE, STALE_LEDGER_AFTER_PROVEN_FIX, PROCESS_ONLY, EXTERNAL_BOUNDARY, NOT_PROVEN)
+- [ ] `OD-1033` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC appears explicitly on this Project A master board
+- [ ] `OD-1034` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC has semantic/title recorded
+- [ ] `OD-1035` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC has live/train/serve/replay/backfill applicability recorded
+- [ ] `OD-1036` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC has decision-path impact recorded
+- [ ] `OD-1037` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC has universality status
+- [ ] `OD-1038` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC is searched
+- [ ] `OD-1039` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC is proved
+- [ ] `OD-1040` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC is fixed
+- [ ] `OD-1041` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every MATERIAL_TECHNICAL RC is tested
+- [ ] `OD-1042` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every stale OPEN RC whose code is actually fixed is reconciled with exact evidence
+- [ ] `OD-1043` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: No stale ledger row remains OPEN merely because no one updated the ledger
+- [ ] `OD-1044` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: No code-only fix is called CLOSED while the governing RC remains materially unresolved
+- [ ] `OD-1045` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: No parent RC closes while a material child remains open
+- [ ] `OD-1046` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: No material RC is hidden solely inside a summary string
+- [ ] `OD-1047` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: No material RC is omitted because a different F-row "sounds similar"
+- [ ] `OD-1048` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: No material technical defect disappears because it belongs to another historical numbering system
+- [ ] `OD-1049` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: OPEN material technical RC count = 0 before Project A closure
+- [ ] `OD-1050` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Unpadded F1/F2/F3 Find & Prove items reviewed
+- [ ] `OD-1051` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Hyphenated F-01… Desk audit findings reviewed
+- [ ] `OD-1052` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: RH-F1…RH-F8 rehab facets reviewed
+- [ ] `OD-1053` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Existing OPEN_ITEMS.md Find & Prove references reviewed
+- [ ] `OD-1054` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Existing OPEN_ITEMS.md GEX-F2 references reviewed
+- [ ] `OD-1055` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Every unresolved MATERIAL TECHNICAL item from those systems mapped onto this Project A master board
+- [ ] `OD-1056` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Original source ID preserved when mapped
+- [ ] `OD-1057` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Duplicate semantic mapped without duplicating engineering work
+- [ ] `OD-1058` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: A closed item in another system is not assumed closed here without evidence
+- [ ] `OD-1059` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: No technical work remains hidden only in reports/directives/rehab files
+- [ ] `OD-1060` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: No numbering collision causes one item to overwrite another
+- [ ] `OD-1061` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Universality requirements apply to imported material technical items
+- [ ] `OD-1062` — STATUS=NOT_PROVEN — OPEN_ITEMS@aea7dcfd leftover: Parent Project A cannot close while a materially applicable imported item remains unresolved
+- [ ] `OD-1063` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-00 [DONE]: Racetrack Studies #1–#3 (incumbent recorded outputs; trivial price rules; structural rules). Baseline only — **not** a hang-up decision.
+- [ ] `OD-1064` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-01 [DONE]: **Outcome/bar repair (repairable debt).** Fixed `repair_canonical_1m_shared` Row-factory bug; inserted **98,481** interior synthetic 1m bars; refreshed governed snapshot outcomes; backfilled decisions at production `tol=29s`. Trusted-anchor attached **40,392 → 70,304**; residual debt **10,614** (needs Schwab rehydration / no snapshot in tol — not fabricatable). Evidence: `reports/fp01_outcome_repair_latest.json`.
+- [ ] `OD-1065` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-02 [DONE]: **Pipeline forensics.** Evidence: `reports/fp02_pipeline_forensics_latest.json`. Leakage check `outcomes_attached_before_decision=0`; duplicate decision keys=0; join methods exact+nearest; fusion gaps on attached rows documented; legacy empty payloads irrecoverable.
+- [ ] `OD-1066` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-03 [DONE]: **Study #4 — Elastic Net walk-forward.** Verdict `NO_SIGNAL_DETECTED`: SPY 4/4 FAIL (MCC negative on all horizons, n≈863–865 OOS); QQQ UNDER_SAMPLED (n=241&lt;300); IWM n=0 OOS (insufficient session folds / fit). Report: `reports/elastic_net_eval/latest.json`. Not an admission packet.
+- [ ] `OD-1067` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-04 [DONE]: **Study #5 — LightGBM** (NaN-fixed re-run). `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (SPY/QQQ/IWM all scored). Report: `reports/lightgbm_eval/latest.json`.
+- [ ] `OD-1068` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-05 [DONE]: **Study #6 — TCN.** No PASS. SPY:1c FAIL (MCC≈0.07, CI includes 0); other cells collapsed to constant-class predictions (degenerate — treated as FAIL after screen fix). Report: `reports/tcn_eval/latest.json`.
+- [ ] `OD-1069` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-06 [DONE]: **Study #7 — Kalman + logistic.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/kalman_eval/latest.json`.
+- [ ] `OD-1070` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-07 [DONE]: **Study #8 — HAR-RV.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (QQQ MCC≈0.11–0.13 still dies under baselines/Holm; nonflat secondary weak). Report: `reports/har_rv_eval/latest.json`.
+- [ ] `OD-1071` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-08 [DONE]: **Study #9 — quantile.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/quantile_eval/latest.json`.
+- [ ] `OD-1072` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-09 [DONE]: **Hang-up gate (scoreboard only).** Shortlist #1–#9: **0 PASS cells**. Cost-aware NOT_RUN (no survivors). Money-path stays closed. Evidence: `reports/fp09_hangup_gate_latest.json`. **Not permission to idle** — residual leads continue below unless operator says STOP.
+- [ ] `OD-1073` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-10 [DONE]: **Schwab rehydration.** `historical_backfill_enrolled_1m_v1` SUCCESS: **125,487** bars upserted; SPY/QQQ/IWM bars **81,658/65,113/59,573 → 101,696/89,655/76,769**. Decision backfill tol=29: attached **70,304 → 70,349** (+45); residual **10,614 → 10,571**. Dominant skip: `skipped_no_candidate_in_tol=11,444` (missing snapshots near decisions — not fillable by bars alone). Evidence: `reports/fp10_rehydration_latest.json`.
+- [ ] `OD-1074` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-11 [DONE]: **Study #10 — survival / competing-risks.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. QQQ MCC high (≤0.338) but fails `beats_all_baselines` (persistence). Report: `reports/survival_eval/latest.json`.
+- [ ] `OD-1075` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-12 [DONE]: **Study #11 — cost-aware.** No existence PASSes. Hard screen on faint leads: HAR QQQ 1c/5c/15c + survival QQQ:60c **KILL**; **har_rv QQQ:60c SURVIVE_ECONOMIC** at 1bp (mean_net≈0.35bp, CI excludes 0, n_trades=358). Not admission — existence FAIL stands. Report: `reports/cost_aware_eval/latest.json`.
+- [ ] `OD-1076` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-13 [DONE]: **Stress sole economic survivor (HAR QQQ:60c).** Survives 1bp/2bp + sign-shuffle (p=0); **KILL at 5bp** (CI includes 0). Verdict `STRESS_KILL`. Evidence: `reports/fp13_survivor_stress_latest.json`. Money-path stays WAIT.
+- [ ] `OD-1077` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-14 [DONE]: **Residual debt taxonomy** (exact COUNT). Residual **10,571**: SPY 6,979 / QQQ 2,434 / IWM 1,158. Buckets: **7,724** in (29s,60s]; **1,657** ≤29s unattached (outcomes unfilled); 54 (60s,300s]; 525 (300s,1h]; 611 >1h; 0 no-snapshot. Evidence: `reports/fp14_residual_debt_taxonomy_latest.json`.
+- [ ] `OD-1078` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-15 [DONE]: **In-tol unfilled repair attempt.** Refresh + backfill tol=29: attached **70,349 → 70,403** (+54); `trusted_old_missing` unchanged at **10,571**; `skipped_snapshot_outcomes_not_filled` still **1,884**. Most residual is outside 29s join window — not widened. Evidence: `reports/fp15_intol_unfilled_repair_latest.json`.
+- [ ] `OD-1079` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-16 [DONE]: **Study #12 — order-flow / microstructure** (spread, flow_imbalance, smart_money, absorption, continuation, candle_volume). `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.30 still fails baselines). Report: `reports/order_flow_eval/latest.json`.
+- [ ] `OD-1080` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-17 [DONE]: **Study #13 — L1 book imbalance.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.33 / QQQ:1c≈0.29 still fail baselines). Report: `reports/l1_book_eval/latest.json`.
+- [ ] `OD-1081` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-18 [DONE]: **Collect clock-gap diagnosis.** Residual **10,571**; **7,724** in (29s,60s]. Abs-gap mass **5,495** in 30–45s; signed peaks at **±29/±30s** (just outside `BACKFILL_JOIN_TOL_SEC=29`). Decision `mod60` mid-minute (~34–40); snaps cluster ~0–3 and :46. Matches known wall-clock vs bar-aligned join (see `daily_scoreboard.BACKFILL_JOIN_TOL_SEC` comment). **Do not widen tol.** Evidence: `reports/fp18_clock_gap_latest.json`.
+- [ ] `OD-1082` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-19 [DONE]: **Economic kill on IWM faint leads.** l1_book IWM:1c and order_flow IWM:1c both **KILL** at 1bp (mean_net −0.57 / −0.09 bp). Evidence: `reports/fp19_faint_lead_kill_latest.json`. Money-path stays WAIT.
+- [ ] `OD-1083` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-20 [DONE]: **Normalized rematerialize + HAR QQQ rescore.** `snapshots_1m_normalized` **175,799 → 175,961** (+162); fingerprint advanced. HAR QQQ rescore still **0 PASS / 4 FAIL** (MCC≈0.07–0.17; still loses baselines). Evidence: `reports/fp20_normalized_rematerialize_latest.json`, `reports/fp20_har_qqq_rescore_latest.json`.
+- [ ] `OD-1084` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-21 [DONE]: **Scoreboard + Study #15 TOD.** Consolidated board: `reports/fp_scoreboard_latest.json` (**0** existence PASS cells summed). TOD 30-min bins: `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/tod_eval/latest.json`.
+- [ ] `OD-1085` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-22 [DONE]: **Study #16 — regime-conditioned HAR.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/regime_har_eval/latest.json`.
+- [ ] `OD-1086` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-23 [DONE]: **Study #17 — cross-asset lead/lag.** `NO_SIGNAL_DETECTED` **0 PASS / 8 FAIL** (QQQ:1c MCC≈0.24 still loses baselines). Report: `reports/cross_asset_eval/latest.json`.
+- [ ] `OD-1087` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-24 [DONE]: **Collect forward fix — colocated calibration.** Root cause: snapshot throttle 1/min vs calibration every cycle → ±29–30s join misses. Fix: expect/write calibration only when snapshot insert lands (`_xid_do_snapshot_insert` + `_snap_insert_landed`); new skip `LIVE_ADVISORY_V2_SKIP_NO_COLOCATED_SNAPSHOT`. Tol not widened. Historical **10,571** residual unchanged. Evidence: `reports/fp24_clock_align_design_latest.json`; tests `tests/test_fp24_calibration_colocated_snapshot.py`.
+- [ ] `OD-1088` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-25 [DONE]: **Study #18 — vol-regime HAR** (realized_vol train-fold terciles). `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/vol_regime_har_eval/latest.json`.
+- [ ] `OD-1089` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-27 [DONE]: **Historical join-debt repair (executed).** Refresh + backfill tol=29 (+1,200) + one-shot historical tol=59 (+10,284). Trusted attached **70,403 → 78,840** (+8,437); old missing **10,937 → 2,937** (−8,000). Production tol stays **29**. Remaining ~2.9k: mostly no snap in 59s or snap outcomes still unfilled (not fabricatable). Evidence: `reports/fp27_join_debt_repair_latest.json`.
+- [ ] `OD-1090` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-28 [DONE]: **Collect complete closure.** Gap +1133; refresh; backfill 29/59; quarantine **1,190** irrecoverable orphans (`research_excluded=1`). Operable trusted attached **80,800**; **operable_old_missing=0**; attach_rate **98.4%**. Normalized **177,028**. Evidence: `reports/fp_collect_complete_closure_latest.json`.
+- [ ] `OD-1091` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-29 [DONE]: **Study #19 — IV/context.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/iv_context_eval/latest.json`.
+- [ ] `OD-1092` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-30 [DONE]: **Study #20 — selective abstention.** `NO_SIGNAL_DETECTED` **0 PASS / 9 FAIL / 3 under-sampled** (QQQ MCC≈0.28–0.32 still fails baselines). Report: `reports/abstention_eval/latest.json`.
+- [ ] `OD-1093` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-31 [DONE]: **Study #21 — interaction / nonlinear shallow.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.27 still fails baselines). Report: `reports/interaction_eval/latest.json`.
+- [ ] `OD-1094` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-32 [DONE]: **Collect timestamp harden + live restart.** Forensic: no future/inverted clocks; operable_old_missing=0; historical nearest ≤59s disclosed. Code: live writer **requires** `colocated_snapshot_ts_utc` == `refresh_ts_utc`. Restarted uvicorn with `ED_CALIBRATION_LOG=1` so FP-24/FP-32 are loaded. Evidence: `reports/fp_timestamp_forensic_latest.json`, `reports/fp32_timestamp_harden_latest.json`.
+- [ ] `OD-1095` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-33 [DONE]: **Study #22 — dealer/gamma walls.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/gamma_walls_eval/latest.json`.
+- [ ] `OD-1096` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-34 [DONE]: **Study #23 — price-action returns.** `NO_SIGNAL_DETECTED` **0 PASS / 4 FAIL / 8 under-sampled** (PA feature density sparse on QQQ/IWM). Report: `reports/pa_returns_eval/latest.json`.
+- [ ] `OD-1097` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-35 [DONE]: **Study #24 — hedging-flow / charm.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/hedging_flow_eval/latest.json`.
+- [ ] `OD-1098` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-36 [DONE]: **Study #25 — zone / VWAP geometry.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (QQQ:15c MCC≈0.21 still fails baselines). Report: `reports/zone_vwap_eval/latest.json`.
+- [ ] `OD-1099` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-37 [DONE]: **Study #26 — cross-ticker divergence.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/divergence_eval/latest.json`.
+- [ ] `OD-1100` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-38 [DONE]: **Study #27 — session range position.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/session_range_eval/latest.json`.
+- [ ] `OD-1101` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-39 [DONE]: **Study #28 — micro stack.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/micro_stack_eval/latest.json`.
+- [ ] `OD-1102` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-40 [DONE]: **Study #29 — HAR + micro stack joint.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.25 still fails baselines). Report: `reports/har_micro_eval/latest.json`.
+- [ ] `OD-1103` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-41 [DONE]: **Economic kill IWM:1c faint leads.** session_range / micro_stack / har_micro all **KILL** at 1bp. Evidence: `reports/fp41_iwm_faint_lead_kill_latest.json`.
+- [ ] `OD-1104` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-42 [DONE]: **Study #30 — LightGBM on micro stack.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/lgbm_micro_eval/latest.json`.
+- [ ] `OD-1105` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-43 [DONE]: **Study #31 — MLP on micro stack.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/mlp_micro_eval/latest.json`.
+- [ ] `OD-1106` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-44 [DONE]: **Study #32 — fusion incumbent re-screen** on cleaner surface. `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/incumbent_eval/incumbent_eval_2026-07-17_430b6d7aac37.json`. Hardened loaders to `COALESCE(research_excluded,0)=0`.
+- [ ] `OD-1107` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-45 [DONE]: **Study #33 — challenger re-screen.** `NO_SIGNAL` **0 PASS**. Report: `reports/challenger_eval/challenger_eval_2026-07-17_807474a492de.json`.
+- [ ] `OD-1108` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-46 [DONE]: **Study #34 — structural re-screen.** `NO_SIGNAL` **0 PASS** (all FAIL). Report: `reports/structural_eval/structural_eval_2026-07-17_4f4130c607b4.json`.
+- [ ] `OD-1109` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-47 [DONE]: **Study #35 — order-flow re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/order_flow_eval/order_flow_eval_2026-07-17_af4f5f9aa535.json`.
+- [ ] `OD-1110` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-48 [DONE]: **Study #36 — L1 book re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.30 / QQQ:5c≈0.29 still fail baselines). Report: `reports/l1_book_eval/l1_book_eval_2026-07-17_d30c856b27f3.json`.
+- [ ] `OD-1111` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-49 [DONE]: **Economic kill L1 faint leads.** IWM:1c **KILL** (mean_net≈−0.62bp); QQQ:5c kill evidence `reports/fp49_l1_qqq5_kill_latest.json`. Also TOD re-screen **0 PASS / 12 FAIL**.
+- [ ] `OD-1112` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-50 [DONE]: **HAR-RV re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (QQQ MCC≈0.15–0.17 still fails baselines). Report: `reports/har_rv_eval/har_rv_eval_2026-07-17_735b7e992306.json`.
+- [ ] `OD-1113` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-51 [DONE]: **regime-HAR re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.21 still fails baselines). Report: `reports/regime_har_eval/regime_har_eval_2026-07-17_43d7d5e9c9ea.json`.
+- [ ] `OD-1114` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-52 [DONE]: **cross-asset re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 8 FAIL** (QQQ:1c MCC≈0.25 still fails baselines). Report: `reports/cross_asset_eval/cross_asset_eval_2026-07-17_853aa19a1f28.json`.
+- [ ] `OD-1115` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-53 [DONE]: **vol-regime HAR re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/vol_regime_har_eval/vol_regime_har_eval_2026-07-17_3f149b834fc1.json`.
+- [ ] `OD-1116` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-54 [DONE]: **survival re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (QQQ:60c MCC≈0.34 still fails baselines/persistence). Report: `reports/survival_eval/survival_eval_2026-07-17_fba40b23983c.json`.
+- [ ] `OD-1117` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-55 [DONE]: **abstention re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 9 FAIL / 3 under-sampled** (QQQ:15c MCC≈0.32 still fails baselines). Report: `reports/abstention_eval/abstention_eval_2026-07-17_cabbaaed6f6a.json`.
+- [ ] `OD-1118` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-56 [DONE]: **IV/context re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.23 still fails baselines). Report: `reports/iv_context_eval/iv_context_eval_2026-07-17_56be9ecafe58.json`.
+- [ ] `OD-1119` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-57 [DONE]: **interaction re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.27 still fails baselines). Report: `reports/interaction_eval/interaction_eval_2026-07-17_2d3698a14fbd.json`.
+- [ ] `OD-1120` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-58 [DONE]: **Operator PAUSE.** Find & Prove hunt frozen for triangulation (operator 2026-07-17). No new study until explicit resume.
+- [ ] `OD-1121` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-59 [DONE]: **Collect durable operable-surface gate (Claude drift-audit directive).** Committed `tools/operable_surface_gate.py` G1–G4 all-ticker `research_excluded=0`; ops `tools/run_operable_surface_ops.py`; FP-24 skip path execution-tested via `resolve_live_v2_calibration_tail_action`. Same-turn ops: refresh + backfill 29/59 + quarantine → **OPERABLE_SURFACE_CLEAN** (old_missing_all=0; live 16/16 colocated). Evidence: `reports/operable_surface_gate_latest.json`, `reports/operable_surface_ops_latest.json`. Rule: `.cursor/rules/02-operable-surface-clean.mdc`.
+- [ ] `OD-1122` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-60 [DONE]: **Edge-search collaboration brief for Claude** (operator ask). Strategic step-back + full method inventory + ask for joint redesign. Letter: `reports/fp_claude_edge_collaboration_letter.md`. No new study.
+- [ ] `OD-1123` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-61 [SEE_MASTER]: **Week-1 G-LABEL card (Claude triage A).** Placeholder thresholds confirmed; freeze models. Card: `reports/fp_week1_label_card_v1.md`. Reply: `reports/fp_claude_edge_reply.md`. Execute only on operator `GO WEEK1 LABEL`.
+- [ ] `OD-1124` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-62 [DONE]: **GEX-R1-SCREEN (§9).** Harness economic gate NULL_OR_WEAK — **not** a mechanism null. Claude independent ER verify: mechanism CONFIRMED (`reports/gex_r1_claude_independent_verify.md`). SPY “inverted” reconciled: GEX build OK; sign-check used wrong metric (`reports/gex_r1_spy_reconcile_note.md`). Reclass: **SIGNAL_PRESENT / HARVEST_UNPROVEN**.
+- [ ] `OD-1125` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-63 [SEE_MASTER]: **Monday collector gate (blocking for forward GEX n) — demoted 2026-07-27 under LP-01.** Before counting capture days: prove live server is running **and** loaded code with `maybe_persist_morning_full_chain`; after ~10:00 ET prove `option_chain_morning_full` rows for SPY/QQQ/IWM. Checklist: `reports/gex_r1_monday_collector_gate.md`. Result file required: `reports/gex_r1_monday_collector_gate_result.json`. Resume after LP-01 unless operator says otherwise.
+- [ ] `OD-1126` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-65 [DONE]: **FIND-GREEK-SANITIZATION-V1.** `gamma_is_plausible` in `math_exposure_core.py`; wired into exposures, charm reader, probabilities, server debug counts, GEX-R1 signal. Rejects negative / >1 / deep-delta non-zero gamma. Tests: `tests/test_greek_sanitization_v1.py`.
+- [ ] `OD-1127` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-66 [DONE]: **FIND-GAMMA-FULLCHAIN-STRIKES-V1.** Morning capture uses dedicated `_gated_safe_get_chain(..., strike_count=150)` after `has_morning_full_capture` skip; UI `CHAIN_STRIKE_COUNT=20` unchanged. Tests: `tests/test_gamma_fullchain_strikes_v1.py`.
+- [ ] `OD-1128` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 FP-67 [DONE]: **FIND-GAMMA-FLIP-METHOD-V1.** Cumulative-aggregate zero-crossing was **DISPROVED** on a real SPY reference chain 2026-07-19 (corr 0.086, never crosses zero, 2.19e9 divergence). Canonical method is now `compute_gamma_profile` — dealer gamma recomputed at each hypothetical spot — exposed via `compute_gamma_flip_v2` with a mandatory confidence flag; `compute_gamma_flip` and its tests are deleted. Tests: `tests/test_gamma_profile_v1.py`. Remaining proof: wide-chain agreement with Barchart (register row due 2026-07-21).
+- [ ] `OD-1129` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-01 [DONE]: **World-data collectors** `tools/world_data_ingest.py` + tests. Tables populated 2026-07-21: `world_dix` 3,826 (2011→), `world_vol_index` 28,438 (VIX/VIX9D/VIX1D/VVIX/SKEW full history), `world_finra_short_volume` 48,565 (4 days), `world_occ_volume` 1,509 (account-type-classified C/F/M — the free open-close proxy), `world_cftc_tff` 189. FINRA 403=not-published-yet handled. Needs: daily cron + retention policy.
+- [ ] `OD-1130` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-02 [DONE]: **New levels** `pick_key_delta_strike` (total DEX$ magnet) + `pick_volatility_point_strikes` (HVP/LVP signed net-GEX$ extremes), fail-closed without dollarization. Tests in `tests/test_institutional_key_levels.py` (8 pass). Server/UI wiring = next commit (import from `math_exposure_core`).
+- [ ] `OD-1131` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-03 [DONE]: **Wall hold-rate scorecard** in `tools/terrain_backtest_report_v1.py`. Baseline 2026-07-21 (1,054 ticker-days): call walls held 70.6% / close≤CW 83.2% (n=802); put walls held 72.3% / close≥PW 85.6% (n=776). External context: SpotGamma SPX 83/88/89/93. This metric replaces the median-split as the primary wall KPI.
+- [ ] `OD-1132` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-04 [DONE]: **Single-name dealer-sign A/B — VERDICT: DO NOT PROMOTE; naive stays.** A/B ran in the scorecard since 2026-07-21; measured 2026-07-22 (`reports/terrain_backtest_latest.json` → `sign_ab_single_names`): n=1,055 single-name ticker-days, naive 52.0% vs empirical-prior 50.5% — and `prior_always_long_pct=100.0`: the GPP flat put-sign flip saturates to a constant-class regime call (zero discrimination; same degenerate-collapse class that killed the TCN cells). Killed by measurement, not category; a moneyness-/strike-conditional prior would be a NEW construct, scored fresh. Register row (due 2026-08-03) stays OPEN — its two prescribed naive-validity tests (sentinel-vs-single GEX-R1 correlation split; volume- vs OI-weighted terrain diff) are still unrun.
+- [ ] `OD-1133` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-05 [SEE_MASTER]: **VEX/CEX**: closed-form BS vanna aggregation (charm exists); publish per-vol-pt and spot-vol-beta-coupled units. Capture-side: persist chain top-level `interestRate`, `dividendYield`, `isChainTruncated` (currently dropped before storage).
+- [ ] `OD-1134` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-06 [SEE_MASTER]: **Cremers-Weinbaum call−put IV spread** (matched-strike, OI-weighted; ~50bps/wk JFQA 2010) + **implied 1-day move** (total-variance interpolation, VIX-style) + own containment stats per ticker.
+- [ ] `OD-1135` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-07 [SEE_MASTER]: **ΔOI flow signals** (Fodor 2011 call/put ΔOI ratio — the only published signed daily-data signal). Backfillable from 103 days × 52 tickers already in `snapshots`. Join OCC account-type volume (MM share, customer P/C split) as conditioning fields.
+- [ ] `OD-1136` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-08 [SEE_MASTER]: **Regime dead-zone**: NEUTRAL band + N-close persistence around the flip (SpotGamma ZG-vs-VT architecture; SqueezeMetrics near-zero = no interference). Thresholds backtested in-house, placebo-anchored.
+- [ ] `OD-1137` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-09 [SEE_MASTER]: **GEX$/ADV$ normalization** (Barbon-Buraschi — only peer-reviewed cross-ticker scaling) using our own 1m-bar ADV; add cross-ticker rank to terrain.
+- [ ] `OD-1138` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-10 [SEE_MASTER]: **External GEX benchmark**: reconcile our SPY dealer-gamma series against SqueezeMetrics 15y `world_dix.gex` (SPX). Divergence = investigation, not silent trust.
+- [ ] `OD-1139` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-11 [SEE_MASTER]: **Skew/term fields**: XZZ smirk (10.9%/yr JFQA 2010), Vasquez term-slope, delta-interpolated 25Δ RR — into daily per-ticker logging for later admission testing.
+- [ ] `OD-1140` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-13 [DONE]: **Volume-weighted regime input — parallel profile SURFACED.** Computing already ran daily (`weighting_head_to_head` / `weighting_scorecard`); 2026-07-23 closed the surface gap: `_append_history` carries `ab_n` / `ab_hit_oi_pct` / `ab_hit_vol_pct` (sentinel slice) and `render_md` prints the TU-13 table. Parallel-profile law kept — swap only via PDCA, never silent. Promote still needs sustained A/B evidence in the history window.
+- [ ] `OD-1141` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 TU-12 [SEE_MASTER]: **DDOI-lite** intraday snapshot-signing reconciled vs nightly ΔOI (SqueezeMetrics worked example). UNPROVEN at snapshot frequency — register on build; validation design = reproduce Baltussen conditional-momentum split on our own history.
+- [ ] `OD-1142` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-01 [IN PROGRESS]: **Streaming spine**: Schwab streamer client (LEVELONE_EQUITIES QOS-Express + CHART_EQUITY + sentinel-first books), topic bus + last-value cache, single batched writer into dedicated **`stream_capture.db`** (ed_console.db grows by ZERO bytes), per-feed health states. Acceptance: bounded queues w/ recorded max depth + drop count + parse p99; REST/streamer/terrain contention matrix; measured key accounting.
+- [ ] `OD-1143` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-02 [SEE_MASTER]: **Trade prints + CVD (capture)**: Alpaca free IEX websocket (operator opens free account), 30-symbol prints, quote-rule signing, CVD; Schwab-signed vs IEX-signed correlation recorded ≥3 sessions.
+- [ ] `OD-1144` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-CAP [SEE_MASTER]: **Mechanical capture gate**: ≥3 full RTH sessions in stream_capture.db before ANY UI consumes stream topics — display paths refuse to mount pre-gate (fail-closed test).
+- [ ] `OD-1145` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-03 [SEE_MASTER]: **Console shell**: typed-message websocket replaces polling loops; main chart panel (lightweight-charts, levels-on-chart, VWAP as fair-value reference only); **demote/hide chance-level ML DOM (hard-delete only per §8.3)**. Panels registry + volume profile deferred to CR-03b.
+- [ ] `OD-1146` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-04 [SEE_MASTER]: **Regime internals (self-computed, register rows)**: U-shape-normalized RVOL ("range/vol conditioning" copy, never "forecast" pre-CR-07); cross-sectional dispersion + tick-breadth/A-D over streamed constituents (universe sized by CR-01's measured key budget; TICK thresholds = folklore, self-validate vs $TICK).
+- [ ] `OD-1147` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-05 [IN PROGRESS]: **Evidence tiles / CARD PIPELINE** — referee decoupled from player: ALL designs authored externally (Gemini adversarial audits 2026-07-21/22), executed here verbatim, verdicts by 10k-permutation + power gates. STATE: **#1 Baltussen gamma** PENDING (index arm accrues from wide captures — untestable on narrow-chain history; singles n=42/100, needs earnings scrub); **#2 Gao RV momentum** KILLED on singles (n=295, margin −2.1pts, p=0.7524; sentinels accrue; AM/hist gates disclosed); **#3 MOC anticipation** WAITING on sub-minute stream TWAP (NO 1m approximation — external constraint); **#4 Exhaustion reversal** PRE-REGISTERED 2026-07-22 (external spec verbatim: predictor 09:30→15:30, arm ≥1.0× 20d median intraday range, response 15:30→15:55, hit = sign flip, placebo <0.5× quiet days, OUT-OF-SAMPLE LOCK — forward data from 2026-07-22 ONLY, Mar–Jul history contaminated by discovery; singles additionally blocked on earnings scrub; ship bar: n≥100 forward, p<0.05, margin ≥+4.0pts for spread costs). Named data task: free earnings calendar → scrub #1, unblock #4 singles.
+- [ ] `OD-1148` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-06 [SEE_MASTER]: **Flow instrumentation pane**: snapshot-OFI + signed-volume + depth imbalance with the literal label "explains, does not predict"; impact coefficient on an explicit trailing window with written leakage rules; **trust labels gated on CR-08's conflation numbers**.
+- [ ] `OD-1149` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-07 [SEE_MASTER]: **Promotion gate (mechanical)**: unproven-register row + PDCA scorecard per construct; no directional prompt before beating its placebo; **TRADE-shaping tiles additionally pass decision-path admission (`decision_gate.py`)**. ORB-on-RVOL = validation candidate only.
+- [ ] `OD-1150` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-08 [SEE_MASTER]: **One-time calibration study**: Databento $125 credits — measure what 500ms conflation destroys vs full tape for OFI/signing on SPY; gates CR-06 trust labels.
+- [ ] `OD-1151` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-1 [enrolled-universe full study (grid + meta under its own prereg); QQQ was a historical fixture]: SEE_MASTER
+- [ ] `OD-1152` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-2 [enrolled-universe focused vertical studies (15/30-min); SPY/QQQ were historical fixtures]: SEE_MASTER
+- [ ] `OD-1153` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-3 [**IWM + selected high-beta singles**]: SEE_MASTER
+- [ ] `OD-1154` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-0 [**Dealer-gamma conditioning channel**]: SEE_MASTER
+- [ ] `OD-1155` — STATUS=NOT_PROVEN — RC-478 OPEN residual: THE EXISTING SECOND-LIST CONTROL COULD NOT PROVE ONE-LIST COMPLETENESS: it scanned only md/txt/rst/json/yaml/yml/toml, skipped reports/tests/docs/.claude/.cursor/archive slices, and the negative control was only the UNRESOLVED_WORK_ITEM magic marker. ACTIVE_PROGRAM.md still carried Operator NOW / standing-queue ID/status/work tables. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1156` — STATUS=NOT_PROVEN — RC-477 OPEN residual: A2 BREAKEVEN IGNORED THE VENDOR LEAF AND PUBLISHED STRIKE-PLUS-MID AS IF SCHWAB HAD NO breakEven. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1157` — STATUS=NOT_PROVEN — RC-476 OPEN residual: UNRESOLVED WORK LIVED IN MULTIPLE INDEPENDENT QUEUES SO A CHILD OR HISTORICAL ROW COULD BE TREATED AS THE REMAINING WORK. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1158` — STATUS=NOT_PROVEN — RC-474 OPEN residual: COMPUTE_ATR_FROM_BARS FELL BACK TO CALENDAR YESTERDAY WHEN THE SESSION HAD NO RTH BARS YET. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1159` — STATUS=NOT_PROVEN — RC-473 OPEN residual: MATH_LEVELS EMITTED HIGH/MED/LOW PIN AND APPROACH SCORES FROM UNVALIDATED 3.0/2.0/1.25 AND 1.5 PT CUTOFFS. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1160` — STATUS=NOT_PROVEN — RC-471 OPEN residual: CALLING AN ACTIVE FAIL/NOT_PROVEN PARENT PROOF STATE NOT QUEUED LET THE AGENT STOP WHILE DETERMINISTIC WORK REMAINED. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1161` — STATUS=NOT_PROVEN — RC-469 OPEN residual: COMMON CHAIN TRUSTED WAS TREATED AS SUFFICIENT FOR WALLS, PIN, MAX PAIN, AND NET-GEX PEAK; STREAM DISCONNECT LEFT L1/L2 STATE RESIDENT; L2 CLAIMS HAD NO HISTORY SCOPE. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1162` — STATUS=NOT_PROVEN — RC-468 OPEN residual: THE AGENT COULD DECLARE REMAINING ACTIVE PARENT DEFECTS AND QUEUED FIXABLE WORK, AVOID MATERIAL_DEFECT TOKENS, AND SUCCESSFULLY STOP. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1163` — STATUS=NOT_PROVEN — RC-466 OPEN residual: PATH IMPLICATION ON MEGA SURFACES TURNED EVERY CHART OR SERVER EDIT INTO A PERMANENT ACTIVE BACKLOG. Historical rows that merely named static/chart.html, static/index.html, server.py, or db.py in the first 320 characters became ACTIVE and blocked Stop even when the current edit did not materialize those defects. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1164` — STATUS=NOT_PROVEN — RC-464 OPEN residual: REST CUM-DELTA WAS A SECOND PRODUCER OF `cum_delta_proxy` AND ADDED THE SAME LAST_SIZE ON EVERY POLL. Lee-Ready last-versus-bid/ask is not the engine tick-rule, and a repeated Schwab lastSize is not a new print. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1165` — STATUS=NOT_PROVEN — RC-461 OPEN residual: ORDER-FLOW TAPE PRESSURE AND CUM-DELTA WERE DISPLAYABLE AS IF NATIVE, THE 10000 CVD DIVISOR HAD NO PROVENANCE, INSTITUTIONAL_FLOW_PROXY WAS ANOTHER UNVALIDATED MIX, AND BOOK WALLS WERE A MEDIAN TIMES 3 SIZE OUTLIER. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1166` — STATUS=NOT_PROVEN — RC-460 OPEN residual: RANGE TIMES IMBALANCE STALL/PUSH PRODUCTS ADDED NO INFORMATION BEYOND BODY_RATIO AND FLOW_IMBALANCE, AND THE DOCS CALLED THE INPUT SIGNED WHILE THE FORMULA USED THE ABSOLUTE VALUE. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1167` — STATUS=NOT_PROVEN — RC-459 OPEN residual: CHECKBOX / CLOSURE AUTHORITY WAS FORKED: RC rows could say OPEN plus FIXED, child proof could be read as parent proof, and OPEN_ITEMS / RC log / mission notes implied different closure states. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1168` — STATUS=NOT_PROVEN — RC-458 OPEN residual: FIND IT TO FIX IT COULD NOT SEE A MATERIAL DEFECT THE AGENT DECLARED IN THE TURN BUT OMITTED FROM THE RC LOG, AND BLOCKER/REMEDIATION EVIDENCE STILL ACCEPTED WEAK TOKENS. The RC log can only classify rows that exist. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1169` — STATUS=NOT_PROVEN — RC-453 OPEN residual: THE FIND IT → FIX IT LOCK HAD NO SINGLE DEFECT AUTHORITY AND COULD NOT DETECT AN OMITTED ACTIVE OBLIGATION. A parallel `governance/active_defects.json` could read clean while a material defect existed only in `root_cause_log.md`. New discoveries could be parked as PASSIVE BACKLOG to permit Stop. Blockers accepted a file path or a self-authored sentence. REMEDIATED accepted an RC id + nonempty command string. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
+- [ ] `OD-1170` — STATUS=NOT_PROVEN — RC-447 OPEN residual: THE ORDER-FLOW MICROSTRUCTURE CARRY CACHE COULD SERVE STALE STRUCTURAL STATE WHEN A CHANGED BOOK ARRIVED UNDER A REPEATED `BOOK_TIME`. `_MICRO_STRUCTURAL_CACHE` (added RC-446) validated a cache hit on `(ticker, BOOK_TIME)` only (former `order_flow_engine.py:663` `cached[0] == book_time_ms`), so if the same ticker received a different canonical ladder / top-of-book with an identical `BOOK_TIME`, `compute_book_microstructure` returned the PRIOR cached depth totals, imbalance, and wall_candidates instead of recomputing. BOOK_TIME uniqueness per snapshot was assumed but never independently proven (vendor may repeat or coarsely stamp it). Found by Cursor's exact-SHA re-audit of 290a5fc5; the prior RC-446 architectural findings were confirmed closed.
+- [ ] `OD-1171` — STATUS=NOT_PROVEN — RC-446 OPEN residual: THE ORDER-FLOW BOOK WAS EXTRACTED/AGGREGATED FROM RAW LIVE DATA BY MULTIPLE INDEPENDENT PATHS INSTEAD OF ONE CANONICAL PATH. `OrderFlowEngine.compute` walked the raw book via `_compute_book_imbalance(data, n)` for depths 1/3/5, `_compute_book_microstructure` (the new producer) re-walked/re-summed the same raw book AGAIN for its depth ladder, and `GET /api/order-flow/microstructure` independently recomputed from live raw data — so the book was normalized more than once and slope/concentration privately re-summed depth totals rather than reusing them. Cursor's exact-SHA audit (SHA bb0d30ef) flagged this plus: Top-N was taken WITHOUT first sorting bids desc / asks asc; negative or non-finite displayed sizes were not rejected; a crossed book withheld `microprice` but still emitted `mid`; `server_received_ts` was not classified; slope/concentration re-summed.
+- [ ] `OD-1172` — STATUS=NOT_PROVEN — RC-445 OPEN residual: `OrderFlowEngine.compute` WROTE L1 TOP-OF-BOOK PRESSURE INTO `book_imbalance_5` WHEN THE L2 STREAMING BOOK WAS ABSENT, CONFLATING TWO DIFFERENT SEMANTICS UNDER ONE FIELD NAME. A REST fallback assigned `book_imbalance_5 = top_book_pressure` (former `order_flow_engine.py:1179-1180`): `top_book_pressure` is L1 SIZE pressure (bidSize/askSize via `_compute_top_book_pressure`), a DIFFERENT measurement than a 5-level `TOTAL_VOLUME` DEPTH imbalance, yet it was published under the depth name. The proxy value then flowed as if it were depth-5 into the composite `order_flow_score` (`order_flow_engine.py:1185`), the book arrow/label (`:1260-1261`), the emitted `book_imbalance_5` (`:1276`), `market_state.book_imbalance_5` (`market_state.py:1128`), the light plane `_ORDER_FLOW_KEYS` (`planes/context_light.py:78`), and thence `/api/state`, `/api/analytics/state`, `/api/stream`. Surfaced during a review of the new canonical book-microstructure producer.
+- [ ] `OD-1173` — STATUS=NOT_PROVEN — RC-448 OPEN residual: `tests/test_desk_store_v1.py::test_saturday_is_not_a_session_anywhere_in_the_desk` FAILED ON CI (`assert 0 >= 1`, "the Saturday bar was not excluded") — a FALSE alarm: it asserted a production defect that does not exist. The fixture hard-coded a weekend bar at `2026-08-01` 11:00 ET, then called `materialize_dollar_volume`, whose query filters `bar_end_ts_utc >= now - window_days*86400` (20 days) BEFORE the RTH/calendar filter. As real time advanced to 2026-08-21, the 2026-08-01 bar fell OUT of the 20-day window, so the `WHERE` clause dropped it before `is_rth_trading_ts` ran, leaving `skipped_non_rth_bars == 0`. MEASURED same session: today 2026-08-21 14:21 ET, cutoff 2026-08-01 14:21 ET, saturday bar ts 2026-08-01 11:00 ET -> `sat_11et >= cutoff` is False. Proven identical on `main@a8014d6d` via a detached worktree (`desk_store.py` + the test byte-identical between 8505fb4d and a8014d6d).
+- [ ] `OD-1174` — STATUS=NOT_PROVEN — RC-444 OPEN residual: PR #169 (RC-437..443) PASSED LOCALLY ON WINDOWS BUT FAILED THE LINUX pytest-full CI (run 32442444261) ON TWO TESTS FROM RC-440/RC-442. (1) `tests/test_isolated_worktree_boundary_v1.py::test_control2_claude_edit_in_claude_worktree_is_allowed` asserted a claude edit inside the `-Claude` worktree is ALLOWED, but built its paths from `C:/repo/...` literals — ABSOLUTE on Windows, RELATIVE on POSIX. On the Linux runner `claude_isolated_edit_violation` took its relative-target branch (`tgt = root / tgt`), joined the target under the runner cwd, and reported false containment -> a BLOCK where the test expects None. (2) `tools/check_schwab_market_field_semantics.py` enumerated repo-wide via `REPO.rglob("*.py")` — a filesystem scanner; the RC-286/RC-307 ratchet `tests/test_gate_scope_is_the_git_index_v1.py::test_the_remaining_filesystem_scanners_are_measured_not_forgotten` counts these and moved 44 -> 45.
+- [ ] `OD-1175` — STATUS=NOT_PROVEN — RC-443 OPEN residual: A BOOK-FIELD ADJUDICATION WRONGLY DECLARED THE SCHWAB BOOK SERVICE "UNDOCUMENTED" AND, ON THAT BASIS, KEPT FIVE FIELDS NOT_PROVEN AND MARKED THEIR DOCUMENTED VENDOR NAMES REFUTED — a PROVENANCE ERROR. For NUM_BIDS/NUM_ASKS, nested EXCHANGE, nested SEQUENCE, nested Size, and BOOK_TIME an earlier pass concluded "no first-party spec exists" by reading only reverse-engineered community decoders (schwab-py, jeog/TDAmeritradeAPI, schwab-client-js) that decline to transcribe the login-gated developer-portal book section; absence of a label in a third-party decoder was mistaken for absence of a vendor spec. The pass also conflated the observed value domain (the nested identifier carries venue MICs AND market-maker MPIDs) with the vendor field NAME, using the domain breadth to "refute" a documented name. The first-party Schwab Streamer Guide DOES document these fields.
+- [ ] `OD-1176` — STATUS=NOT_PROVEN — RC-442 OPEN residual: TWO WORKTREE-ISOLATION SAFETY GAPS LET THE CLAUDE WORKTREE ENDANGER THE PRIMARY/PRODUCTION CHECKOUT AND MISFIRE DISK_ONLY. (a) No machine BLOCKED a claude-role edit whose target path is inside the primary (non-suffixed) production checkout; the role<->path binding in `tools/agent_worktree_policy.json` was advisory prose only. (b) `operating_process_lock._db_content_change_epoch` compared the live console start against `db.py` FILESYSTEM mtime, but a fresh `git worktree add`/checkout stamps db.py mtime to "now", so auditing an isolated worktree produced a FALSE DISK_ONLY (checkout mtime newer than a legitimately-current console).
+- [ ] `OD-1177` — STATUS=NOT_PROVEN — RC-441 OPEN residual: A "UNIT" TEST READS THE LIVE ACCRUAL DB, SO IT PASSES ON AN EMPTY DB AND FAILS ON A POPULATED ONE. `tests/test_levels_single_producer_v1.py::test_strikes_payload_carries_server_side_sums` sets `computed_ts_utc=1.0` (ancient), which drives `server.get_terrain_strikes` down the RC-162 stale-path and calls `latest_accrual_rows(get_db().db_path, "SPY")` against the real DB; the test monkeypatched `terrain_cache_get`/`resolve_spot` but NOT `latest_accrual_rows`, so real SPY accrual rows silently OVERRIDE the fixture's `today` and `today_side_sums.gex_below` becomes 0.0 instead of the fixture's 10.0. The `latest_accrual_rows` reader is imported at `server.py:3684` and invoked at `server.py:12540`. My server.py rename diff (fast_server_ts->exchange_quote_ts + quote_ts provenance keys) is statically isolated from `_side_sums`/`get_terrain_strikes` (they reference none of those keys).
+- [ ] `OD-1178` — STATUS=NOT_PROVEN — RC-440 OPEN residual: THREE SCHWAB MARKET-DATA SEMANTICS WERE UNGUARDED BY ANY MACHINE. (M4) `NUM_BIDS`/`NUM_ASKS` could be labeled an order/market-maker count though their vendor meaning is NOT_PROVEN — empirically `NUM_* == count of nested per-exchange (EXCHANGE) rows at a book level`, measured equal on all n=31,614 book levels of the RTH capture (0 mismatches; deterministic full census, not a sample). (M5) `exchange_quote_ts` (formerly `fast_server_ts`) is the EXCHANGE quote clock (Schwab `QUOTE_TIME_MILLIS`/sec) yet the OLD name asserted a server clock; the genuine wall clock is the SEPARATE `server_received_ts = time.time()` set on the same row. (M6) the producer computed `quote_ts = QUOTE_TIME_MILLIS or TRADE_TIME_MILLIS` with NO field recording which clock, so a trade-time value could be aged as a quote time silently. schwab-py's BOOK enums are self-described as reverse-engineered and Schwab publishes no first-party field spec (login-gated developer.schwab.com), so NUM_* vendor semantics stay NOT_PROVEN.
+- [ ] `OD-1179` — STATUS=NOT_PROVEN — RC-439 OPEN residual: THE FIELD-DICTIONARY CLASSIFIER FILES TWO BOOK-STREAM FIELDS AS `streaming_quote`. `schwab_field_dictionary_builder.categorize` labeled `streaming.content.*.BOOK_TIME` and top-level `streaming.content.*.SEQUENCE` as `streaming_quote`; both are BOOK-stream fields (NASDAQ_BOOK/NYSE_BOOK/OPTIONS_BOOK), proven absent from LEVELONE in the ledger evidence base. The nested per-exchange `...BIDS.*.SEQUENCE`/`...ASKS.*.SEQUENCE` rows were already `streaming_book`; only the two top-level book scalars were wrong (M3).
+- [ ] `OD-1180` — STATUS=NOT_PROVEN — RC-438 OPEN residual: THE TURN AUDIT'S RUNTIME-IDENTITY CHECK READS A PROCESS START-TIME BY SHELLING OUT TO POWERSHELL, SO A HOST POWERSHELL FAULT MAKES A PROVABLY-CLEAN RUNTIME UNMEASURABLE AND FAILS THE AUDIT ON THE ENVIRONMENT, NOT THE TREE. `operating_process_lock._process_start_epoch` ran `subprocess.run(["powershell", ...])` on win32 to read `(Get-Process -Id {pid}).StartTime`. A host powershell/CLR cold-start hang (reboot-only) makes every call raise `TimeoutExpired`, so `turn_self_audit` records `runtime_identity_state = measurement_failed -> INCOMPLETE` while `scope_integrity`/`index_worktree_state`/`ruff_changed`/`owned_pytest` all PASS. `psutil` (a venv dependency) exposes the same datum in-process.
+- [ ] `OD-1181` — STATUS=NOT_PROVEN — RC-437 OPEN residual: A LIVE-ENGINE DOCSTRING NAMES A DIFFERENT SCHWAB FIELD THAN THE CODE ACTUALLY READS, FORKING THE BOOK-VOLUME SEMANTIC ON PAPER. `order_flow_engine._compute_absorption` documented "Uses: content.*.BIDS, ASKS (BID_VOLUME, ASK_VOLUME at price levels)", but the function reads aggregated **level** `TOTAL_VOLUME` via `_iter_bids_levels`/`_iter_asks_levels` — it never reads `BID_VOLUME`/`ASK_VOLUME`. The Schwab book has TWO distinct volume fields at TWO nesting depths — level `TOTAL_VOLUME` (BidFields subfield 1) and nested per-source `BID_VOLUME`/`ASK_VOLUME` (PerExchangeBidFields subfield 1), with Σ(nested)==level measured equal on all n=31,614 book levels of the RTH capture (0 mismatches; deterministic census). The docstring named the nested per-source field for a computation that consumes the aggregated level field.
+- [ ] `OD-1182` — STATUS=NOT_PROVEN — RC-436 OPEN residual: RC-435 ABSTAIN DISABLES THE LIVE ML STACK: every active triclass XGB meta under models/active (32/32 across 14 tickers; horizons 1c=14 5c=9 15c=9) lists all four dist_*_oi/vanna_*_pct features; live CONSENSUS OI/vanna walls are None so snapshot/engineered gates abstain. All serveable LSTM/Transformer checkpoints (encoder_schema>=2: 5 LSTM + 5 Transformer including SPY/QQQ/IWM/TSLA/AVGO) also gate True on the same live absence. Unified stack therefore emits no layer probs / stack_probs=None on withheld live ticks (rules engine). Feature importances on SPY/QQQ/IWM XGB are non-zero (~0.6–2.1% each) so silent drop without retrain is not an honest substitute. Re-measured on main 46eb0b93. ALSO: RC-435 CLOSED FIXED cell incorrectly said encode_tabular/legacy preserve NaN; merged code keeps 0.0 fill (PR body was right; RC was wrong).
+- [ ] `OD-1183` — STATUS=NOT_PROVEN — RC-431 OPEN residual: TIME_TO_EXPIRY_YEARS USED CIVIL TIMEDELTA ACROSS DST: RC-430 fixed hours_until_session_close_et and snapshot hours_to_expiry to timestamp elapsed seconds, but time_to_expiry_years still computed `(expiry_dt - ref).total_seconds() / YEAR_SECONDS`. Re-proven: `python3 -c` Fri 2026-03-06 10:30 ET → Mon 2026-03-09 16:00 civil 0.008847y vs timestamp 0.008733y (Δ≈1h); time_to_expiry_years returned 0.008847. Material consumers (math_levels._contract_inputs, math_exposure_core compute_exposures/compute_net_charm, v2_decision/a2_option_expression._time_to_expiry_years) all delegate here — no second T producer in production.
+- [ ] `OD-1184` — STATUS=NOT_PROVEN — RC-430 OPEN residual: SNAPSHOT hours_to_expiry FOR dte>0 USED DTE*24 PLUS TODAY'S SESSION CLOSE: RC-428 fixed 0DTE/EM remainder to hours_until_session_close_et but left `round((schwab_dte * 24.0) + remainder, 2)`, which lands at today's close clock on the expiry date. Re-proven: `python3 -c` from time_et import ET, hours_until_session_close_et; from datetime import datetime; wed=datetime(2026,11,25,11,0,tzinfo=ET); print(hours_until_session_close_et(wed,'2026-11-27'), round(2*24+5.0,2))` → 50.0 vs 53.0; early Friday 2026-11-27 11:00 → Monday 16:00 is 77.0 vs DTE*24+2.0 = 74.0. Same-tzinfo civil timedelta also lies across DST (Fri 2026-03-06 10:30 → Mon 16:00 wall 77.5 vs timestamp 76.5).
+- [ ] `OD-1185` — STATUS=NOT_PROVEN — RC-429 OPEN residual: SNAPSHOTS.GAMMA_PIN IS TWO QUANTITIES UNDER ONE COLUMN: persist wrote selected-expiry net-GEX peak until RC-292 writer 95a61031, then terrain total-gamma pin, with no era split. Pin studies (residence/regime/direction/charm) SELECT snapshots.gamma_pin as GAMMA_PIN across the whole table. Re-proven: `git log -1 --format='%cI %s' 95a61031` → 2026-08-19T14:10:58+00:00 Serve GAMMA PIN from terrain total-gamma, not analytics net peak; `python -m pytest tests/test_institutional_key_levels.py::test_net_gex_peak_uses_net_gex_when_dollarized -q` on the SPY 0DTE fixture net peak 743.0 vs total-gamma pin 745.0.
+- [ ] `OD-1186` — STATUS=NOT_PROVEN — RC-428 OPEN residual: SNAPSHOT hours_to_expiry AND LIVE EM HOURS REMAINING HARDCODED 16:00 ET: `_snapshot_expiry_hours_from_schwab_dte` and `_hours_rem` used MARKET_CLOSE_HOUR (16:00) while greeks T (`time_to_expiry_years`) uses session_close_mins_for_et_date (13:00 on early-close days). Re-proven on main b067b6fd: 2026-11-27 11:00 ET dte=0 → 5.0h to 16:00 vs 2.0h to 13:00; 14:00 ET still returned 2.0h after options session ended.
+- [ ] `OD-1187` — STATUS=NOT_PROVEN — RC-427 OPEN residual: RADAR TERRAIN SNAPSHOTS BYPASS terrain_cache_get: RC-424 merged terrain_staleness in terrain_cache_get for pin/wall/overlay, but _terrain_snapshots_for_radar read raw _terrain_cache values for /api/terrain/radar. Re-proven on main 942f5a13: stale computed_ts_utc cache entry served to radar without levels_stale key; static Activity/trust chips fail-open.
+- [ ] `OD-1188` — STATUS=NOT_PROVEN — RC-426 OPEN residual: OE WALL SCORING DROPPED TERRAIN DELTA WALLS WHEN DOMINANCE WITHHELD: after RC-420 bound CONSENSUS call_delta_wall/put_delta_wall from terrain, consensus_walls_bind_terrain_ssot withholds strengths so _dominant returns empty side/strike; OE compute_wall_score_components level_names listed dom_delta_wall but not call_delta_wall/put_delta_wall, so delta walls vanished from proximity when dom was None. Re-proven on main ab7db50b: bound call_delta_wall=760 put_delta_wall=750 dom_delta_wall=None; OE scored only call_gamma_wall put_gamma_wall.
+- [ ] `OD-1189` — STATUS=NOT_PROVEN — RC-425 OPEN residual: SELECTED-EXPIRY GAMMA_INFLECTION STILL IN CALL STRUCTURAL/READINESS PROXIMITY: after RC-423 dropped inflections from nearest-level and level-density, call_engine readiness nearest-distance loop still included inp.dist_gamma_inflection beside gamma walls and MVP nearest distances; rules_engine still emitted near_inflection proximity alert (regime flip zone). Re-proven on main ab7db50b: call_engine loop contains dist_gamma_inflection; rules_engine near_inflection block present. Analytics persist on SignalInput/summary_rows; overlay blanks kl_gamma_inflection.
+- [ ] `OD-1190` — STATUS=NOT_PROVEN — RC-424 OPEN residual: TERRAIN CACHE FAIL-OPEN ON levels_stale: production `_terrain_cache` stores `computed_ts_utc` but not `levels_stale`, while pin_score, consensus_walls_bind_terrain_ssot, and `_terrain_kl_overlay` gated freshness with `not t.get('levels_stale')`. Re-proven before edit on main 16b56d6e with `python3 -c`: payload without levels_stale key -> guard fresh True; age 99999s -> terrain_staleness levels_stale True; consensus bind still painted call_gamma_wall 745.0 from stale selected-expiry substitute. `/api/terrain` merges terrain_staleness at response time but internal consumers read raw cache.
+- [ ] `OD-1191` — STATUS=NOT_PROVEN — RC-423 OPEN residual: SELECTED-EXPIRY INFLECTIONS AND OI_CENTER STILL RACED AS STRUCTURAL LEVELS WHILE KL WITHHOLDS: after RC-422 withheld CONSENSUS OI/vanna walls, overlay still blanks kl_gamma_inflection / kl_delta_inflection / kl_oi_center because terrain does not compute them. Re-proven before edit on main 687117b7 with `python3 -c` on the real SPY 0DTE fixture: CONSENSUS summary_rows gamma_inflection 734.0 delta_inflection 743.0 oi_center 750.0 (same strike as the withheld OI walls); terrain has no those keys. market_state nearest still listed g-Inflection / D-Inflection beside Call g-Wall; `_all_levels` density still inserted consensus_summary.oi_center. Snapshot persist and SignalInput keep the analytics slots.
+- [ ] `OD-1192` — STATUS=NOT_PROVEN — RC-422 OPEN residual: CONSENSUS OI/VANNA WALLS STILL SELECTED-EXPIRY WHILE TERRAIN/KL WITHHOLD: after RC-420 bound CONSENSUS gamma/delta to terrain and RC-421 made walls[] CONSENSUS-only, build_walls_rows still picked call_oi_wall / put_oi_wall as max positive selected-expiry OI and call_vanna_wall / put_vanna_wall as max abs selected-expiry vanna. Re-proven before edit on main 07f1ba9d with `python3 -c` on the real SPY 0DTE fixture plus later-expiry CALL at 760 OI 500000: unbound CONSENSUS call_oi 750.0 (39688) put_oi 750.0 (60205) vanna 734.0 strength 0.0; after bind OI/vanna unchanged while gamma became 760.0/745.0; wide-chain max call OI would be 760.0 (500000); terrain has no call_oi_wall; `_terrain_kl_overlay` already sets kl_call_oi_wall / kl_put_oi_wall / kl_call_vanna_wall / kl_put_vanna_wall to None. Live consumers still treated those slots as structural walls: market_state SignalInput + nearest-level (Call OI Wall / Put OI Wall), snapshot persist, A2 `_structural_levels` (call_oi_wall / put_oi_wall beside gamma), OE `compute_wall_score_components` `dom_oi_wall`.
+- [ ] `OD-1193` — STATUS=NOT_PROVEN — RC-421 OPEN residual: PLUS-MINUS-N WALLS[] REUSED CANONICAL CALL_GAMMA_WALL NEXT TO TERRAIN CONSENSUS: after RC-420 bound CONSENSUS gamma/delta to terrain, build_walls_rows still appended plus-minus-5/10/15/20 WallsRow siblings that kept selected-expiry strike-index windows under the same call_gamma_wall / call_delta_wall fields. Re-proven before edit on main 9292db2c with `python3 -c` on the real SPY 0DTE fixture plus later-expiry CALL at 760: CONSENSUS after bind call 760.0; plus-minus-5 call 745.0; same-book plus-minus-5 put_delta 745.0 vs CONSENSUS 750.0. Live scoring (SignalInput, snapshot persist scalars, count_level_tests, OE _oe_wall_consensus_row) reads CONSENSUS only; static/index.html does not read d.walls; walls_to_df_rows and key_levels_to_plot_rows have zero production callers. The live payload and replay JSON still asdict the whole list.
+- [ ] `OD-1194` — STATUS=NOT_PROVEN — RC-420 OPEN residual: CONSENSUS WALLSROW GAMMA/DELTA WALLS STILL SELECTED-EXPIRY WHILE UI PAINTS TERRAIN WIDE-CHAIN: after RC-413 moved pin_score onto terrain, _fetch_state still built walls via build_walls_rows on contracts_use (selected expiry) and snapshot/SignalInput/pin_width/count_level_tests/OE wall_score read walls[0], while _terrain_kl_overlay stamped kl_call_gamma_wall from terrain call_wall. Re-proven before edit on main 4b8ab1d8 with `python -m pytest tests/test_institutional_key_levels.py::test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta -q` on the real SPY 0DTE fixture plus one later-expiry CALL at 760 with OI 500000: analytics CONSENSUS call 745.0 put 745.0 pin_width 0.0; terrain wide call 760.0 put 745.0 pin_width 15.0; delta also split 740.0/750.0 vs 760.0/750.0.
+- [ ] `OD-1195` — STATUS=NOT_PROVEN — RC-419 OPEN residual: WINDOWED WALLSROW.CALL_GAMMA_WALL WAS RAW CALL_GAMMA WHILE CONSENSUS WAS DOLLARIZED GEX$: build_walls_rows used pick_gamma_wall_strikes for CONSENSUS and _pick_wall_abs(call_gamma) for ±N rows, so /api/state walls[] shipped two quantities under one field. Re-proven before edit with `python -m pytest tests/test_institutional_key_levels.py::test_windowed_walls_use_dollarized_gex_not_raw_gamma -q` on the constructed three-strike book (window is strike-index ±N so windows=[5,10] includes every strike): CONSENSUS call_gamma_wall 101.0 strength 999.0 (GEX$); pre-fix ±5 call_gamma_wall 100.0 strength 1000.0 (raw gamma). OE compute_wall_score_components reads only the CONSENSUS row; the windowed rows still asdict onto the live payload.
+- [ ] `OD-1196` — STATUS=NOT_PROVEN — RC-418 OPEN residual: WALLSROW CALL/PUT GAMMA PIN WAS NEAR-SPOT MAX ABS RAW CALL/PUT GAMMA UNDER THE PIN NAME: CONSENSUS WallsRow.call_gamma_pin / put_gamma_pin (and the same nested _pick_pin family for delta/oi) took max abs raw call_gamma / put_gamma inside the first exposure window of spot (EXPOSURE_WINDOWS first entry = 5) and asdict shipped those fields on /api/state walls[]. Terrain gamma_pin is pick_pin_and_strength total GEX$ across the gamma-bearing book. Re-proven before edit with `python -m pytest tests/test_institutional_key_levels.py::test_walls_row_does_not_ship_near_spot_raw_gamma_as_a_pin -q` on a constructed three-strike book: total-gamma pin 120.0, call_gamma_wall 101.0, near-spot raw call_gamma argmax 100.0. Frontend GAMMA PIN / Chart / cv2 bind terrain; market_state and wall_score read only *_wall; key_levels_to_plot_rows labeled them Gamma Pin with zero production callers.
+- [ ] `OD-1197` — STATUS=NOT_PROVEN — RC-417 OPEN residual: EXPOSUREROW.GAMMA_PIN STILL THE ANALYTICS NET-GEX PEAK UNDER THE PIN NAME: after RC-292 overlay stamped payload/kl_gamma_pin from terrain pick_pin_and_strength, ExposureRow.gamma_pin / DisplayRow.gamma_pin / summary_rows[].gamma_pin still stored pick_net_gex_peak_strike. Re-proven before edit on main 4c9cd7e4 with `python -m pytest tests/test_institutional_key_levels.py::test_net_gex_peak_uses_net_gex_when_dollarized -q`: real SPY 0DTE fixture net peak 743.0 vs total-gamma pin 745.0; rows[0].gamma_pin == 743.0. Frontend GAMMA PIN / cv2 / Chart already bind terrain; summary_rows length is presence-only.
+- [ ] `OD-1198` — STATUS=NOT_PROVEN — RC-416 OPEN residual: F31 PRICE-LEVEL CACHE DIVERGENCE: /api/state reused a process-local PriceLevels blob for PRICE_LEVELS_CACHE_SEC wall-clock seconds and wrote PriceLevels() into that cache on any fetch Exception, while /api/levels rematerializes the canonical snapshot every request. Re-proven before edit on main 59947d62: gen1 carry VWAP 105.5556 vs gen2 snapshot VWAP 106.0833 with age 1s (TTL 15) so state would reuse gen1; empty cached pdc None vs levels PDC 102.0; LevelCarrierConflict not re-raised.
+- [ ] `OD-1199` — STATUS=NOT_PROVEN — RC-415 OPEN residual: F31 PDC PRODUCER MIXED BOOK: fetch_price_levels seeded PriceLevels.pdc from Schwab quote closePrice then overwrote only when canonical snapshot PDC was non-null, so absent snapshot PDC still published vendor quote last-close as the Phase 2A prior-RTH-session close. Re-proven before edit on main f19b7fb8: no-snapshot plus closePrice 999.0 yielded pl.pdc=999.0; today-only tape (snapshot PDC None) plus closePrice 888.0 yielded pl.pdc=888.0; Chart /api/levels serves snapshot PDC (null) while /api/state would stamp 888. RC-414 withheld the header ETF substitute but left this producer substitute, so the header would still paint a percent vs closePrice.
+- [ ] `OD-1200` — STATUS=NOT_PROVEN — RC-414 OPEN residual: F31 PDC CONSUMER MIXED BOOK: #cv2-hd-chg is the selected ticker's change vs Phase 2A snapshot PDC, but paintHeader fell through to spy_chg_pct / qqq_chg_pct / iwm_chg_pct when PDC was absent or zero, so the header painted quote-book ETF day-change as if it were (spot-PDC)/PDC. Re-proven before edit on origin/main 499a44bd: paintHeader else-branch read those three fields; Chart legend already used enginePD().pdc and omitted the span when PDC was missing (RC-213).
+- [ ] `OD-1201` — STATUS=NOT_PROVEN — RC-413 OPEN residual: PIN_SCORE MIXED BOOK: RC-292 moved the pin strike onto terrain SSOT (wide-chain total-gamma) but pin_score still read GEX/OI magnitude from analytics exposures (selected-expiry compute_exposures_by_strike) via exposures.get(float(_pin_strike)) plus analytics _sum_oi as the concentration denominator, so one score mixed two books. Re-proven before edit on origin/main 1602bc0c: the pin_score block used terrain_cache_get for gamma_pin then analytics exposures for total_gex_dollars_at_strike / total_gamma_raw_at_strike / _bucket_total_oi; TerrainSnapshot.to_dict had no gamma_pin_gex_dollars.
+- [ ] `OD-1202` — STATUS=NOT_PROVEN — RC-412 OPEN residual: F15 LIVE PATH DROPS TODAY_POC: Phase 2A PriceLevelSnapshot materializes TODAY_POC/VAH/VAL and market_context.fetch_price_levels carries them onto PriceLevels.today_*; /api/state stamped sibling PDH/VWAP/ORB via _raw_level and omitted the rest, so Chart (/api/levels RL_SPEC TODAY_POC) was the only live consumer and console had no #dr-lvl-poc/#exec-poc. Re-proven before edit by scanning server.py ms_dict writes (today_poc absent; pdh present) and static/index.html (zero dr-lvl-poc).
+- [ ] `OD-1203` — STATUS=NOT_PROVEN — RC-410 OPEN residual: ENGINEERING-CYCLE LATENCY #6: AFTER 4 WORKERS + UV, THE MERGE WALL STILL PAYS PLAYWRIGHT THEN PYTEST IN SERIES, AND ONE MEGA1 TEST CALLS get_source_segment ON EVERY AST Call. MEASURED on required pytest-full `gh run view 32235863378 --log` (`67ab88d3`, now main via #137): job 6m48s; Playwright 78 passed / 54.4s then pytest 4 workers / 5866 items / 5852 passed + 14 skipped / 232.08s. `--durations=20`: `test_mega1_no_direct_schwab_api_outside_transport` 62.38s, `test_the_live_repository_state_is_reported_not_hidden` 21.08s (that one IS `check_one_producer()` on the live tree — left alone). Same-turn local walk of MEGA1_FILES: `ast.get_source_segment` on every Call = 41.88s / 6729 segments; name-filter then segment = 0.21s / 7 calls.
+- [ ] `OD-1204` — STATUS=NOT_PROVEN — RC-409 OPEN residual: ENGINEERING-CYCLE LATENCY #5: AFTER XDIST, REQUIRED PYTEST-FULL STILL RE-PAYS THE INSTITUTIONAL CATALOG INSIDE A UNIT TEST AND RE-INSTALLS TORCH + CHROMIUM FROM SCRATCH. MEASURED same turn: `gh run view 32232550839 --json jobs` (required pytest-full on `857fe307`, the #136 green that is now main) = job 9m46s; steps checkout 21s, setup-python 22s, pip 83s, npm 1s, playwright install-deps 13s, test:all 440s. Inside test:all: Playwright 78 passed in 45.9s (browser zip 08:28:07–08:28:16), pytest `created: 2/2 workers` / 5866 items / 5852 passed + 14 skipped in 382.41s. File-completion deltas from serial required run `gh run view 32227366665 --log` (`1fab6daa`, 5851 passed + 14 skipped in 1317.13s): `tests/test_debt_ratchet_read_only_v1.py` 129.0s, `tests/test_mega1_traceable_audit.py` 70.0s, `tests/test_build_identity_process_drift_v1.py` 38.0s. `check_debt_ratchet` / `rebaseline` call every advisory checker to build `current`; `test_the_cli_flag_runs_end_to_end_without_touching_the_real_baseline` then subprocesses `python tools/check_institutional_correctness.py --enforced-only` (hardening already runs that catalog via `check_delta_adds_no_debt.py`).
+- [ ] `OD-1205` — STATUS=NOT_PROVEN — RC-408 OPEN residual: ENGINEERING-CYCLE LATENCY #4: REQUIRED PYTEST IS SERIAL AND ONE UNIT TEST RUNS THE DAILY PRODUCT SCAN. MEASURED on required pytest-full: main `eed07d45` run 32204636413 = 5851 passed + 13 skipped in 1276.44s (`python -m pytest` via `npm run test:all`); #134 `1fab6daa` run 32227366665 = 5851 passed + 14 skipped in 1317.13s. File-progress deltas on 32204636413 put ~564s on `tests/test_rehab_daily_scan_v1.py`. Same-turn local `python3 -m pytest tests/test_rehab_daily_scan_v1.py --durations=20 -q` = 16 passed in 315.94s, of which **315.51s** is `test_collect_findings_flags_disk_only_when_present` calling `scan._collect_findings` → `_product_findings()` (live faucet probe + `check_db_health` + `duplication_audit` + whole-repo AST). The test asserts only `rehab.live_disk_only`. The rest of the suite (~5864 items) runs one process with no xdist.
+- [ ] `OD-1206` — STATUS=NOT_PROVEN — RC-406 OPEN residual: ENGINEERING-CYCLE LATENCY #2: THE COMMIT PATH RE-PROVES, ON EVERY COMMIT, WHAT CI ALREADY PROVES BEFORE MERGE. `tools/precommit_institutional.py` (the `institutional-correctness` pre-commit hook) runs `check_delta_adds_no_debt.py --index`, which materialises TWO clean detached worktrees (base origin/main + candidate index) and runs the whole-tree enforced catalog in EACH. MEASURED this session in the isolated dev worktree: single catalog `--enforced-only` = 115s; the two-worktree `--index` delta = **249s per commit** — the dominant commit-cycle cost. It is REDUNDANT here: `.github/workflows/hardening.yml` (step "institutional debt delta") runs the SAME `check_delta_adds_no_debt.py --base origin/main` on every PR — the authority before merge.
+- [ ] `OD-1207` — STATUS=NOT_PROVEN — RC-407 OPEN residual: ENGINEERING-CYCLE LATENCY #3 (operator priority #4): COMMIT/TEST PATHS TOUCH — AND ONE CREATES — A DATABASE ORDINARY WORK HAS NO REASON TO OPEN. (a) `tools/data_faucet_audit.measure_ages` (line 269, reached by the `single_faucet_provenance` enforced check) calls `sqlite3.connect(db_path)`, whose default mode is read-write-CREATE, so it plants an empty `data/ed_console.db` when the file is absent. MEASURED this session: running the enforced catalog during timing planted a 0-byte `data/ed_console.db` in the isolated dev worktree, which then FAILED db-health's WAL invariant (`journal_mode='delete'`) and BLOCKED a commit — confirming Cursor latency-audit finding #9. (b) the `db-health` pre-commit hook is `always_run: true` and opens `data/ed_console.db` on EVERY commit; in production that is the live ~34 GB Collect database (full-table COUNT/GROUP BY under a 30s connect, contending with the live writer) even for a docs-only change (Cursor #7).
+- [ ] `OD-1208` — STATUS=NOT_PROVEN — RC-405 OPEN residual: ENGINEERING-CYCLE LATENCY: EVERY CHANGE RUNS FULL CI TWICE. Both required workflows — `.github/workflows/pytest.yml` (Pytest Full Suite, ~28 min) and `.github/workflows/hardening.yml` (~5.5 min) — declare `on:` with bare `push:` AND `pull_request:` (no branch filter). A feature-branch push that has an open PR emits BOTH a push event and a pull_request event, so one change runs the ~28-min suite and the hardening job twice with no added proof. MEASURED same turn: read the trigger blocks in both files — `pull_request:` then bare `push:` in each; independently confirms Cursor's latency-audit finding #1. (Cursor's companion "ghost workflows" claim does NOT apply to current main: only `hardening.yml` and `pytest.yml` exist on this tree.)
+- [ ] `OD-1209` — STATUS=NOT_PROVEN — RC-404 OPEN residual: TWO LIVE ORDERFLOW COMPUTATIONS PUBLISH THE SAME SEMANTIC FIELDS FROM DIFFERENT INPUT SETS (Cursor F10). `/api/state` publishes `order_flow_score`/`book_imbalance_5` from `market_state.py:1121` `OrderFlowEngine().compute(order_flow_data)` on full chain+candles+content; `/api/analytics/light` publishes the SAME-named fields from `planes/context_light.compute_order_flow_compact`, which runs the engine on `{content, thin L1 quote}` with NO chain maps (options-flow component degraded), independently, on quote-hook ticks (`server.py:5810`). `build_l1_context` already reads its `structural` block from the L2 cache `md` but sets `order_flow` from the independent thin recompute (`out["order_flow"] = ofc`, `planes/context_light.py:291`). Same tick, same field names, different input sets → two producers of one semantic field. NOTE: I first WRONGLY rejected this as "not a money-path defect" by (a) equating one function with one computation and (b) narrowing ONE FAUCET to the TRADE path; operator corrected both — ONE FAUCET = one COMPUTATION per semantic field, repo-wide.
+- [ ] `OD-1210` — STATUS=NOT_PROVEN — RC-402 OPEN residual: THE RESET GUARD THAT EXISTS BECAUSE A 27GB DATABASE WAS DESTROYED TWICE WAS DISARMED BY A GRANT THAT ONLY MEANT TO LAND AN RC-VOCABULARY CHECK. `operator_go_granted(scope)` in `tools/operating_process_lock.py` ended `... or 'staged_lock_surface' in norm` — a third disjunct that returns True for EVERY scope query whenever the grant's scope list contains `staged_lock_surface`, which `governance/operator_go.json` has carried granted:true since 2026-08-06. MEASURED same turn via `python -m pytest tests/test_operating_process_lock_v1.py -k "operator_go or reset_guard"` (deny-side controls) — before the fix `operator_go_granted('git_reset_product')`, `('bogus')` and `('all')` all returned True; after, the 7 controls pass. The direct consequence is at line 127: `reset_guard_violations` (LOCK-2, blocks tree-destructive git against PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED, the guard RC-231/RC-252 built after the DB was wiped) short-circuits to `[]` — a `git reset --hard` against the live database's protected scope would be WAVED THROUGH right now.
+- [ ] `OD-1211` — STATUS=NOT_PROVEN — RC-403 OPEN residual: THE PROJECT-MANAGER IDENTITY HAD NO SINGLE SOURCE OF TRUTH, SO AN OPERATOR DECISION RECORDED IN ONE AUTHORITY SURFACE LEFT THE OTHERS ASSERTING THE OPPOSITE — AND A RECOMMEND-ONLY SCANNER MECHANICALLY RECOMMENDED UNDOING THE DECISION. `governance/sole_writer.json` carried `pm=cursor` (RC-218 era) while `governance/pm_mission.json` carried `pm=operator`; `tools/rehab_daily_scan.py` raised a P1 `rehab.pm_not_cursor` whenever `sole_writer.pm != 'cursor'`, keyed on the stale literal, so the machine actively recommended reverting to Cursor-as-PM. Operator ruled this session: "Operator is the governing authority/PM. Cursor is an adversarial auditor only."
+- [ ] `OD-1212` — STATUS=NOT_PROVEN — RC-401 OPEN residual: THE DATABASE PATH AUTHORITY FORKED THE MONEY PATH INTO A SECOND, NEARLY EMPTY DATABASE, AND THE GUARD THAT WAS SUPPOSED TO CATCH IT REFUSED THE VERY PATH THE AUTHORITY HANDED OUT. `db_authority.default_console_db_path` returned `data/ed_console_claude.db` whenever ED_AGENT_ROLE=claude or the project directory ended in `-Claude`, while `db.EdDB.__init__` admits only `is_canonical_db_path` — so the default path the authority produced was then rejected as non-canonical by the only class that opens it. MEASURED 2026-08-18 across the Trading tree: canonical `EdWebConsole/data/ed_console.db` = 34.28 GB; the split had scattered `EdWebConsole/data/ed_console_claude.db` = 35.78 MB holding REAL money-path rows (503 snapshots, 445 snapshots_1m_normalized, 954 decision_persistence_ledger, 954 model_execution_identities, 49,173 confluence_quote_ticks, 26 production_decision_records), plus `_stack125/data/ed_console_claude.db` = 0.21 MB and `_runtime_main/data/ed_console_claude.db` = 0 bytes. OBSERVED failure: a desk started from the runtime worktree died with `ValueError: EdDB: non-canonical database path .../_runtime_main/data/ed_console_claude.db`, and the identical error is recorded reaching a PRODUCTION analytics route in `reports/_audit_f25_state_snip.json` (trade_impacting_route_class=production, market_data_quarantine active, trade_valid=false).
+- [ ] `OD-1213` — STATUS=NOT_PROVEN — RC-400 OPEN residual: A REQUIRED CHECK DEPENDED ON A TOOL NO REQUIREMENTS FILE INSTALLS, SO SIXTEEN TESTS FAILED ON A MISSING MODULE RATHER THAN ON ANYTHING THEY ASSERT. turn_self_audit runs `python -m ruff check` as one of its four REQUIRED checks, but ruff appears in neither requirements.txt nor requirements-dev.txt. The hardening workflow pip-installs it ad hoc and therefore passed; the pytest workflow and tools/bootstrap_worktree_venv.py install the requirements files and therefore did not. MEASURED inside the audit's own record on the runner: ruff_changed detail '/opt/.../python: No module named ruff', status FAIL, so the audit verdict became FAIL where the contract tests assert NOT_PROVEN. Two further defects landed with it: my own RC-397 repair swapped a platform-dependent write_text for write_bytes, which removed the platform dependency but IMPOSED LF on a CRLF blob — deterministic flip instead of a random one, still one eol_style_invariant violation; and the claims-executed census moved 265 -> 264.
+- [ ] `OD-1214` — STATUS=NOT_PROVEN — RC-399 OPEN residual: MY MUTATION CONTROLS MUTATED THE REPOSITORY AND COULD NOT PUT IT BACK — three tests broke a real tracked file on purpose, then 'restored' it through Path.write_text, which opens newline=None and translates chr(10) to os.linesep. On Windows that round-trip is lossless, so it was invisible to every local run; on the required Linux runner it rewrote CRLF files as LF and the restore did not restore. MEASURED on the runner: static/chart.html, static/index.html and .cursor/hooks.json left pytest reflowed with diffs of exactly 2x each file's CRLF count (4220 = 2110*2, 28076 = 14038*2), tripping eol_style_invariant on files the change never touched. The sites: tests/test_client_spot_single_faucet_v1.py::_mutate restoring static/chart.html and static/index.html, and tests/test_honesty_guard_v1.py restoring .cursor/hooks.json and .claude/settings.json.
+- [ ] `OD-1215` — STATUS=NOT_PROVEN — RC-398 OPEN residual: I SPENT THREE TURNS INFERRING A LINUX-ONLY CAUSE FROM A WINDOWS MACHINE AND WAS WRONG TWICE — the runner rewrites four tracked files LF-for-CRLF during pytest, and both of my explanations were refuted by evidence. The first (checkout normalisation) and the second (a test executing an open('static/chart.html','w') payload) were wrong: that payload is a STRING passed to bash_violations() for analysis and is never executed, and the RC-397 DIAG steps measured worktree_crlf == blob_crlf for every watched file both after checkout AND after the E2E half, with core.autocrlf and core.eol unset. So neither git nor the E2E half touches them: the reflow is inside pytest, the diffs are exactly 2x each file's CRLF count (chart.html 4220 = 2110*2, index.html 28076 = 14038*2), and an AST sweep of every tracked .py finds NO code writing those paths, so the caller is indirect and cannot be found by reading.
+- [ ] `OD-1216` — STATUS=NOT_PROVEN — RC-397 OPEN residual: MY TESTS ENCODED THE PLATFORM I HAPPEN TO DEVELOP ON, SO THE REQUIRED LINUX RUNNER READ CORRECT BEHAVIOUR AS FAILURE — 18 tests pass on every Windows checkout and fail on CI. Two causes proven so far. (a) tests/test_operator_law_guard_repo_scope_v1.py asserted that a backslash and a forward slash name the SAME repository, which is true only on Windows; on POSIX a backslash is a legal filename character, so str(path).replace('/', chr(92)) spells a DIFFERENT non-existent path and the guard correctly resolved it to '' — the test convicted the guard for being right. (b) reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py wrote its tracked result with Path.write_text, which opens newline=None and translates chr(10) to os.linesep, so identical content emitted CRLF on Windows and LF on Linux and the blob's terminator depended on who last ran it (the RC-382 unowned-writer class).
+- [ ] `OD-1217` — STATUS=NOT_PROVEN — RC-396 OPEN residual: A CHECK THAT CANNOT TELL 'THE EVIDENCE IS ABSENT' FROM 'THE AUTHOR SKIPPED IT' CONVICTS THE ENVIRONMENT — two required-CI checks did exactly that and neither was about the change under test. (a) The hardening job exported ED_AGENT_ROLE=cursor, a FABRICATED actor: a GitHub runner is not an agent, and under that invented identity the required job reported `writer_no_drift: 0 -> 27`, reading an entire PR as the wrong agent's drift. RC-240 had already ruled on this exact shape for the local hook and repaired it there while CI kept inventing one. (b) research_before_act requires a same-day record in reports/turn_self_audit_log.jsonl, which is DELIBERATELY UNTRACKED per-turn scratch; the delta owner stages the candidate so staged-scope checks can see it, but a clean runner cannot hold that file at all, so every production PR scored a fabricated `research_before_act: 0 -> 1`. Both MEASURED on PR #127.
+- [ ] `OD-1218` — STATUS=NOT_PROVEN — RC-395 OPEN residual: A REQUIRED CHECK THAT NO HONEST CHANGE CAN PASS IS NOT ENFORCEMENT, AND I ONLY FOUND OUT BY ASKING THE REMOTE — both required checks were RED ON origin/main ITSELF, so protected main had no green path at all and every PR inherited the red. MEASURED with `gh run list --branch main`: Hardening Gates and Pytest Full Suite both failure at 4983eb57, 573b96e8, b6bde57e, ca6d7b27. Two independent causes. (a) pytest-full: tools/deep_duplicate_probe_v1.py pinned its repo root to a literal developer path, and because tracked() hands that path to subprocess as cwd, the Linux runner raised FileNotFoundError at IMPORT and aborted pytest COLLECTION — the entire required suite died before a test ran. (b) hardening: the workflow ran the absolute-zero institutional gate under a comment claiming pre-commit parity, which stopped being true when RC-391 moved the local hook to the delta owner.
+- [ ] `OD-1219` — STATUS=NOT_PROVEN — RC-394 OPEN residual: I FIX THE INSTANCE IN FRONT OF ME AND LEAVE THE CLASS, SO THE SAME DEFECT COMES BACK WEARING A DIFFERENT FILENAME — measured twice while closing the nine current-main pytest-full blockers. (a) The outcome_1c fixture defect had already been repaired ONCE, in a single fixture, while the shared authority the other fixtures draw from kept anchoring to most_recent_trading_day_et (TODAY), so any run before the collect window closed generated bars for a session that had not happened yet and outcome_1c came back None. (b) The RC-274 -> RC-286 filesystem-scanner shape was fixed in the gate then failing, and a NEW instance had since grown in tests/test_f39_confluence_missingness.py (ROOT.rglob behind a hand-maintained skip list); the class sweep counted it and the count moved, which is how it was found — verify with `.venv/Scripts/python.exe -m pytest tests/test_gate_scope_is_the_git_index_v1.py -q`.
+- [ ] `OD-1220` — STATUS=NOT_PROVEN — RC-393 OPEN residual: ONE PATH QUESTION WAS ANSWERED BY TWO DIFFERENT PIECES OF CODE, AND THE REPOSITORY-STATE MEASUREMENTS PRODUCED A BLOCK WITH NO ARTIFACT (FC-13 / V3 Step 2, the independently approved Step 1-2 patch). MEASURED 2026-08-16: `turn_self_audit.is_production_path` normalised only a leading `./` and then applied a RELATIVE-prefix `startswith` exemption, which an ABSOLUTE path can never match — so `<tmp>/scratchpad/post_bundle.py` was classified PRODUCTION even though `scratchpad/` was already on the exemption list, and session scratch scripts outside the tree pulled a typed-audit obligation onto files that are not the product. The governance question ("is this path even ours") was never asked at all; classification and governance were two answers to one question, computed in two places. Separately, the index-vs-worktree and DISK_ONLY-vs-LIVE measurements existed only inside the process-lock Stop path, where they could BLOCK but emitted no typed artifact and were absent from `checks_required` — so a reviewer reading an audit result could not tell whether repository state had been measured at all, which is indistinguishable from it not having been measured.
+- [ ] `OD-1221` — STATUS=NOT_PROVEN — RC-392 OPEN residual: MOVING THE PRE-COMMIT DECISION INTO A CLEAN WORKTREE SILENTLY DISARMED TWO ENFORCED CHECKS — a check removed by ACCIDENT is still a check removed, and RC-391's own roster comparison exists to refuse exactly that. MEASURED on the RC-391 landing commit 1ae46912: `research_before_act` and `check_recursive_five_why_front_loaded` both ask `git diff --cached` what is being committed. In a materialised worktree HEAD IS the candidate and the index matches it, so that question answers EMPTY on the base side AND the candidate side, both score 0, and the delta is clean no matter what the change contains. `research_before_act` additionally reads `reports/turn_self_audit_log.jsonl`, which is GITIGNORED and therefore absent from any worktree, so its only two possible states in the new seam were "silent because nothing is staged" and "fires on every candidate regardless of the change" — neither of which is a measurement. The old absolute-zero seam ran in the live repo, where both questions had true answers; that capability was traded away without being noticed, which is precisely the trade the roster lock refuses when it is made by EDIT.
+- [ ] `OD-1222` — STATUS=NOT_PROVEN — RC-391 OPEN residual: THE PRE-COMMIT GATE ASKED A QUESTION NO HONEST COMMIT COULD ANSWER, SO IT WAS ROUTED AROUND 15 TIMES — and the delta tool built to replace it graded the WRONG TREE and could not see a check being DELETED (RC-389 next-depth (i)/(ii), and Cursor hole-audit H2). MEASURED on origin/main 4983eb57: `python tools/check_delta_adds_no_debt.py --index --base origin/main` reports the base carrying 57 enforced violations across 7 checks with 68 enforced checks declared, so `tools/precommit_institutional.py`, which ran `check_institutional_correctness.py --enforced-only` and demands ABSOLUTE ZERO, blocked every commit including the commits paying that debt down. Two further defects in the replacement, both measured: (a) it graded `HEAD` — at pre-commit HEAD is the commit being added TO, so a staged regression is structurally invisible and a staged paydown is unseen, while the working tree carries unstaged scratch that is not part of the commit (the contaminated-count class of RC-387); (b) it compared violation COUNTS only, so deleting an enforced check, renaming it, or demoting it to advisory makes its count vanish from the candidate side and the comparison prints it as a PAID DOWN line — the tool would have rewarded removing the check that noticed.
+- [ ] `OD-1223` — STATUS=NOT_PROVEN — RC-390 OPEN residual: THE FAIL-CLOSED FIX FOR H1 LEFT A SECOND FAIL-OPEN BEHIND IT, FOUND BY CURSOR AFTER I DECLARED H1 FIXED — the banner guard proves the gate RAN, not that I UNDERSTOOD its output. MEASURED against the shipped code: with the completion banner present and the exit code sane, a `FAIL [name] 71 problems` line (any format drift, or a renamed check) matches none of the per-check regex, so `parse_counts` returns `{}` while the gate's own summary still declares 71 enforced violations; `compare()` then reports the fabricated `root_cause_log: 71 -> 0 (-71)`, prints a PAID DOWN line for work nobody did, and PASSES. Reproduced before fixing. Same shape as the H1 hole it was supposed to close: a silent misparse always reads in the flattering direction.
+- [ ] `OD-1224` — STATUS=NOT_PROVEN — RC-389 OPEN residual: `--no-verify` IS NOT A CHECKPOINT CONVENIENCE, IT IS THE ONLY LOCK THAT MATTERS AND I HOLD IT (operator 2026-08-16: "WHY DID YOU USE NO VERIFY? IS THIS INSTITUTIONAL? IF IT IS NOT INSTITUTIONAL THEN THIS MUST BE BANNED"). MEASURED: every commit I made on 2026-08-15/16 used `git commit --no-verify` — 15 of them. The pre-commit gate carries ~100 pre-existing enforced violations, so it blocks EVERY commit regardless of the change, and I treated the flag as the way to make progress. The consequence is not theoretical: `check_five_why_recursive_lock` measured 0 on origin/main and 4 on my stamp SHA 1294781a, i.e. the gate DID detect the four RC-106 rubber stamps at the moment I created them, and the bypass carried them to origin anyway. Cursor's audit states it exactly: "--no-verify is stronger than any of the 75. Until CI is required and unskippable, more checks are theater." Also recorded: the accuracy tool I built in the same session shipped FAIL-OPEN (H1), so I violated the fail-closed spine inside the instrument meant to enforce accuracy.
+- [ ] `OD-1225` — STATUS=NOT_PROVEN — RC-388 OPEN residual: RESEARCH THAT ENDS IN A COMMIT MESSAGE IS RESEARCH THROWN AWAY — 8 NEW SCHWAB FIELDS FOUND AND NONE REGISTERED OR CONSUMED (operator 2026-08-16: "WE CANNOT BE DOING WORK, RESEARCH, POLLING FOR NEW SCHWAB FIELDS, ETC. AND THEN JUST NOT DOING ANYTHING WITH IT"). MEASURED 2026-08-15 against LIVE Schwab across all six market-data endpoints: 8 fields the vendor returns today that our 2026-05-05 catalogue lacked — chains.callExpDateMap.*.breakEven and putExpDateMap.*.breakEven, both .*.ssid, chains.hasBinaryOptions, chains.ethOptionEligible, quotes.reference.ethOptionEligible, pricehistory.symbol. They were merged into the dictionary and the JSON registry (RC-380) and then NOTHING consumed them, no disposition was recorded, and the session moved on to gate machinery. breakEven is computed per contract by the vendor while v2_decision/a2_option_expression.py derives its own as a v1_approximation; bidSize/askSize/bidAskSize and quoteTimeInLong sit uningested while the operator has said top-of-book size matters "more than you know". This is the same class as the standing law that computed-but-unconsumed value gets a CONSUMER and is never dropped — the LAW exists and no MECHANISM enforces it. REMAINING VENDOR FIELDS still in this same obligation (not a second box): tradeTimeInLong; intrinsicValue / extrinsicValue / timeValue; theoreticalOptionValue vs mark; and the size-must-ship-with-per-contract-freshness pair. Dictionary first_seen without a vendor-register row fails closed. hasBinaryOptions and pricehistory.symbol remain DECLINED on the register. Training, serving, persisted historical data, replay, cache, UI, API, and model-artifact consumers of these fields must stay consistent or fail closed.
+- [ ] `OD-1226` — STATUS=NOT_PROVEN — RC-387 OPEN residual: I SHIP A CHECK FOR THE FAILURE MODE I AM THINKING ABOUT AND A DIFFERENT MODE IS FOUND BY SOMEONE ELSE — FIVE TIMES IN ONE SESSION, WHICH IS A METHOD DEFECT, NOT FIVE MISTAKES (operator 2026-08-16: "why is there still so much cleanup after you code... we need a coding solution where we can get you more accurate"). MEASURED, all on 2026-08-15/16: (1) RC-384 — I refused a glob at PATH scope and then built exactly that failure at FILE scope, harvesting 36 names into the global write set; my own >100 blindness test could not see it; Cursor found it. (2) Four ledger closes shipped without the RC-106 clauses; the stop guard found them, on two separate passes. (3) My verifier's extension alternation matched `.js` inside `.json`, so rows were held open for a parser error; the operator's question found it. (4) I verified that citations RESOLVE and called that verification; running the cited proofs showed one FAILING across 736; the operator's question found that too. (5) I quoted a filtered local count where the gate reads the full one, twice. In every case the repo ALREADY OWNED a check encoding the mode I missed — root_cause_log, closed_rows_ship_their_code, rc_log_rows_keep_schema, checks_are_justified, rc_numeric_claims_cite_a_command — and none of them was run against my delta before I declared the work done.
+- [ ] `OD-1227` — STATUS=NOT_PROVEN — RC-385 OPEN residual: THE RATCHET REWRITES THE BASELINE IT MEASURES, SO RUNNING THE GATE CAN RAISE THE BAR BY ACCIDENT (found while proving the #122 merge on a FRESH checkout of origin/main 573b96e8; Cursor flagged the same behaviour on their seat and I confirmed the exact numbers). check_debt_ratchet() writes governance/advisory_debt_baseline.json as a side effect of being called: measured on an untouched checkout, one invocation moved file_length 37->49, function_complexity 462->547, function_length 393->438, mypy_types 756->835, ruff_quality 1081->1301, and flipped the file LF->CRLF. orphan_dict_keys stayed 160 because it sits at baseline. The committed blob on main is still the original, so nothing bad has shipped — but a fresh clone is left DIRTY by the act of measuring it, and the dirt is a set of RAISED debt ceilings. Any agent or human who then commits with blind staging silently legitimises the debt the ratchet exists to refuse — the exact gaming RC-67 records, arriving by accident instead of intent, which is worse because nobody has to decide to do it.
+- [ ] `OD-1228` — STATUS=NOT_PROVEN — RC-384 OPEN residual: THE ORPHAN-KEY CHECK PROVES A NEGATIVE BY SCANNING ONLY PYTHON, SO KEYS THIS REPO GENUINELY WRITES — IN COMMITTED DATA FILES — ARE REPORTED AS SILENT-NONE CANDIDATES. check_no_orphan_dict_keys collects writes from Python AST alone, then reports every `.get("k")` whose k it never saw written. active_bundle_contract._legacy_allowance_open and artifact_integrity_strict_absence read `legacy_allowance`, `expires_at_utc` and `strict_default` from governance/ML_ITEM4_MIGRATION_POLICY.json — a COMMITTED file in this repository, loaded by _load_migration_policy in the same module — and all three are flagged. The check's own docstring frames the rule as "a key that NOTHING in this repo ever writes", so these are false by the check's own definition, not by an exception to it. They also cannot be honestly retired the usual way: declaring them `# external-key-ok:` would assert they arrive from outside this repo, which is a LIE, and the operator's standing rule refuses paying a ratchet with a declaration whose source has not been named truthfully.
+- [ ] `OD-1229` — STATUS=NOT_PROVEN — RC-383 OPEN residual: THE EOL LOCK CRIES WOLF ON EXACTLY THE FILES THE REPO PINS (found by the operator reading my own commit narration, before it bit): check_eol_style_invariant compares each changed file's WORKTREE bytes against its HEAD blob, but a path pinned `text eol=lf` in .gitattributes is NORMALISED by git on the way into the blob, so its worktree bytes are SUPPOSED to differ — .claude/settings.json is 78 CRLF on disk and 78 LF in the index by design (RC-382 follow-through), and governance/artifacts/*.json has been pinned the same way for months. Today the check passes only because `git diff --name-only` filters normalised paths out of the changed list; the moment such a file has a REAL content change it appears in that list, and the raw byte comparison then reports EOL STYLE FLIP on a file that is behaving exactly as configured. A permanent false positive on a governed path is worse than no check, because the first thing anyone does with a gate that cries wolf is switch it off — which would take the RC-382 protection down with it.
+- [ ] `OD-1230` — STATUS=NOT_PROVEN — RC-382 OPEN residual: LINE-ENDING STYLE IS AN UNOWNED PROPERTY, SO ANY WRITER CAN SILENTLY FLIP A WHOLE FILE AND BURY THE REAL DIFF — THIRD OCCURRENCE IN ONE SESSION (operator order 2026-08-15: a recurrent miss gets the recursive five-why and a mechanical lock at bedrock, not another apology). OCCURRENCES MEASURED: (1) RC-372, tests/test_enforced_check_negative_controls_v1.py restored the real AGENTS.md through a platform-newline text write, flipping the charter LF->CRLF on every run and breaking audit identity; (2) .claude/settings.json, an 8-line addition committed as 78 insertions / 71 deletions because the editor rewrote every terminator; (3) RC-381 slice 1, a 15-line declaration pass committed as 2428 insertions / 2427 deletions because news_sentiment.py (525), order_flow_engine.py (1250) and schwab_full_field_inventory.py (650) were LF in the blob and landed as CRLF. Same session also produced the near-miss inside the fix itself: csv.DictWriter emits CRLF regardless of the handle's newline, which would have reflowed all 2393 dictionary rows on the first sync had its test not caught it. SURFACES=tools/pm_verify_repo.py
+- [ ] `OD-1231` — STATUS=NOT_PROVEN — RC-381 OPEN residual: ORPHAN_DICT_KEYS RATCHET UNPAID — 187 read-but-never-written keys against a committed baseline of 160 (governance/advisory_debt_baseline.json), so `debt_ratchet` blocks and `hardening` stays red on a real, unpaid correctness list. Each entry is a candidate silent-None of the RC-15/RC-20 class (a key read from a dict that nothing in the repo writes returns None rather than raising). MEASURED this turn on HEAD: 181 non-scratchpad, of which 36 sit on product surfaces under the WRITTEN cut "exclude tools/ tests/ research/ verification/ archive/ governance/" — the same list scores 83 if verification/ is counted as product, and Cursor's audit correctly refused to let 36 stand as a number until the cut was written down, so it is written here. The 36 split three ways by MECHANISM, not by guess: (a) genuine third-party payload leaves whose vendor and endpoint can be named; (b) keys read from a COMMITTED repo data file, which the checker cannot see because it only scans Python dict writes; (c) internal keys with no writer found, which are the real defect candidates.
+- [ ] `OD-1232` — STATUS=NOT_PROVEN — RC-380 OPEN residual: SCHWAB FIELD DICTIONARY IS A DESTRUCTIVE SNAPSHOT, SO THE ONE ARTIFACT THAT COULD PROVE "WE DERIVE WHAT THE VENDOR ALREADY GIVES" IS BOTH STALE AND UNSAFE TO REFRESH (operator directive 2026-08-15: the dictionary must be the authority that stops us deriving a field Schwab provides). MEASURED this turn against LIVE Schwab (token auth, all six market-data endpoints): the committed dictionary is dated 2026-05-05 and MISSES 8 fields Schwab returns today — chains.callExpDateMap.*.breakEven and putExpDateMap.*.breakEven, both .*.ssid, chains.hasBinaryOptions, chains.ethOptionEligible, quotes.reference.ethOptionEligible, pricehistory.symbol. Worse, schwab_field_dictionary_builder.main() writes the CSV with open(dict_file, "w") and rebuilds ONLY from the newest capture, so a refresh taken while an array is empty (movers returned {"screeners": []}; market_hours omits sessionHours when isOpen=false) DELETES those catalog rows — refreshing the dictionary can silently shrink it. And the derived-field register closed OP-006/OP-007 citing "no native BE" while Schwab returns breakEven per contract (measured: our strike±mid and Schwab agree to $0.01, so the VALUE is right and only the ABSENCE CLAIM is wrong).
+- [ ] `OD-1233` — STATUS=NOT_PROVEN — RC-374 OPEN residual: CURSOR ADVERSARIAL KERNEL AUDIT — OPEN FINDINGS ON CURRENT MAIN (audit subject was pre-RC-373 67666c2b; K1/K2/K3 verified already fixed by RC-373 on main 9c5d6003; remaining true findings): (C1) MAIN CI RED — hardening fails on 2 ruff F401 `TerrainSnapshot` imported-unused in tests/test_gamma_profile_v1.py:342,522 (my RC-354/RC-359 test code; ruff runs repo-wide in CI but the turn audit's ruff_changed only lints CHANGED files, so a test-file import landed unlinted), and Pytest Full Suite fails on 22 Playwright E2E specs — count exactly matches the OPEN RC-351 triage (due 2026-08-28), pre-existing not new; (K4) .cursor/hooks.json exists ONLY UNTRACKED on the desk — never committed, so every fresh checkout (Cursor cloud) has NO hook wiring while check_plus_player_cursor_hooks/parity checks demand it; (K5b) index_worktree_mismatches skips enforcement paths absent from the index (idx None -> continue), so a PLANTED NEW untracked lock-path file is invisible to the parity lock; (A2) prior plant verification used index_worktree_mismatches/--pre-commit rather than the row's own --measure surface.
+- [ ] `OD-1234` — STATUS=NOT_PROVEN — RC-373 OPEN residual: CURSOR CROSS-PLATFORM VERIFICATION FINDINGS (independent Linux run of the RC-368..372 acceptance; RC-370/372 VERIFIED there, three real portability defects surfaced): (1) tests/test_ui_mockup_lock_v1 research negative-control cites `reports/exposure_overlay_chart_direction_v1.md` as its resolvable reference — that file is UNTRACKED in the author worktree only, so on any clean checkout the reference does not resolve and the control fails (a test premised on an uncommitted file); (2) tools/operating_process_lock._listening_pid calls `ss` unconditionally on POSIX and CRASHES FileNotFoundError when iproute2 is absent — an enforcement probe that cannot type its own absence takes down completion_claim_violations and measure_report with it; (3) two more real-ledger round-trip tests (verdicts controls in test_enforced_check_negative_controls_v1) restore governance/root_cause_log.md via platform-newline text writes — the RC-372 class again, flapping the ledger's EOLs per platform.
+- [ ] `OD-1235` — STATUS=NOT_PROVEN — RC-372 OPEN residual: NEGATIVE-CONTROL TEST REWRITES THE REAL CHARTER WITH OS NEWLINES (the last audit-identity flapper, found by elimination after RC-371: owned run 3260 passed 0 failed yet identity start!=end with AGENTS.md flipping LF->CRLF every run): tests/test_enforced_check_negative_controls_v1.py injects a fake law into the REAL AGENTS.md and restores it via `io.open(path, "w", encoding="utf-8")` — on Windows, default newline translation writes every \n as CRLF, so the restore is not byte-faithful and the charter file mutates on every test run, which the audit correctly reads as subject drift.
+- [ ] `OD-1236` — STATUS=NOT_PROVEN — RC-371 OPEN residual: CAPTURED-RED TAIL: 3 STALE SUITE EXPECTATIONS + AUDIT IDENTITY COUNTS ITS OWN RECORDINGS (all three test failures reproduce at capture a9ead1ef — pre-existing; the identity drift reproduces on every owned run: reports/terrain_quarantine_ledger.jsonl is written by server-importing suites mid-audit and the identity manifest hashes ALL scope entries including reports/ recordings, so a clean audit self-INCOMPLETEs): (1) test_vwap_failed_log_demoted asserts a 'VWAP failed for' log block that Phase 2A DELETED along with the second VWAP implementation (server.py 5571 comment records the deletion; absent VWAP persists NULL per RC-68) — the WARN-spam concern is moot because the block is gone; (2) test_the_gate_passes_on_merit: 6 unmarked CAPS hits in config/env-default and fail-closed-conditional shapes that predate the marker law; (3) test_fetch_price_levels_skips_candle_missing_datetime feeds candles to the carrier, but the carrier's vendor fetch was deleted — candles cannot reach PDH at all, and the missing-datetime rejection is locked at the ONE ingestion point (normalize_bar).
+- [ ] `OD-1237` — STATUS=NOT_PROVEN — RC-370 OPEN residual: ENFORCEMENT PARITY LOCK FALSE-POSITIVES ON EOL NOISE (AUDITOR WINDOW blocks every turn end; measured: 16 enforcement paths report index!=WT while `git status` calls the tree clean and `git diff --ignore-cr-at-eol --quiet` proves every one content-identical; `git ls-files --eol` shows i/lf w/crlf with attr unspecified — system gitconfig autocrlf=true, repo-local false, so files checked out under the OLD effective-true carry CRLF while index blobs are LF): operating_process_lock._blob_hash hashes RAW worktree bytes via `git hash-object` and compares against the LF index blob, so a pure line-ending artifact of the config history reads as enforcement drift forever; every restoration channel (`git checkout --`, checkout-index ineffective, shell/py rewrites) is itself guard-blocked, making the false positive UNCLEARABLE from inside a turn.
+- [ ] `OD-1238` — STATUS=NOT_PROVEN — RC-369 OPEN residual: RC-357/RC-359 METRICS CARRY SILENT-ZERO PATTERNS THE REPO GATE BANS (caught by tests/test_ohlcv_schwab_first.py repo-wide pattern gate, newly exercised through RC-367 ownership fan-in; both sites pass at capture a9ead1ef so they are THIS session's code): compute_zero_dte_gamma_share sums `v.get("net_gex_1pct") or 0.0` — a bucket MISSING its net-GEX field silently contributes zero weight to a share-of-book ratio (absence-coercion, RC-285 family); compute_delta_oi_walls uses `float(pc or 0.0)` where the zero is a TRUE domain baseline (a strike absent yesterday had no positioning, the diff from 0 IS the build) but the pattern is indistinguishable from injection without a declared reason.
+- [ ] `OD-1239` — STATUS=NOT_PROVEN — RC-368 OPEN residual: ENFORCEMENT CONTRACT SUITE CAPTURED RED AT THE CUTOVER (measured: 17 failed at a9ead1ef itself in a detached scratch worktree — `python -m pytest tests/test_turn_self_audit_contract_v1.py tests/test_ui_mockup_lock_v1.py -q` — and 16 fail on current HEAD; the authoritative turn audit therefore fail-closes FAIL whenever a session touches any file these suites own, which includes operator_law_guard.py and server.py): the turn-audit contract tests describe a STRICTER supervised-audit design (explicit-owner precedence, committed-edit session scope, baseline mutation restoration, strict validate_result rejection, RC-190 stop clause) than the implementation the RC-350 capture froze.
+- [ ] `OD-1240` — STATUS=NOT_PROVEN — RC-367 OPEN residual: THREE SESSION-EDITED PRODUCTION SURFACES HAVE NO DECLARED TEST OWNER (turn-audit ownership scan, measured this turn: `resolve_test_ownership` unknown = static/chart.html, static/exposure.html, tools/check_live_path_is_main.py): the authoritative turn audit fail-closes NOT_PROVEN because these files map to no owning suite — exposure/chart suites READ the html but never DECLARE ownership (html cannot be imported, so only TURN_AUDIT_OWNS counts), and the RC-350 one-app launch lock shipped with no test importing it at all.
+- [ ] `OD-1241` — STATUS=NOT_PROVEN — RC-366 OPEN residual: UNDECLARED SECOND SPOT FAUCET IN THE CHARM DOLLARIZATION (stop_guard FAUCET detection, self-caught same session): the RC-362 charm-rate dollarization added `const _cSpot = Number(d.spot)` at static/index.html:8429 — a raw payload read of the console-spot concept OUTSIDE the declared faucets (consoleSpot / effectiveDisplaySpot), while the surrounding render already holds `const spot = effectiveDisplaySpot(d)` in scope; two faucets for one rendered concept is the exact RC-81/RC-225 class (a fast-lane tick and a payload age can disagree for the same paint).
+- [ ] `OD-1242` — STATUS=NOT_PROVEN — RC-365 OPEN residual: MISSING CONFLUENCE RENDERS AS FABRICATED ZERO DOTS (F39 port from stranded branch cursor/f39-confluence-absence-556d, verified unlanded on the live tree): server.py's /api/state confluence stamp block uses getattr defaults `dot_count_green 0` / `dot_count_total 0` when the confluence read is absent, so a session with NO computed confluence shows 0/0 dots — a measured-looking zero — instead of withholding; the branch's fix (one mapper, absent push -> None, dots None when the push is absent) cherry-picks with a whole-file conflict because the branch predates the RC-350 cutover lineage.
+- [ ] `OD-1243` — STATUS=NOT_PROVEN — RC-363 OPEN residual: ARGMAX AUTHORITY CRASHES OR EMITS GARBAGE ON NON-FINITE LEGS (recovered from abandoned worktree claude/exciting-nobel-c0eae4, verified unlanded): numeric_contract.direction_from_normalized_triplet is the ONE argmax authority (RC-345/F22) yet is typed strict — a None leg raises TypeError inside max() and a NaN leg silently yields an ORDER-DEPENDENT garbage label (NaN comparisons are all False, so max() returns whichever label the key visits in a NaN-poisoned order), which several eval paths then score as a real prediction (`{"up":0,"down":1,"flat":2}[dom]`) corrupting preds/y_true/log_loss alignment.
+- [ ] `OD-1244` — STATUS=NOT_PROVEN — RC-362 OPEN residual: VANNA/CHARM AGGREGATES NOT DOLLARIZED (operator-approved rank-5 metric, research 2026-08-15, Volland-class): per-strike vanna accumulates in the exposures buckets (call_vanna/put_vanna) but is SUMMED NOWHERE — the operator cannot size how much dealer delta shifts per vol-point (the IV-crush-rally / vol-spike mechanic); charm_net exists and flows but displays as raw shares/day, not dollars comparable to the GEX/DEX figures.
+- [ ] `OD-1245` — STATUS=NOT_PROVEN — RC-361 OPEN residual: MISSING AGGREGATE DEX (operator-approved rank-4 metric, research 2026-08-15): the terminal shows GEX per 1% (how much hedging a MOVE triggers) but not the aggregate dealer DELTA notional (DEX $ — the directional hedge inventory dealers carry), so the magnitude side of the hedging-flow picture is half-told; per-strike call_dex_dollars/put_dex_dollars already accumulate in the exposures buckets and are summed nowhere.
+- [ ] `OD-1246` — STATUS=NOT_PROVEN — RC-360 OPEN residual: CHECKPOINT RUNS REQUIRE THE OPERATOR AT THE KEYBOARD (operator directive 2026-08-16: "i want you to run all the runs you have been having me do... i can't always be in front of the computer"): every commit/push checkpoint needs a manual operator paste because operator_law_guard mechanically blocks --no-verify from the agent process, while a plain commit fails on the standing gate debt — so delivery stalls whenever the operator steps away.
+- [ ] `OD-1247` — STATUS=NOT_PROVEN — RC-359 OPEN residual: MISSING DELTA-OI WALLS + UNBANKED PER-STRIKE OI HISTORY (operator-approved rank-3 metric, research 2026-08-15): the terminal cannot distinguish FRESH walls (positioning built overnight — defend) from STALE ones (residue — fade) because per-strike open interest is never banked day-over-day; the RC-159 chain accrual stores only [strike, net_gex$, volume] with no OI, so overnight OI change is uncomputable.
+- [ ] `OD-1248` — STATUS=NOT_PROVEN — RC-358 OPEN residual: MISSING 25-DELTA RISK REVERSAL (operator-approved rank-2 metric, research 2026-08-15): the terminal shows no skew-steepness read — IV(25Δ call) minus IV(25Δ put) on the front expiry — so the operator cannot see the put bid BUILDING intraday, which is the best same-session confirm/deny for a Gamma Support Floor breach (deterioration from typical -2..-4 vol pts toward -6+ = accelerating put demand feeding dealer short gamma).
+- [ ] `OD-1249` — STATUS=NOT_PROVEN — RC-357 OPEN residual: MISSING 0DTE GAMMA SHARE (operator-approved top-ranked metric, research 2026-08-15): the terminal cannot tell the operator what fraction of today's dealer gamma book comes from SAME-DAY expiry — yet the market is majority-0DTE (Cboe: ~59-60% of SPX volume), and 0DTE gamma DIES at the close, so whether today's walls/flip/GSF persist into the afternoon or evaporate at 4pm is unreadable from the current display.
+- [ ] `OD-1250` — STATUS=NOT_PROVEN — RC-356 OPEN residual: CHART CORRIDOR SHADE CLUTTERS THE CANDLES (operator directive 2026-08-15): the RC-113 wall-range corridor fill (shaded band between the put wall and call wall, static/chart.html ~1323-1341) overlays the candle area and reduces chart legibility; the operator wants a clean candle field with the wall LEVEL LINES kept.
+- [ ] `OD-1251` — STATUS=NOT_PROVEN — RC-354 OPEN residual: MISSING DECISION LEVELS + UNBANKED IV HISTORY (operator-approved build): (a) the terminal has no vol-deterioration level — the researched Gamma Support Floor (and its upside mirror) is not computed anywhere, leaving the operator without the early-warning line that precedes the Gamma Flip; (b) no daily ATM-IV history is banked, so IV Rank/Percentile can never be displayed (3-12mo burn-in; every unbanked day is lost forever).
+- [ ] `OD-1252` — STATUS=NOT_PROVEN — RC-353 OPEN residual: NOMENCLATURE TRANSITION GAPS (operator ask): after the RC-352 renames, (a) the Exp. MFE / Exp. MAE rows carry NO tooltip at all (operator cannot learn what the new names mean from the screen), and (b) most renamed labels lack a "formerly X" bridge in their tooltip, so the operator has no on-screen mapping from the old vocabulary to the institutional one during the adjustment period.
+- [ ] `OD-1253` — STATUS=NOT_PROVEN — RC-351 OPEN residual: E2E SPEC DRIFT, FIRST MEASURED: on the live tree's first-ever full CI run (PR #88, runs 31859275082 / 31859368470), the Playwright E2E stage failed 22 of 78 specs (`gh run view 31859275082 --log-failed` shows e.g. stack-wire-3-ui-phase3-behavioral.spec.js dr-signals-engine-fail-chip present in DOM but not visible in CI offline mode), so pytest-full never reached the Python suite.
+- [ ] `OD-1254` — STATUS=NOT_PROVEN — RC-190 OPEN residual: THE PER-TURN SELF-ADVERSARIAL AUDIT LAW HAS BEEN ENFORCED IN CODE AND CITED BY FOUR OTHER ROWS FOR WEEKS WITHOUT EVER HAVING A LEDGER ROW OF ITS OWN. Row opened 2026-08-09 as a DANGLING-CHILD REPAIR, not as a new discovery: RC-330's why-chain names RC-190 as the mechanism it supersedes, `governance/section_inventory_gate` rejects a chain that spawns a child with no entry, and the Stop guard blocked on exactly that. RECORDED FROM CURRENT REPOSITORY EVIDENCE ONLY, because I did not open the original and will not reconstruct its wording: `reports/zero_debt_work_law_v1.md:181` lists "RC-190 OPEN" among the remaining active rows; `tests/test_ui_mockup_lock_v1.py:308-316` binds it to `tools.turn_self_audit.matching_attack_suites`, which must pair changed modules with the attack suites that NAME them and REPORT uncovered modules as findings rather than skipping them — measured this turn: `tools/ui_mockup_lock.py` resolves to `tests/test_ui_mockup_lock_v1.py` with nothing uncovered, and a ghost module returns no suites and one uncovered entry, 1 passed; `tests/test_ui_mockup_lock_v1.py:351` records that a STALE audit record "is RC-190's problem", distinguishing it from RC-203's research clause; `tests/test_operator_law_guard_repo_scope_v1.py:387` asserts the guard's Stop clause can emit an RC-190 violation. The law itself is the one the guard states when it fires: a turn that changed production code may not end without the audit having RUN. STATUS IS OPEN, not closed by me: RC-330 replaced the AUTHORIZATION mechanism, and `matching_attack_suites`, `research_violation`, `_latest_audit_lacks_research` and `supervise_turn_audit` are all still present, so what remains of RC-190 is live code I did not write and whose original acceptance criteria are not in this ledger.
+- [ ] `OD-1255` — STATUS=NOT_PROVEN — RC-331 OPEN residual: THE PER-TURN AUDIT INVALIDATES ITSELF BY WRITING ITS OWN TELEMETRY INTO THE REPOSITORY IT IS HASHING, SO TEN OF ITS ACTUAL-PATH CONTRACT CONTROLS FAIL. MEASURED this turn, driving the contract suite's own fixture: `_repo(tmp_path)` builds a fresh git repo, `_invoke_audit` runs `tools/turn_self_audit.py` against it, and the result is returncode 3, VERDICT INCOMPLETE, while every check inside it PASSES - scope_integrity PASS, ruff_changed PASS, test_ownership PASS, owned_pytest PASS, with checks_failed [] and checks_incomplete []. The sole cause is `internal_errors = ['repository identity or scope changed during audit']`. `LOG_REL = "reports/turn_self_audit_log.jsonl"` is written inside the audited tree, so in any repository where that file does not already exist the write creates a new untracked entry between `worktree_identity_start` and `worktree_identity_end`, and the audit reports its own footprint as drift. The contract suite builds a clean fixture every time, so it hits this on every run: 10 failed, 60 passed in tests/test_turn_self_audit_contract_v1.py. The fixture is an isolated tmp_path, so this is independent of anything staged in the shared worktree. RC-330 was closed on the claim that twenty-five actual-path controls pass; ten of them do not pass now.
+- [ ] `OD-1256` — STATUS=NOT_PROVEN — RC-326 OPEN residual: I NARROWED A DETECTOR TO STOP FALSE POSITIVES AND NEVER MEASURED WHAT THE NARROWING STOPPED DETECTING — AND A DEEP PROBE THEN FOUND DUPLICATION THE NARROWED FORM CANNOT SEE. Operator 2026-08-09: "the gate needs to be able to do a deep probe for not only those known duplicates, but other duplicates that may not be known... you cannot produce a gate that is only surface level in nature." WHAT I DID: `tools/check_one_producer.py` first accepted token co-occurrence plus any loop and named 32 sites as producers of net charm, including `db.py:_init_schema` and `time_et.py:time_to_expiry_years`. I narrowed the bar to arithmetic joining the defining inputs, the count went to zero, and I reported that as the detector working. I never asked what the narrower bar now MISSES. MEASURED by three orthogonal detectors run over the tracked index this turn: (A) STRUCTURAL CLONES — normalise each function body to its control-flow shape with identifiers and literals erased, hash, group: 38 clone groups of at least 5 statements across 2+ sites, the largest being 16 statements duplicated 4 ways across `tools/_build_section{11,13,14,15}_inventory.py` and 15 statements duplicated 7 ways across `_build_section{2,3,5,6}_inventory.py`, plus real production pairs `ml_scheduler.py:922 _train_parallel_meta_oof` against `:1675 _train_cascade_meta_oof` and three near-identical `bayesian_fusion.py` evidence translators. (B) SEMANTIC FIELD COLLISIONS — canonicalise field names by stripping namespace prefixes and expanding abbreviations, then group: 216 concepts carry two or more spellings, including `prob_up` / `up_prob`, `em_upper` / `kl_em_upper` / `upper`, `kl_levels_source` / `levels_source` / `source_levels`, and `ts_utc` / `utc_ts`. (C) IDENTICAL RETURNED FORMULAS — normalise the operator tree of every returned BinOp: 17 groups at 3+ sites, including a piecewise-linear interpolation returned identically by `math_levels.py:1044 gamma_at_price`, `planes/l1_thresholds.py:141 _piecewise_linear` and two `tools/legacy/horizon_7` runners. NONE of these are visible to the narrowed one-producer detector, because it looks for named vendor inputs and these share no input names at all. Reproduce with the probe recorded in this row's fix cell.
+- [ ] `OD-1257` — STATUS=NOT_PROVEN — RC-318 OPEN residual: RC-301'S ENFORCED GATE MISSES THE PUREST FORM OF THE CLASS IT WAS BUILT FOR, AND THE EXEMPTION I WROTE SAYS SO IN ITS OWN TEXT. Cursor audit 2026-08-09. `lstm_data.py:650` is `if v is None: return 0.0` inside `_safe_float(v) -> float` — a literal None-becomes-zero, which IS the absence-coerced-to-a-value class in its canonical form. `tools/check_absence_has_a_type.py` only inspects returns inside an `except` handler, so `python -c "import check_absence_has_a_type as C; print(C.fabricated_absence_returns(Path('lstm_data.py')))"` returns `[]` and `C.violations()` returns `[]`. The gate sees the SECOND branch of that same function, line 655, and I silenced it with a marker whose reason states the contract "is asserted by its docstring and NOT verified" — so the one site the gate did catch was closed with an admission rather than a repair, and the site it could not see was never raised at all. MEASURED for the widening by AST over the tracked money path: `if <x> is None: return <numeric literal>` inside a `-> float` function occurs SIX times — `adaptive_similarity_engine.py:390`, `features/signal_layer_v1.py:219`, `lstm_data.py:651`, `math_probabilities.py:319` and `:326` (the second returning 9999.0, the RC-290 sentinel shape again), and `order_flow_engine.py:810`. Re-run the blind-spot proof with `python -c "import sys; sys.path.insert(0,'tools'); import check_absence_has_a_type as C; from pathlib import Path; print(C.fabricated_absence_returns(Path('lstm_data.py')), C.violations())"`.
+- [ ] `OD-1258` — STATUS=NOT_PROVEN — RC-317 OPEN residual: RECURRENCE: unverified-claim-asserted — after RC-39, RC-40, RC-43, RC-53, RC-295, RC-296, RC-308 and RC-315, and the first where the unverified claim is a GATE'S OWN COVERAGE. Every prior instance asserted something about the market or the code; this one asserted, by shipping the check as ENFORCED and green, that a class of defect could no longer enter — and the file the check was named for still passes it. What is structurally different: the claim was never written in prose anywhere, so no reader could disagree with it. It lives in the registration line and in the word PASS. RC-298'S ENFORCED GATE DOES NOT CATCH THE EXACT FILE IT WAS BUILT TO CATCH, AND ITS NEGATIVE CONTROL TESTS AN EASIER FILE. Cursor audit 2026-08-09, reproduced here. Feeding the analyser the RC-294 shape — read the docstring, normalise it into a local, assert on the local — returns `(0 prose assertions, 1 subject call)` and PASSES; Cursor measured `(1, 8)` on the historical original, which also passes. Two independent errors compound: a helper call like `_norm(DOC)` is counted as SUBJECT EXECUTION when it is text handling, and an assertion against the normalised variable is not counted as PROSE because the taint is not followed past the first assignment. So the file that locked "calls sell, puts buy" — a claim one call to `bs_charm` refutes — would sail through the gate written in its name. The negative control in `tests/test_claims_are_executed_gate_v1.py` asserts on a reconstructed fixture that asserts directly against `SRC`, the form the analyser already handles, so it has never exercised the failing shape.
+- [ ] `OD-1259` — STATUS=NOT_PROVEN — RC-316 OPEN residual: RC-313 REPAIRED A SENTENCE NO OPERATOR CAN READ, AND I DESCRIBED IT AS A CALL CARD FIX. Cursor audit 2026-08-09, verified here by a `git ls-files`-scoped scan for every mention of the symbol: `call_engine.py:457` defines `_greek_notes` and the ONLY other references in tracked non-test code are its own definition line and an archived 2026-era inventory record. Nothing calls it. Its consumer `_add_greek_color` at `call_engine.py:492` is equally unreferenced — the two are a dead pair. Reproduce with `git ls-files -z -- "*.py" "*.html"` piped through a `python` scan for both symbols. So the note I corrected is not rendered anywhere, RC-313's commit message calling it "the Call card note" was wrong, and the claim that the fix removed a false statement from an operator surface is false: it removed a false statement from unreachable code. The underlying finding stands — the sentence WAS wrong, and the RC-292 collision it came from is real — but the impact I stated was not.
+- [ ] `OD-1260` — STATUS=NOT_PROVEN — RC-310 OPEN residual: SPAWNED BY RC-308 — A CARD SLOT WAS HANDED A NUMBER IT COULD NEVER RENDER, AND THE TEST GUARDING THAT SLOT WAS WATCHING FOR THE WRONG THING ENTIRELY. The Call card's size line is `T('cv2-c-size', fstr(s.size_cue, s.sizing_summary, s.r_units))` in `static/index.html`. MEASURED by reading `fstr` in the same file: it walks its arguments and returns the first one for which `typeof v === 'string' && v.trim()`, so a NUMERIC third argument fails the type test under every possible value — 2.5, 0, negative, anything — and returns null. The sizing fallback has therefore never fired: whenever the producer supplied risk units but no prose cue, the operator saw an em-dash where a real size existed. Nothing detected it because the only test pointed at this field, `tests/test_stack_wire_3_ui_phase3_closure.py::test_wire3_ui_r_units_none_treated_as_withheld`, asserted `"r_units" not in HTML` — the ABSENCE OF THE NAME as a stand-in for the withhold contract — so it went red the moment the name appeared and stayed silent about whether the binding was correct. Its own failure message states the real rule it never checked: guard on null, render withheld, and never substitute 0, because 0 R is a real size.
+- [ ] `OD-1261` — STATUS=NOT_PROVEN — RC-307 OPEN residual: RC-286'S CLASS SWEEP ASKED WHICH TOOLS RE-DECIDE WHAT THE REPOSITORY IS AND NEVER ASKED IT OF THE TESTS, SO A TEST HAS BEEN JUDGING 93 UNTRACKED SCRATCH SCRIPTS AS PRODUCTION CODE. MEASURED today, a non-trading Saturday, by `python -m pytest tests/test_coh_sa2_et_authority.py`: two of its four tests fail, listing `scratchpad/_adv_audit_db_scan_v1.py` and its siblings as offenders against the America/New_York ZoneInfo authority. `git ls-files scratchpad` returns ZERO tracked files and `.gitignore:202` excludes the directory, yet `tests/test_coh_sa2_et_authority.py:26` enumerates with `root.rglob("*.py")` filtered by a hand-written `_SKIP_PY_TREE_DIRS` that lists `.git`, `.venv`, `node_modules` and not `scratchpad`. This is RC-274 and RC-286 exactly, one directory over: RC-286 wrote the class sweep, measured 21 filesystem-enumerating scanners under `tools/`, and pinned the count so it could not drift — and its own scan ran `(REPO / "tools").glob("*.py")`, so the same shape inside `tests/` was never counted. The same AST query aimed at the git index over `tests/*.py` finds FORTY-SEVEN sites, 29 of them outside `tests/archive/`. A test IS a gate; it renders a verdict on the repository.
+- [ ] `OD-1262` — STATUS=NOT_PROVEN — RC-305 OPEN residual: SPAWNED BY RC-304 — A SERVED FIELD WHOSE WHOLE JOB IS TO QUALIFY ANOTHER SERVED FIELD CAN REACH NO SURFACE, AND NOTHING NOTICES. RC-288 derived `charm_book_scope` so a reader could tell a single-expiry charm from a whole-book charm; `static/chart.html` renders charm and has never read it. MEASURED by AST over `server.py`, walking every dict literal inside a function carrying an `/api/...` route decorator, keeping only routes whose path string appears in a tracked `static/` html or js file, and testing each key for any appearance in that UI text: 141 payload keys examined repo-wide, 76 never appear in any UI file at all, and 67 of those sit on 15 routes the UI DOES fetch. A blanket rule is therefore wrong — most of the 67 are diagnostics that tools and the operator read through the endpoint itself (`/api/logger/status` alone accounts for 20). The subset that is not arguable is the QUALIFIER: a key ending `_error`, `_scope` or `_basis` exists only to state the conditions of a number served beside it, so serving one to a surface that renders the number and not the qualifier is the RC-304 defect by construction. That subset measures FOUR — `charm_error` on /api/forces, `session_scope` and `vendor_basis` on /api/levels, `spot_basis` on /api/terrain/strikes — with `charm_book_scope` the one qualifier already rendered anywhere, and only on Exposure.
+- [ ] `OD-1263` — STATUS=NOT_PROVEN — RC-303 OPEN residual: SPAWNED BY RC-302 — THE ONE-FAUCET CONTROL VERIFIES THE WRITER AND IS BLIND TO THE MEANING, WHICH IS WHY SIX FAUCET CONFLICTS SURVIVED IT. `single_faucet_provenance` checks that exactly one function writes each `kl_*` field. MEASURED: it passes today while Cursor's audit lists SIX open one-faucet conflicts — gamma-pin semantic collision, terrain versus analytics wall books computed independently at `terrain_engine.py:525` and `server.py:6783`, nearest-level reconstruction split between `market_state.py:1208` and `live_decision_bundle.py:184`, an expected-move split between signals and the displayed `kl_em_*`, VWAP recomputed independently by the chart and exposure pages, and charm republishing a selected-expiry strike it did not compute. Every one of those passes a single-writer test, because in each case one function does write the field; what differs is upstream of the write. The control therefore reports the property it can see and the repo has read that as the property it wanted.
+- [ ] `OD-1264` — STATUS=NOT_PROVEN — RC-300 OPEN residual: RECURRENCE: duplicate-authority — after RC-14, RC-36, RC-42, RC-48 and RC-59, and the first where the duplicated authority is a GATE rather than a data producer. Those five had two components computing one quantity. Here two gates, `rc_numeric_claims_cite_a_command` and `measured_claims_cite_evidence`, both claim authority over whether a number is trustworthy, and BOTH answer only the provenance question — so the duplication is not that they disagree but that together they look like complete coverage while leaving precision unguarded. Structurally different because the redundancy is what conceals the gap: one gate with an obvious hole invites a second gate; two gates with the same hole read as defence in depth. SPAWNED BY RC-265 UNDER THE RC-299 RECURSION RULE — NO CONTROL REQUIRES A NOISE FLOOR BEFORE A NUMERIC CLAIM IS PUBLISHED. RC-265's chain terminated at "a measurement was reported without first measuring its own noise floor", which describes the event and not its cause; applying RC-299 forced the next why and this row carries it. MEASURED: the institutional gate has `rc_numeric_claims_cite_a_command`, which requires a figure to be REPRODUCIBLE, and `measured_claims_cite_evidence`, which requires a MEASURED claim to name a command — and neither asks whether the figure is distinguishable from noise. A number can therefore be perfectly reproducible, correctly cited, and still be sampling artifact, and both gates will pass it. The historical proof is in this log: RC-6 published 5.96 / 5.78 / 1.03 / 0.92 GB as MEASURED from a 1,500-row sample, all four wrong, refuted by exact SUM(LENGTH(...)); the response was `rc_numeric_claims_cite_a_command`, which would have made those same wrong numbers re-runnable rather than absent.
+- [ ] `OD-1265` — STATUS=NOT_PROVEN — RC-295 OPEN residual: RECURRENCE: unverified-claim-asserted — after RC-39, RC-40, RC-43 and RC-53, and the first instance where the unverified claim is made by CODE to itself rather than by an author to the operator. Those four were assertions in prose or in a ledger that no one had measured. This one is a scoring branch asserting, every cycle, that a strike is a pinning attractor — a claim nothing upstream ever established and which the docstring that should have corrected it named the wrong producer for until RC-294. Structurally different because there is no author to correct: the claim is embedded in a conditional, so it re-asserts itself on every evaluation and reaches the operator as a regime classification rather than as a sentence they could dispute. Measured by `.venv/Scripts/python.exe -m pytest tests/test_pinning_score_needs_a_pin_v1.py -q`. THE DEFECT: THE PINNING REGIME SCORES A POINT FOR A GEOMETRIC AGREEMENT THAT HAS NO PINNING SEMANTICS. `regime_engine.py:140-149` adds 1.0 to the pinning score and appends the support string "charm drifting upward/downward toward pin" when `charm_direction` agrees geometrically with `charm_drift_toward` relative to spot. That value is NOT a pin: it is `pick_net_gex_peak_strike` over the SELECTED EXPIRY, borrowed from the analytics faucet (RC-292), and charm performs no computation with it — it republishes the caller's label unchanged (RC-294). Pinning is a MAGNITUDE mechanism: price is held where total hedging volume is greatest, which is `pick_pin_and_strength` over the wide book. The signed-net peak answers a different question, so "charm flow points toward the signed-net peak" is not evidence that price will be pinned, and the support string asserts a relationship the inputs cannot establish. Cursor v3 graded this the consequential consumer precisely because the `call_engine` sentence I had quoted turned out to be dead code while this one changes regime classification. Compounding it: `SignalInput` carries `charm_drift_toward`, `pin_width_pts` and the two gamma-wall distances but NO gamma-pin field, so this test scores against the only strike it happens to have rather than the one the claim requires.
+- [ ] `OD-1266` — STATUS=NOT_PROVEN — RC-290 OPEN residual: RECURRENCE: false-exemption-reason — second occurrence, RC-281 being the first, ONE DAY APART, by the same author, in the mechanism RC-281 caused me to build. What is structurally different, and it is not in my favour: RC-281 could be read as a first offence with an unfamiliar marker; this one was written while citing RC-281 in the same commit message, which removes ignorance as an explanation and leaves only that the control does not constrain me. So this row does not propose a third round of care — it records that hand-written exemption reasons have a measured error rate of roughly 5 in 18 from a single author and treats that as the fact to design against. THE DEFECT: BOTH `# caps-ok:` REASONS I WROTE ARE FALSE, AND I WROTE THEM ONE DAY AFTER RC-281 CAUGHT ME DOING EXACTLY THIS. Cursor's v2 audit executed both claims. (i) `terrain_engine.py:219` — my marker says the 999.0 DTE fallback is "SORT KEY only, never rendered". Probe against `_per_strike_scopes` (terrain_engine.py:334-335) returned `{'all': ['missing-dte'], 'near': [], 'far': ['missing-dte']}`: a contract with no DTE is classified `far` and RENDERED in that scope, so "never rendered" is simply untrue and a strike of unknown maturity is being shown to the operator as a far-dated one. (ii) `terrain_engine.py:361-370` — my marker says a strike with no contract volume "genuinely traded zero". Probe: a missing `totalVolume` yields `volume: 0.0` and a genuine zero `totalVolume` also yields `volume: 0.0`, so the two states are indistinguishable on the rendered per-strike volume path — the absence-as-zero defect of RC-274, reintroduced by me, in a comment excusing it. RUNNING TALLY OF MY OWN REASONS: RC-281 found 3 false of 16 `silent-zero-ok`; Cursor now finds 2 false of 2 `caps-ok` plus several unsafe `silent-zero-ok` sentinel claims. My measured hit rate on hand-written exemption reasons is roughly 5 wrong out of 18.
+- [ ] `OD-1267` — STATUS=NOT_PROVEN — RC-288 OPEN residual: A 277-LINE TEST FILE ASSERTS A CONTRACT FOR MACHINERY THAT HAS NEVER EXISTED, AND TWO OF ITS THIRTEEN TESTS WOULD RE-IMPOSE A LOCK THE OPERATOR REVOKED. `tests/test_charm_scope_surface_v1.py` drives `build_market_state(charm_scope=..., charm_expiry=...)` and asserts those fields survive to `_ms_to_dict`, the Tier-C publisher, `TerrainSnapshot`, the light plane and both UI surfaces. MEASURED: `git log --oneline -S'charm_scope' --all -- server.py market_state.py terrain_engine.py static/index.html static/chart.html planes/context_light.py` returns EMPTY — the field has never appeared in any of those files in any commit in the repository's history — and `charm_scope`/`charm_expiry` occur zero times across all tracked non-test files today. The file itself entered history only in my own over-broad commit `4bd9c5f8`; before that it sat staged and uncommitted. Worse than dead: `test_ui_fails_closed_when_the_book_label_is_missing` and `test_order_flow_confirm_requires_a_labeled_charm_book` demand the UI WITHHOLD a charm direction when unlabeled, which is the charm/Bias vote-lock the operator revoked on 2026-08-02 ("nothing locked") and whose re-encoding is recorded as forbidden in the operator-law memory. THE REAL DEFECT UNDERNEATH IS SEPARATE AND MEASURED: `compute_net_charm` runs on ONE selected expiry (server.py:6742, :14921) while `compute_charm_by_strike` runs on the FULL chain (terrain_engine.py:508), and the only book label in the product — `"charm_book_scope": "full_chain_banked"` at server.py:12374 — is a hardcoded string that `static/exposure.html` also hardcodes as its or-fallback, so the label cannot ever disagree with itself and therefore cannot detect the thing it exists for.
+- [ ] `OD-1268` — STATUS=NOT_PROVEN — RC-287 OPEN residual: THE CAPS GATE OFFERS ONLY TWO WAYS TO EXCUSE A CORRECT LINE AND BOTH ARE DEFECTIVE, SO IT STAYS RED OVER CODE THAT IS RIGHT. After RC-286 scoped the scanner to the git index, `.venv/Scripts/python.exe -m pytest tests/test_anti_pattern_family_repo_wide.py -q` reports exactly two production hits, both legitimate: `terrain_engine.py:219` `return d if d is not None else 999.0`, a documented SORT sentinel whose docstring states junk DTE sorts far-dated rather than poisoning the comparison with NaN and whose value is never rendered; and `terrain_engine.py:361` `"volume": 0.0`, the IDENTITY of a sum whose accumulator fills at :368-370 — the exact shape RC-277 proved must not be "repaired". The gate's only escapes are `CAPS_PREFIX_ALLOWLIST`, which is FILE-scoped and would exempt all 400+ lines of terrain_engine.py to excuse two of them, and `CAPS_LINE_ALLOWLIST`, which pins `(file, LINE NUMBER, variant)` and therefore silently transfers its exemption to a different statement the moment anything above it shifts. A gate with no honest way to say "this line is correct" trains its reader to switch it off.
+- [ ] `OD-1269` — STATUS=NOT_PROVEN — RC-286 OPEN residual: RECURRENCE: gate-scope-includes-untracked-scratch — second occurrence, RC-274 being the first, in a SIBLING gate nobody re-checked. What is structurally different: RC-274 fixed the scope of the silent-zero gate and stopped there, at the one scanner that happened to be failing; this row applies the same definition to `tools/anti_pattern_sweep.py`, which walks the tree the identical way, and asks the question RC-274 did not — which OTHER gates enumerate files themselves. THE DEFECT: `tests/test_anti_pattern_family_repo_wide.py::test_no_unallowlisted_production_hits` fails on hits inside `scratchpad/`, a directory `.gitignore:202` excludes and which holds 0 tracked files. The scanner at `tools/anti_pattern_sweep.py:142-151` uses `ROOT.rglob("*.py")` filtered by a hand-maintained `SKIP_DIR_PARTS` that lists `.git`, `.venv`, `node_modules`, `backups`, `governance` and four others — and not `scratchpad`, because the set has to be updated by hand every time a new directory appears. MEASURED by `.venv/Scripts/python.exe -m pytest tests/test_anti_pattern_family_repo_wide.py -q`, which is one of the 34 failures carried into this session and has been red long enough to stop being read.
+- [ ] `OD-1270` — STATUS=NOT_PROVEN — RC-280 OPEN residual: AN ENFORCED GATE IS ITSELF A RATCHET, AND IT SPENT THE SESSION'S TIME ON ITSELF WHILE 34 TESTS STAYED RED. `check_open_item_cap` stores a high-water mark in `governance/open_item_ceiling.json` and blocks whenever the open count rises above it — its own docstring says so in as many words: "This is a RATCHET instead". MEASURED 2026-08-07 by `.venv/Scripts/python.exe tools/check_institutional_correctness.py`: `39 open governance items > ceiling of 37`, which blocked the commit carrying the adversarial-audit request the operator had already sent to Cursor. 37 is a number the operator never named. The operator's standing law is unambiguous — "WE DO NOT NEED RATCHETS. WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS IS THIS CLEAR?" — and this mission's own done_criteria repeat it: no ratchet, tolerance, ceiling or grandfather clause exists that the operator did not name a number for. The count is also mostly parking-lot volume: it sums OVERDUE dated items with every unchecked `OPEN_ITEMS.md` row, and those rows carry no due date at all.
+- [ ] `OD-1271` — STATUS=NOT_PROVEN — RC-265 OPEN residual: DUPLICATION WAS COUNTED BY WHICHEVER SCAN SOMEBODY HAPPENED TO RUN, AND TWO OF THOSE SCANS WERE MEASURING NOISE. The operator asked for one running number that goes to zero; there was none, and the first attempt at one produced figures that could not be trusted. MEASURED at the market open: the value scan run twice, seconds apart, on an unchanged repository returned 105 findings and then 6 — because polling nineteen endpoints takes seconds and spot moves between the first call and the last, so every field derived from spot appears to disagree when it was merely sampled at two instants. Separately the module scan reported 401 near-duplicate pairs, because `difflib.quick_ratio()` compares character multisets and is an UPPER BOUND: two files score above 0.85 for both being written in Python. After correcting both, the same repository reports D-VALUE 6, 6, 5 across three consecutive runs. RECURRENCE: duplicate-authority — the seventh occurrence after RC-14, RC-36, RC-42, RC-48, RC-59 and RC-262, and this row is the class's own MEASUREMENT rather than another instance of it. What is structurally different is the direction: the six prior rows each fixed one duplicated authority and closed, so the class kept returning through whatever path the last fix did not cover. This row does not fix a duplicate at all — it builds the register that counts every class of them at once and reports one total, so the seventh occurrence becomes the last one that can be discovered by accident. If duplicate-authority recurs while a register with a live total exists, that is genuinely new information: it would mean a class of duplication nobody thought to scan for, and the next row should name that class rather than the instance.
+- [ ] `OD-1272` — STATUS=NOT_PROVEN — RC-264 OPEN residual: THE REPO'S PLANS ARE PROSE, SO NOTHING KNOWS WHETHER THEY ARE BEING FOLLOWED — AND THE OPERATOR HAS HAD TO SAY SO TWICE. MEASURED this turn: `governance/REHAB_PROGRAM.md` exists, is 6,011 bytes, is a well-written standing charter under RC-220 dated 2026-08-03 with a correct spine (census, one authority, kill the second path, test, lock, prove live), and `git log -1` shows it was touched 2 days ago. In those 2 days, measured against the running system: `/terrain` still returns 404, `/api/spot` fires 53 times in 82 seconds in bursts of 10 identical concurrent requests, `/api/terrain/radar` stalls 8,426 ms on a cold cache, 485,275,039 bytes of scratchpad sat staged for commit, and 181 duplicate function bodies remained. The charter describes all of this work and detected none of it. Separately the operator stated twice in one session that we keep losing sight of the plan, and asked directly whether the running plan is documented anywhere — it is not. There are 100 markdown files in `governance/` totalling 2,154,602 bytes and no machine-readable statement of what the current programme is or where it stands.
+- [ ] `OD-1273` — STATUS=NOT_PROVEN — RC-259 OPEN residual: GUARD SCOPED BY FILE EXTENSION, NOT BY REPOSITORY: `tools/pretooluse_guard.py` blocked a write to `&lt;TRADING_ROOT&gt;/IEOS/ieos/__init__.py` with "You are editing PRODUCTION file", and `tools/operator_law_guard.py` separately blocked heredoc and `python -c` writes to that same foreign tree. IEOS is a SEPARATE git repository (root `&lt;TRADING_ROOT&gt;/IEOS`, own HEAD `c07716a2`, four tracked files) with its own governing LAW.md and SPECIFICATION.md; this repository's RC ledger, mission scope and five-why law do not govern it. MEASURED this turn: `git -C &lt;TRADING_ROOT&gt;/IEOS rev-parse --show-toplevel` returns `&lt;TRADING_ROOT&gt;/IEOS`, distinct from this repository's root, while the guard's decision used only the `.py` suffix.
+- [ ] `OD-1274` — STATUS=NOT_PROVEN — RC-257 OPEN residual: CLOSE-CONTRACT LOCKS KEY ON THE EXACT STATUS STRING "CLOSED", SO ANY RICHER STATUS TOKEN SILENTLY DISABLES SIX CLAUSES AT ONCE. FOUND 2026-08-05 while executing the operator's durable-closure mission, whose written instruction was to record the status cell as CLOSED_WITH_EVIDENCE - a token that reads STRONGER than CLOSED to a human and is INVISIBLE to every checker. MEASURED this turn against a deliberately deficient row carrying no END-TO-END declaration and no observed evidence: with the status cell reading CLOSED the checkers return 2 violations, and with the identical row reading CLOSED_WITH_EVIDENCE they return 0. Reproduce: `python -c "import sys; sys.path.insert(0,'tools'); import check_institutional_correctness as K; P=chr(124); r=P+' RC-999 '+P+' CLOSED '+P+' 2026-08-01 '+P+' 2026-08-09 '+P+' d '+P+' a -> b -> c -> d -> e ROOT: r '+P+' FIXED: nothing. no code change '+P; c=[x.strip() for x in r.strip().strip(P).split(P)]; print(len(K._five_why_lock_violations([r], K.REPO)), len(K._rc_row_violations(K.REPO,1,c[0],c[1],c)))"` run once as written and once with the CLOSED token replaced by CLOSED_WITH_EVIDENCE. REPRODUCED AND WIDENED 2026-08-06: the bypass is not limited to the one plausible-sounding token. Running the same deficient row through `_five_why_lock_violations` and `_rc_row_violations` across five status values returned CLOSED -> 1 + 1 violations BLOCKED, and CLOSED_WITH_EVIDENCE -> 0 + 0, DONE -> 0 + 0, FINISHED -> 0 + 0, totally_closed -> 0 + 0, all PASSING FREELY. Any string that is not the exact token disables the contract, including obvious typos. The live vocabulary measured the same turn is `{OPEN: 4, CLOSED: 227, REMEDIATED: 1}`, and the six comparison sites are lines 212, 313, 320, 2137, 2797 and 2940 of `tools/check_institutional_correctness.py`. The current status vocabulary is an emergent set, not a declared one - 221 CLOSED, 3 OPEN, 1 PARTIAL, 1 REMEDIATED across 226 rows.
+- [ ] `OD-1275` — STATUS=NOT_PROVEN — RC-256 OPEN residual: RE-DATED 2026-08-07 to 08-10, reason: the measurement this row demanded is DONE and it moved the target rather than closing it. 7 rounds, fresh process each, `127.0.0.1` throughout: (a) import net of interpreter 1.418/1.499/2.357s, (b) spawn to TCP accept 2.511/2.826/4.694s, (c) spawn to first HTTP 200 2.582/2.896/4.832s, readiness tail 0.059/0.080/0.139s. A full cold start to a serving endpoint is ~2.9s median, so NEITHER suspect can account for a 15-20s hesitation and the cost is upstream in the launcher path — the one stage never timed. The row stays OPEN because the operator's actual complaint is still unexplained; closing it on a measurement that ruled out the wrong two stages would retire the question, not answer it. ORIGINAL DEFECT:  SERVER COLD START IS SLOW ENOUGH THAT THE OPERATOR WAITS TWICE, AND NOBODY HAS TIMED THE STAGES SEPARATELY: reported by the operator as "15-20s hesitation before logs, then long wait before app" - two distinct waits, which is itself the clue, because a single slow import would produce one. The evidence to date cannot rank them. RC-247 measured `import server` only; the PM's audit measured launch-before-listen; neither timed BIND separately from LIFESPAN, and both were single-digit-sample draws on a host running the live console, where ten runs of one identical command spanned 6.01-18.64s (recorded on RC-247 2026-08-05). MEASURED 2026-08-05 and stable because it is composition rather than wall-clock: `python -X importtime -c "import server"` attributes fastapi 3.91s, schwab_client -> schwab.auth -> authlib 2.00s, server's own body 1.70s, asyncio 1.46s, calibration.writer 1.01s, with NO sklearn and NO scipy, so the P3 win is holding and no single villain remains in the import tree. Separately and against the assumption in circulation, a LIVE rendered frame showed the Axiom overlay standing at least 16.4s on an already-warm console (RC-249), dismissing only at first accepted full render - so the second wait the operator describes is real and is NOT the splash's 5.2s animation floor.
+- [ ] `OD-1276` — STATUS=NOT_PROVEN — Former unproven_register.md UNPROVEN: That dealer gamma sign predicts intraday range BEYOND realized vol (weak, consistent-signed lead) — RE-DATED 2026-08-15, reason stated: certified-era RTH sessions still accruing; the placebo-controlled re-run stays queued until enough banked post-repair sessions exist, and the era law voids citing the old runs meanwhile. Prior re-date 2026-08-02, reason stated: the founding within-strata medians were measured on the PRE-REPAIR era, which the operator's citation rule voids in BOTH directions (bar repairs + weekend `rth` mislabels landed after; RC-191 relabeled 44,940 session rows), so a permutation test on those same rows would launder contaminated inputs as significance; the clean re-run needs repaired-era ranges + relabeled sessions + the regime series, sharing the 2026-08-14 wide-capture checkpoint
+- [ ] `OD-1277` — STATUS=NOT_PROVEN — Former unproven_register.md UNPROVEN: Whether a WIDE-chain gamma pin predicts the close any better than the narrow-chain pin that was just disproved — RE-DATED 2026-08-15, reason stated: wide-chain re-run needs banked certified-era sessions (era law voids pre-repair evidence in both directions); queued behind the accrual, not testable from today's desk state
+- [ ] `OD-1278` — STATUS=NOT_PROVEN — Former unproven_register.md UNPROVEN: RE-SCOPED 2026-08-04 at the due checkpoint (a due date is a re-scope checkpoint, not a verdict promise): the study needs post-repair certified-era banked chains, and the RC-207 DB rebuild gates that series; new due tracks the rebuild + two banked weeks. That the +call/-put dealer-sign assumption and prior-night OI hold well enough on our SINGLE-NAME universe for regime calls - the two GEX limitations the literature itself flags (index tickers are the robust case; single names are where the sign convention "can break down")
+- [ ] `OD-1279` — STATUS=NOT_PROVEN — Former unproven_register.md UNPROVEN: That wall-BREAK follow-through is stronger — RE-DATED 2026-08-15, reason stated: break-event sample only accrues during live RTH sessions on certified-era data; placebo-controlled study queued behind the banked-session count — when the gamma mass beyond the broken wall is thin (a void) than when another wall sits close behind — the "beyond-the-strongest-strike continuation" read (operator-sourced from practitioner video; mechanically coherent with short-gamma amplification) UNTIL PROVEN: treat wall-break follow-through as structure-only; do not admit to Decide; placebo-controlled purged walk-forward is required before any TRADE influence. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts that consume this read remain structure-only or fail closed.
+- [ ] `OD-1280` — STATUS=NOT_PROVEN — Former unproven_register.md UNPROVEN: That the four UNTESTED display levels — KDS (largest total-delta strike), MAX PAIN, HVP/LVP (extreme net-gamma strikes), NET Γ PEAK (the old net-based pin, renamed RC-124) — RE-DATED 2026-08-15, reason stated: the four-level placebo battery runs on banked certified-era sessions still accruing (era law voids pre-repair evidence); queued, every level study keeps its PLACEBO — carry ANY touch/residence value beyond a placebo comparator (operator order 2026-08-02: "we need to ensure that all levels are proven", raised on learning what KDS is) UNTIL PROVEN: the four untested display levels default off / placebo; overlay render-only is allowed; Decide stays WAIT. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts that consume these levels remain descriptive or fail closed.
+- [ ] `OD-1281` — STATUS=NOT_PROVEN — Former unproven_register.md UNPROVEN: That the exposure-overlay five-factor confluence (reports/exposure_overlay_chart_direction_v1.md §P: R1 exposure-asymmetry direction, R2 regime fade-or-chase conditioning, R3 VWAP 2nd/3rd σ-band timing) carries ANY predictive value on our data — sourced from a promotional post-hoc walkthrough whose narrator picked the example knowing the outcome UNTIL PROVEN: exposure-overlay confluence is operator-visible structure, not proven alpha; overlay render-only; Decide stays WAIT. Any later claim of edge requires purged walk-forward vs placebo before admission. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts that consume the overlay remain render-only or fail closed.
+
+### Older institutional master unique lanes
+
+- [ ] `OM-001` — STATUS=NOT_PROVEN — older institutional master: `CARD_FIDELITY_OVERALL_STATUS` (historical status **NOT_CLOSED** / **NOT_PROVEN**)
+- [ ] `OM-002` — STATUS=NOT_PROVEN — older institutional master: `STALE_WITHHELD_RTH_FRESHNESS_STATUS` (historical status **FAIL**)
+- [ ] `OM-003` — STATUS=NOT_PROVEN — older institutional master: `UNIVERSAL_RUNTIME_LIVE_PROOF_STATUS` (historical status **NOT_PROVEN**)
+- [ ] `OM-004` — STATUS=NOT_PROVEN — older institutional master: `REAL_MONEY_READINESS_STATUS` (historical status **NOT_PROVEN**)
+- [ ] `OM-005` — STATUS=NOT_PROVEN — older institutional master: `UNIVERSAL_CLOSURE_CLAIMED` (historical status **NO**)
+- [ ] `OM-006` — STATUS=NOT_PROVEN — older institutional master: S1 — stale-card contract / design (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-007` — STATUS=NOT_PROVEN — older institutional master: S2A — additive backend/API `card_freshness_v1` (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-008` — STATUS=NOT_PROVEN — older institutional master: S2B-1 — top-level operator actionability mirrors (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-009` — STATUS=NOT_PROVEN — older institutional master: S2B-2 (historical status **NOT_APPROVED**)
+- [ ] `OM-010` — STATUS=NOT_PROVEN — older institutional master: S2C — trade-gate consumer wiring (historical status **NOT_APPROVED**)
+- [ ] `OM-011` — STATUS=NOT_PROVEN — older institutional master: S3 — UI fail-closed design review (historical status **REPORTED_COMPLETE_READ_ONLY**)
+- [ ] `OM-012` — STATUS=NOT_PROVEN — older institutional master: S3A — UI operator-mirror local diff (historical status **NOT_APPROVED**)
+- [ ] `OM-013` — STATUS=NOT_PROVEN — older institutional master: S3 implementation (historical status **NOT_APPROVED**)
+- [ ] `OM-014` — STATUS=NOT_PROVEN — older institutional master: `DRIFT_RECOVERY_AND_PROOF_STANDARD_REPAIR_V1` (historical status **PUSHED_PROVEN** @ `caf15635` · **REMOTE_CI_NOT_PROVEN** · **NOT_CLOSED**)
+- [ ] `OM-015` — STATUS=NOT_PROVEN — older institutional master: Card stale/fallback **mechanism** lane (historical status **CLOSED_WITH_EVIDENCE** (historical — `@77675a6` era))
+- [ ] `OM-016` — STATUS=NOT_PROVEN — older institutional master: Execution channel surface lane (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-017` — STATUS=NOT_PROVEN — older institutional master: `call_signal` reclassification lane (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-018` — STATUS=NOT_PROVEN — older institutional master: `call_headline` deprecation lane (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-019` — STATUS=NOT_PROVEN — older institutional master: Remaining operator orphans (historical status `pred_headline`, `reversal_risk`, `reversal_label`)
+- [ ] `OM-020` — STATUS=NOT_PROVEN — older institutional master: Orphan payload field handling overall (historical status **NOT_PROVEN**)
+- [ ] `OM-021` — STATUS=NOT_PROVEN — older institutional master: RTH all-supported-ticker audit (historical status **BLOCKED**)
+- [ ] `OM-022` — STATUS=NOT_PROVEN — older institutional master: D17 full closure (historical status **NOT_CLOSED**)
+- [ ] `OM-023` — STATUS=NOT_PROVEN — older institutional master: NORMALIZER_COLUMN_CARRY (scratch-only) (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-024` — STATUS=NOT_PROVEN — older institutional master: SCRATCH_NORMALIZED_TB_COLUMNS (historical status **PROVEN**)
+- [ ] `OM-025` — STATUS=NOT_PROVEN — older institutional master: PRODUCTION_NORMALIZER_UNCHANGED (historical status **PROVEN**)
+- [ ] `OM-026` — STATUS=NOT_PROVEN — older institutional master: MATRIX_RUNNER_ARTIFACT_ISOLATION (historical status **PROVEN**)
+- [ ] `OM-027` — STATUS=NOT_PROVEN — older institutional master: PRODUCTION_MODEL_TREE_UNTOUCHED (historical status **PROVEN**)
+- [ ] `OM-028` — STATUS=NOT_PROVEN — older institutional master: D2_XGB_DUAL_LABEL_MATRIX (historical status **READY_FOR_OPERATOR_POWERSHELL**)
+- [ ] `OM-029` — STATUS=NOT_PROVEN — older institutional master: Card stale/fallback lane (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-030` — STATUS=NOT_PROVEN — older institutional master: Universal runtime live proof (historical status **NOT_PROVEN**)
+- [ ] `OM-031` — STATUS=NOT_PROVEN — older institutional master: Card fidelity overall (historical status **NOT_PROVEN**)
+- [ ] `OM-032` — STATUS=NOT_PROVEN — older institutional master: Real-money readiness (historical status **NOT_PROVEN**)
+- [x] `OM-033` — STATUS=NOT_APPLICABLE — older institutional master table-header scrape: `Wave` / `SHA` — not a product obligation. Retired as NOT_APPLICABLE. Wave substance, if any, remains on the numbered OM/OS/OD rows that name actual work.
+- [ ] `OM-034` — STATUS=NOT_PROVEN — older institutional master: Pilot (historical status `2e29f12`)
+- [ ] `OM-035` — STATUS=NOT_PROVEN — older institutional master: Wave 2 (historical status `bccc18e`)
+- [ ] `OM-036` — STATUS=NOT_PROVEN — older institutional master: Wave 3 (historical status `b03f042`)
+- [ ] `OM-037` — STATUS=NOT_PROVEN — older institutional master: Wave 4 (historical status `03a3eaa`)
+- [ ] `OM-038` — STATUS=NOT_PROVEN — older institutional master: Wave 5 (historical status `9cb0f65`)
+- [ ] `OM-039` — STATUS=NOT_PROVEN — older institutional master: Wave 6 (historical status `77675a6`)
+- [x] `OM-040` — STATUS=NOT_APPLICABLE — older institutional master table-header scrape: `Path-A totals` / `Value` — not a product obligation. Retired as NOT_APPLICABLE. Path-A substance remains on the numbered OM/OS/OD rows.
+- [ ] `OM-041` — STATUS=NOT_PROVEN — older institutional master: Tracked slice files (historical status 15)
+- [ ] `OM-042` — STATUS=NOT_PROVEN — older institutional master: `register_id` row changes (historical status 155)
+- [ ] `OM-043` — STATUS=NOT_PROVEN — older institutional master: Pinned register changed (historical status **no**)
+- [ ] `OM-044` — STATUS=NOT_PROVEN — older institutional master: Register repin (historical status **NOT_APPROVED**)
+- [ ] `OM-045` — STATUS=NOT_PROVEN — older institutional master: Production semantic-key merge (historical status **NOT_APPROVED**)
+- [ ] `OM-046` — STATUS=NOT_PROVEN — older institutional master: Schwab V4 Register Closure (historical status **NOT_CLOSED**)
+- [ ] `OM-047` — STATUS=NOT_PROVEN — older institutional master: Agent preload + operating contract (historical status **ENFORCED**)
+- [ ] `OM-048` — STATUS=NOT_PROVEN — older institutional master: Fix loop + Tier 0 / Tier A sign-off (historical status **ENFORCED**)
+- [ ] `OM-049` — STATUS=NOT_PROVEN — older institutional master: Maturity truth (`SEVERITY_1_CONTROL_VALIDATION_REGISTER.json`) (historical status **BINDING**)
+- [ ] `OM-050` — STATUS=NOT_PROVEN — older institutional master: MIT / world-class gate (historical status **BINDING**)
+- [ ] `OM-051` — STATUS=NOT_PROVEN — older institutional master: Remote CI (Objective Audit, Pytest, Hardening, Schwab CSV First) (historical status **PROVEN** @ `216702c` (baseline); **REMOTE_CI_NOT_PROVEN** @ `caf15635` (drift repair — await CI))
+- [ ] `OM-052` — STATUS=NOT_PROVEN — older institutional master: GitHub branch protection API proof (historical status **NOT_PROVEN**)
+- [ ] `OM-053` — STATUS=NOT_PROVEN — older institutional master: Live Schwab traffic proof (historical status **NOT_PROVEN**)
+- [ ] `OM-054` — STATUS=NOT_PROVEN — older institutional master: Mechanical rules / no prose-only promotions (historical status **ENFORCED**)
+- [ ] `OM-055` — STATUS=NOT_PROVEN — older institutional master: FULL_FIXES_ONLY V1→V2 (V1 template lock @ `1873ce4` 4/4 CI = **NOT_PROVEN_AS_EFFECTIVE**; V2 = evidence-backed closure gate: `FULL_FIX_EVIDENCE` block with real-path resolution + retroactive-only `CLOSED_WITH_EVIDENCE` + adversarial fake-YES tests) (historical status **NOT_PROVEN** until V2 local + remote CI green at the V2 SHA)
+- [ ] `OM-056` — STATUS=NOT_PROVEN — older institutional master: `CARD_FIDELITY_STALE_FALLBACK_LANE` (historical status **CLOSED_WITH_EVIDENCE** (mechanism only))
+- [ ] `OM-057` — STATUS=NOT_PROVEN — older institutional master: `EXECUTION_CHANNEL_SURFACE_LANE` (`call_state` chip) (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-058` — STATUS=NOT_PROVEN — older institutional master: `CALL_SIGNAL_RECLASSIFICATION_LANE` (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-059` — STATUS=NOT_PROVEN — older institutional master: `CALL_HEADLINE_DEPRECATION_LANE` (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-060` — STATUS=NOT_PROVEN — older institutional master: S2A `card_freshness_v1` nested metadata (historical status **CLOSED_WITH_EVIDENCE** @ `0a9a6c0`)
+- [ ] `OM-061` — STATUS=NOT_PROVEN — older institutional master: S2B-1 operator actionability mirrors (historical status **CLOSED_WITH_EVIDENCE** @ `50f07aa`)
+- [ ] `OM-062` — STATUS=NOT_PROVEN — older institutional master: Card trust gate (`analyticsCardTrustGate`) (historical status **CLOSED_WITH_EVIDENCE** (mechanism only))
+- [ ] `OM-063` — STATUS=NOT_PROVEN — older institutional master: S3 UI fail-closed (operator mirrors) (historical status **NOT_APPROVED**)
+- [ ] `OM-064` — STATUS=NOT_PROVEN — older institutional master: Proof-label drift repair (historical status **PUSHED_PROVEN** @ `caf15635` / **NOT_CLOSED**)
+- [ ] `OM-065` — STATUS=NOT_PROVEN — older institutional master: Orphan payload field handling (overall) (historical status **NOT_PROVEN**)
+- [ ] `OM-066` — STATUS=NOT_PROVEN — older institutional master: `pred_headline` disposition (historical status **OPERATOR_DECISION_REQUIRED**)
+- [ ] `OM-067` — STATUS=NOT_PROVEN — older institutional master: `reversal_risk` / `reversal_label` disposition (historical status **OPERATOR_DECISION_REQUIRED**)
+- [ ] `OM-068` — STATUS=NOT_PROVEN — older institutional master: `EXPLAINABILITY_AND_OPERATOR_DECISION_SURFACE_V1` (orphan subset) (historical status **NOT_STARTED**)
+- [ ] `OM-069` — STATUS=NOT_PROVEN — older institutional master: Horizon / ALL / PLAN harness parity (historical status **NOT_PROVEN**)
+- [ ] `OM-070` — STATUS=NOT_PROVEN — older institutional master: `STACK-WIRE-7` … `STACK-WIRE-15` (wiring sign-off) (historical status **OPEN**)
+- [ ] `OM-071` — STATUS=NOT_PROVEN — older institutional master: `RTH_ALL_SUPPORTED_TICKER_AUDIT` (historical status **BLOCKED**)
+- [ ] `OM-072` — STATUS=NOT_PROVEN — older institutional master: `UNIVERSAL_RUNTIME_LIVE_PROOF` (historical status **NOT_PROVEN**)
+- [ ] `OM-073` — STATUS=NOT_PROVEN — older institutional master: Trust-aware harness (stale withhold vs mismatch) (historical status **NOT_PROVEN**)
+- [ ] `OM-074` — STATUS=NOT_PROVEN — older institutional master: Guest vs anchor switch validation (historical status **NOT_PROVEN**)
+- [ ] `OM-075` — STATUS=NOT_PROVEN — older institutional master: `LIVE-UI-3` same-moment acceptance (historical status **OPEN**)
+- [ ] `OM-076` — STATUS=NOT_PROVEN — older institutional master: `FIND-LIVEUI-7` L1 SSE diag on ops UI (historical status **OPEN**)
+- [ ] `OM-077` — STATUS=NOT_PROVEN — older institutional master: `MARKET_DATA_QUALITY_AND_CORPORATE_ACTIONS_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-078` — STATUS=NOT_PROVEN — older institutional master: Tier A/B/C transport merge honesty (historical status **PARTIAL**)
+- [ ] `OM-079` — STATUS=NOT_PROVEN — older institutional master: `trade_impacting_gate` quarantine (historical status **ENFORCED**)
+- [ ] `OM-080` — STATUS=NOT_PROVEN — older institutional master: Schwab leaf wire (D17 program) (historical status **NOT_CLOSED**)
+- [ ] `OM-081` — STATUS=NOT_PROVEN — older institutional master: DATA-PIPELINE-INTEGRITY / absorption NULL class (historical status **PARTIAL**)
+- [ ] `OM-082` — STATUS=NOT_PROVEN — older institutional master: `FEATURE_LINEAGE_AND_LOOKAHEAD_BIAS_AUDIT_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-083` — STATUS=NOT_PROVEN — older institutional master: Lane A operator field lineage labeling (historical status **CLOSED_WITH_EVIDENCE** @ `eceb500`)
+- [ ] `OM-084` — STATUS=NOT_PROVEN — older institutional master: `VOLATILITY_INDEX_CONFLUENCE_AND_CALL_PUT_SIGNAL_CORRECTNESS_AUDIT_V1` (historical status **OPEN**)
+- [ ] `OM-085` — STATUS=NOT_PROVEN — older institutional master: Train-serve parity (I-05) (historical status **ENFORCED**)
+- [ ] `OM-086` — STATUS=NOT_PROVEN — older institutional master: ZERO-BIAS ablation placement (historical status **ENFORCED** (mechanical))
+- [ ] `OM-087` — STATUS=NOT_PROVEN — older institutional master: Ablation ingest purity (historical status **ENFORCED**)
+- [ ] `OM-088` — STATUS=NOT_PROVEN — older institutional master: ML-PIPELINE-CORRECTNESS / leakage closeouts (historical status **OPEN**)
+- [ ] `OM-089` — STATUS=NOT_PROVEN — older institutional master: `STACK-WIRE-6` ms_dict replay reconstruction (historical status **CLOSED_WITH_EVIDENCE** @ `9d4c8a4`)
+- [ ] `OM-090` — STATUS=NOT_PROVEN — older institutional master: `DECISION_LEDGER_AND_REPLAY_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-091` — STATUS=NOT_PROVEN — older institutional master: Decision reconstruction tests (historical status **PARTIAL**)
+- [ ] `OM-092` — STATUS=NOT_PROVEN — older institutional master: `/api/build` tip = disk tip (historical status **ENFORCED**)
+- [ ] `OM-093` — STATUS=NOT_PROVEN — older institutional master: Calibration / ops visibility (historical status **PARTIAL**)
+- [ ] `OM-094` — STATUS=NOT_PROVEN — older institutional master: `SIGNAL_OUTCOME_VALIDATION_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-095` — STATUS=NOT_PROVEN — older institutional master: `CARD_PREDICTION_HINDSIGHT_VALIDATION_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-096` — STATUS=NOT_PROVEN — older institutional master: Card signal fidelity reports (historical status **INVENTORY**)
+- [ ] `OM-097` — STATUS=NOT_PROVEN — older institutional master: Live diag parity (historical status **PARTIAL**)
+- [ ] `OM-098` — STATUS=NOT_PROVEN — older institutional master: `BACKTEST_TO_LIVE_PARITY_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-099` — STATUS=NOT_PROVEN — older institutional master: Replay hold bars / causal clock (historical status **PARTIAL**)
+- [ ] `OM-100` — STATUS=NOT_PROVEN — older institutional master: Arch competition eval integrity (historical status **ENFORCED**)
+- [ ] `OM-101` — STATUS=NOT_PROVEN — older institutional master: Monte Carlo / fusion offline vs live (historical status **PARTIAL**)
+- [ ] `OM-102` — STATUS=NOT_PROVEN — older institutional master: A2 replay/live runtime parity (OBS-A2OE1) (historical status **OPEN**)
+- [ ] `OM-103` — STATUS=NOT_PROVEN — older institutional master: `RISK_ENGINE_AND_POSITION_SIZING_AUDIT_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-104` — STATUS=NOT_PROVEN — older institutional master: `EXECUTION_ASSUMPTIONS_AND_SLIPPAGE_MODEL_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-105` — STATUS=NOT_PROVEN — older institutional master: `call_state` execution readiness (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-106` — STATUS=NOT_PROVEN — older institutional master: `final_tradeable` / PLAN entry state (historical status **PARTIAL**)
+- [ ] `OM-107` — STATUS=NOT_PROVEN — older institutional master: Real-money readiness (overall) (historical status **NOT_PROVEN**)
+- [ ] `OM-108` — STATUS=NOT_PROVEN — older institutional master: `MODEL_PROMOTION_AND_DEMOTION_GOVERNANCE_V1` (historical status **PARTIAL**)
+- [ ] `OM-109` — STATUS=NOT_PROVEN — older institutional master: `MODEL_DRIFT_AND_REGIME_DECAY_MONITORING_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-110` — STATUS=NOT_PROVEN — older institutional master: Active model verification (historical status **ENFORCED**)
+- [ ] `OM-111` — STATUS=NOT_PROVEN — older institutional master: Training roster is the enrolled universe (SPY/QQQ/IWM were historical fixtures) (historical status **ENFORCED**)
+- [ ] `OM-112` — STATUS=NOT_PROVEN — older institutional master: Full seven-layer stack (historical status **ENFORCED**)
+- [ ] `OM-113` — STATUS=NOT_PROVEN — older institutional master: Fusion-only horizon cards (historical status **ENFORCED**)
+- [ ] `OM-114` — STATUS=NOT_PROVEN — older institutional master: `FAILURE_MODE_AND_KILL_SWITCH_AUDIT_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-115` — STATUS=NOT_PROVEN — older institutional master: `SECURITY_AND_SECRET_HANDLING_AUDIT_V1` (historical status **PARTIAL**)
+- [ ] `OM-116` — STATUS=NOT_PROVEN — older institutional master: `OBSERVABILITY_AND_PRODUCTION_MONITORING_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-117` — STATUS=NOT_PROVEN — older institutional master: `PERFORMANCE_AND_LATENCY_BUDGET_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-118` — STATUS=NOT_PROVEN — older institutional master: Stack integrity / signals engine failed chips (historical status **LIVE**)
+- [ ] `OM-119` — STATUS=NOT_PROVEN — older institutional master: `DEAD_CODE_AND_RETIREMENT_GOVERNANCE_V1` (historical status **PARTIAL**)
+- [ ] `OM-120` — STATUS=NOT_PROVEN — older institutional master: `briefWhyWait` / `setupForecastSentence` (historical status **DEAD**)
+- [ ] `OM-121` — STATUS=NOT_PROVEN — older institutional master: Persistence consumer map (historical status **ENFORCED**)
+- [ ] `OM-122` — STATUS=NOT_PROVEN — older institutional master: Check stack right-sizing (historical status **INVENTORY**)
+- [ ] `OM-123` — STATUS=NOT_PROVEN — older institutional master: Docs dual-truth hygiene (this file ↔ OPEN_ITEMS) (historical status **PARTIAL**)
+- [ ] `OM-124` — STATUS=NOT_PROVEN — older institutional master: `USER_TRUST_AND_VISUAL_SEMANTICS_AUDIT_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-125` — STATUS=NOT_PROVEN — older institutional master: Fusion-only horizon cards (product) (historical status **ENFORCED**)
+- [ ] `OM-126` — STATUS=NOT_PROVEN — older institutional master: Card trust withhold labels (historical status **CLOSED_WITH_EVIDENCE**)
+- [ ] `OM-127` — STATUS=NOT_PROVEN — older institutional master: Operator-surface legibility (Issue 18) (historical status **PARTIAL**)
+- [ ] `OM-128` — STATUS=NOT_PROVEN — older institutional master: `LIVE-UI-4` UI honesty pass (historical status **OPEN**)
+- [x] `OM-129` — STATUS=NOT_APPLICABLE — older institutional master table-header scrape: `Lane ID` / `Status` — not a product obligation. Retired as NOT_APPLICABLE. Lane substance remains on the numbered OM/OS/OD rows.
+- [ ] `OM-130` — STATUS=NOT_PROVEN — older institutional master: `EXPLAINABILITY_AND_OPERATOR_DECISION_SURFACE_V1` (historical status **NOT_STARTED**)
+- [ ] `OM-131` — STATUS=NOT_PROVEN — older institutional master: LFE / triple-barrier / feature epic (historical status **PARKED**)
+- [x] `OM-132` — STATUS=NOT_APPLICABLE — older institutional master table-header scrape: `Distinction` / `Question it answers` — not a product obligation. Retired as NOT_APPLICABLE. Distinctions remain on the numbered OM/OS/OD rows.
+- [ ] `OM-133` — STATUS=NOT_PROVEN — older institutional master: **Card fidelity** (historical status Do live cards honestly paint trusted payload on Horizon/ALL/PLAN/execution?)
+- [ ] `OM-134` — STATUS=NOT_PROVEN — older institutional master: **Signal validation** (historical status Did the signal match realized outcomes over time?)
+- [ ] `OM-135` — STATUS=NOT_PROVEN — older institutional master: **Risk validation** (historical status Do limits, sizing, and gates supersede model output?)
+- [ ] `OM-136` — STATUS=NOT_PROVEN — older institutional master: **Execution validation** (historical status Are fills, slippage, and tradability assumptions honest?)
+- [ ] `OM-137` — STATUS=NOT_PROVEN — older institutional master: **Data validation** (historical status Is market data timely, complete, and corp-action clean?)
+- [ ] `OM-138` — STATUS=NOT_PROVEN — older institutional master: **Model validation** (historical status Are promote/demote, drift, and stack integrity governed?)
+- [ ] `OM-139` — STATUS=NOT_PROVEN — older institutional master: **Operational validation** (historical status Kill switches, monitoring, security, latency budgets?)
+- [x] `OM-140` — STATUS=NOT_APPLICABLE — older institutional master table-header scrape: `Field` / `Contract status` — not a product obligation. Retired as NOT_APPLICABLE. Field contracts remain on the numbered OM/OS/OD rows.
+- [ ] `OM-141` — STATUS=NOT_PROVEN — older institutional master: `pred_headline` (historical status `OPERATOR_DECISION_REQUIRED`)
+- [ ] `OM-142` — STATUS=NOT_PROVEN — older institutional master: `reversal_risk` (historical status `OPERATOR_DECISION_REQUIRED`)
+- [ ] `OM-143` — STATUS=NOT_PROVEN — older institutional master: `reversal_label` (historical status `OPERATOR_DECISION_REQUIRED`)
+- [x] `OM-144` — STATUS=NOT_APPLICABLE — older institutional master table-header scrape: `Item` / `Requirement` — not a product obligation. Retired as NOT_APPLICABLE. Item requirements remain on the numbered OM/OS/OD rows.
+- [ ] `OM-145` — STATUS=NOT_PROVEN — older institutional master: Agent preload (historical status Read `governance/docs/AGENT_OPERATING_CONTRACT.md` before edits)
+- [ ] `OM-146` — STATUS=NOT_PROVEN — older institutional master: Fix loop (historical status Exact test → group → governance → artifacts → report)
+- [ ] `OM-147` — STATUS=NOT_PROVEN — older institutional master: Sign-off ladder (historical status Tier 0 upfront → Tier A objective audit)
+- [ ] `OM-148` — STATUS=NOT_PROVEN — older institutional master: No patch-generator posture (historical status Own loop until proof or `[REAL-GATE: …]`)
+
+## Represented former-queue RC identifiers (historical evidence only)
+
+These RC ids were reconciled into the P-sections / OTHER_DEBT above.
+`governance/root_cause_log.md` must not carry independent OPEN/NEXT/NEXT-DEPTH
+work authority for them.
+
+RC-350, RC-345, RC-190, RC-331, RC-329, RC-328, RC-326, RC-322, RC-318, RC-317, RC-316, RC-310, RC-307, RC-305, RC-303, RC-300, RC-297, RC-295, RC-292, RC-290, RC-288, RC-287, RC-286, RC-280, RC-265, RC-264, RC-259, RC-257, RC-256
+- [ ] `OD-1282` — STATUS=NOT_PROVEN — RC-480 evidence residual: FIND IT / Stop must derive actionable obligation state from the sole master only. root_cause_log.md is evidence and has zero execution authority. SURFACES=tools/find_it_fix_it_lock.py;tools/stop_guard.py
+- [ ] `OD-1283` — STATUS=NOT_PROVEN — RC-479 OPEN residual: CONSOLE V2 painted only today POC/VAH/VAL while /api/state already carried PDH/PDL/overnight/ORB/VWAP from the one PriceLevelSnapshot.
+- [x] `OD-1284` — STATUS=NOT_APPLICABLE — Source-file wrapping / splitlines / SHA identity is not a completeness test. Retired by operator 2026-08-22: semantic one-list completeness is the authority. Historical 1284-vs-2068 line counts are source evidence only.
+- [ ] `OD-1285` — STATUS=NOT_PROVEN — Pre-flip / pre-promote validation harness must pass on the automation host for the enrolled training universe before nightly promote is trusted (not git-gated e2e). Tickers are fixtures only.
+- [ ] `OD-1286` — STATUS=NOT_PROVEN — Routine nightly promote must not depend on manual promote once the host enablement contract is on; fail-closed if auto-promote is required and disabled.
+- [ ] `OD-1287` — STATUS=NOT_PROVEN — After a successful train/promote, governed manifests exist for every required horizon for every enrolled instrument (not a core-ticker-only close).
+- [ ] `OD-1288` — STATUS=NOT_PROVEN — Index-basket weighted-push NULL rate is below operator threshold or waived, for every enrolled index-basket input. Current `spy_weighted_push` / `qqq_weighted_push` / `iwm_weighted_push` names are evidence of a ticker-named field contract, not the fix scope. Model the basket generically.
+- [ ] `OD-1289` — STATUS=NOT_PROVEN — Strict freshness after baseline (historical P3-11) is defined for the enrolled training universe, not a sentinel-only flip.
+- [ ] `OD-1290` — STATUS=NOT_PROVEN — Pinned enrolled-universe batch training is an enrolled-universe obligation (historical Phase 4b / PR5+ wording). Not a ticker-specific patch.
+- [ ] `OD-1291` — STATUS=NOT_PROVEN — One-list law: hidden, docs, skill, and historical-looking paths must not host a live unresolved-work queue. Procedure text uses non-checkbox bullets.
+- [ ] `OD-1292` — STATUS=NOT_PROVEN — No ticker-specific fix may close a universal requirement. Tickers, horizons, strikes, expiries, sessions, replay, training, serving, API, UI, DB, caches, and the decision path are fixtures or generic contracts — never implementation scope defined by a symbol name.
+- [ ] `OD-1293` — STATUS=NOT_PROVEN — Production edits must not require a current root-cause-log or unproven-register debt row. A newly discovered material defect becomes exactly one universal atomic master requirement before remediation. Root-cause / five-why reasoning remains mandatory on that same master obligation and its tests/code/evidence. `tools/pretooluse_guard.py` and `tools/check_institutional_correctness.py` admit a production edit only when an unresolved master item binds the exact repo-relative path via the surfaces field (`check_recursive_five_why_front_loaded`, `master_admits_production_edit`). `governance/root_cause_log.md` and `governance/unproven_register.md` are frozen history. Tickers are fixtures only. SURFACES=tools/pretooluse_guard.py;tools/check_institutional_correctness.py;call_engine.py;db.py;features/canonical_contract.py;features/db_feature_adapter.py;features/feature_gap_report.py;features/live_feature_adapter.py;features/xgb_model_input.py;horizon_outcomes.py;institutional_behavior.py;liquidity_value_engine.py;live_decision_bundle.py;market_state.py;math_exposure.py;math_levels.py;ml_train.py;order_flow_live_state.py;order_flow_streaming.py;planes/context_light.py;planes/l1_decision_dependencies.py;planes/l1_fingerprint_material.py;regime_engine.py;research/order_flow_eval_v1/runner.py;rules_engine.py;server.py;static/chart.html;static/exposure.html;static/index.html;terrain_engine.py;tools/build_feature_assignment_matrix_v2.py;tools/check_ml_pipeline_efficiency.py;tools/check_worktree_handoff.py;tools/feature_curation_gate.py;tools/log_law.py;tools/operating_process_lock.py;tools/pm_verify_repo.py;tools/process_lock_guard.py;tools/rc_resolve_lock.py;tools/rehab_daily_scan.py;tools/rehab_plan.py;tools/requirement_proof.py;tools/session_closeout.py;tools/ui_mockup_lock.py;tools/universal_scope_lock.py;tools/writer_drift_lock.py;tools/historical_backfill_enrolled_1m_v1.py;training_provenance.py;v2_decision/a2_option_expression.py;verify_prefusion_mc.py
+- [ ] `OD-1294` — STATUS=NOT_PROVEN — GEX harvest must be redesigned so the harvest is not a tail-selective / defensive subset of the enrolled-universe chain. Re-run the registered GEX significance protocol (source §8.6 / FP-64) with an abstention rule. Tickers in historical reports are fixtures only. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts that consume GEX harvest output must use the redesigned harvest or fail closed.
+- [ ] `OD-1295` — STATUS=NOT_PROVEN — Chart panels registry must include a volume-profile panel (source CR-03b). The panel is operator-visible structure until separately proven; it must not be silently deferred inside a broader Chart-rebuild item. Enrolled-universe Chart surface; tickers in fixtures are not implementation scope. Display-truth binds even when Decide stays WAIT.
+- [ ] `OD-1296` — STATUS=NOT_PROVEN — Executed-flow proxies (tape pressure, cumulative delta / CVD, and any other executed-flow proxy) must fail closed when upstream L1 same-millisecond collision or observation-loss degrades fidelity. PROXY labeling alone is not sufficient. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts that consume these proxies must inherit the fail-closed state.
+- [ ] `OD-1298` — STATUS=NOT_PROVEN — RTH database-contention causality must be proven on the enrolled-universe Collect path: `tools/run_rth_db_contention_validation.py` plus STALE/LOADING join evidence. A contention incident cannot be closed from a non-RTH or single-ticker fixture. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts that read during contention must stay fail-closed or STALE — never silently empty.
+- [ ] `OD-1299` — STATUS=NOT_PROVEN — Base-capture normalization must prove enrolled-universe RTH row-rate honesty via `tools/run_rth_base_capture_normalization_validation.py`. A passing fixture or non-RTH sample cannot close the parent. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts that consume normalized capture must inherit the proven rate or fail closed.
+- [ ] `OD-1300` — STATUS=NOT_PROVEN — Card price-conflict explainability: when fusion, histogram, and tape prices disagree, the operator-visible card must explain the conflict (sources, magnitudes, and which value is displayed). Orphan payload fields are not this obligation. Display-truth binds even when Decide stays WAIT.
+- [ ] `OD-1301` — STATUS=NOT_PROVEN — A governed policy must exist for fusion-versus-histogram disagreement (which value is authoritative, when both are shown, and when the surface fails closed). Policy must be enrolled-universe and must not silently prefer one source. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts that consume the chosen price must follow the same policy.
+- [ ] `OD-1302` — STATUS=NOT_PROVEN — `verify_active_models` and `ml_predict` must share one complete-bundle contract (source G3-R1). A bundle that one accepts and the other rejects is a defect. Contract covers training, serving, persisted historical data, replay, cache, UI, API, and model-artifact load.
+- [ ] `OD-1303` — STATUS=NOT_PROVEN — `promotion_decision` must be an authoritative field or be removed (source G3-R2). A decorative or ignored `promotion_decision` cannot remain on the governed path. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts must not treat a non-authoritative value as admission.
+- [ ] `OD-1304` — STATUS=NOT_PROVEN — Lineage horizon on a governed evaluation must match the evaluation horizon (source G3-R3). A mismatched horizon cannot promote, serve, or display as the evaluated horizon. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts must fail closed on mismatch.
+- [ ] `OD-1305` — STATUS=NOT_PROVEN — The production request path must not mutate active models except through the governed executor (source G4-1). Any other request-path writer is a defect. Applies to training, serving, persisted historical data, replay, cache, UI, API, and model-artifact directories.
+- [ ] `OD-1306` — STATUS=NOT_PROVEN — Movement-head and any other direct `models/active/` writers must be candidate-only or must go through the governed executor (source G4-2). A second live writer into active is a defect. Applies to training, serving, persisted historical data, replay, cache, UI, API, and model-artifact directories.
+- [ ] `OD-1307` — STATUS=NOT_PROVEN — The scheduler must fail closed on incomplete core artifacts (source G4-3). Missing core artifacts cannot be skipped, defaulted, or silently trained around. Distinct from enrolled-universe completeness (`OD-1286`) and category-coverage (`OD-1287`). Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts inherit the fail-closed state.
+- [ ] `OD-1308` — STATUS=NOT_PROVEN — The dormant `_promote_candidate` path must be removed and a grep guard must keep it gone (source G4-4). A dormant second promote path is still a second faucet. Applies to training, serving, persisted historical data, replay, cache, UI, API, and model-artifact code.
+- [ ] `OD-1309` — STATUS=NOT_PROVEN — `pre_train_gate` must be wired into scheduler start (source P4-1). A scheduler start that bypasses the gate is a defect. Enrolled-universe training; tickers in fixtures are not implementation scope.
+- [ ] `OD-1310` — STATUS=NOT_PROVEN — A post-promote `verify_active_models` failure must roll back the promote (source P3-9). A verify-fail that leaves the promoted artifact in active is a defect. Training, serving, persisted historical data, replay, cache, UI, API, and in-memory model state must revert together.
+- [ ] `OD-1311` — STATUS=NOT_PROVEN — After a disk promote, live in-memory models must reload (source P3-10). Disk-only promote with stale in-memory serve is a defect. Applies to serving, replay, cache, UI, API, and any in-process model handle.
+- [ ] `OD-1312` — STATUS=NOT_PROVEN — Consecutive cache-skips must cap and then fail the core (source P1-6). Unlimited cache-skip is a silent fallback. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts must surface the fail-closed state.
+- [ ] `OD-1313` — STATUS=NOT_PROVEN — `iv_rank` NULL must be backfilled across the enrolled universe before training/serve proceeds (source P4-3). Distinct from weighted-push (`OD-1288`). A NULL `iv_rank` cannot be silently dropped or defaulted. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts inherit the backfill or fail closed.
+- [ ] `OD-1314` — STATUS=NOT_PROVEN — Auto-promote must be blocked on a NULL-budget breach (source P4-4). A breach that still promotes is a defect. Enrolled-universe; tickers in fixtures are not implementation scope.
+- [ ] `OD-1315` — STATUS=NOT_PROVEN — `outcome_15c` and `outcome_60c` label-density must be pre-checked before training/promote (source P4-5). Under-dense labels cannot be trained around or silently dropped. Enrolled-universe; training, serving, persisted historical data, replay, cache, UI, API, and model artifacts inherit the pre-check or fail closed.
+- [ ] `OD-1316` — STATUS=NOT_PROVEN — Category rollout must follow `core → pinned → user_persisted` via `ED_SCHEDULER_AUTO_PROMOTE_CATEGORIES`. A category must not skip the governed order. Training, serving, persisted historical data, replay, cache, UI, API, and model artifacts must honor the same order.
+- [ ] `OD-1317` — STATUS=NOT_PROVEN — Training observability must exist on the enrolled-universe surface: `/ops` panel, `GET /api/training/status`, and UI freshness (source Phase 5). Display-truth binds even when Decide stays WAIT. Tickers in fixtures are not implementation scope.
+- [ ] `OD-1318` — STATUS=NOT_PROVEN — The active-directory writer inventory (`governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md`) must stay reconciled with actual writers into `models/active/`. An unlisted writer is a second faucet. Training, serving, persisted historical data, replay, cache, UI, API, and model-artifact paths are in scope.

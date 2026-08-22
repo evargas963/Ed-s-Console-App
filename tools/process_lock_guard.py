@@ -67,11 +67,12 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
             msg = OPL.sole_writer_edit_violation(rel)
             if msg:
                 out.append(msg)
-            # Isolated-worktree boundary (operator 2026-08-20): claude-role edits inside the
-            # PRODUCTION (primary) checkout are BLOCKED; Claude edits only its -Claude worktree.
+            # Isolated-worktree boundary remains injectable (mode=isolated tests).
+            # Shipped mode is canonical (RC-457): one project tree; this returns None.
             iso = OPL.claude_isolated_edit_violation(fp)
             if iso:
                 out.append(iso)
+            out.extend(WDL.canonical_worktree_violations())
             # LOCK-1 (RC-232): hard denylist + lock-module encode gate for the non-writer.
             hd = WDL.hard_denylist_violation(rel)
             if hd:

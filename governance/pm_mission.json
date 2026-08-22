@@ -1,10 +1,12 @@
 {
   "status": "active",
-  "mission_id": "repo-rehab-institutional-v1",
-  "title": "Repo rehab: measure the product against external standards, remove what does not serve the repo, and protect what cannot be recovered",
-  "writer": "claude",
+  "mission_id": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1",
+  "title": "Institutional truth and remediation: encode operator-selected ACTIVE_WRITER, finish FIND IT → FIX IT, retire unvalidated composites, remediate false semantics",
+  "active_writer": "cursor",
+  "writer": "cursor",
   "pm": "operator",
-  "auditor": "cursor",
+  "permanent_writer": null,
+  "permanent_auditor": null,
   "approved_by": "operator",
   "approved_via": "operator instruction in session 2026-08-06, repeatedly and explicitly: 'i want a plan that will be part of the repo that will improve the product', 'WE DO NOT NEED RATCHETS. WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS', 'IF IT DOESN'T SERVE THE REPO IT NEEDS TO BE GONE', 'I NEED YOU TO PUT A LOCK ON THE DB SO IT CAN'T BE DELETED AGAIN', and on the scope block itself: 'again with the fucking outside the mission scope'. The operator also delegated governance authority earlier the same day ('i said you can run the governance').",
   "approved_at": "2026-08-06T00:00:00-05:00",
@@ -48,6 +50,6 @@
     "one canonical plan document; the other six are consolidated or deleted",
     "the scoreboard reports every open number, measured live, after every fix"
   ],
-  "slice": "one-faucet-f09-f11-v1 — operator 2026-08-19 assigned Cursor as writer for F09 RTH-boundary + F11 flow-imbalance one-faucet residuals on current main.",
-  "note": "Supersedes axiom-brand-landing-v1, which was approved 2026-08-04 and is unrelated to the work the operator directed for the whole of 2026-08-06. That stale record blocked a fix to tools/operator_law_guard.py -- the guard that failed to stop the agent deleting the 27 GB production database twice (RC-273) -- which is the precise case where a stale scope is more dangerous than no scope. The axiom brand mission is NOT cancelled on the merits; it is set aside as not-current and can be reinstated by the operator. RTH-only stands: data captured outside the collect window is not used for tests or studies, so the ~28,150 post-15:35 bars lost in the RC-273 incident are outside every measurement surface."
+  "slice": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1 — operator 2026-08-22 assigned Cursor as ACTIVE_WRITER. Permanent Claude-writer / Cursor-auditor identity split superseded.",
+  "note": "# sod-role-ok: operator 2026-08-22 — CURSOR = ACTIVE_WRITER for this mission. Claude is not writing this worktree concurrently. ONE canonical worktree total. Operator remains PM. Parent: FIND IT → FIX IT lock, order-flow retirement prove-out, P2 absorption semantic remediation."
 }

@@ -71,8 +71,8 @@ def _full_l1_payload() -> dict:
     p["order_flow"] = {k: float(i + 1) for i, k in enumerate(_ORDER_FLOW_KEYS)}
     p["liquidity_summary"] = {
         "behavior_label": "lb",
-        "absorption_score": 11,
-        "continuation_score": 22,
+        "range_imbalance_stall_score": 11,
+        "range_imbalance_push_score": 22,
     }
     p["readiness_summary"] = {
         "order_flow_readiness": "ready",

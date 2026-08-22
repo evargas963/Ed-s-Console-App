@@ -3509,7 +3509,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
         </span>
         <span id="b-l1-fresh-tail" class="b-l1-tail"></span>
       </div>
-      <span id="b-of-verdict" title="Tier B order-flow verdict" style="max-width:10rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
+      <span id="b-of-verdict" title="Reconstructed L1 only. TIMESALE UNAVAILABLE. Native aggressor UNAVAILABLE." style="max-width:14rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
       <div id="data-price-freshness" title="Age of last fast quote"></div>
       <div id="streaming-source-badge" title="Quote authority: Schwab L1 stream vs REST">—</div>
     </div>
@@ -3845,6 +3845,13 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
                   <div class="decision-k" title="Today's point of control — session volume-profile POC from the canonical PriceLevelSnapshot (same TODAY_POC /api/levels serves).">POC</div><div class="decision-v" id="dr-lvl-poc">—</div>
                   <div class="decision-k" title="Today's value-area high — same snapshot as POC.">VAH</div><div class="decision-v" id="dr-lvl-vah">—</div>
                   <div class="decision-k" title="Today's value-area low — same snapshot as POC.">VAL</div><div class="decision-v" id="dr-lvl-val">—</div>
+                  <div class="decision-k" title="Prior trading-day high from the same PriceLevelSnapshot /api/state already carries.">PDH</div><div class="decision-v" id="dr-lvl-pdh">—</div>
+                  <div class="decision-k" title="Prior trading-day low from the same snapshot.">PDL</div><div class="decision-v" id="dr-lvl-pdl">—</div>
+                  <div class="decision-k" title="Overnight high: prior trading close to this RTH open.">ON H</div><div class="decision-v" id="dr-lvl-onh">—</div>
+                  <div class="decision-k" title="Overnight low: prior trading close to this RTH open.">ON L</div><div class="decision-v" id="dr-lvl-onl">—</div>
+                  <div class="decision-k" title="Opening-range high from the same snapshot.">ORB H</div><div class="decision-v" id="dr-lvl-orbh">—</div>
+                  <div class="decision-k" title="Opening-range low from the same snapshot.">ORB L</div><div class="decision-v" id="dr-lvl-orbl">—</div>
+                  <div class="decision-k" title="Session VWAP from the one compute_session_vwap_path faucet.">VWAP</div><div class="decision-v" id="dr-lvl-vwap">—</div>
                 </div>
               </div>
               <div class="decision-block">
@@ -3891,6 +3898,13 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
                 <div class="decision-k" title="Today's point of control — session volume-profile POC from the canonical PriceLevelSnapshot (same TODAY_POC /api/levels serves).">POC</div><div class="decision-v" id="exec-poc">—</div>
                 <div class="decision-k" title="Today's value-area high — same snapshot as POC.">VAH</div><div class="decision-v" id="exec-vah">—</div>
                 <div class="decision-k" title="Today's value-area low — same snapshot as POC.">VAL</div><div class="decision-v" id="exec-val">—</div>
+                <div class="decision-k" title="Prior trading-day high from the same PriceLevelSnapshot /api/state already carries.">PDH</div><div class="decision-v" id="exec-pdh">—</div>
+                <div class="decision-k" title="Prior trading-day low from the same snapshot.">PDL</div><div class="decision-v" id="exec-pdl">—</div>
+                <div class="decision-k" title="Overnight high: prior trading close to this RTH open.">ON H</div><div class="decision-v" id="exec-onh">—</div>
+                <div class="decision-k" title="Overnight low: prior trading close to this RTH open.">ON L</div><div class="decision-v" id="exec-onl">—</div>
+                <div class="decision-k" title="Opening-range high from the same snapshot.">ORB H</div><div class="decision-v" id="exec-orbh">—</div>
+                <div class="decision-k" title="Opening-range low from the same snapshot.">ORB L</div><div class="decision-v" id="exec-orbl">—</div>
+                <div class="decision-k" title="Session VWAP from the one compute_session_vwap_path faucet.">VWAP</div><div class="decision-v" id="exec-vwap">—</div>
               </div>
             </div>
           </div>
@@ -4868,6 +4882,49 @@ function fmtScore01(x) {
   if (x == null || x === '' || Number.isNaN(Number(x))) return '—';
   return Math.round(Number(x) * 100) + '%';
 }
+/** RC-462/RC-465: chain-derived levels are operator-visible only when confidence is TRUSTED. */
+const ED_CHAIN_GATED_KEYS = {
+  kl_gamma_flip: ['kl_gamma_flip_display', 'kl_gamma_flip'],
+  kl_call_gamma_wall: ['kl_call_gamma_wall_display', 'kl_call_gamma_wall'],
+  kl_put_gamma_wall: ['kl_put_gamma_wall_display', 'kl_put_gamma_wall'],
+  kl_gamma_pin: ['kl_gamma_pin_display', 'kl_gamma_pin'],
+  kl_hvl: ['kl_hvl_display', 'kl_hvl'],
+  kl_max_pain: ['kl_max_pain_display', 'kl_max_pain'],
+  kl_gsf: ['kl_gsf_display', 'kl_gsf'],
+  kl_grc: ['kl_grc_display', 'kl_grc'],
+  kl_call_delta_wall: ['kl_call_delta_wall'],
+  kl_put_delta_wall: ['kl_put_delta_wall'],
+  kl_gamma_inflection: ['kl_gamma_inflection'],
+  kl_delta_inflection: ['kl_delta_inflection'],
+};
+function edTrustedChainLevel(d, key) {
+  if (!d || typeof d !== 'object') return null;
+  const conf = (String(key).indexOf('kl_') === 0)
+    ? d.kl_gamma_flip_confidence
+    : d.confidence;
+  if (conf !== 'TRUSTED') return null;
+  const keys = ED_CHAIN_GATED_KEYS[key] || [key + '_display', key];
+  const displayKey = keys.find(k => k.endsWith('_display'));
+  if (displayKey && Object.prototype.hasOwnProperty.call(d, displayKey)) {
+    const v = d[displayKey];
+    const n = Number(v);
+    return (v == null || Number.isNaN(n)) ? null : n;
+  }
+  let v = null;
+  for (const k of keys) {
+    if (d[k] != null) { v = d[k]; break; }
+  }
+  const n = Number(v);
+  return (v == null || Number.isNaN(n)) ? null : n;
+}
+function edTrustedGammaFlip(d) {
+  return edTrustedChainLevel(d, 'gamma_flip');
+}
+function edKlLevelValue(d, key) {
+  if (ED_CHAIN_GATED_KEYS[key]) return edTrustedChainLevel(d, key);
+  const n = Number(d && d[key]);
+  return (d == null || d[key] == null || Number.isNaN(n)) ? null : n;
+}
 /** Populate Liquidity & flow context card from context_layer (+ top-level fallbacks). */
 function renderContextLayer(d) {
   const body = $('ctx-layer-body');
@@ -4877,9 +4934,8 @@ function renderContextLayer(d) {
   const nw = cl.news || d.news_context;
   const parts = [];
   if (lb && typeof lb === 'object') {
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Behavior</span><span class="ctx-v">${escHtmlCtx(lb.behavior_label)}</span></div>`);
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Absorption</span><span class="ctx-v">${escHtmlCtx(fmtScore01(lb.absorption_score))}</span></div>`);
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Continuation</span><span class="ctx-v">${escHtmlCtx(fmtScore01(lb.continuation_score))}</span></div>`);
+    parts.push(`<div class="ctx-row"><span class="ctx-k">Body ratio</span><span class="ctx-v" title="DERIVED: |close-open| / (high-low). Not stall/push.">${escHtmlCtx(fmtScore01(lb.body_ratio))}</span></div>`);
+    parts.push(`<div class="ctx-row"><span class="ctx-k">Flow imbalance</span><span class="ctx-v" title="PASSTHROUGH signed primitive. Not a stall/push product.">${escHtmlCtx(lb.flow_imbalance == null ? '—' : String(lb.flow_imbalance))}</span></div>`);
     parts.push(`<div class="ctx-row"><span class="ctx-k">Gamma hint</span><span class="ctx-v">${escHtmlCtx(lb.gamma_regime_hint)}</span></div>`);
     if (lb.range_pct_of_spot != null)
       parts.push(`<div class="ctx-row"><span class="ctx-k">Range % spot</span><span class="ctx-v">${escHtmlCtx(lb.range_pct_of_spot)}</span></div>`);
@@ -6213,8 +6269,8 @@ function paintStructureLevelsFromKl(d) {
     if (spotNow != null && mid > spotNow && aboveVoid === '—') aboveVoid = r;
     if (spotNow != null && mid < spotNow) belowVoid = r;
   }
-  domIf('dr-lvl-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
-  domIf('dr-lvl-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
+  domIf('dr-lvl-pin', el => { el.textContent = pxTxt(edTrustedChainLevel(d, 'kl_gamma_pin')); });
+  domIf('dr-lvl-gflip', el => { el.textContent = (function () { const c = d.kl_gamma_flip_confidence || d.confidence; if (c !== 'TRUSTED') return '—'; return pxTxt(d.kl_gamma_flip_display != null ? d.kl_gamma_flip_display : d.kl_gamma_flip); })(); });
   domIf('dr-lvl-support', el => { el.textContent = supR; });
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
   domIf('dr-lvl-emh', el => { el.textContent = pxTxt(d.kl_em_upper); });
@@ -6222,12 +6278,19 @@ function paintStructureLevelsFromKl(d) {
   domIf('dr-lvl-poc', el => { el.textContent = pxTxt(d.today_poc); });
   domIf('dr-lvl-vah', el => { el.textContent = pxTxt(d.today_vah); });
   domIf('dr-lvl-val', el => { el.textContent = pxTxt(d.today_val); });
+  domIf('dr-lvl-pdh', el => { el.textContent = pxTxt(d.pdh); });
+  domIf('dr-lvl-pdl', el => { el.textContent = pxTxt(d.pdl); });
+  domIf('dr-lvl-onh', el => { el.textContent = pxTxt(d.overnight_high); });
+  domIf('dr-lvl-onl', el => { el.textContent = pxTxt(d.overnight_low); });
+  domIf('dr-lvl-orbh', el => { el.textContent = pxTxt(d.orb_high); });
+  domIf('dr-lvl-orbl', el => { el.textContent = pxTxt(d.orb_low); });
+  domIf('dr-lvl-vwap', el => { el.textContent = pxTxt(d.vwap); });
   domIf('dr-liq-above', el => { el.textContent = resR !== '—' ? `${resR}${aboveVoid !== '—' ? ` | void ${aboveVoid}` : ''}` : aboveVoid; });
   domIf('dr-liq-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('dr-liq-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('dr-liq-lower', el => { el.textContent = pxTxt(d.kl_em_lower); });
-  domIf('exec-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
-  domIf('exec-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
+  domIf('exec-pin', el => { el.textContent = pxTxt(edTrustedChainLevel(d, 'kl_gamma_pin')); });
+  domIf('exec-gflip', el => { el.textContent = (function () { const c = d.kl_gamma_flip_confidence || d.confidence; if (c !== 'TRUSTED') return '—'; return pxTxt(d.kl_gamma_flip_display != null ? d.kl_gamma_flip_display : d.kl_gamma_flip); })(); });
   domIf('exec-support', el => { el.textContent = supR; });
   domIf('exec-resistance', el => { el.textContent = resR; });
   domIf('exec-liq-above', el => { el.textContent = aboveVoid; });
@@ -6237,6 +6300,13 @@ function paintStructureLevelsFromKl(d) {
   domIf('exec-poc', el => { el.textContent = pxTxt(d.today_poc); });
   domIf('exec-vah', el => { el.textContent = pxTxt(d.today_vah); });
   domIf('exec-val', el => { el.textContent = pxTxt(d.today_val); });
+  domIf('exec-pdh', el => { el.textContent = pxTxt(d.pdh); });
+  domIf('exec-pdl', el => { el.textContent = pxTxt(d.pdl); });
+  domIf('exec-onh', el => { el.textContent = pxTxt(d.overnight_high); });
+  domIf('exec-onl', el => { el.textContent = pxTxt(d.overnight_low); });
+  domIf('exec-orbh', el => { el.textContent = pxTxt(d.orb_high); });
+  domIf('exec-orbl', el => { el.textContent = pxTxt(d.orb_low); });
+  domIf('exec-vwap', el => { el.textContent = pxTxt(d.vwap); });
   domIf('lp-above', el => { el.textContent = resR !== '—' ? `${resR}${aboveVoid !== '—' ? ` | void ${aboveVoid}` : ''}` : aboveVoid; });
   domIf('lp-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('lp-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
@@ -6323,8 +6393,8 @@ function renderDecisionCommandRail(d) {
   const resR = (res != null && d.nearest_above_dist != null && !Number.isNaN(Number(d.nearest_above_dist)))
     ? `${res.toFixed(2)}–${(res + Number(d.nearest_above_dist)).toFixed(2)}`
     : (res != null ? res.toFixed(2) : '—');
-  domIf('dr-lvl-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
-  domIf('dr-lvl-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
+  domIf('dr-lvl-pin', el => { el.textContent = pxTxt(edTrustedChainLevel(d, 'kl_gamma_pin')); });
+  domIf('dr-lvl-gflip', el => { el.textContent = (function () { const c = d.kl_gamma_flip_confidence || d.confidence; if (c !== 'TRUSTED') return '—'; return pxTxt(d.kl_gamma_flip_display != null ? d.kl_gamma_flip_display : d.kl_gamma_flip); })(); });
   domIf('dr-lvl-support', el => { el.textContent = supR; });
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
   domIf('dr-lvl-emh', el => { el.textContent = pxTxt(d.kl_em_upper); });
@@ -6332,31 +6402,20 @@ function renderDecisionCommandRail(d) {
   domIf('dr-lvl-poc', el => { el.textContent = pxTxt(d.today_poc); });
   domIf('dr-lvl-vah', el => { el.textContent = pxTxt(d.today_vah); });
   domIf('dr-lvl-val', el => { el.textContent = pxTxt(d.today_val); });
+  domIf('dr-lvl-pdh', el => { el.textContent = pxTxt(d.pdh); });
+  domIf('dr-lvl-pdl', el => { el.textContent = pxTxt(d.pdl); });
+  domIf('dr-lvl-onh', el => { el.textContent = pxTxt(d.overnight_high); });
+  domIf('dr-lvl-onl', el => { el.textContent = pxTxt(d.overnight_low); });
+  domIf('dr-lvl-orbh', el => { el.textContent = pxTxt(d.orb_high); });
+  domIf('dr-lvl-orbl', el => { el.textContent = pxTxt(d.orb_low); });
+  domIf('dr-lvl-vwap', el => { el.textContent = pxTxt(d.vwap); });
 
-  // Order flow compact operator read.
-  const ofDirRaw = d.order_flow_direction;
-  const ofDir = ofDirRaw != null ? String(ofDirRaw).toLowerCase() : '';
-  const ofScore = d.order_flow_score;
-  const ofBiasTxt = ofDir === 'buying' || ofDir === 'bullish' ? 'BUYING' : ofDir === 'selling' || ofDir === 'bearish' ? 'SELLING' : (ofDirRaw == null ? '—' : 'NEUTRAL');
-  domIf('dr-of-bias', el => {
-    el.textContent = ofBiasTxt;
-    el.style.color = ofBiasTxt === 'BUYING' ? 'var(--green)' : ofBiasTxt === 'SELLING' ? 'var(--red)' : 'var(--text2)';
-  });
-  domIf('dr-of-strength', el => { el.textContent = (ofScore == null || Number.isNaN(Number(ofScore))) ? '—' : `${Math.round(Number(ofScore) * 100)}%`; });
-  const ofConfirm = (() => {
-    const pDir = String(d.charm_direction || '').toLowerCase();
-    if ((ofBiasTxt === 'BUYING' && pDir === 'buying') || (ofBiasTxt === 'SELLING' && pDir === 'selling')) return 'CONFIRM';
-    if ((ofBiasTxt === 'BUYING' && pDir === 'selling') || (ofBiasTxt === 'SELLING' && pDir === 'buying')) return 'DIVERGENCE';
-    return 'MIXED';
-  })();
-  domIf('dr-of-confirm', el => {
-    el.textContent = ofConfirm;
-    el.style.color = ofConfirm === 'CONFIRM' ? 'var(--green)' : ofConfirm === 'DIVERGENCE' ? 'var(--amber)' : 'var(--text2)';
-  });
-  domIf('dr-of-line', el => {
-    const line = String(d.order_flow_regime || d.of_interpretation || '').trim();
-    el.textContent = line || 'No dominant flow edge';
-  });
+  // RC-454: order_flow_score / direction / regime / verdict are retired. Absence
+  // is the honest state — do not reconstruct a composite or color it as confidence.
+  domIf('dr-of-bias', el => { el.textContent = '—'; el.style.color = 'var(--text2)'; });
+  domIf('dr-of-strength', el => { el.textContent = '—'; });
+  domIf('dr-of-confirm', el => { el.textContent = '—'; el.style.color = 'var(--text2)'; });
+  domIf('dr-of-line', el => { el.textContent = 'Composite retired — primitives only'; });
 
   // Liquidity path (prices/ranges explicit).
   const voids = Array.isArray(d.kl_gamma_voids) ? d.kl_gamma_voids : [];
@@ -6376,8 +6435,8 @@ function renderDecisionCommandRail(d) {
   domIf('dr-liq-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('dr-liq-lower', el => { el.textContent = pxTxt(d.kl_em_lower); });
   // Mirror into new execution-first grid cards.
-  domIf('exec-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
-  domIf('exec-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
+  domIf('exec-pin', el => { el.textContent = pxTxt(edTrustedChainLevel(d, 'kl_gamma_pin')); });
+  domIf('exec-gflip', el => { el.textContent = (function () { const c = d.kl_gamma_flip_confidence || d.confidence; if (c !== 'TRUSTED') return '—'; return pxTxt(d.kl_gamma_flip_display != null ? d.kl_gamma_flip_display : d.kl_gamma_flip); })(); });
   domIf('exec-support', el => { el.textContent = supR; });
   domIf('exec-resistance', el => { el.textContent = resR; });
   domIf('exec-liq-above', el => { el.textContent = aboveVoid; });
@@ -6387,14 +6446,21 @@ function renderDecisionCommandRail(d) {
   domIf('exec-poc', el => { el.textContent = pxTxt(d.today_poc); });
   domIf('exec-vah', el => { el.textContent = pxTxt(d.today_vah); });
   domIf('exec-val', el => { el.textContent = pxTxt(d.today_val); });
+  domIf('exec-pdh', el => { el.textContent = pxTxt(d.pdh); });
+  domIf('exec-pdl', el => { el.textContent = pxTxt(d.pdl); });
+  domIf('exec-onh', el => { el.textContent = pxTxt(d.overnight_high); });
+  domIf('exec-onl', el => { el.textContent = pxTxt(d.overnight_low); });
+  domIf('exec-orbh', el => { el.textContent = pxTxt(d.orb_high); });
+  domIf('exec-orbl', el => { el.textContent = pxTxt(d.orb_low); });
+  domIf('exec-vwap', el => { el.textContent = pxTxt(d.vwap); });
   domIf('lp-above', el => { el.textContent = resR !== '—' ? `${resR}${aboveVoid !== '—' ? ` | void ${aboveVoid}` : ''}` : aboveVoid; });
   domIf('lp-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('lp-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('lp-lower', el => { el.textContent = pxTxt(d.kl_em_lower); });
-  domIf('of-bias-new', el => { el.textContent = ofBiasTxt; el.style.color = ofBiasTxt === 'BUYING' ? 'var(--green)' : ofBiasTxt === 'SELLING' ? 'var(--red)' : 'var(--text2)'; });
-  domIf('of-strength-new', el => { el.textContent = (ofScore == null || Number.isNaN(Number(ofScore))) ? '—' : `${Math.round(Number(ofScore) * 100)}%`; });
-  domIf('of-confirm-new', el => { el.textContent = ofConfirm; el.style.color = ofConfirm === 'CONFIRM' ? 'var(--green)' : ofConfirm === 'DIVERGENCE' ? 'var(--amber)' : 'var(--text2)'; });
-  domIf('of-read-new', el => { el.textContent = String(d.order_flow_regime || d.of_interpretation || '').trim() || 'No dominant flow edge'; });
+  domIf('of-bias-new', el => { el.textContent = '—'; el.style.color = 'var(--text2)'; });
+  domIf('of-strength-new', el => { el.textContent = '—'; });
+  domIf('of-confirm-new', el => { el.textContent = '—'; el.style.color = 'var(--text2)'; });
+  domIf('of-read-new', el => { el.textContent = 'Composite retired — primitives only'; });
 
   // Per-horizon panels
   const hp = (d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars : {};
@@ -7029,13 +7095,12 @@ function l1TierBSemanticSignatureFromPaintInputs(d, paintIn) {
   }
   const of = d.order_flow || {};
   const verdict = of.order_flow_verdict != null ? String(of.order_flow_verdict) : '';
-  const vcol = of.order_flow_verdict_color != null ? String(of.order_flow_verdict_color) : '';
   const zone = (d.zone_label != null || d.zone != null) ? String(d.zone_label != null ? d.zone_label : d.zone) : '';
   const bias = d.bias_signal != null ? String(d.bias_signal) : '';
   const pin = d.pin_strength != null ? String(d.pin_strength) : '';
   const nd = d.nd_disp != null ? String(d.nd_disp) : '';
   const ng = d.net_gamma != null ? String(d.net_gamma) : '';
-  return [paintIn.freshSig, zone, bias, pin, nd, ng, verdict, vcol].join('\x1e');
+  return [paintIn.freshSig, zone, bias, pin, nd, ng, verdict].join('\x1e');
 }
 
 /** Tier B — GET /api/analytics/light; merges onto _lastData, updates regime strip + OF headline. */
@@ -7195,15 +7260,22 @@ function renderTierBLight(d, fullRenderSource) {
   const of = d.order_flow || {};
   const ofv = $('b-of-verdict');
   if (ofv) {
+    var tapeClass = of.tape_completeness || of.tape_pressure_classification || '';
+    var tsStatus = of.timesale_service_status || 'UNAVAILABLE';
+    var aggAvail = of.native_aggressor_available === true;
+    var tasAvail = of.native_time_and_sales_available === true;
     if (of.order_flow_verdict) {
       ofv.textContent = String(of.order_flow_verdict).slice(0, 32);
-      const c = of.order_flow_verdict_color;
-      ofv.style.color = c === 'green' ? 'var(--green)' : c === 'red' ? 'var(--red)' : 'var(--gold)';
+      ofv.style.color = 'var(--text3)';
     } else {
-      ofv.textContent = '—';
+      ofv.textContent = tasAvail ? 'T&S' : 'L1 recon · T&S ' + String(tsStatus);
       ofv.style.color = 'var(--text3)';
     }
-    var ovTitle = 'Order-flow verdict (snapshot)';
+    var ovTitle = 'Reconstructed L1 observation — not native time-and-sales';
+    ovTitle += ' · TIMESALE ' + String(tsStatus);
+    ovTitle += ' · native aggressor ' + (aggAvail ? 'AVAILABLE' : 'UNAVAILABLE');
+    if (tapeClass) ovTitle += ' · ' + String(tapeClass);
+    if (of.tape_limitations) ovTitle += ' · ' + String(of.tape_limitations);
     if (Number.isFinite(ofAge)) ovTitle += ' · OF age ' + l1FormatAgeCompact(ofAge);
     if (d.order_flow_stale === true) ovTitle += ' · STALE snapshot (not same timeline as live quote)';
     ofv.title = ovTitle;
@@ -8210,7 +8282,10 @@ function renderTierALive(d, fullRenderSource) {
     { key: 'kl_gamma_pin', strKey: null, label: 'Absolute Gamma', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'Absolute Gamma Strike (SpotGamma): the strike with the largest TOTAL gamma (calls+puts) — the sticky-pin/magnet level, strongest into expiry. Lead % on the chart label shows its margin over the runner-up (RC-352; formerly "Gamma Pin").' },
     { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net GEX Peak', sr: 'pin', srLabel: 'Net GEX', proxColor: '#e879f9', tip: 'Strike with the largest |net| dealer GEX$ (call gamma minus put gamma) — where the SIGNED book peaks. Distinct from Absolute Gamma (total) and from the Gamma Flip (zero-crossing). Formerly "Net Γ peak".' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
-    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level. Above it dealers dampen moves (choppy). Below it dealers amplify moves (trending).' },
+    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316',
+      tip: d => (d.kl_gamma_flip_confidence && d.kl_gamma_flip_confidence !== 'TRUSTED')
+        ? ('Gamma flip withheld: ' + d.kl_gamma_flip_confidence + ' — narrow/unavailable chain is not a precise institutional level.')
+        : 'Zero-gamma crossing from the SSOT profile. Visible only when confidence is TRUSTED. Dealer-dampen/amplify language is a regime description, not a proven predictive claim.' },
     { key: 'kl_gsf', strKey: 'kl_gsf_state_disp', label: 'Gamma Support Floor', sr: 'flip', srLabel: 'GSF', proxColor: '#fb923c', tip: 'Gamma Support Floor (GSF): the price BELOW spot where the net-gamma profile has decayed to 50% of its at-spot value. Sits at or ABOVE the Gamma Flip by construction, so that decay point is reached before net gamma crosses zero. "BELOW SUPPORT" = already in a negative-gamma regime, so no such level exists. Whether price holds at it is a geometry state and is not implied by the level itself (mechanism UNPROVEN — RC-320; see math_levels.compute_gamma_support_levels).' },
     { key: 'kl_grc', strKey: null, label: 'Gamma Resistance Ceiling', sr: 'flip', srLabel: 'GRC', proxColor: '#38bdf8', tip: 'Gamma Resistance Ceiling (GRC): the first price ABOVE spot where the net-gamma profile has decayed to half its at-spot value. Measured geometry only — whether price holds below it is a state question the profile alone does not answer (mechanism UNPROVEN — RC-320; see math_levels.compute_gamma_support_levels). It frequently sits at or beyond the Call Wall, because the profile often rises into that strike before decaying.' },
     { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6', tip: (d) => emTipFromSource(d, 'ceiling') },
@@ -8247,7 +8322,7 @@ function renderTierALive(d, fullRenderSource) {
     let nearAboveKey = null, nearBelowKey = null;
     let nearAboveDist = Infinity, nearBelowDist = Infinity;
     allLevels.forEach(level => {
-      const v = parseFloat(d[level.key]);
+      const v = edKlLevelValue(d, level.key);
       if (!v || !spot) return;
       if (v > spot && (v - spot) < nearAboveDist) { nearAboveDist = v - spot; nearAboveKey = level.key; }
       if (v < spot && (spot - v) < nearBelowDist) { nearBelowDist = spot - v; nearBelowKey = level.key; }
@@ -8275,8 +8350,8 @@ function renderTierALive(d, fullRenderSource) {
     }
 
     function renderRow(level, d, dimmed) {
-      const v = parseFloat(d[level.key]);
-      const isNull = !v;
+      const v = edKlLevelValue(d, level.key);
+      const isNull = v == null;
       const str = level.strKey ? (d[level.strKey] || '—') : '—';
       const dist = (!isNull && spot) ? (v - spot) : null;
       const distStr = dist === null ? '—' : (dist > 0 ? '+' : '') + dist.toFixed(2);
@@ -8301,7 +8376,7 @@ function renderTierALive(d, fullRenderSource) {
 
     // ── ALWAYS CHART section ──────────────────────────────────────────────────
     html += '<div class="kl-section-hdr">ALWAYS CHART<span>Primary institutional structure + acceleration zones</span></div>';
-    KL_PRIMARY.slice().sort((a, b) => (parseFloat(d[b.key]) || 0) - (parseFloat(d[a.key]) || 0))
+    KL_PRIMARY.slice().sort((a, b) => (edKlLevelValue(d, b.key) || 0) - (edKlLevelValue(d, a.key) || 0))
       .forEach(level => { html += renderRow(level, d, false); });
 
     // Net GEX — aggregate dealer gamma regime (not a price level)
@@ -12557,16 +12632,17 @@ function edRenderLadder(d) {
   const y = v => Math.round(((hi - v) / (hi - lo)) * (H - 36)) + 18;
   el._scale = { lo, hi, H };   // reused by edPaintLadderSpot between polls
 
-  if (d.gamma_flip != null) {
+  const trustedFlip = edTrustedGammaFlip(d);
+  if (trustedFlip != null) {
     // ORIENTATION IS DERIVED, NOT ASSUMED. The old code hardcoded chop-above/trend-below,
     // which is only true for the common neg-below/pos-above profile. A chain that is
     // long-gamma BELOW and short-gamma ABOVE (the pos->neg crossing the flip detector now
     // finds) has exactly the opposite meaning on each side. The regime IS the sign at
     // spot (RC-11), so which side of the flip spot sits on tells us the orientation.
     const isLongHere = d.regime === 'LONG_GAMMA_CHOP';
-    const spotAbove = spot != null && spot > d.gamma_flip;
+    const spotAbove = spot != null && spot > trustedFlip;
     const inverted = (isLongHere && !spotAbove) || (!isLongHere && d.regime === 'SHORT_GAMMA_TREND' && spotAbove);
-    const fy = y(d.gamma_flip);
+    const fy = y(trustedFlip);
     const topKind = inverted ? 'trend' : 'chop', botKind = inverted ? 'chop' : 'trend';
     for (const z of [[topKind, 'top:0;height:' + fy + 'px'], [botKind, 'top:' + fy + 'px;bottom:0']]) {
       const zone = document.createElement('div');
@@ -12625,7 +12701,7 @@ function edLevelSet(d) {
     // RC-131 (v25): FAIL-CLOSED — the containment claim is earned ONLY by a positive
     // === 'contains'; a payload without the state fields renders NO behavioral claim
     // (the first ship made 'dealer supply' the default branch — the old lie fell through).
-    { t: 'CALL WALL',  v: d.call_wall,       c: 'tv-c-call',  g: '▲',
+    { t: 'CALL WALL',  v: edTrustedChainLevel(d, 'call_wall'),       c: 'tv-c-call',  g: '▲',
       note: d.call_wall_state === 'breached' ? 'BREACHED — spot above'
         : d.call_wall_state === 'contains' ? 'dealer supply' : 'γ concentration',
       tip: d.call_wall_state === 'breached'
@@ -12633,28 +12709,28 @@ function edLevelSet(d) {
         : d.call_wall_state === 'contains'
           ? 'Largest call-side gamma strike. Resistance while spot holds below it — dealer hedging caps rallies there. Hold rate is measured daily in the scorecard.'
           : 'Largest call-side gamma strike. Geometry state unavailable (levels predate the state fields) — no containment claim.' },
-    { t: 'CALL CHARM', v: d.call_charm_wall, c: 'tv-c-charm', g: '◇', note: 'charm wall',
+    { t: 'CALL CHARM', v: edTrustedChainLevel(d, 'call_charm_wall'), c: 'tv-c-charm', g: '◇', note: 'charm wall',
       tip: 'Call-side delta-decay (charm) concentration. Hedge flow from time decay, strongest in the final two hours.' },
-    { t: 'GAMMA FLIP', v: d.gamma_flip,      c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true,
+    { t: 'GAMMA FLIP', v: edTrustedGammaFlip(d), c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true,
       tip: 'Where net dealer gamma crosses zero. A regime boundary, NOT support/resistance — dealer effects weaken near it (eye of the storm).' },
     // RC-132 (A3): the HVL row is DELETED, not renamed — pick_hvl_strike and
     // pick_pin_and_strength are the same metric (max total GEX$) by construction, so the
     // ladder painted ONE strike twice under two names and implied two concepts. The
     // total-gamma concept lives on the GAMMA PIN row; the net book lives on the KL table's
     // "Net Γ peak" (kl_hvl, RC-124). One metric, one name, one row.
-    { t: 'LVP',        v: d.lvp,             c: 'tv-c-lvp',   g: '▣', note: 'most +γ · dampens',
+    { t: 'LVP',        v: edTrustedChainLevel(d, 'lvp'),             c: 'tv-c-lvp',   g: '▣', note: 'most +γ · dampens',
       tip: 'Low-Volatility Point: strike holding the most POSITIVE net dealer gamma. Dealers dampen moves around it — chop pocket.' },
-    { t: 'MAX PAIN',   v: d.max_pain,        c: 'tv-c-pin',   g: '·', note: 'advisory',
+    { t: 'MAX PAIN',   v: edTrustedChainLevel(d, 'max_pain'),        c: 'tv-c-pin',   g: '·', note: 'advisory',
       tip: 'OI-implied expiry magnet. Evidence supports pinning only ON expiration day — advisory the rest of the time.' },
     // RC-132 (A2): the old tip defined the pin on the NET book — the pre-RC-124 definition
     // the producer no longer computes. The tip now states the producer's actual metric.
-    { t: 'GAMMA PIN',  v: d.kl_gamma_pin,    c: 'tv-c-pin',   g: '◆', note: 'pin',
+    { t: 'GAMMA PIN',  v: edTrustedChainLevel(d, 'gamma_pin'),    c: 'tv-c-pin',   g: '◆', note: 'pin',
       tip: 'Largest TOTAL gamma strike (|call|+|put| GEX$) — SpotGamma Absolute Gamma, the sticky-pin magnet; strongest into expiry. Structure fact: close-prediction is unproven.' },
-    { t: 'KEY DELTA',  v: d.key_delta_strike, c: 'tv-c-kds',  g: '◈', note: 'delta magnet',
+    { t: 'KEY DELTA',  v: edTrustedChainLevel(d, 'key_delta_strike'), c: 'tv-c-kds',  g: '◈', note: 'delta magnet',
       tip: 'Largest total delta notional on the board. The biggest hedge inventory — crossing it forces the most dealer rebalancing.' },
-    { t: 'HVP',        v: d.hvp,             c: 'tv-c-hvp',   g: '▣', note: 'most −γ · amplifies',
+    { t: 'HVP',        v: edTrustedChainLevel(d, 'hvp'),             c: 'tv-c-hvp',   g: '▣', note: 'most −γ · amplifies',
       tip: 'High-Volatility Point: strike holding the most NEGATIVE net dealer gamma. Dealers amplify moves around it — expansion pocket.' },
-    { t: 'PUT WALL',   v: d.put_wall,        c: 'tv-c-put',   g: '▼',
+    { t: 'PUT WALL',   v: edTrustedChainLevel(d, 'put_wall'),        c: 'tv-c-put',   g: '▼',
       note: d.put_wall_state === 'breached' ? 'BREACHED — spot below'
         : d.put_wall_state === 'contains' ? 'dealer support' : 'γ concentration',
       tip: d.put_wall_state === 'breached'
@@ -12662,7 +12738,7 @@ function edLevelSet(d) {
         : d.put_wall_state === 'contains'
           ? 'Largest put-side gamma strike. Support while spot holds above it — dealer hedging buys dips there. Hold rate is measured daily in the scorecard.'
           : 'Largest put-side gamma strike. Geometry state unavailable (levels predate the state fields) — no containment claim.' },
-    { t: 'PUT CHARM',  v: d.put_charm_wall,  c: 'tv-c-charm', g: '◇', note: 'charm wall',
+    { t: 'PUT CHARM',  v: edTrustedChainLevel(d, 'put_charm_wall'),  c: 'tv-c-charm', g: '◇', note: 'charm wall',
       tip: 'Put-side delta-decay (charm) concentration. Hedge flow from time decay, strongest in the final two hours.' }
   ].filter(m => m.v != null && isFinite(m.v));
 }
@@ -12844,11 +12920,11 @@ function edPaintSpot() {
 // (Bugbot 2026-07-20). Crossing the boundary flips the sign by definition, so this
 // reconciliation is locally exact — the server payload re-anchors it on the next poll.
 function edReconcileRegime(d, liveSpot) {
-  if (d.gamma_flip == null || d._srvSpot == null || liveSpot == null) return;
+  if (edTrustedGammaFlip(d) == null || d._srvSpot == null || liveSpot == null) return;
   if (d._srvRegime == null) d._srvRegime = d.regime;
   const base = d._srvRegime;
   if (base !== 'LONG_GAMMA_CHOP' && base !== 'SHORT_GAMMA_TREND') return;
-  const crossed = (d._srvSpot > d.gamma_flip) !== (liveSpot > d.gamma_flip);
+  const crossed = (d._srvSpot > edTrustedGammaFlip(d)) !== (liveSpot > edTrustedGammaFlip(d));
   // NET GEX repaints on every cross-state CHANGE — both directions. Handling it before
   // the regime early-return below is the fix for Bugbot 2026-07-21: an uncross restores
   // the regime label via `want === d.regime` short-circuit, which previously skipped the
@@ -13421,7 +13497,7 @@ function edCheckRadarAlerts(rows) {
        wide-strike name (NVDA/TSLA — $5–$10 spacing, big % moves) is NEVER silently dropped;
        min ±13, capped at 55 nearest strikes for readability. Flip shows in the badge when
        it is off this window. */
-    var lvlD = [t && t.call_wall, t && t.put_wall, t && t.gamma_pin]
+    var lvlD = [t && edTrustedChainLevel(t, 'call_wall'), t && edTrustedChainLevel(t, 'put_wall'), t && edTrustedChainLevel(t, 'gamma_pin')]
       .map(function (v) { return fnum(v); }).filter(function (v) { return v !== null; })
       .map(function (v) { return Math.abs(v - spot); });
     var halfW = Math.max.apply(null, [13].concat(lvlD)) + 2;
@@ -13439,12 +13515,12 @@ function edCheckRadarAlerts(rows) {
     function nearest(p) { var bk = null, bd = 1e9; rows.forEach(function (r) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bk = r.k; } }); return { k: bk, d: bd }; }
     var lvl = {};
     function tag(name, v) { var p = fnum(v); if (p === null) return; var nr = nearest(p); if (nr.k !== null && nr.d <= tol) { (lvl[nr.k] = lvl[nr.k] || []).push(name); } }
-    if (t) { tag('CALL WALL', t.call_wall); tag('PUT WALL', t.put_wall); tag('PIN', t.gamma_pin); }
+    if (t) { tag('CALL WALL', edTrustedChainLevel(t, 'call_wall')); tag('PUT WALL', edTrustedChainLevel(t, 'put_wall')); tag('PIN', edTrustedChainLevel(t, 'gamma_pin')); }
     /* only flag FLIP if it actually falls within the plotted strike window — never
        mis-label a window-edge strike when the flip is off-scale (e.g. flip 322 vs a
        279–304 window). Its exact value still shows in the badge above the chart. */
     var minK = rows[0].k, maxK = rows[rows.length - 1].k;
-    var flip = t ? fnum(t.gamma_flip) : null;
+    var flip = t ? edTrustedGammaFlip(t) : null;
     if (flip !== null && flip >= minK && flip <= maxK) {
       var fk = nearest(flip).k;
       if (fk !== null) (lvl[fk] = lvl[fk] || []).unshift('FLIP');
@@ -13486,11 +13562,11 @@ function edCheckRadarAlerts(rows) {
     T('cv2-t-regime', regimeText(fstr(t.regime)));
     T('cv2-t-note', fstr(t.headline, (t.lines && t.lines[0])));
     T('cv2-g-gex', money(fnum(t.net_gex_at_spot)));   // terrain single source (net GEX @ spot)
-    T('cv2-kl-flip', n2(fnum(t.gamma_flip)));
-    var pw = fnum(t.put_wall), cw = fnum(t.call_wall);
+    T('cv2-kl-flip', n2(edTrustedGammaFlip(t)));
+    var pw = edTrustedChainLevel(t, 'put_wall'), cw = edTrustedChainLevel(t, 'call_wall');
     T('cv2-kl-cwall', n2(cw));
     T('cv2-kl-pwall', n2(pw));
-    T('cv2-kl-pin', n2(fnum(t.gamma_pin)));
+    T('cv2-kl-pin', n2(edTrustedChainLevel(t, 'gamma_pin')));
     // RC-102 (reopened, v7 audit): the FIRST staleness wiring only reached the hidden
     // #terrain-view chip — the VISIBLE console said "trusted" over frozen levels. Same law as
     // tv-trust: stale levels can never render as trusted, and the chip says WHY.
@@ -13510,8 +13586,8 @@ function edCheckRadarAlerts(rows) {
         trustEl.title = '';
       }
     }
-    var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
-                n2(fnum(t.gamma_pin)) && ('pin ' + n2(fnum(t.gamma_pin))),
+    var tags = [n2(edTrustedGammaFlip(t)) && ('flip ' + n2(edTrustedGammaFlip(t))),
+                n2(edTrustedChainLevel(t, 'gamma_pin')) && ('pin ' + n2(edTrustedChainLevel(t, 'gamma_pin'))),
                 cw !== null && ('call ' + n2(cw)), pw !== null && ('put ' + n2(pw))].filter(Boolean).join(' · ');
     T('cv2-gx-tags', tags || null);
     // RC-117: the footer STATES the data state instead of hardcoding the word 'live' — a
@@ -13897,12 +13973,12 @@ function edCheckRadarAlerts(rows) {
      Flags overlaid from the live levels; spot & flip highlight the nearest real strike. */
   function buildMap(t, g) {
     var box = el('ct-map'); if (!box) return;
-    var flip = fnum(t.gamma_flip), spot = consoleSpot(t);   // RC-77: one console spot authority
+    var flip = edTrustedGammaFlip(t), spot = consoleSpot(t);   // RC-77: one console spot authority
     var all = (g && g.today && Array.isArray(g.today.all)) ? g.today.all : null;
     if (!all || !all.length || spot === null) { box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no per-strike gamma — fail closed</span>'; return; }
     /* window scales with the actionable levels (call/put wall, pin) so wide-strike names
        (NVDA/TSLA) never drop a wall; min ±13, capped at 55 nearest strikes for readability. */
-    var lvlD = [t.call_wall, t.put_wall, t.gamma_pin]
+    var lvlD = [edTrustedChainLevel(t, 'call_wall'), edTrustedChainLevel(t, 'put_wall'), edTrustedChainLevel(t, 'gamma_pin')]
       .map(function (v) { return fnum(v); }).filter(function (v) { return v !== null; })
       .map(function (v) { return Math.abs(v - spot); });
     var halfW = Math.max.apply(null, [13].concat(lvlD)) + 2;
@@ -13919,7 +13995,7 @@ function edCheckRadarAlerts(rows) {
     /* RC-132 (A3): the HVL tag is deleted — pick_hvl_strike equals the pin's metric (max
        total GEX$) by construction, so 'HVL' tagged the SAME strike as 'PIN' under a second
        name. One metric, one name: PIN. (The net book is the KL table's "Net Γ peak".) */
-    var levels = [['CALL WALL', t.call_wall], ['LVP', t.lvp], ['CALL CHARM', t.call_charm_wall], ['KEY DELTA', t.key_delta_strike], ['PIN', t.gamma_pin], ['MAX PAIN', t.max_pain], ['PUT CHARM', t.put_charm_wall], ['PUT WALL', t.put_wall], ['HVP', t.hvp]];
+    var levels = [['CALL WALL', edTrustedChainLevel(t, 'call_wall')], ['LVP', edTrustedChainLevel(t, 'lvp')], ['CALL CHARM', edTrustedChainLevel(t, 'call_charm_wall')], ['KEY DELTA', edTrustedChainLevel(t, 'key_delta_strike')], ['PIN', edTrustedChainLevel(t, 'gamma_pin')], ['MAX PAIN', edTrustedChainLevel(t, 'max_pain')], ['PUT CHARM', edTrustedChainLevel(t, 'put_charm_wall')], ['PUT WALL', edTrustedChainLevel(t, 'put_wall')], ['HVP', edTrustedChainLevel(t, 'hvp')]];
     function nearestIdx(p) { var bi = -1, bd = 1e9; rows.forEach(function (r, i) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bi = i; } }); return { i: bi, d: bd }; }
     var flagAt = {};
     levels.forEach(function (x) { var p = fnum(x[1]); if (p === null) return; var nr = nearestIdx(p); if (nr.i >= 0 && nr.d <= tol) { (flagAt[nr.i] = flagAt[nr.i] || []).push(x[0]); } });
@@ -13983,15 +14059,15 @@ function edCheckRadarAlerts(rows) {
     var ge = el('ct-gex'); if (ge) ge.className = 'ct-v cv-n ' + (negGex !== null ? (negGex < 0 ? 'cv-dn' : 'cv-up') : '');
     T('ct-age', null);
 
-    var flipN = n2(fnum(t.gamma_flip));
+    var flipN = n2(edTrustedGammaFlip(t));
     T('ct-flip-badge', flipN ? ('flip ' + flipN) : null);
 
-    T('ct-cwall', n2(fnum(t.call_wall)));
-    T('ct-flip', n2(fnum(t.gamma_flip)));
-    T('ct-hvl', n2(fnum(t.net_gex_peak)));   // RC-124: the net-book peak, honestly named
-    T('ct-pin', n2(fnum(t.gamma_pin)));
-    T('ct-maxpain', n2(fnum(t.max_pain)));
-    T('ct-pwall', n2(fnum(t.put_wall)));
+    T('ct-cwall', n2(edTrustedChainLevel(t, 'call_wall')));
+    T('ct-flip', n2(edTrustedGammaFlip(t)));
+    T('ct-hvl', n2(edTrustedChainLevel(t, 'net_gex_peak')));   // RC-124: the net-book peak, honestly named
+    T('ct-pin', n2(edTrustedChainLevel(t, 'gamma_pin')));
+    T('ct-maxpain', n2(edTrustedChainLevel(t, 'max_pain')));
+    T('ct-pwall', n2(edTrustedChainLevel(t, 'put_wall')));
     // RC-102 class (v8 audit): EVERY trust chip is fail-closed on levels_stale — this one
     // (ct-trust) was the third chip found blind after tv-trust and cv2-kl-trust.
     var _ctStale = !!t.levels_stale;
@@ -14010,11 +14086,11 @@ function edCheckRadarAlerts(rows) {
       }
     }
 
-    T('ct-ccharm', n2(fnum(t.call_charm_wall)));
-    T('ct-pcharm', n2(fnum(t.put_charm_wall)));
-    T('ct-keydelta', n2(fnum(t.key_delta_strike)));
-    T('ct-hvp', n2(fnum(t.hvp)));
-    T('ct-lvp', n2(fnum(t.lvp)));
+    T('ct-ccharm', n2(edTrustedChainLevel(t, 'call_charm_wall')));
+    T('ct-pcharm', n2(edTrustedChainLevel(t, 'put_charm_wall')));
+    T('ct-keydelta', n2(edTrustedChainLevel(t, 'key_delta_strike')));
+    T('ct-hvp', n2(edTrustedChainLevel(t, 'hvp')));
+    T('ct-lvp', n2(edTrustedChainLevel(t, 'lvp')));
 
     T('ct-ch-contracts', fnum(t.contracts_used) !== null ? Number(t.contracts_used).toLocaleString() : null);
     T('ct-ch-strikes', fnum(t.strikes_used) !== null ? String(t.strikes_used) : null);
@@ -14022,10 +14098,10 @@ function edCheckRadarAlerts(rows) {
     var dl = t.dollarized, de = el('ct-ch-dollar'); if (de) { de.textContent = (dl === true) ? 'yes' : (dl === false) ? 'no' : '—'; de.className = (dl === true) ? 'cv-up' : (dl === false) ? 'cv-wn' : ''; }
 
     function prox(id, lvl, cls) { var e = el(id); if (!e) return; var L = fnum(lvl); if (L === null || spot === null) { e.textContent = '—'; e.className = 'cv-n'; return; } var d = L - spot; e.textContent = (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2); e.className = 'cv-n ' + cls; }
-    prox('ct-px-flip', t.gamma_flip, 'cv-ac');
-    prox('ct-px-pin', t.gamma_pin, 'cv-up');
-    prox('ct-px-cwall', t.call_wall, 'cv-up');
-    prox('ct-px-pwall', t.put_wall, 'cv-dn');
+    prox('ct-px-flip', edTrustedGammaFlip(t), 'cv-ac');
+    prox('ct-px-pin', edTrustedChainLevel(t, 'gamma_pin'), 'cv-up');
+    prox('ct-px-cwall', edTrustedChainLevel(t, 'call_wall'), 'cv-up');
+    prox('ct-px-pwall', edTrustedChainLevel(t, 'put_wall'), 'cv-dn');
 
     // RC-117: same lying-clock cure as cv2-f-status — the word 'live' must be earned per paint.
     T('ct-foot-status', ((t && t.levels_stale)

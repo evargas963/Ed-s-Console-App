@@ -40,7 +40,7 @@ from features.regime_mvp_context import (
     require_mvp_features,
 )
 from signal_types import SignalInput, RulesCard
-from math_levels import is_pin_zone, APPROACH_PTS
+from math_levels import is_pin_zone
 
 log = logging.getLogger(__name__)
 
@@ -174,20 +174,9 @@ def _score_acceleration(inp: SignalInput, micro_regime: str, mr: dict, mvp: dict
 
     zone = mvp_zone(mvp)
 
-    # Not in pin zone + distance from walls
-    if not is_pin_zone(zone):
-        dcgw = inp.dist_call_gamma_wall
-        dpgw = inp.dist_put_gamma_wall
-        far_from_walls = (
-            (dcgw is not None and dcgw > APPROACH_PTS * 2) and
-            (dpgw is not None and abs(dpgw) > APPROACH_PTS * 2)
-        )
-        if far_from_walls:
-            score += 2.0
-            support.append("price far from both gamma walls — low gamma void")
-        else:
-            contra.append("still near gamma walls")
-    else:
+    # APPROACH_PTS distance scoring retired (RC-473): 1.5pt cutoff had no provenance.
+    # Raw dist_* remain on the input; do not mint a replacement void/approach score.
+    if is_pin_zone(zone):
         contra.append("in pin zone — not acceleration territory")
 
     # BOS = structure breaking
@@ -401,15 +390,7 @@ def _score_reversal_prone(inp: SignalInput, micro_regime: str, mr: dict,
         score += 2.0
         support.append(f"change of character detected ({micro_regime})")
 
-    # Approaching opposing wall
-    dcgw = inp.dist_call_gamma_wall
-    dpgw = inp.dist_put_gamma_wall
-    if dcgw is not None and 0 < dcgw <= APPROACH_PTS:
-        score += 2.0
-        support.append(f"approaching call gamma wall ({dcgw:.1f}pts away)")
-    if dpgw is not None and 0 < abs(dpgw) <= APPROACH_PTS:
-        score += 2.0
-        support.append(f"approaching put gamma wall ({abs(dpgw):.1f}pts away)")
+    # Approaching-wall score increments retired (RC-473). Distances stay on inp.
 
     # Low rules conviction
     if rules.conviction == "low":

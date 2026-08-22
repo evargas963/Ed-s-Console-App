@@ -1,11 +1,11 @@
 {
   "granted": false,
-  "granted_at": "2026-08-20T00:00:00+00:00",
-  "revoked_at": "2026-08-20T00:00:01+00:00",
-  "granted_by": "operator_instruction_in_session_2026-08-20",
-  "revoked_by": "operator_instruction_in_session_2026-08-20_restore_fail_closed",
+  "granted_at": "2026-08-22T00:00:00+00:00",
+  "revoked_at": "2026-08-22T00:00:01+00:00",
+  "granted_by": "operator_instruction_in_session_2026-08-22_active_writer_and_find_it_fix_it_law",
+  "revoked_by": "operator_instruction_in_session_2026-08-22_restore_fail_closed",
   "scope": [
     "staged_lock_surface"
   ],
-  "note": "RESTORED to fail-closed immediately after the RC-437..443 commit (9639b19e), per operator instruction 2026-08-20 ('immediately restore operator_go to fail-closed after the commit'). The scoped staged_lock_surface GO was used exactly once to land the new ENFORCED check schwab_market_field_semantics; with granted:false the reset guard and every staged-lock-surface gate return to fail-closed, so any future staged ENFORCED-check commit must obtain a fresh, scoped GO."
+  "note": "RESTORED to fail-closed immediately after the RC-452/RC-453 commit (a94042b5), per standing discipline. The scoped staged_lock_surface GO landed ENFORCED checks active_writer_law + find_it_fix_it; with granted:false the reset guard and every staged-lock-surface gate return to fail-closed."
 }

@@ -243,6 +243,7 @@ from math_exposure import (
     compute_iv_model_spread,
     compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
+    prefer_wider_level_chain,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
@@ -3451,8 +3452,8 @@ async def _broadcast_snapshot(data: dict) -> None:
 
 # REST fallback: Cum Delta proxy (polling-based) when streamer unavailable.
 # Accumulates per ticker, resets at open. Streamer value takes precedence.
-_rest_cum_delta: dict = {}        # ticker -> running sum
-_rest_cum_delta_session: Optional[str] = None  # ET date "YYYY-MM-DD"
+# REST Lee-Ready CVD retired: second producer of signed flow. Canonical
+# cum_delta_proxy is PROXY_RECONSTRUCTED_L1_TICK from l1_trade_observation only.
 
 # User prediction override — per ticker: {direction, source}
 # direction: "up" | "flat" | "down", source: "user" | "manual"
@@ -3686,6 +3687,7 @@ from calibration.option_chain_morning_full import (
     SOURCE_WIDE as GEX_SOURCE_WIDE,
     et_date_and_mins as gex_et_date_and_mins,
     has_morning_full_capture,
+    load_morning_full_contracts,
     maybe_persist_morning_full_chain,
     universal_capture_window,
 )
@@ -5551,38 +5553,8 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
 
 
 def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float | None:
-    """
-    Update and return REST-based cum_delta accumulator for ticker.
-    Resets at 9:30 ET on RTH open (not midnight). Pre-market trades do not carry into RTH.
-    """
-    global _rest_cum_delta, _rest_cum_delta_session
-    try:
-        hour, minute = now_et.hour, now_et.minute
-        mins = hour * 60 + minute
-        in_rth = RTH_OPEN_MINS <= mins < RTH_CLOSE_MINS and now_et.weekday() < 5
-        date_str = now_et.strftime("%Y-%m-%d")
-        session_key = date_str if in_rth else f"{date_str}-premarket"
-        if session_key != _rest_cum_delta_session:
-            _rest_cum_delta.clear()
-            _rest_cum_delta_session = session_key
-    except Exception as e:
-        log.debug(f"REST cum_delta session check failed: {e}")
-    last_price = _safe_float_quote(quote.get("lastPrice"))
-    last_size = _safe_float_quote(quote.get("lastSize"))
-    bid_price = _safe_float_quote(quote.get("bidPrice"))
-    ask_price = _safe_float_quote(quote.get("askPrice"))
-    if last_price is None or last_size is None or last_size <= 0:
-        return _rest_cum_delta.get(ticker)
-    delta = 0.0
-    if ask_price is not None and last_price >= ask_price:
-        delta = last_size
-    elif bid_price is not None and last_price <= bid_price:
-        delta = -last_size
-    cur = _rest_cum_delta.get(ticker)
-    if cur is None:
-        cur = 0.0
-    _rest_cum_delta[ticker] = cur + delta
-    return _rest_cum_delta[ticker]
+    """Retired second CVD producer. Always None. Do not compute Lee-Ready here."""
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6796,7 +6768,20 @@ def _fetch_state(
     _bars_1m_count = len(_candles_1m.get_bars(ticker))
     log.info(f"Candles: {ticker} 5m={_bars_5m_count} bars, 1m={_bars_1m_count} bars")
 
-    exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
+    _archive_for_levels = None
+    try:
+        _archive_raw = load_morning_full_contracts(get_db().db_path, ticker, _today_str)
+        if _archive_raw:
+            _archive_for_levels, _ = _filter_contracts_by_selected_expiry(
+                _archive_raw, selected_exp
+            )
+    except Exception as e:
+        log.debug("morning_full level archive unavailable ticker=%s: %s", ticker, e)
+    contracts_for_levels, _level_chain_source = prefer_wider_level_chain(
+        contracts_use, _archive_for_levels, spot=spot_f,
+    )
+
+    exposures, diag = compute_exposures_by_strike(contracts_for_levels, spot=spot_f, require_oi=True)
     from math_exposure_core import key_level_strikes_with_gamma
     _cons_strikes = sorted(float(k) for k in exposures.keys())
     _gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes
@@ -6812,14 +6797,16 @@ def _fetch_state(
     # Selected-expiry analytics must not occupy walls[0] while kl_* paints terrain.
     from math_levels import consensus_walls_bind_terrain_ssot
     walls = consensus_walls_bind_terrain_ssot(walls, terrain_cache_get(ticker) or {})
-    totals    = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
+    totals    = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_for_levels)
 
     # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
     # FIND-GAMMA-FLIP-METHOD-V1: canonical profile (gamma recomputed at hypothetical spot).
     # The old cumulative-sum method was DISPROVED 2026-07-19 on a real SPY reference chain
     # (corr 0.086, never crossed zero). The confidence flag is mandatory: a narrow chain
     # misplaces the flip by ~3.6%, so it must never be presented as trustworthy.
-    _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
+    _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_for_levels, spot_f)
+    if isinstance(_gamma_flip_diag, dict):
+        _gamma_flip_diag = {**_gamma_flip_diag, "level_chain_source": _level_chain_source}
     _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
     # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
     # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).
@@ -7623,12 +7610,6 @@ def _fetch_state(
     except Exception as _ofd_e:
         log.debug(f"Order flow data build: {_ofd_e}")
 
-    # REST fallback: Cum Delta accumulator (polling-based) when streamer has no tape.
-    # Update each poll; inject into ms after build_market_state if engine returns None.
-    _quote_for_cum = dict(_order_flow_data.get("extended") or {})
-    _quote_for_cum.update(_order_flow_data.get("quote") or {})
-    _update_rest_cum_delta(ticker, _quote_for_cum, now_et)
-
     # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary)
     # Use 1m price history to match canonical (1m) bar timestamps.
     _c_vol = None
@@ -7797,11 +7778,9 @@ def _fetch_state(
     except Exception as _ss_e:
         log.debug("sweep_score post build_market_state: %s", _ss_e)
 
-    # REST fallback: when streamer has no tape, inject polling-based cum_delta.
-    # Streamer value takes precedence when available.
-    if ms.cum_delta_proxy is None and ticker in _rest_cum_delta:
-        ms.cum_delta_proxy = _rest_cum_delta[ticker]
-        log.debug("Cum Delta: REST proxy (polling-based)")
+    # RC-464: do not inject the REST Lee-Ready accumulator into cum_delta_proxy.
+    # That field is PROXY_RECONSTRUCTED_L1_TICK from OrderFlowEngine only.
+    # A second producer under the same name is a faucet, not a fallback.
 
     # ── Additive context: liquidity behavior + news/sentiment (non-authoritative) ──
     try:
@@ -8481,9 +8460,12 @@ def _fetch_state(
                             vwap=_vwap_f,
                             vwap_side=_row_vwap_side,
                         ),
-                        absorption_score=(getattr(ms, "liquidity_behavior", None) or {}).get("absorption_score"),
-                        continuation_score=(getattr(ms, "liquidity_behavior", None) or {}).get("continuation_score"),
-                        liquidity_behavior_label=(getattr(ms, "liquidity_behavior", None) or {}).get("behavior_label"),
+                        absorption_score=None,
+                        continuation_score=None,
+                        liquidity_behavior_label=None,
+                        range_imbalance_stall_score=(getattr(ms, "liquidity_behavior", None) or {}).get("range_imbalance_stall_score"),
+                        range_imbalance_push_score=(getattr(ms, "liquidity_behavior", None) or {}).get("range_imbalance_push_score"),
+                        range_imbalance_label=(getattr(ms, "liquidity_behavior", None) or {}).get("range_imbalance_label"),
                         sentiment_composite=(getattr(ms, "news_context", None) or {}).get("sentiment_composite"),
                         sentiment_buzz=(getattr(ms, "news_context", None) or {}).get("sentiment_buzz"),
                         sentiment_finnhub=(getattr(ms, "news_context", None) or {}).get("sentiment_finnhub"),
@@ -11132,6 +11114,33 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_call_gamma_wall"] = _g("call_wall")
     md["kl_put_gamma_wall"] = _g("put_wall")
     md["kl_gamma_flip"] = _g("gamma_flip")
+    from math_levels import (
+        displayable_gamma_flip,
+        displayable_interior_trusted_level,
+        displayable_trusted_level,
+    )
+    _conf = _g("confidence")
+    _diag = _g("flip_diag") if isinstance(_g("flip_diag"), dict) else {}
+    _lo, _hi = _diag.get("strike_lo"), _diag.get("strike_hi")
+    md["kl_flip_diag"] = _diag
+    md["kl_gamma_flip_display"] = displayable_gamma_flip(_g("gamma_flip"), _conf)
+    md["kl_call_gamma_wall_display"] = displayable_interior_trusted_level(
+        _g("call_wall"), _conf, _lo, _hi
+    )
+    md["kl_put_gamma_wall_display"] = displayable_interior_trusted_level(
+        _g("put_wall"), _conf, _lo, _hi
+    )
+    md["kl_gamma_pin_display"] = displayable_interior_trusted_level(
+        _g("gamma_pin"), _conf, _lo, _hi
+    )
+    md["kl_hvl_display"] = displayable_interior_trusted_level(
+        _g("net_gex_peak"), _conf, _lo, _hi
+    )
+    md["kl_max_pain_display"] = displayable_interior_trusted_level(
+        _g("max_pain"), _conf, _lo, _hi
+    )
+    md["kl_gsf_display"] = displayable_trusted_level(_g("gsf"), _conf)
+    md["kl_grc_display"] = displayable_trusted_level(_g("grc"), _conf)
     md["kl_gamma_pin"] = _g("gamma_pin")
     md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
     # RC-292/RC-417: payload `gamma_pin` is the same SSOT total-gamma pin as kl_gamma_pin.
@@ -12123,7 +12132,8 @@ def _radar_contact(t: dict, spot: float, atr: "AtrPair") -> dict | None:
     A ticker about to cross its FLIP outranks every wall: a regime change alters what all
     the other levels mean, so it sorts first regardless of wall distance.
     """
-    flip_raw = t.get("gamma_flip")
+    from math_levels import displayable_gamma_flip
+    flip_raw = displayable_gamma_flip(t.get("gamma_flip"), t.get("confidence"))
     if flip_raw is not None:
         flip = float(flip_raw)
         flip_atr = atr_distance(flip - spot, atr.daily)
@@ -13543,7 +13553,7 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
 def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     """Canonical L2 book microstructure (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
-    liquidity concentration, wall_candidates, and ages — every field classified
+    liquidity concentration, displayed_depth_anomaly_candidates, and ages — every field classified
     NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
     order_flow_engine.compute_book_microstructure keyed by this ticker, which carries the
     engine's already-computed structural state for the current book (memoized per ticker +
@@ -14882,21 +14892,33 @@ def _liquidity_fusion_from_cache(
         spot_f = float(spot_v) if spot_v is not None else None
     except (TypeError, ValueError):
         spot_f = None
+    from math_levels import displayable_interior_trusted_level, displayable_trusted_level
+    conf = d.get("kl_gamma_flip_confidence") or d.get("confidence")
+    _diag = d.get("kl_flip_diag") or d.get("flip_diag") or {}
+    if not isinstance(_diag, dict):
+        _diag = {}
+    _lo, _hi = _diag.get("strike_lo"), _diag.get("strike_hi")
+
+    def _chain_lvl(display_key, raw_key):
+        if display_key in d:
+            return d.get(display_key)
+        return displayable_interior_trusted_level(d.get(raw_key), conf, _lo, _hi)
+
     pairs = [
-        (d.get("kl_call_gamma_wall"), "GAMMA_CALL_WALL"),
-        (d.get("kl_put_gamma_wall"), "GAMMA_PUT_WALL"),
-        (d.get("kl_call_delta_wall"), "DELTA_CALL_WALL"),
-        (d.get("kl_put_delta_wall"), "DELTA_PUT_WALL"),
+        (_chain_lvl("kl_call_gamma_wall_display", "kl_call_gamma_wall"), "GAMMA_CALL_WALL"),
+        (_chain_lvl("kl_put_gamma_wall_display", "kl_put_gamma_wall"), "GAMMA_PUT_WALL"),
+        (displayable_trusted_level(d.get("kl_call_delta_wall"), conf), "DELTA_CALL_WALL"),
+        (displayable_trusted_level(d.get("kl_put_delta_wall"), conf), "DELTA_PUT_WALL"),
         (d.get("kl_call_oi_wall"), "OI_CALL_WALL"),
         (d.get("kl_put_oi_wall"), "OI_PUT_WALL"),
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
-        (d.get("kl_gamma_pin"), "GAMMA_PIN"),
+        (_chain_lvl("kl_gamma_pin_display", "kl_gamma_pin"), "GAMMA_PIN"),
         # RC-134: kl_hvl is the NET book (RC-124); the tag must not say HVL, since that
         # name means total gamma, which is the pin.
-        (d.get("kl_hvl"), "NET_GEX_PEAK"),
-        (d.get("kl_max_pain"), "MAX_PAIN"),
-        (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
+        (_chain_lvl("kl_hvl_display", "kl_hvl"), "NET_GEX_PEAK"),
+        (_chain_lvl("kl_max_pain_display", "kl_max_pain"), "MAX_PAIN"),
+        (displayable_trusted_level(d.get("kl_gamma_flip"), conf), "GAMMA_FLIP"),
         (d.get("kl_oi_center"), "OI_CENTER"),
         (d.get("kl_em_upper"), "EM_UPPER"),
         (d.get("kl_em_lower"), "EM_LOWER"),

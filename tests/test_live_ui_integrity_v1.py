@@ -1157,8 +1157,11 @@ def test_terrain_net_gex_never_keeps_wrong_sign_across_flip():
 def test_terrain_level_set_includes_new_levels_each_with_tooltip():
     html = _html()
     body = html.split("function edLevelSet(")[1].split("function edRenderLevels(")[0]
-    for token in ("d.key_delta_strike", "d.hvp", "d.lvp",
-                  "'KEY DELTA'", "'HVP'", "'LVP'"):
+    for key in ("key_delta_strike", "hvp", "lvp"):
+        assert f"edTrustedChainLevel(d, '{key}')" in body, (
+            key + " missing from edLevelSet trusted faucet"
+        )
+    for token in ("'KEY DELTA'", "'HVP'", "'LVP'"):
         assert token in body, token + " missing from edLevelSet"
     # Every level entry carries a tip — the single source both surfaces render.
     #

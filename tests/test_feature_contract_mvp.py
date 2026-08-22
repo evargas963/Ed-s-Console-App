@@ -23,7 +23,7 @@ def test_contract_mvp_names_unique_and_specs_complete():
     )
 
     assert CANONICAL_FEATURE_TIMEFRAME == "1m"
-    assert CANONICAL_FEATURE_CONTRACT_VERSION == "v1_1m_mvp"
+    assert CANONICAL_FEATURE_CONTRACT_VERSION == "v1_1m_range_imbalance"
     names = list(get_mvp_feature_names())
     assert len(names) == len(set(names))
     for n in names:
@@ -59,7 +59,7 @@ def test_live_db_keys_identical_to_canonical_list():
         "net_gamma": 1e6,
         "vwap_side": "above",
         "dist_to_vwap_pts": 0.25,
-        "liquidity_summary": {"absorption_score": 0.3, "continuation_score": -0.1},
+        "liquidity_summary": {"range_imbalance_stall_score": 0.3, "range_imbalance_push_score": -0.1},
     }
     base_db = {
         "spot": 450.0,
@@ -70,8 +70,8 @@ def test_live_db_keys_identical_to_canonical_list():
         "net_gamma": 1e6,
         "vwap_side": "above",
         "vwap_dist_pts": 0.25,
-        "absorption_score": 0.3,
-        "continuation_score": -0.1,
+        "range_imbalance_stall_score": 0.3,
+        "range_imbalance_push_score": -0.1,
     }
     lv = build_live_mvp_feature_row(base_live)
     db = build_db_mvp_feature_row(base_db)
@@ -94,7 +94,7 @@ def test_live_adapter_ignores_spot_anchors_duplicate():
         "net_gamma": 1e6,
         "vwap_side": "above",
         "dist_to_vwap_pts": 0.25,
-        "liquidity_summary": {"absorption_score": 0.3, "continuation_score": -0.1},
+        "liquidity_summary": {"range_imbalance_stall_score": 0.3, "range_imbalance_push_score": -0.1},
         "spot_anchors": {"vwap_side": "below", "dist_to_vwap_pts": 999.0},
     }
     row = build_live_mvp_feature_row(payload)
@@ -117,8 +117,8 @@ def test_db_adapter_validates():
         "net_gamma": 1e6,
         "vwap_side": "above",
         "vwap_dist_pts": 0.25,
-        "absorption_score": 0.3,
-        "continuation_score": -0.1,
+        "range_imbalance_stall_score": 0.3,
+        "range_imbalance_push_score": -0.1,
     }
     row = build_db_mvp_feature_row(snap)
     ok, errs = validate_feature_contract_row(row)
@@ -140,7 +140,7 @@ def test_cross_path_parity_and_uppercase_normalization():
         "net_gamma": 1.0,
         "vwap_side": "Below",
         "dist_to_vwap_pts": -0.1,
-        "liquidity_summary": {"absorption_score": 0.2, "continuation_score": 0.3},
+        "liquidity_summary": {"range_imbalance_stall_score": 0.2, "range_imbalance_push_score": 0.3},
     }
     db = {
         "spot": 100.0,
@@ -151,8 +151,8 @@ def test_cross_path_parity_and_uppercase_normalization():
         "net_gamma": 1.0,
         "vwap_side": "below",
         "vwap_dist_pts": -0.1,
-        "absorption_score": 0.2,
-        "continuation_score": 0.3,
+        "range_imbalance_stall_score": 0.2,
+        "range_imbalance_push_score": 0.3,
     }
     a = build_live_mvp_feature_row(live)
     b = build_db_mvp_feature_row(db)
@@ -308,7 +308,7 @@ def test_inference_snapshot_v1_metadata_and_quality():
         "net_gamma": 0.5,
         "vwap_side": "above",
         "dist_to_vwap_pts": 0.4,
-        "liquidity_summary": {"absorption_score": None, "continuation_score": 0.1},
+        "liquidity_summary": {"range_imbalance_stall_score": None, "range_imbalance_push_score": 0.1},
         "as_of_ts": 1700000000.0,
     }
     snap = build_inference_snapshot_v1(
@@ -343,7 +343,7 @@ def test_inference_snapshot_v1_ignores_server_build_ts_for_as_of_ts():
         "net_gamma": 0.5,
         "vwap_side": "above",
         "dist_to_vwap_pts": 0.4,
-        "liquidity_summary": {"absorption_score": None, "continuation_score": 0.1},
+        "liquidity_summary": {"range_imbalance_stall_score": None, "range_imbalance_push_score": 0.1},
         "_server_build_ts": 9_999_999_999.0,
     }
     snap = build_inference_snapshot_v1(
@@ -381,7 +381,7 @@ def test_gap_report_structure():
     from features.feature_gap_report import compare_live_and_db_feature_support
 
     r = compare_live_and_db_feature_support()
-    assert r["contract_version"] == "v1_1m_mvp"
+    assert r["contract_version"] == "v1_1m_range_imbalance"
     assert len(r["features"]) == 10
     assert all("chosen_live_source" in x for x in r["features"])
 
@@ -390,7 +390,7 @@ def test_validate_rejects_nan_in_canonical_row():
     from features.canonical_contract import validate_feature_contract_row, get_mvp_feature_names
 
     row = {k: None for k in get_mvp_feature_names()}
-    row["liquidity.absorption_score"] = float("nan")
+    row["liquidity.range_imbalance_stall_score"] = float("nan")
     ok, errs = validate_feature_contract_row(row)
     assert not ok
 
@@ -435,8 +435,8 @@ def test_db_adapter_invalid_spot_never_becomes_none(bad_spot):
         "net_gamma": 0.0,
         "vwap_side": "above",
         "vwap_dist_pts": 0.1,
-        "absorption_score": None,
-        "continuation_score": None,
+        "range_imbalance_stall_score": None,
+        "range_imbalance_push_score": None,
     }
     with pytest.raises(MvpFeatureSourceError):
         build_db_mvp_feature_row(snap)
@@ -478,7 +478,7 @@ def test_live_nested_liquidity_invalid_numeric_raises():
         "net_gamma": 0.0,
         "vwap_side": "above",
         "dist_to_vwap_pts": 0.1,
-        "liquidity_summary": {"absorption_score": "nope", "continuation_score": 0.1},
+        "liquidity_summary": {"range_imbalance_stall_score": "nope", "range_imbalance_push_score": 0.1},
     }
     with pytest.raises(MvpFeatureSourceError):
         build_live_mvp_feature_row(base)
@@ -558,7 +558,7 @@ def test_semantic_parity_controlled_fixtures():
         "net_gamma": 1e6,
         "vwap_side": "above",
         "dist_to_vwap_pts": 0.25,
-        "liquidity_summary": {"absorption_score": 0.3, "continuation_score": -0.1},
+        "liquidity_summary": {"range_imbalance_stall_score": 0.3, "range_imbalance_push_score": -0.1},
     }
     db = {
         "spot": 450.0,
@@ -569,7 +569,7 @@ def test_semantic_parity_controlled_fixtures():
         "net_gamma": 1e6,
         "vwap_side": "above",
         "vwap_dist_pts": 0.25,
-        "absorption_score": 0.3,
-        "continuation_score": -0.1,
+        "range_imbalance_stall_score": 0.3,
+        "range_imbalance_push_score": -0.1,
     }
     assert_live_db_canonicalization_equivalent(live, db)

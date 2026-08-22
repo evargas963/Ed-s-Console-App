@@ -190,11 +190,47 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     cannot prove the DOM ids are the ones named in the F15 port. The stamp itself
     is asserted by extending `test_state_level_family_serves_raw_not_rounded`
     (already in the census) and does not add a function.
+
+    266 -> 273 (2026-08-22 P0.1-A / RC-454 / RC-460 / trusted-chain landing).
+    LEFT 2, named:
+      `test_call_engine_consumes_order_flow_direction_not_second_score` — retired
+      composite consumer deleted with the OF score (RC-454).
+      `test_it_stays_silent_on_the_corrected_row_that_rejects_the_blame_shift` —
+      removed with the blame-shift row it audited.
+    ARRIVED 12; 3 were AVOIDABLE SOURCE-TEXT PROXIES and LEFT on their own after
+    the subject was called (RC-308):
+      `test_rest_cum_delta_producer_retired_returns_none` CALLS
+      server._update_rest_cum_delta and asserts Always None.
+      `test_order_flow_direction_is_withheld_from_the_decision_vote` CALLS
+      call_engine.order_flow_stack_vote().
+      `test_stream_stop_clears_live_state_and_freshness` CALLS
+      stop_order_flow_stream and asserts freshness/tape cleared.
+    The remaining 9 ARRIVALS are INHERENTLY STRUCTURAL and stay:
+      `test_rest_second_cvd_producer_is_retired` — absence of Lee-Ready /
+      `_rest_cum_delta` assignment in server.py. Behaviour is executed in
+      `test_rest_cum_delta_producer_retired_returns_none`.
+      `test_engine_does_not_sort_by_vendor_time` — absence of a vendor-time sort
+      in order_flow_engine.py. A correct receive-order run does not prove a second
+      sort site is gone.
+      `test_frontend_does_not_reconstruct_trade_semantics` — absence of
+      TRADE_TIME_MILLIS / LAST_SIZE in static/index.html.
+      `test_index_prefers_display_faucet_over_raw_audit_field` — displayKey
+      hasOwnProperty wiring.
+      `test_index_and_chart_gate_chain_levels_on_confidence` — named trusted
+      helpers exist on the two surfaces.
+      `test_index_html_desk_flip_consults_confidence` — desk flip TRUSTED gate
+      string and edTrustedGammaFlip call-count.
+      `test_live_active_item_does_not_admit_unrelated_production_file` — SURFACES=
+      exact-path admission on the live master text (taint follows the file read).
+      `test_one_normalization_function_is_the_admission_authority` — uniqueness of
+      def canonicalize_repo_rel and absence of lstrip("./").
+      `test_live_rc_log_does_not_emit_work_state` — frozen root_cause_log.md emits
+      no derive_active_obligations work (taint follows the file read).
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 266, (
-        f"the per-function source-text-only count moved from the 266 measured on "
-        f"2026-08-19 to {len(fns)}. This figure is not a defect count, so do not simply "
+    assert len(fns) == 273, (
+        f"the per-function source-text-only count moved from the 273 measured on "
+        f"2026-08-22 to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "
@@ -208,7 +244,10 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     # the honest form: two left the list, four did not, and the four are accounted for.
     names = {f.rsplit(" ", 1)[-1] for f in fns}
     for gone in ("test_accumulator_rejects_a_nonpositive_price_at_the_service_boundary",
-                 "test_terrain_level_set_includes_new_levels_each_with_tooltip"):
+                 "test_terrain_level_set_includes_new_levels_each_with_tooltip",
+                 "test_rest_cum_delta_producer_retired_returns_none",
+                 "test_order_flow_direction_is_withheld_from_the_decision_vote",
+                 "test_stream_stop_clears_live_state_and_freshness"):
         assert gone not in names, f"{gone} went back to asserting only source text (RC-308)"
     for harness in ("tests/index_html_contracts_node.mjs",
                     "tests/forces_provenance_node.mjs"):

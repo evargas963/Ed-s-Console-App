@@ -181,15 +181,28 @@ def _key_levels_from_ms_dict(ms_dict: dict) -> list[tuple[float, str]]:
 
     """
 
+    from math_levels import displayable_interior_trusted_level
+
+    _conf = ms_dict.get("kl_gamma_flip_confidence") or ms_dict.get("confidence")
+    _diag = ms_dict.get("kl_flip_diag") or ms_dict.get("flip_diag") or {}
+    if not isinstance(_diag, dict):
+        _diag = {}
+    _lo, _hi = _diag.get("strike_lo"), _diag.get("strike_hi")
+
+    def _chain_lvl(display_key, raw_key):
+        if display_key in ms_dict:
+            return ms_dict.get(display_key)
+        return displayable_interior_trusted_level(ms_dict.get(raw_key), _conf, _lo, _hi)
+
     pairs = [
 
-        (ms_dict.get("kl_call_gamma_wall"), "Call g-Wall"),
+        (_chain_lvl("kl_call_gamma_wall_display", "kl_call_gamma_wall"), "Call g-Wall"),
 
-        (ms_dict.get("kl_put_gamma_wall"), "Put g-Wall"),
+        (_chain_lvl("kl_put_gamma_wall_display", "kl_put_gamma_wall"), "Put g-Wall"),
 
-        (ms_dict.get("kl_hvl"), "Net Γ peak"),  # RC-134: net book, not total-gamma HVL/pin
+        (_chain_lvl("kl_hvl_display", "kl_hvl"), "Net Γ peak"),  # RC-134: net book, not total-gamma HVL/pin
 
-        (ms_dict.get("kl_max_pain"), "Max Pain"),
+        (_chain_lvl("kl_max_pain_display", "kl_max_pain"), "Max Pain"),
 
         (ms_dict.get("kl_gamma_inflection"), "g-Inflection"),
 
