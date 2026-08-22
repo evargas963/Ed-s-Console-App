@@ -50,6 +50,12 @@ def test_production_streaming_l1_path_is_schwab_levelone_only():
     assert "add_level_one_equity_handler" in src
 
 
+def test_runner_uses_time_et_now_not_inline_ny_zoneinfo():
+    src = (ROOT / "tools" / "l1_source_contract_rth_v1.py").read_text(encoding="utf-8")
+    assert 'ZoneInfo("America/New_York")' not in src
+    assert "from time_et import is_trading_day_et, now_et" in src
+
+
 def test_default_universe_is_core_not_spy_only():
     uni = T.default_universe_from_core()
     assert "SPY" in uni and "QQQ" in uni and "IWM" in uni

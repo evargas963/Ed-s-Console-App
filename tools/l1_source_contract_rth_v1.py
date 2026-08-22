@@ -21,15 +21,13 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from time_et import is_trading_day_et  # noqa: E402
+from time_et import is_trading_day_et, now_et  # noqa: E402
 import l1_trade_observation as l1  # noqa: E402
 
 OUT_PATH = ROOT / "reports" / "l1_source_contract_rth_latest.json"
@@ -58,10 +56,6 @@ L1_FIELD_CATALOG = (
 )
 
 
-def _now_et() -> datetime:
-    return datetime.now(ZoneInfo("America/New_York"))
-
-
 def default_universe_from_core() -> list[str]:
     """CORE_TICKERS in server.py without importing FastAPI."""
     text = SERVER_PY.read_text(encoding="utf-8")
@@ -75,7 +69,7 @@ def default_universe_from_core() -> list[str]:
 
 
 def session_blockers(*, require_rth: bool) -> list[str]:
-    et = _now_et()
+    et = now_et()
     blockers: list[str] = []
     if require_rth and not is_trading_day_et(et.date().isoformat()):
         blockers.append("RTH_ONLY")
@@ -153,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=OUT_PATH)
     args = parser.parse_args(argv)
 
-    et = _now_et()
+    et = now_et()
     universe = (
         [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
         or default_universe_from_core()
