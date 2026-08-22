@@ -226,6 +226,13 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
       def canonicalize_repo_rel and absence of lstrip("./").
       `test_live_rc_log_does_not_emit_work_state` — frozen root_cause_log.md emits
       no derive_active_obligations work (taint follows the file read).
+
+    273 stays (2026-08-22 P0.1-B clock authority). One function ARRIVED as
+    source-text (`test_runner_uses_time_et_now_not_inline_ny_zoneinfo` — a
+    ZoneInfo literal scan of the runner) and LEFT the same slice after RC-308
+    rewrite to `test_live_clock_comes_from_time_et_now_et_not_a_local_clock`
+    (freezes T.now_et and asserts measured_et). COH-SA-2 already locks the NY
+    literal repo-wide. Do not bump 273 → 274.
     """
     fns = C.source_text_only_functions()
     assert len(fns) == 273, (
@@ -247,7 +254,9 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
                  "test_terrain_level_set_includes_new_levels_each_with_tooltip",
                  "test_rest_cum_delta_producer_retired_returns_none",
                  "test_order_flow_direction_is_withheld_from_the_decision_vote",
-                 "test_stream_stop_clears_live_state_and_freshness"):
+                 "test_stream_stop_clears_live_state_and_freshness",
+                 "test_runner_uses_time_et_now_not_inline_ny_zoneinfo",
+                 "test_live_clock_comes_from_time_et_now_et_not_a_local_clock"):
         assert gone not in names, f"{gone} went back to asserting only source text (RC-308)"
     for harness in ("tests/index_html_contracts_node.mjs",
                     "tests/forces_provenance_node.mjs"):

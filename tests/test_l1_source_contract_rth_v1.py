@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import l1_trade_observation as l1
 import tools.l1_source_contract_rth_v1 as T
@@ -30,7 +33,7 @@ def test_live_cli_does_not_claim_pass_when_blocked(tmp_path):
     out = tmp_path / "report.json"
     rc = T.main(["--live", "--out", str(out)])
     assert rc == 0
-    payload = __import__("json").loads(out.read_text(encoding="utf-8"))
+    payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["verdict"] == "NOT_PROVEN"
     assert payload["live_attempted"] is True
     assert payload["blockers"]
@@ -50,10 +53,18 @@ def test_production_streaming_l1_path_is_schwab_levelone_only():
     assert "add_level_one_equity_handler" in src
 
 
-def test_runner_uses_time_et_now_not_inline_ny_zoneinfo():
-    src = (ROOT / "tools" / "l1_source_contract_rth_v1.py").read_text(encoding="utf-8")
-    assert 'ZoneInfo("America/New_York")' not in src
-    assert "from time_et import is_trading_day_et, now_et" in src
+def test_live_clock_comes_from_time_et_now_et_not_a_local_clock(tmp_path, monkeypatch):
+    """Clock authority is time_et.now_et. A local datetime.now would ignore this freeze."""
+    frozen = datetime(2026, 8, 22, 18, 5, tzinfo=ZoneInfo("America/New_York"))
+    monkeypatch.setattr(T, "now_et", lambda: frozen)
+    out = tmp_path / "clock.json"
+    rc = T.main(["--live", "--out", str(out)])
+    assert rc == 0
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert payload["measured_et"] == frozen.isoformat()
+    assert payload["weekday"] == "Saturday"
+    assert payload["trading_day"] is False
+    assert "RTH_ONLY" in payload["blockers"]
 
 
 def test_default_universe_is_core_not_spy_only():
