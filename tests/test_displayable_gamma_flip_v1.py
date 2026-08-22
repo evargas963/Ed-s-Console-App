@@ -21,3 +21,5 @@ def test_index_html_desk_flip_consults_confidence():
     src = Path("static/index.html").read_text(encoding="utf-8")
     assert "kl_gamma_flip_confidence" in src
     assert src.count("if (c !== 'TRUSTED') return '—'") >= 2
+    assert "function edTrustedGammaFlip" in src
+    assert src.count("edTrustedGammaFlip(") >= 8

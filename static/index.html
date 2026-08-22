@@ -4868,6 +4868,16 @@ function fmtScore01(x) {
   if (x == null || x === '' || Number.isNaN(Number(x))) return '—';
   return Math.round(Number(x) * 100) + '%';
 }
+/** RC-462: flip number is operator-visible only when confidence is TRUSTED. */
+function edTrustedGammaFlip(d) {
+  if (!d || typeof d !== 'object') return null;
+  const conf = d.kl_gamma_flip_confidence || d.confidence;
+  if (conf !== 'TRUSTED') return null;
+  const v = (d.kl_gamma_flip_display != null) ? d.kl_gamma_flip_display
+    : (d.kl_gamma_flip != null ? d.kl_gamma_flip : d.gamma_flip);
+  const n = Number(v);
+  return (v == null || Number.isNaN(n)) ? null : n;
+}
 /** Populate Liquidity & flow context card from context_layer (+ top-level fallbacks). */
 function renderContextLayer(d) {
   const body = $('ctx-layer-body');
@@ -12559,16 +12569,17 @@ function edRenderLadder(d) {
   const y = v => Math.round(((hi - v) / (hi - lo)) * (H - 36)) + 18;
   el._scale = { lo, hi, H };   // reused by edPaintLadderSpot between polls
 
-  if (d.gamma_flip != null) {
+  const trustedFlip = edTrustedGammaFlip(d);
+  if (trustedFlip != null) {
     // ORIENTATION IS DERIVED, NOT ASSUMED. The old code hardcoded chop-above/trend-below,
     // which is only true for the common neg-below/pos-above profile. A chain that is
     // long-gamma BELOW and short-gamma ABOVE (the pos->neg crossing the flip detector now
     // finds) has exactly the opposite meaning on each side. The regime IS the sign at
     // spot (RC-11), so which side of the flip spot sits on tells us the orientation.
     const isLongHere = d.regime === 'LONG_GAMMA_CHOP';
-    const spotAbove = spot != null && spot > d.gamma_flip;
+    const spotAbove = spot != null && spot > trustedFlip;
     const inverted = (isLongHere && !spotAbove) || (!isLongHere && d.regime === 'SHORT_GAMMA_TREND' && spotAbove);
-    const fy = y(d.gamma_flip);
+    const fy = y(trustedFlip);
     const topKind = inverted ? 'trend' : 'chop', botKind = inverted ? 'chop' : 'trend';
     for (const z of [[topKind, 'top:0;height:' + fy + 'px'], [botKind, 'top:' + fy + 'px;bottom:0']]) {
       const zone = document.createElement('div');
@@ -12637,7 +12648,7 @@ function edLevelSet(d) {
           : 'Largest call-side gamma strike. Geometry state unavailable (levels predate the state fields) — no containment claim.' },
     { t: 'CALL CHARM', v: d.call_charm_wall, c: 'tv-c-charm', g: '◇', note: 'charm wall',
       tip: 'Call-side delta-decay (charm) concentration. Hedge flow from time decay, strongest in the final two hours.' },
-    { t: 'GAMMA FLIP', v: d.gamma_flip,      c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true,
+    { t: 'GAMMA FLIP', v: edTrustedGammaFlip(d), c: 'tv-c-flip',  g: '━', note: 'zero-γ · regime line', flip: true,
       tip: 'Where net dealer gamma crosses zero. A regime boundary, NOT support/resistance — dealer effects weaken near it (eye of the storm).' },
     // RC-132 (A3): the HVL row is DELETED, not renamed — pick_hvl_strike and
     // pick_pin_and_strength are the same metric (max total GEX$) by construction, so the
@@ -12846,11 +12857,11 @@ function edPaintSpot() {
 // (Bugbot 2026-07-20). Crossing the boundary flips the sign by definition, so this
 // reconciliation is locally exact — the server payload re-anchors it on the next poll.
 function edReconcileRegime(d, liveSpot) {
-  if (d.gamma_flip == null || d._srvSpot == null || liveSpot == null) return;
+  if (edTrustedGammaFlip(d) == null || d._srvSpot == null || liveSpot == null) return;
   if (d._srvRegime == null) d._srvRegime = d.regime;
   const base = d._srvRegime;
   if (base !== 'LONG_GAMMA_CHOP' && base !== 'SHORT_GAMMA_TREND') return;
-  const crossed = (d._srvSpot > d.gamma_flip) !== (liveSpot > d.gamma_flip);
+  const crossed = (d._srvSpot > edTrustedGammaFlip(d)) !== (liveSpot > edTrustedGammaFlip(d));
   // NET GEX repaints on every cross-state CHANGE — both directions. Handling it before
   // the regime early-return below is the fix for Bugbot 2026-07-21: an uncross restores
   // the regime label via `want === d.regime` short-circuit, which previously skipped the
@@ -13446,7 +13457,7 @@ function edCheckRadarAlerts(rows) {
        mis-label a window-edge strike when the flip is off-scale (e.g. flip 322 vs a
        279–304 window). Its exact value still shows in the badge above the chart. */
     var minK = rows[0].k, maxK = rows[rows.length - 1].k;
-    var flip = t ? fnum(t.gamma_flip) : null;
+    var flip = t ? edTrustedGammaFlip(t) : null;
     if (flip !== null && flip >= minK && flip <= maxK) {
       var fk = nearest(flip).k;
       if (fk !== null) (lvl[fk] = lvl[fk] || []).unshift('FLIP');
@@ -13488,7 +13499,7 @@ function edCheckRadarAlerts(rows) {
     T('cv2-t-regime', regimeText(fstr(t.regime)));
     T('cv2-t-note', fstr(t.headline, (t.lines && t.lines[0])));
     T('cv2-g-gex', money(fnum(t.net_gex_at_spot)));   // terrain single source (net GEX @ spot)
-    T('cv2-kl-flip', n2(fnum(t.gamma_flip)));
+    T('cv2-kl-flip', n2(edTrustedGammaFlip(t)));
     var pw = fnum(t.put_wall), cw = fnum(t.call_wall);
     T('cv2-kl-cwall', n2(cw));
     T('cv2-kl-pwall', n2(pw));
@@ -13512,7 +13523,7 @@ function edCheckRadarAlerts(rows) {
         trustEl.title = '';
       }
     }
-    var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
+    var tags = [n2(edTrustedGammaFlip(t)) && ('flip ' + n2(edTrustedGammaFlip(t))),
                 n2(fnum(t.gamma_pin)) && ('pin ' + n2(fnum(t.gamma_pin))),
                 cw !== null && ('call ' + n2(cw)), pw !== null && ('put ' + n2(pw))].filter(Boolean).join(' · ');
     T('cv2-gx-tags', tags || null);
@@ -13899,7 +13910,7 @@ function edCheckRadarAlerts(rows) {
      Flags overlaid from the live levels; spot & flip highlight the nearest real strike. */
   function buildMap(t, g) {
     var box = el('ct-map'); if (!box) return;
-    var flip = fnum(t.gamma_flip), spot = consoleSpot(t);   // RC-77: one console spot authority
+    var flip = edTrustedGammaFlip(t), spot = consoleSpot(t);   // RC-77: one console spot authority
     var all = (g && g.today && Array.isArray(g.today.all)) ? g.today.all : null;
     if (!all || !all.length || spot === null) { box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no per-strike gamma — fail closed</span>'; return; }
     /* window scales with the actionable levels (call/put wall, pin) so wide-strike names
@@ -13985,11 +13996,11 @@ function edCheckRadarAlerts(rows) {
     var ge = el('ct-gex'); if (ge) ge.className = 'ct-v cv-n ' + (negGex !== null ? (negGex < 0 ? 'cv-dn' : 'cv-up') : '');
     T('ct-age', null);
 
-    var flipN = n2(fnum(t.gamma_flip));
+    var flipN = n2(edTrustedGammaFlip(t));
     T('ct-flip-badge', flipN ? ('flip ' + flipN) : null);
 
     T('ct-cwall', n2(fnum(t.call_wall)));
-    T('ct-flip', n2(fnum(t.gamma_flip)));
+    T('ct-flip', n2(edTrustedGammaFlip(t)));
     T('ct-hvl', n2(fnum(t.net_gex_peak)));   // RC-124: the net-book peak, honestly named
     T('ct-pin', n2(fnum(t.gamma_pin)));
     T('ct-maxpain', n2(fnum(t.max_pain)));
@@ -14024,7 +14035,7 @@ function edCheckRadarAlerts(rows) {
     var dl = t.dollarized, de = el('ct-ch-dollar'); if (de) { de.textContent = (dl === true) ? 'yes' : (dl === false) ? 'no' : '—'; de.className = (dl === true) ? 'cv-up' : (dl === false) ? 'cv-wn' : ''; }
 
     function prox(id, lvl, cls) { var e = el(id); if (!e) return; var L = fnum(lvl); if (L === null || spot === null) { e.textContent = '—'; e.className = 'cv-n'; return; } var d = L - spot; e.textContent = (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2); e.className = 'cv-n ' + cls; }
-    prox('ct-px-flip', t.gamma_flip, 'cv-ac');
+    prox('ct-px-flip', edTrustedGammaFlip(t), 'cv-ac');
     prox('ct-px-pin', t.gamma_pin, 'cv-up');
     prox('ct-px-cwall', t.call_wall, 'cv-up');
     prox('ct-px-pwall', t.put_wall, 'cv-dn');
