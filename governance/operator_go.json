@@ -1,10 +1,12 @@
 {
-  "granted": true,
+  "granted": false,
   "granted_at": "2026-08-21T00:00:00+00:00",
+  "revoked_at": "2026-08-21T00:00:01+00:00",
   "granted_by": "operator_instruction_in_session_2026-08-21_fix_the_lock",
+  "revoked_by": "standing_discipline_restore_fail_closed_after_commit",
   "scope": [
     "staged_lock_surface"
   ],
-  "operator_quote": "LOCK REPROOF FAILED — FIX THE LOCK BEFORE CONTINUING PRODUCT WORK ... Replace vocabulary-driven enforcement with disposition-driven enforcement ... Add tests that specifically prove [negative controls] ... Execute an end-to-end Stop negative control proving Claude cannot terminate with a planted active fixable defect.",
-  "note": "Scoped GO to land the CORRECTED find_it_fix_it lock (disposition-driven ledger authority in tools/check_institutional_correctness.py + tools/stop_guard.py defect-8/9 rework + tests + governance/active_defects.json) and the connected order_flow verdict/composite retirement, per the 2026-08-21 'FIX THE LOCK' directive. Restore to fail-closed after this commit."
+  "operator_quote": "LOCK REPROOF FAILED — FIX THE LOCK BEFORE CONTINUING PRODUCT WORK ... Replace vocabulary-driven enforcement with disposition-driven enforcement.",
+  "note": "The scoped staged_lock_surface GO was used to land the corrected find_it_fix_it lock + the order_flow verdict/composite retirement (commit e39bc55a). Restored to fail-closed immediately after; any future staged ENFORCED-check commit needs a fresh scoped GO."
 }
