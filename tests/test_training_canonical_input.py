@@ -29,8 +29,8 @@ def _minimal_valid_db_row() -> dict:
         "net_gamma": 0.01,
         "vwap_side": "above",
         "vwap_dist_pts": 0.2,
-        "absorption_score": 0.0,
-        "continuation_score": 0.0,
+        "range_imbalance_stall_score": 0.0,
+        "range_imbalance_push_score": 0.0,
         "candle_body_pts": 0.1,
         "candle_range_pts": 0.2,
         "dist_call_gamma_wall": 1.0,
@@ -79,11 +79,11 @@ def test_validate_tabular_treats_pandas_nan_as_missing_on_absorption_score():
     _row_dict_from_df must convert NaN -> None so SQL NULL semantics are
     preserved. Reproduces the SPY/QQQ/IWM/megacap row-0 fail: 17 of 41
     tickers in the scheduler run blocked by 'row 0: MVP coercion failed:
-    liquidity.absorption_score: non-finite value nan' because 33% of SPY
+    liquidity.range_imbalance_stall_score: non-finite value nan' because 33% of SPY
     snapshot rows have NULL absorption_score.
     """
     row = _minimal_valid_db_row()
-    row["absorption_score"] = float("nan")
+    row["range_imbalance_stall_score"] = float("nan")
     df = pd.DataFrame([row])
     # Must NOT raise — NaN-from-DataFrame is treated as missing (None).
     assert validate_tabular_training_dataframe_canonical(df, max_rows=10) is None
@@ -123,7 +123,7 @@ def _make_snapshots_db(tmp_path, rows_per_ticker: dict) -> str:
                 "spot": 100.0, "spread": 0.05, "zone": "pin_neutral",
                 "nearest_above_dist": 1.0, "nearest_below_dist": -1.0,
                 "net_gamma": 0.0, "vwap_side": "above", "vwap_dist_pts": 0.2,
-                "absorption_score": None, "continuation_score": None,
+                "range_imbalance_stall_score": None, "range_imbalance_push_score": None,
             }
             base.update(row_overrides)
             cols = ", ".join(base.keys())
@@ -176,7 +176,7 @@ def test_preflight_treats_pandas_nan_as_missing_end_to_end(tmp_path):
 
     db_path = _make_snapshots_db(
         tmp_path,
-        {"SPY": [{"absorption_score": None}] * 50},  # all NULL — pandas loads as NaN
+        {"SPY": [{"range_imbalance_stall_score": None}] * 50},  # all NULL — pandas loads as NaN
     )
     result = preflight_tickers_for_training(db_path, ["SPY"], sample_rows=50)
     assert result["ok"] is True
@@ -233,7 +233,7 @@ def test_validate_tabular_nan_to_none_does_not_launder_real_breakage():
     as invalid.
     """
     row = _minimal_valid_db_row()
-    row["absorption_score"] = float("nan")
+    row["range_imbalance_stall_score"] = float("nan")
     # Direct dict path (no DataFrame conversion) — actual upstream NaN
     # still raises as designed.
     with pytest.raises(TrainingCanonicalInputError):
@@ -326,9 +326,9 @@ def test_train_parallel_rejects_bad_feature_cache_key_override():
 
 def test_normalize_pandas_sql_null_row_dict_maps_nan_to_none() -> None:
     out = normalize_pandas_sql_null_row_dict(
-        {"absorption_score": float("nan"), "spot": 100.0, "zone": "pin_bull"}
+        {"range_imbalance_stall_score": float("nan"), "spot": 100.0, "zone": "pin_bull"}
     )
-    assert out["absorption_score"] is None
+    assert out["range_imbalance_stall_score"] is None
     assert out["spot"] == 100.0
 
 
@@ -347,10 +347,10 @@ def test_records_for_mvp_from_dataframe_unblocks_meta_inference_snapshot_path() 
         "net_gamma": 0.0,
         "vwap_side": "above",
         "vwap_dist_pts": 0.2,
-        "absorption_score": float("nan"),
-        "continuation_score": float("nan"),
+        "range_imbalance_stall_score": float("nan"),
+        "range_imbalance_push_score": float("nan"),
     }
-    with pytest.raises(MvpFeatureSourceError, match="absorption_score"):
+    with pytest.raises(MvpFeatureSourceError, match="range_imbalance_stall_score"):
         build_db_mvp_feature_row(base)
     rows = records_for_mvp_from_dataframe(pd.DataFrame([base]))
     snap = build_inference_snapshot_v1_from_db_row(
@@ -359,8 +359,8 @@ def test_records_for_mvp_from_dataframe_unblocks_meta_inference_snapshot_path() 
         as_of_ts=1.0,
         db_row=rows[0],
     )
-    assert snap["features"]["liquidity.absorption_score"] is None
-    assert snap["features"]["liquidity.continuation_score"] is None
+    assert snap["features"]["liquidity.range_imbalance_stall_score"] is None
+    assert snap["features"]["liquidity.range_imbalance_push_score"] is None
 
 
 def test_meta_assembly_uses_canonical_dataframe_ingress() -> None:

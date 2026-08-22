@@ -309,7 +309,7 @@ def test_price_action_cone_gated_behind_retrain():
     pa_cols = [c for c, _ in SNAPSHOT_PRICE_ACTION_COLUMNS]
     assert len(pa_cols) == 27
     # Serving cone unchanged — v7 bundles must keep loading.
-    assert FEATURE_SCHEMA_VERSION == "v7_m5_strip"
+    assert FEATURE_SCHEMA_VERSION == "v8_range_imbalance_q"
     assert not set(pa_cols) & set(SCALE_INVARIANT_COLS)
     assert not [n for n in tabular_training_feature_names() if n.startswith("pa_")]
 
@@ -443,7 +443,7 @@ def test_feature_schema_version_matches_trained_artifacts():
     artifacts, never ahead of them (2026-06-11 live-stack outage class)."""
     from training_provenance import FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION
 
-    assert FEATURE_SCHEMA_VERSION == "v7_m5_strip"
+    assert FEATURE_SCHEMA_VERSION == "v8_range_imbalance_q"
     assert PREPROCESSING_VERSION == "v5_no_m5_lag"
 
 
@@ -919,14 +919,18 @@ def test_stage2_sequence_encoder_width_matches_xgb_tabular_universe():
     from ml_train import tabular_training_feature_names
 
     tabular = tabular_training_feature_names()
-    # 94 at v7. Becomes 121 (+27 pa_*) only when PA-CONE-V8-RETRAIN lands
-    # (registration + retrained artifacts in the same commit).
-    assert len(tabular) == 94
+    # 94 at v7; RC-455 withheld absorption_score + continuation_score +
+    # cat_liquidity_behavior_label → 91. Becomes 118 (+27 pa_*) only when
+    # PA-CONE-V8-RETRAIN lands (registration + retrained artifacts together).
+    assert len(tabular) == 91
+    assert "absorption_score" not in tabular
+    assert "continuation_score" not in tabular
+    assert "cat_liquidity_behavior_label" not in tabular
     assert set(CONFLUENCE_FEATURES).issubset(set(tabular))
     assert LSTM_ENCODER_SCHEMA_VERSION == 3
     assert encoded_width_5m() == len(tabular) - len(CONFLUENCE_FEATURES)
     assert encoded_width_1m() == len(tabular) - len(CONFLUENCE_FEATURES)
-    assert encoded_width_5m() == 88
+    assert encoded_width_5m() == 85
 
 
 def test_xgb_cf_member_in_tabular_universe_and_permute_perturbs(tmp_path):
@@ -1241,7 +1245,7 @@ def test_sequence_encoder_lineage_fail_closed_without_feature_names():
     from lstm_data import LSTM_ENCODER_SCHEMA_VERSION
 
     meta = {"n_features_5m": 27, "feature_schema_version": "v7_m5_strip"}
-    ckpt = {"encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION, "encoder_width_5m_pre_mask": 88}
+    ckpt = {"encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION, "encoder_width_5m_pre_mask": 85}
     ok, reason = sequence_encoder_lineage_admissible(meta, ckpt)
     assert not ok
     assert "encoder_feature_names_5m" in reason

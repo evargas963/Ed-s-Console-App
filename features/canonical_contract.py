@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-CANONICAL_FEATURE_CONTRACT_VERSION = "v1_1m_mvp"
+CANONICAL_FEATURE_CONTRACT_VERSION = "v1_1m_range_imbalance"
 CANONICAL_FEATURE_TIMEFRAME = "1m"
 
 # Locked vocabulary (lowercase). Live/DB may use any casing; adapters normalize before validation.
@@ -40,8 +40,8 @@ _MVP_FEATURE_ORDER: tuple[str, ...] = (
     "structure.net_gamma",
     "anchor.vwap_side",
     "anchor.vwap_dist_pts",
-    "liquidity.absorption_score",
-    "liquidity.continuation_score",
+    "liquidity.range_imbalance_stall_score",
+    "liquidity.range_imbalance_push_score",
 )
 
 _FLOAT_KEYS = frozenset(
@@ -52,8 +52,8 @@ _FLOAT_KEYS = frozenset(
         "structure.nearest_below_dist",
         "structure.net_gamma",
         "anchor.vwap_dist_pts",
-        "liquidity.absorption_score",
-        "liquidity.continuation_score",
+        "liquidity.range_imbalance_stall_score",
+        "liquidity.range_imbalance_push_score",
     }
 )
 _STR_ENUM_KEYS = frozenset({"structure.zone", "anchor.vwap_side"})
@@ -156,28 +156,28 @@ _MVP_SPECS: dict[str, dict[str, Any]] = {
         "training_supported": True,
         "inference_supported": True,
     },
-    "liquidity.absorption_score": {
-        "canonical_name": "liquidity.absorption_score",
+    "liquidity.range_imbalance_stall_score": {
+        "canonical_name": "liquidity.range_imbalance_stall_score",
         "dtype": "float",
         "allow_none": True,
-        "when_non_null": "finite (any sign unless source constrains)",
-        "missing_semantics": "None = no liquidity slice",
+        "when_non_null": "finite in [0, 1]; body/range stall × |flow_imbalance| (RC-455)",
+        "missing_semantics": "None = OHLC or imbalance unavailable; never a legacy absorption_score",
         "source_category": "liquidity",
         "live_supported": True,
         "db_supported": True,
-        "training_supported": True,
+        "training_supported": False,
         "inference_supported": True,
     },
-    "liquidity.continuation_score": {
-        "canonical_name": "liquidity.continuation_score",
+    "liquidity.range_imbalance_push_score": {
+        "canonical_name": "liquidity.range_imbalance_push_score",
         "dtype": "float",
         "allow_none": True,
-        "when_non_null": "finite (any sign unless source constrains)",
-        "missing_semantics": "None = no liquidity slice",
+        "when_non_null": "finite in [0, 1]; body/range push × |flow_imbalance| (RC-455)",
+        "missing_semantics": "None = OHLC or imbalance unavailable; never a legacy continuation_score",
         "source_category": "liquidity",
         "live_supported": True,
         "db_supported": True,
-        "training_supported": True,
+        "training_supported": False,
         "inference_supported": True,
     },
 }
@@ -235,15 +235,15 @@ _MVP_FIELD_SEMANTICS: dict[str, dict[str, str]] = {
         "invalid": "Present non-null: wrong type for numeric, unparseable string, non-finite float.",
         "valid": "Finite signed numeric; canonical row holds float.",
     },
-    "liquidity.absorption_score": {
-        "missing": "Live: key absent under `liquidity_summary` or summary key absent / null; DB: column absent or null → canonical None.",
+    "liquidity.range_imbalance_stall_score": {
+        "missing": "Live: key absent under `liquidity_summary` or summary key absent / null; DB: `range_imbalance_stall_score` absent or null → canonical None. Historical `absorption_score` is a different semantic era and is never mapped here.",
         "invalid": "Present non-null: wrong type, unparseable string, non-finite float; live: `liquidity_summary` present but not dict/null.",
-        "valid": "Finite signed numeric; canonical row holds float.",
+        "valid": "Finite numeric in [0, 1]; canonical row holds float.",
     },
-    "liquidity.continuation_score": {
-        "missing": "Same as liquidity.absorption_score for the paired field.",
-        "invalid": "Same as liquidity.absorption_score.",
-        "valid": "Finite signed numeric; canonical row holds float.",
+    "liquidity.range_imbalance_push_score": {
+        "missing": "Same as liquidity.range_imbalance_stall_score for the paired field; historical `continuation_score` is never mapped here.",
+        "invalid": "Same as liquidity.range_imbalance_stall_score.",
+        "valid": "Finite numeric in [0, 1]; canonical row holds float.",
     },
 }
 

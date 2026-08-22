@@ -4877,9 +4877,9 @@ function renderContextLayer(d) {
   const nw = cl.news || d.news_context;
   const parts = [];
   if (lb && typeof lb === 'object') {
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Behavior</span><span class="ctx-v">${escHtmlCtx(lb.behavior_label)}</span></div>`);
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Absorption</span><span class="ctx-v">${escHtmlCtx(fmtScore01(lb.absorption_score))}</span></div>`);
-    parts.push(`<div class="ctx-row"><span class="ctx-k">Continuation</span><span class="ctx-v">${escHtmlCtx(fmtScore01(lb.continuation_score))}</span></div>`);
+    parts.push(`<div class="ctx-row"><span class="ctx-k">Range×imbalance</span><span class="ctx-v">${escHtmlCtx(lb.range_imbalance_label || lb.behavior_label)}</span></div>`);
+    parts.push(`<div class="ctx-row"><span class="ctx-k">Stall</span><span class="ctx-v">${escHtmlCtx(fmtScore01(lb.range_imbalance_stall_score))}</span></div>`);
+    parts.push(`<div class="ctx-row"><span class="ctx-k">Push</span><span class="ctx-v">${escHtmlCtx(fmtScore01(lb.range_imbalance_push_score))}</span></div>`);
     parts.push(`<div class="ctx-row"><span class="ctx-k">Gamma hint</span><span class="ctx-v">${escHtmlCtx(lb.gamma_regime_hint)}</span></div>`);
     if (lb.range_pct_of_spot != null)
       parts.push(`<div class="ctx-row"><span class="ctx-k">Range % spot</span><span class="ctx-v">${escHtmlCtx(lb.range_pct_of_spot)}</span></div>`);

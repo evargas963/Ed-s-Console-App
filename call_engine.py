@@ -1538,9 +1538,9 @@ def compute_call(
     qqq_basket_vote = _index_basket_vote(inp.qqq_weighted_push, inp.qqq_chg_pct)
     iwm_basket_vote = _index_basket_vote(inp.iwm_weighted_push, inp.iwm_chg_pct)
 
-    # Order flow direction from SignalInput (stack layer)
-    _of_dir = (inp.order_flow_direction or "").strip().lower()
-    of_vote = 1 if _of_dir in ("bullish", "call", "long") else (-1 if _of_dir in ("bearish", "put", "short") else 0)
+    # Order-flow composite is RETIRED (RC-454): no fitted weights / OOS validation.
+    # WITHHELD from Decide — do not map a retired direction into a stack vote.
+    of_vote = 0
 
     # Live-horizon fusion retained for MC/risk/sizing — not a separate stack vote (Phase 3).
     _fus_dir = getattr(fusion, 'fusion_dominant_direction', None) or getattr(fusion, 'dominant_direction', 'flat') if _fusion_available else "flat"

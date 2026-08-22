@@ -753,9 +753,12 @@ class SnapshotRow:
     replay_context_json:    Optional[str] = None
 
     # ── Institutional behavior + news context (additive layer; optional APIs) ──
-    absorption_score:          Optional[float] = None
-    continuation_score:        Optional[float] = None
-    liquidity_behavior_label:  Optional[str] = None
+    absorption_score:          Optional[float] = None  # RC-455 quarantined semantic era
+    continuation_score:        Optional[float] = None  # RC-455 quarantined semantic era
+    liquidity_behavior_label:  Optional[str] = None  # RC-455 quarantined; use range_imbalance_label
+    range_imbalance_stall_score: Optional[float] = None
+    range_imbalance_push_score:  Optional[float] = None
+    range_imbalance_label:       Optional[str] = None
     sentiment_composite:       Optional[float] = None
     sentiment_buzz:            Optional[float] = None
     sentiment_finnhub:         Optional[float] = None
@@ -2791,6 +2794,9 @@ class EdDB:
             ("absorption_score",         "REAL"),
             ("continuation_score",       "REAL"),
             ("liquidity_behavior_label", "TEXT"),
+            ("range_imbalance_stall_score", "REAL"),
+            ("range_imbalance_push_score",  "REAL"),
+            ("range_imbalance_label",       "TEXT"),
             ("sentiment_composite",      "REAL"),
             ("sentiment_buzz",           "REAL"),
             ("sentiment_finnhub",        "REAL"),
@@ -2997,6 +3003,9 @@ class EdDB:
             ("absorption_score", "REAL"),
             ("continuation_score", "REAL"),
             ("liquidity_behavior_label", "TEXT"),
+            ("range_imbalance_stall_score", "REAL"),
+            ("range_imbalance_push_score", "REAL"),
+            ("range_imbalance_label", "TEXT"),
             ("sentiment_composite", "REAL"),
             ("sentiment_buzz", "REAL"),
             ("sentiment_finnhub", "REAL"),

@@ -19,8 +19,8 @@ def _full_db_row() -> dict:
         "net_gamma": 1e6,
         "vwap_side": "above",
         "vwap_dist_pts": 0.25,
-        "absorption_score": 0.3,
-        "continuation_score": -0.1,
+        "range_imbalance_stall_score": 0.3,
+        "range_imbalance_push_score": -0.1,
     }
 
 
@@ -67,5 +67,5 @@ def test_build_db_mvp_feature_row_valid_mapping():
     assert row["structure.net_gamma"] == 1e6
     assert row["anchor.vwap_side"] == "above"
     assert row["anchor.vwap_dist_pts"] == 0.25
-    assert row["liquidity.absorption_score"] == 0.3
-    assert row["liquidity.continuation_score"] == -0.1
+    assert row["liquidity.range_imbalance_stall_score"] == 0.3
+    assert row["liquidity.range_imbalance_push_score"] == -0.1

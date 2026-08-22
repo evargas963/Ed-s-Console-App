@@ -69,8 +69,9 @@ SPOT_ANCHORS_KEYS: tuple[str, ...] = ("vwap", "vwap_side", "dist_to_vwap_pts")
 
 LIQUIDITY_SUMMARY_KEYS: tuple[str, ...] = (
     "behavior_label",
-    "absorption_score",
-    "continuation_score",
+    "range_imbalance_label",
+    "range_imbalance_stall_score",
+    "range_imbalance_push_score",
 )
 
 READINESS_SUMMARY_KEYS: tuple[str, ...] = (
@@ -142,7 +143,7 @@ def _spot_anchor_kind(k: str) -> str:
 
 
 def _liquidity_kind(k: str) -> str:
-    return "str" if k == "behavior_label" else "float"
+    return "str" if k in ("behavior_label", "range_imbalance_label") else "float"
 
 
 def _readiness_kind(k: str) -> str:

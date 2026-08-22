@@ -27,37 +27,20 @@ from math_exposure import MISSING_GREEK_SENTINEL
 
 log = logging.getLogger(__name__)
 
-# ── STACK-WIRE-5: named thresholds (Phase 6 ablation surface) ──
-OF_COMPOSITE_WEIGHT_BOOK: float = 0.25
-OF_COMPOSITE_WEIGHT_TAPE: float = 0.20
-OF_COMPOSITE_WEIGHT_CUM_DELTA: float = 0.20
-OF_COMPOSITE_WEIGHT_ABSORPTION: float = 0.15
-OF_COMPOSITE_WEIGHT_OPTIONS: float = 0.15
-OF_COMPOSITE_WEIGHT_RVOL: float = 0.05
-OF_COMPOSITE_MIN_LEGS: int = 2
+# ── Named primitive thresholds (composite score/verdict RETIRED — RC-454) ──
 OF_CLIP_LOW: float = -1.0
 OF_CLIP_HIGH: float = 1.0
-OF_RVOL_TERM_LOW: float = -0.5
-OF_RVOL_TERM_HIGH: float = 0.5
-OF_DIRECTION_BULLISH_THRESHOLD: float = 0.15
-OF_DIRECTION_BEARISH_THRESHOLD: float = -0.15
-OF_READINESS_STRONG_ABS: float = 0.25
-OF_READINESS_MODERATE_ABS: float = 0.1
-OF_RVOL_READINESS_OK: float = 1.2
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
 OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
 OF_ABSORPTION_PRICE_EPS: float = 0.01
-# Book-depth ladder for _compute_book_imbalance: top of book, shallow, deep.
+# Book-depth ladder for the canonical book producer: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
 OF_BOOK_DEPTH_DEEP: int = 5
-# RVOL neutral center: RVOL = 1.0 means realized volume == average; the composite uses (rvol - center).
-OF_RVOL_NEUTRAL_CENTER: float = 1.0
 # Default minimum legs for _weighted_mean_present when callers omit min_present.
-# (Composite scoring explicitly passes OF_COMPOSITE_MIN_LEGS; this is a safe-default fallback.)
 OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT: int = 2
 
 try:
@@ -1149,73 +1132,6 @@ def _weighted_mean_present(
     return sum((w / total_w) * v for w, v in present)
 
 
-def _compute_order_flow_score(
-    book_imbalance: Optional[float],
-    tape_pressure: Optional[float],
-    cum_delta: Optional[float],
-    absorption: Optional[float],
-    options_flow: Optional[float],
-    rvol: Optional[float],
-) -> Optional[float]:
-    """
-    Composite score over present legs only (FIND-OF3/OF4 / STACK-WIRE-5 weights).
-    Uses OF_COMPOSITE_WEIGHT_* constants; None when fewer than OF_COMPOSITE_MIN_LEGS legs.
-    """
-    return _weighted_mean_present(
-        [
-            (OF_COMPOSITE_WEIGHT_BOOK, book_imbalance, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_TAPE, tape_pressure, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_CUM_DELTA, cum_delta, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_ABSORPTION, absorption, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_OPTIONS, options_flow, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (
-                OF_COMPOSITE_WEIGHT_RVOL,
-                (rvol - OF_RVOL_NEUTRAL_CENTER) if rvol is not None else None,
-                OF_RVOL_TERM_LOW,
-                OF_RVOL_TERM_HIGH,
-            ),
-        ],
-        min_present=OF_COMPOSITE_MIN_LEGS,
-    )
-
-
-def _direction(score: Optional[float]) -> Optional[str]:
-    """score > 0.15 → bullish, < -0.15 → bearish, else neutral; None when unavailable or exactly zero."""
-    if score is None:
-        return None
-    if score == 0.0:
-        return None
-    if score > OF_DIRECTION_BULLISH_THRESHOLD:
-        return "bullish"
-    if score < OF_DIRECTION_BEARISH_THRESHOLD:
-        return "bearish"
-    return "neutral"
-
-
-def _readiness(score: Optional[float], rvol: Optional[float]) -> str:
-    """
-    green: score strong and rvol > 1.2
-    yellow: score moderate, or strong with rvol unknown/unconfirmed (rvol is None)
-    red: weak score, or composite unavailable
-
-    When rvol is None, strong readings downgrade to yellow (no fabricated rvol_ok).
-    """
-    if score is None:
-        return "red"
-    strong = abs(score) > OF_READINESS_STRONG_ABS
-    moderate = OF_READINESS_MODERATE_ABS <= abs(score) <= OF_READINESS_STRONG_ABS
-    if rvol is None:
-        if strong or moderate:
-            return "yellow"
-        return "red"
-    rvol_ok = rvol > OF_RVOL_READINESS_OK
-    if strong and rvol_ok:
-        return "green"
-    if moderate or (strong and not rvol_ok):
-        return "yellow"
-    return "red"
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1250,11 +1166,6 @@ class OrderFlowEngine:
         # fallback `book_imbalance_5 = top_book_pressure`, which conflated the two under one name.)
         top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
 
-        # Use 5-level for scoring when available (preserve measured 0.0 — FIND-OF1)
-        book_for_score = next(
-            (v for v in (book_imbalance_5, book_imbalance_3, book_imbalance_1) if v is not None),
-            None,
-        )
         spread_d = _compute_spread(data)
         spread_pts = spread_d.get("spread_pts")
 
@@ -1262,10 +1173,6 @@ class OrderFlowEngine:
         tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC)
         tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC)
         tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC)
-        tape_for_score = next(
-            (v for v in (tape_pressure_2m, tape_pressure_30s, tape_pressure_5m) if v is not None),
-            None,
-        )
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
@@ -1290,57 +1197,21 @@ class OrderFlowEngine:
         institutional_flow_proxy_score = _compute_institutional_flow_proxy(
             data, book_imbalance_5=book_imbalance_5)
 
-        # Composite score and regime
-        order_flow_score = _compute_order_flow_score(
-            book_for_score,
-            tape_for_score,
-            cum_delta_proxy,
-            absorption_score,
-            options_flow_score,
-            rvol,
-        )
-        order_flow_direction = _direction(order_flow_score)
-        order_flow_regime = order_flow_direction
-        order_flow_readiness = (
-            "red" if order_flow_score is None else _readiness(order_flow_score, rvol)
-        )
-        _order_flow_readiness_rvol = (
-            "unavailable" if rvol is None and order_flow_score is not None else None
-        )
-
-        # Flow Verdict (composite headline) + field arrows/labels
-        try:
-            from math_exposure import (
-                compute_order_flow_verdict,
-                order_flow_score_label,
-                order_flow_book_label,
-                order_flow_opt_label,
-                order_flow_field_arrow,
-            )
-            verdict_d = compute_order_flow_verdict(
-                order_flow_score,
-                book_imbalance_5,
-                cum_delta_proxy,
-                options_flow_score,
-            )
-            of_verdict = verdict_d["verdict"]
-            of_verdict_color = verdict_d["verdict_color"]
-            of_arrow = verdict_d["arrow"]
-            of_agreement = verdict_d["agreement"]
-            of_score_arrow = order_flow_field_arrow(order_flow_score)
-            of_score_label = order_flow_score_label(order_flow_score)
-            of_book_arrow = order_flow_field_arrow(book_imbalance_5, use_book=True)
-            of_book_label = order_flow_book_label(book_imbalance_5)
-            of_delta_arrow = order_flow_field_arrow(cum_delta_proxy)
-            of_opt_arrow = order_flow_field_arrow(options_flow_score)
-            of_opt_label = order_flow_opt_label(options_flow_score)
-        except ImportError:
-            of_verdict = None
-            of_verdict_color = None
-            of_arrow = None
-            of_agreement = "unavailable"
-            of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
-            of_score_label = of_book_label = of_opt_label = None
+        # RETIRED (RC-454): order_flow_score / _direction / _regime / _readiness and
+        # compute_order_flow_verdict. The composite had no fitted weights or OOS validation;
+        # the verdict double-counted book/cum-delta/options already inside the score to emit
+        # BUYING/SELLING PRESSURE. Canonical primitives stay. These fields emit None so no
+        # consumer can reconstruct the unvalidated composite from this producer.
+        order_flow_score = None
+        order_flow_direction = None
+        order_flow_regime = None
+        order_flow_readiness = None
+        of_verdict = None
+        of_verdict_color = None
+        of_arrow = None
+        of_agreement = "unavailable"
+        of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
+        of_score_label = of_book_label = of_opt_label = None
 
         return {
             "book_imbalance_1": book_imbalance_1,

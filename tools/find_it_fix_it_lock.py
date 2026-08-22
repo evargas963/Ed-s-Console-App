@@ -211,7 +211,10 @@ def classify_row(
     scopes = mission.get("scope_paths") or []
     if not isinstance(scopes, list):
         scopes = []
-    implicated = _path_implicated(_paths_in_text(body), dirty, scopes)
+    # Implication reads the DEFECT headline only — a 4k-char why/fix cell naming a file
+    # as past evidence is not "materially implicated by the active change".
+    headline = (row.get("defect") or "")[:320]
+    implicated = _path_implicated(_paths_in_text(headline), dirty, scopes)
     opened_today = row.get("opened") == today
     mission_tagged = bool(mid) and mid in body
     parent_tagged = any(tok in body for tok in PARENT_MISSION_TOKENS)
@@ -264,7 +267,9 @@ def illegal_passive_escape_offenders(
         mission_tagged = bool(mid) and mid in body
         parent_tagged = any(tok in body for tok in PARENT_MISSION_TOKENS)
         implicated = _path_implicated(
-            _paths_in_text(body), dirty, mission.get("scope_paths") or []
+            _paths_in_text((row.get("defect") or "")[:320]),
+            dirty,
+            mission.get("scope_paths") or [],
         )
         if opened_today:
             out.append((

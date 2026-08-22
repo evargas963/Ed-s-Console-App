@@ -22,8 +22,8 @@ def _snap(spot: float):
     feats["structure.net_gamma"] = 0.0
     feats["anchor.vwap_side"] = "above"
     feats["anchor.vwap_dist_pts"] = 0.0
-    feats["liquidity.absorption_score"] = None
-    feats["liquidity.continuation_score"] = None
+    feats["liquidity.range_imbalance_stall_score"] = None
+    feats["liquidity.range_imbalance_push_score"] = None
     return build_inference_snapshot_v1_from_feature_row(
         ticker="SPY", expiry=None, as_of_ts=1.0, features=feats
     )
@@ -48,7 +48,7 @@ def _snap_raw_spot(spot):
     feats["price.spot"] = spot
     return {
         "snapshot_type": "InferenceSnapshotV1",
-        "feature_contract_version": "v1_1m_mvp",
+        "feature_contract_version": "v1_1m_range_imbalance",
         "canonical_timeframe": "1m",
         "features": feats,
     }

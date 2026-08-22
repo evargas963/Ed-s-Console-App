@@ -28,8 +28,8 @@ def _minimal_valid_inference_v1():
     feats["structure.net_gamma"] = 0.0
     feats["anchor.vwap_side"] = "above"
     feats["anchor.vwap_dist_pts"] = 0.1
-    feats["liquidity.absorption_score"] = None
-    feats["liquidity.continuation_score"] = None
+    feats["liquidity.range_imbalance_stall_score"] = None
+    feats["liquidity.range_imbalance_push_score"] = None
     return build_inference_snapshot_v1_from_feature_row(
         ticker="SPY",
         expiry=None,
@@ -107,7 +107,7 @@ def test_raw_l1_payload_rejected_at_guard():
     from features.xgb_model_input import assert_not_raw_l1_payload, XgbInferenceInputError
 
     with pytest.raises(XgbInferenceInputError, match="liquidity_summary"):
-        assert_not_raw_l1_payload({"liquidity_summary": {"absorption_score": 1.0}})
+        assert_not_raw_l1_payload({"liquidity_summary": {"range_imbalance_stall_score": 1.0}})
 
 
 def test_run_unified_stack_ml_once_requires_inference_snapshot_v1():

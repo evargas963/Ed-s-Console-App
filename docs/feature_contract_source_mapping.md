@@ -1,6 +1,6 @@
 > **Classification:** Policy Specification | **Scope:** Technical documentation `docs/feature_contract_source_mapping.md`.
 
-# MVP source → canonical mapping (`v1_1m_mvp`)
+# MVP source → canonical mapping (`v1_1m_range_imbalance`)
 
 Exact field mapping used by `build_live_mvp_feature_row` and `build_db_mvp_feature_row`.
 Coercion rules live in `features/mvp_source_coercion.py` (strict: missing ≠ invalid).
@@ -17,8 +17,8 @@ Coercion rules live in `features/mvp_source_coercion.py` (strict: missing ≠ in
 | `structure.net_gamma` | `net_gamma` | `net_gamma` | Net gamma exposure snapshot. |
 | `anchor.vwap_side` | `vwap_side` (flat; **not** `spot_anchors`) | `vwap_side` | Position of spot vs session VWAP (`above` / `below`). |
 | `anchor.vwap_dist_pts` | `dist_to_vwap_pts` | `vwap_dist_pts` | Spot − VWAP in **points** (signed). |
-| `liquidity.absorption_score` | `liquidity_summary['absorption_score']` | `absorption_score` | Absorption score from liquidity slice. |
-| `liquidity.continuation_score` | `liquidity_summary['continuation_score']` | `continuation_score` | Continuation score from liquidity slice. |
+| `liquidity.range_imbalance_stall_score` | `liquidity_summary['range_imbalance_stall_score']` | `range_imbalance_stall_score` | Range×imbalance stall (RC-455). Historical `absorption_score` is a different era and is never mapped. |
+| `liquidity.range_imbalance_push_score` | `liquidity_summary['range_imbalance_push_score']` | `range_imbalance_push_score` | Range×imbalance push (RC-455). Historical `continuation_score` is never mapped. |
 
 ### Live-only nesting
 

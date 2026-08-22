@@ -56,7 +56,7 @@ def test_preflight_failed_is_not_core_success() -> None:
             ticker="SPY",
             horizon="1c",
             outcome=TrainingOutcome.preflight_failed,
-            extra={"error": "row 0: MVP coercion failed: liquidity.absorption_score"},
+            extra={"error": "row 0: MVP coercion failed: liquidity.range_imbalance_stall_score"},
         )
     ]
     assert compute_run_exit_code(entries) == 1

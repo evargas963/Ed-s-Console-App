@@ -42,8 +42,9 @@ L1_DECISION_SPOT_ANCHORS_KEYS: Final[tuple[str, ...]] = ("vwap", "vwap_side", "d
 
 L1_DECISION_LIQUIDITY_SUMMARY_KEYS: Final[tuple[str, ...]] = (
     "behavior_label",
-    "absorption_score",
-    "continuation_score",
+    "range_imbalance_label",
+    "range_imbalance_stall_score",
+    "range_imbalance_push_score",
 )
 
 L1_DECISION_READINESS_SUMMARY_KEYS: Final[tuple[str, ...]] = (

@@ -248,7 +248,10 @@ SCALE_INVARIANT_COLS = [
     # (absent from CATEGORICALS + LSTM FEATURES_5M/1M). The news_sentiment producer and the
     # /api/state news headline display stay as display-only (not model features); the DB column
     # DROP is post-retrain hygiene. FEATURE_SCHEMA_VERSION bumped so this fail-closes serving.
-    "absorption_score", "continuation_score",
+    # RC-455: absorption_score / continuation_score WITHHELD — those columns are a
+    # false microstructure identity (OHLCV×imbalance proxy). Historical rows stay
+    # in the DB as semantic-era v0 quarantine and must not train or serve.
+    # range_imbalance_* is descriptive UI/API only until a host retrain admits it.
 ]
 
 # Price-action cone (operator 2026-06-11): the 27 pa_* columns persisted by
@@ -269,7 +272,9 @@ CATEGORICALS = [
     "charm_direction", "charm_magnitude", "iv_direction",
     "combined_signal", "combined_conviction",
     "pressure_label", "pressure_trend",
-    "liquidity_behavior_label",
+    # RC-455: liquidity_behavior_label withheld — vocab was absorption_heavy /
+    # continuation_heavy over a false identity. range_imbalance_label is not
+    # admitted to the training cone in this landing.
 ]
 
 NUMERIC_FEATURES     = ALL_DB_COLS

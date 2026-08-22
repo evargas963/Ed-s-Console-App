@@ -244,7 +244,7 @@ def test_inference_snapshot_parent_missing_lineage_fails():
     feats = _minimal_features()
     snap = {
         "snapshot_type": "InferenceSnapshotV1",
-        "feature_contract_version": "v1_1m_mvp",
+        "feature_contract_version": "v1_1m_range_imbalance",
         "canonical_timeframe": "1m",
         "source": "live_l1_tier_b",
         "features": feats,
@@ -538,20 +538,20 @@ _GOLDEN_DB_ROW = {
     "spot": 512.34, "spread": 0.02, "zone": "breakout",
     "nearest_above_dist": 1.25, "nearest_below_dist": 0.75, "net_gamma": -1234.5,
     "vwap_side": "above", "vwap_dist_pts": 0.6,
-    "absorption_score": 0.41, "continuation_score": 0.59,
+    "range_imbalance_stall_score": 0.41, "range_imbalance_push_score": 0.59,
 }
 _GOLDEN_L1_PAYLOAD = {
     "spot": 512.34, "spread_pts": 0.02, "zone": "breakout",
     "nearest_above_dist": 1.25, "nearest_below_dist": 0.75, "net_gamma": -1234.5,
     "vwap_side": "above", "dist_to_vwap_pts": 0.6,
-    "liquidity_summary": {"absorption_score": 0.41, "continuation_score": 0.59},
+    "liquidity_summary": {"range_imbalance_stall_score": 0.41, "range_imbalance_push_score": 0.59},
 }
 _GOLDEN_EXPECTED = {
     "price.spot": 512.34, "price.spread_pts": 0.02, "structure.zone": "breakout",
     "structure.nearest_above_dist": 1.25, "structure.nearest_below_dist": 0.75,
     "structure.net_gamma": -1234.5, "anchor.vwap_side": "above",
-    "anchor.vwap_dist_pts": 0.6, "liquidity.absorption_score": 0.41,
-    "liquidity.continuation_score": 0.59,
+    "anchor.vwap_dist_pts": 0.6, "liquidity.range_imbalance_stall_score": 0.41,
+    "liquidity.range_imbalance_push_score": 0.59,
 }
 
 
@@ -612,5 +612,5 @@ def test_golden_row_survives_inference_snapshot_envelope():
         ticker="SPY", expiry=None, as_of_ts=1_780_000_000.0, db_row=dict(_GOLDEN_DB_ROW),
     )
     assert snap["features"] == _GOLDEN_EXPECTED
-    assert snap["feature_contract_version"] == "v1_1m_mvp"
+    assert snap["feature_contract_version"] == "v1_1m_range_imbalance"
     assert snap["feature_quality"]["missing_count"] == 0

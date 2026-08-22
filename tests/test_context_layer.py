@@ -26,10 +26,12 @@ def test_liquidity_behavior_scores():
         candle_body_pts=0.05,
         order_flow_score=55.0,
     )
-    assert "absorption_score" in d and "continuation_score" in d
-    assert 0.0 <= d["absorption_score"] <= 1.0
-    assert 0.0 <= d["continuation_score"] <= 1.0
-    assert d["behavior_label"] in ("absorption_heavy", "continuation_heavy", "balanced")
+    assert "range_imbalance_stall_score" in d and "range_imbalance_push_score" in d
+    assert 0.0 <= d["range_imbalance_stall_score"] <= 1.0
+    assert 0.0 <= d["range_imbalance_push_score"] <= 1.0
+    assert d["range_imbalance_label"] in ("stall_heavy", "push_heavy", "balanced")
+    assert d["absorption_score"] is None
+    assert d["continuation_score"] is None
 
 
 def test_article_datetime_parse():
@@ -57,6 +59,9 @@ def test_snapshot_row_has_context_fields():
 
     assert "sentiment_composite" in SnapshotRow.__dataclass_fields__
     assert "absorption_score" in SnapshotRow.__dataclass_fields__
+    assert "range_imbalance_stall_score" in SnapshotRow.__dataclass_fields__
+    assert "range_imbalance_push_score" in SnapshotRow.__dataclass_fields__
+    assert "range_imbalance_label" in SnapshotRow.__dataclass_fields__
 
 
 if __name__ == "__main__":
