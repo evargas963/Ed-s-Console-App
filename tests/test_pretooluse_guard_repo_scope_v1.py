@@ -194,7 +194,11 @@ def test_master_does_not_admit_when_no_unresolved_item_exists():
 
 
 def test_live_active_item_does_not_admit_unrelated_production_file():
-    """Unresolved rows admit only their exact SURFACES= paths."""
+    """Unresolved rows admit only their exact SURFACES= paths.
+
+    OS-A2-001 is PASS, so its SURFACES no longer admit production edits.
+    server.py / db.py stay closed unless another unresolved item lists them.
+    """
     cur = (REPO / G.SOLE_MASTER).read_text(encoding="utf-8")
     assert G.master_admits_production_edit(
         "tools/pretooluse_guard.py", current_text=cur, head_text=""
@@ -202,7 +206,7 @@ def test_live_active_item_does_not_admit_unrelated_production_file():
     assert G.master_admits_production_edit(
         "tools/check_institutional_correctness.py", current_text=cur, head_text=""
     )
-    assert G.master_admits_production_edit(
+    assert not G.master_admits_production_edit(
         "server.py", current_text=cur, head_text=""
     )
     assert not G.master_admits_production_edit(
