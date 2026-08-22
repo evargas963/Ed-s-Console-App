@@ -623,7 +623,7 @@ def test_second_work_list_flags_unresolved_mark_outside_master(tmp_path):
         "# master\n- [ ] stay here\n", encoding="utf-8"
     )
     (tmp_path / "README.md").write_text(
-        "UNRESOLVED_WORK_ITEM: fake leftover\n", encoding="utf-8"
+        "UNRESOLVED_WORK_ITEM" + ": fake leftover\n", encoding="utf-8"
     )
     import subprocess
     subprocess.check_call(["git", "init"], cwd=tmp_path)
@@ -631,3 +631,60 @@ def test_second_work_list_flags_unresolved_mark_outside_master(tmp_path):
     off = FIF.second_work_list_violations({"_check_second_list": True}, repo=tmp_path)
     assert off, "injected unresolved work outside the sole master must BLOCK"
     assert any("README.md" in rid for rid, _ in off)
+
+
+def test_second_work_list_flags_queue_table_without_magic_marker(tmp_path):
+    """Actual bypass: Operator NOW / standing-queue table, no UNRESOLVED_WORK_ITEM."""
+    (tmp_path / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").write_text(
+        "# master\n- [ ] stay here\n", encoding="utf-8"
+    )
+    cols = " | ".join(["ID", "Status", "Work item"])
+    row = " | ".join(["ZZ-99", "NEXT", "hidden second list"])
+    body = "\n".join([
+        "## Operator NOW",
+        f"| {cols} |",
+        "|---|---|---|",
+        f"| {row} |",
+        "",
+    ])
+    assert "UNRESOLVED_WORK_ITEM" not in body
+    (tmp_path / "SECOND_QUEUE.md").write_text(body, encoding="utf-8")
+    import subprocess
+    subprocess.check_call(["git", "init"], cwd=tmp_path)
+    subprocess.check_call(["git", "add", "-A"], cwd=tmp_path)
+    off = FIF.second_work_list_violations({"_check_second_list": True}, repo=tmp_path)
+    assert off, "queue table without magic marker must BLOCK"
+    assert any("SECOND_QUEUE.md" in rid for rid, _ in off)
+
+
+def test_second_work_list_scans_python_source_comments(tmp_path):
+    (tmp_path / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").write_text(
+        "# master\n- [ ] stay here\n", encoding="utf-8"
+    )
+    (tmp_path / "hidden_debt.py").write_text(
+        "# " + "UNRESOLVED_WORK_ITEM" + ": sneak in a comment\nprint(1)\n",
+        encoding="utf-8",
+    )
+    import subprocess
+    subprocess.check_call(["git", "init"], cwd=tmp_path)
+    subprocess.check_call(["git", "add", "-A"], cwd=tmp_path)
+    off = FIF.second_work_list_violations({"_check_second_list": True}, repo=tmp_path)
+    assert off, "Python source comment work must BLOCK"
+    assert any("hidden_debt.py" in rid for rid, _ in off)
+
+
+def test_second_work_list_does_not_treat_test_assert_fail_as_work(tmp_path):
+    (tmp_path / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").write_text(
+        "# master\n- [ ] stay here\n", encoding="utf-8"
+    )
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_expected_fail.py").write_text(
+        "def test_cell():\n    assert status == \"FAIL\"\n",
+        encoding="utf-8",
+    )
+    import subprocess
+    subprocess.check_call(["git", "init"], cwd=tmp_path)
+    subprocess.check_call(["git", "add", "-A"], cwd=tmp_path)
+    off = FIF.second_work_list_violations({"_check_second_list": True}, repo=tmp_path)
+    assert off == [], off

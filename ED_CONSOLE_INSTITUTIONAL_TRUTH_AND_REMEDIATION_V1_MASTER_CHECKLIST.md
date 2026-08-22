@@ -7,17 +7,27 @@ automatically current PASS.
 **Writer law (current):** ONE WORKTREE TOTAL. ONE ACTIVE WRITER. Cursor or Claude
 eligible. Operator chooses. This worktree ACTIVE_WRITER = cursor.
 
-**Reconciled from:** this parent mission's detailed PA-1..PA-47 board (was carried
-inside `OPEN_ITEMS.md`) and the older ordered institutional master
-(`governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` @ pre-`0dcdf4da`, 381 lines;
-the filename `ED_CONSOLE_INSTITUTIONAL_MASTER_CHECKLIST_v0_2.md` is not in this
-tree). Unique v0.2 lanes that are not already a PA requirement are listed once
-under the matching P-level.
+**Reconciled from (authoritative inputs, not substitutes for each other):**
+1. Exact operator 1,284-line `ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1`
+   checklist body — **EXTERNAL_DATA_UNAVAILABLE** in this worktree and this run's
+   transcript (no paste, no attachment, no git blob of 1284 lines). ONE-LIST PASS
+   is not claimed until that body is restored and mapped requirement-by-requirement.
+2. PA-1..PA-47 board recovered from `OPEN_ITEMS.md` @ `aea7dcfd` (1083 boxes;
+   997 unchecked). Not assumed equivalent to the 1284-line operator paste.
+3. Older ordered institutional master
+   `governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` @ pre-`0dcdf4da` (381 lines;
+   filename `ED_CONSOLE_INSTITUTIONAL_MASTER_CHECKLIST_v0_2.md` is not in this tree).
+4. Exhaustive tracked text-like census (source + comments + historical evidence).
 
-**Not a work queue:** `OPEN_ITEMS.md`, `ACTIVE_PROGRAM.md` queues,
+**Not a work queue:** `OPEN_ITEMS.md`, `ACTIVE_PROGRAM.md`,
 `governance/root_cause_log.md`, `governance/unproven_register.md`,
-`governance/vendor_field_discovery_register.md`, `governance/requirement_tree.json`
-(derived view only). Reports and git are evidence.
+`governance/vendor_field_discovery_register.md`. `governance/requirement_tree.json`
+is a derived parent/child proof-ID view of `<!-- REQ ... -->` comments only —
+not a comprehensive tree of these checkbox rows and not a second checklist.
+Reports and git are evidence.
+
+**Completeness this turn (NOT ONE-LIST PASS):** `reports/one_list_completeness_proof.md`.
+operator-1284 = 0/1284 EXTERNAL_DATA_UNAVAILABLE. Equation: 997+3-0-52=948.
 
 **Stale-fact corrections applied during reconcile (do not restore the old FAIL):**
 - L1 identical observation restatements are suppressed (RC-463); distinct same-ms triples kept.
@@ -57,7 +67,7 @@ under the matching P-level.
 
 ## Narrow child closures (derived 2026-08-22 — do not read as parent PASS)
 
-Machine-derived view: `governance/requirement_tree.json` (must match this file). Derived proof: `reports/requirement_proof_latest.json`. RC log is historical evidence only — not a work queue. A child PASS never closes a parent.
+Machine-derived parent/child proof IDs: `governance/requirement_tree.json` (must match the `<!-- REQ ... -->` comments only; not these checkbox rows). Derived proof: `reports/requirement_proof_latest.json`. RC log is historical evidence only — not a work queue. A child PASS never closes a parent.
 
 - [x] **OF_COMPOSITE_RETIRED** — retired Order Flow composite/verdict producer family (RC-454; `tests/test_stack_wire_5_v1.py`). Parent Order Flow remains NOT_PROVEN.
 - [x] **OF_ENGINE_ABSORPTION_RETIRED** — engine `_compute_absorption` ratio retired (RC-456; `tests/test_book_tape_batch_geometry_v1.py`).
@@ -187,7 +197,7 @@ This is the single ruling standard. Everything specific is a CHECK under it, nev
 
 ## Now — post-slimming sequence
 
-- [ ] **LP-01 Institutional session liquidity / value levels** — **TOP OF QUEUE (operator 2026-07-27).** Not SMC “liquidity pools.” Fix VP (volume across bar range, not typical-price dump); overnight = prior trading close→open; demote sell/buy-side liquidity labels until stop-cluster levels are proven; surface POC/VAH/VAL + PDH/PDL + ORB + VWAP on Chart and/or Console v2 (Liquidity Map is in hidden `#main`); touch→forward-return proof vs TOD base rate before any Decide influence. Code: `liquidity_value_engine.py`, `liquidity_models.py`, `/api/liquidity-snapshot`. Program row: `ACTIVE_PROGRAM.md` LP-01. Related residual: UI-04 P1D (PDH walk-back — prior trading day already fixed; overnight still calendar-blind).
+- [ ] **LP-01 Institutional session liquidity / value levels** — P0.1 living residual on the sole P0.1→P4 spine (not an independent Operator NOW / TOP OF QUEUE). Not SMC “liquidity pools.” Fix VP (volume across bar range, not typical-price dump); overnight = prior trading close→open; demote sell/buy-side liquidity labels until stop-cluster levels are proven; surface POC/VAH/VAL + PDH/PDL + ORB + VWAP on Chart and/or Console v2 (Liquidity Map is in hidden `#main`); touch→forward-return proof vs TOD base rate before any Decide influence. Code: `liquidity_value_engine.py`, `liquidity_models.py`, `/api/liquidity-snapshot`. Related residual: UI-04 P1D (PDH walk-back — prior trading day already fixed; overnight still calendar-blind).
 - [x] **RECON-01 Operator-doc reconciliation** — `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closed @ `5c5f239` (PR #45).
 - [ ] **RECON-02 Disk-cleanup purge** — ~53.3 GB quarantined (moved, not deleted) 2026-07-15/16. Purge only after one clean trading session AND the operator gives the purge word. Separately: `_backup_pre_exec_identity_v1_20260713.db` (19.29 GB) holds until ~5 clean trading days after the slimming merge. **UPDATE 2026-07-26: the slimming merge landed — RC-6 blob-dedup slimmed the live DB 29.74 → 22.06 GB (verified on a copy, swapped live; original preserved as `data/ed_console.pre_rc6_20260726.db`). The 5-clean-day clock for the pre_exec backup now RUNS from 2026-07-26.** Full purge candidate set + gates: `reports/fp_db_deletion_gating_latest.json`.
 - [ ] **OPS-OPERABLE-SURFACE-JOB** — ALSO covers (2026-07-20, operator-approved): daily terrain scorecard at 15:30 CT — `python tools/terrain_backtest_report_v1.py` → `reports/terrain_backtest_latest.md`; host task to be registered by the operator with this row as its visible record (`schtasks /Create /SC DAILY /TN EdTerrainScorecard /TR "cmd /c cd /d C:\Users\evarg\Documents\Trading\EdWebConsole && python tools\terrain_backtest_report_v1.py" /ST 15:30`). Recurring Collect job not yet registered on the host: `python -m tools.run_operable_surface_ops --db data/ed_console.db` (production backfill tol=29 + gate). Optional end-of-day: `--refresh-outcomes --repair59 --quarantine`. Durable gate: `python -m tools.operable_surface_gate --db data/ed_console.db --write-report`. Do not create a silent Windows task without an operator-visible inventory row (see FIND-SCHEDULED-JOBS-VISIBILITY).

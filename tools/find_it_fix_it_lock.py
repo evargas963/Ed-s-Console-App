@@ -51,8 +51,15 @@ SOLE_MASTER_REL = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHEC
 SOLE_MASTER_PATH = REPO / SOLE_MASTER_REL
 
 _UNRESOLVED_BOX = re.compile(r"(?m)^\s*[-*]\s+\[\s\]\s+")
-_UNRESOLVED_MARK = re.compile(r"UNRESOLVED_WORK_ITEM\s*:", re.I)
-_SECOND_LIST_SKIP_PREFIX = (
+_UNRESOLVED_MARK = re.compile("UNRESOLVED_WORK_ITEM" + r"\s*:", re.I)
+# Vendor/generated only. Historical evidence prefixes are still searched; they
+# may not host a live second queue (magic marker or ID/Status/Work table).
+_SECOND_LIST_VENDOR_PREFIX = (
+    "node_modules/",
+    ".venv/",
+    "__pycache__/",
+)
+_SECOND_LIST_HISTORICAL_PREFIX = (
     "reports/",
     "tests/",
     "docs/",
@@ -61,12 +68,17 @@ _SECOND_LIST_SKIP_PREFIX = (
     "governance/register_slices/",
     "governance/archive/",
     "governance/design_history/",
-    "node_modules/",
-    ".venv/",
 )
 _SECOND_LIST_TEXT_EXT = frozenset({
     ".md", ".txt", ".rst", ".json", ".yaml", ".yml", ".toml",
+    ".py", ".pyi", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
+    ".html", ".htm", ".css", ".scss", ".less",
+    ".sql", ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd",
+    ".cfg", ".ini", ".xml", ".csv", ".mdc", ".jsonl",
 })
+_QUEUE_TABLE_HEADER = re.compile(
+    r"(?im)^\|\s*ID\s*\|\s*Status\s*\|\s*Work(?: item)?\s*\|"
+)
 
 PARENT_MISSION_TOKENS = (
     "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1",
@@ -643,6 +655,28 @@ def _requirement_items(payload: dict | None) -> list[dict[str, Any]]:
     return [i for i in items if isinstance(i, dict) and i.get("id")]
 
 
+def _is_text_like_work_file(rel_n: str) -> bool:
+    suf = Path(rel_n).suffix.lower()
+    if suf in _SECOND_LIST_TEXT_EXT:
+        return True
+    return Path(rel_n).name.lower() in {"makefile", "dockerfile", "gemfile", "procfile"}
+
+
+def _has_second_queue_table(text: str) -> bool:
+    """Operator NOW / standing-queue ID/Status/Work table, with or without a magic marker."""
+    if not _QUEUE_TABLE_HEADER.search(text):
+        return False
+    for ln in text.splitlines():
+        stripped = ln.strip()
+        if _QUEUE_TABLE_HEADER.match(stripped):
+            continue
+        if re.match(r"^\|\s*:?-{2,}", stripped):
+            continue
+        if re.match(r"^\|\s*[A-Za-z0-9][A-Za-z0-9._-]*\s*\|", stripped):
+            return True
+    return False
+
+
 def second_work_list_violations(
     payload: dict | None = None,
     *,
@@ -658,7 +692,6 @@ def second_work_list_violations(
     if not (repo / master_rel).is_file():
         return [("(sole_master)", "sole master checklist missing — one-list law fail-closed")]
     try:
-        import subprocess
         listed = subprocess.check_output(
             ["git", "ls-files"],
             cwd=str(repo),
@@ -671,10 +704,9 @@ def second_work_list_violations(
         rel_n = rel.replace("\\", "/")
         if rel_n == master_rel:
             continue
-        if any(rel_n.startswith(p) for p in _SECOND_LIST_SKIP_PREFIX):
+        if any(rel_n.startswith(p) for p in _SECOND_LIST_VENDOR_PREFIX):
             continue
-        suf = Path(rel_n).suffix.lower()
-        if suf not in _SECOND_LIST_TEXT_EXT:
+        if not _is_text_like_work_file(rel_n):
             continue
         path = repo / rel_n
         try:
@@ -683,6 +715,15 @@ def second_work_list_violations(
             continue
         if _UNRESOLVED_MARK.search(text):
             out.append((rel_n, "UNRESOLVED_WORK_ITEM outside the sole master — one-list law"))
+            continue
+        if _has_second_queue_table(text):
+            out.append((
+                rel_n,
+                "ID/Status/Work queue table outside the sole master — one-list law",
+            ))
+            continue
+        historical = any(rel_n.startswith(p) for p in _SECOND_LIST_HISTORICAL_PREFIX)
+        if historical:
             continue
         if _UNRESOLVED_BOX.search(text):
             out.append((rel_n, "unchecked work box outside the sole master — one-list law"))

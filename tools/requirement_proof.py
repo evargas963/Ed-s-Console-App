@@ -1,7 +1,10 @@
 """Parent/child requirement proof (RC-459).
 
 Sole master: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md
-Derived machine view: governance/requirement_tree.json (must match master REQ comments)
+Derived machine view: governance/requirement_tree.json
+  — parent/child proof IDs from <!-- REQ ... --> comments ONLY.
+  — NOT a comprehensive tree of master checklist boxes.
+  — NOT a second checklist; do not maintain it independently.
 Derived proof: reports/requirement_proof_latest.json
 RC log is historical evidence, not a work queue.
 
@@ -46,6 +49,12 @@ def parse_master(path: Path | None = None) -> dict:
         raise ValueError("sole master has no REQ comments")
     return {
         "authority": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md",
+        "scope": "parent_child_proof_ids_only",
+        "comprehensive_checklist": False,
+        "note": (
+            "Derived from <!-- REQ ... --> comments only. This is not a comprehensive "
+            "requirement tree of the master checkbox rows and is not a second checklist."
+        ),
         "derived_proof": "reports/requirement_proof_latest.json",
         "items": items,
     }
