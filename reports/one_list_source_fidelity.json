@@ -1,0 +1,15 @@
+{
+  "classification": "SOURCE FIDELITY. Metadata lives here, not in the immutable source.",
+  "FINAL_HEAD_SHA": "a26d0dff41bfef38f4494bf4055d653bc947d30f",
+  "DIRTY": false,
+  "SOURCE_LINE_COUNT": 2068,
+  "SOURCE_CONTENT_MATCH": true,
+  "SOURCE_SHA256": "f5e5614bab1d90026346de2595519f0b3e2efacf0e708219644f193ee96d659c",
+  "SOURCE_HAS_HEADER": false,
+  "SOURCE_HAS_CHECKBOX": false,
+  "SOURCE_START": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1 \u2014",
+  "SOURCE_END": "open.",
+  "RECOVERED_SHA256": "f5e5614bab1d90026346de2595519f0b3e2efacf0e708219644f193ee96d659c",
+  "SOURCE_LINE_COUNT_OPERATOR_ASSERTED": 1284,
+  "SOURCE_ORIGIN": "transcript message 4407 exact paste; no header; no rewrite"
+}

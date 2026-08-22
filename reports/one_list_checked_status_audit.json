@@ -1,0 +1,13 @@
+{
+  "classification": "CHECKED-STATUS AUDIT. Not a work list.",
+  "FINAL_HEAD_SHA": "a26d0dff41bfef38f4494bf4055d653bc947d30f",
+  "DIRTY": false,
+  "MASTER_CHECKED": 0,
+  "CHECKED_WITHOUT_CURRENT_EVIDENCE": 0,
+  "MISSING_STATUS": [],
+  "illegal_checked": [],
+  "status_counts": {
+    "NOT_PROVEN": 2362
+  },
+  "note": "No prior [x]/DONE/CLOSED/PASS was grandfathered. All boxes STATUS=NOT_PROVEN until current complete proof exists."
+}
