@@ -14,7 +14,7 @@ A sign-off ("MET", "clean", "verified", "no callers break", "100%", "stage passe
 - Open the written plan. Does this change still serve it? Did scope or goal slip? Did a stage get marked done that isn't? Is the acceptance GATE actually equal to the principle, or weaker (e.g., presence-only)?
 
 ## Phase 2 — Mechanical scans (MANDATORY — never skip)
-- **AST scan every changed signature/arity/return:** `python tools/enforce_all_rules.py --ast-callsites <FUNC>`. Confirm every call site's binding. (Catches multi-line + two-step unpacks regex misses.)
+- **AST scan every changed signature/arity/return:** walk callers with `ast` on tracked production files. `tools/enforce_all_rules.py` is deleted and is not a lock. Filename/regex hits are not binding.
 - Run the relevant gate(s) + tests **myself** (`--ablation-bias`, pytest) — never cite Cursor's pass count.
 
 ## Phase 3 — Known failure-class protocol (cite evidence for EACH; not a work queue)

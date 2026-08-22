@@ -13,7 +13,7 @@
     "source_table": "calibration_decision_log (read-only)",
     "prediction_field": "model_outputs_json -> stack_probs_bundle -> multi_horizon_ml_fusion_bundle.by_horizon[hz] (prob_up/prob_down/prob_flat, horizon_fusion_available only)",
     "truth_field": "outcome_{hz} (up/down/flat labels attached by calibration.backfill_outcomes)",
-    "row_gates": "calibration_trust='trusted' AND RTH (time_et.is_rth_ts_utc) AND outcome attached AND fusion available — same gates as calibration.daily_scoreboard",
+    "row_gates": "calibration_trust='trusted' AND tradable RTH (time_et.is_tradable_session_ts_utc) AND outcome attached AND fusion available — same gates as calibration.daily_scoreboard",
     "known_lineage_limits": [
       "OUTCOME_LINEAGE_NOT_PROVEN: outcome columns carry no writer/mutation lineage (scoreboard v4 standing disclosure)",
       "TIMESTAMP joins for historical rows may be nearest-within-tolerance, not identity; cohorts are reported, never silently pooled",

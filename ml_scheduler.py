@@ -277,7 +277,7 @@ def _training_ticker_union(
 def _get_tickers_with_rth_data(
     db_path: str, timeframe: str = None, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
 ) -> list[str]:
-    from ml_data_common import is_rth_ts_utc, training_base_where_clause
+    from ml_data_common import is_tradable_session_ts_utc, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
     _tf = timeframe or CANONICAL_TIMEFRAME
     if _tf != CANONICAL_TIMEFRAME:
@@ -298,7 +298,7 @@ def _get_tickers_with_rth_data(
         if not tkr or str(tkr).startswith("$"):
             continue
         try:
-            if is_rth_ts_utc(float(r[1])):
+            if is_tradable_session_ts_utc(float(r[1])):
                 tickers.add(tkr)
         except (TypeError, ValueError):
             continue

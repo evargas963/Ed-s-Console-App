@@ -1,7 +1,7 @@
 """Front-end hook for operating_process_lock (RC-217 / RC-226).
 
 Runs on PreToolUse (Edit/Write/StrReplace/Bash) and Stop. Exit 2 BLOCKS.
-Escape: ED_PROCESS_LOCK_GUARD=off (operator only).
+Escape: ED_PROCESS_LOCK_GUARD=off only when operator_go grants guard_escape or all.
 """
 from __future__ import annotations
 

@@ -106,6 +106,64 @@ def test_claude_cursor_guard_parity_blocks_drift():
     assert claude_cursor_parity_violations() == []
 
 
+def test_hook_parity_rejects_windows_only_interpreter_and_filename_presence():
+    """Filename in JSON is not wiring; Windows-only python.exe is not portable."""
+    from tools.find_prove_locks import claude_cursor_parity_violations
+
+    windows_only = {
+        "hooks": {
+            "stop": [
+                {"command": ".venv/Scripts/python.exe tools/stop_guard.py"},
+                {"command": ".venv/Scripts/python.exe tools/honesty_guard.py"},
+            ]
+        }
+    }
+    import json as _json
+    text = _json.dumps(windows_only)
+    v = claude_cursor_parity_violations(text, text)
+    assert v, "Windows-only interpreter must BLOCK"
+    assert any("run_with_repo_venv.py" in x or "Windows-only" in x for x in v)
+
+    filename_only = {
+        "hooks": {
+            "stop": [
+                {"command": "echo pretooluse_guard.py stop_guard.py honesty_guard.py "
+                            "operator_law_guard.py proof_only_guard.py process_lock_guard.py"}
+            ]
+        }
+    }
+    v2 = claude_cursor_parity_violations(_json.dumps(filename_only), _json.dumps(filename_only))
+    assert v2, "filename presence without --hook launcher must BLOCK"
+
+
+def test_run_with_repo_venv_hook_fail_closed_and_runs_without_venv(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    launcher = repo / "tools" / "run_with_repo_venv.py"
+    missing = subprocess.run(
+        [sys.executable, str(launcher), "--hook", "tools/does_not_exist_guard_zz.py"],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert missing.returncode == 2
+    probe = tmp_path / "ok_guard.py"
+    probe.write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+    ok = subprocess.run(
+        [sys.executable, str(launcher), "--hook", str(probe)],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert ok.returncode == 0
+    blocked = tmp_path / "block_guard.py"
+    blocked.write_text("import sys\nsys.exit(2)\n", encoding="utf-8")
+    blk = subprocess.run(
+        [sys.executable, str(launcher), "--hook", str(blocked)],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert blk.returncode == 2
+
+
 def test_claude_cursor_guard_parity_check():
     from tools.check_institutional_correctness import check_claude_cursor_guard_parity
 

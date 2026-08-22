@@ -231,7 +231,7 @@ def _fixture_db(tmp_path, n_days: int = 12, per_day: int = 30):
 
     rng = random.Random(11)
     classes = list(stats.CLASSES)
-    # Weekdays only, 10:00 ET start — inside RTH so is_rth_ts_utc passes.
+    # Weekdays only, 10:00 ET start — inside tradable RTH so is_tradable_session_ts_utc passes.
     day = datetime(2026, 6, 1, 10, 0, tzinfo=ET)
     rows = []
     days_done = 0

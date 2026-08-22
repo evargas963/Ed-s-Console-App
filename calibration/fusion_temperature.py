@@ -108,7 +108,7 @@ def load_fusion_calibration_rows(
     are excluded — their logged triplets predate the current serve stack and
     poison the temperature fit (see FIT_WINDOW_FLOOR_UTC).
     """
-    from time_et import is_rth_ts_utc
+    from time_et import is_tradable_session_ts_utc
 
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -126,7 +126,7 @@ def load_fusion_calibration_rows(
     out: dict[str, list[dict[str, Any]]] = {hz: [] for hz in HORIZON_SLUGS}
     try:
         for row in conn.execute(sql + " ORDER BY decision_ts_utc", params):
-            if not is_rth_ts_utc(float(row["decision_ts_utc"])):
+            if not is_tradable_session_ts_utc(float(row["decision_ts_utc"])):
                 continue
             try:
                 bundle = json.loads(row["model_outputs_json"] or "{}")

@@ -34,8 +34,8 @@ Contract:
     governance/ui_mockup_approvals.json is BLOCKED until the operator has approved a rendered
     mockup variant there (status='approved') — escape `# ui-mockup-ok: <reason>` for
     non-redesign bug fixes, ED_UI_MOCKUP_LOCK=off for the operator.
-  * ED_PRETOOLUSE_GUARD=off disables it. That is deliberate and visible: an operator may switch it
-    off, an agent may not silently route around it.
+  * ED_PRETOOLUSE_GUARD=off is ignored unless operator_go.json is granted with
+    scope guard_escape or all (tools/hard_law_runtime.env_guard_is_disabled).
 """
 from __future__ import annotations
 

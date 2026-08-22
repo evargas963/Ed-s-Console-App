@@ -9,11 +9,22 @@ The repo is institutional in nature. This is the single enforcement point; new
 correctness requirements are added as CHECKS here, never as new separate locks.
 
 Run:  python tools/check_institutional_correctness.py
-Exit non-zero on any violation. Intended for pre-commit / CI.
+Exit non-zero on any ENFORCED violation.
+
+Binding (do not advertise a later/weaker boundary as the earlier one):
+  * Commit: tools/precommit_institutional.py refuses ENFORCED-check
+    DELETE/DOWNGRADE (roster) and runs staged-scoped ENFORCED checks
+    (index-aware: five-why, significance substance, datasheet).
+  * Merge: .github/workflows/hardening.yml runs
+    tools/check_delta_adds_no_debt.py — NEW/WORSENED ENFORCED counts vs
+    origin/main BLOCK. Inherited debt may be nonzero. This is a delta
+    gate, not absolute-zero correctness of the whole tree.
+  * Whole-tree --enforced-only is a measurement / CI input, not the
+    local commit catalog (RC-406).
 
 Registered checks (see CHECKS at the bottom — that list is the authority):
 
-  ENFORCED (must be zero; blocks pre-commit)
+  ENFORCED (must be zero on the delta / staged-scoped path that owns them)
     - no_synthetic_domain_fixtures_in_tests : tests exercise REAL data, not hand-built
       option-chain fixtures that can be tuned to pass ("no fake tests").
     - no_swallowed_test_failures : a helper that PRINTS a failure must also cause one.
@@ -4298,23 +4309,14 @@ def check_plus_player_law() -> list[Violation]:
 
 
 def plus_player_cursor_hooks_violations(hooks_text: str | None = None) -> list[str]:
-    """Callee for check_plus_player_cursor_hooks."""
-    p = REPO / ".cursor" / "hooks.json"
+    """ONE computation with claude_cursor_parity_violations — filename presence is not wiring."""
+    try:
+        from tools.find_prove_locks import claude_cursor_parity_violations
+    except ImportError:
+        from find_prove_locks import claude_cursor_parity_violations  # type: ignore
     if hooks_text is None:
-        if not p.is_file():
-            return [".cursor/hooks.json missing — Cursor continuum cannot invoke .py guards (RC-205)"]
-        hooks_text = p.read_text(encoding="utf-8", errors="replace")
-    need = (
-        "operator_law_guard.py",
-        "pretooluse_guard.py",
-        "stop_guard.py",
-        "proof_only_guard.py",
-        "honesty_guard.py",
-    )
-    missing = [n for n in need if n not in hooks_text]
-    if missing:
-        return [f".cursor/hooks.json must invoke {', '.join(missing)} (same .py as Claude)"]
-    return []
+        return claude_cursor_parity_violations()
+    return claude_cursor_parity_violations(cursor_text=hooks_text)
 
 
 def check_plus_player_cursor_hooks() -> list[Violation]:
@@ -4324,8 +4326,9 @@ def check_plus_player_cursor_hooks() -> list[Violation]:
     soft .mdc rules; meta-check only required two of five Stop/PreToolUse scripts, so
     honesty/proof/stop could silently unwired.
 
-    Rule: .cursor/hooks.json names pretooluse_guard, operator_law_guard, stop_guard,
-    proof_only_guard, honesty_guard.
+    Rule: .cursor/hooks.json and .claude/settings.json invoke the six guards via
+    tools/run_with_repo_venv.py --hook (ONE computation: claude_cursor_parity_violations).
+    Filename presence is not wiring.
 
     HOW VALIDATED: tests/test_plus_player_law_v1.py / test_honesty_guard_v1.py drive
     plus_player_cursor_hooks_violations with empty/partial text -> BLOCK; live file must pass.
@@ -4857,7 +4860,7 @@ def check_rc_document_without_resolve() -> list[Violation]:
 
 
 CHECKS = [
-    # ENFORCED (must be zero — block pre-commit):
+    # ENFORCED (must be zero on the owning path — commit staged-scoped / CI delta):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),

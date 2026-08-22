@@ -75,7 +75,7 @@ def load_cell_rows(
     trusted calibration rows, RTH decisions only, horizon fusion available with
     a finite probability triplet, and an attached up/down/flat outcome label.
     """
-    from time_et import ET, is_rth_ts_utc
+    from time_et import ET, is_tradable_session_ts_utc
 
     cells: dict[tuple[str, str], list[dict[str, Any]]] = {
         (t, hz): [] for t in tickers for hz in horizons
@@ -94,7 +94,7 @@ def load_cell_rows(
         )
         for row in conn.execute(sql, tickers):
             ts = float(row["decision_ts_utc"])
-            if not is_rth_ts_utc(ts):
+            if not is_tradable_session_ts_utc(ts):
                 continue
             try:
                 bundle = json.loads(row["model_outputs_json"] or "{}")

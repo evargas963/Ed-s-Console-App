@@ -119,7 +119,7 @@ def _strip_command_payloads(cmd: str) -> str:
 def reset_guard_violations(command: str) -> list[str]:
     """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231/RC-252).
 
-    Escapes: ED_RESET_GUARD=off (operator, visible) or operator_go scope git_reset_product.
+    Escapes: ED_RESET_GUARD=off only when operator_go grants guard_escape/all, or operator_go scope git_reset_product.
     `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
     """
     try:
@@ -144,7 +144,7 @@ def reset_guard_violations(command: str) -> list[str]:
             "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
             f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
             "— three 2026-08-03 wipes used exactly this class. Escape: ED_RESET_GUARD=off "
-            "(operator) or operator_go scope git_reset_product."
+            "only with operator_go guard_escape/all, or operator_go scope git_reset_product."
         ]
     return []
 

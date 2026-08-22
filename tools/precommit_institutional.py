@@ -122,10 +122,38 @@ def main() -> int:
             "single most valuable regression to catch (RC-391); it is refused at commit. The "
             "whole-tree added-violation delta is proven separately in CI.", file=sys.stderr)
         return 1
+    # Staged-scoped ENFORCED checks already read `git diff --cached`. Running them
+    # here is the earliest commit boundary that is not the 250s whole-tree catalog
+    # (RC-406). Whole-tree added-violation delta remains CI-only.
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.check_institutional_correctness import (
+        check_collect_datasheet_staged,
+        check_find_prove_significance_substance,
+        check_recursive_five_why_front_loaded,
+    )
+    staged_hits = []
+    for name, fn in (
+        ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded),
+        ("find_prove_significance_substance", check_find_prove_significance_substance),
+        ("collect_datasheet_staged", check_collect_datasheet_staged),
+    ):
+        for v in fn():
+            staged_hits.append(f"{name}: {v.path} {v.msg}")
+    if staged_hits:
+        print(
+            "institutional gate BLOCKED: staged-scoped ENFORCED check(s) failed "
+            "(these already bind in CI delta; catching them at commit is the "
+            "earliest deterministic boundary):",
+            file=sys.stderr,
+        )
+        for line in staged_hits[:20]:
+            print(f"  {line}", file=sys.stderr)
+        return 1
     print(
         f"institutional correctness: enforced-check roster intact ({len(cand_roster)} enforced); "
-        "whole-tree added-violation delta enforced in CI (.github/workflows/hardening.yml, same "
-        "check_delta_adds_no_debt.py owner). (RC-406)")
+        "staged-scoped ENFORCED checks clean; whole-tree added-violation delta enforced in CI "
+        "(.github/workflows/hardening.yml, same check_delta_adds_no_debt.py owner). (RC-406)")
     return 0
 
 

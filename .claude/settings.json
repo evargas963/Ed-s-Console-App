@@ -1,5 +1,5 @@
 {
-  "_comment_guard_switches": "EMERGENCY BRAKE (RC-379, 2026-08-15). Every guard reads its own env switch and treats 'off'/'0'/'false' as disabled; any other value leaves it ON, so the entries below are a no-op that exists to make the switches DISCOVERABLE. RC-379 was a guard bug that blocked every Stop in the session while naming no unmet obligation, and the operator had no listed way to shut one off without reading source. To disable a guard: change its value here to 'off'. PreToolUse guards are the cheap ones (they redirect a single tool call); the Stop guards are where turn-level cost lives. Turning all six off removes the machinery that catches unmeasured claims and unverified production edits.",
+  "_comment_guard_switches": "Switches are DISCOVERABLE here. ED_*_GUARD=off is NOT an unauthenticated escape: tools/hard_law_runtime.env_guard_is_disabled ignores off unless governance/operator_go.json is granted=true by the operator with scope guard_escape or all (NIST SSDF PW.1 / prevent unauthorized control disable). PreToolUse guards redirect a single tool call; Stop guards are turn-level.",
   "env": {
     "ED_AGENT_ROLE": "claude",
     "ED_PRETOOLUSE_GUARD": "on",
@@ -16,15 +16,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/pretooluse_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/pretooluse_guard.py"
           },
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/operator_law_guard.py"
           },
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/process_lock_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/process_lock_guard.py"
           }
         ]
       },
@@ -33,11 +33,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/operator_law_guard.py"
           },
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/process_lock_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/process_lock_guard.py"
           }
         ]
       }
@@ -47,32 +47,32 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/stop_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/stop_guard.py"
           },
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/proof_only_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/proof_only_guard.py"
           },
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/honesty_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/honesty_guard.py"
           },
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/operator_law_guard.py"
           },
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/process_lock_guard.py"
+            "command": "python3 tools/run_with_repo_venv.py --hook tools/process_lock_guard.py"
           }
         ]
       }
     ]
   },
-  "_comment_process_lock_guard": "RC-217 (operator 2026-08-03): the day's failures were PROCESS failures — two agents writing one tree, claims measured an hour before they were made, a killed pre-commit stripping the worktree, LIVE claimed while the running PID predated the commit. governance/AGENT_OPERATING_PROCESS_V1.md is the checklist; tools/operating_process_lock.py is the mechanism; tools/process_lock_guard.py fires it on PreToolUse (sole-writer edit protection on protected paths; git-commit checks incl. operator_go.granted for held surfaces) and Stop (completion-claim vs measured state; index-vs-worktree mismatch on enforcement paths; DISK_ONLY-vs-LIVE honesty for the running console PID). Parity with .cursor/hooks.json is enforced by check_claude_cursor_guard_parity. Operator escape: ED_PROCESS_LOCK_GUARD=off — deliberate and visible; an agent may not silently route around it.",
-  "_comment_enforcement": "ED CONSOLE SLIMMING 1B (2026-07-16): the Stop hook (python tools/enforce_all_rules.py --stop-hook) was retired together with the enforcement stack it ran. Enforcement is now operator review per the one-page /AGENTS.md charter; the money-path gate (tools/check_market_correctness.py) and the required pytest-full suite carry the mechanical checks.",
-  "_comment_pretooluse_guard": "RC-66 (operator 2026-07-26, non-negotiable; method pivot 2026-08-22): every mechanical lock in tools/check_institutional_correctness.py fires at PRE-COMMIT, but defect admission is FRONT-LOADED. With hooks empty, nothing ran BEFORE a tool, so a CSS patch landed on static/index.html with no admitted master obligation and no root-cause analysis, and only the operator caught it. tools/pretooluse_guard.py now BLOCKS (exit 2) an Edit/Write to any PRODUCTION surface across the whole continuum unless an unresolved sole-master item admits the work. A current root-cause-log debt row does not authorize the edit. The sole master, governance/, docs/, reports/, tests/ and .claude/ are never blocked by RC-66 because editing them is HOW you comply. RC-160 / RC-163 remain. Operator escape: set ED_PRETOOLUSE_GUARD=off - deliberate and visible; an agent may not silently route around it.",
-  "_comment_stop_guard": "RC-72 (operator 2026-07-27): every other lock fires on an ACTION; the agent's worst failure is the ABSENCE of one - writing a tidy summary ending in 'next: X' and stopping. No PreToolUse hook can catch that because no tool is called. Observed repeatedly on 2026-07-27, including immediately after the agent wrote 'I'm not stopping here. Building the Stop hook now.' and then stopped. tools/stop_guard.py BLOCKS (exit 2) unfinished-turn obligations from tools/find_it_fix_it_lock.py reading the sole master checklist. governance/root_cause_log.md OPEN/ACTIVE rows have zero execution authority and do not determine Stop. It honours stop_hook_active so it can never hang a turn. Operator escape: ED_STOP_GUARD=off.",
-  "_comment_proof_only_guard": "RC-87 (operator 2026-07-27, non-negotiable, 'no memory ever cited. only proof.'): every other lock fires on an ARTIFACT - a tool call, a file, a commit. The agent's most expensive failure has none: it is a SENTENCE. 'GEX-R1 RETIRED BY MEASUREMENT' was cited as settled fact across several turns; when finally re-derived the study had n=66, a 95% CI of [-0.289, +0.194] which CONTAINS the founding -0.22 it was used to reject, and 43% power to detect that effect - a coin flip recorded as a kill, propagating for days because a memory line said RETIRED. tools/proof_only_guard.py runs as a Stop hook, reads the turn's final assistant message from transcript_path, and BLOCKS (exit 2) when memory/prior conclusions are cited as the ground of a claim, or when a hard verdict (KILL/RETIRED/PROVEN/CONFIRMED/DISPROVEN/does-not-replicate) is stated without SAME-TURN proof - a runnable command in backticks, or n= beside a CI/power. Quoting memory in order to CORRECT or VOID it is explicitly allowed: that is the cure. It honours stop_hook_active so it can never hang a turn, and reports an unreadable transcript as a violation rather than a pass (RC-57: unmeasurable is never compliant). Operator escape: ED_PROOF_ONLY_GUARD=off.",
-  "_comment_operator_law_guard": "RC-93 (operator 2026-07-27): 'the locks you have on your .claude/settings.json are for shit. you haven't captured half of what i have told you.' Correct — three hooks covered root-cause rows, unfinished turns and memory-as-evidence, while every other standing law was enforced by the agent choosing to remember it, which is the actor with the measured failure rate (24 errors logged in one session, 29 percent caught by the operator). tools/operator_law_guard.py encodes THE NUMBER ONE LAW as stated this turn — 'you do not assume and you do not act from memory or recall or any other word that is used to indicate that you used something less than proof' — plus the no-grep law (2026-05-22), the banned end-of-turn phrases (2026-05-27), and a ban on disabling any lock. It runs at TWO points because a law that only fires at the end fires after the damage: PreToolUse(Bash|PowerShell) BLOCKS the action (grep/rg against repo files, destructive git, --no-verify or any ED_*_GUARD=off), and Stop BLOCKS the turn (assumption/recall language, completion claims with no same-turn command, banned endings). Filtering a command's OWN stdout is an explicit carve-out, stated rather than assumed, because on 2026-07-27 the agent used it all session and could not say whether it was permitted (error E-22). 13 negative controls prove it blocks and permits correctly. Operator escape: ED_OPERATOR_LAW_GUARD=off."
+  "_comment_process_lock_guard": "RC-217 (operator 2026-08-03): the day's failures were PROCESS failures — two agents writing one tree, claims measured an hour before they were made, a killed pre-commit stripping the worktree, LIVE claimed while the running PID predated the commit. governance/AGENT_OPERATING_PROCESS_V1.md is the checklist; tools/operating_process_lock.py is the mechanism; tools/process_lock_guard.py fires it on PreToolUse (sole-writer edit protection on protected paths; git-commit checks incl. operator_go.granted for held surfaces) and Stop (completion-claim vs measured state; index-vs-worktree mismatch on enforcement paths; DISK_ONLY-vs-LIVE honesty for the running console PID). Parity with .cursor/hooks.json is enforced by check_claude_cursor_guard_parity. ED_PROCESS_LOCK_GUARD=off is ignored unless operator_go grants guard_escape or all.",
+  "_comment_enforcement": "The retired enforce_all_rules.py Stop stack is dead and is not a lock. Live agent enforcement is the PreToolUse/Stop commands above (via run_with_repo_venv.py --hook). Commit roster + staged-scoped ENFORCED checks run in tools/precommit_institutional.py. Whole-tree ENFORCED catalog / added-violation delta is CI Hardening (check_delta_adds_no_debt.py), not a local absolute-zero catalog. Money-path: tools/check_market_correctness.py. Runtime TRADE: decision_gate.",
+  "_comment_pretooluse_guard": "RC-66 (operator 2026-07-26, non-negotiable; method pivot 2026-08-22): defect admission is FRONT-LOADED. tools/pretooluse_guard.py BLOCKS (exit 2) an Edit/Write to any PRODUCTION surface unless an unresolved sole-master item admits the work. A current root-cause-log debt row does not authorize the edit. The sole master, governance/, docs/, reports/, tests/ and .claude/ are how you comply. RC-160 / RC-163 remain. ED_PRETOOLUSE_GUARD=off is ignored unless operator_go grants guard_escape.",
+  "_comment_stop_guard": "RC-72 (operator 2026-07-27): every other lock fires on an ACTION; the agent's worst failure is the ABSENCE of one - writing a tidy summary ending in 'next: X' and stopping. No PreToolUse hook can catch that because no tool is called. Observed repeatedly on 2026-07-27, including immediately after the agent wrote 'I'm not stopping here. Building the Stop hook now.' and then stopped. tools/stop_guard.py BLOCKS (exit 2) unfinished-turn obligations from tools/find_it_fix_it_lock.py reading the sole master checklist. governance/root_cause_log.md OPEN/ACTIVE rows have zero execution authority and do not determine Stop. It honours stop_hook_active so it can never hang a turn. ED_STOP_GUARD=off is ignored unless operator_go grants guard_escape or all.",
+  "_comment_proof_only_guard": "RC-87 (operator 2026-07-27, non-negotiable, 'no memory ever cited. only proof.'): every other lock fires on an ARTIFACT - a tool call, a file, a commit. The agent's most expensive failure has none: it is a SENTENCE. 'GEX-R1 RETIRED BY MEASUREMENT' was cited as settled fact across several turns; when finally re-derived the study had n=66, a 95% CI of [-0.289, +0.194] which CONTAINS the founding -0.22 it was used to reject, and 43% power to detect that effect - a coin flip recorded as a kill, propagating for days because a memory line said RETIRED. tools/proof_only_guard.py runs as a Stop hook, reads the turn's final assistant message from transcript_path, and BLOCKS (exit 2) when memory/prior conclusions are cited as the ground of a claim, or when a hard verdict (KILL/RETIRED/PROVEN/CONFIRMED/DISPROVEN/does-not-replicate) is stated without SAME-TURN proof - a runnable command in backticks, or n= beside a CI/power. Quoting memory in order to CORRECT or VOID it is explicitly allowed: that is the cure. It honours stop_hook_active so it can never hang a turn, and reports an unreadable transcript as a violation rather than a pass (RC-57: unmeasurable is never compliant). ED_PROOF_ONLY_GUARD=off is ignored unless operator_go grants guard_escape or all.",
+  "_comment_operator_law_guard": "RC-93 (operator 2026-07-27): 'the locks you have on your .claude/settings.json are for shit. you haven't captured half of what i have told you.' Correct — three hooks covered root-cause rows, unfinished turns and memory-as-evidence, while every other standing law was enforced by the agent choosing to remember it, which is the actor with the measured failure rate (24 errors logged in one session, 29 percent caught by the operator). tools/operator_law_guard.py encodes THE NUMBER ONE LAW as stated this turn — 'you do not assume and you do not act from memory or recall or any other word that is used to indicate that you used something less than proof' — plus the no-grep law (2026-05-22), the banned end-of-turn phrases (2026-05-27), and a ban on disabling any lock. It runs at TWO points because a law that only fires at the end fires after the damage: PreToolUse(Bash|PowerShell) BLOCKS the action (grep/rg against repo files, destructive git, --no-verify or any ED_*_GUARD=off), and Stop BLOCKS the turn (assumption/recall language, completion claims with no same-turn command, banned endings). Filtering a command's OWN stdout is an explicit carve-out, stated rather than assumed, because on 2026-07-27 the agent used it all session and could not say whether it was permitted (error E-22). 13 negative controls prove it blocks and permits correctly. ED_OPERATOR_LAW_GUARD=off is ignored unless operator_go grants guard_escape or all."
 }

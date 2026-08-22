@@ -189,19 +189,73 @@ def decision_path_wired_violations(source: str | None = None) -> list[str]:
     return []
 
 
+_HOOK_GUARDS = (
+    "operator_law_guard.py",
+    "pretooluse_guard.py",
+    "stop_guard.py",
+    "proof_only_guard.py",
+    "honesty_guard.py",
+    "process_lock_guard.py",
+)
+_HOOK_LAUNCHER = "run_with_repo_venv.py"
+_HOOK_MODE = "--hook"
+_WIN_ONLY_INTERPRETER = re.compile(
+    r"(?:^|[\s\"'])\.venv[/\\]Scripts[/\\]python\.exe\b",
+    re.I,
+)
+
+
+def _hook_command_strings(text: str) -> list[str]:
+    """Extract hook command strings from Cursor/Claude hook JSON. Not a substring scan."""
+    if not text or not str(text).strip():
+        return []
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    out: list[str] = []
+
+    def walk(obj: object) -> None:
+        if isinstance(obj, dict):
+            cmd = obj.get("command")
+            if isinstance(cmd, str) and cmd.strip():
+                out.append(cmd)
+            for v in obj.values():
+                walk(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item)
+
+    walk(data)
+    return out
+
+
+def _guard_hook_command_ok(cmd: str, guard: str) -> bool:
+    """A guard is wired only when the portable launcher invokes it.
+
+    Filename presence in the JSON blob is not wiring: a Windows-only
+    ``.venv/Scripts/python.exe`` command names the guard and still cannot run
+    on Linux Cloud (measured 2026-08-22).
+    """
+    if guard not in cmd:
+        return False
+    if _HOOK_LAUNCHER not in cmd or _HOOK_MODE not in cmd:
+        return False
+    if _WIN_ONLY_INTERPRETER.search(cmd) and _HOOK_LAUNCHER not in cmd.split(guard)[0]:
+        return False
+    stripped = cmd.strip().lstrip("\"'")
+    if stripped.startswith(".venv/Scripts/python.exe") or stripped.startswith(
+        ".venv\\Scripts\\python.exe"
+    ):
+        return False
+    return True
+
+
 def claude_cursor_parity_violations(
     cursor_text: str | None = None,
     claude_text: str | None = None,
 ) -> list[str]:
-    """RC-205/209 continuum: Claude Stop/PreToolUse must invoke the same .py guards as Cursor."""
-    need = (
-        "operator_law_guard.py",
-        "pretooluse_guard.py",
-        "stop_guard.py",
-        "proof_only_guard.py",
-        "honesty_guard.py",
-        "process_lock_guard.py",  # RC-217: operating-process lock fires on BOTH agents or neither counts
-    )
+    """RC-205/209 continuum: both agents invoke the same guards via the portable launcher."""
     out: list[str] = []
     cp = REPO / ".cursor" / "hooks.json"
     sp = REPO / ".claude" / "settings.json"
@@ -217,11 +271,19 @@ def claude_cursor_parity_violations(
         except OSError:
             out.append(".claude/settings.json missing")
             claude_text = ""
-    for n in need:
-        if n not in cursor_text:
-            out.append(f".cursor/hooks.json missing {n}")
-        if n not in claude_text:
-            out.append(f".claude/settings.json missing {n} (Cursor parity RC-205/209)")
+    cursor_cmds = _hook_command_strings(cursor_text or "")
+    claude_cmds = _hook_command_strings(claude_text or "")
+    for n in _HOOK_GUARDS:
+        if not any(_guard_hook_command_ok(c, n) for c in cursor_cmds):
+            out.append(
+                f".cursor/hooks.json must invoke {n} via {_HOOK_LAUNCHER} {_HOOK_MODE} "
+                "(Windows-only .venv/Scripts/python.exe is not wiring)"
+            )
+        if not any(_guard_hook_command_ok(c, n) for c in claude_cmds):
+            out.append(
+                f".claude/settings.json must invoke {n} via {_HOOK_LAUNCHER} {_HOOK_MODE} "
+                "(Cursor parity RC-205/209)"
+            )
     return out
 
 

@@ -94,6 +94,47 @@ def test_weekday_only_rth_clock_is_a_killed_mutation():
     assert ofls.is_tradable_session_ts_utc is is_tradable_session_ts_utc
 
 
+def test_ml_scheduler_rth_ticker_filter_is_calendar_aware():
+    """Training ticker selection must not treat Saturday/holiday 10:00 ET as a session."""
+    import datetime as _dt
+    from pathlib import Path
+
+    from time_et import ET, is_rth_ts_utc, is_tradable_session_ts_utc
+
+    holiday = _dt.datetime(2026, 7, 3, 10, 0, tzinfo=ET).timestamp()
+    saturday = _dt.datetime(2026, 8, 22, 10, 0, tzinfo=ET).timestamp()
+    friday = _dt.datetime(2026, 8, 7, 12, 0, tzinfo=ET).timestamp()
+    assert is_rth_ts_utc(holiday) is True
+    assert is_tradable_session_ts_utc(holiday) is False
+    assert is_rth_ts_utc(saturday) is True
+    assert is_tradable_session_ts_utc(saturday) is False
+    assert is_tradable_session_ts_utc(friday) is True
+    src = (Path(__file__).resolve().parents[1] / "ml_scheduler.py").read_text(encoding="utf-8")
+    start = src.index("def _get_tickers_with_rth_data")
+    body = src[start:src.index("\ndef ", start + 1)]
+    assert "is_tradable_session_ts_utc" in body
+    assert "is_rth_ts_utc" not in body
+
+
+def test_session_gate_callers_are_calendar_aware_not_clock_only():
+    """Mutation: scoring/eval session gates must not call clock-only is_rth_ts_utc."""
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    session_gate_files = (
+        "ml_scheduler.py",
+        "calibration/daily_scoreboard.py",
+        "calibration/fusion_temperature.py",
+        "research/incumbent_eval_v1/runner.py",
+        "research/challenger_eval_v1/runner.py",
+        "research/structural_eval_v1/runner.py",
+    )
+    for rel in session_gate_files:
+        text = (repo / rel).read_text(encoding="utf-8")
+        assert "is_tradable_session_ts_utc" in text, rel
+        assert "is_rth_ts_utc" not in text, f"{rel} still session-gates on clock-only RTH"
+
+
 def test_is_rth_open_uses_tradable_session_faucet(monkeypatch):
     import datetime as _dt
 
