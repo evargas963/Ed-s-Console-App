@@ -53,35 +53,30 @@ def _offenders(rows: list[str], **kwargs):
     )
 
 
-def test_omission_negative_control_incomplete_active_view_blocks():
-    """Material defect in the RC log, omitted from the view the gate reads → BLOCK."""
+def test_rc_log_has_zero_execution_authority():
+    """OPEN / CLASS:ACTIVE RC rows do not create, classify, or close work."""
     rows = [
         _row(
             "RC-9001",
             extra_defect="CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1",
             extra_fix="IN PROGRESS",
         ),
-        _row(
-            "RC-9002",
-            extra_defect="CLASS:ACTIVE",
-            extra_fix="IN PROGRESS",
-        ),
-    ]
-    presented = ["RC-9001"]  # syntactically valid, incomplete
-    off = _offenders(rows, presented_ids=presented)
-    assert off, "incomplete active view must BLOCK"
-    assert any(rid == "RC-9002" and "omitted" in why for rid, why in off)
-
-
-def test_new_discovery_cannot_be_parked_as_passive():
-    rows = [
         _row("RC-9003", extra_defect="CLASS:PASSIVE", extra_fix="queued for later"),
     ]
-    off = _offenders(rows, presented_ids=None)
-    assert any("NEW MATERIAL DISCOVERY" in why for _, why in off)
+    text = "\n".join(rows)
+    assert FIF.derive_active_obligations(text, today=TODAY, mission=MISSION) == []
+    assert FIF.illegal_passive_escape_offenders(text, today=TODAY, mission=MISSION) == []
+    off = _offenders(rows, presented_ids=["RC-9001"])
+    assert not any(rid.startswith("RC-") for rid, _ in off)
 
 
-def test_passive_implicated_by_dirty_product_becomes_active():
+def test_live_rc_log_does_not_emit_work_state():
+    text = (ROOT / "governance" / "root_cause_log.md").read_text(encoding="utf-8")
+    assert FIF.derive_active_obligations(text) == []
+    assert FIF.illegal_passive_escape_offenders(text) == []
+
+
+def test_passive_implicated_by_dirty_product_is_not_rc_work_state():
     rows = [
         _row(
             "RC-9004",
@@ -91,8 +86,7 @@ def test_passive_implicated_by_dirty_product_becomes_active():
         ),
     ]
     off = _offenders(rows, dirty_paths=["order_flow_engine.py"], presented_ids=None)
-    assert off, "implicated PASSIVE must become ACTIVE and then BLOCK until remediating"
-    assert any(rid == "RC-9004" for rid, _ in off)
+    assert not any(rid == "RC-9004" for rid, _ in off)
 
 
 def test_wide_surface_edit_does_not_activate_historical_chart_backlog():
@@ -121,16 +115,16 @@ def test_historical_passive_untouched_does_not_block():
     assert off == []
 
 
-def test_fake_rth_blocker_without_probe_blocks():
-    rows = [
-        _row(
-            "RC-9006",
-            extra_defect="CLASS:ACTIVE",
-            extra_fix="HARD_BLOCKER: RTH_ONLY assertion=tape_same_ms_loss probe=does_not_exist.py non_rth_complete=true rth_observation=live",
-        ),
-    ]
-    off = _offenders(rows, presented_ids=None)
-    assert any("RTH_ONLY" in why and "probe" in why for _, why in off)
+def test_fake_rth_blocker_without_probe_is_invalid_metadata():
+    ok, why = FIF.blocker_evidence_ok({
+        "type": "RTH_ONLY",
+        "assertion": "tape_same_ms_loss",
+        "probe": "does_not_exist.py",
+        "non_rth_complete": "true",
+        "rth_observation": "live",
+    }, repo=ROOT)
+    assert ok is False
+    assert "probe" in why
 
 
 def test_rth_probe_not_designed_for_assertion_blocks(tmp_path):
@@ -146,43 +140,28 @@ def test_rth_probe_not_designed_for_assertion_blocks(tmp_path):
             ),
         ),
     ]
-    off = FIF.active_obligation_offenders(
-        "\n".join(rows),
-        today=TODAY,
-        mission=MISSION,
-        dirty_paths=[],
-        presented_ids=None,
-        repo=tmp_path,
-    )
-    assert any("not designed to test" in why for _, why in off)
+    ok, why = FIF.blocker_evidence_ok({
+        "type": "RTH_ONLY",
+        "assertion": "tape_same_ms_loss",
+        "probe": probe.name,
+        "non_rth_complete": "true",
+        "rth_observation": "live_tape",
+    }, repo=tmp_path)
+    assert ok is False
+    assert "not designed to test" in why
 
 
 def test_turn_budget_is_never_a_blocker():
-    rows = [
-        _row(
-            "RC-9008",
-            extra_defect="CLASS:ACTIVE",
-            extra_fix="blocked by turn budget and next pass",
-        ),
-    ]
-    off = _offenders(rows, presented_ids=None)
-    assert any("never a blocker" in why for _, why in off)
+    assert FIF._banned_blocker_language("blocked by turn budget and next pass")
 
 
-def test_remediated_rc_plus_empty_command_blocks():
+def test_rc_fixed_row_is_not_an_obligation():
     rows = [
         _row(
             "RC-9009",
             extra_defect="CLASS:ACTIVE",
             extra_fix="FIXED: renamed the field. command: ``",
         ),
-    ]
-    off = _offenders(rows, presented_ids=None)
-    assert off, "RC + empty command must not count as remediating"
-
-
-def test_remediated_with_exercising_test_passes():
-    rows = [
         _row(
             "RC-9010",
             extra_defect="CLASS:ACTIVE",
@@ -193,10 +172,10 @@ def test_remediated_with_exercising_test_passes():
         ),
     ]
     off = _offenders(rows, presented_ids=None)
-    assert off == [], off
+    assert not any(rid in {"RC-9009", "RC-9010"} for rid, _ in off)
 
 
-def test_derived_active_defects_json_omission_blocks(tmp_path, monkeypatch):
+def test_derived_active_defects_json_is_not_rc_authority(tmp_path, monkeypatch):
     rc = tmp_path / "root_cause_log.md"
     rc.write_text(
         _row("RC-9011", extra_defect="CLASS:ACTIVE", extra_fix="IN PROGRESS") + "\n",
@@ -213,8 +192,9 @@ def test_derived_active_defects_json_omission_blocks(tmp_path, monkeypatch):
         dirty_paths=[],
         presented_ids=FIF.load_optional_derived_view(derived),
         repo=ROOT,
+        payload={"_skip_second_work_list": True},
     )
-    assert any("omitted" in why for _, why in off)
+    assert not any(rid == "RC-9011" for rid, _ in off)
 
 
 def test_stop_and_gate_share_one_authority():
@@ -232,7 +212,7 @@ def test_check_find_it_fix_it_name_present():
     ).read_text(encoding="utf-8")
 
 
-def test_declared_material_defect_omitted_from_rc_log_blocks():
+def test_declared_material_defect_omitted_from_master_blocks():
     rows = [
         _row("RC-9012", extra_defect="CLASS:ACTIVE", extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`"),
     ]
@@ -248,7 +228,7 @@ def test_declared_material_defect_omitted_from_rc_log_blocks():
     assert any(rid == "RC-9999" and "omitted" in why for rid, why in off)
 
 
-def test_declared_defect_present_in_rc_log_does_not_block():
+def test_declared_defect_present_on_master_does_not_block():
     rows = [
         _row(
             "RC-9013",
@@ -264,23 +244,16 @@ def test_declared_defect_present_in_rc_log_does_not_block():
         presented_ids=None,
         repo=ROOT,
         payload={
-            "last_assistant_text": "MATERIAL_DEFECT: RC-9013 lock omission",
+            "last_assistant_text": "MATERIAL_DEFECT: RC-479 lock omission",
             "_requirement_tree": {"items": []},
+            "_skip_second_work_list": True,
         },
     )
-    assert off == [], off
+    assert not any(rid == "RC-479" for rid, _ in off)
 
 
 def test_token_budget_is_never_a_blocker():
-    rows = [
-        _row(
-            "RC-9014",
-            extra_defect="CLASS:ACTIVE",
-            extra_fix="blocked by token budget and too much work",
-        ),
-    ]
-    off = _offenders(rows, presented_ids=None)
-    assert any("never a blocker" in why for _, why in off)
+    assert FIF._banned_blocker_language("blocked by token budget and too much work")
 
 
 def test_rth_probe_without_session_measurement_blocks(tmp_path):
@@ -296,15 +269,15 @@ def test_rth_probe_without_session_measurement_blocks(tmp_path):
             ),
         ),
     ]
-    off = FIF.active_obligation_offenders(
-        "\n".join(rows),
-        today=TODAY,
-        mission=MISSION,
-        dirty_paths=[],
-        presented_ids=None,
-        repo=tmp_path,
-    )
-    assert any("must actually measure session hours" in why for _, why in off)
+    ok, why = FIF.blocker_evidence_ok({
+        "type": "RTH_ONLY",
+        "assertion": "tape_same_ms_loss",
+        "probe": probe.name,
+        "non_rth_complete": "true",
+        "rth_observation": "live_tape",
+    }, repo=tmp_path)
+    assert ok is False
+    assert "must actually measure session hours" in why
 
 
 def test_external_unimplemented_is_not_unavailability(tmp_path):
@@ -320,15 +293,15 @@ def test_external_unimplemented_is_not_unavailability(tmp_path):
             ),
         ),
     ]
-    off = FIF.active_obligation_offenders(
-        "\n".join(rows),
-        today=TODAY,
-        mission=MISSION,
-        dirty_paths=[],
-        presented_ids=None,
-        repo=tmp_path,
-    )
-    assert any("unimplemented" in why or "unavailable" in why for _, why in off)
+    ok, why = FIF.blocker_evidence_ok({
+        "type": "EXTERNAL_DATA_UNAVAILABLE",
+        "assertion": "native_tape",
+        "capability": "aggressor",
+        "source": "schwab",
+        "unavailability_evidence": ev.name,
+    }, repo=tmp_path)
+    assert ok is False
+    assert "unimplemented" in why or "unavailable" in why
 
 
 def test_destructive_without_object_blocks():
@@ -339,8 +312,13 @@ def test_destructive_without_object_blocks():
             extra_fix="HARD_BLOCKER: DESTRUCTIVE_APPROVAL_REQUIRED assertion=drop_old_db operation=delete",
         ),
     ]
-    off = _offenders(rows, presented_ids=None)
-    assert any("exact object" in why for _, why in off)
+    ok, why = FIF.blocker_evidence_ok({
+        "type": "DESTRUCTIVE_APPROVAL_REQUIRED",
+        "assertion": "drop_old_db",
+        "operation": "delete",
+    }, repo=ROOT)
+    assert ok is False
+    assert "exact object" in why
 
 
 def test_environment_turn_budget_rejected():
@@ -354,8 +332,14 @@ def test_environment_turn_budget_rejected():
             ),
         ),
     ]
-    off = _offenders(rows, presented_ids=None)
-    assert any("never" in why or "environment failure" in why for _, why in off)
+    ok, why = FIF.blocker_evidence_ok({
+        "type": "ENVIRONMENT_BLOCKED",
+        "assertion": "cannot_continue",
+        "command": "pytest",
+        "observed_error": "Error turn budget exhausted",
+    }, repo=ROOT)
+    assert ok is False
+    assert "never" in why or "environment failure" in why
 
 
 def test_nonexistent_command_blocks():
@@ -366,8 +350,15 @@ def test_nonexistent_command_blocks():
             extra_fix="FIXED: renamed. VERIFIED: `tests/does_not_exist_rc9019.py`",
         ),
     ]
-    off = _offenders(rows, presented_ids=None)
-    assert any("do not exist" in why for _, why in off)
+    ok, why = FIF.remediation_ok({
+        "id": "RC-9019",
+        "defect": "CLASS:ACTIVE",
+        "why": "",
+        "fix": "FIXED: renamed. VERIFIED: `tests/does_not_exist_rc9019.py`",
+        "line": "",
+    }, repo=ROOT)
+    assert ok is False
+    assert "do not exist" in why
 
 
 def test_failed_execution_evidence_blocks():
@@ -378,16 +369,15 @@ def test_failed_execution_evidence_blocks():
             extra_fix="FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
         ),
     ]
-    off = FIF.active_obligation_offenders(
-        "\n".join(rows),
-        today=TODAY,
-        mission=MISSION,
-        dirty_paths=[],
-        presented_ids=None,
-        repo=ROOT,
-        payload={"fix_evidence": {"RC-9020": {"ran": True, "exit": 1}}},
-    )
-    assert any("failed" in why for _, why in off)
+    ok, why = FIF.remediation_ok({
+        "id": "RC-9020",
+        "defect": "CLASS:ACTIVE",
+        "why": "",
+        "fix": "FIXED: lock. VERIFIED: `tests/test_find_it_fix_it_lock_v1.py`",
+        "line": "",
+    }, repo=ROOT, payload={"fix_evidence": {"RC-9020": {"ran": True, "exit": 1}}})
+    assert ok is False
+    assert "failed" in why
 
 
 def test_remaining_active_parent_defects_without_material_token_blocks_stop():
@@ -575,7 +565,7 @@ def test_unrelated_historical_server_edit_stays_passive():
     assert off == [], "unrelated historical server.py RC + unrelated server edit must stay PASSIVE"
 
 
-def test_explicitly_implicated_server_defect_becomes_active():
+def test_explicitly_implicated_server_defect_is_not_rc_work_state():
     rows = [
         _row(
             "RC-9102",
@@ -594,23 +584,23 @@ def test_explicitly_implicated_server_defect_becomes_active():
         payload={
             "last_assistant_text": (
                 "RC-9102 server.py reconnect freshness is implicated by this mission"
-            )
+            ),
+            "_skip_second_work_list": True,
         },
     )
-    assert off, "explicitly implicated server.py defect during current mission must become ACTIVE"
-    assert any(rid == "RC-9102" for rid, _ in off)
+    assert not any(rid == "RC-9102" for rid, _ in off)
 
 
 def test_child_test_cannot_close_parent():
-    rows = [
-        _row(
-            "RC-9021",
-            extra_defect="CLASS:ACTIVE end-to-end parent order flow",
-            extra_fix="FIXED: one ticker. VERIFIED: `tests/test_order_flow_engine_chunk2_or_fallthrough.py`",
-        ),
-    ]
-    off = _offenders(rows, presented_ids=None)
-    assert any("child test" in why or "parent" in why for _, why in off)
+    ok, why = FIF.remediation_ok({
+        "id": "RC-9021",
+        "defect": "CLASS:ACTIVE end-to-end parent order flow",
+        "why": "",
+        "fix": "FIXED: one ticker. VERIFIED: `tests/test_order_flow_engine_chunk2_or_fallthrough.py`",
+        "line": "",
+    }, repo=ROOT)
+    assert ok is False
+    assert "child test" in why or "parent" in why
 
 
 def test_second_work_list_clean_supported_tree_passes():

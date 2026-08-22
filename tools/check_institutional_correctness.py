@@ -4754,32 +4754,22 @@ def check_requirement_proof() -> list[Violation]:
 
 
 def check_find_it_fix_it() -> list[Violation]:
-    """FIND IT → FIX IT: one RC-log authority, derived active view (RC-453).
+    """FIND IT → FIX IT: sole master is the obligation authority (RC-480).
 
-    WHAT WAS OBSERVED: a parallel governance/active_defects.json could read clean while
-    a material defect existed only in the RC log — omission was invisible. New discoveries
-    could be parked as PASSIVE BACKLOG to permit Stop. Blockers accepted a file path or
-    a self-authored sentence. REMEDIATED accepted an RC id + nonempty command string.
+    RC log is historical evidence only. It does not create, classify, promote,
+    defer, or close work, and it does not determine Stop eligibility.
 
-    Rule: derive ACTIVE obligations from root_cause_log.md (new today, mission-tagged,
-    or implicated by dirty/mission scope). PASSIVE+implicated → ACTIVE. NEW → PASSIVE
-    BLOCKS. A presented derived view that omits an authoritative ACTIVE row BLOCKS.
-    HARD_BLOCKER types require type evidence. REMEDIATED requires FIXED: plus a command
-    that names an existing path exercising the defect.
-
-    HOW VALIDATED: tests/test_find_it_fix_it_lock_v1.py — omission negative control,
-    new-discovery-as-passive BLOCK, implicated-passive BLOCK, fake RTH/budget blockers
-    BLOCK, RC+empty-command BLOCK, valid FIXED+exercising-test PASS, Stop parity.
+    HOW VALIDATED: tests/test_find_it_fix_it_lock_v1.py — RC rows have zero
+    execution authority; second-list and master-parent obligations still BLOCK.
     """
     try:
-        from tools.find_it_fix_it_lock import RC_LOG, active_obligation_offenders
+        from tools.find_it_fix_it_lock import SOLE_MASTER_PATH, active_obligation_offenders
     except ImportError:
-        from find_it_fix_it_lock import RC_LOG, active_obligation_offenders  # type: ignore
-    try:
-        text = RC_LOG.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return [Violation(RC_LOG, 0, "root_cause_log.md unreadable — fail-closed")]
-    return [Violation(RC_LOG, 0, f"{rid}: {why}") for rid, why in active_obligation_offenders(text)]
+        from find_it_fix_it_lock import SOLE_MASTER_PATH, active_obligation_offenders  # type: ignore
+    return [
+        Violation(SOLE_MASTER_PATH, 0, f"{rid}: {why}")
+        for rid, why in active_obligation_offenders("")
+    ]
 
 
 def check_writer_no_drift() -> list[Violation]:

@@ -68,64 +68,64 @@
     {
       "id": "OF_COMPOSITE_RETIRED",
       "title": "retired Order Flow composite/verdict producer family",
-      "proof": "PASS",
-      "execution": "CLOSED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": true,
       "children": []
     },
     {
       "id": "OF_ENGINE_ABSORPTION_RETIRED",
       "title": "engine _compute_absorption ratio retired",
-      "proof": "PASS",
-      "execution": "CLOSED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": true,
       "children": []
     },
     {
       "id": "P2_ABSORPTION_WITHHELD",
       "title": "historical P2 absorption withheld from training / quarantined",
-      "proof": "PASS",
-      "execution": "CLOSED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": true,
       "children": []
     },
     {
       "id": "IDENTITY_SPLIT_REMOVED",
       "title": "permanent Claude-writer / Cursor-auditor identity restriction removed",
-      "proof": "PASS",
-      "execution": "CLOSED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": true,
       "children": []
     },
     {
       "id": "OF_TAPE_L1_RESTATEMENT_SUPPRESSED",
       "title": "identical L1 observation restatements suppressed",
-      "proof": "PASS",
-      "execution": "CLOSED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": true,
       "children": []
     },
     {
       "id": "OF_MEDIAN_X3_RETIRED",
       "title": "median times 3 displayed-depth anomaly candidates retired",
-      "proof": "PASS",
-      "execution": "CLOSED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": true,
       "children": []
     },
     {
       "id": "GAMMA_FLIP_DISPLAY_GATED",
       "title": "gamma flip operator-visible only when TRUSTED",
-      "proof": "PASS",
-      "execution": "CLOSED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": true,
       "children": []
     },
     {
       "id": "GAMMA_WALLS_DISPLAY_GATED",
       "title": "chain-derived walls/pin/max-pain/net-peak withheld unless TRUSTED",
-      "proof": "PASS",
-      "execution": "CLOSED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
       "closable": true,
       "children": []
     }

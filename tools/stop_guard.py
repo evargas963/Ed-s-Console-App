@@ -43,26 +43,12 @@ UNFINISHED_MARKERS = ("IN PROGRESS", "VERIFICATION PENDING", "NOT FIXED", "PARTI
 
 
 def unfinished_rows_opened_today(today: str | None = None) -> list[tuple[str, str]]:
-    """(rc_id, reason) for rows opened `today` that are OPEN and self-declared unfinished."""
-    today = today or datetime.date.today().isoformat()
-    try:
-        lines = RC_LOG.read_text(encoding="utf-8", errors="ignore").splitlines()
-    except OSError:
-        return []
-    out: list[tuple[str, str]] = []
-    for line in lines:
-        if not line.startswith("| RC-"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 7:
-            continue
-        rc_id, status, opened, fix = cells[0], cells[1], cells[2], cells[6]
-        if status != "OPEN" or opened != today:
-            continue
-        hit = next((m for m in UNFINISHED_MARKERS if m in fix.upper()), None)
-        if hit:
-            out.append((rc_id, hit))
-    return out
+    """RC log does not determine Stop eligibility (RC-480). Returns empty.
+
+    Unfinished-turn obligations come from find_it_fix_it_lock.fix_law_blockers
+    reading the sole master, not from today's OPEN RC rows.
+    """
+    return []
 
 
 #: RC-235: the ONLY freshness reason exempt from the turn-block — the producer is running

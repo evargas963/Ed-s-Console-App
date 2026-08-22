@@ -1,27 +1,22 @@
-"""FIND IT → FIX IT lock (RC-452 / RC-453).
+"""FIND IT → FIX IT lock (RC-452 / RC-453 / RC-480).
 
 ONE unresolved-work authority: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md.
-RC log is historical evidence. Active obligations still derive from mission-tagged RC rows
-for FIND IT → FIX IT discovery, but a second work list outside the sole master BLOCKs.
+RC log is historical evidence only. It does not create, classify, promote, defer,
+or close obligations, and it does not determine Stop eligibility.
 
-Three states, derived from that ledger (no parallel inventory):
+Actionable obligation state is derived from the sole master (REQ comments +
+checkbox STATUS=FAIL/NOT_PROVEN) plus second-list / unfinished-disposition
+controls. RC CLASS:ACTIVE / CLASS:PASSIVE is not work-state.
 
-  PASSIVE BACKLOG — historical OPEN/PARTIAL debt not implicated by the active mission.
-                    Does not block Stop / commit.
-  ACTIVE OBLIGATION — belongs to the active parent mission, was discovered this session,
-                      or is a previously-passive row now materially implicated by what
-                      the active mission is changing / consuming / exposing.
-                      Blocks Stop until remediated or genuinely hard-blocked.
-  CLOSED / REMEDIATED — root cause and material blast radius fixed with evidence.
-
-Required transitions (mechanical):
-  NEW MATERIAL DISCOVERY → ACTIVE   (not PASSIVE)
-  PASSIVE + implicated by active mission → ACTIVE
+Required transitions (mechanical) apply to sole-master REQ execution= and
+checkbox STATUS=, not to RC CLASS: tokens:
+  NEW MATERIAL DISCOVERY → ACTIVE on the sole master (not PASSIVE)
+  PASSIVE + implicated by active mission → ACTIVE on the sole master
   ACTIVE → PASSIVE is illegal merely to permit Stop.
 
 A syntactically valid but incomplete presented active view BLOCKS (omission
 negative control). If governance/active_defects.json exists it is a derived
-view and must reconcile completely against the RC-log derivation.
+view only and must not act as a second authority.
 
 Hard blockers require type evidence. Self-authored turn-budget / blast-radius
 / next-pass language is never a blocker.
@@ -421,16 +416,8 @@ def derive_active_obligations(
     dirty_paths: Iterable[str] | None = None,
     payload: dict | None = None,
 ) -> list[dict[str, str]]:
-    today = today or datetime.date.today().isoformat()
-    mission = mission if mission is not None else _mission()
-    dirty = list(dirty_paths) if dirty_paths is not None else _dirty_paths()
-    out: list[dict[str, str]] = []
-    for row in _parse_rc_rows(rc_text):
-        if classify_row(
-            row, today=today, mission=mission, dirty_paths=dirty, payload=payload,
-        ) == "ACTIVE":
-            out.append(row)
-    return out
+    """RC log has zero execution authority — never returns work-state rows."""
+    return []
 
 
 def illegal_passive_escape_offenders(
@@ -441,41 +428,8 @@ def illegal_passive_escape_offenders(
     dirty_paths: Iterable[str] | None = None,
     payload: dict | None = None,
 ) -> list[tuple[str, str]]:
-    """ACTIVE → PASSIVE (or new discovery marked PASSIVE) is not an escape hatch."""
-    today = today or datetime.date.today().isoformat()
-    mission = mission if mission is not None else _mission()
-    dirty = list(dirty_paths) if dirty_paths is not None else _dirty_paths()
-    out: list[tuple[str, str]] = []
-    for row in _parse_rc_rows(rc_text):
-        if (row.get("status") or "").upper() not in ("OPEN", "PARTIAL"):
-            continue
-        declared = _declared_class(row)
-        if declared != "PASSIVE":
-            continue
-        opened_today = row.get("opened") == today
-        body = _row_text(row)
-        mid = str(mission.get("mission_id") or "")
-        mission_tagged = bool(mid) and mid in body
-        parent_tagged = any(tok in body for tok in PARENT_MISSION_TOKENS)
-        implicated = _path_implicated(
-            _paths_in_text((row.get("defect") or "")[:320]),
-            dirty,
-            mission.get("scope_paths") or [],
-        )
-        turn_implicated = _turn_implicates_row(row, payload)
-        if opened_today:
-            out.append((
-                row["id"],
-                "NEW MATERIAL DISCOVERY marked CLASS:PASSIVE — required transition is "
-                "NEW → ACTIVE, not NEW → PASSIVE BACKLOG",
-            ))
-        elif mission_tagged or parent_tagged or implicated or turn_implicated:
-            out.append((
-                row["id"],
-                "CLASS:PASSIVE on a row implicated by the active mission — PASSIVE + "
-                "implicated must become ACTIVE; ACTIVE → PASSIVE is not a Stop escape",
-            ))
-    return out
+    """RC CLASS:PASSIVE is not work-state. Returns empty."""
+    return []
 
 
 def _parse_hard_blocker(fix: str) -> dict[str, str] | None:
@@ -858,11 +812,10 @@ def discovery_omission_violations(
     payload: dict | None,
     rc_text: str,
 ) -> list[tuple[str, str]]:
-    """Reconcile explicit discovery tokens against the RC log.
+    """Reconcile explicit discovery tokens against the sole master.
 
-    MATERIAL_DEFECT: / DISCOVERED_DEFECT: still bind. Unfinished dispositions
-    (REMAINING ACTIVE / QUEUED / NEXT) are handled by unfinished_disposition_violations
-    in the same FIND IT → FIX IT authority — they do not require these tokens.
+    MATERIAL_DEFECT: / DISCOVERED_DEFECT: still bind. The RC log is not the
+    obligation surface. Unfinished dispositions are handled separately.
     """
     if not payload:
         return []
@@ -878,9 +831,12 @@ def discovery_omission_violations(
     if payload.get("last_assistant_text"):
         chunks.append(str(payload["last_assistant_text"]))
     text = "\n".join(chunks)
-    rows = _parse_rc_rows(rc_text)
-    rc_ids = {r["id"].upper() for r in rows}
-    bodies = [(r["id"], _row_text(r).lower()) for r in rows]
+    try:
+        master = SOLE_MASTER_PATH.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        master = ""
+    master_u = master.upper()
+    master_l = master.lower()
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
     for m in _MATERIAL_DECL.finditer(text):
@@ -890,19 +846,19 @@ def discovery_omission_violations(
             continue
         seen.add(key)
         if key.startswith("RC-"):
-            if key not in rc_ids:
+            if key not in master_u:
                 out.append((
                     key,
-                    "MATERIAL_DEFECT declared in this turn but omitted from "
-                    "governance/root_cause_log.md — STOP BLOCKS",
+                    "MATERIAL_DEFECT declared in this turn but omitted from the "
+                    "sole master — STOP BLOCKS",
                 ))
         else:
             slug = token.lower()
-            if not any(slug in body for _, body in bodies):
+            if slug not in master_l:
                 out.append((
                     token,
                     "DISCOVERED_DEFECT declared in this turn but omitted from "
-                    "authoritative RC state — STOP BLOCKS",
+                    "the sole master — STOP BLOCKS",
                 ))
     return out
 
@@ -1025,8 +981,8 @@ def reconcile_active_view(
         if rid not in presented:
             out.append((
                 rid,
-                "ACTIVE obligation present in authoritative RC log but omitted from the "
-                "active view the gate reads — incomplete active view is a BLOCK",
+                "ACTIVE obligation present in the sole-master derived view but omitted "
+                "from the active view the gate reads — incomplete active view is a BLOCK",
             ))
     return out
 
@@ -1072,44 +1028,7 @@ def active_obligation_offenders(
     out.extend(active_parent_obligation_violations(payload))
     out.extend(second_work_list_violations(payload, repo=repo))
     out.extend(discovery_omission_violations(payload, rc_text))
-    out.extend(illegal_passive_escape_offenders(
-        rc_text, today=today, mission=mission, dirty_paths=dirty, payload=payload
-    ))
-    active = derive_active_obligations(
-        rc_text, today=today, mission=mission, dirty_paths=dirty, payload=payload
-    )
-    if presented_ids is None:
-        presented_ids = load_optional_derived_view(ACTIVE_DEFECTS_PATH)
-    out.extend(reconcile_active_view(active, presented_ids))
-    for row in active:
-        rid = row["id"]
-        status = row.get("status") or ""
-        fix = row.get("fix") or ""
-        banned = _banned_blocker_language(fix)
-        if banned:
-            out.append((rid, f"self-authored {banned!r} is never a blocker — keep fixing"))
-            continue
-        blocker = _parse_hard_blocker(fix)
-        if blocker:
-            ok, why = blocker_evidence_ok(blocker, repo=repo)
-            if not ok:
-                out.append((rid, f"HARD_BLOCKER evidence invalid: {why}"))
-            continue
-        if status == "CLOSED":
-            ok, why = remediation_ok(row, repo=repo, payload=payload)
-            if not ok:
-                out.append((rid, f"CLOSED active obligation lacks remediation evidence: {why}"))
-            continue
-        if "FIXED:" in fix:
-            ok, why = remediation_ok(row, repo=repo, payload=payload)
-            if not ok:
-                out.append((rid, f"ACTIVE FIXED row lacks remediation evidence: {why}"))
-            continue
-        out.append((
-            rid,
-            f"ACTIVE {status} obligation is not REMEDIATED (FIXED: + exercising command) "
-            f"and has no valid HARD_BLOCKER — FIND IT → FIX IT",
-        ))
+    # RC CLASS:ACTIVE / PASSIVE and RC OPEN rows are not work-state.
     return out
 
 
@@ -1125,7 +1044,7 @@ def fix_law_blockers(
         try:
             rc_text = RC_LOG.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            return [("(rc_log)", "governance/root_cause_log.md unreadable — fail-closed")]
+            rc_text = ""
     return active_obligation_offenders(
         rc_text, today=today, presented_ids=presented_ids, payload=payload
     )
