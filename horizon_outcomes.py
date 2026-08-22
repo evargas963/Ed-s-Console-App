@@ -98,10 +98,19 @@ TB_RESEARCH_LABEL_COLUMNS: dict[str, int] = {
 }
 
 
+def snapshot_bar_start_ts_utc(ts_utc: float) -> float:
+    """UTC start of the 1m bar that contains this snapshot instant.
+
+    FIND-SNAPSHOT-BAR-STAMP / RC-470: poll-second timestamps are not a bar identity.
+    Flooring to the minute makes snapshot↔price_bars_1m joins exact by construction.
+    """
+    return math.floor(float(ts_utc) / 60.0) * 60.0
+
+
 def forward_bar_start_utc(ts_snapshot: float, n_minutes: int) -> float:
     """UTC start (epoch seconds) of the 1m bar whose close labels the T+N horizon."""
-    target_ts = float(ts_snapshot) + n_minutes * 60.0
-    return math.floor(target_ts / 60.0) * 60.0
+    target_ts = snapshot_bar_start_ts_utc(float(ts_snapshot) + n_minutes * 60.0)
+    return target_ts
 
 
 def bar_complete_by_utc(bar_start_ts_utc: float, ts_now_utc: float) -> bool:

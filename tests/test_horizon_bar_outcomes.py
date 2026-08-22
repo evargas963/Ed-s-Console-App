@@ -12,6 +12,7 @@ from horizon_outcomes import (
     HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
     bar_complete_by_utc,
     forward_bar_start_utc,
+    snapshot_bar_start_ts_utc,
     OUTCOME_BAR_SPECS,
 )
 from db import EdDB, get_snapshot_sql
@@ -22,6 +23,36 @@ def test_forward_bar_start_grid():
     assert forward_bar_start_utc(100.0, 1) == math.floor(160.0 / 60.0) * 60.0
     t0 = 1700000000.0
     assert forward_bar_start_utc(t0, 60) == math.floor((t0 + 3600.0) / 60.0) * 60.0
+
+
+def test_snapshot_bar_start_floors_poll_seconds():
+    assert snapshot_bar_start_ts_utc(100.0) == 60.0
+    assert snapshot_bar_start_ts_utc(120.0) == 120.0
+    assert snapshot_bar_start_ts_utc(1_781_800_000.0) == 1_781_799_960.0
+
+
+def test_insert_snapshot_stores_bar_start_not_poll_second(tmp_path: Path):
+    from db import SnapshotRow
+
+    db = EdDB(tmp_path / "barstamp.db")
+    db.insert_snapshot(SnapshotRow(
+        ticker="SPY",
+        timeframe=CF,
+        ts_utc=1_781_800_000.0,
+        ts_et="2026-06-18 10:00:40 ET",
+        et_hour=10,
+        et_minute=0,
+        market_session="rth",
+        spot=500.0,
+    ))
+    from time_et import et_clock_from_ts_utc
+    with db._connect() as conn:
+        ts, minute = conn.execute(
+            "SELECT ts_utc, et_minute FROM snapshots WHERE ticker='SPY'"
+        ).fetchone()
+    bar = snapshot_bar_start_ts_utc(1_781_800_000.0)
+    assert ts == bar
+    assert int(minute) == et_clock_from_ts_utc(bar)[1]
 
 
 def test_bar_complete():

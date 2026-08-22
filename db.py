@@ -58,6 +58,7 @@ from horizon_outcomes import (
     AUTHORITATIVE_1M_SOURCE,
     forward_bar_start_utc,
     bar_complete_by_utc,
+    snapshot_bar_start_ts_utc,
 )
 from movement_target_threshold import (
     directional_and_move_labels_v2,
@@ -3341,6 +3342,15 @@ class EdDB:
         """
         d = asdict(snap)
         d.pop("snapshot_id", None)  # let DB assign
+        raw_ts = d.get("ts_utc")
+        if raw_ts is not None:
+            from time_et import build_ts_et_from_ts_utc, et_clock_from_ts_utc
+            bar_ts = snapshot_bar_start_ts_utc(float(raw_ts))
+            d["ts_utc"] = bar_ts
+            d["ts_et"] = build_ts_et_from_ts_utc(bar_ts)
+            _eh, _em, _ = et_clock_from_ts_utc(bar_ts)
+            d["et_hour"] = _eh
+            d["et_minute"] = _em
 
         # execution_identity_v1 fail-closed coherence: a MODEL_DERIVED row must
         # carry its identity pair; a NOT_APPLICABLE (quote-only) row must not.
