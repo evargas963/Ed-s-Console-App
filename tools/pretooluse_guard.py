@@ -188,21 +188,41 @@ def parse_unresolved_master_items(text: str) -> list[dict[str, str]]:
     return out
 
 
+def canonicalize_repo_rel(path: str) -> str | None:
+    """ONE authority for target-path admission and SURFACES= tokens.
+
+    `./server.py` → `server.py`. Leading-dot names (`.hidden/…`) stay distinct.
+    Absolute paths, `..` traversal, empty tokens, and junk characters are
+    invalid and return None — they are never rewritten into another path.
+    """
+    p = (path or "").strip().replace("\\", "/")
+    if not p:
+        return None
+    if p.startswith("/") or p.startswith("//") or re.match(r"^[A-Za-z]:/", p):
+        return None
+    while p.startswith("./"):
+        p = p[2:]
+    if not p:
+        return None
+    parts = p.split("/")
+    if any(part == "" or part == ".." for part in parts):
+        return None
+    if any(ch in p for ch in " `'\"()[],"):
+        return None
+    return p
+
+
 def parse_master_surfaces(line: str) -> frozenset[str]:
     """Exact repo-relative paths from SURFACES=a.py;b.py on one master item."""
     out: set[str] = set()
     for m in _SURFACES_RE.finditer(line or ""):
         for raw in m.group(1).split(";"):
-            p = raw.strip().replace("\\", "/").lstrip("./")
-            if not p or any(ch in p for ch in " `'\"()[],"):
+            p = canonicalize_repo_rel(raw)
+            if p is None:
                 continue
             if "/" in p or p.endswith(PRODUCTION_SUFFIXES):
                 out.add(p)
     return frozenset(out)
-
-
-def _norm_rel(rel: str) -> str:
-    return (rel or "").replace("\\", "/").lstrip("./")
 
 
 def _master_texts() -> tuple[str, str]:
@@ -232,8 +252,8 @@ def master_admits_production_edit(
         current_text, head_from_git = _master_texts()
         if head_text is None:
             head_text = head_from_git
-    rel_n = _norm_rel(rel)
-    if not rel_n:
+    rel_n = canonicalize_repo_rel(rel)
+    if rel_n is None:
         return False
     for it in parse_unresolved_master_items(current_text or ""):
         if rel_n in parse_master_surfaces(it["line"]):

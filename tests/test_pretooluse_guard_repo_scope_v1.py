@@ -205,3 +205,59 @@ def test_live_active_item_does_not_admit_unrelated_production_file():
     assert not G.master_admits_production_edit(
         "server.py", current_text=cur, head_text=""
     )
+
+
+def test_dot_slash_canonicalizes_to_repo_relative():
+    cur = _item("OD-1", "SURFACES=./server.py")
+    assert G.canonicalize_repo_rel("./server.py") == "server.py"
+    assert G.master_admits_production_edit("server.py", current_text=cur, head_text="")
+    cur2 = _item("OD-1", "SURFACES=server.py")
+    assert G.master_admits_production_edit("server.py", current_text=cur2, head_text="")
+    assert G.master_admits_production_edit("./server.py", current_text=cur2, head_text="")
+
+
+def test_leading_dot_path_identity_is_preserved():
+    hidden = _item("OD-1", "SURFACES=.hidden/module.py")
+    assert G.canonicalize_repo_rel(".hidden/module.py") == ".hidden/module.py"
+    assert G.canonicalize_repo_rel("hidden/module.py") == "hidden/module.py"
+    assert G.master_admits_production_edit(
+        ".hidden/module.py", current_text=hidden, head_text=""
+    )
+    assert not G.master_admits_production_edit(
+        "hidden/module.py", current_text=hidden, head_text=""
+    )
+    plain = _item("OD-1", "SURFACES=hidden/module.py")
+    assert not G.master_admits_production_edit(
+        ".hidden/module.py", current_text=plain, head_text=""
+    )
+
+
+def test_parent_traversal_and_absolute_surfaces_are_rejected():
+    for token in ("../server.py", "/server.py", "../../foo.py"):
+        assert G.canonicalize_repo_rel(token) is None
+        cur = _item("OD-1", f"SURFACES={token}")
+        assert G.parse_master_surfaces(cur) == frozenset()
+        assert not G.master_admits_production_edit(
+            "server.py", current_text=cur, head_text=""
+        )
+        assert not G.master_admits_production_edit(
+            "foo.py", current_text=cur, head_text=""
+        )
+
+
+def test_malformed_surface_token_does_not_alias_a_valid_path():
+    assert G.parse_master_surfaces(_item("OD-1", "SURFACES=../server.py")) == frozenset()
+    assert G.parse_master_surfaces(_item("OD-1", "SURFACES=/server.py")) == frozenset()
+    assert G.parse_master_surfaces(_item("OD-1", "SURFACES=foo/../server.py")) == frozenset()
+    assert G.canonicalize_repo_rel("foo/../server.py") is None
+    assert G.canonicalize_repo_rel("") is None
+
+
+def test_one_normalization_function_is_the_admission_authority():
+    import inspect
+    src = inspect.getsource(G)
+    assert src.count("def canonicalize_repo_rel") == 1
+    assert "lstrip(\"./\")" not in inspect.getsource(G.parse_master_surfaces)
+    assert "lstrip(\"./\")" not in inspect.getsource(G.master_admits_production_edit)
+    assert "canonicalize_repo_rel" in inspect.getsource(G.parse_master_surfaces)
+    assert "canonicalize_repo_rel" in inspect.getsource(G.master_admits_production_edit)
