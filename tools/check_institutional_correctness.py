@@ -1631,7 +1631,10 @@ def check_eol_style_invariant() -> list[Violation]:
     staged = bool(_staged_probe.stdout.strip())
     for message in _eol_violations(staged=staged):
         path_part = message.split(":", 1)[0]
-        out.append(Violation(Path(path_part), 0, message))
+        # Repo-rooted so Violation.__str__ can relative_to(REPO). A bare
+        # relative Path raises ValueError on print, which aborted the
+        # enforced gate after the FAIL header (banner never printed).
+        out.append(Violation((REPO / path_part).resolve(), 0, message))
     return out
 
 
