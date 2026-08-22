@@ -20,20 +20,8 @@ CANDLE_5M_MAX_BARS: int = 78   # 1-day 5m from Schwab; LSTM needs 60, GARCH ~30
 CANDLE_1M_MAX_BARS: int = 390  # 1-day 1m from Schwab; LSTM needs 20
 
 
-# ── Order Flow Verdict (composite headline) ───────────────────────────────────
-# Used by order_flow_engine + frontend for Flow Verdict headline.
-OF_VERDICT_W_SCORE: float = 0.40
-OF_VERDICT_W_BOOK:  float = 0.25
-OF_VERDICT_W_CUM:   float = 0.20
-OF_VERDICT_W_OPT:   float = 0.15
-
-OF_VERDICT_BUYING:      float = 0.25   # composite >= this → "BUYING PRESSURE"
-OF_VERDICT_MILD_BUY:    float = 0.10   # composite >= this → "MILD BUY FLOW"
-OF_VERDICT_NEUTRAL_HI:  float = -0.10  # composite > this → "FLOW NEUTRAL"
-OF_VERDICT_MILD_SELL:   float = -0.25  # composite > this → "MILD SELL FLOW"
-# composite <= -0.25 → "SELLING PRESSURE"
-
-# Field label thresholds (plain-english labels for Score, Book Imb, Opt Flow)
+# Field label thresholds for canonical primitives (book / options). The composite
+# verdict (BUYING/SELLING PRESSURE) and its weights are RETIRED (RC-454).
 OF_SCORE_BULLISH:   float = 0.10   # score > this → bullish
 OF_SCORE_BEARISH:   float = -0.10  # score < this → bearish
 
@@ -47,19 +35,6 @@ OF_OPT_PUT_HEAVY:   float = -0.05  # opt_flow < this → put-heavy
 # Only meaningful posteriors block; low values (0.01) should not trigger.
 CONTINUATION_BLOCK_THRESHOLD: float = 0.45
 BREAKOUT_BLOCK_THRESHOLD: float = 0.45
-
-
-def _of_sign(v: float | None) -> float | None:
-    """Return -1 or +1 based on sign of v (for cum_delta in verdict). None when missing or exactly zero."""
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        if f == 0.0:
-            return None
-        return 1.0 if f > 0 else -1.0
-    except (TypeError, ValueError):
-        return None
 
 
 def _of_direction(v: float | None) -> str | None:
@@ -77,100 +52,6 @@ def _of_direction(v: float | None) -> str | None:
     except (TypeError, ValueError):
         return None
     return "neutral"
-
-
-def _verdict_unavailable() -> dict:
-    return {
-        "verdict": None,
-        "verdict_color": None,
-        "arrow": None,
-        "agreement": "unavailable",
-    }
-
-
-def compute_order_flow_verdict(
-    score: float | None,
-    book_imb: float | None,
-    cum_delta: float | None,
-    opt_flow: float | None,
-) -> dict:
-    """
-    Compute Flow Verdict composite and metadata.
-    Returns dict: verdict, verdict_color, arrow, agreement (all None + agreement unavailable when no inputs).
-    """
-    if all(x is None for x in (score, book_imb, cum_delta, opt_flow)):
-        return _verdict_unavailable()
-
-    composite = 0.0
-    weight_sum = 0.0
-    if score is not None:
-        composite += float(score) * OF_VERDICT_W_SCORE
-        weight_sum += OF_VERDICT_W_SCORE
-    if book_imb is not None:
-        composite += float(book_imb) * OF_VERDICT_W_BOOK
-        weight_sum += OF_VERDICT_W_BOOK
-    c_sign = _of_sign(cum_delta)
-    if c_sign is not None:
-        composite += c_sign * OF_VERDICT_W_CUM
-        weight_sum += OF_VERDICT_W_CUM
-    if opt_flow is not None:
-        composite += float(opt_flow) * OF_VERDICT_W_OPT
-        weight_sum += OF_VERDICT_W_OPT
-
-    if weight_sum <= 0:
-        return _verdict_unavailable()
-    composite /= weight_sum
-
-    if abs(composite) < 1e-12:
-        return _verdict_unavailable()
-
-    if composite >= OF_VERDICT_BUYING:
-        verdict = "BUYING PRESSURE"
-        color = "green"
-        arrow = "▲"
-    elif composite >= OF_VERDICT_MILD_BUY:
-        verdict = "MILD BUY FLOW"
-        color = "green-dim"
-        arrow = "▲"
-    elif composite > OF_VERDICT_NEUTRAL_HI:
-        verdict = "FLOW NEUTRAL"
-        color = "gray"
-        arrow = "→"
-    elif composite > OF_VERDICT_MILD_SELL:
-        verdict = "MILD SELL FLOW"
-        color = "red-dim"
-        arrow = "▼"
-    else:
-        verdict = "SELLING PRESSURE"
-        color = "red"
-        arrow = "▼"
-
-    # Agreement: count only inputs that were present (no fabricated neutral votes)
-    dirs: list[str] = []
-    for d in (_of_direction(score), _book_direction(book_imb), _of_direction(opt_flow)):
-        if d is not None:
-            dirs.append(d)
-    if c_sign is not None and c_sign > 0:
-        dirs.append("bullish")
-    elif c_sign is not None and c_sign < 0:
-        dirs.append("bearish")
-
-    if not dirs:
-        agreement = "unavailable"
-    else:
-        bull = sum(1 for d in dirs if d == "bullish")
-        bear = sum(1 for d in dirs if d == "bearish")
-        neut = sum(1 for d in dirs if d == "neutral")
-        best = max(bull, bear, neut)
-        n = len(dirs)
-        if n >= 4 and best >= 4:
-            agreement = "strong | confirming"
-        elif n >= 3 and best >= 3:
-            agreement = "moderate | mixed"
-        else:
-            agreement = "weak | conflicted"
-
-    return {"verdict": verdict, "verdict_color": color, "arrow": arrow, "agreement": agreement}
 
 
 def _book_direction(v: float | None) -> str | None:

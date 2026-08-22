@@ -46,6 +46,7 @@ from math_levels import (
     compute_gamma_profile,
     compute_gamma_support_levels,
     compute_max_pain,
+    displayable_interior_trusted_level,
     key_level_strikes_with_gamma,
     pick_charm_wall_strikes,
 )
@@ -75,6 +76,13 @@ class TerrainSnapshot:
     gamma_flip: float | None = None
     call_wall: float | None = None
     put_wall: float | None = None
+    #: RC-469: operator-visible copies. TRUSTED span is not enough when the pick
+    #: sits on the captured-strike edge; these are None then.
+    call_wall_display: float | None = None
+    put_wall_display: float | None = None
+    gamma_pin_display: float | None = None
+    net_gex_peak_display: float | None = None
+    max_pain_display: float | None = None
     #: RC-124: THE standard pin — max TOTAL gamma (SpotGamma Absolute Gamma / sticky pin;
     #: Avellaneda–Lipkin magnitude mechanism). Strength = leader's margin over the runner-up
     #: on the same metric (a 1% lead is a coin flip; the label says so).
@@ -623,6 +631,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now)
     flip, confidence, flip_diag = compute_gamma_flip_v2(
         contracts, spot, now=_terrain_now, profile=profile)
+    _lo = (flip_diag or {}).get("strike_lo")
+    _hi = (flip_diag or {}).get("strike_hi")
     # RC-354: GSF/GRC from the SAME materialized profile — no second materialization.
     # Snap-to-shelf deliberately deferred until strike-GEX history is banked (theta wants a
     # trailing-60-session percentile; a session-local stand-in would be a fake calibration).
@@ -644,6 +654,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gamma_at_spot=flip_diag.get("gamma_at_spot"),
         ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
     )
+    _net_gex_peak = pick_net_gex_peak_strike(exposures, strikes, institutional=True)
+    _max_pain = compute_max_pain(exposures)
 
     return TerrainSnapshot(
         ticker=ticker,
@@ -656,15 +668,19 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gamma_flip=flip,
         call_wall=call_wall,
         put_wall=put_wall,
+        call_wall_display=displayable_interior_trusted_level(call_wall, read.confidence, _lo, _hi),
+        put_wall_display=displayable_interior_trusted_level(put_wall, read.confidence, _lo, _hi),
         # RC-124: gamma_pin is THE standard pin — max TOTAL gamma (SpotGamma Absolute
         # Gamma / sticky pin) with its decisiveness; the old net-argmax lives on honestly
         # as net_gex_peak. Assigned below from _pin/_pin_strength.
         gamma_pin=_pin,
+        gamma_pin_display=displayable_interior_trusted_level(_pin, read.confidence, _lo, _hi),
         gamma_pin_strength_pct=_pin_strength,
         gamma_pin_gex_dollars=_pin_gex_dollars,
         gamma_pin_oi=_pin_oi,
         book_oi_total=_book_oi_total,
-        net_gex_peak=pick_net_gex_peak_strike(exposures, strikes, institutional=True),
+        net_gex_peak=_net_gex_peak,
+        net_gex_peak_display=displayable_interior_trusted_level(_net_gex_peak, read.confidence, _lo, _hi),
         key_delta_strike=pick_key_delta_strike(exposures, strikes),
         hvp=hvp,
         lvp=lvp,
@@ -689,7 +705,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # painted "dealer support" while spot sat at 735.13 below it).
         call_wall_state=wall_geometry_state(spot, call_wall, "call"),
         put_wall_state=wall_geometry_state(spot, put_wall, "put"),
-        max_pain=compute_max_pain(exposures),
+        max_pain=_max_pain,
+        max_pain_display=displayable_interior_trusted_level(_max_pain, read.confidence, _lo, _hi),
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,
         # ExposureDiagnostics is a frozen dataclass; contracts_used is ALWAYS an int.

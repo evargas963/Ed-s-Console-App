@@ -13,9 +13,9 @@ Failure mode this prevents: overclaiming work, soft-stopping mid-promise, and pr
 2. **No promise without execution in the same authority window.** If you state you will do X under operator autonomy / “continue,” you must do X (or name a concrete external blocker) before ending the turn with a wrap-up. Prose is not a substitute for the promised artifact.
 3. **No misleading quantities.** Never present `MAX(rowid)`, samples, approximations, or recycled prior numbers as exact counts. Exact = `COUNT(*)` (or a previously verified exact figure cited with its source). Approximations must be prefixed `APPROX:` in the same sentence.
 4. **No model-family bait-and-switch.** “Incumbent recorded outputs scored” is not “Elastic Net / TCN / HMM / … tested.” Name the exact object scored.
-5. **Find & Prove queue is binding.** Execute `ACTIVE_PROGRAM.md` `NEXT` item while any Find & Prove rows are `NEXT`/`QUEUED`, unless the operator says `STOP`, `PAUSE`, `HANG IT UP`, or `DO NOT CONTINUE`.
-6. **No governance/test/code bloat for this lock.** Do not add new gate scripts, CI jobs, or allowlist sprawl to enforce these laws. This rule + `ACTIVE_PROGRAM.md` + `AGENTS.md` pointer are sufficient. Prefer fixing data/code over adding process files.
+5. **The sole master checklist determines unresolved work and execution priority.** `ACTIVE_PROGRAM.md` and all legacy queues are evidence/pointers only and have zero authority. Do not create another queue or replacement registry.
+6. **No governance/test/code bloat for this lock.** Do not add new gate scripts, CI jobs, or allowlist sprawl to enforce these laws. This rule + `AGENTS.md` pointer are sufficient. Prefer fixing data/code over adding process files.
 
-## Status line (only when reporting mid-queue)
+## Status line (only when reporting mid-work)
 
-`CLAIM:` what is proven this turn · `DONE:` queue ids completed · `NEXT:` queue id · `BLOCKER:` or `none`
+`CLAIM:` what is proven this turn · `DONE:` master ids completed · `MASTER:` current sole-master item · `BLOCKER:` or `none`

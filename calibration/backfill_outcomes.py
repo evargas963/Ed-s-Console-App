@@ -53,6 +53,7 @@ except ImportError as e:
         pass
 
 from db import get_snapshot_sql
+from horizon_outcomes import snapshot_bar_start_ts_utc
 from instrument_identity import ticker_storage_key
 
 _BASE_SEL = get_snapshot_sql("calibration/backfill_outcomes.py:select_base")
@@ -78,7 +79,7 @@ def resolve_snapshot_for_backfill(
     Returns (snapshot_row_or_none, skip_reason, join_method).
 
     skip_reason 'ok' means row is usable; otherwise skip_reason explains why we did not attach.
-    join_method is 'exact' | 'nearest_within_tol' when row is returned.
+    join_method is 'exact' | 'bar_start' | 'nearest_within_tol' when row is returned.
     """
     ticker = ticker_storage_key(ticker)
     n_exact = _count_snapshots_at_exact_ts(conn, ticker, decision_ts)
@@ -95,7 +96,31 @@ def resolve_snapshot_for_backfill(
             return None, "snapshot_outcomes_not_filled", None
         return row, "ok", "exact"
 
-    # n_exact == 0
+    # Same UTC minute, unique bar identity — retires 29s tolerance when
+    # observation seconds differ but the 1m bar is the same (RC-472).
+    bar = snapshot_bar_start_ts_utc(decision_ts)
+    try:
+        n_bar_row = conn.execute(
+            get_snapshot_sql("calibration/backfill_outcomes.py:count_bar_start"),
+            (ticker, bar),
+        ).fetchone()
+        n_bar = int(n_bar_row["n"] if n_bar_row else 0)
+    except sqlite3.OperationalError:
+        n_bar = 0
+    if n_bar > 1:
+        return None, "ambiguous_duplicate_bar_start", None
+    if n_bar == 1:
+        row = conn.execute(
+            get_snapshot_sql("calibration/backfill_outcomes.py:select_bar_start"),
+            (ticker, bar),
+        ).fetchone()
+        if row is None:
+            return None, "internal_inconsistent", None
+        if row["outcome_5c"] is None:
+            return None, "snapshot_outcomes_not_filled", None
+        return row, "ok", "bar_start"
+
+    # n_exact == 0 and no unique bar_start
     if tol_sec <= 0.0:
         return None, "no_exact_match", None
 
@@ -128,6 +153,7 @@ def backfill(db_path: Path, tol_sec: float = 0.0) -> dict[str, Any]:
 
     _reason_stat = {
         "ambiguous_duplicate_snapshots": "skipped_ambiguous_duplicate_snapshots",
+        "ambiguous_duplicate_bar_start": "skipped_ambiguous_duplicate_bar_start",
         "ambiguous_nearest_tie": "skipped_ambiguous_nearest_tie",
         "no_exact_match": "skipped_no_exact_match",
         "no_candidate_in_tol": "skipped_no_candidate_in_tol",

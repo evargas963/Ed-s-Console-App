@@ -124,10 +124,10 @@ def _per_horizon_prediction_rows(
     if tickers:
         sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
         params.extend(tickers)
-    from time_et import is_rth_ts_utc
+    from time_et import is_tradable_session_ts_utc
 
     for row in conn.execute(sql + " ORDER BY decision_ts_utc", params):
-        if not is_rth_ts_utc(float(row["decision_ts_utc"])):
+        if not is_tradable_session_ts_utc(float(row["decision_ts_utc"])):
             continue  # after-hours decisions have no snapshot/outcome row to score against
         try:
             bundle = json.loads(row["model_outputs_json"] or "{}")
@@ -255,7 +255,7 @@ def rolling_horizon_log_loss(
     import time
 
     from calibration.fusion_temperature import FIT_WINDOW_FLOOR_UTC
-    from time_et import is_rth_ts_utc
+    from time_et import is_tradable_session_ts_utc
 
     now = float(now_ts_utc) if now_ts_utc is not None else time.time()
     lo = max(now - float(lookback_days) * 86400.0, FIT_WINDOW_FLOOR_UTC)
@@ -275,7 +275,7 @@ def rolling_horizon_log_loss(
     conn.row_factory = sqlite3.Row
     try:
         for row in conn.execute(sql, params):
-            if not is_rth_ts_utc(float(row["decision_ts_utc"])):
+            if not is_tradable_session_ts_utc(float(row["decision_ts_utc"])):
                 continue  # same RTH gate as _per_horizon_prediction_rows — skill must score RTH rows only
             try:
                 bundle = json.loads(row["model_outputs_json"] or "{}")
@@ -406,7 +406,7 @@ def _production_tallies(
     (including untrusted and non-RTH, which the scoring pass never sees), plus
     snapshot-presence evidence used to distinguish NOT_IN_ACTIVE_LOGGER from
     NO_ROWS_PRODUCED. Never mutates anything."""
-    from time_et import is_rth_ts_utc
+    from time_et import is_tradable_session_ts_utc
 
     lo, hi = et_day_utc_bounds(et_date)
     sql = (
@@ -437,7 +437,7 @@ def _production_tallies(
     for row in conn.execute(sql, params):
         t = out.setdefault(ticker_storage_key(row["ticker"]), _new_t())  # RC-345/F25: canonical scoreboard key
         t["n_rows_total"] += 1
-        if not is_rth_ts_utc(float(row["decision_ts_utc"])):
+        if not is_tradable_session_ts_utc(float(row["decision_ts_utc"])):
             t["n_non_rth"] += 1
             continue
         if str(row["calibration_trust"]) != "trusted":
@@ -1526,7 +1526,7 @@ def _actionability_decision_rows(
     conn: sqlite3.Connection, et_date: str, tickers: Optional[list[str]]
 ) -> list[dict[str, Any]]:
     """Per-decision rows (trusted, RTH — same gates as the scoreboard)."""
-    from time_et import is_rth_ts_utc
+    from time_et import is_tradable_session_ts_utc
 
     lo, hi = et_day_utc_bounds(et_date)
     sql = (
@@ -1540,7 +1540,7 @@ def _actionability_decision_rows(
         params.extend(tickers)
     out = []
     for row in conn.execute(sql + " ORDER BY ticker, expiry, decision_ts_utc", params):
-        if not is_rth_ts_utc(float(row["decision_ts_utc"])):
+        if not is_tradable_session_ts_utc(float(row["decision_ts_utc"])):
             continue
         out.append(
             {

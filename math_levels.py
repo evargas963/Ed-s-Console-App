@@ -92,9 +92,10 @@ class TotalsRow:
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-
-WALL_MIN_MULT = 1.5
-APPROACH_PTS  = 1.5
+# WALL_MIN_MULT / APPROACH_PTS retired (RC-473): 1.5 had no vendor or empirical
+# provenance. Do not mint a replacement cutoff or score.
+PIN_STRENGTH_WITHHELD = "WITHHELD"
+BIAS_SIGNAL_WITHHELD = "WITHHELD"
 
 
 def _strike_total_oi(bucket: dict) -> float | None:
@@ -145,13 +146,15 @@ def _pick_inflection_closest_zero(exposures: Dict[float, dict], strikes: List[fl
             best_val = v
     return best
 
-def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]) -> str:
-    """High/Med/Low concentration of |net GEX$| at the analytics net-GEX peak vs the median strike.
+def _pin_peak_to_median_ratio(
+    exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]
+) -> float | None:
+    """|net GEX$| at the analytics peak vs the median strike. Measurement only.
 
-    Not the terrain total-gamma pin's lead % (`gamma_pin_strength_pct`).
+    Not a High/Med/Low score. The 3.0 / 2.0 / 1.25 cutoffs had no provenance (RC-473).
     """
     if net_gex_peak is None:
-        return "Very Low"
+        return None
     b = exposures.get(net_gex_peak, {}) or exposures.get(float(net_gex_peak), {})
     if exposures_have_dollar_gex(exposures):
         gp = abs(net_gex_dollars_at_strike(b))
@@ -159,7 +162,7 @@ def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, stri
     else:
         gp_raw = bucket_metric(b, "net_gamma")
         if gp_raw is None:
-            return "Very Low"
+            return None
         gp = abs(gp_raw)
         vals = [
             abs(v)
@@ -167,42 +170,28 @@ def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, stri
             if (v := bucket_metric(exposures.get(s, {}), "net_gamma")) is not None
         ]
     if gp <= 0:
-        return "Very Low"
-
+        return None
     vals = [v for v in vals if v > 0]
     if not vals:
-        return "Very Low"
+        return None
     vals_sorted = sorted(vals)
-    med = vals_sorted[len(vals_sorted)//2]
+    med = vals_sorted[len(vals_sorted) // 2]
     if med <= 0:
-        return "Very Low"
+        return None
+    return gp / med
 
-    ratio = gp / med
-    if ratio >= 3.0:
-        return "High"
-    if ratio >= 2.0:
-        return "Med"
-    if ratio >= 1.25:
-        return "Low"
-    return "Very Low"
+
+def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]) -> str:
+    """Categorical High/Med/Low pin labels are withheld (RC-473).
+
+    Not the terrain total-gamma pin's lead % (`gamma_pin_strength_pct`).
+    """
+    return PIN_STRENGTH_WITHHELD
+
 
 def _bias_from_net(net_gamma: float | None, net_delta: float | None, pin_strength: str) -> str:
-    if net_gamma is None or net_delta is None:
-        return "Neutral"
-    if pin_strength in ("High", "Med"):
-        if net_delta > 0 and net_gamma > 0:
-            return "Bull"
-        if net_delta < 0 and net_gamma > 0:
-            return "Bear"
-        if net_gamma < 0:
-            return "Expansion"
-    if pin_strength == "Very Low":
-        return "Chaos Zone"
-    if net_delta > 0:
-        return "Tilt Bull"
-    if net_delta < 0:
-        return "Tilt Bear"
-    return "Balanced"
+    """Bias labels that depended on unvalidated pin buckets are withheld (RC-473)."""
+    return BIAS_SIGNAL_WITHHELD
 
 
 # ── Summary rows ──────────────────────────────────────────────────────────────
@@ -216,9 +205,9 @@ def build_summary_rows(
     strikes_all = sorted(list(exposures.keys()))
     if not strikes_all:
         return [
-            ExposureRow("CONSENSUS", None, None, None, None, None, None, None, "Very Low", "Neutral"),
+            ExposureRow("CONSENSUS", None, None, None, None, None, None, None, PIN_STRENGTH_WITHHELD, BIAS_SIGNAL_WITHHELD),
             *[
-                ExposureRow(f"±{w}", w, None, None, None, None, None, None, "Very Low", "Neutral")
+                ExposureRow(f"±{w}", w, None, None, None, None, None, None, PIN_STRENGTH_WITHHELD, BIAS_SIGNAL_WITHHELD)
                 for w in windows
             ],
         ]
@@ -1137,6 +1126,57 @@ def required_strike_count(spot: float | None, increment: float | None, *,
     return int(math.ceil(span_points / inc * margin)) + 1
 
 
+LEVEL_CHAIN_LIVE = "live_fetch"
+LEVEL_CHAIN_MORNING_FULL = "morning_full_same_session"
+
+
+def unique_strike_count(contracts: List[dict] | None) -> int:
+    """Distinct finite strikePrice values. Coverage count, not a score."""
+    if not contracts:
+        return 0
+    from numeric_contract import float_finite_or_none as _fin
+    seen: set[float] = set()
+    for c in contracts:
+        if not isinstance(c, dict):
+            continue
+        sp = _fin(c.get("strikePrice"))
+        if sp is not None:
+            seen.add(sp)
+    return len(seen)
+
+
+def prefer_wider_level_chain(
+    live_contracts: List[dict],
+    archive_contracts: List[dict] | None,
+    *,
+    spot: float | None,
+    increment: float | None = None,
+) -> tuple[List[dict], str]:
+    """Use the same-session wide archive when the live book is too narrow for the span bar.
+
+    TRUSTED + interior is containment, not coverage. If a same-session morning_full
+    (or other archive) list has more unique strikes AND live is below
+    required_strike_count, prefer the archive for level math. Never invent strikes.
+    """
+    live = list(live_contracts or [])
+    archive = list(archive_contracts or [])
+    live_n = unique_strike_count(live)
+    arch_n = unique_strike_count(archive)
+    if arch_n <= live_n:
+        return live, LEVEL_CHAIN_LIVE
+    inc = increment
+    if inc is None:
+        inc = infer_strike_increment(live) or infer_strike_increment(archive)
+    need = required_strike_count(spot, inc)
+    if need is None:
+        if live_n == 0 and arch_n > 0:
+            return archive, LEVEL_CHAIN_MORNING_FULL
+        return live, LEVEL_CHAIN_LIVE
+    if live_n < need:
+        return archive, LEVEL_CHAIN_MORNING_FULL
+    return live, LEVEL_CHAIN_LIVE
+
+
 def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | None:
     """Net dealer gamma at `price`, linearly interpolated from the profile.
 
@@ -1227,6 +1267,65 @@ def compute_gamma_flip_v2(
         # regime is knowable; the flip level is not
         return None, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW),                {**diag, "reason": "no_zero_crossing_regime_still_defined"}
     return flip, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW), diag
+
+
+def displayable_trusted_level(value: float | None, confidence: str | None) -> float | None:
+    """Operator-visible chain-derived level. Narrow/unavailable chains must not look precise."""
+    if str(confidence or "") != GAMMA_FLIP_TRUSTED:
+        return None
+    try:
+        if value is None:
+            return None
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if out != out:
+        return None
+    return out
+
+
+def level_at_captured_edge(
+    value: float | None,
+    strike_lo: float | None,
+    strike_hi: float | None,
+    *,
+    eps: float = 1e-6,
+) -> bool:
+    """True when the picked level sits on the captured-strike window edge.
+
+    TRUSTED (span +/- GAMMA_FLIP_MIN_SPAN_PCT) is a flip-coverage gate, not proof
+    that a max-in-window wall/pin/peak is interior. A 20-strike or just-trusted
+    book can place the largest remaining gamma at the last fetched strike.
+    """
+    try:
+        if value is None or strike_lo is None or strike_hi is None:
+            return False
+        v, lo, hi = float(value), float(strike_lo), float(strike_hi)
+    except (TypeError, ValueError):
+        return False
+    if v != v or lo != lo or hi != hi:
+        return False
+    return abs(v - lo) <= eps or abs(v - hi) <= eps
+
+
+def displayable_interior_trusted_level(
+    value: float | None,
+    confidence: str | None,
+    strike_lo: float | None,
+    strike_hi: float | None,
+) -> float | None:
+    """TRUSTED plus interior-of-window. Edge extrema are not displayed as walls."""
+    shown = displayable_trusted_level(value, confidence)
+    if shown is None:
+        return None
+    if level_at_captured_edge(shown, strike_lo, strike_hi):
+        return None
+    return shown
+
+
+def displayable_gamma_flip(flip: float | None, confidence: str | None) -> float | None:
+    """Operator-visible flip number. Narrow/unavailable chains must not look precise."""
+    return displayable_trusted_level(flip, confidence)
 
 
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────

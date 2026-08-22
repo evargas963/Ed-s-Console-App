@@ -128,11 +128,36 @@ def measure() -> dict:
     }
 
 
+def _dominant_newline(data: bytes) -> bytes:
+    """RC-382: keep the file's existing terminator; do not re-choose LF on Linux."""
+    crlf = data.count(b"\r\n")
+    lf = data.count(b"\n") - crlf
+    if crlf == 0 and lf == 0:
+        return b"\n"
+    return b"\r\n" if crlf >= lf else b"\n"
+
+
+def _newline_for(path: Path) -> bytes:
+    if path.is_file():
+        return _dominant_newline(path.read_bytes())
+    proc = subprocess.run(
+        ["git", "show", f"HEAD:{REPORT_REL}"],
+        cwd=str(REPO), capture_output=True, check=False,
+    )
+    if proc.returncode == 0 and proc.stdout:
+        return _dominant_newline(proc.stdout)
+    return b"\n"
+
+
 def write_report(data: dict | None = None) -> Path:
     data = data if data is not None else measure()
     out = REPO / REPORT_REL
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    body = json.dumps(data, indent=2, sort_keys=True)
+    if not body.endswith("\n"):
+        body += "\n"
+    newline = _newline_for(out)
+    out.write_bytes(body.encode("utf-8").replace(b"\n", newline))
     return out
 
 

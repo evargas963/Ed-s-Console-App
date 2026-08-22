@@ -21,6 +21,11 @@ Every finding gets a stable id so it can be argued with, deferred, or fixed.
 The TOTAL is the number the operator watches. It goes down or the work did not
 happen.
 
+Classification: DIAGNOSTIC_TOOL — non-authoritative until the register is
+actually zero. rehab_daily_scan may invoke it recommend-only. Must not be
+cited as PASS, ENFORCED, or merge-blocking. Not a commit/CI lock: wiring a
+non-zero register behind `|| true` or a tolerance is pseudo-control.
+
 Run:  python tools/duplication_audit.py [--json] [--kind D-FUNC] [--full]
 Exit: 0 when the total is zero, 1 otherwise.
 """

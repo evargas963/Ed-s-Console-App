@@ -1,0 +1,29 @@
+{
+  "classification": "FILE DISPOSITIONS. Not a work list. Zero work authority.",
+  "CONTENT_HEAD": "e00dea87090b311a481b7fd53a51de6acb86b40d",
+  "dispositions": {
+    "OPEN_ITEMS.md": "POINTER",
+    "ACTIVE_PROGRAM.md": "POINTER",
+    "docs/OPEN_ITEMS_OPERATOR_TRUST.md": "HISTORY_ONLY",
+    "docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md": "POINTER",
+    "governance/root_cause_log.md": "EVIDENCE_ONLY",
+    "governance/unproven_register.md": "EVIDENCE_ONLY",
+    "governance/vendor_field_discovery_register.md": "EVIDENCE_ONLY",
+    "governance/requirement_tree.json": "EVIDENCE_ONLY",
+    "governance/design_history/ED_MASTER_DESIGN_CONSOLIDATED.md": "HISTORY_ONLY",
+    "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_SOURCE.md": "HISTORY_ONLY",
+    "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md": "MASTER",
+    ".claude/skills/drift-audit/SKILL.md": "POINTER",
+    "reports/one_list_operator_source_reconciliation_matrix.json": "EVIDENCE_ONLY",
+    "reports/one_list_source_line_walk.json": "EVIDENCE_ONLY",
+    "reports/one_list_reconciliation_counts.json": "EVIDENCE_ONLY",
+    "reports/one_list_completeness_proof.md": "EVIDENCE_ONLY",
+    "reports/one_list_debt_census.json": "EVIDENCE_ONLY",
+    "reports/one_list_checked_status_audit.json": "EVIDENCE_ONLY",
+    "reports/one_list_old_master_mapping.json": "EVIDENCE_ONLY",
+    "reports/one_list_second_list_check.json": "EVIDENCE_ONLY",
+    "reports/one_list_source_fidelity.json": "EVIDENCE_ONLY",
+    "reports/one_list_file_dispositions.json": "EVIDENCE_ONLY"
+  },
+  "rule": "No file may be classified as another actionable work authority."
+}

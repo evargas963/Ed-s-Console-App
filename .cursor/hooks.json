@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "_comment_rc208": "Cursor continuum must match Claude Stop/PreToolUse .py guards. MD is never a lock.",
+  "_comment_rc208": "Cursor continuum must match Claude Stop/PreToolUse .py guards. MD is never a lock. Commands go through tools/run_with_repo_venv.py --hook so Linux Cloud and Windows both execute; .venv/Scripts/python.exe as the hook interpreter is not wiring.",
   "hooks": {
     "preToolUse": [
-      {"command": ".venv/Scripts/python.exe tools/pretooluse_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/operator_law_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/process_lock_guard.py"}
+      {"command": "python3 tools/run_with_repo_venv.py --hook tools/pretooluse_guard.py"},
+      {"command": "python3 tools/run_with_repo_venv.py --hook tools/operator_law_guard.py"},
+      {"command": "python3 tools/run_with_repo_venv.py --hook tools/process_lock_guard.py"}
     ],
     "stop": [
-      {"command": ".venv/Scripts/python.exe tools/stop_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/proof_only_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/honesty_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/operator_law_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/process_lock_guard.py"}
+      {"command": "python3 tools/run_with_repo_venv.py --hook tools/stop_guard.py"},
+      {"command": "python3 tools/run_with_repo_venv.py --hook tools/proof_only_guard.py"},
+      {"command": "python3 tools/run_with_repo_venv.py --hook tools/honesty_guard.py"},
+      {"command": "python3 tools/run_with_repo_venv.py --hook tools/operator_law_guard.py"},
+      {"command": "python3 tools/run_with_repo_venv.py --hook tools/process_lock_guard.py"}
     ]
   }
 }

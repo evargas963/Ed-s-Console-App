@@ -67,8 +67,9 @@ def _full_l1_payload() -> dict:
     p["order_flow"] = {k: float(i + 1) for i, k in enumerate(_ORDER_FLOW_KEYS)}
     p["liquidity_summary"] = {
         "behavior_label": "lb",
-        "absorption_score": 11,
-        "continuation_score": 22,
+        "range_imbalance_label": "retired_absent",
+        "range_imbalance_stall_score": 11,
+        "range_imbalance_push_score": 22,
     }
     p["readiness_summary"] = {
         "order_flow_readiness": "ready",
@@ -208,8 +209,8 @@ def test_liquidity_behavior_summary_duplicate_does_not_replace_liquidity_summary
     p2 = copy.deepcopy(p)
     p2["liquidity_behavior_summary"] = {
         "behavior_label": "SHADOW",
-        "absorption_score": 99,
-        "continuation_score": 99,
+        "range_imbalance_stall_score": 99,
+        "range_imbalance_push_score": 99,
     }
     assert build_l1_material_dict_for_fingerprint(p2)["liquidity_summary"] == base_mat["liquidity_summary"]
 

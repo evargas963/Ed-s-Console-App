@@ -3,9 +3,13 @@
 
 Usage:
     python tools/run_with_repo_venv.py tools/check_institutional_correctness.py
+    python3 tools/run_with_repo_venv.py --hook tools/pretooluse_guard.py
 
 CI (no .venv): runs the target with the current interpreter.
 Local: requires .venv (auto-bootstrap when ED_AUTO_BOOTSTRAP_VENV=1).
+`--hook`: prefer venv if present, else sys.executable — never require .venv.
+Research: NIST SSDF PW.1 (https://csrc.nist.gov/pubs/sp/800/218/final);
+Fed/OCC SR 11-7 (https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm).
 """
 from __future__ import annotations
 
@@ -51,11 +55,40 @@ def _preflight_index_lock() -> None:
         print(f"run_with_repo_venv: {msg}", file=sys.stderr)
 
 
+def _hook_python() -> str:
+    """Interpreter for agent hooks. Prefer repo venv; never require it.
+
+    `.venv/Scripts/python.exe` as the *hook command* is Windows-only and silent
+    on Linux. Hooks must start from `python3`/`python` + this launcher. The
+    launcher may then select a venv interpreter when one exists.
+    """
+    posix = REPO / ".venv" / "bin" / "python"
+    win = REPO / ".venv" / "Scripts" / "python.exe"
+    if posix.is_file():
+        return str(posix)
+    if win.is_file():
+        return str(win)
+    return sys.executable
+
+
 def main() -> int:
     target = sys.argv[1:]
+    hook_mode = bool(target and target[0] == "--hook")
+    if hook_mode:
+        target = target[1:]
     if not target:
-        print("usage: run_with_repo_venv.py <script> [args...]", file=sys.stderr)
+        print(
+            "usage: run_with_repo_venv.py [--hook] <script> [args...]",
+            file=sys.stderr,
+        )
         return 2
+    if hook_mode:
+        script = Path(target[0])
+        resolved = script if script.is_file() else (REPO / target[0])
+        if not resolved.is_file():
+            print(f"run_with_repo_venv --hook: guard missing: {target[0]}", file=sys.stderr)
+            return 2
+        return _run([_hook_python(), *target])
     _preflight_index_lock()
     in_ci = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
     vpy = _venv_python()

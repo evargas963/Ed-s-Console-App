@@ -16,7 +16,7 @@ def compare_live_and_db_feature_support() -> dict[str, Any]:
     in `mvp_source_coercion` (strip + lowercase + vocabulary check).
     """
     return {
-        "contract_version": "v1_1m_mvp",
+        "contract_version": "v1_1m_range_imbalance",
         "categorical_normalization": "strip + lowercase; must match ALLOWED_ZONE_VALUES / ALLOWED_VWAP_SIDE_VALUES",
         "features": [
             {
@@ -76,18 +76,18 @@ def compare_live_and_db_feature_support() -> dict[str, Any]:
                 "chosen_db_source": "snapshot_row['vwap_dist_pts']",
             },
             {
-                "canonical_name": "liquidity.absorption_score",
+                "canonical_name": "liquidity.range_imbalance_stall_score",
                 "live_supported": True,
                 "db_supported": True,
-                "chosen_live_source": "l1_payload['liquidity_summary']['absorption_score']",
-                "chosen_db_source": "snapshot_row['absorption_score']",
+                "chosen_live_source": "l1_payload['liquidity_summary']['range_imbalance_stall_score']",
+                "chosen_db_source": "snapshot_row['range_imbalance_stall_score']",
             },
             {
-                "canonical_name": "liquidity.continuation_score",
+                "canonical_name": "liquidity.range_imbalance_push_score",
                 "live_supported": True,
                 "db_supported": True,
-                "chosen_live_source": "l1_payload['liquidity_summary']['continuation_score']",
-                "chosen_db_source": "snapshot_row['continuation_score']",
+                "chosen_live_source": "l1_payload['liquidity_summary']['range_imbalance_push_score']",
+                "chosen_db_source": "snapshot_row['range_imbalance_push_score']",
             },
         ],
     }

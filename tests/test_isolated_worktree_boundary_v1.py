@@ -27,6 +27,7 @@ PRIMARY = _BASE / "EdWebConsole"
 CLAUDE = _BASE / "EdWebConsole-Claude"
 ISO = {"mode": "isolated", "env_role_var": "ED_AGENT_ROLE", "claude_root_suffix": "-Claude"}
 SHARED = {**ISO, "mode": "shared-root"}
+CANONICAL = {**ISO, "mode": "canonical"}
 CLAUDE_ENV = {"ED_AGENT_ROLE": "claude"}
 CURSOR_ENV = {"ED_AGENT_ROLE": "cursor"}
 
@@ -69,3 +70,9 @@ def test_hook_running_from_claude_worktree_allows_its_own_tree():
 def test_missing_role_does_not_block():
     """No ED_AGENT_ROLE -> this guard is silent (require_role handles the fail-closed elsewhere)."""
     assert _v(PRIMARY / "server.py", PRIMARY, {}, ISO) is None
+
+
+def test_canonical_mode_does_not_bind_claude_to_sibling_tree():
+    """RC-457: shipped canonical mode lets either assigned agent edit the one tree."""
+    assert _v(PRIMARY / "server.py", PRIMARY, CLAUDE_ENV, CANONICAL) is None
+    assert _v(PRIMARY / "server.py", PRIMARY, CURSOR_ENV, CANONICAL) is None

@@ -78,6 +78,15 @@ _ORDER_FLOW_KEYS = (
     "book_imbalance_5",
     "cum_delta_proxy",
     "tape_pressure_30s",
+    "tape_pressure_classification",
+    "cum_delta_classification",
+    "tape_identity_convention",
+    "tape_native_event_id",
+    "tape_completeness",
+    "tape_limitations",
+    "native_aggressor_available",
+    "native_time_and_sales_available",
+    "timesale_service_status",
     "order_flow_score",
 )
 
@@ -252,9 +261,11 @@ def build_l1_context(
     liquidity_summary: Optional[dict[str, Any]] = None
     if isinstance(lb, dict):
         liquidity_summary = {
-            "behavior_label": lb.get("behavior_label"),
-            "absorption_score": lb.get("absorption_score"),
-            "continuation_score": lb.get("continuation_score"),
+            "behavior_label": lb.get("range_imbalance_label") or lb.get("behavior_label"),
+            "range_imbalance_label": lb.get("range_imbalance_label"),
+            "range_imbalance_stall_score": lb.get("range_imbalance_stall_score"),
+            "range_imbalance_push_score": lb.get("range_imbalance_push_score"),
+            "semantic_era": lb.get("semantic_era"),
         }
 
     readiness = derive_readiness_summary(order_flow_block, structural_context_stale, l2_snapshot_present)

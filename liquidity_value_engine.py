@@ -15,7 +15,7 @@ import hashlib
 import logging
 import threading
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Any, Optional
 
 from instrument_identity import ticker_storage_key
@@ -590,7 +590,11 @@ def compute_atr_from_bars(
     bars_norm = _bars_to_list(bars)
     rth_bars = _filter_rth_bars(bars_norm, session_date, cutoff_dt)
     if not rth_bars:
-        prev_date = session_date - timedelta(days=1)
+        # Calendar yesterday is Sunday on a Monday and a holiday after a closure.
+        # Use the same prior-session authority as PDH / overnight (RC-474 / LP-01).
+        prev_date = prior_trading_session_date(bars_norm, session_date)
+        if prev_date is None:
+            return None
         prev_cutoff = datetime.combine(prev_date, RTH_CLOSE, tzinfo=ET)
         rth_bars = _filter_rth_bars(bars_norm, prev_date, prev_cutoff)
     if not rth_bars or len(rth_bars) < period + 1:

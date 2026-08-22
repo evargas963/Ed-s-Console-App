@@ -99,6 +99,11 @@ def test_operator_escape(tmp_path):
 
 def test_env_kill_switch(tmp_path, monkeypatch):
     monkeypatch.setenv("ED_PM_VERIFY_LOCK", "off")
+    assert pm_verify_repo_violations(VERDICT_ON_REPO, repo=tmp_path) != []
+    monkeypatch.setattr(
+        "tools.hard_law_runtime.operator_guard_escape_granted",
+        lambda name, repo=None: True,
+    )
     assert pm_verify_repo_violations(VERDICT_ON_REPO, repo=tmp_path) == []
 
 
@@ -127,3 +132,17 @@ def test_the_measurement_tool_reads_the_committed_tree_not_the_worktree():
     """The whole point: 'it works on my disk' is the claim that keeps being wrong."""
     src = (REPO / "tools" / "pm_verify_repo.py").read_text(encoding="utf-8")
     assert 'f"HEAD:{rel}"' in src, "pm_verify_repo must read HEAD blobs, not worktree files"
+
+
+def test_write_report_preserves_existing_crlf_terminator(tmp_path, monkeypatch):
+    """RC-382: Linux write_text must not flip the committed CRLF report to LF."""
+    from tools import pm_verify_repo as pvr
+
+    monkeypatch.setattr(pvr, "REPO", tmp_path)
+    report = tmp_path / REPORT_REL
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_bytes(b'{"measured_at_utc": 1}\r\n')
+    pvr.write_report({"measured_at_utc": 2, "head_sha": "abc"})
+    data = report.read_bytes()
+    assert data.count(b"\r\n") > 0
+    assert data.count(b"\n") - data.count(b"\r\n") == 0

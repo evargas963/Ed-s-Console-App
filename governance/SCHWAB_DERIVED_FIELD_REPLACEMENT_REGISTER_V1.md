@@ -644,7 +644,7 @@ Per-function detail in `governance/section15_derivation_inventory.py`.
 
 ## Section 16 derivation audit inventory
 
-Walked **3** external-signal modules (`news_sentiment.py`, `api_pressure.py`, `event_risk.py`) at **full AST scope**. **19** inventory rows: **0** REPLACED, **5** KEEP_DERIVED, **6** PASS_THROUGH, **8** NONE. Finnhub/Alpha Vantage/calendar layers; no Schwab quote/chain/pricehistory wrappers. `api_pressure` is HTTP 429 observability only. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section16_derivation_inventory.py`. Tests: `tests/test_section16_schwab_derivation_audit.py`.
+Walked **3** external-signal modules (`news_sentiment.py`, `api_pressure.py`, `event_risk.py`) at **full AST scope**. **19** inventory rows: **0** REPLACED, **5** KEEP_DERIVED, **6** PASS_THROUGH, **8** NONE. Finnhub / Alphavantage / calendar layers; no Schwab quote/chain/pricehistory wrappers. `api_pressure` is HTTP 429 observability only. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section16_derivation_inventory.py`. Tests: `tests/test_section16_schwab_derivation_audit.py`.
 
 <!-- SECTION16_DERIVATION_INVENTORY_START -->
 | file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
@@ -862,11 +862,6 @@ Regression gate: `tests/test_anti_pattern_family_repo_wide.py` (production `.py`
 | `release_object.py` | 106 | GET_WITH_DEFAULT | env config only |
 | `release_object.py` | 107 | GET_WITH_DEFAULT | env config only |
 | `scheduler_user_tickers.py` | 60 | GET_WITH_DEFAULT | env config only |
-| `schwab_client.py` | 51 | GETATTR_DEFAULT | constant base URL only |
-| `schwab_client.py` | 293 | GET_WITH_DEFAULT | OAuth/config timeout only |
-| `schwab_client.py` | 371 | GET_OR_DEFAULT | parse_qs indexing idiom only |
-| `schwab_client.py` | 372 | GET_OR_DEFAULT | parse_qs indexing idiom only |
-| `schwab_client.py` | 403 | GET_WITH_DEFAULT | OAuth/config timeout only |
 | `timing_probe2.py` | 23 | GET_WITH_DEFAULT | diagnostic probe display fallback |
 | `trade_impacting_gate.py` | 218 | GET_WITH_DEFAULT | env config only |
 <!-- CAPS_ALLOWLIST_END -->

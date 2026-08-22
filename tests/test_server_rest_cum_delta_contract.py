@@ -1,37 +1,19 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 
-import server
-
-
-def _rth_dt() -> datetime:
-    return datetime(2026, 5, 8, 10, 30, tzinfo=__import__('time_et', fromlist=['ET']).ET)
+from server import _update_rest_cum_delta
 
 
-def test_rest_cum_delta_preserves_missing_last_size_as_unavailable():
-    server._rest_cum_delta.clear()
-    server._rest_cum_delta_session = None
-
-    out = server._update_rest_cum_delta(
-        "SPY",
-        {"lastPrice": 501.3, "bidPrice": 501.2, "askPrice": 501.3},
-        _rth_dt(),
-    )
-
-    assert out is None
-    assert "SPY" not in server._rest_cum_delta
-
-
-def test_rest_cum_delta_uses_schwab_last_size_when_present():
-    server._rest_cum_delta.clear()
-    server._rest_cum_delta_session = None
-
-    out = server._update_rest_cum_delta(
-        "SPY",
-        {"lastPrice": 501.3, "lastSize": 7, "bidPrice": 501.2, "askPrice": 501.3},
-        _rth_dt(),
-    )
-
-    assert out == 7
-    assert server._rest_cum_delta["SPY"] == 7
+def test_rest_cum_delta_producer_retired_returns_none():
+    src = Path("server.py").read_text(encoding="utf-8")
+    assert "def _update_rest_cum_delta" in src
+    assert "Retired second CVD producer. Always None." in src
+    assert "last_price >= ask_price" not in src
+    assert "_rest_cum_delta[" not in src
+    assert "ms.cum_delta_proxy = _rest_cum_delta" not in src
+    now = datetime(2026, 8, 24, 14, 30, tzinfo=timezone.utc)
+    assert _update_rest_cum_delta("SPY", {"lastPrice": 500.0, "askPrice": 499.0}, now) is None
+    assert _update_rest_cum_delta("QQQ", {}, now) is None
+    assert _update_rest_cum_delta("IWM", {"lastPrice": 1, "bidPrice": 1, "askPrice": 2}, now) is None

@@ -1,23 +1,28 @@
 """FRONT-END enforcement of the mechanical locks — blocks the EDIT, not just the commit (RC-66).
 
 WHY THIS EXISTS. Every lock in tools/check_institutional_correctness.py runs at PRE-COMMIT. The
-operator's law is explicitly FRONT-LOADED: "the RC row is opened at DISCOVERY, before the fix...
-this law lives on the front end of coding and fixing end to end, not on the back end." Enforcing
-at commit means the wrong change is already written by the time anything objects, and the RC row
-degrades into retroactive paperwork. On 2026-07-26 that gap let a CSS patch land on static/
-index.html with no root-cause row and no root-cause analysis — the patch did not even work — and
-only the operator caught it. `.claude/settings.json` had `"hooks": {}`: nothing ran before a tool.
+operator's law is FRONT-LOADED: admit the material defect before the fix. Enforcing only at
+commit means the wrong change is already written. On 2026-07-26 that gap let a CSS patch land
+on static/index.html with no admitted defect and no root-cause analysis — the patch did not
+even work — and only the operator caught it. `.claude/settings.json` had `"hooks": {}`.
+
+Method pivot (operator 2026-08-22): the admission surface is the sole master, not a second
+root-cause-log debt row. Requiring a new `| RC-` row before every production edit recreated
+a live second defect ledger. Root-cause / five-why reasoning remains mandatory on the same
+master obligation. A new RC row does not authorize a production edit.
 
 This runs as a PreToolUse hook on Edit/Write/NotebookEdit. Exit 2 BLOCKS the tool call.
 
-Scope: the whole continuum — backend .py, frontend .html/.js/.css, SQL, config. Not just Python,
-because the violation that triggered this was in the frontend.
+Scope: the whole continuum — backend .py, frontend .html/.js/.css, SQL, config.
 
 Contract:
-  * Editing a PRODUCTION file requires a root-cause row opened in THIS working tree first
-    (a `| RC-` line in governance/root_cause_log.md that is not in HEAD).
-  * Editing governance/, docs/, reports/, or tests/ is always allowed for the RC-66 rule — that
-    is HOW you open the row and lock the fix.
+  * Editing a PRODUCTION file requires an unresolved master item whose
+    SURFACES= field lists that exact repo-relative path.
+  * A newly discovered defect is added to the sole master first (with SURFACES=),
+    then the edit runs. Blast-radius growth amends the same item before the new file.
+  * A new/modified unrelated master item does not admit an uncovered path.
+  * Basename-only and prose-substring matches are not admission.
+  * Editing the sole master, governance/, docs/, reports/, or tests/ is how you comply.
   * RC-160 UNIVERSAL ticker scope: Write/Edit of prompt / agent-instruction paths is BLOCKED when
     the new content frames SPY-only / sentinel-complete work without UNIVERSAL or OUT-OF-SCOPE
     language — even under otherwise-allowed prefixes (reports/, .claude/).
@@ -29,13 +34,13 @@ Contract:
     governance/ui_mockup_approvals.json is BLOCKED until the operator has approved a rendered
     mockup variant there (status='approved') — escape `# ui-mockup-ok: <reason>` for
     non-redesign bug fixes, ED_UI_MOCKUP_LOCK=off for the operator.
-  * ED_PRETOOLUSE_GUARD=off disables it. That is deliberate and visible: an operator may switch it
-    off, an agent may not silently route around it.
+  * ED_PRETOOLUSE_GUARD=off is ignored unless operator_go.json is granted with
+    scope guard_escape or all (tools/hard_law_runtime.env_guard_is_disabled).
 """
 from __future__ import annotations
 
 import json
-import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,12 +48,19 @@ from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
 RC_LOG = "governance/root_cause_log.md"
+SOLE_MASTER = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+_UNRESOLVED_MASTER_RE = re.compile(
+    r"^\s*[-*]\s+\[\s\]\s+`([^`]+)`\s+—\s+STATUS=(NOT_PROVEN|FAIL)\b"
+)
+_SURFACES_RE = re.compile(r"\bSURFACES=([^\s]+)")
 
-#: Editing these is how you COMPLY (open the row, write the test, record evidence) — never blocked
-#: by the RC-66 production-surface rule. RC-160/RC-163 still gate residual/prompt content.
+#: Editing these is how you COMPLY (admit the master obligation, write the test, record
+#: evidence) — never blocked by the RC-66 production-surface rule. RC-160/RC-163 still gate
+#: residual/prompt content.
 ALWAYS_ALLOWED_PREFIXES = (
     "governance/", "docs/", "reports/", "tests/", ".claude/", "calibration/",
 )
+ALWAYS_ALLOWED_EXACT = (SOLE_MASTER,)
 #: Production surfaces across the whole continuum, not just backend.
 PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
 #: NOT part of the PRODUCT surface. Deliberately NOT the same list as
@@ -61,6 +73,27 @@ PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".t
 NOT_PRODUCT_PREFIXES = (
     "tests/", "governance/", "docs/", "reports/", ".claude/", ".cursor/",
     "scratchpad/", "calibration/",
+)
+#: Enforcement / diagnostic tools. Editing them is how you comply, not a
+#: product defect that needs a ceremonial SURFACES= bind (Architecture A:
+#: filename-accounting is not root-cause prevention). NIST SSDF PW.1
+#: (https://csrc.nist.gov/pubs/sp/800/218/final); Fed/OCC SR 11-7
+#: (https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm).
+_ENFORCEMENT_OR_DIAGNOSTIC_RE = re.compile(
+    r"(?:^|/)(?:"
+    r"(?:[^/]+_)?guard\.py|"
+    r"(?:[^/]+_)?locks?\.py|"
+    r"check_[^/]+\.py|"
+    r"[^/]*census[^/]*\.py|"
+    r"hard_law_runtime\.py|"
+    r"run_with_repo_venv\.py|"
+    r"precommit_[^/]+\.py|"
+    r"pm_verify_[^/]+\.py|"
+    r"anti_pattern_sweep\.py|"
+    r"rehab_[^/]+\.py|"
+    r"duplication_audit\.py|"
+    r"_[^/]+\.py"
+    r")$"
 )
 
 
@@ -124,7 +157,7 @@ def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
         governed=True,
         rel=rel,
         production=rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES),
-        rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
+        rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES) or rel in ALWAYS_ALLOWED_EXACT,
     )
 
 
@@ -165,26 +198,135 @@ def _git(args: list[str]) -> str | None:
     return r.stdout if r.returncode == 0 else None
 
 
-def _has_new_rc_row() -> bool:
-    """True when the working tree adds a `| RC-` row not present at HEAD.
+def parse_unresolved_master_items(text: str) -> list[dict[str, str]]:
+    """Unchecked master boxes that are still NOT_PROVEN or FAIL. Not a second ledger."""
+    out: list[dict[str, str]] = []
+    for ln in (text or "").splitlines():
+        m = _UNRESOLVED_MASTER_RE.match(ln)
+        if m:
+            out.append({"id": m.group(1), "status": m.group(2), "line": ln})
+    return out
 
-    Covers staged AND unstaged, because the row is written the moment a defect is found —
-    long before anything is staged.
+
+def canonicalize_repo_rel(path: str) -> str | None:
+    """ONE authority for target-path admission and SURFACES= tokens.
+
+    `./server.py` → `server.py`. Leading-dot names (`.hidden/…`) stay distinct.
+    Absolute paths, `..` traversal, empty tokens, and junk characters are
+    invalid and return None — they are never rewritten into another path.
+    """
+    p = (path or "").strip().replace("\\", "/")
+    if not p:
+        return None
+    if p.startswith("/") or p.startswith("//") or re.match(r"^[A-Za-z]:/", p):
+        return None
+    while p.startswith("./"):
+        p = p[2:]
+    if not p:
+        return None
+    parts = p.split("/")
+    if any(part == "" or part == ".." for part in parts):
+        return None
+    if any(ch in p for ch in " `'\"()[],"):
+        return None
+    return p
+
+
+def parse_master_surfaces(line: str) -> frozenset[str]:
+    """Exact repo-relative paths from SURFACES=a.py;b.py on one master item."""
+    out: set[str] = set()
+    for m in _SURFACES_RE.finditer(line or ""):
+        for raw in m.group(1).split(";"):
+            p = canonicalize_repo_rel(raw)
+            if p is None:
+                continue
+            if "/" in p or p.endswith(PRODUCTION_SUFFIXES):
+                out.add(p)
+    return frozenset(out)
+
+
+def _master_texts() -> tuple[str, str]:
+    try:
+        cur = (REPO / SOLE_MASTER).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        cur = ""
+    head = _git(["show", f"HEAD:{SOLE_MASTER}"])
+    return cur, head if head is not None else ""
+
+
+def is_enforcement_or_diagnostic_tool(rel: str) -> bool:
+    """True for lock/guard/check/census modules — not product/control-path."""
+    rel_n = canonicalize_repo_rel(rel) or str(rel).replace("\\", "/")
+    return bool(_ENFORCEMENT_OR_DIAGNOSTIC_RE.search(rel_n))
+
+
+def requires_root_cause_admission(rel: str) -> bool:
+    """True only for material product / control-path surfaces.
+
+    Negative controls (Architecture A, operator 2026-08-22):
+      * a material production/control-path edit without master admission BLOCKS
+      * an enforcement/diagnostic/compliance-lane edit must NOT require a
+        fabricated SURFACES= linkage
+    """
+    facts = classify_path(rel)
+    if not facts.governed or facts.rc66_exempt:
+        return False
+    if not rel.endswith(PRODUCTION_SUFFIXES) and not facts.rel.endswith(PRODUCTION_SUFFIXES):
+        return False
+    if is_enforcement_or_diagnostic_tool(facts.rel):
+        return False
+    return True
+
+
+def master_admits_production_edit(
+    rel: str,
+    *,
+    current_text: str | None = None,
+    head_text: str | None = None,
+) -> bool:
+    """True only when an unresolved master item lists this exact repo-relative path.
+
+    Admission is SURFACES=<repo-relative>;... on an unresolved (`- [ ]`,
+    STATUS=NOT_PROVEN|FAIL) master item. A new or modified unrelated item is
+    not admission. Basename-only and prose-substring matches are not admission.
+    A `| RC-` row is never admission. `head_text` is accepted for callers and
+    unused: HEAD novelty is not a grant.
+    """
+    if current_text is None:
+        current_text, head_from_git = _master_texts()
+        if head_text is None:
+            head_text = head_from_git
+    rel_n = canonicalize_repo_rel(rel)
+    if rel_n is None:
+        return False
+    for it in parse_unresolved_master_items(current_text or ""):
+        if rel_n in parse_master_surfaces(it["line"]):
+            return True
+    return False
+
+
+def _has_admitted_master_obligation(rel: str) -> bool:
+    return master_admits_production_edit(rel)
+
+
+def _has_new_rc_row() -> bool:
+    """Retired as work-admission. Kept for measurement / negative controls.
+
+    A new `| RC-` row must not authorize a production edit.
     """
     head = _git(["show", f"HEAD:{RC_LOG}"])
     if head is None:
-        return True                      # no git context / new repo -> never a false block
+        return False
     head_ids = {ln.split("|")[1].strip() for ln in head.splitlines()
                 if ln.startswith("| RC-") and "|" in ln[2:]}
     try:
         cur = (REPO / RC_LOG).read_text(encoding="utf-8", errors="ignore")
     except OSError:
-        return True
+        return False
     cur_ids = {ln.split("|")[1].strip() for ln in cur.splitlines()
                if ln.startswith("| RC-") and "|" in ln[2:]}
     if cur_ids - head_ids:
-        return True                      # a brand-new RC id exists
-    # A REOPENED row (status flipped back to OPEN) also counts as opening a root cause.
+        return True
     diff = _git(["diff", "HEAD", "--", RC_LOG]) or ""
     return any(ln.startswith("+| RC-") for ln in diff.splitlines())
 
@@ -300,7 +442,11 @@ def _block_unapproved_ui_redesign(rel: str, tool_input: dict) -> int | None:
 
 
 def main() -> int:
-    if os.environ.get("ED_PRETOOLUSE_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled  # type: ignore
+    if env_guard_is_disabled("ED_PRETOOLUSE_GUARD"):
         return 0
     try:
         payload = json.load(sys.stdin)
@@ -362,23 +508,30 @@ def decide(payload: dict) -> int:
         return 0
     if not rel.endswith(PRODUCTION_SUFFIXES):
         return 0
-    if _has_new_rc_row():
+    if not requires_root_cause_admission(rel):
+        return 0
+    if _has_admitted_master_obligation(rel):
         return 0
 
     sys.stderr.write(
-        "BLOCKED by the front-loaded recursive-5-why law (RC-66).\n\n"
+        "BLOCKED by the front-loaded sole-master admission law (RC-66 method pivot).\n\n"
         f"  You are editing PRODUCTION file: {rel}\n"
-        "  No new root-cause row exists in governance/root_cause_log.md.\n\n"
-        "The law is FRONT-LOADED (operator, non-negotiable): the INSTANT you find an issue you\n"
-        "open its RC row FIRST, recurse each cause to a named ROOT, then fix end-to-end. A row\n"
-        "written after the fix is retroactive paperwork, not analysis — and the fix is usually a\n"
-        "patch, which is separately banned.\n\n"
+        "  No admitted unresolved master obligation covers this edit.\n\n"
+        "The law is FRONT-LOADED: admit the material defect on the sole master BEFORE the\n"
+        "production edit. Root-cause / five-why reasoning is mandatory on that same master\n"
+        "item. A `| RC-` row in governance/root_cause_log.md does not authorize the edit and\n"
+        "must not be created as a current debt record.\n\n"
         "Do this instead:\n"
-        "  1. Add a `| RC-<n> | OPEN | <today> | <due> | defect | (1)->(2)->(3)->(4)->(5) ROOT: ... | plan |`\n"
-        "     row to governance/root_cause_log.md (that file is never blocked).\n"
-        "  2. Then make this edit, and ship a test that locks it.\n\n"
-        "This mirrors check_recursive_five_why_front_loaded, but at EDIT time rather than commit\n"
-        "time — the whole continuum, backend and frontend.\n"
+        "  1. Search ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md\n"
+        "     for the materially equivalent UNIVERSAL requirement; use that ID if found.\n"
+        "  2. If genuinely absent, add one atomic universal `- [ ]` master item\n"
+        "     (STATUS=NOT_PROVEN) with the bedrock cause and blast radius. Tickers are\n"
+        "     fixtures only — never a ticker-specific requirement.\n"
+        "  3. Bind this exact repo-relative path on that same item:\n"
+        "     SURFACES=<path>[;<path>...]. Basename and prose mentions are not enough.\n"
+        "     If blast radius grows, amend the same item before editing the new file.\n"
+        "  4. Then make this edit, and ship a test that locks it.\n\n"
+        "This mirrors check_recursive_five_why_front_loaded at EDIT time.\n"
     )
     return 2                             # exit 2 = block the tool call
 

@@ -30,7 +30,6 @@ Escape: `# pm-verify-ok: <reason>` (operator-reviewed), and ED_PM_VERIFY_LOCK=of
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from pathlib import Path
@@ -106,7 +105,11 @@ def pm_verify_repo_violations(
     now: float | None = None,
 ) -> list[str]:
     """BLOCK a repo-state VERDICT that carries no same-turn measurement (RC-242)."""
-    if os.environ.get("ED_PM_VERIFY_LOCK", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_PM_VERIFY_LOCK"):
         return []
     t = text or ""
     if not t or _ESCAPE in t:

@@ -5,12 +5,12 @@ documentation. Opening an RC is required (front-loaded five-why); parking it wit
 named resolve path, or claiming mission COMPLETE while mission-owned OPEN rows remain,
 is the defect this lock detects.
 
-Clauses (both ENFORCED via check_rc_document_without_resolve):
+Clauses:
   A) A newly ADDED OPEN RC row must name a resolve path in the fix cell
      (FIXED: / NEXT-DEPTH: / OUT-OF-SCOPE:). Empty / TBD / TODO parking lots BLOCK.
-  B) Staging pm_mission.json into a terminal status (DONE / COMPLETE / idle) while any
-     RC row that mentions that mission_id is still OPEN BLOCKs. Honest PARTIAL with
-     OUT-OF-SCOPE: + tracker is legal; mass-fake CLOSE is not.
+     This is evidence-integrity of the historical RC record, not work selection.
+  B) RC OPEN / due date / classification must not determine mission completion.
+     Unresolved work and completion blocking live only on the sole master.
 
 Escape (operator only, visible): `# mission-rc-open-ok: <reason>` in the staged
 pm_mission.json text, or `ED_RC_RESOLVE_GUARD=off`.
@@ -18,7 +18,6 @@ pm_mission.json text, or `ED_RC_RESOLVE_GUARD=off`.
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 
@@ -149,24 +148,12 @@ def mission_complete_open_rc_violations(
     *,
     staged_mission_text: str = "",
 ) -> list[str]:
-    """Clause B: terminal mission while OPEN RCs name that mission_id → violations."""
-    if os.environ.get("ED_RC_RESOLVE_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return []
-    if _ESCAPE in (staged_mission_text or ""):
-        return []
-    if not mission_becoming_terminal(old_mission, new_mission):
-        return []
-    mid = str((new_mission or {}).get("mission_id") or "").strip()
-    if not mid:
-        return ["pm_mission.json becoming terminal without mission_id — cannot bind RC ownership"]
-    open_ids = open_rcs_owned_by_mission(mid, rc_lines)
-    if not open_ids:
-        return []
-    return [
-        f"mission {mid!r} status->{_mission_status(new_mission)!r} while OPEN RC(s) still name "
-        f"that mission: {', '.join(open_ids)}. CLOSE with FIXED reach, or honest PARTIAL + "
-        f"OUT-OF-SCOPE: tracker — do not mass-fake CLOSE (RC-228). Escape: {_ESCAPE} <reason>"
-    ]
+    """Clause B retired as work-state: RC OPEN cannot determine mission completion.
+
+    Unresolved-work / completion blocking lives only on the sole master.
+    Clause A (added OPEN row must name a resolve path) remains evidence integrity.
+    """
+    return []
 
 
 def staged_rc_resolve_violations(
@@ -178,7 +165,11 @@ def staged_rc_resolve_violations(
     staged_mission_text: str = "",
 ) -> list[str]:
     """Combine clause A + B for the commit checker / negative controls."""
-    if os.environ.get("ED_RC_RESOLVE_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_RC_RESOLVE_GUARD"):
         return []
     out: list[str] = []
     out.extend(added_open_rows_without_resolve(added_rc_lines))

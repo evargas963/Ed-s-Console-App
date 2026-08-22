@@ -120,7 +120,11 @@ def test_shipped_policy_declares_its_mode_with_a_reason():
     exactly the silent default the gate exists to ban."""
     import json
     policy = json.loads(Path("tools/agent_worktree_policy.json").read_text(encoding="utf-8"))
-    assert policy.get("mode") in ("isolated", "shared-root")
+    assert policy.get("mode") in ("isolated", "shared-root", "canonical")
+    if policy["mode"] == "canonical":
+        assert "RC-457" in str(policy.get("mode_reason", "")), (
+            "canonical mode without its RC-457 rationale — the next reader cannot challenge it"
+        )
     if policy["mode"] == "shared-root":
         assert "RC-129" in str(policy.get("mode_reason", "")), (
             "shared-root without its RC-129 rationale — the next reader cannot challenge it"

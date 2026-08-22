@@ -513,7 +513,7 @@ def test_non_commit_commands_are_unaffected_by_repository_scoping():
 
 def test_operator_escape_remains_operator_only():
     src = (REPO / "tools" / "operator_law_guard.py").read_text(encoding="utf-8")
-    assert 'os.environ.get("ED_OPERATOR_LAW_GUARD"' in src
+    assert "env_guard_is_disabled" in src
     out = G.bash_violations("ED_OPERATOR_LAW_GUARD=off python x.py", [], payload_cwd=str(REPO))
     assert any("disables a mechanical lock" in v for v in out), out
 

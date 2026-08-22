@@ -46,8 +46,8 @@ def _base_db_row(ts_utc: float, spot: float = 450.0) -> dict:
         "net_gamma": 1.0,
         "vwap_side": "below",
         "vwap_dist_pts": 9.99,
-        "absorption_score": None,
-        "continuation_score": None,
+        "range_imbalance_stall_score": None,
+        "range_imbalance_push_score": None,
         "candle_body_pts": 0.1,
         "candle_range_pts": 0.2,
         "dist_call_gamma_wall": 1.0,
@@ -187,7 +187,7 @@ def test_merge_strips_all_mvp_legacy_keys():
     cf["structure.zone"] = "pin_bull"
     m = merge_db_row_with_canonical_mvp(db, cf)
     for leg in MVP_LEGACY_KEYS:
-        if leg in ("absorption_score", "continuation_score"):
+        if leg in ("range_imbalance_stall_score", "range_imbalance_push_score"):
             continue
         assert m[leg] != 999.0 or leg not in db
 

@@ -20,6 +20,6 @@ def minimal_mvp_features(
     feats["structure.net_gamma"] = 0.0
     feats["anchor.vwap_side"] = vwap_side
     feats["anchor.vwap_dist_pts"] = 0.0
-    feats["liquidity.absorption_score"] = None
-    feats["liquidity.continuation_score"] = None
+    feats["liquidity.range_imbalance_stall_score"] = None
+    feats["liquidity.range_imbalance_push_score"] = None
     return feats

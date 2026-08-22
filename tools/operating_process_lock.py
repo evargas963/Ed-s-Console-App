@@ -119,10 +119,14 @@ def _strip_command_payloads(cmd: str) -> str:
 def reset_guard_violations(command: str) -> list[str]:
     """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231/RC-252).
 
-    Escapes: ED_RESET_GUARD=off (operator, visible) or operator_go scope git_reset_product.
+    Escapes: ED_RESET_GUARD=off only when operator_go grants guard_escape/all, or operator_go scope git_reset_product.
     `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
     """
-    if os.environ.get("ED_RESET_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_RESET_GUARD"):
         return []
     if operator_go_granted("git_reset_product"):
         return []
@@ -140,7 +144,7 @@ def reset_guard_violations(command: str) -> list[str]:
             "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
             f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
             "— three 2026-08-03 wipes used exactly this class. Escape: ED_RESET_GUARD=off "
-            "(operator) or operator_go scope git_reset_product."
+            "only with operator_go guard_escape/all, or operator_go scope git_reset_product."
         ]
     return []
 
@@ -680,7 +684,11 @@ def _mission_scope_allows(rel: str, scope_paths: list) -> bool:
 
 def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
     """RC-219 + RC-226: product edits need an in-progress mission; non-writer cannot touch scope."""
-    if os.environ.get("ED_PM_MISSION_GUARD", "").strip().lower() in ("off", "0", "false"):
+    try:
+        from tools.hard_law_runtime import env_guard_is_disabled as _egd
+    except ImportError:
+        from hard_law_runtime import env_guard_is_disabled as _egd  # type: ignore
+    if _egd("ED_PM_MISSION_GUARD"):
         return None
     rel = rel.replace("\\", "/")
     if rel in PROCESS_ALLOWED_PREFIXES or WDL.is_pm_allowlisted(rel):
@@ -688,7 +696,7 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
     mission = pm_mission_record()
     status = str(mission.get("status") or "idle").strip().lower()
     agent = (agent or current_agent_role()).lower()
-    writer = str(mission.get("writer") or sole_writer_record().get("writer") or "").strip().lower()
+    writer = WDL.resolved_writer(mission, sole_writer_record())
     scopes = mission.get("scope_paths") or ["*"]
     if not isinstance(scopes, list):
         scopes = ["*"]
@@ -700,10 +708,11 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
             return None
         if WDL.path_in_mission_scope(rel, scopes) or _mission_gates_path(rel):
             return (
-                f"SOD_DRIFT: {writer} is sole writer — WRITER-DRIFT BLOCK: "
-                f"mission writer={writer!r} but agent={agent!r} — "
+                f"SOD_DRIFT: {writer} is ACTIVE_WRITER — WRITER-DRIFT BLOCK: "
+                f"mission ACTIVE_WRITER={writer!r} but agent={agent!r} — "
                 f"path {rel} blocked (mission_id={mission.get('mission_id')!r}; "
-                f"status={status!r}). Cursor=PM/auditor; sole writer owns scope_paths."
+                f"status={status!r}). One canonical worktree; non-active agent "
+                f"cannot concurrently mutate it."
             )
         return None
 
@@ -960,7 +969,12 @@ def pm_coverage_violations(user_text: str | None, assistant_text: str) -> list[s
     ]
 
 
-def completion_claim_violations(text: str, repo: Path | None = None) -> list[str]:
+def completion_claim_violations(
+    text: str,
+    repo: Path | None = None,
+    *,
+    ci_status: dict | None = None,
+) -> list[str]:
     """BLOCK COMPLETE/LIVE/parity claims while measurable preconditions fail."""
     if not text:
         return []
@@ -969,6 +983,13 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     # LOCK-5 (RC-232) triggers on its OWN claim regex — the legacy _COMPLETION_CLAIM tails
     # missed plain forms like 'Mission COMPLETE: ...' (measured by its own fixture).
     out.extend(_quiet_pass_required_violations(text, root))
+    try:
+        from tools.hard_law_runtime import current_head_sha, load_required_ci_status, required_ci_violations
+    except ImportError:
+        from hard_law_runtime import current_head_sha, load_required_ci_status, required_ci_violations  # type: ignore
+    head = current_head_sha(root)
+    ci = load_required_ci_status(root, head_sha=head, injected=ci_status)
+    out.extend(required_ci_violations(text, head_sha=head, ci_status=ci))
     if not _COMPLETION_CLAIM.search(text):
         return out
     mism = index_worktree_mismatches(root)
@@ -985,24 +1006,7 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     if staged_head and re.search(r"\b(iceberg ready|ready to commit|one intentional tree)\b", text, re.I):
         if not operator_go_granted("staged_lock_surface"):
             out.extend(staged_head)
-    # RC-228: COMPLETE claims while the active mission still owns OPEN RC rows.
-    if re.search(r"\b(mission\s+complete|done_criteria|COMPLETE(?:/CLOSED)?)\b", text, re.I):
-        try:
-            from tools.rc_resolve_lock import open_rcs_owned_by_mission
-        except ImportError:
-            from rc_resolve_lock import open_rcs_owned_by_mission  # type: ignore
-        mission = pm_mission_record()
-        mid = str(mission.get("mission_id") or "").strip()
-        rc_path = root / "governance" / "root_cause_log.md"
-        if mid and rc_path.is_file():
-            open_ids = open_rcs_owned_by_mission(
-                mid, rc_path.read_text(encoding="utf-8").splitlines()
-            )
-            if open_ids:
-                out.append(
-                    f"completion claim while OPEN RC(s) still name mission {mid!r}: "
-                    f"{', '.join(open_ids)} (RC-228 — CLOSE or honest PARTIAL+OUT-OF-SCOPE first)"
-                )
+    # RC OPEN / due date / classification cannot determine completion (operator 2026-08-22).
     return out
 
 

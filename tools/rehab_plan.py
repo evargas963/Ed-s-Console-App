@@ -242,10 +242,11 @@ def m_offgrid() -> tuple[float, str]:
 
 
 def m_open_rc() -> tuple[float, str]:
+    """Measurement only. RC OPEN/PARTIAL has zero work authority."""
     rows = re.findall(r"^\| (RC-\d+) \| (\w+) \|",
                       _read(os.path.join(REPO, "governance", "root_cause_log.md")), re.M)
     op = [i for i, s in rows if s != "CLOSED"]
-    return (len(op), f"{len(op)} non-closed of {len(rows)}: {', '.join(op)}")
+    return (0.0, f"measurement only: {len(op)} non-closed of {len(rows)} (zero work authority)")
 
 
 def m_status_vocabulary_enforced() -> tuple[float, str]:
@@ -273,8 +274,10 @@ def m_status_vocabulary_enforced() -> tuple[float, str]:
     return (0.0, "registered, ENFORCED, 0 violations on the live ledger")
 
 
-#: Tools that take a measurement and must be wired to something that blocks.
-BLOCKING_TOOLS = ("duplication_audit", "check_db_health", "check_one_faucet_live")
+#: Commit-path REQUIRED controls only. duplication_audit and check_one_faucet_live
+#: are DIAGNOSTIC_TOOL (non-authoritative); listing them here was phantom enforcement.
+BLOCKING_TOOLS = ("check_db_health",)
+DIAGNOSTIC_TOOLS = ("duplication_audit", "check_one_faucet_live")
 
 
 def m_tools_unwired() -> tuple[float, str]:
@@ -387,10 +390,10 @@ PLAN: list[Item] = [
          note="operator to name 2-3 of: SpotGamma, MenthorQ, GEXRadar, "
               "GEXStream, FlashAlpha, Perspicium"),
 
-    Item("G1", 5, "No open root causes",
-         "The ledger is a control, not an archive. An open row past its due "
-         "date is a defect nobody is carrying, and six of the seven open rows "
-         "were opened in the last two days.",
+    Item("G1", 5, "RC log remains evidence, not a work queue",
+         "The ledger is historical evidence of defect investigation. RC OPEN / "
+         "due date / classification must not independently select or block work; "
+         "unresolved residuals live only on the sole master checklist.",
          0, m_open_rc),
     Item("G2", 5, "Unrecognised RC status fails instead of skipping",
          "DONE, FINISHED and the typo CLOSE each took a deficient row from 2 "

@@ -244,7 +244,7 @@ def test_inference_snapshot_parent_missing_lineage_fails():
     feats = _minimal_features()
     snap = {
         "snapshot_type": "InferenceSnapshotV1",
-        "feature_contract_version": "v1_1m_mvp",
+        "feature_contract_version": "v1_1m_range_imbalance",
         "canonical_timeframe": "1m",
         "source": "live_l1_tier_b",
         "features": feats,
@@ -532,26 +532,36 @@ def test_meta_manifest_reader_legacy_absence_never_upgrades(tmp_path):
 
 # Golden schema identity: names+order+contract version. Changing the contract
 # REQUIRES regenerating this constant in the same governance-reviewed diff.
-MVP_SCHEMA_GOLDEN_SHA256 = "e2c132ed09390c5a5a531ebeda6a9c58811a942d782f60d0cab33e71f27fd5d3"
+#
+# ACCOUNT 2026-08-22 (RC-455 rename already on HEAD; golden was left on main):
+#   VERSION  v1_1m_mvp → v1_1m_range_imbalance
+#   DEPARTURE  liquidity.absorption_score (quarantined semantic era; never mapped)
+#   DEPARTURE  liquidity.continuation_score (quarantined semantic era; never mapped)
+#   ARRIVAL    liquidity.range_imbalance_stall_score
+#   ARRIVAL    liquidity.range_imbalance_push_score
+# Train/infer moved together: features/db_feature_adapter.py and
+# features/live_feature_adapter.py already read the stall/push columns / liquidity_summary
+# keys (not absorption/continuation). Hash is sha256(json.dumps({version, names}, sort_keys=True)).
+MVP_SCHEMA_GOLDEN_SHA256 = "c484e7226d8aaa10df2b999ce08585fe1c7484dbdcea467152ce65a3f25d800f"
 
 _GOLDEN_DB_ROW = {
     "spot": 512.34, "spread": 0.02, "zone": "breakout",
     "nearest_above_dist": 1.25, "nearest_below_dist": 0.75, "net_gamma": -1234.5,
     "vwap_side": "above", "vwap_dist_pts": 0.6,
-    "absorption_score": 0.41, "continuation_score": 0.59,
+    "range_imbalance_stall_score": 0.41, "range_imbalance_push_score": 0.59,
 }
 _GOLDEN_L1_PAYLOAD = {
     "spot": 512.34, "spread_pts": 0.02, "zone": "breakout",
     "nearest_above_dist": 1.25, "nearest_below_dist": 0.75, "net_gamma": -1234.5,
     "vwap_side": "above", "dist_to_vwap_pts": 0.6,
-    "liquidity_summary": {"absorption_score": 0.41, "continuation_score": 0.59},
+    "liquidity_summary": {"range_imbalance_stall_score": 0.41, "range_imbalance_push_score": 0.59},
 }
 _GOLDEN_EXPECTED = {
     "price.spot": 512.34, "price.spread_pts": 0.02, "structure.zone": "breakout",
     "structure.nearest_above_dist": 1.25, "structure.nearest_below_dist": 0.75,
     "structure.net_gamma": -1234.5, "anchor.vwap_side": "above",
-    "anchor.vwap_dist_pts": 0.6, "liquidity.absorption_score": 0.41,
-    "liquidity.continuation_score": 0.59,
+    "anchor.vwap_dist_pts": 0.6, "liquidity.range_imbalance_stall_score": 0.41,
+    "liquidity.range_imbalance_push_score": 0.59,
 }
 
 
@@ -612,5 +622,5 @@ def test_golden_row_survives_inference_snapshot_envelope():
         ticker="SPY", expiry=None, as_of_ts=1_780_000_000.0, db_row=dict(_GOLDEN_DB_ROW),
     )
     assert snap["features"] == _GOLDEN_EXPECTED
-    assert snap["feature_contract_version"] == "v1_1m_mvp"
+    assert snap["feature_contract_version"] == "v1_1m_range_imbalance"
     assert snap["feature_quality"]["missing_count"] == 0

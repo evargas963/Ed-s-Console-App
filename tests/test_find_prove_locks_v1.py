@@ -106,6 +106,127 @@ def test_claude_cursor_guard_parity_blocks_drift():
     assert claude_cursor_parity_violations() == []
 
 
+def test_hook_parity_rejects_windows_only_interpreter_and_filename_presence():
+    """Filename in JSON is not wiring; Windows-only python.exe is not portable."""
+    from tools.find_prove_locks import claude_cursor_parity_violations
+
+    windows_only = {
+        "hooks": {
+            "stop": [
+                {"command": ".venv/Scripts/python.exe tools/stop_guard.py"},
+                {"command": ".venv/Scripts/python.exe tools/honesty_guard.py"},
+            ]
+        }
+    }
+    import json as _json
+    text = _json.dumps(windows_only)
+    v = claude_cursor_parity_violations(text, text)
+    assert v, "Windows-only interpreter must BLOCK"
+    assert any("run_with_repo_venv.py" in x or "Windows-only" in x for x in v)
+
+    filename_only = {
+        "hooks": {
+            "stop": [
+                {"command": "echo pretooluse_guard.py stop_guard.py honesty_guard.py "
+                            "operator_law_guard.py proof_only_guard.py process_lock_guard.py"}
+            ]
+        }
+    }
+    v2 = claude_cursor_parity_violations(_json.dumps(filename_only), _json.dumps(filename_only))
+    assert v2, "filename presence without --hook launcher must BLOCK"
+
+
+def test_run_with_repo_venv_hook_fail_closed_and_runs_without_venv(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    launcher = repo / "tools" / "run_with_repo_venv.py"
+    missing = subprocess.run(
+        [sys.executable, str(launcher), "--hook", "tools/does_not_exist_guard_zz.py"],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert missing.returncode == 2
+    probe = tmp_path / "ok_guard.py"
+    probe.write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+    ok = subprocess.run(
+        [sys.executable, str(launcher), "--hook", str(probe)],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert ok.returncode == 0
+    blocked = tmp_path / "block_guard.py"
+    blocked.write_text("import sys\nsys.exit(2)\n", encoding="utf-8")
+    blk = subprocess.run(
+        [sys.executable, str(launcher), "--hook", str(blocked)],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert blk.returncode == 2
+
+
+def test_required_hardening_job_has_no_or_true_and_advisory_is_named():
+    from tools.honesty_guard import honesty_violations
+
+    swallowed = (
+        "jobs:\n  hardening:\n    steps:\n"
+        "      - run: python -m ruff check . || true\n"
+    )
+    required, _, _advisory = swallowed.partition("advisory-hardening:")
+    assert "|| true" in required
+    live = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "hardening.yml"
+    ).read_text(encoding="utf-8")
+    live_required, sep, live_advisory = live.partition("advisory-hardening:")
+    assert sep, "advisory-hardening job is missing"
+    assert "|| true" not in live_required
+    assert "NON-AUTHORITATIVE" in live_advisory
+    assert "cannot support PASS" in live_advisory
+    cited = honesty_violations(None, "bandit is PASS and required CI is green.")
+    assert cited and any("NON-AUTHORITATIVE" in m for m in cited)
+    honest = honesty_violations(
+        None, "advisory-hardening is non-authoritative and cannot support closure."
+    )
+    assert not any("NON-AUTHORITATIVE" in m for m in honest)
+
+
+def test_live_path_lock_is_launch_only_not_ci():
+    from tools.check_live_path_is_main import launch_only_wiring_violations
+
+    missing_launch = launch_only_wiring_violations(
+        bat_text="@echo off\npython -m uvicorn server:app\n",
+        workflow_texts={"hardening.yml": "name: Hardening\n"},
+    )
+    assert missing_launch and any("unbound" in m for m in missing_launch)
+
+    ci_wired = launch_only_wiring_violations(
+        bat_text="python tools/check_live_path_is_main.py\n",
+        workflow_texts={"pytest.yml": "python tools/check_live_path_is_main.py\n"},
+    )
+    assert ci_wired and any("wires" in m for m in ci_wired)
+
+    honest = launch_only_wiring_violations(
+        bat_text="python tools\\check_live_path_is_main.py\n",
+        workflow_texts={"pytest.yml": "pytest\n"},
+    )
+    assert honest == []
+    assert launch_only_wiring_violations() == []
+
+
+def test_clock_only_session_gate_blocks_bare_filter_and_allows_composed():
+    from tools.find_prove_locks import clock_only_session_gate_violations
+
+    bare = "def load():\n    if not is_rth_ts_utc(ts):\n        return\n"
+    assert clock_only_session_gate_violations("calibration/daily_scoreboard.py", bare)
+    composed = (
+        "from time_et import is_rth_ts_utc, is_trading_day_et\n"
+        "return is_rth_ts_utc(ts) and is_trading_day_et(day)\n"
+    )
+    assert clock_only_session_gate_violations("desk_store.py", composed) == []
+    assert clock_only_session_gate_violations("time_et.py", bare) == []
+    tradable = "if not is_tradable_session_ts_utc(ts):\n    return\n"
+    assert clock_only_session_gate_violations("ml_scheduler.py", tradable) == []
+
+
 def test_claude_cursor_guard_parity_check():
     from tools.check_institutional_correctness import check_claude_cursor_guard_parity
 

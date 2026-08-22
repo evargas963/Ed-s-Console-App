@@ -39,6 +39,29 @@ def test_streaming_l1_cache_usable_requires_recent_tick():
     assert ofs.get_plane_authority_for_ticker("SPY") == "streaming"
 
 
+def test_clear_all_live_state_drops_tape_and_prev_trade():
+    import order_flow_live_state as ols
+    ols.push_level_one("SPY", {
+        "LAST_PRICE": 500.0, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1_000,
+    })
+    assert ols.get_stats()["tape"].get("SPY", 0) >= 1
+    ols.clear_all_live_state()
+    assert ols.get_stats()["tape"].get("SPY", 0) == 0
+
+
+def test_stream_stop_clears_live_state_and_freshness():
+    import order_flow_live_state as ols
+
+    _reset_stream_globals()
+    ols.push_level_one("SPY", {
+        "LAST_PRICE": 500.0, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1_000,
+    })
+    ofs._streaming_last_update_ts = time.time()
+    ofs.stop_order_flow_stream(join_timeout=0.05)
+    assert ofs._streaming_last_update_ts is None
+    assert ols.get_stats()["tape"].get("SPY", 0) == 0
+
+
 def test_get_plane_authority_rest_only_when_logged_out():
     _reset_stream_globals()
     ofs._stream_running = True

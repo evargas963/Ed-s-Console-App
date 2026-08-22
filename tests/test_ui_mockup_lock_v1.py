@@ -80,6 +80,11 @@ def test_unlisted_surface_is_not_gated(tmp_path):
 def test_operator_env_escape_flows(tmp_path, monkeypatch):
     _write_registry(tmp_path, "design_pending", None)
     monkeypatch.setenv("ED_UI_MOCKUP_LOCK", "off")
+    assert mockup_approval_violation("static/chart.html", "x", repo=tmp_path) is not None
+    monkeypatch.setattr(
+        "tools.hard_law_runtime.operator_guard_escape_granted",
+        lambda name, repo=None: True,
+    )
     assert mockup_approval_violation("static/chart.html", "x", repo=tmp_path) is None
 
 
@@ -102,7 +107,9 @@ def test_guard_git_reads_utf8_governance_content_without_locale_decode_errors():
     the RC-66 check to never-block. Drives the REAL callee against the REAL log."""
     from tools.pretooluse_guard import _git
     out = _git(["show", "HEAD:governance/root_cause_log.md"])
-    assert out is not None and "| RC-" in out
+    assert out is not None
+    hist = _git(["show", "1fbd62f65b237a6e9eaa94a8a68a6fd7f809630a:governance/root_cause_log.md"])
+    assert hist is not None and "| RC-" in hist
 
 
 def test_gun1_bare_status_flip_does_not_unlock_chart(tmp_path):

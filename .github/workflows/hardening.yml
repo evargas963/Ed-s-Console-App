@@ -91,14 +91,25 @@ jobs:
       - name: no-grep subprocess
         run: python tools/check_no_grep_subprocess.py
 
-      # --- RATCHET (visible, NON-blocking until HIGH findings are triaged) ---
-      # These end in `|| true`, so they report but cannot fail the job. The name says so —
-      # a step called "blocking" that cannot block is the security theater this repo audits for.
-      - name: bandit (high severity — non-blocking ratchet)
-        run: python -m bandit -r . -ll -q -c pyproject.toml || true   # RATCHET: triage HIGH then drop the `|| true` to make it block
-
-      # --- RATCHET (visible, non-blocking until cleared) ---
-      - name: lint debt — unused vars + redefs (F841/F811 ratchet, target 0 this week)
+  # NON-AUTHORITATIVE. Not a required status check. Must not be cited as PASS,
+  # ENFORCED, or merge-blocking. Style/supply-chain visibility only.
+  advisory-hardening:
+    name: advisory-hardening (NON-AUTHORITATIVE)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install advisory tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff bandit pip-audit
+      - name: bandit high (advisory — cannot support PASS/closure)
+        run: python -m bandit -r . -ll -q -c pyproject.toml || true
+      - name: ruff F841/F811 (advisory — cannot support PASS/closure)
         run: python -m ruff check . --select F841,F811 --statistics || true
-      - name: dependency vulnerabilities (pip-audit — ratchet until requirements pinned)
+      - name: pip-audit (advisory — cannot support PASS/closure)
         run: python -m pip_audit || true

@@ -90,13 +90,10 @@ repos:
       # the database on disk, which no other gate does, and returns 0 for an
       # absent default database so a fresh clone is never blocked.
       #
-      # duplication_audit and check_one_faucet_live are deliberately NOT wired.
-      # They cannot pass today, and the only way to wire them was a tolerance
-      # the operator never authorised: --kind scoping that silenced thirteen of
-      # fourteen duplication classes, and a --max ceiling set twice and wrong
-      # twice. Both have been removed. A tool that cannot pass does not get a
-      # gate built around it to hide that -- it gets run by hand until the
-      # defect is fixed:
+      # duplication_audit and check_one_faucet_live are DIAGNOSTIC_TOOL
+      # (non-authoritative). They are not commit/CI locks. Do not wrap them in
+      # || true or a tolerance. Run by hand / rehab scan until the register is
+      # actually zero / a live server agrees:
       #     python tools/duplication_audit.py
       #     python tools/check_one_faucet_live.py
       # RC-407 (latency, operator #4): db-health opens data/ed_console.db — in production the

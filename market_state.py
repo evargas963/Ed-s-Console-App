@@ -77,7 +77,9 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
         if net_delta is None:
             return "expansion_unknown"
         return "breakout" if float(net_delta) >= 0 else "breakdown"
-    return "pin_neutral"  # safe default
+    if b in ("withheld", "unvalidated"):
+        return "unclassified"
+    return "unclassified"
 
 
 # is_pin_zone() lives in math_exposure.py — centralized
@@ -94,10 +96,8 @@ def bias_color(bias_signal: str | None) -> str:
     return "#9ca3af"
 
 def pin_color(pin_strength: str | None) -> str:
-    p = (pin_strength or "")
-    if p == "High":            return "#166534"
-    if p == "Med":             return "#92400e"
-    if p in ("Low","Very Low"): return "#9ca3af"
+    # RC-473: High/Med/Low buckets are withheld. Do not paint leftover strings
+    # as confidence / institutional strength.
     return "#1a1a1a"
 
 def nd_color(net_delta: float | None) -> str:
@@ -154,7 +154,7 @@ class MarketState:
 
     # ── Regime ────────────────────────────────────────────────────────────────
     bias_signal:        str             = "Neutral"
-    pin_strength:       str             = "Very Low"
+    pin_strength:       str             = "WITHHELD"
     net_delta:          Optional[float] = None      # share-equivalent
     net_gamma:          Optional[float] = None
     gex_magnitude:      str             = "negligible"  # large/moderate/small/negligible
@@ -393,6 +393,15 @@ class MarketState:
     book_imbalance_5:              Optional[float] = None
     cum_delta_proxy:               Optional[float] = None
     tape_pressure_30s:             Optional[float] = None  # RC-404: canonical L2 producer carries every published OF field
+    tape_pressure_classification:  Optional[str]   = None
+    cum_delta_classification:      Optional[str]   = None
+    tape_identity_convention:      Optional[str]   = None
+    tape_native_event_id:          Optional[bool]  = None
+    tape_completeness:             Optional[str]   = None
+    tape_limitations:              Optional[str]   = None
+    native_aggressor_available:    Optional[bool]  = None
+    native_time_and_sales_available: Optional[bool] = None
+    timesale_service_status:       Optional[str]   = None
     options_flow_score:            Optional[float] = None
     institutional_flow_proxy_score: Optional[float] = None
     # Flow Verdict (composite headline)
@@ -1091,7 +1100,7 @@ def build_market_state(
     if consensus_summary is not None:
         ms.bias_signal  = str(getattr(consensus_summary, "bias_signal",  "") or "Neutral")
         # Categorical |net GEX$| concentration at ExposureRow.net_gex_peak — not terrain pin lead %.
-        ms.pin_strength = str(getattr(consensus_summary, "pin_strength", "") or "Very Low")
+        ms.pin_strength = str(getattr(consensus_summary, "pin_strength", "") or "WITHHELD")
         _nd             = _f(getattr(consensus_summary, "net_delta", None))
         _ng             = _f(getattr(consensus_summary, "net_gamma", None))
         ms.net_delta    = _nd
@@ -1103,8 +1112,8 @@ def build_market_state(
             ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
         ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
     else:
-        ms.bias_signal  = "Neutral"
-        ms.pin_strength = "Very Low"
+        ms.bias_signal  = "WITHHELD"
+        ms.pin_strength = "WITHHELD"
         _nd             = None
         _ng             = None
 
@@ -1128,6 +1137,15 @@ def build_market_state(
             ms.book_imbalance_5              = _of_result.get("book_imbalance_5")
             ms.cum_delta_proxy               = _of_result.get("cum_delta_proxy")
             ms.tape_pressure_30s             = _of_result.get("tape_pressure_30s")
+            ms.tape_pressure_classification  = _of_result.get("tape_pressure_classification")
+            ms.cum_delta_classification      = _of_result.get("cum_delta_classification")
+            ms.tape_identity_convention      = _of_result.get("tape_identity_convention")
+            ms.tape_native_event_id          = _of_result.get("tape_native_event_id")
+            ms.tape_completeness             = _of_result.get("tape_completeness")
+            ms.tape_limitations              = _of_result.get("tape_limitations")
+            ms.native_aggressor_available    = _of_result.get("native_aggressor_available")
+            ms.native_time_and_sales_available = _of_result.get("native_time_and_sales_available")
+            ms.timesale_service_status       = _of_result.get("timesale_service_status")
             ms.options_flow_score            = _of_result.get("options_flow_score")
             ms.institutional_flow_proxy_score = _of_result.get("institutional_flow_proxy_score")
             ms.order_flow_verdict             = _of_result.get("order_flow_verdict")

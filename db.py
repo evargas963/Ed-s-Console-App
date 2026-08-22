@@ -58,6 +58,9 @@ from horizon_outcomes import (
     AUTHORITATIVE_1M_SOURCE,
     forward_bar_start_utc,
     bar_complete_by_utc,
+    snapshot_bar_start_ts_utc,
+    SNAPSHOT_TS_SEMANTIC_OBSERVATION,
+    SNAPSHOT_TS_SEMANTIC_HISTORICAL_UNKNOWN,
 )
 from movement_target_threshold import (
     directional_and_move_labels_v2,
@@ -420,6 +423,9 @@ class SnapshotRow:
     ask_size:           Optional[float] = None
     last_size:          Optional[float] = None
     total_volume:       Optional[float] = None
+    # ts_utc remains the refresh instant. bar_start_ts_utc is the 1m bar identity.
+    bar_start_ts_utc:   Optional[float] = None
+    snapshot_ts_semantic: Optional[str] = None
 
     # ── VWAP ─────────────────────────────────────────────────────────────────
     vwap:               Optional[float] = None
@@ -753,9 +759,12 @@ class SnapshotRow:
     replay_context_json:    Optional[str] = None
 
     # ── Institutional behavior + news context (additive layer; optional APIs) ──
-    absorption_score:          Optional[float] = None
-    continuation_score:        Optional[float] = None
-    liquidity_behavior_label:  Optional[str] = None
+    absorption_score:          Optional[float] = None  # RC-455 quarantined semantic era
+    continuation_score:        Optional[float] = None  # RC-455 quarantined semantic era
+    liquidity_behavior_label:  Optional[str] = None  # RC-455 quarantined; use range_imbalance_label
+    range_imbalance_stall_score: Optional[float] = None
+    range_imbalance_push_score:  Optional[float] = None
+    range_imbalance_label:       Optional[str] = None
     sentiment_composite:       Optional[float] = None
     sentiment_buzz:            Optional[float] = None
     sentiment_finnhub:         Optional[float] = None
@@ -1097,11 +1106,15 @@ class EdDB:
                 hours_to_expiry     REAL,
 
                 -- Timestamp
+                -- ts_utc = observation/computation instant (not bar identity).
+                -- bar_start_ts_utc = UTC start of the containing 1m bar (RC-472).
                 ts_utc              REAL    NOT NULL,
                 ts_et               TEXT    NOT NULL,
                 et_hour             INTEGER,
                 et_minute           INTEGER,
                 market_session      TEXT,
+                bar_start_ts_utc    REAL,
+                snapshot_ts_semantic TEXT,
 
                 -- Price action
                 spot                REAL    NOT NULL,
@@ -2791,6 +2804,9 @@ class EdDB:
             ("absorption_score",         "REAL"),
             ("continuation_score",       "REAL"),
             ("liquidity_behavior_label", "TEXT"),
+            ("range_imbalance_stall_score", "REAL"),
+            ("range_imbalance_push_score",  "REAL"),
+            ("range_imbalance_label",       "TEXT"),
             ("sentiment_composite",      "REAL"),
             ("sentiment_buzz",           "REAL"),
             ("sentiment_finnhub",        "REAL"),
@@ -2844,6 +2860,8 @@ class EdDB:
             ("pa_mtf_alignment",         "REAL"),
             ("pa_relative_volume",       "REAL"),
             ("pa_move_efficiency",       "REAL"),
+            ("bar_start_ts_utc",         "REAL"),
+            ("snapshot_ts_semantic",     "TEXT"),
         ]
         # Normalized training table must carry the same price-action columns or the
         # normalizer's column-intersection INSERT silently drops them (Issue 16 class).
@@ -2887,6 +2905,27 @@ class EdDB:
                     pass  # column already exists
         if added:
             log.info(f"Schema migration: added {added} new columns to snapshots")
+
+        # RC-472: persist bar identity without rewriting observation ts_utc.
+        with self._connect() as conn:
+            have = {str(r[1]) for r in conn.execute("PRAGMA table_info(snapshots)")}
+            if "bar_start_ts_utc" in have:
+                conn.execute(
+                    """
+                    UPDATE snapshots
+                    SET bar_start_ts_utc = CAST(ts_utc / 60.0 AS INTEGER) * 60.0,
+                        snapshot_ts_semantic = COALESCE(
+                            NULLIF(snapshot_ts_semantic, ''),
+                            ?
+                        )
+                    WHERE bar_start_ts_utc IS NULL AND ts_utc IS NOT NULL
+                    """,
+                    (SNAPSHOT_TS_SEMANTIC_HISTORICAL_UNKNOWN,),
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_snapshots_ticker_bar_start "
+                    "ON snapshots(ticker, bar_start_ts_utc)"
+                )
 
         for tbl in ("snapshots_1m_normalized",):
             try:
@@ -2997,6 +3036,9 @@ class EdDB:
             ("absorption_score", "REAL"),
             ("continuation_score", "REAL"),
             ("liquidity_behavior_label", "TEXT"),
+            ("range_imbalance_stall_score", "REAL"),
+            ("range_imbalance_push_score", "REAL"),
+            ("range_imbalance_label", "TEXT"),
             ("sentiment_composite", "REAL"),
             ("sentiment_buzz", "REAL"),
             ("sentiment_finnhub", "REAL"),
@@ -3332,6 +3374,14 @@ class EdDB:
         """
         d = asdict(snap)
         d.pop("snapshot_id", None)  # let DB assign
+        raw_ts = d.get("ts_utc")
+        if raw_ts is not None:
+            obs = float(raw_ts)
+            d["ts_utc"] = obs
+            d["bar_start_ts_utc"] = snapshot_bar_start_ts_utc(obs)
+            d["snapshot_ts_semantic"] = (
+                d.get("snapshot_ts_semantic") or SNAPSHOT_TS_SEMANTIC_OBSERVATION
+            )
 
         # execution_identity_v1 fail-closed coherence: a MODEL_DERIVED row must
         # carry its identity pair; a NOT_APPLICABLE (quote-only) row must not.

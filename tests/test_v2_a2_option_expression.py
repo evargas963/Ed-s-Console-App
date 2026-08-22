@@ -1124,7 +1124,7 @@ A2_V1_APPROXIMATION_DERIVED_ALLOWLIST: dict[str, str] = {
     "option_expression.strike": "labeled v1_approximation only when resolved from ms.rec_strike with no chain row",
     "option_expression.mid": "derived from mark/last/(bid+ask)/2; no Schwab single-leaf mid",
     "option_expression.spread": "derived from ask-bid; no Schwab single-leaf spread",
-    "option_expression.breakeven": "derived from strike +/- mid; no Schwab leaf",
+    "option_expression.breakeven": "fallback strike+/-mid only when Schwab breakEven is absent",
     "option_expression.selection_proof": "app-side selection_proof object; not a Schwab leaf",
     # probability_and_ev: A1 stack probability is derived, not Schwab.
     "probability_and_ev.P_underlying_entry_success": "A1 stack probability; not a Schwab leaf",
@@ -1243,4 +1243,22 @@ def test_a2_no_v1_approximation_leaf_traces_to_a_schwab_canonical_field():
         "or add to A2_V1_APPROXIMATION_DERIVED_ALLOWLIST with a reason if it "
         f"truly is derived: {sorted(unexpected)}"
     )
+
+
+def test_breakeven_prefers_schwab_leaf_over_strike_plus_mid():
+    winner = _winner()
+    winner["chain_row"] = {**winner["chain_row"], "breakEven": 501.77}
+    ms = _ms()
+    ms["option_chain_selection_proof"] = {
+        "status": "ok",
+        "winner": winner,
+        "liquidity_summary": {"any_candidate_passed_liq_gate": True},
+    }
+    a2 = build_a2_option_expression(ms, _sample_a1())
+    be = a2["option_expression"]["breakeven"]
+    assert be["source"] == "v2_compliant"
+    assert be["value"] == 501.77
+    assert be.get("detail") == "schwab_chain_breakEven"
+    derived = a2oe._breakeven(500.0, "CALL", 1.25)
+    assert derived != 501.77
 

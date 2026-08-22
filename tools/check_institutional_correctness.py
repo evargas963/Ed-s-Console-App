@@ -9,18 +9,30 @@ The repo is institutional in nature. This is the single enforcement point; new
 correctness requirements are added as CHECKS here, never as new separate locks.
 
 Run:  python tools/check_institutional_correctness.py
-Exit non-zero on any violation. Intended for pre-commit / CI.
+Exit non-zero on any ENFORCED violation.
+
+Binding (do not advertise a later/weaker boundary as the earlier one):
+  * Commit: tools/precommit_institutional.py refuses ENFORCED-check
+    DELETE/DOWNGRADE (roster) and runs staged-scoped ENFORCED checks
+    (index-aware: five-why, significance substance, datasheet).
+  * Merge: .github/workflows/hardening.yml runs
+    tools/check_delta_adds_no_debt.py — NEW/WORSENED ENFORCED counts vs
+    origin/main BLOCK. Inherited debt may be nonzero. This is a delta
+    gate, not absolute-zero correctness of the whole tree.
+  * Whole-tree --enforced-only is a measurement / CI input, not the
+    local commit catalog (RC-406).
 
 Registered checks (see CHECKS at the bottom — that list is the authority):
 
-  ENFORCED (must be zero; blocks pre-commit)
+  ENFORCED (must be zero on the delta / staged-scoped path that owns them)
     - no_synthetic_domain_fixtures_in_tests : tests exercise REAL data, not hand-built
       option-chain fixtures that can be tuned to pass ("no fake tests").
     - no_swallowed_test_failures : a helper that PRINTS a failure must also cause one.
     - no_silent_swallow            : exceptions are handled, never quietly discarded.
     - no_todo_without_tracking_id  : every TODO carries a tracking id.
-    - unproven_register            : no UNPROVEN/DISPROVED claim past its due date
-                                     (governance/unproven_register.md).
+    - unproven_register            : evidence-integrity only for
+                                     governance/unproven_register.md (zero work /
+                                     due-date / commit-block authority).
 
   ADVISORY (visible debt on the ratchet — driven to zero, then flipped to enforced)
     - tests_missing_explicit_assert, function_complexity, function_length,
@@ -538,19 +550,18 @@ def check_root_cause_log() -> list[Violation]:
     genuinely half-traced, and no complete chain was falsely flagged.
 
     Operator law 2026-07-19: a cause found at why-2 is not the root -- it is a new defect
-    that gets its own five whys. An entry stays OPEN until the chain terminates with no new
-    defect AND the fix is verified. This blocks commits on any OPEN entry past its due date,
-    so a half-traced defect cannot be quietly parked as "surface fixed".
+    that gets its own five whys. Evidence-integrity validation remains (five-why depth,
+    CLOSED-row proof, parseable dates). RC OPEN / due date / classification has zero
+    work-state authority and does not independently block completion.
 
     See governance/root_cause_log.md for the rules and the row format.
     """
     out: list[Violation] = []
     log_path = REPO / "governance" / "root_cause_log.md"
     if not log_path.exists():
-        out.append(Violation(log_path, 0, "governance/root_cause_log.md is missing - every "
-                                          "defect must be traced to a root cause there"))
+        out.append(Violation(log_path, 0, "governance/root_cause_log.md is missing — "
+                                          "frozen historical evidence file is required"))
         return out
-    today = datetime.date.today()
     for n, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.startswith("| RC-"):
             continue
@@ -560,18 +571,10 @@ def check_root_cause_log() -> list[Violation]:
         rc_id, status, _opened, due = cells[0], cells[1], cells[2], cells[3]
 
         out.extend(_rc_row_violations(log_path, n, rc_id, status, cells))
-        if status != "OPEN":
-            continue
         try:
-            due_date = datetime.date.fromisoformat(due)
+            datetime.date.fromisoformat(due)
         except ValueError:
             out.append(Violation(log_path, n, f"{rc_id} has an unparseable due date {due!r}"))
-            continue
-        if due_date < today:
-            out.append(Violation(log_path, n,
-                                 f"{rc_id} is OPEN past its due date ({due}) - the why-chain is "
-                                 f"incomplete or the fix is unverified; finish it or re-date it "
-                                 f"with a reason"))
     return out
 
 
@@ -838,7 +841,7 @@ def _open_root_causes(path) -> list[str]:
 
 
 def _open_register_claims(path) -> list[str]:
-    """Register rows still UNPROVEN or DISPROVED (the two non-terminal states)."""
+    """Historical UNPROVEN/DISPROVED wording. Not a work queue."""
     if not path.exists():
         return []
     out = []
@@ -862,10 +865,10 @@ def _is_overdue(due: str) -> bool:
 
 
 def _overdue_governance_items(rc_path, reg_path) -> list[str]:
-    """RC-65: items that have actually ROTTED — open past their own due date.
+    """Measurement only: historical RC/register rows whose due date has passed.
 
-    Root-cause columns: id | status | opened | due | ...   (due = cells[3])
-    Register columns:   status | opened | due | claim | ... (due = cells[2])
+    Zero work / due-date / commit-block authority. Unresolved work lives only
+    on the sole master. Root-cause due = cells[3]; register due = cells[2].
     """
     out: list[str] = []
     if rc_path.exists():
@@ -886,7 +889,12 @@ def _overdue_governance_items(rc_path, reg_path) -> list[str]:
 
 
 def check_open_item_cap() -> list[Violation]:
-    """Governance ledgers must burn DOWN. The open count may never rise.
+    """Legacy RC/register due dates have zero work authority.
+
+    Unresolved work lives only on the sole master. This named check remains so
+    the ratchet file cannot return; it never blocks on due dates.
+
+    Historical note: Governance ledgers must burn DOWN. The open count may never rise.
 
     Operator 2026-07-19: the ledgers must resolve, not accumulate.
 
@@ -939,13 +947,10 @@ def check_open_item_cap() -> list[Violation]:
     # due date, so they were pure parking-lot volume -- the quantity a ratchet measures and a
     # law cannot. Requiring a due date on every parked row is the honest successor and is a
     # separate change, not something to smuggle in here.
-    if open_items:
-        out.append(Violation(
-            rc, 0,
-            f"{len(open_items)} governance item(s) are PAST their due date: "
-            f"{', '.join(open_items[:8])}{'...' if len(open_items) > 8 else ''}. "
-            f"Finish it, or re-date it with the reason stated in the row. A due date that "
-            f"passes silently is a deferral wearing a schedule."))
+    # RC / register due dates have zero work authority (operator 2026-08-22).
+    # Unresolved work and completion blocking live only on the sole master.
+    # The helper `_overdue_governance_items` remains as a measurement, not a gate.
+    del open_items
     return out
 
 
@@ -1535,7 +1540,7 @@ _TRACK_ID_RE = re.compile(r"[A-Z][A-Z0-9]+-\d+|\[[A-Z][A-Z0-9-]+\]")  # e.g. FIN
 
 def check_todo_without_tracking_id() -> list[Violation]:
     """TODO/FIXME/HACK without a tracking id is a patch waiting to be forgotten —
-    file an OPEN_ITEMS entry and reference its id."""
+    file a sole-master id and reference it."""
     out: list[Violation] = []
     for p in _production_py_files():
         try:
@@ -1544,7 +1549,7 @@ def check_todo_without_tracking_id() -> list[Violation]:
             continue
         for i, ln in enumerate(lines, 1):
             if _TODO_RE.search(ln) and not _TRACK_ID_RE.search(ln):
-                out.append(Violation(p, i, "TODO/FIXME/HACK without a tracking id — file it in OPEN_ITEMS and reference the id"))
+                out.append(Violation(p, i, "TODO/FIXME/HACK without a tracking id — file it on the sole master and reference the id"))
     return out
 
 
@@ -1637,7 +1642,10 @@ def check_eol_style_invariant() -> list[Violation]:
     staged = bool(_staged_probe.stdout.strip())
     for message in _eol_violations(staged=staged):
         path_part = message.split(":", 1)[0]
-        out.append(Violation(Path(path_part), 0, message))
+        # Repo-rooted so Violation.__str__ can relative_to(REPO). A bare
+        # relative Path raises ValueError on print, which aborted the
+        # enforced gate after the FAIL header (banner never printed).
+        out.append(Violation((REPO / path_part).resolve(), 0, message))
     return out
 
 
@@ -1943,25 +1951,64 @@ def check_mypy_types() -> list[Violation]:
 
 
 _UNPROVEN_REGISTER = REPO / "governance" / "unproven_register.md"
-UNPROVEN_STALE_DAYS = 14
+UNPROVEN_STALE_DAYS = 14  # retained as historical constant; not a work gate
 
 
 _OPEN_STATUSES = {"UNPROVEN", "DISPROVED"}
 _TERMINAL_STATUSES = {"PROVEN", "REMEDIATED"}
 
 
-def check_unproven_register() -> list[Violation]:
-    """Every claim ends at PROVEN or at a landed fix (REMEDIATED).
+def parse_live_unproven_rows(text: str) -> list[dict[str, str]]:
+    """UNPROVEN/DISPROVED register rows (evidence wording). Not a work queue."""
+    out: list[dict[str, str]] = []
+    for ln in (text or "").splitlines():
+        if not ln.startswith("|"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if len(cells) >= 4 and cells[0] in _OPEN_STATUSES:
+            out.append({
+                "status": cells[0],
+                "due": cells[2] if len(cells) > 2 else "",
+                "claim": cells[3],
+            })
+    return out
 
-    UNPROVEN = not yet evidenced. DISPROVED = we were wrong; an OPEN DEFECT that must be
-    fixed, not parked. Both are open states: past their `due` date they fail the gate and
-    block commits. Missing register = fail-closed.
+
+def unmapped_live_unproven_rows(reg_text: str, master_text: str) -> list[str]:
+    """Claims whose first 40 claim characters are absent from the sole master."""
+    out: list[str] = []
+    for row in parse_live_unproven_rows(reg_text):
+        snippet = row["claim"][:40]
+        if snippet and snippet in (master_text or ""):
+            continue
+        out.append(snippet or row["claim"][:40])
+    return out
+
+
+def unmapped_open_rc_ids(rc_text: str, master_text: str) -> list[str]:
+    """OPEN/PARTIAL RC ids that do not appear on the sole master."""
+    out: list[str] = []
+    for ln in (rc_text or "").splitlines():
+        if not ln.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if len(cells) > 1 and cells[1] in ("OPEN", "PARTIAL") and cells[0] not in (master_text or ""):
+            out.append(cells[0])
+    return out
+
+
+def check_unproven_register() -> list[Violation]:
+    """Evidence-integrity only. Zero work-state / due-date / commit-block authority.
+
+    The register may preserve historical PROVEN/REMEDIATED/UNPROVEN/DISPROVED wording.
+    Missing file or an unparseable date on a register row is a broken evidence record.
+    UNPROVEN / DISPROVED / a due date must not select work or block completion — that
+    authority lives only on the sole master.
     """
     if not _UNPROVEN_REGISTER.exists():
         return [Violation(_UNPROVEN_REGISTER, 1,
-                          "unproven register missing — claims must be evidenced or registered")]
+                          "unproven register missing — historical evidence file is required")]
     out: list[Violation] = []
-    today = datetime.date.today()
     for i, ln in enumerate(_UNPROVEN_REGISTER.read_text(encoding="utf-8").splitlines(), 1):
         s = ln.strip()
         if not s.startswith("|"):
@@ -1972,20 +2019,11 @@ def check_unproven_register() -> list[Violation]:
         status = cells[0].upper()
         if status not in _OPEN_STATUSES | _TERMINAL_STATUSES:
             continue
-        if status in _TERMINAL_STATUSES:
-            continue
         try:
-            due = datetime.date.fromisoformat(cells[2])
+            datetime.date.fromisoformat(cells[2])
         except ValueError:
             out.append(Violation(_UNPROVEN_REGISTER, i,
                                  f"{status} row has an unparseable due date (want YYYY-MM-DD)"))
-            continue
-        overdue = (today - due).days
-        if overdue > 0:
-            what = ("OPEN DEFECT — fix it and move to REMEDIATED"
-                    if status == "DISPROVED" else "prove or disprove it")
-            out.append(Violation(_UNPROVEN_REGISTER, i,
-                                 f"{status} is {overdue}d past due ({cells[2]}) — {what}: {cells[3][:80]}"))
     return out
 
 
@@ -2689,56 +2727,68 @@ def check_closed_rows_ship_their_code() -> list[Violation]:
 
 
 def check_recursive_five_why_front_loaded() -> list[Violation]:
-    """UNIVERSAL front-end of the recursive-5-why law: a code change ships with its root cause.
+    """UNIVERSAL front-loaded admission: a production change ships with a master obligation.
 
-    OBSERVED (2026-07-26, RC-41): the five_why_recursive_lock validated the CONTENT of rows
-    that already existed but never the ACT of opening one, so an entire session of fixes (charm
-    RC-35, coercion RC-38 and their children) shipped with zero root-cause rows and the gate
-    stayed green. Per the log's Rule 5, "I didn't do the 5-why" is a symptom whose real defect
-    is a MISSING mechanical check — the law depended on goodwill at discovery time, and goodwill
-    fails. The law is UNIVERSAL ("with everything we do", operator 2026-07-19) — this check is
-    deliberately NOT scoped to a subsystem.
+    OBSERVED (2026-07-26, RC-41): the five-why lock validated existing rows but never the
+    ACT of admitting a defect, so sessions of fixes shipped with no analysis. Method pivot
+    (operator 2026-08-22): requiring a new `| RC-` row recreated a second current debt
+    ledger. Admission is now an unresolved sole-master requirement. Root-cause / five-why
+    reasoning remains mandatory on that same master item. A new RC row does not admit work.
 
-    Rule: any commit that stages a real change to a tracked .py file MUST co-stage a real
-    '| RC-' row in governance/root_cause_log.md. A cosmetic touch of the log does not satisfy it
-    (an added '| RC-' line is required), and the row's quality is separately enforced by
-    five_why_recursive_lock — so a fix cannot reach a commit without a ROOT-terminal recursive
-    entry. Front-end law: open the row at DISCOVERY, before the fix.
-
-    VALIDATED: prototyped against this repo before enforcing — fires when a .py change is staged
-    with no RC row, passes when a real row is co-staged, and no-ops (returns []) outside a git
-    commit context so unit-test imports never false-block. Escapes NONE by design.
+    Rule: every staged MATERIAL product/control-path file must independently
+    resolve to an unresolved master item whose SURFACES= field lists that exact
+    repo-relative path. Enforcement/diagnostic/compliance-lane edits do not
+    require a fabricated SURFACES= bind (Architecture A proportionality).
+    One covered file does not admit an uncovered sibling. Tests/governance/docs
+    /reports edits are how you comply.
     """
+    try:
+        from tools.pretooluse_guard import (
+            SOLE_MASTER,
+            master_admits_production_edit,
+            requires_root_cause_admission,
+        )
+    except ImportError:
+        from pretooluse_guard import (  # type: ignore
+            SOLE_MASTER,
+            master_admits_production_edit,
+            requires_root_cause_admission,
+        )
     staged = _git_output_lines(["diff", "--cached", "--name-only"])
     if staged is None:
         return []  # not a commit context — never a false block
     staged_set = {s.strip().replace("\\", "/") for s in staged if s.strip()}
     if not staged_set:
         return []
-    log_rel = "governance/root_cause_log.md"
-    changed_code = sorted(
-        f for f in staged_set if f.endswith(".py") and _staged_has_real_change(f)
+    prod_code = sorted(
+        f for f in staged_set
+        if requires_root_cause_admission(f)
+        and _staged_has_real_change(f)
     )
-    if not changed_code:
+    if not prod_code:
         return []
-    if log_rel not in staged_set:
-        return [Violation(
-            REPO / changed_code[0], 0,
-            "Code changed (" + ", ".join(changed_code[:5]) +
-            (" …" if len(changed_code) > 5 else "") + ") with NO co-staged root-cause row. "
-            "The recursive-5-why law is UNIVERSAL and FRONT-LOADED (operator 2026-07-19): the "
-            "moment you find an issue you OPEN its RC-<n> row in governance/root_cause_log.md and "
-            "drive each cause to its ROOT before fixing. Every code change ships with its "
-            "recursive root cause — co-stage a real '| RC-' row (its quality is enforced by "
-            "five_why_recursive_lock). This scope is not narrowable.")]
-    log_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
-    if not any(l.startswith("+| RC-") for l in log_diff):
-        return [Violation(
-            REPO / log_rel, 0,
-            "governance/root_cause_log.md is staged but no '| RC-<n>' row was added or changed "
-            "alongside a code change — a real recursive-5-why entry is required, not a cosmetic "
-            "touch. Open the RC at discovery, drive to ROOT, fix end-to-end.")]
-    return []
+    try:
+        cur = (REPO / SOLE_MASTER).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        cur = ""
+    head_lines = _git_output_lines(["show", f"HEAD:{SOLE_MASTER}"])
+    head_txt = "\n".join(head_lines) if head_lines is not None else ""
+    uncovered = [
+        f for f in prod_code
+        if not master_admits_production_edit(f, current_text=cur, head_text=head_txt)
+    ]
+    if not uncovered:
+        return []
+    return [Violation(
+        REPO / uncovered[0], 0,
+        "Production changed with uncovered path(s): " + ", ".join(uncovered) +
+        ". Every staged material product/control-path file must independently bind "
+        "to an unresolved master item via SURFACES=<repo-relative-path>. "
+        "Enforcement/diagnostic edits do not require a fabricated bind. One covered file does not "
+        "admit an uncovered sibling. Search the sole master; if absent, add one "
+        "atomic `- [ ]` item and bind the exact paths on that same item. Do not "
+        "open a current RC debt row. Root-cause / five-why evidence belongs on "
+        "that same master item.")]
 
 
 def check_adversarial_audit_test_lock() -> list[Violation]:
@@ -2755,8 +2805,8 @@ def check_adversarial_audit_test_lock() -> list[Violation]:
     Rule: any commit staging a real change to a PRODUCTION (non-tests/) tracked .py file MUST
     co-stage a real change to a tests/ .py file — the adversarial audit's output, a test that fails
     if the fix regresses. A genuinely untestable change (measurement-only closure, docs, pure config)
-    escapes ONLY via a co-staged root-cause row carrying an explicit 'NO-TEST-LOCK: <reason>' — the
-    exemption is auditable, never silent.
+    escapes ONLY via a co-staged sole-master line carrying an explicit 'NO-TEST-LOCK: <reason>' — the
+    exemption is auditable, never silent. A root-cause-log row is not the exemption surface.
 
     VALIDATED BY PROTOTYPE before enforcing: run against staging scenarios — fires on a prod .py
     change with no co-staged test and no NO-TEST-LOCK, passes when a real tests/ change is co-staged,
@@ -2783,11 +2833,11 @@ def check_adversarial_audit_test_lock() -> list[Violation]:
         return []  # no production code changed — nothing to lock
     if any(_is_test(f) and _staged_has_real_change(f) for f in staged_set):
         return []  # the fix ships its locking test
-    # No co-staged test — allow ONLY an explicit, auditable NO-TEST-LOCK exemption in a staged RC row.
-    log_rel = "governance/root_cause_log.md"
-    if log_rel in staged_set:
-        log_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
-        if any(l.startswith("+") and "NO-TEST-LOCK:" in l for l in log_diff):
+    # No co-staged test — allow ONLY an explicit, auditable NO-TEST-LOCK exemption on the master.
+    master_rel = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+    if master_rel in staged_set:
+        master_diff = _git_output_lines(["diff", "--cached", "-U0", "--", master_rel]) or []
+        if any(l.startswith("+") and "NO-TEST-LOCK:" in l for l in master_diff):
             return []
     return [Violation(
         REPO / prod_code[0], 0,
@@ -2795,7 +2845,7 @@ def check_adversarial_audit_test_lock() -> list[Violation]:
         (" …" if len(prod_code) > 5 else "") + ") with NO co-staged test. The self-adversarial-audit "
         "loop is machine-forced (RC-49): every fix ships a test that locks it (fails on regression). "
         "Co-stage a real tests/ change, or — only for a genuinely untestable measurement-only/doc/"
-        "config closure — add 'NO-TEST-LOCK: <reason>' to the co-staged root-cause row. Goodwill "
+        "config closure — add 'NO-TEST-LOCK: <reason>' to the co-staged sole-master item. Goodwill "
         "fails; the lock does not.")]
 
 
@@ -3782,6 +3832,18 @@ def check_rth_only_market_measurement() -> list[Violation]:
             "Sunday-only sample nearly shipped as 'the flip is stable intraday'). Filter with "
             "time_et.is_trading_day_et / is_tradable_session_ts_utc (or ml_data_common's df/list "
             "filters), or declare '# rth-scope-ok: <reason>'."))
+    try:
+        from tools.find_prove_locks import clock_only_session_gate_violations
+    except ImportError:
+        from find_prove_locks import clock_only_session_gate_violations  # type: ignore
+    for path in _production_py_files():
+        rel = path.relative_to(REPO).as_posix()
+        try:
+            src = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for msg in clock_only_session_gate_violations(rel, src):
+            out.append(Violation(path, 1, msg))
     return out
 
 
@@ -3817,6 +3879,7 @@ def check_universal_ticker_scope() -> list[Violation]:
         is_prompt_or_agent_instruction_path,
         spy_only_content_violation,
         spy_only_ticker_default_violations,
+        ticker_specific_implementation_scope_violation,
     )
 
     out: list[Violation] = []
@@ -3852,9 +3915,11 @@ def check_universal_ticker_scope() -> list[Violation]:
             # Prefer ADDED text (binds new prompt framing); fall back to whole file for new files.
             text = added if added.strip() else whole
             reason = spy_only_content_violation(text)
-            if reason is None:
-                continue
-            out.append(Violation(path, 0, reason))
+            if reason is not None:
+                out.append(Violation(path, 0, reason))
+            fix_scope = ticker_specific_implementation_scope_violation(text, rel=rel)
+            if fix_scope is not None:
+                out.append(Violation(path, 0, fix_scope))
 
     return out
 
@@ -4251,23 +4316,14 @@ def check_plus_player_law() -> list[Violation]:
 
 
 def plus_player_cursor_hooks_violations(hooks_text: str | None = None) -> list[str]:
-    """Callee for check_plus_player_cursor_hooks."""
-    p = REPO / ".cursor" / "hooks.json"
+    """ONE computation with claude_cursor_parity_violations — filename presence is not wiring."""
+    try:
+        from tools.find_prove_locks import claude_cursor_parity_violations
+    except ImportError:
+        from find_prove_locks import claude_cursor_parity_violations  # type: ignore
     if hooks_text is None:
-        if not p.is_file():
-            return [".cursor/hooks.json missing — Cursor continuum cannot invoke .py guards (RC-205)"]
-        hooks_text = p.read_text(encoding="utf-8", errors="replace")
-    need = (
-        "operator_law_guard.py",
-        "pretooluse_guard.py",
-        "stop_guard.py",
-        "proof_only_guard.py",
-        "honesty_guard.py",
-    )
-    missing = [n for n in need if n not in hooks_text]
-    if missing:
-        return [f".cursor/hooks.json must invoke {', '.join(missing)} (same .py as Claude)"]
-    return []
+        return claude_cursor_parity_violations()
+    return claude_cursor_parity_violations(cursor_text=hooks_text)
 
 
 def check_plus_player_cursor_hooks() -> list[Violation]:
@@ -4277,8 +4333,9 @@ def check_plus_player_cursor_hooks() -> list[Violation]:
     soft .mdc rules; meta-check only required two of five Stop/PreToolUse scripts, so
     honesty/proof/stop could silently unwired.
 
-    Rule: .cursor/hooks.json names pretooluse_guard, operator_law_guard, stop_guard,
-    proof_only_guard, honesty_guard.
+    Rule: .cursor/hooks.json and .claude/settings.json invoke the six guards via
+    tools/run_with_repo_venv.py --hook (ONE computation: claude_cursor_parity_violations).
+    Filename presence is not wiring.
 
     HOW VALIDATED: tests/test_plus_player_law_v1.py / test_honesty_guard_v1.py drive
     plus_player_cursor_hooks_violations with empty/partial text -> BLOCK; live file must pass.
@@ -4653,7 +4710,8 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 
 
 def check_log_law() -> list[Violation]:
-    """LOG LAW (operator/PM 2026-08-04, RC-237): closable work has exactly TWO homes.
+    """LOG LAW (operator/PM 2026-08-04, RC-237): closable work has exactly ONE home
+    (the sole master). The two historical ledgers are evidence, not work queues.
 
     OBSERVED (RC-237, measured 2026-08-04): five markdown files outside the two ledgers
     carried status-bearing work rows — `reports/rc_open_drain_latest.md` 21 rows,
@@ -4667,9 +4725,7 @@ def check_log_law() -> list[Violation]:
     mentions RC ids, on the two sanctioned ledgers, or on telemetry .jsonl/.log (events are
     explicitly not debt). The threshold is three work rows because two reads as discussion
     rather than a queue; frozen dated snapshots keep an operator escape (`# log-law-ok:`).
-    The overdue-epistemic clause was likewise prototyped: it fires on a lapsed due date and
-    stays silent on a future-dated pre-registered hypothesis, since forcing an early verdict
-    is how contaminated data becomes a citation. 10 negative controls in
+    Register due dates have zero work authority and do not participate. 10 negative controls in
     tests/test_log_law_v1.py, plus a wiring assertion (RC-238) that this registration is
     ENFORCED rather than merely present. Delegates to tools/log_law.py so the gate, the
     tests and the CLI all judge by ONE implementation.
@@ -4680,6 +4736,78 @@ def check_log_law() -> list[Violation]:
         from log_law import log_law_violations  # type: ignore
     return [Violation(REPO / "governance" / "root_cause_log.md", 0, m)
             for m in log_law_violations(REPO)]
+
+
+def check_active_writer_law() -> list[Violation]:
+    """Operator-selected ACTIVE_WRITER; no permanent identity privilege (RC-452).
+
+    WHAT WAS OBSERVED: governance/sole_writer.json and pm_mission.json hardcoded
+    Claude=permanent writer and Cursor=permanent auditor, so an operator assignment of
+    Cursor as ACTIVE_WRITER was still a SoD violation. The operator superseded that
+    identity split on 2026-08-22: both agents may implement; the operator selects the
+    active writer per mission; one canonical worktree total.
+
+    Rule: sole_writer / pm_mission must set pm=operator, must not set permanent_writer
+    or permanent_auditor, must not assert the superseded identity phrases, and
+    active_writer must agree with writer when both are present. A second normal
+    project worktree BLOCKS.
+
+    HOW VALIDATED: tests/test_active_writer_law_v1.py injects permanent_writer=claude,
+    Cursor-auditor-only standing_law, disagreed active_writer/writer, and a second
+    normal worktree → BLOCK; live assignment with Cursor or Claude ACTIVE_WRITER PASS.
+    """
+    try:
+        from tools.writer_drift_lock import (
+            canonical_worktree_violations,
+            permanent_identity_violations,
+        )
+    except ImportError:
+        from writer_drift_lock import (  # type: ignore
+            canonical_worktree_violations,
+            permanent_identity_violations,
+        )
+    msgs = list(permanent_identity_violations())
+    msgs.extend(canonical_worktree_violations())
+    return [
+        Violation(REPO / "governance" / "sole_writer.json", 0, m)
+        for m in msgs
+    ]
+
+
+def check_requirement_proof() -> list[Violation]:
+    """Parent/child proof authority (RC-459). Child PASS never closes a parent.
+
+    WHAT WAS OBSERVED (RC-459): a child PASS was treated as parent closure.
+    HOW VALIDATED: prototyped against governance/requirement_tree.json;
+    tests/test_requirement_proof_v1.py drives both directions.
+    """
+    try:
+        from tools.requirement_proof import TREE_PATH, requirement_proof_violations
+    except ImportError:
+        from requirement_proof import TREE_PATH, requirement_proof_violations  # type: ignore
+    return [
+        Violation(TREE_PATH, 0, m)
+        for m in requirement_proof_violations()
+    ]
+
+
+def check_find_it_fix_it() -> list[Violation]:
+    """FIND IT → FIX IT: sole master is the obligation authority (RC-480).
+
+    RC log is historical evidence only. It does not create, classify, promote,
+    defer, or close work, and it does not determine Stop eligibility.
+
+    HOW VALIDATED: tests/test_find_it_fix_it_lock_v1.py — RC rows have zero
+    execution authority; second-list and master-parent obligations still BLOCK.
+    """
+    try:
+        from tools.find_it_fix_it_lock import SOLE_MASTER_PATH, active_obligation_offenders
+    except ImportError:
+        from find_it_fix_it_lock import SOLE_MASTER_PATH, active_obligation_offenders  # type: ignore
+    return [
+        Violation(SOLE_MASTER_PATH, 0, f"{rid}: {why}")
+        for rid, why in active_obligation_offenders("")
+    ]
 
 
 def check_writer_no_drift() -> list[Violation]:
@@ -4739,12 +4867,12 @@ def check_rc_document_without_resolve() -> list[Violation]:
 
 
 CHECKS = [
-    # ENFORCED (must be zero — block pre-commit):
+    # ENFORCED (must be zero on the owning path — commit staged-scoped / CI delta):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
     ("five_why_recursive_lock", check_five_why_recursive_lock, True),  # end-to-end fixes, no patches ever
-    ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded, True),  # UNIVERSAL: any code change ships a root-cause row
+    ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded, True),  # UNIVERSAL: production change requires an admitted master obligation
     ("adversarial_audit_test_lock", check_adversarial_audit_test_lock, True),  # RC-49: every fix ships a locking test (audit's output)
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
@@ -4756,6 +4884,9 @@ CHECKS = [
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     ("rc_document_without_resolve", check_rc_document_without_resolve, True),  # RC-228/RC-230 LOCK-6: added OPEN rows must carry a resolve path
     ("writer_no_drift", check_writer_no_drift, True),  # RC-232 LOCK-1: staged paths must come from the mission's resolved writer
+    ("active_writer_law", check_active_writer_law, True),  # RC-452: operator-selected ACTIVE_WRITER; no permanent identity
+    ("find_it_fix_it", check_find_it_fix_it, True),  # RC-453: one RC-log authority; omission and backlog-escape BLOCK
+    ("requirement_proof", check_requirement_proof, True),  # RC-459: child PASS never closes a parent
     # LOG LAW (RC-237) — ARMED under the PM GO of 2026-08-04T18:58Z, scope staged_lock_surface
     # (governance/operator_go.json, granted_by cursor_pm). One defect ledger, one epistemic
     # ledger, telemetry stays telemetry: a THIRD markdown work queue or an OVERDUE epistemic
@@ -4819,7 +4950,7 @@ CHECKS = [
     ("verdicts_declare_their_power", check_verdicts_declare_their_power, True),  # provenance, not the word "MEASURED" (RC-6)
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
-    ("unproven_register", check_unproven_register, True),  # claims: evidenced or registered
+    ("unproven_register", check_unproven_register, True),  # evidence integrity only; zero work authority
     ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)
     ("credential_leak", check_credential_leak, True),  # staged secrets / home paths
     ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects

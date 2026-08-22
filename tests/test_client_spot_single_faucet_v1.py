@@ -562,11 +562,14 @@ def test_net_definition_pin_tip_injection_is_caught():
 
 
 def test_gamma_pin_ladder_binds_kl_ssot_not_unstamped_gamma_pin() -> None:
-    """RC-292: the console GAMMA PIN row must paint the terrain total-gamma key."""
+    """RC-292: the console GAMMA PIN row must paint the terrain total-gamma key
+    through the trusted faucet — not an unstamped raw field."""
     src = CONSOLE.read_text(encoding="utf-8")
-    m = re.search(r"\{ t: 'GAMMA PIN',\s*v:\s*([^,]+)", src)
-    assert m is not None and "kl_gamma_pin" in m.group(1), (
-        f"GAMMA PIN ladder binds {m.group(1) if m else 'nothing'} — must be d.kl_gamma_pin"
+    m = re.search(r"\{ t: 'GAMMA PIN',\s*v:\s*(.+?)(?=\s*,\s*c:)", src)
+    bind = (m.group(1) if m else "").strip()
+    assert "edTrustedChainLevel(d, 'gamma_pin')" in bind, (
+        f"GAMMA PIN ladder binds {bind or 'nothing'} — must be "
+        "edTrustedChainLevel(d, 'gamma_pin') on the terrain deck"
     )
 
 
@@ -581,9 +584,23 @@ def test_console_today_poc_binds_state_payload_not_a_second_book() -> None:
         ("dr-lvl-poc", "today_poc"),
         ("dr-lvl-vah", "today_vah"),
         ("dr-lvl-val", "today_val"),
+        ("dr-lvl-pdh", "pdh"),
+        ("dr-lvl-pdl", "pdl"),
+        ("dr-lvl-onh", "overnight_high"),
+        ("dr-lvl-onl", "overnight_low"),
+        ("dr-lvl-orbh", "orb_high"),
+        ("dr-lvl-orbl", "orb_low"),
+        ("dr-lvl-vwap", "vwap"),
         ("exec-poc", "today_poc"),
         ("exec-vah", "today_vah"),
         ("exec-val", "today_val"),
+        ("exec-pdh", "pdh"),
+        ("exec-pdl", "pdl"),
+        ("exec-onh", "overnight_high"),
+        ("exec-onl", "overnight_low"),
+        ("exec-orbh", "orb_high"),
+        ("exec-orbl", "orb_low"),
+        ("exec-vwap", "vwap"),
     ):
         assert f'id="{dom_id}"' in src, f"missing #{dom_id}"
         assert src.count(f"pxTxt(d.{field})") >= 2, (

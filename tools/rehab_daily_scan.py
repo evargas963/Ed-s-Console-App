@@ -539,7 +539,7 @@ def _collect_findings(measure: dict, status: dict) -> list[dict]:
                     "severity": "P1",
                     "facet": "process",
                     "summary": "sole_writer.pm is not 'operator'",
-                    "recommendation": "Set governance/sole_writer.json pm=operator (operator 2026-08-18: operator is the governing authority/PM; Cursor is an adversarial auditor only; supersedes the RC-218 PM assignment).",
+                    "recommendation": "Set governance/sole_writer.json pm=operator (operator 2026-08-22: operator is governing authority/PM and selects ACTIVE_WRITER per mission; no permanent writer/auditor identity).",
                     "evidence": {"pm": sw.get("pm")},
                 }
             )

@@ -1,0 +1,133 @@
+{
+  "authority": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md",
+  "scope": "parent_child_proof_ids_only",
+  "comprehensive_checklist": false,
+  "note": "Derived from <!-- REQ ... --> comments only. This is not a comprehensive requirement tree of the master checkbox rows and is not a second checklist.",
+  "derived_proof": "reports/requirement_proof_latest.json",
+  "items": [
+    {
+      "id": "OF_PARENT",
+      "title": "Order Flow parent",
+      "proof": "NOT_PROVEN",
+      "execution": "ACTIVE",
+      "closable": false,
+      "children": [
+        "OF_COMPOSITE_RETIRED",
+        "OF_ENGINE_ABSORPTION_RETIRED",
+        "P2_ABSORPTION_WITHHELD",
+        "IDENTITY_SPLIT_REMOVED",
+        "OF_TAPE_L1_RESTATEMENT_SUPPRESSED",
+        "OF_MEDIAN_X3_RETIRED"
+      ]
+    },
+    {
+      "id": "P2_PARENT",
+      "title": "P2 / models parent",
+      "proof": "NOT_PROVEN",
+      "execution": "ACTIVE",
+      "closable": false,
+      "children": [
+        "P2_ABSORPTION_WITHHELD"
+      ]
+    },
+    {
+      "id": "LP01_PARENT",
+      "title": "LP-01 Institutional session liquidity / value levels",
+      "proof": "NOT_PROVEN",
+      "execution": "ACTIVE",
+      "closable": false,
+      "children": []
+    },
+    {
+      "id": "PREDICTIVE_VALIDITY",
+      "title": "Predictive validity (any horizon beats chance, OOS, net of costs)",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": false,
+      "children": []
+    },
+    {
+      "id": "REAL_MONEY_READINESS",
+      "title": "Real-money readiness",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": false,
+      "children": []
+    },
+    {
+      "id": "UI_TRUTH_PARENT",
+      "title": "UI / display truth parent",
+      "proof": "NOT_PROVEN",
+      "execution": "ACTIVE",
+      "closable": false,
+      "children": [
+        "GAMMA_FLIP_DISPLAY_GATED",
+        "GAMMA_WALLS_DISPLAY_GATED"
+      ]
+    },
+    {
+      "id": "OF_COMPOSITE_RETIRED",
+      "title": "retired Order Flow composite/verdict producer family",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": true,
+      "children": []
+    },
+    {
+      "id": "OF_ENGINE_ABSORPTION_RETIRED",
+      "title": "engine _compute_absorption ratio retired",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": true,
+      "children": []
+    },
+    {
+      "id": "P2_ABSORPTION_WITHHELD",
+      "title": "historical P2 absorption withheld from training / quarantined",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": true,
+      "children": []
+    },
+    {
+      "id": "IDENTITY_SPLIT_REMOVED",
+      "title": "permanent Claude-writer / Cursor-auditor identity restriction removed",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": true,
+      "children": []
+    },
+    {
+      "id": "OF_TAPE_L1_RESTATEMENT_SUPPRESSED",
+      "title": "identical L1 observation restatements suppressed",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": true,
+      "children": []
+    },
+    {
+      "id": "OF_MEDIAN_X3_RETIRED",
+      "title": "median times 3 displayed-depth anomaly candidates retired",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": true,
+      "children": []
+    },
+    {
+      "id": "GAMMA_FLIP_DISPLAY_GATED",
+      "title": "gamma flip operator-visible only when TRUSTED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": true,
+      "children": []
+    },
+    {
+      "id": "GAMMA_WALLS_DISPLAY_GATED",
+      "title": "chain-derived walls/pin/max-pain/net-peak withheld unless TRUSTED",
+      "proof": "NOT_PROVEN",
+      "execution": "PASSIVE",
+      "closable": true,
+      "children": []
+    }
+  ]
+}

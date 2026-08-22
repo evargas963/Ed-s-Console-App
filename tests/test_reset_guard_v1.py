@@ -71,7 +71,9 @@ def test_escapes_are_explicit(monkeypatch, tmp_path):
     assert not OPL.reset_guard_violations("git reset -- static/chart.html")
     go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
     monkeypatch.setenv("ED_RESET_GUARD", "off")
-    assert not OPL.reset_guard_violations("git reset -- static/chart.html")
+    assert OPL.reset_guard_violations("git reset -- static/chart.html"), (
+        "agent ED_RESET_GUARD=off must not self-disable the reset guard"
+    )
 
 
 # ── RC-253: judge the ACTION, not the data the command carries (RC-93) ──────────────────

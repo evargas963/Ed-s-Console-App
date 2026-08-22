@@ -289,6 +289,34 @@ def has_morning_full_capture(
         conn.close()
 
 
+def load_morning_full_contracts(
+    db_path: Path | str, ticker: str, et_date: str
+) -> list[dict] | None:
+    """Same-session archived wide chain, or None. Does not fabricate contracts."""
+    path = Path(db_path)
+    if not path.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT chain_json FROM option_chain_morning_full WHERE ticker=? AND et_date=?",
+            (ticker_storage_key(ticker), str(et_date)),
+        ).fetchone()
+        if not row or not row[0]:
+            return None
+        data = json.loads(row[0])
+        if not isinstance(data, list):
+            return None
+        return [c for c in data if isinstance(c, dict)]
+    except (sqlite3.Error, json.JSONDecodeError, TypeError, ValueError):
+        return None
+    finally:
+        conn.close()
+
+
 def _dte_days(ct: dict[str, Any]) -> float | None:
     if ct.get("daysToExpiration") is not None:
         try:

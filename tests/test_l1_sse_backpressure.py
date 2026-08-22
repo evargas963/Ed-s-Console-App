@@ -133,8 +133,8 @@ def test_fingerprint_deterministic_ignores_volatile_fields():
         "order_flow": {"order_flow_regime": "x"},
         "liquidity_summary": {
             "behavior_label": "a",
-            "absorption_score": 1,
-            "continuation_score": 2,
+            "range_imbalance_stall_score": 1,
+            "range_imbalance_push_score": 2,
         },
         "readiness_summary": {
             "order_flow_readiness": "ok",

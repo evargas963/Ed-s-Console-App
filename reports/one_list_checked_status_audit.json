@@ -1,0 +1,22 @@
+{
+  "classification": "CHECKED-STATUS AUDIT. Not a work list. Zero work authority.",
+  "CONTENT_HEAD": "e00dea87090b311a481b7fd53a51de6acb86b40d",
+  "MASTER_CHECKED": 7,
+  "CHECKED_IDS": [
+    "OM-033",
+    "OM-040",
+    "OM-129",
+    "OM-132",
+    "OM-140",
+    "OM-144",
+    "OD-1284"
+  ],
+  "CHECKED_WITHOUT_CURRENT_EVIDENCE": 0,
+  "OD-1284": "NOT_APPLICABLE with operator retirement 2026-08-22: source wrapping/SHA is not a completeness test.",
+  "OM-033": "NOT_APPLICABLE table-header scrape Wave/SHA \u2014 not a product obligation.",
+  "OM-040": "NOT_APPLICABLE table-header scrape Path-A totals/Value \u2014 not a product obligation.",
+  "OM-129": "NOT_APPLICABLE table-header scrape Lane ID/Status \u2014 not a product obligation.",
+  "OM-132": "NOT_APPLICABLE table-header scrape Distinction/Question it answers \u2014 not a product obligation.",
+  "OM-140": "NOT_APPLICABLE table-header scrape Field/Contract status \u2014 not a product obligation.",
+  "OM-144": "NOT_APPLICABLE table-header scrape Item/Requirement \u2014 not a product obligation."
+}

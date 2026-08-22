@@ -3,13 +3,19 @@ description: Monday 2026-07-20 — confirm live collector runs new morning full-
 alwaysApply: true
 ---
 
-# GEX Monday collector gate (2026-07-20)
+# GEX collector gate (historical file; do not treat 2026-07-20 as current next-RTH)
 
-Before treating forward `option_chain_morning_full` accrual as started:
+This file is a **historical** collector-proof gate for et_date `2026-07-20`.
+It is not current work authority and must not be used as a weekday-named
+forward residual. Compute next RTH with `time_et.next_rth_session_et` /
+`is_trading_day_et`. `# next-rth-ok:` when a forward residual names a weekday.
 
-1. Read and execute `reports/gex_r1_monday_collector_gate.md`.
+Before treating forward `option_chain_morning_full` accrual as started on a
+**computed** next RTH:
+
+1. Read `reports/gex_r1_monday_collector_gate.md` (historical procedure).
 2. Prove the live uvicorn/`server.py` process is up **and** started after the `maybe_persist_morning_full_chain` code landed.
-3. After ~10:00 ET Monday, prove SQL rows for SPY/QQQ/IWM on `et_date='2026-07-20'`.
+3. After ~10:00 ET on the computed next RTH, prove SQL rows for the enrolled universe on that `et_date`.
 4. Write `reports/gex_r1_monday_collector_gate_result.json`. No PASS file → capture not started.
 
 Do not equate “decisions were writing” with “morning full-chain code is live.”

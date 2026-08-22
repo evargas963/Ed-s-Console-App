@@ -75,10 +75,9 @@ def test_it_stays_silent_on_the_corrected_row_that_rejects_the_blame_shift(tmp_p
     silence is a VERDICT, so the verdict is what is taken here — the live cell is run
     through `violations()` under a post-cutover date, where grandfathering cannot mask it.
     """
-    live = (REPO / "governance" / "root_cause_log.md").read_text(encoding="utf-8")
-    why = next(([c.strip() for c in ln.strip("|").split("|")][5]
-                for ln in live.splitlines() if ln.startswith("| RC-315 ")), None)
-    assert why, "RC-315 is gone from the live log"
+    # Living root_cause_log.md is frozen history (no current | RC- table).
+    # Recover the corrected RC-315 wording from the last detailed ledger SHA.
+    why = _rc315_why("1fbd62f65b237a6e9eaa94a8a68a6fd7f809630a")
     # Precondition: the cell must still QUOTE a blame-shift, or the silence proves nothing.
     assert C._BLAME_RE.search(why), "the corrected row no longer quotes what it rejects"
     assert _hits(why, tmp_path) == [], (

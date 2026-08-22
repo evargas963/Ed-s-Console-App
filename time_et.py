@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -386,3 +386,31 @@ def is_tradable_session_ts_utc(ts_utc: float) -> bool:
         return False
     mins = h * 60 + m
     return RTH_START_MINS <= mins < close
+
+
+def next_rth_session_et(now: datetime | None = None) -> tuple[str, str]:
+    """Next valid RTH session as (ISO date, weekday name).
+
+    Uses this module's calendar only: `is_trading_day_et` + `session_close_mins_for_et_date`.
+    If `now` is on a trading day before that day's close, that date is next RTH.
+    Weekends, full holidays, uncovered years, and post-close (including early close)
+    walk forward. Does not invent a second holiday table.
+    """
+    n = now if now is not None else now_et()
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=ET)
+    else:
+        n = n.astimezone(ET)
+    mins = n.hour * 60 + n.minute + (1 if n.second or n.microsecond else 0)
+    d = n.date()
+    iso = d.isoformat()
+    if is_trading_day_et(iso):
+        close = session_close_mins_for_et_date(iso)
+        if close is not None and mins < close:
+            return iso, n.strftime("%A")
+    for i in range(1, 21):
+        nxt = d + timedelta(days=i)
+        iso_n = nxt.isoformat()
+        if is_trading_day_et(iso_n):
+            return iso_n, nxt.strftime("%A")
+    raise RuntimeError("no trading day in 21-day lookahead — calendar coverage ended")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-import re
 
 import order_flow_engine as ofe
 import order_flow_live_state as ofls
@@ -14,8 +13,8 @@ def test_order_flow_live_state_rth_uses_rth_open_mins_authority():
     src = inspect.getsource(ofls.is_rth_open)
     assert "9 * 60 + 30" not in src
     assert "16 * 60" not in src
-    assert "RTH_OPEN_MINS" in src
-    assert "RTH_END_MINS" in src
+    assert "is_tradable_session_ts_utc" in src
+    assert "weekday() >= 5" not in src
     assert RTH_OPEN_MINS == 570
     assert RTH_END_MINS == 960
 
@@ -46,36 +45,41 @@ def test_order_flow_live_state_rth_actually_behaves_at_the_boundaries(monkeypatc
     assert _at(2026, 8, 7, 15, 59) is True
     assert _at(2026, 8, 7, 16, 0) is False, "16:00 is the exclusive upper bound"
     assert _at(2026, 8, 8, 12, 0) is False, "Saturday is never RTH regardless of clock"
+    # Weekday-only clocks admit these. Calendar authority must not.
+    assert _at(2026, 7, 3, 10, 0) is False, "Independence Day observed 2026-07-03 is not RTH"
+    assert _at(2026, 11, 27, 12, 59) is True, "early-close day is RTH before 13:00"
+    assert _at(2026, 11, 27, 13, 0) is False, "2026-11-27 early close is exclusive at 13:00"
+    assert _at(2026, 11, 27, 14, 0) is False, "after early close must not stay open until 16:00"
 
 
-def test_order_flow_engine_composite_constants_exist_and_used():
-    assert ofe.OF_COMPOSITE_WEIGHT_BOOK == 0.25
-    assert ofe.OF_DIRECTION_BULLISH_THRESHOLD == 0.15
-    assert ofe.OF_COMPOSITE_MIN_LEGS == 2
-
+def test_order_flow_composite_constants_and_producers_are_retired():
+    for c in (
+        "OF_COMPOSITE_WEIGHT_BOOK",
+        "OF_COMPOSITE_WEIGHT_TAPE",
+        "OF_COMPOSITE_WEIGHT_CUM_DELTA",
+        "OF_COMPOSITE_WEIGHT_OPTIONS",
+        "OF_COMPOSITE_MIN_LEGS",
+        "OF_DIRECTION_BULLISH_THRESHOLD",
+        "OF_DIRECTION_BEARISH_THRESHOLD",
+        "OF_RVOL_NEUTRAL_CENTER",
+    ):
+        assert not hasattr(ofe, c), f"retired composite constant {c} must be deleted"
     body = inspect.getsource(ofe)
-    # STACK-WIRE-5-CAND-TEST-SLICE-TIGHTEN fix: cover the full _compute_order_flow_score
-    # body (not just the ~4 closing lines between min_present= and def _direction).
-    tail = body[
-        body.index("def _compute_order_flow_score") : body.index("def _direction")
-    ]
-    banned = [
-        r"(?<![\w.])0\.25(?![\w.])",
-        r"(?<![\w.])0\.20(?![\w.])",
-        r"(?<![\w.])0\.15(?![\w.])",
-        r"(?<![\w.])0\.05(?![\w.])",
-    ]
-    for pat in banned:
-        assert re.search(pat, tail) is None, f"literal still in _compute_order_flow_score: {pat}"
+    assert "def _compute_order_flow_score" not in body
+    assert "def _direction" not in body
+    assert "def _readiness" not in body
 
 
-def test_call_engine_consumes_order_flow_direction_not_second_score():
+def test_order_flow_direction_is_withheld_from_the_decision_vote():
     import call_engine
 
     src = inspect.getsource(call_engine.compute_call)
-    assert "order_flow_direction" in src
+    assert "of_vote = 1 if" not in src
+    assert "WITHHELD" in src
     assert "_compute_order_flow_score" not in src
     assert "OrderFlowEngine" not in src
+    assert call_engine.order_flow_stack_vote() == 0
+    assert "order_flow_stack_vote()" in src
 
 
 def test_server_of_freshness_independent_from_decision_generation():
@@ -100,14 +104,13 @@ def test_order_flow_engine_residual_magics_named():
     assert ofe.OF_BOOK_DEPTH_TOP == 1
     assert ofe.OF_BOOK_DEPTH_SHALLOW == 3
     assert ofe.OF_BOOK_DEPTH_DEEP == 5
-    assert ofe.OF_RVOL_NEUTRAL_CENTER == 1.0
     assert ofe.OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT == 2
 
-    # _compute_institutional_flow_proxy and OrderFlowEngine.compute use the named depths,
-    # not bare integers.
+    # RC-461: institutional_flow_proxy is retired (unvalidated mix + arbitrary CVD divisor).
     src_inst = inspect.getsource(ofe._compute_institutional_flow_proxy)
     assert "OF_BOOK_DEPTH_DEEP" in src_inst
-    assert "_compute_book_imbalance(data, 5)" not in src_inst
+    assert ofe._compute_institutional_flow_proxy({}) is None
+    assert not hasattr(ofe, "OF_CUM_DELTA_NORM_DIVISOR")
 
     # ONE CANONICAL BOOK PATH: the depth ladder is walked once, in the canonical producer,
     # over the named ladder constant (not bare integers). OrderFlowEngine.compute no longer
@@ -125,14 +128,6 @@ def test_order_flow_engine_residual_magics_named():
     assert "_compute_book_imbalance(data, 1)" not in src_compute
     assert "_compute_book_imbalance(data, 3)" not in src_compute
     assert "_compute_book_imbalance(data, 5)" not in src_compute
-
-    # _compute_order_flow_score uses OF_RVOL_NEUTRAL_CENTER (not bare 1.0) for the rvol term.
-    body = inspect.getsource(ofe)
-    score_body = body[
-        body.index("def _compute_order_flow_score") : body.index("def _direction")
-    ]
-    assert "OF_RVOL_NEUTRAL_CENTER" in score_body
-    assert "(rvol - 1.0)" not in score_body
 
     # _weighted_mean_present default uses the named constant, not bare 2.
     wm_src = inspect.getsource(ofe._weighted_mean_present)

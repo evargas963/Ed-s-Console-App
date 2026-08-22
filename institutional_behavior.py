@@ -1,142 +1,108 @@
-"""
-Institutional liquidity-behavior layer (proxy-based).
+"""Candle body_ratio and signed flow_imbalance primitives (RC-460).
 
-Scores absorption vs continuation from OHLCV + flow imbalance + optional order-flow score.
-Non-authoritative: feeds features, UI, and research — does not replace fusion or The Call.
+The 2026-08-22 stall/push products
+
+    stall = (1 - body_ratio) * abs(flow_imbalance)
+    push  = body_ratio * abs(flow_imbalance)
+
+added no information beyond the two primitives, used the absolute value
+(so "signed imbalance" was a lie), and named a causal stall/push the
+multiplication does not prove. They are retired.
+
+This is NOT microstructure absorption (no tape, no L2 replenish, no
+limit-vs-market classification). Historical ``absorption_score`` /
+``continuation_score`` and the one-day ``range_imbalance_*`` composites
+are quarantined semantic eras and must not train as these fields.
+
+SEMANTIC_ERA ``ohlcv_body_imbalance_primitives_v1`` starts 2026-08-22.
 """
 from __future__ import annotations
 
 import math
-from typing import Any, Optional
+from typing import Any
 
-from terrain_read import (
-    REGIME_LONG_GAMMA,
-    REGIME_SHORT_GAMMA,
-    regime_from_signed_gamma,
-)
+from numeric_contract import float_finite_or_none
+
+BODY_IMBALANCE_SEMANTIC_ERA = "ohlcv_body_imbalance_primitives_v1"
+RANGE_IMBALANCE_SEMANTIC_ERA = BODY_IMBALANCE_SEMANTIC_ERA  # retired alias
+LEGACY_ABSORPTION_SEMANTIC_ERA = "ohlcv_imbalance_absorption_v0_quarantined"
+RANGE_IMBALANCE_COMPOSITE_ERA = "range_imbalance_v1_quarantined"
+
+_EPS = 1e-12
 
 
-def _clip01(x: float) -> float:
-    return max(0.0, min(1.0, float(x)))
+def _f(v: Any) -> float | None:
+    return float_finite_or_none(v)
+
+
+def _clip01(v: float) -> float:
+    return 0.0 if v < 0.0 else (1.0 if v > 1.0 else v)
 
 
 def compute_liquidity_behavior_row(
     *,
-    spot: Optional[float],
-    candle_open: Optional[float],
-    candle_high: Optional[float],
-    candle_low: Optional[float],
-    candle_close: Optional[float],
-    candle_volume: Optional[float],
-    flow_imbalance: Optional[float],
-    net_gamma: Optional[float],
-    atr: Optional[float],
-    candle_range_pts: Optional[float],
-    candle_body_pts: Optional[float],
-    order_flow_score: Optional[float],
+    high: Any = None,
+    low: Any = None,
+    open_: Any = None,
+    close: Any = None,
+    volume: Any = None,
+    flow_imbalance: Any = None,
+    order_flow_score: Any = None,  # unused; retired composite (RC-454)
+    net_gamma: Any = None,  # unused; not a primitive input
+    candle_high: Any = None,
+    candle_low: Any = None,
+    candle_open: Any = None,
+    candle_close: Any = None,
+    candle_volume: Any = None,
+    spot: Any = None,
+    atr: Any = None,
+    candle_range_pts: Any = None,
+    candle_body_pts: Any = None,
 ) -> dict[str, Any]:
+    """Return candle body_ratio plus the signed flow_imbalance primitive.
+
+    Stall/push composites are always None. Unused kwargs are accepted so
+    existing call sites do not fabricate values; they are ignored.
     """
-    Return JSON-safe dict for MarketState.liquidity_behavior and snapshot flattening.
+    _ = order_flow_score, net_gamma, spot, atr, candle_range_pts, candle_body_pts
+    hi = _f(high if high is not None else candle_high)
+    lo = _f(low if low is not None else candle_low)
+    op = _f(open_ if open_ is not None else candle_open)
+    cl = _f(close if close is not None else candle_close)
+    vol = _f(volume if volume is not None else candle_volume)
+    imb = _f(flow_imbalance)
 
-    absorption_score / continuation_score: 0..1 proxies (tape-grade flow not required).
-    """
-    sp = float(spot) if spot is not None and float(spot) > 0 else None
-    hi = float(candle_high) if candle_high is not None else None
-    lo = float(candle_low) if candle_low is not None else None
-    opn = float(candle_open) if candle_open is not None else None
-    cls = float(candle_close) if candle_close is not None else None
-
-    rng = float(candle_range_pts) if candle_range_pts is not None else None
-    if rng is None and hi is not None and lo is not None:
-        rng = abs(hi - lo)
-    body = abs(float(candle_body_pts)) if candle_body_pts is not None else None
-    if body is None and opn is not None and cls is not None:
-        body = abs(cls - opn)
-
-    imb = float(flow_imbalance) if flow_imbalance is not None else 0.0
-    imb_a = abs(imb)
-
-    vol_n = 0.0
-    if candle_volume is not None:
-        try:
-            vol_n = math.log1p(max(0.0, float(candle_volume))) / 18.0
-            vol_n = _clip01(vol_n)
-        except (TypeError, ValueError):
-            vol_n = 0.0
-
-    ofs_n = 0.0
-    if order_flow_score is not None:
-        try:
-            ofs_n = _clip01(float(order_flow_score) / 100.0)
-        except (TypeError, ValueError):
-            ofs_n = 0.0
-
-    range_pct = (rng / sp) if (rng is not None and sp) else None
-    body_ratio = (body / rng) if (body is not None and rng and rng > 1e-12) else None
-    br = body_ratio if body_ratio is not None else 0.4
-
-    # Tight range → more weight on absorption-style read when imbalance exists
-    tight = 1.15 if (range_pct is not None and range_pct < 0.0012) else 0.85
-    wide = min(1.25, (range_pct or 0.0) * 900.0) if range_pct is not None else 0.5
-
-    stall = _clip01((1.0 - br) * tight)
-    push = _clip01(br * wide)
-
-    abs_core = _clip01((imb_a / 0.52) * stall * (0.55 + 0.45 * vol_n) * (0.7 + 0.3 * ofs_n))
-    cont_core = _clip01((imb_a / 0.48) * push * (0.5 + 0.5 * vol_n) * (0.65 + 0.35 * ofs_n))
-
-    # RC-345 / F07: the SIGN of dealer gamma is classified in exactly one place —
-    # terrain_read.regime_from_signed_gamma. This module carries that verdict; it does not
-    # re-derive `ng > 0` locally.
-    _reg = None
-    if net_gamma is not None:
-        try:
-            _reg = regime_from_signed_gamma(float(net_gamma))
-        except (TypeError, ValueError):
-            _reg = None
-    if _reg == REGIME_LONG_GAMMA:
-        abs_core = _clip01(abs_core * 1.08)
-        cont_core = _clip01(cont_core * 0.92)
-    elif _reg == REGIME_SHORT_GAMMA:
-        cont_core = _clip01(cont_core * 1.06)
-        abs_core = _clip01(abs_core * 0.94)
-
-    label = "balanced"
-    if abs_core >= cont_core + 0.12:
-        label = "absorption_heavy"
-    elif cont_core >= abs_core + 0.12:
-        label = "continuation_heavy"
-
-    gam_hint = "unknown"
-    if sp and atr:
-        try:
-            atr_f = float(atr)
-            if atr_f > 0 and rng is not None:
-                rel = rng / atr_f
-                vol_ctx = "compressed" if rel < 0.55 else "normal" if rel < 1.25 else "expanded"
-            else:
-                vol_ctx = "unknown"
-        except (TypeError, ValueError):
-            vol_ctx = "unknown"
-    else:
-        vol_ctx = "unknown"
-
-    # Same single sign authority (_reg above), relabelled into this module's hint
-    # vocabulary. LONG_GAMMA (dealers damp) reads as mean-reversion bias; SHORT_GAMMA
-    # (dealers amplify) as trend bias. No local `ng > 0` re-derivation.
-    if _reg == REGIME_LONG_GAMMA:
-        gam_hint = "mean_reversion_bias"
-    elif _reg == REGIME_SHORT_GAMMA:
-        gam_hint = "trend_bias"
-
-    return {
-        "absorption_score": round(abs_core, 4),
-        "continuation_score": round(cont_core, 4),
-        "behavior_label": label,
-        "gamma_regime_hint": gam_hint,
-        "imbalance_proxy": round(imb, 4),
-        "body_ratio": round(br, 4) if body_ratio is not None else None,
-        "range_pct_of_spot": round(range_pct * 100.0, 5) if range_pct is not None else None,
-        "volume_activity": round(vol_n, 4),
-        "candle_vs_atr": vol_ctx,
+    vol_log = None if vol is None else float(math.log1p(max(0.0, vol)))
+    retired = {
+        "range_imbalance_stall_score": None,
+        "range_imbalance_push_score": None,
+        "range_imbalance_label": None,
+        "absorption_score": None,
+        "continuation_score": None,
+        "absorption_label": None,
+        "behavior_label": None,
+        "legacy_absorption_quarantined": True,
+        "legacy_absorption_semantic_era": LEGACY_ABSORPTION_SEMANTIC_ERA,
+        "range_imbalance_composite_quarantined": True,
+        "range_imbalance_composite_semantic_era": RANGE_IMBALANCE_COMPOSITE_ERA,
+        "semantic_era": BODY_IMBALANCE_SEMANTIC_ERA,
+        "volume_log1p": vol_log,
+        "flow_imbalance": imb,
+        "classification": {
+            "body_ratio": "DERIVED",
+            "flow_imbalance": "PASSTHROUGH",
+            "volume_log1p": "DERIVED",
+            "range_imbalance_stall_score": "RETIRED",
+            "range_imbalance_push_score": "RETIRED",
+        },
     }
+
+    if hi is None or lo is None or op is None or cl is None:
+        retired["body_ratio"] = None
+        return retired
+
+    rng = hi - lo
+    body = abs(cl - op)
+    body_ratio = 0.0 if rng <= _EPS else _clip01(body / rng)
+    retired["body_ratio"] = body_ratio
+    return retired

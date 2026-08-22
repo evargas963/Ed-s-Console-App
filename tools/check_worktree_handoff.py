@@ -142,7 +142,10 @@ def worktree_boundary_violations(
     if err:
         return [err]
     assert role is not None
-    if str(policy.get("mode") or "isolated") == "shared-root":
+    mode = str(policy.get("mode") or "isolated")
+    if mode in ("shared-root", "canonical"):
+        # Canonical (RC-457): both roles use the one project tree. Isolated
+        # suffix binding is historical and only enforced when mode=isolated.
         return []
     out: list[str] = []
     if role == "claude" and not root.name.endswith(suffix):

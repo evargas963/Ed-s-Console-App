@@ -32,7 +32,20 @@ def _init_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_sole_writer_blocks_cursor_on_db():
+def test_sole_writer_blocks_cursor_on_db(monkeypatch, tmp_path):
+    # Pin assignment: live sole_writer.json is operator-selected and must not leak in.
+    mission = tmp_path / "pm_mission.json"
+    sole = tmp_path / "sole_writer.json"
+    mission.write_text(
+        '{"status": "active", "writer": "claude", "active_writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
+    )
+    sole.write_text(
+        '{"writer": "claude", "active_writer": "claude", "pm": "operator"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(OPL, "SOLE_WRITER_PATH", sole)
     msg = OPL.sole_writer_edit_violation("db.py", agent="cursor")
     assert msg and (
         "sole_writer" in msg or "PM-FIRST" in msg or "WRITER-DRIFT" in msg or "SOD_DRIFT" in msg
@@ -40,15 +53,19 @@ def test_sole_writer_blocks_cursor_on_db():
 
 
 def test_sole_writer_allows_writer_agent(monkeypatch, tmp_path):
-    # Pin the mission: the live pm_mission.json scopes the writer to the CURRENT mission's
-    # paths, so this permits-check must supply its own all-scope mission rather than
-    # inherit ambient state (same defect class as ambient ED_AGENT_ROLE).
+    # Pin the mission AND sole assignment — ambient ACTIVE_WRITER must not leak in.
     mission = tmp_path / "pm_mission.json"
+    sole = tmp_path / "sole_writer.json"
     mission.write_text(
-        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        '{"status": "active", "writer": "claude", "active_writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
+    )
+    sole.write_text(
+        '{"writer": "claude", "active_writer": "claude", "pm": "operator"}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(OPL, "SOLE_WRITER_PATH", sole)
     assert OPL.sole_writer_edit_violation("db.py", agent="claude") is None
 
 
@@ -144,7 +161,10 @@ def test_completion_claim_blocks_on_index_mismatch(tmp_path, monkeypatch):
     checker.write_text(checker.read_text(encoding="utf-8") + "\n# drift\n", encoding="utf-8")
     monkeypatch.setattr(OPL, "REPO", repo)
     text = "We have one intentional tree ready to commit — all green."
-    v = OPL.completion_claim_violations(text, repo)
+    v = OPL.completion_claim_violations(
+        text, repo,
+        ci_status={"sha": "", "checks": {"hardening": "SUCCESS", "pytest-full": "SUCCESS"}},
+    )
     assert v and any("index≠WT" in x or "worktree" in x for x in v)
 
 
@@ -155,18 +175,34 @@ def test_live_claim_requires_disk_only_token_when_disk_only(monkeypatch):
         lambda repo=None, port=8000: "DISK_ONLY: pid old",
     )
     monkeypatch.setattr(OPL, "index_worktree_mismatches", lambda repo=None, **kw: [])
-    bad = OPL.completion_claim_violations("Collect gate is LIVE_ENFORCED now.", OPL.REPO)
+    _ci_ok = {"sha": "", "checks": {"hardening": "SUCCESS", "pytest-full": "SUCCESS"}}
+    bad = OPL.completion_claim_violations(
+        "Collect gate is LIVE_ENFORCED now.", OPL.REPO, ci_status=_ci_ok)
     assert bad and "LIVE_ENFORCED" in bad[0] or "DISK_ONLY" in bad[0]
     ok = OPL.completion_claim_violations(
-        "DISK_ONLY_UNTIL_RESTART — gate on disk only.", OPL.REPO
+        "DISK_ONLY_UNTIL_RESTART — gate on disk only.", OPL.REPO, ci_status=_ci_ok
     )
     assert not any("LIVE_ENFORCED" in x for x in ok)
 
 
-def test_pretooluse_hook_blocks_sole_writer_edit(monkeypatch):
-    # Pin the role: the block is for the NON-writer. Ambient env now declares the real
-    # agent (ED_AGENT_ROLE=claude in .claude/settings.json), so the test must not inherit it.
+def test_pretooluse_hook_blocks_sole_writer_edit(monkeypatch, tmp_path):
+    # Pin the role AND assignment: the block is for the NON-writer.
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
+    mission = tmp_path / "pm_mission.json"
+    sole = tmp_path / "sole_writer.json"
+    mission.write_text(
+        '{"status": "active", "writer": "claude", "active_writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
+    )
+    sole.write_text(
+        '{"writer": "claude", "active_writer": "claude", "pm": "operator"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(OPL, "SOLE_WRITER_PATH", sole)
+    import tools.writer_drift_lock as WDL
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(WDL, "SOLE_WRITER_PATH", sole)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
     assert bad and any(
         "sole_writer" in b or "PM-FIRST" in b or "WRITER-DRIFT" in b or "SOD_DRIFT" in b
@@ -176,16 +212,24 @@ def test_pretooluse_hook_blocks_sole_writer_edit(monkeypatch):
 
 def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch, tmp_path):
     # The named writer is NOT blocked on the same protected path (RC-217 negative control).
-    # Role AND mission both pinned — ambient env/mission state must not leak in.
     monkeypatch.setenv("ED_AGENT_ROLE", "claude")
     mission = tmp_path / "pm_mission.json"
+    sole = tmp_path / "sole_writer.json"
     mission.write_text(
-        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        '{"status": "active", "writer": "claude", "active_writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
+    )
+    sole.write_text(
+        '{"writer": "claude", "active_writer": "claude", "pm": "operator"}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(OPL, "SOLE_WRITER_PATH", sole)
+    import tools.writer_drift_lock as WDL
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(WDL, "SOLE_WRITER_PATH", sole)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
-    assert not [b for b in bad if "sole_writer" in b or "PM-FIRST" in b]
+    assert not [b for b in bad if "sole_writer" in b or "PM-FIRST" in b or "SOD_DRIFT" in b]
 
 
 def test_pm_mission_idle_blocks_product_edit(monkeypatch, tmp_path):
@@ -263,7 +307,9 @@ def test_reset_guard_escapes(monkeypatch, tmp_path):
     assert not OPL.reset_guard_violations("git restore -- static/chart.html")
     go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
     monkeypatch.setenv("ED_RESET_GUARD", "off")
-    assert not OPL.reset_guard_violations("git restore -- static/chart.html")
+    assert OPL.reset_guard_violations("git restore -- static/chart.html"), (
+        "agent ED_RESET_GUARD=off must not self-disable the reset guard"
+    )
 
 
 def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
@@ -277,14 +323,18 @@ def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
     (tmp_path / "reports" / "ed_server_warn_quiet_window_latest.json").write_text(
         '{"verdict": "FAIL"}', encoding="utf-8")
     (tmp_path / "governance").mkdir()
-    v = OPL.completion_claim_violations("Mission COMPLETE: all landed.", tmp_path)
+    _ci_ok = {"sha": "", "checks": {"hardening": "SUCCESS", "pytest-full": "SUCCESS"}}
+    v = OPL.completion_claim_violations(
+        "Mission COMPLETE: all landed.", tmp_path, ci_status=_ci_ok)
     assert any(m.startswith("QUIET_PASS_REQUIRED:") for m in v), v
     ok = OPL.completion_claim_violations(
-        "Mission COMPLETE: DISK_ONLY_UNTIL_RESTART for the server half.", tmp_path)
+        "Mission COMPLETE: DISK_ONLY_UNTIL_RESTART for the server half.", tmp_path,
+        ci_status=_ci_ok)
     assert not any(m.startswith("QUIET_PASS_REQUIRED:") for m in ok)
     (tmp_path / "reports" / "ed_server_warn_quiet_window_latest.json").write_text(
         '{"verdict": "PASS"}', encoding="utf-8")
-    v2 = OPL.completion_claim_violations("Mission COMPLETE: all landed.", tmp_path)
+    v2 = OPL.completion_claim_violations(
+        "Mission COMPLETE: all landed.", tmp_path, ci_status=_ci_ok)
     assert not any(m.startswith("QUIET_PASS_REQUIRED:") for m in v2)
 
 

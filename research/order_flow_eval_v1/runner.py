@@ -23,8 +23,8 @@ FEATS = [
     "spread",
     "flow_imbalance",
     "smart_money_score",
-    "absorption_score",
-    "continuation_score",
+    "range_imbalance_stall_score",
+    "range_imbalance_push_score",
     "candle_volume",
 ]
 

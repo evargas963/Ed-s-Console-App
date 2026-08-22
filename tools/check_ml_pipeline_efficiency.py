@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Binding gate order after ablation confirm v2 (ACTIVE_PROGRAM §ML pipeline efficiency).
+# Binding gate order after ablation confirm v2 (exercising path: run_survivor_stack_refit_backtest).
 SURVIVOR_PRETRAIN_GATE_ORDER: tuple[str, ...] = (
     "run_survivor_stack_refit_backtest",
     "run_survivor_edge_probe",
@@ -32,8 +32,8 @@ _REQUIRED_GATE_SURFACE = (
     (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-stack-refit-backtest"),
     (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-edge-probe"),
     (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-validation-run"),
-    (REPO_ROOT / "ACTIVE_PROGRAM.md", "stack refit backtest"),
-    (REPO_ROOT / "ACTIVE_PROGRAM.md", "run_survivor_stack_refit_backtest"),
+    (REPO_ROOT / "ml_scheduler.py", "run_survivor_stack_refit_backtest"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "run_survivor_stack_refit_backtest"),
     (REPO_ROOT / "tools" / "build_feature_assignment_matrix_v2.py", "resolve_expanded_schwab_ablation_universe"),
     (REPO_ROOT / "tools" / "build_feature_assignment_matrix_v2.py", "MIN_ABLATION_EXPANSION_FACTOR"),
     (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "void_compound_ablation_survivors"),

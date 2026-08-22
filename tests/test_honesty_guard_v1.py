@@ -40,6 +40,15 @@ def test_lock7_lock_claim_must_name_mechanism():
     assert not any("without naming a CHECK id" in m for m in ok)
 
 
+def test_honesty_blocks_advisory_hardening_cited_as_pass():
+    from tools.honesty_guard import honesty_violations
+
+    bad = honesty_violations(None, "bandit is PASS and required CI is green.")
+    assert any("NON-AUTHORITATIVE" in m for m in bad), bad
+    ok = honesty_violations(None, "advisory-hardening is non-authoritative and cannot support closure.")
+    assert not any("NON-AUTHORITATIVE" in m for m in ok)
+
+
 def test_honesty_blocks_md_as_lock_claim():
     from tools.honesty_guard import honesty_violations
 

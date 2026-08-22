@@ -19,7 +19,12 @@ import time
 from typing import Any, Callable, Optional
 from instrument_identity import ticker_storage_key
 
-from order_flow_live_state import push_book, push_level_one
+from order_flow_live_state import (
+    clear_all_live_state,
+    forget_unsubscribed_symbols,
+    push_book,
+    push_level_one,
+)
 
 import live_market_plane as _lmp
 
@@ -213,6 +218,7 @@ async def _resubscribe_to_ticker(sc: Any, ticker: str) -> None:
     if old == new:
         return
     _log_stream("STREAM_RESUBSCRIBE_START", old=old, new=new)
+    forget_unsubscribed_symbols(old, new)
     try:
         if old:
             await sc.level_one_equity_unsubs(old)
@@ -359,6 +365,7 @@ def _run_stream_loop(
     async def _async_run() -> None:
         global _stream_running, _stream_client, _streaming_logged_in
         global _stream_shutdown_event, _stream_resubscribe_lock, _pending_post_login_ticker
+        global _streaming_last_update_ts, _subscribed_equity_syms, _active_streaming_ticker
 
         _stream_shutdown_event = asyncio.Event()
         _stream_resubscribe_lock = asyncio.Lock()
@@ -454,6 +461,10 @@ def _run_stream_loop(
             _stream_running = False
             _stream_shutdown_event = None
             _stream_resubscribe_lock = None
+            _streaming_last_update_ts = None
+            _subscribed_equity_syms = []
+            _active_streaming_ticker = None
+            clear_all_live_state()
             log.info("Order flow streaming stopped")
 
     _stream_loop = asyncio.new_event_loop()
@@ -472,6 +483,89 @@ def _run_stream_loop(
             log.warning("STREAM_LOOP_CLOSE_FAIL err=%s", e)
         _log_stream("STREAM_LOOP_STOP_DONE")
         _stream_loop = None
+
+
+def bind_production_level_one_handler(sc: Any, on_item: Optional[Callable[[str, dict], None]] = None) -> None:
+    """Register the production LEVELONE handler on an existing StreamClient.
+
+    ONE faucet: same add_level_one_equity_handler + push_level_one path as the
+    live UI stream. on_item is optional receipt capture for --live proof.
+    """
+    def _handler(msg: dict) -> None:
+        content = msg.get("content") or []
+        for item in content:
+            if isinstance(item, dict):
+                sym = (item.get("key") or "").upper().strip()
+                if not sym:
+                    continue
+                push_level_one(sym, item)
+                if on_item is not None:
+                    on_item(sym, item)
+
+    sc.add_level_one_equity_handler(_handler)
+
+
+async def subscribe_production_level_one(sc: Any, symbols: list[str]) -> None:
+    """Production subscribe: StreamClient.level_one_equity_subs."""
+    syms = [s.upper().strip() for s in symbols if str(s).strip()]
+    if not syms:
+        raise ValueError("subscribe_production_level_one requires at least one symbol")
+    await sc.level_one_equity_subs(syms)
+
+
+def collect_level_one_receipts(
+    client: Any,
+    account_id: Any,
+    symbols: list[str],
+    *,
+    duration_sec: float = 8.0,
+    stream_client_factory: Optional[Callable[..., Any]] = None,
+    login: bool = True,
+) -> list[dict]:
+    """Authenticated LEVELONE collect via the production StreamClient path.
+
+    stream_client_factory is injectable for tests. Live callers pass the real
+    schwab.streaming.StreamClient (the same class _run_stream_loop constructs).
+    """
+    if not account_id:
+        raise ValueError("collect_level_one_receipts requires account_id")
+    syms = [s.upper().strip() for s in symbols if str(s).strip()]
+    if not syms:
+        raise ValueError("collect_level_one_receipts requires symbols")
+
+    receipts: list[dict] = []
+
+    def _on_item(sym: str, item: dict) -> None:
+        receipts.append({"symbol": sym, "item": item})
+
+    async def _run() -> list[dict]:
+        if stream_client_factory is not None:
+            sc = stream_client_factory(client, account_id)
+        else:
+            from schwab.streaming import StreamClient
+            sc = StreamClient(client, account_id=account_id)
+        bind_production_level_one_handler(sc, on_item=_on_item)
+        if login:
+            await sc.login()
+        await subscribe_production_level_one(sc, syms)
+        deadline = time.time() + max(0.05, float(duration_sec))
+        while time.time() < deadline:
+            if hasattr(sc, "handle_message"):
+                try:
+                    await sc.handle_message()
+                except Exception:
+                    break
+            else:
+                break
+        try:
+            logout = getattr(sc, "logout", None)
+            if logout is not None:
+                await logout()
+        except Exception as e:
+            log.warning("LEVELONE_COLLECT_LOGOUT_FAIL err=%s", e)
+        return receipts
+
+    return asyncio.run(_run())
 
 
 def start_order_flow_stream(
@@ -511,11 +605,13 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
 
     Must be called from app shutdown **before** the process exits or the main event loop closes.
     """
-    global _stream_running, _stream_shutdown_event, _stream_loop, _stream_thread, _streaming_logged_in
+    global _stream_running, _stream_shutdown_event, _stream_loop, _stream_thread, _streaming_logged_in, _streaming_last_update_ts
 
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _stream_running = False
     _streaming_logged_in = False
+    _streaming_last_update_ts = None
+    clear_all_live_state()
     loop = _stream_loop
     ev = _stream_shutdown_event
     if loop is not None and ev is not None:

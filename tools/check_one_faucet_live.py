@@ -25,6 +25,12 @@ WHAT IT DELIBERATELY DOES NOT FLAG
 
 The exclusions are data, not prose, so they can be audited and argued with.
 
+Classification: DIAGNOSTIC_TOOL — non-authoritative.
+Needs a running server. Exit 2 when unreachable. Must not be cited as PASS,
+ENFORCED, or merge-blocking. rehab_daily_scan may invoke it recommend-only
+(`--skip-if-down`). Not a commit/CI lock: a live multi-endpoint compare cannot
+be satisfied in offline CI and must not be wrapped in `|| true`.
+
 Run:  python tools/check_one_faucet_live.py [--base URL] [--ticker SYM] [--json]
 Exit: 0 all shared fields agree · 1 a disagreement · 2 server unreachable
 """

@@ -24,40 +24,38 @@ from typing import Any, Optional
 import math as _of_math
 
 from math_exposure import MISSING_GREEK_SENTINEL
+from l1_trade_observation import (
+    TAPE_CLASSIFICATION,
+    TAPE_IDENTITY_CONVENTION,
+    TAPE_LIMITATIONS,
+    TAPE_NATIVE_EVENT_ID,
+    canonical_tape_prints,
+    compute_cum_delta_proxy as _canonical_cum_delta,
+    compute_tape_pressure as _canonical_tape_pressure,
+    iter_signed_cum_points,
+    source_contract as l1_source_contract,
+)
 
 log = logging.getLogger(__name__)
 
-# ── STACK-WIRE-5: named thresholds (Phase 6 ablation surface) ──
-OF_COMPOSITE_WEIGHT_BOOK: float = 0.25
-OF_COMPOSITE_WEIGHT_TAPE: float = 0.20
-OF_COMPOSITE_WEIGHT_CUM_DELTA: float = 0.20
-OF_COMPOSITE_WEIGHT_ABSORPTION: float = 0.15
-OF_COMPOSITE_WEIGHT_OPTIONS: float = 0.15
-OF_COMPOSITE_WEIGHT_RVOL: float = 0.05
-OF_COMPOSITE_MIN_LEGS: int = 2
+# ── Named primitive thresholds (composite score/verdict RETIRED — RC-454) ──
 OF_CLIP_LOW: float = -1.0
 OF_CLIP_HIGH: float = 1.0
-OF_RVOL_TERM_LOW: float = -0.5
-OF_RVOL_TERM_HIGH: float = 0.5
-OF_DIRECTION_BULLISH_THRESHOLD: float = 0.15
-OF_DIRECTION_BEARISH_THRESHOLD: float = -0.15
-OF_READINESS_STRONG_ABS: float = 0.25
-OF_READINESS_MODERATE_ABS: float = 0.1
-OF_RVOL_READINESS_OK: float = 1.2
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
-OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
+# RC-461: OF_CUM_DELTA_NORM_DIVISOR retired — 10000 had no provenance.
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
-OF_ABSORPTION_PRICE_EPS: float = 0.01
-# Book-depth ladder for _compute_book_imbalance: top of book, shallow, deep.
+TAPE_PRESSURE_CLASSIFICATION = TAPE_CLASSIFICATION
+CUM_DELTA_CLASSIFICATION = TAPE_CLASSIFICATION
+BOOK_HISTORY_CLASSIFICATION = "ROLLING_SNAPSHOT_WINDOW"
+BOOK_HISTORY_MAX_SNAPSHOTS = 20
+# RC-456: OF_ABSORPTION_PRICE_EPS retired with the false absorption ratio.
+# Book-depth ladder for the canonical book producer: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
 OF_BOOK_DEPTH_DEEP: int = 5
-# RVOL neutral center: RVOL = 1.0 means realized volume == average; the composite uses (rvol - center).
-OF_RVOL_NEUTRAL_CENTER: float = 1.0
 # Default minimum legs for _weighted_mean_present when callers omit min_present.
-# (Composite scoring explicitly passes OF_COMPOSITE_MIN_LEGS; this is a safe-default fallback.)
 OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT: int = 2
 
 try:
@@ -191,23 +189,9 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
 
 
 def _iter_tape_prints(content_items: list) -> list[dict]:
-    """
-    Extract tape prints (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) from content.
-    """
-    out = []
-    for c in content_items:
-        if not isinstance(c, dict):
-            continue
-        lp = c.get("LAST_PRICE")
-        ls = c.get("LAST_SIZE")
-        tt = c.get("TRADE_TIME_MILLIS")
-        if lp is not None or ls is not None or tt is not None:
-            out.append({
-                "price": _safe_float(lp),
-                "size": _safe_int(ls),
-                "time_millis": _safe_int(tt),
-            })
-    return out
+    """Extract tape prints in list/receive order. ONE FAUCET: l1_trade_observation."""
+    from l1_trade_observation import iter_content_prints
+    return iter_content_prints(content_items)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -422,12 +406,8 @@ def _compute_spread(data: dict) -> dict[str, Any]:
 # NATIVE fields), or PROXY (temporal inference). STATIC book state only — no aggressor/CVD/
 # absorption/iceberg (see `deferred`). No opaque composite score.
 
-#: HEURISTIC only: a displayed level is a WALL CANDIDATE when its size is at least this multiple
-#: of the MEDIAN level size across the ladder. A relative size-outlier convention (tunable, and
-#: blind to hidden/reserve size) — NOT an objectively-known liquidity wall. Surfaced with each
-#: candidate's `median_mult` and a self-describing `wall_method` block so the API never asserts
-#: a proven wall. magic-threshold-ok: relative (× median), carries its method in the payload.
-OF_BOOK_WALL_MEDIAN_MULT: float = 3.0
+# RC-467: OF_BOOK_WALL_MEDIAN_MULT and _book_wall_candidates retired. Median times 3
+# had no provenance. Depth totals / concentration / slope remain.
 
 #: Depth ladder for the canonical depth totals/imbalance — the existing 1/3/5 ladder.
 OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (OF_BOOK_DEPTH_TOP, OF_BOOK_DEPTH_SHALLOW, OF_BOOK_DEPTH_DEEP)
@@ -549,30 +529,6 @@ def _book_concentration(levels: list[tuple[float, float]], total: Optional[float
     return levels[0][1] / total
 
 
-def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: int) -> list[dict]:
-    """HEURISTIC displayed-size anomalies — candidates, NOT objectively-known liquidity walls.
-    A level is a candidate when its size ≥ OF_BOOK_WALL_MEDIAN_MULT × the MEDIAN level size
-    across the best `depth` levels: a relative size outlier in the DISPLAYED order book only
-    (it cannot see hidden/reserve size, and the multiple is a tunable convention, not a proven
-    boundary). Each entry carries `median_mult` (its size ÷ the median) so a consumer sees HOW
-    anomalous rather than a binary truth. Empty when there is no positive median or nothing
-    clears the multiple."""
-    lv = levels[:depth]
-    vols = sorted(v for _, v in lv)
-    if not vols:
-        return []
-    n = len(vols)
-    median = vols[n // 2] if n % 2 else (vols[n // 2 - 1] + vols[n // 2]) / 2.0
-    if median <= 0:
-        return []
-    out: list[dict] = []
-    for price, vol in lv:
-        if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
-            out.append({"side": side, "price": price, "volume": vol,
-                        "median_mult": round(vol / median, 2)})
-    return out
-
-
 def _microstructure_structural(cb: dict) -> dict:
     """Everything derivable from a single canonical book snapshot — no wall-clock `now`. Age
     fields and the per-serialization timestamps are stamped by `compute_book_microstructure`,
@@ -618,15 +574,17 @@ def _microstructure_structural(cb: dict) -> dict:
                        "ask": _book_slope(ask_levels, OF_BOOK_DEPTH_DEEP, deep_at)},
         "liquidity_concentration": {"bid": _book_concentration(bid_levels, deep_bt),
                                     "ask": _book_concentration(ask_levels, deep_at)},
-        "wall_candidates": (_book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)
-                            + _book_wall_candidates(ask_levels, "ask", OF_BOOK_DEPTH_DEEP)),
-        "wall_method": {
-            "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",
-            "mult": OF_BOOK_WALL_MEDIAN_MULT,
+        "displayed_depth_anomaly_candidates": [],
+        "displayed_depth_anomaly_method": {
+            "basis": None,
+            "mult": None,
             "depth": OF_BOOK_DEPTH_DEEP,
-            "heuristic": True,
-            "note": "size-outlier candidates in the DISPLAYED book only; blind to hidden/reserve "
-                    "size; NOT an objectively-known liquidity wall",
+            "heuristic": False,
+            "retired": True,
+            "name": "displayed_depth_anomaly_candidate",
+            "note": "RETIRED (RC-467). Median times 3 was a convention without provenance. "
+                    "Depth totals, concentration, and slope remain; no size-outlier candidate "
+                    "is published.",
         },
         "provenance_structural": {
             "book_time_ms": cb["book_time_ms"],
@@ -645,17 +603,21 @@ def _microstructure_structural(cb: dict) -> dict:
             "depth.*.imbalance": "DERIVED",
             "depth_pressure": "DERIVED", "book_slope": "DERIVED",
             "liquidity_concentration": "DERIVED",
-            "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
+            "displayed_depth_anomaly_candidates": "RETIRED (no median-multiple candidate)",
+            "book_history": BOOK_HISTORY_CLASSIFICATION,
             "ages.book_age_sec": "DERIVED", "ages.quote_age_sec": "DERIVED",
             "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
             "provenance.server_received_ts": "DERIVED",
         },
         "deferred": [
-            "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-            "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
-            "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
-            "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)",
+            "aggressor_side (PROXY: Schwab LEVELONE has no aggressor flag)",
+            "native_cvd (engine emits PROXY_RECONSTRUCTED_L1_TICK only)",
+            "absorption / replenishment (RETIRED — not measured)",
+            "institutional_flow (RETIRED unvalidated composite)",
+            "durable_l2_timeseries (in-memory last-N snapshots only; not a time series)",
         ],
+        "book_history_classification": BOOK_HISTORY_CLASSIFICATION,
+        "book_history_max_snapshots": BOOK_HISTORY_MAX_SNAPSHOTS,
     }
 
 
@@ -706,53 +668,9 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
-    """
-    Tape pressure over a time window: sum(uptick_direction * size) / sum(size).
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
-    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
-    """
-    prints = _iter_tape_prints(_iter_content(data))
-    if not prints:
-        return None
-    now_ms = None
-    for p in prints:
-        t = p.get("time_millis")
-        if t is not None:
-            now_ms = t
-            break
-    if now_ms is None:
-        now_ms = 0
-    cutoff_ms = now_ms - int(window_sec * 1000)
-    total_delta = 0.0
-    total_sz = 0
-    prev_price = None
-    for p in sorted(prints, key=lambda x: x.get("time_millis") if x.get("time_millis") is not None else 0):
-        t = p.get("time_millis")
-        price = p.get("price")
-        # Out-of-window prints still seed prev_price so the first in-window
-        # print can be classified vs the most recent prior trade price.
-        if t is not None and t < cutoff_ms:
-            if price is not None:
-                prev_price = price
-            continue
-        size = p.get("size")
-        if size is None or size <= 0:
-            # No size to add to volume, but the price is still a real trade
-            # — keep it as the comparison anchor for the next sized print.
-            if price is not None:
-                prev_price = price
-            continue
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                total_delta += size
-            elif price < prev_price:
-                total_delta -= size
-        total_sz += size
-        if price is not None:
-            prev_price = price
-    if total_sz <= 0:
-        return None
-    return total_delta / total_sz if total_sz else None
+    """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
+    prints = canonical_tape_prints(_iter_content(data))
+    return _canonical_tape_pressure(prints, window_sec)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -760,84 +678,21 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
-    """
-    Cumulative delta proxy from tape: sum of (direction * size) across prints.
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
-    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
-    Returns None when no print contributed a positive Schwab size.
-    """
-    prints = _iter_tape_prints(_iter_content(data))
-    if not prints:
-        return None
-    total = 0.0
-    saw_size = False
-    prev_price = None
-    for p in sorted(prints, key=lambda x: x.get("time_millis") if x.get("time_millis") is not None else 0):
-        price = p.get("price")
-        size = p.get("size")
-        if size is None or size <= 0:
-            # No size to count, but the price still anchors the next comparison.
-            if price is not None:
-                prev_price = price
-            continue
-        saw_size = True
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                total += size
-            elif price < prev_price:
-                total -= size
-        if price is not None:
-            prev_price = price
-    return total if saw_size else None
+    """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
+    prints = canonical_tape_prints(_iter_content(data))
+    return _canonical_cum_delta(prints)
 
 
 def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[float]:
-    """
-    Slope of cumulative delta over time (simple linear regression).
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
-    """
-    prints = _iter_tape_prints(_iter_content(data))
-    if len(prints) < 2:
-        return None
-    sorted_prints = sorted(
-        [p for p in prints if p.get("time_millis") is not None],
-        key=lambda x: x.get("time_millis") or 0,
-    )
-    if len(sorted_prints) < 2:
-        return None
-    cutoff = (sorted_prints[-1].get("time_millis") or 0) - int(window_sec * 1000)
-    points = []
-    cum = 0.0
-    prev_price = None
-    for p in sorted_prints:
-        t = p.get("time_millis") or 0
-        price = p.get("price")
-        # Out-of-window prints still seed prev_price.
-        if t < cutoff:
-            if price is not None:
-                prev_price = price
-            continue
-        size = p.get("size")
-        if size is None or size <= 0:
-            if price is not None:
-                prev_price = price
-            continue
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                cum += size
-            elif price < prev_price:
-                cum -= size
-        if price is not None:
-            prev_price = price
-        points.append((t / 1000.0, cum))
+    """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
+    prints = canonical_tape_prints(_iter_content(data))
+    points = iter_signed_cum_points(prints, window_sec)
     if len(points) < 2:
         return None
     if np is not None:
         xs = np.array([p[0] for p in points])
         ys = np.array([p[1] for p in points])
-        slope = float(np.polyfit(xs, ys, 1)[0])
-        return slope
-    # fallback: (last - first) / time_span
+        return float(np.polyfit(xs, ys, 1)[0])
     t0, y0 = points[0]
     t1, y1 = points[-1]
     dt = t1 - t0
@@ -847,7 +702,7 @@ def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[f
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ABSORPTION / REPLENISHMENT
+# BOOK-TAPE BATCH GEOMETRY (not absorption / not replenishment)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _earliest_book_snapshot(items: list) -> Optional[dict]:
@@ -858,37 +713,38 @@ def _earliest_book_snapshot(items: list) -> Optional[dict]:
     return None
 
 
-def _compute_absorption(data: dict) -> tuple[Optional[float], Optional[float], Optional[str]]:
-    """
-    Absorption: large size at a level that doesn't move price.
-    Replenishment: bid/ask depth rebuild after a fill.
-    Uses: content.*.BIDS, ASKS with aggregated per-level TOTAL_VOLUME
-          (NOT the nested per-source BID_VOLUME/ASK_VOLUME, which this does
-          not read), plus content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
+def _compute_book_tape_batch_geometry(data: dict) -> dict[str, Optional[float]]:
+    """Displayed-depth delta (earliest vs latest book in this batch) plus tape size/range.
+
+    This is NOT microstructure absorption (no per-level absorb vs aggressive print)
+    and NOT proven replenishment (no fill-then-refill classification).
+    Uses content.*.BIDS/ASKS TOTAL_VOLUME plus LAST_PRICE/LAST_SIZE/TRADE_TIME_MILLIS.
+    Missing print sizes are skipped, not zero-filled.
     """
     items = _iter_content(data)
     earlier = _earliest_book_snapshot(items)
     later = _latest_book_snapshot(items)
-    if not earlier or not later or earlier is later:
-        return None, None, None
-    bids_earlier = sum(v for _, v in _iter_bids_levels(earlier))
-    asks_earlier = sum(v for _, v in _iter_asks_levels(earlier))
-    bids_later = sum(v for _, v in _iter_bids_levels(later))
-    asks_later = sum(v for _, v in _iter_asks_levels(later))
-    bid_change = bids_later - bids_earlier if bids_earlier else 0
-    ask_change = asks_later - asks_earlier if asks_earlier else 0
-    replenishment = (bid_change + ask_change) / 2.0 if (bids_earlier or asks_earlier) else 0.0
-    # Absorption: when volume trades but price doesn't move much (simplified)
-    prints = _iter_tape_prints(items)
-    if not prints:
-        return None, None, None
-    total_sz = sum(p["size"] for p in prints if p.get("size") is not None and p["size"] > 0)
+    bid_delta: Optional[float] = None
+    ask_delta: Optional[float] = None
+    if earlier and later and earlier is not later:
+        bids_earlier = sum(v for _, v in _iter_bids_levels(earlier))
+        asks_earlier = sum(v for _, v in _iter_asks_levels(earlier))
+        bids_later = sum(v for _, v in _iter_bids_levels(later))
+        asks_later = sum(v for _, v in _iter_asks_levels(later))
+        bid_delta = bids_later - bids_earlier
+        ask_delta = asks_later - asks_earlier
+
+    prints = canonical_tape_prints(items)
+    sizes = [p["size"] for p in prints if p.get("size") is not None and p["size"] > 0]
     prices = [p.get("price") for p in prints if p.get("price") is not None]
-    price_range = max(prices) - min(prices) if len(prices) >= 2 else 0.0
-    # absorption = high volume, low price movement
-    absorption = (total_sz / (price_range + OF_ABSORPTION_PRICE_EPS)) if total_sz > 0 else 0.0
-    direction = "bid" if bid_change > ask_change else ("ask" if ask_change > bid_change else "neutral")
-    return absorption, replenishment, direction
+    size_sum = float(sum(sizes)) if sizes else None
+    price_range = (max(prices) - min(prices)) if len(prices) >= 2 else None
+    return {
+        "book_displayed_bid_delta": bid_delta,
+        "book_displayed_ask_delta": ask_delta,
+        "tape_print_size_sum": size_sum,
+        "tape_print_price_range": price_range,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1091,28 +947,14 @@ def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[float] = None) -> Optional[float]:
+    """RETIRED (RC-461). Unvalidated mean of tape/book/options legs.
+
+    The former 10000 CVD divisor had no provenance. The mix invented a
+    headline the legs do not individually claim. Emit None. OF_BOOK_DEPTH_DEEP
+    remains the named deep book constant for any future admitted producer.
     """
-    Proxy for institutional flow: large trades + options activity + book imbalance.
-    Uses: tape (large LAST_SIZE), options flow, book imbalance.
-    ONE CANONICAL PATH: the deep book imbalance is READ from the single canonical
-    microstructure result (passed by the engine as `book_imbalance_5`), not re-walked here.
-    When called standalone without it, it falls back to the same canonical helper.
-    """
-    cum = _compute_cum_delta_proxy(data)
-    book_imb = book_imbalance_5 if book_imbalance_5 is not None else _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
-    opt_score, _, _, delta_w, _ = _compute_options_flow(data)
-    components = []
-    if cum is not None:
-        components.append(max(-1, min(1, cum / OF_CUM_DELTA_NORM_DIVISOR)))
-    if book_imb is not None:
-        components.append(book_imb)
-    if opt_score is not None:
-        components.append(opt_score)
-    if delta_w is not None and abs(delta_w) > 0:
-        components.append(max(-1, min(1, delta_w / OF_OPTIONS_DELTA_NORM_DIVISOR)))
-    if not components:
-        return None
-    return sum(components) / len(components)
+    _ = data, book_imbalance_5, OF_BOOK_DEPTH_DEEP
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1149,73 +991,6 @@ def _weighted_mean_present(
     return sum((w / total_w) * v for w, v in present)
 
 
-def _compute_order_flow_score(
-    book_imbalance: Optional[float],
-    tape_pressure: Optional[float],
-    cum_delta: Optional[float],
-    absorption: Optional[float],
-    options_flow: Optional[float],
-    rvol: Optional[float],
-) -> Optional[float]:
-    """
-    Composite score over present legs only (FIND-OF3/OF4 / STACK-WIRE-5 weights).
-    Uses OF_COMPOSITE_WEIGHT_* constants; None when fewer than OF_COMPOSITE_MIN_LEGS legs.
-    """
-    return _weighted_mean_present(
-        [
-            (OF_COMPOSITE_WEIGHT_BOOK, book_imbalance, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_TAPE, tape_pressure, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_CUM_DELTA, cum_delta, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_ABSORPTION, absorption, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_OPTIONS, options_flow, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (
-                OF_COMPOSITE_WEIGHT_RVOL,
-                (rvol - OF_RVOL_NEUTRAL_CENTER) if rvol is not None else None,
-                OF_RVOL_TERM_LOW,
-                OF_RVOL_TERM_HIGH,
-            ),
-        ],
-        min_present=OF_COMPOSITE_MIN_LEGS,
-    )
-
-
-def _direction(score: Optional[float]) -> Optional[str]:
-    """score > 0.15 → bullish, < -0.15 → bearish, else neutral; None when unavailable or exactly zero."""
-    if score is None:
-        return None
-    if score == 0.0:
-        return None
-    if score > OF_DIRECTION_BULLISH_THRESHOLD:
-        return "bullish"
-    if score < OF_DIRECTION_BEARISH_THRESHOLD:
-        return "bearish"
-    return "neutral"
-
-
-def _readiness(score: Optional[float], rvol: Optional[float]) -> str:
-    """
-    green: score strong and rvol > 1.2
-    yellow: score moderate, or strong with rvol unknown/unconfirmed (rvol is None)
-    red: weak score, or composite unavailable
-
-    When rvol is None, strong readings downgrade to yellow (no fabricated rvol_ok).
-    """
-    if score is None:
-        return "red"
-    strong = abs(score) > OF_READINESS_STRONG_ABS
-    moderate = OF_READINESS_MODERATE_ABS <= abs(score) <= OF_READINESS_STRONG_ABS
-    if rvol is None:
-        if strong or moderate:
-            return "yellow"
-        return "red"
-    rvol_ok = rvol > OF_RVOL_READINESS_OK
-    if strong and rvol_ok:
-        return "green"
-    if moderate or (strong and not rvol_ok):
-        return "yellow"
-    return "red"
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1250,11 +1025,6 @@ class OrderFlowEngine:
         # fallback `book_imbalance_5 = top_book_pressure`, which conflated the two under one name.)
         top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
 
-        # Use 5-level for scoring when available (preserve measured 0.0 — FIND-OF1)
-        book_for_score = next(
-            (v for v in (book_imbalance_5, book_imbalance_3, book_imbalance_1) if v is not None),
-            None,
-        )
         spread_d = _compute_spread(data)
         spread_pts = spread_d.get("spread_pts")
 
@@ -1262,17 +1032,12 @@ class OrderFlowEngine:
         tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC)
         tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC)
         tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC)
-        tape_for_score = next(
-            (v for v in (tape_pressure_2m, tape_pressure_30s, tape_pressure_5m) if v is not None),
-            None,
-        )
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
         cum_delta_slope = _compute_cum_delta_slope(data)
 
-        # Absorption
-        absorption_score, replenishment_score, absorption_direction = _compute_absorption(data)
+        geom = _compute_book_tape_batch_geometry(data)
 
         # Options flow
         (
@@ -1290,57 +1055,21 @@ class OrderFlowEngine:
         institutional_flow_proxy_score = _compute_institutional_flow_proxy(
             data, book_imbalance_5=book_imbalance_5)
 
-        # Composite score and regime
-        order_flow_score = _compute_order_flow_score(
-            book_for_score,
-            tape_for_score,
-            cum_delta_proxy,
-            absorption_score,
-            options_flow_score,
-            rvol,
-        )
-        order_flow_direction = _direction(order_flow_score)
-        order_flow_regime = order_flow_direction
-        order_flow_readiness = (
-            "red" if order_flow_score is None else _readiness(order_flow_score, rvol)
-        )
-        _order_flow_readiness_rvol = (
-            "unavailable" if rvol is None and order_flow_score is not None else None
-        )
-
-        # Flow Verdict (composite headline) + field arrows/labels
-        try:
-            from math_exposure import (
-                compute_order_flow_verdict,
-                order_flow_score_label,
-                order_flow_book_label,
-                order_flow_opt_label,
-                order_flow_field_arrow,
-            )
-            verdict_d = compute_order_flow_verdict(
-                order_flow_score,
-                book_imbalance_5,
-                cum_delta_proxy,
-                options_flow_score,
-            )
-            of_verdict = verdict_d["verdict"]
-            of_verdict_color = verdict_d["verdict_color"]
-            of_arrow = verdict_d["arrow"]
-            of_agreement = verdict_d["agreement"]
-            of_score_arrow = order_flow_field_arrow(order_flow_score)
-            of_score_label = order_flow_score_label(order_flow_score)
-            of_book_arrow = order_flow_field_arrow(book_imbalance_5, use_book=True)
-            of_book_label = order_flow_book_label(book_imbalance_5)
-            of_delta_arrow = order_flow_field_arrow(cum_delta_proxy)
-            of_opt_arrow = order_flow_field_arrow(options_flow_score)
-            of_opt_label = order_flow_opt_label(options_flow_score)
-        except ImportError:
-            of_verdict = None
-            of_verdict_color = None
-            of_arrow = None
-            of_agreement = "unavailable"
-            of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
-            of_score_label = of_book_label = of_opt_label = None
+        # RETIRED (RC-454): order_flow_score / _direction / _regime / _readiness and
+        # compute_order_flow_verdict. The composite had no fitted weights or OOS validation;
+        # the verdict double-counted book/cum-delta/options already inside the score to emit
+        # BUYING/SELLING PRESSURE. Canonical primitives stay. These fields emit None so no
+        # consumer can reconstruct the unvalidated composite from this producer.
+        order_flow_score = None
+        order_flow_direction = None
+        order_flow_regime = None
+        order_flow_readiness = None
+        of_verdict = None
+        of_verdict_color = None
+        of_arrow = None
+        of_agreement = "unavailable"
+        of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
+        of_score_label = of_book_label = of_opt_label = None
 
         return {
             "book_imbalance_1": book_imbalance_1,
@@ -1361,16 +1090,24 @@ class OrderFlowEngine:
             "tape_pressure_30s": tape_pressure_30s,
             "tape_pressure_2m": tape_pressure_2m,
             "tape_pressure_5m": tape_pressure_5m,
+            "tape_pressure_classification": TAPE_PRESSURE_CLASSIFICATION,
+            "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
+            "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
+            "tape_limitations": TAPE_LIMITATIONS,
+            **l1_source_contract(),
+            "book_history_classification": BOOK_HISTORY_CLASSIFICATION,
+            "book_history_max_snapshots": BOOK_HISTORY_MAX_SNAPSHOTS,
             "cum_delta_proxy": cum_delta_proxy,
             "cum_delta_slope": cum_delta_slope,
-            "absorption_score": absorption_score,
-            "replenishment_score": replenishment_score,
-            "replenishment_score_source": (
-                "derived_bid_ask_depth_change_midpoint"
-                if replenishment_score is not None
-                else None
-            ),
-            "absorption_direction": absorption_direction,
+            "cum_delta_classification": CUM_DELTA_CLASSIFICATION,
+            "absorption_score": None,
+            "replenishment_score": None,
+            "replenishment_score_source": None,
+            "absorption_direction": None,
+            "book_displayed_bid_delta": geom["book_displayed_bid_delta"],
+            "book_displayed_ask_delta": geom["book_displayed_ask_delta"],
+            "tape_print_size_sum": geom["tape_print_size_sum"],
+            "tape_print_price_range": geom["tape_print_price_range"],
             "options_flow_score": options_flow_score,
             "options_flow_direction": options_flow_direction,
             "call_put_flow_ratio": call_put_flow_ratio,
@@ -1415,12 +1152,24 @@ class OrderFlowEngine:
             "tape_pressure_30s": None,
             "tape_pressure_2m": None,
             "tape_pressure_5m": None,
+            "tape_pressure_classification": TAPE_PRESSURE_CLASSIFICATION,
+            "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
+            "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
+            "tape_limitations": TAPE_LIMITATIONS,
+            **l1_source_contract(),
+            "book_history_classification": BOOK_HISTORY_CLASSIFICATION,
+            "book_history_max_snapshots": BOOK_HISTORY_MAX_SNAPSHOTS,
             "cum_delta_proxy": None,
             "cum_delta_slope": None,
+            "cum_delta_classification": CUM_DELTA_CLASSIFICATION,
             "absorption_score": None,
             "replenishment_score": None,
             "replenishment_score_source": None,
             "absorption_direction": None,
+            "book_displayed_bid_delta": None,
+            "book_displayed_ask_delta": None,
+            "tape_print_size_sum": None,
+            "tape_print_price_range": None,
             "options_flow_score": None,
             "options_flow_direction": None,
             "call_put_flow_ratio": None,

@@ -33,7 +33,7 @@ No item may be silently dropped. Headline answers alone are forbidden.
 If caught skipping (operator calls it out, or self-audit finds a missing row):
 
 1. **STOP** the incomplete wrap-up.
-2. **OPEN** (or amend) an RC row naming this failure class.
+2. **ADMIT** (or amend) the failure class as a universal atomic item on the sole master. Do not open a current RC debt row.
 3. **Re-answer** with the full coverage list for the original paste.
 4. Tighten detection if a gap remains — Claude encodes the `.py`; Cursor does not absorb that work while `writer≠cursor`. Spec of record: `reports/claude_encode_pm_full_coverage_lock.md`.
 
