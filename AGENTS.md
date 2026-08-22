@@ -27,14 +27,17 @@ going forward". In the SAME TURN, before other work:
    `.claude/settings.json` (`tools/pretooluse_guard.py`).
 2. Enforce it across the **whole continuum** — backend `.py`, frontend `.html/.js/.css/.ts`, SQL,
    config, governance. Never narrowed to the subsystem where it was noticed.
-3. Ship the lock with a test that proves it BLOCKS, and record the RC row.
+3. Ship the lock with a test that proves it BLOCKS, and admit the material
+   defect as exactly one universal atomic item on the sole master. Do not open
+   a current root-cause-log debt row.
 
 **Front end AND back end.** A commit-time check alone does NOT satisfy a mandate: by then the wrong
 change is already written. If the law governs *how work is done*, it must fire *before the tool
 runs*. WHY THIS EXISTS: on 2026-07-26 the operator ruled the recursive-5-why law "lives on the front
 end"; a commit-time check was built instead, `.claude/settings.json` sat at `"hooks": {}`, and hours
-later a CSS patch landed on `static/index.html` with no root-cause row and no analysis — the patch
-did not even work, and only the operator caught it. Saying "I should have" is not a control.
+later a CSS patch landed on `static/index.html` with no admitted master obligation and no
+root-cause analysis — the patch did not even work, and only the operator caught it. Saying
+"I should have" is not a control. A new `| RC-` row is not the admission surface.
 
 **Never call an operator law "goodwill". [JUDGMENT-ONLY — excluded from lock-surface scorecard; no machine detects this; the operator is the detector.]** The law is the obligation the moment it is spoken; a lock
 only adds DETECTION, because agent compliance has a measured failure rate. Absence of a lock is
@@ -60,7 +63,7 @@ Enforcement: this law binds unconditionally. `governance/unproven_register.md` i
 
 **Immune rule. [JUDGMENT-ONLY — excluded from lock-surface scorecard; whether a new mechanism protects a REAL failure is a judgement call the operator makes.]** any proposed new mechanism must prove it protects a real trading-system failure the page, the question, or the gate cannot already handle.
 
-**Close contract — declared, checkable reach (operator, 2026-07-28; enforced by `check_five_why_recursive_lock`, front end `tools/stop_guard.py`).** A `CLOSED` root-cause row opened on or after 2026-07-28 must ENUMERATE its reach so a checker can walk it: `FIXED:` names the repaired victims; pending vocabulary is banned in a CLOSED fix cell (honest incompleteness is status `PARTIAL`); any DOM id named in the row must be declared `VISIBLE_SURFACE:`, must exist in `static/`, and must be bound by a test; `OUT-OF-SCOPE:` is legal only with an RC or register tracker. Words are not reach: three closes wore END-TO-END while named victims stayed broken (v7/v8 audits).
+**Close contract — declared, checkable reach (operator, 2026-07-28; enforced by `check_five_why_recursive_lock` on frozen historical RC evidence, `master_closure_missing_root_cause` on the sole master, front end `tools/stop_guard.py`).** Closing a sole-master item requires five-why / ROOT evidence on that same item plus current sufficient proof. Historical `CLOSED` root-cause rows in git remain evidence. Do not open a current RC debt row to close work. `OUT-OF-SCOPE:` on a master item is legal only with a master-id tracker. Words are not reach.
 
 **UNIVERSAL ticker-scope law (operator 2026-07-30, RC-160; enforced by `check_universal_ticker_scope`, front end `tools/pretooluse_guard.py` / `tools/universal_scope_lock.py`, Cursor `.cursor/rules/04-universal-ticker-scope.mdc`).** Collect, Find & Prove, Chart, prompts, and reports default to the enrolled universe — never SPY-only / sentinel-only framed as complete. Narrow samples require `OUT-OF-SCOPE:` (or `# universal-scope-ok:`) with reason; sentinel-clean ≠ operable-clean.
 
@@ -87,7 +90,7 @@ Enforcement: this law binds unconditionally. `governance/unproven_register.md` i
 
 **Writer no-drift / one-writer-per-worktree (operator 2026-08-03, RC-226, restated RC-452; enforced by `check_writer_no_drift`, `tools/writer_drift_lock.py`, `tools/process_lock_guard.py` / `pm_mission_edit_violation`).** When an in-progress mission assigns `active_writer` ≠ current agent, the non-active agent must not modify mission `scope_paths`. Process-surface allowlist only. Deny prefix `SOD_DRIFT:`. Staged scope by the non-active agent → commit BLOCK. Escape: `ED_WRITER_DRIFT_GUARD=off`.
 
-**RC document-without-resolve law (operator 2026-08-03, RC-228; enforced by `check_rc_document_without_resolve`, `tools/rc_resolve_lock.py`).** Newly ADDED OPEN RC rows require `FIXED:` / `NEXT-DEPTH:` / `OUT-OF-SCOPE:` in the fix cell — that is evidence-integrity of the historical record, not work selection. RC OPEN / due date / classification must not determine what is actionable or whether the repo may complete. Unresolved work and completion blocking live only on the sole master. Honest PARTIAL + tracker is legal; mass-fake CLOSE is not. Escape: `# mission-rc-open-ok:` / `ED_RC_RESOLVE_GUARD=off`. Drain triage evidence: `reports/rc_open_drain_latest.md` (zero work authority).
+**RC document-without-resolve law (operator 2026-08-03, RC-228; enforced by `check_rc_document_without_resolve`, `tools/rc_resolve_lock.py`).** The living `governance/root_cause_log.md` is frozen history and must not receive current OPEN / PARTIAL / NEXT-DEPTH work rows. If a historical `| RC-` line is ever added, evidence-integrity still requires `FIXED:` / `NEXT-DEPTH:` / `OUT-OF-SCOPE:` — that is not work selection and does not authorize a production edit. Unresolved work and completion blocking live only on the sole master. Escape: `# mission-rc-open-ok:` / `ED_RC_RESOLVE_GUARD=off`.
 
 ## Cursor Cloud specific instructions
 

@@ -548,8 +548,8 @@ def check_root_cause_log() -> list[Violation]:
     out: list[Violation] = []
     log_path = REPO / "governance" / "root_cause_log.md"
     if not log_path.exists():
-        out.append(Violation(log_path, 0, "governance/root_cause_log.md is missing - every "
-                                          "defect must be traced to a root cause there"))
+        out.append(Violation(log_path, 0, "governance/root_cause_log.md is missing — "
+                                          "frozen historical evidence file is required"))
         return out
     for n, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.startswith("| RC-"):
@@ -2713,56 +2713,66 @@ def check_closed_rows_ship_their_code() -> list[Violation]:
 
 
 def check_recursive_five_why_front_loaded() -> list[Violation]:
-    """UNIVERSAL front-end of the recursive-5-why law: a code change ships with its root cause.
+    """UNIVERSAL front-loaded admission: a production change ships with a master obligation.
 
-    OBSERVED (2026-07-26, RC-41): the five_why_recursive_lock validated the CONTENT of rows
-    that already existed but never the ACT of opening one, so an entire session of fixes (charm
-    RC-35, coercion RC-38 and their children) shipped with zero root-cause rows and the gate
-    stayed green. Per the log's Rule 5, "I didn't do the 5-why" is a symptom whose real defect
-    is a MISSING mechanical check — the law depended on goodwill at discovery time, and goodwill
-    fails. The law is UNIVERSAL ("with everything we do", operator 2026-07-19) — this check is
-    deliberately NOT scoped to a subsystem.
+    OBSERVED (2026-07-26, RC-41): the five-why lock validated existing rows but never the
+    ACT of admitting a defect, so sessions of fixes shipped with no analysis. Method pivot
+    (operator 2026-08-22): requiring a new `| RC-` row recreated a second current debt
+    ledger. Admission is now an unresolved sole-master requirement. Root-cause / five-why
+    reasoning remains mandatory on that same master item. A new RC row does not admit work.
 
-    Rule: any commit that stages a real change to a tracked .py file MUST co-stage a real
-    '| RC-' row in governance/root_cause_log.md. A cosmetic touch of the log does not satisfy it
-    (an added '| RC-' line is required), and the row's quality is separately enforced by
-    five_why_recursive_lock — so a fix cannot reach a commit without a ROOT-terminal recursive
-    entry. Front-end law: open the row at DISCOVERY, before the fix.
-
-    VALIDATED: prototyped against this repo before enforcing — fires when a .py change is staged
-    with no RC row, passes when a real row is co-staged, and no-ops (returns []) outside a git
-    commit context so unit-test imports never false-block. Escapes NONE by design.
+    Rule: any commit that stages a real change to a PRODUCTION file MUST be admitted by
+    an unresolved master item (newly added, modified, or already naming the file).
+    Tests/governance/docs/reports edits are how you comply and do not themselves require
+    a new master item. Escapes NONE by design for production files.
     """
+    try:
+        from tools.pretooluse_guard import (
+            ALWAYS_ALLOWED_EXACT,
+            ALWAYS_ALLOWED_PREFIXES,
+            PRODUCTION_SUFFIXES,
+            SOLE_MASTER,
+            master_admits_production_edit,
+        )
+    except ImportError:
+        from pretooluse_guard import (  # type: ignore
+            ALWAYS_ALLOWED_EXACT,
+            ALWAYS_ALLOWED_PREFIXES,
+            PRODUCTION_SUFFIXES,
+            SOLE_MASTER,
+            master_admits_production_edit,
+        )
     staged = _git_output_lines(["diff", "--cached", "--name-only"])
     if staged is None:
         return []  # not a commit context — never a false block
     staged_set = {s.strip().replace("\\", "/") for s in staged if s.strip()}
     if not staged_set:
         return []
-    log_rel = "governance/root_cause_log.md"
-    changed_code = sorted(
-        f for f in staged_set if f.endswith(".py") and _staged_has_real_change(f)
+    prod_code = sorted(
+        f for f in staged_set
+        if f.endswith(PRODUCTION_SUFFIXES)
+        and not f.startswith(ALWAYS_ALLOWED_PREFIXES)
+        and f not in ALWAYS_ALLOWED_EXACT
+        and _staged_has_real_change(f)
     )
-    if not changed_code:
+    if not prod_code:
         return []
-    if log_rel not in staged_set:
-        return [Violation(
-            REPO / changed_code[0], 0,
-            "Code changed (" + ", ".join(changed_code[:5]) +
-            (" …" if len(changed_code) > 5 else "") + ") with NO co-staged root-cause row. "
-            "The recursive-5-why law is UNIVERSAL and FRONT-LOADED (operator 2026-07-19): the "
-            "moment you find an issue you OPEN its RC-<n> row in governance/root_cause_log.md and "
-            "drive each cause to its ROOT before fixing. Every code change ships with its "
-            "recursive root cause — co-stage a real '| RC-' row (its quality is enforced by "
-            "five_why_recursive_lock). This scope is not narrowable.")]
-    log_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
-    if not any(l.startswith("+| RC-") for l in log_diff):
-        return [Violation(
-            REPO / log_rel, 0,
-            "governance/root_cause_log.md is staged but no '| RC-<n>' row was added or changed "
-            "alongside a code change — a real recursive-5-why entry is required, not a cosmetic "
-            "touch. Open the RC at discovery, drive to ROOT, fix end-to-end.")]
-    return []
+    try:
+        cur = (REPO / SOLE_MASTER).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        cur = ""
+    head_lines = _git_output_lines(["show", f"HEAD:{SOLE_MASTER}"])
+    head_txt = "\n".join(head_lines) if head_lines is not None else ""
+    if any(master_admits_production_edit(f, current_text=cur, head_text=head_txt)
+           for f in prod_code):
+        return []
+    return [Violation(
+        REPO / prod_code[0], 0,
+        "Production changed (" + ", ".join(prod_code[:5]) +
+        (" …" if len(prod_code) > 5 else "") + ") with NO admitted unresolved master "
+        "obligation. Search the sole master for the universal requirement; if absent, "
+        "add one atomic `- [ ]` item there first. Do not open a current RC debt row. "
+        "Root-cause / five-why evidence belongs on that same master item.")]
 
 
 def check_adversarial_audit_test_lock() -> list[Violation]:
@@ -2779,8 +2789,8 @@ def check_adversarial_audit_test_lock() -> list[Violation]:
     Rule: any commit staging a real change to a PRODUCTION (non-tests/) tracked .py file MUST
     co-stage a real change to a tests/ .py file — the adversarial audit's output, a test that fails
     if the fix regresses. A genuinely untestable change (measurement-only closure, docs, pure config)
-    escapes ONLY via a co-staged root-cause row carrying an explicit 'NO-TEST-LOCK: <reason>' — the
-    exemption is auditable, never silent.
+    escapes ONLY via a co-staged sole-master line carrying an explicit 'NO-TEST-LOCK: <reason>' — the
+    exemption is auditable, never silent. A root-cause-log row is not the exemption surface.
 
     VALIDATED BY PROTOTYPE before enforcing: run against staging scenarios — fires on a prod .py
     change with no co-staged test and no NO-TEST-LOCK, passes when a real tests/ change is co-staged,
@@ -2807,11 +2817,11 @@ def check_adversarial_audit_test_lock() -> list[Violation]:
         return []  # no production code changed — nothing to lock
     if any(_is_test(f) and _staged_has_real_change(f) for f in staged_set):
         return []  # the fix ships its locking test
-    # No co-staged test — allow ONLY an explicit, auditable NO-TEST-LOCK exemption in a staged RC row.
-    log_rel = "governance/root_cause_log.md"
-    if log_rel in staged_set:
-        log_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
-        if any(l.startswith("+") and "NO-TEST-LOCK:" in l for l in log_diff):
+    # No co-staged test — allow ONLY an explicit, auditable NO-TEST-LOCK exemption on the master.
+    master_rel = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+    if master_rel in staged_set:
+        master_diff = _git_output_lines(["diff", "--cached", "-U0", "--", master_rel]) or []
+        if any(l.startswith("+") and "NO-TEST-LOCK:" in l for l in master_diff):
             return []
     return [Violation(
         REPO / prod_code[0], 0,
@@ -2819,7 +2829,7 @@ def check_adversarial_audit_test_lock() -> list[Violation]:
         (" …" if len(prod_code) > 5 else "") + ") with NO co-staged test. The self-adversarial-audit "
         "loop is machine-forced (RC-49): every fix ships a test that locks it (fails on regression). "
         "Co-stage a real tests/ change, or — only for a genuinely untestable measurement-only/doc/"
-        "config closure — add 'NO-TEST-LOCK: <reason>' to the co-staged root-cause row. Goodwill "
+        "config closure — add 'NO-TEST-LOCK: <reason>' to the co-staged sole-master item. Goodwill "
         "fails; the lock does not.")]
 
 
@@ -4837,7 +4847,7 @@ CHECKS = [
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
     ("five_why_recursive_lock", check_five_why_recursive_lock, True),  # end-to-end fixes, no patches ever
-    ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded, True),  # UNIVERSAL: any code change ships a root-cause row
+    ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded, True),  # UNIVERSAL: production change requires an admitted master obligation
     ("adversarial_audit_test_lock", check_adversarial_audit_test_lock, True),  # RC-49: every fix ships a locking test (audit's output)
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command

@@ -1105,6 +1105,14 @@ _SECOND_AUTH_GRANT = (
      "RC-status completion-block grant"),
     (re.compile(r"closable work has exactly TWO homes", re.I),
      "second-list homes grant"),
+    (re.compile(r"open its RC row FIRST", re.I),
+     "RC-row admission grant"),
+    (re.compile(r"No new root-cause row exists", re.I),
+     "RC-row admission grant"),
+    (re.compile(r"Add a `\| RC-", re.I),
+     "RC-row admission grant"),
+    (re.compile(r"co-stage a real '\| RC-'", re.I),
+     "RC-row admission grant"),
     (re.compile(r"ACTIVE_PROGRAM\.md`? and .{0,60}are sufficient", re.I),
      "ACTIVE_PROGRAM lock-sufficiency grant"),
 )
@@ -1296,6 +1304,18 @@ def active_obligation_offenders(
         out.extend(five_status_authority_violations(repo=repo))
         out.extend(three_iteration_method_pivot_violations(payload, repo=repo))
         out.extend(ticker_specific_fix_scope_violations(repo=repo))
+        try:
+            new_m = (repo / SOLE_MASTER_REL).read_text(encoding="utf-8", errors="replace")
+            old_m = subprocess.check_output(
+                ["git", "show", f"HEAD:{SOLE_MASTER_REL}"],
+                cwd=str(repo),
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            out.extend(master_closure_missing_root_cause(old_m, new_m))
+        except (OSError, subprocess.CalledProcessError):
+            pass
     # RC CLASS:ACTIVE / PASSIVE and RC OPEN rows are not work-state.
     return out
 
@@ -1331,6 +1351,40 @@ def ticker_specific_fix_scope_violations(
         why = ticker_specific_implementation_scope_violation(text, rel=rel)
         if why:
             out.append((rel, why))
+    return out
+
+
+_MASTER_BOX_RE = re.compile(
+    r"^\s*[-*]\s+\[(?P<mark>[ xX])\]\s+`(?P<id>[^`]+)`\s+—\s+STATUS=(?P<status>[A-Z_]+)\s+—\s+(?P<body>.*)$"
+)
+
+
+def master_closure_missing_root_cause(
+    old_text: str,
+    new_text: str,
+) -> list[tuple[str, str]]:
+    """A master box may not close without five-why / ROOT evidence on the same item."""
+    old_rows = {m.group("id"): m for m in _MASTER_BOX_RE.finditer(old_text or "")}
+    out: list[tuple[str, str]] = []
+    for m in _MASTER_BOX_RE.finditer(new_text or ""):
+        prev = old_rows.get(m.group("id"))
+        became_checked = (
+            m.group("mark").strip().lower() == "x"
+            and (prev is None or prev.group("mark").strip() != "x")
+        )
+        became_pass = (
+            m.group("status") == "PASS"
+            and (prev is None or prev.group("status") != "PASS")
+        )
+        if not (became_checked or became_pass):
+            continue
+        body = f"{m.group('status')} {m.group('body')}"
+        if "ROOT:" in body.upper() and ("(1)" in body or "why" in body.lower()):
+            continue
+        out.append((
+            m.group("id"),
+            "master closure requires five-why / ROOT evidence on the same item",
+        ))
     return out
 
 

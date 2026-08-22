@@ -1,23 +1,26 @@
 """FRONT-END enforcement of the mechanical locks — blocks the EDIT, not just the commit (RC-66).
 
 WHY THIS EXISTS. Every lock in tools/check_institutional_correctness.py runs at PRE-COMMIT. The
-operator's law is explicitly FRONT-LOADED: "the RC row is opened at DISCOVERY, before the fix...
-this law lives on the front end of coding and fixing end to end, not on the back end." Enforcing
-at commit means the wrong change is already written by the time anything objects, and the RC row
-degrades into retroactive paperwork. On 2026-07-26 that gap let a CSS patch land on static/
-index.html with no root-cause row and no root-cause analysis — the patch did not even work — and
-only the operator caught it. `.claude/settings.json` had `"hooks": {}`: nothing ran before a tool.
+operator's law is FRONT-LOADED: admit the material defect before the fix. Enforcing only at
+commit means the wrong change is already written. On 2026-07-26 that gap let a CSS patch land
+on static/index.html with no admitted defect and no root-cause analysis — the patch did not
+even work — and only the operator caught it. `.claude/settings.json` had `"hooks": {}`.
+
+Method pivot (operator 2026-08-22): the admission surface is the sole master, not a second
+root-cause-log debt row. Requiring a new `| RC-` row before every production edit recreated
+a live second defect ledger. Root-cause / five-why reasoning remains mandatory on the same
+master obligation. A new RC row does not authorize a production edit.
 
 This runs as a PreToolUse hook on Edit/Write/NotebookEdit. Exit 2 BLOCKS the tool call.
 
-Scope: the whole continuum — backend .py, frontend .html/.js/.css, SQL, config. Not just Python,
-because the violation that triggered this was in the frontend.
+Scope: the whole continuum — backend .py, frontend .html/.js/.css, SQL, config.
 
 Contract:
-  * Editing a PRODUCTION file requires a root-cause row opened in THIS working tree first
-    (a `| RC-` line in governance/root_cause_log.md that is not in HEAD).
-  * Editing governance/, docs/, reports/, or tests/ is always allowed for the RC-66 rule — that
-    is HOW you open the row and lock the fix.
+  * Editing a PRODUCTION file requires an admitted unresolved master requirement
+    representing the material defect being fixed (new/modified unresolved master
+    item this working tree, or an existing unresolved item that names the file).
+  * A newly discovered defect is added to the sole master first, then the edit runs.
+  * Editing the sole master, governance/, docs/, reports/, or tests/ is how you comply.
   * RC-160 UNIVERSAL ticker scope: Write/Edit of prompt / agent-instruction paths is BLOCKED when
     the new content frames SPY-only / sentinel-complete work without UNIVERSAL or OUT-OF-SCOPE
     language — even under otherwise-allowed prefixes (reports/, .claude/).
@@ -36,6 +39,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,12 +47,18 @@ from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
 RC_LOG = "governance/root_cause_log.md"
+SOLE_MASTER = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+_UNRESOLVED_MASTER_RE = re.compile(
+    r"^\s*[-*]\s+\[\s\]\s+`([^`]+)`\s+—\s+STATUS=(NOT_PROVEN|FAIL)\b"
+)
 
-#: Editing these is how you COMPLY (open the row, write the test, record evidence) — never blocked
-#: by the RC-66 production-surface rule. RC-160/RC-163 still gate residual/prompt content.
+#: Editing these is how you COMPLY (admit the master obligation, write the test, record
+#: evidence) — never blocked by the RC-66 production-surface rule. RC-160/RC-163 still gate
+#: residual/prompt content.
 ALWAYS_ALLOWED_PREFIXES = (
     "governance/", "docs/", "reports/", "tests/", ".claude/", "calibration/",
 )
+ALWAYS_ALLOWED_EXACT = (SOLE_MASTER,)
 #: Production surfaces across the whole continuum, not just backend.
 PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx")
 #: NOT part of the PRODUCT surface. Deliberately NOT the same list as
@@ -124,7 +134,7 @@ def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
         governed=True,
         rel=rel,
         production=rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES),
-        rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
+        rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES) or rel in ALWAYS_ALLOWED_EXACT,
     )
 
 
@@ -165,26 +175,81 @@ def _git(args: list[str]) -> str | None:
     return r.stdout if r.returncode == 0 else None
 
 
-def _has_new_rc_row() -> bool:
-    """True when the working tree adds a `| RC-` row not present at HEAD.
+def parse_unresolved_master_items(text: str) -> list[dict[str, str]]:
+    """Unchecked master boxes that are still NOT_PROVEN or FAIL. Not a second ledger."""
+    out: list[dict[str, str]] = []
+    for ln in (text or "").splitlines():
+        m = _UNRESOLVED_MASTER_RE.match(ln)
+        if m:
+            out.append({"id": m.group(1), "status": m.group(2), "line": ln})
+    return out
 
-    Covers staged AND unstaged, because the row is written the moment a defect is found —
-    long before anything is staged.
+
+def _master_texts() -> tuple[str, str]:
+    try:
+        cur = (REPO / SOLE_MASTER).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        cur = ""
+    head = _git(["show", f"HEAD:{SOLE_MASTER}"])
+    return cur, head if head is not None else ""
+
+
+def master_admits_production_edit(
+    rel: str,
+    *,
+    current_text: str | None = None,
+    head_text: str | None = None,
+) -> bool:
+    """True when an unresolved master item admits this production edit.
+
+    Admission is: a newly added unresolved master item, a modified unresolved
+    master item, or an existing unresolved item that names the file. A new
+    `| RC-` row is never admission.
+    """
+    if current_text is None or head_text is None:
+        cur, head = _master_texts()
+        if current_text is None:
+            current_text = cur
+        if head_text is None:
+            head_text = head
+    items = parse_unresolved_master_items(current_text or "")
+    if not items:
+        return False
+    rel_n = (rel or "").replace("\\", "/")
+    base = Path(rel_n).name
+    for it in items:
+        if rel_n and (rel_n in it["line"] or (base and base in it["line"])):
+            return True
+    head_items = parse_unresolved_master_items(head_text or "")
+    head_ids = {i["id"] for i in head_items}
+    if {i["id"] for i in items} - head_ids:
+        return True
+    head_lines = {i["id"]: i["line"] for i in head_items}
+    return any(it["id"] in head_lines and it["line"] != head_lines[it["id"]] for it in items)
+
+
+def _has_admitted_master_obligation(rel: str) -> bool:
+    return master_admits_production_edit(rel)
+
+
+def _has_new_rc_row() -> bool:
+    """Retired as work-admission. Kept for measurement / negative controls.
+
+    A new `| RC-` row must not authorize a production edit.
     """
     head = _git(["show", f"HEAD:{RC_LOG}"])
     if head is None:
-        return True                      # no git context / new repo -> never a false block
+        return False
     head_ids = {ln.split("|")[1].strip() for ln in head.splitlines()
                 if ln.startswith("| RC-") and "|" in ln[2:]}
     try:
         cur = (REPO / RC_LOG).read_text(encoding="utf-8", errors="ignore")
     except OSError:
-        return True
+        return False
     cur_ids = {ln.split("|")[1].strip() for ln in cur.splitlines()
                if ln.startswith("| RC-") and "|" in ln[2:]}
     if cur_ids - head_ids:
-        return True                      # a brand-new RC id exists
-    # A REOPENED row (status flipped back to OPEN) also counts as opening a root cause.
+        return True
     diff = _git(["diff", "HEAD", "--", RC_LOG]) or ""
     return any(ln.startswith("+| RC-") for ln in diff.splitlines())
 
@@ -362,23 +427,25 @@ def decide(payload: dict) -> int:
         return 0
     if not rel.endswith(PRODUCTION_SUFFIXES):
         return 0
-    if _has_new_rc_row():
+    if _has_admitted_master_obligation(rel):
         return 0
 
     sys.stderr.write(
-        "BLOCKED by the front-loaded recursive-5-why law (RC-66).\n\n"
+        "BLOCKED by the front-loaded sole-master admission law (RC-66 method pivot).\n\n"
         f"  You are editing PRODUCTION file: {rel}\n"
-        "  No new root-cause row exists in governance/root_cause_log.md.\n\n"
-        "The law is FRONT-LOADED (operator, non-negotiable): the INSTANT you find an issue you\n"
-        "open its RC row FIRST, recurse each cause to a named ROOT, then fix end-to-end. A row\n"
-        "written after the fix is retroactive paperwork, not analysis — and the fix is usually a\n"
-        "patch, which is separately banned.\n\n"
+        "  No admitted unresolved master obligation covers this edit.\n\n"
+        "The law is FRONT-LOADED: admit the material defect on the sole master BEFORE the\n"
+        "production edit. Root-cause / five-why reasoning is mandatory on that same master\n"
+        "item. A `| RC-` row in governance/root_cause_log.md does not authorize the edit and\n"
+        "must not be created as a current debt record.\n\n"
         "Do this instead:\n"
-        "  1. Add a `| RC-<n> | OPEN | <today> | <due> | defect | (1)->(2)->(3)->(4)->(5) ROOT: ... | plan |`\n"
-        "     row to governance/root_cause_log.md (that file is never blocked).\n"
-        "  2. Then make this edit, and ship a test that locks it.\n\n"
-        "This mirrors check_recursive_five_why_front_loaded, but at EDIT time rather than commit\n"
-        "time — the whole continuum, backend and frontend.\n"
+        "  1. Search ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md\n"
+        "     for the materially equivalent UNIVERSAL requirement; use that ID if found.\n"
+        "  2. If genuinely absent, add one atomic universal `- [ ]` master item\n"
+        "     (STATUS=NOT_PROVEN) with the bedrock cause and blast radius. Tickers are\n"
+        "     fixtures only — never a ticker-specific requirement.\n"
+        "  3. Then make this edit, and ship a test that locks it.\n\n"
+        "This mirrors check_recursive_five_why_front_loaded at EDIT time.\n"
     )
     return 2                             # exit 2 = block the tool call
 

@@ -10,7 +10,7 @@ The operator must **not** have to tell the PM to rehab the repo or to stay on mu
 
 1. **Own the whole repo.** Every turn: rehab posture first (queue + facets), then the active slice. Levels / FORCES / DB are slices — not the job boundary.
 2. **Sequence work.** One active *build* mission. Recommend-only census/scans may run alongside. No dual writers on product paths.
-3. **End-to-end, no patches.** Kill the second path in the same mission window or leave status PARTIAL with OPEN RC. Refuse “fallback forever.”
+3. **End-to-end, no patches.** Kill the second path in the same mission window or leave the sole-master item STATUS=NOT_PROVEN / FAIL with current evidence. Do not open a current RC debt row. Refuse “fallback forever.”
 4. **Stop thrash.** Disputed facts → MEASURE before more edits.
 5. **Mission windows.** Collect/lock vs UI polish sequenced; never unordered free-for-all.
 6. **GO / NO-GO.** `operator_go.json` for held surfaces; LIVE vs DISK honesty.
@@ -18,7 +18,7 @@ The operator must **not** have to tell the PM to rehab the repo or to stay on mu
 8. **Change-request protocol (RC-219).** Operator → Cursor plan → GO → `pm_mission.json` active → writer → audit → idle.
 9. **Keep the operator straight.** Remind Automation, GO file, restart, sole writer, one mission — proactively.
 10. **Honest status.** Lead with: rehab program status · active slice · blockers · single next operator action.
-11. **RC resolve (RC-228).** Newly ADDED OPEN RC rows must name a resolve path (`FIXED:` / `NEXT-DEPTH:` / `OUT-OF-SCOPE:`) — evidence integrity of the historical record, not work selection. RC OPEN / due date / classification must not determine what is actionable or whether the repo may complete. Unresolved work and completion blocking live only on the sole master. Prefer honest PARTIAL + tracker over mass-fake CLOSE. `reports/rc_open_drain_latest.md` is drain evidence (zero work authority).
+11. **RC resolve (RC-228).** `governance/root_cause_log.md` is frozen history. Do not add current OPEN / PARTIAL / NEXT-DEPTH work rows. If a historical `| RC-` line is ever restored for evidence integrity, it still needs `FIXED:` / `NEXT-DEPTH:` / `OUT-OF-SCOPE:` — that is not work selection and does not authorize a production edit. Unresolved work and completion blocking live only on the sole master. Prefer honest NOT_PROVEN + tracker over mass-fake CLOSE. `reports/rc_open_drain_latest.md` is drain evidence (zero work authority).
 
 ## Separation of duties — mechanically enforced (RC-226)
 
@@ -28,7 +28,7 @@ SoD is not chat advice. When a mission is **in-progress** (`active` / `ready_for
 - **Commit backstop:** staged scope paths by the non-writer → `check_writer_no_drift` / `writer_drift_lock.py` BLOCK.
 - **Mirror:** when `writer` is Cursor, Claude is blocked the same way.
 - PreToolUse: `pm_mission_edit_violation` via `process_lock_guard.py` (deny prefix `SOD_DRIFT:`).
-- **Self-heal:** on own drift / false-green / forcing operator to PM — STOP feature writes, restore SoD, open RC, tighten lock if gap (no prompt required). See `.cursor/rules/08-no-writer-drift.mdc`.
+- **Self-heal:** on own drift / false-green / forcing operator to PM — STOP feature writes, restore SoD, admit the failure as one universal atomic master item, tighten lock if gap (no prompt required). See `.cursor/rules/08-no-writer-drift.mdc`.
 - Escape: `ED_WRITER_DRIFT_GUARD=off` / `ED_PM_MISSION_GUARD=off` (operator only, visible).
 
 ## Daily rehab automation

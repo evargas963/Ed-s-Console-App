@@ -12,7 +12,7 @@ eligible. Operator chooses. This worktree ACTIVE_WRITER = cursor.
 **Allowed statuses:** PASS / FAIL / NOT_PROVEN / UNAVAILABLE / NOT_APPLICABLE
 **Classification:** NATIVE / DERIVED / HEURISTIC / PROXY
 
-**RC log is evidence only.** It does not create, classify, promote, defer, or close obligations, and it does not determine Stop eligibility.
+**RC log and unproven_register are frozen history.** They do not create, classify, promote, defer, or close obligations, and they do not determine Stop eligibility. A newly discovered material defect becomes exactly one universal atomic master requirement before any production edit. Root-cause / five-why reasoning is mandatory on that same master item.
 
 **Exact operator source (not a work list):**
 `ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_SOURCE.md`
@@ -2659,3 +2659,4 @@ RC-350, RC-345, RC-190, RC-331, RC-329, RC-328, RC-326, RC-322, RC-318, RC-317, 
 - [ ] `OD-1290` — STATUS=NOT_PROVEN — Pinned enrolled-universe batch training is an enrolled-universe obligation (historical Phase 4b / PR5+ wording). Not a ticker-specific patch.
 - [ ] `OD-1291` — STATUS=NOT_PROVEN — One-list law: hidden, docs, skill, and historical-looking paths must not host a live unresolved-work queue. Procedure text uses non-checkbox bullets.
 - [ ] `OD-1292` — STATUS=NOT_PROVEN — No ticker-specific fix may close a universal requirement. Tickers, horizons, strikes, expiries, sessions, replay, training, serving, API, UI, DB, caches, and the decision path are fixtures or generic contracts — never implementation scope defined by a symbol name.
+- [ ] `OD-1293` — STATUS=NOT_PROVEN — Production edits must not require a current root-cause-log or unproven-register debt row. A newly discovered material defect becomes exactly one universal atomic master requirement before remediation. Root-cause / five-why reasoning remains mandatory on that same master obligation and its tests/code/evidence. `tools/pretooluse_guard.py`, `tools/check_institutional_correctness.py`, and `tools/find_it_fix_it_lock.py` admit a production edit only when an unresolved master item covers the work (`check_recursive_five_why_front_loaded`, `master_admits_production_edit`). `governance/root_cause_log.md` and `governance/unproven_register.md` are frozen history. Tickers are fixtures only.

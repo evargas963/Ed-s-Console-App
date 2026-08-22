@@ -4,8 +4,8 @@ WHAT WAS MEASURED (2026-08-05, deepened 2026-08-06). The guard classified an
 edit target by file suffix alone, with no repository-root predicate:
 
   * An Edit to <other-checkout>/ieos/__init__.py was refused with "You are
-    editing PRODUCTION file", demanding a root-cause row in THIS repository's
-    ledger as the price of editing a file this repository does not own.
+    editing PRODUCTION file", demanding an admitted master obligation in THIS
+    repository as the price of editing a file this repository does not own.
   * Worse than over-reach: `_rel()` returns the ABSOLUTE path when
     `relative_to(REPO)` raises, and an absolute path starts with a drive
     letter, so it matches NO entry in ALWAYS_ALLOWED_PREFIXES. The guard
@@ -87,20 +87,34 @@ def test_negative_control_our_production_file_still_blocks_without_a_row(monkeyp
 
     Without this, 'stop over-reaching' would silently become 'stop enforcing'.
     """
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
     code = G.decide(_payload(str(REPO / "server.py")))
-    assert code == 2, "an in-repo production edit with no RC row must still BLOCK"
+    assert code == 2, "an in-repo production edit with no admitted master item must still BLOCK"
     assert "PRODUCTION file" in capsys.readouterr().err
 
 
-def test_negative_control_our_production_file_allowed_with_a_row(monkeypatch):
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: True, raising=True)
+def test_negative_control_our_production_file_allowed_with_master_obligation(monkeypatch):
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: True, raising=True)
     assert G.decide(_payload(str(REPO / "server.py"))) == 0
+
+
+def test_new_rc_row_does_not_authorize_production_edit(monkeypatch, capsys):
+    """A new | RC- row is not admission. Method pivot: master only."""
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
+    monkeypatch.setattr(G, "_has_new_rc_row", lambda: True, raising=True)
+    code = G.decide(_payload(str(REPO / "server.py")))
+    assert code == 2, "a new RC row must not authorize a production edit"
+    assert "PRODUCTION file" in capsys.readouterr().err
+
+
+def test_master_file_itself_is_always_allowed(monkeypatch):
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
+    assert G.decide(_payload(str(REPO / G.SOLE_MASTER))) == 0
 
 
 def test_negative_control_our_allowlisted_paths_never_block(monkeypatch):
     """Editing tests/ and governance/ is HOW you comply -- always permitted."""
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
     for rel in ("tests/test_x.py", "governance/root_cause_log.md",
                 "docs/readme.md", "reports/x.md"):
         assert G.decide(_payload(str(REPO / rel))) == 0, rel
@@ -110,6 +124,26 @@ def test_negative_control_our_allowlisted_paths_never_block(monkeypatch):
 def test_negative_control_every_production_suffix_still_governed_in_repo(
         monkeypatch, capsys, suffix):
     """The fix is scoped by REPOSITORY, never by file type."""
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
     assert G.decide(_payload(str(REPO / f"someplace/thing{suffix}"))) == 2
     capsys.readouterr()
+
+
+def test_master_admits_existing_unresolved_item_naming_file():
+    cur = "- [ ] `OD-1` — STATUS=NOT_PROVEN — repair tools/pretooluse_guard.py admission\n"
+    assert G.master_admits_production_edit(
+        "tools/pretooluse_guard.py", current_text=cur, head_text=""
+    )
+
+
+def test_master_admits_new_unresolved_id_even_if_file_not_named():
+    head = "- [ ] `OD-1` — STATUS=NOT_PROVEN — old obligation\n"
+    cur = head + "- [ ] `OD-2` — STATUS=NOT_PROVEN — newly discovered universal defect\n"
+    assert G.master_admits_production_edit("server.py", current_text=cur, head_text=head)
+
+
+def test_master_does_not_admit_when_no_unresolved_item_exists():
+    head = "- [x] `OD-1` — STATUS=PASS — (1) a (2) b (3) c (4) d (5) ROOT: done\n"
+    assert not G.master_admits_production_edit(
+        "server.py", current_text=head, head_text=head
+    )

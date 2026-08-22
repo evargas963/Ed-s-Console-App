@@ -779,12 +779,14 @@ def test_second_authority_prose_flags_binding_queue_and_agents_defect_authority(
         ("tools/stop_guard.py", "unproven_register: no UNPROVEN/DISPROVED claim past its due date"),
         ("governance/PM_MANDATE.md", "Reject mission COMPLETE while OPEN RC names that mission"),
         ("tools/check_institutional_correctness.py", "closable work has exactly TWO homes"),
+        ("tools/pretooluse_guard.py", "open its RC row FIRST before editing production"),
     ])
     assert any("queue-is-binding" in why or "execute-next" in why or "F&P" in why
                for _, why in off)
     assert any("defect-authority" in why for _, why in off)
     assert any("due-date" in why or "completion-block" in why or "second-list" in why
                for _, why in off)
+    assert any("RC-row admission" in why for _, why in off)
 
 
 def test_live_instruction_surfaces_have_zero_second_authority_grants():
@@ -824,6 +826,13 @@ def test_ticker_specific_implementation_scope_fails_tests_remain_allowed():
         ("AGENTS.md", "implement a ticker-specific repair for the timestamp defect"),
     ])
     assert off, "ticker-specific implementation scope must FAIL"
+    master_off = FIF.ticker_specific_fix_scope_violations(extra_texts=[
+        (
+            "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md",
+            "- [ ] `OD-9999` — STATUS=NOT_PROVEN — Fix SPY timestamp",
+        ),
+    ])
+    assert master_off, "ticker-specific master requirement must FAIL"
     allowed = FIF.ticker_specific_fix_scope_violations(extra_texts=[
         ("tests/test_rep.py", "if ticker == \"SPY\": special_fix()  # representative fixture"),
     ])
@@ -832,18 +841,65 @@ def test_ticker_specific_implementation_scope_fails_tests_remain_allowed():
     assert live == [], live
 
 
-def test_live_unproven_and_open_rc_rows_are_mapped_to_master():
+def test_master_closure_requires_five_why_on_same_item():
+    old = "- [ ] `OD-1` — STATUS=NOT_PROVEN — defect text\n"
+    closed_bare = "- [x] `OD-1` — STATUS=PASS — defect text fixed somehow\n"
+    assert FIF.master_closure_missing_root_cause(old, closed_bare), (
+        "closing a master box without five-why / ROOT must FAIL"
+    )
+    closed_ok = (
+        "- [x] `OD-1` — STATUS=PASS — (1) symptom (2) site (3) class "
+        "(4) missing admission (5) ROOT: second ledger. evidence in tests.\n"
+    )
+    assert FIF.master_closure_missing_root_cause(old, closed_ok) == []
+
+
+FROZEN_LEDGER_SHA = "1fbd62f65b237a6e9eaa94a8a68a6fd7f809630a"
+
+
+def test_live_unproven_and_open_rc_rows_are_frozen_and_historically_mapped():
+    """Living surfaces carry zero current-work rows. Historical mapping is in git."""
+    import subprocess
     import tools.check_institutional_correctness as C
+
+    def _show(rel: str) -> str:
+        return subprocess.check_output(
+            ["git", "show", f"{FROZEN_LEDGER_SHA}:{rel}"],
+            cwd=ROOT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    hist_master = _show("ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md")
+    hist_reg = _show("governance/unproven_register.md")
+    hist_rc = _show("governance/root_cause_log.md")
+    hist_unproven = C.parse_live_unproven_rows(hist_reg)
+    assert len(hist_unproven) == 6, len(hist_unproven)
+    assert C.unmapped_live_unproven_rows(hist_reg, hist_master) == []
+    assert C.unmapped_open_rc_ids(hist_rc, hist_master) == []
+    hist_rc_work = [
+        [c.strip() for c in ln.strip().strip("|").split("|")][0]
+        for ln in hist_rc.splitlines()
+        if ln.startswith("| RC-")
+        and len([c.strip() for c in ln.strip().strip("|").split("|")]) > 1
+        and [c.strip() for c in ln.strip().strip("|").split("|")][1] in ("OPEN", "PARTIAL")
+    ]
+    assert len(hist_rc_work) == 146, len(hist_rc_work)
+    for oid in ("OD-1276", "OD-1277", "OD-1278", "OD-1279", "OD-1280", "OD-1281"):
+        assert f"`{oid}`" in hist_master, oid
 
     master = (ROOT / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").read_text(
         encoding="utf-8"
     )
     reg = (ROOT / "governance" / "unproven_register.md").read_text(encoding="utf-8")
     rc = (ROOT / "governance" / "root_cause_log.md").read_text(encoding="utf-8")
-    live = C.parse_live_unproven_rows(reg)
-    assert live, "expected historical UNPROVEN wording to still exist"
+    assert C.parse_live_unproven_rows(reg) == []
+    assert not any(ln.startswith("| RC-") for ln in rc.splitlines())
     assert C.unmapped_live_unproven_rows(reg, master) == []
     assert C.unmapped_open_rc_ids(rc, master) == []
+    for oid in ("OD-1276", "OD-1277", "OD-1278", "OD-1279", "OD-1280", "OD-1281"):
+        assert f"`{oid}`" in master, oid
 
 
 def test_register_unproven_and_disproved_do_not_block_or_select(tmp_path, monkeypatch):

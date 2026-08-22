@@ -8,8 +8,9 @@ found 8 fields the vendor returns that our catalogue lacked. They were merged in
 nothing consumed them and the session moved on.
 
 That is not carelessness, it is structural: this repo makes **defects** expensive and
-**discoveries** free. A defect gets an RC row, a due date and an enforced check that turns
-red. A discovery gets a sentence in a commit message and evaporates. Nothing held it open.
+**discoveries** free. A material defect becomes one universal atomic master requirement
+plus an enforced check that turns red. A discovery used to get a sentence in a commit
+message and evaporate. Nothing held it open.
 
 So a discovery now gets the same standing as a defect: **registered on arrival,
 dispositioned deliberately, and never silently dropped.** A field may be DECLINED — that is
@@ -43,7 +44,7 @@ Dispositions: `SEE_MASTER` (obligation lives only on the sole master) · `DECLIN
 4. **A field pair with a safety dependency ships together.** Size ships with its freshness
    stamp or it does not ship.
 
-## Lock (RC-388 NEXT-DEPTH, not yet built)
+## Lock (historical RC-388 residual; obligation lives on the sole master, not this file)
 
 A check that fails when a field in `schwab_field_dictionary.csv` carries a `first_seen`
 date but has no entry here. Until it exists, this register is conduct, not a lock — and by
