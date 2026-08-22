@@ -35,3 +35,15 @@ def test_rest_cum_delta_uses_schwab_last_size_when_present():
 
     assert out == 7
     assert server._rest_cum_delta["SPY"] == 7
+
+
+def test_rest_cum_delta_does_not_double_count_identical_poll():
+    server._rest_cum_delta.clear()
+    server._rest_cum_delta_last_print.clear()
+    server._rest_cum_delta_session = None
+    quote = {"lastPrice": 501.3, "lastSize": 7, "bidPrice": 501.2, "askPrice": 501.3, "tradeTime": 9}
+    first = server._update_rest_cum_delta("SPY", quote, _rth_dt())
+    second = server._update_rest_cum_delta("SPY", quote, _rth_dt())
+    assert first == 7
+    assert second == 7
+    assert server._rest_cum_delta["SPY"] == 7

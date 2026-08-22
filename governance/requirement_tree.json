@@ -16,7 +16,8 @@
         "OF_COMPOSITE_RETIRED",
         "OF_ENGINE_ABSORPTION_RETIRED",
         "P2_ABSORPTION_WITHHELD",
-        "IDENTITY_SPLIT_REMOVED"
+        "IDENTITY_SPLIT_REMOVED",
+        "OF_TAPE_IDENTITY_DEDUPED"
       ]
     },
     {
@@ -54,7 +55,11 @@
       "title": "UI / display truth parent",
       "proof": "NOT_PROVEN",
       "closable": false,
-      "execution": "ACTIVE"
+      "execution": "ACTIVE",
+      "children": [
+        "GAMMA_FLIP_DISPLAY_GATED",
+        "GAMMA_WALLS_DISPLAY_GATED"
+      ]
     },
     {
       "id": "OF_COMPOSITE_RETIRED",
@@ -101,6 +106,40 @@
         "RC-452",
         "RC-457",
         "tests/test_active_writer_law_v1.py"
+      ]
+    },
+    {
+      "id": "OF_TAPE_IDENTITY_DEDUPED",
+      "title": "tape window uses latest print; identical L1 restatements dropped; same-ms distinct prints kept",
+      "proof": "PASS",
+      "closable": true,
+      "execution": "CLOSED",
+      "evidence": [
+        "RC-463",
+        "tests/test_order_flow_tape_contract.py",
+        "tests/test_order_flow_live_state_tape_contract.py"
+      ]
+    },
+    {
+      "id": "GAMMA_FLIP_DISPLAY_GATED",
+      "title": "gamma flip operator-visible only when TRUSTED",
+      "proof": "PASS",
+      "closable": true,
+      "execution": "CLOSED",
+      "evidence": [
+        "RC-462",
+        "tests/test_displayable_gamma_flip_v1.py"
+      ]
+    },
+    {
+      "id": "GAMMA_WALLS_DISPLAY_GATED",
+      "title": "chain-derived walls/pin/max-pain/net-peak withheld unless TRUSTED",
+      "proof": "PASS",
+      "closable": true,
+      "execution": "CLOSED",
+      "evidence": [
+        "RC-465",
+        "tests/test_displayable_gamma_flip_v1.py"
       ]
     }
   ]

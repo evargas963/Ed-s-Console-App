@@ -195,6 +195,24 @@ def _iter_tape_prints(content_items: list) -> list[dict]:
     return out
 
 
+def _normalize_tape_prints(prints: list[dict]) -> list[dict]:
+    """Drop identical L1 restatements (same TRADE_TIME, LAST_PRICE, LAST_SIZE).
+
+    Schwab LEVELONE can repeat the last print on quote heartbeats. Counting
+    each restatement as a new print inflates tape pressure and cum-delta.
+    Distinct same-ms prints (different price or size) are kept.
+    """
+    seen: set[tuple[Any, ...]] = set()
+    out: list[dict] = []
+    for p in prints:
+        key = (p.get("time_millis"), p.get("price"), p.get("size"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # BOOK METRICS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -704,17 +722,11 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
     does not provide aggressor side. Same-ms multi-print batches can collapse.
     Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
     """
-    prints = _iter_tape_prints(_iter_content(data))
+    prints = _normalize_tape_prints(_iter_tape_prints(_iter_content(data)))
     if not prints:
         return None
-    now_ms = None
-    for p in prints:
-        t = p.get("time_millis")
-        if t is not None:
-            now_ms = t
-            break
-    if now_ms is None:
-        now_ms = 0
+    times = [p.get("time_millis") for p in prints if p.get("time_millis") is not None]
+    now_ms = max(times) if times else 0
     cutoff_ms = now_ms - int(window_sec * 1000)
     total_delta = 0.0
     total_sz = 0
@@ -759,7 +771,7 @@ def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
     proven normalization divisor (the former 10000 constant is retired).
     Returns None when no print contributed a positive Schwab size.
     """
-    prints = _iter_tape_prints(_iter_content(data))
+    prints = _normalize_tape_prints(_iter_tape_prints(_iter_content(data)))
     if not prints:
         return None
     total = 0.0
@@ -789,7 +801,7 @@ def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[f
     Slope of cumulative delta over time (simple linear regression).
     Direction is inferred from LAST_PRICE movement vs the previous print's price.
     """
-    prints = _iter_tape_prints(_iter_content(data))
+    prints = _normalize_tape_prints(_iter_tape_prints(_iter_content(data)))
     if len(prints) < 2:
         return None
     sorted_prints = sorted(
@@ -872,7 +884,7 @@ def _compute_book_tape_batch_geometry(data: dict) -> dict[str, Optional[float]]:
         bid_delta = bids_later - bids_earlier
         ask_delta = asks_later - asks_earlier
 
-    prints = _iter_tape_prints(items)
+    prints = _normalize_tape_prints(_iter_tape_prints(items))
     sizes = [p["size"] for p in prints if p.get("size") is not None and p["size"] > 0]
     prices = [p.get("price") for p in prints if p.get("price") is not None]
     size_sum = float(sum(sizes)) if sizes else None

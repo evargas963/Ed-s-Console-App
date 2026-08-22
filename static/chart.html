@@ -334,6 +334,15 @@ let sealedForming = null; // just-finished minute kept until /api/bars1m catches
 let chartTicker = null;   // ticker whose `raw` bars are loaded — gates forming/spot ticks
 let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
 
+/** RC-465: chain-derived terrain levels paint only when coverage confidence is TRUSTED. */
+function edTrustedTerrainLevel(T, key) {
+  if (!T || typeof T !== 'object') return null;
+  if ((T.confidence || T.kl_gamma_flip_confidence) !== 'TRUSTED') return null;
+  const v = T[key];
+  const n = Number(v);
+  return (v == null || Number.isNaN(n)) ? null : n;
+}
+
 /* v6.2 (RC-195) # ui-mockup-ok: PAL — the canvas reads the SAME CSS tokens as the DOM, so
    light/dark theme both truly render. Refreshed on theme toggle, then every surface redraws. */
 let PAL = {};
@@ -595,14 +604,14 @@ function famLiveValues(fam) {
   const T = terrain || {};
   const out = [];
   const push = v => { if (v != null && isFinite(Number(v))) out.push(Number(v)); };
-  if (fam === 'wall') { push(T.call_wall); if (T.put_wall !== T.call_wall) push(T.put_wall); }
-  else if (fam === 'pin') push(T.gamma_pin);
-  else if (fam === 'flip') push(T.gamma_flip);
-  else if (fam === 'netpeak') push(T.net_gex_peak);
-  else if (fam === 'maxpain') push(T.max_pain);
-  else if (fam === 'kds') push(T.key_delta_strike);
-  else if (fam === 'hvplvp') { push(T.hvp); push(T.lvp); }
-  else if (fam === 'charmw') { push(T.call_charm_wall); push(T.put_charm_wall); }
+  if (fam === 'wall') { push(edTrustedTerrainLevel(T, 'call_wall')); if (edTrustedTerrainLevel(T, 'put_wall') !== edTrustedTerrainLevel(T, 'call_wall')) push(edTrustedTerrainLevel(T, 'put_wall')); }
+  else if (fam === 'pin') push(edTrustedTerrainLevel(T, 'gamma_pin'));
+  else if (fam === 'flip') push(edTrustedTerrainLevel(T, 'gamma_flip'));
+  else if (fam === 'netpeak') push(edTrustedTerrainLevel(T, 'net_gex_peak'));
+  else if (fam === 'maxpain') push(edTrustedTerrainLevel(T, 'max_pain'));
+  else if (fam === 'kds') push(edTrustedTerrainLevel(T, 'key_delta_strike'));
+  else if (fam === 'hvplvp') { push(edTrustedTerrainLevel(T, 'hvp')); push(edTrustedTerrainLevel(T, 'lvp')); }
+  else if (fam === 'charmw') { push(edTrustedTerrainLevel(T, 'call_charm_wall')); push(edTrustedTerrainLevel(T, 'put_charm_wall')); }
   // Phase 2A: the VWAP the menu reports is the CARRIED level, not the tail of a
   // client-side accumulation — the menu and the drawn line must be one number.
   else if (fam === 'vwap') { for (const r of rawLevelDefs) if (r.id === 'VWAP') push(r.v); }
@@ -969,7 +978,7 @@ function domain() {
   let lo = Infinity, hi = -Infinity;
   for (let i = i0; i < i1; i++) { lo = Math.min(lo, bars[i].l); hi = Math.max(hi, bars[i].h); }
   const T = terrain || {};
-  for (const v of [T.gamma_flip, T.call_wall, T.put_wall])
+  for (const v of [edTrustedTerrainLevel(T, 'gamma_flip'), edTrustedTerrainLevel(T, 'call_wall'), edTrustedTerrainLevel(T, 'put_wall')])
     if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   // Live spot must stay in-frame — overnight/extended moves are the honesty case (v2.7)
   const spot = currentSpot();   // RC-75: one client spot authority
@@ -1163,7 +1172,7 @@ function draw() {
     // v6 # ui-mockup-ok: no mid-chart text — the wall becomes an axis tag; the two-sided case
     // is ONE combined chip, and the pin merges in when it shares the strike (one tag, never
     // an overlap). The full sentence (name, box, lean, hold rates) lives in the hover tip.
-    const pinHere = T.gamma_pin != null && Number(T.gamma_pin) === Number(level);
+    const pinHere = edTrustedTerrainLevel(T, 'gamma_pin') != null && Number(edTrustedTerrainLevel(T, 'gamma_pin')) === Number(level);
     // # ui-mockup-ok: RC-124 information-loss BUG FIX, not a redesign — the merged axis tag
     // restores the decisiveness the standalone PIN label already renders. Measured live: pin
     // 750 coincident with the put wall rendered "750.00 PWALL·PIN" while the payload carried
@@ -1238,16 +1247,18 @@ function draw() {
     g.fillRect(PADL, yT, W - PADL - PADR, yB - yT);
     zones.push({ y0: yT, y1: yB, tipHtml: tip });
   };
-  rangeShade(T.put_wall_range, 'put');
-  rangeShade(T.call_wall_range, 'call');
+  if (edTrustedTerrainLevel(T, 'put_wall') != null) rangeShade(T.put_wall_range, 'put');
+  if (edTrustedTerrainLevel(T, 'call_wall') != null) rangeShade(T.call_wall_range, 'call');
 
   // RC-83: one strike carrying both walls is ONE two-sided level, not two opposing ones —
   // but it is still BOTH walls, and the label says so (RC-115: 'GAMMA WALL' alone erased
   // the put/call framing the operator reads).
-  if (T.call_wall != null && T.put_wall != null && Number(T.call_wall) === Number(T.put_wall)) {
-    band(T.call_wall, 'both');
+  const _cw = edTrustedTerrainLevel(T, 'call_wall');
+  const _pw = edTrustedTerrainLevel(T, 'put_wall');
+  if (_cw != null && _pw != null && Number(_cw) === Number(_pw)) {
+    band(_cw, 'both');
   } else {
-    band(T.call_wall, 'call'); band(T.put_wall, 'put');
+    band(_cw, 'call'); band(_pw, 'put');
   }
 
   // ALL other key levels — bright, labeled, each with a coach tooltip
@@ -1276,7 +1287,7 @@ function draw() {
   ];
   const lvlItems = [];
   for (const [key, lab, col, why, dash] of levels) {
-    const v = T[key]; if (v == null) continue;
+    const v = edTrustedTerrainLevel(T, key); if (v == null) continue;
     if (v < lo || v > hi) {   // RC-110: degrade to an edge marker, never vanish
       offScale.push({ v, col, text: `${lab} ${fmt(v)}`, tip: `${lab} ${fmt(v)} — ${why}` });
       continue;
@@ -1791,8 +1802,8 @@ function drawGamma() {
   // "i don't see the call wall in the gamma panel" must be a machine-checkable assertion)
   const _mk = (p, c, l, yy, key) => { const drew = mark2(p, c, l, yy); _dbgGamma[key] = !!drew; };
   _mk(spot, PAL.amber, `SPOT ${fmt(spot)}`, 30, 'spot');
-  _mk(T.call_wall, PAL.red, `CALL WALL ${fmt(T.call_wall, 0)}`, 46, 'call_wall');
-  _mk(T.put_wall, PAL.green, `PUT WALL ${fmt(T.put_wall, 0)}`, 62, 'put_wall');
+  _mk(edTrustedTerrainLevel(T, 'call_wall'), PAL.red, `CALL WALL ${fmt(edTrustedTerrainLevel(T, 'call_wall'), 0)}`, 46, 'call_wall');
+  _mk(edTrustedTerrainLevel(T, 'put_wall'), PAL.green, `PUT WALL ${fmt(edTrustedTerrainLevel(T, 'put_wall'), 0)}`, 62, 'put_wall');
 
   // measured migration line: biggest per-strike shifts vs yesterday
   const deltas = vis.filter(r => ghost.get(r[0]) != null)
@@ -1833,9 +1844,11 @@ function drawGamma() {
     .filter(r => (r[2] || 0) > 0);
   if (byVol.length) {
     const kk = byVol.map(r => r[0]);
-    const loc = (T.call_wall != null && Math.min(...kk) > T.call_wall) ? 'ABOVE the call wall'
-      : (T.put_wall != null && Math.max(...kk) < T.put_wall) ? 'BELOW the put wall'
-      : 'inside the wall range';
+    const loc = (edTrustedTerrainLevel(T, 'call_wall') != null && Math.min(...kk) > edTrustedTerrainLevel(T, 'call_wall')) ? 'ABOVE the call wall'
+      : (edTrustedTerrainLevel(T, 'put_wall') != null && Math.max(...kk) < edTrustedTerrainLevel(T, 'put_wall')) ? 'BELOW the put wall'
+      : ((edTrustedTerrainLevel(T, 'call_wall') == null && edTrustedTerrainLevel(T, 'put_wall') == null)
+        ? 'relative to walls withheld (chain not TRUSTED)'
+        : 'inside the wall range');
     coach2.innerHTML = `<b>Coach: heaviest option trading at ${kk.map(k => fmt(k, 0)).join('–')}</b>` +
       `That is ${loc}. Activity fact only — buyer/seller split stays unproven until the ΔOI test.`;
     coach2.style.display = 'block';

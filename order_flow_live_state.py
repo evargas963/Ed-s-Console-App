@@ -122,20 +122,9 @@ def push_level_one(symbol: str, content_item: dict) -> None:
         current_date = now_et_dt.strftime("%Y-%m-%d")
         if is_rth_open() and current_date != _last_rth_date:
             with _lock:
-                # Use loop-local names to avoid shadowing the outer `sym`
-                # (the symbol being pushed). Reassigning `sym` here previously
-                # caused subsequent writes in this call to land on the wrong
-                # symbol when other tickers were already in _top / _book.
-                for _k in list(_tape.keys()):
-                    _tape[_k].clear()
-                for _k in list(_top.keys()):
-                    _top[_k] = {}
-                for _k in list(_book.keys()):
-                    _book[_k].clear()
-                _stream_volume.clear()
-                _stream_chg_pct.clear()
+                _clear_all_session_state_unlocked()
                 _last_rth_date = current_date
-            log.info("RTH open — full state reset (tape + book + top) for all symbols")
+            log.info("RTH open — full state reset (tape + book + top + prev_trade) for all symbols")
     except Exception as e:
         log.debug(f"RTH reset check failed (continuing): {e}")
 
@@ -160,11 +149,16 @@ def push_level_one(symbol: str, content_item: dict) -> None:
 
     prev = _prev_trade.get(sym, {})
     prev_ms = prev.get("time_millis")
+    prev_price = prev.get("price")
+    prev_size = prev.get("size")
 
-    # New print if time changed or (time same but price/size changed - snapshot refresh)
-    is_new = prev_ms != trade_ms
-    if not is_new and prev_ms is not None:
-        # Same timestamp - could be duplicate, skip unless we're building initial state
+    # Identical L1 restatement (same time + price + size) is not a new print.
+    # Same TRADE_TIME with a different price or size is a same-ms batch print.
+    if (
+        prev_ms == trade_ms
+        and prev_price == last_price
+        and prev_size == last_size
+    ):
         return
 
     print_item = {
@@ -174,7 +168,11 @@ def push_level_one(symbol: str, content_item: dict) -> None:
     }
 
     with _lock:
-        _prev_trade[sym] = {"price": last_price, "time_millis": trade_ms}
+        _prev_trade[sym] = {
+            "price": last_price,
+            "size": last_size,
+            "time_millis": trade_ms,
+        }
         tape_q = _get_tape(sym)
         tape_q.append(print_item)
 
@@ -231,6 +229,28 @@ def get_l1_stream_input_probe(symbol: str) -> tuple[Any, ...]:
         else:
             tb, ta = None, None
     return (bl, tl, last_ms, tb, ta)
+
+
+def _clear_all_session_state_unlocked() -> None:
+    """Drop every symbol's tape/book/top/prev-print identity. Caller holds _lock."""
+    for _k in list(_tape.keys()):
+        _tape[_k].clear()
+    for _k in list(_top.keys()):
+        _top[_k] = {}
+    for _k in list(_book.keys()):
+        _book[_k].clear()
+    _prev_trade.clear()
+    _stream_volume.clear()
+    _stream_chg_pct.clear()
+
+
+def forget_unsubscribed_symbols(old: list[str], new: list[str]) -> None:
+    """Clear live state for symbols leaving the active stream set."""
+    new_keys = {ticker_storage_key(s) for s in new if s}
+    for raw in old:
+        key = ticker_storage_key(raw)
+        if key and key not in new_keys:
+            clear_symbol(key)
 
 
 def clear_symbol(symbol: str) -> None:

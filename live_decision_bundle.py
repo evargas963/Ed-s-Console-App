@@ -181,15 +181,19 @@ def _key_levels_from_ms_dict(ms_dict: dict) -> list[tuple[float, str]]:
 
     """
 
+    from math_levels import displayable_trusted_level
+
+    _conf = ms_dict.get("kl_gamma_flip_confidence") or ms_dict.get("confidence")
+
     pairs = [
 
-        (ms_dict.get("kl_call_gamma_wall"), "Call g-Wall"),
+        (displayable_trusted_level(ms_dict.get("kl_call_gamma_wall"), _conf), "Call g-Wall"),
 
-        (ms_dict.get("kl_put_gamma_wall"), "Put g-Wall"),
+        (displayable_trusted_level(ms_dict.get("kl_put_gamma_wall"), _conf), "Put g-Wall"),
 
-        (ms_dict.get("kl_hvl"), "Net Γ peak"),  # RC-134: net book, not total-gamma HVL/pin
+        (displayable_trusted_level(ms_dict.get("kl_hvl"), _conf), "Net Γ peak"),  # RC-134: net book, not total-gamma HVL/pin
 
-        (ms_dict.get("kl_max_pain"), "Max Pain"),
+        (displayable_trusted_level(ms_dict.get("kl_max_pain"), _conf), "Max Pain"),
 
         (ms_dict.get("kl_gamma_inflection"), "g-Inflection"),
 

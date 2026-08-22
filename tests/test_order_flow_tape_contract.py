@@ -60,6 +60,45 @@ def test_tape_and_cum_delta_are_classified_reconstructed_l1_tick():
     assert not hasattr(ofe, "OF_CUM_DELTA_NORM_DIVISOR")
 
 
+def test_tape_pressure_window_is_relative_to_latest_print():
+    data = {
+        "content": [
+            {"LAST_PRICE": 500.0, "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1_000},
+            {"LAST_PRICE": 500.1, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 120_000},
+        ]
+    }
+    # Window from the LATEST stamp (120s), not the first item. The 100-lot print is
+    # out of a 30s window and only seeds prev_price; pressure is the uptick 10-lot.
+    assert ofe._compute_tape_pressure(data, window_sec=30.0) == 1.0
+
+
+def test_identical_l1_restatement_does_not_double_count_cum_delta():
+    data = {
+        "content": [
+            {"LAST_PRICE": 500.0, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1_000},
+            {"LAST_PRICE": 500.1, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 2_000},
+            {"LAST_PRICE": 500.1, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 2_000},
+        ]
+    }
+    assert ofe._compute_cum_delta_proxy(data) == 10
+
+
+def test_same_ms_distinct_size_is_kept_as_batch():
+    data = {
+        "content": [
+            {"LAST_PRICE": 500.0, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1_000},
+            {"LAST_PRICE": 500.1, "LAST_SIZE": 4, "TRADE_TIME_MILLIS": 1_000},
+        ]
+    }
+    assert ofe._compute_cum_delta_proxy(data) == 4
+
+
+def test_server_source_does_not_inject_rest_into_cum_delta_proxy():
+    from pathlib import Path
+    src = Path("server.py").read_text(encoding="utf-8")
+    assert "ms.cum_delta_proxy = _rest_cum_delta" not in src
+
+
 def test_batch_geometry_skips_missing_print_size_and_does_not_ratio():
     data = {
         "content": [

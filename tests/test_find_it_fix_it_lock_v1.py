@@ -91,6 +91,19 @@ def test_passive_implicated_by_dirty_product_becomes_active():
     assert any(rid == "RC-9004" for rid, _ in off)
 
 
+def test_wide_surface_edit_does_not_activate_historical_chart_backlog():
+    rows = [
+        _row(
+            "RC-9005b",
+            opened="2026-07-01",
+            extra_defect="CLASS:PASSIVE static/chart.html corridor shade",
+            extra_fix="historical note",
+        ),
+    ]
+    off = _offenders(rows, dirty_paths=["static/chart.html"], presented_ids=None)
+    assert off == [], "editing chart.html must not activate the entire historical chart backlog"
+
+
 def test_historical_passive_untouched_does_not_block():
     rows = [
         _row(

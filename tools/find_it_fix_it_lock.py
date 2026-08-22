@@ -221,14 +221,30 @@ def _material_dirty(dirty: Iterable[str]) -> set[str]:
     return out
 
 
+# Mega surfaces named in almost every historical display/collect row. Editing one of
+# these does not, by itself, materially implicate the entire historical backlog
+# (operator: no permanent globally-blocking backlog). Narrow module paths still
+# activate PASSIVE → ACTIVE. Mission-tagged / opened-today rows still activate.
+_WIDE_SURFACES_NO_AUTO_IMPLICATE = frozenset({
+    "static/chart.html",
+    "static/index.html",
+    "server.py",
+    "db.py",
+})
+
+
 def _path_implicated(row_paths: set[str], dirty: Iterable[str], scope: Iterable[str]) -> bool:
     dirty_n = _material_dirty(dirty)
     if not dirty_n:
         return False
     for rp in row_paths:
+        if rp in _WIDE_SURFACES_NO_AUTO_IMPLICATE:
+            continue
         if rp in dirty_n:
             return True
         for d in dirty_n:
+            if d in _WIDE_SURFACES_NO_AUTO_IMPLICATE:
+                continue
             if d.startswith(rp.rstrip("/") + "/") or rp.startswith(d.rstrip("/") + "/"):
                 return True
         # Scope overlap alone does not activate the backlog — only dirty product paths.

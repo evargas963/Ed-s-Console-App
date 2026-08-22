@@ -1229,19 +1229,24 @@ def compute_gamma_flip_v2(
     return flip, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW), diag
 
 
-def displayable_gamma_flip(flip: float | None, confidence: str | None) -> float | None:
-    """Operator-visible flip number. Narrow/unavailable chains must not look precise."""
+def displayable_trusted_level(value: float | None, confidence: str | None) -> float | None:
+    """Operator-visible chain-derived level. Narrow/unavailable chains must not look precise."""
     if str(confidence or "") != GAMMA_FLIP_TRUSTED:
         return None
     try:
-        if flip is None:
+        if value is None:
             return None
-        out = float(flip)
+        out = float(value)
     except (TypeError, ValueError):
         return None
     if out != out:
         return None
     return out
+
+
+def displayable_gamma_flip(flip: float | None, confidence: str | None) -> float | None:
+    """Operator-visible flip number. Narrow/unavailable chains must not look precise."""
+    return displayable_trusted_level(flip, confidence)
 
 
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────

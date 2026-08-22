@@ -3453,6 +3453,7 @@ async def _broadcast_snapshot(data: dict) -> None:
 # Accumulates per ticker, resets at open. Streamer value takes precedence.
 _rest_cum_delta: dict = {}        # ticker -> running sum
 _rest_cum_delta_session: Optional[str] = None  # ET date "YYYY-MM-DD"
+_rest_cum_delta_last_print: dict = {}  # ticker -> (lastPrice, lastSize, tradeTime)
 
 # User prediction override — per ticker: {direction, source}
 # direction: "up" | "flat" | "down", source: "user" | "manual"
@@ -5555,7 +5556,7 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
     Update and return REST-based cum_delta accumulator for ticker.
     Resets at 9:30 ET on RTH open (not midnight). Pre-market trades do not carry into RTH.
     """
-    global _rest_cum_delta, _rest_cum_delta_session
+    global _rest_cum_delta, _rest_cum_delta_session, _rest_cum_delta_last_print
     try:
         hour, minute = now_et.hour, now_et.minute
         mins = hour * 60 + minute
@@ -5564,6 +5565,7 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
         session_key = date_str if in_rth else f"{date_str}-premarket"
         if session_key != _rest_cum_delta_session:
             _rest_cum_delta.clear()
+            _rest_cum_delta_last_print.clear()
             _rest_cum_delta_session = session_key
     except Exception as e:
         log.debug(f"REST cum_delta session check failed: {e}")
@@ -5573,6 +5575,16 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
     ask_price = _safe_float_quote(quote.get("askPrice"))
     if last_price is None or last_size is None or last_size <= 0:
         return _rest_cum_delta.get(ticker)
+    trade_time = (
+        quote.get("tradeTime")
+        or quote.get("tradeTimeInLong")
+        or quote.get("lastTimestamp")
+        or quote.get("quoteTime")
+    )
+    ident = (last_price, last_size, trade_time)
+    if _rest_cum_delta_last_print.get(ticker) == ident:
+        return _rest_cum_delta.get(ticker)
+    _rest_cum_delta_last_print[ticker] = ident
     delta = 0.0
     if ask_price is not None and last_price >= ask_price:
         delta = last_size
@@ -7797,11 +7809,9 @@ def _fetch_state(
     except Exception as _ss_e:
         log.debug("sweep_score post build_market_state: %s", _ss_e)
 
-    # REST fallback: when streamer has no tape, inject polling-based cum_delta.
-    # Streamer value takes precedence when available.
-    if ms.cum_delta_proxy is None and ticker in _rest_cum_delta:
-        ms.cum_delta_proxy = _rest_cum_delta[ticker]
-        log.debug("Cum Delta: REST proxy (polling-based)")
+    # RC-464: do not inject the REST Lee-Ready accumulator into cum_delta_proxy.
+    # That field is PROXY_RECONSTRUCTED_L1_TICK from OrderFlowEngine only.
+    # A second producer under the same name is a faucet, not a fallback.
 
     # ── Additive context: liquidity behavior + news/sentiment (non-authoritative) ──
     try:
@@ -11135,8 +11145,16 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_call_gamma_wall"] = _g("call_wall")
     md["kl_put_gamma_wall"] = _g("put_wall")
     md["kl_gamma_flip"] = _g("gamma_flip")
-    from math_levels import displayable_gamma_flip
-    md["kl_gamma_flip_display"] = displayable_gamma_flip(_g("gamma_flip"), _g("confidence"))
+    from math_levels import displayable_gamma_flip, displayable_trusted_level
+    _conf = _g("confidence")
+    md["kl_gamma_flip_display"] = displayable_gamma_flip(_g("gamma_flip"), _conf)
+    md["kl_call_gamma_wall_display"] = displayable_trusted_level(_g("call_wall"), _conf)
+    md["kl_put_gamma_wall_display"] = displayable_trusted_level(_g("put_wall"), _conf)
+    md["kl_gamma_pin_display"] = displayable_trusted_level(_g("gamma_pin"), _conf)
+    md["kl_hvl_display"] = displayable_trusted_level(_g("net_gex_peak"), _conf)
+    md["kl_max_pain_display"] = displayable_trusted_level(_g("max_pain"), _conf)
+    md["kl_gsf_display"] = displayable_trusted_level(_g("gsf"), _conf)
+    md["kl_grc_display"] = displayable_trusted_level(_g("grc"), _conf)
     md["kl_gamma_pin"] = _g("gamma_pin")
     md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
     # RC-292/RC-417: payload `gamma_pin` is the same SSOT total-gamma pin as kl_gamma_pin.
@@ -14888,21 +14906,23 @@ def _liquidity_fusion_from_cache(
         spot_f = float(spot_v) if spot_v is not None else None
     except (TypeError, ValueError):
         spot_f = None
+    from math_levels import displayable_trusted_level
+    conf = d.get("kl_gamma_flip_confidence") or d.get("confidence")
     pairs = [
-        (d.get("kl_call_gamma_wall"), "GAMMA_CALL_WALL"),
-        (d.get("kl_put_gamma_wall"), "GAMMA_PUT_WALL"),
-        (d.get("kl_call_delta_wall"), "DELTA_CALL_WALL"),
-        (d.get("kl_put_delta_wall"), "DELTA_PUT_WALL"),
+        (displayable_trusted_level(d.get("kl_call_gamma_wall"), conf), "GAMMA_CALL_WALL"),
+        (displayable_trusted_level(d.get("kl_put_gamma_wall"), conf), "GAMMA_PUT_WALL"),
+        (displayable_trusted_level(d.get("kl_call_delta_wall"), conf), "DELTA_CALL_WALL"),
+        (displayable_trusted_level(d.get("kl_put_delta_wall"), conf), "DELTA_PUT_WALL"),
         (d.get("kl_call_oi_wall"), "OI_CALL_WALL"),
         (d.get("kl_put_oi_wall"), "OI_PUT_WALL"),
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
-        (d.get("kl_gamma_pin"), "GAMMA_PIN"),
+        (displayable_trusted_level(d.get("kl_gamma_pin"), conf), "GAMMA_PIN"),
         # RC-134: kl_hvl is the NET book (RC-124); the tag must not say HVL, since that
         # name means total gamma, which is the pin.
-        (d.get("kl_hvl"), "NET_GEX_PEAK"),
-        (d.get("kl_max_pain"), "MAX_PAIN"),
-        (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
+        (displayable_trusted_level(d.get("kl_hvl"), conf), "NET_GEX_PEAK"),
+        (displayable_trusted_level(d.get("kl_max_pain"), conf), "MAX_PAIN"),
+        (displayable_trusted_level(d.get("kl_gamma_flip"), conf), "GAMMA_FLIP"),
         (d.get("kl_oi_center"), "OI_CENTER"),
         (d.get("kl_em_upper"), "EM_UPPER"),
         (d.get("kl_em_lower"), "EM_LOWER"),

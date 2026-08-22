@@ -19,7 +19,7 @@ import time
 from typing import Any, Callable, Optional
 from instrument_identity import ticker_storage_key
 
-from order_flow_live_state import push_book, push_level_one
+from order_flow_live_state import forget_unsubscribed_symbols, push_book, push_level_one
 
 import live_market_plane as _lmp
 
@@ -213,6 +213,7 @@ async def _resubscribe_to_ticker(sc: Any, ticker: str) -> None:
     if old == new:
         return
     _log_stream("STREAM_RESUBSCRIBE_START", old=old, new=new)
+    forget_unsubscribed_symbols(old, new)
     try:
         if old:
             await sc.level_one_equity_unsubs(old)
