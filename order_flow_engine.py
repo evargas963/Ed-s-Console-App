@@ -194,16 +194,6 @@ def _iter_tape_prints(content_items: list) -> list[dict]:
     return iter_content_prints(content_items)
 
 
-def _normalize_tape_prints(prints: list[dict]) -> list[dict]:
-    """Adjacent restatement filter. ONE FAUCET: l1_trade_observation.
-
-    Does not sort. Does not treat a later identical triple as a duplicate of an
-    earlier non-adjacent print. Same vendor-ms + different price/size is kept.
-    """
-    from l1_trade_observation import filter_adjacent_restatements
-    return filter_adjacent_restatements(prints)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # BOOK METRICS
 # ─────────────────────────────────────────────────────────────────────────────

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-import re
 
 import order_flow_engine as ofe
 import order_flow_live_state as ofls

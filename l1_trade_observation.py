@@ -171,7 +171,10 @@ def iter_signed_cum_points(
             cum += signed
         if price is not None:
             prev_price = price
-        x = (t / 1000.0) if t is not None else float(i)
+        if t is not None:
+            x = t / 1000.0
+        else:
+            x = float(i)
         points.append((x, cum))
     return points
 
@@ -194,7 +197,10 @@ def compute_tape_pressure(
     if not prints:
         return None
     times = [p.get("time_millis") for p in prints if p.get("time_millis") is not None]
-    now_ms = max(times) if times else 0
+    if times:
+        now_ms = max(times)
+    else:
+        now_ms = 0
     cutoff_ms = now_ms - int(window_sec * 1000)
     total_delta = 0.0
     total_sz = 0

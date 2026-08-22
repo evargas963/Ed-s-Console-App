@@ -647,7 +647,7 @@ Index into the operator-source checkboxes below. Not extra boxes. Not a second q
 - [ ] `OS-E3-001` — STATUS=NOT_PROVEN — tape_pressure_30s exact semantics
 - [ ] `OS-E3-002` — STATUS=NOT_PROVEN — tape_pressure_2m exact semantics
 - [ ] `OS-E3-003` — STATUS=NOT_PROVEN — tape_pressure_5m exact semantics
-- [ ] `OS-E3-004` — STATUS=NOT_PROVEN — cum_delta_proxy exact semantics
+- [ ] `OS-E3-004` — STATUS=NOT_PROVEN — cum_delta_proxy exact semantics. SURFACES=l1_trade_observation.py;order_flow_engine.py
 - [ ] `OS-E3-005` — STATUS=NOT_PROVEN — cum_delta_slope exact semantics
 - [ ] `OS-E3-006` — STATUS=NOT_PROVEN — institutional_flow_proxy_score exact semantics
 - [x] `OS-E3-007` — STATUS=PASS — Engine/API classification is `PROXY_RECONSTRUCTED_L1_TICK` for tape pressure and cum-delta. Evidence: `l1_trade_observation.source_contract`; `tests/test_order_flow_tape_contract.py::test_tape_and_cum_delta_are_classified_reconstructed_l1_tick`.
@@ -2648,7 +2648,7 @@ These RC ids were reconciled into the P-sections / OTHER_DEBT above.
 work authority for them.
 
 RC-350, RC-345, RC-190, RC-331, RC-329, RC-328, RC-326, RC-322, RC-318, RC-317, RC-316, RC-310, RC-307, RC-305, RC-303, RC-300, RC-297, RC-295, RC-292, RC-290, RC-288, RC-287, RC-286, RC-280, RC-265, RC-264, RC-259, RC-257, RC-256
-- [ ] `OD-1282` — STATUS=NOT_PROVEN — RC-480 evidence residual: FIND IT / Stop must derive actionable obligation state from the sole master only. root_cause_log.md is evidence and has zero execution authority.
+- [ ] `OD-1282` — STATUS=NOT_PROVEN — RC-480 evidence residual: FIND IT / Stop must derive actionable obligation state from the sole master only. root_cause_log.md is evidence and has zero execution authority. SURFACES=tools/find_it_fix_it_lock.py;tools/stop_guard.py
 - [ ] `OD-1283` — STATUS=NOT_PROVEN — RC-479 OPEN residual: CONSOLE V2 painted only today POC/VAH/VAL while /api/state already carried PDH/PDL/overnight/ORB/VWAP from the one PriceLevelSnapshot.
 - [x] `OD-1284` — STATUS=NOT_APPLICABLE — Source-file wrapping / splitlines / SHA identity is not a completeness test. Retired by operator 2026-08-22: semantic one-list completeness is the authority. Historical 1284-vs-2068 line counts are source evidence only.
 - [ ] `OD-1285` — STATUS=NOT_PROVEN — Pre-flip / pre-promote validation harness must pass on the automation host for the enrolled training universe before nightly promote is trusted (not git-gated e2e). Tickers are fixtures only.
