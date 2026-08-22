@@ -117,6 +117,25 @@ def faucet_violations() -> list[dict]:
     return list(rep.get("faucet_violations", []))
 
 
+def fix_law_blockers() -> list[str]:
+    """FIND IT → FIX IT (operator law 2026-08-21): the turn may not end while a defect opened this
+    session is disposed as fixable-but-unfixed (queued/recorded/TODO/next/pending/unfinished) without
+    a valid, exact-assertion hard blocker. Calls the SAME `fix_law_offenders` authority the CI gate
+    uses, so agent-time and commit-time cannot enforce different definitions. Fail-closed: a broken
+    authority is a loud block, not a wave-through."""
+    try:
+        from tools.check_institutional_correctness import (
+            _parse_rc_rows_for_fix_law,
+            fix_law_offenders,
+        )
+        today = datetime.date.today().isoformat()
+        rows = _parse_rc_rows_for_fix_law(RC_LOG.read_text(encoding="utf-8", errors="ignore"))
+        return [f"{rc} — {why}" for rc, why in fix_law_offenders(rows, today)]
+    except Exception as e:  # noqa: BLE001 — a broken FIND-IT-FIX-IT authority must scream, not pass
+        return [f"FIND-IT-FIX-IT authority could not run ({type(e).__name__}: {e}) — "
+                f"fix the lock before ending the turn"]
+
+
 def close_contract_blockers() -> list[str]:
     """RC-106 front end: the gate blocks the COMMIT; this blocks the TURN.
 
@@ -153,9 +172,11 @@ def main() -> int:
     faucets = faucet_violations()
     stale = freshness_blockers()          # RC-94: stale-on-a-live-console ends no turn quietly
     contract = close_contract_blockers()  # RC-106: a CLOSED row must satisfy the close contract
-    if not rows and not faucets and not stale and not contract:
+    fixlaw = fix_law_blockers()           # 2026-08-21: FIND IT → FIX IT, same authority as CI gate
+    if not rows and not faucets and not stale and not contract and not fixlaw:
         return 0
     rows = rows + [(c, "violates the RC-106 close contract") for c in contract]
+    rows = rows + [(f.split(" — ", 1)[0], f.split(" — ", 1)[-1]) for f in fixlaw]
     faucets = faucets + [
         {"concept": v["concept"], "undeclared": [v.get("detail", "stale")]} for v in stale
     ]

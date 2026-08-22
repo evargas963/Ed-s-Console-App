@@ -1,11 +1,10 @@
 {
-  "granted": false,
-  "granted_at": "2026-08-20T00:00:00+00:00",
-  "revoked_at": "2026-08-20T00:00:01+00:00",
-  "granted_by": "operator_instruction_in_session_2026-08-20",
-  "revoked_by": "operator_instruction_in_session_2026-08-20_restore_fail_closed",
+  "granted": true,
+  "granted_at": "2026-08-21T00:00:00+00:00",
+  "granted_by": "operator_instruction_in_session_2026-08-21_find_it_fix_it_lock",
   "scope": [
     "staged_lock_surface"
   ],
-  "note": "RESTORED to fail-closed immediately after the RC-437..443 commit (9639b19e), per operator instruction 2026-08-20 ('immediately restore operator_go to fail-closed after the commit'). The scoped staged_lock_surface GO was used exactly once to land the new ENFORCED check schwab_market_field_semantics; with granted:false the reset guard and every staged-lock-surface gate return to fail-closed, so any future staged ENFORCED-check commit must obtain a fresh, scoped GO."
+  "operator_quote": "IMMEDIATE MISSION: MECHANICALLY ENFORCE `FIND IT -> FIX IT` ... Add an ENFORCED CHECK to `tools/check_institutional_correctness.py`. It must fail non-zero when an active material defect is FAIL or NOT_PROVEN, is currently fixable, lacks a valid hard blocker, and has not been remediated ... Add the smallest appropriate existing PreToolUse/Stop enforcement so Claude cannot conclude/stop a mission while the institutional gate reports fixable material defects.",
+  "note": "Scoped GO to land the new ENFORCED check `find_it_fix_it` (tools/check_institutional_correctness.py) + its Stop-guard wiring (tools/stop_guard.py) + negative controls (tests/test_find_it_fix_it_lock_v1.py) + AGENTS.md law + RC-449, per the 2026-08-21 operator directive. Restore to fail-closed after this commit per the standing discipline (operator_go is not left open)."
 }

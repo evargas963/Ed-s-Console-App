@@ -529,6 +529,112 @@ def check_five_why_recursive_lock() -> list[Violation]:
     return _five_why_lock_violations(lines, log_path, static_corpus, tests_corpus)
 
 
+# ── FIND IT → FIX IT (operator law 2026-08-21) ───────────────────────────────────────────────
+# Discovery creates an obligation to remediate. A material defect that can safely be fixed in the
+# active session may not be disposed as queued/recorded/TODO/next/pending/pre-existing/out-of-scope
+# or merely left unfinished. Truth status (FAIL/NOT_PROVEN) is separate from PERMISSION TO STOP:
+# an unresolved defect permits stopping ONLY when its exact unresolved assertion is attached to a
+# valid hard blocker. This is the SINGLE authority; tools/stop_guard.py imports `fix_law_offenders`
+# so agent-time (Stop) and commit-time (CI) enforce one definition. Negative controls:
+# tests/test_find_it_fix_it_lock_v1.py. Enforcer named in AGENTS.md.
+FIX_LAW_VALID_BLOCKERS: tuple[str, ...] = (
+    "RTH_ONLY", "EXTERNAL_DATA_UNAVAILABLE", "DESTRUCTIVE_APPROVAL_REQUIRED", "ENVIRONMENT_BLOCKED",
+)
+#: A fixable defect disposed with one of these (and not `FIXED:`) is left unfixed. NEXT-DEPTH is
+#: intentionally absent: it is the RC log's legitimate successor-bet field, not a disposition of the
+#: current defect (so "NEXT-DEPTH: ..." never trips this).
+FIX_LAW_LAUNDERING: tuple[str, ...] = (
+    "QUEUED", "TO BE FIXED", "WILL FIX", " TODO", "NEXT-PASS", "NEXT PASS", "FOLLOW-UP", "FOLLOWUP",
+    "DEFERRED", "OUT-OF-SCOPE", "OUT OF SCOPE", "PRE-EXISTING", "PENDING FIX", "RECORDED FOR",
+    "NEXT TURN", "NEXT MISSION", "LEFT FOR NEXT", "CONTINUE NEXT",
+)
+FIX_LAW_UNFINISHED: tuple[str, ...] = (
+    "IN PROGRESS", "VERIFICATION PENDING", "NOT FIXED", "PARTIALLY FIXED",
+)
+#: A blocker bound to one of these bare subsystem words launders a whole subsystem as blocked
+#: (INVALID: `ORDER_FLOW = RTH_ONLY`). It must bind an EXACT assertion (`same_ms_collision_frequency`).
+_FIX_LAW_SUBSYSTEM_WORDS = frozenset({
+    "order_flow", "orderflow", "levels", "options", "absorption", "terrain", "exposure", "model",
+    "models", "ui", "decision", "microstructure", "everything", "all", "subsystem", "the_whole",
+})
+
+
+def _fix_law_blocker_scoped(fix: str) -> bool:
+    """True iff a VALID blocker token is bound to an EXACT snake_case assertion identifier, e.g.
+    `same_ms_collision_frequency = RTH_ONLY` or `RTH_ONLY: same_ms_collision_frequency`. A bare
+    subsystem-wide binding or the token alone is INVALID (LOCK 3: no laundering a subsystem)."""
+    for tok in FIX_LAW_VALID_BLOCKERS:
+        for pat in (rf"([a-z][a-z0-9_]{{4,}})\s*=\s*{tok}\b",
+                    rf"{tok}\s*[:=]\s*([a-z][a-z0-9_]{{4,}})",
+                    rf"{tok}\s+(?:on|for)\s+([a-z][a-z0-9_]{{4,}})"):
+            m = re.search(pat, fix)
+            if m and m.group(1) not in _FIX_LAW_SUBSYSTEM_WORDS:
+                return True
+    return False
+
+
+def fix_law_offenders(rows: list[tuple[str, str, str, str]], today: str) -> list[tuple[str, str]]:
+    """THE ONE authority for FIND IT → FIX IT, called by the gate check AND tools/stop_guard.py.
+
+    `rows` are (rc_id, status, opened, fix_cell). A row opened `today` that is OPEN and NOT
+    dispositioned `FIXED:` is a live defect. It is an offender when it is either (a) excused by a
+    blocker token that is NOT scoped to an exact assertion, or (b) disposed with an unfinished /
+    laundering marker and carries NO valid hard blocker at all. Returns (rc_id, reason)."""
+    out: list[tuple[str, str]] = []
+    for rc_id, status, opened, fix in rows:
+        if status != "OPEN" or opened != today:
+            continue
+        if "FIXED:" in fix.upper():
+            continue
+        if any(tok in fix for tok in FIX_LAW_VALID_BLOCKERS):
+            if not _fix_law_blocker_scoped(fix):
+                out.append((rc_id, "cites a hard blocker not attached to an EXACT assertion "
+                                   "(subsystem-wide blocker is laundering) — scope it or fix it"))
+            continue
+        why = (next((m for m in FIX_LAW_UNFINISHED if m in fix.upper()), None)
+               or next((w for w in FIX_LAW_LAUNDERING if w in fix.upper()), None))
+        if why:
+            out.append((rc_id, f"disposes a fixable defect as {why.strip()!r} with NO valid hard "
+                               f"blocker — FIND IT → FIX IT (remediate, or attach one of "
+                               f"{'/'.join(FIX_LAW_VALID_BLOCKERS)} to the exact assertion)"))
+    return out
+
+
+def _parse_rc_rows_for_fix_law(text: str) -> list[tuple[str, str, str, str]]:
+    """(rc_id, status, opened, fix_cell) for every RC row. Shared parse shape with stop_guard."""
+    rows: list[tuple[str, str, str, str]] = []
+    for line in text.splitlines():
+        if not line.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 7:
+            rows.append((cells[0], cells[1], cells[2], cells[6]))
+    return rows
+
+
+def check_find_it_fix_it() -> list[Violation]:
+    """FIND IT → FIX IT operator law (2026-08-21): a fixable material defect discovered this session
+    may not be left queued/recorded/TODO/next/pending/pre-existing/out-of-scope or merely unfinished
+    — it must be REMEDIATED (`FIXED:` + evidence) or attached to a VALID HARD BLOCKER
+    (RTH_ONLY / EXTERNAL_DATA_UNAVAILABLE / DESTRUCTIVE_APPROVAL_REQUIRED / ENVIRONMENT_BLOCKED) on
+    an EXACT assertion. tools/stop_guard.py calls the same `fix_law_offenders`, so agent-time and CI
+    cannot diverge.
+
+    OBSERVED (RC-449): across the 2026-08-21 truth-and-remediation session the agent repeatedly
+    disposed fixable defects as QUEUED/RECORDED/NOT_PROVEN/next-mission instead of fixing them (the
+    Order Flow verdict retirement returned as "next", the P2 rename as "queued") — the exact
+    premature-return failure mode the operator named. Words are not a mechanism.
+    VALIDATED: prototyped against the live root_cause_log.md (0 offenders, so ENFORCE-able) and
+    proven by negative controls A–E in tests/test_find_it_fix_it_lock_v1.py — a no-blocker defect and
+    a subsystem-wide fake `RTH_ONLY` both BLOCK, an exact-assertion blocker and a `FIXED:`+evidence
+    row both PASS, and a planted mutation is caught. Not ADVISORY; enforced because its count is 0."""
+    import datetime as _dt
+    log_path = REPO / "governance" / "root_cause_log.md"
+    rows = _parse_rc_rows_for_fix_law(_read_or_empty(log_path))
+    return [Violation(log_path, 0, f"{rc}: {why}")
+            for rc, why in fix_law_offenders(rows, _dt.date.today().isoformat())]
+
+
 def check_root_cause_log() -> list[Violation]:
     """Every defect gets five whys, and finding a cause RESTARTS the count.
 
@@ -4744,6 +4850,8 @@ CHECKS = [
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
     ("five_why_recursive_lock", check_five_why_recursive_lock, True),  # end-to-end fixes, no patches ever
+    ("find_it_fix_it", check_find_it_fix_it, True),  # 2026-08-21 operator law: fixable defect must be fixed or hard-blocked, never queued
+
     ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded, True),  # UNIVERSAL: any code change ships a root-cause row
     ("adversarial_audit_test_lock", check_adversarial_audit_test_lock, True),  # RC-49: every fix ships a locking test (audit's output)
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
