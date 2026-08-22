@@ -581,9 +581,23 @@ def test_console_today_poc_binds_state_payload_not_a_second_book() -> None:
         ("dr-lvl-poc", "today_poc"),
         ("dr-lvl-vah", "today_vah"),
         ("dr-lvl-val", "today_val"),
+        ("dr-lvl-pdh", "pdh"),
+        ("dr-lvl-pdl", "pdl"),
+        ("dr-lvl-onh", "overnight_high"),
+        ("dr-lvl-onl", "overnight_low"),
+        ("dr-lvl-orbh", "orb_high"),
+        ("dr-lvl-orbl", "orb_low"),
+        ("dr-lvl-vwap", "vwap"),
         ("exec-poc", "today_poc"),
         ("exec-vah", "today_vah"),
         ("exec-val", "today_val"),
+        ("exec-pdh", "pdh"),
+        ("exec-pdl", "pdl"),
+        ("exec-onh", "overnight_high"),
+        ("exec-onl", "overnight_low"),
+        ("exec-orbh", "orb_high"),
+        ("exec-orbl", "orb_low"),
+        ("exec-vwap", "vwap"),
     ):
         assert f'id="{dom_id}"' in src, f"missing #{dom_id}"
         assert src.count(f"pxTxt(d.{field})") >= 2, (
