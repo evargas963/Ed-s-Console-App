@@ -243,6 +243,7 @@ from math_exposure import (
     compute_iv_model_spread,
     compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
+    prefer_wider_level_chain,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
@@ -3687,6 +3688,7 @@ from calibration.option_chain_morning_full import (
     SOURCE_WIDE as GEX_SOURCE_WIDE,
     et_date_and_mins as gex_et_date_and_mins,
     has_morning_full_capture,
+    load_morning_full_contracts,
     maybe_persist_morning_full_chain,
     universal_capture_window,
 )
@@ -6808,7 +6810,20 @@ def _fetch_state(
     _bars_1m_count = len(_candles_1m.get_bars(ticker))
     log.info(f"Candles: {ticker} 5m={_bars_5m_count} bars, 1m={_bars_1m_count} bars")
 
-    exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
+    _archive_for_levels = None
+    try:
+        _archive_raw = load_morning_full_contracts(get_db().db_path, ticker, _today_str)
+        if _archive_raw:
+            _archive_for_levels, _ = _filter_contracts_by_selected_expiry(
+                _archive_raw, selected_exp
+            )
+    except Exception as e:
+        log.debug("morning_full level archive unavailable ticker=%s: %s", ticker, e)
+    contracts_for_levels, _level_chain_source = prefer_wider_level_chain(
+        contracts_use, _archive_for_levels, spot=spot_f,
+    )
+
+    exposures, diag = compute_exposures_by_strike(contracts_for_levels, spot=spot_f, require_oi=True)
     from math_exposure_core import key_level_strikes_with_gamma
     _cons_strikes = sorted(float(k) for k in exposures.keys())
     _gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes
@@ -6824,14 +6839,16 @@ def _fetch_state(
     # Selected-expiry analytics must not occupy walls[0] while kl_* paints terrain.
     from math_levels import consensus_walls_bind_terrain_ssot
     walls = consensus_walls_bind_terrain_ssot(walls, terrain_cache_get(ticker) or {})
-    totals    = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
+    totals    = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_for_levels)
 
     # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
     # FIND-GAMMA-FLIP-METHOD-V1: canonical profile (gamma recomputed at hypothetical spot).
     # The old cumulative-sum method was DISPROVED 2026-07-19 on a real SPY reference chain
     # (corr 0.086, never crossed zero). The confidence flag is mandatory: a narrow chain
     # misplaces the flip by ~3.6%, so it must never be presented as trustworthy.
-    _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
+    _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_for_levels, spot_f)
+    if isinstance(_gamma_flip_diag, dict):
+        _gamma_flip_diag = {**_gamma_flip_diag, "level_chain_source": _level_chain_source}
     _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
     # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
     # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).

@@ -1126,6 +1126,57 @@ def required_strike_count(spot: float | None, increment: float | None, *,
     return int(math.ceil(span_points / inc * margin)) + 1
 
 
+LEVEL_CHAIN_LIVE = "live_fetch"
+LEVEL_CHAIN_MORNING_FULL = "morning_full_same_session"
+
+
+def unique_strike_count(contracts: List[dict] | None) -> int:
+    """Distinct finite strikePrice values. Coverage count, not a score."""
+    if not contracts:
+        return 0
+    from numeric_contract import float_finite_or_none as _fin
+    seen: set[float] = set()
+    for c in contracts:
+        if not isinstance(c, dict):
+            continue
+        sp = _fin(c.get("strikePrice"))
+        if sp is not None:
+            seen.add(sp)
+    return len(seen)
+
+
+def prefer_wider_level_chain(
+    live_contracts: List[dict],
+    archive_contracts: List[dict] | None,
+    *,
+    spot: float | None,
+    increment: float | None = None,
+) -> tuple[List[dict], str]:
+    """Use the same-session wide archive when the live book is too narrow for the span bar.
+
+    TRUSTED + interior is containment, not coverage. If a same-session morning_full
+    (or other archive) list has more unique strikes AND live is below
+    required_strike_count, prefer the archive for level math. Never invent strikes.
+    """
+    live = list(live_contracts or [])
+    archive = list(archive_contracts or [])
+    live_n = unique_strike_count(live)
+    arch_n = unique_strike_count(archive)
+    if arch_n <= live_n:
+        return live, LEVEL_CHAIN_LIVE
+    inc = increment
+    if inc is None:
+        inc = infer_strike_increment(live) or infer_strike_increment(archive)
+    need = required_strike_count(spot, inc)
+    if need is None:
+        if live_n == 0 and arch_n > 0:
+            return archive, LEVEL_CHAIN_MORNING_FULL
+        return live, LEVEL_CHAIN_LIVE
+    if live_n < need:
+        return archive, LEVEL_CHAIN_MORNING_FULL
+    return live, LEVEL_CHAIN_LIVE
+
+
 def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | None:
     """Net dealer gamma at `price`, linearly interpolated from the profile.
 
